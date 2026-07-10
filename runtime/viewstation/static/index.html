@@ -1256,9 +1256,17 @@ function towerNextHTML(wt, magnet, spot){
   }
   if(wt && wt.fired){
     const up = wt.dir==='call';
-    const tgt = (magnet!=null && isFinite(magnet)) ? Math.round(magnet).toLocaleString('en-US') : 'the magnet';
     const bits=[ wt.mag?`~${(+wt.mag).toFixed(2)}σ`:'', hz(wt.horizon) ].filter(Boolean).join(' · ');
-    return `<span class="nx-dir ${up?'up':'down'}">${up?'▲ Up':'▼ Down'}</span> — likely to ${up?'push':'fade'} toward <b>${tgt}</b>${bits?` <span class="nx-mag">(${bits})</span>`:''}.`;
+    // wt-2 wording (mirrors render_snippet): name the call by its relation to the
+    // magnet — "ride" WITH the pull toward it, or a move AGAINST the pull; never
+    // "fade toward" a magnet on the wrong side of the move (the wt-1 contradiction).
+    let tail='';
+    if(magnet!=null && isFinite(magnet) && spot!=null && isFinite(spot)){
+      const tgt=Math.round(magnet).toLocaleString('en-US');
+      const toward=(magnet>=spot)===up;
+      tail = toward ? ` — likely to ride toward <b>${tgt}</b>` : ` — likely to move against the <b>${tgt}</b> pull`;
+    }
+    return `<span class="nx-dir ${up?'up':'down'}">${up?'▲ Up':'▼ Down'}</span>${tail}${bits?` <span class="nx-mag">(${bits})</span>`:''}.`;
   }
   const here = (spot!=null&&isFinite(spot)) ? Math.round(spot).toLocaleString('en-US') : 'here';
   return `<span class="nx-dir flat">■ Flat</span> — no clear edge; expect it to drift near <b>${here}</b>.`;
@@ -1280,7 +1288,7 @@ function nextTarget(){
 function applyMap(r){
   const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv, sh=gv.shove||gt.shove||{};
   T={ spot:r.spot??D.spot, flip:r.gamma_flip??D.flip, callWall:gv.call_wall_gamma??r.call_wall??D.callWall, putWall:gv.put_wall_gamma??r.put_wall??D.putWall,
-    magnet:g.magnet??D.magnet, pin:gv.pin_centroid??g.pin_centroid??D.pin,
+    magnet:gv.magnet??g.magnet??D.magnet /* gex_views LEADS (locked policy) */, pin:gv.pin_centroid??g.pin_centroid??D.pin,
     gAbove:g.gamma_above_spot??D.gAbove, gBelow:g.gamma_below_spot??D.gBelow,
     flow:g.aggressor_flow??0, shoveUp:sh.shove_up_margin??D.shoveUp,
     shoveDown:sh.shove_down_margin??D.shoveDown, sigma:r.sigma??D.sigma,
