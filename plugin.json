@@ -16,7 +16,6 @@
     "python_venv": "~/.local/share/mirai-station/venv",
     "state_dir": "~/.claude/plugins/mirai-station/state",
     "secrets": {
-      "discord_webhook": "keychain:mirai-station/discord-alert-webhook",
       "schwab_credentials": "keychain:iv-viability-schwab/*"
     },
     "watch": {

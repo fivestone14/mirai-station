@@ -148,9 +148,9 @@ def build_pipeline() -> dict:
             "id": "tell", "emoji": "📣", "title": "The Tell", "tag": "what you see & hear",
             "what": "The storytellers render one dealer story onto the tablet and the Obsidian notes; "
                     "the alert bell rings your phone only for fresh paper fires and broken walls.",
-            "tech": "snapshot · app.js · dashboard · gex_alerts · push_ntfy",
+            "tech": "snapshot · index.html · dashboard · gex_alerts · push_ntfy",
             "modules": [
-                {"emoji": "📱", "name": "snapshot · app.js", "title": "The Storytellers (tablet)",
+                {"emoji": "📱", "name": "snapshot · index.html", "title": "The Storytellers (tablet)",
                  "what": "The gravity map leads the Overview; every level comes from the one resolved "
                          "dealer map, so the tablet and the notes can never disagree.",
                  "data": []},
