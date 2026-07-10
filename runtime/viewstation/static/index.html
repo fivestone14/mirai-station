@@ -844,7 +844,7 @@ function rowToScan(r){
   const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv, sh=gv.shove||gt.shove||{};
   const re=r.reversion_extreme||{}, lr=r.level_reclaim||{}, mo=r.gex_motion;
   return { ts:r.ts, t:clockIn(r.ts,ET), spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
-    flip:r.gamma_flip, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall??null, callCeil:r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null,
+    flip:r.gamma_flip, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall??null, callCeil:r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, dated:r.dated_gex??null,
     /* magnet policy (locked, mirrors resolve_dealer_map): gex_views LEADS, gex_theta is the
        challenger; the armed-only reversion magnet is wall-clamped (a fade target, not the pull) */
     magnet:gv.magnet??g.magnet??re.magnet_raw??r.gamma_flip,
@@ -969,7 +969,7 @@ const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZ
 
 function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, putWall:s.putWall, magnet:s.magnet, pin:s.pin,
   gAbove:s.gAbove, gBelow:s.gBelow, flow:s.flow, shoveUp:s.shove.up, shoveDown:s.shove.down, sigma:s.sigma,
-  netByStrike:s.netByStrike??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null,
+  netByStrike:s.netByStrike??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null,
   sign:s.sign, regime:s.regime, downFlip:s.shove.downFlip }; }
 
 let D = stateOf(NOW), T = {...D}, curWt = NOW.wt, wtDirty = true, MAP = null, VIT = null;
@@ -1035,6 +1035,7 @@ function gxBuild(){
      <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
      <g id="axisG">${axis}</g>
      <g id="barsG">${bars}</g>
+     <g id="datedG"></g>
      ${lvl}
      <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
@@ -1044,6 +1045,7 @@ function gxBuild(){
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
+    datedG:q('datedG'), _dkey:null,
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
   gxOverview(); gxTower(); gxPaint();
@@ -1121,6 +1123,70 @@ function gxPaint(){
       MAP.wtTgt.style.display='';
     } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; }
   }
+  paintDated();
+}
+// ---- DATED BOOK overlay: far structural OI walls (next 2 monthlies + quarter-end) ----
+// Shaded by EXPIRATION — nearer expiries brighter, further dimmer — so one glance says
+// which tenor a wall belongs to. Walls picked moneyness-aware at DISPLAY time (a max-OI
+// call strike BELOW spot is real OI but not a ceiling): the ceiling = biggest-OI call
+// strike >= spot, the floor = biggest-OI put strike <= spot, falling back to the raw
+// max-OI wall tagged ITM. In-band walls draw as dashed lines; off-plot walls become
+// edge markers (▲/▼ + price + tenor) so hundreds-of-points-out structure stays visible.
+// The book updates ~daily (nightly sidecar) — the chip strip carries its as-of stamp.
+const _DSHADE=[0.85,0.62,0.45];                       // per-band shade ladder: front → far
+                                                      // (raised 07-10: the old .30 floor fell
+                                                      // below the 3:1 graphics-contrast line in
+                                                      // BOTH themes — an illegible encoding isn't
+                                                      // an encoding)
+const _DDASH=['6 3','4 4','2 5'];                     // dash length also encodes tenor (redundant
+                                                      // channel: longer dash = nearer expiry)
+function _dexp(iso){ const m=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  try{ const p=iso.split('-'); return m[+p[1]-1]+p[2]; }catch(e){ return iso; } }
+function _dwalls(b, spot){
+  const pick=(arr,pred)=>{ for(const kv of (arr||[])) if(kv&&isFinite(kv[0])&&pred(kv[0])) return +kv[0]; return null; };
+  const cw=pick(b.top_calls,k=>k>=spot), pw=pick(b.top_puts,k=>k<=spot);
+  return { cw: cw??(isFinite(b.call_wall)?+b.call_wall:null), cItm: cw==null&&b.call_wall!=null,
+           pw: pw??(isFinite(b.put_wall)?+b.put_wall:null),  pItm: pw==null&&b.put_wall!=null };
+}
+function paintDated(){
+  if(!MAP||!MAP.datedG) return;
+  const X=MAPX, d=D.dated, bands=(d&&Array.isArray(d.bands))?d.bands.slice(0,3):[];
+  const key=bands.map(b=>`${b.expiry}|${b.call_wall}|${b.put_wall}|${b.as_of||''}`).join(';')
+    +`#${X.pLow}|${X.pHigh}|${Math.round((D.spot||0)/25)}`;   // spot bucketed to 25pts → no 60fps churn
+  if(key===MAP._dkey) return;
+  MAP._dkey=key;
+  if(!bands.length){ MAP.datedG.innerHTML=''; return; }
+  const spot=(D.spot&&isFinite(D.spot))?D.spot:(d.spot_at_pull||0);
+  // GROUP walls shared across tenors (today's real book: all 3 bands floor at 7000)
+  // — one line/marker at the FRONT band's shade with the tenor tags merged, instead
+  // of three identical lines and three labels stamped on the same y (unreadable smear
+  // exactly on the crash day the far floor matters most).
+  const ent=new Map();
+  bands.forEach((b,i)=>{
+    const w=_dwalls(b,spot), tag=_dexp(b.expiry);
+    [['c',w.cw,w.cItm],['p',w.pw,w.pItm]].forEach(([side,k,itm])=>{
+      if(k==null||!isFinite(k)) return;
+      const kk=side+'|'+k, e=ent.get(kk);
+      if(e){ e.tags.push(tag); e.itm=e.itm||itm; }
+      else ent.set(kk,{side,k,itm,tags:[tag],idx:i});
+    });
+  });
+  let svg='', topN=0, botN=0;
+  for(const e of ent.values()){
+    const sh=_DSHADE[Math.min(e.idx,2)], dash=_DDASH[Math.min(e.idx,2)];
+    const col=e.side==='c'?'var(--jade)':'var(--coral)', arrow=e.side==='c'?'▲':'▼';
+    const lbl=`${arrow} ${e.k.toLocaleString('en-US')} ${e.tags.join('·')}${e.itm?' · ITM':''}`;
+    if(e.k>X.pHigh){          // above the frame → top edge marker
+      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.padT+11+topN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh}">${lbl} ↑</text>`; topN++;
+    } else if(e.k<X.pLow){    // below the frame → bottom edge marker
+      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.H-X.padB-4-botN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh}">${lbl} ↓</text>`; botN++;
+    } else {                  // in-band → shaded dashed wall line + inline tenor tag
+      const y=yFor(e.k).toFixed(1);
+      svg+=`<line x1="${X.x0}" y1="${y}" x2="${X.lineEnd}" y2="${y}" style="stroke:${col};stroke-width:1.1;opacity:${sh}" stroke-dasharray="${dash}"/>`
+         +`<text x="${(X.x0+5).toFixed(1)}" y="${(+y-3).toFixed(1)}" font-size="8.5" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${Math.min(1,sh+0.12)}">${lbl}</text>`;
+    }
+  }
+  MAP.datedG.innerHTML=svg;
 }
 // The plain-English situation + how it's molding — the always-on overview strip (mold chip = hero).
 function gxOverview(){
@@ -1147,12 +1213,41 @@ function gxOverview(){
   const ceilChip=cc!=null
     ? `<span class="gx-chip"><b>call ceiling</b><i>${f(cc,0)} <span style="color:var(--jade)">▲${Math.abs(ccS).toFixed(1)}σ</span> · resting OI</i></span>`
     : '';
+  // DATED BOOK chips — one per expiration (front monthly → quarter-end), walls picked
+  // moneyness-aware; nightly cadence, so the as-of/staleness stamp says "old by design"
+  // rather than letting a quiet day read as broken.
+  let datedChips='';
+  const dd=(T&&T.dated!==undefined&&T.dated!==null)?T.dated:D.dated;   // T leads D by one frame at build time
+  if(dd&&Array.isArray(dd.bands)){
+    datedChips=dd.bands.slice(0,3).map(b=>{
+      const w=_dwalls(b, D.spot||dd.spot_at_pull||0);
+      // ITM tag rides the chip too (a jade ▲7,000 a thousand points BELOW spot must
+      // never read as overhead resistance); "· OI" qualifies these as resting-OI
+      // magnitude walls, same language as the structural floor/ceiling chips —
+      // NOT a signed conviction (the sidecar deliberately ships unsigned).
+      const cwT=w.cw!=null?`<span style="color:var(--jade)">▲${f(w.cw,0)}${w.cItm?' ITM':''}</span>`:'';
+      const pwT=w.pw!=null?`<span style="color:var(--coral)">▼${f(w.pw,0)}${w.pItm?' ITM':''}</span>`:'';
+      // per-band age: the quarterly rides a weekly cadence, so its pull can be days
+      // older than the book while the book itself reads "fresh" — surface that.
+      let age='';
+      try{
+        const a=String(b.as_of||'').slice(0,10);
+        if(a&&dd.oi_date&&a<dd.oi_date){
+          const n=Math.round((new Date(dd.oi_date)-new Date(a))/86400000);
+          if(n>=1) age=` · ${n}d-old pull`;
+        }
+      }catch(e){}
+      return `<span class="gx-chip"><b>${_dexp(b.expiry)}</b><i>${cwT} ${pwT} · ${b.dte}d · OI${age}</i></span>`;
+    }).join('');
+    const st=dd.staleness;
+    if(st&&st!=='fresh') datedChips+=`<span class="gx-chip"><b>dated book</b><i>${String(st).replace('_',' ')} · as of ${String(dd.oi_date||'')}</i></span>`;
+  }
   el.innerHTML=`
     <span class="gx-chip gx-mold"><b>${mold}</b><i>${flow}</i></span>
     <span class="gx-chip gx-regime ${long?'up':'dn'}"><b>${long?'DEALERS PIN':'MOVES AMPLIFY'}</b><i>${long?'long gamma · fades work':'short gamma · trends run'}</i></span>
     <span class="gx-chip"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)}</i></span>
     <span class="gx-chip gx-net"><b>gamma balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${ceilChip}${floorChip}`;
+    ${ceilChip}${floorChip}${datedChips}`;
 }
 function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
 
@@ -1296,6 +1391,7 @@ function applyMap(r){
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
   T.putFloor = r.put_wall ?? D.putFloor;                          // structural OI put wall = the real floor
   T.callCeil = r.call_wall ?? D.callCeil;                          // structural OI call wall = the real ceiling
+  T.dated = r.dated_gex ?? D.dated;                                // dated book (nightly sidecar) — sticky: rows before the day's first scan keep the last known
   // magnet zones — same engine dict the magnet reads from, the other as fallback;
   // pre-zone rows carry no key → null → exact single-magnet fallback
   const g2=(g===gt)?gv:gt;
@@ -1330,7 +1426,7 @@ function frame(){
     D[key] += (T[key]-D[key])*k; if(!isFinite(D[key])) D[key]=T[key]; }
   D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
-  D.netByStrike=T.netByStrike; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil;   // measured field + structural floor/ceiling snap (not eased)
+  D.netByStrike=T.netByStrike; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated;   // measured field + structural floor/ceiling + dated book snap (not eased)
   paintMap(); paintVitals();
   requestAnimationFrame(frame);
 }

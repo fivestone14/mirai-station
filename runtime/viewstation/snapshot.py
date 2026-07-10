@@ -221,6 +221,9 @@ def _ticker_block(rows: list[dict], tk: str) -> dict:
         "range_ruler": latest.get("range_ruler"),
         "gamma_roll": latest.get("gamma_roll"),
         "event_lens": latest.get("event_lens"),
+        # dated book (2026-07-10): far structural OI walls from the nightly
+        # sidecar — same verbatim/fail-open contract as the layers above
+        "dated_gex": latest.get("dated_gex"),
         "last_ts": latest.get("ts"),
     }
 
