@@ -1034,6 +1034,7 @@ function gxBuild(){
      <rect id="washTop" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--jade);opacity:.045"/>
      <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
      <g id="axisG">${axis}</g>
+     <g id="datedOIG"></g>
      <g id="barsG">${bars}</g>
      <g id="datedG"></g>
      ${lvl}
@@ -1045,7 +1046,7 @@ function gxBuild(){
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
-    datedG:q('datedG'), _dkey:null,
+    datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
   gxOverview(); gxTower(); gxPaint();
@@ -1123,7 +1124,96 @@ function gxPaint(){
       MAP.wtTgt.style.display='';
     } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; }
   }
-  paintDated();
+  paintDated(); paintDatedOI();
+}
+// ---- DATED OI PROFILE (v2, toggle): the FULL per-strike dated OI field, one dim
+// outline-bar layer per expiration, drawn UNDER the live gamma bars. This is the
+// complete "which strikes carry dated positioning" read (v1's wall lines = top-1 slice).
+// Data: the whole sidecar book fetched once per session via the raw explorer API
+// (zero server changes; ~25KB LAN; refreshed every 20 min — the book only changes
+// on the nightly pull). Design decisions from the 07-10 pressure test:
+//   * widths normalize to the book's GLOBAL max across drawn bands (not the in-frame
+//     max): the 300-400k walls usually sit OFF-frame, and in-frame normalization
+//     would draw a 70k shelf at full width — asserting "the biggest structure is
+//     here" when it isn't. Honest = small bars on a calm day, full-width wall bars
+//     exactly when price approaches them.
+//   * per-row OUTLINE BARS, not a connected silhouette: OI is point mass per strike;
+//     a connected path saw-toothed to the axis through sparse far-OTM rows.
+//   * NEUTRAL ink at FULL ladder opacity (contrast-audited; dash pattern alone
+//     encodes tenor) + a fixed top-left legend — never a tag buried under the bars.
+// OFF by default (toggle chip; localStorage); LIVE only; stale book (>5d) refuses.
+let DBOOK={book:null, at:0};
+async function fetchDatedBook(){
+  try{
+    const r=await fetch('/api/raw/file?root=state&path=dated_gex/book.json',{cache:'no-store'});
+    const d=await r.json();
+    const b=(d&&d.kind==='json')?d.data:null;
+    if(b&&b.ok&&Array.isArray(b.bands)){
+      const first=!DBOOK.book;
+      DBOOK={book:b, at:Date.now()}; if(MAP)MAP._dokey=null;
+      if(first) gxOverview();          // surface the toggle chip the moment a book
+    }                                  // exists — not minutes later on the next scan
+  }catch(e){}
+}
+function datedOIOn(){ try{ return localStorage.getItem('gx.datedOI')==='1'; }catch(e){ return false; } }
+function datedOIAvail(){               // book present AND young enough to draw —
+  const b=DBOOK.book;                  // the chip must never be a dead switch
+  if(!b||!Array.isArray(b.bands)||!b.bands.length) return false;
+  const age=(Date.now()-new Date(b.as_of).getTime())/86400000;
+  return age>=0&&age<=5;
+}
+function toggleDatedOI(){
+  try{ localStorage.setItem('gx.datedOI', datedOIOn()?'0':'1'); }catch(e){}
+  if(MAP)MAP._dokey=null;               // force repaint next frame
+  gxOverview();                          // chip reflects the new state immediately
+}
+function paintDatedOI(){
+  if(!MAP||!MAP.datedOIG) return;
+  const b=DBOOK.book;
+  const ok=datedOIOn()&&(typeof LIVE==='undefined'||LIVE)&&datedOIAvail()&&MSTRIKES.length;
+  const key=(ok?String(b.as_of):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}`;
+  if(key===MAP._dokey) return;
+  MAP._dokey=key;
+  if(!ok){ MAP.datedOIG.innerHTML=''; return; }
+  const X=MAPX, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
+  const today=new Date().toISOString().slice(0,10);
+  const profs=[]; let mx=0;
+  b.bands.slice(0,3).forEach((bd,i)=>{
+    if(String(bd.expiry||'')<today) return;         // expired band: never draw
+    const buckets=new Array(MSTRIKES.length).fill(0); let placed=0;
+    for(const row of (bd.strikes||[])){
+      if(!Array.isArray(row)||!isFinite(row[0])) continue;
+      const oi=((+row[1]||0)+(+row[2]||0));
+      if(oi>mx) mx=oi;                              // GLOBAL max: every strike counts,
+      const idx=Math.round((row[0]-k0)/step);       // in-frame or not (scale honesty)
+      if(idx>=0&&idx<buckets.length){ buckets[idx]+=oi; placed++; }
+    }
+    if(placed>0) profs.push({i, tag:_dexp(bd.expiry), buckets});
+  });
+  if(!mx||!profs.length){ MAP.datedOIG.innerHTML=''; return; }
+  const BH=Math.max(2.5, MROWH*0.72);   // same row geometry as the live bars
+  let svg='';
+  for(const p of profs){
+    const dash=_DDASH[Math.min(p.i,2)];
+    MSTRIKES.forEach((k,j)=>{
+      if(p.buckets[j]<=0) return;                   // no bar, no comb — point mass only
+      const w=Math.max(1.5, p.buckets[j]/mx*X.barMax), y=yFor(k);
+      svg+=`<rect x="${X.x0}" y="${(y-BH/2).toFixed(1)}" width="${w.toFixed(1)}" height="${BH.toFixed(1)}" rx="1" style="stroke:var(--ink-dim);stroke-width:1;stroke-opacity:.9;fill:none" stroke-dasharray="${dash}"/>`;
+    });
+  }
+  // fixed legend, top-left inside the plot: dash swatch + tenor per band (never
+  // buried under a bar, never colliding with the right-edge level tags)
+  let lx=X.x0+6;
+  const ly=X.padT+11;
+  svg+=`<text x="${lx}" y="${ly}" font-size="9" font-weight="700" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-dim);opacity:.95">dated OI</text>`;
+  lx+=52;
+  for(const p of profs){
+    const dash=_DDASH[Math.min(p.i,2)];
+    svg+=`<line x1="${lx}" y1="${ly-3}" x2="${lx+16}" y2="${ly-3}" style="stroke:var(--ink-dim);stroke-width:1.4;stroke-opacity:.95" stroke-dasharray="${dash}"/>`
+       +`<text x="${lx+20}" y="${ly}" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);opacity:.95">${p.tag}</text>`;
+    lx+=68;
+  }
+  MAP.datedOIG.innerHTML=svg;
 }
 // ---- DATED BOOK overlay: far structural OI walls (next 2 monthlies + quarter-end) ----
 // Shaded by EXPIRATION — nearer expiries brighter, further dimmer — so one glance says
@@ -1242,12 +1332,17 @@ function gxOverview(){
     const st=dd.staleness;
     if(st&&st!=='fresh') datedChips+=`<span class="gx-chip"><b>dated book</b><i>${String(st).replace('_',' ')} · as of ${String(dd.oi_date||'')}</i></span>`;
   }
+  // v2 toggle: the full per-strike dated OI silhouettes (only offered when a live
+  // book has been fetched — no dead switches)
+  const doiChip=(typeof datedOIAvail==='function'&&datedOIAvail())
+    ? `<span class="gx-chip" onclick="toggleDatedOI()" style="cursor:pointer" title="Per-strike dated OI outline bars (strikes × expiration), under the live gamma bars"><b>dated OI</b><i>${datedOIOn()?'<span style="color:var(--jade)">ON</span>':'off'} · strikes×expiry</i></span>`
+    : '';
   el.innerHTML=`
     <span class="gx-chip gx-mold"><b>${mold}</b><i>${flow}</i></span>
     <span class="gx-chip gx-regime ${long?'up':'dn'}"><b>${long?'DEALERS PIN':'MOVES AMPLIFY'}</b><i>${long?'long gamma · fades work':'short gamma · trends run'}</i></span>
     <span class="gx-chip"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)}</i></span>
     <span class="gx-chip gx-net"><b>gamma balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${ceilChip}${floorChip}${datedChips}`;
+    ${ceilChip}${floorChip}${datedChips}${doiChip}`;
 }
 function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
 
@@ -1443,6 +1538,7 @@ async function probeAndRun(){
     feedAll(L);
     setMode(true); setTimeout(poll, FEED.pollMs);
     loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
+    fetchDatedBook(); setInterval(fetchDatedBook, 1200000);       // dated OI book (changes only on the nightly pull)
   }catch(e){ setMode(false); if(!GX.demoTimer) GX.demoTimer=setInterval(nextTarget, 2600); setTimeout(probeAndRun, 5000); }   // keep retrying the live feed
 }
 function startLive(){
