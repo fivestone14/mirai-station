@@ -33,6 +33,7 @@ Public surface:
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from datetime import date, datetime, time, timedelta
@@ -66,7 +67,7 @@ _ROUND_STEP = 500.0       # round-number strikes verified present after each pul
 def _holidays(year: int) -> frozenset:
     """NYSE full-closure holidays via the watch package's computed calendar.
     Fail-open: an import problem returns an empty set — worst case the nightly
-    job fires on a holiday and stores an empty chain no-op."""
+    job fires on a holiday; an empty result keeps the previous book untouched."""
     try:
         rt = str(_SKILL_DIR.parent.parent / "runtime")
         if rt not in sys.path:
@@ -75,13 +76,6 @@ def _holidays(year: int) -> frozenset:
         return _ms._market_holidays(year)
     except Exception:
         return frozenset()
-
-
-def _prev_business_day(d: date) -> date:
-    d -= timedelta(days=1)
-    while d.weekday() >= 5 or d in _holidays(d.year):
-        d -= timedelta(days=1)
-    return d
 
 
 def _third_friday(year: int, month: int) -> date:
@@ -161,6 +155,9 @@ calls = [0]
 async def _near(sym, lo_d, hi_d, target):
     # server-validated expiry: the listed expiration nearest the computed date
     # (calendar math can miss an exchange rebook; the server wins, logged).
+    # Tolerance ±3 days: a holiday/rebook shifts an expiry by 1-2 business days;
+    # anything farther is a WRONG expiry (e.g. an SPXW daily surfacing when the
+    # probe's 250-row clip amputated the list) — skip the band, never mis-bind.
     calls[0] += 1
     r = _v(await call_tool('options_chain', {'symbol': sym, 'expiry_from': lo_d,
         'expiry_to': hi_d, 'limit': 250}))
@@ -174,6 +171,8 @@ async def _near(sym, lo_d, hi_d, target):
             continue
         if gap < bgap:
             best, bgap = ed, gap
+    if bgap > 3:
+        best = None
     return spot, best
 
 async def _chunk(sym, exp, side, lo, hi, depth=0):
@@ -219,11 +218,9 @@ for job in %(jobs)r:
             if key in seen:
                 continue
             seen.add(key)
-            g = c.get('greeks') or {}
             out.append({'right': sd, 'strike': c.get('strike'), 'expiry': actual,
                         'root': job['root'], 'band': job['band'],
-                        'iv': c.get('iv'), 'open_interest': oi,
-                        'gamma': g.get('gamma'), 'vega': g.get('vega')})
+                        'iv': c.get('iv'), 'open_interest': oi})
 return {'spot': spot, 'contracts': out, 'calls': calls[0], 'expiry_map': expiry_map}
 """
 
@@ -268,8 +265,8 @@ def _round_strike_check(contracts: list, spot: float) -> dict:
     hi_f = max(_BANDS[b]["call"][1] for b in bands)
     lo, hi = spot * (1.0 + lo_f), spot * (1.0 + hi_f)
     expected = []
-    k = (int(lo // _ROUND_STEP) + 1) * _ROUND_STEP
-    while k <= hi:
+    k = math.ceil(lo / _ROUND_STEP) * _ROUND_STEP   # edge-inclusive: a round strike
+    while k <= hi:                                  # exactly ON the window boundary counts
         expected.append(k)
         k += _ROUND_STEP
     missing = [k for k in expected if k not in have]
@@ -277,24 +274,33 @@ def _round_strike_check(contracts: list, spot: float) -> dict:
 
 
 def _quarterly_due(now: datetime, prev: dict) -> bool:
-    """Quarter-end cadence: Mondays, daily inside the final 2 weeks, whenever the
-    stored book has no quarterly band yet, or spot sits within 1% of a stored
-    quarter-end wall (all decided at JOB time — never on a scan)."""
+    """Quarter-end cadence: daily inside the final 2 weeks; otherwise refresh
+    once the stored quarterly band's own pull is ≥7 days old (age-based weekly —
+    survives holiday Mondays with no special case), when the band is missing/
+    expired/unstamped, or when spot sits within 1% of a stored quarter-end wall.
+    Unknown spot fails TOWARD a refresh. All decided at JOB time, never on a scan."""
     today = now.astimezone(_ET).date() if now.tzinfo else now.date()
     qe = quarter_end_expiry(now)
-    if (qe - today).days <= 14 or today.weekday() == 0:
+    if (qe - today).days <= 14:
         return True
     bands = (prev or {}).get("bands") or []
     qb = [b for b in bands if b.get("band") == "quarter_end"
           and (b.get("expiry") or "") >= today.isoformat()]
     if not qb:
         return True
+    try:
+        age = (today - date.fromisoformat(str(qb[0].get("as_of", ""))[:10])).days
+    except Exception:
+        return True                              # unstamped band → refresh
+    if age >= 7:
+        return True
     spot = (prev or {}).get("spot")
-    if spot:
-        for b in qb:
-            for k, _oi in (b.get("top_calls") or []) + (b.get("top_puts") or []):
-                if abs(k - spot) / spot <= 0.01:
-                    return True
+    if not spot:
+        return True                              # unknown spot → fail toward refresh
+    for b in qb:
+        for k, _oi in (b.get("top_calls") or []) + (b.get("top_puts") or []):
+            if abs(k - spot) / spot <= 0.01:
+                return True
     return False
 
 
@@ -337,48 +343,75 @@ def pull(now: Optional[datetime] = None) -> dict:
         _log({"ts": now.isoformat(), "ok": False, "kept_previous": bool(prev)})
         return {"ok": False, "kept_previous": bool(prev)}
 
-    spot, contracts = float(res["spot"]), res["contracts"]
-    by_exp: dict = {}
-    for c in contracts:
-        by_exp.setdefault((c["expiry"], c["band"]), []).append(c)
-    bands = []
-    for (exp_iso, band), cs in sorted(by_exp.items()):
-        exp_d = date.fromisoformat(exp_iso)
-        oi_k: dict = {}
-        for c in cs:
-            k = float(c["strike"])
-            slot = oi_k.setdefault(k, {"call": 0, "put": 0})
-            slot[c["right"]] += int(c.get("open_interest") or 0)
-        strikes = [[k, v["call"], v["put"]] for k, v in sorted(oi_k.items())]
-        top_c = sorted(([k, v["call"]] for k, v in oi_k.items() if v["call"] > 0),
-                       key=lambda kv: -kv[1])[:_TOP_WALLS]
-        top_p = sorted(([k, v["put"]] for k, v in oi_k.items() if v["put"] > 0),
-                       key=lambda kv: -kv[1])[:_TOP_WALLS]
-        gm, vm = _mass(cs, spot, exp_d, today)
-        bands.append({"expiry": exp_iso, "band": band, "root": cs[0]["root"],
-                      "dte_at_pull": (exp_d - today).days,
-                      "strikes": strikes,                      # [[k, call_oi, put_oi]]
-                      "top_calls": top_c, "top_puts": top_p,   # unsigned OI walls
-                      "call_wall": top_c[0][0] if top_c else None,
-                      "put_wall": top_p[0][0] if top_p else None,
-                      "call_oi_total": sum(v["call"] for v in oi_k.values()),
-                      "put_oi_total": sum(v["put"] for v in oi_k.values()),
-                      "gamma_mass": gm, "vanna_mass": vm})
-    book = {"ok": True, "as_of": now.isoformat(), "oi_date": today.isoformat(),
-            "spot": spot, "bands": bands,
-            "landed_date": (prev.get("landed_date") or today.isoformat()),
-            "meta": {"calls": res.get("calls"),
-                     "expiry_map": res.get("expiry_map"),
-                     "round_strike_check": _round_strike_check(contracts, spot)}}
-    # never regress to an older book (paranoia: clock skew / replayed job)
-    if prev.get("ok") and str(prev.get("as_of", "")) > book["as_of"]:
-        _log({"ts": now.isoformat(), "ok": False, "regress_blocked": True})
-        return {"ok": False, "regress_blocked": True}
-    atomic_io.write_json_atomic(_book_path(), book)
-    _log({"ts": now.isoformat(), "ok": True, "calls": res.get("calls"),
-          "bands": [b["band"] + ":" + b["expiry"] for b in bands],
-          "missing_rounds": book["meta"]["round_strike_check"]["missing"]})
-    return {"ok": True, "bands": len(bands), "calls": res.get("calls")}
+    # Post-fetch processing + store, inside the same never-raises contract as the
+    # fetch: one malformed row must cost that ROW, and any surprise must cost only
+    # THIS pull (previous good book untouched, failure logged) — never the runner.
+    try:
+        spot, contracts = float(res["spot"]), res["contracts"]
+        by_exp: dict = {}
+        for c in contracts:
+            if c.get("strike") is None or c.get("right") not in ("call", "put"):
+                continue                       # malformed row: skip, never crash
+            by_exp.setdefault((c["expiry"], c["band"]), []).append(c)
+        bands = []
+        for (exp_iso, band), cs in sorted(by_exp.items()):
+            exp_d = date.fromisoformat(exp_iso)
+            oi_k: dict = {}
+            for c in cs:
+                k = float(c["strike"])
+                slot = oi_k.setdefault(k, {"call": 0, "put": 0})
+                slot[c["right"]] += int(c.get("open_interest") or 0)
+            strikes = [[k, v["call"], v["put"]] for k, v in sorted(oi_k.items())]
+            top_c = sorted(([k, v["call"]] for k, v in oi_k.items() if v["call"] > 0),
+                           key=lambda kv: -kv[1])[:_TOP_WALLS]
+            top_p = sorted(([k, v["put"]] for k, v in oi_k.items() if v["put"] > 0),
+                           key=lambda kv: -kv[1])[:_TOP_WALLS]
+            gm, vm = _mass(cs, spot, exp_d, today)
+            bands.append({"expiry": exp_iso, "band": band, "root": cs[0]["root"],
+                          "as_of": now.isoformat(),           # per-band pull stamp
+                          "dte_at_pull": (exp_d - today).days,
+                          "strikes": strikes,                      # [[k, call_oi, put_oi]]
+                          "top_calls": top_c, "top_puts": top_p,   # unsigned OI walls
+                          "call_wall": top_c[0][0] if top_c else None,
+                          "put_wall": top_p[0][0] if top_p else None,
+                          "call_oi_total": sum(v["call"] for v in oi_k.values()),
+                          "put_oi_total": sum(v["put"] for v in oi_k.values()),
+                          "gamma_mass": gm, "vanna_mass": vm})
+        # CARRY FORWARD: a live prev band not re-fetched today (quarterly on its
+        # weekly cadence, or a band whose job failed) rides into the new book
+        # with its own as_of intact — a not-due day must never DELETE structure.
+        fetched = {(b["band"], b["expiry"]) for b in bands}
+        for pb in (prev.get("bands") or []):
+            try:
+                if ((pb.get("band"), pb.get("expiry")) in fetched
+                        or str(pb.get("expiry", "")) < today.isoformat()):
+                    continue                   # re-fetched, or expired → drop
+                bands.append(pb)
+            except Exception:
+                continue
+        bands.sort(key=lambda b: str(b.get("expiry", "")))
+        book = {"ok": True, "as_of": now.isoformat(), "oi_date": today.isoformat(),
+                "spot": spot, "bands": bands,
+                "landed_date": (prev.get("landed_date") or today.isoformat()),
+                "meta": {"calls": res.get("calls"),
+                         "expiry_map": res.get("expiry_map"),
+                         "round_strike_check": _round_strike_check(contracts, spot)}}
+        # never regress to an older book — re-read at the last moment so a slow
+        # pull that raced a newer one can't clobber it (TOCTOU window → ms)
+        prev2 = atomic_io.read_json_or(_book_path(), {})
+        if prev2.get("ok") and str(prev2.get("as_of", "")) > book["as_of"]:
+            _log({"ts": now.isoformat(), "ok": False, "regress_blocked": True})
+            return {"ok": False, "regress_blocked": True}
+        atomic_io.write_json_atomic(_book_path(), book)
+        _log({"ts": now.isoformat(), "ok": True, "calls": res.get("calls"),
+              "bands": [b["band"] + ":" + b["expiry"] for b in bands],
+              "missing_rounds": book["meta"]["round_strike_check"]["missing"]})
+        return {"ok": True, "bands": len(bands), "calls": res.get("calls")}
+    except Exception as e:
+        _log({"ts": now.isoformat(), "ok": False, "kept_previous": bool(prev),
+              "error": f"{type(e).__name__}: {e}"})
+        return {"ok": False, "kept_previous": bool(prev),
+                "error": f"{type(e).__name__}: {e}"}
 
 
 # --- diary_summary (scan side; cache-ONLY, zero network) -------------------------
@@ -399,12 +432,24 @@ def diary_summary(now: Optional[datetime] = None) -> Optional[dict]:
         stale_days = (today - as_of.date()).days
         if stale_days > _STALE_FLOOR_DAYS:
             return None
+        now_et = now.astimezone(_ET) if now.tzinfo else now
         bands = []
         for b in book.get("bands") or []:
             exp_d = date.fromisoformat(b["expiry"])
             if exp_d < today:
                 continue                       # expired band: drop, never display
+            if exp_d == today:
+                # settled-today drop (OpEx Friday until the 14:10 PT roll re-pull
+                # lands): the AM monthly is DEAD after the 9:30 settlement print,
+                # the PM quarter-end after the 16:00 close — never display a dead
+                # band as live structure.
+                if b["band"] == "monthly" and now_et.time() >= time(9, 30):
+                    continue
+                if b["band"] == "quarter_end" and now_et.time() >= time(16, 0):
+                    continue
             bands.append({"expiry": b["expiry"], "band": b["band"],
+                          "as_of": b.get("as_of"),   # per-band pull stamp (carried
+                                                     # bands are older than the book)
                           "dte": (exp_d - today).days,
                           "call_wall": b.get("call_wall"), "put_wall": b.get("put_wall"),
                           "top_calls": (b.get("top_calls") or [])[:_TOP_WALLS],
