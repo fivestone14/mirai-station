@@ -1,13 +1,11 @@
 # mirai-station — Mac mini install
 
-> [!warning] 2026-07-03 gex-module restructure
-> This document predates the restructure where the nine-voter/bet-watching
-> system was retired. Live shape: Shift Manager (hunter) → Fade Lens →
-> Gravity Engine + Flow Sensor → diary → report cards → storytellers +
-> alert bell. See docs/gex-glossary.md and docs/salvage-notes.md.
+> Architecture is described in the top-level `README.md` and `docs/gex-glossary.md`.
+> This doc is the infra runbook (secrets, venv, launchd fleet). The live shape is:
+> hunter (Shift Manager) → Flow Sensor + Gravity Engine → three heads (Fade Lens,
+> Watchtower, Break Lens) → diary → nightly report cards → tablet + ntfy.
 
-
-End-state: a dedicated Mac mini that runs the unified left-eye tick every 5 min Mon–Fri 09:30–16:00 ET (the tick folds in right-eye news watching), pushes alerts to your phone via ntfy, keeps the Schwab login alive with a daily auth-watch ping, and operates **without** access to the main machine's vault.
+End-state: a dedicated Mac mini that runs the left-eye scan tick every 5 min Mon–Fri 09:30–16:00 ET, pushes paper-fire alerts to your phone via **ntfy**, keeps the Schwab login alive with a daily auth-watch ping, and operates **without** access to the main machine's vault. It runs on a `claude -p` subscription and needs **no** Anthropic API key.
 
 Estimated setup time: 60–90 min.
 
@@ -59,30 +57,26 @@ Or `git clone` if you've put it in a private repo.
 
 ## 3. Provision secrets in Keychain
 
-Three secrets go into the macOS Keychain. The runtime scripts read them at run time, never from files.
+The runtime reads all secrets from the macOS Keychain at run time, never from
+files. There is **no** Anthropic API key — the model calls go through a `claude -p`
+subscription. The alert channel (ntfy) has no key either: its topic is set in
+`runtime/watch/config/limits-and-cooldowns.json` (see §6). What goes in the
+Keychain is the market-data credentials:
 
 ```bash
-# Anthropic API key (NOT your Pro plan login; this is a dollar-billed key)
-security add-generic-password \
-  -a "$USER" \
-  -s "mirai-station/anthropic-api-key" \
-  -w "sk-ant-…"
-
-# Discord webhook (create in Discord: server settings → Integrations → Webhooks → New Webhook → copy URL)
-security add-generic-password \
-  -a "$USER" \
-  -s "mirai-station/discord-alert-webhook" \
-  -w "https://discord.com/api/webhooks/…"
-
-# Schwab credentials (one entry per secret your hunter needs; mirror the names your iv-viability skill uses)
+# Schwab credentials (mirror the names the iv-viability vault uses)
 security add-generic-password -a "$USER" -s "mirai-station/schwab-app-key"     -w "…"
 security add-generic-password -a "$USER" -s "mirai-station/schwab-app-secret"  -w "…"
 security add-generic-password -a "$USER" -s "mirai-station/schwab-token-path"  -w "$HOME/.local/share/mirai-station/schwab-token.json"
+
+# ThetaData / Cassandra's Edge bearer — the native SPX chain (primary GEX source).
+# Stored under the service name the iv-viability vault reads (vault.CASS_SERVICE).
+security add-generic-password -a "$USER" -s "iv-viability-cassandra"           -w "<bearer-token>"
 ```
 
 Test retrieval:
 ```bash
-security find-generic-password -a "$USER" -s "mirai-station/discord-alert-webhook" -w
+security find-generic-password -a "$USER" -s "iv-viability-cassandra" -w
 ```
 
 ## 4. Provision the Python venv
@@ -120,24 +114,19 @@ claude -p --model haiku \
   "Call cass_market_search with query 'stock brief' and output only the name of the first tool it returns."
 ```
 
-## 6. Discord channel + webhook (legacy / optional)
+## 6. Phone alerts (ntfy)
 
-> The live push channel is **ntfy** — set `ntfy.topic` in
-> `runtime/watch/config/limits-and-cooldowns.json` and subscribe your phone to that
-> topic. The Discord webhook below is the legacy `discord-alert.sh` path, kept for
-> backward compatibility; skip this section if you only use ntfy.
+The only push channel is **ntfy** (the old Discord webhook path was removed
+2026-07). It needs no account and no Keychain entry — just a long, unguessable
+topic name shared between the mini and your phone.
 
-1. Create a private Discord server (or use an existing one).
-2. New channel: `#mirai-station-alerts`.
-3. Channel settings → Integrations → Webhooks → New → name it "mirai-station" → copy URL.
-4. Paste URL into the Keychain entry from step 3.
+1. Pick a topic, e.g. `mirai-station-<random>`.
+2. Set it in `runtime/watch/config/limits-and-cooldowns.json` under the `ntfy` block.
+3. Install the **ntfy** app on your phone and subscribe to that same topic.
 
-Test:
-```bash
-~/.claude/plugins/mirai-station/runtime/scripts/discord-alert.sh "test" "smoke test from mac mini"
-```
-
-Expect to see the message in `#mirai-station-alerts` within a second.
+Fresh paper fires, wall-breach mood re-dives, and EOD direction scoring push
+through it; every push intent is also logged to
+`state/logs/watch-pushes-YYYY-MM-DD.jsonl`. Quiet tape → no push, by design.
 
 ## 7. Install LaunchAgents
 
@@ -145,13 +134,20 @@ Expect to see the message in `#mirai-station-alerts` within a second.
 ~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh
 ```
 
-This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`. Three agents:
+This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`. Seven agents:
 
 | Label | Cadence | What |
 |---|---|---|
-| `com.mirai-station.caffeinate` | always running | keeps the mini awake |
-| `com.mirai-station.left-eye`   | every 5 min     | runs `run-watch-left-eye.sh` (reconcile → learn → scan → unified tick; market gate inside) |
-| `com.mirai-station.auth-watch` | daily 08:00 ET  | Schwab token keep-alive ping (`run-auth-check.sh`) |
+| `com.mirai-station.left-eye`      | every 60 s (gates to RTH) | `run-watch-left-eye.sh` — the scan tick (Phase 1 hunter scan) + ntfy alerts (Phase 2, always) |
+| `com.mirai-station.caffeinate`    | always running            | keeps the mini awake |
+| `com.mirai-station.lob-collector` | every 60 s                | Layer-2 LOB flow collector (shadow) |
+| `com.mirai-station.viewstation`   | always running            | the Nightglass tablet HTTP server on :8787 |
+| `com.mirai-station.macro-brief`   | daily 09:00 ET            | morning Macro-Mood brief (`run-macro-brief.sh`) |
+| `com.mirai-station.gex-polarity`  | daily 16:15 ET            | after-close A/B report cards + LOB nightly fold (`run-gex-polarity.sh`) |
+| `com.mirai-station.auth-watch`    | daily 08:00 ET            | Schwab token keep-alive + dead-bearer ping (`run-auth-check.sh`) |
+
+> `StartCalendarInterval` jobs fire on the mini's local Pacific time (launchd
+> ignores the plist `TZ`); the plist comments document the PT↔ET mapping.
 
 Verify:
 ```bash
