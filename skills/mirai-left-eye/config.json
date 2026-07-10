@@ -1,0 +1,4 @@
+{
+  "push_to_phone": true,
+  "_doc": "push_to_phone gates whether hunter.py emits [PUSH] markers on fires. Default OFF so the chat-only path stays the trust-building default. Flip to true after a few sessions of validating the slate against actual fills. Claude reads any [PUSH] line in hunter.py stdout and forwards to PushNotification."
+}

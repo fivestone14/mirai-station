@@ -1,0 +1,256 @@
+{
+ "_about": "The frozen golden set: which saved-diary scans the Watchtower is regression-tested on (scenes live in state/reversion/{day}.jsonl; outcomes resolved on the 5-min diary spot path). Re-run with scratch driver or watchtower.py --replay before ANY wt-N bump and compare against golden_wt1_results.json.",
+ "frozen": "2026-07-05",
+ "scenes": [
+  {
+   "day": "2026-06-25",
+   "time": "14:07",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-25",
+   "time": "15:05",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-06-25",
+   "time": "15:23",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-25",
+   "time": "15:34",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-26",
+   "time": "09:34",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "put"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-06-26",
+   "time": "10:06",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-26",
+   "time": "10:19",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-26",
+   "time": "10:33",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-26",
+   "time": "10:38",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-06-26",
+   "time": "10:44",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "win"
+  },
+  {
+   "day": "2026-06-26",
+   "time": "10:57",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-26",
+   "time": "11:15",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "win"
+  },
+  {
+   "day": "2026-06-26",
+   "time": "14:59",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  },
+  {
+   "day": "2026-06-29",
+   "time": "09:33",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-06-29",
+   "time": "10:00",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "put"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-06-29",
+   "time": "10:57",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-06-30",
+   "time": "09:34",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-06-30",
+   "time": "15:23",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-07-01",
+   "time": "09:32",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "put"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-07-01",
+   "time": "10:04",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "put"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-07-01",
+   "time": "10:34",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "put"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-07-02",
+   "time": "09:30",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-07-02",
+   "time": "10:01",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-07-02",
+   "time": "10:39",
+   "kind": "armed-pass",
+   "gates": {
+    "fired": false,
+    "direction": "call"
+   },
+   "gates_outcome": null
+  },
+  {
+   "day": "2026-07-02",
+   "time": "12:38",
+   "kind": "gate-fire",
+   "gates": {
+    "fired": true,
+    "direction": "call"
+   },
+   "gates_outcome": "scratch"
+  }
+ ]
+}

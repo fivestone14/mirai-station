@@ -1,0 +1,2311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0C1017">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mirai">
+<title>Mirai · Awakening</title>
+<style>
+  :root{
+    --ground:#0C1017; --surface:#141A24; --surface-2:#1B2330; --surface-3:#212B3A;
+    --hairline:#28313F; --hairline-2:#333E50;
+    --ink:#E7EBF3; --ink-dim:#98A2B6; --ink-faint:#5E6980;
+    --iris:#8B9CFF; --iris-dim:#5B6796;
+    --jade:#43C59E; --lantern:#E7B85C; --coral:#EB6A57;
+    --iris-wash:rgba(139,156,255,.10); --jade-wash:rgba(67,197,158,.10); --coral-wash:rgba(235,106,87,.10); --lantern-wash:rgba(231,184,92,.10);
+    --shadow:0 24px 70px -30px rgba(0,0,0,.8), 0 2px 10px -4px rgba(0,0,0,.6);
+    --radius:26px;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;
+    --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --ground:#E7EBF1; --surface:#FFFFFF; --surface-2:#F5F7FB; --surface-3:#EDF1F7;
+      --hairline:#DCE2EC; --hairline-2:#CBD3E0;
+      --ink:#1A2230; --ink-dim:#55617A; --ink-faint:#8B95A8;
+      --iris:#5560D8; --iris-dim:#8790C8;
+      --jade:#1F9E78; --lantern:#B07E28; --coral:#D24A38;
+      --iris-wash:rgba(85,96,216,.09); --jade-wash:rgba(31,158,120,.10); --coral-wash:rgba(210,74,56,.09); --lantern-wash:rgba(176,126,40,.10);
+      --shadow:0 20px 60px -34px rgba(30,40,70,.45), 0 2px 8px -4px rgba(30,40,70,.18);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0C1017; --surface:#141A24; --surface-2:#1B2330; --surface-3:#212B3A;
+    --hairline:#28313F; --hairline-2:#333E50;
+    --ink:#E7EBF3; --ink-dim:#98A2B6; --ink-faint:#5E6980;
+    --iris:#8B9CFF; --iris-dim:#5B6796; --jade:#43C59E; --lantern:#E7B85C; --coral:#EB6A57;
+    --iris-wash:rgba(139,156,255,.10); --jade-wash:rgba(67,197,158,.10); --coral-wash:rgba(235,106,87,.10); --lantern-wash:rgba(231,184,92,.10);
+    --shadow:0 24px 70px -30px rgba(0,0,0,.8), 0 2px 10px -4px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"]{
+    --ground:#E7EBF1; --surface:#FFFFFF; --surface-2:#F5F7FB; --surface-3:#EDF1F7;
+    --hairline:#DCE2EC; --hairline-2:#CBD3E0;
+    --ink:#1A2230; --ink-dim:#55617A; --ink-faint:#8B95A8;
+    --iris:#5560D8; --iris-dim:#8790C8; --jade:#1F9E78; --lantern:#B07E28; --coral:#D24A38;
+    --iris-wash:rgba(85,96,216,.09); --jade-wash:rgba(31,158,120,.10); --coral-wash:rgba(210,74,56,.09); --lantern-wash:rgba(176,126,40,.10);
+    --shadow:0 20px 60px -34px rgba(30,40,70,.45), 0 2px 8px -4px rgba(30,40,70,.18);
+  }
+
+  /* layer-stack hues (categorical) + slab underside — theme-aware */
+  :root{
+    --slab-under:rgba(0,0,0,.5);
+    --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
+    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2;
+  }
+  @media (prefers-color-scheme:light){:root{
+    --slab-under:rgba(40,46,66,.18);
+    --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
+    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8;
+  }}
+  :root[data-theme="dark"]{
+    --slab-under:rgba(0,0,0,.5);
+    --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
+    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2;
+  }
+  :root[data-theme="light"]{
+    --slab-under:rgba(40,46,66,.18);
+    --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
+    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--sans); color:var(--ink);
+    background:
+      radial-gradient(1200px 700px at 50% -10%, var(--iris-wash), transparent 60%),
+      radial-gradient(900px 500px at 90% 110%, var(--lantern-wash), transparent 55%),
+      var(--ground);
+    min-height:100vh; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    display:flex; align-items:center; justify-content:center; padding:0;
+  }
+  .mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .label{font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600}
+
+  /* ---- device ---- */
+  .device{
+    width:100vw; height:100vh; height:100dvh;
+    background:var(--surface); border:0; border-radius:0; padding:0; position:relative;
+  }
+  .device::before{ display:none; }
+  .screen{
+    height:100%; background:var(--surface); border:0;
+    border-radius:0; overflow:hidden; display:grid; grid-template-rows:auto 1fr;
+  }
+
+  /* ---- status strip ---- */
+  .statusbar{
+    display:flex; align-items:center; gap:16px; padding:12px 18px;
+    border-bottom:1px solid var(--hairline);
+    background:linear-gradient(var(--surface-2),var(--surface));
+  }
+  .brand{display:flex; align-items:baseline; gap:9px; white-space:nowrap}
+  .brand .kanji{font-size:19px; color:var(--iris); font-weight:600; letter-spacing:.02em; line-height:1}
+  .brand .wm{font-size:12.5px; letter-spacing:.34em; text-transform:uppercase; color:var(--ink); font-weight:600}
+  .brand .sub{font-size:9.5px; letter-spacing:.34em; text-transform:uppercase; color:var(--ink-faint)}
+  .vitals{margin-left:auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:flex-end}
+  .vital{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums; color:var(--ink-dim)}
+  .vital b{color:var(--ink); font-weight:600}
+  .vsep{width:1px; height:16px; background:var(--hairline-2)}
+  .pulse{width:8px; height:8px; border-radius:50%; background:var(--jade); position:relative}
+  .pulse::after{content:""; position:absolute; inset:-4px; border-radius:50%; border:1px solid var(--jade); animation:ping 2.4s ease-out infinite}
+  @keyframes ping{0%{transform:scale(.6);opacity:.9}70%{transform:scale(1.9);opacity:0}100%{opacity:0}}
+
+  .pill{display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px;
+    font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; border:1px solid transparent; white-space:nowrap}
+  .pill.iris{color:var(--iris); background:var(--iris-wash); border-color:color-mix(in srgb,var(--iris) 34%,transparent)}
+  .pill.jade{color:var(--jade); background:var(--jade-wash); border-color:color-mix(in srgb,var(--jade) 34%,transparent)}
+  .pill.lantern{color:var(--lantern); background:var(--lantern-wash); border-color:color-mix(in srgb,var(--lantern) 34%,transparent)}
+  .pill.coral{color:var(--coral); background:var(--coral-wash); border-color:color-mix(in srgb,var(--coral) 34%,transparent)}
+  .pill.grey{color:var(--ink-dim); background:color-mix(in srgb,var(--ink-faint) 14%,transparent); border-color:var(--hairline-2)}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+  /* ---- body ---- */
+  .body{display:grid; grid-template-columns:104px 1fr; min-height:0}
+  .rail{
+    display:flex; flex-direction:column; gap:4px; padding:14px 10px;
+    border-right:1px solid var(--hairline); background:var(--surface-2);
+  }
+  .tab{
+    appearance:none; border:0; background:transparent; cursor:pointer; color:var(--ink-faint);
+    display:flex; flex-direction:column; align-items:center; gap:7px; padding:14px 6px 12px;
+    border-radius:12px; font-family:var(--sans); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:600;
+    transition:color .18s ease, background .18s ease; position:relative;
+  }
+  .tab svg{width:29px; height:29px; stroke:currentColor; fill:none; stroke-width:1.55; stroke-linecap:round; stroke-linejoin:round}
+  .tab:hover{color:var(--ink-dim)}
+  .tab.active{color:var(--iris); background:var(--iris-wash)}
+  .tab.active::before{content:""; position:absolute; left:0; top:16px; bottom:16px; width:2.5px; border-radius:2px; background:var(--iris)}
+  .tab:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .rail .spacer{flex:1}
+  .rail .glyph{display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--ink-faint); font-size:8.5px; letter-spacing:.12em}
+
+  .stagewrap{position:relative; min-height:0; overflow:hidden}
+  .panel{position:absolute; inset:0; padding:clamp(12px,2.2vh,22px) clamp(14px,2vw,26px); overflow:hidden; display:none; animation:fade .32s ease both}
+  .panel.active{display:flex; flex-direction:column}
+  @keyframes fade{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
+  .panel::-webkit-scrollbar{width:9px}
+  .panel::-webkit-scrollbar-thumb{background:var(--hairline-2); border-radius:9px; border:2px solid var(--surface)}
+  .panel::-webkit-scrollbar-track{background:transparent}
+
+  .phead{display:flex; align-items:flex-end; justify-content:space-between; gap:14px; margin-bottom:14px; flex:0 0 auto}
+  .phead h2{margin:0; font-size:15px; font-weight:600; letter-spacing:.01em}
+  .phead .desc{font-size:12px; color:var(--ink-dim); margin-top:3px}
+
+    /* ---- chart card (shared: Replay) ---- */
+  .chartcard{background:var(--surface-2); border:1px solid var(--hairline); border-radius:16px; padding:0; overflow:hidden; position:relative; min-height:0; display:grid; box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+  .chartcard svg{width:100%; height:100%; min-height:0; display:block}
+  .nx-warn{color:var(--coral); font-weight:600; font-size:13px}
+
+  /* ---- GEX map : live gamma-by-strike snapshot ---- */
+  .gx-strip{flex:0 0 auto; display:flex; flex-wrap:wrap; gap:8px; align-items:stretch; margin-bottom:8px}
+  .gx-chip{display:flex; flex-direction:column; justify-content:center; gap:1px; padding:5px 12px; min-width:0; white-space:nowrap;
+    background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px}
+  .gx-chip b{font-family:var(--sans); font-size:14px; font-weight:700; color:var(--ink); letter-spacing:.01em}
+  .gx-chip i{font-family:var(--sans); font-size:11.5px; font-weight:500; font-style:normal; color:var(--ink-dim)}
+  .gx-mold{box-shadow:inset 3px 0 0 var(--lantern); background:linear-gradient(100deg, var(--lantern-wash), transparent 72%), var(--surface-2)}
+  .gx-mold b{color:var(--lantern); font-size:15.5px}
+  .gx-regime.up{box-shadow:inset 3px 0 0 var(--jade)}  .gx-regime.up b{color:var(--jade)}
+  .gx-regime.dn{box-shadow:inset 3px 0 0 var(--coral)} .gx-regime.dn b{color:var(--coral)}
+  .gx-net{margin-left:auto}
+  .gx-netbar{display:inline-flex; width:54px; height:6px; border-radius:3px; overflow:hidden; background:var(--surface-3); vertical-align:middle; margin-right:5px}
+  .gx-netbar i{display:block; height:100%}
+  .gx-netbar i.up{background:var(--jade)}  .gx-netbar i.dn{background:var(--coral)}
+
+  .gx-chart{flex:1 1 auto; min-height:0; position:relative; overflow:hidden;
+    background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+  .gx-chart svg{width:100%; height:100%; display:block}
+  .gxbar{transition:opacity .12s linear}
+  @media (prefers-reduced-motion:no-preference){ .gx-blink{animation:gxblink 1.4s ease-in-out infinite} }
+  @keyframes gxblink{0%,100%{opacity:1}50%{opacity:.34}}
+
+  .gx-tower{flex:0 0 auto; margin-top:8px; display:flex; gap:12px; align-items:center; padding:9px 13px;
+    border:1px solid var(--hairline); border-left:3px solid var(--lantern); border-radius:12px;
+    background:linear-gradient(100deg, var(--lantern-wash), transparent 68%), var(--surface-2)}
+
+  /* ---- layers : 3D deck + readiness detail ---- */
+  .layers3d{display:grid; grid-template-columns:minmax(300px,1fr) minmax(300px,1.05fr); grid-template-rows:minmax(0,1fr); gap:20px; align-items:stretch; flex:1; min-height:0}
+  @media (max-width:840px){.layers3d{grid-template-columns:1fr}}
+  .scene-card{position:relative; border-radius:16px; overflow:hidden; border:1px solid var(--hairline);
+    background:radial-gradient(130% 100% at 30% 0%, color-mix(in srgb,var(--iris) 9%,var(--surface-2)) 0%, var(--surface) 60%);
+    min-height:0; display:flex; flex-direction:column}
+  .scene-top{position:absolute; top:14px; left:16px; right:16px; display:flex; justify-content:space-between; z-index:5; pointer-events:none}
+  .scene-top .st{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint)}
+  .scene{flex:1; display:flex; align-items:center; justify-content:center; perspective:1500px; perspective-origin:50% 50%; padding:22px 8px 22px 88px}
+  @media (max-width:560px){ .scene{padding:22px 8px} }
+  .deck{position:relative; width:288px; height:186px; transform-style:preserve-3d; transform:scale(.8) rotateX(55deg) rotateZ(-45deg)}
+  @media (max-width:520px){.deck{transform:scale(.62) rotateX(55deg) rotateZ(-45deg)}}
+  .plane{position:absolute; inset:0; border-radius:12px; transform:translateZ(var(--z)); transform-style:preserve-3d; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+    background:linear-gradient(135deg, color-mix(in srgb,var(--c) 46%,transparent) 0%, color-mix(in srgb,var(--c) 15%,transparent) 60%, color-mix(in srgb,var(--c) 28%,transparent) 100%);
+    border:1px solid color-mix(in srgb,var(--c) 70%,transparent);
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--c) 18%,transparent) inset, 0 15px 28px rgba(4,7,14,.32), 0 0 28px color-mix(in srgb,var(--c) 24%,transparent);
+    display:flex; align-items:center; justify-content:space-between; padding:0 16px;
+    transition:transform .34s cubic-bezier(.2,.7,.2,1), opacity .26s ease, filter .26s ease, box-shadow .26s ease}
+  .plane::after{content:""; position:absolute; inset:0; border-radius:12px; transform:translateZ(-15px);
+    background:color-mix(in srgb,var(--c) 30%, var(--slab-under)); box-shadow:0 0 16px color-mix(in srgb,var(--c) 18%,transparent)}
+  .plane .pn{font-family:var(--mono); font-weight:700; font-size:21px; color:#fff; opacity:.97; text-shadow:0 1px 9px rgba(0,0,0,.45); line-height:1}
+  .plane .pc{font-family:var(--mono); font-size:10px; letter-spacing:.03em; color:#fff; opacity:.95; text-align:right; text-shadow:0 1px 8px rgba(0,0,0,.5); max-width:66%}
+  .plane.base{border-style:dashed}
+  .deck.hassel .plane{opacity:.52; filter:saturate(.7)}
+  .deck.hassel .plane.sel{opacity:1; filter:none;
+    transform:scale(1.13) translateZ(calc(var(--z) + 24px));
+    box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent) inset, 0 22px 40px rgba(4,7,14,.46), 0 0 46px color-mix(in srgb,var(--c) 55%,transparent)}
+  .plane:focus-visible{outline:2px solid #fff; outline-offset:3px}
+  @media (prefers-reduced-motion:no-preference){
+    .plane{animation:rise .6s cubic-bezier(.2,.7,.2,1) backwards; animation-delay:var(--d,0s)}
+    @keyframes rise{from{opacity:0; transform:translateZ(calc(var(--z) - 46px))} to{opacity:1; transform:translateZ(var(--z))}}
+  }
+  .deckhint{position:absolute; bottom:12px; left:0; right:0; text-align:center; font-size:10px; color:var(--ink-faint); letter-spacing:.14em; text-transform:uppercase; pointer-events:none}
+  /* tier silhouettes — sensory = slab (default) · lens = capsule disc · processor = framed core.
+     (a capsule keeps straight top/bottom edges so it tiles with the deck — a true ellipse floats.) */
+  .plane.lens{border-radius:999px;
+    background:radial-gradient(64% 78% at 38% 30%, color-mix(in srgb,var(--c) 54%,transparent) 0%, color-mix(in srgb,var(--c) 13%,transparent) 60%, color-mix(in srgb,var(--c) 30%,transparent) 100%)}
+  .plane.lens::after{border-radius:999px}
+  .plane.proc{border-radius:5px}
+  .plane.proc::after{border-radius:5px}
+  .plane.proc::before{content:""; position:absolute; inset:6px; border-radius:2px; pointer-events:none;
+    border:1px solid color-mix(in srgb,var(--c) 58%,transparent); box-shadow:0 0 10px color-mix(in srgb,var(--c) 22%,transparent) inset}
+  /* tier mark on each block — FILLED with its side-rail bracket colour so block ↔ rail match at a
+     glance (□ sensory · ○ lens · ⬡ processor). Opaque + white-outlined so it reads on any slab hue
+     and survives the 52% dim on unselected planes. */
+  .plane .pn{display:inline-flex; align-items:center}
+  .plane .ptag{width:15px; height:15px; flex:none; margin-right:9px;
+    border:1.5px solid rgba(255,255,255,.92); box-shadow:0 1px 3px rgba(0,0,0,.55)}
+  .plane .ptag.sensory{border-radius:3px; background:var(--l-base)}
+  .plane .ptag.lens{border-radius:50%; background:var(--l-fade)}
+  .plane .ptag.proc{border:0; background:var(--l-tower); box-shadow:none;
+    filter:drop-shadow(0 0 1.1px rgba(0,0,0,.85)) drop-shadow(0 1px 2px rgba(0,0,0,.5));
+    clip-path:polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%)}
+  /* category rail — brackets that envelope each tier (top→bottom: processor · lenses · sensory) */
+  .cat-rail{position:absolute; left:16px; top:48px; bottom:34px; width:66px; display:flex; flex-direction:column; gap:7px; z-index:6; pointer-events:none}
+  .cat{position:relative; flex:var(--f); display:flex; align-items:center; padding-left:8px; border:1.5px solid color-mix(in srgb,var(--tc) 44%, var(--hairline-2)); border-right:0; border-radius:6px 0 0 6px}
+  .cat-ico{position:absolute; top:5px; left:50%; transform:translateX(-50%); width:12px; height:12px; background:var(--tc); border:1px solid rgba(255,255,255,.45); box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .cat-ico.sensory{border-radius:2px}
+  .cat-ico.lens{border-radius:50%}
+  .cat-ico.proc{border:0; clip-path:polygon(50% 0%,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%)}
+  .cat .lbl{writing-mode:vertical-rl; transform:rotate(180deg); font-family:var(--mono); font-size:8.5px; letter-spacing:.15em; text-transform:uppercase; font-weight:600; white-space:nowrap; color:color-mix(in srgb,var(--tc) 85%, var(--ink-faint))}
+  @media (max-width:560px){ .cat-rail{display:none} }
+
+  .detail{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px; display:flex; flex-direction:column; min-height:0; overflow:auto}
+  .dt-top{display:flex; align-items:center; gap:11px}
+  .dt-badge{width:32px; height:32px; border-radius:8px; display:grid; place-items:center; font-family:var(--mono); font-weight:700; font-size:14px; color:#fff; background:var(--c); box-shadow:0 3px 12px color-mix(in srgb,var(--c) 42%,transparent); flex:none}
+  .dt-badge.base{background:transparent; color:var(--c); border:1px dashed color-mix(in srgb,var(--c) 70%,transparent); box-shadow:none}
+  .dt-name{font-size:16px; font-weight:640; letter-spacing:-.01em; line-height:1.15}
+  .dt-name em{font-style:normal; display:block; font-size:10.5px; color:var(--ink-faint); font-family:var(--mono); font-weight:500; margin-top:2px}
+  .dt-meta{display:flex; gap:8px; flex-wrap:wrap; margin:13px 0 0}
+  .dt-role{font-family:var(--mono); font-size:11px; color:var(--ink-faint); border-left:2px solid color-mix(in srgb,var(--c) 55%,transparent); padding-left:10px; margin:12px 0 0}
+  .dt-purpose{font-size:13px; color:var(--ink-dim); line-height:1.5; margin:11px 0 0}
+  .dt-purpose b{color:var(--ink); font-weight:600}
+  .tier{font-family:var(--mono); font-size:9.5px; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px 3px 7px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; border:1px solid; font-weight:600}
+  .tier i{width:9px; height:9px; background:currentColor; flex:none}
+  .tier.sensory{color:var(--l-base); border-color:color-mix(in srgb,var(--l-base) 38%,transparent); background:color-mix(in srgb,var(--l-base) 10%,transparent)}
+  .tier.sensory i{border-radius:2px}
+  .tier.lens{color:var(--l-fade); border-color:color-mix(in srgb,var(--l-fade) 38%,transparent); background:color-mix(in srgb,var(--l-fade) 10%,transparent)}
+  .tier.lens i{border-radius:50%}
+  .tier.processor{color:var(--l-tower); border-color:color-mix(in srgb,var(--l-tower) 38%,transparent); background:color-mix(in srgb,var(--l-tower) 10%,transparent)}
+  .tier.processor i{border-radius:0; box-shadow:none; clip-path:polygon(50% 2%, 93% 26%, 93% 74%, 50% 98%, 7% 74%, 7% 26%)}
+  .dt-plain{font-size:13.5px; color:var(--ink); line-height:1.56; margin:14px 0 0}
+  .dt-eg{margin-top:11px; padding:10px 13px; border-radius:11px; line-height:1.5; font-size:12.5px; color:var(--ink-dim);
+    background:color-mix(in srgb,var(--c) 8%, var(--surface)); border:1px solid color-mix(in srgb,var(--c) 24%, var(--hairline))}
+  .dt-eg .eg-k{display:block; font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; margin-bottom:3px; color:color-mix(in srgb,var(--c) 72%, var(--ink-faint))}
+  .rd{margin-top:15px; padding-top:14px; border-top:1px solid var(--hairline)}
+  .rd-h{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px}
+  .rd-h .lab{font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-faint); font-weight:600}
+  .rd-h .pct{font-family:var(--mono); font-size:12px; color:var(--ink); font-variant-numeric:tabular-nums}
+  .pips{display:flex; gap:3px}
+  .pips i{flex:1; height:9px; border-radius:2px; background:var(--surface-3)}
+  .pips i.on{background:var(--c)}
+  .track{height:9px; border-radius:5px; background:var(--surface-3); overflow:hidden}
+  .track i{display:block; height:100%; background:var(--c); border-radius:5px}
+  .rd-fr{font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:6px; font-variant-numeric:tabular-nums}
+  .rd-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:13px}
+  .rd-stat{background:var(--surface); border:1px solid var(--hairline); border-radius:9px; padding:8px 10px}
+  .rd-stat .k{font-size:9px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
+  .rd-stat .v{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:14px; margin-top:3px; color:var(--ink)}
+  .rd-stat .v small{font-size:10px}
+  .blockers{display:flex; gap:6px; flex-wrap:wrap; margin-top:13px}
+  .blk{font-size:10px; letter-spacing:.01em; padding:3px 8px; border-radius:6px; color:var(--coral); background:var(--coral-wash); border:1px solid color-mix(in srgb,var(--coral) 34%,transparent); font-weight:600}
+  .blk.ok{color:var(--jade); background:var(--jade-wash); border-color:color-mix(in srgb,var(--jade) 34%,transparent)}
+  .rd-sum{font-size:12px; color:var(--ink-dim); line-height:1.52; margin-top:13px; font-style:italic}
+
+  /* ---- Watchtower live reading (under the map) ---- */
+  .livedot{color:var(--jade); font-weight:600; position:relative; padding-left:13px}
+  .livedot::before{content:""; position:absolute; left:0; top:50%; width:6px; height:6px; margin-top:-3px; border-radius:50%; background:var(--jade); box-shadow:0 0 7px var(--jade); animation:blink 1.6s ease-in-out infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.28}}
+  .tower-read{flex:0 0 auto; margin-top:clamp(12px,1.5vh,16px); display:flex; gap:14px; align-items:center; padding:12px 14px;
+    border:1px solid var(--hairline); border-left:3px solid var(--lantern); border-radius:12px;
+    background:linear-gradient(100deg, var(--lantern-wash), transparent 68%), var(--surface-2)}
+  .tr-eye{flex:none; width:24px; height:24px; border-radius:50%; position:relative;
+    background:radial-gradient(circle at 50% 50%, var(--lantern) 0 3.5px, transparent 4.5px), color-mix(in srgb,var(--lantern) 22%, transparent);
+    box-shadow:0 0 14px color-mix(in srgb,var(--lantern) 45%, transparent)}
+  .tr-eye::after{content:""; position:absolute; inset:0; border-radius:50%; border:1px solid color-mix(in srgb,var(--lantern) 50%, transparent); animation:ping 3s ease-out infinite}
+  .tr-body{min-width:0}
+  .tower-read .label{color:var(--lantern)}
+  .tr-scene{font-family:var(--serif); font-size:15px; line-height:1.55; color:var(--ink); font-style:italic; margin:5px 0 0; transition:opacity .2s ease}
+  .tr-next{font-family:var(--sans); font-size:15px; font-weight:500; color:var(--ink); line-height:1.45; margin:6px 0 0; transition:opacity .2s ease}
+  .tr-next b{font-weight:700}
+  .nx-dir{font-family:var(--sans); font-weight:700; margin-right:3px}
+  .nx-dir.up{color:var(--jade)} .nx-dir.down{color:var(--coral)} .nx-dir.flat{color:var(--ink-dim)}
+  .nx-chev{color:var(--lantern); font-family:var(--mono); font-weight:700; letter-spacing:.06em; margin-right:9px}
+  @media (prefers-reduced-motion:no-preference){ .nx-chev{animation:nudge 1.8s ease-in-out infinite} }
+  @keyframes nudge{0%,100%{opacity:.5}50%{opacity:1}}
+  @media (prefers-reduced-motion:no-preference){ .wt-blink{animation:wtblink 1.8s ease-in-out infinite} }
+  @keyframes wtblink{0%,100%{opacity:1}50%{opacity:.34}}
+  .nx-flat{color:var(--ink-dim); font-weight:500}
+  .nx-mag{color:var(--ink-dim); font-family:var(--mono); font-weight:500; font-size:13px}
+  .hb-next{margin:12px 0 2px; font-size:13.5px; font-weight:600; padding:9px 12px; border-radius:9px;
+    background:var(--lantern-wash); border:1px solid color-mix(in srgb,var(--lantern) 26%,transparent)}
+
+  /* ---- entry detail modal (Reading / JSON) ---- */
+  .modal{position:fixed; inset:0; z-index:50; display:none; align-items:center; justify-content:center; padding:clamp(12px,3vh,44px);
+    background:color-mix(in srgb,var(--ground) 74%, transparent); -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); animation:mfade .18s ease both}
+  .modal.open{display:flex}
+  @keyframes mfade{from{opacity:0}to{opacity:1}}
+  .modal-card{width:min(920px,96vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;
+    background:var(--surface); border:1px solid var(--hairline-2); border-radius:16px; box-shadow:0 44px 120px -30px rgba(0,0,0,.72);
+    animation:mpop .24s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes mpop{from{opacity:0; transform:translateY(14px) scale(.985)}to{opacity:1; transform:none}}
+  .modal-head{display:flex; align-items:center; gap:12px; padding:12px 16px 12px 18px; border-bottom:1px solid var(--hairline); background:var(--surface-2)}
+  .modal-head .mt{font-size:14px; font-weight:640; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .modal-head .mt em{font-style:normal; color:var(--ink-faint); font-family:var(--mono); font-size:11.5px; margin-left:8px}
+  .modal-tabs{margin-left:auto; display:flex; gap:2px; background:var(--surface-3); border-radius:9px; padding:3px; flex:none}
+  .mtab{appearance:none; cursor:pointer; border:0; background:transparent; color:var(--ink-dim); font-family:var(--sans); font-size:11.5px; font-weight:600; letter-spacing:.02em; padding:5px 13px; border-radius:7px; transition:.15s}
+  .mtab.active{background:var(--surface); color:var(--iris); box-shadow:0 1px 4px rgba(0,0,0,.28)}
+  .mtab:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
+  .modal-x{appearance:none; cursor:pointer; width:32px; height:32px; flex:none; border-radius:9px; border:1px solid var(--hairline); background:var(--surface); color:var(--ink-dim); font-size:14px; line-height:1; transition:.15s}
+  .modal-x:hover{color:var(--ink); border-color:var(--hairline-2)}
+  .modal-x:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .modal-body{overflow:auto; padding:18px 20px 22px; -webkit-overflow-scrolling:touch}
+  .modal-plain{margin:0 0 15px; padding:13px 16px; border-radius:11px; background:var(--iris-wash); border:1px solid color-mix(in srgb,var(--iris) 26%,transparent); font-size:15px; line-height:1.5; color:var(--ink)}
+  .modal-plain b{display:block; font-family:var(--sans); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--iris); margin-bottom:5px}
+  .md-scene{font-family:var(--serif); font-size:18.5px; line-height:1.6; color:var(--ink); margin:0 0 15px; text-wrap:pretty}
+  .md-change{font-family:var(--serif); font-size:13.5px; font-style:italic; color:var(--ink-dim); line-height:1.55; border-left:2px solid var(--hairline-2); padding-left:14px; margin:0 0 16px}
+  .md-change b{font-style:normal; font-family:var(--sans); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); display:block; margin-bottom:4px}
+  .md-stats{display:grid; grid-template-columns:repeat(4,1fr); gap:9px}
+  @media (max-width:560px){.md-stats{grid-template-columns:repeat(2,1fr)}}
+  .md-stat{background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px; padding:9px 11px}
+  .md-stat .k{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); font-weight:600}
+  .md-stat .v{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:14px; margin-top:4px; color:var(--ink)}
+  .jcode{font-family:var(--mono); font-size:13px; line-height:1.8; white-space:pre; margin:0; color:var(--ink)}
+  .jcode-legend{display:flex; flex-wrap:wrap; align-items:center; gap:6px 15px; margin-top:16px; padding-top:12px; border-top:1px solid var(--hairline); font-size:11px}
+  .jcode-legend b{color:var(--ink-faint); font-weight:600; letter-spacing:.08em; text-transform:uppercase; margin-right:2px}
+  .j-key{color:var(--iris)} .j-str{color:var(--jade)} .j-num{color:var(--lantern)} .j-bool{color:var(--coral)} .j-null{color:var(--ink-faint)} .j-cm{color:var(--ink-faint); font-style:italic; opacity:.9}
+
+  /* ---- Magnet Zones modal (tap the magnet / a zone band on the live map) ---- */
+  .zrow{display:grid; grid-template-columns:30px 1fr 56px; gap:12px; align-items:center; padding:12px 4px; border-bottom:1px solid var(--hairline)}
+  .zrow:last-of-type{border-bottom:0}
+  .zrank{width:26px; height:26px; border-radius:8px; display:grid; place-items:center; font-family:var(--mono); font-weight:700; font-size:13px; color:#fff; background:var(--l-grav); opacity:.5}
+  .zrow.lead .zrank{opacity:1; box-shadow:0 2px 10px color-mix(in srgb,var(--l-grav) 45%,transparent)}
+  .zline{display:flex; align-items:baseline; gap:9px; flex-wrap:wrap}
+  .zline b{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:15px; color:var(--ink)}
+  .zside{font-size:12px; font-weight:700}
+  .zside.above{color:var(--jade)} .zside.below{color:var(--coral)} .zside.at{color:var(--l-grav)}
+  .zspan{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--ink-dim)}
+  .zn{font-size:10.5px; color:var(--ink-faint)}
+  .zbar{height:7px; border-radius:4px; background:var(--surface-3); overflow:hidden; margin-top:7px}
+  .zbar i{display:block; height:100%; background:var(--l-grav); border-radius:4px}
+  .zrow:not(.lead) .zbar i{opacity:.55}
+  .zpct{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:14px; font-weight:700; color:var(--ink); text-align:right}
+  .zm-empty{padding:16px 4px; font-family:var(--serif); font-size:14.5px; color:var(--ink-dim)}
+  .zm-empty b{color:var(--ink)}
+  .zm-note{margin-top:15px; padding:12px 15px; border-radius:11px; font-size:13px; line-height:1.5; color:var(--ink-dim);
+    background:color-mix(in srgb,var(--l-grav) 8%, var(--surface)); border:1px solid color-mix(in srgb,var(--l-grav) 26%, var(--hairline))}
+
+  /* ---- diary : the Watchtower's day-log (a book) ---- */
+  .book{max-width:840px; width:100%; margin:0 auto; position:relative; perspective:2400px; flex:1; min-height:0; display:flex; flex-direction:column}
+  .page{
+    position:relative; overflow:hidden;
+    background:
+      radial-gradient(160% 90% at 90% -8%, var(--lantern-wash), transparent 50%),
+      linear-gradient(90deg, color-mix(in srgb,var(--ground) 45%, var(--surface-2)) 0, var(--surface-2) 30px),
+      var(--surface-2);
+    border:1px solid var(--hairline); border-radius:4px 16px 16px 4px;
+    box-shadow:-12px 0 26px -22px rgba(0,0,0,.7), inset 20px 0 30px -28px rgba(0,0,0,.6), 3px 0 0 -1px var(--surface-3), 6px 0 0 -2px color-mix(in srgb,var(--surface-3) 70%, var(--ground)), 9px 0 0 -3px color-mix(in srgb,var(--surface-3) 45%, var(--ground));
+    transform-origin:left center; backface-visibility:hidden;
+    flex:1; min-height:0; display:flex; flex-direction:column;
+    padding:clamp(15px,2.1vh,23px) clamp(20px,2.6vw,34px) clamp(9px,1.4vh,15px) clamp(30px,3vw,46px);
+  }
+  .page::before{content:"未来"; position:absolute; right:16px; bottom:0; font-size:clamp(90px,15vh,140px); line-height:1; font-weight:700;
+    color:var(--ink); opacity:.05; pointer-events:none; letter-spacing:-.04em}
+  .page.turning{animation:turn .55s cubic-bezier(.4,.1,.2,1) both}
+  @keyframes turn{0%{transform:rotateY(0);opacity:1}45%{transform:rotateY(-14deg);opacity:.2}55%{transform:rotateY(11deg);opacity:.2}100%{transform:rotateY(0);opacity:1}}
+  .ribbon{position:absolute; top:-7px; right:56px; width:16px; height:46px; z-index:2;
+    clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%);
+    background:linear-gradient(180deg, var(--lantern), color-mix(in srgb,var(--lantern) 55%, #241a05));
+    box-shadow:0 3px 7px rgba(0,0,0,.42)}
+  .page-top{flex:0 0 auto; padding-bottom:11px; position:relative}
+  .page-top::after{content:""; position:absolute; left:0; right:0; bottom:0; height:1px; background:linear-gradient(90deg, color-mix(in srgb,var(--lantern) 60%,transparent), color-mix(in srgb,var(--lantern) 16%,transparent) 62%, transparent)}
+  .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--lantern); display:flex; align-items:center; gap:7px}
+  .eyebrow span{font-size:12px; letter-spacing:0}
+  .day-wd{font-family:var(--serif); font-size:clamp(23px,4.2vh,33px); font-weight:600; letter-spacing:-.01em; margin:3px 0 1px; color:var(--ink); line-height:1.02; text-wrap:balance}
+  .day-md{font-size:12.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums}
+  .entries{flex:1; min-height:0; overflow-y:auto; margin:0 -6px; padding:2px 6px; -webkit-overflow-scrolling:touch;
+    background-image:linear-gradient(90deg, transparent 0 85px, color-mix(in srgb,var(--lantern) 16%,transparent) 85px 86px, transparent 86px); background-repeat:no-repeat}
+  .entries::-webkit-scrollbar{width:8px}
+  .entries::-webkit-scrollbar-thumb{background:var(--hairline-2); border-radius:8px}
+  .entry{display:grid; grid-template-columns:70px 1fr 14px; align-items:baseline; gap:12px; width:100%; text-align:left;
+    appearance:none; border:0; background:transparent; cursor:pointer; color:inherit; font:inherit;
+    padding:11px 8px 11px 6px; border-bottom:1px solid var(--hairline-2); border-radius:8px; transition:background .14s}
+  .entry:last-child{border-bottom:0}
+  .entry:hover, .entry:focus-visible{background:color-mix(in srgb,var(--lantern) 9%, transparent); outline:none}
+  .entry-t{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums; white-space:nowrap; padding-top:2px; text-align:right; padding-right:6px}
+  .entry-q{font-family:var(--serif); font-size:clamp(14px,1.95vh,16.5px); line-height:1.5; color:var(--ink-dim); text-wrap:pretty; transition:color .14s}
+  .entry:hover .entry-q, .entry:focus-visible .entry-q{color:var(--ink)}
+  .entry-q .q{color:var(--ink-faint); font-weight:400}
+  .entry-go{color:var(--lantern); opacity:0; font-size:15px; align-self:center; transition:opacity .14s, transform .14s; transform:translateX(-3px)}
+  .entry:hover .entry-go, .entry:focus-visible .entry-go{opacity:.85; transform:none}
+  .page-foot{flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; margin-top:6px; padding-top:9px; border-top:1px solid var(--hairline);
+    font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); letter-spacing:.06em}
+  .page-foot .kanji{font-size:13px; opacity:.5}
+  .booknav{display:flex; align-items:center; justify-content:space-between; margin-top:clamp(9px,1.5vh,15px); gap:12px; flex:0 0 auto}
+  .navbtn{appearance:none; cursor:pointer; font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:.03em;
+    color:var(--ink-dim); background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px; padding:9px 16px; transition:.16s}
+  .navbtn:hover:not(:disabled){color:var(--ink); border-color:var(--hairline-2)}
+  .navbtn:disabled{opacity:.34; cursor:default}
+  .navbtn:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .bookcount{font-family:var(--serif); font-size:13px; color:var(--ink-dim); letter-spacing:.02em; text-align:center}
+  .entry.run .entry-q.quiet{color:var(--ink-faint)}
+  .entry .runc{font-family:var(--mono); font-size:11px; color:var(--lantern); letter-spacing:.02em; white-space:nowrap}
+  @media (hover:none){ .entry-go{opacity:.4; transform:none} }
+  @media (max-width:520px){ .modal-head{flex-wrap:wrap; row-gap:8px} .modal-head .mt{flex:1 1 100%; white-space:normal; overflow:visible} .modal-tabs{margin-left:0} }
+
+  /* ---- heads ---- */
+  .heads{display:grid; grid-template-columns:1fr 1fr; grid-template-rows:minmax(0,1fr); gap:20px; flex:1; min-height:0}
+  @media (max-width:860px){.heads{grid-template-columns:1fr}}
+  .headcard{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px 18px 16px; min-height:0; overflow:auto}
+  .headcard.A{border-top:3px solid var(--jade)}
+  .headcard.B{border-top:3px solid var(--lantern)}
+  .headtop{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px}
+  .headtop .nm{font-size:14px; font-weight:600}
+  .headtop .nm em{font-style:normal; color:var(--ink-faint); font-weight:500; margin-left:6px; font-size:12px}
+  .headsum{font-size:12px; color:var(--ink-dim); margin:2px 0 16px}
+  .gate{display:grid; grid-template-columns:26px 1fr auto; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--hairline)}
+  .gate:last-of-type{border-bottom:0}
+  .gate .mk{width:20px; height:20px; border-radius:6px; display:grid; place-items:center; font-size:12px}
+  .gate .mk.on{background:var(--jade-wash); color:var(--jade); border:1px solid color-mix(in srgb,var(--jade) 40%,transparent)}
+  .gate .mk.off{background:var(--coral-wash); color:var(--coral); border:1px solid color-mix(in srgb,var(--coral) 40%,transparent)}
+  .gate .gn{font-size:13.5px; font-weight:600}
+  .gate .gd{font-size:11.5px; color:var(--ink-dim); margin-top:1px}
+  .gate .gv{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink-dim); text-align:right}
+  .gate .gv b{color:var(--ink)}
+  .verdict{display:flex; align-items:baseline; gap:10px; margin:2px 0 14px}
+  .verdict .big{font-family:var(--mono); font-size:30px; font-weight:600; letter-spacing:-.01em}
+  .verdict .mag{font-family:var(--mono); font-size:15px; color:var(--ink-dim)}
+  .votes{display:flex; align-items:center; gap:9px; margin:14px 0}
+  .votes .pips{display:flex; gap:4px}
+  .votes .pip{width:18px; height:9px; border-radius:3px; background:var(--surface-3)}
+  .votes .pip.y{background:var(--lantern)}
+  .votes .cap{font-size:11.5px; color:var(--ink-dim)}
+  .scene{font-family:var(--serif); font-size:14.5px; line-height:1.58; color:var(--ink); margin:12px 0}
+  .kv{display:flex; justify-content:space-between; font-size:11.5px; padding:6px 0; border-top:1px solid var(--hairline); color:var(--ink-dim)}
+  .kv b{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
+
+  /* ---- Replay : scrub a past session ---- */
+  .rp-head-nav{display:flex; align-items:center; gap:10px; flex:0 0 auto}
+  .rp-daybtn{appearance:none; cursor:pointer; width:38px; height:38px; border-radius:10px; border:1px solid var(--hairline); background:var(--surface-2); color:var(--ink-dim); font-size:21px; line-height:1; display:grid; place-items:center; transition:.15s}
+  .rp-daybtn:hover:not(:disabled){color:var(--iris); border-color:var(--iris-dim); background:var(--iris-wash)}
+  .rp-daybtn:disabled{opacity:.3; cursor:default}
+  .rp-daylabel{font-family:var(--sans); font-size:14.5px; font-weight:650; color:var(--ink); min-width:150px; text-align:center; line-height:1.2}
+  .rp-daylabel small{display:block; font-weight:500; font-size:11px; color:var(--ink-faint); font-variant-numeric:tabular-nums; margin-top:2px; letter-spacing:.02em}
+  #p-replay .chartcard{flex:1 1 auto; min-height:150px}
+  .rp-empty{width:100%; display:grid; place-items:center; color:var(--ink-faint); font-family:var(--serif); font-size:15px; padding:24px}
+  /* svg marks */
+  .rp-grid{stroke:var(--hairline)}
+  .rp-axis-t,.rp-axis-p,.rp-wallchip,.rp-lvllab{font-family:var(--mono); fill:var(--ink-faint)}
+  .rp-axis-t,.rp-axis-p{font-size:11px}
+  .rp-wallchip,.rp-lvllab{font-size:10.5px; font-weight:600}
+  .rp-lvl{fill:none}
+  .rp-lvl.magnet{stroke:var(--lantern); stroke-width:1.6}
+  .rp-lvl.flip{stroke:var(--ink-dim); stroke-width:1.4; stroke-dasharray:5 4}
+  .rp-lvl.wall{stroke-width:1.1; stroke-dasharray:2 4}
+  /* levels reveal with the playhead too: faint 'future' trace + bright 'past' (clipped) */
+  .rp-lvl.fut{opacity:.16}
+  .rp-lvl.magnet.pst{opacity:.8} .rp-lvl.flip.pst{opacity:.62} .rp-lvl.wall.pst{opacity:.5}
+  /* gravity heat zone — a soft band around the magnet, revealing as time passes */
+  .rp-heat{stroke:none; fill:var(--lantern)}
+  .rp-heat.fut{opacity:.045} .rp-heat.pst{opacity:.1}
+  /* live dealer-level markers at the playhead */
+  .rp-lvl-mk{stroke:var(--surface-2); stroke-width:1.5}
+  .rp-lvl-mk.magnet{fill:var(--lantern)} .rp-lvl-mk.flip{fill:var(--ink-dim)}
+  .rp-magval{font-family:var(--mono); font-size:10px; font-weight:700; fill:var(--lantern); paint-order:stroke; stroke:var(--surface-2); stroke-width:2.5px}
+  .rp-future{fill:none; stroke:var(--ink-dim); stroke-width:1.7; opacity:.24}
+  .rp-past{fill:none; stroke:var(--iris); stroke-width:2.6; stroke-linejoin:round; stroke-linecap:round}
+  .rp-head{stroke:var(--ink); stroke-width:1; opacity:.45}
+  .rp-dot{fill:var(--iris); stroke:var(--surface-2); stroke-width:2.5}
+  /* fire markers — colour driven by --c set per state (right/wrong/undecided/live) */
+  .rp-fire{opacity:0; transition:opacity .35s ease}
+  .rp-fire.on{opacity:1}
+  .rp-fire.st-live{--c:var(--lantern)}
+  .rp-fire.st-win{--c:var(--jade)}
+  .rp-fire.st-loss{--c:var(--coral)}
+  .rp-fire.st-scratch{--c:var(--ink-faint)}
+  .rp-conn{stroke:var(--c); stroke-width:2; opacity:.6; fill:none}
+  .rp-end{fill:var(--c); opacity:.8}
+  .rp-arrow{fill:var(--c)}
+  .rp-fire.st-live .rp-arrow{animation:rp-pulse 1.1s ease-in-out infinite}
+  @keyframes rp-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+  .rp-fdetail{display:block; font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:5px; font-variant-numeric:tabular-nums}
+  /* controls */
+  .rp-controls{display:flex; align-items:center; gap:14px; margin-top:14px; flex:0 0 auto}
+  .rp-play{appearance:none; cursor:pointer; width:52px; height:52px; border-radius:50%; border:0; background:var(--iris); color:var(--ground); display:grid; place-items:center; flex:none; box-shadow:0 3px 14px -3px rgba(0,0,0,.55); transition:.15s}
+  .rp-play:hover{filter:brightness(1.08)}
+  .rp-play:active{transform:scale(.94)}
+  .rp-play svg{width:23px; height:23px; fill:currentColor}
+  .rp-speed{appearance:none; cursor:pointer; border:1px solid var(--hairline); background:var(--surface-2); color:var(--ink-dim); font-family:var(--mono); font-size:13.5px; font-weight:700; padding:0 14px; height:40px; border-radius:10px; flex:none; min-width:52px; transition:.15s}
+  .rp-speed:hover{color:var(--iris); border-color:var(--iris-dim)}
+  .rp-scrub{flex:1; -webkit-appearance:none; appearance:none; height:8px; border-radius:5px; background:var(--surface-3); outline:none; cursor:pointer}
+  .rp-scrub::-webkit-slider-thumb{-webkit-appearance:none; width:24px; height:24px; border-radius:50%; background:var(--iris); border:3px solid var(--surface); box-shadow:0 1px 7px rgba(0,0,0,.55)}
+  .rp-scrub::-moz-range-thumb{width:22px; height:22px; border-radius:50%; background:var(--iris); border:3px solid var(--surface)}
+  .rp-time{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; color:var(--ink); min-width:74px; text-align:right; flex:none}
+  /* readout — the residual-stream read at the playhead: layers → the Watchtower → outcome.
+     Hierarchy: layer tiles are quiet supporting evidence (hue lives only in the dot),
+     the lantern Head-B pill is the one bright object, the verdict pill is the result. */
+  .rp-hint{font-family:var(--sans); font-size:11px; color:var(--ink-faint); margin-top:12px; line-height:1.4; flex:0 0 auto}
+  .rp-hint b{color:var(--ink-dim); font-weight:600}
+  .rp-readout{display:flex; flex-direction:column; gap:12px; margin-top:8px; flex:0 0 auto}
+  .rp-stack{display:flex; align-items:center; align-content:center; gap:8px; flex-wrap:wrap; min-height:66px}
+  .rp-chips{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .rp-conclusion{display:flex; align-items:center; gap:10px; margin-left:auto}
+  .rp-slab,.rp-headb-pill,.rp-verdict{min-height:28px; display:inline-flex; align-items:center; box-sizing:border-box}
+  .rp-slab{gap:6px; padding:4px 10px; border-radius:8px; background:transparent;
+    border:1px solid color-mix(in srgb,var(--hairline) 60%, transparent); font-family:var(--sans); font-size:12px;
+    font-weight:500; color:var(--ink-faint); transition:opacity .2s, box-shadow .2s, color .2s}
+  .rp-slab.noread{opacity:.55}
+  .rp-slab.noread .rp-sw{opacity:.6}
+  .rp-slab.agree{color:var(--ink); box-shadow:inset 2px 0 0 var(--iris); border-color:color-mix(in srgb,var(--iris) 28%, var(--hairline))}
+  .rp-sw{width:8px; height:8px; border-radius:50%; flex:none}
+  .rp-arr{font-size:12px; font-weight:800; color:var(--ink-dim)}
+  .rp-slab.agree .rp-arr{color:var(--ink)}
+  .rp-arr.flat,.rp-arr.none{color:var(--ink-faint); font-weight:600}
+  .rp-to{font-family:var(--mono); font-size:11px; color:color-mix(in srgb,var(--ink-faint) 70%, transparent)}
+  .rp-headb-pill{gap:8px; padding:5px 15px; border-radius:10px; font-family:var(--sans); font-size:14px; font-weight:700;
+    letter-spacing:.01em; color:var(--ink); background:color-mix(in srgb,var(--lantern) 15%, var(--surface-2));
+    border:1px solid color-mix(in srgb,var(--lantern) 42%, var(--hairline)); box-shadow:0 0 0 3px color-mix(in srgb,var(--lantern) 9%, transparent)}
+  .rp-headb-pill.stand{background:var(--surface-2); border-color:var(--hairline); box-shadow:none; color:var(--ink-dim); font-weight:600}
+  .rp-headb-pill .dir{color:var(--lantern)}
+  .rp-headb-pill .rp-vs{font-family:var(--mono); font-size:10.5px; font-weight:600; color:var(--coral); letter-spacing:.02em}
+  .rp-tower{font-size:15px}
+  .rp-verdict{padding:5px 11px; border-radius:8px; font-family:var(--sans); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap}
+  .rp-verdict.win{color:var(--jade); background:var(--jade-wash)}
+  .rp-verdict.loss{color:var(--coral); background:var(--coral-wash)}
+  .rp-verdict.scratch{color:var(--ink-dim); background:var(--surface-3)}
+  .rp-verdict.live{color:var(--lantern); background:var(--lantern-wash)}
+  .rp-scene-row{display:flex; gap:16px; align-items:flex-start}
+  /* fixed-height display window — the scene lives in this locked frame and cross-fades in place,
+     so the chart above never reflows as you scrub; a long read clamps to 2 lines (no scrollbar). */
+  .rp-scene{font-family:var(--serif); font-size:14px; line-height:1.5; color:var(--ink); margin:0; flex:1; min-width:0;
+    height:104px; overflow:hidden; box-sizing:border-box; padding:11px 14px; border-radius:12px;
+    background:var(--surface-2); border:1px solid var(--hairline)}
+  .rp-quote{display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; animation:rp-scene-in .3s ease}
+  @keyframes rp-scene-in{from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none}}
+  .rp-scene .rp-next{display:block; font-family:var(--sans); font-size:12px; color:var(--ink-dim); margin-top:6px}
+  .rp-fdetail{display:block; font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-top:5px; font-variant-numeric:tabular-nums}
+  .rp-tally{display:flex; gap:8px; flex:none; align-items:center}
+  .rp-chip{font-family:var(--sans); font-size:9.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:6px 11px 5px; border-radius:10px; display:flex; flex-direction:column; align-items:center; gap:1px; background:var(--surface-2); border:1px solid var(--hairline); min-width:50px}
+  .rp-chip b{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:18px; font-weight:700; line-height:1.05; color:var(--ink)}
+  /* Range-Ruler size-budget chip — non-directional context, rides beside the layer tiles */
+  .rp-chip.rp-budget{flex-direction:row; gap:7px; min-width:0; min-height:28px; padding:4px 11px; text-transform:none; letter-spacing:.02em; font-size:11.5px; font-weight:500; color:var(--ink-dim)}
+  .rp-chip.rp-budget b{font-size:13px}
+  .rp-hitrate{font-family:var(--mono); font-size:11px; color:var(--ink-faint); white-space:nowrap; margin-left:2px}
+  .rp-legend{display:flex; align-items:center; gap:14px; margin-top:10px; font-size:11px; color:var(--ink-faint); flex-wrap:wrap; flex:0 0 auto}
+  .rp-legend span{display:flex; align-items:center; gap:6px}
+  .rp-legend i{width:10px; height:10px; border-radius:50%; display:inline-block}
+  .rp-legend .k{color:var(--ink-dim)}
+
+  /* ---- Replay console: the residual-stream snapshot at the playhead (fixed structure = no reflow) ---- */
+  .rp-console{display:flex; flex-direction:column; gap:8px; margin-top:10px; flex:0 0 auto}
+  /* the Watchtower — the decision the stream feeds into */
+  .rp-wt-head{display:grid; grid-template-columns:14px 1fr auto; align-items:start; gap:8px;
+    padding:8px 12px; border-radius:12px; background:color-mix(in srgb,var(--l-tower) 13%, var(--surface-2));
+    border:1px solid color-mix(in srgb,var(--l-tower) 36%, var(--hairline))}
+  .rp-wt-mark{width:14px; height:15px; margin-top:2px; background:var(--l-tower);
+    clip-path:polygon(50% 0%,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%); filter:drop-shadow(0 0 1px rgba(0,0,0,.6))}
+  .rp-wt-main{min-width:0}
+  .rp-wt-call{display:flex; align-items:center; gap:8px; flex-wrap:nowrap; overflow:hidden; min-width:0; white-space:nowrap; font-family:var(--sans); font-size:13.5px; font-weight:700; color:var(--ink)}
+  .rp-wt-call .who{color:var(--l-tower)}
+  .rp-wt-call .dir{color:var(--l-tower)}
+  .rp-wt-call .rp-vs{font-family:var(--mono); font-size:10.5px; font-weight:600; color:var(--coral)}
+  .rp-wt-scene{font-family:var(--serif); font-size:12px; color:var(--ink-dim); line-height:1.4; margin-top:2px; height:17px;
+    display:-webkit-box; -webkit-line-clamp:1; line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; animation:rp-scene-in .3s ease}
+  .rp-wt-side{display:flex; flex-direction:column; align-items:flex-end; gap:4px; white-space:nowrap}
+  .rp-wt-verdict{font-family:var(--sans); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:3px 8px; border-radius:7px}
+  .rp-wt-verdict.win{color:var(--jade); background:var(--jade-wash)}
+  .rp-wt-verdict.loss{color:var(--coral); background:var(--coral-wash)}
+  .rp-wt-verdict.scratch{color:var(--ink-dim); background:var(--surface-3)}
+  .rp-wt-verdict.live{color:var(--lantern); background:var(--lantern-wash)}
+  .rp-wt-rec{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); font-variant-numeric:tabular-nums}
+  /* consensus line — how the stack aligned */
+  .rp-consensus{font-family:var(--sans); font-size:12px; color:var(--ink-dim); height:17px; min-height:0; padding:0 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rp-consensus b{color:var(--ink); font-weight:600}
+  .rp-consensus .up{color:var(--jade); font-weight:700} .rp-consensus .dn{color:var(--coral); font-weight:700}
+  /* the layer cards — a horizontal grid (fills the wide space, frees the chart's height).
+     Fixed cell count (10) + 1-line thought = constant rows during a scrub = no reflow. */
+  .rp-stream{display:grid; grid-template-columns:repeat(auto-fill, minmax(168px,1fr)); gap:1px;
+    background:var(--hairline); border:1px solid var(--hairline); border-radius:12px; overflow:hidden}
+  .rp-cell{background:var(--surface-2); padding:5px 11px 6px; display:flex; flex-direction:column; gap:1px; min-width:0}
+  .rp-cell.nodata{opacity:.55}
+  .rp-cell.agree{box-shadow:inset 0 2.5px 0 color-mix(in srgb,var(--iris) 70%, transparent)}
+  .rp-cell-top{display:flex; align-items:center; gap:7px}
+  .rp-lmark{width:11px; height:11px; flex:none}
+  .rp-lmark.sensory{border-radius:2px; background:var(--l-base)}
+  .rp-lmark.lens{border-radius:50%; background:var(--l-fade)}
+  .rp-lname{font-family:var(--sans); font-size:11.5px; font-weight:600; color:var(--ink-dim); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rp-cell.agree .rp-lname{color:var(--ink)}
+  .rp-larr{font-family:var(--mono); font-size:12px; font-weight:800; color:var(--ink); flex:none}
+  .rp-larr.flat,.rp-larr.none{color:var(--ink-faint); font-weight:600}
+  .rp-lbadge{width:11px; text-align:center; flex:none; font-family:var(--sans); font-size:11px; font-weight:800}
+  .rp-lbadge.y{color:var(--jade)} .rp-lbadge.n{color:var(--ink-faint)}
+  .rp-lthought{font-family:var(--sans); font-size:11px; color:var(--ink-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-left:18px}
+
+  @media (max-width:720px){
+    body{padding:0}
+    .device{height:100vh; width:100%; border-radius:0; padding:0; border:0}
+    .device::before{display:none}
+    .screen{border-radius:0; border:0}
+    .body{grid-template-columns:1fr; grid-template-rows:1fr auto}
+    .rail{flex-direction:row; border-right:0; border-top:1px solid var(--hairline); order:2; padding:8px 6px; justify-content:space-around}
+    .rail .spacer,.rail .glyph{display:none}
+    .tab{flex:1}
+    .tab.active::before{left:16px; right:16px; top:0; bottom:auto; width:auto; height:2.5px}
+    .stagewrap{order:1}
+    .vitals{gap:9px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
+  }
+</style>
+</head>
+<body>
+<div class="device">
+  <div class="screen">
+    <div class="statusbar">
+      <div class="brand">
+        <span class="kanji">未来</span>
+        <span class="wm">Mirai</span>
+        <span class="sub">Awakening</span>
+      </div>
+      <div class="vitals" id="vitals"></div>
+    </div>
+
+    <div class="body">
+      <nav class="rail" id="rail">
+        <button class="tab active" data-tab="map">
+          <svg viewBox="0 0 24 24"><path d="M4 18h16M4 6h16"/><path d="M8 6v12M16 6v12"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+          Map
+        </button>
+        <button class="tab" data-tab="layers">
+          <svg viewBox="0 0 24 24"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 17l8 4 8-4"/></svg>
+          Layers
+        </button>
+        <button class="tab" data-tab="diary">
+          <svg viewBox="0 0 24 24"><path d="M12 6c-1.6-1.2-4-1.8-7-1.6v13c3-.2 5.4.4 7 1.6 1.6-1.2 4-1.8 7-1.6v-13c-3-.2-5.4.4-7 1.6z"/><path d="M12 6v13"/></svg>
+          Diary
+        </button>
+        <button class="tab" data-tab="heads">
+          <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></svg>
+          Processor
+        </button>
+        <button class="tab" data-tab="replay">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.5v4.5l3 2"/><path d="M4.3 9.5a8.4 8.4 0 0 1 1.6-2.9"/></svg>
+          Replay
+        </button>
+        <div class="spacer"></div>
+        <div class="glyph">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>
+          <span>SPX·0DTE</span>
+        </div>
+      </nav>
+
+      <div class="stagewrap">
+        <section class="panel active" data-panel="map" id="p-map"></section>
+        <section class="panel" data-panel="layers" id="p-layers"></section>
+        <section class="panel" data-panel="diary" id="p-diary"></section>
+        <section class="panel" data-panel="heads" id="p-heads"></section>
+        <section class="panel" data-panel="replay" id="p-replay"></section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal" aria-hidden="true"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   Mirai Awakening — live-shape snapshot, 2026-07-07 (SPX 0DTE)
+   Real fields & verbatim scenes from state/reversion/2026-07-07.jsonl
+   ============================================================ */
+const SYS = { date:"2026-07-07", mode:"PAPER", liveAllowed:false, wtUp:true, wtJudged:3, wtCap:25, source:"native · ThetaData" };
+
+// walls/magnet are ~constant intraday; spot walks down into the flip by 10:21
+const B = { callWall:7550, putWall:7000, magnet:7615, pin:7618.96, flip:7494.49, sigma:83.68, priorClose:7537.43 };
+
+function mk(o){ return Object.assign({callWall:B.callWall,putWall:B.putWall,magnet:B.magnet,pin:B.pin,flip:B.flip,sigma:B.sigma}, o); }
+
+// chronological; index 8 (10:21) is "now" -> drives Map + Heads, top of Diary
+const SCANS = [
+  mk({ t:"09:33:03", spot:7530.71, regime:"pinning", conf:1.0, sign:"positive", gAbove:304.9, gBelow:158.5, flow:0.068,
+    shove:{up:2.17,down:-0.18,upFlip:false,downFlip:true},
+    fade:{score:-0.30,fired:false,armed:true,reaction:true,dir:"put",arm:"call_wall",runway:-1.01,runwayOk:false,dCall:0.23,dPut:6.34},
+    brk:{state:"idle",cocks:0,dir:"none"}, motion:null,
+    wt:{fired:false,dir:null,mag:0,range:[0,0],horizon:60,conv:1.0,votes:{n:1,agree:1.0},agrees:true,
+      scene:"Dealers sit long gamma and the tape is pinning; price hugs the call wall with no clean stretch to fade. The gates are merely armed, not triggered — a quiet open with the map holding its shape.",
+      change:"A push beyond 1σ from prior close with flow rolling one way, or a decisive wall tag with a turn bar, would arm a real fade.",
+      interest:"gates active", wallS:33.6} }),
+  mk({ t:"09:39:03", spot:7526.40, regime:"pinning", conf:1.0, sign:"positive", gAbove:298.4, gBelow:161.2, flow:0.041,
+    shove:{up:2.03,down:-0.22,upFlip:false,downFlip:true},
+    fade:{score:-0.24,fired:false,armed:true,reaction:false,dir:"put",arm:"stretch",runway:-0.88,runwayOk:false,dCall:0.28,dPut:6.29},
+    brk:{state:"idle",cocks:0,dir:"none"}, motion:null,
+    wt:{fired:false,dir:null,mag:0,range:[0,0],horizon:60,conv:1.0,votes:{n:1,agree:1.0},agrees:true,
+      scene:"Slow bleed off the call wall while gamma stays positive — dampened, orderly. No turn bar yet, so nothing to lean on; the reversion setup is forming but unconfirmed.",
+      change:"A turn bar off a fresh low, or flow flipping negative into a wall, would give the fade something real to fade.",
+      interest:"wall_dist_call +0.31σ", wallS:29.8} }),
+  mk({ t:"09:48:03", spot:7519.10, regime:"pinning", conf:0.75, sign:"positive", gAbove:289.1, gBelow:167.9, flow:-0.031,
+    shove:{up:1.74,down:-0.29,upFlip:false,downFlip:true},
+    fade:{score:-0.18,fired:false,armed:true,reaction:true,dir:"put",arm:"stretch",runway:-0.61,runwayOk:false,dCall:0.37,dPut:6.20},
+    brk:{state:"idle",cocks:0,dir:"none"}, motion:null,
+    wt:{fired:false,dir:null,mag:0,range:[0,0],horizon:60,conv:1.0,votes:{n:1,agree:1.0},agrees:true,
+      scene:"Flow has tipped mildly negative as price works lower, but dealers remain long gamma — the map still wants to contain the move. Confidence in the pin is easing, not broken.",
+      change:"Aggressor flow deepening past −0.15 with price accelerating away from the magnet would start to argue trend over pin.",
+      interest:"vwap_stretch −0.19σ", wallS:31.1} }),
+  mk({ t:"09:57:03", spot:7511.85, regime:"pinning", conf:0.75, sign:"positive", gAbove:281.6, gBelow:172.4, flow:-0.012,
+    shove:{up:1.55,down:-0.34,upFlip:false,downFlip:true},
+    fade:{score:0.12,fired:false,armed:false,reaction:true,dir:"none",arm:"none",runway:0.41,runwayOk:true,dCall:0.46,dPut:6.11},
+    brk:{state:"idle",cocks:0,dir:"none"}, motion:null,
+    wt:{fired:false,dir:null,mag:0,range:[0,0],horizon:60,conv:0.5,votes:{n:2,agree:0.5},agrees:true,
+      scene:"Spot sits almost on VWAP with no defined magnet and a flip line only a fraction below — dealers are long gamma and pinning, but there is no meaningful stretch to fade; buyers are only marginally aggressive and range-vs-expected is elevated, signaling chop not a clean reversion setup.",
+      change:"A fresh push to −0.3σ+ VWAP stretch with flow rolling negative and price staying below the flip line, or a defined magnet reappearing, would justify a put fade.",
+      interest:"wall_dist_call +0.74σ", wallS:74.9} }),
+  mk({ t:"10:03:03", spot:7507.20, regime:"pinning", conf:0.75, sign:"positive", gAbove:272.9, gBelow:178.0, flow:0.022,
+    shove:{up:1.41,down:-0.31,upFlip:false,downFlip:true},
+    fade:{score:0.31,fired:false,armed:true,reaction:false,dir:"call",arm:"stretch",runway:0.29,runwayOk:false,dCall:0.51,dPut:6.06},
+    brk:{state:"idle",cocks:0,dir:"none"}, motion:null,
+    wt:{fired:false,dir:null,mag:0,range:[0,0],horizon:60,conv:1.0,votes:{n:1,agree:1.0},agrees:true,
+      scene:"The gap is starting to stretch below VWAP and buyers are creeping back — an oversold bounce is on the table, but the last bar hasn't turned yet and runway to the magnet is thin. Watching, not acting.",
+      change:"A green turn bar off this low would flip this into a live call fade back toward the magnet.",
+      interest:"vwap_stretch −0.33σ", wallS:28.4} }),
+  mk({ t:"10:09:03", spot:7503.60, regime:"pinning", conf:1.0, sign:"positive", gAbove:266.4, gBelow:182.7, flow:0.048,
+    shove:{up:1.28,down:-0.27,upFlip:false,downFlip:true},
+    fade:{score:0.44,fired:false,armed:true,reaction:true,dir:"call",arm:"stretch",runway:0.33,runwayOk:false,dCall:0.55,dPut:6.02},
+    brk:{state:"idle",cocks:0,dir:"none"}, motion:null,
+    wt:{fired:false,dir:null,mag:0,range:[-0.1,0.4],horizon:60,conv:0.67,votes:{n:3,agree:0.67},agrees:true,
+      scene:"Stretch and turn are both in place for an oversold bounce, and flow is supportive — but runway to the magnet is still a hair short of the paper threshold. The reasoning head sees the setup but respects the gate.",
+      change:"A little more room to the magnet, or a wall tag to fade against, tips this to a fire.",
+      interest:"vwap_stretch −0.40σ", wallS:52.7} }),
+  mk({ t:"10:15:03", spot:7500.95, regime:"pinning", conf:1.0, sign:"positive", gAbove:259.9, gBelow:187.3, flow:0.071,
+    shove:{up:1.19,down:-0.24,upFlip:false,downFlip:true},
+    fade:{score:0.61,fired:true,armed:true,reaction:true,dir:"call",arm:"stretch",runway:0.42,runwayOk:true,dCall:0.59,dPut:5.99},
+    brk:{state:"idle",cocks:0,dir:"none"}, motion:null,
+    wt:{fired:true,dir:"call",mag:0.40,range:[-0.15,0.70],horizon:60,conv:1.0,convStated:0.63,votes:{n:3,agree:1.0},agrees:true,
+      scene:"Oversold below VWAP with dealers long gamma, a clean turn bar off the low, and buyers pressing — a textbook mean-reversion long back toward the magnet. Both heads agree: fade the gap.",
+      change:"Price breaching the flip line just below, or the turn failing on a retest with flow rolling over.",
+      interest:"vwap_stretch −0.44σ", wallS:61.3} }),
+  mk({ t:"10:18:03", spot:7499.50, regime:"pinning", conf:0.75, sign:"positive", gAbove:255.1, gBelow:190.4, flow:0.052,
+    shove:{up:1.12,down:-0.20,upFlip:false,downFlip:true},
+    fade:{score:0.49,fired:false,armed:true,reaction:true,dir:"call",arm:"stretch",runway:0.31,runwayOk:false,dCall:0.60,dPut:5.98},
+    brk:{state:"cocked",cocks:1,dir:"call"}, motion:null,
+    wt:{fired:true,dir:"call",mag:0.42,range:[-0.15,0.72],horizon:60,conv:1.0,convStated:0.60,votes:{n:2,agree:1.0},agrees:false,
+      scene:"The bounce is still live but spot has slid within a whisker of the flip line, shrinking runway back under the gate. The map's edge is fraying — yet flow and the turn still favor a push back to VWAP.",
+      change:"A clean break below the flip with flow turning negative flips this from fade to break.",
+      interest:"wall_dist_call +0.60σ", wallS:58.9} }),
+  mk({ t:"10:21:03", spot:7498.91, regime:"pinning", conf:1.0, sign:"positive", gAbove:249.2, gBelow:193.8, flow:0.068,
+    shove:{up:1.05,down:-0.16,upFlip:false,downFlip:true},
+    fade:{score:0.38,fired:false,armed:true,reaction:true,dir:"call",arm:"stretch",runway:0.28,runwayOk:false,dCall:0.61,dPut:5.98},
+    brk:{state:"cocked",cocks:1,dir:"call"},
+    motion:{lookback:6.57,callMelt:-0.002,putReloc:true,magnetWalk:0.0079,flipCreep:-0.0123,gripSlope:-0.0017,soft:"down",gAboveShare:0.5691},
+    wt:{fired:true,dir:"call",mag:0.45,range:[-0.15,0.75],horizon:60,conv:1.0,convStated:0.58,votes:{n:2,agree:1.0},agrees:false,
+      scene:"Spot gapped down and sits below VWAP while dealers are still long gamma (damping/pin regime) and variance ratio <1 signals oscillation not trend; slight positive aggressor flow supports a bounce back toward VWAP / prior close, fading the gap.",
+      change:"Spot breaching the gamma flip only 0.08σ below (regime flips unstable), VWAP stretch widening further with aggressor flow turning negative, or the last bar failing to turn back on a retest.",
+      interest:"wall_dist_call +0.59σ", wallS:70.1} }),
+];
+const NOW = SCANS[SCANS.length-1];
+let LIVEROWS = SCANS;                       // newest day's rows — drives the map / heads / today's page
+let DIARY_ROWS = SCANS;                      // every past day for the diary book (loaded once, refreshed periodically)
+function liveNow(){ return LIVEROWS[LIVEROWS.length-1]; }
+
+// ---------- helpers ----------
+const $ = (s,r)=> (r||document).querySelector(s);
+const el = (t,c,h)=>{ const n=document.createElement(t); if(c)n.className=c; if(h!=null)n.innerHTML=h; return n; };
+const f = (n,d)=> n==null||isNaN(n) ? "—" : Number(n).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+const sig = v => (v>=0?"+":"") + f(v,2) + "σ";
+const cap = s => s ? s.charAt(0).toUpperCase()+s.slice(1) : s;
+// times display in Pacific; the raw record timestamps stay as written (Eastern)
+const PT = 'America/Los_Angeles', ET = 'America/New_York';
+const clockIn = (ts,tz)=> new Date(ts).toLocaleTimeString('en-US',{hour12:false, timeZone:tz});
+const scanTs = s => s.ts || (SYS.date+'T'+s.t+'-04:00');
+const ptTime = s => clockIn(scanTs(s), PT);
+
+// ================= LIVE ENGINE (status strip + GEX map) =================
+// Served from the viewstation (:8787), it polls the newest diary row from the
+// same-origin file API and eases to it. Anywhere the API is unreachable (e.g. the
+// hosted preview) it auto-falls back to a simulated feed so the map still breathes.
+const FEED = { pollMs: 4000 };
+let LIVE = false;
+// Ask the viewstation's file index for the newest reversion/<date>.jsonl (robust across the
+// midnight rollover / pre-market gap), pull its last 40 rows: newest row drives the map,
+// and the most-recent JUDGED watchtower (skipping quiet/cap rows) drives the reading.
+// map a raw diary row → the internal scan shape used by the Map / Diary / Heads renderers
+function normWt(w){
+  w=w||{};
+  return { fired:!!w.fired, dir:w.direction||w.dir||null, mag:w.magnitude_sigma??w.mag??0,
+    range:w.range_sigma||[0,0], horizon:w.horizon_min??60,
+    conv:w.conviction ?? (w.votes&&(w.votes.agreement??w.votes.agree)) ?? 1, convStated:w.conviction_stated??null,
+    votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??1}:{n:1,agree:1},
+    agrees:('agrees_with_gates' in w)?!!w.agrees_with_gates:(w.agrees??true),
+    scene:w.scene||'', change:w.would_change_mind||w.change||'', interest:w.interest||'',
+    wallS:w.wall_s??w.wallS??0, revised:!!w.revised, snippet:w.snippet||null, skipped:w.skipped||null };
+}
+// magnet zones (2026-07-09) — normalize an engine dict's pin_zones list. Rows
+// written before the zones landed carry no key → null → the map falls back to
+// exactly the single-magnet display.
+function normZones(g){
+  const pz=g&&g.pin_zones;
+  if(!Array.isArray(pz)||!pz.length) return null;
+  const zs=[];
+  for(const z of pz){
+    if(!z || z.center==null || !isFinite(z.center)) continue;
+    zs.push({ c:+z.center,
+      s:(z.share!=null&&isFinite(z.share))?Math.max(0,Math.min(1,+z.share)):0,
+      side:z.side||null,
+      lo:(z.lo!=null&&isFinite(z.lo))?+z.lo:null,
+      hi:(z.hi!=null&&isFinite(z.hi))?+z.hi:null,
+      n:(z.n!=null&&isFinite(z.n))?+z.n:null });
+  }
+  return zs.length?zs:null;
+}
+function rowToScan(r){
+  const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv, sh=gv.shove||gt.shove||{};
+  const re=r.reversion_extreme||{}, lr=r.level_reclaim||{}, mo=r.gex_motion;
+  return { ts:r.ts, t:clockIn(r.ts,ET), spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
+    flip:r.gamma_flip, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall??null, callCeil:r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null,
+    /* magnet policy (locked, mirrors resolve_dealer_map): gex_views LEADS, gex_theta is the
+       challenger; the armed-only reversion magnet is wall-clamped (a fade target, not the pull) */
+    magnet:gv.magnet??g.magnet??re.magnet_raw??r.gamma_flip,
+    pin:gv.pin_centroid??g.pin_centroid??g.magnet??r.spot, sigma:r.sigma??1, gAbove:g.gamma_above_spot??0, gBelow:g.gamma_below_spot??0, flow:g.aggressor_flow??0,
+    cwShare:g.call_wall_gamma_share??0, pwShare:g.put_wall_gamma_share??0, pinShare:g.pin_top_share??0, zones:normZones(g), contested:(g.pin_contested!=null?!!g.pin_contested:null),   // shares/zones for the live GEX field
+    shove:{ up:sh.shove_up_margin??0, down:sh.shove_down_margin??0, upFlip:sh.up_flips||false, downFlip:sh.down_flips||false },
+    fade:{ score:re.score??0, fired:!!re.fired, armed:!!re.armed, reaction:!!re.reaction, dir:re.direction||'none', arm:re.arm_reason||'none',
+      runway:re.runway_sigma??0, runwayOk:!!re.runway_ok, dCall:re.wall_dist_call, dPut:re.wall_dist_put },
+    brk:{ state:lr.break_state||'idle', cocks:lr.cock_count||0, dir:lr.cock_direction||lr.direction||'none' },
+    motion: mo?{ lookback:mo.lookback_min, magnetWalk:mo.magnet_walk_sigma, flipCreep:mo.flip_creep_sigma, gripSlope:mo.grip_slope, soft:mo.soft_side }:null,
+    lob:{ tilt:(r.lob_flow||{}).tilt, regime:(r.lob_flow||{}).regime },
+    // 2026-07-09 shadow layers — all optional; old rows simply carry null and render as before
+    spd: r.speedometer?{ pace:r.speedometer.rv_pace??null, jz:r.speedometer.jump_z??null, jsign:r.speedometer.jump_sign??null,
+      down:r.speedometer.semivar_down_share??null, q:r.speedometer.quality??null }:null,
+    rr: r.range_ruler?{ em:r.range_ruler.em_points??null, emo:r.range_ruler.em_open??null,
+      cons:r.range_ruler.em_consumed??null, q:r.range_ruler.quality??null }:null,
+    groll: r.gamma_roll?{ div:!!r.gamma_roll.divergence, dir:r.gamma_roll.divergence_dir??null,
+      zw:r.gamma_roll.zero_dte_wall??null, fw:r.gamma_roll.far_wall??null }:null,
+    evl: r.event_lens?{ kind:r.event_lens.event_kind??null, phase:r.event_lens.phase??null,
+      ratio:r.event_lens.surprise_ratio??null }:null,
+    wt: normWt(r.watchtower) };
+}
+async function fetchRecent(){
+  const idx = await fetch('/api/raw/index',{cache:'no-store'});
+  const j = await idx.json();
+  const files = (j.state||[]).filter(e=>/^reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+  if(!files.length) return null;
+  files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
+  const res = await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=60`,{cache:'no-store'});
+  const d = await res.json();
+  const raw = (d && d.rows) ? d.rows : [];
+  if(!raw.length) return null;
+  let wt=null;
+  for(let k=raw.length-1;k>=0;k--){ const w=raw[k].watchtower; if(w && !w.skipped && (w.scene||w.fired!==undefined)){ wt={...w, _ts:raw[k].ts}; break; } }
+  return { rows: raw.filter(x=>x&&typeof x==='object').map(r=>{ try{ return rowToScan(r); }catch(e){ return null; } }).filter(Boolean), newestRaw: raw[raw.length-1], wt };
+}
+// load every past reversion/<date>.jsonl so the diary book has a page per day (today stays live via LIVEROWS)
+async function loadDiaryHistory(){
+  try{
+    const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
+    const files=(j.state||[]).filter(e=>/^reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+    files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
+    const chunks=await Promise.all(files.slice(0,45).map(async fm=>{
+      try{ const res=await fetch(`/api/raw/file?root=state&path=${fm.rel}&limit=500`,{cache:'no-store'});
+        const d=await res.json(); return (d&&d.rows)?d.rows.map(rowToScan):[]; }catch(e){ return []; }
+    }));
+    const all=[].concat(...chunks);
+    if(all.length){ DIARY_ROWS=all; if(dpage===0) renderDiary(false); if(RP.els) rpSyncDays(false); }
+  }catch(e){}
+}
+
+// fixed price axis → each strike's y never moves; only bar lengths / levels ease
+// the viewBox matches the chart cell's real pixel aspect, so the SVG fills it with
+// no letterbox (no wasted vertical space); geometry is derived from the measured size.
+function computeMAPX(w,h){
+  const x0=72, tagX=w-10, lineEnd=Math.round(w-178);
+  return { W:w, H:h, padT:22, padB:24, axisLX:48, x0, tagX, lineEnd,
+    barMax:Math.min(lineEnd-x0-6, Math.max(120, Math.round((lineEnd-x0)*0.62))), pHigh:7660, pLow:7430 };
+}
+// Adaptive strike window — frame the live levels (spot·magnet·flip·call-wall) with headroom that
+// GROWS with volatility (σ), so a fast tape shows more strikes and a calm one zooms in on the magnets.
+function mapBand(st){
+  const sg=(st&&st.sigma&&isFinite(st.sigma))?st.sigma:40;
+  const sp=(st&&st.spot!=null&&isFinite(st.spot))?st.spot:null;
+  const L=[st&&st.spot, st&&st.magnet, st&&st.flip, st&&st.callWall, st&&st.putWall,
+           sp!=null?sp-sg:null, sp!=null?sp+sg:null].filter(v=>v!=null&&isFinite(v));   // frame spot±1σ so the EM envelope is always in view (putWall included → no upward bias)
+  if(!L.length) return {pLow:7430, pHigh:7660};
+  let lo=Math.min(...L), hi=Math.max(...L);
+  lo-=Math.max(0.55*sg,30); hi+=Math.max(0.55*sg,30);       // wider headroom → more strikes in view
+  const minH=Math.max(3.6*sg,210);                          // wider floor → more strikes on a calm day
+  if(hi-lo<minH){ const c=(lo+hi)/2; lo=c-minH/2; hi=c+minH/2; }
+  return {pLow:Math.round(lo), pHigh:Math.round(hi)};
+}
+let MAPX = computeMAPX(720,540);
+let _mapW=0, _mapH=0;
+const yFor = p => MAPX.padT + (MAPX.pHigh-p)/(MAPX.pHigh-MAPX.pLow)*(MAPX.H-MAPX.padT-MAPX.padB);
+let MSTRIKES = [], MROWH = 6;
+function mapStrikes(){                                       // real 5-pt SPX strikes (10-pt when the band is very wide) → distinct per-strike bars
+  const step=((MAPX.pHigh-MAPX.pLow)>520)?10:5;
+  const lo=Math.ceil(MAPX.pLow/step)*step, hi=Math.floor(MAPX.pHigh/step)*step;
+  MSTRIKES=[]; for(let k=lo;k<=hi;k+=step) MSTRIKES.push(k);
+  if(!MSTRIKES.length) MSTRIKES=[Math.round((MAPX.pLow+MAPX.pHigh)/2)];
+  MROWH=(MAPX.H-MAPX.padT-MAPX.padB)/Math.max(1,MSTRIKES.length);   // row pitch = per-strike slot
+}
+function mapAxis(){
+  const X=MAPX; let a=''; let lastY=1e9;                      // lastY gates label spacing so dense $5 rows thin out, not smear
+  const step=((X.pHigh-X.pLow)>520)?10:5;                     // matches the strike grid
+  for(let k=Math.ceil(X.pLow/step)*step; k<=X.pHigh; k+=step){ const yn=yFor(k), yy=yn.toFixed(1), major=k%50===0;
+    if(major){
+      a+=`<line x1="${X.x0}" y1="${yy}" x2="${X.lineEnd}" y2="${yy}" style="stroke:var(--hairline);opacity:.5" stroke-dasharray="2 6"/>`;
+      a+=`<line x1="${X.x0-7}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.75"/>`;
+      a+=`<text x="${X.axisLX}" y="${(yn+4).toFixed(1)}" text-anchor="end" style="fill:var(--ink-dim)" font-size="15" font-weight="600" font-family="var(--mono)">${k.toLocaleString('en-US')}</text>`;   // every $50 — big
+      lastY=yn;
+    } else {
+      a+=`<line x1="${X.x0-4}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.4"/>`;
+      if(lastY-yn>=12){ a+=`<text x="${X.axisLX}" y="${(yn+3).toFixed(1)}" text-anchor="end" style="fill:var(--ink-faint)" font-size="10" font-family="var(--mono)">${k.toLocaleString('en-US')}</text>`; lastY=yn; }   // every $5 — small (only where it fits)
+    }
+  }
+  return a;
+}
+// light reframe when the ideal window has drifted — reuses the bar elements, just re-lays them
+function maybeReframe(){
+  if(!MAP) return;
+  const ib=mapBand(T), h=MAPX.pHigh-MAPX.pLow;
+  if(Math.abs(ib.pLow-MAPX.pLow)>0.15*h || Math.abs(ib.pHigh-MAPX.pHigh)>0.15*h){
+    MAPX.pLow=ib.pLow; MAPX.pHigh=ib.pHigh; mapStrikes();
+    if(MAP.axisG) MAP.axisG.innerHTML=mapAxis();
+    paintMap();
+  }
+}
+function measureChart(){ const cc=document.querySelector('#p-map .gx-chart'); if(!cc) return null; const w=cc.clientWidth, h=cc.clientHeight; return (w<80||h<80)?null:{w,h}; }
+const MMETA = {   // key dealer levels, drawn as horizontal lines with right-edge price tags
+  callWall:{c:"var(--jade)",    n:"CALL γ",    role:"0DTE γ peak (≈ATM, not the structural wall)", d:0, sw:1.5, dash:''},
+  magnet:  {c:"var(--l-grav)",  n:"MAGNET",    role:"pull",       d:0, sw:2.2, dash:''},   // shares the zones' gravity gold; --lantern is Watchtower-only
+  flip:    {c:"var(--ink-dim)", n:"GAMMA FLIP", role:"regime line",d:0, sw:1.5, dash:'stroke-dasharray="6 4"'},
+  putWall: {c:"var(--coral)",   n:"PUT γ",     role:"0DTE γ peak (≈ATM, not the structural wall)",    d:0, sw:1.5, dash:''},
+  spot:    {c:"var(--iris)",    n:"SPOT",       role:"now",        d:2, sw:2.6, dash:''},
+};
+const MIDS = ["callWall","magnet","flip","putWall","spot"];
+const gauss = (k,mu,sd)=>Math.exp(-((k-mu)*(k-mu))/(2*sd*sd));
+const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZone:PT});
+
+function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, putWall:s.putWall, magnet:s.magnet, pin:s.pin,
+  gAbove:s.gAbove, gBelow:s.gBelow, flow:s.flow, shoveUp:s.shove.up, shoveDown:s.shove.down, sigma:s.sigma,
+  netByStrike:s.netByStrike??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null,
+  sign:s.sign, regime:s.regime, downFlip:s.shove.downFlip }; }
+
+let D = stateOf(NOW), T = {...D}, curWt = NOW.wt, wtDirty = true, MAP = null, VIT = null;
+
+// ---- status strip ----
+function buildVitals(){
+  $("#vitals").innerHTML =
+    `<div class="vital"><span class="pulse"></span> <span id="v-mode">LIVE</span> <b id="v-clock" class="mono">--:--:--</b> PT</div>
+     <div class="vsep"></div>
+     <div class="vital">SPX <b id="v-spot">—</b> <span id="v-delta" class="mono"></span></div>
+     <div class="vsep"></div>
+     <span class="pill jade" id="v-regime"><span class="dot"></span>—</span>
+     <span class="pill iris">${SYS.mode}</span>
+     <span class="pill ${SYS.wtUp?'lantern':'grey'}" title="Watchtower judged scans today / daily cap"><span class="dot"></span>WT ${SYS.wtJudged}/${SYS.wtCap}</span>`;
+  VIT = { clock:$("#v-clock"), spot:$("#v-spot"), delta:$("#v-delta"), regime:$("#v-regime"), mode:$("#v-mode"), _rk:null };
+}
+function paintVitals(){
+  VIT.spot.textContent = f(D.spot,2);
+  const dch = D.spot - B.priorClose;
+  VIT.delta.textContent = (dch>=0?"+":"")+f(dch,2);
+  VIT.delta.style.color = `var(--${dch>=0?'jade':'coral'})`;
+  const rk = D.sign+D.regime;
+  if(rk!==VIT._rk){ VIT._rk=rk; VIT.regime.className=`pill ${D.sign==='positive'?'jade':'coral'}`; VIT.regime.innerHTML=`<span class="dot"></span>${cap(D.regime)}`; }
+}
+function tickClock(){ if(VIT) VIT.clock.textContent = nowClock(); }
+
+// ---- GEX map: built once, node attributes eased every frame ----
+// ===================== LIVE GEX MAP — horizontal gamma-by-strike snapshot =====================
+// The LIVE view (distinct from Replay's time×price past view): PRICE on the Y axis, a HORIZONTAL BAR
+// per strike whose length = net gamma exposure there — jade above the gamma-flip / coral below; key
+// dealer levels as lines + right-edge σ/price tags; the Watchtower's blinking ▲/▼ direction+magnitude
+// marker. Eases to the newest scan each frame; mapBand re-frames the strike window per scan.
+const GX = { demoTimer:null };            // (probeAndRun uses GX.demoTimer)
+function gxBuild(){
+  const host=document.getElementById('p-map'); if(!host) return;
+  if(!host.querySelector('.gx-chart')){
+    host.innerHTML=`<div class="gx-strip" id="gx-strip"></div><div class="gx-chart"></div>`+
+      `<div class="gx-tower"><span class="tr-eye"></span><div class="tr-body"><span class="label">Watchtower · forward read</span>`+
+      `<p class="tr-next" id="gx-tower-next">—</p></div></div>`;
+    const _cc=host.querySelector('.gx-chart'); if(_cc&&typeof openZonesModal==='function'){ _cc.style.cursor='pointer'; _cc.addEventListener('click', openZonesModal); }
+  }
+  const m=measureChart(); if(!m) return;
+  _mapW=m.w; _mapH=m.h;
+  MAPX=computeMAPX(m.w,m.h);
+  const seed=(T&&T.spot!=null&&isFinite(T.spot))?T:(liveNow()||D);
+  const band=mapBand(seed); MAPX.pLow=band.pLow; MAPX.pHigh=band.pHigh;
+  mapStrikes();
+  const X=MAPX, axis=mapAxis();
+  const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.x0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
+  const lvl=MIDS.map(id=>{ const mm=MMETA[id], spot=id==='spot';
+    return `<line id="lead-${id}" style="stroke:${mm.c};opacity:0"/>`+
+      `<line id="lc-${id}" x1="${X.x0}" x2="${X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
+      `<line id="lvl-${id}" x1="${X.x0}" x2="${X.lineEnd}" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+
+      `<text id="nm-${id}" x="${X.tagX}" text-anchor="end" style="fill:${spot?'var(--iris)':'var(--ink-dim)'}" font-size="11.5" font-weight="600" font-family="var(--sans)" letter-spacing=".04em">${mm.n}</text>`+
+      `<text id="vl-${id}" x="${X.tagX}" text-anchor="end" style="fill:${mm.c}" font-size="${spot?21:18}" font-weight="700" font-family="var(--mono)"></text>`; }).join('');
+  document.querySelector('#p-map .gx-chart').innerHTML=
+   `<svg viewBox="0 0 ${X.W} ${X.H}" preserveAspectRatio="none" role="img" aria-label="Live GEX map: net gamma exposure by strike with the price axis, dealer levels, and the Watchtower forecast">
+     <defs>
+       <linearGradient id="gxJ" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--jade)" stop-opacity=".95"/><stop offset="1" stop-color="var(--jade)" stop-opacity=".30"/></linearGradient>
+       <linearGradient id="gxC" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--coral)" stop-opacity=".92"/><stop offset="1" stop-color="var(--coral)" stop-opacity=".26"/></linearGradient>
+     </defs>
+     <rect id="washTop" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--jade);opacity:.045"/>
+     <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
+     <g id="axisG">${axis}</g>
+     <g id="barsG">${bars}</g>
+     ${lvl}
+     <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
+     <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
+     <path id="spotTri" style="fill:var(--iris)"/>
+     <text x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan style="fill:var(--jade)">▮</tspan> pins <tspan style="fill:var(--coral)">▮</tspan> pushes</text>
+   </svg>`;
+  const q=id=>document.getElementById(id);
+  MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
+    bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
+    lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
+  MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
+  gxOverview(); gxTower(); gxPaint();
+}
+function gxPaint(){
+  if(!MAP||!MAP.bars||!MSTRIKES.length) return;
+  const X=MAPX, sy=yFor(D.spot), fy=yFor(D.flip);
+  // regime wash, split at the gamma-flip
+  MAP.washTop.setAttribute('y',X.padT); MAP.washTop.setAttribute('height',Math.max(0,fy-X.padT).toFixed(1));
+  MAP.washBot.setAttribute('y',fy.toFixed(1)); MAP.washBot.setAttribute('height',Math.max(0,X.H-X.padB-fy).toFixed(1));
+  // net-gamma-by-strike profile. PREFERRED: the MEASURED per-strike field the engine
+  // now persists (net_by_strike = real net dealer GEX, calls +/puts −). FALLBACK
+  // (demo feed / rows written before the field shipped): a modeled Gaussian around the
+  // live levels — clearly flagged "modeled" vs "measured" in the caption below.
+  const gg=(k,mu,sd)=>Math.exp(-((k-mu)*(k-mu))/(2*sd*sd));
+  const sg=(D.sigma&&isFinite(D.sigma))?D.sigma:40;
+  let vals, measured=false;
+  const nbs=D.netByStrike;
+  if(Array.isArray(nbs)&&nbs.length&&MSTRIKES.length){
+    // bucket-SUM the real per-strike field into display slots — nearest slot by the
+    // SAME step mapStrikes used (10-pt on wide days). This AGGREGATES the two 5-pt
+    // strikes under a 10-pt row and correctly places SPY-proxy fractional strikes,
+    // instead of a fixed ±5 nearest-pick that orphaned odd strikes / missed floats.
+    const step=((MAPX.pHigh-MAPX.pLow)>520)?10:5, k0=MSTRIKES[0];
+    const buckets=new Array(MSTRIKES.length).fill(0); let placed=0;
+    for(const p of nbs){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
+      const idx=Math.round((p[0]-k0)/step);
+      if(idx>=0&&idx<buckets.length){ buckets[idx]+=(+p[1]); placed++; } }
+    if(placed>0){ measured=true; vals=buckets; }   // gate on REAL in-band coverage, not array non-emptiness → never a blank chart mislabeled "measured"
+  }
+  if(!measured){
+    vals=MSTRIKES.map(k=>{ let v=1.0*gg(k,D.callWall,0.11*sg)+0.7*gg(k,D.flip+0.06*sg,0.10*sg)+0.34*gg(k,D.magnet,0.14*sg)+0.14*gg(k,D.spot,0.7*sg);
+      if(k<D.flip) v=-(0.55*gg(k,D.putWall,0.11*sg)+0.2*gg(k,D.flip-0.12*sg,0.11*sg)+0.05); return v; });
+  }
+  const bsrc=document.getElementById('bar-src'); if(bsrc) bsrc.textContent=measured?'measured':'modeled';
+  let mx=1e-6; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; }
+  const MBH=Math.max(2.5, MROWH*0.72);   // bar thickness < row pitch → visible gaps = distinct per-strike bars
+  MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], mag=Math.abs(vals[i])/mx,
+      pos=measured?(vals[i]>=0):(k>=D.flip);   // measured → color by SIGN of net γ (pins vs pushes); modeled → by side of flip
+    rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
+    rect.setAttribute('width',(mag<0.05?0:Math.max(2,mag*X.barMax)).toFixed(1));   // hide dead strikes (no picket-rail)
+    rect.style.fill=pos?'url(#gxJ)':'url(#gxC)';
+    rect.style.opacity=(0.34+0.60*mag).toFixed(2);   // PROMINENT — gamma-by-strike is the hero of this view
+  });
+  // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
+  const valOf={callWall:D.callWall,magnet:D.magnet,flip:D.flip,putWall:D.putWall,spot:D.spot};
+  const loY=X.padT+14, hiY=X.H-X.padB-14;
+  const arr=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1).sort((a,b)=>a.y-b.y);
+  const onOf={}; arr.forEach(m=>onOf[m.id]=true);
+  const GAP=Math.min(38, arr.length>1?(hiY-loY)/(arr.length-1):38);
+  let last=loY-GAP; arr.forEach(m=>{ m.ly=Math.min(hiY,Math.max(m.y,last+GAP)); last=m.ly; });
+  for(let i=arr.length-2;i>=0;i--){ if(arr[i].ly>arr[i+1].ly-GAP) arr[i].ly=Math.max(loY,arr[i+1].ly-GAP); }
+  const lyOf={}; arr.forEach(m=>lyOf[m.id]=m.ly);
+  MIDS.forEach(id=>{ const mm=MMETA[id], yy=yFor(valOf[id]), R=MAP.lvl[id];
+    if(!onOf[id]){ R.line.style.opacity=0; R.cas.style.opacity=0; R.nm.style.opacity=0; R.vl.style.opacity=0; R.lead.style.opacity=0; return; }
+    const ly=lyOf[id];
+    R.cas.style.opacity=.5; R.cas.setAttribute('y1',yy.toFixed(1)); R.cas.setAttribute('y2',yy.toFixed(1));
+    R.line.style.opacity=id==='spot'?1:.85; R.line.setAttribute('y1',yy.toFixed(1)); R.line.setAttribute('y2',yy.toFixed(1));
+    const sd=(D.sigma>0)?((valOf[id]-D.spot)/D.sigma):0;
+    R.nm.style.opacity=1; R.nm.setAttribute('y',(ly-8).toFixed(1)); R.nm.textContent=id==='spot'?mm.n:`${mm.n} ${sig(sd)}`;
+    R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
+    if(Math.abs(ly-yy)>2){ R.lead.setAttribute('x1',X.lineEnd); R.lead.setAttribute('y1',yy.toFixed(1)); R.lead.setAttribute('x2',(X.tagX-118).toFixed(1)); R.lead.setAttribute('y2',ly.toFixed(1)); R.lead.style.opacity=.3; }
+    else R.lead.style.opacity=0;
+  });
+  // spot marker — a triangle pointing in from the axis
+  MAP.spotTri.setAttribute('d',`M${X.x0-9},${(sy-6).toFixed(1)} L${X.x0-1},${sy.toFixed(1)} L${X.x0-9},${(sy+6).toFixed(1)} Z`);
+  // Watchtower forward call — a blinking ▲/▼ + target price where it expects price to land
+  if(MAP.wtTgt){ const w=curWt;
+    const hz=(w&&+w.horizon>0)?+w.horizon:30, ageMin=(w&&w.ts)?(Date.now()-(+new Date(w.ts)))/60000:0;
+    if(w&&w.fired&&w.dir&&w.mag&&ageMin<=hz){
+      const up=w.dir==='call', tgt=D.spot+(up?1:-1)*(+w.mag)*sg, ty=yFor(tgt), col=`var(--${up?'jade':'coral'})`, tx=X.lineEnd+6;
+      MAP.wtTgtL.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtL.setAttribute('y2',ty.toFixed(1)); MAP.wtTgtL.style.stroke='var(--lantern)'; MAP.wtTgtL.style.opacity=.32;
+      MAP.wtTgtA.setAttribute('x',tx); MAP.wtTgtA.setAttribute('y',(ty+5).toFixed(1)); MAP.wtTgtA.textContent=up?'▲':'▼'; MAP.wtTgtA.style.fill=col;
+      MAP.wtTgtP.setAttribute('x',(tx+14).toFixed(1)); MAP.wtTgtP.setAttribute('y',(ty+5).toFixed(1)); MAP.wtTgtP.textContent=f(tgt,0); MAP.wtTgtP.style.fill=col;
+      MAP.wtTgt.style.display='';
+    } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; }
+  }
+}
+// The plain-English situation + how it's molding — the always-on overview strip (mold chip = hero).
+function gxOverview(){
+  const el=document.getElementById('gx-strip'); if(!el) return;
+  const s=liveNow()||{}, long=D.sign==='positive', sg=(D.sigma||1);
+  const dMag=(D.magnet-D.spot)/sg, pts=Math.abs(D.magnet-D.spot), pullUp=dMag>=0;
+  const mo=s.motion||{}; let mold='holding steady';
+  if(mo.gripSlope>0.0015) mold='pin tightening'; else if(mo.gripSlope<-0.0015) mold='grip loosening';
+  else if(Math.abs(mo.magnetWalk||0)>0.15) mold=(mo.magnetWalk>0?'magnet drifting up':'magnet drifting down');
+  else if(Math.abs(mo.flipCreep||0)>0.15) mold='flip creeping';
+  const flow=D.flow>0.02?'buyers pressing':D.flow<-0.02?'sellers pressing':'flow balanced';
+  const tot=(D.gAbove+D.gBelow)||1, aP=Math.round(D.gAbove/tot*100);
+  // FIX #2 — the REAL floor: the structural OI put wall (resting hedges), NOT the
+  // at-spot gamma-weighted "PUT WALL". Shown with its σ-distance so its true remove is honest.
+  const pf=(D.putFloor!=null&&isFinite(D.putFloor)&&D.putFloor>0)?D.putFloor:null;
+  const pfS=(pf!=null&&sg)?(pf-D.spot)/sg:null;
+  const floorChip=pf!=null
+    ? `<span class="gx-chip"><b>put floor</b><i>${f(pf,0)} <span style="color:var(--coral)">▼${Math.abs(pfS).toFixed(1)}σ</span> · resting OI</i></span>`
+    : '';
+  // symmetric call-side: the structural OI call wall (resting hedges) = the real ceiling,
+  // the counterpart to put floor — previously only the put side was shown (asymmetry).
+  const cc=(D.callCeil!=null&&isFinite(D.callCeil)&&D.callCeil>0)?D.callCeil:null;
+  const ccS=(cc!=null&&sg)?(cc-D.spot)/sg:null;
+  const ceilChip=cc!=null
+    ? `<span class="gx-chip"><b>call ceiling</b><i>${f(cc,0)} <span style="color:var(--jade)">▲${Math.abs(ccS).toFixed(1)}σ</span> · resting OI</i></span>`
+    : '';
+  el.innerHTML=`
+    <span class="gx-chip gx-mold"><b>${mold}</b><i>${flow}</i></span>
+    <span class="gx-chip gx-regime ${long?'up':'dn'}"><b>${long?'DEALERS PIN':'MOVES AMPLIFY'}</b><i>${long?'long gamma · fades work':'short gamma · trends run'}</i></span>
+    <span class="gx-chip"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)}</i></span>
+    <span class="gx-chip gx-net"><b>gamma balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
+    ${ceilChip}${floorChip}`;
+}
+function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
+
+function buildMap(){ gxBuild(); }
+function paintMotion(m){
+  const el=document.getElementById('motionTile'); if(!el) return;
+  if(!m){ el.style.display='none'; return; }
+  el.style.display='';
+  const g=id=>document.getElementById(id);
+  const tone=(el,up)=>{ el.style.color=`var(--${up?'jade':'coral'})`; };
+  g('mo-look').textContent=f(m.lookback,1);
+  const gw=g('mo-walk'); gw.textContent=sig(m.magnetWalk); tone(gw, m.magnetWalk>=0);
+  const gc=g('mo-creep'); gc.textContent=sig(m.flipCreep); tone(gc, m.flipCreep>=0);
+  g('mo-grip').textContent=f(m.gripSlope,4);
+  const gs=g('mo-soft'), softUp=/up|call|above|top/i.test(String(m.soft)),
+        softKnown=softUp || /down|put|below|bottom/i.test(String(m.soft));
+  gs.textContent=cap(m.soft)+(softKnown?(softUp?' ▴':' ▾'):'');
+  gs.style.color=softKnown?`var(--${softUp?'jade':'coral'})`:'var(--ink)';
+}
+
+// ---- magnet zone bands: each pin zone = a horizontal lo..hi band, weight ∝ share ----
+const ZONE_HW=2.5;   // fallback half-width in points when lo/hi are missing/degenerate (half a 5-pt strike gap)
+function paintZones(){
+  if(!MAP||!MAP.zonesG) return;
+  const X=MAPX, zs=D.zones||[];
+  const key=zs.map(z=>`${z.c}|${z.s}|${z.lo}|${z.hi}|${z.side}`).join(';');
+  if(key!==MAP._zkey){                      // zone set changed → rebuild the (≤4) band nodes
+    MAP._zkey=key;
+    MAP.zonesG.innerHTML=zs.map((z,i)=>`<g class="zband${z.side==='at'?' at':''}">
+      <rect class="zb-r" x="${X.x0}" width="${X.lineEnd-X.x0}" rx="3"/>
+      <text class="zb-t" text-anchor="end" font-size="${i===0?11:10}"></text></g>`).join('');
+    MAP._zels=[...MAP.zonesG.querySelectorAll('.zband')].map(el=>({rect:el.querySelector('.zb-r'), label:el.querySelector('.zb-t')}));
+  }
+  zs.forEach((z,i)=>{ const E=MAP._zels[i]; if(!E) return;
+    let lo=z.lo, hi=z.hi;
+    if(lo==null||hi==null||!(hi>lo)){ lo=z.c-ZONE_HW; hi=z.c+ZONE_HW; }    // degenerate span → center ± half-width
+    // CLAMP to the plot frame: a far wing shelf must render as a partial band
+    // at the edge (not spill hundreds of px off-frame with an invisible label —
+    // exactly the OpEx wide-shelf case where CONTESTED fires).
+    const yTop=X.padT, yBot=X.H-X.padB;
+    let yT=Math.max(yTop, yFor(hi)), yB=Math.min(yBot, yFor(lo));
+    if(yB-yT<3){                                   // fully off-frame → thin edge sliver
+      if(yFor(hi)>=yBot){ yT=yBot-3; yB=yBot; } else { yT=yTop; yB=yTop+3; }
+    }
+    const h=Math.max(3, yB-yT);
+    E.rect.setAttribute('y',yT.toFixed(1)); E.rect.setAttribute('height',h.toFixed(1));
+    E.rect.style.opacity=(Math.min(.5,.06+.5*z.s)+(i===0?.08:0)).toFixed(2);   // weight ∝ share; zone-1 dominant
+    E.label.setAttribute('x',(X.lineEnd-6).toFixed(1));
+    // label pinned INSIDE the plot: mid-band when it fits, else hugging the band edge
+    let ly = h>=15 ? yT+h/2+3.5 : yT-3;
+    ly = Math.min(yBot-2, Math.max(yTop+9, ly));
+    E.label.setAttribute('y',ly.toFixed(1));
+    E.label.style.opacity=i===0?'.95':'.7';
+    E.label.textContent=Math.round(z.s*100)+'%';
+  });
+}
+// ---- Magnet Zones modal — the ranked zone list behind the magnet line ----
+const ZSIDE={above:'▲',below:'▼',at:'◆'};
+function openZonesModal(){
+  const zs=T.zones||[], contested=!!T.contested;
+  const M=document.getElementById('modal');
+  const rows = zs.length ? zs.map((z,i)=>{
+    const span=(z.lo!=null&&z.hi!=null&&z.hi>z.lo)?`${f(z.lo,0)}–${f(z.hi,0)}`:`${f(z.c-ZONE_HW,0)}–${f(z.c+ZONE_HW,0)}`;
+    return `<div class="zrow${i===0?' lead':''}">
+      <span class="zrank">${i+1}</span>
+      <div>
+        <div class="zline"><span class="zside ${z.side||''}">${ZSIDE[z.side]||'·'}</span><b>${f(z.c,2)}</b>
+          <span class="zspan">${span}</span>${z.n?`<span class="zn">${z.n} strike${z.n>1?'s':''}</span>`:''}</div>
+        <div class="zbar"><i style="width:${Math.round(z.s*100)}%"></i></div>
+      </div>
+      <span class="zpct">${Math.round(z.s*100)}%</span>
+    </div>`;}).join('')
+    : `<div class="zm-empty">single-magnet read (no zone data this scan)${T.magnet!=null&&isFinite(T.magnet)?` — magnet <b>${f(T.magnet,2)}</b>`:''}</div>`;
+  M.innerHTML=`
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Magnet Zones">
+      <div class="modal-head">
+        <div class="mt">Magnet Zones <em>SPX ${f(T.spot,2)}</em></div>
+        ${contested?`<span class="pill coral" style="margin-left:auto;flex:none"><span class="dot"></span>CONTESTED</span>`:''}
+        <button class="modal-x" id="modal-x" ${contested?'':'style="margin-left:auto"'} aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        ${rows}
+        <div class="zm-note">Price feels every zone's pull — the strongest is the magnet; a close rival means chop between them.</div>
+      </div>
+    </div>`;
+  M.classList.add('open'); M.setAttribute('aria-hidden','false');
+  document.getElementById('modal-x').onclick=closeModal;
+}
+
+function paintMap(){ gxPaint(); }
+// ---- Watchtower NEXT inference (mirrors watchtower.render_snippet() ▶▶ NEXT line) ----
+function pickWt(spot){ let best=SCANS[0],bd=1e9; for(const s of SCANS){ const d=Math.abs(spot-s.spot); if(d<bd){bd=d;best=s;} } return best.wt; }
+function hz(mins){ if(!mins) return ''; return (mins%60===0) ? `~${mins/60}h` : `~${mins}m`; }
+function towerNextHTML(wt, magnet, spot){
+  if(wt && wt.snippet){
+    const sn=String(wt.snippet), m=sn.match(/NEXT:\s*(.+)$/m);
+    // a "⚠ contested — …" line appended to the snippet rides along, muted (its own
+    // line would otherwise be dropped by the NEXT-line extraction above)
+    if(m){ const wr=sn.match(/^\s*(⚠.+)$/m);
+      return `<span class="nx-chev">▶</span>${cap(m[1].trim())}`+(wr?` <span class="nx-warn">${wr[1].trim()}</span>`:''); }
+  }
+  if(wt && wt.fired){
+    const up = wt.dir==='call';
+    const tgt = (magnet!=null && isFinite(magnet)) ? Math.round(magnet).toLocaleString('en-US') : 'the magnet';
+    const bits=[ wt.mag?`~${(+wt.mag).toFixed(2)}σ`:'', hz(wt.horizon) ].filter(Boolean).join(' · ');
+    return `<span class="nx-dir ${up?'up':'down'}">${up?'▲ Up':'▼ Down'}</span> — likely to ${up?'push':'fade'} toward <b>${tgt}</b>${bits?` <span class="nx-mag">(${bits})</span>`:''}.`;
+  }
+  const here = (spot!=null&&isFinite(spot)) ? Math.round(spot).toLocaleString('en-US') : 'here';
+  return `<span class="nx-dir flat">■ Flat</span> — no clear edge; expect it to drift near <b>${here}</b>.`;
+}
+function updateTower(){ wtDirty=false; if(typeof gxTower==='function') gxTower(); }
+
+// ---- feed: simulate live motion, or poll the viewstation endpoint ----
+function nextTarget(){
+  let ns=D.spot+(Math.random()-0.5)*6.4; ns=Math.max(D.flip-9, Math.min(D.callWall+7, ns));
+  T={ spot:ns, flip:D.flip+(Math.random()-0.5)*0.8, callWall:D.callWall, putWall:D.putWall,
+    magnet:D.magnet+(Math.random()-0.5)*1.6, pin:D.pin+(Math.random()-0.5)*1.3,
+    gAbove:Math.max(120,D.gAbove+(Math.random()-0.5)*16), gBelow:Math.max(80,D.gBelow+(Math.random()-0.5)*12),
+    flow:Math.max(-0.4,Math.min(0.4,D.flow+(Math.random()-0.5)*0.07)),
+    shoveUp:Math.max(0.2,D.shoveUp+(Math.random()-0.5)*0.16), shoveDown:Math.min(-0.02,D.shoveDown+(Math.random()-0.5)*0.06),
+    sigma:D.sigma, sign:D.sign, regime:D.regime, downFlip:true };
+  const w=pickWt(T.spot); if(w!==curWt){ curWt=w; wtDirty=true; updateTower(); }
+  maybeReframe();
+}
+function applyMap(r){
+  const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv, sh=gv.shove||gt.shove||{};
+  T={ spot:r.spot??D.spot, flip:r.gamma_flip??D.flip, callWall:gv.call_wall_gamma??r.call_wall??D.callWall, putWall:gv.put_wall_gamma??r.put_wall??D.putWall,
+    magnet:g.magnet??D.magnet, pin:gv.pin_centroid??g.pin_centroid??D.pin,
+    gAbove:g.gamma_above_spot??D.gAbove, gBelow:g.gamma_below_spot??D.gBelow,
+    flow:g.aggressor_flow??0, shoveUp:sh.shove_up_margin??D.shoveUp,
+    shoveDown:sh.shove_down_margin??D.shoveDown, sigma:r.sigma??D.sigma,
+    sign:r.gamma_sign, regime:r.regime, downFlip:sh.down_flips||false };
+  T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
+  T.putFloor = r.put_wall ?? D.putFloor;                          // structural OI put wall = the real floor
+  T.callCeil = r.call_wall ?? D.callCeil;                          // structural OI call wall = the real ceiling
+  // magnet zones — same engine dict the magnet reads from, the other as fallback;
+  // pre-zone rows carry no key → null → exact single-magnet fallback
+  const g2=(g===gt)?gv:gt;
+  T.zones=normZones(g)||normZones(g2);
+  const pc=(g.pin_contested!=null)?g.pin_contested:g2.pin_contested;
+  T.contested=(pc==null)?null:!!pc;
+}
+function applyWt(w){
+  curWt={ fired:!!w.fired, dir:w.direction||w.dir||null, mag:w.magnitude_sigma??w.mag??0, snippet:w.snippet||null, scene:w.scene||'',
+    horizon:w.horizon_min??w.horizon??60, ts:w._ts||w.ts||null };
+  wtDirty=true; updateTower();
+}
+let lastFedTs=null;
+function feedAll(L){
+  LIVEROWS = L.rows;
+  const ts = L.newestRaw && L.newestRaw.ts;
+  if(ts===lastFedTs) return;          // poll returned the same latest scan — nothing new to apply
+  lastFedTs = ts;
+  applyMap(L.newestRaw);              // new target → the map eases to it (60fps)
+  if(L.wt) applyWt(L.wt);            // refresh the NEXT read (only when the scan actually changed)
+  buildMap();                        // rebuild the time×price map with the new scan appended
+  renderHeads();                      // Heads reflects the newest scan
+  if(dpage===0) renderDiary(false);   // Diary surfaces new entries when viewing the most recent page
+}
+async function poll(){
+  try{ const L=await fetchRecent(); if(L) feedAll(L); }catch(e){}
+  setTimeout(poll, FEED.pollMs);
+}
+function frame(){
+  const k=0.09;
+  for(const key of ['spot','flip','callWall','putWall','magnet','pin','gAbove','gBelow','flow','shoveUp','shoveDown','sigma']){
+    D[key] += (T[key]-D[key])*k; if(!isFinite(D[key])) D[key]=T[key]; }
+  D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
+  D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
+  D.netByStrike=T.netByStrike; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil;   // measured field + structural floor/ceiling snap (not eased)
+  paintMap(); paintVitals();
+  requestAnimationFrame(frame);
+}
+function setMode(live){
+  LIVE=live;
+  if(VIT&&VIT.mode) VIT.mode.textContent = live?'LIVE':'DEMO';
+  const lt=document.getElementById('live-tag'); if(lt) lt.textContent = live?'live':'demo · simulated';
+}
+async function probeAndRun(){
+  try{
+    const L=await fetchRecent();
+    if(!L) throw 0;
+    if(GX.demoTimer){ clearInterval(GX.demoTimer); GX.demoTimer=null; }   // recovered → stop demo
+    feedAll(L);
+    setMode(true); setTimeout(poll, FEED.pollMs);
+    loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
+  }catch(e){ setMode(false); if(!GX.demoTimer) GX.demoTimer=setInterval(nextTarget, 2600); setTimeout(probeAndRun, 5000); }   // keep retrying the live feed
+}
+function startLive(){
+  buildVitals(); buildMap(); paintVitals(); updateTower();
+  // once the chart cell is really laid out, refit the viewBox to it (kills the letterbox)
+  const m0=measureChart(); if(m0 && (Math.abs(m0.w-_mapW)>8 || Math.abs(m0.h-_mapH)>8)){ buildMap(); }
+  tickClock(); setInterval(tickClock,1000);
+  requestAnimationFrame(frame);
+  let rt=null;
+  const ro=new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(()=>{
+    const m=measureChart(); if(m && (Math.abs(m.w-_mapW)>8 || Math.abs(m.h-_mapH)>8)){ buildMap(); paintMap(); }
+  },140); });
+  ro.observe(document.getElementById('p-map'));
+  probeAndRun();
+}
+
+
+// ---------- LAYERS (3D deck + readiness detail) ----------
+// order = bottom → top of the residual stream (base map → heads)
+const LY = [
+  {id:'chain', num:'◇', name:'Options Chain', code:'native + proxy · base map', hue:'--l-base', base:true, tier:'sensory',
+    role:'≈ token embedding / residual stream', status:['jade','live'], weight:null,
+    plain:'The raw ingredient. Every SPX call and put with its price and how many contracts are open (its "open interest"), re-read from scratch each 5-minute scan. Nothing is predicted here — everything above is computed from this.',
+    example:'Like re-reading the full menu of every option contract, top to bottom, every five minutes.',
+    purpose:'Raw SPX / SPY option book — native ThetaData plus the SPY proxy. <b>The immutable foundation every layer reads from and writes small corrections onto.</b>',
+    rd:{kind:'live', note:'Running every 5-minute scan — the feed that never sleeps.'}},
+  {id:'grav', num:'1', name:'GEX · Gravity', code:'lefteye_gex_box.GexBox', hue:'--l-grav', tier:'sensory',
+    role:'≈ base representation · GEX = dealer gamma exposure', status:['jade','live · w0.80'], weight:0.80,
+    plain:'Turns that raw book into a map of where the big players on the other side of these trades must buy or sell to stay balanced — the magnet price gets pulled toward, and the walls that tend to cap a move.',
+    example:'A huge stack of options sitting at 7600 quietly tugs price toward 7600 — Gravity is what spots that pull.',
+    purpose:'Dealer-positioning map: magnet, walls, flip, regime, shove. <b>Live and weighted 0.80</b> — but its directional sign is still under nightly A/B review.',
+    rd:{kind:'graded', n:8, rate:0.62, inv:0.38, verdict:'keep the sign',
+      summary:'The sign is now holding up: 62% right as-is on 8 idea-episodes (only 38% if inverted) — the earlier thin-sample "invert it" verdict has flipped.'}},
+  {id:'motion', num:'1.5', name:'GEX · Motion', code:'gex_motion + shove', hue:'--l-motion', tier:'sensory',
+    role:'≈ attention over the strike axis, in motion', status:['iris','shadow · feature'], weight:null,
+    plain:'Watches how the map MOVES scan to scan — walls melting, the magnet walking, the tipping point (where the pull flips to a push) creeping. The map as a film, not a photo.',
+    example:'If the magnet drifts up a few points every scan, Motion flags that the target is quietly walking higher.',
+    purpose:'The map read as <b>film, not photo</b> — wall melt, magnet walk, flip creep, grip slope, soft side, and the ½σ shove test.',
+    rd:{kind:'feature', summary:'No gate of its own. It feeds the Watchtower and Break-Lens payloads and earns its keep only if <b>they</b> clear theirs.'}},
+  {id:'lob', num:'2', name:'LOB · Flow', code:'skills/lob-flow', hue:'--l-lob', tier:'sensory',
+    role:'≈ second attention head · LOB = the live order book', status:['iris','shadow · w0.15'], weight:0.15,
+    plain:'Listens to the live order book underneath the options — are buyers or sellers leaning harder right now, and is a "wall" actually defended by real resting orders, or a bluff?',
+    example:'A wall looks solid on paper, but if nobody is actually quoting size there, Flow calls the bluff.',
+    purpose:'Live order-book force — tape tilt, scatter, and the wall <b>lie-detector</b>: is that wall truly defended by resting liquidity?',
+    rd:{kind:'lob', baseDays:4, baseNeed:21, tier:'cold', episodes:4, epNeed:30,
+      defNow:{n:15,hits:15,rate:1.0}, defNowLabel:'07-09', defPrev:{n:5,hits:0,rate:0.0}, defPrevLabel:'07-08',
+      blockers:['baseline cold (4 / 15d)','graded 4 / 30 episodes'],
+      summary:'Baseline day 4 of 21 (still cold — 15 needed). The defense sensor is wild: 91% → 0% → 0% → 100% across the four days (60% cumulative). Its spy_depth control still has zero episodes.'}},
+  {id:'speed', num:'3', name:'Speedometer', code:'lefteye_speedometer', hue:'--l-speed', tier:'sensory',
+    role:'≈ residual-stream norm / activation magnitude', status:['iris','shadow · diary'], weight:null,
+    plain:'Measures what the tape is ACTUALLY doing, not what anyone predicts: how much of a normal day\'s movement has been spent so far, whether a real jolt (jump) just hit and which way, and whether the scary downside kind of shaking is taking over.',
+    example:'The forecast says storm but the pavement is dry by 11am — the Speedometer says trust the pin. If the budget is half-spent by 10:30, believe the breakout instead.',
+    purpose:'Realized-tape sensor — variance pace vs the same-time-of-day norm, jump detection with sign, downside semivariance share. <b>The reality check every forecast layer gets marked against.</b>',
+    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Cold until the 5th saved session — self-heals 2026-07-10.'}},
+  {id:'ruler', num:'4', name:'Range Ruler', code:'lefteye_range_ruler', hue:'--l-ruler', tier:'sensory',
+    role:'≈ output scale calibration', status:['iris','shadow · diary'], weight:null,
+    plain:'Reads the market\'s own price for how far today can travel — the cost of an at-the-money straddle, cleaned of its known overpricing. Sets the day\'s size budget and tracks how much of it price has already used. The only layer allowed to speak in expected-move points.',
+    example:'Today\'s budget is ±42 points and we\'ve used 46% of the ruler set at the open — a call for a 100-point run gets throttled.',
+    purpose:'The day\'s expected-move budget from the debiased ATM straddle — em_points, the anchor set at the open, and how much of the ruler is already spent. <b>The stack\'s common yardstick for size.</b>',
+    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Live from first scan; em_consumed is probationary — recorded to be judged, not yet gated on.'}},
+  {id:'roll', num:'5', name:'Gamma Roll', code:'lefteye_gamma_roll', hue:'--l-roll', tier:'sensory',
+    role:'≈ attention across the expiry axis', status:['iris','shadow · diary'], weight:null,
+    plain:'Labels every dealer wall by which expiry owns it — paper fences (today\'s options, torn down by 4pm) vs brick fences (walls that survive the week). It only speaks on days the near fence and the far fence point at different levels — a warning today\'s pin may jump once today\'s options bleed off.',
+    example:'Today\'s wall sits at 7,500 but the six-week wall sits at 7,560 — as today\'s gamma melts into the afternoon, price gets released upward toward the surviving 7,560.',
+    purpose:'Expiry-owned wall map — the 0DTE wall against the wall that survives the week, surfaced only on <b>divergence days</b> when the pin is set to roll.',
+    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Speaks only on divergence days; rides the UW feed — one feed, one vote with the Second Opinion.'}},
+  {id:'event', num:'6', name:'Event Lens', code:'lefteye_event_lens', hue:'--l-event', tier:'sensory',
+    role:'≈ scheduled attention spike', status:['iris','shadow · diary'], weight:null,
+    plain:'The firework judge for scheduled announcement days (CPI, Fed, jobs). It knows how big a boom the market pre-paid for, then divides the real boom by the paid-for boom: over 1 means the move isn\'t done, under 1 means everyone overpaid and it fades.',
+    example:'The Fed speaks at 2pm; the market paid for 8 points of boom and got 12 — ratio 1.5, don\'t fade the move.',
+    purpose:'Scheduled-event judge — the pre-paid move vs the realized move, surprise ratio and vol-crush flag. <b>Wakes only on announcement days.</b>',
+    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Silent until the next event day — CPI 2026-07-14.'}},
+  {id:'fade', num:'A', name:'Fade Lens', code:'reversion_extreme', hue:'--l-fade', head:true, tier:'lens',
+    role:'≈ decision head — fade stretch toward the magnet', status:['jade','shadow · paper'], weight:null,
+    plain:'A strict four-box checklist that bets a stretched move snaps back toward the magnet. It only fires when all four boxes tick at once.',
+    example:'Price jumps far above its average with room to fall back — the Fade Lens bets it reverts.',
+    purpose:'The primary 4-gate lens. <b>Writes to the alert bell on paper; real money is gated on Wilson.</b>',
+    rd:{kind:'days', decided:0, need:12, sw:'REVERSION_LIVE off', rate:null, wl:null, note:'ungated twin: 2 / 4 wins',
+      blockers:['switch off','0 / 12 decided days'],
+      summary:'0 of 12 decided days — the gated Fade hasn\'t fired once in 4 live days (the runway gate blocks every setup) and the live switch is off. Its ungated pre-runway twin has decided 4, winning 2.'}},
+  {id:'break', num:'C', name:'Break Lens', code:'level_reclaim', hue:'--l-break', head:true, tier:'lens',
+    role:'≈ an alternate expert — bet the escape', status:['coral','shadow'], weight:null,
+    plain:'The opposite bet: when flow overpowers the map and price escapes a level, it rides the breakout instead of fading it. A two-step arm-then-fire trigger.',
+    example:'Price smashes through a wall on heavy buying — the Break Lens bets it keeps running, not reverts.',
+    purpose:'The twin that <b>bets the break</b> when flow overpowers the map — a two-stage cock → fire machine. Fully silent; no alert path yet.',
+    rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null, note:'2 cocks, 0 fires · 4 days',
+      blockers:['not started','0 fires'],
+      summary:'Barely stirring — reached the "cocked" state twice (07-07, 07-08) and never fired. Its ledger does not exist yet: 0 of 12 decided days.'}},
+  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-2', hue:'--l-tower', head:true, tier:'processor',
+    role:'≈ a reasoning / critic head', status:['lantern','shadow'], weight:null,
+    plain:'The reasoning brain. It reads the whole stack — blind to the lenses\' verdicts at first — forms its own call on direction and size, then compares notes with the lenses.',
+    example:'The layers below each lean a direction; the Watchtower weighs them all and says, e.g., "up, about half a normal day\'s move, and fairly sure."',
+    purpose:'The Claude reasoning processor — a <b>blind second opinion</b>, up to 3 votes, revealed only on disagreement. <b>wt-2 (2026-07-09):</b> now gravity-anchored (drift-to-magnet is the default, reversion the exception) and reads Flow + Break in its payload. Diary + nightly grade only.',
+    rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null,
+      scans:{judged:22, both:0, solo:17, veto:0},
+      blockers:['0 / 12 decided days'],
+      summary:'Just switched to wt-2 (gravity-anchored). Today: 22 judged, 17 fired solo (tower-only) while the gates never fired — the new directional bias is far more active. First two graded: 1 win, 1 loss. 0 of 12 decided days.'}},
+];
+let selLayer = 'lob';
+
+function pill(st){ return `<span class="pill ${st[0]}"><span class="dot"></span>${st[1]}</span>`; }
+function pipRow(n,on){ let h=''; for(let i=0;i<n;i++) h+=`<i class="${i<on?'on':''}"></i>`; return `<div class="pips">${h}</div>`; }
+
+function readinessHTML(L){
+  const r=L.rd;
+  if(r.kind==='live') return `<div class="rd">
+    <div class="rd-h"><span class="lab">Status</span><span class="pct">Live</span></div>
+    <div class="track"><i style="width:100%"></i></div>
+    <div class="rd-fr">running every scan</div>
+    <div class="blockers"><span class="blk ok">✓ feeding the stack</span></div>
+    <div class="rd-sum">${r.note}</div></div>`;
+
+  if(r.kind==='graded') return `<div class="rd">
+    <div class="rd-h"><span class="lab">Directional grade · A/B</span><span class="pct">${(r.rate*100).toFixed(0)}% hit</span></div>
+    <div class="track"><i style="width:${(r.rate*100).toFixed(0)}%"></i></div>
+    <div class="rd-fr">n=${r.n} idea-episodes · ${(r.rate*100).toFixed(0)}% correct · ${(r.inv*100).toFixed(0)}% if inverted</div>
+    <div class="blockers"><span class="blk">verdict · ${r.verdict}</span></div>
+    <div class="rd-sum">${r.summary}</div></div>`;
+
+  if(r.kind==='feature') return `<div class="rd">
+    <div class="rd-h"><span class="lab">Promotion gate</span><span class="pct">none</span></div>
+    <div class="track" style="opacity:.55"><i style="width:100%;background:repeating-linear-gradient(90deg,var(--c) 0 5px,transparent 5px 11px)"></i></div>
+    <div class="rd-fr">feature / input — no gate of its own</div>
+    <div class="blockers"><span class="blk ok">${r.feeds||'feeds Watchtower &amp; Break Lens'}</span></div>
+    <div class="rd-sum">${r.summary}</div></div>`;
+
+  if(r.kind==='days'){
+    const pct=Math.round(r.decided/r.need*100);
+    const blk=r.blockers.map(b=>`<span class="blk">⛔ ${b}</span>`).join('');
+    const cell = r.scans
+      ? `<div class="rd-stat"><div class="k">H2H today</div><div class="v" style="font-size:11px">both ${r.scans.both} · solo ${r.scans.solo} · veto ${r.scans.veto}</div></div>`
+      : `<div class="rd-stat"><div class="k">Live switch</div><div class="v" style="font-size:11px">${r.sw}</div></div>`;
+    return `<div class="rd">
+      <div class="rd-h"><span class="lab">Distance to live</span><span class="pct">${pct}%</span></div>
+      ${pipRow(r.need, r.decided)}
+      <div class="rd-fr">${r.decided} / ${r.need} decided real-bar days${r.note?' · '+r.note:''}</div>
+      <div class="rd-grid">
+        <div class="rd-stat"><div class="k">Accuracy</div><div class="v">${r.rate!=null?(r.rate*100).toFixed(0)+'%':'—'}</div></div>
+        <div class="rd-stat"><div class="k">Wilson floor</div><div class="v">${r.wl!=null?f(r.wl,2):'—'} <small style="color:var(--ink-faint)">/ .50</small></div></div>
+        ${cell}
+        <div class="rd-stat"><div class="k">Gate</div><div class="v" style="font-size:11px">≥12d · W&gt;.50 · ≥58%</div></div>
+      </div>
+      <div class="blockers">${blk}</div>
+      <div class="rd-sum">${r.summary}</div></div>`;
+  }
+
+  if(r.kind==='lob'){
+    const bPct=Math.round(r.baseDays/r.baseNeed*100), ePct=Math.round(r.episodes/r.epNeed*100);
+    const blk=r.blockers.map(b=>`<span class="blk">⛔ ${b}</span>`).join('');
+    return `<div class="rd">
+      <div class="rd-h"><span class="lab">Baseline clock</span><span class="pct">${bPct}%</span></div>
+      <div class="track"><i style="width:${bPct}%"></i></div>
+      <div class="rd-fr">${r.baseDays} / ${r.baseNeed} clean days · ${r.tier}</div>
+      <div class="rd-h" style="margin-top:13px"><span class="lab">Graded episodes vs control</span><span class="pct">${ePct}%</span></div>
+      <div class="track"><i style="width:${ePct}%"></i></div>
+      <div class="rd-fr">${r.episodes} / ${r.epNeed} · must clear spy_depth (has 0)</div>
+      <div class="rd-grid">
+        <div class="rd-stat"><div class="k">Defense · ${r.defNowLabel||'now'}</div><div class="v" style="font-size:12px;color:var(--${r.defNow.rate>=0.5?'jade':'coral'})">${r.defNow.hits}/${r.defNow.n} · ${(r.defNow.rate*100).toFixed(0)}%</div></div>
+        <div class="rd-stat"><div class="k">Defense · ${r.defPrevLabel||'prev'}</div><div class="v" style="font-size:12px;color:var(--${r.defPrev.rate>=0.5?'jade':'coral'})">${r.defPrev.hits}/${r.defPrev.n} · ${(r.defPrev.rate*100).toFixed(0)}%</div></div>
+      </div>
+      <div class="blockers">${blk}</div>
+      <div class="rd-sum">${r.summary}</div></div>`;
+  }
+  return '';
+}
+
+function renderDetail(){
+  const L = LY.find(x=>x.id===selLayer);
+  const dt=$("#dt");
+  dt.style.setProperty('--c','var('+L.hue+')');
+  const wchip = L.weight!=null ? `<span class="pill grey">weight ${L.weight.toFixed(2)}</span>` : '';
+  const tierLabel={sensory:'sensory layer',lens:'lens',processor:'processor'}[L.tier]||L.tier;
+  const tchip = `<span class="tier ${L.tier}"><i></i>${tierLabel}</span>`;
+  dt.innerHTML = `
+    <div class="dt-top">
+      <div class="dt-badge ${L.base?'base':''}">${L.num}</div>
+      <div class="dt-name">${L.name}<em>${L.code}</em></div>
+    </div>
+    <div class="dt-meta">${tchip}${pill(L.status)}${wchip}</div>
+    <div class="dt-role">${L.role}</div>
+    <p class="dt-plain">${L.plain}</p>
+    <div class="dt-eg"><span class="eg-k">For example</span>${L.example}</div>
+    ${readinessHTML(L)}`;
+}
+
+function selectLayer(id){
+  selLayer=id;
+  document.querySelectorAll('.plane').forEach(p=>p.classList.toggle('sel', p.dataset.id===id));
+  renderDetail();
+}
+
+function renderLayers(){
+  const shape = t => t==='lens' ? 'lens' : t==='processor' ? 'proc' : '';
+  const tag = t => t==='lens' ? 'lens' : t==='processor' ? 'proc' : 'sensory';
+  // deck depth stays bounded as layers land: ≤7 planes keeps the original 46px gap,
+  // beyond that the gap shrinks so the projected stack never outgrows the scene card
+  const zGap = Math.min(46, 300/Math.max(1, LY.length-1));
+  const planes = LY.map((L,i)=>`
+    <div class="plane ${L.base?'base':''} ${shape(L.tier)} ${L.id===selLayer?'sel':''}" data-id="${L.id}" tabindex="0" role="button" aria-label="${L.name} — ${L.tier}"
+         style="--c:var(${L.hue}); --z:${((i-(LY.length-1)/2)*zGap).toFixed(1)}px; --d:${(i*0.07).toFixed(2)}s">
+      <span class="pn"><i class="ptag ${tag(L.tier)}" title="${L.tier}"></i>${L.num}</span><span class="pc">${L.name}</span>
+    </div>`).join('');
+  const nShadow = LY.filter(l=>/shadow/.test(l.status[1])).length;
+  const nTier = t => LY.filter(l=>l.tier===t).length;
+  $("#p-layers").innerHTML = `
+    <div class="phead">
+      <div><h2>Layers</h2><div class="desc">Sensory layers → lenses → processor · tap any block for what it does</div></div>
+      <span class="pill grey">Day 4 live · 0 / ${nShadow} shadow layers promotion-ready</span>
+    </div>
+    <div class="layers3d">
+      <div class="scene-card">
+        <div class="scene-top"><span class="st">forward pass · base → processor</span><span class="st" style="color:var(--iris)">decision ↑</span></div>
+        <div class="cat-rail">
+          <div class="cat" style="--f:${nTier('processor')}; --tc:var(--l-tower)"><i class="cat-ico proc"></i><span class="lbl">Processor</span></div>
+          <div class="cat" style="--f:${nTier('lens')}; --tc:var(--l-fade)"><i class="cat-ico lens"></i><span class="lbl">Lenses</span></div>
+          <div class="cat" style="--f:${nTier('sensory')}; --tc:var(--l-base)"><i class="cat-ico sensory"></i><span class="lbl">Sensory</span></div>
+        </div>
+        <div class="scene"><div class="deck hassel" id="deck">${planes}</div></div>
+        <div class="deckhint">tap a block</div>
+      </div>
+      <div class="detail" id="dt"></div>
+    </div>`;
+  const deck=$("#deck");
+  deck.addEventListener('click', e=>{ const p=e.target.closest('.plane'); if(p) selectLayer(p.dataset.id); });
+  deck.addEventListener('keydown', e=>{
+    const p=e.target.closest('.plane'); if(!p) return;
+    const idx=LY.findIndex(x=>x.id===p.dataset.id);
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); selectLayer(p.dataset.id); }
+    else if(e.key==='ArrowUp' && idx<LY.length-1){ e.preventDefault(); const n=deck.querySelector(`[data-id="${LY[idx+1].id}"]`); n.focus(); selectLayer(LY[idx+1].id); }
+    else if(e.key==='ArrowDown' && idx>0){ e.preventDefault(); const n=deck.querySelector(`[data-id="${LY[idx-1].id}"]`); n.focus(); selectLayer(LY[idx-1].id); }
+  });
+  renderDetail();
+}
+
+// ---------- DIARY (book · page 1 = newest → oldest to the right) ----------
+let dpage = 0; // 0 = most recent DAY
+const _enOpt = o => iso => new Date(iso+'T12:00:00').toLocaleDateString('en-US',o);
+const enWeekday  = _enOpt({weekday:'long'});
+const enMonthDay = _enOpt({month:'long', day:'numeric', year:'numeric'});
+const enDateShort= _enOpt({weekday:'short', month:'short', day:'numeric'});
+const rowTime = s => new Date(scanTs(s)).toLocaleTimeString('en-US',{hour:'numeric', minute:'2-digit', timeZone:PT});
+function diaryDayGroups(){
+  const byDay=new Map();
+  const put=rows=>{ for(const s of rows){ const d=scanTs(s).slice(0,10); if(!byDay.has(d)) byDay.set(d,new Map()); byDay.get(d).set(scanTs(s), s); } };
+  put(DIARY_ROWS); put(LIVEROWS);            // live rows overwrite history on the same timestamp (freshest wins)
+  return [...byDay.keys()].sort().reverse().map(day=>({
+    day, entries:[...byDay.get(day).values()].sort((a,b)=>scanTs(b).localeCompare(scanTs(a)))   // newest entry first
+  }));
+}
+function jsonOf(s){
+  return {
+    ts:`${SYS.date}T${s.t}-04:00`, ticker:"SPX", spot:+s.spot.toFixed(2), gamma_sign:s.sign, regime:s.regime,
+    gamma_flip:+s.flip.toFixed(2), call_wall:s.callWall, put_wall:s.putWall, magnet:s.magnet, pin_centroid:s.pin,
+    reversion_extreme:{ score:s.fade.score, fired:s.fade.fired, armed:s.fade.armed, reaction:s.fade.reaction,
+      direction:s.fade.dir, runway_sigma:s.fade.runway, runway_ok:s.fade.runwayOk },
+    level_reclaim:{ break_state:s.brk.state, cock_count:s.brk.cocks },
+    watchtower:{ fired:s.wt.fired, direction:s.wt.dir, magnitude_sigma:s.wt.mag, conviction:s.wt.conv,
+      votes:s.wt.votes, agrees_with_gates:s.wt.agrees, scene:s.wt.scene }
+  };
+}
+function hlJSON(obj){
+  const j = JSON.stringify(obj,null,2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return j.replace(/("(?:\\.|[^"\\])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?)/g, m=>{
+    let c='num';
+    if(/^"/.test(m)) c = /:$/.test(m) ? 'key':'str';
+    else if(/true|false/.test(m)) c='bool';
+    else if(/null/.test(m)) c='null';
+    return `<span class="j-${c}">${m}</span>`;
+  });
+}
+function learnedOf(s){
+  const passed=gateStates(s).filter(g=>g.on).length, w=s.wt;
+  if(w.fired && !w.agrees) return `The reasoning head fired a ${w.dir} fade the gates wouldn’t — Runway fell short of the 0.35σ floor. Logged as a tower-only divergence for the head-to-head ledger.`;
+  if(s.fade.fired && w.fired && w.agrees) return `Both heads fired the same ${s.fade.dir} fade — a clean, aligned reversion. The kind of decided day the paper record needs to bank toward the 12-day gate.`;
+  if(w.votes.agree < 0.6) return `A genuinely split vote (${(w.votes.agree*100).toFixed(0)}% agreement) — chop, not a setup. The tower stood down rather than force a read, which is the correct non-trade.`;
+  if(passed < 4 && !w.fired) return `${passed} of 4 gates open and the tower quiet — a setup forming but unconfirmed. Nothing actionable; correctly held.`;
+  return `Quiet scan — dealers ${s.sign==='positive'?'damping':'amplifying'}, no clean stretch to fade. Recorded to keep the baseline honest.`;
+}
+// One kid-level sentence translating the whole diary entry — what its JSON is really saying.
+function childSentence(s){
+  const g=gateStates(s).filter(x=>x.on).length, w=s.wt;
+  const wd = w.dir==='call' ? 'bounce back up' : 'drop back down';
+  const fd = s.fade.dir==='call' ? 'spring back up' : 'come back down';
+  if(w.fired && !w.agrees)
+    return `The price slid close to an edge and the thinking robot wanted to bet it would ${wd}, but the careful rule robot said there wasn’t enough room yet — so it waited.`;
+  if(s.fade.fired && w.fired && w.agrees)
+    return `The price stretched too far from the middle, so both robots agreed it should ${fd} and pointed the same way — a clean, matching call.`;
+  if(w.votes && w.votes.agree < 0.6)
+    return `The market was wiggly and hard to read, so the thinking robot shrugged and decided to sit still instead of guessing.`;
+  if(g < 4 && !w.fired)
+    return `A trade was starting to take shape but wasn’t ready yet, so everyone just watched and waited.`;
+  return `Nothing much happened — the price sat calmly near a big wall, so both robots just watched and did nothing.`;
+}
+// Annotated JSON for the modal — the real record, with plain-English comments on the key fields.
+function annotatedJSON(s){
+  const e=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const K=k=>`<span class="j-key">"${k}"</span>`, S=v=>`<span class="j-str">"${e(v)}"</span>`;
+  const N=v=>`<span class="j-num">${v}</span>`, Bl=v=>`<span class="j-bool">${v}</span>`, NU=`<span class="j-null">null</span>`;
+  const c=t=>`  <span class="j-cm">// ${t}</span>`, i=n=>'  '.repeat(n);
+  const dir=s.fade.dir, wdir=s.wt.dir;
+  const votes=`{ ${K('n')}: ${N(s.wt.votes.n)}, ${K('agreement')}: ${N(s.wt.votes.agree)} }`;
+  const L=[
+    '{',
+    `${i(1)}${K('ts')}: ${S(scanTs(s))},${c('when this scan was taken (recorded in Eastern; shown in Pacific elsewhere)')}`,
+    `${i(1)}${K('ticker')}: ${S('SPX')},${c('the index Mirai trades — SPX, 0DTE options')}`,
+    `${i(1)}${K('spot')}: ${N(+s.spot.toFixed(2))},${c('SPX price at the moment of the scan')}`,
+    `${i(1)}${K('gamma_sign')}: ${S(s.sign)},${c('dealer gamma at spot — positive = they dampen moves (pin), negative = amplify (storm)')}`,
+    `${i(1)}${K('regime')}: ${S(s.regime)},${c('the regime read — "pinning" = mean-reverting, "trending" = directional')}`,
+    `${i(1)}${K('gamma_flip')}: ${N(+s.flip.toFixed(2))},${c('zero-gamma level; above it dealers are long gamma (calm), below it short (volatile)')}`,
+    `${i(1)}${K('call_wall')}: ${N(s.callWall)}, ${K('put_wall')}: ${N(s.putWall)},${c('biggest call/put gamma strikes — price tends to stall into them')}`,
+    `${i(1)}${K('magnet')}: ${N(s.magnet)},${c('the fill-weighted 0DTE strike price gravitates toward')}`,
+    `${i(1)}${K('pin_centroid')}: ${N(s.pin)},${c('gamma-weighted centre of the whole map')}`,
+    `${i(1)}${K('reversion_extreme')}: {${c('HEAD A · FADE LENS — the 4-gate head that fades stretch back toward the magnet')}`,
+    `${i(2)}${K('score')}: ${N(s.fade.score)},${c('signed conviction: + = fade long / − = fade short')}`,
+    `${i(2)}${K('fired')}: ${Bl(s.fade.fired)},${c('did all four gates pass? — this is what fires the paper alert')}`,
+    `${i(2)}${K('armed')}: ${Bl(s.fade.armed)},${c('gate 2 (stretch): price is ≥1σ stretched or tagging a wall')}`,
+    `${i(2)}${K('reaction')}: ${Bl(s.fade.reaction)},${c('gate 4 (turn): the last bar turned back against the stretch')}`,
+    `${i(2)}${K('direction')}: ${dir?S(dir):NU},${c('which way the fade leans — call = up, put = down')}`,
+    `${i(2)}${K('runway_sigma')}: ${N(s.fade.runway)}, ${K('runway_ok')}: ${Bl(s.fade.runwayOk)}${c('gate 3 (runway): room to the magnet in σ — ok only when ≥ 0.35σ')}`,
+    `${i(1)}},`,
+    `${i(1)}${K('level_reclaim')}: {${c('HEAD C · BREAK LENS — the twin that bets the escape when flow overpowers the map')}`,
+    `${i(2)}${K('break_state')}: ${S(s.brk.state)},${c('idle → cocked → fired state machine')}`,
+    `${i(2)}${K('cock_count')}: ${N(s.brk.cocks)}${c('times it armed today')}`,
+    `${i(1)}},`,
+    `${i(1)}${K('watchtower')}: {${c('HEAD B · WATCHTOWER — the Claude reasoning second opinion (shadow only)')}`,
+    `${i(2)}${K('fired')}: ${Bl(s.wt.fired)}, ${K('direction')}: ${wdir?S(wdir):NU},${c('the tower’s own call, formed blind to the gates')}`,
+    `${i(2)}${K('magnitude_sigma')}: ${N(s.wt.mag)},${c('expected move size in σ — this drives the ▶▶ NEXT read on the map')}`,
+    `${i(2)}${K('conviction')}: ${N(s.wt.conv)},${c('share of votes that agreed = the conviction we actually trust')}`,
+    `${i(2)}${K('votes')}: ${votes},${c('times it was asked (up to 3 on a fire) and the agreement among them')}`,
+    `${i(2)}${K('agrees_with_gates')}: ${Bl(s.wt.agrees)},${c('did the reasoning head and the machine gates concur?')}`,
+    `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read of the setup')}`,
+    `${i(1)}}`,
+    '}',
+  ];
+  return `<pre class="jcode">${L.join('\n')}</pre>`;
+}
+function openModal(s){
+  const M=document.getElementById('modal');
+  M.innerHTML = `
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Diary entry">
+      <div class="modal-head">
+        <div class="mt">${enDateShort(scanTs(s).slice(0,10))} <em>${rowTime(s)} PT · SPX ${f(s.spot,2)}</em></div>
+        <div class="modal-tabs"><button class="mtab" data-v="detail">Reading</button><button class="mtab" data-v="json">JSON</button></div>
+        <button class="modal-x" id="modal-x" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>`;
+  const body=document.getElementById('modal-body');
+  const detail=()=>`
+    <div class="modal-plain"><b>In plain words</b>${childSentence(s)}</div>
+    <p class="md-scene">“${s.wt.scene||'Quiet scan — the Watchtower stood down.'}”</p>
+    ${s.wt.change?`<div class="md-change"><b>What would change its mind</b>${s.wt.change}</div>`:''}
+    <div class="md-stats">
+      <div class="md-stat"><div class="k">Regime</div><div class="v" style="font-size:13px">${cap(s.regime)}</div></div>
+      <div class="md-stat"><div class="k">Fade gates</div><div class="v">${gateStates(s).filter(g=>g.on).length} / 4</div></div>
+      <div class="md-stat"><div class="k">Watchtower</div><div class="v" style="font-size:12px">${s.wt.fired?cap(s.wt.dir)+' · '+sig(s.wt.mag):'Stood down'}</div></div>
+      <div class="md-stat"><div class="k">Break lens</div><div class="v" style="font-size:12px">${cap(s.brk.state)}</div></div>
+    </div>`;
+  const jsonView=()=>`${annotatedJSON(s)}<div class="jcode-legend"><b>legend</b><span class="j-key">key</span><span class="j-str">"string"</span><span class="j-num">number</span><span class="j-bool">true/false</span><span class="j-cm">// comment</span></div>`;
+  const show=v=>{ body.innerHTML = v==='json'?jsonView():detail(); M.querySelectorAll('.mtab').forEach(t=>t.classList.toggle('active',t.dataset.v===v)); };
+  show('detail');
+  M.querySelectorAll('.mtab').forEach(t=> t.onclick=()=>show(t.dataset.v));
+  M.classList.add('open'); M.setAttribute('aria-hidden','false');
+  document.getElementById('modal-x').onclick=closeModal;
+}
+function closeModal(){ const M=document.getElementById('modal'); if(!M) return; M.classList.remove('open'); M.setAttribute('aria-hidden','true'); M.innerHTML=''; }
+function renderDiary(turn){
+  const prevScroll = document.getElementById('entries')?.scrollTop || 0;
+  const days = diaryDayGroups();
+  const p=$("#p-diary");
+  if(!days.length){ p.innerHTML=`
+    <div class="phead"><div><h2>Diary</h2><div class="desc">The Watchtower’s log</div></div></div>
+    <div class="book"><span class="ribbon"></span><article class="page">
+      <div class="page-top"><div class="eyebrow"><span>未来</span> Night Log</div><div class="day-wd">The watch is quiet</div><div class="day-md">The log begins at the first scan.</div></div>
+      <div class="entries" style="display:grid;place-items:center;color:var(--ink-faint);font-family:var(--serif);font-size:15px">No entries recorded yet.</div>
+      <div class="page-foot"><span></span><span class="kanji">未来</span></div>
+    </article></div>`; return; }
+  if(dpage>days.length-1) dpage=days.length-1;
+  if(dpage<0) dpage=0;
+  const day=days[dpage], entries=day.entries;
+  // fold runs of the same sentence into one calm ledger line; state-changes stay full
+  const groups=[];
+  for(let i=0;i<entries.length;i++){ const txt=childSentence(entries[i]); const first=i;
+    while(i+1<entries.length && childSentence(entries[i+1])===txt) i++;
+    groups.push({first,last:i,txt,n:i-first+1}); }
+  const rows=groups.map(g=>{
+    if(g.n>=3) return `<button class="entry run" data-i="${g.first}">
+        <time class="entry-t">${rowTime(entries[g.first])}</time>
+        <span class="entry-q quiet">${g.txt} <span class="runc">· ${g.n} scans since ${rowTime(entries[g.last])}</span></span>
+        <span class="entry-go" aria-hidden="true">›</span></button>`;
+    return `<button class="entry" data-i="${g.first}">
+        <time class="entry-t">${rowTime(entries[g.first])}</time>
+        <span class="entry-q"><span class="q">“</span>${g.txt}<span class="q">”</span></span>
+        <span class="entry-go" aria-hidden="true">›</span></button>`;
+  }).join('');
+  p.innerHTML = `
+    <div class="phead">
+      <div><h2>Diary</h2><div class="desc">The Watchtower’s log · times in Pacific</div></div>
+      <span class="pill grey">${days.length} day${days.length>1?'s':''}</span>
+    </div>
+    <div class="book">
+      <span class="ribbon"></span>
+      <article class="page" id="page">
+        <div class="page-top">
+          <div class="eyebrow"><span>未来</span> Night Log</div>
+          <div class="day-wd">${enWeekday(day.day)}</div>
+          <div class="day-md">${enMonthDay(day.day)} · ${entries.length} ${entries.length===1?'entry':'entries'}</div>
+        </div>
+        <div class="entries" id="entries">${rows}</div>
+        <div class="page-foot"><span>Page ${dpage+1} of ${days.length}${days.length>1?' · swipe ↔':''}</span><span class="kanji">未来</span></div>
+      </article>
+      <div class="booknav">
+        <button class="navbtn" id="newer" ${dpage<=0?'disabled':''}>← Newer</button>
+        <div class="bookcount">${enDateShort(day.day)}</div>
+        <button class="navbtn" id="older" ${dpage>=days.length-1?'disabled':''}>Older →</button>
+      </div>
+    </div>`;
+  if(turn){ const pg=$("#page"); pg.classList.add("turning"); pg.addEventListener("animationend",()=>pg.classList.remove("turning"),{once:true}); }
+  else { const es=$("#entries"); if(es) es.scrollTop=prevScroll; }
+  $("#newer").onclick=()=>{ if(dpage>0){dpage--; renderDiary(true);} };
+  $("#older").onclick=()=>{ if(dpage<days.length-1){dpage++; renderDiary(true);} };
+  $("#entries").querySelectorAll('.entry').forEach(btn=> btn.onclick=()=>openModal(entries[+btn.dataset.i]));
+  // swipe left → older day, swipe right → newer day (vertical scrolling in the list is unaffected)
+  const bk=$(".book");
+  if(bk){ let sx=0, sy=0, stt=0;
+    bk.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; sx=t.clientX; sy=t.clientY; stt=Date.now(); }, {passive:true});
+    bk.addEventListener('touchend', e=>{ const t=e.changedTouches[0], dx=t.clientX-sx, dy=t.clientY-sy;
+      if(Date.now()-stt<650 && Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.6){
+        if(dx<0 && dpage<days.length-1){ dpage++; renderDiary(true); }
+        else if(dx>0 && dpage>0){ dpage--; renderDiary(true); }
+      }
+    }, {passive:true});
+  }
+}
+
+// ---------- HEADS ----------
+function gateStates(s){
+  return [
+    {on:s.regime==="pinning", nm:"Regime", dsc:"Stack reads pinning", val:`${cap(s.regime)} · ${f(s.conf,2)}`},
+    {on:s.fade.armed, nm:"Stretch", dsc:`Armed · ${s.fade.arm==='none'?'—':s.fade.arm.replace('_',' ')}`, val:s.fade.dir==='none'?'—':`${cap(s.fade.dir)} fade`},
+    {on:s.fade.reaction, nm:"Turn", dsc:"Last bar turned back", val:s.fade.reaction?"true":"false"},
+    {on:s.fade.runwayOk, nm:"Runway", dsc:"Room to magnet ≥ 0.35σ", val:`${sig(s.fade.runway)}`},
+  ];
+}
+function renderHeads(){
+  const s = liveNow(), gates = gateStates(s), passed = gates.filter(g=>g.on).length;
+  const held = !s.fade.fired;
+  const w = s.wt;
+  const pips = Array.from({length:w.votes.n}, (_,i)=> `<span class="pip ${i < Math.round(w.votes.agree*w.votes.n)?'y':''}"></span>`).join("");
+  const gateHTML = gates.map(g=>`
+    <div class="gate">
+      <div class="mk ${g.on?'on':'off'}">${g.on?'✓':'✕'}</div>
+      <div><div class="gn">${g.nm}</div><div class="gd">${g.dsc}</div></div>
+      <div class="gv"><b>${g.val}</b></div>
+    </div>`).join("");
+
+  $("#p-heads").innerHTML = `
+    <div class="phead"><div><h2>Processor</h2><div class="desc">The decision processor at ${s.t} — the Fade-Lens checklist vs. the Watchtower's reasoning</div></div></div>
+    <div class="heads">
+      <div class="headcard A">
+        <div class="headtop"><div class="nm">Fade Lens<em>lens · 4-gate checklist</em></div>
+          <span class="pill ${held?'grey':'jade'}">${held?'Held':'Fired · '+cap(s.fade.dir)}</span></div>
+        <div class="headsum">${passed} of 4 gates open · all four required to fire paper.${held?` <span style="color:var(--coral)">Blocked by Runway.</span>`:''}</div>
+        ${gateHTML}
+        <div style="margin-top:14px" class="kv"><span>Fade score</span><b style="color:var(--${s.fade.score>=0?'jade':'coral'})">${s.fade.score>=0?'+':''}${f(s.fade.score,2)}</b></div>
+        <div class="kv"><span>Magnet it reverts to</span><b>${f(s.magnet,0)}</b></div>
+        <div class="kv"><span>Break-lens sibling</span><b>${cap(s.brk.state)}${s.brk.cocks?' ·'+s.brk.cocks:''}</b></div>
+      </div>
+
+      <div class="headcard B">
+        <div class="headtop"><div class="nm">Watchtower<em>processor · reasoning${SYS.source.split(' · ')[0]==='native'?' · wt-2':''}</em></div>
+          <span class="pill ${w.agrees?'grey':'lantern'}">${w.agrees?'Agrees with gates':'Stands against gates'}</span></div>
+        <div class="verdict">
+          <span class="big" style="color:var(--${w.fired?'lantern':'ink-dim'})">${w.fired?cap(w.dir).toUpperCase():'STAND DOWN'}</span>
+          ${w.fired?`<span class="mag">${sig(w.mag)} · ${w.horizon}m · [${f(w.range[0],2)}, ${f(w.range[1],2)}]σ</span>`:''}
+        </div>
+        <div class="votes">
+          <div class="pips">${pips}</div>
+          <span class="cap"><b class="mono" style="color:var(--ink)">${(w.votes.agree*100).toFixed(0)}%</b> vote agreement · ${w.votes.n} judged${w.convStated?` · felt ${(w.convStated*100).toFixed(0)}%`:''}</span>
+        </div>
+        <p class="scene">“${w.scene}”</p>
+        <div class="hb-next">${towerNextHTML(w, s.magnet)}</div>
+        <div class="kv"><span>Interest trigger</span><b>${w.interest}</b></div>
+        <div class="kv"><span>Latency</span><b>${f(w.wallS,1)}s</b></div>
+        <div class="kv"><span>Revised on reveal</span><b>${w.revised?'yes':'no'}</b></div>
+      </div>
+    </div>`;
+}
+
+// ================= REPLAY (day scrubber) =================
+// A play/pause + scrub timeline of a past session: the SPX price path with the
+// Watchtower's directional fires plotted where they triggered, each coloured by how it
+// resolved over its own stated horizon — win / loss / scratch. Watchtower-only, shadow:
+// no paper P&L. Restricted to days that carry real Watchtower diary rows (07-06 onward);
+// no historical-API backfill. Reuses the loaded diary rows + the same /api/raw file API.
+const RP = {
+  els:null, days:[], di:0,                 // day list (newest first) + selected index
+  scans:[], fires:[], bars:null, path:null, barsCache:{},
+  t0:0, t1:0, geo:null, dom:null,          // session window (ms) + chart geometry / price domain
+  pos:0, playing:false, speed:1, raf:null, last:0, _rk:null,
+};
+const RP_SPEEDS=[1,2,4];
+const RP_PLAY_MS=26000;                     // wall-clock ms to traverse one full session at 1×
+const RP_ICON_PLAY ='<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+const RP_ICON_PAUSE='<svg viewBox="0 0 24 24"><path d="M7 5h3.4v14H7zM13.6 5H17v14h-3.4z"/></svg>';
+const rpClock = ms => new Date(ms).toLocaleTimeString('en-US',{hour:'numeric', minute:'2-digit', timeZone:PT});
+function rpMeasure(){ const cc=RP.els&&RP.els.chart; if(!cc) return null; const w=cc.clientWidth,h=cc.clientHeight; return (w<80||h<80)?null:{w,h}; }
+function rpGeo(w,h){ const padL=50,padR=14,padT=14,padB=32; return {w,h,x0:padL,x1:w-padR,y0:padT,y1:h-padB}; }
+function rpXT(ms){ const g=RP.geo,f=(ms-RP.t0)/((RP.t1-RP.t0)||1); return g.x0 + Math.max(0,Math.min(1,f))*(g.x1-g.x0); }
+function rpYP(px){ const g=RP.geo,d=RP.dom,f=(d.hi-px)/((d.hi-d.lo)||1); return g.y0 + Math.max(-0.05,Math.min(1.05,f))*(g.y1-g.y0); }
+
+// day list: reuse the normalized diary rows, keep only days with a real Watchtower narrative
+function rpBuildDays(){
+  RP.days = diaryDayGroups()
+    .filter(g => g.entries.some(s => s.wt && s.wt.scene))
+    .map(g => ({ day:g.day, scans:[...g.entries].sort((a,b)=>scanTs(a).localeCompare(scanTs(b))) }));
+}
+// minute bars → forward price path; fall back to the coarser 5-min scan spots
+function rpPricePath(){
+  if(RP.bars && RP.bars.length)
+    return RP.bars.map(b=>({ t:+new Date(b.ts), hi:b.high, lo:b.low, close:b.close }));
+  return RP.scans.map(s=>({ t:+new Date(scanTs(s)), hi:s.spot, lo:s.spot, close:s.spot }));
+}
+function rpPriceAt(ms){
+  const P=RP.path; if(!P||!P.length) return RP.dom?((RP.dom.lo+RP.dom.hi)/2):0;
+  if(ms<=P[0].t) return P[0].close;
+  if(ms>=P[P.length-1].t) return P[P.length-1].close;
+  for(let i=1;i<P.length;i++){ if(P[i].t>=ms){ const a=P[i-1],b=P[i],f=(ms-a.t)/((b.t-a.t)||1); return a.close+(b.close-a.close)*f; } }
+  return P[P.length-1].close;
+}
+function rpScanAtMs(ms){ let cur=RP.scans[0]||null; for(const s of RP.scans){ if(+new Date(scanTs(s))<=ms) cur=s; else break; } return cur; }
+// interpolate a recorded dealer level (magnet/flip/…) between scans at time ms — for the live marker
+function rpLevelAt(key,ms){
+  const S=RP.scans; if(!S||!S.length) return null;
+  let prev=null;
+  for(const s of S){ const v=s[key]; if(v==null||!isFinite(v)) continue; const t=+new Date(scanTs(s));
+    if(t>=ms) return prev==null?v:prev.v+(v-prev.v)*((ms-prev.t)/((t-prev.t)||1));
+    prev={t,v}; }
+  return prev?prev.v:null;
+}
+function rpPriceDomain(){
+  // Anchor the vertical scale on the PRICE PATH; let a level (magnet/flip/wall) stretch
+  // it only if it sits within `band` of the price range — so a far magnet or an OI-fallback
+  // wall clips to an edge chip instead of squashing the price action into a thin strip.
+  let plo=Infinity,phi=-Infinity;
+  for(const p of RP.path){ if(p.lo<plo)plo=p.lo; if(p.hi>phi)phi=p.hi; }
+  if(!isFinite(plo)||!isFinite(phi)) for(const s of RP.scans){ if(s.spot!=null){ plo=Math.min(plo,s.spot); phi=Math.max(phi,s.spot); } }
+  if(!isFinite(plo)||!isFinite(phi)){ plo=0; phi=1; }
+  const span=phi-plo, band=Math.max(span*1.5, phi*0.006);
+  let lo=plo, hi=phi;
+  for(const s of RP.scans) for(const v of [s.magnet,s.flip,s.callWall,s.putWall]){
+    if(v!=null&&isFinite(v)&&v>=plo-band&&v<=phi+band){ if(v<lo)lo=v; if(v>hi)hi=v; }
+  }
+  const pad=(hi-lo)*0.08 || 5; return {lo:lo-pad, hi:hi+pad};
+}
+// Outcomes come from the SERVER (/api/replay), graded by the canonical resolver so the
+// tab agrees with the paper ledger exactly. If that endpoint is unreachable (older server),
+// fall back to the same rule client-side: 0.30σ target-before-stop, ≤2h and to the close.
+const RP_TARGET=0.30, RP_STOP=0.30, RP_HOLD_MIN=120;   // mirrors reversion_lens PAPER_* (fallback only)
+async function rpFetchGraded(day){
+  try{
+    const r=await fetch(`/api/replay?day=${day}`,{cache:'no-store'}); if(!r.ok) return null;
+    const j=await r.json(); if(!j||!Array.isArray(j.fires)) return null;
+    return { target:j.target_sigma||RP_TARGET, stop:j.stop_sigma||RP_STOP,
+      byTs:new Map(j.fires.map(fr=>[fr.ts,{ outcome:fr.outcome, ttr_min:fr.ttr_min,
+        mfe:fr.mfe_sigma, mae:fr.mae_sigma, move60:fr.move_60m }])) };
+  }catch(e){ return null; }
+}
+const RP_LOCK_MIN=60;   // the follow-through mark that decides "leaned right / wrong" (move_60m)
+// one plot-ready fire: authoritative outcome/excursions `g` when present, else a client walk
+function rpMakeFire(scan, g, tgt, stp){
+  const dir=scan.wt.dir, sign=dir==='call'?1:dir==='put'?-1:0;
+  const entry=scan.spot, sigma=scan.sigma||1, t=+new Date(scanTs(scan));
+  const target=tgt||RP_TARGET, stop=stp||RP_STOP, winEnd=Math.min(t+RP_HOLD_MIN*60000, RP.t1);
+  const lockT=Math.min(t+RP_LOCK_MIN*60000, RP.t1);
+  let outcome='scratch', mfe=0, mae=0, move60=null;
+  if(g){ outcome=g.outcome; mfe=g.mfe??0; mae=g.mae??0; move60=(g.move60==null?null:g.move60); }
+  else if(sign) for(const p of RP.path){          // client fallback: excursions + target-before-stop
+    if(p.t<=t) continue; if(p.t>winEnd) break;
+    const fav=sign*((sign>0?p.hi:p.lo)-entry)/sigma, adv=sign*((sign>0?p.lo:p.hi)-entry)/sigma;
+    if(fav>mfe)mfe=fav; if(adv<mae)mae=adv;
+    if(outcome==='scratch'){
+      const tgtHit=sign>0?p.hi>=entry+target*sigma:p.lo<=entry-target*sigma;
+      const stpHit=sign>0?p.lo<=entry-stop*sigma:p.hi>=entry+stop*sigma;
+      if(tgtHit&&stpHit) outcome='loss'; else if(tgtHit) outcome='win'; else if(stpHit) outcome='loss';
+    }
+  }
+  if(move60==null && sign) move60=+(sign*(rpPriceAt(lockT)-entry)/sigma).toFixed(3);   // 60-min follow-through
+  return { scan, dir, sign, entry, sigma, t, lockT, outcome,
+    mfe:+(+mfe).toFixed(2), mae:+(+mae).toFixed(2), move60,
+    mag:scan.wt.mag, horMin:scan.wt.horizon||60 };
+}
+// headline verdict — did price go the way the tower called, by the 60-min mark?
+// (win=leaned right/green, loss=leaned wrong/red, scratch=too flat to call/grey)
+function rpVerdict(fr){
+  const mv=fr.move60;
+  if(mv!=null) return mv>=0.05?'win':mv<=-0.05?'loss':'scratch';
+  if(fr.outcome==='win'||fr.outcome==='loss') return fr.outcome;
+  const net=(fr.mfe||0)+(fr.mae||0); return net>=0.05?'win':net<=-0.05?'loss':'scratch';
+}
+function rpAssembleFires(graded){
+  if(graded && graded.byTs.size){
+    const byTs=new Map(RP.scans.filter(s=>s.ts).map(s=>[s.ts,s]));
+    const out=[];
+    for(const [ts,g] of graded.byTs){
+      const scan=byTs.get(ts) || rpScanAtMs(+new Date(ts));
+      if(scan && scan.wt && scan.wt.dir) out.push(rpMakeFire(scan, g, graded.target, graded.stop));
+    }
+    return out.sort((a,b)=>a.t-b.t);
+  }
+  return RP.scans.filter(s=>s.wt&&s.wt.fired&&s.wt.dir).map(s=>rpMakeFire(s, null));
+}
+
+function rpBuild(){
+  const m=rpMeasure(); if(!m) return;
+  RP.geo=rpGeo(m.w,m.h); RP.dom=rpPriceDomain();
+  const g=RP.geo,d=RP.dom;
+  const grid=[],yLab=[];
+  for(let i=0;i<=4;i++){ const pv=d.lo+(d.hi-d.lo)*i/4, y=rpYP(pv);
+    grid.push(`<line class="rp-grid" x1="${g.x0}" y1="${y.toFixed(1)}" x2="${g.x1}" y2="${y.toFixed(1)}"/>`);
+    yLab.push(`<text class="rp-axis-p" x="${g.x0-6}" y="${(y+3).toFixed(1)}" text-anchor="end">${Math.round(pv)}</text>`);
+  }
+  const tTick=[];
+  for(let ms=RP.t0; ms<=RP.t1+1; ms+=90*60000){ const x=rpXT(ms);
+    tTick.push(`<line class="rp-grid" x1="${x.toFixed(1)}" y1="${g.y0}" x2="${x.toFixed(1)}" y2="${g.y1}" opacity="0.5"/>`);
+    tTick.push(`<text class="rp-axis-t" x="${x.toFixed(1)}" y="${(g.y1+14).toFixed(1)}" text-anchor="middle">${rpClock(ms)}</text>`);
+  }
+  // A dealer level drawn as a per-scan polyline (it MOVES through the day, tracks the
+  // scrub) plus a name at one end; if its latest value is off-scale, an edge chip says so.
+  const level=(key,cls,label,cvar,side)=>{
+    const inb=RP.scans.filter(s=>s[key]!=null&&isFinite(s[key])&&s[key]>=d.lo&&s[key]<=d.hi);
+    const vals=RP.scans.map(s=>s[key]).filter(v=>v!=null&&isFinite(v));
+    const last=vals.length?vals[vals.length-1]:null;
+    let out='';
+    if(inb.length>1){
+      const pts=inb.map(s=>`${rpXT(+new Date(scanTs(s))).toFixed(1)},${rpYP(s[key]).toFixed(1)}`).join(' ');
+      out+=`<polyline class="rp-lvl ${cls} fut" points="${pts}" style="stroke:var(${cvar})"/>`;
+      out+=`<polyline class="rp-lvl ${cls} pst" points="${pts}" style="stroke:var(${cvar})" clip-path="url(#rp-clip)"/>`;
+      const lp=side==='right'?inb[inb.length-1]:inb[0];
+      const lx=(side==='right'?Math.min(rpXT(+new Date(scanTs(lp))),g.x1-4):rpXT(+new Date(scanTs(lp)))+5).toFixed(1);
+      out+=`<text class="rp-lvllab" x="${lx}" y="${(rpYP(lp[key])-5).toFixed(1)}" text-anchor="${side==='right'?'end':'start'}" style="fill:var(${cvar})">${label}</text>`;
+    }
+    if(last!=null && (last<d.lo||last>d.hi)){
+      const y=last>d.hi?g.y0+11:g.y1-4, arr=last>d.hi?'↑':'↓';
+      out+=`<text class="rp-wallchip" x="${(g.x1-2).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" style="fill:var(${cvar});opacity:.8">${label} ${arr} ${Math.round(last)}</text>`;
+    }
+    return out; };
+  const dstr=RP.path.map((p,i)=>`${i?'L':'M'}${rpXT(p.t).toFixed(1)} ${rpYP(p.close).toFixed(1)}`).join(' ');
+  RP.fireByTs=new Map();
+  RP.fires.forEach(fr=>{ fr.xF=rpXT(fr.t); fr.yEntry=rpYP(fr.entry);
+    fr.xLock=rpXT(fr.lockT); fr.yLock=rpYP(rpPriceAt(fr.lockT));
+    fr.verdict=rpVerdict(fr); if(fr.scan&&fr.scan.ts) RP.fireByTs.set(fr.scan.ts, fr); });
+  const fireSVG=RP.fires.map((fr,k)=>{
+    const arr=fr.dir==='call'?'▲':'▼', ay=fr.dir==='call'?fr.yEntry-9:fr.yEntry+17;
+    return `<g class="rp-fire" data-i="${k}">
+      <path class="rp-conn" d="M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)}"/>
+      <circle class="rp-end" cx="${fr.xF.toFixed(1)}" cy="${fr.yEntry.toFixed(1)}" r="3"/>
+      <circle class="rp-arrow" cx="${fr.xF.toFixed(1)}" cy="${fr.yEntry.toFixed(1)}" r="3.8"/>
+      <text class="rp-arrow" x="${fr.xF.toFixed(1)}" y="${ay.toFixed(1)}" text-anchor="middle" style="font-size:14px">${arr}</text>
+    </g>`; }).join('');
+  // gravity heat zone — a soft band around the recorded magnet (± ~0.22σ), revealing with the playhead
+  const HB=RP.scans.filter(s=>s.magnet!=null&&isFinite(s.magnet)&&s.magnet>=d.lo&&s.magnet<=d.hi&&s.sigma);
+  let heat='';
+  if(HB.length>1){
+    const bw=s=>0.22*(s.sigma||1);
+    const top=HB.map(s=>`${rpXT(+new Date(scanTs(s))).toFixed(1)},${rpYP(s.magnet+bw(s)).toFixed(1)}`);
+    const bot=HB.slice().reverse().map(s=>`${rpXT(+new Date(scanTs(s))).toFixed(1)},${rpYP(s.magnet-bw(s)).toFixed(1)}`);
+    const poly=`${top.join(' ')} ${bot.join(' ')}`;
+    heat=`<polygon class="rp-heat fut" points="${poly}"/><polygon class="rp-heat pst" points="${poly}" clip-path="url(#rp-clip)"/>`;
+  }
+  RP.els.chart.innerHTML = `<svg viewBox="0 0 ${m.w} ${m.h}" preserveAspectRatio="none">
+    <clipPath id="rp-clip"><rect id="rp-clip-r" x="${g.x0}" y="0" width="0" height="${m.h}"/></clipPath>
+    <g>${grid.join('')}${tTick.join('')}</g><g>${yLab.join('')}</g>
+    ${heat}
+    <g>${level('magnet','magnet','magnet','--lantern','left')}${level('flip','flip','flip','--ink-dim','left')}${level('callWall','wall','CALL WALL','--jade','right')}${level('putWall','wall','PUT WALL','--coral','right')}</g>
+    <path class="rp-future" d="${dstr}"/>
+    <path class="rp-past" d="${dstr}" clip-path="url(#rp-clip)"/>
+    <g id="rp-fires">${fireSVG}</g>
+    <line class="rp-head" id="rp-head" x1="${g.x0}" y1="${g.y0}" x2="${g.x0}" y2="${g.y1}"/>
+    <circle class="rp-lvl-mk flip" id="rp-mk-flip" r="3" cx="-9" cy="-9"/>
+    <circle class="rp-lvl-mk magnet" id="rp-mk-magnet" r="4" cx="-9" cy="-9"/>
+    <text class="rp-magval" id="rp-magval" text-anchor="end"></text>
+    <circle class="rp-dot" id="rp-dot" r="4.5" cx="${g.x0}" cy="${g.y0}"/></svg>`;
+  RP.els.clip=RP.els.chart.querySelector('#rp-clip-r');
+  RP.els.head=RP.els.chart.querySelector('#rp-head');
+  RP.els.dot =RP.els.chart.querySelector('#rp-dot');
+  RP.els.mkMagnet=RP.els.chart.querySelector('#rp-mk-magnet');
+  RP.els.mkFlip=RP.els.chart.querySelector('#rp-mk-flip');
+  RP.els.magVal=RP.els.chart.querySelector('#rp-magval');
+  RP.els.fireEls=[...RP.els.chart.querySelectorAll('.rp-fire')].map(g=>({ g, conn:g.querySelector('.rp-conn'), end:g.querySelector('.rp-end') }));
+  RP._rk=null;
+}
+function rpPaint(){
+  if(!RP.geo||!RP.els||!RP.els.clip) return;
+  const now=RP.t0+RP.pos*(RP.t1-RP.t0), xNow=rpXT(now);
+  RP.els.clip.setAttribute('width', Math.max(0,xNow-RP.geo.x0).toFixed(1));
+  RP.els.head.setAttribute('x1',xNow.toFixed(1)); RP.els.head.setAttribute('x2',xNow.toFixed(1));
+  RP.els.dot.setAttribute('cx',xNow.toFixed(1)); RP.els.dot.setAttribute('cy',rpYP(rpPriceAt(now)).toFixed(1));
+  // live dealer levels at the playhead — a moving marker on the magnet/flip + the current magnet value
+  if(RP.els.mkMagnet){
+    const mag=rpLevelAt('magnet',now);
+    if(mag!=null && mag>=RP.dom.lo && mag<=RP.dom.hi){ const my=rpYP(mag);
+      RP.els.mkMagnet.setAttribute('cx',xNow.toFixed(1)); RP.els.mkMagnet.setAttribute('cy',my.toFixed(1));
+      RP.els.magVal.setAttribute('x',(xNow-7).toFixed(1)); RP.els.magVal.setAttribute('y',(my-6).toFixed(1)); RP.els.magVal.textContent='magnet '+Math.round(mag);
+    } else { RP.els.mkMagnet.setAttribute('cx','-9'); RP.els.magVal.textContent=''; }
+    const fl=rpLevelAt('flip',now);
+    if(fl!=null && fl>=RP.dom.lo && fl<=RP.dom.hi){ RP.els.mkFlip.setAttribute('cx',xNow.toFixed(1)); RP.els.mkFlip.setAttribute('cy',rpYP(fl).toFixed(1)); }
+    else RP.els.mkFlip.setAttribute('cx','-9');
+  }
+  let win=0,loss=0,scr=0,live=0;
+  RP.fires.forEach((fr,k)=>{ const ref=RP.els.fireEls[k]; if(!ref) return; let cls='rp-fire';
+    if(now>=fr.t && now<fr.lockT){                 // live: connector traces the follow-through so far
+      cls+=' on st-live'; live++;
+      const cx=rpXT(now), cy=rpYP(rpPriceAt(now));
+      if(ref.conn) ref.conn.setAttribute('d',`M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${cx.toFixed(1)} ${cy.toFixed(1)}`);
+      if(ref.end){ ref.end.setAttribute('cx',cx.toFixed(1)); ref.end.setAttribute('cy',cy.toFixed(1)); }
+    } else if(now>=fr.lockT){                       // resolved: lock to the 60-min follow-through + verdict
+      cls+=' on st-'+fr.verdict; if(fr.verdict==='win')win++; else if(fr.verdict==='loss')loss++; else scr++;
+      if(ref.conn) ref.conn.setAttribute('d',`M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${fr.xLock.toFixed(1)} ${fr.yLock.toFixed(1)}`);
+      if(ref.end){ ref.end.setAttribute('cx',fr.xLock.toFixed(1)); ref.end.setAttribute('cy',fr.yLock.toFixed(1)); }
+    }
+    if(ref.g.getAttribute('class')!==cls) ref.g.setAttribute('class',cls);
+  });
+  if(RP.els.scrub && document.activeElement!==RP.els.scrub) RP.els.scrub.value=Math.round(RP.pos*1000);
+  RP.els.time.textContent=rpClock(now);
+  rpReadout(now,{win,loss,scr,live});
+}
+// The direction/magnitude layers that feed the Watchtower, each reduced to an up/down/flat vote
+// (verified rules; vanna/charm excluded — their sign is uncalibrated). Break Lens only
+// appears when it's actually active. This is the "residual stream at this scan".
+const RP_ARR={up:'▲',down:'▼',flat:'–',none:'·'};
+const rpDot=h=>`color-mix(in srgb, var(${h}) 88%, var(--ink-dim))`;   // hue, gently desaturated
+function rpLayerVotes(s){
+  const dv=(x,p,n)=> x==null?'none': x>p?'up': x<n?'down':'flat';
+  const V=[];
+  const dmag=(s.magnet!=null&&s.spot)?(s.magnet-s.spot)/(s.sigma||1):null;
+  V.push({label:'Magnet',dot:rpDot('--l-grav'),dir:dv(dmag,0.05,-0.05),act:dmag!=null,title:'Gravity — which way the dealer magnet pulls price'});
+  const soft=s.motion&&s.motion.soft;
+  V.push({label:'Drift',dot:rpDot('--l-motion'),dir:soft==='up'?'up':soft==='down'?'down':(s.motion?'flat':'none'),act:!!s.motion,title:'Motion — the side the dealer map is drifting toward'});
+  const tilt=s.lob&&s.lob.tilt;
+  V.push({label:'Flow',dot:rpDot('--l-lob'),dir:dv(tilt,0.02,-0.02),act:tilt!=null,title:'Order-book flow — buyers vs sellers pressing the tape'});
+  // Speedometer — a magnitude layer: direction only from a real detected jump, else the semivar tilt
+  if(s.spd){
+    const sp=s.spd;
+    const dir = sp.jsign==='up'?'up' : sp.jsign==='down'?'down'
+      : sp.down==null?'flat' : sp.down>0.6?'down' : sp.down<0.4?'up' : 'flat';
+    V.push({label:'Pace',dot:rpDot('--l-speed'),dir,act:true,
+      title:'Speedometer — what the tape actually did'+(sp.pace!=null?` · rv_pace ${f(sp.pace,2)}×`:'')
+        +(sp.jsign?` · jump ${sp.jsign}${sp.jz!=null?` (z ${f(sp.jz,1)})`:''}`:(sp.down!=null?` · downside share ${f(sp.down,2)}`:''))});
+  }
+  // Gamma Roll — only speaks on divergence days: where the surviving wall sits vs today's
+  if(s.groll && s.groll.div){
+    const gr=s.groll;
+    V.push({label:'Roll',dot:rpDot('--l-roll'),dir:gr.dir==='far_above'?'up':gr.dir==='far_below'?'down':'flat',act:true,
+      title:'Gamma Roll — 0DTE wall vs surviving wall'+(gr.zw!=null&&gr.fw!=null?` · today ${f(gr.zw,0)} vs far ${f(gr.fw,0)}`:'')});
+  }
+  // Event Lens — event days only; context, never a direction
+  if(s.evl){
+    const ev=s.evl;
+    V.push({label:'Event'+(ev.kind?' · '+ev.kind:'')+(ev.ratio!=null?' '+f(ev.ratio,2)+'×':''),
+      dot:rpDot('--l-event'),dir:'none',act:true,
+      title:'Event Lens — realized move vs the pre-paid move'+(ev.phase?' · '+ev.phase.replace('_',' '):'')});
+  }
+  const fd=s.fade&&s.fade.dir;
+  V.push({label:'Fade',dot:rpDot('--l-fade'),dir:fd==='call'?'up':fd==='put'?'down':'flat',act:!!(s.fade&&(s.fade.armed||s.fade.fired)),title:'Fade Lens (Head A) — the 4-gate mean-reversion checklist'});
+  if(s.brk&&((s.brk.state&&s.brk.state!=='idle')||(s.brk.dir&&s.brk.dir!=='none'))){
+    const bd=s.brk.dir;
+    V.push({label:'Break',dot:rpDot('--l-break'),dir:bd==='call'?'up':bd==='put'?'down':'flat',act:true,title:'Break Lens (Head C) — escape / breakout risk · '+(s.brk.state||'active')});
+  }
+  return V;
+}
+// Every layer's read at the current slice → the residual-stream snapshot the console draws (top→bottom,
+// lenses then sensory). Directional layers get an up/down/flat arrow + an agree badge vs the Watchtower;
+// context layers (Base, Range Ruler, Event Lens) carry a plain reading with no arrow. Null data = "not recorded".
+function rpStream(s){
+  const hb=(s.wt&&s.wt.fired&&s.wt.dir)?(s.wt.dir==='call'?'up':'down'):null;
+  const dv=(x,p,n)=> x==null?'none': x>p?'up': x<n?'down':'flat';
+  const rows=[];
+  const push=(name,tier,dir,thought,has)=>{
+    const directional=(dir==='up'||dir==='down');
+    rows.push({name,tier,dir:dir||'none',thought,has:has!==false,
+      agree:(has!==false&&directional&&hb)?(dir===hb):null});
+  };
+  // — lenses (nearest the processor) —
+  const bactive=s.brk&&((s.brk.state&&s.brk.state!=='idle')||(s.brk.dir&&s.brk.dir!=='none'));
+  const bd=s.brk&&s.brk.dir;
+  push('Break Lens','lens', bactive?(bd==='call'?'up':bd==='put'?'down':'flat'):'flat',
+    bactive?`${s.brk.state} · escape ${bd==='call'?'up':'down'}`:'idle · contained', !!s.brk);
+  const fd=s.fade&&s.fade.dir;
+  push('Fade Lens','lens', fd==='call'?'up':fd==='put'?'down':'flat',
+    (s.fade&&(s.fade.armed||s.fade.fired))?`fade ${fd==='call'?'up':'down'}${s.fade.fired?' · fired':''}`:'no fade armed', !!s.fade);
+  // — sensory (top → base) —
+  const ev=s.evl;
+  push('Event Lens','sensory','none',
+    ev?(ev.kind?`${ev.kind}${ev.ratio!=null?` · ratio ${f(ev.ratio,2)}`:''}`:'no event today'):'not recorded this day', !!ev);
+  const gr=s.groll;
+  const grDir=gr&&gr.div?(gr.dir==='far_above'?'up':gr.dir==='far_below'?'down':'flat'):'flat';   // divergence_dir = far_above/far_below
+  push('Gamma Roll','sensory', grDir,
+    gr?(gr.div?`pin may roll ${grDir==='up'?'up':grDir==='down'?'down':'sideways'}${gr.zw!=null&&gr.fw!=null?` (${f(gr.zw,0)}→${f(gr.fw,0)})`:''}`:'walls aligned'):'not recorded this day', !!gr);
+  const rr=s.rr;
+  push('Range Ruler','sensory','none',
+    rr&&rr.cons!=null?`${Math.round(rr.cons*100)}% of ±${f(rr.emo??rr.em,0)}pt budget used`:'not recorded this day', !!(rr&&rr.cons!=null));
+  const sp=s.spd;
+  const spDir=sp?(sp.jsign==='up'?'up':sp.jsign==='down'?'down':sp.down==null?'flat':sp.down>0.6?'down':sp.down<0.4?'up':'flat'):'none';   // jump-sign first, else semivar down-share
+  push('Speedometer','sensory', spDir,
+    sp?(sp.jsign?`jolt ${sp.jsign==='up'?'↑':'↓'}${sp.jz!=null?` · z ${f(sp.jz,1)}`:''}`:`${sp.pace!=null?`pace ${f(sp.pace,1)}×`:'running'}${sp.down!=null?(sp.down>0.6?' · downside heavy':sp.down<0.4?' · upside tilt':''):''}`):'not recorded this day', !!sp);
+  const tilt=s.lob&&s.lob.tilt;
+  push('Flow','sensory', dv(tilt,0.02,-0.02),
+    tilt==null?'no book read':Math.abs(tilt)<0.02?'balanced tape':`${tilt>0?'buyers':'sellers'} leaning`, tilt!=null);
+  const soft=s.motion&&s.motion.soft;
+  push('Motion','sensory', soft==='up'?'up':soft==='down'?'down':(s.motion?'flat':'none'),
+    s.motion?(soft==='up'?'path opens up':soft==='down'?'path opens down':'map holding'):'no read', !!s.motion);
+  const dmag=(s.magnet!=null&&s.spot)?(s.magnet-s.spot)/(s.sigma||1):null;
+  push('Gravity','sensory', dv(dmag,0.05,-0.05),
+    dmag==null?'no read':Math.abs(dmag)<0.05?`at the magnet (${f(s.magnet,0)})`:`pull ${dmag>0?'up':'down'} → ${f(s.magnet,0)}`, dmag!=null);
+  push('Base map','sensory','none',
+    s.spot!=null?`spot ${f(s.spot,0)} · σ ${f(s.sigma,0)}${s.regime?` · ${s.regime}`:''}`:'—', s.spot!=null);
+  return rows;
+}
+function rpReadout(now,t){
+  const s=rpScanAtMs(now)||{};
+  const curFr=s.ts&&RP.fireByTs?RP.fireByTs.get(s.ts):null;
+  const curState=curFr?(now>=curFr.lockT?curFr.verdict:'live'):'-';
+  const key=(s.ts||'-')+`|${t.win}|${t.loss}|${t.scr}|${t.live}|${curState}`;
+  if(key===RP._rk) return; RP._rk=key;
+  const w=s.wt;
+  const hbDir=(w&&w.fired&&w.dir)?(w.dir==='call'?'up':'down'):null;
+  // --- the Watchtower head (the decision the stream feeds into) ---
+  const scene=(w&&w.scene)?w.scene:'The watch is quiet — no read at this moment.';
+  let call;
+  if(w&&w.fired&&w.dir){
+    const conv=w.conv!=null?` · ${Math.round(w.conv*100)}% sure`:'';
+    const vs=w.agrees===false?` <span class="rp-vs">overrides Fade</span>`:'';
+    call=`<span class="who">🗼 Watchtower</span> · <span class="dir">${w.dir==='call'?'UP ▲':'DOWN ▼'}</span> · ${sig(w.mag)}${conv}${vs}`;
+  } else call=`<span class="who">🗼 Watchtower</span> · <span style="color:var(--ink-dim)">stands aside</span>`;
+  const lab={win:'right',loss:'wrong',scratch:'flat',live:'live'}[curState];
+  const verdict=curFr?`<span class="rp-wt-verdict ${curState}">${lab}</span>`:'';
+  const dec=t.win+t.loss;
+  RP.els.wthead.innerHTML=
+    `<i class="rp-wt-mark"></i>`+
+    `<div class="rp-wt-main"><div class="rp-wt-call">${call}</div><div class="rp-wt-scene">“${scene}”</div></div>`+
+    `<div class="rp-wt-side">${verdict}<span class="rp-wt-rec">today ${t.win}–${t.loss}${dec?` · ${Math.round(100*t.win/dec)}%`:''}</span></div>`;
+  // --- the layer stream + how it aligned ---
+  const stream=rpStream(s);
+  RP.els.stream.innerHTML=stream.map(r=>{
+    const badge=r.agree===true?`<span class="rp-lbadge y">✓</span>`:r.agree===false?`<span class="rp-lbadge n">·</span>`:`<span class="rp-lbadge"></span>`;
+    return `<div class="rp-cell${r.agree===true?' agree':''}${!r.has?' nodata':''}">`+
+      `<div class="rp-cell-top"><i class="rp-lmark ${r.tier}"></i><span class="rp-lname">${r.name}</span>`+
+      `<span class="rp-larr ${r.dir}">${RP_ARR[r.dir]}</span>${badge}</div>`+
+      `<div class="rp-lthought">${r.thought}</div></div>`;
+  }).join('');
+  const dirs=stream.filter(r=>r.has&&(r.dir==='up'||r.dir==='down'));
+  const up=dirs.filter(r=>r.dir==='up').length, down=dirs.filter(r=>r.dir==='down').length;
+  const tally=`<span class="up">${up}▲</span> / <span class="dn">${down}▼</span>`;
+  if(hbDir){
+    const withMaj=hbDir==='up'?up>=down:down>=up;
+    RP.els.consensus.innerHTML=`Stack leans ${tally} — the Watchtower went <b>${hbDir==='up'?'UP':'DOWN'}</b>, `+
+      (withMaj?`with the stack.`:`<b style="color:var(--coral)">against the stack.</b>`);
+  } else RP.els.consensus.innerHTML=`Stack leans ${tally} — the Watchtower stood aside.`;
+}
+function rpSyncPlayBtn(){ if(RP.els&&RP.els.play){ RP.els.play.innerHTML=RP.playing?RP_ICON_PAUSE:RP_ICON_PLAY; RP.els.play.setAttribute('aria-label',RP.playing?'Pause':'Play'); } }
+function rpFrame(ts){
+  if(!RP.playing){ RP.raf=null; return; }
+  if(!RP.last) RP.last=ts;
+  RP.pos += (ts-RP.last)/(RP_PLAY_MS/RP.speed); RP.last=ts;
+  if(RP.pos>=1){ RP.pos=1; RP.playing=false; rpSyncPlayBtn(); }
+  rpPaint();
+  RP.raf = RP.playing ? requestAnimationFrame(rpFrame) : null;
+}
+function rpTogglePlay(){ if(!RP.days.length) return; RP.playing=!RP.playing; if(RP.playing){ if(RP.pos>=1) RP.pos=0; RP.last=0; RP.raf=requestAnimationFrame(rpFrame); } rpSyncPlayBtn(); }
+function rpCycleSpeed(){ RP.speed=RP_SPEEDS[(RP_SPEEDS.indexOf(RP.speed)+1)%RP_SPEEDS.length]; RP.els.speed.textContent=RP.speed+'×'; }
+function rpUpdateDayNav(){ const D0=RP.days[RP.di]; if(!D0) return;
+  RP.els.dayLabel.innerHTML=`${enWeekday(D0.day)}<small>${enMonthDay(D0.day)} · ${RP.di+1}/${RP.days.length}</small>`;
+  RP.els.newer.disabled=RP.di<=0; RP.els.older.disabled=RP.di>=RP.days.length-1; }
+async function rpFetchBars(day){
+  if(RP.barsCache[day]!==undefined) return RP.barsCache[day];
+  try{ const res=await fetch(`/api/raw/file?root=state&path=reversion/bars/${day}-SPX.json&limit=1000`,{cache:'no-store'});
+    const d=await res.json(); RP.barsCache[day]=(d&&d.kind==='json'&&Array.isArray(d.data))?d.data:null; }
+  catch(e){ RP.barsCache[day]=null; }
+  return RP.barsCache[day];
+}
+async function rpLoadDay(di){
+  if(!RP.days.length) return;
+  RP.di=Math.max(0,Math.min(RP.days.length-1,di));
+  const D0=RP.days[RP.di];
+  RP.scans=D0.scans;
+  RP.t0=+new Date(D0.day+'T09:30:00-04:00'); RP.t1=+new Date(D0.day+'T16:00:00-04:00');
+  RP.playing=false; RP.pos=0; RP.last=0; rpSyncPlayBtn(); rpUpdateDayNav();
+  RP.bars=await rpFetchBars(D0.day);
+  if(RP.days[RP.di]!==D0) return;            // day changed while awaiting — abort this load
+  RP.path=rpPricePath();
+  const graded=await rpFetchGraded(D0.day);
+  if(RP.days[RP.di]!==D0) return;
+  RP.fires=rpAssembleFires(graded);
+  rpBuild(); rpPaint();
+}
+function rpEnsureDom(){
+  if(RP.els) return;
+  const p=document.getElementById('p-replay');
+  p.innerHTML=`
+    <div class="phead">
+      <div><h2>Replay</h2><div class="desc">How each Watchtower call played out · Pacific time</div></div>
+      <div class="rp-head-nav">
+        <button class="rp-daybtn" id="rp-newer" title="Newer day">‹</button>
+        <div class="rp-daylabel" id="rp-daylabel">—</div>
+        <button class="rp-daybtn" id="rp-older" title="Older day">›</button>
+      </div>
+    </div>
+    <div class="chartcard" id="rp-chart"></div>
+    <div class="rp-controls">
+      <button class="rp-play" id="rp-play" aria-label="Play">${RP_ICON_PLAY}</button>
+      <button class="rp-speed" id="rp-speed">1×</button>
+      <input class="rp-scrub" id="rp-scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub time"/>
+      <div class="rp-time" id="rp-time">—</div>
+    </div>
+    <div class="rp-console">
+      <div class="rp-wt-head" id="rp-wt-head"></div>
+      <div class="rp-consensus" id="rp-consensus"></div>
+      <div class="rp-stream" id="rp-stream"></div>
+    </div>
+    <div class="rp-legend">
+      <span class="k">the stack now → 🗼 the Watchtower's call · ✓ = layer backs it · ▲up ▼down –flat ·context</span>
+      <span class="k">markers +1h:</span>
+      <span><i style="background:var(--jade)"></i>right</span>
+      <span><i style="background:var(--coral)"></i>wrong</span>
+      <span><i style="background:var(--lantern)"></i>live</span>
+    </div>`;
+  RP.els={ chart:p.querySelector('#rp-chart'), play:p.querySelector('#rp-play'), speed:p.querySelector('#rp-speed'),
+    scrub:p.querySelector('#rp-scrub'), time:p.querySelector('#rp-time'),
+    wthead:p.querySelector('#rp-wt-head'), consensus:p.querySelector('#rp-consensus'), stream:p.querySelector('#rp-stream'),
+    dayLabel:p.querySelector('#rp-daylabel'), newer:p.querySelector('#rp-newer'), older:p.querySelector('#rp-older') };
+  RP.els.play.onclick=rpTogglePlay;
+  RP.els.speed.onclick=rpCycleSpeed;
+  RP.els.scrub.oninput=()=>{ RP.playing=false; rpSyncPlayBtn(); RP.pos=(+RP.els.scrub.value)/1000; rpPaint(); };
+  RP.els.newer.onclick=()=>{ if(RP.di>0) rpLoadDay(RP.di-1); };
+  RP.els.older.onclick=()=>{ if(RP.di<RP.days.length-1) rpLoadDay(RP.di+1); };
+  let rt=null; const ro=new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(RP.path){ rpBuild(); rpPaint(); } },140); });
+  ro.observe(p);
+}
+function rpEmpty(){ RP.els.chart.innerHTML=`<div class="rp-empty">No recorded sessions with Watchtower data yet.</div>`;
+  RP.els.dayLabel.textContent='—'; RP.els.time.textContent='—';
+  RP.els.wthead.innerHTML=''; RP.els.consensus.innerHTML=''; RP.els.stream.innerHTML=''; }
+// (re)build the day list, preserving the selected day across refreshes
+function rpSyncDays(reload){
+  const prev=RP.days[RP.di]&&RP.days[RP.di].day, wasEmpty=!RP.days.length;
+  rpBuildDays();
+  if(!RP.days.length){ rpEmpty(); return; }
+  let di=0; if(prev){ const j=RP.days.findIndex(d=>d.day===prev); if(j>=0) di=j; }
+  RP.di=di;
+  if(reload||wasEmpty) rpLoadDay(di); else rpUpdateDayNav();
+}
+function initReplay(){ rpEnsureDom(); rpSyncDays(true); }
+
+// ---------- tabs ----------
+function switchTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===name));
+  document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active", p.dataset.panel===name));
+  if(name==='replay'){ if(!RP.els) initReplay(); else requestAnimationFrame(()=>{ if(RP.path){ rpBuild(); rpPaint(); } }); }
+  if(name==='map') requestAnimationFrame(()=>{ buildMap(); paintMap(); });
+}
+$("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b) switchTab(b.dataset.tab); });
+
+// ---------- boot ----------
+renderLayers(); renderDiary(false); renderHeads(); startLive();
+const _modal=document.getElementById('modal');
+_modal.addEventListener('click', e=>{ if(e.target===_modal) closeModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+</script>
+</body>
+</html>

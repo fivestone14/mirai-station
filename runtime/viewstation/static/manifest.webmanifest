@@ -1,0 +1,13 @@
+{
+  "name": "Mirai Viewstation",
+  "short_name": "Mirai",
+  "description": "Live under-the-hood view of the Mirai Awakening trading brain.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0a0e14",
+  "theme_color": "#0a0e14",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

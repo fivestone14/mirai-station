@@ -1,0 +1,596 @@
+[
+ {
+  "day": "2026-06-25",
+  "time": "14:07",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "call",
+   "magnitude_sigma": 0.45,
+   "range_sigma": [
+    -0.15,
+    0.75
+   ],
+   "horizon_min": 90,
+   "conviction_stated": 0.6,
+   "scene": "Positive gamma pins spot toward the call wall/magnet 0.77\u03c3 overhead while the put wall 0.5\u03c3 below floors downside; flat gap, near-zero VWAP stretch, a turned-back last bar, and a near-exhausted daily range all argue for a late-session drift up into the pin rather than a breakout.",
+   "would_change_mind": "Live flow confirming aggressive selling into the bid, vwap_stretch expanding meaningfully negative, or a break through the put wall would flip this from a pin-drift-up thesis to a breakdown.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 56.2,
+  "gates_outcome": "scratch",
+  "tower_outcome": "scratch",
+  "realized_move60": -0.023759433211143162
+ },
+ {
+  "day": "2026-06-25",
+  "time": "15:05",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "call",
+   "magnitude_sigma": 0.35,
+   "range_sigma": [
+    -0.15,
+    0.6
+   ],
+   "horizon_min": 50,
+   "conviction_stated": 0.58,
+   "scene": "Positive gamma pins spot between put wall (-0.46\u03c3) and call-wall/magnet (+0.78\u03c3); compressed range and modest downside VWAP stretch favor a late-day grind up toward the magnet rather than a breakdown.",
+   "would_change_mind": "Aggressive live put-side flow, a break below the -0.46\u03c3 put wall, or VWAP stretch expanding sharply negative would flip this from pin-drift-up to breakdown.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 29.7,
+  "tower_outcome": "scratch",
+  "realized_move60": -0.05885961155963
+ },
+ {
+  "day": "2026-06-25",
+  "time": "15:23",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "call",
+   "magnitude_sigma": 0.35,
+   "range_sigma": [
+    -0.1,
+    0.6
+   ],
+   "horizon_min": 35,
+   "conviction_stated": 0.57,
+   "scene": "Positive gamma, pin-friendly tape late in the day: spot sits between the put wall (-0.47\u03c3) and the call-wall magnet (+0.87\u03c3); a small downside stretch just got rejected (last bar turned back), so dealer hedging likely drags price back up toward the magnet into the close.",
+   "would_change_mind": "A fresh breakdown through the put wall (-0.47\u03c3) or a flip to negative gamma would invalidate the fade-up thesis.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 33.7,
+  "gates_outcome": "scratch",
+  "tower_outcome": "scratch",
+  "realized_move60": -0.03239367931681666
+ },
+ {
+  "day": "2026-06-25",
+  "time": "15:34",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0.15,
+   "range_sigma": [
+    -0.3,
+    0.3
+   ],
+   "horizon_min": 26,
+   "conviction_stated": 0.48,
+   "scene": "Positive-gamma pin regime with magnet 0.91\u03c3 overhead and a rejected down-push, but VWAP stretch is only -0.17\u03c3 and gap is flat -0.07\u03c3 \u2014 there's no real dislocation to fade, and variance ratio 1.37 says the tape is trending, not reverting, into a 26-minute close.",
+   "would_change_mind": "A clean stretch beyond ~0.4\u03c3 from VWAP/magnet with a sharp rejection wick, or variance ratio dropping under 1 confirming a true mean-reverting tape, would flip this to a live fade.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 59.9,
+  "gates_outcome": "scratch",
+  "vetoed_outcome": "scratch"
+ },
+ {
+  "day": "2026-06-26",
+  "time": "09:34",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "put"
+  },
+  "tower": null,
+  "err": "timeout",
+  "wall_s": 60.0
+ },
+ {
+  "day": "2026-06-26",
+  "time": "10:06",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": null,
+  "err": "timeout",
+  "wall_s": 60.0,
+  "gates_outcome": "scratch"
+ },
+ {
+  "day": "2026-06-26",
+  "time": "10:19",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": null,
+  "err": "timeout",
+  "wall_s": 60.0,
+  "gates_outcome": "scratch"
+ },
+ {
+  "day": "2026-06-26",
+  "time": "10:33",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "put",
+   "magnitude_sigma": 0.32,
+   "range_sigma": [
+    -0.15,
+    0.5
+   ],
+   "horizon_min": 75,
+   "conviction_stated": 0.52,
+   "scene": "Positive-gamma pin regime with magnet/call wall stacked at +0.77\u03c3 overhead; spot's modest +0.22\u03c3 push stalled and turned back, and a sub-1 variance ratio favors reversion back toward VWAP/put wall rather than a break higher.",
+   "would_change_mind": "A clean push through +0.77\u03c3 that holds, or live flow showing aggressive upside aggressor buying, would kill the fade.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 49.1,
+  "gates_outcome": "scratch",
+  "tower_outcome": "scratch",
+  "realized_move60": -0.06523344374353521
+ },
+ {
+  "day": "2026-06-26",
+  "time": "10:38",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "call",
+   "magnitude_sigma": 0.42,
+   "range_sigma": [
+    -0.15,
+    0.65
+   ],
+   "horizon_min": 90,
+   "conviction_stated": 0.63,
+   "scene": "Positive gamma dealers are pinning spot beneath a +0.42\u03c3 call-wall/magnet with a put wall 0.4\u03c3 below for support; low variance ratio and negligible gap/VWAP stretch confirm a mean-reverting, not trending, tape with 322min left to drift up into the pin.",
+   "would_change_mind": "Aggressive one-sided seller flow breaking through the put wall, last_bar_turned_back flipping true against the magnet, or a sharp VIX term-structure inversion signaling real stress would flip this to no-trade or put.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 31.3,
+  "tower_outcome": "win",
+  "realized_move60": 0.2032333548846528
+ },
+ {
+  "day": "2026-06-26",
+  "time": "10:44",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "put",
+   "magnitude_sigma": 0.4,
+   "range_sigma": [
+    -0.15,
+    0.75
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.58,
+   "scene": "Rejected test of the +0.41\u03c3 call-wall/magnet under positive dealer gamma \u2014 last bar turned back, variance ratio 0.53 confirms mean-reverting tape \u2014 fade back toward VWAP/spot.",
+   "would_change_mind": "Aggressive flow breaking and holding above the +0.41\u03c3 wall, or variance ratio rising back toward 1 signaling trend takeover instead of chop.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 58.1,
+  "gates_outcome": "win",
+  "tower_outcome": "loss",
+  "realized_move60": -0.2984149003447619
+ },
+ {
+  "day": "2026-06-26",
+  "time": "10:57",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": null,
+  "err": "timeout",
+  "wall_s": 59.9,
+  "gates_outcome": "scratch"
+ },
+ {
+  "day": "2026-06-26",
+  "time": "11:15",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "call",
+   "magnitude_sigma": 0.35,
+   "range_sigma": [
+    -0.15,
+    0.55
+   ],
+   "horizon_min": 90,
+   "conviction_stated": 0.57,
+   "scene": "Positive gamma pins spot in a tight -0.4/+0.47\u03c3 channel with the magnet sitting at the call wall above; a suppressed variance ratio and a rejected last bar confirm dealers are damping moves and drawing price back up toward that wall, even though current stretch off VWAP/gap is minimal.",
+   "would_change_mind": "A live aggressor-sell print, a clean break through the -0.4\u03c3 put wall, or variance ratio rising back above 1 (trend taking over from reversion) would invalidate this fade.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 52.8,
+  "gates_outcome": "win",
+  "tower_outcome": "win",
+  "realized_move60": 0.34671934434728013
+ },
+ {
+  "day": "2026-06-26",
+  "time": "14:59",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "call",
+   "magnitude_sigma": 0.35,
+   "range_sigma": [
+    -0.1,
+    0.6
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.62,
+   "scene": "Dealers long gamma with the magnet/call wall sitting 0.47\u03c3 overhead while spot is only mildly stretched below VWAP; last bar got turned back and variance is sub-random-walk, favoring a late-day pin-drift back up into the magnet before close.",
+   "would_change_mind": "Live flow showing aggressive offer-driven selling, a clean break through the put wall at -0.36\u03c3, or gamma flipping negative would invalidate the upside pin thesis.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 28.1,
+  "gates_outcome": "scratch",
+  "tower_outcome": "scratch",
+  "realized_move60": 0.1644477165948434
+ },
+ {
+  "day": "2026-06-29",
+  "time": "09:33",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0,
+   "range_sigma": [
+    0.0,
+    0.0
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.3,
+   "scene": "Gap-up already faded back to near VWAP just 3 minutes into the session; dealers are short gamma with almost no put-side cushion (-0.07\u03c3) and there's no live flow to confirm either side \u2014 too early and too thin to fade.",
+   "would_change_mind": "A confirmed live flow read, or price re-stretching >0.3\u03c3 from VWAP after the first 15-30 min once opening noise settles.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 58.1
+ },
+ {
+  "day": "2026-06-29",
+  "time": "10:00",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "put"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "put",
+   "magnitude_sigma": 0.4,
+   "range_sigma": [
+    -0.15,
+    0.75
+   ],
+   "horizon_min": 90,
+   "conviction_stated": 0.58,
+   "scene": "Positive gamma pins spot toward a magnet/put-wall stack aligned 0.81\u03c3 below, but the AM gap-up has already faded to roughly flat VWAP and the tape (variance ratio >1, no turn-back bar, no live flow) still looks trend-like rather than exhausted, so the gravity argument is real but not yet confirmed.",
+   "would_change_mind": "A turned-back rejection bar or aggressor flow flipping to seller-led would confirm the fade; a variance ratio dropping toward/below 1, gamma flipping negative, or spot pushing through the +0.47\u03c3 call wall would kill it.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 42.0,
+  "tower_outcome": "win",
+  "realized_move60": 0.32051419279318566
+ },
+ {
+  "day": "2026-06-29",
+  "time": "10:57",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0.2,
+   "range_sigma": [
+    -0.3,
+    0.4
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.4,
+   "scene": "Spot sits in negative-gamma territory right at the put wall, having already faded most of its opening gap back to VWAP (stretch only 0.11\u03c3) \u2014 the magnet is 0.48\u03c3 away, but variance ratio >1, range 1.74x expected, and backwardated VIX term structure all say this is a trending/breakout regime, not a reversion setup, and there's no live flow or turned-back bar to confirm a pin.",
+   "would_change_mind": "A print of absorptive two-sided flow at the put wall, last_bar_turned_back flipping true, or variance_ratio/range_vs_expected_move compressing back toward 1.0 would flip this to a call fire toward the 0.48\u03c3 magnet.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 53.9
+ },
+ {
+  "day": "2026-06-30",
+  "time": "09:34",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0,
+   "range_sigma": [
+    0.0,
+    0.0
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.15,
+   "scene": "4 minutes into the session, spot sits flat on VWAP and the prior close (both ~0\u03c3 stretch) with no live flow \u2014 there's no dislocation to fade, and negative gamma at spot means any move that does develop gets amplified, not mean-reverted.",
+   "would_change_mind": "a real stretch building (|vwap_stretch| > 0.3-0.4\u03c3) away from the magnet with live flow confirming exhaustion/rejection at that stretch, ideally after gamma flips positive or spot moves toward the call/put wall",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 11.4
+ },
+ {
+  "day": "2026-06-30",
+  "time": "15:23",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": null,
+  "err": "timeout",
+  "wall_s": 60.0
+ },
+ {
+  "day": "2026-07-01",
+  "time": "09:32",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "put"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0.15,
+   "range_sigma": [
+    -0.3,
+    0.3
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.25,
+   "scene": "Only 2 min post-open, dealers short gamma (breakout fuel not reversion), and the gap/VWAP stretch (-0.37\u03c3/-0.07\u03c3) is too small to fade \u2014 price has already drifted back near VWAP with no real dislocation left to trade, and no live flow confirms either side.",
+   "would_change_mind": "A clean opening range establishing with VWAP stretch pushing back out past -0.5\u03c3 while gamma stays negative, plus live flow confirming exhaustion at that extreme, or a flip to positive gamma that would make a magnet-ward drift toward +0.64\u03c3 tradeable.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 32.0
+ },
+ {
+  "day": "2026-07-01",
+  "time": "10:04",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "put"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0,
+   "range_sigma": [
+    0.0,
+    0.0
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.3,
+   "scene": "Spot sits in a negative-gamma pocket (flip/magnet both 0.33\u03c3 above, call wall even closer at 0.21\u03c3) \u2014 dealers are short gamma here, amplifying rather than damping moves, and variance_ratio 1.26 plus no turned-back bar confirm trending, not reverting, behavior despite the small VWAP stretch.",
+   "would_change_mind": "A turned-back last bar, variance_ratio dropping under 1, or spot pushing through the 0.33\u03c3 flip into positive gamma would turn this into a real fade-toward-magnet (call) setup.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 36.1
+ },
+ {
+  "day": "2026-07-01",
+  "time": "10:34",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "put"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0,
+   "range_sigma": [
+    0.0,
+    0.0
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.45,
+   "scene": "Spot sits right on top of a razor-thin magnet/gamma-flip (0.14\u03c3) with negative dealer gamma (amplifies, doesn't dampen), VWAP stretch is trivial (0.21\u03c3), and variance ratio >1 signals trending not mean-reverting tape \u2014 no real extension exists to fade.",
+   "would_change_mind": "A genuine VWAP/magnet stretch past ~0.5-0.7\u03c3, variance ratio dropping under 1, and gamma flipping positive (dealers long) at spot would turn this into a real fade setup.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 22.0
+ },
+ {
+  "day": "2026-07-02",
+  "time": "09:30",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0.15,
+   "range_sigma": [
+    -0.3,
+    0.4
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.5,
+   "scene": "First print of the session: a modest +0.26\u03c3 gap that's already flat to VWAP, with dealers short gamma into a magnet/flip level that coincide 0.34\u03c3 higher \u2014 a regime that amplifies moves rather than pins them, and no live flow to confirm any fade.",
+   "would_change_mind": "A real VWAP stretch (>0.4\u03c3) with live flow confirming rejection at the magnet/flip, or gamma turning positive at spot, would make the fade credible.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 43.8
+ },
+ {
+  "day": "2026-07-02",
+  "time": "10:01",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "put",
+   "magnitude_sigma": 0.4,
+   "range_sigma": [
+    -0.15,
+    0.75
+   ],
+   "horizon_min": 90,
+   "conviction_stated": 0.62,
+   "scene": "Gap-up open sitting in a positive-gamma pin zone with the magnet and flip both at -0.36\u03c3; last bar already turned back off the highs, so dealers' damping pull favors a fade back toward the magnet rather than a breakout to the call wall.",
+   "would_change_mind": "Sustained aggressive buy flow pushing spot through the call wall, gamma sign flipping negative, or VWAP stretch expanding well above +0.3\u03c3 without another turn-back.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 40.0,
+  "tower_outcome": "win",
+  "realized_move60": 0.4027747854211558
+ },
+ {
+  "day": "2026-07-02",
+  "time": "10:39",
+  "kind": "armed-pass",
+  "gates": {
+   "fired": false,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": false,
+   "direction": null,
+   "magnitude_sigma": 0.15,
+   "range_sigma": [
+    -0.2,
+    0.3
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.35,
+   "scene": "Spot is already sitting almost exactly on the dealer magnet/gamma-flip (-0.02\u03c3) after the +0.295\u03c3 open gap mostly reverted (VWAP stretch only -0.107\u03c3); positive gamma damps moves but there's no real stretch left to fade, and sub-1 VIX term structure hints at stress rather than the complacency this pin trade needs.",
+   "would_change_mind": "A fresh \u22650.5\u03c3 dislocation between spot and the magnet while gamma stays positive, or live flow confirming one-sided aggressor pressure into a wall, would justify firing.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 45.3
+ },
+ {
+  "day": "2026-07-02",
+  "time": "12:38",
+  "kind": "gate-fire",
+  "gates": {
+   "fired": true,
+   "direction": "call"
+  },
+  "tower": {
+   "fired": true,
+   "direction": "call",
+   "magnitude_sigma": 0.55,
+   "range_sigma": [
+    -0.15,
+    0.9
+   ],
+   "horizon_min": 60,
+   "conviction_stated": 0.63,
+   "scene": "Spot gapped down and sits stretched below VWAP right on top of the put-wall support, with the last bar rejecting further downside inside a positive-gamma, pin-friendly regime \u2014 dealer map favors a reversion squeeze back up toward the 0.93\u03c3 magnet/call-wall.",
+   "would_change_mind": "A confirmed aggressive-seller flow print, a clean break through the put wall, or gamma flipping negative near spot would kill this fade.",
+   "overrides": []
+  },
+  "err": null,
+  "wall_s": 28.5,
+  "gates_outcome": "scratch",
+  "tower_outcome": "scratch",
+  "realized_move60": -0.02450934535725543
+ }
+]

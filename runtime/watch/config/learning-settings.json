@@ -1,0 +1,10 @@
+{
+  "_about": "Learning knobs for the gex-only system. Trimmed 2026-07-04: the voter/bet-era blocks (decay, context_conditioning, source_explore_exploit, right_eye_decay, peak_tracking, fire_quality, lifecycle, payoff_scoring, credit_assignment, statistical_honesty, composite_scoring) had no readers.",
+  "bayes": {
+    "_about": "A posterior is a smoothed hit-rate. Instead of raw hits/(hits+misses) \u2014 which says 100% after a single lucky win \u2014 we blend in a neutral prior so early numbers stay honest. Formula: posterior = (hits + alpha) / (hits + misses + alpha + beta).",
+    "prior_win_rate": 0.5,
+    "pseudocount": 10,
+    "_pseudocount_note": "How many 'imaginary' prior observations the 50% prior is worth. Higher = more skeptical of small samples. alpha = prior_win_rate * pseudocount; beta = (1 - prior_win_rate) * pseudocount.",
+    "_worked_example": "2 hits, 0 misses with prior 0.5 and pseudocount 10 -> (2+5)/(2+0+5+5) = 0.58, not 1.00."
+  }
+}

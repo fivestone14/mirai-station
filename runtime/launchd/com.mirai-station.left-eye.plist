@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.left-eye</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-watch-left-eye.sh</string>
+  </array>
+
+  <!-- Fire every 5 min; the script (run-watch-left-eye.sh) enforces both the weekday
+       and the 09:30-16:00 ET market window. The earlier StartCalendarInterval array was
+       removed: its 12 entries carried a Weekday but no Hour, so launchd fired them at
+       those minutes of EVERY hour each Monday (288 redundant wakes) on top of this
+       interval. StartInterval + the shell gate is the intended design.
+       2026-07-08: 300 -> 60 for 1-min GEX gap-fill between UW's 10-min marks.
+       launchd will not run two copies at once, so an overlapping fire is dropped
+       (never corrupts state); worst case a minute is skipped and the map is ~2-min
+       stale. Revert to 300 if a tick does not complete well under 60s. -->
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.left-eye.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.left-eye.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

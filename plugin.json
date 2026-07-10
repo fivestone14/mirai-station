@@ -1,0 +1,29 @@
+{
+  "name": "mirai-station",
+  "version": "0.1.0",
+  "description": "Gex-module 0DTE system: the Fade Lens (paper brain) driven by the gravity engine (dealer positioning) + flow sensor, graded nightly by report cards. Runs unattended on a Mac mini via launchd. Restructured 2026-07-03 (gex-only).",
+  "author": "fivestone",
+  "homepage": "",
+  "license": "private",
+  "skills": [
+    "skills/mirai-left-eye",
+    "skills/mirai-right-eye",
+    "skills/iv-viability"
+  ],
+  "runtime": {
+    "platform": "darwin",
+    "scheduler": "launchd",
+    "python_venv": "~/.local/share/mirai-station/venv",
+    "state_dir": "~/.claude/plugins/mirai-station/state",
+    "secrets": {
+      "discord_webhook": "keychain:mirai-station/discord-alert-webhook",
+      "schwab_credentials": "keychain:iv-viability-schwab/*"
+    },
+    "watch": {
+      "module": "runtime/watch",
+      "wrapper": "runtime/scripts/mirai-watch.sh",
+      "setup": "runtime/scripts/setup-watch.sh",
+      "requirements": "runtime/watch/requirements.txt"
+    }
+  }
+}

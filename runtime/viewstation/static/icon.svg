@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0a0e14"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#2dd4bf" stroke-width="14" opacity="0.85"/>
+  <circle cx="256" cy="256" r="92" fill="none" stroke="#2dd4bf" stroke-width="10" opacity="0.5"/>
+  <circle cx="256" cy="256" r="30" fill="#2dd4bf"/>
+  <text x="256" y="430" font-family="system-ui,sans-serif" font-size="64" fill="#7dd3fc" text-anchor="middle">MIRAI</text>
+</svg>

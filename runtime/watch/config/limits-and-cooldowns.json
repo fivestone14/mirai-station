@@ -1,0 +1,34 @@
+{
+  "_about": "Operational limits for the gex-only system. Trimmed 2026-07-04: watchlist, alert_throttle, tick, right_eye_gate, and tilt blocks (plus retired model task names) had no readers.",
+  "auth": {
+    "_about": "Schwab login keep-alive. The refresh token hard-expires 7 days after the interactive login that created it (Schwab policy, no token-only renewal). A daily job checks the token's age and pings the phone to re-auth BEFORE it dies. See the deep-research report.",
+    "warn_after_days": 6,
+    "_warn_note": "Ping to re-auth once the token is this old \u2014 a 1-day buffer before the 7-day wall.",
+    "hard_limit_days": 7,
+    "_hard_note": "Schwab's hard ceiling; the token is dead at/after this age. Do not raise \u2014 it just won't work."
+  },
+  "ntfy": {
+    "_about": "Push channel for alerts + the weekly re-auth ping. A plain HTTPS POST to a public ntfy topic; the topic name is the only secret, so make it long and unguessable. Leave 'topic' empty to log-only (no send). The env var MIRAI_NTFY_TOPIC overrides this value.",
+    "topic": "",
+    "server": "https://ntfy.sh",
+    "_server_note": "Public relay by default; point at a self-hosted ntfy server if you run one."
+  },
+  "models": {
+    "_about": "Which Claude model each kind of call uses (claude -p --model). Match the model to the difficulty of the job: haiku gathers, sonnet drafts and argues, opus decides. Opus is reserved for calls whose output directly moves a thesis or a bet's stance; everything that merely collects, trims, drafts, or argues a side runs cheaper. claude_cli.call(task=...) resolves through this map; an explicit model= override always wins.",
+    "macro_brief": "opus",
+    "macro_redive": "opus",
+    "default": "sonnet",
+    "_default_note": "Unknown task names resolve here - middle tier, never silently opus.",
+    "watchtower": "claude-sonnet-5",
+    "_watchtower_note": "HEAD B, the reasoning head - PINNED exact id (never an alias): a silently re-pointed alias would change the judge mid-record. Model bump = record reset, same as a prompt bump."
+  },
+  "macro_mood": {
+    "_about": "BETA Morning Macro-Mood layer (intraday/macro_mood.py). Each morning the analyst writes a market-wide direction/magnitude expectation (state/market_expectation/); the tick loop reads it as a light reasoning-context tilt (never gates/sizes) and re-dives the analyst when price breaches a gamma wall. Shadow: it learns its own reliability, which scales the tilt. Inert until an analyzer provider is wired.",
+    "wall_buffer_frac": 0.1,
+    "_wall_buffer_note": "A re-dive fires only when spot pushes past a gamma wall by this fraction of the implied daily move - filters ordinary in-wall pullbacks.",
+    "redive_daily_cap": 4,
+    "_redive_cap_note": "Max analyst re-dives per day (opus budget guard).",
+    "redive_cooldown_min": 20,
+    "_redive_cooldown_note": "Min minutes between re-dives for the same ticker+wall, so a price riding a level can't spam calls."
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "watched_sectors": [
+    "overall_market",
+    "semis",
+    "tech",
+    "energy",
+    "financials",
+    "consumer",
+    "industrials",
+    "healthcare",
+    "materials",
+    "crypto"
+  ],
+  "tracked_positions": [
+    {
+      "ticker": "SPX",
+      "thesis_name": "sp500_macro",
+      "keywords": [
+        "s&p 500",
+        "spx",
+        "fomc",
+        "fed",
+        "powell",
+        "cpi",
+        "pce",
+        "jobs report",
+        "treasury yields",
+        "vix",
+        "rate cut",
+        "recession"
+      ]
+    },
+    {
+      "ticker": "QQQ",
+      "thesis_name": "nasdaq_tech",
+      "keywords": [
+        "nasdaq",
+        "qqq",
+        "megacap tech",
+        "semiconductors",
+        "ai capex",
+        "nvidia",
+        "apple",
+        "microsoft",
+        "growth stocks",
+        "rate-sensitive"
+      ]
+    }
+  ],
+  "scoring_weights": {
+    "position_impact": 35,
+    "materiality": 25,
+    "surprise": 20,
+    "source_reliability": 10,
+    "time_sensitivity": 10
+  },
+  "similarity_threshold": 0.92,
+  "keep_threshold": 35,
+  "push_threshold": 70,
+  "digest_threshold": 40,
+  "conflict_window_hours": 24,
+  "source_list": {
+    "perplexity": 0.85,
+    "market-research": 0.9,
+    "sec-edgar": 0.95,
+    "twitter": 0.55,
+    "reddit": 0.45,
+    "gemini": 0.75,
+    "oracle-news": 0.8
+  },
+  "embedding_model": {
+    "name": "BAAI/bge-small-en-v1.5",
+    "dimension": 384,
+    "provider": "sentence-transformers"
+  },
+  "store_path": "~/.claude/plugins/mirai-station/state/right_eye.lance",
+  "audit_log_dir": "~/.claude/plugins/mirai-station/skills/mirai-right-eye/logs",
+  "trading_actions_authorized": false
+}
