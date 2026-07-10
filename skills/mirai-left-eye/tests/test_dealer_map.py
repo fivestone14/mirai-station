@@ -44,12 +44,25 @@ def test_resolver_falls_back_to_legacy_fields():
     dm = rl.resolve_dealer_map({
         "gamma_sign": "negative", "gamma_flip": 7400.0,
         "call_wall": 7500.0, "put_wall": 7300.0, "gex_source": "oracle",
-        "reversion_extreme": {"magnet": 7450.0},
+        # the resolver's magnet fallback must use the PRE-CLAMP pin (magnet_raw),
+        # never the wall-clamped revert-target — a clamped wall drawn as "the
+        # magnet" would narrate a fade target as dealer gravity (2026-07-10 audit)
+        "reversion_extreme": {"magnet": 7500.0, "magnet_raw": 7450.0,
+                              "magnet_out_of_band": True},
     })
     assert dm["regime"] == "short_gamma" and dm["regime_source"] == "legacy"
     assert dm["flip"] == 7400.0 and dm["flip_source"] == "legacy"
-    assert dm["magnet"] == 7450.0 and dm["magnet_source"] == "legacy"
+    assert dm["magnet"] == 7450.0 and dm["magnet_source"] == "reversion_raw"
     assert dm["native"] is None and dm["source"] == "oracle"
+
+
+def test_resolver_magnet_prefers_theta_challenger_before_reversion():
+    dm = rl.resolve_dealer_map({
+        "gex_views": {},                        # leader has no magnet this row
+        "gex_theta": {"magnet": 7480.0},        # challenger carries the raw pin
+        "reversion_extreme": {"magnet_raw": 7450.0},
+    })
+    assert dm["magnet"] == 7480.0 and dm["magnet_source"] == "gex_theta"
 
 
 def test_resolver_handles_empty_input():

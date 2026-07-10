@@ -29,7 +29,8 @@ def _telemetry(fired=True, direction="put", armed=True):
                               "wall_dist_call": 0.93, "wall_dist_put": -0.94,
                               "magnet": 7420.0},
         "gex_views": {"aggressor_flow": -0.4, "pin_top_share": 0.31,
-                      "vex_sign": "negative", "cex_sign": "positive"},
+                      "vex_sign": "negative", "cex_sign": "positive",
+                      "magnet": 7420.0},   # TRUE magnet — always-on in real rows
     }
 
 
@@ -135,7 +136,8 @@ def _quiet(t):
     (heartbeat / interrupt) can decide whether a scan is judged."""
     t["reversion_extreme"].update(fired=False, armed=False, gap_stretch=0.1,
                                   vwap_stretch=0.1, wall_dist_call=2.0,
-                                  wall_dist_put=-2.0)
+                                  wall_dist_put=-2.0,
+                                  magnet=None)   # un-armed scans carry NO revert target
     return t
 
 
@@ -308,14 +310,78 @@ def test_big_change_flags_wall_break_magnet_netgex_and_vix():
     ch, why = wt.big_change(prev, wt.scene_fingerprint({**base, "put_wall": spot + 50}))
     assert ch and "put wall" in why
     ch, why = wt.big_change(prev, wt.scene_fingerprint(
-        {**base, "reversion_extreme": {**base["reversion_extreme"], "magnet": spot + 70}}))
+        {**base, "gex_views": {**base["gex_views"], "magnet": spot + 70}}))
     assert ch and "magnet" in why                             # relocated > MAGNET_JUMP_SIGMA
+    # the armed-only reversion magnet must NOT drive the jump axis (it is None on
+    # ~99% of scans and wall-clamped when set — the interrupt watches gex_views)
+    ch, why = wt.big_change(prev, wt.scene_fingerprint(
+        {**base, "reversion_extreme": {**base["reversion_extreme"], "magnet": spot + 70}}))
+    assert "magnet" not in why
     pos = wt.scene_fingerprint({**base, "gex_views": {**base["gex_views"], "net_gex": 2.0}})
     neg = wt.scene_fingerprint({**base, "gex_views": {**base["gex_views"], "net_gex": -2.0}})
     ch, why = wt.big_change(pos, neg)
     assert ch and "net-GEX" in why
     ch, why = wt.big_change(prev, wt.scene_fingerprint({**base, "vix_ts": base["vix_ts"] + 0.12}))
     assert ch and "VIX" in why
+
+
+# --- magnet-source semantics (wt-3, 2026-07-10 audit) --------------------------
+def test_payload_prior_anchors_on_true_magnet_when_quiet():
+    """Quiet/un-armed scan: rev.magnet is None but the TRUE gex_views magnet is
+    always on — the gravity prior must read it, never go UNKNOWN."""
+    t = _telemetry(fired=False, armed=False)
+    t["reversion_extreme"]["magnet"] = None
+    p = wt.build_payload(t)
+    g = p["dealer_map_gravity"]
+    assert g["magnet_sigma_from_spot"] == round((7420.0 - 7450.29) / 106.9, 2)
+    assert "UNKNOWN" not in g["pull_toward_magnet"]
+    assert "fade_revert_target_sigma" not in g     # absent, never null (un-armed)
+
+
+def test_payload_prior_prefers_true_magnet_over_clamped_target():
+    """Armed scan where the fade target was wall-clamped away from the pin: the
+    prior stays on the TRUE magnet; the clamped target rides as its own field."""
+    t = _telemetry()
+    t["gex_views"]["magnet"] = 7630.0              # raw pin above the call wall
+    t["reversion_extreme"].update(magnet=7550.0, magnet_out_of_band=True)
+    p = wt.build_payload(t)
+    g = p["dealer_map_gravity"]
+    assert g["magnet_sigma_from_spot"] == round((7630.0 - 7450.29) / 106.9, 2)
+    assert g["fade_revert_target_sigma"] == round((7550.0 - 7450.29) / 106.9, 2)
+    assert g["fade_target_wall_clamped"] is True
+
+
+def test_payload_falls_back_to_rev_magnet_on_gx_blackout():
+    """The one real gx-None corner (native all-null-IV blackout): the prior
+    degrades to the reversion magnet rather than going blank."""
+    t = _telemetry()
+    del t["gex_views"]["magnet"]
+    p = wt.build_payload(t)
+    assert p["dealer_map_gravity"]["magnet_sigma_from_spot"] == \
+        round((7420.0 - 7450.29) / 106.9, 2)
+
+
+def test_snippet_names_the_true_magnet():
+    """The display magnet and the prior must never name different magnets:
+    both read gex_views first."""
+    t = _telemetry()
+    t["gex_views"]["magnet"] = 7630.0
+    t["reversion_extreme"]["magnet"] = 7550.0      # clamped fade target
+    snip = wt.render_snippet(wt.validate_verdict(_verdict()), t, NOW, "test")
+    assert "magnet 7630" in snip and "7550" not in snip.split("NEXT")[0]
+
+
+def test_lob_magnet_only_attached_when_book_derived():
+    """A borrowed gravity magnet (magnet_source='gravity') must not be re-labeled
+    as an order-book read — the model would see the same pin twice."""
+    t = _telemetry()
+    t["lob_flow"] = {"regime": "balanced", "tilt": 0.1,
+                     "magnet": 7420.0, "magnet_source": "gravity"}
+    p = wt.build_payload(t)
+    assert "lob_magnet_sigma_from_spot" not in p.get("order_flow", {})
+    t["lob_flow"]["magnet_source"] = "defense"     # genuinely book-derived → attach
+    p = wt.build_payload(t)
+    assert p["order_flow"]["lob_magnet_sigma_from_spot"] is not None
 
 
 # --- hardening from the deep-dive audit ---------------------------------------
