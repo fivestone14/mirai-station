@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared env for all mirai-station runtime scripts.
-# Sourced by run-watch-left-eye.sh, run-auth-check.sh, discord-alert.sh, etc.
+# Sourced by run-watch-left-eye.sh, run-auth-check.sh, run-*.sh, etc.
 
 set -u
 
@@ -18,11 +18,10 @@ export TZ="America/New_York"
 export PATH="${HOME}/.local/bin:/usr/local/bin:/opt/homebrew/bin:${PATH}"
 
 # Secrets — pulled from macOS Keychain at runtime (never committed).
-# The `keychain_get` helper is exported so the legacy `discord-alert.sh` push utility
-# can pull its webhook on demand. Mirai Watch itself uses the Claude subscription
-# via `claude -p` and does NOT need ANTHROPIC_API_KEY or DISCORD_ALERT_WEBHOOK — those
-# reads have been removed from this file's top level. Scripts that need them
-# call `keychain_get` directly.
+# Mirai Watch uses the Claude subscription via `claude -p` and needs NO
+# ANTHROPIC_API_KEY; the alert channel (ntfy) needs no key either. Market-data
+# credentials (Schwab, the ThetaData/Cassandra bearer) are read on demand via the
+# `keychain_get` helper below — nothing sensitive is set at this file's top level.
 keychain_get() {
   local label="$1"
   security find-generic-password -a "$USER" -s "$label" -w 2>/dev/null

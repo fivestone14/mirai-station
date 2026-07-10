@@ -5,7 +5,7 @@
 > hunter (Shift Manager) → Flow Sensor + Gravity Engine → three heads (Fade Lens,
 > Watchtower, Break Lens) → diary → nightly report cards → tablet + ntfy.
 
-End-state: a dedicated Mac mini that runs the left-eye scan tick every 5 min Mon–Fri 09:30–16:00 ET, pushes paper-fire alerts to your phone via **ntfy**, keeps the Schwab login alive with a daily auth-watch ping, and operates **without** access to the main machine's vault. It runs on a `claude -p` subscription and needs **no** Anthropic API key.
+End-state: a dedicated Mac mini that runs the left-eye scan tick about once a minute Mon–Fri 09:30–16:00 ET, pushes paper-fire alerts to your phone via **ntfy**, keeps the Schwab login alive with a daily auth-watch ping, and operates **without** access to the main machine's vault. It runs on a `claude -p` subscription and needs **no** Anthropic API key.
 
 Estimated setup time: 60–90 min.
 
@@ -93,7 +93,7 @@ Verify the hunter can import its deps:
 
 ## 5. MCP servers (Cassandra's Edge)
 
-mirai's MCP feeds are the **Cassandra's Edge** remote servers — HTTP MCP endpoints at `https://*.cassandrasedge.com/mcp`, authenticated per-server with a bearer token. The minimum viable set for the left-eye tick (including its right-eye news fetch) is **market-research, twitter, reddit**; **yt** and **fetch** round out what `agents/mirai.md` uses. (Other servers exist on the Edge but the routine does not use them.)
+mirai's MCP feeds are the **Cassandra's Edge** remote servers — HTTP MCP endpoints at `https://*.cassandrasedge.com/mcp`, authenticated per-server with a bearer token. The `market-research` endpoint also fronts the **ThetaData** native SPX chain (the primary GEX source). The morning Macro-Mood brief (`macro_mood.py`) uses **twitter, reddit, fetch**. (Other servers exist on the Edge but the routine does not use them.)
 
 The source of truth is the main machine's user-scope config: the top-level `mcpServers` block in `~/.claude.json` (NOT `~/.config/claude/`). To set up the mini, copy that block into the mini's `~/.claude.json` (user scope = available to every `claude -p` regardless of cwd), e.g.:
 
@@ -174,7 +174,7 @@ sudo shutdown -r now
 
 Log back in, then:
 ```bash
-launchctl list | grep mirai-station   # all three should be listed
+launchctl list | grep mirai-station   # all seven should be listed
 ps -ef | grep caffeinate              # caffeinate should be running
 ```
 
@@ -182,6 +182,6 @@ ps -ef | grep caffeinate              # caffeinate should be running
 
 ## Operating outside market hours
 
-The market-hours gate is the first node of the unified tick graph (`runtime/watch/intraday/market_status.py`), authoritative via the oracle calendar. Outside market hours the tick exits instantly; launchd still wakes left-eye every 5 min, that's fine and cheap.
+The market-hours gate (`runtime/watch/intraday/market_status.py`) is a self-contained NYSE date-math calendar (holidays + half-days, no network call). Outside market hours the scan phase exits instantly; launchd still wakes left-eye every 60 s, that's fine and cheap (the alert phase still runs, which is how EOD scoring lands after the close).
 
 If you want fewer wake-ups, the optional `StartCalendarInterval` block in the plist already enumerates :00/:05/:10/…/:55 — you can constrain it to specific weekdays + hours and remove `StartInterval`. Default leaves both in: launchd will fire at whichever comes first.

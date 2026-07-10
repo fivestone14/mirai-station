@@ -68,7 +68,7 @@ is now the only gravity read.)
 | Code | Plain name | What it actually does |
 |---|---|---|
 | `resolve_dealer_map()` | Dealer Map / One Story | Collapses the competing engine reads into a single displayed truth (native leads, SPY-proxy is the labeled fallback) |
-| `_gex_section()` / `snapshot.py` / `app.js` | Storytellers | Render that one story into the Obsidian note and the tablet map |
+| `_gex_section()` / `snapshot.py` / `index.html` | Storytellers | Render that one story into the Obsidian note and the tablet map |
 | `gex_polarity_ab.grade_day()` | Report Card | After close: did each engine's calls match what price actually did? |
 | `_episodes()` | Idea Counter | Collapses repeated identical calls into one gradeable idea |
 | `grade_snapshot()` | Pin-or-Break Judge | For one call: did price reach toward the magnet or run away first? |

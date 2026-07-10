@@ -1,9 +1,10 @@
 # Salvage notes — logic worth re-implementing, from the retired signal system
 
-Deleted 2026-07-03 in the gex-module restructure. Full source preserved in
-`~/.claude/plugins/mirai-station.backup-pre-gexmodule-20260703/` (delete that
-backup only after Monday 2026-07-06 validates live). One entry per retired
-module: what it did, and what a gex-only system might want back someday.
+Deleted 2026-07-03 in the gex-module restructure. The pre-restructure backup
+(`mirai-station.backup-pre-gexmodule-20260703`) was itself deleted 2026-07-10
+after the live record validated — so the notes below are now the *only* record of
+what the retired modules did. One entry per module: what it did, and what a
+gex-only system might want back someday.
 
 | Retired module | What it did | Worth re-implementing when… |
 |---|---|---|
@@ -20,4 +21,4 @@ module: what it did, and what a gex-only system might want back someday.
 | hunter's retired parts | Breadth-first pick ranking (independent factors beat raw conviction — the resolved data proved conviction was anti-predictive), book-level direction cap (net-lean penalty, λ=0.5), registration tiers | The **direction cap** concept matters again the day the lens can hold multiple concurrent paper positions; the breadth-beats-conviction finding is a hard-won empirical lesson — keep it in mind for any future multi-signal scoring. |
 | `verify_index_fixes.py` | One-shot verification harness for the 06-22 index fixes | Historical; nothing to salvage. |
 
-Learned-state files left on disk untouched (history, harmless): `state/memory/*_memory.json` (old per-signal posteriors), `skills/mirai-left-eye/outcomes/*.jsonl` (old paper-trade ledger), `skills/mirai-left-eye/logs/*.jsonl` (old heartbeats). The backup holds everything else.
+Learned-state files that may still be on disk (history, harmless): `state/memory/*_memory.json` (old per-signal posteriors), `skills/mirai-left-eye/outcomes/*.jsonl` (old paper-trade ledger), `skills/mirai-left-eye/logs/*.jsonl` (old heartbeats). The full pre-restructure source is **no longer retained** — the backup was deleted 2026-07-10, so these notes are the only surviving description.

@@ -1,7 +1,7 @@
 # mirai-station
 
-**An always-on research system that watches SPX 0DTE dealer positioning and, every
-five minutes, writes down what it thinks price will do — on paper.** It runs
+**An always-on research system that watches SPX 0DTE dealer positioning and, about
+once a minute, writes down what it thinks price will do — on paper.** It runs
 unattended on a Mac mini, trades no real money, and only earns the right to alert
 (let alone trade) once its own nightly report cards prove it beats luck.
 
@@ -68,10 +68,11 @@ that could ever let a head go live.
 
 ---
 
-## The live loop (every 5 minutes)
+## The live loop (every minute during market hours)
 
 A single launchd agent wakes every 60 s and gates itself to RTH (Mon–Fri
-09:30–16:00 ET). Each real tick runs two phases:
+09:30–16:00 ET; the gate is a self-contained NYSE calendar, no network call). Each
+real tick runs two phases:
 
 1. **Scan** — `hunter.py` (the *Shift Manager*) runs the scan on **SPX** (the only
    ticker since the voters were retired):
@@ -132,7 +133,7 @@ book rescaled ×10 into index space.
 | Provider | Supplies | Auth |
 |---|---|---|
 | **ThetaData** (via Cassandra's Edge MCP) | the **native SPX option chain** — the primary GEX source — + a Schwab-independent 1-min price path | Keychain bearer `iv-viability-cassandra` |
-| **Schwab** (`schwab-py`) | daily/1-min bars, quotes, the SPY chain (the ×10 proxy), market status | Keychain OAuth (7-day token, kept alive by `auth-watch`) |
+| **Schwab** (`schwab-py`) | daily/1-min bars, quotes, the SPY chain (the ×10 proxy) | Keychain OAuth (7-day token, kept alive by `auth-watch`) |
 | **Unusual Whales Periscope** | a free, no-auth dealer-gamma heatmap — a shadow cross-check on the assumed-sign map | none |
 | **Cassandra's Edge MCP** (twitter / reddit / fetch) | the morning Macro-Mood news read | per-server bearer |
 

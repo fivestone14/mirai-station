@@ -1,178 +1,124 @@
 # Transferring mirai-station to a fresh Mac mini
 
-> [!warning] 2026-07-03 gex-module restructure
-> This document predates the restructure where the nine-voter/bet-watching
-> system was retired. Live shape: Shift Manager (hunter) → Fade Lens →
-> Gravity Engine + Flow Sensor → diary → report cards → storytellers +
-> alert bell. See docs/gex-glossary.md and docs/salvage-notes.md.
+> This is the **machine-move** guide (copy the dir, secrets, launchd). For the full
+> first-time setup and the architecture, follow the canonical docs:
+> `README.md` (what the system is) and `docs/INSTALL.md` (step-by-step provisioning).
+> This doc only covers what's different when moving an existing install to new hardware.
 
-
-The whole plugin (including Mirai Watch) is self-contained inside this directory. To move it to another Mac, you copy the directory, run one setup script, populate Keychain secrets, and load the launchd plists. Everything else (venv, LanceDB, logs) is derived at runtime.
+The whole plugin is self-contained inside this directory. To move it to another Mac
+you copy the directory, provision the venv, populate Keychain secrets, and load the
+launchd fleet. Everything derived at runtime (venv, logs, learned state) is *not*
+copied — each machine rebuilds it.
 
 ## Prerequisites on the target Mac
 
-- macOS (Apple Silicon recommended; Intel works).
-- Python 3.9+ installed at `/usr/bin/python3` or `/opt/homebrew/bin/python3`.
-- Claude Code CLI installed (`brew install claude` or per anthropic docs) and signed into the Claude subscription you want the agent to use.
-- The user account that will run the launchd jobs has access to its own Keychain.
+- macOS (Apple Silicon recommended; Intel works), Python 3.12+.
+- Claude Code CLI installed and signed into the Claude subscription the agent should
+  use (model calls go through `claude -p` — there is **no** Anthropic API key).
+- The user account that runs the launchd jobs has access to its own Keychain.
 
 ## Steps
 
-### 1. Copy the plugin directory
+### 1. Copy the plugin directory (code only, not state)
 
 ```bash
-# On the source Mac (this one):
-tar -C ~/.claude/plugins -czf /tmp/mirai-station.tar.gz mirai-station
+# On the source Mac (this one) — exclude runtime state, venv is external anyway:
+tar -C ~/.claude/plugins \
+    --exclude 'mirai-station/state' \
+    --exclude '__pycache__' \
+    -czf /tmp/mirai-station.tar.gz mirai-station
 
-# Transfer the tarball (scp / AirDrop / external drive). Then on the target Mac:
+# Transfer the tarball (scp / AirDrop / drive). Then on the target Mac:
 mkdir -p ~/.claude/plugins
 tar -C ~/.claude/plugins -xzf ~/Downloads/mirai-station.tar.gz
 ```
 
-Verify the directory landed at `~/.claude/plugins/mirai-station/`.
+> **Do not copy `state/`.** Each instance rebuilds its own diary, grades, learned
+> baselines, and option-book snapshots from scratch — copying them across machines
+> mixes two histories.
 
-### 2. Run the setup script
+### 2. Provision the venv + launchd fleet
+
+Follow `docs/INSTALL.md` from §4 onward. The short version:
 
 ```bash
-bash ~/.claude/plugins/mirai-station/runtime/scripts/setup-watch.sh
+cd ~/.claude/plugins/mirai-station
+./runtime/scripts/venv-bootstrap.sh      # builds ~/.local/share/mirai-station/venv (schwab-py, scipy, …)
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 7-agent fleet
 ```
 
-This is idempotent. It:
-- Creates the venv at `~/.local/share/mirai-station/venv` (outside the plugin dir so a re-copy of the plugin doesn't wipe it).
-- Installs Mirai Watch dependencies (`langgraph`, `langgraph-checkpoint-sqlite`, `lancedb`, `pandas`, `pyarrow`) per `runtime/watch/requirements.txt`.
-- Creates `state/logs/` and `state/locks/`.
-- Verifies LangGraph imports cleanly.
+### 3. Populate Keychain secrets
 
-If you also need the legacy skill deps (oracle, algo-read, hunter.py), run `runtime/scripts/venv-bootstrap.sh` afterward — that installs the broader skill set.
-
-### 3. Install the `mirai-watch` command on PATH
+Model calls use a `claude -p` subscription (no Anthropic API key); alerts use ntfy
+(no key — just a topic in `runtime/watch/config/limits-and-cooldowns.json`). The
+Keychain holds only the market-data credentials:
 
 ```bash
-mkdir -p ~/.local/bin
-ln -sf ~/.claude/plugins/mirai-station/runtime/scripts/mirai-watch.sh ~/.local/bin/mirai-watch
-# Ensure ~/.local/bin is in your shell's PATH (zsh):
-grep -q 'HOME/.local/bin' ~/.zshrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-exec zsh -l
-```
-
-Sanity check:
-
-```bash
-mirai-watch help
-```
-
-### 4. Populate Keychain secrets
-
-The plugin reads secrets from the macOS Keychain at runtime (never committed to git). On the target Mac:
-
-```bash
-# Anthropic API key (only used by legacy non-subscription paths; safe to set even under subscription)
-security add-generic-password -a "$USER" -s "mirai-station/anthropic-api-key" -w "sk-ant-..."
-
-# Discord webhook for the legacy discord-alert.sh (kept for backward compat; Mirai Watch's push channel is TBD)
-security add-generic-password -a "$USER" -s "mirai-station/discord-alert-webhook" -w "https://discord.com/api/webhooks/..."
-
-# Schwab credentials (only needed for left-eye hunter.py)
+# Schwab credentials (SPY proxy, bars, quotes)
 security add-generic-password -a "$USER" -s "mirai-station/schwab-app-key"      -w "..."
 security add-generic-password -a "$USER" -s "mirai-station/schwab-app-secret"   -w "..."
 security add-generic-password -a "$USER" -s "mirai-station/schwab-refresh-token" -w "..."
+
+# ThetaData / Cassandra's Edge bearer — the native SPX chain (primary GEX source)
+security add-generic-password -a "$USER" -s "iv-viability-cassandra"            -w "<bearer-token>"
 ```
 
-Skip any secret whose feature you aren't using; the install will not fail.
+Also copy the `mcpServers` block into the target's `~/.claude.json` (see INSTALL §5)
+so the morning macro brief can reach the Cassandra's Edge MCP servers.
 
-### 5. Smoke test the pipeline (dry-run)
+### 4. Smoke test
 
 ```bash
-mirai-watch tick --dry-run
+# One scan tick by hand (bypasses launchd; quiet tape → no output is correct):
+./runtime/scripts/run-watch-left-eye.sh
+
+# Confirm the fleet is loaded:
+launchctl list | grep mirai-station      # all seven agents
+
+# Tail today's diary:
+tail -f state/reversion/$(date +%Y-%m-%d).jsonl
 ```
 
-This should print a streaming `[HH:MM:SS] node → outcome` log, run through the whole unified tick graph, and exit 0 without dispatching anything.
-
-If it passes, run the pytest suite:
-
-```bash
-cd ~/.claude/plugins/mirai-station/runtime && \
-~/.local/share/mirai-station/venv/bin/python -m pytest watch/tests/ -v
-```
-
-The whole suite should pass.
-
-### 6. Load the launchd schedule
-
-```bash
-mirai-watch activate
-mirai-watch status
-```
-
-`status` should show three jobs loaded: `com.mirai-station.left-eye`, `com.mirai-station.caffeinate`, `com.mirai-station.auth-watch`.
-
-The schedule:
-- Left-eye: every 5 minutes; the unified tick graph's first node enforces the 09:30–16:00 ET market-hours gate (it exits instantly when the market is closed).
-- Caffeinate: keeps the Mac mini awake.
-- Auth-watch: daily at 08:00 ET — the Schwab token keep-alive ping.
-
-### 7. Push channel
-
-The live channel is **ntfy**: `runtime/watch/intraday/push_ntfy.py` is registered into `runtime/watch/push.py` via `set_channel()` on real (non-dry) ticks. Set the topic in `runtime/watch/config/limits-and-cooldowns.json` (`ntfy.topic`) and subscribe your phone to it. Every push intent is also logged to `state/logs/watch-YYYY-MM-DD.jsonl`, so dry-runs and real runs leave the same trail. (`runtime/scripts/discord-alert.sh` is a legacy webhook utility kept for backward compatibility.)
+If a paper fire clears threshold, an ntfy push lands on the subscribed phone.
 
 ## Files that travel with the plugin
 
 ```
 mirai-station/
-├── plugin.json                          ← manifest
-├── README.md                            ← top-level plugin docs
+├── plugin.json                          ← skill manifest + runtime config
+├── README.md                            ← what the system is (start here)
 ├── TRANSFER.md                          ← this file
-├── agents/mirai.md                      ← the mirai agent
-├── skills/                              ← right-eye, left-eye, oracle, algo-read, ...
-├── knowledge/mirai/                     ← dossiers, reflexes, thesis registry
+├── skills/
+│   ├── mirai-left-eye/                  ← the brain: hunter · reversion_lens (3 heads) ·
+│   │                                       lefteye_gex_box · native_gex_feed · watchtower ·
+│   │                                       gex_polarity_ab · uw_periscope · dashboard · …
+│   ├── lob-flow/                        ← Layer-2 order-book FLOW sensor (shadow)
+│   ├── iv-viability/                    ← per-contract IV gate + the Schwab/Cassandra vault
+│   └── mirai-right-eye/                 ← embedder only (RAG retired) → feeds macro-mood
 ├── runtime/
-│   ├── launchd/
-│   │   ├── com.mirai-station.left-eye.plist     ← every 5m → run-watch-left-eye.sh
-│   │   ├── com.mirai-station.caffeinate.plist   ← keeps the mini awake
-│   │   └── com.mirai-station.auth-watch.plist   ← daily 08:00 ET → run-auth-check.sh
-│   ├── scripts/
-│   │   ├── env.sh                       ← shared env (paths, helpers; no secrets read at top level)
-│   │   ├── setup-watch.sh               ← one-shot installer (venv + deps)
-│   │   ├── venv-bootstrap.sh            ← installs the broader legacy skill deps
-│   │   ├── install-launchd.sh           ← symlink + bootstrap the three plists
-│   │   ├── uninstall-launchd.sh         ← bootout + remove the three plists
-│   │   ├── mirai-watch.sh               ← CLI dispatcher (activate/deactivate/status/tick/doctor)
-│   │   ├── run-watch-left-eye.sh        ← launchd wrapper: reconcile → learn → scan → tick
-│   │   ├── run-auth-check.sh            ← launchd wrapper: Schwab token keep-alive
-│   │   └── discord-alert.sh             ← legacy push utility (kept; pulls webhook on demand)
-│   └── watch/                           ← Mirai Watch LangGraph orchestrator
-│       ├── __init__.py
-│       ├── README.md                    ← tick-graph diagram + walkthrough
-│       ├── requirements.txt
-│       ├── paths.py
-│       ├── log.py
-│       ├── budget.py
-│       ├── claude_cli.py
-│       ├── market_feed.py
-│       ├── push.py                      ← push-channel registry (ntfy on real ticks)
-│       ├── graph.py                     ← LangGraph checkpointer
-│       ├── tick_graph.py                ← the unified tick StateGraph
-│       ├── right_eye_skill.py           ← loader for the mirai-right-eye skill package
-│       ├── cli.py                       ← python -m watch.cli tick|learn|doctor
-│       ├── config/                      ← signal-triggers / signal-metadata / learning-settings / limits-and-cooldowns
-│       ├── intraday/                    ← the net-new thinking core (signals, derivatives, yardstick, regime, bayes, learn, …)
-│       └── tests/                       ← pytest suite
-└── state/                               ← runtime state (DO NOT commit / DO NOT copy across machines)
-    ├── right_eye.lance/                 ← LanceDB (regenerates from scratch on first run)
-    ├── logs/                            ← daily JSONL streaming logs
-    ├── locks/                           ← per-thesis advisory locks
-    └── checkpoints.sqlite               ← LangGraph tick-graph checkpoints
+│   ├── launchd/                         ← 7 LaunchAgent plists (the fleet)
+│   ├── scripts/                         ← env.sh · venv-bootstrap · install-launchd · run-*.sh
+│   ├── viewstation/                     ← the Nightglass tablet (read-only HTTP :8787)
+│   └── watch/                           ← the tick chassis: cli · intraday/ (market_status,
+│                                           gex_alerts, push_ntfy, macro_mood, auth) · tests
+└── state/                               ← runtime state — DO NOT copy across machines
+    ├── reversion/                       ← the diary + nightly grades
+    ├── gex_fills/ · gex_learn/ · gex_uw/ · lob_flow/ · market_expectation/ · logs/
 ```
 
-State (LanceDB, logs, checkpoints) is per-machine. Do not copy `state/` between Macs — each instance learns its own signal posteriors and news store from scratch.
+> Historical note: an earlier "Mirai Watch" LangGraph tick-graph (`graph.py`,
+> `tick_graph.py`, a LanceDB news store) and the nine-voter skills (`oracle`,
+> `algo-read`) were retired in the 2026-07-03 gex-only restructure. If you see them
+> referenced in old notes or a stale `requirements.txt` pin (`langgraph`), they are
+> not part of the live system.
 
 ## Uninstalling
 
 ```bash
-mirai-watch deactivate                   # unload launchd
+./runtime/scripts/uninstall-launchd.sh   # bootout + remove the plists
 rm -rf ~/.claude/plugins/mirai-station   # plugin
 rm -rf ~/.local/share/mirai-station      # venv
-rm ~/.local/bin/mirai-watch              # CLI symlink
 # Optionally remove Keychain secrets:
-# security delete-generic-password -a "$USER" -s "mirai-station/..."
+# security delete-generic-password -a "$USER" -s "mirai-station/schwab-app-key"  (etc.)
+# security delete-generic-password -a "$USER" -s "iv-viability-cassandra"
 ```

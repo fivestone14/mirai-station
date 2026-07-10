@@ -9,7 +9,7 @@ live state on the Mac mini and renders five surfaces:
 | **Overview** | Ambient, glanceable: the 0DTE enter/stay-out entry widget (SPX with a mood emoji), real-money scoreboard, paper win-rate ring, morning-mood gauge, SPX regime, the "in one breath" line. |
 | **Deep** | Under the hood: live GEX dealer-gamma heatmap, the LOOK→STRETCH→RUNWAY→TURN→SCORE pipeline with current gate states, the GEX-views numbers, per-ticker counts, a tappable day-timeline (tap a scan → plain-English ⇄ raw JSON), and the paper-grading table. |
 | **Learning** | The dials it can tune, paper performance + outcome distribution, "what it learned today," the learning loop. |
-| **🗺️ Pipeline** | The whole system, stage by stage (Senses → Brain → Pick → Watch → Memory → Settings), each module translated to plain English with its data opened in a formatted view (Plain ⇄ Raw). The raw file/sqlite explorer lives here as a "Browse all raw files" drill-down. |
+| **🗺️ Pipeline** | The whole system, stage by stage (Senses → Brain → Record → Memory → Tell), each module translated to plain English with its data opened in a formatted view (Plain ⇄ Raw). The raw file explorer lives here as a "Browse all raw files" drill-down. |
 
 It auto-refreshes every 60 s and on pull/tap of ⟳. **Faithful to live data:** it
 reuses the project's own renderers (`dashboard.py`, `reversion_lens.py`), so every
@@ -20,19 +20,17 @@ verbatim for the prose.
 
 ```
 runtime/viewstation/
-  server.py             stdlib http.server — serves the app + JSON; no third-party deps
-  snapshot.py           assembles one live snapshot (imports the skill modules)
-  pipeline.py           builds the Pipeline map + the Signals queue (plain-English)
-  teach_examples.py     detect untaught fields + safe-merge agent-authored examples
-  static/               index.html · app.js · style.css · manifest · icon
+  server.py             stdlib ThreadingHTTPServer — serves the app + JSON; no third-party deps
+  snapshot.py           assembles one live snapshot (reuses dashboard.py + reversion_lens.py)
+  pipeline.py           builds the 5-stage Senses→Brain→Record→Memory→Tell map
+  static/               index.html · manifest · icon  (single self-contained page — all CSS/JS inlined)
 ```
-- `GET /api/snapshot` — the assembled live state (Overview/Deep/Learning).
-- `GET /api/pipeline` — the stage map + the signals queue.
-- `GET /api/raw/index|file|sqlite` — opt-in raw explorer (whitelisted to `state/`,
-  the paper ledgers, and `config/`; path-traversal blocked; sqlite opened read-only).
-
-**Autonomous teaching examples:** when the recommender mines a new signal field,
-has a teaching agent author a beginner caption + gauge anchors, and safe-merges them
+- `GET /api/snapshot` — the assembled live state (Overview/Deep/Learning), 5 s memo cache.
+- `GET /api/pipeline` — the stage map.
+- `GET /api/replay?day=YYYY-MM-DD` — feeds the Replay tab from past `state/reversion/*.jsonl`.
+- `GET /api/raw/index|file` — opt-in raw explorer (whitelisted to `state/`, the paper
+  ledgers, and `config/`; path-traversal blocked; opened read-only).
+- `GET /api/health` — liveness.
 
 LAN-only by design: **read-only, no auth, no writes.** Don't port-forward it.
 

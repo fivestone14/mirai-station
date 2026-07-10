@@ -1,11 +1,8 @@
 # mirai-station — Operations runbook
 
-> [!warning] 2026-07-03 gex-module restructure
-> This document predates the restructure where the nine-voter/bet-watching
-> system was retired. Live shape: Shift Manager (hunter) → Fade Lens →
-> Gravity Engine + Flow Sensor → diary → report cards → storytellers +
-> alert bell. See docs/gex-glossary.md and docs/salvage-notes.md.
-
+> Architecture: see the top-level `README.md` and `docs/gex-glossary.md`. Live
+> shape: hunter (Shift Manager) → Flow Sensor + Gravity Engine → three heads
+> (Fade Lens, Watchtower, Break Lens) → diary → nightly report cards → tablet + ntfy.
 
 ## Start / stop / restart
 
@@ -16,7 +13,7 @@ launchctl bootout gui/$UID/com.mirai-station.left-eye
 # Start it again
 launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.plist
 
-# Restart all three
+# Restart the whole fleet (all 7 agents)
 ~/.claude/plugins/mirai-station/runtime/scripts/uninstall-launchd.sh
 ~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh
 ```
@@ -43,20 +40,23 @@ tail -50 ~/.claude/plugins/mirai-station/state/logs/watch-$(date +%Y-%m-%d).json
 
 This bypasses launchd entirely; useful for debugging. (Or `mirai-watch tick --dry-run` for a no-dispatch run.)
 
-## Discord webhook re-key
+## ntfy alert channel
 
-If Discord rotates the URL:
-```bash
-security delete-generic-password -a "$USER" -s "mirai-station/discord-alert-webhook"
-security add-generic-password -a "$USER" -s "mirai-station/discord-alert-webhook" -w "<new url>"
-```
+There is no key to rotate — ntfy uses a shared topic name, set in
+`runtime/watch/config/limits-and-cooldowns.json` (`ntfy` block). To change it,
+edit that file and re-subscribe the phone app to the new topic. No restart needed.
 
-## API key rotation
+## Market-data credential rotation
 
 ```bash
-security delete-generic-password -a "$USER" -s "mirai-station/anthropic-api-key"
-security add-generic-password -a "$USER" -s "mirai-station/anthropic-api-key" -w "sk-ant-…"
-# No restart needed — env.sh reads Keychain on every script invocation.
+# Schwab token is refreshed by the auth-watch agent; if the 7-day login lapses,
+# re-run the OAuth flow the iv-viability vault uses, then confirm:
+security find-generic-password -a "$USER" -s "mirai-station/schwab-token-path" -w
+
+# ThetaData / Cassandra's Edge bearer (the native SPX chain):
+security delete-generic-password -a "$USER" -s "iv-viability-cassandra"
+security add-generic-password    -a "$USER" -s "iv-viability-cassandra" -w "<new bearer>"
+# No restart needed — the vault reads Keychain on every invocation.
 ```
 
 ## Common failure modes
@@ -65,25 +65,24 @@ security add-generic-password -a "$USER" -s "mirai-station/anthropic-api-key" -w
 |---|---|---|
 | `launchctl list` shows `Status: 78` for an agent | exit code != 0; check stderr | `tail /tmp/mirai-station.<label>.err` |
 | "schwab module not found" | venv not provisioned or wrong python | re-run `venv-bootstrap.sh`; confirm shebang resolves |
-| Webhook 401 from Discord | URL revoked / channel deleted | recreate webhook; update Keychain |
-| Anthropic 401 | API key expired | rotate (see above) |
-| MCP tool calls fail | MCP server config missing on mini | copy `~/.config/claude/` from main machine |
-| Hunter alerts but no Discord ping | `DISCORD_ALERT_WEBHOOK` empty | check Keychain entry exists |
+| GEX read falls back to SPY-proxy every scan | dead ThetaData/Cassandra bearer | re-key `iv-viability-cassandra` (see above); auth-watch also pings on this |
+| No ntfy push on a fire | topic unset or phone not subscribed | check the `ntfy` block in `limits-and-cooldowns.json`; re-subscribe the app |
+| MCP tool calls fail (macro brief) | MCP server config missing on mini | copy the `mcpServers` block into the mini's `~/.claude.json` (see INSTALL §5) |
 | Mac mini sleeping | caffeinate plist not loaded | re-run `install-launchd.sh` |
 
 ## What the mini knows vs. doesn't
 
 The mini operates with:
-- The vendored `knowledge/mirai/` brain (reflexes, patterns, dossier registry)
-- Live MCP sources (perplexity, twitter, market-research, etc.)
-- Schwab live chain via the Python venv
+- The gex-only brain in `skills/mirai-left-eye/` (Gravity Engine + three heads)
+- Schwab live chain + the ThetaData native SPX chain via the Python venv
+- Cassandra's Edge MCP sources (twitter / reddit / fetch) for the morning macro brief
 
 The mini does NOT have:
-- The investment vault at `~/Documents/Investments/` (intentional — stays on main machine)
-- Prism/bet case files (those live with the main machine's full skill set)
-- The `tradepost` runtime (intentional — mirai-station is its own thing)
+- The interactive investment vault (intentional — stays on the main machine)
+- Any real-money order path — everything here is paper/shadow until the Wilson
+  promotion gate clears
 
-If mirai's boot sequence flags missing vault files, that is expected and not an error.
+If a boot step flags a missing vault file, that is expected and not an error.
 
 ## Updating the plugin
 
