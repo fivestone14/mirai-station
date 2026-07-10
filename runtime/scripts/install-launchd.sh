@@ -16,6 +16,7 @@ PLISTS=(
   "com.mirai-station.gex-polarity.plist"
   "com.mirai-station.viewstation.plist"
   "com.mirai-station.lob-collector.plist"
+  "com.mirai-station.dated-book.plist"
 )
 
 TARGET_DIR="${HOME}/Library/LaunchAgents"

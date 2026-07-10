@@ -1001,6 +1001,19 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         except Exception:
             pass
 
+        # SHADOW (DATED BOOK): far-dated structural OI walls — the next two SPX
+        # monthlies + the quarter-end — from the nightly sidecar's stored book
+        # (dated_gex_feed, own launchd job). Cache-ONLY file read, never a fetch
+        # in the tick; unsigned location + magnitude only; key absent when the
+        # store is missing, disabled, or staler than the floor. Fail-open.
+        try:
+            import dated_gex_feed as _dgx
+            _dg_rec = _dgx.diary_summary(now)
+            if _dg_rec is not None:
+                telemetry["dated_gex"] = _dg_rec
+        except Exception:
+            pass
+
         # SHADOW (RANGE RULER): the day's expected-move budget from a live,
         # de-biased 0DTE ATM straddle re-quote (cache-ONLY chain peek — never a
         # fetch in the tick) + how much of the open anchor is already spent +
