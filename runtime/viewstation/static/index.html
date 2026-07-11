@@ -1061,7 +1061,15 @@ const MMETA = {   // key dealer levels, drawn as horizontal lines with right-edg
   putWall: {c:"var(--coral)",   n:"PUT γ",     role:"0DTE γ peak (≈ATM, not the structural wall)",    d:0, sw:1.5, dash:''},
   spot:    {c:"var(--iris)",    n:"SPOT",       role:"now",        d:2, sw:2.6, dash:''},
 };
-const MIDS = ["callWall","magnet","flip","putWall","spot"];
+// The always-on level lines. CALL γ / PUT γ (the 0DTE gamma-weighted peaks) were
+// REMOVED 07-11: they glue to spot every day (ATM artifact, audited), overlapped
+// MAGNET/SPOT in an unreadable knot, and misread as "the call/put magnet" — which
+// they are NOT. The genuine call/put magnets are the STRUCTURAL OI walls, drawn by
+// paintDated (Walls toggle) with correct moneyness + off-frame edge markers; the
+// ATM gamma concentration is already shown by the measured bars. MAGNET (the pin)
+// is the single near-spot gravity line. (callWall/putWall stay in D for the
+// modeled-bar fallback and the frame band; they just no longer draw as lines.)
+const MIDS = ["magnet","flip","spot"];
 const gauss = (k,mu,sd)=>Math.exp(-((k-mu)*(k-mu))/(2*sd*sd));
 const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZone:PT});
 
@@ -1491,8 +1499,8 @@ function paintDated(){
   // structural near-dated (1-7DTE OI) Call Ceiling / Put Floor — the former strip
   // chips, now lines on the graph; merged by strike so a level shared with a
   // monthly wall draws once with combined tags
-  if(D.callCeil!=null&&isFinite(D.callCeil)&&D.callCeil>0) put_('c',+D.callCeil,false,'NEAR',0);
-  if(D.putFloor!=null&&isFinite(D.putFloor)&&D.putFloor>0) put_('p',+D.putFloor,false,'NEAR',0);
+  if(D.callCeil!=null&&isFinite(D.callCeil)&&D.callCeil>0) put_('c',+D.callCeil,false,'0-7D',0);
+  if(D.putFloor!=null&&isFinite(D.putFloor)&&D.putFloor>0) put_('p',+D.putFloor,false,'0-7D',0);
   if(!ent.size){ MAP.datedG.innerHTML=''; return; }
   let svg='', topN=0, botN=0;
   for(const e of ent.values()){
@@ -2134,7 +2142,7 @@ function annotatedJSON(s){
     `${i(1)}${K('gamma_sign')}: ${S(s.sign)},${c('dealer gamma at spot — positive = they dampen moves (pin), negative = amplify (storm)')}`,
     `${i(1)}${K('regime')}: ${S(s.regime)},${c('the regime read — "pinning" = mean-reverting, "trending" = directional')}`,
     `${i(1)}${K('gamma_flip')}: ${N(+s.flip.toFixed(2))},${c('zero-gamma level; above it dealers are long gamma (calm), below it short (volatile)')}`,
-    `${i(1)}${K('call_wall')}: ${N(s.callWall)}, ${K('put_wall')}: ${N(s.putWall)},${c('biggest call/put gamma strikes — price tends to stall into them')}`,
+    `${i(1)}${K('call_γ')}: ${N(s.callWall)}, ${K('put_γ')}: ${N(s.putWall)},${c('the 0DTE at-the-money gamma peaks — they track spot, they are NOT the structural wall')}`,
     `${i(1)}${K('magnet')}: ${N(s.magnet)},${c('the fill-weighted 0DTE strike price gravitates toward')}`,
     `${i(1)}${K('pin_centroid')}: ${N(s.pin)},${c('gamma-weighted centre of the whole map')}`,
     `${i(1)}${K('reversion_extreme')}: {${c('HEAD A · FADE LENS — the 4-gate head that fades stretch back toward the magnet')}`,
@@ -2499,7 +2507,7 @@ function rpBuild(){
     <clipPath id="rp-clip"><rect id="rp-clip-r" x="${g.x0}" y="0" width="0" height="${m.h}"/></clipPath>
     <g>${grid.join('')}${tTick.join('')}</g><g>${yLab.join('')}</g>
     ${heat}
-    <g>${level('magnet','magnet','magnet','--lantern','left')}${level('flip','flip','flip','--ink-dim','left')}${level('callWall','wall','CALL WALL','--jade','right')}${level('putWall','wall','PUT WALL','--coral','right')}</g>
+    <g>${level('magnet','magnet','magnet','--lantern','left')}${level('flip','flip','flip','--ink-dim','left')}${level('callWall','wall','CALL γ','--jade','right')}${level('putWall','wall','PUT γ','--coral','right')}</g>   <!-- 0DTE γ peaks (≈ATM), NOT the structural wall — honest label, matches the live map's fix -->
     <path class="rp-future" d="${dstr}"/>
     <path class="rp-past" d="${dstr}" clip-path="url(#rp-clip)"/>
     <g id="rp-fires">${fireSVG}</g>
