@@ -273,6 +273,33 @@ def _round_strike_check(contracts: list, spot: float) -> dict:
     return {"checked": len(expected), "missing": missing}
 
 
+def _parity_iv_rescue(contracts: list) -> int:
+    """NO SILENT GEX HOLES — deep-ITM quotes (canonically puts above spot) arrive
+    with null/zero IV because the quote is all intrinsic; put-call parity says the
+    same-strike same-expiry twin carries the identical implied vol, and BS gamma
+    is right-symmetric, so borrowing the twin's IV is EXACT for the gex components.
+    Ported from native_gex_feed._parity_iv_fallback (the live chain's rescue) after
+    the 07-10 accuracy audit found the July 8000 put wall shipping iv=0.0 on 168k
+    OI — a 48% understatement and a wrong net sign at the biggest overhead wall.
+    Returns the rescue count (recorded in meta so the drop is never invisible)."""
+    twin = {}
+    for c in contracts:
+        iv = c.get("iv")
+        if iv and iv > 0:
+            twin[(c.get("expiry"), c.get("strike"), c.get("right"))] = iv
+    rescued = 0
+    for c in contracts:
+        iv = c.get("iv")
+        if iv and iv > 0:
+            continue
+        other = "call" if c.get("right") == "put" else "put"
+        b = twin.get((c.get("expiry"), c.get("strike"), other))
+        if b:
+            c["iv"] = b
+            rescued += 1
+    return rescued
+
+
 def _quarterly_due(now: datetime, prev: dict) -> bool:
     """Quarter-end cadence: daily inside the final 2 weeks; otherwise refresh
     once the stored quarterly band's own pull is ≥7 days old (age-based weekly —
@@ -348,20 +375,40 @@ def pull(now: Optional[datetime] = None) -> dict:
     # THIS pull (previous good book untouched, failure logged) — never the runner.
     try:
         spot, contracts = float(res["spot"]), res["contracts"]
+        iv_rescued = _parity_iv_rescue(contracts)   # BEFORE the gex components
         by_exp: dict = {}
         for c in contracts:
             if c.get("strike") is None or c.get("right") not in ("call", "put"):
                 continue                       # malformed row: skip, never crash
             by_exp.setdefault((c["expiry"], c["band"]), []).append(c)
         bands = []
+        # per-strike GEX components need the same BS gamma the band totals use;
+        # fail-open to OI-only rows if the engine helpers are unavailable
+        try:
+            from lefteye_gex_box import _bs_gamma as _bsg, _TRADING_DAYS as _TD
+        except Exception:
+            _bsg = None
         for (exp_iso, band), cs in sorted(by_exp.items()):
             exp_d = date.fromisoformat(exp_iso)
+            tau = max((exp_d - today).days, 1) / (_TD if _bsg else 252.0)
             oi_k: dict = {}
             for c in cs:
                 k = float(c["strike"])
-                slot = oi_k.setdefault(k, {"call": 0, "put": 0})
-                slot[c["right"]] += int(c.get("open_interest") or 0)
-            strikes = [[k, v["call"], v["put"]] for k, v in sorted(oi_k.items())]
+                slot = oi_k.setdefault(k, {"call": 0, "put": 0, "cg": 0.0, "pg": 0.0})
+                oi = int(c.get("open_interest") or 0)
+                slot[c["right"]] += oi
+                # per-strike dated GEX (2026-07-10): UNSIGNED call/put dollar-gamma
+                # components — Γ(S,K,iv,τ)·OI·100·S²·1% — the same formula as the
+                # band gamma_mass total, split by side and strike. The store stays
+                # magnitude-only (two non-negative components, no signed field);
+                # a display may derive the conventional net (calls − puts) — the
+                # SAME assumed-dealer-sign convention the live 0DTE map uses.
+                iv = c.get("iv")
+                if _bsg and iv and iv > 0 and oi > 0:
+                    gx = abs(_bsg(spot, k, float(iv), tau)) * oi * 100.0 * spot * spot * 0.01
+                    slot["cg" if c["right"] == "call" else "pg"] += gx
+            strikes = [[k, v["call"], v["put"], round(v["cg"], 2), round(v["pg"], 2)]
+                       for k, v in sorted(oi_k.items())]
             top_c = sorted(([k, v["call"]] for k, v in oi_k.items() if v["call"] > 0),
                            key=lambda kv: -kv[1])[:_TOP_WALLS]
             top_p = sorted(([k, v["put"]] for k, v in oi_k.items() if v["put"] > 0),
@@ -370,7 +417,7 @@ def pull(now: Optional[datetime] = None) -> dict:
             bands.append({"expiry": exp_iso, "band": band, "root": cs[0]["root"],
                           "as_of": now.isoformat(),           # per-band pull stamp
                           "dte_at_pull": (exp_d - today).days,
-                          "strikes": strikes,                      # [[k, call_oi, put_oi]]
+                          "strikes": strikes,   # [[k, call_oi, put_oi, call_gex, put_gex]]
                           "top_calls": top_c, "top_puts": top_p,   # unsigned OI walls
                           "call_wall": top_c[0][0] if top_c else None,
                           "put_wall": top_p[0][0] if top_p else None,
@@ -395,6 +442,7 @@ def pull(now: Optional[datetime] = None) -> dict:
                 "landed_date": (prev.get("landed_date") or today.isoformat()),
                 "meta": {"calls": res.get("calls"),
                          "expiry_map": res.get("expiry_map"),
+                         "iv_rescued": iv_rescued,
                          "round_strike_check": _round_strike_check(contracts, spot)}}
         # never regress to an older book — re-read at the last moment so a slow
         # pull that raced a newer one can't clobber it (TOCTOU window → ms)

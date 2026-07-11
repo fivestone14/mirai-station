@@ -85,6 +85,45 @@ def _synthetic_result(spot=7550.0, bands=_ALL_BANDS, strikes=(6500.0, 7000.0, 75
             "expiry_map": {e: e for _b, e in bands}}
 
 
+def test_per_strike_gex_components(monkeypatch):
+    """2026-07-10: strikes rows carry UNSIGNED call/put dollar-gamma components
+    ([[k, call_oi, put_oi, call_gex, put_gex]]) whose sum must reproduce the
+    band's gamma_mass total — same formula, split by side, no signed field."""
+    monkeypatch.setattr(dg, "_run_code", lambda code: _synthetic_result())
+    dg.pull(_dt(2026, 7, 10))
+    book = json.load(open(dg._book_path()))
+    for b in book["bands"]:
+        assert all(len(r) == 5 for r in b["strikes"])
+        assert all(r[3] >= 0 and r[4] >= 0 for r in b["strikes"])
+        gex_sum = sum(r[3] + r[4] for r in b["strikes"])
+        assert b["gamma_mass"] is not None
+        assert abs(gex_sum - b["gamma_mass"]) / max(b["gamma_mass"], 1) < 1e-6
+        # independent recompute of one strike (calls side, k=7000, iv .17):
+        from lefteye_gex_box import _bs_gamma, _TRADING_DAYS
+        exp_d = date.fromisoformat(b["expiry"])
+        tau = max((exp_d - date(2026, 7, 10)).days, 1) / _TRADING_DAYS
+        spot = book["spot"]
+        row = [r for r in b["strikes"] if r[0] == 7000.0][0]
+        want = abs(_bs_gamma(spot, 7000.0, 0.17, tau)) * row[1] * 100.0 * spot * spot * 0.01
+        assert abs(row[3] - want) / max(want, 1) < 1e-6
+
+
+def test_parity_iv_rescue_fills_itm_gex(monkeypatch):
+    """The 07-10 audit case: a deep-ITM put arrives iv=0.0 with big OI — its gex
+    must be rescued from the same-strike call twin, never silently zeroed."""
+    res = _synthetic_result()
+    for c in res["contracts"]:
+        if c["right"] == "put" and c["strike"] == 8000.0 and c["expiry"] == "2026-07-17":
+            c["iv"] = 0.0                                 # the broken quote
+    monkeypatch.setattr(dg, "_run_code", lambda code: res)
+    dg.pull(_dt(2026, 7, 10))
+    book = json.load(open(dg._book_path()))
+    assert book["meta"]["iv_rescued"] == 1
+    b = [x for x in book["bands"] if x["expiry"] == "2026-07-17"][0]
+    row = [r for r in b["strikes"] if r[0] == 8000.0][0]
+    assert row[4] > 0                                     # put gex present (twin iv 0.17)
+
+
 def test_pull_writes_book_with_walls(monkeypatch):
     monkeypatch.setattr(dg, "_run_code", lambda code: _synthetic_result())
     st = dg.pull(_dt(2026, 7, 10))
