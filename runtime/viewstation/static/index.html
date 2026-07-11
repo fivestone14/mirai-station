@@ -57,22 +57,22 @@
   :root{
     --slab-under:rgba(0,0,0,.5);
     --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
-    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --dg-pin-0:#50C0A2; --dg-pin-1:#64AE95; --dg-pin-2:#6A9E8B; --dg-push-0:#DD6C5E; --dg-push-1:#BD7A70; --dg-push-2:#A4726B;
+    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --dgl-gutter:#141A24; --dgl-p1:#224D49; --dgl-p2:#2B6C5F; --dgl-p3:#338B75; --dgl-p4:#3BA688; --dgl-p5:#42C09A; --dgl-n1:#5D3535; --dgl-n2:#8A4640; --dgl-n3:#B3554A; --dgl-n4:#D16051; --dgl-n5:#EB6A57;
   }
   @media (prefers-color-scheme:light){:root{
     --slab-under:rgba(40,46,66,.18);
     --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
-    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --dg-pin-0:#279578; --dg-pin-1:#377E64; --dg-pin-2:#3C6C59; --dg-push-0:#BF493C; --dg-push-1:#96574D; --dg-push-2:#7B4E46;
+    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --dgl-gutter:#EDF1F7; --dgl-p1:#BCE2D6; --dgl-p2:#79C5AE; --dgl-p3:#22936F; --dgl-p4:#177E5E; --dgl-p5:#0F6B4F; --dgl-n1:#F2C9C3; --dgl-n2:#E49288; --dgl-n3:#D2503C; --dgl-n4:#BE402D; --dgl-n5:#A93524;
   }}
   :root[data-theme="dark"]{
     --slab-under:rgba(0,0,0,.5);
     --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
-    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --dg-pin-0:#50C0A2; --dg-pin-1:#64AE95; --dg-pin-2:#6A9E8B; --dg-push-0:#DD6C5E; --dg-push-1:#BD7A70; --dg-push-2:#A4726B;
+    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --dgl-gutter:#141A24; --dgl-p1:#224D49; --dgl-p2:#2B6C5F; --dgl-p3:#338B75; --dgl-p4:#3BA688; --dgl-p5:#42C09A; --dgl-n1:#5D3535; --dgl-n2:#8A4640; --dgl-n3:#B3554A; --dgl-n4:#D16051; --dgl-n5:#EB6A57;
   }
   :root[data-theme="light"]{
     --slab-under:rgba(40,46,66,.18);
     --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
-    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --dg-pin-0:#279578; --dg-pin-1:#377E64; --dg-pin-2:#3C6C59; --dg-push-0:#BF493C; --dg-push-1:#96574D; --dg-push-2:#7B4E46;
+    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --dgl-gutter:#EDF1F7; --dgl-p1:#BCE2D6; --dgl-p2:#79C5AE; --dgl-p3:#22936F; --dgl-p4:#177E5E; --dgl-p5:#0F6B4F; --dgl-n1:#F2C9C3; --dgl-n2:#E49288; --dgl-n3:#D2503C; --dgl-n4:#BE402D; --dgl-n5:#A93524;
   }
 
   *{box-sizing:border-box}
@@ -201,6 +201,7 @@
     background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
   .gx-chart svg{width:100%; height:100%; display:block}
   .gxbar{transition:opacity .12s linear}
+  #datedOIG rect{shape-rendering:crispEdges}
   @media (prefers-reduced-motion:no-preference){ .gx-blink{animation:gxblink 1.4s ease-in-out infinite} }
   @keyframes gxblink{0%,100%{opacity:1}50%{opacity:.34}}
 
@@ -918,9 +919,24 @@ async function loadDiaryHistory(){
 // the viewBox matches the chart cell's real pixel aspect, so the SVG fills it with
 // no letterbox (no wasted vertical space); geometry is derived from the measured size.
 function computeMAPX(w,h){
-  const x0=72, tagX=w-10, lineEnd=Math.round(w-178);
-  return { W:w, H:h, padT:22, padB:24, axisLX:48, x0, tagX, lineEnd,
-    // 88% of the lane (was 62%): everything right of lineEnd is tag territory the
+  const x0=72, tagX=w-10, stripEnd=Math.round(w-178);
+  // TENOR LADDER GUTTER (Dated γ): each dated expiry gets its own labeled
+  // heat-ladder column between the bar lane and the right tag gutter — position
+  // carries tenor identity (the pigment fade never could at 3px marks). Zero
+  // width when the layer is off, so the off-state geometry is unchanged.
+  // BOOT ORDER: this first runs before the `let DOI_ON`/`DBOOK` bindings initialize —
+  // typeof does NOT protect a TDZ `let`; the try/catch below is what saves boot (nT→0).
+  let nT=0;
+  try{
+    if(typeof DOI_ON!=='undefined'&&DOI_ON&&typeof datedOIAvail==='function'&&datedOIAvail()){
+      const today=new Date().toISOString().slice(0,10);
+      nT=Math.min(5,(DBOOK.book.bands||[]).filter(b=>String(b.expiry||'')>=today).length);
+    }
+  }catch(e){ nT=0; }
+  const stripGutter=nT?(12+9*nT+3*(nT-1)):0;        // 45px @3 tenors, 69px @5
+  const lineEnd=stripEnd-stripGutter;
+  return { W:w, H:h, padT:22, padB:24, axisLX:48, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
+    // 88% of the lane: everything right of lineEnd is gutter/tag territory the
     // bars never enter; edge markers + legend get surface halos instead of margin
     barMax:Math.min(lineEnd-x0-6, Math.max(160, Math.round((lineEnd-x0)*0.88))), pHigh:7660, pLow:7430 };
 }
@@ -937,7 +953,7 @@ function mapBand(st){
   if(typeof wallsOn==='function'&&wallsOn()){
     if(st&&st.callCeil!=null&&isFinite(st.callCeil)&&st.callCeil>0) L.push(+st.callCeil);
     if(st&&st.putFloor!=null&&isFinite(st.putFloor)&&st.putFloor>0) L.push(+st.putFloor);
-    const dbs=(st&&st.dated&&Array.isArray(st.dated.bands))?st.dated.bands.slice(0,3):[];
+    const dbs=(st&&st.dated&&Array.isArray(st.dated.bands))?st.dated.bands.slice(0,5):[];
     for(const b of dbs){
       if(!b||b.band==='quarter_end') continue;   // the collar tail (~±15-20%) would
                                                  // stretch the frame to unreadable —
@@ -1077,13 +1093,14 @@ function gxBuild(){
      <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
+     <line id="dgSpot" style="stroke:var(--iris);stroke-width:1.2;opacity:0"/>
      <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan style="fill:var(--jade)">▮</tspan> pins <tspan style="fill:var(--coral)">▮</tspan> pushes</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
-    datedOILgdG:q('datedOILgdG'),
+    datedOILgdG:q('datedOILgdG'), dgSpot:q('dgSpot'),
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
   gxOverview(); gxTower(); gxPaint();
@@ -1120,14 +1137,13 @@ function gxPaint(){
   }
   const bsrc=document.getElementById('bar-src'); if(bsrc) bsrc.textContent=measured?'measured':'modeled';
   let mx=1e-6; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; }
-  // SPLIT-ROW LANES when the dated OI layer is on: live bar takes the row's top
-  // ~56% and the dated slab the ~30% sub-lane below the strike line — overlap at
-  // the same y would either hide the shorter bar or corrupt the lightness ladder.
-  const _doi=(typeof DOI_ON!=='undefined'&&DOI_ON&&typeof datedOIAvail==='function'&&datedOIAvail());
-  const MBH=Math.max(2.5, MROWH*(_doi?0.56:0.72));   // bar thickness < row pitch → visible gaps
+  // Live bars keep the FULL row height always — the dated layer lives in its own
+  // ladder gutter now (the split-row sub-lane died with the wash+tick marks), so
+  // the hero gets stronger when the layer is on, not thinner.
+  const MBH=Math.max(2.5, MROWH*0.72);   // bar thickness < row pitch → visible gaps
   MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], mag=Math.abs(vals[i])/mx,
       pos=measured?(vals[i]>=0):(k>=D.flip);   // measured → color by SIGN of net γ (pins vs pushes); modeled → by side of flip
-    rect.setAttribute('y',(_doi?(yFor(k)-MROWH*0.42):(yFor(k)-MBH/2)).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
+    rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
     rect.setAttribute('width',(mag<0.05?0:Math.max(2,mag*X.barMax)).toFixed(1));   // hide dead strikes (no picket-rail)
     rect.style.fill=pos?'url(#gxJ)':'url(#gxC)';
     rect.style.opacity=(0.48+0.47*mag).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
@@ -1149,7 +1165,7 @@ function gxPaint(){
     const sd=(D.sigma>0)?((valOf[id]-D.spot)/D.sigma):0;
     R.nm.style.opacity=1; R.nm.setAttribute('y',(ly-8).toFixed(1)); R.nm.textContent=id==='spot'?mm.n:`${mm.n} ${sig(sd)}`;
     R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
-    if(Math.abs(ly-yy)>2){ R.lead.setAttribute('x1',X.lineEnd); R.lead.setAttribute('y1',yy.toFixed(1)); R.lead.setAttribute('x2',(X.tagX-118).toFixed(1)); R.lead.setAttribute('y2',ly.toFixed(1)); R.lead.style.opacity=.3; }
+    if(Math.abs(ly-yy)>2){ R.lead.setAttribute('x1',X.stripEnd); R.lead.setAttribute('y1',yy.toFixed(1)); R.lead.setAttribute('x2',(X.tagX-118).toFixed(1)); R.lead.setAttribute('y2',ly.toFixed(1)); R.lead.style.opacity=.3; }   // leads start PAST the ladder gutter — never cross the tenor columns
     else R.lead.style.opacity=0;
   });
   // spot marker — a triangle pointing in from the axis
@@ -1162,12 +1178,19 @@ function gxPaint(){
         // clamped into the frame (edge-marker convention): an off-frame target
         // pins to the edge instead of stamping into the caption/legend strip
         ty=Math.min(X.H-X.padB-8, Math.max(X.padT+8, yFor(tgt))),
-        col=`var(--${up?'jade':'coral'})`, tx=X.lineEnd+6;
+        col=`var(--${up?'jade':'coral'})`, tx=X.stripEnd+6;
       MAP.wtTgtL.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtL.setAttribute('y2',ty.toFixed(1)); MAP.wtTgtL.style.stroke='var(--lantern)'; MAP.wtTgtL.style.opacity=.32;
       MAP.wtTgtA.setAttribute('x',tx); MAP.wtTgtA.setAttribute('y',(ty+5).toFixed(1)); MAP.wtTgtA.textContent=up?'▲':'▼'; MAP.wtTgtA.style.fill=col;
       MAP.wtTgtP.setAttribute('x',(tx+14).toFixed(1)); MAP.wtTgtP.setAttribute('y',(ty+5).toFixed(1)); MAP.wtTgtP.textContent=f(tgt,0); MAP.wtTgtP.style.fill=col;
       MAP.wtTgt.style.display='';
     } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; }
+  }
+  // ladder-gutter spot crosshair — eases with the tape so "where is spot" reads
+  // ACROSS the tenor columns at a glance
+  if(MAP.dgSpot){
+    MAP.dgSpot.setAttribute('x1',(X.lineEnd+1).toFixed(1)); MAP.dgSpot.setAttribute('x2',(X.stripEnd-1).toFixed(1));
+    MAP.dgSpot.setAttribute('y1',sy.toFixed(1)); MAP.dgSpot.setAttribute('y2',sy.toFixed(1));
+    MAP.dgSpot.style.opacity=(X.nT>0)?0.55:0;
   }
   paintDated(); paintDatedOI();
 }
@@ -1195,8 +1218,17 @@ async function fetchDatedBook(){
     if(b&&b.ok&&Array.isArray(b.bands)){
       const first=!DBOOK.book;
       DBOOK={book:b, at:Date.now()}; if(MAP)MAP._dokey=null;
-      if(first) gxOverview();          // surface the toggle chip the moment a book
-    }                                  // exists — not minutes later on the next scan
+      if(first){                        // surface the chip (and the gutter, if the
+        if(DOI_ON) buildMap();          // toggle was left on) the moment a book
+        gxOverview();                   // exists — not minutes later on the next scan
+      } else if(MAP&&typeof MAPX!=='undefined'){
+        // refetch: a band-count or staleness change must RESIZE the gutter, not
+        // draw fresh bands against stale geometry (the ladder would overflow
+        // into the tag strip until the next scan otherwise)
+        const want=(DOI_ON&&datedOIAvail())?Math.min(5,_dglBands().length):0;
+        if(want!==(MAPX.nT||0)) buildMap();
+      }
+    }
   }catch(e){}
 }
 let DOI_ON=(function(){ try{ return localStorage.getItem('gx.datedOI')==='1'; }catch(e){ return false; } })();
@@ -1210,31 +1242,43 @@ function datedOIAvail(){               // book present AND young enough to draw 
 function toggleDatedOI(){
   DOI_ON=!DOI_ON;
   try{ localStorage.setItem('gx.datedOI', DOI_ON?'1':'0'); }catch(e){}
-  if(MAP)MAP._dokey=null;               // force repaint next frame
-  gxOverview();                          // chip reflects the new state immediately
+  buildMap();          // REFRAME: the ladder gutter changes the lane geometry
+  gxOverview();        // chip reflects the new state immediately
 }
-// Sign speaks the LIVE layer's language at a whisper: every dated color is the
-// live jade/coral mixed toward the theme's ink — same semantic, never the same
-// pigment. Tenor rides ONE sequential fade (vivid front monthly → ghosted
-// quarter-end); dated-ness is carried by treatment (15%-opacity wash body +
-// crisp surface-cased end tick in the slim sub-lane) so the layer reads as the
-// shadow the future casts under today's tape. All 12 steps ≥3:1 both themes.
-const _DGP=['var(--dg-pin-0)','var(--dg-pin-1)','var(--dg-pin-2)'];     // net ≥ 0 → pins
-const _DGN=['var(--dg-push-0)','var(--dg-push-1)','var(--dg-push-2)'];  // net < 0 → pushes
+// TENOR LADDER GUTTER: each expiry is its own labeled heat-ladder column between
+// the bar lane and the right tags — POSITION carries tenor (the one channel that
+// is instantly legible at any mark size; the pigment fade never was), hue carries
+// sign (jade-family pins / coral-family pushes, same convention as the live bars),
+// and a 5-step heat ramp carries √|net| magnitude (monotone, global-max anchored,
+// disclosed in the legend; exact values ride each cell's native <title>).
+// Steps s1/s2 are DECLARED non-essential ambient texture (sub-3:1 by design);
+// the essential read is s3-s5 + the per-column ink peak tick, all ≥3:1 both themes.
+const _DGLP=['var(--dgl-p1)','var(--dgl-p2)','var(--dgl-p3)','var(--dgl-p4)','var(--dgl-p5)'];
+const _DGLN=['var(--dgl-n1)','var(--dgl-n2)','var(--dgl-n3)','var(--dgl-n4)','var(--dgl-n5)'];
 function _gfmt(v){ return v>=1e9?'$'+(v/1e9).toFixed(2)+'B':v>=1e6?'$'+Math.round(v/1e6)+'M':'$'+Math.round(v/1e3)+'k'; }
+function _dglHead(bd){                       // column header: monthly = 3-letter month;
+  try{                                       // quarter-end = ◆-prefixed quarter (species cue)
+    const m=+String(bd.expiry).split('-')[1];
+    if(bd.band==='quarter_end') return '◆Q'+Math.ceil(m/3);
+    return _dexp(bd.expiry).slice(0,3);
+  }catch(e){ return _dexp(bd.expiry).slice(0,3); }
+}
+function _dglBands(){                        // the drawn (non-expired, ≤5) bands
+  const b=DBOOK.book; if(!b||!Array.isArray(b.bands)) return [];
+  const today=new Date().toISOString().slice(0,10);
+  return b.bands.filter(bd=>String(bd.expiry||'')>=today).slice(0,5);
+}
 function paintDatedOI(){
   if(!MAP||!MAP.datedOIG) return;
   const b=DBOOK.book;
   const ok=DOI_ON&&(typeof LIVE==='undefined'||LIVE)&&datedOIAvail()&&MSTRIKES.length;
-  const key=(ok?String(b.as_of):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}`;
+  const key=(ok?String(b.as_of):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}|${MAPX.nT}|${MAPX.lineEnd}`;
   if(key===MAP._dokey) return;
   MAP._dokey=key;
-  if(!ok){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
+  if(!ok||!MAPX.nT){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
   const X=MAPX, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
-  const today=new Date().toISOString().slice(0,10);
   const profs=[]; let mx=0, kmax=null;
-  b.bands.slice(0,3).forEach((bd,i)=>{
-    if(String(bd.expiry||'')<today) return;         // expired band: never draw
+  _dglBands().forEach(bd=>{
     const buckets=new Array(MSTRIKES.length).fill(0); let placed=0;
     for(const row of (bd.strikes||[])){
       if(!Array.isArray(row)||!isFinite(row[0])||row.length<5) continue;
@@ -1246,53 +1290,53 @@ function paintDatedOI(){
       const idx=Math.round((row[0]-k0)/step);       // in-frame or not (scale honesty)
       if(idx>=0&&idx<buckets.length){ buckets[idx]+=net; placed++; }
     }
-    if(placed>0) profs.push({i:profs.length, tag:_dexp(bd.expiry), buckets});
-    // ^ POSITIONAL fade index (reviewer redirect 6): the anchor is the frontmost
-    // DRAWN band — an expired-but-not-yet-repulled front monthly must not leave
-    // the ladder starting at step 1 with nothing vivid on screen.
+    if(placed>0) profs.push({i:profs.length, head:_dglHead(bd), tag:_dexp(bd.expiry), buckets});
   });
   if(!mx||!profs.length){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
-  // WASH + TICK marks in the row's lower sub-lane. √ width on the global |net|
-  // max (honesty rule unchanged). Reviewer-tuned at the DEFAULT walls-ON frame:
-  //   * body only for the WIDEST band per strike (stacked washes made mixed-sign
-  //     mud and stack-count faked intensity) — ticks still carry every band;
-  //   * tick-only when the sub-lane collapses below 3px;
-  //   * back bands cull at 1% so the dense default view breathes;
-  //   * tick color line at .75 opacity — the context layer's end must not
-  //     out-crisp the hero's gradient edge.
-  const BH=Math.max(2, MROWH*0.30), yOff=MROWH*0.18, drawBody=BH>=3;
-  let bodies='', ticks='';
-  MSTRIKES.forEach((k,j)=>{
-    const here=profs.filter(p=>Math.abs(p.buckets[j])>=(p.i>=1?0.01:0.003)*mx)
-      .map(p=>({p, net:p.buckets[j],
-                w:Math.min(X.barMax, Math.max(6, Math.sqrt(Math.abs(p.buckets[j])/mx)*X.barMax))}))
-      .sort((a,b2)=>b2.w-a.w);                      // widest behind → bullet layering
-    if(!here.length) return;
-    const y=(yFor(k)+yOff).toFixed(1), yT=(yFor(k)+yOff-0.5).toFixed(1), yB=(yFor(k)+yOff+BH+0.5).toFixed(1);
-    here.forEach(({p,net,w},hi)=>{
-      const C=(net>=0?_DGP:_DGN)[Math.min(p.i,2)], xE=(X.x0+w).toFixed(1);
-      if(drawBody&&hi===0)
-        bodies+=`<rect x="${X.x0}" y="${y}" width="${w.toFixed(1)}" height="${BH.toFixed(1)}" rx="1" style="fill:${C};fill-opacity:.15"/>`;
-      ticks+=`<line x1="${xE}" x2="${xE}" y1="${yT}" y2="${yB}" style="stroke:var(--surface-2);stroke-width:4.5"/>`
-           +`<line x1="${xE}" x2="${xE}" y1="${yT}" y2="${yB}" style="stroke:${C};stroke-width:2.5;stroke-opacity:.75"/>`;
-    });
+  const colX=i=>X.lineEnd+6+i*12;
+  const cellH=Math.max(2, Math.min(MROWH-1, 14));
+  let svg='';
+  // gutter room: recessed panel + edge hairlines
+  svg+=`<rect x="${X.lineEnd}" y="${X.padT}" width="${X.stripGutter}" height="${(X.H-X.padT-X.padB).toFixed(1)}" rx="3" fill="var(--dgl-gutter)" style="shape-rendering:auto"/>`
+     +`<line x1="${X.lineEnd}" x2="${X.lineEnd}" y1="${X.padT}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`
+     +`<line x1="${X.stripEnd}" x2="${X.stripEnd}" y1="${X.padT}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`;
+  // staggered column headers (identity as TEXT — read, don't decode)
+  profs.forEach(p=>{
+    const cx=colX(p.i)+4.5, rowA=(p.i%2===0), hy=rowA?10:20;
+    svg+=`<text x="${cx.toFixed(1)}" y="${hy}" text-anchor="middle" font-size="8.5" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}</text>`;
+    if(rowA) svg+=`<line x1="${cx.toFixed(1)}" x2="${cx.toFixed(1)}" y1="12" y2="${X.padT}" style="stroke:var(--hairline)"/>`;
   });
-  MAP.datedOIG.innerHTML=bodies+ticks;
-  // LEGEND — off the plot interior entirely: right-aligned on the bottom caption
-  // strip (y=H−6, below padB where nothing else may draw; the Watchtower marker
-  // is clamped into the frame, so the strip has exactly two occupants — the
-  // left caption and this). Carries the honesty anchors: √ note, the book's
-  // biggest |net| strike, and the AS-OF pull price (per the 07-10 accuracy
-  // audit: gamma reshapes 25-150% on a ±1% spot move — nightly-priced must
-  // say so). Tiered compaction guards the caption gap on narrow charts.
+  // heat cells + per-column peak tick — CLAMPED to the panel (zones-style): an
+  // edge-row cell must never paint over the headers or spill past the panel foot
+  const clampT=X.padT, clampB=X.H-X.padB;
+  profs.forEach(p=>{
+    const cx=colX(p.i); let pk={q:0,y:null,h:0};
+    MSTRIKES.forEach((k,j)=>{
+      const net=p.buckets[j]; if(!net) return;
+      const q=Math.sqrt(Math.abs(net)/mx);
+      if(q<0.07) return;                            // cull: sub-legible ambient dust
+      const stp=q<0.25?1:q<0.45?2:q<0.65?3:q<0.85?4:5;
+      const C=(net>=0?_DGLP:_DGLN)[stp-1];
+      const yT=Math.max(clampT, yFor(k)-cellH/2), yB=Math.min(clampB, yFor(k)+cellH/2);
+      const h=yB-yT; if(h<1) return;                // fully outside the panel → skip
+      if(q>pk.q) pk={q, y:yT, h};
+      svg+=`<rect x="${cx}" y="${yT.toFixed(1)}" width="9" height="${h.toFixed(1)}" fill="${C}"><title>${p.tag} · ${k.toLocaleString('en-US')} · ${net>=0?'+':'−'}${_gfmt(Math.abs(net))}</title></rect>`;
+    });
+    if(pk.y!=null)                                   // the tenor's in-frame wall —
+      // tick centered in the 3px inter-column gap (flush against the previous
+      // column's cells it reads as the WRONG tenor)
+      svg+=`<rect x="${(cx-2.25).toFixed(1)}" y="${Math.max(clampT,pk.y-1).toFixed(1)}" width="1.5" height="${Math.min(pk.h+2, clampB-Math.max(clampT,pk.y-1)).toFixed(1)}" fill="var(--ink)"/>`;
+  });
+  MAP.datedOIG.innerHTML=svg;
+  // LEGEND — bottom caption strip, right-aligned (outside every plot element by
+  // construction; Watchtower marker is clamped into the frame). Discloses the
+  // 5-step √ heat quantization + the global-max anchor + the AS-OF pull price
+  // (nightly-priced gamma reshapes 25-150% on a ±1% spot move — it must say so).
   const spotP=(b.spot!=null&&isFinite(b.spot))?(+b.spot).toLocaleString('en-US',{maximumFractionDigits:0}):'—';
   const kx=(kmax!=null)?kmax.toLocaleString('en-US'):'—';
-  // tenor decode = colored swatches (reviewer redirect 5: "vivid→faded" was words
-  // only; a ▮ per band in the pin ladder maps pigment → expiry on screen)
-  const sw=profs.map(p=>`<tspan style="fill:${_DGP[Math.min(p.i,2)]}">▮</tspan>${p.tag}`).join(' ');
   const tiers=[
-    `Dated γ · ${sw} · √ width · full = ${_gfmt(mx)} @ ${kx} · nightly @ ${spotP}`,
-    `Dated γ · ${sw} · full = ${_gfmt(mx)} @ ${kx}`,
+    `Dated γ ladders · heat = √|net|, 5 steps · full = ${_gfmt(mx)} @ ${kx} · nightly @ ${spotP}`,
+    `Dated γ · heat = √|net| · full = ${_gfmt(mx)} @ ${kx}`,
     `full = ${_gfmt(mx)} · @ ${spotP}`];
   if(MAP.datedOILgdG){
     for(let t=0;t<tiers.length;t++){
@@ -1442,7 +1486,7 @@ function gxOverview(){
   // v2 toggle: the full per-strike dated OI slabs (only offered when a live
   // book has been fetched — no dead switches)
   const doiChip=(typeof datedOIAvail==='function'&&datedOIAvail())
-    ? `<button type="button" class="gx-chip gx-toggle" onclick="toggleDatedOI()" aria-pressed="${datedOIOn()}" title="Per-strike dated net GEX (call−put, assumed-sign like the live bars; √ width), under the live gamma bars"><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Dated γ</b><i>${datedOIOn()?'<span style="color:var(--jade)">On</span>':'Off'} · strikes × expiry</i></span></button>`
+    ? `<button type="button" class="gx-chip gx-toggle" onclick="toggleDatedOI()" aria-pressed="${datedOIOn()}" title="Per-strike dated net GEX (call−put, assumed-sign like the live bars; √ width), under the live gamma bars"><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Dated γ</b><i>${datedOIOn()?'<span style="color:var(--jade)">On</span>'+((t=>t?' · '+t:'')(_dglBands().map(_dglHead).join('·'))):'Off · strikes × expiry'}</i></span></button>`
     : '';
   el.innerHTML=`
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)} · ${flow}</i></span>
