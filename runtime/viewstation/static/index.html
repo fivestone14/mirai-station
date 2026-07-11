@@ -1055,11 +1055,9 @@ function maybeReframe(){
 }
 function measureChart(){ const cc=document.querySelector('#p-map .gx-chart'); if(!cc) return null; const w=cc.clientWidth, h=cc.clientHeight; return (w<80||h<80)?null:{w,h}; }
 const MMETA = {   // key dealer levels, drawn as horizontal lines with right-edge price tags
-  callWall:{c:"var(--jade)",    n:"CALL γ",    role:"0DTE γ peak (≈ATM, not the structural wall)", d:0, sw:1.5, dash:''},
-  magnet:  {c:"var(--l-grav)",  n:"MAGNET",    role:"pull",       d:0, sw:2.2, dash:''},   // shares the zones' gravity gold; --lantern is Watchtower-only
-  flip:    {c:"var(--ink-dim)", n:"GAMMA FLIP", role:"regime line",d:0, sw:1.5, dash:'stroke-dasharray="6 4"'},
-  putWall: {c:"var(--coral)",   n:"PUT γ",     role:"0DTE γ peak (≈ATM, not the structural wall)",    d:0, sw:1.5, dash:''},
-  spot:    {c:"var(--iris)",    n:"SPOT",       role:"now",        d:2, sw:2.6, dash:''},
+  magnet:  {c:"var(--l-grav)",  n:"MAGNET",    d:0, sw:2.2, dash:''},   // shares the zones' gravity gold; --lantern is Watchtower-only
+  flip:    {c:"var(--ink-dim)", n:"GAMMA FLIP", d:0, sw:1.5, dash:'stroke-dasharray="6 4"'},
+  spot:    {c:"var(--iris)",    n:"SPOT",       d:2, sw:2.6, dash:''},
 };
 // The always-on level lines. CALL γ / PUT γ (the 0DTE gamma-weighted peaks) were
 // REMOVED 07-11: they glue to spot every day (ATM artifact, audited), overlapped
@@ -1205,7 +1203,7 @@ function gxPaint(){
     rect.style.opacity=(0.48+0.47*mag).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
   });
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
-  const valOf={callWall:D.callWall,magnet:D.magnet,flip:D.flip,putWall:D.putWall,spot:D.spot};
+  const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
   const loY=X.padT+14, hiY=X.H-X.padB-14;
   const arr=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1).sort((a,b)=>a.y-b.y);
   const onOf={}; arr.forEach(m=>onOf[m.id]=true);
@@ -1581,58 +1579,8 @@ function gxOverview(){
 function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
 
 function buildMap(){ gxBuild(); }
-function paintMotion(m){
-  const el=document.getElementById('motionTile'); if(!el) return;
-  if(!m){ el.style.display='none'; return; }
-  el.style.display='';
-  const g=id=>document.getElementById(id);
-  const tone=(el,up)=>{ el.style.color=`var(--${up?'jade':'coral'})`; };
-  g('mo-look').textContent=f(m.lookback,1);
-  const gw=g('mo-walk'); gw.textContent=sig(m.magnetWalk); tone(gw, m.magnetWalk>=0);
-  const gc=g('mo-creep'); gc.textContent=sig(m.flipCreep); tone(gc, m.flipCreep>=0);
-  g('mo-grip').textContent=f(m.gripSlope,4);
-  const gs=g('mo-soft'), softUp=/up|call|above|top/i.test(String(m.soft)),
-        softKnown=softUp || /down|put|below|bottom/i.test(String(m.soft));
-  gs.textContent=cap(m.soft)+(softKnown?(softUp?' ▴':' ▾'):'');
-  gs.style.color=softKnown?`var(--${softUp?'jade':'coral'})`:'var(--ink)';
-}
 
-// ---- magnet zone bands: each pin zone = a horizontal lo..hi band, weight ∝ share ----
 const ZONE_HW=2.5;   // fallback half-width in points when lo/hi are missing/degenerate (half a 5-pt strike gap)
-function paintZones(){
-  if(!MAP||!MAP.zonesG) return;
-  const X=MAPX, zs=D.zones||[];
-  const key=zs.map(z=>`${z.c}|${z.s}|${z.lo}|${z.hi}|${z.side}`).join(';');
-  if(key!==MAP._zkey){                      // zone set changed → rebuild the (≤4) band nodes
-    MAP._zkey=key;
-    MAP.zonesG.innerHTML=zs.map((z,i)=>`<g class="zband${z.side==='at'?' at':''}">
-      <rect class="zb-r" x="${X.x0}" width="${X.lineEnd-X.x0}" rx="3"/>
-      <text class="zb-t" text-anchor="end" font-size="${i===0?11:10}"></text></g>`).join('');
-    MAP._zels=[...MAP.zonesG.querySelectorAll('.zband')].map(el=>({rect:el.querySelector('.zb-r'), label:el.querySelector('.zb-t')}));
-  }
-  zs.forEach((z,i)=>{ const E=MAP._zels[i]; if(!E) return;
-    let lo=z.lo, hi=z.hi;
-    if(lo==null||hi==null||!(hi>lo)){ lo=z.c-ZONE_HW; hi=z.c+ZONE_HW; }    // degenerate span → center ± half-width
-    // CLAMP to the plot frame: a far wing shelf must render as a partial band
-    // at the edge (not spill hundreds of px off-frame with an invisible label —
-    // exactly the OpEx wide-shelf case where CONTESTED fires).
-    const yTop=X.padT, yBot=X.H-X.padB;
-    let yT=Math.max(yTop, yFor(hi)), yB=Math.min(yBot, yFor(lo));
-    if(yB-yT<3){                                   // fully off-frame → thin edge sliver
-      if(yFor(hi)>=yBot){ yT=yBot-3; yB=yBot; } else { yT=yTop; yB=yTop+3; }
-    }
-    const h=Math.max(3, yB-yT);
-    E.rect.setAttribute('y',yT.toFixed(1)); E.rect.setAttribute('height',h.toFixed(1));
-    E.rect.style.opacity=(Math.min(.5,.06+.5*z.s)+(i===0?.08:0)).toFixed(2);   // weight ∝ share; zone-1 dominant
-    E.label.setAttribute('x',(X.lineEnd-6).toFixed(1));
-    // label pinned INSIDE the plot: mid-band when it fits, else hugging the band edge
-    let ly = h>=15 ? yT+h/2+3.5 : yT-3;
-    ly = Math.min(yBot-2, Math.max(yTop+9, ly));
-    E.label.setAttribute('y',ly.toFixed(1));
-    E.label.style.opacity=i===0?'.95':'.7';
-    E.label.textContent=Math.round(z.s*100)+'%';
-  });
-}
 // ---- Magnet Zones modal — the ranked zone list behind the magnet line ----
 const ZSIDE={above:'▲',below:'▼',at:'◆'};
 function openZonesModal(){
@@ -2081,35 +2029,6 @@ function diaryDayGroups(){
   return [...byDay.keys()].sort().reverse().map(day=>({
     day, entries:[...byDay.get(day).values()].sort((a,b)=>scanTs(b).localeCompare(scanTs(a)))   // newest entry first
   }));
-}
-function jsonOf(s){
-  return {
-    ts:`${SYS.date}T${s.t}-04:00`, ticker:"SPX", spot:+s.spot.toFixed(2), gamma_sign:s.sign, regime:s.regime,
-    gamma_flip:+s.flip.toFixed(2), call_wall:s.callWall, put_wall:s.putWall, magnet:s.magnet, pin_centroid:s.pin,
-    reversion_extreme:{ score:s.fade.score, fired:s.fade.fired, armed:s.fade.armed, reaction:s.fade.reaction,
-      direction:s.fade.dir, runway_sigma:s.fade.runway, runway_ok:s.fade.runwayOk },
-    level_reclaim:{ break_state:s.brk.state, cock_count:s.brk.cocks },
-    watchtower:{ fired:s.wt.fired, direction:s.wt.dir, magnitude_sigma:s.wt.mag, conviction:s.wt.conv,
-      votes:s.wt.votes, agrees_with_gates:s.wt.agrees, scene:s.wt.scene }
-  };
-}
-function hlJSON(obj){
-  const j = JSON.stringify(obj,null,2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return j.replace(/("(?:\\.|[^"\\])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?)/g, m=>{
-    let c='num';
-    if(/^"/.test(m)) c = /:$/.test(m) ? 'key':'str';
-    else if(/true|false/.test(m)) c='bool';
-    else if(/null/.test(m)) c='null';
-    return `<span class="j-${c}">${m}</span>`;
-  });
-}
-function learnedOf(s){
-  const passed=gateStates(s).filter(g=>g.on).length, w=s.wt;
-  if(w.fired && !w.agrees) return `The reasoning head fired a ${w.dir} fade the gates wouldn’t — Runway fell short of the 0.35σ floor. Logged as a tower-only divergence for the head-to-head ledger.`;
-  if(s.fade.fired && w.fired && w.agrees) return `Both heads fired the same ${s.fade.dir} fade — a clean, aligned reversion. The kind of decided day the paper record needs to bank toward the 12-day gate.`;
-  if(w.votes.agree < 0.6) return `A genuinely split vote (${(w.votes.agree*100).toFixed(0)}% agreement) — chop, not a setup. The tower stood down rather than force a read, which is the correct non-trade.`;
-  if(passed < 4 && !w.fired) return `${passed} of 4 gates open and the tower quiet — a setup forming but unconfirmed. Nothing actionable; correctly held.`;
-  return `Quiet scan — dealers ${s.sign==='positive'?'damping':'amplifying'}, no clean stretch to fade. Recorded to keep the baseline honest.`;
 }
 // One kid-level sentence translating the whole diary entry — what its JSON is really saying.
 function childSentence(s){
@@ -2560,50 +2479,7 @@ function rpPaint(){
   RP.els.time.textContent=rpClock(now);
   rpReadout(now,{win,loss,scr,live});
 }
-// The direction/magnitude layers that feed the Watchtower, each reduced to an up/down/flat vote
-// (verified rules; vanna/charm excluded — their sign is uncalibrated). Break Lens only
-// appears when it's actually active. This is the "residual stream at this scan".
 const RP_ARR={up:'▲',down:'▼',flat:'–',none:'·'};
-const rpDot=h=>`color-mix(in srgb, var(${h}) 88%, var(--ink-dim))`;   // hue, gently desaturated
-function rpLayerVotes(s){
-  const dv=(x,p,n)=> x==null?'none': x>p?'up': x<n?'down':'flat';
-  const V=[];
-  const dmag=(s.magnet!=null&&s.spot)?(s.magnet-s.spot)/(s.sigma||1):null;
-  V.push({label:'Magnet',dot:rpDot('--l-grav'),dir:dv(dmag,0.05,-0.05),act:dmag!=null,title:'Gravity — which way the dealer magnet pulls price'});
-  const soft=s.motion&&s.motion.soft;
-  V.push({label:'Drift',dot:rpDot('--l-motion'),dir:soft==='up'?'up':soft==='down'?'down':(s.motion?'flat':'none'),act:!!s.motion,title:'Motion — the side the dealer map is drifting toward'});
-  const tilt=s.lob&&s.lob.tilt;
-  V.push({label:'Flow',dot:rpDot('--l-lob'),dir:dv(tilt,0.02,-0.02),act:tilt!=null,title:'Order-book flow — buyers vs sellers pressing the tape'});
-  // Speedometer — a magnitude layer: direction only from a real detected jump, else the semivar tilt
-  if(s.spd){
-    const sp=s.spd;
-    const dir = sp.jsign==='up'?'up' : sp.jsign==='down'?'down'
-      : sp.down==null?'flat' : sp.down>0.6?'down' : sp.down<0.4?'up' : 'flat';
-    V.push({label:'Pace',dot:rpDot('--l-speed'),dir,act:true,
-      title:'Speedometer — what the tape actually did'+(sp.pace!=null?` · rv_pace ${f(sp.pace,2)}×`:'')
-        +(sp.jsign?` · jump ${sp.jsign}${sp.jz!=null?` (z ${f(sp.jz,1)})`:''}`:(sp.down!=null?` · downside share ${f(sp.down,2)}`:''))});
-  }
-  // Gamma Roll — only speaks on divergence days: where the surviving wall sits vs today's
-  if(s.groll && s.groll.div){
-    const gr=s.groll;
-    V.push({label:'Roll',dot:rpDot('--l-roll'),dir:gr.dir==='far_above'?'up':gr.dir==='far_below'?'down':'flat',act:true,
-      title:'Gamma Roll — 0DTE wall vs surviving wall'+(gr.zw!=null&&gr.fw!=null?` · today ${f(gr.zw,0)} vs far ${f(gr.fw,0)}`:'')});
-  }
-  // Event Lens — event days only; context, never a direction
-  if(s.evl){
-    const ev=s.evl;
-    V.push({label:'Event'+(ev.kind?' · '+ev.kind:'')+(ev.ratio!=null?' '+f(ev.ratio,2)+'×':''),
-      dot:rpDot('--l-event'),dir:'none',act:true,
-      title:'Event Lens — realized move vs the pre-paid move'+(ev.phase?' · '+ev.phase.replace('_',' '):'')});
-  }
-  const fd=s.fade&&s.fade.dir;
-  V.push({label:'Fade',dot:rpDot('--l-fade'),dir:fd==='call'?'up':fd==='put'?'down':'flat',act:!!(s.fade&&(s.fade.armed||s.fade.fired)),title:'Fade Lens (Head A) — the 4-gate mean-reversion checklist'});
-  if(s.brk&&((s.brk.state&&s.brk.state!=='idle')||(s.brk.dir&&s.brk.dir!=='none'))){
-    const bd=s.brk.dir;
-    V.push({label:'Break',dot:rpDot('--l-break'),dir:bd==='call'?'up':bd==='put'?'down':'flat',act:true,title:'Break Lens (Head C) — escape / breakout risk · '+(s.brk.state||'active')});
-  }
-  return V;
-}
 // Every layer's read at the current slice → the residual-stream snapshot the console draws (top→bottom,
 // lenses then sensory). Directional layers get an up/down/flat arrow + an agree badge vs the Watchtower;
 // context layers (Base, Range Ruler, Event Lens) carry a plain reading with no arrow. Null data = "not recorded".
