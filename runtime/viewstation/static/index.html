@@ -57,22 +57,22 @@
   :root{
     --slab-under:rgba(0,0,0,.5);
     --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
-    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2;
+    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --oi-front:#B5BFDF; --oi-mid:#919CC1; --oi-far:#68749E;
   }
   @media (prefers-color-scheme:light){:root{
     --slab-under:rgba(40,46,66,.18);
     --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
-    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8;
+    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --oi-front:#3C476B; --oi-mid:#596385; --oi-far:#7C85A2;
   }}
   :root[data-theme="dark"]{
     --slab-under:rgba(0,0,0,.5);
     --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
-    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2;
+    --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --oi-front:#B5BFDF; --oi-mid:#919CC1; --oi-far:#68749E;
   }
   :root[data-theme="light"]{
     --slab-under:rgba(40,46,66,.18);
     --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
-    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8;
+    --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --oi-front:#3C476B; --oi-mid:#596385; --oi-far:#7C85A2;
   }
 
   *{box-sizing:border-box}
@@ -170,10 +170,8 @@
     background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px}
   .gx-chip b{font-family:var(--sans); font-size:14px; font-weight:700; color:var(--ink); letter-spacing:.01em}
   .gx-chip i{font-family:var(--sans); font-size:11.5px; font-weight:500; font-style:normal; color:var(--ink-dim)}
-  .gx-mold{box-shadow:inset 3px 0 0 var(--lantern); background:linear-gradient(100deg, var(--lantern-wash), transparent 72%), var(--surface-2)}
-  .gx-mold b{color:var(--lantern); font-size:15.5px}
-  .gx-regime.up{box-shadow:inset 3px 0 0 var(--jade)}  .gx-regime.up b{color:var(--jade)}
-  .gx-regime.dn{box-shadow:inset 3px 0 0 var(--coral)} .gx-regime.dn b{color:var(--coral)}
+  .gx-lead b{font-size:15px}
+  .gx-lead.up{box-shadow:inset 3px 0 0 var(--jade)}  .gx-lead.dn{box-shadow:inset 3px 0 0 var(--coral)}
   .gx-net{margin-left:auto}
   .gx-netbar{display:inline-flex; width:54px; height:6px; border-radius:3px; overflow:hidden; background:var(--surface-3); vertical-align:middle; margin-right:5px}
   .gx-netbar i{display:block; height:100%}
@@ -902,7 +900,9 @@ async function loadDiaryHistory(){
 function computeMAPX(w,h){
   const x0=72, tagX=w-10, lineEnd=Math.round(w-178);
   return { W:w, H:h, padT:22, padB:24, axisLX:48, x0, tagX, lineEnd,
-    barMax:Math.min(lineEnd-x0-6, Math.max(120, Math.round((lineEnd-x0)*0.62))), pHigh:7660, pLow:7430 };
+    // 88% of the lane (was 62%): everything right of lineEnd is tag territory the
+    // bars never enter; edge markers + legend get surface halos instead of margin
+    barMax:Math.min(lineEnd-x0-6, Math.max(160, Math.round((lineEnd-x0)*0.88))), pHigh:7660, pLow:7430 };
 }
 // Adaptive strike window — frame the live levels (spot·magnet·flip·call-wall) with headroom that
 // GROWS with volatility (σ), so a fast tape shows more strikes and a calm one zooms in on the magnets.
@@ -1037,16 +1037,18 @@ function gxBuild(){
      <g id="datedOIG"></g>
      <g id="barsG">${bars}</g>
      <g id="datedG"></g>
+     <g id="datedOILgdG"></g>
      ${lvl}
      <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan style="fill:var(--jade)">▮</tspan> pins <tspan style="fill:var(--coral)">▮</tspan> pushes</text>
+     <text x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan style="fill:var(--jade)">▮</tspan> pins <tspan style="fill:var(--coral)">▮</tspan> pushes</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
+    datedOILgdG:q('datedOILgdG'),
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
   gxOverview(); gxTower(); gxPaint();
@@ -1083,13 +1085,17 @@ function gxPaint(){
   }
   const bsrc=document.getElementById('bar-src'); if(bsrc) bsrc.textContent=measured?'measured':'modeled';
   let mx=1e-6; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; }
-  const MBH=Math.max(2.5, MROWH*0.72);   // bar thickness < row pitch → visible gaps = distinct per-strike bars
+  // SPLIT-ROW LANES when the dated OI layer is on: live bar takes the row's top
+  // ~56% and the dated slab the ~30% sub-lane below the strike line — overlap at
+  // the same y would either hide the shorter bar or corrupt the lightness ladder.
+  const _doi=(typeof DOI_ON!=='undefined'&&DOI_ON&&typeof datedOIAvail==='function'&&datedOIAvail());
+  const MBH=Math.max(2.5, MROWH*(_doi?0.56:0.72));   // bar thickness < row pitch → visible gaps
   MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], mag=Math.abs(vals[i])/mx,
       pos=measured?(vals[i]>=0):(k>=D.flip);   // measured → color by SIGN of net γ (pins vs pushes); modeled → by side of flip
-    rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
+    rect.setAttribute('y',(_doi?(yFor(k)-MROWH*0.42):(yFor(k)-MBH/2)).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
     rect.setAttribute('width',(mag<0.05?0:Math.max(2,mag*X.barMax)).toFixed(1));   // hide dead strikes (no picket-rail)
     rect.style.fill=pos?'url(#gxJ)':'url(#gxC)';
-    rect.style.opacity=(0.34+0.60*mag).toFixed(2);   // PROMINENT — gamma-by-strike is the hero of this view
+    rect.style.opacity=(0.40+0.55*mag).toFixed(2);   // PROMINENT — a weak live bar still outguns a dated slab
   });
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
   const valOf={callWall:D.callWall,magnet:D.magnet,flip:D.flip,putWall:D.putWall,spot:D.spot};
@@ -1155,7 +1161,8 @@ async function fetchDatedBook(){
     }                                  // exists — not minutes later on the next scan
   }catch(e){}
 }
-function datedOIOn(){ try{ return localStorage.getItem('gx.datedOI')==='1'; }catch(e){ return false; } }
+let DOI_ON=(function(){ try{ return localStorage.getItem('gx.datedOI')==='1'; }catch(e){ return false; } })();
+function datedOIOn(){ return DOI_ON; }   // cached — gxPaint reads it per frame
 function datedOIAvail(){               // book present AND young enough to draw —
   const b=DBOOK.book;                  // the chip must never be a dead switch
   if(!b||!Array.isArray(b.bands)||!b.bands.length) return false;
@@ -1163,57 +1170,72 @@ function datedOIAvail(){               // book present AND young enough to draw 
   return age>=0&&age<=5;
 }
 function toggleDatedOI(){
-  try{ localStorage.setItem('gx.datedOI', datedOIOn()?'0':'1'); }catch(e){}
+  DOI_ON=!DOI_ON;
+  try{ localStorage.setItem('gx.datedOI', DOI_ON?'1':'0'); }catch(e){}
   if(MAP)MAP._dokey=null;               // force repaint next frame
   gxOverview();                          // chip reflects the new state immediately
 }
+const _OIC=['var(--oi-front)','var(--oi-mid)','var(--oi-far)'];   // one slate hue,
+  // 3 lightness steps (tenor is ORDERED — a sequential ramp is the correct
+  // encoding, and lightness survives every CVD type; contrast-audited ≥3:1
+  // strokes in both themes)
+function _kfmt(v){ return v>=9500?Math.round(v/1000)+'k':v>=1000?(v/1000).toFixed(1)+'k':String(v); }
 function paintDatedOI(){
   if(!MAP||!MAP.datedOIG) return;
   const b=DBOOK.book;
-  const ok=datedOIOn()&&(typeof LIVE==='undefined'||LIVE)&&datedOIAvail()&&MSTRIKES.length;
+  const ok=DOI_ON&&(typeof LIVE==='undefined'||LIVE)&&datedOIAvail()&&MSTRIKES.length;
   const key=(ok?String(b.as_of):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}`;
   if(key===MAP._dokey) return;
   MAP._dokey=key;
-  if(!ok){ MAP.datedOIG.innerHTML=''; return; }
+  if(!ok){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
   const X=MAPX, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
   const today=new Date().toISOString().slice(0,10);
-  const profs=[]; let mx=0;
+  const profs=[]; let mx=0, kmax=null;
   b.bands.slice(0,3).forEach((bd,i)=>{
     if(String(bd.expiry||'')<today) return;         // expired band: never draw
     const buckets=new Array(MSTRIKES.length).fill(0); let placed=0;
     for(const row of (bd.strikes||[])){
       if(!Array.isArray(row)||!isFinite(row[0])) continue;
       const oi=((+row[1]||0)+(+row[2]||0));
-      if(oi>mx) mx=oi;                              // GLOBAL max: every strike counts,
+      if(oi>mx){ mx=oi; kmax=+row[0]; }             // GLOBAL max: every strike counts,
       const idx=Math.round((row[0]-k0)/step);       // in-frame or not (scale honesty)
       if(idx>=0&&idx<buckets.length){ buckets[idx]+=oi; placed++; }
     }
     if(placed>0) profs.push({i, tag:_dexp(bd.expiry), buckets});
   });
-  if(!mx||!profs.length){ MAP.datedOIG.innerHTML=''; return; }
-  const BH=Math.max(2.5, MROWH*0.72);   // same row geometry as the live bars
+  if(!mx||!profs.length){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
+  // SLIM FILLED SLABS in the row's lower sub-lane (the live bar owns the top —
+  // split-row lanes, see gxPaint). √ WIDTH: monotone, full width still = the
+  // book's global max, but today's 16% peaks lift to ~40% — visible without
+  // lying about ordering; ratio compression (4×OI → 2× length) is disclosed in
+  // the legend, and √ UNDERstates mid-size structure (the safe direction).
+  const BH=Math.max(2, MROWH*0.30), yOff=MROWH*0.18;
   let svg='';
-  for(const p of profs){
-    const dash=_DDASH[Math.min(p.i,2)];
-    MSTRIKES.forEach((k,j)=>{
-      if(p.buckets[j]<=0) return;                   // no bar, no comb — point mass only
-      const w=Math.max(1.5, p.buckets[j]/mx*X.barMax), y=yFor(k);
-      svg+=`<rect x="${X.x0}" y="${(y-BH/2).toFixed(1)}" width="${w.toFixed(1)}" height="${BH.toFixed(1)}" rx="1" style="stroke:var(--ink-dim);stroke-width:1;stroke-opacity:.9;fill:none" stroke-dasharray="${dash}"/>`;
-    });
-  }
-  // fixed legend, top-left inside the plot: dash swatch + tenor per band (never
-  // buried under a bar, never colliding with the right-edge level tags)
-  let lx=X.x0+6;
-  const ly=X.padT+11;
-  svg+=`<text x="${lx}" y="${ly}" font-size="9" font-weight="700" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-dim);opacity:.95">dated OI</text>`;
-  lx+=52;
-  for(const p of profs){
-    const dash=_DDASH[Math.min(p.i,2)];
-    svg+=`<line x1="${lx}" y1="${ly-3}" x2="${lx+16}" y2="${ly-3}" style="stroke:var(--ink-dim);stroke-width:1.4;stroke-opacity:.95" stroke-dasharray="${dash}"/>`
-       +`<text x="${lx+20}" y="${ly}" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);opacity:.95">${p.tag}</text>`;
-    lx+=68;
-  }
+  MSTRIKES.forEach((k,j)=>{
+    const here=profs.filter(p=>p.buckets[j]>0)
+      .map(p=>({p, w:Math.max(2, Math.sqrt(p.buckets[j]/mx)*X.barMax)}))
+      .sort((a,b2)=>b2.w-a.w);                      // longest behind → bullet layering
+    if(!here.length) return;
+    const y=(yFor(k)+yOff).toFixed(1);
+    for(const {p,w} of here){
+      const C=_OIC[Math.min(p.i,2)];
+      svg+=`<rect x="${X.x0}" y="${y}" width="${w.toFixed(1)}" height="${BH.toFixed(1)}" rx="1" style="fill:${C};fill-opacity:.35;stroke:${C};stroke-width:1.25;stroke-opacity:1"/>`;
+    }
+  });
   MAP.datedOIG.innerHTML=svg;
+  // legend in its OWN group above the bars (never buried): solid swatch + tenor
+  // per band, plus the honesty anchor — what full width means in contracts.
+  let lg='', lx=X.x0+6;
+  const ly=X.padT+11;
+  lg+=`<text x="${lx}" y="${ly}" font-size="9" font-weight="700" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-dim);${_HALO}">Dated OI · √ width · full = ${_kfmt(mx)} @ ${kmax!=null?kmax.toLocaleString('en-US'):'—'}</text>`;
+  lx+=Math.round(150+String(_kfmt(mx)).length*5);
+  for(const p of profs){
+    const C=_OIC[Math.min(p.i,2)];
+    lg+=`<rect x="${lx}" y="${ly-8}" width="14" height="6" rx="1" style="fill:${C}"/>`
+      +`<text x="${lx+18}" y="${ly}" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);${_HALO}">${p.tag}</text>`;
+    lx+=64;
+  }
+  if(MAP.datedOILgdG) MAP.datedOILgdG.innerHTML=lg;
 }
 // ---- DATED BOOK overlay: far structural OI walls (next 2 monthlies + quarter-end) ----
 // Shaded by EXPIRATION — nearer expiries brighter, further dimmer — so one glance says
@@ -1238,71 +1260,80 @@ function _dwalls(b, spot){
   return { cw: cw??(isFinite(b.call_wall)?+b.call_wall:null), cItm: cw==null&&b.call_wall!=null,
            pw: pw??(isFinite(b.put_wall)?+b.put_wall:null),  pItm: pw==null&&b.put_wall!=null };
 }
+// Walls toggle (2026-07-10): the wall LINES layer — dated tenor walls + the
+// structural near-dated Call Ceiling / Put Floor (which moved here from the
+// strip chips). Default ON; localStorage-persisted like the Dated OI toggle.
+function wallsOn(){ try{ return localStorage.getItem('gx.walls')!=='0'; }catch(e){ return true; } }
+function toggleWalls(){
+  try{ localStorage.setItem('gx.walls', wallsOn()?'0':'1'); }catch(e){}
+  if(MAP)MAP._dkey=null;
+  gxOverview();
+}
+const _HALO='paint-order:stroke;stroke:var(--surface-2);stroke-width:3px;';   // surface halo: labels stay legible over the (now longer) bars
 function paintDated(){
   if(!MAP||!MAP.datedG) return;
   const X=MAPX, d=D.dated, bands=(d&&Array.isArray(d.bands))?d.bands.slice(0,3):[];
-  const key=bands.map(b=>`${b.expiry}|${b.call_wall}|${b.put_wall}|${b.as_of||''}`).join(';')
-    +`#${X.pLow}|${X.pHigh}|${Math.round((D.spot||0)/25)}`;   // spot bucketed to 25pts → no 60fps churn
+  const on=wallsOn();
+  const sg=(D.sigma&&isFinite(D.sigma)&&D.sigma>0)?D.sigma:0;
+  const key=(on?bands.map(b=>`${b.expiry}|${b.call_wall}|${b.put_wall}|${b.as_of||''}`).join(';'):'off')
+    +`#${X.pLow}|${X.pHigh}|${Math.round((D.spot||0)/10)}|${Math.round(sg)}|${D.callCeil}|${D.putFloor}`;   // spot bucketed to 10pts → σ-labels stay honest, no 60fps churn
   if(key===MAP._dkey) return;
   MAP._dkey=key;
-  if(!bands.length){ MAP.datedG.innerHTML=''; return; }
-  const spot=(D.spot&&isFinite(D.spot))?D.spot:(d.spot_at_pull||0);
+  if(!on){ MAP.datedG.innerHTML=''; return; }
+  const spot=(D.spot&&isFinite(D.spot))?D.spot:((d&&d.spot_at_pull)||0);
   // GROUP walls shared across tenors (today's real book: all 3 bands floor at 7000)
   // — one line/marker at the FRONT band's shade with the tenor tags merged, instead
   // of three identical lines and three labels stamped on the same y (unreadable smear
   // exactly on the crash day the far floor matters most).
   const ent=new Map();
+  const put_=(side,k,itm,tag,i)=>{
+    if(k==null||!isFinite(k)) return;
+    const kk=side+'|'+k, e=ent.get(kk);
+    if(e){ if(!e.tags.includes(tag)) e.tags.push(tag); e.itm=e.itm||itm; }
+    else ent.set(kk,{side,k,itm,tags:[tag],idx:i});
+  };
   bands.forEach((b,i)=>{
     const w=_dwalls(b,spot), tag=_dexp(b.expiry);
-    [['c',w.cw,w.cItm],['p',w.pw,w.pItm]].forEach(([side,k,itm])=>{
-      if(k==null||!isFinite(k)) return;
-      const kk=side+'|'+k, e=ent.get(kk);
-      if(e){ e.tags.push(tag); e.itm=e.itm||itm; }
-      else ent.set(kk,{side,k,itm,tags:[tag],idx:i});
-    });
+    put_('c',w.cw,w.cItm,tag,i); put_('p',w.pw,w.pItm,tag,i);
   });
+  // structural near-dated (1-7DTE OI) Call Ceiling / Put Floor — the former strip
+  // chips, now lines on the graph; merged by strike so a level shared with a
+  // monthly wall draws once with combined tags
+  if(D.callCeil!=null&&isFinite(D.callCeil)&&D.callCeil>0) put_('c',+D.callCeil,false,'NEAR',0);
+  if(D.putFloor!=null&&isFinite(D.putFloor)&&D.putFloor>0) put_('p',+D.putFloor,false,'NEAR',0);
+  if(!ent.size){ MAP.datedG.innerHTML=''; return; }
   let svg='', topN=0, botN=0;
   for(const e of ent.values()){
     const sh=_DSHADE[Math.min(e.idx,2)], dash=_DDASH[Math.min(e.idx,2)];
     const col=e.side==='c'?'var(--jade)':'var(--coral)', arrow=e.side==='c'?'▲':'▼';
-    const lbl=`${arrow} ${e.k.toLocaleString('en-US')} ${e.tags.join('·')}${e.itm?' · ITM':''}`;
+    // label format (locked): arrow + price + signed σ-distance + tenor tags
+    const sd=(sg&&spot)?((e.k-spot)/sg):null;
+    const sdT=(sd!=null&&isFinite(sd))?` ${sd>=0?'+':'−'}${Math.abs(sd).toFixed(1)}σ`:'';
+    const lbl=`${arrow} ${e.k.toLocaleString('en-US')}${sdT} · ${e.tags.join('·')}${e.itm?' · ITM':''}`;
     if(e.k>X.pHigh){          // above the frame → top edge marker
-      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.padT+11+topN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh}">${lbl} ↑</text>`; topN++;
+      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.padT+11+topN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh};${_HALO}">${lbl} ↑</text>`; topN++;
     } else if(e.k<X.pLow){    // below the frame → bottom edge marker
-      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.H-X.padB-4-botN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh}">${lbl} ↓</text>`; botN++;
-    } else {                  // in-band → shaded dashed wall line + inline tenor tag
+      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.H-X.padB-4-botN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh};${_HALO}">${lbl} ↓</text>`; botN++;
+    } else {                  // in-band → shaded dashed wall line + on-line label
       const y=yFor(e.k).toFixed(1);
       svg+=`<line x1="${X.x0}" y1="${y}" x2="${X.lineEnd}" y2="${y}" style="stroke:${col};stroke-width:1.1;opacity:${sh}" stroke-dasharray="${dash}"/>`
-         +`<text x="${(X.x0+5).toFixed(1)}" y="${(+y-3).toFixed(1)}" font-size="8.5" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${Math.min(1,sh+0.12)}">${lbl}</text>`;
+         +`<text x="${(X.x0+5).toFixed(1)}" y="${(+y-3).toFixed(1)}" font-size="8.5" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${Math.min(1,sh+0.12)};${_HALO}">${lbl}</text>`;
     }
   }
   MAP.datedG.innerHTML=svg;
 }
-// The plain-English situation + how it's molding — the always-on overview strip (mold chip = hero).
+// The always-on overview strip. SPX→magnet chip = lead (where are we, where is the
+// pull); the auto-gap before Gamma Balance splits the strip into live tape (left)
+// vs dealer structure (right). The mold/regime chips died 07-10 (regime is shown
+// three other ways: wash split, GAMMA FLIP line, vitals pill; the motion read
+// lives on the motion tile); the structural Call Ceiling / Put Floor chips became
+// wall LINES on the graph (Walls toggle) with on-line price+σ labels.
 function gxOverview(){
   const el=document.getElementById('gx-strip'); if(!el) return;
-  const s=liveNow()||{}, long=D.sign==='positive', sg=(D.sigma||1);
+  const sg=(D.sigma||1);
   const dMag=(D.magnet-D.spot)/sg, pts=Math.abs(D.magnet-D.spot), pullUp=dMag>=0;
-  const mo=s.motion||{}; let mold='holding steady';
-  if(mo.gripSlope>0.0015) mold='pin tightening'; else if(mo.gripSlope<-0.0015) mold='grip loosening';
-  else if(Math.abs(mo.magnetWalk||0)>0.15) mold=(mo.magnetWalk>0?'magnet drifting up':'magnet drifting down');
-  else if(Math.abs(mo.flipCreep||0)>0.15) mold='flip creeping';
   const flow=D.flow>0.02?'buyers pressing':D.flow<-0.02?'sellers pressing':'flow balanced';
   const tot=(D.gAbove+D.gBelow)||1, aP=Math.round(D.gAbove/tot*100);
-  // FIX #2 — the REAL floor: the structural OI put wall (resting hedges), NOT the
-  // at-spot gamma-weighted "PUT WALL". Shown with its σ-distance so its true remove is honest.
-  const pf=(D.putFloor!=null&&isFinite(D.putFloor)&&D.putFloor>0)?D.putFloor:null;
-  const pfS=(pf!=null&&sg)?(pf-D.spot)/sg:null;
-  const floorChip=pf!=null
-    ? `<span class="gx-chip"><b>put floor</b><i>${f(pf,0)} <span style="color:var(--coral)">▼${Math.abs(pfS).toFixed(1)}σ</span> · resting OI</i></span>`
-    : '';
-  // symmetric call-side: the structural OI call wall (resting hedges) = the real ceiling,
-  // the counterpart to put floor — previously only the put side was shown (asymmetry).
-  const cc=(D.callCeil!=null&&isFinite(D.callCeil)&&D.callCeil>0)?D.callCeil:null;
-  const ccS=(cc!=null&&sg)?(cc-D.spot)/sg:null;
-  const ceilChip=cc!=null
-    ? `<span class="gx-chip"><b>call ceiling</b><i>${f(cc,0)} <span style="color:var(--jade)">▲${Math.abs(ccS).toFixed(1)}σ</span> · resting OI</i></span>`
-    : '';
   // DATED BOOK chips — one per expiration (front monthly → quarter-end), walls picked
   // moneyness-aware; nightly cadence, so the as-of/staleness stamp says "old by design"
   // rather than letting a quiet day read as broken.
@@ -1330,19 +1361,20 @@ function gxOverview(){
       return `<span class="gx-chip"><b>${_dexp(b.expiry)}</b><i>${cwT} ${pwT} · ${b.dte}d · OI${age}</i></span>`;
     }).join('');
     const st=dd.staleness;
-    if(st&&st!=='fresh') datedChips+=`<span class="gx-chip"><b>dated book</b><i>${String(st).replace('_',' ')} · as of ${String(dd.oi_date||'')}</i></span>`;
+    if(st&&st!=='fresh') datedChips+=`<span class="gx-chip"><b>Dated Book</b><i>${cap(String(st).replace('_',' '))} · as of ${String(dd.oi_date||'')}</i></span>`;
   }
-  // v2 toggle: the full per-strike dated OI silhouettes (only offered when a live
+  // Walls toggle: the wall LINES layer (dated tenor walls + structural ceiling/floor,
+  // labeled on-line with arrow + price + σ). Default On.
+  const wallsChip=`<span class="gx-chip" onclick="toggleWalls()" style="cursor:pointer" title="Wall lines on the map: dated tenor walls + the structural Call Ceiling / Put Floor, labeled with price and σ-distance"><b>Walls</b><i>${wallsOn()?'<span style="color:var(--jade)">On</span>':'Off'} · ceiling · floor · dated</i></span>`;
+  // v2 toggle: the full per-strike dated OI slabs (only offered when a live
   // book has been fetched — no dead switches)
   const doiChip=(typeof datedOIAvail==='function'&&datedOIAvail())
-    ? `<span class="gx-chip" onclick="toggleDatedOI()" style="cursor:pointer" title="Per-strike dated OI outline bars (strikes × expiration), under the live gamma bars"><b>dated OI</b><i>${datedOIOn()?'<span style="color:var(--jade)">ON</span>':'off'} · strikes×expiry</i></span>`
+    ? `<span class="gx-chip" onclick="toggleDatedOI()" style="cursor:pointer" title="Per-strike dated OI bars (√ width, strikes × expiration), under the live gamma bars"><b>Dated OI</b><i>${datedOIOn()?'<span style="color:var(--jade)">On</span>':'Off'} · strikes × expiry</i></span>`
     : '';
   el.innerHTML=`
-    <span class="gx-chip gx-mold"><b>${mold}</b><i>${flow}</i></span>
-    <span class="gx-chip gx-regime ${long?'up':'dn'}"><b>${long?'DEALERS PIN':'MOVES AMPLIFY'}</b><i>${long?'long gamma · fades work':'short gamma · trends run'}</i></span>
-    <span class="gx-chip"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)}</i></span>
-    <span class="gx-chip gx-net"><b>gamma balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${ceilChip}${floorChip}${datedChips}${doiChip}`;
+    <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)} · ${flow}</i></span>
+    <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
+    ${datedChips}${wallsChip}${doiChip}`;
 }
 function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
 
