@@ -1083,18 +1083,15 @@ function buildVitals(){
   $("#vitals").innerHTML =
     `<div class="vital"><span class="pulse"></span> <span id="v-mode">LIVE</span> <b id="v-clock" class="mono">--:--:--</b> PT</div>
      <div class="vsep"></div>
-     <div class="vital">SPX <b id="v-spot">—</b> <span id="v-delta" class="mono"></span></div>
+     <div class="vital">SPX <b id="v-spot">—</b></div>
      <div class="vsep"></div>
      <span class="pill jade" id="v-regime"><span class="dot"></span>—</span>
      <span class="pill iris">${SYS.mode}</span>
      <span class="pill ${SYS.wtUp?'lantern':'grey'}" title="Watchtower judged scans today / daily cap"><span class="dot"></span>WT ${SYS.wtJudged}/${SYS.wtCap}</span>`;
-  VIT = { clock:$("#v-clock"), spot:$("#v-spot"), delta:$("#v-delta"), regime:$("#v-regime"), mode:$("#v-mode"), _rk:null };
+  VIT = { clock:$("#v-clock"), spot:$("#v-spot"), regime:$("#v-regime"), mode:$("#v-mode"), _rk:null };
 }
 function paintVitals(){
   VIT.spot.textContent = f(D.spot,2);
-  const dch = D.spot - B.priorClose;
-  VIT.delta.textContent = (dch>=0?"+":"")+f(dch,2);
-  VIT.delta.style.color = `var(--${dch>=0?'jade':'coral'})`;
   const rk = D.sign+D.regime;
   if(rk!==VIT._rk){ VIT._rk=rk; VIT.regime.className=`pill ${D.sign==='positive'?'jade':'coral'}`; VIT.regime.innerHTML=`<span class="dot"></span>${cap(D.regime)}`; }
 }
