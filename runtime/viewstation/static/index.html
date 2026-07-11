@@ -201,6 +201,23 @@
     background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
   .gx-chart svg{width:100%; height:100%; display:block}
   .gxbar{transition:opacity .12s linear}
+  /* ---- GEX map: "how to read it" affordance (top-right of the plot) ---- */
+  .gx-info{position:absolute; top:8px; right:8px; z-index:4;
+    width:26px; height:26px; display:grid; place-items:center;
+    padding:0; margin:0; appearance:none; cursor:pointer;
+    border-radius:50%; border:1px solid var(--hairline-2);
+    background:color-mix(in srgb,var(--surface-2) 86%, transparent);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    color:var(--ink-dim); font-family:var(--sans); font-size:14px; font-weight:700; line-height:1;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+    transition:color .15s ease, border-color .15s ease, background .15s ease, transform .09s ease}
+  .gx-info::before{content:""; position:absolute; inset:-9px; border-radius:50%}   /* 44px hit target */
+  .gx-info:active{transform:scale(.92)}
+  .gx-info:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  @media (hover:hover) and (pointer:fine){
+    .gx-info:hover{color:var(--ink); background:var(--surface-3);
+      border-color:color-mix(in srgb,var(--iris) 46%, var(--hairline-2))}
+  }
   #datedOIG rect{shape-rendering:crispEdges}
   @media (prefers-reduced-motion:no-preference){ .gx-blink{animation:gxblink 1.4s ease-in-out infinite} }
   @keyframes gxblink{0%,100%{opacity:1}50%{opacity:.34}}
@@ -361,6 +378,30 @@
   .modal-x{appearance:none; cursor:pointer; width:32px; height:32px; flex:none; border-radius:9px; border:1px solid var(--hairline); background:var(--surface); color:var(--ink-dim); font-size:14px; line-height:1; transition:.15s}
   .modal-x:hover{color:var(--ink); border-color:var(--hairline-2)}
   .modal-x:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  /* ---- GEX "how to read it" explainer modal (compact) ---- */
+  .modal-card.gxi{width:min(460px,94vw)}
+  .gxi-fig{height:148px; margin:2px 0 16px; border-radius:12px; overflow:hidden;
+    border:1px solid var(--hairline); display:grid; place-items:center;
+    background:radial-gradient(120% 100% at 50% 0%, color-mix(in srgb,var(--iris) 7%, var(--surface-2)), var(--surface-2))}
+  .gxi-fig svg{width:100%; height:100%; display:block}
+  .gxi-cap{margin:0 2px 9px; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:700}
+  .gxi-grid{display:grid; gap:8px}
+  .gxi-row{display:grid; grid-template-columns:1fr auto; align-items:center; gap:12px;
+    padding:11px 13px; border:1px solid var(--hairline); border-radius:12px; background:var(--surface-2)}
+  .gxi-pos{font-size:13.5px; font-weight:640; color:var(--ink)}
+  .gxi-react{font-size:11.5px; line-height:1.35; color:var(--ink-dim); margin-top:2px}
+  .gxi-sign{flex:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+    padding:5px 10px; border-radius:8px; font-size:11px; font-weight:700; letter-spacing:.02em}
+  .gxi-sign .sg{font-family:var(--mono); font-size:13px; font-weight:800}
+  .gxi-sign.pin{color:var(--jade);  background:var(--jade-wash);  border:1px solid color-mix(in srgb,var(--jade) 32%,transparent)}
+  .gxi-sign.push{color:var(--coral); background:var(--coral-wash); border:1px solid color-mix(in srgb,var(--coral) 32%,transparent)}
+  .gxi-note{margin-top:14px; padding:12px 14px; border-radius:11px; color:var(--ink);
+    background:var(--iris-wash); border:1px solid color-mix(in srgb,var(--iris) 24%,transparent);
+    font-size:12.5px; line-height:1.55}
+  .gxi-note b{display:block; margin-bottom:6px; font-size:9px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--iris); font-weight:700}
+  .gxi-note p{margin:0} .gxi-note p+p{margin-top:4px}
+  .gxi-disc{margin-top:12px; text-align:center; font-size:10.5px; line-height:1.5; color:var(--ink-faint)}
   .modal-body{overflow:auto; padding:18px 20px 22px; -webkit-overflow-scrolling:touch}
   .modal-plain{margin:0 0 15px; padding:13px 16px; border-radius:11px; background:var(--iris-wash); border:1px solid color-mix(in srgb,var(--iris) 26%,transparent); font-size:15px; line-height:1.5; color:var(--ink)}
   .modal-plain b{display:block; font-family:var(--sans); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--iris); margin-bottom:5px}
@@ -1103,6 +1144,7 @@ function gxBuild(){
     datedOILgdG:q('datedOILgdG'), dgSpot:q('dgSpot'),
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
+  gxMountInfoBtn();                       // re-mount the "?" (this rebuilt .gx-chart)
   gxOverview(); gxTower(); gxPaint();
 }
 function gxPaint(){
@@ -1579,6 +1621,66 @@ function openZonesModal(){
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
   document.getElementById('modal-x').onclick=closeModal;
+}
+
+// ---- GEX map "how to read it" explainer (the top-right "?" button) ----
+// Ball-in-a-valley vs ball-on-a-hill: a long-gamma dealer sits in a bowl (price
+// rolls back → PIN), a short-gamma dealer sits on a hilltop (price rolls away
+// faster → PUSH). The 4-row table teaches the rule that decides it: gamma sign
+// follows LONG vs SHORT the option, never call vs put.
+const _GXI_FIG=`<svg viewBox="0 0 320 150" role="img" aria-label="Left: a ball resting in a valley — pinned. Right: a ball rolling off a hill — pushed.">
+  <defs>
+    <marker id="ah-j" markerWidth="7" markerHeight="7" refX="3.2" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 Z" fill="var(--jade)"/></marker>
+    <marker id="ah-c" markerWidth="8" markerHeight="8" refX="3.2" refY="3.6" orient="auto"><path d="M0,0 L8,3.6 L0,7.2 Z" fill="var(--coral)"/></marker>
+  </defs>
+  <path d="M20,44 Q80,116 140,44" fill="none" stroke="var(--jade)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M52,66 L69,78" fill="none" stroke="var(--jade)" stroke-width="2" marker-end="url(#ah-j)"/>
+  <path d="M108,66 L91,78" fill="none" stroke="var(--jade)" stroke-width="2" marker-end="url(#ah-j)"/>
+  <circle cx="80" cy="74" r="8" fill="var(--jade)"/>
+  <text x="80" y="128" text-anchor="middle" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--jade)">PINNED</text>
+  <text x="80" y="141" text-anchor="middle" font-family="var(--sans)" font-size="9" fill="var(--ink-dim)">long gamma · rolls back</text>
+  <path d="M180,86 Q240,14 300,86" fill="none" stroke="var(--coral)" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="262" cy="46" r="8" fill="var(--coral)"/>
+  <path d="M272,52 Q298,64 302,86" fill="none" stroke="var(--coral)" stroke-width="2" marker-end="url(#ah-c)"/>
+  <text x="240" y="128" text-anchor="middle" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--coral)">PUSHED</text>
+  <text x="240" y="141" text-anchor="middle" font-family="var(--sans)" font-size="9" fill="var(--ink-dim)">short gamma · rolls away</text>
+</svg>`;
+function openGexInfoModal(){
+  const M=document.getElementById('modal'); if(!M) return;
+  const row=(pos,react,pin)=>`<div class="gxi-row"><div><div class="gxi-pos">${pos}</div><div class="gxi-react">${react}</div></div><span class="gxi-sign ${pin?'pin':'push'}"><span class="sg">${pin?'+':'−'}</span>${pin?'Pin':'Push'}</span></div>`;
+  M.innerHTML=`
+    <div class="modal-card gxi" role="dialog" aria-modal="true" aria-label="How to read the GEX map">
+      <div class="modal-head">
+        <div class="mt">How to read the map <em>pins vs pushes</em></div>
+        <button class="modal-x" id="modal-x" style="margin-left:auto" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="gxi-fig" aria-hidden="true">${_GXI_FIG}</div>
+        <div class="gxi-cap">How the market maker hedges it</div>
+        <div class="gxi-grid">
+          ${row('Long call','Long γ → market maker fades', true)}
+          ${row('Long put','Long γ → market maker fades', true)}
+          ${row('Short call','Short γ → market maker chases', false)}
+          ${row('Short put','Short γ → market maker chases', false)}
+        </div>
+        <div class="gxi-note"><b>On the map</b>
+          <p>Each bar = net market-maker gamma at that strike. <span style="color:var(--jade)">Green pins</span> (price sticks), <span style="color:var(--coral)">red pushes</span> (price runs).</p>
+          <p>The right-edge columns are further-out expirations — same colors, brighter = bigger.</p>
+        </div>
+        <div class="gxi-disc">Signs assume market makers are long calls / short puts — heavy flow can flip them.</div>
+      </div>
+    </div>`;
+  M.classList.add('open'); M.setAttribute('aria-hidden','false');
+  document.getElementById('modal-x').onclick=closeModal;
+}
+// the "?" lives over the plot; re-mounted after each gxBuild (which wipes .gx-chart)
+function gxMountInfoBtn(){
+  const cc=document.querySelector('#p-map .gx-chart'); if(!cc||cc.querySelector('#gx-info-btn')) return;
+  const b=document.createElement('button');
+  b.id='gx-info-btn'; b.className='gx-info'; b.type='button';
+  b.setAttribute('aria-label','How to read the GEX map'); b.textContent='?';
+  b.addEventListener('click', e=>{ e.stopPropagation(); openGexInfoModal(); });   // don't also fire openZonesModal
+  cc.appendChild(b);
 }
 
 function paintMap(){ gxPaint(); }
