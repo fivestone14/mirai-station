@@ -959,6 +959,12 @@ async function loadDiaryHistory(){
 // fixed price axis → each strike's y never moves; only bar lengths / levels ease
 // the viewBox matches the chart cell's real pixel aspect, so the SVG fills it with
 // no letterbox (no wasted vertical space); geometry is derived from the measured size.
+// TENOR LADDER GUTTER geometry — the SINGLE source of truth. computeMAPX sizes the
+// gutter from STRIP; paintDatedOI lays the columns out from STRIP. A widen is one
+// edit here and the two can never drift. Widened 07-11 (col 9→14, gap 3→7) for
+// breathing room + a directional-arrow lane on the strongest clusters.
+const STRIP={ colW:14, gap:7, padL:7, padR:7, cellInset:1, tickW:1.5 };
+STRIP.pitch=STRIP.colW+STRIP.gap;   // 21
 function computeMAPX(w,h){
   const x0=72, tagX=w-10, stripEnd=Math.round(w-178);
   // TENOR LADDER GUTTER (Dated γ): each dated expiry gets its own labeled
@@ -974,7 +980,7 @@ function computeMAPX(w,h){
       nT=Math.min(5,(DBOOK.book.bands||[]).filter(b=>String(b.expiry||'')>=today).length);
     }
   }catch(e){ nT=0; }
-  const stripGutter=nT?(12+9*nT+3*(nT-1)):0;        // 45px @3 tenors, 69px @5
+  const stripGutter=nT?(STRIP.padL+STRIP.padR+STRIP.colW*nT+STRIP.gap*(nT-1)):0;   // 70px @3 tenors, 112px @5
   const lineEnd=stripEnd-stripGutter;
   return { W:w, H:h, padT:22, padB:24, axisLX:48, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
     // 88% of the lane: everything right of lineEnd is gutter/tag territory the
@@ -1113,8 +1119,8 @@ function gxBuild(){
   const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.x0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
   const lvl=MIDS.map(id=>{ const mm=MMETA[id], spot=id==='spot';
     return `<line id="lead-${id}" style="stroke:${mm.c};opacity:0"/>`+
-      `<line id="lc-${id}" x1="${X.x0}" x2="${X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
-      `<line id="lvl-${id}" x1="${X.x0}" x2="${X.lineEnd}" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+
+      `<line id="lc-${id}" x1="${X.x0}" x2="${spot?X.stripEnd:X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
+      `<line id="lvl-${id}" x1="${X.x0}" x2="${spot?X.stripEnd:X.lineEnd}" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+   /* spot runs THROUGH the ladder gutter → one continuous "where am I" line across bars + dated columns */
       `<text id="nm-${id}" x="${X.tagX}" text-anchor="end" style="fill:${spot?'var(--iris)':'var(--ink-dim)'}" font-size="11.5" font-weight="600" font-family="var(--sans)" letter-spacing=".04em">${mm.n}</text>`+
       `<text id="vl-${id}" x="${X.tagX}" text-anchor="end" style="fill:${mm.c}" font-size="${spot?21:18}" font-weight="700" font-family="var(--mono)"></text>`; }).join('');
   document.querySelector('#p-map .gx-chart').innerHTML=
@@ -1126,6 +1132,7 @@ function gxBuild(){
      <rect id="washTop" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--jade);opacity:.045"/>
      <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
      <g id="axisG">${axis}</g>
+     <rect id="spotLane" x="${X.x0}" width="0" style="fill:var(--iris);opacity:0"/>
      <g id="datedOIG"></g>
      <g id="barsG">${bars}</g>
      <g id="datedG"></g>
@@ -1134,14 +1141,13 @@ function gxBuild(){
      <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <line id="dgSpot" style="stroke:var(--iris);stroke-width:1.2;opacity:0"/>
      <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan style="fill:var(--jade)">▮</tspan> pins <tspan style="fill:var(--coral)">▮</tspan> pushes</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
-    datedOILgdG:q('datedOILgdG'), dgSpot:q('dgSpot'),
+    datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
   gxMountInfoBtn();                       // re-mount the "?" (this rebuilt .gx-chart)
@@ -1227,12 +1233,13 @@ function gxPaint(){
       MAP.wtTgt.style.display='';
     } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; }
   }
-  // ladder-gutter spot crosshair — eases with the tape so "where is spot" reads
-  // ACROSS the tenor columns at a glance
-  if(MAP.dgSpot){
-    MAP.dgSpot.setAttribute('x1',(X.lineEnd+1).toFixed(1)); MAP.dgSpot.setAttribute('x2',(X.stripEnd-1).toFixed(1));
-    MAP.dgSpot.setAttribute('y1',sy.toFixed(1)); MAP.dgSpot.setAttribute('y2',sy.toFixed(1));
-    MAP.dgSpot.style.opacity=(X.nT>0)?0.55:0;
+  // SPOT ROW-BAND — one faint iris row across BOTH regions so the live bar and the
+  // dated cells at spot's strike read as ONE row (the unified spot LINE now runs
+  // through the gutter from the level system). Spans only when the gutter is up.
+  if(MAP.spotLane){
+    MAP.spotLane.setAttribute('y',(sy-MROWH/2).toFixed(1)); MAP.spotLane.setAttribute('height',MROWH.toFixed(1));
+    MAP.spotLane.setAttribute('width',(X.stripEnd-X.x0).toFixed(1));
+    MAP.spotLane.style.opacity=(X.nT>0)?0.06:0;   // only with the dated layer → off-state stays identical
   }
   paintDated(); paintDatedOI();
 }
@@ -1314,7 +1321,7 @@ function paintDatedOI(){
   if(!MAP||!MAP.datedOIG) return;
   const b=DBOOK.book;
   const ok=DOI_ON&&(typeof LIVE==='undefined'||LIVE)&&datedOIAvail()&&MSTRIKES.length;
-  const key=(ok?String(b.as_of):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}|${MAPX.nT}|${MAPX.lineEnd}`;
+  const key=(ok?String(b.as_of):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}|${MAPX.nT}|${MAPX.lineEnd}|${Math.round((D.spot||0)/10)}`;   // spot bucket → arrows re-evaluate as spot eases across a cluster
   if(key===MAP._dokey) return;
   MAP._dokey=key;
   if(!ok||!MAPX.nT){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
@@ -1335,24 +1342,27 @@ function paintDatedOI(){
     if(placed>0) profs.push({i:profs.length, head:_dglHead(bd), tag:_dexp(bd.expiry), buckets});
   });
   if(!mx||!profs.length){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
-  const colX=i=>X.lineEnd+6+i*12;
+  const colX=i=>X.lineEnd+STRIP.padL+i*STRIP.pitch;
+  const cellX=i=>colX(i)+STRIP.cellInset, cellW=STRIP.colW-2*STRIP.cellInset;
   const cellH=Math.max(2, Math.min(MROWH-1, 14));
+  const clampT=X.padT, clampB=X.H-X.padB, sy=yFor(D.spot);
   let svg='';
-  // gutter room: recessed panel + edge hairlines
+  // gutter room: recessed panel + edge hairlines. The LEFT hairline is SPLIT at spot
+  // so the unified iris crosshair reads as carrying THROUGH the divider — live lane
+  // and dated columns become one field joined at the price you care about.
   svg+=`<rect x="${X.lineEnd}" y="${X.padT}" width="${X.stripGutter}" height="${(X.H-X.padT-X.padB).toFixed(1)}" rx="3" fill="var(--dgl-gutter)" style="shape-rendering:auto"/>`
-     +`<line x1="${X.lineEnd}" x2="${X.lineEnd}" y1="${X.padT}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`
+     +`<line x1="${X.lineEnd}" x2="${X.lineEnd}" y1="${X.padT}" y2="${Math.max(X.padT,sy-8).toFixed(1)}" style="stroke:var(--hairline)"/>`
+     +`<line x1="${X.lineEnd}" x2="${X.lineEnd}" y1="${Math.min(X.H-X.padB,sy+8).toFixed(1)}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`
      +`<line x1="${X.stripEnd}" x2="${X.stripEnd}" y1="${X.padT}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`;
-  // staggered column headers (identity as TEXT — read, don't decode)
+  // single-row column headers — identity as TEXT, read not decoded
   profs.forEach(p=>{
-    const cx=colX(p.i)+4.5, rowA=(p.i%2===0), hy=rowA?10:20;
-    svg+=`<text x="${cx.toFixed(1)}" y="${hy}" text-anchor="middle" font-size="8.5" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}</text>`;
-    if(rowA) svg+=`<line x1="${cx.toFixed(1)}" x2="${cx.toFixed(1)}" y1="12" y2="${X.padT}" style="stroke:var(--hairline)"/>`;
+    const cx=colX(p.i)+STRIP.colW/2;
+    svg+=`<text x="${cx.toFixed(1)}" y="13" text-anchor="middle" font-size="9" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}</text>`;
   });
-  // heat cells + per-column peak tick — CLAMPED to the panel (zones-style): an
-  // edge-row cell must never paint over the headers or spill past the panel foot
-  const clampT=X.padT, clampB=X.H-X.padB;
   profs.forEach(p=>{
-    const cx=colX(p.i); let pk={q:0,y:null,h:0};
+    const cx=colX(p.i), xC=cellX(p.i), cells=[];
+    // heat cells — CLAMPED to the panel (an edge row must never paint over the
+    // headers or spill past the panel foot); collected for cluster/arrow detection
     MSTRIKES.forEach((k,j)=>{
       const net=p.buckets[j]; if(!net) return;
       const q=Math.sqrt(Math.abs(net)/mx);
@@ -1361,13 +1371,38 @@ function paintDatedOI(){
       const C=(net>=0?_DGLP:_DGLN)[stp-1];
       const yT=Math.max(clampT, yFor(k)-cellH/2), yB=Math.min(clampB, yFor(k)+cellH/2);
       const h=yB-yT; if(h<1) return;                // fully outside the panel → skip
-      if(q>pk.q) pk={q, y:yT, h};
-      svg+=`<rect x="${cx}" y="${yT.toFixed(1)}" width="9" height="${h.toFixed(1)}" fill="${C}"><title>${p.tag} · ${k.toLocaleString('en-US')} · ${net>=0?'+':'−'}${_gfmt(Math.abs(net))}</title></rect>`;
+      cells.push({j, k, net, q, stp, yc:Math.max(clampT+4,Math.min(clampB-4,yFor(k)))});
+      svg+=`<rect x="${xC.toFixed(1)}" y="${yT.toFixed(1)}" width="${cellW}" height="${h.toFixed(1)}" fill="${C}"><title>${p.tag} · ${k.toLocaleString('en-US')} · ${net>=0?'+':'−'}${_gfmt(Math.abs(net))}</title></rect>`;
     });
-    if(pk.y!=null)                                   // the tenor's in-frame wall —
-      // tick centered in the 3px inter-column gap (flush against the previous
-      // column's cells it reads as the WRONG tenor)
-      svg+=`<rect x="${(cx-2.25).toFixed(1)}" y="${Math.max(clampT,pk.y-1).toFixed(1)}" width="1.5" height="${Math.min(pk.h+2, clampB-Math.max(clampT,pk.y-1)).toFixed(1)}" fill="var(--ink)"/>`;
+    // CLUSTERS: maximal runs of adjacent same-sign cells; magnitude = Σ|net|, anchor
+    // = the run's biggest cell. Gate: peak step ≥3 AND run ≥ 35% of the book max —
+    // nothing litters a calm day, but a distributed wall still qualifies by mass.
+    const clusters=[]; let run=null;
+    cells.forEach(c=>{ const s=c.net>=0;
+      if(run&&run.s===s&&c.j===run.lastJ+1){ run.lastJ=c.j; run.M+=Math.abs(c.net); if(c.q>run.peak.q) run.peak=c; }
+      else { run={s, lastJ:c.j, M:Math.abs(c.net), peak:c}; clusters.push(run); } });
+    const worthy=clusters.filter(r=>r.peak.stp>=3 && r.M>=0.35*mx).sort((a,b)=>b.M-a.M);
+    const pick=worthy.slice(0,1);
+    const opp=worthy.find(r=>pick.length&&r.s!==pick[0].s); if(opp) pick.push(opp);   // ≤2, 2nd only if opposite-sign
+    // ARROW = market-maker ACTION at the level (validated from dealer hedging):
+    //   ↑ BUY / promote = (green & below spot) OR (red & above spot)
+    //   ↓ SELL hard into = (green & above spot) OR (red & below spot)
+    // GREEN points TOWARD spot (fade: support below / cap above); RED points AWAY
+    // (chase: accelerate the break). Ink glyph + surface halo ⇒ ≥3:1 on any cell,
+    // both themes; the CELL HUE still carries pin-vs-push, the ARROW carries buy/sell.
+    pick.forEach(r=>{
+      const green=r.s, up = green ? (r.peak.k<D.spot) : (r.peak.k>D.spot);
+      const cxc=xC+cellW/2, yc=r.peak.yc, t=(6+3*Math.min(1,r.M/mx))/2;
+      const d = up ? `M${cxc.toFixed(1)},${(yc-t).toFixed(1)} L${(cxc-t).toFixed(1)},${(yc+t).toFixed(1)} L${(cxc+t).toFixed(1)},${(yc+t).toFixed(1)} Z`
+                   : `M${(cxc-t).toFixed(1)},${(yc-t).toFixed(1)} L${(cxc+t).toFixed(1)},${(yc-t).toFixed(1)} L${cxc.toFixed(1)},${(yc+t).toFixed(1)} Z`;
+      svg+=`<path d="${d}" style="fill:var(--ink);paint-order:stroke;stroke:var(--surface-2);stroke-width:2;stroke-linejoin:round"><title>${p.tag} · ${r.peak.k.toLocaleString('en-US')} · MM ${up?'BUY / promote':'SELL hard into'} · ${_gfmt(r.M)}</title></path>`;
+    });
+    // plain wall tick only where NO arrow claimed the column (arrow supersedes it)
+    if(!pick.length&&cells.length){
+      let top=cells[0]; for(const c of cells) if(c.q>top.q) top=c;
+      const yT=Math.max(clampT,yFor(top.k)-cellH/2), h=Math.min(clampB,yFor(top.k)+cellH/2)-yT;
+      svg+=`<rect x="${(cx-(STRIP.gap/2+STRIP.tickW/2)).toFixed(1)}" y="${Math.max(clampT,yT-1).toFixed(1)}" width="${STRIP.tickW}" height="${Math.min(h+2,clampB-Math.max(clampT,yT-1)).toFixed(1)}" fill="var(--ink)"/>`;
+    }
   });
   MAP.datedOIG.innerHTML=svg;
   // LEGEND — bottom caption strip, right-aligned (outside every plot element by
