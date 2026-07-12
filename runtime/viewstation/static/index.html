@@ -1813,7 +1813,12 @@ function gxOverview(){
   // freshness pill: quiet "as of" normally; LOUD coral when the feed froze in-session
   const _fr=(typeof gxFreshInfo==='function')?gxFreshInfo():null;
   const freshTag=_fr?` · <span style="${_fr.stale?'color:var(--coral);font-weight:700':'opacity:.75'}">${_fr.txt}</span>`:'';
-  el.innerHTML=`
+  // N1/N16: an open road is the loudest fact on the strip — the fence is broken and
+  // the engine has stopped fading. It must never be discoverable only in the diary.
+  const roadChip = (T.road && T.road.side)
+    ? `<span class="gx-chip" style="border-color:var(--coral);color:var(--coral)"><b>🧱 ${T.road.side==='call'?'CALL':'PUT'} WALL ${f(T.road.level,0)} BROKEN</b><i>road open · ${T.road.kind} · following, not fading</i></span>`
+    : '';
+  el.innerHTML=`${roadChip}
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)} · ${flow}${freshTag}</i></span>
     <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
     ${datedChips}${wallsChip}${doiChip}${scaleChip}${tenorChip}`;
@@ -1973,6 +1978,8 @@ function applyMap(r){
   GX_ASOF = r.ts || GX_ASOF;                                     // freshness anchor: the newest row's own clock
   GX_SRC = r.gex_source || GX_SRC;                               // N21: which engine drew THIS row (native vs spy_proxy×10)
   GX_SRC_NOTE = r.gex_source_note || null;                       // N7: WHY not native (e.g. 'coverage' = half-fetched book)
+  T.breach = r.wall_breach || null;                              // N1: breach EVENT (crossing scan only)
+  T.road = r.regime_road || null;                                // N16: pin→trend road open (breach/reclaim/held)
   GX_COV = r.native_coverage || (r.gex_theta||{}).native_coverage || null;   // N7: live leg first, shadow twin fallback
   T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)

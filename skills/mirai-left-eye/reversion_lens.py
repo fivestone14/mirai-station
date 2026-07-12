@@ -284,6 +284,67 @@ def variance_ratio(closes: list[float], q: int = 4) -> Optional[float]:
     return round(varq / (q * var1), 4)
 
 
+# --- N1 + N16 (2026-07-12): breach events + the road from pin to trend ---------------
+# operative_wall's break-to-extend geometry re-places a pierced wall OUTWARD, which made
+# a breach LITERALLY UNREPRESENTABLE: every row showed an intact fence ahead of price,
+# the phone's wall-breach bell compared spot to the re-placed wall and could never ring,
+# and the documented pin→trend escape hatch (flips_regime) was computed and read by
+# nothing. These two functions are the missing physics: the breach is an EVENT (this
+# scan's spot vs the PREVIOUS row's operative wall), and an open road (breach or a
+# confirmed wall reclaim) flips the regime to trending while price holds beyond it.
+ROAD_HOLD_MIN = 45.0     # an opened road stays open this long while price holds beyond
+                         # the level; re-crossing back closes it immediately
+
+
+def detect_breach(prev_row: Optional[dict], spot: float,
+                  sigma: Optional[float]) -> Optional[dict]:
+    """The wall-breach EVENT: price crossed the previous scan's operative wall.
+    Fires only on the CROSSING scan (prev spot was still inside) — a continuation
+    scan beyond an already-broken wall is the road's job, not a new event."""
+    if not prev_row or not spot:
+        return None
+    pcw, ppw, pspot = prev_row.get("call_wall"), prev_row.get("put_wall"), prev_row.get("spot")
+    try:
+        if pcw and spot > pcw and (pspot is None or pspot <= pcw):
+            return {"side": "call", "wall": round(float(pcw), 2), "spot": round(spot, 2),
+                    "overshoot_sigma": round((spot - pcw) / sigma, 3) if sigma else None}
+        if ppw and spot < ppw and (pspot is None or pspot >= ppw):
+            return {"side": "put", "wall": round(float(ppw), 2), "spot": round(spot, 2),
+                    "overshoot_sigma": round((ppw - spot) / sigma, 3) if sigma else None}
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def road_state(rows_today: list[dict], spot: float, now: datetime,
+               breach: Optional[dict]) -> Optional[dict]:
+    """N16 — is the pin→trend road open? A fresh breach opens it; a recorded road
+    (breach or reclaim) from the last ROAD_HOLD_MIN holds it while price is still
+    beyond its level; re-crossing back closes it. Returns {kind, side, level} | None."""
+    if breach:
+        return {"kind": "breach", "side": breach["side"], "level": breach["wall"]}
+    if not spot:
+        return None
+    for r in reversed(rows_today or []):
+        rd = r.get("regime_road")
+        if not rd:
+            continue
+        try:
+            age_min = (now - datetime.fromisoformat(r["ts"])).total_seconds() / 60.0
+        except (KeyError, TypeError, ValueError):
+            return None
+        if age_min > ROAD_HOLD_MIN:
+            return None
+        lvl, side = rd.get("level"), rd.get("side")
+        if lvl is None or side not in ("call", "put"):
+            return None
+        beyond = spot > lvl if side == "call" else spot < lvl
+        if beyond:
+            return {"kind": "held", "side": side, "level": lvl}
+        return None            # price reclaimed the calm side — the road closes
+    return None
+
+
 def sigma_ruler(anchor: Optional[float], live: Optional[float]) -> Optional[float]:
     """N10 — the yardstick that cannot shrink with theta decay. max(day-open σ, live σ):
     an ordinary afternoon stays measured against the morning's ruler (the same 40 pts
@@ -902,6 +963,9 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         put_wall = operative_wall((_sized(_B.get("put_wall_gamma"), _pw_share),
                                    _B.get("put_wall"), put_wall_tenor),
                                   spot, sigma, "put")
+        # N1: the breach EVENT — this scan's spot vs the PREVIOUS row's operative wall.
+        # Without it, break-to-extend re-placement makes every row show an intact fence.
+        wall_breach = detect_breach(rows_today[-1] if rows_today else None, spot, sigma)
         gflip = gxv.get("flip")
         gex_source = _meta.get("gex_source")
         # gamma read = sign of net gamma AT SPOT — but a flow-downgraded
@@ -968,6 +1032,13 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
 
         regime_v = classify_regime(g_sign, range_em, vr, vix_ts)
         regime = regime_v["regime"]
+        # N16: THE ROAD FROM PIN TO TREND. A fresh breach (or a still-held one from the
+        # last ROAD_HOLD_MIN) overrides the vote: dealers' fence is broken and price is
+        # beyond it — the system follows instead of fading. This is the escape hatch
+        # flips_regime documented but nothing ever read. Visible on the row, never silent.
+        road = road_state(rows_today, spot, now, wall_breach)
+        if road:
+            regime = "trending"
 
         rev = reversion_extreme(spot, prior_close, sigma, call_wall, put_wall,
                                 regime, vol_bars, vwap_stretch=vwap_stretch,
@@ -1011,8 +1082,20 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             "level_reclaim": {k: lvl[k] for k in
                 ("score", "confidence", "fired", "direction", "level",
                  "level_kind", "flips_regime")},
+            # N1 + N16: the breach event and the road that reads it. wall_breach fires
+            # only on the crossing scan; regime_road persists while the road is open
+            # (and is what road_state reads on the NEXT scan — the diary is the memory).
+            "wall_breach": wall_breach,
+            "regime_road": road,
             "live": REVERSION_LIVE,
         }
+        # N16 (reclaim leg): a confirmed wall break via level_reclaim opens the road for
+        # the FOLLOWING scans (this scan's regime already fed the gates; a one-scan lag
+        # is honest — the reclaim is confirmed by this row, followed from the next).
+        if not road and lvl.get("fired") and lvl.get("flips_regime") \
+                and lvl.get("level") is not None and lvl.get("direction") in ("call", "put"):
+            telemetry["regime_road"] = {"kind": "reclaim", "side": lvl["direction"],
+                                        "level": lvl["level"]}
 
         # (rows_today was read once, hoisted above the gravity read — 2026-07-12)
 
@@ -1381,13 +1464,16 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         # verdict. Fail-open: on any error the block stays exactly as
         # level_reclaim() returned it (the Fade Lens is never contaminated).
         try:
-            _call_gamma_wall = _B.get("call_wall_gamma")
-            _put_gamma_wall = _B.get("put_wall_gamma")
-            # best-known wall each side: 0DTE gamma wall (GRAVITY, live clock)
-            # preferred, OI band wall fallback — (level, kind) pairs
-            shelf_up = ((_call_gamma_wall, "call_wall_gamma") if _call_gamma_wall is not None else
+            # N17 (2026-07-12): the shelf is the next STRUCTURAL obstacle, never the raw
+            # 0DTE gamma wall — that wall sits on top of spot BY CONSTRUCTION (the ATM
+            # artifact; measured live: 0.00-0.32σ away on 200/200 scans against a 0.35σ
+            # floor, so the break gate could never once open). Same lesson as H2's
+            # operative_wall: raw 0DTE γ-walls must never feed fade/break logic.
+            # Order: the 1-7DTE structural band wall, then the operative wall (already
+            # placed ≥ the fire floor). An honest absence = open runway, as ever.
+            shelf_up = ((call_wall_tenor, "call_wall_tenor") if call_wall_tenor is not None else
                         (call_wall, "call_wall") if call_wall is not None else None)
-            shelf_dn = ((_put_gamma_wall, "put_wall_gamma") if _put_gamma_wall is not None else
+            shelf_dn = ((put_wall_tenor, "put_wall_tenor") if put_wall_tenor is not None else
                         (put_wall, "put_wall") if put_wall is not None else None)
             # tape freshness audit: the fold's write clock, read through the
             # bridge's own staleness gate (the attached lob_flow block carries

@@ -66,6 +66,41 @@ def test_sigma_ruler_never_shrinks_on_decay():
     assert R.sigma_ruler(None, None) is None
 
 
+def test_detect_breach_fires_only_on_the_crossing_scan():
+    # N1: the breach is an EVENT — this scan's spot vs the PREVIOUS row's operative
+    # wall. Break-to-extend re-placement made it unrepresentable before this.
+    prev = {"spot": 7540.0, "call_wall": 7550.0, "put_wall": 7450.0}
+    wb = R.detect_breach(prev, 7556.0, 80.0)
+    assert wb and wb["side"] == "call" and wb["wall"] == 7550.0
+    assert abs(wb["overshoot_sigma"] - 0.075) < 1e-6
+    # a continuation scan (prev spot already beyond) is the ROAD's job, not a new event
+    assert R.detect_breach({"spot": 7556.0, "call_wall": 7550.0}, 7560.0, 80.0) is None
+    # put-side mirror
+    wb3 = R.detect_breach({"spot": 7460.0, "put_wall": 7450.0}, 7442.0, 80.0)
+    assert wb3 and wb3["side"] == "put" and wb3["wall"] == 7450.0
+    assert R.detect_breach(None, 7500.0, 80.0) is None
+
+
+def test_road_opens_on_breach_holds_beyond_and_closes_on_recross():
+    # N16: the pin→trend road — the escape hatch flips_regime documented but nothing read
+    ET_ = ZoneInfo("America/New_York")
+    now = datetime.datetime(2026, 7, 13, 11, 0, tzinfo=ET_)
+    breach = {"side": "call", "wall": 7550.0, "spot": 7556.0}
+    assert R.road_state([], 7556.0, now, breach) == {"kind": "breach", "side": "call",
+                                                     "level": 7550.0}
+    ten_ago = (now - datetime.timedelta(minutes=10)).isoformat()
+    rows = [{"ts": ten_ago,
+             "regime_road": {"kind": "breach", "side": "call", "level": 7550.0}}]
+    held = R.road_state(rows, 7558.0, now, None)
+    assert held and held["kind"] == "held" and held["level"] == 7550.0
+    # price reclaimed the calm side → the road closes immediately
+    assert R.road_state(rows, 7544.0, now, None) is None
+    # ...and an old road expires even if price is still beyond
+    old = [{"ts": (now - datetime.timedelta(minutes=60)).isoformat(),
+            "regime_road": {"kind": "breach", "side": "call", "level": 7550.0}}]
+    assert R.road_state(old, 7558.0, now, None) is None
+
+
 def test_reversion_extreme_catches_capitulation_long():
     # 7347.6, prior 7472.79, sigma 95, put_wall 7300, pinning, last bar turning up
     rev = R.reversion_extreme(7347.6, 7472.79, 95.0, 7400, 7300, "pinning",

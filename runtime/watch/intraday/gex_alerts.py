@@ -154,12 +154,29 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
         exp_dir = float((exp.get("overall") or {}).get("direction") or 0.0) if exp else 0.0
         redived_roots: set = set()
 
+        # N1 (2026-07-12): the engine now records the breach EVENT on the row
+        # (reversion_lens.detect_breach — this scan's spot vs the PREVIOUS row's
+        # operative wall). The old proximity check compared spot to the SAME row's
+        # wall, which break-to-extend had already re-placed OUTWARD — arithmetically
+        # the bell could never ring. Recorded events from recent rows ring it now;
+        # the legacy check stays as a fallback for pre-event rows (it is inert on
+        # them for exactly the reason above, and harmless).
+        breach_cands = []
+        for r in rows[-12:]:
+            tk = r.get("ticker")
+            wb = r.get("wall_breach")
+            if tk in LENS_TICKERS and isinstance(wb, dict) and wb.get("wall") is not None:
+                breach_cands.append((tk, r, {
+                    "wall": round(float(wb["wall"])),
+                    "direction": 1 if wb.get("side") == "call" else -1,
+                    "beyond": round(float(wb.get("spot") or 0) - float(wb["wall"]), 1)}))
         for tk, r in latest_by_tk.items():
             br = macro_mood.wall_breach(r.get("spot"), r.get("call_wall"),
                                         r.get("put_wall"), r.get("sigma"),
                                         buffer_frac)
-            if not br:
-                continue
+            if br:
+                breach_cands.append((tk, r, br))
+        for tk, r, br in breach_cands:
             out["breaches"] += 1
             key = f"{tk}:{br['wall']}"
             last = cooldowns.get(key)
@@ -175,11 +192,15 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
                     used += 1
                     fired = True
                     redived_roots.add(root)
-                    push.send(f"🧱 {tk} broke its {br['wall']} wall "
-                              f"({br['beyond']:+.1f} beyond) — mood re-dive fired",
-                              tag="gex-wall")
                 except Exception:
                     fired = False
+            # N1: the BELL is not the re-dive — it rings on every (cooldown-fresh)
+            # breach even when the re-dive budget is spent. The breach is the fact;
+            # the re-dive is a reaction to it.
+            push.send(f"🧱 {tk} broke its {br['wall']} wall "
+                      f"({br['beyond']:+.1f} beyond)"
+                      + (" — mood re-dive fired" if fired else ""),
+                      tag="gex-wall")
             cooldowns[key] = minutes
             macro_mood.log_learning(state_dir, {
                 "kind": "wall_breach", "ticker": tk, "wall": br["wall"],
