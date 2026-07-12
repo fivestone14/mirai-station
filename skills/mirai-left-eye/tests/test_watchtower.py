@@ -142,17 +142,29 @@ def test_structural_walls_reach_filtered_and_deduped():
     assert "structural_call_wall_sigma_above" not in wt.build_payload(t)["dealer_map_gravity"]
 
 
-def test_dated_structure_reach_filter_and_absence():
+def test_dated_structure_far_walls_reach_the_tower_tagged():
+    # H8 v2: the old ≤3σ filter dropped EVERY real dated wall EVERY day (live walls
+    # sit 4.7-13.8σ out) — the tower never saw the outer terrain. Far walls now ride
+    # the payload explicitly tagged FAR; in-reach walls stay plain; junk beyond the
+    # 15σ sanity cap is still dropped.
     t = _telemetry()
     t["dated_gex"] = {"bands": [
         {"band": "monthly", "dte": 5, "age_days": 0, "call_wall": 7500.0, "put_wall": 7300.0},
-        {"band": "quarter_end", "dte": 80, "age_days": 3, "call_wall": 9000.0, "put_wall": 6000.0}]}
+        {"band": "quarter_end", "dte": 80, "age_days": 3, "call_wall": 8000.0, "put_wall": 7000.0}]}
     p = wt.build_payload(t)
     ds = p["dated_structure"]
-    assert len(ds["bands"]) == 1                       # both-out-of-reach band dropped whole
-    b = ds["bands"][0]
-    assert b["band"] == "monthly" and b["age_days"] == 0
-    assert abs(b["call_wall_sigma_above"]) <= 3 and abs(b["put_wall_sigma_below"]) <= 3
+    assert len(ds["bands"]) == 2                       # the far band is no longer invisible
+    near = next(b for b in ds["bands"] if b["band"] == "monthly")
+    far = next(b for b in ds["bands"] if b["band"] == "quarter_end")
+    assert abs(near["call_wall_sigma_above"]) <= 3 and "call_wall_reach" not in near
+    assert abs(far["call_wall_sigma_above"]) > 3
+    assert far["call_wall_reach"].startswith("FAR")
+    assert far["put_wall_reach"].startswith("FAR")
+    # a wall beyond the 15σ sanity cap is still dropped (junk, not terrain)
+    t2 = _telemetry()
+    t2["dated_gex"] = {"bands": [{"band": "quarter_end", "dte": 80,
+                                  "call_wall": 99000.0, "put_wall": 100.0}]}
+    assert "dated_structure" not in wt.build_payload(t2)
     # no dated book → key absent (absence ≠ null)
     assert "dated_structure" not in wt.build_payload(_telemetry())
 
