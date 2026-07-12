@@ -296,6 +296,7 @@ def variance_ratio(closes: list[float], q: int = 4) -> Optional[float]:
 # confirmed wall reclaim) flips the regime to trending while price holds beyond it.
 ROAD_HOLD_MIN = 45.0     # an opened road stays open this long while price holds beyond
                          # the level; re-crossing back closes it immediately
+BREACH_MIN_OVERSHOOT_SIGMA = 0.05   # a crossing must clear this to fire (grid-float guard)
 
 
 def detect_breach(rows_today: list[dict], spot: float,
@@ -313,6 +314,10 @@ def detect_breach(rows_today: list[dict], spot: float,
     Fires once per fence level (crossed fences join the 'already' set forever)."""
     if not rows_today or not spot:
         return None
+    # epsilon floor (verify round 2): a fence recorded once in the morning and
+    # micro-crossed by 0.005σ hours later is grid float, not a breakout — a crossing
+    # must clear BREACH_MIN_OVERSHOOT_SIGMA to fire (it fires next scan if it deepens)
+    eps = (BREACH_MIN_OVERSHOOT_SIGMA * sigma) if sigma else 0.0
     for side, key in (("call", "call_wall"), ("put", "put_wall")):
         crossed_now: list[float] = []
         already: set = set()
@@ -328,7 +333,7 @@ def detect_breach(rows_today: list[dict], spot: float,
                         if (s > w) if side == "call" else (s < w):
                             already.add(w)          # this fence was crossed earlier
             for w in walls - already:
-                if (spot > w) if side == "call" else (spot < w):
+                if (spot > w + eps) if side == "call" else (spot < w - eps):
                     crossed_now.append(w)
         except (TypeError, ValueError):
             continue
@@ -961,11 +966,20 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 prev_pin = _gv["pin"]
                 break
 
+        # N10: the day-open σ anchor from the diary — extracted BEFORE the gravity read
+        # so the magnet's reach window (N8) can ride the ruler, not the decayed live σ
+        sigma_anchor = None
+        for _r in rows_today:
+            _sa = _r.get("sigma_anchor") or _r.get("sigma")
+            if _sa:
+                sigma_anchor = _sa
+                break
+
         # GRAVITY ENGINE — the ONLY gravity read (legacy oracle retired):
         # supplies the σ yardstick (ATM-IV), walls, flip, regime and the magnet.
         gxv = _gxb.GexBox(ticker, now=now, live_spot=spot, aggressor_flow=veto_flow,
                           flow_conflict=flow_conflict, flow_kind=flow_kind,
-                          prev_pin=prev_pin)
+                          prev_pin=prev_pin, sigma_floor=sigma_anchor)
         if not gxv:
             return None
         _meta = gxv.get("meta") or {}
@@ -979,13 +993,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         # card's harm) but still widens on a REAL vol spike (a 2pm crash must widen the
         # yardstick). The decayed live σ keeps recording beside it for the A/B.
         sigma_live = _meta.get("sigma")
-        sigma_anchor = None
-        for _r in rows_today:
-            _sa = _r.get("sigma_anchor") or _r.get("sigma")
-            if _sa:
-                sigma_anchor = _sa
-                break
-        sigma = sigma_ruler(sigma_anchor, sigma_live)
+        sigma = sigma_ruler(sigma_anchor, sigma_live)   # anchor hoisted above the gravity read
         # band bounds (H2 v2, 2026-07-12 — doctrine: 0DTE first, PLACED like a
         # wall): candidates in tenor order — today's 0DTE gamma wall (share-
         # guarded), the 0DTE OI/volume wall, then the 1-7DTE structural wall —
@@ -1525,10 +1533,15 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             # cocks unreachably far). Nearest of {operative, tenor} per side; a missing
             # shelf keeps the FAIL-CLOSED runway gate (a break with no known shelf is
             # untested air — the lens does not fire blind; comment aligned to the code).
+            # side filter: operative walls are side-guaranteed by placement; TENOR walls
+            # are not — an overrun structural wall on the wrong side of spot must never
+            # become "the shelf ahead" (it is behind)
             _ups = [(w, k) for w, k in ((call_wall, "call_wall"),
-                                        (call_wall_tenor, "call_wall_tenor")) if w is not None]
+                                        (call_wall_tenor, "call_wall_tenor"))
+                    if w is not None and w > spot]
             _dns = [(w, k) for w, k in ((put_wall, "put_wall"),
-                                        (put_wall_tenor, "put_wall_tenor")) if w is not None]
+                                        (put_wall_tenor, "put_wall_tenor"))
+                    if w is not None and w < spot]
             shelf_up = min(_ups, key=lambda p: p[0]) if _ups else None
             shelf_dn = max(_dns, key=lambda p: p[0]) if _dns else None
             # tape freshness audit: the fold's write clock, read through the

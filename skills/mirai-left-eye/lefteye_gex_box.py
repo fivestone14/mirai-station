@@ -261,6 +261,9 @@ MAG_LOCAL_PTS = 10.0     # local-mass window (±pts) for the hysteresis comparis
 # hedges and lotto tails are TERRAIN (the walls/dated book carry them), not gravity.
 MAG_WINDOW_SIGMA = 1.5
 MAG_WINDOW_PCT = 0.015
+PIN_MASS_FLOOR = 500.0   # contracts (OI+vol) in the window below which there is no magnet —
+                         # a 65-contract dust field must not serve a live pin (verify round 2);
+                         # pin honestly falls back to the flip upstream
 PIN_FIELD_V = 3
 
 
@@ -989,6 +992,8 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         # lotto pile intraday — the permanent-bull bug reborn with a new sign.
         reach = (MAG_WINDOW_SIGMA * sigma) if sigma else (MAG_WINDOW_PCT * spot)
         mass = {k: v for k, v in mass.items() if abs(k - spot) <= reach}
+        if mass and sum(mass.values()) < PIN_MASS_FLOOR:
+            mass = {}                # dust is not gravity: no magnet beats a fake one
         if mass:
             total = sum(mass.values())
             k_max = max(mass, key=lambda k: mass[k])
@@ -1462,7 +1467,8 @@ def build_views(contracts: list[dict], spot: float,
                 tape_prev: Optional[dict] = None,
                 anchor_spot: Optional[float] = None,
                 now: Optional[datetime] = None,
-                prev_pin: Optional[float] = None) -> dict:
+                prev_pin: Optional[float] = None,
+                sigma_floor: Optional[float] = None) -> dict:
     """Pure assembler: the six slides + the consumer-facing magnet/regime. `magnet`
     is the 0DTE pin (B) when present, else the regime read's flip — that is what the
     reversion lens measures runway to. `minutes_to_close` sharpens the 0DTE charm
@@ -1493,8 +1499,14 @@ def build_views(contracts: list[dict], spot: float,
     use_0dte = REGIME_0DTE and A0["regime"] != "unknown"
     R = A0 if use_0dte else A
     R_set = zero if use_0dte else contracts             # the contract set R was computed on
+    # N8 reach on the RULER: the live σ decays all day, which would shrink the reach
+    # window to ~±45pts by the close and silently evict a standing incumbent. The
+    # day-open anchor (sigma_floor, from the diary) floors it; a real vol spike still
+    # widens it (max) — same physics as reversion_lens.sigma_ruler.
+    _reach_sigma = max(x for x in (sigma, sigma_floor) if x) \
+        if (sigma or sigma_floor) else None
     B = slide_0dte(zero, spot, minutes_to_close, prev_pin=prev_pin,   # H4: hysteresis witness
-                   sigma=sigma)                                       # N8: the reach window
+                   sigma=_reach_sigma)                                # N8: the reach window
     C = slide_tenor_walls(near, spot)
     E = reconcile_sign(R["regime"], aggressor_flow, flow_conflict, flow_kind)
     F = slide_flows(contracts, spot, minutes_to_close=minutes_to_close)   # vanna/charm flows
@@ -1820,7 +1832,8 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
               spot_lookup: Optional[Callable[[str], Optional[float]]] = None,
               native_lookup=_NATIVE_UNSET,
               cache: Optional[dict] = None,
-              prev_pin: Optional[float] = None) -> Optional[dict]:
+              prev_pin: Optional[float] = None,
+              sigma_floor: Optional[float] = None) -> Optional[dict]:
     """GRAVITY ENGINE orchestrator: fetch rarely, re-price every scan, produce
     the six slides. Refreshes the cached chain only on a trigger, then re-prices the
     six slides at `live_spot`. Returns the views dict (+ meta) or None if no chain.
@@ -1852,7 +1865,8 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
                         minutes_to_close=mtc, sigma=entry.sigma,   # σ arms the shove test
                         flow_conflict=flow_conflict,               # source-scaled tape veto
                         flow_kind=flow_kind,                       # + its sign semantics
-                        prev_pin=prev_pin)                         # H4: last diary pin (hysteresis)
+                        prev_pin=prev_pin,                         # H4: last diary pin (hysteresis)
+                        sigma_floor=sigma_floor)                   # N8: reach rides the ruler
     age = round((now - entry.ts).total_seconds() / 60.0, 2)
     views["meta"] = {"gex_source": entry.source, "snapshot_spot": entry.anchor_spot,
                      "age_min": age, "repriced": live_spot is not None and live_spot != entry.spot,

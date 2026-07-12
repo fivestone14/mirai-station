@@ -535,7 +535,8 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
                     "risk); do NOT fade into a confirmed break.",
         }.items() if v is not None}
     payload = {
-        "task": "You are the Watchtower: forecast where 0DTE SPX goes over the next hour — gravity first.",
+        "task": "You are the Watchtower: forecast where 0DTE SPX goes over the next hour — "
+                "gravity first under LONG gamma, amplification first under SHORT gamma.",
         "clock": {"minutes_since_open": mins_open, "minutes_to_close": mins_close},
         "dealer_map_gravity": {
             "pull_toward_magnet": pull_word,
@@ -655,21 +656,22 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "print, and a pre-print directional call deserves low conviction.\n"
         "- A BROKEN FENCE IS A FACT. wall_breach_event / containment_road mean containment "
         "FAILED: never fade a break; follow it or stand down.\n"
-        "- MEAN-REVERSION IS THE EXCEPTION, not the default. Only call AGAINST the magnet-pull "
-        "when the tape is extremely stretched into a NEAR wall with a turn bar and flow rolling "
-        "over — otherwise go WITH the pull. Do NOT fade a trend that is heading toward the magnet.\n"
+        "- UNDER LONG GAMMA, mean-reversion is the exception, not the default. Only call AGAINST "
+        "the magnet-pull when the tape is extremely stretched into a NEAR wall with a turn bar and "
+        "flow rolling over — otherwise go WITH the pull; do NOT fade a trend heading toward the "
+        "magnet. (This paragraph applies ONLY under long gamma — under short gamma the pull is not "
+        "a default and this rule is void.)\n"
         "- CONFIRM WITH THE TAPE — but a FLAT tape confirms NOTHING. live_flow.tape_recent_window "
         "(the last minutes) outranks tape_day_average (a whole-day cumulative that cannot show a "
         "turn). order_flow.book_tilt and an active break_lens_head_c either confirm or contradict "
         "the pull. Any read marked FLAT adds zero confidence to any thesis. NEVER fade into a "
         "confirmed break; be wary of calling against strong book flow. All attached only when "
         "present; absence ≠ zero.\n"
-        "- CHARM IS THE CLOCK'S TUG — and it grips hardest near the bell. "
-        "dealer_map_gravity.charm_drift_into_close is precomputed (direction included — do not "
-        "re-derive it from charm_sign): it names which way dealer hedge re-balancing pressures "
-        "price as time decays. Before ~13:00 ET treat it as background. In the afternoon weight "
-        "it as a real vote on the drift call — it usually SHARPENS the magnet-pull and can break "
-        "a NEUTRAL tie; it does not override a hard break or heavy one-way flow.\n"
+        "- CHARM IS THE CLOCK'S TUG — and it grips hardest near the bell. IF "
+        "dealer_map_gravity.charm_drift_into_close is PRESENT it is precomputed (direction "
+        "included — never re-derive a drift direction from charm_sign yourself): before ~13:00 ET "
+        "background, in the afternoon a real vote on the drift call. IF IT IS ABSENT, charm has "
+        "no graded record yet — give charm/charm_sign NO directional weight at all.\n"
         "- READ THE MAP IN TENOR ORDER: today's 0DTE book first (the walls and magnet — they are "
         "what dealers re-balance TODAY), the structural_*_wall band walls second (multi-day "
         "terrain), dated_structure last (far monthly/quarter-end OI shelves — react to them only "
@@ -748,8 +750,17 @@ def majority(votes: list[dict]) -> tuple[dict, float]:
     fired = len(fires) > len(votes) / 2
     if fired:
         dirs = [v["direction"] for v in fires]
-        d = max(set(dirs), key=dirs.count)
-        winner = next(v for v in fires if v["direction"] == d)
+        counts = sorted(((dirs.count(x), x) for x in set(dirs)), reverse=True)
+        # DIRECTION TIE (2026-07-12): a 1-1 call/put split used to be broken by SET
+        # ITERATION ORDER — hash-randomized per process, and the scanner is one-shot,
+        # so the shipped direction was a literal coin flip. A tied direction is no
+        # majority at all: the honest verdict is stand down, tie visible in the votes.
+        if len(counts) > 1 and counts[0][0] == counts[1][0]:
+            fired, d = False, None
+            winner = {**fires[0], "fired": False, "direction": None}
+        else:
+            d = counts[0][1]
+            winner = next(v for v in fires if v["direction"] == d)
     else:
         d = None
         winner = next((v for v in votes if not v["fired"]), votes[0])

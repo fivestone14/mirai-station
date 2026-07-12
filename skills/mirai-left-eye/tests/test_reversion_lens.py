@@ -90,11 +90,13 @@ def test_detect_breach_catches_the_grinding_breakout():
     rows = [{"spot": 7530.0, "call_wall": 7550.0},
             {"spot": 7542.0, "call_wall": 7558.0},
             {"spot": 7548.0, "call_wall": 7562.0}]     # fence retreating ahead of price
-    wb = R.detect_breach(rows, 7551.0, 80.0)           # a 3-pt creep, not a jump
+    # an epsilon-graze (< 0.05σ over) is grid float, not a breakout — no event yet
+    assert R.detect_breach(rows, 7551.0, 80.0) is None
+    wb = R.detect_breach(rows, 7555.0, 80.0)           # a slow creep clears the floor
     assert wb and wb["side"] == "call" and wb["wall"] == 7550.0
     # ...and once crossed, that fence never re-fires
-    rows.append({"spot": 7551.0, "call_wall": 7565.0, "wall_breach": wb})
-    assert R.detect_breach(rows, 7553.0, 80.0) is None
+    rows.append({"spot": 7555.0, "call_wall": 7565.0, "wall_breach": wb})
+    assert R.detect_breach(rows, 7557.0, 80.0) is None
 
 
 def test_road_v2_opens_holds_from_prev_row_and_cannot_resurrect():
