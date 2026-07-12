@@ -958,6 +958,10 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 # (calls +, puts −) so the tablet draws MEASURED gamma bars, not a
                 # modeled Gaussian. None on pre-field rows → tablet falls back.
                 rec["net_by_strike"] = _b0.get("net_by_strike")
+                # PER-STRIKE TENOR FIELD (2026-07-13): the 1-7DTE terrain, same
+                # compact shape — the tablet's hollow outline bars behind the
+                # solid 0DTE bars (never blended into the pure 0DTE read)
+                rec["net_by_strike_tenor"] = ((gxv.get("slides") or {}).get("C_tenor") or {}).get("net_by_strike")
                 # SHOVE TEST: signed net-GEX margins at spot ± 0.5σ (distance
                 # from flipping, not a binary) — computed by the gravity engine
                 rec["shove"] = gxv.get("shove")
@@ -1023,6 +1027,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                         "gamma_above_spot": b0.get("gamma_above_spot"),
                         "gamma_below_spot": b0.get("gamma_below_spot"),
                         "net_by_strike": b0.get("net_by_strike"),   # measured per-strike field (native mirror)
+                        "net_by_strike_tenor": ((tv.get("slides") or {}).get("C_tenor") or {}).get("net_by_strike"),
                         "aggressor_flow": flow, "flow_available": flow is not None,
                         "source": "theta_native"}
                 pin = tv.get("magnet")

@@ -45,6 +45,23 @@ class TestTenorAndBasis:
         assert all(c["dte"] == 0 for c in zero)
         assert all(1 <= c["dte"] <= 7 for c in near)
 
+    def test_slide_tenor_walls_per_strike_field(self):
+        # 2026-07-13: slide C carries the 1-7DTE per-strike signed net field
+        # (calls +, puts −, STORED gamma, ±NBS_WINDOW window) for the tablet's
+        # terrain outlines — separate from the 0DTE field, never blended
+        zero, near = gv.split_tenor(_chain())
+        out = gv.slide_tenor_walls(near, 5000.0)
+        nbs = out["net_by_strike"]
+        assert isinstance(nbs, list) and nbs
+        ks = [k for k, _v in nbs]
+        assert min(ks) >= 5000.0 * (1 - gv.NBS_WINDOW) - 1e-9
+        assert max(ks) <= 5000.0 * (1 + gv.NBS_WINDOW) + 1e-9
+        # fixture: calls heavier above spot, puts heavier below → signs split
+        by = dict(nbs)
+        assert by[5100.0] > 0 and by[4900.0] < 0
+        # empty tenor book → key stays None (fail-open)
+        assert gv.slide_tenor_walls([], 5000.0)["net_by_strike"] is None
+
     def test_pick_basis_oi_then_volume_then_none(self):
         oi_rich = [_c(5000, "call", 3, 0.002, oi=2000), _c(5000, "put", 3, 0.002, oi=2000)]
         assert gv.pick_basis(oi_rich, 5000) == "open_interest"

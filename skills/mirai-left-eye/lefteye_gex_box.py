@@ -764,7 +764,8 @@ def slide_tenor_walls(near_term: list[dict], spot: float) -> dict:
     """TERRAIN MAP (Slide C): the stable multi-day walls that don't drift
     intraday — 1-7DTE structural walls + flip (OI-weighted)."""
     out = {"call_wall": None, "put_wall": None,
-           "call_wall_gamma": None, "put_wall_gamma": None, "flip": None, "basis": None}
+           "call_wall_gamma": None, "put_wall_gamma": None, "flip": None, "basis": None,
+           "net_by_strike": None}
     if not near_term or not spot:
         return out
     basis = pick_basis(near_term, spot)
@@ -777,6 +778,30 @@ def slide_tenor_walls(near_term: list[dict], spot: float) -> dict:
                 "call_wall_gamma": _gamma_wall(near_term, spot, "call", basis, reprice=False),
                 "put_wall_gamma": _gamma_wall(near_term, spot, "put", basis, reprice=False),
                 "flip": flip, "basis": basis})
+    # PER-STRIKE TENOR FIELD (2026-07-13): signed net dealer GEX per strike for
+    # the 1-7DTE book (calls +, puts −) on STORED gamma — stable intraday like
+    # every other slide-C read, deliberately NOT the live clock (the terrain
+    # must not breathe with the 0DTE singularity). Windowed to ±NBS_WINDOW of
+    # spot and persisted compact so the tablet can draw the multi-day book as
+    # hollow OUTLINE bars behind today's solid 0DTE bars — same axis, own
+    # normalization, never blended into the pure 0DTE read. Fail-open: any
+    # surprise leaves the key None.
+    try:
+        nbs: dict[float, float] = {}
+        for c in near_term:
+            k = c.get("strike"); w = c.get(basis) or 0
+            if k is None or not w:
+                continue
+            g = _stored_gamma(c)
+            if not g:
+                continue
+            nbs[k] = nbs.get(k, 0.0) + (g * w if c.get("right") == "call" else -g * w)
+        if nbs:
+            lo, hi = spot * (1.0 - NBS_WINDOW), spot * (1.0 + NBS_WINDOW)
+            out["net_by_strike"] = [[round(k, 2), round(v, 3)]
+                                    for k, v in sorted(nbs.items()) if lo <= k <= hi]
+    except Exception:
+        pass
     return out
 
 

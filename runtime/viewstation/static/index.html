@@ -906,7 +906,7 @@ function rowToScan(r){
   return { ts:r.ts, t:clockIn(r.ts,ET), spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
     /* H2 (07-12): r.call/put_wall are now the OPERATIVE near walls; the structural
        ceiling/floor moved to r.*_wall_tenor (fallback keeps pre-H2 rows correct) */
-    flip:r.gamma_flip, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, dated:r.dated_gex??null,
+    flip:r.gamma_flip, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, nbsTenor:g.net_by_strike_tenor??gv.net_by_strike_tenor??null, dated:r.dated_gex??null,
     /* magnet policy (locked, mirrors resolve_dealer_map): gex_views LEADS, gex_theta is the
        challenger; the armed-only reversion magnet is wall-clamped (a fade target, not the pull) */
     magnet:gv.magnet??g.magnet??re.magnet_raw??r.gamma_flip,
@@ -1077,7 +1077,7 @@ const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZ
 
 function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, putWall:s.putWall, magnet:s.magnet, pin:s.pin,
   gAbove:s.gAbove, gBelow:s.gBelow, flow:s.flow, shoveUp:s.shove.up, shoveDown:s.shove.down, sigma:s.sigma,
-  netByStrike:s.netByStrike??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null,
+  netByStrike:s.netByStrike??null, nbsTenor:s.nbsTenor??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null,
   sign:s.sign, regime:s.regime, downFlip:s.shove.downFlip }; }
 
 let D = stateOf(NOW), T = {...D}, curWt = NOW.wt, wtDirty = true, MAP = null, VIT = null;
@@ -1099,7 +1099,16 @@ function paintVitals(){
   const rk = D.sign+D.regime;
   if(rk!==VIT._rk){ VIT._rk=rk; VIT.regime.className=`pill ${D.sign==='positive'?'jade':'coral'}`; VIT.regime.innerHTML=`<span class="dot"></span>${cap(D.regime)}`; }
 }
-function tickClock(){ if(VIT) VIT.clock.textContent = nowClock(); }
+function tickClock(){ if(VIT) VIT.clock.textContent = nowClock();
+  // freshness watchdog: re-render the overview when the as-of pill's TEXT would
+  // change (≈ once a minute, and instantly when the stale threshold crosses) —
+  // the pill must age even when no new row arrives, that being the whole point
+  const b=Math.floor(Date.now()/30000);
+  if(b!==GX._fb){ GX._fb=b;
+    const f=(typeof gxFreshInfo==='function')?gxFreshInfo():null, key=f?f.txt:'';
+    if(key!==GX._ftxt){ GX._ftxt=key; try{ if(typeof gxOverview==='function') gxOverview(); }catch(e){} }
+  }
+}
 
 // ---- GEX map: built once, node attributes eased every frame ----
 // ===================== LIVE GEX MAP — horizontal gamma-by-strike snapshot =====================
@@ -1124,6 +1133,8 @@ function gxBuild(){
   mapStrikes();
   const X=MAPX, axis=mapAxis();
   const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.x0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
+  // 1-7DTE terrain outlines — hollow, drawn UNDER the solid 0DTE bars
+  const tbars=MSTRIKES.map(()=>`<rect class="gxtbar" x="${X.x0}" y="0" width="0" height="0" rx="1.2" style="fill:none;stroke-width:1;opacity:.5"/>`).join('');
   const lvl=MIDS.map(id=>{ const mm=MMETA[id], spot=id==='spot';
     return `<line id="lead-${id}" style="stroke:${mm.c};opacity:0"/>`+
       `<line id="lc-${id}" x1="${X.x0}" x2="${spot?X.stripEnd:X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
@@ -1147,18 +1158,21 @@ function gxBuild(){
           UNDER barsG: a floored 1.5px hairline sits exactly at the axis, and the
           axis drawn on top erased it (pressure test 07-12) — bars must win. -->
      <line id="gxZero" x1="${(X.x0+X.barMax/2).toFixed(1)}" x2="${(X.x0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>
+     <g id="tenorG">${tbars}</g>
      <g id="barsG">${bars}</g>
+     <g id="barArrowsG"></g>
      <g id="datedG"></g>
      <g id="datedOILgdG"></g>
      ${lvl}
      <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan> · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►</text>
+     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan> · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
+    tbars:[...document.querySelectorAll('#tenorG .gxtbar')], barArrows:q('barArrowsG'),
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
     datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
@@ -1239,6 +1253,68 @@ function gxPaint(){
     rect.style.fill=pos?'url(#gxJ)':'url(#gxCm)';   // base-strong at the zero axis on BOTH sides
     rect.style.opacity=(0.48+0.47*L).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
   });
+  // 1-7DTE TERRAIN OUTLINES (07-13): the multi-day book on the SAME diverging
+  // axis as hollow outlines UNDER the solid 0DTE bars — assisting context that
+  // never touches the pure 0DTE read (separate slide-C field, stored-gamma
+  // stable, OWN max). Own normalization means lengths are NOT comparable
+  // across tenors (0DTE ATM dollar-gamma dwarfs the terrain) — the caption
+  // legend says "own scale" for exactly that reason.
+  const tn=D.nbsTenor, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
+  const tOn=(typeof gxTenorOn==='function'&&gxTenorOn())&&Array.isArray(tn)&&tn.length>0;
+  let tMax=0, tBk=null;
+  if(tOn){
+    tBk=new Array(MSTRIKES.length).fill(0);
+    for(const p of tn){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
+      const idx=Math.round((p[0]-k0)/step);
+      if(idx>=0&&idx<tBk.length) tBk[idx]+=(+p[1]); }
+    for(const v of tBk){ const a=Math.abs(v); if(a>tMax) tMax=a; }
+  }
+  const TBH=Math.min(MBH+3, MROWH-0.5);   // wraps the solid bar but never fuses adjacent rows
+  MAP.tbars.forEach((rect,i)=>{
+    const v=tOn&&tMax?tBk[i]:0;
+    if(!v){ rect.setAttribute('width','0'); return; }
+    const L=Math.abs(v)/tMax, w=Math.max(2,L*half), posT=v>=0;
+    rect.setAttribute('y',(yFor(MSTRIKES[i])-TBH/2).toFixed(1));
+    rect.setAttribute('height',TBH.toFixed(1));
+    rect.setAttribute('width',w.toFixed(1));
+    rect.setAttribute('x',(posT?xMid:xMid-w).toFixed(1));
+    rect.style.stroke=posT?'var(--jade)':'var(--coral)';
+  });
+  const bt7=document.getElementById('bar-t7');
+  if(bt7) bt7.textContent=tOn?' · ▯ 1-7D (own scale)':'';
+  // MM-ACTION ARROWS (07-13, pressure-tested): the dated ladder's validated
+  // hedging rule on the LIVE bars — jade (net+) below spot: MMs BUY dips toward
+  // it (support); jade above: SELL rallies into it (cap); coral (net−) above
+  // spot: hedging BUYS an upward break (accelerant); coral below: SELLS a
+  // downward one. GREEN points toward spot, RED away — identical formula to
+  // paintDatedOI. Gated hard so the lane never grows an arrow forest: MEASURED
+  // bars only (never fabricate MM intent from the modeled Gaussian), ≤2 arrows
+  // (strongest pin cluster + strongest push cluster), each ≥5% of the whole
+  // |γ| field, and never within one strike-step of spot — the ATM singularity
+  // carries no direction. The assumed-sign caveat rides every tooltip.
+  let arrs='';
+  if(measured&&sAbs>0){
+    const cl=[]; let run=null;
+    vals.forEach((v,j)=>{ if(!v){ run=null; return; } const s=v>=0;
+      if(run&&run.s===s&&j===run.lastJ+1){ run.lastJ=j; run.M+=Math.abs(v); if(Math.abs(v)>Math.abs(vals[run.pk])) run.pk=j; }
+      else { run={s, lastJ:j, M:Math.abs(v), pk:j}; cl.push(run); } });
+    const ok=cl.filter(r=>r.M>=0.05*sAbs&&Math.abs(MSTRIKES[r.pk]-D.spot)>step);
+    const top=s=>ok.filter(r=>r.s===s).sort((a,b)=>b.M-a.M)[0];
+    for(const r of [top(true),top(false)].filter(Boolean)){
+      const k=MSTRIKES[r.pk], v=vals[r.pk], green=r.s,
+        up=green?(k<D.spot):(k>D.spot),
+        w=Math.max(1.5,amp(v)*half),
+        x=Math.max(X.x0+7,Math.min(X.lineEnd-7, v>=0?xMid+w+8:xMid-w-8)),   // never poke the gutter/axis labels
+        yc=Math.max(X.padT+6,Math.min(X.H-X.padB-6,yFor(k))), t=5.5;
+      const d=up?`M${x.toFixed(1)},${(yc-t).toFixed(1)} L${(x-t).toFixed(1)},${(yc+t).toFixed(1)} L${(x+t).toFixed(1)},${(yc+t).toFixed(1)} Z`
+                :`M${(x-t).toFixed(1)},${(yc-t).toFixed(1)} L${(x+t).toFixed(1)},${(yc-t).toFixed(1)} L${x.toFixed(1)},${(yc+t).toFixed(1)} Z`;
+      arrs+=`<path d="${d}" style="fill:var(--ink);paint-order:stroke;stroke:var(--surface-2);stroke-width:2;stroke-linejoin:round"><title>MM ${up?'BUY / promote':'SELL hard into'} · ${k.toLocaleString('en-US')} (assumed-sign)</title></path>`;
+    }
+  }
+  // key-gated: gxPaint runs every RAF — rebuilding the arrow nodes each frame
+  // killed the hover <title> (target dies before the tooltip delay) and churned
+  // the DOM; toFixed(1) coords settle once easing converges, so the key rests
+  if(MAP.barArrows&&arrs!==MAP._akey){ MAP._akey=arrs; MAP.barArrows.innerHTML=arrs; }
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
   const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
   const loY=X.padT+14, hiY=X.H-X.padB-14;
@@ -1335,6 +1411,41 @@ function toggleGxLog(){
   GXLOG=!GXLOG;
   try{ localStorage.setItem('gx.logScale',GXLOG?'1':'0'); }catch(e){}
   gxOverview(); gxPaint();
+}
+// 1-7DTE terrain outlines — default ON (context that assists without crowding:
+// hollow strokes under the solid bars), per-device persisted like the others
+let GXTEN=(function(){ try{ return localStorage.getItem('gx.tenorBars')!=='0'; }catch(e){ return true; } })();
+function gxTenorOn(){ return GXTEN; }
+function toggleGxTenor(){
+  GXTEN=!GXTEN;
+  try{ localStorage.setItem('gx.tenorBars',GXTEN?'1':'0'); }catch(e){}
+  gxOverview(); gxPaint();
+}
+// FRESHNESS (07-13): whatever the map shows must SAY how old it is. The anchor
+// is the newest diary row's own clock (GX_ASOF, set in applyMap) — if the
+// collector dies mid-session the poll keeps succeeding on a frozen file, and
+// without this the map would ease forever on stale numbers with no tell.
+let GX_ASOF=null;
+function gxFreshInfo(){
+  if(!GX_ASOF||(typeof LIVE!=='undefined'&&!LIVE)) return null;   // demo mode: no claim to freshness
+  const age=(Date.now()-new Date(GX_ASOF).getTime())/60000;
+  if(!isFinite(age)) return null;
+  const t=clockIn(GX_ASOF,ET);
+  try{
+    const etNow=new Date().toLocaleString('en-CA',{timeZone:'America/New_York',hour12:false});
+    const et=new Date(etNow.replace(',',''));
+    const mins=et.getHours()*60+et.getMinutes(), wk=et.getDay();
+    const rth=wk>=1&&wk<=5&&mins>=570&&mins<960;
+    const rowDay=new Date(GX_ASOF).toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+    const todayEt=etNow.slice(0,10);
+    // scan cadence is ~5 min; a TODAY row >12 min old inside RTH = frozen feed, LOUD.
+    // A yesterday row is quiet pre-open (grace to 9:45) so every morning doesn't
+    // scream; past 9:45 with no row today, the silence itself is the alarm.
+    // (Weekday NYSE holidays will read "no scans today" — true, if blunt.)
+    if(rth&&rowDay===todayEt&&age>12) return {txt:`STALE ${Math.round(age)}m — frozen at ${t} ET`, stale:true};
+    if(rth&&rowDay!==todayEt&&mins>=585) return {txt:`STALE — no scans today (last ${t} ET ${rowDay})`, stale:true};
+  }catch(e){}
+  return {txt:`as of ${t} ET`, stale:false};
 }
 function datedOIAvail(){               // book present AND young enough to draw —
   const b=DBOOK.book;                  // the chip must never be a dead switch
@@ -1648,10 +1759,16 @@ function gxOverview(){
   // offered only when the bars are MEASURED (never a dead switch — the modeled
   // Gaussian is always linear, so the chip would lie there)
   const scaleChip=GX_MEASURED?`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLog()" aria-pressed="${gxLogOn()}" title="Measured γ-bar length scale. Linear (default) = pure net ÷ single max: honest cross-strike magnitude — the ATM strike dominating IS the true 0DTE shape. Log = compresses ~5 decades so the weak side stays readable on concentration days; magnitude ratios are compressed, ordering kept."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>γ scale</b><i>${gxLogOn()?'<span style="color:var(--lantern)">Log</span> · texture':'Linear · true ratio'}</i></span></button>`:'';
+  // 1-7DTE outlines chip — offered only when the row actually carries the field
+  // (never a dead switch; pre-07-13 rows have no tenor field)
+  const tenorChip=(Array.isArray(D.nbsTenor)&&D.nbsTenor.length)?`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxTenor()" aria-pressed="${gxTenorOn()}" title="1-7DTE terrain as hollow outlines behind the solid 0DTE bars — same axis, OWN normalization (lengths are not comparable across tenors), stored-gamma stable. Context only; never blended into the pure 0DTE read."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>1-7D γ</b><i>${gxTenorOn()?'<span style="color:var(--jade)">On</span> · outlines':'Off'}</i></span></button>`:'';
+  // freshness pill: quiet "as of" normally; LOUD coral when the feed froze in-session
+  const _fr=(typeof gxFreshInfo==='function')?gxFreshInfo():null;
+  const freshTag=_fr?` · <span style="${_fr.stale?'color:var(--coral);font-weight:700':'opacity:.75'}">${_fr.txt}</span>`:'';
   el.innerHTML=`
-    <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)} · ${flow}</i></span>
+    <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)} · ${flow}${freshTag}</i></span>
     <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${datedChips}${wallsChip}${doiChip}${scaleChip}`;
+    ${datedChips}${wallsChip}${doiChip}${scaleChip}${tenorChip}`;
 }
 function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
 
@@ -1802,7 +1919,9 @@ function applyMap(r){
     flow:g.aggressor_flow??0, shoveUp:sh.shove_up_margin??D.shoveUp,
     shoveDown:sh.shove_down_margin??D.shoveDown, sigma:r.sigma??D.sigma,
     sign:r.gamma_sign, regime:r.regime, downFlip:sh.down_flips||false };
+  GX_ASOF = r.ts || GX_ASOF;                                     // freshness anchor: the newest row's own clock
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
+  T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines
   T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
   T.callCeil = r.call_wall_tenor ?? r.call_wall ?? D.callCeil;     // structural OI call wall = the real ceiling
   T.dated = r.dated_gex ?? D.dated;                                // dated book (nightly sidecar) — sticky: rows before the day's first scan keep the last known
@@ -1840,7 +1959,7 @@ function frame(){
     D[key] += (T[key]-D[key])*k; if(!isFinite(D[key])) D[key]=T[key]; }
   D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
-  D.netByStrike=T.netByStrike; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated;   // measured field + structural floor/ceiling + dated book snap (not eased)
+  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated;   // measured field + tenor outlines + structural floor/ceiling + dated book snap (not eased)
   paintMap(); paintVitals();
   requestAnimationFrame(frame);
 }
