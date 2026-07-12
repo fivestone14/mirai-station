@@ -116,6 +116,10 @@
   .vsep{width:1px; height:16px; background:var(--hairline-2)}
   .pulse{width:8px; height:8px; border-radius:50%; background:var(--jade); position:relative}
   .pulse::after{content:""; position:absolute; inset:-4px; border-radius:50%; border:1px solid var(--jade); animation:ping 2.4s ease-out infinite}
+  /* N20: the dot must DIE with the feed — grey (connecting/demo) and coral (feed lost)
+     states stop the ping; a pulsing green dot is reserved for a feed that is actually alive */
+  .pulse.grey{background:var(--ink-faint)} .pulse.grey::after{display:none}
+  .pulse.coral{background:var(--coral)} .pulse.coral::after{display:none}
   @keyframes ping{0%{transform:scale(.6);opacity:.9}70%{transform:scale(1.9);opacity:0}100%{opacity:0}}
 
   .pill{display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px;
@@ -762,7 +766,11 @@
    Mirai Awakening — live-shape snapshot, 2026-07-07 (SPX 0DTE)
    Real fields & verbatim scenes from state/reversion/2026-07-07.jsonl
    ============================================================ */
-const SYS = { date:"2026-07-07", mode:"PAPER", liveAllowed:false, wtUp:true, wtJudged:3, wtCap:35, source:"native · ThetaData" };
+/* SYS carries DEMO-snapshot defaults ONLY (N21/H1): every header readout that can be
+   known live is re-painted from the feed each poll — mode from row.live, WT count from
+   the diary itself, chain source from row.gex_source. Nothing here is shown as live. */
+const SYS = { date:"2026-07-07", mode:"PAPER", liveAllowed:false, wtCap:35 };
+let GX_SRC = null;   // newest row's gex_source ('native' | 'spy_proxy×10.03xx') — the engine that actually drew the map
 
 // walls/magnet are ~constant intraday; spot walks down into the flip by 10:21
 const B = { callWall:7550, putWall:7000, magnet:7615, pin:7618.96, flip:7494.49, sigma:83.68, priorClose:7537.43 };
@@ -866,8 +874,9 @@ const ptTime = s => clockIn(scanTs(s), PT);
 // Served from the viewstation (:8787), it polls the newest diary row from the
 // same-origin file API and eases to it. Anywhere the API is unreachable (e.g. the
 // hosted preview) it auto-falls back to a simulated feed so the map still breathes.
-const FEED = { pollMs: 4000 };
+const FEED = { pollMs: 4000, fails: 0, lastOkAt: null };   // fails = CONSECUTIVE poll misses (N20)
 let LIVE = false;
+let MODE = 'connecting';   // 'connecting' → 'live' | 'demo'; feedBadge derives 'lost' from FEED.fails
 // Ask the viewstation's file index for the newest reversion/<date>.jsonl (robust across the
 // midnight rollover / pre-market gap), pull its last 40 rows: newest row drives the map,
 // and the most-recent JUDGED watchtower (skipping quiet/cap rows) drives the reading.
@@ -880,7 +889,8 @@ function normWt(w){
     votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??1}:{n:1,agree:1},
     agrees:('agrees_with_gates' in w)?!!w.agrees_with_gates:(w.agrees??true),
     scene:w.scene||'', change:w.would_change_mind||w.change||'', interest:w.interest||'',
-    wallS:w.wall_s??w.wallS??0, revised:!!w.revised, snippet:w.snippet||null, skipped:w.skipped||null };
+    wallS:w.wall_s??w.wallS??0, revised:!!w.revised, snippet:w.snippet||null, skipped:w.skipped||null,
+    pv:w.prompt_version||null };   // actual head version from the row (H1: badge must not be inferred from a constant)
 }
 // magnet zones (2026-07-09) — normalize an engine dict's pin_zones list. Rows
 // written before the zones landed carry no key → null → the map falls back to
@@ -954,7 +964,8 @@ async function loadDiaryHistory(){
         const d=await res.json(); return (d&&d.rows)?d.rows.map(rowToScan):[]; }catch(e){ return []; }
     }));
     const all=[].concat(...chunks);
-    if(all.length){ DIARY_ROWS=all; if(dpage===0) renderDiary(false); if(RP.els) rpSyncDays(false); }
+    if(all.length){ DIARY_ROWS=all; if(dpage===0) renderDiary(false); if(RP.els) rpSyncDays(false);
+      if(typeof paintWtPill==='function') paintWtPill(); }   // judged-today count rides the full-day load (H1)
   }catch(e){}
 }
 
@@ -1080,26 +1091,52 @@ function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, put
   netByStrike:s.netByStrike??null, nbsTenor:s.nbsTenor??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null,
   sign:s.sign, regime:s.regime, downFlip:s.shove.downFlip }; }
 
-let D = stateOf(NOW), T = {...D}, curWt = NOW.wt, wtDirty = true, MAP = null, VIT = null;
+/* _demo marks the hardcoded 07-07 snapshot verdict (N20): the moment the feed goes
+   live it is evicted — a real session must never show a demo read as its own */
+let D = stateOf(NOW), T = {...D}, curWt = {...NOW.wt, _demo:true}, wtDirty = true, MAP = null, VIT = null;
 
 // ---- status strip ----
 function buildVitals(){
   $("#vitals").innerHTML =
-    `<div class="vital"><span class="pulse"></span> <span id="v-mode">LIVE</span> <b id="v-clock" class="mono">--:--:--</b> PT</div>
+    `<div class="vital"><span class="pulse grey" id="v-pulse"></span> <span id="v-mode">CONNECTING…</span> <b id="v-clock" class="mono">--:--:--</b> PT</div>
      <div class="vsep"></div>
      <div class="vital">SPX <b id="v-spot">—</b></div>
      <div class="vsep"></div>
      <span class="pill jade" id="v-regime"><span class="dot"></span>—</span>
-     <span class="pill iris">${SYS.mode}</span>
-     <span class="pill ${SYS.wtUp?'lantern':'grey'}" title="Watchtower judged scans today / daily cap"><span class="dot"></span>WT ${SYS.wtJudged}/${SYS.wtCap}</span>`;
-  VIT = { clock:$("#v-clock"), spot:$("#v-spot"), regime:$("#v-regime"), mode:$("#v-mode"), _rk:null };
+     <span class="pill iris" id="v-paper">${SYS.mode}</span>
+     <span class="pill grey" id="v-wt" title="Watchtower judged scans today / daily cap — counted live from the diary"><span class="dot"></span>WT —/${SYS.wtCap}</span>
+     <span class="pill grey" id="v-src" title="Which chain engine drew this map">source —</span>`;
+  VIT = { clock:$("#v-clock"), spot:$("#v-spot"), regime:$("#v-regime"), mode:$("#v-mode"),
+    pulse:$("#v-pulse"), paper:$("#v-paper"), wt:$("#v-wt"), src:$("#v-src"), _rk:null, _fk:null };
 }
 function paintVitals(){
   VIT.spot.textContent = f(D.spot,2);
   const rk = D.sign+D.regime;
-  if(rk!==VIT._rk){ VIT._rk=rk; VIT.regime.className=`pill ${D.sign==='positive'?'jade':'coral'}`; VIT.regime.innerHTML=`<span class="dot"></span>${cap(D.regime)}`; }
+  if(rk!==VIT._rk){ VIT._rk=rk;
+    // N24: an UNKNOWN gamma sign must read as "stop" (grey), never paint the
+    // short-gamma coral — a blackout/tie is the one state that is not a signal
+    const known = D.sign==='positive'||D.sign==='negative';
+    VIT.regime.className = `pill ${!known?'grey':(D.sign==='positive'?'jade':'coral')}`;
+    VIT.regime.innerHTML = `<span class="dot"></span>${!known?cap(D.regime||'—')+' · sign?':cap(D.regime)}`;
+    VIT.regime.title = known ? `dealer gamma ${D.sign}` : 'gamma sign UNKNOWN (tie or data gap) — no dealer-behavior read; treat as no-signal';
+  }
+}
+// N20: the LIVE badge must track the feed's actual pulse. States: connecting (probe
+// pending) · live (polls landing) · lost (3+ consecutive poll misses while live) ·
+// demo (probe gave up → simulated). A dead backend now reads FEED LOST in coral
+// within ~12s instead of pulsing green forever.
+function feedBadge(){
+  if(!VIT||!VIT.mode) return;
+  const st = MODE==='live' ? (FEED.fails>=3?'lost':'live') : MODE;
+  if(st===VIT._fk) return; VIT._fk=st;
+  const M={ live:['LIVE','jade',''], lost:['FEED LOST','coral','coral'],
+            demo:['DEMO · SIMULATED','ink-dim','grey'], connecting:['CONNECTING…','ink-dim','grey'] };
+  const [txt,color,pcls]=M[st]||M.connecting;
+  VIT.mode.textContent=txt; VIT.mode.style.color=`var(--${color})`;
+  VIT.pulse.className='pulse'+(pcls?' '+pcls:'');
 }
 function tickClock(){ if(VIT) VIT.clock.textContent = nowClock();
+  feedBadge();
   // freshness watchdog: re-render the overview when the as-of pill's TEXT would
   // change (≈ once a minute, and instantly when the stale threshold crosses) —
   // the pill must age even when no new row arrives, that being the whole point
@@ -1878,6 +1915,9 @@ function paintMap(){ gxPaint(); }
 function pickWt(spot){ let best=SCANS[0],bd=1e9; for(const s of SCANS){ const d=Math.abs(spot-s.spot); if(d<bd){bd=d;best=s;} } return best.wt; }
 function hz(mins){ if(!mins) return ''; return (mins%60===0) ? `~${mins/60}h` : `~${mins}m`; }
 function towerNextHTML(wt, magnet, spot){
+  // N20: a live session with no judged Watchtower row yet says so — it must never
+  // wear the demo snapshot's verdict as its own
+  if(wt && wt._none) return `<span class="nx-dir flat">■ No read yet</span> — the Watchtower hasn't judged a scan today.`;
   if(wt && wt.snippet){
     const sn=String(wt.snippet), m=sn.match(/NEXT:\s*(.+)$/m);
     // a "⚠ contested — …" line appended to the snippet rides along, muted (its own
@@ -1925,6 +1965,7 @@ function applyMap(r){
     shoveDown:sh.shove_down_margin??D.shoveDown, sigma:r.sigma??D.sigma,
     sign:r.gamma_sign, regime:r.regime, downFlip:sh.down_flips||false };
   GX_ASOF = r.ts || GX_ASOF;                                     // freshness anchor: the newest row's own clock
+  GX_SRC = r.gex_source || GX_SRC;                               // N21: which engine drew THIS row (native vs spy_proxy×10)
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
   T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines
   T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
@@ -1942,6 +1983,44 @@ function applyWt(w){
     horizon:w.horizon_min??w.horizon??60, ts:w._ts||w.ts||null };
   wtDirty=true; updateTower();
 }
+// ---- live header readouts (N21/H1): painted from the feed, never from constants ----
+function paintSource(){
+  if(!VIT||!VIT.src) return;
+  if(!LIVE){ VIT.src.textContent='demo · simulated'; VIT.src.className='pill grey'; return; }
+  const s=String(GX_SRC||''), native=s==='native', proxy=/^spy_proxy/i.test(s);
+  VIT.src.textContent = native?'SPX native · Theta':proxy?'SPY×10 PROXY':'source unknown';
+  VIT.src.className = `pill ${native?'jade':proxy?'coral':'grey'}`;
+  VIT.src.title = native?'chain source: native SPX (ThetaData)'
+    :proxy?`FALLBACK ENGINE: ${s} — every wall, flip and magnet on this map is a SPY-shaped approximation`
+    :'the engine did not report its chain source for this row';
+}
+function paintPaper(nr){
+  if(!VIT||!VIT.paper||!nr) return;
+  const lv=!!nr.live;
+  VIT.paper.textContent = lv?'LIVE-ARMED':'PAPER';
+  VIT.paper.className = `pill ${lv?'lantern':'iris'}`;
+  VIT.paper.title = lv?'Wilson gate open — engine is armed to trade':'shadow mode — paper only (row.live=false)';
+}
+// judged-scans-today, counted from the diary rows themselves (DIARY_ROWS holds the
+// full day at 500 rows/file, refreshed 20-min; LIVEROWS tops up the tail between)
+function wtJudgedToday(){
+  const nr=LIVEROWS[LIVEROWS.length-1]; if(!nr||!nr.ts) return null;
+  const day=String(nr.ts).slice(0,10), seen=new Set(); let n=0, any=false;
+  for(const arr of [DIARY_ROWS,LIVEROWS]) for(const s of arr){
+    if(!s||!s.ts||String(s.ts).slice(0,10)!==day||seen.has(s.ts)) continue;
+    seen.add(s.ts);
+    const w=s.wt; if(!w) continue;
+    if(w.skipped){ any=true; continue; }
+    if(w.scene||w.snippet||w.fired){ n++; any=true; }
+  }
+  return {n, any};
+}
+function paintWtPill(){
+  if(!VIT||!VIT.wt||!LIVE) return;
+  const j=wtJudgedToday(); if(!j) return;
+  VIT.wt.className=`pill ${j.any?'lantern':'grey'}`;
+  VIT.wt.innerHTML=`<span class="dot"></span>WT ${j.n}/${SYS.wtCap}`;
+}
 let lastFedTs=null;
 function feedAll(L){
   LIVEROWS = L.rows;
@@ -1950,12 +2029,20 @@ function feedAll(L){
   lastFedTs = ts;
   applyMap(L.newestRaw);              // new target → the map eases to it (60fps)
   if(L.wt) applyWt(L.wt);            // refresh the NEXT read (only when the scan actually changed)
+  else if(curWt&&curWt._demo){       // N20: live feed with no judged row yet — evict the demo
+    curWt={fired:false,dir:null,mag:0,scene:'',snippet:null,_none:true};   // verdict, say "no read yet"
+    wtDirty=true; updateTower();
+  }
+  paintSource(); paintPaper(L.newestRaw); paintWtPill();   // header readouts follow the feed (N21/H1)
   buildMap();                        // rebuild the time×price map with the new scan appended
   renderHeads();                      // Heads reflects the newest scan
   if(dpage===0) renderDiary(false);   // Diary surfaces new entries when viewing the most recent page
 }
 async function poll(){
-  try{ const L=await fetchRecent(); if(L) feedAll(L); }catch(e){}
+  // N20: a miss now COUNTS — feedBadge flips LIVE → FEED LOST (coral, dead dot) at
+  // 3 consecutive misses (~12s). fetchRecent()===null (server up, no rows) is a miss too.
+  try{ const L=await fetchRecent(); if(L){ FEED.fails=0; FEED.lastOkAt=Date.now(); feedAll(L); } else FEED.fails++; }
+  catch(e){ FEED.fails++; }
   setTimeout(poll, FEED.pollMs);
 }
 function frame(){
@@ -1969,8 +2056,8 @@ function frame(){
   requestAnimationFrame(frame);
 }
 function setMode(live){
-  LIVE=live;
-  if(VIT&&VIT.mode) VIT.mode.textContent = live?'LIVE':'DEMO';
+  LIVE=live; MODE=live?'live':'demo';
+  feedBadge(); paintSource();          // badge + engine pill flip together (N20/N21)
   const lt=document.getElementById('live-tag'); if(lt) lt.textContent = live?'live':'demo · simulated';
 }
 async function probeAndRun(){
@@ -1978,8 +2065,8 @@ async function probeAndRun(){
     const L=await fetchRecent();
     if(!L) throw 0;
     if(GX.demoTimer){ clearInterval(GX.demoTimer); GX.demoTimer=null; }   // recovered → stop demo
-    feedAll(L);
-    setMode(true); setTimeout(poll, FEED.pollMs);
+    FEED.fails=0; FEED.lastOkAt=Date.now();
+    setMode(true); feedAll(L); setTimeout(poll, FEED.pollMs);
     loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
     fetchDatedBook(); setInterval(fetchDatedBook, 1200000);       // dated OI book (changes only on the nightly pull)
   }catch(e){ setMode(false); if(!GX.demoTimer) GX.demoTimer=setInterval(nextTarget, 2600); setTimeout(probeAndRun, 5000); }   // keep retrying the live feed
@@ -2423,7 +2510,7 @@ function renderHeads(){
       </div>
 
       <div class="headcard B">
-        <div class="headtop"><div class="nm">Watchtower<em>processor · reasoning${SYS.source.split(' · ')[0]==='native'?' · wt-2':''}</em></div>
+        <div class="headtop"><div class="nm">Watchtower<em>processor · reasoning${w.pv?' · '+w.pv:''}</em></div>
           <span class="pill ${w.agrees?'grey':'lantern'}">${w.agrees?'Agrees with gates':'Stands against gates'}</span></div>
         <div class="verdict">
           <span class="big" style="color:var(--${w.fired?'lantern':'ink-dim'})">${w.fired?cap(w.dir).toUpperCase():'STAND DOWN'}</span>
