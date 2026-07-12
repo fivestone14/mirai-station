@@ -66,39 +66,62 @@ def test_sigma_ruler_never_shrinks_on_decay():
     assert R.sigma_ruler(None, None) is None
 
 
-def test_detect_breach_fires_only_on_the_crossing_scan():
-    # N1: the breach is an EVENT — this scan's spot vs the PREVIOUS row's operative
-    # wall. Break-to-extend re-placement made it unrepresentable before this.
-    prev = {"spot": 7540.0, "call_wall": 7550.0, "put_wall": 7450.0}
-    wb = R.detect_breach(prev, 7556.0, 80.0)
+def test_detect_breach_fence_ledger_first_crossing_only():
+    # N1 v2: the fence LEDGER — the event fires on the first scan whose spot stands
+    # beyond ANY wall recorded today that no earlier spot had exceeded.
+    rows = [{"spot": 7540.0, "call_wall": 7550.0, "put_wall": 7450.0}]
+    wb = R.detect_breach(rows, 7556.0, 80.0)
     assert wb and wb["side"] == "call" and wb["wall"] == 7550.0
     assert abs(wb["overshoot_sigma"] - 0.075) < 1e-6
-    # a continuation scan (prev spot already beyond) is the ROAD's job, not a new event
-    assert R.detect_breach({"spot": 7556.0, "call_wall": 7550.0}, 7560.0, 80.0) is None
+    # a continuation scan (an earlier spot already beyond that fence) is not a new event
+    rows2 = rows + [{"spot": 7556.0, "call_wall": 7565.0}]
+    assert R.detect_breach(rows2, 7560.0, 80.0) is None
     # put-side mirror
-    wb3 = R.detect_breach({"spot": 7460.0, "put_wall": 7450.0}, 7442.0, 80.0)
+    wb3 = R.detect_breach([{"spot": 7460.0, "put_wall": 7450.0}], 7442.0, 80.0)
     assert wb3 and wb3["side"] == "put" and wb3["wall"] == 7450.0
-    assert R.detect_breach(None, 7500.0, 80.0) is None
+    assert R.detect_breach([], 7500.0, 80.0) is None
 
 
-def test_road_opens_on_breach_holds_beyond_and_closes_on_recross():
-    # N16: the pin→trend road — the escape hatch flips_regime documented but nothing read
+def test_detect_breach_catches_the_grinding_breakout():
+    # THE GRIND-THROUGH HOLE (verify round): the operative wall re-places OUTWARD as
+    # price approaches (0.35σ placement floor), so v1's prev-row-only check needed a
+    # flash-crash-class one-minute jump. The ledger remembers the 7550 fence from the
+    # morning even after the wall has retreated to 7562 ahead of the grind.
+    rows = [{"spot": 7530.0, "call_wall": 7550.0},
+            {"spot": 7542.0, "call_wall": 7558.0},
+            {"spot": 7548.0, "call_wall": 7562.0}]     # fence retreating ahead of price
+    wb = R.detect_breach(rows, 7551.0, 80.0)           # a 3-pt creep, not a jump
+    assert wb and wb["side"] == "call" and wb["wall"] == 7550.0
+    # ...and once crossed, that fence never re-fires
+    rows.append({"spot": 7551.0, "call_wall": 7565.0, "wall_breach": wb})
+    assert R.detect_breach(rows, 7553.0, 80.0) is None
+
+
+def test_road_v2_opens_holds_from_prev_row_and_cannot_resurrect():
+    # N16 v2: scan-to-scan continuity, TTL from the ORIGINAL open, no resurrection
     ET_ = ZoneInfo("America/New_York")
     now = datetime.datetime(2026, 7, 13, 11, 0, tzinfo=ET_)
     breach = {"side": "call", "wall": 7550.0, "spot": 7556.0}
-    assert R.road_state([], 7556.0, now, breach) == {"kind": "breach", "side": "call",
-                                                     "level": 7550.0}
+    opened = R.road_state([], 7556.0, now, breach)
+    assert opened["kind"] == "breach" and opened["opened"] == now.isoformat()
     ten_ago = (now - datetime.timedelta(minutes=10)).isoformat()
     rows = [{"ts": ten_ago,
-             "regime_road": {"kind": "breach", "side": "call", "level": 7550.0}}]
+             "regime_road": {"kind": "breach", "side": "call", "level": 7550.0,
+                             "opened": ten_ago}}]
     held = R.road_state(rows, 7558.0, now, None)
-    assert held and held["kind"] == "held" and held["level"] == 7550.0
-    # price reclaimed the calm side → the road closes immediately
+    assert held and held["kind"] == "held" and held["opened"] == ten_ago  # stamp carried
+    # price reclaimed the calm side → closes
     assert R.road_state(rows, 7544.0, now, None) is None
-    # ...and an old road expires even if price is still beyond
-    old = [{"ts": (now - datetime.timedelta(minutes=60)).isoformat(),
-            "regime_road": {"kind": "breach", "side": "call", "level": 7550.0}}]
-    assert R.road_state(old, 7558.0, now, None) is None
+    # NO RESURRECTION: the previous row recorded the closure (None); an older open
+    # road two rows back must never re-open the road on a later poke beyond
+    rows_closed = rows + [{"ts": now.isoformat(), "regime_road": None}]
+    assert R.road_state(rows_closed, 7558.0, now, None) is None
+    # NO SLIDING RENEWAL: a held row with a fresh ts but an old `opened` stamp expires
+    old_open = (now - datetime.timedelta(minutes=60)).isoformat()
+    rows_slid = [{"ts": ten_ago,
+                  "regime_road": {"kind": "held", "side": "call", "level": 7550.0,
+                                  "opened": old_open}}]
+    assert R.road_state(rows_slid, 7558.0, now, None) is None
 
 
 def test_reversion_extreme_catches_capitulation_long():

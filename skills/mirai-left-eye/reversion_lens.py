@@ -85,8 +85,10 @@ def _save_tape_prev(ticker: str, snap: dict) -> None:
         rows = [[k, r, *v] for (k, r), v in (snap.get("q") or {}).items()]
         atomic_io.write_json_atomic(_tape_prev_path(ticker),
                                     {"ts": snap["ts"].isoformat(), "q": rows})
-    except Exception:
-        pass                       # best-effort: a failed save just costs one marginal
+    except Exception as e:
+        # best-effort, but NOT silent: a persistent save failure means the marginal
+        # tape is permanently dead — that must be greppable in the launchd log
+        print(f"reversion :: tape_prev save failed ({type(e).__name__}: {e})", flush=True)
 
 
 def live_allowed() -> tuple[bool, str]:
@@ -296,53 +298,80 @@ ROAD_HOLD_MIN = 45.0     # an opened road stays open this long while price holds
                          # the level; re-crossing back closes it immediately
 
 
-def detect_breach(prev_row: Optional[dict], spot: float,
+def detect_breach(rows_today: list[dict], spot: float,
                   sigma: Optional[float]) -> Optional[dict]:
-    """The wall-breach EVENT: price crossed the previous scan's operative wall.
-    Fires only on the CROSSING scan (prev spot was still inside) — a continuation
-    scan beyond an already-broken wall is the road's job, not a new event."""
-    if not prev_row or not spot:
+    """The wall-breach EVENT — THE FENCE LEDGER (v2, verify round 2026-07-12).
+
+    v1 compared spot to the PREVIOUS row's operative wall only, which required a
+    ≥0.35σ jump inside one 60s scan (flash-crash class): on a grinding breakout the
+    operative wall re-places OUTWARD as price approaches (the 0.35σ placement floor
+    rejects a wall price is about to touch), so the fence retreated ahead of price
+    scan by scan and the crossing never registered — the N1 pathology reproduced one
+    layer up. v2 remembers every fence RECORDED today: the event fires on the first
+    scan whose spot stands beyond a recorded wall that NO earlier spot had exceeded.
+    A retreating operative wall can no longer erase the level it used to defend.
+    Fires once per fence level (crossed fences join the 'already' set forever)."""
+    if not rows_today or not spot:
         return None
-    pcw, ppw, pspot = prev_row.get("call_wall"), prev_row.get("put_wall"), prev_row.get("spot")
-    try:
-        if pcw and spot > pcw and (pspot is None or pspot <= pcw):
-            return {"side": "call", "wall": round(float(pcw), 2), "spot": round(spot, 2),
-                    "overshoot_sigma": round((spot - pcw) / sigma, 3) if sigma else None}
-        if ppw and spot < ppw and (pspot is None or pspot >= ppw):
-            return {"side": "put", "wall": round(float(ppw), 2), "spot": round(spot, 2),
-                    "overshoot_sigma": round((ppw - spot) / sigma, 3) if sigma else None}
-    except (TypeError, ValueError):
-        return None
+    for side, key in (("call", "call_wall"), ("put", "put_wall")):
+        crossed_now: list[float] = []
+        already: set = set()
+        walls: set = set()
+        try:
+            for r in rows_today:
+                w = r.get(key)
+                if isinstance(w, (int, float)):
+                    walls.add(float(w))
+                s = r.get("spot")
+                if isinstance(s, (int, float)):
+                    for w in walls:
+                        if (s > w) if side == "call" else (s < w):
+                            already.add(w)          # this fence was crossed earlier
+            for w in walls - already:
+                if (spot > w) if side == "call" else (spot < w):
+                    crossed_now.append(w)
+        except (TypeError, ValueError):
+            continue
+        if crossed_now:
+            # the OUTERMOST freshly-climbed fence names the event
+            w = max(crossed_now) if side == "call" else min(crossed_now)
+            over = (spot - w) if side == "call" else (w - spot)
+            return {"side": side, "wall": round(w, 2), "spot": round(spot, 2),
+                    "overshoot_sigma": round(over / sigma, 3) if sigma else None}
     return None
 
 
 def road_state(rows_today: list[dict], spot: float, now: datetime,
                breach: Optional[dict]) -> Optional[dict]:
-    """N16 — is the pin→trend road open? A fresh breach opens it; a recorded road
-    (breach or reclaim) from the last ROAD_HOLD_MIN holds it while price is still
-    beyond its level; re-crossing back closes it. Returns {kind, side, level} | None."""
+    """N16 — is the pin→trend road open? (v2, verify round 2026-07-12.)
+
+    A fresh breach opens it, stamped with `opened`. Continuity is SCAN-TO-SCAN: only
+    the PREVIOUS row's road can be held — so a road closed by a re-cross is closed
+    (the previous row carries regime_road=None and older rows are never consulted:
+    no resurrection), and the TTL measures from the ORIGINAL `opened` stamp carried
+    through every held record (no sliding renewal — 45 minutes means 45 minutes).
+    Returns {kind, side, level, opened} | None."""
     if breach:
-        return {"kind": "breach", "side": breach["side"], "level": breach["wall"]}
-    if not spot:
+        return {"kind": "breach", "side": breach["side"], "level": breach["wall"],
+                "opened": now.isoformat()}
+    if not spot or not rows_today:
         return None
-    for r in reversed(rows_today or []):
-        rd = r.get("regime_road")
-        if not rd:
-            continue
-        try:
-            age_min = (now - datetime.fromisoformat(r["ts"])).total_seconds() / 60.0
-        except (KeyError, TypeError, ValueError):
-            return None
-        if age_min > ROAD_HOLD_MIN:
-            return None
-        lvl, side = rd.get("level"), rd.get("side")
-        if lvl is None or side not in ("call", "put"):
-            return None
-        beyond = spot > lvl if side == "call" else spot < lvl
-        if beyond:
-            return {"kind": "held", "side": side, "level": lvl}
-        return None            # price reclaimed the calm side — the road closes
-    return None
+    rd = (rows_today[-1] or {}).get("regime_road")
+    if not isinstance(rd, dict):
+        return None
+    lvl, side, opened = rd.get("level"), rd.get("side"), rd.get("opened")
+    if lvl is None or side not in ("call", "put") or not opened:
+        return None
+    try:
+        age_min = (now - datetime.fromisoformat(opened)).total_seconds() / 60.0
+    except (TypeError, ValueError):
+        return None
+    if age_min > ROAD_HOLD_MIN:
+        return None                # the road expired — the regime vote takes back over
+    beyond = spot > lvl if side == "call" else spot < lvl
+    if beyond:
+        return {"kind": "held", "side": side, "level": lvl, "opened": opened}
+    return None                    # price reclaimed the calm side — the road closes
 
 
 def sigma_ruler(anchor: Optional[float], live: Optional[float]) -> Optional[float]:
@@ -874,7 +903,20 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                     # would manufacture a zero-delta "the wind is calm" reading out of nothing.
                     _q = (tv.get("gamma_tape") or {}).get("q_now")
                     _prev = _TAPE_PREV.get(ticker) or {}
-                    if _q and _q != _prev.get("q"):
+                    # ADVANCE RULE (verify round 2026-07-12): hold the anchor until the
+                    # marginal window it defines is actually CONSUMABLE (≥ the 4-min
+                    # floor). Advancing on every q change let a ~3.9-min chain-TTL
+                    # cadence keep the window forever under the floor — the marginal
+                    # would have been None on every live scan while the tape was active.
+                    _pts = _prev.get("ts")
+                    _old_enough = True
+                    if _pts is not None:
+                        try:
+                            _old_enough = ((now - _pts).total_seconds() / 60.0
+                                           >= _gxb.MOTION_MIN_LOOKBACK_MIN)
+                        except TypeError:
+                            _old_enough = True
+                    if _q and _q != _prev.get("q") and _old_enough:
                         _TAPE_PREV[ticker] = {"ts": now, "q": _q}
                         _save_tape_prev(ticker, _TAPE_PREV[ticker])   # one-shot scans (N5)
             except Exception:
@@ -909,13 +951,14 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         except Exception:
             rows_today = []
         # H4: the hysteresis incumbent = the last recorded live pin (survives restarts;
-        # module state would be empty every scan under the one-shot launchd model)
+        # module state would be empty every scan under the one-shot launchd model).
+        # SAME-ERA ONLY (verify round): a pre-v3 row's pin — or a magnet that may be a
+        # flip fallback — must never inherit the wheel across a definition change.
         prev_pin = None
         for _r in reversed(rows_today):
             _gv = _r.get("gex_views") or {}
-            _pp = _gv.get("pin", _gv.get("magnet"))
-            if _pp is not None:
-                prev_pin = _pp
+            if _gv.get("pin_field_v") == 3 and _gv.get("pin") is not None:
+                prev_pin = _gv["pin"]
                 break
 
         # GRAVITY ENGINE — the ONLY gravity read (legacy oracle retired):
@@ -963,9 +1006,10 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         put_wall = operative_wall((_sized(_B.get("put_wall_gamma"), _pw_share),
                                    _B.get("put_wall"), put_wall_tenor),
                                   spot, sigma, "put")
-        # N1: the breach EVENT — this scan's spot vs the PREVIOUS row's operative wall.
-        # Without it, break-to-extend re-placement makes every row show an intact fence.
-        wall_breach = detect_breach(rows_today[-1] if rows_today else None, spot, sigma)
+        # N1: the breach EVENT — this scan's spot vs every fence RECORDED today (the
+        # fence ledger). Without it, break-to-extend re-placement makes every row show
+        # an intact fence — and on a grind the retreating wall erased its own level.
+        wall_breach = detect_breach(rows_today, spot, sigma)
         gflip = gxv.get("flip")
         gex_source = _meta.get("gex_source")
         # gamma read = sign of net gamma AT SPOT — but a flow-downgraded
@@ -1071,6 +1115,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             "variance_ratio": vr, "vix_ts": round(vix_ts, 3) if vix_ts else None,
             "regime": regime, "regime_conf": regime_v["confidence"],
             "regime_reads": regime_v["reads"],
+            "regime_tie_guard": regime_v.get("tie_guard") or None,   # H3: countable on the row
             "reversion_extreme": {k: rev[k] for k in
                 ("score", "confidence", "fired", "armed", "reaction", "direction",
                  "arm_reason", "gap_stretch", "vwap_stretch",
@@ -1091,11 +1136,17 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         }
         # N16 (reclaim leg): a confirmed wall break via level_reclaim opens the road for
         # the FOLLOWING scans (this scan's regime already fed the gates; a one-scan lag
-        # is honest — the reclaim is confirmed by this row, followed from the next).
+        # is honest). GATED ON DIRECTION/KIND AGREEMENT (verify round 2026-07-12): a
+        # call_wall break must be an UP move, a put_wall break DOWN — the geometrically
+        # reachable inverse pair (a red vol-pop bar 0.35σ BELOW an intact call wall) is
+        # a fade-side wall REJECTION, and v1 let it open a false, self-renewing
+        # trending road at exactly the fade's best setups.
         if not road and lvl.get("fired") and lvl.get("flips_regime") \
-                and lvl.get("level") is not None and lvl.get("direction") in ("call", "put"):
+                and lvl.get("level") is not None \
+                and ((lvl.get("level_kind") == "call_wall" and lvl.get("direction") == "call")
+                     or (lvl.get("level_kind") == "put_wall" and lvl.get("direction") == "put")):
             telemetry["regime_road"] = {"kind": "reclaim", "side": lvl["direction"],
-                                        "level": lvl["level"]}
+                                        "level": lvl["level"], "opened": now.isoformat()}
 
         # (rows_today was read once, hoisted above the gravity read — 2026-07-12)
 
@@ -1466,17 +1517,20 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         # verdict. Fail-open: on any error the block stays exactly as
         # level_reclaim() returned it (the Fade Lens is never contaminated).
         try:
-            # N17 (2026-07-12): the shelf is the next STRUCTURAL obstacle, never the raw
-            # 0DTE gamma wall — that wall sits on top of spot BY CONSTRUCTION (the ATM
-            # artifact; measured live: 0.00-0.32σ away on 200/200 scans against a 0.35σ
-            # floor, so the break gate could never once open). Same lesson as H2's
-            # operative_wall: raw 0DTE γ-walls must never feed fade/break logic.
-            # Order: the 1-7DTE structural band wall, then the operative wall (already
-            # placed ≥ the fire floor). An honest absence = open runway, as ever.
-            shelf_up = ((call_wall_tenor, "call_wall_tenor") if call_wall_tenor is not None else
-                        (call_wall, "call_wall") if call_wall is not None else None)
-            shelf_dn = ((put_wall_tenor, "put_wall_tenor") if put_wall_tenor is not None else
-                        (put_wall, "put_wall") if put_wall is not None else None)
+            # N17 v2 (verify round 2026-07-12): the shelf is the NEAREST standing wall on
+            # the break side — never the raw 0DTE gamma wall (spot-hugging ATM artifact:
+            # 0.00-0.32σ on 200/200 scans, the gate could never open) and never
+            # tenor-FIRST either (4.7-13.8σ out, which both inflated recorded runway
+            # when a nearer operative wall stood in the path AND anchored level-less
+            # cocks unreachably far). Nearest of {operative, tenor} per side; a missing
+            # shelf keeps the FAIL-CLOSED runway gate (a break with no known shelf is
+            # untested air — the lens does not fire blind; comment aligned to the code).
+            _ups = [(w, k) for w, k in ((call_wall, "call_wall"),
+                                        (call_wall_tenor, "call_wall_tenor")) if w is not None]
+            _dns = [(w, k) for w, k in ((put_wall, "put_wall"),
+                                        (put_wall_tenor, "put_wall_tenor")) if w is not None]
+            shelf_up = min(_ups, key=lambda p: p[0]) if _ups else None
+            shelf_dn = max(_dns, key=lambda p: p[0]) if _dns else None
             # tape freshness audit: the fold's write clock, read through the
             # bridge's own staleness gate (the attached lob_flow block carries
             # no timestamp of its own). Only read when a fold actually attached

@@ -1078,6 +1078,36 @@ class TestMagnetV3:
         out = gv.slide_0dte(cs, 7500.0)
         assert out["mass_by_strike"] == [[7500.0, 1500.0]]   # OI + volume, sign-free
 
+    def test_crash_shelf_outside_reach_cannot_be_the_magnet(self):
+        # VERIFY ROUND (2026-07-12): the real 07-13 book carries put/call OI 2.91 with a
+        # 5,865-OI crash shelf at 7000 — an UNWINDOWED mass argmax made it the magnet at
+        # −10σ every low-volume scan (the permanent bull reborn as a permanent bear).
+        # The reach window ends that class: crash hedges are terrain, not gravity.
+        cs = [_c(7000, "put", 0, 0.0001, oi=5865),          # −7.6% crash shelf
+              _c(7550, "call", 0, 0.002, oi=1200),
+              _c(7500, "put", 0, 0.002, oi=1100)]
+        out = gv.slide_0dte(cs, 7575.0, sigma=80.0)          # reach = ±120 pts
+        assert out["pin"] is not None and abs(out["pin"] - 7575.0) <= 120.0
+        assert out["pin"] != 7000                            # the shelf can never win
+        assert all(k >= 7455.0 for k, _ in out["mass_by_strike"])   # field = the window
+
+    def test_lotto_tail_outside_reach_cannot_seize_the_magnet(self):
+        # 20k contracts of deep-OTM lotto calls at +2.3σ must not outrank the true pin
+        cs = [_c(7750, "call", 0, 0.0005, vol=20000),        # speculative tail
+              _c(7550, "call", 0, 0.002, oi=4000, vol=3000),
+              _c(7600, "call", 0, 0.002, oi=3000, vol=2000)]
+        out = gv.slide_0dte(cs, 7575.0, sigma=80.0)          # reach = ±120 → 7750 out
+        assert out["pin"] is not None and 7550.0 <= out["pin"] <= 7600.0   # the real pin zone
+
+    def test_centroid_lives_on_the_windowed_field(self):
+        # the magnet-walk input must be ALIVE (verify round measured the zone-1-if-tight
+        # rule dead on real books: 0/302 live scans tight → motion lost its magnet walk)
+        cs = [_c(7550, "call", 0, 0.002, oi=4000),
+              _c(7600, "call", 0, 0.002, oi=2000)]
+        out = gv.slide_0dte(cs, 7575.0, sigma=80.0)
+        # mass-weighted mean of the windowed field: (7550·4000 + 7600·2000) / 6000
+        assert out["pin_centroid"] == round((7550 * 4000 + 7600 * 2000) / 6000, 4)
+
     def test_kill_switch_restores_the_signed_era(self):
         cs = [_c(7450, "put", 0, 0.002, oi=9000),
               _c(7550, "call", 0, 0.002, oi=1000)]

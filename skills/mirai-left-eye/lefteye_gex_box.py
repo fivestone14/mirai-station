@@ -251,6 +251,16 @@ MAGNET_V3 = os.environ.get("MAGNET_V3_DISABLE") != "1"
 MAG_HYST = 1.25          # challenger needs 25% more local mass to take the wheel
 MAG_GLIDE_PTS = 10.0     # moves this small are a glide, never dampened
 MAG_LOCAL_PTS = 10.0     # local-mass window (±pts) for the hysteresis comparison
+# THE REACH WINDOW (v3 verify round, 2026-07-12): an UNWINDOWED mass argmax re-created
+# the card's harm with the sign flipped — on the real 07-13 book the ±8% fetch window
+# contains 7000P/7140P crash shelves (put/call OI 2.91), so at the open (volume≈0) the
+# raw argmax sat at −10σ and the tower's prior read hard DOWN by construction; intraday
+# a 20k-contract deep-OTM lotto strike (+2.3σ) could seize it. A magnet is a strike
+# price can actually get PULLED to within the session: the field is windowed to
+# ±MAG_WINDOW_SIGMA·σ of spot (fallback ±MAG_WINDOW_PCT when σ is missing). Crash
+# hedges and lotto tails are TERRAIN (the walls/dated book carry them), not gravity.
+MAG_WINDOW_SIGMA = 1.5
+MAG_WINDOW_PCT = 0.015
 PIN_FIELD_V = 3
 
 
@@ -707,8 +717,11 @@ def gamma_tape(zero_dte: list[dict], spot: float,
         return None                 # no tagged tape ⇒ unknown, not a balanced zero
 
     # The marginal needs a CLOCK. Without one (`now` absent) it abstains — a delta over an
-    # unknown interval is not a rate, and the 4-30 min window is the whole point: under 4 min
-    # the native chain TTL means we would be diffing the same cached snapshot against itself.
+    # unknown interval is not a rate. The 4-30 min window is enforced at BOTH ends: here
+    # (consumption) and at the snapshot-advance rule in reversion_lens (the disk anchor only
+    # advances once its window is ≥ the floor — production scans are one-shot processes, so
+    # the anchor round-trips through state/tape_prev/ and a too-eager advance would keep the
+    # window forever under the floor).
     interval_min = None
     if prev and prev.get("ts") and now:
         try:
@@ -923,7 +936,8 @@ def _pin_field_stats(zero_dte: list[dict], mag_basis: Optional[str], wall_basis:
 
 def slide_0dte(zero_dte: list[dict], spot: float,
                minutes_to_close: Optional[float] = None,
-               prev_pin: Optional[float] = None) -> dict:
+               prev_pin: Optional[float] = None,
+               sigma: Optional[float] = None) -> dict:
     """MAGNET FINDER (Slide B + D): names today's pull-strike and today's
     ceiling/floor walls. `pin` = the strongest ATTRACTIVE strike by SIGNED net
     dealer GEX (calls +, puts −, repriced on the live clock) — GRAVITY is
@@ -969,6 +983,12 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         for c in zero_dte:
             c["oi_vol_w"] = float(c.get("open_interest") or 0) + float(c.get("volume") or 0)
         mass = _mass_by_strike(zero_dte, "oi_vol_w")
+        # THE REACH WINDOW: only strikes price can plausibly be pulled to this session
+        # may carry the magnet (±MAG_WINDOW_SIGMA·σ). Without it the argmax lands on
+        # the deepest crash shelf at the open (put OI 3:1 on real books) or a deep-OTM
+        # lotto pile intraday — the permanent-bull bug reborn with a new sign.
+        reach = (MAG_WINDOW_SIGMA * sigma) if sigma else (MAG_WINDOW_PCT * spot)
+        mass = {k: v for k, v in mass.items() if abs(k - spot) <= reach}
         if mass:
             total = sum(mass.values())
             k_max = max(mass, key=lambda k: mass[k])
@@ -1086,14 +1106,17 @@ def slide_0dte(zero_dte: list[dict], spot: float,
                                     call_wall_gamma, put_wall_gamma))
     except Exception:
         pass
-    # v3: the motion pack's magnet-walk must track the LIVE magnet's own field — the
-    # centroid becomes zone-1's weighted center on the mass field (smooth by construction);
-    # a smeared or absent zone-1 reads None, same honesty rule as before. Same-day diffs
-    # only (gex_motion's 4-30 min lookback), so the era can never mix across a session.
+    # v3: the motion pack's magnet-walk must track the LIVE magnet's own field. Verify
+    # round measured the zone-1-if-tight rule DEAD (an all-positive field clusters into
+    # one 300-600pt mega-zone on real books — 0/302 live scans tight, killing
+    # magnet_walk_sigma that was live 248/302 under the old attract-centroid). The
+    # centroid is now the mass-weighted mean strike of the REACH-WINDOWED field —
+    # always computable when the field exists, smooth by construction, and it lives
+    # where the magnet lives. Same-day diffs only (gex_motion's 4-30 min lookback).
     if MAGNET_V3:
-        out["pin_centroid"] = (round(zones[0]["center"], 4)
-                               if zones and (zones[0]["hi"] - zones[0]["lo"]) <= ZONE_MAX_WIDTH
-                               else None)
+        _mt = sum(mass.values())
+        out["pin_centroid"] = (round(sum(k * v for k, v in mass.items()) / _mt, 4)
+                               if mass and _mt > 0 else None)
     # PER-STRIKE SIGNED FIELD (2026-07-10): the real net dealer GEX per strike
     # (calls +, puts −, repriced on the live clock) that the magnet/zones are
     # derived from — the SAME field, not a model. Persisted COMPACT (windowed to
@@ -1112,14 +1135,13 @@ def slide_0dte(zero_dte: list[dict], spot: float,
             out["net_by_strike"] = [[round(k, 2), round(v, 3)]
                                     for k, v in sorted(_nbs.items())
                                     if _lo <= k <= _hi]
-        # v3: persist the MASS field the live magnet actually reads (same window) so the
-        # tablet can draw the magnet's own terrain beside the signed call−put tilt bars —
-        # the drawn magnet must never float on a field the screen doesn't show.
+        # v3: persist the EXACT reach-windowed field the live magnet reads, so the tablet
+        # can draw the magnet's own terrain beside the signed call−put tilt bars — the
+        # drawn magnet can never float outside the field the screen shows (the window IS
+        # the field now, so containment holds by construction).
         if MAGNET_V3 and mass:
-            _lo2, _hi2 = spot * (1.0 - NBS_WINDOW), spot * (1.0 + NBS_WINDOW)
             out["mass_by_strike"] = [[round(k, 2), round(v, 1)]
-                                     for k, v in sorted(mass.items())
-                                     if _lo2 <= k <= _hi2]
+                                     for k, v in sorted(mass.items())]
     except Exception:
         pass
     out.update({"pin": round(pin, 4) if pin is not None else None,
@@ -1471,7 +1493,8 @@ def build_views(contracts: list[dict], spot: float,
     use_0dte = REGIME_0DTE and A0["regime"] != "unknown"
     R = A0 if use_0dte else A
     R_set = zero if use_0dte else contracts             # the contract set R was computed on
-    B = slide_0dte(zero, spot, minutes_to_close, prev_pin=prev_pin)   # H4: hysteresis witness
+    B = slide_0dte(zero, spot, minutes_to_close, prev_pin=prev_pin,   # H4: hysteresis witness
+                   sigma=sigma)                                       # N8: the reach window
     C = slide_tenor_walls(near, spot)
     E = reconcile_sign(R["regime"], aggressor_flow, flow_conflict, flow_kind)
     F = slide_flows(contracts, spot, minutes_to_close=minutes_to_close)   # vanna/charm flows
