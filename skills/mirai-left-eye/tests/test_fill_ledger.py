@@ -65,5 +65,16 @@ def test_slide_0dte_prefers_fill_weight_when_present():
 
 def test_slide_0dte_falls_back_to_cumulative_without_ledger():
     cs = [_c(755, "call", 4000), _c(745, "put", 900)]
-    out = gb.slide_0dte(cs, spot=750.0)
+    # legacy signed path (v3 kill-switch lineage): the doctrine under test is the
+    # basis fallback, and the signed-era pin is the exact strike, not a zone center
+    _m = gb.MAGNET_V3
+    gb.MAGNET_V3 = False
+    try:
+        out = gb.slide_0dte(cs, spot=750.0)
+    finally:
+        gb.MAGNET_V3 = _m
     assert out["pin_basis"] == "volume" and out["pin"] == 755
+    # v3 twin: the sign-free mass field reads the same book as one tight 745-755
+    # zone and names its volume-weighted center — both strikes attract now
+    out3 = gb.slide_0dte(cs, spot=750.0)
+    assert out3["pin_field_v"] == 3 and 745.0 <= out3["pin"] <= 755.0

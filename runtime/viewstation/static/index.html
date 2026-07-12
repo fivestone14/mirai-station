@@ -1973,7 +1973,7 @@ function applyMap(r){
   GX_ASOF = r.ts || GX_ASOF;                                     // freshness anchor: the newest row's own clock
   GX_SRC = r.gex_source || GX_SRC;                               // N21: which engine drew THIS row (native vs spy_proxy×10)
   GX_SRC_NOTE = r.gex_source_note || null;                       // N7: WHY not native (e.g. 'coverage' = half-fetched book)
-  GX_COV = (r.gex_theta||{}).native_coverage || null;            // N7: which expiry×sides the fetch actually filled
+  GX_COV = r.native_coverage || (r.gex_theta||{}).native_coverage || null;   // N7: live leg first, shadow twin fallback
   T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
   T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines

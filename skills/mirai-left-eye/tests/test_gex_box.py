@@ -17,6 +17,18 @@ ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 6, 26, 11, 0, tzinfo=ET)
 
 
+class _legacy:
+    """Run a block on the pre-v3 SIGNED magnet path. These tests are not dead code:
+    they guard the MAGNET_V3_DISABLE=1 kill-switch path and the pin_legacy A/B lineage
+    — the signed-field semantics must stay exactly as shipped for the era comparison."""
+    def __enter__(self):
+        self._m = gv.MAGNET_V3
+        gv.MAGNET_V3 = False
+        return self
+    def __exit__(self, *a):
+        gv.MAGNET_V3 = self._m
+
+
 def _c(k, right, dte, g, oi=0, vol=0, iv=0.15):
     return {"strike": k, "right": right, "dte": dte, "gamma": g,
             "open_interest": oi, "volume": vol, "iv": iv}
@@ -101,12 +113,13 @@ class TestPinAbsoluteGamma:
         # magnet must skip it (the unsigned pin_abs still names it, for the diary)
         bal = [_c(5000, "call", 0, 0.004, vol=9000), _c(5000, "put", 0, 0.004, vol=9000),
                _c(5020, "call", 0, 0.002, vol=1400), _c(5020, "put", 0, 0.002, vol=1000)]
-        out = gv.slide_0dte(bal, 5000.0)
-        assert out["pin"] == 5020                    # the only strike with positive net
-        assert out["pin_abs"] == 5000                # legacy read still sees the tower
-        # an ALL-repelling book has no attractive strike → pin None (magnet→flip upstream)
-        rep = [_c(5000, "put", 0, 0.004, vol=9000), _c(5020, "put", 0, 0.002, vol=1000)]
-        assert gv.slide_0dte(rep, 5000.0)["pin"] is None
+        with _legacy():
+            out = gv.slide_0dte(bal, 5000.0)
+            assert out["pin"] == 5020                # the only strike with positive net
+            assert out["pin_abs"] == 5000            # legacy read still sees the tower
+            # an ALL-repelling book has no attractive strike → pin None (magnet→flip upstream)
+            rep = [_c(5000, "put", 0, 0.004, vol=9000), _c(5020, "put", 0, 0.002, vol=1000)]
+            assert gv.slide_0dte(rep, 5000.0)["pin"] is None
 
     def test_net_pin_sharpens_on_the_live_clock(self):
         # same book, 15 minutes to close: far strikes lose gamma faster than ATM,
@@ -454,7 +467,8 @@ def test_pin_profile_strength_and_concentration():
     assert pin == 7500
     assert abs(total - 90.0) < 1e-9                 # Σ|γ·w| = .01×9000
     assert abs(share - 56.0 / 90.0) < 1e-9          # magnet's share of the pull
-    out = gv.slide_0dte(cs, spot=7490.0)
+    with _legacy():
+        out = gv.slide_0dte(cs, spot=7490.0)
     npin, ntotal, nshare = gv._net_pin_profile(cs, "volume", 7490.0)
     # ZONES (07-09): 7460+7500 calls join one zone (gap 40 = 2x median step 20)
     # whose volume-weighted center is 7490.18; the argmax stays 7500.
@@ -506,7 +520,8 @@ class TestPinFieldStats:
         assert a["put_wall_gamma_share"] == b["put_wall_gamma_share"]
 
     def test_pin_centroid_weighted_over_attractive_strikes(self):
-        out = gv.slide_0dte(self._cs(), 5000.0)
+        with _legacy():
+            out = gv.slide_0dte(self._cs(), 5000.0)
         # centroid over net>0 strikes only: (5000·12 + 5020·2)/14 — the repelling
         # 4980 put never drags the magnet read
         assert out["pin_centroid"] == round(70040.0 / 14.0, 4)
@@ -515,7 +530,8 @@ class TestPinFieldStats:
     def test_pin_centroid_none_when_all_repelling(self):
         rep = [_c(5000, "put", 0, 0.004, vol=9000, iv=None),
                _c(5020, "put", 0, 0.002, vol=1000, iv=None)]
-        out = gv.slide_0dte(rep, 5000.0)
+        with _legacy():
+            out = gv.slide_0dte(rep, 5000.0)
         assert out["pin_centroid"] is None
         # side sums still recorded: 5020 above (|−2|), K == spot excluded → below 0
         assert out["gamma_above_spot"] == 2.0 and out["gamma_below_spot"] == 0.0
@@ -527,7 +543,8 @@ class TestPinFieldStats:
         thin = [_c(5000, "put", 0, 0.004, vol=9000, iv=None),   # −36 repel
                 _c(5020, "put", 0, 0.002, vol=1000, iv=None),   # −2 repel
                 _c(5040, "call", 0, 0.001, vol=1000, iv=None)]  # +1 attract
-        out = gv.slide_0dte(thin, 5000.0)
+        with _legacy():
+            out = gv.slide_0dte(thin, 5000.0)
         assert out["pin_centroid"] is None
         # only the magnet read abstains — the side sums still record
         assert out["gamma_above_spot"] == 3.0 and out["gamma_below_spot"] == 0.0
@@ -973,8 +990,9 @@ class TestPinZones:
         # H4: two tight rival zones 50 pts apart with near-equal pull — the live
         # magnet must stand BETWEEN them (share-weighted), not teleport to
         # whichever zone won this scan's coin-flip
-        a = gv.slide_0dte(self._rival_chain(10000, 9800), spot=7525.0)
-        b = gv.slide_0dte(self._rival_chain(9800, 10000), spot=7525.0)   # ownership flips
+        with _legacy():
+            a = gv.slide_0dte(self._rival_chain(10000, 9800), spot=7525.0)
+            b = gv.slide_0dte(self._rival_chain(9800, 10000), spot=7525.0)   # ownership flips
         for out in (a, b):
             assert out["pin_contested"] is True
             assert out["pin_blended"] is not None
@@ -984,7 +1002,8 @@ class TestPinZones:
 
     def test_uncontested_magnet_keeps_zone1_center(self):
         # below the rival threshold the blend must not engage (pin_blended None)
-        out = gv.slide_0dte(self._rival_chain(10000, 5000), spot=7525.0)
+        with _legacy():
+            out = gv.slide_0dte(self._rival_chain(10000, 5000), spot=7525.0)
         assert out["pin_contested"] is False and out["pin_blended"] is None
         assert out["pin"] == 7500.0
 
@@ -1003,6 +1022,69 @@ class TestPinZones:
                 "net_flow": -1200.0}]
         gv.slide_0dte(cs2, spot=7500.0)
         assert cs2[0]["signed_weight"] == 1200.0
+
+
+class TestMagnetV3:
+    """MAGNET v3 (N8 + N9 + H4, 2026-07-12). N8: the signed field collapsed to
+    sign(callOI − putOI), putting the magnet ABOVE spot on 89.7% of live scans BY
+    CONSTRUCTION — a permanent bull. v3's field is sign-free structural mass, so a
+    put-heavy shelf attracts exactly like a call-heavy one. N9: weight = OI + today's
+    volume, so the magnet follows the session instead of yesterday's book. H4:
+    hysteresis kills the measured 46-pt teleport (zones never produced a rival to
+    blend with — 0 multi-zone rows in 302 live zoned scans)."""
+
+    def test_put_heavy_shelf_below_spot_is_the_magnet(self):
+        # THE PERMANENT BULL, DEAD. Heavy put OI below spot: the legacy signed field
+        # called this strike REPELLING and fled to the thin call strike above spot.
+        cs = [_c(7450, "put", 0, 0.002, oi=9000),
+              _c(7550, "call", 0, 0.002, oi=1000)]
+        out = gv.slide_0dte(cs, 7500.0)
+        assert out["pin"] == 7450                    # BELOW spot — impossible in the old era
+        assert out["pin_field_v"] == 3
+        assert out["pin_legacy"] == 7550             # the old read, riding as the A/B twin
+
+    def test_todays_volume_moves_the_magnet_intraday(self):
+        # N9: yesterday's OI says 7625; today's tape is piling into 7550. The magnet
+        # must follow the session (07-10 live: OI magnet said 7625 all day while price
+        # lived 7536-7576 around a 7550 volume wall).
+        cs = [_c(7625, "call", 0, 0.002, oi=8000, vol=0),
+              _c(7550, "call", 0, 0.002, oi=1000, vol=20000)]
+        out = gv.slide_0dte(cs, 7560.0)
+        assert out["pin"] == 7550
+
+    def test_hysteresis_holds_against_a_weak_challenger(self):
+        # H4: challenger has only 10% more local mass — a 100-pt teleport on a
+        # coin-flip print. The wheel must not change hands, and the hold is visible.
+        cs = [_c(7550, "call", 0, 0.002, oi=5000, vol=5000),
+              _c(7650, "call", 0, 0.002, oi=5500, vol=5500)]
+        out = gv.slide_0dte(cs, 7560.0, prev_pin=7550.0)
+        assert out["pin"] == 7550 and out["pin_held"] is True
+        assert out["pin_candidate"] == 7650          # the challenger is on the record
+
+    def test_hysteresis_yields_to_a_strong_challenger(self):
+        cs = [_c(7550, "call", 0, 0.002, oi=2000, vol=2000),
+              _c(7650, "call", 0, 0.002, oi=6000, vol=6000)]
+        out = gv.slide_0dte(cs, 7560.0, prev_pin=7550.0)
+        assert out["pin"] == 7650 and out["pin_held"] is False
+
+    def test_small_moves_glide_without_hysteresis(self):
+        cs = [_c(7550, "call", 0, 0.002, oi=5000), _c(7555, "call", 0, 0.002, oi=5200)]
+        out = gv.slide_0dte(cs, 7550.0, prev_pin=7550.0)
+        assert out["pin"] is not None and abs(out["pin"] - 7550.0) < gv.MAG_GLIDE_PTS
+        assert out["pin_held"] is None               # hysteresis never engaged
+
+    def test_mass_field_recorded_for_the_tablet(self):
+        cs = [_c(7500, "call", 0, 0.002, oi=1000, vol=500)]
+        out = gv.slide_0dte(cs, 7500.0)
+        assert out["mass_by_strike"] == [[7500.0, 1500.0]]   # OI + volume, sign-free
+
+    def test_kill_switch_restores_the_signed_era(self):
+        cs = [_c(7450, "put", 0, 0.002, oi=9000),
+              _c(7550, "call", 0, 0.002, oi=1000)]
+        with _legacy():
+            out = gv.slide_0dte(cs, 7500.0)
+        assert out["pin"] == 7550                    # the signed argmax, exactly as shipped
+        assert out["pin_field_v"] is None
 
 
 class TestGammaTape:

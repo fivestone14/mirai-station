@@ -38,12 +38,55 @@ REVERSION_LIVE = False           # False = shadow (record only, no confluence vo
 THETA_SHADOW = True              # theta native-GEX A/B recorder (record only, never fires)
 
 # GAMMA-TAPE inter-tick memory (2026-07-13): {ticker: {"ts": datetime, "q": {(K, right):
-# (buy_q, sell_q)}}}. The provider's per-strike flow is a running WHOLE-DAY cumulative, so
-# differencing consecutive snapshots is what turns it into a windowed tape — a cumulative
-# can never show a turn (by 13:00 the deciding hour is ~8% of the denominator), and the turn
-# is the entire point. In-process only, like the rest of the scan's memory: a restart simply
-# yields no marginal until the next scan, which is the honest answer.
+# (buy_q, sell_q[, buy_$, sell_$])}}}. The provider's per-strike flow is a running WHOLE-DAY
+# cumulative, so differencing consecutive snapshots is what turns it into a windowed tape —
+# a cumulative can never show a turn (by 13:00 the deciding hour is ~8% of the denominator),
+# and the turn is the entire point.
+#
+# DISK-BACKED (N5 verify, 2026-07-12): the production scanner is a ONE-SHOT launchd process
+# (a fresh hunter.py per wake), so "in-process memory" is EMPTY on every live scan — the
+# marginal fields (gamma_tape_60m, flow_recent) had been structurally None on every live row
+# while their unit tests passed. The snapshot now round-trips through state/tape_prev/ so
+# consecutive one-shot scans can difference. In-memory dict stays as a same-process cache.
 _TAPE_PREV: dict[str, dict] = {}
+
+
+def _tape_prev_path(ticker: str) -> Path:
+    return SKILL_DIR.parent.parent / "state" / "tape_prev" / f"{ticker}.json"
+
+
+def _load_tape_prev(ticker: str, now: datetime) -> Optional[dict]:
+    """Rehydrate the previous scan's cumulative snapshot. Same-day only — an overnight
+    snapshot would difference today's fresh cumulative against yesterday's close and
+    manufacture a giant phantom window."""
+    try:
+        import atomic_io
+        raw = atomic_io.read_json_or(_tape_prev_path(ticker), None)
+        if not raw or not raw.get("ts") or not raw.get("q"):
+            return None
+        ts = datetime.fromisoformat(raw["ts"])
+        if ts.date() != now.date():
+            return None
+        q = {}
+        for row in raw["q"]:
+            if not isinstance(row, list) or len(row) < 4:
+                continue
+            k, right = float(row[0]), row[1]
+            q[(round(k, 4), right)] = tuple(float(x) for x in row[2:])
+        return {"ts": ts, "q": q} if q else None
+    except Exception:
+        return None
+
+
+def _save_tape_prev(ticker: str, snap: dict) -> None:
+    """Persist {ts, q} atomically; q tuples flatten to [strike, right, *counts]."""
+    try:
+        import atomic_io
+        rows = [[k, r, *v] for (k, r), v in (snap.get("q") or {}).items()]
+        atomic_io.write_json_atomic(_tape_prev_path(ticker),
+                                    {"ts": snap["ts"].isoformat(), "q": rows})
+    except Exception:
+        pass                       # best-effort: a failed save just costs one marginal
 
 
 def live_allowed() -> tuple[bool, str]:
@@ -241,6 +284,15 @@ def variance_ratio(closes: list[float], q: int = 4) -> Optional[float]:
     return round(varq / (q * var1), 4)
 
 
+def sigma_ruler(anchor: Optional[float], live: Optional[float]) -> Optional[float]:
+    """N10 — the yardstick that cannot shrink with theta decay. max(day-open σ, live σ):
+    an ordinary afternoon stays measured against the morning's ruler (the same 40 pts
+    must not inflate 0.49σ → 1.35σ on decay alone), while a REAL vol spike still widens
+    it. None only when neither leg exists."""
+    xs = [x for x in (anchor, live) if x]
+    return max(xs) if xs else None
+
+
 def classify_regime(g_sign: str, range_em: Optional[float],
                     vr: Optional[float], vix_ts: Optional[float]) -> dict:
     """Stack the reads → 'pinning' / 'trending' / 'neutral'. Each read votes
@@ -269,8 +321,19 @@ def classify_regime(g_sign: str, range_em: Optional[float],
     # confidence = agreement strength among the reads that voted
     voted = pin + trend
     conf = round((max(pin, trend) / voted), 3) if voted else 0.0
+    # H3 caveat (2026-07-12): a BALANCED book is not a NEUTRAL book. When the gamma
+    # vote abstains on a tie/blackout, net gamma at spot is ~0 — a hair-trigger — and
+    # two quiet tape voters must not be allowed to stamp "pinning" on the book with
+    # the highest breakout risk. The tie downgrades pinning → neutral, caps confidence,
+    # and says so on the row (tie_guard) — the stand-down is never silent.
+    tie_guard = False
+    if g_sign not in ("positive", "negative"):
+        if regime == "pinning":
+            regime = "neutral"
+            tie_guard = True
+        conf = min(conf, 0.5)
     return {"regime": regime, "pin_votes": pin, "trend_votes": trend,
-            "confidence": conf, "reads": votes}
+            "confidence": conf, "reads": votes, "tie_guard": tie_guard}
 
 
 def reversion_extreme(spot: float, prior_close: float, sigma: float,
@@ -732,6 +795,12 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         if THETA_SHADOW:
             try:
                 import native_gex_feed as _tf
+                # N5: the scanner is a one-shot process — rehydrate the previous scan's
+                # snapshot from disk or the marginal window can never exist in production.
+                if ticker not in _TAPE_PREV:
+                    _p = _load_tape_prev(ticker, now)
+                    if _p:
+                        _TAPE_PREV[ticker] = _p
                 # 15s budget: the chunked native fetch is ~15 API round-trips on a
                 # cold pull (TTL-cached after — GexBox below reuses it for free).
                 tv = _tf.read(ticker, spot, now, budget_s=15.0,
@@ -746,6 +815,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                     _prev = _TAPE_PREV.get(ticker) or {}
                     if _q and _q != _prev.get("q"):
                         _TAPE_PREV[ticker] = {"ts": now, "q": _q}
+                        _save_tape_prev(ticker, _TAPE_PREV[ticker])   # one-shot scans (N5)
             except Exception:
                 tv = None
 
@@ -770,17 +840,48 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         flow_conflict = _gxb.FLOW_CONFLICT_LOB if veto_src == "lob" else _gxb.FLOW_CONFLICT
         flow_kind = "lob" if veto_src == "lob" else "options"
 
+        # Today's diary rows, read ONCE and HOISTED above the gravity read (2026-07-12):
+        # the σ ruler needs the day's first row and the magnet hysteresis needs the last —
+        # and the one-shot scan process has no other memory. Fail-open: unreadable = empty.
+        try:
+            rows_today = _read_today_telemetry(now)
+        except Exception:
+            rows_today = []
+        # H4: the hysteresis incumbent = the last recorded live pin (survives restarts;
+        # module state would be empty every scan under the one-shot launchd model)
+        prev_pin = None
+        for _r in reversed(rows_today):
+            _gv = _r.get("gex_views") or {}
+            _pp = _gv.get("pin", _gv.get("magnet"))
+            if _pp is not None:
+                prev_pin = _pp
+                break
+
         # GRAVITY ENGINE — the ONLY gravity read (legacy oracle retired):
         # supplies the σ yardstick (ATM-IV), walls, flip, regime and the magnet.
         gxv = _gxb.GexBox(ticker, now=now, live_spot=spot, aggressor_flow=veto_flow,
-                          flow_conflict=flow_conflict, flow_kind=flow_kind)
+                          flow_conflict=flow_conflict, flow_kind=flow_kind,
+                          prev_pin=prev_pin)
         if not gxv:
             return None
         _meta = gxv.get("meta") or {}
         _slides = gxv.get("slides") or {}
         _C = _slides.get("C_tenor") or {}
         _B = _slides.get("B_0dte") or {}
-        sigma = _meta.get("sigma")
+        # N10 — THE σ RULER. σ was rebuilt every scan from the DECAYING 0DTE ATM IV, so
+        # the same 40 points read 0.49σ at 9:30 and 1.35σ at 3:55: nothing moved but the
+        # yardstick, and an ordinary afternoon stretch armed the fade as "EXTREME".
+        # The ruler = max(day's opening σ, live σ): it never shrinks with decay (the
+        # card's harm) but still widens on a REAL vol spike (a 2pm crash must widen the
+        # yardstick). The decayed live σ keeps recording beside it for the A/B.
+        sigma_live = _meta.get("sigma")
+        sigma_anchor = None
+        for _r in rows_today:
+            _sa = _r.get("sigma_anchor") or _r.get("sigma")
+            if _sa:
+                sigma_anchor = _sa
+                break
+        sigma = sigma_ruler(sigma_anchor, sigma_live)
         # band bounds (H2 v2, 2026-07-12 — doctrine: 0DTE first, PLACED like a
         # wall): candidates in tenor order — today's 0DTE gamma wall (share-
         # guarded), the 0DTE OI/volume wall, then the 1-7DTE structural wall —
@@ -881,10 +982,15 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             "ts": now.isoformat(), "ticker": ticker, "spot": spot,
             "gex_source": gex_source, "gamma_sign": g_sign,
             # N7: WHY the read is not native, when the feed itself said why (a proxy row
-            # caused by a half-fetched native book must not read like a dead token)
+            # caused by a half-fetched native book must not read like a dead token) —
+            # and the LIVE leg's own coverage verdict (the shadow leg records its twin)
             "gex_source_note": _meta.get("native_reject"),
+            "native_coverage": _meta.get("native_coverage"),
             "gamma_flip": gflip,
+            # N10: `sigma` IS the ruler (all gates/distances computed on it); the decayed
+            # live σ and the day anchor ride beside so the A/B and the tablet can show basis
             "call_wall": call_wall, "put_wall": put_wall, "sigma": sigma,
+            "sigma_live": sigma_live, "sigma_anchor": sigma_anchor or sigma_live,
             # outer terrain (H2): the structural 1-7DTE band walls the near walls
             # replaced as the operative bound — recorded so nothing is silently
             # lost and the A/B can compare the two doctrines row by row
@@ -908,19 +1014,20 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             "live": REVERSION_LIVE,
         }
 
-        # Today's diary rows, read ONCE — the only inter-tick memory both the
-        # motion diff and the Break Lens state machine derive from. Fail-open:
-        # an unreadable diary is an empty history, never a dead scan.
-        try:
-            rows_today = _read_today_telemetry(now)
-        except Exception:
-            rows_today = []
+        # (rows_today was read once, hoisted above the gravity read — 2026-07-12)
 
         # Record the gravity engine's read (computed once above) — the proxy
         # gravity snapshot the report cards grade. Best-effort, isolated.
         try:
             if gxv:
                 rec = {"magnet": gxv.get("magnet"), "flip": gxv.get("flip"),
+                       # v3: the raw pin + hysteresis witnesses — pin is what the NEXT
+                       # scan's hysteresis reads as the incumbent (magnet may be a flip
+                       # fallback and must not inherit the wheel)
+                       "pin": _B.get("pin"), "pin_field_v": _B.get("pin_field_v"),
+                       "pin_legacy": _B.get("pin_legacy"), "pin_held": _B.get("pin_held"),
+                       "pin_candidate": _B.get("pin_candidate"),
+                       "mass_by_strike": _B.get("mass_by_strike"),
                        "flip_band": gxv.get("flip_band"), "regime": gxv.get("regime"),
                        "regime_raw": gxv.get("regime_raw"), "sign_agrees": gxv.get("sign_agrees"),
                        "aggressor_flow": flow,           # raw whole-day options read (A/B continuity)
@@ -1156,6 +1263,25 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             import lefteye_gamma_roll as _groll
             _gr_rec = _groll.read(_groll.load_mark(), spot, now)
             if _gr_rec is not None:
+                # N12 (2026-07-12): the roll lens picks its walls by UNSIGNED |gamma|
+                # argmax, so it can name a net-SHORT-gamma strike — breakout fuel — as
+                # "the pin the book defends" (live 07-10: both "pins" were net short).
+                # Cross-check the 0DTE wall against OUR OWN signed net field and label
+                # the KIND: 'defended' (net long γ — a real pin) vs 'accelerant' (net
+                # short γ — fuel). Wording downstream must key off the kind. The label
+                # inherits the assumed-sign caveat and says so.
+                if _gr_rec.get("divergence") and _gr_rec.get("zero_dte_wall") is not None:
+                    try:
+                        _nbs = ((telemetry.get("gex_views") or {}).get("net_by_strike")) or []
+                        _zw = float(_gr_rec["zero_dte_wall"])
+                        _near = [v for k, v in _nbs if abs(float(k) - _zw) <= 2.6]
+                        if _near:
+                            _net = _near[0]
+                            _gr_rec["zero_dte_wall_net"] = _net
+                            _gr_rec["zero_dte_wall_kind"] = ("defended" if _net > 0
+                                                             else "accelerant")
+                    except Exception:
+                        pass
                 telemetry["gamma_roll"] = _gr_rec
         except Exception:
             pass

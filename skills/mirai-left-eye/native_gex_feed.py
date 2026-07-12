@@ -475,9 +475,9 @@ def native_chain(ticker: str) -> Optional[dict]:
         # N7: coverage verdict BEFORE anything downstream touches the book. A dead/thin
         # side of today's weekly 0DTE book means the ONE book the regime reads is half
         # missing — reject the fetch outright; the caller's degrade path is labeled.
+        global LAST_REJECT
         cov = _coverage(res.get("sides"), root, today.isoformat())
         if cov.get("zero_dte_dead"):
-            global LAST_REJECT
             LAST_REJECT = {"ts": now.isoformat(), "reason": "coverage",
                            "missing": cov.get("missing")}
             return None
@@ -532,7 +532,8 @@ def native_chain(ticker: str) -> Optional[dict]:
                "meta": {"chunks": res.get("chunks"), "expiries": res.get("expiries"),
                         "am_settled_dropped": am_dropped, "coverage": cov, **iv_meta}}
         _CHAIN_CACHE[ticker] = (now, out)
-        return out
+        LAST_REJECT = None       # a served book clears the reject — a LATER proxy fallback
+        return out               # (token death, timeout) must not inherit 'coverage' as its why
 
 
 def aggressor_flow(ticker: str, spot: float) -> Optional[float]:

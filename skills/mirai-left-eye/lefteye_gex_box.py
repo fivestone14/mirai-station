@@ -45,6 +45,7 @@ Every external lookup is injected, so the logic is pure + testable.
 from __future__ import annotations
 
 import math
+import os
 import statistics
 import sys
 from dataclasses import dataclass
@@ -220,6 +221,37 @@ SIGNED_PIN = False
 # at this share of the strike's GROSS two-way flow (buy + sell) so real hedge mass
 # survives netting; the NET still leads whenever it is the bigger fact.
 CHURN_FLOOR = 0.25
+
+# --- MAGNET v3 (N8 + N9 + H4, 2026-07-12) --------------------------------------------
+# The 07-12 pressure test proved the live magnet was broken three ways at the source:
+#   N8  PERMANENT BULL — BS gamma is right-symmetric, so the "signed pin field" collapses
+#       to sign(callOI − putOI); the magnet was defined as the strongest POSITIVE strike,
+#       putting it ABOVE spot on 512/571 live scans (89.7%) BY CONSTRUCTION. The UW
+#       external per-strike sign was tested and REFUSED the same day (coin-flip, commit
+#       9ec3a68) — there is no trustworthy per-strike dealer sign to buy. So v3 stops
+#       pretending: the magnet field is SIGN-FREE structural mass. Calls AND puts both
+#       count as attraction (a put-heavy shelf pins price exactly like a call-heavy one).
+#   N9  YESTERDAY'S BOOK — the field was OI-weighted, i.e. prior-day positioning that
+#       never updates intraday. v3 weights by OI + today's cumulative VOLUME: the standing
+#       book still anchors, and the strikes actually being loaded TODAY pull the magnet
+#       as the session builds (07-10 live: the OI magnet said 7625 all day while price
+#       lived 7536-7576 around a 7550 volume wall).
+#   ATM GUARD (why NO live-γ reprice): an unsigned live-γ field peaks AT the money by
+#       construction — the exact spot-hugging artifact that got the γ-walls pulled off
+#       the map on 07-11. Pure contract mass (OI+vol) carries the structure without it.
+#   H4  46-PT TELEPORTS — measured live: pin_zones NEVER produced a second zone in 302
+#       zoned scans, so the contested-blend commissioned to kill the teleport could not
+#       run even once. The teleport killer is HYSTERESIS: the wheel only changes hands
+#       when the challenger's local mass out-pulls the incumbent's by MAG_HYST; a small
+#       glide (≤ MAG_GLIDE_PTS) always follows freely. Held scans are visible
+#       (pin_held / pin_candidate) — stickiness is never silent.
+# The old signed-OI magnet is RECORDED beside as pin_legacy (+ its A/B lineage fields);
+# pin_field_v tags the era so no A/B ever mixes definitions. Kill switch: MAGNET_V3_DISABLE=1.
+MAGNET_V3 = os.environ.get("MAGNET_V3_DISABLE") != "1"
+MAG_HYST = 1.25          # challenger needs 25% more local mass to take the wheel
+MAG_GLIDE_PTS = 10.0     # moves this small are a glide, never dampened
+MAG_LOCAL_PTS = 10.0     # local-mass window (±pts) for the hysteresis comparison
+PIN_FIELD_V = 3
 
 
 # ===========================================================================
@@ -491,6 +523,26 @@ def _pin_profile(contracts: list[dict], weight_key: str):
     pin = max(by_strike, key=lambda k: by_strike[k])
     total = sum(by_strike.values())
     return pin, total, (by_strike[pin] / total if total > 0 else None)
+
+
+def _mass_by_strike(contracts: list[dict], weight_key: str) -> dict[float, float]:
+    """MAGNET FIELD v3 (N8+N9) — per-strike structural mass: Σ weight across BOTH
+    rights. NO call−put netting (the netted sign is the assumed-sign artifact that made
+    the magnet a permanent bull) and NO live-γ reprice (an unsigned live-γ field peaks
+    at the money by construction — the spot-hug artifact). Weight = oi_vol_w (standing
+    book + today's tape) annotated by slide_0dte."""
+    by_strike: dict[float, float] = {}
+    for c in contracts:
+        k, w = c.get("strike"), c.get(weight_key) or 0
+        if k is None or not w:
+            continue
+        by_strike[float(k)] = by_strike.get(float(k), 0.0) + float(w)
+    return by_strike
+
+
+def _mass_near(field: dict[float, float], x: float, r: float = MAG_LOCAL_PTS) -> float:
+    """Local pull around a level — the hysteresis comparison mass (H4)."""
+    return sum(v for k, v in field.items() if abs(k - x) <= r)
 
 
 def _live_gamma(c: dict, spot: float, minutes_to_close: Optional[float]) -> float:
@@ -870,7 +922,8 @@ def _pin_field_stats(zero_dte: list[dict], mag_basis: Optional[str], wall_basis:
 
 
 def slide_0dte(zero_dte: list[dict], spot: float,
-               minutes_to_close: Optional[float] = None) -> dict:
+               minutes_to_close: Optional[float] = None,
+               prev_pin: Optional[float] = None) -> dict:
     """MAGNET FINDER (Slide B + D): names today's pull-strike and today's
     ceiling/floor walls. `pin` = the strongest ATTRACTIVE strike by SIGNED net
     dealer GEX (calls +, puts −, repriced on the live clock) — GRAVITY is
@@ -894,7 +947,11 @@ def slide_0dte(zero_dte: list[dict], spot: float,
            # magnet zones (2026-07-09, LIVE): the field as groups + the legacy
            # argmax kept beside the live zone-center pin for the nightly A/B
            "pin_zones": None, "pin_contested": None, "pin_argmax": None,
-           "pin_blended": None, "zone1_share": None, "net_by_strike": None}
+           "pin_blended": None, "zone1_share": None, "net_by_strike": None,
+           # MAGNET v3 (N8+N9+H4): era tag, the legacy signed-OI magnet riding as the A/B
+           # twin, hysteresis visibility, and the mass field the tablet can draw
+           "pin_field_v": None, "pin_legacy": None, "pin_held": None,
+           "pin_candidate": None, "mass_by_strike": None}
     if not zero_dte or not spot:
         return out
     basis = pick_basis(zero_dte, spot, prefer="volume")   # walls: 0DTE → volume first
@@ -903,6 +960,23 @@ def slide_0dte(zero_dte: list[dict], spot: float,
     # the magnet reads structural positioning: OI when it exists, else volume
     mag_basis = pick_basis(zero_dte, spot, prefer="open_interest")
     pin, pin_total, pin_share = _net_pin_profile(zero_dte, mag_basis, spot, minutes_to_close)
+    # MAGNET v3 (N8+N9): the LIVE magnet field is sign-free structural mass, weighted
+    # OI + today's volume. The signed-OI read above is demoted to pin_legacy (recorded
+    # every scan — the A/B against the permanent-bull era must be measurable, not argued).
+    mass: dict = {}
+    if MAGNET_V3:
+        out["pin_legacy"] = round(pin, 4) if pin is not None else None
+        for c in zero_dte:
+            c["oi_vol_w"] = float(c.get("open_interest") or 0) + float(c.get("volume") or 0)
+        mass = _mass_by_strike(zero_dte, "oi_vol_w")
+        if mass:
+            total = sum(mass.values())
+            k_max = max(mass, key=lambda k: mass[k])
+            pin, pin_total = k_max, round(total, 4)
+            pin_share = (mass[k_max] / total) if total > 0 else None
+        else:
+            pin = pin_total = pin_share = None
+        out["pin_field_v"] = PIN_FIELD_V
     # legacy unsigned pin (recency fill-weighted when the ledger annotated) — recorded only
     abs_key = basis
     if any((c.get("fill_weight") or 0) > 0 for c in zero_dte):
@@ -932,7 +1006,9 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         # weighting-era tag: v2 = churn-floored (H10, 2026-07-12); pre-07-12
         # rows carried plain |net| with no tag — the A/B must never mix eras.
         out["pin_signed_v"] = 2
-        if SIGNED_PIN and p_sig is not None:
+        if SIGNED_PIN and p_sig is not None and not MAGNET_V3:
+            # legacy-era flag only: under v3 the live magnet is the mass field and the
+            # signed-flow read stays a recorded shadow (H10's churn floor rides inside it)
             pin, pin_total, pin_share = p_sig, pt_sig, ps_sig   # flag on → live magnet
     # MAGNET ZONES (2026-07-09, LIVE swap — user-sanctioned): the attractive
     # field clustered into groups; the live magnet becomes zone-1's weighted
@@ -943,10 +1019,15 @@ def slide_0dte(zero_dte: list[dict], spot: float,
     # Fail-open: any surprise leaves the argmax pin exactly as it always was.
     zones_read = False
     try:
-        zone_key = "signed_weight" if (SIGNED_PIN and _sig_ok) else mag_basis
-        zmap = _net_gex_by_strike(zero_dte, zone_key, spot, minutes_to_close) if zone_key else {}
+        if MAGNET_V3:
+            zmap = mass                             # v3: zones cluster the mass field —
+            zones_read_key = bool(mass)             # the SAME field that serves the live pin
+        else:
+            zone_key = "signed_weight" if (SIGNED_PIN and _sig_ok) else mag_basis
+            zmap = _net_gex_by_strike(zero_dte, zone_key, spot, minutes_to_close) if zone_key else {}
+            zones_read_key = bool(zone_key)
         zones, contested = pin_zones(zmap, spot)
-        zones_read = bool(zone_key)                 # compute genuinely ran
+        zones_read = zones_read_key                 # compute genuinely ran
     except Exception:
         zones, contested = [], False
     out["pin_argmax"] = round(pin, 4) if pin is not None else None
@@ -978,6 +1059,22 @@ def slide_0dte(zero_dte: list[dict], spot: float,
                 _t = (_r - ZONE_RIVAL) / (1.0 - ZONE_RIVAL)     # 0 at threshold → 1 at tie
                 pin = zones[0]["center"] + 0.5 * _t * (zones[1]["center"] - zones[0]["center"])
                 out["pin_blended"] = round(pin, 4)              # visible: blend is never silent
+    # HYSTERESIS (H4 v2, 2026-07-12): measured live, pin_zones NEVER produced a rival
+    # zone in 302 zoned scans — the contested blend above cannot be the teleport killer
+    # because the teleports happen inside (or without) zone-1. The wheel-change rule:
+    # a JUMP (> MAG_GLIDE_PTS) only happens when the challenger's local mass out-pulls
+    # the incumbent's by MAG_HYST; small moves glide freely; a dead incumbent (no local
+    # mass anymore) surrenders the wheel. Held scans are visible, never silent.
+    if MAGNET_V3 and prev_pin is not None and pin is not None and mass:
+        if abs(pin - prev_pin) > MAG_GLIDE_PTS:
+            inc = _mass_near(mass, prev_pin)
+            new = _mass_near(mass, pin)
+            out["pin_candidate"] = round(pin, 4)
+            if inc > 0 and new < MAG_HYST * inc:
+                pin = prev_pin                      # challenger not strong enough: hold
+                out["pin_held"] = True
+            else:
+                out["pin_held"] = False             # wheel legitimately changed hands
     call_wall_gamma = _gamma_wall(zero_dte, spot, "call", basis, minutes_to_close)
     put_wall_gamma = _gamma_wall(zero_dte, spot, "put", basis, minutes_to_close)
     out["pin_total_gamma"] = round(pin_total, 4) if pin_total is not None else None
@@ -989,6 +1086,14 @@ def slide_0dte(zero_dte: list[dict], spot: float,
                                     call_wall_gamma, put_wall_gamma))
     except Exception:
         pass
+    # v3: the motion pack's magnet-walk must track the LIVE magnet's own field — the
+    # centroid becomes zone-1's weighted center on the mass field (smooth by construction);
+    # a smeared or absent zone-1 reads None, same honesty rule as before. Same-day diffs
+    # only (gex_motion's 4-30 min lookback), so the era can never mix across a session.
+    if MAGNET_V3:
+        out["pin_centroid"] = (round(zones[0]["center"], 4)
+                               if zones and (zones[0]["hi"] - zones[0]["lo"]) <= ZONE_MAX_WIDTH
+                               else None)
     # PER-STRIKE SIGNED FIELD (2026-07-10): the real net dealer GEX per strike
     # (calls +, puts −, repriced on the live clock) that the magnet/zones are
     # derived from — the SAME field, not a model. Persisted COMPACT (windowed to
@@ -1007,6 +1112,14 @@ def slide_0dte(zero_dte: list[dict], spot: float,
             out["net_by_strike"] = [[round(k, 2), round(v, 3)]
                                     for k, v in sorted(_nbs.items())
                                     if _lo <= k <= _hi]
+        # v3: persist the MASS field the live magnet actually reads (same window) so the
+        # tablet can draw the magnet's own terrain beside the signed call−put tilt bars —
+        # the drawn magnet must never float on a field the screen doesn't show.
+        if MAGNET_V3 and mass:
+            _lo2, _hi2 = spot * (1.0 - NBS_WINDOW), spot * (1.0 + NBS_WINDOW)
+            out["mass_by_strike"] = [[round(k, 2), round(v, 1)]
+                                     for k, v in sorted(mass.items())
+                                     if _lo2 <= k <= _hi2]
     except Exception:
         pass
     out.update({"pin": round(pin, 4) if pin is not None else None,
@@ -1281,7 +1394,13 @@ def slide_flows(contracts: list[dict], spot: float, *,
     Reads the same per-contract IV the flip uses; magnitudes are uncalibrated (shadow)."""
     out = {"vex": None, "cex": None, "vex_sign": "unknown", "cex_sign": "unknown",
            "vanna_wall": None, "charm_wall": None, "vex_basis": None, "cex_basis": None,
-           "vex_tenor": "1-7DTE", "cex_tenor": "0DTE", "minutes_to_close": minutes_to_close}
+           "vex_tenor": "1-7DTE", "cex_tenor": "0DTE", "minutes_to_close": minutes_to_close,
+           # N11 (2026-07-12): net dealer charm is STRUCTURALLY locked negative by the
+           # assumed-sign symmetry artifact — the drift word read "UP into the close" on
+           # 804 of 806 live rows. A constant is not a signal: the WORD is suspended until
+           # charm has a graded record (the NUMBER keeps recording for exactly that grading).
+           # Nothing downstream may speak a charm direction while this is False.
+           "charm_word_ok": False}
     if not spot:
         return out
     zero, near = split_tenor(contracts)
@@ -1313,7 +1432,8 @@ def build_views(contracts: list[dict], spot: float,
                 flow_kind: str = "options",
                 tape_prev: Optional[dict] = None,
                 anchor_spot: Optional[float] = None,
-                now: Optional[datetime] = None) -> dict:
+                now: Optional[datetime] = None,
+                prev_pin: Optional[float] = None) -> dict:
     """Pure assembler: the six slides + the consumer-facing magnet/regime. `magnet`
     is the 0DTE pin (B) when present, else the regime read's flip — that is what the
     reversion lens measures runway to. `minutes_to_close` sharpens the 0DTE charm
@@ -1344,7 +1464,7 @@ def build_views(contracts: list[dict], spot: float,
     use_0dte = REGIME_0DTE and A0["regime"] != "unknown"
     R = A0 if use_0dte else A
     R_set = zero if use_0dte else contracts             # the contract set R was computed on
-    B = slide_0dte(zero, spot, minutes_to_close)
+    B = slide_0dte(zero, spot, minutes_to_close, prev_pin=prev_pin)   # H4: hysteresis witness
     C = slide_tenor_walls(near, spot)
     E = reconcile_sign(R["regime"], aggressor_flow, flow_conflict, flow_kind)
     F = slide_flows(contracts, spot, minutes_to_close=minutes_to_close)   # vanna/charm flows
@@ -1550,6 +1670,8 @@ class _Cache:
     anchor_spot: float          # spot the snapshot was pulled at (for the move trigger)
     ts: datetime
     source: str
+    coverage: Optional[dict] = None   # N7: the native fetch's own coverage verdict —
+                                      # rides the LIVE engine leg, not just the shadow read
 
 
 _CACHE: dict[str, _Cache] = {}
@@ -1641,7 +1763,8 @@ def _rescaled_chain(ticker: str, chain_lookup: Callable[[str], Optional[dict]],
     sigma = (idx_spot * atm_iv / (252.0 ** 0.5)) if (atm_iv and atm_iv > 0) else idx_spot * 0.01
     return _Cache(contracts=contracts, spot=round(idx_spot, 4), sigma=round(sigma, 4),
                   anchor_spot=round(idx_spot, 4), ts=now,
-                  source=("spy_proxy×%.4f" % scale) if proxy else "native")
+                  source=("spy_proxy×%.4f" % scale) if proxy else "native",
+                  coverage=(chain.get("meta") or {}).get("coverage") if native_served else None)
 
 
 def should_refresh(cache: Optional[_Cache], now: datetime,
@@ -1666,7 +1789,8 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
               chain_lookup: Optional[Callable[[str], Optional[dict]]] = None,
               spot_lookup: Optional[Callable[[str], Optional[float]]] = None,
               native_lookup=_NATIVE_UNSET,
-              cache: Optional[dict] = None) -> Optional[dict]:
+              cache: Optional[dict] = None,
+              prev_pin: Optional[float] = None) -> Optional[dict]:
     """GRAVITY ENGINE orchestrator: fetch rarely, re-price every scan, produce
     the six slides. Refreshes the cached chain only on a trigger, then re-prices the
     six slides at `live_spot`. Returns the views dict (+ meta) or None if no chain.
@@ -1697,11 +1821,13 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
     views = build_views(entry.contracts, spot, aggressor_flow=aggressor_flow,
                         minutes_to_close=mtc, sigma=entry.sigma,   # σ arms the shove test
                         flow_conflict=flow_conflict,               # source-scaled tape veto
-                        flow_kind=flow_kind)                       # + its sign semantics
+                        flow_kind=flow_kind,                       # + its sign semantics
+                        prev_pin=prev_pin)                         # H4: last diary pin (hysteresis)
     age = round((now - entry.ts).total_seconds() / 60.0, 2)
     views["meta"] = {"gex_source": entry.source, "snapshot_spot": entry.anchor_spot,
                      "age_min": age, "repriced": live_spot is not None and live_spot != entry.spot,
-                     "sigma": entry.sigma, "minutes_to_close": mtc}
+                     "sigma": entry.sigma, "minutes_to_close": mtc,
+                     "native_coverage": entry.coverage}   # N7: live-leg coverage verdict
     # N7: when the read is NOT native and the native feed rejected its last fetch on
     # coverage, say so — "proxy because the native book came back half-fetched" is a
     # different fact from "proxy because the token died", and the diary must carry it.

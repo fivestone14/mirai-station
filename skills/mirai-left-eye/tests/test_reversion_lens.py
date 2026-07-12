@@ -39,6 +39,33 @@ def test_classify_regime_needs_two_agreeing():
     assert R.classify_regime("positive", 0.6, 1.3, 1.05)["regime"] == "neutral"
 
 
+def test_classify_regime_tie_guard_blocks_pinning_on_balanced_book():
+    # H3 caveat (2026-07-12): a BALANCED book is not a NEUTRAL book — net gamma at
+    # spot ~0 is a hair-trigger. With the gamma vote abstaining on a tie, two quiet
+    # tape voters must NOT stamp "pinning" on the highest-breakout-risk book.
+    out = R.classify_regime("unknown", 0.6, 0.8, None)   # two pin votes, no gamma
+    assert out["regime"] == "neutral" and out["tie_guard"] is True
+    assert out["confidence"] <= 0.5
+    # a real trending read on a tie book still speaks (the guard is pin-specific)
+    out2 = R.classify_regime("unknown", 1.2, 1.3, 1.05)
+    assert out2["regime"] == "trending" and out2["tie_guard"] is False
+    assert out2["confidence"] <= 0.5                     # ...but never over-confident
+    # with a known sign nothing changes
+    out3 = R.classify_regime("positive", 0.6, 0.8, 0.92)
+    assert out3["regime"] == "pinning" and out3["tie_guard"] is False
+
+
+def test_sigma_ruler_never_shrinks_on_decay():
+    # N10: the same 40 points must not read 0.49σ at 9:30 and 1.35σ at 3:55 when
+    # nothing moved but theta decay — the ruler holds the day's opening yardstick...
+    assert R.sigma_ruler(81.0, 29.5) == 81.0
+    # ...but a REAL vol spike widens it (a 2pm crash is a genuinely bigger day)
+    assert R.sigma_ruler(81.0, 120.0) == 120.0
+    # first scan of the day: the live σ IS the anchor
+    assert R.sigma_ruler(None, 81.0) == 81.0
+    assert R.sigma_ruler(None, None) is None
+
+
 def test_reversion_extreme_catches_capitulation_long():
     # 7347.6, prior 7472.79, sigma 95, put_wall 7300, pinning, last bar turning up
     rev = R.reversion_extreme(7347.6, 7472.79, 95.0, 7400, 7300, "pinning",
