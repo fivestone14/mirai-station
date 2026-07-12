@@ -255,10 +255,11 @@ def promotion_gate(min_outcomes: int = 12, promote_at: float = 0.58,
         decided = [d for d in decided if d[1] == era]
     # N18 GRADING-ERA SEGMENTATION (2026-07-12): hold-scaled barriers (grade_v=2) and
     # the old daily-σ barriers are different exams — a record must never pool both.
-    # Same rule as the prompt era: only days graded under the NEWEST era count.
-    if decided and decided[-1][2] is not None:
-        gv_era = decided[-1][2]
-        decided = [d for d in decided if d[2] == gv_era]
+    # EXPLICIT era filter (verify round 3): once ANY grade_v=2 day exists, only
+    # grade_v=2 days count — keying off the newest row alone let a stale-code deploy
+    # append one unversioned day and silently re-pool every era (demonstrated).
+    if any(d[2] == 2 for d in decided):
+        decided = [d for d in decided if d[2] == 2]
     hit_days = sum(1 for h, _, _ in decided if h)
     miss_days = len(decided) - hit_days
     n = hit_days + miss_days

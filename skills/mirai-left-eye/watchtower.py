@@ -93,8 +93,9 @@ PROMPT_VERSION = "wt-5"     # bump on ANY prompt change — a bump resets the re
 # afternoon drift call was a coin-flip, likely read inverted). (2) The walls in
 # dealer_map_gravity are now TODAY'S 0DTE gamma walls (H2 flipped the telemetry
 # preference); the structural 1-7DTE band walls ride beside them, and a compact
-# dated_structure block (far monthlies/quarter-end, σ-distances, unsigned, ≤3σ
-# only) gives the tower the outer terrain for the first time. Payload change =
+# dated_structure block (far monthlies/quarter-end, σ-distances, unsigned;
+# H8 v2 07-12: ALL walls ride ≤15σ, far ones tagged FAR — the ≤3σ filter had
+# dropped every real dated wall every day) gives the tower the outer terrain. Payload change =
 # era bump: wt-3 rows judged scenes without these facts — never mix ledgers.
 # wt-3 (2026-07-10): payload-era bump for the magnet-source fixes — the gravity prior
 # (magnet_sd/pull_word) now anchors on the TRUE always-on gex_views magnet instead of
@@ -485,8 +486,8 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # the nightly sidecar — outer terrain the tower was previously blind to.
     # Unsigned LOCATIONS only (assumed-sign is wrong ~44% out there; magnitude
     # deliberately not carried), σ-distances only, and only walls within reach
-    # (≤3σ) — a 9σ crash strike in the payload would re-teach the exact
-    # far-wall anchoring H2 just removed. age_days rides along so a stale wall
+    # (far ones TAGGED, ≤15σ cap — H8 v2) so a crash strike can't silently
+    # re-teach the far-wall anchoring H2 removed. age_days rides along so a stale wall
     # is never mistaken for a fresh fact.
     # H8 v2 (2026-07-12): the ≤3σ reach filter dropped EVERY real dated wall EVERY day
     # (live walls sit 4.7-13.8σ out) — the map got the quarterly but the Watchtower

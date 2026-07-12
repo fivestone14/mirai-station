@@ -491,3 +491,40 @@ def test_promotion_gate_break_lens_reads_its_own_ledgers(tmp_path):
     assert not ok and "too thin" in why                       # gated: no record yet
     assert pab.promotion_gate(hist=hist, record_key="break_lens_pre_gates")[0] is True
     assert pab.promotion_gate(hist=hist)[0] is False          # fade lens: untouched
+
+
+# --- N4: the stance grader (the prison-yard axis, finally scored) -----------------
+def test_grade_stance_fight_and_settle_scored_against_eruption():
+    # judged rows: one FIGHT call before a real eruption (right), one SETTLE call
+    # before the same eruption (wrong), one no_read (abstains), one with an
+    # incomplete window (abstains). Band = 0.30·√(60/390)·σ ≈ 0.1177σ → 11.2 pts at σ95.
+    sig = 95.0
+    rows = [
+        {"ts": T0.isoformat(), "spot": 7500.0, "sigma": sig,
+         "watchtower": {"fired": True, "direction": "call", "stance": "fight",
+                        "horizon_min": 60, "votes": {"n": 3}}},
+        {"ts": T0.isoformat(), "spot": 7500.0, "sigma": sig,
+         "watchtower": {"fired": False, "direction": None, "stance": "settle",
+                        "horizon_min": 60, "votes": {"n": 1}}},
+        {"ts": T0.isoformat(), "spot": 7500.0, "sigma": sig,
+         "watchtower": {"fired": False, "direction": None, "stance": "no_read",
+                        "horizon_min": 60, "votes": {"n": 1}}},
+    ]
+    # bars: an eruption — 30 pts up (~0.32σ) within the hour, window complete
+    bars = [{"ts": (T0 + timedelta(minutes=m)).isoformat(),
+             "high": 7500.0 + m, "low": 7500.0 - 2.0, "close": 7500.0 + m}
+            for m in (5, 15, 30, 45, 58)]
+    card = pab._grade_stance(rows, lambda tk: bars if tk == "SPX" else [])
+    assert card is not None
+    assert card["n"] == 2                              # no_read abstained
+    assert card["fight"] == {"n": 1, "wins": 1}        # eruption → fight was right
+    assert card["settle"] == {"n": 1, "wins": 0}       # settle was wrong
+    assert card["acc"] == 0.5
+    # containment day: nothing leaves the band → settle right, fight wrong
+    calm = [{"ts": (T0 + timedelta(minutes=m)).isoformat(),
+             "high": 7502.0, "low": 7498.0, "close": 7500.0}
+            for m in (5, 15, 30, 45, 58)]
+    card2 = pab._grade_stance(rows, lambda tk: calm if tk == "SPX" else [])
+    assert card2["fight"] == {"n": 1, "wins": 0} and card2["settle"] == {"n": 1, "wins": 1}
+    # no bars → None (a point-bar/blind day must not fabricate a stance record)
+    assert pab._grade_stance(rows, lambda tk: []) is None
