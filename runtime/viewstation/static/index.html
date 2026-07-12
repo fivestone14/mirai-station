@@ -1143,16 +1143,18 @@ function gxBuild(){
      <g id="axisG">${axis}</g>
      <rect id="spotLane" x="${X.x0}" width="0" style="fill:var(--iris);opacity:0"/>
      <g id="datedOIG"></g>
-     <g id="barsG">${bars}</g>
-     <!-- zero axis of the diverging bars (UW layout): − grows left, + grows right -->
+     <!-- zero axis of the diverging bars (UW layout): − grows left, + grows right.
+          UNDER barsG: a floored 1.5px hairline sits exactly at the axis, and the
+          axis drawn on top erased it (pressure test 07-12) — bars must win. -->
      <line id="gxZero" x1="${(X.x0+X.barMax/2).toFixed(1)}" x2="${(X.x0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>
+     <g id="barsG">${bars}</g>
      <g id="datedG"></g>
      <g id="datedOILgdG"></g>
      ${lvl}
      <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">log</tspan> · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►</text>
+     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan> · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
@@ -1199,24 +1201,35 @@ function gxPaint(){
   const bsrc=document.getElementById('bar-src');
   if(bsrc){ bsrc.textContent=measured?'measured':'MODELED (synthetic)';
             bsrc.style.fill=measured?'var(--ink-dim)':'var(--coral)'; }
-  const bscale=document.getElementById('bar-scale'); if(bscale) bscale.textContent=measured?'log':'linear';
-  let mx=1e-6; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; }
+  const useLog=measured&&gxLogOn();   // 07-12 ruling: linear pure-net is the DEFAULT; log is the opt-in
+  if(GX_MEASURED!==measured){ GX_MEASURED=measured; try{ gxOverview(); }catch(e){} }   // chip gates on measured (never a dead switch)
+  const bscale=document.getElementById('bar-scale');
+  if(bscale){ bscale.textContent=useLog?'log':(measured?'linear · true ratio':'linear');
+              bscale.style.fill=useLog?'var(--lantern)':'var(--ink-dim)'; }
+  let mx=1e-6, sAbs=0; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; sAbs+=a; }
+  // concentration nudge (pressure test 07-12): when one strike carries >70% of
+  // the whole |γ| field under linear, say so — the hairline forest is the true
+  // shape, but the reader should know the Log view exists for the texture
+  const bnudge=document.getElementById('bar-nudge');
+  if(bnudge) bnudge.textContent=(measured&&!useLog&&sAbs>0&&mx/sAbs>0.7)?' · γ concentrated at ATM — Log shows texture':'';
   // Live bars keep the FULL row height always — the dated layer lives in its own
   // ladder gutter now (the split-row sub-lane died with the wash+tick marks), so
   // the hero gets stronger when the layer is on, not thinner.
   const MBH=Math.max(2.5, MROWH*0.72);   // bar thickness < row pitch → visible gaps
   // DIVERGING LAYOUT (UW-style, 2026-07-12): one zero axis mid-lane — net-negative
   // (push) grows LEFT, net-positive (pin) grows RIGHT, strikes on the price axis.
-  // AMPLITUDE: measured bars are LOG-scaled across ~5 decades — the 0DTE ATM
-  // singularity (07-10 close: −36,426 at the ATM strike vs ±0.2 at the band edge,
-  // top-3 ATM strikes = 86% of all |γ|) makes linear max-normalization erase every
-  // other strike; log keeps the near-money texture readable. The modeled fallback
-  // stays LINEAR (its synthetic Gaussian spans <2 decades — log flattens it into
-  // sameness); the caption discloses which scale is live. True zero draws nothing.
+  // AMPLITUDE (07-12 ruling): DEFAULT = pure net ÷ single max, LINEAR — the only
+  // scale that keeps cross-strike magnitude honest (a 1/9-size put shelf must
+  // never draw equal to the call pin; per-SIDE normalization is banned for
+  // exactly that false reading). On 0DTE concentration days the ATM singularity
+  // (07-10 close: −36,426 at ATM vs ±0.2 at the band edge) dominating the lane
+  // IS the true shape of the book; the LOG toggle (γ scale chip) compresses ~5
+  // decades to read the weak side's texture — ordering kept, ratios compressed,
+  // caption discloses it. Modeled fallback is always linear. Zero draws nothing.
   const xMid=X.x0+X.barMax/2, half=X.barMax/2-2;
   const EPS=1e-5, LDEN=Math.log(1+1/EPS);
   const amp=v=>{ const a=Math.abs(v)/mx; if(a<=0) return 0;
-    return measured ? Math.log(1+a/EPS)/LDEN : a; };
+    return useLog ? Math.log(1+a/EPS)/LDEN : a; };
   MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], v=vals[i], L=amp(v),
       pos=measured?(v>=0):(k>=D.flip);   // measured → side+color by SIGN of net γ (pins vs pushes); modeled → by side of flip
     rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
@@ -1312,6 +1325,17 @@ async function fetchDatedBook(){
 }
 let DOI_ON=(function(){ try{ return localStorage.getItem('gx.datedOI')==='1'; }catch(e){ return false; } })();
 function datedOIOn(){ return DOI_ON; }   // cached — gxPaint reads it per frame
+// γ-bar scale (07-12 ruling): default LINEAR (pure net ÷ single max — honest
+// cross-strike magnitude); Log = opt-in texture view for the 0DTE ATM
+// singularity. Persisted per device, mirrors the DOI_ON pattern.
+let GXLOG=(function(){ try{ return localStorage.getItem('gx.logScale')==='1'; }catch(e){ return false; } })();
+let GX_MEASURED=null;   // last paint's measured/modeled state — gates the scale chip
+function gxLogOn(){ return GXLOG; }
+function toggleGxLog(){
+  GXLOG=!GXLOG;
+  try{ localStorage.setItem('gx.logScale',GXLOG?'1':'0'); }catch(e){}
+  gxOverview(); gxPaint();
+}
 function datedOIAvail(){               // book present AND young enough to draw —
   const b=DBOOK.book;                  // the chip must never be a dead switch
   if(!b||!Array.isArray(b.bands)||!b.bands.length) return false;
@@ -1616,10 +1640,18 @@ function gxOverview(){
   const doiChip=(typeof datedOIAvail==='function'&&datedOIAvail())
     ? `<button type="button" class="gx-chip gx-toggle" onclick="toggleDatedOI()" aria-pressed="${datedOIOn()}" title="Per-strike dated net GEX (call−put, assumed-sign like the live bars; √ width), under the live gamma bars"><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Dated γ</b><i>${datedOIOn()?'<span style="color:var(--jade)">On</span>'+((t=>t?' · '+t:'')(_dglBands().map(_dglHead).join('·'))):'Off · strikes × expiry'}</i></span></button>`
     : '';
+  // γ-scale toggle (07-12 ruling): LINEAR pure-net ÷ single max is the DEFAULT —
+  // the only scale that keeps cross-strike magnitude honest (pins vs pushes at
+  // true ratio). Log is the opt-in for reading the weak side through the 0DTE
+  // ATM singularity; per-side normalization is banned (it made a 1/9-size put
+  // shelf look equal to the call pin — a false reading).
+  // offered only when the bars are MEASURED (never a dead switch — the modeled
+  // Gaussian is always linear, so the chip would lie there)
+  const scaleChip=GX_MEASURED?`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLog()" aria-pressed="${gxLogOn()}" title="Measured γ-bar length scale. Linear (default) = pure net ÷ single max: honest cross-strike magnitude — the ATM strike dominating IS the true 0DTE shape. Log = compresses ~5 decades so the weak side stays readable on concentration days; magnitude ratios are compressed, ordering kept."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>γ scale</b><i>${gxLogOn()?'<span style="color:var(--lantern)">Log</span> · texture':'Linear · true ratio'}</i></span></button>`:'';
   el.innerHTML=`
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)} · ${flow}</i></span>
     <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${datedChips}${wallsChip}${doiChip}`;
+    ${datedChips}${wallsChip}${doiChip}${scaleChip}`;
 }
 function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
 
