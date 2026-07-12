@@ -880,6 +880,9 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         telemetry = {
             "ts": now.isoformat(), "ticker": ticker, "spot": spot,
             "gex_source": gex_source, "gamma_sign": g_sign,
+            # N7: WHY the read is not native, when the feed itself said why (a proxy row
+            # caused by a half-fetched native book must not read like a dead token)
+            "gex_source_note": _meta.get("native_reject"),
             "gamma_flip": gflip,
             "call_wall": call_wall, "put_wall": put_wall, "sigma": sigma,
             # outer terrain (H2): the structural 1-7DTE band walls the near walls
@@ -1075,6 +1078,9 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                         "net_by_strike": b0.get("net_by_strike"),   # measured per-strike field (native mirror)
                         "net_by_strike_tenor": ((tv.get("slides") or {}).get("C_tenor") or {}).get("net_by_strike"),
                         "aggressor_flow": flow, "flow_available": flow is not None,
+                        # N7: which expiry×sides the fetch actually filled — a book that
+                        # shipped degraded (1-7DTE side missing) must say so on the row
+                        "native_coverage": (tv.get("native_meta") or {}).get("coverage"),
                         "source": "theta_native"}
                 # GAMMA-OWNERSHIP TAPE (2026-07-13) — RECORDED, CONSUMED BY NOTHING.
                 # Recorded on the NATIVE leg only: the native chain (and so the per-strike
@@ -1096,6 +1102,11 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                     "tape_n_strikes": _t.get("n_strikes"),
                     "dgamma_by_strike": _t.get("dgamma_by_strike"),    # flow-side twin of net_by_strike
                     "gamma_tape_v": _t.get("gamma_tape_v"),
+                    # N5: the WINDOWED bullish lean (4-30 min, all annotated 0DTE strikes) —
+                    # what "the tape right now" is. aggressor_flow above stays the whole-day
+                    # cumulative for A/B continuity and must not be worded as live.
+                    "flow_recent": _t.get("flow_recent"),
+                    "flow_recent_gross": _t.get("flow_recent_gross"),
                 })
                 pin = tv.get("magnet")
                 if pin is not None and sigma:

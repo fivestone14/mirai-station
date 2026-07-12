@@ -218,13 +218,18 @@ if monthly_root and monthly_root != %(root)r:
 if not spot:
     return {'spot': None, 'contracts': []}
 lo, hi = spot * 0.92, spot * 1.08
-out, chunks, seen = [], 0, set()
+out, chunks, seen, sides = [], 0, set(), []
 for sym, exps in roots.items():
     for exp in exps:
         dte = (_dt.date.fromisoformat(exp) - today).days
         for side in ('call', 'put'):
             rows = await _chunk(sym, exp, side, lo, hi)
             chunks += 1
+            # N7: per-expiry x side row count — the client-side coverage guard's
+            # raw material. An empty side here is a DOCUMENTED server behavior,
+            # and without this ledger it is indistinguishable from an empty book.
+            sides.append({'root': sym, 'exp': exp, 'side': side,
+                          'rows': len(rows), 'dte': dte})
             for c in rows:
                 s = _side(c.get('type'))
                 if s != side:
@@ -242,7 +247,7 @@ for sym, exps in roots.items():
                             'vega': g.get('vega'), 'bid': c.get('bid'),
                             'ask': c.get('ask'), 'mark': c.get('mark'),
                             'bid_size': c.get('bid_size'), 'ask_size': c.get('ask_size')})
-return {'spot': spot, 'contracts': out, 'chunks': chunks,
+return {'spot': spot, 'contracts': out, 'chunks': chunks, 'sides': sides,
         'expiries': sorted(set(e for es in roots.values() for e in es))}
 """
 
@@ -320,6 +325,50 @@ for p in (g.get('points') or []):
         pts.append({'timestamp': ts, 'underlying_price': up})
 return {'points': pts}
 """
+
+
+# --- N7 (2026-07-12): MINIMUM-COVERAGE GUARD --------------------------------------------
+# A single expiry×side chunk coming back empty is a DOCUMENTED server behavior — and before
+# this guard the book still had a spot, still had thousands of contracts, still passed every
+# check and still said "native" while the regime flipped from short- to long-gamma on the
+# missing half. The guard has two teeth:
+#   * a dead/thin side of TODAY'S (weekly-root) 0DTE book REJECTS the fetch — the tradeable
+#     book must never drive the map half-blind; the caller degrades to the labeled proxy
+#     path (or its stale cache) and LAST_REJECT says why;
+#   * a dead/thin side elsewhere (1-7DTE) DEGRADES: the book ships, but meta.coverage says
+#     exactly which sides are missing so no consumer can claim it was whole.
+MIN_SIDE_ROWS = 5          # a side below this while its twin is fat is amputated, not thin
+THIN_TWIN_RATIO = 5        # "fat twin" = twin has ≥ THIN_TWIN_RATIO × MIN_SIDE_ROWS rows
+LAST_REJECT: Optional[dict] = None   # {"ts", "reason", ...} — read by GexBox for the diary
+
+
+def _coverage(sides: Optional[list], weekly_root: str, today_iso: str) -> dict:
+    """Pure coverage verdict over the per-expiry×side row ledger. Backward-compatible:
+    a response without `sides` (older server code) reads as complete."""
+    per: dict = {}
+    for s in sides or []:
+        try:
+            key = (s.get("root"), s.get("exp"))
+            per.setdefault(key, {})[s.get("side")] = int(s.get("rows") or 0)
+        except Exception:
+            continue
+    missing = []
+    for (root, exp), d in sorted(per.items(), key=lambda kv: (kv[0][1] or "", kv[0][0] or "")):
+        for side in ("call", "put"):
+            n = d.get(side, 0)
+            twin = d.get("put" if side == "call" else "call", 0)
+            dead = (n == 0)
+            thin = (0 < n < MIN_SIDE_ROWS and twin >= THIN_TWIN_RATIO * MIN_SIDE_ROWS)
+            if dead or thin:
+                missing.append({"root": root, "exp": exp, "side": side,
+                                "rows": n, "twin_rows": twin})
+    zero_dead = any(m["root"] == weekly_root and m["exp"] == today_iso for m in missing)
+    has_zero = any(root == weekly_root and exp == today_iso for (root, exp) in per)
+    return {"complete": not missing, "missing": missing or None,
+            "zero_dte_dead": zero_dead,
+            # discovery itself dropped today's weekly expiry — legitimate on holidays/
+            # weekends, suspicious inside a trading session; flagged, never guessed at
+            "no_zero_dte": (not has_zero) if per else None}
 
 
 def _fill_gamma(contracts: list, spot: float) -> None:
@@ -423,6 +472,15 @@ def native_chain(ticker: str) -> Optional[dict]:
         if not res or res.get("spot") is None or not res.get("contracts"):
             return None
         spot, contracts = res["spot"], res["contracts"]
+        # N7: coverage verdict BEFORE anything downstream touches the book. A dead/thin
+        # side of today's weekly 0DTE book means the ONE book the regime reads is half
+        # missing — reject the fetch outright; the caller's degrade path is labeled.
+        cov = _coverage(res.get("sides"), root, today.isoformat())
+        if cov.get("zero_dte_dead"):
+            global LAST_REJECT
+            LAST_REJECT = {"ts": now.isoformat(), "reason": "coverage",
+                           "missing": cov.get("missing")}
+            return None
         # OpEx-Friday guard: on a monthly/quarterly expiration the AM-settled index
         # monthly (SPX root) shares TODAY's date but SETTLES AT THE 9:30 OPEN — it
         # exerts no dealer-hedging gamma intraday, yet carries ~10-50x the SPXW weekly
@@ -472,7 +530,7 @@ def native_chain(ticker: str) -> Optional[dict]:
             pass                                   # best-effort: pin falls back to volume
         out = {"spot": spot, "contracts": contracts,
                "meta": {"chunks": res.get("chunks"), "expiries": res.get("expiries"),
-                        "am_settled_dropped": am_dropped, **iv_meta}}
+                        "am_settled_dropped": am_dropped, "coverage": cov, **iv_meta}}
         _CHAIN_CACHE[ticker] = (now, out)
         return out
 

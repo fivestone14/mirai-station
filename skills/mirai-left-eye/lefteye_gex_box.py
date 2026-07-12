@@ -120,6 +120,16 @@ GAMMA_TAPE_CONSUME = False         # DEAD-MAN SWITCH. While False nothing may re
                                    # accidental consumer ABSTAINS rather than firing on a
                                    # guessed number.
 GAMMA_TAPE_V = 1                   # weighting era: contracts × live γ (cf. pin_signed_v)
+# --- N5 (2026-07-12): the DIRECTION marginal that rides the same snapshots ------------
+# aggressor_flow (the tower's only tape-aggression number) is a WHOLE-DAY cumulative at ONE
+# strike: it never decays and never turns — at 15:30 on a day whose last 45 minutes were pure
+# selling it still reads "+0.03, buyers". flow_recent is the same bullish-lean question
+# (buy calls / sell puts = +) asked over the 4-30 min marginal window, across ALL annotated
+# 0DTE strikes, in DOLLARS (the unit aggressor_flow already speaks; premium decay is
+# negligible inside a ≤30-min window). It shares gamma_tape's snapshot differencing and its
+# clock; it is a RECORDED field — consumers switch to it deliberately, not silently.
+FLOW_RECENT_MIN_GROSS = 250_000.0  # $ tagged in the window below which the marginal abstains
+                                   # (a thin bucket must print None, not a ±1.0 of four ticks)
 # NEVER inherit FLOW_CONFLICT (0.6) as this axis's trip level. It lives on the DIRECTION
 # axis and is meaningless here (measured cumulative range ±0.01). FLOW_CONFLICT_LOB was cut
 # to 0.25 for exactly this reason — a threshold borrowed across axes is how guards die.
@@ -568,6 +578,7 @@ def gamma_tape(zero_dte: list[dict], spot: float,
     num_f = den_f = 0.0             # γ frozen at anchor_spot — reprice-free control
     num_m = den_m = 0.0             # MARGINAL — the wind-change signal (γ-weighted ratio)
     num_d = den_d = 0.0             # dollar A/B control (the WRONG weighting)
+    num_dir = den_dir = 0.0         # N5: DIRECTION marginal — bullish lean $ in the window
     # RAW contract counts, kept separately from the γ-weighted sums above. The thin-tape
     # floors are stated in CONTRACTS and must be compared against contracts: γ is ~0.01, so
     # a γ-weighted "count" of a real 1000-contract interval is ~10 and would fail any
@@ -591,7 +602,10 @@ def gamma_tape(zero_dte: list[dict], spot: float,
         bq, sq = float(bq), float(sq)
         net_q, gross_q = bq - sq, bq + sq
         n += 1
-        q_now[(round(k, 4), c.get("right"))] = (bq, sq)
+        b_dol, s_dol = float(c.get("flow_buy") or 0), float(c.get("flow_sell") or 0)
+        # 4-tuple since N5: contracts feed the γ-ownership marginal, dollars feed the
+        # DIRECTION marginal. Old 2-tuple snapshots stay readable (dollar leg skips).
+        q_now[(round(k, 4), c.get("right"))] = (bq, sq, b_dol, s_dol)
 
         num += g * net_q
         den += g * gross_q
@@ -616,6 +630,13 @@ def gamma_tape(zero_dte: list[dict], spot: float,
                 num_m += g * (dbq - dsq)
                 den_m += g * (dbq + dsq)
                 q_interval += dbq + dsq
+                # N5 direction marginal: bullish lean of the WINDOW's dollars — buy calls /
+                # sell puts = +, the mirror = −. Same clamp-at-0 restatement guard.
+                if len(pq) >= 4:
+                    db_d, ds_d = max(0.0, b_dol - pq[2]), max(0.0, s_dol - pq[3])
+                    sgn = 1.0 if c.get("right") == "call" else -1.0
+                    num_dir += sgn * (db_d - ds_d)
+                    den_dir += db_d + ds_d
 
         tagged += gross_q
         untagged += float(c.get("flow_mid_q") or 0) + float(c.get("flow_unk_q") or 0)
@@ -645,11 +666,19 @@ def gamma_tape(zero_dte: list[dict], spot: float,
     marginal_ok = (q_interval >= TAPE_MIN_INTERVAL_CONTRACTS and den_m > 0
                    and interval_min is not None
                    and MOTION_MIN_LOOKBACK_MIN <= interval_min <= MOTION_MAX_LOOKBACK_MIN)
+    # N5: the direction marginal has its own gross floor ($) but shares the clock window —
+    # a valid window with thin tagged dollars abstains rather than printing noise.
+    dir_ok = (den_dir >= FLOW_RECENT_MIN_GROSS and interval_min is not None
+              and MOTION_MIN_LOOKBACK_MIN <= interval_min <= MOTION_MAX_LOOKBACK_MIN)
 
     def _r(x, d):
         return round(x / d, 5) if d > 0 else None
 
     return {
+        # N5: WINDOWED bullish lean — what "the tape right now" actually is. Whole-day
+        # aggressor_flow rides beside it for A/B continuity; it must not be worded as live.
+        "flow_recent": _r(num_dir, den_dir) if dir_ok else None,
+        "flow_recent_gross": round(den_dir, 0),
         "gamma_tape": _r(num, den),                  # cumulative level (day)
         "gamma_tape_spot": _r(num_s, den_s),         # ±0.5σ band — the question the regime asks
         "gamma_tape_fixed": _r(num_f, den_f),        # γ frozen at anchor_spot (reprice control)
@@ -1673,6 +1702,19 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
     views["meta"] = {"gex_source": entry.source, "snapshot_spot": entry.anchor_spot,
                      "age_min": age, "repriced": live_spot is not None and live_spot != entry.spot,
                      "sigma": entry.sigma, "minutes_to_close": mtc}
+    # N7: when the read is NOT native and the native feed rejected its last fetch on
+    # coverage, say so — "proxy because the native book came back half-fetched" is a
+    # different fact from "proxy because the token died", and the diary must carry it.
+    if entry.source != "native":
+        try:
+            import native_gex_feed as _ngf
+            rej = getattr(_ngf, "LAST_REJECT", None)
+            if rej and rej.get("ts"):
+                age_s = (now - datetime.fromisoformat(rej["ts"])).total_seconds()
+                if 0 <= age_s <= 900:
+                    views["meta"]["native_reject"] = rej.get("reason")
+        except Exception:
+            pass
     return views
 
 

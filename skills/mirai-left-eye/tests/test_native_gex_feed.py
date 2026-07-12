@@ -51,6 +51,91 @@ def test_aggressor_flow_parse_clamp_and_none(monkeypatch):
     assert tf.aggressor_flow("SPX", 0.0) is None          # no spot → no query
 
 
+class TestCoverageGuard:
+    """N7 (2026-07-12) — the minimum-coverage guard. One empty expiry×side chunk is a
+    DOCUMENTED server behavior, and before this guard the half-book still had a spot,
+    still had thousands of contracts, still passed every check and still said 'native'
+    while the regime flipped on the missing half."""
+
+    def _today(self):
+        return tf._today_iso()
+
+    def test_dead_0dte_side_rejects(self, monkeypatch):
+        today = self._today()
+        fake = {"spot": 7500.0,
+                "contracts": [{"right": "call", "strike": 7500, "dte": 0, "iv": 0.12,
+                               "gamma": None, "open_interest": 100, "volume": 5000}],
+                "sides": [{"root": "SPXW", "exp": today, "side": "call", "rows": 120, "dte": 0},
+                          {"root": "SPXW", "exp": today, "side": "put", "rows": 0, "dte": 0}]}
+        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        assert tf.native_chain("SPX") is None            # the half-book must not serve
+        assert tf.LAST_REJECT and tf.LAST_REJECT["reason"] == "coverage"
+        assert any(m["side"] == "put" for m in tf.LAST_REJECT["missing"])
+
+    def test_thin_0dte_side_vs_fat_twin_rejects(self, monkeypatch):
+        # 3 puts against 120 calls is an amputated fetch, not a thin book
+        today = self._today()
+        fake = {"spot": 7500.0,
+                "contracts": [{"right": "call", "strike": 7500, "dte": 0, "iv": 0.12,
+                               "gamma": None, "open_interest": 100, "volume": 5000}],
+                "sides": [{"root": "SPXW", "exp": today, "side": "call", "rows": 120, "dte": 0},
+                          {"root": "SPXW", "exp": today, "side": "put", "rows": 3, "dte": 0}]}
+        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        assert tf.native_chain("SPX") is None
+
+    def test_missing_tenor_side_degrades_not_rejects(self, monkeypatch):
+        # a dead 3DTE side must NOT kill the book — it ships flagged incomplete
+        today = self._today()
+        fake = {"spot": 7500.0,
+                "contracts": [{"right": "call", "strike": 7500, "dte": 0, "iv": 0.12,
+                               "gamma": None, "open_interest": 100, "volume": 5000}],
+                "sides": [{"root": "SPXW", "exp": today, "side": "call", "rows": 120, "dte": 0},
+                          {"root": "SPXW", "exp": today, "side": "put", "rows": 118, "dte": 0},
+                          {"root": "SPXW", "exp": "2099-01-08", "side": "call", "rows": 90, "dte": 3},
+                          {"root": "SPXW", "exp": "2099-01-08", "side": "put", "rows": 0, "dte": 3}]}
+        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        out = tf.native_chain("SPX")
+        assert out is not None
+        cov = out["meta"]["coverage"]
+        assert cov["complete"] is False and cov["zero_dte_dead"] is False
+        assert any(m["exp"] == "2099-01-08" and m["side"] == "put" for m in cov["missing"])
+
+    def test_healthy_book_is_complete(self, monkeypatch):
+        today = self._today()
+        fake = {"spot": 7500.0,
+                "contracts": [{"right": "call", "strike": 7500, "dte": 0, "iv": 0.12,
+                               "gamma": None, "open_interest": 100, "volume": 5000}],
+                "sides": [{"root": "SPXW", "exp": today, "side": "call", "rows": 120, "dte": 0},
+                          {"root": "SPXW", "exp": today, "side": "put", "rows": 118, "dte": 0}]}
+        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        out = tf.native_chain("SPX")
+        assert out["meta"]["coverage"] == {"complete": True, "missing": None,
+                                           "zero_dte_dead": False, "no_zero_dte": False}
+
+    def test_pre_sides_responses_stay_served(self, monkeypatch):
+        # backward compat: an older server response without `sides` must not be rejected
+        fake = {"spot": 7500.0,
+                "contracts": [{"right": "call", "strike": 7500, "dte": 0, "iv": 0.12,
+                               "gamma": None, "open_interest": 100, "volume": 5000}]}
+        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        out = tf.native_chain("SPX")
+        assert out is not None
+        assert out["meta"]["coverage"]["complete"] is True
+
+    def test_no_zero_dte_expiry_is_flagged_not_rejected(self, monkeypatch):
+        # weekend/holiday: discovery legitimately returns no 0DTE expiry — flag, don't kill
+        fake = {"spot": 7500.0,
+                "contracts": [{"right": "call", "strike": 7500, "dte": 2, "iv": 0.12,
+                               "gamma": None, "open_interest": 100, "volume": 5000}],
+                "sides": [{"root": "SPXW", "exp": "2099-01-07", "side": "call", "rows": 90, "dte": 2},
+                          {"root": "SPXW", "exp": "2099-01-07", "side": "put", "rows": 88, "dte": 2}]}
+        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        out = tf.native_chain("SPX")
+        assert out is not None
+        assert out["meta"]["coverage"]["no_zero_dte"] is True
+        assert out["meta"]["coverage"]["zero_dte_dead"] is False
+
+
 def test_root_mapping_uses_spxw():
     assert tf.ROOT["SPX"] == "SPXW"      # 0DTE dailies live under SPXW, not SPX
     assert set(tf.ROOT) == {"SPX"}       # SPX-only system (mini-index twin retired 2026-07-04)

@@ -771,6 +771,8 @@
    the diary itself, chain source from row.gex_source. Nothing here is shown as live. */
 const SYS = { date:"2026-07-07", mode:"PAPER", liveAllowed:false, wtCap:35 };
 let GX_SRC = null;   // newest row's gex_source ('native' | 'spy_proxy×10.03xx') — the engine that actually drew the map
+let GX_SRC_NOTE = null;   // N7: engine's own reason for a non-native read ('coverage' = half-fetched native book)
+let GX_COV = null;        // N7: native chain coverage verdict {complete, missing[], ...} from the row
 
 // walls/magnet are ~constant intraday; spot walks down into the flip by 10:21
 const B = { callWall:7550, putWall:7000, magnet:7615, pin:7618.96, flip:7494.49, sigma:83.68, priorClose:7537.43 };
@@ -1751,7 +1753,11 @@ function gxOverview(){
   const el=document.getElementById('gx-strip'); if(!el) return;
   const sg=(D.sigma||1);
   const dMag=(D.magnet-D.spot)/sg, pts=Math.abs(D.magnet-D.spot), pullUp=dMag>=0;
-  const flow=D.flow>0.02?'buyers pressing':D.flow<-0.02?'sellers pressing':'flow balanced';
+  // N5: the WINDOWED tape leads when present — the day-cumulative can say "buyers" at
+  // 15:30 on a day whose last 45 minutes were pure selling. Label carries the basis.
+  const fv=(T.flowR!=null&&isFinite(T.flowR))?T.flowR:null;
+  const fx=fv!=null?fv:D.flow, ftag=fv!=null?' now':' (day)';
+  const flow=(fx>0.02?'buyers pressing':fx<-0.02?'sellers pressing':'flow balanced')+ftag;
   const tot=(D.gAbove+D.gBelow)||1, aP=Math.round(D.gAbove/tot*100);
   // DATED BOOK chips — one per expiration (front monthly → quarter-end), walls picked
   // moneyness-aware; nightly cadence, so the as-of/staleness stamp says "old by design"
@@ -1966,6 +1972,9 @@ function applyMap(r){
     sign:r.gamma_sign, regime:r.regime, downFlip:sh.down_flips||false };
   GX_ASOF = r.ts || GX_ASOF;                                     // freshness anchor: the newest row's own clock
   GX_SRC = r.gex_source || GX_SRC;                               // N21: which engine drew THIS row (native vs spy_proxy×10)
+  GX_SRC_NOTE = r.gex_source_note || null;                       // N7: WHY not native (e.g. 'coverage' = half-fetched book)
+  GX_COV = (r.gex_theta||{}).native_coverage || null;            // N7: which expiry×sides the fetch actually filled
+  T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
   T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines
   T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
@@ -1988,10 +1997,15 @@ function paintSource(){
   if(!VIT||!VIT.src) return;
   if(!LIVE){ VIT.src.textContent='demo · simulated'; VIT.src.className='pill grey'; return; }
   const s=String(GX_SRC||''), native=s==='native', proxy=/^spy_proxy/i.test(s);
-  VIT.src.textContent = native?'SPX native · Theta':proxy?'SPY×10 PROXY':'source unknown';
-  VIT.src.className = `pill ${native?'jade':proxy?'coral':'grey'}`;
-  VIT.src.title = native?'chain source: native SPX (ThetaData)'
+  // N7: a native book that shipped with a missing 1-7DTE side is PARTIAL, not whole
+  const partial = native && GX_COV && GX_COV.complete===false;
+  VIT.src.textContent = partial?'SPX native · PARTIAL':native?'SPX native · Theta':proxy?'SPY×10 PROXY':'source unknown';
+  VIT.src.className = `pill ${partial?'lantern':native?'jade':proxy?'coral':'grey'}`;
+  const miss=(GX_COV&&GX_COV.missing)?GX_COV.missing.map(m=>`${m.exp} ${m.side} (${m.rows} rows)`).join(', '):'';
+  VIT.src.title = partial?`native chain fetched INCOMPLETE — missing sides: ${miss}. 0DTE book is whole; tenor terrain may be skewed.`
+    :native?'chain source: native SPX (ThetaData), coverage complete'
     :proxy?`FALLBACK ENGINE: ${s} — every wall, flip and magnet on this map is a SPY-shaped approximation`
+      +(GX_SRC_NOTE==='coverage'?'. Reason: the native book came back HALF-FETCHED and was rejected (not a token failure).':'')
     :'the engine did not report its chain source for this row';
 }
 function paintPaper(nr){

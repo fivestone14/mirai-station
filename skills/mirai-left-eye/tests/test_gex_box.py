@@ -1087,6 +1087,57 @@ class TestGammaTape:
         assert t["gamma_tape"] == 0.0                     # the day says "calm"
         assert t["gamma_tape_60m"] == -0.8                # the last 10 minutes say "selling"
 
+
+class TestFlowRecent:
+    """N5 (2026-07-12) — the DIRECTION marginal. aggressor_flow is a whole-day cumulative
+    at ONE strike: at 15:30 on a day whose last 45 minutes were pure selling it still reads
+    '+0.03, buyers' — it never decays and never turns. flow_recent asks the same bullish-
+    lean question over the 4-30 min snapshot window, across ALL annotated 0DTE strikes."""
+
+    def test_turns_when_the_tape_turns(self):
+        # Morning cumulative: $900k call buying vs $100k selling (day reads 'buyers').
+        # The WINDOW: $1.0M of pure call selling. flow_recent must read the window: −1.0.
+        prev = {"ts": NOW - timedelta(minutes=10),
+                "q": {(7500.0, "call"): (900.0, 100.0, 900_000.0, 100_000.0)}}
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 900, "flow_sell_q": 1100,
+                "flow_buy": 900_000.0, "flow_sell": 1_100_000.0}]
+        t = gv.gamma_tape(cs_, spot=7500.0, prev=prev, now=NOW)
+        assert t["flow_recent"] == -1.0
+        # ...while the whole-day direction (what aggressor_flow sees) is still net-positive:
+        assert (900_000.0 - 1_100_000.0) + (900_000.0 - 100_000.0) > 0 - 1  # book skew, for the record
+
+    def test_put_sign_mirror(self):
+        # buying puts in the window is BEARISH aggression (−); the call mirror is +
+        prev = {"ts": NOW - timedelta(minutes=10),
+                "q": {(7500.0, "put"): (0.0, 0.0, 0.0, 0.0)}}
+        buy_puts = [{"strike": 7500, "right": "put", "gamma": 0.01, "dte": 0, "iv": .2,
+                     "flow_buy_q": 500, "flow_sell_q": 0,
+                     "flow_buy": 500_000.0, "flow_sell": 0.0}]
+        t = gv.gamma_tape(buy_puts, spot=7500.0, prev=prev, now=NOW)
+        assert t["flow_recent"] == -1.0
+
+    def test_thin_window_abstains(self):
+        # $10k tagged in the window is noise: None, never a ±1.0 built from four ticks
+        prev = {"ts": NOW - timedelta(minutes=10),
+                "q": {(7500.0, "call"): (0.0, 0.0, 0.0, 0.0)}}
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 300, "flow_sell_q": 0,
+                "flow_buy": 10_000.0, "flow_sell": 0.0}]
+        t = gv.gamma_tape(cs_, spot=7500.0, prev=prev, now=NOW)
+        assert t["flow_recent"] is None
+
+    def test_pre_n5_two_tuple_snapshots_stay_readable(self):
+        # rows written before N5 carry (bq, sq) 2-tuples: the contract marginal must still
+        # compute and the dollar direction must ABSTAIN instead of crashing or guessing
+        prev = {"ts": NOW - timedelta(minutes=10), "q": {(7500.0, "call"): (900.0, 100.0)}}
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 1000, "flow_sell_q": 1000,
+                "flow_buy": 1_000_000.0, "flow_sell": 1_000_000.0}]
+        t = gv.gamma_tape(cs_, spot=7500.0, prev=prev, now=NOW)
+        assert t["gamma_tape_60m"] == -0.8
+        assert t["flow_recent"] is None
+
     def test_marginal_clamps_provider_restatement(self):
         # a restatement (cumulative goes DOWN) must yield Δ=0, never negative volume
         prev = {"ts": NOW - timedelta(minutes=10), "q": {(7500.0, "call"): (5000.0, 5000.0)}}
