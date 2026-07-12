@@ -998,3 +998,156 @@ class TestPinZones:
                 "net_flow": -1200.0}]
         gv.slide_0dte(cs2, spot=7500.0)
         assert cs2[0]["signed_weight"] == 1200.0
+
+
+class TestGammaTape:
+    """GAMMA-OWNERSHIP TAPE (2026-07-13, shadow) — the axis `aggressor_flow` cancels itself
+    out on. These tests are the reason the axis exists; if any of them is deleted, the bug
+    it names comes straight back."""
+
+    @staticmethod
+    def _agg_flow(cb, cs, pb, ps):
+        """The LIVE aggressor_flow formula, verbatim (native_gex_feed.py:266), so the
+        cancellation is asserted against the real thing rather than a paraphrase."""
+        gross = cb + cs + pb + ps
+        return ((cb - cs) + (ps - pb)) / gross if gross > 0 else None
+
+    def test_both_wings_does_not_cancel(self):
+        # THE THESIS, IN ONE ASSERTION. Customers buy 1000 calls AND 1000 puts at the money:
+        # the dealer has just sold 2000 options and is maximally SHORT gamma — the canonical
+        # accelerant day. aggressor_flow reads exactly 0.00 (dead centre of "no signal")
+        # because customer call-buying and customer put-buying enter with OPPOSITE signs and
+        # annihilate. gamma_tape, a SUM, reads +1.0.
+        assert self._agg_flow(cb=500_000, cs=0, pb=500_000, ps=0) == 0.0
+
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 1000, "flow_sell_q": 0, "flow_buy": 500_000, "flow_sell": 0},
+               {"strike": 7500, "right": "put", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 1000, "flow_sell_q": 0, "flow_buy": 500_000, "flow_sell": 0}]
+        t = gv.gamma_tape(cs_, spot=7500.0)
+        assert t is not None
+        assert t["gamma_tape"] == 1.0        # the book shed 100% of the gamma that traded
+
+    def test_sign_convention(self):
+        def tape(bq, sq):
+            cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                    "flow_buy_q": bq, "flow_sell_q": sq}]
+            return gv.gamma_tape(cs_, spot=7500.0)["gamma_tape"]
+        assert tape(1000, 0) > 0             # customers net BUY  → hedged book sheds gamma
+        assert tape(0, 1000) < 0             # customers net SELL → hedged book absorbs gamma
+        assert tape(500, 500) == 0.0         # balanced
+
+    def test_contracts_not_dollars(self):
+        # THE FATAL WEIGHTING BUG, nailed shut. A 600-pt-ITM call carries maximum premium and
+        # ~zero gamma; its SAME-STRIKE put carries ~zero premium and the IDENTICAL gamma (BS Γ
+        # is right-independent). Buy the call, sell the put: the DOLLAR tape reads strongly
+        # positive (premium is all on the call) while the true contract-gamma tape is flat.
+        cs_ = [{"strike": 6900, "right": "call", "gamma": 0.0001, "dte": 0, "iv": .2,
+                "flow_buy_q": 100, "flow_sell_q": 0,
+                "flow_buy": 6_800_000.0, "flow_sell": 0.0},          # huge premium
+               {"strike": 6900, "right": "put", "gamma": 0.0001, "dte": 0, "iv": .2,
+                "flow_buy_q": 0, "flow_sell_q": 100,
+                "flow_buy": 0.0, "flow_sell": 500.0}]                # ~no premium
+        t = gv.gamma_tape(cs_, spot=7500.0)
+        # identical gamma, one bought and one sold in equal size ⇒ no net gamma changed hands
+        assert abs(t["gamma_tape"]) < 1e-9
+        # ...but the dollar weighting says the book shed nearly all its gamma. It is wrong.
+        assert t["gamma_tape_dollar"] > 0.99
+        assert t["gamma_tape"] != t["gamma_tape_dollar"]
+
+    def test_not_derived_from_signed_weight(self):
+        # H10's pin weight is max(|net_flow|, CHURN_FLOOR·gross) — an ABSOLUTE value. It is a
+        # MAGNITUDE and destroys the very sign this axis exists to carry, so the two must never
+        # be "unified" by a future refactor. Proof: flip the book from customers-buying to
+        # customers-selling. The pin weight |net_flow| is IDENTICAL across the two; gamma_tape
+        # flips sign. They are answering different questions.
+        def book(bq, sq, net_d):
+            return [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                     "flow_buy_q": bq, "flow_sell_q": sq, "net_flow": net_d,
+                     "flow_buy": max(net_d, 0.0), "flow_sell": max(-net_d, 0.0)}]
+        bought = gv.gamma_tape(book(1000, 0, 500_000.0), spot=7500.0)
+        sold = gv.gamma_tape(book(0, 1000, -500_000.0), spot=7500.0)
+        assert bought["gamma_tape"] > 0.9 and sold["gamma_tape"] < -0.9   # opposite signs
+        assert abs(500_000.0) == abs(-500_000.0)          # ...while |net_flow| cannot tell them apart
+
+    def test_marginal_is_ratio_of_deltas(self):
+        # THE WIND-CHANGE SIGNAL. Cumulative (900 buy, 100 sell) → now (1000, 1000): the day's
+        # LEVEL is 0/2000 = 0.0 ("nothing happening"), but everything that traded in the last
+        # interval was selling — the marginal is −0.8. A delta-of-the-ratio would read ~0 and
+        # the turn would be invisible. This is why the cumulative can never call a wind change.
+        prev = {"ts": NOW - timedelta(minutes=10), "q": {(7500.0, "call"): (900.0, 100.0)}}
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 1000, "flow_sell_q": 1000}]
+        t = gv.gamma_tape(cs_, spot=7500.0, prev=prev, now=NOW)
+        assert t["gamma_tape"] == 0.0                     # the day says "calm"
+        assert t["gamma_tape_60m"] == -0.8                # the last 10 minutes say "selling"
+
+    def test_marginal_clamps_provider_restatement(self):
+        # a restatement (cumulative goes DOWN) must yield Δ=0, never negative volume
+        prev = {"ts": NOW - timedelta(minutes=10), "q": {(7500.0, "call"): (5000.0, 5000.0)}}
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 100, "flow_sell_q": 100}]
+        t = gv.gamma_tape(cs_, spot=7500.0, prev=prev, now=NOW)
+        assert t["gamma_tape_60m"] is None               # all deltas clamp to 0 → thin → abstain
+
+    def test_marginal_abstains_without_a_clock(self):
+        # a delta over an unknown interval is not a rate
+        prev = {"ts": NOW - timedelta(minutes=10), "q": {(7500.0, "call"): (0.0, 0.0)}}
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 1000, "flow_sell_q": 0}]
+        assert gv.gamma_tape(cs_, spot=7500.0, prev=prev, now=None)["gamma_tape_60m"] is None
+
+    def test_fail_open_never_fabricates_zero(self):
+        # no tape ⇒ UNKNOWN, never a balanced 0.0 (a fabricated zero reads as "measured, calm")
+        assert gv.gamma_tape([{"strike": 7500, "right": "call", "gamma": 0.01,
+                               "dte": 0, "iv": .2}], spot=7500.0) is None
+        assert gv.gamma_tape([], spot=7500.0) is None
+        assert gv.gamma_tape([{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0,
+                               "iv": .2, "flow_buy_q": 1, "flow_sell_q": 1}], spot=0) is None
+        # a broker −999 failed-solve sentinel contributes no mass, it does not become a signal
+        assert gv.gamma_tape([{"strike": 7500, "right": "call", "gamma": -999, "dte": 0,
+                               "iv": 0, "flow_buy_q": 1000, "flow_sell_q": 0}],
+                             spot=7500.0) is None
+
+    def test_bounds_and_coverage(self):
+        cs_ = [{"strike": 7500, "right": "call", "gamma": 0.01, "dte": 0, "iv": .2,
+                "flow_buy_q": 700, "flow_sell_q": 300, "flow_mid_q": 200, "flow_unk_q": 100}]
+        t = gv.gamma_tape(cs_, spot=7500.0)
+        assert -1.0 <= t["gamma_tape"] <= 1.0
+        assert t["coverage"] == round(1000 / 1300, 4)    # the censored ~30% is PUBLISHED
+
+    def test_dormant_by_design(self):
+        # the dead-man switch: nothing may read a word off an uncalibrated axis
+        assert gv.GAMMA_TAPE_CONSUME is False
+        assert gv.TAPE_TRIP_HI is None and gv.TAPE_TRIP_LO is None
+        assert gv.tape_word({"gamma_tape_60m": 0.9, "coverage": 0.9}) is None
+
+
+class TestGuardAudit:
+    """The dead guard must be impossible to hide. This is the generalizable fix: the bug was
+    never the 0.6 threshold — it was that a guard could sit at 0 trips for 671 rows and no
+    number anywhere said so."""
+
+    def test_declares_the_real_dead_guard(self):
+        import lefteye_guard_audit as ga
+        # the real live distribution: aggressor_flow tops out at 0.441 against a 0.6 trip
+        rows = [{"gex_views": {"aggressor_flow": 0.02, "veto_flow_source": "options",
+                               "sign_agrees": True, "sign_trip": None}} for _ in range(250)]
+        rows[0]["gex_views"]["aggressor_flow"] = 0.441     # the observed maximum, ever
+        v = {g["guard"]: g for g in ga.audit(rows)}["slide_E_options"]
+        assert v["status"] == "DEAD"
+        assert v["n_trip"] == 0
+        # judged on p95, not max: the single 0.441 outlier reaches 73% of the trip level, but
+        # the TYPICAL reading is nowhere near it — one lucky print must not rescue a dead guard
+        assert v["max_headroom"] > 0.7 and v["p95_headroom"] < 0.5
+        assert "CANNOT FIRE" in v["note"]
+
+    def test_a_live_guard_reads_ok(self):
+        import lefteye_guard_audit as ga
+        rows = [{"gex_views": {"aggressor_flow": 0.1, "veto_flow_source": "options",
+                               "sign_agrees": True, "sign_trip": None}} for _ in range(250)]
+        for r in rows[:20]:
+            r["gex_views"].update({"aggressor_flow": 0.7, "sign_agrees": False,
+                                   "sign_trip": "options_sign_inversion"})
+        v = {g["guard"]: g for g in ga.audit(rows)}["slide_E_options"]
+        assert v["status"] == "OK" and v["n_trip"] == 20

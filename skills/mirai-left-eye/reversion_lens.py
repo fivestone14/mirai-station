@@ -37,6 +37,14 @@ SKILL_DIR = Path(__file__).resolve().parent
 REVERSION_LIVE = False           # False = shadow (record only, no confluence vote)
 THETA_SHADOW = True              # theta native-GEX A/B recorder (record only, never fires)
 
+# GAMMA-TAPE inter-tick memory (2026-07-13): {ticker: {"ts": datetime, "q": {(K, right):
+# (buy_q, sell_q)}}}. The provider's per-strike flow is a running WHOLE-DAY cumulative, so
+# differencing consecutive snapshots is what turns it into a windowed tape — a cumulative
+# can never show a turn (by 13:00 the deciding hour is ~8% of the denominator), and the turn
+# is the entire point. In-process only, like the rest of the scan's memory: a restart simply
+# yields no marginal until the next scan, which is the honest answer.
+_TAPE_PREV: dict[str, dict] = {}
+
 
 def live_allowed() -> tuple[bool, str]:
     """THE EARN-TRUST GATE, enforced. Live requires BOTH the hand switch
@@ -726,9 +734,18 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 import native_gex_feed as _tf
                 # 15s budget: the chunked native fetch is ~15 API round-trips on a
                 # cold pull (TTL-cached after — GexBox below reuses it for free).
-                tv = _tf.read(ticker, spot, now, budget_s=15.0)
+                tv = _tf.read(ticker, spot, now, budget_s=15.0,
+                              tape_prev=_TAPE_PREV.get(ticker))
                 if tv:
                     flow = tv.get("aggressor_flow")
+                    # Carry this scan's cumulative contract-flow snapshot forward so the NEXT
+                    # scan can difference it. Only advance when the snapshot actually moved —
+                    # the native chain is TTL-cached, and re-diffing an identical snapshot
+                    # would manufacture a zero-delta "the wind is calm" reading out of nothing.
+                    _q = (tv.get("gamma_tape") or {}).get("q_now")
+                    _prev = _TAPE_PREV.get(ticker) or {}
+                    if _q and _q != _prev.get("q"):
+                        _TAPE_PREV[ticker] = {"ts": now, "q": _q}
             except Exception:
                 tv = None
 
@@ -907,6 +924,17 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                        "veto_flow": veto_flow,           # what slide-E actually consumed
                        "veto_flow_source": veto_src,     # "lob" (fresh) | "options" (fallback) | "none"
                        "source": (gxv.get("meta") or {}).get("gex_source")}
+                # DEAD-GUARD TELEMETRY (2026-07-13): slide E's own headroom, every scan.
+                # `sign_agrees` alone cannot distinguish "the tape confirms the map" from
+                # "the tape can never reach the trip level" — and for 671 rows it has been
+                # the latter while reading like the former. lefteye_guard_audit turns these
+                # three fields into a nightly DEAD verdict. A guard that cannot fire must be
+                # loud, not silent.
+                _E = (gxv.get("slides") or {}).get("E_sign") or {}
+                rec["sign_headroom"] = _E.get("headroom")        # |stat| / trip level
+                rec["sign_informative"] = _E.get("informative")  # got within 2× of tripping
+                rec["sign_trip"] = _E.get("trip")                # which guard fired, if any
+                rec["sign_flow_kind"] = flow_kind
                 # record-only: vanna/charm dealer-flow exposures for the paper A/B
                 # (CEX = 0DTE same-day charm drift; VEX = dated vanna). Logged, not acted on.
                 rec["vex"] = gxv.get("vex"); rec["cex"] = gxv.get("cex")
@@ -1030,6 +1058,27 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                         "net_by_strike_tenor": ((tv.get("slides") or {}).get("C_tenor") or {}).get("net_by_strike"),
                         "aggressor_flow": flow, "flow_available": flow is not None,
                         "source": "theta_native"}
+                # GAMMA-OWNERSHIP TAPE (2026-07-13) — RECORDED, CONSUMED BY NOTHING.
+                # Recorded on the NATIVE leg only: the native chain (and so the per-strike
+                # contract-flow annotation) refreshes on a 240s TTL, while GexBox may hold a
+                # cached chain for up to 25 min — a 25-minute-old tape is not a tape. The
+                # gex_views copy exists for shape parity and is explicitly not the record.
+                _t = tv.get("gamma_tape") or {}
+                trec.update({
+                    "gamma_tape": _t.get("gamma_tape"),                # cumulative level
+                    "gamma_tape_spot": _t.get("gamma_tape_spot"),      # ±0.5σ band
+                    "gamma_tape_fixed": _t.get("gamma_tape_fixed"),    # reprice-free control
+                    "gamma_tape_60m": _t.get("gamma_tape_60m"),        # THE WIND-CHANGE SIGNAL
+                    "gamma_tape_dollar": _t.get("gamma_tape_dollar"),  # A/B control (WRONG weighting)
+                    "tape_coverage": _t.get("coverage"),
+                    "tape_flow_share": _t.get("flow_share"),
+                    "tape_gross_contracts": _t.get("gross_contracts"),
+                    "tape_interval_contracts": _t.get("interval_contracts"),
+                    "tape_interval_min": _t.get("interval_min"),
+                    "tape_n_strikes": _t.get("n_strikes"),
+                    "dgamma_by_strike": _t.get("dgamma_by_strike"),    # flow-side twin of net_by_strike
+                    "gamma_tape_v": _t.get("gamma_tape_v"),
+                })
                 pin = tv.get("magnet")
                 if pin is not None and sigma:
                     d = rev.get("direction")

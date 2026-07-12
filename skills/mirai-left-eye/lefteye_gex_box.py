@@ -80,6 +80,49 @@ FLOW_CONFLICT_LOB = 0.25     # order-book |tilt| scale (2 live days: tilt maxed 
                              # break lens's own one-way bar ≈0.27) — the options 0.6
                              # is unreachable on this source, so the LOB veto needs
                              # its own threshold or it never trips (verified dead-as-0.6)
+# ⚠ FLOW_CONFLICT (0.6) IS ITSELF DEAD AND IS KNOWINGLY LEFT ALONE. Measured over 534
+# live samples the options aggressor tape spans [−0.104, +0.441] (median 0.018) — it has
+# never had the RANGE to reach 0.6, and `sign_agrees` is False in 0 of 671 rows while every
+# non-null read stamps agrees=True / confidence=1.0. Retuning it is a LIVE regime change,
+# not a cleanup: reversion_lens.py:140 turns `sign_agrees is None` into a gamma-voter
+# abstain, so an "honest" guard would silently delete the gamma vote on ~every pin day,
+# un-A/B'd, from the first scan after deploy. So: we MEASURE the guard every scan
+# (reconcile_sign's headroom/informative/trip keys + lefteye_guard_audit) and let the
+# nightly audit declare it DEAD. Retune behind its own flag, with its own A/B.
+
+# --- GAMMA-OWNERSHIP TAPE (2026-07-13) — SHADOW, RECORD-ONLY ------------------
+# The axis `aggressor_flow` is structurally BLIND to. aggressor_flow is a DIFFERENCE —
+# ((callBuy−callSell) + (putSell−putBuy)) / gross, native_gex_feed.py:249-266 — so it
+# measures DIRECTION (bullish lean). The event that makes dealers SHORT gamma is customers
+# NET BUYING options, which on 0DTE classically means buying BOTH wings: call-buying pushes
+# term 1 up, put-buying pushes term 2 down, and they ANNIHILATE. A book where customers buy
+# 1000 calls and 1000 puts — the dealer maximally short gamma — reads exactly 0.00, dead
+# centre of "no signal". The alarm cannot fire because the signal subtracts itself out.
+# gamma_tape is a SUM over signed customer CONTRACTS, so the both-wings case cannot cancel.
+#
+# NOT CALIBRATED. NOT CONSUMED. On the 3 measurable live days the sign was ANTI-correlated
+# with realized trendiness (07-09, a trend day the engine called long_gamma on 57/57 scans:
+# tape −0.0010, i.e. it would have CONFIRMED the wrong pin call; 07-08, the choppiest/most
+# pin-like day: +0.0096, the "most accelerant" reading). The measured range never leaves
+# ±0.01, because the NBBO quote rule tags the LIQUIDITY TAKER, not the counterparty, and the
+# 0DTE taker population is two-sided (lottery buyers AND premium sellers both cross the
+# spread). So this ships as a RECORDED axis with a pre-registered kill condition: if the
+# backfill confirms the anti-correlation, gamma_tape is DELETED, not re-signed.
+TAPE_BAND_SIGMA = 0.5              # gamma is LOCAL: the at-spot scalar sums ±0.5σ, not the
+                                   # ±8% fetch window. Mirrors SHOVE_SIGMA.
+TAPE_MIN_INTERVAL_CONTRACTS = 250.0  # marginal-window abstain floor: a thin bucket must
+                                     # print None, not a ±1.0 built from four contracts.
+TAPE_TRIP_HI = None                # UNCALIBRATED — set from the recorded q85 after backfill.
+TAPE_TRIP_LO = None                # UNCALIBRATED — set from the recorded q15 after backfill.
+TAPE_MIN_COVERAGE = None           # UNCALIBRATED — 0.689 coverage was a NORMAL day; no guess.
+GAMMA_TAPE_CONSUME = False         # DEAD-MAN SWITCH. While False nothing may read the tape's
+                                   # word or confidence. The trip levels being None means an
+                                   # accidental consumer ABSTAINS rather than firing on a
+                                   # guessed number.
+GAMMA_TAPE_V = 1                   # weighting era: contracts × live γ (cf. pin_signed_v)
+# NEVER inherit FLOW_CONFLICT (0.6) as this axis's trip level. It lives on the DIRECTION
+# axis and is meaningless here (measured cumulative range ±0.01). FLOW_CONFLICT_LOB was cut
+# to 0.25 for exactly this reason — a threshold borrowed across axes is how guards die.
 
 # Regime tie deadband (H3, 2026-07-12): |net GEX at spot| below this share of the
 # GROSS |per-contract GEX| field is a BALANCED book, not a regime — without it a
@@ -451,6 +494,171 @@ def _net_gex_by_strike(contracts: list[dict], weight_key: Optional[str], spot: f
             continue
         by_strike[k] = by_strike.get(k, 0.0) + (g * w if c.get("right") == "call" else -g * w)
     return by_strike
+
+
+def gamma_tape(zero_dte: list[dict], spot: float,
+               minutes_to_close: Optional[float] = None,
+               sigma: Optional[float] = None,
+               anchor_spot: Optional[float] = None,
+               prev: Optional[dict] = None,
+               now: Optional[datetime] = None) -> Optional[dict]:
+    """GAMMA-OWNERSHIP TAPE (SHADOW, record-only) — net gamma transferred OUT OF the
+    liquidity-providing (hedged) book today, as a share of tagged gamma volume.
+
+        > 0   the hedged book is SHEDDING gamma   (turning accelerant)
+        < 0   the hedged book is ABSORBING gamma  (turning pin-ward)
+
+    A FLOW, NOT A STOCK. It says which way the book is TURNING, never what dealers OWN,
+    so it cannot answer `reconcile_sign`'s question and is never routed there.
+
+    Weighted by CONTRACTS × `_live_gamma`, never dollars. BS gamma is right-independent
+    (`_bs_gamma` takes no `right`), premium is not: a 600-pt-ITM 0DTE call carries maximum
+    premium and ~zero gamma while its same-strike put carries ~zero premium and the IDENTICAL
+    gamma — premium ranks them ~100,000:1 where hedging ranks them 1:1. Premium also decays
+    through the session, drifting any dollar-netted numerator positive. A dollar-weighted
+    "gamma" tape is not a gamma tape; `gamma_tape_dollar` is recorded ONLY as the A/B control
+    that measures that error, and must never be read as the signal.
+
+    NEVER computed from `signed_weight` — that is max(abs(net_flow), CHURN_FLOOR·gross), an
+    ABSOLUTE value that destroys the very sign this axis carries. H10's churn floor is a PIN
+    weight. A future refactor must not "unify" the two.
+
+    CAVEATS, on the record: the NBBO quote rule tags the liquidity TAKER, not the customer
+    (market makers take liquidity to hedge), and buy-to-OPEN and buy-to-CLOSE are
+    indistinguishable intraday — 0DTE afternoons are closing-flow heavy, so a late rise may
+    mean the OPPOSITE of a wind change until a next-morning ΔOI discriminator is fitted. Only
+    the marketable-tagged ~70% is visible and the censoring is not random. `coverage` ships
+    every scan. EVIDENCE, NEVER PROOF — this must never carry confidence 1.0.
+
+    Fail-open: returns None when no 0DTE strike carries a contract-flow annotation (no ticks
+    ⇒ unknown, never a balanced 0.0). `prev` is the previous scan's {"ts", "q"} cumulative
+    snapshot; without it the marginal fields are None."""
+    if not spot or not zero_dte:
+        return None
+    lo_b = hi_b = None
+    if sigma:
+        lo_b, hi_b = spot - TAPE_BAND_SIGMA * sigma, spot + TAPE_BAND_SIGMA * sigma
+    nbs_lo, nbs_hi = spot * (1.0 - NBS_WINDOW), spot * (1.0 + NBS_WINDOW)
+
+    num = den = 0.0                 # cumulative, γ·contracts
+    num_s = den_s = 0.0             # at-spot band only (±TAPE_BAND_SIGMA·σ)
+    num_f = den_f = 0.0             # γ frozen at anchor_spot — reprice-free control
+    num_m = den_m = 0.0             # MARGINAL — the wind-change signal (γ-weighted ratio)
+    num_d = den_d = 0.0             # dollar A/B control (the WRONG weighting)
+    # RAW contract counts, kept separately from the γ-weighted sums above. The thin-tape
+    # floors are stated in CONTRACTS and must be compared against contracts: γ is ~0.01, so
+    # a γ-weighted "count" of a real 1000-contract interval is ~10 and would fail any
+    # contract-scaled floor. Weighting the RATIO and sizing the SAMPLE are different jobs.
+    q_gross = q_interval = 0.0
+    tagged = untagged = 0.0
+    gross_oi = 0.0
+    dgamma: dict[float, float] = {}
+    q_now: dict = {}
+    n = 0
+
+    for c in zero_dte:
+        k = c.get("strike")
+        bq, sq = c.get("flow_buy_q"), c.get("flow_sell_q")
+        if k is None or bq is None or sq is None:
+            continue
+        g = _live_gamma(c, spot, minutes_to_close)
+        if g <= 0:
+            continue                # γ ≥ 0 always ⇒ no abs() anywhere in the denominators
+        k = float(k)
+        bq, sq = float(bq), float(sq)
+        net_q, gross_q = bq - sq, bq + sq
+        n += 1
+        q_now[(round(k, 4), c.get("right"))] = (bq, sq)
+
+        num += g * net_q
+        den += g * gross_q
+        q_gross += gross_q
+        if lo_b is not None and lo_b <= k <= hi_b:
+            num_s += g * net_q
+            den_s += g * gross_q
+        if anchor_spot:
+            ga = _live_gamma(c, anchor_spot, minutes_to_close)
+            if ga > 0:
+                num_f += ga * net_q
+                den_f += ga * gross_q
+
+        # MARGINAL: the ratio of DELTAS, never the delta of the ratio. The cumulative
+        # denominator grows all session, so by 13:00 the level is stiff and the very turn
+        # we are hunting gets swamped (the deciding hour is ~8% of a 390-min cumulative).
+        # Δ is clamped at 0 — a provider restatement must never manufacture negative volume.
+        if prev:
+            pq = (prev.get("q") or {}).get((round(k, 4), c.get("right")))
+            if pq:
+                dbq, dsq = max(0.0, bq - pq[0]), max(0.0, sq - pq[1])
+                num_m += g * (dbq - dsq)
+                den_m += g * (dbq + dsq)
+                q_interval += dbq + dsq
+
+        tagged += gross_q
+        untagged += float(c.get("flow_mid_q") or 0) + float(c.get("flow_unk_q") or 0)
+        gross_oi += g * float(c.get("open_interest") or 0)
+
+        b_d, s_d = float(c.get("flow_buy") or 0), float(c.get("flow_sell") or 0)
+        num_d += b_d - s_d
+        den_d += b_d + s_d
+
+        if nbs_lo <= k <= nbs_hi:
+            # flow-side twin of net_by_strike, same units/axis/clip. MINUS: a customer BUY
+            # means the hedged book LOSES that gamma.
+            dgamma[k] = dgamma.get(k, 0.0) - net_q * g * 100.0 * spot * spot
+
+    if n == 0 or den <= 0:
+        return None                 # no tagged tape ⇒ unknown, not a balanced zero
+
+    # The marginal needs a CLOCK. Without one (`now` absent) it abstains — a delta over an
+    # unknown interval is not a rate, and the 4-30 min window is the whole point: under 4 min
+    # the native chain TTL means we would be diffing the same cached snapshot against itself.
+    interval_min = None
+    if prev and prev.get("ts") and now:
+        try:
+            interval_min = round((now - prev["ts"]).total_seconds() / 60.0, 2)
+        except Exception:
+            interval_min = None
+    marginal_ok = (q_interval >= TAPE_MIN_INTERVAL_CONTRACTS and den_m > 0
+                   and interval_min is not None
+                   and MOTION_MIN_LOOKBACK_MIN <= interval_min <= MOTION_MAX_LOOKBACK_MIN)
+
+    def _r(x, d):
+        return round(x / d, 5) if d > 0 else None
+
+    return {
+        "gamma_tape": _r(num, den),                  # cumulative level (day)
+        "gamma_tape_spot": _r(num_s, den_s),         # ±0.5σ band — the question the regime asks
+        "gamma_tape_fixed": _r(num_f, den_f),        # γ frozen at anchor_spot (reprice control)
+        "gamma_tape_60m": _r(num_m, den_m) if marginal_ok else None,   # THE WIND-CHANGE SIGNAL
+        "gamma_tape_dollar": _r(num_d, den_d),       # A/B CONTROL — the WRONG weighting
+        "coverage": round(tagged / (tagged + untagged), 4) if (tagged + untagged) > 0 else None,
+        "flow_share": round(den / gross_oi, 5) if gross_oi > 0 else None,
+        "gross_contracts": round(q_gross, 1),        # RAW contracts (calibration input)
+        "interval_contracts": round(q_interval, 1),  # RAW contracts in the marginal window
+        "interval_min": interval_min,
+        "n_strikes": n,
+        "dgamma_by_strike": [[round(k, 2), round(v, 3)] for k, v in sorted(dgamma.items())] or None,
+        "gamma_tape_v": GAMMA_TAPE_V,
+        "q_now": q_now,                              # cumulative snapshot for the NEXT marginal
+    }
+
+
+def tape_word(t: Optional[dict]) -> Optional[str]:
+    """The Watchtower's word for the ownership tape. DORMANT BY DESIGN — returns None while
+    GAMMA_TAPE_CONSUME is False or the trip levels are uncalibrated. It exists now so that
+    the vocabulary is reviewable today rather than invented under time pressure on the day
+    the axis earns promotion, and so the flag is the ONLY thing standing between the two."""
+    if not GAMMA_TAPE_CONSUME or not t or TAPE_TRIP_HI is None or TAPE_TRIP_LO is None:
+        return None
+    m, cov = t.get("gamma_tape_60m"), t.get("coverage")
+    if m is None or cov is None or (TAPE_MIN_COVERAGE is not None and cov < TAPE_MIN_COVERAGE):
+        return "tape: unreadable (thin or censored)"
+    if m >= TAPE_TRIP_HI:
+        return "tape: the hedged book is SHEDDING gamma — it is turning into an accelerant"
+    if m <= TAPE_TRIP_LO:
+        return "tape: the hedged book is ABSORBING gamma — it is settling toward the pin"
+    return "tape: steady — no net gamma changing hands"
 
 
 # --- magnet zones (2026-07-09, LIVE) ------------------------------------------
@@ -839,6 +1047,22 @@ def reconcile_sign(regime: str, aggressor_flow: Optional[float],
     elif aggressor_flow >= conflict:
         # customers buying calls / selling puts — the assumed dealer sign is inverted
         out.update({"sign": "uncertain", "agrees": False, "confidence": 0.5})
+
+    # ANTI-DEAD-GUARD TELEMETRY (2026-07-13) — VERDICT DELIBERATELY UNTOUCHED.
+    # This guard has trip level 0.6 against a tape whose live range is [−0.104, +0.441]:
+    # 0 trips in 671 rows, while every non-null read stamps agrees=True / confidence=1.0.
+    # A guard that never had the RANGE to condemn cannot honestly bless — but we do NOT fix
+    # that here, because `agrees` is load-bearing: reversion_lens.py:140 turns
+    # `sign_agrees is None` into a gamma-voter abstain, so flipping True→None would delete
+    # the gamma vote on ~every pin day, un-A/B'd, on the first scan after deploy. That is a
+    # live regime change wearing an honesty patch. Instead we MEASURE the guard on every
+    # scan so `lefteye_guard_audit` can declare it DEAD out loud, and the retune ships behind
+    # its own flag with its own A/B. The root cause was never the threshold — it was that a
+    # guard could sit at 0 trips for 671 rows and no number anywhere said so.
+    out["headroom"] = (round(abs(aggressor_flow) / conflict, 3) if conflict else None)
+    out["informative"] = bool(conflict) and abs(aggressor_flow) >= 0.5 * conflict
+    out["trip"] = ("lob_freight_train" if (flow_kind == "lob" and out["agrees"] is False)
+                   else "options_sign_inversion" if out["agrees"] is False else None)
     return out
 
 
@@ -1034,7 +1258,10 @@ def build_views(contracts: list[dict], spot: float,
                 minutes_to_close: Optional[float] = None,
                 sigma: Optional[float] = None,
                 flow_conflict: float = FLOW_CONFLICT,
-                flow_kind: str = "options") -> dict:
+                flow_kind: str = "options",
+                tape_prev: Optional[dict] = None,
+                anchor_spot: Optional[float] = None,
+                now: Optional[datetime] = None) -> dict:
     """Pure assembler: the six slides + the consumer-facing magnet/regime. `magnet`
     is the 0DTE pin (B) when present, else the full-chain flip (A) — that is what the
     reversion lens measures runway to. `minutes_to_close` sharpens the 0DTE charm
@@ -1070,11 +1297,22 @@ def build_views(contracts: list[dict], spot: float,
                      "down_flips": bool(net0) and (dn < 0) != (net0 < 0)}
     except Exception:
         shove = None
+    # GAMMA-OWNERSHIP TAPE (shadow) — the axis aggressor_flow cancels itself out on. Fail-open
+    # (same discipline as `shove`): any surprise → None, never a fabricated zero. RECORDED AND
+    # READ BY NOTHING — GAMMA_TAPE_CONSUME is False, the trip levels are None, and `tape_word`
+    # returns None. On deploy this changes no live output of the fade lens, the Watchtower or
+    # the tablet; anything that moves is a bug.
+    tape = None
+    try:
+        tape = gamma_tape(zero, spot, minutes_to_close, sigma, anchor_spot, tape_prev, now)
+    except Exception:
+        tape = None
     return {
         "spot": round(spot, 4) if spot else None,
         "magnet": magnet,                       # the pin the fade reverts to (for runway)
         "regime": E["sign"],                    # sign-checked regime
         "regime_raw": A["regime"],
+        "gamma_tape": tape,                     # SHADOW, record-only. No consumer, by design.
         "flip": A["flip"], "flip_band": A["flip_band"],
         "sign_agrees": E["agrees"], "sign_confidence": E["confidence"],
         "vex": F["vex"], "cex": F["cex"],        # net vanna / charm exposure (shadow)

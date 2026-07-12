@@ -283,7 +283,21 @@ out = []
 for s in (v.get('by_strike') or []):
     out.append({'strike': s.get('strike'), 'right': s.get('right'),
                 'buy_dollars': s.get('buy_dollars') or 0,
-                'sell_dollars': s.get('sell_dollars') or 0})
+                'sell_dollars': s.get('sell_dollars') or 0,
+                # CONTRACTS (2026-07-13) — the provider already returns these and we
+                # were throwing them away. Premium is NOT monotone in gamma: a deep-ITM
+                # 0DTE call carries max premium and ~zero gamma while its same-strike put
+                # carries ~zero premium and the IDENTICAL gamma (BS Γ is right-independent),
+                # and premium decays through the session, drifting any dollar-netted sum
+                # positive. Any gamma-weighted read must net CONTRACTS, never dollars.
+                'buy_vol': s.get('buy_vol') or 0,
+                'sell_vol': s.get('sell_vol') or 0,
+                # the untagged remainder: mid-print / complex / COB volume the NBBO quote
+                # rule cannot classify. Carried so `coverage` is a published number rather
+                # than an assumption — the censoring is NOT random (the complex book skews
+                # long-gamma-creating), so a read must be able to say "I am half blind".
+                'mid_vol': s.get('mid_vol') or 0,
+                'unknown_vol': s.get('unknown_vol') or 0})
 return {'available': True, 'by_strike': out}
 """
 
@@ -442,6 +456,13 @@ def native_chain(ticker: str) -> Optional[dict]:
                             c["flow_buy"] = rec["buy"]
                             c["flow_sell"] = rec["sell"]
                             c["net_flow"] = rec["net"]        # signed $; |net| used as weight
+                            # CONTRACTS (2026-07-13) — the gamma-ownership tape's basis.
+                            # Separate fields, not a replacement: |net_flow| ($) stays the
+                            # PIN weight (H10 churn floor), contracts feed gamma_tape.
+                            c["flow_buy_q"] = rec["buy_vol"]
+                            c["flow_sell_q"] = rec["sell_vol"]
+                            c["flow_mid_q"] = rec["mid_vol"]      # untagged → coverage
+                            c["flow_unk_q"] = rec["unknown_vol"]
         except Exception:
             pass                                   # feed hiccup → contracts simply un-annotated
         try:
@@ -475,14 +496,22 @@ def aggressor_flow(ticker: str, spot: float) -> Optional[float]:
 SIGNED_FLOW = True
 
 
-def flow_by_strike(ticker: str, spot: float) -> Optional[dict]:
-    """FLOW SENSOR, per strike — {(strike, right): {'buy': $, 'sell': $, 'net': buy−sell}}
-    across the 0DTE window, or None. Same NBBO quote-rule aggressor tags as aggressor_flow."""
+def flow_by_strike(ticker: str, spot: float, day: str | None = None) -> Optional[dict]:
+    """FLOW SENSOR, per strike — {(strike, right): {'buy': $, 'sell': $, 'net': buy−sell,
+    'buy_vol': n, 'sell_vol': n, 'net_vol': n, 'mid_vol': n, 'unknown_vol': n}} across the
+    0DTE window, or None. Same NBBO quote-rule aggressor tags as aggressor_flow.
+
+    DOLLARS drive the pin weight (H10 `signed_weight`); CONTRACTS drive the gamma-ownership
+    tape (`lefteye_gex_box.gamma_tape`). They are different questions and must not be merged.
+
+    `day` (ISO) is for BACKFILL only — the live call passes None and hits the identical
+    path, so a backfilled row is computed by the same code that computes a live one."""
     if not spot:
         return None
     root = ROOT.get(ticker, ticker)
     lo, hi = round(spot * 0.92), round(spot * 1.08)
-    res = _run(_FLOWSTRIKE_CODE % {"root": root, "exp": _today_iso(), "lo": lo, "hi": hi})
+    res = _run(_FLOWSTRIKE_CODE % {"root": root, "exp": day or _today_iso(),
+                                   "lo": lo, "hi": hi})
     if not res or not res.get("available"):
         return None
     out: dict = {}
@@ -492,7 +521,13 @@ def flow_by_strike(ticker: str, spot: float) -> Optional[dict]:
             continue
         b = float(s.get("buy_dollars") or 0)
         sl = float(s.get("sell_dollars") or 0)
-        out[(round(float(k), 4), r)] = {"buy": b, "sell": sl, "net": b - sl}
+        bv = float(s.get("buy_vol") or 0)
+        sv = float(s.get("sell_vol") or 0)
+        out[(round(float(k), 4), r)] = {
+            "buy": b, "sell": sl, "net": b - sl,
+            "buy_vol": bv, "sell_vol": sv, "net_vol": bv - sv,
+            "mid_vol": float(s.get("mid_vol") or 0),
+            "unknown_vol": float(s.get("unknown_vol") or 0)}
     return out or None
 
 
@@ -522,14 +557,18 @@ def native_bars(ticker: str, day: str | None = None) -> list:
 
 
 def read(ticker: str, spot: float, now: datetime, budget_s: float = 15.0,
-         flow: Optional[float] = None) -> Optional[dict]:
+         flow: Optional[float] = None, tape_prev: Optional[dict] = None) -> Optional[dict]:
     """REAL-DATA READ — one time-boxed trip to ThetaData: real chain + live flow,
     never allowed to stall the scan. Native GEX views for the shadow A/B, computed within a hard wall-clock budget so a
     slow feed can never stall the caller. The fetch runs in a daemon thread joined with a
     deadline (sequential inside — the shared MCP session must not be raced). Returns the
     build_views dict (with an added 'aggressor_flow' key), or None on timeout/failure.
     Pass `flow` to reuse an already-fetched FLOW SENSOR reading (skips the re-fetch —
-    the caller shares one flow read between the proxy and native engines)."""
+    the caller shares one flow read between the proxy and native engines).
+    `tape_prev` is the previous scan's {"ts", "q"} cumulative contract-flow snapshot — the
+    gamma tape's only inter-tick memory, and what makes its MARGINAL (wind-change) reading
+    possible without a second API call: the provider's by_strike is a running whole-day
+    cumulative, so differencing two snapshots IS a windowed tape, for free."""
     from lefteye_gex_box import build_views, _minutes_to_close
     box: dict = {}
 
@@ -539,7 +578,8 @@ def read(ticker: str, spot: float, now: datetime, budget_s: float = 15.0,
             return
         f = flow if flow is not None else aggressor_flow(ticker, spot)
         v = build_views(nat["contracts"], spot, aggressor_flow=f,
-                        minutes_to_close=_minutes_to_close(now))
+                        minutes_to_close=_minutes_to_close(now),
+                        tape_prev=tape_prev, anchor_spot=nat.get("spot"), now=now)
         v["aggressor_flow"] = f
         v["native_meta"] = nat.get("meta")   # chunk count + IV rescue/drop counters
         box["v"] = v
