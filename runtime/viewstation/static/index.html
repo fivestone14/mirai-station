@@ -1135,6 +1135,8 @@ function gxBuild(){
      <defs>
        <linearGradient id="gxJ" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--jade)" stop-opacity=".95"/><stop offset="1" stop-color="var(--jade)" stop-opacity=".36"/></linearGradient>
        <linearGradient id="gxC" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--coral)" stop-opacity=".92"/><stop offset="1" stop-color="var(--coral)" stop-opacity=".32"/></linearGradient>
+       <!-- mirrored coral for LEFT-growing negative bars (base-strong at the zero axis) -->
+       <linearGradient id="gxCm" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="var(--coral)" stop-opacity=".92"/><stop offset="1" stop-color="var(--coral)" stop-opacity=".32"/></linearGradient>
      </defs>
      <rect id="washTop" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--jade);opacity:.045"/>
      <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
@@ -1142,13 +1144,15 @@ function gxBuild(){
      <rect id="spotLane" x="${X.x0}" width="0" style="fill:var(--iris);opacity:0"/>
      <g id="datedOIG"></g>
      <g id="barsG">${bars}</g>
+     <!-- zero axis of the diverging bars (UW layout): − grows left, + grows right -->
+     <line id="gxZero" x1="${(X.x0+X.barMax/2).toFixed(1)}" x2="${(X.x0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>
      <g id="datedG"></g>
      <g id="datedOILgdG"></g>
      ${lvl}
      <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan style="fill:var(--jade)">▮</tspan> pins <tspan style="fill:var(--coral)">▮</tspan> pushes</text>
+     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">log</tspan> · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
@@ -1195,20 +1199,32 @@ function gxPaint(){
   const bsrc=document.getElementById('bar-src');
   if(bsrc){ bsrc.textContent=measured?'measured':'MODELED (synthetic)';
             bsrc.style.fill=measured?'var(--ink-dim)':'var(--coral)'; }
+  const bscale=document.getElementById('bar-scale'); if(bscale) bscale.textContent=measured?'log':'linear';
   let mx=1e-6; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; }
   // Live bars keep the FULL row height always — the dated layer lives in its own
   // ladder gutter now (the split-row sub-lane died with the wash+tick marks), so
   // the hero gets stronger when the layer is on, not thinner.
   const MBH=Math.max(2.5, MROWH*0.72);   // bar thickness < row pitch → visible gaps
-  MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], mag=Math.abs(vals[i])/mx,
-      pos=measured?(vals[i]>=0):(k>=D.flip);   // measured → color by SIGN of net γ (pins vs pushes); modeled → by side of flip
+  // DIVERGING LAYOUT (UW-style, 2026-07-12): one zero axis mid-lane — net-negative
+  // (push) grows LEFT, net-positive (pin) grows RIGHT, strikes on the price axis.
+  // AMPLITUDE: measured bars are LOG-scaled across ~5 decades — the 0DTE ATM
+  // singularity (07-10 close: −36,426 at the ATM strike vs ±0.2 at the band edge,
+  // top-3 ATM strikes = 86% of all |γ|) makes linear max-normalization erase every
+  // other strike; log keeps the near-money texture readable. The modeled fallback
+  // stays LINEAR (its synthetic Gaussian spans <2 decades — log flattens it into
+  // sameness); the caption discloses which scale is live. True zero draws nothing.
+  const xMid=X.x0+X.barMax/2, half=X.barMax/2-2;
+  const EPS=1e-5, LDEN=Math.log(1+1/EPS);
+  const amp=v=>{ const a=Math.abs(v)/mx; if(a<=0) return 0;
+    return measured ? Math.log(1+a/EPS)/LDEN : a; };
+  MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], v=vals[i], L=amp(v),
+      pos=measured?(v>=0):(k>=D.flip);   // measured → side+color by SIGN of net γ (pins vs pushes); modeled → by side of flip
     rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
-    // small-but-real strikes draw a HAIRLINE, only true-dead (<1% of max) vanish —
-    // the old binary 5% cutoff blanked ~2/3 of rows on concentration days and made
-    // real liquidity read as "no data" (missing-bars investigation, 2026-07-12)
-    rect.setAttribute('width',(mag<0.01?0:mag<0.05?1.5:Math.max(2,mag*X.barMax)).toFixed(1));
-    rect.style.fill=pos?'url(#gxJ)':'url(#gxC)';
-    rect.style.opacity=(0.48+0.47*mag).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
+    const w=L<=0?0:Math.max(1.5,L*half);   // any nonzero strike keeps ≥ a hairline
+    rect.setAttribute('width',w.toFixed(1));
+    rect.setAttribute('x',(pos?xMid:xMid-w).toFixed(1));
+    rect.style.fill=pos?'url(#gxJ)':'url(#gxCm)';   // base-strong at the zero axis on BOTH sides
+    rect.style.opacity=(0.48+0.47*L).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
   });
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
   const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
