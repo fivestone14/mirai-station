@@ -1228,6 +1228,13 @@ def reconcile_sign(regime: str, aggressor_flow: Optional[float],
     out["informative"] = bool(conflict) and abs(aggressor_flow) >= 0.5 * conflict
     out["trip"] = ("lob_freight_train" if (flow_kind == "lob" and out["agrees"] is False)
                    else "options_sign_inversion" if out["agrees"] is False else None)
+    # N14 residual (2026-07-12): a guard that never had the RANGE to condemn cannot
+    # honestly bless. `agrees` stays untouched (load-bearing — see above), but the
+    # RECORD-ONLY confidence now tells the truth: 1.0 is reserved for a read the tape
+    # actually tested (informative); an out-of-range "no objection" is None — unverified,
+    # not verified. No live consumer reads this field (checked 07-12); the diary does.
+    if out["agrees"] is True and not out["informative"]:
+        out["confidence"] = None
     return out
 
 

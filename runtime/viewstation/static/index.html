@@ -892,7 +892,9 @@ function normWt(w){
     agrees:('agrees_with_gates' in w)?!!w.agrees_with_gates:(w.agrees??true),
     scene:w.scene||'', change:w.would_change_mind||w.change||'', interest:w.interest||'',
     wallS:w.wall_s??w.wallS??0, revised:!!w.revised, snippet:w.snippet||null, skipped:w.skipped||null,
-    pv:w.prompt_version||null };   // actual head version from the row (H1: badge must not be inferred from a constant)
+    pv:w.prompt_version||null,     // actual head version from the row (H1: badge must not be inferred from a constant)
+    stance:w.stance||null,         // N4 (wt-5): fight / settle / no_read — the prison-yard axis
+    dissent:w.reveal_dissent||null };  // N19: a reveal sample that disagreed with a unanimous majority
 }
 // magnet zones (2026-07-09) — normalize an engine dict's pin_zones list. Rows
 // written before the zones landed carry no key → null → the map falls back to
@@ -2536,7 +2538,9 @@ function renderHeads(){
         <div class="verdict">
           <span class="big" style="color:var(--${w.fired?'lantern':'ink-dim'})">${w.fired?cap(w.dir).toUpperCase():'STAND DOWN'}</span>
           ${w.fired?`<span class="mag">${sig(w.mag)} · ${w.horizon}m · [${f(w.range[0],2)}, ${f(w.range[1],2)}]σ</span>`:''}
+          ${w.stance?`<span class="pill ${w.stance==='fight'?'coral':w.stance==='settle'?'jade':'grey'}" title="N4: the prison-yard axis — will the range erupt (fight) or pin/drift (settle)? Independent of direction.">${w.stance==='fight'?'⚔ FIGHT':w.stance==='settle'?'◎ SETTLE':'— NO READ'}</span>`:''}
         </div>
+        ${w.dissent?`<div class="kv" title="N19: the reveal pass disagreed with a unanimous blind majority — the majority stood; the dissent is on the record"><span>Reveal dissent</span><b style="color:var(--coral)">${w.dissent.fired?('fire '+cap(w.dissent.direction||'')):'stand down'}</b></div>`:''}
         <div class="votes">
           <div class="pips">${pips}</div>
           <span class="cap"><b class="mono" style="color:var(--ink)">${(w.votes.agree*100).toFixed(0)}%</b> vote agreement · ${w.votes.n} judged${w.convStated?` · felt ${(w.convStated*100).toFixed(0)}%`:''}</span>

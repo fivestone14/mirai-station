@@ -1150,6 +1150,8 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 # (CEX = 0DTE same-day charm drift; VEX = dated vanna). Logged, not acted on.
                 rec["vex"] = gxv.get("vex"); rec["cex"] = gxv.get("cex")
                 rec["vex_sign"] = gxv.get("vex_sign"); rec["cex_sign"] = gxv.get("cex_sign")
+                # N11: the charm WORD gate rides the row so the tower can honor it
+                rec["charm_word_ok"] = ((gxv.get("slides") or {}).get("F_flows") or {}).get("charm_word_ok")
                 _ff = (gxv.get("slides") or {}).get("F_flows") or {}
                 rec["charm_wall"] = _ff.get("charm_wall")
                 rec["vanna_wall"] = _ff.get("vanna_wall")

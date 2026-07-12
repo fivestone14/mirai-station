@@ -85,7 +85,14 @@ def test_payload_carries_gravity_motion_when_present():
               "magnet_walk_sigma": 0.2, "flip_creep_sigma": 0.1,
               "grip_slope": 0.05, "soft_side": "up", "gamma_above_share": 0.3}
     p = wt.build_payload({**_telemetry(), "gex_motion": motion})
-    assert p["gravity_motion"] == motion
+    # N3 (wt-5): the film arrives as WORDED facts, not a raw unlabeled dict — the
+    # model must never have to guess what "melt −0.041" means
+    gm = p["gravity_motion"]
+    assert gm["call_wall"].startswith("MELTING")
+    assert "4.0%" in gm["call_wall"] and "pre-breakout" in gm["call_wall"]
+    assert gm["magnet"].startswith("WALKING UP")
+    assert gm["soft_side"].startswith("UP")
+    assert "put_wall" not in gm                         # a missing diff stays absent
     assert list(p)[-1] == "note"                        # payload hygiene: note stays last
     # absent ≠ zero: no motion diff this scan → no key at all
     assert "gravity_motion" not in wt.build_payload(_telemetry())
@@ -100,11 +107,18 @@ def test_reveal_payload_shows_the_gates_as_evidence():
 
 
 # --- wt-4 payload: charm drift + tenor terrain (H6/H2/H8) -----------------------
-def test_charm_drift_word_direction_mapping():
-    # 3/3 derivation panel (07-12): negative net dealer charm ⇒ hedge BUYING
-    # into the close ⇒ drift UP; positive ⇒ SELLING ⇒ DOWN; unknown ⇒ absent
+def test_charm_drift_word_gated_and_direction_mapping():
+    # N11 (wt-5): the WORD only speaks when the engine's charm_word_ok gate is open —
+    # net dealer charm said "UP into the close" on 804/806 live rows (a constant, not
+    # a signal), so the gate ships False until charm earns a graded record.
     t = _telemetry()
     t["gex_views"]["cex_sign"] = "negative"
+    assert "charm_drift_into_close" not in wt.build_payload(t)["dealer_map_gravity"]
+    t["gex_views"]["charm_word_ok"] = False
+    assert "charm_drift_into_close" not in wt.build_payload(t)["dealer_map_gravity"]
+    # ...and when the gate is EARNED open, the 3/3 derivation panel mapping holds:
+    # negative charm ⇒ hedge BUYING into the close ⇒ UP; positive ⇒ DOWN; unknown ⇒ absent
+    t["gex_views"]["charm_word_ok"] = True
     assert wt.build_payload(t)["dealer_map_gravity"]["charm_drift_into_close"].startswith("UP")
     t["gex_views"]["cex_sign"] = "positive"
     assert wt.build_payload(t)["dealer_map_gravity"]["charm_drift_into_close"].startswith("DOWN")
@@ -243,19 +257,121 @@ def test_observe_agreement_path_votes_and_skips_reveal(armed_tower, monkeypatch)
     assert rec["conviction"] == 1.0                    # 3/3 votes agreed
 
 
-def test_observe_disagreement_triggers_blind_then_reveal(armed_tower, monkeypatch):
+def test_observe_reveal_cannot_delete_a_unanimous_majority(armed_tower, monkeypatch):
+    # N19 (wt-5): 3 unanimous blind FIRE votes vs 1 capitulating reveal sample — on
+    # 07-10 every one of 5 revisions was the tower abandoning its own fire to agree
+    # with the gates. The majority now STANDS; the dissent is recorded, visibly.
     calls = []
     def fake_ask(prompt, model, timeout=60.0):
         calls.append(prompt)
         if "gates_verdict_head_a" in prompt:           # the reveal pass
             return _verdict(fired=False, direction=None), None, 8.0
-        return _verdict(), None, 8.0                   # blind votes: fire put
+        return _verdict(), None, 8.0                   # blind votes: fire put, 3/3
     monkeypatch.setattr(wt, "_ask_claude", fake_ask)
-    rec = wt.observe(_telemetry(fired=False, direction=None), now=NOW)  # gates passed
+    rec = wt.observe(_telemetry(fired=False, direction=None), now=NOW)  # gates stood down
     assert len(calls) == wt.VOTES_ON_FIRE + 1          # 3 blind votes + 1 reveal
     assert rec["blind"]["fired"] is True               # what it thought unprompted
-    assert rec["revised"] is True                      # the reveal changed its mind
-    assert rec["fired"] is False and rec["agrees_with_gates"] is True
+    assert rec["fired"] is True and rec["revised"] is False   # the majority stands
+    assert rec["reveal_dissent"] == {"fired": False, "direction": None, "overrides": []}
+    assert rec["conviction"] == 1.0                    # describes the SHIPPED call
+    assert rec["agrees_with_gates"] is False
+
+
+def test_observe_reveal_can_revise_a_split_vote_and_refolds_conviction(armed_tower, monkeypatch):
+    # N19 flip side: a NON-unanimous blind verdict may still be revised — and the
+    # shipped conviction then re-folds over ALL samples (votes + reveal), so it
+    # describes the revised call rather than the majority it replaced.
+    seq = [_verdict(), _verdict(), _verdict(fired=False, direction=None)]   # 2-1 split
+    def fake_ask(prompt, model, timeout=60.0):
+        if "gates_verdict_head_a" in prompt:
+            return _verdict(fired=False, direction=None), None, 8.0
+        return seq.pop(0), None, 8.0
+    monkeypatch.setattr(wt, "_ask_claude", fake_ask)
+    rec = wt.observe(_telemetry(fired=False, direction=None), now=NOW)
+    assert rec["fired"] is False and rec["revised"] is True
+    # 4 samples total: 2 fire-put, 2 stand-down (incl. the reveal) → conviction 0.5
+    assert rec["conviction"] == 0.5
+    assert "reveal_dissent" not in rec
+
+
+# --- wt-5: the tower gets eyes (N2 N3 N4 N5 N6 N15 N19 + N1/N16 payload) --------
+def test_validate_verdict_clamps_stance_to_the_three_honest_answers():
+    # N4: fight / settle / no_read — junk or absent records as no_read, never invented
+    v = wt.validate_verdict({**_verdict(), "stance": "fight"})
+    assert v["stance"] == "fight"
+    v = wt.validate_verdict({**_verdict(), "stance": "explode"})
+    assert v["stance"] == "no_read"
+    v = wt.validate_verdict(_verdict())
+    assert v["stance"] == "no_read"
+
+
+def test_event_clock_countdown_and_blind_calendar(monkeypatch):
+    # N2: an FOMC statement 20 minutes out MUST reach the payload as a countdown
+    import lefteye_event_lens as ev
+    cal = [{"date": NOW.date().isoformat(), "kind": "FOMC", "time_et": "14:00"}]
+    monkeypatch.setattr(ev, "load_calendar", lambda path=None: cal)
+    t1340 = NOW.replace(hour=13, minute=40)
+    ec = wt._event_clock(t1340, {})
+    assert ec["kind"] == "FOMC" and ec["minutes_until"] == 20
+    assert "erupt" in ec["note"]
+    # after the print: minutes_since + the lens's surprise ratio when present
+    t1420 = NOW.replace(hour=14, minute=20)
+    ec2 = wt._event_clock(t1420, {"event_lens": {"surprise_ratio": 1.4}})
+    assert ec2["minutes_since"] == 20 and ec2["surprise_ratio"] == 1.4
+    # an EMPTY horizon is surfaced as blindness, never silently absent
+    monkeypatch.setattr(ev, "load_calendar", lambda path=None: [])
+    ec3 = wt._event_clock(t1340, {})
+    assert ec3 and ec3["kind"] is None and "blind" in ec3["note"]
+    # ...and the payload carries it
+    payload = wt.build_payload({**_telemetry()})
+    assert "scheduled_event" in payload
+
+
+def test_flat_tape_confirms_nothing(monkeypatch):
+    # N6: a dead-flat options tape and a dead-flat order book must both read FLAT —
+    # never "buyers pressing" — and say they confirm nothing
+    t = _telemetry()
+    t["gex_views"]["aggressor_flow"] = 0.0
+    t["lob_flow"] = {"tilt": 0.004, "regime": "balanced", "tape_trades": 100}
+    p = wt.build_payload(t)
+    assert "FLAT" in p["live_flow"]["tape_day_average"]
+    assert "NOTHING" in p["live_flow"]["tape_day_average"]
+    assert "FLAT" in p["order_flow"]["book_tilt"]
+
+
+def test_windowed_tape_leads_the_flow_block():
+    # N5: when the 4-30 min windowed read exists it leads; the whole-day number is
+    # explicitly labeled a day average that cannot show a turn
+    t = _telemetry()
+    t["gex_theta"] = {"flow_recent": -0.62}
+    p = wt.build_payload(t)
+    assert p["live_flow"]["tape_recent_window"].startswith("-0.62")
+    assert "sellers" in p["live_flow"]["tape_recent_window"]
+    assert "WHOLE-DAY average" in p["live_flow"]["tape_day_average"]
+
+
+def test_short_gamma_pull_carries_the_amplification_caution():
+    # N15: under short gamma the magnet-pull must not read as the default
+    t = _telemetry()                    # gamma_sign negative in the fixture
+    p = wt.build_payload(t)
+    assert "CAUTION" in p["dealer_map_gravity"]["pull_toward_magnet"]
+    assert "SHORT gamma" in p["dealer_map_gravity"]["pull_toward_magnet"]
+    t["gamma_sign"] = "positive"
+    p2 = wt.build_payload(t)
+    assert "CAUTION" not in p2["dealer_map_gravity"]["pull_toward_magnet"]
+
+
+def test_breach_and_road_reach_the_payload():
+    # N1/N16: containment facts — a broken fence and an open road — must be visible
+    t = _telemetry()
+    t["wall_breach"] = {"side": "call", "wall": 7550.0, "spot": 7556.0,
+                        "overshoot_sigma": 0.06}
+    t["regime_road"] = {"kind": "breach", "side": "call", "level": 7550.0}
+    p = wt.build_payload(t)
+    assert p["wall_breach_event"]["side"] == "call"
+    assert "do not fade" in p["wall_breach_event"]["note"]
+    assert "OPEN" in p["containment_road"]["state"]
+    assert "wall_breach_event" not in wt.build_payload(_telemetry())
 
 
 def test_observe_disabled_by_env(monkeypatch):

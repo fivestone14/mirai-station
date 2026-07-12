@@ -66,7 +66,25 @@ STATE_DIR = SKILL_DIR.parent.parent / "state"
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
-PROMPT_VERSION = "wt-4"     # bump on ANY prompt change — a bump resets the record
+PROMPT_VERSION = "wt-5"     # bump on ANY prompt change — a bump resets the record
+# wt-5 (2026-07-12): THE TOWER GETS EYES era — the 07-12 pressure test's verdict was
+# "it cannot call a fight", and this bump is the answer. (1) N2: scheduled_event — the
+# event clock (FOMC/CPI/NFP kind + minutes-until/since + surprise) reaches the payload;
+# an empty calendar horizon is itself surfaced (blindness must be visible). (2) N4: the
+# verdict schema gains the STANCE axis — fight (range expands / breakout risk) vs
+# settle (pin/drift) vs no_read — the prison-yard question, finally asked and gradable.
+# (3) N15: the prompt's "gravity is the default" is now CONDITIONED ON THE GAMMA SIGN —
+# under short gamma the default is amplification/continuation, the magnet is NOT a
+# target. (4) N6: a flat tape reads FLAT and confirms nothing (both options tape and
+# book tilt); N5: the windowed tape (flow_recent) leads the flow block and the whole-day
+# average is explicitly labeled a day average. (5) N3: gravity_motion ships as worded
+# facts (walls melting/building, magnet walking, grip) instead of a raw unlabeled dict.
+# (6) N11: the charm drift word only speaks when the engine's charm_word_ok gate is
+# open (it is False until charm earns a graded record — the old word was a constant:
+# UP on 804/806 rows). (7) N1/N16: wall-breach events and an open pin→trend road reach
+# the payload as containment facts. (8) N19: a single reveal sample can no longer
+# delete a unanimous multi-vote blind majority (dissent is recorded instead), and when
+# a revision IS accepted the shipped conviction re-folds over ALL samples.
 # wt-4 (2026-07-12): CHARM + TERRAIN era (H6 + tenor doctrine). (1) The payload now
 # spells out the into-the-close charm drift as a word (charm_drift_into_close) —
 # net dealer charm NEGATIVE means hedge re-balancing BUYS into the bell (drift UP),
@@ -239,6 +257,101 @@ def big_change(prev: dict | None, cur: dict) -> tuple[bool, str]:
     return bool(why), "; ".join(why)
 
 
+def _event_clock(now: datetime, t: dict) -> dict | None:
+    """N2 — THE CLOCK THE TOWER NEVER HAD. The single biggest predictor of whether
+    the yard erupts is a scheduled macro print minutes away, and the tower was blind
+    to it. Reads the same shared calendar the event lens reads (FOMC/CPI seeded,
+    NFP by rule), and speaks in minutes. When the calendar itself has nothing on the
+    horizon, that BLINDNESS is surfaced instead of silently absent."""
+    try:
+        import lefteye_event_lens as _ev
+        cal = _ev.load_calendar()
+        day = now.astimezone(ET).date()
+        todays = _ev.events_for(day, cal)
+    except Exception:
+        return None
+    if todays:
+        w = todays[0]
+        try:
+            hh, mm = int(w["time_et"][:2]), int(w["time_et"][3:5])
+            t0 = now.astimezone(ET).replace(hour=hh, minute=mm, second=0, microsecond=0)
+            mins = round((t0 - now.astimezone(ET)).total_seconds() / 60.0)
+        except (KeyError, ValueError, TypeError):
+            return None
+        out: dict = {"kind": w.get("kind"), "time_et": w.get("time_et")}
+        evl = t.get("event_lens") or {}
+        if mins > 0:
+            out["minutes_until"] = mins
+            out["note"] = (f"{w.get('kind')} prints in {mins} minutes — the yard often erupts "
+                           "around it; a pin read is NOT safe through the print, and positioning "
+                           "ahead of it is a coin toss. Weight this above the gravity prior.")
+        else:
+            out["minutes_since"] = -mins
+            if evl.get("surprise_ratio") is not None:
+                out["surprise_ratio"] = evl.get("surprise_ratio")
+                out["note"] = (f"{w.get('kind')} printed {-mins} min ago; surprise_ratio "
+                               f"{evl['surprise_ratio']} (>1 = the print ate more than the whole "
+                               "remaining expected-move budget — continuation risk).")
+            else:
+                out["note"] = f"{w.get('kind')} printed {-mins} min ago (aftermath session)."
+        if len(todays) > 1:
+            out["also_today"] = [e.get("kind") for e in todays[1:]]
+        return out
+    # no event today — is the calendar itself running dry? (hand-seeded file: going
+    # blind silently is exactly the failure the card names)
+    try:
+        horizon = [e for e in cal if isinstance(e, dict) and e.get("date")
+                   and e.get("date") > day.isoformat()]
+        if not horizon:
+            return {"kind": None,
+                    "note": "event calendar has NO upcoming entries — the tower is blind to "
+                            "scheduled prints until state/lob_flow/calendar.json is re-seeded."}
+    except Exception:
+        pass
+    return None
+
+
+def _motion_words(motion: dict) -> dict:
+    """N3 — the wall-being-consumed signal, SPOKEN. gex_motion used to be dumped into
+    the prompt as a raw unlabeled dict ('melt −0.041', no units, no sign convention)
+    beside a note insisting every number is authoritative — the model was left to
+    guess what the textbook pre-breakout picture looks like. Each field becomes a
+    worded fact; None fields stay absent (a missing diff must not read as calm)."""
+    out: dict = {}
+    lb = motion.get("lookback_min")
+    if lb is not None:
+        out["window"] = f"changes measured over the last ~{lb:.0f} min"
+    for side in ("call", "put"):
+        m = motion.get(f"{side}_wall_melt_share")
+        if m is None:
+            continue
+        if m <= -0.01:
+            out[f"{side}_wall"] = (f"MELTING — the {side} wall lost {abs(m):.1%} of the field's "
+                                   "mass at its strike (walls being consumed is the textbook "
+                                   "pre-breakout picture on that side)")
+        elif m >= 0.01:
+            out[f"{side}_wall"] = f"BUILDING — the {side} wall gained {m:.1%} of the field's mass"
+        else:
+            out[f"{side}_wall"] = "holding (no meaningful mass change)"
+    w = motion.get("magnet_walk_sigma")
+    if w is not None:
+        out["magnet"] = (f"WALKING {'UP' if w > 0 else 'DOWN'} {abs(w):.2f}σ over the window"
+                         if abs(w) >= 0.02 else "holding its level")
+    c = motion.get("flip_creep_sigma")
+    if c is not None and abs(c) >= 0.02:
+        out["gamma_flip"] = f"creeping {'UP' if c > 0 else 'DOWN'} {abs(c):.2f}σ"
+    g = motion.get("grip_slope")
+    if g is not None:
+        out["grip"] = ("TIGHTENING — the magnet's share of the field is growing" if g >= 0.01
+                       else "LOOSENING — the magnet's concentration is fading" if g <= -0.01
+                       else "steady")
+    s = motion.get("soft_side")
+    if s in ("up", "down"):
+        out["soft_side"] = (f"{s.upper()} — less gravity mass {'above' if s == 'up' else 'below'} "
+                            "spot; a flow shove meets the least resistance that way")
+    return out
+
+
 def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     """THE SCENE — everything the model may see, as one dict of precomputed,
     σ-normalized numbers with the signs spelled out. `reveal_gates=False` is
@@ -253,20 +366,33 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     spot, sigma = t.get("spot"), t.get("sigma")
     # clock: minutes only, never a date (charm/pin decay reasoning needs time-of-day)
     mins_open = mins_close = None
+    event_clock = None
     try:
         ts = datetime.fromisoformat(t["ts"]).astimezone(ET)
         mins_open = max(0, (ts.hour * 60 + ts.minute) - (9 * 60 + 30))
         mins_close = max(0, (16 * 60) - (ts.hour * 60 + ts.minute))
+        event_clock = _event_clock(ts, t)          # N2: FOMC/CPI/NFP countdown
     except (KeyError, ValueError, TypeError):
         pass
     g = t.get("gamma_sign")
     gamma_word = {"positive": "POSITIVE — dealers long gamma, moves get damped (pin-friendly)",
                   "negative": "NEGATIVE — dealers short gamma, moves get amplified (breakout fuel)",
                   }.get(g, "UNKNOWN — the gamma read abstained")
+    # N5 + N6 (wt-5): the WINDOWED tape leads; the whole-day cumulative is labeled a
+    # day average (it never decays and never turns — at 15:30 on a pure-selling
+    # afternoon it still read "+0.03, buyers"); and a FLAT read of either confirms
+    # NOTHING (free confidence on noise was the old failure).
     flow = gx.get("aggressor_flow")
-    flow_word = ("no live flow read" if flow is None else
-                 f"{flow:+.2f} ({'buyers' if flow > 0 else 'sellers'} hitting the tape"
-                 f"{' HARD' if abs(flow) >= 0.6 else ''})")
+    fr = (t.get("gex_theta") or {}).get("flow_recent")
+    def _tape_word(x, hard_at):
+        if x is None:
+            return None
+        if abs(x) < 0.05:
+            return f"{x:+.2f} — FLAT (a flat tape confirms NOTHING either way)"
+        return (f"{x:+.2f} ({'buyers' if x > 0 else 'sellers'} hitting the tape"
+                f"{' HARD' if abs(x) >= hard_at else ''})")
+    flow_recent_word = _tape_word(fr, 0.5)
+    flow_word = _tape_word(flow, 0.6) or "no live flow read"
     # GRAVITY MOTION (the map as film, not photo) — the diary's gex_motion diff
     # (wall melt / magnet walk / flip creep / grip slope / soft side), attached
     # when this scan produced one. Defensive value first: "the fade leans on a
@@ -291,6 +417,12 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         pull_word = f"DOWN — magnet is {magnet_sd:+.2f}σ BELOW spot; base case is a drift DOWN (put)"
     else:
         pull_word = "NEUTRAL — spot sits on the magnet; two-sided, no gravity edge"
+    # N15 (wt-5): the magnet-pull prior only RULES under long gamma. Under short gamma
+    # dealer hedging amplifies every move away from balance — the magnet is a LOCATION,
+    # not a target, and drift-to-the-magnet is exactly the read the tower must not default to.
+    if g == "negative" and magnet_sd is not None:
+        pull_word += (" — CAUTION: dealers are SHORT gamma today, so this pull is NOT the "
+                      "default; amplification rules (see gamma_sign_at_spot)")
     # LIVE ORDER-BOOK FLOW (the tape beneath the options map) — raw sensor, blind. Shadow
     # layer still warming its 21-day baseline, so attach ONLY when it carries a genuine read
     # (payload hygiene: a cold/empty book must not read as a zero-flow book).
@@ -300,8 +432,14 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     if lob.get("regime") is not None or lob.get("magnet") is not None or (lob.get("tape_trades") or 0) > 0:
         tilt = lob.get("tilt")
         if tilt is not None:
-            order_flow["book_tilt"] = (f"{tilt:+.2f} — "
-                f"{'buyers' if tilt > 0 else 'sellers' if tilt < 0 else 'balanced'} pressing the order book")
+            # N6: a dead-flat book must never render as "buyers pressing" — |tilt| under
+            # the noise floor is FLAT and confirms nothing (free confidence on noise)
+            if abs(tilt) < 0.02:
+                order_flow["book_tilt"] = (f"{tilt:+.2f} — FLAT order book "
+                                           "(confirms NOTHING either way)")
+            else:
+                order_flow["book_tilt"] = (f"{tilt:+.2f} — "
+                    f"{'buyers' if tilt > 0 else 'sellers'} pressing the order book")
         if lob.get("regime") is not None:
             order_flow["lob_regime"] = lob.get("regime")
         # only a book-DERIVED magnet belongs under an order-flow label — on turbulence
@@ -330,12 +468,19 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # mirror, hedge SELLING, drift DOWN. Charm ∝ 1/time-left, so the pull is weak
     # in the morning and grips hardest in the last ~2 hours — the wording carries
     # that so the model never reads a 10am charm sign as a 3pm force.
-    charm_drift = {
-        "negative": "UP into the close — net dealer charm is negative: hedge re-balancing "
-                    "BUYS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
-        "positive": "DOWN into the close — net dealer charm is positive: hedge re-balancing "
-                    "SELLS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
-    }.get(gx.get("cex_sign"))
+    # N11 (wt-5): the WORD only speaks when the engine's gate is open. Net dealer charm
+    # is structurally locked negative by the assumed-sign artifact — it said "UP into
+    # the close" on 804/806 live rows, and H6/wt-4 told the model to vote on it every
+    # afternoon. charm_word_ok stays False until charm has a graded record; the raw
+    # cex/cex_sign numbers still ride the payload as (unworded) facts.
+    charm_drift = None
+    if gx.get("charm_word_ok"):
+        charm_drift = {
+            "negative": "UP into the close — net dealer charm is negative: hedge re-balancing "
+                        "BUYS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
+            "positive": "DOWN into the close — net dealer charm is positive: hedge re-balancing "
+                        "SELLS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
+        }.get(gx.get("cex_sign"))
     # DATED STRUCTURE (wt-4, tenor doctrine level 3): the far-dated OI walls from
     # the nightly sidecar — outer terrain the tower was previously blind to.
     # Unsigned LOCATIONS only (assumed-sign is wrong ~44% out there; magnitude
@@ -404,12 +549,32 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             "vanna_sign": gx.get("vex_sign"), "charm_sign": gx.get("cex_sign"),
             **({"charm_drift_into_close": charm_drift} if charm_drift else {}),
         },
-        "live_flow": {"aggressor_flow": flow_word},
+        # N5 (wt-5): the windowed tape leads; the day average is explicitly labeled one
+        "live_flow": {
+            **({"tape_recent_window": flow_recent_word} if flow_recent_word else {}),
+            "tape_day_average": flow_word + " — WHOLE-DAY average: it never decays and "
+                                            "cannot show a turn; prefer tape_recent_window",
+        },
+        # N2 (wt-5): the event clock — the biggest eruption predictor, finally visible
+        **({"scheduled_event": event_clock} if event_clock else {}),
+        # N1/N16 (wt-5): containment facts — a broken fence and an open road are the
+        # loudest structural facts a forecaster can be handed
+        **({"wall_breach_event": {
+                "side": (t.get("wall_breach") or {}).get("side"),
+                "overshoot_sigma": (t.get("wall_breach") or {}).get("overshoot_sigma"),
+                "note": "price BROKE this scan through the operative wall — containment "
+                        "failed on that side; do not fade the break",
+            }} if t.get("wall_breach") else {}),
+        **({"containment_road": {
+                "state": f"OPEN ({(t.get('regime_road') or {}).get('kind')}) — the "
+                         f"{(t.get('regime_road') or {}).get('side')} wall is broken and price "
+                         "holds beyond it; the regime is forced TRENDING (follow, don't fade)",
+            }} if t.get("regime_road") else {}),
         # order-book flow, gravity-motion, and the sibling Break Lens are attached only
         # when they carry a genuine read — payload hygiene: a missing read must not read
         # as a zero read (absent, never null).
         **({"order_flow": order_flow} if order_flow else {}),
-        **({"gravity_motion": motion} if motion else {}),
+        **({"gravity_motion": _motion_words(motion) or motion} if motion else {}),
         **({"break_lens_head_c": break_lens} if break_lens else {}),
         **({"dated_structure": {
                 "bands": dated_bands,
@@ -441,6 +606,11 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
 _VERDICT_SHAPE = {          # the exact JSON the model must return (schema-by-example)
     "fired": True, "direction": "call", "magnitude_sigma": 0.5,
     "range_sigma": [-0.2, 0.8], "horizon_min": 60, "conviction": 0.65,
+    # N4 (wt-5): THE PRISON-YARD QUESTION, as its own axis. fired=false used to blur
+    # "no directional edge" together with "it will pin" AND "it will erupt" (66% of
+    # judged scans) — the tower was never asked the one question it exists for.
+    "stance": "settle",     # "fight" = range expands / breakout risk over the horizon;
+                            # "settle" = pin/drift inside the walls; "no_read" = honest blind
     "scene": "one short plain-english read of where the map pulls and why",
     "would_change_mind": "what structural change would flip this direction",
 }
@@ -452,19 +622,37 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
     confirm or revise, explaining any override of the gates."""
     head = (
         "You forecast the next ~hour of 0DTE SPX from the dealer-positioning map. "
-        "Predict DIRECTION and SIZE — which way price goes and how far.\n"
+        "Answer THREE things: STANCE (does the range erupt or settle?), DIRECTION, and SIZE.\n"
         "How to read the map:\n"
-        "- GRAVITY IS THE DEFAULT. Price drifts toward the MAGNET and is bounded by the "
-        "walls. Start from dealer_map_gravity.pull_toward_magnet: magnet above spot → base "
-        "case UP (call); magnet below → base case DOWN (put). Dealers long gamma (positive) "
-        "damp and pin toward the magnet; short gamma amplifies the move.\n"
+        "- THE DEFAULT DEPENDS ON THE GAMMA SIGN — check gamma_sign_at_spot FIRST.\n"
+        "  * Dealers LONG gamma (positive): GRAVITY RULES. Price drifts toward the MAGNET and "
+        "is bounded by the walls. Start from pull_toward_magnet: magnet above spot → base case "
+        "UP (call); below → DOWN (put). Base stance: settle.\n"
+        "  * Dealers SHORT gamma (negative): AMPLIFICATION RULES. Hedging pushes price AWAY "
+        "from balance — the magnet is a LOCATION, not a target, and drift-to-the-magnet is the "
+        "one read you must NOT default to. Follow the tape/break direction; expect range "
+        "expansion. Base stance: fight.\n"
+        "  * Sign UNKNOWN (tie/blackout): a balanced book is a HAIR-TRIGGER, not a calm one — "
+        "no directional default, stance leans fight-risk, conviction low.\n"
+        "- STANCE is its own answer, independent of direction: \"fight\" = the range expands / "
+        "containment breaks over the horizon; \"settle\" = price pins/drifts inside the walls; "
+        "\"no_read\" = genuinely blind. You are graded on stance separately — fired=false with "
+        "stance=settle (confident pin) and fired=false with stance=no_read (no idea) are "
+        "DIFFERENT answers; never blur them.\n"
+        "- SCHEDULED EVENTS OUTRANK GRAVITY. If scheduled_event shows a print minutes away, "
+        "the yard usually erupts around it: stance leans fight, pins are unsafe through the "
+        "print, and a pre-print directional call deserves low conviction.\n"
+        "- A BROKEN FENCE IS A FACT. wall_breach_event / containment_road mean containment "
+        "FAILED: never fade a break; follow it or stand down.\n"
         "- MEAN-REVERSION IS THE EXCEPTION, not the default. Only call AGAINST the magnet-pull "
         "when the tape is extremely stretched into a NEAR wall with a turn bar and flow rolling "
         "over — otherwise go WITH the pull. Do NOT fade a trend that is heading toward the magnet.\n"
-        "- CONFIRM WITH THE TAPE. order_flow.book_tilt (buyers vs sellers pressing the book) and "
-        "an active break_lens_head_c (the map failing to contain price — an escape/trend risk that "
-        "way) either confirm or contradict the pull. NEVER fade into a confirmed break; be wary of "
-        "calling against strong book flow. Both are attached only when present; absence ≠ zero.\n"
+        "- CONFIRM WITH THE TAPE — but a FLAT tape confirms NOTHING. live_flow.tape_recent_window "
+        "(the last minutes) outranks tape_day_average (a whole-day cumulative that cannot show a "
+        "turn). order_flow.book_tilt and an active break_lens_head_c either confirm or contradict "
+        "the pull. Any read marked FLAT adds zero confidence to any thesis. NEVER fade into a "
+        "confirmed break; be wary of calling against strong book flow. All attached only when "
+        "present; absence ≠ zero.\n"
         "- CHARM IS THE CLOCK'S TUG — and it grips hardest near the bell. "
         "dealer_map_gravity.charm_drift_into_close is precomputed (direction included — do not "
         "re-derive it from charm_sign): it names which way dealer hedge re-balancing pressures "
@@ -476,8 +664,8 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "terrain), dated_structure last (far monthly/quarter-end OI shelves — react to them only "
         "when spot is near one; they are not targets and their sign is unknown).\n"
         "- direction: \"call\" = you expect price UP over the horizon, \"put\" = DOWN. Set "
-        "fired=false (direction null) only when the scene is genuinely two-sided — spot sitting "
-        "on the magnet with no edge.\n"
+        "fired=false (direction null) when you have no directional edge — but ALWAYS still "
+        "answer stance (a two-sided scene that will stay pinned is settle, not no_read).\n"
         "- HOLD YOUR THESIS. day_context.my_recent_verdicts lists your recent calls, each with "
         "working_sigma_since = how far price has since moved in that call's favor (negative = it "
         "is failing). day_context.session shows the trend since the open. Keep your DIRECTION "
@@ -530,6 +718,10 @@ def validate_verdict(v) -> dict | None:
             "range_sigma": rng,
             "horizon_min": int(_num(v.get("horizon_min"), 5, 240) or 60),
             "conviction_stated": _num(v.get("conviction"), 0, 1),
+            # N4: the fight/settle axis — clamped to the three honest answers; a missing
+            # or junk stance records as no_read (never silently invented)
+            "stance": (v.get("stance") if v.get("stance") in ("fight", "settle", "no_read")
+                       else "no_read"),
             "scene": str(v.get("scene") or "")[:500],
             "would_change_mind": str(v.get("would_change_mind") or "")[:300],
             "overrides": [str(o)[:200] for o in
@@ -891,6 +1083,7 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
                 votes.append(v)
         final, agreement = majority(votes)
         blind = {"fired": final["fired"], "direction": final["direction"],
+                 "stance": final.get("stance"),
                  "conviction_stated": final["conviction_stated"]}
 
         # --- pass 2: REVEAL, only on disagreement ----------------------------
@@ -900,6 +1093,7 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
                     (final["fired"] and gates_fired
                      and final["direction"] != rev.get("direction")))
         revised = False
+        reveal_dissent = None
         if disagree and _clock.time() - t_start < TICK_BUDGET_S - CALL_TIMEOUT_S:
             reveal_payload = build_payload(telemetry, reveal_gates=True)
             reveal_payload["day_context"] = payload["day_context"]
@@ -907,9 +1101,31 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
             walls += wall
             v = validate_verdict(raw)
             if v is not None:
-                revised = (v["fired"] != final["fired"]
-                           or v["direction"] != final["direction"])
-                final = v
+                flips = (v["fired"] != final["fired"]
+                         or v["direction"] != final["direction"])
+                # N19 (wt-5): ONE reveal sample may not delete a UNANIMOUS multi-vote
+                # blind majority — on 07-10 every one of the 5 revisions was the tower
+                # abandoning its own fire to agree with the gates (the independent
+                # second opinion, deleted by a single capitulating sample). The dissent
+                # is recorded, visibly, and the majority stands. A non-unanimous blind
+                # verdict may still be revised — and then the shipped conviction is
+                # re-folded over ALL samples so it describes the call it ships beside.
+                unanimous = (len(votes) >= 2 and agreement is not None
+                             and agreement >= 0.99)
+                if flips and unanimous:
+                    reveal_dissent = {"fired": v["fired"], "direction": v["direction"],
+                                      "overrides": v["overrides"]}
+                elif flips:
+                    final = v
+                    revised = True
+                    allv = votes + [v]
+                    agreement = round(sum(
+                        1 for x in allv
+                        if x["fired"] == v["fired"]
+                        and (not v["fired"] or x["direction"] == v["direction"])
+                    ) / len(allv), 2)
+                else:
+                    final = v          # same call, refreshed scene/magnitude
 
         agrees = (final["fired"] == gates_fired and
                   (not final["fired"] or final["direction"] == rev.get("direction")))
@@ -918,13 +1134,15 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
                   "magnitude_sigma": final["magnitude_sigma"],
                   "range_sigma": final["range_sigma"],
                   "horizon_min": final["horizon_min"],
-                  "conviction": agreement,                   # the number we trust
-                  "conviction_stated": final["conviction_stated"],  # ordinal only
+                  "stance": final.get("stance"),             # N4: fight / settle / no_read
+                  "conviction": agreement,                   # the number we trust — and it
+                  "conviction_stated": final["conviction_stated"],  # describes the SHIPPED call (N19)
                   "scene": final["scene"],
                   "would_change_mind": final["would_change_mind"],
                   "overrides": final["overrides"],
                   "votes": {"n": len(votes), "agreement": agreement},
                   "blind": blind, "revised": revised,
+                  **({"reveal_dissent": reveal_dissent} if reveal_dissent else {}),
                   "agrees_with_gates": agrees,
                   "interest": why, "wall_s": round(walls, 1)}
         try:                                     # snippet must never break a row
