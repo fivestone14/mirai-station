@@ -1133,8 +1133,12 @@ function gxBuild(){
   mapStrikes();
   const X=MAPX, axis=mapAxis();
   const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.x0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
-  // 1-7DTE terrain outlines — hollow, drawn UNDER the solid 0DTE bars
-  const tbars=MSTRIKES.map(()=>`<rect class="gxtbar" x="${X.x0}" y="0" width="0" height="0" rx="1.2" style="fill:none;stroke-width:1;opacity:.5"/>`).join('');
+  // 1-7DTE terrain GHOSTS (Panel-C sign-off, 07-13): outline + a 12% same-hue
+  // tint at ONE fixed fade level — tenor is the only thing the fade encodes
+  // (magnitude stays in length; the solid bars keep the magnitude-opacity).
+  // Drawn UNDER the solid 0DTE bars; >7DTE stays in the dated ladder, which
+  // already carries the full fade-by-expiry ramp.
+  const tbars=MSTRIKES.map(()=>`<rect class="gxtbar" x="${X.x0}" y="0" width="0" height="0" rx="1.2" style="fill-opacity:.12;stroke-width:1;opacity:.85"/>`).join('');
   const lvl=MIDS.map(id=>{ const mm=MMETA[id], spot=id==='spot';
     return `<line id="lead-${id}" style="stroke:${mm.c};opacity:0"/>`+
       `<line id="lc-${id}" x1="${X.x0}" x2="${spot?X.stripEnd:X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
@@ -1278,7 +1282,8 @@ function gxPaint(){
     rect.setAttribute('height',TBH.toFixed(1));
     rect.setAttribute('width',w.toFixed(1));
     rect.setAttribute('x',(posT?xMid:xMid-w).toFixed(1));
-    rect.style.stroke=posT?'var(--jade)':'var(--coral)';
+    const _tc=posT?'var(--jade)':'var(--coral)';
+    rect.style.stroke=_tc; rect.style.fill=_tc;   // ghost: 12% tint inside the outline (fill-opacity set at build)
   });
   const bt7=document.getElementById('bar-t7');
   if(bt7) bt7.textContent=tOn?' · ▯ 1-7D (own scale)':'';
@@ -1761,7 +1766,7 @@ function gxOverview(){
   const scaleChip=GX_MEASURED?`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLog()" aria-pressed="${gxLogOn()}" title="Measured γ-bar length scale. Linear (default) = pure net ÷ single max: honest cross-strike magnitude — the ATM strike dominating IS the true 0DTE shape. Log = compresses ~5 decades so the weak side stays readable on concentration days; magnitude ratios are compressed, ordering kept."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>γ scale</b><i>${gxLogOn()?'<span style="color:var(--lantern)">Log</span> · texture':'Linear · true ratio'}</i></span></button>`:'';
   // 1-7DTE outlines chip — offered only when the row actually carries the field
   // (never a dead switch; pre-07-13 rows have no tenor field)
-  const tenorChip=(Array.isArray(D.nbsTenor)&&D.nbsTenor.length)?`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxTenor()" aria-pressed="${gxTenorOn()}" title="1-7DTE terrain as hollow outlines behind the solid 0DTE bars — same axis, OWN normalization (lengths are not comparable across tenors), stored-gamma stable. Context only; never blended into the pure 0DTE read."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>1-7D γ</b><i>${gxTenorOn()?'<span style="color:var(--jade)">On</span> · outlines':'Off'}</i></span></button>`:'';
+  const tenorChip=(Array.isArray(D.nbsTenor)&&D.nbsTenor.length)?`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxTenor()" aria-pressed="${gxTenorOn()}" title="1-7DTE terrain as ghost bars (outline + 12% tint, one fixed fade level) behind the solid 0DTE bars — same axis, OWN normalization (lengths are not comparable across tenors), stored-gamma stable. Context only; never blended into the pure 0DTE read."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>1-7D γ</b><i>${gxTenorOn()?'<span style="color:var(--jade)">On</span> · ghosts':'Off'}</i></span></button>`:'';
   // freshness pill: quiet "as of" normally; LOUD coral when the feed froze in-session
   const _fr=(typeof gxFreshInfo==='function')?gxFreshInfo():null;
   const freshTag=_fr?` · <span style="${_fr.stale?'color:var(--coral);font-weight:700':'opacity:.75'}">${_fr.txt}</span>`:'';
