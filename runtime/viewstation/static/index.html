@@ -773,6 +773,7 @@ const SYS = { date:"2026-07-07", mode:"PAPER", liveAllowed:false, wtCap:35 };
 let GX_SRC = null;   // newest row's gex_source ('native' | 'spy_proxy×10.03xx') — the engine that actually drew the map
 let GX_SRC_NOTE = null;   // N7: engine's own reason for a non-native read ('coverage' = half-fetched native book)
 let GX_DGONE = 0, GX_DHAD = false;   // H9: consecutive scans with the dated book missing (after having one)
+let GX_PSIG = null;                  // H10: the signed-flow shadow pin (zones modal surface)
 let GX_COV = null;        // N7: native chain coverage verdict {complete, missing[], ...} from the row
 
 // walls/magnet are ~constant intraday; spot walks down into the flip by 10:21
@@ -939,7 +940,8 @@ function rowToScan(r){
     rr: r.range_ruler?{ em:r.range_ruler.em_points??null, emo:r.range_ruler.em_open??null,
       cons:r.range_ruler.em_consumed??null, q:r.range_ruler.quality??null }:null,
     groll: r.gamma_roll?{ div:!!r.gamma_roll.divergence, dir:r.gamma_roll.divergence_dir??null,
-      zw:r.gamma_roll.zero_dte_wall??null, fw:r.gamma_roll.far_wall??null }:null,
+      zw:r.gamma_roll.zero_dte_wall??null, fw:r.gamma_roll.far_wall??null,
+      kind:r.gamma_roll.zero_dte_wall_kind??null }:null,   // N12: defended pin vs accelerant fuel
     evl: r.event_lens?{ kind:r.event_lens.event_kind??null, phase:r.event_lens.phase??null,
       ratio:r.event_lens.surprise_ratio??null }:null,
     wt: normWt(r.watchtower) };
@@ -1014,20 +1016,17 @@ function mapBand(st){
   const sp=(st&&st.spot!=null&&isFinite(st.spot))?st.spot:null;
   const L=[st&&st.spot, st&&st.magnet, st&&st.flip, st&&st.callWall, st&&st.putWall,
            sp!=null?sp-sg:null, sp!=null?sp+sg:null].filter(v=>v!=null&&isFinite(v));   // frame spot±1σ so the EM envelope is always in view (putWall included → no upward bias)
-  // WALLS VIEW (toggle On): the frame widens to include the structural ceiling/
-  // floor and the dated tenor walls, so toggling Walls actually SHOWS the walls
-  // instead of a row of edge markers. Off = the tight intraday zoom, unchanged.
-  if(typeof wallsOn==='function'&&wallsOn()){
-    if(st&&st.callCeil!=null&&isFinite(st.callCeil)&&st.callCeil>0) L.push(+st.callCeil);
-    if(st&&st.putFloor!=null&&isFinite(st.putFloor)&&st.putFloor>0) L.push(+st.putFloor);
-    const dbs=(st&&st.dated&&Array.isArray(st.dated.bands))?st.dated.bands.slice(0,5):[];
-    for(const b of dbs){
-      if(!b||b.band==='quarter_end') continue;   // the collar tail (~±15-20%) would
-                                                 // stretch the frame to unreadable —
-                                                 // it stays an edge marker
-      if(b.call_wall!=null&&isFinite(b.call_wall)) L.push(+b.call_wall);
-      if(b.put_wall!=null&&isFinite(b.put_wall)) L.push(+b.put_wall);
-    }
+  // N23 (2026-07-12): dated >7DTE walls NEVER set the live frame. With the toggle
+  // defaulting On, the monthlies silently widened today's frame ~5×: spot, magnet,
+  // flip and both walls collapsed into ~28px of a 494px lane and the strike grid
+  // coarsened to 10-pt buckets that summed opposite-signed 5-pt strikes into one
+  // bar. Off-frame walls draw as edge markers (paintDated's existing convention) —
+  // the terrain is still announced, it just doesn't crush today's map. Structural
+  // 1-7DTE ceiling/floor may still frame, but only when within reach (≤2.5σ).
+  if(typeof wallsOn==='function'&&wallsOn()&&sp!=null){
+    const near=v=>v!=null&&isFinite(v)&&v>0&&Math.abs(v-sp)<=2.5*sg;
+    if(st&&near(st.callCeil)) L.push(+st.callCeil);
+    if(st&&near(st.putFloor)) L.push(+st.putFloor);
   }
   if(!L.length) return {pLow:7430, pHigh:7660};
   let lo=Math.min(...L), hi=Math.max(...L);
@@ -1388,7 +1387,11 @@ function gxPaint(){
   if(MAP.wtTgt){ const w=curWt;
     const hz=(w&&+w.horizon>0)?+w.horizon:30, ageMin=(w&&w.ts)?(Date.now()-(+new Date(w.ts)))/60000:0;
     if(w&&w.fired&&w.dir&&w.mag&&ageMin<=hz){
-      const up=w.dir==='call', tgt=D.spot+(up?1:-1)*(+w.mag)*sg,
+      // N22: target = CALLED-FROM spot + magnitude·called-from σ — nailed down, so a
+      // right call gets visibly reached and a wrong one visibly fails
+      const up=w.dir==='call',
+        tgt=((w.anchorSpot!=null?w.anchorSpot:D.spot)
+             +(up?1:-1)*(+w.mag)*(w.anchorSigma!=null?w.anchorSigma:sg)),
         // clamped into the frame (edge-marker convention): an off-frame target
         // pins to the edge instead of stamping into the caption/legend strip
         ty=Math.min(X.H-X.padB-8, Math.max(X.padT+8, yFor(tgt))),
@@ -1863,6 +1866,7 @@ function openZonesModal(){
       <div class="modal-body">
         ${rows}
         <div class="zm-note">Price feels every zone's pull — the strongest is the magnet; a close rival pulls the live magnet toward the middle (chop between them).</div>
+        ${GX_PSIG!=null?`<div class="zm-note" style="border-top:1px dashed var(--hairline);padding-top:6px">shadow (H10): signed-flow pin <b>${f(GX_PSIG,0)}</b> — |buy−sell| weighted with the churn floor, recorded for the A/B; not the live magnet.</div>`:''}
       </div>
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
@@ -1990,6 +1994,7 @@ function applyMap(r){
   T.road = r.regime_road || null;                                // N16: pin→trend road open (breach/reclaim/held)
   GX_COV = r.native_coverage || (r.gex_theta||{}).native_coverage || null;   // N7: live leg first, shadow twin fallback
   T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
+  GX_PSIG = (r.gex_theta||{}).pin_signed ?? GX_PSIG;             // H10: shadow signed-flow pin (zones modal)
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
   T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines
   T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
@@ -2008,9 +2013,23 @@ function applyMap(r){
   const pc=(g.pin_contested!=null)?g.pin_contested:g2.pin_contested;
   T.contested=(pc==null)?null:!!pc;
 }
-function applyWt(w){
+function applyWt(w, rows){
+  // N22: the forecast target is ANCHORED to the spot/σ the call was made FROM. It was
+  // drawn at live spot ± magnitude, so the target receded at exactly the speed price
+  // advanced — a correct call looked perpetually unfinished and a bad one never
+  // visibly failed. The anchor freezes once, at call time (row lookup by ts; falls
+  // back to the current eased spot ONCE, never per-frame).
+  const ts=w._ts||w.ts||null;
+  let aSpot=null, aSig=null;
+  if(ts&&Array.isArray(rows)){
+    const row=rows.find(s=>s.ts===ts);
+    if(row){ aSpot=row.spot??null; aSig=row.sigma??null; }
+  }
   curWt={ fired:!!w.fired, dir:w.direction||w.dir||null, mag:w.magnitude_sigma??w.mag??0, snippet:w.snippet||null, scene:w.scene||'',
-    horizon:w.horizon_min??w.horizon??60, ts:w._ts||w.ts||null };
+    horizon:w.horizon_min??w.horizon??60, ts,
+    stance:w.stance||null,
+    anchorSpot:(aSpot!=null&&isFinite(aSpot))?aSpot:(isFinite(D.spot)?D.spot:null),
+    anchorSigma:(aSig!=null&&isFinite(aSig)&&aSig>0)?aSig:((D.sigma>0)?D.sigma:null) };
   wtDirty=true; updateTower();
 }
 // ---- live header readouts (N21/H1): painted from the feed, never from constants ----
@@ -2063,7 +2082,7 @@ function feedAll(L){
   if(ts===lastFedTs) return;          // poll returned the same latest scan — nothing new to apply
   lastFedTs = ts;
   applyMap(L.newestRaw);              // new target → the map eases to it (60fps)
-  if(L.wt) applyWt(L.wt);            // refresh the NEXT read (only when the scan actually changed)
+  if(L.wt) applyWt(L.wt, L.rows);    // refresh the NEXT read (anchored to its own row — N22)
   else if(curWt&&curWt._demo){       // N20: live feed with no judged row yet — evict the demo
     curWt={fired:false,dir:null,mag:0,scene:'',snippet:null,_none:true};   // verdict, say "no read yet"
     wtDirty=true; updateTower();
@@ -2831,8 +2850,13 @@ function rpStream(s){
     ev?(ev.kind?`${ev.kind}${ev.ratio!=null?` · ratio ${f(ev.ratio,2)}`:''}`:'no event today'):'not recorded this day', !!ev);
   const gr=s.groll;
   const grDir=gr&&gr.div?(gr.dir==='far_above'?'up':gr.dir==='far_below'?'down':'flat'):'flat';   // divergence_dir = far_above/far_below
+  // N12: an ACCELERANT strike (net short γ) must never be worded as "the pin" —
+  // on the live 07-10 mark both "pins" were net SHORT gamma (fuel, not defense)
   push('Gamma Roll','sensory', grDir,
-    gr?(gr.div?`pin may roll ${grDir==='up'?'up':grDir==='down'?'down':'sideways'}${gr.zw!=null&&gr.fw!=null?` (${f(gr.zw,0)}→${f(gr.fw,0)})`:''}`:'walls aligned'):'not recorded this day', !!gr);
+    gr?(gr.div?(gr.kind==='accelerant'
+        ?`0DTE mass at ${f(gr.zw,0)} is net SHORT γ — fuel, not a defended pin (structural wall ${f(gr.fw,0)})`
+        :`pin may roll ${grDir==='up'?'up':grDir==='down'?'down':'sideways'}${gr.zw!=null&&gr.fw!=null?` (${f(gr.zw,0)}→${f(gr.fw,0)})`:''}`)
+      :'walls aligned'):'not recorded this day', !!gr);
   const rr=s.rr;
   push('Range Ruler','sensory','none',
     rr&&rr.cons!=null?`${Math.round(rr.cons*100)}% of ±${f(rr.emo??rr.em,0)}pt budget used`:'not recorded this day', !!(rr&&rr.cons!=null));

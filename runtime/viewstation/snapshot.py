@@ -273,7 +273,10 @@ def _series(rows: list[dict], tk: str) -> list[dict]:
                     "q": rr.get("quality")} if isinstance(rr, dict) else None),
             "groll": ({"div": bool(gr.get("divergence")), "dir": gr.get("divergence_dir"),
                        "zw": _fnum(gr.get("zero_dte_wall")),
-                       "fw": _fnum(gr.get("far_wall"))} if isinstance(gr, dict) else None),
+                       "fw": _fnum(gr.get("far_wall")),
+                       # N12: defended (net long γ — a real pin) vs accelerant (net
+                       # short γ — fuel); the wording surface must key off this
+                       "kind": gr.get("zero_dte_wall_kind")} if isinstance(gr, dict) else None),
             "evl": ({"kind": ev.get("event_kind"), "phase": ev.get("phase"),
                      "ratio": _fnum(ev.get("surprise_ratio"))} if isinstance(ev, dict) else None),
             "zones": zones,
