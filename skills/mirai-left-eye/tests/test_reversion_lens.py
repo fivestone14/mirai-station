@@ -536,7 +536,11 @@ def test_outcome_vector_win_keeps_walking_past_the_exit():
                    ("11:00", 7500, 7390, 7480)])
     resolved, _ = R._resolve_beta_trades(rows, bars_lookup=bars)
     t = resolved[0]
-    assert t["outcome"] == "win" and t["r"] == 1.0 and t["exit_sigma"] == 0.3
+    # N18 (grade_v=2): barriers live on the WINDOW's σ — 0.30·√(120/390) ≈ 0.166σ_day
+    eff = 0.30 * (120.0 / 390.0) ** 0.5
+    assert t["outcome"] == "win" and t["r"] == 1.0
+    assert t["exit_sigma"] == round(eff, 3) and t["grade_v"] == 2
+    assert t["barrier_sigma"] == round(eff, 3)
     assert t["mfe_sigma"] == round((7500 - 7350) / 95, 3)     # full window, not exit-clipped
     assert t["mae_sigma"] == round((7348 - 7350) / 95, 3)     # signed ≤ 0
     assert t["move_30m"] == round((7390 - 7350) / 95, 3)      # last close ≤ 30 min
@@ -550,7 +554,9 @@ def test_outcome_vector_loss_is_minus_one_r():
     bars = _vbars([("10:10", 7355, 7310, 7315)])
     resolved, _ = R._resolve_beta_trades(rows, bars_lookup=bars)
     t = resolved[0]
-    assert t["outcome"] == "loss" and t["r"] == -1.0 and t["exit_sigma"] == -0.3
+    eff = 0.30 * (120.0 / 390.0) ** 0.5                       # N18 hold-scaled stop
+    assert t["outcome"] == "loss" and t["r"] == -1.0
+    assert t["exit_sigma"] == -round(eff, 3)
 
 
 def test_outcome_vector_scratch_gets_fractional_r():
@@ -562,7 +568,8 @@ def test_outcome_vector_scratch_gets_fractional_r():
     t = resolved[0]
     assert t["outcome"] == "scratch"
     assert t["exit_sigma"] == round((7360 - 7350) / 95, 3)
-    assert t["r"] == round(t["exit_sigma"] / 0.30, 2)
+    # N18: fractional r divides by the HOLD-SCALED stop (the cookie actually risked)
+    assert t["r"] == round(t["exit_sigma"] / (0.30 * (120.0 / 390.0) ** 0.5), 2)
     assert t["hold_min"] == 55
 
 

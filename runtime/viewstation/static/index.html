@@ -772,6 +772,7 @@
 const SYS = { date:"2026-07-07", mode:"PAPER", liveAllowed:false, wtCap:35 };
 let GX_SRC = null;   // newest row's gex_source ('native' | 'spy_proxy×10.03xx') — the engine that actually drew the map
 let GX_SRC_NOTE = null;   // N7: engine's own reason for a non-native read ('coverage' = half-fetched native book)
+let GX_DGONE = 0, GX_DHAD = false;   // H9: consecutive scans with the dated book missing (after having one)
 let GX_COV = null;        // N7: native chain coverage verdict {complete, missing[], ...} from the row
 
 // walls/magnet are ~constant intraday; spot walks down into the flip by 10:21
@@ -1793,6 +1794,11 @@ function gxOverview(){
     const bookAge=dd.stale_days;
     if(bookAge>=1) datedChips+=`<span class="gx-chip"><b>Dated Book</b><i>Stale ${bookAge}d · as of ${String(dd.oi_date||'')}</i></span>`;
   }
+  // H9: a dropped book is LOUD — the silence after erasing the walls must not read
+  // as "no walls today"
+  if(!dd && GX_DHAD && GX_DGONE>10){
+    datedChips+=`<span class="gx-chip" style="border-color:var(--coral);color:var(--coral)"><b>Dated Book GONE</b><i>walls erased · nightly sidecar not reporting</i></span>`;
+  }
   // Walls toggle: the wall LINES layer (dated tenor walls + structural ceiling/floor,
   // labeled on-line with arrow + price + σ). Default On.
   const wallsChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleWalls()" aria-pressed="${wallsOn()}" title="Wall lines on the map: dated tenor walls + the structural Call Ceiling / Put Floor, labeled with price and σ-distance"><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Walls</b><i>${wallsOn()?'<span style="color:var(--jade)">On</span>':'Off'} · ceiling · floor · dated</i></span></button>`;
@@ -1988,7 +1994,13 @@ function applyMap(r){
   T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines
   T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
   T.callCeil = r.call_wall_tenor ?? r.call_wall ?? D.callCeil;     // structural OI call wall = the real ceiling
-  T.dated = r.dated_gex ?? D.dated;                                // dated book (nightly sidecar) — sticky: rows before the day's first scan keep the last known
+  // H9: the dated book is sticky across SHORT gaps only (rows before the day's first
+  // scan) — a DROPPED book must ERASE the walls, not freeze them. The engine already
+  // omits dated_gex when the store is stale; if the key stays absent for >10 scans the
+  // tablet stops painting the last-known walls and says the book is gone.
+  if(r.dated_gex!=null){ T.dated=r.dated_gex; GX_DGONE=0; GX_DHAD=true; }
+  else if(GX_DHAD){ GX_DGONE++; T.dated = (GX_DGONE>10) ? null : D.dated; }
+  else { T.dated = D.dated; }
   // magnet zones — same engine dict the magnet reads from, the other as fallback;
   // pre-zone rows carry no key → null → exact single-magnet fallback
   const g2=(g===gt)?gv:gt;

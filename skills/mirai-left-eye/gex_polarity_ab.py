@@ -245,15 +245,21 @@ def promotion_gate(min_outcomes: int = 12, promote_at: float = 0.58,
             w = card.get("wins") or 0
             losses_day = max(0, (card.get("n") or 0) - w)
             if w > losses_day:
-                decided.append((True, card.get("prompt_version")))
+                decided.append((True, card.get("prompt_version"), card.get("grade_v")))
             elif losses_day > w:          # even days (w == losses) teach nothing
-                decided.append((False, card.get("prompt_version")))
+                decided.append((False, card.get("prompt_version"), card.get("grade_v")))
     except OSError:
         pass
     if record_key == "watchtower" and decided and decided[-1][1] is not None:
         era = decided[-1][1]              # newest decided day's era
         decided = [d for d in decided if d[1] == era]
-    hit_days = sum(1 for h, _ in decided if h)
+    # N18 GRADING-ERA SEGMENTATION (2026-07-12): hold-scaled barriers (grade_v=2) and
+    # the old daily-σ barriers are different exams — a record must never pool both.
+    # Same rule as the prompt era: only days graded under the NEWEST era count.
+    if decided and decided[-1][2] is not None:
+        gv_era = decided[-1][2]
+        decided = [d for d in decided if d[2] == gv_era]
+    hit_days = sum(1 for h, _, _ in decided if h)
     miss_days = len(decided) - hit_days
     n = hit_days + miss_days
     if n < min_outcomes:
@@ -561,7 +567,7 @@ def _grade_lens(rows: list[dict], bars_lookup) -> dict | None:
         if not gated and not pre and not pending:
             return None
         lo, hi = wilson_bounds(w, d - w) if d else (None, None)
-        return {"n": d, "wins": w,
+        return {"n": d, "wins": w, "grade_v": 2,
                 "scratch": sum(1 for r in gated if r["outcome"] == "scratch"),
                 "pending": pending, "win_rate": rate,
                 "wilson_lo": round(lo, 3) if lo is not None else None,
@@ -569,7 +575,8 @@ def _grade_lens(rows: list[dict], bars_lookup) -> dict | None:
                 **_r_rollup(gated),
                 "params": {"target": _rl.PAPER_TARGET_SIGMA,
                            "stop": _rl.PAPER_STOP_SIGMA,
-                           "max_hold_min": _rl.PAPER_MAX_HOLD_MIN},
+                           "max_hold_min": _rl.PAPER_MAX_HOLD_MIN,
+                           "hold_scaled": True},       # N18: barriers on the window's σ
                 "pre_runway": {"n": pd, "wins": pw, "win_rate": prate},
                 "trades": gated}
     except Exception:
@@ -671,7 +678,7 @@ def _grade_break_lens(rows: list[dict], bars_lookup) -> tuple[dict | None, dict 
         # constant change can never silently re-price history (getattr keeps
         # the grader alive if the lens's BREAK_* dials land in a later deploy;
         # fallbacks = the locked-plan values)
-        full = {**_summary(gated, pending),
+        full = {**_summary(gated, pending), "grade_v": 2,
                 "n_dropped_early": n_drop_gated,
                 "params": {"target": _rl.PAPER_TARGET_SIGMA,
                            "stop": _rl.PAPER_STOP_SIGMA,
@@ -684,7 +691,7 @@ def _grade_break_lens(rows: list[dict], bars_lookup) -> tuple[dict | None, dict 
                 "trades": gated}
         if cocks_by_level:
             full["cocks_by_level"] = cocks_by_level
-        thin = ({**pre_sum, "trades": pre}
+        thin = ({**pre_sum, "grade_v": 2, "trades": pre}
                 if (pre or pre_pending or n_drop_pre) else None)
         return full, thin
     except Exception:
@@ -699,6 +706,69 @@ def _is_solo(interest) -> bool:
     (2026-07-07) judges quiet scans too."""
     return isinstance(interest, str) and (interest == "hourly heartbeat"
                                           or interest.startswith("shift"))
+
+
+STANCE_BAND_SIGMA = 0.30   # fight/settle band, in horizon-scaled σ (same 0.30 grammar
+                           # as the trade barriers — one number, one meaning)
+
+
+def _grade_stance(judged: list[dict], bars_lookup) -> dict | None:
+    """N4 — grade the fight/settle answer. For each judged row with a stance, walk the
+    1-min bars over the row's horizon: the max excursion EITHER way from entry (in σ)
+    against the hold-scaled band STANCE_BAND_SIGMA·√(horizon/390). Eruption ⇒ fight was
+    right; containment (with a complete window) ⇒ settle was right. no_read abstains.
+    Returns {n, fight: {n, wins}, settle: {n, wins}, acc} | None."""
+    import math as _math
+    from datetime import time as _time
+    scored = {"fight": [0, 0], "settle": [0, 0]}      # stance → [n, wins]
+    path = []
+    for b in bars_lookup("SPX") or []:
+        try:
+            bt = datetime.fromisoformat(b["ts"]).astimezone(ET)
+        except (ValueError, TypeError, KeyError):
+            continue
+        if b.get("high") is not None and b.get("low") is not None:
+            path.append((bt, b["high"], b["low"]))
+    if not path:
+        return None
+    path.sort(key=lambda x: x[0])
+    for r in judged:
+        wt = r.get("watchtower") or {}
+        stance = wt.get("stance")
+        if stance not in ("fight", "settle"):
+            continue
+        P, sigma = r.get("spot"), r.get("sigma")
+        if not (isinstance(P, (int, float)) and isinstance(sigma, (int, float)) and sigma):
+            continue
+        try:
+            t0 = datetime.fromisoformat(r["ts"]).astimezone(ET)
+        except (KeyError, ValueError, TypeError):
+            continue
+        horizon = wt.get("horizon_min") or 60
+        band = STANCE_BAND_SIGMA * _math.sqrt(max(horizon, 5) / 390.0)
+        exc, last_in = 0.0, None
+        for (bt, hi, lo) in path:
+            if bt <= t0:
+                continue
+            el = (bt - t0).total_seconds() / 60.0
+            if el > horizon or bt.time() >= _time(16, 0):
+                break
+            last_in = el
+            exc = max(exc, abs(hi - P) / sigma, abs(P - lo) / sigma)
+        erupted = exc >= band
+        if not erupted and (last_in is None or last_in < min(horizon, 385) - 15):
+            continue                                   # incomplete window: no verdict
+        scored[stance][0] += 1
+        if (stance == "fight") == erupted:
+            scored[stance][1] += 1
+    n = scored["fight"][0] + scored["settle"][0]
+    if not n:
+        return None
+    wins = scored["fight"][1] + scored["settle"][1]
+    return {"n": n, "acc": round(wins / n, 2),
+            "band_sigma": STANCE_BAND_SIGMA,
+            "fight": {"n": scored["fight"][0], "wins": scored["fight"][1]},
+            "settle": {"n": scored["settle"][0], "wins": scored["settle"][1]}}
 
 
 def _grade_watchtower(rows: list[dict], bars_lookup) -> dict | None:
@@ -779,6 +849,16 @@ def _grade_watchtower(rows: list[dict], bars_lookup) -> dict | None:
         solo_judged = sum(1 for r in judged
                           if _is_solo((r["watchtower"] or {}).get("interest")))
 
+        # N4 STANCE GRADING (2026-07-12): the prison-yard axis, finally graded. Per
+        # judged row carrying a stance: did the range actually ERUPT (max excursion
+        # either way over the row's horizon ≥ the hold-scaled band) or SETTLE inside
+        # it? fight is right on eruption, settle on containment; no_read is excluded.
+        stance_card = None
+        try:
+            stance_card = _grade_stance(judged, bars_lookup)
+        except Exception:
+            stance_card = None
+
         w = sum(1 for t in tower if t["outcome"] == "win")
         d = w + sum(1 for t in tower if t["outcome"] == "loss")
         lo, hi = wilson_bounds(w, d - w) if d else (None, None)
@@ -788,7 +868,8 @@ def _grade_watchtower(rows: list[dict], bars_lookup) -> dict | None:
         versions = [r["watchtower"].get("prompt_version") for r in judged
                     if r["watchtower"].get("prompt_version")]
         pv = max(set(versions), key=versions.count) if versions else None
-        return {"n": d, "wins": w, "prompt_version": pv,
+        return {"n": d, "wins": w, "prompt_version": pv, "grade_v": 2,
+                **({"stance": stance_card} if stance_card else {}),
                 "scratch": sum(1 for t in tower if t["outcome"] == "scratch"),
                 "pending": pending,
                 "win_rate": round(w / d, 2) if d else None,

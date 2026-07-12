@@ -2129,10 +2129,21 @@ def _resolve_beta_trades(rows: list[dict], bars_lookup=None,
             if b.get("high") is not None and b.get("low") is not None:
                 path.append((bt, b["high"], b["low"], b.get("close")))
         path.sort(key=lambda x: x[0])
+        # N18 (2026-07-12): BARRIERS A 0DTE HOLD CAN ACTUALLY REACH. ±0.30 of the DAILY σ
+        # inside a ≤120-min window are barriers a 0DTE hour rarely touches — measured
+        # live: 27 fires over 5 sessions produced 1 win, 1 loss, 25 scratches and ZERO
+        # decided days, so the Wilson gate (12 decided days) was unreachable and every
+        # win-rate on screen was a number about nothing. Barriers now live on the
+        # WINDOW's expected move: scale = √(max_hold/390) (Brownian time-scaling), so
+        # target/stop keep their meaning as "0.30 of the horizon's σ". Symmetric, so
+        # win-rate semantics and R units (±1 at the barriers) are unchanged. grade_v=2
+        # tags every trade — eras must never pool (the gate segments on it).
+        scale = math.sqrt(max_hold / 390.0) if max_hold and max_hold > 0 else 1.0
+        eff_target, eff_stop = target * scale, stop * scale
         for (ts, t0, P, sigma, d) in fires:
             is_long = d == "call"                    # call = fade long (want up), put = fade short
-            tgt = P + target * sigma if is_long else P - target * sigma
-            stp = P - stop * sigma if is_long else P + stop * sigma
+            tgt = P + eff_target * sigma if is_long else P - eff_target * sigma
+            stp = P - eff_stop * sigma if is_long else P + eff_stop * sigma
             outcome, ttr, last_in_win = None, None, None
             mfe, mae = 0.0, 0.0                      # full-window excursions (σ, favorable axis)
             last_px = None                           # latest in-window close (scratch exit price)
@@ -2179,9 +2190,9 @@ def _resolve_beta_trades(rows: list[dict], bars_lookup=None,
             # r + exit: a win got out at +target, a loss at −stop, a scratch at the
             # last in-window close. r divides by the stop distance (the cookie risked).
             if outcome == "win":
-                exit_sigma, hold = target, ttr
+                exit_sigma, hold = eff_target, ttr
             elif outcome == "loss":
-                exit_sigma, hold = -stop, ttr
+                exit_sigma, hold = -eff_stop, ttr
             else:
                 exit_sigma = (((last_px - P) if is_long else (P - last_px)) / sigma
                               if last_px is not None else 0.0)
@@ -2192,7 +2203,9 @@ def _resolve_beta_trades(rows: list[dict], bars_lookup=None,
                 if last_in_win is None or last_in_win < mark - 6:
                     moves[mark] = None
             resolved.append({"ticker": tk, "ts": ts, "dir": d, "outcome": outcome,
-                             "r": round(exit_sigma / stop, 2) if stop else None,
+                             "grade_v": 2,            # N18 era: hold-scaled barriers
+                             "barrier_sigma": round(eff_target, 3),
+                             "r": round(exit_sigma / eff_stop, 2) if eff_stop else None,
                              "exit_sigma": round(exit_sigma, 3),
                              "mfe_sigma": round(mfe, 3),
                              "mae_sigma": round(mae, 3),

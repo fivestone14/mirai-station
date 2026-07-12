@@ -488,13 +488,24 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # (≤3σ) — a 9σ crash strike in the payload would re-teach the exact
     # far-wall anchoring H2 just removed. age_days rides along so a stale wall
     # is never mistaken for a fresh fact.
+    # H8 v2 (2026-07-12): the ≤3σ reach filter dropped EVERY real dated wall EVERY day
+    # (live walls sit 4.7-13.8σ out) — the map got the quarterly but the Watchtower
+    # never saw any of it. Walls now always reach the payload: in-reach ones plainly,
+    # far ones explicitly TAGGED far (σ-distance stated, ≤15σ sanity cap) with wording
+    # that keeps H2's anchor discipline — outer terrain, never a target.
     dated_bands = []
     for b in ((t.get("dated_gex") or {}).get("bands") or []):
         _cw, _pw = _sd(b.get("call_wall"), spot, sigma), _sd(b.get("put_wall"), spot, sigma)
         row = {"band": b.get("band"), "days_to_expiry": b.get("dte"),
-               **({"age_days": b.get("age_days")} if b.get("age_days") is not None else {}),
-               **({"call_wall_sigma_above": _cw} if _cw is not None and abs(_cw) <= 3 else {}),
-               **({"put_wall_sigma_below": _pw} if _pw is not None and abs(_pw) <= 3 else {})}
+               **({"age_days": b.get("age_days")} if b.get("age_days") is not None else {})}
+        if _cw is not None and abs(_cw) <= 15:
+            row["call_wall_sigma_above"] = _cw
+            if abs(_cw) > 3:
+                row["call_wall_reach"] = "FAR — not reachable today; outer terrain only"
+        if _pw is not None and abs(_pw) <= 15:
+            row["put_wall_sigma_below"] = _pw
+            if abs(_pw) > 3:
+                row["put_wall_reach"] = "FAR — not reachable today; outer terrain only"
         if "call_wall_sigma_above" in row or "put_wall_sigma_below" in row:
             dated_bands.append(row)
     # structural 1-7DTE band walls (outer terrain beside H2's operative walls).

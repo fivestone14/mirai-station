@@ -337,7 +337,9 @@ def test_lens_card_carries_outcome_vector_rollup():
                         bars_lookup=lambda t: bars if t == "SPX" else [])
     lens = res["lens"]
     assert lens["total_r"] == 1.0 and lens["median_r"] == 1.0
-    assert lens["params"] == {"target": 0.30, "stop": 0.30, "max_hold_min": 120}
+    assert lens["params"] == {"target": 0.30, "stop": 0.30, "max_hold_min": 120,
+                              "hold_scaled": True}   # N18: barriers on the window's σ
+    assert lens["grade_v"] == 2
     assert lens["trades"][0]["r"] == 1.0
 
 
