@@ -935,6 +935,24 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 rec["sign_informative"] = _E.get("informative")  # got within 2× of tripping
                 rec["sign_trip"] = _E.get("trip")                # which guard fired, if any
                 rec["sign_flow_kind"] = flow_kind
+                # H7 A/B: the regime is now TODAY'S book; the blended 0-7DTE read it replaced
+                # rides beside it every scan. The disagreement rate between these two IS the
+                # measurement of how much next week's book was distorting today's regime —
+                # unmeasurable before, because only the blended read was ever computed.
+                rec["regime_tenor"] = gxv.get("regime_tenor")    # the old blended read
+                rec["regime_source"] = gxv.get("regime_source")  # "0dte" | "blended_fallback"
+                rec["regime_basis"] = gxv.get("regime_basis")    # open_interest | volume
+                rec["flip_tenor"] = gxv.get("flip_tenor")
+                # shadow twin: today's book on the VOLUME basis. 0DTE OI is yesterday's, so
+                # whether the regime should weight by OI or by live volume is still open (N9).
+                # Recorded so it gets settled with data, not by argument.
+                rec["regime_0dte_vol"] = gxv.get("regime_0dte_vol")
+                rec["net_gex_0dte_vol"] = gxv.get("net_gex_0dte_vol")
+                rec["net_gex"] = gxv.get("net_gex")              # 0DTE net GEX at spot
+                rec["net_gex_tenor"] = gxv.get("net_gex_tenor")  # blended net GEX at spot
+                rec["regime_disagrees"] = (
+                    gxv.get("regime_raw") != gxv.get("regime_tenor")
+                    if gxv.get("regime_raw") and gxv.get("regime_tenor") else None)
                 # record-only: vanna/charm dealer-flow exposures for the paper A/B
                 # (CEX = 0DTE same-day charm drift; VEX = dated vanna). Logged, not acted on.
                 rec["vex"] = gxv.get("vex"); rec["cex"] = gxv.get("cex")

@@ -124,6 +124,28 @@ GAMMA_TAPE_V = 1                   # weighting era: contracts × live γ (cf. pi
 # axis and is meaningless here (measured cumulative range ±0.01). FLOW_CONFLICT_LOB was cut
 # to 0.25 for exactly this reason — a threshold borrowed across axes is how guards die.
 
+# --- H7: THE REGIME IS TODAY'S BOOK (2026-07-12, LIVE) ------------------------
+# The regime answers ONE question — "over the next hour, does dealer hedging DAMP price
+# or AMPLIFY it?" — and the dealers who must re-hedge in the next hour are the ones short
+# TODAY'S expiry. The engine was answering it off the blended 0-7DTE chain, where the
+# MAJORITY of the weight is options that do not expire today. A fat 1-7DTE long-gamma mass
+# can hold the blended sign POSITIVE while today's book at spot is short gamma and
+# amplifying: the map says "dealers long gamma, moves get damped (pin-friendly)" on a day
+# today's book is fuel. Worse, the Break Lens — the only offense head — can only COCK on a
+# NEGATIVE sign (reversion_lens.py:668), so a stuck-positive blended sign means the breakout
+# detector never wakes up. That is the root several other findings hang off.
+#
+# Precedent, already in this file: slide_flows reads CEX off the 0DTE book and VEX off the
+# 1-7DTE book — "each read off the tenor that actually carries it, not the whole chain
+# (which dilutes both)". H7 applies that same doctrine to the regime.
+#
+# The dated tenors are NOT discarded — they stay first-class, as TERRAIN rather than as
+# votes: slide_tenor_walls still supplies the structural band walls, the dated sidecar still
+# supplies the far shelves, and the blended read is recorded beside the 0DTE one every scan
+# (regime_tenor / flip_tenor / net_gex_tenor) so the disagreement rate is MEASURED from day
+# one instead of argued. Flip this to False to revert to the blended regime in one line.
+REGIME_0DTE = True
+
 # Regime tie deadband (H3, 2026-07-12): |net GEX at spot| below this share of the
 # GROSS |per-contract GEX| field is a BALANCED book, not a regime — without it a
 # 0.001 imbalance flips long↔short on exactly the knife-edge days the label exists
@@ -396,7 +418,8 @@ def _flip_rootfind(contracts: list[dict], spot: float, weight_key: str,
 
 
 def slide_flip(contracts: list[dict], spot: float,
-               minutes_to_close: Optional[float] = None) -> dict:
+               minutes_to_close: Optional[float] = None,
+               prefer: str = "open_interest") -> dict:
     """BORDER FINDER (Slide A + E): finds the price where dealer behavior flips
     from calming to amplifying, with an honest uncertainty band.
     Full-chain gamma flip (BS-repriced root-find, banded) + regime.
@@ -411,7 +434,7 @@ def slide_flip(contracts: list[dict], spot: float,
     """
     out = {"flip": None, "flip_band": None, "net_gex": None,
            "regime": "unknown", "basis": None}
-    basis = pick_basis(contracts, spot)
+    basis = pick_basis(contracts, spot, prefer=prefer)
     if not basis or not spot:
         return out
     # DATA-BLACKOUT GUARD: a chain with strikes (OI/volume) but no usable IV sums to
@@ -1263,27 +1286,52 @@ def build_views(contracts: list[dict], spot: float,
                 anchor_spot: Optional[float] = None,
                 now: Optional[datetime] = None) -> dict:
     """Pure assembler: the six slides + the consumer-facing magnet/regime. `magnet`
-    is the 0DTE pin (B) when present, else the full-chain flip (A) — that is what the
+    is the 0DTE pin (B) when present, else the regime read's flip — that is what the
     reversion lens measures runway to. `minutes_to_close` sharpens the 0DTE charm
     clock; `sigma` (the day's σ yardstick) arms the ±½σ shove test; `flow_conflict`
-    + `flow_kind` are the source-scaled trip level and tape semantics for slide E."""
+    + `flow_kind` are the source-scaled trip level and tape semantics for slide E.
+
+    H7 (2026-07-12): the REGIME, the FLIP and the SHOVE are read off TODAY'S book (A0),
+    not the blended 0-7DTE chain (A). The blended read is computed anyway and recorded
+    beside it (regime_tenor / flip_tenor / net_gex_tenor) so the disagreement rate is
+    measured, and it remains the FALLBACK when today's book is unreadable."""
     zero, near = split_tenor(contracts)
-    A = slide_flip(contracts, spot, minutes_to_close)
+    A = slide_flip(contracts, spot, minutes_to_close)     # blended 0-7DTE — A/B twin + fallback
+    A0 = slide_flip(zero, spot, minutes_to_close)         # H7: TODAY'S book — the regime authority
+    # H7 records the TENOR fix. It deliberately does NOT settle the BASIS question, which is a
+    # separate open finding: pick_basis prefers open_interest, and a 0DTE strike's OI is
+    # YESTERDAY'S — so A0 is "today's expiry, weighted by yesterday's positions". Volume is the
+    # live read (slide_flows already forces volume for the 0DTE charm: "same-day OI ≈ 0 at the
+    # open"). Which one the REGIME should use is genuinely unsettled — dealer gamma comes from
+    # inventory (OI), but 0DTE inventory is stale and today's gamma at spot is dominated by what
+    # traded today. So: A0 keeps the SAME basis rule the 0DTE pin already uses (one book, one
+    # basis), and the volume-basis twin is RECORDED beside it so the question gets decided by
+    # data rather than by whoever edits this line next. Shadow. Consumed by nothing.
+    A0v = slide_flip(zero, spot, minutes_to_close, prefer="volume")
+    # Fall back to the blended read only when today's book cannot be read at all (no basis,
+    # or the IV blackout guard tripped — slide_flip returns regime "unknown"). A thin-but-real
+    # 0DTE book still rules; going blind is the only thing that hands the vote back to the
+    # dated chain, and the fallback is NAMED in the output so it can never pass as a 0DTE read.
+    use_0dte = REGIME_0DTE and A0["regime"] != "unknown"
+    R = A0 if use_0dte else A
+    R_set = zero if use_0dte else contracts             # the contract set R was computed on
     B = slide_0dte(zero, spot, minutes_to_close)
     C = slide_tenor_walls(near, spot)
-    E = reconcile_sign(A["regime"], aggressor_flow, flow_conflict, flow_kind)
+    E = reconcile_sign(R["regime"], aggressor_flow, flow_conflict, flow_kind)
     F = slide_flows(contracts, spot, minutes_to_close=minutes_to_close)   # vanna/charm flows
-    magnet = B["pin"] if B["pin"] is not None else A["flip"]
+    magnet = B["pin"] if B["pin"] is not None else (R["flip"] if R["flip"] is not None
+                                                    else A["flip"])
     # SHOVE TEST (P5): re-price net dealer GEX at spot ± ½σ and record the SIGNED
     # margins — how much calming GRAVITY survives a half-sigma FLOW shove each way
     # (distance from zero = distance from flipping; a bool would throw that away).
-    # Same basis + clock as the regime read. Fail-open: any surprise → None.
+    # Same basis, clock AND TENOR as the regime read (H7) — shoving a blended book while
+    # calling the regime off today's would be asking two different questions.
     shove = None
     try:
-        if sigma and spot and A["basis"]:
-            net0 = A["net_gex"]                 # signed dealer GEX at spot (slide A)
-            up = _net_gex_at(contracts, spot + SHOVE_SIGMA * sigma, A["basis"], minutes_to_close)
-            dn = _net_gex_at(contracts, spot - SHOVE_SIGMA * sigma, A["basis"], minutes_to_close)
+        if sigma and spot and R["basis"]:
+            net0 = R["net_gex"]                 # signed dealer GEX at spot (the regime read)
+            up = _net_gex_at(R_set, spot + SHOVE_SIGMA * sigma, R["basis"], minutes_to_close)
+            dn = _net_gex_at(R_set, spot - SHOVE_SIGMA * sigma, R["basis"], minutes_to_close)
             denom = abs(net0) if net0 else None
             shove = {"shove_sigma": SHOVE_SIGMA,
                      "net_gex_spot": round(net0, 2) if net0 is not None else None,
@@ -1310,15 +1358,26 @@ def build_views(contracts: list[dict], spot: float,
     return {
         "spot": round(spot, 4) if spot else None,
         "magnet": magnet,                       # the pin the fade reverts to (for runway)
-        "regime": E["sign"],                    # sign-checked regime
-        "regime_raw": A["regime"],
+        # H7: regime / flip / net_gex are TODAY'S BOOK. The blended 0-7DTE twin rides beside
+        # them (regime_tenor / flip_tenor / net_gex_tenor) as terrain and as the A/B, so the
+        # disagreement rate is measured from the first live scan instead of argued about.
+        "regime": E["sign"],                    # sign-checked regime (0DTE)
+        "regime_raw": R["regime"],              # pre-slide-E regime (0DTE)
+        "regime_tenor": A["regime"],            # blended 0-7DTE — the old read, now the A/B twin
+        "regime_source": "0dte" if use_0dte else "blended_fallback",
+        "regime_basis": R["basis"],             # which weight the regime was read on
+        # SHADOW twin: today's book on the VOLUME basis. Records the open OI-vs-volume question
+        # (0DTE OI is yesterday's) so it can be settled with data. Consumed by nothing.
+        "regime_0dte_vol": A0v["regime"], "net_gex_0dte_vol": A0v["net_gex"],
         "gamma_tape": tape,                     # SHADOW, record-only. No consumer, by design.
-        "flip": A["flip"], "flip_band": A["flip_band"],
+        "flip": R["flip"], "flip_band": R["flip_band"],
+        "flip_tenor": A["flip"],                # blended border — outer terrain, not the regime
+        "net_gex": R["net_gex"], "net_gex_tenor": A["net_gex"],
         "sign_agrees": E["agrees"], "sign_confidence": E["confidence"],
         "vex": F["vex"], "cex": F["cex"],        # net vanna / charm exposure (shadow)
         "vex_sign": F["vex_sign"], "cex_sign": F["cex_sign"],
         "shove": shove,                          # ±½σ GRAVITY stress-test (P5); None w/o σ
-        "slides": {"A_flip": A, "B_0dte": B, "C_tenor": C,
+        "slides": {"A_flip": A, "A0_0dte_flip": A0, "B_0dte": B, "C_tenor": C,
                    "D_volume": {"0dte_basis": B["basis"]}, "E_sign": E, "F_flows": F},
     }
 

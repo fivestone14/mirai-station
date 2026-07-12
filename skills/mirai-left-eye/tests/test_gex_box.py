@@ -551,14 +551,19 @@ class TestShove:
         assert gv.build_views(_chain(), 5000.0)["shove"] is None
 
     def test_shove_signed_margins_match_net_gex_at(self):
+        # H7: the shove stress-tests the SAME book the regime was read from. Asking "does the
+        # book flip if price moves ½σ?" against a blended 0-7DTE chain while calling the regime
+        # off today's expiry would be stress-testing a different book than the one being judged.
         ch = _chain()
         v = gv.build_views(ch, 5000.0, sigma=40.0)
         sh = v["shove"]
         assert sh is not None and sh["shove_sigma"] == gv.SHOVE_SIGMA
-        basis = v["slides"]["A_flip"]["basis"]
-        net0 = gv._net_gex_at(ch, 5000.0, basis)
-        up = gv._net_gex_at(ch, 5020.0, basis)      # spot + ½σ
-        dn = gv._net_gex_at(ch, 4980.0, basis)      # spot − ½σ
+        assert v["regime_source"] == "0dte"
+        zero, _ = gv.split_tenor(ch)
+        basis = v["slides"]["A0_0dte_flip"]["basis"]      # the regime read's basis, not A's
+        net0 = gv._net_gex_at(zero, 5000.0, basis)        # ...on the regime read's book
+        up = gv._net_gex_at(zero, 5020.0, basis)          # spot + ½σ
+        dn = gv._net_gex_at(zero, 4980.0, basis)          # spot − ½σ
         assert sh["net_gex_spot"] == round(net0, 2)
         assert sh["shove_up_net_gex"] == round(up, 2)
         assert sh["shove_down_net_gex"] == round(dn, 2)
@@ -1151,3 +1156,111 @@ class TestGuardAudit:
                                    "sign_trip": "options_sign_inversion"})
         v = {g["guard"]: g for g in ga.audit(rows)}["slide_E_options"]
         assert v["status"] == "OK" and v["n_trip"] == 20
+
+
+class TestH7RegimeIsTodaysBook:
+    """H7 — the regime answers 'over the next hour, does dealer hedging DAMP or AMPLIFY?',
+    and the dealers who re-hedge in the next hour are short TODAY'S expiry. Reading it off
+    the blended 0-7DTE chain lets next week's book outvote today's."""
+
+    @staticmethod
+    def _chain(zero_net_short=True, dated_long_mass=1.0):
+        """0DTE book that is SHORT gamma at spot (puts dominate → net negative), plus a fat
+        1-7DTE book that is LONG gamma at spot (calls dominate → net positive). The classic
+        setup: today is fuel, next week is ballast."""
+        cs = []
+        for k in (7450.0, 7500.0, 7550.0):
+            # today: heavy PUT volume at/below spot ⇒ net short gamma at spot
+            # today: heavy PUT volume, and ~no OI (a 0DTE strike's OI is yesterday's and
+            # thin — pick_basis falls through to volume, which is the live read)
+            cs.append({"strike": k, "right": "put", "gamma": 0.02, "dte": 0, "iv": 0.20,
+                       "volume": 40000, "open_interest": 50})
+            cs.append({"strike": k, "right": "call", "gamma": 0.02, "dte": 0, "iv": 0.20,
+                       "volume": 2000 if zero_net_short else 90000, "open_interest": 50})
+            # next week: heavy CALL open interest ⇒ net long gamma, and much bigger
+            cs.append({"strike": k, "right": "call", "gamma": 0.02, "dte": 5, "iv": 0.18,
+                       "volume": 500, "open_interest": int(300000 * dated_long_mass)})
+            cs.append({"strike": k, "right": "put", "gamma": 0.02, "dte": 5, "iv": 0.18,
+                       "volume": 500, "open_interest": 5000})
+        return cs
+
+    def test_next_weeks_book_no_longer_outvotes_today(self):
+        # THE BUG H7 FIXES, IN ONE ASSERTION. Today's book is SHORT gamma (amplifying — the
+        # day the break lens must wake up). The blended chain, dominated by next week's fat
+        # long-gamma call OI, reads LONG gamma ("pin-friendly") — and that is what the engine
+        # used to publish. After H7 the regime is today's book; the blended read survives only
+        # as the recorded A/B twin.
+        v = gv.build_views(self._chain(), spot=7500.0, minutes_to_close=180)
+        assert v["slides"]["A_flip"]["regime"] == "long_gamma"      # blended: "calm, pin"
+        assert v["slides"]["A0_0dte_flip"]["regime"] == "short_gamma"   # today: amplifying
+        assert v["regime_raw"] == "short_gamma"                     # H7: the regime is TODAY'S
+        assert v["regime_tenor"] == "long_gamma"                    # the old read, now the twin
+        assert v["regime_raw"] != v["regime_tenor"]                 # ...and they DISAGREE
+        assert v["regime_source"] == "0dte"
+
+    def test_tenor_fix_reaches_the_break_lens_gate(self):
+        # The Break Lens can only COCK on a NEGATIVE gamma sign (reversion_lens:668). Under the
+        # blended read it was handed "long_gamma" and could never wake up on the very day it
+        # exists for. H7 puts the 0DTE sign in front of that gate.
+        #
+        # HONEST SCOPE — this holds when today's book is read on VOLUME. On the live chain the
+        # 0DTE book picks the OPEN_INTEREST basis on 501/501 scans, and that OI is yesterday's,
+        # so H7 alone does NOT guarantee the break lens wakes up. The basis is the other half of
+        # the repair (finding N9) and is recorded, not guessed, in regime_0dte_vol. Do not let
+        # this test's green tick be read as "the breakout head is unblocked".
+        v = gv.build_views(self._chain(), spot=7500.0, minutes_to_close=180)
+        assert v["regime_basis"] == "volume"    # thin 0DTE OI → falls through to the live read
+        assert v["regime"] == "short_gamma"     # slide E passes it through (no tape supplied)
+
+    def test_volume_basis_twin_is_recorded_when_OI_is_stale(self):
+        # the live case: today's expiry carries FAT leftover OI that leans the other way from
+        # what is actually trading today. The regime reads the OI basis (unchanged doctrine),
+        # and the volume twin is recorded beside it so the OI-vs-volume question is settled by
+        # data. These two disagreeing IS the measurement.
+        cs = []
+        for k in (7450.0, 7500.0, 7550.0):
+            cs.append({"strike": k, "right": "put", "gamma": 0.02, "dte": 0, "iv": 0.20,
+                       "volume": 35000, "open_interest": 300})     # today's trading: puts
+            cs.append({"strike": k, "right": "call", "gamma": 0.02, "dte": 0, "iv": 0.20,
+                       "volume": 3000, "open_interest": 900})      # yesterday's OI: calls
+        v = gv.build_views(cs, spot=7500.0, minutes_to_close=180)
+        assert v["regime_basis"] == "open_interest"
+        assert v["regime_raw"] == "long_gamma"        # yesterday's positions say "pin"
+        assert v["regime_0dte_vol"] == "short_gamma"  # today's TRADING says "amplifying"
+        assert v["net_gex_0dte_vol"] < 0 < v["net_gex"]
+
+    def test_flip_and_shove_follow_the_regime_tenor(self):
+        # a regime read off today's book while the shove stress-tests a blended book would be
+        # asking two different questions — the shove must be computed on the SAME contract set
+        v = gv.build_views(self._chain(), spot=7500.0, minutes_to_close=180, sigma=30.0)
+        assert v["net_gex"] < 0                                  # today's book, at spot
+        assert v["net_gex_tenor"] > 0                            # the blended book disagrees
+        assert v["shove"]["net_gex_spot"] == round(v["net_gex"], 2)   # shove is on today's book
+        # ...and the shove's sign follows today's book, not the blended one: an amplifying
+        # 0DTE book must not be stress-tested as though it were the damping blended book
+        assert v["shove"]["net_gex_spot"] < 0
+
+    def test_falls_back_to_blended_when_today_is_unreadable(self):
+        # an IV blackout / empty 0DTE book must NOT go blind — it falls back to the blended
+        # read, and SAYS SO, so a fallback can never pass as a 0DTE read
+        dated_only = [c for c in self._chain() if c["dte"] != 0]
+        v = gv.build_views(dated_only, spot=7500.0, minutes_to_close=180)
+        assert v["regime_source"] == "blended_fallback"
+        assert v["regime_raw"] == v["regime_tenor"] == "long_gamma"
+
+    def test_agrees_when_the_tenors_agree(self):
+        # no false alarm: when today's book and the blended book say the same thing, they do
+        cs = [{"strike": 7500.0, "right": "call", "gamma": 0.02, "dte": d, "iv": 0.2,
+               "volume": 40000, "open_interest": 40000} for d in (0, 5)]
+        v = gv.build_views(cs, spot=7500.0, minutes_to_close=180)
+        assert v["regime_raw"] == v["regime_tenor"] == "long_gamma"
+
+    def test_flag_reverts_in_one_line(self):
+        assert gv.REGIME_0DTE is True
+        gv.REGIME_0DTE = False
+        try:
+            v = gv.build_views(self._chain(), spot=7500.0, minutes_to_close=180)
+            assert v["regime_raw"] == "long_gamma"        # back to the blended read
+            assert v["regime_source"] == "blended_fallback"
+        finally:
+            gv.REGIME_0DTE = True
