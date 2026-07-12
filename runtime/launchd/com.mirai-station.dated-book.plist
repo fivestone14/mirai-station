@@ -13,7 +13,7 @@
   </array>
 
   <!-- DATED BOOK SIDECAR: nightly far-dated OI pull (next two SPX monthlies +
-       quarter-end EOM), display-only. Two fires:
+       next two quarter-end EOMs), display-only. Two fires:
          * daily 05:17 PT == 08:17 ET, pre-open after overnight OI settles;
          * Friday 14:10 PT == 17:10 ET — fires EVERY Friday (launchd cannot
            express "third Friday"); only the OpEx one matters, when python

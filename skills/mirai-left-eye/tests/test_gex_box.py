@@ -142,10 +142,30 @@ class TestFlipRootfind:
         assert s["regime"] == "long_gamma"                        # regime follows sign-at-spot
 
     def test_regime_matches_sign_of_net_gex_invariant(self):
-        # General invariant the fix guarantees: regime is exactly the sign of net_gex.
+        # General invariant the fix guarantees: regime is the sign of net_gex —
+        # EXCEPT inside the tie deadband (H3), where a rounding-size residual of
+        # two cancelling sides honestly reads "uncertain" instead of flipping.
         s = gv.slide_flip(_chain(), 5000.0)
         if s["net_gex"]:
-            assert s["regime"] == ("long_gamma" if s["net_gex"] > 0 else "short_gamma")
+            if s["regime"] == "uncertain":
+                gross = gv._gross_gex_at(_chain(), 5000.0, s["basis"])
+                assert abs(s["net_gex"]) < gv.REGIME_TIE_BAND * gross
+            else:
+                assert s["regime"] == ("long_gamma" if s["net_gex"] > 0 else "short_gamma")
+
+    def test_regime_tie_deadband_names_a_tie(self):
+        # H3: a balanced book (equal call/put mass at every strike) sums to a
+        # rounding-size net whose SIGN is noise — the regime must abstain, not
+        # stamp long/short off a 0.001 imbalance (strict >0 even read an exact
+        # 0.0 as "short_gamma").
+        ch = []
+        for k in range(4900, 5101, 10):
+            g = 0.004 * math.exp(-((k - 5000) / 40) ** 2)
+            ch.append(_c(k, "call", 3, g, oi=2000))
+            ch.append(_c(k, "put", 3, g, oi=2000))     # perfect mirror → net ≈ 0
+        s = gv.slide_flip(ch, 5000.0)
+        assert s["regime"] == "uncertain"
+        assert s["net_gex"] is not None                # a READ — not the blackout "unknown"
 
     def test_regime_short_gamma_island_flip_below_spot(self):
         # MIRROR of the long-gamma island (the other polarity of the same bug): calls
@@ -175,8 +195,26 @@ class TestSignCrossCheck:
         r = gv.reconcile_sign("long_gamma", 0.2)
         assert r["sign"] == "long_gamma" and r["agrees"] is True
 
-    def test_short_gamma_unaffected_by_flow(self):
-        assert gv.reconcile_sign("short_gamma", 0.9)["sign"] == "short_gamma"
+    def test_short_gamma_downgraded_by_inverting_flow(self):
+        # H5: +flow (customers BUYING calls / SELLING puts) inverts the assumed
+        # dealer sign under EITHER regime — short_gamma is no longer exempt
+        r = gv.reconcile_sign("short_gamma", 0.9)
+        assert r["sign"] == "uncertain" and r["agrees"] is False
+
+    def test_confirming_flow_never_trips(self):
+        # H5: heavy NEGATIVE flow (customers selling calls / buying puts) CONFIRMS
+        # the assumed dealer sign — the old abs() test read it as a conflict and
+        # downgraded exactly the reads the tape had just corroborated
+        r = gv.reconcile_sign("long_gamma", -0.9)
+        assert r["sign"] == "long_gamma" and r["agrees"] is True and r["confidence"] == 1.0
+
+    def test_lob_kind_keeps_unsigned_freight_train_test(self):
+        # LOB tape: its sign carries no dealer-positioning info — heavy one-way
+        # pressure EITHER way threatens a pin (old semantics, now lob-scoped)
+        r = gv.reconcile_sign("long_gamma", -0.3, gv.FLOW_CONFLICT_LOB, "lob")
+        assert r["sign"] == "uncertain" and r["agrees"] is False
+        r2 = gv.reconcile_sign("short_gamma", 0.3, gv.FLOW_CONFLICT_LOB, "lob")
+        assert r2["sign"] == "short_gamma"             # lob test stays long-gamma-scoped
 
     def test_unknown_flow_does_not_penalize(self):
         r = gv.reconcile_sign("long_gamma", None)
@@ -187,8 +225,9 @@ class TestBuildViews:
     def test_build_views_full_shape(self):
         v = gv.build_views(_chain(), 5000.0, aggressor_flow=0.2)
         # 07-09 zones swap: this fixture's zone-1 is a 110-pt smear, so the
-        # mega-zone guard keeps the magnet on the argmax
-        assert v["magnet"] == 5010 and v["regime"] in ("long_gamma", "short_gamma")
+        # mega-zone guard keeps the magnet on the argmax. "uncertain" allowed
+        # since H3: this fixture's book is near-balanced at spot (a real tie).
+        assert v["magnet"] == 5010 and v["regime"] in ("long_gamma", "short_gamma", "uncertain")
         assert v["slides"]["B_0dte"]["pin_argmax"] == 5010
         for key in ("A_flip", "B_0dte", "C_tenor", "D_volume", "E_sign"):
             assert key in v["slides"]
@@ -762,9 +801,10 @@ class TestBlackoutGuard:
         assert out["net_gex"] is None
 
     def test_slide_flip_with_iv_still_reads_regime(self):
-        # sanity: a real IV-bearing book still produces a regime (guard isn't over-eager)
+        # sanity: a real IV-bearing book still produces a READ (guard isn't
+        # over-eager) — "uncertain" is a read (H3 tie), "unknown" is the blackout
         out = gv.slide_flip(_chain(5000.0), 5000.0, minutes_to_close=60)
-        assert out["regime"] in ("long_gamma", "short_gamma")
+        assert out["regime"] in ("long_gamma", "short_gamma", "uncertain")
 
 
 class TestFlipResolution:
@@ -895,3 +935,49 @@ class TestPinZones:
         assert out["pin"] == out["pin_zones"][0]["center"]
         assert out["zone1_share"] == out["pin_zones"][0]["share"]
         assert 7495.0 < out["pin"] < 7505.0        # weighted center inside the band
+
+    @staticmethod
+    def _rival_chain(v1, v2):
+        # full 5-pt grid 7500-7550: repelling puts in between anchor the median
+        # step at 5 (splitting the poles into two zones), big call volume at the
+        # 7500/7550 poles — the 2026-07-09 two-magnet day in miniature
+        cs = [{"strike": 7500 + 5 * i, "right": "put", "gamma": 0.005,
+               "volume": 300, "dte": 0, "iv": .2} for i in range(11)]
+        cs.append({"strike": 7500, "right": "call", "gamma": 0.01, "volume": v1, "dte": 0, "iv": .2})
+        cs.append({"strike": 7550, "right": "call", "gamma": 0.01, "volume": v2, "dte": 0, "iv": .2})
+        return cs
+
+    def test_contested_magnet_stands_between_rivals(self):
+        # H4: two tight rival zones 50 pts apart with near-equal pull — the live
+        # magnet must stand BETWEEN them (share-weighted), not teleport to
+        # whichever zone won this scan's coin-flip
+        a = gv.slide_0dte(self._rival_chain(10000, 9800), spot=7525.0)
+        b = gv.slide_0dte(self._rival_chain(9800, 10000), spot=7525.0)   # ownership flips
+        for out in (a, b):
+            assert out["pin_contested"] is True
+            assert out["pin_blended"] is not None
+            assert 7500.0 < out["pin"] < 7550.0            # in the middle, not at a pole
+        # ownership flip moves the blended magnet a few points, not the full gap
+        assert abs(a["pin"] - b["pin"]) < 15.0
+
+    def test_uncontested_magnet_keeps_zone1_center(self):
+        # below the rival threshold the blend must not engage (pin_blended None)
+        out = gv.slide_0dte(self._rival_chain(10000, 5000), spot=7525.0)
+        assert out["pin_contested"] is False and out["pin_blended"] is None
+        assert out["pin"] == 7500.0
+
+    def test_churned_strike_keeps_gamma_weight(self):
+        # H10: a round-tripped strike (heavy two-way flow, net ≈ 0) must keep a
+        # floor of its GROSS hedge mass in the signed field, not vanish
+        cs = [{"strike": 7500, "right": "call", "gamma": 0.01, "volume": 5000, "dte": 0, "iv": .2,
+               "net_flow": 0.0, "flow_buy": 400000.0, "flow_sell": 400000.0},
+              {"strike": 7550, "right": "call", "gamma": 0.01, "volume": 1000, "dte": 0, "iv": .2,
+               "net_flow": 50000.0, "flow_buy": 60000.0, "flow_sell": 10000.0}]
+        gv.slide_0dte(cs, spot=7520.0)
+        assert cs[0]["signed_weight"] == gv.CHURN_FLOOR * 800000.0   # floored, not 0
+        assert cs[1]["signed_weight"] == 50000.0                     # |net| still leads
+        # fail-open: no buy/sell annotation → plain |net|, exactly as before
+        cs2 = [{"strike": 7500, "right": "call", "gamma": 0.01, "volume": 5000, "dte": 0, "iv": .2,
+                "net_flow": -1200.0}]
+        gv.slide_0dte(cs2, spot=7500.0)
+        assert cs2[0]["signed_weight"] == 1200.0

@@ -116,8 +116,10 @@ changed and re-prices it every scan into six "X-ray slides":
   volume-weighted call/put walls.
 - **C · terrain** — the stable 1–7DTE OI-weighted structural walls.
 - **D · volume overlay** — fills in empty-OI 0DTE strikes.
-- **E · reconcile** — cross-checks the regime tag against live aggressor flow and
-  marks it **UNCERTAIN** when heavy one-way flow is fighting the pin.
+- **E · reconcile** — cross-checks the regime tag against live aggressor flow,
+  direction-aware: a heavy buy-calls/sell-puts tape **inverts** the assumed dealer
+  sign and marks either regime **UNCERTAIN** (a heavy confirming tape never trips).
+  A near-balanced book at spot also reads **UNCERTAIN** — a tie, not a regime.
 - **F · drift** — vanna (VEX) and charm (CEX) slow pressure into the close.
 
 Plus a **motion** pack (`gex_motion`: walls melting, magnet walking, flip line

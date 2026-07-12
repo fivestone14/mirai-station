@@ -67,7 +67,7 @@ def test_quarter_end_expiry():
 # --- pull + store semantics -----------------------------------------------------
 
 _ALL_BANDS = (("monthly", "2026-07-17"), ("monthly", "2026-08-21"),
-              ("quarter_end", "2026-09-30"))
+              ("quarter_end", "2026-09-30"), ("quarter_end", "2026-12-31"))
 
 
 def _synthetic_result(spot=7550.0, bands=_ALL_BANDS, strikes=(6500.0, 7000.0, 7500.0, 7550.0, 8000.0, 8500.0)):
@@ -127,7 +127,7 @@ def test_parity_iv_rescue_fills_itm_gex(monkeypatch):
 def test_pull_writes_book_with_walls(monkeypatch):
     monkeypatch.setattr(dg, "_run_code", lambda code: _synthetic_result())
     st = dg.pull(_dt(2026, 7, 10))
-    assert st["ok"] and st["bands"] == 3
+    assert st["ok"] and st["bands"] == 4
     book = json.load(open(dg._book_path()))
     assert book["ok"] and book["landed_date"] == "2026-07-10"
     m = [b for b in book["bands"] if b["expiry"] == "2026-07-17"][0]
@@ -173,10 +173,16 @@ def test_pull_skips_weekend_and_disable(monkeypatch):
 
 
 def _qprev(as_of="2026-07-06", top_calls=None, top_puts=None, spot=7550.0):
-    return {"spot": spot, "bands": [{"band": "quarter_end", "expiry": "2026-09-30",
-                                     "as_of": as_of + "T05:17:00-04:00",
-                                     "top_calls": top_calls if top_calls is not None else [[8600.0, 9000]],
-                                     "top_puts": top_puts if top_puts is not None else [[6100.0, 8000]]}]}
+    # BOTH expected quarterlies (H8) — coverage now means the pair; the wall/age
+    # params exercise the FRONT band, the forward band stays far and fresh
+    def _band(exp, tc, tp):
+        return {"band": "quarter_end", "expiry": exp, "as_of": as_of + "T05:17:00-04:00",
+                "top_calls": tc, "top_puts": tp}
+    return {"spot": spot,
+            "bands": [_band("2026-09-30",
+                            top_calls if top_calls is not None else [[8600.0, 9000]],
+                            top_puts if top_puts is not None else [[6100.0, 8000]]),
+                      _band("2026-12-31", [[8800.0, 7000]], [[6000.0, 6000]])]}
 
 
 def test_quarterly_cadence():
@@ -192,6 +198,16 @@ def test_quarterly_cadence():
     unstamped = {"spot": 7550.0, "bands": [{"band": "quarter_end", "expiry": "2026-09-30",
                                             "top_calls": [], "top_puts": []}]}
     assert dg._quarterly_due(_dt(2026, 7, 8), unstamped) is True             # unstamped band → refresh
+    # H8: a fresh FRONT quarter must not mask a missing FORWARD one
+    front_only = _qprev("2026-07-06")
+    front_only["bands"] = front_only["bands"][:1]
+    assert dg._quarterly_due(_dt(2026, 7, 8), front_only) is True
+
+
+def test_quarter_end_expiries_pair():
+    # H8: the next TWO quarter-ends, so the forward collar never vanishes
+    assert dg.quarter_end_expiries(_dt(2026, 7, 10)) == [date(2026, 9, 30), date(2026, 12, 31)]
+    assert dg.quarter_end_expiries(_dt(2026, 10, 2)) == [date(2026, 12, 31), date(2027, 3, 31)]
 
 
 # --- diary_summary ---------------------------------------------------------------
@@ -208,11 +224,34 @@ def test_summary_shape_and_staleness(monkeypatch):
     assert dg.diary_summary(_dt(2026, 7, 20)) is None        # > 5d floor => absent
 
 
+def test_summary_per_band_age_gate_and_label(monkeypatch):
+    # H9: every band is judged on its OWN pull stamp — a carried week-old wall
+    # must not wear the fresh book's sticker. Monthly floor 5d, quarterly 10d;
+    # the top-level label reads the OLDEST surviving band, not the book.
+    monkeypatch.setattr(dg, "_run_code", lambda code: _synthetic_result())
+    dg.pull(_dt(2026, 7, 10))
+    book = json.load(open(dg._book_path()))
+    for b in book["bands"]:               # simulate carried bands: age 8d vs book fresh
+        if b["expiry"] in ("2026-08-21", "2026-09-30"):
+            b["as_of"] = "2026-07-02T05:17:00-04:00"
+    book["bands"] = [b for b in book["bands"] if b["expiry"] != "2026-07-17"] + \
+                    [dict(b, as_of=None) for b in book["bands"] if b["expiry"] == "2026-07-17"]
+    open(dg._book_path(), "w").write(json.dumps(book))
+    s = dg.diary_summary(_dt(2026, 7, 10, 11, 0))
+    by_exp = {b["expiry"]: b for b in s["bands"]}
+    assert "2026-08-21" not in by_exp                 # monthly @8d > 5d floor → dropped
+    assert "2026-07-17" not in by_exp                 # unstamped → unverifiable → dropped
+    assert by_exp["2026-09-30"]["age_days"] == 8      # quarterly @8d ≤ 10d floor → kept
+    assert by_exp["2026-12-31"]["age_days"] == 0      # fresh band untouched
+    assert s["oldest_band_days"] == 8                 # label reads the OLDEST band
+    assert s["staleness"] == "stale_8d" and s["stale_days"] == 0
+
+
 def test_summary_drops_expired_bands(monkeypatch):
     monkeypatch.setattr(dg, "_run_code", lambda code: _synthetic_result())
     dg.pull(_dt(2026, 7, 10))
     s = dg.diary_summary(_dt(2026, 7, 14))
-    assert {b["expiry"] for b in s["bands"]} == {"2026-07-17", "2026-08-21", "2026-09-30"}
+    assert {b["expiry"] for b in s["bands"]} == {"2026-07-17", "2026-08-21", "2026-09-30", "2026-12-31"}
     s2 = dg.diary_summary(_dt(2026, 7, 15))                  # within floor, all live
     assert s2 is not None
     # July monthly gone once past it (book 5d stale on 07-15; use fresh re-pull instead)
@@ -324,7 +363,7 @@ def test_pull_carries_forward_undue_quarterly(monkeypatch):
     monkeypatch.setattr(dg, "_run_code",
                         lambda code: _synthetic_result(bands=_ALL_BANDS[:2]))  # monthlies only
     st = dg.pull(_dt(2026, 7, 14))                            # Tuesday: quarterly not due
-    assert st["ok"] and st["bands"] == 3                      # carried, not deleted
+    assert st["ok"] and st["bands"] == 4                      # carried, not deleted
     book = json.load(open(dg._book_path()))
     q = [b for b in book["bands"] if b["band"] == "quarter_end"][0]
     assert q["as_of"].startswith("2026-07-10")                # original pull stamp intact
@@ -360,7 +399,7 @@ def test_pull_never_raises_on_malformed_rows(monkeypatch):
                                 "root": "SPX", "band": "monthly", "open_interest": 100})
     monkeypatch.setattr(dg, "_run_code", lambda code: res)
     st = dg.pull(_dt(2026, 7, 10))                            # malformed rows skipped
-    assert st["ok"] and st["bands"] == 3
+    assert st["ok"] and st["bands"] == 4
 
 
 def test_pull_store_error_logged_not_raised(monkeypatch):

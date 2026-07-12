@@ -904,7 +904,9 @@ function rowToScan(r){
   const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv, sh=gv.shove||gt.shove||{};
   const re=r.reversion_extreme||{}, lr=r.level_reclaim||{}, mo=r.gex_motion;
   return { ts:r.ts, t:clockIn(r.ts,ET), spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
-    flip:r.gamma_flip, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall??null, callCeil:r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, dated:r.dated_gex??null,
+    /* H2 (07-12): r.call/put_wall are now the OPERATIVE near walls; the structural
+       ceiling/floor moved to r.*_wall_tenor (fallback keeps pre-H2 rows correct) */
+    flip:r.gamma_flip, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, dated:r.dated_gex??null,
     /* magnet policy (locked, mirrors resolve_dealer_map): gex_views LEADS, gex_theta is the
        challenger; the armed-only reversion magnet is wall-clamped (a fade target, not the pull) */
     magnet:gv.magnet??g.magnet??re.magnet_raw??r.gamma_flip,
@@ -976,8 +978,10 @@ function computeMAPX(w,h){
   let nT=0;
   try{
     if(typeof DOI_ON!=='undefined'&&DOI_ON&&typeof datedOIAvail==='function'&&datedOIAvail()){
-      const today=new Date().toISOString().slice(0,10);
-      nT=Math.min(5,(DBOOK.book.bands||[]).filter(b=>String(b.expiry||'')>=today).length);
+      // SAME filter paintDatedOI draws with (_dglBands: non-expired AND fresh) —
+      // counting unfiltered bands here left a phantom empty gutter column
+      // whenever the H9 age gate dropped a band
+      nT=Math.min(5,_dglBands().length);
     }
   }catch(e){ nT=0; }
   const stripGutter=nT?(STRIP.padL+STRIP.padR+STRIP.colW*nT+STRIP.gap*(nT-1)):0;   // 70px @3 tenors, 112px @5
@@ -1186,7 +1190,11 @@ function gxPaint(){
     vals=MSTRIKES.map(k=>{ let v=1.0*gg(k,D.callWall,0.11*sg)+0.7*gg(k,D.flip+0.06*sg,0.10*sg)+0.34*gg(k,D.magnet,0.14*sg)+0.14*gg(k,D.spot,0.7*sg);
       if(k<D.flip) v=-(0.55*gg(k,D.putWall,0.11*sg)+0.2*gg(k,D.flip-0.12*sg,0.11*sg)+0.05); return v; });
   }
-  const bsrc=document.getElementById('bar-src'); if(bsrc) bsrc.textContent=measured?'measured':'modeled';
+  // measured vs MODELED must be unmissable — a modeled render mistaken for real
+  // per-strike data reads as "missing liquidity" (2026-07-12 investigation)
+  const bsrc=document.getElementById('bar-src');
+  if(bsrc){ bsrc.textContent=measured?'measured':'MODELED (synthetic)';
+            bsrc.style.fill=measured?'var(--ink-dim)':'var(--coral)'; }
   let mx=1e-6; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; }
   // Live bars keep the FULL row height always — the dated layer lives in its own
   // ladder gutter now (the split-row sub-lane died with the wash+tick marks), so
@@ -1195,7 +1203,10 @@ function gxPaint(){
   MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], mag=Math.abs(vals[i])/mx,
       pos=measured?(vals[i]>=0):(k>=D.flip);   // measured → color by SIGN of net γ (pins vs pushes); modeled → by side of flip
     rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
-    rect.setAttribute('width',(mag<0.05?0:Math.max(2,mag*X.barMax)).toFixed(1));   // hide dead strikes (no picket-rail)
+    // small-but-real strikes draw a HAIRLINE, only true-dead (<1% of max) vanish —
+    // the old binary 5% cutoff blanked ~2/3 of rows on concentration days and made
+    // real liquidity read as "no data" (missing-bars investigation, 2026-07-12)
+    rect.setAttribute('width',(mag<0.01?0:mag<0.05?1.5:Math.max(2,mag*X.barMax)).toFixed(1));
     rect.style.fill=pos?'url(#gxJ)':'url(#gxC)';
     rect.style.opacity=(0.48+0.47*mag).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
   });
@@ -1315,16 +1326,27 @@ function _dglHead(bd){                       // column header: monthly = 3-lette
     return _dexp(bd.expiry).slice(0,3);
   }catch(e){ return _dexp(bd.expiry).slice(0,3); }
 }
-function _dglBands(){                        // the drawn (non-expired, ≤5) bands
+function _dbAge(bd){                         // a band's OWN age in CALENDAR days (H9) —
+  try{                                       // date-string diff to match the engine's
+    const a=String(bd.as_of||(DBOOK.book&&DBOOK.book.as_of)||'').slice(0,10);   // age_days (a rolling-24h floor read 2d as 1d overnight)
+    const d=Math.round((new Date(new Date().toISOString().slice(0,10))-new Date(a))/86400000);
+    return isFinite(d)?Math.max(0,d):Infinity;   // unparsable stamp = unverifiable → over-floor (drop)
+  }catch(e){ return Infinity; }
+}
+const _DBAND_FLOOR={monthly:5, quarter_end:10};   // per-band staleness floors — mirrors
+                                                  // dated_gex_feed._BAND_STALE_FLOOR_DAYS
+function _dglBands(){                        // the drawn (non-expired, FRESH, ≤5) bands
   const b=DBOOK.book; if(!b||!Array.isArray(b.bands)) return [];
   const today=new Date().toISOString().slice(0,10);
-  return b.bands.filter(bd=>String(bd.expiry||'')>=today).slice(0,5);
+  return b.bands.filter(bd=>String(bd.expiry||'')>=today)
+                .filter(bd=>_dbAge(bd)<=(_DBAND_FLOOR[bd.band]??5))   // stale band ≠ live structure
+                .slice(0,5);
 }
 function paintDatedOI(){
   if(!MAP||!MAP.datedOIG) return;
   const b=DBOOK.book;
   const ok=DOI_ON&&(typeof LIVE==='undefined'||LIVE)&&datedOIAvail()&&MSTRIKES.length;
-  const key=(ok?String(b.as_of):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}|${MAPX.nT}|${MAPX.lineEnd}|${Math.round((D.spot||0)/10)}`;   // spot bucket → arrows re-evaluate as spot eases across a cluster
+  const key=(ok?String(b.as_of)+'@'+new Date().toISOString().slice(0,10):'off')+`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}|${MAPX.nT}|${MAPX.lineEnd}|${Math.round((D.spot||0)/10)}`;   // spot bucket → arrows re-evaluate as spot eases across a cluster; date → ages re-dim at midnight without a new pull
   if(key===MAP._dokey) return;
   MAP._dokey=key;
   if(!ok||!MAPX.nT){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
@@ -1342,7 +1364,8 @@ function paintDatedOI(){
       const idx=Math.round((row[0]-k0)/step);       // in-frame or not (scale honesty)
       if(idx>=0&&idx<buckets.length){ buckets[idx]+=net; placed++; }
     }
-    if(placed>0) profs.push({i:profs.length, head:_dglHead(bd), tag:_dexp(bd.expiry), buckets});
+    if(placed>0) profs.push({i:profs.length, head:_dglHead(bd), tag:_dexp(bd.expiry),
+                             age:_dbAge(bd), buckets});   // per-band freshness (H9)
   });
   if(!mx||!profs.length){ MAP.datedOIG.innerHTML=''; if(MAP.datedOILgdG)MAP.datedOILgdG.innerHTML=''; return; }
   const colX=i=>X.lineEnd+STRIP.padL+i*STRIP.pitch;
@@ -1360,10 +1383,15 @@ function paintDatedOI(){
   // single-row column headers — identity as TEXT, read not decoded
   profs.forEach(p=>{
     const cx=colX(p.i)+STRIP.colW/2;
-    svg+=`<text x="${cx.toFixed(1)}" y="13" text-anchor="middle" font-size="9" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}</text>`;
+    // per-band freshness (H9): an aged column DIMS (the <g> wrap below) and its
+    // header carries the age in the hover title — a text suffix ("·3d") was
+    // tried and collides at the 21px column pitch, so the ink stays quiet
+    svg+=`<text x="${cx.toFixed(1)}" y="13" text-anchor="middle" font-size="9" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}<title>${p.tag} · pulled ${p.age===0?'today':p.age+'d ago'}</title></text>`;
   });
   profs.forEach(p=>{
     const cx=colX(p.i), xC=cellX(p.i), cells=[];
+    svg+=`<g opacity="${p.age>=2?0.62:1}">`;   // aged band (H9): whole column recedes —
+                                               // visible, but never as loud as fresh ink
     // heat cells — CLAMPED to the panel (an edge row must never paint over the
     // headers or spill past the panel foot); collected for cluster/arrow detection
     MSTRIKES.forEach((k,j)=>{
@@ -1406,6 +1434,7 @@ function paintDatedOI(){
       const yT=Math.max(clampT,yFor(top.k)-cellH/2), h=Math.min(clampB,yFor(top.k)+cellH/2)-yT;
       svg+=`<rect x="${(cx-(STRIP.gap/2+STRIP.tickW/2)).toFixed(1)}" y="${Math.max(clampT,yT-1).toFixed(1)}" width="${STRIP.tickW}" height="${Math.min(h+2,clampB-Math.max(clampT,yT-1)).toFixed(1)}" fill="var(--ink)"/>`;
     }
+    svg+='</g>';                               // close the per-band freshness group (H9)
   });
   MAP.datedOIG.innerHTML=svg;
   // LEGEND — bottom caption strip, right-aligned (outside every plot element by
@@ -1467,7 +1496,7 @@ function toggleWalls(){
 const _HALO='paint-order:stroke;stroke:var(--surface-2);stroke-width:3px;';   // surface halo: labels stay legible over the (now longer) bars
 function paintDated(){
   if(!MAP||!MAP.datedG) return;
-  const X=MAPX, d=D.dated, bands=(d&&Array.isArray(d.bands))?d.bands.slice(0,3):[];
+  const X=MAPX, d=D.dated, bands=(d&&Array.isArray(d.bands))?d.bands.slice(0,4):[];   // 4-band world (H8: two quarterlies)
   const on=wallsOn();
   const sg=(D.sigma&&isFinite(D.sigma)&&D.sigma>0)?D.sigma:0;
   const key=(on?bands.map(b=>`${b.expiry}|${b.call_wall}|${b.put_wall}|${b.as_of||''}`).join(';'):'off')
@@ -1537,7 +1566,7 @@ function gxOverview(){
   let datedChips='';
   const dd=(T&&T.dated!==undefined&&T.dated!==null)?T.dated:D.dated;   // T leads D by one frame at build time
   if(dd&&Array.isArray(dd.bands)){
-    datedChips=dd.bands.slice(0,3).map(b=>{
+    datedChips=dd.bands.slice(0,4).map(b=>{
       const w=_dwalls(b, D.spot||dd.spot_at_pull||0);
       // ITM tag rides the chip too (a jade ▲7,000 a thousand points BELOW spot must
       // never read as overhead resistance); "· OI" qualifies these as resting-OI
@@ -1557,8 +1586,11 @@ function gxOverview(){
       }catch(e){}
       return `<span class="gx-chip"><b>${_dexp(b.expiry)}</b><i>${cwT} ${pwT} · ${b.dte}d · OI${age}</i></span>`;
     }).join('');
-    const st=dd.staleness;
-    if(st&&st!=='fresh') datedChips+=`<span class="gx-chip"><b>Dated Book</b><i>${cap(String(st).replace('_',' '))} · as of ${String(dd.oi_date||'')}</i></span>`;
+    // warn on the BOOK's age (a dead nightly job), not dd.staleness — H9 made
+    // that read the oldest band, and the quarterly's weekly cadence is 1-6d old
+    // by design (cadence must not read as breakage; per-band ages carry it)
+    const bookAge=dd.stale_days;
+    if(bookAge>=1) datedChips+=`<span class="gx-chip"><b>Dated Book</b><i>Stale ${bookAge}d · as of ${String(dd.oi_date||'')}</i></span>`;
   }
   // Walls toggle: the wall LINES layer (dated tenor walls + structural ceiling/floor,
   // labeled on-line with arrow + price + σ). Default On.
@@ -1604,7 +1636,7 @@ function openZonesModal(){
       </div>
       <div class="modal-body">
         ${rows}
-        <div class="zm-note">Price feels every zone's pull — the strongest is the magnet; a close rival means chop between them.</div>
+        <div class="zm-note">Price feels every zone's pull — the strongest is the magnet; a close rival pulls the live magnet toward the middle (chop between them).</div>
       </div>
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
@@ -1723,8 +1755,8 @@ function applyMap(r){
     shoveDown:sh.shove_down_margin??D.shoveDown, sigma:r.sigma??D.sigma,
     sign:r.gamma_sign, regime:r.regime, downFlip:sh.down_flips||false };
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
-  T.putFloor = r.put_wall ?? D.putFloor;                          // structural OI put wall = the real floor
-  T.callCeil = r.call_wall ?? D.callCeil;                          // structural OI call wall = the real ceiling
+  T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
+  T.callCeil = r.call_wall_tenor ?? r.call_wall ?? D.callCeil;     // structural OI call wall = the real ceiling
   T.dated = r.dated_gex ?? D.dated;                                // dated book (nightly sidecar) — sticky: rows before the day's first scan keep the last known
   // magnet zones — same engine dict the magnet reads from, the other as fallback;
   // pre-zone rows carry no key → null → exact single-magnet fallback

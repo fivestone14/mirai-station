@@ -149,6 +149,47 @@ def gamma_vote_sign(gxv: Optional[dict]) -> str:
 # p50 ~0.55, min ~0.34, so only the very thinnest tapes fail the gate.
 DET_FLOOR = 0.40
 
+# H2 size guard: a 0DTE gamma wall KNOWN to carry less than this share of the
+# whole |γ·w| field is noise, not a wall — fall through to the OI/tenor walls.
+# Unknown share (the morning guard) trusts the wall. 0.02, not 0.03: the share
+# denominator is the WHOLE field both sides, and the live put side ran
+# 0.031-0.054 on 07-10 (mornings 0.031-0.033) — a 0.03 floor sat exactly on
+# its operating point and would have flickered the put wall off at the open.
+WALL_MIN_SHARE = 0.02
+
+# H2 v2 placement guards (2026-07-12 verification): a wall is OPERATIVE only
+# when it stands where a wall stands. The 0DTE gamma wall HUGS spot (07-10
+# replay: 0.01-0.62σ away, mostly ≤0.3σ — the ATM artifact re-forming at
+# price, not a barrier); fed raw to the fade it armed the wall-proximity test
+# on essentially every scan and the F3 clamp mechanically zeroed every fire
+# (runway could never reach RUNWAY_MIN_SIGMA). Floor = the fire floor: a wall
+# inside the minimum runway is part of the neighborhood price is exploring —
+# the operative containment is the FIRST wall beyond it ("to get to the far
+# wall you must break the near one"). Ceiling = reach: the 8000/7000 crash
+# strata σ-multiples out were the ORIGINAL H2 bug and must never return via
+# the tenor fallback.
+WALL_MIN_DIST_SIGMA = RUNWAY_MIN_SIGMA
+WALL_MAX_DIST_SIGMA = 3.0
+
+
+def operative_wall(candidates, spot, sigma, side: str):
+    """The wall the fade actually fights (H2 v2): the FIRST candidate — tenor
+    order, nearest book first — placed like a wall: WALL_MIN_DIST_SIGMA to
+    WALL_MAX_DIST_SIGMA from spot on its own side (calls above, puts below).
+    None when nothing qualifies — an honest absence arms on stretch only and
+    leaves the runway unclamped, never a fiction bound. A broken (overshot)
+    wall stops qualifying, so the NEXT wall out becomes operative: break-to-
+    extend falls out of the geometry."""
+    if not spot or not sigma or sigma <= 0:
+        return None
+    for w in candidates:
+        if w is None:
+            continue
+        d = (w - spot) / sigma if side == "call" else (spot - w) / sigma
+        if WALL_MIN_DIST_SIGMA <= d <= WALL_MAX_DIST_SIGMA:
+            return w
+    return None
+
 
 def _veto_flow(options_flow: Optional[float],
                lob_fold: Optional[dict]) -> tuple[Optional[float], str]:
@@ -704,14 +745,18 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         except Exception:
             lob_fold = None
         veto_flow, veto_src = _veto_flow(flow, lob_fold)
-        # the tape conflict trips on different scales per source — the LOB tilt tops
-        # out ~0.26, the options aggressor reaches 0.6+, so slide E must be told which.
+        # the tape conflict trips on different scales AND semantics per source — the
+        # LOB tilt tops out ~0.26 and its sign carries no dealer-positioning info
+        # (freight-train test, unsigned), while the options aggressor reaches 0.6+
+        # and its + side is exactly the dealer-sign inversion (H5) — slide E must
+        # be told which tape it is reading.
         flow_conflict = _gxb.FLOW_CONFLICT_LOB if veto_src == "lob" else _gxb.FLOW_CONFLICT
+        flow_kind = "lob" if veto_src == "lob" else "options"
 
         # GRAVITY ENGINE — the ONLY gravity read (legacy oracle retired):
         # supplies the σ yardstick (ATM-IV), walls, flip, regime and the magnet.
         gxv = _gxb.GexBox(ticker, now=now, live_spot=spot, aggressor_flow=veto_flow,
-                          flow_conflict=flow_conflict)
+                          flow_conflict=flow_conflict, flow_kind=flow_kind)
         if not gxv:
             return None
         _meta = gxv.get("meta") or {}
@@ -719,9 +764,26 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         _C = _slides.get("C_tenor") or {}
         _B = _slides.get("B_0dte") or {}
         sigma = _meta.get("sigma")
-        # band bounds: stable 1-7DTE terrain walls, else today's 0DTE walls
-        call_wall = _C.get("call_wall") if _C.get("call_wall") is not None else _B.get("call_wall")
-        put_wall = _C.get("put_wall") if _C.get("put_wall") is not None else _B.get("put_wall")
+        # band bounds (H2 v2, 2026-07-12 — doctrine: 0DTE first, PLACED like a
+        # wall): candidates in tenor order — today's 0DTE gamma wall (share-
+        # guarded), the 0DTE OI/volume wall, then the 1-7DTE structural wall —
+        # and operative_wall picks the FIRST one standing at a real wall's
+        # distance (≥ the fire floor, ≤ 3σ reach). The old tenor-first read
+        # aimed fades at 8000/7000-class crash strata σ-multiples out (fake
+        # runway, dead clamp — the original H2 bug); a raw 0DTE-first flip
+        # verified WORSE (the spot-hugging ATM artifact armed every scan and
+        # zeroed every fire). The structural walls always ride beside in the
+        # diary + watchtower payload as outer terrain.
+        _cw_share, _pw_share = _B.get("call_wall_gamma_share"), _B.get("put_wall_gamma_share")
+        def _sized(w, share):
+            return w if (w is not None and (share is None or share >= WALL_MIN_SHARE)) else None
+        call_wall_tenor, put_wall_tenor = _C.get("call_wall"), _C.get("put_wall")
+        call_wall = operative_wall((_sized(_B.get("call_wall_gamma"), _cw_share),
+                                    _B.get("call_wall"), call_wall_tenor),
+                                   spot, sigma, "call")
+        put_wall = operative_wall((_sized(_B.get("put_wall_gamma"), _pw_share),
+                                   _B.get("put_wall"), put_wall_tenor),
+                                  spot, sigma, "put")
         gflip = gxv.get("flip")
         gex_source = _meta.get("gex_source")
         # gamma read = sign of net gamma AT SPOT — but a flow-downgraded
@@ -803,6 +865,10 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             "gex_source": gex_source, "gamma_sign": g_sign,
             "gamma_flip": gflip,
             "call_wall": call_wall, "put_wall": put_wall, "sigma": sigma,
+            # outer terrain (H2): the structural 1-7DTE band walls the near walls
+            # replaced as the operative bound — recorded so nothing is silently
+            # lost and the A/B can compare the two doctrines row by row
+            "call_wall_tenor": call_wall_tenor, "put_wall_tenor": put_wall_tenor,
             "prior_close": prior_close,
             "range_em": round(range_em, 3) if range_em is not None else None,
             "variance_ratio": vr, "vix_ts": round(vix_ts, 3) if vix_ts else None,
@@ -868,6 +934,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 rec["pin_signed"] = _b0.get("pin_signed")
                 rec["pin_signed_total"] = _b0.get("pin_signed_total")
                 rec["pin_signed_share"] = _b0.get("pin_signed_share")
+                rec["pin_signed_v"] = _b0.get("pin_signed_v")   # weighting era (2=churn-floored)
                 # MAGNET ZONES (2026-07-09, LIVE): the attractive field read as
                 # GROUPS — the live magnet is zone-1's weighted center; the
                 # legacy argmax rides beside it so the nightly tape-measure can
@@ -875,6 +942,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 rec["pin_zones"] = _b0.get("pin_zones")
                 rec["pin_contested"] = _b0.get("pin_contested")
                 rec["pin_argmax"] = _b0.get("pin_argmax")
+                rec["pin_blended"] = _b0.get("pin_blended")   # H4: contested blend, when it drove the pin
                 rec["zone1_share"] = _b0.get("zone1_share")
                 # PIN FIELD (Break Lens motion inputs): wall SHARES (raw 0DTE
                 # gamma is volume-weighted and only grows — never diff raw
@@ -940,10 +1008,12 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                         "pin_signed": b0.get("pin_signed"),
                         "pin_signed_total": b0.get("pin_signed_total"),
                         "pin_signed_share": b0.get("pin_signed_share"),
+                        "pin_signed_v": b0.get("pin_signed_v"),
                         # magnet zones (2026-07-09, LIVE) — native mirror
                         "pin_zones": b0.get("pin_zones"),
                         "pin_contested": b0.get("pin_contested"),
                         "pin_argmax": b0.get("pin_argmax"),
+                        "pin_blended": b0.get("pin_blended"),   # H4 blend — native mirror
                         "zone1_share": b0.get("zone1_share"),
                         # pin-field mirror (native gets the same B_0dte fields
                         # free via build_views; shove/motion stay gex_views-only)
@@ -966,10 +1036,16 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 if leg.get("magnet") is not None and pin is not None:
                     trec["magnet_vs_proxy"] = round(pin - leg["magnet"], 3)
                 # engine-sign agreement compares the RAW gamma signs — a flow
-                # downgrade to "uncertain" (either side) is not a sign dispute
+                # downgrade to "uncertain" is not a sign dispute, and neither is
+                # an H3 TIE: a knife-edge book reading 1.9% net/gross on one
+                # engine and 2.1% on the other is two engines agreeing the book
+                # is balanced, not a dispute — a tie on either leg abstains.
                 leg_raw = leg.get("regime_raw") or leg.get("regime")
                 t_raw = trec.get("regime_raw") or trec.get("regime")
-                trec["regime_agree"] = (leg_raw == t_raw) if leg_raw else None
+                if "uncertain" in (leg_raw, t_raw):
+                    trec["regime_agree"] = None
+                else:
+                    trec["regime_agree"] = (leg_raw == t_raw) if leg_raw else None
                 telemetry["gex_theta"] = trec
             except Exception:
                 pass
@@ -1078,6 +1154,10 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             # strikes MMs actually defend intraday), tenor OI band walls only as
             # fallback — the 8000/7000 band walls carry no tape and burned ~60% of
             # defense slots on permanently-thin strikes (2026-07-10 audit).
+            # DELIBERATELY the RAW gamma wall, not H2's operative_wall: the
+            # collector watches the order book AT the defended strike, and the
+            # spot-hugging ATM strike is exactly where that defense lives — the
+            # placement floor that protects the fade would starve the sensor.
             _lob_cw = _B.get("call_wall_gamma") if _B.get("call_wall_gamma") is not None else call_wall
             _lob_pw = _B.get("put_wall_gamma") if _B.get("put_wall_gamma") is not None else put_wall
             _lob.attach_telemetry(telemetry, ticker, now,
@@ -1246,9 +1326,12 @@ def resolve_dealer_map(latest: Optional[dict]) -> Optional[dict]:
         "flip": flip, "flip_source": flip_source,
         "flip_band": gv.get("flip_band"),
         "magnet": magnet, "magnet_source": magnet_source,
-        # legacy OI walls stay the band bounds (only pair guaranteed both-sided);
-        # the 0DTE gamma walls ride alongside, labelled as such.
+        # band bounds are the H2 operative walls (0DTE-first, placement-guarded)
+        # since 2026-07-12; the structural tenor pair + the raw 0DTE gamma walls
+        # ride alongside, labelled as such.
         "call_wall": latest.get("call_wall"), "put_wall": latest.get("put_wall"),
+        "call_wall_tenor": latest.get("call_wall_tenor"),
+        "put_wall_tenor": latest.get("put_wall_tenor"),
         "call_wall_gamma": gv.get("call_wall_gamma"),
         "put_wall_gamma": gv.get("put_wall_gamma"),
         "vex_sign": gv.get("vex_sign"), "cex_sign": gv.get("cex_sign"),
@@ -1422,14 +1505,18 @@ _GEX_STATUS = {
     "negative": "🔴 SHORT-gamma · trending",
     "long_gamma": "🟢 LONG-gamma · pinning",
     "short_gamma": "🔴 SHORT-gamma · trending",
-    "uncertain": "🟡 UNCERTAIN · flow fighting the pin",
+    # two roads lead to "uncertain" since H3 — a flow downgrade of a real sign,
+    # or a TIE (balanced book, no regime). The regime string alone can't tell
+    # them apart, so the label stays neutral; _gex_status() disambiguates on
+    # regime_raw when the row carries it.
+    "uncertain": "🟡 UNCERTAIN · no trusted sign",
 }
 _GEX_MEANING = {
     "positive": "dealers **dampen** moves → fades favored",
     "negative": "dealers **amplify** moves → fades risky (go with the trend)",
     "long_gamma": "dealers **dampen** moves → fades favored",
     "short_gamma": "dealers **amplify** moves → fades risky (go with the trend)",
-    "uncertain": "gravity says pin but heavy one-way flow disagrees → stand cautious",
+    "uncertain": "no trusted gamma sign (flow conflict, or a balanced book) → stand cautious",
 }
 
 

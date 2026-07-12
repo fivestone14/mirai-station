@@ -6,8 +6,10 @@ multi-month structural walls (7000/8000-class round-number OI on EVERY monthly)
 are visible only during OpEx week and vanish from the map the rest of the month —
 while persisting in the market. This sidecar pulls exactly two extra bands:
 
-  * the next TWO SPX AM 3rd-Friday monthlies  (band "monthly")
-  * the current quarter-end SPXW EOM expiry   (band "quarter_end", collar strata)
+  * the next TWO SPX AM 3rd-Friday monthlies    (band "monthly")
+  * the next TWO SPXW quarter-end EOM expiries  (band "quarter_end", collar strata;
+    two since 2026-07-12/H8 — one quarterly left the forward collar invisible for
+    ~2 months every time a quarter turned)
 
 BLAST-RADIUS CONTRACT (the whole point of the design):
   * separate PROCESS  — runs from its own launchd job (05:17 PT pre-open), never
@@ -25,10 +27,11 @@ Kill switch: DATED_BOOK_DISABLE=1 no-ops BOTH sides (runner exits 0, reader
 returns None) — one env var silences the sidecar even if launchd keeps firing.
 
 Public surface:
-    third_fridays(now, n=2)   -> [date, ...]     next n AM-monthly expiries
-    quarter_end_expiry(now)   -> date            current quarter's EOM expiry
-    pull(now=None)            -> dict            nightly job entry (network)
-    diary_summary(now=None)   -> dict | None     scan-side cache-only reader
+    third_fridays(now, n=2)        -> [date, ...]   next n AM-monthly expiries
+    quarter_end_expiry(now)        -> date          front quarter's EOM expiry
+    quarter_end_expiries(now, n=2) -> [date, ...]   next n quarter-end expiries
+    pull(now=None)                 -> dict          nightly job entry (network)
+    diary_summary(now=None)        -> dict | None   scan-side cache-only reader
 """
 from __future__ import annotations
 
@@ -58,6 +61,13 @@ _ROOT_FOR = {"monthly": "SPX", "quarter_end": "SPXW"}   # AM monthlies / PM EOM
 
 _STALE_FLOOR_DAYS = 5     # beyond this the reader returns None — a week-old wall
                           # map is worse than no map (spec staleness floor)
+# Per-BAND staleness floors (H9, 2026-07-12): the book-level as_of is the NEWEST
+# pull, so a carried band (quarterly on its weekly cadence, or a band whose job
+# failed) could wear the fresh book's sticker while being a week old itself —
+# and a stale wall read as fresh is exactly the misread that produces bad trades.
+# Each band is gated on ITS OWN age: monthlies re-pull nightly (5d = dead job),
+# quarterlies refresh weekly by design (10d = genuinely stale, not cadence).
+_BAND_STALE_FLOOR_DAYS = {"monthly": 5, "quarter_end": 10}
 _TOP_WALLS = 5            # per-side wall slice persisted to the diary
 _ROUND_STEP = 500.0       # round-number strikes verified present after each pull
 
@@ -109,18 +119,29 @@ def third_fridays(now: datetime, n: int = 2) -> list:
 def quarter_end_expiry(now: datetime) -> date:
     """The current quarter's EOM (SPXW quarter-end) expiry: last business day of
     the quarter month, rolling to the next quarter once it has passed."""
+    return quarter_end_expiries(now, n=1)[0]
+
+
+def quarter_end_expiries(now: datetime, n: int = 2) -> list:
+    """The next `n` quarter-end EOM expiries (H8, 2026-07-12). One quarterly was
+    a hole: the moment a quarter turned, its successor's collar walls — the
+    biggest OI strata on the board — vanished from the map for ~2 months until
+    they became "current" again. Two quarterlies keep the forward collar visible
+    the whole way in."""
     today = now.astimezone(_ET).date() if now.tzinfo else now.date()
+    out = []
     y, qm = today.year, ((today.month - 1) // 3 + 1) * 3
-    while True:
+    while len(out) < n:
         nxt = date(y + 1, 1, 1) if qm == 12 else date(y, qm + 1, 1)
         d = nxt - timedelta(days=1)
         while d.weekday() >= 5 or d in _holidays(d.year):
             d -= timedelta(days=1)
         if d >= today:
-            return d
+            out.append(d)
         qm += 3
         if qm > 12:
             qm, y = 3, y + 1
+    return out
 
 
 # --- store --------------------------------------------------------------------
@@ -301,31 +322,45 @@ def _parity_iv_rescue(contracts: list) -> int:
 
 
 def _quarterly_due(now: datetime, prev: dict) -> bool:
-    """Quarter-end cadence: daily inside the final 2 weeks; otherwise refresh
-    once the stored quarterly band's own pull is ≥7 days old (age-based weekly —
-    survives holiday Mondays with no special case), when the band is missing/
-    expired/unstamped, or when spot sits within 1% of a stored quarter-end wall.
-    Unknown spot fails TOWARD a refresh. All decided at JOB time, never on a scan."""
+    """Quarter-end cadence: daily inside the final 2 weeks (of the FRONT quarterly);
+    otherwise refresh once ANY expected quarterly band's own pull is ≥7 days old
+    (age-based weekly — survives holiday Mondays with no special case), when an
+    expected band is missing/expired/unstamped, or when spot sits within 1% of a
+    stored quarter-end wall. BOTH quarterlies are judged (H8) — a fresh front
+    quarter must not mask a missing/stale forward one. Unknown spot fails TOWARD
+    a refresh. All decided at JOB time, never on a scan."""
     today = now.astimezone(_ET).date() if now.tzinfo else now.date()
-    qe = quarter_end_expiry(now)
-    if (qe - today).days <= 14:
+    expected = quarter_end_expiries(now, n=2)
+    if (expected[0] - today).days <= 14:
         return True
     bands = (prev or {}).get("bands") or []
-    qb = [b for b in bands if b.get("band") == "quarter_end"
-          and (b.get("expiry") or "") >= today.isoformat()]
-    if not qb:
-        return True
-    try:
-        age = (today - date.fromisoformat(str(qb[0].get("as_of", ""))[:10])).days
-    except Exception:
-        return True                              # unstamped band → refresh
-    if age >= 7:
-        return True
+    live_q = [b for b in bands if b.get("band") == "quarter_end"
+              and (b.get("expiry") or "") >= today.isoformat()]
     spot = (prev or {}).get("spot")
-    if not spot:
-        return True                              # unknown spot → fail toward refresh
-    for b in qb:
-        for k, _oi in (b.get("top_calls") or []) + (b.get("top_puts") or []):
+    for qe in expected:
+        # match by NEAREST stored quarterly within the same ±3-day tolerance the
+        # fetch probe uses (_near) — the server-validated expiry can shift a day
+        # or two off the computed one on exchange rebooks, and an exact-key miss
+        # would re-pull a band we already hold every single night
+        qb = None
+        for b in live_q:
+            try:
+                if abs((date.fromisoformat(str(b["expiry"])) - qe).days) <= 3:
+                    qb = b
+                    break
+            except (KeyError, ValueError, TypeError):
+                continue
+        if qb is None:
+            return True                          # expected quarterly absent → refresh
+        try:
+            age = (today - date.fromisoformat(str(qb.get("as_of", ""))[:10])).days
+        except Exception:
+            return True                          # unstamped band → refresh
+        if age >= 7:
+            return True
+        if not spot:
+            return True                          # unknown spot → fail toward refresh
+        for k, _oi in (qb.get("top_calls") or []) + (qb.get("top_puts") or []):
             if abs(k - spot) / spot <= 0.01:
                 return True
     return False
@@ -353,12 +388,13 @@ def pull(now: Optional[datetime] = None) -> dict:
                      "call_lo": w["call"][0], "call_hi": w["call"][1],
                      "put_lo": w["put"][0], "put_hi": w["put"][1]})
     if _quarterly_due(now, prev):
-        qe, w = quarter_end_expiry(now), _BANDS["quarter_end"]
-        jobs.append({"exp": qe.isoformat(), "root": _ROOT_FOR["quarter_end"], "band": "quarter_end",
-                     "probe_lo": (qe - timedelta(days=5)).isoformat(),
-                     "probe_hi": (qe + timedelta(days=5)).isoformat(),
-                     "call_lo": w["call"][0], "call_hi": w["call"][1],
-                     "put_lo": w["put"][0], "put_hi": w["put"][1]})
+        w = _BANDS["quarter_end"]
+        for qe in quarter_end_expiries(now, n=2):   # front + forward quarter (H8)
+            jobs.append({"exp": qe.isoformat(), "root": _ROOT_FOR["quarter_end"], "band": "quarter_end",
+                         "probe_lo": (qe - timedelta(days=5)).isoformat(),
+                         "probe_hi": (qe + timedelta(days=5)).isoformat(),
+                         "call_lo": w["call"][0], "call_hi": w["call"][1],
+                         "put_lo": w["put"][0], "put_hi": w["put"][1]})
 
     try:
         res = _run_code(_DATED_CHAIN_CODE % {"jobs": jobs})
@@ -495,9 +531,24 @@ def diary_summary(now: Optional[datetime] = None) -> Optional[dict]:
                     continue
                 if b["band"] == "quarter_end" and now_et.time() >= time(16, 0):
                     continue
+            # PER-BAND AGE GATE (H9): every band is judged on its OWN pull stamp,
+            # never the book's — a carried week-old wall must not wear the fresh
+            # book's sticker. An UNSTAMPED band is unverifiable and by
+            # construction at least as old as any stamped one (every pull stamps
+            # what it fetches) — drop it; inheriting the book's age would hand
+            # it the NEWEST stamp in the store. Over-floor bands are DROPPED,
+            # and age_days rides every surviving band so consumers (watchtower
+            # payload, tablet dimming) can show exactly how fresh each wall is.
+            try:
+                band_age = (today - datetime.fromisoformat(str(b.get("as_of"))).date()).days
+            except (TypeError, ValueError):
+                continue                         # unstamped → unverifiable → drop
+            if band_age > _BAND_STALE_FLOOR_DAYS.get(b["band"], _STALE_FLOOR_DAYS):
+                continue
             bands.append({"expiry": b["expiry"], "band": b["band"],
                           "as_of": b.get("as_of"),   # per-band pull stamp (carried
                                                      # bands are older than the book)
+                          "age_days": band_age,      # H9: the band's OWN freshness
                           "dte": (exp_d - today).days,
                           "call_wall": b.get("call_wall"), "put_wall": b.get("put_wall"),
                           "top_calls": (b.get("top_calls") or [])[:_TOP_WALLS],
@@ -508,11 +559,16 @@ def diary_summary(now: Optional[datetime] = None) -> Optional[dict]:
                           "vanna_mass": b.get("vanna_mass")})
         if not bands:
             return None
+        oldest = max(b["age_days"] for b in bands)
         return {"as_of": book["as_of"], "oi_date": book.get("oi_date"),
                 "stale_days": stale_days,
-                "staleness": ("fresh" if stale_days == 0 else
-                              "stale_1d" if stale_days == 1 else
-                              f"stale_{stale_days}d"),
+                # the label reads the OLDEST surviving band (H9), not the book —
+                # the book's as_of is the newest pull and would launder a carried
+                # week-old quarterly into "fresh"
+                "oldest_band_days": oldest,
+                "staleness": ("fresh" if oldest == 0 else
+                              "stale_1d" if oldest == 1 else
+                              f"stale_{oldest}d"),
                 "landed_date": book.get("landed_date"),
                 "spot_at_pull": book.get("spot"), "bands": bands}
     except Exception:

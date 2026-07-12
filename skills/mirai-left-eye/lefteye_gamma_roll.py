@@ -35,7 +35,10 @@ if str(SKILL_DIR) not in sys.path:
 import atomic_io  # noqa: E402
 
 # --- tuning --------------------------------------------------------------------
-NEAR_PCT = 1.5               # "near spot" window, percent of spot (matches bridge bands)
+NEAR_PCT = 2.5               # "near spot" window, percent of spot. Widened 07-12:
+                             # 1.5% was only ~1.15σ on a high-vol day (live σ hit
+                             # 1.30% of spot on 07-10), hiding roll divergence at
+                             # 1.5-3% OTM exactly when it matters most.
 # 4x the 5-pt SPX strike grid, ~0.27% of spot at 7500 — big enough to clear grid
 # noise, small enough to sit inside the documented 30-65pt magnet-teleport scale.
 K_DIVERGE_PTS = 20.0

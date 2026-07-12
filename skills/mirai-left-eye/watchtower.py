@@ -66,7 +66,18 @@ STATE_DIR = SKILL_DIR.parent.parent / "state"
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
-PROMPT_VERSION = "wt-3"     # bump on ANY prompt change — a bump resets the record
+PROMPT_VERSION = "wt-4"     # bump on ANY prompt change — a bump resets the record
+# wt-4 (2026-07-12): CHARM + TERRAIN era (H6 + tenor doctrine). (1) The payload now
+# spells out the into-the-close charm drift as a word (charm_drift_into_close) —
+# net dealer charm NEGATIVE means hedge re-balancing BUYS into the bell (drift UP),
+# POSITIVE means it SELLS (drift DOWN), and the pull strengthens as minutes_to_close
+# falls (charm ∝ 1/time-left) — and the prompt teaches when to lean on it (the
+# afternoon drift call was a coin-flip, likely read inverted). (2) The walls in
+# dealer_map_gravity are now TODAY'S 0DTE gamma walls (H2 flipped the telemetry
+# preference); the structural 1-7DTE band walls ride beside them, and a compact
+# dated_structure block (far monthlies/quarter-end, σ-distances, unsigned, ≤3σ
+# only) gives the tower the outer terrain for the first time. Payload change =
+# era bump: wt-3 rows judged scenes without these facts — never mix ledgers.
 # wt-3 (2026-07-10): payload-era bump for the magnet-source fixes — the gravity prior
 # (magnet_sd/pull_word) now anchors on the TRUE always-on gex_views magnet instead of
 # the armed-only wall-clamped reversion revert-target (which starved it to "UNKNOWN"
@@ -174,7 +185,12 @@ def scene_fingerprint(t: dict) -> dict:
         "put_wall_sd": _sd(t.get("put_wall"), spot, sigma),
         "regime": t.get("regime"),
         "gamma_sign": t.get("gamma_sign"),
-        "net_gex_sign": None if net_gex is None else _sign(net_gex),
+        # H3 tie: when the engine already called the sign a tie ("uncertain"),
+        # the raw net's residual sign is noise — fingerprinting it fired a
+        # 'net-GEX flipped sign' interrupt on every knife-edge scan pair,
+        # burning judged-scan budget on exactly the days H3 declares unreadable
+        "net_gex_sign": (0 if gx.get("regime") == "uncertain" else
+                         None if net_gex is None else _sign(net_gex)),
         "flow": gx.get("aggressor_flow"),
         "vix_ts": t.get("vix_ts"),
     }
@@ -307,6 +323,47 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # is the map's containment breaking, and which way? A cocked/fired break warns the scene
     # may TREND (escape) rather than revert — never fade INTO a confirmed break. Evidence,
     # not a verdict to defer to. Attached only when the lens is actually active.
+    # CHARM DRIFT (H6, wt-4): the clock's tug, spelled out as a word (payload
+    # hygiene — signs in words, precomputed). Net dealer charm NEGATIVE ⇒ dealer
+    # deltas bleed LOWER as time passes ⇒ dealers BUY to re-hedge ⇒ drift pressure
+    # UP into the close (the classic put-heavy charm grind-up); POSITIVE ⇒ the
+    # mirror, hedge SELLING, drift DOWN. Charm ∝ 1/time-left, so the pull is weak
+    # in the morning and grips hardest in the last ~2 hours — the wording carries
+    # that so the model never reads a 10am charm sign as a 3pm force.
+    charm_drift = {
+        "negative": "UP into the close — net dealer charm is negative: hedge re-balancing "
+                    "BUYS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
+        "positive": "DOWN into the close — net dealer charm is positive: hedge re-balancing "
+                    "SELLS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
+    }.get(gx.get("cex_sign"))
+    # DATED STRUCTURE (wt-4, tenor doctrine level 3): the far-dated OI walls from
+    # the nightly sidecar — outer terrain the tower was previously blind to.
+    # Unsigned LOCATIONS only (assumed-sign is wrong ~44% out there; magnitude
+    # deliberately not carried), σ-distances only, and only walls within reach
+    # (≤3σ) — a 9σ crash strike in the payload would re-teach the exact
+    # far-wall anchoring H2 just removed. age_days rides along so a stale wall
+    # is never mistaken for a fresh fact.
+    dated_bands = []
+    for b in ((t.get("dated_gex") or {}).get("bands") or []):
+        _cw, _pw = _sd(b.get("call_wall"), spot, sigma), _sd(b.get("put_wall"), spot, sigma)
+        row = {"band": b.get("band"), "days_to_expiry": b.get("dte"),
+               **({"age_days": b.get("age_days")} if b.get("age_days") is not None else {}),
+               **({"call_wall_sigma_above": _cw} if _cw is not None and abs(_cw) <= 3 else {}),
+               **({"put_wall_sigma_below": _pw} if _pw is not None and abs(_pw) <= 3 else {})}
+        if "call_wall_sigma_above" in row or "put_wall_sigma_below" in row:
+            dated_bands.append(row)
+    # structural 1-7DTE band walls (outer terrain beside H2's operative walls).
+    # Same ≤3σ reach filter as dated_structure: an 8-10σ crash stratum in the
+    # payload would re-teach the exact far-wall anchoring H2 just removed. And
+    # suppressed when the operative wall IS the tenor wall (fallback landed
+    # there) — the same level twice reads as independent confirmation.
+    def _tenor_sd(tenor_w, near_w):
+        if tenor_w is None or tenor_w == near_w:
+            return None
+        sd_v = _sd(tenor_w, spot, sigma)
+        return sd_v if sd_v is not None and abs(sd_v) <= 3 else None
+    tenor_cw_sd = _tenor_sd(t.get("call_wall_tenor"), t.get("call_wall"))
+    tenor_pw_sd = _tenor_sd(t.get("put_wall_tenor"), t.get("put_wall"))
     lr = t.get("level_reclaim") or {}
     _bstate = lr.get("break_state")
     _bdir = lr.get("direction") if lr.get("direction") not in (None, "none") else lr.get("cock_direction")
@@ -335,10 +392,17 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
                    if rev.get("magnet_out_of_band") else {})}
                if fade_target_sd is not None else {}),
             "gamma_flip_sigma_from_spot": _sd(t.get("gamma_flip"), spot, sigma),
+            # NEAR walls: today's 0DTE gamma walls (H2) — the bounds price actually
+            # fights this session; the structural band walls follow as outer terrain
             "call_wall_sigma_above": _sd(t.get("call_wall"), spot, sigma),
             "put_wall_sigma_below": _sd(t.get("put_wall"), spot, sigma),
+            **({"structural_call_wall_sigma_above": tenor_cw_sd}
+               if tenor_cw_sd is not None else {}),
+            **({"structural_put_wall_sigma_below": tenor_pw_sd}
+               if tenor_pw_sd is not None else {}),
             "pin_top_share": gx.get("pin_top_share"),
             "vanna_sign": gx.get("vex_sign"), "charm_sign": gx.get("cex_sign"),
+            **({"charm_drift_into_close": charm_drift} if charm_drift else {}),
         },
         "live_flow": {"aggressor_flow": flow_word},
         # order-book flow, gravity-motion, and the sibling Break Lens are attached only
@@ -347,6 +411,12 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         **({"order_flow": order_flow} if order_flow else {}),
         **({"gravity_motion": motion} if motion else {}),
         **({"break_lens_head_c": break_lens} if break_lens else {}),
+        **({"dated_structure": {
+                "bands": dated_bands,
+                "note": "far-dated OI wall LOCATIONS (unsigned, no magnitude carried). "
+                        "Outer terrain: relevant only when spot is actually near one "
+                        "(they are hard shelves on approach), NEVER a drift target.",
+            }} if dated_bands else {}),
         "tape": {
             "gap_from_prior_close_sigma": rev.get("gap_stretch"),
             "vwap_stretch_sigma": rev.get("vwap_stretch"),
@@ -395,6 +465,16 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "an active break_lens_head_c (the map failing to contain price — an escape/trend risk that "
         "way) either confirm or contradict the pull. NEVER fade into a confirmed break; be wary of "
         "calling against strong book flow. Both are attached only when present; absence ≠ zero.\n"
+        "- CHARM IS THE CLOCK'S TUG — and it grips hardest near the bell. "
+        "dealer_map_gravity.charm_drift_into_close is precomputed (direction included — do not "
+        "re-derive it from charm_sign): it names which way dealer hedge re-balancing pressures "
+        "price as time decays. Before ~13:00 ET treat it as background. In the afternoon weight "
+        "it as a real vote on the drift call — it usually SHARPENS the magnet-pull and can break "
+        "a NEUTRAL tie; it does not override a hard break or heavy one-way flow.\n"
+        "- READ THE MAP IN TENOR ORDER: today's 0DTE book first (the walls and magnet — they are "
+        "what dealers re-balance TODAY), the structural_*_wall band walls second (multi-day "
+        "terrain), dated_structure last (far monthly/quarter-end OI shelves — react to them only "
+        "when spot is near one; they are not targets and their sign is unknown).\n"
         "- direction: \"call\" = you expect price UP over the horizon, \"put\" = DOWN. Set "
         "fired=false (direction null) only when the scene is genuinely two-sided — spot sitting "
         "on the magnet with no edge.\n"
@@ -624,7 +704,11 @@ def _today_context(now: datetime) -> tuple[list[dict], int]:
         wt = row.get("watchtower") or {}
         if _was_call(wt):
             calls += 1
-        if wt.get("votes"):
+        # same-era memory only (wt-4): a prompt/payload era judged scenes with
+        # different facts — feeding its verdicts into day_context would poison
+        # the new era's thesis memory on the bump day. calls still count ALL
+        # eras (the daily cap is a spend cap, not a ledger).
+        if wt.get("votes") and wt.get("prompt_version") == PROMPT_VERSION:
             judged.append((row, wt))
     for row, wt in judged[-6:]:
         d = wt.get("direction")

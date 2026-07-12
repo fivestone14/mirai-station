@@ -99,6 +99,65 @@ def test_reveal_payload_shows_the_gates_as_evidence():
     assert "EVIDENCE" in g["note"]
 
 
+# --- wt-4 payload: charm drift + tenor terrain (H6/H2/H8) -----------------------
+def test_charm_drift_word_direction_mapping():
+    # 3/3 derivation panel (07-12): negative net dealer charm ⇒ hedge BUYING
+    # into the close ⇒ drift UP; positive ⇒ SELLING ⇒ DOWN; unknown ⇒ absent
+    t = _telemetry()
+    t["gex_views"]["cex_sign"] = "negative"
+    assert wt.build_payload(t)["dealer_map_gravity"]["charm_drift_into_close"].startswith("UP")
+    t["gex_views"]["cex_sign"] = "positive"
+    assert wt.build_payload(t)["dealer_map_gravity"]["charm_drift_into_close"].startswith("DOWN")
+    t["gex_views"]["cex_sign"] = "unknown"
+    assert "charm_drift_into_close" not in wt.build_payload(t)["dealer_map_gravity"]
+
+
+def test_structural_walls_reach_filtered_and_deduped():
+    t = _telemetry()
+    # in reach and distinct from the near wall → attached
+    t["call_wall_tenor"], t["put_wall_tenor"] = 7650.0, 7250.0
+    dm = wt.build_payload(t)["dealer_map_gravity"]
+    assert dm["structural_call_wall_sigma_above"] is not None
+    assert dm["structural_put_wall_sigma_below"] is not None
+    # out of reach (9σ-class) → absent, never a far-wall anchor
+    t["call_wall_tenor"] = 9000.0
+    assert "structural_call_wall_sigma_above" not in wt.build_payload(t)["dealer_map_gravity"]
+    # identical to the near wall (fallback landed on tenor) → suppressed, not
+    # shown twice as independent confirmation
+    t["call_wall_tenor"] = t["call_wall"]
+    assert "structural_call_wall_sigma_above" not in wt.build_payload(t)["dealer_map_gravity"]
+
+
+def test_dated_structure_reach_filter_and_absence():
+    t = _telemetry()
+    t["dated_gex"] = {"bands": [
+        {"band": "monthly", "dte": 5, "age_days": 0, "call_wall": 7500.0, "put_wall": 7300.0},
+        {"band": "quarter_end", "dte": 80, "age_days": 3, "call_wall": 9000.0, "put_wall": 6000.0}]}
+    p = wt.build_payload(t)
+    ds = p["dated_structure"]
+    assert len(ds["bands"]) == 1                       # both-out-of-reach band dropped whole
+    b = ds["bands"][0]
+    assert b["band"] == "monthly" and b["age_days"] == 0
+    assert abs(b["call_wall_sigma_above"]) <= 3 and abs(b["put_wall_sigma_below"]) <= 3
+    # no dated book → key absent (absence ≠ null)
+    assert "dated_structure" not in wt.build_payload(_telemetry())
+
+
+def test_tie_regime_silences_net_gex_sign_axis():
+    # H3: when the engine called the sign a tie, the residual's sign is noise —
+    # the fingerprint must not fire 'net-GEX flipped sign' interrupts on it
+    t = _telemetry()
+    t["gex_views"]["net_gex"] = 5e8
+    t["gex_views"]["regime"] = "uncertain"
+    fp = wt.scene_fingerprint(t)
+    assert fp["net_gex_sign"] == 0
+    t2 = _telemetry()
+    t2["gex_views"]["net_gex"] = -5e8
+    t2["gex_views"]["regime"] = "uncertain"
+    changed, why = wt.big_change(fp, wt.scene_fingerprint(t2))
+    assert "net-GEX" not in " ".join(why or [])
+
+
 # --- verdict schema guard ------------------------------------------------------
 def test_validate_verdict_clamps_and_normalizes():
     v = wt.validate_verdict({**_verdict(), "conviction": 3.0, "magnitude_sigma": 99})

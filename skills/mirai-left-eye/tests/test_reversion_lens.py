@@ -332,14 +332,37 @@ def test_lob_veto_threshold_is_source_scaled_and_can_actually_trip():
     # the whole point of the calibration fix: a genuinely heavy order-book tape
     # (|tilt| ~0.3, above FLOW_CONFLICT_LOB 0.25) MUST trip the pin downgrade —
     # under the old options-scaled 0.6 it never could (tilt tops out ~0.26).
-    heavy = G.reconcile_sign("long_gamma", 0.30, G.FLOW_CONFLICT_LOB)
+    # H5: the lens now also passes flow_kind="lob" (the tape's semantics), and
+    # the lob branch trips on EITHER direction (freight-train test).
+    heavy = G.reconcile_sign("long_gamma", 0.30, G.FLOW_CONFLICT_LOB, "lob")
     assert heavy["sign"] == "uncertain" and heavy["agrees"] is False
+    heavy_dn = G.reconcile_sign("long_gamma", -0.30, G.FLOW_CONFLICT_LOB, "lob")
+    assert heavy_dn["sign"] == "uncertain" and heavy_dn["agrees"] is False
     # a calm well-covered tape genuinely CONFIRMS (agrees True → pin vote stands)
-    calm = G.reconcile_sign("long_gamma", 0.03, G.FLOW_CONFLICT_LOB)
+    calm = G.reconcile_sign("long_gamma", 0.03, G.FLOW_CONFLICT_LOB, "lob")
     assert calm["sign"] == "long_gamma" and calm["agrees"] is True
     # and that same 0.30 tape would NOT trip the options-scaled 0.6 (proves the
     # two sources are on different scales and must not share a threshold)
     assert G.reconcile_sign("long_gamma", 0.30, G.FLOW_CONFLICT)["agrees"] is True
+
+
+def test_operative_wall_placement_guards():
+    # H2 v2: the operative wall is the FIRST candidate placed like a wall —
+    # ≥ the fire floor away (the 0DTE gamma wall hugs spot: an ATM artifact,
+    # not a barrier) and ≤ 3σ reach (the far crash strata never return via
+    # the tenor fallback). None = honest absence.
+    spot, sigma = 7550.0, 50.0
+    # spot-hugging gamma wall (0.2σ) rejected → OI wall (1.0σ) wins
+    assert R.operative_wall((7560.0, 7600.0, 8000.0), spot, sigma, "call") == 7600.0
+    # everything near rejected, tenor in reach (2σ) wins
+    assert R.operative_wall((7560.0, None, 7650.0), spot, sigma, "call") == 7650.0
+    # tenor out of reach (9σ) → honest None, never the crash wall
+    assert R.operative_wall((7560.0, None, 8000.0), spot, sigma, "call") is None
+    # put side mirrors; an overshot (wrong-side) wall stops qualifying
+    assert R.operative_wall((7545.0, 7500.0, 7000.0), spot, sigma, "put") == 7500.0
+    assert R.operative_wall((7580.0,), spot, sigma, "put") is None   # wall above spot
+    # degenerate σ → None
+    assert R.operative_wall((7600.0,), spot, 0.0, "call") is None
 
 
 def test_uncertain_gamma_cannot_carry_a_pin_verdict_alone():

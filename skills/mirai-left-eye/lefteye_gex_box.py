@@ -72,12 +72,21 @@ MIN_VOL_TOTAL = 1000
 REFRESH_AGE_MIN = 25.0          # baseline staleness ceiling
 REFRESH_MOVE_SIGMA = 0.5        # spot moved this far since the snapshot → re-pull
 
-# Sign cross-check: |aggressor flow| at/above this contradicts a pin (long-gamma) read.
-FLOW_CONFLICT = 0.6          # options-aggressor scale: |flow| ≥ this ⇒ heavy one-way tape
+# Sign cross-check: aggressor flow at/above this inverts the assumed dealer sign —
+# the options kind downgrades EITHER regime read (H5); the lob kind keeps the
+# unsigned long-gamma-only freight-train test (see reconcile_sign).
+FLOW_CONFLICT = 0.6          # options-aggressor scale: flow ≥ this ⇒ heavy one-way tape
 FLOW_CONFLICT_LOB = 0.25     # order-book |tilt| scale (2 live days: tilt maxed ~0.26,
                              # break lens's own one-way bar ≈0.27) — the options 0.6
                              # is unreachable on this source, so the LOB veto needs
                              # its own threshold or it never trips (verified dead-as-0.6)
+
+# Regime tie deadband (H3, 2026-07-12): |net GEX at spot| below this share of the
+# GROSS |per-contract GEX| field is a BALANCED book, not a regime — without it a
+# 0.001 imbalance flips long↔short on exactly the knife-edge days the label exists
+# to name (strict >0 even stamped an exact 0.0 "short_gamma"). Ties read "uncertain",
+# which every consumer already treats as an abstain (gamma vote, slide E, tablet).
+REGIME_TIE_BAND = 0.02
 
 # --- Motion pack (P4) + shove test (P5): GRAVITY read as film, not photo ------
 # Shove: re-price net dealer GEX at spot ± this many σ — "if FLOW shoves price half
@@ -129,6 +138,13 @@ STRUCTURAL_SCALE = {"SPX": 10.0}
 # instead of inflating. OFF = today's behavior; `pin_signed` is recorded every scan
 # regardless, so the shadow A/B can prove it beats today before this promotes.
 SIGNED_PIN = False
+# Churn floor (H10, 2026-07-12): a pure |net| weight makes a CHURNED strike — heavy
+# two-way flow that round-trips to net ≈ 0 — vanish from the signed pin field
+# entirely, and the churned strike is often exactly the one price gets nailed to
+# (it is where the tape lives and where dealers re-hedge all day). Floor the weight
+# at this share of the strike's GROSS two-way flow (buy + sell) so real hedge mass
+# survives netting; the NET still leads whenever it is the bigger fact.
+CHURN_FLOOR = 0.25
 
 
 # ===========================================================================
@@ -254,6 +270,23 @@ def _net_gex_at(contracts: list[dict], S: float, weight_key: str,
     return tot
 
 
+def _gross_gex_at(contracts: list[dict], S: float, weight_key: str,
+                  minutes_to_close: Optional[float] = None) -> float:
+    """GROSS |dealer GEX| at S — the same per-contract terms _net_gex_at signs and
+    sums, summed UNSIGNED. The tie-band denominator: how much gamma mass exists at
+    spot regardless of which side it lands on (net/gross ≈ 0 ⇒ a balanced book)."""
+    tot = 0.0
+    for c in contracts:
+        if not _reprices(c, weight_key):
+            continue
+        dte = c["dte"]
+        tau = _tau_for(dte, minutes_to_close) if dte == 0 else max(float(dte), _TAU_FLOOR_DAYS) / _TRADING_DAYS
+        if not tau:
+            continue
+        tot += abs(_bs_gamma(S, c["strike"], c["iv"], tau) * c[weight_key] * 100.0 * S * S * 0.01)
+    return tot
+
+
 def _flip_grid(spot: float) -> list[float]:
     """Non-uniform GEX(S) sampling grid: a DENSE inner window near spot (±_FLIP_INNER
     at ~half a strike step) unioned with the COARSE wide span (±_FLIP_SPAN). Uniform
@@ -347,7 +380,17 @@ def slide_flip(contracts: list[dict], spot: float,
         return out
     flip, band = _flip_rootfind(contracts, spot, basis, minutes_to_close)  # border (+ band)
     net = _net_gex_at(contracts, spot, basis, minutes_to_close)  # signed dealer GEX at spot
-    regime = "long_gamma" if (net or 0.0) > 0 else "short_gamma"
+    # TIE DEADBAND (H3, 2026-07-12): call a tie a tie. On the border the label exists
+    # to name, |net| is a rounding-size residual of two huge cancelling sides — its
+    # sign is noise, and strict >0 flipped the whole pin/push regime on it (an exact
+    # 0.0 read even stamped "short_gamma"). Below the band the regime abstains as
+    # "uncertain" — the same abstain value slide E already emits, so every consumer
+    # (gamma vote, watchtower wording, UW buckets) handles it today.
+    gross = _gross_gex_at(contracts, spot, basis, minutes_to_close)
+    if gross > 0 and abs(net or 0.0) < REGIME_TIE_BAND * gross:
+        regime = "uncertain"
+    else:
+        regime = "long_gamma" if (net or 0.0) > 0 else "short_gamma"
     out.update({"flip": flip, "flip_band": band, "net_gex": net,
                 "regime": regime, "basis": basis})
     return out
@@ -421,12 +464,17 @@ ZONE_MAX_WIDTH = 50.0  # pts — a zone spanning wider than this is a SMEAR, not
                        # center sat between the true 7500/7550 magnets). The
                        # LIVE pin only swaps to zone-1's center when zone-1 is
                        # tighter than this; zones are still recorded either way.
+CONTESTED_BLEND_MAX_GAP = 100.0  # pts — rival zone centers farther apart than this
+                                 # don't blend (H4): the middle of two distant magnets
+                                 # is no-man's-land, same physics as the smear guard.
 
-# PER-STRIKE FIELD persistence window (2026-07-10). The signed net-GEX-by-strike
-# array is saved COMPACT — only strikes within ±NBS_WINDOW of spot — so the tablet
-# can draw MEASURED bars without bloating the diary. ±2% ≈ ±150pts at SPX 7550
-# (~60 five-pt strikes), comfortably wider than the viewstation's ~±1.6σ band.
-NBS_WINDOW = 0.02
+# PER-STRIKE FIELD persistence window (2026-07-10; widened 07-12). The signed
+# net-GEX-by-strike array is saved COMPACT — only strikes within ±NBS_WINDOW of
+# spot — so the tablet can draw MEASURED bars without bloating the diary. ±3% ≈
+# ±227pts at SPX 7550 (~90 five-pt strikes): the coverage audit found ±2% is only
+# ~1.5σ on a high-vol morning (live σ reached 1.30% of spot on 07-10), so a wall
+# the engine sees at 1.6-2σ would never reach the drawn bars.
+NBS_WINDOW = 0.03
 
 
 def pin_zones(by_strike: dict, spot: float,
@@ -578,6 +626,7 @@ def slide_0dte(zero_dte: list[dict], spot: float,
            "pin_total_gamma": None, "pin_top_share": None,
            "pin_abs": None, "pin_abs_basis": None,
            "pin_signed": None, "pin_signed_total": None, "pin_signed_share": None,
+           "pin_signed_v": None,
            # motion-pack raw material (P4): wall SHARES + signed-field shape,
            # recorded every scan so the diary can be diffed into melt/walk/soft-side
            "call_wall_gamma_share": None, "put_wall_gamma_share": None,
@@ -585,7 +634,7 @@ def slide_0dte(zero_dte: list[dict], spot: float,
            # magnet zones (2026-07-09, LIVE): the field as groups + the legacy
            # argmax kept beside the live zone-center pin for the nightly A/B
            "pin_zones": None, "pin_contested": None, "pin_argmax": None,
-           "zone1_share": None, "net_by_strike": None}
+           "pin_blended": None, "zone1_share": None, "net_by_strike": None}
     if not zero_dte or not spot:
         return out
     basis = pick_basis(zero_dte, spot, prefer="volume")   # walls: 0DTE → volume first
@@ -608,13 +657,21 @@ def slide_0dte(zero_dte: list[dict], spot: float,
     for c in zero_dte:
         nf = c.get("net_flow")
         if nf is not None:
-            c["signed_weight"] = abs(float(nf))
+            # H10: keep a churned pin's gamma weight — floor |net| at CHURN_FLOOR
+            # of the gross two-way flow so a round-tripped strike keeps its real
+            # hedge mass instead of netting itself off the map. Fail-open: no
+            # buy/sell annotation → the plain |net| weight, exactly as before.
+            gross_f = (c.get("flow_buy") or 0) + (c.get("flow_sell") or 0)
+            c["signed_weight"] = max(abs(float(nf)), CHURN_FLOOR * float(gross_f))
             _sig_ok = True
     if _sig_ok:
         p_sig, pt_sig, ps_sig = _net_pin_profile(zero_dte, "signed_weight", spot, minutes_to_close)
         out["pin_signed"] = round(p_sig, 4) if p_sig is not None else None
         out["pin_signed_total"] = round(pt_sig, 4) if pt_sig is not None else None
         out["pin_signed_share"] = round(ps_sig, 4) if ps_sig is not None else None
+        # weighting-era tag: v2 = churn-floored (H10, 2026-07-12); pre-07-12
+        # rows carried plain |net| with no tag — the A/B must never mix eras.
+        out["pin_signed_v"] = 2
         if SIGNED_PIN and p_sig is not None:
             pin, pin_total, pin_share = p_sig, pt_sig, ps_sig   # flag on → live magnet
     # MAGNET ZONES (2026-07-09, LIVE swap — user-sanctioned): the attractive
@@ -644,6 +701,23 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         # argmax keeps the wheel, the zones still ride for the A/B + tablet.
         if (zones[0]["hi"] - zones[0]["lo"]) <= ZONE_MAX_WIDTH:
             pin = zones[0]["center"]                # ← the LIVE magnet
+            # CONTESTED-MAGNET BLEND (H4, 2026-07-12): when two magnets fight,
+            # stand in the middle. With a rival pulling ≥ ZONE_RIVAL× the leader,
+            # zone-1 flips ownership on tiny prints and the live magnet teleports
+            # the full inter-zone gap (~50 pts on 2026-07-09) — a fake direction
+            # signal on exactly the choppy days that lose money. Blend toward the
+            # rival with a weight that is 0 at the contested threshold and ½ at a
+            # perfect tie — CONTINUOUS through both the threshold and the flip of
+            # zone order, so the magnet glides instead of jumping. Rivals must
+            # both be tight and near each other (a far/smeared rival keeps
+            # today's behavior; the contested flag rides either way).
+            if (contested
+                    and (zones[1]["hi"] - zones[1]["lo"]) <= ZONE_MAX_WIDTH
+                    and abs(zones[1]["center"] - zones[0]["center"]) <= CONTESTED_BLEND_MAX_GAP):
+                _r = zones[1]["share"] / zones[0]["share"]      # ∈ [ZONE_RIVAL, 1]
+                _t = (_r - ZONE_RIVAL) / (1.0 - ZONE_RIVAL)     # 0 at threshold → 1 at tie
+                pin = zones[0]["center"] + 0.5 * _t * (zones[1]["center"] - zones[0]["center"])
+                out["pin_blended"] = round(pin, 4)              # visible: blend is never silent
     call_wall_gamma = _gamma_wall(zero_dte, spot, "call", basis, minutes_to_close)
     put_wall_gamma = _gamma_wall(zero_dte, spot, "put", basis, minutes_to_close)
     out["pin_total_gamma"] = round(pin_total, 4) if pin_total is not None else None
@@ -707,19 +781,38 @@ def slide_tenor_walls(near_term: list[dict], spot: float) -> dict:
 
 
 def reconcile_sign(regime: str, aggressor_flow: Optional[float],
-                   conflict: float = FLOW_CONFLICT) -> dict:
-    """GRAVITY-vs-FLOW CHECK (Slide E): downgrades a "price will pin" call to
-    uncertain when heavy one-way flow is fighting it. A long-gamma read is suspect when
-    aggressor flow is heavily one-directional — retail/See-saw 0DTE call-buying can
-    invert the real dealer sign. Returns the (possibly downgraded) sign + a confidence
-    multiplier the consumer applies. `conflict` is the source-scaled trip level: the
-    whole-day options aggressor and the 30s order-book tape live on different scales
-    (see FLOW_CONFLICT vs FLOW_CONFLICT_LOB), so the caller passes the right one."""
+                   conflict: float = FLOW_CONFLICT, flow_kind: str = "options") -> dict:
+    """GRAVITY-vs-FLOW CHECK (Slide E): downgrades the gamma-sign read when the tape
+    says the assumed dealer sign is wrong. Returns the (possibly downgraded) sign + a
+    confidence multiplier the consumer applies. `conflict` is the source-scaled trip
+    level (FLOW_CONFLICT vs FLOW_CONFLICT_LOB); `flow_kind` names the tape's semantics:
+
+    "options" — the signed 0DTE aggressor tilt (+ = customers BUYING calls / SELLING
+    puts). DIRECTION-AWARE (H5, 2026-07-12): the whole GEX map assumes dealers are
+    long calls / short puts, and it is exactly the POSITIVE tape (customers taking
+    the other side of both legs) that inverts that assumption. Negative flow —
+    customers selling calls / buying puts — CONFIRMS it. The old abs() test was deaf
+    to this: it downgraded confirming tape as often as inverting tape and could never
+    tell the sign-flip it was built to catch from its harmless mirror. When the tape
+    inverts the assumption, EITHER regime read (long or short) is suspect — the sign
+    convention under both is the same one the tape just contradicted.
+
+    "lob" — the ~30s order-book tilt (+ = buyers pressing the book). The equity tape
+    carries no dealer-positioning information, so its sign can't confirm or deny the
+    convention; heavy one-way pressure in EITHER direction is a freight train a pin
+    read should not stand in front of (the 2026-07-02 losing cluster). Unsigned test,
+    long-gamma only — exactly the old behavior, now scoped to the source it fits."""
     out = {"sign": regime, "flow": aggressor_flow, "agrees": True, "confidence": 1.0}
-    if aggressor_flow is None:
-        out["agrees"] = None          # unknown flow → can't confirm, don't penalize
+    if aggressor_flow is None or regime not in ("long_gamma", "short_gamma"):
+        # unknown flow can't confirm; and a tie/unknown regime (H3) has no sign
+        # for the tape to confirm OR deny — either way, abstain, don't bless
+        out["agrees"] = None
         return out
-    if regime == "long_gamma" and abs(aggressor_flow) >= conflict:
+    if flow_kind == "lob":
+        if regime == "long_gamma" and abs(aggressor_flow) >= conflict:
+            out.update({"sign": "uncertain", "agrees": False, "confidence": 0.5})
+    elif aggressor_flow >= conflict:
+        # customers buying calls / selling puts — the assumed dealer sign is inverted
         out.update({"sign": "uncertain", "agrees": False, "confidence": 0.5})
     return out
 
@@ -915,17 +1008,18 @@ def build_views(contracts: list[dict], spot: float,
                 aggressor_flow: Optional[float] = None, *,
                 minutes_to_close: Optional[float] = None,
                 sigma: Optional[float] = None,
-                flow_conflict: float = FLOW_CONFLICT) -> dict:
+                flow_conflict: float = FLOW_CONFLICT,
+                flow_kind: str = "options") -> dict:
     """Pure assembler: the six slides + the consumer-facing magnet/regime. `magnet`
     is the 0DTE pin (B) when present, else the full-chain flip (A) — that is what the
     reversion lens measures runway to. `minutes_to_close` sharpens the 0DTE charm
     clock; `sigma` (the day's σ yardstick) arms the ±½σ shove test; `flow_conflict`
-    is the source-scaled tape-conflict trip level for slide E."""
+    + `flow_kind` are the source-scaled trip level and tape semantics for slide E."""
     zero, near = split_tenor(contracts)
     A = slide_flip(contracts, spot, minutes_to_close)
     B = slide_0dte(zero, spot, minutes_to_close)
     C = slide_tenor_walls(near, spot)
-    E = reconcile_sign(A["regime"], aggressor_flow, flow_conflict)
+    E = reconcile_sign(A["regime"], aggressor_flow, flow_conflict, flow_kind)
     F = slide_flows(contracts, spot, minutes_to_close=minutes_to_close)   # vanna/charm flows
     magnet = B["pin"] if B["pin"] is not None else A["flip"]
     # SHOVE TEST (P5): re-price net dealer GEX at spot ± ½σ and record the SIGNED
@@ -1217,6 +1311,7 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
               live_spot: Optional[float] = None,
               aggressor_flow: Optional[float] = None,
               flow_conflict: float = FLOW_CONFLICT,
+              flow_kind: str = "options",
               chain_lookup: Optional[Callable[[str], Optional[dict]]] = None,
               spot_lookup: Optional[Callable[[str], Optional[float]]] = None,
               native_lookup=_NATIVE_UNSET,
@@ -1250,7 +1345,8 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
     mtc = _minutes_to_close(now)                  # 0DTE charm clock (None outside RTH)
     views = build_views(entry.contracts, spot, aggressor_flow=aggressor_flow,
                         minutes_to_close=mtc, sigma=entry.sigma,   # σ arms the shove test
-                        flow_conflict=flow_conflict)               # source-scaled tape veto
+                        flow_conflict=flow_conflict,               # source-scaled tape veto
+                        flow_kind=flow_kind)                       # + its sign semantics
     age = round((now - entry.ts).total_seconds() / 60.0, 2)
     views["meta"] = {"gex_source": entry.source, "snapshot_spot": entry.anchor_spot,
                      "age_min": age, "repriced": live_spot is not None and live_spot != entry.spot,
