@@ -597,3 +597,103 @@ def test_last_look_falls_back_over_malformed_ts(monkeypatch):
     monkeypatch.setattr(wt, "_today_rows", lambda now: rows)
     mins, _ = wt._last_look(NOW)                               # 11:38 vs valid 10:00 call
     assert mins is not None and mins > 0                       # malformed ts didn't wipe clock
+
+
+# ---------------------------------------------------------------- m8 (2026-07-13)
+# The two layers the tower was blind to, and the cocked/fired distinction it never
+# had. The scene below is the REAL 12:43 ET row from 2026-07-13 — the scan where the
+# tower called CALL into a book whose accelerant side was DOWN, on a break that never
+# fired. These tests pin that scene to the opposite reading.
+_0713 = {
+    "shove": {"shove_sigma": 0.3552, "shove_v": 2, "net_gex_spot": -3013538082.93,
+              "shove_up_net_gex": 3509538289.01, "shove_down_net_gex": -8603662110.35,
+              "shove_up_margin": 1.1646, "shove_down_margin": -2.855,
+              "up_flips": True, "down_flips": False},
+    "speedometer": {"rv_pace": 1.363, "rod_range_pts": 31.2, "jump_z": 2.434,
+                    "jump_sign": None, "semivar_down_share": 0.658, "n_bars": 203,
+                    "baseline_days": 5, "quality": "ok"},
+    "motion": {"soft_side": "up", "gamma_above_share": 0.4936, "lookback_min": 10.02},
+}
+
+
+def test_shove_words_name_the_accelerant_side():
+    w = wt._shove_words(_0713["shove"], -3013538082.93)
+    assert "ACCELERANT" in w["if_price_shoves_DOWN"]
+    assert "ABSORBING" in w["if_price_shoves_UP"]
+    assert "DOWN is the ACCELERANT side" in w["asymmetry"]
+    assert "DEEPENING to 2.9×" in w["if_price_shoves_DOWN"]
+    assert "walks BACK INTO the calm zone" in w["if_price_shoves_UP"]   # up_flips
+    assert "-3.01B" in w["net_gex_at_spot"]
+
+
+def test_shove_words_symmetric_book_manufactures_no_edge():
+    w = wt._shove_words({"shove_up_margin": 0.9, "shove_down_margin": 0.95,
+                         "shove_sigma": 0.5, "net_gex_spot": 1e9}, 1e9)
+    assert "SYMMETRIC" in w["asymmetry"]
+    assert "ACCELERANT side" not in w["asymmetry"]
+
+
+def test_shove_words_absent_never_zero():
+    assert wt._shove_words({}, None) is None
+    assert wt._shove_words({"shove_up_margin": 0.4}, None) is None    # half a read is no read
+
+
+def test_speed_words_call_the_selling_tape():
+    s = wt._speed_words(_0713["speedometer"])
+    assert "SELLING-DOMINATED" in s["who_owns_the_motion"]
+    assert "66%" in s["who_owns_the_motion"]
+    assert "JUMPS" in s["jumps"]
+    assert "31 pts" in s["rest_of_day_range_pts"]
+
+
+def test_speed_words_stay_silent_on_a_dirty_feed():
+    assert wt._speed_words({**_0713["speedometer"], "quality": "degraded"}) is None
+    assert wt._speed_words({}) is None
+
+
+def test_soft_side_carries_its_share_and_flags_a_coin_flip():
+    m = wt._motion_words(_0713["motion"])
+    assert "49.4% of the field's mass sits ABOVE spot" in m["soft_side"]
+    assert "BARELY soft" in m["soft_side"]      # 0.4936 is a coin flip, not a thesis
+
+
+def test_cocked_break_is_not_a_direction():
+    t = _telemetry(fired=False, direction="none")
+    t["level_reclaim"] = {"break_state": "cocked", "cock_direction": "call",
+                          "cock_level": 7550.0, "cock_level_kind": "round",
+                          "fired": False, "direction": "none"}
+    p = wt.build_payload(t)
+    bl = p["break_lens_head_c"]
+    assert bl["has_it_actually_fired"] is False
+    assert "COCKED, NOT FIRED" in bl["note"]
+    assert "a WATCH level, not a direction" in bl["note"]
+    assert "Do NOT take escape_direction as a directional call" in bl["note"]
+
+
+def test_fired_break_is_a_direction():
+    t = _telemetry(fired=False, direction="none")
+    t["level_reclaim"] = {"break_state": "fired", "fired": True, "direction": "put",
+                          "level": 7500.0, "level_kind": "prior_low"}
+    p = wt.build_payload(t)
+    assert p["break_lens_head_c"]["has_it_actually_fired"] is True
+    assert "BREAK FIRED" in p["break_lens_head_c"]["note"]
+
+
+def test_payload_carries_shove_and_speed_into_the_prompt():
+    t = _telemetry()
+    t["gex_views"] = {**t.get("gex_views", {}), "shove": _0713["shove"],
+                      "net_gex": -3013538082.93}
+    t["speedometer"] = _0713["speedometer"]
+    p = wt.build_payload(t)
+    assert "DOWN is the ACCELERANT side" in p["flow_asymmetry"]["asymmetry"]
+    assert "SELLING-DOMINATED" in p["tape"]["tape_speed"]["who_owns_the_motion"]
+    prompt = wt._prompt(p)
+    assert "COCKED IS NOT FIRED" in prompt
+    assert "FLOW ASYMMETRY IS THE BOOK'S SLOPE" in prompt
+    assert "ACCELERANT" in prompt        # the fact reaches the model, not just the rule
+
+
+def test_payload_omits_both_layers_when_absent():
+    p = wt.build_payload(_telemetry())
+    assert "flow_asymmetry" not in p          # absent, never a null/zero read
+    assert "tape_speed" not in p["tape"]

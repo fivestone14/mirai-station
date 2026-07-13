@@ -66,7 +66,7 @@ STATE_DIR = SKILL_DIR.parent.parent / "state"
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
-PROMPT_VERSION = "wt-5"     # bump on ANY prompt change — a bump resets the record
+PROMPT_VERSION = "wt-6"     # bump on ANY prompt change — a bump resets the record
 # wt-5 (2026-07-12): THE TOWER GETS EYES era — the 07-12 pressure test's verdict was
 # "it cannot call a fight", and this bump is the answer. (1) N2: scheduled_event — the
 # event clock (FOMC/CPI/NFP kind + minutes-until/since + surprise) reaches the payload;
@@ -348,9 +348,119 @@ def _motion_words(motion: dict) -> dict:
                        else "steady")
     s = motion.get("soft_side")
     if s in ("up", "down"):
+        # m8 (2026-07-13): the SHARE rides with the word. The tower was handed "soft
+        # side UP" as a bare adjective and weighted it like a thesis; 0.494 vs 0.506 is
+        # a coin flip wearing a direction's clothes. The number says how soft.
+        gas = motion.get("gamma_above_share")
+        lean = ""
+        if gas is not None:
+            edge = abs(gas - 0.5)
+            lean = (f" — {gas:.1%} of the field's mass sits ABOVE spot"
+                    + (" (BARELY soft: this is near a 50/50 split — treat it as no edge)"
+                       if edge < 0.03 else
+                       " (a decisive lean)" if edge >= 0.10 else ""))
         out["soft_side"] = (f"{s.upper()} — less gravity mass {'above' if s == 'up' else 'below'} "
-                            "spot; a flow shove meets the least resistance that way")
+                            f"spot; a flow shove meets the least resistance that way{lean}")
     return out
+
+
+def _shove_words(shove: dict, net_gex: float | None) -> dict | None:
+    """m8 (2026-07-13) — THE BOOK'S SLOPE, spoken. The shove test re-prices net dealer
+    gamma at spot ± a flow shove and asks the only question that matters on a short-
+    gamma day: if price gets pushed, does dealer hedging FEED the move or ABSORB it?
+
+    It was computed every scan since the Break Lens build, written to the diary, drawn
+    on the tablet — and never once shown to the Watchtower. On 2026-07-13 that blindness
+    cost the tower four call verdicts: at 12:43 net GEX at spot was −3.0B (short), a
+    shove UP re-priced to +3.5B (sign FLIPS — a rally walks back into LONG gamma where
+    dealers damp it: rallies get ABSORBED) while a shove DOWN re-priced to −8.6B (short
+    gamma DEEPENS 2.85× — hedging sells into weakness: the slide ACCELERATES). The book
+    was structurally rigged for down, and the tower called up. Four times.
+
+    Sign convention (from lefteye_gex_box.SHOVE TEST): margin = shoved net GEX / |net
+    GEX at spot|. NEGATIVE margin = more short gamma that way = the AMPLIFYING side.
+    POSITIVE = long gamma that way = the DAMPING side. So the accelerant side is simply
+    the side with the lower (more negative) margin — that one comparison is the read."""
+    if not isinstance(shove, dict):
+        return None
+    up_m, dn_m = shove.get("shove_up_margin"), shove.get("shove_down_margin")
+    if up_m is None or dn_m is None:
+        return None                     # absent, never a fabricated zero
+    probe = shove.get("shove_sigma")
+    net0 = shove.get("net_gex_spot") if shove.get("net_gex_spot") is not None else net_gex
+
+    def _side(margin: float, flips: bool) -> str:
+        short_at_spot = bool(net0 is not None and net0 < 0)
+        if margin < 0:      # short gamma that way — hedging feeds the move
+            deep = (f", DEEPENING to {abs(margin):.1f}× the gamma at spot"
+                    if short_at_spot and abs(margin) > 1.15 else "")
+            return (f"margin {margin:+.2f} — dealers go/stay SHORT gamma that way{deep}: "
+                    "hedging pushes WITH the move. This is an ACCELERANT side — a shove "
+                    "here feeds itself." + (" (the calm BREAKS on this side)" if flips else ""))
+        return (f"margin {margin:+.2f} — dealers go/stay LONG gamma that way: hedging pushes "
+                "AGAINST the move. This is an ABSORBING side — a shove here gets damped and "
+                "faded." + (" (a move this way walks BACK INTO the calm zone)" if flips else ""))
+
+    accel = "DOWN" if dn_m < up_m else "UP" if up_m < dn_m else None
+    out = {
+        "what_this_is": (f"if flow shoves price ±{probe:.2f}σ from here, this is what dealer "
+                         "gamma BECOMES — i.e. whether hedging would feed the move or absorb it"),
+        "if_price_shoves_UP": _side(up_m, bool(shove.get("up_flips"))),
+        "if_price_shoves_DOWN": _side(dn_m, bool(shove.get("down_flips"))),
+    }
+    if net0 is not None:
+        out["net_gex_at_spot"] = (f"{net0 / 1e9:+.2f}B — the MAGNITUDE behind the gamma sign "
+                                  "(a shallow book flips easily; a deep one does not)")
+    if accel and abs(up_m - dn_m) >= 0.15:
+        absorb = "UP" if accel == "DOWN" else "DOWN"
+        out["asymmetry"] = (
+            f"THE BOOK IS ASYMMETRIC: {accel} is the ACCELERANT side, {absorb} is the ABSORBING "
+            f"side (margins {dn_m:+.2f} down vs {up_m:+.2f} up). The easy direction — the one "
+            f"dealer hedging PAYS FOR — is {accel}. Calling {absorb} here is calling into the "
+            "side of the book that is built to swallow the move: it needs real confirmed flow "
+            "behind it, not a cocked trigger. Under SHORT gamma this outranks soft_side.")
+    else:
+        out["asymmetry"] = ("SYMMETRIC — the book leans neither way under a shove; no "
+                            "asymmetry edge (do not manufacture one).")
+    return out
+
+
+def _speed_words(speed: dict) -> dict | None:
+    """m8 (2026-07-13) — THE SPEEDOMETER, spoken. How violent is the tape underneath
+    gravity and flow, and which side is the violence coming from? Also never shown to
+    the tower before today. `quality` guards it: a mangled feed must stay silent rather
+    than whisper a number the model will treat as authoritative."""
+    if not isinstance(speed, dict) or speed.get("quality") != "ok":
+        return None
+    out: dict = {}
+    pace = speed.get("rv_pace")
+    if pace is not None:
+        word = ("HOT — the tape is moving much faster than normal for this time of day"
+                if pace >= 1.5 else
+                "SLOW — a quieter tape than normal for this time of day (pins hold better)"
+                if pace <= 0.6 else "normal pace for this time of day")
+        out["pace"] = f"{pace:.2f}× the same-time-of-day norm — {word}"
+    share = speed.get("semivar_down_share")
+    if share is not None:
+        if share >= 0.60:
+            word = (f"{share:.0%} of today's variance came from DOWN moves — this is a "
+                    "SELLING-DOMINATED tape; the motion is one-sided and it is not up")
+        elif share <= 0.40:
+            word = (f"{1 - share:.0%} of today's variance came from UP moves — this is a "
+                    "BUYING-DOMINATED tape")
+        else:
+            word = f"{share:.0%} down / {1 - share:.0%} up — a TWO-SIDED tape (no side owns it)"
+        out["who_owns_the_motion"] = word
+    jz, jsign = speed.get("jump_z"), speed.get("jump_sign")
+    if jz is not None and jz >= 2.0:
+        out["jumps"] = (f"jump_z {jz:.1f} — the tape is moving in discrete JUMPS, not a smooth "
+                        "drift (gaps through levels are live; stops and pins are unsafe)"
+                        + (f"; the biggest 1-min move was {jsign.upper()}" if jsign else ""))
+    rod = speed.get("rod_range_pts")
+    if rod is not None:
+        out["rest_of_day_range_pts"] = (f"{rod:.0f} pts of high-low range still expected before "
+                                        "the bell — your magnitude must FIT inside this")
+    return out or None
 
 
 def build_payload(t: dict, reveal_gates: bool = False) -> dict:
@@ -531,19 +641,37 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         return sd_v if sd_v is not None and abs(sd_v) <= 3 else None
     tenor_cw_sd = _tenor_sd(t.get("call_wall_tenor"), t.get("call_wall"))
     tenor_pw_sd = _tenor_sd(t.get("put_wall_tenor"), t.get("put_wall"))
+    # m8 (2026-07-13): the two layers the tower has never seen. Both fail-open — a
+    # missing/mangled read is ABSENT from the payload, never a zero (payload hygiene).
+    shove_words = _shove_words(gx.get("shove") or {}, gx.get("net_gex"))
+    speed_words = _speed_words(t.get("speedometer") or {})
     lr = t.get("level_reclaim") or {}
     _bstate = lr.get("break_state")
     _bdir = lr.get("direction") if lr.get("direction") not in (None, "none") else lr.get("cock_direction")
     break_lens: dict = {}
     if lr.get("fired") or (_bstate not in (None, "idle")) or lr.get("cock_direction"):
+        # m8 (2026-07-13): COCKED IS NOT FIRED. The note used to say the same thing for
+        # both states, so the tower read a cocked-but-ungated break as permission to call
+        # that direction — on 07-13 it fired FOUR calls (12:43, 14:35, 14:57, 15:19) on a
+        # break that never fired, into an accelerant-down book. A cocked break is a place
+        # to WATCH, not a direction to take; only a FIRED break is a directional fact.
+        _fired_break = bool(lr.get("fired")) or _bstate == "fired"
+        _note = ("BREAK FIRED — the map is failing to contain price on that side: this IS a "
+                 "directional fact. Follow it or stand down; never fade INTO it."
+                 if _fired_break else
+                 "COCKED, NOT FIRED — the trigger is ARMED and has NOT TRIGGERED. This is a "
+                 "WATCH level, not a direction. It says where price MIGHT escape IF it escapes; "
+                 "it is NOT evidence that it will. Do NOT take escape_direction as a directional "
+                 "call on its own — least of all against flow_asymmetry, tape_speed or the tape. "
+                 "Either wait for it to FIRE, or stand down (fired=false).")
         break_lens = {k: v for k, v in {
             "break_state": _bstate or ("fired" if lr.get("fired") else None),
+            "has_it_actually_fired": _fired_break,
             "escape_direction": _bdir,
             "reclaim_level_sigma_from_spot": _sd(lr.get("level") or lr.get("cock_level"), spot, sigma),
             "level_kind": lr.get("level_kind") or lr.get("cock_level_kind"),
             "flips_regime": lr.get("flips_regime") or None,
-            "note": "an active break = the map may be failing to contain price (trend/escape "
-                    "risk); do NOT fade into a confirmed break.",
+            "note": _note,
         }.items() if v is not None}
     payload = {
         "task": "You are the Watchtower: forecast where 0DTE SPX goes over the next hour — "
@@ -598,6 +726,10 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         # as a zero read (absent, never null).
         **({"order_flow": order_flow} if order_flow else {}),
         **({"gravity_motion": _motion_words(motion) or motion} if motion else {}),
+        # m8 (2026-07-13): the book's SLOPE under a shove — which side dealer hedging
+        # feeds and which side it swallows. Under short gamma this is the sharpest
+        # directional fact on the map, and the tower was blind to it until today.
+        **({"flow_asymmetry": shove_words} if shove_words else {}),
         **({"break_lens_head_c": break_lens} if break_lens else {}),
         **({"dated_structure": {
                 "bands": dated_bands,
@@ -612,6 +744,9 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             "range_vs_expected_move": t.get("range_em"),
             "variance_ratio": t.get("variance_ratio"),
             "vix_term_structure": t.get("vix_ts"),
+            # m8: HOW VIOLENT, and WHO OWNS THE MOTION — the speedometer, finally in
+            # the room. Absent (never null) when the feed is not clean.
+            **({"tape_speed": speed_words} if speed_words else {}),
         },
         "note": ("All levels are signed σ-distances from spot (+ above, − below). "
                  "Numbers above are precomputed and authoritative — do not re-derive."),
@@ -667,6 +802,24 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "print, and a pre-print directional call deserves low conviction.\n"
         "- A BROKEN FENCE IS A FACT. wall_breach_event / containment_road mean containment "
         "FAILED: never fade a break; follow it or stand down.\n"
+        "- COCKED IS NOT FIRED (m8). A break_lens_head_c with break_state=\"cocked\" "
+        "(has_it_actually_fired=false), or a fade setup that is merely armed with "
+        "runway_ok=false, is A TRIGGER THAT HAS NOT TRIGGERED. It marks where price MIGHT "
+        "escape — it is NOT evidence that it will, and its escape_direction is NOT a "
+        "directional call. NEVER fire a direction on an un-triggered trigger while "
+        "flow_asymmetry, tape_speed, live_flow or the tape point the other way: wait for it "
+        "to FIRE, or stand down (fired=false, stance=fight — a coiled break IS an eruption "
+        "read, so say fight; just don't guess the SIDE).\n"
+        "- FLOW ASYMMETRY IS THE BOOK'S SLOPE (m8). flow_asymmetry tells you what dealer "
+        "gamma BECOMES if price gets shoved each way: the ACCELERANT side is where hedging "
+        "feeds the move, the ABSORBING side is where hedging swallows it. Under SHORT gamma "
+        "this OUTRANKS soft_side and the magnet — it is the sharpest directional fact you "
+        "have. Calling into the ABSORBING side needs confirmed live flow behind it; a cocked "
+        "trigger, a soft side, or a magnet location is NOT enough.\n"
+        "- SPEED AND OWNERSHIP (m8). tape.tape_speed says how violent the tape is and WHO "
+        "OWNS THE MOTION (semivariance). A selling-dominated tape on a HOT pace is a tape "
+        "with a side — do not call against it on structure alone. rest_of_day_range_pts is "
+        "your magnitude ceiling: never predict a move the day has no room left to make.\n"
         "- UNDER LONG GAMMA, mean-reversion is the exception, not the default. Only call AGAINST "
         "the magnet-pull when the tape is extremely stretched into a NEAR wall with a turn bar and "
         "flow rolling over — otherwise go WITH the pull; do NOT fade a trend heading toward the "
