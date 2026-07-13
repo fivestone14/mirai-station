@@ -69,8 +69,7 @@ class TestGexAlerts(unittest.TestCase):
             out1, sent1, _ = self._run(td, sk)
             out2, sent2, _ = self._run(td, sk)
             self.assertEqual(out1["pushed"], 1)
-            self.assertEqual(len(sent1), 1)
-            self.assertIn("paper", sent1[0])
+            self.assertEqual(sum("paper" in s for s in sent1), 1)
             self.assertEqual(out2["pushed"], 0)          # dedup across runs
 
     def test_breach_fires_redive_and_cooldown_suppresses(self):
@@ -104,6 +103,114 @@ class TestGexAlerts(unittest.TestCase):
             self.assertGreater(p.hits + p.misses, 0)      # posterior updated
             out2, _, _ = self._run(td, now=NOW_EOD)
             self.assertFalse(out2["eod_scored"])          # idempotent per day
+
+
+
+class TestFeedHealthSiren(unittest.TestCase):
+    """Pass 4 (2026-07-13) — the 0DTE-discovery outage logged `no_zero_dte`
+    honestly on every live row and paged no one. A FRESH diary row (the scanner
+    is in-session right now) carrying a degraded-feed fact must push, once per
+    condition per day; stale rows (after hours) must stay silent."""
+
+    def _run(self, state_dir, now=NOW):
+        sent = []
+        out = gex_alerts.run(now, state_dir=Path(state_dir),
+                             redive_provider=lambda exp, ctx: None,
+                             channel=sent.append)
+        return out, sent
+
+    @staticmethod
+    def _fresh_row(**kw):
+        r = _row(**kw)
+        r["ts"] = NOW.isoformat()                 # written this tick → in-session
+        return r
+
+    def test_no_zero_dte_on_fresh_row_pages_once_per_day(self):
+        with TemporaryDirectory() as td:
+            r = self._fresh_row()
+            r["native_coverage"] = {"no_zero_dte": True, "zero_dte_dead": False}
+            r["gex_source"] = "native"
+            _write_lens_rows(Path(td), [r])
+            out1, sent1 = self._run(td)
+            self.assertEqual(out1["feed_sirens"], 1)
+            self.assertTrue(any("0DTE" in s for s in sent1))
+            out2, sent2 = self._run(td)           # same day, same condition → dedup
+            self.assertEqual(out2["feed_sirens"], 0)
+
+    def test_stale_row_after_close_is_silent(self):
+        with TemporaryDirectory() as td:
+            r = _row()                            # fixture ts = 10:00
+            r["native_coverage"] = {"no_zero_dte": True}
+            _write_lens_rows(Path(td), [r])
+            out, sent = self._run(td, now=NOW_EOD)   # 16:05 — market closed
+            self.assertEqual(out["feed_sirens"], 0)
+
+    def test_stale_row_mid_session_pages_scanner_silent_once(self):
+        with TemporaryDirectory() as td:
+            r = _row()                            # ts = 10:00, NOW = 13:00 → 180 min stale
+            _write_lens_rows(Path(td), [r])
+            out1, sent1 = self._run(td)           # live market + silent scanner → page
+            self.assertEqual(out1["feed_sirens"], 1)
+            self.assertTrue(any("scanner silent" in s for s in sent1))
+            out2, sent2 = self._run(td)           # once per day
+            self.assertEqual(out2["feed_sirens"], 0)
+
+    def test_empty_diary_mid_session_pages_scanner_silent(self):
+        with TemporaryDirectory() as td:          # scanner died before its first row
+            out, sent = self._run(td)
+            self.assertEqual(out["feed_sirens"], 1)
+            self.assertTrue(any("scanner silent" in s for s in sent))
+
+    def test_healthy_fresh_row_is_silent(self):
+        with TemporaryDirectory() as td:
+            r = self._fresh_row()
+            r["native_coverage"] = {"no_zero_dte": False, "zero_dte_dead": False}
+            r["gex_source"] = "native"
+            _write_lens_rows(Path(td), [r])
+            out, _ = self._run(td)
+            self.assertEqual(out["feed_sirens"], 0)
+
+    def test_proxy_source_and_dead_book_each_page_separately(self):
+        with TemporaryDirectory() as td:
+            r = self._fresh_row()
+            r["native_coverage"] = {"zero_dte_dead": True}
+            r["gex_source"] = "spy_proxy\u00d710.0348"   # live vocabulary: per-tick rescale
+            _write_lens_rows(Path(td), [r])
+            out, sent = self._run(td)
+            self.assertEqual(out["feed_sirens"], 2)
+            self.assertTrue(any("half-dead" in s for s in sent))
+            self.assertTrue(any("source:spy_proxy" in s for s in sent))
+            # the rescale drifts every tick (11 distinct values on 07-10) — the
+            # dedup key must be the FAMILY, or a proxy day is a pager storm
+            r["gex_source"] = "spy_proxy\u00d710.0351"
+            _write_lens_rows(Path(td), [r])
+            out2, _ = self._run(td)
+            self.assertEqual(out2["feed_sirens"], 0)
+
+    def test_non_dict_state_file_resets_instead_of_crashing(self):
+        with TemporaryDirectory() as td:
+            p = Path(td) / "market_expectation"
+            p.mkdir(parents=True)
+            (p / "alerts_state.json").write_text("null")   # valid JSON, not a dict
+            r = self._fresh_row()
+            r["native_coverage"] = {"no_zero_dte": True}
+            _write_lens_rows(Path(td), [r])
+            out, _ = self._run(td)                # must run, not AttributeError
+            self.assertEqual(out["feed_sirens"], 1)
+
+    def test_mangled_diary_bytes_cost_rows_not_the_run(self):
+        with TemporaryDirectory() as td:
+            d = Path(td) / "reversion"
+            d.mkdir(parents=True)
+            import json as _json
+            good = self._fresh_row()
+            good["native_coverage"] = {"no_zero_dte": True}
+            with open(d / f"{DAY}.jsonl", "wb") as f:
+                f.write(b"\xff\xfe not json \n")        # invalid UTF-8 line
+                f.write((_json.dumps(good) + "\n").encode())
+            out, _ = self._run(td)                # must page on the good row
+            self.assertEqual(out["feed_sirens"], 1)
+
 
 
 if __name__ == "__main__":

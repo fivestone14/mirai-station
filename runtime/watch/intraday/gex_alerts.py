@@ -28,11 +28,27 @@ from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from .. import paths, push
-from . import macro_mood, push_ntfy, settings
+from . import macro_mood, market_status, push_ntfy, settings
 
 ET = ZoneInfo("America/New_York")
 LENS_TICKERS = ("SPX",)
 _EOD_MINUTES = 16 * 60
+
+# Feed-health siren (2026-07-13): a diary row younger than this means the scanner
+# is in-session RIGHT NOW — rows are only written when the market-status gate said
+# live, so row freshness IS the session test (no calendar logic duplicated here).
+_FEED_FRESH_MIN = 20.0
+
+# The INVERSE siren: rows land ~every 4 min in-session, so a live market with no
+# row for this long means the scanner itself is down — the 07-13 failure mode one
+# layer deeper (a dead scanner writes no honest flags, and silence reads as health).
+_SCANNER_SILENT_MIN = 45.0
+
+# flag → phone text; an unlisted flag still pages, with its raw name
+_FEED_SIREN_TEXT = {
+    "no_zero_dte": "today's 0DTE expiry missing from the chain — pin/flow/live walls blind",
+    "zero_dte_dead": "today's 0DTE book half-dead — native fetch rejected",
+}
 
 
 def _alerts_state_path(state_dir: Path) -> Path:
@@ -44,7 +60,8 @@ def _load_alerts_state(state_dir: Path, date_iso: str) -> Dict[str, Any]:
              "refOpen": None, "refLast": None}
     try:
         st = json.loads(_alerts_state_path(state_dir).read_text())
-        return st if st.get("date") == date_iso else fresh
+        # isinstance: valid-JSON-non-dict (null, list) must reset, not crash the run
+        return st if isinstance(st, dict) and st.get("date") == date_iso else fresh
     except (OSError, json.JSONDecodeError, ValueError):
         return fresh
 
@@ -63,7 +80,8 @@ def _lens_rows(state_dir: Path, date_iso: str) -> List[dict]:
     path = Path(state_dir) / "reversion" / f"{date_iso}.jsonl"
     rows: List[dict] = []
     try:
-        for ln in path.read_text().splitlines():
+        # errors="replace": one mangled byte must cost one row, never the whole run
+        for ln in path.read_text(errors="replace").splitlines():
             if ln.strip():
                 try:
                     rows.append(json.loads(ln))
@@ -72,6 +90,35 @@ def _lens_rows(state_dir: Path, date_iso: str) -> List[dict]:
     except OSError:
         pass
     return rows
+
+
+def _row_age_min(row: dict, now_et: datetime) -> Optional[float]:
+    """Minutes since the diary row was written; None when its ts won't parse."""
+    try:
+        ts = datetime.fromisoformat(str(row.get("ts")))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=ET)
+        return (now_et - ts).total_seconds() / 60.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _feed_health_flags(row: dict) -> List[str]:
+    """Degraded-feed facts the diary row already states honestly. Each one means
+    this scan's gravity map ran without a sense it normally has."""
+    flags: List[str] = []
+    cov = row.get("native_coverage") or {}
+    if cov.get("no_zero_dte"):
+        flags.append("no_zero_dte")
+    if cov.get("zero_dte_dead"):
+        flags.append("zero_dte_dead")
+    src = row.get("gex_source")
+    if src and src != "native":
+        # family only — the live proxy string embeds the per-tick SPX/SPY rescale
+        # ("spy_proxy×10.0348", 11 distinct values on 07-10 alone); the raw value
+        # would defeat the once-per-day dedup and turn a proxy day into a pager storm
+        flags.append("source:" + str(src).split("×", 1)[0])
+    return flags
 
 
 def _hunter_fires(date_iso: str) -> List[dict]:
@@ -103,7 +150,9 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     push.set_channel(channel or push_ntfy.make_channel())
 
     st = _load_alerts_state(state_dir, date_iso)
-    out: Dict[str, Any] = {"pushed": 0, "breaches": 0, "redives": 0, "eod_scored": False}
+    out: Dict[str, Any] = {"pushed": 0, "breaches": 0, "redives": 0,
+                           "eod_scored": False, "feed_sirens": 0}
+    rows = _lens_rows(state_dir, date_iso)   # today's diary — passes 2 and 4 read it
 
     # --- 1) fresh paper fires → phone (one push per fire, ever) --------------
     try:
@@ -132,7 +181,6 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
             latest = macro_mood.read_latest(state_dir)
             if latest and str(latest.get("date") or "")[:10] >= date_iso:
                 exp = latest
-        rows = _lens_rows(state_dir, date_iso)
         latest_by_tk = {}
         for r in rows:
             if r.get("ticker") in LENS_TICKERS:
@@ -223,6 +271,37 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
             out["eod_scored"] = won is not None
     except Exception as e:
         print(f"gex-alerts :: EOD scoring degraded: {e}", flush=True)
+
+    # --- 4) feed-health siren (2026-07-13) -------------------------------------
+    # The 0DTE-discovery outage wrote `no_zero_dte` honestly on every live row and
+    # paged no one — a diary flag is not an alarm. A fresh row means the scanner is
+    # in-session right now; each degraded-feed fact on it pushes once per day.
+    try:
+        sirens = set(st.get("feedSirens") or [])
+        latest = next((r for r in reversed(rows)
+                       if r.get("ticker") in LENS_TICKERS), None)
+        age = _row_age_min(latest, now_et) if latest else None
+        if age is not None and age < _FEED_FRESH_MIN:
+            for flag in _feed_health_flags(latest):
+                if flag in sirens:
+                    continue
+                text = _FEED_SIREN_TEXT.get(flag, f"gravity feed degraded: {flag}")
+                push.send(f"🩺 {latest.get('ticker') or 'SPX'} feed: {text}",
+                          tag="gex-feed")
+                sirens.add(flag)
+                out["feed_sirens"] += 1
+        elif ((age is None or age >= _SCANNER_SILENT_MIN)
+                and "scanner_silent" not in sirens
+                and market_status.check(now_et).is_live):
+            # the inverse siren: no fresh row while the market is live means the
+            # scanner is down and writing NO honest flags — silence must also page
+            push.send("🩺 SPX feed: scanner silent — market is live but no scan row "
+                      f"in {int(_SCANNER_SILENT_MIN)} min", tag="gex-feed")
+            sirens.add("scanner_silent")
+            out["feed_sirens"] += 1
+        st["feedSirens"] = sorted(sirens)
+    except Exception as e:
+        print(f"gex-alerts :: feed-health pass degraded: {e}", flush=True)
 
     _save_alerts_state(state_dir, st)
     return out

@@ -240,3 +240,196 @@ def test_native_chain_keeps_all_on_normal_day(monkeypatch):
     out = tf.native_chain("SPX")
     assert len(out["contracts"]) == 1
     assert out["meta"]["am_settled_dropped"] == 0
+
+
+class TestDiscoveryProbes:
+    """2026-07-13 outage — the server's bulk expiry_from/expiry_to ask started
+    spending its whole 250-row clip on ONE expiration, so discovery saw a single
+    expiry and a full live session ran 0DTE-blind. These tests exec the ACTUAL
+    rendered _CHAIN_CODE (not a reimplementation) against stub providers: the
+    bulk ask is only a hint; per-day probes decide existence."""
+
+    D0, D1 = "2026-07-13", "2026-07-20"                       # Mon → next Mon
+    DAYS = ["2026-07-13", "2026-07-14", "2026-07-15",
+            "2026-07-16", "2026-07-17", "2026-07-20"]          # no weekend expiries
+
+    @staticmethod
+    def _exec_chain_code(call_tool, d0, d1, root="SPXW", monthly_root=None):
+        import asyncio
+        import textwrap
+        code = tf._CHAIN_CODE % {"root": root, "monthly_root": monthly_root,
+                                 "d0": d0, "d1": d1}
+        src = "async def __main(call_tool):\n" + textwrap.indent(code, "    ")
+        ns: dict = {}
+        exec(src, ns)
+        return asyncio.run(ns["__main"](call_tool))
+
+    @staticmethod
+    def _block(exp, side=None, n=6):
+        sides = [side] if side else ["call", "put"]
+        return {"expiration": exp,
+                "contracts": [{"type": t, "strike": 7500 + 5 * i, "iv": 0.12,
+                               "open_interest": 10, "volume": 5,
+                               "greeks": {"gamma": 0.001}}
+                              for t in sides for i in range(n)]}
+
+    def _outage_server(self):
+        """The live 07-13 shape: any range ask → ONE clipped far-expiry block;
+        per-date asks healthy; an unmatched date dumps the ENTIRE chain, no error."""
+        calls = []
+
+        async def call_tool(name, params):
+            calls.append(dict(params))
+            assert name == "options_chain"
+            if "expiration_date" in params:
+                d = params["expiration_date"]
+                if d in self.DAYS:
+                    return {"summary": {"underlying_price": 7550.0},
+                            "expirations": [self._block(d, params.get("contract_type"))]}
+                return {"summary": {"underlying_price": 7550.0},
+                        "expirations": [self._block(x) for x in self.DAYS]}
+            return {"summary": {"underlying_price": 7550.0},
+                    "expirations": [self._block(self.DAYS[-1])]}
+
+        return call_tool, calls
+
+    def test_survives_single_block_range_regression(self):
+        call_tool, _ = self._outage_server()
+        res = self._exec_chain_code(call_tool, self.D0, self.D1)
+        assert res["expiries"] == self.DAYS               # 0DTE + full week recovered
+        assert any(c["dte"] == 0 for c in res["contracts"])
+        # weekend probes hit the unmatched full-chain dump and must invent nothing
+        assert "2026-07-18" not in res["expiries"] and "2026-07-19" not in res["expiries"]
+
+    def test_survives_range_endpoint_death(self):
+        inner, _ = self._outage_server()
+
+        async def call_tool(name, params):
+            if "expiry_from" in params:
+                raise RuntimeError("bulk listing endpoint gone")
+            return await inner(name, params)
+
+        res = self._exec_chain_code(call_tool, self.D0, self.D1)
+        assert res["expiries"] == self.DAYS               # probes alone carry discovery
+
+    def test_healthy_range_probes_only_unconfirmed_days(self):
+        calls = []
+
+        async def call_tool(name, params):
+            calls.append(dict(params))
+            if "expiry_from" in params:
+                return {"summary": {"underlying_price": 7550.0},
+                        "expirations": [self._block(x) for x in self.DAYS]}
+            d = params["expiration_date"]
+            if d in self.DAYS:
+                return {"summary": {"underlying_price": 7550.0},
+                        "expirations": [self._block(d, params.get("contract_type"))]}
+            return {"summary": {"underlying_price": 7550.0}, "expirations": []}
+
+        res = self._exec_chain_code(call_tool, self.D0, self.D1)
+        assert res["expiries"] == self.DAYS
+        # a healthy hint costs ZERO probes: weekdays are hint-confirmed and
+        # weekends are never probed (exchange fact, not provider shape)
+        probes = [p for p in calls
+                  if "expiration_date" in p and "contract_type" not in p]
+        assert probes == []
+        # FIX-A: the sides ledger must be side-filtered counts with strike spans
+        assert all(s["rows"] > 0 and s["k_lo"] is not None for s in res["sides"])
+
+
+    def test_monthly_root_probes_weekdays_and_stays_phantom_free(self):
+        calls = []
+
+        async def call_tool(name, params):
+            calls.append(dict(params))
+            sym = params["symbol"]
+            if "expiry_from" in params:
+                blocks = [self._block(x) for x in self.DAYS] if sym == "SPXW" else []
+                return {"summary": {"underlying_price": 7550.0}, "expirations": blocks}
+            d = params["expiration_date"]
+            if sym == "SPXW" and d in self.DAYS:
+                return {"summary": {"underlying_price": 7550.0},
+                        "expirations": [self._block(d, params.get("contract_type"))]}
+            return {"summary": {"underlying_price": 7550.0}, "expirations": []}
+
+        res = self._exec_chain_code(call_tool, self.D0, self.D1, monthly_root="SPX")
+        assert res["expiries"] == self.DAYS               # non-OpEx: no phantom SPX legs
+        spx_probes = [p for p in calls if p["symbol"] == "SPX"
+                      and "expiration_date" in p and "contract_type" not in p]
+        assert sorted(p["expiration_date"] for p in spx_probes) == self.DAYS  # weekdays only
+
+    def test_clip_shrunk_to_100_still_recovers_full_book(self):
+        # FIX-B: the server silently lowers its clip below 250 — before the
+        # behavioral (strike-span) trigger, the book shipped strikes 6950-7445
+        # with its top strike BELOW SPOT and coverage said 'complete'.
+        strikes = [6950 + 5 * i for i in range(241)]
+
+        async def call_tool(name, params):
+            if "expiry_from" in params:
+                return {"summary": {"underlying_price": 7550.0},
+                        "expirations": [self._block(x) for x in self.DAYS]}
+            d = params["expiration_date"]
+            side = params.get("contract_type")
+            if d not in self.DAYS:
+                return {"summary": {"underlying_price": 7550.0}, "expirations": []}
+            if side is None:                              # existence probe
+                return {"summary": {"underlying_price": 7550.0},
+                        "expirations": [self._block(d)]}
+            lo, hi = params["strike_gte"], params["strike_lte"]
+            ks = [k for k in strikes if lo <= k <= hi][:100]   # silent 100-row clip
+            return {"summary": {"underlying_price": 7550.0},
+                    "expirations": [{"expiration": d, "contracts": [
+                        {"type": side, "strike": k, "iv": 0.12, "open_interest": 1,
+                         "volume": 1, "greeks": {"gamma": 0.001}} for k in ks]}]}
+
+        res = self._exec_chain_code(call_tool, self.D0, self.D1)
+        per = {}
+        for c in res["contracts"]:
+            per.setdefault((c["expiry"], c["right"]), set()).add(c["strike"])
+        assert all(len(v) == 241 for v in per.values()), \
+            {k: len(v) for k, v in per.items()}
+
+
+    def test_natural_wing_boundary_does_not_trigger_splits(self):
+        # live-measured 07-13 shape: dense 5-wide body, 25-wide wings ending at
+        # 8100 while the asked window runs to ~8154 — a healthy listing boundary.
+        # The first span-only clip trigger recursed EVERY real fetch to the depth
+        # cap and blew the read timeout; a boundary must cost exactly one ask.
+        strikes = ([6950 + 10 * i for i in range(5)] +
+                   [7000 + 5 * i for i in range(201)] +
+                   [8000 + 25 * i for i in range(1, 5)])
+        chunk_asks = []
+
+        async def call_tool(name, params):
+            if "expiry_from" in params:
+                return {"summary": {"underlying_price": 7550.0},
+                        "expirations": [self._block(x) for x in self.DAYS]}
+            d = params["expiration_date"]
+            side = params.get("contract_type")
+            if side is None:
+                blocks = [self._block(d)] if d in self.DAYS else []
+                return {"summary": {"underlying_price": 7550.0}, "expirations": blocks}
+            chunk_asks.append(dict(params))
+            lo, hi = params["strike_gte"], params["strike_lte"]
+            ks = [k for k in strikes if lo <= k <= hi]
+            return {"summary": {"underlying_price": 7550.0},
+                    "expirations": [{"expiration": d, "contracts": [
+                        {"type": side, "strike": k, "iv": 0.12, "open_interest": 1,
+                         "volume": 1, "greeks": {"gamma": 0.001}} for k in ks]}]}
+
+        res = self._exec_chain_code(call_tool, self.D0, self.D1)
+        assert len(chunk_asks) == len(self.DAYS) * 2      # one ask per side, no splits
+        assert len(res["contracts"]) == len(self.DAYS) * 2 * len(strikes)
+
+def test_coverage_relative_thin_flags_amputated_side():
+    # 2026-07-13 pressure test: a server ignoring the side filter delivered a
+    # 241-call / 9-put 0DTE book; the old '< MIN_SIDE_ROWS' cliff called it complete
+    today = tf._today_iso()
+    sides = [{"root": "SPXW", "exp": today, "side": "call", "rows": 241, "dte": 0},
+             {"root": "SPXW", "exp": today, "side": "put", "rows": 9, "dte": 0}]
+    cov = tf._coverage(sides, "SPXW", today)
+    assert cov["zero_dte_dead"] is True and cov["complete"] is False
+    # tiny-but-balanced stays legal (the MIN_SIDE_ROWS floor)
+    sides = [{"root": "SPXW", "exp": today, "side": "call", "rows": 3, "dte": 0},
+             {"root": "SPXW", "exp": today, "side": "put", "rows": 4, "dte": 0}]
+    assert tf._coverage(sides, "SPXW", today)["complete"] is True

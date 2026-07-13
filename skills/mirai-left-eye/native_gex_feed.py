@@ -166,37 +166,101 @@ def _side(t):
     t = str(t or '').lower()
     return 'call' if t.startswith('c') else 'put' if t.startswith('p') else None
 today = _dt.date.fromisoformat(%(d0)r)
+window_days = (_dt.date.fromisoformat(%(d1)r) - today).days
+
+async def _probe_day(sym, d_iso):
+    # Single-day existence ask. The server answers an UNMATCHED filter with the
+    # ENTIRE chain (no error), so rows only count when their block really is the
+    # asked-for expiry — a holiday probe filters to zero, never to noise.
+    r = _v(await call_tool('options_chain', {'symbol': sym,
+        'expiration_date': d_iso, 'limit': 25}))
+    spot = (r.get('summary') or {}).get('underlying_price')
+    n = 0
+    for e in (r.get('expirations') or []):
+        if str(e.get('expiration') or '')[:10] == d_iso:   # tolerate datetime-shaped drift
+            n += len(e.get('contracts') or [])
+    return spot, n > 0
 
 async def _discover(sym):
-    # nearby probe: the live spot + which expiries actually exist in the window.
-    # The server answers an UNMATCHED filter with the ENTIRE chain (no error), so
-    # every expiry is re-checked against the 0-7d window instead of trusted.
-    r = _v(await call_tool('options_chain', {'symbol': sym, 'expiry_from': %(d0)r,
-        'expiry_to': %(d1)r, 'limit': 250}))
-    spot = (r.get('summary') or {}).get('underlying_price')
-    exps = []
-    for e in (r.get('expirations') or []):
-        ed = e.get('expiration')
-        try:
-            dte = (_dt.date.fromisoformat(ed) - today).days
-        except Exception:
+    # DISCOVERY NEVER TRUSTS ONE RESPONSE SHAPE (2026-07-13): the bulk window ask
+    # silently collapsed to a single expiry per query when the server started
+    # spending its whole 250-row clip on one expiration — an entire live session
+    # ran 0DTE-blind on its say-so. The bulk ask survives only as a cheap hint;
+    # every day of the window the hint did not confirm is probed individually,
+    # so existence is decided per-day and discovery keeps working if the bulk
+    # endpoint changes shape again or disappears outright. A hint-claimed expiry
+    # that turns out empty is still adjudicated downstream by the coverage guard.
+    spot = None
+    found = set()
+    try:
+        r = _v(await call_tool('options_chain', {'symbol': sym, 'expiry_from': %(d0)r,
+            'expiry_to': %(d1)r, 'limit': 250}))
+        spot = (r.get('summary') or {}).get('underlying_price')
+        for e in (r.get('expirations') or []):
+            ed = str(e.get('expiration') or '')[:10]   # tolerate datetime-shaped drift
+            try:
+                dte = (_dt.date.fromisoformat(ed) - today).days
+            except Exception:
+                continue
+            # a hint block only confirms a day when it carries CONTRACTS — a drift
+            # to listing-only blocks must fall through to the probe, not skip it
+            if 0 <= dte <= window_days and (e.get('contracts') or []):
+                found.add(ed)
+    except Exception:
+        pass
+    misses = 0
+    for i in range(window_days + 1):
+        d = today + _dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue      # exchange fact, not provider shape: no weekend expiries
+        d_iso = d.isoformat()
+        if d_iso in found:
             continue
-        if 0 <= dte <= 7:
-            exps.append(ed)
-    return spot, sorted(set(exps))
+        try:
+            s, ok = await _probe_day(sym, d_iso)
+        except Exception:
+            misses += 1
+            if misses >= 3:
+                break     # provider is down — stop burning timeout on doomed probes
+            continue
+        misses = 0
+        spot = spot or s
+        if ok:
+            found.add(d_iso)
+    return spot, sorted(found)
 
 async def _chunk(sym, exp, side, lo, hi, depth=0):
-    # one filtered pull per expiry x side. The server clips every response at 250
-    # rows WITHOUT saying so — exactly-250 back means the window was amputated:
-    # split it and refetch both halves.
+    # one filtered pull per expiry x side. The server clips every response WITHOUT
+    # saying so. Clip detection is BEHAVIORAL, not a magic row count (2026-07-13
+    # pressure test: a server that quietly lowered its clip to 100 shipped a book
+    # whose top strike sat BELOW SPOT with coverage 'complete'): a response is
+    # treated as amputated when it is suspiciously large (>=250, the clip we have
+    # observed) OR when the returned strikes stop short of the asked window by
+    # more than 2x the strike gap inferred from the data itself.
     r = _v(await call_tool('options_chain', {'symbol': sym, 'expiration_date': exp,
         'contract_type': side, 'strike_gte': lo, 'strike_lte': hi, 'limit': 250}))
     rows = []
+    total = 0
     for e in (r.get('expirations') or []):
-        if (e.get('expiration') or '') != exp:
+        total += len(e.get('contracts') or [])
+        if str(e.get('expiration') or '')[:10] != exp:
             continue                      # wrong-expiry rows = the silent full-chain fallback
         rows.extend(e.get('contracts') or [])
-    if len(rows) >= 250 and depth < 3:
+    ks = sorted(set(c.get('strike') for c in rows
+                    if isinstance(c.get('strike'), (int, float))))
+    gaps = sorted(b - a for a, b in zip(ks, ks[1:]) if b > a)
+    g = gaps[len(gaps) // 2] if gaps else None
+    # A CLIP cuts MID-GRID: strikes stop short of the asked window while the local
+    # gap is still the dense body gap. A natural listing boundary thins FIRST —
+    # live-measured 2026-07-13: every real SPXW wing steps 5 → 25-wide before
+    # ending at 8100 vs the asked 8154, so span-shortfall alone must not trigger
+    # (it would recurse every healthy fetch to the depth cap and blow the timeout).
+    short_hi = (g is not None and ks[-1] < hi - 2 * g
+                and (ks[-1] - ks[-2]) <= 2 * g)
+    short_lo = (g is not None and ks[0] > lo + 2 * g
+                and (ks[1] - ks[0]) <= 2 * g)
+    clipped = total >= 250 or short_lo or short_hi
+    if clipped and depth < 3:
         # INCLUSIVE halves: [lo, mid] + [mid, hi]. A gap between the halves would
         # silently drop any strike that lands in it — exactly the crowded-wall
         # strike that forced the split. The mid-strike overlap is deduped at merge.
@@ -228,8 +292,16 @@ for sym, exps in roots.items():
             # N7: per-expiry x side row count — the client-side coverage guard's
             # raw material. An empty side here is a DOCUMENTED server behavior,
             # and without this ledger it is indistinguishable from an empty book.
+            # Rows are counted SIDE-FILTERED (2026-07-13 pressure test: a server
+            # ignoring the contract_type filter delivered 241 calls + 9 puts to
+            # the PUT ask and the raw count vouched for the amputated side).
+            n_side = sum(1 for c in rows if _side(c.get('type')) == side)
+            kk = [c.get('strike') for c in rows if _side(c.get('type')) == side
+                  and isinstance(c.get('strike'), (int, float))]
             sides.append({'root': sym, 'exp': exp, 'side': side,
-                          'rows': len(rows), 'dte': dte})
+                          'rows': n_side, 'raw_rows': len(rows), 'dte': dte,
+                          'k_lo': min(kk) if kk else None,
+                          'k_hi': max(kk) if kk else None})
             for c in rows:
                 s = _side(c.get('type'))
                 if s != side:
@@ -358,7 +430,12 @@ def _coverage(sides: Optional[list], weekly_root: str, today_iso: str) -> dict:
             n = d.get(side, 0)
             twin = d.get("put" if side == "call" else "call", 0)
             dead = (n == 0)
-            thin = (0 < n < MIN_SIDE_ROWS and twin >= THIN_TWIN_RATIO * MIN_SIDE_ROWS)
+            # RELATIVE thin (2026-07-13 pressure test): a side dwarfed RATIO x by
+            # its twin is amputated at ANY scale — the old '< MIN_SIDE_ROWS' cliff
+            # let a 9-put vs 241-call book (side filter ignored upstream) read as
+            # complete. The MIN_SIDE_ROWS floor keeps tiny-but-balanced books legal.
+            thin = (0 < n and twin >= THIN_TWIN_RATIO * n
+                    and twin >= THIN_TWIN_RATIO * MIN_SIDE_ROWS)
             if dead or thin:
                 missing.append({"root": root, "exp": exp, "side": side,
                                 "rows": n, "twin_rows": twin})
@@ -366,8 +443,9 @@ def _coverage(sides: Optional[list], weekly_root: str, today_iso: str) -> dict:
     has_zero = any(root == weekly_root and exp == today_iso for (root, exp) in per)
     return {"complete": not missing, "missing": missing or None,
             "zero_dte_dead": zero_dead,
-            # discovery itself dropped today's weekly expiry — legitimate on holidays/
-            # weekends, suspicious inside a trading session; flagged, never guessed at
+            # discovery (bulk hint UNION a direct per-day probe of today) found no
+            # weekly expiry for today — legitimate on holidays/weekends, a paged
+            # alarm inside a live session (gex_alerts feed-health siren)
             "no_zero_dte": (not has_zero) if per else None}
 
 

@@ -51,7 +51,8 @@ def _run_gex_alerts() -> int:
     out = gex_alerts.run()
     print(f"[{datetime.now(tz=ET).strftime('%H:%M:%S')}] gex-alerts: "
           f"pushed={out['pushed']} breaches={out['breaches']} "
-          f"redives={out['redives']} eod_scored={out['eod_scored']}", flush=True)
+          f"redives={out['redives']} eod_scored={out['eod_scored']} "
+          f"feed_sirens={out.get('feed_sirens', 0)}", flush=True)
     return 0
 
 
