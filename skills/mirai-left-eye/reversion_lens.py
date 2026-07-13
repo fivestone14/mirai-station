@@ -656,7 +656,8 @@ def break_lens_state(prior_rows: list[dict], *, now: datetime,
     cock_direction (the grader reads it).
 
     `shelf_up`/`shelf_dn` are (level, kind) pairs — the best-known wall on each
-    side (0DTE gamma wall preferred, OI band wall fallback). shelf_up bounds
+    side (N17 v2: the NEAREST standing wall per side, {operative, tenor} —
+    never the raw spot-hugging 0DTE gamma wall). shelf_up bounds
     up-breaks ('call'), shelf_dn down-breaks ('put'); the same pair supplies
     the arming-wall anchor when level_reclaim resolved no level."""
     out = {"break_state": "idle", "cocked_at": None, "cock_level": None,

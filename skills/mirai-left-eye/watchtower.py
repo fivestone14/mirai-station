@@ -496,7 +496,17 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # that keeps H2's anchor discipline — outer terrain, never a target.
     dated_bands = []
     for b in ((t.get("dated_gex") or {}).get("bands") or []):
-        _cw, _pw = _sd(b.get("call_wall"), spot, sigma), _sd(b.get("put_wall"), spot, sigma)
+        # m7 (2026-07-12): the wall the tower is told about is the NEAREST STRONG one
+        # each side — the level that actually bounds today's tape. The absolute-max
+        # king (often a 7000-class crash bet ~8% below spot) only serves when no
+        # strong wall stands nearer; pre-m7 rows carry no near_* keys and fall back.
+        # side guard (verify round): near_* was computed at PULL-time spot (05:17 PT;
+        # a carried quarterly can be days old) — price may have walked through it since.
+        # A drifted near wall on the wrong side of the LIVE spot falls back to the king.
+        _ncw, _npw = b.get("near_call_wall"), b.get("near_put_wall")
+        _cw_lvl = _ncw if (_ncw is not None and spot and _ncw > spot) else b.get("call_wall")
+        _pw_lvl = _npw if (_npw is not None and spot and _npw < spot) else b.get("put_wall")
+        _cw, _pw = _sd(_cw_lvl, spot, sigma), _sd(_pw_lvl, spot, sigma)
         row = {"band": b.get("band"), "days_to_expiry": b.get("dte"),
                **({"age_days": b.get("age_days")} if b.get("age_days") is not None else {})}
         if _cw is not None and abs(_cw) <= 15:

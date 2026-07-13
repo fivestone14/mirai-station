@@ -49,7 +49,7 @@ import os
 import statistics
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo
@@ -338,6 +338,48 @@ def _weight_wall(contracts: list[dict], spot: float, side: str,
 
 _TRADING_DAYS = 252.0
 _TAU_FLOOR_DAYS = 0.5          # treat 0DTE as ~half a session so BS gamma stays finite
+_CAL_TO_SESSIONS = 252.0 / 365.0   # fallback ratio when the NYSE calendar is unreachable
+
+
+def _sessions_ahead(dte: int, today: Optional[date] = None) -> float:
+    """NYSE sessions remaining in (today, today+dte] — the TRADING-time numerator that
+    pairs with the _TRADING_DAYS (252) denominator.
+
+    τ is trading time everywhere in this engine (the 0DTE clock is minutes/(390·252)),
+    so the dated numerator has to be sessions too. Counting CALENDAR days into a 252-day
+    year — what this did before 2026-07-12 — inflates τ by up to 365/252 = 1.45x. Gamma
+    scales as 1/√τ, so every dated gamma, wall and flip came out ~20% light, and the
+    error was worst across weekends and holiday weeks (a Friday 3DTE was priced as three
+    sessions when only one remained).
+
+    Fail-open: if the holiday calendar can't be reached, fall back to the smooth
+    calendar→session ratio (252/365) rather than the raw calendar count — still far
+    closer than the bug, and never zero."""
+    n = max(int(dte), 0)
+    if n <= 0:
+        return 0.0
+    d0 = today or datetime.now(ET).date()
+    try:
+        hol = _nyse_holidays(d0.year) | _nyse_holidays(d0.year + 1)
+    except Exception:
+        return max(1.0, n * _CAL_TO_SESSIONS)
+    sessions = 0
+    for i in range(1, n + 1):
+        d = d0 + timedelta(days=i)
+        if d.weekday() < 5 and d not in hol:
+            sessions += 1
+    return float(max(sessions, 1))       # an expiry inside the window is >= 1 session
+
+
+def _nyse_holidays(year: int) -> frozenset:
+    """NYSE full-closure set, borrowed from the watch package's computed calendar (the
+    same source dated_gex_feed._holidays uses). Raises on failure so _sessions_ahead
+    can take its documented fallback rather than silently counting holidays as sessions."""
+    rt = str(Path(__file__).resolve().parent.parent.parent / "runtime")
+    if rt not in sys.path:
+        sys.path.insert(0, rt)
+    from watch.intraday import market_status as _ms
+    return _ms._market_holidays(year)
 _FLIP_SPAN = 0.20             # ±20% of spot candidate grid (coarse outer sweep)
 _FLIP_GRID = 61               # coarse-grid resolution over the full span
 _FLIP_INNER = 0.03            # dense inner window (±3% of spot) where late-day 0DTE
@@ -382,7 +424,7 @@ def _net_gex_at(contracts: list[dict], S: float, weight_key: str,
         if not _reprices(c, weight_key):
             continue
         dte = c["dte"]
-        tau = _tau_for(dte, minutes_to_close) if dte == 0 else max(float(dte), _TAU_FLOOR_DAYS) / _TRADING_DAYS
+        tau = _tau_for(dte, minutes_to_close)          # ONE clock (sessions/252) for every tenor
         if not tau:
             continue
         gex = _bs_gamma(S, c["strike"], c["iv"], tau) * c[weight_key] * 100.0 * S * S * 0.01
@@ -400,7 +442,7 @@ def _gross_gex_at(contracts: list[dict], S: float, weight_key: str,
         if not _reprices(c, weight_key):
             continue
         dte = c["dte"]
-        tau = _tau_for(dte, minutes_to_close) if dte == 0 else max(float(dte), _TAU_FLOOR_DAYS) / _TRADING_DAYS
+        tau = _tau_for(dte, minutes_to_close)          # ONE clock (sessions/252) for every tenor
         if not tau:
             continue
         tot += abs(_bs_gamma(S, c["strike"], c["iv"], tau) * c[weight_key] * 100.0 * S * S * 0.01)
@@ -940,7 +982,8 @@ def _pin_field_stats(zero_dte: list[dict], mag_basis: Optional[str], wall_basis:
 def slide_0dte(zero_dte: list[dict], spot: float,
                minutes_to_close: Optional[float] = None,
                prev_pin: Optional[float] = None,
-               sigma: Optional[float] = None) -> dict:
+               sigma: Optional[float] = None,
+               nbs_reach: Optional[float] = None) -> dict:
     """MAGNET FINDER (Slide B + D): names today's pull-strike and today's
     ceiling/floor walls. `pin` = the strongest ATTRACTIVE strike by SIGNED net
     dealer GEX (calls +, puts −, repriced on the live clock) — GRAVITY is
@@ -1046,15 +1089,15 @@ def slide_0dte(zero_dte: list[dict], spot: float,
     try:
         if MAGNET_V3:
             zmap = mass                             # v3: zones cluster the mass field —
-            zones_read_key = bool(mass)             # the SAME field that serves the live pin
+            zones_read = bool(mass)                 # the SAME field that serves the live pin
         else:
             zone_key = "signed_weight" if (SIGNED_PIN and _sig_ok) else mag_basis
             zmap = _net_gex_by_strike(zero_dte, zone_key, spot, minutes_to_close) if zone_key else {}
-            zones_read_key = bool(zone_key)
+            zones_read = bool(zone_key)             # compute genuinely ran
         zones, contested = pin_zones(zmap, spot)
-        zones_read = zones_read_key                 # compute genuinely ran
     except Exception:
         zones, contested = [], False
+        zones_read = False
     out["pin_argmax"] = round(pin, 4) if pin is not None else None
     if zones_read:
         # clean-empty records [] (all-repelling READ) — None stays "no read"
@@ -1133,7 +1176,16 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         _nbs_basis = "signed_weight" if (SIGNED_PIN and _sig_ok) else mag_basis
         _nbs = _net_gex_by_strike(zero_dte, _nbs_basis, spot, minutes_to_close)
         if _nbs:
-            _lo, _hi = spot * (1.0 - NBS_WINDOW), spot * (1.0 + NBS_WINDOW)
+            # m4 (2026-07-12, verify round v2): the persisted window must reach as wide
+            # as the frame the tablet draws — BOTH the σ-headroom (≈±1.8σ) AND any framed
+            # structural tenor wall (nbs_reach, ≤2.5σ, passed from build_views) — or the
+            # outer lane renders permanent blank bars a caption still calls "measured".
+            # ±3% floor keeps the historic width; cap raised to ±6% (crash regimes up to
+            # σ/spot ≈ 3% stay covered; diary cost ≈ +1.2KB/row at the cap).
+            _need = max((2.0 * sigma / spot) if sigma else 0.0,
+                        (nbs_reach / spot + 0.002) if nbs_reach else 0.0)
+            _w = max(NBS_WINDOW, min(0.06, _need))
+            _lo, _hi = spot * (1.0 - _w), spot * (1.0 + _w)
             # round the STRIKE too: SPY-proxy strikes are rescaled floats (~10.4-pt
             # grid) that would otherwise serialize at full precision and bloat the
             # diary — round(2) keeps it compact and grid-alignable by the tablet.
@@ -1316,14 +1368,19 @@ _CEX_FLOOR_MIN = 5.0          # floor 0DTE time-to-close so charm stays finite a
 
 
 def _tau_for(dte: Optional[int], minutes_to_close: Optional[float]) -> Optional[float]:
-    """Time-to-expiry in YEARS. A 0DTE contract is priced at the LIVE minutes-to-close
-    (charm ∝ 1/τ, so the into-the-bell acceleration is the whole 0DTE signal); if the
-    clock isn't supplied it falls back to the half-session floor. Dated contracts use
-    whole calendar days. Returns None on a missing dte."""
+    """Time-to-expiry in YEARS, measured in TRADING time. A 0DTE contract is priced at
+    the LIVE minutes-to-close (charm ∝ 1/τ, so the into-the-bell acceleration is the
+    whole 0DTE signal); if the clock isn't supplied it falls back to the half-session
+    floor. Dated contracts are priced at the SESSIONS remaining, not the calendar days.
+    Returns None on a missing dte.
+
+    The whole clock is one unit — sessions / 252. A calendar-day numerator over a
+    trading-day denominator (the pre-2026-07-12 bug) inflated τ by up to 365/252 =
+    1.45x, worst over weekends and holiday weeks, which under-stated every gamma."""
     if dte is None:
         return None
     if dte > 0:
-        return float(dte) / _TRADING_DAYS
+        return _sessions_ahead(dte) / _TRADING_DAYS
     if minutes_to_close is not None:                       # 0DTE, live clock
         return max(float(minutes_to_close), _CEX_FLOOR_MIN) / (_RTH_MINUTES * _TRADING_DAYS)
     return _TAU_FLOOR_DAYS / _TRADING_DAYS                  # 0DTE, no clock → floor
@@ -1505,9 +1562,22 @@ def build_views(contracts: list[dict], spot: float,
     # widens it (max) — same physics as reversion_lens.sigma_ruler.
     _reach_sigma = max(x for x in (sigma, sigma_floor) if x) \
         if (sigma or sigma_floor) else None
-    B = slide_0dte(zero, spot, minutes_to_close, prev_pin=prev_pin,   # H4: hysteresis witness
-                   sigma=_reach_sigma)                                # N8: the reach window
+    # m4 (verify round): C is computed BEFORE B so the persisted bar window can be
+    # told how far the frame will reach — the tablet frames the structural tenor
+    # walls (within 2.5σ) and a framed wall with no measured bar under it is the
+    # card's harm verbatim. The hint is the farthest such wall, in price points.
     C = slide_tenor_walls(near, spot)
+    _reach_hint = None
+    try:
+        if spot and _reach_sigma:
+            _ds = [abs(w - spot) for w in (C.get("call_wall"), C.get("put_wall"))
+                   if w is not None and abs(w - spot) <= 2.5 * _reach_sigma]
+            _reach_hint = max(_ds) if _ds else None
+    except (TypeError, ValueError):
+        _reach_hint = None
+    B = slide_0dte(zero, spot, minutes_to_close, prev_pin=prev_pin,   # H4: hysteresis witness
+                   sigma=_reach_sigma,                                # N8: the reach window
+                   nbs_reach=_reach_hint)                             # m4: cover the framed walls
     E = reconcile_sign(R["regime"], aggressor_flow, flow_conflict, flow_kind)
     F = slide_flows(contracts, spot, minutes_to_close=minutes_to_close)   # vanna/charm flows
     magnet = B["pin"] if B["pin"] is not None else (R["flip"] if R["flip"] is not None
@@ -1521,10 +1591,20 @@ def build_views(contracts: list[dict], spot: float,
     try:
         if sigma and spot and R["basis"]:
             net0 = R["net_gex"]                 # signed dealer GEX at spot (the regime read)
-            up = _net_gex_at(R_set, spot + SHOVE_SIGMA * sigma, R["basis"], minutes_to_close)
-            dn = _net_gex_at(R_set, spot - SHOVE_SIGMA * sigma, R["basis"], minutes_to_close)
+            # m2 (2026-07-12): the shove asks "can FLOW move price there before the
+            # bell?" — so the probe distance must live on the time LEFT, not the whole
+            # day. A ±0.5σ_day probe at 15:30 tests a move that cannot happen, and the
+            # test cried "fragile" about it. √(minutes-left/390) is the same Brownian
+            # clock the grade barriers use (N18). Outside RTH (mtc None) the full-day
+            # probe stands — the whole session is then ahead. shove_v=2 tags
+            # the era: v1 margins probed a fixed ±0.5σ_day and must never pool with these.
+            probe = SHOVE_SIGMA
+            if minutes_to_close:
+                probe = SHOVE_SIGMA * math.sqrt(max(minutes_to_close, 5.0) / 390.0)
+            up = _net_gex_at(R_set, spot + probe * sigma, R["basis"], minutes_to_close)
+            dn = _net_gex_at(R_set, spot - probe * sigma, R["basis"], minutes_to_close)
             denom = abs(net0) if net0 else None
-            shove = {"shove_sigma": SHOVE_SIGMA,
+            shove = {"shove_sigma": round(probe, 4), "shove_v": 2,
                      "net_gex_spot": round(net0, 2) if net0 is not None else None,
                      "shove_up_net_gex": round(up, 2),
                      "shove_down_net_gex": round(dn, 2),

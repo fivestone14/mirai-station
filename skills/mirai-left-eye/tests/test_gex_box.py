@@ -7,7 +7,7 @@ rescale, and pressure/degenerate inputs."""
 import math
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -588,6 +588,51 @@ class TestShove:
         assert sh["shove_up_margin"] == round(up / abs(net0), 4)
         assert sh["shove_down_margin"] == round(dn / abs(net0), 4)
 
+    def test_shove_probe_lives_on_the_time_left(self):
+        # m2 (2026-07-12): at 15:00 (60 min left) a ±0.5σ_DAY probe tests a move that
+        # cannot happen before the bell — the probe now rides the Brownian clock:
+        # 0.5·√(60/390) ≈ 0.196σ. Outside RTH (mtc None) the full-day probe stands.
+        ch = _chain()
+        sh = gv.build_views(ch, 5000.0, sigma=40.0, minutes_to_close=60.0)["shove"]
+        eff = gv.SHOVE_SIGMA * (60.0 / 390.0) ** 0.5
+        assert sh["shove_sigma"] == round(eff, 4) and sh["shove_v"] == 2
+        zero, _ = gv.split_tenor(ch)
+        basis = gv.build_views(ch, 5000.0, sigma=40.0)["slides"]["A0_0dte_flip"]["basis"]
+        up = gv._net_gex_at(zero, 5000.0 + eff * 40.0, basis, 60.0)
+        assert sh["shove_up_net_gex"] == round(up, 2)     # probed at the SCALED distance
+        # morning: √(384/390) ≈ 0.99 — effectively the full-day probe, continuity kept
+        sh_am = gv.build_views(ch, 5000.0, sigma=40.0, minutes_to_close=384.0)["shove"]
+        assert abs(sh_am["shove_sigma"] - gv.SHOVE_SIGMA) < 0.005
+
+    def test_measured_bars_window_widens_with_sigma(self):
+        # m4 (2026-07-12): the persisted net_by_strike window must reach as wide as the
+        # frame the tablet draws (≈±1.8σ) or the outer lane renders permanent blanks a
+        # caption still calls "measured". ±3% floor; high-vol days widen, capped ±4.5%.
+        far = 5000.0 * 1.04                                # +4% — outside the old ±3%
+        cs = [_c(5000, "call", 0, 0.01, oi=2000, vol=1000),
+              _c(round(far / 5) * 5, "call", 0, 0.002, oi=800, vol=400)]
+        lo_vol = gv.slide_0dte(cs, 5000.0, sigma=50.0)      # σ=1% of spot → ±3% floor
+        hi_vol = gv.slide_0dte(cs, 5000.0, sigma=110.0)     # σ=2.2% → window ±4.4%
+        lo_ks = [k for k, _ in (lo_vol["net_by_strike"] or [])]
+        hi_ks = [k for k, _ in (hi_vol["net_by_strike"] or [])]
+        assert max(lo_ks) == 5000.0                        # +4% strike outside the floor window
+        assert max(hi_ks) > 5000.0 * 1.03                  # ...but inside the widened one
+
+    def test_framed_tenor_wall_gets_measured_bars(self):
+        # m4 v2 (verify round): a structural 1-7DTE wall at +3.2% with σ/spot=1.4%
+        # is FRAMED by the tablet (≤2.5σ) but sat OUTSIDE the old ±3% window — a
+        # framed wall with blank bars the caption called "measured". The window now
+        # stretches to cover it (via build_views' nbs_reach hint).
+        spot, sig = 5000.0, 70.0                      # σ/spot = 1.4%
+        wall = round(spot * 1.032 / 5) * 5            # +3.2%, within 2.5σ (=3.5%)
+        ch = [_c(5000, "call", 0, 0.01, oi=2000, vol=1000),
+              _c(wall, "call", 0, 0.002, oi=900, vol=100),      # 0DTE mass AT the wall
+              _c(wall, "call", 3, 0.002, oi=9000),              # the tenor wall itself
+              _c(wall - 5, "put", 3, 0.002, oi=8000)]
+        v = gv.build_views(ch, spot, sigma=sig)
+        ks = [k for k, _ in (v["slides"]["B_0dte"]["net_by_strike"] or [])]
+        assert wall in ks                             # the framed wall has a measured bar
+
     def test_shove_flip_detection_long_gamma_island(self):
         # calls dominate at/below spot, puts above (the island chain): a +½σ shove
         # lands deep in put-dominated territory and flips the book's sign
@@ -618,7 +663,8 @@ class TestShove:
                       chain_lookup=lambda t: {"contracts": _chain(), "spot": 5000.0},
                       spot_lookup=lambda t: 5000.0, cache={})
         assert v["shove"] is not None
-        assert v["shove"]["shove_sigma"] == gv.SHOVE_SIGMA
+        # m2: NOW is 11:00 ET → 300 min to the bell → the probe rides the clock
+        assert v["shove"]["shove_sigma"] == round(gv.SHOVE_SIGMA * (300.0 / 390.0) ** 0.5, 4)
 
 
 # ------------------------------------------------------------ motion diffs (P4)
@@ -1427,3 +1473,50 @@ class TestH7RegimeIsTodaysBook:
             assert v["regime_source"] == "blended_fallback"
         finally:
             gv.REGIME_0DTE = True
+
+
+# --- tau is TRADING time, not calendar time (2026-07-12) ------------------------
+# The engine's clock is sessions/252 everywhere (0DTE = minutes/(390*252)). Pairing a
+# CALENDAR numerator with the 252-day denominator inflated tau by up to 365/252 = 1.45x
+# and, because gamma ~ 1/sqrt(tau), under-stated every dated gamma/wall/flip by ~20%.
+
+def test_sessions_ahead_skips_the_weekend():
+    """Friday + 3 calendar days = Monday = ONE session, not three."""
+    fri = date(2026, 7, 10)
+    assert gv._sessions_ahead(3, fri) == 1.0        # Sat, Sun, Mon -> 1
+    assert gv._sessions_ahead(1, fri) == 1.0        # Sat            -> floored to 1
+    assert gv._sessions_ahead(7, fri) == 5.0        # the next trading week
+
+
+def test_sessions_ahead_skips_a_holiday():
+    """Independence Day 2025-07-04 (Friday) is a full closure — the week is 4 sessions."""
+    mon = date(2025, 6, 30)
+    assert gv._sessions_ahead(7, mon) == 4.0        # Tue Wed Thu (Fri shut) Mon = 4
+
+
+def test_tau_never_uses_a_calendar_numerator():
+    """A dated tau must equal sessions/252 — never calendar_days/252 (the old bug)."""
+    fri = date(2026, 7, 10)
+    sessions = gv._sessions_ahead(42, fri)
+    assert sessions == 30.0                          # 42 calendar days -> 30 sessions
+    tau = sessions / gv._TRADING_DAYS
+    assert math.isclose(tau, 30.0 / 252.0)
+    buggy = 42 / 252.0
+    assert tau < buggy                               # the fix DEFLATES tau
+    assert math.isclose(buggy / tau, 1.4, rel_tol=0.02)
+
+
+def test_shorter_tau_lifts_gamma():
+    """Gamma ~ 1/sqrt(tau): deflating tau by 1.4x must RAISE gamma ~18-20%."""
+    S = K = 7575.0
+    g_fixed = gv._bs_gamma(S, K, 0.16, 30.0 / 252.0)   # sessions
+    g_buggy = gv._bs_gamma(S, K, 0.16, 42.0 / 252.0)   # calendar (the bug)
+    assert g_fixed > g_buggy
+    assert 1.15 < (g_fixed / g_buggy) < 1.25
+
+
+def test_zero_dte_clock_is_unchanged():
+    """The 0DTE live-minutes clock must survive the dated fix untouched."""
+    assert math.isclose(gv._tau_for(0, 390.0), 390.0 / (390.0 * 252.0))
+    assert math.isclose(gv._tau_for(0, None), gv._TAU_FLOOR_DAYS / 252.0)
+    assert gv._tau_for(None, None) is None

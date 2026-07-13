@@ -93,15 +93,18 @@ def test_per_strike_gex_components(monkeypatch):
     dg.pull(_dt(2026, 7, 10))
     book = json.load(open(dg._book_path()))
     for b in book["bands"]:
-        assert all(len(r) == 5 for r in b["strikes"])
+        assert all(len(r) == 7 for r in b["strikes"])   # +call_iv, +put_iv (2026-07-12)
         assert all(r[3] >= 0 and r[4] >= 0 for r in b["strikes"])
         gex_sum = sum(r[3] + r[4] for r in b["strikes"])
         assert b["gamma_mass"] is not None
         assert abs(gex_sum - b["gamma_mass"]) / max(b["gamma_mass"], 1) < 1e-6
         # independent recompute of one strike (calls side, k=7000, iv .17):
-        from lefteye_gex_box import _bs_gamma, _TRADING_DAYS
+        from lefteye_gex_box import _bs_gamma, _TRADING_DAYS, _sessions_ahead
         exp_d = date.fromisoformat(b["expiry"])
-        tau = max((exp_d - date(2026, 7, 10)).days, 1) / _TRADING_DAYS
+        # TRADING time: sessions/252. This recompute used to use a CALENDAR numerator —
+        # the bug _sessions_ahead fixed (tau ran up to 1.45x hot, worst over weekends).
+        today = date(2026, 7, 10)
+        tau = _sessions_ahead((exp_d - today).days, today) / _TRADING_DAYS
         spot = book["spot"]
         row = [r for r in b["strikes"] if r[0] == 7000.0][0]
         want = abs(_bs_gamma(spot, 7000.0, 0.17, tau)) * row[1] * 100.0 * spot * spot * 0.01
@@ -441,3 +444,111 @@ def test_summary_drops_settled_bands_intraday(monkeypatch):
     dg.pull(_dt(2026, 9, 30, 5, 17))
     assert dg.diary_summary(_dt(2026, 9, 30, 15, 0)) is not None
     assert dg.diary_summary(_dt(2026, 9, 30, 16, 30)) is None  # sole band settled → None
+
+
+# --- the HEDGE RAIL profile (2026-07-12) ----------------------------------------
+# net dealer GEX ($B per 1% move) repriced across a +/-6% grid, plus the flip and an
+# explicit sign-robustness verdict. Computed feed-side because the true per-strike IV
+# only exists here — gamma is non-monotone in sigma, so a magnitude-only reader cannot
+# recover it without guessing a branch.
+
+def test_profile_shape_and_units():
+    legs = [(7500.0, "call", 1000, 0.17), (7500.0, "put", 1000, 0.17),
+            (7700.0, "call", 5000, 0.16), (7300.0, "put", 5000, 0.19)]
+    p = dg._profile(legs, 7575.0, 30.0 / 252.0)
+    assert p is not None
+    assert len(p["grid"]) == len(p["gex"]) == dg._PROF_STEPS + 1
+    assert p["grid"] == sorted(p["grid"])                     # ascending
+    assert abs(p["grid"][0] / 7575.0 - 0.94) < 1e-6           # -6%
+    assert abs(p["grid"][-1] / 7575.0 - 1.06) < 1e-6          # +6%
+    assert isinstance(p["contested"], bool)                   # REQUIRED, never absent
+    assert "flip" in p
+    lo, hi = p["h1_range"]                                   # the beta sweep's span
+    assert lo <= p["h1"] <= hi or hi <= p["h1"] <= lo
+    assert p["contested"] == (lo < 0 < hi)                   # contested IFF the span straddles 0
+
+
+def test_profile_flip_is_a_real_zero_crossing():
+    """A book that is short gamma low and long gamma high must cross zero exactly once."""
+    legs = [(7200.0, "put", 40000, 0.20), (7800.0, "call", 40000, 0.15)]
+    p = dg._profile(legs, 7575.0, 30.0 / 252.0)
+    f = p["flip"]
+    assert f is not None and p["grid"][0] < f < p["grid"][-1]
+    lo = [g for g, x in zip(p["grid"], p["gex"]) if g < f]
+    hi = [x for g, x in zip(p["grid"], p["gex"]) if g > f]
+    assert lo and hi
+    # sign genuinely inverts across the flip
+    below = [x for g, x in zip(p["grid"], p["gex"]) if g < f]
+    assert (below[0] < 0) != (hi[-1] < 0)
+
+
+def test_profile_is_none_without_legs():
+    assert dg._profile([], 7575.0, 0.1) is None
+    assert dg._profile([(7500.0, "call", 1, 0.2)], 0.0, 0.1) is None
+    assert dg._profile([(7500.0, "call", 1, 0.2)], 7575.0, 0.0) is None
+
+
+def test_profile_rides_the_band(monkeypatch):
+    """pull() attaches a profile with all four required keys to every band, and the
+    profile's value AT SPOT reproduces the net of the stored per-strike components."""
+    monkeypatch.setattr(dg, "_run_code", lambda code: _synthetic_result())
+    dg.pull(_dt(2026, 7, 10))
+    book = json.load(open(dg._book_path()))
+    spot = book["spot"]
+    for b in book["bands"]:
+        p = b["profile"]
+        assert p is not None
+        assert set(p) == {"grid", "gex", "flip", "contested", "h1", "h1_range"}
+        assert isinstance(p["contested"], bool)     # the rail refuses a band without it
+        # net GEX at spot, straight from the stored magnitudes (no sigma needed) —
+        # the profile must land on it, since it is the same book at the same price
+        net = sum(r[3] - r[4] for r in b["strikes"]) / 1e9
+        i = min(range(len(p["grid"])), key=lambda j: abs(p["grid"][j] - spot))
+        assert abs(p["gex"][i] - net) / max(abs(net), 1e-6) < 0.02
+
+
+def test_stored_iv_removes_the_sigma_guess(monkeypatch):
+    """Every strike row carries the IV that produced its gex, so no reader ever has to
+    invert a non-monotone gamma to recover it."""
+    monkeypatch.setattr(dg, "_run_code", lambda code: _synthetic_result())
+    dg.pull(_dt(2026, 7, 10))
+    book = json.load(open(dg._book_path()))
+    for b in book["bands"]:
+        for k, coi, poi, cg, pg, civ, piv in b["strikes"]:
+            if cg > 0:
+                assert civ == 0.17          # the call IV the synthetic chain shipped
+            if pg > 0:
+                assert piv == 0.18
+
+
+
+# --- m7: the nearest STRONG wall each side (2026-07-12, local-king rule) -----------
+def test_near_wall_marks_support_near_price_not_the_crash_bet():
+    # put OI: the 7000 crash bet is the MAX (7% below spot) but 7480 is the biggest
+    # pile within reach (±3.5%) — 7480 is the support that bounds today's tape.
+    puts = [[7000.0, 5865.0], [7140.0, 3048.0], [7480.0, 3500.0], [7450.0, 2000.0]]
+    assert dg.near_wall(puts, 7520.0, "put") == 7480.0
+    # calls: the local king above spot within reach
+    calls = [[8000.0, 4000.0], [7600.0, 2200.0], [7550.0, 1000.0]]
+    assert dg.near_wall(calls, 7520.0, "call") == 7600.0   # 8000 is out of reach (+6.4%)
+    # side discipline: a strong wall BEHIND price is never "the wall ahead"
+    assert dg.near_wall(puts, 6900.0, "put") is None       # spot gapped below the book
+    assert dg.near_wall([], 7520.0, "call") is None
+    assert dg.near_wall([[7600.0, 0.0]], 7520.0, "call") is None   # zero-OI dust
+
+
+def test_near_wall_on_the_real_book_shape_never_crowns_the_crash_bet():
+    # THE VERIFY-ROUND REFUTATION, pinned: on the real 07-10 monthlies the crash bet
+    # IS the side max (7000P = 100%; nearby support carried 13-29%), so the v1
+    # ≥50%-of-max rule degenerated straight back to 7000 — the card's exact harm.
+    # The local-king rule picks the biggest pile within ±3.5% of spot instead.
+    real_puts = [[7000.0, 5865.0], [7140.0, 3048.0], [7200.0, 900.0],
+                 [7450.0, 800.0], [7500.0, 1700.0]]          # 29% / 13.6% of the king
+    got = dg.near_wall(real_puts, 7575.0, "put")
+    assert got == 7500.0 and got != 7000.0
+    # ...but DUST is never crowned: a lone 3%-of-king strike within reach reads None
+    dusty = [[7000.0, 5865.0], [7500.0, 150.0]]
+    assert dg.near_wall(dusty, 7575.0, "put") is None        # honest absence
+    # crash-only book: nothing within reach at all → None (consumers keep the king,
+    # explicitly FAR-labeled by the σ distance)
+    assert dg.near_wall([[7000.0, 5865.0]], 7575.0, "put") is None

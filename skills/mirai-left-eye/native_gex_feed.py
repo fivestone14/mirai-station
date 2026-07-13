@@ -376,7 +376,7 @@ def _fill_gamma(contracts: list, spot: float) -> None:
     gamma from IV with GexBox's own Black-Scholes so the gamma-weighted walls (slides B/C)
     stay populated and consistent with the flip reprice. Fills only where gamma is missing."""
     try:
-        from lefteye_gex_box import _bs_gamma, _TRADING_DAYS, _TAU_FLOOR_DAYS
+        from lefteye_gex_box import _bs_gamma, _tau_for
     except Exception:
         return
     for c in contracts:
@@ -385,7 +385,7 @@ def _fill_gamma(contracts: list, spot: float) -> None:
         iv, k, dte = c.get("iv"), c.get("strike"), c.get("dte")
         if iv and iv > 0 and k and dte is not None:
             try:
-                tau = max(float(dte), _TAU_FLOOR_DAYS) / _TRADING_DAYS
+                tau = _tau_for(int(dte), None)     # sessions/252 — same clock as the engine
                 c["gamma"] = _bs_gamma(spot, float(k), float(iv), tau)
                 c["gamma_src"] = "bs_iv"
             except Exception:

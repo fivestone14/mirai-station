@@ -69,6 +69,14 @@ _STALE_FLOOR_DAYS = 5     # beyond this the reader returns None — a week-old w
 # quarterlies refresh weekly by design (10d = genuinely stale, not cadence).
 _BAND_STALE_FLOOR_DAYS = {"monthly": 5, "quarter_end": 10}
 _TOP_WALLS = 5            # per-side wall slice persisted to the diary
+_NEAR_WALL_BAND = 0.035      # m7: "near" = within ±3.5% of spot — the range a dated wall
+                             # can actually bound today's tape from
+_NEAR_WALL_MIN_GLOBAL = 0.15 # ...and the local king must still carry ≥15% of the side's
+                             # global max OI, so dust can never be crowned support.
+                             # (v1 used ≥50%-of-global-max, which DEGENERATED whenever the
+                             # crash bet IS the max: on both live monthlies 7000P = 100%
+                             # and the real support carried 13-29% — the rule handed the
+                             # card's exact harm straight back. Verify round, 2026-07-12.)
 _ROUND_STEP = 500.0       # round-number strikes verified present after each pull
 
 
@@ -145,6 +153,28 @@ def quarter_end_expiries(now: datetime, n: int = 2) -> list:
 
 
 # --- store --------------------------------------------------------------------
+
+def near_wall(pairs, spot, side: str):
+    """m7 — the LOCAL KING: the biggest-OI strike on the correct side of spot within
+    ±_NEAR_WALL_BAND, provided it carries ≥ _NEAR_WALL_MIN_GLOBAL of the side's global
+    max (dust is never crowned). This is the wall that bounds TODAY's tape; the global
+    max (often a 7000-class crash bet ~8% out) stays recorded as terrain. None = no
+    real support/resistance stands within reach — an honest absence, never the far max."""
+    try:
+        pairs = [(float(k), float(v)) for k, v in (pairs or []) if v and v > 0]
+    except (TypeError, ValueError):
+        return None
+    if not pairs or not spot:
+        return None
+    mx = max(v for _, v in pairs)
+    band = [(k, v) for k, v in pairs
+            if abs(k - spot) <= _NEAR_WALL_BAND * spot
+            and ((k > spot) if side == "call" else (k < spot))]
+    if not band:
+        return None
+    k_best, v_best = max(band, key=lambda kv: (kv[1], -abs(kv[0] - spot)))
+    return k_best if v_best >= _NEAR_WALL_MIN_GLOBAL * mx else None
+
 
 def _state_dir() -> Path:
     env = os.environ.get("MIRAI_STATE_DIR")
@@ -255,12 +285,87 @@ def _run_code(code: str) -> Optional[dict]:
 
 # --- pull (nightly job; the ONLY network path) ----------------------------------
 
+_PROF_SPAN = 0.06          # ±6% of spot — the price range a dated book actually acts over
+_PROF_STEPS = 48           # 49 grid points ⇒ ~0.25% of spot per step (~19 SPX pts)
+_BETA_SWEEP = (0.0, 0.4, 0.7, 1.0)   # plausible spot-vol beta: dσ per 1% spot move
+
+
+def _profile(legs: list, spot: float, tau: float) -> Optional[dict]:
+    """The HEDGE-RAIL profile: net dealer GEX ($B per 1% move) repriced across a ±6%
+    price grid, plus the zero-crossing (the flip) and a sign-robustness verdict.
+
+    This is the ONLY honest place to compute it. The store is magnitude-only, so a
+    client would have to invert σ out of the gex — and gamma is non-monotone in σ, so
+    that inversion has two roots and no way to choose. Here the true per-strike IV is
+    still in hand.
+
+    `contested`: net gamma at spot is a small difference of two large numbers, and the
+    vanna channel can out-vote it. Sweep the spot-vol beta over its plausible range and
+    ask whether the dealer's +1% hedge changes SIGN. If it does, the tenor has no
+    direction we can honestly claim — the rail draws it with no fill and no number.
+
+    Sign convention: dealers long calls / short puts — the SAME assumption the live 0DTE
+    map uses. It is an assumption, not a measurement; the rail says so on its face."""
+    if not legs or spot <= 0 or tau <= 0:
+        return None
+    try:
+        from lefteye_gex_box import _bs_gamma as _g, _bs_vanna as _v
+    except Exception:
+        return None
+
+    def _net_gex(S: float) -> float:
+        tot = 0.0
+        for k, right, oi, iv in legs:
+            gx = _g(S, k, iv, tau) * oi * 100.0 * S * S * 0.01
+            tot += gx if right == "call" else -gx
+        return tot
+
+    grid = [spot * (1.0 + _PROF_SPAN * (2.0 * i / _PROF_STEPS - 1.0))
+            for i in range(_PROF_STEPS + 1)]
+    gex = [_net_gex(S) for S in grid]
+
+    flip = None                                  # first zero-crossing, linear-interpolated
+    for i in range(1, len(grid)):
+        if (gex[i - 1] < 0) != (gex[i] < 0) and gex[i] != gex[i - 1]:
+            flip = grid[i - 1] + (0.0 - gex[i - 1]) * (grid[i] - grid[i - 1]) / (gex[i] - gex[i - 1])
+            break
+
+    # contested: does the +1% hedge flip sign anywhere in the beta sweep?
+    g_at = v_at = 0.0
+    for k, right, oi, iv in legs:
+        sgn = 1.0 if right == "call" else -1.0
+        g_at += sgn * oi * 100.0 * _g(spot, k, iv, tau)
+        v_at += sgn * oi * 100.0 * _v(spot, k, iv, tau)
+    signs, hedges = set(), []
+    for beta in _BETA_SWEEP:
+        # +1% spot ⇒ dS = 0.01·S and dσ = −beta·0.01 (spot up, vol down).
+        # The dealer TRADES the opposite of the delta they acquire: + = must BUY.
+        d_delta = g_at * 0.01 * spot + v_at * (-beta * 0.01)
+        hedges.append(-d_delta * spot / 1e9)             # $B of delta to re-hedge
+        if abs(d_delta) > 1e-6:
+            signs.add(d_delta > 0)
+    contested = len(signs) > 1
+
+    return {"grid": [round(S, 1) for S in grid],
+            "gex": [round(x / 1e9, 4) for x in gex],     # $B per 1% move
+            "flip": round(flip, 1) if flip is not None else None,
+            "contested": contested,
+            # what a +1% move forces dealers to trade, $B (+ = BUY). h1 is the
+            # gamma-only answer (beta=0); h1_range is the span once the vanna channel
+            # is swept. A CONTESTED lane still knows BOTH bounds — it just can't pick
+            # one, and saying "gamma says sell, vanna says buy" beats saying nothing.
+            "h1": round(hedges[0], 3),
+            "h1_range": [round(min(hedges), 3), round(max(hedges), 3)]}
+
+
 def _mass(contracts: list, spot: float, expiry: date, today: date) -> tuple:
     """Unsigned gamma/vanna mass magnitudes for one expiry — display context only.
     Fail-open to (None, None) if the BS helpers are unavailable."""
     try:
-        from lefteye_gex_box import _bs_gamma, _bs_vanna, _TRADING_DAYS
-        tau = max((expiry - today).days, 1) / _TRADING_DAYS
+        from lefteye_gex_box import _bs_gamma, _bs_vanna, _TRADING_DAYS, _sessions_ahead
+        # TRADING time, not calendar: sessions/252. A calendar numerator over the 252-day
+        # year inflated tau by up to 1.45x (see _sessions_ahead) and under-stated gamma.
+        tau = _sessions_ahead((expiry - today).days, today) / _TRADING_DAYS
         gm = vm = 0.0
         for c in contracts:
             iv, k, oi = c.get("iv"), c.get("strike"), c.get("open_interest") or 0
@@ -421,16 +526,21 @@ def pull(now: Optional[datetime] = None) -> dict:
         # per-strike GEX components need the same BS gamma the band totals use;
         # fail-open to OI-only rows if the engine helpers are unavailable
         try:
-            from lefteye_gex_box import _bs_gamma as _bsg, _TRADING_DAYS as _TD
+            from lefteye_gex_box import (_bs_gamma as _bsg, _TRADING_DAYS as _TD,
+                                          _sessions_ahead as _sess)
         except Exception:
             _bsg = None
         for (exp_iso, band), cs in sorted(by_exp.items()):
             exp_d = date.fromisoformat(exp_iso)
-            tau = max((exp_d - today).days, 1) / (_TD if _bsg else 252.0)
+            # sessions/252 — the engine's trading-time clock (never calendar/252)
+            tau = (_sess((exp_d - today).days, today) / _TD) if _bsg else \
+                  (max((exp_d - today).days, 1) * (252.0 / 365.0) / 252.0)
             oi_k: dict = {}
+            legs: list = []          # (K, right, oi, iv) — the repricing chain for `profile`
             for c in cs:
                 k = float(c["strike"])
-                slot = oi_k.setdefault(k, {"call": 0, "put": 0, "cg": 0.0, "pg": 0.0})
+                slot = oi_k.setdefault(k, {"call": 0, "put": 0, "cg": 0.0, "pg": 0.0,
+                                           "civ": 0.0, "piv": 0.0})
                 oi = int(c.get("open_interest") or 0)
                 slot[c["right"]] += oi
                 # per-strike dated GEX (2026-07-10): UNSIGNED call/put dollar-gamma
@@ -443,7 +553,14 @@ def pull(now: Optional[datetime] = None) -> dict:
                 if _bsg and iv and iv > 0 and oi > 0:
                     gx = abs(_bsg(spot, k, float(iv), tau)) * oi * 100.0 * spot * spot * 0.01
                     slot["cg" if c["right"] == "call" else "pg"] += gx
-            strikes = [[k, v["call"], v["put"], round(v["cg"], 2), round(v["pg"], 2)]
+                    # PERSIST THE IV (2026-07-12). Gamma is NON-MONOTONE in σ — every
+                    # gamma value has two roots — so a reader who only gets the gex
+                    # magnitude cannot recover σ without guessing a branch. Storing the
+                    # one float that produced the number deletes that whole error class.
+                    slot["civ" if c["right"] == "call" else "piv"] = round(float(iv), 4)
+                    legs.append((k, c["right"], oi, float(iv)))
+            strikes = [[k, v["call"], v["put"], round(v["cg"], 2), round(v["pg"], 2),
+                        v["civ"] or None, v["piv"] or None]
                        for k, v in sorted(oi_k.items())]
             top_c = sorted(([k, v["call"]] for k, v in oi_k.items() if v["call"] > 0),
                            key=lambda kv: -kv[1])[:_TOP_WALLS]
@@ -453,13 +570,24 @@ def pull(now: Optional[datetime] = None) -> dict:
             bands.append({"expiry": exp_iso, "band": band, "root": cs[0]["root"],
                           "as_of": now.isoformat(),           # per-band pull stamp
                           "dte_at_pull": (exp_d - today).days,
-                          "strikes": strikes,   # [[k, call_oi, put_oi, call_gex, put_gex]]
+                          # [[k, call_oi, put_oi, call_gex, put_gex, call_iv, put_iv]]
+                          # (rows 5→7 on 2026-07-12; indices 0-4 unchanged, so every
+                          #  existing reader keeps working against the same offsets)
+                          "strikes": strikes,
                           "top_calls": top_c, "top_puts": top_p,   # unsigned OI walls
                           "call_wall": top_c[0][0] if top_c else None,
                           "put_wall": top_p[0][0] if top_p else None,
+                          # m7: the wall that bounds TODAY's tape — nearest strong strike
+                          # each side of spot (the magnitude kings above stay recorded;
+                          # they are terrain, not the answer to "where is support?")
+                          "near_call_wall": near_wall(
+                              [[k, v["call"]] for k, v in oi_k.items()], spot, "call"),
+                          "near_put_wall": near_wall(
+                              [[k, v["put"]] for k, v in oi_k.items()], spot, "put"),
                           "call_oi_total": sum(v["call"] for v in oi_k.values()),
                           "put_oi_total": sum(v["put"] for v in oi_k.values()),
-                          "gamma_mass": gm, "vanna_mass": vm})
+                          "gamma_mass": gm, "vanna_mass": vm,
+                          "profile": _profile(legs, spot, tau)})
         # CARRY FORWARD: a live prev band not re-fetched today (quarterly on its
         # weekly cadence, or a band whose job failed) rides into the new book
         # with its own as_of intact — a not-due day must never DELETE structure.
@@ -551,6 +679,11 @@ def diary_summary(now: Optional[datetime] = None) -> Optional[dict]:
                           "age_days": band_age,      # H9: the band's OWN freshness
                           "dte": (exp_d - today).days,
                           "call_wall": b.get("call_wall"), "put_wall": b.get("put_wall"),
+                          # m7: nearest strong walls ride the diary beside the max-OI kings.
+                          # KEY PRESENCE preserved: an explicit None (book seen, nothing
+                          # near) stays distinguishable from a pre-m7 band (no key at all).
+                          **({"near_call_wall": b["near_call_wall"]} if "near_call_wall" in b else {}),
+                          **({"near_put_wall": b["near_put_wall"]} if "near_put_wall" in b else {}),
                           "top_calls": (b.get("top_calls") or [])[:_TOP_WALLS],
                           "top_puts": (b.get("top_puts") or [])[:_TOP_WALLS],
                           "call_oi_total": b.get("call_oi_total"),

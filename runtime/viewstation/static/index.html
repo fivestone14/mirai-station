@@ -422,26 +422,6 @@
   .jcode-legend b{color:var(--ink-faint); font-weight:600; letter-spacing:.08em; text-transform:uppercase; margin-right:2px}
   .j-key{color:var(--iris)} .j-str{color:var(--jade)} .j-num{color:var(--lantern)} .j-bool{color:var(--coral)} .j-null{color:var(--ink-faint)} .j-cm{color:var(--ink-faint); font-style:italic; opacity:.9}
 
-  /* ---- Magnet Zones modal (tap the magnet / a zone band on the live map) ---- */
-  .zrow{display:grid; grid-template-columns:30px 1fr 56px; gap:12px; align-items:center; padding:12px 4px; border-bottom:1px solid var(--hairline)}
-  .zrow:last-of-type{border-bottom:0}
-  .zrank{width:26px; height:26px; border-radius:8px; display:grid; place-items:center; font-family:var(--mono); font-weight:700; font-size:13px; color:#fff; background:var(--l-grav); opacity:.5}
-  .zrow.lead .zrank{opacity:1; box-shadow:0 2px 10px color-mix(in srgb,var(--l-grav) 45%,transparent)}
-  .zline{display:flex; align-items:baseline; gap:9px; flex-wrap:wrap}
-  .zline b{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:15px; color:var(--ink)}
-  .zside{font-size:12px; font-weight:700}
-  .zside.above{color:var(--jade)} .zside.below{color:var(--coral)} .zside.at{color:var(--l-grav)}
-  .zspan{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--ink-dim)}
-  .zn{font-size:10.5px; color:var(--ink-faint)}
-  .zbar{height:7px; border-radius:4px; background:var(--surface-3); overflow:hidden; margin-top:7px}
-  .zbar i{display:block; height:100%; background:var(--l-grav); border-radius:4px}
-  .zrow:not(.lead) .zbar i{opacity:.55}
-  .zpct{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:14px; font-weight:700; color:var(--ink); text-align:right}
-  .zm-empty{padding:16px 4px; font-family:var(--serif); font-size:14.5px; color:var(--ink-dim)}
-  .zm-empty b{color:var(--ink)}
-  .zm-note{margin-top:15px; padding:12px 15px; border-radius:11px; font-size:13px; line-height:1.5; color:var(--ink-dim);
-    background:color-mix(in srgb,var(--l-grav) 8%, var(--surface)); border:1px solid color-mix(in srgb,var(--l-grav) 26%, var(--hairline))}
-
   /* ---- diary : the Watchtower's day-log (a book) ---- */
   .book{max-width:840px; width:100%; margin:0 auto; position:relative; perspective:2400px; flex:1; min-height:0; display:flex; flex-direction:column}
   .page{
@@ -769,7 +749,7 @@
 /* SYS carries DEMO-snapshot defaults ONLY (N21/H1): every header readout that can be
    known live is re-painted from the feed each poll — mode from row.live, WT count from
    the diary itself, chain source from row.gex_source. Nothing here is shown as live. */
-const SYS = { date:"2026-07-07", mode:"PAPER", liveAllowed:false, wtCap:35 };
+const SYS = { date:"2026-07-07", mode:"PAPER", wtCap:35 };
 let GX_SRC = null;   // newest row's gex_source ('native' | 'spy_proxy×10.03xx') — the engine that actually drew the map
 let GX_SRC_NOTE = null;   // N7: engine's own reason for a non-native read ('coverage' = half-fetched native book)
 let GX_DGONE = 0, GX_DHAD = false;   // H9: consecutive scans with the dated book missing (after having one)
@@ -985,8 +965,35 @@ async function loadDiaryHistory(){
 // breathing room + a directional-arrow lane on the strongest clusters.
 const STRIP={ colW:14, gap:7, padL:7, padR:7, cellInset:1, tickW:1.5 };
 STRIP.pitch=STRIP.colW+STRIP.gap;   // 21
+// HEDGE RAIL GUTTER (>7DTE) — the SAME species as STRIP: a second gutter, seated
+// between the heat ladder and the tag strip. stripEnd never moves; the two gutters
+// stack LEFTWARD from it and lineEnd absorbs the difference, so paintDatedOI (which
+// lays out entirely off lineEnd) slides left as one piece with ZERO edits to its math.
+// nR=0 ⇒ railGutter=0 ⇒ railX0===stripEnd ⇒ lineEnd is byte-identical to the old map.
+// Lanes SCALE: they take whatever is left once the bars have their floor, clamped to
+// [minLane, maxLane]. A fixed 44px lane was legible-but-cramped on an 11" tablet and
+// wasted room on a 13". One formula, so the rail breathes on a wide map and shrinks
+// (then sheds a lane) on a narrow one — it never crushes the bars to do it.
+const RAIL={ padL:10, padR:10, gap:10, inset:10, maxLanes:3,
+             minBar:280, minLane:76, maxLane:156, maxShare:0.19 };
+// Lane width tracks the MAP width, not the leftover slack — a lane that simply eats all
+// the room above the bar floor is greedy (it cost the bars a third of their length on an
+// 11" tablet). ~5.5% of the chart per lane lands at 44px on a small tablet and 75px on a
+// 13", and the budget guard below still shrinks/sheds if even that will not fit.
+RAIL.laneFor=(n,avail,w)=>{
+  if(!n) return 0;
+  const chrome=RAIL.padL+RAIL.padR+RAIL.gap*(n-1);
+  const want=Math.round(w*0.11);                                        // scale with the map
+  const share=Math.floor((w*RAIL.maxShare-chrome)/n);                   // never eat the map
+  const fit=Math.floor((avail-chrome)/n);                               // never eat the bars
+  return Math.max(RAIL.minLane, Math.min(RAIL.maxLane, want, share, Math.max(fit,0)));
+};
+RAIL.gutterFor=(n,laneW)=>n?(RAIL.padL+RAIL.padR+laneW*n+RAIL.gap*(n-1)):0;
 function computeMAPX(w,h){
-  const x0=72, tagX=w-10, stripEnd=Math.round(w-178);
+  // TAG RESERVE: 128px (was 178). The level tags carried 21/18px display type for four
+  // numbers and hoarded the widest column on the map; at 17/15px they read just as well
+  // and hand ~50px back to the gutters, where the rail can actually use it.
+  const x0=72, tagX=w-10, stripEnd=Math.round(w-128);
   // TENOR LADDER GUTTER (Dated γ): each dated expiry gets its own labeled
   // heat-ladder column between the bar lane and the right tag gutter — position
   // carries tenor identity (the pigment fade never could at 3px marks). Zero
@@ -1003,8 +1010,31 @@ function computeMAPX(w,h){
     }
   }catch(e){ nT=0; }
   const stripGutter=nT?(STRIP.padL+STRIP.padR+STRIP.colW*nT+STRIP.gap*(nT-1)):0;   // 70px @3 tenors, 112px @5
-  const lineEnd=stripEnd-stripGutter;
-  return { W:w, H:h, padT:22, padB:24, axisLX:48, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
+  // HEDGE RAIL: same TDZ hazard as nT (computeMAPX runs before `let RAIL_ON` binds),
+  // so the same try/catch, and the same fallback to 0 = today's geometry exactly.
+  let nR=0, nRWant=0, railLaneW=0;
+  try{
+    if(typeof RAIL_ON!=='undefined'&&RAIL_ON&&typeof railAvail==='function'&&railAvail()){
+      nRWant=Math.min(RAIL.maxLanes,_railBands().length);
+      nR=nRWant;
+      // WIDTH GUARD: a new band must never DELETE the bar lane. The rail may only spend
+      // what is left once the bars have their floor; lanes grow into that budget up to
+      // maxLane, and shrink to minLane before a lane is SHED. Only a map too narrow for
+      // one minLane lane drops the rail — and the chip says "no room" out loud rather
+      // than silently reading Off.
+      const budget=stripEnd-stripGutter-x0-RAIL.minBar;      // px the rail may take
+      while(nR>0 && RAIL.gutterFor(nR, RAIL.laneFor(nR, budget, w))>budget) nR--;
+      railLaneW=nR?RAIL.laneFor(nR,budget,w):0;
+    }
+  }catch(e){ nR=0; nRWant=0; railLaneW=0; }
+  const railGutter=RAIL.gutterFor(nR, railLaneW);
+  const railX0=stripEnd-railGutter;      // ===stripEnd when the rail is off
+  const lineEnd=railX0-stripGutter;      // ===stripEnd-stripGutter when the rail is off
+  // padT grows for the rail's two header rows (expiry + the $ figure). It is the SHARED
+  // top pad, so every layer moves together and the price axis stays one scale — the
+  // headers get real room instead of being squeezed into 8px type.
+  return { W:w, H:h, padT:(nR?38:22), padB:24, axisLX:48, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
+    nR, nRWant, railGutter, railX0, railLaneW,
     // 88% of the lane: everything right of lineEnd is gutter/tag territory the
     // bars never enter; edge markers + legend get surface halos instead of margin
     barMax:Math.min(lineEnd-x0-6, Math.max(160, Math.round((lineEnd-x0)*0.88))), pHigh:7660, pLow:7430 };
@@ -1164,7 +1194,6 @@ function gxBuild(){
     host.innerHTML=`<div class="gx-strip" id="gx-strip"></div><div class="gx-chart"></div>`+
       `<div class="gx-tower"><span class="tr-eye"></span><div class="tr-body"><span class="label">Watchtower · forward read</span>`+
       `<p class="tr-next" id="gx-tower-next">—</p></div></div>`;
-    const _cc=host.querySelector('.gx-chart'); if(_cc&&typeof openZonesModal==='function'){ _cc.style.cursor='pointer'; _cc.addEventListener('click', openZonesModal); }
   }
   const m=measureChart(); if(!m) return;
   _mapW=m.w; _mapH=m.h;
@@ -1182,12 +1211,15 @@ function gxBuild(){
   const tbars=MSTRIKES.map(()=>`<rect class="gxtbar" x="${X.x0}" y="0" width="0" height="0" rx="1.2" style="fill-opacity:.12;stroke-width:1;opacity:.85"/>`).join('');
   const lvl=MIDS.map(id=>{ const mm=MMETA[id], spot=id==='spot';
     return `<line id="lead-${id}" style="stroke:${mm.c};opacity:0"/>`+
-      `<line id="lc-${id}" x1="${X.x0}" x2="${spot?X.stripEnd:X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
-      `<line id="lvl-${id}" x1="${X.x0}" x2="${spot?X.stripEnd:X.lineEnd}" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+   /* spot runs THROUGH the ladder gutter → one continuous "where am I" line across bars + dated columns */
-      `<text id="nm-${id}" x="${X.tagX}" text-anchor="end" style="fill:${spot?'var(--iris)':'var(--ink-dim)'}" font-size="11.5" font-weight="600" font-family="var(--sans)" letter-spacing=".04em">${mm.n}</text>`+
-      `<text id="vl-${id}" x="${X.tagX}" text-anchor="end" style="fill:${mm.c}" font-size="${spot?21:18}" font-weight="700" font-family="var(--mono)"></text>`; }).join('');
+      `<line id="lc-${id}" x1="${X.x0}" x2="${spot?X.railX0:X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
+      `<line id="lvl-${id}" x1="${X.x0}" x2="${spot?X.railX0:X.lineEnd}" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+   /* spot runs THROUGH the ladder gutter → one continuous "where am I" line across bars + dated columns */
+      `<text id="nm-${id}" x="${X.tagX}" text-anchor="end" style="fill:${spot?'var(--iris)':'var(--ink-dim)'}" font-size="10.5" font-weight="600" font-family="var(--sans)" letter-spacing=".03em">${mm.n}</text>`+
+      `<text id="vl-${id}" x="${X.tagX}" text-anchor="end" style="fill:${mm.c}" font-size="${spot?17:15}" font-weight="700" font-family="var(--mono)"></text>`; }).join('');
   document.querySelector('#p-map .gx-chart').innerHTML=
    `<svg viewBox="0 0 ${X.W} ${X.H}" preserveAspectRatio="none" role="img" aria-label="Live GEX map: net gamma exposure by strike with the price axis, dealer levels, and the Watchtower forecast">
+     <defs><pattern id="rlHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+       <line x1="0" y1="0" x2="0" y2="6" stroke="var(--lantern)" stroke-width="1.5" opacity=".30"/>
+     </pattern></defs>
      <defs>
        <linearGradient id="gxJ" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--jade)" stop-opacity=".95"/><stop offset="1" stop-color="var(--jade)" stop-opacity=".36"/></linearGradient>
        <linearGradient id="gxC" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--coral)" stop-opacity=".92"/><stop offset="1" stop-color="var(--coral)" stop-opacity=".32"/></linearGradient>
@@ -1196,9 +1228,12 @@ function gxBuild(){
      </defs>
      <rect id="washTop" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--jade);opacity:.045"/>
      <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
+     <rect id="magCloud" x="${X.x0}" width="${X.lineEnd-X.x0}" height="0" style="fill:var(--l-grav);opacity:.10"/>
      <g id="axisG">${axis}</g>
      <rect id="spotLane" x="${X.x0}" width="0" style="fill:var(--iris);opacity:0"/>
      <g id="datedOIG"></g>
+     <g id="railG"></g>
+     <g id="scrubG" style="pointer-events:none"></g>
      <!-- zero axis of the diverging bars (UW layout): − grows left, + grows right.
           UNDER barsG: a floored 1.5px hairline sits exactly at the axis, and the
           axis drawn on top erased it (pressure test 07-12) — bars must win. -->
@@ -1209,20 +1244,23 @@ function gxBuild(){
      <g id="datedG"></g>
      <g id="datedOILgdG"></g>
      ${lvl}
-     <line id="wtTgtL" x1="${X.x0}" x2="${X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
+     <line id="wtTgtL" x1="${X.x0}" x2="${X.nR?X.stripEnd:X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
      <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
      <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan> · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►</text>
    </svg>`;
   const q=id=>document.getElementById(id);
-  MAP={ washTop:q('washTop'), washBot:q('washBot'), axisG:q('axisG'),
+  MAP={ washTop:q('washTop'), washBot:q('washBot'), magCloud:q('magCloud'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], spotTri:q('spotTri'),
     tbars:[...document.querySelectorAll('#tenorG .gxtbar')], barArrows:q('barArrowsG'),
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
+    railG:q('railG'), _rkey:null, scrubG:q('scrubG'), _skey:null,
+    svg:document.querySelector('#p-map .gx-chart svg'),
     datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
     lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
   gxMountInfoBtn();                       // re-mount the "?" (this rebuilt .gx-chart)
+  gxMountScrub();                         // re-mount the price scrub (same reason)
   gxOverview(); gxTower(); gxPaint();
 }
 function gxPaint(){
@@ -1231,6 +1269,32 @@ function gxPaint(){
   // regime wash, split at the gamma-flip
   MAP.washTop.setAttribute('y',X.padT); MAP.washTop.setAttribute('height',Math.max(0,fy-X.padT).toFixed(1));
   MAP.washBot.setAttribute('y',fy.toFixed(1)); MAP.washBot.setAttribute('height',Math.max(0,X.H-X.padB-fy).toFixed(1));
+  // m5: the background only speaks when the ENGINE's sign read does — on a tie or a
+  // blackout (sign unknown) the calm/amplify washes go near-invisible instead of
+  // painting a confident story the pill (grey · sign?) is simultaneously denying.
+  // ...and on ISLAND geometry (multi-crossing books: sign-at-spot disagrees with
+  // spot's side of the nearest flip) the split-at-flip picture itself is wrong —
+  // no confident background there either (verify round).
+  const _known=(D.sign==='positive'||D.sign==='negative');
+  const _island=_known&&isFinite(D.flip)&&isFinite(D.spot)&&((D.spot>D.flip)!==(D.sign==='positive'));
+  const _wOp=(_known&&!_island)?'.045':'.012';
+  MAP.washTop.style.opacity=_wOp; MAP.washBot.style.opacity=_wOp;
+  // m3: a SPREAD-OUT pull draws as a cloud, not a line — when zone-1 is wide (>25pts)
+  // or thin (share <35%), a translucent gravity band spans the zone so a 5%-of-mass
+  // smear can never read as a precise target. The line stays (it IS the weighted
+  // center); the cloud says how much neighborhood to give it.
+  if(MAP.magCloud){
+    const z1=(T.zones&&T.zones[0])||null;
+    const fuzzy=z1&&z1.lo!=null&&z1.hi!=null&&z1.hi>z1.lo&&((z1.hi-z1.lo)>25||(z1.s!=null&&z1.s<0.35));
+    if(fuzzy){
+      // clamped to the plot area (edge convention, same as the wt target): an
+      // off-frame zone edge must not bleed behind the caption/rail headers
+      const cT=y=>Math.min(X.H-X.padB, Math.max(X.padT, y));
+      const yT=cT(yFor(z1.hi)), yB=cT(yFor(z1.lo));
+      MAP.magCloud.setAttribute('y',Math.min(yT,yB).toFixed(1));
+      MAP.magCloud.setAttribute('height',Math.abs(yB-yT).toFixed(1));
+    } else MAP.magCloud.setAttribute('height','0');
+  }
   // net-gamma-by-strike profile. PREFERRED: the MEASURED per-strike field the engine
   // now persists (net_by_strike = real net dealer GEX, calls +/puts −). FALLBACK
   // (demo feed / rows written before the field shipped): a modeled Gaussian around the
@@ -1378,7 +1442,7 @@ function gxPaint(){
     const sd=(D.sigma>0)?((valOf[id]-D.spot)/D.sigma):0;
     R.nm.style.opacity=1; R.nm.setAttribute('y',(ly-8).toFixed(1)); R.nm.textContent=id==='spot'?mm.n:`${mm.n} ${sig(sd)}`;
     R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
-    if(Math.abs(ly-yy)>2){ R.lead.setAttribute('x1',X.stripEnd); R.lead.setAttribute('y1',yy.toFixed(1)); R.lead.setAttribute('x2',(X.tagX-118).toFixed(1)); R.lead.setAttribute('y2',ly.toFixed(1)); R.lead.style.opacity=.3; }   // leads start PAST the ladder gutter — never cross the tenor columns
+    if(Math.abs(ly-yy)>2){ R.lead.setAttribute('x1',X.stripEnd); R.lead.setAttribute('y1',yy.toFixed(1)); R.lead.setAttribute('x2',(X.tagX-86).toFixed(1)); R.lead.setAttribute('y2',ly.toFixed(1)); R.lead.style.opacity=.3; }   // leads start PAST the ladder gutter — never cross the tenor columns
     else R.lead.style.opacity=0;
   });
   // spot marker — a triangle pointing in from the axis
@@ -1407,10 +1471,10 @@ function gxPaint(){
   // through the gutter from the level system). Spans only when the gutter is up.
   if(MAP.spotLane){
     MAP.spotLane.setAttribute('y',(sy-MROWH/2).toFixed(1)); MAP.spotLane.setAttribute('height',MROWH.toFixed(1));
-    MAP.spotLane.setAttribute('width',(X.stripEnd-X.x0).toFixed(1));
+    MAP.spotLane.setAttribute('width',(X.railX0-X.x0).toFixed(1));
     MAP.spotLane.style.opacity=(X.nT>0)?0.06:0;   // only with the dated layer → off-state stays identical
   }
-  paintDated(); paintDatedOI();
+  paintDated(); paintDatedOI(); paintHedgeRail(); paintScrub();
 }
 // ---- DATED γ PROFILE (v2, toggle): the FULL per-strike dated NET GEX field, one
 // wash+tick layer per expiration, drawn UNDER the live gamma bars. This is the
@@ -1444,7 +1508,9 @@ async function fetchDatedBook(){
         // draw fresh bands against stale geometry (the ladder would overflow
         // into the tag strip until the next scan otherwise)
         const want=(DOI_ON&&datedOIAvail())?Math.min(5,_dglBands().length):0;
-        if(want!==(MAPX.nT||0)) buildMap();
+        const wantR=(typeof RAIL_ON!=='undefined'&&RAIL_ON&&railAvail())
+          ? Math.min(RAIL.maxLanes,_railBands().length) : 0;
+        if(want!==(MAPX.nT||0) || wantR!==(MAPX.nRWant||0)) buildMap();
       }
     }
   }catch(e){}
@@ -1580,14 +1646,16 @@ function paintDatedOI(){
   svg+=`<rect x="${X.lineEnd}" y="${X.padT}" width="${X.stripGutter}" height="${(X.H-X.padT-X.padB).toFixed(1)}" rx="3" fill="var(--dgl-gutter)" style="shape-rendering:auto"/>`
      +`<line x1="${X.lineEnd}" x2="${X.lineEnd}" y1="${X.padT}" y2="${Math.max(X.padT,sy-8).toFixed(1)}" style="stroke:var(--hairline)"/>`
      +`<line x1="${X.lineEnd}" x2="${X.lineEnd}" y1="${Math.min(X.H-X.padB,sy+8).toFixed(1)}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`
-     +`<line x1="${X.stripEnd}" x2="${X.stripEnd}" y1="${X.padT}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`;
+     +`<line x1="${X.railX0}" x2="${X.railX0}" y1="${X.padT}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--hairline)"/>`;
   // single-row column headers — identity as TEXT, read not decoded
   profs.forEach(p=>{
     const cx=colX(p.i)+STRIP.colW/2;
     // per-band freshness (H9): an aged column DIMS (the <g> wrap below) and its
     // header carries the age in the hover title — a text suffix ("·3d") was
     // tried and collides at the 21px column pitch, so the ink stays quiet
-    svg+=`<text x="${cx.toFixed(1)}" y="13" text-anchor="middle" font-size="9" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}<title>${p.tag} · pulled ${p.age===0?'today':p.age+'d ago'}</title></text>`;
+    // sits just above the panel — follows padT so it stays put when the rail's taller
+    // header band raises it (both gutters then share ONE header baseline)
+    svg+=`<text x="${cx.toFixed(1)}" y="${(X.padT-9).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}<title>${p.tag} · pulled ${p.age===0?'today':p.age+'d ago'}</title></text>`;
   });
   profs.forEach(p=>{
     const cx=colX(p.i), xC=cellX(p.i), cells=[];
@@ -1661,6 +1729,281 @@ function paintDatedOI(){
     }
   }
 }
+// ================= HEDGE RAIL (>7DTE) — what dealers must DO ====================
+// The heat ladder says a dated strike is BIG. It cannot say what price does there, or
+// what a market maker has to trade to stay neutral. The rail answers both, on the map's
+// OWN price axis, in its own gutter to the right of the ladder.
+//
+//   x = net dealer gamma ($B of delta per 1% move) against a vertical zero rule.
+//       RIGHT of zero = jade = dealers trade AGAINST the move (sell rallies, buy dips)
+//                            → the move is DAMPED. LEFT = coral = they trade WITH it
+//                            → the move is FED. Same sign language as the live bars.
+//   y = yFor() VERBATIM. There is never a second price scale on this map.
+//
+// The header number is the whole product: what a +1% move forces dealers to trade.
+//
+// CONTESTED: net gamma at spot is a small difference of two large numbers, and the
+// vanna channel can out-vote it. The feed sweeps the spot-vol beta (0→1) and asks
+// whether the sign of that hedge FLIPS. When it does, the lane gets a lantern hatch,
+// no directional fill, and both bounds in the tooltip — "gamma says sell, vanna says
+// buy" is worth more than a confident colour that is a coin-flip. A panel that never
+// says "I don't know" has never told you anything.
+//
+// Sign is ASSUMED (dealers long calls / short puts) — the store is magnitude-only by
+// design. Record-only: feeds nothing. Not the fade lens, not Watchtower, not the reasoner.
+let RAIL_ON=(function(){ try{ return localStorage.getItem('gx.hedgeRail')==='1'; }catch(e){ return false; } })();
+let RAIL_CUR=null;                        // scrubbed price, or null = the resting +1% read
+function railOn(){ return RAIL_ON; }
+function _rlDte(bd){                       // LIVE dte — the book only ships dte_at_pull
+  try{ const d=Math.round((new Date(String(bd.expiry))-new Date(new Date().toISOString().slice(0,10)))/86400000);
+       return isFinite(d)?d:-1; }catch(e){ return -1; }
+}
+// ADMISSION GATE — a lane draws only with a nightly profile, an EXPLICIT contested
+// verdict, and >7 DTE. A band that has AGED to <=7DTE belongs to the live chain, not a
+// days-old sidecar: it leaves the rail on its own while staying in the heat ladder.
+// (Today JUL17 is 5 DTE — it is 84% of the book's hedge flow and it does NOT belong here.)
+function _railBands(){
+  return _dglBands().filter(bd=>{
+    const p=bd&&bd.profile;
+    return _rlDte(bd)>7 && p && Array.isArray(p.grid) && Array.isArray(p.gex)
+      && p.grid.length>1 && p.grid.length===p.gex.length && typeof p.contested==='boolean';
+  }).slice(0,RAIL.maxLanes);
+}
+function railAvail(){ return datedOIAvail() && _railBands().length>0; }   // never a dead switch
+function toggleHedgeRail(){
+  RAIL_ON=!RAIL_ON;
+  try{ localStorage.setItem('gx.hedgeRail', RAIL_ON?'1':'0'); }catch(e){}
+  if(MAP){ MAP._rkey=null; }
+  buildMap();          // REFRAME: the rail gutter changes the lane geometry
+  gxOverview();
+}
+function _rlAt(p,x){                       // net γ ($B/1%) at a price — linear interp
+  const g=p.grid, v=p.gex, n=g.length;
+  if(!(x>g[0])) return +v[0];
+  if(x>=g[n-1]) return +v[n-1];
+  for(let i=1;i<n;i++) if(x<=g[i]){ const t=(x-g[i-1])/(g[i]-g[i-1]); return +v[i-1]+t*((+v[i])-(+v[i-1])); }
+  return +v[n-1];
+}
+const _rlB=v=>{ const a=Math.abs(v); return a<0.995?'$'+Math.round(a*1000)+'M':'$'+a.toFixed(1)+'B'; };
+// $B of delta dealers must trade to stay neutral moving spot -> px. gex is $B per 1%,
+// so integrate over PERCENT. Sign: + = they must BUY. This is the same trapezoid the
+// nightly feed uses for h1 (the +1% case); scrubbing just moves the upper limit.
+function _rlHedge(p,spot,px){
+  const lo=Math.min(spot,px), hi=Math.max(spot,px), n=32;
+  if(!(spot>0)||hi-lo<1e-9) return 0;
+  let acc=0;
+  for(let i=0;i<n;i++){ const a=lo+(hi-lo)*i/n, b=lo+(hi-lo)*(i+1)/n;
+    acc+=0.5*(_rlAt(p,a)+_rlAt(p,b))*((b-a)/spot*100); }
+  if(px<spot) acc=-acc;
+  return -acc;
+}
+function paintHedgeRail(){
+  if(!MAP||!MAP.railG) return;
+  const X=MAPX, b=DBOOK.book;
+  const ok=RAIL_ON&&(typeof LIVE==='undefined'||LIVE)&&X.nR>0&&railAvail()&&MSTRIKES.length;
+  // spot bucketed to 5pts — the spot tick re-evaluates as price eases without rebuilding
+  // this <g> every frame (the same key discipline paintDatedOI uses)
+  const key=(ok?String(b.as_of)+'@'+new Date().toISOString().slice(0,10):'off')
+    +`#${X.nR}|${X.railLaneW}|${X.railX0}|${X.padT}|${X.pLow}|${X.pHigh}|${Math.round((D.spot||0)/5)}`
+    +`@${RAIL_CUR==null?'-':Math.round(RAIL_CUR)}`;
+  if(key===MAP._rkey) return;
+  MAP._rkey=key;
+  if(!ok){ MAP.railG.innerHTML=''; return; }
+  const bands=_railBands().slice(0,X.nR);
+  const spot=(D.spot&&isFinite(D.spot))?D.spot:(+b.spot||0);
+  if(!bands.length||!spot){ MAP.railG.innerHTML=''; return; }
+  const lw=X.railLaneW||RAIL.minLane, half=lw/2-RAIL.inset;
+  // type scales with the lane — a 78px lane on a 13" tablet should not wear 8px labels
+  const fHead=lw>=120?12:lw>=96?11:10, fVal=lw>=120?17:lw>=96?15:13;
+  const T0=X.padT, B0=X.H-X.padB, sy=Math.max(T0,Math.min(B0,yFor(spot)));
+  // ONE x-scale, SHARED across lanes (so AUG's $1.4B still visibly out-leans SEP's $830M
+  // — per-lane normalization is as banned here as it is on the bars).
+  //
+  // Anchored on the max |net| across the VISIBLE FRAME, not the full ±6% profile. The
+  // full-profile anchor was the honest-sounding choice and it was wrong: the frame is
+  // only ~200pts of a 900pt curve, so every lane collapsed into a dead vertical line and
+  // the lean — the entire point of the rail — was invisible. The frame only moves on a
+  // reframe (>15% drift), never tick-to-tick, so this does not breathe with the tape.
+  let mx=1e-9;
+  bands.forEach(bd=>{
+    for(let j=0;j<=24;j++){
+      const a=Math.abs(_rlAt(bd.profile, X.pLow+(X.pHigh-X.pLow)*j/24));
+      if(a>mx) mx=a;
+    }
+  });
+  mx*=1.08;                                 // a hair of headroom so the peak never kisses the wall
+  let s='';
+  s+=`<rect x="${X.railX0}" y="${T0}" width="${X.railGutter}" height="${(B0-T0).toFixed(1)}" rx="3" fill="var(--dgl-gutter)" style="shape-rendering:auto"/>`
+   + `<line x1="${X.stripEnd}" x2="${X.stripEnd}" y1="${T0}" y2="${B0.toFixed(1)}" style="stroke:var(--hairline)"/>`;
+  bands.forEach((bd,i)=>{
+    const p=bd.profile, cx0=X.railX0+RAIL.padL+i*(lw+RAIL.gap), zx=cx0+lw/2, cont=!!p.contested;
+    const xF=v=>zx+Math.max(-1,Math.min(1,(+v)/mx))*half;   // clamped — never bleeds into a neighbour
+    const head=_dexp(bd.expiry), dte=_rlDte(bd);
+    // SCRUBBING: read the lane at the dragged price. Otherwise the resting headline is
+    // the +1% answer the nightly feed already computed (p.h1 — γ-only, so the CONTESTED
+    // bounds in p.h1_range still apply to it).
+    const scrub=(RAIL_CUR!=null&&isFinite(RAIL_CUR))?+RAIL_CUR:null;
+    const tgt=scrub!=null?scrub:spot*1.01;
+    const gv=_rlAt(p, scrub!=null?scrub:spot);              // net γ AT the read price
+    const h1=scrub!=null ? _rlHedge(p,spot,scrub)
+                         : ((p.h1!=null&&isFinite(p.h1))?+p.h1:null);
+    const rg=Array.isArray(p.h1_range)?p.h1_range:null;
+    // the curve, sampled ONLY across the visible frame — the sills close the fill exactly
+    const N=60, pts=[];
+    for(let j=0;j<=N;j++){ const pr=X.pLow+(X.pHigh-X.pLow)*j/N; pts.push({y:yFor(pr), v:_rlAt(p,pr)}); }
+    const yA=pts[0].y.toFixed(1), yZ=pts[N].y.toFixed(1);
+    if(cont){                                               // CONTESTED: shape, no sign
+      const d=`M ${zx} ${yA} `+pts.map(q=>`L ${xF(q.v).toFixed(1)} ${q.y.toFixed(1)}`).join(' ')+` L ${zx} ${yZ} Z`;
+      s+=`<path d="${d}" fill="url(#rlHatch)"/>`;
+    } else {
+      const up=`M ${zx} ${yA} `+pts.map(q=>`L ${xF(Math.max(0,q.v)).toFixed(1)} ${q.y.toFixed(1)}`).join(' ')+` L ${zx} ${yZ} Z`;
+      const dn=`M ${zx} ${yA} `+pts.map(q=>`L ${xF(Math.min(0,q.v)).toFixed(1)} ${q.y.toFixed(1)}`).join(' ')+` L ${zx} ${yZ} Z`;
+      s+=`<path d="${up}" fill="var(--jade)" opacity=".16"/><path d="${dn}" fill="var(--coral)" opacity=".16"/>`;
+    }
+    // HEDGE BAND — the stretch of price the number is about. In the artifact this area IS
+    // the dollars; here the curve is x-clamped to the lane, so the AREA is indicative and
+    // the NUMBER carries the value. Nothing on the map claims otherwise.
+    if(spot&&Math.abs(tgt-spot)>1){
+      const ys=yFor(spot), yt=Math.max(T0,Math.min(B0,yFor(tgt)));
+      const bc=cont?'var(--lantern)':((h1||0)>0?'var(--jade)':'var(--coral)');
+      s+=`<rect x="${(cx0+1).toFixed(1)}" y="${Math.min(ys,yt).toFixed(1)}" width="${lw-2}" height="${Math.abs(ys-yt).toFixed(1)}" fill="${bc}" opacity="${scrub!=null?.22:.10}"/>`;
+    }
+    // zero rule + the spot row inside the lane (the level system's spot line now stops
+    // at railX0 so its --ground casing can't gash the curve)
+    s+=`<line x1="${zx}" x2="${zx}" y1="${T0}" y2="${B0.toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>`
+     + `<line x1="${cx0}" x2="${cx0+lw}" y1="${sy.toFixed(1)}" y2="${sy.toFixed(1)}" style="stroke:var(--iris);opacity:.5;stroke-width:1.2"/>`
+     + `<path d="${pts.map((q,j)=>`${j?'L':'M'} ${xF(q.v).toFixed(1)} ${q.y.toFixed(1)}`).join(' ')}" fill="none" stroke="${cont?'var(--lantern)':'var(--iris)'}" stroke-width="1.8" stroke-linejoin="round" opacity=".95"/>`;
+    // FLIP — where the mechanic inverts.
+    const fl=(p.flip!=null&&isFinite(p.flip))?+p.flip:null;
+    if(fl!=null&&fl>=X.pLow&&fl<=X.pHigh){                  // IN FRAME → tick + price
+      const fy=yFor(fl);
+      s+=`<line x1="${(zx-9).toFixed(1)}" x2="${(zx+9).toFixed(1)}" y1="${fy.toFixed(1)}" y2="${fy.toFixed(1)}" style="stroke:var(--lantern);stroke-width:1.6"/>`
+       + `<text x="${(cx0+lw-3).toFixed(1)}" y="${(fy-5).toFixed(1)}" text-anchor="end" font-size="${fHead}" font-weight="700" font-family="var(--mono)" style="fill:var(--lantern);${_HALO}">${Math.round(fl).toLocaleString('en-US')}</text>`;
+    } else if(fl!=null){
+      // OFF FRAME (the normal case — SEP30's flip sits ~90pts under pLow). A lane that is
+      // one-sided IN VIEW while its flip lies just past the sill reads "all safe" and is a
+      // lie. So the sill it lies beyond gets the colour the book turns into out there:
+      // a 3-step bleed, a horizon rule that reads CUT (not ended), and a caret + price.
+      // All clamped inside padT..H-padB — #gx-cap and the ladder legend own the 24px
+      // below and are never entered, so their collision-degrade loop is untouched.
+      const below=fl<X.pLow, bs=_rlAt(p, below?fl-20:fl+20);
+      const bcol=bs>=0?'var(--jade)':'var(--coral)', BH=12;
+      for(let t=0;t<3;t++){
+        const yy=below?(B0-BH+t*(BH/3)):(T0+t*(BH/3));
+        const op=below?(0.10+0.09*t):(0.28-0.09*t);
+        s+=`<rect x="${cx0}" y="${yy.toFixed(1)}" width="${lw}" height="${(BH/3+0.5).toFixed(1)}" fill="${bcol}" opacity="${op.toFixed(2)}"/>`;
+      }
+      const hy=below?B0:T0;
+      s+=`<line x1="${cx0}" x2="${cx0+lw}" y1="${hy.toFixed(1)}" y2="${hy.toFixed(1)}" style="stroke:var(--lantern);stroke-width:2.5;opacity:.9"/>`
+       + `<text x="${zx.toFixed(1)}" y="${(below?B0-4:T0+11).toFixed(1)}" text-anchor="middle" font-size="${fHead}" font-weight="700" font-family="var(--mono)" style="fill:var(--lantern);${_HALO}">${below?'⌄':'⌃'}${Math.round(fl).toLocaleString('en-US')}</text>`;
+    }
+    // HEADER — two rows in the y<padT band the ladder headers already own (different
+    // COLUMNS, x>=railX0). Zero vertical cost, no new DOM, legend untouched.
+    // ▲/▼ = BUY/SELL in --ink, NOT jade/coral: those two hues already mean damp-vs-amplify
+    // 40px away, and one hue must never carry two meanings on the same screen.
+    // A CONTESTED lane still shows the γ-only number — with a trailing "?" and no fill.
+    // A bare "?" throws away something we DO know (gamma says sell $1.4B) and reads as
+    // broken; the honest render is the number plus the doubt, not the doubt alone. The
+    // no-fill + lantern hue + "?" carry the uncertainty; the tooltip carries both bounds.
+    const t2=(h1!=null)?`${h1>0?'▲':'▼'}${_rlB(h1)}${cont?'?':''}`:(cont?'?':'—');
+    const t0=scrub!=null?`→ ${Math.round(scrub).toLocaleString('en-US')}`:head;
+    const ttl=`${head} · ${dte} DTE · net ${gv>=0?'+':'−'}${_rlB(gv)} per 1% at spot`
+      +` · ${scrub!=null?`a move to ${Math.round(scrub).toLocaleString('en-US')}`:'a +1% move'} forces dealers to ${h1>0?'BUY':'SELL'} ${_rlB(h1)} of delta to stay neutral`
+      +(cont
+        ? ` · CONTESTED — sweeping the spot-vol beta (0→1) FLIPS the sign of the +1% hedge: γ alone says ${(p.h1||0)>0?'BUY':'SELL'} ${_rlB(p.h1||0)}, but with vanna the range is ${_rlB(rg?rg[0]:0)} ${rg&&rg[0]<0?'sell':'buy'} → ${_rlB(rg?rg[1]:0)} ${rg&&rg[1]>0?'buy':'sell'}. No fill, no direction claimed.`
+        : '')
+      +(fl!=null?` · flip ${Math.round(fl).toLocaleString('en-US')}${(fl>X.pHigh||fl<X.pLow)?' (OFF-FRAME — the lane inverts beyond the marked sill)':''}`:' · no flip in range')
+      +` · assumed sign (calls long / puts short) · record-only, feeds nothing`;
+    s+=`<text x="${zx.toFixed(1)}" y="${(T0-24).toFixed(1)}" text-anchor="middle" font-size="${fHead}" font-weight="700" font-family="var(--mono)" letter-spacing=".06em" style="fill:var(--${scrub!=null?'iris':'ink-dim'});${_HALO}">${t0}<title>${ttl}</title></text>`
+     + `<text x="${zx.toFixed(1)}" y="${(T0-9).toFixed(1)}" text-anchor="middle" font-size="${fVal}" font-weight="${cont?800:700}" font-family="var(--mono)" style="fill:var(--${cont?'lantern':'ink'});${_HALO}">${t2}<title>${ttl}</title></text>`;
+  });
+  MAP.railG.innerHTML=s;
+}
+// ---- PRICE SCRUB: drag the map, the rail answers -------------------------------
+// The rail's headline is "what a +1% move forces dealers to trade". The obvious next
+// question is "…and at 7,650?" — so drag. A scrub line follows the finger, and every
+// lane re-reads: net γ at that price, and the dollars of delta dealers must trade to
+// get there from spot. Release and it STICKS (a tablet has no hover; a value that
+// evaporates on lift is unreadable). Tap the spot row, or press Esc, to clear.
+//
+// The whole-chart click that opened Magnet Zones was removed — this is a DRAG, and a
+// tap that never moves clears rather than opens, so nothing fires by accident.
+const _RAIL_SLOT='display:inline-block;min-width:7ch;text-align:left;font-variant-numeric:tabular-nums';
+function _railChipTail(){                 // FIXED WIDTH — see the note above _railChipSync
+  return RAIL_CUR!=null
+    ? ` · <span style="${_RAIL_SLOT};color:var(--iris)">${Math.round(RAIL_CUR).toLocaleString('en-US')}</span>`
+    : ` · <span style="${_RAIL_SLOT}">+1%</span>`;
+}
+function _railChipSync(){                 // patch the ONE node the scrub owns
+  const el=document.getElementById('gx-rail-v');
+  if(!el||!RAIL_ON||!(MAPX.nR||0)) return;
+  const tail=_railChipTail();
+  const head='<span style="color:var(--jade)">On</span> · '
+    + _railBands().slice(0,MAPX.nR).map(bd=>_dexp(bd.expiry)).join('·');
+  const html=head+tail;
+  if(el.innerHTML!==html) el.innerHTML=html;
+}
+function _scrubPrice(y){                  // inverse of yFor(), clamped to the plot
+  const X=MAPX, t=X.padT, b=X.H-X.padB;
+  const yy=Math.max(t,Math.min(b,y));
+  return X.pHigh-(yy-t)/(b-t)*(X.pHigh-X.pLow);
+}
+function gxMountScrub(){
+  const svg=MAP&&MAP.svg; if(!svg) return;
+  let drag=false, moved=false;
+  const toY=e=>{ const r=svg.getBoundingClientRect();
+    return (e.clientY-r.top)*(MAPX.H/Math.max(1,r.height)); };
+  let raf=0, pend=null;
+  const set=p=>{                          // coalesced: at most one repaint per frame
+    pend=p;
+    if(raf) return;
+    raf=requestAnimationFrame(()=>{
+      raf=0;
+      RAIL_CUR=pend;
+      MAP._rkey=null; MAP._skey=null;
+      paintHedgeRail(); paintScrub(); _railChipSync();
+    });
+  };
+  const setNow=p=>{                       // clears must land immediately, not next frame
+    if(raf){ cancelAnimationFrame(raf); raf=0; }
+    RAIL_CUR=p; MAP._rkey=null; MAP._skey=null;
+    paintHedgeRail(); paintScrub(); _railChipSync();
+  };
+  svg.style.touchAction='pan-x';          // let the page still scroll sideways
+  svg.addEventListener('pointerdown',e=>{
+    if(!MAPX.nR) return;                  // no rail → nothing to scrub
+    drag=true; moved=false;
+    try{ svg.setPointerCapture(e.pointerId); }catch(_){}
+    set(_scrubPrice(toY(e)));
+  });
+  svg.addEventListener('pointermove',e=>{ if(!drag) return; moved=true; set(_scrubPrice(toY(e))); });
+  const end=e=>{
+    if(!drag) return;
+    drag=false;
+    // a tap that never moved = clear (and a scrub parked ON spot means "never mind")
+    if(!moved || (D.spot && RAIL_CUR!=null && Math.abs(RAIL_CUR-D.spot)/D.spot < 0.0008)) setNow(null);
+  };
+  svg.addEventListener('pointerup',end);
+  svg.addEventListener('pointercancel',()=>{ drag=false; });
+  svg.addEventListener('pointerleave',()=>{ drag=false; });
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&RAIL_CUR!=null){
+  RAIL_CUR=null; if(MAP){MAP._rkey=null; MAP._skey=null;} paintHedgeRail(); paintScrub(); _railChipSync(); } });
+function paintScrub(){
+  if(!MAP||!MAP.scrubG) return;
+  const X=MAPX;
+  const key=(RAIL_CUR==null?'off':Math.round(RAIL_CUR))+`#${X.nR}|${X.railX0}|${X.pLow}|${X.pHigh}|${X.H}`;
+  if(key===MAP._skey) return;
+  MAP._skey=key;
+  if(RAIL_CUR==null||!X.nR){ MAP.scrubG.innerHTML=''; return; }
+  const y=yFor(RAIL_CUR), spot=D.spot||0;
+  const pct=spot?((RAIL_CUR/spot-1)*100):0;
+  const lbl=`${Math.round(RAIL_CUR).toLocaleString('en-US')}  ${pct>=0?'+':''}${pct.toFixed(2)}%`;
+  MAP.scrubG.innerHTML=
+     `<line x1="${X.x0}" x2="${X.stripEnd}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" style="stroke:var(--iris);stroke-width:1.5;opacity:.9"/>`
+   + `<rect x="${(X.x0+2).toFixed(1)}" y="${(y-9).toFixed(1)}" width="104" height="18" rx="4" fill="var(--iris)"/>`
+   + `<text x="${(X.x0+8).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="11" font-weight="700" font-family="var(--mono)" style="fill:var(--ground)">${lbl}</text>`;
+}
 // ---- DATED BOOK overlay: far structural OI walls (next 2 monthlies + quarter-end) ----
 // Shaded by EXPIRATION — nearer expiries brighter, further dimmer — so one glance says
 // which tenor a wall belongs to. Walls picked moneyness-aware at DISPLAY time (a max-OI
@@ -1680,7 +2023,14 @@ function _dexp(iso){ const m=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','S
   try{ const p=iso.split('-'); return m[+p[1]-1]+p[2]; }catch(e){ return iso; } }
 function _dwalls(b, spot){
   const pick=(arr,pred)=>{ for(const kv of (arr||[])) if(kv&&isFinite(kv[0])&&pred(kv[0])) return +kv[0]; return null; };
-  const cw=pick(b.top_calls,k=>k>=spot), pw=pick(b.top_puts,k=>k<=spot);
+  // m7: the engine's nearest-STRONG wall leads when present — the put wall should
+  // mark support NEAR price, not a 7000-class crash bet 8% below. The ranked pick
+  // and the magnitude king stay as fallbacks (pre-m7 books carry no near_* keys).
+  // live-side guard (verify round): near_* was computed at pull-time spot — a wall
+  // price has since walked through must not lead; the ranked pick takes over.
+  const ncw=(b.near_call_wall!=null&&isFinite(b.near_call_wall)&&b.near_call_wall>spot)?+b.near_call_wall:null;
+  const npw=(b.near_put_wall!=null&&isFinite(b.near_put_wall)&&b.near_put_wall<spot)?+b.near_put_wall:null;
+  const cw=ncw??pick(b.top_calls,k=>k>=spot), pw=npw??pick(b.top_puts,k=>k<=spot);
   return { cw: cw??(isFinite(b.call_wall)?+b.call_wall:null), cItm: cw==null&&b.call_wall!=null,
            pw: pw??(isFinite(b.put_wall)?+b.put_wall:null),  pItm: pw==null&&b.put_wall!=null };
 }
@@ -1829,49 +2179,20 @@ function gxOverview(){
   const roadChip = (T.road && T.road.side)
     ? `<span class="gx-chip" style="border-color:var(--coral);color:var(--coral)"><b>🧱 ${T.road.side==='call'?'CALL':'PUT'} WALL ${f(T.road.level,0)} BROKEN</b><i>road open · ${T.road.kind} · following, not fading</i></span>`
     : '';
+  // HEDGE RAIL toggle (>7DTE): offered only when a profile-bearing band exists, so the
+  // switch is never dead. If it is ON but the map is too narrow for even one lane, the
+  // chip says "no room" — it must never read Off while the user believes it is On.
+  const railChip=(typeof railAvail==='function'&&railAvail())
+    ? `<button type="button" class="gx-chip gx-toggle" id="gx-rail-chip" onclick="toggleHedgeRail()" aria-pressed="${railOn()}" title="Hedge Rail (>7DTE) — net dealer gamma vs price, one lane per dated expiry, on the map's own price axis. RIGHT of the zero rule = dealers DAMP the move (they sell rallies and buy dips); LEFT = they AMPLIFY it. The header number is what a +1% move forces them to trade to stay delta-neutral. CONTESTED = sweeping the spot-vol beta flips the sign, so no direction is claimed. Sign is assumed (calls long / puts short). Record-only: feeds nothing."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Hedge Rail</b><i id="gx-rail-v">${RAIL_ON?((MAPX.nR||0)?'<span style="color:var(--jade)">On</span> · '+_railBands().slice(0,MAPX.nR).map(bd=>_dexp(bd.expiry)).join('·')+_railChipTail():'<span style="color:var(--lantern)">On · no room</span> — widen the map'):'Off · &gt;7DTE dealer hedge'}</i></span></button>`
+    : '';
   el.innerHTML=`${roadChip}
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → magnet ${f(D.magnet,0)} · ${flow}${freshTag}</i></span>
     <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${datedChips}${wallsChip}${doiChip}${scaleChip}${tenorChip}`;
+    ${datedChips}${wallsChip}${doiChip}${railChip}${scaleChip}${tenorChip}`;
 }
 function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
 
 function buildMap(){ gxBuild(); }
-
-const ZONE_HW=2.5;   // fallback half-width in points when lo/hi are missing/degenerate (half a 5-pt strike gap)
-// ---- Magnet Zones modal — the ranked zone list behind the magnet line ----
-const ZSIDE={above:'▲',below:'▼',at:'◆'};
-function openZonesModal(){
-  const zs=T.zones||[], contested=!!T.contested;
-  const M=document.getElementById('modal');
-  const rows = zs.length ? zs.map((z,i)=>{
-    const span=(z.lo!=null&&z.hi!=null&&z.hi>z.lo)?`${f(z.lo,0)}–${f(z.hi,0)}`:`${f(z.c-ZONE_HW,0)}–${f(z.c+ZONE_HW,0)}`;
-    return `<div class="zrow${i===0?' lead':''}">
-      <span class="zrank">${i+1}</span>
-      <div>
-        <div class="zline"><span class="zside ${z.side||''}">${ZSIDE[z.side]||'·'}</span><b>${f(z.c,2)}</b>
-          <span class="zspan">${span}</span>${z.n?`<span class="zn">${z.n} strike${z.n>1?'s':''}</span>`:''}</div>
-        <div class="zbar"><i style="width:${Math.round(z.s*100)}%"></i></div>
-      </div>
-      <span class="zpct">${Math.round(z.s*100)}%</span>
-    </div>`;}).join('')
-    : `<div class="zm-empty">single-magnet read (no zone data this scan)${T.magnet!=null&&isFinite(T.magnet)?` — magnet <b>${f(T.magnet,2)}</b>`:''}</div>`;
-  M.innerHTML=`
-    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Magnet Zones">
-      <div class="modal-head">
-        <div class="mt">Magnet Zones <em>SPX ${f(T.spot,2)}</em></div>
-        ${contested?`<span class="pill coral" style="margin-left:auto;flex:none"><span class="dot"></span>CONTESTED</span>`:''}
-        <button class="modal-x" id="modal-x" ${contested?'':'style="margin-left:auto"'} aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-        ${rows}
-        <div class="zm-note">Price feels every zone's pull — the strongest is the magnet; a close rival pulls the live magnet toward the middle (chop between them).</div>
-        ${GX_PSIG!=null?`<div class="zm-note" style="border-top:1px dashed var(--hairline);padding-top:6px">shadow (H10): signed-flow pin <b>${f(GX_PSIG,0)}</b> — |buy−sell| weighted with the churn floor, recorded for the A/B; not the live magnet.</div>`:''}
-      </div>
-    </div>`;
-  M.classList.add('open'); M.setAttribute('aria-hidden','false');
-  document.getElementById('modal-x').onclick=closeModal;
-}
 
 // ---- GEX map "how to read it" explainer (the top-right "?" button) ----
 // Ball-in-a-valley vs ball-on-a-hill: a long-gamma dealer sits in a bowl (price
@@ -1929,7 +2250,7 @@ function gxMountInfoBtn(){
   const b=document.createElement('button');
   b.id='gx-info-btn'; b.className='gx-info'; b.type='button';
   b.setAttribute('aria-label','How to read the GEX map'); b.textContent='?';
-  b.addEventListener('click', e=>{ e.stopPropagation(); openGexInfoModal(); });   // don't also fire openZonesModal
+  b.addEventListener('click', e=>{ openGexInfoModal(); });
   cc.appendChild(b);
 }
 
@@ -2112,7 +2433,6 @@ function frame(){
 function setMode(live){
   LIVE=live; MODE=live?'live':'demo';
   feedBadge(); paintSource();          // badge + engine pill flip together (N20/N21)
-  const lt=document.getElementById('live-tag'); if(lt) lt.textContent = live?'live':'demo · simulated';
 }
 async function probeAndRun(){
   try{
