@@ -949,7 +949,13 @@ const FEED = { pollMs: 4000, fails: 0, lastOkAt: null };   // fails = CONSECUTIV
 const SPOT = { pollMs: 2500, px: null, at: 0, fails: 0, prev: null, live: false,
                paused: 'boot', timer: null };
 const SPOT_STALE_MS = 15000;         // 6 missed polls → stop claiming the price is live
-const SPOT_IDLE_MS  = 300000;        // 5 min with no touch/click/key → nobody is watching
+/* IDLE = 60 min, not 5. This screen is a WALL DISPLAY — it is meant to be watched, not
+   touched, so "no interaction" is its normal resting state, not a sign nobody is there.
+   A 5-min gate froze the price for most of the session and defeated the point of making
+   it live at all. An hour still reaps a genuinely abandoned tab (a laptop left open on
+   another desk) while a wall display streams the whole session untouched. The gates that
+   actually carry the savings are market-hours and visibility, which are unaffected. */
+const SPOT_IDLE_MS  = 3600000;       // 60 min with no touch/click/key → the tab is abandoned
 const SPOT_RECHECK_MS = 30000;       // while paused, re-ask LOCALLY (no network) every 30s
 let SPOT_LAST_ACT = Date.now();
 
@@ -972,7 +978,7 @@ function spotIsRTH(){
 function spotPauseReason(){
   if(document.hidden)                              return 'screen off / tab hidden';
   if(!spotIsRTH())                                 return 'market closed';
-  if(Date.now()-SPOT_LAST_ACT > SPOT_IDLE_MS)      return 'idle — no activity for 5 min';
+  if(Date.now()-SPOT_LAST_ACT > SPOT_IDLE_MS)      return 'idle — no activity for 60 min';
   return null;
 }
 // any sign of life resumes the stream IMMEDIATELY — a paused price must never make you
