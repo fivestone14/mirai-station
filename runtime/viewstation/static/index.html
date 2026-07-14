@@ -121,6 +121,15 @@
   .pulse.grey{background:var(--ink-faint)} .pulse.grey::after{display:none}
   .pulse.coral{background:var(--coral)} .pulse.coral::after{display:none}
   @keyframes ping{0%{transform:scale(.6);opacity:.9}70%{transform:scale(1.9);opacity:0}100%{opacity:0}}
+  /* the SPX price's own freshness tell. Hollow + grey = a SCAN price (the diary row, which
+     can be minutes old — the state the whole screen used to be in, silently). Filled iris
+     = STREAMING, and it flashes jade/coral on each new print that moved. */
+  .spot-tick{display:inline-block; width:6px; height:6px; margin-left:6px; border-radius:50%;
+    border:1px solid var(--ink-faint); background:transparent; vertical-align:middle;
+    transition:background .25s ease, border-color .25s ease}
+  .spot-tick.on{border-color:var(--iris); background:var(--iris)}
+  .spot-tick.on.up{border-color:var(--jade); background:var(--jade)}
+  .spot-tick.on.dn{border-color:var(--coral); background:var(--coral)}
 
   .pill{display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px;
     font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; border:1px solid transparent; white-space:nowrap}
@@ -623,6 +632,77 @@
   .rp-legend i{width:10px; height:10px; border-radius:50%; display:inline-block}
   .rp-legend .k{color:var(--ink-dim)}
 
+  /* ---- Replay VIEW TOGGLE: chart or table. Deliberately loud — a segmented control with a
+     moving thumb, sat in the panel head where the eye lands first. The two views answer
+     different questions (the chart = shape of the day, the table = the readings behind
+     every call), so the switch must never be a thing you have to hunt for. ---- */
+  /* The toggle SWAPS the view, it does not stack it. `[hidden]` is only a UA rule
+     (display:none) and every panel here carries an AUTHOR display (.chartcard is grid,
+     .rp-controls/.rp-console/.rp-legend/.rp-tablewrap are flex) — author beats UA, so
+     hidden was a no-op and both views rendered at once. This wins it back. */
+  #p-replay [hidden]{display:none !important}
+  .rp-viewtog{display:inline-flex; align-items:center; gap:2px; padding:3px; border-radius:11px;
+    background:var(--surface-3); border:1px solid var(--hairline-2); position:relative}
+  .rp-viewtog button{position:relative; z-index:1; display:flex; align-items:center; gap:6px;
+    padding:6px 14px; border:0; border-radius:8px; background:transparent; cursor:pointer;
+    font:600 12px/1 var(--sans,inherit); letter-spacing:.02em; color:var(--ink-faint);
+    transition:color .18s ease}
+  .rp-viewtog button svg{width:14px; height:14px; fill:currentColor}
+  .rp-viewtog button:hover{color:var(--ink-dim)}
+  .rp-viewtog button.on{color:var(--ground)}
+  .rp-viewtog .thumb{position:absolute; z-index:0; top:3px; bottom:3px; border-radius:8px;
+    background:var(--iris,#8B9CFF); box-shadow:0 1px 6px rgba(0,0,0,.28);
+    transition:left .2s cubic-bezier(.4,0,.2,1), width .2s cubic-bezier(.4,0,.2,1)}
+  @media (prefers-reduced-motion:reduce){ .rp-viewtog .thumb{transition:none} }
+  .rp-viewtog button:focus-visible{outline:2px solid var(--iris,#8B9CFF); outline-offset:2px}
+
+  /* ---- Replay TABLE: every judged scan as a row, every lens as a column ---- */
+  .rp-tablewrap{flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
+    background:var(--surface-2); border:1px solid var(--hairline); border-radius:16px; overflow:hidden}
+  .rp-tablescroll{overflow:auto; overscroll-behavior:contain; min-height:0}
+  .rp-table{border-collapse:separate; border-spacing:0; width:100%; font-size:12.5px}
+  .rp-table th,.rp-table td{padding:9px 12px; text-align:left; white-space:nowrap;
+    border-bottom:1px solid var(--hairline)}
+  .rp-table thead th{position:sticky; top:0; z-index:3; background:var(--surface-3);
+    font:600 9.5px/1.35 var(--mono); letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-faint); border-bottom:1px solid var(--hairline-2)}
+  .rp-table thead th .nw{display:block; color:var(--iris,#8B9CFF); font-size:8.5px; letter-spacing:.08em}
+  /* the time column is the row's anchor — it stays put while the lenses scroll past it */
+  .rp-table th.rp-tcol,.rp-table td.rp-tcol{position:sticky; left:0; z-index:2;
+    box-shadow:1px 0 0 var(--hairline)}
+  .rp-table th.rp-tcol{z-index:4}
+  .rp-table td.rp-tcol{background:var(--surface-2); font-family:var(--mono);
+    font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
+  .rp-table td.rp-tcol .et{display:block; font-size:10px; font-weight:400; color:var(--ink-faint)}
+  /* the row tint must be BAKED onto the sticky cell too, or rows slide under it and lose colour */
+  .rp-table tr.win  td{background:var(--jade-wash)}
+  .rp-table tr.loss td{background:var(--coral-wash)}
+  .rp-table tr.win  td.rp-tcol{background:linear-gradient(var(--jade-wash),var(--jade-wash)),var(--surface-2)}
+  .rp-table tr.loss td.rp-tcol{background:linear-gradient(var(--coral-wash),var(--coral-wash)),var(--surface-2)}
+  .rp-table tbody tr{cursor:pointer}
+  .rp-table tbody tr:hover td{background:var(--surface-3)}
+  .rp-table tbody tr:hover td.rp-tcol{background:linear-gradient(var(--surface-3),var(--surface-3)),var(--surface-2)}
+  .rp-table tbody tr.at td{box-shadow:inset 0 1px 0 var(--iris,#8B9CFF), inset 0 -1px 0 var(--iris,#8B9CFF)}
+  .rp-table td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink-dim)}
+  .rp-arw{font-family:var(--mono); font-weight:700; font-size:13px}
+  .rp-up{color:var(--jade)} .rp-dn{color:var(--coral)} .rp-fl{color:var(--ink-faint)}
+  .rp-sm{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); font-variant-numeric:tabular-nums}
+  .rp-pill{display:inline-block; font:600 9.5px/1.5 var(--mono); letter-spacing:.05em;
+    text-transform:uppercase; padding:2px 7px; border-radius:5px}
+  .rp-pill.up{background:var(--jade-wash); color:var(--jade)}
+  .rp-pill.dn{background:var(--coral-wash); color:var(--coral)}
+  .rp-pill.warn{background:var(--lantern-wash); color:var(--lantern)}
+  .rp-pill.mute{background:var(--surface-3); color:var(--ink-faint)}
+  .rp-vd{font:700 11px/1 var(--mono); letter-spacing:.05em}
+  .rp-vd.call{color:var(--jade)} .rp-vd.put{color:var(--coral)}
+  .rp-vd.stand{color:var(--ink-faint); font-weight:500}
+  /* the rail that says: this call was fired INTO the side the book was built to swallow */
+  .rp-table td.against{box-shadow:inset 3px 0 0 var(--coral)}
+  .rp-tfoot{flex:0 0 auto; display:flex; gap:16px; flex-wrap:wrap; padding:9px 14px;
+    border-top:1px solid var(--hairline); background:var(--surface-3);
+    font-size:10.5px; color:var(--ink-faint)}
+  .rp-tfoot b{color:var(--ink-dim); font-weight:600}
+
   /* ---- Replay console: the residual-stream snapshot at the playhead (fixed structure = no reflow) ---- */
   .rp-console{display:flex; flex-direction:column; gap:8px; margin-top:10px; flex:0 0 auto}
   /* the Watchtower — the decision the stream feeds into */
@@ -859,6 +939,52 @@ const ptTime = s => clockIn(scanTs(s), PT);
 // same-origin file API and eases to it. Anywhere the API is unreachable (e.g. the
 // hosted preview) it auto-falls back to a simulated feed so the map still breathes.
 const FEED = { pollMs: 4000, fails: 0, lastOkAt: null };   // fails = CONSECUTIVE poll misses (N20)
+/* STREAMING PRICE (2026-07-13). The map's SPX used to be a SCAN SNAPSHOT: the poll above
+   re-reads the diary, and the diary only gains a row when the left-eye scanner writes one
+   — launchd asks for 60s but an RTH scan overruns it and the overlapping fire is DROPPED.
+   Measured 07-13: a new price every 2 min at best, 4.1 min median, 12.5 min WORST, while
+   the 60fps easing made a 12-minute-old print look live. Now the price streams on its own
+   clock from /api/spot (one cached Schwab quote) and the diary keeps owning the GRAVITY.
+   A live price on stale gravity is honest — and the readout says which is which. */
+const SPOT = { pollMs: 2500, px: null, at: 0, fails: 0, prev: null, live: false,
+               paused: 'boot', timer: null };
+const SPOT_STALE_MS = 15000;         // 6 missed polls → stop claiming the price is live
+const SPOT_IDLE_MS  = 300000;        // 5 min with no touch/click/key → nobody is watching
+const SPOT_RECHECK_MS = 30000;       // while paused, re-ask LOCALLY (no network) every 30s
+let SPOT_LAST_ACT = Date.now();
+
+/* WHEN NOT TO POLL. The first cut of this looped forever — all night, all weekend, and
+   while the tab was hidden: ~34,500 quotes/day, nearly all of them into a closed market
+   for a screen nobody was looking at. Worse, those calls share a rate-limit budget with
+   the SCANNER's chain fetches, so a wasteful price poll can slow down the very scans that
+   already overrun their 60s slot. Three gates, cheapest first — all evaluated LOCALLY, so
+   a paused poller costs zero network. */
+function spotIsRTH(){
+  // ET 09:30–16:00, Mon–Fri (±5 min pad). Holidays are not modelled here on purpose: on a
+  // holiday the quote simply returns the prior close, which is harmless — whereas hard-coding
+  // a calendar in the client is a thing that silently rots.
+  const et = new Date(new Date().toLocaleString('en-US', {timeZone:'America/New_York'}));
+  const d = et.getDay();
+  if(d===0 || d===6) return false;
+  const m = et.getHours()*60 + et.getMinutes();
+  return m >= (9*60+30-5) && m <= (16*60+5);
+}
+function spotPauseReason(){
+  if(document.hidden)                              return 'screen off / tab hidden';
+  if(!spotIsRTH())                                 return 'market closed';
+  if(Date.now()-SPOT_LAST_ACT > SPOT_IDLE_MS)      return 'idle — no activity for 5 min';
+  return null;
+}
+// any sign of life resumes the stream IMMEDIATELY — a paused price must never make you
+// wait for the next tick to find out what the market is doing
+function spotKick(){
+  SPOT_LAST_ACT = Date.now();
+  if(SPOT.timer){ clearTimeout(SPOT.timer); SPOT.timer=null; }
+  pollSpot();
+}
+for(const ev of ['pointerdown','keydown','touchstart','wheel','click'])
+  addEventListener(ev, ()=>{ SPOT_LAST_ACT=Date.now(); if(SPOT.paused) spotKick(); }, {passive:true});
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) spotKick(); });
 let LIVE = false;
 let MODE = 'connecting';   // 'connecting' → 'live' | 'demo'; feedBadge derives 'lost' from FEED.fails
 // Ask the viewstation's file index for the newest reversion/<date>.jsonl (robust across the
@@ -910,9 +1036,17 @@ function rowToScan(r){
     cwShare:g.call_wall_gamma_share??0, pwShare:g.put_wall_gamma_share??0, pinShare:g.pin_top_share??0, zones:normZones(g), contested:(g.pin_contested!=null?!!g.pin_contested:null),   // shares/zones for the live GEX field
     shove:{ up:sh.shove_up_margin??0, down:sh.shove_down_margin??0, upFlip:sh.up_flips||false, downFlip:sh.down_flips||false },
     fade:{ score:re.score??0, fired:!!re.fired, armed:!!re.armed, reaction:!!re.reaction, dir:re.direction||'none', arm:re.arm_reason||'none',
-      runway:re.runway_sigma??0, runwayOk:!!re.runway_ok, dCall:re.wall_dist_call, dPut:re.wall_dist_put },
-    brk:{ state:lr.break_state||'idle', cocks:lr.cock_count||0, dir:lr.cock_direction||lr.direction||'none' },
-    motion: mo?{ lookback:mo.lookback_min, magnetWalk:mo.magnet_walk_sigma, flipCreep:mo.flip_creep_sigma, gripSlope:mo.grip_slope, soft:mo.soft_side }:null,
+      runway:re.runway_sigma??0, runwayOk:!!re.runway_ok, dCall:re.wall_dist_call, dPut:re.wall_dist_put,
+      /* the raw tape stretches — carried for the Replay TABLE (gap = how far below/above
+         yesterday's close we opened; vwap = are today's buyers underwater) */
+      gap:re.gap_stretch??null, vwap:re.vwap_stretch??null },
+    brk:{ state:lr.break_state||'idle', cocks:lr.cock_count||0, dir:lr.cock_direction||lr.direction||'none',
+      /* COCKED IS NOT FIRED (wt-6/m8): the table must never show a cocked trigger as a
+         direction the map took — only a FIRED break is a directional fact */
+      fired:!!lr.fired || lr.break_state==='fired' },
+    motion: mo?{ lookback:mo.lookback_min, magnetWalk:mo.magnet_walk_sigma, flipCreep:mo.flip_creep_sigma, gripSlope:mo.grip_slope, soft:mo.soft_side,
+      /* the SHARE behind soft_side — 0.494 is a coin flip wearing a direction's clothes */
+      above:mo.gamma_above_share??null }:null,
     lob:{ tilt:(r.lob_flow||{}).tilt, regime:(r.lob_flow||{}).regime },
     // 2026-07-09 shadow layers — all optional; old rows simply carry null and render as before
     spd: r.speedometer?{ pace:r.speedometer.rv_pace??null, jz:r.speedometer.jump_z??null, jsign:r.speedometer.jump_sign??null,
@@ -1134,17 +1268,32 @@ function buildVitals(){
   $("#vitals").innerHTML =
     `<div class="vital"><span class="pulse grey" id="v-pulse"></span> <span id="v-mode">CONNECTING…</span> <b id="v-clock" class="mono">--:--:--</b> PT</div>
      <div class="vsep"></div>
-     <div class="vital">SPX <b id="v-spot">—</b></div>
+     <div class="vital">SPX <b id="v-spot">—</b><i class="spot-tick" id="v-spot-tick" title="scan price — from the last diary row (can be minutes old)"></i></div>
      <div class="vsep"></div>
      <span class="pill jade" id="v-regime"><span class="dot"></span>—</span>
      <span class="pill iris" id="v-paper">${SYS.mode}</span>
      <span class="pill grey" id="v-wt" title="Watchtower judged scans today / daily cap — counted live from the diary"><span class="dot"></span>WT —/${SYS.wtCap}</span>
      <span class="pill grey" id="v-src" title="Which chain engine drew this map">source —</span>`;
-  VIT = { clock:$("#v-clock"), spot:$("#v-spot"), regime:$("#v-regime"), mode:$("#v-mode"),
+  VIT = { clock:$("#v-clock"), spot:$("#v-spot"), spotTick:$("#v-spot-tick"), regime:$("#v-regime"), mode:$("#v-mode"),
     pulse:$("#v-pulse"), paper:$("#v-paper"), wt:$("#v-wt"), src:$("#v-src"), _rk:null, _fk:null };
 }
 function paintVitals(){
   VIT.spot.textContent = f(D.spot,2);
+  /* say WHICH price this is. Streaming = the live quote (its own ~2.5s clock); SCAN = the
+     diary's snapshot, which can be minutes old. The old screen showed a scan price with no
+     tell at all and eased it so smoothly it read as a live tick — the one thing the number
+     must never do is lie about its own freshness. */
+  if(VIT.spotTick){
+    const streaming = LIVE && SPOT.live && SPOT.px!=null;
+    VIT.spotTick.className = 'spot-tick' + (streaming?' on':'');
+    VIT.spotTick.title = streaming
+      ? 'live quote — refreshed every ~2.5s'
+      : SPOT.paused
+        ? `price poll PAUSED (${SPOT.paused}) — showing the last scan price, which can be minutes old`
+        : 'scan price — from the last diary row (can be minutes old)';
+    if(streaming && SPOT.prev!=null && SPOT.px!==SPOT.prev)
+      VIT.spotTick.classList.add(SPOT.px>SPOT.prev?'up':'dn');
+  }
   const rk = D.sign+D.regime;
   if(rk!==VIT._rk){ VIT._rk=rk;
     // N24: an UNKNOWN gamma sign must read as "stop" (grey), never paint the
@@ -2045,13 +2194,14 @@ function toggleWalls(){
   gxOverview();
 }
 const _HALO='paint-order:stroke;stroke:var(--surface-2);stroke-width:3px;';   // surface halo: labels stay legible over the (now longer) bars
+const _HALO2='paint-order:stroke;stroke:var(--surface-2);stroke-width:3.8px;';  // wall labels: 12px ink, and a max-length bar can reach either anchor rail
 function paintDated(){
   if(!MAP||!MAP.datedG) return;
   const X=MAPX, d=D.dated, bands=(d&&Array.isArray(d.bands))?d.bands.slice(0,4):[];   // 4-band world (H8: two quarterlies)
   const on=wallsOn();
   const sg=(D.sigma&&isFinite(D.sigma)&&D.sigma>0)?D.sigma:0;
   const key=(on?bands.map(b=>`${b.expiry}|${b.call_wall}|${b.put_wall}|${b.as_of||''}`).join(';'):'off')
-    +`#${X.pLow}|${X.pHigh}|${Math.round((D.spot||0)/10)}|${Math.round(sg)}|${D.callCeil}|${D.putFloor}`;   // spot bucketed to 10pts → σ-labels stay honest, no 60fps churn
+    +`#${X.pLow}|${X.pHigh}|${Math.round((D.spot||0)/10)}|${Math.round(sg)}|${D.callCeil}|${D.putFloor}|${X.H}|${X.lineEnd}`;   // spot bucketed to 10pts → σ-labels stay honest, no 60fps churn; H/lineEnd → the nudge re-lays out on resize
   if(key===MAP._dkey) return;
   MAP._dkey=key;
   if(!on){ MAP.datedG.innerHTML=''; return; }
@@ -2077,26 +2227,102 @@ function paintDated(){
   if(D.callCeil!=null&&isFinite(D.callCeil)&&D.callCeil>0) put_('c',+D.callCeil,false,'0-7D',0);
   if(D.putFloor!=null&&isFinite(D.putFloor)&&D.putFloor>0) put_('p',+D.putFloor,false,'0-7D',0);
   if(!ent.size){ MAP.datedG.innerHTML=''; return; }
-  let svg='', topN=0, botN=0;
+  const colOf=e=>e.side==='c'?'var(--jade)':'var(--coral)';
+  // LABEL LAYOUT (2026-07-13). The label used to be stamped at yFor(k)−3 at 9px with no
+  // spacing check, so a 0-7D ceiling a few points off a dated monthly wall smeared the
+  // two lines of text together — unreadable exactly when the two levels agree, which is
+  // when they matter most. Three fixes, in order of effect:
+  //   1. MERGE same-side walls that sit within a label-height of each other into ONE
+  //      label carrying a price RANGE and the union of tenor tags. Text merges; every
+  //      wall keeps its own LINE at its own true price, so no level ever disappears.
+  //   2. NUDGE what is left using the map's existing idiom (the MIDS block in gxPaint):
+  //      sort by y, push down, pull back up, and draw a LEADER whenever a label had to
+  //      leave its line — a displaced label that doesn't say so is a lie about which
+  //      line it belongs to.
+  //   3. ROUND the price. near_* walls are floats: the label read "7,626.451". At 0dp it
+  //      reads "7,626" and buys back the 4 characters the 9px→12px bump costs.
+  // Layout is SPOT-FREE (it depends only on yFor(k) and the frame) and widths are
+  // computed analytically from the character count — never getBBox, which is the classic
+  // measure-then-relayout jitter loop. So nothing here moves as spot eases or you scrub.
+  const LABF=12, LABH=16;
+  const T=X.padT+LABH/2, B=X.H-X.padB-LABH/2-6;      // -6 clears #gx-cap
+  const inB=[], hiE=[], loE=[];
   for(const e of ent.values()){
-    const sh=_DSHADE[Math.min(e.idx,2)], dash=_DDASH[Math.min(e.idx,2)];
-    const col=e.side==='c'?'var(--jade)':'var(--coral)', arrow=e.side==='c'?'▲':'▼';
-    // label format (locked): arrow + price + signed σ-distance + tenor tags
+    if(e.k>X.pHigh) hiE.push(e);
+    else if(e.k<X.pLow) loE.push(e);
+    else inB.push({e, y:yFor(e.k)});
+  }
+  inB.sort((a,b)=>a.y-b.y);
+  // 1. cluster — same side only (jade and coral must never fuse into one label)
+  const groups=[];
+  for(const m of inB){
+    const g=groups[groups.length-1];
+    if(g && g.side===m.e.side && (m.y-g.ms[0].y)<LABH) g.ms.push(m);
+    else groups.push({side:m.e.side, ms:[m]});
+  }
+  for(const g of groups){
+    const ks=g.ms.map(m=>m.e.k), call=g.side==='c';
+    const tags=[...new Set(g.ms.flatMap(m=>m.e.tags))];
+    const kLo=Math.min(...ks), kHi=Math.max(...ks);
+    const kT=(g.ms.length===1||Math.round(kLo)===Math.round(kHi))
+      ? f(Math.round(kLo),0)
+      : `${f(Math.round(kLo),0)}–${f(Math.round(kHi),0)}`;
+    const kRef=call?kHi:kLo;                          // σ measured off the OUTER edge
+    const sd=(sg&&spot)?((kRef-spot)/sg):null;
+    const sdT=(sd!=null&&isFinite(sd))?` ${sd>=0?'+':'−'}${Math.abs(sd).toFixed(1)}σ`:'';
+    g.lbl=`${call?'▲':'▼'} ${kT}${sdT} · ${tags.join('·')}${g.ms.some(m=>m.e.itm)?' · ITM':''}`;
+    g.col=call?'var(--jade)':'var(--coral)';
+    g.idx=Math.min(...g.ms.map(m=>m.e.idx));          // the front-most band owns the shade
+    g.y=g.ms.reduce((a,m)=>a+m.y,0)/g.ms.length;      // desired y = cluster centroid
+    g.w=Math.round(g.lbl.length*LABF*0.60)+6;         // ANALYTIC width — never getBBox
+  }
+  // 2. TWO COLUMNS — ceilings (▲, jade) hug the RIGHT edge of the lane, floors (▼, coral)
+  //    hug the LEFT. One right-anchored column made every label reach ~200px back into the
+  //    bar lane and sit on top of the gamma bars; splitting by side uses the empty left
+  //    margin, halves the labels per column (so far less nudging), and gives the map a free
+  //    read: floors on the left, ceilings on the right. Each column de-collides on its OWN,
+  //    so a ceiling can never be pushed around by a floor.
+  const nudge=(gs)=>{
+    gs.sort((a,b)=>a.y-b.y);
+    const GAP=Math.min(LABH, gs.length>1?(B-T)/(gs.length-1):LABH);
+    let last=T-GAP;
+    gs.forEach(g=>{ g.ly=Math.min(B,Math.max(g.y,last+GAP)); last=g.ly; });
+    for(let i=gs.length-2;i>=0;i--)
+      if(gs[i].ly>gs[i+1].ly-GAP) gs[i].ly=Math.max(T,gs[i+1].ly-GAP);
+    return gs;
+  };
+  const RIGHT=nudge(groups.filter(g=>g.side==='c'));
+  const LEFT =nudge(groups.filter(g=>g.side==='p'));
+  // 3. draw — every wall keeps its true-price LINE; only the text is displaced
+  let svg='';
+  for(const m of inB){
+    const sh=_DSHADE[Math.min(m.e.idx,2)], dash=_DDASH[Math.min(m.e.idx,2)];
+    svg+=`<line x1="${X.x0}" y1="${m.y.toFixed(1)}" x2="${X.lineEnd}" y2="${m.y.toFixed(1)}" style="stroke:${colOf(m.e)};stroke-width:1.1;opacity:${sh}" stroke-dasharray="${dash}"/>`;
+  }
+  const RX=X.lineEnd-8, LX=X.x0+8;                    // the two anchor rails
+  for(const g of RIGHT){
+    const sh=_DSHADE[Math.min(g.idx,2)];
+    if(Math.abs(g.ly-g.y)>2)                          // leader ONLY when displaced
+      svg+=`<line x1="${X.lineEnd.toFixed(1)}" y1="${g.y.toFixed(1)}" x2="${(RX-g.w-6).toFixed(1)}" y2="${g.ly.toFixed(1)}" style="stroke:${g.col};stroke-width:1;opacity:.3"/>`;
+    svg+=`<text x="${RX.toFixed(1)}" y="${(g.ly+LABF*0.35).toFixed(1)}" text-anchor="end" font-size="${LABF}" font-weight="700" font-family="var(--mono)" style="fill:${g.col};opacity:${Math.min(1,sh+0.12)};${_HALO2}">${g.lbl}</text>`;
+  }
+  for(const g of LEFT){
+    const sh=_DSHADE[Math.min(g.idx,2)];
+    if(Math.abs(g.ly-g.y)>2)
+      svg+=`<line x1="${X.x0.toFixed(1)}" y1="${g.y.toFixed(1)}" x2="${(LX+g.w+6).toFixed(1)}" y2="${g.ly.toFixed(1)}" style="stroke:${g.col};stroke-width:1;opacity:.3"/>`;
+    svg+=`<text x="${LX.toFixed(1)}" y="${(g.ly+LABF*0.35).toFixed(1)}" text-anchor="start" font-size="${LABF}" font-weight="700" font-family="var(--mono)" style="fill:${g.col};opacity:${Math.min(1,sh+0.12)};${_HALO2}">${g.lbl}</text>`;
+  }
+  // off-frame edge markers — same side split: ceilings right, floors left
+  const edge=(e,i,yy,ar)=>{
+    const sh=_DSHADE[Math.min(e.idx,2)], call=e.side==='c';
     const sd=(sg&&spot)?((e.k-spot)/sg):null;
     const sdT=(sd!=null&&isFinite(sd))?` ${sd>=0?'+':'−'}${Math.abs(sd).toFixed(1)}σ`:'';
-    const lbl=`${arrow} ${e.k.toLocaleString('en-US')}${sdT} · ${e.tags.join('·')}${e.itm?' · ITM':''}`;
-    if(e.k>X.pHigh){          // above the frame → top edge marker
-      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.padT+11+topN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh};${_HALO}">${lbl} ↑</text>`; topN++;
-    } else if(e.k<X.pLow){    // below the frame → bottom edge marker
-      svg+=`<text x="${(X.lineEnd-6).toFixed(1)}" y="${(X.H-X.padB-4-botN*11).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${sh};${_HALO}">${lbl} ↓</text>`; botN++;
-    } else {                  // in-band → shaded dashed wall line + on-line label,
-                              // RIGHT-anchored (the mid-to-right lane is open; the
-                              // left edge is where the gamma bars live)
-      const y=yFor(e.k).toFixed(1);
-      svg+=`<line x1="${X.x0}" y1="${y}" x2="${X.lineEnd}" y2="${y}" style="stroke:${col};stroke-width:1.1;opacity:${sh}" stroke-dasharray="${dash}"/>`
-         +`<text x="${(X.lineEnd-8).toFixed(1)}" y="${(+y-3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--mono)" style="fill:${col};opacity:${Math.min(1,sh+0.12)};${_HALO}">${lbl}</text>`;
-    }
-  }
+    const lbl=`${call?'▲':'▼'} ${f(Math.round(e.k),0)}${sdT} · ${e.tags.join('·')}${e.itm?' · ITM':''}`;
+    return `<text x="${(call?X.lineEnd-6:X.x0+6).toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${call?'end':'start'}" font-size="11" font-weight="700" font-family="var(--mono)" style="fill:${colOf(e)};opacity:${sh};${_HALO2}">${call?lbl+' '+ar:ar+' '+lbl}</text>`;
+  };
+  let hR=0,hL=0,lR=0,lL=0;
+  hiE.forEach(e=>{ const c=e.side==='c'; svg+=edge(e,0,X.padT+13+(c?hR++:hL++)*LABH,'↑'); });
+  loE.forEach(e=>{ const c=e.side==='c'; svg+=edge(e,0,X.H-X.padB-4-(c?lR++:lL++)*LABH,'↓'); });
   MAP.datedG.innerHTML=svg;
 }
 // The always-on overview strip. SPX→magnet chip = lead (where are we, where is the
@@ -2302,7 +2528,13 @@ function nextTarget(){
 }
 function applyMap(r){
   const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv, sh=gv.shove||gt.shove||{};
-  T={ spot:r.spot??D.spot, flip:r.gamma_flip??D.flip, callWall:gv.call_wall_gamma??r.call_wall??D.callWall, putWall:gv.put_wall_gamma??r.put_wall??D.putWall,
+  /* THE STREAM OWNS THE PRICE. A landing scan row carries the spot as of when the SCAN ran
+     — by definition older than the last streamed quote. Letting it win here would yank the
+     map backwards for up to one poll (~2.5s) every time a row arrives. The diary still owns
+     everything else on this line: magnet, walls, flip, σ, regime. Stream dead → scan spot
+     resumes, exactly as before. */
+  const spotNow = (LIVE && SPOT.live && SPOT.px!=null) ? SPOT.px : (r.spot??D.spot);
+  T={ spot:spotNow, flip:r.gamma_flip??D.flip, callWall:gv.call_wall_gamma??r.call_wall??D.callWall, putWall:gv.put_wall_gamma??r.put_wall??D.putWall,
     magnet:gv.magnet??g.magnet??D.magnet /* gex_views LEADS (locked policy) */, pin:gv.pin_centroid??g.pin_centroid??D.pin,
     gAbove:g.gamma_above_spot??D.gAbove, gBelow:g.gamma_below_spot??D.gBelow,
     flow:g.aggressor_flow??0, shoveUp:sh.shove_up_margin??D.shoveUp,
@@ -2420,6 +2652,34 @@ async function poll(){
   catch(e){ FEED.fails++; }
   setTimeout(poll, FEED.pollMs);
 }
+/* the price's own heartbeat — independent of the scan clock. Drives ONLY T.spot; every
+   other target (magnet, walls, flip, regime) still comes from the diary via applyMap.
+   Fail-open: a null/failed quote leaves T.spot exactly where the last scan put it, so
+   the worst case is the OLD behaviour, never a fabricated or frozen-but-confident price. */
+async function pollSpot(){
+  SPOT.timer=null;
+  const why=spotPauseReason();
+  if(why){
+    // PAUSED. No network call at all — and the price stops claiming to be live, so a frozen
+    // number can never masquerade as a streaming one (the exact lie this whole change exists
+    // to kill). The map keeps showing the diary's scan price, which is what it always did.
+    SPOT.paused=why; SPOT.live=false;
+    SPOT.timer=setTimeout(pollSpot, SPOT_RECHECK_MS);       // local re-check, costs nothing
+    return;
+  }
+  SPOT.paused=null;
+  try{
+    const r=await fetch('/api/spot?ticker=SPX',{cache:'no-store'});
+    const j=await r.json();
+    const px=(j&&typeof j.spot==='number'&&isFinite(j.spot)&&j.spot>0)?j.spot:null;
+    if(px!=null){
+      SPOT.prev=SPOT.px; SPOT.px=px; SPOT.at=Date.now(); SPOT.fails=0; SPOT.live=true;
+      T.spot=px;                          // the map eases to the live print at 60fps
+    } else { SPOT.fails++; }
+  }catch(e){ SPOT.fails++; }
+  if(Date.now()-SPOT.at > SPOT_STALE_MS) SPOT.live=false;   // stopped arriving → stop claiming live
+  SPOT.timer=setTimeout(pollSpot, SPOT.pollMs);
+}
 function frame(){
   const k=0.09;
   for(const key of ['spot','flip','callWall','putWall','magnet','pin','gAbove','gBelow','flow','shoveUp','shoveDown','sigma']){
@@ -2441,6 +2701,7 @@ async function probeAndRun(){
     if(GX.demoTimer){ clearInterval(GX.demoTimer); GX.demoTimer=null; }   // recovered → stop demo
     FEED.fails=0; FEED.lastOkAt=Date.now();
     setMode(true); feedAll(L); setTimeout(poll, FEED.pollMs);
+    pollSpot();                                                   // the price streams on its own clock
     loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
     fetchDatedBook(); setInterval(fetchDatedBook, 1200000);       // dated OI book (changes only on the nightly pull)
   }catch(e){ setMode(false); if(!GX.demoTimer) GX.demoTimer=setInterval(nextTarget, 2600); setTimeout(probeAndRun, 5000); }   // keep retrying the live feed
@@ -2916,12 +3177,18 @@ const RP = {
   scans:[], fires:[], bars:null, path:null, barsCache:{},
   t0:0, t1:0, geo:null, dom:null,          // session window (ms) + chart geometry / price domain
   pos:0, playing:false, speed:1, raf:null, last:0, _rk:null,
+  view:'chart',                              // 'chart' = the shape of the day · 'table' = the readings behind it
 };
 const RP_SPEEDS=[1,2,4];
 const RP_PLAY_MS=26000;                     // wall-clock ms to traverse one full session at 1×
 const RP_ICON_PLAY ='<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
 const RP_ICON_PAUSE='<svg viewBox="0 0 24 24"><path d="M7 5h3.4v14H7zM13.6 5H17v14h-3.4z"/></svg>';
+const RP_ICON_CHART='<svg viewBox="0 0 24 24"><path d="M3 3h2v16h16v2H3zm4 11 4-5 3 3.5L19 6l1.6 1.2-6 8-3-3.5L8.6 16z"/></svg>';
+const RP_ICON_TABLE='<svg viewBox="0 0 24 24"><path d="M3 4h18v3H3zm0 5h5v3H3zm7 0h11v3H10zM3 14h5v3H3zm7 0h11v3H10zM3 19h5v2H3zm7 0h11v2H10z"/></svg>';
 const rpClock = ms => new Date(ms).toLocaleTimeString('en-US',{hour:'numeric', minute:'2-digit', timeZone:PT});
+// the same instant in Eastern — the table shows PT (the screen's zone) with ET underneath,
+// because the diary records ET and every cross-check against it happens in ET
+const rpClockET = ms => new Date(ms).toLocaleTimeString('en-US',{hour:'2-digit', minute:'2-digit', hour12:false, timeZone:ET});
 function rpMeasure(){ const cc=RP.els&&RP.els.chart; if(!cc) return null; const w=cc.clientWidth,h=cc.clientHeight; return (w<80||h<80)?null:{w,h}; }
 function rpGeo(w,h){ const padL=50,padR=14,padT=14,padB=32; return {w,h,x0:padL,x1:w-padR,y0:padT,y1:h-padB}; }
 function rpXT(ms){ const g=RP.geo,f=(ms-RP.t0)/((RP.t1-RP.t0)||1); return g.x0 + Math.max(0,Math.min(1,f))*(g.x1-g.x0); }
@@ -3109,6 +3376,7 @@ function rpBuild(){
   RP._rk=null;
 }
 function rpPaint(){
+  rpMarkTableAt();                       // no-op unless the table view is showing
   if(!RP.geo||!RP.els||!RP.els.clip) return;
   const now=RP.t0+RP.pos*(RP.t1-RP.t0), xNow=rpXT(now);
   RP.els.clip.setAttribute('width', Math.max(0,xNow-RP.geo.x0).toFixed(1));
@@ -3272,7 +3540,174 @@ async function rpLoadDay(di){
   const graded=await rpFetchGraded(D0.day);
   if(RP.days[RP.di]!==D0) return;
   RP.fires=rpAssembleFires(graded);
+  // ts → fire, built HERE and not inside rpBuild(): rpBuild measures the chart and bails
+  // when it is hidden, so in table view the map would otherwise keep the PREVIOUS day's
+  // keys and every row would fall back to "held".
+  RP.fireByTs=new Map(RP.fires.filter(f=>f.scan&&f.scan.ts).map(f=>[f.scan.ts,f]));
   rpBuild(); rpPaint();
+  // the chart is hidden in table view, so rpBuild/rpPaint can't measure — redraw the table itself
+  if(RP.view==='table') rpRenderTable();
+}
+/* ================= Replay TABLE view =================
+   The chart answers "what shape was the day?"; the table answers "what was every lens
+   actually SAYING at the moment the tower spoke?" — one row per judged scan, one column
+   per lens, each cell an arrow (which way it pointed) plus the number behind it.
+
+   Two columns carry a "was blind" tag: SHOVE and SPEED were computed on every scan since
+   the Break Lens build and never reached the Watchtower prompt until wt-6/m8 (2026-07-13),
+   the day all five of its CALLs fired into the absorbing side of the book and all five lost.
+   The tag stays until the wt-6 record is long enough to retire it — it is the whole reason
+   this table exists: a reading nobody can see is a reading nobody uses. */
+const rpArrow = d => d==='up'   ? '<span class="rp-arw rp-up">▲</span>'
+                   : d==='down' ? '<span class="rp-arw rp-dn">▼</span>'
+                   : d==='flat' ? '<span class="rp-arw rp-fl">–</span>'
+                   :              '<span class="rp-arw rp-fl">·</span>';
+const rpSig = (v,d=2) => (v==null||!isFinite(v)) ? '·' : (v>=0?'+':'')+(+v).toFixed(d);
+
+/* which way is dealer hedging leaning? The shove test re-prices net dealer gamma at spot ±
+   a flow shove: the LOWER (more negative) margin is the side that goes/stays SHORT gamma,
+   where hedging pushes WITH the move — the ACCELERANT side. The other side absorbs. */
+function rpAccelSide(s){
+  const u=s.shove&&s.shove.up, d=s.shove&&s.shove.down;
+  if(u==null||d==null||!isFinite(u)||!isFinite(d)) return null;
+  if(Math.abs(u-d)<0.15) return null;                    // symmetric — do not manufacture an edge
+  return d<u ? 'down' : 'up';
+}
+function rpTableRows(){
+  // judged scans only — the slices where the tower actually looked
+  return RP.scans.filter(s => s.wt && (s.wt.scene || s.wt.dir) && !s.wt.skipped);
+}
+function rpRenderTable(){
+  const T=RP.els&&RP.els.table; if(!T) return;
+  const rows=rpTableRows();
+  if(!rows.length){ T.innerHTML=`<tbody><tr><td class="rp-sm" style="padding:22px">No judged scans on this day.</td></tr></tbody>`; return; }
+  const head=`<thead><tr>
+    <th class="rp-tcol">Time · PT<span class="nw" style="color:var(--ink-faint)">ET below</span></th>
+    <th>Spot</th><th>Gamma</th><th>Magnet</th>
+    <th>Shove<span class="nw">the book's slope</span></th>
+    <th>Speed<span class="nw">who owns the motion</span></th>
+    <th>Soft side</th><th>Break lens</th><th>Fade lens</th>
+    <th>Gap</th><th>VWAP</th><th>Flow</th><th>Verdict</th><th>60m</th>
+  </tr></thead>`;
+  const body=rows.map(s=>{
+    const fr=RP.fireByTs?RP.fireByTs.get(s.ts):null;
+    const vd=fr?(fr.verdict||rpVerdict(fr)):null;                     // win / loss / scratch
+    const cls=vd==='win'?'win':vd==='loss'?'loss':'';
+
+    // gamma sign — the master switch (long = damped/pin, short = amplified/breakout)
+    const gam=s.sign==='negative'?'<span class="rp-pill dn">short</span>'
+            :s.sign==='positive'?'<span class="rp-pill up">long</span>'
+            :'<span class="rp-pill mute">unknown</span>';
+
+    // magnet: which side of spot the pull sits on (a LOCATION only, under short gamma)
+    const md=(s.magnet==null||s.spot==null)?null
+            :s.magnet>s.spot+2?'up':s.magnet<s.spot-2?'down':'flat';
+
+    const acc=rpAccelSide(s);
+    const shove=acc
+      ? `${rpArrow(acc)} <span class="rp-sm">${rpSig(s.shove.down)}↓ ${rpSig(s.shove.up)}↑</span>`
+      : `${rpArrow(null)} <span class="rp-sm">symmetric</span>`;
+
+    const dn=s.spd&&s.spd.q==='ok'?s.spd.down:null;
+    const speed=dn==null?rpArrow(null)
+      : `${rpArrow(dn>=0.6?'down':dn<=0.4?'up':'flat')} <span class="rp-sm">${Math.round(dn*100)}% sell</span>`;
+
+    const soft=(s.motion&&s.motion.soft)
+      ? `${rpArrow(s.motion.soft)} <span class="rp-sm">${s.motion.above!=null?(s.motion.above*100).toFixed(1)+'%':''}</span>`
+      : rpArrow(null);
+
+    // COCKED IS NOT FIRED — a cocked break is a WATCH level, never a direction taken
+    const bs=s.brk&&s.brk.state;
+    const brk = bs==='cocked' ? `<span class="rp-pill warn">cocked ${s.brk.dir!=='none'?s.brk.dir:''}</span>`
+              : s.brk&&s.brk.fired ? `<span class="rp-pill up">FIRED ${s.brk.dir!=='none'?s.brk.dir:''}</span>`
+              : bs==='expired' ? '<span class="rp-pill mute">expired</span>'
+              : '<span class="rp-pill mute">idle</span>';
+
+    const fade = s.fade&&s.fade.armed
+      ? `<span class="rp-pill warn">armed ${s.fade.dir!=='none'?s.fade.dir:''}</span>` +
+        `<span class="rp-sm"> ${s.fade.runwayOk?'runway ok':'no runway'}</span>`
+      : '<span class="rp-pill mute">idle</span>';
+
+    const flow=(s.flow==null||Math.abs(s.flow)<0.05)
+      ? `${rpArrow('flat')} <span class="rp-sm">flat</span>`
+      : `${rpArrow(s.flow>0?'up':'down')} <span class="rp-sm">${rpSig(s.flow)}</span>`;
+
+    // verdict + the rail: did the tower fire INTO the side the book was built to swallow?
+    let verdict='<span class="rp-vd stand">stand down</span>', against=false;
+    if(s.wt.dir){
+      const want=s.wt.dir==='call'?'up':'down';
+      against=!!acc && acc!==want;
+      const cv=s.wt.convStated!=null?s.wt.convStated:s.wt.conv;
+      verdict=`<span class="rp-vd ${s.wt.dir}">${s.wt.dir.toUpperCase()}</span>`
+            + `<span class="rp-sm"> ${cv!=null?(+cv).toFixed(2):''}</span>`;
+    }
+    /* FRESH vs HELD. The paper resolver grades only a FRESH would-fire: when the tower
+       keeps the same direction across scans it is HOLDING one thesis, not opening a new
+       trade. Grading every repeat would double-count a standing call (07-13 reads as
+       "14 verdicts" per-scan but is 7 fresh trades on the ledger). A held row shows the
+       call it is still carrying and says so — it never borrows a grade it didn't earn. */
+    const mv=fr?fr.move60:null;
+    const mark=vd==='win'?'<span class="rp-up">✓</span>':vd==='loss'?'<span class="rp-dn">✗</span>':'';
+    // a fire inside the last hour has no 60-min mark yet — say so, never print a "·σ" move
+    const m60 = (fr && mv!=null) ? `<span class="${mv<0?'rp-dn':'rp-up'}">${rpSig(mv)}σ</span> ${mark}`
+              : fr ? '<span class="rp-sm">no 60m yet</span>'
+              : s.wt.dir ? '<span class="rp-pill mute">held</span>'
+              : '';
+
+    const gapC=s.fade&&s.fade.gap!=null&&s.fade.gap<0?'rp-dn':'';
+    const vwpC=s.fade&&s.fade.vwap!=null&&s.fade.vwap<0?'rp-dn':'';
+    return `<tr class="${cls}" data-ts="${s.ts||''}">
+      <td class="rp-tcol">${rpClock(+new Date(s.ts))}<span class="et">${rpClockET(+new Date(s.ts))} ET</span></td>
+      <td class="num">${s.spot!=null?Math.round(s.spot):'·'}</td>
+      <td>${gam}</td>
+      <td>${rpArrow(md)} <span class="rp-sm">${s.magnet!=null?Math.round(s.magnet):''}</span></td>
+      <td>${shove}</td><td>${speed}</td><td>${soft}</td><td>${brk}</td><td>${fade}</td>
+      <td class="num ${gapC}">${rpSig(s.fade&&s.fade.gap)}</td>
+      <td class="num ${vwpC}">${rpSig(s.fade&&s.fade.vwap)}</td>
+      <td>${flow}</td>
+      <td class="${against?'against':''}">${verdict}</td>
+      <td class="num">${m60}</td>
+    </tr>`;
+  }).join('');
+  T.innerHTML=head+`<tbody>${body}</tbody>`;
+  // A row is a moment: clicking it moves the PLAYHEAD there and STAYS in the table.
+  // (It used to bounce you back to the chart — a view switch nobody asked for. Picking a
+  // row is a scrub, not a change of view; the toggle is the only thing that changes views.)
+  T.querySelectorAll('tbody tr[data-ts]').forEach(tr=>{
+    tr.onclick=()=>{
+      const ts=tr.dataset.ts; if(!ts) return;
+      const f=(+new Date(ts)-RP.t0)/((RP.t1-RP.t0)||1);
+      RP.pos=Math.max(0,Math.min(1,f)); RP.playing=false;
+      if(RP.els.scrub) RP.els.scrub.value=Math.round(RP.pos*1000);   // keep the scrubber honest
+      rpSyncPlayBtn(); rpPaint();          // rpPaint marks the row and re-times the chart underneath
+    };
+  });
+  rpMarkTableAt();
+}
+// keep the table's "you are here" band in step with the playhead
+function rpMarkTableAt(){
+  const T=RP.els&&RP.els.table; if(!T||RP.view!=='table') return;
+  const now=RP.t0+(RP.t1-RP.t0)*RP.pos;
+  let best=null;
+  T.querySelectorAll('tbody tr[data-ts]').forEach(tr=>{
+    tr.classList.remove('at');
+    const t=+new Date(tr.dataset.ts);
+    if(t<=now && (!best || t>+new Date(best.dataset.ts))) best=tr;
+  });
+  if(best) best.classList.add('at');
+}
+function rpSetView(v){
+  RP.view=(v==='table')?'table':'chart';
+  const E=RP.els; if(!E) return;
+  const tbl=RP.view==='table';
+  E.chart.hidden=tbl; E.controls.hidden=tbl; E.console.hidden=tbl; E.legend.hidden=tbl;
+  E.tablewrap.hidden=!tbl;
+  E.vChart.classList.toggle('on',!tbl); E.vTable.classList.toggle('on',tbl);
+  E.vChart.setAttribute('aria-selected', String(!tbl));
+  E.vTable.setAttribute('aria-selected', String(tbl));
+  const on=tbl?E.vTable:E.vChart;
+  E.thumb.style.left=on.offsetLeft+'px'; E.thumb.style.width=on.offsetWidth+'px';
+  if(tbl) rpRenderTable(); else requestAnimationFrame(()=>{ if(RP.path){ rpBuild(); rpPaint(); } });
 }
 function rpEnsureDom(){
   if(RP.els) return;
@@ -3281,6 +3716,11 @@ function rpEnsureDom(){
     <div class="phead">
       <div><h2>Replay</h2><div class="desc">How each Watchtower call played out · Pacific time</div></div>
       <div class="rp-head-nav">
+        <div class="rp-viewtog" id="rp-viewtog" role="tablist" aria-label="Replay view">
+          <div class="thumb" id="rp-thumb"></div>
+          <button id="rp-view-chart" class="on" role="tab" aria-selected="true">${RP_ICON_CHART}Chart</button>
+          <button id="rp-view-table" role="tab" aria-selected="false">${RP_ICON_TABLE}Table</button>
+        </div>
         <button class="rp-daybtn" id="rp-newer" title="Newer day">‹</button>
         <div class="rp-daylabel" id="rp-daylabel">—</div>
         <button class="rp-daybtn" id="rp-older" title="Older day">›</button>
@@ -3292,6 +3732,18 @@ function rpEnsureDom(){
       <button class="rp-speed" id="rp-speed">1×</button>
       <input class="rp-scrub" id="rp-scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub time"/>
       <div class="rp-time" id="rp-time">—</div>
+    </div>
+    <div class="rp-tablewrap" id="rp-tablewrap" hidden>
+      <div class="rp-tablescroll"><table class="rp-table" id="rp-table"></table></div>
+      <div class="rp-tfoot">
+        <span><b>Row</b> = one judged scan · click to move the playhead there</span>
+        <span><b class="rp-arw rp-dn">↓</b>/<b class="rp-arw rp-up">↑</b> where that lens pointed</span>
+        <span><b>Shove</b> which way dealer hedging FEEDS the move</span>
+        <span><b>Speed</b> share of today's motion that was selling</span>
+        <span><b style="color:var(--coral)">▎</b> fired into the side the book absorbs</span>
+        <span><b>60m</b> follow-through in σ, one hour on</span>
+        <span><b>held</b> = still carrying the same call (not a new trade — the ledger grades fresh fires only)</span>
+      </div>
     </div>
     <div class="rp-console">
       <div class="rp-wt-head" id="rp-wt-head"></div>
@@ -3308,18 +3760,33 @@ function rpEnsureDom(){
   RP.els={ chart:p.querySelector('#rp-chart'), play:p.querySelector('#rp-play'), speed:p.querySelector('#rp-speed'),
     scrub:p.querySelector('#rp-scrub'), time:p.querySelector('#rp-time'),
     wthead:p.querySelector('#rp-wt-head'), consensus:p.querySelector('#rp-consensus'), stream:p.querySelector('#rp-stream'),
-    dayLabel:p.querySelector('#rp-daylabel'), newer:p.querySelector('#rp-newer'), older:p.querySelector('#rp-older') };
+    dayLabel:p.querySelector('#rp-daylabel'), newer:p.querySelector('#rp-newer'), older:p.querySelector('#rp-older'),
+    controls:p.querySelector('.rp-controls'), console:p.querySelector('.rp-console'), legend:p.querySelector('.rp-legend'),
+    tablewrap:p.querySelector('#rp-tablewrap'), table:p.querySelector('#rp-table'), thumb:p.querySelector('#rp-thumb'),
+    vChart:p.querySelector('#rp-view-chart'), vTable:p.querySelector('#rp-view-table') };
+  RP.els.vChart.onclick=()=>rpSetView('chart');
+  RP.els.vTable.onclick=()=>rpSetView('table');
   RP.els.play.onclick=rpTogglePlay;
   RP.els.speed.onclick=rpCycleSpeed;
   RP.els.scrub.oninput=()=>{ RP.playing=false; rpSyncPlayBtn(); RP.pos=(+RP.els.scrub.value)/1000; rpPaint(); };
   RP.els.newer.onclick=()=>{ if(RP.di>0) rpLoadDay(RP.di-1); };
   RP.els.older.onclick=()=>{ if(RP.di<RP.days.length-1) rpLoadDay(RP.di+1); };
-  let rt=null; const ro=new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(RP.path){ rpBuild(); rpPaint(); } },140); });
+  let rt=null; const ro=new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(()=>{
+    if(RP.view==='chart' && RP.path){ rpBuild(); rpPaint(); }
+    const on=RP.view==='table'?RP.els.vTable:RP.els.vChart;   // the thumb tracks its button
+    RP.els.thumb.style.left=on.offsetLeft+'px'; RP.els.thumb.style.width=on.offsetWidth+'px';
+  },140); });
   ro.observe(p);
+  // seat the toggle thumb once the buttons have been laid out (offsetWidth is 0 before that)
+  requestAnimationFrame(()=>rpSetView(RP.view||'chart'));
 }
 function rpEmpty(){ RP.els.chart.innerHTML=`<div class="rp-empty">No recorded sessions with Watchtower data yet.</div>`;
   RP.els.dayLabel.textContent='—'; RP.els.time.textContent='—';
-  RP.els.wthead.innerHTML=''; RP.els.consensus.innerHTML=''; RP.els.stream.innerHTML=''; }
+  RP.els.wthead.innerHTML=''; RP.els.consensus.innerHTML=''; RP.els.stream.innerHTML='';
+  // the table must empty with everything else — otherwise the last day's grid sits there
+  // looking like live data on a day that has none
+  RP.fires=[]; RP.fireByTs=new Map();
+  RP.els.table.innerHTML=`<tbody><tr><td class="rp-sm" style="padding:22px">No recorded sessions with Watchtower data yet.</td></tr></tbody>`; }
 // (re)build the day list, preserving the selected day across refreshes
 function rpSyncDays(reload){
   const prev=RP.days[RP.di]&&RP.days[RP.di].day, wasEmpty=!RP.days.length;
@@ -3335,7 +3802,8 @@ function initReplay(){ rpEnsureDom(); rpSyncDays(true); }
 function switchTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active", p.dataset.panel===name));
-  if(name==='replay'){ if(!RP.els) initReplay(); else requestAnimationFrame(()=>{ if(RP.path){ rpBuild(); rpPaint(); } }); }
+  if(name==='replay'){ if(!RP.els) initReplay();
+    else requestAnimationFrame(()=>{ rpSetView(RP.view); if(RP.view==='chart'&&RP.path){ rpBuild(); rpPaint(); } }); }
   if(name==='map') requestAnimationFrame(()=>{ buildMap(); paintMap(); });
 }
 $("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b) switchTab(b.dataset.tab); });

@@ -184,6 +184,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
 
+            if route == "/api/spot":
+                # the streaming price for the map (cached ~2s in snapshot.live_spot).
+                # Fail-open by contract: a null spot means "keep showing the scan price".
+                tk = qs.get("ticker", ["SPX"])[0]
+                if not re.fullmatch(r"[A-Z.$^]{1,8}", tk):
+                    return self._send_json({"error": "bad ticker"}, 400)
+                try:
+                    return self._send_json(snap.live_spot(tk))
+                except Exception as exc:               # never 500 the tablet
+                    return self._send_json({"ticker": tk, "spot": None,
+                                            "error": f"{type(exc).__name__}: {exc}"})
+
             if route == "/api/replay":
                 day = qs.get("day", [""])[0]
                 if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):

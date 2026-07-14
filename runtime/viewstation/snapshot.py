@@ -406,6 +406,56 @@ def build_snapshot() -> dict:
     return snap
 
 
+"""=== LIVE SPOT (the streaming price) ================================================
+
+The map's price used to be a SCAN SNAPSHOT: the tablet polled every 4s but only ever
+re-read the diary, and the diary is written by the left-eye scanner — launchd asks for
+60s, but an RTH scan overruns that and launchd DROPS the overlapping fire. Measured on
+2026-07-13: a new price every 2 min at best, 4.1 min median, 12.5 min at worst. The UI
+eased smoothly between those points, so a 12-minute-old print still LOOKED live.
+
+This is the fix: one cheap Schwab quote (`lefteye_fetcher.live_spot` — a single-quote
+call, never the chain), served behind a short cache so N tablets and a fast poll can
+never multiply into N×poll upstream calls.
+
+Rules it must obey:
+  * NEVER fabricate. Upstream returns None (dead bearer, market closed, network) →
+    `spot: None` and the tablet keeps showing the diary's scan price, exactly as before.
+  * The GRAVITY (magnet, walls, flip, regime) still comes from the diary. Only the PRICE
+    streams. A live price hung on stale gravity is honest; a fabricated one is not.
+"""
+_SPOT_CACHE: dict = {"ts": 0.0, "val": None, "src": None}
+_SPOT_TTL_S = 2.0          # ≥ the tablet's poll gap, so the quote is shared, not multiplied
+_SPOT_LOCK = __import__("threading").Lock()
+
+
+def live_spot(ticker: str = "SPX") -> dict:
+    """The current index print for the map. Cached `_SPOT_TTL_S` so a room full of
+    tablets polling every 3s still costs upstream ~1 quote every 2s. Fail-open: any
+    error is a null spot, never a stale value dressed up as fresh."""
+    import time as _t
+    now = _t.time()
+    with _SPOT_LOCK:
+        c = _SPOT_CACHE
+        if c["val"] is not None and (now - c["ts"]) < _SPOT_TTL_S and c.get("tk") == ticker:
+            return {"ticker": ticker, "spot": c["val"], "source": c["src"],
+                    "age_s": round(now - c["ts"], 2), "cached": True}
+    px = None
+    try:
+        import lefteye_fetcher
+        px = lefteye_fetcher.live_spot(ticker)
+    except Exception:
+        px = None
+    px = float(px) if isinstance(px, (int, float)) and px > 0 else None
+    with _SPOT_LOCK:
+        if px is not None:
+            _SPOT_CACHE.update({"ts": now, "val": px, "src": "schwab_quote", "tk": ticker})
+    return {"ticker": ticker, "spot": px,
+            "source": "schwab_quote" if px is not None else None,
+            "age_s": 0.0, "cached": False,
+            "ts": datetime.now(ET).isoformat() if ET else None}
+
+
 def replay_day(day: str) -> dict:
     """Authoritative Watchtower grading for one past session — the data behind the
     tablet's Replay tab. Reuses the canonical resolver (target-before-stop over the
