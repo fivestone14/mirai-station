@@ -247,10 +247,42 @@
     min-height:0; display:flex; flex-direction:column}
   .scene-top{position:absolute; top:14px; left:16px; right:16px; display:flex; justify-content:space-between; z-index:5; pointer-events:none}
   .scene-top .st{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint)}
-  .scene{flex:1; display:flex; align-items:center; justify-content:center; perspective:1500px; perspective-origin:50% 50%; padding:22px 8px 22px 88px}
-  @media (max-width:560px){ .scene{padding:22px 8px} }
+  .stack-scene{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; perspective:1500px; perspective-origin:50% 42%; padding:22px 8px 16px 88px}
+  @media (max-width:560px){ .stack-scene{padding:22px 8px 16px} }
   .deck{position:relative; width:288px; height:186px; transform-style:preserve-3d; transform:scale(.8) rotateX(55deg) rotateZ(-45deg)}
+  /* short windows: shrink the main deck so the selected top plane can't clip the card edge
+     (kept BEFORE the narrow-width rule so a short+narrow viewport still gets the smaller .62) */
+  @media (max-height:740px){ .deck{transform:scale(.68) rotateX(55deg) rotateZ(-45deg)} }
   @media (max-width:520px){.deck{transform:scale(.62) rotateX(55deg) rotateZ(-45deg)}}
+  /* ---- the data-feed stack: feeds live in their own boxed mini-deck below the main
+     stack, and the eflow line carries pulsing "electrons" up into the residual stream ---- */
+  .deck.mini{width:216px; height:104px; transform:scale(.72) rotateX(55deg) rotateZ(-45deg)}
+  @media (max-width:520px){.deck.mini{transform:scale(.58) rotateX(55deg) rotateZ(-45deg)}}
+  .deck.mini .pn{font-size:15px}
+  .deck.mini .ptag{width:12px; height:12px; margin-right:7px}
+  .deck.mini .pc{font-size:9px}
+  .feedbox{position:relative; border:1.5px dashed color-mix(in srgb,var(--l-base) 45%, var(--hairline-2)); border-radius:14px;
+    padding:6px 16px 2px; background:color-mix(in srgb,var(--l-base) 5%, transparent); flex:none}
+  .fb-label{position:absolute; top:-8px; left:16px; padding:1px 7px; border-radius:999px; background:var(--surface);
+    border:1px solid color-mix(in srgb,var(--l-base) 35%, var(--hairline)); font-family:var(--mono); font-size:8.5px;
+    letter-spacing:.16em; text-transform:uppercase; font-weight:600; color:color-mix(in srgb,var(--l-base) 85%, var(--ink-faint))}
+  .fb-stage{display:flex; align-items:center; justify-content:center; perspective:1200px}
+  .eflow{position:relative; width:26px; height:46px; flex:none; margin:0 0 2px}
+  .eflow::before{content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%); border-radius:2px;
+    background:linear-gradient(to top, color-mix(in srgb,var(--l-base) 55%,transparent), color-mix(in srgb,var(--l-base) 14%,transparent))}
+  .eflow i{position:absolute; left:50%; bottom:-3px; width:6px; height:6px; margin-left:-3px; border-radius:50%; opacity:0;
+    background:color-mix(in srgb,var(--l-base) 88%, #fff); box-shadow:0 0 9px 2px color-mix(in srgb,var(--l-base) 65%,transparent)}
+  @media (prefers-reduced-motion:no-preference){
+    .eflow i{animation:electron 1.35s linear infinite}
+    .eflow i:nth-child(2){animation-delay:.45s}
+    .eflow i:nth-child(3){animation-delay:.9s}
+    @keyframes electron{
+      0%{transform:translateY(0) scale(.7); opacity:0}
+      12%{opacity:1}
+      82%{opacity:1}
+      100%{transform:translateY(-46px) scale(1); opacity:0}
+    }
+  }
   .plane{position:absolute; inset:0; border-radius:12px; transform:translateZ(var(--z)); transform-style:preserve-3d; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
     background:linear-gradient(135deg, color-mix(in srgb,var(--c) 46%,transparent) 0%, color-mix(in srgb,var(--c) 15%,transparent) 60%, color-mix(in srgb,var(--c) 28%,transparent) 100%);
     border:1px solid color-mix(in srgb,var(--c) 70%,transparent);
@@ -288,6 +320,7 @@
   .plane .ptag{width:15px; height:15px; flex:none; margin-right:9px;
     border:1.5px solid rgba(255,255,255,.92); box-shadow:0 1px 3px rgba(0,0,0,.55)}
   .plane .ptag.sensory{border-radius:3px; background:var(--l-base)}
+  .plane .ptag.feed{border-radius:3px; border-style:dashed; background:color-mix(in srgb,var(--l-base) 45%, transparent)}
   .plane .ptag.lens{border-radius:50%; background:var(--l-fade)}
   .plane .ptag.proc{border:0; background:var(--l-tower); box-shadow:none;
     filter:drop-shadow(0 0 1.1px rgba(0,0,0,.85)) drop-shadow(0 1px 2px rgba(0,0,0,.5));
@@ -297,6 +330,7 @@
   .cat{position:relative; flex:var(--f); display:flex; align-items:center; padding-left:8px; border:1.5px solid color-mix(in srgb,var(--tc) 44%, var(--hairline-2)); border-right:0; border-radius:6px 0 0 6px}
   .cat-ico{position:absolute; top:5px; left:50%; transform:translateX(-50%); width:12px; height:12px; background:var(--tc); border:1px solid rgba(255,255,255,.45); box-shadow:0 1px 2px rgba(0,0,0,.4)}
   .cat-ico.sensory{border-radius:2px}
+  .cat-ico.feed{border-radius:2px; background:color-mix(in srgb,var(--tc) 30%,transparent); border-style:dashed}
   .cat-ico.lens{border-radius:50%}
   .cat-ico.proc{border:0; clip-path:polygon(50% 0%,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%)}
   .cat .lbl{writing-mode:vertical-rl; transform:rotate(180deg); font-family:var(--mono); font-size:8.5px; letter-spacing:.15em; text-transform:uppercase; font-weight:600; white-space:nowrap; color:color-mix(in srgb,var(--tc) 85%, var(--ink-faint))}
@@ -314,6 +348,8 @@
   .tier i{width:9px; height:9px; background:currentColor; flex:none}
   .tier.sensory{color:var(--l-base); border-color:color-mix(in srgb,var(--l-base) 38%,transparent); background:color-mix(in srgb,var(--l-base) 10%,transparent)}
   .tier.sensory i{border-radius:2px}
+  .tier.feed{color:var(--l-base); border-style:dashed; border-color:color-mix(in srgb,var(--l-base) 48%,transparent); background:color-mix(in srgb,var(--l-base) 8%,transparent)}
+  .tier.feed i{border-radius:2px; background:transparent; border:1.5px dashed currentColor; width:8px; height:8px}
   .tier.lens{color:var(--l-fade); border-color:color-mix(in srgb,var(--l-fade) 38%,transparent); background:color-mix(in srgb,var(--l-fade) 10%,transparent)}
   .tier.lens i{border-radius:50%}
   .tier.processor{color:var(--l-tower); border-color:color-mix(in srgb,var(--l-tower) 38%,transparent); background:color-mix(in srgb,var(--l-tower) 10%,transparent)}
@@ -322,7 +358,22 @@
   .dt-eg{margin-top:11px; padding:10px 13px; border-radius:11px; line-height:1.5; font-size:12.5px; color:var(--ink-dim);
     background:color-mix(in srgb,var(--c) 8%, var(--surface)); border:1px solid color-mix(in srgb,var(--c) 24%, var(--hairline))}
   .dt-eg .eg-k{display:block; font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; margin-bottom:3px; color:color-mix(in srgb,var(--c) 72%, var(--ink-faint))}
-  .dt-eg code{display:block; font-family:var(--mono); font-size:11px; line-height:1.6; white-space:pre-wrap; word-break:break-word; margin-top:2px; color:var(--ink-dim)}
+  /* schema card — the data-feed detail shows its real record shape, pretty-printed:
+     keys tinted with the layer hue, values quiet, // comments faint italic */
+  .dt-schema{margin-top:11px; border-radius:11px; overflow:hidden;
+    border:1px solid color-mix(in srgb,var(--c) 24%, var(--hairline));
+    background:color-mix(in srgb,var(--c) 6%, var(--surface))}
+  .sc-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:8px 13px 7px;
+    border-bottom:1px solid color-mix(in srgb,var(--c) 20%, var(--hairline))}
+  .sc-head .sc-k{font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; font-weight:600;
+    color:color-mix(in srgb,var(--c) 72%, var(--ink-faint))}
+  .sc-head .sc-src{font-family:var(--mono); font-size:9.5px; color:var(--ink-faint); text-align:right; min-width:0}
+  .dt-schema pre{margin:0; padding:10px 13px 11px; font-family:var(--mono); font-size:10.5px; line-height:1.7;
+    color:var(--ink-faint); overflow-x:auto}
+  .dt-schema .sk{color:color-mix(in srgb,var(--c) 80%, var(--ink)); font-weight:600}
+  .dt-schema .sv{color:var(--ink-dim)}
+  .dt-schema .sn{color:var(--ink)}
+  .dt-schema .scm{color:var(--ink-faint); opacity:.78; font-style:italic}
   .rd{margin-top:15px; padding-top:14px; border-top:1px solid var(--hairline)}
   .rd-h{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px}
   .rd-h .lab{font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-faint); font-weight:600}
@@ -2729,25 +2780,66 @@ function startLive(){
 // ---------- LAYERS (3D deck + readiness detail) ----------
 // order = bottom → top of the residual stream (base map → heads)
 const LY = [
-  {id:'chain', num:'◇', name:'Options Chain', code:'native_gex_feed.native_chain · base map', hue:'--l-base', base:true, tier:'sensory',
+  {id:'chain', num:'◇', name:'Options Chain', code:'native_gex_feed.native_chain · base map', hue:'--l-base', base:true, tier:'feed',
     role:'≈ token embedding / residual stream', status:['jade','live'],
     plain:'The raw ingredient list. Every SPX call and put — its price, its gamma, and how many contracts people are holding — re-read from scratch on every scan (a full scan lands about every 10 minutes). Almost nothing is guessed: a missing gamma is recomputed from the option\'s own price, never invented.',
-    egk:'Schema · ThetaData native SPX chain · Schwab live spot · SPY×10 proxy fallback',
-    example:'<code>{ spot, contracts: [ { strike, right, expiry, dte, gamma, iv, open_interest, volume } ] }</code>',
+    schema:{src:'ThetaData native SPX chain · Schwab spot · SPY×10 fallback', code:[
+      '{',
+      '  spot: 7572.4,             // the live index price',
+      '  contracts: [              // every SPX call + put',
+      '    {',
+      '      strike: 7600,',
+      '      right: "call",        // call or put',
+      '      expiry: "2026-07-16",',
+      '      dte: 0,               // days until it expires',
+      '      gamma: 0.0031,',
+      '      iv: 0.114,            // implied volatility',
+      '      open_interest: 12480, // contracts held',
+      '      volume: 3921          // traded so far today',
+      '    }, ...',
+      '  ]',
+      '}']},
     rd:{kind:'live', freq:'launchd fires every 60s · a completed scan lands ~every 10 min',
       note:'The feed that never sleeps — every layer above is cooked from this.'}},
-  {id:'dated', num:'◇2', name:'Dated Book', code:'dated_gex_feed.py · nightly sidecar', hue:'--l-dated', base:true, tier:'sensory',
+  {id:'dated', num:'◇2', name:'Dated Book', code:'dated_gex_feed.py · nightly sidecar', hue:'--l-dated', base:true, tier:'feed',
     role:'≈ long-range memory · far-expiry OI walls', status:['jade','live · nightly'],
     plain:'The far-future fence map. Once a night it fetches the big option piles sitting weeks and months away — the brick walls that will still be standing after today\'s options expire at 4pm. The pile sizes are the trusted part; a best-guess flip line rides beside them, clearly labeled a guess.',
-    egk:'Schema · nightly ThetaData dated-OI pull · 05:17 PT · next 2 SPX monthlies + 2 quarter-ends',
-    example:'<code>{ ok, as_of, oi_date, spot, bands: [ { expiry, band, dte_at_pull, strikes: [ [strike, call_oi, put_oi, call_gex, put_gex, call_iv, put_iv] ] } ] }</code>',
+    schema:{src:'nightly ThetaData dated-OI pull · 05:17 PT', code:[
+      '{',
+      '  ok: true,',
+      '  as_of: "2026-07-16T08:17", // pulled before the open',
+      '  oi_date: "2026-07-16",',
+      '  spot: 7572.4,',
+      '  bands: [                   // one per far expiry',
+      '    {',
+      '      expiry: "2026-08-21",',
+      '      band: "monthly",       // monthly · quarter_end',
+      '      dte_at_pull: 36,',
+      '      strikes: [             // one 7-tuple per strike',
+      '        [6060, 0, 491, 0.0, 64727.4, null, 1.0437]',
+      '        // [strike, call_oi, put_oi, call_gex,',
+      '        //  put_gex, call_iv, put_iv]',
+      '      ]',
+      '    }, ...',
+      '  ]',
+      '}']},
     rd:{kind:'live', freq:'one fetch per night (+ a Friday-evening OpEx roll), cached all day',
       note:'Strike sizes are unsigned by design; the assumed-sign hedge rail (flip, h1) is labeled, never trusted as fact. Kill switch DATED_BOOK_DISABLE. Feeds the map\'s dated-walls overlay and the Watchtower\'s outer terrain.'}},
-  {id:'peri', num:'◇3', name:'UW Periscope', code:'uw_periscope.py · second opinion', hue:'--l-peri', base:true, tier:'sensory',
+  {id:'peri', num:'◇3', name:'UW Periscope', code:'uw_periscope.py · second opinion', hue:'--l-peri', base:true, tier:'feed',
     role:'≈ an outside model to disagree with', status:['iris','shadow · feed'],
     plain:'A free outside scorecard from Unusual Whales. Mirai checks its own gamma map against it — but the feed\'s buy/sell sign was tested and found to flip like a coin, so only the SIZES are trusted, never the direction.',
-    egk:'Schema · UW dealer-gamma heatmap (not included in this build)',
-    example:'<code>{ grid_iso, dte_max: 7, n_strikes, per_strike: { strike → gamma / vanna / charm }, bucket_edges: { 0d, 1_7, 8_45 } }</code>',
+    schema:{src:'UW dealer-gamma heatmap (not included in this build)', code:[
+      '{',
+      '  grid_iso: "2026-07-16T17:10:00Z", // strict 10-min slots',
+      '  dte_max: 7,               // strikes out to one week',
+      '  n_strikes: 152,',
+      '  per_strike: {             // strike → greek exposures',
+      '    "7570": { gamma: …, vanna: …, charm: … }, ...',
+      '  },',
+      '  bucket_edges: { "0d": …, "1_7": …, "8_45": … },',
+      '  mark_version: 2,',
+      '  source: "uw_periscope_bsoc"',
+      '}']},
     rd:{kind:'feature', feeds:'feeds Gamma Roll — dated buckets, magnitude only',
       summary:'Its per-strike dealer sign was tested and REFUSED — coherent on 0 of 72 slices, i.e. it flips at chance — so it never becomes the live sign. The magnitude buckets ride on into Gamma Roll.'}},
   {id:'grav', num:'1', name:'GEX · Gravity', code:'lefteye_gex_box.GexBox', hue:'--l-grav', tier:'sensory',
@@ -2828,6 +2920,22 @@ let selLayer = 'lob';
 function pill(st){ return `<span class="pill ${st[0]}"><span class="dot"></span>${st[1]}</span>`; }
 function pipRow(n,on){ let h=''; for(let i=0;i<n;i++) h+=`<i class="${i<on?'on':''}"></i>`; return `<div class="pips">${h}</div>`; }
 
+// one-pass schema highlighter: strings → .sv, keys → .sk, numbers/null/bool → .sn,
+// a trailing // comment → .scm; everything else (braces, commas) keeps the quiet base ink.
+function hlLine(raw){
+  const esc = s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let cm=''; const ci=raw.indexOf('//');
+  let code = ci>=0 ? raw.slice(0,ci) : raw;
+  if(ci>=0) cm = `<span class="scm">${esc(raw.slice(ci))}</span>`;
+  code = esc(code).replace(/"[^"]*"\s*:|"[^"]*"|(?:^|[\s{,\[])[A-Za-z_]\w*\s*:|-?\d+(?:\.\d+)?|\b(?:null|true|false)\b/g, tok=>{
+    if(/^".*"\s*:$/.test(tok)) return tok.replace(/^("[^"]*")(\s*:)$/, '<span class="sk">$1</span>$2');
+    if(tok[0]==='"') return `<span class="sv">${tok}</span>`;
+    if(/:\s*$/.test(tok)) return tok.replace(/([A-Za-z_]\w*)(\s*:)$/, '<span class="sk">$1</span>$2');
+    return `<span class="sn">${tok}</span>`;
+  });
+  return code + cm;
+}
+
 function readinessHTML(L){
   const r=L.rd;
   if(r.kind==='live') return `<div class="rd">
@@ -2895,7 +3003,7 @@ function renderDetail(){
   const L = LY.find(x=>x.id===selLayer);
   const dt=$("#dt");
   dt.style.setProperty('--c','var('+L.hue+')');
-  const tierLabel={sensory:'sensory layer',lens:'lens',processor:'processor'}[L.tier]||L.tier;
+  const tierLabel={feed:'data feed',sensory:'sensory layer',lens:'lens',processor:'processor'}[L.tier]||L.tier;
   const tchip = `<span class="tier ${L.tier}"><i></i>${tierLabel}</span>`;
   dt.innerHTML = `
     <div class="dt-top">
@@ -2905,7 +3013,9 @@ function renderDetail(){
     <div class="dt-meta">${tchip}${pill(L.status)}</div>
     <div class="dt-role">${L.role}</div>
     <p class="dt-plain">${L.plain}</p>
-    <div class="dt-eg"><span class="eg-k">${L.egk||'For example'}</span>${L.example}</div>
+    ${L.schema
+      ? `<div class="dt-schema"><div class="sc-head"><span class="sc-k">Schema · incoming record</span><span class="sc-src">${L.schema.src}</span></div><pre>${L.schema.code.map(hlLine).join('\n')}</pre></div>`
+      : `<div class="dt-eg"><span class="eg-k">For example</span>${L.example}</div>`}
     ${readinessHTML(L)}`;
 }
 
@@ -2917,15 +3027,21 @@ function selectLayer(id){
 
 function renderLayers(){
   const shape = t => t==='lens' ? 'lens' : t==='processor' ? 'proc' : '';
-  const tag = t => t==='lens' ? 'lens' : t==='processor' ? 'proc' : 'sensory';
-  // deck depth stays bounded as layers land: ≤7 planes keeps the original 46px gap,
-  // beyond that the gap shrinks so the projected stack never outgrows the scene card
-  const zGap = Math.min(46, 300/Math.max(1, LY.length-1));
-  const planes = LY.map((L,i)=>`
+  const tag = t => t==='lens' ? 'lens' : t==='processor' ? 'proc' : t==='feed' ? 'feed' : 'sensory';
+  const planeHTML = (L,z,d) => `
     <div class="plane ${L.base?'base':''} ${shape(L.tier)} ${L.id===selLayer?'sel':''}" data-id="${L.id}" tabindex="0" role="button" aria-label="${L.name} — ${L.tier}"
-         style="--c:var(${L.hue}); --z:${((i-(LY.length-1)/2)*zGap).toFixed(1)}px; --d:${(i*0.07).toFixed(2)}s">
+         style="--c:var(${L.hue}); --z:${z.toFixed(1)}px; --d:${d.toFixed(2)}s">
       <span class="pn"><i class="ptag ${tag(L.tier)}" title="${L.tier}"></i>${L.num}</span><span class="pc">${L.name}</span>
-    </div>`).join('');
+    </div>`;
+  // two stacks: the data feeds live in their own boxed mini-deck; everything else is the
+  // residual stream. LY order is preserved (feeds first), so keyboard nav walks bottom→top
+  // across the eflow gap. Main-deck depth stays bounded: ≤7 planes keeps the original
+  // 46px gap, beyond that the gap shrinks so the projected stack never outgrows the card.
+  const FEEDS = LY.filter(l=>l.tier==='feed'), MAIN = LY.filter(l=>l.tier!=='feed');
+  const zGap  = Math.min(46, 300/Math.max(1, MAIN.length-1));
+  const zGapF = Math.min(40, 110/Math.max(1, FEEDS.length-1));
+  const feedPlanes = FEEDS.map((L,i)=>planeHTML(L, (i-(FEEDS.length-1)/2)*zGapF, i*0.07)).join('');
+  const mainPlanes = MAIN.map((L,i)=>planeHTML(L, (i-(MAIN.length-1)/2)*zGap, (FEEDS.length+i)*0.07)).join('');
   const nShadow = LY.filter(l=>/shadow/.test(l.status[1])).length;
   const nTier = t => LY.filter(l=>l.tier===t).length;
   $("#p-layers").innerHTML = `
@@ -2935,25 +3051,33 @@ function renderLayers(){
     </div>
     <div class="layers3d">
       <div class="scene-card">
-        <div class="scene-top"><span class="st">forward pass · base → processor</span><span class="st" style="color:var(--iris)">decision ↑</span></div>
+        <div class="scene-top"><span class="st">forward pass · feeds → processor</span><span class="st" style="color:var(--iris)">decision ↑</span></div>
         <div class="cat-rail">
           <div class="cat" style="--f:${nTier('processor')}; --tc:var(--l-tower)"><i class="cat-ico proc"></i><span class="lbl">Processor</span></div>
           <div class="cat" style="--f:${nTier('lens')}; --tc:var(--l-fade)"><i class="cat-ico lens"></i><span class="lbl">Lenses</span></div>
           <div class="cat" style="--f:${nTier('sensory')}; --tc:var(--l-base)"><i class="cat-ico sensory"></i><span class="lbl">Sensory</span></div>
+          <div class="cat" style="--f:${nTier('feed')+1}; --tc:var(--l-base)"><i class="cat-ico feed"></i><span class="lbl">Data feeds</span></div>
         </div>
-        <div class="scene"><div class="deck hassel" id="deck">${planes}</div></div>
+        <div class="stack-scene" id="stacks">
+          <div class="deck hassel" id="deck">${mainPlanes}</div>
+          <div class="eflow" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="feedbox">
+            <span class="fb-label">data feeds</span>
+            <div class="fb-stage"><div class="deck mini hassel" id="feeddeck">${feedPlanes}</div></div>
+          </div>
+        </div>
         <div class="deckhint">tap a block</div>
       </div>
       <div class="detail" id="dt"></div>
     </div>`;
-  const deck=$("#deck");
-  deck.addEventListener('click', e=>{ const p=e.target.closest('.plane'); if(p) selectLayer(p.dataset.id); });
-  deck.addEventListener('keydown', e=>{
+  const stacks=$("#stacks");
+  stacks.addEventListener('click', e=>{ const p=e.target.closest('.plane'); if(p) selectLayer(p.dataset.id); });
+  stacks.addEventListener('keydown', e=>{
     const p=e.target.closest('.plane'); if(!p) return;
     const idx=LY.findIndex(x=>x.id===p.dataset.id);
     if(e.key==='Enter'||e.key===' '){ e.preventDefault(); selectLayer(p.dataset.id); }
-    else if(e.key==='ArrowUp' && idx<LY.length-1){ e.preventDefault(); const n=deck.querySelector(`[data-id="${LY[idx+1].id}"]`); n.focus(); selectLayer(LY[idx+1].id); }
-    else if(e.key==='ArrowDown' && idx>0){ e.preventDefault(); const n=deck.querySelector(`[data-id="${LY[idx-1].id}"]`); n.focus(); selectLayer(LY[idx-1].id); }
+    else if(e.key==='ArrowUp' && idx<LY.length-1){ e.preventDefault(); const n=stacks.querySelector(`[data-id="${LY[idx+1].id}"]`); n.focus(); selectLayer(LY[idx+1].id); }
+    else if(e.key==='ArrowDown' && idx>0){ e.preventDefault(); const n=stacks.querySelector(`[data-id="${LY[idx-1].id}"]`); n.focus(); selectLayer(LY[idx-1].id); }
   });
   renderDetail();
 }
