@@ -247,57 +247,52 @@
     min-height:0; display:flex; flex-direction:column}
   .scene-top{position:absolute; top:14px; left:16px; right:16px; display:flex; justify-content:space-between; z-index:5; pointer-events:none}
   .scene-top .st{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint)}
-  .stack-scene{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; perspective:1500px; perspective-origin:50% 42%; padding:22px 8px 16px 88px}
-  @media (max-width:560px){ .stack-scene{padding:22px 8px 16px} }
-  .deck{position:relative; width:288px; height:186px; transform-style:preserve-3d; transform:scale(.8) rotateX(55deg) rotateZ(-45deg)}
-  /* short windows: shrink the main deck so the selected top plane can't clip the card edge
-     (kept BEFORE the narrow-width rule so a short+narrow viewport still gets the smaller .62) */
-  @media (max-height:740px){ .deck{transform:scale(.68) rotateX(55deg) rotateZ(-45deg)} }
-  @media (max-width:520px){.deck{transform:scale(.62) rotateX(55deg) rotateZ(-45deg)}}
-  /* ---- the data-feed stack: feeds live in their own boxed mini-deck below the main
-     stack, and the eflow line carries pulsing "electrons" up into the residual stream ---- */
-  .deck.mini{width:216px; height:104px; transform:scale(.72) rotateX(55deg) rotateZ(-45deg)}
-  @media (max-width:520px){.deck.mini{transform:scale(.58) rotateX(55deg) rotateZ(-45deg)}}
-  .deck.mini .pn{font-size:15px}
-  .deck.mini .ptag{width:12px; height:12px; margin-right:7px}
-  .deck.mini .pc{font-size:9px}
-  .feedbox{position:relative; flex:none}
-  .fb-label{position:absolute; bottom:4px; left:50%; transform:translateX(-50%); padding:2px 9px; border-radius:999px; background:var(--surface); z-index:2;
+  .stack-scene{position:relative; flex:1; min-height:0; perspective:2600px; perspective-origin:50% 40%; padding:26px 10px 30px 88px}
+  @media (max-width:560px){ .stack-scene{padding:24px 10px 28px} }
+  /* ONE shared 3D space — main stack, glass feed box and the electron beam all live in the
+     same deck, so proportions between the stacks hold by construction and the beam's contact
+     points can never drift. layoutStacks() computes the deck's scale + position from the
+     container (ResizeObserver), so the composition fills whatever screen it gets. */
+  .deck{position:absolute; left:50%; top:52%; width:288px; height:186px; transform-style:preserve-3d;
+    transform:translate(-50%,-50%) scale(var(--ds,.8)) rotateX(55deg) rotateZ(-45deg)}
+  .fb-label{position:absolute; left:50%; top:76%; transform:translate(-50%,0); padding:2px 9px; border-radius:999px; background:var(--surface); z-index:2;
     border:1px solid color-mix(in srgb,var(--l-base) 35%, var(--hairline)); font-family:var(--mono); font-size:8.5px;
-    letter-spacing:.16em; text-transform:uppercase; font-weight:600; color:color-mix(in srgb,var(--l-base) 85%, var(--ink-faint)); white-space:nowrap}
-  .fb-stage{display:flex; align-items:center; justify-content:center; perspective:1200px; width:300px; height:200px}
-  /* the glass box — a real 3D transparent cuboid drawn in the SAME isometric space as the
-     mini deck, so the feed planes genuinely sit inside it. Six faces around the 216×104
-     planes (rest z ±40; a selected plane scales ×1.13 → x ±122 and pops to z 64):
-     box x ±130 · y ±64 · z ±72, so even a selected plane keeps ≥5px of air on every axis. */
+    letter-spacing:.16em; text-transform:uppercase; font-weight:600; color:color-mix(in srgb,var(--l-base) 85%, var(--ink-faint)); white-space:nowrap; pointer-events:none}
+  /* the glass box — six transparent faces in deck space. GEOMETRY is inline: renderLayers
+     computes every size/offset from the same constants that place the planes, so the box
+     always fits its planes; only the look lives here. */
   .glassbox{position:absolute; left:50%; top:50%; width:0; height:0; transform-style:preserve-3d; pointer-events:none}
   .glassbox .gb{position:absolute; left:0; top:0; border-radius:9px;
     background:color-mix(in srgb,var(--l-base) 6%, transparent);
     border:1px solid color-mix(in srgb,var(--l-base) 26%, transparent)}
-  .glassbox .gb.f-top{width:260px; height:128px; margin:-64px 0 0 -130px; transform:translateZ(72px);
-    background:color-mix(in srgb,var(--l-base) 4%, transparent); border-color:color-mix(in srgb,var(--l-base) 34%, transparent)}
-  .glassbox .gb.f-bot{width:260px; height:128px; margin:-64px 0 0 -130px; transform:translateZ(-72px);
-    background:color-mix(in srgb,var(--l-base) 10%, transparent);
+  .glassbox .gb.f-top{background:color-mix(in srgb,var(--l-base) 4%, transparent); border-color:color-mix(in srgb,var(--l-base) 34%, transparent)}
+  .glassbox .gb.f-bot{background:color-mix(in srgb,var(--l-base) 10%, transparent);
     box-shadow:0 0 26px color-mix(in srgb,var(--l-base) 14%, transparent) inset}
-  .glassbox .gb.f-n{width:260px; height:144px; margin:-72px 0 0 -130px; transform:rotateX(-90deg) translateZ(-64px)}
-  .glassbox .gb.f-s{width:260px; height:144px; margin:-72px 0 0 -130px; transform:rotateX(-90deg) translateZ(64px)}
-  .glassbox .gb.f-e{width:144px; height:128px; margin:-64px 0 0 -72px; transform:rotateY(90deg) translateZ(130px)}
-  .glassbox .gb.f-w{width:144px; height:128px; margin:-64px 0 0 -72px; transform:rotateY(90deg) translateZ(-130px)}
-  .eflow{position:relative; width:26px; height:64px; flex:none; margin:12px 0 8px}
-  .eflow::before{content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%); border-radius:2px;
-    background:linear-gradient(to top, color-mix(in srgb,var(--l-base) 55%,transparent), color-mix(in srgb,var(--l-base) 14%,transparent))}
-  .eflow i{position:absolute; left:50%; bottom:-3px; width:6px; height:6px; margin-left:-3px; border-radius:50%; opacity:0;
-    background:color-mix(in srgb,var(--l-base) 88%, #fff); box-shadow:0 0 9px 2px color-mix(in srgb,var(--l-base) 65%,transparent)}
+  /* beams — vertical connectors drawn along the stack axis IN deck space, so each one
+     contacts its endpoints exactly (glass-box lid → first plane; tier gap → tier gap)
+     at any scale. .flow carries the electrons + socket nodes; .dots is the quiet dotted
+     section divider. Dots/nodes counter-rotate (billboard) to face the camera. */
+  .beam{position:absolute; left:50%; top:50%; width:2px; margin-left:-1px; transform-style:preserve-3d; pointer-events:none}
+  .beam.flow{border-radius:2px;
+    background:linear-gradient(to top, color-mix(in srgb,var(--l-base) 60%,transparent), color-mix(in srgb,var(--l-base) 16%,transparent))}
+  .beam .node{position:absolute; left:50%; width:9px; height:9px; margin-left:-4.5px; border-radius:50%;
+    border:1.5px solid color-mix(in srgb,var(--l-base) 85%, transparent);
+    background:color-mix(in srgb,var(--l-base) 30%, var(--surface));
+    transform:rotateX(90deg) rotateZ(45deg) rotateX(-55deg)}
+  .beam .node.n0{bottom:-5px}
+  .beam .node.n1{top:-5px}
+  .beam b{position:absolute; left:50%; top:100%; width:0; height:0; transform-style:preserve-3d}
+  .beam b i{position:absolute; left:-3px; top:-3px; width:6px; height:6px; border-radius:50%; opacity:0;
+    background:color-mix(in srgb,var(--l-base) 88%, #fff); box-shadow:0 0 9px 2px color-mix(in srgb,var(--l-base) 65%,transparent);
+    transform:rotateX(90deg) rotateZ(45deg) rotateX(-55deg)}
+  .beam.dots{width:0; background:none; border-left:2px dotted color-mix(in srgb,var(--ink-faint) 60%, transparent)}
   @media (prefers-reduced-motion:no-preference){
-    .eflow i{animation:electron 1.35s linear infinite}
-    .eflow i:nth-child(2){animation-delay:.45s}
-    .eflow i:nth-child(3){animation-delay:.9s}
-    @keyframes electron{
-      0%{transform:translateY(0) scale(.7); opacity:0}
-      12%{opacity:1}
-      82%{opacity:1}
-      100%{transform:translateY(-64px) scale(1); opacity:0}
-    }
+    .beam.flow b{animation:ebMove 1.5s linear infinite}
+    .beam.flow b i{animation:ebFade 1.5s linear infinite}
+    .beam.flow b:nth-of-type(2), .beam.flow b:nth-of-type(2) i{animation-delay:.5s}
+    .beam.flow b:nth-of-type(3), .beam.flow b:nth-of-type(3) i{animation-delay:1s}
+    @keyframes ebMove{0%{transform:translateY(0)}100%{transform:translateY(-80px)}}
+    @keyframes ebFade{0%,10%{opacity:0}20%{opacity:1}80%{opacity:1}100%{opacity:0}}
   }
   .plane{position:absolute; inset:0; border-radius:12px; transform:translateZ(var(--z)); transform-style:preserve-3d; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
     background:linear-gradient(135deg, color-mix(in srgb,var(--c) 46%,transparent) 0%, color-mix(in srgb,var(--c) 15%,transparent) 60%, color-mix(in srgb,var(--c) 28%,transparent) 100%);
@@ -342,8 +337,8 @@
     filter:drop-shadow(0 0 1.1px rgba(0,0,0,.85)) drop-shadow(0 1px 2px rgba(0,0,0,.5));
     clip-path:polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%)}
   /* category rail — brackets that envelope each tier (top→bottom: processor · lenses · sensory) */
-  .cat-rail{position:absolute; left:16px; top:48px; bottom:34px; width:66px; display:flex; flex-direction:column; gap:7px; z-index:6; pointer-events:none}
-  .cat{position:relative; flex:var(--f); display:flex; align-items:center; padding-left:8px; border:1.5px solid color-mix(in srgb,var(--tc) 44%, var(--hairline-2)); border-right:0; border-radius:6px 0 0 6px}
+  .cat-rail{position:absolute; left:16px; top:0; bottom:0; width:66px; z-index:6; pointer-events:none}
+  .cat{position:absolute; left:0; width:100%; display:flex; align-items:center; padding-left:8px; border:1.5px solid color-mix(in srgb,var(--tc) 44%, var(--hairline-2)); border-right:0; border-radius:6px 0 0 6px; transition:top .25s ease, height .25s ease}
   .cat-ico{position:absolute; top:5px; left:50%; transform:translateX(-50%); width:12px; height:12px; background:var(--tc); border:1px solid rgba(255,255,255,.45); box-shadow:0 1px 2px rgba(0,0,0,.4)}
   .cat-ico.sensory{border-radius:2px}
   .cat-ico.feed{border-radius:2px; background:color-mix(in srgb,var(--tc) 30%,transparent); border-style:dashed}
@@ -3041,6 +3036,69 @@ function selectLayer(id){
   renderDetail();
 }
 
+// ---- stack geometry: one shared deck-local z axis, z=0 = the glass floor ----
+// Constants sized so a selected plane (scale 1.13 + 24px pop) keeps clear air inside the
+// glass box (x ±170 vs sel ±162.7 · y ±112 vs ±105.1 · lid clears the popped top feed by
+// 10px) and between planes. More boxed stacks later = more entries in the same z layout.
+const STK = {PGAP:34, TGAP:56, BEAM:80, BOXPAD:28, BOXTOP:34, POP:24, W:288, D:186, BOXHW:170, BOXHD:112};
+function stackGeo(){
+  const FEEDS = LY.filter(l=>l.tier==='feed'), MAIN = LY.filter(l=>l.tier!=='feed');
+  const z = new Map();
+  FEEDS.forEach((l,i)=>z.set(l.id, STK.BOXPAD + i*STK.PGAP));
+  const boxTop = STK.BOXPAD + (FEEDS.length-1)*STK.PGAP + STK.BOXTOP;
+  const gaps=[]; let zc = boxTop + STK.BEAM;
+  MAIN.forEach((l,i)=>{
+    if(i>0){
+      const tierBreak = l.tier!==MAIN[i-1].tier;
+      zc += tierBreak ? STK.TGAP : STK.PGAP;
+      if(tierBreak) gaps.push({z0:zc-STK.TGAP+10, z1:zc-10});
+    }
+    z.set(l.id, zc);
+  });
+  return {z, boxTop, zTop:zc, FEEDS, MAIN};
+}
+
+// fit + place the whole composition in the container, then align the rail brackets and the
+// DATA FEEDS pill to the REAL projected positions (getBoundingClientRect of 3D children).
+function layoutStacks(){
+  const stacks=$("#stacks"), deck=$("#deck");
+  if(!stacks || !deck || !deck._geo) return;
+  const cs=getComputedStyle(stacks);
+  const padL=parseFloat(cs.paddingLeft), padR=parseFloat(cs.paddingRight);
+  const padT=parseFloat(cs.paddingTop),  padB=parseFloat(cs.paddingBottom);
+  const w=stacks.clientWidth-padL-padR, h=stacks.clientHeight-padT-padB;
+  if(w<80 || h<80) return;                       // hidden tab — the ResizeObserver re-fires on reveal
+  const g=deck._geo;
+  const SIN=0.8192, COS=0.5736, R=0.7071;        // rotateX(55) · rotateZ(-45)
+  const diag=(STK.W/2+STK.D/2)*R, boxDiag=(STK.BOXHW+STK.BOXHD)*R;
+  const upper=(g.zTop+STK.POP+16)*SIN + diag*COS;      // px above deck center at s=1 (popped top plane)
+  const lower=boxDiag*COS;                              // glass floor (z=0) governs below
+  const compH=upper+lower, compW=2*Math.max(diag*1.13, boxDiag)+16;
+  const s=Math.min(1.1, h/compH, w/compW);
+  deck.style.setProperty('--ds', s.toFixed(4));
+  deck.style.left=(padL+w/2).toFixed(1)+'px';
+  // 42% of the spare height above, the rest below → the feed box sits toward the bottom
+  deck.style.top =(padT+(h-compH*s)*0.42+upper*s).toFixed(1)+'px';
+  requestAnimationFrame(()=>{                    // measure AFTER the new transform paints
+    const card=stacks.closest('.scene-card'); if(!card) return;
+    const cardR=card.getBoundingClientRect(), sr=stacks.getBoundingClientRect();
+    card.querySelectorAll('.cat[data-tier]').forEach(el=>{
+      const rs=LY.filter(l=>l.tier===el.dataset.tier)
+        .map(l=>deck.querySelector(`[data-id="${l.id}"]`)).filter(Boolean)
+        .map(p=>p.getBoundingClientRect());
+      if(!rs.length) return;
+      const top=Math.min(...rs.map(r=>r.top))-cardR.top, bot=Math.max(...rs.map(r=>r.bottom))-cardR.top;
+      el.style.top=(top-4).toFixed(0)+'px'; el.style.height=(bot-top+8).toFixed(0)+'px';
+    });
+    const fb=deck.querySelector('.gb.f-bot'), pill=$("#fblabel");
+    if(fb && pill){
+      const r=fb.getBoundingClientRect();
+      pill.style.left=(r.left+r.width/2-sr.left).toFixed(0)+'px';
+      pill.style.top =(r.bottom-sr.top-8).toFixed(0)+'px';
+    }
+  });
+}
+
 function renderLayers(){
   const shape = t => t==='lens' ? 'lens' : t==='processor' ? 'proc' : '';
   const tag = t => t==='lens' ? 'lens' : t==='processor' ? 'proc' : t==='feed' ? 'feed' : 'sensory';
@@ -3049,17 +3107,27 @@ function renderLayers(){
          style="--c:var(${L.hue}); --z:${z.toFixed(1)}px; --d:${d.toFixed(2)}s">
       <span class="pn"><i class="ptag ${tag(L.tier)}" title="${L.tier}"></i>${L.num}</span><span class="pc">${L.name}</span>
     </div>`;
-  // two stacks: the data feeds live in their own boxed mini-deck; everything else is the
-  // residual stream. LY order is preserved (feeds first), so keyboard nav walks bottom→top
-  // across the eflow gap. Main-deck depth stays bounded: ≤7 planes keeps the original
-  // 46px gap, beyond that the gap shrinks so the projected stack never outgrows the card.
-  const FEEDS = LY.filter(l=>l.tier==='feed'), MAIN = LY.filter(l=>l.tier!=='feed');
-  const zGap  = Math.min(46, 300/Math.max(1, MAIN.length-1));
-  const zGapF = Math.min(40, 110/Math.max(1, FEEDS.length-1));
-  const feedPlanes = FEEDS.map((L,i)=>planeHTML(L, (i-(FEEDS.length-1)/2)*zGapF, i*0.07)).join('');
-  const mainPlanes = MAIN.map((L,i)=>planeHTML(L, (i-(MAIN.length-1)/2)*zGap, (FEEDS.length+i)*0.07)).join('');
+  const geo = stackGeo();
+  const planes = LY.map((L,i)=>planeHTML(L, geo.z.get(L.id), i*0.07)).join('');
+  // glass box faces — geometry derived from the SAME constants as the planes
+  const hw=STK.BOXHW, hd=STK.BOXHD, bh=geo.boxTop, zc=bh/2;
+  const glass = `<div class="glassbox" aria-hidden="true">
+    <i class="gb f-bot" style="width:${2*hw}px;height:${2*hd}px;margin:${-hd}px 0 0 ${-hw}px;transform:translateZ(0px)"></i>
+    <i class="gb f-n" style="width:${2*hw}px;height:${bh}px;margin:${-zc}px 0 0 ${-hw}px;transform:translateZ(${zc}px) rotateX(-90deg) translateZ(${-hd}px)"></i>
+    <i class="gb f-s" style="width:${2*hw}px;height:${bh}px;margin:${-zc}px 0 0 ${-hw}px;transform:translateZ(${zc}px) rotateX(-90deg) translateZ(${hd}px)"></i>
+    <i class="gb f-e" style="width:${bh}px;height:${2*hd}px;margin:${-hd}px 0 0 ${-zc}px;transform:translateZ(${zc}px) rotateY(90deg) translateZ(${hw}px)"></i>
+    <i class="gb f-w" style="width:${bh}px;height:${2*hd}px;margin:${-hd}px 0 0 ${-zc}px;transform:translateZ(${zc}px) rotateY(90deg) translateZ(${-hw}px)"></i>
+    <i class="gb f-top" style="width:${2*hw}px;height:${2*hd}px;margin:${-hd}px 0 0 ${-hw}px;transform:translateZ(${bh}px)"></i>
+  </div>`;
+  // beams: a vertical connector from z0 to z1 on the stack axis (element bottom = z0)
+  const beamAt=(z0,z1,cls,inner='')=>{
+    const len=z1-z0, c=(z0+z1)/2;
+    return `<div class="beam ${cls}" aria-hidden="true" style="height:${len}px;margin-top:${-len/2}px;transform:translateZ(${c}px) rotateX(-90deg)">${inner}</div>`;
+  };
+  const flowBeam = beamAt(geo.boxTop, geo.boxTop+STK.BEAM, 'flow',
+    '<s class="node n0"></s><s class="node n1"></s><b><i></i></b><b><i></i></b><b><i></i></b>');
+  const tierBeams = (geo.gaps||[]).map(gp=>beamAt(gp.z0,gp.z1,'dots')).join('');
   const nShadow = LY.filter(l=>/shadow/.test(l.status[1])).length;
-  const nTier = t => LY.filter(l=>l.tier===t).length;
   $("#p-layers").innerHTML = `
     <div class="phead">
       <div><h2>Layers</h2><div class="desc">Data feeds → sensory layers → lenses → processor · tap any block for what it does</div></div>
@@ -3069,21 +3137,13 @@ function renderLayers(){
       <div class="scene-card">
         <div class="scene-top"><span class="st">forward pass · feeds → processor</span><span class="st" style="color:var(--iris)">decision ↑</span></div>
         <div class="cat-rail">
-          <div class="cat" style="--f:${nTier('processor')}; --tc:var(--l-tower)"><i class="cat-ico proc"></i><span class="lbl">Processor</span></div>
-          <div class="cat" style="--f:${nTier('lens')}; --tc:var(--l-fade)"><i class="cat-ico lens"></i><span class="lbl">Lenses</span></div>
-          <div class="cat" style="--f:${nTier('sensory')}; --tc:var(--l-base)"><i class="cat-ico sensory"></i><span class="lbl">Sensory</span></div>
-          <div class="cat" style="--f:${nTier('feed')+1}; --tc:var(--l-base)"><i class="cat-ico feed"></i><span class="lbl">Data feeds</span></div>
+          <div class="cat" data-tier="processor" style="top:6%;height:12%; --tc:var(--l-tower)"><i class="cat-ico proc"></i><span class="lbl">Processor</span></div>
+          <div class="cat" data-tier="lens" style="top:21%;height:12%; --tc:var(--l-fade)"><i class="cat-ico lens"></i><span class="lbl">Lenses</span></div>
+          <div class="cat" data-tier="sensory" style="top:36%;height:34%; --tc:var(--l-base)"><i class="cat-ico sensory"></i><span class="lbl">Sensory</span></div>
         </div>
         <div class="stack-scene" id="stacks">
-          <div class="deck hassel" id="deck">${mainPlanes}</div>
-          <div class="eflow" aria-hidden="true"><i></i><i></i><i></i></div>
-          <div class="feedbox">
-            <span class="fb-label">data feeds</span>
-            <div class="fb-stage"><div class="deck mini hassel" id="feeddeck">
-              <div class="glassbox" aria-hidden="true"><i class="gb f-top"></i><i class="gb f-bot"></i><i class="gb f-n"></i><i class="gb f-s"></i><i class="gb f-e"></i><i class="gb f-w"></i></div>
-              ${feedPlanes}
-            </div></div>
-          </div>
+          <div class="deck hassel" id="deck">${glass}${planes}${flowBeam}${tierBeams}</div>
+          <span class="fb-label" id="fblabel">data feeds</span>
         </div>
         <div class="deckhint">tap a block</div>
       </div>
@@ -3098,6 +3158,11 @@ function renderLayers(){
     else if(e.key==='ArrowUp' && idx<LY.length-1){ e.preventDefault(); const n=stacks.querySelector(`[data-id="${LY[idx+1].id}"]`); n.focus(); selectLayer(LY[idx+1].id); }
     else if(e.key==='ArrowDown' && idx>0){ e.preventDefault(); const n=stacks.querySelector(`[data-id="${LY[idx-1].id}"]`); n.focus(); selectLayer(LY[idx-1].id); }
   });
+  $("#deck")._geo = geo;
+  layoutStacks();
+  if(window._stkRO) window._stkRO.disconnect();
+  window._stkRO = new ResizeObserver(layoutStacks);
+  window._stkRO.observe(stacks);
   renderDetail();
 }
 
