@@ -609,6 +609,31 @@
   .heads{display:grid; grid-template-columns:1fr 1fr; grid-template-rows:minmax(0,1fr); gap:20px; flex:1; min-height:0}
   @media (max-width:860px){.heads{grid-template-columns:1fr}}
   .headcard{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px 18px 16px; min-height:0; overflow:auto}
+  /* N20 scoreboards — the two Watchtower report cards (Trade Ledger · Scene Ledger),
+     side by side across the bottom half of the Processor tab */
+  .ledgers{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:20px; min-height:42vh}
+  @media (max-width:860px){.ledgers{grid-template-columns:1fr; min-height:0}}
+  .ledgercard{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px 18px 14px;
+    display:flex; flex-direction:column; min-height:0; border-top:2px solid color-mix(in srgb,var(--lc) 55%, var(--hairline))}
+  .lg-top{display:flex; align-items:center; justify-content:space-between; gap:10px}
+  .lg-name{font-size:14px; font-weight:640; letter-spacing:-.01em}
+  .lg-name em{font-style:normal; display:block; font-family:var(--mono); font-size:9.5px; font-weight:500; color:var(--ink-faint); margin-top:2px; letter-spacing:.06em; text-transform:uppercase}
+  .lg-dot{width:9px; height:9px; border-radius:50%; flex:none; background:var(--ld,var(--ink-faint)); box-shadow:0 0 8px color-mix(in srgb,var(--ld,transparent) 55%, transparent)}
+  .lg-hero{display:flex; align-items:baseline; gap:12px; margin:16px 0 4px}
+  .lg-hero b{font-family:var(--mono); font-size:34px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1}
+  .lg-hero span{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint)}
+  .lg-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:8px; margin-top:12px}
+  .lg-stat{background:var(--surface); border:1px solid var(--hairline); border-radius:9px; padding:7px 10px}
+  .lg-stat .k{font-size:8.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
+  .lg-stat .v{font-family:var(--mono); font-size:13px; color:var(--ink); margin-top:2px; font-variant-numeric:tabular-nums}
+  .lg-pips{display:flex; align-items:center; gap:4px; margin-top:auto; padding-top:14px; flex-wrap:wrap}
+  .lg-pips i{width:10px; height:10px; border-radius:3px; background:var(--surface-3); border:1px solid var(--hairline)}
+  .lg-pips i.w{background:color-mix(in srgb,var(--jade) 75%, transparent); border-color:var(--jade)}
+  .lg-pips i.l{background:color-mix(in srgb,var(--coral) 75%, transparent); border-color:var(--coral)}
+  .lg-pips i.f{background:color-mix(in srgb,var(--ink-faint) 40%, transparent)}
+  .lg-pips i.p{background:transparent; border-style:dashed}
+  .lg-pips .cap{font-family:var(--mono); font-size:9px; color:var(--ink-faint); margin-left:6px; letter-spacing:.06em; text-transform:uppercase}
+  .lg-empty{font-size:12px; color:var(--ink-faint); margin-top:14px; line-height:1.5}
   .headcard.A{border-top:3px solid var(--jade)}
   .headcard.B{border-top:3px solid var(--lantern)}
   .headtop{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px}
@@ -3457,6 +3482,64 @@ function gateStates(s){
     {on:s.fade.runwayOk, nm:"Runway", dsc:"Room to magnet ≥ 0.35σ", val:`${sig(s.fade.runway)}`},
   ];
 }
+// ---- N20 ledger cards: Trade Ledger (watchtower) · Scene Ledger (watchtower_scene) ----
+// Newest nightly grade row from polarity_history.jsonl, loaded once and cached; the
+// storage keys stay machine-shaped — display names are mapped here at render only.
+let LEDGERS=null, _ledgersLoading=false;
+async function loadLedgers(){
+  if(_ledgersLoading) return; _ledgersLoading=true;
+  try{
+    const res=await fetch('/api/raw/file?root=state&path=reversion/polarity_history.jsonl&limit=14',{cache:'no-store'});
+    const d=await res.json(); const rows=(d&&d.rows)||[];
+    for(let i=rows.length-1;i>=0;i--){
+      const r=rows[i];
+      if(r && (r.watchtower || r.watchtower_scene)){
+        LEDGERS={day:r.day||null, trade:r.watchtower||null, scene:r.watchtower_scene||null};
+        break;
+      }
+    }
+  }catch(e){ LEDGERS={day:null, trade:null, scene:null}; }
+  renderHeads();
+}
+function ledgerCardHTML(kind, c, day){
+  const name = kind==='trade' ? 'Trade Ledger' : 'Scene Ledger';
+  const sub  = kind==='trade' ? '0.30σ target/stop · 120m clock' : 'regime-scoped · closes on target, adverse mark, or scene death';
+  const hue  = kind==='trade' ? 'var(--l-tower)' : 'var(--l-motion)';
+  const num=(v,dp=2)=>(v==null||isNaN(v))?'—':(+v).toFixed(dp);
+  if(!c) return `<div class="ledgercard" style="--lc:${hue}">
+      <div class="lg-top"><div class="lg-name">${name}<em>${sub}</em></div><span class="lg-dot"></span></div>
+      <div class="lg-empty">${kind==='scene'?'No Scene Ledger card yet — it lands with the first nightly grade after N20 ships.':'No graded card found for the newest day.'}</div>
+    </div>`;
+  const hr = c.hit_rate!=null?c.hit_rate:c.win_rate;
+  const n  = c.n!=null?c.n:null, pend=c.pending||0;
+  const eps = c.episodes||c.trades||[];
+  // Trade Ledger cards carry the per-trade vector but not the scene-card medians —
+  // derive them from trades[] (exit_sigma / ttr_min / barrier_sigma) so both cards fill
+  const med=a=>{if(!a.length)return null; a=a.slice().sort((x,y)=>x-y); const m=a.length>>1; return a.length%2?a[m]:(a[m-1]+a[m])/2;};
+  const epWins = eps.filter(e=>e.outcome==='win'&&e.ttr_min);
+  const kept = c.median_kept_sigma!=null?c.median_kept_sigma:med(eps.map(e=>e.exit_sigma).filter(v=>v!=null));
+  const tt   = c.median_tt_target_min!=null?c.median_tt_target_min:med(epWins.map(e=>e.ttr_min));
+  const sph  = c.sigma_per_hour!=null?c.sigma_per_hour:med(epWins.filter(e=>e.barrier_sigma).map(e=>e.barrier_sigma/(e.ttr_min/60)));
+  const dot = (n>=3&&hr!=null) ? (hr>=0.58?'var(--jade)':(hr<0.5?'var(--coral)':'var(--lantern)')) : 'var(--ink-faint)';
+  const pip = o=>{const k=(o==='win')?'w':(o==='loss')?'l':(o==='pending')?'p':'f'; return `<i class="${k}" title="${o}"></i>`;};
+  const era = [c.prompt_version, c.grade_v!=null?('grade_v'+c.grade_v):null, c.scene_grade_v!=null?('scene_v'+c.scene_grade_v):null].filter(Boolean).join(' · ');
+  return `<div class="ledgercard" style="--lc:${hue}">
+    <div class="lg-top">
+      <div class="lg-name">${name}<em>${sub}</em></div>
+      <div style="display:flex;align-items:center;gap:9px">${era?`<span class="pill grey">${era}</span>`:''}<span class="lg-dot" style="--ld:${dot}"></span></div>
+    </div>
+    <div class="lg-hero"><b>${hr!=null?(hr*100).toFixed(0)+'%':'—'}</b><span>hit rate · Wilson ≥ ${num(c.wilson_lo)}${day?' · '+day:''}</span></div>
+    <div class="lg-grid">
+      <div class="lg-stat"><div class="k">Decided</div><div class="v">${n!=null?n:'—'}${pend?` <small style="color:var(--ink-faint)">+${pend} open</small>`:''}</div></div>
+      <div class="lg-stat"><div class="k">Kept σ · med</div><div class="v">${num(kept)}</div></div>
+      <div class="lg-stat"><div class="k">MFE σ${c.median_mfe_sigma!=null?' · med':' · avg'}</div><div class="v">${num(c.median_mfe_sigma!=null?c.median_mfe_sigma:c.avg_mfe_sigma)}</div></div>
+      <div class="lg-stat"><div class="k">To target · med</div><div class="v">${tt!=null?Math.round(tt)+'m':'—'}</div></div>
+      <div class="lg-stat"><div class="k">σ / hour</div><div class="v">${num(sph)}</div></div>
+    </div>
+    ${eps.length?`<div class="lg-pips">${eps.map(e=>pip(e.outcome)).join('')}<span class="cap">${kind==='scene'?'episodes':'fires'} in time order</span></div>`:''}
+  </div>`;
+}
+
 function renderHeads(){
   const s = liveNow(), gates = gateStates(s), passed = gates.filter(g=>g.on).length;
   const held = !s.fade.fired;
@@ -3501,7 +3584,12 @@ function renderHeads(){
         <div class="kv"><span>Latency</span><b>${f(w.wallS,1)}s</b></div>
         <div class="kv"><span>Revised on reveal</span><b>${w.revised?'yes':'no'}</b></div>
       </div>
+    </div>
+    <div class="ledgers">
+      ${ledgerCardHTML('trade', LEDGERS&&LEDGERS.trade, LEDGERS&&LEDGERS.day)}
+      ${ledgerCardHTML('scene', LEDGERS&&LEDGERS.scene, LEDGERS&&LEDGERS.day)}
     </div>`;
+  if(!LEDGERS) loadLedgers();
 }
 
 // ================= REPLAY (day scrubber) =================
