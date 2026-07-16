@@ -584,7 +584,7 @@
     padding:11px 8px 11px 6px; border-bottom:1px solid var(--hairline-2); border-radius:8px; transition:background .14s}
   .entry:last-child{border-bottom:0}
   .entry:hover, .entry:focus-visible{background:color-mix(in srgb,var(--lantern) 9%, transparent); outline:none}
-  .entry-t{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums; white-space:nowrap; padding-top:2px; text-align:right; padding-right:6px}
+  .entry-t{font-family:var(--mono); font-size:12.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums; white-space:nowrap; padding-top:2px; text-align:right; padding-right:6px}
   .entry-q{font-family:var(--serif); font-size:clamp(14px,1.95vh,16.5px); line-height:1.5; color:var(--ink-dim); text-wrap:pretty; transition:color .14s}
   .entry:hover .entry-q, .entry:focus-visible .entry-q{color:var(--ink)}
   .entry-q .q{color:var(--ink-faint); font-weight:400}
@@ -609,15 +609,30 @@
   .heads{display:grid; grid-template-columns:1fr 1fr; grid-template-rows:minmax(0,1fr); gap:20px; flex:1; min-height:0}
   @media (max-width:860px){.heads{grid-template-columns:1fr}}
   .headcard{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px 18px 16px; min-height:0; overflow:auto}
-  /* N20 scoreboards — the two Watchtower report cards (Trade Ledger · Scene Ledger),
-     side by side across the bottom half of the Processor tab */
-  .ledgers{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:20px; min-height:42vh}
-  @media (max-width:860px){.ledgers{grid-template-columns:1fr; min-height:0}}
+  /* N20 scoreboards — the two Watchtower report cards (Trade Ledger · Scene Ledger).
+     They own ~2/3 of the tab (heads flex:1 above, ledgers flex:2), each card carrying a
+     newest-first per-position table of every snapshot the ledger took. */
+  /* rows are implicit (1 wide, 2 stacked narrow) — minmax(0,1fr) like .heads, or a long
+     table sizes the auto row past the panel's overflow:hidden and clips with no scrollbar */
+  .ledgers{display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:minmax(0,1fr); gap:20px; margin-top:20px; flex:2; min-height:0}
+  @media (max-width:860px){.ledgers{grid-template-columns:1fr}}
   .ledgercard{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px 18px 14px;
     display:flex; flex-direction:column; min-height:0; border-top:2px solid color-mix(in srgb,var(--lc) 55%, var(--hairline))}
+  .lg-tablewrap{flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; margin-top:14px;
+    border:1px solid var(--hairline); border-radius:10px; background:var(--surface)}
+  .lg-table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px}
+  .lg-table thead th{position:sticky; top:0; z-index:2; background:var(--surface-3); font-family:var(--mono); font-size:9.5px;
+    letter-spacing:.09em; text-transform:uppercase; font-weight:600; color:var(--ink-faint); padding:8px 11px; text-align:left;
+    border-bottom:1px solid var(--hairline); white-space:nowrap}
+  .lg-table td{padding:8px 11px; border-bottom:1px solid var(--hairline); white-space:nowrap; color:var(--ink-dim);
+    font-variant-numeric:tabular-nums}
+  .lg-table tbody tr:last-child td{border-bottom:0}
+  .lg-table td.mono{font-family:var(--mono)}
+  .lg-table b{font-weight:600}
+  .lg-table .up{color:var(--jade)} .lg-table .dn{color:var(--coral)} .lg-table .mut{color:var(--ink-faint)}
   .lg-top{display:flex; align-items:center; justify-content:space-between; gap:10px}
-  .lg-name{font-size:14px; font-weight:640; letter-spacing:-.01em}
-  .lg-name em{font-style:normal; display:block; font-family:var(--mono); font-size:9.5px; font-weight:500; color:var(--ink-faint); margin-top:2px; letter-spacing:.06em; text-transform:uppercase}
+  .lg-name{font-size:15px; font-weight:640; letter-spacing:-.01em}
+  .lg-name em{font-style:normal; display:block; font-family:var(--mono); font-size:10px; font-weight:500; color:var(--ink-faint); margin-top:2px; letter-spacing:.06em; text-transform:uppercase}
   .lg-dot{width:9px; height:9px; border-radius:50%; flex:none; background:var(--ld,var(--ink-faint)); box-shadow:0 0 8px color-mix(in srgb,var(--ld,transparent) 55%, transparent)}
   .lg-hero{display:flex; align-items:baseline; gap:12px; margin:16px 0 4px}
   .lg-hero b{font-family:var(--mono); font-size:34px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1}
@@ -626,14 +641,7 @@
   .lg-stat{background:var(--surface); border:1px solid var(--hairline); border-radius:9px; padding:7px 10px}
   .lg-stat .k{font-size:8.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
   .lg-stat .v{font-family:var(--mono); font-size:13px; color:var(--ink); margin-top:2px; font-variant-numeric:tabular-nums}
-  .lg-pips{display:flex; align-items:center; gap:4px; margin-top:auto; padding-top:14px; flex-wrap:wrap}
-  .lg-pips i{width:10px; height:10px; border-radius:3px; background:var(--surface-3); border:1px solid var(--hairline)}
-  .lg-pips i.w{background:color-mix(in srgb,var(--jade) 75%, transparent); border-color:var(--jade)}
-  .lg-pips i.l{background:color-mix(in srgb,var(--coral) 75%, transparent); border-color:var(--coral)}
-  .lg-pips i.f{background:color-mix(in srgb,var(--ink-faint) 40%, transparent)}
-  .lg-pips i.p{background:transparent; border-style:dashed}
-  .lg-pips .cap{font-family:var(--mono); font-size:9px; color:var(--ink-faint); margin-left:6px; letter-spacing:.06em; text-transform:uppercase}
-  .lg-empty{font-size:12px; color:var(--ink-faint); margin-top:14px; line-height:1.5}
+  .lg-empty{font-size:12.5px; color:var(--ink-faint); margin-top:14px; line-height:1.5}
   .headcard.A{border-top:3px solid var(--jade)}
   .headcard.B{border-top:3px solid var(--lantern)}
   .headtop{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px}
@@ -645,9 +653,9 @@
   .gate .mk{width:20px; height:20px; border-radius:6px; display:grid; place-items:center; font-size:12px}
   .gate .mk.on{background:var(--jade-wash); color:var(--jade); border:1px solid color-mix(in srgb,var(--jade) 40%,transparent)}
   .gate .mk.off{background:var(--coral-wash); color:var(--coral); border:1px solid color-mix(in srgb,var(--coral) 40%,transparent)}
-  .gate .gn{font-size:13.5px; font-weight:600}
-  .gate .gd{font-size:11.5px; color:var(--ink-dim); margin-top:1px}
-  .gate .gv{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink-dim); text-align:right}
+  .gate .gn{font-size:14.5px; font-weight:600}
+  .gate .gd{font-size:12.5px; color:var(--ink-dim); margin-top:1px}
+  .gate .gv{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink-dim); text-align:right}
   .gate .gv b{color:var(--ink)}
   .verdict{display:flex; align-items:baseline; gap:10px; margin:2px 0 14px}
   .verdict .big{font-family:var(--mono); font-size:30px; font-weight:600; letter-spacing:-.01em}
@@ -656,9 +664,9 @@
   .votes .pips{display:flex; gap:4px}
   .votes .pip{width:18px; height:9px; border-radius:3px; background:var(--surface-3)}
   .votes .pip.y{background:var(--lantern)}
-  .votes .cap{font-size:11.5px; color:var(--ink-dim)}
+  .votes .cap{font-size:12.5px; color:var(--ink-dim)}
   .scene{font-family:var(--serif); font-size:14.5px; line-height:1.58; color:var(--ink); margin:12px 0}
-  .kv{display:flex; justify-content:space-between; font-size:11.5px; padding:6px 0; border-top:1px solid var(--hairline); color:var(--ink-dim)}
+  .kv{display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-top:1px solid var(--hairline); color:var(--ink-dim)}
   .kv b{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
 
   /* ---- Replay : scrub a past session ---- */
@@ -674,9 +682,11 @@
   .rp-grid{stroke:var(--hairline)}
   .rp-axis-t,.rp-axis-p,.rp-wallchip,.rp-lvllab{font-family:var(--mono); fill:var(--ink-faint)}
   .rp-axis-t,.rp-axis-p{font-size:11px}
-  .rp-wallchip,.rp-lvllab{font-size:10.5px; font-weight:600}
+  .rp-wallchip,.rp-lvllab{font-size:10.5px; font-weight:600; paint-order:stroke; stroke:var(--surface-2); stroke-width:2.5px}
   .rp-lvl{fill:none}
-  .rp-lvl.magnet{stroke:var(--lantern); stroke-width:1.6}
+  /* every dealer LEVEL is dashed — the price path is this chart's only solid line, so a
+     magnet/price crossing always reads "price over level", never "which line is which" */
+  .rp-lvl.magnet{stroke:var(--lantern); stroke-width:1.8; stroke-dasharray:8 5}
   .rp-lvl.flip{stroke:var(--ink-dim); stroke-width:1.4; stroke-dasharray:5 4}
   .rp-lvl.wall{stroke-width:1.1; stroke-dasharray:2 4}
   /* levels reveal with the playhead too: faint 'future' trace + bright 'past' (clipped) */
@@ -690,6 +700,9 @@
   .rp-lvl-mk.magnet{fill:var(--lantern)} .rp-lvl-mk.flip{fill:var(--ink-dim)}
   .rp-magval{font-family:var(--mono); font-size:10px; font-weight:700; fill:var(--lantern); paint-order:stroke; stroke:var(--surface-2); stroke-width:2.5px}
   .rp-future{fill:none; stroke:var(--ink-dim); stroke-width:1.7; opacity:.24}
+  /* casing under the revealed price — cuts a clean card-coloured gap through the level
+     lines and episode boxes wherever they cross, so the price line stays the hero */
+  .rp-halo{fill:none; stroke:var(--surface-2); stroke-width:5.5; stroke-linejoin:round; stroke-linecap:round}
   .rp-past{fill:none; stroke:var(--iris); stroke-width:2.6; stroke-linejoin:round; stroke-linecap:round}
   .rp-head{stroke:var(--ink); stroke-width:1; opacity:.45}
   .rp-dot{fill:var(--iris); stroke:var(--surface-2); stroke-width:2.5}
@@ -700,9 +713,14 @@
   .rp-fire.st-win{--c:var(--jade)}
   .rp-fire.st-loss{--c:var(--coral)}
   .rp-fire.st-scratch{--c:var(--ink-faint)}
-  .rp-conn{stroke:var(--c); stroke-width:2; opacity:.6; fill:none}
-  .rp-end{fill:var(--c); opacity:.8}
+  .rp-conn{stroke:var(--c); stroke-width:2; opacity:.6; fill:none; transition:opacity .3s ease}
+  .rp-end{fill:var(--c); opacity:.8; transition:opacity .3s ease}
   .rp-arrow{fill:var(--c)}
+  text.rp-arrow{paint-order:stroke; stroke:var(--surface-2); stroke-width:3px}   /* glyph keeps its shape over price/levels/boxes */
+  /* 30 min past its lock a fire's whisker recedes — verdict arrows stay loud, but a
+     fire-dense day must not end in a tangle of stale connectors over the price line */
+  .rp-fire.settled .rp-conn{opacity:.22}
+  .rp-fire.settled .rp-end{opacity:.4}
   .rp-fire.st-live .rp-arrow{animation:rp-pulse 1.1s ease-in-out infinite}
   @keyframes rp-pulse{0%,100%{opacity:1}50%{opacity:.32}}
   /* Scene Ledger · called-shot boxes (N20) — translucent SPANS (open→close, entry→target),
@@ -716,8 +734,7 @@
   .rp-ep-pending.rp-ep-call .rp-ep-box{stroke:var(--jade)}
   .rp-ep-pending.rp-ep-put  .rp-ep-box{stroke:var(--coral)}
   .rp-ep-pending .rp-ep-box{stroke-dasharray:1.5 3.5; opacity:.8}
-  .rp-ep-glyph{font-family:var(--mono); font-size:9px; fill:var(--ink-dim)}
-  .rp-fdetail{display:block; font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:5px; font-variant-numeric:tabular-nums}
+  .rp-ep-glyph{font-family:var(--mono); font-size:9px; fill:var(--ink-dim); paint-order:stroke; stroke:var(--surface-2); stroke-width:2px}
   /* controls */
   .rp-controls{display:flex; align-items:center; gap:14px; margin-top:14px; flex:0 0 auto}
   .rp-play{appearance:none; cursor:pointer; width:52px; height:52px; border-radius:50%; border:0; background:var(--iris); color:var(--ground); display:grid; place-items:center; flex:none; box-shadow:0 3px 14px -3px rgba(0,0,0,.55); transition:.15s}
@@ -730,56 +747,7 @@
   .rp-scrub::-webkit-slider-thumb{-webkit-appearance:none; width:24px; height:24px; border-radius:50%; background:var(--iris); border:3px solid var(--surface); box-shadow:0 1px 7px rgba(0,0,0,.55)}
   .rp-scrub::-moz-range-thumb{width:22px; height:22px; border-radius:50%; background:var(--iris); border:3px solid var(--surface)}
   .rp-time{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; color:var(--ink); min-width:74px; text-align:right; flex:none}
-  /* readout — the residual-stream read at the playhead: layers → the Watchtower → outcome.
-     Hierarchy: layer tiles are quiet supporting evidence (hue lives only in the dot),
-     the lantern Head-B pill is the one bright object, the verdict pill is the result. */
-  .rp-hint{font-family:var(--sans); font-size:11px; color:var(--ink-faint); margin-top:12px; line-height:1.4; flex:0 0 auto}
-  .rp-hint b{color:var(--ink-dim); font-weight:600}
-  .rp-readout{display:flex; flex-direction:column; gap:12px; margin-top:8px; flex:0 0 auto}
-  .rp-stack{display:flex; align-items:center; align-content:center; gap:8px; flex-wrap:wrap; min-height:66px}
-  .rp-chips{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
-  .rp-conclusion{display:flex; align-items:center; gap:10px; margin-left:auto}
-  .rp-slab,.rp-headb-pill,.rp-verdict{min-height:28px; display:inline-flex; align-items:center; box-sizing:border-box}
-  .rp-slab{gap:6px; padding:4px 10px; border-radius:8px; background:transparent;
-    border:1px solid color-mix(in srgb,var(--hairline) 60%, transparent); font-family:var(--sans); font-size:12px;
-    font-weight:500; color:var(--ink-faint); transition:opacity .2s, box-shadow .2s, color .2s}
-  .rp-slab.noread{opacity:.55}
-  .rp-slab.noread .rp-sw{opacity:.6}
-  .rp-slab.agree{color:var(--ink); box-shadow:inset 2px 0 0 var(--iris); border-color:color-mix(in srgb,var(--iris) 28%, var(--hairline))}
-  .rp-sw{width:8px; height:8px; border-radius:50%; flex:none}
-  .rp-arr{font-size:12px; font-weight:800; color:var(--ink-dim)}
-  .rp-slab.agree .rp-arr{color:var(--ink)}
-  .rp-arr.flat,.rp-arr.none{color:var(--ink-faint); font-weight:600}
-  .rp-to{font-family:var(--mono); font-size:11px; color:color-mix(in srgb,var(--ink-faint) 70%, transparent)}
-  .rp-headb-pill{gap:8px; padding:5px 15px; border-radius:10px; font-family:var(--sans); font-size:14px; font-weight:700;
-    letter-spacing:.01em; color:var(--ink); background:color-mix(in srgb,var(--lantern) 15%, var(--surface-2));
-    border:1px solid color-mix(in srgb,var(--lantern) 42%, var(--hairline)); box-shadow:0 0 0 3px color-mix(in srgb,var(--lantern) 9%, transparent)}
-  .rp-headb-pill.stand{background:var(--surface-2); border-color:var(--hairline); box-shadow:none; color:var(--ink-dim); font-weight:600}
-  .rp-headb-pill .dir{color:var(--lantern)}
-  .rp-headb-pill .rp-vs{font-family:var(--mono); font-size:10.5px; font-weight:600; color:var(--coral); letter-spacing:.02em}
-  .rp-tower{font-size:15px}
-  .rp-verdict{padding:5px 11px; border-radius:8px; font-family:var(--sans); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap}
-  .rp-verdict.win{color:var(--jade); background:var(--jade-wash)}
-  .rp-verdict.loss{color:var(--coral); background:var(--coral-wash)}
-  .rp-verdict.scratch{color:var(--ink-dim); background:var(--surface-3)}
-  .rp-verdict.live{color:var(--lantern); background:var(--lantern-wash)}
-  .rp-scene-row{display:flex; gap:16px; align-items:flex-start}
-  /* fixed-height display window — the scene lives in this locked frame and cross-fades in place,
-     so the chart above never reflows as you scrub; a long read clamps to 2 lines (no scrollbar). */
-  .rp-scene{font-family:var(--serif); font-size:14px; line-height:1.5; color:var(--ink); margin:0; flex:1; min-width:0;
-    height:104px; overflow:hidden; box-sizing:border-box; padding:11px 14px; border-radius:12px;
-    background:var(--surface-2); border:1px solid var(--hairline)}
-  .rp-quote{display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; animation:rp-scene-in .3s ease}
   @keyframes rp-scene-in{from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none}}
-  .rp-scene .rp-next{display:block; font-family:var(--sans); font-size:12px; color:var(--ink-dim); margin-top:6px}
-  .rp-fdetail{display:block; font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-top:5px; font-variant-numeric:tabular-nums}
-  .rp-tally{display:flex; gap:8px; flex:none; align-items:center}
-  .rp-chip{font-family:var(--sans); font-size:9.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:6px 11px 5px; border-radius:10px; display:flex; flex-direction:column; align-items:center; gap:1px; background:var(--surface-2); border:1px solid var(--hairline); min-width:50px}
-  .rp-chip b{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:18px; font-weight:700; line-height:1.05; color:var(--ink)}
-  /* Range-Ruler size-budget chip — non-directional context, rides beside the layer tiles */
-  .rp-chip.rp-budget{flex-direction:row; gap:7px; min-width:0; min-height:28px; padding:4px 11px; text-transform:none; letter-spacing:.02em; font-size:11.5px; font-weight:500; color:var(--ink-dim)}
-  .rp-chip.rp-budget b{font-size:13px}
-  .rp-hitrate{font-family:var(--mono); font-size:11px; color:var(--ink-faint); white-space:nowrap; margin-left:2px}
   .rp-legend{display:flex; align-items:center; gap:14px; margin-top:10px; font-size:11px; color:var(--ink-faint); flex-wrap:wrap; flex:0 0 auto}
   .rp-legend span{display:flex; align-items:center; gap:6px}
   .rp-legend i{width:10px; height:10px; border-radius:50%; display:inline-block}
@@ -813,7 +781,7 @@
   .rp-tablewrap{flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
     background:var(--surface-2); border:1px solid var(--hairline); border-radius:16px; overflow:hidden}
   .rp-tablescroll{overflow:auto; overscroll-behavior:contain; min-height:0}
-  .rp-table{border-collapse:separate; border-spacing:0; width:100%; font-size:12.5px}
+  .rp-table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px}
   .rp-table th,.rp-table td{padding:9px 12px; text-align:left; white-space:nowrap;
     border-bottom:1px solid var(--hairline)}
   .rp-table thead th{position:sticky; top:0; z-index:3; background:var(--surface-3);
@@ -3533,8 +3501,38 @@ function ledgerCardHTML(kind, c, day){
   const tt   = c.median_tt_target_min!=null?c.median_tt_target_min:med(epWins.map(e=>e.ttr_min));
   const sph  = c.sigma_per_hour!=null?c.sigma_per_hour:med(epWins.filter(e=>e.barrier_sigma).map(e=>e.barrier_sigma/(e.ttr_min/60)));
   const dot = (n>=3&&hr!=null) ? (hr>=0.58?'var(--jade)':(hr<0.5?'var(--coral)':'var(--lantern)')) : 'var(--ink-faint)';
-  const pip = o=>{const k=(o==='win')?'w':(o==='loss')?'l':(o==='pending')?'p':'f'; return `<i class="${k}" title="${o}"></i>`;};
   const era = [c.prompt_version, c.grade_v!=null?('grade_v'+c.grade_v):null, c.scene_grade_v!=null?('scene_v'+c.scene_grade_v):null].filter(Boolean).join(' · ');
+  // per-position table — every snapshot the ledger took, newest first, with the
+  // variables that tell the story of how that position performed
+  const hhmm = ts=>{ const t=+new Date(ts); return isFinite(t)?rpClockET(t):'—'; };   // ledger rows record ET, same clock as the replay table
+  const dirCell = d=> d==='call' ? '<b class="up">▲ call</b>' : d==='put' ? '<b class="dn">▼ put</b>' : '—';
+  const outCell = o=>{ const cls=o==='win'?'up':o==='loss'?'dn':'mut'; return `<b class="${cls}">${o||'—'}</b>`; };
+  const sigCell = v=> v==null||isNaN(v) ? '—' : num(v)+'σ';
+  const REASON={target:'● target', adverse:'✕ adverse', scene_change:'⌁ scene', dir_flip:'⇄ flip', session_close:'▏close'};
+  let tableHTML='';
+  if(kind==='scene'){
+    const rows=eps.slice().sort((a,b)=>String(b.t_open||'').localeCompare(String(a.t_open||''))).map(e=>`
+      <tr><td class="mono">${hhmm(e.t_open)}${e.t_close?'–'+hhmm(e.t_close):'–…'}</td>
+      <td>${dirCell(e.dir)}</td><td class="mono">${sigCell(e.called_sigma)}${e.called_fallback?'*':''}</td>
+      <td>${outCell(e.outcome)}</td><td class="mono">${REASON[e.close_reason]||'—'}</td>
+      <td class="mono">${num(e.mfe_sigma)}</td><td class="mono">${num(e.kept_sigma)}</td>
+      <td class="mono">${e.tt_target_min!=null?Math.round(e.tt_target_min)+'m':'—'}</td></tr>`).join('');
+    tableHTML=`<div class="lg-tablewrap"><table class="lg-table">
+      <thead><tr><th>Open–Close</th><th>Dir</th><th>Called</th><th>Result</th><th>Closed by</th><th>MFE σ</th><th>Kept σ</th><th>To tgt</th></tr></thead>
+      <tbody>${rows||''}</tbody></table>
+      ${rows?'':'<div class="lg-empty" style="padding:12px 14px">No episodes graded yet today.</div>'}</div>`;
+  } else {
+    const rows=eps.slice().sort((a,b)=>String(b.ts||'').localeCompare(String(a.ts||''))).map(t=>`
+      <tr><td class="mono">${hhmm(t.ts)}</td>
+      <td>${dirCell(t.dir)}</td><td class="mono">${sigCell(t.barrier_sigma)}</td>
+      <td>${outCell(t.outcome)}</td><td class="mono">${t.r!=null?((t.r>0?'+':'')+num(t.r,1)+'r'):'—'}</td>
+      <td class="mono">${num(t.mfe_sigma)}</td><td class="mono">${num(t.exit_sigma)}</td>
+      <td class="mono">${t.hold_min!=null?Math.round(t.hold_min)+'m':'—'}</td></tr>`).join('');
+    tableHTML=`<div class="lg-tablewrap"><table class="lg-table">
+      <thead><tr><th>Time</th><th>Dir</th><th>Barrier</th><th>Result</th><th>R</th><th>MFE σ</th><th>Exit σ</th><th>Held</th></tr></thead>
+      <tbody>${rows||''}</tbody></table>
+      ${rows?'':'<div class="lg-empty" style="padding:12px 14px">No fires graded yet today.</div>'}</div>`;
+  }
   return `<div class="ledgercard" style="--lc:${hue}">
     <div class="lg-top">
       <div class="lg-name">${name}<em>${sub}</em></div>
@@ -3548,11 +3546,13 @@ function ledgerCardHTML(kind, c, day){
       <div class="lg-stat"><div class="k">To target · med</div><div class="v">${tt!=null?Math.round(tt)+'m':'—'}</div></div>
       <div class="lg-stat"><div class="k">σ / hour</div><div class="v">${num(sph)}</div></div>
     </div>
-    ${eps.length?`<div class="lg-pips">${eps.map(e=>pip(e.outcome)).join('')}<span class="cap">${kind==='scene'?'episodes':'fires'} in time order</span></div>`:''}
+    ${tableHTML}
   </div>`;
 }
 
 function renderHeads(){
+  // ledger tables scroll — keep their place across the per-scan re-render (same move as renderDiary)
+  const keepScroll=[...document.querySelectorAll('#p-heads .lg-tablewrap')].map(el=>el.scrollTop);
   const s = liveNow(), gates = gateStates(s), passed = gates.filter(g=>g.on).length;
   const held = !s.fade.fired;
   const w = s.wt;
@@ -3601,6 +3601,7 @@ function renderHeads(){
       ${ledgerCardHTML('trade', LEDGERS&&LEDGERS.trade, LEDGERS&&LEDGERS.day)}
       ${ledgerCardHTML('scene', LEDGERS&&LEDGERS.scene, LEDGERS&&LEDGERS.day)}
     </div>`;
+  document.querySelectorAll('#p-heads .lg-tablewrap').forEach((el,i)=>{ if(keepScroll[i]) el.scrollTop=keepScroll[i]; });
   if(!LEDGERS) loadLedgers();
 }
 
@@ -3691,6 +3692,7 @@ async function rpFetchGraded(day){
   }catch(e){ return null; }
 }
 const RP_LOCK_MIN=60;   // the follow-through mark that decides "leaned right / wrong" (move_60m)
+const RP_SETTLE_MS=30*60000;   // 30 min past lock a fire's whisker fades back (arrow stays) — see .rp-fire.settled
 // one plot-ready fire: authoritative outcome/excursions `g` when present, else a client walk
 function rpMakeFire(scan, g, tgt, stp){
   const dir=scan.wt.dir, sign=dir==='call'?1:dir==='put'?-1:0;
@@ -3801,6 +3803,22 @@ function rpBuild(){
     tTick.push(`<line class="rp-grid" x1="${x.toFixed(1)}" y1="${g.y0}" x2="${x.toFixed(1)}" y2="${g.y1}" opacity="0.5"/>`);
     tTick.push(`<text class="rp-axis-t" x="${x.toFixed(1)}" y="${(g.y1+14).toFixed(1)}" text-anchor="middle">${rpClock(ms)}</text>`);
   }
+  // Level-name placement: a name printed ON another name or ON the price path names
+  // nothing (magnet==flip at the open is common on old rows; the 0DTE γ walls hug spot,
+  // so their right-edge names used to land on the price line). Try the natural spot
+  // first, then step above/below until clear of both, clamped to the frame.
+  const labW=t=>t.length*6.5, labs=[];
+  const labelY=(x,y,anchor,txt)=>{
+    const x0=anchor==='end'?x-labW(txt):x, x1=anchor==='end'?x:x+labW(txt);
+    const busy=yy=> labs.some(L=>x0<L.x1&&L.x0<x1&&Math.abs(yy-L.y)<11)
+      || RP.path.some(p=>{ const px=rpXT(p.t); if(px<x0-2||px>x1+2) return false;
+           const py=rpYP(p.close); return py>yy-10&&py<yy+3; });
+    let yy=y;
+    for(const dy of [0,18,-12,30,-24,42]){ yy=Math.min(Math.max(y+dy,g.y0+10),g.y1-6); if(!busy(yy)) break; }
+    labs.push({x0,x1,y:yy});
+    return yy;
+  };
+  const chips={top:0,bot:0};   // off-scale edge chips stack per corner instead of overprinting
   // A dealer level drawn as a per-scan polyline (it MOVES through the day, tracks the
   // scrub) plus a name at one end; if its latest value is off-scale, an edge chip says so.
   const level=(key,cls,label,cvar,side)=>{
@@ -3812,12 +3830,14 @@ function rpBuild(){
       const pts=inb.map(s=>`${rpXT(+new Date(scanTs(s))).toFixed(1)},${rpYP(s[key]).toFixed(1)}`).join(' ');
       out+=`<polyline class="rp-lvl ${cls} fut" points="${pts}" style="stroke:var(${cvar})"/>`;
       out+=`<polyline class="rp-lvl ${cls} pst" points="${pts}" style="stroke:var(${cvar})" clip-path="url(#rp-clip)"/>`;
-      const lp=side==='right'?inb[inb.length-1]:inb[0];
-      const lx=(side==='right'?Math.min(rpXT(+new Date(scanTs(lp))),g.x1-4):rpXT(+new Date(scanTs(lp)))+5).toFixed(1);
-      out+=`<text class="rp-lvllab" x="${lx}" y="${(rpYP(lp[key])-5).toFixed(1)}" text-anchor="${side==='right'?'end':'start'}" style="fill:var(${cvar})">${label}</text>`;
+      const lp=side==='right'?inb[inb.length-1]:inb[0], anchor=side==='right'?'end':'start';
+      const lx=side==='right'?Math.min(rpXT(+new Date(scanTs(lp))),g.x1-4):rpXT(+new Date(scanTs(lp)))+5;
+      const ly=labelY(lx,rpYP(lp[key])-5,anchor,label);
+      out+=`<text class="rp-lvllab" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" style="fill:var(${cvar})">${label}</text>`;
     }
     if(last!=null && (last<d.lo||last>d.hi)){
-      const y=last>d.hi?g.y0+11:g.y1-4, arr=last>d.hi?'↑':'↓';
+      const top=last>d.hi, arr=top?'↑':'↓';
+      const y=top?g.y0+11+12*chips.top++:g.y1-4-12*chips.bot++;
       out+=`<text class="rp-wallchip" x="${(g.x1-2).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" style="fill:var(${cvar});opacity:.8">${label} ${arr} ${Math.round(last)}</text>`;
     }
     return out; };
@@ -3826,8 +3846,12 @@ function rpBuild(){
   RP.fires.forEach(fr=>{ fr.xF=rpXT(fr.t); fr.yEntry=rpYP(fr.entry);
     fr.xLock=rpXT(fr.lockT); fr.yLock=rpYP(rpPriceAt(fr.lockT));
     fr.verdict=rpVerdict(fr); if(fr.scan&&fr.scan.ts) RP.fireByTs.set(fr.scan.ts, fr); });
+  const aBoxes=[];   // fires landing shoulder-to-shoulder stack their arrows outward instead of overprinting
   const fireSVG=RP.fires.map((fr,k)=>{
-    const arr=fr.dir==='call'?'▲':'▼', ay=fr.dir==='call'?fr.yEntry-9:fr.yEntry+17;
+    const arr=fr.dir==='call'?'▲':'▼';
+    let ay=fr.dir==='call'?fr.yEntry-9:fr.yEntry+17;
+    while(aBoxes.some(b=>Math.abs(b.x-fr.xF)<14&&Math.abs(b.y-ay)<13)) ay+=fr.dir==='call'?-13:13;
+    ay=Math.min(Math.max(ay,g.y0+10),g.y1-2); aBoxes.push({x:fr.xF,y:ay});
     return `<g class="rp-fire" data-i="${k}">
       <path class="rp-conn" d="M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)}"/>
       <circle class="rp-end" cx="${fr.xF.toFixed(1)}" cy="${fr.yEntry.toFixed(1)}" r="3"/>
@@ -3851,6 +3875,7 @@ function rpBuild(){
     <g>${level('magnet','magnet','magnet','--lantern','left')}${level('flip','flip','flip','--ink-dim','left')}${level('callWall','wall','CALL γ','--jade','right')}${level('putWall','wall','PUT γ','--coral','right')}</g>   <!-- 0DTE γ peaks (≈ATM), NOT the structural wall — honest label, matches the live map's fix -->
     <g id="rp-eps" clip-path="url(#rp-clip)">${rpEpisodeSVG()}</g>   <!-- Scene Ledger called-shot boxes (N20), under the price line -->
     <path class="rp-future" d="${dstr}"/>
+    <path class="rp-halo" d="${dstr}" clip-path="url(#rp-clip)"/>
     <path class="rp-past" d="${dstr}" clip-path="url(#rp-clip)"/>
     <g id="rp-fires">${fireSVG}</g>
     <line class="rp-head" id="rp-head" x1="${g.x0}" y1="${g.y0}" x2="${g.x0}" y2="${g.y1}"/>
@@ -3879,7 +3904,12 @@ function rpPaint(){
     const mag=rpLevelAt('magnet',now);
     if(mag!=null && mag>=RP.dom.lo && mag<=RP.dom.hi){ const my=rpYP(mag);
       RP.els.mkMagnet.setAttribute('cx',xNow.toFixed(1)); RP.els.mkMagnet.setAttribute('cy',my.toFixed(1));
-      RP.els.magVal.setAttribute('x',(xNow-7).toFixed(1)); RP.els.magVal.setAttribute('y',(my-6).toFixed(1)); RP.els.magVal.textContent='magnet '+Math.round(mag);
+      // near the open the tag rides RIGHT of the head — anchored left it ran into the price axis
+      const tagL=xNow<RP.geo.x0+72;
+      RP.els.magVal.setAttribute('text-anchor',tagL?'start':'end');
+      RP.els.magVal.setAttribute('x',(tagL?xNow+8:xNow-7).toFixed(1));
+      RP.els.magVal.setAttribute('y',Math.max(my-6,RP.geo.y0+9).toFixed(1));
+      RP.els.magVal.textContent='magnet '+Math.round(mag);
     } else { RP.els.mkMagnet.setAttribute('cx','-9'); RP.els.magVal.textContent=''; }
     const fl=rpLevelAt('flip',now);
     if(fl!=null && fl>=RP.dom.lo && fl<=RP.dom.hi){ RP.els.mkFlip.setAttribute('cx',xNow.toFixed(1)); RP.els.mkFlip.setAttribute('cy',rpYP(fl).toFixed(1)); }
@@ -3893,7 +3923,8 @@ function rpPaint(){
       if(ref.conn) ref.conn.setAttribute('d',`M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${cx.toFixed(1)} ${cy.toFixed(1)}`);
       if(ref.end){ ref.end.setAttribute('cx',cx.toFixed(1)); ref.end.setAttribute('cy',cy.toFixed(1)); }
     } else if(now>=fr.lockT){                       // resolved: lock to the 60-min follow-through + verdict
-      cls+=' on st-'+fr.verdict; if(fr.verdict==='win')win++; else if(fr.verdict==='loss')loss++; else scr++;
+      cls+=' on st-'+fr.verdict; if(now>=fr.lockT+RP_SETTLE_MS) cls+=' settled';
+      if(fr.verdict==='win')win++; else if(fr.verdict==='loss')loss++; else scr++;
       if(ref.conn) ref.conn.setAttribute('d',`M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${fr.xLock.toFixed(1)} ${fr.yLock.toFixed(1)}`);
       if(ref.end){ ref.end.setAttribute('cx',fr.xLock.toFixed(1)); ref.end.setAttribute('cy',fr.yLock.toFixed(1)); }
     }
