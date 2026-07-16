@@ -705,6 +705,18 @@
   .rp-arrow{fill:var(--c)}
   .rp-fire.st-live .rp-arrow{animation:rp-pulse 1.1s ease-in-out infinite}
   @keyframes rp-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+  /* Scene Ledger · called-shot boxes (N20) — translucent SPANS (open→close, entry→target),
+     the fires above stay points+whiskers. Fill = direction tint; border = outcome. */
+  .rp-ep-box{stroke-width:1.5}
+  .rp-ep-call .rp-ep-box{fill:color-mix(in srgb, var(--jade) 10%, transparent)}
+  .rp-ep-put  .rp-ep-box{fill:color-mix(in srgb, var(--coral) 10%, transparent)}
+  .rp-ep-win  .rp-ep-box{stroke:var(--jade)}
+  .rp-ep-loss .rp-ep-box{stroke:var(--coral)}
+  .rp-ep-flat .rp-ep-box{stroke:var(--ink-faint); stroke-dasharray:4 3}
+  .rp-ep-pending.rp-ep-call .rp-ep-box{stroke:var(--jade)}
+  .rp-ep-pending.rp-ep-put  .rp-ep-box{stroke:var(--coral)}
+  .rp-ep-pending .rp-ep-box{stroke-dasharray:1.5 3.5; opacity:.8}
+  .rp-ep-glyph{font-family:var(--mono); font-size:9px; fill:var(--ink-dim)}
   .rp-fdetail{display:block; font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:5px; font-variant-numeric:tabular-nums}
   /* controls */
   .rp-controls{display:flex; align-items:center; gap:14px; margin-top:14px; flex:0 0 auto}
@@ -3601,6 +3613,7 @@ function renderHeads(){
 const RP = {
   els:null, days:[], di:0,                 // day list (newest first) + selected index
   scans:[], fires:[], bars:null, path:null, barsCache:{},
+  eps:[], _scenesP:null,                   // Scene Ledger episodes (N20) + one-shot history fetch
   t0:0, t1:0, geo:null, dom:null,          // session window (ms) + chart geometry / price domain
   pos:0, playing:false, speed:1, raf:null, last:0, _rk:null,
   view:'chart',                              // 'chart' = the shape of the day · 'table' = the readings behind it
@@ -3722,6 +3735,58 @@ function rpAssembleFires(graded){
   return RP.scans.filter(s=>s.wt&&s.wt.fired&&s.wt.dir).map(s=>rpMakeFire(s, null));
 }
 
+// ---- Scene Ledger · called-shot boxes (N20) ----
+// Each graded watchtower_scene episode from polarity_history.jsonl draws as a translucent
+// span: open→close (or session end while pending) on time, entry→target on price. Nightly
+// grades only — no client-side re-derivation; today/ungraded days simply have no boxes.
+const RP_EP_GLYPH={target:'●', adverse:'✕', scene_change:'⌁', dir_flip:'⇄', session_close:'▏'};
+async function rpFetchScenes(){
+  if(!RP._scenesP) RP._scenesP=(async()=>{
+    const map=new Map();
+    try{
+      const res=await fetch('/api/raw/file?root=state&path=reversion/polarity_history.jsonl&limit=90',{cache:'no-store'});
+      const d=await res.json();
+      for(const r of ((d&&d.rows)||[]))
+        if(r && r.day && r.watchtower_scene && Array.isArray(r.watchtower_scene.episodes))
+          map.set(r.day, r.watchtower_scene.episodes);
+    }catch(e){}
+    return map;
+  })();
+  return RP._scenesP;
+}
+// One episode → plot-ready record, or null when it can't be placed honestly (bad timestamps,
+// no sigma at open, no called_sigma). Decoration, not evidence — a skipped box counts nothing.
+// Entry has no field of its own in the card: it is read off the price path at t_open.
+function rpEpisodeGeom(ep, ctx){
+  if(!ep || ep.t_open==null || (ep.dir!=='call' && ep.dir!=='put')) return null;
+  const tOpen=+new Date(ep.t_open); if(!isFinite(tOpen)) return null;
+  let tClose=ctx.t1;
+  if(ep.t_close!=null){ tClose=+new Date(ep.t_close); if(!isFinite(tClose)) return null; }
+  tClose=Math.max(tClose, tOpen);
+  const sigma=ctx.sigmaAt(tOpen); if(sigma==null||!isFinite(sigma)||sigma<=0) return null;
+  const cs=ep.called_sigma; if(cs==null||!isFinite(cs)) return null;
+  const entry=ctx.priceAt(tOpen); if(entry==null||!isFinite(entry)) return null;
+  const outcome=(ep.outcome==='win'||ep.outcome==='loss'||ep.outcome==='flat')?ep.outcome:'pending';
+  return { dir:ep.dir, outcome, glyph:RP_EP_GLYPH[ep.close_reason]||'',
+    tOpen, tClose, entry, target:entry+(ep.dir==='call'?1:-1)*cs*sigma };
+}
+function rpAssembleEpisodes(raw){
+  const ctx={ t1:RP.t1, priceAt:rpPriceAt, sigmaAt:ms=>{const s=rpScanAtMs(ms); return s?s.sigma:null;} };
+  return (raw||[]).map(e=>rpEpisodeGeom(e,ctx)).filter(Boolean).sort((a,b)=>a.tOpen-b.tOpen);
+}
+// SVG for the boxes — lives INSIDE the #rp-clip group so a box grows rightward with the
+// playhead exactly like the price line, and UNDER the price path so the line stays hero.
+function rpEpisodeSVG(){
+  return (RP.eps||[]).map(ep=>{
+    const x1=rpXT(ep.tOpen), x2=Math.max(rpXT(ep.tClose), x1+1);
+    const ya=rpYP(ep.entry), yb=rpYP(ep.target);
+    const y=Math.min(ya,yb), h=Math.max(Math.abs(ya-yb),1);
+    return `<g class="rp-ep rp-ep-${ep.dir} rp-ep-${ep.outcome}">
+      <rect class="rp-ep-box" x="${x1.toFixed(1)}" y="${y.toFixed(1)}" width="${(x2-x1).toFixed(1)}" height="${h.toFixed(1)}"/>
+      ${ep.glyph?`<text class="rp-ep-glyph" x="${(x2-3).toFixed(1)}" y="${(y+h/2+3).toFixed(1)}" text-anchor="end">${ep.glyph}</text>`:''}
+    </g>`; }).join('');
+}
+
 function rpBuild(){
   const m=rpMeasure(); if(!m) return;
   RP.geo=rpGeo(m.w,m.h); RP.dom=rpPriceDomain();
@@ -3784,6 +3849,7 @@ function rpBuild(){
     <g>${grid.join('')}${tTick.join('')}</g><g>${yLab.join('')}</g>
     ${heat}
     <g>${level('magnet','magnet','magnet','--lantern','left')}${level('flip','flip','flip','--ink-dim','left')}${level('callWall','wall','CALL γ','--jade','right')}${level('putWall','wall','PUT γ','--coral','right')}</g>   <!-- 0DTE γ peaks (≈ATM), NOT the structural wall — honest label, matches the live map's fix -->
+    <g id="rp-eps" clip-path="url(#rp-clip)">${rpEpisodeSVG()}</g>   <!-- Scene Ledger called-shot boxes (N20), under the price line -->
     <path class="rp-future" d="${dstr}"/>
     <path class="rp-past" d="${dstr}" clip-path="url(#rp-clip)"/>
     <g id="rp-fires">${fireSVG}</g>
@@ -3966,6 +4032,10 @@ async function rpLoadDay(di){
   const graded=await rpFetchGraded(D0.day);
   if(RP.days[RP.di]!==D0) return;
   RP.fires=rpAssembleFires(graded);
+  // Scene Ledger called-shot boxes (N20) — this day's graded episodes, if a card exists
+  const scenes=await rpFetchScenes();
+  if(RP.days[RP.di]!==D0) return;
+  RP.eps=rpAssembleEpisodes(scenes.get(D0.day));
   // ts → fire, built HERE and not inside rpBuild(): rpBuild measures the chart and bails
   // when it is hidden, so in table view the map would otherwise keep the PREVIOUS day's
   // keys and every row would fall back to "held".
@@ -4182,6 +4252,7 @@ function rpEnsureDom(){
       <span><i style="background:var(--jade)"></i>right</span>
       <span><i style="background:var(--coral)"></i>wrong</span>
       <span><i style="background:var(--lantern)"></i>live</span>
+      <span><i style="border-radius:3px; box-sizing:border-box; background:color-mix(in srgb, var(--jade) 10%, transparent); border:1.5px solid var(--ink-dim)"></i>scene ledger · called shot</span>
     </div>`;
   RP.els={ chart:p.querySelector('#rp-chart'), play:p.querySelector('#rp-play'), speed:p.querySelector('#rp-speed'),
     scrub:p.querySelector('#rp-scrub'), time:p.querySelector('#rp-time'),
@@ -4211,7 +4282,7 @@ function rpEmpty(){ RP.els.chart.innerHTML=`<div class="rp-empty">No recorded se
   RP.els.wthead.innerHTML=''; RP.els.consensus.innerHTML=''; RP.els.stream.innerHTML='';
   // the table must empty with everything else — otherwise the last day's grid sits there
   // looking like live data on a day that has none
-  RP.fires=[]; RP.fireByTs=new Map();
+  RP.fires=[]; RP.fireByTs=new Map(); RP.eps=[];
   RP.els.table.innerHTML=`<tbody><tr><td class="rp-sm" style="padding:22px">No recorded sessions with Watchtower data yet.</td></tr></tbody>`; }
 // (re)build the day list, preserving the selected day across refreshes
 function rpSyncDays(reload){
