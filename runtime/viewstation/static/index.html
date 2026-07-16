@@ -247,8 +247,8 @@
     min-height:0; display:flex; flex-direction:column}
   .scene-top{position:absolute; top:14px; left:16px; right:16px; display:flex; justify-content:space-between; z-index:5; pointer-events:none}
   .scene-top .st{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint)}
-  .stack-scene{position:relative; flex:1; min-height:0; perspective:2600px; perspective-origin:50% 40%; padding:26px 10px 30px 88px}
-  @media (max-width:560px){ .stack-scene{padding:24px 10px 28px} }
+  .stack-scene{position:relative; flex:1; min-height:0; perspective:2600px; perspective-origin:50% 40%; padding:26px 12px 26px 14px}
+  @media (max-width:560px){ .stack-scene{padding:24px 10px 24px} }
   /* ONE shared 3D space — main stack, glass feed box and the electron beam all live in the
      same deck, so proportions between the stacks hold by construction and the beam's contact
      points can never drift. layoutStacks() computes the deck's scale + position from the
@@ -314,7 +314,6 @@
     .plane{animation:rise .6s cubic-bezier(.2,.7,.2,1) backwards; animation-delay:var(--d,0s)}
     @keyframes rise{from{opacity:0; transform:translateZ(calc(var(--z) - 46px))} to{opacity:1; transform:translateZ(var(--z))}}
   }
-  .deckhint{position:absolute; bottom:12px; left:0; right:0; text-align:center; font-size:10px; color:var(--ink-faint); letter-spacing:.14em; text-transform:uppercase; pointer-events:none}
   /* tier silhouettes — sensory = slab (default) · lens = capsule disc · processor = framed core.
      (a capsule keeps straight top/bottom edges so it tiles with the deck — a true ellipse floats.) */
   .plane.lens{border-radius:999px;
@@ -336,16 +335,62 @@
   .plane .ptag.proc{border:0; background:var(--l-tower); box-shadow:none;
     filter:drop-shadow(0 0 1.1px rgba(0,0,0,.85)) drop-shadow(0 1px 2px rgba(0,0,0,.5));
     clip-path:polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%)}
-  /* category rail — brackets that envelope each tier (top→bottom: processor · lenses · sensory) */
-  .cat-rail{position:absolute; left:16px; top:0; bottom:0; width:66px; z-index:6; pointer-events:none}
-  .cat{position:absolute; left:0; width:100%; display:flex; align-items:center; padding-left:8px; border:1.5px solid color-mix(in srgb,var(--tc) 44%, var(--hairline-2)); border-right:0; border-radius:6px 0 0 6px; transition:top .25s ease, height .25s ease}
-  .cat-ico{position:absolute; top:5px; left:50%; transform:translateX(-50%); width:12px; height:12px; background:var(--tc); border:1px solid rgba(255,255,255,.45); box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  /* the watchtower — the processor is no longer a plane IN the stack. It stands beside it
+     on the ground plane (deck x = STK.SPOTS.tower): a slender glass mast, quiet like the
+     feed box, carrying a wider amber observation head that overlooks the stack top, with
+     a dashed sight-line to the stack to prove the watch. GEOMETRY is inline (renderLayers
+     builds it from stackGeo().tower); only the look lives here. Selection behaves exactly
+     like a plane: data-id/tabindex on the root, 'sel' toggles, hassel dims. */
+  .tower3d{position:absolute; left:50%; top:50%; width:0; height:0; transform-style:preserve-3d;
+    cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+    transition:opacity .26s ease, filter .26s ease}
+  .tower3d .tw{position:absolute; left:0; top:0; border-radius:3px;
+    background:color-mix(in srgb,var(--l-base) 7%, transparent);
+    border:1px solid color-mix(in srgb,var(--l-base) 30%, transparent);
+    transition:border-color .26s ease, box-shadow .26s ease}
+  .tower3d .tw.head{border-radius:4px;
+    background:linear-gradient(135deg, color-mix(in srgb,var(--l-tower) 34%,transparent), color-mix(in srgb,var(--l-tower) 12%,transparent));
+    border-color:color-mix(in srgb,var(--l-tower) 62%, transparent)}
+  .tower3d .tw.head.f-cap{background:color-mix(in srgb,var(--l-tower) 30%, transparent)}
+  .tower3d .sight{position:absolute; left:50%; top:50%; height:0; pointer-events:none;
+    border-top:2px dashed color-mix(in srgb,var(--l-tower) 55%, transparent)}
+  .tower3d .beacon{position:absolute; left:50%; top:50%; width:7px; height:7px; margin:-3.5px 0 0 -3.5px; border-radius:50%; pointer-events:none;
+    background:color-mix(in srgb,var(--l-tower) 90%, #fff);
+    box-shadow:0 0 10px 2px color-mix(in srgb,var(--l-tower) 60%, transparent)}
+  .tower3d .tw-tag{position:absolute; left:50%; top:50%; display:flex; align-items:center; gap:8px; pointer-events:none;
+    font-family:var(--mono); font-weight:700; font-size:18px; color:#fff; opacity:.97; text-shadow:0 1px 9px rgba(0,0,0,.45); line-height:1}
+  .tower3d .tw-tag i{width:14px; height:14px; flex:none; background:var(--l-tower);
+    clip-path:polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+    filter:drop-shadow(0 0 1.1px rgba(0,0,0,.85)) drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+  .deck.hassel .tower3d{opacity:.52; filter:saturate(.7)}
+  .deck.hassel .tower3d.sel{opacity:1; filter:none}
+  .tower3d.sel .tw.head{border-color:color-mix(in srgb,var(--l-tower) 92%, transparent);
+    box-shadow:0 0 30px color-mix(in srgb,var(--l-tower) 45%, transparent)}
+  .tower3d.sel .sight{border-top-color:color-mix(in srgb,var(--l-tower) 92%, transparent)}
+  .tower3d.sel .beacon{box-shadow:0 0 16px 4px color-mix(in srgb,var(--l-tower) 80%, transparent)}
+  .tower3d:focus-visible{outline:0}
+  .tower3d:focus-visible .tw.head{border-color:#fff; box-shadow:0 0 0 1.5px rgba(255,255,255,.8)}
+  @media (prefers-reduced-motion:no-preference){
+    .tower3d{animation:twIn .7s ease .45s backwards}
+    @keyframes twIn{from{opacity:0}}
+    .tower3d .beacon{animation:twPulse 2.4s ease-in-out infinite}
+    @keyframes twPulse{0%,100%{box-shadow:0 0 8px 1px color-mix(in srgb,var(--l-tower) 45%,transparent)}
+      50%{box-shadow:0 0 15px 4px color-mix(in srgb,var(--l-tower) 78%,transparent)}}
+  }
+  /* legend — replaces the measured tier brackets (their projected rects overlap by nature:
+     a plane's diamond is ~6x taller than the z-gap between planes, so tier ranges collide).
+     The symbols + a flow line are enough — every plane already wears its tier mark. */
+  .legend{position:absolute; left:14px; bottom:12px; z-index:6; pointer-events:none; display:flex; flex-direction:column; gap:5px;
+    padding:9px 11px 8px; border-radius:10px; background:color-mix(in srgb,var(--surface) 80%, transparent); border:1px solid var(--hairline)}
+  .lg-row{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:8.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+  .lg-row b{color:color-mix(in srgb,var(--tc) 80%, var(--ink-dim)); font-weight:600}
+  .cat-ico{width:11px; height:11px; flex:none; background:var(--tc); border:1px solid rgba(255,255,255,.45); box-shadow:0 1px 2px rgba(0,0,0,.4)}
   .cat-ico.sensory{border-radius:2px}
   .cat-ico.feed{border-radius:2px; background:color-mix(in srgb,var(--tc) 30%,transparent); border-style:dashed}
   .cat-ico.lens{border-radius:50%}
-  .cat-ico.proc{border:0; clip-path:polygon(50% 0%,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%)}
-  .cat .lbl{writing-mode:vertical-rl; transform:rotate(180deg); font-family:var(--mono); font-size:8.5px; letter-spacing:.15em; text-transform:uppercase; font-weight:600; white-space:nowrap; color:color-mix(in srgb,var(--tc) 85%, var(--ink-faint))}
-  @media (max-width:560px){ .cat-rail{display:none} }
+  .cat-ico.proc{border:0; clip-path:polygon(50% 0%,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%); filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+  .lg-flow{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:8.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim); border-top:1px solid var(--hairline); padding-top:6px; margin-top:1px}
+  @media (max-width:560px){ .legend{display:none} }
 
   .detail{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px; display:flex; flex-direction:column; min-height:0; overflow:auto}
   .dt-top{display:flex; align-items:center; gap:11px}
@@ -3064,17 +3109,23 @@ function renderDetail(){
 
 function selectLayer(id){
   selLayer=id;
-  document.querySelectorAll('.plane').forEach(p=>p.classList.toggle('sel', p.dataset.id===id));
+  document.querySelectorAll('.plane, .tower3d').forEach(p=>p.classList.toggle('sel', p.dataset.id===id));
   renderDetail();
 }
 
 // ---- stack geometry: one shared deck-local z axis, z=0 = the glass floor ----
 // Constants sized so a selected plane (scale 1.13 + 24px pop) keeps clear air inside the
 // glass box (x ±170 vs sel ±162.7 · y ±112 vs ±105.1 · lid clears the popped top feed by
-// 10px) and between planes. More boxed stacks later = more entries in the same z layout.
-const STK = {PGAP:34, TGAP:56, BEAM:80, BOXPAD:28, BOXTOP:34, POP:24, W:288, D:186, BOXHW:170, BOXHD:112};
+// 10px) and between planes.
+// SPOTS — the deck floor plan (deck-local x centers). The main stack owns x=0; the
+// watchtower stands at +272 (body x 257..287, clear of the glass wall at +170 and of a
+// popped plane at ±162.7). FUTURE STACKS land on the −x side (≈ −360, −720, …) so the
+// tower keeps open sight over every stack; layoutStacks refits from the extents.
+const STK = {PGAP:34, TGAP:56, BEAM:80, BOXPAD:28, BOXTOP:34, POP:24, W:288, D:186, BOXHW:170, BOXHD:112,
+  SPOTS:{main:0, tower:272},
+  TOWER:{BODY_HW:15, BODY_HD:15, HEAD_HW:36, HEAD_HD:36, HEAD_H:56}};
 function stackGeo(){
-  const FEEDS = LY.filter(l=>l.tier==='feed'), MAIN = LY.filter(l=>l.tier!=='feed');
+  const FEEDS = LY.filter(l=>l.tier==='feed'), MAIN = LY.filter(l=>l.tier!=='feed' && l.tier!=='processor');
   const z = new Map();
   FEEDS.forEach((l,i)=>z.set(l.id, STK.BOXPAD + i*STK.PGAP));
   const boxTop = STK.BOXPAD + (FEEDS.length-1)*STK.PGAP + STK.BOXTOP;
@@ -3087,11 +3138,17 @@ function stackGeo(){
     }
     z.set(l.id, zc);
   });
-  return {z, boxTop, zTop:zc, FEEDS, MAIN};
+  // the processor is NOT a plane — it watches from a tower on the ground plane at
+  // SPOTS.tower, its amber head straddling the stack top (body ends 4px above the top
+  // lens) so the sight-line looks gently DOWN at the stack from head height.
+  const T=STK.TOWER, bodyH=zc+4;
+  const tower={X:STK.SPOTS.tower, BODY_HW:T.BODY_HW, BODY_HD:T.BODY_HD, BODY_H:bodyH,
+    HEAD_HW:T.HEAD_HW, HEAD_HD:T.HEAD_HD, TOPZ:bodyH+T.HEAD_H, SIGHT_Z:zc+28};
+  return {z, boxTop, zTop:zc, gaps, FEEDS, MAIN, tower};
 }
 
-// fit + place the whole composition in the container, then align the rail brackets and the
-// DATA FEEDS pill to the REAL projected positions (getBoundingClientRect of 3D children).
+// fit + place the whole composition in the container, then align the DATA FEEDS pill to
+// its REAL projected position (getBoundingClientRect of the 3D floor face).
 function layoutStacks(){
   const stacks=$("#stacks"), deck=$("#deck");
   if(!stacks || !deck || !deck._geo) return;
@@ -3100,33 +3157,30 @@ function layoutStacks(){
   const padT=parseFloat(cs.paddingTop),  padB=parseFloat(cs.paddingBottom);
   const w=stacks.clientWidth-padL-padR, h=stacks.clientHeight-padT-padB;
   if(w<80 || h<80) return;                       // hidden tab — the ResizeObserver re-fires on reveal
-  const g=deck._geo;
+  const g=deck._geo, T=g.tower;
   const SIN=0.8192, COS=0.5736, R=0.7071;        // rotateX(55) · rotateZ(-45)
   const diag=(STK.W/2+STK.D/2)*R, boxDiag=(STK.BOXHW+STK.BOXHD)*R;
-  const upper=(g.zTop+STK.POP+16)*SIN + diag*COS;      // px above deck center at s=1 (popped top plane)
-  const lower=boxDiag*COS;                              // glass floor (z=0) governs below
-  const compH=upper+lower, compW=2*Math.max(diag*1.13, boxDiag)+16;
+  // projected extents at s=1: screen-x = (x+y)·R · screen-y = (y−x)·R·COS − z·SIN
+  // (rotateZ(−45) sends deck +x up-right, +y down-right; z rises up-screen). The
+  // composition is asymmetric now (tower on +x → up-right), so fit both x extents and
+  // slide the deck so the midpoint of [xL, xR] sits at the container center.
+  const upper=Math.max((g.zTop+STK.POP+16)*SIN + diag*COS,                    // popped top plane
+                       T.TOPZ*SIN + (T.X+T.HEAD_HW+T.HEAD_HD)*R*COS);         // head-top far corner
+  const lower=boxDiag*COS;                       // glass floor governs (+x lifts the tower foot)
+  const xR=(T.X+T.HEAD_HW+T.HEAD_HD)*R+10, xL=-Math.max(diag*1.13, boxDiag)-8;
+  const compH=upper+lower, compW=xR-xL;
   const s=Math.min(1.1, h/compH, w/compW);
   deck.style.setProperty('--ds', s.toFixed(4));
-  deck.style.left=(padL+w/2).toFixed(1)+'px';
+  deck.style.left=(padL+w/2-(xL+xR)/2*s).toFixed(1)+'px';
   // 42% of the spare height above, the rest below → the feed box sits toward the bottom
   deck.style.top =(padT+(h-compH*s)*0.42+upper*s).toFixed(1)+'px';
   requestAnimationFrame(()=>{                    // measure AFTER the new transform paints
-    const card=stacks.closest('.scene-card'); if(!card) return;
-    const cardR=card.getBoundingClientRect(), sr=stacks.getBoundingClientRect();
-    card.querySelectorAll('.cat[data-tier]').forEach(el=>{
-      const rs=LY.filter(l=>l.tier===el.dataset.tier)
-        .map(l=>deck.querySelector(`[data-id="${l.id}"]`)).filter(Boolean)
-        .map(p=>p.getBoundingClientRect());
-      if(!rs.length) return;
-      const top=Math.min(...rs.map(r=>r.top))-cardR.top, bot=Math.max(...rs.map(r=>r.bottom))-cardR.top;
-      el.style.top=(top-4).toFixed(0)+'px'; el.style.height=(bot-top+8).toFixed(0)+'px';
-    });
+    const sr=stacks.getBoundingClientRect();
     const fb=deck.querySelector('.gb.f-bot'), pill=$("#fblabel");
     if(fb && pill){
       const r=fb.getBoundingClientRect();
       pill.style.left=(r.left+r.width/2-sr.left).toFixed(0)+'px';
-      pill.style.top =(r.bottom-sr.top-8).toFixed(0)+'px';
+      pill.style.top =Math.min(r.bottom-sr.top-8, stacks.clientHeight-22).toFixed(0)+'px';
     }
   });
 }
@@ -3140,7 +3194,7 @@ function renderLayers(){
       <span class="pn"><i class="ptag ${tag(L.tier)}" title="${L.tier}"></i>${L.num}</span><span class="pc">${L.name}</span>
     </div>`;
   const geo = stackGeo();
-  const planes = LY.map((L,i)=>planeHTML(L, geo.z.get(L.id), i*0.07)).join('');
+  const planes = LY.filter(l=>l.tier!=='processor').map((L,i)=>planeHTML(L, geo.z.get(L.id), i*0.07)).join('');
   // glass box faces — geometry derived from the SAME constants as the planes
   const hw=STK.BOXHW, hd=STK.BOXHD, bh=geo.boxTop, zc=bh/2;
   const glass = `<div class="glassbox" aria-hidden="true">
@@ -3159,6 +3213,31 @@ function renderLayers(){
   const flowBeam = beamAt(geo.boxTop, geo.boxTop+STK.BEAM, 'flow',
     '<s class="node n0"></s><s class="node n1"></s><b><i></i></b><b><i></i></b><b><i></i></b>');
   const tierBeams = (geo.gaps||[]).map(gp=>beamAt(gp.z0,gp.z1,'dots')).join('');
+  // the WATCHTOWER — slender mast + amber observation head (concepts weighed: stepped
+  // ziggurat reads "building" not "watching"; a hex prism is indistinguishable from a
+  // square one at deck scale — the wide-head-on-thin-neck control-tower silhouette wins).
+  // Same wall-face technique as the glass box; every size comes from stackGeo().tower.
+  // The sight-line lives in the y=0 plane (rotateX(-90) wall + in-plane rotate()), so a
+  // single dashed rule runs head-front → 28px above the stack's top plane.
+  const T=geo.tower, tx=T.X, bw=T.BODY_HW, bd=T.BODY_HD, tbh=T.BODY_H, tbc=tbh/2,
+        hbw=T.HEAD_HW, hbd=T.HEAD_HD, hz1=T.TOPZ, hh=hz1-tbh, hzc=(tbh+hz1)/2;
+  const sx0=tx-hbw, sz0=hzc, sx1=0, sz1=T.SIGHT_Z;
+  const sL=Math.hypot(sx1-sx0, sz1-sz0), sTh=Math.atan2(-(sz1-sz0), sx1-sx0)*180/Math.PI;
+  const TL = LY.find(l=>l.id==='tower');
+  const tower = `<div class="tower3d ${TL.id===selLayer?'sel':''}" data-id="${TL.id}" tabindex="0" role="button" aria-label="${TL.name} — ${TL.tier}">
+    <i class="tw" style="width:${2*bw}px;height:${tbh}px;margin:${-tbc}px 0 0 ${tx-bw}px;transform:translateZ(${tbc}px) rotateX(-90deg) translateZ(${-bd}px)"></i>
+    <i class="tw" style="width:${2*bw}px;height:${tbh}px;margin:${-tbc}px 0 0 ${tx-bw}px;transform:translateZ(${tbc}px) rotateX(-90deg) translateZ(${bd}px)"></i>
+    <i class="tw" style="width:${tbh}px;height:${2*bd}px;margin:${-bd}px 0 0 ${-tbc}px;transform:translateZ(${tbc}px) rotateY(90deg) translateZ(${tx+bw}px)"></i>
+    <i class="tw" style="width:${tbh}px;height:${2*bd}px;margin:${-bd}px 0 0 ${-tbc}px;transform:translateZ(${tbc}px) rotateY(90deg) translateZ(${tx-bw}px)"></i>
+    <i class="tw head" style="width:${2*hbw}px;height:${hh}px;margin:${-hh/2}px 0 0 ${tx-hbw}px;transform:translateZ(${hzc}px) rotateX(-90deg) translateZ(${-hbd}px)"></i>
+    <i class="tw head" style="width:${2*hbw}px;height:${hh}px;margin:${-hh/2}px 0 0 ${tx-hbw}px;transform:translateZ(${hzc}px) rotateX(-90deg) translateZ(${hbd}px)"></i>
+    <i class="tw head" style="width:${hh}px;height:${2*hbd}px;margin:${-hbd}px 0 0 ${-hh/2}px;transform:translateZ(${hzc}px) rotateY(90deg) translateZ(${tx+hbw}px)"></i>
+    <i class="tw head" style="width:${hh}px;height:${2*hbd}px;margin:${-hbd}px 0 0 ${-hh/2}px;transform:translateZ(${hzc}px) rotateY(90deg) translateZ(${tx-hbw}px)"></i>
+    <i class="tw head f-cap" style="width:${2*hbw}px;height:${2*hbd}px;margin:${-hbd}px 0 0 ${tx-hbw}px;transform:translateZ(${hz1}px)"></i>
+    <i class="sight" aria-hidden="true" style="width:${sL.toFixed(1)}px;margin:-1px 0 0 ${((sx0+sx1)/2-sL/2).toFixed(1)}px;transform:translateZ(${((sz0+sz1)/2).toFixed(1)}px) rotateX(-90deg) rotate(${sTh.toFixed(2)}deg)"></i>
+    <i class="beacon" aria-hidden="true" style="transform:translate3d(${tx}px,0,${hz1+9}px) rotateZ(45deg) rotateX(-55deg)"></i>
+    <span class="tw-tag" aria-hidden="true" style="transform:translate3d(${tx}px,0,${hzc}px) rotateZ(45deg) rotateX(-55deg) translateZ(58px) translate(-50%,-50%)"><i></i>${TL.num}</span>
+  </div>`;
   const nShadow = LY.filter(l=>/shadow/.test(l.status[1])).length;
   $("#p-layers").innerHTML = `
     <div class="phead">
@@ -3168,23 +3247,24 @@ function renderLayers(){
     <div class="layers3d">
       <div class="scene-card">
         <div class="scene-top"><span class="st">forward pass · feeds → processor</span><span class="st" style="color:var(--iris)">decision ↑</span></div>
-        <div class="cat-rail">
-          <div class="cat" data-tier="processor" style="top:6%;height:12%; --tc:var(--l-tower)"><i class="cat-ico proc"></i><span class="lbl">Processor</span></div>
-          <div class="cat" data-tier="lens" style="top:21%;height:12%; --tc:var(--l-fade)"><i class="cat-ico lens"></i><span class="lbl">Lenses</span></div>
-          <div class="cat" data-tier="sensory" style="top:36%;height:34%; --tc:var(--l-base)"><i class="cat-ico sensory"></i><span class="lbl">Sensory</span></div>
+        <div class="legend" aria-hidden="true">
+          <div class="lg-row" style="--tc:var(--l-tower)"><i class="cat-ico proc"></i><b>processor</b>&nbsp;— makes the call</div>
+          <div class="lg-row" style="--tc:var(--l-fade)"><i class="cat-ico lens"></i><b>lens</b>&nbsp;— takes a side</div>
+          <div class="lg-row" style="--tc:var(--l-base)"><i class="cat-ico sensory"></i><b>sensory</b>&nbsp;— measures</div>
+          <div class="lg-row" style="--tc:var(--l-base)"><i class="cat-ico feed"></i><b>data feed</b>&nbsp;— raw input</div>
+          <div class="lg-flow">flow ↑ feeds to decision · tap any block</div>
         </div>
         <div class="stack-scene" id="stacks">
-          <div class="deck hassel" id="deck">${glass}${planes}${flowBeam}${tierBeams}</div>
+          <div class="deck hassel" id="deck">${glass}${planes}${flowBeam}${tierBeams}${tower}</div>
           <span class="fb-label" id="fblabel">data feeds</span>
         </div>
-        <div class="deckhint">tap a block</div>
       </div>
       <div class="detail" id="dt"></div>
     </div>`;
   const stacks=$("#stacks");
-  stacks.addEventListener('click', e=>{ const p=e.target.closest('.plane'); if(p) selectLayer(p.dataset.id); });
+  stacks.addEventListener('click', e=>{ const p=e.target.closest('.plane, .tower3d'); if(p) selectLayer(p.dataset.id); });
   stacks.addEventListener('keydown', e=>{
-    const p=e.target.closest('.plane'); if(!p) return;
+    const p=e.target.closest('.plane, .tower3d'); if(!p) return;
     const idx=LY.findIndex(x=>x.id===p.dataset.id);
     if(e.key==='Enter'||e.key===' '){ e.preventDefault(); selectLayer(p.dataset.id); }
     else if(e.key==='ArrowUp' && idx<LY.length-1){ e.preventDefault(); const n=stacks.querySelector(`[data-id="${LY[idx+1].id}"]`); n.focus(); selectLayer(LY[idx+1].id); }
