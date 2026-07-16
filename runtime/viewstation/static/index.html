@@ -261,13 +261,29 @@
   .deck.mini .pn{font-size:15px}
   .deck.mini .ptag{width:12px; height:12px; margin-right:7px}
   .deck.mini .pc{font-size:9px}
-  .feedbox{position:relative; border:1.5px dashed color-mix(in srgb,var(--l-base) 45%, var(--hairline-2)); border-radius:14px;
-    padding:6px 16px 2px; background:color-mix(in srgb,var(--l-base) 5%, transparent); flex:none}
-  .fb-label{position:absolute; top:-8px; left:16px; padding:1px 7px; border-radius:999px; background:var(--surface);
+  .feedbox{position:relative; flex:none}
+  .fb-label{position:absolute; bottom:4px; left:50%; transform:translateX(-50%); padding:2px 9px; border-radius:999px; background:var(--surface); z-index:2;
     border:1px solid color-mix(in srgb,var(--l-base) 35%, var(--hairline)); font-family:var(--mono); font-size:8.5px;
-    letter-spacing:.16em; text-transform:uppercase; font-weight:600; color:color-mix(in srgb,var(--l-base) 85%, var(--ink-faint))}
-  .fb-stage{display:flex; align-items:center; justify-content:center; perspective:1200px}
-  .eflow{position:relative; width:26px; height:46px; flex:none; margin:0 0 2px}
+    letter-spacing:.16em; text-transform:uppercase; font-weight:600; color:color-mix(in srgb,var(--l-base) 85%, var(--ink-faint)); white-space:nowrap}
+  .fb-stage{display:flex; align-items:center; justify-content:center; perspective:1200px; width:300px; height:200px}
+  /* the glass box — a real 3D transparent cuboid drawn in the SAME isometric space as the
+     mini deck, so the feed planes genuinely sit inside it. Six faces around the 216×104
+     planes (rest z ±40; a selected plane scales ×1.13 → x ±122 and pops to z 64):
+     box x ±130 · y ±64 · z ±72, so even a selected plane keeps ≥5px of air on every axis. */
+  .glassbox{position:absolute; left:50%; top:50%; width:0; height:0; transform-style:preserve-3d; pointer-events:none}
+  .glassbox .gb{position:absolute; left:0; top:0; border-radius:9px;
+    background:color-mix(in srgb,var(--l-base) 6%, transparent);
+    border:1px solid color-mix(in srgb,var(--l-base) 26%, transparent)}
+  .glassbox .gb.f-top{width:260px; height:128px; margin:-64px 0 0 -130px; transform:translateZ(72px);
+    background:color-mix(in srgb,var(--l-base) 4%, transparent); border-color:color-mix(in srgb,var(--l-base) 34%, transparent)}
+  .glassbox .gb.f-bot{width:260px; height:128px; margin:-64px 0 0 -130px; transform:translateZ(-72px);
+    background:color-mix(in srgb,var(--l-base) 10%, transparent);
+    box-shadow:0 0 26px color-mix(in srgb,var(--l-base) 14%, transparent) inset}
+  .glassbox .gb.f-n{width:260px; height:144px; margin:-72px 0 0 -130px; transform:rotateX(-90deg) translateZ(-64px)}
+  .glassbox .gb.f-s{width:260px; height:144px; margin:-72px 0 0 -130px; transform:rotateX(-90deg) translateZ(64px)}
+  .glassbox .gb.f-e{width:144px; height:128px; margin:-64px 0 0 -72px; transform:rotateY(90deg) translateZ(130px)}
+  .glassbox .gb.f-w{width:144px; height:128px; margin:-64px 0 0 -72px; transform:rotateY(90deg) translateZ(-130px)}
+  .eflow{position:relative; width:26px; height:64px; flex:none; margin:12px 0 8px}
   .eflow::before{content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%); border-radius:2px;
     background:linear-gradient(to top, color-mix(in srgb,var(--l-base) 55%,transparent), color-mix(in srgb,var(--l-base) 14%,transparent))}
   .eflow i{position:absolute; left:50%; bottom:-3px; width:6px; height:6px; margin-left:-3px; border-radius:50%; opacity:0;
@@ -280,7 +296,7 @@
       0%{transform:translateY(0) scale(.7); opacity:0}
       12%{opacity:1}
       82%{opacity:1}
-      100%{transform:translateY(-46px) scale(1); opacity:0}
+      100%{transform:translateY(-64px) scale(1); opacity:0}
     }
   }
   .plane{position:absolute; inset:0; border-radius:12px; transform:translateZ(var(--z)); transform-style:preserve-3d; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
@@ -3063,7 +3079,10 @@ function renderLayers(){
           <div class="eflow" aria-hidden="true"><i></i><i></i><i></i></div>
           <div class="feedbox">
             <span class="fb-label">data feeds</span>
-            <div class="fb-stage"><div class="deck mini hassel" id="feeddeck">${feedPlanes}</div></div>
+            <div class="fb-stage"><div class="deck mini hassel" id="feeddeck">
+              <div class="glassbox" aria-hidden="true"><i class="gb f-top"></i><i class="gb f-bot"></i><i class="gb f-n"></i><i class="gb f-s"></i><i class="gb f-e"></i><i class="gb f-w"></i></div>
+              ${feedPlanes}
+            </div></div>
           </div>
         </div>
         <div class="deckhint">tap a block</div>
