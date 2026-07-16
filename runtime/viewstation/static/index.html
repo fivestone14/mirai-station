@@ -56,22 +56,22 @@
   /* layer-stack hues (categorical) + slab underside — theme-aware */
   :root{
     --slab-under:rgba(0,0,0,.5);
-    --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
+    --l-base:#8A94B4; --l-dated:#7CB8A8; --l-peri:#B592A0; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-flow:#FF9E7A; --l-tape:#F76F8E; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
     --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --dgl-gutter:#141A24; --dgl-p1:#224D49; --dgl-p2:#2B6C5F; --dgl-p3:#338B75; --dgl-p4:#3BA688; --dgl-p5:#42C09A; --dgl-n1:#5D3535; --dgl-n2:#8A4640; --dgl-n3:#B3554A; --dgl-n4:#D16051; --dgl-n5:#EB6A57;
   }
   @media (prefers-color-scheme:light){:root{
     --slab-under:rgba(40,46,66,.18);
-    --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
+    --l-base:#66718F; --l-dated:#3F8271; --l-peri:#8A5F72; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-flow:#B65E2E; --l-tape:#C13D63; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
     --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --dgl-gutter:#EDF1F7; --dgl-p1:#BCE2D6; --dgl-p2:#79C5AE; --dgl-p3:#22936F; --dgl-p4:#177E5E; --dgl-p5:#0F6B4F; --dgl-n1:#F2C9C3; --dgl-n2:#E49288; --dgl-n3:#D2503C; --dgl-n4:#BE402D; --dgl-n5:#A93524;
   }}
   :root[data-theme="dark"]{
     --slab-under:rgba(0,0,0,.5);
-    --l-base:#8A94B4; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
+    --l-base:#8A94B4; --l-dated:#7CB8A8; --l-peri:#B592A0; --l-grav:#F3AB3E; --l-motion:#35D0D6; --l-flow:#FF9E7A; --l-tape:#F76F8E; --l-lob:#8B9CFF; --l-fade:#43C59E; --l-break:#EB6A57; --l-tower:#E7B85C;
     --l-speed:#E97FB5; --l-ruler:#B4CE55; --l-roll:#B78BF5; --l-event:#5EAEF2; --dgl-gutter:#141A24; --dgl-p1:#224D49; --dgl-p2:#2B6C5F; --dgl-p3:#338B75; --dgl-p4:#3BA688; --dgl-p5:#42C09A; --dgl-n1:#5D3535; --dgl-n2:#8A4640; --dgl-n3:#B3554A; --dgl-n4:#D16051; --dgl-n5:#EB6A57;
   }
   :root[data-theme="light"]{
     --slab-under:rgba(40,46,66,.18);
-    --l-base:#66718F; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
+    --l-base:#66718F; --l-dated:#3F8271; --l-peri:#8A5F72; --l-grav:#D98A1E; --l-motion:#17B0BD; --l-flow:#B65E2E; --l-tape:#C13D63; --l-lob:#5560D8; --l-fade:#1F9E78; --l-break:#D24A38; --l-tower:#B07E28;
     --l-speed:#C2408A; --l-ruler:#7F9A1E; --l-roll:#8455D0; --l-event:#2478C8; --dgl-gutter:#EDF1F7; --dgl-p1:#BCE2D6; --dgl-p2:#79C5AE; --dgl-p3:#22936F; --dgl-p4:#177E5E; --dgl-p5:#0F6B4F; --dgl-n1:#F2C9C3; --dgl-n2:#E49288; --dgl-n3:#D2503C; --dgl-n4:#BE402D; --dgl-n5:#A93524;
   }
 
@@ -310,8 +310,6 @@
   .dt-name em{font-style:normal; display:block; font-size:10.5px; color:var(--ink-faint); font-family:var(--mono); font-weight:500; margin-top:2px}
   .dt-meta{display:flex; gap:8px; flex-wrap:wrap; margin:13px 0 0}
   .dt-role{font-family:var(--mono); font-size:11px; color:var(--ink-faint); border-left:2px solid color-mix(in srgb,var(--c) 55%,transparent); padding-left:10px; margin:12px 0 0}
-  .dt-purpose{font-size:13px; color:var(--ink-dim); line-height:1.5; margin:11px 0 0}
-  .dt-purpose b{color:var(--ink); font-weight:600}
   .tier{font-family:var(--mono); font-size:9.5px; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px 3px 7px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; border:1px solid; font-weight:600}
   .tier i{width:9px; height:9px; background:currentColor; flex:none}
   .tier.sensory{color:var(--l-base); border-color:color-mix(in srgb,var(--l-base) 38%,transparent); background:color-mix(in srgb,var(--l-base) 10%,transparent)}
@@ -324,6 +322,7 @@
   .dt-eg{margin-top:11px; padding:10px 13px; border-radius:11px; line-height:1.5; font-size:12.5px; color:var(--ink-dim);
     background:color-mix(in srgb,var(--c) 8%, var(--surface)); border:1px solid color-mix(in srgb,var(--c) 24%, var(--hairline))}
   .dt-eg .eg-k{display:block; font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; margin-bottom:3px; color:color-mix(in srgb,var(--c) 72%, var(--ink-faint))}
+  .dt-eg code{display:block; font-family:var(--mono); font-size:11px; line-height:1.6; white-space:pre-wrap; word-break:break-word; margin-top:2px; color:var(--ink-dim)}
   .rd{margin-top:15px; padding-top:14px; border-top:1px solid var(--hairline)}
   .rd-h{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px}
   .rd-h .lab{font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-faint); font-weight:600}
@@ -2730,83 +2729,99 @@ function startLive(){
 // ---------- LAYERS (3D deck + readiness detail) ----------
 // order = bottom → top of the residual stream (base map → heads)
 const LY = [
-  {id:'chain', num:'◇', name:'Options Chain', code:'native + proxy · base map', hue:'--l-base', base:true, tier:'sensory',
-    role:'≈ token embedding / residual stream', status:['jade','live'], weight:null,
-    plain:'The raw ingredient. Every SPX call and put with its price and how many contracts are open (its "open interest"), re-read from scratch each 5-minute scan. Nothing is predicted here — everything above is computed from this.',
-    example:'Like re-reading the full menu of every option contract, top to bottom, every five minutes.',
-    purpose:'Raw SPX / SPY option book — native ThetaData plus the SPY proxy. <b>The immutable foundation every layer reads from and writes small corrections onto.</b>',
-    rd:{kind:'live', note:'Running every 5-minute scan — the feed that never sleeps.'}},
+  {id:'chain', num:'◇', name:'Options Chain', code:'native_gex_feed.native_chain · base map', hue:'--l-base', base:true, tier:'sensory',
+    role:'≈ token embedding / residual stream', status:['jade','live'],
+    plain:'The raw ingredient list. Every SPX call and put — its price, its gamma, and how many contracts people are holding — re-read from scratch on every scan (a full scan lands about every 10 minutes). Almost nothing is guessed: a missing gamma is recomputed from the option\'s own price, never invented.',
+    egk:'Schema · ThetaData native SPX chain · Schwab live spot · SPY×10 proxy fallback',
+    example:'<code>{ spot, contracts: [ { strike, right, expiry, dte, gamma, iv, open_interest, volume } ] }</code>',
+    rd:{kind:'live', freq:'launchd fires every 60s · a completed scan lands ~every 10 min',
+      note:'The feed that never sleeps — every layer above is cooked from this.'}},
+  {id:'dated', num:'◇2', name:'Dated Book', code:'dated_gex_feed.py · nightly sidecar', hue:'--l-dated', base:true, tier:'sensory',
+    role:'≈ long-range memory · far-expiry OI walls', status:['jade','live · nightly'],
+    plain:'The far-future fence map. Once a night it fetches the big option piles sitting weeks and months away — the brick walls that will still be standing after today\'s options expire at 4pm. The pile sizes are the trusted part; a best-guess flip line rides beside them, clearly labeled a guess.',
+    egk:'Schema · nightly ThetaData dated-OI pull · 05:17 PT · next 2 SPX monthlies + 2 quarter-ends',
+    example:'<code>{ ok, as_of, oi_date, spot, bands: [ { expiry, band, dte_at_pull, strikes: [ [strike, call_oi, put_oi, call_gex, put_gex, call_iv, put_iv] ] } ] }</code>',
+    rd:{kind:'live', freq:'one fetch per night (+ a Friday-evening OpEx roll), cached all day',
+      note:'Strike sizes are unsigned by design; the assumed-sign hedge rail (flip, h1) is labeled, never trusted as fact. Kill switch DATED_BOOK_DISABLE. Feeds the map\'s dated-walls overlay and the Watchtower\'s outer terrain.'}},
+  {id:'peri', num:'◇3', name:'UW Periscope', code:'uw_periscope.py · second opinion', hue:'--l-peri', base:true, tier:'sensory',
+    role:'≈ an outside model to disagree with', status:['iris','shadow · feed'],
+    plain:'A free outside scorecard from Unusual Whales. Mirai checks its own gamma map against it — but the feed\'s buy/sell sign was tested and found to flip like a coin, so only the SIZES are trusted, never the direction.',
+    egk:'Schema · UW dealer-gamma heatmap (not included in this build)',
+    example:'<code>{ grid_iso, dte_max: 7, n_strikes, per_strike: { strike → gamma / vanna / charm }, bucket_edges: { 0d, 1_7, 8_45 } }</code>',
+    rd:{kind:'feature', feeds:'feeds Gamma Roll — dated buckets, magnitude only',
+      summary:'Its per-strike dealer sign was tested and REFUSED — coherent on 0 of 72 slices, i.e. it flips at chance — so it never becomes the live sign. The magnitude buckets ride on into Gamma Roll.'}},
   {id:'grav', num:'1', name:'GEX · Gravity', code:'lefteye_gex_box.GexBox', hue:'--l-grav', tier:'sensory',
-    role:'≈ base representation · GEX = dealer gamma exposure', status:['jade','live · w0.80'], weight:0.80,
-    plain:'Turns that raw book into a map of where the big players on the other side of these trades must buy or sell to stay balanced — the magnet price gets pulled toward, and the walls that tend to cap a move.',
+    role:'≈ base representation · GEX = dealer gamma exposure', status:['jade','live'],
+    plain:'Turns the raw book into a map of pull: the magnet price gets tugged toward, and the walls that usually stop a move. It shows where the big players on the other side of the trades must buy or sell to stay balanced.',
     example:'A huge stack of options sitting at 7600 quietly tugs price toward 7600 — Gravity is what spots that pull.',
-    purpose:'Dealer-positioning map: magnet, walls, flip, regime, shove. <b>Live and weighted 0.80</b> — but its directional sign is still under nightly A/B review.',
-    rd:{kind:'graded', n:8, rate:0.62, inv:0.38, verdict:'keep the sign',
-      summary:'The sign is now holding up: 62% right as-is on 8 idea-episodes (only 38% if inverted) — the earlier thin-sample "invert it" verdict has flipped.'}},
+    rd:{kind:'graded', n:16, rate:0.75, inv:0.25, verdict:'keep the sign',
+      summary:'75% right as-is on 16 idea-episodes (25% if inverted) — but the day-by-day verdict still flip-flops (07-07 said invert, 07-13 went 6-for-6 correct), so the sign stays under nightly A/B review.'}},
   {id:'motion', num:'1.5', name:'GEX · Motion', code:'gex_motion + shove', hue:'--l-motion', tier:'sensory',
-    role:'≈ attention over the strike axis, in motion', status:['iris','shadow · feature'], weight:null,
+    role:'≈ attention over the strike axis, in motion', status:['iris','shadow · feature'],
     plain:'Watches how the map MOVES scan to scan — walls melting, the magnet walking, the tipping point (where the pull flips to a push) creeping. The map as a film, not a photo.',
     example:'If the magnet drifts up a few points every scan, Motion flags that the target is quietly walking higher.',
-    purpose:'The map read as <b>film, not photo</b> — wall melt, magnet walk, flip creep, grip slope, soft side, and the ½σ shove test.',
     rd:{kind:'feature', summary:'No gate of its own. It feeds the Watchtower and Break-Lens payloads and earns its keep only if <b>they</b> clear theirs.'}},
+  {id:'flow', num:'1.7', name:'Options Flow', code:'native_gex_feed · aggressor_flow + flow_recent', hue:'--l-flow', tier:'sensory',
+    role:'≈ attention over the live options tape · FLOW = live force', status:['iris','shadow · feature'],
+    plain:'Reads who is hitting the buy and sell buttons in the options themselves — are customers pressing harder into calls or puts right now, strike by strike? A recent-window read leads, so the morning\'s trades can\'t drown out the last half hour.',
+    example:'A wall stands overhead but call buyers keep hammering into it all afternoon — Flow says the crowd is pushing, not backing off.',
+    rd:{kind:'feature', feeds:'feeds the Watchtower flow block · windowed read (flow_recent) leads',
+      summary:'Known blind spot: it is a buy-minus-sell DIFFERENCE, so customers buying both wings at once cancels to zero — the Gamma Tape one layer up exists to fix exactly that.'}},
+  {id:'tape', num:'1.8', name:'Gamma Tape', code:'lefteye_gex_box.gamma_tape', hue:'--l-tape', tier:'sensory',
+    role:'≈ gradient of the gamma field · signed contracts × γ', status:['iris','shadow · record-only'],
+    plain:'A wind gauge for the market\'s shock absorbers: it counts how much gamma changes hands minute by minute and which way — are the absorbers being bought up (calm, pinned days) or sold off (fast, stormy days)?',
+    example:'Customers buying options on BOTH sides used to cancel to zero on the old meter and the storm went unseen — the tape counts both wings properly, so the accelerant day finally registers.',
+    rd:{kind:'feature', feeds:'record-only · consume switch OFF (GAMMA_TAPE_CONSUME)',
+      summary:'Shadow with a pre-registered kill: its sign ran opposite to reality on the first 3 live days — if the backfill confirms that, the tape is deleted, not re-signed. Nothing may read its word until it earns one.'}},
   {id:'lob', num:'2', name:'LOB · Flow', code:'skills/lob-flow', hue:'--l-lob', tier:'sensory',
-    role:'≈ second attention head · LOB = the live order book', status:['iris','shadow · w0.15'], weight:0.15,
+    role:'≈ second attention head · LOB = the live order book', status:['iris','shadow · dormant'],
     plain:'Listens to the live order book underneath the options — are buyers or sellers leaning harder right now, and is a "wall" actually defended by real resting orders, or a bluff?',
     example:'A wall looks solid on paper, but if nobody is actually quoting size there, Flow calls the bluff.',
-    purpose:'Live order-book force — tape tilt, scatter, and the wall <b>lie-detector</b>: is that wall truly defended by resting liquidity?',
-    rd:{kind:'lob', baseDays:4, baseNeed:21, tier:'cold', episodes:4, epNeed:30,
-      defNow:{n:15,hits:15,rate:1.0}, defNowLabel:'07-09', defPrev:{n:5,hits:0,rate:0.0}, defPrevLabel:'07-08',
-      blockers:['baseline cold (4 / 15d)','graded 4 / 30 episodes'],
-      summary:'Baseline day 4 of 21 (still cold — 15 needed). The defense sensor is wild: 91% → 0% → 0% → 100% across the four days (60% cumulative). Its spy_depth control still has zero episodes.'}},
+    rd:{kind:'lob', baseDays:7, baseNeed:21, tier:'cold', episodes:0, epNeed:30,
+      defNow:{n:46,hits:26,rate:0.57}, defNowLabel:'cumulative', defPrev:{n:4,hits:1,rate:0.25}, defPrevLabel:'07-10',
+      blockers:['LOB_LIVE off','baseline cold (7 / 21d)','control spy_depth has 0 episodes'],
+      summary:'Baseline day 7 of 21. The wall lie-detector swings wildly day to day (91% → 0% → 0% → 100% → 25%; 57% overall) and its spy_depth control still has zero episodes, so the promotion clock can\'t start.'}},
   {id:'speed', num:'3', name:'Speedometer', code:'lefteye_speedometer', hue:'--l-speed', tier:'sensory',
-    role:'≈ residual-stream norm / activation magnitude', status:['iris','shadow · diary'], weight:null,
-    plain:'Measures what the tape is ACTUALLY doing, not what anyone predicts: how much of a normal day\'s movement has been spent so far, whether a real jolt (jump) just hit and which way, and whether the scary downside kind of shaking is taking over.',
+    role:'≈ residual-stream norm / activation magnitude', status:['iris','shadow · diary'],
+    plain:'Measures what the tape is ACTUALLY doing, not what anyone predicts: how much of a normal day\'s movement has been spent so far, whether a real jolt just hit and which way, and whether the scary downside kind of shaking is taking over.',
     example:'The forecast says storm but the pavement is dry by 11am — the Speedometer says trust the pin. If the budget is half-spent by 10:30, believe the breakout instead.',
-    purpose:'Realized-tape sensor — variance pace vs the same-time-of-day norm, jump detection with sign, downside semivariance share. <b>The reality check every forecast layer gets marked against.</b>',
-    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Cold until the 5th saved session — self-heals 2026-07-10.'}},
+    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Warm since 07-13 (needs 5 saved sessions). Wired straight into the Watchtower\'s payload as of wt-6 — the tower now sees its pace and jump reads.'}},
   {id:'ruler', num:'4', name:'Range Ruler', code:'lefteye_range_ruler', hue:'--l-ruler', tier:'sensory',
-    role:'≈ output scale calibration', status:['iris','shadow · diary'], weight:null,
-    plain:'Reads the market\'s own price for how far today can travel — the cost of an at-the-money straddle, cleaned of its known overpricing. Sets the day\'s size budget and tracks how much of it price has already used. The only layer allowed to speak in expected-move points.',
+    role:'≈ output scale calibration', status:['iris','shadow · diary'],
+    plain:'Reads the market\'s own price for how far today can travel, sets that as the day\'s size budget, and tracks how much of it has been used. The only layer allowed to speak in expected-move points.',
     example:'Today\'s budget is ±42 points and we\'ve used 46% of the ruler set at the open — a call for a 100-point run gets throttled.',
-    purpose:'The day\'s expected-move budget from the debiased ATM straddle — em_points, the anchor set at the open, and how much of the ruler is already spent. <b>The stack\'s common yardstick for size.</b>',
     rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Live from first scan; em_consumed is probationary — recorded to be judged, not yet gated on.'}},
   {id:'roll', num:'5', name:'Gamma Roll', code:'lefteye_gamma_roll', hue:'--l-roll', tier:'sensory',
-    role:'≈ attention across the expiry axis', status:['iris','shadow · diary'], weight:null,
-    plain:'Labels every dealer wall by which expiry owns it — paper fences (today\'s options, torn down by 4pm) vs brick fences (walls that survive the week). It only speaks on days the near fence and the far fence point at different levels — a warning today\'s pin may jump once today\'s options bleed off.',
+    role:'≈ attention across the expiry axis', status:['iris','shadow · diary'],
+    plain:'Labels every dealer wall by which expiry owns it — paper fences (today\'s options, torn down by 4pm) vs brick fences (walls that survive the week). It only speaks on days the near fence and the far fence point at different levels.',
     example:'Today\'s wall sits at 7,500 but the six-week wall sits at 7,560 — as today\'s gamma melts into the afternoon, price gets released upward toward the surviving 7,560.',
-    purpose:'Expiry-owned wall map — the 0DTE wall against the wall that survives the week, surfaced only on <b>divergence days</b> when the pin is set to roll.',
-    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Speaks only on divergence days; rides the UW feed — one feed, one vote with the Second Opinion.'}},
+    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Speaks only on divergence days; rides the UW Periscope feed for its dated buckets (magnitude only — the feed\'s sign is refused).'}},
   {id:'event', num:'6', name:'Event Lens', code:'lefteye_event_lens', hue:'--l-event', tier:'sensory',
-    role:'≈ scheduled attention spike', status:['iris','shadow · diary'], weight:null,
-    plain:'The firework judge for scheduled announcement days (CPI, Fed, jobs). It knows how big a boom the market pre-paid for, then divides the real boom by the paid-for boom: over 1 means the move isn\'t done, under 1 means everyone overpaid and it fades.',
+    role:'≈ scheduled attention spike', status:['iris','shadow · diary'],
+    plain:'The firework judge for scheduled announcement days (Fed, CPI, jobs). It knows how big a boom the market pre-paid for, then divides the real boom by the paid-for boom: over 1 means the move isn\'t done, under 1 means everyone overpaid and it fades.',
     example:'The Fed speaks at 2pm; the market paid for 8 points of boom and got 12 — ratio 1.5, don\'t fade the move.',
-    purpose:'Scheduled-event judge — the pre-paid move vs the realized move, surprise ratio and vol-crush flag. <b>Wakes only on announcement days.</b>',
-    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Silent until the next event day — CPI 2026-07-14.'}},
-  {id:'fade', num:'A', name:'Fade Lens', code:'reversion_extreme', hue:'--l-fade', head:true, tier:'lens',
-    role:'≈ decision head — fade stretch toward the magnet', status:['jade','shadow · paper'], weight:null,
+    rd:{kind:'feature', feeds:'feeds the Watchtower payload · diary', summary:'Reads the shared event calendar (never hardcoded dates) — silent until the next event day: FOMC 2026-07-29.'}},
+  {id:'fade', num:'A', name:'Fade Lens', code:'reversion_extreme', hue:'--l-fade', tier:'lens',
+    role:'≈ decision head — fade stretch toward the magnet', status:['jade','shadow · paper'],
     plain:'A strict four-box checklist that bets a stretched move snaps back toward the magnet. It only fires when all four boxes tick at once.',
     example:'Price jumps far above its average with room to fall back — the Fade Lens bets it reverts.',
-    purpose:'The primary 4-gate lens. <b>Writes to the alert bell on paper; real money is gated on Wilson.</b>',
-    rd:{kind:'days', decided:0, need:12, sw:'REVERSION_LIVE off', rate:null, wl:null, note:'ungated twin: 2 / 4 wins',
+    rd:{kind:'days', decided:0, need:12, sw:'REVERSION_LIVE off', rate:null, wl:null, note:'ungated twin 07-15: 4 decided · 2 wins',
       blockers:['switch off','0 / 12 decided days'],
-      summary:'0 of 12 decided days — the gated Fade hasn\'t fired once in 4 live days (the runway gate blocks every setup) and the live switch is off. Its ungated pre-runway twin has decided 4, winning 2.'}},
-  {id:'break', num:'C', name:'Break Lens', code:'level_reclaim', hue:'--l-break', head:true, tier:'lens',
-    role:'≈ an alternate expert — bet the escape', status:['coral','shadow'], weight:null,
-    plain:'The opposite bet: when flow overpowers the map and price escapes a level, it rides the breakout instead of fading it. A two-step arm-then-fire trigger.',
-    example:'Price smashes through a wall on heavy buying — the Break Lens bets it keeps running, not reverts.',
-    purpose:'The twin that <b>bets the break</b> when flow overpowers the map — a two-stage cock → fire machine. Fully silent; no alert path yet.',
-    rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null, note:'2 cocks, 0 fires · 4 days',
-      blockers:['not started','0 fires'],
-      summary:'Barely stirring — reached the "cocked" state twice (07-07, 07-08) and never fired. Its ledger does not exist yet: 0 of 12 decided days.'}},
-  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-2', hue:'--l-tower', head:true, tier:'processor',
-    role:'≈ a reasoning / critic head', status:['lantern','shadow'], weight:null,
-    plain:'The reasoning brain. It reads the whole stack — blind to the lenses\' verdicts at first — forms its own call on direction and size, then compares notes with the lenses.',
-    example:'The layers below each lean a direction; the Watchtower weighs them all and says, e.g., "up, about half a normal day\'s move, and fairly sure."',
-    purpose:'The Claude reasoning processor — a <b>blind second opinion</b>, up to 3 votes, revealed only on disagreement. <b>wt-2 (2026-07-09):</b> now gravity-anchored (drift-to-magnet is the default, reversion the exception) and reads Flow + Break in its payload. Diary + nightly grade only.',
-    rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null,
-      scans:{judged:22, both:0, solo:17, veto:0},
-      blockers:['0 / 12 decided days'],
-      summary:'Just switched to wt-2 (gravity-anchored). Today: 22 judged, 17 fired solo (tower-only) while the gates never fired — the new directional bias is far more active. First two graded: 1 win, 1 loss. 0 of 12 decided days.'}},
+      summary:'Still 0 of 12 decided days — the runway gate has blocked every gated setup so far, and the live switch is off. Its ungated pre-runway twin decided 4 on 07-15, winning 2. Gate: ≥12 days, Wilson floor > .50, ≥58%.'}},
+  {id:'break', num:'C', name:'Break Lens', code:'level_reclaim', hue:'--l-break', tier:'lens',
+    role:'≈ an alternate expert — bet the escape', status:['coral','shadow'],
+    plain:'The opposite bet: when buying or selling power smashes price through a level, it rides the breakout instead of fading it. A two-step arm-then-fire trigger.',
+    example:'Price smashes through a wall on heavy selling and holds there — the Break Lens bets it keeps running, not reverts.',
+    rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null, note:'cocked 07-07 · 08 · 13 · 16 — 0 fires ever',
+      blockers:['0 fires ever','0 / 12 decided days'],
+      summary:'Has reached the "cocked" state on four days (07-07, 07-08, 07-13, 07-16) and never fired. Since 07-12 the fence ledger hands it real wall-breach events, and an open pin→trend road tilts the regime toward trending — opening the FIRE gate it has never yet passed (cocking only needs storm-side gamma and a rejected fade at a level).'}},
+  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-6', hue:'--l-tower', tier:'processor',
+    role:'≈ a reasoning / critic head', status:['lantern','shadow'],
+    plain:'The reasoning brain. It reads the whole stack — blind to the lenses\' verdicts at first — forms its own call on direction, size, and stance (fight day or settle day), then compares notes with the lenses.',
+    example:'The layers below each lean a direction; the Watchtower weighs them all and says, e.g., "up, about half a normal day\'s move, and this is a settle day, not a fight."',
+    rd:{kind:'days', decided:1, need:12, sw:'shadow · cap 35/day', rate:0.0, wl:null, note:'wt-6 era · stance ledger: 29 graded · 62%',
+      blockers:['1 / 12 decided days (wt-6 era)'],
+      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired now reach it. Every era restarts the ledger: 1 of 12 decided days so far.'}},
 ];
 let selLayer = 'lob';
 
@@ -2818,7 +2833,7 @@ function readinessHTML(L){
   if(r.kind==='live') return `<div class="rd">
     <div class="rd-h"><span class="lab">Status</span><span class="pct">Live</span></div>
     <div class="track"><i style="width:100%"></i></div>
-    <div class="rd-fr">running every scan</div>
+    <div class="rd-fr">${r.freq||'running every scan'}</div>
     <div class="blockers"><span class="blk ok">✓ feeding the stack</span></div>
     <div class="rd-sum">${r.note}</div></div>`;
 
@@ -2880,7 +2895,6 @@ function renderDetail(){
   const L = LY.find(x=>x.id===selLayer);
   const dt=$("#dt");
   dt.style.setProperty('--c','var('+L.hue+')');
-  const wchip = L.weight!=null ? `<span class="pill grey">weight ${L.weight.toFixed(2)}</span>` : '';
   const tierLabel={sensory:'sensory layer',lens:'lens',processor:'processor'}[L.tier]||L.tier;
   const tchip = `<span class="tier ${L.tier}"><i></i>${tierLabel}</span>`;
   dt.innerHTML = `
@@ -2888,10 +2902,10 @@ function renderDetail(){
       <div class="dt-badge ${L.base?'base':''}">${L.num}</div>
       <div class="dt-name">${L.name}<em>${L.code}</em></div>
     </div>
-    <div class="dt-meta">${tchip}${pill(L.status)}${wchip}</div>
+    <div class="dt-meta">${tchip}${pill(L.status)}</div>
     <div class="dt-role">${L.role}</div>
     <p class="dt-plain">${L.plain}</p>
-    <div class="dt-eg"><span class="eg-k">For example</span>${L.example}</div>
+    <div class="dt-eg"><span class="eg-k">${L.egk||'For example'}</span>${L.example}</div>
     ${readinessHTML(L)}`;
 }
 
@@ -2916,8 +2930,8 @@ function renderLayers(){
   const nTier = t => LY.filter(l=>l.tier===t).length;
   $("#p-layers").innerHTML = `
     <div class="phead">
-      <div><h2>Layers</h2><div class="desc">Sensory layers → lenses → processor · tap any block for what it does</div></div>
-      <span class="pill grey">Day 4 live · 0 / ${nShadow} shadow layers promotion-ready</span>
+      <div><h2>Layers</h2><div class="desc">Data feeds → sensory layers → lenses → processor · tap any block for what it does</div></div>
+      <span class="pill grey">Live since 2026-07-06 · 0 / ${nShadow} shadow layers promotion-ready</span>
     </div>
     <div class="layers3d">
       <div class="scene-card">
