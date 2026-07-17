@@ -977,6 +977,14 @@ def _grade_watchtower_scene(rows: list[dict], bars_lookup) -> dict | None:
                 versions.append(wtd["prompt_version"])
             if wtd.get("direction") not in ("call", "put"):
                 continue
+            if not wtd.get("fired"):
+                # Match the Trade Ledger's universe EXACTLY — it grades only FIRED calls
+                # (_fresh_would_fires needs fired=True). A stand-down that still stamps a
+                # direction is a read, not a call the tower stands behind. Today the tower
+                # never does this, so this guards the "identical universe" invariant for the
+                # future; it changes nothing on current data. Version/era collection above
+                # still spans ALL judged rows, so era segmentation is unaffected.
+                continue
             try:
                 t0 = datetime.fromisoformat(r["ts"]).astimezone(ET)
             except (KeyError, ValueError, TypeError):

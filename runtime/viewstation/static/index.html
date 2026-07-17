@@ -409,7 +409,7 @@
   .dt-name{font-size:16px; font-weight:640; letter-spacing:-.01em; line-height:1.15}
   .dt-name em{font-style:normal; display:block; font-size:10.5px; color:var(--ink-faint); font-family:var(--mono); font-weight:500; margin-top:2px}
   .dt-meta{display:flex; gap:8px; flex-wrap:wrap; margin:13px 0 0}
-  .dt-role{font-family:var(--mono); font-size:11px; color:var(--ink-faint); border-left:2px solid color-mix(in srgb,var(--c) 55%,transparent); padding-left:10px; margin:12px 0 0}
+  .dt-role{font-family:var(--mono); font-size:12px; color:var(--ink-faint); border-left:2px solid color-mix(in srgb,var(--c) 55%,transparent); padding-left:10px; margin:12px 0 0}
   .tier{font-family:var(--mono); font-size:9.5px; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px 3px 7px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; border:1px solid; font-weight:600}
   .tier i{width:9px; height:9px; background:currentColor; flex:none}
   .tier.sensory{color:var(--l-base); border-color:color-mix(in srgb,var(--l-base) 38%,transparent); background:color-mix(in srgb,var(--l-base) 10%,transparent)}
@@ -421,7 +421,7 @@
   .tier.processor{color:var(--l-tower); border-color:color-mix(in srgb,var(--l-tower) 38%,transparent); background:color-mix(in srgb,var(--l-tower) 10%,transparent)}
   .tier.processor i{border-radius:0; box-shadow:none; clip-path:polygon(50% 2%, 93% 26%, 93% 74%, 50% 98%, 7% 74%, 7% 26%)}
   .dt-plain{font-size:14.5px; color:var(--ink); line-height:1.58; margin:14px 0 0}
-  .dt-eg{margin-top:11px; padding:11px 14px; border-radius:11px; line-height:1.55; font-size:13.5px; color:var(--ink-dim);
+  .dt-eg{margin-top:11px; padding:11px 14px; border-radius:11px; line-height:1.55; font-size:14px; color:var(--ink-dim);
     background:color-mix(in srgb,var(--c) 8%, var(--surface)); border:1px solid color-mix(in srgb,var(--c) 24%, var(--hairline))}
   .dt-eg .eg-k{display:block; font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; margin-bottom:3px; color:color-mix(in srgb,var(--c) 72%, var(--ink-faint))}
   /* example diagrams — one shared visual vocabulary so every layer's sketch reads the same:
@@ -449,7 +449,7 @@
   .sc-head .sc-k{font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:600;
     color:color-mix(in srgb,var(--c) 72%, var(--ink-faint))}
   .sc-head .sc-src{font-family:var(--mono); font-size:10px; color:var(--ink-faint); text-align:right; min-width:0}
-  .dt-schema pre{margin:0; padding:10px 13px 11px; font-family:var(--mono); font-size:11.5px; line-height:1.7;
+  .dt-schema pre{margin:0; padding:10px 13px 11px; font-family:var(--mono); font-size:12.5px; line-height:1.7;
     color:var(--ink-faint); overflow-x:auto}
   .dt-schema .sk{color:color-mix(in srgb,var(--c) 80%, var(--ink)); font-weight:600}
   .dt-schema .sv{color:var(--ink-dim)}
@@ -464,7 +464,7 @@
   .pips i.on{background:var(--c)}
   .track{height:9px; border-radius:5px; background:var(--surface-3); overflow:hidden}
   .track i{display:block; height:100%; background:var(--c); border-radius:5px}
-  .rd-fr{font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:6px; font-variant-numeric:tabular-nums}
+  .rd-fr{font-family:var(--mono); font-size:12px; color:var(--ink-dim); margin-top:6px; font-variant-numeric:tabular-nums}
   .rd-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:13px}
   .rd-stat{background:var(--surface); border:1px solid var(--hairline); border-radius:9px; padding:8px 10px}
   .rd-stat .k{font-size:9px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
@@ -473,7 +473,7 @@
   .blockers{display:flex; gap:6px; flex-wrap:wrap; margin-top:13px}
   .blk{font-size:10px; letter-spacing:.01em; padding:3px 8px; border-radius:6px; color:var(--coral); background:var(--coral-wash); border:1px solid color-mix(in srgb,var(--coral) 34%,transparent); font-weight:600}
   .blk.ok{color:var(--jade); background:var(--jade-wash); border-color:color-mix(in srgb,var(--jade) 34%,transparent)}
-  .rd-sum{font-size:12px; color:var(--ink-dim); line-height:1.52; margin-top:13px; font-style:italic}
+  .rd-sum{font-size:13px; color:var(--ink-dim); line-height:1.52; margin-top:13px; font-style:italic}
 
   /* ---- Watchtower live reading (under the map) ---- */
   .livedot{color:var(--jade); font-weight:600; position:relative; padding-left:13px}
@@ -558,8 +558,8 @@
   .md-stat{background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px; padding:9px 11px}
   .md-stat .k{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); font-weight:600}
   .md-stat .v{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:14px; margin-top:4px; color:var(--ink)}
-  .jcode{font-family:var(--mono); font-size:13px; line-height:1.8; white-space:pre; margin:0; color:var(--ink)}
-  .jcode-legend{display:flex; flex-wrap:wrap; align-items:center; gap:6px 15px; margin-top:16px; padding-top:12px; border-top:1px solid var(--hairline); font-size:11px}
+  .jcode{font-family:var(--mono); font-size:14px; line-height:1.8; white-space:pre; margin:0; color:var(--ink)}
+  .jcode-legend{display:flex; flex-wrap:wrap; align-items:center; gap:6px 15px; margin-top:16px; padding-top:12px; border-top:1px solid var(--hairline); font-size:12px}
   .jcode-legend b{color:var(--ink-faint); font-weight:600; letter-spacing:.08em; text-transform:uppercase; margin-right:2px}
   .j-key{color:var(--iris)} .j-str{color:var(--jade)} .j-num{color:var(--lantern)} .j-bool{color:var(--coral)} .j-null{color:var(--ink-faint)} .j-cm{color:var(--ink-faint); font-style:italic; opacity:.9}
 
@@ -590,7 +590,7 @@
   .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--lantern); display:flex; align-items:center; gap:7px}
   .eyebrow span{font-size:12px; letter-spacing:0}
   .day-wd{font-family:var(--serif); font-size:clamp(23px,4.2vh,33px); font-weight:600; letter-spacing:-.01em; margin:3px 0 1px; color:var(--ink); line-height:1.02; text-wrap:balance}
-  .day-md{font-size:12.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums}
+  .day-md{font-size:13px; color:var(--ink-dim); font-variant-numeric:tabular-nums}
   .entries{flex:1; min-height:0; overflow-y:auto; margin:0 -6px; padding:2px 6px; -webkit-overflow-scrolling:touch;
     background-image:linear-gradient(90deg, transparent 0 85px, color-mix(in srgb,var(--lantern) 16%,transparent) 85px 86px, transparent 86px); background-repeat:no-repeat}
   .entries::-webkit-scrollbar{width:8px}
@@ -600,8 +600,8 @@
     padding:11px 8px 11px 6px; border-bottom:1px solid var(--hairline-2); border-radius:8px; transition:background .14s}
   .entry:last-child{border-bottom:0}
   .entry:hover, .entry:focus-visible{background:color-mix(in srgb,var(--lantern) 9%, transparent); outline:none}
-  .entry-t{font-family:var(--mono); font-size:12.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums; white-space:nowrap; padding-top:2px; text-align:right; padding-right:6px}
-  .entry-q{font-family:var(--serif); font-size:clamp(14px,1.95vh,16.5px); line-height:1.5; color:var(--ink-dim); text-wrap:pretty; transition:color .14s}
+  .entry-t{font-family:var(--mono); font-size:13px; color:var(--ink-dim); font-variant-numeric:tabular-nums; white-space:nowrap; padding-top:2px; text-align:right; padding-right:6px}
+  .entry-q{font-family:var(--serif); font-size:clamp(14.5px,2vh,17px); line-height:1.5; color:var(--ink-dim); text-wrap:pretty; transition:color .14s}
   .entry:hover .entry-q, .entry:focus-visible .entry-q{color:var(--ink)}
   .entry-q .q{color:var(--ink-faint); font-weight:400}
   .entry-go{color:var(--lantern); opacity:0; font-size:15px; align-self:center; transition:opacity .14s, transform .14s; transform:translateX(-3px)}
@@ -617,7 +617,7 @@
   .navbtn:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
   .bookcount{font-family:var(--serif); font-size:13px; color:var(--ink-dim); letter-spacing:.02em; text-align:center}
   .entry.run .entry-q.quiet{color:var(--ink-faint)}
-  .entry .runc{font-family:var(--mono); font-size:11px; color:var(--lantern); letter-spacing:.02em; white-space:nowrap}
+  .entry .runc{font-family:var(--mono); font-size:12px; color:var(--lantern); letter-spacing:.02em; white-space:nowrap}
   @media (hover:none){ .entry-go{opacity:.4; transform:none} }
   @media (max-width:520px){ .modal-head{flex-wrap:wrap; row-gap:8px} .modal-head .mt{flex:1 1 100%; white-space:normal; overflow:visible} .modal-tabs{margin-left:0} }
 
@@ -636,7 +636,7 @@
     display:flex; flex-direction:column; min-height:0; border-top:2px solid color-mix(in srgb,var(--lc) 55%, var(--hairline))}
   .lg-tablewrap{flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; margin-top:14px;
     border:1px solid var(--hairline); border-radius:10px; background:var(--surface)}
-  .lg-table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px}
+  .lg-table{border-collapse:separate; border-spacing:0; width:100%; font-size:13.5px}
   .lg-table thead th{position:sticky; top:0; z-index:2; background:var(--surface-3); font-family:var(--mono); font-size:9.5px;
     letter-spacing:.09em; text-transform:uppercase; font-weight:600; color:var(--ink-faint); padding:8px 11px; text-align:left;
     border-bottom:1px solid var(--hairline); white-space:nowrap}
@@ -657,7 +657,7 @@
   .lg-stat{background:var(--surface); border:1px solid var(--hairline); border-radius:9px; padding:7px 10px}
   .lg-stat .k{font-size:8.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
   .lg-stat .v{font-family:var(--mono); font-size:13px; color:var(--ink); margin-top:2px; font-variant-numeric:tabular-nums}
-  .lg-empty{font-size:12.5px; color:var(--ink-faint); margin-top:14px; line-height:1.5}
+  .lg-empty{font-size:13px; color:var(--ink-faint); margin-top:14px; line-height:1.5}
   .headcard.A{border-top:3px solid var(--jade)}
   .headcard.B{border-top:3px solid var(--lantern)}
   .headtop{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px}
@@ -670,7 +670,7 @@
   .gate .mk.on{background:var(--jade-wash); color:var(--jade); border:1px solid color-mix(in srgb,var(--jade) 40%,transparent)}
   .gate .mk.off{background:var(--coral-wash); color:var(--coral); border:1px solid color-mix(in srgb,var(--coral) 40%,transparent)}
   .gate .gn{font-size:14.5px; font-weight:600}
-  .gate .gd{font-size:12.5px; color:var(--ink-dim); margin-top:1px}
+  .gate .gd{font-size:13px; color:var(--ink-dim); margin-top:1px}
   .gate .gv{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink-dim); text-align:right}
   .gate .gv b{color:var(--ink)}
   .verdict{display:flex; align-items:baseline; gap:10px; margin:2px 0 14px}
@@ -680,9 +680,9 @@
   .votes .pips{display:flex; gap:4px}
   .votes .pip{width:18px; height:9px; border-radius:3px; background:var(--surface-3)}
   .votes .pip.y{background:var(--lantern)}
-  .votes .cap{font-size:12.5px; color:var(--ink-dim)}
+  .votes .cap{font-size:13px; color:var(--ink-dim)}
   .scene{font-family:var(--serif); font-size:14.5px; line-height:1.58; color:var(--ink); margin:12px 0}
-  .kv{display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-top:1px solid var(--hairline); color:var(--ink-dim)}
+  .kv{display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-top:1px solid var(--hairline); color:var(--ink-dim)}
   .kv b{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
 
   /* ---- Replay : scrub a past session ---- */
@@ -723,8 +723,19 @@
   .rp-head{stroke:var(--ink); stroke-width:1; opacity:.45}
   .rp-dot{fill:var(--iris); stroke:var(--surface-2); stroke-width:2.5}
   /* fire markers — colour driven by --c set per state (right/wrong/undecided/live) */
-  .rp-fire{opacity:0; transition:opacity .35s ease}
-  .rp-fire.on{opacity:1}
+  /* pointer-events gate on `.on` = only a REVEALED fire is a click target; a fire the
+     playhead hasn't reached yet is invisible AND inert, so you can't open a call that
+     hasn't happened. Each fire carries a full stack read → the marker is a button. */
+  .rp-fire{opacity:0; transition:opacity .35s ease; pointer-events:none}
+  .rp-fire.on{opacity:1; pointer-events:auto; cursor:pointer}
+  .rp-fire.on:focus{outline:none}   /* the ring below IS the focus cue — keep the SVG box clean */
+  /* generous transparent hit disc + a whisper ring that says "tap for the stack": faint at
+     rest (so a fire-dense day doesn't clutter), brighter on hover/focus, tinted by outcome.
+     pointer-events explicit (a transparent fill is a cross-engine hit-test gotcha) and gated
+     to `.on` so a not-yet-revealed fire stays inert even though the disc is drawn. */
+  .rp-hit{fill:transparent; stroke:var(--c); stroke-width:1.2; opacity:.16; pointer-events:none; transition:opacity .18s ease}
+  .rp-fire.on .rp-hit{pointer-events:all}
+  .rp-fire.on:hover .rp-hit,.rp-fire.on:focus-visible .rp-hit{opacity:.5}
   .rp-fire.st-live{--c:var(--lantern)}
   .rp-fire.st-win{--c:var(--jade)}
   .rp-fire.st-loss{--c:var(--coral)}
@@ -739,6 +750,58 @@
   .rp-fire.settled .rp-end{opacity:.4}
   .rp-fire.st-live .rp-arrow{animation:rp-pulse 1.1s ease-in-out infinite}
   @keyframes rp-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+  /* ---- Fire STACK popover — click a fire → a floating card of how each layer leaned into
+     that call, plus one plain-English "why". Built on click (never per-frame), one node at a
+     time, anchored to the fire and flipped/clamped to stay in the chart frame. ---- */
+  /* no overflow:hidden — the caret is a pseudo-element outside the box and clip would eat it;
+     the header/footer round their own corners instead (below) so their tints respect the radius */
+  .rp-pop{position:absolute; z-index:20; width:290px; max-width:calc(100% - 12px);
+    border-radius:14px; border:1px solid var(--hairline-2);
+    background:color-mix(in srgb,var(--surface-2) 90%, transparent);
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    box-shadow:0 12px 34px -12px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05); font-family:var(--sans);
+    animation:rp-pop-in .16s ease}
+  @keyframes rp-pop-in{from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none}}
+  /* caret points back at the fire (--caret is the fire's x INSIDE the clamped card): a border
+     triangle (::before) with a surface-fill triangle (::after) riding 1px inside it, so it reads
+     as the card's own edge continuing — border on both slants, glass fill in the middle */
+  .rp-pop::before,.rp-pop::after{content:''; position:absolute; left:var(--caret,50%); width:0; height:0;
+    border-left:8px solid transparent; border-right:8px solid transparent}
+  .rp-pop::before{margin-left:-8px; bottom:-8px; border-top:8px solid var(--hairline-2)}
+  .rp-pop::after{margin-left:-7px; bottom:-6px; border-left-width:7px; border-right-width:7px;
+    border-top:7px solid color-mix(in srgb,var(--surface-2) 92%, transparent)}
+  .rp-pop.below::before{bottom:auto; top:-8px; border-top:0; border-bottom:8px solid var(--hairline-2)}
+  .rp-pop.below::after{bottom:auto; top:-6px; border-top:0; border-bottom:7px solid color-mix(in srgb,var(--surface-2) 92%, transparent)}
+  .rp-pop-hd{display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:13px 13px 0 0;
+    background:color-mix(in srgb,var(--l-tower) 12%, transparent); border-bottom:1px solid var(--hairline)}
+  .rp-pop-dir{font-size:14px; font-weight:800; white-space:nowrap; letter-spacing:.01em}
+  .rp-pop-dir.up{color:var(--jade)} .rp-pop-dir.down{color:var(--coral)} .rp-pop-dir.aside{color:var(--ink-dim)}
+  .rp-pop-mag{font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--ink-dim)}
+  .rp-pop-chip{margin-left:auto; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:6px}
+  .rp-pop-chip.win{color:var(--jade); background:var(--jade-wash)}
+  .rp-pop-chip.loss{color:var(--coral); background:var(--coral-wash)}
+  .rp-pop-chip.scratch{color:var(--ink-dim); background:var(--surface-3)}
+  .rp-pop-chip.live{color:var(--lantern); background:var(--lantern-wash)}
+  .rp-pop-sub{display:flex; align-items:center; gap:8px; padding:5px 12px; font-family:var(--mono);
+    font-size:10px; color:var(--ink-faint); font-variant-numeric:tabular-nums; border-bottom:1px solid var(--hairline)}
+  .rp-pop-stance{color:var(--l-tower); font-weight:700; text-transform:uppercase; letter-spacing:.06em}
+  .rp-pop-body{padding:5px 6px 4px}
+  .rp-pop-row{display:flex; align-items:center; gap:8px; padding:4px 7px; border-radius:8px}
+  .rp-pop-row.ag{background:color-mix(in srgb,var(--jade) 8%, transparent)}    /* leaned WITH the call */
+  .rp-pop-row.ct{background:color-mix(in srgb,var(--coral) 8%, transparent)}   /* leaned AGAINST it */
+  .rp-pop-row.nodata{opacity:.5}
+  .rp-pop-mk{width:8px; height:8px; border-radius:2px; flex:none}   /* colour = the layer's own hue */
+  .rp-pop-name{font-size:11.5px; font-weight:600; color:var(--ink-dim); width:74px; flex:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  /* arrow shape carries direction; colour is reserved for agreement (✓/✕ + row tint) — same as
+     the console stream, so jade/coral never means two things in one row */
+  .rp-pop-arr{font-family:var(--mono); font-size:11px; font-weight:800; flex:none; width:11px; text-align:center}
+  .rp-pop-arr.up,.rp-pop-arr.down{color:var(--ink)} .rp-pop-arr.flat,.rp-pop-arr.none{color:var(--ink-faint)}
+  .rp-pop-th{font-size:11px; color:var(--ink-dim); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rp-pop-ag{font-size:11px; font-weight:800; flex:none; width:13px; text-align:center}
+  .rp-pop-ag.y{color:var(--jade)} .rp-pop-ag.n{color:var(--coral)} .rp-pop-ag.o{color:var(--ink-faint); font-weight:600}
+  .rp-pop-why{padding:9px 13px 11px; border-top:1px solid var(--hairline); border-radius:0 0 13px 13px;
+    background:color-mix(in srgb,var(--surface-3) 55%, transparent);
+    font-family:var(--serif); font-size:12px; line-height:1.42; color:var(--ink)}
   /* Scene Ledger · called-shot boxes (N20) — translucent SPANS (open→close, entry→target),
      the fires above stay points+whiskers. Fill = direction tint; border = outcome. */
   .rp-ep-box{stroke-width:1.5}
@@ -3595,7 +3658,9 @@ function ledgerCardHTML(kind, c, day){
   const num=(v,dp=2)=>(v==null||isNaN(v))?'—':(+v).toFixed(dp);
   if(!c) return `<div class="ledgercard" style="--lc:${hue}">
       <div class="lg-top"><div class="lg-name">${name}<em>${sub}</em></div><span class="lg-dot"></span></div>
-      <div class="lg-empty">${kind==='scene'?'No Scene Ledger card yet — it lands with the first nightly grade after N20 ships.':'No graded card found for the newest day.'}</div>
+      <div class="lg-empty">${kind==='scene'
+        ? `No graded episodes for ${day||'today'} yet — the Scene Ledger fills with the nightly grade at 13:15 PT / after the close.`
+        : `No graded card found for ${day||'the newest day'}.`}</div>
     </div>`;
   const hr = c.hit_rate!=null?c.hit_rate:c.win_rate;
   const n  = c.n!=null?c.n:null, pend=c.pending||0;
@@ -3607,6 +3672,9 @@ function ledgerCardHTML(kind, c, day){
   const kept = c.median_kept_sigma!=null?c.median_kept_sigma:med(eps.map(e=>e.exit_sigma).filter(v=>v!=null));
   const tt   = c.median_tt_target_min!=null?c.median_tt_target_min:med(epWins.map(e=>e.ttr_min));
   const sph  = c.sigma_per_hour!=null?c.sigma_per_hour:med(epWins.filter(e=>e.barrier_sigma).map(e=>e.barrier_sigma/(e.ttr_min/60)));
+  // MFE tile = MEDIAN both cards over (F5 makes the trade card comparable to the scene card,
+  // which the server already reports as a median; the trade card's avg_mfe_sigma was not)
+  const mfe  = c.median_mfe_sigma!=null?c.median_mfe_sigma:med(eps.map(e=>e.mfe_sigma).filter(v=>v!=null));
   const dot = (n>=3&&hr!=null) ? (hr>=0.58?'var(--jade)':(hr<0.5?'var(--coral)':'var(--lantern)')) : 'var(--ink-faint)';
   const era = [c.prompt_version, c.grade_v!=null?('grade_v'+c.grade_v):null, c.scene_grade_v!=null?('scene_v'+c.scene_grade_v):null].filter(Boolean).join(' · ');
   // per-position table — every snapshot the ledger took, newest first, with the
@@ -3648,10 +3716,10 @@ function ledgerCardHTML(kind, c, day){
     <div class="lg-hero"><b>${hr!=null?(hr*100).toFixed(0)+'%':'—'}</b><span>hit rate · Wilson ≥ ${num(c.wilson_lo)}${day?' · '+day:''}</span></div>
     <div class="lg-grid">
       <div class="lg-stat"><div class="k">Decided</div><div class="v">${n!=null?n:'—'}${pend?` <small style="color:var(--ink-faint)">+${pend} open</small>`:''}</div></div>
-      <div class="lg-stat"><div class="k">Kept σ · med</div><div class="v">${num(kept)}</div></div>
-      <div class="lg-stat"><div class="k">MFE σ${c.median_mfe_sigma!=null?' · med':' · avg'}</div><div class="v">${num(c.median_mfe_sigma!=null?c.median_mfe_sigma:c.avg_mfe_sigma)}</div></div>
+      <div class="lg-stat"><div class="k">${kind==='trade'?'Exit σ · med':'Kept σ · med'}</div><div class="v">${num(kept)}</div></div>
+      <div class="lg-stat"><div class="k">MFE σ · med</div><div class="v">${num(mfe)}</div></div>
       <div class="lg-stat"><div class="k">To target · med</div><div class="v">${tt!=null?Math.round(tt)+'m':'—'}</div></div>
-      <div class="lg-stat"><div class="k">σ / hour</div><div class="v">${num(sph)}</div></div>
+      <div class="lg-stat" title="speed to each ledger's own target — the trade card divides by its ~0.166σ barrier, the scene card by its ≥0.30σ called move, so the scales differ ~2× and are not comparable across the two cards"><div class="k">σ / hour</div><div class="v">${num(sph)}</div></div>
     </div>
     ${tableHTML}
   </div>`;
@@ -3714,8 +3782,8 @@ function renderHeads(){
 
 // ================= REPLAY (day scrubber) =================
 // A play/pause + scrub timeline of a past session: the SPX price path with the
-// Watchtower's directional fires plotted where they triggered, each coloured by how it
-// resolved over its own stated horizon — win / loss / scratch. Watchtower-only, shadow:
+// Watchtower's directional fires plotted where they triggered, each coloured by the Trade
+// Ledger's own target-before-stop grade — win / loss / scratch / live. Watchtower-only, shadow:
 // no paper P&L. Restricted to days that carry real Watchtower diary rows (07-06 onward);
 // no historical-API backfill. Reuses the loaded diary rows + the same /api/raw file API.
 const RP = {
@@ -3725,6 +3793,7 @@ const RP = {
   t0:0, t1:0, geo:null, dom:null,          // session window (ms) + chart geometry / price domain
   pos:0, playing:false, speed:1, raf:null, last:0, _rk:null,
   view:'chart',                              // 'chart' = the shape of the day · 'table' = the readings behind it
+  pop:null, popI:null,                       // the open fire-stack popover (one at a time) + its fire index
 };
 const RP_SPEEDS=[1,2,4];
 const RP_PLAY_MS=26000;                     // wall-clock ms to traverse one full session at 1×
@@ -3801,7 +3870,7 @@ async function rpFetchGraded(day){
       episodes:(j.scene && Array.isArray(j.scene.episodes)) ? j.scene.episodes : [] };
   }catch(e){ return null; }
 }
-const RP_LOCK_MIN=60;   // the follow-through mark that decides "leaned right / wrong" (move_60m)
+const RP_LOCK_MIN=60;   // the 60-min follow-through mark the whisker locks to (move_60m) — a LEAN reading, not the verdict
 const RP_SETTLE_MS=30*60000;   // 30 min past lock a fire's whisker fades back (arrow stays) — see .rp-fire.settled
 // one plot-ready fire: authoritative outcome/excursions `g` when present, else a client walk
 function rpMakeFire(scan, g, tgt, stp){
@@ -3826,12 +3895,16 @@ function rpMakeFire(scan, g, tgt, stp){
     mfe:+(+mfe).toFixed(2), mae:+(+mae).toFixed(2), move60,
     mag:scan.wt.mag, horMin:scan.wt.horizon||60 };
 }
-// headline verdict — did price go the way the tower called, by the 60-min mark?
-// (win=leaned right/green, loss=leaned wrong/red, scratch=too flat to call/grey)
+// headline verdict = the LEDGER's outcome (target-before-stop grade from /api/replay), so a
+// Replay fire is a faithful visualization of the Trade Ledger card — same grader, same result.
+// (win=right/green, loss=wrong/coral, scratch=flat, live=still open.) The 60-min follow-through
+// is kept as a separate "lean" reading; it never decides the color. Fallback below only fires
+// for an older server that returns no graded outcome.
 function rpVerdict(fr){
-  const mv=fr.move60;
+  const o=fr.outcome;
+  if(o==='win'||o==='loss'||o==='scratch'||o==='live') return o;
+  const mv=fr.move60;   // no graded outcome (older server) → fall back to the 60-min lean
   if(mv!=null) return mv>=0.05?'win':mv<=-0.05?'loss':'scratch';
-  if(fr.outcome==='win'||fr.outcome==='loss') return fr.outcome;
   const net=(fr.mfe||0)+(fr.mae||0); return net>=0.05?'win':net<=-0.05?'loss':'scratch';
 }
 function rpAssembleFires(graded){
@@ -3855,7 +3928,9 @@ function rpAssembleFires(graded){
 const RP_EP_GLYPH={target:'●', adverse:'✕', scene_change:'⌁', dir_flip:'⇄', session_close:'▏'};
 // One episode → plot-ready record, or null when it can't be placed honestly (bad timestamps,
 // no sigma at open, no called_sigma). Decoration, not evidence — a skipped box counts nothing.
-// Entry has no field of its own in the card: it is read off the price path at t_open.
+// Entry has no field of its own in the card: it is read off the SCAN's recorded spot at t_open —
+// the exact anchor the fire arrow and both server graders use — so the box sits on the fire and
+// on the graded barrier. Falls back to the interpolated price path only when no scan exists there.
 function rpEpisodeGeom(ep, ctx){
   if(!ep || ep.t_open==null || (ep.dir!=='call' && ep.dir!=='put')) return null;
   const tOpen=+new Date(ep.t_open); if(!isFinite(tOpen)) return null;
@@ -3864,13 +3939,16 @@ function rpEpisodeGeom(ep, ctx){
   tClose=Math.max(tClose, tOpen);
   const sigma=ctx.sigmaAt(tOpen); if(sigma==null||!isFinite(sigma)||sigma<=0) return null;
   const cs=ep.called_sigma; if(cs==null||!isFinite(cs)) return null;
-  const entry=ctx.priceAt(tOpen); if(entry==null||!isFinite(entry)) return null;
+  let entry=ctx.spotAt(tOpen);
+  if(entry==null||!isFinite(entry)) entry=ctx.priceAt(tOpen);
+  if(entry==null||!isFinite(entry)) return null;
   const outcome=(ep.outcome==='win'||ep.outcome==='loss'||ep.outcome==='flat')?ep.outcome:'pending';
   return { dir:ep.dir, outcome, glyph:RP_EP_GLYPH[ep.close_reason]||'',
     tOpen, tClose, entry, target:entry+(ep.dir==='call'?1:-1)*cs*sigma };
 }
 function rpAssembleEpisodes(raw){
-  const ctx={ t1:RP.t1, priceAt:rpPriceAt, sigmaAt:ms=>{const s=rpScanAtMs(ms); return s?s.sigma:null;} };
+  const ctx={ t1:RP.t1, priceAt:rpPriceAt, sigmaAt:ms=>{const s=rpScanAtMs(ms); return s?s.sigma:null;},
+    spotAt:ms=>{const s=rpScanAtMs(ms); return s&&s.spot!=null?s.spot:null;} };
   return (raw||[]).map(e=>rpEpisodeGeom(e,ctx)).filter(Boolean).sort((a,b)=>a.tOpen-b.tOpen);
 }
 // SVG for the boxes — lives INSIDE the #rp-clip group so a box grows rightward with the
@@ -3887,6 +3965,7 @@ function rpEpisodeSVG(){
 }
 
 function rpBuild(){
+  rpPopClose();                    // the rebuild wipes the chart's children (incl. the popover)
   const m=rpMeasure(); if(!m) return;
   RP.geo=rpGeo(m.w,m.h); RP.dom=rpPriceDomain();
   const g=RP.geo,d=RP.dom;
@@ -3949,7 +4028,12 @@ function rpBuild(){
     let ay=fr.dir==='call'?fr.yEntry-9:fr.yEntry+17;
     while(aBoxes.some(b=>Math.abs(b.x-fr.xF)<14&&Math.abs(b.y-ay)<13)) ay+=fr.dir==='call'?-13:13;
     ay=Math.min(Math.max(ay,g.y0+10),g.y1-2); aBoxes.push({x:fr.xF,y:ay});
-    return `<g class="rp-fire" data-i="${k}">
+    // hit disc sits over the arrow glyph (what the eye aims at) + the entry dot — generous
+    // target for touch, and its stroke is the whisper ring. Focusable as a button.
+    const hy=(fr.yEntry+ay)/2, hr=Math.max(12, Math.abs(ay-fr.yEntry)/2+7);
+    const label=`Watchtower ${fr.dir==='call'?'up':'down'} call at ${rpClock(fr.t)} — open stack detail`;
+    return `<g class="rp-fire" data-i="${k}" tabindex="-1" role="button" aria-label="${label}">
+      <circle class="rp-hit" cx="${fr.xF.toFixed(1)}" cy="${hy.toFixed(1)}" r="${hr.toFixed(1)}"/>
       <path class="rp-conn" d="M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)}"/>
       <circle class="rp-end" cx="${fr.xF.toFixed(1)}" cy="${fr.yEntry.toFixed(1)}" r="3"/>
       <circle class="rp-arrow" cx="${fr.xF.toFixed(1)}" cy="${fr.yEntry.toFixed(1)}" r="3.8"/>
@@ -4019,13 +4103,14 @@ function rpPaint(){
       const cx=rpXT(now), cy=rpYP(rpPriceAt(now));
       if(ref.conn) ref.conn.setAttribute('d',`M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${cx.toFixed(1)} ${cy.toFixed(1)}`);
       if(ref.end){ ref.end.setAttribute('cx',cx.toFixed(1)); ref.end.setAttribute('cy',cy.toFixed(1)); }
-    } else if(now>=fr.lockT){                       // resolved: lock to the 60-min follow-through + verdict
-      cls+=' on st-'+fr.verdict; if(now>=fr.lockT+RP_SETTLE_MS) cls+=' settled';
-      if(fr.verdict==='win')win++; else if(fr.verdict==='loss')loss++; else scr++;
+    } else if(now>=fr.lockT){                       // past 60-min lock: whisker locks to the follow-through mark, color = ledger verdict
+      cls+=' on st-'+fr.verdict; if(fr.verdict!=='live' && now>=fr.lockT+RP_SETTLE_MS) cls+=' settled';
+      if(fr.verdict==='win')win++; else if(fr.verdict==='loss')loss++; else if(fr.verdict==='live')live++; else scr++;
       if(ref.conn) ref.conn.setAttribute('d',`M${fr.xF.toFixed(1)} ${fr.yEntry.toFixed(1)} L${fr.xLock.toFixed(1)} ${fr.yLock.toFixed(1)}`);
       if(ref.end){ ref.end.setAttribute('cx',fr.xLock.toFixed(1)); ref.end.setAttribute('cy',fr.yLock.toFixed(1)); }
     }
-    if(ref.g.getAttribute('class')!==cls) ref.g.setAttribute('class',cls);
+    if(ref.g.getAttribute('class')!==cls){ ref.g.setAttribute('class',cls);
+      ref.g.setAttribute('tabindex', cls.indexOf(' on')>=0?'0':'-1'); }   // an unrevealed fire is invisible + inert → keep it out of the tab order
   });
   if(RP.els.scrub && document.activeElement!==RP.els.scrub) RP.els.scrub.value=Math.round(RP.pos*1000);
   RP.els.time.textContent=rpClock(now);
@@ -4126,6 +4211,114 @@ function rpReadout(now,t){
       (withMaj?`with the stack.`:`<b style="color:var(--coral)">against the stack.</b>`);
   } else RP.els.consensus.innerHTML=`Stack leans ${tally} — the Watchtower stood aside.`;
 }
+
+// ---- Fire STACK popover ----
+// Click a fire → a floating card of HOW THE STACK LEANED into that call. Reuses rpStream (the
+// same residual-stream the console draws) so there's one source of layer truth — we only pick
+// the DECISION layers (below) and re-order them by agreement. Pure context/data rows are dropped:
+// Base map (raw spot/σ/regime), Event Lens and Range Ruler (they carry no directional read).
+const RP_LAYER_META={   // decision layer → its own hue (matches the layer legend elsewhere)
+  'Gravity':'--l-grav', 'Motion':'--l-motion', 'Flow':'--l-flow', 'Speedometer':'--l-speed',
+  'Gamma Roll':'--l-roll', 'Fade Lens':'--l-fade', 'Break Lens':'--l-break' };
+// priority for the "why" sentence — gravity is the anchor read, the lenses are last resort
+const RP_WHY_ORDER=['Gravity','Flow','Motion','Speedometer','Gamma Roll','Fade Lens','Break Lens'];
+// one AGREEING layer → a human clause (no leading capital); dir is the tower's word (up/down)
+function rpWhyPhrase(name,s,dir){
+  switch(name){
+    case 'Gravity': return (s.magnet!=null&&isFinite(s.magnet))?`gravity is pulling toward ${f(s.magnet,0)}`:`gravity is leaning ${dir}`;
+    case 'Flow':{ const t=s.lob&&s.lob.tilt; return (t!=null&&Math.abs(t)>=0.02)?`${t>0?'buyers':'sellers'} are leaning in`:'the flow of trades agrees'; }
+    case 'Motion': return `the map is opening ${dir}`;
+    case 'Speedometer': return 'the move is picking up speed';
+    case 'Gamma Roll': return `the pin may roll ${dir}`;
+    case 'Fade Lens': return `it looks ready to turn ${dir}`;
+    case 'Break Lens': return `price is breaking ${dir}`;
+    default: return '';
+  }
+}
+// the plain-English "why" — synthesise from which layers backed the call; fall back to the
+// tower's own scene sentence when the synthesis is thin, and stay honest when it stood down
+function rpWhy(s,fired,dir,rows){
+  const scene=(s.wt&&s.wt.scene)?s.wt.scene:'';
+  if(!fired) return scene||'The tower stood down — no clear edge to call here.';
+  const byOrder=(a,b)=>RP_WHY_ORDER.indexOf(a.name)-RP_WHY_ORDER.indexOf(b.name);
+  const agree=rows.filter(r=>r.agree===true).sort(byOrder);
+  const against=rows.filter(r=>r.agree===false).sort(byOrder);
+  const reasons=agree.slice(0,2).map(r=>rpWhyPhrase(r.name,s,dir)).filter(Boolean);
+  if(!reasons.length) return scene||`Called ${dir} on the tower's read, though the stack gave it little backing.`;
+  let sent=`Called ${dir} because ${reasons.join(' and ')}`;
+  if(against.length===1) sent+=` — only the ${against[0].name.toLowerCase()} disagreed.`;
+  else if(against.length>1) sent+=`, though ${against.length} layers pushed back.`;
+  else sent+=', and the rest of the stack leaned with it.';
+  return sent;
+}
+function rpPopClose(){ if(RP.pop){ RP.pop.remove(); RP.pop=null; RP.popI=null; } }
+function rpPopEl(){   // one lazily-created node, child of the chart (position:relative) so it
+  if(!RP.pop){        // rides the same coordinate frame; wiped by rpBuild → we close first
+    RP.pop=document.createElement('div'); RP.pop.className='rp-pop'; RP.pop.id='rp-pop';
+    RP.pop.setAttribute('role','dialog'); RP.pop.setAttribute('aria-label','Fire stack detail');
+    RP.els.chart.appendChild(RP.pop);
+  }
+  return RP.pop;
+}
+function rpPopOpen(i){
+  const fr=RP.fires[i]; if(!fr||!RP.geo) return;
+  const s=fr.scan||{}, w=s.wt||{};
+  const fired=!!(w.fired&&w.dir), dir=fired?(w.dir==='call'?'up':'down'):null;
+  // verdict/live state read at the playhead — same rule as the on-chart marker & the readout
+  const now=RP.t0+RP.pos*(RP.t1-RP.t0);
+  const state=now>=fr.lockT?fr.verdict:'live';
+  const lab={win:'right',loss:'wrong',scratch:'flat',live:'live'}[state]||state;
+  const dirHtml=fired
+    ? `<span class="rp-pop-dir ${dir}">${dir==='up'?'▲ Up':'▼ Down'}</span>${w.mag!=null?`<span class="rp-pop-mag">· ${f(w.mag,1)}σ</span>`:''}`
+    : `<span class="rp-pop-dir aside">Stood aside</span>`;
+  const chip=fired?`<span class="rp-pop-chip ${state}">${lab}</span>`:'';
+  const stance=(w.stance==='fight'||w.stance==='settle')?`<span class="rp-pop-stance">${w.stance}</span>`:'';
+  const votes=(w.votes&&w.votes.n)?`${Math.round((w.votes.agree!=null?w.votes.agree:1)*w.votes.n)}/${w.votes.n} agreed`:'';   // votes.agree is a RATIO (see head detail) → back to a count
+  const sub=`<div class="rp-pop-sub"><span>${rpClock(fr.t)}</span>`
+    +(stance?`<span>·</span>${stance}`:'')+(votes?`<span>·</span><span>${votes}</span>`:'')+`</div>`;
+  // decision rows only, re-ordered: backers first, then dissenters, then quiet/unrecorded
+  const rows=rpStream(s).filter(r=>RP_LAYER_META[r.name]);
+  const rank=r=>r.agree===true?0:r.agree===false?1:2;
+  rows.sort((a,b)=> rank(a)-rank(b) || (RP_WHY_ORDER.indexOf(a.name)-RP_WHY_ORDER.indexOf(b.name)));
+  const body=`<div class="rp-pop-body">`+rows.map(r=>{
+    const cls=r.agree===true?'ag':r.agree===false?'ct':'';
+    const ag=r.agree===true?`<span class="rp-pop-ag y">✓</span>`
+      :r.agree===false?`<span class="rp-pop-ag n">✕</span>`:`<span class="rp-pop-ag o">·</span>`;
+    return `<div class="rp-pop-row ${cls}${!r.has?' nodata':''}">`
+      +`<i class="rp-pop-mk" style="background:var(${RP_LAYER_META[r.name]})"></i>`
+      +`<span class="rp-pop-name">${r.name}</span>`
+      +`<span class="rp-pop-arr ${r.dir}">${RP_ARR[r.dir]}</span>`
+      +`<span class="rp-pop-th">${r.thought}</span>${ag}</div>`;
+  }).join('')+`</div>`;
+  const why=`<div class="rp-pop-why">${rpWhy(s,fired,dir,rows)}</div>`;
+  const pop=rpPopEl();
+  pop.innerHTML=`<div class="rp-pop-hd">${dirHtml}${chip}</div>${sub}${body}${why}`;
+  // anchor to the fire: viewBox units → pixels (svg is preserveAspectRatio=none, so x/y scale
+  // independently), then flip above↔below and clamp so the card never leaves the chart frame
+  const chart=RP.els.chart, cw=chart.clientWidth, chh=chart.clientHeight;
+  const sx=cw/(RP.geo.w||cw), sy=chh/(RP.geo.h||chh);
+  const px=fr.xF*sx, py=fr.yEntry*sy;
+  pop.style.visibility='hidden'; pop.style.display='block';
+  const pw=pop.offsetWidth, ph=pop.offsetHeight, gap=16;
+  const below=(py-ph-gap)<4;                 // no room above → drop it below the fire
+  let top=below?py+gap:py-ph-gap;
+  top=Math.max(6,Math.min(top,chh-ph-6));    // vertical clamp = never clips top/bottom
+  const left=Math.max(6,Math.min(px-pw/2,cw-pw-6));
+  const caret=Math.max(14,Math.min(px-left,pw-14));   // keep the caret pointing at the fire
+  pop.classList.toggle('below',below);
+  pop.style.left=left.toFixed(1)+'px'; pop.style.top=top.toFixed(1)+'px';
+  pop.style.setProperty('--caret',caret.toFixed(1)+'px');
+  pop.style.visibility='visible';
+  RP.popI=i;
+}
+// delegated on the (stable) chart element — the fire <g>s are rebuilt every rpBuild, so a
+// per-fire listener would leak; one handler on the container survives every innerHTML swap
+function rpChartClick(e){ const g=e.target.closest('.rp-fire.on'); if(!g) return;
+  e.stopPropagation();                       // our own open must not reach the outside-closer
+  rpPopOpen(+g.dataset.i); }
+function rpFireKey(e){ if(e.key!=='Enter'&&e.key!==' '&&e.key!=='Spacebar') return;
+  const g=e.target.closest&&e.target.closest('.rp-fire.on'); if(!g) return;
+  e.preventDefault(); e.stopPropagation(); rpPopOpen(+g.dataset.i); }
 function rpSyncPlayBtn(){ if(RP.els&&RP.els.play){ RP.els.play.innerHTML=RP.playing?RP_ICON_PAUSE:RP_ICON_PLAY; RP.els.play.setAttribute('aria-label',RP.playing?'Pause':'Play'); } }
 function rpFrame(ts){
   if(!RP.playing){ RP.raf=null; return; }
@@ -4135,7 +4328,8 @@ function rpFrame(ts){
   rpPaint();
   RP.raf = RP.playing ? requestAnimationFrame(rpFrame) : null;
 }
-function rpTogglePlay(){ if(!RP.days.length) return; RP.playing=!RP.playing; if(RP.playing){ if(RP.pos>=1) RP.pos=0; RP.last=0; RP.raf=requestAnimationFrame(rpFrame); } rpSyncPlayBtn(); }
+function rpTogglePlay(){ if(!RP.days.length) return; rpPopClose();   // the fire moves under a moving playhead — close rather than chase it
+  RP.playing=!RP.playing; if(RP.playing){ if(RP.pos>=1) RP.pos=0; RP.last=0; RP.raf=requestAnimationFrame(rpFrame); } rpSyncPlayBtn(); }
 function rpCycleSpeed(){ RP.speed=RP_SPEEDS[(RP_SPEEDS.indexOf(RP.speed)+1)%RP_SPEEDS.length]; RP.els.speed.textContent=RP.speed+'×'; }
 function rpUpdateDayNav(){ const D0=RP.days[RP.di]; if(!D0) return;
   RP.els.dayLabel.innerHTML=`${enWeekday(D0.day)}<small>${enMonthDay(D0.day)} · ${RP.di+1}/${RP.days.length}</small>`;
@@ -4209,11 +4403,11 @@ function rpRenderTable(){
     <th>Shove<span class="nw">the book's slope</span></th>
     <th>Speed<span class="nw">who owns the motion</span></th>
     <th>Soft side</th><th>Break lens</th><th>Fade lens</th>
-    <th>Gap</th><th>VWAP</th><th>Flow</th><th>Verdict</th><th>60m</th>
+    <th>Gap</th><th>VWAP</th><th>Flow</th><th>Verdict</th><th>60-min lean<span class="nw">follow-through, not the ledger verdict</span></th>
   </tr></thead>`;
   const body=rows.map(s=>{
     const fr=RP.fireByTs?RP.fireByTs.get(s.ts):null;
-    const vd=fr?(fr.verdict||rpVerdict(fr)):null;                     // win / loss / scratch
+    const vd=fr?(fr.verdict||rpVerdict(fr)):null;                     // ledger outcome: win / loss / scratch / live
     const cls=vd==='win'?'win':vd==='loss'?'loss':'';
 
     // gamma sign — the master switch (long = damped/pin, short = amplified/breakout)
@@ -4269,9 +4463,9 @@ function rpRenderTable(){
        "14 verdicts" per-scan but is 7 fresh trades on the ledger). A held row shows the
        call it is still carrying and says so — it never borrows a grade it didn't earn. */
     const mv=fr?fr.move60:null;
-    const mark=vd==='win'?'<span class="rp-up">✓</span>':vd==='loss'?'<span class="rp-dn">✗</span>':'';
-    // a fire inside the last hour has no 60-min mark yet — say so, never print a "·σ" move
-    const m60 = (fr && mv!=null) ? `<span class="${mv<0?'rp-dn':'rp-up'}">${rpSig(mv)}σ</span> ${mark}`
+    // 60-min LEAN only, colored by its own sign — the ledger verdict lives in the row tint
+    // (tr.win/tr.loss). A fire inside the last hour has no 60-min mark yet — say so.
+    const m60 = (fr && mv!=null) ? `<span class="${mv<0?'rp-dn':'rp-up'}">${rpSig(mv)}σ</span>`
               : fr ? '<span class="rp-sm">no 60m yet</span>'
               : s.wt.dir ? '<span class="rp-pill mute">held</span>'
               : '';
@@ -4319,6 +4513,7 @@ function rpMarkTableAt(){
   if(best) best.classList.add('at');
 }
 function rpSetView(v){
+  rpPopClose();                    // switching away from the chart leaves no card behind
   RP.view=(v==='table')?'table':'chart';
   const E=RP.els; if(!E) return;
   const tbl=RP.view==='table';
@@ -4391,7 +4586,13 @@ function rpEnsureDom(){
   RP.els.vTable.onclick=()=>rpSetView('table');
   RP.els.play.onclick=rpTogglePlay;
   RP.els.speed.onclick=rpCycleSpeed;
-  RP.els.scrub.oninput=()=>{ RP.playing=false; rpSyncPlayBtn(); RP.pos=(+RP.els.scrub.value)/1000; rpPaint(); };
+  RP.els.scrub.oninput=()=>{ rpPopClose(); RP.playing=false; rpSyncPlayBtn(); RP.pos=(+RP.els.scrub.value)/1000; rpPaint(); };
+  // clicking a fire opens its stack card (delegated — fires are rebuilt every frame-set);
+  // clicking anywhere else, or Esc, closes it. One card at a time; the node is removed on close.
+  RP.els.chart.addEventListener('click', rpChartClick);
+  RP.els.chart.addEventListener('keydown', rpFireKey);
+  document.addEventListener('click', e=>{ if(RP.pop && !e.target.closest('#rp-pop') && !e.target.closest('.rp-fire')) rpPopClose(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && RP.pop) rpPopClose(); });
   RP.els.newer.onclick=()=>{ if(RP.di>0) rpLoadDay(RP.di-1); };
   RP.els.older.onclick=()=>{ if(RP.di<RP.days.length-1) rpLoadDay(RP.di+1); };
   let rt=null; const ro=new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(()=>{
