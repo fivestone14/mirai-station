@@ -182,7 +182,7 @@
   .gx-chip{display:flex; flex-direction:column; justify-content:center; gap:1px; padding:5px 12px; min-width:0; white-space:nowrap;
     background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px}
   .gx-chip b{font-family:var(--sans); font-size:14px; font-weight:700; color:var(--ink); letter-spacing:.01em}
-  .gx-chip i{font-family:var(--sans); font-size:11.5px; font-weight:500; font-style:normal; color:var(--ink-dim)}
+  .gx-chip i{font-family:var(--sans); font-size:12.5px; font-weight:500; font-style:normal; color:var(--ink-dim)}
   .gx-lead b{font-size:15px}
   .gx-lead.up{box-shadow:inset 3px 0 0 var(--jade)}  .gx-lead.dn{box-shadow:inset 3px 0 0 var(--coral)}
   .gx-net{margin-left:auto}
@@ -238,6 +238,21 @@
   .gx-tower{flex:0 0 auto; margin-top:8px; display:flex; gap:12px; align-items:center; padding:9px 13px;
     border:1px solid var(--hairline); border-left:3px solid var(--lantern); border-radius:12px;
     background:linear-gradient(100deg, var(--lantern-wash), transparent 68%), var(--surface-2)}
+  /* THE CALL BLOCK (07-16): the Watchtower's direction + magnitude as one glanceable
+     unit — big target price on top, σ ≈ points · horizon under it. The sentence keeps
+     the reasoning; this carries the read. Dir hue = jade/coral; stance-only reads
+     (settle/fight) wear grey/lantern so a non-call can never look like a call. */
+  .gx-call{flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    min-width:128px; padding:7px 14px; border-radius:10px; border:1px solid var(--hairline);
+    background:color-mix(in srgb, var(--surface-3) 55%, transparent)}
+  .gx-call .dir{font-family:var(--mono); font-weight:800; font-size:20px; line-height:1.1; letter-spacing:.01em; font-variant-numeric:tabular-nums; color:var(--ink-dim); white-space:nowrap}
+  .gx-call .mag{font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--ink-dim); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .gx-call.up{border-color:color-mix(in srgb,var(--jade) 32%,transparent); background:var(--jade-wash)}
+  .gx-call.up .dir{color:var(--jade)}
+  .gx-call.dn{border-color:color-mix(in srgb,var(--coral) 32%,transparent); background:var(--coral-wash)}
+  .gx-call.dn .dir{color:var(--coral)}
+  .gx-call.fight{border-color:color-mix(in srgb,var(--lantern) 32%,transparent); background:var(--lantern-wash)}
+  .gx-call.fight .dir{color:var(--lantern)}
 
   /* ---- layers : 3D deck + readiness detail ---- */
   .layers3d{display:grid; grid-template-columns:minmax(300px,1fr) minmax(300px,1.05fr); grid-template-rows:minmax(0,1fr); gap:20px; align-items:stretch; flex:1; min-height:0}
@@ -475,6 +490,7 @@
   .tower-read .label{color:var(--lantern)}
   .tr-scene{font-family:var(--serif); font-size:15px; line-height:1.55; color:var(--ink); font-style:italic; margin:5px 0 0; transition:opacity .2s ease}
   .tr-next{font-family:var(--sans); font-size:15px; font-weight:500; color:var(--ink); line-height:1.45; margin:6px 0 0; transition:opacity .2s ease}
+  .tr-next.aged{opacity:.55}   /* horizon spent: the reasoning stays on record, dimmed to match the call block's grey */
   .tr-next b{font-weight:700}
   .nx-dir{font-family:var(--sans); font-weight:700; margin-right:3px}
   .nx-dir.up{color:var(--jade)} .nx-dir.down{color:var(--coral)} .nx-dir.flat{color:var(--ink-dim)}
@@ -1338,17 +1354,24 @@ function mapStrikes(){                                       // real 5-pt SPX st
   MROWH=(MAPX.H-MAPX.padT-MAPX.padB)/Math.max(1,MSTRIKES.length);   // row pitch = per-strike slot
 }
 function mapAxis(){
-  const X=MAPX; let a=''; let lastY=1e9;                      // lastY gates label spacing so dense $5 rows thin out, not smear
+  const X=MAPX; let a=''; let lastY=1e9, lastBig=false;       // lastY gates label spacing so dense $5 rows thin out, not smear
   const step=((X.pHigh-X.pLow)>520)?10:5;                     // matches the strike grid
   for(let k=Math.ceil(X.pLow/step)*step; k<=X.pHigh; k+=step){ const yn=yFor(k), yy=yn.toFixed(1), major=k%50===0;
     if(major){
       a+=`<line x1="${X.x0}" y1="${yy}" x2="${X.lineEnd}" y2="${yy}" style="stroke:var(--hairline);opacity:.5" stroke-dasharray="2 6"/>`;
       a+=`<line x1="${X.x0-7}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.75"/>`;
       a+=`<text x="${X.axisLX}" y="${(yn+4).toFixed(1)}" text-anchor="end" style="fill:var(--ink-dim)" font-size="15" font-weight="600" font-family="var(--mono)">${k.toLocaleString('en-US')}</text>`;   // every $50 — big
-      lastY=yn;
+      lastY=yn; lastBig=true;
     } else {
       a+=`<line x1="${X.x0-4}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.4"/>`;
-      if(lastY-yn>=12){ a+=`<text x="${X.axisLX}" y="${(yn+3).toFixed(1)}" text-anchor="end" style="fill:var(--ink-faint)" font-size="10" font-family="var(--mono)">${k.toLocaleString('en-US')}</text>`; lastY=yn; }   // every $5 — small (only where it fits)
+      // gate BOTH sides: the last drawn label below AND the next $50 major above —
+      // lastY alone let a minor land right under an unconditionally-drawn major
+      // (measured 07-16: every major/minor pair fused at tablet sizes). A major
+      // BELOW needs extra room — its 15px ascent reaches higher than a minor's
+      // (14px still grazed by ~2px at 560×340, second review; 16 clears the ascent
+      // while keeping the minors that 1060×560's 16.4px row pitch affords)
+      const kUp=Math.ceil(k/50)*50, majClear=(kUp>X.pHigh)||(yn-yFor(kUp)>=14);
+      if(lastY-yn>=(lastBig?16:14) && majClear){ a+=`<text x="${X.axisLX}" y="${(yn+3).toFixed(1)}" text-anchor="end" style="fill:var(--ink-faint)" font-size="11" font-family="var(--mono)">${k.toLocaleString('en-US')}</text>`; lastY=yn; lastBig=false; }   // every $5 — small (only where it fits)
     }
   }
   return a;
@@ -1454,6 +1477,7 @@ function tickClock(){ if(VIT) VIT.clock.textContent = nowClock();
   if(b!==GX._fb){ GX._fb=b;
     const f=(typeof gxFreshInfo==='function')?gxFreshInfo():null, key=f?f.txt:'';
     if(key!==GX._ftxt){ GX._ftxt=key; try{ if(typeof gxOverview==='function') gxOverview(); }catch(e){} }
+    try{ if(typeof gxTower==='function') gxTower(); }catch(e){}   // the call block ages on the same clock — horizon expiry must not wait for the next scan
   }
 }
 
@@ -1468,7 +1492,9 @@ function gxBuild(){
   const host=document.getElementById('p-map'); if(!host) return;
   if(!host.querySelector('.gx-chart')){
     host.innerHTML=`<div class="gx-strip" id="gx-strip"></div><div class="gx-chart"></div>`+
-      `<div class="gx-tower"><span class="tr-eye"></span><div class="tr-body"><span class="label">Watchtower · forward read</span>`+
+      `<div class="gx-tower"><span class="tr-eye"></span>`+
+      `<div class="gx-call" id="gx-tower-call"><span class="dir">—</span><span class="mag">no read</span></div>`+
+      `<div class="tr-body"><span class="label">Watchtower · forward read</span>`+
       `<p class="tr-next" id="gx-tower-next">—</p></div></div>`;
   }
   const m=measureChart(); if(!m) return;
@@ -1478,6 +1504,10 @@ function gxBuild(){
   const band=mapBand(seed); MAPX.pLow=band.pLow; MAPX.pHigh=band.pHigh;
   mapStrikes();
   const X=MAPX, axis=mapAxis();
+  // caption tiers (07-16): the one-line legend overflowed the frame / collided with
+  // the dated-γ legend on narrow lanes. Wide lane = full text + the push/pin key;
+  // mid drops the key; narrow also shortens the live tspans (gxPaint reads capTier).
+  const capTier=(X.lineEnd-X.x0)>=560?2:(X.lineEnd-X.x0)>=430?1:0;
   const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.x0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
   // 1-7DTE terrain GHOSTS (Panel-C sign-off, 07-13): outline + a 12% same-hue
   // tint at ONE fixed fade level — tenor is the only thing the fade encodes
@@ -1489,7 +1519,7 @@ function gxBuild(){
     return `<line id="lead-${id}" style="stroke:${mm.c};opacity:0"/>`+
       `<line id="lc-${id}" x1="${X.x0}" x2="${spot?X.railX0:X.lineEnd}" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
       `<line id="lvl-${id}" x1="${X.x0}" x2="${spot?X.railX0:X.lineEnd}" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+   /* spot runs THROUGH the ladder gutter → one continuous "where am I" line across bars + dated columns */
-      `<text id="nm-${id}" x="${X.tagX}" text-anchor="end" style="fill:${spot?'var(--iris)':'var(--ink-dim)'}" font-size="10.5" font-weight="600" font-family="var(--sans)" letter-spacing=".03em">${mm.n}</text>`+
+      `<text id="nm-${id}" x="${X.tagX}" text-anchor="end" style="fill:${spot?'var(--iris)':'var(--ink-dim)'}" font-size="11.5" font-weight="600" font-family="var(--sans)" letter-spacing=".03em">${mm.n}</text>`+
       `<text id="vl-${id}" x="${X.tagX}" text-anchor="end" style="fill:${mm.c}" font-size="${spot?17:15}" font-weight="700" font-family="var(--mono)"></text>`; }).join('');
   document.querySelector('#p-map .gx-chart').innerHTML=
    `<svg viewBox="0 0 ${X.W} ${X.H}" preserveAspectRatio="none" role="img" aria-label="Live GEX map: net gamma exposure by strike with the price axis, dealer levels, and the Watchtower forecast">
@@ -1505,6 +1535,10 @@ function gxBuild(){
      <rect id="washTop" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--jade);opacity:.045"/>
      <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
      <rect id="magCloud" x="${X.x0}" width="${X.lineEnd-X.x0}" height="0" style="fill:var(--l-grav);opacity:.10"/>
+     <!-- WT TARGET ZONE (07-16): spot → called-level band across the bar lane. The
+          height IS the called magnitude on the price axis — direction+size readable
+          without a single number. Dir-hued; the lantern line stays the tower's mark. -->
+     <rect id="wtBand" x="${X.x0}" width="${X.lineEnd-X.x0}" height="0" style="opacity:0"/>
      <g id="axisG">${axis}</g>
      <rect id="spotLane" x="${X.x0}" width="0" style="fill:var(--iris);opacity:0"/>
      <g id="datedOIG"></g>
@@ -1521,9 +1555,12 @@ function gxBuild(){
      <g id="datedOILgdG"></g>
      ${lvl}
      <line id="wtTgtL" x1="${X.x0}" x2="${X.nR?X.stripEnd:X.lineEnd}" style="opacity:0" stroke-dasharray="3 5"/>
-     <g id="wtTgt" style="display:none"><text id="wtTgtA" class="gx-blink" text-anchor="start" font-size="18" font-weight="800"></text><text id="wtTgtP" text-anchor="start" font-size="13" font-weight="700" font-family="var(--mono)"></text></g>
+     <!-- target tag wears the level-tag idiom (name row over price row, right gutter)
+          and rides the SAME de-collision pass as MAGNET/FLIP/SPOT — it can never smear
+          into them (the old stripEnd-anchored ▲+price knew nothing about the tags) -->
+     <g id="wtTgt" style="display:none"><line id="wtTgtLead" style="opacity:0"/><text id="wtTgtN" class="gx-blink" x="${X.tagX}" text-anchor="end" font-size="11.5" font-weight="700" font-family="var(--sans)" letter-spacing=".03em"></text><text id="wtTgtV" x="${X.tagX}" text-anchor="end" font-size="15" font-weight="700" font-family="var(--mono)"></text></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="9.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">Bar = net γ / strike · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan> · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►</text>
+     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">${capTier>0?'Bar = net γ / strike':'net γ'} · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan>${capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':''}</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), magCloud:q('magCloud'), axisG:q('axisG'),
@@ -1531,9 +1568,9 @@ function gxBuild(){
     tbars:[...document.querySelectorAll('#tenorG .gxtbar')], barArrows:q('barArrowsG'),
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
     railG:q('railG'), _rkey:null, scrubG:q('scrubG'), _skey:null,
-    svg:document.querySelector('#p-map .gx-chart svg'),
+    svg:document.querySelector('#p-map .gx-chart svg'), capTier,
     datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
-    lvl:{}, wtTgt:q('wtTgt'), wtTgtA:q('wtTgtA'), wtTgtP:q('wtTgtP'), wtTgtL:q('wtTgtL') };
+    lvl:{}, wtTgt:q('wtTgt'), wtTgtN:q('wtTgtN'), wtTgtV:q('wtTgtV'), wtTgtL:q('wtTgtL'), wtTgtLead:q('wtTgtLead'), wtBand:q('wtBand') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });
   gxMountInfoBtn();                       // re-mount the "?" (this rebuilt .gx-chart)
   gxMountScrub();                         // re-mount the price scrub (same reason)
@@ -1596,21 +1633,23 @@ function gxPaint(){
       if(k<D.flip) v=-(0.55*gg(k,D.putWall,0.11*sg)+0.2*gg(k,D.flip-0.12*sg,0.11*sg)+0.05); return v; });
   }
   // measured vs MODELED must be unmissable — a modeled render mistaken for real
-  // per-strike data reads as "missing liquidity" (2026-07-12 investigation)
+  // per-strike data reads as "missing liquidity" (2026-07-12 investigation).
+  // capTier 0 (narrow lane) wears the short forms — same facts, fewer characters.
+  const tier=MAP.capTier??2;
   const bsrc=document.getElementById('bar-src');
-  if(bsrc){ bsrc.textContent=measured?'measured':'MODELED (synthetic)';
+  if(bsrc){ bsrc.textContent=measured?'measured':(tier>0?'MODELED (synthetic)':'MODELED');
             bsrc.style.fill=measured?'var(--ink-dim)':'var(--coral)'; }
   const useLog=measured&&gxLogOn();   // 07-12 ruling: linear pure-net is the DEFAULT; log is the opt-in
   if(GX_MEASURED!==measured){ GX_MEASURED=measured; try{ gxOverview(); }catch(e){} }   // chip gates on measured (never a dead switch)
   const bscale=document.getElementById('bar-scale');
-  if(bscale){ bscale.textContent=useLog?'log':(measured?'linear · true ratio':'linear');
+  if(bscale){ bscale.textContent=useLog?'log':(measured&&tier>0?'linear · true ratio':'linear');
               bscale.style.fill=useLog?'var(--lantern)':'var(--ink-dim)'; }
   let mx=1e-6, sAbs=0; for(const v of vals){ const a=Math.abs(v); if(a>mx) mx=a; sAbs+=a; }
   // concentration nudge (pressure test 07-12): when one strike carries >70% of
   // the whole |γ| field under linear, say so — the hairline forest is the true
   // shape, but the reader should know the Log view exists for the texture
   const bnudge=document.getElementById('bar-nudge');
-  if(bnudge) bnudge.textContent=(measured&&!useLog&&sAbs>0&&mx/sAbs>0.7)?' · γ concentrated at ATM — Log shows texture':'';
+  if(bnudge) bnudge.textContent=(measured&&!useLog&&sAbs>0&&mx/sAbs>0.7)?(tier>0?' · ATM-heavy — Log shows texture':' · ATM-heavy → Log'):'';
   // Live bars keep the FULL row height always — the dated layer lives in its own
   // ladder gutter now (the split-row sub-lane died with the wash+tick marks), so
   // the hero gets stronger when the layer is on, not thinner.
@@ -1667,7 +1706,7 @@ function gxPaint(){
     rect.style.stroke=_tc; rect.style.fill=_tc;   // ghost: 12% tint inside the outline (fill-opacity set at build)
   });
   const bt7=document.getElementById('bar-t7');
-  if(bt7) bt7.textContent=tOn?' · ▯ 1-7D (own scale)':'';
+  if(bt7) bt7.textContent=tOn?(tier>0?' · ▯ 1-7D (own scale)':' · ▯1-7D'):'';
   // MM-ACTION ARROWS (07-13, pressure-tested): the dated ladder's validated
   // hedging rule on the LIVE bars — jade (net+) below spot: MMs BUY dips toward
   // it (support); jade above: SELL rallies into it (cap); coral (net−) above
@@ -1701,10 +1740,27 @@ function gxPaint(){
   // killed the hover <title> (target dies before the tooltip delay) and churned
   // the DOM; toFixed(1) coords settle once easing converges, so the key rests
   if(MAP.barArrows&&arrs!==MAP._akey){ MAP._akey=arrs; MAP.barArrows.innerHTML=arrs; }
+  // Watchtower forward call — resolved FIRST so its right-edge tag can ride the
+  // level-tag de-collision pass below (N22 anchor math unchanged: called-from
+  // spot + magnitude · called-from σ, nailed down at call time)
+  let wtI=null;
+  { const w=curWt;
+    const hz=(w&&+w.horizon>0)?+w.horizon:30, ageMin=(w&&w.ts)?(Date.now()-(+new Date(w.ts)))/60000:0;
+    if(w&&w.fired&&w.dir&&w.mag&&ageMin<=hz){
+      const {_aS:aS, _aG:aG}=wtAnchor(w);   // SAME frozen anchor as the call block — never the per-frame eased spot, never the modeled-σ default
+      if(aS!=null&&aG!=null){
+        const up=w.dir==='call', pts=(+w.mag)*aG, tgt=aS+(up?1:-1)*pts;
+        // clamped into the frame (edge-marker convention): an off-frame target
+        // pins to the edge instead of stamping into the caption/legend strip
+        wtI={up, tgt, pts, mag:+w.mag, ty:Math.min(X.H-X.padB-8, Math.max(X.padT+8, yFor(tgt)))};
+      }
+    }
+  }
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
   const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
   const loY=X.padT+14, hiY=X.H-X.padB-14;
-  const arr=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1).sort((a,b)=>a.y-b.y);
+  const arr=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1)
+    .concat(wtI?[{id:'wt',y:wtI.ty}]:[]).sort((a,b)=>a.y-b.y);
   const onOf={}; arr.forEach(m=>onOf[m.id]=true);
   const GAP=Math.min(38, arr.length>1?(hiY-loY)/(arr.length-1):38);
   let last=loY-GAP; arr.forEach(m=>{ m.ly=Math.min(hiY,Math.max(m.y,last+GAP)); last=m.ly; });
@@ -1723,24 +1779,23 @@ function gxPaint(){
   });
   // spot marker — a triangle pointing in from the axis
   MAP.spotTri.setAttribute('d',`M${X.x0-9},${(sy-6).toFixed(1)} L${X.x0-1},${sy.toFixed(1)} L${X.x0-9},${(sy+6).toFixed(1)} Z`);
-  // Watchtower forward call — a blinking ▲/▼ + target price where it expects price to land
-  if(MAP.wtTgt){ const w=curWt;
-    const hz=(w&&+w.horizon>0)?+w.horizon:30, ageMin=(w&&w.ts)?(Date.now()-(+new Date(w.ts)))/60000:0;
-    if(w&&w.fired&&w.dir&&w.mag&&ageMin<=hz){
-      // N22: target = CALLED-FROM spot + magnitude·called-from σ — nailed down, so a
-      // right call gets visibly reached and a wrong one visibly fails
-      const up=w.dir==='call',
-        tgt=((w.anchorSpot!=null?w.anchorSpot:D.spot)
-             +(up?1:-1)*(+w.mag)*(w.anchorSigma!=null?w.anchorSigma:sg)),
-        // clamped into the frame (edge-marker convention): an off-frame target
-        // pins to the edge instead of stamping into the caption/legend strip
-        ty=Math.min(X.H-X.padB-8, Math.max(X.padT+8, yFor(tgt))),
-        col=`var(--${up?'jade':'coral'})`, tx=X.stripEnd+6;
-      MAP.wtTgtL.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtL.setAttribute('y2',ty.toFixed(1)); MAP.wtTgtL.style.stroke='var(--lantern)'; MAP.wtTgtL.style.opacity=.32;
-      MAP.wtTgtA.setAttribute('x',tx); MAP.wtTgtA.setAttribute('y',(ty+5).toFixed(1)); MAP.wtTgtA.textContent=up?'▲':'▼'; MAP.wtTgtA.style.fill=col;
-      MAP.wtTgtP.setAttribute('x',(tx+14).toFixed(1)); MAP.wtTgtP.setAttribute('y',(ty+5).toFixed(1)); MAP.wtTgtP.textContent=f(tgt,0); MAP.wtTgtP.style.fill=col;
+  // Watchtower forward call — the target ZONE band (spot → called level, dir-hued,
+  // its height = the called magnitude on the price axis), the lantern target line,
+  // and a blinking level-style tag (WT ▲ σ · pts over the target price)
+  if(MAP.wtTgt){
+    if(wtI){
+      const col=`var(--${wtI.up?'jade':'coral'})`, ty=wtI.ty, ly=lyOf.wt??ty;
+      const ys=Math.min(X.H-X.padB, Math.max(X.padT, sy));
+      MAP.wtBand.setAttribute('y',Math.min(ys,ty).toFixed(1));
+      MAP.wtBand.setAttribute('height',Math.abs(ys-ty).toFixed(1));
+      MAP.wtBand.style.fill=col; MAP.wtBand.style.opacity=.07;
+      MAP.wtTgtL.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtL.setAttribute('y2',ty.toFixed(1)); MAP.wtTgtL.style.stroke='var(--lantern)'; MAP.wtTgtL.style.opacity=.38;
+      MAP.wtTgtN.setAttribute('y',(ly-8).toFixed(1)); MAP.wtTgtN.textContent=`WT ${wtI.up?'▲':'▼'} ${wtI.mag.toFixed(2)}σ · ${Math.round(wtI.pts)}p`; MAP.wtTgtN.style.fill=col;
+      MAP.wtTgtV.setAttribute('y',(ly+11).toFixed(1)); MAP.wtTgtV.textContent=f(wtI.tgt,0); MAP.wtTgtV.style.fill=col;
+      if(Math.abs(ly-ty)>2){ MAP.wtTgtLead.setAttribute('x1',X.stripEnd); MAP.wtTgtLead.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtLead.setAttribute('x2',(X.tagX-86).toFixed(1)); MAP.wtTgtLead.setAttribute('y2',ly.toFixed(1)); MAP.wtTgtLead.style.stroke='var(--lantern)'; MAP.wtTgtLead.style.opacity=.3; }
+      else MAP.wtTgtLead.style.opacity=0;
       MAP.wtTgt.style.display='';
-    } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; }
+    } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; MAP.wtBand.style.opacity=0; }
   }
   // SPOT ROW-BAND — one faint iris row across BOTH regions so the live bar and the
   // dated cells at spot's strike read as ONE row (the unified spot LINE now runs
@@ -1931,7 +1986,7 @@ function paintDatedOI(){
     // tried and collides at the 21px column pitch, so the ink stays quiet
     // sits just above the panel — follows padT so it stays put when the rail's taller
     // header band raises it (both gutters then share ONE header baseline)
-    svg+=`<text x="${cx.toFixed(1)}" y="${(X.padT-9).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}<title>${p.tag} · pulled ${p.age===0?'today':p.age+'d ago'}</title></text>`;
+    svg+=`<text x="${cx.toFixed(1)}" y="${(X.padT-9).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">${p.head}<title>${p.tag} · pulled ${p.age===0?'today':p.age+'d ago'}</title></text>`;
   });
   profs.forEach(p=>{
     const cx=colX(p.i), xC=cellX(p.i), cells=[];
@@ -1994,7 +2049,7 @@ function paintDatedOI(){
     `full = ${_gfmt(mx)} · @ ${spotP}`];
   if(MAP.datedOILgdG){
     for(let t=0;t<tiers.length;t++){
-      MAP.datedOILgdG.innerHTML=`<text x="${X.tagX}" y="${(X.H-6).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-dim);${_HALO}">${tiers[t]}</text>`;
+      MAP.datedOILgdG.innerHTML=`<text x="${X.tagX}" y="${(X.H-6).toFixed(1)}" text-anchor="end" font-size="10" font-weight="700" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-dim);${_HALO}">${tiers[t]}</text>`;
       try{
         const cap=document.getElementById('gx-cap'), lgd=MAP.datedOILgdG.firstChild;
         if(!cap||!lgd) break;
@@ -2278,7 +2333,7 @@ function paintScrub(){
   MAP.scrubG.innerHTML=
      `<line x1="${X.x0}" x2="${X.stripEnd}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" style="stroke:var(--iris);stroke-width:1.5;opacity:.9"/>`
    + `<rect x="${(X.x0+2).toFixed(1)}" y="${(y-9).toFixed(1)}" width="104" height="18" rx="4" fill="var(--iris)"/>`
-   + `<text x="${(X.x0+8).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="11" font-weight="700" font-family="var(--mono)" style="fill:var(--ground)">${lbl}</text>`;
+   + `<text x="${(X.x0+8).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="11.5" font-weight="700" font-family="var(--mono)" style="fill:var(--ground)">${lbl}</text>`;
 }
 // ---- DATED BOOK overlay: far structural OI walls (next 2 monthlies + quarter-end) ----
 // Shaded by EXPIRATION — nearer expiries brighter, further dimmer — so one glance says
@@ -2371,7 +2426,7 @@ function paintDated(){
   // Layout is SPOT-FREE (it depends only on yFor(k) and the frame) and widths are
   // computed analytically from the character count — never getBBox, which is the classic
   // measure-then-relayout jitter loop. So nothing here moves as spot eases or you scrub.
-  const LABF=12, LABH=16;
+  const LABF=12.5, LABH=17;
   const T=X.padT+LABH/2, B=X.H-X.padB-LABH/2-6;      // -6 clears #gx-cap
   const inB=[], hiE=[], loE=[];
   for(const e of ent.values()){
@@ -2379,6 +2434,12 @@ function paintDated(){
     else if(e.k<X.pLow) loE.push(e);
     else inB.push({e, y:yFor(e.k)});
   }
+  // per-column edge-marker rows (drawn at the frame's top/bottom below) — the in-band
+  // nudge must RESERVE them, or an in-band label pushed to the frame edge stamps
+  // straight onto an off-frame marker (measured 07-16: SEP30 7,675 in-band × AUG21
+  // 8,000 off-frame fused at the top-right on today's real book)
+  const resTR=hiE.filter(e=>e.side==='c').length, resTL=hiE.filter(e=>e.side==='p').length;
+  const resBR=loE.filter(e=>e.side==='c').length, resBL=loE.filter(e=>e.side==='p').length;
   inB.sort((a,b)=>a.y-b.y);
   // 1. cluster — same side only (jade and coral must never fuse into one label)
   const groups=[];
@@ -2409,17 +2470,17 @@ function paintDated(){
   //    margin, halves the labels per column (so far less nudging), and gives the map a free
   //    read: floors on the left, ceilings on the right. Each column de-collides on its OWN,
   //    so a ceiling can never be pushed around by a floor.
-  const nudge=(gs)=>{
+  const nudge=(gs,T0,B0)=>{
     gs.sort((a,b)=>a.y-b.y);
-    const GAP=Math.min(LABH, gs.length>1?(B-T)/(gs.length-1):LABH);
-    let last=T-GAP;
-    gs.forEach(g=>{ g.ly=Math.min(B,Math.max(g.y,last+GAP)); last=g.ly; });
+    const GAP=Math.min(LABH, gs.length>1?(B0-T0)/(gs.length-1):LABH);
+    let last=T0-GAP;
+    gs.forEach(g=>{ g.ly=Math.min(B0,Math.max(g.y,last+GAP)); last=g.ly; });
     for(let i=gs.length-2;i>=0;i--)
-      if(gs[i].ly>gs[i+1].ly-GAP) gs[i].ly=Math.max(T,gs[i+1].ly-GAP);
+      if(gs[i].ly>gs[i+1].ly-GAP) gs[i].ly=Math.max(T0,gs[i+1].ly-GAP);
     return gs;
   };
-  const RIGHT=nudge(groups.filter(g=>g.side==='c'));
-  const LEFT =nudge(groups.filter(g=>g.side==='p'));
+  const RIGHT=nudge(groups.filter(g=>g.side==='c'), T+resTR*LABH, B-resBR*LABH);
+  const LEFT =nudge(groups.filter(g=>g.side==='p'), T+resTL*LABH, B-resBL*LABH);
   // 3. draw — every wall keeps its true-price LINE; only the text is displaced
   let svg='';
   for(const m of inB){
@@ -2445,10 +2506,10 @@ function paintDated(){
     const sd=(sg&&spot)?((e.k-spot)/sg):null;
     const sdT=(sd!=null&&isFinite(sd))?` ${sd>=0?'+':'−'}${Math.abs(sd).toFixed(1)}σ`:'';
     const lbl=`${call?'▲':'▼'} ${f(Math.round(e.k),0)}${sdT} · ${e.tags.join('·')}${e.itm?' · ITM':''}`;
-    return `<text x="${(call?X.lineEnd-6:X.x0+6).toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${call?'end':'start'}" font-size="11" font-weight="700" font-family="var(--mono)" style="fill:${colOf(e)};opacity:${sh};${_HALO2}">${call?lbl+' '+ar:ar+' '+lbl}</text>`;
+    return `<text x="${(call?X.lineEnd-6:X.x0+6).toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${call?'end':'start'}" font-size="12" font-weight="700" font-family="var(--mono)" style="fill:${colOf(e)};opacity:${sh};${_HALO2}">${call?lbl+' '+ar:ar+' '+lbl}</text>`;
   };
   let hR=0,hL=0,lR=0,lL=0;
-  hiE.forEach(e=>{ const c=e.side==='c'; svg+=edge(e,0,X.padT+13+(c?hR++:hL++)*LABH,'↑'); });
+  hiE.forEach(e=>{ const c=e.side==='c'; svg+=edge(e,0,X.padT+14+(c?hR++:hL++)*LABH,'↑'); });
   loE.forEach(e=>{ const c=e.side==='c'; svg+=edge(e,0,X.H-X.padB-4-(c?lR++:lL++)*LABH,'↓'); });
   MAP.datedG.innerHTML=svg;
 }
@@ -2543,7 +2604,50 @@ function gxOverview(){
     <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
     ${datedChips}${wallsChip}${doiChip}${railChip}${scaleChip}${tenorChip}`;
 }
-function gxTower(){ const el=document.getElementById('gx-tower-next'); if(el) el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot); }
+function gxTower(){
+  const c=towerCallHTML(curWt);
+  const el=document.getElementById('gx-tower-next');
+  if(el){ el.innerHTML=towerNextHTML(curWt, D.magnet, D.spot, D.sigma);
+          el.className='tr-next'+(c.aged?' aged':''); }   // the sentence keeps the reasoning on record but dims once the horizon is spent — a bright ▲ beside "aged out" is a mixed message
+  const cb=document.getElementById('gx-tower-call');
+  if(cb){ cb.className='gx-call'+(c.cls?' '+c.cls:''); cb.innerHTML=c.html; }
+}
+// N22 SHARED ANCHOR (review 07-16): the map marker and the call block BOTH resolve
+// the called-from spot/σ here, and a fallback freezes ONCE onto the wt object — the
+// anchorless path (demo / synthetic) had the marker re-anchoring to the per-frame
+// eased spot while the block anchored at render time: two targets, ~3pts apart, on
+// screen at once. No σ-ruler anywhere → null, and NO target is drawn — the marker
+// used to invent one from the modeled-σ default while the block refused.
+function wtAnchor(w){
+  if(w._aS===undefined) w._aS=(w.anchorSpot!=null&&isFinite(w.anchorSpot))?w.anchorSpot:(isFinite(D.spot)?D.spot:null);
+  if(w._aG===undefined) w._aG=(w.anchorSigma!=null&&isFinite(w.anchorSigma)&&w.anchorSigma>0)?w.anchorSigma:((D.sigma>0)?D.sigma:null);
+  return w;
+}
+// THE CALL BLOCK (07-16) — direction + magnitude as one glanceable unit: the target
+// price big on top, "σ ≈ points · horizon" under it. Same N22 anchor math as the
+// map marker (wtAnchor), so the two can never disagree. Non-calls stay honest:
+// SETTLE (grey) / FIGHT (lantern) / no read — a stance must never wear a call's
+// jade or coral.
+function towerCallHTML(w){
+  if(w && w._none) return {cls:'', html:`<span class="dir">—</span><span class="mag">no read yet</span>`};
+  if(w && w.fired && w.dir){
+    const up=w.dir==='call', mag=+w.mag||0;
+    const hzm=(+w.horizon>0)?+w.horizon:30, ageMin=w.ts?(Date.now()-(+new Date(w.ts)))/60000:0;
+    const {_aS:aS, _aG:aG}=wtAnchor(w);
+    const pts=(mag&&aG!=null)?mag*aG:null;
+    const tgt=(aS!=null&&pts!=null)?aS+(up?1:-1)*pts:null;
+    const dirT=`${up?'▲':'▼'} ${tgt!=null?f(tgt,0):cap(String(w.dir))}`;
+    // a fired row can arrive sizeless (mag null/0) — the direction is real, the
+    // ruler isn't: say "size unstated" instead of demoting a live call to FLAT
+    // while the sentence beside it still reads ▲/▼ (second review, 07-16)
+    const magT=`${mag?`${mag.toFixed(2)}σ${pts!=null?` ≈ ${Math.round(pts)} pts`:''}`:'size unstated'} · ${hz(hzm)}`;
+    if(ageMin>hzm) return {cls:'', aged:true, html:`<span class="dir">${dirT}</span><span class="mag">${magT} · aged out</span>`};   // horizon spent — the map marker is down too
+    return {cls:up?'up':'dn', html:`<span class="dir">${dirT}</span><span class="mag">${magT}</span>`};
+  }
+  if(w && w.stance==='fight') return {cls:'fight', html:`<span class="dir">⚔ FIGHT</span><span class="mag">two-sided · no call</span>`};
+  if(w && w.stance==='settle') return {cls:'', html:`<span class="dir">■ SETTLE</span><span class="mag">pin / drift · no call</span>`};
+  return {cls:'', html:`<span class="dir">■ FLAT</span><span class="mag">no clear edge</span>`};
+}
 
 function buildMap(){ gxBuild(); }
 
@@ -2611,7 +2715,7 @@ function paintMap(){ gxPaint(); }
 // ---- Watchtower NEXT inference (mirrors watchtower.render_snippet() ▶▶ NEXT line) ----
 function pickWt(spot){ let best=SCANS[0],bd=1e9; for(const s of SCANS){ const d=Math.abs(spot-s.spot); if(d<bd){bd=d;best=s;} } return best.wt; }
 function hz(mins){ if(!mins) return ''; return (mins%60===0) ? `~${mins/60}h` : `~${mins}m`; }
-function towerNextHTML(wt, magnet, spot){
+function towerNextHTML(wt, magnet, spot, sigma){
   // N20: a live session with no judged Watchtower row yet says so — it must never
   // wear the demo snapshot's verdict as its own
   if(wt && wt._none) return `<span class="nx-dir flat">■ No read yet</span> — the Watchtower hasn't judged a scan today.`;
@@ -2624,7 +2728,10 @@ function towerNextHTML(wt, magnet, spot){
   }
   if(wt && wt.fired){
     const up = wt.dir==='call';
-    const bits=[ wt.mag?`~${(+wt.mag).toFixed(2)}σ`:'', hz(wt.horizon) ].filter(Boolean).join(' · ');
+    // σ translated to points when a σ-ruler is at hand (anchored first — N22); the
+    // Heads tab calls this without sigma and simply keeps the bare-σ wording
+    const aG=(wt.anchorSigma!=null&&isFinite(wt.anchorSigma)&&wt.anchorSigma>0)?wt.anchorSigma:((sigma>0)?sigma:null);
+    const bits=[ wt.mag?`~${(+wt.mag).toFixed(2)}σ${aG?` ≈ ${Math.round((+wt.mag)*aG)} pts`:''}`:'', hz(wt.horizon) ].filter(Boolean).join(' · ');
     // wt-2 wording (mirrors render_snippet): name the call by its relation to the
     // magnet — "ride" WITH the pull toward it, or a move AGAINST the pull; never
     // "fade toward" a magnet on the wrong side of the move (the wt-1 contradiction).
