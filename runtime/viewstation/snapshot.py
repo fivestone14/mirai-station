@@ -468,13 +468,25 @@ def replay_day(day: str) -> dict:
     """
     import gex_polarity_ab as ab  # same SKILL_DIR, already on sys.path
     rows = ab._read_rows(day)
-    wt = ab._grade_watchtower(rows, lambda tk: ab._default_bars(tk, day)) or {}
+    _bars_cache: dict = {}       # one bar fetch shared by BOTH resolvers (grade_day's pattern)
+
+    def _bars(tk):
+        if tk not in _bars_cache:
+            _bars_cache[tk] = ab._default_bars(tk, day) or []
+        return _bars_cache[tk]
+
+    wt = ab._grade_watchtower(rows, _bars) or {}
     trades = wt.get("trades") or []
     fires = [{"ts": t.get("ts"), "dir": t.get("dir"), "outcome": t.get("outcome"),
               "mfe_sigma": t.get("mfe_sigma"), "mae_sigma": t.get("mae_sigma"),
               "move_60m": t.get("move_60m"), "ttr_min": t.get("ttr_min"), "r": t.get("r"),
               "pred_magnitude_sigma": t.get("pred_magnitude_sigma")}
              for t in trades]
+    # Scene Ledger — the SAME on-demand authority under its own closure rules (N20):
+    # episodes resolve by target / adverse mark / scene death, not by the clock, so the
+    # Replay tab can draw called-shot boxes for any day (including today-so-far) without
+    # waiting for the nightly card. Same resolver the nightly grade uses — never a re-derive.
+    sc = ab._grade_watchtower_scene(rows, _bars) or {}
     return {
         "day": day,
         "target_sigma": rev.PAPER_TARGET_SIGMA,
@@ -483,6 +495,9 @@ def replay_day(day: str) -> dict:
         "pending": wt.get("pending", 0),
         "summary": {k: wt.get(k) for k in ("n", "wins", "scratch", "win_rate")},
         "fires": fires,
+        "scene": {"episodes": sc.get("episodes") or [],
+                  "summary": {k: sc.get(k) for k in
+                              ("n", "wins", "losses", "flats", "pending", "hit_rate")}},
     }
 
 

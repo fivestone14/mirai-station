@@ -3721,7 +3721,7 @@ function renderHeads(){
 const RP = {
   els:null, days:[], di:0,                 // day list (newest first) + selected index
   scans:[], fires:[], bars:null, path:null, barsCache:{},
-  eps:[], _scenesP:null,                   // Scene Ledger episodes (N20) + one-shot history fetch
+  eps:[],                                  // Scene Ledger episodes (N20), from /api/replay's grade
   t0:0, t1:0, geo:null, dom:null,          // session window (ms) + chart geometry / price domain
   pos:0, playing:false, speed:1, raf:null, last:0, _rk:null,
   view:'chart',                              // 'chart' = the shape of the day · 'table' = the readings behind it
@@ -3795,7 +3795,10 @@ async function rpFetchGraded(day){
     const j=await r.json(); if(!j||!Array.isArray(j.fires)) return null;
     return { target:j.target_sigma||RP_TARGET, stop:j.stop_sigma||RP_STOP,
       byTs:new Map(j.fires.map(fr=>[fr.ts,{ outcome:fr.outcome, ttr_min:fr.ttr_min,
-        mfe:fr.mfe_sigma, mae:fr.mae_sigma, move60:fr.move_60m }])) };
+        mfe:fr.mfe_sigma, mae:fr.mae_sigma, move60:fr.move_60m }])),
+      // Scene Ledger episodes ride the SAME on-demand grade (server resolves them under
+      // their own closure rules), so boxes appear for any day — including today-so-far.
+      episodes:(j.scene && Array.isArray(j.scene.episodes)) ? j.scene.episodes : [] };
   }catch(e){ return null; }
 }
 const RP_LOCK_MIN=60;   // the follow-through mark that decides "leaned right / wrong" (move_60m)
@@ -3845,24 +3848,11 @@ function rpAssembleFires(graded){
 }
 
 // ---- Scene Ledger · called-shot boxes (N20) ----
-// Each graded watchtower_scene episode from polarity_history.jsonl draws as a translucent
-// span: open→close (or session end while pending) on time, entry→target on price. Nightly
-// grades only — no client-side re-derivation; today/ungraded days simply have no boxes.
+// Each watchtower_scene episode draws as a translucent span: open→close (or session end
+// while pending) on time, entry→target on price. Episodes come from /api/replay's on-demand
+// grade (server-resolved under their own closure rules) — same authority as the fires, so
+// boxes render for any day including today-so-far; ungraded days simply have none.
 const RP_EP_GLYPH={target:'●', adverse:'✕', scene_change:'⌁', dir_flip:'⇄', session_close:'▏'};
-async function rpFetchScenes(){
-  if(!RP._scenesP) RP._scenesP=(async()=>{
-    const map=new Map();
-    try{
-      const res=await fetch('/api/raw/file?root=state&path=reversion/polarity_history.jsonl&limit=90',{cache:'no-store'});
-      const d=await res.json();
-      for(const r of ((d&&d.rows)||[]))
-        if(r && r.day && r.watchtower_scene && Array.isArray(r.watchtower_scene.episodes))
-          map.set(r.day, r.watchtower_scene.episodes);
-    }catch(e){}
-    return map;
-  })();
-  return RP._scenesP;
-}
 // One episode → plot-ready record, or null when it can't be placed honestly (bad timestamps,
 // no sigma at open, no called_sigma). Decoration, not evidence — a skipped box counts nothing.
 // Entry has no field of its own in the card: it is read off the price path at t_open.
@@ -4170,10 +4160,8 @@ async function rpLoadDay(di){
   const graded=await rpFetchGraded(D0.day);
   if(RP.days[RP.di]!==D0) return;
   RP.fires=rpAssembleFires(graded);
-  // Scene Ledger called-shot boxes (N20) — this day's graded episodes, if a card exists
-  const scenes=await rpFetchScenes();
-  if(RP.days[RP.di]!==D0) return;
-  RP.eps=rpAssembleEpisodes(scenes.get(D0.day));
+  // Scene Ledger called-shot boxes (N20) — this day's episodes ride the same on-demand grade
+  RP.eps=rpAssembleEpisodes(graded && graded.episodes);
   // ts → fire, built HERE and not inside rpBuild(): rpBuild measures the chart and bails
   // when it is hidden, so in table view the map would otherwise keep the PREVIOUS day's
   // keys and every row would fall back to "held".
