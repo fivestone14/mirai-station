@@ -216,12 +216,12 @@
   .gxbar{transition:opacity .12s linear}
   /* ---- GEX map: "how to read it" affordance (top-right of the plot) ---- */
   .gx-info{position:absolute; top:8px; right:8px; z-index:4;
-    width:26px; height:26px; display:grid; place-items:center;
+    width:24px; height:24px; display:grid; place-items:center;
     padding:0; margin:0; appearance:none; cursor:pointer;
     border-radius:50%; border:1px solid var(--hairline-2);
     background:color-mix(in srgb,var(--surface-2) 86%, transparent);
     -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
-    color:var(--ink-dim); font-family:var(--sans); font-size:14px; font-weight:700; line-height:1;
+    color:var(--ink-dim); font-family:var(--sans); font-size:13px; font-weight:700; line-height:1;
     -webkit-tap-highlight-color:transparent; touch-action:manipulation;
     transition:color .15s ease, border-color .15s ease, background .15s ease, transform .09s ease}
   .gx-info::before{content:""; position:absolute; inset:-9px; border-radius:50%}   /* 44px hit target */
@@ -428,9 +428,9 @@
   .siege-tag.dorm s{border-color:color-mix(in srgb,var(--l-tower) 30%, var(--hairline)); color:color-mix(in srgb,var(--l-tower) 72%, var(--ink-faint)); opacity:.85}
   /* ⓘ — architecture-map button, top-right of the scene (scene-top is pointer-events:none;
      the button re-enables itself) */
-  .siege-info{appearance:none; cursor:pointer; pointer-events:auto; width:22px; height:22px; border-radius:50%; flex:none;
+  .siege-info{appearance:none; cursor:pointer; pointer-events:auto; width:24px; height:24px; border-radius:50%; flex:none;
     border:1px solid var(--hairline-2); background:color-mix(in srgb,var(--surface) 80%, transparent); color:var(--ink-dim);
-    font-family:var(--mono); font-size:12px; line-height:1; display:grid; place-items:center; transition:color .15s, border-color .15s}
+    font-family:var(--sans); font-size:13px; font-weight:700; line-height:1; display:grid; place-items:center; padding:0; transition:color .15s, border-color .15s}
   .siege-info:hover{color:var(--ink); border-color:var(--iris)}
   .siege-info:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
   /* ---- architecture-map modal (#siegeModal namespace) — the flow FLIPPED: feeds at the
@@ -726,9 +726,9 @@
   /* sweep card extras — the ⓘ worked-example button, tappable column-header tips
      (title= is useless on a touch tablet, so a tap writes the plain-english line
      into a sticky strip under the header row), and the modal's math table */
-  .lg-info{appearance:none; cursor:pointer; width:24px; height:24px; border-radius:50%; flex:none;
+  .lg-info{appearance:none; cursor:pointer; width:24px; height:24px; border-radius:50%; flex:none; padding:0;
     border:1px solid color-mix(in srgb,var(--l-tower) 45%, var(--hairline)); background:color-mix(in srgb,var(--l-tower) 12%, var(--surface));
-    color:color-mix(in srgb,var(--l-tower) 85%, var(--ink)); font-family:var(--mono); font-size:13px; font-weight:600; line-height:1;
+    color:color-mix(in srgb,var(--l-tower) 85%, var(--ink)); font-family:var(--sans); font-size:13px; font-weight:700; line-height:1;
     display:grid; place-items:center; transition:.15s}
   .lg-info:hover,.lg-info:focus-visible{background:color-mix(in srgb,var(--l-tower) 24%, var(--surface)); outline:0}
   .lg-table thead th[data-tip]{cursor:help; text-decoration:underline dotted color-mix(in srgb,var(--ink-faint) 65%, transparent); text-underline-offset:3px}
@@ -3838,7 +3838,7 @@ function renderLayers(){
     </div>
     <div class="layers3d">
       <div class="scene-card">
-        <div class="scene-top"><span class="st">forward pass · feeds → processor</span><span style="display:flex;align-items:center;gap:10px"><span class="st" style="color:var(--iris)">decision ↑</span><button class="siege-info" id="siegeinfo" aria-label="How the stacks fit together" title="How the stacks fit together">ⓘ</button></span></div>
+        <div class="scene-top"><span class="st">forward pass · feeds → processor</span><span style="display:flex;align-items:center;gap:10px"><span class="st" style="color:var(--iris)">decision ↑</span><button class="siege-info" id="siegeinfo" aria-label="How the stacks fit together" title="How the stacks fit together">i</button></span></div>
         <div class="legend" aria-hidden="true">
           <div class="lg-row" style="--tc:var(--l-tower)"><i class="cat-ico proc"></i><b>processor</b>&nbsp;— makes the call</div>
           <div class="lg-row" style="--tc:var(--l-fade)"><i class="cat-ico lens"></i><b>lens</b>&nbsp;— takes a side</div>
@@ -4172,7 +4172,7 @@ function sweepCardHTML(c, day, legacy){
     <div class="lg-top">
       ${nameHTML}
       <div style="display:flex;align-items:center;gap:9px">${era?`<span class="pill grey">${era}</span>`:''}
-        <button type="button" class="lg-info" onclick="openSweepInfoModal()" aria-label="How a read is scored — worked example">ⓘ</button>
+        <button type="button" class="lg-info" onclick="openSweepInfoModal()" aria-label="How a read is scored — worked example">i</button>
         <span class="lg-dot" style="--ld:${dot}" title="${hit===true?'day HIT — the summed area is positive':hit===false?'day MISS — the summed area is negative':'no verdict yet'}"></span></div>
     </div>
     <div class="lg-hero" title="${SWEEP_EXPLAIN}">
