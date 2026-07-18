@@ -2862,7 +2862,7 @@ function gxMountInfoBtn(){
   const cc=document.querySelector('#p-map .gx-chart'); if(!cc||cc.querySelector('#gx-info-btn')) return;
   const b=document.createElement('button');
   b.id='gx-info-btn'; b.className='gx-info'; b.type='button';
-  b.setAttribute('aria-label','How to read the GEX map'); b.textContent='?';
+  b.setAttribute('aria-label','How to read the GEX map'); b.textContent='i';
   b.addEventListener('click', e=>{ openGexInfoModal(); });
   cc.appendChild(b);
 }
