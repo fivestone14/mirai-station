@@ -402,23 +402,26 @@
   .lg-flow{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:8.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim); border-top:1px solid var(--hairline); padding-top:6px; margin-top:1px}
   @media (max-width:560px){ .legend{display:none} }
 
-  /* ---- SIEGE stack — second deck on the −x side (STK.SPOTS.siege), shadow / record-only.
+  /* ---- SIEGE stack — second deck on the −x side (STK.SPOTS.siege). Shadow with one
+     reader since wt-7 (2026-07-18): the effort word rides the Watchtower payload
+     (siege_effort_at_walls); grading stays record-only.
      Everything here is namespaced .siege- so it can NEVER leak into the tab machinery
      (the 07-16 lesson: one global ID display-override broke tab visibility). The planes
      inside reuse the stock .plane vocabulary; only the wrapper + affordances are new. */
   .siege-deck{position:absolute; inset:0; transform-style:preserve-3d}
-  /* the dormant plane — present in the stack, deliberately unheard: dimmer, desaturated,
-     and it dims further with the rest when a selection is up */
+  /* dormant-plane vocabulary (dimmer, desaturated, dims further under a selection) —
+     no plane carries dorm:true since wt-7 woke the Tower Word; kept for future planes */
   .siege-deck .plane.siege-dorm{opacity:.66; filter:saturate(.55)}
   .deck.hassel .siege-deck .plane.siege-dorm{opacity:.4}
   .deck.hassel .siege-deck .plane.siege-dorm.sel{opacity:.92; filter:saturate(.8)}
   /* connection affordances — same y=0-plane dashed-rule technique as the tower sight-line.
-     Default hue = GexBox (it hands the siege its towers); .dorm = the tower's not-yet-
-     listening sight over the siege stack (dotted, faint, lantern like the tower). */
+     Default hue = GexBox (it hands the siege its towers); .dorm = the tower's LIVE sight
+     over the siege stack since wt-7 (lantern like the tower — kept the class name, the
+     wire is no longer dormant). */
   .siege-link{position:absolute; left:50%; top:50%; height:0; pointer-events:none;
     border-top:2px dashed color-mix(in srgb,var(--l-grav) 55%, transparent)}
-  .siege-link.dorm{border-top-style:dotted; border-top-color:color-mix(in srgb,var(--l-tower) 70%, transparent); opacity:0; transition:opacity .25s}
-  .tower3d.sel ~ .siege-link.dorm{opacity:.95}   /* the dormant sight lights only while the tower is expanded */
+  .siege-link.dorm{border-top-color:color-mix(in srgb,var(--l-tower) 70%, transparent); opacity:.55; transition:opacity .25s}
+  .tower3d.sel ~ .siege-link.dorm{opacity:.95}   /* the siege sight brightens while the tower is expanded */
   /* billboarded label pills on the links (same counter-rotation as .beam .node / .beacon) */
   .siege-tag{position:absolute; left:50%; top:50%; width:0; height:0; pointer-events:none}
   .siege-tag s{position:absolute; display:block; transform:translate(-50%,-50%); text-decoration:none; white-space:nowrap;
@@ -451,9 +454,9 @@
   #siegeModal .sa-up::before{content:""; position:absolute; top:-3px; left:-6px;
     border-left:5px solid transparent; border-right:5px solid transparent;
     border-bottom:7px solid color-mix(in srgb,var(--ink-faint) 75%,transparent)}
-  #siegeModal .sa-up.sa-dorm{border-left-style:dotted; opacity:.8}
+  #siegeModal .sa-up.sa-dorm{border-left-color:color-mix(in srgb,var(--l-tower) 60%,transparent)}
   #siegeModal .sa-up.sa-dorm::before{border-bottom-color:color-mix(in srgb,var(--l-tower) 65%,transparent)}
-  /* label hangs to the LEFT of the dotted riser (into the empty centre column) — to the
+  /* label hangs to the LEFT of the riser (into the empty centre column) — to the
      right it runs off the card edge at phone widths */
   #siegeModal .sa-up.sa-dorm s{position:absolute; right:9px; top:8px; text-decoration:none; white-space:nowrap;
     font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:color-mix(in srgb,var(--l-tower) 80%, var(--ink-faint))}
@@ -990,6 +993,18 @@
   .rp-vd.stand{color:var(--ink-faint); font-weight:500}
   /* the rail that says: this call was fired INTO the side the book was built to swallow */
   .rp-table td.against{box-shadow:inset 3px 0 0 var(--coral)}
+  /* the SIEGE column — the second deck's data, set apart from the main-stack lenses by
+     its own left rule + hue (wt-7). Reversed-sign pills: SIEGE = expect BREAK (deck
+     orange), QUIET = expect HOLD (jade calm). */
+  .rp-table th.rp-sgcol,.rp-table td.rp-sgcol{border-left:1px solid color-mix(in srgb,var(--l-seffort) 40%, var(--hairline))}
+  .rp-table thead th.rp-sgcol .nw{color:color-mix(in srgb,var(--l-seffort) 85%, var(--ink-faint))}
+  .rp-pill.sg-break{background:color-mix(in srgb,var(--l-seffort) 16%, transparent); color:var(--l-seffort)}
+  /* NOT jade-wash: that is also the win-row tint, and the pill would dissolve into
+     exactly the rows it most often sits on */
+  .rp-pill.sg-hold{background:color-mix(in srgb,var(--jade) 22%, transparent); color:var(--jade)}
+  /* resolved episodes: a ring says how the doctrine graded — hit (jade) or miss (coral) */
+  .rp-pill.sg-hit{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--jade) 60%, transparent)}
+  .rp-pill.sg-miss{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--coral) 60%, transparent)}
   .rp-tfoot{flex:0 0 auto; display:flex; gap:16px; flex-wrap:wrap; padding:9px 14px;
     border-top:1px solid var(--hairline); background:var(--surface-3);
     font-size:10.5px; color:var(--ink-faint)}
@@ -1023,7 +1038,8 @@
   .rp-consensus b{color:var(--ink); font-weight:600}
   .rp-consensus .up{color:var(--jade); font-weight:700} .rp-consensus .dn{color:var(--coral); font-weight:700}
   /* the layer cards — a horizontal grid (fills the wide space, frees the chart's height).
-     Fixed cell count (10) + 1-line thought = constant rows during a scrub = no reflow. */
+     Fixed cell count (11: 10 main-stack + the siege deck cell, wt-7) + 1-line thought
+     = constant rows during a scrub = no reflow. */
   .rp-stream{display:grid; grid-template-columns:repeat(auto-fill, minmax(168px,1fr)); gap:1px;
     background:var(--hairline); border:1px solid var(--hairline); border-radius:12px; overflow:hidden}
   .rp-cell{background:var(--surface-2); padding:5px 11px 6px; display:flex; flex-direction:column; gap:1px; min-width:0}
@@ -1033,6 +1049,19 @@
   .rp-lmark{width:11px; height:11px; flex:none}
   .rp-lmark.sensory{border-radius:2px; background:var(--l-base)}
   .rp-lmark.lens{border-radius:50%; background:var(--l-fade)}
+  /* the SIEGE deck's mark — a diamond in its own hue, so the second stack never
+     reads as another main-stack lens (wt-7) */
+  .rp-lmark.siege{border-radius:2px; background:var(--l-seffort); transform:rotate(45deg) scale(.82)}
+  .rp-pop-mk.siege{transform:rotate(45deg) scale(.82)}   /* same diamond inside the fire popover */
+  .rp-cell.siege{background:color-mix(in srgb,var(--l-seffort) 7%, var(--surface-2));
+    box-shadow:inset 2.5px 0 0 color-mix(in srgb,var(--l-seffort) 55%, transparent)}
+  .rp-cell.siege.agree{box-shadow:inset 2.5px 0 0 color-mix(in srgb,var(--l-seffort) 55%, transparent),
+    inset 0 2.5px 0 color-mix(in srgb,var(--iris) 70%, transparent)}
+  /* short on purpose ("2nd deck") — at the 168px grid floor a longer tag ellipses the
+     name it sits beside */
+  .rp-stag{flex:none; font:600 8px/1.4 var(--mono); letter-spacing:.06em; text-transform:uppercase;
+    color:color-mix(in srgb,var(--l-seffort) 85%, var(--ink-faint)); padding:1px 4px; border-radius:999px;
+    border:1px solid color-mix(in srgb,var(--l-seffort) 35%, var(--hairline))}
   .rp-lname{font-family:var(--sans); font-size:11.5px; font-weight:600; color:var(--ink-dim); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .rp-cell.agree .rp-lname{color:var(--ink)}
   .rp-larr{font-family:var(--mono); font-size:12px; font-weight:800; color:var(--ink); flex:none}
@@ -1357,6 +1386,13 @@ function rowToScan(r){
       kind:r.gamma_roll.zero_dte_wall_kind??null }:null,   // N12: defended pin vs accelerant fuel
     evl: r.event_lens?{ kind:r.event_lens.event_kind??null, phase:r.event_lens.phase??null,
       ratio:r.event_lens.surprise_ratio??null }:null,
+    /* 2026-07-18 SIEGE stack (wt-7) — the SECOND deck's diary field, kept apart from the
+       main-stack lenses on every replay surface. Rows before 07-18 carry no key → null
+       → the siege cell/column says so instead of faking a quiet read. */
+    sg: r.siege?{ health:r.siege.health??null, sat:!!r.siege.saturated, base:r.siege.baseline??null,
+      towers:(Array.isArray(r.siege.towers)?r.siege.towers:[]).map(t=>({ kind:t.kind, level:t.level, status:t.status,
+        pct:t.effort_pct??null, verdict:t.verdict??null, outcome:t.outcome??null,
+        near:!!t.near_spot })) }:null,
     wt: normWt(r.watchtower) };
 }
 async function fetchRecent(){
@@ -1381,7 +1417,9 @@ async function loadDiaryHistory(){
     files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
     const chunks=await Promise.all(files.slice(0,45).map(async fm=>{
       try{ const res=await fetch(`/api/raw/file?root=state&path=${fm.rel}&limit=500`,{cache:'no-store'});
-        const d=await res.json(); return (d&&d.rows)?d.rows.map(rowToScan):[]; }catch(e){ return []; }
+        const d=await res.json();
+        // per-row guard (same as fetchRecent): one malformed row must drop itself, not the day
+        return (d&&d.rows)?d.rows.map(r=>{ try{ return rowToScan(r); }catch(e){ return null; } }).filter(Boolean):[]; }catch(e){ return []; }
     }));
     const all=[].concat(...chunks);
     if(all.length){ DIARY_ROWS=all; if(dpage===0) renderDiary(false); if(RP.els) rpSyncDays(false);
@@ -3243,16 +3281,17 @@ const LY = [
     rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null, note:'cocked 07-07 · 08 · 13 · 16 — 0 fires ever',
       blockers:['0 fires ever','0 / 12 decided days'],
       summary:'Has reached the "cocked" state on four days (07-07, 07-08, 07-13, 07-16) and never fired. Since 07-12 the fence ledger hands it real wall-breach events, and an open pin→trend road tilts the regime toward trending — opening the FIRE gate it has never yet passed (cocking only needs storm-side gamma and a rejected fade at a level).'}},
-  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-6', hue:'--l-tower', tier:'processor',
+  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-7', hue:'--l-tower', tier:'processor',
     role:'≈ a reasoning / critic head', status:['lantern','shadow'],
     plain:'The reasoning brain. It reads the whole stack — blind to the lenses\' verdicts at first — forms its own call on direction, size, and stance (fight day or settle day), then compares notes with the lenses.',
     example:'The layers below each lean a direction; the Watchtower weighs them all and says, e.g., "up, about half a normal day\'s move, and this is a settle day, not a fight."',
-    rd:{kind:'days', decided:1, need:12, sw:'shadow · cap 35/day', rate:0.0, wl:null, note:'wt-6 era · stance ledger: 29 graded · 62%',
-      blockers:['1 / 12 decided days (wt-6 era)'],
-      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired now reach it. Every era restarts the ledger: 1 of 12 decided days so far.'}},
+    rd:{kind:'days', decided:0, need:12, sw:'shadow · cap 35/day', rate:0.0, wl:null, note:'wt-7 era · ledger reset 07-18',
+      blockers:['0 / 12 decided days (wt-7 era)'],
+      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired. wt-7 (07-18) un-blinded the Siege stack: effort-at-wall verdicts reach the payload as siege_effort_at_walls, REVERSED SIGN spelled out. Every era restarts the ledger: 0 of 12 decided days so far.'}},
   // ---- SIEGE stack (stack:'siege') — underlying-volume effort at the GexBox walls.
-  // Shadow, record-only: rendered on the second deck at STK.SPOTS.siege; its word stays
-  // on disk (state/siege/) and does NOT enter the Watchtower payload until a wt-7 era.
+  // Shadow with one reader since wt-7 (2026-07-18): rendered on the second deck at
+  // STK.SPOTS.siege; the effort word now enters the Watchtower payload
+  // (siege_effort_at_walls) while grading stays record-only on disk (state/siege/).
   // Readiness is derived live from state/siege/latest.json + cards (loadSiege); an
   // absent store renders as cold, never as an error.
   {id:'sfeed', num:'S0', name:'SPY Tape Feed', code:'siege L0 · spy tape (underlying volume)', hue:'--l-sfeed', base:true, tier:'feed', stack:'siege',
@@ -3295,7 +3334,7 @@ const LY = [
     plain:'The core read, with the sign flipped on purpose: it measures how much volume shows up while price presses a wall. Heavy effort means the crowd is genuinely fighting the level — SIEGE, expect a BREAK. No effort means nobody cares to fight — QUIET, expect the wall to HOLD.',
     schema:{src:'state/siege/latest.json · towers[] · effort', code:[
       '{',
-      '  effort_pct: 0.87,         // SPY volume at the wall vs baseline',
+      '  effort_pct: 87.0,         // SPY volume at the wall vs baseline (0-100 percentile)',
       '  verdict: "SIEGE",         // SIEGE · QUIET · NEUTRAL',
       '  // REVERSED SIGN, on purpose:',
       '  // SIEGE = volume showed up → expect BREAK',
@@ -3312,7 +3351,7 @@ const LY = [
       '  kind: "call_wall", level: 7600,',
       '  verdict: "SIEGE",         // what the effort meter said',
       '  outcome: "BREAK",         // BREAK · HOLD · UNRESOLVED',
-      '  effort_pct: 0.87,',
+      '  effort_pct: 87.0,         // 0-100 percentile, never a ratio',
       '  baseline: {',
       '    days_accrued: 0,        // clean sessions in the volume baseline',
       '    label: "cold"           // cold · warming · robust',
@@ -3320,21 +3359,23 @@ const LY = [
       '}']},
     rd:{kind:'siege',
       summary:'Record-only: the tallies accrue evidence, they gate nothing. The baseline label must reach robust before the verdicts mean anything.'}},
-  {id:'sword', num:'S4', name:'Tower Word', code:'siege L4 · tower word (dormant)', hue:'--l-sword', tier:'processor', stack:'siege', dorm:true,
-    role:'≈ the (future) payload writer — dormant until a wt-7 era', status:['grey','dormant · record-only'],
-    plain:'The mouth of the stack, taped shut on purpose. It composes the one word the Watchtower would want — BREAK or HOLD per engaged wall, with the effort number beside it — and writes it to disk only. Nothing reads it: the word does not enter the Watchtower payload until a wt-7 era begins.',
-    schema:{src:'state/siege/latest.json · verdict (future wt payload)', code:[
+  {id:'sword', num:'S4', name:'Tower Word', code:'siege L4 · tower word (wt-7)', hue:'--l-sword', tier:'processor', stack:'siege',
+    role:'≈ the payload writer — the siege word in the wt payload since wt-7', status:['iris','shadow · in wt payload'],
+    plain:'The mouth of the stack, open since wt-7 (07-18). It composes the one word the Watchtower wants — BREAK or HOLD per engaged wall, with the effort number beside it — and the Watchtower now reads it every scan as siege_effort_at_walls, reversed sign spelled out in the wording. Grading stays record-only: the word is evidence in the room, it gates nothing.',
+    schema:{src:'state/siege/latest.json · verdict → wt payload · siege_effort_at_walls', code:[
       '{',
-      '  // what it WILL write, once wt-7 opens the door:',
-      '  siege: {',
-      '    tower: "call_wall @ 7600",',
-      '    word: "SIEGE",          // SIEGE → lean BREAK · QUIET → lean HOLD',
-      '    effort_pct: 0.87',
+      '  siege_effort_at_walls: {  // in the Watchtower payload since wt-7',
+      '    towers: [{',
+      '      wall: "call_wall",',
+      '      level_sigma_from_spot: 0.93,',
+      '      read: "SIEGE — … expect this wall to BREAK"',
+      '    }],',
+      '    baseline_maturity: "cold — …"  // caveat until 21 days accrue',
       '  }',
-      '  // today: written to state/siege/ only — the tower never sees it',
+      '  // absent on a degraded feed, a saturated session, or no verdict',
       '}']},
     rd:{kind:'siege',
-      summary:'It will write one word per engaged wall — SIEGE (lean BREAK) or QUIET (lean HOLD), effort number beside it — into the Watchtower payload only when a wt-7 era begins; until then it writes to disk and no one listens.'}},
+      summary:'One word per engaged wall — SIEGE (lean BREAK) or QUIET (lean HOLD), effort number beside it — now rides the Watchtower payload (wt-7, 07-18). Payload hygiene holds: absent on degraded feed / saturation / no verdict, and the grading ledger stays record-only.'}},
 ];
 let selLayer = 'lob';
 
@@ -3448,7 +3489,7 @@ function siegeReadiness(L){
   // pattern as hlLine/annotatedJSON; numbers go through f()/Math.round and are safe)
   const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const doctrine=`<div class="blockers"><span class="blk">SIEGE = volume showed up → expect BREAK</span><span class="blk ok">QUIET = nobody fought → expect HOLD</span></div>`;
-  const dormBlk=`<span class="blk">⛔ dormant — not in the watchtower payload (wt-7)</span>`;
+  const wiredBlk=`<span class="blk ok">✓ wired — siege_effort_at_walls in the watchtower payload (wt-7)</span>`;
   if(!lt){
     const why = SIEGE ? 'state/siege/ absent — the collector has not written yet' : 'reading state/siege/ …';
     return `<div class="rd">
@@ -3456,13 +3497,15 @@ function siegeReadiness(L){
       <div class="track" style="opacity:.45"><i style="width:100%;background:repeating-linear-gradient(90deg,var(--c) 0 5px,transparent 5px 11px)"></i></div>
       <div class="rd-fr">${why}</div>
       ${L.id==='seffort'?doctrine:''}
-      <div class="blockers"><span class="blk">⛔ not yet run — no session recorded</span>${L.id==='sword'?dormBlk:''}</div>
+      <div class="blockers"><span class="blk">⛔ not yet run — no session recorded</span>${L.id==='sword'?wiredBlk:''}</div>
       <div class="rd-sum">${L.rd.summary}</div></div>`;
   }
   const ago=(()=>{ try{ const m=Math.round((Date.now()-new Date(lt.as_of).getTime())/60000);
     return m<1?'just now':(m<120? m+'m ago' : Math.round(m/60)+'h ago'); }catch(e){ return '—'; } })();
   const fresh=`as_of ${esc(String(lt.as_of||'—').replace('T',' ').slice(0,16))} · ${ago} · session ${esc(lt.session||'—')}`;
-  const hp=v=>v<=1.5?Math.round(v*100):Math.round(v);                     // effort_pct: ratio or percent, shown as %
+  // effort_pct is ALWAYS a 0-100 percentile (siege effort.py: 100·share) — never rescale:
+  // a ratio heuristic would show a 0.8th-pct dead-quiet touch as "80%"
+  const hp=v=>Math.round(v);
   const vHue=v=>v==='SIEGE'?'var(--coral)':(v==='QUIET'?'var(--jade)':'var(--ink-dim)');
   const tw=lt.towers||[], hOK=lt.health&&lt.health.feed==='OK';
   if(L.id==='sfeed'){
@@ -3523,17 +3566,17 @@ function siegeReadiness(L){
       <div class="blockers"><span class="blk">record-only · gates nothing</span></div>
       <div class="rd-sum">${L.rd.summary}</div></div>`;
   }
-  // sword — the dormant mouth
+  // sword — the mouth, open since wt-7 (2026-07-18)
   const words=tw.filter(t=>t.verdict&&t.verdict!=='NEUTRAL');
   return `<div class="rd">
-    <div class="rd-h"><span class="lab">Watchtower wiring</span><span class="pct">dormant</span></div>
-    <div class="track" style="opacity:.45"><i style="width:100%;background:repeating-linear-gradient(90deg,var(--c) 0 5px,transparent 5px 11px)"></i></div>
+    <div class="rd-h"><span class="lab">Watchtower wiring</span><span class="pct" style="color:var(--jade)">wired</span></div>
+    <div class="track"><i style="width:${words.length?100:35}%"></i></div>
     <div class="rd-fr">${fresh}</div>
     <div class="rd-grid">
       <div class="rd-stat"><div class="k">Words composed today</div><div class="v">${words.length}</div></div>
-      <div class="rd-stat"><div class="k">Who hears them</div><div class="v" style="font-size:11px">disk only · no reader</div></div>
+      <div class="rd-stat"><div class="k">Who hears them</div><div class="v" style="font-size:11px">watchtower payload · wt-7</div></div>
     </div>
-    <div class="blockers">${dormBlk}<span class="blk">⛔ waits for a wt-7 era (PROMPT_VERSION reset)</span></div>
+    <div class="blockers">${wiredBlk}<span class="blk">record-only grading · gates nothing</span></div>
     <div class="rd-sum">${L.rd.summary}</div></div>`;
 }
 
@@ -3812,14 +3855,14 @@ function renderLayers(){
   const siege=`<div class="siege-deck" style="transform:translateX(${SX}px)">${glassFor(sg.boxTop,'siege-gb')}${sPlanes}${sFlow}${sDots}</div>`;
   // connection affordances (same y=0-plane rule technique as the tower sight-line):
   // GexBox hands the siege its towers to watch; the tower holds a dormant, dotted
-  // sight over the siege top — seen, recorded, not yet heard.
+  // sight over the siege top — seen, recorded, and since wt-7 HEARD every scan.
   const lk=(x0,z0,x1,z1,cls)=>{
     const ln=Math.hypot(x1-x0,z1-z0), th=Math.atan2(-(z1-z0),x1-x0)*180/Math.PI;
     return `<i class="siege-link ${cls}" aria-hidden="true" style="width:${ln.toFixed(1)}px;margin:-1px 0 0 ${((x0+x1)/2-ln/2).toFixed(1)}px;transform:translateZ(${((z0+z1)/2).toFixed(1)}px) rotateX(-90deg) rotate(${th.toFixed(2)}deg)"></i>`;
   };
   const lkTag=(x,zz,txt,cls)=>`<i class="siege-tag ${cls}" aria-hidden="true" style="transform:translate3d(${x}px,0px,${zz}px) rotateZ(45deg) rotateX(-55deg)"><s>${txt}</s></i>`;
   const zGrav=geo.z.get('grav'), zTouch=geo.z.get('stouch');
-  // the dormant sight BENDS: a straight head → siege-top run would pass through the
+  // the siege sight BENDS: a straight head → siege-top run would pass through the
   // main stack's upper slabs (x ±144, z up to zTop) and preserve-3d shreds it into
   // fragments, worst on Safari/tablet. Segment 1 climbs from the head to a waypoint
   // just past the west glass wall, riding above the slab tops the whole way (≥32px
@@ -3827,12 +3870,14 @@ function renderLayers(){
   // the siege top through the clear air between the decks. The label pill sits on
   // segment 2 (lerped), so it stays attached to the line wherever the stacks land.
   const wpX=-(STK.BOXHW+14), wpZ=geo.zTop+62;
-  // no standing label on the dorm sight — the dotted line stays hidden and lights up
-  // only while the tower is expanded (CSS: .tower3d.sel ~ .siege-link.dorm).
+  // the siege sight is LIVE since wt-7: always faintly visible, brightens while the
+  // tower is expanded (CSS: .tower3d.sel ~ .siege-link.dorm), and carries a standing
+  // label on segment 2 like the gexbox handover does.
   const links = lk(-STK.W/2, zGrav, SX+STK.W/2, zTouch, '')
     + lkTag((SX)/2, (zGrav+zTouch)/2+24, 'gexbox → towers to watch', '')
     + lk(tx-hbw, hzc, wpX, wpZ, 'dorm')
-    + lk(wpX, wpZ, SX, sg.zTop+28, 'dorm');
+    + lk(wpX, wpZ, SX, sg.zTop+28, 'dorm')
+    + lkTag((wpX+SX)/2, (wpZ+sg.zTop+28)/2, 'siege word → watchtower · wt-7', 'dorm');
   const nShadow = LY.filter(l=>/shadow/.test(l.status[1])).length;
   $("#p-layers").innerHTML = `
     <div class="phead">
@@ -3847,7 +3892,6 @@ function renderLayers(){
           <div class="lg-row" style="--tc:var(--l-fade)"><i class="cat-ico lens"></i><b>lens</b>&nbsp;— takes a side</div>
           <div class="lg-row" style="--tc:var(--l-base)"><i class="cat-ico sensory"></i><b>sensory</b>&nbsp;— measures</div>
           <div class="lg-row" style="--tc:var(--l-base)"><i class="cat-ico feed"></i><b>data feed</b>&nbsp;— raw input</div>
-          <div class="lg-row" style="--tc:var(--l-tower)"><i class="cat-ico proc" style="opacity:.4"></i><b>dormant</b>&nbsp;— records only · not yet heard</div>
           <div class="lg-flow">flow ↑ feeds to decision · tap any block</div>
         </div>
         <div class="stack-scene" id="stacks">
@@ -3891,7 +3935,7 @@ function openSiegeArch(){
         <div id="siegeModal">
           <div class="sa-box sa-tower" style="grid-column:1/4"><b>WATCHTOWER</b><i>reads both, calls direction</i></div>
           <div class="sa-up" style="grid-column:1" aria-hidden="true"></div>
-          <div class="sa-up sa-dorm" style="grid-column:3" aria-hidden="true"><s>dormant · record-only</s></div>
+          <div class="sa-up sa-dorm" style="grid-column:3" aria-hidden="true"><s>siege word · wt-7</s></div>
           <div class="sa-box sa-gex" style="grid-column:1"><b>GEXBOX</b><i>gravity — where price is pulled, where the walls stand</i></div>
           <div class="sa-edge" style="grid-column:2" aria-hidden="true"><s>towers to watch</s><em>⟶</em></div>
           <div class="sa-box sa-siege" style="grid-column:3"><b>SIEGE</b><i>the fight — wall under siege → break · quiet wall → hold</i></div>
@@ -3899,7 +3943,7 @@ function openSiegeArch(){
           <div class="sa-up" style="grid-column:3" aria-hidden="true"></div>
           <div class="sa-box sa-feed" style="grid-column:1"><b>SPX OPTIONS CHAIN</b><i>strikes · gamma · open interest</i></div>
           <div class="sa-box sa-feed" style="grid-column:3"><b>SPY TAPE</b><i>underlying volume · 1-min bars</i></div>
-          <div class="sa-note">data flows upward · SIEGE is shadow — its word stays on disk until a wt-7 era</div>
+          <div class="sa-note">data flows upward · SIEGE word rides the watchtower payload since wt-7 · grading stays record-only</div>
         </div>
       </div>
     </div>`;
@@ -4630,6 +4674,10 @@ const RP_ARR={up:'▲',down:'▼',flat:'–',none:'·'};
 // Every layer's read at the current slice → the residual-stream snapshot the console draws (top→bottom,
 // lenses then sensory). Directional layers get an up/down/flat arrow + an agree badge vs the Watchtower;
 // context layers (Base, Range Ruler, Event Lens) carry a plain reading with no arrow. Null data = "not recorded".
+// effort_pct is ALWAYS a 0-100 percentile (siege effort.py: 100·share, verdict cuts 70/30) —
+// never rescale it: a "ratio heuristic" would turn a 0.8th-pct dead-quiet touch into "80%",
+// a QUIET read wearing a SIEGE-grade number at exactly the tail the deck was built to trust
+const rpSgPct=v=>v==null?null:Math.round(v);
 function rpStream(s){
   const hb=(s.wt&&s.wt.fired&&s.wt.dir)?(s.wt.dir==='call'?'up':'down'):null;
   const dv=(x,p,n)=> x==null?'none': x>p?'up': x<n?'down':'flat';
@@ -4647,6 +4695,29 @@ function rpStream(s){
   const fd=s.fade&&s.fade.dir;
   push('Fade Lens','lens', fd==='call'?'up':fd==='put'?'down':'flat',
     (s.fade&&(s.fade.armed||s.fade.fired))?`fade ${fd==='call'?'up':'down'}${s.fade.fired?' · fired':''}`:'no fade armed', !!s.fade);
+  // — SIEGE deck (wt-7) — the second stack's word, kept visually apart (tier 'siege').
+  // REVERSED SIGN: a wall under SIEGE breaks, so the direction is THROUGH that wall;
+  // QUIET = hold = containment, no direction; NEUTRAL is a JUDGED touch with no
+  // expectation and must render as such (absence ≠ zero). Pre-wt-7 rows carry no field.
+  const sgAll=(s.sg&&s.sg.health==='OK'&&!s.sg.sat)
+    ?(s.sg.towers||[]).filter(t=>t.verdict==='SIEGE'||t.verdict==='QUIET'||t.verdict==='NEUTRAL'):[];
+  const sgSieged=sgAll.filter(t=>t.verdict==='SIEGE');
+  // BOTH walls under siege = a range blowout, not a side — the arrow must not pick one
+  const sgBothWalls=sgSieged.some(t=>t.kind==='call_wall')&&sgSieged.some(t=>t.kind==='put_wall');
+  const sgLead=sgSieged[0]||sgAll.find(t=>t.verdict==='QUIET')||null;
+  const sgDir=sgBothWalls?'flat'
+    :sgLead&&sgLead.verdict==='SIEGE'?(sgLead.kind==='call_wall'?'up':sgLead.kind==='put_wall'?'down':'flat')
+    :(sgLead?'flat':(sgAll.length?'flat':'none'));
+  const sgWord=t=>`${(t.kind||'').replace('_',' ')} ${t.verdict==='SIEGE'?'under SIEGE → break'
+      :t.verdict==='QUIET'?'QUIET → hold':'NEUTRAL — no expectation'}`
+    +`${t.pct!=null?` · ${rpSgPct(t.pct)}%`:''}`
+    +`${t.outcome&&t.outcome!=='UNRESOLVED'?` · ${t.outcome==='BREAK'?'broke':'held'}`:''}`;
+  push('Siege','siege', sgDir,
+    !s.sg?'not recorded this day (pre-wt-7)'
+    :s.sg.health!=='OK'?`SPY tape ${s.sg.health==='FEED-LOST'?'lost':'degraded'} — stood down`
+    :s.sg.sat?'session saturated — verdicts say nothing'
+    :sgAll.length?(sgBothWalls?'BOTH walls under siege — no single side · ':'')+sgAll.map(sgWord).join(' · ')
+    :'towers watched · no touch verdict', !!s.sg);
   // — sensory (top → base) —
   const ev=s.evl;
   push('Event Lens','sensory','none',
@@ -4707,14 +4778,21 @@ function rpReadout(now,t){
   const stream=rpStream(s);
   RP.els.stream.innerHTML=stream.map(r=>{
     const badge=r.agree===true?`<span class="rp-lbadge y">✓</span>`:r.agree===false?`<span class="rp-lbadge n">·</span>`:`<span class="rp-lbadge"></span>`;
-    return `<div class="rp-cell${r.agree===true?' agree':''}${!r.has?' nodata':''}">`+
-      `<div class="rp-cell-top"><i class="rp-lmark ${r.tier}"></i><span class="rp-lname">${r.name}</span>`+
+    // the siege cell wears its own deck's livery — second stack, not another main-stack lens
+    const stag=r.tier==='siege'?`<span class="rp-stag" title="the siege deck — second stack, wt-7">2nd deck</span>`:'';
+    return `<div class="rp-cell${r.agree===true?' agree':''}${!r.has?' nodata':''}${r.tier==='siege'?' siege':''}">`+
+      `<div class="rp-cell-top"><i class="rp-lmark ${r.tier}"></i><span class="rp-lname">${r.name}</span>${stag}`+
       `<span class="rp-larr ${r.dir}">${RP_ARR[r.dir]}</span>${badge}</div>`+
       `<div class="rp-lthought">${r.thought}</div></div>`;
   }).join('');
-  const dirs=stream.filter(r=>r.has&&(r.dir==='up'||r.dir==='down'));
+  // the tally counts the MAIN stack only — the siege deck is a second stack and must not
+  // read as one more main-stack vote; when it holds a direction it is annotated beside
+  const dirs=stream.filter(r=>r.tier!=='siege'&&r.has&&(r.dir==='up'||r.dir==='down'));
   const up=dirs.filter(r=>r.dir==='up').length, down=dirs.filter(r=>r.dir==='down').length;
-  const tally=`<span class="up">${up}▲</span> / <span class="dn">${down}▼</span>`;
+  const sgRow=stream.find(r=>r.tier==='siege');
+  const deckNote=(sgRow&&sgRow.has&&(sgRow.dir==='up'||sgRow.dir==='down'))
+    ?` <span class="${sgRow.dir==='up'?'up':'dn'}">+ siege deck ${sgRow.dir==='up'?'▲':'▼'}</span>`:'';
+  const tally=`<span class="up">${up}▲</span> / <span class="dn">${down}▼</span>${deckNote}`;
   if(hbDir){
     const withMaj=hbDir==='up'?up>=down:down>=up;
     RP.els.consensus.innerHTML=`Stack leans ${tally} — the Watchtower went <b>${hbDir==='up'?'UP':'DOWN'}</b>, `+
@@ -4729,9 +4807,10 @@ function rpReadout(now,t){
 // Base map (raw spot/σ/regime), Event Lens and Range Ruler (they carry no directional read).
 const RP_LAYER_META={   // decision layer → its own hue (matches the layer legend elsewhere)
   'Gravity':'--l-grav', 'Motion':'--l-motion', 'Flow':'--l-flow', 'Speedometer':'--l-speed',
-  'Gamma Roll':'--l-roll', 'Fade Lens':'--l-fade', 'Break Lens':'--l-break' };
+  'Gamma Roll':'--l-roll', 'Fade Lens':'--l-fade', 'Break Lens':'--l-break',
+  'Siege':'--l-seffort' };   // wt-7: the second deck's word rides the same popover
 // priority for the "why" sentence — gravity is the anchor read, the lenses are last resort
-const RP_WHY_ORDER=['Gravity','Flow','Motion','Speedometer','Gamma Roll','Fade Lens','Break Lens'];
+const RP_WHY_ORDER=['Gravity','Flow','Motion','Speedometer','Gamma Roll','Siege','Fade Lens','Break Lens'];
 // one AGREEING layer → a human clause (no leading capital); dir is the tower's word (up/down)
 function rpWhyPhrase(name,s,dir){
   switch(name){
@@ -4742,6 +4821,7 @@ function rpWhyPhrase(name,s,dir){
     case 'Gamma Roll': return `the pin may roll ${dir}`;
     case 'Fade Lens': return `it looks ready to turn ${dir}`;
     case 'Break Lens': return `price is breaking ${dir}`;
+    case 'Siege': return `the ${dir==='up'?'ceiling':'floor'} is under siege — walls under siege break`;
     default: return '';
   }
 }
@@ -4804,7 +4884,7 @@ function rpPopOpen(i){
     const ag=r.agree===true?`<span class="rp-pop-ag y">✓</span>`
       :r.agree===false?`<span class="rp-pop-ag n">✕</span>`:`<span class="rp-pop-ag o">·</span>`;
     return `<div class="rp-pop-row ${cls}${!r.has?' nodata':''}">`
-      +`<i class="rp-pop-mk" style="background:var(${RP_LAYER_META[r.name]})"></i>`
+      +`<i class="rp-pop-mk${r.name==='Siege'?' siege':''}" style="background:var(${RP_LAYER_META[r.name]})"></i>`
       +`<span class="rp-pop-name">${r.name}</span>`
       +`<span class="rp-pop-arr ${r.dir}">${RP_ARR[r.dir]}</span>`
       +`<span class="rp-pop-th">${r.thought}</span>${ag}</div>`;
@@ -4895,7 +4975,12 @@ async function rpLoadDay(di){
    the Break Lens build and never reached the Watchtower prompt until wt-6/m8 (2026-07-13),
    the day all five of its CALLs fired into the absorbing side of the book and all five lost.
    The tag stays until the wt-6 record is long enough to retire it — it is the whole reason
-   this table exists: a reading nobody can see is a reading nobody uses. */
+   this table exists: a reading nobody can see is a reading nobody uses.
+
+   The SIEGE column (wt-7, 2026-07-18) is the SECOND deck's word — underlying SPY effort
+   at wall touches, reversed sign (SIEGE → break, QUIET → hold). It is set apart with the
+   siege deck's own rule + hue so main-stack lenses and siege data never read as one
+   stack; pre-wt-7 rows carry no field and say so instead of faking a quiet read. */
 const rpArrow = d => d==='up'   ? '<span class="rp-arw rp-up">▲</span>'
                    : d==='down' ? '<span class="rp-arw rp-dn">▼</span>'
                    : d==='flat' ? '<span class="rp-arw rp-fl">–</span>'
@@ -4925,6 +5010,7 @@ function rpRenderTable(){
     <th>Shove<span class="nw">the book's slope</span></th>
     <th>Speed<span class="nw">who owns the motion</span></th>
     <th>Soft side</th><th>Break lens</th><th>Fade lens</th>
+    <th class="rp-sgcol">Siege<span class="nw">siege deck · wt-7</span></th>
     <th>Gap</th><th>VWAP</th><th>Flow</th><th>Verdict</th><th>60-min lean<span class="nw">follow-through, not the ledger verdict</span></th>
   </tr></thead>`;
   const body=rows.map(s=>{
@@ -4966,6 +5052,32 @@ function rpRenderTable(){
         `<span class="rp-sm"> ${s.fade.runwayOk?'runway ok':'no runway'}</span>`
       : '<span class="rp-pill mute">idle</span>';
 
+    // SIEGE deck (wt-7): reversed sign — SIEGE pill = expect that wall to BREAK,
+    // QUIET pill = expect it to HOLD, NEUTRAL = judged touch, no expectation (it must
+    // not dissolve into "watching" — absence ≠ zero). A resolved episode carries its
+    // outcome (→ broke / → held) with a hit/miss ring vs its own doctrine.
+    const sgAb={call_wall:'CW',put_wall:'PW',magnet:'MAG'};
+    const sgOK=s.sg&&s.sg.health==='OK'&&!s.sg.sat;
+    const sgv=sgOK?(s.sg.towers||[]).filter(t=>t.verdict==='SIEGE'||t.verdict==='QUIET'||t.verdict==='NEUTRAL'):[];
+    const sgBase=(sgOK&&s.sg.base&&s.sg.base!=='robust')
+      ? `<span class="rp-sm" title="effort baseline still ${s.sg.base} — percentiles low-confidence until 21 prior days accrue"> ${s.sg.base}</span>`:'';
+    const sgPill=t=>{
+      const res=t.outcome&&t.outcome!=='UNRESOLVED';
+      const hit=res&&((t.verdict==='SIEGE'&&t.outcome==='BREAK')||(t.verdict==='QUIET'&&t.outcome==='HOLD'));
+      const cls=t.verdict==='SIEGE'?'sg-break':t.verdict==='QUIET'?'sg-hold':'mute';
+      const tip=(t.verdict==='SIEGE'?'wall under siege — expect BREAK (reversed sign)'
+          :t.verdict==='QUIET'?'quiet touch — expect HOLD':'mid-effort touch — no expectation')
+        +` · ${(t.kind||'').replace('_',' ')}${t.level!=null&&isFinite(t.level)?' '+Math.round(t.level):''}${t.status?' · '+t.status:''}`;
+      return `<span class="rp-pill ${cls}${res?(hit?' sg-hit':' sg-miss'):''}" title="${tip}">`
+        +`${t.verdict} ${sgAb[t.kind]||''}${rpSgPct(t.pct)!=null?' '+rpSgPct(t.pct)+'%':''}`
+        +`${res?(t.outcome==='BREAK'?' → broke':' → held'):''}</span>`;
+    };
+    const siege = !s.sg ? '<span class="rp-sm" title="row predates wt-7 — siege not recorded">pre-wt-7</span>'
+      : s.sg.health!=='OK' ? `<span class="rp-pill mute" title="SPY tape ${s.sg.health==='FEED-LOST'?'lost':'degraded'} — the deck stood down, no fabricated reads">${s.sg.health==='FEED-LOST'?'feed lost':'degraded'}</span>`
+      : s.sg.sat ? '<span class="rp-pill mute" title="touch windows covered most of the session — new verdicts say nothing">saturated</span>'
+      : sgv.length ? sgv.map(sgPill).join(' ')+sgBase
+      : '<span class="rp-pill mute" title="towers watched — no touch carried a verdict at this scan">watching</span>';
+
     const flow=(s.flow==null||Math.abs(s.flow)<0.05)
       ? `${rpArrow('flat')} <span class="rp-sm">flat</span>`
       : `${rpArrow(s.flow>0?'up':'down')} <span class="rp-sm">${rpSig(s.flow)}</span>`;
@@ -4999,6 +5111,7 @@ function rpRenderTable(){
       <td>${gam}</td>
       <td>${rpArrow(md)} <span class="rp-sm">${s.magnet!=null?Math.round(s.magnet):''}</span></td>
       <td>${shove}</td><td>${speed}</td><td>${soft}</td><td>${brk}</td><td>${fade}</td>
+      <td class="rp-sgcol">${siege}</td>
       <td class="num ${gapC}">${rpSig(s.fade&&s.fade.gap)}</td>
       <td class="num ${vwpC}">${rpSig(s.fade&&s.fade.vwap)}</td>
       <td>${flow}</td>
@@ -5081,6 +5194,7 @@ function rpEnsureDom(){
         <span><b style="color:var(--coral)">▎</b> fired into the side the book absorbs</span>
         <span><b>60m</b> follow-through in σ, one hour on</span>
         <span><b>held</b> = still riding the same sweep call (a sweep closes only on an opposite call or the session close)</span>
+        <span><b style="color:var(--l-seffort)">SIEGE</b> = expect that wall to BREAK · <b>QUIET</b> = expect HOLD (reversed sign · 2nd deck · wt-7)</span>
       </div>
     </div>
     <div class="rp-console">

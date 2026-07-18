@@ -67,7 +67,20 @@ STATE_DIR = SKILL_DIR.parent.parent / "state"
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
-PROMPT_VERSION = "wt-6"     # bump on ANY prompt change — a bump resets the record
+PROMPT_VERSION = "wt-7"     # bump on ANY prompt change — a bump resets the record
+# wt-7 (2026-07-18): THE SIEGE ERA — the SIEGE stack is un-blinded into the payload.
+# (1) siege_effort_at_walls: underlying (SPY) volume EFFORT at dealer-gamma wall
+# touches, worded with the REVERSED SIGN spelled out — HEAVY effort (SIEGE) at a
+# touched wall predicts the wall BREAKS (sweep n=168: sieged walls held 39% vs 54%
+# quiet); QUIET predicts HOLD. The intuitive "absorption = strength" read is the
+# wrong sign on this tape and the wording forbids it. (2) Payload hygiene holds:
+# the block attaches ONLY on a clean feed (health OK), an unsaturated session, and
+# towers carrying an actual SIEGE/QUIET verdict — NEUTRAL rows and verdictless
+# watches stay off the payload (absence ≠ zero). Baseline maturity (cold/warming)
+# rides along as a confidence caveat until 21 prior days accrue. (3) The prompt
+# teaches it as containment evidence about THAT WALL — never a standalone
+# direction. First underlying-tape word in the tower's room. Payload change =
+# era bump: wt-6 rows judged scenes without the siege word — never mix ledgers.
 # wt-5 (2026-07-12): THE TOWER GETS EYES era — the 07-12 pressure test's verdict was
 # "it cannot call a fight", and this bump is the answer. (1) N2: scheduled_event — the
 # event clock (FOMC/CPI/NFP kind + minutes-until/since + surprise) reaches the payload;
@@ -674,6 +687,40 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             "flips_regime": lr.get("flips_regime") or None,
             "note": _note,
         }.items() if v is not None}
+    # SIEGE (wt-7): underlying (SPY) volume EFFORT at wall touches — the REVERSED
+    # SIGN finding, finally in the room. Fail-open on every guard the box itself
+    # respects: a degraded feed, a saturated session, or a verdictless watch is
+    # ABSENT from the payload, never a zero (payload hygiene).
+    sg = t.get("siege") or {}
+    siege_rows = []
+    if sg.get("health") == "OK" and not sg.get("saturated"):
+        for tw in (sg.get("towers") or []):
+            v = tw.get("verdict")
+            if v not in ("SIEGE", "QUIET"):
+                continue
+            pct = tw.get("effort_pct")
+            word = (f"SIEGE — HEAVY underlying volume at this wall touch"
+                    f" (effort {pct:.0f}th pct): REVERSED SIGN — heavy volume at a "
+                    "wall is attackers pressing, NOT defenders absorbing; expect this "
+                    "wall to BREAK (sieged walls held only 39% vs 54% quiet in the sweep)"
+                    if v == "SIEGE" else
+                    f"QUIET — light underlying volume at this wall touch"
+                    f" (effort {pct:.0f}th pct): expect this wall to HOLD")
+            siege_rows.append({k: v2 for k, v2 in {
+                "wall": tw.get("kind"),
+                "level_sigma_from_spot": _sd(tw.get("level"), spot, sigma),
+                "read": word,
+                # a resolved episode whose level still stands carries its outcome —
+                # "this wall was sieged and BROKE" is a containment fact for the scene
+                **({"already_resolved": tw.get("outcome")} if tw.get("outcome") else {}),
+            }.items() if v2 is not None})
+    siege_block: dict = {}
+    if siege_rows:
+        siege_block = {"towers": siege_rows}
+        if sg.get("baseline") in ("cold", "warming"):
+            siege_block["baseline_maturity"] = (
+                f"{sg['baseline']} — the effort baseline has not accrued its full "
+                "21 prior days; treat percentiles as lower-confidence")
     payload = {
         "task": "You are the Watchtower: forecast where 0DTE SPX goes over the next hour — "
                 "gravity first under LONG gamma, amplification first under SHORT gamma.",
@@ -732,6 +779,9 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         # directional fact on the map, and the tower was blind to it until today.
         **({"flow_asymmetry": shove_words} if shove_words else {}),
         **({"break_lens_head_c": break_lens} if break_lens else {}),
+        # SIEGE (wt-7): effort-at-wall verdicts — containment evidence about the
+        # touched wall itself, never a standalone direction
+        **({"siege_effort_at_walls": siege_block} if siege_block else {}),
         **({"dated_structure": {
                 "bands": dated_bands,
                 "note": "far-dated OI wall LOCATIONS (unsigned, no magnitude carried). "
@@ -837,6 +887,15 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "included — never re-derive a drift direction from charm_sign yourself): before ~13:00 ET "
         "background, in the afternoon a real vote on the drift call. IF IT IS ABSENT, charm has "
         "no graded record yet — give charm/charm_sign NO directional weight at all.\n"
+        "- SIEGE IS THE WALL'S STRESS TEST — WITH A REVERSED SIGN (wt-7). "
+        "siege_effort_at_walls reads the UNDERLYING (SPY) volume spent while price touched a "
+        "wall. HEAVY effort (SIEGE) means expect that wall to BREAK — heavy volume at a wall "
+        "is attackers pressing, not defenders absorbing; the intuitive \"absorption = "
+        "strength\" read is the WRONG sign on this tape. QUIET means expect the wall to "
+        "HOLD. This is containment evidence about THAT WALL only — it sharpens or weakens a "
+        "pin/break read at that level; it is NOT a standalone direction. A SIEGE verdict "
+        "agrees with a cocked/fired break on the same side; a QUIET wall makes a pin at it "
+        "safer. Absent when the feed is degraded or no touch carried a verdict.\n"
         "- READ THE MAP IN TENOR ORDER: today's 0DTE book first (the walls and magnet — they are "
         "what dealers re-balance TODAY), the structural_*_wall band walls second (multi-day "
         "terrain), dated_structure last (far monthly/quarter-end OI shelves — react to them only "

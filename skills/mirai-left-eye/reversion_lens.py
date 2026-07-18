@@ -1520,6 +1520,27 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         except Exception:
             pass
 
+        # SHADOW (SIEGE — underlying effort at the towers): SPY volume spent
+        # while spot touches a dealer-gamma wall. REVERSED SIGN doctrine
+        # (backtest n=168 touches, 11/13 days): heavy volume at a touch
+        # predicts the wall BREAKS (held 39% vs 54% quiet) — SIEGE = expect
+        # break, QUIET = expect hold. Record-only: own store (state/siege) +
+        # this diary key via the bridge; no payload words, no tower coupling.
+        # Walls mirror the lob seam's choice — RAW 0DTE gamma walls first
+        # (the strikes the touch evidence was measured on), operative
+        # fallback. RAW SPY proxy bars (volume lives there; the box owns its
+        # own SPY↔SPX ruler). Fail-open: any error leaves the key absent.
+        try:
+            import siege_bridge as _siege
+            _sg_cw = _B.get("call_wall_gamma") if _B.get("call_wall_gamma") is not None else call_wall
+            _sg_pw = _B.get("put_wall_gamma") if _B.get("put_wall_gamma") is not None else put_wall
+            _siege.attach_telemetry(telemetry, ticker, now, spot=spot,
+                                    sigma=sigma, call_wall=_sg_cw,
+                                    put_wall=_sg_pw, magnet=gxv.get("magnet"),
+                                    spy_bars=proxy_bars)
+        except Exception:
+            pass
+
         # SHADOW (BREAK LENS — offense): the two-stage cock→fire machine rides
         # the level_reclaim key. Placed AFTER the lob attach so the tape gate
         # sees THIS scan's flow fold, BEFORE the Watchtower so Head B sees the

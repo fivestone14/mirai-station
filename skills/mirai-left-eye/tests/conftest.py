@@ -40,6 +40,19 @@ def _isolate_lob_state(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_siege_state(tmp_path, monkeypatch):
+    """siege_bridge writes latest/cards/baseline under the real state/siege by
+    default; any test driving evaluate() end-to-end would stamp production
+    state (and fold fake bars into the live volume baseline). Redirect every
+    test's siege IO to a throwaway dir (import guarded like the lob twin)."""
+    try:
+        import siege_bridge
+        monkeypatch.setattr(siege_bridge, "STATE_DIR", tmp_path / "siege")
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
 def _reset_chain_caches():
     """native_chain keeps a short TTL cache (one fetch serves both the flow-sensor
     read and the gravity engine within a scan) — between tests it would serve one

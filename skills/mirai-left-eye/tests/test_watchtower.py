@@ -386,6 +386,57 @@ def test_breach_and_road_reach_the_payload():
     assert "wall_breach_event" not in wt.build_payload(_telemetry())
 
 
+# --- wt-7 payload: siege effort-at-walls (REVERSED SIGN) -----------------------
+def _siege_rec(**over):
+    return {"health": "OK", "saturated": False, "baseline": "robust", "ratio": 12.05,
+            "towers": [
+                {"kind": "call_wall", "level": 7550.0, "status": "engaged",
+                 "effort_pct": 84.0, "verdict": "SIEGE", "outcome": None,
+                 "near_spot": False},
+                {"kind": "put_wall", "level": 7350.0, "status": "resolved",
+                 "effort_pct": 12.0, "verdict": "QUIET", "outcome": "HOLD",
+                 "near_spot": False},
+                {"kind": "magnet", "level": 7420.0, "status": "engaged",
+                 "effort_pct": 50.0, "verdict": "NEUTRAL", "outcome": None,
+                 "near_spot": False},
+            ], **over}
+
+
+def test_siege_reaches_payload_with_the_reversed_sign_spelled_out():
+    # wt-7: a sieged wall reads BREAK, a quiet wall reads HOLD, and the payload
+    # wording itself forbids the intuitive "absorption = strength" misread
+    p = wt.build_payload({**_telemetry(), "siege": _siege_rec()})
+    rows = p["siege_effort_at_walls"]["towers"]
+    assert [r["wall"] for r in rows] == ["call_wall", "put_wall"]  # NEUTRAL absent
+    assert "BREAK" in rows[0]["read"] and "REVERSED SIGN" in rows[0]["read"]
+    assert "HOLD" in rows[1]["read"]
+    assert rows[1]["already_resolved"] == "HOLD"      # a graded episode carries its outcome
+    assert "already_resolved" not in rows[0]
+    # σ-distances only — the no-absolute-levels hygiene rule holds for siege too
+    assert rows[0]["level_sigma_from_spot"] == 0.93   # (7550-7450.29)/106.9
+    assert "7550" not in json.dumps(p)
+    # a robust baseline needs no caveat
+    assert "baseline_maturity" not in p["siege_effort_at_walls"]
+
+
+def test_siege_baseline_maturity_caveat_rides_until_robust():
+    p = wt.build_payload({**_telemetry(), "siege": _siege_rec(baseline="cold")})
+    assert "cold" in p["siege_effort_at_walls"]["baseline_maturity"]
+
+
+def test_siege_absent_on_every_guard():
+    # payload hygiene: degraded feed, saturated session, verdictless towers, or no
+    # siege record at all — the block is ABSENT, never a zero
+    assert "siege_effort_at_walls" not in wt.build_payload(_telemetry())
+    for bad in (_siege_rec(health="DEGRADED"), _siege_rec(saturated=True),
+                _siege_rec(towers=[{"kind": "call_wall", "level": 7550.0,
+                                    "status": "watching", "effort_pct": None,
+                                    "verdict": None, "outcome": None,
+                                    "near_spot": True}])):
+        assert "siege_effort_at_walls" not in wt.build_payload(
+            {**_telemetry(), "siege": bad})
+
+
 def test_observe_disabled_by_env(monkeypatch):
     monkeypatch.setenv("WATCHTOWER_DISABLE", "1")
     assert wt.observe(_telemetry(), now=NOW) is None

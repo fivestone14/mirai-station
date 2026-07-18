@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "siege"
+version = "0.1.0"
+description = "SIEGE: shadow-only underlying-volume effort sensor at dealer-gamma walls (REVERSED SIGN: heavy effort at a touch predicts BREAK)"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["siege*"]
