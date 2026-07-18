@@ -697,8 +697,8 @@
     display:flex; flex-direction:column; min-height:0; border-top:2px solid color-mix(in srgb,var(--lc) 55%, var(--hairline))}
   .lg-tablewrap{flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; margin-top:14px;
     border:1px solid var(--hairline); border-radius:10px; background:var(--surface)}
-  .lg-table{border-collapse:separate; border-spacing:0; width:100%; font-size:13.5px}
-  .lg-table thead th{position:sticky; top:0; z-index:2; background:var(--surface-3); font-family:var(--mono); font-size:9.5px;
+  .lg-table{border-collapse:separate; border-spacing:0; width:100%; font-size:14px}
+  .lg-table thead th{position:sticky; top:0; z-index:2; background:var(--surface-3); font-family:var(--mono); font-size:10.5px;
     letter-spacing:.09em; text-transform:uppercase; font-weight:600; color:var(--ink-faint); padding:8px 11px; text-align:left;
     border-bottom:1px solid var(--hairline); white-space:nowrap}
   .lg-table td{padding:8px 11px; border-bottom:1px solid var(--hairline); white-space:nowrap; color:var(--ink-dim);
@@ -715,14 +715,34 @@
   .lg-name em{font-style:normal; display:block; font-family:var(--mono); font-size:10px; font-weight:500; color:var(--ink-faint); margin-top:2px; letter-spacing:.06em; text-transform:uppercase}
   .lg-dot{width:9px; height:9px; border-radius:50%; flex:none; background:var(--ld,var(--ink-faint)); box-shadow:0 0 8px color-mix(in srgb,var(--ld,transparent) 55%, transparent)}
   .lg-hero{display:flex; align-items:baseline; gap:12px; margin:16px 0 4px}
-  .lg-hero b{font-family:var(--mono); font-size:34px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1}
+  .lg-hero b{font-family:var(--mono); font-size:42px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1}
   .lg-hero span{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint)}
   .lg-hero span b{font-size:10.5px; letter-spacing:.06em}
-  .lg-sub{font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:6px; font-variant-numeric:tabular-nums}
+  .lg-sub{font-family:var(--mono); font-size:13.5px; color:var(--ink-dim); margin-top:7px; font-variant-numeric:tabular-nums}
   .lg-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:8px; margin-top:12px}
   .lg-stat{background:var(--surface); border:1px solid var(--hairline); border-radius:9px; padding:7px 10px}
-  .lg-stat .k{font-size:8.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
-  .lg-stat .v{font-family:var(--mono); font-size:13px; color:var(--ink); margin-top:2px; font-variant-numeric:tabular-nums}
+  .lg-stat .k{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
+  .lg-stat .v{font-family:var(--mono); font-size:14.5px; color:var(--ink); margin-top:2px; font-variant-numeric:tabular-nums}
+  /* sweep card extras — the ⓘ worked-example button, tappable column-header tips
+     (title= is useless on a touch tablet, so a tap writes the plain-english line
+     into a sticky strip under the header row), and the modal's math table */
+  .lg-info{appearance:none; cursor:pointer; width:24px; height:24px; border-radius:50%; flex:none;
+    border:1px solid color-mix(in srgb,var(--l-tower) 45%, var(--hairline)); background:color-mix(in srgb,var(--l-tower) 12%, var(--surface));
+    color:color-mix(in srgb,var(--l-tower) 85%, var(--ink)); font-family:var(--mono); font-size:13px; font-weight:600; line-height:1;
+    display:grid; place-items:center; transition:.15s}
+  .lg-info:hover,.lg-info:focus-visible{background:color-mix(in srgb,var(--l-tower) 24%, var(--surface)); outline:0}
+  .lg-table thead th[data-tip]{cursor:help; text-decoration:underline dotted color-mix(in srgb,var(--ink-faint) 65%, transparent); text-underline-offset:3px}
+  .lg-table .lg-tips td{position:sticky; top:31px; z-index:2; background:color-mix(in srgb,var(--l-tower) 9%, var(--surface-2));
+    font-size:12.5px; color:var(--ink-dim); padding:7px 11px; border-bottom:1px solid var(--hairline); white-space:normal}
+  .lg-table .lg-tips b{color:var(--ink)}
+  .swi .modal-body{font-size:13.5px; line-height:1.6; color:var(--ink-dim)}
+  .swi-tbl{font-family:var(--mono); font-size:13px; border-collapse:collapse; margin:12px 0; width:100%; max-width:460px}
+  .swi-tbl th{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); text-align:left; padding:5px 10px; border-bottom:1px solid var(--hairline)}
+  .swi-tbl td{padding:5px 10px; border-bottom:1px solid var(--hairline-2); font-variant-numeric:tabular-nums; color:var(--ink-dim)}
+  .swi-tbl .up{color:var(--jade); font-weight:600} .swi-tbl .dn{color:var(--coral); font-weight:600}
+  .swi-sum{font-family:var(--mono); font-size:13px; background:color-mix(in srgb,var(--l-tower) 8%, var(--surface)); border:1px solid color-mix(in srgb,var(--l-tower) 25%, var(--hairline));
+    border-radius:10px; padding:11px 14px; margin:12px 0; line-height:1.75}
+  .swi-sum b{color:var(--ink)}
   .lg-empty{font-size:13px; color:var(--ink-faint); margin-top:14px; line-height:1.5}
   .headcard.A{border-top:3px solid var(--jade)}
   .headcard.B{border-top:3px solid var(--lantern)}
@@ -4129,22 +4149,31 @@ function sweepCardHTML(c, day, legacy){
     <td class="mono">${num(e.mfe_sigma)}</td><td class="mono">${num(e.mfe_before_stop)}</td>
     <td class="mono">${CLOSE[e.close_reason]||'—'}</td>
     <td class="mono">${e.n_reaffirms>0?'×'+e.n_reaffirms:'—'}</td></tr>`).join('');
+  // column tips — title= for desktop hover, data-tip + tap for the tablet: tapping a
+  // header writes its plain-english line into the sticky strip under the header row
+  const TH=(label,tip)=>tip?`<th data-tip="${tip}" title="${tip}" onclick="lgTip(this)">${label}</th>`:`<th>${label}</th>`;
   const tableHTML=`<div class="lg-tablewrap"><table class="lg-table">
-    <thead><tr><th>Open–Close</th><th>Dir</th><th>Verdict</th>
-    <th title="the call's signed area in σ·session — green slices minus red slices">Area σ·sess</th>
-    <th title="1-min bars on the called side vs against it">Bars +/−</th>
-    <th title="share of the call's life price spent on the called side">Dur %</th>
-    <th title="mean favorable stretch per slice, in σ">Mean fav σ</th>
-    <th title="max favorable excursion over the call, in σ">MFE σ</th>
-    <th title="max favorable excursion before the worst adverse mark">MFE b-stop</th>
-    <th title="⇄ an opposite-direction call · ▏the session close — the only two ways a sweep ends">Closed by</th>
-    <th title="times the tower re-affirmed the same direction while the call ran">Reaff</th></tr></thead>
+    <thead><tr>
+    ${TH('Open–Close','when the call started and ended (Eastern time) — … means still running')}
+    ${TH('Dir','which way the tower called it: ▲ up (call) or ▼ down (put)')}
+    ${TH('Verdict','win = right by area AND time · loss = wrong by both · mixed = the two disagree, not scored')}
+    ${TH('Area σ·sess','the score itself: green minus red — how far, times how long, the call was right')}
+    ${TH('Bars +/−','minutes price spent on the right side vs the wrong side of the entry')}
+    ${TH('Dur %','the share of the call’s life spent on the right side')}
+    ${TH('Mean fav σ','on an average minute, how far price sat in the call’s favor')}
+    ${TH('MFE σ','the best the call ever looked — its biggest move in the called direction')}
+    ${TH('MFE b-stop','the best it looked BEFORE ever going 0.20σ against — could it have been banked')}
+    ${TH('Closed by','what ended the call: ⇄ the tower flipped direction · ▏the closing bell')}
+    ${TH('Reaff','how many times the tower repeated the same call while it ran — folded in, not new bets')}
+    </tr><tr class="lg-tips" id="lg-tiprow" hidden><td colspan="11" id="lg-tipcell"></td></tr></thead>
     <tbody>${rows||''}</tbody></table>
     ${rows?'':'<div class="lg-empty" style="padding:12px 14px">No calls in the card yet.</div>'}</div>`;
   return `<div class="ledgercard" style="--lc:var(--l-tower)">
     <div class="lg-top">
       ${nameHTML}
-      <div style="display:flex;align-items:center;gap:9px">${era?`<span class="pill grey">${era}</span>`:''}<span class="lg-dot" style="--ld:${dot}" title="${hit===true?'day HIT — the summed area is positive':hit===false?'day MISS — the summed area is negative':'no verdict yet'}"></span></div>
+      <div style="display:flex;align-items:center;gap:9px">${era?`<span class="pill grey">${era}</span>`:''}
+        <button type="button" class="lg-info" onclick="openSweepInfoModal()" aria-label="How a read is scored — worked example">ⓘ</button>
+        <span class="lg-dot" style="--ld:${dot}" title="${hit===true?'day HIT — the summed area is positive':hit===false?'day MISS — the summed area is negative':'no verdict yet'}"></span></div>
     </div>
     <div class="lg-hero" title="${SWEEP_EXPLAIN}">
       <b style="color:${net!=null&&isFinite(net)?hue(net):'var(--ink)'}">${sgn(net)}</b>
@@ -4159,6 +4188,53 @@ function sweepCardHTML(c, day, legacy){
     </div>
     ${tableHTML}
   </div>`;
+}
+
+// tap a sweep-table column header → its plain-english line appears in the sticky
+// strip under the headers (tap the same header again to hide). Transient by design:
+// the per-scan re-render resets it, which is fine for a glance-and-go explainer.
+function lgTip(th){
+  const row=document.getElementById('lg-tiprow'), cell=document.getElementById('lg-tipcell');
+  if(!row||!cell) return;
+  const k=String(th.cellIndex);
+  if(!row.hidden && cell.dataset.k===k){ row.hidden=true; return; }
+  cell.innerHTML=`<b>${th.textContent.trim()}</b> — ${th.dataset.tip||''}`;
+  cell.dataset.k=k; row.hidden=false;
+}
+// ⓘ on the Sweep Ledger card → the scoring math, worked by hand on a toy 5-minute put
+function openSweepInfoModal(){
+  const M=document.getElementById('modal'); if(!M) return;
+  M.innerHTML=`
+    <div class="modal-card swi" role="dialog" aria-modal="true" aria-label="How a read is scored">
+      <div class="modal-head">
+        <div class="mt">How a read is scored <em>the integral, worked by hand</em></div>
+        <button class="modal-x" id="modal-x" style="margin-left:auto" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>A <b style="color:var(--coral)">PUT</b> opens at <b>entry 7480</b>, with the day ruler <b>σ = 40</b>. For a put, <span style="color:var(--jade)">below entry = good (+)</span>, <span style="color:var(--coral)">above = bad (−)</span>. Each 1-minute bar adds one signed slice:</p>
+        <table class="swi-tbl">
+          <thead><tr><th>Min</th><th>Price</th><th>Where</th><th>Signed slice (σ)</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>7476</td><td>4 below</td><td class="up">+4/40 = +0.10</td></tr>
+            <tr><td>2</td><td>7472</td><td>8 below</td><td class="up">+8/40 = +0.20</td></tr>
+            <tr><td>3</td><td>7468</td><td>12 below</td><td class="up">+12/40 = +0.30</td></tr>
+            <tr><td>4</td><td>7476</td><td>4 below</td><td class="up">+4/40 = +0.10</td></tr>
+            <tr><td>5</td><td>7484</td><td>4 ABOVE</td><td class="dn">−4/40 = −0.10</td></tr>
+          </tbody>
+        </table>
+        <div class="swi-sum">
+          sum of slices = <b>+0.60 σ·minutes</b><br>
+          <b>Area</b> = sum ÷ 390 session minutes = <b style="color:var(--jade)">+0.0015 σ·session</b><br>
+          <b>Bars</b> = <span style="color:var(--jade)">4▲</span> right vs <span style="color:var(--coral)">1▼</span> wrong → <b>80% of time on the right side</b>
+        </div>
+        <p><b>Verdict:</b> area positive? <b style="color:var(--jade)">yes</b> · most bars right? <b style="color:var(--jade)">yes (4 of 5)</b> → <b style="color:var(--jade)">WIN</b>.<br>
+        If area were + but most bars wrong → <b style="color:var(--lantern)">MIXED</b> (reported, not scored). Both negative → <b style="color:var(--coral)">LOSS</b>.</p>
+        <p><b>Day:</b> add every call's area — sum positive → <b style="color:var(--jade)">day HIT</b>, negative → <b style="color:var(--coral)">MISS</b>.</p>
+        <p style="color:var(--ink-faint)">The trick: minute 3's big move (+0.30) counts more than minute 1's small one (+0.10), and minute 5's give-back is subtracted — the score is literally how far × how long the call was right, minus how far × how long it was wrong. A call ends only when the tower flips direction or the bell rings.</p>
+      </div>
+    </div>`;
+  M.classList.add('open'); M.setAttribute('aria-hidden','false');
+  document.getElementById('modal-x').onclick=closeModal;
 }
 
 function renderHeads(){
