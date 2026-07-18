@@ -458,47 +458,49 @@ def live_spot(ticker: str = "SPX") -> dict:
 
 def replay_day(day: str) -> dict:
     """Authoritative Watchtower grading for one past session — the data behind the
-    tablet's Replay tab. Reuses the canonical resolver (target-before-stop over the
-    paper hold window, keyed on the watchtower signal) so the tab's win/loss/scratch
-    is IDENTICAL to the paper ledger — nothing re-derives outcomes here. Read-only.
+    tablet's Replay tab. The SWEEP LEDGER (gex_polarity_ab._grade_watchtower_sweep,
+    2026-07-17 — the single scoreboard that replaced the trade + scene ledgers) is
+    computed on-demand with the exact grader the nightly card uses — nothing
+    re-derives outcomes here. Read-only.
 
-    Returns the fresh Watchtower fires with their resolved outcome + excursion vector;
-    the client matches each fire back to its diary scan (by ts) for entry price / σ and
-    plots it where it triggered, coloured by how it resolved.
+    `fires` keeps the per-fire excursion vector from the canonical resolver so the
+    chart can still plot mfe/mae/move_60m, but each fire's `outcome` is ITS parent
+    sweep call's verdict (win/loss/mixed/pending) — the chips are sweep-authoritative.
     """
     import gex_polarity_ab as ab  # same SKILL_DIR, already on sys.path
     rows = ab._read_rows(day)
-    _bars_cache: dict = {}       # one bar fetch shared by BOTH resolvers (grade_day's pattern)
+    _bars_cache: dict = {}       # one bar fetch shared by BOTH graders (grade_day's pattern)
 
     def _bars(tk):
         if tk not in _bars_cache:
             _bars_cache[tk] = ab._default_bars(tk, day) or []
         return _bars_cache[tk]
 
-    wt = ab._grade_watchtower(rows, _bars) or {}
-    trades = wt.get("trades") or []
-    fires = [{"ts": t.get("ts"), "dir": t.get("dir"), "outcome": t.get("outcome"),
+    sweep = ab._grade_watchtower_sweep(rows, _bars) or {}
+    calls = sweep.get("calls") or []
+
+    def _parent_verdict(ts):
+        # calls are t0-sorted and a dir-flip fire sits exactly AT the next call's
+        # t_open, so the LAST call opened at/before the fire is its parent
+        v = None
+        for c in calls:
+            if c["t_open"] <= ts:
+                v = c["verdict"]
+            else:
+                break
+        return v
+
+    trades, _pending = rev._resolve_beta_trades(rows, bars_lookup=_bars,
+                                                signal_key="watchtower")
+    pred_at = {r.get("ts"): (r.get("watchtower") or {}).get("magnitude_sigma")
+               for r in rows if isinstance(r.get("watchtower"), dict)}
+    fires = [{"ts": t.get("ts"), "dir": t.get("dir"),
+              "outcome": _parent_verdict(t.get("ts") or ""),
               "mfe_sigma": t.get("mfe_sigma"), "mae_sigma": t.get("mae_sigma"),
               "move_60m": t.get("move_60m"), "ttr_min": t.get("ttr_min"), "r": t.get("r"),
-              "pred_magnitude_sigma": t.get("pred_magnitude_sigma")}
+              "pred_magnitude_sigma": pred_at.get(t.get("ts"))}
              for t in trades]
-    # Scene Ledger — the SAME on-demand authority under its own closure rules (N20):
-    # episodes resolve by target / adverse mark / scene death, not by the clock, so the
-    # Replay tab can draw called-shot boxes for any day (including today-so-far) without
-    # waiting for the nightly card. Same resolver the nightly grade uses — never a re-derive.
-    sc = ab._grade_watchtower_scene(rows, _bars) or {}
-    return {
-        "day": day,
-        "target_sigma": rev.PAPER_TARGET_SIGMA,
-        "stop_sigma": rev.PAPER_STOP_SIGMA,
-        "max_hold_min": rev.PAPER_MAX_HOLD_MIN,
-        "pending": wt.get("pending", 0),
-        "summary": {k: wt.get(k) for k in ("n", "wins", "scratch", "win_rate")},
-        "fires": fires,
-        "scene": {"episodes": sc.get("episodes") or [],
-                  "summary": {k: sc.get(k) for k in
-                              ("n", "wins", "losses", "flats", "pending", "hit_rate")}},
-    }
+    return {"day": day, "sweep": sweep, "fires": fires}
 
 
 if __name__ == "__main__":

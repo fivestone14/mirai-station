@@ -34,9 +34,10 @@ WHAT IT WRITES (one dict per scan, stored at telemetry["watchtower"]):
                  "prompt_version", "wall_s", "interest", "snippet"}
   The "snippet" is the human-facing read (See / Read / NEXT) and "interest"
   says why the tower woke (gates / stretch / hourly heartbeat / shift · …).
-The nightly report card (gex_polarity_ab._grade_watchtower) grades "fired" +
-"direction" with the exact same target-before-stop rules as Head A, and the
-magnitude prediction against the recorded move_60m / mfe_sigma vector.
+The nightly report card (gex_polarity_ab._grade_watchtower_sweep) grades
+"fired" + "direction" by the SIGNED AREA between the 1-min price path and the
+entry on the called side (the Sweep Ledger, 2026-07-17 — the single scoreboard
+that replaced the trade + scene ledgers).
 
 PAYLOAD HYGIENE (why the payload looks the way it does)
   * No dates and no absolute index levels — models have SPX history memorized;
@@ -1153,16 +1154,23 @@ def _scorecards() -> dict:
                 rec = json.loads(ln)
             except json.JSONDecodeError:
                 continue
-            for label, key in (("gates_head_a", "lens"), ("watchtower_head_b", "watchtower")):
+            for label, key in (("gates_head_a", "lens"),
+                               ("watchtower_head_b", "watchtower_sweep")):
                 c = rec.get(key) or {}
                 # PROMPT-ERA SEGMENTATION (07-09): the tower's own record only
                 # counts days graded under the CURRENT prompt — a bump really
-                # does reset what it is shown about itself. Unstamped legacy
-                # days (wt-1 era) are excluded from head B. Head A is unversioned.
-                if key == "watchtower" and c.get("prompt_version") != PROMPT_VERSION:
-                    continue
-                tallies[label][0] += c.get("wins") or 0
-                tallies[label][1] += c.get("n") or 0
+                # does reset what it is shown about itself. Head B reads the
+                # SWEEP card (2026-07-17, wins/losses = area+duration verdicts;
+                # mixed days excluded); legacy trade cards are a retired exam
+                # and never pool in. Head A is unversioned.
+                if key == "watchtower_sweep":
+                    if c.get("prompt_version") != PROMPT_VERSION:
+                        continue
+                    tallies[label][0] += c.get("wins") or 0
+                    tallies[label][1] += (c.get("wins") or 0) + (c.get("losses") or 0)
+                else:
+                    tallies[label][0] += c.get("wins") or 0
+                    tallies[label][1] += c.get("n") or 0
         for label, (w, n) in tallies.items():
             if n:
                 out[label] = {"wins": w, "n": n, "win_rate": round(w / n, 2)}

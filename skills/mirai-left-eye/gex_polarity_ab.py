@@ -218,8 +218,9 @@ def promotion_gate(min_outcomes: int = 12, promote_at: float = 0.58,
     number of DAYS (12 decided days ≈ 3-4 calendar weeks of fires).
 
     `record_key` picks whose record is judged: "lens" (Head A, the gates),
-    "watchtower" (Head B), "break_lens" (Head C, the offense lens's GATED
-    fires — the ledger live privileges ride) or "break_lens_pre_gates"
+    "watchtower" (Head B — since 2026-07-17 read from the SWEEP card's day_hit
+    bit, not the retired trade card), "break_lens" (Head C, the offense lens's
+    GATED fires — the ledger live privileges ride) or "break_lens_pre_gates"
     (Head C's ungated twin — the faster ledger shadow-alert privileges
     ride). Each brain must earn its privileges on its OWN ledger.
     Consumed by reversion_lens.live_allowed(). Returns (allowed, reason)."""
@@ -241,6 +242,19 @@ def promotion_gate(min_outcomes: int = 12, promote_at: float = 0.58,
             kinds = (rec.get("meta") or {}).get("bars_kind") or {}
             if not kinds or all(k != "ohlc" for k in kinds.values()):
                 continue                  # point-bar day: an estimate, not evidence
+            if record_key == "watchtower":
+                # SWEEP ERA (2026-07-17): Head B's day-bit is the sweep card's
+                # day_hit — sign(Σ area_sess), permutation-null-verified ≈50%
+                # under no skill on the stored real-bar days (shuffled-direction
+                # null 50.2%, fixed all-day caller 5/10). Legacy trade cards
+                # ("watchtower") are a different exam and are invisible here —
+                # the sweep_grade_v/prompt_version era restarts the Wilson clock.
+                card = rec.get("watchtower_sweep") or {}
+                dh = card.get("day_hit")
+                if dh in ("hit", "miss"):
+                    decided.append((dh == "hit", card.get("prompt_version"),
+                                    card.get("sweep_grade_v")))
+                continue
             card = rec.get(record_key) or {}
             w = card.get("wins") or 0
             losses_day = max(0, (card.get("n") or 0) - w)
@@ -250,15 +264,16 @@ def promotion_gate(min_outcomes: int = 12, promote_at: float = 0.58,
                 decided.append((False, card.get("prompt_version"), card.get("grade_v")))
     except OSError:
         pass
-    if record_key == "watchtower" and decided and decided[-1][1] is not None:
-        era = decided[-1][1]              # newest decided day's era
-        decided = [d for d in decided if d[1] == era]
+    if record_key == "watchtower" and decided:
+        era = (decided[-1][1], decided[-1][2])    # newest (prompt, sweep_grade_v) era
+        decided = [d for d in decided if (d[1], d[2]) == era]
     # N18 GRADING-ERA SEGMENTATION (2026-07-12): hold-scaled barriers (grade_v=2) and
     # the old daily-σ barriers are different exams — a record must never pool both.
     # EXPLICIT era filter (verify round 3): once ANY grade_v=2 day exists, only
     # grade_v=2 days count — keying off the newest row alone let a stale-code deploy
     # append one unversioned day and silently re-pool every era (demonstrated).
-    if any(d[2] == 2 for d in decided):
+    # (record_key="watchtower" never reaches this: its tuples carry sweep_grade_v.)
+    if record_key != "watchtower" and any(d[2] == 2 for d in decided):
         decided = [d for d in decided if d[2] == 2]
     hit_days = sum(1 for h, _, _ in decided if h)
     miss_days = len(decided) - hit_days
@@ -485,19 +500,22 @@ def grade_day(day: str | None = None, rows=None, bars_lookup=None) -> dict:
     if bl_pre:
         out["break_lens_pre_gates"] = bl_pre
 
-    # WATCHTOWER TRADE LEDGER — Head B graded on the same rules, plus the
-    # disagreement split (only present on days the tower actually judged).
-    wt = _grade_watchtower(rows, bars_lookup)
-    if wt:
-        out["watchtower"] = wt
+    # WATCHTOWER SWEEP LEDGER (2026-07-17) — Head B's SINGLE scoreboard,
+    # replacing both the Trade Ledger and the Scene Ledger: every fired call
+    # graded by the SIGNED AREA between the price path and its entry, on the
+    # called side. Always attached — an empty day is a well-formed zero card,
+    # per the UI contract. Historical polarity_history rows keep their old
+    # watchtower/watchtower_scene cards untouched (never rewritten).
+    sw = _grade_watchtower_sweep(rows, bars_lookup)
+    if sw is not None:
+        out["watchtower_sweep"] = sw
 
-    # WATCHTOWER SCENE LEDGER (N20) — the SECOND scoreboard beside the Trade
-    # Ledger: the same calls graded as SCENE-SCOPED EPISODES (was the call right
-    # for as long as its scene lasted?). Always attached — an empty day is a
-    # well-formed zero card, per the UI contract.
-    ws = _grade_watchtower_scene(rows, bars_lookup)
-    if ws is not None:
-        out["watchtower_scene"] = ws
+    # N4 STANCE (fight/settle) — formerly nested inside the Trade Ledger card;
+    # the grading itself is unchanged, it just rides its own top-level key now
+    # that its host card is retired.
+    st = _grade_stance_card(rows, bars_lookup)
+    if st is not None:
+        out["stance"] = st
 
     theta = out["engines"].get("gex_theta") or {"tickers": {}, "overall": {}}
     out["tickers"] = theta["tickers"]           # backward-compatible top level
@@ -707,16 +725,6 @@ def _grade_break_lens(rows: list[dict], bars_lookup) -> tuple[dict | None, dict 
         return None, None
 
 
-def _is_solo(interest) -> bool:
-    """A SOLO wake = the tower spoke on a scan the gates never treated as a
-    candidate (hourly heartbeat / big-change interrupt); a CONTESTED wake = the
-    gates were engaged (gates active / stretched tape / wall pressed). Segmenting
-    on this keeps the tower-vs-gates head-to-head honest now that the hybrid wake
-    (2026-07-07) judges quiet scans too."""
-    return isinstance(interest, str) and (interest == "hourly heartbeat"
-                                          or interest.startswith("shift"))
-
-
 STANCE_BAND_SIGMA = 0.30   # fight/settle band, in horizon-scaled σ (same 0.30 grammar
                            # as the trade barriers — one number, one meaning)
 
@@ -780,191 +788,55 @@ def _grade_stance(judged: list[dict], bars_lookup) -> dict | None:
             "settle": {"n": scored["settle"][0], "wins": scored["settle"][1]}}
 
 
-def _grade_watchtower(rows: list[dict], bars_lookup) -> dict | None:
-    """HEAD B's TRADE LEDGER — the Watchtower graded on EXACTLY the rules Head A
-    is graded on (same resolver, same target/stop/hold), plus the piece that
-    answers the whole experiment: the DISAGREEMENT split.
-
-    Per judged scan the two heads either agree or split four ways:
-        both_fired   — both said trade      (agreement, graded under each head)
-        tower_only   — tower fired, gates passed  ← the tower's edge, if any
-        gates_vetoed — gates fired, tower said no ← the tower's veto, if any
-        both_passed  — both stood down      (agreement, nothing to grade)
-    tower_only trades are graded here; gates_vetoed fires are the GATES' trades
-    the tower would have skipped — their win rate tells whether the veto helps
-    (a good veto skips losers: LOW win rate in that bucket is a POINT FOR the
-    tower)."""
+def _grade_stance_card(rows: list[dict], bars_lookup) -> dict | None:
+    """The judged-row filter + fail-open wrapper the retired Trade Ledger used to
+    provide around _grade_stance — the stance card must survive its host card's
+    deletion (2026-07-17 sweep replacement). Grading itself is unchanged."""
     try:
-        import reversion_lens as _rl
         judged = [r for r in rows
                   if isinstance(r.get("watchtower"), dict)
                   and r["watchtower"].get("fired") is not None]
-        if not judged:
-            return None
-        tower, pending = _rl._resolve_beta_trades(rows, bars_lookup=bars_lookup,
-                                                  signal_key="watchtower")
-        # scan-level agreement tallies (only scans the tower actually judged)
-        tally = {"both_fired": 0, "tower_only": 0, "gates_vetoed": 0, "both_passed": 0}
-        verdict_at = {}                      # ts → (tower_fired, gates_fired)
-        for r in judged:
-            tf = bool(r["watchtower"].get("fired"))
-            gf = bool((r.get("reversion_extreme") or {}).get("fired"))
-            verdict_at[r.get("ts")] = (tf, gf)
-            key = ("both_fired" if tf and gf else "tower_only" if tf
-                   else "gates_vetoed" if gf else "both_passed")
-            tally[key] += 1
-        skipped = sum(1 for r in rows if isinstance(r.get("watchtower"), dict)
-                      and r["watchtower"].get("skipped"))
-        # grade the disagreement buckets
-        tower_only_trades = [t for t in tower
-                             if verdict_at.get(t["ts"], (False, False))[1] is False]
-        gates_trades, _ = _rl._resolve_beta_trades(rows, bars_lookup=bars_lookup,
-                                                   fire_key="fired")
-        vetoed_trades = [t for t in gates_trades
-                         if verdict_at.get(t["ts"], (True, True))[0] is False]
-        def _bucket(res):
-            w = sum(1 for t in res if t["outcome"] == "win")
-            d = w + sum(1 for t in res if t["outcome"] == "loss")
-            return {"n": d, "wins": w,
-                    "win_rate": round(w / d, 2) if d else None,
-                    **_r_rollup(res)}
-        # RECORD what-happened vs the tower's INFERENCE: stamp each graded trade
-        # with the tower's own read (prediction + scene + why-it-woke) so the row
-        # shows what it thought against the outcome the resolver measured.
-        info_at = {r.get("ts"): r["watchtower"] for r in judged}
-        for t in tower:
-            wtr = info_at.get(t["ts"]) or {}
-            t["interest"] = wtr.get("interest")
-            t["scene"] = wtr.get("scene")
-            t["pred_magnitude_sigma"] = wtr.get("magnitude_sigma")
-            t["conviction"] = wtr.get("conviction")
-            t["would_change_mind"] = wtr.get("would_change_mind")
-            t["population"] = "solo" if _is_solo(wtr.get("interest")) else "contested"
-
-        # GRADE SEPARATELY by wake population so the blended hybrid-wake record
-        # doesn't misread as one head-to-head (see _is_solo).
-        def _seg(res):
-            ww = sum(1 for t in res if t["outcome"] == "win")
-            dd = ww + sum(1 for t in res if t["outcome"] == "loss")
-            slo, shi = wilson_bounds(ww, dd - ww) if dd else (None, None)
-            return {"n": dd, "wins": ww,
-                    "scratch": sum(1 for t in res if t["outcome"] == "scratch"),
-                    "win_rate": round(ww / dd, 2) if dd else None,
-                    "wilson_lo": round(slo, 3) if slo is not None else None,
-                    "wilson_hi": round(shi, 3) if shi is not None else None,
-                    **_r_rollup(res), "trades": res}
-        contested = [t for t in tower if t["population"] == "contested"]
-        solo = [t for t in tower if t["population"] == "solo"]
-        solo_judged = sum(1 for r in judged
-                          if _is_solo((r["watchtower"] or {}).get("interest")))
-
-        # N4 STANCE GRADING (2026-07-12): the prison-yard axis, finally graded. Per
-        # judged row carrying a stance: did the range actually ERUPT (max excursion
-        # either way over the row's horizon ≥ the hold-scaled band) or SETTLE inside
-        # it? fight is right on eruption, settle on containment; no_read is excluded.
-        stance_card = None
-        try:
-            stance_card = _grade_stance(judged, bars_lookup)
-        except Exception:
-            stance_card = None
-
-        w = sum(1 for t in tower if t["outcome"] == "win")
-        d = w + sum(1 for t in tower if t["outcome"] == "loss")
-        lo, hi = wilson_bounds(w, d - w) if d else (None, None)
-        # PROMPT-ERA STAMP (07-09): "a bump resets the record" only works if the
-        # record knows which prompt produced each day — stamp the era so
-        # _scorecards / any future promotion filter can segment wt-1 from wt-2+.
-        versions = [r["watchtower"].get("prompt_version") for r in judged
-                    if r["watchtower"].get("prompt_version")]
-        pv = max(set(versions), key=versions.count) if versions else None
-        return {"n": d, "wins": w, "prompt_version": pv, "grade_v": 2,
-                **({"stance": stance_card} if stance_card else {}),
-                "scratch": sum(1 for t in tower if t["outcome"] == "scratch"),
-                "pending": pending,
-                "win_rate": round(w / d, 2) if d else None,
-                "wilson_lo": round(lo, 3) if lo is not None else None,
-                "wilson_hi": round(hi, 3) if hi is not None else None,
-                **_r_rollup(tower),
-                "scans": {"judged": len(judged), "skipped": skipped,
-                          "contested": len(judged) - solo_judged, "solo": solo_judged,
-                          **tally},
-                "disagree": {"tower_only": _bucket(tower_only_trades),
-                             "gates_vetoed": _bucket(vetoed_trades)},
-                "by_interest": {"contested": _seg(contested), "solo": _seg(solo)},
-                "trades": tower}
+        return _grade_stance(judged, bars_lookup) if judged else None
     except Exception:
         return None
 
 
-SCENE_NEVER_MOVED_FLOOR_SIGMA = 0.10  # favorable MFE below this = the call never
-                                      # moved at all → LOSS, however short the scene
-SCENE_FALLBACK_TARGET_SIGMA = 0.30    # called magnitude when the tower stated none
-                                      # (the same 0.30 grammar as the trade barriers)
-SCENE_BARS_COMPLETE_MIN = 15          # bars must reach within this many minutes of a
-                                      # row/session close to grade it (else PENDING —
-                                      # same tolerance as the trade resolver)
+SWEEP_STOP_SIGMA = 0.20        # the tradability dial: mfe_before_stop freezes at the
+                               # first slice at/under −0.20σ (a realistic option stop)
+SWEEP_SESSION_BARS = 390       # area denominator: one full RTH session of 1-min slices,
+                               # so area_sess reads as σ·session-fraction
+SWEEP_BARS_COMPLETE_MIN = 15   # bars must reach within this many minutes of a call's
+                               # close to grade it (else PENDING — the resolver's rule)
 
 
-def _scene_trigger(open_row: dict, r: dict, sigma_open: float) -> str | None:
-    """SCENE DETECTOR for the Scene Ledger — did the dealer picture shift vs the
-    EPISODE-OPEN row? Same axes and dials as watchtower.big_change (the tower's
-    own interrupt test) but diffed against the episode's OPENING scan, not the
-    previous tick. Returns the first tripped trigger name, or None. Field names
-    verified against live diary rows: gamma_sign/regime/regime_road/vix_ts are
-    row-level, magnet/aggressor_flow live under gex_views."""
-    import watchtower as _wt
-    g0, g1 = open_row.get("gamma_sign"), r.get("gamma_sign")
-    if g0 and g1 and g0 != g1:
-        return "gamma_flip"                       # gamma-sign-at-spot flipped
-    r0, r1 = open_row.get("regime"), r.get("regime")
-    if r0 and r1 and r0 != r1:
-        return "regime_flip"                      # pin/trend regime flipped
-    if not open_row.get("regime_road") and r.get("regime_road"):
-        return "road"                             # the pin→trend ROAD opened
-    m0 = (open_row.get("gex_views") or {}).get("magnet")
-    m1 = (r.get("gex_views") or {}).get("magnet")
-    if (m0 is not None and m1 is not None and sigma_open
-            and abs(m1 - m0) >= _wt.MAGNET_JUMP_SIGMA * sigma_open):
-        return "magnet"
-    f0 = (open_row.get("gex_views") or {}).get("aggressor_flow")
-    f1 = (r.get("gex_views") or {}).get("aggressor_flow")
-    if f0 is not None and f1 is not None and f0 * f1 < 0 and abs(f1) >= _wt.FLOW_FLIP_MIN:
-        return "flow"                             # signed flow crossed zero with force
-    v0, v1 = open_row.get("vix_ts"), r.get("vix_ts")
-    if v0 is not None and v1 is not None and abs(v1 - v0) >= _wt.VIX_TS_JUMP:
-        return "vix_ts"
-    return None
+def _grade_watchtower_sweep(rows: list[dict], bars_lookup) -> dict | None:
+    """HEAD B's SWEEP LEDGER (2026-07-17) — THE single scoreboard, replacing both
+    the Trade Ledger (fixed-barrier trades) and the Scene Ledger (scene-scoped
+    episodes). Grades each fired call by the SIGNED AREA between the price path
+    and the entry on the called side — "like integrals in calculus": per 1-min
+    bar the signed displacement s_i = dir·(close_i − entry)/σ, and
+    area_sess = Σ s_i / 390. Time-slicing on bar CLOSES is a Riemann sum on the
+    close path (OHLC ranges are not consulted) and is provably identical to the
+    price-slice picture by the layer-cake identity.
 
+    CALL CONSTRUCTION (deliberately NO scene_change closure — scene-keyed closes
+    were the fragmentation bug the Scene Ledger died of):
+      * a fired call OPENS a sweep call at (t0, entry=row.spot, σ=row.sigma, dir)
+      * consecutive fired calls in the SAME direction FOLD IN (n_reaffirms) —
+        a restated thesis is never a new trial
+      * a fired OPPOSITE call CLOSES the open call ('dir_flip') and opens its own
+      * otherwise the call runs to 16:00 ET ('session_close'); bars short of the
+        close → 'pending' (fields computed over available bars, t_close null)
 
-def _grade_watchtower_scene(rows: list[dict], bars_lookup) -> dict | None:
-    """HEAD B's SCENE LEDGER (N20) — the second scoreboard, beside the Trade
-    Ledger (_grade_watchtower). The Trade Ledger asks "did the fixed-barrier
-    trade win?"; the Scene Ledger asks the question the tower actually answers:
-    was the CALL right for as long as ITS scene lasted?
-
-    EPISODE: consecutive judged calls with the SAME direction in an UNCHANGED
-    scene collapse into one episode, opened at first issuance (its ts/spot/σ/
-    called magnitude are the entry; magnitude falls back to
-    SCENE_FALLBACK_TARGET_SIGMA when the tower stated none). The episode closes
-    on the FIRST of:
-        target   — price touches entry ± dir·called·σ            → win
-        adverse  — the mirrored line the other way                → loss
-                   (one bar touching both grades pessimistically as a loss,
-                    the trade resolver's rule)
-        scene_change — _scene_trigger vs the EPISODE-OPEN row
-        dir_flip — a judged opposite call (which OPENS the next episode)
-        session_close — 16:00 ET
-    Scene/flip/close closes grade the signed KEPT move at close: favorable MFE
-    below SCENE_NEVER_MOVED_FLOOR_SIGMA = loss (a call that never moved), kept
-    ≥ the hold-scaled 0.30σ (the N18 √(hold/390) grammar) = win, else flat.
-    After ANY close the next judged call re-arms a fresh episode, so the ledger
-    reads all day; out-of-window issuances land in n_dropped_early, never
-    silently lost. Empty day → a well-formed zero card (the UI contract).
-    Report-card only — nothing live consumes it, and the promotion gate still
-    reads the Trade Ledger."""
+    VERDICT (pre-registered, area sign + duration majority): 'win' when
+    area_sess > 0 AND dur_frac ≥ 0.5; 'loss' when area_sess < 0 AND
+    dur_frac ≤ 0.5; else 'mixed' — area and duration disagree, reported but
+    excluded from wins/losses. Day hit-bit = sign(Σ area_sess over the day's
+    closed calls) — permutation-null-tested 2026-07-17 on the 10 stored real-bar
+    days: shuffled-direction day-hit 50.2%, fixed all-day call 5/10 — a clean
+    Bernoulli for the promotion gate. Empty day → a well-formed zero card."""
     try:
-        import watchtower as _wt
-        calls: list[tuple] = []          # (t0, row, wt_dict) in-window issuances
+        issuances: list[tuple] = []      # (t0, ts, spot, sigma, dir), in-window
         versions: list[str] = []
         n_dropped = 0
         for r in rows:
@@ -975,175 +847,135 @@ def _grade_watchtower_scene(rows: list[dict], bars_lookup) -> dict | None:
                 continue
             if wtd.get("prompt_version"):
                 versions.append(wtd["prompt_version"])
-            if wtd.get("direction") not in ("call", "put"):
-                continue
-            if not wtd.get("fired"):
-                # Match the Trade Ledger's universe EXACTLY — it grades only FIRED calls
-                # (_fresh_would_fires needs fired=True). A stand-down that still stamps a
-                # direction is a read, not a call the tower stands behind. Today the tower
-                # never does this, so this guards the "identical universe" invariant for the
-                # future; it changes nothing on current data. Version/era collection above
-                # still spans ALL judged rows, so era segmentation is unaffected.
-                continue
+            if not wtd.get("fired") or wtd.get("direction") not in ("call", "put"):
+                continue                 # the universe is FIRED calls only
             try:
                 t0 = datetime.fromisoformat(r["ts"]).astimezone(ET)
             except (KeyError, ValueError, TypeError):
                 continue
             if not (_time(9, 45) <= t0.time() < _time(16, 0)):
-                n_dropped += 1           # visible-drop accounting (break-lens rule)
+                n_dropped += 1           # visible-drop accounting, never silent
                 continue
             if not (r.get("spot") and r.get("sigma")):
                 continue                 # no entry ruler — ungradeable issuance
-            calls.append((t0, r, wtd))
-        calls.sort(key=lambda c: c[0])
+            issuances.append((t0, r["ts"], r["spot"], r["sigma"], wtd["direction"]))
+        issuances.sort(key=lambda c: c[0])
 
-        # all diary rows are scene witnesses, judged or not
-        scene_rows: list[tuple] = []
-        if calls:
-            for r in rows:
-                if r.get("ticker") not in TICKERS:
+        # fold reaffirms / split on flips into sweep calls
+        grouped: list[dict] = []
+        for (t0, ts, spot, sigma, d) in issuances:
+            cur = grouped[-1] if grouped else None
+            if cur is not None and cur["t_flip"] is None:
+                if cur["dir"] == d:
+                    cur["n_reaffirms"] += 1          # same thesis, same trial
                     continue
-                try:
-                    rt = datetime.fromisoformat(r["ts"]).astimezone(ET)
-                except (KeyError, ValueError, TypeError):
-                    continue
-                scene_rows.append((rt, r))
-            scene_rows.sort(key=lambda x: x[0])
+                cur["t_flip"] = t0                   # opposite call closes it...
+            grouped.append({"t0": t0, "ts": ts, "entry": spot, "sigma": sigma,
+                            "dir": d, "n_reaffirms": 0, "t_flip": None})
+                                                     # ...and opens its own
 
-        # 1-min path WITH closes (the kept-move mark) — the resolver's shape
+        # 1-min close path (close falls back to the hi/lo midpoint on synthetic bars)
         path: list[tuple] = []
-        if calls:
+        if grouped:
             for b in bars_lookup(TICKERS[0]) or []:
                 try:
                     bt = datetime.fromisoformat(b["ts"]).astimezone(ET)
                 except (ValueError, TypeError, KeyError):
                     continue
-                if b.get("high") is not None and b.get("low") is not None:
-                    path.append((bt, b["high"], b["low"], b.get("close")))
+                px = b.get("close")
+                if px is None and b.get("high") is not None and b.get("low") is not None:
+                    px = (b["high"] + b["low"]) / 2.0
+                if px is not None:
+                    path.append((bt, px))
             path.sort(key=lambda x: x[0])
+        path_end = path[-1][0] if path else None
 
-        episodes: list[dict] = []
-        i = 0
-        while i < len(calls):
-            t0, row, wtd = calls[i]
-            spot, sigma = row["spot"], row["sigma"]
-            d = wtd["direction"]
-            sgn = 1 if d == "call" else -1
-            called = wtd.get("magnitude_sigma")
-            fallback = not (isinstance(called, (int, float)) and called > 0)
-            if fallback:
-                called = SCENE_FALLBACK_TARGET_SIGMA
+        calls: list[dict] = []
+        for g in grouped:
+            t0, entry, sigma = g["t0"], g["entry"], g["sigma"]
+            sgn = 1 if g["dir"] == "call" else -1
             session_close = datetime.combine(t0.date(), _time(16, 0), tzinfo=ET)
-            # row-based close: first scene change, unless a direction flip lands sooner
-            close_t, reason, trigger = session_close, "session_close", None
-            for (rt, r2) in scene_rows:
-                if rt <= t0:
-                    continue
-                if rt >= close_t:
-                    break
-                trg = _scene_trigger(row, r2, sigma)
-                if trg:
-                    close_t, reason, trigger = rt, "scene_change", trg
-                    break
-            for (tj, _rowj, wtj) in calls[i + 1:]:
-                if tj >= close_t:
-                    break
-                if wtj["direction"] != d:
-                    close_t, reason, trigger = tj, "dir_flip", None
-                    break
-            # bar walk: target/adverse can only pre-empt the row-based close
-            tgt = spot + sgn * called * sigma
-            adv = spot - sgn * called * sigma
-            outcome = tt = None
-            mfe, last_px, last_bt = 0.0, None, None
-            for (bt, hi, lo, cl) in path:
+            close_t, reason = ((g["t_flip"], "dir_flip") if g["t_flip"] is not None
+                               else (session_close, "session_close"))
+            s_sum, n_bars, bwin, blose = 0.0, 0, 0, 0
+            smax = smin = None
+            run_max, mfe_bs, stopped = 0.0, None, False
+            for (bt, px) in path:
                 if bt <= t0:
                     continue
                 if bt > close_t:
                     break
-                last_bt = bt
-                last_px = cl if cl is not None else (hi + lo) / 2.0
-                fav = ((hi - spot) if sgn > 0 else (spot - lo)) / sigma
-                if fav > mfe:
-                    mfe = fav
-                tgt_hit = (hi >= tgt) if sgn > 0 else (lo <= tgt)
-                adv_hit = (lo <= adv) if sgn > 0 else (hi >= adv)
-                if tgt_hit and not adv_hit:
-                    outcome, reason, trigger = "win", "target", None
-                    tt = (bt - t0).total_seconds() / 60.0
-                elif adv_hit:            # both lines in one bar → pessimistic
-                    outcome, reason, trigger = "loss", "adverse", None
-                if outcome is not None:
-                    close_t = bt
-                    break
-            kept = None
-            if outcome == "win":
-                kept = called
-            elif outcome == "loss":
-                kept = -called
-            elif (last_bt is None
-                    or (close_t - last_bt).total_seconds() / 60.0 > SCENE_BARS_COMPLETE_MIN):
-                outcome = "pending"      # bars don't reach the close yet (day running)
+                s = sgn * (px - entry) / sigma
+                s_sum += s
+                n_bars += 1
+                if s > 0:
+                    bwin += 1
+                elif s < 0:
+                    blose += 1
+                smax = s if smax is None or s > smax else smax
+                smin = s if smin is None or s < smin else smin
+                if not stopped:
+                    if s <= -SWEEP_STOP_SIGMA:       # MAE crossed the stop line:
+                        stopped = True               # freeze the tradability peak
+                        mfe_bs = run_max
+                    elif s > run_max:
+                        run_max = s
+            mfe = max(0.0, smax) if smax is not None else 0.0
+            mae = min(0.0, smin) if smin is not None else 0.0
+            if not stopped:
+                mfe_bs = mfe                         # never stopped: the full peak
+            decided_bars = bwin + blose
+            dur_frac = bwin / decided_bars if decided_bars else None
+            area = s_sum / SWEEP_SESSION_BARS
+            # pending = the bar path doesn't reach this call's close yet (today,
+            # incomplete). A dir_flip close mid-session grades as soon as bars
+            # cover it — no waiting for the nightly run.
+            pend = (path_end is None
+                    or (close_t - path_end).total_seconds() / 60.0 > SWEEP_BARS_COMPLETE_MIN)
+            if pend:
+                verdict = "pending"
+            elif area > 0 and dur_frac is not None and dur_frac >= 0.5:
+                verdict = "win"
+            elif area < 0 and dur_frac is not None and dur_frac <= 0.5:
+                verdict = "loss"
             else:
-                kept = sgn * (last_px - spot) / sigma
-                hold_min = max((close_t - t0).total_seconds() / 60.0, 1.0)
-                # N18 hold-scaling: the hit bar lives on the WINDOW's expected move
-                hit_bar = PIN_TARGET_SIGMA * math.sqrt(hold_min / 390.0)
-                if mfe < SCENE_NEVER_MOVED_FLOOR_SIGMA:
-                    outcome = "loss"     # never moved — the call went nowhere
-                elif kept >= hit_bar:
-                    outcome = "win"
-                else:
-                    outcome = "flat"
-            pend = outcome == "pending"
-            episodes.append({"dir": d, "t_open": row["ts"],
-                             "t_close": None if pend else close_t.isoformat(),
-                             "close_reason": None if pend else reason,
-                             "scene_trigger": None if pend else trigger,
-                             "outcome": outcome,
-                             "called_sigma": round(called, 3),
-                             "called_fallback": fallback,
-                             "mfe_sigma": round(mfe, 3),
-                             "kept_sigma": round(kept, 3) if kept is not None else None,
-                             "tt_target_min": round(tt) if tt is not None else None})
-            # re-arm: the next issuance at/after the close opens a fresh episode
-            # (a dir-flip call sits exactly AT close_t and must open the next one)
-            i += 1
-            while i < len(calls) and calls[i][0] < close_t:
-                i += 1
+                verdict = "mixed"                    # area and duration disagree
+            calls.append({"t_open": g["ts"],
+                          "t_close": None if pend else close_t.isoformat(),
+                          "close_reason": None if pend else reason,
+                          "dir": g["dir"], "entry": round(entry, 2),
+                          "sigma": round(sigma, 4),
+                          "area_sess": round(area, 5),
+                          "mean_fav_sigma": round(s_sum / n_bars, 4) if n_bars else None,
+                          "bars_win": bwin, "bars_lose": blose,
+                          "dur_frac": round(dur_frac, 3) if dur_frac is not None else None,
+                          "mfe_sigma": round(mfe, 3), "mae_sigma": round(mae, 3),
+                          "mfe_before_stop": round(mfe_bs, 3),
+                          "n_reaffirms": g["n_reaffirms"], "verdict": verdict})
 
-        wins = sum(1 for e in episodes if e["outcome"] == "win")
-        losses = sum(1 for e in episodes if e["outcome"] == "loss")
-        flats = sum(1 for e in episodes if e["outcome"] == "flat")
-        pending = sum(1 for e in episodes if e["outcome"] == "pending")
-        decided = wins + losses          # flats excluded from the denominator
-        lo, hi = wilson_bounds(wins, losses) if decided else (None, None)
-        closed = [e for e in episodes if e["outcome"] != "pending"]
-        mfes = [e["mfe_sigma"] for e in closed]
-        kepts = [e["kept_sigma"] for e in closed if e["kept_sigma"] is not None]
-        ratios = [e["mfe_sigma"] / e["called_sigma"] for e in closed if e["called_sigma"]]
-        tts = [e["tt_target_min"] for e in episodes if e["tt_target_min"]]
-        sph = [e["called_sigma"] / (e["tt_target_min"] / 60.0)
-               for e in episodes if e["outcome"] == "win" and e["tt_target_min"]]
+        closed = [c for c in calls if c["verdict"] != "pending"]
+        wins = sum(1 for c in closed if c["verdict"] == "win")
+        losses = sum(1 for c in closed if c["verdict"] == "loss")
+        mixed = sum(1 for c in closed if c["verdict"] == "mixed")
+        net = round(sum(c["area_sess"] for c in closed), 5) if closed else None
+        day_hit = (None if net is None or net == 0
+                   else "hit" if net > 0 else "miss")
+        means = [c["mean_fav_sigma"] for c in closed if c["mean_fav_sigma"] is not None]
+        durs = [c["dur_frac"] for c in closed if c["dur_frac"] is not None]
+        mfes = [c["mfe_sigma"] for c in closed]
         pv = max(set(versions), key=versions.count) if versions else None
-        return {"scene_grade_v": 1, "prompt_version": pv,
-                "n": decided, "wins": wins, "losses": losses, "flats": flats,
-                "pending": pending,
-                "hit_rate": round(wins / decided, 2) if decided else None,
-                "wilson_lo": round(lo, 3) if lo is not None else None,
-                "wilson_hi": round(hi, 3) if hi is not None else None,
-                "median_mfe_sigma": round(statistics.median(mfes), 3) if mfes else None,
-                "median_kept_sigma": round(statistics.median(kepts), 3) if kepts else None,
-                "called_vs_realized": round(statistics.median(ratios), 3) if ratios else None,
-                "median_tt_target_min": round(statistics.median(tts), 1) if tts else None,
-                "sigma_per_hour": round(statistics.median(sph), 3) if sph else None,
+        return {"sweep_grade_v": 1, "prompt_version": pv,
+                "n_calls": len(calls), "wins": wins, "losses": losses,
+                "mixed": mixed, "pending": len(calls) - len(closed),
+                "day_hit": day_hit, "net_area_sess": net,
+                "med_mean_fav_sigma": round(statistics.median(means), 4) if means else None,
+                "med_dur_frac": round(statistics.median(durs), 3) if durs else None,
+                "med_mfe_sigma": round(statistics.median(mfes), 3) if mfes else None,
                 "n_dropped_early": n_dropped,
-                "params": {"never_moved_floor_sigma": SCENE_NEVER_MOVED_FLOOR_SIGMA,
-                           "fallback_target_sigma": SCENE_FALLBACK_TARGET_SIGMA,
-                           "magnet_jump_sigma": _wt.MAGNET_JUMP_SIGMA,
-                           "flow_flip_min": _wt.FLOW_FLIP_MIN,
-                           "vix_ts_jump": _wt.VIX_TS_JUMP},
-                "episodes": episodes}
+                "params": {"stop_sigma": SWEEP_STOP_SIGMA,
+                           "verdict": "area sign + dur_frac majority",
+                           "closure": "dir_flip|session_close"},
+                "calls": calls}
     except Exception:
         return None
 
@@ -1238,31 +1070,26 @@ if __name__ == "__main__":
                   f"wins (rate {blp['win_rate']}){pwl}  · {blp['scratch']} scratch "
                   f"· {blp['pending']} pending")
         print()
-    wt = res.get("watchtower")
-    if wt:
-        rr = (f"  · total_r {wt['total_r']:+.2f} (median {wt['median_r']:+.2f})"
-              if wt.get("total_r") is not None else "")
-        sc = wt.get("scans") or {}
-        dg = wt.get("disagree") or {}
-        to, gv = dg.get("tower_only") or {}, dg.get("gates_vetoed") or {}
-        print(f"  HEAD B — WATCHTOWER: {wt['wins']}/{wt['n']} wins "
-              f"(rate {wt['win_rate']}){rr}  · {wt['scratch']} scratch "
-              f"· {wt['pending']} pending")
-        print(f"    scans: {sc.get('judged', 0)} judged / {sc.get('skipped', 0)} skipped  "
-              f"· agree both-fired {sc.get('both_fired', 0)} / both-passed {sc.get('both_passed', 0)}")
-        print(f"    DISAGREEMENTS (the money column): tower-only "
-              f"{to.get('wins', 0)}/{to.get('n', 0)} wins  · gates-vetoed "
-              f"{gv.get('wins', 0)}/{gv.get('n', 0)} wins "
-              f"(low here = the veto skipped losers = point FOR the tower)\n")
-    ws = res.get("watchtower_scene")
-    if ws and (ws["n"] or ws["flats"] or ws["pending"]):
-        wl = (f"  Wilson {ws['wilson_lo']}-{ws['wilson_hi']}"
-              if ws.get("wilson_lo") is not None else "")
-        cr = (f"  · called/realized {ws['called_vs_realized']}"
-              if ws.get("called_vs_realized") is not None else "")
-        print(f"  HEAD B — SCENE LEDGER: {ws['wins']}W/{ws['losses']}L/{ws['flats']}F "
-              f"(hit {ws['hit_rate']}){wl}{cr}  · {ws['pending']} pending "
-              f"· {len(ws['episodes'])} episodes\n")
+    sw = res.get("watchtower_sweep")
+    if sw and (sw["n_calls"] or sw["n_dropped_early"]):
+        net = (f"{sw['net_area_sess']:+.5f}" if sw.get("net_area_sess") is not None
+               else "—")
+        print(f"  HEAD B — SWEEP LEDGER: {sw['wins']}W/{sw['losses']}L/{sw['mixed']}X "
+              f"of {sw['n_calls']} calls  · day {sw['day_hit'] or 'undecided'} "
+              f"(net area {net}σ·sess)  · {sw['pending']} pending "
+              f"· {sw['n_dropped_early']} dropped-early")
+        for c in sw["calls"]:
+            print(f"    {c['t_open'][11:16]} {c['dir'].upper():4} entry {c['entry']}  "
+                  f"area {c['area_sess']:+.5f}  dur {c['dur_frac']}  "
+                  f"mfe {c['mfe_sigma']} (pre-stop {c['mfe_before_stop']})  "
+                  f"mae {c['mae_sigma']}  +{c['n_reaffirms']} reaffirms  "
+                  f"-> {c['verdict']} ({c['close_reason'] or 'open'})")
+        print()
+    st = res.get("stance")
+    if st:
+        print(f"  HEAD B — STANCE: {st['n']} judged  acc {st['acc']}  "
+              f"fight {st['fight']['wins']}/{st['fight']['n']}  "
+              f"settle {st['settle']['wins']}/{st['settle']['n']}\n")
     if not res.get("engines"):
         meta = res.get("meta") or {}
         if not meta.get("rows"):
