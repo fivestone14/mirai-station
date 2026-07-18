@@ -684,7 +684,7 @@
   @media (max-width:520px){ .modal-head{flex-wrap:wrap; row-gap:8px} .modal-head .mt{flex:1 1 100%; white-space:normal; overflow:visible} .modal-tabs{margin-left:0} }
 
   /* ---- heads ---- */
-  .heads{display:grid; grid-template-columns:1fr 1fr; grid-template-rows:minmax(0,1fr); gap:20px; flex:1; min-height:0}
+  .heads{display:grid; grid-template-columns:1fr; grid-template-rows:minmax(0,1fr); gap:20px; flex:1; min-height:0}
   @media (max-width:860px){.heads{grid-template-columns:1fr}}
   .headcard{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px 18px 16px; min-height:0; overflow:auto}
   /* SWEEP LEDGER — the ONE Watchtower report card (replaced the Trade/Scene two-up).
@@ -728,7 +728,9 @@
      into a sticky strip under the header row), and the modal's math table */
   .lg-info{appearance:none; cursor:pointer; width:24px; height:24px; border-radius:50%; flex:none; padding:0;
     border:1px solid color-mix(in srgb,var(--l-tower) 45%, var(--hairline)); background:color-mix(in srgb,var(--l-tower) 12%, var(--surface));
-    color:color-mix(in srgb,var(--l-tower) 85%, var(--ink)); font-family:var(--sans); font-size:13px; font-weight:700; line-height:1;
+    /* 65% tower / 35% ink: the deepest mix that keeps the amber and still clears 4.5:1
+       on the LIGHT ground (85% measured 3.9:1 — an unreadable "i" on a bright tablet) */
+    color:color-mix(in srgb,var(--l-tower) 65%, var(--ink)); font-family:var(--sans); font-size:13px; font-weight:700; line-height:1;
     display:grid; place-items:center; transition:.15s}
   .lg-info:hover,.lg-info:focus-visible{background:color-mix(in srgb,var(--l-tower) 24%, var(--surface)); outline:0}
   .lg-table thead th[data-tip]{cursor:help; text-decoration:underline dotted color-mix(in srgb,var(--ink-faint) 65%, transparent); text-underline-offset:3px}
@@ -3091,6 +3093,7 @@ async function probeAndRun(){
     setMode(true); feedAll(L); setTimeout(poll, FEED.pollMs);
     pollSpot();                                                   // the price streams on its own clock
     loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
+    setInterval(loadLedgers, 1200000);                            // Sweep Ledger card — the nightly grade (13:15 PT) + date rollover land without a reload
     fetchDatedBook(); setInterval(fetchDatedBook, 1200000);       // dated OI book (changes only on the nightly pull)
     setInterval(loadSiege, 300000);                               // siege store — boot load done at startup; re-read on the 5-min scan cadence
   }catch(e){ setMode(false); if(!GX.demoTimer) GX.demoTimer=setInterval(nextTarget, 2600); setTimeout(probeAndRun, 5000); }   // keep retrying the live feed
@@ -4108,8 +4111,9 @@ async function loadLedgers(){
       // old-key rows only → remember we saw a graded past, but NEVER render the old cards
       if(!LEDGERS && (r.watchtower||r.watchtower_scene)) LEDGERS={day:r.day||null, sweep:null, legacy:true};
     }
-  }catch(e){ LEDGERS={day:null, sweep:null, legacy:false}; }
+  }catch(e){ if(!LEDGERS) LEDGERS={day:null, sweep:null, legacy:false}; }   // a failed REFRESH must not wipe a good card
   if(!LEDGERS) LEDGERS={day:null, sweep:null, legacy:false};
+  _ledgersLoading=false;   // re-entrant: the 20-min timer re-runs this so the nightly grade lands without a reload
   renderHeads();
 }
 const SWEEP_EXPLAIN='One Watchtower call = one sweep, graded like an integral: every 1-minute slice adds the signed distance price sat from the entry, on the called side. Green slices (price on the called side) minus red slices (against) = the call’s signed AREA — how far AND how long the call was right. Win = area positive AND most bars on the right side; loss = both negative; mixed = they disagree. The day is a HIT if the summed area is positive. A call closes only on an opposite-direction call or the session close.';
@@ -4240,38 +4244,19 @@ function openSweepInfoModal(){
 function renderHeads(){
   // ledger tables scroll — keep their place across the per-scan re-render (same move as renderDiary)
   const keepScroll=[...document.querySelectorAll('#p-heads .lg-tablewrap')].map(el=>el.scrollTop);
-  const s = liveNow(), gates = gateStates(s), passed = gates.filter(g=>g.on).length;
-  const held = !s.fade.fired;
+  const s = liveNow();
   const w = s.wt;
   const pips = Array.from({length:w.votes.n}, (_,i)=> `<span class="pip ${i < Math.round(w.votes.agree*w.votes.n)?'y':''}"></span>`).join("");
-  const gateHTML = gates.map(g=>`
-    <div class="gate">
-      <div class="mk ${g.on?'on':'off'}">${g.on?'✓':'✕'}</div>
-      <div><div class="gn">${g.nm}</div><div class="gd">${g.dsc}</div></div>
-      <div class="gv"><b>${g.val}</b></div>
-    </div>`).join("");
 
   $("#p-heads").innerHTML = `
-    <div class="phead"><div><h2>Processor</h2><div class="desc">The decision processor at ${s.t} — the Fade-Lens checklist vs. the Watchtower's reasoning</div></div></div>
+    <div class="phead"><div><h2>Processor</h2><div class="desc">The decision processor at ${s.t} — the Watchtower's reasoning and its Sweep Ledger record</div></div></div>
     <div class="heads">
-      <div class="headcard A">
-        <div class="headtop"><div class="nm">Fade Lens<em>lens · 4-gate checklist</em></div>
-          <span class="pill ${held?'grey':'jade'}">${held?'Held':'Fired · '+cap(s.fade.dir)}</span></div>
-        <div class="headsum">${passed} of 4 gates open · all four required to fire paper.${held?` <span style="color:var(--coral)">Blocked by Runway.</span>`:''}</div>
-        ${gateHTML}
-        <div style="margin-top:14px" class="kv"><span>Fade score</span><b style="color:var(--${s.fade.score>=0?'jade':'coral'})">${s.fade.score>=0?'+':''}${f(s.fade.score,2)}</b></div>
-        <div class="kv"><span>Magnet it reverts to</span><b>${f(s.magnet,0)}</b></div>
-        <div class="kv"><span>Break-lens sibling</span><b>${cap(s.brk.state)}${s.brk.cocks?' ·'+s.brk.cocks:''}</b></div>
-      </div>
-
       <div class="headcard B">
         <div class="headtop"><div class="nm">Watchtower<em>processor · reasoning${w.pv?' · '+w.pv:''}</em></div>
-          <span class="pill ${w.agrees?'grey':'lantern'}">${w.agrees?'Agrees with gates':'Stands against gates'}</span></div>
-        <div class="verdict">
-          <span class="big" style="color:var(--${w.fired?'lantern':'ink-dim'})">${w.fired?cap(w.dir).toUpperCase():'STAND DOWN'}</span>
-          ${w.fired?`<span class="mag">${sig(w.mag)} · ${w.horizon}m · [${f(w.range[0],2)}, ${f(w.range[1],2)}]σ</span>`:''}
-          ${w.stance?`<span class="pill ${w.stance==='fight'?'coral':w.stance==='settle'?'jade':'grey'}" title="N4: the prison-yard axis — will the range erupt (fight) or pin/drift (settle)? Independent of direction.">${w.stance==='fight'?'⚔ FIGHT':w.stance==='settle'?'◎ SETTLE':'— NO READ'}</span>`:''}
-        </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+            ${w.stance?`<span class="pill ${w.stance==='fight'?'coral':w.stance==='settle'?'jade':'grey'}" title="N4: the prison-yard axis — will the range erupt (fight) or pin/drift (settle)? Independent of direction.">${w.stance==='fight'?'⚔ FIGHT':w.stance==='settle'?'◎ SETTLE':'— NO READ'}</span>`:''}
+            <span class="pill ${w.agrees?'grey':'lantern'}">${w.agrees?'Agrees with gates':'Stands against gates'}</span>
+          </div></div>
         ${w.dissent?`<div class="kv" title="N19: the reveal pass disagreed with a unanimous blind majority — the majority stood; the dissent is on the record"><span>Reveal dissent</span><b style="color:var(--coral)">${w.dissent.fired?('fire '+cap(w.dissent.direction||'')):'stand down'}</b></div>`:''}
         <div class="votes">
           <div class="pips">${pips}</div>
@@ -4403,7 +4388,10 @@ function rpMakeFire(scan, g, tgt, stp){
       if(tgtHit&&stpHit) outcome='loss'; else if(tgtHit) outcome='win'; else if(stpHit) outcome='loss';
     }
   }
-  if(move60==null && sign) move60=+(sign*(rpPriceAt(lockT)-entry)/sigma).toFixed(3);   // 60-min follow-through
+  // 60-min follow-through — only once the recorded path actually REACHES the lock: on a
+  // live morning a younger fire must say "no 60m yet", not wear a clamped last price as the mark
+  if(move60==null && sign && RP.path.length && RP.path[RP.path.length-1].t>=lockT)
+    move60=+(sign*(rpPriceAt(lockT)-entry)/sigma).toFixed(3);
   return { scan, dir, sign, entry, sigma, t, lockT, outcome,
     mfe:+(+mfe).toFixed(2), mae:+(+mae).toFixed(2), move60,
     mag:scan.wt.mag, horMin:scan.wt.horizon||60 };
@@ -4422,7 +4410,10 @@ function rpVerdict(fr){
   const net=(fr.mfe||0)+(fr.mae||0); return net>=0.05?'win':net<=-0.05?'loss':'scratch';
 }
 function rpAssembleFires(graded){
-  if(graded && graded.byTs.size){
+  // a new-shape response (sweep present) is authoritative even with ZERO fires — early
+  // morning before the first call must render empty, not fall back to the legacy client
+  // walk and fabricate fires the Sweep Ledger never graded
+  if(graded && (graded.byTs.size || graded.sweep)){
     const byTs=new Map(RP.scans.filter(s=>s.ts).map(s=>[s.ts,s]));
     const out=[];
     for(const [ts,g] of graded.byTs){
@@ -4863,7 +4854,10 @@ function rpUpdateDayNav(){ const D0=RP.days[RP.di]; if(!D0) return;
   RP.els.dayLabel.innerHTML=`${enWeekday(D0.day)}<small>${enMonthDay(D0.day)} · ${RP.di+1}/${RP.days.length}</small>`;
   RP.els.newer.disabled=RP.di<=0; RP.els.older.disabled=RP.di>=RP.days.length-1; }
 async function rpFetchBars(day){
-  if(RP.barsCache[day]!==undefined) return RP.barsCache[day];
+  // today-so-far never comes from the cache — the session is still writing bars, and a
+  // frozen path under a live sweep grade would shade area the chart can't show
+  const liveDay = day===new Date().toLocaleDateString('en-CA',{timeZone:ET});
+  if(!liveDay && RP.barsCache[day]!==undefined) return RP.barsCache[day];
   try{ const res=await fetch(`/api/raw/file?root=state&path=reversion/bars/${day}-SPX.json&limit=1000`,{cache:'no-store'});
     const d=await res.json(); RP.barsCache[day]=(d&&d.kind==='json'&&Array.isArray(d.data))?d.data:null; }
   catch(e){ RP.barsCache[day]=null; }

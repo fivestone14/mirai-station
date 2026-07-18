@@ -191,6 +191,17 @@ def test_sweep_card_summary_medians_over_closed_calls():
         [c["mfe_sigma"] for c in closed]), 3)
 
 
+def test_bad_sigma_rows_are_dropped_never_poisonous():
+    # σ<0 would grade the call with an INVERTED sign; a non-numeric σ used to
+    # raise inside the fail-open except and silently delete the whole day's card
+    for bad in (-10.0, 0.0, "10", None):
+        sw = _grade([_row(0, "call", sigma=bad)], _FULL_UP)
+        assert sw is not None and sw["n_calls"] == 0
+    # a poison row beside a clean one costs only itself
+    sw = _grade([_row(0, "call", sigma=-10.0), _row(5, "call")], _FULL_UP)
+    assert sw["n_calls"] == 1 and sw["calls"][0]["t_open"] == _row(5)["ts"]
+
+
 def _sweep_day_line(day, day_hit, pv="wt-6", gv=1, kind="ohlc"):
     return json.dumps({"day": day, "meta": {"bars_kind": {"SPX": kind}},
                        "watchtower_sweep": {"day_hit": day_hit, "prompt_version": pv,
@@ -213,6 +224,23 @@ def test_promotion_gate_watchtower_reads_sweep_day_hits(tmp_path):
     hist.write_text("\n".join(lines) + "\n")
     ok, why = pab.promotion_gate(hist=hist, record_key="watchtower")
     assert not ok and "too thin" in why
+
+
+def test_promotion_gate_counts_a_duplicated_day_once_newest_winning(tmp_path):
+    # persist() upserts one line per day, but a manual append can leave two rows
+    # for one day — the gate must count that day ONCE, from its NEWEST row
+    hist = tmp_path / "hist.jsonl"
+    lines = [_sweep_day_line(f"2026-06-{i:02d}", "hit") for i in range(1, 12)]
+    lines += [_sweep_day_line("2026-06-20", "miss"),      # older row for the day
+              _sweep_day_line("2026-06-20", "hit")]       # newest row wins
+    hist.write_text("\n".join(lines) + "\n")
+    ok, why = pab.promotion_gate(hist=hist, record_key="watchtower")
+    assert ok and "12 decided days" in why and "1.00" in why
+    # and a newest-row-undecided day drops out instead of resurrecting the old bit
+    lines[-1] = _sweep_day_line("2026-06-20", None)
+    hist.write_text("\n".join(lines) + "\n")
+    ok, why = pab.promotion_gate(hist=hist, record_key="watchtower")
+    assert not ok and "11/12" in why
 
 
 def test_promotion_gate_ignores_legacy_trade_cards(tmp_path):

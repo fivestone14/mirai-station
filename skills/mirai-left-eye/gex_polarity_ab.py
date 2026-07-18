@@ -232,13 +232,27 @@ def promotion_gate(min_outcomes: int = 12, promote_at: float = 0.58,
     # resets its earn-trust clock instead of pooling incompatible heads.
     decided: list = []
     try:
+        recs: list = []
         for ln in hist.read_text().splitlines():
             if not ln.strip():
                 continue
             try:
-                rec = json.loads(ln)
+                recs.append(json.loads(ln))
             except json.JSONDecodeError:
                 continue
+        # ONE ROW PER DAY, NEWEST WINNING: persist() upserts, but a manual append
+        # can leave two rows for one day — the gate must never count a day twice,
+        # nor resurrect an older verdict the day's newest row withdrew.
+        seen_days: set = set()
+        keep: list = []
+        for rec in reversed(recs):
+            day = rec.get("day")
+            if day:
+                if day in seen_days:
+                    continue
+                seen_days.add(day)
+            keep.append(rec)
+        for rec in reversed(keep):
             kinds = (rec.get("meta") or {}).get("bars_kind") or {}
             if not kinds or all(k != "ohlc" for k in kinds.values()):
                 continue                  # point-bar day: an estimate, not evidence
@@ -856,9 +870,14 @@ def _grade_watchtower_sweep(rows: list[dict], bars_lookup) -> dict | None:
             if not (_time(9, 45) <= t0.time() < _time(16, 0)):
                 n_dropped += 1           # visible-drop accounting, never silent
                 continue
-            if not (r.get("spot") and r.get("sigma")):
-                continue                 # no entry ruler — ungradeable issuance
-            issuances.append((t0, r["ts"], r["spot"], r["sigma"], wtd["direction"]))
+            spot, sigma = r.get("spot"), r.get("sigma")
+            # STRICT ruler check: a negative σ would grade the call with an
+            # INVERTED sign, and a non-numeric one would kill the whole card
+            # (the fail-open except turns a poison row into a missing day)
+            if not (isinstance(spot, (int, float)) and isinstance(sigma, (int, float))
+                    and spot > 0 and sigma > 0):
+                continue                 # no valid entry ruler — ungradeable issuance
+            issuances.append((t0, r["ts"], spot, sigma, wtd["direction"]))
         issuances.sort(key=lambda c: c[0])
 
         # fold reaffirms / split on flips into sweep calls
