@@ -290,6 +290,22 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
                           tag="gex-feed")
                 sirens.add(flag)
                 out["feed_sirens"] += 1
+            # dead-flow siren (2026-07-20): the option_trade_flow feed was silently
+            # empty for FIVE consecutive sessions (the provider's right:'both' path
+            # died in its 07-11/12 deploy) and nothing paged — aggressor_flow=None
+            # fails open by design ("no ticks yet"), so per-row honesty never trips.
+            # A whole morning of Nones is not "no ticks yet": if every lens row so
+            # far is flow-blind past mid-morning, the FEED is dead — page once.
+            lens_rows = [r for r in rows if r.get("ticker") in LENS_TICKERS]
+            if ("flow_dead" not in sirens and len(lens_rows) >= 20
+                    and now_et.hour * 60 + now_et.minute >= 11 * 60
+                    and all((r.get("gex_theta") or {}).get("aggressor_flow") is None
+                            for r in lens_rows)):
+                push.send("🩺 SPX feed: options flow dead — every scan today is "
+                          "flow-blind (aggressor_flow None); check option_trade_flow "
+                          "upstream (right:'both' regression family)", tag="gex-feed")
+                sirens.add("flow_dead")
+                out["feed_sirens"] += 1
         elif ((age is None or age >= _SCANNER_SILENT_MIN)
                 and "scanner_silent" not in sirens
                 and market_status.check(now_et).is_live):

@@ -325,12 +325,18 @@ return {'spot': spot, 'contracts': out, 'chunks': chunks, 'sides': sides,
 
 _FLOW_CODE = """
 def _v(x): return x.get('value', x) if isinstance(x, dict) else x
-r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
-    'date': %(exp)r, 'strike': %(strike)r, 'right': 'both', 'bucket_minutes': 390})
-v = _v(r)
-if not isinstance(v, dict) or 'by_strike' not in v:
+# TWO single-right calls, NEVER right:'both' (2026-07-20): the server's 'both' merge
+# path has been broken since its 07-11/12 deploy — it returns nothing (or a cached
+# partial stub), while single-right is live to the minute. Field names identical.
+by = []
+for _right in ('call', 'put'):
+    r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
+        'date': %(exp)r, 'strike': %(strike)r, 'right': _right, 'bucket_minutes': 390})
+    v = _v(r)
+    if isinstance(v, dict):
+        by.extend(v.get('by_strike') or [])
+if not by:
     return {'available': False}
-by = v.get('by_strike') or []
 def _num(s, k): return s.get(k) or 0
 cb = sum(_num(s, 'buy_dollars') for s in by if s.get('right') == 'call')
 cs = sum(_num(s, 'sell_dollars') for s in by if s.get('right') == 'call')
@@ -350,14 +356,20 @@ return {'available': True, 'flow': (((cb - cs) + (ps - pb)) / gross), 'gross': g
 # aggressor_flow (buyer-initiated ≥ ask, seller-initiated ≤ bid), not BVC.
 _FLOWSTRIKE_CODE = """
 def _v(x): return x.get('value', x) if isinstance(x, dict) else x
-r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
-    'date': %(exp)r, 'strike_from': %(lo)r, 'strike_to': %(hi)r, 'right': 'both',
-    'bucket_minutes': 390})
-v = _v(r)
-if not isinstance(v, dict) or 'by_strike' not in v:
+# TWO single-right calls, NEVER right:'both' — same server-side 'both' breakage as
+# _FLOW_CODE above (dead since the provider's 07-11/12 deploy; single-right is live).
+by = []
+for _right in ('call', 'put'):
+    r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
+        'date': %(exp)r, 'strike_from': %(lo)r, 'strike_to': %(hi)r, 'right': _right,
+        'bucket_minutes': 390})
+    v = _v(r)
+    if isinstance(v, dict):
+        by.extend(v.get('by_strike') or [])
+if not by:
     return {'available': False}
 out = []
-for s in (v.get('by_strike') or []):
+for s in by:
     out.append({'strike': s.get('strike'), 'right': s.get('right'),
                 'buy_dollars': s.get('buy_dollars') or 0,
                 'sell_dollars': s.get('sell_dollars') or 0,
