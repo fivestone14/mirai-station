@@ -3,7 +3,9 @@
 Vocabulary: GRAVITY = dealer positioning, where price gets PULLED (magnet/walls/
 flip/regime — this module). FLOW = the live force, who is SHOVING price right now
 (the aggressor-flow sensor in native_gex_feed; cross-checked in slide E). The
-pin-vs-trend failure mode reads as: gravity gets overpowered by flow.
+pin-vs-trend failure mode reads as: gravity gets overpowered by flow. Display
+notation for labeled levels (docs/gw-vocab.md): walls render as GWc/GWp, the
+magnet as MagP, pinning as Pin — storage keys here are never renamed.
 
 An isolated rework of the dealer-gamma read (cf. lefteye_gamma). Instead of ONE
 OI-weighted near-the-money slice re-pulled every scan, it pulls the FULL chain only
@@ -730,6 +732,13 @@ def gamma_tape(zero_dte: list[dict], spot: float,
         # denominator grows all session, so by 13:00 the level is stiff and the very turn
         # we are hunting gets swamped (the deciding hour is ~8% of a 390-min cumulative).
         # Δ is clamped at 0 — a provider restatement must never manufacture negative volume.
+        # A MISSING pq is skipped ON PURPOSE, not a bug. q_now snapshots EVERY in-window
+        # strike (even zero-flow ones get a (0,0,0,0) entry, see :717), so a quiet strike
+        # near spot already carries a zeroed baseline and its fresh flow IS captured. The
+        # only strikes absent from prev are ones the ±8% window SHIFTED onto (far-edge
+        # entrants) — deep-OTM, thin flow, and their b_dol is ALL-DAY cumulative, so
+        # zero-baselining them would count stale earlier-day activity as window flow. The
+        # miss (thin far-edge fresh flow) is smaller than the over-count it would trade for.
         if prev:
             pq = (prev.get("q") or {}).get((round(k, 4), c.get("right")))
             if pq:

@@ -19,6 +19,11 @@ Two words carry the whole model:
 The system's core question is always the same: **does gravity hold price to its
 magnet, or does flow overpower it and break away?**
 
+Wherever a wall, magnet, or pin is *labeled* in a rendered view it uses the
+standard notation from **`docs/gw-vocab.md`**: `GWc`/`GWp` (call/put gex walls),
+`MagP` (magnetic pull), `Pin`, each with a `'` `''` `'''` intensity mark and a
+tenor prefix (`[0DTE]`, `[1-7DTE]`, `[AUG21]`-style dates).
+
 ---
 
 ## The shape in one picture
@@ -112,9 +117,9 @@ One orchestrator (`lefteye_gex_box.py`) fetches the option chain only when it
 changed and re-prices it every scan into six "X-ray slides":
 
 - **A · flip** — the banded zero-gamma zone; regime = sign of net gamma at spot.
-- **B · magnet + walls** — today's 0DTE pull-strike (signed net-GEX) and the
-  volume-weighted call/put walls.
-- **C · terrain** — the stable 1–7DTE OI-weighted structural walls.
+- **B · magnet + walls** — today's 0DTE pull-strike (the MagP level, signed
+  net-GEX) and the volume-weighted call/put walls ([0DTE]GWc / [0DTE]GWp).
+- **C · terrain** — the stable OI-weighted structural walls ([1-7DTE]GWs).
 - **D · volume overlay** — fills in empty-OI 0DTE strikes.
 - **E · reconcile** — cross-checks the regime tag against live aggressor flow,
   direction-aware: a heavy buy-calls/sell-puts tape **inverts** the assumed dealer

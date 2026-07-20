@@ -2,8 +2,9 @@
 
 A **self-contained, shadow-only** sensor box that measures one thing: how much
 underlying (SPY) volume gets spent while spot is TOUCHING a dealer-gamma level
-(a **tower**: call wall / put wall / magnet) — and whether that effort predicts
-the level breaking or holding.
+(a **tower**: GWc / GWp / MagP — call wall, put wall, magnet; notation per the
+host's `docs/gw-vocab.md`) — and whether that effort predicts the level
+breaking or holding.
 
 Vocabulary: **GRAVITY** = dealer positioning pull (the walls, handed in from
 the host's GEX layer). **EFFORT** = underlying volume spent at the wall (what

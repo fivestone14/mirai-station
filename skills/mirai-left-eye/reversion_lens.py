@@ -1765,13 +1765,14 @@ def _regime_badge(regime: str) -> str:
 
 
 def _wall_bar(spot, put_wall, call_wall, width: int = 25) -> str:
-    """ASCII position bar: ● marks where spot sits between the put and call walls."""
+    """ASCII position bar: ● marks where spot sits between the put and call
+    walls (labeled GWp/GWc per docs/gw-vocab.md)."""
     if not (spot and put_wall and call_wall and call_wall > put_wall):
         return ""
     frac = max(0.0, min(1.0, (spot - put_wall) / (call_wall - put_wall)))
     pos = int(round(frac * (width - 1)))
     bar = "".join("●" if i == pos else "─" for i in range(width))
-    return f"`{put_wall:.0f} ┤{bar}├ {call_wall:.0f}`  ·  spot {spot:.0f}"
+    return f"`GWp {put_wall:.0f} ┤{bar}├ GWc {call_wall:.0f}`  ·  spot {spot:.0f}"
 
 
 def _aggregate(rows: list[dict], ticker: str) -> dict:
@@ -1792,6 +1793,25 @@ def _aggregate(rows: list[dict], ticker: str) -> dict:
     }
 
 
+def _magp_label(latest: Optional[dict], magnet) -> str:
+    """Display label for a magnet level — MagP + intensity mark per
+    docs/gw-vocab.md: inherits the GW tier of the wall the magnet sits on
+    (walls clustered from the measured gex_views.net_by_strike surface);
+    off-wall or no surface → the default MagP''."""
+    tier = "''"
+    try:
+        import gw_vocab
+        surf = ((latest or {}).get("gex_views") or {}).get("net_by_strike") or []
+        spot = (latest or {}).get("spot")
+        if surf and spot is not None and isinstance(magnet, (int, float)):
+            clusters = gw_vocab.cluster_walls(surf, spot)
+            step = gw_vocab.infer_step(sorted(float(k) for k, _ in surf))
+            tier = gw_vocab.magp_tier(magnet, clusters, step)
+    except (ImportError, AttributeError, TypeError, ValueError, IndexError, KeyError):
+        tier = "''"
+    return "MagP" + tier
+
+
 def _ticker_panel(agg: dict, ticker: str) -> str:
     """The under-the-hood decision for one ticker RIGHT NOW, as a child-simple
     numbered trace: regime → stretch → runway → turn → decision."""
@@ -1809,7 +1829,8 @@ def _ticker_panel(agg: dict, ticker: str) -> str:
 
     armed = rev.get("armed")
     side = "LONG" if rev.get("direction") == "call" else "SHORT"
-    reason = {"put_wall": "at the put wall", "call_wall": "at the call wall"}.get(
+    reason = {"put_wall": "at the put wall (GWp)",
+              "call_wall": "at the call wall (GWc)"}.get(
         rev.get("arm_reason"), "stretched far from fair value")
 
     # numbered decision trace (the "show your work")
@@ -1820,7 +1841,7 @@ def _ticker_panel(agg: dict, ticker: str) -> str:
         rw, ok = rev.get("runway_sigma"), rev.get("runway_ok")
         # magnet is a zone CENTER now (float, e.g. 7548.62) — round for humans
         _mtxt = f"{magnet:.0f}" if isinstance(magnet, (int, float)) else magnet
-        room = (f"3. **Runway** → {rw}σ of room to the magnet ({_mtxt}) → "
+        room = (f"3. **Runway** → {rw}σ of room to the magnet ({_magp_label(latest, magnet)} {_mtxt}) → "
                 + ("🟢 enough room" if ok else f"🔴 NOT enough (need ≥{RUNWAY_MIN_SIGMA}σ)"))
         t.append(room)
         t.append(f"4. **Turn** → {'✅ last candle turned back' if rev.get('reaction') else '⏳ waiting for a turn'}")
@@ -1838,7 +1859,8 @@ def _ticker_panel(agg: dict, ticker: str) -> str:
 
     lines = [f"### {ticker}  ·  {badge}", ""]
     if bar:
-        mline = f"  ·  magnet (pin) {magnet}" if magnet is not None else ""
+        mline = (f"  ·  {_magp_label(latest, magnet)} {magnet}"
+                 if magnet is not None else "")
         lines += [bar + mline, ""]
     lines += ["\n".join(t), ""]
     return "\n".join(lines)
@@ -1954,7 +1976,7 @@ def _gex_heatmap(latest: Optional[dict], width: int = 16) -> str:
         cells[fi] = "🟨"
     si = min(width - 1, max(0, int((spot - pw) / (cw - pw) * width)))
     cells[si] = "🔵"                                     # you-are-here
-    return f"**{pw:.0f}** {''.join(cells)} **{cw:.0f}**"
+    return f"**GWp {pw:.0f}** {''.join(cells)} **GWc {cw:.0f}**"
 
 
 def _gex_section(rows: list[dict]) -> str:
@@ -1981,7 +2003,8 @@ def _gex_section(rows: list[dict]) -> str:
         if band and band[0] is not None and band[1] is not None:
             flip_s += f" (band {band[0]:.0f}–{band[1]:.0f})"
         magnet = dm.get("magnet")
-        magnet_s = f" · magnet {magnet:.0f}" if magnet is not None else ""
+        magnet_s = (f" · {_magp_label(latest, magnet)} {magnet:.0f}"
+                    if magnet is not None else "")
         meaning = _GEX_MEANING.get(regime, "no clean dealer-gamma read")
         lines += [
             f"**{tk}** · {status} · _{_gex_src_label(dm.get('source'))}_"

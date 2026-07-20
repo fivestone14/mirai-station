@@ -280,7 +280,8 @@ def test_gex_heatmap_splits_green_above_flip_red_below_and_marks_spot():
     assert "🟩" in strip and "🟥" in strip          # both gamma zones present
     assert "🔵" in strip                             # spot is marked
     assert "🟨" in strip                             # flip transition cell
-    assert strip.startswith("**7300**") and strip.endswith("**7450**")
+    # band bounds carry the standard notation (docs/gw-vocab.md): GWp/GWc
+    assert strip.startswith("**GWp 7300**") and strip.endswith("**GWc 7450**")
 
 
 def test_gex_heatmap_degrades_without_wall_structure():

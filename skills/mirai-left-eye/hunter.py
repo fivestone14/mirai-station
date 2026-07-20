@@ -246,6 +246,7 @@ def scan(
         print(f"=== mirai-left-eye tick {now.isoformat()} ===")
         print(f"universe: {tickers}  |  time_gate={gate_ok} ({gate_reason})")
 
+    magp_lbl = {}   # ticker → "MagP''"-style label for the fire lines (display only)
     for ticker in tickers:
         rev_record = reversion.evaluate(ticker, now)
         if not rev_record:
@@ -291,8 +292,10 @@ def scan(
             "gap_stretch": rev.get("gap_stretch"),
         })
         if verbose:
+            # GW standard (docs/gw-vocab.md): the magnet level wears MagP + tier
             print(f"[{ticker}] spot {t.get('spot')}  regime {t.get('regime')}"
-                  f"  dealers {gv.get('regime')}  magnet {gv.get('magnet')}"
+                  f"  dealers {gv.get('regime')}"
+                  f"  {reversion._magp_label(t, gv.get('magnet'))} {gv.get('magnet')}"
                   f"  {'FIRE ' + str(rev.get('direction')) if rev.get('fired') else 'quiet'}")
 
         # WATCHTOWER (Head B, shadow): echo its human-facing snippet when it
@@ -324,6 +327,9 @@ def scan(
             "runway_sigma": rev.get("runway_sigma"),
             "paper": not allowed, "gate": gate_reason,
         }
+        # display-only (GW standard): the fire line's magnet label, tiered from
+        # this scan's surface while it is still in hand — never persisted
+        magp_lbl[ticker] = reversion._magp_label(t, rev.get("magnet"))
         heartbeat["fires"].append(fire)
         mark_fired(state, ticker, direction, ["reversion_extreme"], now)
 
@@ -335,8 +341,9 @@ def scan(
     if fires:
         for f in fires:
             mode = "PAPER" if f.get("paper", True) else "LIVE"
+            lbl = magp_lbl.get(f["ticker"], "MagP''")
             print(f"mirai-left-eye :: 🎯 {mode} fade {f['side']} {f['ticker']}"
-                  f" → magnet {f['magnet']}  (stretch {f['gap_stretch']}σ,"
+                  f" → {lbl} {f['magnet']}  (stretch {f['gap_stretch']}σ,"
                   f" runway {f['runway_sigma']}σ)")
         if load_config().get("push_to_phone") and not dry_run:
             tag = "paper" if all(f.get("paper", True) for f in fires) else "LIVE"

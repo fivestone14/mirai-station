@@ -89,9 +89,9 @@ def build_pipeline() -> dict:
             "tech": "lefteye_gex_box · reversion_lens · resolve_dealer_map",
             "modules": [
                 {"emoji": "🧲", "name": "lefteye_gex_box", "title": "The Gravity Engine",
-                 "what": "Six slides from the option book: the magnet (fill-ledger fed), the walls, "
-                         "the flip line, the regime — cross-checked against live FLOW (a pin fighting "
-                         "one-way tape is downgraded to 🟡 uncertain).",
+                 "what": "Six slides from the option book: the magnet (MagP, fill-ledger fed), the "
+                         "walls (GWc/GWp), the flip line, the regime — cross-checked against live "
+                         "FLOW (a pin fighting one-way tape is downgraded to 🟡 uncertain).",
                  "data": []},
                 {"emoji": "🎚️", "name": "reversion_lens", "title": "The Fade Lens (the brain)",
                  "what": "Watches SPX for stretched moves with room to snap back to the magnet — "

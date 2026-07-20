@@ -8,6 +8,17 @@ Code identifiers and storage keys are never renamed (the `gex_views` key
 precedent) — these plain names live in docstrings, labels, and conversation.
 Reference diagram: `~/Desktop/mirai-gex-flow.png`.
 
+## Wall / magnet / pin notation
+
+The standard notation for every *labeled* wall, magnet, or pin level lives in
+**`docs/gw-vocab.md`** (2026-07-19): `GWc`/`GWp` = call/put gex walls, `MagP` =
+magnetic pull, `Pin` = pinning, each with a prime intensity mark (`'` `''`
+`'''`) and a tenor prefix (`[0DTE]`, `[1-7DTE]`, `[AUG21]`-style dates).
+`skills/mirai-left-eye/gw_vocab.py` is the Python source of truth for the
+thresholds and the wall-clustering rule; the viewstation carries its JS twin.
+Prose stays plain English ("the magnet", "a wall") — the notation is for
+labeled levels in rendered views.
+
 ## Tick loop
 | Code | Plain name | What it actually does |
 |---|---|---|
@@ -38,8 +49,8 @@ is now the only gravity read.)
 | `GexBox()` | Gravity Engine | The orchestrator: fetch rarely, re-price every scan, produce the six slides |
 | `_rescaled_chain()` | Stand-In Chain | Borrows SPY's option book and stretches it ×10 into SPX's price space |
 | `slide_flip()` | Border Finder (A) | The price where dealer behavior flips from calming to amplifying, with an honest uncertainty band |
-| `slide_0dte()` | Magnet Finder (B) | Today's pull-strike (fill-ledger weighted) and today's ceiling/floor walls |
-| `slide_tenor_walls()` | Terrain Map (C) | The stable multi-day walls that don't drift intraday |
+| `slide_0dte()` | Magnet Finder (B) | Today's pull-strike (the MagP level, fill-ledger weighted) and today's ceiling/floor walls ([0DTE]GWc / [0DTE]GWp) |
+| `slide_tenor_walls()` | Terrain Map (C) | The stable multi-day walls ([1-7DTE]GWs) that don't drift intraday |
 | `reconcile_sign()` | Gravity-vs-Flow Check (E) | Downgrades a "price will pin" call to 🟡 uncertain when heavy one-way flow is fighting it |
 | `slide_flows()` | Drift Gauges (F) | Vanna/charm: the slow pressure from volatility moves and time decay into the close |
 
