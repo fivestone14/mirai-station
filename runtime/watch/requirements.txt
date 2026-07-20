@@ -1,5 +1,4 @@
-langgraph>=0.2.0
-langgraph-checkpoint-sqlite>=2.0.0
-lancedb>=0.13.0
-pandas>=2.0
-pyarrow>=14
+# Intentionally empty: none of the pins that used to live here (langgraph,
+# langgraph-checkpoint-sqlite, lancedb, pandas, pyarrow) are imported anywhere
+# in the codebase anymore. Runtime dependencies are managed by
+# runtime/scripts/venv-bootstrap.sh.

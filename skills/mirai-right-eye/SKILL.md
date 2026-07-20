@@ -12,8 +12,8 @@ description: |
   novelty gate → classify → score → summarize → LanceDB store, plus retrieve /
   feedback / self_review) was orphaned when the Mirai Watch tick graph was
   removed ~2026-06-11 and never re-wired. Those modules and the frozen
-  state/right_eye.lance store were deleted. Only embed.py + _config.py +
-  schemas.py remain live. Do not invoke this as a slash command.
+  state/right_eye.lance store were deleted. Only embed.py + _config.py
+  remain live. Do not invoke this as a slash command.
 argument-hint: ""
 allowed-tools: Read
 ---
@@ -32,8 +32,8 @@ What survives is the embedding surface only:
   model is cached under `~/.cache/huggingface`; `sentence_transformers` is
   imported lazily on first use).
 - `_config.load()` → the `embedding_model` block from `config.json`.
-- `schemas.py` → the pydantic types `embed.py` imports (`Item`), kept because
-  `__init__.py` re-exports them.
+  (`schemas.py` and its pydantic types went with the retired pipeline —
+  deleted 2026-07-20.)
 
 ## Live wiring
 

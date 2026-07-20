@@ -120,6 +120,7 @@ def load_state() -> dict[str, Any]:
 
 
 def save_state(state: dict[str, Any]) -> None:
+    """Persist the hunter's per-day dedup state to STATE_PATH (best-effort)."""
     try:
         with open(STATE_PATH, "w") as f:
             json.dump(state, f, indent=2, default=str)
@@ -295,7 +296,7 @@ def scan(
             # GW standard (docs/gw-vocab.md): the magnet level wears MagP + tier
             print(f"[{ticker}] spot {t.get('spot')}  regime {t.get('regime')}"
                   f"  dealers {gv.get('regime')}"
-                  f"  {reversion._magp_label(t, gv.get('magnet'))} {gv.get('magnet')}"
+                  f"  {reversion.magp_label(t, gv.get('magnet'))} {gv.get('magnet')}"
                   f"  {'FIRE ' + str(rev.get('direction')) if rev.get('fired') else 'quiet'}")
 
         # WATCHTOWER (Head B, shadow): echo its human-facing snippet when it
@@ -329,7 +330,7 @@ def scan(
         }
         # display-only (GW standard): the fire line's magnet label, tiered from
         # this scan's surface while it is still in hand — never persisted
-        magp_lbl[ticker] = reversion._magp_label(t, rev.get("magnet"))
+        magp_lbl[ticker] = reversion.magp_label(t, rev.get("magnet"))
         heartbeat["fires"].append(fire)
         mark_fired(state, ticker, direction, ["reversion_extreme"], now)
 

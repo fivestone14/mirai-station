@@ -129,10 +129,10 @@ def cluster_walls(net_by_strike: list, spot: float,
         return []
     if step is None:
         step = infer_step([k for k, _ in pts])
-    strongest_strike = max(abs(g) for _, g in pts)
-    if strongest_strike <= 0:
+    strongest_strike_gamma = max(abs(g) for _, g in pts)
+    if strongest_strike_gamma <= 0:
         return []
-    floor = STRIKE_FLOOR * strongest_strike
+    floor = STRIKE_FLOOR * strongest_strike_gamma
     pts = [(k, g) for k, g in pts if abs(g) >= floor - _EPS]
 
     groups: list[list[tuple[float, float]]] = [[pts[0]]]

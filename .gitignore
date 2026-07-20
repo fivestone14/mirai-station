@@ -20,24 +20,9 @@ __pycache__/
 # lob ticks, ~158MB and churning) — machine-local, never versioned.
 state/
 state/logs/
-state/dossiers/
-state/queues/
-# Learned per-signal posteriors (Build #2). Runtime learning state: accrues on
-# the mini from its own reconciled trades via the `learn` phase — not seeded
-# from main (a dev backfill would carry this machine's history, not the mini's).
-state/memory/
 
 # Per-skill caches and run history that regenerate from live data
 skills/*/cache/
 skills/*/logs/
-skills/oracle/history/
-skills/oracle/run/
-skills/oracle/replay/
-skills/oracle/news/
-skills/algo-read/cache/
 skills/iv-viability/cache/
 skills/mirai-left-eye/logs/
-
-# Knowledge mutable state — sync rules decided per-deployment
-knowledge/mirai/dossiers/*.tmp
-knowledge/mirai/*.jsonl.bak

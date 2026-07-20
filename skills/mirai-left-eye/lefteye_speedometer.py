@@ -158,14 +158,6 @@ def _returns_from(usable: list[tuple[datetime, float]]) -> tuple[list[tuple[int,
     return pairs, gap_drops
 
 
-def log_returns(bars: list[dict]) -> list[tuple[int, float]]:
-    """Today's 1-min bars → [(bucket_idx, log_return)] after the full hygiene
-    pass (sort, dedupe, junk drops, >180s gap drops). Pure; see _returns_from
-    for the gap-drop count used by the quality guard."""
-    pairs, _ = _returns_from(_usable_bars(bars))
-    return pairs
-
-
 # =========================================================================
 # realized measures + jump statistic
 # =========================================================================

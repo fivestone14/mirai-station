@@ -46,6 +46,7 @@ Every external lookup is injected, so the logic is pure + testable.
 """
 from __future__ import annotations
 
+import functools
 import math
 import os
 import statistics
@@ -373,10 +374,20 @@ def _sessions_ahead(dte: int, today: Optional[date] = None) -> float:
     return float(max(sessions, 1))       # an expiry inside the window is >= 1 session
 
 
+@functools.lru_cache(maxsize=8)
 def _nyse_holidays(year: int) -> frozenset:
     """NYSE full-closure set, borrowed from the watch package's computed calendar (the
     same source dated_gex_feed._holidays uses). Raises on failure so _sessions_ahead
-    can take its documented fallback rather than silently counting holidays as sessions."""
+    can take its documented fallback rather than silently counting holidays as sessions.
+
+    lru_cache is load-bearing, NOT an optimization nicety: this is a pure year→frozenset
+    lookup but it sits at the leaf of the flip root-finder, which reprices every dated
+    contract at every price-grid point — ~1.09M calls per build_views(). Uncached (each
+    call did Path(__file__).resolve() + an import), it pushed build_views to 21-29s and
+    blew native_gex_feed.read()'s 15s budget, silently dropping the ENTIRE flow block
+    (aggressor_flow/gamma_tape/flow_recent/tape_prev) on every scan from 2026-07-13 on.
+    Cached: build_views ~29s→~0.9s, identical output. A one-line calendar change per year
+    is a cache miss (maxsize=8 covers this year + next + slack); everything else is a hit."""
     rt = str(Path(__file__).resolve().parent.parent.parent / "runtime")
     if rt not in sys.path:
         sys.path.insert(0, rt)
@@ -1376,6 +1387,7 @@ _RTH_MINUTES = 390.0          # minutes in a regular-hours session (6.5h)
 _CEX_FLOOR_MIN = 5.0          # floor 0DTE time-to-close so charm stays finite at the bell
 
 
+@functools.lru_cache(maxsize=256)
 def _tau_for(dte: Optional[int], minutes_to_close: Optional[float]) -> Optional[float]:
     """Time-to-expiry in YEARS, measured in TRADING time. A 0DTE contract is priced at
     the LIVE minutes-to-close (charm ∝ 1/τ, so the into-the-bell acceleration is the
@@ -1385,7 +1397,16 @@ def _tau_for(dte: Optional[int], minutes_to_close: Optional[float]) -> Optional[
 
     The whole clock is one unit — sessions / 252. A calendar-day numerator over a
     trading-day denominator (the pre-2026-07-12 bug) inflated τ by up to 365/252 =
-    1.45x, worst over weekends and holiday weeks, which under-stated every gamma."""
+    1.45x, worst over weekends and holiday weeks, which under-stated every gamma.
+
+    lru_cache: the twin of the _nyse_holidays cache — this sits at the same flip
+    root-finder leaf (~625K calls per build_views via _net_gex_at) and its dte>0
+    branch re-ran _sessions_ahead's set-union + day loop every call (~60-70% of the
+    engine's post-holiday-fix CPU; flip stack 0.78s→0.20s cached, output verified
+    bit-identical). Inputs per scan collapse to ~8 (dte, clock) pairs. Same one-shot
+    -scanner caveat as _nyse_holidays: a long-lived process crossing a session date
+    boundary would serve yesterday's session count for dated tenors — the scanner
+    is relaunched per tick, so the cache dies with the process."""
     if dte is None:
         return None
     if dte > 0:

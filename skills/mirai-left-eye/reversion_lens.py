@@ -901,6 +901,12 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 # cold pull (TTL-cached after — GexBox below reuses it for free).
                 tv = _tf.read(ticker, spot, now, budget_s=15.0,
                               tape_prev=_TAPE_PREV.get(ticker))
+                # heartbeat (07-20 outage forensics): one greppable line per scan saying
+                # what the native read actually produced — present in EVERY tick's log,
+                # so absence-of-flow can never again be ambiguous between "quiet tape",
+                # "silent timeout", and "this code never ran".
+                print(f"reversion :: theta read {'ok' if tv else 'EMPTY'}"
+                      f" (flow={None if not tv else tv.get('aggressor_flow')})", flush=True)
                 if tv:
                     flow = tv.get("aggressor_flow")
                     # Carry this scan's cumulative contract-flow snapshot forward so the NEXT
@@ -925,7 +931,11 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                     if _q and _q != _prev.get("q") and _old_enough:
                         _TAPE_PREV[ticker] = {"ts": now, "q": _q}
                         _save_tape_prev(ticker, _TAPE_PREV[ticker])   # one-shot scans (N5)
-            except Exception:
+            except Exception as _tv_err:
+                # NOT silent (07-20): this bare swallow + read()'s silent timeout is the
+                # pair that hid the 07-13→07-18 flow outage as "quiet tape" for a week.
+                print(f"reversion :: native flow read dropped "
+                      f"({type(_tv_err).__name__}: {_tv_err})", flush=True)
                 tv = None
 
         # PIN-VETO TAPE (M5/M9 + L1): the flow the slide-E cross-check consumes.
@@ -1793,7 +1803,7 @@ def _aggregate(rows: list[dict], ticker: str) -> dict:
     }
 
 
-def _magp_label(latest: Optional[dict], magnet) -> str:
+def magp_label(latest: Optional[dict], magnet) -> str:
     """Display label for a magnet level — MagP + intensity mark per
     docs/gw-vocab.md: inherits the GW tier of the wall the magnet sits on
     (walls clustered from the measured gex_views.net_by_strike surface);
@@ -1834,35 +1844,35 @@ def _ticker_panel(agg: dict, ticker: str) -> str:
         rev.get("arm_reason"), "stretched far from fair value")
 
     # numbered decision trace (the "show your work")
-    t = ["**Decision (step by step):**"]
-    t.append(f"1. **Regime** → {badge.lower()}  _(gamma/VIX reads: {n_agree} of {n_voted} agree)_")
+    trace = ["**Decision (step by step):**"]
+    trace.append(f"1. **Regime** → {badge.lower()}  _(gamma/VIX reads: {n_agree} of {n_voted} agree)_")
     if armed:
-        t.append(f"2. **Stretch** → {side} setup, {reason}  _(gap {rev.get('gap_stretch')}σ)_")
+        trace.append(f"2. **Stretch** → {side} setup, {reason}  _(gap {rev.get('gap_stretch')}σ)_")
         rw, ok = rev.get("runway_sigma"), rev.get("runway_ok")
         # magnet is a zone CENTER now (float, e.g. 7548.62) — round for humans
         _mtxt = f"{magnet:.0f}" if isinstance(magnet, (int, float)) else magnet
-        room = (f"3. **Runway** → {rw}σ of room to the magnet ({_magp_label(latest, magnet)} {_mtxt}) → "
+        room = (f"3. **Runway** → {rw}σ of room to the magnet ({magp_label(latest, magnet)} {_mtxt}) → "
                 + ("🟢 enough room" if ok else f"🔴 NOT enough (need ≥{RUNWAY_MIN_SIGMA}σ)"))
-        t.append(room)
-        t.append(f"4. **Turn** → {'✅ last candle turned back' if rev.get('reaction') else '⏳ waiting for a turn'}")
+        trace.append(room)
+        trace.append(f"4. **Turn** → {'✅ last candle turned back' if rev.get('reaction') else '⏳ waiting for a turn'}")
         if rev.get("fired"):
             verdict = f"🎯 **FIRE — fade {side}** (a paper guess)"
         elif rev.get("fired_pre_runway"):
             verdict = "⏭️ **SKIP — no runway** (it *would* have fired before the runway gate)"
         else:
             verdict = "⏳ **WAIT — needs the turn to confirm**"
-        t.append(f"→ {verdict}")
+        trace.append(f"→ {verdict}")
     else:
-        t.append("2. **Stretch** → not far enough from fair value")
-        t.append("3. **Runway** → —   ·   4. **Turn** → —")
-        t.append("→ 💤 **STAND BY** (nothing stretched)")
+        trace.append("2. **Stretch** → not far enough from fair value")
+        trace.append("3. **Runway** → —   ·   4. **Turn** → —")
+        trace.append("→ 💤 **STAND BY** (nothing stretched)")
 
     lines = [f"### {ticker}  ·  {badge}", ""]
     if bar:
-        mline = (f"  ·  {_magp_label(latest, magnet)} {magnet}"
+        mline = (f"  ·  {magp_label(latest, magnet)} {magnet}"
                  if magnet is not None else "")
         lines += [bar + mline, ""]
-    lines += ["\n".join(t), ""]
+    lines += ["\n".join(trace), ""]
     return "\n".join(lines)
 
 
@@ -2003,7 +2013,7 @@ def _gex_section(rows: list[dict]) -> str:
         if band and band[0] is not None and band[1] is not None:
             flip_s += f" (band {band[0]:.0f}–{band[1]:.0f})"
         magnet = dm.get("magnet")
-        magnet_s = (f" · {_magp_label(latest, magnet)} {magnet:.0f}"
+        magnet_s = (f" · {magp_label(latest, magnet)} {magnet:.0f}"
                     if magnet is not None else "")
         meaning = _GEX_MEANING.get(regime, "no clean dealer-gamma read")
         lines += [

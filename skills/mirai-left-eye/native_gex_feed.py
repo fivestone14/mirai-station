@@ -724,6 +724,19 @@ def read(ticker: str, spot: float, now: datetime, budget_s: float = 15.0,
     t = threading.Thread(target=work, daemon=True)
     t.start()
     t.join(budget_s)
+    if "v" not in box:
+        # OBSERVABLE FAILURE, never a silent None: this exact silent-timeout channel hid
+        # the 07-13→07-18 flow-block outage (a 29s build_views vs the 15s budget read as
+        # "quiet tape" for a week). Stamp LAST_REJECT so GexBox's diary/feed-health path
+        # can see it, and say so on stderr — but never clobber a more specific reject
+        # (e.g. "coverage") that work() already recorded before returning empty.
+        global LAST_REJECT
+        reason = "budget_timeout" if t.is_alive() else "native_read_failed"
+        if t.is_alive() or LAST_REJECT is None:
+            LAST_REJECT = {"ts": now.isoformat(), "reason": reason,
+                           "budget_s": budget_s}
+        print(f"[native_gex_feed] read({ticker!r}) returned no views: {reason} "
+              f"(budget {budget_s:.0f}s)", file=sys.stderr)
     return box.get("v")
 
 

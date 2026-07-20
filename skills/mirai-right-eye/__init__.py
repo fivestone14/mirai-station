@@ -9,24 +9,3 @@ Live entry points (loaded via runtime/watch/right_eye_skill.load):
     _config.load() -> dict                  # model + path config
 Consumed by macro_mood to embed the morning expectation for drift_cosine.
 """
-from .schemas import (
-    Classification,
-    Decision,
-    FeedbackOutcome,
-    GateOutcome,
-    Item,
-    Payload,
-    Result,
-    SubScores,
-)
-
-__all__ = [
-    "Item",
-    "Result",
-    "Payload",
-    "SubScores",
-    "Classification",
-    "Decision",
-    "GateOutcome",
-    "FeedbackOutcome",
-]

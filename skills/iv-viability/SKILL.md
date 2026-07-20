@@ -25,12 +25,12 @@ IV Analysis skill in use.....
 
 3. **Check credentials are enrolled before running**:
 ```bash
-python3 ~/.claude/skills/iv-viability/iv_fetcher.py --ticker <TICKER>
+python3 ~/.claude/plugins/mirai-station/skills/iv-viability/iv_fetcher.py --ticker <TICKER>
 ```
    - Pass `--strike`, `--expiry`, `--type` only if the user provided them.
    - If the script exits with `Credentials not enrolled`, instruct the user to run:
      ```
-     python3 ~/.claude/skills/iv-viability/iv_fetcher.py --setup
+     python3 ~/.claude/plugins/mirai-station/skills/iv-viability/iv_fetcher.py --setup
      ```
    - The setup flow is interactive and requires: App Key, App Secret, and the Callback URL registered on the Schwab developer portal. The user's Schwab app must be in `Ready For Use` status — not `Approved - Pending`.
 
@@ -77,7 +77,7 @@ A rich-IV SELL verdict (e.g., jade lizard into earnings) is never gated — that
 ## Credential Security Summary
 
 - `api_key`, `app_secret`, `callback_url`, `fernet_key` → macOS Keychain, service `iv-viability-schwab`, local only (no iCloud sync)
-- OAuth token → Fernet-encrypted blob at `~/.claude/skills/iv-viability/.schwab_token.json.enc`, chmod 600
+- OAuth token → Fernet-encrypted blob at `~/.claude/plugins/mirai-station/skills/iv-viability/.schwab_token.json.enc`, chmod 600
 - No secrets in env vars, config files, shell history, or logs
 - Tracebacks and logs scrubbed via redaction filter
 - Core dumps disabled via `RLIMIT_CORE=0`

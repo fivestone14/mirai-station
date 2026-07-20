@@ -549,19 +549,11 @@
   .rd-sum{font-size:13px; color:var(--ink-dim); line-height:1.52; margin-top:13px; font-style:italic}
 
   /* ---- Watchtower live reading (under the map) ---- */
-  .livedot{color:var(--jade); font-weight:600; position:relative; padding-left:13px}
-  .livedot::before{content:""; position:absolute; left:0; top:50%; width:6px; height:6px; margin-top:-3px; border-radius:50%; background:var(--jade); box-shadow:0 0 7px var(--jade); animation:blink 1.6s ease-in-out infinite}
-  @keyframes blink{0%,100%{opacity:1}50%{opacity:.28}}
-  .tower-read{flex:0 0 auto; margin-top:clamp(12px,1.5vh,16px); display:flex; gap:14px; align-items:center; padding:12px 14px;
-    border:1px solid var(--hairline); border-left:3px solid var(--lantern); border-radius:12px;
-    background:linear-gradient(100deg, var(--lantern-wash), transparent 68%), var(--surface-2)}
   .tr-eye{flex:none; width:24px; height:24px; border-radius:50%; position:relative;
     background:radial-gradient(circle at 50% 50%, var(--lantern) 0 3.5px, transparent 4.5px), color-mix(in srgb,var(--lantern) 22%, transparent);
     box-shadow:0 0 14px color-mix(in srgb,var(--lantern) 45%, transparent)}
   .tr-eye::after{content:""; position:absolute; inset:0; border-radius:50%; border:1px solid color-mix(in srgb,var(--lantern) 50%, transparent); animation:ping 3s ease-out infinite}
   .tr-body{min-width:0}
-  .tower-read .label{color:var(--lantern)}
-  .tr-scene{font-family:var(--serif); font-size:15px; line-height:1.55; color:var(--ink); font-style:italic; margin:5px 0 0; transition:opacity .2s ease}
   .tr-next{font-family:var(--sans); font-size:15px; font-weight:500; color:var(--ink); line-height:1.45; margin:6px 0 0; transition:opacity .2s ease}
   .tr-next.aged{opacity:.55}   /* horizon spent: the reasoning stays on record, dimmed to match the call block's grey */
   .tr-next b{font-weight:700}
@@ -570,9 +562,6 @@
   .nx-chev{color:var(--lantern); font-family:var(--mono); font-weight:700; letter-spacing:.06em; margin-right:9px}
   @media (prefers-reduced-motion:no-preference){ .nx-chev{animation:nudge 1.8s ease-in-out infinite} }
   @keyframes nudge{0%,100%{opacity:.5}50%{opacity:1}}
-  @media (prefers-reduced-motion:no-preference){ .wt-blink{animation:wtblink 1.8s ease-in-out infinite} }
-  @keyframes wtblink{0%,100%{opacity:1}50%{opacity:.34}}
-  .nx-flat{color:var(--ink-dim); font-weight:500}
   .nx-mag{color:var(--ink-dim); font-family:var(--mono); font-weight:500; font-size:13px}
 
   /* ---- entry detail modal (Reading / JSON) ---- */
@@ -758,20 +747,6 @@
     border-radius:10px; padding:11px 14px; margin:12px 0; line-height:1.75}
   .swi-sum b{color:var(--ink)}
   .lg-empty{font-size:13px; color:var(--ink-faint); margin-top:14px; line-height:1.5}
-  .gate{display:grid; grid-template-columns:26px 1fr auto; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--hairline)}
-  .gate:last-of-type{border-bottom:0}
-  .gate .mk{width:20px; height:20px; border-radius:6px; display:grid; place-items:center; font-size:12px}
-  .gate .mk.on{background:var(--jade-wash); color:var(--jade); border:1px solid color-mix(in srgb,var(--jade) 40%,transparent)}
-  .gate .mk.off{background:var(--coral-wash); color:var(--coral); border:1px solid color-mix(in srgb,var(--coral) 40%,transparent)}
-  .gate .gn{font-size:14.5px; font-weight:600}
-  .gate .gd{font-size:13px; color:var(--ink-dim); margin-top:1px}
-  .gate .gv{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink-dim); text-align:right}
-  .gate .gv b{color:var(--ink)}
-  .verdict{display:flex; align-items:baseline; gap:10px; margin:2px 0 14px}
-  .verdict .big{font-family:var(--mono); font-size:30px; font-weight:600; letter-spacing:-.01em}
-  .verdict .mag{font-family:var(--mono); font-size:15px; color:var(--ink-dim)}
-  .kv{display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-top:1px solid var(--hairline); color:var(--ink-dim)}
-  .kv b{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
 
   /* ---- Replay : scrub a past session ---- */
   .rp-head-nav{display:flex; align-items:center; gap:10px; flex:0 0 auto}
@@ -1517,7 +1492,7 @@ const GW = {
   // sits ON (peak within one strike step); a magnet on no displayed wall reads the ''
   // default. (Zone-share cuts were DROPPED: recorded pin_zones are one zone at
   // share ≈ 1.0, so the old 0.50/0.30 thresholds could never fire on real data.)
-  magpTier(clusters, magnet){
+  magpTier(magnet, clusters){
     // mirror of gw_vocab.magp_tier: the magnet's HOST wall is found the same way a
     // pin is (span ± one step, nearest peak winning) — not peak-only, not first-match
     if(magnet==null||!isFinite(magnet)) return "''";
@@ -2380,7 +2355,7 @@ function gxPaint(){
     // the MagP / Pin lead label — the magnet line wears the standard: tier inherited
     // from the wall the magnet sits on (07-19 rule), Pin the moment spot holds there
     const pinW=clusters?GW.pinStatus(clusters, D.spot):null;
-    const magT=GW.magpTier(clusters, D.magnet);
+    const magT=GW.magpTier(D.magnet, clusters);
     // tip bodies never repeat the title (the card's <b> already carries the notation);
     // the tier-inheritance doctrine sentences were CUT 07-19 — they repeated on every
     // hover and belong to the Dictionary tab, not the card
@@ -5386,7 +5361,7 @@ function rpBuild(){
   let magLbl="MagP''";
   for(let i=RP.scans.length-1;i>=0;i--){ const s=RP.scans[i];
     if(Array.isArray(s.netByStrike)&&s.netByStrike.length){
-      magLbl='MagP'+GW.magpTier(GW.clusterWalls(s.netByStrike, s.spot), s.magnet); break; } }
+      magLbl='MagP'+GW.magpTier(s.magnet, GW.clusterWalls(s.netByStrike, s.spot)); break; } }
   RP.els.chart.innerHTML = `<svg viewBox="0 0 ${m.w} ${m.h}" preserveAspectRatio="none">
     <clipPath id="rp-clip"><rect id="rp-clip-r" x="${g.x0}" y="0" width="0" height="${m.h}"/></clipPath>
     ${stripeSVG}   <!-- short-gamma hours, under everything -->
