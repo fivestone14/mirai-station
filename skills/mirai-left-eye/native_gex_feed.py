@@ -42,7 +42,12 @@ ROOT = {"SPX": "SPXW"}                              # 0DTE dailies trade under t
 MONTHLY_ROOT = {"SPX": "SPX"}                       # AM-settled monthlies (OpEx-week OI lives here)
 STRIKE_STEP = {"SPX": 5.0, "SPXW": 5.0}             # ATM strike grid per root
 _PROTOCOL = "2025-06-18"
-_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
+# read=90: a cold option_trade_flow materialization runs ~45s server-side; the old
+# read=20 was one missed SSE keep-alive away from a spurious timeout whose retry
+# DOUBLED the server's load at the worst moment (07-20 latency forensics). A timeout
+# only bounds the wait — it adds no latency to fast calls; read()'s 15s budget is
+# what protects the scan, and it abandons the thread regardless.
+_TIMEOUT = httpx.Timeout(connect=5.0, read=90.0, write=10.0, pool=5.0)
 _ET = ZoneInfo("America/New_York")
 
 _CLIENT: Optional[httpx.Client] = None
@@ -325,16 +330,14 @@ return {'spot': spot, 'contracts': out, 'chunks': chunks, 'sides': sides,
 
 _FLOW_CODE = """
 def _v(x): return x.get('value', x) if isinstance(x, dict) else x
-# TWO single-right calls, NEVER right:'both' (2026-07-20): the server's 'both' merge
-# path has been broken since its 07-11/12 deploy — it returns nothing (or a cached
-# partial stub), while single-right is live to the minute. Field names identical.
-by = []
-for _right in ('call', 'put'):
-    r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
-        'date': %(exp)r, 'strike': %(strike)r, 'right': _right, 'bucket_minutes': 390})
-    v = _v(r)
-    if isinstance(v, dict):
-        by.extend(v.get('by_strike') or [])
+# right:'both' — the server (SDK 2f3e07d, deployed 07-20) fans this out into two
+# single-right pulls IN PARALLEL and concatenates byte-compatible per-strike rows.
+# Do NOT re-split client-side: two sequential calls cost ~2x (per-right cache keys,
+# back-to-back materializations) and stitch call/put from two different instants.
+r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
+    'date': %(exp)r, 'strike': %(strike)r, 'right': 'both', 'bucket_minutes': 390})
+v = _v(r)
+by = (v.get('by_strike') or []) if isinstance(v, dict) else []
 if not by:
     return {'available': False}
 def _num(s, k): return s.get(k) or 0
@@ -356,16 +359,12 @@ return {'available': True, 'flow': (((cb - cs) + (ps - pb)) / gross), 'gross': g
 # aggressor_flow (buyer-initiated ≥ ask, seller-initiated ≤ bid), not BVC.
 _FLOWSTRIKE_CODE = """
 def _v(x): return x.get('value', x) if isinstance(x, dict) else x
-# TWO single-right calls, NEVER right:'both' — same server-side 'both' breakage as
-# _FLOW_CODE above (dead since the provider's 07-11/12 deploy; single-right is live).
-by = []
-for _right in ('call', 'put'):
-    r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
-        'date': %(exp)r, 'strike_from': %(lo)r, 'strike_to': %(hi)r, 'right': _right,
-        'bucket_minutes': 390})
-    v = _v(r)
-    if isinstance(v, dict):
-        by.extend(v.get('by_strike') or [])
+# right:'both' — server-side parallel fan-out (SDK 2f3e07d); see _FLOW_CODE note.
+r = await call_tool('option_trade_flow', {'symbol': %(root)r, 'expiration': %(exp)r,
+    'date': %(exp)r, 'strike_from': %(lo)r, 'strike_to': %(hi)r, 'right': 'both',
+    'bucket_minutes': 390})
+v = _v(r)
+by = (v.get('by_strike') or []) if isinstance(v, dict) else []
 if not by:
     return {'available': False}
 out = []
