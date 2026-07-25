@@ -307,6 +307,45 @@
   .gx-zdots i{width:4px; height:4px; border-radius:50%; background:var(--ink-faint); opacity:.45}
   .gx-zdots i.on{background:var(--iris); opacity:1}
   .gx-zlab{font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.06em; color:var(--ink-dim); min-width:30px}
+  /* ---- TABLE ⇄ CHART mode (07-25, TanukiTrade ref): a second docked cluster
+     stacked just above the zoom control — same hairline/blur/mono grammar. TABLE
+     swaps the SVG for a dense per-strike data table of the SAME rendered surface;
+     the chart is hidden (visibility), never destroyed, so the flip back is instant.
+     The scroller carries the flex min-height guard (the .dt-schema lesson: a flex
+     child without min-height:0 can never scroll). */
+  .gx-vm{position:absolute; left:10px; bottom:28px; z-index:4; display:flex; align-items:center; gap:2px;
+    height:20px; padding:0 4px; border-radius:10px; border:1px solid var(--hairline-2);
+    background:color-mix(in srgb,var(--surface-2) 86%, transparent);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px)}
+  .gx-vmb{appearance:none; border:0; background:transparent; cursor:pointer; padding:0 5px; margin:0;
+    font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.06em; line-height:1;
+    color:var(--ink-faint); border-radius:7px; -webkit-tap-highlight-color:transparent; transition:color .15s ease}
+  .gx-vmb:hover{color:var(--ink)}
+  .gx-vmb.on{color:var(--iris)}
+  .gx-vmb:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
+  .gx-table{position:absolute; inset:0; z-index:3; display:none; flex-direction:column; min-height:0;
+    background:var(--surface-2)}
+  .gx-chart.gx-tab .gx-table{display:flex}
+  .gx-chart.gx-tab>svg{visibility:hidden}     /* hidden not destroyed — MAP keeps easing underneath */
+  .gx-chart.gx-tab .gx-info{display:none}     /* the "?" explains the chart's marks, not the table */
+  .gx-tscroll{flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain}
+  .gx-dt{border-collapse:separate; border-spacing:0; width:100%; margin-bottom:56px;   /* scroll clearance past the docked zoom/mode clusters */
+    font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums}
+  .gx-dt th,.gx-dt td{padding:3.5px 10px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--hairline)}
+  .gx-dt thead th{position:sticky; top:0; z-index:2; background:var(--surface-3);
+    font:600 9px/1.5 var(--mono); letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-faint); border-bottom:1px solid var(--hairline-2)}
+  .gx-dt th.l,.gx-dt td.l{text-align:left}
+  .gx-dt td{color:var(--ink-dim)}
+  .gx-dt td.k{color:var(--ink); font-weight:600}
+  .gx-dt td.j{color:var(--jade)} .gx-dt td.c{color:var(--coral)}
+  .gx-dt td.gw{font-weight:700}
+  .gx-dt td.m{color:var(--ink-faint)}
+  .gx-dt tr.spot td{background:var(--iris-wash)} .gx-dt tr.spot td.k,.gx-dt tr.spot td.m{color:var(--iris)}
+  .gx-dt tr.mag td{background:var(--lantern-wash)} .gx-dt tr.mag td.k,.gx-dt tr.mag td.m{color:var(--lantern)}
+  .gx-tfoot{flex:0 0 auto; border-top:1px solid var(--hairline); padding:5px 12px; text-align:right;
+    font:600 9.5px/1.5 var(--mono); letter-spacing:.05em; color:var(--ink-faint); background:var(--surface-2)}
+  .gx-tabout{opacity:.45}                     /* chart-only chips/pills, inert while the table is up */
   /* ---- NET Γ / NET Δ exposure tiles (07-25): strip-level, quiet — value, a small
      1-day delta, and the 4-dot scan trail (newest brightest). */
   .gx-tile i{display:inline-flex; align-items:center; gap:6px}
@@ -2350,6 +2389,7 @@ function gxBuild(){
   gxMountInfoBtn();                       // re-mount the "?" (this rebuilt .gx-chart)
   gxMountZoom();                          // re-mount the zoom cluster (same reason)
   gxMountScrub();                         // re-mount the price scrub (same reason)
+  gxMountTable();                         // re-mount the TABLE mode overlay + toggle (same reason)
   gwBindTips(document.querySelector('#p-map .gx-chart'));   // GW label tooltips (container survives rebuilds)
   gxOverview(); gxTower(); gxPaint();
 }
@@ -2744,7 +2784,7 @@ function gxPaint(){
     MAP.spotLane.setAttribute('width',(X.railX0-X.x0).toFixed(1));
     MAP.spotLane.style.opacity=(X.nT>0)?0.06:0;   // only with the dated layer → off-state stays identical
   }
-  paintDated(); paintDatedOI(); paintDexPane(); paintPanes(); paintAem(); paintHedgeRail(); paintScrub(); paintLadder();
+  paintDated(); paintDatedOI(); paintDexPane(); paintPanes(); paintAem(); paintHedgeRail(); paintScrub(); paintLadder(); gxTablePaint();
 }
 // ---- DATED γ PROFILE (v2, toggle): the FULL per-strike dated NET GEX field, one
 // wash+tick layer per expiration, drawn UNDER the live gamma bars. This is the
@@ -2861,7 +2901,11 @@ function tenorAllOn(){
 }
 function paintTenorPills(){
   const el=document.getElementById('gx-tenors'); if(!el) return;
-  const mk=(on,head,sub,fn,title)=>`<button type="button" class="gx-tpill" aria-pressed="${on}" onclick="${fn}" title="${title}">${head}${sub?`<i>${sub}</i>`:''}</button>`;
+  // TABLE MODE (07-25): pills whose surface only draws on the chart (ghost terrain,
+  // dated layers) go inert while the table is up; 0DTE + ALL stay live (the 0DTE
+  // pill blanks the table's book columns — hidden must never read as missing)
+  const tabbed=(typeof gxTableOn==='function')&&gxTableOn();
+  const mk=(on,head,sub,fn,title,co)=>`<button type="button" class="gx-tpill${co&&tabbed?' gx-tabout':''}"${co&&tabbed?' disabled':''} aria-pressed="${on}" onclick="${fn}" title="${title}">${head}${sub?`<i>${sub}</i>`:''}</button>`;
   const pills=[];
   pills.push(mk(gxT0On(),'0DTE','0d','toggleTenor0()',
     'Today&#39;s 0DTE surface — the solid net-γ bars, their GW labels and the MM arrow. Tap to hide / show.'));
@@ -2869,7 +2913,7 @@ function paintTenorPills(){
   // as the Layers chip; the two share GXTEN, so they can never disagree)
   if(Array.isArray(D.nbsTenor)&&D.nbsTenor.length)
     pills.push(mk(gxTenorOn(),'1-7D','≤7d','toggleGxTenor()',
-      '1-7DTE ghost terrain (outline bars, own scale) — the same switch as the 1-7D γ chip under Layers.'));
+      '1-7DTE ghost terrain (outline bars, own scale) — the same switch as the 1-7D γ chip under Layers.',true));
   for(const e of gxTenorBands()){
     const b=e.dd||e.bk, dte=_rlDte(e), w=b?_dwalls(b, D.spot||0):null;
     // the old per-band strip chips fold in here: the walls + OI facts ride the tooltip
@@ -2877,7 +2921,7 @@ function paintTenorPills(){
       +(w&&w.cw!=null?` · GWc ${f(w.cw,0)}${w.cItm?' ITM':''}`:'')
       +(w&&w.pw!=null?` · GWp ${f(w.pw,0)}${w.pItm?' ITM':''}`:'')
       +' · resting OI (nightly, magnitude only) — tap to toggle this expiry&#39;s wall lines + dated-γ column';
-    pills.push(mk(tenorExpOn(e.expiry), _dexp(e.expiry), dte>=0?dte+'d':'', `toggleTenorExp('${e.expiry}')`, tt));
+    pills.push(mk(tenorExpOn(e.expiry), _dexp(e.expiry), dte>=0?dte+'d':'', `toggleTenorExp('${e.expiry}')`, tt, true));
   }
   pills.push(mk(tenorAllOn(),'ALL','','toggleTenorAll()','Every tenor surface back on.'));
   el.innerHTML=pills.join('');
@@ -3265,6 +3309,156 @@ function gxMountZoom(){
     +`<span class="gx-zlab">${GXZOOM>0?'±'+GXZOOM+'σ':'AUTO'}</span>`
     +`<button type="button" class="gx-zbtn" onclick="gxZoomStep(1)" aria-label="Zoom out (wider strike window)" ${i===GX_ZOOMS.length-1?'disabled':''}>+</button>`;
   cc.appendChild(d);
+}
+// ---- TABLE ⇄ CHART MODE (07-25, TanukiTrade ref): the live map's CURRENT rendered
+// surface as a dense mono table — one row per strike in the active window (zoom +
+// tenor pills respected by construction: MSTRIKES IS the window). The chart SVG is
+// hidden, never destroyed (instant flip back; the ease loop keeps it current).
+// Columns appear only when the row carries the field (the panes' no-dead-switch
+// doctrine); a strike the field never mentioned prints BLANK, never 0 — only a
+// real entry summing to zero prints as 0. Persisted per device like every map
+// toggle. Chart-only Layers chips / tenor pills go inert (dimmed + disabled)
+// while the table is up — never lying about an effect the table ignores.
+let GXTAB=(function(){ try{ return localStorage.getItem('gx.tableMode')==='1'; }catch(e){ return false; } })();
+function gxTableOn(){ return GXTAB; }
+function gxSetTable(v){
+  if(!!v===GXTAB) return;
+  GXTAB=!!v;
+  try{ localStorage.setItem('gx.tableMode', GXTAB?'1':'0'); }catch(e){}
+  gxApplyTabMode();
+  if(GXTAB&&MAP){ MAP._tabkey=null; gxTablePaint(); }
+  gxOverview();          // chart-only chips + pills dim/undim
+  gxKickFade();
+}
+function gxApplyTabMode(){
+  const cc=document.querySelector('#p-map .gx-chart'); if(!cc) return;
+  cc.classList.toggle('gx-tab', GXTAB);
+  cc.querySelectorAll('.gx-vmb').forEach((b,i)=>{ const on=(i===1)===GXTAB;
+    b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on)); });
+}
+// mounted after each gxBuild (which wipes .gx-chart) — same re-mount dance as the
+// zoom cluster / info button / scrub
+function gxMountTable(){
+  const cc=document.querySelector('#p-map .gx-chart'); if(!cc) return;
+  if(!cc.querySelector('.gx-table')){
+    const t=document.createElement('div');
+    t.className='gx-table';
+    t.innerHTML=`<div class="gx-tscroll"><table class="gx-dt" aria-label="Live GEX surface as a table: one row per strike in the current window"><thead></thead><tbody></tbody></table></div><div class="gx-tfoot"></div>`;
+    cc.appendChild(t);
+  }
+  if(!cc.querySelector('.gx-vm')){
+    const d=document.createElement('div');
+    d.className='gx-vm';
+    d.title='Map display mode — CHART draws the surface, TABLE lists the same surface as numbers (one row per strike in the current zoom window; pills + zoom keep working).';
+    d.innerHTML=`<button type="button" class="gx-vmb${GXTAB?'':' on'}" onclick="gxSetTable(false)" aria-pressed="${!GXTAB}">CHART</button>`
+      +`<button type="button" class="gx-vmb${GXTAB?' on':''}" onclick="gxSetTable(true)" aria-pressed="${GXTAB}">TABLE</button>`;
+    cc.appendChild(d);
+  }
+  if(MAP){ MAP.tabEl=cc.querySelector('.gx-table'); MAP._tabkey=null; }
+  gxApplyTabMode();
+}
+// gxTableRows — PURE row assembly (no DOM, no globals): the JSC smoke harness
+// extracts this function by name and drills it with fake rows. Same bucket-sum
+// discipline as the γ bars / panes (nearest slot by the display step; 10-pt rows
+// aggregate their two 5-pt strikes). Honest blanks: null = the field carries no
+// entry at that strike; show0=false blanks the whole 0DTE book (γ/OI/Vol) —
+// hidden must never read as measured-zero. The DEX surface rides its own gate
+// (the chart's DEX pane is not governed by the 0DTE pill either).
+function gxTableRows(a){
+  const S=a.strikes, n=S.length, k0=S[0], step=a.step;
+  const bucket=src=>{
+    if(!Array.isArray(src)||!src.length) return null;
+    const v=new Array(n).fill(0), has=new Array(n).fill(false); let placed=0;
+    for(const p of src){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
+      const idx=Math.round((p[0]-k0)/step);
+      if(idx>=0&&idx<n){ v[idx]+=(+p[1]); has[idx]=true; placed++; } }
+    return placed?{v,has}:null;
+  };
+  const g=a.show0?bucket(a.nbs):null, dn=bucket(a.dexN), df=bucket(a.dexF),
+        oi=a.show0?bucket(a.oiBS):null, vol=a.show0?bucket(a.volBS):null;
+  const near=x=>(x!=null&&isFinite(x))?Math.round((x-k0)/step):-1;
+  const jS=near(a.spot), jM=near(a.magnet), jF=near(a.flip);
+  const cell=(bk,j)=>(bk&&bk.has[j])?bk.v[j]:null;
+  return S.map((k,j)=>({k, g:cell(g,j), dn:cell(dn,j), df:cell(df,j), oi:cell(oi,j), vol:cell(vol,j),
+    spot:j===jS, mag:j===jM, hvl:j===jF}));
+}
+// the table painter — rides the gxPaint chain like every pane painter, key-gated
+// so the 60fps ease frames do zero work (spot/magnet enter the key bucketed to
+// their nearest strike; everything else changes only on scan/toggle/reframe)
+function gxTablePaint(){
+  if(!GXTAB||!MAP||!MAP.tabEl||!MSTRIKES.length) return;
+  const X=MAPX, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
+  // T leads D by one frame at scan time (the oiPaneAvail/gxTenorBands pattern):
+  // feedAll's direct gxPaint runs before the frame loop snaps the by-strike fields
+  // onto D, and this painter keys on GX_ASOF — reading D here would freeze the
+  // table one scan behind. Eased numbers (spot/magnet/flip) stay on D, the display
+  // truth.
+  const _ld=k=>(typeof T!=='undefined'&&T&&T[k]!==undefined)?T[k]:D[k];
+  const nbs=_ld('netByStrike'), measured=Array.isArray(nbs)&&nbs.length>0;
+  const show0=(typeof gxT0On==='function')?gxT0On():true;
+  const x=_ld('dex'), dexOk=(typeof DEX_ON!=='undefined'&&DEX_ON)&&x&&x.v===1;
+  const hasDexN=dexOk&&Array.isArray(x.nbs)&&x.nbs.length>0, hasDexF=dexOk&&Array.isArray(x.fbs)&&x.fbs.length>0;
+  const oiBS=_ld('oiBS'), volBS=_ld('volBS');
+  const hasOi=(typeof OI_ON!=='undefined'&&OI_ON)&&Array.isArray(oiBS)&&oiBS.length>0;
+  const hasVol=(typeof VOL_ON!=='undefined'&&VOL_ON)&&Array.isArray(volBS)&&volBS.length>0;
+  const near=v=>(v!=null&&isFinite(v))?Math.round((v-k0)/step):-1;
+  const _fr=(typeof gxFreshInfo==='function')?gxFreshInfo():null;
+  const key=[GX_ASOF,X.pLow,X.pHigh,MSTRIKES.length,show0,measured,hasDexN,hasDexF,hasOi,hasVol,
+    near(D.spot),near(D.magnet),near(D.flip),GXZOOM,_fr?_fr.txt:''].join('|');
+  if(key===MAP._tabkey) return;
+  MAP._tabkey=key;
+  const R=gxTableRows({strikes:MSTRIKES, step, spot:D.spot, magnet:D.magnet, flip:D.flip, show0,
+    nbs:measured?nbs:null, dexN:hasDexN?x.nbs:null, dexF:hasDexF?x.fbs:null,
+    oiBS:hasOi?oiBS:null, volBS:hasVol?volBS:null});
+  // GW cluster labels + the magnet's MagP/Pin lead — the SAME derivations gxPaint
+  // draws from (tiers read from GX_GWT so the table can never disagree with the
+  // chart's hysteresis-stabilized marks); modeled fallback → no labels, never fabricate
+  const gwByJ={};
+  const clusters=(measured&&show0)?GW.clusterWalls(nbs, D.spot):null;
+  if(clusters) for(const c of clusters){
+    const old=GX_GWT.find(o=>o.side===c.side&&Math.abs(o.peak-c.peak)<=c.step);
+    const j=Math.round((c.peak-k0)/step);
+    if(j>=0&&j<MSTRIKES.length) gwByJ[j]={txt:GW.gwLabel(c.side, old?old.tier:GW.tierStable(c.share,null)), call:c.side==='c'};
+  }
+  const pinW=clusters?GW.pinStatus(clusters, D.spot):null;
+  let magLead;
+  if(pinW&&GW.isMagp(pinW.wall, D.magnet)) magLead='Pin'+pinW.tier;
+  else if(!clusters&&isFinite(D.spot)&&isFinite(D.magnet)&&Math.abs(D.spot-D.magnet)<=step) magLead="Pin''";
+  else magLead='MagP'+GW.magpTier(D.magnet, clusters);
+  // header — columns only for fields the row carries (no dead columns)
+  let head=`<tr><th class="l" title="SPX strike — one row per strike in the active window (zoom + tenor pills)">Strike</th>`
+    +`<th title="Net dealer γ at the strike — the hero bars&#39; value (assumed sign: MMs long calls / short puts). + pin · − push. Blank = the field carries no entry there.">Net γ</th>`
+    +(hasDexN?`<th title="NET DEX |naive| — dealer delta magnitude only (SHADOW, record-only). The naive net reads LONG by construction, so its sign is never shown.">DEX |naive|</th>`:'')
+    +(hasDexF?`<th title="NET DEX flow-signed — re-signed from today&#39;s tape: + dealers LONG (hedge sells strength) · − SHORT (hedge buys weakness).">DEX flow±</th>`:'')
+    +(hasOi?`<th title="Resting open interest per strike, calls − puts (raw contracts, unweighted — no greek, no model). 0DTE OI is YESTERDAY&#39;S book: thin at the open.">Net OI</th>`:'')
+    +(hasVol?`<th title="Session volume per strike, calls − puts (raw contracts traded today, gross tape — not the signed aggressor read).">Net Vol</th>`:'')
+    +`<th class="l" title="GW cluster label where this strike is a wall&#39;s peak (docs/gw-vocab.md) — tier by share of the strongest structure on this surface.">GW</th>`
+    +`<th class="l" title="Level markers on their rows — SPOT · MagP/Pin (the magnet) · HVL (the gamma flip).">Notes</th></tr>`;
+  const sgn=v=>v>0?' class="j"':v<0?' class="c"':'';
+  const gcell=v=>v==null?'<td></td>':`<td${sgn(v)}>${v===0?'0':_sgfmt(v)}</td>`;
+  const icell=v=>v==null?'<td></td>':`<td${sgn(v)}>${v===0?'0':(v<0?'−':'+')+_pFmt(v)}</td>`;
+  const ncell=v=>v==null?'<td></td>':`<td>${_gfmt(Math.abs(v))}</td>`;
+  let body='';
+  for(let j=R.length-1;j>=0;j--){    // top of the table = highest strike, like the map / ladder
+    const r=R[j], gw=gwByJ[j], notes=[];
+    if(r.spot) notes.push(`◀ SPOT ${f(D.spot,2)}`);
+    if(r.mag) notes.push(`${magLead} ${f(D.magnet,0)}`);
+    if(r.hvl) notes.push(`HVL ${f(D.flip,0)}`);
+    body+=`<tr${r.spot?' class="spot"':r.mag?' class="mag"':''}><td class="l k">${r.k.toLocaleString('en-US')}</td>${gcell(r.g)}`
+      +(hasDexN?ncell(r.dn):'')+(hasDexF?gcell(r.df):'')
+      +(hasOi?icell(r.oi):'')+(hasVol?icell(r.vol):'')
+      +`<td class="l gw${gw?(gw.call?' j':' c'):''}">${gw?gw.txt:''}</td><td class="l m">${notes.join(' · ')}</td></tr>`;
+  }
+  const tbl=MAP.tabEl.querySelector('.gx-dt');
+  tbl.querySelector('thead').innerHTML=head;
+  tbl.querySelector('tbody').innerHTML=body;
+  // footer = the chart caption's honesty, verbatim facts: surface · source · as-of
+  // (+ the window, so a filtered table can never read as the whole book)
+  const srcTxt=!show0?'<span style="color:var(--ink-faint)">0DTE hidden (pill)</span>'
+    :measured?'measured':'<span style="color:var(--coral)">MODELED (synthetic — no per-strike measurements, γ blank)</span>';
+  const freshTxt=_fr?` · <span style="${_fr.stale?'color:var(--coral)':''}">${_fr.txt}</span>`:'';
+  MAP.tabEl.querySelector('.gx-tfoot').innerHTML=
+    `0DTE surface · ${srcTxt}${freshTxt} · ${GXZOOM>0?'±'+GXZOOM+'σ':'AUTO'} window ${f(X.pLow,0)}–${f(X.pHigh,0)}`;
 }
 // ---- RAW-BOOK PANES (07-25, Tanuki layout): Net OI + Net Vol per strike beside the
 // hero γ bars — the RAW call−put 0DTE book (oi_by_strike / vol_by_strike: unweighted
@@ -3969,7 +4163,12 @@ function gxOverview(){
   // Layers disclosure (07-22): the switch chips fold behind one chip. "N on" counts
   // only the OFFERED layer switches (never the γ-scale mode, never an absent chip),
   // read straight from the markup so the count can't drift from the chips it hides.
-  const swChips=[wallsChip,tenorChip,doiChip,railChip,dexChip,oiChip,volChip,scaleChip].filter(Boolean);
+  // TABLE MODE (07-25): chart-only switches (lines / ghosts / slabs / rail + the bar
+  // scale) go inert while the table is up — dimmed + disabled, never hidden (the deck
+  // must not reshuffle on a mode flip). The DEX/OI/Vol pane chips stay live: they
+  // govern the table's columns too.
+  const _tOff=c=>(c&&typeof gxTableOn==='function'&&gxTableOn())?c.replace('class="gx-chip gx-toggle"','class="gx-chip gx-toggle gx-tabout" disabled'):c;
+  const swChips=[_tOff(wallsChip),_tOff(tenorChip),_tOff(doiChip),_tOff(railChip),dexChip,oiChip,volChip,_tOff(scaleChip)].filter(Boolean);
   const lyOpen=gxLayersOpen();
   const lyOn=[wallsChip,tenorChip,doiChip,railChip,dexChip,oiChip,volChip].filter(c=>c&&c.includes('aria-pressed="true"')).length;
   const layersChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLayers()" aria-expanded="${lyOpen}" title="Show / hide the map's layer switches (Walls, 1-7D γ, Dated γ, Hedge Rail, Net DEX, Net OI, Net Vol, γ scale)"><span class="gx-tx"><b>Layers ${lyOpen?'▴':'▾'}</b><i>${lyOn} on · walls + γ layers</i></span></button>`;
