@@ -214,21 +214,36 @@
      top of the chart. Filled (jade wash) = that tenor contributes to the rendered
      surface; hollow = toggled off. Mono date + a small live-DTE count, same palette
      grammar as the switch chips — never a neon skin. */
-  .gx-tenors{flex:0 0 auto; display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 7px}
+  .gx-tenors{flex:0 0 auto; display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 8px}   /* one 8px beat: strip / pills / chart / tower */
   .gx-tenors:empty{display:none}
   .gx-tpill{display:inline-flex; align-items:baseline; gap:7px; padding:4px 12px; border-radius:999px; cursor:pointer;
     font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.04em; color:var(--ink-dim);
     background:transparent; border:1px solid var(--hairline-2); -webkit-tap-highlight-color:transparent;
-    transition:background .15s ease, border-color .15s ease, color .15s ease}
+    transition:background .15s ease, border-color .15s ease, color .15s ease, transform .09s ease}
   .gx-tpill i{font-style:normal; font-weight:500; font-size:10px; letter-spacing:.02em; color:var(--ink-faint)}
   .gx-tpill[aria-pressed="true"]{background:var(--jade-wash); border-color:color-mix(in srgb,var(--jade) 38%,transparent); color:var(--ink)}
   .gx-tpill[aria-pressed="true"] i{color:var(--ink-dim)}
   .gx-tpill:active{transform:scale(.96)}
   .gx-tpill:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  @media (hover:hover) and (pointer:fine){
+    /* same stateful-hover voice as the .gx-toggle chips — jade tint, never a new hue */
+    .gx-tpill:hover{background:var(--surface-3); border-color:color-mix(in srgb,var(--jade) 36%,var(--hairline-2)); color:var(--ink)}
+  }
   .gx-chart{flex:1 1 auto; min-height:0; position:relative; overflow:hidden;
     background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
   .gx-chart svg{width:100%; height:100%; display:block}
   .gxbar{transition:opacity .12s linear}
+  /* FLUID (07-25): bar lengths EASE between scans instead of snapping — CSS-only, so
+     the rAF ease loop does zero extra work. A fresh gxBuild sets the final widths in
+     the same style pass as the insert (no prior computed style), so rebuilds still
+     land instantly; only in-place repaints glide. Reduced motion: the global kill
+     switch at the foot of this sheet inerts all of it. */
+  @media (prefers-reduced-motion:no-preference){
+    .gxbar{transition:opacity .12s linear, width .3s cubic-bezier(.2,.7,.2,1), x .3s cubic-bezier(.2,.7,.2,1)}
+    .gxtbar{transition:width .3s cubic-bezier(.2,.7,.2,1), x .3s cubic-bezier(.2,.7,.2,1)}
+    .gx-chart svg.gx-enter{animation:gxenter .18s ease}
+  }
+  @keyframes gxenter{from{opacity:.45}}
   /* ---- GEX map: "how to read it" affordance (top-right of the plot) ---- */
   .gx-info{position:absolute; top:8px; right:8px; z-index:4;
     width:24px; height:24px; display:grid; place-items:center;
@@ -261,7 +276,8 @@
      (settle/fight) wear grey/lantern so a non-call can never look like a call. */
   .gx-call{flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
     min-width:128px; padding:7px 14px; border-radius:10px; border:1px solid var(--hairline);
-    background:color-mix(in srgb, var(--surface-3) 55%, transparent)}
+    background:color-mix(in srgb, var(--surface-3) 55%, transparent);
+    transition:background .2s ease, border-color .2s ease}   /* stance flips crossfade — the node persists across gxTower repaints */
   .gx-call .dir{font-family:var(--mono); font-weight:800; font-size:20px; line-height:1.1; letter-spacing:.01em; font-variant-numeric:tabular-nums; color:var(--ink-dim); white-space:nowrap}
   .gx-call .mag{font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--ink-dim); font-variant-numeric:tabular-nums; white-space:nowrap}
   .gx-call.up{border-color:color-mix(in srgb,var(--jade) 32%,transparent); background:var(--jade-wash)}
@@ -1998,7 +2014,9 @@ function maybeReframe(){
   if(!MAP) return;
   const ib=mapBand(T), h=MAPX.pHigh-MAPX.pLow;
   if(Math.abs(ib.pLow-MAPX.pLow)>0.15*h || Math.abs(ib.pHigh-MAPX.pHigh)>0.15*h){
+    const n0=MSTRIKES.length;
     MAPX.pLow=ib.pLow; MAPX.pHigh=ib.pHigh; mapStrikes();
+    if(MSTRIKES.length!==n0){ gxBuild(); return; }   // row count changed → the fixed bar-node list must rebuild (a stale bar at yFor(undefined) is NaN geometry)
     if(MAP.axisG) MAP.axisG.innerHTML=mapAxis();
     paintMap();
   }
@@ -2680,7 +2698,7 @@ function gxLogOn(){ return GXLOG; }
 function toggleGxLog(){
   GXLOG=!GXLOG;
   try{ localStorage.setItem('gx.logScale',GXLOG?'1':'0'); }catch(e){}
-  gxOverview(); gxPaint();
+  gxOverview(); gxPaint(); gxKickFade();
 }
 // 1-7DTE terrain outlines — default ON (context that assists without crowding:
 // hollow strokes under the solid bars), per-device persisted like the others
@@ -2689,7 +2707,7 @@ function gxTenorOn(){ return GXTEN; }
 function toggleGxTenor(){
   GXTEN=!GXTEN;
   try{ localStorage.setItem('gx.tenorBars',GXTEN?'1':'0'); }catch(e){}
-  gxOverview(); gxPaint();
+  gxOverview(); gxPaint(); gxKickFade();
 }
 // ---- TENOR DATE PILLS (07-25, Tanuki-style) — per-expiry visibility for the RENDERED
 // surface, docked above the chart: [0DTE] the solid bars · [1-7D] the ghost terrain
@@ -2707,19 +2725,19 @@ function toggleTenor0(){
   GXT0=!GXT0;
   try{ localStorage.setItem('gx.t.0dte', GXT0?'1':'0'); }catch(e){}
   if(MAP){ MAP._gwlkey=null; MAP._akey=null; }   // labels/arrows re-evaluate under the new gate
-  gxOverview(); gxPaint();
+  gxOverview(); gxPaint(); gxKickFade();
 }
 function toggleTenorExp(iso){
   if(GXTD[iso]===0) delete GXTD[iso]; else GXTD[iso]=0;
   try{ localStorage.setItem('gx.t.dated', JSON.stringify(GXTD)); }catch(e){}
   buildMap();          // REFRAME: a hidden ladder column changes the gutter geometry
-  gxOverview();
+  gxOverview(); gxKickFade();
 }
 function toggleTenorAll(){
   GXT0=true; GXTEN=true; GXTD={};
   try{ localStorage.setItem('gx.t.0dte','1'); localStorage.setItem('gx.tenorBars','1');
        localStorage.setItem('gx.t.dated','{}'); }catch(e){}
-  buildMap(); gxOverview();
+  buildMap(); gxOverview(); gxKickFade();
 }
 // the pill list — dated expiries from the sidecar book (state/dated_gex/book.json),
 // merged with the diary row's dated_gex bands by expiry so the pills exist as soon
@@ -2803,6 +2821,7 @@ function toggleDatedOI(){
   try{ localStorage.setItem('gx.datedOI', DOI_ON?'1':'0'); }catch(e){}
   buildMap();          // REFRAME: the ladder gutter changes the lane geometry
   gxOverview();        // chip reflects the new state immediately
+  gxKickFade();
 }
 // TENOR LADDER GUTTER: each expiry is its own labeled heat-ladder column between
 // the bar lane and the right tags — POSITION carries tenor (the one channel that
@@ -2980,7 +2999,7 @@ function toggleDexOverlay(){
   GXDEX=!GXDEX;
   try{ localStorage.setItem('gx.dexOverlay', GXDEX?'1':'0'); }catch(e){}
   if(MAP) MAP._xkey=null;
-  gxOverview(); gxPaint();
+  gxOverview(); gxPaint(); gxKickFade();
 }
 function paintDex(){
   if(!MAP||!MAP.dexG) return;
@@ -3040,13 +3059,13 @@ function toggleOiPane(){
   OI_ON=!OI_ON;
   try{ localStorage.setItem('gx.paneOI', OI_ON?'1':'0'); }catch(e){}
   buildMap();          // REFRAME: the pane gutter changes the lane geometry
-  gxOverview();
+  gxOverview(); gxKickFade();
 }
 function toggleVolPane(){
   VOL_ON=!VOL_ON;
   try{ localStorage.setItem('gx.paneVol', VOL_ON?'1':'0'); }catch(e){}
   buildMap();
-  gxOverview();
+  gxOverview(); gxKickFade();
 }
 const _pFmt=v=>Math.round(Math.abs(v)).toLocaleString('en-US');
 function paintPanes(){
@@ -3148,7 +3167,7 @@ function toggleHedgeRail(){
   try{ localStorage.setItem('gx.hedgeRail', RAIL_ON?'1':'0'); }catch(e){}
   if(MAP){ MAP._rkey=null; }
   buildMap();          // REFRAME: the rail gutter changes the lane geometry
-  gxOverview();
+  gxOverview(); gxKickFade();
 }
 function _rlAt(p,x){                       // net γ ($B/1%) at a price — linear interp
   const g=p.grid, v=p.gex, n=g.length;
@@ -3423,7 +3442,7 @@ function toggleWalls(){
   try{ localStorage.setItem('gx.walls', wallsOn()?'0':'1'); }catch(e){}
   if(MAP){ MAP._dkey=null; MAP._dokey=null; }
   buildMap();          // REFRAME: walls view widens the band to include the walls
-  gxOverview();
+  gxOverview(); gxKickFade();
 }
 const _HALO='paint-order:stroke;stroke:var(--surface-2);stroke-width:3px;';   // surface halo: labels stay legible over the (now longer) bars
 const _HALO2='paint-order:stroke;stroke:var(--surface-2);stroke-width:3.8px;';  // wall labels: 12px ink, and a max-length bar can reach either anchor rail
@@ -3742,6 +3761,15 @@ function towerCallHTML(w){
 }
 
 function buildMap(){ gxBuild(); }
+// FLUID (07-25): user-initiated toggles (pills / layer chips) soften their rebuild or
+// repaint with one ~180ms fade instead of a hard pop. Called ONLY from the toggle
+// handlers — scan and resize rebuilds stay silent (a wall display must never pulse on
+// its own clock). CSS owns the motion; prefers-reduced-motion inerts it globally.
+function gxKickFade(){
+  const s=MAP&&MAP.svg; if(!s) return;
+  s.classList.remove('gx-enter'); void s.getBoundingClientRect();   // restart the one-shot on a persisting svg
+  s.classList.add('gx-enter');
+}
 
 // ---- GEX map "how to read it" explainer (the top-right "?" button) ----
 // Ball-in-a-valley vs ball-on-a-hill: a long-gamma dealer sits in a bowl (price
@@ -3981,7 +4009,14 @@ function feedAll(L){
     wtDirty=true; updateTower();
   }
   paintSource(); paintPaper(L.newestRaw); paintWtPill();   // header readouts follow the feed (N21/H1)
-  buildMap();                        // rebuild the time×price map with the new scan appended
+  // PERF+FLUID (07-25): a new scan REPAINTS the standing map instead of tearing the
+  // whole SVG down — the key-gated sub-painters already rebuild exactly what changed,
+  // and keeping the bar nodes alive is what lets their CSS width easing run (a fresh
+  // innerHTML always snapped). Geometry changes go their own roads: band drift →
+  // maybeReframe (full rebuild if the strike count moves), pane/gutter wants →
+  // applyMap + fetchDatedBook's resize checks, width → the ResizeObserver.
+  if(!MAP) buildMap();
+  else { maybeReframe(); gxOverview(); gxTower(); gxPaint(); }
   renderHeads();                      // Heads reflects the newest scan
   if(dpage===0) renderDiary(false);   // Diary surfaces new entries when viewing the most recent page
 }
@@ -4020,14 +4055,28 @@ async function pollSpot(){
   if(Date.now()-SPOT.at > SPOT_STALE_MS) SPOT.live=false;   // stopped arriving → stop claiming live
   SPOT.timer=setTimeout(pollSpot, SPOT.pollMs);
 }
+let _fzTick=0;   // last painted 1s bucket while converged
 function frame(){
-  const k=0.09;
+  const k=0.09; let mv=0;
   for(const key of ['spot','flip','callWall','putWall','magnet','pin','gAbove','gBelow','flow','shoveUp','shoveDown','sigma']){
-    D[key] += (T[key]-D[key])*k; if(!isFinite(D[key])) D[key]=T[key]; }
+    const d=(T[key]-D[key])*k; D[key]+=d;
+    if(!isFinite(D[key])) D[key]=T[key];
+    else if(Math.abs(d)>mv) mv=Math.abs(d); }
   D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
   D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex snap (not eased)
-  paintMap(); paintVitals();
+  // PERF (07-25): 60fps repaints only while something is actually EASING; converged,
+  // drop to ~1Hz so the time-driven reads (comet aging, spot lane) still advance —
+  // a wall display must not burn all-night SVG churn on a static picture. The map
+  // skips while its panel is hidden (switchTab('map') rebuilds + repaints on return);
+  // every event-driven change (scan, toggle, scrub, resize) calls its painter directly.
+  const tick=Date.now()>>10;
+  if(mv>1e-3 || tick!==_fzTick){
+    _fzTick=tick;
+    if(GX._pmap===undefined) GX._pmap=document.getElementById('p-map');
+    if(GX._pmap&&GX._pmap.classList.contains('active')) paintMap();
+    paintVitals();
+  }
   requestAnimationFrame(frame);
 }
 function setMode(live){
