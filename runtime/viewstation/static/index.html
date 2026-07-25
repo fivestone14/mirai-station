@@ -262,6 +262,59 @@
       border-color:color-mix(in srgb,var(--iris) 46%, var(--hairline-2))}
   }
   #datedOIG rect{shape-rendering:crispEdges}
+  /* ---- chart row (07-25, phase-P): the chart + the gamma-profile ladder side panel.
+     The ladder is a sibling of .gx-chart (never inside the SVG), so the level tags'
+     de-collision pass and the ladder can never fight — hidden when the row carries
+     no profile_ladder record (absent = render nothing, the fail-open doctrine). */
+  .gx-mid{flex:1 1 auto; min-height:0; display:flex; gap:10px; align-items:stretch}
+  .gx-ladder{flex:none; width:168px; min-height:0; display:flex; flex-direction:column; overflow:hidden;
+    background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03); padding:10px 12px 8px}
+  .gx-ladder[hidden]{display:none}
+  @media (max-width:900px){ .gx-ladder{display:none} }   /* narrow screens: the map keeps its floor */
+  .gxl-cap{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-faint); font-weight:700}
+  .gxl-state{font-family:var(--mono); font-size:12.5px; font-weight:800; letter-spacing:.04em; line-height:1.25;
+    margin:3px 0 8px; padding-bottom:8px; border-bottom:1px solid var(--hairline); color:var(--ink-dim)}
+  .gxl-state.up{color:var(--jade)} .gxl-state.dn{color:var(--coral)} .gxl-state.mid{color:var(--lantern)}
+  .gxl-row{appearance:none; border:0; background:transparent; cursor:pointer; font:inherit; color:inherit; text-align:left;
+    display:grid; grid-template-columns:44px 1fr auto; align-items:baseline; gap:6px; width:100%;
+    padding:5px 4px; border-radius:7px; border-bottom:1px solid var(--hairline);
+    -webkit-tap-highlight-color:transparent; transition:background .14s ease}
+  .gxl-row:last-child{border-bottom:0}
+  .gxl-row:hover, .gxl-row:focus-visible{background:var(--surface-3); outline:none}
+  .gxl-row .k{font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.02em; color:var(--ink-dim)}
+  .gxl-row .k.c{color:var(--jade)} .gxl-row .k.p{color:var(--coral)} .gxl-row .k.h{color:var(--lantern)}
+  .gxl-row .v{font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; text-align:right}
+  .gxl-row .pc{font-family:var(--mono); font-size:9.5px; color:var(--ink-faint); font-variant-numeric:tabular-nums; text-align:right; min-width:44px}
+  .gxl-row.spot{background:var(--iris-wash); border-radius:7px; border-bottom-color:transparent; cursor:default}
+  .gxl-row.spot .k, .gxl-row.spot .v{color:var(--iris)}
+  /* ladder-tap flash: one line pulse at the tapped level, then gone */
+  .gx-flash{stroke:var(--iris); stroke-width:2; opacity:0; pointer-events:none; animation:gxflash 1.25s ease-out}
+  @keyframes gxflash{0%{opacity:.85}100%{opacity:0}}
+  /* ---- zoom / strike-density control (07-25): slim [−][dots][+] cluster in the
+     chart's bottom-left pad strip — the Layers-chip voice at hairline weight. */
+  .gx-zoom{position:absolute; left:10px; bottom:3px; z-index:4; display:flex; align-items:center; gap:7px;
+    height:20px; padding:0 7px; border-radius:10px; border:1px solid var(--hairline-2);
+    background:color-mix(in srgb,var(--surface-2) 86%, transparent);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px)}
+  .gx-zbtn{appearance:none; border:0; background:transparent; cursor:pointer; padding:0 2px; margin:0;
+    font-family:var(--mono); font-size:13px; font-weight:700; line-height:1; color:var(--ink-dim);
+    -webkit-tap-highlight-color:transparent; transition:color .15s ease}
+  .gx-zbtn:hover{color:var(--ink)}
+  .gx-zbtn:disabled{color:var(--ink-faint); opacity:.45; cursor:default}
+  .gx-zbtn:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
+  .gx-zdots{display:flex; gap:3px; align-items:center}
+  .gx-zdots i{width:4px; height:4px; border-radius:50%; background:var(--ink-faint); opacity:.45}
+  .gx-zdots i.on{background:var(--iris); opacity:1}
+  .gx-zlab{font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.06em; color:var(--ink-dim); min-width:30px}
+  /* ---- NET Γ / NET Δ exposure tiles (07-25): strip-level, quiet — value, a small
+     1-day delta, and the 4-dot scan trail (newest brightest). */
+  .gx-tile i{display:inline-flex; align-items:center; gap:6px}
+  .gx-tile .d{font-size:10.5px; font-weight:600}
+  .gx-tile .d.up{color:var(--jade)} .gx-tile .d.dn{color:var(--coral)}
+  .gx-dots{display:inline-flex; align-items:center; gap:2.5px; margin-left:2px}
+  .gx-dots i{display:inline-block; border-radius:50%; background:var(--ink-faint)}
+  .gx-dots i.up{background:var(--jade)} .gx-dots i.dn{background:var(--coral)}
   /* drift comet (07-22): dashes flow spot → target along the gutter vector; the
      dash period is 12 (2 on + 10 off), so one full period per loop = seamless */
   @media (prefers-reduced-motion:no-preference){ .gx-flow{animation:gxflow 2.4s linear infinite} }
@@ -1286,6 +1339,11 @@
   .ds b{margin-left:5px; font-size:12px; color:var(--ink); font-weight:640}
   .ds span{display:block; margin-top:4px; font-size:11.5px; line-height:1.5; color:var(--ink-dim)}
   .ds span b{margin:0; font-size:11.5px; color:var(--ink)}
+  /* wide reference card (Profile Ladder & Exposure) — full row, rows split 2-up */
+  .dict-wide{grid-column:1/-1}
+  .dict-cols{display:grid; grid-template-columns:1fr 1fr; gap:0 28px; align-items:start}
+  .dict-cols .dict-row{grid-template-columns:84px 1fr}
+  @media (max-width:720px){ .dict-cols{grid-template-columns:1fr} }
   /* doctrine — one quiet iris line closing the page */
   .dict-doct{grid-column:1/-1; display:flex; align-items:baseline; gap:12px; padding:8px 16px; border-radius:11px;
     font-size:12px; line-height:1.5; color:var(--ink);
@@ -1800,6 +1858,12 @@ function rowToScan(r){
     breach:r.wall_breach??null, road:r.regime_road??null,
     /* 2026-07-25 DEX (SHADOW) — the direction-side twin: absent key = no read */
     dex:normDex(r.dex_views),
+    /* phase-P records (07-25, all SHADOW, all fail-open): whole-book exposure totals,
+       the gamma-profile state ladder, the adaptive expected move. Version-gated (the
+       era-tag doctrine); an absent key renders NOTHING, never zeros. */
+    ne:(r.net_exposure&&r.net_exposure.net_exposure_v===1)?r.net_exposure:null,
+    ladder:(r.profile_ladder&&r.profile_ladder.ladder_v===1)?r.profile_ladder:null,
+    aem:(r.adaptive_em&&r.adaptive_em.em_v===1)?r.adaptive_em:null,
     /* 2026-07-18 SIEGE stack (wt-7) — the SECOND deck's diary field, kept apart from the
        main-stack lenses on every replay surface. Rows before 07-18 carry no key → null
        → the siege cell/column says so instead of faking a quiet read. */
@@ -1882,11 +1946,25 @@ RAIL.gutterFor=(n,laneW)=>n?(RAIL.padL+RAIL.padR+laneW*n+RAIL.gap*(n-1)):0;
 // both panes are off (or the row carries no field) → off-state geometry unchanged.
 const PANE={ padL:8, padR:8, gap:8, minW:56, maxW:104, minBar:280 };
 PANE.gutterFor=(n,wp)=>n?(PANE.padL+PANE.padR+wp*n+PANE.gap*(n-1)):0;
+// NET DEX PANE GUTTER (07-25, Tanuki layout): the direction-side pane seats LEFT of
+// the price axis (order: DEX | axis | γ bars — the axis is the breathing space the
+// layout asks for). The gutter shifts axisLX/x0 right as ONE unit, so the axis, spot
+// triangle, comet, level lines and every bar-lane anchor keep their relative geometry
+// with zero per-consumer edits. Zero width when off/absent → geometry byte-identical.
+const DEXP={ padL:8, padR:10, minW:64, maxW:118 };
 function computeMAPX(w,h){
   // TAG RESERVE: 128px (was 178). The level tags carried 21/18px display type for four
   // numbers and hoarded the widest column on the map; at 17/15px they read just as well
   // and hand ~50px back to the gutters, where the rail can actually use it.
-  const x0=72, tagX=w-10, stripEnd=Math.round(w-128);
+  const tagX=w-10, stripEnd=Math.round(w-128);
+  // NET DEX left gutter — want gated on toggle + data (never a phantom gutter; the nT
+  // lesson). Same TDZ hazard as nT/nR (DEX_ON binds later) → same try/catch.
+  let paneDex=false;
+  try{
+    paneDex=typeof DEX_ON!=='undefined'&&DEX_ON&&typeof dexAvail==='function'&&dexAvail();
+  }catch(e){ paneDex=false; }
+  const nXWant=paneDex?1:0;
+  const dexW=Math.max(DEXP.minW, Math.min(DEXP.maxW, Math.round(w*0.10)));
   // TENOR LADDER GUTTER (Dated γ): each dated expiry gets its own labeled
   // heat-ladder column between the bar lane and the right tag gutter — position
   // carries tenor identity (the pigment fade never could at 3px marks). Zero
@@ -1903,6 +1981,13 @@ function computeMAPX(w,h){
     }
   }catch(e){ nT=0; }
   const stripGutter=nT?(STRIP.padL+STRIP.padR+STRIP.colW*nT+STRIP.gap*(nT-1)):0;   // 70px @3 tenors, 112px @5
+  // SHED PRIORITY (07-25 ruling): GEX > DEX > OI > VOL. The rail and the right panes
+  // shed themselves against the bar floor (their budgets read the shifted x0 below),
+  // so DEX drops only when the floor fails even with ALL of them gone. The dated
+  // ladder gutter never sheds, so it counts against the floor here.
+  if(paneDex && (stripEnd-stripGutter-(72+DEXP.padL+dexW+DEXP.padR)) < PANE.minBar) paneDex=false;
+  const dexGutter=paneDex?(DEXP.padL+dexW+DEXP.padR):0;
+  const x0=72+dexGutter;
   // HEDGE RAIL: same TDZ hazard as nT (computeMAPX runs before `let RAIL_ON` binds),
   // so the same try/catch, and the same fallback to 0 = today's geometry exactly.
   let nR=0, nRWant=0, railLaneW=0;
@@ -1944,9 +2029,10 @@ function computeMAPX(w,h){
   // padT grows for the rail's two header rows (expiry + the $ figure). It is the SHARED
   // top pad, so every layer moves together and the price axis stays one scale — the
   // headers get real room instead of being squeezed into 8px type.
-  return { W:w, H:h, padT:(nR?38:22), padB:24, axisLX:48, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
+  return { W:w, H:h, padT:(nR?38:22), padB:24, axisLX:48+dexGutter, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
     nR, nRWant, railGutter, railX0, railLaneW,
     nP, nPWant, paneOi, paneVol, paneW, paneGutter, stripX0,
+    nX:(paneDex?1:0), nXWant, dexW, dexGutter, dexX0:DEXP.padL,
     // 88% of the lane: everything right of lineEnd is gutter/tag territory the
     // bars never enter; edge markers + legend get surface halos instead of margin
     barMax:Math.min(lineEnd-x0-6, Math.max(160, Math.round((lineEnd-x0)*0.88))), pHigh:7660, pLow:7430 };
@@ -1956,6 +2042,11 @@ function computeMAPX(w,h){
 function mapBand(st){
   const sg=(st&&st.sigma&&isFinite(st.sigma))?st.sigma:40;
   const sp=(st&&st.spot!=null&&isFinite(st.spot))?st.spot:null;
+  // ZOOM (07-25): an explicit strike window overrides the adaptive frame — spot ± kσ,
+  // per-device persisted (the bottom-left control). AUTO (GXZOOM=0) = the band below,
+  // unchanged. Off-window walls keep their edge markers; nothing is silently lost.
+  if(typeof GXZOOM!=='undefined'&&GXZOOM>0&&sp!=null)
+    return {pLow:Math.round(sp-GXZOOM*sg), pHigh:Math.round(sp+GXZOOM*sg)};
   const L=[st&&st.spot, st&&st.magnet, st&&st.flip, st&&st.callWall, st&&st.putWall,
            sp!=null?sp-sg:null, sp!=null?sp+sg:null].filter(v=>v!=null&&isFinite(v));   // frame spot±1σ so the EM envelope is always in view (putWall included → no upward bias)
   // N23 (2026-07-12): dated >7DTE walls NEVER set the live frame. With the toggle
@@ -2044,6 +2135,7 @@ const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZ
 function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, putWall:s.putWall, magnet:s.magnet, pin:s.pin,
   gAbove:s.gAbove, gBelow:s.gBelow, flow:s.flow, shoveUp:s.shove.up, shoveDown:s.shove.down, sigma:s.sigma,
   netByStrike:s.netByStrike??null, nbsTenor:s.nbsTenor??null, oiBS:s.oiBS??null, volBS:s.volBS??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null, dex:s.dex??null,
+  ladder:s.ladder??null, aem:s.aem??null,
   sign:s.sign, regime:s.regime, downFlip:s.shove.downFlip }; }
 
 /* _demo marks the hardcoded 07-07 snapshot verdict (N20): the moment the feed goes
@@ -2129,7 +2221,7 @@ let GX_GWT=[];                            // GW tier tracking across scans (hyst
 function gxBuild(){
   const host=document.getElementById('p-map'); if(!host) return;
   if(!host.querySelector('.gx-chart')){
-    host.innerHTML=`<div class="gx-strip" id="gx-strip"></div><div class="gx-tenors" id="gx-tenors"></div><div class="gx-chart"></div>`+
+    host.innerHTML=`<div class="gx-strip" id="gx-strip"></div><div class="gx-tenors" id="gx-tenors"></div><div class="gx-mid"><div class="gx-chart"></div><aside class="gx-ladder" id="gx-ladder" hidden aria-label="Gamma profile ladder"></aside></div>`+
       `<div class="gx-tower"><span class="tr-eye"></span>`+
       `<div class="gx-call" id="gx-tower-call"><span class="dir">—</span><span class="mag">no read</span></div>`+
       `<div class="tr-body"><span class="label">Watchtower · forward read</span>`+
@@ -2198,14 +2290,16 @@ function gxBuild(){
           UNDER barsG: a floored 1.5px hairline sits exactly at the axis, and the
           axis drawn on top erased it (pressure test 07-12) — bars must win. -->
      <line id="gxZero" x1="${(X.x0+X.barMax/2).toFixed(1)}" x2="${(X.x0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>
-     <!-- DEX overlay (07-25, Layers toggle, default off): left-edge field, own recessed
-          wash — UNDER the γ bars, two series never blended: |naive net| dealer delta as
-          one-hue (iris) magnitude bars, the flow-signed twin as the ONLY signed
-          jade/coral series (paintDex) -->
-     <g id="dexG"></g>
+     <!-- NET DEX pane (07-25, Tanuki layout): dedicated lane LEFT of the price axis —
+          two series never blended: |naive net| dealer delta as one-hue (iris) magnitude
+          bars, the flow-signed twin as the ONLY signed jade/coral series (paintDexPane) -->
+     <g id="dexPaneG"></g>
      <g id="tenorG">${tbars}</g>
      <g id="barsG">${bars}</g>
      <g id="barArrowsG"></g>
+     <!-- ADAPTIVE EXPECTED MOVE (07-25, phase-P): asymmetric bracket at the bar lane's
+          left edge, anchored at spot — down em_down_pts / up em_up_pts (paintAem) -->
+     <g id="aemG"></g>
      ${lvl}
      <line id="wtTgtL" x1="${X.x0}" x2="${X.nR?X.stripEnd:X.lineEnd}" mask="url(#gxLabMask)" style="opacity:0" stroke-dasharray="3 5"/>
      <!-- target tag wears the level-tag idiom (name row over price row, right gutter)
@@ -2235,12 +2329,13 @@ function gxBuild(){
      <g id="datedG"></g>
      <g id="datedOILgdG"></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text id="gx-cap" x="${X.x0+2}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">${capTier>0?'Bar = net γ / strike · 0DTE surface':'0DTE net γ'} · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan>${capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':''}</text>
+     <text id="gx-cap" x="${Math.max(X.x0+2,126)}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">${capTier>0?'Bar = net γ / strike · 0DTE surface':'0DTE net γ'} · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan>${capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':''}</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), magCloud:q('magCloud'), axisG:q('axisG'),
     bars:[...document.querySelectorAll('#barsG .gxbar')], barsG:q('barsG'), spotTri:q('spotTri'),
-    dexG:q('dexG'), _xkey:null, panesG:q('panesG'), _pkey:null,
+    dexPaneG:q('dexPaneG'), _xkey:null, panesG:q('panesG'), _pkey:null,
+    aemG:q('aemG'), _aemkey:null,
     tbars:[...document.querySelectorAll('#tenorG .gxtbar')], barArrows:q('barArrowsG'),
     gwLabG:q('gwLabG'), _gwlkey:null,
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
@@ -2253,6 +2348,7 @@ function gxBuild(){
     wtComBr:q('wtComBr'), wtComN:q('wtComN'), wtG:q('gxWtG'), wtG1:q('gxWtG1') };
   MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), glow:q('lg-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });   // glow=null unless MMETA[id].glow
   gxMountInfoBtn();                       // re-mount the "?" (this rebuilt .gx-chart)
+  gxMountZoom();                          // re-mount the zoom cluster (same reason)
   gxMountScrub();                         // re-mount the price scrub (same reason)
   gwBindTips(document.querySelector('#p-map .gx-chart'));   // GW label tooltips (container survives rebuilds)
   gxOverview(); gxTower(); gxPaint();
@@ -2648,7 +2744,7 @@ function gxPaint(){
     MAP.spotLane.setAttribute('width',(X.railX0-X.x0).toFixed(1));
     MAP.spotLane.style.opacity=(X.nT>0)?0.06:0;   // only with the dated layer → off-state stays identical
   }
-  paintDated(); paintDatedOI(); paintDex(); paintPanes(); paintHedgeRail(); paintScrub();
+  paintDated(); paintDatedOI(); paintDexPane(); paintPanes(); paintAem(); paintHedgeRail(); paintScrub(); paintLadder();
 }
 // ---- DATED γ PROFILE (v2, toggle): the FULL per-strike dated NET GEX field, one
 // wash+tick layer per expiration, drawn UNDER the live gamma bars. This is the
@@ -2983,36 +3079,37 @@ function paintDatedOI(){
     }
   }
 }
-// ---- DEX OVERLAY (07-25, Layers toggle, default OFF): the direction-side field on
-// the map — dex_views (SHADOW, record-only). Two series in a recessed left-edge
-// field, NEVER blended:
-//   * |naive net| dealer delta per strike as ONE-SIGN magnitude bars (iris, one hue —
-//     the naive net is LONG by construction, so its sign must never draw as a signal;
-//     NOT a diverging layout on purpose);
+// ---- NET DEX PANE (07-25, Tanuki layout): the direction-side field in its own lane
+// LEFT of the price axis (order: DEX | axis | γ bars) — dex_views (SHADOW,
+// record-only). Two series, NEVER blended:
+//   * |naive net| dealer delta per strike as ONE-HUE magnitude bars (iris — the naive
+//     net is LONG by construction, so its sign must never draw as a signal);
 //   * the flow-signed twin as the ONLY signed series — jade dealers-long / coral
 //     dealers-short, today's tape re-signed from the aggressor annotation.
-// Own normalization per series (own scales, disclosed). Absent dex_views = the group
-// clears — no read is never a zero. Gated on dex_v==1 (era tag): a version bump makes
-// rows unreadable here until this renderer is re-audited.
-let GXDEX=(function(){ try{ return localStorage.getItem('gx.dexOverlay')==='1'; }catch(e){ return false; } })();
-function dexOverlayOn(){ return GXDEX; }
+// Bars grow LEFT from the pane's axis-side edge (the mirrored twin of the right-hand
+// raw-book panes). Own normalization per series (own scales; exact values ride each
+// bar's <title>). Absent dex_views = the pane is never offered (no dead switches);
+// gated on dex_v==1 (era tag): a version bump makes rows unreadable here until this
+// renderer is re-audited. Default On — the pane replaced the old bar-lane overlay.
+let DEX_ON=(function(){ try{ return localStorage.getItem('gx.paneDex')!=='0'; }catch(e){ return true; } })();
+function dexPaneOn(){ return DEX_ON; }
 function dexAvail(){ const x=(typeof T!=='undefined'&&T&&T.dex)||D.dex; return !!(x&&x.v===1&&(x.nbs||x.fbs)); }
-function toggleDexOverlay(){
-  GXDEX=!GXDEX;
-  try{ localStorage.setItem('gx.dexOverlay', GXDEX?'1':'0'); }catch(e){}
-  if(MAP) MAP._xkey=null;
-  gxOverview(); gxPaint(); gxKickFade();
+function toggleDexPane(){
+  DEX_ON=!DEX_ON;
+  try{ localStorage.setItem('gx.paneDex', DEX_ON?'1':'0'); }catch(e){}
+  buildMap();          // REFRAME: the left gutter changes the lane geometry
+  gxOverview(); gxKickFade();
 }
-function paintDex(){
-  if(!MAP||!MAP.dexG) return;
-  const x=D.dex, ok=GXDEX&&x&&x.v===1&&(x.nbs||x.fbs)&&MSTRIKES.length;
+function paintDexPane(){
+  if(!MAP||!MAP.dexPaneG) return;
+  const X=MAPX, x=D.dex, ok=(X.nX||0)>0&&x&&x.v===1&&(x.nbs||x.fbs)&&MSTRIKES.length;
   const key=(ok?String(GX_ASOF||'')+'|'+(x.nbs?x.nbs.length:0)+'|'+(x.fbs?x.fbs.length:0):'off')
-    +`#${MAPX.pLow}|${MAPX.pHigh}|${MSTRIKES.length}|${MAPX.lineEnd}|${MAPX.padT}`;
+    +`#${X.pLow}|${X.pHigh}|${MSTRIKES.length}|${X.dexW}|${X.padT}`;
   if(key===MAP._xkey) return;
   MAP._xkey=key;
-  if(!ok){ MAP.dexG.innerHTML=''; return; }
-  const X=MAPX, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
-  // same bucket-sum discipline as the γ bars — nearest display slot by the live step
+  if(!ok){ MAP.dexPaneG.innerHTML=''; return; }
+  const step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
+  // same bucket-sum discipline as the γ bars / raw-book panes
   const bucket=src=>{
     if(!Array.isArray(src)) return null;
     const b=new Array(MSTRIKES.length).fill(0); let placed=0, mx=0;
@@ -3023,25 +3120,151 @@ function paintDex(){
     return (placed&&mx)?{b,mx}:null;
   };
   const nv=bucket(x.nbs), fl=bucket(x.fbs);
-  if(!nv&&!fl){ MAP.dexG.innerHTML=''; return; }
-  const W=Math.round((X.lineEnd-X.x0)*0.22), T0=X.padT, B0=X.H-X.padB;
-  let s=`<rect x="${X.x0}" y="${T0}" width="${W}" height="${(B0-T0).toFixed(1)}" fill="var(--iris)" opacity=".04"/>`
-      + `<line x1="${(X.x0+W).toFixed(1)}" x2="${(X.x0+W).toFixed(1)}" y1="${T0}" y2="${B0.toFixed(1)}" style="stroke:var(--hairline);opacity:.7"/>`;
-  const hN=Math.max(1.5, MROWH*0.34), hF=Math.max(1.5, MROWH*0.26);
+  const T0=X.padT, B0=X.H-X.padB, px0=X.dexX0, xR=px0+X.dexW, span=X.dexW-7;
+  // recessed panel + the axis-side hairline (mirror of the raw-book panes' idiom)
+  let s=`<rect x="${px0}" y="${T0}" width="${X.dexW}" height="${(B0-T0).toFixed(1)}" rx="3" fill="var(--dgl-gutter)" style="shape-rendering:auto"/>`
+      +`<line x1="${xR.toFixed(1)}" x2="${xR.toFixed(1)}" y1="${T0}" y2="${B0.toFixed(1)}" style="stroke:var(--hairline)"/>`
+      +`<text x="${(px0+X.dexW/2).toFixed(1)}" y="${(T0-9).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" font-family="var(--mono)" letter-spacing=".04em" style="fill:var(--ink-dim);${_HALO}">NET DEX<title>Dealer delta by strike (SHADOW, record-only). Grey-blue bar = |naive net| size, own scale — the naive net reads LONG by construction, so its sign never draws as a color. Green / red bar = the flow-signed twin (today&#39;s tape): green = dealers LONG (hedging sells strength), red = dealers SHORT (hedging buys weakness). The two are never blended.</title></text>`;
+  if(!nv&&!fl){    // field present on the row but no strike lands in the frame
+    s+=`<text x="${(px0+X.dexW/2).toFixed(1)}" y="${((T0+B0)/2).toFixed(1)}" text-anchor="middle" font-size="9" font-family="var(--sans)" style="fill:var(--ink-faint)">no strikes in frame</text>`;
+    MAP.dexPaneG.innerHTML=s; return;
+  }
+  const hN=Math.max(1.5, MROWH*0.32), hF=Math.max(1.5, MROWH*0.26);
   MSTRIKES.forEach((k,j)=>{
     const yc=yFor(k);
     if(nv&&nv.b[j]){
-      const L=Math.abs(nv.b[j])/nv.mx, w=Math.max(1.5, L*(W-4));
-      s+=`<rect x="${X.x0}" y="${(yc-hN-0.4).toFixed(1)}" width="${w.toFixed(1)}" height="${hN.toFixed(1)}" rx="1" fill="var(--iris)" opacity="${(0.28+0.42*L).toFixed(2)}"><title>DEX ${k.toLocaleString('en-US')} · naive |net| ${_gfmt(Math.abs(nv.b[j]))} (magnitude only — naive sign is structural)</title></rect>`;
+      const L=Math.abs(nv.b[j])/nv.mx, w=Math.max(1.5, L*span);
+      s+=`<rect x="${(xR-2-w).toFixed(1)}" y="${(yc-hN-0.4).toFixed(1)}" width="${w.toFixed(1)}" height="${hN.toFixed(1)}" rx="1" fill="var(--iris)" opacity="${(0.28+0.42*L).toFixed(2)}"><title>NET DEX ${k.toLocaleString('en-US')} · naive |net| ${_gfmt(Math.abs(nv.b[j]))} (magnitude only — naive sign is structural)</title></rect>`;
     }
     if(fl&&fl.b[j]){
-      const v=fl.b[j], L=Math.abs(v)/fl.mx, w=Math.max(1.5, L*(W-4));
-      s+=`<rect x="${X.x0}" y="${(yc+0.4).toFixed(1)}" width="${w.toFixed(1)}" height="${hF.toFixed(1)}" rx="1" fill="var(--${v>=0?'jade':'coral'})" opacity="${(0.34+0.42*L).toFixed(2)}"><title>DEX ${k.toLocaleString('en-US')} · flow-signed ${v>=0?'+':'−'}${_gfmt(Math.abs(v))} — dealers ${v>=0?'LONG (hedge sells strength)':'SHORT (hedge buys weakness)'}</title></rect>`;
+      const v=fl.b[j], L=Math.abs(v)/fl.mx, w=Math.max(1.5, L*span);
+      s+=`<rect x="${(xR-2-w).toFixed(1)}" y="${(yc+0.4).toFixed(1)}" width="${w.toFixed(1)}" height="${hF.toFixed(1)}" rx="1" fill="var(--${v>=0?'jade':'coral'})" opacity="${(0.34+0.42*L).toFixed(2)}"><title>NET DEX ${k.toLocaleString('en-US')} · flow-signed ${v>=0?'+':'−'}${_gfmt(Math.abs(v))} — dealers ${v>=0?'LONG (hedge sells strength)':'SHORT (hedge buys weakness)'}</title></rect>`;
     }
   });
-  // the field's own header — carries the doctrine so the overlay can never read naive
-  s+=`<text x="${(X.x0+4).toFixed(1)}" y="${(T0+11).toFixed(1)}" font-size="10" font-weight="700" font-family="var(--mono)" letter-spacing=".03em" style="fill:var(--ink-dim);${_HALO}">DEX Δ · |naive| + flow±<title>Dealer delta by strike (SHADOW, record-only). Iris = |naive net| magnitude, own scale — naive net is LONG by construction: read the split + flow-signed twin, never its sign. Jade/coral = the flow-signed twin (today's tape), the only signed series. The two are never blended.</title></text>`;
-  MAP.dexG.innerHTML=s;
+  MAP.dexPaneG.innerHTML=s;
+}
+// ---- ADAPTIVE EXPECTED MOVE (07-25, phase-P): adaptive_em as a subtle asymmetric
+// bracket anchored at spot on the price axis — down em_down_pts / up em_up_pts,
+// faint fills, end ticks with pts+% labels. The total width IS the Range Ruler's
+// straddle EM; asymmetry reallocates it, never adds. Absent record = nothing drawn.
+function paintAem(){
+  if(!MAP||!MAP.aemG) return;
+  const X=MAPX, a=D.aem;
+  const ok=a&&a.em_v===1&&isFinite(a.em_down_pts)&&isFinite(a.em_up_pts)&&isFinite(D.spot);
+  // spot bucketed to 2pts — the bracket rides spot without 60fps innerHTML churn
+  const key=(ok?`${a.em_down_pts}|${a.em_up_pts}|${a.asym_source}|${a.em_quality}|${Math.round((D.spot||0)/2)}`:'off')
+    +`#${X.pLow}|${X.pHigh}|${X.x0}|${X.H}|${X.padT}`;
+  if(key===MAP._aemkey) return;
+  MAP._aemkey=key;
+  if(!ok){ MAP.aemG.innerHTML=''; return; }
+  const cT=y=>Math.min(X.H-X.padB, Math.max(X.padT, y));
+  const ys=cT(yFor(D.spot)), yU=cT(yFor(D.spot+a.em_up_pts)), yD=cT(yFor(D.spot-a.em_down_pts));
+  const bx=X.x0+3, dsh=(a.down_share!=null&&isFinite(a.down_share))?Math.round(a.down_share*100):null;
+  const pctT=v=>(v!=null&&isFinite(v))?(v*100).toFixed(2)+'%':'—';
+  const srcT=a.asym_source==='watchtower'?'the Watchtower&#39;s own called range':'today&#39;s measured downside-vs-upside volatility split';
+  const tip=`k:range=−${Math.round(a.em_down_pts)} / +${Math.round(a.em_up_pts)} pts`
+    +(dsh!=null?`¦f:${dsh}% of the expected range lies below spot`:'')
+    +`¦f:source: ${a.asym_source==='watchtower'?'Watchtower range':'realized vol split'}`
+    +(a.em_quality&&a.em_quality!=='ok'?`¦f:EM quality: ${a.em_quality} — the base ruler is not a clean 9:30 straddle read`:'')
+    +`¦v:adaptive expected move — today&#39;s likely range, split unevenly by ${srcT}`
+    +`¦n:total width = the option-priced expected move; the split reallocates it, never adds to it`;
+  // faint fills say how much of the day's budget lies each side; ticks + labels carry
+  // the numbers. All clamped into the frame (edge convention).
+  MAP.aemG.innerHTML=
+    `<rect x="${X.x0}" y="${yU.toFixed(1)}" width="12" height="${Math.max(0,ys-yU).toFixed(1)}" fill="var(--iris)" opacity=".05"/>`
+   +`<rect x="${X.x0}" y="${ys.toFixed(1)}" width="12" height="${Math.max(0,yD-ys).toFixed(1)}" fill="var(--iris)" opacity=".05"/>`
+   +`<line x1="${bx}" x2="${bx}" y1="${yU.toFixed(1)}" y2="${yD.toFixed(1)}" style="stroke:var(--iris);opacity:.4;stroke-width:1.2"/>`
+   +`<line x1="${X.x0}" x2="${(X.x0+10).toFixed(1)}" y1="${yU.toFixed(1)}" y2="${yU.toFixed(1)}" style="stroke:var(--iris);opacity:.6;stroke-width:1.4"/>`
+   +`<line x1="${X.x0}" x2="${(X.x0+10).toFixed(1)}" y1="${yD.toFixed(1)}" y2="${yD.toFixed(1)}" style="stroke:var(--iris);opacity:.6;stroke-width:1.4"/>`
+   +`<text x="${(X.x0+15).toFixed(1)}" y="${(yU+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">+${Math.round(a.em_up_pts)} · ${pctT(a.em_up_pct)}</text>`
+   +`<text x="${(X.x0+15).toFixed(1)}" y="${(yD+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">−${Math.round(a.em_down_pts)} · ${pctT(a.em_down_pct)}</text>`
+   +`<text x="${(X.x0+15).toFixed(1)}" y="${(ys+3.5).toFixed(1)}" font-size="9.5" font-weight="700" font-family="var(--mono)" letter-spacing=".05em" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="AEM" data-tip="${tip}">AEM</text>`;
+}
+// ---- GAMMA PROFILE STATE LADDER (07-25, phase-P): profile_ladder as a compact side
+// panel beside the chart — state word on top (tinted), then the named rungs top to
+// bottom (GWc / cT / HVL / pT / GWp), each price + signed % distance, with the live
+// spot row seated between the rungs it sits between. Null rungs are simply absent;
+// no record = the whole panel hides (fail-open). Tap a rung → flash it on the map.
+const _LADDER_STATE={
+  'positive':          {cls:'up',  tip:'Spot is above the flip band — dealer hedging damps moves; dips tend to get bought.'},
+  'positive transition':{cls:'mid', tip:'Spot is inside the chop band around the gamma flip, on the calm side — the regime could flip soon.'},
+  'negative transition':{cls:'mid', tip:'Spot is inside the chop band around the gamma flip, on the unstable side — moves start to snowball.'},
+  'negative':          {cls:'dn',  tip:'Spot is below the flip band — dealer hedging amplifies moves; expect them to run further.'},
+};
+const _LADDER_RUNGS=[
+  {id:'gwc', k:'gwc', pk:'gwc_pct', cls:'c', tier:'gwc_tier',
+   tip:'GWc — the nearest heavy call-side gamma wall above spot; price tends to slow or stall there.'},
+  {id:'ct',  k:'ct',  pk:'ct_pct',  cls:'h',
+   tip:'cT — call transition: the upper edge of the chop band around the gamma flip. Above it the book reads clearly positive.'},
+  {id:'hvl', k:'hvl', pk:'hvl_pct', cls:'h',
+   tip:'HVL — high volatility level, the gamma flip line itself: above it dips get bought, below it moves snowball.'},
+  {id:'pt',  k:'pt',  pk:'pt_pct',  cls:'h',
+   tip:'pT — put transition: the lower edge of the chop band. Below it the book reads clearly negative.'},
+  {id:'gwp', k:'gwp', pk:'gwp_pct', cls:'p', tier:'gwp_tier',
+   tip:'GWp — the nearest heavy put-side gamma wall below spot; price tends to slow or stall there.'},
+];
+function paintLadder(){
+  const el=document.getElementById('gx-ladder'); if(!el) return;
+  const L=D.ladder, ok=L&&L.ladder_v===1;
+  const key=ok?`${L.state}|${L.gwc}|${L.gwc_tier}|${L.ct}|${L.hvl}|${L.pt}|${L.gwp}|${L.gwp_tier}|${Math.round(D.spot||0)}`:'off';
+  if(key===el._lkey) return;
+  el._lkey=key;
+  if(!ok){ if(!el.hidden){ el.hidden=true; el.innerHTML=''; } return; }
+  const rows=[];
+  for(const r of _LADDER_RUNGS){
+    const p=L[r.k]; if(p==null||!isFinite(p)) continue;
+    const name=(r.id==='gwc'?'GWc'+(L[r.tier]||''):r.id==='gwp'?'GWp'+(L[r.tier]||''):r.id==='ct'?'cT':r.id==='pt'?'pT':'HVL');
+    const pc=L[r.pk];
+    rows.push({p:+p, html:`<button type="button" class="gxl-row" onclick="gxFlashLevel(${+p})" title="${r.tip} Tap to flash it on the map.">`
+      +`<span class="k ${r.cls}">${name}</span><span class="v">${f(p,0)}</span>`
+      +`<span class="pc">${(pc!=null&&isFinite(pc))?(pc>=0?'+':'−')+Math.abs(pc).toFixed(2)+'%':''}</span></button>`});
+  }
+  if(!rows.length){ if(!el.hidden){ el.hidden=true; el.innerHTML=''; } return; }
+  if(isFinite(D.spot))
+    rows.push({p:D.spot, html:`<div class="gxl-row spot" title="Where price is right now, seated between the levels around it.">`
+      +`<span class="k">SPOT</span><span class="v">${f(D.spot,0)}</span><span class="pc"></span></div>`});
+  rows.sort((a,b)=>b.p-a.p);   // top of the panel = highest price, like the map
+  const st=_LADDER_STATE[L.state]||null;
+  const head=st?`<div class="gxl-state ${st.cls}" title="${st.tip}">${String(L.state).toUpperCase()}</div>`
+              :`<div class="gxl-state"></div>`;
+  el.innerHTML=`<div class="gxl-cap" title="The named levels of today&#39;s gamma profile, top to bottom — tap a level to flash it on the map.">Gamma profile</div>${head}${rows.map(r=>r.html).join('')}`;
+  el.hidden=false;
+}
+// ladder-tap flash — one transient line at the level, removed after its fade
+function gxFlashLevel(p){
+  if(!MAP||!MAP.svg||p==null||!isFinite(p)) return;
+  const X=MAPX, y=Math.max(X.padT, Math.min(X.H-X.padB, yFor(p)));
+  const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+  ln.setAttribute('x1',X.x0); ln.setAttribute('x2',X.lineEnd);
+  ln.setAttribute('y1',y.toFixed(1)); ln.setAttribute('y2',y.toFixed(1));
+  ln.setAttribute('class','gx-flash');
+  MAP.svg.appendChild(ln);
+  setTimeout(()=>{ try{ ln.remove(); }catch(e){} }, 1300);
+}
+// ---- ZOOM / STRIKE-DENSITY (07-25): the strike window around spot — ±2σ/±3σ/±4σ
+// or AUTO (the adaptive frame that hugs the day's live levels, the long-standing
+// default). Every pane, ladder and label follows the window by construction (they
+// all derive from MAPX.pLow/pHigh). Per-device persisted like every map toggle.
+let GXZOOM=(function(){ try{ const v=+localStorage.getItem('gx.zoom'); return [0,2,3,4].indexOf(v)>=0?v:0; }catch(e){ return 0; } })();
+const GX_ZOOMS=[2,3,4,0];   // tightest → widest; 0 = AUTO
+function gxZoomIdx(){ const i=GX_ZOOMS.indexOf(GXZOOM); return i<0?GX_ZOOMS.length-1:i; }
+function gxZoomStep(d){
+  const i=Math.max(0, Math.min(GX_ZOOMS.length-1, gxZoomIdx()+d));
+  if(GX_ZOOMS[i]===GXZOOM) return;
+  GXZOOM=GX_ZOOMS[i];
+  try{ localStorage.setItem('gx.zoom', String(GXZOOM)); }catch(e){}
+  buildMap(); gxKickFade();   // REFRAME: the window is the frame
+}
+function gxMountZoom(){
+  const cc=document.querySelector('#p-map .gx-chart'); if(!cc||cc.querySelector('.gx-zoom')) return;
+  const i=gxZoomIdx(), d=document.createElement('div');
+  d.className='gx-zoom';
+  d.title='Strike window around spot: − zooms in (fewer strikes, more detail), + zooms out. AUTO frames the day’s live levels (spot, magnet, flip, walls) and grows with volatility.';
+  d.innerHTML=`<button type="button" class="gx-zbtn" onclick="gxZoomStep(-1)" aria-label="Zoom in (tighter strike window)" ${i===0?'disabled':''}>−</button>`
+    +`<span class="gx-zdots" aria-hidden="true">${GX_ZOOMS.map((_,j)=>`<i${j<=i?' class="on"':''}></i>`).join('')}</span>`
+    +`<span class="gx-zlab">${GXZOOM>0?'±'+GXZOOM+'σ':'AUTO'}</span>`
+    +`<button type="button" class="gx-zbtn" onclick="gxZoomStep(1)" aria-label="Zoom out (wider strike window)" ${i===GX_ZOOMS.length-1?'disabled':''}>+</button>`;
+  cc.appendChild(d);
 }
 // ---- RAW-BOOK PANES (07-25, Tanuki layout): Net OI + Net Vol per strike beside the
 // hero γ bars — the RAW call−put 0DTE book (oi_by_strike / vol_by_strike: unweighted
@@ -3081,7 +3304,7 @@ function paintPanes(){
   if(!ok){ MAP.panesG.innerHTML=''; return; }
   const step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
   const T0=X.padT, B0=X.H-X.padB;
-  // same bucket-sum discipline as the γ bars / DEX overlay
+  // same bucket-sum discipline as the γ bars / NET DEX pane
   const bucket=src=>{
     if(!Array.isArray(src)) return null;
     const b=new Array(MSTRIKES.length).fill(0); let placed=0, mx=0;
@@ -3616,6 +3839,44 @@ function paintDated(){
 // three other ways: wash split, GAMMA FLIP line, vitals pill; the motion read
 // lives on the motion tile); the structural Call Ceiling / Put Floor chips became
 // wall LINES on the graph (Walls toggle) with on-line price+σ labels.
+// ---- NET EXPOSURE TILES (07-25, phase-P): NET Γ / NET Δ from the newest row's
+// net_exposure record — the whole-book totals, each with a subtle 1-day delta (vs
+// yesterday's close, only when the record carries one) and the live 4-dot scan
+// trail: the last four scan-over-scan changes, computed client-side from the rows
+// already fetched — newest brightest, dot size = size of the change. Absent record
+// = no tiles (fail-open), never zeros.
+const _sgfmt=v=>(v<0?'−':'+')+_gfmt(Math.abs(v));
+function _neTiles(){
+  const nr=(typeof liveNow==='function')?liveNow():null, ne=nr&&nr.ne;
+  if(!LIVE||!ne) return '';
+  const rows=LIVEROWS.filter(s=>s&&s.ne).slice(-5);   // 5 totals → 4 scan-over-scan diffs
+  const trail=k=>{ const ds=[];
+    for(let i=1;i<rows.length;i++){ const a=rows[i-1].ne[k], b=rows[i].ne[k];
+      ds.push((a!=null&&b!=null&&isFinite(a)&&isFinite(b))?b-a:null); }
+    return ds.slice(-4); };
+  const dots=ds=>{ if(!ds.length) return '';
+    let mx=0; for(const d of ds) if(d!=null&&Math.abs(d)>mx) mx=Math.abs(d);
+    const ops=[.38,.55,.75,1].slice(4-ds.length);   // opacity ladder, oldest → newest
+    return `<span class="gx-dots" aria-hidden="true">`+ds.map((d,i)=>{
+      const sz=(d==null||!mx)?3:(3+3*Math.min(1,Math.abs(d)/mx));
+      return `<i class="${d==null?'':d>0?'up':d<0?'dn':''}" style="width:${sz.toFixed(1)}px;height:${sz.toFixed(1)}px;opacity:${ops[i]}"></i>`;
+    }).join('')+`</span>`; };
+  const delta=(v,pv,pd)=>{
+    if(v==null||pv==null||!isFinite(v)||!isFinite(pv)||!pd) return '';
+    const d=v-pv; if(!d) return '';
+    return ` <span class="d ${d>0?'up':'dn'}">${_sgfmt(d)}</span>`; };
+  // the prev_close pair only counts as "1 day ago" when it really is the prior
+  // session's close (the engine walks ≤6 calendar days; a different date is enough)
+  const rowDay=String(nr.ts||'').slice(0,10), pd=ne.prev_close_date&&ne.prev_close_date!==rowDay;
+  const trailNote='Four dots = the last four scans&#39; change, newest brightest — green grew, red shrank, dot size = size of the change.';
+  const tile=(name,v,pv,tr,what)=>{
+    if(v==null||!isFinite(v)) return '';
+    return `<span class="gx-chip gx-tile" title="${what} Small ± = change since the prior session&#39;s close${pd?` (${ne.prev_close_date})`:' (unavailable)'}. ${trailNote}"><b>${name}</b><i>${_sgfmt(v)}${delta(v,pv,pd)}${dots(tr)}</i></span>`; };
+  return tile('NET Γ', ne.net_gamma_total, ne.prev_close_gamma, trail('net_gamma_total'),
+      'Net dealer gamma across the whole 0-7 day book, in dollars. Positive = dealer hedging damps moves (they sell rallies, buy dips); negative = it amplifies them.')
+    + tile('NET Δ', ne.net_delta_total, ne.prev_close_delta, trail('net_delta_total'),
+      'Net dealer delta still standing to be re-hedged, in dollars. Caveat: the naive total reads LONG by construction — watch the change, never the level&#39;s sign.');
+}
 function gxOverview(){
   const el=document.getElementById('gx-strip'); if(!el) return;
   const sg=(D.sigma||1);
@@ -3650,7 +3911,7 @@ function gxOverview(){
   //   2. 1-7D γ     — ghost terrain, the nearest added layer
   //   3. Dated γ    — monthly/quarterly slabs, farther out
   //   4. Hedge Rail — >7DTE lanes, farthest
-  //   4.5 DEX Δ     — the direction-side overlay (shadow, default Off)
+  //   4.5 Net DEX   — the direction-side pane, left of the axis (shadow, default On)
   //   4.6 Net OI / Net Vol — the raw-book panes beside the hero bars (default On)
   //   5. γ scale    — display MODE of the live bars (not a layer), so it goes last
   // Subtitle grammar, every switch: <state> · <what the layer is> — a chip must
@@ -3673,11 +3934,12 @@ function gxOverview(){
   const railChip=(typeof railAvail==='function'&&railAvail())
     ? `<button type="button" class="gx-chip gx-toggle" id="gx-rail-chip" onclick="toggleHedgeRail()" aria-pressed="${railOn()}" title="Hedge Rail (>7DTE) — net dealer gamma vs price, one lane per dated expiry, on the map's own price axis. RIGHT of the zero rule = dealers DAMP the move (they sell rallies and buy dips); LEFT = they AMPLIFY it. The header number is what a +1% move forces them to trade to stay delta-neutral. CONTESTED = sweeping the spot-vol beta flips the sign, so no direction is claimed. Sign is assumed (calls long / puts short). Record-only: feeds nothing."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Hedge Rail</b><i id="gx-rail-v">${RAIL_ON?((MAPX.nR||0)?'<span style="color:var(--jade)">On</span> · '+_railBands().slice(0,MAPX.nR).map(bd=>_dexp(bd.expiry)).join('·')+_railChipTail():'<span style="color:var(--lantern)">On · no room</span> — widen the map'):'Off · &gt;7DTE dealer hedge'}</i></span></button>`
     : '';
-  // 4.5 DEX overlay (07-25): the direction-side field — offered only when the latest
-  // row carries a dex_v==1 dex_views surface (never a dead switch). SHADOW,
-  // record-only; default Off.
+  // 4.5 NET DEX pane (07-25): the direction-side lane left of the axis — offered only
+  // when the latest row carries a dex_v==1 dex_views surface (never a dead switch).
+  // SHADOW, record-only; default On (the pane replaced the old bar-lane overlay). If
+  // On but shed for room (GEX > DEX > OI > VOL), the chip says so out loud.
   const dexChip=(typeof dexAvail==='function'&&dexAvail())
-    ? `<button type="button" class="gx-chip gx-toggle" onclick="toggleDexOverlay()" aria-pressed="${dexOverlayOn()}" title="DEX — dealer delta by strike (SHADOW, record-only). Two series, never blended: |naive net| dealer delta as one-hue magnitude bars — the naive net is LONG by construction, read the split + flow-signed twin, never its sign — and the flow-signed twin (today's tape, re-signed from the aggressor annotation) as the only signed jade/coral series."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>DEX Δ</b><i>${dexOverlayOn()?'<span style="color:var(--jade)">On</span> · |naive| + flow±':'Off · dealer delta (shadow)'}</i></span></button>`
+    ? `<button type="button" class="gx-chip gx-toggle" onclick="toggleDexPane()" aria-pressed="${dexPaneOn()}" title="NET DEX pane — dealer delta by strike (SHADOW, record-only), in its own lane left of the price axis. Two series, never blended: |naive net| dealer delta as one-hue magnitude bars — the naive net is LONG by construction, read the split + flow-signed twin, never its sign — and the flow-signed twin (today's tape, re-signed from the aggressor annotation) as the only signed jade/coral series."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Net DEX</b><i>${dexPaneOn()?((MAPX.nX)?'<span style="color:var(--jade)">On</span> · |naive| + flow±':'<span style="color:var(--lantern)">On · no room</span> — widen the map'):'Off · dealer delta (shadow)'}</i></span></button>`
     : '';
   // 4.6 RAW-BOOK PANES (07-25, Tanuki layout): Net OI / Net Vol lanes beside the hero
   // bars — offered only when the row carries the field (never a dead switch). If On
@@ -3710,11 +3972,11 @@ function gxOverview(){
   const swChips=[wallsChip,tenorChip,doiChip,railChip,dexChip,oiChip,volChip,scaleChip].filter(Boolean);
   const lyOpen=gxLayersOpen();
   const lyOn=[wallsChip,tenorChip,doiChip,railChip,dexChip,oiChip,volChip].filter(c=>c&&c.includes('aria-pressed="true"')).length;
-  const layersChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLayers()" aria-expanded="${lyOpen}" title="Show / hide the map's layer switches (Walls, 1-7D γ, Dated γ, Hedge Rail, DEX Δ, Net OI, Net Vol, γ scale)"><span class="gx-tx"><b>Layers ${lyOpen?'▴':'▾'}</b><i>${lyOn} on · walls + γ layers</i></span></button>`;
+  const layersChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLayers()" aria-expanded="${lyOpen}" title="Show / hide the map's layer switches (Walls, 1-7D γ, Dated γ, Hedge Rail, Net DEX, Net OI, Net Vol, γ scale)"><span class="gx-tx"><b>Layers ${lyOpen?'▴':'▾'}</b><i>${lyOn} on · walls + γ layers</i></span></button>`;
   el.innerHTML=`${roadChip}
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → MagP ${f(D.magnet,0)} · ${flow}${freshTag}</i></span>
     <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${datedChips}${layersChip}${lyOpen?swChips.join(''):''}`;
+    ${_neTiles()}${datedChips}${layersChip}${lyOpen?swChips.join(''):''}`;
   if(typeof paintTenorPills==='function') paintTenorPills();   // the date-pill row rides every strip rebuild
 }
 function gxTower(){
@@ -3905,15 +4167,19 @@ function applyMap(r){
   T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
   GX_PSIG = (r.gex_theta||{}).pin_signed ?? GX_PSIG;             // H10: shadow signed-flow pin (zones modal)
   T.dex = normDex(r.dex_views);                                  // DEX surface (07-25, shadow) — absent key = no read, never a zero
+  // phase-P records (07-25, shadow, version-gated): ladder panel, AEM bracket, tiles
+  T.ladder = (r.profile_ladder&&r.profile_ladder.ladder_v===1) ? r.profile_ladder : null;
+  T.aem = (r.adaptive_em&&r.adaptive_em.em_v===1) ? r.adaptive_em : null;
   T.netByStrike = g.net_by_strike ?? gv.net_by_strike ?? null;   // MEASURED per-strike field (null on pre-field rows → modeled fallback)
   T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines
   T.oiBS = g.oi_by_strike ?? gv.oi_by_strike ?? null;            // raw-book panes (07-25): net OI / net vol per strike
   T.volBS = g.vol_by_strike ?? gv.vol_by_strike ?? null;
-  // pane gutter re-check: a row that first carries (or drops) the raw-book fields must
-  // claim/release its gutter — fetchDatedBook's resize dance, on the row hook. WANT
-  // count, not the drawn count: a pane shed for room must not rebuild forever.
-  try{ if(MAP && (((typeof OI_ON!=='undefined'&&OI_ON&&oiPaneAvail())?1:0)
-                 +((typeof VOL_ON!=='undefined'&&VOL_ON&&volPaneAvail())?1:0))!==(MAPX.nPWant||0)) buildMap(); }catch(e){}
+  // pane gutter re-check: a row that first carries (or drops) the raw-book / dex
+  // fields must claim/release its gutter — fetchDatedBook's resize dance, on the row
+  // hook. WANT count, not the drawn count: a pane shed for room must not rebuild forever.
+  try{ if(MAP && ((((typeof OI_ON!=='undefined'&&OI_ON&&oiPaneAvail())?1:0)
+                 +((typeof VOL_ON!=='undefined'&&VOL_ON&&volPaneAvail())?1:0))!==(MAPX.nPWant||0)
+              || ((typeof DEX_ON!=='undefined'&&DEX_ON&&dexAvail())?1:0)!==(MAPX.nXWant||0))) buildMap(); }catch(e){}
   T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
   T.callCeil = r.call_wall_tenor ?? r.call_wall ?? D.callCeil;     // structural OI call wall = the real ceiling
   // H9: the dated book is sticky across SHORT gaps only (rows before the day's first
@@ -4066,7 +4332,7 @@ function frame(){
     else if(Math.abs(d)>mv) mv=Math.abs(d); }
   D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
-  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex snap (not eased)
+  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem snap (not eased)
   // PERF (07-25): 60fps repaints only while something is actually EASING; converged,
   // drop to ~1Hz so the time-driven reads (comet aging, spot lane) still advance —
   // a wall display must not burn all-night SVG churn on a static picture. The map
@@ -6855,6 +7121,28 @@ function renderDict(){
           ${ex("[0DTE]GWp'",'p','a minor put-side wall in today’s expiry.')}
           ${ex("[AUG21]GWc''",'c','a significant call wall in the Aug 21 dated book.')}
         </div>
+      </div>
+
+      <div class="dict-card dict-wide">
+        <h3>Profile Ladder &amp; Exposure <span><span class="gw c">GWc</span> · <span class="gw">cT</span> · <span class="gw">HVL</span> · <span class="gw">pT</span> · <span class="gw p">GWp</span></span></h3>
+        <p>The side panel on the Map reads today’s gamma profile top to bottom; the strip tiles carry the whole book’s totals. Every abbreviation, in plain words:</p>
+        <div class="dict-cols">
+          <div>
+            ${row('<span class="gw c">GWc</span>/<span class="gw p">GWp</span>','','the nearest heavy gamma wall above / below spot — <b>see the Gex Walls card</b>; price tends to slow or stall there.')}
+            ${row('cT','', 'call transition — the <b>upper</b> edge of the chop band around the flip; above it the book reads clearly positive.')}
+            ${row('HVL','', 'high volatility level — the gamma flip line; <b>above it dips get bought, below it moves snowball</b>.')}
+            ${row('pT','', 'put transition — the <b>lower</b> edge of the chop band; below it the book reads clearly negative.')}
+            ${row('AEM','', 'adaptive expected move — today’s likely range around spot, <b>split unevenly toward the riskier side</b> (the bracket by the price axis).')}
+          </div>
+          <div>
+            ${row('NET Γ','', 'net dealer gamma, whole 0-7 day book — positive damps moves, negative amplifies them.')}
+            ${row('NET Δ','', 'net dealer delta still to be re-hedged — the naive total reads long by construction, so <b>watch the change</b>, not the sign.')}
+            ${row('• • • •','', 'the dot trail on each tile — the last four scans’ change: <b>bright = newest</b>, green grew, red shrank, size = how much.')}
+            ${row('NET DEX','', 'the pane left of the γ bars — dealer delta by strike: grey-blue = size only; green / red = today’s flow-signed read.')}
+            ${row('− / +','', 'the zoom cluster, bottom-left of the chart — the strike window around spot: ±2σ to ±4σ, or AUTO (frames the day’s live levels).')}
+          </div>
+        </div>
+        <p class="fine">All of these are display surfaces of recorded shadow data — absent record = nothing drawn, never zeros.</p>
       </div>
 
       <div class="dict-pipe">

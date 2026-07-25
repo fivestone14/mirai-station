@@ -85,3 +85,11 @@ individual variables mostly are not.
 
 *Doctrine note: every variable above WEIGHS-tier is promotion-gated — nothing
 climbs a tier without its own Wilson-graded A/B. Demotion is free.*
+
+*Record note (2026-07-25, phase P): three display-only diary records ride beside
+this doctrine and hold NO tier — the tower never reads them: `net_exposure`
+(whole-book NET Γ/Δ totals, reused off the row), `profile_ladder` (the step-5
+band and walls as named rungs — GWc/cT/HVL/pT/GWp; HVL is the adopted display
+name for the flip line, storage key unchanged), and `adaptive_em` (the ruler's
+EM re-split asymmetric by measured asymmetry; total width preserved). Shapes in
+docs/gex-glossary.md.*

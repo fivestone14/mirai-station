@@ -169,7 +169,8 @@ mirai-station/
 ├── skills/
 │   ├── mirai-left-eye/         the brain: hunter · reversion_lens (3 heads) ·
 │   │                           lefteye_gex_box (Gravity Engine) · lefteye_dex
-│   │                           (DEX direction-side twin, shadow) · native_gex_feed
+│   │                           (DEX direction-side twin, shadow) · profile_ladder +
+│   │                           adaptive_em (display records, shadow) · native_gex_feed
 │   │                           (FLOW sensor) · fill_ledger · watchtower ·
 │   │                           gex_polarity_ab (grader) · uw_periscope + gex_uw_bridge
 │   │                           (UW cross-check) · dashboard · price/context lenses

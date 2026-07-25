@@ -91,6 +91,62 @@ def _save_tape_prev(ticker: str, snap: dict) -> None:
         print(f"reversion :: tape_prev save failed ({type(e).__name__}: {e})", flush=True)
 
 
+# PREV-CLOSE NET-EXPOSURE totals (2026-07-25): {(ticker, today-iso): {...}|None} —
+# the tape_prev idiom's in-process half only: yesterday's diary file is immutable
+# after the close, so one read per process is enough (no disk round-trip needed;
+# the one-shot scanner re-reads it once per wake, a long session never again).
+_PREV_CLOSE: dict[tuple[str, str], Optional[dict]] = {}
+
+
+def _prev_close_totals(ticker: str, now: datetime) -> Optional[dict]:
+    """Yesterday's LAST recorded whole-book totals for `ticker`, so the tablet
+    renders 1-day deltas without walking files: {"gamma", "delta", "date"} or
+    None. Walks back ≤6 calendar days to the most recent prior diary file
+    (weekends/holidays — the _soft_side_stuck walk, same span), takes the last
+    row carrying a total; prefers the row's own net_exposure record, falls back
+    to gex_views.net_gex_tenor / dex_views.net_dex_total for pre-record rows.
+    DIARY FILES ONLY — this never makes an API call. Fail-open: unreadable = None
+    (and the miss is cached too — a missing yesterday stays missing all day)."""
+    from datetime import timedelta
+    key = (ticker, now.date().isoformat())
+    if key in _PREV_CLOSE:
+        return _PREV_CLOSE[key]
+    out = None
+    try:
+        import json
+        for back in range(1, 7):
+            path = (SKILL_DIR.parent.parent / "state" / "reversion"
+                    / f"{(now - timedelta(days=back)).date().isoformat()}.jsonl")
+            try:
+                lines = path.read_text().splitlines()
+            except OSError:
+                continue
+            for line in reversed(lines):
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue          # torn tail line must not hide the row before it
+                if not isinstance(r, dict) or r.get("ticker") != ticker:
+                    continue
+                ne = r.get("net_exposure") or {}
+                g = ne.get("net_gamma_total")
+                if g is None:
+                    g = (r.get("gex_views") or {}).get("net_gex_tenor")
+                d = ne.get("net_delta_total")
+                if d is None:
+                    d = (r.get("dex_views") or {}).get("net_dex_total")
+                if g is not None or d is not None:
+                    out = {"gamma": g, "delta": d,
+                           "date": (now - timedelta(days=back)).date().isoformat()}
+                    break
+            break                     # most recent prior FILE decides — never reach
+                                      # past a totals-less session into an older one
+    except Exception:
+        out = None
+    _PREV_CLOSE[key] = out
+    return out
+
+
 def live_allowed() -> tuple[bool, str]:
     """THE EARN-TRUST GATE, enforced. Live requires BOTH the hand switch
     (REVERSION_LIVE) AND a graded paper record that clears the Wilson promotion
@@ -1049,6 +1105,11 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         idx_bars = fetcher.intraday_bars(ticker) or []
         if not idx_bars:
             return None
+        # Same-tick bar reuse (efficiency audit 2026-07-25): the learning view's
+        # trade resolver re-fetched this EXACT minute-history call up to twice
+        # more per tick once a fire existed (evaluate → write_learning_view ran
+        # 3 identical Schwab pulls). Cache the tick's read for _default_bars_lookup.
+        _BARS_CACHE[ticker] = (now, idx_bars)
         closes = [b["close"] for b in idx_bars if b.get("close")]
         sess_hi = max((b["high"] for b in idx_bars), default=None)
         sess_lo = min((b["low"] for b in idx_bars), default=None)
@@ -1321,6 +1382,45 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         except Exception as _dx_err:
             print(f"reversion :: dex read dropped "
                   f"({type(_dx_err).__name__}: {_dx_err})", flush=True)
+
+        # NET EXPOSURE TOTALS (2026-07-25): the tablet's whole-book tiles —
+        # PURE REUSE, NO NEW API CALLS. net_gamma_total = the blended 0-7DTE
+        # net dealer GEX at spot the gravity engine already summed this scan
+        # (gex_views.net_gex_tenor); net_delta_total = dex_views.net_dex_total
+        # — both lifted off the records above, priced from the ONE cached
+        # chain. The prev_close pair is a once-per-process DIARY read
+        # (_prev_close_totals), never a fetch. The live last-4-scan trail
+        # needs no fields here: the UI diffs the rows it already fetches.
+        # Fail-open: any error leaves the key absent.
+        try:
+            _ne_g = (telemetry.get("gex_views") or {}).get("net_gex_tenor")
+            _ne_d = (telemetry.get("dex_views") or {}).get("net_dex_total")
+            if _ne_g is not None or _ne_d is not None:
+                _ne_prev = _prev_close_totals(ticker, now) or {}
+                telemetry["net_exposure"] = {
+                    "net_gamma_total": _ne_g,
+                    "net_delta_total": _ne_d,
+                    "prev_close_gamma": _ne_prev.get("gamma"),
+                    "prev_close_delta": _ne_prev.get("delta"),
+                    "prev_close_date": _ne_prev.get("date"),
+                    "net_exposure_v": 1,
+                }
+        except Exception:
+            pass
+
+        # SHADOW (PROFILE LADDER): the named gamma-profile levels in the GW
+        # vocab (GWc/cT/HVL/pT/GWp) + the zone word for where spot sits — a
+        # pure re-read of surfaces already on the row (gw_vocab clusters on
+        # net_by_strike, the wt-8 chop band around the flip); nothing fetched,
+        # nothing computed twice. Fail-open: any error leaves the key absent.
+        try:
+            import lefteye_profile_ladder as _pl
+            _pl_rec = _pl.read((telemetry.get("gex_views") or {}).get("net_by_strike"),
+                               spot, sigma, gflip)
+            if _pl_rec is not None:
+                telemetry["profile_ladder"] = _pl_rec
+        except Exception:
+            pass
 
         # SHADOW (theta A/B): record the native gravity+flow read (fetched above)
         # beside the Schwab-proxy read for a paper hit/miss compare. Record-only and
@@ -1648,6 +1748,25 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             wt_rec = _wt.observe(telemetry, now=now)
             if wt_rec:
                 telemetry["watchtower"] = wt_rec
+        except Exception:
+            pass
+
+        # SHADOW (ADAPTIVE EM, em_v:1): the range ruler's symmetric EM budget
+        # re-split into ASYMMETRIC down/up bounds by measured asymmetry only —
+        # a live tower call's range_sigma band first, else today's realized
+        # semivariance split (formula documented in lefteye_adaptive_em).
+        # Placed AFTER the tower so a fresh call skews this scan's own split.
+        # Record-only; absent when any component is missing (never invented).
+        # Fail-open: any error leaves the key absent.
+        try:
+            import lefteye_adaptive_em as _aem
+            _aem_rec = _aem.read(telemetry.get("range_ruler"), spot,
+                                 ticker=ticker, now=now,
+                                 watchtower=telemetry.get("watchtower"),
+                                 rows_today=rows_today,
+                                 speedometer=telemetry.get("speedometer"))
+            if _aem_rec is not None:
+                telemetry["adaptive_em"] = _aem_rec
         except Exception:
             pass
 
@@ -2120,9 +2239,26 @@ def _learned_sentence(rows: list[dict], gated, pre_runway) -> str:
         f"RUNWAY_MIN_SIGMA. _(feed this line to Claude to adjust the dials.)_")
 
 
+# Same-tick 1-min bar cache: {ticker: (fetched_at, bars)} — evaluate() fills it,
+# _default_bars_lookup reuses it while fresh. One tick, one minute-history call.
+_BARS_CACHE: dict[str, tuple[datetime, list[dict]]] = {}
+_BARS_TTL_S = 240.0     # covers the same tick's note refresh; expired by the next wake
+
+
 def _default_bars_lookup(ticker: str) -> list[dict]:
-    """Today's 1-min index bars (own price; vol=0 but high/low/close valid).
+    """Today's 1-min index bars (own price; vol=0 but high/low/close valid) —
+    the scan's own read when this tick already fetched it (a ≤4-min-stale path
+    only leaves the newest fire pending one tick longer), else a fresh pull.
     Best-effort — returns [] on any failure so resolution just degrades to pending."""
+    hit = _BARS_CACHE.get(ticker)
+    if hit:
+        try:
+            now = datetime.now(tz=ET)
+            if (hit[0].date() == now.date()
+                    and (now - hit[0]).total_seconds() < _BARS_TTL_S):
+                return hit[1]
+        except TypeError:
+            pass               # naive-vs-aware ts (tests) → just refetch
     try:
         import lefteye_fetcher
         return lefteye_fetcher.intraday_bars(ticker) or []

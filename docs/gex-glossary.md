@@ -60,6 +60,13 @@ is now the only gravity read.)
 | `lefteye_dex.dex_views()` | Delta Ledger | Net dealer DELTA still to re-hedge, per strike — the direction-side twin of the Gravity Engine, priced off the same cached chain (no extra fetch). Naive net is LONG by construction; the flow-signed twin carries the only live sign |
 | `dex_views` (key) | Dealer-delta snapshot | The DEX surface recorded on each scan row; an absent key is NO READ, never a zero book |
 
+## Phase-P display records (added 2026-07-25, shadow)
+| Code | Plain name | What it actually does |
+|---|---|---|
+| `net_exposure` (key) | Whole-book totals | NET Γ / NET Δ for the strip tiles — `gex_views.net_gex_tenor` + `dex_views.net_dex_total` lifted off the same row (no new fetch), with yesterday's close pair from a once-per-process diary read |
+| `lefteye_profile_ladder.read()` → `profile_ladder` (key) | Profile Ladder | The named rungs of one scan's gamma profile: GWc / **cT** / **HVL** / **pT** / GWp + the zone word for spot. cT/pT are the wt-8 chop band's upper/lower edges; **HVL** (high volatility level) is the adopted display name for the gamma flip line — the storage key stays `gamma_flip`, keys are never renamed |
+| `lefteye_adaptive_em.read()` → `adaptive_em` (key) | Adaptive EM | The Range Ruler's symmetric straddle EM re-split into asymmetric down/up bounds by measured asymmetry only (live tower range band, else the realized semivariance split); total width preserved — never adds to the priced budget |
+
 ## Watchtower payload words (wt-8, 2026-07-25)
 | Payload field | Plain name | What it actually says |
 |---|---|---|

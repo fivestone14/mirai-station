@@ -883,3 +883,92 @@ def test_read_today_telemetry_skips_torn_line(tmp_path, monkeypatch):
         good1 + "\n" + '{"torn": tru' + "\n" + good2 + "\n")
     rows = R._read_today_telemetry(NOW)
     assert len(rows) == 2 and rows[1]["spot"] == 7400.0
+
+
+# ---------------------------------------------------------------- net_exposure
+def test_prev_close_totals_prefers_own_record_and_caches(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr(R, "SKILL_DIR", tmp_path / "skills" / "x")
+    monkeypatch.setattr(R, "_PREV_CLOSE", {})
+    d = tmp_path / "state" / "reversion"
+    d.mkdir(parents=True)
+    y = (NOW - datetime.timedelta(days=1)).date().isoformat()
+    rows = [
+        {"ticker": "SPX", "net_exposure": {"net_gamma_total": 1.0,
+                                           "net_delta_total": 2.0}},
+        # last SPX row wins, and its OWN net_exposure beats the raw keys
+        {"ticker": "SPX",
+         "net_exposure": {"net_gamma_total": 111.0, "net_delta_total": -22.0},
+         "gex_views": {"net_gex_tenor": 999.0},
+         "dex_views": {"net_dex_total": 999.0}},
+        {"ticker": "QQQ", "net_exposure": {"net_gamma_total": 9.0,
+                                           "net_delta_total": 9.0}},
+    ]
+    (d / f"{y}.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n" + '{"torn": tru' + "\n")
+    got = R._prev_close_totals("SPX", NOW)
+    assert got == {"gamma": 111.0, "delta": -22.0, "date": y}
+    # cached in-process (tape_prev idiom): the file is never re-read this day
+    (d / f"{y}.jsonl").unlink()
+    assert R._prev_close_totals("SPX", NOW) == got
+
+
+def test_prev_close_totals_falls_back_to_raw_keys_across_a_weekend(tmp_path, monkeypatch):
+    # pre-record rows carry only gex_views/dex_views — day 1 must still get a
+    # yesterday; and the walk spans a weekend to the last session's file
+    import json
+    monkeypatch.setattr(R, "SKILL_DIR", tmp_path / "skills" / "x")
+    monkeypatch.setattr(R, "_PREV_CLOSE", {})
+    d = tmp_path / "state" / "reversion"
+    d.mkdir(parents=True)
+    friday = (NOW - datetime.timedelta(days=4)).date().isoformat()  # NOW is a Tuesday
+    (d / f"{friday}.jsonl").write_text(json.dumps(
+        {"ticker": "SPX", "gex_views": {"net_gex_tenor": 5.5},
+         "dex_views": {"net_dex_total": -3.3}}) + "\n")
+    assert R._prev_close_totals("SPX", NOW) == {"gamma": 5.5, "delta": -3.3,
+                                                "date": friday}
+
+
+def test_prev_close_totals_most_recent_file_decides(tmp_path, monkeypatch):
+    # yesterday's file exists but carries no totals → None; an older session's
+    # number must never be presented as "yesterday's close"
+    import json
+    monkeypatch.setattr(R, "SKILL_DIR", tmp_path / "skills" / "x")
+    monkeypatch.setattr(R, "_PREV_CLOSE", {})
+    d = tmp_path / "state" / "reversion"
+    d.mkdir(parents=True)
+    y1 = (NOW - datetime.timedelta(days=1)).date().isoformat()
+    y2 = (NOW - datetime.timedelta(days=2)).date().isoformat()
+    (d / f"{y1}.jsonl").write_text(json.dumps({"ticker": "SPX", "spot": 7400.0}) + "\n")
+    (d / f"{y2}.jsonl").write_text(json.dumps(
+        {"ticker": "SPX", "net_exposure": {"net_gamma_total": 7.0,
+                                           "net_delta_total": 8.0}}) + "\n")
+    assert R._prev_close_totals("SPX", NOW) is None
+    # ...and no files at all is the same honest None
+    monkeypatch.setattr(R, "_PREV_CLOSE", {})
+    (d / f"{y1}.jsonl").unlink()
+    (d / f"{y2}.jsonl").unlink()
+    assert R._prev_close_totals("SPX", NOW) is None
+
+
+# ---------------------------------------------- same-tick bar reuse (audit fix)
+def test_default_bars_lookup_reuses_same_tick_fetch(monkeypatch):
+    import lefteye_fetcher
+    calls = {"n": 0}
+
+    def fake_fetch(t):
+        calls["n"] += 1
+        return [{"ts": "fresh"}]
+
+    monkeypatch.setattr(lefteye_fetcher, "intraday_bars", fake_fetch)
+    bars = [{"ts": NOW.isoformat(), "high": 1.0, "low": 1.0, "close": 1.0}]
+    live_now = datetime.datetime.now(tz=ZoneInfo("America/New_York"))
+    monkeypatch.setattr(R, "_BARS_CACHE", {"SPX": (live_now, bars)})
+    # fresh same-tick entry → the scan's own read, zero extra fetches
+    assert R._default_bars_lookup("SPX") is bars
+    assert calls["n"] == 0
+    # stale entry (next wake) → a real fetch again
+    stale = live_now - datetime.timedelta(seconds=R._BARS_TTL_S + 1)
+    monkeypatch.setattr(R, "_BARS_CACHE", {"SPX": (stale, bars)})
+    assert R._default_bars_lookup("SPX") == [{"ts": "fresh"}]
+    assert calls["n"] == 1

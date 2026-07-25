@@ -1991,7 +1991,13 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
     now = now or datetime.now(tz=ET)
     injected = chain_lookup is not None
     chain_lookup = chain_lookup or _default_chain_lookup
-    spot_lookup = spot_lookup or _live_index_spot
+    if spot_lookup is None:
+        # efficiency audit 2026-07-25: the caller's live_spot IS this tick's
+        # quote — a second get_quote for the proxy rescale (the degrade path)
+        # was a duplicate API call for the same instant. Closure per call, so
+        # a later call's refresh always sees that call's own fresh spot.
+        spot_lookup = ((lambda _t: live_spot) if live_spot is not None
+                       else _live_index_spot)
     if native_lookup is _NATIVE_UNSET:
         native_lookup = None if injected else _default_native_lookup
     store = _CACHE if cache is None else cache
