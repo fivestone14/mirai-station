@@ -500,7 +500,7 @@
   #siegeModal .sa-note{grid-column:1/4; margin-top:12px; text-align:center; font-size:9px; letter-spacing:.13em;
     text-transform:uppercase; color:var(--ink-faint); line-height:1.8}
 
-  .detail{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px; display:flex; flex-direction:column; min-height:0; overflow:auto}
+  .detail{background:var(--surface-2); border:1px solid var(--hairline); border-radius:14px; padding:18px; display:flex; flex-direction:column; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch}
   .dt-top{display:flex; align-items:center; gap:11px}
   .dt-badge{width:32px; height:32px; border-radius:8px; display:grid; place-items:center; font-family:var(--mono); font-weight:700; font-size:14px; color:#fff; background:var(--c); box-shadow:0 3px 12px color-mix(in srgb,var(--c) 42%,transparent); flex:none}
   .dt-badge.base{background:transparent; color:var(--c); border:1px dashed color-mix(in srgb,var(--c) 70%,transparent); box-shadow:none}
@@ -546,8 +546,10 @@
   .dt-sub .sub-dgm{display:block; width:100%; height:auto; margin:6px auto 5px; overflow:visible}
   .dt-sub .sub-d{font-size:12px; line-height:1.42; color:var(--ink-dim); margin-top:auto}
   /* schema card — the data-feed detail shows its real record shape, pretty-printed:
-     keys tinted with the layer hue, values quiet, // comments faint italic */
-  .dt-schema{margin-top:11px; border-radius:11px; overflow:hidden;
+     keys tinted with the layer hue, values quiet, // comments faint italic.
+     flex:none — overflow:hidden zeroes its flex min-size, so without it the box
+     absorbs ALL of .detail's shrink and clips the JSON instead of scrolling */
+  .dt-schema{flex:none; margin-top:11px; border-radius:11px; overflow:hidden;
     border:1px solid color-mix(in srgb,var(--c) 24%, var(--hairline));
     background:color-mix(in srgb,var(--c) 6%, var(--surface))}
   .sc-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:8px 13px 7px;
