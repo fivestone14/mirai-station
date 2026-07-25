@@ -41,6 +41,13 @@ def _verdict(fired=True, direction="put", conviction=0.8):
             "would_change_mind": "flow flips positive"}
 
 
+@pytest.fixture(autouse=True)
+def _isolated_diary(monkeypatch, tmp_path):
+    """build_payload now reads the diary (the wt-8 soft-side stuck-vane guard) —
+    every test must see a throwaway state dir, never the production one."""
+    monkeypatch.setattr(wt, "STATE_DIR", tmp_path / "state")
+
+
 @pytest.fixture
 def armed_tower(monkeypatch, tmp_path):
     """The tower armed for offline use: kill-switch off, state dirs isolated,
@@ -362,15 +369,17 @@ def test_windowed_tape_leads_the_flow_block():
     assert "WHOLE-DAY average" in p["live_flow"]["tape_day_average"]
 
 
-def test_short_gamma_pull_carries_the_amplification_caution():
-    # N15: under short gamma the magnet-pull must not read as the default
-    t = _telemetry()                    # gamma_sign negative in the fixture
-    p = wt.build_payload(t)
-    assert "CAUTION" in p["dealer_map_gravity"]["pull_toward_magnet"]
-    assert "SHORT gamma" in p["dealer_map_gravity"]["pull_toward_magnet"]
-    t["gamma_sign"] = "positive"
-    p2 = wt.build_payload(t)
-    assert "CAUTION" not in p2["dealer_map_gravity"]["pull_toward_magnet"]
+def test_magnet_demoted_to_location_under_every_regime():
+    # wt-8 (supersedes N15's short-gamma-only caution): the magnet word is a
+    # LOCATION note — never a drift base case — and the demotion holds at any
+    # hour under any gamma sign, not just short gamma
+    for sign in ("negative", "positive", None):
+        t = _telemetry()
+        t["gamma_sign"] = sign
+        w = wt.build_payload(t)["dealer_map_gravity"]["pull_toward_magnet"]
+        assert "LOCATION/late-day pin target" in w and "~33%" in w
+        assert "NOT a directional default" in w
+        assert "base case" not in w and "drift" not in w
 
 
 def test_breach_and_road_reach_the_payload():
@@ -736,15 +745,181 @@ def test_payload_carries_shove_and_speed_into_the_prompt():
                       "net_gex": -3013538082.93}
     t["speedometer"] = _0713["speedometer"]
     p = wt.build_payload(t)
-    assert "DOWN is the ACCELERANT side" in p["flow_asymmetry"]["asymmetry"]
+    assert "DOWN is the ACCELERANT side" in p["terrain_asymmetry"]["asymmetry"]
     assert "SELLING-DOMINATED" in p["tape"]["tape_speed"]["who_owns_the_motion"]
     prompt = wt._prompt(p)
     assert "COCKED IS NOT FIRED" in prompt
-    assert "FLOW ASYMMETRY IS THE BOOK'S SLOPE" in prompt
+    assert "TERRAIN ASYMMETRY IS THE BOOK'S SLOPE, NOT A PUSH" in prompt
     assert "ACCELERANT" in prompt        # the fact reaches the model, not just the rule
+    assert "flow_asymmetry" not in prompt     # wt-8: the flow framing is gone
 
 
 def test_payload_omits_both_layers_when_absent():
     p = wt.build_payload(_telemetry())
-    assert "flow_asymmetry" not in p          # absent, never a null/zero read
+    assert "terrain_asymmetry" not in p       # absent, never a null/zero read
     assert "tape_speed" not in p["tape"]
+
+
+# ------------------------------------------------------------------ wt-8 (2026-07-25)
+# REGIME AS PERMISSION — the 07-22/23 forensic: the same potential-energy put-lean
+# (terrain slope + soft side + magnet) lost every 07-22 call under LONG gamma and won
+# under SHORT gamma 07-23. The gamma sign now decides which plays are allowed at all.
+def test_prompt_carries_the_permission_slip():
+    prompt = wt._prompt(wt.build_payload(_telemetry()))
+    assert "THE GAMMA SIGN IS THE PERMISSION SLIP" in prompt
+    assert "FORBIDDEN" in prompt                       # positive gamma bans drift bets
+    assert "CONFIRMED, not unknown" in prompt          # negative must be confirmed
+    assert "STAND DOWN — no directional bet on an unknown regime" in prompt
+    assert "07-22" in prompt and "07-23" in prompt     # the system's own ledger cited
+    assert "base case UP" not in prompt                # the old magnet default is gone
+    assert "GRAVITY RULES" not in prompt
+
+
+def _stuck_diary(tmp_path, day, values):
+    f = tmp_path / "state" / "reversion" / f"{day}.jsonl"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("\n".join(json.dumps({"gex_motion": {"soft_side": v}})
+                           for v in values) + "\n")
+
+
+def test_soft_side_stuck_vane_detected_across_days(tmp_path):
+    # 10 rows today + 45 yesterday, all "down" → the vane is stuck; "up" is not
+    _stuck_diary(tmp_path, "2026-07-06", ["down"] * 10)
+    _stuck_diary(tmp_path, "2026-07-05", ["down"] * 45)
+    assert wt._soft_side_stuck(NOW, "down") is True
+    assert wt._soft_side_stuck(NOW, "up") is False     # stuck the OTHER way ≠ stuck
+    assert wt._soft_side_stuck(None, "down") is False  # no clock → fail-open
+
+
+def test_soft_side_stuck_vane_needs_real_history_and_a_real_lean():
+    # empty state dir (autouse isolation) → never stuck
+    assert wt._soft_side_stuck(NOW, "down") is False
+
+
+def test_soft_side_stuck_vane_thin_or_mixed_history_is_not_stuck(tmp_path):
+    _stuck_diary(tmp_path, "2026-07-06", ["down"] * 20)          # < MIN_READS
+    assert wt._soft_side_stuck(NOW, "down") is False
+    _stuck_diary(tmp_path, "2026-07-06", ["down"] * 30 + ["up"] * 20)  # 60/40 turnable
+    assert wt._soft_side_stuck(NOW, "down") is False
+
+
+def test_stuck_soft_side_reads_as_terrain_fact_in_the_payload(tmp_path):
+    motion = {"soft_side": "down", "gamma_above_share": 0.72, "lookback_min": 5.0}
+    t = {**_telemetry(), "gex_motion": motion}
+    # fresh vane: today's opinion, share attached
+    p = wt.build_payload(t)
+    assert p["gravity_motion"]["soft_side"].startswith("DOWN — less gravity mass")
+    # stuck vane (>90% of the last 50 rows): worded as terrain, not opinion
+    _stuck_diary(tmp_path, "2026-07-06", ["down"] * 49 + ["up"])
+    p2 = wt.build_payload(t)
+    assert p2["gravity_motion"]["soft_side"] == \
+        "down (NEAR-CONSTANT for days — treat as terrain fact, not today's opinion)"
+
+
+# ------------------------------------------------- wt-8 doctrine gaps (2026-07-25)
+# Chop band at the flip, GW cluster dominance, profile cleanliness — the three
+# audited holes between docs/wt8-doctrine.md and what the tower could actually see.
+def test_permission_slip_leads_the_gravity_block():
+    dm = wt.build_payload(_telemetry())["dealer_map_gravity"]
+    assert list(dm)[:2] == ["gamma_sign_at_spot", "pull_toward_magnet"]
+
+
+def test_chop_band_word_only_inside_the_band():
+    # fixture flip 7480 sits 0.28σ out — OUTSIDE the ±0.25σ band → absent
+    t = _telemetry()
+    assert "regime_transition_band" not in wt.build_payload(t)["dealer_map_gravity"]
+    # inside the band (0.09σ): the word appears and binds the fact
+    t["gamma_flip"] = 7460.0
+    w = wt.build_payload(t)["dealer_map_gravity"]["regime_transition_band"]
+    assert w.startswith("IN THE CHOP BAND (0.09σ from the flip)")
+    assert "NO directional play" in w
+    # the band is two-sided: a flip just BELOW spot is the same chop zone
+    t["gamma_flip"] = 7440.0
+    w = wt.build_payload(t)["dealer_map_gravity"]["regime_transition_band"]
+    assert w.startswith("IN THE CHOP BAND (0.10σ from the flip)")
+    # exactly at the threshold counts as inside (≤, not <)
+    t["gamma_flip"] = 7450.29 + wt.FLIP_CHOP_BAND_SIGMA * 106.9
+    dm = wt.build_payload(t)["dealer_map_gravity"]
+    assert "(0.25σ from the flip)" in dm["regime_transition_band"]
+    # no flip read at all → absent (absence ≠ "far from the flip")
+    t["gamma_flip"] = None
+    assert "regime_transition_band" not in wt.build_payload(t)["dealer_map_gravity"]
+
+
+# a two-cluster surface around the fixture's spot 7450.29 / σ 106.9:
+# put cluster 7400-7410 (peak 7400, strength 9.8 → tier ''), call cluster
+# 7500-7510 (peak 7500, strength 17 → the strongest → tier '''); the lone
+# 7420/-1 and 7520/+2 strikes die at the 25% concentration floor
+_SURF_CLEAN = [[7400, -5.0], [7410, -4.8], [7420, -1.0],
+               [7500, 9.0], [7510, 8.0], [7520, 2.0]]
+
+
+def test_gw_cluster_dominance_reaches_the_walls_block():
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = _SURF_CLEAN
+    dm = wt.build_payload(t)["dealer_map_gravity"]
+    assert dm["wall_cluster_above"] == {
+        "label": "GWc'''", "prime_tier": "'''",
+        "cluster_span_sigma": [0.47, 0.56], "peak_sigma_from_spot": 0.47}
+    assert dm["wall_cluster_below"] == {
+        "label": "GWp''", "prime_tier": "''",
+        "cluster_span_sigma": [-0.47, -0.38], "peak_sigma_from_spot": -0.47}
+    assert dm["profile_clean"].startswith("CLEAN")
+
+
+def test_messy_interleave_reads_as_a_stand_down_word():
+    # a put-dominant cluster peak ABOVE a call-dominant one = contradictory hierarchy
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = [[7400, 8.0], [7410, 7.0],
+                                       [7500, -9.0], [7510, -8.0]]
+    w = wt.build_payload(t)["dealer_map_gravity"]["profile_clean"]
+    assert w.startswith("MESSY PROFILE")
+    assert "ABOVE a call-dominant cluster peak" in w and "STAND DOWN" in w
+
+
+def test_flat_surface_is_no_dominant_structure_not_a_clean_bill():
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = [[7400, 0.0], [7410, 0.0]]
+    dm = wt.build_payload(t)["dealer_map_gravity"]
+    assert "no dominant structure" in dm["profile_clean"]
+    assert "STAND DOWN" in dm["profile_clean"]
+    assert "wall_cluster_above" not in dm and "wall_cluster_below" not in dm
+
+
+def test_gw_fields_absent_without_a_measured_surface():
+    # honest: no net_by_strike → no cluster walls AND no cleanliness verdict —
+    # a missing surface must never render as a clean (or messy) bill of health
+    dm = wt.build_payload(_telemetry())["dealer_map_gravity"]
+    assert "wall_cluster_above" not in dm and "wall_cluster_below" not in dm
+    assert "profile_clean" not in dm
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = "hostile-not-a-surface"    # fail-open, not raise
+    dm = wt.build_payload(t)["dealer_map_gravity"]
+    assert "profile_clean" not in dm
+
+
+def test_contested_magnet_word_reaches_the_payload():
+    t = _telemetry()
+    t["gex_views"]["pin_contested"] = True
+    t["gex_views"]["pin_zones"] = [{"center": 7420.0, "share": 0.5},
+                                   {"center": 7500.0, "share": 0.4}]
+    w = wt.build_payload(t)["dealer_map_gravity"]["magnet_contested"]
+    assert w.startswith("CONTESTED") and "+0.47σ" in w and "0.80×" in w
+    assert "CHOP between them" in w
+    # uncontested (or a single zone) → absent, never a null
+    t["gex_views"]["pin_contested"] = False
+    assert "magnet_contested" not in wt.build_payload(t)["dealer_map_gravity"]
+    t["gex_views"]["pin_contested"] = True
+    t["gex_views"]["pin_zones"] = [{"center": 7420.0, "share": 0.5}]
+    assert "magnet_contested" not in wt.build_payload(t)["dealer_map_gravity"]
+
+
+def test_prompt_teaches_chop_band_dominance_and_the_messy_gate():
+    prompt = wt._prompt(wt.build_payload(_telemetry()))
+    assert "IN THE CHOP BAND" in prompt
+    assert f"{wt.FLIP_CHOP_BAND_SIGMA}σ of the gamma flip" in prompt
+    assert "NO directional play from inside the band" in prompt
+    assert "WALL DOMINANCE DECIDES WHICH WALLS MATTER — LABELS DON'T" in prompt
+    assert "A ''' wall outranks a ' wall" in prompt
+    assert "A MESSY PROFILE IS A STAND-DOWN GATE" in prompt
+    assert "NOT a clean bill" in prompt

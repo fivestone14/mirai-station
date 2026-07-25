@@ -168,7 +168,8 @@ mirai-station/
 ├── plugin.json                 skill manifest + runtime config
 ├── skills/
 │   ├── mirai-left-eye/         the brain: hunter · reversion_lens (3 heads) ·
-│   │                           lefteye_gex_box (Gravity Engine) · native_gex_feed
+│   │                           lefteye_gex_box (Gravity Engine) · lefteye_dex
+│   │                           (DEX direction-side twin, shadow) · native_gex_feed
 │   │                           (FLOW sensor) · fill_ledger · watchtower ·
 │   │                           gex_polarity_ab (grader) · uw_periscope + gex_uw_bridge
 │   │                           (UW cross-check) · dashboard · price/context lenses
@@ -182,7 +183,8 @@ mirai-station/
 │   ├── launchd/                7 LaunchAgent plists (the fleet, below)
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
 ├── state/                      diary + grades + learning + option-book (runtime-mutable)
-└── docs/                       INSTALL · OPERATIONS · gex-glossary · salvage-notes
+└── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
+                                wt8-doctrine · salvage-notes
 ```
 
 ### The launchd fleet (7 agents)

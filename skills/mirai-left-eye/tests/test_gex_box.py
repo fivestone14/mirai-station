@@ -84,6 +84,50 @@ class TestTenorAndBasis:
         assert gv.pick_basis([], 5000) is None
 
 
+class TestRawBookPanes:
+    """2026-07-25: per-strike NET OI / NET VOLUME (call − put, UNWEIGHTED contracts)
+    persisted beside net_by_strike for the tablet's Net OI / Net Vol panes."""
+
+    def test_vol_by_strike_signs_window_and_raw_counts(self):
+        zero, _ = gv.split_tenor(_chain())
+        out = gv.slide_0dte(zero, 5000.0)
+        vbs = out["vol_by_strike"]
+        assert isinstance(vbs, list) and vbs
+        ks = [k for k, _v in vbs]
+        assert min(ks) >= 5000.0 * (1 - gv.NBS_WINDOW) - 1e-9
+        assert max(ks) <= 5000.0 * (1 + gv.NBS_WINDOW) + 1e-9
+        by = dict(vbs)
+        # fixture: calls heavier above spot, puts heavier below → net splits
+        assert by[5100] > 0 and by[4900] < 0
+        # raw contracts, no gamma weighting: 5100 = call 2100 − put 900
+        assert by[5100] == 2100 - 900
+
+    def test_oi_by_strike_none_on_empty_oi_book(self):
+        # the 0DTE fixture carries no OI — the key stays None, never a
+        # fabricated zero field (no read is not a balanced book)
+        zero, _ = gv.split_tenor(_chain())
+        assert gv.slide_0dte(zero, 5000.0)["oi_by_strike"] is None
+
+    def test_oi_by_strike_net_call_minus_put(self):
+        zero = [_c(5000, "call", 0, 0.002, oi=3000), _c(5000, "put", 0, 0.002, oi=1000),
+                _c(5010, "put", 0, 0.002, oi=500)]
+        out = gv.slide_0dte(zero, 5000.0)
+        assert dict(out["oi_by_strike"]) == {5000: 2000, 5010: -500}
+
+    def test_window_widens_with_sigma_m4_parity(self):
+        # m4 parity with net_by_strike: the σ-headroom widens the pane window past
+        # the ±3% floor (2σ/spot = 4.8% at σ=120), capped at ±6%
+        zero = [_c(k, "call", 0, 0.002, vol=100) for k in range(4700, 5301, 10)]
+        lo = gv.slide_0dte(zero, 5000.0)
+        hi = gv.slide_0dte(zero, 5000.0, sigma=120.0)
+        assert max(k for k, _v in lo["vol_by_strike"]) <= 5150.0 + 1e-9
+        assert max(k for k, _v in hi["vol_by_strike"]) >= 5230.0
+
+    def test_empty_book_keys_none(self):
+        out = gv.slide_0dte([], 5000.0)
+        assert out["oi_by_strike"] is None and out["vol_by_strike"] is None
+
+
 class TestPinAbsoluteGamma:
     def test_pin_is_max_total_gamma_strike(self):
         out = gv.slide_0dte(*( _split0(_chain()) ))

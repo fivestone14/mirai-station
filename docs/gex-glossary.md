@@ -54,6 +54,18 @@ is now the only gravity read.)
 | `reconcile_sign()` | Gravity-vs-Flow Check (E) | Downgrades a "price will pin" call to 🟡 uncertain when heavy one-way flow is fighting it |
 | `slide_flows()` | Drift Gauges (F) | Vanna/charm: the slow pressure from volatility moves and time decay into the close |
 
+## Direction-side sensor — DEX (added 2026-07-25, shadow)
+| Code | Plain name | What it actually does |
+|---|---|---|
+| `lefteye_dex.dex_views()` | Delta Ledger | Net dealer DELTA still to re-hedge, per strike — the direction-side twin of the Gravity Engine, priced off the same cached chain (no extra fetch). Naive net is LONG by construction; the flow-signed twin carries the only live sign |
+| `dex_views` (key) | Dealer-delta snapshot | The DEX surface recorded on each scan row; an absent key is NO READ, never a zero book |
+
+## Watchtower payload words (wt-8, 2026-07-25)
+| Payload field | Plain name | What it actually says |
+|---|---|---|
+| `terrain_asymmetry` | The book's slope | Which side is CHEAPER to move IF pushed — resistance, not live pushing (renamed from `flow_asymmetry` in wt-8; the `shove` storage keys are untouched) |
+| `dealer_delta_dex` | Advisory delta context | The DEX read spoken to the Watchtower — advisory this era, record-only, no gate reads it |
+
 ## Stage + record
 | Code | Plain name | What it actually does |
 |---|---|---|

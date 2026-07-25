@@ -1269,6 +1269,11 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 # (calls +, puts −) so the tablet draws MEASURED gamma bars, not a
                 # modeled Gaussian. None on pre-field rows → tablet falls back.
                 rec["net_by_strike"] = _b0.get("net_by_strike")
+                # RAW BOOK PANES (2026-07-25): per-strike net OI / net volume
+                # (call − put, unweighted contracts, same window) — the tablet's
+                # Net OI / Net Vol panes. None on pre-field rows → panes not offered.
+                rec["oi_by_strike"] = _b0.get("oi_by_strike")
+                rec["vol_by_strike"] = _b0.get("vol_by_strike")
                 # PER-STRIKE TENOR FIELD (2026-07-13): the 1-7DTE terrain, same
                 # compact shape — the tablet's hollow outline bars behind the
                 # solid 0DTE bars (never blended into the pure 0DTE read)
@@ -1297,6 +1302,25 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                                                       sigma=sigma, now=now)
         except Exception:
             pass
+
+        # SHADOW (DEX): per-strike net dealer DELTA exposure — the DIRECTION-side
+        # complement of the gamma map (lefteye_dex; same naive dealer sign, plus
+        # the flow-signed twin). Priced off the SAME cached chain GexBox just
+        # used (no extra fetch — read budget intact); record-only, no consumer.
+        # Fail-open but NOT silent (07-20): a dropped read prints one greppable
+        # line, so a dead dex surface can never hide as "quiet book" for a week.
+        try:
+            import lefteye_dex as _dex
+            _dx_entry = _gxb._CACHE.get(ticker)
+            if _dx_entry is not None:
+                _dx = _dex.dex_views(_dx_entry.contracts, spot,
+                                     minutes_to_close=_gxb._minutes_to_close(now))
+                if _dx is not None:
+                    _dx["source"] = _dx_entry.source
+                    telemetry["dex_views"] = _dx
+        except Exception as _dx_err:
+            print(f"reversion :: dex read dropped "
+                  f"({type(_dx_err).__name__}: {_dx_err})", flush=True)
 
         # SHADOW (theta A/B): record the native gravity+flow read (fetched above)
         # beside the Schwab-proxy read for a paper hit/miss compare. Record-only and
@@ -1338,6 +1362,8 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                         "gamma_above_spot": b0.get("gamma_above_spot"),
                         "gamma_below_spot": b0.get("gamma_below_spot"),
                         "net_by_strike": b0.get("net_by_strike"),   # measured per-strike field (native mirror)
+                        "oi_by_strike": b0.get("oi_by_strike"),     # raw book panes (native mirror)
+                        "vol_by_strike": b0.get("vol_by_strike"),
                         "net_by_strike_tenor": ((tv.get("slides") or {}).get("C_tenor") or {}).get("net_by_strike"),
                         "aggressor_flow": flow, "flow_available": flow is not None,
                         # N7: which expiry×sides the fetch actually filled — a book that

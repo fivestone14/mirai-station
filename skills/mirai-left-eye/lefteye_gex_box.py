@@ -1031,7 +1031,10 @@ def slide_0dte(zero_dte: list[dict], spot: float,
            # MAGNET v3 (N8+N9+H4): era tag, the legacy signed-OI magnet riding as the A/B
            # twin, hysteresis visibility, and the mass field the tablet can draw
            "pin_field_v": None, "pin_legacy": None, "pin_held": None,
-           "pin_candidate": None, "mass_by_strike": None}
+           "pin_candidate": None, "mass_by_strike": None,
+           # RAW BOOK PANES (2026-07-25): per-strike net OI / net volume (call − put,
+           # unweighted contracts) — the tablet's Net OI / Net Vol panes
+           "oi_by_strike": None, "vol_by_strike": None}
     if not zero_dte or not spot:
         return out
     basis = pick_basis(zero_dte, spot, prefer="volume")   # walls: 0DTE → volume first
@@ -1219,6 +1222,40 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         if MAGNET_V3 and mass:
             out["mass_by_strike"] = [[round(k, 2), round(v, 1)]
                                      for k, v in sorted(mass.items())]
+    except Exception:
+        pass
+    # PER-STRIKE NET OI + NET VOLUME (2026-07-25): the RAW call−put book beside the
+    # γ-weighted field — the tablet's Net OI / Net Vol panes (TanukiTrade layout).
+    # UNWEIGHTED contract counts on purpose: the one pair of surfaces on the map with
+    # no greek and no model in them (0DTE OI is YESTERDAY'S resting book — thin at
+    # the open; volume is today's cumulative session tape). Same m4 window arithmetic
+    # as net_by_strike above, so the panes reach as wide as the frame the tablet
+    # draws. Own try — fail-open: any surprise leaves both keys None, and an
+    # OI-less/volume-less book records None, never a fabricated zero field.
+    try:
+        _need = max((2.0 * sigma / spot) if sigma else 0.0,
+                    (nbs_reach / spot + 0.002) if nbs_reach else 0.0)
+        _w = max(NBS_WINDOW, min(0.06, _need))
+        _lo, _hi = spot * (1.0 - _w), spot * (1.0 + _w)
+        _oi: dict[float, float] = {}
+        _vol: dict[float, float] = {}
+        for c in zero_dte:
+            k = c.get("strike")
+            if k is None or not (_lo <= k <= _hi):
+                continue
+            sgn = 1.0 if c.get("right") == "call" else -1.0
+            o = float(c.get("open_interest") or 0)
+            v = float(c.get("volume") or 0)
+            if o:
+                _oi[k] = _oi.get(k, 0.0) + sgn * o
+            if v:
+                _vol[k] = _vol.get(k, 0.0) + sgn * v
+        if _oi:
+            out["oi_by_strike"] = [[round(k, 2), int(round(v))]
+                                   for k, v in sorted(_oi.items())]
+        if _vol:
+            out["vol_by_strike"] = [[round(k, 2), int(round(v))]
+                                    for k, v in sorted(_vol.items())]
     except Exception:
         pass
     out.update({"pin": round(pin, 4) if pin is not None else None,
