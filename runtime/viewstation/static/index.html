@@ -244,6 +244,31 @@
     .gx-chart svg.gx-enter{animation:gxenter .18s ease}
   }
   @keyframes gxenter{from{opacity:.45}}
+  /* ---- LIVE-EDGE LIFE (07-25): the price path's now-point breathes — a slow
+     ~3s opacity pulse on the dot + halo. CSS-only, so it rides the compositor
+     with ZERO rAF work (the frame() gate stays untouched at ~1Hz converged);
+     the global reduced-motion kill switch at the foot of this sheet inerts it.
+     .live rides ONLY while /api/spot is actually streaming — a stale scan
+     price must never breathe (the paintVitals freshness doctrine). */
+  @media (prefers-reduced-motion:no-preference){
+    .gx-pdot.live{animation:gxpulse 3s ease-in-out infinite}
+    .gx-phalo.live{animation:gxhalop 3s ease-in-out infinite}
+  }
+  @keyframes gxpulse{0%,100%{opacity:.75}50%{opacity:1}}
+  @keyframes gxhalop{0%,100%{opacity:.10}50%{opacity:.26}}
+  /* the always-on price chip at the path's live edge (HTML, not SVG — real
+     backdrop blur): translucent by design so bars/labels stay readable straight
+     through it; grey when the quote is not streaming (same honesty as the
+     vitals' spot-tick). Positioned by gxPathLive on the paint clock. */
+  .gx-ptip{position:absolute; z-index:3; pointer-events:none; height:18px; display:flex; align-items:center;
+    padding:0 7px; border-radius:9px; border:1px solid var(--hairline-2);
+    background:color-mix(in srgb,var(--surface-2) 52%, transparent);
+    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.02em;
+    font-variant-numeric:tabular-nums; color:var(--iris); white-space:nowrap;
+    transform:translate(0,-50%)}
+  .gx-ptip.stale{color:var(--ink-dim)}
+  .gx-chart.gx-tab .gx-ptip{display:none}   /* the chip annotates the chart, not the table */
   /* ---- GEX map: "how to read it" affordance (top-right of the plot) ---- */
   .gx-info{position:absolute; top:8px; right:8px; z-index:4;
     width:24px; height:24px; display:grid; place-items:center;
@@ -2147,25 +2172,39 @@ function mapStrikes(){                                       // real 5-pt SPX st
   if(!MSTRIKES.length) MSTRIKES=[Math.round((MAPX.pLow+MAPX.pHigh)/2)];
   MROWH=(MAPX.H-MAPX.padT-MAPX.padB)/Math.max(1,MSTRIKES.length);   // row pitch = per-strike slot
 }
+// gxAxisTicks — PURE ladder chooser (no DOM, no globals): pick ONE minor/major
+// pair for the whole window so the ruler reads regular at every zoom. The old
+// per-label "draw it where it fits" gate produced irregular runs (7,665 / 7,650 /
+// 7,630 / 7,615 — some $5s survived, some didn't, sizes mixed at random rungs).
+// Rule: the smallest pair whose UNIFORM minor pitch fits a labeled row (≥15px —
+// an 10.5px minor under a 14px major's ascent needs ~14, +1 air) and whose major
+// pitch clears the big label (≥44px). Minors are ALWAYS labeled — a pair that
+// can't label its minors is never chosen; too narrow for every pair → the widest
+// pair anyway (majors-dominant, still regular). The JSC smoke harness extracts
+// this by name and drills it across the zoom bands (±2/3/4σ + AUTO, two heights).
+function gxAxisTicks(pLow, pHigh, plotH){
+  const span=Math.max(1, pHigh-pLow), pxPer=plotH/span;
+  const PAIRS=[[5,25],[10,50],[25,100],[50,250],[100,500]];
+  let minor=PAIRS[PAIRS.length-1][0], major=PAIRS[PAIRS.length-1][1];
+  for(const pr of PAIRS){ if(pr[0]*pxPer>=15 && pr[1]*pxPer>=44){ minor=pr[0]; major=pr[1]; break; } }
+  const ticks=[];
+  for(let k=Math.ceil(pLow/minor)*minor; k<=pHigh; k+=minor)
+    ticks.push({p:k, major:k%major===0});
+  return {minor, major, ticks};
+}
 function mapAxis(){
-  const X=MAPX; let a=''; let lastY=1e9, lastBig=false;       // lastY gates label spacing so dense $5 rows thin out, not smear
-  const step=((X.pHigh-X.pLow)>520)?10:5;                     // matches the strike grid
-  for(let k=Math.ceil(X.pLow/step)*step; k<=X.pHigh; k+=step){ const yn=yFor(k), yy=yn.toFixed(1), major=k%50===0;
-    if(major){
+  const X=MAPX, L=gxAxisTicks(X.pLow, X.pHigh, X.H-X.padT-X.padB);
+  let a='';
+  for(const t of L.ticks){ const yn=yFor(t.p), yy=yn.toFixed(1);
+    // rungs may kiss the plot edge; type may not (a clipped half-label reads broken)
+    const room=yn>=X.padT+6 && yn<=X.H-X.padB-4;
+    if(t.major){
       a+=`<line x1="${X.x0}" y1="${yy}" x2="${X.lineEnd}" y2="${yy}" style="stroke:var(--hairline);opacity:.5" stroke-dasharray="2 6"/>`;
       a+=`<line x1="${X.x0-7}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.75"/>`;
-      a+=`<text x="${X.axisLX}" y="${(yn+4).toFixed(1)}" text-anchor="end" style="fill:var(--ink-dim)" font-size="15" font-weight="600" font-family="var(--mono)">${k.toLocaleString('en-US')}</text>`;   // every $50 — big
-      lastY=yn; lastBig=true;
+      if(room) a+=`<text x="${X.axisLX}" y="${(yn+4).toFixed(1)}" text-anchor="end" style="fill:var(--ink-dim);font-variant-numeric:tabular-nums" font-size="14" font-weight="600" font-family="var(--mono)">${t.p.toLocaleString('en-US')}</text>`;
     } else {
       a+=`<line x1="${X.x0-4}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.4"/>`;
-      // gate BOTH sides: the last drawn label below AND the next $50 major above —
-      // lastY alone let a minor land right under an unconditionally-drawn major
-      // (measured 07-16: every major/minor pair fused at tablet sizes). A major
-      // BELOW needs extra room — its 15px ascent reaches higher than a minor's
-      // (14px still grazed by ~2px at 560×340, second review; 16 clears the ascent
-      // while keeping the minors that 1060×560's 16.4px row pitch affords)
-      const kUp=Math.ceil(k/50)*50, majClear=(kUp>X.pHigh)||(yn-yFor(kUp)>=14);
-      if(lastY-yn>=(lastBig?16:14) && majClear){ a+=`<text x="${X.axisLX}" y="${(yn+3).toFixed(1)}" text-anchor="end" style="fill:var(--ink-faint)" font-size="11" font-family="var(--mono)">${k.toLocaleString('en-US')}</text>`; lastY=yn; lastBig=false; }   // every $5 — small (only where it fits)
+      if(room) a+=`<text x="${X.axisLX}" y="${(yn+3).toFixed(1)}" text-anchor="end" style="fill:var(--ink-faint);font-variant-numeric:tabular-nums" font-size="10.5" font-family="var(--mono)">${t.p.toLocaleString('en-US')}</text>`;
     }
   }
   return a;
@@ -2430,6 +2469,7 @@ function gxBuild(){
   gxMountScrub();                         // re-mount the price scrub (same reason)
   gxMountTable();                         // re-mount the TABLE mode overlay + the view-mode toggle (same reason)
   gxMountCards();                         // re-mount the annotation cards (same reason)
+  gxMountPtip();                          // re-mount the live-edge price chip (same reason)
   gwBindTips(document.querySelector('#p-map .gx-chart'));   // GW label tooltips (container survives rebuilds)
   gxOverview(); gxTower(); gxPaint();
 }
@@ -2772,6 +2812,7 @@ function gxPaint(){
   let last=loY-GAP; arr.forEach(m=>{ m.ly=Math.min(hiY,Math.max(m.y,last+GAP)); last=m.ly; });
   for(let i=arr.length-2;i>=0;i--){ if(arr[i].ly>arr[i+1].ly-GAP) arr[i].ly=Math.max(loY,arr[i+1].ly-GAP); }
   const lyOf={}; arr.forEach(m=>lyOf[m.id]=m.ly);
+  MAP._spotTagLy=onOf.spot?lyOf.spot:null;   // the live-edge price chip dedupes against this (gxPathLive)
   MIDS.forEach(id=>{ const mm=MMETA[id], yy=yFor(valOf[id]), R=MAP.lvl[id];
     if(!onOf[id]){ R.line.style.opacity=0; R.cas.style.opacity=0; if(R.glow) R.glow.style.opacity=0; R.nm.style.opacity=0; R.vl.style.opacity=0; R.lead.style.opacity=0; return; }
     const ly=lyOf[id];
@@ -3644,34 +3685,124 @@ function gxPathGeom(pts, fr){
   const P=pts.map(q=>({x:xT(q.t), y:yP(q.p)}));
   return {P, xNow:P.length?P[P.length-1].x:fr.x0, yNow:P.length?P[P.length-1].y:null};
 }
-// the painter — rides the gxPaint chain, key-gated so the ease frames do zero work
-// (the minute bucket advances the now-edge, the ¼-pt bucket tracks the live spot;
-// a reframe changes pLow/pHigh, a rebuild resets the key with MAP). A whisper by
-// design: faint iris line + area UNDER every data layer plus a small live-edge
-// dot — the bars stay the hero. Off-window prices are clipped by gxPathClip (the
-// plot rect), never re-scaled: y is the shared price axis.
+// gxPathFade — PURE (no DOM): stroke opacity for history segment i of n, oldest
+// first. The path reads as MEMORY, not a solid wire: the open is a whisper (.10),
+// the newest run is near-full (.62) and carries the live edge; the ramp is
+// t^1.35 so the last hour brightens faster than the morning fades — the eye
+// tracks recency. The JSC harness asserts the ladder (monotone, bounded,
+// newest-dominant) at every segment count.
+function gxPathFade(i, n){
+  if(n<=1) return 0.62;
+  const t=i/(n-1);
+  return +(0.10+0.52*Math.pow(t,1.35)).toFixed(3);
+}
+// gxPtipClash — PURE dedupe rule for the live-edge price chip vs the right-edge
+// SPOT tag. Late in the day the path tip parks beside the tag column and the
+// chip would read as a second SPOT price a few px from the real one. The CHIP
+// hides, never the tag: the SPOT tag is a tenant of the level de-collision
+// ladder (MAGNET/HVL/SPOT/NEXT) — dropping it would leave a hole in that pass's
+// guarantee — while the chip is a courtesy copy with no other reader.
+function gxPtipClash(xNow, tipY, tagY, lineEnd){
+  return xNow>lineEnd-96 && tagY!=null && isFinite(tagY) && Math.abs(tipY-tagY)<24;
+}
+// the painter — rides the gxPaint chain. The HISTORY rebuild stays key-gated
+// (the minute bucket advances the now-edge, the ¼-pt bucket tracks the live
+// spot; a reframe changes pLow/pHigh, a rebuild resets the key with MAP); the
+// LIVE EDGE (dot/halo/leader + the price chip) rides every paint frame via
+// gxPathLive — 4 nodes + one div, cheap enough for the ease clock. A whisper by
+// design: faded iris segments + area UNDER every data layer — the bars stay the
+// hero. Off-window prices are clipped by gxPathClip (the plot rect), never
+// re-scaled: y is the shared price axis.
 function paintSpotPath(){
   if(!MAP||!MAP.pathG) return;
   const X=MAPX, S=gxSpotPath(), last=S.pts[S.pts.length-1]||null;
+  const fr={t0:S.t0, t1:S.t1, x0:X.x0, x1:X.lineEnd,
+    yTop:X.padT, yBot:X.H-X.padB, pLow:X.pLow, pHigh:X.pHigh};
   const key=[S.pts.length, last?Math.round(last.p*4):'', Math.floor(Date.now()/60000),
     X.pLow, X.pHigh, S.streaming?1:0].join('|');
-  if(key===MAP._pathkey) return;
-  MAP._pathkey=key;
-  const bp=document.getElementById('bar-path');
-  if(S.pts.length<2){ MAP.pathG.innerHTML=''; if(bp) bp.textContent=''; return; }
-  const G=gxPathGeom(S.pts, {t0:S.t0, t1:S.t1, x0:X.x0, x1:X.lineEnd,
-    yTop:X.padT, yBot:X.H-X.padB, pLow:X.pLow, pHigh:X.pHigh});
-  const d=G.P.map((q,i)=>`${i?'L':'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ');
-  const yB=(X.H-X.padB).toFixed(1);
-  MAP.pathG.innerHTML=
-    `<path d="${d} L${G.xNow.toFixed(1)} ${yB} L${G.P[0].x.toFixed(1)} ${yB} Z" fill="var(--iris)" opacity=".035"/>`
-   +`<path d="${d}" fill="none" stroke="var(--iris)" stroke-width="1.5" stroke-linejoin="round" opacity=".35"/>`
-   +`<circle cx="${G.xNow.toFixed(1)}" cy="${Math.min(X.H-X.padB, Math.max(X.padT, G.yNow)).toFixed(1)}" r="2.5" fill="var(--iris)" opacity=".8"/>`;
-  // caption honesty rides #gx-cap (what the path IS — never candles); short form
-  // on the narrow lane, like every live tspan there
-  if(bp) bp.textContent=(MAP.capTier??2)>0
-    ? ` · path = per-scan spots${S.streaming?' + live quote':''}`
-    : ` · spots${S.streaming?'+live':''} path`;
+  if(key!==MAP._pathkey){
+    MAP._pathkey=key;
+    const bp=document.getElementById('bar-path');
+    if(S.pts.length<2){ MAP.pathG.innerHTML=''; MAP._pathEdge=null;
+      if(bp) bp.textContent=''; if(MAP.ptip) MAP.ptip.style.display='none'; return; }
+    const G=gxPathGeom(S.pts, fr);
+    const d=G.P.map((q,i)=>`${i?'L':'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ');
+    const yB=(X.H-X.padB).toFixed(1);
+    // HISTORY FADE: ≤7 index-buckets of consecutive points (boundaries shared, so
+    // the line stays continuous), each at its gxPathFade rung. Index-based, not
+    // clock-based: scans land unevenly (~80s-5min) and a cadence gap must not
+    // punch a brightness step into the line. The newest run also wears a wide
+    // soft casing — the faint glow trail into the live edge.
+    const n=G.P.length, K=Math.min(7, n-1);
+    let segs='';
+    for(let s=0;s<K;s++){
+      const a=Math.round(s*(n-1)/K), b=Math.round((s+1)*(n-1)/K);
+      if(b<=a) continue;
+      let sd=`M${G.P[a].x.toFixed(1)} ${G.P[a].y.toFixed(1)}`;
+      for(let j=a+1;j<=b;j++) sd+=` L${G.P[j].x.toFixed(1)} ${G.P[j].y.toFixed(1)}`;
+      if(s===K-1) segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity=".07"/>`;
+      segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="${s===K-1?1.8:1.5}" stroke-linejoin="round" opacity="${gxPathFade(s,K)}"/>`;
+    }
+    MAP.pathG.innerHTML=
+      `<path d="${d} L${G.xNow.toFixed(1)} ${yB} L${G.P[0].x.toFixed(1)} ${yB} Z" fill="var(--iris)" opacity=".035"/>`
+     +segs
+     +`<line id="pathLead" stroke="var(--iris)" stroke-width="1.6" opacity=".6"/>`
+     +`<circle id="pathHalo" class="gx-phalo" r="7" fill="var(--iris)" opacity=".10"/>`
+     +`<circle id="pathDot" class="gx-pdot" r="2.6" fill="var(--iris)" opacity=".8"/>`;
+    MAP._pathEdge={ax:G.P[n-1].x, ay:G.P[n-1].y, lead:document.getElementById('pathLead'),
+      halo:document.getElementById('pathHalo'), dot:document.getElementById('pathDot')};
+    // caption honesty rides #gx-cap (what the path IS — never candles); short form
+    // on the narrow lane, like every live tspan there
+    if(bp) bp.textContent=(MAP.capTier??2)>0
+      ? ` · path = per-scan spots${S.streaming?' + live quote':''}`
+      : ` · spots${S.streaming?'+live':''} path`;
+  }
+  gxPathLive(S, fr);
+}
+// the live edge, every paint frame: the dot/halo glide on the SAME eased D.spot
+// as the SPOT line (so each ~2.5s quote visibly nudges the path tip), the tip's
+// x crawls right on the clock while streaming, and the price chip repositions
+// with it. Not streaming → everything pins to the last committed point (a dead
+// feed must never crawl toward 16:00 looking alive) and the chip greys out.
+// Converged, the frame() gate still lands here at ~1Hz — the slow life.
+function gxPathLive(S, fr){
+  const E=MAP&&MAP._pathEdge, tip=MAP&&MAP.ptip;
+  if(!E){ if(tip) tip.style.display='none'; return; }
+  const X=MAPX;
+  let x=E.ax, y=E.ay, p=S.pts.length?S.pts[S.pts.length-1].p:null;
+  if(S.streaming&&isFinite(D.spot)){
+    p=D.spot;
+    x=fr.x0+Math.max(0,Math.min(1,(Math.min(Date.now(),fr.t1)-fr.t0)/((fr.t1-fr.t0)||1)))*(fr.x1-fr.x0);
+    y=Math.min(fr.yBot, Math.max(fr.yTop, fr.yTop+(fr.pHigh-p)/((fr.pHigh-fr.pLow)||1)*(fr.yBot-fr.yTop)));
+  }
+  E.dot.setAttribute('cx',x.toFixed(1)); E.dot.setAttribute('cy',y.toFixed(1));
+  E.halo.setAttribute('cx',x.toFixed(1)); E.halo.setAttribute('cy',y.toFixed(1));
+  E.dot.classList.toggle('live', !!S.streaming);
+  E.halo.classList.toggle('live', !!S.streaming);
+  E.lead.setAttribute('x1',E.ax.toFixed(1)); E.lead.setAttribute('y1',E.ay.toFixed(1));
+  E.lead.setAttribute('x2',x.toFixed(1));    E.lead.setAttribute('y2',y.toFixed(1));
+  if(!tip) return;
+  if(p==null){ tip.style.display='none'; return; }
+  const txt=f(p,2);
+  if(tip._t!==txt){ tip._t=txt; tip.textContent=txt; tip._w=0; }   // width re-measures only when the text changes
+  if(tip.style.display==='none') tip.style.display='';   // a display:none chip measures 0 wide — make it measurable first
+  if(!tip._w) tip._w=tip.offsetWidth||60;
+  tip.classList.toggle('stale', !S.streaming);
+  // ahead of the dot in the path's empty future space; flip left when the day
+  // runs out of runway (the chip never leaves the plot rect)
+  let lx=x+10;
+  if(lx+tip._w>X.lineEnd-4) lx=x-10-tip._w;
+  const ty=Math.min(X.H-X.padB-12, Math.max(X.padT+12, y));
+  if(gxPtipClash(x, ty, MAP._spotTagLy, X.lineEnd)){ tip.style.display='none'; return; }
+  tip.style.display=''; tip.style.left=lx.toFixed(1)+'px'; tip.style.top=ty.toFixed(1)+'px';
+}
+// the chip element itself — HTML sibling of the SVG (real backdrop blur; the
+// .gx-cards idiom). Re-mounted after each gxBuild wipe of .gx-chart.
+function gxMountPtip(){
+  const cc=document.querySelector('#p-map .gx-chart'); if(!cc) return;
+  let d=cc.querySelector('.gx-ptip');
+  if(!d){ d=document.createElement('div'); d.className='gx-ptip'; d.style.display='none'; cc.appendChild(d); }
+  if(MAP) MAP.ptip=d;
 }
 // ---- RAW-BOOK PANES (07-25, Tanuki layout): Net OI + Net Vol per strike beside the
 // hero γ bars — the RAW call−put 0DTE book (oi_by_strike / vol_by_strike: unweighted
@@ -4746,8 +4877,10 @@ function frame(){
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
   D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem snap (not eased)
   // PERF (07-25): 60fps repaints only while something is actually EASING; converged,
-  // drop to ~1Hz so the time-driven reads (comet aging, spot lane) still advance —
-  // a wall display must not burn all-night SVG churn on a static picture. The map
+  // drop to ~1Hz so the time-driven reads (comet aging, spot lane, the path's
+  // live-edge crawl + price chip via gxPathLive) still advance — a wall display
+  // must not burn all-night SVG churn on a static picture. The dot/halo PULSE is
+  // CSS (compositor-owned): the slow ~1Hz life costs this loop nothing. The map
   // skips while its panel is hidden (switchTab('map') rebuilds + repaints on return);
   // every event-driven change (scan, toggle, scrub, resize) calls its painter directly.
   const tick=Date.now()>>10;
