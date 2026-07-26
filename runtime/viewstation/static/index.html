@@ -15,7 +15,7 @@
   :root{
     --ground:#0C1017; --surface:#141A24; --surface-2:#1B2330; --surface-3:#212B3A;
     --hairline:#28313F; --hairline-2:#333E50;
-    --ink:#E7EBF3; --ink-dim:#98A2B6; --ink-faint:#5E6980;
+    --ink:#E7EBF3; --ink-dim:#98A2B6; --ink-faint:#8A93A8;
     --iris:#8B9CFF; --iris-dim:#5B6796;
     --jade:#43C59E; --lantern:#E7B85C; --coral:#EB6A57;
     --iris-wash:rgba(139,156,255,.10); --jade-wash:rgba(67,197,158,.10); --coral-wash:rgba(235,106,87,.10); --lantern-wash:rgba(231,184,92,.10);
@@ -29,9 +29,9 @@
     :root{
       --ground:#E7EBF1; --surface:#FFFFFF; --surface-2:#F5F7FB; --surface-3:#EDF1F7;
       --hairline:#DCE2EC; --hairline-2:#CBD3E0;
-      --ink:#1A2230; --ink-dim:#55617A; --ink-faint:#8B95A8;
+      --ink:#1A2230; --ink-dim:#55617A; --ink-faint:#666D7C;
       --iris:#5560D8; --iris-dim:#8790C8;
-      --jade:#1F9E78; --lantern:#B07E28; --coral:#D24A38;
+      --jade:#17805F; --lantern:#966717; --coral:#C0402D;
       --iris-wash:rgba(85,96,216,.09); --jade-wash:rgba(31,158,120,.10); --coral-wash:rgba(210,74,56,.09); --lantern-wash:rgba(176,126,40,.10);
       --shadow:0 20px 60px -34px rgba(30,40,70,.45), 0 2px 8px -4px rgba(30,40,70,.18);
     }
@@ -39,7 +39,7 @@
   :root[data-theme="dark"]{
     --ground:#0C1017; --surface:#141A24; --surface-2:#1B2330; --surface-3:#212B3A;
     --hairline:#28313F; --hairline-2:#333E50;
-    --ink:#E7EBF3; --ink-dim:#98A2B6; --ink-faint:#5E6980;
+    --ink:#E7EBF3; --ink-dim:#98A2B6; --ink-faint:#8A93A8;
     --iris:#8B9CFF; --iris-dim:#5B6796; --jade:#43C59E; --lantern:#E7B85C; --coral:#EB6A57;
     --iris-wash:rgba(139,156,255,.10); --jade-wash:rgba(67,197,158,.10); --coral-wash:rgba(235,106,87,.10); --lantern-wash:rgba(231,184,92,.10);
     --shadow:0 24px 70px -30px rgba(0,0,0,.8), 0 2px 10px -4px rgba(0,0,0,.6);
@@ -47,8 +47,8 @@
   :root[data-theme="light"]{
     --ground:#E7EBF1; --surface:#FFFFFF; --surface-2:#F5F7FB; --surface-3:#EDF1F7;
     --hairline:#DCE2EC; --hairline-2:#CBD3E0;
-    --ink:#1A2230; --ink-dim:#55617A; --ink-faint:#8B95A8;
-    --iris:#5560D8; --iris-dim:#8790C8; --jade:#1F9E78; --lantern:#B07E28; --coral:#D24A38;
+    --ink:#1A2230; --ink-dim:#55617A; --ink-faint:#666D7C;
+    --iris:#5560D8; --iris-dim:#8790C8; --jade:#17805F; --lantern:#966717; --coral:#C0402D;
     --iris-wash:rgba(85,96,216,.09); --jade-wash:rgba(31,158,120,.10); --coral-wash:rgba(210,74,56,.09); --lantern-wash:rgba(176,126,40,.10);
     --shadow:0 20px 60px -34px rgba(30,40,70,.45), 0 2px 8px -4px rgba(30,40,70,.18);
   }
@@ -372,12 +372,12 @@
     color:var(--ink-faint); border-bottom:1px solid var(--hairline-2)}
   .gx-dt th.l,.gx-dt td.l{text-align:left}
   .gx-dt td{color:var(--ink-dim)}
-  .gx-dt td.k{color:var(--ink); font-weight:600}
+  .gx-dt td.k,.gx-dt tbody th.k{color:var(--ink); font-weight:600}   /* Strike cell is a scope="row" header — match the old td.k look */
   .gx-dt td.j{color:var(--jade)} .gx-dt td.c{color:var(--coral)}
   .gx-dt td.gw{font-weight:700}
   .gx-dt td.m{color:var(--ink-faint)}
-  .gx-dt tr.spot td{background:var(--iris-wash)} .gx-dt tr.spot td.k,.gx-dt tr.spot td.m{color:var(--iris)}
-  .gx-dt tr.mag td{background:var(--lantern-wash)} .gx-dt tr.mag td.k,.gx-dt tr.mag td.m{color:var(--lantern)}
+  .gx-dt tr.spot td,.gx-dt tr.spot th{background:var(--iris-wash)} .gx-dt tr.spot td.k,.gx-dt tr.spot th.k,.gx-dt tr.spot td.m{color:var(--iris)}
+  .gx-dt tr.mag td,.gx-dt tr.mag th{background:var(--lantern-wash)} .gx-dt tr.mag td.k,.gx-dt tr.mag th.k,.gx-dt tr.mag td.m{color:var(--lantern)}
   .gx-tfoot{flex:0 0 auto; border-top:1px solid var(--hairline); padding:5px 152px 5px 12px; text-align:right;   /* right pad = the vm cluster's dock zone (GXDOCK.vmW+margins) — the footer text must never run under it */
     font:600 9.5px/1.5 var(--mono); letter-spacing:.05em; color:var(--ink-faint); background:var(--surface-2)}
   .gx-tabout{opacity:.45}                     /* chart-only chips/pills, inert while the table view is up */
@@ -1102,6 +1102,7 @@
   .rp-scrub{flex:1; -webkit-appearance:none; appearance:none; height:8px; border-radius:5px; background:var(--surface-3); outline:none; cursor:pointer}
   .rp-scrub::-webkit-slider-thumb{-webkit-appearance:none; width:24px; height:24px; border-radius:50%; background:var(--iris); border:3px solid var(--surface); box-shadow:0 1px 7px rgba(0,0,0,.55)}
   .rp-scrub::-moz-range-thumb{width:22px; height:22px; border-radius:50%; background:var(--iris); border:3px solid var(--surface)}
+  .rp-play:focus-visible,.rp-speed:focus-visible,.rp-daybtn:focus-visible,.rp-scrub:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
   .rp-time{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; color:var(--ink); min-width:74px; text-align:right; flex:none}
   @keyframes rp-scene-in{from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none}}
   .rp-legend{display:flex; align-items:center; gap:14px; margin-top:10px; font-size:11px; color:var(--ink-faint); flex-wrap:wrap; flex:0 0 auto}
@@ -1485,7 +1486,7 @@
 
     <div class="body">
       <nav class="rail" id="rail">
-        <button class="tab active" data-tab="map">
+        <button class="tab active" data-tab="map" aria-current="page">
           <svg viewBox="0 0 24 24"><path d="M4 18h16M4 6h16"/><path d="M8 6v12M16 6v12"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
           Map
         </button>
@@ -2428,7 +2429,12 @@ function gxBuild(){
   // caption tiers (07-16): the one-line legend overflowed the frame / collided with
   // the dated-γ legend on narrow lanes. Wide lane = full text + the push/pin key;
   // mid drops the key; narrow also shortens the live tspans (gxPaint reads capTier).
-  const capTier=(X.lineEnd-X.x0)>=560?2:(X.lineEnd-X.x0)>=430?1:0;
+  // caption's true right budget runs from capX to the vm cluster's LEFT edge, not
+  // lineEnd (which sits under the .gx-vm dock — measuring to it let tier-2's text run
+  // into the TAPE·LADDER·TABLE buttons on narrow lanes). Mirrors the .gx-tfoot
+  // padding-right:GXDOCK.vmW idiom.
+  const capUsable=(X.W-GXDOCK.edge-GXDOCK.vmW)-GXDOCK.capX;
+  const capTier=capUsable>=560?2:capUsable>=430?1:0;
   const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.barX0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
   // 1-7DTE terrain GHOSTS (Panel-C sign-off, 07-13): outline + a 12% same-hue
   // tint at ONE fixed fade level — tenor is the only thing the fade encodes
@@ -2545,7 +2551,7 @@ function gxBuild(){
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), magCloud:q('magCloud'), axisG:q('axisG'),
     chopBand:q('chopBand'), pathG:q('pathG'), _pathkey:null,
-    bars:[...document.querySelectorAll('#barsG .gxbar')], barsG:q('barsG'), spotTri:q('spotTri'),
+    bars:[...document.querySelectorAll('#barsG .gxbar')], barsG:q('barsG'), spotTri:q('spotTri'), _barkey:null,
     dexPaneG:q('dexPaneG'), _xkey:null, panesG:q('panesG'), _pkey:null,
     aemG:q('aemG'), _aemkey:null,
     tbars:[...document.querySelectorAll('#tenorG .gxtbar')], barArrows:q('barArrowsG'),
@@ -2694,43 +2700,54 @@ function gxPaint(){
   const EPS=1e-5, LDEN=Math.log(1+1/EPS);
   const amp=v=>{ const a=Math.abs(v)/mx; if(a<=0) return 0;
     return useLog ? Math.log(1+a/EPS)/LDEN : a; };
-  MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], v=vals[i], L=amp(v),
-      pos=measured?(v>=0):(k>=D.flip);   // measured → side+color by SIGN of net γ (pins vs pushes); modeled → by side of flip
-    rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
-    const w=L<=0?0:Math.max(1.5,L*half);   // any nonzero strike keeps ≥ a hairline
-    rect.setAttribute('width',w.toFixed(1));
-    rect.setAttribute('x',(pos?xMid:xMid-w).toFixed(1));
-    rect.style.fill=pos?'url(#gxJ)':'url(#gxCm)';   // base-strong at the zero axis on BOTH sides
-    rect.style.opacity=(0.48+0.47*L).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
-  });
-  // 1-7DTE TERRAIN OUTLINES (07-13): the multi-day book on the SAME diverging
-  // axis as hollow outlines UNDER the solid 0DTE bars — assisting context that
-  // never touches the pure 0DTE read (separate slide-C field, stored-gamma
-  // stable, OWN max). Own normalization means lengths are NOT comparable
-  // across tenors (0DTE ATM dollar-gamma dwarfs the terrain) — the caption
-  // legend says "own scale" for exactly that reason.
+  // 1-7DTE terrain prep is hoisted above the bar loops so ONE key can gate both.
+  // In MEASURED mode the bar values are constant between scans and CSS (.gxbar
+  // transition) owns the width ease — so the ~1,600 setAttribute writes/frame in
+  // these two loops are pure waste. Key on everything that moves a bar's
+  // geometry/side; null in modeled/demo forces the every-frame path (modeled bars
+  // genuinely ease; the snapped `nbs` field does not).
   const tn=D.nbsTenor, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
   const tOn=(typeof gxTenorOn==='function'&&gxTenorOn())&&Array.isArray(tn)&&tn.length>0&&!X.tape;   // the slim tape gutter carries only the 0DTE net-γ profile; the ghost terrain stays a LADDER layer
-  let tMax=0, tBk=null;
-  if(tOn){
-    tBk=new Array(MSTRIKES.length).fill(0);
-    for(const p of tn){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
-      const idx=Math.round((p[0]-k0)/step);
-      if(idx>=0&&idx<tBk.length) tBk[idx]+=(+p[1]); }
-    for(const v of tBk){ const a=Math.abs(v); if(a>tMax) tMax=a; }
+  const barKey=measured?[GX_ASOF,X.pLow,X.pHigh,MSTRIKES.length,useLog,show0,tOn].join('|'):null;
+  const barsSkip=barKey!==null&&barKey===MAP._barkey;
+  if(barKey!==null) MAP._barkey=barKey;
+  if(!barsSkip){
+    MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], v=vals[i], L=amp(v),
+        pos=measured?(v>=0):(k>=D.flip);   // measured → side+color by SIGN of net γ (pins vs pushes); modeled → by side of flip
+      rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
+      const w=L<=0?0:Math.max(1.5,L*half);   // any nonzero strike keeps ≥ a hairline
+      rect.setAttribute('width',w.toFixed(1));
+      rect.setAttribute('x',(pos?xMid:xMid-w).toFixed(1));
+      rect.style.fill=pos?'url(#gxJ)':'url(#gxCm)';   // base-strong at the zero axis on BOTH sides
+      rect.style.opacity=(0.48+0.47*L).toFixed(2);   // PROMINENT — a weak live bar still outguns a colored dated tick
+    });
+    // 1-7DTE TERRAIN OUTLINES (07-13): the multi-day book on the SAME diverging
+    // axis as hollow outlines UNDER the solid 0DTE bars — assisting context that
+    // never touches the pure 0DTE read (separate slide-C field, stored-gamma
+    // stable, OWN max). Own normalization means lengths are NOT comparable
+    // across tenors (0DTE ATM dollar-gamma dwarfs the terrain) — the caption
+    // legend says "own scale" for exactly that reason.
+    let tMax=0, tBk=null;
+    if(tOn){
+      tBk=new Array(MSTRIKES.length).fill(0);
+      for(const p of tn){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
+        const idx=Math.round((p[0]-k0)/step);
+        if(idx>=0&&idx<tBk.length) tBk[idx]+=(+p[1]); }
+      for(const v of tBk){ const a=Math.abs(v); if(a>tMax) tMax=a; }
+    }
+    const TBH=Math.min(MBH+3, MROWH-0.5);   // wraps the solid bar but never fuses adjacent rows
+    MAP.tbars.forEach((rect,i)=>{
+      const v=tOn&&tMax?tBk[i]:0;
+      if(!v){ rect.setAttribute('width','0'); return; }
+      const L=Math.abs(v)/tMax, w=Math.max(2,L*half), posT=v>=0;
+      rect.setAttribute('y',(yFor(MSTRIKES[i])-TBH/2).toFixed(1));
+      rect.setAttribute('height',TBH.toFixed(1));
+      rect.setAttribute('width',w.toFixed(1));
+      rect.setAttribute('x',(posT?xMid:xMid-w).toFixed(1));
+      const _tc=posT?'var(--jade)':'var(--coral)';
+      rect.style.stroke=_tc; rect.style.fill=_tc;   // ghost: 12% tint inside the outline (fill-opacity set at build)
+    });
   }
-  const TBH=Math.min(MBH+3, MROWH-0.5);   // wraps the solid bar but never fuses adjacent rows
-  MAP.tbars.forEach((rect,i)=>{
-    const v=tOn&&tMax?tBk[i]:0;
-    if(!v){ rect.setAttribute('width','0'); return; }
-    const L=Math.abs(v)/tMax, w=Math.max(2,L*half), posT=v>=0;
-    rect.setAttribute('y',(yFor(MSTRIKES[i])-TBH/2).toFixed(1));
-    rect.setAttribute('height',TBH.toFixed(1));
-    rect.setAttribute('width',w.toFixed(1));
-    rect.setAttribute('x',(posT?xMid:xMid-w).toFixed(1));
-    const _tc=posT?'var(--jade)':'var(--coral)';
-    rect.style.stroke=_tc; rect.style.fill=_tc;   // ghost: 12% tint inside the outline (fill-opacity set at build)
-  });
   const bt7=document.getElementById('bar-t7');
   if(bt7) bt7.textContent=tOn?(tier>0?' · ▯ 1-7D (own scale)':' · ▯1-7D'):'';
   // MM-ACTION ARROWS (07-13, pressure-tested): the dated ladder's validated
@@ -3155,7 +3172,7 @@ function gxTenorBands(){
     if(!b||!b.expiry) return;
     const e=out.get(String(b.expiry));
     if(e) e.bk=b; else out.set(String(b.expiry),{expiry:String(b.expiry), bk:b}); });
-  const today=new Date().toISOString().slice(0,10);
+  const today=new Date().toLocaleDateString('en-CA',{timeZone:ET});   // ET calendar day — a UTC "today" drops a 0DTE pill hours early on late-ET evenings
   return [...out.values()].filter(e=>e.expiry>=today).sort((a,b)=>a.expiry<b.expiry?-1:1);
 }
 function tenorAllOn(){
@@ -3216,6 +3233,14 @@ function gxFreshInfo(){
     // (Weekday NYSE holidays will read "no scans today" — true, if blunt.)
     if(rth&&rowDay===todayEt&&age>12) return {txt:`STALE ${Math.round(age)}m — frozen at ${t} ET`, stale:true};
     if(rth&&rowDay!==todayEt&&mins>=585) return {txt:`STALE — no scans today (last ${t} ET ${rowDay})`, stale:true};
+    // cross-day (weekend / pre-open / holiday): a prior session's row must never read
+    // as same-day live. Stamp the row's own date and mark it stale so the pill goes
+    // coral — otherwise Friday's 13:15 book reads "as of 13:15 ET" green all weekend.
+    if(rowDay!==todayEt){
+      const _rd=new Date(rowDay+'T12:00:00');
+      const _wd=isFinite(+_rd)?_rd.toLocaleDateString('en-US',{weekday:'short'}):'';
+      return {txt:`as of ${t} ET · ${_wd} ${rowDay.slice(5)}`, stale:true};
+    }
   }catch(e){}
   return {txt:`as of ${t} ET`, stale:false};
 }
@@ -3261,7 +3286,7 @@ const _DBAND_FLOOR={monthly:5, quarter_end:10};   // per-band staleness floors �
                                                   // dated_gex_feed._BAND_STALE_FLOOR_DAYS
 function _dglBands(){                        // the drawn (non-expired, FRESH, ≤5) bands
   const b=DBOOK.book; if(!b||!Array.isArray(b.bands)) return [];
-  const today=new Date().toISOString().slice(0,10);
+  const today=new Date().toLocaleDateString('en-CA',{timeZone:ET});   // ET calendar day — a UTC "today" drops a 0DTE pill hours early on late-ET evenings
   return b.bands.filter(bd=>String(bd.expiry||'')>=today)
                 .filter(bd=>_dbAge(bd)<=(_DBAND_FLOOR[bd.band]??5))   // stale band ≠ live structure
                 .slice(0,5);
@@ -3597,10 +3622,12 @@ const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3 };   // ca
 const GX_VMS=['tape','ladder','table'];
 let GXVM=(function(){ try{
   const v=localStorage.getItem('gx.viewMode');
-  // 07-26 pivot: the price-time TAPE is the new default hero. The strike-ladder era's
-  // CHART (and the three-way era's LEVELS/PROFILE, folded into it) become LADDER, one
-  // tap away — but a fresh or migrated visitor lands on the living price chart.
-  if(v==='chart'||v==='levels'||v==='profile') return 'tape';
+  // 07-26 pivot: the price-time TAPE is the new default hero. A prior strike-ladder
+  // CHART user keeps that view — it just moved under the LADDER button (one tap). The
+  // three-way era's LEVELS/PROFILE were truly removed, so those (and brand-new
+  // visitors) land on the living price chart.
+  if(v==='chart') return 'ladder';
+  if(v==='levels'||v==='profile') return 'tape';
   if(GX_VMS.indexOf(v)>=0) return v;
   return localStorage.getItem('gx.tableMode')==='1'?'table':'tape';
 }catch(e){ return 'tape'; } })();
@@ -3710,14 +3737,14 @@ function gxTablePaint(){
   else if(!clusters&&isFinite(D.spot)&&isFinite(D.magnet)&&Math.abs(D.spot-D.magnet)<=step) magLead="Pin''";
   else magLead='MagP'+GW.magpTier(D.magnet, clusters);
   // header — columns only for fields the row carries (no dead columns)
-  let head=`<tr><th class="l" title="SPX strike — one row per strike in the active window (zoom + tenor pills)">Strike</th>`
-    +`<th title="Net dealer γ at the strike — the hero bars&#39; value (assumed sign: MMs long calls / short puts). + pin · − push. Blank = the field carries no entry there.">Net γ</th>`
-    +(hasDexN?`<th title="NET DEX |naive| — dealer delta magnitude only (SHADOW, record-only). The naive net reads LONG by construction, so its sign is never shown.">DEX |naive|</th>`:'')
-    +(hasDexF?`<th title="NET DEX flow-signed — re-signed from today&#39;s tape: + dealers LONG (hedge sells strength) · − SHORT (hedge buys weakness).">DEX flow±</th>`:'')
-    +(hasOi?`<th title="Resting open interest per strike, calls − puts (raw contracts, unweighted — no greek, no model). 0DTE OI is YESTERDAY&#39;S book: thin at the open.">Net OI</th>`:'')
-    +(hasVol?`<th title="Session volume per strike, calls − puts (raw contracts traded today, gross tape — not the signed aggressor read).">Net Vol</th>`:'')
-    +`<th class="l" title="GW cluster label where this strike is a wall&#39;s peak (docs/gw-vocab.md) — tier by share of the strongest structure on this surface.">GW</th>`
-    +`<th class="l" title="Level markers on their rows — SPOT · MagP/Pin (the magnet) · HVL (the gamma flip).">Notes</th></tr>`;
+  let head=`<tr><th scope="col" class="l" title="SPX strike — one row per strike in the active window (zoom + tenor pills)">Strike</th>`
+    +`<th scope="col" title="Net dealer γ at the strike — the hero bars&#39; value (assumed sign: MMs long calls / short puts). + pin · − push. Blank = the field carries no entry there.">Net γ</th>`
+    +(hasDexN?`<th scope="col" title="NET DEX |naive| — dealer delta magnitude only (SHADOW, record-only). The naive net reads LONG by construction, so its sign is never shown.">DEX |naive|</th>`:'')
+    +(hasDexF?`<th scope="col" title="NET DEX flow-signed — re-signed from today&#39;s tape: + dealers LONG (hedge sells strength) · − SHORT (hedge buys weakness).">DEX flow±</th>`:'')
+    +(hasOi?`<th scope="col" title="Resting open interest per strike, calls − puts (raw contracts, unweighted — no greek, no model). 0DTE OI is YESTERDAY&#39;S book: thin at the open.">Net OI</th>`:'')
+    +(hasVol?`<th scope="col" title="Session volume per strike, calls − puts (raw contracts traded today, gross tape — not the signed aggressor read).">Net Vol</th>`:'')
+    +`<th scope="col" class="l" title="GW cluster label where this strike is a wall&#39;s peak (docs/gw-vocab.md) — tier by share of the strongest structure on this surface.">GW</th>`
+    +`<th scope="col" class="l" title="Level markers on their rows — SPOT · MagP/Pin (the magnet) · HVL (the gamma flip).">Notes</th></tr>`;
   const sgn=v=>v>0?' class="j"':v<0?' class="c"':'';
   const gcell=v=>v==null?'<td></td>':`<td${sgn(v)}>${v===0?'0':_sgfmt(v)}</td>`;
   const icell=v=>v==null?'<td></td>':`<td${sgn(v)}>${v===0?'0':(v<0?'−':'+')+_pFmt(v)}</td>`;
@@ -3728,7 +3755,7 @@ function gxTablePaint(){
     if(r.spot) notes.push(`◀ SPOT ${f(D.spot,2)}`);
     if(r.mag) notes.push(`${magLead} ${f(D.magnet,0)}`);
     if(r.hvl) notes.push(`HVL ${f(D.flip,0)}`);
-    body+=`<tr${r.spot?' class="spot"':r.mag?' class="mag"':''}><td class="l k">${r.k.toLocaleString('en-US')}</td>${gcell(r.g)}`
+    body+=`<tr${r.spot?' class="spot"':r.mag?' class="mag"':''}><th scope="row" class="l k">${r.k.toLocaleString('en-US')}</th>${gcell(r.g)}`
       +(hasDexN?ncell(r.dn):'')+(hasDexF?gcell(r.df):'')
       +(hasOi?icell(r.oi):'')+(hasVol?icell(r.vol):'')
       +`<td class="l gw${gw?(gw.call?' j':' c'):''}">${gw?gw.txt:''}</td><td class="l m">${notes.join(' · ')}</td></tr>`;
@@ -4070,6 +4097,7 @@ function paintPanes(){
 // design. Record-only: feeds nothing. Not the fade lens, not Watchtower, not the reasoner.
 let RAIL_ON=(function(){ try{ return localStorage.getItem('gx.hedgeRail')==='1'; }catch(e){ return false; } })();
 let RAIL_CUR=null;                        // scrubbed price, or null = the resting +1% read
+let RAIL_DRAG=false;                      // an in-flight hedge-rail pointer drag — defer gutter-reclaim reframes (they detach the SVG mid-drag) until pointerup
 function railOn(){ return RAIL_ON; }
 function _rlDte(bd){                       // LIVE dte — the book only ships dte_at_pull
   try{ const d=Math.round((new Date(String(bd.expiry))-new Date(new Date().toISOString().slice(0,10)))/86400000);
@@ -4265,6 +4293,14 @@ function _scrubPrice(y){                  // inverse of yFor(), clamped to the p
   const yy=Math.max(t,Math.min(b,y));
   return X.pHigh-(yy-t)/(b-t)*(X.pHigh-X.pLow);
 }
+// pane/dex gutter claim-or-release: a row that first carries (or drops) the raw-book /
+// dex fields must resize the lane. WANT count, not the drawn count — a pane shed for
+// room must not rebuild forever. Guarded off the RAIL_DRAG flag by its callers.
+function gxReclaimGutters(){
+  try{ if(MAP && ((((typeof OI_ON!=='undefined'&&OI_ON&&oiPaneAvail())?1:0)
+                 +((typeof VOL_ON!=='undefined'&&VOL_ON&&volPaneAvail())?1:0))!==(MAPX.nPWant||0)
+              || ((typeof DEX_ON!=='undefined'&&DEX_ON&&dexAvail())?1:0)!==(MAPX.nXWant||0))) buildMap(); }catch(e){}
+}
 function gxMountScrub(){
   const svg=MAP&&MAP.svg; if(!svg) return;
   let drag=false, moved=false;
@@ -4289,20 +4325,21 @@ function gxMountScrub(){
   svg.style.touchAction='pan-x';          // let the page still scroll sideways
   svg.addEventListener('pointerdown',e=>{
     if(!MAPX.nR) return;                  // no rail → nothing to scrub
-    drag=true; moved=false;
+    drag=true; moved=false; RAIL_DRAG=true;
     try{ svg.setPointerCapture(e.pointerId); }catch(_){}
     set(_scrubPrice(toY(e)));
   });
   svg.addEventListener('pointermove',e=>{ if(!drag) return; moved=true; set(_scrubPrice(toY(e))); });
   const end=e=>{
     if(!drag) return;
-    drag=false;
+    drag=false; RAIL_DRAG=false;
     // a tap that never moved = clear (and a scrub parked ON spot means "never mind")
     if(!moved || (D.spot && RAIL_CUR!=null && Math.abs(RAIL_CUR-D.spot)/D.spot < 0.0008)) setNow(null);
+    gxReclaimGutters();   // reconcile any gutter change a poll deferred during the drag
   };
   svg.addEventListener('pointerup',end);
-  svg.addEventListener('pointercancel',()=>{ drag=false; });
-  svg.addEventListener('pointerleave',()=>{ drag=false; });
+  svg.addEventListener('pointercancel',()=>{ drag=false; RAIL_DRAG=false; gxReclaimGutters(); });
+  svg.addEventListener('pointerleave',()=>{ drag=false; RAIL_DRAG=false; gxReclaimGutters(); });
 }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&RAIL_CUR!=null){
   RAIL_CUR=null; if(MAP){MAP._rkey=null; MAP._skey=null;} paintHedgeRail(); paintScrub(); _railChipSync(); } });
@@ -4796,6 +4833,7 @@ function openGexInfoModal(){
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
   document.getElementById('modal-x').onclick=closeModal;
+  _modalOpened();
 }
 // the "?" lives over the plot; re-mounted after each gxBuild (which wipes .gx-chart)
 function gxMountInfoBtn(){
@@ -4889,9 +4927,7 @@ function applyMap(r){
   // pane gutter re-check: a row that first carries (or drops) the raw-book / dex
   // fields must claim/release its gutter — fetchDatedBook's resize dance, on the row
   // hook. WANT count, not the drawn count: a pane shed for room must not rebuild forever.
-  try{ if(MAP && ((((typeof OI_ON!=='undefined'&&OI_ON&&oiPaneAvail())?1:0)
-                 +((typeof VOL_ON!=='undefined'&&VOL_ON&&volPaneAvail())?1:0))!==(MAPX.nPWant||0)
-              || ((typeof DEX_ON!=='undefined'&&DEX_ON&&dexAvail())?1:0)!==(MAPX.nXWant||0))) buildMap(); }catch(e){}
+  if(!RAIL_DRAG) gxReclaimGutters();   // a live scrub drag defers the reframe (buildMap detaches the SVG under the pointer) — pointerup reconciles
   T.putFloor = r.put_wall_tenor ?? r.put_wall ?? D.putFloor;       // structural OI put wall = the real floor (H2: moved to *_tenor)
   T.callCeil = r.call_wall_tenor ?? r.call_wall ?? D.callCeil;     // structural OI call wall = the real ceiling
   // H9: the dated book is sticky across SHORT gaps only (rows before the day's first
@@ -6055,7 +6091,7 @@ function openSiegeArch(){
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
   const x=document.getElementById('modal-x'); x.onclick=closeModal;
-  x.focus();   // move keyboard focus into the dialog (Esc + backdrop close are global)
+  _modalOpened();   // focus into the dialog + inert the app behind it (Esc + backdrop close are global)
 }
 
 // ---------- DIARY (book · page 1 = newest → oldest to the right) ----------
@@ -6159,8 +6195,21 @@ function openModal(s){
   M.querySelectorAll('.mtab').forEach(t=> t.onclick=()=>show(t.dataset.v));
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
   document.getElementById('modal-x').onclick=closeModal;
+  _modalOpened();
 }
-function closeModal(){ const M=document.getElementById('modal'); if(!M) return; M.classList.remove('open'); M.setAttribute('aria-hidden','true'); M.innerHTML=''; }
+let _modalReturnFocus=null;
+function _modalOpened(){                   // a11y: move focus into the just-opened dialog,
+  const M=document.getElementById('modal'); if(!M) return;   // stash the opener, and inert the app behind it
+  _modalReturnFocus=document.activeElement;
+  const dev=document.querySelector('.device'); if(dev) dev.inert=true;   // #modal is a sibling of .device, so it stays live
+  const f=M.querySelector('#modal-x')||M.querySelector('[role="dialog"]');
+  if(f&&f.focus){ try{ f.focus(); }catch(e){} }
+}
+function closeModal(){ const M=document.getElementById('modal'); if(!M) return; M.classList.remove('open'); M.setAttribute('aria-hidden','true'); M.innerHTML='';
+  const dev=document.querySelector('.device'); if(dev) dev.inert=false;
+  if(_modalReturnFocus&&_modalReturnFocus.focus){ try{ _modalReturnFocus.focus(); }catch(e){} }
+  _modalReturnFocus=null;
+}
 function renderDiary(turn){
   const prevScroll = document.getElementById('entries')?.scrollTop || 0;
   const days = diaryDayGroups();
@@ -6315,7 +6364,7 @@ function sweepCardHTML(c, day, legacy){
   // column tips — data-tip feeds the SAME themed floating card as the replay table
   // (hover ~0.6s or tap; lgBindTips). No native title= — the browser's grey strip
   // never matched the theme.
-  const TH=(label,tip)=>tip?`<th data-tip="${tip}">${label}</th>`:`<th>${label}</th>`;
+  const TH=(label,tip)=>tip?`<th scope="col" data-tip="${tip}">${label}</th>`:`<th scope="col">${label}</th>`;
   const tableHTML=`<div class="lg-tablewrap"><table class="lg-table">
     <thead><tr>
     ${TH('Open–Close','when the call started and ended (Eastern time) — … means still running')}
@@ -6407,6 +6456,7 @@ function openSweepInfoModal(){
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
   document.getElementById('modal-x').onclick=closeModal;
+  _modalOpened();
 }
 
 function renderHeads(){
@@ -7361,27 +7411,27 @@ function rpRenderTable(){
   const head=`<thead>
   <tr class="rp-grp">
     <th class="rp-tcol"></th>
-    <th colspan="11" class="g-main"><span class="glab">main stack</span></th>
-    <th colspan="2" class="g-siege">siege deck</th>
-    <th colspan="2" class="g-call">the call</th>
+    <th scope="colgroup" colspan="11" class="g-main"><span class="glab">main stack</span></th>
+    <th scope="colgroup" colspan="2" class="g-siege">siege deck</th>
+    <th scope="colgroup" colspan="2" class="g-call">the call</th>
   </tr>
   <tr>
-    <th class="rp-tcol" data-tip="The moment this scan happened — Pacific time on top, Eastern (the diary's own clock) underneath. Click any row to move the replay there.">Time · PT<span class="nw" style="color:var(--ink-faint)">ET below</span></th>
-    <th class="lt-base" data-tip="Where the index was trading at that moment — context for the row, not a reading in itself.">Spot<span class="nw">context</span></th>
-    <th class="lt-grav" data-tip="Whether dealers are LONG gamma (their hedging calms the market — moves get damped) or SHORT (their hedging amplifies — moves get fuel). This is the master switch for reading everything else.">Gamma<span class="nw">gravity</span></th>
-    <th class="lt-grav" data-tip="The price level dealer positioning pulls toward; the arrow says which side of the current price it sits on. Under short gamma it is a location, not a target.">Magnet<span class="nw">gravity</span></th>
-    <th class="lt-grav" data-tip="Which direction dealer hedging would FEED a move (the accelerant side) versus the side it would swallow. Calling into the absorbing side needs real flow behind it.">Shove<span class="nw">gravity · book slope</span></th>
-    <th class="lt-speed" data-tip="How fast the tape is running versus a normal day by this time (the × number) and who owns the motion — the percentage is how much of the movement was selling.">Speed<span class="nw">speedometer</span></th>
-    <th class="lt-motion" data-tip="Which side of the dealer map is structurally weaker right now — the direction the path opens if price gets pushed.">Soft side<span class="nw">motion</span></th>
-    <th class="lt-break" data-tip="The escape detector. COCKED means a breakout trigger is armed — a place to watch, not a direction. FIRED means price actually broke out, and only that is a directional fact.">Break lens</th>
-    <th class="lt-fade" data-tip="The snap-back detector: armed means price looks stretched enough to consider a bet on it returning toward the average.">Fade lens</th>
-    <th class="lt-fade" data-tip="How far price is stretched, in σ — from yesterday's close (gap) and from today's average price (vwap). Negative means below.">Stretch<span class="nw">fade · gap · vwap σ</span></th>
-    <th class="lt-flow" data-tip="The day's running balance of option buying versus selling pressure. A whole-day average — it decays nothing and cannot show a turn.">Flow<span class="nw">options flow</span></th>
-    <th data-tip="How many main-stack layers pointed up versus down at that moment. Tap the cell to see exactly which layers and what each was thinking.">Lean<span class="nw">main stack ▲/▼ · tap</span></th>
-    <th class="rp-sgcol lt-seffort" data-tip="The siege deck's verdict at a touched wall — REVERSED SIGN: heavy volume at the wall (SIEGE) means expect it to BREAK; a quiet touch means expect it to HOLD.">Siege<span class="nw">effort-at-wall · reversed sign</span></th>
-    <th class="rp-sgcol2 lt-sscore" data-tip="How each siege verdict actually graded once the fight resolved — ✓ means the doctrine called it, ✕ means it missed. Open means the episode has not graded yet.">Outcome<span class="nw">scorekeeper</span></th>
-    <th class="rp-callcol lt-tower" data-tip="The Watchtower's call at that moment — UP or DOWN with its confidence, or stand down — plus its stance: fight means it expects the range to erupt, settle means it expects a pin. The row's tint is the ledger's grade.">Verdict<span class="nw">watchtower</span></th>
-    <th class="rp-60col" data-tip="Where price sat one hour after the call, in σ, in the called direction — a follow-through reading only, never the official grade.">60-min lean<span class="nw">follow-through</span></th>
+    <th scope="col" class="rp-tcol" data-tip="The moment this scan happened — Pacific time on top, Eastern (the diary's own clock) underneath. Click any row to move the replay there.">Time · PT<span class="nw" style="color:var(--ink-faint)">ET below</span></th>
+    <th scope="col" class="lt-base" data-tip="Where the index was trading at that moment — context for the row, not a reading in itself.">Spot<span class="nw">context</span></th>
+    <th scope="col" class="lt-grav" data-tip="Whether dealers are LONG gamma (their hedging calms the market — moves get damped) or SHORT (their hedging amplifies — moves get fuel). This is the master switch for reading everything else.">Gamma<span class="nw">gravity</span></th>
+    <th scope="col" class="lt-grav" data-tip="The price level dealer positioning pulls toward; the arrow says which side of the current price it sits on. Under short gamma it is a location, not a target.">Magnet<span class="nw">gravity</span></th>
+    <th scope="col" class="lt-grav" data-tip="Which direction dealer hedging would FEED a move (the accelerant side) versus the side it would swallow. Calling into the absorbing side needs real flow behind it.">Shove<span class="nw">gravity · book slope</span></th>
+    <th scope="col" class="lt-speed" data-tip="How fast the tape is running versus a normal day by this time (the × number) and who owns the motion — the percentage is how much of the movement was selling.">Speed<span class="nw">speedometer</span></th>
+    <th scope="col" class="lt-motion" data-tip="Which side of the dealer map is structurally weaker right now — the direction the path opens if price gets pushed.">Soft side<span class="nw">motion</span></th>
+    <th scope="col" class="lt-break" data-tip="The escape detector. COCKED means a breakout trigger is armed — a place to watch, not a direction. FIRED means price actually broke out, and only that is a directional fact.">Break lens</th>
+    <th scope="col" class="lt-fade" data-tip="The snap-back detector: armed means price looks stretched enough to consider a bet on it returning toward the average.">Fade lens</th>
+    <th scope="col" class="lt-fade" data-tip="How far price is stretched, in σ — from yesterday's close (gap) and from today's average price (vwap). Negative means below.">Stretch<span class="nw">fade · gap · vwap σ</span></th>
+    <th scope="col" class="lt-flow" data-tip="The day's running balance of option buying versus selling pressure. A whole-day average — it decays nothing and cannot show a turn.">Flow<span class="nw">options flow</span></th>
+    <th scope="col" data-tip="How many main-stack layers pointed up versus down at that moment. Tap the cell to see exactly which layers and what each was thinking.">Lean<span class="nw">main stack ▲/▼ · tap</span></th>
+    <th scope="col" class="rp-sgcol lt-seffort" data-tip="The siege deck's verdict at a touched wall — REVERSED SIGN: heavy volume at the wall (SIEGE) means expect it to BREAK; a quiet touch means expect it to HOLD.">Siege<span class="nw">effort-at-wall · reversed sign</span></th>
+    <th scope="col" class="rp-sgcol2 lt-sscore" data-tip="How each siege verdict actually graded once the fight resolved — ✓ means the doctrine called it, ✕ means it missed. Open means the episode has not graded yet.">Outcome<span class="nw">scorekeeper</span></th>
+    <th scope="col" class="rp-callcol lt-tower" data-tip="The Watchtower's call at that moment — UP or DOWN with its confidence, or stand down — plus its stance: fight means it expects the range to erupt, settle means it expects a pin. The row's tint is the ledger's grade.">Verdict<span class="nw">watchtower</span></th>
+    <th scope="col" class="rp-60col" data-tip="Where price sat one hour after the call, in σ, in the called direction — a follow-through reading only, never the official grade.">60-min lean<span class="nw">follow-through</span></th>
   </tr></thead>`;
   const body=rows.map(s=>{
     const fr=RP.fireByTs?RP.fireByTs.get(s.ts):null;
@@ -7877,7 +7927,9 @@ function renderDict(){
 
 // ---------- tabs ----------
 function switchTab(name){
-  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===name));
+  document.querySelectorAll(".tab").forEach(t=>{ const on=t.dataset.tab===name;
+    t.classList.toggle("active", on);
+    if(on) t.setAttribute("aria-current","page"); else t.removeAttribute("aria-current"); });
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active", p.dataset.panel===name));
   if(name==='replay'){ if(!RP.els) initReplay();
     else requestAnimationFrame(()=>{ rpSetView(RP.view); if(RP.view==='chart'&&RP.path){ rpBuild(); rpPaint(); } }); }
