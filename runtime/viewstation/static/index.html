@@ -378,7 +378,7 @@
   .gx-dt td.m{color:var(--ink-faint)}
   .gx-dt tr.spot td{background:var(--iris-wash)} .gx-dt tr.spot td.k,.gx-dt tr.spot td.m{color:var(--iris)}
   .gx-dt tr.mag td{background:var(--lantern-wash)} .gx-dt tr.mag td.k,.gx-dt tr.mag td.m{color:var(--lantern)}
-  .gx-tfoot{flex:0 0 auto; border-top:1px solid var(--hairline); padding:5px 130px 5px 12px; text-align:right;   /* right pad = the vm cluster's dock zone (GXDOCK.vmW+margins) — the footer text must never run under it */
+  .gx-tfoot{flex:0 0 auto; border-top:1px solid var(--hairline); padding:5px 152px 5px 12px; text-align:right;   /* right pad = the vm cluster's dock zone (GXDOCK.vmW+margins) — the footer text must never run under it */
     font:600 9.5px/1.5 var(--mono); letter-spacing:.05em; color:var(--ink-faint); background:var(--surface-2)}
   .gx-tabout{opacity:.45}                     /* chart-only chips/pills, inert while the table view is up */
   /* ---- ANNOTATION CARDS (07-25, kept when the LEVELS view folded into the chart):
@@ -2050,11 +2050,18 @@ function computeMAPX(w,h){
   // numbers and hoarded the widest column on the map; at 17/15px they read just as well
   // and hand ~50px back to the gutters, where the rail can actually use it.
   const tagX=w-10, stripEnd=Math.round(w-128);
+  // PRICE-TIME (tape) mode: the price path is the hero and the per-strike γ book
+  // compresses to a slim RIGHT gutter — so the whole pane forest (DEX / OI / VOL /
+  // hedge rail / dated ladder) stands down and its geometry collapses to the proven
+  // "all panes off" state. Same TDZ hazard as the pane toggles (GXVM is a later `let`)
+  // → the same try/catch guard, defaulting to the ladder geometry.
+  let TAPE=false;
+  try{ TAPE=typeof GXVM!=='undefined'&&GXVM==='tape'; }catch(e){ TAPE=false; }
   // NET DEX left gutter — want gated on toggle + data (never a phantom gutter; the nT
   // lesson). Same TDZ hazard as nT/nR (DEX_ON binds later) → same try/catch.
   let paneDex=false;
   try{
-    paneDex=typeof DEX_ON!=='undefined'&&DEX_ON&&typeof dexAvail==='function'&&dexAvail();
+    paneDex=!TAPE&&typeof DEX_ON!=='undefined'&&DEX_ON&&typeof dexAvail==='function'&&dexAvail();
   }catch(e){ paneDex=false; }
   const nXWant=paneDex?1:0;
   const dexW=Math.max(DEXP.minW, Math.min(DEXP.maxW, Math.round(w*0.10)));
@@ -2066,7 +2073,7 @@ function computeMAPX(w,h){
   // typeof does NOT protect a TDZ `let`; the try/catch below is what saves boot (nT→0).
   let nT=0;
   try{
-    if(typeof DOI_ON!=='undefined'&&DOI_ON&&typeof datedOIAvail==='function'&&datedOIAvail()){
+    if(!TAPE&&typeof DOI_ON!=='undefined'&&DOI_ON&&typeof datedOIAvail==='function'&&datedOIAvail()){
       // SAME filter paintDatedOI draws with (_dglVis: non-expired, fresh AND
       // pill-visible) — counting unfiltered bands here left a phantom empty
       // gutter column whenever the H9 age gate dropped a band
@@ -2085,7 +2092,7 @@ function computeMAPX(w,h){
   // so the same try/catch, and the same fallback to 0 = today's geometry exactly.
   let nR=0, nRWant=0, railLaneW=0;
   try{
-    if(typeof RAIL_ON!=='undefined'&&RAIL_ON&&typeof railAvail==='function'&&railAvail()){
+    if(!TAPE&&typeof RAIL_ON!=='undefined'&&RAIL_ON&&typeof railAvail==='function'&&railAvail()){
       nRWant=Math.min(RAIL.maxLanes,_railBands().length);
       nR=nRWant;
       // WIDTH GUARD: a new band must never DELETE the bar lane. The rail may only spend
@@ -2106,8 +2113,8 @@ function computeMAPX(w,h){
   // (GEX > OI > VOL). Same TDZ hazard as nT/nR (OI_ON binds later) → same try/catch.
   let paneOi=false, paneVol=false;
   try{
-    paneOi=typeof OI_ON!=='undefined'&&OI_ON&&typeof oiPaneAvail==='function'&&oiPaneAvail();
-    paneVol=typeof VOL_ON!=='undefined'&&VOL_ON&&typeof volPaneAvail==='function'&&volPaneAvail();
+    paneOi=!TAPE&&typeof OI_ON!=='undefined'&&OI_ON&&typeof oiPaneAvail==='function'&&oiPaneAvail();
+    paneVol=!TAPE&&typeof VOL_ON!=='undefined'&&VOL_ON&&typeof volPaneAvail==='function'&&volPaneAvail();
   }catch(e){ paneOi=paneVol=false; }
   const nPWant=(paneOi?1:0)+(paneVol?1:0);
   const paneW=Math.max(PANE.minW, Math.min(PANE.maxW, Math.round(w*0.085)));
@@ -2122,13 +2129,27 @@ function computeMAPX(w,h){
   // padT grows for the rail's two header rows (expiry + the $ figure). It is the SHARED
   // top pad, so every layer moves together and the price axis stays one scale — the
   // headers get real room instead of being squeezed into 8px type.
-  return { W:w, H:h, padT:(nR?38:22), padB:24, axisLX:48+dexGutter, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
+  // PRICE-TIME (tape) geometry: the per-strike γ book compresses into a slim RIGHT
+  // gutter [barX0, lineEnd] and the price path takes the freed canvas [x0, canvasR].
+  // barX0 is the bars' zero-axis anchor; canvasR is the right edge of everything that
+  // rides the price canvas (path, level lines, regime washes, chop band). In LADDER
+  // mode barX0=x0 and canvasR=lineEnd → every consumer stays byte-identical.
+  let barX0=x0, canvasR=lineEnd;
+  let barMax=Math.min(lineEnd-x0-6, Math.max(160, Math.round((lineEnd-x0)*0.88)));   // 88% of the lane: right of lineEnd is gutter/tag territory the bars never enter
+  if(TAPE){
+    const profW=Math.max(84, Math.min(132, Math.round(w*0.13)));   // slim γ-profile gutter
+    barX0=lineEnd-profW;
+    canvasR=barX0-14;             // 14px of air between the price canvas and the γ profile
+    barMax=profW-4;
+  }
+  // axisLX: price labels end 12px left of the plot edge — 5px of air off the major
+  // rung's tip (x0-7), not the old 17px moat that read as misaligned padding
+  return { W:w, H:h, padT:(nR?38:22), padB:24, axisLX:60+dexGutter, x0, tagX, lineEnd, stripEnd, nT, stripGutter,
     nR, nRWant, railGutter, railX0, railLaneW,
     nP, nPWant, paneOi, paneVol, paneW, paneGutter, stripX0,
     nX:(paneDex?1:0), nXWant, dexW, dexGutter, dexX0:DEXP.padL,
-    // 88% of the lane: everything right of lineEnd is gutter/tag territory the
-    // bars never enter; edge markers + legend get surface halos instead of margin
-    barMax:Math.min(lineEnd-x0-6, Math.max(160, Math.round((lineEnd-x0)*0.88))), pHigh:7660, pLow:7430 };
+    tape:TAPE, barX0, canvasR,
+    barMax, pHigh:7660, pLow:7430 };
 }
 // Adaptive strike window — frame the live levels (spot·magnet·flip·call-wall) with headroom that
 // GROWS with volatility (σ), so a fast tape shows more strikes and a calm one zooms in on the magnets.
@@ -2194,17 +2215,22 @@ function gxAxisTicks(pLow, pHigh, plotH){
 }
 function mapAxis(){
   const X=MAPX, L=gxAxisTicks(X.pLow, X.pHigh, X.H-X.padT-X.padB);
-  let a='';
+  // the axis SPINE: one continuous hairline at the plot edge ties the rungs into a
+  // ruler — without it the tick stubs floated free and the label gutter read as
+  // broken padding rather than an axis
+  let a=`<line x1="${X.x0}" y1="${X.padT}" x2="${X.x0}" y2="${(X.H-X.padB).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.35"/>`;
   for(const t of L.ticks){ const yn=yFor(t.p), yy=yn.toFixed(1);
     // rungs may kiss the plot edge; type may not (a clipped half-label reads broken)
     const room=yn>=X.padT+6 && yn<=X.H-X.padB-4;
     if(t.major){
-      a+=`<line x1="${X.x0}" y1="${yy}" x2="${X.lineEnd}" y2="${yy}" style="stroke:var(--hairline);opacity:.5" stroke-dasharray="2 6"/>`;
+      a+=`<line x1="${X.x0}" y1="${yy}" x2="${X.canvasR}" y2="${yy}" style="stroke:var(--hairline);opacity:.5" stroke-dasharray="2 6"/>`;   /* grid rides the price canvas only — canvasR===lineEnd in LADDER, clips before the γ gutter in TAPE */
       a+=`<line x1="${X.x0-7}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.75"/>`;
-      if(room) a+=`<text x="${X.axisLX}" y="${(yn+4).toFixed(1)}" text-anchor="end" style="fill:var(--ink-dim);font-variant-numeric:tabular-nums" font-size="14" font-weight="600" font-family="var(--mono)">${t.p.toLocaleString('en-US')}</text>`;
+      // baseline = half the digits' cap height (0.72em/2) — true optical centering
+      // on the rung; the old +4/+3 sat every label a hair high
+      if(room) a+=`<text x="${X.axisLX}" y="${(yn+5).toFixed(1)}" text-anchor="end" style="fill:var(--ink-dim);font-variant-numeric:tabular-nums" font-size="14" font-weight="600" font-family="var(--mono)">${t.p.toLocaleString('en-US')}</text>`;
     } else {
       a+=`<line x1="${X.x0-4}" y1="${yy}" x2="${X.x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.4"/>`;
-      if(room) a+=`<text x="${X.axisLX}" y="${(yn+3).toFixed(1)}" text-anchor="end" style="fill:var(--ink-faint);font-variant-numeric:tabular-nums" font-size="10.5" font-family="var(--mono)">${t.p.toLocaleString('en-US')}</text>`;
+      if(room) a+=`<text x="${X.axisLX}" y="${(yn+4).toFixed(1)}" text-anchor="end" style="fill:var(--ink-faint);font-variant-numeric:tabular-nums" font-size="10.5" font-family="var(--mono)">${t.p.toLocaleString('en-US')}</text>`;
     }
   }
   return a;
@@ -2236,6 +2262,64 @@ const MMETA = {   // key dealer levels, drawn as horizontal lines with right-edg
 // is the single near-spot gravity line. (callWall/putWall stay in D for the
 // modeled-bar fallback and the frame band; they just no longer draw as lines.)
 const MIDS = ["magnet","flip","spot"];
+// ---- WALL LEVEL STACK (tape, IMAGE B) — the named gw_vocab levels drawn as full-canvas
+// horizontal reference lines, each with a right-edge strength bar + a two-line
+// Dictionary-voice tag. SOURCE = profile_ladder's DOMINANT clusters (gwc/gwp) + the
+// chop-band edges (ct/pt), NEVER the raw ATM-hugging 0DTE walls that glue to spot (the
+// 07-11 artifact). HVL is already the flip line, so it is not repeated here. No
+// profile_ladder record → nothing draws (the fail-open doctrine; live rows lack it
+// until Monday). Tape-only: the strike LADDER keeps its bar-side GW labels instead.
+const WMETA={
+  gwc:{side:'c', hue:'var(--jade)',  eng:'top call wall',   dash:''},
+  ct: {side:'c', hue:'var(--jade)',  eng:'call transition', dash:'stroke-dasharray="5 4"'},
+  pt: {side:'p', hue:'var(--coral)', eng:'put transition',  dash:'stroke-dasharray="5 4"'},
+  gwp:{side:'p', hue:'var(--coral)', eng:'put support',     dash:''},
+};
+const _wallSw=tier=>tier==="'''"?2.4:tier==="''"?1.7:1.1;   // prime-tier stroke weight — the ' '' ''' ladder as line weight (the gws idiom)
+// right-edge level-strength bar geometry: length = the level's net-γ share (mass ÷ the
+// strongest strike), grown LEFTWARD from the price-canvas edge. Share ≤2% → no bar (the
+// honest-absent rule — never fabricate a level's strength). SHARED by the MID mag bars
+// and the wall bars so the two idioms can never drift.
+function gxLevelBar(frac, canvasR){
+  if(!(frac>0.02)) return null;
+  const len=Math.max(3, frac*42);
+  return { x:canvasR-len, w:len, op:+(0.35+0.5*frac).toFixed(2) };
+}
+// PURE wall-stack model (the JSC smoke harness drills this by name): from profile_ladder,
+// the nearest ≤2-per-side named levels with a projected y, an off-plot EDGE flag, and —
+// for the in-plot ones — a right-gutter label slot (ly) de-collided against the MID tag
+// slots (`taken`) and each other. Honest-absent: no ladder / wrong version / no spot → [].
+function gxWallStack(L, spot, G, taken){
+  if(!L||L.ladder_v!==1||spot==null||!isFinite(spot)) return [];
+  const raw=[
+    {id:'gwc', notation:'GWc'+(L.gwc_tier||''), price:L.gwc, pct:L.gwc_pct, tier:L.gwc_tier||null},
+    {id:'ct',  notation:'cT',                   price:L.ct,  pct:L.ct_pct,  tier:null},
+    {id:'pt',  notation:'pT',                   price:L.pt,  pct:L.pt_pct,  tier:null},
+    {id:'gwp', notation:'GWp'+(L.gwp_tier||''), price:L.gwp, pct:L.gwp_pct, tier:L.gwp_tier||null},
+  ].filter(w=>w.price!=null&&isFinite(w.price));
+  const N=2, bySide={c:[],p:[]};
+  for(const w of raw){ const m=WMETA[w.id]; w.side=m.side; w.eng=m.eng; w.dash=m.dash; w.hue=m.hue; w.y=G.y(w.price); w.dist=Math.abs(w.price-spot); bySide[w.side].push(w); }
+  let keep=[];
+  for(const s of ['c','p']){ bySide[s].sort((a,b)=>a.dist-b.dist); keep=keep.concat(bySide[s].slice(0,N)); }   // cap N per side, nearest spot wins
+  for(const w of keep) w.edge = w.y<G.padT ? 'top' : (w.y>G.padB2 ? 'bot' : null);   // off-plot → edge-chip, never a phantom in-frame line
+  // gutter de-collision: the two-line tag reserves ~RES either side; seat each in-plot
+  // wall at its true y, then step it to the nearer FREE side of any occupied slot; run
+  // out of travel → demote to a bottom edge chip (the existing off-frame idiom).
+  const RES=15, occ=(taken||[]).slice().sort((a,b)=>a-b);   // ~30px min center spacing — the two-line tag's visual extent + air, matched to the MID GAP idiom
+  for(const w of keep.filter(w=>!w.edge).sort((a,b)=>a.y-b.y)){
+    let ly=Math.max(G.loY, Math.min(G.hiY, w.y));
+    for(let g=0; g<40; g++){
+      const clash=occ.find(o=>Math.abs(o-ly)<RES*2); if(clash==null) break;
+      const up=clash-RES*2, dn=clash+RES*2;
+      ly=(Math.abs(up-w.y)<=Math.abs(dn-w.y)&&up>=G.loY)?up:dn;
+      if(ly>G.hiY){ w.edge='bot'; break; }
+      if(ly<G.loY) ly=dn;
+    }
+    if(w.edge) continue;
+    w.ly=ly; occ.push(ly); occ.sort((a,b)=>a-b);
+  }
+  return keep;
+}
 const gauss = (k,mu,sd)=>Math.exp(-((k-mu)*(k-mu))/(2*sd*sd));
 const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZone:PT});
 
@@ -2345,18 +2429,24 @@ function gxBuild(){
   // the dated-γ legend on narrow lanes. Wide lane = full text + the push/pin key;
   // mid drops the key; narrow also shortens the live tspans (gxPaint reads capTier).
   const capTier=(X.lineEnd-X.x0)>=560?2:(X.lineEnd-X.x0)>=430?1:0;
-  const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.x0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
+  const bars=MSTRIKES.map(()=>`<rect class="gxbar" x="${X.barX0}" y="0" width="0" height="${Math.max(1.5,MROWH-0.6).toFixed(1)}" rx="1.2"/>`).join('');
   // 1-7DTE terrain GHOSTS (Panel-C sign-off, 07-13): outline + a 12% same-hue
   // tint at ONE fixed fade level — tenor is the only thing the fade encodes
   // (magnitude stays in length; the solid bars keep the magnitude-opacity).
   // Drawn UNDER the solid 0DTE bars; >7DTE stays in the dated ladder, which
   // already carries the full fade-by-expiry ramp.
-  const tbars=MSTRIKES.map(()=>`<rect class="gxtbar" x="${X.x0}" y="0" width="0" height="0" rx="1.2" style="fill-opacity:.12;stroke-width:1;opacity:.85"/>`).join('');
+  const tbars=MSTRIKES.map(()=>`<rect class="gxtbar" x="${X.barX0}" y="0" width="0" height="0" rx="1.2" style="fill-opacity:.12;stroke-width:1;opacity:.85"/>`).join('');
+  // TAPE mode: the level lines are full-canvas horizontal reference lines (x0→canvasR)
+  // and each carries a short right-edge magnitude bar (lmag) sized by the measured net-γ
+  // mass at its strike (gxPaint). LADDER mode: x2 is the long-standing spot?railX0:lineEnd
+  // and lmag stays invisible → byte-identical.
+  const lineR=spot=>X.tape?X.canvasR:(spot?X.railX0:X.lineEnd);
   const lvl=MIDS.map(id=>{ const mm=MMETA[id], spot=id==='spot';
     return `<line id="lead-${id}" style="stroke:${mm.c};opacity:0"/>`+
-      (mm.glow?`<line id="lg-${id}" x1="${X.x0}" x2="${spot?X.railX0:X.lineEnd}" mask="url(#gxLabMask)" style="stroke:${mm.c};stroke-width:${mm.glow};opacity:0"/>`:'')+   /* soft same-hue wash under the casing — presence, not garishness */
-      `<line id="lc-${id}" x1="${X.x0}" x2="${spot?X.railX0:X.lineEnd}" mask="url(#gxLabMask)" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
-      `<line id="lvl-${id}" x1="${X.x0}" x2="${spot?X.railX0:X.lineEnd}" mask="url(#gxLabMask)" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+   /* spot runs THROUGH the ladder gutter → one continuous "where am I" line across bars + dated columns */
+      (mm.glow?`<line id="lg-${id}" x1="${X.x0}" x2="${lineR(spot)}" mask="url(#gxLabMask)" style="stroke:${mm.c};stroke-width:${mm.glow};opacity:0"/>`:'')+   /* soft same-hue wash under the casing — presence, not garishness */
+      `<line id="lc-${id}" x1="${X.x0}" x2="${lineR(spot)}" mask="url(#gxLabMask)" style="stroke:var(--ground);stroke-width:${mm.sw+2.4};opacity:0"/>`+
+      `<line id="lvl-${id}" x1="${X.x0}" x2="${lineR(spot)}" mask="url(#gxLabMask)" style="stroke:${mm.c};stroke-width:${mm.sw};opacity:${spot?1:.85}" ${mm.dash}/>`+   /* spot runs THROUGH the ladder gutter → one continuous "where am I" line across bars + dated columns */
+      `<rect id="lmag-${id}" height="4" rx="1" style="opacity:0"/>`+   /* right-edge level-strength bar (tape only) */
       `<text id="nm-${id}" x="${X.tagX}" text-anchor="end" style="fill:${spot?'var(--iris)':'var(--ink-dim)'}" font-size="11.5" font-weight="700" font-family="var(--mono)" letter-spacing=".02em">${mm.n}</text>`+
       `<text id="vl-${id}" x="${X.tagX}" text-anchor="end" style="fill:${mm.c}" font-size="${spot?17:15}" font-weight="700" font-family="var(--mono)"></text>`; }).join('');
   document.querySelector('#p-map .gx-chart').innerHTML=
@@ -2364,7 +2454,7 @@ function gxBuild(){
      <defs><pattern id="rlHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
        <line x1="0" y1="0" x2="0" y2="6" stroke="var(--lantern)" stroke-width="1.5" opacity=".30"/>
      </pattern>
-     <clipPath id="gxPathClip"><rect x="${X.x0}" y="${X.padT}" width="${(X.lineEnd-X.x0).toFixed(1)}" height="${(X.H-X.padT-X.padB).toFixed(1)}"/></clipPath></defs>
+     <clipPath id="gxPathClip"><rect x="${X.x0}" y="${X.padT}" width="${(X.canvasR-X.x0).toFixed(1)}" height="${(X.H-X.padT-X.padB).toFixed(1)}"/></clipPath></defs>
      <defs>
        <linearGradient id="gxJ" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--jade)" stop-opacity=".95"/><stop offset="1" stop-color="var(--jade)" stop-opacity=".36"/></linearGradient>
        <linearGradient id="gxC" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--coral)" stop-opacity=".92"/><stop offset="1" stop-color="var(--coral)" stop-opacity=".32"/></linearGradient>
@@ -2382,13 +2472,13 @@ function gxBuild(){
             would otherwise collapse the default objectBoundingBox mask region. -->
        <mask id="gxLabMask" maskUnits="userSpaceOnUse" x="0" y="0" width="${X.W}" height="${X.H}"><rect width="${X.W}" height="${X.H}" fill="#fff"/><g id="gxLabMaskB"></g></mask>
      </defs>
-     <rect id="washTop" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--jade);opacity:.045"/>
-     <rect id="washBot" x="${X.x0}" width="${X.lineEnd-X.x0}" style="fill:var(--coral);opacity:.045"/>
-     <rect id="magCloud" x="${X.x0}" width="${X.lineEnd-X.x0}" height="0" style="fill:var(--l-grav);opacity:.10"/>
+     <rect id="washTop" x="${X.x0}" width="${X.canvasR-X.x0}" style="fill:var(--jade);opacity:.045"/>
+     <rect id="washBot" x="${X.x0}" width="${X.canvasR-X.x0}" style="fill:var(--coral);opacity:.045"/>
+     <rect id="magCloud" x="${X.x0}" width="${X.canvasR-X.x0}" height="0" style="fill:var(--l-grav);opacity:.10"/>
      <!-- CHOP BAND (07-25, LEVELS fold-in): the ladder's cT↔pT no-trade zone around
           HVL as a faint lantern wash — same species as the regime washes, under
           everything that carries data (paintChrome section of gxPaint sizes it) -->
-     <rect id="chopBand" x="${X.x0}" width="${X.lineEnd-X.x0}" height="0" style="fill:var(--lantern);opacity:.06"/>
+     <rect id="chopBand" x="${X.x0}" width="${X.canvasR-X.x0}" height="0" style="fill:var(--lantern);opacity:.06"/>
      <g id="axisG">${axis}</g>
      <!-- SESSION PRICE PATH (07-25, LEVELS fold-in): today's per-scan spots + live
           quote as a background whisper — x = 09:30→16:00 across the bar lane, y =
@@ -2405,7 +2495,7 @@ function gxBuild(){
      <!-- zero axis of the diverging bars (UW layout): − grows left, + grows right.
           UNDER barsG: a floored 1.5px hairline sits exactly at the axis, and the
           axis drawn on top erased it (pressure test 07-12) — bars must win. -->
-     <line id="gxZero" x1="${(X.x0+X.barMax/2).toFixed(1)}" x2="${(X.x0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>
+     <line id="gxZero" x1="${(X.barX0+X.barMax/2).toFixed(1)}" x2="${(X.barX0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>
      <!-- NET DEX pane (07-25, Tanuki layout): dedicated lane LEFT of the price axis —
           two series never blended: |naive net| dealer delta as one-hue (iris) magnitude
           bars, the flow-signed twin as the ONLY signed jade/coral series (paintDexPane) -->
@@ -2416,8 +2506,13 @@ function gxBuild(){
      <!-- ADAPTIVE EXPECTED MOVE (07-25, phase-P): asymmetric bracket at the bar lane's
           left edge, anchored at spot — down em_down_pts / up em_up_pts (paintAem) -->
      <g id="aemG"></g>
+     <!-- WALL LEVEL STACK (tape, IMAGE B): profile_ladder's named levels as full-canvas
+          reference lines UNDER the MID lines (the pin / HVL / spot win the crossings) —
+          each with a right-edge strength bar + a two-line Dictionary tag (gxPaint fills
+          this from gxWallStack; empty in LADDER / when profile_ladder is absent) -->
+     <g id="gxWallG"></g>
      ${lvl}
-     <line id="wtTgtL" x1="${X.x0}" x2="${X.nR?X.stripEnd:X.lineEnd}" mask="url(#gxLabMask)" style="opacity:0" stroke-dasharray="3 5"/>
+     <line id="wtTgtL" x1="${X.x0}" x2="${X.tape?X.canvasR:(X.nR?X.stripEnd:X.lineEnd)}" mask="url(#gxLabMask)" style="opacity:0" stroke-dasharray="3 5"/>
      <!-- target tag wears the level-tag idiom (name row over price row, right gutter)
           and rides the SAME de-collision pass as MAGNET/FLIP/SPOT — it can never smear
           into them (the old stripEnd-anchored ▲+price knew nothing about the tags) -->
@@ -2445,7 +2540,7 @@ function gxBuild(){
      <g id="datedG"></g>
      <g id="datedOILgdG"></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text id="gx-cap" x="${Math.max(X.x0+2,GXDOCK.capX)}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">${capTier>0?'Bar = net γ / strike · 0DTE surface':'0DTE net γ'} · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan><tspan id="bar-path" style="fill:var(--ink-faint)"></tspan>${capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':''}</text>
+     <text id="gx-cap" x="${Math.max(X.x0+2,GXDOCK.capX)}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" letter-spacing=".03em" style="fill:var(--ink-faint)">${X.tape?'Price · session · γ profile':(capTier>0?'Bar = net γ / strike · 0DTE surface':'0DTE net γ')} · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan><tspan id="bar-path" style="fill:var(--ink-faint)"></tspan>${capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':''}</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), magCloud:q('magCloud'), axisG:q('axisG'),
@@ -2460,10 +2555,11 @@ function gxBuild(){
     svg:document.querySelector('#p-map .gx-chart svg'), capTier,
     maskB:q('gxLabMaskB'), _mkGw:'', _mkDt:'', _mkKey:null,
     datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
+    wallG:q('gxWallG'), _wallkey:null,
     lvl:{}, wtTgt:q('wtTgt'), wtTgtN:q('wtTgtN'), wtTgtV:q('wtTgtV'), wtTgtL:q('wtTgtL'), wtTgtLead:q('wtTgtLead'),
     wtCom:q('wtCom'), wtComCas:q('wtComCas'), wtComCore:q('wtComCore'), wtComDash:q('wtComDash'),
     wtComBr:q('wtComBr'), wtComN:q('wtComN'), wtG:q('gxWtG'), wtG1:q('gxWtG1') };
-  MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), glow:q('lg-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id) });   // glow=null unless MMETA[id].glow
+  MIDS.forEach(id=> MAP.lvl[id]={ line:q('lvl-'+id), cas:q('lc-'+id), glow:q('lg-'+id), lead:q('lead-'+id), nm:q('nm-'+id), vl:q('vl-'+id), mag:q('lmag-'+id) });   // glow=null unless MMETA[id].glow; mag=right-edge level-strength bar (tape)
   gxMountInfoBtn();                       // re-mount the "?" (this rebuilt .gx-chart)
   gxMountZoom();                          // re-mount the zoom cluster (same reason)
   gxMountScrub();                         // re-mount the price scrub (same reason)
@@ -2594,7 +2690,7 @@ function gxPaint(){
   // IS the true shape of the book; the LOG toggle (γ scale chip) compresses ~5
   // decades to read the weak side's texture — ordering kept, ratios compressed,
   // caption discloses it. Modeled fallback is always linear. Zero draws nothing.
-  const xMid=X.x0+X.barMax/2, half=X.barMax/2-2;
+  const xMid=X.barX0+X.barMax/2, half=X.barMax/2-2;
   const EPS=1e-5, LDEN=Math.log(1+1/EPS);
   const amp=v=>{ const a=Math.abs(v)/mx; if(a<=0) return 0;
     return useLog ? Math.log(1+a/EPS)/LDEN : a; };
@@ -2614,7 +2710,7 @@ function gxPaint(){
   // across tenors (0DTE ATM dollar-gamma dwarfs the terrain) — the caption
   // legend says "own scale" for exactly that reason.
   const tn=D.nbsTenor, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
-  const tOn=(typeof gxTenorOn==='function'&&gxTenorOn())&&Array.isArray(tn)&&tn.length>0;
+  const tOn=(typeof gxTenorOn==='function'&&gxTenorOn())&&Array.isArray(tn)&&tn.length>0&&!X.tape;   // the slim tape gutter carries only the 0DTE net-γ profile; the ghost terrain stays a LADDER layer
   let tMax=0, tBk=null;
   if(tOn){
     tBk=new Array(MSTRIKES.length).fill(0);
@@ -2649,7 +2745,7 @@ function gxPaint(){
   // of spot — the ATM singularity carries no direction. The assumed-sign caveat
   // rides the tooltip.
   let arrs='';
-  if(measured&&sAbs>0&&show0){
+  if(measured&&sAbs>0&&show0&&!X.tape){   // tape's slim γ gutter has no room for the MM-action arrow lane — the comet owns direction there
     const cl=[]; let run=null;
     vals.forEach((v,j)=>{ if(!v){ run=null; return; } const s=v>=0;
       if(run&&run.s===s&&j===run.lastJ+1){ run.lastJ=j; run.M+=Math.abs(v); if(Math.abs(v)>Math.abs(vals[run.pk])) run.pk=j; }
@@ -2689,7 +2785,10 @@ function gxPaint(){
         c.tier=GW.tierStable(c.share, old?old.tier:null);
         GX_GWT.push({side:c.side, peak:c.peak, tier:c.tier});
       }
-      const near=GW.nearestWalls(clusters, D.spot, 3);
+      // tape mode draws no bar-side GW labels (the slim gutter can't hold them; the
+      // named walls live in the ladder side-panel + the level tags) — but clusters,
+      // tiers and _annot below are still computed from the same surface.
+      const near=X.tape?[]:GW.nearestWalls(clusters, D.spot, 3);
       const lineYs=[yFor(D.magnet),yFor(D.flip),yFor(D.spot)].filter(v=>isFinite(v));
       const used=[];
       for(const c of near){
@@ -2814,7 +2913,7 @@ function gxPaint(){
   const lyOf={}; arr.forEach(m=>lyOf[m.id]=m.ly);
   MAP._spotTagLy=onOf.spot?lyOf.spot:null;   // the live-edge price chip dedupes against this (gxPathLive)
   MIDS.forEach(id=>{ const mm=MMETA[id], yy=yFor(valOf[id]), R=MAP.lvl[id];
-    if(!onOf[id]){ R.line.style.opacity=0; R.cas.style.opacity=0; if(R.glow) R.glow.style.opacity=0; R.nm.style.opacity=0; R.vl.style.opacity=0; R.lead.style.opacity=0; return; }
+    if(!onOf[id]){ R.line.style.opacity=0; R.cas.style.opacity=0; if(R.glow) R.glow.style.opacity=0; R.nm.style.opacity=0; R.vl.style.opacity=0; R.lead.style.opacity=0; if(R.mag) R.mag.style.opacity=0; return; }
     const ly=lyOf[id];
     if(R.glow){ R.glow.style.opacity=.11; R.glow.setAttribute('y1',yy.toFixed(1)); R.glow.setAttribute('y2',yy.toFixed(1)); }
     R.cas.style.opacity=.5; R.cas.setAttribute('y1',yy.toFixed(1)); R.cas.setAttribute('y2',yy.toFixed(1));
@@ -2827,9 +2926,61 @@ function gxPaint(){
     // the HVL tag keeps its plain English in the tip card (the ladder panel's wording)
     if(id==='flip'&&!R.nm.dataset.tip){ R.nm.dataset.name='HVL'; R.nm.dataset.tip='v:high volatility level — the gamma-flip line: above it dips get bought, below it moves snowball'; R.nm.style.cursor='pointer'; }
     R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
-    if(Math.abs(ly-yy)>2){ R.lead.setAttribute('x1',X.stripEnd); R.lead.setAttribute('y1',yy.toFixed(1)); R.lead.setAttribute('x2',(X.tagX-86).toFixed(1)); R.lead.setAttribute('y2',ly.toFixed(1)); R.lead.style.opacity=.3; }   // leads start PAST the ladder gutter — never cross the tenor columns
+    // TAPE right-edge level-strength bar (IMAGE B): a short bar riding the level line at
+    // its true y, length = measured net-γ mass at this strike ÷ the strongest strike.
+    // SPOT carries no gamma mass (it is price, not a wall) → no bar; modeled fallback →
+    // no bar (never fabricate a level's strength from the synthetic Gaussian).
+    if(R.mag){
+      let mo=0;
+      if(X.tape&&measured&&id!=='spot'&&isFinite(valOf[id])&&mx>0){
+        const j=Math.round((valOf[id]-k0)/step);
+        const mass=(j>=0&&j<vals.length)?Math.abs(vals[j]):0, bar=gxLevelBar(mass/mx, X.canvasR);
+        if(bar){
+          const yb=Math.min(X.H-X.padB-2,Math.max(X.padT+2,yy));
+          R.mag.setAttribute('x',bar.x.toFixed(1)); R.mag.setAttribute('width',bar.w.toFixed(1));
+          R.mag.setAttribute('y',(yb-2).toFixed(1));
+          R.mag.style.fill=id==='magnet'?'var(--l-grav)':'var(--ink-dim)';
+          mo=bar.op;
+        }
+      }
+      R.mag.style.opacity=mo;
+    }
+    if(Math.abs(ly-yy)>2){ R.lead.setAttribute('x1',X.tape?X.canvasR:X.stripEnd); R.lead.setAttribute('y1',yy.toFixed(1)); R.lead.setAttribute('x2',(X.tagX-86).toFixed(1)); R.lead.setAttribute('y2',ly.toFixed(1)); R.lead.style.opacity=.3; }   // leads start PAST the ladder gutter (canvasR in tape) — never cross the profile/tenor columns
     else R.lead.style.opacity=0;
   });
+  // WALL LEVEL STACK (tape, IMAGE B) — profile_ladder's named levels as full-canvas
+  // reference lines, each with a right-edge strength bar + a two-line Dictionary tag,
+  // de-collided against the MID tags just placed above. Ladder mode / absent ladder →
+  // the group stays empty (byte-identical LADDER). The tags ride gwBindTips' delegated
+  // tooltips (the container is bound once in gxBuild).
+  if(MAP.wallG){
+    let wsvg='';
+    if(X.tape){
+      const taken=MIDS.filter(id=>onOf[id]).map(id=>lyOf[id]).concat(wtI&&lyOf.wt!=null?[lyOf.wt]:[]);
+      const walls=gxWallStack(D.ladder, D.spot, {y:yFor, padT:X.padT, padB2:X.H-X.padB, loY, hiY, canvasR:X.canvasR}, taken);
+      let topN=0, botN=0;
+      for(const w of walls){
+        const pr=f(w.price,0);
+        const pctS=(w.pct!=null&&isFinite(w.pct))?`${w.pct>=0?'+':'−'}${Math.abs(w.pct).toFixed(2)}%`:'';
+        const tip=`k:${w.notation}=${pr}`+(pctS?`¦f:${pctS} from spot`:'')+`¦v:${w.eng} — a gw_vocab level from today's dominant clusters`;
+        if(w.edge){   // off-frame → a compact edge chip pinned to the top / bottom rail
+          const ey=w.edge==='top'?X.padT+8+(topN++*13):X.H-X.padB-6-(botN++*13);
+          wsvg+=`<text x="${X.tagX}" y="${ey.toFixed(1)}" text-anchor="end" font-size="10.5" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="${w.notation} ${pr}" data-tip="${tip}"><tspan style="fill:${w.hue}">${w.edge==='top'?'▲':'▼'} ${w.notation}</tspan> ${pr}</text>`;
+          continue;
+        }
+        const yS=w.y.toFixed(1), ly=(w.ly!=null?w.ly:w.y);
+        wsvg+=`<line x1="${X.x0}" x2="${X.canvasR}" y1="${yS}" y2="${yS}" mask="url(#gxLabMask)" style="stroke:${w.hue};stroke-width:${_wallSw(w.tier)};opacity:.7" ${w.dash}/>`;
+        if(measured&&mx>0){
+          const j=Math.round((w.price-k0)/step), mass=(j>=0&&j<vals.length)?Math.abs(vals[j]):0, bar=gxLevelBar(mass/mx, X.canvasR);
+          if(bar) wsvg+=`<rect x="${bar.x.toFixed(1)}" y="${(w.y-2).toFixed(1)}" width="${bar.w.toFixed(1)}" height="4" rx="1" style="fill:${w.hue};opacity:${bar.op}"/>`;
+        }
+        if(Math.abs(ly-w.y)>2) wsvg+=`<line x1="${X.canvasR}" y1="${yS}" x2="${(X.tagX-86).toFixed(1)}" y2="${ly.toFixed(1)}" style="stroke:${w.hue};opacity:.3"/>`;
+        wsvg+=`<text x="${X.tagX}" y="${(ly-3).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="700" font-family="var(--mono)" letter-spacing=".02em" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="${w.notation} ${pr}" data-tip="${tip}"><tspan style="fill:${w.hue}">${w.notation}</tspan> ${pr}</text>`;
+        wsvg+=`<text x="${X.tagX}" y="${(ly+9).toFixed(1)}" text-anchor="end" font-size="9" font-family="var(--sans)" letter-spacing=".02em" style="fill:var(--ink-faint);${_HALO}">${w.eng}</text>`;
+      }
+    }
+    if(wsvg!==MAP._wallkey){ MAP._wallkey=wsvg; MAP.wallG.innerHTML=wsvg; }
+  }
   // spot marker — a triangle pointing in from the axis
   MAP.spotTri.setAttribute('d',`M${X.x0-9},${(sy-6).toFixed(1)} L${X.x0-1},${sy.toFixed(1)} L${X.x0-9},${(sy+6).toFixed(1)} Z`);
   // Watchtower forward call — the DRIFT COMET in the axis gutter (spot-y → target-y,
@@ -2852,7 +3003,7 @@ function gxPaint(){
         +`¦f:range ${Math.round(wtI.rLo)}–${Math.round(wtI.rHi)}${wtI.rEst?' · est. ±0.25σ (row stated no range)':' · as called'}`
         +`¦v:the Watchtower's forward call — bracket = its stated range`;
       MAP.wtTgtV.setAttribute('y',(ly+11).toFixed(1)); MAP.wtTgtV.textContent=f(wtI.tgt,0); MAP.wtTgtV.style.fill=col;
-      if(Math.abs(ly-ty)>2){ MAP.wtTgtLead.setAttribute('x1',X.stripEnd); MAP.wtTgtLead.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtLead.setAttribute('x2',(X.tagX-86).toFixed(1)); MAP.wtTgtLead.setAttribute('y2',ly.toFixed(1)); MAP.wtTgtLead.style.stroke='var(--lantern)'; MAP.wtTgtLead.style.opacity=.3; }
+      if(Math.abs(ly-ty)>2){ MAP.wtTgtLead.setAttribute('x1',X.tape?X.canvasR:X.stripEnd); MAP.wtTgtLead.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtLead.setAttribute('x2',(X.tagX-86).toFixed(1)); MAP.wtTgtLead.setAttribute('y2',ly.toFixed(1)); MAP.wtTgtLead.style.stroke='var(--lantern)'; MAP.wtTgtLead.style.opacity=.3; }
       else MAP.wtTgtLead.style.opacity=0;
       MAP.wtTgt.style.display='';
     } else { MAP.wtTgt.style.display='none'; MAP.wtTgtL.style.opacity=0; }
@@ -3015,10 +3166,12 @@ function tenorAllOn(){
 function paintTenorPills(){
   const el=document.getElementById('gx-tenors'); if(!el) return;
   // VIEW-MODE gating (07-25): a pill goes inert only in a view that ignores it —
-  // never lying about an effect the current view can't show. TABLE: chart-only
-  // pills (ghost terrain, dated expiries) dim; 0DTE + ALL stay live (the 0DTE pill
-  // blanks the table's book columns — hidden must never read as missing).
-  const tabbed=(typeof gxTableOn==='function')&&gxTableOn();
+  // never lying about an effect the current view can't show. TABLE and TAPE both
+  // ignore the ghost-terrain + dated-expiry surfaces (TAPE compresses to the 0DTE
+  // profile alone; the dated/ghost book is a LADDER layer), so those pills dim;
+  // 0DTE + ALL stay live (0DTE still gates the tape profile / table book columns —
+  // hidden must never read as missing).
+  const inert=((typeof gxTableOn==='function')&&gxTableOn())||((typeof gxTapeOn==='function')&&gxTapeOn());
   const mk=(on,head,sub,fn,title,off)=>`<button type="button" class="gx-tpill${off?' gx-tabout':''}"${off?' disabled':''} aria-pressed="${on}" onclick="${fn}" title="${title}">${head}${sub?`<i>${sub}</i>`:''}</button>`;
   const pills=[];
   pills.push(mk(gxT0On(),'0DTE','0d','toggleTenor0()',
@@ -3027,7 +3180,7 @@ function paintTenorPills(){
   // as the Layers chip; the two share GXTEN, so they can never disagree)
   if(Array.isArray(D.nbsTenor)&&D.nbsTenor.length)
     pills.push(mk(gxTenorOn(),'1-7D','≤7d','toggleGxTenor()',
-      '1-7DTE ghost terrain (outline bars, own scale) — the same switch as the 1-7D γ chip under Layers.',tabbed));
+      '1-7DTE ghost terrain (outline bars, own scale) — the same switch as the 1-7D γ chip under Layers.',inert));
   for(const e of gxTenorBands()){
     const b=e.dd||e.bk, dte=_rlDte(e), w=b?_dwalls(b, D.spot||0):null;
     // the old per-band strip chips fold in here: the walls + OI facts ride the tooltip
@@ -3035,7 +3188,7 @@ function paintTenorPills(){
       +(w&&w.cw!=null?` · GWc ${f(w.cw,0)}${w.cItm?' ITM':''}`:'')
       +(w&&w.pw!=null?` · GWp ${f(w.pw,0)}${w.pItm?' ITM':''}`:'')
       +' · resting OI (nightly, magnitude only) — tap to toggle this expiry&#39;s wall lines + dated-γ column';
-    pills.push(mk(tenorExpOn(e.expiry), _dexp(e.expiry), dte>=0?dte+'d':'', `toggleTenorExp('${e.expiry}')`, tt, tabbed));
+    pills.push(mk(tenorExpOn(e.expiry), _dexp(e.expiry), dte>=0?dte+'d':'', `toggleTenorExp('${e.expiry}')`, tt, inert));
   }
   pills.push(mk(tenorAllOn(),'ALL','','toggleTenorAll()','Every tenor surface back on.'));
   el.innerHTML=pills.join('');
@@ -3395,7 +3548,7 @@ function gxFlashLevel(p){
   if(!MAP||!MAP.svg||p==null||!isFinite(p)) return;
   const X=MAPX, y=Math.max(X.padT, Math.min(X.H-X.padB, yFor(p)));
   const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
-  ln.setAttribute('x1',X.x0); ln.setAttribute('x2',X.lineEnd);
+  ln.setAttribute('x1',X.x0); ln.setAttribute('x2',X.canvasR);   /* canvasR===lineEnd in LADDER; clips before the γ gutter in TAPE */
   ln.setAttribute('y1',y.toFixed(1)); ln.setAttribute('y2',y.toFixed(1));
   ln.setAttribute('class','gx-flash');
   MAP.svg.appendChild(ln);
@@ -3440,21 +3593,25 @@ function gxMountZoom(){
 // GXDOCK — the JS twin of the bottom-strip dock registry (see the .gx-vm CSS block):
 // caption x-floor + reserved cluster widths, consumed by gxBuild's #gx-cap, the
 // dated-γ legend anchor, and the JSC dock-collision smoke.
-const GXDOCK={ capX:136, zoomW:120, vmW:110, edge:10, rowH:20, rowB:3 };   // capX ≥ edge+zoomW+6 — the harness asserts it
-const GX_VMS=['chart','table'];
+const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3 };   // capX ≥ edge+zoomW+6 — the harness asserts it; vmW widened for the 3-way TAPE·LADDER·TABLE cluster
+const GX_VMS=['tape','ladder','table'];
 let GXVM=(function(){ try{
   const v=localStorage.getItem('gx.viewMode');
-  if(v==='levels'||v==='profile') return 'chart';   // the three-way era's values: LEVELS folded into the chart, PROFILE = the chart renamed
+  // 07-26 pivot: the price-time TAPE is the new default hero. The strike-ladder era's
+  // CHART (and the three-way era's LEVELS/PROFILE, folded into it) become LADDER, one
+  // tap away — but a fresh or migrated visitor lands on the living price chart.
+  if(v==='chart'||v==='levels'||v==='profile') return 'tape';
   if(GX_VMS.indexOf(v)>=0) return v;
-  return localStorage.getItem('gx.tableMode')==='1'?'table':'chart';   // migrate the old two-way toggle
-}catch(e){ return 'chart'; } })();
+  return localStorage.getItem('gx.tableMode')==='1'?'table':'tape';
+}catch(e){ return 'tape'; } })();
 function gxTableOn(){ return GXVM==='table'; }
+function gxTapeOn(){ return GXVM==='tape'; }
 function gxSetVm(v){
   if(v===GXVM||GX_VMS.indexOf(v)<0) return;
   GXVM=v;
   try{ localStorage.setItem('gx.viewMode', GXVM); }catch(e){}
-  gxApplyVm();
-  if(GXVM==='table'&&MAP){ MAP._tabkey=null; gxTablePaint(); }
+  if(GXVM==='table'){ gxApplyVm(); if(MAP){ MAP._tabkey=null; gxTablePaint(); } }
+  else { buildMap(); gxApplyVm(); }   // tape⇄ladder differ in γ-gutter geometry → a full reframe (table→chart shows the SVG again too)
   gxOverview();          // chart-only chips + pills dim/undim
   gxKickFade();
 }
@@ -3477,7 +3634,7 @@ function gxMountTable(){
   if(!cc.querySelector('.gx-vm')){
     const d=document.createElement('div');
     d.className='gx-vm';
-    d.title='Map view — CHART draws the strike-ladder surface (γ by strike), TABLE lists the same surface as numbers. Zoom + date pills keep working in both views.';
+    d.title='Map view — TAPE draws the living price-over-time chart (price fills the space, γ levels as lines, a slim γ profile at the right), LADDER draws the full strike-ladder surface (γ by strike), TABLE lists it as numbers. Zoom + date pills keep working in every view.';
     d.innerHTML=GX_VMS.map(m=>`<button type="button" class="gx-vmb${GXVM===m?' on':''}" onclick="gxSetVm('${m}')" aria-pressed="${GXVM===m}">${m.toUpperCase()}</button>`).join('');
     cc.appendChild(d);
   }
@@ -3716,7 +3873,7 @@ function gxPtipClash(xNow, tipY, tagY, lineEnd){
 function paintSpotPath(){
   if(!MAP||!MAP.pathG) return;
   const X=MAPX, S=gxSpotPath(), last=S.pts[S.pts.length-1]||null;
-  const fr={t0:S.t0, t1:S.t1, x0:X.x0, x1:X.lineEnd,
+  const fr={t0:S.t0, t1:S.t1, x0:X.x0, x1:X.canvasR,
     yTop:X.padT, yBot:X.H-X.padB, pLow:X.pLow, pHigh:X.pHigh};
   const key=[S.pts.length, last?Math.round(last.p*4):'', Math.floor(Date.now()/60000),
     X.pLow, X.pHigh, S.streaming?1:0].join('|');
@@ -3728,6 +3885,11 @@ function paintSpotPath(){
     const G=gxPathGeom(S.pts, fr);
     const d=G.P.map((q,i)=>`${i?'L':'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ');
     const yB=(X.H-X.padB).toFixed(1);
+    // TAPE: the price path is the CENTERPIECE — a clear area fill, a heavier newest
+    // stroke and a recency-lifted fade. LADDER: the long-standing background whisper
+    // under the hero bars.
+    const areaA=X.tape?'.085':'.035', caseA=X.tape?'.13':'.07',
+      newSw=X.tape?2.6:1.8, histSw=X.tape?1.9:1.5, fGain=X.tape?0.2:0;
     // HISTORY FADE: ≤7 index-buckets of consecutive points (boundaries shared, so
     // the line stays continuous), each at its gxPathFade rung. Index-based, not
     // clock-based: scans land unevenly (~80s-5min) and a cadence gap must not
@@ -3740,11 +3902,11 @@ function paintSpotPath(){
       if(b<=a) continue;
       let sd=`M${G.P[a].x.toFixed(1)} ${G.P[a].y.toFixed(1)}`;
       for(let j=a+1;j<=b;j++) sd+=` L${G.P[j].x.toFixed(1)} ${G.P[j].y.toFixed(1)}`;
-      if(s===K-1) segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity=".07"/>`;
-      segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="${s===K-1?1.8:1.5}" stroke-linejoin="round" opacity="${gxPathFade(s,K)}"/>`;
+      if(s===K-1) segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="${caseA}"/>`;
+      segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="${s===K-1?newSw:histSw}" stroke-linejoin="round" opacity="${Math.min(0.95,gxPathFade(s,K)+fGain).toFixed(3)}"/>`;
     }
     MAP.pathG.innerHTML=
-      `<path d="${d} L${G.xNow.toFixed(1)} ${yB} L${G.P[0].x.toFixed(1)} ${yB} Z" fill="var(--iris)" opacity=".035"/>`
+      `<path d="${d} L${G.xNow.toFixed(1)} ${yB} L${G.P[0].x.toFixed(1)} ${yB} Z" fill="var(--iris)" opacity="${areaA}"/>`
      +segs
      +`<line id="pathLead" stroke="var(--iris)" stroke-width="1.6" opacity=".6"/>`
      +`<circle id="pathHalo" class="gx-phalo" r="7" fill="var(--iris)" opacity=".10"/>`
@@ -3791,9 +3953,9 @@ function gxPathLive(S, fr){
   // ahead of the dot in the path's empty future space; flip left when the day
   // runs out of runway (the chip never leaves the plot rect)
   let lx=x+10;
-  if(lx+tip._w>X.lineEnd-4) lx=x-10-tip._w;
+  if(lx+tip._w>X.canvasR-4) lx=x-10-tip._w;
   const ty=Math.min(X.H-X.padB-12, Math.max(X.padT+12, y));
-  if(gxPtipClash(x, ty, MAP._spotTagLy, X.lineEnd)){ tip.style.display='none'; return; }
+  if(gxPtipClash(x, ty, MAP._spotTagLy, X.canvasR)){ tip.style.display='none'; return; }
   tip.style.display=''; tip.style.left=lx.toFixed(1)+'px'; tip.style.top=ty.toFixed(1)+'px';
 }
 // the chip element itself — HTML sibling of the SVG (real backdrop blur; the
@@ -4214,7 +4376,7 @@ function paintDated(){
   const X=MAPX, d=D.dated,
     bands=((d&&Array.isArray(d.bands))?d.bands.slice(0,4):[])           // 4-band world (H8: two quarterlies)
       .filter(b=>tenorExpOn(String(b&&b.expiry)));                      // tenor date pills (07-25): per-expiry visibility inside the Walls master
-  const on=wallsOn();
+  const on=wallsOn()&&!X.tape;   // TAPE stands the whole wall forest down (the Walls chip dims there) — the far dated lines would run x0→lineEnd UNDER the γ gutter and their tags would collide with the profile_ladder wall stack; the tape's wall story is that stack alone
   const sg=(D.sigma&&isFinite(D.sigma)&&D.sigma>0)?D.sigma:0;
   const key=(on?bands.map(b=>`${b.expiry}|${b.call_wall}|${b.put_wall}|${b.as_of||''}`).join(';'):'off')
     +`#${X.pLow}|${X.pHigh}|${Math.round((D.spot||0)/10)}|${Math.round(sg)}|${D.callCeil}|${D.putFloor}|${X.H}|${X.lineEnd}`;   // spot bucketed to 10pts → σ-labels stay honest, no 60fps churn; H/lineEnd → the nudge re-lays out on resize
@@ -4507,12 +4669,19 @@ function gxOverview(){
   // Layers disclosure (07-22): the switch chips fold behind one chip. "N on" counts
   // only the OFFERED layer switches (never the γ-scale mode, never an absent chip),
   // read straight from the markup so the count can't drift from the chips it hides.
-  // VIEW-MODE gating (07-25): a switch goes inert only in a view that ignores it —
-  // dimmed + disabled, never hidden (the deck must not reshuffle on a mode flip).
-  // TABLE: chart-only switches (lines / ghosts / slabs / rail + the bar scale) dim;
-  // the DEX/OI/Vol pane chips stay live (they govern the table's columns too).
-  const _tOff=c=>(c&&typeof gxTableOn==='function'&&gxTableOn())?c.replace('class="gx-chip gx-toggle"','class="gx-chip gx-toggle gx-tabout" disabled'):c;
-  const swChips=[_tOff(wallsChip),_tOff(tenorChip),_tOff(doiChip),_tOff(railChip),dexChip,oiChip,volChip,_tOff(scaleChip)].filter(Boolean);
+  // VIEW-MODE gating (07-25 / 07-26): a switch goes inert only in a view that ignores
+  // it — dimmed + disabled, never hidden (the deck must not reshuffle on a mode flip).
+  // TABLE: chart-only switches (lines / ghosts / slabs / rail + the bar scale) dim; the
+  // DEX/OI/Vol pane chips stay live (they govern the table's columns too). TAPE: the
+  // whole pane forest — walls, ghost terrain, dated slabs, rail AND the DEX/OI/Vol panes
+  // — is compressed away to the slim 0DTE profile, so every one of them dims; only the
+  // γ-scale (which still shapes that profile) stays live.
+  const _tab=(typeof gxTableOn==='function')&&gxTableOn();
+  const _tap=(typeof gxTapeOn==='function')&&gxTapeOn();
+  const _dim=c=>c?c.replace('class="gx-chip gx-toggle"','class="gx-chip gx-toggle gx-tabout" disabled'):c;
+  const _off=(c,cond)=>(c&&cond)?_dim(c):c;
+  const swChips=[_off(wallsChip,_tab||_tap),_off(tenorChip,_tab||_tap),_off(doiChip,_tab||_tap),_off(railChip,_tab||_tap),
+    _off(dexChip,_tap),_off(oiChip,_tap),_off(volChip,_tap),_off(scaleChip,_tab)].filter(Boolean);
   const lyOpen=gxLayersOpen();
   const lyOn=[wallsChip,tenorChip,doiChip,railChip,dexChip,oiChip,volChip].filter(c=>c&&c.includes('aria-pressed="true"')).length;
   const layersChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLayers()" aria-expanded="${lyOpen}" title="Show / hide the map's layer switches (Walls, 1-7D γ, Dated γ, Hedge Rail, Net DEX, Net OI, Net Vol, γ scale)"><span class="gx-tx"><b>Layers ${lyOpen?'▴':'▾'}</b><i>${lyOn} on · walls + γ layers</i></span></button>`;
