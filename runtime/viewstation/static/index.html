@@ -432,6 +432,14 @@
   .gx-hud .r1{font-family:var(--mono); font-size:12px; font-weight:700; line-height:1.35; color:var(--ink); letter-spacing:.01em}
   .gx-hud .r2{margin-top:3px; font-family:var(--sans); font-size:11.5px; line-height:1.45; color:var(--ink-dim)}
   .gx-hud .r2 b{color:var(--ink-dim); font-weight:700}
+  /* GUIDED READOUT (07-27) — the hand-holding "what to watch" breakdown under the
+     headline: one row per present fact (Now · Ceiling above · Floor below), a faint
+     mono LABEL then a plain sentence a non-trader reads straight down. */
+  .gx-hud .gl{display:flex; flex-direction:column; gap:6px}
+  .gx-hud .r1 + .gl{margin-top:9px; padding-top:8px; border-top:1px solid var(--hairline)}   /* separator only between the headline and the breakdown */
+  .gx-hud .gr{font-family:var(--sans); font-size:12px; line-height:1.4; color:var(--ink)}
+  .gx-hud .gr .k{font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.07em;
+    text-transform:uppercase; color:var(--ink-faint); margin-right:7px}
   .gx-hud .chip{display:inline-block; font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.06em;
     padding:2px 5px; border-radius:4px; margin-right:6px; vertical-align:1px}
   .gx-hud .j{color:var(--jade)} .gx-hud .c{color:var(--coral)} .gx-hud .m{color:var(--ink-faint)}
@@ -2173,7 +2181,13 @@ function computeMAPX(w,h){
   // mode barX0=x0 and canvasR=lineEnd → every consumer stays byte-identical.
   let barX0=x0, canvasR=lineEnd;
   let barMax=Math.min(lineEnd-x0-6, Math.max(160, Math.round((lineEnd-x0)*0.88)));   // 88% of the lane: right of lineEnd is gutter/tag territory the bars never enter
-  if(TAPE){
+  // The slim γ profile is a POWER layer, OFF by default in TAPE (GXTPROF) — so the clean
+  // face gives the whole canvas [x0, lineEnd] to the price path + plain shelves. Only when
+  // it is toggled ON does the gutter carve back in. Same TDZ hazard as GXVM (GXTPROF is a
+  // later `let`) → the same try/catch, defaulting to the profile-off (full-canvas) geometry.
+  let tapeProf=false;
+  try{ tapeProf=TAPE&&typeof GXTPROF!=='undefined'&&GXTPROF; }catch(e){ tapeProf=false; }
+  if(tapeProf){
     const profW=Math.max(84, Math.min(132, Math.round(w*0.13)));   // slim γ-profile gutter
     barX0=lineEnd-profW;
     canvasR=barX0-14;             // 14px of air between the price canvas and the γ profile
@@ -2185,7 +2199,7 @@ function computeMAPX(w,h){
     nR, nRWant, railGutter, railX0, railLaneW,
     nP, nPWant, paneOi, paneVol, paneW, paneGutter, stripX0,
     nX:(paneDex?1:0), nXWant, dexW, dexGutter, dexX0:DEXP.padL,
-    tape:TAPE, barX0, canvasR,
+    tape:TAPE, tapeProf, barX0, canvasR,
     barMax, pHigh:7660, pLow:7430 };
 }
 // Adaptive strike window — frame the live levels (spot·magnet·flip·call-wall) with headroom that
@@ -2313,6 +2327,15 @@ const WMETA={   // eng = the plain-English one-liner that leads the tag's tip ca
   gwp:{side:'p', hue:'var(--coral)', eng:'A price where lots of put bets pile up — acts like a floor price tends to bounce off.',                          dash:''},
 };
 const _wallSw=tier=>tier==="'''"?2.4:tier==="''"?1.7:1.1;   // prime-tier stroke weight — the ' '' ''' ladder as line weight (the gws idiom)
+// PLAIN-WORD LABEL MAP (07-27, TAPE hand-holding) — the on-chart tag TEXT a layperson
+// reads instantly. The technical code + σ move to the tap/hover tooltip; the DEFAULT
+// TAPE face carries these words, and the "Pro labels" toggle (GXPRO) flips back to the
+// codes. `k` is the level id (mid) OR a wall SIDE ('c' ceiling / 'p' floor — side-aware
+// so a call wall above spot always reads "Ceiling", a put wall below "Floor"). Unknown
+// key (e.g. 'ct'/'pt', which the plain face drops in favor of the chop band) → null.
+// The JSC label harness drills this by name. LADDER/TABLE never call it (tape-only).
+const GXPLAIN={ magnet:'Magnet', flip:'Tipping point', spot:'Now', wt:'Headed here', aem:'Likely range today', c:'Ceiling', p:'Floor' };
+function gxPlainLabel(k){ return GXPLAIN[k]||null; }
 // PURE tag-spreader (the JSC smoke harness drills this by name): seat each right-edge
 // tag {y} at its true y, then fan the stack out so no two adjacent label slots (.ly)
 // sit within `gap` — a symmetric two-pass (step down from the top, then relax up from
@@ -2580,7 +2603,7 @@ function gxBuild(){
      <!-- zero axis of the diverging bars (UW layout): − grows left, + grows right.
           UNDER barsG: a floored 1.5px hairline sits exactly at the axis, and the
           axis drawn on top erased it (pressure test 07-12) — bars must win. -->
-     <line id="gxZero" x1="${(X.barX0+X.barMax/2).toFixed(1)}" x2="${(X.barX0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.55" stroke-dasharray="2 3"/>
+     <line id="gxZero" x1="${(X.barX0+X.barMax/2).toFixed(1)}" x2="${(X.barX0+X.barMax/2).toFixed(1)}" y1="${X.padT+2}" y2="${(X.H-X.padB-2).toFixed(1)}" style="stroke:var(--ink-faint);opacity:${X.tape&&!X.tapeProf?0:.55}" stroke-dasharray="2 3"/>
      <!-- NET DEX pane (07-25, Tanuki layout): dedicated lane LEFT of the price axis —
           two series never blended: |naive net| dealer delta as one-hue (iris) magnitude
           bars, the flow-signed twin as the ONLY signed jade/coral series (paintDexPane) -->
@@ -2625,7 +2648,7 @@ function gxBuild(){
      <g id="datedG"></g>
      <g id="datedOILgdG"></g>
      <path id="spotTri" style="fill:var(--iris)"/>
-     <text id="gx-cap" x="${Math.max(X.x0+2,GXDOCK.capX)}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" style="fill:var(--ink-faint);letter-spacing:var(--track-hd)">${X.tape?'Price · session · γ profile':(capTier>0?'Bar = net γ / strike · 0DTE surface':'0DTE net γ')} · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan><tspan id="bar-path" style="fill:var(--ink-faint)"></tspan>${capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':''}</text>
+     <text id="gx-cap" x="${Math.max(X.x0+2,GXDOCK.capX)}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" style="fill:var(--ink-faint);letter-spacing:var(--track-hd)">${X.tape&&!X.tapeProf?'Price · session<tspan id="bar-path" style="fill:var(--ink-faint)"></tspan>':(X.tape?'Price · session · γ profile':(capTier>0?'Bar = net γ / strike · 0DTE surface':'0DTE net γ'))+' · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan><tspan id="bar-path" style="fill:var(--ink-faint)"></tspan>'+(capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':'')}</text>
    </svg>`;
   const q=id=>document.getElementById(id);
   MAP={ washTop:q('washTop'), washBot:q('washBot'), moodTint:q('moodTint'), magCloud:q('magCloud'), axisG:q('axisG'),
@@ -2798,10 +2821,15 @@ function gxPaint(){
   // genuinely ease; the snapped `nbs` field does not).
   const tn=D.nbsTenor, step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
   const tOn=(typeof gxTenorOn==='function'&&gxTenorOn())&&Array.isArray(tn)&&tn.length>0&&!X.tape;   // the slim tape gutter carries only the 0DTE net-γ profile; the ghost terrain stays a LADDER layer
-  const barKey=measured?[GX_ASOF,X.pLow,X.pHigh,MSTRIKES.length,useLog,show0,tOn].join('|'):null;
+  // TAPE with the γ profile toggled OFF (the default): the per-strike bars stand down
+  // entirely — the canvas is the price path + plain shelves alone. LADDER is untouched.
+  const profOff=X.tape&&!X.tapeProf;
+  const barKey=measured?[GX_ASOF,X.pLow,X.pHigh,MSTRIKES.length,useLog,show0,tOn,profOff].join('|'):null;
   const barsSkip=barKey!==null&&barKey===MAP._barkey;
   if(barKey!==null) MAP._barkey=barKey;
   if(!barsSkip){
+    if(profOff){ MAP.bars.forEach(r=>r.setAttribute('width','0')); MAP.tbars.forEach(r=>r.setAttribute('width','0')); }
+    else{
     MAP.bars.forEach((rect,i)=>{ const k=MSTRIKES[i], v=vals[i], L=amp(v),
         pos=measured?(v>=0):(k>=D.flip);   // measured → side+color by SIGN of net γ (pins vs pushes); modeled → by side of flip
       rect.setAttribute('y',(yFor(k)-MBH/2).toFixed(1)); rect.setAttribute('height',MBH.toFixed(1));
@@ -2837,6 +2865,7 @@ function gxPaint(){
       const _tc=posT?'var(--jade)':'var(--coral)';
       rect.style.stroke=_tc; rect.style.fill=_tc;   // ghost: 12% tint inside the outline (fill-opacity set at build)
     });
+    }
   }
   const bt7=document.getElementById('bar-t7');
   if(bt7) bt7.textContent=tOn?(tier>0?' · ▯ 1-7D (own scale)':' · ▯1-7D'):'';
@@ -3014,20 +3043,10 @@ function gxPaint(){
     else if(w&&w.fired&&w.dir&&w.mag) wtNode='aged';
     else if(w&&(w.stance==='fight'||w.stance==='settle')) wtNode=w.stance;
   }
-  // PLAIN-ENGLISH HUD (07-27, TAPE) — the terrain read as one docked line: MOOD · ROOM
-  // · LEAN. Resolved AFTER wtI so the lean carries the live call. Key-gated on the model
-  // id (no per-frame DOM). TAPE only; honest-absent hides it when nothing is present.
-  if(MAP.hudEl){
-    if(X.tape){
-      const hm=gxHudModel({ sign:D.sign, regime:D.regime, ladder:D.ladder, spot:D.spot,
-        wt:wtI?{up:wtI.up, tgt:wtI.tgt, conv:wtI.conv}:null });
-      if(hm.id!==MAP._hudkey){
-        MAP._hudkey=hm.id;
-        if(hm.present){ MAP.hudEl.style.display=''; MAP.hudEl.innerHTML=`<div class="r1">${hm.r1}</div>`+(hm.r2?`<div class="r2">${hm.r2}</div>`:''); }
-        else { MAP.hudEl.style.display='none'; MAP.hudEl.innerHTML=''; }
-      }
-    } else if(MAP._hudkey!=='' ){ MAP._hudkey=''; MAP.hudEl.style.display='none'; MAP.hudEl.innerHTML=''; }
-  }
+  // PLAIN-ENGLISH HUD — the guided terrain read, rendered AFTER the wall/gap block below
+  // so its floor/ceiling lines can carry the air-pocket warnings. gxGapBands stashes its
+  // result in _hudGaps there; the render block past the wall stack reads it.
+  let _hudGaps=[];
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
   const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
   const loY=X.padT+14, hiY=X.H-X.padB-14;
@@ -3044,7 +3063,13 @@ function gxPaint(){
   // wall SELECTION (TAPE only) up front so its tags join the same spread; gxWallStack
   // no longer places them — the pass below owns every gutter slot
   let walls=(X.tape&&MAP.wallG)?gxWallStack(D.ladder, D.spot, {y:yFor, padT:X.padT, padB2:X.H-X.padB, loY, hiY, canvasR:X.canvasR}):[];
-  const spread=mids.concat(walls.filter(w=>!w.edge).map(w=>({id:'w:'+w.id, y:w.y, w}))).sort((a,b)=>a.y-b.y);
+  // DEFAULT TAPE face drops the cryptic cT / pT edge tags — the shaded chop band already
+  // marks that no-trade zone and the one "Tipping point" tag sits at HVL. Their codes ride
+  // the HVL tip. gxGapBands still reads the FULL `walls` so the air-pocket adjacency is
+  // unchanged (byte-identical geometry); only the TAG stack drops them. Pro / LADDER keep them.
+  const plainWalls=X.tape&&!GXPRO;
+  const tagWalls=plainWalls?walls.filter(w=>w.id!=='ct'&&w.id!=='pt'):walls;
+  const spread=mids.concat(tagWalls.filter(w=>!w.edge).map(w=>({id:'w:'+w.id, y:w.y, w}))).sort((a,b)=>a.y-b.y);
   gxSpreadTags(spread, loY, hiY, TAGGAP);
   const lyOf={}; spread.forEach(m=>{ if(m.w) m.w.ly=m.ly; else lyOf[m.id]=m.ly; });
   MAP._tagLys=spread.map(m=>m.ly);   // every in-plot gutter slot — the live price chip hides off ANY of them (gxPathLive)
@@ -3073,11 +3098,15 @@ function gxPaint(){
     R.line.setAttribute('y1',yy.toFixed(1)); R.line.setAttribute('y2',yy.toFixed(1));
     const sd=(D.sigma>0)?((valOf[id]-D.spot)/D.sigma):0;
     R.nm.style.opacity=1; R.nm.setAttribute('y',(ly-8).toFixed(1));
-    // the magnet tag wears the standard notation (MagP+tier / Pin+tier) + a tip card
-    R.nm.textContent=id==='spot'?mm.n:id==='magnet'?`${_magLead||mm.n} ${sig(sd)}`:`${mm.n} ${sig(sd)}`;
-    if(id==='magnet'&&_magTip){ R.nm.dataset.name=_magLead; R.nm.dataset.tip=_magTip; R.nm.style.cursor='pointer'; }
-    // the HVL tag keeps its plain English in the tip card (the ladder panel's wording)
-    if(id==='flip'&&!R.nm.dataset.tip){ R.nm.dataset.name='HVL'; R.nm.dataset.tip='The tipping point: above it the market tends to calm down and drift, below it moves get bigger and faster.'; R.nm.style.cursor='pointer'; }
+    // DEFAULT TAPE face wears PLAIN words (Magnet / Tipping point / Now); the code + σ
+    // step back into the tap/hover tip. Pro labels (GXPRO) and LADDER keep the standard
+    // notation (MagP+tier / Pin+tier · σ) on the tag itself.
+    const plainT=X.tape&&!GXPRO;
+    R.nm.textContent=plainT?gxPlainLabel(id):(id==='spot'?mm.n:id==='magnet'?`${_magLead||mm.n} ${sig(sd)}`:`${mm.n} ${sig(sd)}`);
+    if(id==='magnet'&&_magTip){ R.nm.dataset.name=_magLead; R.nm.dataset.tip=_magTip+(plainT?`¦f:${_magLead} · ${sig(sd)} from price`:''); R.nm.style.cursor='pointer'; }
+    // the HVL tag keeps its plain English in the tip card (the ladder panel's wording) —
+    // in the plain face the code (HVL) + σ live here as the secondary detail
+    if(id==='flip'&&!R.nm.dataset.tip){ R.nm.dataset.name='HVL'; R.nm.dataset.tip='The tipping point: above it the market tends to calm down and drift, below it moves get bigger and faster.'+(plainT?`¦f:HVL · ${sig(sd)} from price`:''); R.nm.style.cursor='pointer'; }
     if(id==='spot'&&!R.nm.dataset.tip){ R.nm.dataset.name='SPOT'; R.nm.dataset.tip='Where the price is right now.'; R.nm.style.cursor='pointer'; }
     R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
     // per-level right-edge strength bar dropped (PASS B): the γ-profile bars already
@@ -3100,6 +3129,7 @@ function gxPaint(){
       // (measured density only), drawn FIRST so the shelves + path read over them. Lights
       // up when price is IN it. Its label parts the shelf lines via the mask (_mkGapS blob).
       const gaps=gxGapBands(walls, D.spot, nbs, {y:yFor, step});
+      _hudGaps=gaps;   // the guided HUD's floor/ceiling lines warn "can fall fast to X" from these
       for(const gp of gaps){
         const yT=Math.min(gp.yHi,gp.yLo), hB=Math.abs(gp.yLo-gp.yHi);
         if(!(hB>4)) continue;
@@ -3113,13 +3143,16 @@ function gxPaint(){
         _mkGapS+=mkCloud('gap'+gp.side, cx-1, cx+1, cy);
       }
       let topN=0, botN=0;
-      for(const w of walls){
+      for(const w of tagWalls){
         const pr=f(w.price,0);
         const pctS=(w.pct!=null&&isFinite(w.pct))?`${w.pct>=0?'+':'−'}${Math.abs(w.pct).toFixed(2)}%`:'';
+        // DEFAULT face: the shelf reads "Ceiling" / "Floor" (side-aware); the code (GWc'' …)
+        // + %-from-price step back into the tip. Pro labels / LADDER keep the notation.
+        const disp=(plainWalls&&gxPlainLabel(w.side))?gxPlainLabel(w.side):w.notation;
         const tip=`${w.eng}¦k:${w.notation}=${pr}`+(pctS?`¦f:${pctS} from spot`:'');   // plain sentence leads; the number + distance follow
         if(w.edge){   // off-frame → a compact edge chip pinned to the top / bottom rail
           const ey=w.edge==='top'?X.padT+8+(topN++*13):X.H-X.padB-6-(botN++*13);
-          wsvg+=`<text x="${X.tagX}" y="${ey.toFixed(1)}" text-anchor="end" font-size="10.5" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="${w.notation} ${pr}" data-tip="${tip}"><tspan style="fill:${w.hue}">${w.edge==='top'?'▲':'▼'} ${w.notation}</tspan> ${pr}</text>`;
+          wsvg+=`<text x="${X.tagX}" y="${ey.toFixed(1)}" text-anchor="end" font-size="10.5" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="${disp} ${pr}" data-tip="${tip}"><tspan style="fill:${w.hue}">${w.edge==='top'?'▲':'▼'} ${disp}</tspan> ${pr}</text>`;
           continue;
         }
         const yS=w.y.toFixed(1), ly=(w.ly!=null?w.ly:w.y);
@@ -3141,12 +3174,29 @@ function gxPaint(){
         if(Math.abs(ly-w.y)>2) wsvg+=`<line x1="${X.canvasR}" y1="${yS}" x2="${(X.tagX-86).toFixed(1)}" y2="${ly.toFixed(1)}" style="stroke:${w.hue};opacity:.3"/>`;
         // unified gutter tag grammar (PASS B): [name] over [price], same offsets +
         // 15px number as the MID / Watchtower tags — the eng context lives in the tip
-        wsvg+=`<text x="${X.tagX}" y="${(ly-8).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);letter-spacing:var(--track-tag);cursor:pointer;${_HALO}" data-name="${w.notation} ${pr}" data-tip="${tip}"><tspan style="fill:${w.hue}">${w.notation}</tspan></text>`;
+        wsvg+=`<text x="${X.tagX}" y="${(ly-8).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);letter-spacing:var(--track-tag);cursor:pointer;${_HALO}" data-name="${disp} ${pr}" data-tip="${tip}"><tspan style="fill:${w.hue}">${disp}</tspan></text>`;
         wsvg+=`<text x="${X.tagX}" y="${(ly+11).toFixed(1)}" text-anchor="end" font-size="15" font-weight="700" font-family="var(--mono)" style="fill:${w.hue};${_HALO}">${pr}</text>`;
       }
     }
     if(wsvg!==MAP._wallkey){ MAP._wallkey=wsvg; MAP.wallG.innerHTML=wsvg; }
     if(MAP._mkGap!==_mkGapS){ MAP._mkGap=_mkGapS; gxMaskPaint(); }   // gap labels displace the shelf lines
+  }
+  // PLAIN-ENGLISH HUD render (TAPE only) — the headline read (r1) over the guided
+  // top-to-bottom "what to watch" breakdown (Now · Ceiling above · Floor below), keyed on
+  // the model id so the 60fps ease frames do zero DOM. Honest-absent: nothing present → hidden.
+  if(MAP.hudEl){
+    if(X.tape){
+      const hm=gxHudModel({ sign:D.sign, regime:D.regime, ladder:D.ladder, spot:D.spot, gaps:_hudGaps,
+        wt:wtI?{up:wtI.up, tgt:wtI.tgt, conv:wtI.conv}:null });
+      if(hm.id!==MAP._hudkey){
+        MAP._hudkey=hm.id;
+        if(hm.present){
+          MAP.hudEl.style.display='';
+          MAP.hudEl.innerHTML=(hm.r1?`<div class="r1">${hm.r1}</div>`:'')
+            +(hm.lines&&hm.lines.length?`<div class="gl">`+hm.lines.map(l=>`<div class="gr"><span class="k">${l.k}</span> ${l.t}</div>`).join('')+`</div>`:'');
+        } else { MAP.hudEl.style.display='none'; MAP.hudEl.innerHTML=''; }
+      }
+    } else if(MAP._hudkey!==''){ MAP._hudkey=''; MAP.hudEl.style.display='none'; MAP.hudEl.innerHTML=''; }
   }
   // spot marker — a triangle pointing in from the axis
   MAP.spotTri.setAttribute('d',`M${X.x0-9},${(sy-6).toFixed(1)} L${X.x0-1},${sy.toFixed(1)} L${X.x0-9},${(sy+6).toFixed(1)} Z`);
@@ -3158,13 +3208,15 @@ function gxPaint(){
     if(wtI){
       const col=`var(--${wtI.up?'jade':'coral'})`, ty=wtI.ty, ly=lyOf.wt??ty;
       MAP.wtTgtL.setAttribute('y1',ty.toFixed(1)); MAP.wtTgtL.setAttribute('y2',ty.toFixed(1)); MAP.wtTgtL.style.stroke='var(--tower)'; MAP.wtTgtL.style.opacity=.38;
-      // plain-English tag (07-22): "NEXT ▼ 28 pts" — the σ figure + conviction moved
-      // into the tip card so the tag reads without the jargon
-      MAP.wtTgtN.setAttribute('y',(ly-8).toFixed(1)); MAP.wtTgtN.textContent=`NEXT ${wtI.up?'▲':'▼'} ${Math.round(wtI.pts)} pts`; MAP.wtTgtN.style.fill=col;
+      // DEFAULT TAPE face: the forward call reads "Headed here" (colour = up/down, the
+      // target price sits on the value line below, the comet draws the vector). Pro labels
+      // / LADDER keep "NEXT ▼ 28 pts". The σ + conviction always live in the tip.
+      const wtPlain=X.tape&&!GXPRO, wtName=wtPlain?'Headed here':`NEXT ${wtI.up?'▲':'▼'} ${Math.round(wtI.pts)} pts`;
+      MAP.wtTgtN.setAttribute('y',(ly-8).toFixed(1)); MAP.wtTgtN.textContent=wtName; MAP.wtTgtN.style.fill=col;
       // the tag's tip card carries the called range — and confesses when it is only
       // the ±0.25σ estimate rather than a range the row actually stated
       MAP.wtTgtN.style.cursor='pointer';
-      MAP.wtTgtN.dataset.name=`NEXT ${wtI.up?'▲':'▼'} ${Math.round(wtI.pts)} pts`;
+      MAP.wtTgtN.dataset.name=wtName;
       MAP.wtTgtN.dataset.tip=`k:target=${Math.round(wtI.tgt)}`
         +`¦f:${wtI.mag.toFixed(2)}σ of a typical day's range${wtI.conv!=null?` · conviction ${Math.round(wtI.conv*100)}%`:''}`
         +`¦f:range ${Math.round(wtI.rLo)}–${Math.round(wtI.rHi)}${wtI.rEst?' · est. ±0.25σ (row stated no range)':' · as called'}`
@@ -3639,9 +3691,11 @@ function paintAem(){
   if(!MAP||!MAP.aemG) return;
   const X=MAPX, a=D.aem;
   const ok=a&&a.em_v===1&&isFinite(a.em_down_pts)&&isFinite(a.em_up_pts)&&isFinite(D.spot);
+  // DEFAULT TAPE face names the envelope "Likely range today"; pro labels / LADDER keep AEM
+  const aemPlain=X.tape&&!(typeof GXPRO!=='undefined'&&GXPRO);
   // spot bucketed to 2pts — the bracket rides spot without 60fps innerHTML churn
   const key=(ok?`${a.em_down_pts}|${a.em_up_pts}|${a.asym_source}|${a.em_quality}|${Math.round((D.spot||0)/2)}`:'off')
-    +`#${X.pLow}|${X.pHigh}|${X.x0}|${X.H}|${X.padT}`;
+    +`#${X.pLow}|${X.pHigh}|${X.x0}|${X.H}|${X.padT}|${aemPlain?'P':''}`;
   if(key===MAP._aemkey) return;
   MAP._aemkey=key;
   if(!ok){ MAP.aemG.innerHTML=''; return; }
@@ -3666,7 +3720,7 @@ function paintAem(){
    +`<line x1="${X.x0}" x2="${(X.x0+10).toFixed(1)}" y1="${yD.toFixed(1)}" y2="${yD.toFixed(1)}" style="stroke:var(--iris);opacity:.6;stroke-width:1.4"/>`
    +`<text x="${(X.x0+15).toFixed(1)}" y="${(yU+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">+${Math.round(a.em_up_pts)} · ${pctT(a.em_up_pct)}</text>`
    +`<text x="${(X.x0+15).toFixed(1)}" y="${(yD+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">−${Math.round(a.em_down_pts)} · ${pctT(a.em_down_pct)}</text>`
-   +`<text x="${(X.x0+15).toFixed(1)}" y="${(ys+3.5).toFixed(1)}" font-size="9.5" font-weight="700" font-family="var(--mono)" letter-spacing=".05em" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="AEM" data-tip="${tip}">AEM</text>`;
+   +`<text x="${(X.x0+15).toFixed(1)}" y="${(ys+3.5).toFixed(1)}" font-size="9.5" font-weight="700" font-family="var(--mono)" letter-spacing=".05em" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="AEM" data-tip="${tip}">${aemPlain?'Likely range today':'AEM'}</text>`;
 }
 // ---- GAMMA PROFILE STATE LADDER (07-25, phase-P): profile_ladder as a compact side
 // panel beside the chart — state word on top (tinted), then the named rungs top to
@@ -3771,7 +3825,7 @@ function gxMountZoom(){
 // hudX/hudGap/hudCap/infoW/infoR govern the TOP strip too: the TAPE plain-English HUD
 // docks top-left (x0+hudX) with a max-width cap so its right edge clears the top-right
 // "?" (right:infoR · infoW wide) by ≥hudGap at every width — the JSC dock smoke asserts it.
-const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3, hudX:10, hudGap:8, hudCap:380, infoW:24, infoR:8 };   // capX ≥ edge+zoomW+6 — the harness asserts it; vmW widened for the 3-way TAPE·LADDER·TABLE cluster
+const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3, hudX:10, hudGap:8, hudCap:400, infoW:24, infoR:8 };   // capX ≥ edge+zoomW+6 — the harness asserts it; vmW widened for the 3-way TAPE·LADDER·TABLE cluster; hudCap holds the guided readout's floor/ceiling sentences (still clamped to the room before the "?" — the JSC dock smoke asserts the clearance)
 const GX_VMS=['tape','ladder','table'];
 let GXVM=(function(){ try{
   const v=localStorage.getItem('gx.viewMode');
@@ -3786,6 +3840,31 @@ let GXVM=(function(){ try{
 }catch(e){ return 'tape'; } })();
 function gxTableOn(){ return GXVM==='table'; }
 function gxTapeOn(){ return GXVM==='tape'; }
+// PRO LABELS (07-27): the DEFAULT TAPE face labels its shelves in plain words (Ceiling /
+// Floor / Magnet / Tipping point / Now / Headed here / Likely range today); flip this on
+// and the right-edge tags read the power-user notation (GWc'' +0.31σ …) instead. Plain is
+// the default — a first-timer must never meet a code. Per-device persisted; TAPE-only
+// (the LADDER/TABLE strike view keeps its own bar-side GW labels, byte-identical).
+let GXPRO=(function(){ try{ return localStorage.getItem('gx.proLabels')==='1'; }catch(e){ return false; } })();
+function gxProOn(){ return GXPRO; }
+function toggleGxPro(){
+  GXPRO=!GXPRO;
+  try{ localStorage.setItem('gx.proLabels', GXPRO?'1':'0'); }catch(e){}
+  if(MAP){ MAP._wallkey=null; MAP._hudkey=null; MAP._aemkey=null; MAP.lvl&&MIDS.forEach(id=>{ const R=MAP.lvl[id]; if(R&&R.nm){ R.nm.dataset.tip=''; R.nm.dataset.name=''; } }); }   // labels re-derive; no reframe (geometry unchanged)
+  gxOverview(); gxPaint(); gxKickFade();
+}
+// TAPE γ-PROFILE (07-27): the slim per-strike net-γ gutter at the right of the price
+// canvas is a POWER tool — OFF by default so the clean TAPE reads as price path + plain
+// shelves + gap + the guided readout, nothing more. Flip it on to reclaim the dense
+// profile. Per-device persisted; only meaningful in TAPE (LADDER draws its full ladder).
+let GXTPROF=(function(){ try{ return localStorage.getItem('gx.tapeProfile')==='1'; }catch(e){ return false; } })();
+function gxTapeProfileOn(){ return GXTPROF; }
+function toggleGxTapeProfile(){
+  GXTPROF=!GXTPROF;
+  try{ localStorage.setItem('gx.tapeProfile', GXTPROF?'1':'0'); }catch(e){}
+  buildMap();   // REFRAME: the profile gutter changes the canvas geometry (canvasR/barX0)
+  gxOverview(); gxKickFade();
+}
 function gxSetVm(v){
   if(v===GXVM||GX_VMS.indexOf(v)<0) return;
   GXVM=v;
@@ -3972,9 +4051,13 @@ function gxAnnotModel(a){
 //   ROOM — nearest named ceiling above + floor below from profile_ladder (gwc/ct/pt/gwp).
 //   LEAN — the Watchtower's live forward call (dir · target · conviction), already
 //          resolved by gxPaint (a.wt = {up, tgt, conv} | null).
-// Returns { present, id, mood, room, lean, r1, r2 }: r1 = the glanceable chip+line,
-// r2 = the faint plain sentence. `id` is the coarse key (rounded — no ease-frame churn).
-// Nothing present → present:false and gxPaint hides the HUD (never a zeros line).
+//   GAPS — the air-pocket bands gxGapBands already found (a.gaps = [{side,target}]),
+//          so the floor/ceiling lines can warn "can fall fast to X" when a break leads
+//          into thin space. Absent → the warning clause simply doesn't appear.
+// Returns { present, id, mood, room, lean, r1, r2, lines }: r1 = the glanceable chip+line
+// (the HEADLINE), `lines` = the guided top-to-bottom "what to watch" breakdown
+// ({k:label, t:sentence}), each honest-absent on its own. `id` is the coarse key
+// (rounded — no ease-frame churn). Nothing present → present:false, gxPaint hides the HUD.
 function gxHudModel(a){
   const fp=v=>Math.round(v).toLocaleString('en-US');
   const sign=a&&a.sign, sp=(a&&a.spot!=null&&isFinite(a.spot))?+a.spot:null;
@@ -3999,14 +4082,9 @@ function gxHudModel(a){
     lean={up:w.up===true||w.dir==='up', tgt:+w.tgt, conv:(w.conv!=null&&isFinite(w.conv))?Math.max(0,Math.min(1,+w.conv)):null};
   const present=!!(mood||room||lean);
   const arrow=lean?(lean.up?'▲':'▼'):'';
-  const parts=[];
-  if(room){
-    if(room.floor!=null&&room.ceil!=null) parts.push(`boxed in ${fp(room.floor)}–${fp(room.ceil)}`);
-    else if(room.ceil!=null) parts.push(`under ${fp(room.ceil)}`);
-    else parts.push(`over ${fp(room.floor)}`);
-  }
-  if(lean) parts.push(`leaning ${arrow} ${lean.up?'up':'down'} to ${fp(lean.tgt)}`+(lean.conv!=null?` · ${Math.round(lean.conv*100)}% sure`:''));
-  let lead=parts.join(' · ');
+  // r1 is the one-line HEADLINE: the mood, then the lean. The room (floor/ceiling numbers)
+  // deliberately does NOT repeat here — the guided lines below own it, so the two never echo.
+  let lead=lean?`leaning ${arrow} ${lean.up?'up':'down'} to ${fp(lean.tgt)}`+(lean.conv!=null?` · ${Math.round(lean.conv*100)}% sure`:''):'';
   if(!lead&&mood) lead=mood.word;   // nothing but a mood → say the mood in words
   const chip=mood?`<span class="chip ${mood.cls}" style="background:color-mix(in srgb,var(${mood.hue}) 16%, transparent)">${mood.chip}</span>`:'';
   const r1=present?(chip+lead):'';
@@ -4024,10 +4102,30 @@ function gxHudModel(a){
     else if(roomS) r2=`${roomS.charAt(0).toUpperCase()+roomS.slice(1)}.`;
     else if(moodS) r2=`${moodS}.`;
   }
+  // GUIDED READOUT — the hand-holding breakdown a first-timer reads top-to-bottom.
+  // "Now" leads with the live price + the mood in plain drift words; then the ceiling
+  // above and the floor below, each with the air-pocket warning when a break leads into
+  // thin space. Present-pieces-only: a line exists only when its data does.
+  const gaps=(a&&Array.isArray(a.gaps))?a.gaps:[];
+  const gapTo=side=>{ for(const g of gaps){ if(g&&g.side===side&&g.target!=null&&isFinite(g.target)) return Math.round(g.target); } return null; };
+  const lines=[];
+  if(sp!=null){
+    const drift=sign==='positive'?' — calm, drifting':sign==='negative'?' — moving fast':'';
+    lines.push({k:'Now', t:`${fp(sp)}${drift}.`});
+  }
+  if(room&&room.ceil!=null){
+    const g=gapTo('ceil');
+    lines.push({k:'Ceiling above', t:`${fp(room.ceil)}`+(g!=null?` — if it breaks, can jump fast to ${fp(g)}`:'')+`.`});
+  }
+  if(room&&room.floor!=null){
+    const g=gapTo('floor');
+    lines.push({k:'Floor below', t:`${fp(room.floor)}`+(g!=null?` — if it breaks, can fall fast to ${fp(g)}`:'')+`.`});
+  }
   const id=[ mood?mood.chip:'',
     room?`${room.floor!=null?Math.round(room.floor):''}/${room.ceil!=null?Math.round(room.ceil):''}`:'',
-    lean?`${lean.up?'u':'d'}${Math.round(lean.tgt)}${lean.conv!=null?Math.round(lean.conv*100):''}`:'' ].join('|');
-  return { present, id, mood, room, lean, r1, r2 };
+    lean?`${lean.up?'u':'d'}${Math.round(lean.tgt)}${lean.conv!=null?Math.round(lean.conv*100):''}`:'',
+    sp!=null?Math.round(sp):'', `${gapTo('ceil')||''}/${gapTo('floor')||''}` ].join('|');
+  return { present, id, mood, room, lean, r1, r2, lines };
 }
 // mounted after each gxBuild (which wipes .gx-chart) — the TAPE terrain read. Docked
 // top-left (clear of the top-right "?"); a max-width cap from GXDOCK keeps it there at
@@ -4930,6 +5028,12 @@ function gxOverview(){
   // offered only when the bars are MEASURED (never a dead switch — the modeled
   // Gaussian is always linear, so the chip would lie there)
   const scaleChip=GX_MEASURED?`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLog()" aria-pressed="${gxLogOn()}" title="Measured γ-bar length scale. Linear (default) = pure net ÷ single max: honest cross-strike magnitude — the ATM strike dominating IS the true 0DTE shape. Log = compresses ~5 decades so the weak side stays readable on concentration days; magnitude ratios are compressed, ordering kept."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>γ scale</b><i>${gxLogOn()?'<span style="color:var(--lantern)">Log</span> · texture':'Linear · true ratio'}</i></span></button>`:'';
+  // TAPE-only display switches (07-27, hand-holding). Labels: Plain (default) names the
+  // shelves in everyday words with the code + σ in the tooltip; Pro puts the notation back
+  // on the tags. γ profile: the slim per-strike net-γ gutter, OFF by default so the clean
+  // TAPE reads as price + plain shelves + gap. Both dim in LADDER / TABLE.
+  const labelsChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxPro()" aria-pressed="${gxProOn()}" title="On-chart labels (TAPE). Plain (default) names the shelves in everyday words — Ceiling · Floor · Magnet · Tipping point · Now · Headed here · Likely range today — and keeps the code + σ in the tap/hover tooltip. Pro puts the power-user notation (GWc'' +0.31σ …) back on the tags."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Labels</b><i>${gxProOn()?'Pro · codes + σ':'<span style="color:var(--iris)">Plain</span> · everyday words'}</i></span></button>`;
+  const profChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxTapeProfile()" aria-pressed="${gxTapeProfileOn()}" title="The slim per-strike γ profile at the right of the TAPE price canvas — a power tool, OFF by default so the clean view is just the price path, its plain-labeled floors / ceilings, the gap zones and the guided readout. Turn it on to read net-γ-by-strike beside the price."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>γ profile</b><i>${gxTapeProfileOn()?'<span style="color:var(--iris)">On</span> · net γ by strike':'Off · clean price view'}</i></span></button>`;
   // freshness pill: quiet "as of" normally; LOUD coral when the feed froze in-session
   const _fr=(typeof gxFreshInfo==='function')?gxFreshInfo():null;
   const freshTag=_fr?` · <span style="${_fr.stale?'color:var(--coral);font-weight:700':'opacity:.75'}">${_fr.txt}</span>`:'';
@@ -4946,16 +5050,22 @@ function gxOverview(){
   // TABLE: chart-only switches (lines / ghosts / slabs / rail + the bar scale) dim; the
   // DEX/OI/Vol pane chips stay live (they govern the table's columns too). TAPE: the
   // whole pane forest — walls, ghost terrain, dated slabs, rail AND the DEX/OI/Vol panes
-  // — is compressed away to the slim 0DTE profile, so every one of them dims; only the
-  // γ-scale (which still shapes that profile) stays live.
+  // — is compressed away, so every one of them dims; the TAPE display switches (Labels,
+  // γ profile) stay live there and dim everywhere else, and γ-scale stays live in TAPE
+  // only while the profile it shapes is actually drawn.
   const _tab=(typeof gxTableOn==='function')&&gxTableOn();
   const _tap=(typeof gxTapeOn==='function')&&gxTapeOn();
+  const _profOn=(typeof gxTapeProfileOn==='function')&&gxTapeProfileOn();
   const _dim=c=>c?c.replace('class="gx-chip gx-toggle"','class="gx-chip gx-toggle gx-tabout" disabled'):c;
   const _off=(c,cond)=>(c&&cond)?_dim(c):c;
-  const swChips=[_off(wallsChip,_tab||_tap),_off(tenorChip,_tab||_tap),_off(doiChip,_tab||_tap),_off(railChip,_tab||_tap),
-    _off(dexChip,_tap),_off(oiChip,_tap),_off(volChip,_tap),_off(scaleChip,_tab)].filter(Boolean);
+  // The TAPE display switches (Labels / γ profile) are TAPE-only tools — shown ONLY in
+  // TAPE so the LADDER / TABLE Layers menu stays byte-identical to before this work.
+  const tapeSwitches=_tap?[labelsChip,profChip]:[];
+  const swChips=tapeSwitches.concat([
+    _off(wallsChip,_tab||_tap),_off(tenorChip,_tab||_tap),_off(doiChip,_tab||_tap),_off(railChip,_tab||_tap),
+    _off(dexChip,_tap),_off(oiChip,_tap),_off(volChip,_tap),_off(scaleChip,_tab||(_tap&&!_profOn))]).filter(Boolean);
   const lyOpen=gxLayersOpen();
-  const lyOn=[wallsChip,tenorChip,doiChip,railChip,dexChip,oiChip,volChip].filter(c=>c&&c.includes('aria-pressed="true"')).length;
+  const lyOn=tapeSwitches.concat([wallsChip,tenorChip,doiChip,railChip,dexChip,oiChip,volChip]).filter(c=>c&&c.includes('aria-pressed="true"')).length;
   const layersChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLayers()" aria-expanded="${lyOpen}" title="Show / hide the map's layer switches (Walls, 1-7D γ, Dated γ, Hedge Rail, Net DEX, Net OI, Net Vol, γ scale)"><span class="gx-tx"><b>Layers ${lyOpen?'▴':'▾'}</b><i>${lyOn} on · walls + γ layers</i></span></button>`;
   el.innerHTML=`${roadChip}
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → MagP ${f(D.magnet,0)} · ${flow}${freshTag}</i></span>
