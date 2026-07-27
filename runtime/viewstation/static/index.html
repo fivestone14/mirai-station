@@ -2306,18 +2306,34 @@ const MIDS = ["magnet","flip","spot"];
 // 07-11 artifact). HVL is already the flip line, so it is not repeated here. No
 // profile_ladder record → nothing draws (the fail-open doctrine; live rows lack it
 // until Monday). Tape-only: the strike LADDER keeps its bar-side GW labels instead.
-const WMETA={
-  gwc:{side:'c', hue:'var(--jade)',  eng:'top call wall',   dash:''},
-  ct: {side:'c', hue:'var(--jade)',  eng:'call transition', dash:'stroke-dasharray="5 4"'},
-  pt: {side:'p', hue:'var(--coral)', eng:'put transition',  dash:'stroke-dasharray="5 4"'},
-  gwp:{side:'p', hue:'var(--coral)', eng:'put support',     dash:''},
+const WMETA={   // eng = the plain-English one-liner that leads the tag's tip card (no options knowledge assumed)
+  gwc:{side:'c', hue:'var(--jade)',  eng:'A price where lots of call bets pile up — acts like a ceiling price tends to stall under.',                     dash:''},
+  ct: {side:'c', hue:'var(--jade)',  eng:'The upper edge of the choppy zone around the tipping point — fakeouts and whipsaws live in here.',              dash:'stroke-dasharray="5 4"'},
+  pt: {side:'p', hue:'var(--coral)', eng:'The lower edge of the choppy zone around the tipping point — fakeouts and whipsaws live in here.',              dash:'stroke-dasharray="5 4"'},
+  gwp:{side:'p', hue:'var(--coral)', eng:'A price where lots of put bets pile up — acts like a floor price tends to bounce off.',                          dash:''},
 };
 const _wallSw=tier=>tier==="'''"?2.4:tier==="''"?1.7:1.1;   // prime-tier stroke weight — the ' '' ''' ladder as line weight (the gws idiom)
-// PURE wall-stack model (the JSC smoke harness drills this by name): from profile_ladder,
-// the nearest ≤2-per-side named levels with a projected y, an off-plot EDGE flag, and —
-// for the in-plot ones — a right-gutter label slot (ly) de-collided against the MID tag
-// slots (`taken`) and each other. Honest-absent: no ladder / wrong version / no spot → [].
-function gxWallStack(L, spot, G, taken){
+// PURE tag-spreader (the JSC smoke harness drills this by name): seat each right-edge
+// tag {y} at its true y, then fan the stack out so no two adjacent label slots (.ly)
+// sit within `gap` — a symmetric two-pass (step down from the top, then relax up from
+// the bottom). When the tags outnumber the room the gap shrinks EVENLY rather than
+// overflowing the frame. Mutates + returns `items`, sorted by y. Honest-absent: [].
+function gxSpreadTags(items, loY, hiY, gap){
+  if(!items||!items.length) return items||[];
+  items.sort((a,b)=>a.y-b.y);
+  const g=Math.min(gap, items.length>1?(hiY-loY)/(items.length-1):gap);
+  let last=loY-g;
+  items.forEach(m=>{ m.ly=Math.min(hiY,Math.max(m.y,last+g)); last=m.ly; });
+  for(let i=items.length-2;i>=0;i--){ if(items[i].ly>items[i+1].ly-g) items[i].ly=Math.max(loY,items[i+1].ly-g); }
+  return items;
+}
+// PURE wall-stack SELECTION (the JSC smoke harness drills this by name): from
+// profile_ladder, the nearest ≤2-per-side named levels with a projected y and an
+// off-plot EDGE flag. The in-plot ones' right-gutter slot (ly) is placed by the unified
+// gxSpreadTags pass alongside the MID + Watchtower tags — one guarantee for every
+// gutter tag, not two systems fighting. Honest-absent: no ladder / wrong version / no
+// spot → [].
+function gxWallStack(L, spot, G){
   if(!L||L.ladder_v!==1||spot==null||!isFinite(spot)) return [];
   const raw=[
     {id:'gwc', notation:'GWc'+(L.gwc_tier||''), price:L.gwc, pct:L.gwc_pct, tier:L.gwc_tier||null},
@@ -2330,23 +2346,7 @@ function gxWallStack(L, spot, G, taken){
   let keep=[];
   for(const s of ['c','p']){ bySide[s].sort((a,b)=>a.dist-b.dist); keep=keep.concat(bySide[s].slice(0,N)); }   // cap N per side, nearest spot wins
   for(const w of keep) w.edge = w.y<G.padT ? 'top' : (w.y>G.padB2 ? 'bot' : null);   // off-plot → edge-chip, never a phantom in-frame line
-  // gutter de-collision: the two-line tag reserves ~RES either side; seat each in-plot
-  // wall at its true y, then step it to the nearer FREE side of any occupied slot; run
-  // out of travel → demote to a bottom edge chip (the existing off-frame idiom).
-  const RES=17, occ=(taken||[]).slice().sort((a,b)=>a-b);   // ~34px min center spacing — the two-line tag's visual extent (now the 11.5/15px MID-tag idiom) + air
-  for(const w of keep.filter(w=>!w.edge).sort((a,b)=>a.y-b.y)){
-    let ly=Math.max(G.loY, Math.min(G.hiY, w.y));
-    for(let g=0; g<40; g++){
-      const clash=occ.find(o=>Math.abs(o-ly)<RES*2); if(clash==null) break;
-      const up=clash-RES*2, dn=clash+RES*2;
-      ly=(Math.abs(up-w.y)<=Math.abs(dn-w.y)&&up>=G.loY)?up:dn;
-      if(ly>G.hiY){ w.edge='bot'; break; }
-      if(ly<G.loY) ly=dn;
-    }
-    if(w.edge) continue;
-    w.ly=ly; occ.push(ly); occ.sort((a,b)=>a-b);
-  }
-  return keep;
+  return keep;   // in-plot walls' gutter slot (ly) is assigned by the unified gxSpreadTags pass
 }
 // PURE air-pocket model (the JSC smoke harness drills this by name): given the
 // gxWallStack levels, spot, the measured per-strike net-γ field (net_by_strike) and a
@@ -2946,16 +2946,17 @@ function gxPaint(){
     // tip bodies never repeat the title (the card's <b> already carries the notation);
     // the tier-inheritance doctrine sentences were CUT 07-19 — they repeated on every
     // hover and belong to the Dictionary tab, not the card
+    const _magEng='The magnet: the price the market is being gently pulled toward.';
     if(pinW&&GW.isMagp(pinW.wall, D.magnet)){
       _magLead='Pin'+pinW.tier;
-      _magTip=`k:held at=${Math.round(pinW.wall.peak)}¦v:price held at the magnet wall`;
+      _magTip=`${_magEng}¦k:held at=${Math.round(pinW.wall.peak)}`;   // Pin = price is sitting on the magnet
     } else if(!clusters&&isFinite(D.spot)&&isFinite(D.magnet)&&Math.abs(D.spot-D.magnet)<=stp){
-      _magLead="Pin''"; _magTip=`k:held at=${Math.round(D.magnet)}¦v:price held at the magnet`;
+      _magLead="Pin''"; _magTip=`${_magEng}¦k:held at=${Math.round(D.magnet)}`;
     } else {
       _magLead='MagP'+magT;
       _magTip=(isFinite(D.spot)&&isFinite(D.magnet))
-        ? `k:spot → magnet=${Math.round(D.spot)} → ${Math.round(D.magnet)}`   // the label maps onto the numbers
-        : `the magnetic pull on price`;
+        ? `${_magEng}¦k:spot → magnet=${Math.round(D.spot)} → ${Math.round(D.magnet)}`   // plain sentence leads; the numbers follow
+        : _magEng;
     }
     _annot=gxAnnotModel({clusters, spot:D.spot, flip:D.flip, ladder:D.ladder});
   }
@@ -3030,14 +3031,23 @@ function gxPaint(){
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
   const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
   const loY=X.padT+14, hiY=X.H-X.padB-14;
-  const arr=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1)
-    .concat(wtI?[{id:'wt',y:wtI.ty}]:[]).sort((a,b)=>a.y-b.y);
-  const onOf={}; arr.forEach(m=>onOf[m.id]=true);
-  const GAP=Math.min(38, arr.length>1?(hiY-loY)/(arr.length-1):38);
-  let last=loY-GAP; arr.forEach(m=>{ m.ly=Math.min(hiY,Math.max(m.y,last+GAP)); last=m.ly; });
-  for(let i=arr.length-2;i>=0;i--){ if(arr[i].ly>arr[i+1].ly-GAP) arr[i].ly=Math.max(loY,arr[i+1].ly-GAP); }
-  const lyOf={}; arr.forEach(m=>lyOf[m.id]=m.ly);
-  MAP._spotTagLy=onOf.spot?lyOf.spot:null;   // the live-edge price chip dedupes against this (gxPathLive)
+  // UNIFIED right-edge de-collision (07-27): the MID levels (magnet/HVL/spot), the
+  // Watchtower target, and — in TAPE — the profile_ladder walls all fan out in ONE
+  // gxSpreadTags pass against a single TAGGAP, so no two gutter tags land within TAGGAP
+  // of each other and each keeps a leader back to its true y. Scales with the tag count
+  // (a 3-tag day and a 7-tag cluster both open cleanly); replaces the old split where
+  // the MID spreader and the wall stack de-collided on their own and could still stack.
+  const TAGGAP=34;
+  const mids=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1)
+    .concat(wtI?[{id:'wt',y:wtI.ty}]:[]);
+  const onOf={}; mids.forEach(m=>onOf[m.id]=true);
+  // wall SELECTION (TAPE only) up front so its tags join the same spread; gxWallStack
+  // no longer places them — the pass below owns every gutter slot
+  let walls=(X.tape&&MAP.wallG)?gxWallStack(D.ladder, D.spot, {y:yFor, padT:X.padT, padB2:X.H-X.padB, loY, hiY, canvasR:X.canvasR}):[];
+  const spread=mids.concat(walls.filter(w=>!w.edge).map(w=>({id:'w:'+w.id, y:w.y, w}))).sort((a,b)=>a.y-b.y);
+  gxSpreadTags(spread, loY, hiY, TAGGAP);
+  const lyOf={}; spread.forEach(m=>{ if(m.w) m.w.ly=m.ly; else lyOf[m.id]=m.ly; });
+  MAP._tagLys=spread.map(m=>m.ly);   // every in-plot gutter slot — the live price chip hides off ANY of them (gxPathLive)
   MIDS.forEach(id=>{ const mm=MMETA[id], yy=yFor(valOf[id]), R=MAP.lvl[id];
     if(!onOf[id]){ R.line.style.opacity=0; R.cas.style.opacity=0; if(R.glow) R.glow.style.opacity=0; R.nm.style.opacity=0; R.vl.style.opacity=0; R.lead.style.opacity=0; return; }
     const ly=lyOf[id];
@@ -3067,7 +3077,8 @@ function gxPaint(){
     R.nm.textContent=id==='spot'?mm.n:id==='magnet'?`${_magLead||mm.n} ${sig(sd)}`:`${mm.n} ${sig(sd)}`;
     if(id==='magnet'&&_magTip){ R.nm.dataset.name=_magLead; R.nm.dataset.tip=_magTip; R.nm.style.cursor='pointer'; }
     // the HVL tag keeps its plain English in the tip card (the ladder panel's wording)
-    if(id==='flip'&&!R.nm.dataset.tip){ R.nm.dataset.name='HVL'; R.nm.dataset.tip='v:high volatility level — the gamma-flip line: above it dips get bought, below it moves snowball'; R.nm.style.cursor='pointer'; }
+    if(id==='flip'&&!R.nm.dataset.tip){ R.nm.dataset.name='HVL'; R.nm.dataset.tip='The tipping point: above it the market tends to calm down and drift, below it moves get bigger and faster.'; R.nm.style.cursor='pointer'; }
+    if(id==='spot'&&!R.nm.dataset.tip){ R.nm.dataset.name='SPOT'; R.nm.dataset.tip='Where the price is right now.'; R.nm.style.cursor='pointer'; }
     R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
     // per-level right-edge strength bar dropped (PASS B): the γ-profile bars already
     // carry net-γ mass by strike and the level line points straight into them — one
@@ -3078,14 +3089,13 @@ function gxPaint(){
   // WALL LEVEL STACK (tape, IMAGE B) — profile_ladder's named levels as full-canvas
   // reference lines, each with a two-line Dictionary tag (the cT / pT no-trade edges are
   // carried by the chop band, not redrawn as their own dashed lines — one encoding),
-  // de-collided against the MID tags just placed above. Ladder mode / absent ladder →
+  // de-collided in the same unified spread as the MID tags above. Ladder mode / absent ladder →
   // the group stays empty (byte-identical LADDER). The tags ride gwBindTips' delegated
   // tooltips (the container is bound once in gxBuild).
   if(MAP.wallG){
     let wsvg='', _mkGapS='';
     if(X.tape){
-      const taken=MIDS.filter(id=>onOf[id]).map(id=>lyOf[id]).concat(wtI&&lyOf.wt!=null?[lyOf.wt]:[]);
-      const walls=gxWallStack(D.ladder, D.spot, {y:yFor, padT:X.padT, padB2:X.H-X.padB, loY, hiY, canvasR:X.canvasR}, taken);
+      // `walls` (selection + spread-assigned ly) was built with the MID tags above
       // GAP / AIR-POCKET bands (07-27) — the thin-γ space between two adjacent shelves
       // (measured density only), drawn FIRST so the shelves + path read over them. Lights
       // up when price is IN it. Its label parts the shelf lines via the mask (_mkGapS blob).
@@ -3099,14 +3109,14 @@ function gxPaint(){
           +`<rect x="${X.x0}" y="${yT.toFixed(1)}" width="${wPl}" height="${hB.toFixed(1)}" fill="url(#gxGapHatch)" opacity="${(.5*a+.2).toFixed(2)}"/>`
           +`<line x1="${X.x0}" x2="${X.canvasR}" y1="${yT.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:var(--iris);opacity:${(.22*a+.05).toFixed(2)};stroke-width:1" stroke-dasharray="4 4"/>`
           +`<line x1="${X.x0}" x2="${X.canvasR}" y1="${(yT+hB).toFixed(1)}" y2="${(yT+hB).toFixed(1)}" style="stroke:var(--iris);opacity:${(.22*a+.05).toFixed(2)};stroke-width:1" stroke-dasharray="4 4"/>`
-          +`<text x="${cx.toFixed(1)}" y="${(cy+3).toFixed(1)}" text-anchor="middle" font-size="10.5" font-family="var(--mono)" style="fill:var(--iris);opacity:${gp.active?'.95':'.75'};${_HALO}">${lbl}</text>`;
+          +`<text x="${cx.toFixed(1)}" y="${(cy+3).toFixed(1)}" text-anchor="middle" font-size="10.5" font-family="var(--mono)" style="fill:var(--iris);opacity:${gp.active?'.95':'.75'};cursor:pointer;${_HALO}" data-name="GAP" data-tip="Empty space with little to stop price, so it moves through here fast.">${lbl}</text>`;
         _mkGapS+=mkCloud('gap'+gp.side, cx-1, cx+1, cy);
       }
       let topN=0, botN=0;
       for(const w of walls){
         const pr=f(w.price,0);
         const pctS=(w.pct!=null&&isFinite(w.pct))?`${w.pct>=0?'+':'−'}${Math.abs(w.pct).toFixed(2)}%`:'';
-        const tip=`k:${w.notation}=${pr}`+(pctS?`¦f:${pctS} from spot`:'')+`¦v:${w.eng} — a gw_vocab level from today's dominant clusters`;
+        const tip=`${w.eng}¦k:${w.notation}=${pr}`+(pctS?`¦f:${pctS} from spot`:'');   // plain sentence leads; the number + distance follow
         if(w.edge){   // off-frame → a compact edge chip pinned to the top / bottom rail
           const ey=w.edge==='top'?X.padT+8+(topN++*13):X.H-X.padB-6-(botN++*13);
           wsvg+=`<text x="${X.tagX}" y="${ey.toFixed(1)}" text-anchor="end" font-size="10.5" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="${w.notation} ${pr}" data-tip="${tip}"><tspan style="fill:${w.hue}">${w.edge==='top'?'▲':'▼'} ${w.notation}</tspan> ${pr}</text>`;
@@ -3640,11 +3650,11 @@ function paintAem(){
   const bx=X.x0+3, dsh=(a.down_share!=null&&isFinite(a.down_share))?Math.round(a.down_share*100):null;
   const pctT=v=>(v!=null&&isFinite(v))?(v*100).toFixed(2)+'%':'—';
   const srcT=a.asym_source==='watchtower'?'the Watchtower&#39;s own called range':'today&#39;s measured downside-vs-upside volatility split';
-  const tip=`k:range=−${Math.round(a.em_down_pts)} / +${Math.round(a.em_up_pts)} pts`
+  const tip=`How far price is likely to travel today — the expected range, leaning toward the riskier side.`
+    +`¦k:range=−${Math.round(a.em_down_pts)} / +${Math.round(a.em_up_pts)} pts`
     +(dsh!=null?`¦f:${dsh}% of the expected range lies below spot`:'')
-    +`¦f:source: ${a.asym_source==='watchtower'?'Watchtower range':'realized vol split'}`
+    +`¦f:source: ${srcT}`
     +(a.em_quality&&a.em_quality!=='ok'?`¦f:EM quality: ${a.em_quality} — the base ruler is not a clean 9:30 straddle read`:'')
-    +`¦v:adaptive expected move — today&#39;s likely range, split unevenly by ${srcT}`
     +`¦n:total width = the option-priced expected move; the split reallocates it, never adds to it`;
   // faint fills say how much of the day's budget lies each side; ticks + labels carry
   // the numbers. All clamped into the frame (edge convention).
@@ -3991,7 +4001,7 @@ function gxHudModel(a){
   const arrow=lean?(lean.up?'▲':'▼'):'';
   const parts=[];
   if(room){
-    if(room.floor!=null&&room.ceil!=null) parts.push(`boxed ${fp(room.floor)}–${fp(room.ceil)}`);
+    if(room.floor!=null&&room.ceil!=null) parts.push(`boxed in ${fp(room.floor)}–${fp(room.ceil)}`);
     else if(room.ceil!=null) parts.push(`under ${fp(room.ceil)}`);
     else parts.push(`over ${fp(room.floor)}`);
   }
@@ -4000,15 +4010,19 @@ function gxHudModel(a){
   if(!lead&&mood) lead=mood.word;   // nothing but a mood → say the mood in words
   const chip=mood?`<span class="chip ${mood.cls}" style="background:color-mix(in srgb,var(${mood.hue}) 16%, transparent)">${mood.chip}</span>`:'';
   const r1=present?(chip+lead):'';
+  // r2 (the faint plain sentence) ADDS the interpretation without re-printing any of
+  // r1's numbers: the mood in words joined to what the room implies. Numberless by
+  // construction — every figure already lives in r1, so the two lines never echo.
   let r2='';
   if(present){
-    const moodS=sign==='positive'?'Slow, sticky day.':sign==='negative'?'Fast, jumpy day.':'';
-    let bodyS='';
-    if(room&&room.floor!=null&&room.ceil!=null) bodyS=`Price is boxed between a floor at <b>${fp(room.floor)}</b> and a ceiling at <b>${fp(room.ceil)}</b>.`;
-    else if(room&&room.ceil!=null) bodyS=`A ceiling sits overhead at <b>${fp(room.ceil)}</b>.`;
-    else if(room&&room.floor!=null) bodyS=`A floor sits below at <b>${fp(room.floor)}</b>.`;
-    const guessS=lean?`Best guess: a drift ${lean.up?'up':'down'} toward <b>${fp(lean.tgt)}</b>.`:'';
-    r2=[moodS,bodyS,guessS].filter(Boolean).join(' ');
+    const moodS=sign==='positive'?'Slow, sticky day':sign==='negative'?'Fast, jumpy day':'';
+    let roomS='';
+    if(room&&room.floor!=null&&room.ceil!=null) roomS=sign==='negative'?'this range may not hold':'likely to stay in this range';
+    else if(room&&room.ceil!=null) roomS='a ceiling caps the upside';
+    else if(room&&room.floor!=null) roomS='a floor holds the downside';
+    if(moodS&&roomS) r2=`${moodS} — ${roomS}.`;
+    else if(roomS) r2=`${roomS.charAt(0).toUpperCase()+roomS.slice(1)}.`;
+    else if(moodS) r2=`${moodS}.`;
   }
   const id=[ mood?mood.chip:'',
     room?`${room.floor!=null?Math.round(room.floor):''}/${room.ceil!=null?Math.round(room.ceil):''}`:'',
@@ -4099,13 +4113,16 @@ function gxPathFade(i, n){
   return +(0.10+0.52*Math.pow(t,1.35)).toFixed(3);
 }
 // gxPtipClash — PURE dedupe rule for the live-edge price chip vs the right-edge
-// SPOT tag. Late in the day the path tip parks beside the tag column and the
-// chip would read as a second SPOT price a few px from the real one. The CHIP
-// hides, never the tag: the SPOT tag is a tenant of the level de-collision
-// ladder (MAGNET/HVL/SPOT/NEXT) — dropping it would leave a hole in that pass's
-// guarantee — while the chip is a courtesy copy with no other reader.
-function gxPtipClash(xNow, tipY, tagY, lineEnd){
-  return xNow>lineEnd-96 && tagY!=null && isFinite(tagY) && Math.abs(tipY-tagY)<24;
+// tag column. Late in the day the path tip parks beside the tags and would garble
+// whichever one shares its y (a second price a few px from the real tag). The CHIP
+// hides, never a tag: the tags are tenants of the de-collision spread (dropping one
+// would leave a hole in that pass's guarantee) while the chip is a courtesy copy with
+// no other reader. `tagYs` = every in-plot gutter slot (MAP._tagLys); a scalar is
+// tolerated for older callers.
+function gxPtipClash(xNow, tipY, tagYs, lineEnd){
+  if(!(xNow>lineEnd-96)) return false;
+  const ys=Array.isArray(tagYs)?tagYs:(tagYs!=null?[tagYs]:[]);
+  return ys.some(ty=>ty!=null&&isFinite(ty)&&Math.abs(tipY-ty)<24);
 }
 // the painter — rides the gxPaint chain. The HISTORY rebuild stays key-gated
 // (the minute bucket advances the now-edge, the ¼-pt bucket tracks the live
@@ -4200,7 +4217,7 @@ function gxPathLive(S, fr){
   let lx=x+10;
   if(lx+tip._w>X.canvasR-4) lx=x-10-tip._w;
   const ty=Math.min(X.H-X.padB-12, Math.max(X.padT+12, y));
-  if(gxPtipClash(x, ty, MAP._spotTagLy, X.canvasR)){ tip.style.display='none'; return; }
+  if(gxPtipClash(x, ty, MAP._tagLys, X.canvasR)){ tip.style.display='none'; return; }
   tip.style.display=''; tip.style.left=lx.toFixed(1)+'px'; tip.style.top=ty.toFixed(1)+'px';
 }
 // the chip element itself — HTML sibling of the SVG (real backdrop blur; the
