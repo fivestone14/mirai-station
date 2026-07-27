@@ -68,6 +68,30 @@ CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-
 
 # --- knobs -------------------------------------------------------------------
 PROMPT_VERSION = "wt-8"     # bump on ANY prompt change — a bump resets the record
+# wt-8 CORRECTIONS (2026-07-26, PRE-FIRST-LIVE): a guarded-generality sweep landed on the
+# wt-8 payload BEFORE its first judged live scan (first live is Monday), so there is NO
+# ledger to reset — the era tag is DELIBERATELY kept "wt-8" (a bump would reset a clock that
+# has never ticked). Guiding principle: the payload must be THOROUGH but generally CORRECT
+# and UNBIASED — the tower reasons over it. Eight changes, each the guarded form: (1) the
+# HOLD-YOUR-THESIS flip triggers drop "magnet crossed spot" (the magnet is demoted terrain,
+# not a structure flip) — gamma-sign and hard-flow flips stay. (2) the whole-day
+# tape_day_average is REMOVED — it cancels toward zero and cannot turn; the tape rule points
+# only at tape_recent_window + book_tilt (the windowed twin inherits the same cancels-to-zero,
+# so a TRUE both-wings/accelerant fix still needs an unsigned gross-gamma detector — not in
+# scope). (3) points_per_sigma is emitted so the tower can convert σ↔points (rest_of_day_range
+# / tape_speed are in points); the pace/range read stays CONVICTION-LOWERING, not a hard
+# stand-down, and is EXEMPT under confirmed-negative gamma with a move underway (an ignition
+# bar must never be suppressed by a pace that has not shown up yet). (4) 0DTE siege verdicts
+# may reach the payload but ONLY behind a ROBUST effort baseline (cold today → dormant). (5)
+# net_gex_binding: a NORMALIZED net/gross-at-spot share (sign-explicit: + PIN, − amplification)
+# in its OWN field, suppressed when the gamma sign is unknown (the tie band already caps
+# conviction). (6) the DEX flow-signed path gains a thin-tape abstain floor (in lefteye_dex)
+# and surfaces its magnitude on its OWN uncalibrated scale; the naive above/below split is
+# DEMOTED to standing-inventory geography, not deleted. (7) the shove "confirmed-move"
+# side-door now requires an OBJECTIVE payload confirmation (a FIRED break / wall breach), not
+# an LLM-defined "confirmed", and the accelerant wording is non-directional. (8) macro_mood is
+# named in one prompt-head line so the overnight read is actually consulted (subordinate to
+# live structure). Record-only stance unchanged; no field gates a trade.
 # wt-8 (2026-07-25): REGIME AS PERMISSION — the 07-22/23 forensic verdict. Every 07-22
 # loss was the same potential-energy put-lean (shove asymmetry + soft_side + magnet,
 # no live force) fired under LONG gamma; the identical play won big under SHORT gamma
@@ -466,12 +490,14 @@ def _shove_words(shove: dict, net_gex: float | None) -> dict | None:
         absorb = "UP" if accel == "DOWN" else "DOWN"
         out["asymmetry"] = (
             f"THE BOOK IS ASYMMETRIC: {accel} is the ACCELERANT side, {absorb} is the ABSORBING "
-            f"side (margins {dn_m:+.2f} down vs {up_m:+.2f} up). {accel} is the CHEAPER "
-            "direction to move IF something pushes — a slope, not a push: it is NO reason on "
-            f"its own to expect a push. Calling {absorb} against confirmed live flow is calling "
+            f"side (margins {dn_m:+.2f} down vs {up_m:+.2f} up). {accel} is the LOWER-RESISTANCE "
+            "side IF something pushes — not a push itself: it is a slope, NO reason on its own to "
+            f"expect a move that way. Calling {absorb} against confirmed live flow is calling "
             "into the side of the book built to swallow the move; calling the accelerant side "
             "with NO live force behind it is the potential-energy lean the 07-22 ledger paid "
-            "for. Under SHORT gamma with a confirmed move this outranks soft_side.")
+            "for. Under SHORT gamma, and ONLY when an OBJECTIVE confirmed move is already in the "
+            "payload (a FIRED break or a wall breach — never your own read of 'confirmed'), this "
+            "outranks soft_side.")
     else:
         out["asymmetry"] = ("SYMMETRIC — the book leans neither way under a shove; no "
                             "asymmetry edge (do not manufacture one).")
@@ -511,8 +537,13 @@ def _speed_words(speed: dict) -> dict | None:
                         + (f"; the biggest 1-min move was {jsign.upper()}" if jsign else ""))
     rod = speed.get("rod_range_pts")
     if rod is not None:
+        # wt-8 (Fix 3): a REST-OF-DAY budget, not a decision-horizon one — it caps the
+        # whole session ahead, so it LOWERS conviction on an oversized call, it does not
+        # veto one (an ignition bar expands the day's own range). Horizon-matching this to
+        # the next-N-min via a share_cum read is a documented FOLLOW-UP, not built here.
         out["rest_of_day_range_pts"] = (f"{rod:.0f} pts of high-low range still expected before "
-                                        "the bell — your magnitude must FIT inside this")
+                                        "the bell — a magnitude beyond this is a LOW-CONVICTION "
+                                        "call, not an impossible one")
     return out or None
 
 
@@ -597,11 +628,13 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     gamma_word = {"positive": "POSITIVE — dealers long gamma, moves get damped (pin-friendly)",
                   "negative": "NEGATIVE — dealers short gamma, moves get amplified (breakout fuel)",
                   }.get(g, "UNKNOWN — the gamma read abstained")
-    # N5 + N6 (wt-5): the WINDOWED tape leads; the whole-day cumulative is labeled a
-    # day average (it never decays and never turns — at 15:30 on a pure-selling
-    # afternoon it still read "+0.03, buyers"); and a FLAT read of either confirms
-    # NOTHING (free confidence on noise was the old failure).
-    flow = gx.get("aggressor_flow")
+    # wt-8 CORRECTION (Fix 2): the whole-day aggressor_flow cumulative (tape_day_average)
+    # is REMOVED. It never decays and never turns — at 15:30 on a pure-selling afternoon it
+    # still read "+0.03, buyers" — and worse it is a single-strike DIFFERENCE that cancels
+    # toward zero on the both-wings/accelerant days it most needs to speak. Only the
+    # windowed twin (flow_recent) rides now, and a FLAT read of it confirms NOTHING.
+    # NOTE: the windowed read inherits the SAME cancels-to-zero on both-wings days — a true
+    # accelerant-day fix needs an UNSIGNED gross-gamma detector, which is NOT in this scope.
     fr = (t.get("gex_theta") or {}).get("flow_recent")
     def _tape_word(x, hard_at):
         if x is None:
@@ -611,7 +644,6 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         return (f"{x:+.2f} ({'buyers' if x > 0 else 'sellers'} hitting the tape"
                 f"{' HARD' if abs(x) >= hard_at else ''})")
     flow_recent_word = _tape_word(fr, 0.5)
-    flow_word = _tape_word(flow, 0.6) or "no live flow read"
     # GRAVITY MOTION (the map as film, not photo) — the diary's gex_motion diff
     # (wall melt / magnet walk / flip creep / grip slope / soft side), attached
     # when this scan produced one. Defensive value first: "the fade leans on a
@@ -773,6 +805,25 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # missing/mangled read is ABSENT from the payload, never a zero (payload hygiene).
     shove_words = _shove_words(gx.get("shove") or {}, gx.get("net_gex"))
     speed_words = _speed_words(t.get("speedometer") or {})
+    # NET-GEX BINDING STRENGTH (wt-8, Fix 5): the raw net $B is NON-generalizing — a "big"
+    # morning value is "thin" by 15:50. net/gross at spot is a RELATIVE, sign-explicit share:
+    # how one-signed the gamma mass at spot is (+ → strong PIN, trust the pin; − → strong
+    # AMPLIFICATION, trust continuation — never a bare "trust the regime"). Its OWN field so it
+    # survives when shove margins are None. SUPPRESSED when the gamma sign is unknown: in the
+    # tie band the regime already reads "uncertain" (g == "unknown") and the prompt already
+    # caps conviction there — don't re-cap it. Fail-open on a missing/zero gross.
+    binding_word = None
+    _net0, _gross0 = gx.get("net_gex"), gx.get("gross_gex")
+    if g in ("positive", "negative") and _net0 is not None and _gross0 and _gross0 > 0:
+        _share = _net0 / _gross0
+        if _share >= 0:
+            binding_word = (f"{_share:+.0%} of the gamma mass at spot nets LONG — a "
+                            "PIN this strong BINDS price here: trust the pin/fade, scale "
+                            "conviction UP toward the pin, DOWN as this share nears 0")
+        else:
+            binding_word = (f"{_share:+.0%} of the gamma mass at spot nets SHORT — "
+                            "AMPLIFICATION this strong FEEDS the move: trust continuation, "
+                            "scale conviction UP with the tape, DOWN as this share nears 0")
     # FLIP TRANSITION BAND (wt-8 doctrine gap): the doctrine marks the flip's
     # doorstep as the chop zone — the regime is IN TRANSITION there, and the
     # biggest whipsaw scans are exactly the ones where spot straddles the flip.
@@ -823,11 +874,20 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # ABSENT from the payload, never a zero (payload hygiene).
     sg = t.get("siege") or {}
     siege_rows = []
+    # wt-8 (Fix 4): 0DTE walls HUG spot, so the siege box tags such a touch near_spot and
+    # (today) suppresses its verdict as an ATM artifact. Admit a near-spot verdict ONLY once
+    # the effort baseline is ROBUST (21 accrued days) — an immature percentile on a
+    # spot-hugging wall is noise wearing a verdict. Non-near-spot verdicts ride as before.
+    # DORMANT: the baseline is cold today AND the siege engine only emits near-spot verdicts
+    # under a robust baseline (a deferred change in that package), so this is no live change.
+    siege_baseline_robust = sg.get("baseline") == "robust"
     if sg.get("health") == "OK" and not sg.get("saturated"):
         for tw in (sg.get("towers") or []):
             v = tw.get("verdict")
             if v not in ("SIEGE", "QUIET"):
                 continue
+            if tw.get("near_spot") and not siege_baseline_robust:
+                continue                # never forward a spot-hugging verdict pre-robust
             pct = tw.get("effort_pct")
             word = (f"SIEGE — HEAVY underlying volume at this wall touch"
                     f" (effort {pct:.0f}th pct): REVERSED SIGN — heavy volume at a "
@@ -860,31 +920,57 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     dex_block: dict = {}
     if dx.get("net_dex_total") is not None:
         _dx_fs = dx.get("dex_flow_signed")
+        # wt-8 (Fix 6c): the naive above/below split is DEMOTED, not deleted — kept as
+        # standing-inventory GEOGRAPHY (where the delta mass sits), and the naive SIGN rides
+        # LAST, de-emphasized, since it is structurally LONG by construction (a constant, not
+        # a live read). The flow-signed twin — whose sign is actually alive — leads the sign
+        # reads now, magnitude on its OWN uncalibrated scale (Fix 6b: NOT the naive $bn
+        # formatter — a different, ~100×-swingier scale, so a distinct unit and caveat).
+        _geo = {k: v for k, v in {
+            "delta_mass_above_spot_share": dx.get("dex_above_spot"),
+            "delta_mass_below_spot_share": dx.get("dex_below_spot"),
+        }.items() if v is not None}
         dex_block = {k: v for k, v in {
-            "net_dealer_delta": dx.get("dex_word"),
             "magnitude": (f"≈ ${dx['net_dex_total'] / 1e9:.1f}bn underlying-equivalent "
                           "— UNCALIBRATED: no graded baseline yet, 'large' is not "
                           "defined this era"),
-            "delta_mass_above_spot_share": dx.get("dex_above_spot"),
-            "delta_mass_below_spot_share": dx.get("dex_below_spot"),
-            **({"flow_signed_read": dx.get("dex_flow_word")}
+            "standing_inventory_geography": ({**_geo,
+                "note": "WHERE standing dealer-delta inventory sits vs spot — geography, "
+                        "not a live directional call"} if _geo else None),
+            **({"flow_signed_read": dx.get("dex_flow_word"),
+                "flow_signed_magnitude": (
+                    f"≈ {dx['dex_flow_signed'] / 1e6:+.0f}M underlying-δ on TODAY'S tape "
+                    "only — UNCALIBRATED and on a DIFFERENT scale than the naive net above "
+                    "(it swings ~100× intraday); read the SIGN and its move, not the level")}
                if _dx_fs is not None else {}),
+            # DEMOTED: the naive sign is the weakest part of this read, so it rides last
+            "naive_net_sign": dx.get("dex_word"),
             "note": "DEX = the direction side: net dealer delta still to re-hedge — "
                     "mechanical pressure, the strongest DIRECTIONAL read in the stack "
                     "when large. ADVISORY THIS ERA: record-only and ungraded — context "
-                    "beside the gamma map, never a gate. The naive sign shares the "
+                    "beside the gamma map, never a gate. The naive_net_sign shares the "
                     "gamma map's assumed-sign caveat (flow-inferred sign disagrees on "
-                    "~44% of strikes) and its net is structurally LONG by construction.",
+                    "~44% of strikes) and is structurally LONG by construction — weigh the "
+                    "flow_signed_read and the geography, not that sign.",
         }.items() if v is not None}
     payload = {
         "task": "You are the Watchtower: forecast where 0DTE SPX goes over the next hour — "
                 "the gamma sign is the PERMISSION SLIP: fade/pin plays under LONG gamma, "
                 "continuation allowed under SHORT gamma, stand down when it is unknown.",
         "clock": {"minutes_since_open": mins_open, "minutes_to_close": mins_close},
+        # wt-8 (Fix 3a): the σ↔points ruler. Read at the top of this builder and never
+        # emitted before — the tower needs it to reconcile σ-targets with the point-range
+        # facts (tape.rest_of_day_range_pts, tape_speed) it is already handed. This is a
+        # SCALE, not an absolute index level (the no-absolute-levels hygiene rule holds:
+        # 1σ ≈ points_per_sigma index points; reason in σ, never anchor to the level).
+        "scale": {"points_per_sigma": round(sigma, 2) if sigma else None},
         "dealer_map_gravity": {
             # wt-8: the PERMISSION SLIP leads the block — the sign decides which
             # plays exist at all before the magnet says where the pin sits
             "gamma_sign_at_spot": gamma_word,
+            # wt-8 (Fix 5): how HARD that sign binds — the normalized net/gross share at
+            # spot, its OWN field (survives when shove is None), absent in the tie band
+            **({"net_gex_binding": binding_word} if binding_word else {}),
             "pull_toward_magnet": pull_word,
             "magnet_sigma_from_spot": magnet_sd,
             **({"magnet_contested": contested_word} if contested_word else {}),
@@ -912,12 +998,9 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             "vanna_sign": gx.get("vex_sign"), "charm_sign": gx.get("cex_sign"),
             **({"charm_drift_into_close": charm_drift} if charm_drift else {}),
         },
-        # N5 (wt-5): the windowed tape leads; the day average is explicitly labeled one
-        "live_flow": {
-            **({"tape_recent_window": flow_recent_word} if flow_recent_word else {}),
-            "tape_day_average": flow_word + " — WHOLE-DAY average: it never decays and "
-                                            "cannot show a turn; prefer tape_recent_window",
-        },
+        # wt-8 (Fix 2): only the WINDOWED tape rides — the whole-day cumulative is gone.
+        # Attached only when it carries a read (payload hygiene: a cold window ≠ zero flow).
+        **({"live_flow": {"tape_recent_window": flow_recent_word}} if flow_recent_word else {}),
         # N2 (wt-5): the event clock — the biggest eruption predictor, finally visible
         **({"scheduled_event": event_clock} if event_clock else {}),
         # N1/N16 (wt-5): containment facts — a broken fence and an open road are the
@@ -1029,6 +1112,13 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "backtest); it is NOT a directional default at any hour under any regime. Use it to "
         "place pins and fades, never to pick a drift direction. If magnet_contested is "
         "present, the field has TWO pins — expect chop between them, not a clean run.\n"
+        "- BINDING STRENGTH IS A CONVICTION SCALER (wt-8). net_gex_binding is the NORMALIZED "
+        "net/gross gamma share at spot — how one-signed the book is, comparable across days and "
+        "hours where the raw $ is not. It does NOT pick a direction; it scales conviction on the "
+        "direction the gamma sign already permits: a strongly POSITIVE share is a hard PIN (size "
+        "the fade/pin up), a strongly NEGATIVE share is real AMPLIFICATION (size the continuation "
+        "up), and a share near 0 is a thin book — low conviction either way. Absent in the tie "
+        "band (the sign is already unknown there).\n"
         "- WALL DOMINANCE DECIDES WHICH WALLS MATTER — LABELS DON'T (GW vocab). "
         "wall_cluster_above / wall_cluster_below carry the nearest measured wall cluster "
         "each side: its span in σ and its PRIME TIER — ' minor, '' significant, ''' "
@@ -1063,23 +1153,31 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "you which side is CHEAPER to move IF pushed — what dealer gamma would BECOME under a "
         "shove each way. It measures RESISTANCE, NOT live pushing, and it confirms NOTHING "
         "alone: slope is potential energy, and potential energy without a live force (tape, "
-        "flow, a FIRED break) is not a trade. Under SHORT gamma with a confirmed move, the "
-        "ACCELERANT side sharpens the continuation read and outranks soft_side and the magnet; "
-        "under LONG gamma the whole book damps and the slope is NOT permission to bet. Never "
+        "flow, a FIRED break) is not a trade. Under SHORT gamma AND an OBJECTIVE confirmed move "
+        "ALREADY IN THE PAYLOAD (a FIRED break_lens_head_c, a wall_breach_event, or an OPEN "
+        "containment_road — never your own read of 'confirmed'), the ACCELERANT side sharpens "
+        "the continuation read and outranks soft_side and the magnet; under LONG gamma, or with "
+        "no such objective confirmation, the slope is NOT permission to bet. Never "
         "fire a direction on terrain_asymmetry + soft_side + magnet alone — that is the exact "
         "lean the 07-22 ledger paid for.\n"
         "- SPEED AND OWNERSHIP (m8). tape.tape_speed says how violent the tape is and WHO "
         "OWNS THE MOTION (semivariance). A selling-dominated tape on a HOT pace is a tape "
-        "with a side — do not call against it on structure alone. rest_of_day_range_pts is "
-        "your magnitude ceiling: never predict a move the day has no room left to make.\n"
+        "with a side — do not call against it on structure alone. pace and rest_of_day_range_pts "
+        "are CONVICTION-LOWERING guidance, NOT a hard stand-down: a SLOW pace or a small "
+        "rest-of-day budget shrinks your magnitude and conviction, it does not veto the call. "
+        "EXEMPTION (wt-8): under CONFIRMED-NEGATIVE gamma with a move already underway "
+        "(a FIRED break, a wall breach, a HOT one-sided tape), do NOT let a not-yet-elevated "
+        "pace suppress the continuation — the pace often shows up AFTER the ignition bar, and "
+        "waiting for it forfeits the move. Convert with scale.points_per_sigma when comparing a "
+        "σ-magnitude to a point-range.\n"
         "- UNDER LONG GAMMA the only directional play is the FADE AT AN EDGE: the tape "
         "stretched into a NEAR wall or range edge with a turn bar and flow rolling over. No "
         "edge, no fade — then the honest answer is pin/settle (fired=false, stance=settle) or "
         "stand down. Never manufacture a drift call from structure alone. (Under short gamma "
         "this rule is void — continuation is allowed there.)\n"
         "- CONFIRM WITH THE TAPE — but a FLAT tape confirms NOTHING. live_flow.tape_recent_window "
-        "(the last minutes) outranks tape_day_average (a whole-day cumulative that cannot show a "
-        "turn). order_flow.book_tilt and an active break_lens_head_c either confirm or contradict "
+        "(the last minutes of options aggression) is the live tape read; order_flow.book_tilt "
+        "(the equity order book) and an active break_lens_head_c either confirm or contradict "
         "the pull. Any read marked FLAT adds zero confidence to any thesis. NEVER fade into a "
         "confirmed break; be wary of calling against strong book flow. All attached only when "
         "present; absence ≠ zero.\n"
@@ -1094,21 +1192,29 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "is attackers pressing, not defenders absorbing; the intuitive \"absorption = "
         "strength\" read is the WRONG sign on this tape. QUIET means expect the wall to "
         "HOLD. This is containment evidence about THAT WALL only — it sharpens or weakens a "
-        "pin/break read at that level; it is NOT a standalone direction. A SIEGE verdict "
-        "agrees with a cocked/fired break on the same side; a QUIET wall makes a pin at it "
-        "safer. Absent when the feed is degraded or no touch carried a verdict.\n"
+        "pin/break read at that level; it is NEVER a standalone BREAK direction. It is "
+        "SUBORDINATE to the gamma regime: under LONG gamma a pin can HOLD despite heavy "
+        "effort (dealer hedging damps the attack), so a SIEGE verdict there lowers the pin's "
+        "safety but does not license a breakout call. A SIEGE verdict agrees with a "
+        "cocked/fired break on the same side; a QUIET wall makes a pin at it safer. Absent "
+        "when the feed is degraded or no touch carried a verdict.\n"
         "- DEX IS THE DIRECTION SIDE — ADVISORY ONLY THIS ERA. dealer_delta_dex is the net "
         "dealer DELTA still to re-hedge: mechanical pressure, the strongest DIRECTIONAL read "
         "in the stack when large — but here it is UNGRADED and record-only. Treat it as "
         "context that sharpens a read the gamma sign and the tape already support; NEVER a "
-        "standalone direction, never a reason to override the gamma-sign defaults. Its naive "
-        "net is structurally LONG (the same assumed-sign convention as the gamma map, wrong "
-        "on ~44% of strikes per the flow-inferred cross-check) — weigh the above/below split "
-        "and the flow_signed_read, not the naive sign.\n"
+        "standalone direction, never a reason to override the gamma-sign defaults. Its "
+        "naive_net_sign is structurally LONG (the same assumed-sign convention as the gamma "
+        "map, wrong on ~44% of strikes per the flow-inferred cross-check) — weigh the "
+        "standing_inventory_geography split and the flow_signed_read (whose sign is actually "
+        "alive), not the naive sign.\n"
         "- READ THE MAP IN TENOR ORDER: today's 0DTE book first (the walls and magnet — they are "
         "what dealers re-balance TODAY), the structural_*_wall band walls second (multi-day "
         "terrain), dated_structure last (far monthly/quarter-end OI shelves — react to them only "
         "when spot is near one; they are not targets and their sign is unknown).\n"
+        "- MACRO MOOD IS OVERNIGHT CONTEXT, NOT A TRIGGER (wt-8). day_context.macro_mood is the "
+        "morning brief's overnight sentiment read (direction + confidence). Let it break a tie "
+        "and set a mild prior; it is SUBORDINATE to live structure and the gamma sign, a "
+        "scheduled_event outranks it, and it is never a reason to fire on its own.\n"
         "- direction: \"call\" = you expect price UP over the horizon, \"put\" = DOWN. Set "
         "fired=false (direction null) when you have no directional edge — but ALWAYS still "
         "answer stance (a two-sided scene that will stay pinned is settle, not no_read).\n"
@@ -1116,7 +1222,7 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "working_sigma_since = how far price has since moved in that call's favor (negative = it "
         "is failing). day_context.session shows the trend since the open. Keep your DIRECTION "
         "across scans and adjust magnitude/conviction on small moves. FLIP direction only if the "
-        "STRUCTURE changed (magnet crossed spot, gamma sign flipped, flow flipped hard) OR your "
+        "STRUCTURE changed (gamma sign flipped, flow flipped hard) OR your "
         "recent same-way calls are persistently failing (working_sigma_since staying negative) — "
         "then the map is telling you your read was wrong, so switch to the side that is working.\n"
         "- magnitude_sigma: expected move in your direction over horizon_min. range_sigma: "

@@ -189,6 +189,8 @@ def dex_views(contracts: list[dict], spot: float,
     fs_tot: Optional[float] = None
     fs_by_strike: dict[float, float] = {}
     fs_n = 0
+    fs_q = 0.0            # gross contracts tagged (the abstain-floor numerator)
+    fs_gross_usd = 0.0    # gross dollar-delta notional tagged (the belt floor)
     for c in contracts:
         bq, sq = c.get("flow_buy_q"), c.get("flow_sell_q")
         k = c.get("strike")
@@ -203,6 +205,19 @@ def dex_views(contracts: list[dict], spot: float,
         fs_tot = (fs_tot or 0.0) + fs
         fs_by_strike[float(k)] = fs_by_strike.get(float(k), 0.0) + fs
         fs_n += 1
+        fs_q += float(bq) + float(sq)
+        fs_gross_usd += (float(bq) + float(sq)) * abs(d) * 100.0 * spot
+
+    # THIN-TAPE ABSTAIN FLOOR (wt-8) — the flow-signed path had no floor, so a bucket of a
+    # few ticks could print a ±number the tower reads as a live signal. Mirror the gex_box
+    # marginal-window floors: below TAPE_MIN_INTERVAL_CONTRACTS contracts (the unit-matched
+    # primary gate) OR FLOW_RECENT_MIN_GROSS in gross dollar-delta notional (a coarse belt —
+    # the constant is a premium-$ floor there, applied here to the delta-$ gross), the read
+    # ABSTAINS: word-only None, never a fabricated magnitude (the no-ticks doctrine below,
+    # extended to a thin tape). Cleared here so every flow-signed output falls through to None.
+    if fs_tot is None or fs_q < _gxb.TAPE_MIN_INTERVAL_CONTRACTS \
+            or fs_gross_usd < _gxb.FLOW_RECENT_MIN_GROSS:
+        fs_tot, fs_by_strike, fs_n = None, {}, 0
 
     lo, hi = spot * (1.0 - _gxb.NBS_WINDOW), spot * (1.0 + _gxb.NBS_WINDOW)
     denom = above + below

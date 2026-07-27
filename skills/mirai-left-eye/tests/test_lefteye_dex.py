@@ -181,6 +181,19 @@ class TestFlowSigned:
         assert v["dex_flow_word"] is None
         assert v["dex_flow_n_strikes"] is None
 
+    def test_thin_tape_abstains_below_the_floor(self):
+        # wt-8: a bucket below TAPE_MIN_INTERVAL_CONTRACTS is too thin to sign — the whole
+        # flow-signed surface abstains (word-only None), never a ±number from a few ticks
+        tape = _c(5000, "call", dte=0, oi=0, vol=0, flow_buy_q=10, flow_sell_q=5)  # 15 < 250
+        v = dx.dex_views(_chain() + [tape], SPOT)
+        assert v["dex_flow_signed"] is None
+        assert v["dex_flow_word"] is None
+        assert v["dex_flow_by_strike"] is None
+        assert v["dex_flow_n_strikes"] is None
+        # one tick over the floor DOES sign (the guard is a floor, not a mute)
+        fat = _c(5000, "call", dte=0, oi=0, vol=0, flow_buy_q=300, flow_sell_q=0)  # 300 > 250
+        assert dx.dex_views(_chain() + [fat], SPOT)["dex_flow_signed"] is not None
+
     def test_naive_surface_untouched_by_annotations(self):
         plain = dx.dex_views(_chain(), SPOT)
         tape = _c(5000, "call", dte=0, oi=0, vol=0, flow_buy_q=1000, flow_sell_q=0)
@@ -203,13 +216,17 @@ class TestWatchtowerDexBlock:
         rec = dx.dex_views(_chain(), SPOT)
         p = wt.build_payload(_row(rec))
         blk = p["dealer_delta_dex"]
-        assert blk["net_dealer_delta"].startswith("dealers_need_to_SELL_on_rallies")
         assert "bn underlying-equivalent" in blk["magnitude"]
         assert "UNCALIBRATED" in blk["magnitude"]
-        assert blk["delta_mass_above_spot_share"] == rec["dex_above_spot"]
+        # wt-8 Fix 6c: the naive sign is DEMOTED (renamed, rides last) and the above/below
+        # split is kept as standing-inventory GEOGRAPHY, not a top-level directional field
+        assert blk["naive_net_sign"].startswith("dealers_need_to_SELL_on_rallies")
+        geo = blk["standing_inventory_geography"]
+        assert geo["delta_mass_above_spot_share"] == rec["dex_above_spot"]
+        assert "geography" in geo["note"]
         assert "ADVISORY THIS ERA" in blk["note"] and "~44%" in blk["note"]
-        # no tape annotation this row → the flow-signed line stays absent
-        assert "flow_signed_read" not in blk
+        # no tape annotation this row → the flow-signed lines stay absent
+        assert "flow_signed_read" not in blk and "flow_signed_magnitude" not in blk
         # payload hygiene: no absolute strike levels leak through the block
         import json as _json
         assert "5000" not in _json.dumps(blk)
@@ -219,6 +236,9 @@ class TestWatchtowerDexBlock:
         rec = dx.dex_views(_chain() + [tape], SPOT)
         blk = wt.build_payload(_row(rec))["dealer_delta_dex"]
         assert blk["flow_signed_read"].startswith("flow-signed")
+        # wt-8 Fix 6b: the magnitude rides on its OWN uncalibrated scale (M, not the naive $bn)
+        assert "underlying-δ" in blk["flow_signed_magnitude"]
+        assert "UNCALIBRATED" in blk["flow_signed_magnitude"]
 
     def test_absent_read_is_absent_never_null(self):
         assert "dealer_delta_dex" not in wt.build_payload(_row())

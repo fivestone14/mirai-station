@@ -347,26 +347,29 @@ def test_event_clock_countdown_and_blind_calendar(monkeypatch):
 
 
 def test_flat_tape_confirms_nothing(monkeypatch):
-    # N6: a dead-flat options tape and a dead-flat order book must both read FLAT —
-    # never "buyers pressing" — and say they confirm nothing
+    # N6 (wt-8 Fix 2): a dead-flat WINDOWED options tape and a dead-flat order book must
+    # both read FLAT — never "buyers pressing" — and say they confirm nothing
     t = _telemetry()
-    t["gex_views"]["aggressor_flow"] = 0.0
+    t["gex_theta"] = {"flow_recent": 0.0}
     t["lob_flow"] = {"tilt": 0.004, "regime": "balanced", "tape_trades": 100}
     p = wt.build_payload(t)
-    assert "FLAT" in p["live_flow"]["tape_day_average"]
-    assert "NOTHING" in p["live_flow"]["tape_day_average"]
+    assert "FLAT" in p["live_flow"]["tape_recent_window"]
+    assert "NOTHING" in p["live_flow"]["tape_recent_window"]
     assert "FLAT" in p["order_flow"]["book_tilt"]
 
 
-def test_windowed_tape_leads_the_flow_block():
-    # N5: when the 4-30 min windowed read exists it leads; the whole-day number is
-    # explicitly labeled a day average that cannot show a turn
+def test_windowed_tape_is_the_only_flow_read(monkeypatch):
+    # wt-8 Fix 2: only the windowed read rides; the whole-day cumulative is gone entirely
     t = _telemetry()
     t["gex_theta"] = {"flow_recent": -0.62}
     p = wt.build_payload(t)
     assert p["live_flow"]["tape_recent_window"].startswith("-0.62")
     assert "sellers" in p["live_flow"]["tape_recent_window"]
-    assert "WHOLE-DAY average" in p["live_flow"]["tape_day_average"]
+    assert "tape_day_average" not in p["live_flow"]
+    # a cold window ≠ zero flow: the whole live_flow block stays absent
+    t2 = _telemetry()
+    t2["gex_theta"] = {"flow_recent": None}
+    assert "live_flow" not in wt.build_payload(t2)
 
 
 def test_magnet_demoted_to_location_under_every_regime():
@@ -380,6 +383,66 @@ def test_magnet_demoted_to_location_under_every_regime():
         assert "LOCATION/late-day pin target" in w and "~33%" in w
         assert "NOT a directional default" in w
         assert "base case" not in w and "drift" not in w
+
+
+def test_scale_ruler_emitted_for_sigma_point_conversion():
+    # wt-8 Fix 3a: points_per_sigma rides so the tower can reconcile σ-targets with the
+    # point-range facts; it is a SCALE, not an absolute level (no index level leaks)
+    p = wt.build_payload(_telemetry())
+    assert p["scale"]["points_per_sigma"] == 106.9
+    text = json.dumps(p)
+    assert "7450" not in text and "7550" not in text
+
+
+def test_net_gex_binding_is_sign_explicit_own_field_and_tie_suppressed():
+    # wt-8 Fix 5: net/gross share at spot — + reads PIN, − reads AMPLIFICATION — in its
+    # own field, suppressed when the gamma sign is unknown (the tie band already caps)
+    t = _telemetry()                       # gamma_sign negative
+    t["gex_views"]["net_gex"] = -4e9
+    t["gex_views"]["gross_gex"] = 8e9
+    b = wt.build_payload(t)["dealer_map_gravity"]["net_gex_binding"]
+    assert "AMPLIFICATION" in b and "-50%" in b
+    t2 = _telemetry(); t2["gamma_sign"] = "positive"
+    t2["gex_views"]["net_gex"] = 6e9; t2["gex_views"]["gross_gex"] = 8e9
+    b2 = wt.build_payload(t2)["dealer_map_gravity"]["net_gex_binding"]
+    assert "PIN" in b2 and "+75%" in b2
+    # unknown sign (tie band) → suppressed
+    t3 = _telemetry(); t3["gamma_sign"] = None
+    t3["gex_views"]["net_gex"] = 1e7; t3["gex_views"]["gross_gex"] = 8e9
+    assert "net_gex_binding" not in wt.build_payload(t3)["dealer_map_gravity"]
+    # missing/zero gross → fail-open absent
+    t4 = _telemetry(); t4["gex_views"]["net_gex"] = -4e9
+    assert "net_gex_binding" not in wt.build_payload(t4)["dealer_map_gravity"]
+
+
+def test_shove_asymmetry_wording_is_non_directional_and_needs_objective_confirm():
+    # wt-8 Fix 7: the accelerant side is the LOWER-RESISTANCE side, never "the cheaper
+    # direction to move", and it outranks soft_side only on an OBJECTIVE confirmed move
+    sw = wt._shove_words({"shove_up_margin": 0.8, "shove_down_margin": -0.9,
+                          "shove_sigma": 0.4, "net_gex_spot": -3e9,
+                          "up_flips": False, "down_flips": True}, -3e9)
+    a = sw["asymmetry"]
+    assert "LOWER-RESISTANCE side IF something pushes" in a and "not a push itself" in a
+    assert "CHEAPER direction to move" not in a
+    assert "never your own read of 'confirmed'" in a
+
+
+def test_prompt_carries_the_wt8_corrections():
+    p = wt._prompt(wt.build_payload(_telemetry()))
+    # Fix 1: magnet-crossed-spot dropped from the flip triggers
+    assert "magnet crossed spot" not in p
+    assert "gamma sign flipped, flow flipped hard" in p
+    # Fix 2: the whole-day average is no longer named
+    assert "tape_day_average" not in p
+    # Fix 3: pace is conviction-lowering, not a hard stand-down, with the ignition exemption
+    assert "CONVICTION-LOWERING guidance, NOT a hard stand-down" in p
+    assert "EXEMPTION" in p and "not-yet-elevated" in p
+    # Fix 5: binding strength taught as a conviction scaler
+    assert "BINDING STRENGTH IS A CONVICTION SCALER" in p
+    # Fix 7: accelerant side needs objective confirmation already in the payload
+    assert "OBJECTIVE confirmed move" in p and "never your own read of 'confirmed'" in p
+    # Fix 8: macro_mood is named so the overnight read is consulted
+    assert "day_context.macro_mood" in p
 
 
 def test_breach_and_road_reach_the_payload():
@@ -444,6 +507,27 @@ def test_siege_absent_on_every_guard():
                                     "near_spot": True}])):
         assert "siege_effort_at_walls" not in wt.build_payload(
             {**_telemetry(), "siege": bad})
+
+
+def test_siege_near_spot_verdict_gated_on_robust_baseline():
+    # wt-8 Fix 4: a spot-hugging (near_spot) siege verdict reaches the payload ONLY under a
+    # robust baseline; cold/warming drops it (dormant earn-trust path)
+    near_tower = [{"kind": "call_wall", "level": 7550.0, "status": "engaged",
+                   "effort_pct": 84.0, "verdict": "SIEGE", "outcome": None,
+                   "near_spot": True}]
+    robust = _siege_rec(baseline="robust", towers=near_tower)
+    assert "siege_effort_at_walls" in wt.build_payload({**_telemetry(), "siege": robust})
+    cold = _siege_rec(baseline="cold", towers=near_tower)
+    assert "siege_effort_at_walls" not in wt.build_payload({**_telemetry(), "siege": cold})
+
+
+def test_siege_prompt_is_subordinate_to_the_gamma_regime():
+    # wt-8 Fix 4: heavy effort → BREAK stays, but it is subordinate — under long gamma a
+    # pin can HOLD despite heavy effort
+    p = wt._prompt(wt.build_payload({**_telemetry(), "siege": _siege_rec()}))
+    assert "SUBORDINATE to the gamma regime" in p
+    assert "a pin can HOLD despite heavy" in p
+    assert "expect that wall to BREAK" in p     # the reversed sign survives
 
 
 def test_observe_disabled_by_env(monkeypatch):

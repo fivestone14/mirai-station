@@ -542,7 +542,7 @@ def slide_flip(contracts: list[dict], spot: float,
     short_gamma even while gamma at spot was plainly positive. Reading the sign at spot
     is robust to multi-crossing curves; the flip is retained purely as the zone BORDER.
     """
-    out = {"flip": None, "flip_band": None, "net_gex": None,
+    out = {"flip": None, "flip_band": None, "net_gex": None, "gross_gex": None,
            "regime": "unknown", "basis": None}
     basis = pick_basis(contracts, spot, prefer=prefer)
     if not basis or not spot:
@@ -568,6 +568,10 @@ def slide_flip(contracts: list[dict], spot: float,
     else:
         regime = "long_gamma" if (net or 0.0) > 0 else "short_gamma"
     out.update({"flip": flip, "flip_band": band, "net_gex": net,
+                # the tie-band denominator, surfaced (wt-8): the NORMALIZED binding
+                # strength net/gross at spot is comparable across days/hours where the
+                # raw $ is not — a "big" morning net is "thin" by 15:50.
+                "gross_gex": gross,
                 "regime": regime, "basis": basis})
     return out
 
@@ -1711,6 +1715,8 @@ def build_views(contracts: list[dict], spot: float,
         "flip": R["flip"], "flip_band": R["flip_band"],
         "flip_tenor": A["flip"],                # blended border — outer terrain, not the regime
         "net_gex": R["net_gex"], "net_gex_tenor": A["net_gex"],
+        "gross_gex": R.get("gross_gex"),        # |dealer GEX| at spot — the binding-share denom
+
         "sign_agrees": E["agrees"], "sign_confidence": E["confidence"],
         "vex": F["vex"], "cex": F["cex"],        # net vanna / charm exposure (shadow)
         "vex_sign": F["vex_sign"], "cex_sign": F["cex_sign"],

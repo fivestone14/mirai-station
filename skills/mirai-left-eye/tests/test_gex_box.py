@@ -220,10 +220,12 @@ class TestFlipRootfind:
         # EXCEPT inside the tie deadband (H3), where a rounding-size residual of
         # two cancelling sides honestly reads "uncertain" instead of flipping.
         s = gv.slide_flip(_chain(), 5000.0)
+        # wt-8: the tie-band denominator is now EXPOSED (gross_gex) so the Watchtower can
+        # read the normalized binding share net/gross without re-summing the field
+        assert s["gross_gex"] == gv._gross_gex_at(_chain(), 5000.0, s["basis"])
         if s["net_gex"]:
             if s["regime"] == "uncertain":
-                gross = gv._gross_gex_at(_chain(), 5000.0, s["basis"])
-                assert abs(s["net_gex"]) < gv.REGIME_TIE_BAND * gross
+                assert abs(s["net_gex"]) < gv.REGIME_TIE_BAND * s["gross_gex"]
             else:
                 assert s["regime"] == ("long_gamma" if s["net_gex"] > 0 else "short_gamma")
 
