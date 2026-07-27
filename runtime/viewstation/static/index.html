@@ -1675,6 +1675,12 @@ const SCANS = [
 const NOW = SCANS[SCANS.length-1];
 let LIVEROWS = SCANS;                       // newest day's rows — drives the map / heads / today's page
 let DIARY_ROWS = SCANS;                      // every past day for the diary book (loaded once, refreshed periodically)
+// FULL-DAY SPOT SERIES for the price path only — LIVEROWS is capped at 60 rows (~80 min,
+// the light 4s poll) so its morning has scrolled off; the path would start mid-afternoon.
+// PATHSERIES caches today's whole session ({t,p} per scan, from 09:30) at limit=500 on a
+// slow clock; gxSpotPath merges the 60-row LIVEROWS tail over it so the live edge stays
+// fresh. Only the path reads this — heads / HUD / activity map keep using LIVEROWS.
+let PATHSERIES = { day:null, pts:[] };
 function liveNow(){ return LIVEROWS[LIVEROWS.length-1]; }
 
 // ---------- helpers ----------
@@ -2040,6 +2046,27 @@ async function loadDiaryHistory(){
     const all=[].concat(...chunks);
     if(all.length){ DIARY_ROWS=all; if(dpage===0) renderDiary(false); if(RP.els) rpSyncDays(false);
       if(typeof paintWtPill==='function') paintWtPill(); }   // judged-today count rides the full-day load (H1)
+  }catch(e){}
+}
+// load the newest day's WHOLE session as a light {t,p} series for the price path (limit=500,
+// same file fetchRecent tops up at 60). Extract only ts+spot — no rowToScan — so a full-day
+// pull stays cheap enough for its own slow clock. The morning is static; only the tail grows,
+// and the LIVEROWS merge in gxSpotPath keeps the live edge current between refreshes.
+async function fetchPathSeries(){
+  try{
+    const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
+    const files=(j.state||[]).filter(e=>/^reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+    if(!files.length) return;
+    files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
+    const res=await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=500`,{cache:'no-store'});
+    const d=await res.json();
+    const raw=(d&&d.rows)?d.rows:[];
+    const pts=[]; let day=null;
+    for(const r of raw){ if(!r||typeof r!=='object'||!r.ts||r.spot==null||!isFinite(r.spot)) continue;
+      pts.push({t:r.ts, p:+r.spot}); day=String(r.ts).slice(0,10); }
+    if(!pts.length) return;
+    PATHSERIES={ day, pts };
+    if(MAP){ MAP._pathkey=null; if(typeof paintSpotPath==='function') paintSpotPath(); }   // morning fills in on the next frame
   }catch(e){}
 }
 
@@ -4350,9 +4377,21 @@ function gxMountCards(){
 // mid-session while looking alive. The honest live series is the diary's per-scan
 // spots (~80s-5min cadence) + the streaming /api/spot quote extending the path to
 // now — drawn as a faint line/area, and the caption says exactly that. NEVER candles.
+// gxMergeSeries — PURE (the JSC smoke harness drills it by name): union two {t:ms,p}
+// series by timestamp, ascending, later writer wins the collision. `a` is the full-day
+// PATHSERIES cache (the morning), `b` the fresh 60-row LIVEROWS tail — b overwrites the
+// overlap so the live end never lags the cache's slow refresh. Either side may be empty
+// (honest-absent → the other stands alone; both empty → no path).
+function gxMergeSeries(a, b){
+  const byT=new Map();
+  for(const q of (a||[])) if(isFinite(q.t)) byT.set(q.t, q.p);
+  for(const q of (b||[])) if(isFinite(q.t)) byT.set(q.t, q.p);
+  return [...byT.entries()].map(([t,p])=>({t,p})).sort((x,y)=>x.t-y.t);
+}
 // gxSpotPath — the day's series + its session window: 09:30→16:00 of the newest
 // row's own day, in ITS UTC offset (the rpLoadDay lesson — a winter EST session
-// must not plot 1h skewed).
+// must not plot 1h skewed). The morning comes from PATHSERIES (full day, same day only)
+// and the tail from the light LIVEROWS window; together they span the full session.
 function gxSpotPath(){
   const newest=LIVEROWS[LIVEROWS.length-1]||null;
   const nts=newest?scanTs(newest):null;
@@ -4360,13 +4399,13 @@ function gxSpotPath(){
   const tzm=String(nts||'').match(/([+-]\d\d:\d\d|Z)$/);
   const tz=tzm?(tzm[1]==='Z'?'+00:00':tzm[1]):'-04:00';
   const t0=+new Date(day+'T09:30:00'+tz), t1=+new Date(day+'T16:00:00'+tz);
-  const pts=[];
-  for(const sc of LIVEROWS){ if(!sc) continue;
-    const ts=scanTs(sc); if(String(ts).slice(0,10)!==day) continue;
-    const t=+new Date(ts); if(!isFinite(t)||sc.spot==null||!isFinite(sc.spot)) continue;
-    pts.push({t, p:+sc.spot});
-  }
-  pts.sort((a,b)=>a.t-b.t);
+  const inDay=(ts,p,out)=>{ if(String(ts).slice(0,10)!==day) return;
+    const t=+new Date(ts); if(!isFinite(t)||p==null||!isFinite(p)) return; out.push({t, p:+p}); };
+  const cache=[];   // full session (only when PATHSERIES is for THIS day — else the tail stands alone)
+  if(PATHSERIES.day===day) for(const q of PATHSERIES.pts) inDay(q.t, q.p, cache);
+  const tail=[];
+  for(const sc of LIVEROWS){ if(sc) inDay(scanTs(sc), sc.spot, tail); }
+  const pts=gxMergeSeries(cache, tail);
   const streaming=(typeof LIVE!=='undefined'&&LIVE)&&SPOT.live&&SPOT.px!=null;
   if(streaming&&pts.length) pts.push({t:Math.min(Date.now(),t1), p:+SPOT.px});
   return {t0, t1, pts, streaming};
@@ -5647,6 +5686,7 @@ async function probeAndRun(){
     setMode(true); feedAll(L); setTimeout(poll, FEED.pollMs);
     pollSpot();                                                   // the price streams on its own clock
     loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
+    fetchPathSeries(); setInterval(fetchPathSeries, 90000);       // full-day spot path — morning is static, so a slow clock; the LIVEROWS tail keeps the live edge fresh
     setInterval(loadLedgers, 1200000);                            // Sweep Ledger card — the nightly grade (13:15 PT) + date rollover land without a reload
     fetchDatedBook(); setInterval(fetchDatedBook, 1200000);       // dated OI book (changes only on the nightly pull)
     setInterval(loadSiege, 300000);                               // siege store — boot load done at startup; re-read on the 5-min scan cadence
