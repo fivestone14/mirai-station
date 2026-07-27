@@ -3842,26 +3842,41 @@ function paintAem(){
     +`¦n:total width = the option-priced expected move; the split reallocates it, never adds to it`;
   // faint fills say how much of the day's budget lies each side; ticks + labels carry
   // the numbers. All clamped into the frame (edge convention).
+  const lx=X.x0+15;
+  const uS=`+${Math.round(a.em_up_pts)} · ${pctT(a.em_up_pct)}`;
+  const dS=`−${Math.round(a.em_down_pts)} · ${pctT(a.em_down_pct)}`;
+  const cS=aemPlain?'Likely range today':'AEM';
+  // OVERLAP GUARD (2026-07-27): on a very tight band (a ±0.04% day) the +edge, centre and
+  // −edge labels land on the same pixel row and pile on top of each other + the spot marker.
+  // When there isn't ≥ AEM_LBL_GAP px between neighbours, COLLAPSE the three into ONE centre
+  // label that folds the range inline; the bracket line + edge ticks still draw at the true
+  // edges, so the geometry stays honest — only the redundant text is dropped.
+  const AEM_LBL_GAP=11;   // ≈ the 9.5px label's line box; below this, baselines would touch
+  const tight=(ys-yU)<AEM_LBL_GAP || (yD-ys)<AEM_LBL_GAP;
+  const _pU=pctT(a.em_up_pct), _pD=pctT(a.em_down_pct);
+  const cCollapsed=`${cS} · −${Math.round(a.em_down_pts)}/+${Math.round(a.em_up_pts)} · ${_pU===_pD?_pU:_pD+'/'+_pU}`;
+  const _edge=`font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}"`;
   MAP.aemG.innerHTML=
     `<rect x="${X.x0}" y="${yU.toFixed(1)}" width="12" height="${Math.max(0,ys-yU).toFixed(1)}" fill="var(--iris)" opacity=".05"/>`
    +`<rect x="${X.x0}" y="${ys.toFixed(1)}" width="12" height="${Math.max(0,yD-ys).toFixed(1)}" fill="var(--iris)" opacity=".05"/>`
    +`<line x1="${bx}" x2="${bx}" y1="${yU.toFixed(1)}" y2="${yD.toFixed(1)}" style="stroke:var(--iris);opacity:.4;stroke-width:1.2"/>`
    +`<line x1="${X.x0}" x2="${(X.x0+10).toFixed(1)}" y1="${yU.toFixed(1)}" y2="${yU.toFixed(1)}" style="stroke:var(--iris);opacity:.6;stroke-width:1.4"/>`
    +`<line x1="${X.x0}" x2="${(X.x0+10).toFixed(1)}" y1="${yD.toFixed(1)}" y2="${yD.toFixed(1)}" style="stroke:var(--iris);opacity:.6;stroke-width:1.4"/>`
-   +`<text x="${(X.x0+15).toFixed(1)}" y="${(yU+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">+${Math.round(a.em_up_pts)} · ${pctT(a.em_up_pct)}</text>`
-   +`<text x="${(X.x0+15).toFixed(1)}" y="${(yD+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">−${Math.round(a.em_down_pts)} · ${pctT(a.em_down_pct)}</text>`
-   +`<text x="${(X.x0+15).toFixed(1)}" y="${(ys+3.5).toFixed(1)}" font-size="9.5" font-weight="700" font-family="var(--mono)" letter-spacing=".05em" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="AEM" data-tip="${tip}">${aemPlain?'Likely range today':'AEM'}</text>`;
+   +(tight?'':`<text x="${lx.toFixed(1)}" y="${(yU+3.5).toFixed(1)}" ${_edge}>${uS}</text>`)
+   +(tight?'':`<text x="${lx.toFixed(1)}" y="${(yD+3.5).toFixed(1)}" ${_edge}>${dS}</text>`)
+   +`<text x="${lx.toFixed(1)}" y="${(ys+3.5).toFixed(1)}" font-size="9.5" font-weight="700" font-family="var(--mono)" letter-spacing=".05em" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="AEM" data-tip="${tip}">${tight?cCollapsed:cS}</text>`;
   // the SPOT line runs at y=yFor(spot) straight THROUGH this bracket's centre label, and
   // MagP/HVL can cross the +/− end labels — so the AEM text joins the label-cloud mask
   // (TAPE only: LADDER stays byte-identical), and the masked level lines feather out under
   // it exactly as they already do under the wall / gap / GW labels. Analytic widths (never
-  // getBBox), rides paintAem's own key gate — zero work in the ease frames.
+  // getBBox), rides paintAem's own key gate — zero work in the ease frames. In the collapsed
+  // case only the (wider) centre cloud rides — the two edge clouds are gone with their text.
   let mkA='';
   if(X.tape){
-    const lx=X.x0+15, _lw=t=>t.length*6.0+6;   // ≈mono advance at 9.5px+.05em (mkCloud idiom)
-    const uS=`+${Math.round(a.em_up_pts)} · ${pctT(a.em_up_pct)}`, dS=`−${Math.round(a.em_down_pts)} · ${pctT(a.em_down_pct)}`;
-    const cS=aemPlain?'Likely range today':'AEM';
-    mkA=mkCloud('aemU',lx,lx+_lw(uS),yU)+mkCloud('aemD',lx,lx+_lw(dS),yD)+mkCloud('aemC',lx,lx+_lw(cS),ys);
+    const _lw=t=>t.length*6.0+6;   // ≈mono advance at 9.5px+.05em (mkCloud idiom)
+    mkA=tight
+      ? mkCloud('aemC',lx,lx+_lw(cCollapsed),ys)
+      : mkCloud('aemU',lx,lx+_lw(uS),yU)+mkCloud('aemD',lx,lx+_lw(dS),yD)+mkCloud('aemC',lx,lx+_lw(cS),ys);
   }
   if(MAP._mkAem!==mkA){ MAP._mkAem=mkA; gxMaskPaint(); }
 }
