@@ -2953,11 +2953,13 @@ function gxPaint(){
     R.cas.style.opacity=.5; R.cas.setAttribute('y1',yy.toFixed(1)); R.cas.setAttribute('y2',yy.toFixed(1));
     // TAPE (price-time view): the structure lines step back to ~.55 so the price path
     // reads first; the SPOT reference goes hairline (.45, 1.4px) so the moving price
-    // PATH out-reads it — the right-edge tag still names the live price. LADDER: no
-    // competing path, so spot keeps its full continuous "where am I" line (2.6px, full);
-    // bars are the hero and the levels keep their .85 presence (PASS B).
-    R.line.style.opacity=id==='spot'?(X.tape?.45:1):(X.tape?.55:.85);
-    if(id==='spot') R.line.style.strokeWidth=X.tape?'1.4':mm.sw;
+    // PATH out-reads it — the right-edge tag still names the live price. LADDER: the
+    // bars are the hero, so SPOT is also a hairline (.5, 1.4px — a hair more present
+    // than TAPE since there's no price path) rather than a full 2.6px line that would
+    // out-shout the per-strike bars; the right-edge tag still names the live price and
+    // the other levels keep their .85 presence (PASS B).
+    R.line.style.opacity=id==='spot'?(X.tape?.45:.5):(X.tape?.55:.85);
+    if(id==='spot') R.line.style.strokeWidth='1.4';
     R.line.setAttribute('y1',yy.toFixed(1)); R.line.setAttribute('y2',yy.toFixed(1));
     const sd=(D.sigma>0)?((valOf[id]-D.spot)/D.sigma):0;
     R.nm.style.opacity=1; R.nm.setAttribute('y',(ly-8).toFixed(1));
