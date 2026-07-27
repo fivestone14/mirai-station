@@ -2637,6 +2637,12 @@ function gxBuild(){
        <path id="wtComBr" style="fill:none;stroke-width:1;opacity:.25"/>
        <circle id="wtComN" cx="60" r="4" style="display:none"/>
      </g>
+     <!-- ACTIVITY MAP (07-27, TAPE): right-edge, price-axis-aligned battlefield map —
+          one bar per strike grown LEFT from canvasR (length+brightness = today's traded
+          volume there), flow-signed jade/coral, plain-word callouts on the notable
+          levels (paintActivity). ABOVE the level lines so its callouts read over them;
+          empty in LADDER / when the row carries no vol_by_strike. -->
+     <g id="actG"></g>
      <!-- label groups painted ABOVE the level/target lines (07-22): the MagP line was
           striking straight through dated-wall / GW label text at the same price. Their
           _HALO/_HALO2 surface strokes now punch the text out of any line underneath —
@@ -2661,7 +2667,8 @@ function gxBuild(){
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
     railG:q('railG'), _rkey:null, scrubG:q('scrubG'), _skey:null,
     svg:document.querySelector('#p-map .gx-chart svg'), capTier,
-    maskB:q('gxLabMaskB'), _mkGw:'', _mkDt:'', _mkGap:'', _mkKey:null, _hudkey:null,
+    maskB:q('gxLabMaskB'), _mkGw:'', _mkDt:'', _mkGap:'', _mkAem:'', _mkKey:null, _hudkey:null,
+    actG:q('actG'), _actkey:null,
     datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
     wallG:q('gxWallG'), _wallkey:null,
     lvl:{}, wtTgt:q('wtTgt'), wtTgtN:q('wtTgtN'), wtTgtV:q('wtTgtV'), wtTgtL:q('wtTgtL'), wtTgtLead:q('wtTgtLead'),
@@ -2699,9 +2706,9 @@ function mkCloud(id,xa,xb,cy){
 }
 function gxMaskPaint(){   // called only from inside the label layers' key gates
   if(!MAP||!MAP.maskB) return;
-  const key=MAP._mkGw+'\u0001'+MAP._mkDt+''+(MAP._mkGap||'');   // separators can't appear in SVG markup, so the key never aliases
+  const key=MAP._mkGw+'\u0001'+MAP._mkDt+''+(MAP._mkGap||'')+''+(MAP._mkAem||'');   // separators can't appear in SVG markup, so the key never aliases
   if(key===MAP._mkKey) return; MAP._mkKey=key;
-  MAP.maskB.innerHTML=MAP._mkGw+MAP._mkDt+(MAP._mkGap||'');   // +gap-label blobs (07-27, TAPE)
+  MAP.maskB.innerHTML=MAP._mkGw+MAP._mkDt+(MAP._mkGap||'')+(MAP._mkAem||'');   // +gap-label blobs + AEM-label blobs (07-27, TAPE) — the SPOT/level lines feather out under "Likely range today" too
 }
 function gxPaint(){
   if(!MAP||!MAP.bars||!MSTRIKES.length) return;
@@ -3267,7 +3274,7 @@ function gxPaint(){
     MAP.spotLane.setAttribute('width',(X.railX0-X.x0).toFixed(1));
     MAP.spotLane.style.opacity=(X.nT>0)?0.06:0;   // only with the dated layer → off-state stays identical
   }
-  paintDated(); paintDatedOI(); paintDexPane(); paintPanes(); paintAem(); paintHedgeRail(); paintScrub(); paintLadder(); paintSpotPath(); gxTablePaint();
+  paintDated(); paintDatedOI(); paintDexPane(); paintPanes(); paintAem(); paintActivity(); paintHedgeRail(); paintScrub(); paintLadder(); paintSpotPath(); gxTablePaint();
 }
 // ---- DATED γ PROFILE (v2, toggle): the FULL per-strike dated NET GEX field, one
 // wash+tick layer per expiration, drawn UNDER the live gamma bars. This is the
@@ -3698,7 +3705,7 @@ function paintAem(){
     +`#${X.pLow}|${X.pHigh}|${X.x0}|${X.H}|${X.padT}|${aemPlain?'P':''}`;
   if(key===MAP._aemkey) return;
   MAP._aemkey=key;
-  if(!ok){ MAP.aemG.innerHTML=''; return; }
+  if(!ok){ MAP.aemG.innerHTML=''; if(MAP._mkAem!==''){ MAP._mkAem=''; gxMaskPaint(); } return; }
   const cT=y=>Math.min(X.H-X.padB, Math.max(X.padT, y));
   const ys=cT(yFor(D.spot)), yU=cT(yFor(D.spot+a.em_up_pts)), yD=cT(yFor(D.spot-a.em_down_pts));
   const bx=X.x0+3, dsh=(a.down_share!=null&&isFinite(a.down_share))?Math.round(a.down_share*100):null;
@@ -3721,6 +3728,120 @@ function paintAem(){
    +`<text x="${(X.x0+15).toFixed(1)}" y="${(yU+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">+${Math.round(a.em_up_pts)} · ${pctT(a.em_up_pct)}</text>`
    +`<text x="${(X.x0+15).toFixed(1)}" y="${(yD+3.5).toFixed(1)}" font-size="9.5" font-weight="600" font-family="var(--mono)" style="fill:var(--ink-faint);${_HALO}">−${Math.round(a.em_down_pts)} · ${pctT(a.em_down_pct)}</text>`
    +`<text x="${(X.x0+15).toFixed(1)}" y="${(ys+3.5).toFixed(1)}" font-size="9.5" font-weight="700" font-family="var(--mono)" letter-spacing=".05em" style="fill:var(--ink-dim);cursor:pointer;${_HALO}" data-name="AEM" data-tip="${tip}">${aemPlain?'Likely range today':'AEM'}</text>`;
+  // the SPOT line runs at y=yFor(spot) straight THROUGH this bracket's centre label, and
+  // MagP/HVL can cross the +/− end labels — so the AEM text joins the label-cloud mask
+  // (TAPE only: LADDER stays byte-identical), and the masked level lines feather out under
+  // it exactly as they already do under the wall / gap / GW labels. Analytic widths (never
+  // getBBox), rides paintAem's own key gate — zero work in the ease frames.
+  let mkA='';
+  if(X.tape){
+    const lx=X.x0+15, _lw=t=>t.length*6.0+6;   // ≈mono advance at 9.5px+.05em (mkCloud idiom)
+    const uS=`+${Math.round(a.em_up_pts)} · ${pctT(a.em_up_pct)}`, dS=`−${Math.round(a.em_down_pts)} · ${pctT(a.em_down_pct)}`;
+    const cS=aemPlain?'Likely range today':'AEM';
+    mkA=mkCloud('aemU',lx,lx+_lw(uS),yU)+mkCloud('aemD',lx,lx+_lw(dS),yD)+mkCloud('aemC',lx,lx+_lw(cS),ys);
+  }
+  if(MAP._mkAem!==mkA){ MAP._mkAem=mkA; gxMaskPaint(); }
+}
+// ---- ACTIVITY MAP (07-27, TAPE) — "the general overlooking the battlefield". The whole
+// right edge of the price canvas lights up with WHERE today's option activity is and WHAT
+// it is doing, aligned to the price axis so a glance reads "buying accelerating at 7,470,
+// selling at 7,400, quiet elsewhere". Per strike: a bar grown LEFT from canvasR whose
+// length+brightness = today's traded volume there (|vol_by_strike|, calls−puts net, the
+// only "where trades happened" field the row carries), coloured by the per-strike signed
+// flow (dex_flow_by_strike, the aggressor/tape read): fbs<0 = customer BUYING call-delta
+// (jade), fbs>0 = SELLING (coral). fbs is DEALER-signed at source (see lefteye_dex:
+// fs=(sell_q−buy_q)·Δ), so a customer net-buy prints negative — the mapping is inverted
+// from the DEX pane's dealer-POSITION colour on purpose; the two never share a screen (this
+// is TAPE-only, that pane LADDER-only). Flow thin / absent (early tape, the wt-8 abstain
+// floor) → NEUTRAL bar, no buy/sell claim (never fabricate a direction). On the ≤4 most-
+// notable levels a plain-word tag says what is happening, its rate-of-change diffed from the
+// LIVEROWS the client already holds: volume rising ≥25% vs the prior scans → "buying/selling
+// accelerating"; falling ≥25% → "cooling off"; open interest building across the window →
+// "accumulation"; else the steady "buying"/"selling". No σ / contract counts on the face —
+// those ride the tooltip. Default-ON in TAPE, honest-absent (no vol_by_strike in frame →
+// nothing), key-gated on the scan clock (the rate-of-change recomputes per scan, not per
+// frame). LADDER/TABLE never call it.
+function paintActivity(){
+  if(!MAP||!MAP.actG) return;
+  const X=MAPX;
+  if(!X.tape){ if(MAP._actkey!=='off'){ MAP.actG.innerHTML=''; MAP._actkey='off'; } return; }   // TAPE-only — LADDER/TABLE untouched
+  const step=((X.pHigh-X.pLow)>520)?10:5, k0=MSTRIKES[0];
+  // same bucket-sum discipline as the γ bars / raw-book / DEX panes
+  const bucket=src=>{
+    if(!Array.isArray(src)) return null;
+    const b=new Array(MSTRIKES.length).fill(0); let placed=0, mx=0;
+    for(const p of src){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
+      const idx=Math.round((p[0]-k0)/step);
+      if(idx>=0&&idx<b.length){ b[idx]+=(+p[1]); placed++; } }
+    for(const v of b){ const a=Math.abs(v); if(a>mx) mx=a; }
+    return (placed&&mx)?{b,mx}:null;
+  };
+  const _fld=(r,which)=>{   // per-strike field off a RAW LIVEROWS row (mirror of rowToScan's access)
+    if(!r) return null; const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv;
+    return (which==='vol'?(g.vol_by_strike??gv.vol_by_strike):(g.oi_by_strike??gv.oi_by_strike))??null;
+  };
+  const vol=bucket(D.volBS);   // today's traded volume by strike (the intensity axis)
+  const HIST=(typeof LIVEROWS!=='undefined'&&Array.isArray(LIVEROWS))?LIVEROWS.slice(-5):[];
+  const ok=MSTRIKES.length&&vol;   // honest-absent: no traded volume in frame → render nothing
+  const key=(ok?String(GX_ASOF||'')+'|'+HIST.length+'|'+((D.dex&&D.dex.fbs)?D.dex.fbs.length:0)+'|'+(D.oiBS?D.oiBS.length:0):'off')
+    +`#${X.pLow}|${X.pHigh}|${MSTRIKES.length}|${X.canvasR}|${X.H}|${X.padT}`;
+  if(key===MAP._actkey) return;
+  MAP._actkey=key;
+  if(!ok){ MAP.actG.innerHTML=''; return; }
+  const flow=bucket((D.dex&&Array.isArray(D.dex.fbs))?D.dex.fbs:null);   // signed flow (null = thin tape → neutral)
+  const oiNow=bucket(D.oiBS);
+  // rate-of-change from the LIVEROWS the client holds — buckets aligned to THIS frame's grid.
+  // volume: current vs the mean of the prior scans; OI: current vs the window's oldest scan.
+  const volPast=[];
+  for(let i=0;i<HIST.length-1;i++){ const bk=bucket(_fld(HIST[i],'vol')); if(bk) volPast.push(bk); }
+  const oiFirst=(HIST.length>1)?bucket(_fld(HIST[0],'oi')):null;
+  const right=X.canvasR, actW=GXDOCK.actW, bh=Math.max(1.6, MROWH-0.8);
+  const hueOf=d=>d==='buy'?'var(--jade)':d==='sell'?'var(--coral)':'var(--ink-dim)';
+  let s='', cands=[];
+  MSTRIKES.forEach((k,j)=>{
+    const mag=Math.abs(vol.b[j]); if(!mag) return;              // no trades here → dark (quiet ground)
+    const L=mag/vol.mx;                                         // 0..1 vs the busiest strike in frame
+    const fv=flow?flow.b[j]:0, dir=fv<0?'buy':(fv>0?'sell':'none');
+    const len=Math.max(2, L*actW), yc=yFor(k), op=(0.14+0.62*L).toFixed(2);
+    s+=`<rect x="${(right-len).toFixed(1)}" y="${(yc-bh/2).toFixed(1)}" width="${len.toFixed(1)}" height="${bh.toFixed(1)}" rx="1" fill="${hueOf(dir)}" opacity="${op}"/>`;
+    let vPrev=0, pn=0; for(const bk of volPast){ vPrev+=Math.abs(bk.b[j]); pn++; }
+    vPrev=pn?vPrev/pn:0;
+    const ratio=vPrev>0?mag/vPrev:null;
+    const oiUp=(oiNow&&oiFirst)?(Math.abs(oiNow.b[j])-Math.abs(oiFirst.b[j])):null;
+    cands.push({k, yc, L, mag, dir, fv, ratio, oiUp});
+  });
+  // WHAT'S HAPPENING — the rate-of-change verdict for one candidate level
+  const tagOf=c=>{
+    const rising=c.ratio!=null&&c.ratio>=1.25, falling=c.ratio!=null&&c.ratio<=0.75;
+    const acc=c.oiUp!=null&&c.oiUp>0&&oiFirst&&oiFirst.mx&&c.oiUp>=0.10*oiFirst.mx;
+    if(falling) return 'cooling off';
+    if(rising) return c.dir==='buy'?'buying accelerating':c.dir==='sell'?'selling accelerating':'heating up';
+    if(acc) return 'accumulation';
+    if(c.dir==='buy') return 'buying';
+    if(c.dir==='sell') return 'selling';
+    return null;
+  };
+  // STAY CLEAN — only the few most-notable levels get words (score = the louder of raw
+  // intensity and the size of the change), de-collided in y so tags never stack.
+  const ranked=cands.map(c=>({c, sc:Math.max(c.L, c.ratio!=null?Math.min(1,Math.abs(c.ratio-1)):0)}))
+    .filter(o=>o.c.L>=0.12||(o.c.ratio!=null&&(o.c.ratio>=1.25||o.c.ratio<=0.75)))
+    .sort((a,b)=>b.sc-a.sc);
+  const picked=[];
+  for(const o of ranked){ if(picked.length>=4) break;
+    const tag=tagOf(o.c); if(!tag) continue;
+    if(picked.some(p=>Math.abs(p.c.yc-o.c.yc)<14)) continue;
+    picked.push({c:o.c, tag}); }
+  const tx=right-actW-6;
+  for(const p of picked){ const c=p.c;
+    const tip=`${p.tag.charAt(0).toUpperCase()+p.tag.slice(1)} at this price.`
+      +`¦k:strike=${Math.round(c.k)}`
+      +`¦f:volume ${_pFmt(c.mag)} today (call−put net)`
+      +(c.ratio!=null?`¦f:${c.ratio>=1?'up':'down'} ${Math.round(Math.abs(c.ratio-1)*100)}% vs the last ${volPast.length} scan${volPast.length===1?'':'s'}`:'')
+      +(c.oiUp!=null&&c.oiUp!==0?`¦f:open interest ${c.oiUp>0?'+':'−'}${_pFmt(c.oiUp)} across the window`:'')
+      +(c.dir!=='none'?`¦f:flow: net ${c.dir==='buy'?'buying (call-delta demand)':'selling (put-delta / call supply)'}`:'¦f:flow thin — no buy/sell claim');
+    s+=`<text x="${tx.toFixed(1)}" y="${(c.yc+3.5).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="700" font-family="var(--mono)" style="fill:${hueOf(c.dir)};cursor:pointer;letter-spacing:.02em;${_HALO}" data-name="${Math.round(c.k).toLocaleString('en-US')} · ${p.tag}" data-tip="${tip}">${p.tag}</text>`;
+  }
+  MAP.actG.innerHTML=s;
 }
 // ---- GAMMA PROFILE STATE LADDER (07-25, phase-P): profile_ladder as a compact side
 // panel beside the chart — state word on top (tinted), then the named rungs top to
@@ -3825,7 +3946,7 @@ function gxMountZoom(){
 // hudX/hudGap/hudCap/infoW/infoR govern the TOP strip too: the TAPE plain-English HUD
 // docks top-left (x0+hudX) with a max-width cap so its right edge clears the top-right
 // "?" (right:infoR · infoW wide) by ≥hudGap at every width — the JSC dock smoke asserts it.
-const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3, hudX:10, hudGap:8, hudCap:400, infoW:24, infoR:8 };   // capX ≥ edge+zoomW+6 — the harness asserts it; vmW widened for the 3-way TAPE·LADDER·TABLE cluster; hudCap holds the guided readout's floor/ceiling sentences (still clamped to the room before the "?" — the JSC dock smoke asserts the clearance)
+const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3, hudX:10, hudGap:8, hudCap:400, infoW:24, infoR:8, actW:46 };   // capX ≥ edge+zoomW+6 — the harness asserts it; vmW widened for the 3-way TAPE·LADDER·TABLE cluster; hudCap holds the guided readout's floor/ceiling sentences (still clamped to the room before the "?" — the JSC dock smoke asserts the clearance); actW = the TAPE activity-map lane, grown LEFT from canvasR (inside the canvas-right, clear of the tag gutter at tagX)
 const GX_VMS=['tape','ladder','table'];
 let GXVM=(function(){ try{
   const v=localStorage.getItem('gx.viewMode');
