@@ -4446,14 +4446,23 @@ function paintSpotPath(){
       if(s===K-1) segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="${caseA}"/>`;
       segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="${s===K-1?newSw:histSw}" stroke-linejoin="round" opacity="${Math.min(0.95,gxPathFade(s,K)+fGain).toFixed(3)}"/>`;
     }
+    // NOW hairline (TAPE, streaming only): a whisper vertical at the live edge so the
+    // clean canvas to its right reads as "the rest of today, not traded yet" — an
+    // intentional boundary, not a cut. Absent on a completed/replayed day (no untraded
+    // future) and on a dead feed (nothing crawls); x tracks the live edge in gxPathLive.
+    const nowLn=(X.tape&&S.streaming)
+      ? `<line id="pathNow" x1="${G.xNow.toFixed(1)}" x2="${G.xNow.toFixed(1)}" y1="${X.padT}" y2="${yB}" stroke="var(--iris)" stroke-width="1" stroke-dasharray="1 5" opacity=".12"/>`
+      : '';
     MAP.pathG.innerHTML=
-      `<path d="${d} L${G.xNow.toFixed(1)} ${yB} L${G.P[0].x.toFixed(1)} ${yB} Z" fill="var(--iris)" opacity="${areaA}"/>`
+      nowLn
+     +`<path d="${d} L${G.xNow.toFixed(1)} ${yB} L${G.P[0].x.toFixed(1)} ${yB} Z" fill="var(--iris)" opacity="${areaA}"/>`
      +segs
      +`<line id="pathLead" stroke="var(--iris)" stroke-width="1.6" opacity=".6"/>`
      +`<circle id="pathHalo" class="gx-phalo" r="7" fill="var(--iris)" opacity=".10"/>`
      +`<circle id="pathDot" class="gx-pdot" r="2.6" fill="var(--iris)" opacity=".8"/>`;
     MAP._pathEdge={ax:G.P[n-1].x, ay:G.P[n-1].y, lead:document.getElementById('pathLead'),
-      halo:document.getElementById('pathHalo'), dot:document.getElementById('pathDot')};
+      halo:document.getElementById('pathHalo'), dot:document.getElementById('pathDot'),
+      now:document.getElementById('pathNow')};
     // caption honesty rides #gx-cap (what the path IS — never candles); short form
     // on the narrow lane, like every live tspan there
     if(bp) bp.textContent=(MAP.capTier??2)>0
@@ -4484,6 +4493,7 @@ function gxPathLive(S, fr){
   E.halo.classList.toggle('live', !!S.streaming);
   E.lead.setAttribute('x1',E.ax.toFixed(1)); E.lead.setAttribute('y1',E.ay.toFixed(1));
   E.lead.setAttribute('x2',x.toFixed(1));    E.lead.setAttribute('y2',y.toFixed(1));
+  if(E.now){ E.now.setAttribute('x1',x.toFixed(1)); E.now.setAttribute('x2',x.toFixed(1)); }   // the now-boundary crawls right with the live edge
   if(!tip) return;
   if(p==null){ tip.style.display='none'; return; }
   const txt=f(p,2);
