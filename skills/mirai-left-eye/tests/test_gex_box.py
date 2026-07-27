@@ -144,6 +144,41 @@ class TestRawBookPanes:
         out = gv.slide_0dte([], 5000.0)
         assert out["oi_by_strike"] is None and out["vol_by_strike"] is None
 
+    def test_vol_side_by_strike_splits_and_reconciles(self):
+        # 2026-07-27 side-split pane: [strike, callVol, putVol]; the split reconciles
+        # to the net pane (call − put) so the TABLE tag column and the Net Vol pane can
+        # never disagree. 5100 = call 2100 / put 900 (net 1200 from the net-pane test).
+        zero, _ = gv.split_tenor(_chain())
+        out = gv.slide_0dte(zero, 5000.0)
+        vsb = out["vol_side_by_strike"]
+        assert isinstance(vsb, list) and vsb
+        by_side = {k: (c, p) for k, c, p in vsb}
+        by_net = dict(out["vol_by_strike"])
+        assert by_side[5100] == (2100, 900)
+        for k, c, p in vsb:                       # call − put == the net pane, every strike
+            assert c - p == by_net[k]
+        assert [r[0] for r in vsb] == [k for k, _v in out["vol_by_strike"]]   # same window
+
+    def test_oi_side_by_strike_splits_and_reconciles(self):
+        zero = [_c(5000, "call", 0, 0.002, oi=3000), _c(5000, "put", 0, 0.002, oi=1000),
+                _c(5010, "put", 0, 0.002, oi=500)]
+        out = gv.slide_0dte(zero, 5000.0)
+        by_side = {k: (c, p) for k, c, p in out["oi_side_by_strike"]}
+        assert by_side == {5000: (3000, 1000), 5010: (0, 500)}
+        by_net = dict(out["oi_by_strike"])         # call − put reconciliation
+        for k, c, p in out["oi_side_by_strike"]:
+            assert c - p == by_net[k]
+
+    def test_side_panes_none_on_empty_or_oiless_book(self):
+        # empty book → both keys None; the 0DTE fixture carries no OI → the OI side
+        # pane stays None (no read is not a balanced zero), volume side is present
+        assert gv.slide_0dte([], 5000.0)["oi_side_by_strike"] is None
+        assert gv.slide_0dte([], 5000.0)["vol_side_by_strike"] is None
+        zero, _ = gv.split_tenor(_chain())
+        out = gv.slide_0dte(zero, 5000.0)
+        assert out["oi_side_by_strike"] is None            # fixture 0DTE OI == 0
+        assert out["vol_side_by_strike"] is not None
+
 
 class TestPinAbsoluteGamma:
     def test_pin_is_max_total_gamma_strike(self):

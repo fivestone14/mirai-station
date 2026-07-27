@@ -67,11 +67,17 @@ STATE_DIR = SKILL_DIR.parent.parent / "state"
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
-PROMPT_VERSION = "wt-8"     # bump on ANY prompt change — a bump resets the record
+PROMPT_VERSION = "wt-9"     # bump on ANY prompt change — a bump resets the record
+# wt-9 (2026-07-27): three COLOR-tier doctrine fold-ins added to the payload+prompt as
+# advisory/record-only reads (no gate reads them): regime_intensity_1d (1-day net-γ trend),
+# siege role (PAUSE vs TERMINUS target lean), and air_pocket_above/below (extend the
+# objective across a thin gap). (A fourth, a DEX tape_vs_positioning_conflict word, was built
+# then REMOVED — see the NOTE in the dex block.) Prompt changed → ledger resets from wt-8.
 # wt-8 CORRECTIONS (2026-07-26, PRE-FIRST-LIVE): a guarded-generality sweep landed on the
-# wt-8 payload BEFORE its first judged live scan (first live is Monday), so there is NO
-# ledger to reset — the era tag is DELIBERATELY kept "wt-8" (a bump would reset a clock that
-# has never ticked). Guiding principle: the payload must be THOROUGH but generally CORRECT
+# wt-8 payload BEFORE its first judged live scan (first live is Monday), so there was NO
+# ledger to reset. (SUPERSEDED 2026-07-27: the wt-9 fold-ins changed the prompt, so the era
+# WAS bumped to "wt-9" above — still at zero cost, the wt-8 clock never ticked.)
+# Guiding principle: the payload must be THOROUGH but generally CORRECT
 # and UNBIASED — the tower reasons over it. Eight changes, each the guarded form: (1) the
 # HOLD-YOUR-THESIS flip triggers drop "magnet crossed spot" (the magnet is demoted terrain,
 # not a structure flip) — gamma-sign and hard-flow flips stay. (2) the whole-day
@@ -214,6 +220,12 @@ FLIP_CHOP_BAND_SIGMA = 0.25  # |spot − gamma flip| ≤ this σ = the regime is
                              # TRANSITION — the chop band: fakes and whipsaws
                              # live at the flip's doorstep, the sign can flip
                              # scan to scan; no directional play from inside it
+
+# --- air pocket (wt-9 doctrine gap) ---------------------------------------------
+AIR_POCKET_MIN_SIGMA = 0.5   # clear span behind the near wall (near.hi → next.lo, in
+                             # σ) that counts as an AIR POCKET — thin space price
+                             # crosses fast, so a break of the near wall extends the
+                             # objective ACROSS the gap to the far wall, not to the near
 
 
 # ==============================================================================
@@ -583,7 +595,9 @@ def _gw_cluster_read(net_by_strike, spot, sigma) -> tuple[dict, str | None]:
         else:
             profile_word = ("CLEAN — coherent wall hierarchy (no put-dominant cluster "
                             "stranded above a call-dominant one)")
-        near = gw_vocab.nearest_walls(clusters, spot, per_side=1)
+        # per_side=2 (wt-9): the near wall AND the next one behind it, so the empty span
+        # between them — the air pocket — is measurable each side.
+        near = gw_vocab.nearest_walls(clusters, spot, per_side=2)
 
         def _row(c: dict) -> dict:
             return {"label": gw_vocab.gw_label(c["side"], c["tier"]),
@@ -592,11 +606,45 @@ def _gw_cluster_read(net_by_strike, spot, sigma) -> tuple[dict, str | None]:
                                            _sd(c["hi"], spot, sigma)],
                     "peak_sigma_from_spot": _sd(c["peak"], spot, sigma)}
 
+        # AIR POCKET (wt-9): the clear span behind the near wall to the next structure. A
+        # break of the near wall crosses that empty space fast, so the objective extends to
+        # the FAR wall, not the near one — the inverse of the runway/reach read. Two guards
+        # from the wt-9 pressure test: (a) the two clusters must be the SAME SIDE — a gap
+        # measured between a call cluster and a put cluster is not a coherent runway; (b) the
+        # whole pocket read is suppressed on a MESSY profile, so it can never hand out a
+        # target-extension in the exact configuration profile_clean calls STAND DOWN. Emitted
+        # only when the same-side gap ≥ AIR_POCKET_MIN_SIGMA; else absent.
+        def _pocket(inner: dict, outer: dict) -> str | None:
+            if inner["side"] != outer["side"] or not sigma:
+                return None                       # opposite-sign neighbors ≠ a runway
+            gap_pts = (outer["lo"] - inner["hi"] if outer["peak"] > inner["peak"]
+                       else inner["lo"] - outer["hi"])   # empty points between the two spans
+            if gap_pts <= 0:
+                return None
+            gap_sd = gap_pts / sigma
+            if gap_sd < AIR_POCKET_MIN_SIGMA:
+                return None
+            return (f"AIR POCKET — {gap_sd:.2f}σ of clear space from the near wall "
+                    f"({gw_vocab.gw_label(inner['side'], inner['tier'])}) to the next "
+                    f"({gw_vocab.gw_label(outer['side'], outer['tier'])}); once the near wall "
+                    "breaks, price crosses the empty span fast — extend the objective ACROSS "
+                    "the gap to the far wall, not to the near one. Advisory (subordinate to the "
+                    "gamma sign: under LONG gamma a break is faded, so the pocket is dormant).")
+
+        _clean = bool(profile_word and profile_word.startswith("CLEAN"))
         walls: dict = {}
         if near["above"]:
             walls["wall_cluster_above"] = _row(near["above"][0])
+            if _clean and len(near["above"]) > 1:   # no pocket while the profile reads MESSY
+                _ap = _pocket(near["above"][0], near["above"][1])
+                if _ap:
+                    walls["air_pocket_above"] = _ap
         if near["below"]:
             walls["wall_cluster_below"] = _row(near["below"][0])
+            if _clean and len(near["below"]) > 1:
+                _bp = _pocket(near["below"][0], near["below"][1])
+                if _bp:
+                    walls["air_pocket_below"] = _bp
         return walls, profile_word
     except Exception:
         return {}, None      # fail-open: a broken read stays out of the room
@@ -824,6 +872,46 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             binding_word = (f"{_share:+.0%} of the gamma mass at spot nets SHORT — "
                             "AMPLIFICATION this strong FEEDS the move: trust continuation, "
                             "scale conviction UP with the tape, DOWN as this share nears 0")
+    # REGIME INTENSITY, 1-DAY (wt-9): the doctrine reads the 1-day CHANGE in net gamma as
+    # "is the regime intensifying or fading?" — an entrenchment scaler, not a direction. The
+    # yesterday-close pair already rides the row (net_exposure, built in reversion_lens) but
+    # the tower has never read it. It is the WHOLE-BOOK (blended 0-7DTE) net-Γ, repriced at
+    # spot: a 0DTE 1-day diff is meaningless (yesterday's 0DTE expired), so the blended book is
+    # the only surface with day-over-day continuity. Two corrections from the wt-9 pressure
+    # test: (a) the WORD must branch on the sign of TODAY'S level, not just the sign of the
+    # change — "+5 → +3" is still a long-gamma pin weakening, NOT a fast regime intensifying;
+    # (b) because both values are repriced AT their own day's spot, an overnight gap moves this
+    # number without any repositioning, so it is worded as context, never "the book tilted".
+    # Guard on prev_close_date (a fabricated zero can't masquerade as a prior read); a flat day
+    # emits nothing; the % is shown only when the prior book was meaningfully off the flip
+    # (near-balanced prior → the ratio is noise). COLOR/advisory.
+    ne = t.get("net_exposure") or {}
+    regime_1d_word = None
+    _cur, _prev = ne.get("net_gamma_total"), ne.get("prev_close_gamma")
+    if _cur is not None and _prev is not None and ne.get("prev_close_date"):
+        _d1 = _cur - _prev
+        # only show a % when the prior book was clearly one-signed (≥10% of today's |net|):
+        # dividing by a near-zero prior detonates the ratio on exactly the flip-day scans.
+        _pct1 = (_d1 / abs(_prev)) if (_prev and abs(_prev) >= 0.10 * abs(_cur)) else None
+        _pct_txt = f", {_pct1:+.0%}" if _pct1 is not None else ""
+        _tail = (f" vs yesterday's close ({ne['prev_close_date']}{_pct_txt}). Advisory — a "
+                 "whole-book (0-7DTE) entrenchment read repriced at spot (partly reflects the "
+                 "overnight spot move, not only repositioning); scales conviction on how "
+                 "durable the regime is, never a direction.")
+        if _d1 != 0:
+            if _cur > 0 and _prev > 0:      # stayed long-gamma — a strengthening/weakening pin
+                _state = ("a long-gamma PIN is ENTRENCHING (more durable)" if _d1 > 0
+                          else "a long-gamma PIN is WEAKENING (drifting toward the flip)")
+            elif _cur < 0 and _prev < 0:    # stayed short-gamma — deepening/easing amplification
+                _state = ("short-gamma AMPLIFICATION is EASING (drifting toward the flip)" if _d1 > 0
+                          else "short-gamma AMPLIFICATION is DEEPENING (a fast regime intensifying)")
+            elif (_cur > 0) != (_prev > 0):  # crossed zero — the real regime-change event
+                _state = (f"the whole-book gamma FLIPPED "
+                          f"{'SHORT→LONG' if _cur > 0 else 'LONG→SHORT'} over the day — a "
+                          "regime change (confirm against today's 0DTE gamma sign)")
+            else:                            # one side exactly zero — name the move, claim no state
+                _state = ("net gamma moved " + ("UP toward long" if _d1 > 0 else "DOWN toward short"))
+            regime_1d_word = f"whole-book net gamma: {_state}{_tail}"
     # FLIP TRANSITION BAND (wt-8 doctrine gap): the doctrine marks the flip's
     # doorstep as the chop zone — the regime is IN TRANSITION there, and the
     # biggest whipsaw scans are exactly the ones where spot straddles the flip.
@@ -896,9 +984,23 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
                     if v == "SIEGE" else
                     f"QUIET — light underlying volume at this wall touch"
                     f" (effort {pct:.0f}th pct): expect this wall to HOLD")
+            # PAUSE vs TERMINUS (wt-9): the doctrine's target-selection LEAN, read off the
+            # reversed-sign verdict — but subordinate to the gamma regime (the pressure test
+            # caught the earlier wording asserting an unconditional "trade through", which
+            # contradicts the siege rule: under LONG gamma a SIEGE verdict does NOT license a
+            # breakout). So this is a LEAN with the regime caveat inline, never an imperative.
+            role = ("leans BREAK (a PAUSE-type wall): heavy effort → this wall is more likely to "
+                    "GIVE. IF the gamma regime permits a break (short / confirmed-negative), "
+                    "treat it as a speed bump and the objective lies PAST it; under LONG gamma "
+                    "this only lowers the pin's safety, it does NOT license trading through"
+                    if v == "SIEGE" else
+                    "leans HOLD (a TERMINUS-type level): light effort → this wall is more likely "
+                    "to HOLD, a candidate pin/turn level IF the regime supports it (safer under "
+                    "LONG gamma) — not an assertion that the move ends here")
             siege_rows.append({k: v2 for k, v2 in {
                 "wall": tw.get("kind"),
                 "level_sigma_from_spot": _sd(tw.get("level"), spot, sigma),
+                "role": role,
                 "read": word,
                 # a resolved episode whose level still stands carries its outcome —
                 # "this wall was sieged and BROKE" is a containment fact for the scene
@@ -930,6 +1032,13 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             "delta_mass_above_spot_share": dx.get("dex_above_spot"),
             "delta_mass_below_spot_share": dx.get("dex_below_spot"),
         }.items() if v is not None}
+        # NOTE (wt-9 pressure test): a `tape_vs_positioning_conflict` word was tried here and
+        # REMOVED. It compared sign(net_dex_total) vs sign(dex_flow_signed), but net_dex_total
+        # is STRICTLY POSITIVE by construction (the structural-long naive net — see lefteye_dex
+        # header), so the guard collapsed to "dex_flow_signed < 0": a one-signed relabel of the
+        # flow sign that CONTRADICTED the flow_signed_read in this very block and was not the
+        # doctrine's §2.6 lean-vs-price-tape conflict at all. A faithful §2.6 read (flow hedge
+        # direction vs the live PRICE tape) is a future item, not this.
         dex_block = {k: v for k, v in {
             "magnitude": (f"≈ ${dx['net_dex_total'] / 1e9:.1f}bn underlying-equivalent "
                           "— UNCALIBRATED: no graded baseline yet, 'large' is not "
@@ -971,6 +1080,9 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             # wt-8 (Fix 5): how HARD that sign binds — the normalized net/gross share at
             # spot, its OWN field (survives when shove is None), absent in the tie band
             **({"net_gex_binding": binding_word} if binding_word else {}),
+            # wt-9: the 1-day change in whole-book net gamma — is the regime intensifying
+            # or fading? An entrenchment scaler, not a direction (absent on a flat day).
+            **({"regime_intensity_1d": regime_1d_word} if regime_1d_word else {}),
             "pull_toward_magnet": pull_word,
             "magnet_sigma_from_spot": magnet_sd,
             **({"magnet_contested": contested_word} if contested_word else {}),
@@ -1119,12 +1231,31 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "the fade/pin up), a strongly NEGATIVE share is real AMPLIFICATION (size the continuation "
         "up), and a share near 0 is a thin book — low conviction either way. Absent in the tie "
         "band (the sign is already unknown there).\n"
+        "- REGIME INTENSITY IS THE 1-DAY TREND (wt-9). regime_intensity_1d reports how the "
+        "WHOLE-BOOK (0-7DTE) net gamma moved vs yesterday's close — a long-gamma pin entrenching "
+        "or weakening, short-gamma amplification deepening or easing, or a flip across zero (the "
+        "field names the state; read it, don't re-derive it from the sign of the change). It is "
+        "an ENTRENCHMENT scaler, NOT a direction: it says how DURABLE today's regime is (a "
+        "deepening short-gamma book is less likely to flip calm intraday). It is repriced at "
+        "spot, so part of the move is just the overnight gap — treat it as SOFT context that "
+        "scales conviction, never a drift call, and confirm against today's 0DTE gamma sign. "
+        "Absent on a flat day or a missing prior close.\n"
         "- WALL DOMINANCE DECIDES WHICH WALLS MATTER — LABELS DON'T (GW vocab). "
         "wall_cluster_above / wall_cluster_below carry the nearest measured wall cluster "
         "each side: its span in σ and its PRIME TIER — ' minor, '' significant, ''' "
         "dominant (share of the strongest structure on the surface). A ''' wall outranks "
         "a ' wall: a pin or fade at a ''' wall is backed by real mass; a ' wall is thin "
         "and breaks cheap. Weigh the tier, never the name.\n"
+        "- AN AIR POCKET EXTENDS THE OBJECTIVE (wt-9). air_pocket_above / air_pocket_below name "
+        "a stretch of CLEAR space (in σ) behind the nearest wall, before the next same-side "
+        "structure. Thin space has no hedging to slow price, so once the near wall breaks the "
+        "move runs to the FAR side of the pocket — set the objective at the far wall, not the "
+        "near one. It is a MAGNITUDE read, not a direction or a trigger, and it is SUBORDINATE "
+        "to the gamma sign: it applies only where a break is permitted (short / confirmed-"
+        "negative gamma, where accelerant + empty space is the runaway combination) — under "
+        "LONG gamma a break is faded, so the pocket is dormant and never a reason to project a "
+        "breakout target. Absent = no measured same-side gap this scan (and suppressed entirely "
+        "on a MESSY profile).\n"
         "- A MESSY PROFILE IS A STAND-DOWN GATE (wt-8). If profile_clean reads MESSY "
         "PROFILE (opposite-sign clusters interleaved, or no dominant structure at all), "
         "the wall hierarchy is contradictory and there is NO clean read — the most "
@@ -1196,8 +1327,13 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "SUBORDINATE to the gamma regime: under LONG gamma a pin can HOLD despite heavy "
         "effort (dealer hedging damps the attack), so a SIEGE verdict there lowers the pin's "
         "safety but does not license a breakout call. A SIEGE verdict agrees with a "
-        "cocked/fired break on the same side; a QUIET wall makes a pin at it safer. Absent "
-        "when the feed is degraded or no touch carried a verdict.\n"
+        "cocked/fired break on the same side; a QUIET wall makes a pin at it safer. Each row's "
+        "role field is the target-selection LEAN (wt-9), and it is SUBORDINATE to the gamma "
+        "regime just like the verdict: a QUIET wall leans HOLD (a terminus-type pin/turn level "
+        "IF the regime supports it), a SIEGE wall leans BREAK (a pause-type speed bump whose "
+        "objective lies past it) — but ONLY where the regime permits a break; under LONG gamma "
+        "even a SIEGE wall is not a license to trade through, it only lowers the pin's safety. "
+        "Absent when the feed is degraded or no touch carried a verdict.\n"
         "- DEX IS THE DIRECTION SIDE — ADVISORY ONLY THIS ERA. dealer_delta_dex is the net "
         "dealer DELTA still to re-hedge: mechanical pressure, the strongest DIRECTIONAL read "
         "in the stack when large — but here it is UNGRADED and record-only. Treat it as "

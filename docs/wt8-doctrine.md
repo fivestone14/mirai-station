@@ -49,6 +49,19 @@ individual variables mostly are not.
 | **CEX / charm word** | A constant 804/806 scans (H6 audit) — a word that never changes carries zero information. |
 | *(also dead, keep out)* volume-profile/POC layers, break_lens cock | Placebo-null and conviction-SUBTRACTING respectively in the 07-17 sweep. |
 
+### wt-9 fold-ins (2026-07-27) — three COLOR-tier advisories (record-only, no gate reads them)
+
+TanukiTrade chart-reading doctrine folded into existing machinery, all advisory/ungraded; a
+prompt change, so the ledger resets from wt-8. None gates a play — each may lower conviction only.
+
+| Advisory (payload field) | What it adds | Folds into |
+|---|---|---|
+| **regime_intensity_1d** | how the whole-book (0-7DTE) net Γ moved vs yesterday's close, worded by the sign of TODAY'S level: a long-gamma pin *entrenching/weakening*, short-gamma amplification *deepening/easing*, or a *flip* across zero. An entrenchment scaler, never a direction; repriced at spot, so partly the overnight move — soft context only. | reads the existing `net_exposure` pair beside `net_gex_binding` (Article §1.1: distance/trend scales the regime, never sets it) |
+| **siege_effort_at_walls[].role** | the target-selection LEAN off the reversed-sign verdict — QUIET *leans HOLD* (terminus-type pin/turn), SIEGE *leans BREAK* (pause-type speed bump); **subordinate to the gamma regime** (under long gamma even a SIEGE wall is not a license to trade through) | a relabel of the existing reversed-sign siege verdict — no new siege math |
+| **air_pocket_above / air_pocket_below** | a thin *same-side* σ-span behind the near wall → once it breaks, extend the objective ACROSS the gap; **gated to a CLEAN profile** and **dormant under long gamma** (a break is faded there) | inline in `_gw_cluster_read` (nearest_walls per_side=2); the inverse of the runway/reach read |
+
+*(A fourth fold-in, a DEX `tape_vs_positioning_conflict` word, was built and then REMOVED in the wt-9 pressure test: the naive `net_dex_total` is structurally positive, so a sign-disagreement with `dex_flow_signed` collapsed to a one-signed relabel of flow that contradicted the block's own `flow_signed_read`. A faithful §2.6 conflict — flow hedge-direction vs the live PRICE tape — remains a future item.)*
+
 ## wt-8 Read Order (the sequence the prompt walks)
 
 1. **TENOR** — pick the surface: 0DTE standalone for the intraday call; dated
@@ -87,7 +100,9 @@ individual variables mostly are not.
 climbs a tier without its own Wilson-graded A/B. Demotion is free.*
 
 *Record note (2026-07-25, phase P): three display-only diary records ride beside
-this doctrine and hold NO tier — the tower never reads them: `net_exposure`
+this doctrine and hold NO tier — the tower never reads them (EXCEPT: wt-9 now reads
+the 1-day CHANGE of `net_exposure` as the COLOR advisory `regime_intensity_1d`; the
+totals themselves still hold no tier): `net_exposure`
 (whole-book NET Γ/Δ totals, reused off the row), `profile_ladder` (the step-5
 band and walls as named rungs — GWc/cT/HVL/pT/GWp; HVL is the adopted display
 name for the flip line, storage key unchanged), and `adaptive_em` (the ruler's

@@ -1007,3 +1007,93 @@ def test_prompt_teaches_chop_band_dominance_and_the_messy_gate():
     assert "A ''' wall outranks a ' wall" in prompt
     assert "A MESSY PROFILE IS A STAND-DOWN GATE" in prompt
     assert "NOT a clean bill" in prompt
+
+
+# ---------------------------------------------- wt-9 doctrine fold-ins (2026-07-27)
+def test_prompt_version_is_wt9():
+    assert wt.PROMPT_VERSION == "wt-9"
+
+
+def test_regime_intensity_1d_is_worded_by_the_sign_of_todays_level():
+    # gap 1 (pressure-test fix): the WORD branches on sign(cur), not just sign(Δ)
+    def word(cur, prev, date="2026-07-24"):
+        t = _telemetry()
+        t["net_exposure"] = {"net_gamma_total": cur, "prev_close_gamma": prev,
+                             "prev_close_date": date, "net_exposure_v": 1}
+        return wt.build_payload(t)["dealer_map_gravity"].get("regime_intensity_1d")
+    # both negative, getting more negative → amplification DEEPENING (a fast regime)
+    assert "AMPLIFICATION is DEEPENING" in word(-11e6, -6e6) and "-83%" in word(-11e6, -6e6)
+    # both negative, easing back toward the flip
+    assert "AMPLIFICATION is EASING" in word(-6e6, -11e6)
+    # STILL POSITIVE, just less so → a long-gamma PIN WEAKENING, NOT a fast regime
+    w_pin = word(3e6, 8e6)
+    assert "PIN is WEAKENING" in w_pin and "AMPLIFICATION" not in w_pin and "INTENSIFYING" not in w_pin
+    # both positive, growing → pin ENTRENCHING
+    assert "PIN is ENTRENCHING" in word(8e6, 3e6)
+    # crossed zero → a flip event, named as such
+    assert "FLIPPED LONG→SHORT" in word(-5e6, 2e6)
+    assert "FLIPPED SHORT→LONG" in word(5e6, -2e6)
+    # pct SUPPRESSED when the prior book was near-balanced (no exploding ratio on flip days)
+    near = word(-11e6, 0.5)
+    assert "FLIPPED LONG→SHORT" in near and "%" not in near
+    # absent: no key / flat / missing date
+    assert word(None, None) is None or "regime_intensity_1d" not in wt.build_payload(_telemetry())["dealer_map_gravity"]
+    assert word(5e6, 5e6) is None                       # flat → absent
+    assert word(-11e6, -6e6, date=None) is None         # missing prev_close_date → absent
+
+
+def test_dex_tape_conflict_was_removed():
+    # gap 3 (pressure-test): net_dex_total is structurally POSITIVE, so the sign-disagreement
+    # collapsed to a biased flow-sign relabel that contradicted flow_signed_read — REMOVED.
+    t = _telemetry()
+    t["dex_views"] = {"net_dex_total": 1.2e9, "dex_flow_signed": -8e6, "dex_v": 1}
+    assert "tape_vs_positioning_conflict" not in wt.build_payload(t)["dealer_delta_dex"]
+
+
+def test_siege_role_is_a_regime_subordinate_lean_not_an_imperative():
+    # gap 4c (pressure-test fix): leaning language, deferred to the gamma regime — no bare
+    # "trade THROUGH" / "take profit" imperative that contradicts the siege-subordination rule
+    t = _telemetry()
+    t["siege"] = {"health": "OK", "saturated": False, "baseline": "robust", "towers": [
+        {"kind": "call_wall", "level": 7550.0, "verdict": "QUIET",
+         "effort_pct": 20.0, "near_spot": False},
+        {"kind": "put_wall", "level": 7350.0, "verdict": "SIEGE",
+         "effort_pct": 85.0, "near_spot": False}]}
+    by = {r["wall"]: r["role"] for r in wt.build_payload(t)["siege_effort_at_walls"]["towers"]}
+    assert "leans HOLD" in by["call_wall"] and "TERMINUS-type" in by["call_wall"]
+    assert "leans BREAK" in by["put_wall"] and "PAUSE-type" in by["put_wall"]
+    # the break lean must carry the long-gamma caveat, never an unconditional imperative
+    assert "does NOT license" in by["put_wall"] and "trade THROUGH this wall" not in by["put_wall"]
+
+
+def test_air_pocket_gated_to_same_side_and_clean_profile():
+    # gap 4d (pressure-test fix): same-side gap only, and suppressed on a MESSY profile
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = [
+        [7350, -8.0], [7360, -7.0],            # near put cluster below spot
+        [7500, 5.0],                            # near call wall above spot
+        [7610, 6.0], [7620, 7.0]]               # far call cluster — a wide same-side gap
+    g = wt.build_payload(t)["dealer_map_gravity"]
+    assert "AIR POCKET" in g["air_pocket_above"] and "far wall" in g["air_pocket_above"]
+    assert "air_pocket_below" not in g          # only one put cluster below → no gap
+    # MESSY profile (a put-dominant cluster stranded ABOVE a call-dominant one) → suppressed
+    t2 = _telemetry()
+    t2["gex_views"]["net_by_strike"] = [
+        [7460, 5.0], [7470, 6.0],              # call cluster just above spot
+        [7600, -7.0], [7610, -8.0]]            # put cluster HIGHER → MESSY hierarchy
+    g2 = wt.build_payload(t2)["dealer_map_gravity"]
+    assert "MESSY" in (g2.get("profile_clean") or "")
+    assert "air_pocket_above" not in g2 and "air_pocket_below" not in g2
+    # adjacent same-side walls (sub-threshold) → absent
+    t3 = _telemetry()
+    t3["gex_views"]["net_by_strike"] = [[7500, 5.0], [7520, 6.0], [7540, 7.0]]
+    assert "air_pocket_above" not in wt.build_payload(t3)["dealer_map_gravity"]
+
+
+def test_prompt_carries_the_wt9_foldins():
+    p = wt._prompt(wt.build_payload(_telemetry()))
+    assert "REGIME INTENSITY IS THE 1-DAY TREND" in p
+    assert "AN AIR POCKET EXTENDS THE OBJECTIVE" in p
+    assert "SUBORDINATE to the gamma sign" in p        # air pocket dormant under long gamma
+    assert "target-selection LEAN" in p                # siege role, regime-subordinate
+    assert "tape_vs_positioning_conflict" not in p     # the removed field never reaches the prompt

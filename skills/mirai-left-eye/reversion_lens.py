@@ -1339,6 +1339,10 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 # + put vol) — the activity map's intensity. None on pre-field rows →
                 # activity map falls back to |vol_by_strike|.
                 rec["vol_gross_by_strike"] = _b0.get("vol_gross_by_strike")
+                # SIDE-SPLIT PANES (2026-07-27): [strike, call, put] kept apart so the
+                # tablet's TABLE tag column ranks POI/COI/AbOI/CV/PV. Display-only.
+                rec["oi_side_by_strike"] = _b0.get("oi_side_by_strike")
+                rec["vol_side_by_strike"] = _b0.get("vol_side_by_strike")
                 # PER-STRIKE TENOR FIELD (2026-07-13): the 1-7DTE terrain, same
                 # compact shape — the tablet's hollow outline bars behind the
                 # solid 0DTE bars (never blended into the pure 0DTE read)
@@ -1469,6 +1473,8 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                         "oi_by_strike": b0.get("oi_by_strike"),     # raw book panes (native mirror)
                         "vol_by_strike": b0.get("vol_by_strike"),
                         "vol_gross_by_strike": b0.get("vol_gross_by_strike"),   # gross activity (native mirror)
+                        "oi_side_by_strike": b0.get("oi_side_by_strike"),       # side-split panes (native mirror) → TABLE tag column
+                        "vol_side_by_strike": b0.get("vol_side_by_strike"),
                         "net_by_strike_tenor": ((tv.get("slides") or {}).get("C_tenor") or {}).get("net_by_strike"),
                         "aggressor_flow": flow, "flow_available": flow is not None,
                         # N7: which expiry×sides the fetch actually filled — a book that

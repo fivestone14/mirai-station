@@ -1040,7 +1040,10 @@ def slide_0dte(zero_dte: list[dict], spot: float,
            # unweighted contracts) — the tablet's Net OI / Net Vol panes.
            # vol_gross_by_strike (2026-07-27): total contracts traded per strike
            # (call vol + put vol, magnitude) — the activity map's gross intensity.
-           "oi_by_strike": None, "vol_by_strike": None, "vol_gross_by_strike": None}
+           # *_side_by_strike (2026-07-27): [strike, call, put] kept apart so the
+           # tablet's TABLE tag column can rank POI/COI/AbOI/CV/PV (display-only).
+           "oi_by_strike": None, "vol_by_strike": None, "vol_gross_by_strike": None,
+           "oi_side_by_strike": None, "vol_side_by_strike": None}
     if not zero_dte or not spot:
         return out
     basis = pick_basis(zero_dte, spot, prefer="volume")   # walls: 0DTE → volume first
@@ -1246,18 +1249,28 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         _oi: dict[float, float] = {}
         _vol: dict[float, float] = {}
         _vol_gross: dict[float, float] = {}
+        # SIDE-SPLIT PANES (2026-07-27): call and put kept apart, [callOI, putOI] per
+        # strike, so the tablet's TABLE view can rank the doctrine tags (POI/COI/AbOI/
+        # CV/PV). The net panes above collapse the two sides (call − put) and cannot
+        # recover a side; the gross pane loses the split. DISPLAY-ONLY — no gate reads
+        # these; net panes are untouched so existing consumers/columns keep working.
+        _oi_side: dict[float, list] = {}
+        _vol_side: dict[float, list] = {}
         for c in zero_dte:
             k = c.get("strike")
             if k is None or not (_lo <= k <= _hi):
                 continue
-            sgn = 1.0 if c.get("right") == "call" else -1.0
+            is_call = c.get("right") == "call"
+            sgn = 1.0 if is_call else -1.0
             o = float(c.get("open_interest") or 0)
             v = float(c.get("volume") or 0)
             if o:
                 _oi[k] = _oi.get(k, 0.0) + sgn * o
+                _oi_side.setdefault(k, [0.0, 0.0])[0 if is_call else 1] += o
             if v:
                 _vol[k] = _vol.get(k, 0.0) + sgn * v
                 _vol_gross[k] = _vol_gross.get(k, 0.0) + v   # both rights as magnitude
+                _vol_side.setdefault(k, [0.0, 0.0])[0 if is_call else 1] += v
         if _oi:
             out["oi_by_strike"] = [[round(k, 2), int(round(v))]
                                    for k, v in sorted(_oi.items())]
@@ -1267,6 +1280,14 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         if _vol_gross:
             out["vol_gross_by_strike"] = [[round(k, 2), int(round(v))]
                                           for k, v in sorted(_vol_gross.items())]
+        # [strike, callOI, putOI] / [strike, callVol, putVol]; call − put reconciles to
+        # the net panes above. Empty book → key absent, never a fabricated zero row.
+        if _oi_side:
+            out["oi_side_by_strike"] = [[round(k, 2), int(round(s[0])), int(round(s[1]))]
+                                        for k, s in sorted(_oi_side.items())]
+        if _vol_side:
+            out["vol_side_by_strike"] = [[round(k, 2), int(round(s[0])), int(round(s[1]))]
+                                         for k, s in sorted(_vol_side.items())]
     except Exception:
         pass
     out.update({"pin": round(pin, 4) if pin is not None else None,

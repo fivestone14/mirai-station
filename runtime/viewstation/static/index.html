@@ -389,6 +389,10 @@
   .gx-dt td.j{color:var(--jade)} .gx-dt td.c{color:var(--coral)}
   .gx-dt td.gw{font-weight:700}
   .gx-dt td.m{color:var(--ink-faint)}
+  /* doctrine tag column — several tags can stack on one strike, so let it wrap; put
+     walls coral / call walls jade (matching the map), everything else stays muted */
+  .gx-dt td.gxtags{white-space:normal; min-width:170px; line-height:1.55}
+  .gx-dt td.gxtags .tg-p{color:var(--coral)} .gx-dt td.gxtags .tg-c{color:var(--jade)}
   .gx-dt tr.spot td,.gx-dt tr.spot th{background:var(--iris-wash)} .gx-dt tr.spot td.k,.gx-dt tr.spot th.k,.gx-dt tr.spot td.m{color:var(--iris)}
   .gx-dt tr.mag td,.gx-dt tr.mag th{background:var(--lantern-wash)} .gx-dt tr.mag td.k,.gx-dt tr.mag th.k,.gx-dt tr.mag td.m{color:var(--lantern)}
   .gx-tfoot{flex:0 0 auto; border-top:1px solid var(--hairline); padding:5px 152px 5px 12px; text-align:right;   /* right pad = the vm cluster's dock zone (GXDOCK.vmW+margins) — the footer text must never run under it */
@@ -1823,6 +1827,94 @@ const GW = {
     return 'terrain — no active pull';
   },
 };
+// GXTAG (2026-07-27) — the ranked-tag vocabulary for the TABLE view. Labels each
+// strike with the chart-reading doctrine's attributes: ranked put/call GAMMA walls
+// (P1..P6 / C1..C3), absolute gamma (Ab1..Ab3), per-side OI peaks (POI/COI/AbOI/nPOI),
+// per-side volume peaks (CV/PV/nCV/nPV), delta concentration (D+/D−) and the flip
+// fences (HVL/cT/pT) — spelled out with the abbreviation in parentheses so you can
+// read WHERE each attribute lands on the ladder. PURE + name-stable (no DOM, no globals)
+// so it can be extracted and drilled with a jsc one-off like gxTableRows — but note there
+// is NO committed JS test harness in-repo, so its argmax/rank logic is verified ad-hoc,
+// not by CI. DISPLAY-ONLY — nothing server-side consumes it, so unlike GW↔gw_vocab.py it
+// needs no Python twin / parity harness. The NET tags (nPOI/nCV/nPV/D±) fire only when a
+// strike genuinely carries that sign (see _argmaxPos) — a one-sided window can't mislabel.
+// Honest blanks: a source the row doesn't carry (or a hidden/modeled book)
+// contributes no tag — the caller gates each input, and we never fabricate a level.
+// Every selected strike is bucketed to its display slot with the SAME
+// Math.round((k−k0)/step) rule the table's bars/panes use (10-pt rows aggregate their
+// two 5-pt strikes).
+const GXTAG = {
+  LABEL: {
+    P:'Put Wall', C:'Call Wall', Ab:'Abs Gamma',
+    POI:['Put OI','POI'], COI:['Call OI','COI'], AbOI:['Total OI','AbOI'], nPOI:['Net Put OI','nPOI'],
+    CV:['Call Vol','CV'], PV:['Put Vol','PV'], nCV:['Net Call Vol','nCV'], nPV:['Net Put Vol','nPV'],
+    Dp:['Pos Net Delta','D+'], Dm:['Neg Net Delta','D−'],
+    HVL:['Gamma Flip','HVL'], cT:['Call Transition','cT'], pT:['Put Transition','pT'] },
+  // top-N strikes of `pts` ([[k,v],…]) by score(p), keeping only keep(p); winners in
+  // rank order (largest first). Used for the ranked wall families (P#/C#/Ab#).
+  _rank(pts, score, keep, n){
+    if(!Array.isArray(pts)) return [];
+    return pts.filter(p=>Array.isArray(p)&&isFinite(p[0])&&isFinite(p[1])&&keep(p))
+      .map(p=>[+p[0], score(p)]).sort((x,y)=>y[1]-x[1]).slice(0,n).map(x=>x[0]);
+  },
+  // the single strike maximising score(p) — the OI/vol/delta peaks are one strike each
+  _argmax(pts, score){
+    if(!Array.isArray(pts)) return null;
+    let bk=null, bs=-Infinity;
+    for(const p of pts){ if(!Array.isArray(p)||!isFinite(p[0])) continue; const s=score(p);
+      if(isFinite(s)&&s>bs){ bs=s; bk=+p[0]; } }
+    return bk;
+  },
+  // like _argmax but only when the winning value is strictly POSITIVE — for the NET tags
+  // (nPOI/nCV/nPV/D±): "most put-dominant strike" must not fire on an all-call-dominant
+  // window (argmax would still return a strike whose net is the wrong sign → a mislabel)
+  _argmaxPos(pts, score){
+    if(!Array.isArray(pts)) return null;
+    let bk=null, bs=0;   // bs=0 → require a strictly positive winner, else null
+    for(const p of pts){ if(!Array.isArray(p)||!isFinite(p[0])) continue; const s=score(p);
+      if(isFinite(s)&&s>bs){ bs=s; bk=+p[0]; } }
+    return bk;
+  },
+  // inputs: {n,k0,step} display geometry + gated source arrays/scalars. Absent input =
+  // that family emits nothing. Returns { slotIndex: [{full:"Put Wall 6 (P6)", abbr, kind}] }
+  tagsBySlot(a){
+    const n=a.n, k0=a.k0, step=a.step, out={}, L=this.LABEL;
+    const push=(k, full, abbr, kind)=>{ if(k==null||!isFinite(k)) return;
+      const j=Math.round((k-k0)/step); if(j<0||j>=n) return;
+      (out[j]||(out[j]=[])).push({full:`${full} (${abbr})`, abbr, kind}); };
+    // gamma walls + absolute gamma — net_by_strike (calls +, puts −); γ gate
+    if(a.nbs){
+      this._rank(a.nbs, p=>Math.abs(p[1]), p=>p[1]<0, 6).forEach((k,i)=>push(k, `${L.P} ${i+1}`, `P${i+1}`, 'p'));
+      this._rank(a.nbs, p=>Math.abs(p[1]), p=>p[1]>0, 3).forEach((k,i)=>push(k, `${L.C} ${i+1}`, `C${i+1}`, 'c'));
+      this._rank(a.nbs, p=>Math.abs(p[1]), ()=>true, 3).forEach((k,i)=>push(k, `${L.Ab} ${i+1}`, `Ab${i+1}`, 'ab'));
+    }
+    // per-side OI — [k, callOI, putOI]; OI gate
+    if(a.oiSide){
+      push(this._argmax(a.oiSide, p=>p[2]), L.POI[0], L.POI[1], 'oi');
+      push(this._argmax(a.oiSide, p=>p[1]), L.COI[0], L.COI[1], 'oi');
+      push(this._argmax(a.oiSide, p=>(+p[1])+(+p[2])), L.AbOI[0], L.AbOI[1], 'oi');
+      push(this._argmaxPos(a.oiSide, p=>(+p[2])-(+p[1])), L.nPOI[0], L.nPOI[1], 'oi');  // only if a strike is put-dominant
+    }
+    // per-side volume — [k, callVol, putVol]; Vol gate
+    if(a.volSide){
+      push(this._argmax(a.volSide, p=>p[1]), L.CV[0], L.CV[1], 'vol');
+      push(this._argmax(a.volSide, p=>p[2]), L.PV[0], L.PV[1], 'vol');
+      push(this._argmaxPos(a.volSide, p=>(+p[1])-(+p[2])), L.nCV[0], L.nCV[1], 'vol');   // only if call-dominant
+      push(this._argmaxPos(a.volSide, p=>(+p[2])-(+p[1])), L.nPV[0], L.nPV[1], 'vol');   // only if put-dominant
+    }
+    // delta concentration — the flow-SIGNED per-strike delta (dex_flow_by_strike), the only
+    // live sign; each tag fires only on a strike that genuinely carries that sign
+    if(a.dexSigned){
+      push(this._argmaxPos(a.dexSigned, p=>p[1]), L.Dp[0], L.Dp[1], 'd');
+      push(this._argmaxPos(a.dexSigned, p=>-p[1]), L.Dm[0], L.Dm[1], 'd');
+    }
+    // flip fences — profile_ladder rungs (HVL falls back to the row's gamma_flip)
+    push(a.hvl, L.HVL[0], L.HVL[1], 'lvl');
+    push(a.ct, L.cT[0], L.cT[1], 'lvl');
+    push(a.pt, L.pT[0], L.pT[1], 'lvl');
+    return out;
+  },
+};
 // bind the shared floating-card tips (#rp-htip — the replay-table / sweep-ledger card)
 // onto a container's [data-tip] descendants: hover shows after a beat, tap toggles
 // (a wall tablet has no hover). Used by the GEX map + the replay chart's GW labels.
@@ -1961,7 +2053,7 @@ function rowToScan(r){
   return { ts:r.ts, t:clockIn(r.ts,ET), spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
     /* H2 (07-12): r.call/put_wall are now the OPERATIVE near walls; the structural
        ceiling/floor moved to r.*_wall_tenor (fallback keeps pre-H2 rows correct) */
-    flip:r.gamma_flip, flipSrc:gv.regime_source??null, flipGv:(gv.flip!=null&&isFinite(gv.flip))?+gv.flip:null, flipBand:Array.isArray(gv.flip_band)?gv.flip_band:null, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, nbsTenor:g.net_by_strike_tenor??gv.net_by_strike_tenor??null, oiBS:g.oi_by_strike??gv.oi_by_strike??null, volBS:g.vol_by_strike??gv.vol_by_strike??null, volGrossBS:g.vol_gross_by_strike??gv.vol_gross_by_strike??null, dated:r.dated_gex??null,
+    flip:r.gamma_flip, flipSrc:gv.regime_source??null, flipGv:(gv.flip!=null&&isFinite(gv.flip))?+gv.flip:null, flipBand:Array.isArray(gv.flip_band)?gv.flip_band:null, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, nbsTenor:g.net_by_strike_tenor??gv.net_by_strike_tenor??null, oiBS:g.oi_by_strike??gv.oi_by_strike??null, volBS:g.vol_by_strike??gv.vol_by_strike??null, volGrossBS:g.vol_gross_by_strike??gv.vol_gross_by_strike??null, oiSideBS:g.oi_side_by_strike??gv.oi_side_by_strike??null, volSideBS:g.vol_side_by_strike??gv.vol_side_by_strike??null, dated:r.dated_gex??null,
     /* magnet policy (locked, mirrors resolve_dealer_map): gex_views LEADS, gex_theta is the
        challenger; the armed-only reversion magnet is wall-clamped (a fade target, not the pull) */
     magnet:gv.magnet??g.magnet??re.magnet_raw??r.gamma_flip,
@@ -4099,6 +4191,7 @@ function gxTablePaint(){
   const oiBS=_ld('oiBS'), volBS=_ld('volBS');
   const hasOi=(typeof OI_ON!=='undefined'&&OI_ON)&&Array.isArray(oiBS)&&oiBS.length>0;
   const hasVol=(typeof VOL_ON!=='undefined'&&VOL_ON)&&Array.isArray(volBS)&&volBS.length>0;
+  const oiSideBS=_ld('oiSideBS'), volSideBS=_ld('volSideBS'), tLadder=_ld('ladder');   // side-split panes + flip fences feed the doctrine tag column
   const near=v=>(v!=null&&isFinite(v))?Math.round((v-k0)/step):-1;
   const _fr=(typeof gxFreshInfo==='function')?gxFreshInfo():null;
   const key=[GX_ASOF,X.pLow,X.pHigh,MSTRIKES.length,show0,measured,hasDexN,hasDexF,hasOi,hasVol,
@@ -4123,6 +4216,17 @@ function gxTablePaint(){
   if(pinW&&GW.isMagp(pinW.wall, D.magnet)) magLead='Pin'+pinW.tier;
   else if(!clusters&&isFinite(D.spot)&&isFinite(D.magnet)&&Math.abs(D.spot-D.magnet)<=step) magLead="Pin''";
   else magLead='MagP'+GW.magpTier(D.magnet, clusters);
+  // doctrine tag column (GXTAG) — each source is gated exactly like its own column, so
+  // a hidden/modeled/OFF field contributes NO tag (never a fabricated level). HVL/cT/pT
+  // ride the profile ladder (HVL falls back to the row's gamma flip so it always marks).
+  const tagsByJ=GXTAG.tagsBySlot({ n:MSTRIKES.length, k0, step,
+    nbs:(measured&&show0)?nbs:null, oiSide:hasOi?oiSideBS:null, volSide:hasVol?volSideBS:null,
+    // D+/D− need the SIGNED per-strike delta: net_dex_by_strike (x.nbs) is the one-sign
+    // magnitude field (naive-long, sign meaningless), so it's the flow-signed series x.fbs
+    // — the only live sign (same axis gxOrderLean reads), gated on hasDexF.
+    dexSigned:hasDexF?x.fbs:null,
+    hvl:(tLadder&&isFinite(tLadder.hvl))?tLadder.hvl:(isFinite(D.flip)?D.flip:null),
+    ct:(tLadder&&isFinite(tLadder.ct))?tLadder.ct:null, pt:(tLadder&&isFinite(tLadder.pt))?tLadder.pt:null });
   // header — columns only for fields the row carries (no dead columns)
   let head=`<tr><th scope="col" class="l" title="SPX strike — one row per strike in the active window (zoom + tenor pills)">Strike</th>`
     +`<th scope="col" title="Net dealer γ at the strike — the hero bars&#39; value (assumed sign: MMs long calls / short puts). + pin · − push. Blank = the field carries no entry there.">Net γ</th>`
@@ -4131,6 +4235,7 @@ function gxTablePaint(){
     +(hasOi?`<th scope="col" title="Resting open interest per strike, calls − puts (raw contracts, unweighted — no greek, no model). 0DTE OI is YESTERDAY&#39;S book: thin at the open.">Net OI</th>`:'')
     +(hasVol?`<th scope="col" title="Session volume per strike, calls − puts (raw contracts traded today, gross tape — not the signed aggressor read).">Net Vol</th>`:'')
     +`<th scope="col" class="l" title="GW cluster label where this strike is a wall&#39;s peak (docs/gw-vocab.md) — tier by share of the strongest structure on this surface.">GW</th>`
+    +`<th scope="col" class="l" title="Chart-reading doctrine tags landing on this strike, spelled out with the abbreviation — ranked gamma walls Put/Call Wall N (PN/CN), Abs Gamma N (AbN); per-side OI peaks POI/COI/AbOI/nPOI; per-side volume peaks CV/PV/nCV/nPV; delta concentration D+/D−; flip fences HVL/cT/pT. Each rides its own source&#39;s gate — a hidden or modeled field shows no tag.">Tags</th>`
     +`<th scope="col" class="l" title="Level markers on their rows — SPOT · MagP/Pin (the magnet) · HVL (the gamma flip).">Notes</th></tr>`;
   const sgn=v=>v>0?' class="j"':v<0?' class="c"':'';
   const gcell=v=>v==null?'<td></td>':`<td${sgn(v)}>${v===0?'0':_sgfmt(v)}</td>`;
@@ -4145,7 +4250,9 @@ function gxTablePaint(){
     body+=`<tr${r.spot?' class="spot"':r.mag?' class="mag"':''}><th scope="row" class="l k">${r.k.toLocaleString('en-US')}</th>${gcell(r.g)}`
       +(hasDexN?ncell(r.dn):'')+(hasDexF?gcell(r.df):'')
       +(hasOi?icell(r.oi):'')+(hasVol?icell(r.vol):'')
-      +`<td class="l gw${gw?(gw.call?' j':' c'):''}">${gw?gw.txt:''}</td><td class="l m">${notes.join(' · ')}</td></tr>`;
+      +`<td class="l gw${gw?(gw.call?' j':' c'):''}">${gw?gw.txt:''}</td>`
+      +`<td class="l m gxtags">${(tagsByJ[j]||[]).map(t=>`<span class="tg-${t.kind}">${t.full}</span>`).join(' · ')}</td>`
+      +`<td class="l m">${notes.join(' · ')}</td></tr>`;
   }
   const tbl=MAP.tabEl.querySelector('.gx-dt');
   tbl.querySelector('thead').innerHTML=head;
@@ -5500,6 +5607,8 @@ function applyMap(r){
   T.oiBS = g.oi_by_strike ?? gv.oi_by_strike ?? null;            // raw-book panes (07-25): net OI / net vol per strike
   T.volBS = g.vol_by_strike ?? gv.vol_by_strike ?? null;
   T.volGrossBS = g.vol_gross_by_strike ?? gv.vol_gross_by_strike ?? null;   // gross activity (07-27): call+put total per strike
+  T.oiSideBS = g.oi_side_by_strike ?? gv.oi_side_by_strike ?? null;         // side-split panes (07-27): [k,callOI,putOI] — the TABLE tag column ranks these
+  T.volSideBS = g.vol_side_by_strike ?? gv.vol_side_by_strike ?? null;      // [k,callVol,putVol]
   // pane gutter re-check: a row that first carries (or drops) the raw-book / dex
   // fields must claim/release its gutter — fetchDatedBook's resize dance, on the row
   // hook. WANT count, not the drawn count: a pane shed for room must not rebuild forever.
@@ -5934,13 +6043,13 @@ const LY = [
     rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null, note:'cocked 07-07 · 08 · 13 · 16 — 0 fires ever',
       blockers:['0 fires ever','0 / 12 decided days'],
       summary:'Has reached the "cocked" state on four days (07-07, 07-08, 07-13, 07-16) and never fired. Since 07-12 the fence ledger hands it real wall-breach events, and an open pin→trend road tilts the regime toward trending — opening the FIRE gate it has never yet passed (cocking only needs storm-side gamma and a rejected fade at a level).'}},
-  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-8', hue:'--l-tower', tier:'processor',
+  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-9', hue:'--l-tower', tier:'processor',
     role:'≈ a reasoning / critic head', status:['lantern','shadow'],
     plain:'The reasoning brain. It reads the whole stack — blind to the lenses\' verdicts at first — anchors its prior on the MagP pull, forms its own call on direction, size, and stance (fight day or settle day), then compares notes with the lenses.',
     example:'The layers below each lean a direction; the Watchtower weighs them all and says, e.g., "up, about half a normal day\'s move, and this is a settle day, not a fight."',
-    rd:{kind:'days', decided:0, need:12, sw:'shadow · cap 35/day', rate:0.0, wl:null, note:'wt-8 era · ledger reset 07-25',
-      blockers:['0 / 12 decided days (wt-8 era)'],
-      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired. wt-7 (07-18) un-blinded the Siege stack: effort-at-wall verdicts reach the payload as siege_effort_at_walls, REVERSED SIGN spelled out. wt-8 (07-25) made the gamma sign the PERMISSION SLIP — positive gamma forbids drift/momentum bets, shove asymmetry is worded as terrain (resistance, not live pushing), soft_side wears a stuck-vane guard, and the magnet is demoted to a location/late-day pin target. Every era restarts the ledger: 0 of 12 decided days so far.'}},
+    rd:{kind:'days', decided:0, need:12, sw:'shadow · cap 35/day', rate:0.0, wl:null, note:'wt-9 era · ledger reset 07-27',
+      blockers:['0 / 12 decided days (wt-9 era)'],
+      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired. wt-7 (07-18) un-blinded the Siege stack: effort-at-wall verdicts reach the payload as siege_effort_at_walls, REVERSED SIGN spelled out. wt-8 (07-25) made the gamma sign the PERMISSION SLIP — positive gamma forbids drift/momentum bets, shove asymmetry is worded as terrain (resistance, not live pushing), soft_side wears a stuck-vane guard, and the magnet is demoted to a location/late-day pin target. wt-9 (07-27) folded in three COLOR-tier chart-reading advisories (record-only, no gate reads them): regime_intensity_1d (the 1-day whole-book net-γ trend — a pin entrenching/weakening or amplification deepening/easing), the siege PAUSE-vs-TERMINUS target lean (subordinate to the gamma regime), and air pockets (a thin same-side gap behind the near wall extends the objective across it, dormant under long gamma). Every era restarts the ledger: 0 of 12 decided days so far.'}},
   // ---- SIEGE stack (stack:'siege') — underlying-volume effort at the GexBox walls.
   // Shadow with one reader since wt-7 (2026-07-18): rendered on the second deck at
   // STK.SPOTS.siege; the effort word now enters the Watchtower payload
@@ -8484,6 +8593,28 @@ function renderDict(){
           </div>
         </div>
         <p class="fine">All of these are display surfaces of recorded shadow data — absent record = nothing drawn, never zeros.</p>
+      </div>
+
+      <div class="dict-card dict-wide">
+        <h3>Table Tags <span class="gw">P6 · Ab1 · POI · CV · D− · HVL</span></h3>
+        <p>The <b>Tags</b> column in the Map’s <b>TABLE</b> view marks where the chart-reading doctrine’s attributes land on each strike — spelled out, with the abbreviation in brackets. Several can stack on one strike, and that stacking (a wall that is <b>also</b> the OI and volume peak) is exactly where moves tend to end. Each tag rides its own source’s gate — a hidden, OFF or modeled field shows <b>no</b> tag.</p>
+        <div class="dict-cols">
+          <div>
+            ${row('P1–P6','p','<b>Put Wall N</b> — the ranked put-side gamma walls, P1 the biggest. Coral.')}
+            ${row('C1–C3','c','<b>Call Wall N</b> — the ranked call-side gamma walls, C1 the biggest. Jade.')}
+            ${row('Ab1–Ab3','','<b>Abs Gamma N</b> — the biggest gamma strikes ignoring side.')}
+            ${row('POI / COI','','heaviest <b>put / call open interest</b> strike.')}
+            ${row('AbOI','','the strike with the most <b>total open interest</b> (calls + puts).')}
+          </div>
+          <div>
+            ${row('nPOI','','the most <b>put-dominant</b> strike by net open interest.')}
+            ${row('CV / PV','','today’s peak <b>call / put volume</b> strike.')}
+            ${row('nCV / nPV','','the most call- / put-dominant strike by net <b>volume</b>.')}
+            ${row('D+ / D−','','the strikes with the most <b>positive / negative net delta</b>.')}
+            ${row('HVL / cT / pT','','the gamma flip and its chop-band fences — <b>see the Profile Ladder card</b>.')}
+          </div>
+        </div>
+        <p class="fine">Display-only vocabulary, ranked live off the strike panes — it changes nothing the tower reads. Blank = the source isn’t carried on this row (or its pill is off): honest, never a fabricated level.</p>
       </div>
 
       <div class="dict-pipe">

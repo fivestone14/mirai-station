@@ -972,3 +972,18 @@ def test_default_bars_lookup_reuses_same_tick_fetch(monkeypatch):
     monkeypatch.setattr(R, "_BARS_CACHE", {"SPX": (stale, bars)})
     assert R._default_bars_lookup("SPX") == [{"ts": "fresh"}]
     assert calls["n"] == 1
+
+
+def test_side_panes_lifted_at_both_evaluate_copy_sites():
+    # 2026-07-27 guard: the TABLE tag column's side-split panes (oi_side_by_strike /
+    # vol_side_by_strike) are lifted from the B_0dte slide onto the diary row at TWO copy
+    # sites in evaluate() — the native (theta_native) path and the gex_views path. A
+    # one-site-only lift would silently blank the OI/Vol tags on rows from the dropped path.
+    # Tie the new panes' lift count to the established net pane (known-good at both sites), so
+    # this survives a uniform refactor but fails if either mirror drops a key.
+    import inspect
+    src = inspect.getsource(R.evaluate)
+    base = src.count('"oi_by_strike"')          # net pane, lifted at both copy sites
+    assert base >= 4, "baseline pane lift pattern changed — revisit this guard"
+    for key in ("oi_side_by_strike", "vol_side_by_strike"):
+        assert src.count(f'"{key}"') == base, f"{key} must be lifted everywhere oi_by_strike is"
