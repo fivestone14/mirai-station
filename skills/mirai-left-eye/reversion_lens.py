@@ -1335,6 +1335,10 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                 # Net OI / Net Vol panes. None on pre-field rows → panes not offered.
                 rec["oi_by_strike"] = _b0.get("oi_by_strike")
                 rec["vol_by_strike"] = _b0.get("vol_by_strike")
+                # GROSS VOL (2026-07-27): total contracts traded per strike (call vol
+                # + put vol) — the activity map's intensity. None on pre-field rows →
+                # activity map falls back to |vol_by_strike|.
+                rec["vol_gross_by_strike"] = _b0.get("vol_gross_by_strike")
                 # PER-STRIKE TENOR FIELD (2026-07-13): the 1-7DTE terrain, same
                 # compact shape — the tablet's hollow outline bars behind the
                 # solid 0DTE bars (never blended into the pure 0DTE read)
@@ -1464,6 +1468,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
                         "net_by_strike": b0.get("net_by_strike"),   # measured per-strike field (native mirror)
                         "oi_by_strike": b0.get("oi_by_strike"),     # raw book panes (native mirror)
                         "vol_by_strike": b0.get("vol_by_strike"),
+                        "vol_gross_by_strike": b0.get("vol_gross_by_strike"),   # gross activity (native mirror)
                         "net_by_strike_tenor": ((tv.get("slides") or {}).get("C_tenor") or {}).get("net_by_strike"),
                         "aggressor_flow": flow, "flow_available": flow is not None,
                         # N7: which expiry×sides the fetch actually filled — a book that

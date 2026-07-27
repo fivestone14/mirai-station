@@ -102,6 +102,23 @@ class TestRawBookPanes:
         # raw contracts, no gamma weighting: 5100 = call 2100 − put 900
         assert by[5100] == 2100 - 900
 
+    def test_vol_gross_is_call_plus_put_same_window(self):
+        # gross = |call vol| + |put vol|: a balanced strike that nets small reads
+        # heavy on the activity map. 5100 = call 2100 + put 900 (net was 1200).
+        zero, _ = gv.split_tenor(_chain())
+        out = gv.slide_0dte(zero, 5000.0)
+        gross = out["vol_gross_by_strike"]
+        assert isinstance(gross, list) and gross
+        by_g = dict(gross)
+        by_n = dict(out["vol_by_strike"])
+        assert by_g[5100] == 2100 + 900
+        assert by_g[5100] > abs(by_n[5100])          # gross ≥ |net|, strictly here
+        # window parity with net: same strike set, same reach
+        assert [k for k, _v in gross] == [k for k, _v in out["vol_by_strike"]]
+
+    def test_vol_gross_none_on_empty_book(self):
+        assert gv.slide_0dte([], 5000.0)["vol_gross_by_strike"] is None
+
     def test_oi_by_strike_none_on_empty_oi_book(self):
         # the 0DTE fixture carries no OI — the key stays None, never a
         # fabricated zero field (no read is not a balanced book)

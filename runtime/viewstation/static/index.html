@@ -1955,7 +1955,7 @@ function rowToScan(r){
   return { ts:r.ts, t:clockIn(r.ts,ET), spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
     /* H2 (07-12): r.call/put_wall are now the OPERATIVE near walls; the structural
        ceiling/floor moved to r.*_wall_tenor (fallback keeps pre-H2 rows correct) */
-    flip:r.gamma_flip, flipSrc:gv.regime_source??null, flipGv:(gv.flip!=null&&isFinite(gv.flip))?+gv.flip:null, flipBand:Array.isArray(gv.flip_band)?gv.flip_band:null, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, nbsTenor:g.net_by_strike_tenor??gv.net_by_strike_tenor??null, oiBS:g.oi_by_strike??gv.oi_by_strike??null, volBS:g.vol_by_strike??gv.vol_by_strike??null, dated:r.dated_gex??null,
+    flip:r.gamma_flip, flipSrc:gv.regime_source??null, flipGv:(gv.flip!=null&&isFinite(gv.flip))?+gv.flip:null, flipBand:Array.isArray(gv.flip_band)?gv.flip_band:null, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, nbsTenor:g.net_by_strike_tenor??gv.net_by_strike_tenor??null, oiBS:g.oi_by_strike??gv.oi_by_strike??null, volBS:g.vol_by_strike??gv.vol_by_strike??null, volGrossBS:g.vol_gross_by_strike??gv.vol_gross_by_strike??null, dated:r.dated_gex??null,
     /* magnet policy (locked, mirrors resolve_dealer_map): gex_views LEADS, gex_theta is the
        challenger; the armed-only reversion magnet is wall-clamped (a fade target, not the pull) */
     magnet:gv.magnet??g.magnet??re.magnet_raw??r.gamma_flip,
@@ -2419,7 +2419,7 @@ const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZ
 
 function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, putWall:s.putWall, magnet:s.magnet, pin:s.pin,
   gAbove:s.gAbove, gBelow:s.gBelow, flow:s.flow, shoveUp:s.shove.up, shoveDown:s.shove.down, sigma:s.sigma,
-  netByStrike:s.netByStrike??null, nbsTenor:s.nbsTenor??null, oiBS:s.oiBS??null, volBS:s.volBS??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null, dex:s.dex??null,
+  netByStrike:s.netByStrike??null, nbsTenor:s.nbsTenor??null, oiBS:s.oiBS??null, volBS:s.volBS??null, volGrossBS:s.volGrossBS??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null, dex:s.dex??null,
   ladder:s.ladder??null, aem:s.aem??null,
   sign:s.sign, regime:s.regime, downFlip:s.shove.downFlip }; }
 
@@ -2641,7 +2641,7 @@ function gxBuild(){
           one bar per strike grown LEFT from canvasR (length+brightness = today's traded
           volume there), flow-signed jade/coral, plain-word callouts on the notable
           levels (paintActivity). ABOVE the level lines so its callouts read over them;
-          empty in LADDER / when the row carries no vol_by_strike. -->
+          empty in LADDER / when the row carries no gross-or-net volume. -->
      <g id="actG"></g>
      <!-- label groups painted ABOVE the level/target lines (07-22): the MagP line was
           striking straight through dated-wall / GW label text at the same price. Their
@@ -3746,8 +3746,9 @@ function paintAem(){
 // right edge of the price canvas lights up with WHERE today's option activity is and WHAT
 // it is doing, aligned to the price axis so a glance reads "buying accelerating at 7,470,
 // selling at 7,400, quiet elsewhere". Per strike: a bar grown LEFT from canvasR whose
-// length+brightness = today's traded volume there (|vol_by_strike|, calls−puts net, the
-// only "where trades happened" field the row carries), coloured by the per-strike signed
+// length+brightness = today's GROSS traded volume there (vol_gross_by_strike = call vol +
+// put vol, total contracts; falls back to |vol_by_strike| net on pre-07-27 rows so a busy
+// balanced strike reads loud, not quiet), coloured by the per-strike signed
 // flow (dex_flow_by_strike, the aggressor/tape read): fbs<0 = customer BUYING call-delta
 // (jade), fbs>0 = SELLING (coral). fbs is DEALER-signed at source (see lefteye_dex:
 // fs=(sell_q−buy_q)·Δ), so a customer net-buy prints negative — the mapping is inverted
@@ -3758,7 +3759,7 @@ function paintAem(){
 // LIVEROWS the client already holds: volume rising ≥25% vs the prior scans → "buying/selling
 // accelerating"; falling ≥25% → "cooling off"; open interest building across the window →
 // "accumulation"; else the steady "buying"/"selling". No σ / contract counts on the face —
-// those ride the tooltip. Default-ON in TAPE, honest-absent (no vol_by_strike in frame →
+// those ride the tooltip. Default-ON in TAPE, honest-absent (no gross/net volume in frame →
 // nothing), key-gated on the scan clock (the rate-of-change recomputes per scan, not per
 // frame). LADDER/TABLE never call it.
 function paintActivity(){
@@ -3778,9 +3779,11 @@ function paintActivity(){
   };
   const _fld=(r,which)=>{   // per-strike field off a RAW LIVEROWS row (mirror of rowToScan's access)
     if(!r) return null; const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv;
-    return (which==='vol'?(g.vol_by_strike??gv.vol_by_strike):(g.oi_by_strike??gv.oi_by_strike))??null;
+    // GROSS (call+put total) is the intensity axis; |net| is the pre-07-27 fallback
+    return (which==='vol'?(g.vol_gross_by_strike??gv.vol_gross_by_strike??g.vol_by_strike??gv.vol_by_strike)
+                         :(g.oi_by_strike??gv.oi_by_strike))??null;
   };
-  const vol=bucket(D.volBS);   // today's traded volume by strike (the intensity axis)
+  const vol=bucket(D.volGrossBS)||bucket(D.volBS);   // gross traded volume by strike (falls back to |net| on old rows)
   const HIST=(typeof LIVEROWS!=='undefined'&&Array.isArray(LIVEROWS))?LIVEROWS.slice(-5):[];
   const ok=MSTRIKES.length&&vol;   // honest-absent: no traded volume in frame → render nothing
   const key=(ok?String(GX_ASOF||'')+'|'+HIST.length+'|'+((D.dex&&D.dex.fbs)?D.dex.fbs.length:0)+'|'+(D.oiBS?D.oiBS.length:0):'off')
@@ -3835,7 +3838,7 @@ function paintActivity(){
   for(const p of picked){ const c=p.c;
     const tip=`${p.tag.charAt(0).toUpperCase()+p.tag.slice(1)} at this price.`
       +`¦k:strike=${Math.round(c.k)}`
-      +`¦f:volume ${_pFmt(c.mag)} today (call−put net)`
+      +`¦f:volume ${_pFmt(c.mag)} today (calls + puts, total traded)`
       +(c.ratio!=null?`¦f:${c.ratio>=1?'up':'down'} ${Math.round(Math.abs(c.ratio-1)*100)}% vs the last ${volPast.length} scan${volPast.length===1?'':'s'}`:'')
       +(c.oiUp!=null&&c.oiUp!==0?`¦f:open interest ${c.oiUp>0?'+':'−'}${_pFmt(c.oiUp)} across the window`:'')
       +(c.dir!=='none'?`¦f:flow: net ${c.dir==='buy'?'buying (call-delta demand)':'selling (put-delta / call supply)'}`:'¦f:flow thin — no buy/sell claim');
@@ -5390,6 +5393,7 @@ function applyMap(r){
   T.nbsTenor = g.net_by_strike_tenor ?? gv.net_by_strike_tenor ?? null;   // 1-7DTE terrain outlines
   T.oiBS = g.oi_by_strike ?? gv.oi_by_strike ?? null;            // raw-book panes (07-25): net OI / net vol per strike
   T.volBS = g.vol_by_strike ?? gv.vol_by_strike ?? null;
+  T.volGrossBS = g.vol_gross_by_strike ?? gv.vol_gross_by_strike ?? null;   // gross activity (07-27): call+put total per strike
   // pane gutter re-check: a row that first carries (or drops) the raw-book / dex
   // fields must claim/release its gutter — fetchDatedBook's resize dance, on the row
   // hook. WANT count, not the drawn count: a pane shed for room must not rebuild forever.
@@ -5546,7 +5550,7 @@ function frame(){
     else if(Math.abs(d)>mv) mv=Math.abs(d); }
   D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
-  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem snap (not eased)
+  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; D.volGrossBS=T.volGrossBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem snap (not eased)
   // PERF (07-25): 60fps repaints only while something is actually EASING; converged,
   // drop to ~1Hz so the time-driven reads (comet aging, spot lane, the path's
   // live-edge crawl + price chip via gxPathLive) still advance — a wall display

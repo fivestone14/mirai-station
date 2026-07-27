@@ -1037,8 +1037,10 @@ def slide_0dte(zero_dte: list[dict], spot: float,
            "pin_field_v": None, "pin_legacy": None, "pin_held": None,
            "pin_candidate": None, "mass_by_strike": None,
            # RAW BOOK PANES (2026-07-25): per-strike net OI / net volume (call − put,
-           # unweighted contracts) — the tablet's Net OI / Net Vol panes
-           "oi_by_strike": None, "vol_by_strike": None}
+           # unweighted contracts) — the tablet's Net OI / Net Vol panes.
+           # vol_gross_by_strike (2026-07-27): total contracts traded per strike
+           # (call vol + put vol, magnitude) — the activity map's gross intensity.
+           "oi_by_strike": None, "vol_by_strike": None, "vol_gross_by_strike": None}
     if not zero_dte or not spot:
         return out
     basis = pick_basis(zero_dte, spot, prefer="volume")   # walls: 0DTE → volume first
@@ -1243,6 +1245,7 @@ def slide_0dte(zero_dte: list[dict], spot: float,
         _lo, _hi = spot * (1.0 - _w), spot * (1.0 + _w)
         _oi: dict[float, float] = {}
         _vol: dict[float, float] = {}
+        _vol_gross: dict[float, float] = {}
         for c in zero_dte:
             k = c.get("strike")
             if k is None or not (_lo <= k <= _hi):
@@ -1254,12 +1257,16 @@ def slide_0dte(zero_dte: list[dict], spot: float,
                 _oi[k] = _oi.get(k, 0.0) + sgn * o
             if v:
                 _vol[k] = _vol.get(k, 0.0) + sgn * v
+                _vol_gross[k] = _vol_gross.get(k, 0.0) + v   # both rights as magnitude
         if _oi:
             out["oi_by_strike"] = [[round(k, 2), int(round(v))]
                                    for k, v in sorted(_oi.items())]
         if _vol:
             out["vol_by_strike"] = [[round(k, 2), int(round(v))]
                                     for k, v in sorted(_vol.items())]
+        if _vol_gross:
+            out["vol_gross_by_strike"] = [[round(k, 2), int(round(v))]
+                                          for k, v in sorted(_vol_gross.items())]
     except Exception:
         pass
     out.update({"pin": round(pin, 4) if pin is not None else None,
