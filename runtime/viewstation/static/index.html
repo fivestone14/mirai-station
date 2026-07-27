@@ -2667,7 +2667,7 @@ function gxBuild(){
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
     railG:q('railG'), _rkey:null, scrubG:q('scrubG'), _skey:null,
     svg:document.querySelector('#p-map .gx-chart svg'), capTier,
-    maskB:q('gxLabMaskB'), _mkGw:'', _mkDt:'', _mkGap:'', _mkAem:'', _mkKey:null, _hudkey:null,
+    maskB:q('gxLabMaskB'), _mkGw:'', _mkDt:'', _mkGap:'', _mkAem:'', _mkKey:null, _hudkey:null, _ordkey:null, _ord:null,
     actG:q('actG'), _actkey:null,
     datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
     wallG:q('gxWallG'), _wallkey:null,
@@ -3193,8 +3193,12 @@ function gxPaint(){
   // the model id so the 60fps ease frames do zero DOM. Honest-absent: nothing present → hidden.
   if(MAP.hudEl){
     if(X.tape){
+      // the order-lean recomputes on the SCAN clock (GX_ASOF), never per ease-frame — same
+      // key-gate as the activity map it reads from; gxHudModel then only maps the scalar to words
+      if(MAP._ordkey!==GX_ASOF){ MAP._ordkey=GX_ASOF;
+        MAP._ord=gxOrderLean(D.flowR, (D.dex&&Array.isArray(D.dex.fbs))?D.dex.fbs:null); }
       const hm=gxHudModel({ sign:D.sign, regime:D.regime, ladder:D.ladder, spot:D.spot, gaps:_hudGaps,
-        wt:wtI?{up:wtI.up, tgt:wtI.tgt, conv:wtI.conv}:null });
+        wt:wtI?{up:wtI.up, tgt:wtI.tgt, conv:wtI.conv}:null, orders:MAP._ord });
       if(hm.id!==MAP._hudkey){
         MAP._hudkey=hm.id;
         if(hm.present){
@@ -4182,6 +4186,36 @@ function gxAnnotModel(a){
 // (the HEADLINE), `lines` = the guided top-to-bottom "what to watch" breakdown
 // ({k:label, t:sentence}), each honest-absent on its own. `id` is the coarse key
 // (rounded — no ease-frame churn). Nothing present → present:false, gxPaint hides the HUD.
+// gxOrderLean — PURE (the JSC smoke harness drills it by name): the live ORDER flow read as
+// ONE buy-positive strength in [-1,1], so the HUD can say what real orders are doing and warn
+// when they fight the system's lean. TWO sources, OPPOSITE sign conventions — the exact place
+// a wrong sign would lie ("buyers" mid-selloff): flow_recent (gex_theta) is BUY-POSITIVE at
+// source (+ = buy calls / sell puts; a day of pure call selling reads −1.0). Per-strike
+// dex_flow_by_strike is DEALER-signed — fbs<0 = customer BUYING (the SAME inversion the
+// activity bars paint jade, see paintActivity). We normalise BOTH to buy-positive: flow_recent
+// (already a signed share) rides as-is; the fbs fallback is summed, NEGATED, and divided by its
+// own gross so it lands on the same [-1,1] scale. `loud` names the busiest strike on the net
+// side (by |flow|), for the "loudest at X" clause — per-strike tape only. Honest-absent: no
+// windowed net AND no per-strike tape → null (the HUD omits the line, never fabricates a side).
+function gxOrderLean(flowR, fbs){
+  let net=null;
+  if(flowR!=null&&isFinite(flowR)) net=Math.max(-1,Math.min(1,+flowR));
+  else if(Array.isArray(fbs)){
+    let s=0, g=0, seen=false;
+    for(const p of fbs){ if(!Array.isArray(p)||!isFinite(p[1])) continue; const v=+p[1]; s+=v; g+=Math.abs(v); seen=true; }
+    if(seen) net=g>0?-s/g:0;   // dealer-signed → negate to buy-positive; gross-normalised onto flow_recent's scale
+  }
+  if(net==null) return null;
+  let loud=null;
+  if(Array.isArray(fbs)&&net!==0){
+    const want=net>0?-1:1;   // net buying → loudest BUYING strike (fbs<0); net selling → fbs>0
+    let best=0;
+    for(const p of fbs){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
+      const v=+p[1]; if(Math.sign(v)!==want) continue;
+      const abv=Math.abs(v); if(abv>best){ best=abv; loud={k:Math.round(+p[0]), side:net>0?'buy':'sell'}; } }
+  }
+  return { net, loud };
+}
 function gxHudModel(a){
   const fp=v=>Math.round(v).toLocaleString('en-US');
   const sign=a&&a.sign, sp=(a&&a.spot!=null&&isFinite(a.spot))?+a.spot:null;
@@ -4245,9 +4279,32 @@ function gxHudModel(a){
     const g=gapTo('floor');
     lines.push({k:'Floor below', t:`${fp(room.floor)}`+(g!=null?` — if it breaks, can fall fast to ${fp(g)}`:'')+`.`});
   }
+  // ORDERS read (07-27) — what the REAL order flow is doing, and whether it agrees with the
+  // system's lean. a.orders = gxOrderLean's buy-positive strength (memoised per scan by the
+  // render, so no per-frame array work). Words + colour MATCH the activity bars: buying = jade,
+  // selling = coral, near-flat = "balanced" (a real read, not a side). Honest-absent: no orders
+  // → no line. The gauge is the high-value one — the 07-22 failure leaned down while nothing was
+  // actually selling — so a lean fighting the tape prints a coral warning; agreement, a quiet ✓.
+  const ORD_FLAT=0.15;   // |strength| below this is not a side — "balanced", never a lean
+  const ol=a&&a.orders;
+  let ordSide=null;
+  if(ol&&ol.net!=null&&isFinite(ol.net)){
+    ordSide=ol.net>ORD_FLAT?'buy':ol.net<-ORD_FLAT?'sell':'flat';
+    let t=ordSide==='buy'?`<span class="j">buyers stepping in</span>`
+         :ordSide==='sell'?`<span class="c">sellers pressing</span>`:'balanced';
+    if(ordSide!=='flat'&&ol.loud&&ol.loud.side===ordSide) t+=` — loudest at ${fp(ol.loud.k)}`;
+    lines.push({k:'Orders', t:t+'.'});
+  }
+  if(lean&&ordSide&&ordSide!=='flat'){
+    const agree=(lean.up&&ordSide==='buy')||(!lean.up&&ordSide==='sell');
+    lines.push(agree
+      ? {k:'vs lean', t:`<span class="j">✓ orders agree</span>.`}
+      : {k:'vs lean', t:`<span class="c">⚠ leaning ${lean.up?'up':'down'}, but orders are ${ordSide==='buy'?'buying':'selling'} into it</span>.`});
+  }
   const id=[ mood?mood.chip:'',
     room?`${room.floor!=null?Math.round(room.floor):''}/${room.ceil!=null?Math.round(room.ceil):''}`:'',
     lean?`${lean.up?'u':'d'}${Math.round(lean.tgt)}${lean.conv!=null?Math.round(lean.conv*100):''}`:'',
+    ordSide?`o${ordSide}${ol&&ol.loud?Math.round(ol.loud.k):''}`:'',
     sp!=null?Math.round(sp):'', `${gapTo('ceil')||''}/${gapTo('floor')||''}` ].join('|');
   return { present, id, mood, room, lean, r1, r2, lines };
 }
@@ -5550,7 +5607,7 @@ function frame(){
     else if(Math.abs(d)>mv) mv=Math.abs(d); }
   D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
-  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; D.volGrossBS=T.volGrossBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem snap (not eased)
+  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; D.volGrossBS=T.volGrossBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem; D.flowR=T.flowR??null;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem + windowed order-tape (flow_recent) snap (not eased)
   // PERF (07-25): 60fps repaints only while something is actually EASING; converged,
   // drop to ~1Hz so the time-driven reads (comet aging, spot lane, the path's
   // live-edge crawl + price chip via gxPathLive) still advance — a wall display
