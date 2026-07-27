@@ -418,6 +418,24 @@
     color:var(--ink-faint); font-family:var(--sans); font-size:13px; line-height:1; -webkit-tap-highlight-color:transparent}
   .gx-cardx:hover{color:var(--ink)}
   .gx-cardx:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
+  /* ---- PLAIN-ENGLISH HUD (07-27, TAPE terrain read): ONE docked line top-left —
+     MOOD · ROOM · LEAN, synthesized from the same snapped payload the marks draw
+     from. Subsumes the two annotation cards IN TAPE (they stay in LADDER). Position
+     (top/left) + a max-width cap are set inline by gxMountHud from MAPX/GXDOCK so the
+     line never runs under the top-right "?" (the JSC dock smoke asserts it).
+     pointer-events:none — clicks fall through to the chart. */
+  .gx-hud{position:absolute; z-index:4; pointer-events:none;
+    border:1px solid var(--hairline-2); border-radius:10px; padding:9px 12px;
+    background:color-mix(in srgb,var(--surface-2) 62%, transparent);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    box-shadow:0 10px 26px -14px rgba(0,0,0,.6)}
+  .gx-hud .r1{font-family:var(--mono); font-size:12px; font-weight:700; line-height:1.35; color:var(--ink); letter-spacing:.01em}
+  .gx-hud .r2{margin-top:3px; font-family:var(--sans); font-size:11.5px; line-height:1.45; color:var(--ink-dim)}
+  .gx-hud .r2 b{color:var(--ink-dim); font-weight:700}
+  .gx-hud .chip{display:inline-block; font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.06em;
+    padding:2px 5px; border-radius:4px; margin-right:6px; vertical-align:1px}
+  .gx-hud .j{color:var(--jade)} .gx-hud .c{color:var(--coral)} .gx-hud .m{color:var(--ink-faint)}
+  .gx-chart.gx-tab .gx-hud{display:none}     /* the HUD reads the chart's marks, not the table */
   /* ---- NET Γ / NET Δ exposure tiles (07-25): strip-level, quiet — value, a small
      1-day delta, and the 4-dot scan trail (newest brightest). */
   .gx-tile i{display:inline-flex; align-items:center; gap:6px}
@@ -2330,6 +2348,49 @@ function gxWallStack(L, spot, G, taken){
   }
   return keep;
 }
+// PURE air-pocket model (the JSC smoke harness drills this by name): given the
+// gxWallStack levels, spot, the measured per-strike net-γ field (net_by_strike) and a
+// frame, return the ≤1-per-side GAP bands where the γ structure between two ADJACENT
+// shelves is THIN — the empty space price slides through fast. Adjacent-pair (not spot-
+// side-filtered) so the band survives when price falls INTO it and lights up. Thinness
+// reads from measured mass first: sum |net| strictly between the two shelf prices vs the
+// book's strongest rung — a wide span carrying <15% of the heaviest strike is an air
+// pocket (a pinned room has real γ there, so it never shades). `side` = above/below spot
+// by midpoint, `target` = the far shelf that catches the move, `active` = spot is inside
+// the band now. ≤1 (nearest) per side. Honest-absent: no MEASURED per-strike field, <2
+// shelves, no spot, or a non-thin gap → nothing. Thinness needs the real net_by_strike
+// density — the sparse named levels alone can't prove an air pocket (γ lives between
+// them), so a modeled/absent book shades nothing rather than inventing a pocket.
+function gxGapBands(walls, spot, nbs, fr){
+  if(!Array.isArray(walls)||spot==null||!isFinite(spot)) return [];
+  if(!Array.isArray(nbs)||!nbs.length) return [];
+  const step=(fr&&fr.step)||5;
+  const ps=walls.filter(w=>!w.edge&&w.price!=null&&isFinite(w.price))
+                .map(w=>w.price).sort((a,b)=>a-b);
+  let refMass=0;
+  for(const p of nbs){ if(Array.isArray(p)&&isFinite(p[1])) refMass=Math.max(refMass,Math.abs(p[1])); }
+  if(!(refMass>0)) return [];
+  const cand=[];
+  for(let i=0;i<ps.length-1;i++){
+    const lo=ps[i], hi=ps[i+1], span=hi-lo;
+    if(!(span>0)) continue;
+    let mass=0;
+    for(const p of nbs){ if(!Array.isArray(p)||!isFinite(p[0])||!isFinite(p[1])) continue;
+      if(p[0]>lo+1e-6&&p[0]<hi-1e-6) mass+=Math.abs(p[1]); }
+    const thin = span>1.5*step && mass<0.15*refMass;
+    if(!thin) continue;
+    const mid=(lo+hi)/2, above=mid>spot;
+    cand.push({ side:above?'ceil':'floor', lo, hi, span, target:above?hi:lo,
+      active:(spot>=lo&&spot<=hi), yHi:fr.y(hi), yLo:fr.y(lo),
+      dist:Math.min(Math.abs(spot-lo),Math.abs(spot-hi)) });
+  }
+  const out=[];
+  for(const side of ['ceil','floor']){
+    const s=cand.filter(b=>b.side===side).sort((a,b)=>a.dist-b.dist);
+    if(s.length){ delete s[0].dist; out.push(s[0]); }
+  }
+  return out;
+}
 const gauss = (k,mu,sd)=>Math.exp(-((k-mu)*(k-mu))/(2*sd*sd));
 const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZone:PT});
 
@@ -2468,6 +2529,10 @@ function gxBuild(){
      <defs><pattern id="rlHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
        <line x1="0" y1="0" x2="0" y2="6" stroke="var(--lantern)" stroke-width="1.5" opacity=".30"/>
      </pattern>
+     <!-- air-pocket hatch (07-27, TAPE): sparse cool diagonals for a thin-γ GAP band -->
+     <pattern id="gxGapHatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+       <line x1="0" y1="0" x2="0" y2="9" stroke="var(--iris)" stroke-width="1" opacity=".18"/>
+     </pattern>
      <clipPath id="gxPathClip"><rect x="${X.x0}" y="${X.padT}" width="${(X.canvasR-X.x0).toFixed(1)}" height="${(X.H-X.padT-X.padB).toFixed(1)}"/></clipPath></defs>
      <defs>
        <linearGradient id="gxJ" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--jade)" stop-opacity=".95"/><stop offset="1" stop-color="var(--jade)" stop-opacity=".36"/></linearGradient>
@@ -2488,6 +2553,11 @@ function gxBuild(){
      </defs>
      <rect id="washTop" x="${X.x0}" width="${X.canvasR-X.x0}" style="fill:var(--jade);opacity:.045"/>
      <rect id="washBot" x="${X.x0}" width="${X.canvasR-X.x0}" style="fill:var(--coral);opacity:.045"/>
+     <!-- MOOD TINT (07-27, TAPE): a whole-plot wash by the engine's gamma sign — cool
+          (iris) when positive/pinning, warm (coral) when amplifying. Very faint, non-
+          invasive; gxPaint sizes/tints it and hides it when the sign is unknown. TAPE
+          only: LADDER's split-at-flip wash already carries the geography (byte-identical). -->
+     ${X.tape?`<rect id="moodTint" x="${X.x0}" width="${(X.canvasR-X.x0).toFixed(1)}" style="opacity:0"/>`:''}
      <rect id="magCloud" x="${X.x0}" width="${X.canvasR-X.x0}" height="0" style="fill:var(--l-grav);opacity:.10"/>
      <!-- CHOP BAND (07-25, LEVELS fold-in): the ladder's cT↔pT no-trade zone around
           HVL as a faint gravity-gold wash — structure shares ONE gold (--l-grav) with
@@ -2558,7 +2628,7 @@ function gxBuild(){
      <text id="gx-cap" x="${Math.max(X.x0+2,GXDOCK.capX)}" y="${(X.H-6).toFixed(1)}" font-size="10.5" font-family="var(--sans)" style="fill:var(--ink-faint);letter-spacing:var(--track-hd)">${X.tape?'Price · session · γ profile':(capTier>0?'Bar = net γ / strike · 0DTE surface':'0DTE net γ')} · <tspan id="bar-src" style="fill:var(--ink-dim)">modeled</tspan> · <tspan id="bar-scale" style="fill:var(--ink-dim)">linear</tspan><tspan id="bar-nudge" style="fill:var(--lantern)"></tspan><tspan id="bar-t7" style="fill:var(--ink-faint)"></tspan><tspan id="bar-path" style="fill:var(--ink-faint)"></tspan>${capTier>1?' · ◄ <tspan style="fill:var(--coral)">▮</tspan> push − | + pin <tspan style="fill:var(--jade)">▮</tspan> ►':''}</text>
    </svg>`;
   const q=id=>document.getElementById(id);
-  MAP={ washTop:q('washTop'), washBot:q('washBot'), magCloud:q('magCloud'), axisG:q('axisG'),
+  MAP={ washTop:q('washTop'), washBot:q('washBot'), moodTint:q('moodTint'), magCloud:q('magCloud'), axisG:q('axisG'),
     chopBand:q('chopBand'), pathG:q('pathG'), _pathkey:null,
     bars:[...document.querySelectorAll('#barsG .gxbar')], barsG:q('barsG'), spotTri:q('spotTri'), _barkey:null,
     dexPaneG:q('dexPaneG'), _xkey:null, panesG:q('panesG'), _pkey:null,
@@ -2568,7 +2638,7 @@ function gxBuild(){
     datedG:q('datedG'), _dkey:null, datedOIG:q('datedOIG'), _dokey:null,
     railG:q('railG'), _rkey:null, scrubG:q('scrubG'), _skey:null,
     svg:document.querySelector('#p-map .gx-chart svg'), capTier,
-    maskB:q('gxLabMaskB'), _mkGw:'', _mkDt:'', _mkKey:null,
+    maskB:q('gxLabMaskB'), _mkGw:'', _mkDt:'', _mkGap:'', _mkKey:null, _hudkey:null,
     datedOILgdG:q('datedOILgdG'), spotLane:q('spotLane'),
     wallG:q('gxWallG'), _wallkey:null,
     lvl:{}, wtTgt:q('wtTgt'), wtTgtN:q('wtTgtN'), wtTgtV:q('wtTgtV'), wtTgtL:q('wtTgtL'), wtTgtLead:q('wtTgtLead'),
@@ -2580,6 +2650,7 @@ function gxBuild(){
   gxMountScrub();                         // re-mount the price scrub (same reason)
   gxMountTable();                         // re-mount the TABLE mode overlay + the view-mode toggle (same reason)
   gxMountCards();                         // re-mount the annotation cards (same reason)
+  gxMountHud();                           // re-mount the TAPE plain-English HUD (same reason)
   gxMountPtip();                          // re-mount the live-edge price chip (same reason)
   gwBindTips(document.querySelector('#p-map .gx-chart'));   // GW label tooltips (container survives rebuilds)
   gxOverview(); gxTower(); gxPaint();
@@ -2605,9 +2676,9 @@ function mkCloud(id,xa,xb,cy){
 }
 function gxMaskPaint(){   // called only from inside the label layers' key gates
   if(!MAP||!MAP.maskB) return;
-  const key=MAP._mkGw+'\u0001'+MAP._mkDt;   // separator can't appear in SVG markup, so the key never aliases
+  const key=MAP._mkGw+'\u0001'+MAP._mkDt+''+(MAP._mkGap||'');   // separators can't appear in SVG markup, so the key never aliases
   if(key===MAP._mkKey) return; MAP._mkKey=key;
-  MAP.maskB.innerHTML=MAP._mkGw+MAP._mkDt;
+  MAP.maskB.innerHTML=MAP._mkGw+MAP._mkDt+(MAP._mkGap||'');   // +gap-label blobs (07-27, TAPE)
 }
 function gxPaint(){
   if(!MAP||!MAP.bars||!MSTRIKES.length) return;
@@ -2625,6 +2696,16 @@ function gxPaint(){
   const _island=_known&&isFinite(D.flip)&&isFinite(D.spot)&&((D.spot>D.flip)!==(D.sign==='positive'));
   const _wOp=(_known&&!_island)?'.045':'.012';
   MAP.washTop.style.opacity=_wOp; MAP.washBot.style.opacity=_wOp;
+  // MOOD TINT (07-27, TAPE): a whole-plot wash by the engine's gamma sign — cool
+  // (iris) for positive/pinning, warm (coral) for amplifying. Very faint (~.03), so
+  // it colours the room without competing with the split-at-flip wash above. Honest-
+  // absent: sign unknown → invisible. The rect only exists in TAPE (moodTint null else).
+  if(MAP.moodTint){
+    MAP.moodTint.setAttribute('y',X.padT);
+    MAP.moodTint.setAttribute('height',Math.max(0,X.H-X.padB-X.padT).toFixed(1));
+    MAP.moodTint.style.fill=(D.sign==='negative')?'var(--coral)':'var(--iris)';
+    MAP.moodTint.style.opacity=_known?((D.sign==='negative')?'.032':'.028'):'0';
+  }
   // m3: a SPREAD-OUT pull draws as a cloud, not a line — when zone-1 is wide (>25pts)
   // or thin (share <35%), a translucent gravity band spans the zone so a 5%-of-mass
   // smear can never read as a precise target. The line stays (it IS the weighted
@@ -2894,12 +2975,17 @@ function gxPaint(){
   // ANNOTATION CARDS (07-25, LEVELS fold-in): ≤2 dismissible facts over the plot —
   // the strongest wall + the ladder state word. A CHANGED fact = a new id = the
   // card reappears; the id-string gate keeps the ease frames at zero DOM work.
+  // TAPE (07-27): the terrain HUD below subsumes both facts — the cards empty out so
+  // the two encodings never collide. LADDER keeps the cards (byte-identical).
   if(MAP.cardsEl){
+    if(X.tape){ if(MAP._cardskey!==''){ MAP._cardskey=''; MAP._cardIds=[]; MAP.cardsEl.innerHTML=''; } }
+    else {
     const vis=(_annot?_annot.cards:[]).filter(c=>!CARD_DISMISS[c.id]).slice(0,2);
     const ck=vis.map(c=>c.id).join('|');
     if(ck!==MAP._cardskey){
       MAP._cardskey=ck; MAP._cardIds=vis.map(c=>c.id);
       MAP.cardsEl.innerHTML=vis.map((c,i)=>`<div class="gx-card">${c.html}<button type="button" class="gx-cardx" data-i="${i}" aria-label="Dismiss this card">×</button></div>`).join('');
+    }
     }
   }
   // Watchtower forward call — resolved FIRST so its right-edge tag can ride the
@@ -2926,6 +3012,20 @@ function gxPaint(){
     }
     else if(w&&w.fired&&w.dir&&w.mag) wtNode='aged';
     else if(w&&(w.stance==='fight'||w.stance==='settle')) wtNode=w.stance;
+  }
+  // PLAIN-ENGLISH HUD (07-27, TAPE) — the terrain read as one docked line: MOOD · ROOM
+  // · LEAN. Resolved AFTER wtI so the lean carries the live call. Key-gated on the model
+  // id (no per-frame DOM). TAPE only; honest-absent hides it when nothing is present.
+  if(MAP.hudEl){
+    if(X.tape){
+      const hm=gxHudModel({ sign:D.sign, regime:D.regime, ladder:D.ladder, spot:D.spot,
+        wt:wtI?{up:wtI.up, tgt:wtI.tgt, conv:wtI.conv}:null });
+      if(hm.id!==MAP._hudkey){
+        MAP._hudkey=hm.id;
+        if(hm.present){ MAP.hudEl.style.display=''; MAP.hudEl.innerHTML=`<div class="r1">${hm.r1}</div>`+(hm.r2?`<div class="r2">${hm.r2}</div>`:''); }
+        else { MAP.hudEl.style.display='none'; MAP.hudEl.innerHTML=''; }
+      }
+    } else if(MAP._hudkey!=='' ){ MAP._hudkey=''; MAP.hudEl.style.display='none'; MAP.hudEl.innerHTML=''; }
   }
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
   const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
@@ -2982,10 +3082,26 @@ function gxPaint(){
   // the group stays empty (byte-identical LADDER). The tags ride gwBindTips' delegated
   // tooltips (the container is bound once in gxBuild).
   if(MAP.wallG){
-    let wsvg='';
+    let wsvg='', _mkGapS='';
     if(X.tape){
       const taken=MIDS.filter(id=>onOf[id]).map(id=>lyOf[id]).concat(wtI&&lyOf.wt!=null?[lyOf.wt]:[]);
       const walls=gxWallStack(D.ladder, D.spot, {y:yFor, padT:X.padT, padB2:X.H-X.padB, loY, hiY, canvasR:X.canvasR}, taken);
+      // GAP / AIR-POCKET bands (07-27) — the thin-γ space between two adjacent shelves
+      // (measured density only), drawn FIRST so the shelves + path read over them. Lights
+      // up when price is IN it. Its label parts the shelf lines via the mask (_mkGapS blob).
+      const gaps=gxGapBands(walls, D.spot, nbs, {y:yFor, step});
+      for(const gp of gaps){
+        const yT=Math.min(gp.yHi,gp.yLo), hB=Math.abs(gp.yLo-gp.yHi);
+        if(!(hB>4)) continue;
+        const a=gp.active?1:.55, cx=(X.x0+X.canvasR)/2, cy=yT+hB/2, wPl=(X.canvasR-X.x0).toFixed(1);
+        const lbl=`⇣ GAP · ${gp.active?'nothing to hold it':'little holds price'} → fast to ${f(gp.target,0)}`;
+        wsvg+=`<rect x="${X.x0}" y="${yT.toFixed(1)}" width="${wPl}" height="${hB.toFixed(1)}" fill="var(--iris)" opacity="${(.03*a+.012).toFixed(3)}"/>`
+          +`<rect x="${X.x0}" y="${yT.toFixed(1)}" width="${wPl}" height="${hB.toFixed(1)}" fill="url(#gxGapHatch)" opacity="${(.5*a+.2).toFixed(2)}"/>`
+          +`<line x1="${X.x0}" x2="${X.canvasR}" y1="${yT.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:var(--iris);opacity:${(.22*a+.05).toFixed(2)};stroke-width:1" stroke-dasharray="4 4"/>`
+          +`<line x1="${X.x0}" x2="${X.canvasR}" y1="${(yT+hB).toFixed(1)}" y2="${(yT+hB).toFixed(1)}" style="stroke:var(--iris);opacity:${(.22*a+.05).toFixed(2)};stroke-width:1" stroke-dasharray="4 4"/>`
+          +`<text x="${cx.toFixed(1)}" y="${(cy+3).toFixed(1)}" text-anchor="middle" font-size="10.5" font-family="var(--mono)" style="fill:var(--iris);opacity:${gp.active?'.95':'.75'};${_HALO}">${lbl}</text>`;
+        _mkGapS+=mkCloud('gap'+gp.side, cx-1, cx+1, cy);
+      }
       let topN=0, botN=0;
       for(const w of walls){
         const pr=f(w.price,0);
@@ -2997,6 +3113,14 @@ function gxPaint(){
           continue;
         }
         const yS=w.y.toFixed(1), ly=(w.ly!=null?w.ly:w.y);
+        // SHELF (07-27) — the wall reads as a LEDGE: a soft band fill either side of its
+        // line (its own jade-ceiling / coral-floor hue) whose height grows with prime
+        // tier, plus a short right-edge strength tick in the 14px air past canvasR
+        // (thicker = stronger). The named line + gutter tag below are unchanged.
+        const bh=_wallSw(w.tier)*2.4+4;
+        wsvg+=`<rect x="${X.x0}" y="${(w.y-bh).toFixed(1)}" width="${(X.canvasR-X.x0).toFixed(1)}" height="${(bh*2).toFixed(1)}" fill="${w.hue}" opacity="${w.dash?'.03':'.055'}"/>`;
+        const sbw=w.tier==="'''"?11:w.tier==="''"?8:w.tier==="'"?5:4;
+        wsvg+=`<rect x="${(X.canvasR+2).toFixed(1)}" y="${(w.y-1.5).toFixed(1)}" width="${sbw}" height="3" fill="${w.hue}" opacity=".7"/>`;
         // cT / pT: when the chop band draws this no-trade zone, keep the label but drop the
         // redundant full-canvas dashed line (PASS B). If the band is absent (a lone
         // threshold, no ct↔pt span) the line stays — never orphan a label. GWc / GWp
@@ -3012,6 +3136,7 @@ function gxPaint(){
       }
     }
     if(wsvg!==MAP._wallkey){ MAP._wallkey=wsvg; MAP.wallG.innerHTML=wsvg; }
+    if(MAP._mkGap!==_mkGapS){ MAP._mkGap=_mkGapS; gxMaskPaint(); }   // gap labels displace the shelf lines
   }
   // spot marker — a triangle pointing in from the axis
   MAP.spotTri.setAttribute('d',`M${X.x0-9},${(sy-6).toFixed(1)} L${X.x0-1},${sy.toFixed(1)} L${X.x0-9},${(sy+6).toFixed(1)} Z`);
@@ -3633,7 +3758,10 @@ function gxMountZoom(){
 // GXDOCK — the JS twin of the bottom-strip dock registry (see the .gx-vm CSS block):
 // caption x-floor + reserved cluster widths, consumed by gxBuild's #gx-cap, the
 // dated-γ legend anchor, and the JSC dock-collision smoke.
-const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3 };   // capX ≥ edge+zoomW+6 — the harness asserts it; vmW widened for the 3-way TAPE·LADDER·TABLE cluster
+// hudX/hudGap/hudCap/infoW/infoR govern the TOP strip too: the TAPE plain-English HUD
+// docks top-left (x0+hudX) with a max-width cap so its right edge clears the top-right
+// "?" (right:infoR · infoW wide) by ≥hudGap at every width — the JSC dock smoke asserts it.
+const GXDOCK={ capX:136, zoomW:120, vmW:134, edge:10, rowH:20, rowB:3, hudX:10, hudGap:8, hudCap:380, infoW:24, infoR:8 };   // capX ≥ edge+zoomW+6 — the harness asserts it; vmW widened for the 3-way TAPE·LADDER·TABLE cluster
 const GX_VMS=['tape','ladder','table'];
 let GXVM=(function(){ try{
   const v=localStorage.getItem('gx.viewMode');
@@ -3825,6 +3953,80 @@ function gxAnnotModel(a){
       html:`<b>${st.charAt(0).toUpperCase()+st.slice(1)}</b>${pos.length?` — ${pos.join(', ')}`:''}` });
   }
   return { band, cards };
+}
+// PURE plain-English HUD model (the JSC smoke harness drills this by name): the day's
+// terrain read as one docked line, synthesized from the SAME snapped payload the marks
+// draw from. Three reads, each honest-absent on its own:
+//   MOOD — dealer gamma sign: positive = "Calm & sticky", negative = "Fast & jumpy",
+//          else "Unclear" (only when there IS a regime/sign to be unsure about).
+//   ROOM — nearest named ceiling above + floor below from profile_ladder (gwc/ct/pt/gwp).
+//   LEAN — the Watchtower's live forward call (dir · target · conviction), already
+//          resolved by gxPaint (a.wt = {up, tgt, conv} | null).
+// Returns { present, id, mood, room, lean, r1, r2 }: r1 = the glanceable chip+line,
+// r2 = the faint plain sentence. `id` is the coarse key (rounded — no ease-frame churn).
+// Nothing present → present:false and gxPaint hides the HUD (never a zeros line).
+function gxHudModel(a){
+  const fp=v=>Math.round(v).toLocaleString('en-US');
+  const sign=a&&a.sign, sp=(a&&a.spot!=null&&isFinite(a.spot))?+a.spot:null;
+  const L=(a&&a.ladder&&a.ladder.ladder_v===1)?a.ladder:null;
+  let mood=null;
+  if(sign==='positive') mood={word:'Calm & sticky', cls:'j', chip:'CALM', hue:'--jade'};
+  else if(sign==='negative') mood={word:'Fast & jumpy', cls:'c', chip:'JUMPY', hue:'--coral'};
+  else if((a&&a.regime)||sign!=null) mood={word:'Unclear', cls:'m', chip:'UNCLEAR', hue:'--ink-faint'};
+  let room=null;
+  if(L&&sp!=null){
+    let ceil=null, floor=null;
+    for(const p of [L.gwc,L.ct,L.pt,L.gwp]){
+      if(p==null||!isFinite(p)) continue;
+      if(p>sp){ if(ceil==null||p<ceil) ceil=p; }
+      else if(p<sp){ if(floor==null||p>floor) floor=p; }
+    }
+    if(ceil!=null||floor!=null) room={ceil, floor};
+  }
+  let lean=null;
+  const w=a&&a.wt;
+  if(w&&w.tgt!=null&&isFinite(w.tgt))
+    lean={up:w.up===true||w.dir==='up', tgt:+w.tgt, conv:(w.conv!=null&&isFinite(w.conv))?Math.max(0,Math.min(1,+w.conv)):null};
+  const present=!!(mood||room||lean);
+  const arrow=lean?(lean.up?'▲':'▼'):'';
+  const parts=[];
+  if(room){
+    if(room.floor!=null&&room.ceil!=null) parts.push(`boxed ${fp(room.floor)}–${fp(room.ceil)}`);
+    else if(room.ceil!=null) parts.push(`under ${fp(room.ceil)}`);
+    else parts.push(`over ${fp(room.floor)}`);
+  }
+  if(lean) parts.push(`leaning ${arrow} ${lean.up?'up':'down'} to ${fp(lean.tgt)}`+(lean.conv!=null?` · ${Math.round(lean.conv*100)}% sure`:''));
+  let lead=parts.join(' · ');
+  if(!lead&&mood) lead=mood.word;   // nothing but a mood → say the mood in words
+  const chip=mood?`<span class="chip ${mood.cls}" style="background:color-mix(in srgb,var(${mood.hue}) 16%, transparent)">${mood.chip}</span>`:'';
+  const r1=present?(chip+lead):'';
+  let r2='';
+  if(present){
+    const moodS=sign==='positive'?'Slow, sticky day.':sign==='negative'?'Fast, jumpy day.':'';
+    let bodyS='';
+    if(room&&room.floor!=null&&room.ceil!=null) bodyS=`Price is boxed between a floor at <b>${fp(room.floor)}</b> and a ceiling at <b>${fp(room.ceil)}</b>.`;
+    else if(room&&room.ceil!=null) bodyS=`A ceiling sits overhead at <b>${fp(room.ceil)}</b>.`;
+    else if(room&&room.floor!=null) bodyS=`A floor sits below at <b>${fp(room.floor)}</b>.`;
+    const guessS=lean?`Best guess: a drift ${lean.up?'up':'down'} toward <b>${fp(lean.tgt)}</b>.`:'';
+    r2=[moodS,bodyS,guessS].filter(Boolean).join(' ');
+  }
+  const id=[ mood?mood.chip:'',
+    room?`${room.floor!=null?Math.round(room.floor):''}/${room.ceil!=null?Math.round(room.ceil):''}`:'',
+    lean?`${lean.up?'u':'d'}${Math.round(lean.tgt)}${lean.conv!=null?Math.round(lean.conv*100):''}`:'' ].join('|');
+  return { present, id, mood, room, lean, r1, r2 };
+}
+// mounted after each gxBuild (which wipes .gx-chart) — the TAPE terrain read. Docked
+// top-left (clear of the top-right "?"); a max-width cap from GXDOCK keeps it there at
+// every width (the JSC dock smoke asserts the clearance). pointer-events:none.
+function gxMountHud(){
+  const cc=document.querySelector('#p-map .gx-chart'); if(!cc) return;
+  let d=cc.querySelector('.gx-hud');
+  if(!d){ d=document.createElement('div'); d.className='gx-hud'; d.style.display='none'; cc.appendChild(d); }
+  d.style.left=(MAPX.x0+GXDOCK.hudX)+'px'; d.style.top=(MAPX.padT+8)+'px';
+  // cap the width so the line never runs under the top-right "?" info button
+  const room=(MAPX.W-GXDOCK.infoR-GXDOCK.infoW-GXDOCK.hudGap)-(MAPX.x0+GXDOCK.hudX);
+  d.style.maxWidth=Math.max(0,Math.min(GXDOCK.hudCap, room)).toFixed(0)+'px';
+  if(MAP){ MAP.hudEl=d; MAP._hudkey=null; }
 }
 let CARD_DISMISS={};   // dismissed card ids (session-scoped) — a CHANGED fact = new id = reappears
 // mounted after each gxBuild (which wipes .gx-chart) — same re-mount dance as the
