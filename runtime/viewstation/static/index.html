@@ -5812,6 +5812,7 @@ async function probeAndRun(){
     loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
     fetchPathSeries(); setInterval(fetchPathSeries, 90000);       // full-day spot path — morning is static, so a slow clock; the LIVEROWS tail keeps the live edge fresh
     setInterval(loadLedgers, 1200000);                            // Sweep Ledger card — the nightly grade (13:15 PT) + date rollover land without a reload
+    setInterval(loadPlaneLedgers, 1200000);                       // Layers deck grav/fade/lob readiness — same nightly-grade clock
     fetchDatedBook(); setInterval(fetchDatedBook, 1200000);       // dated OI book (changes only on the nightly pull)
     setInterval(loadSiege, 300000);                               // siege store — boot load done at startup; re-read on the 5-min scan cadence
   }catch(e){ setMode(false); if(!GX.demoTimer) GX.demoTimer=setInterval(nextTarget, 2600); setTimeout(probeAndRun, 5000); }   // keep retrying the live feed
@@ -5912,8 +5913,10 @@ const LY = [
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><rect class="dg-soft" x="14" y="7" width="100" height="7" rx="1.5"/><text class="dg-txt" x="16" y="23">GWc · ceiling</text><rect class="dg-soft" x="14" y="39" width="100" height="7" rx="1.5"/><text class="dg-txt" x="16" y="36">GWp · floor</text><circle class="dg-ball" cx="64" cy="27" r="4"/></svg>'},
       {k:'Gamma flip', d:'The line splitting calm-&-pinned from jumpy-&-trending.',
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ax" x1="6" y1="42" x2="122" y2="42"/><polyline class="dg-ln" points="10,27 26,27 42,27 56,27"/><text class="dg-txt" x="33" y="16" text-anchor="middle">pin</text><line class="dg-hue" x1="64" y1="10" x2="64" y2="42" stroke-dasharray="3 3"/><polyline class="dg-hue" points="70,27 80,17 90,33 100,18 112,30"/><text class="dg-txt-h" x="94" y="14" text-anchor="middle">push</text></svg>'}],
-    rd:{kind:'graded', n:16, rate:0.75, inv:0.25, verdict:'keep the sign',
-      summary:'75% right as-is on 16 idea-episodes (25% if inverted) — but the day-by-day verdict still flip-flops (07-07 said invert, 07-13 went 6-for-6 correct), so the sign stays under nightly A/B review.'}},
+    // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
+    // card from reversion/polarity_history.jsonl on the ledger clock
+    rd:{kind:'graded', n:14, rate:0.571, inv:0.429, verdict:'latest: INVERT the sign',
+      summary:'Cumulative A/B: 8 of 14 idea-episodes right as-is (57%; 43% if inverted) — but the nightly verdict still flip-flops, so the sign stays under nightly A/B review. Refreshes live from polarity_history.'}},
   {id:'dex', num:'1.2', name:'DEX — Dealer Delta (direction side)', code:'lefteye_dex.dex_views · dex_v1', hue:'--l-dex', tier:'sensory',
     role:'≈ the direction-side twin of Gravity · DEX = dealer delta exposure', status:['iris','SHADOW · record-only'],
     plain:'Gravity (GEX) says whether dealer hedging damps or amplifies the next move; DEX asks the direction question — how much net dealer DELTA is still standing to be re-hedged on the underlying itself. The one caveat rides every read: naive net is LONG by construction — read the split + flow-signed twin, never the naive sign. Written to the diary as dex_views on each SPX row; an absent key is NO READ, never a zero book.',
@@ -5984,10 +5987,12 @@ const LY = [
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ax" x1="64" y1="8" x2="64" y2="44"/><rect class="dg-soft" x="18" y="16" width="40" height="7" rx="1.5"/><rect class="dg-soft" x="12" y="26" width="46" height="7" rx="1.5"/><text class="dg-txt" x="36" y="44" text-anchor="middle">buyers</text><rect class="dg-soft" x="70" y="21" width="22" height="7" rx="1.5" opacity="0.5"/><text class="dg-txt-h" x="88" y="44" text-anchor="middle">sellers</text></svg>'},
       {k:'Wall defense', d:'Real resting orders behind a wall, or a bluff nobody quotes.',
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ln" x1="40" y1="10" x2="40" y2="44"/><rect class="dg-soft" x="44" y="16" width="20" height="6" rx="1.5"/><rect class="dg-soft" x="44" y="25" width="20" height="6" rx="1.5"/><text class="dg-txt" x="52" y="44" text-anchor="middle">real</text><line class="dg-ln" x1="96" y1="10" x2="96" y2="44" stroke-dasharray="4 4"/><line class="dg-dn" x1="88" y1="19" x2="104" y2="33"/><line class="dg-dn" x1="104" y1="19" x2="88" y2="33"/><text class="dg-txt-h" x="96" y="44" text-anchor="middle">bluff</text></svg>'}],
-    rd:{kind:'lob', baseDays:7, baseNeed:21, tier:'cold', episodes:0, epNeed:30,
-      defNow:{n:46,hits:26,rate:0.57}, defNowLabel:'cumulative', defPrev:{n:4,hits:1,rate:0.25}, defPrevLabel:'07-10',
-      blockers:['LOB_LIVE off','baseline cold (7 / 21d)','control spy_depth has 0 episodes'],
-      summary:'Baseline day 7 of 21. The wall lie-detector swings wildly day to day (91% → 0% → 0% → 100% → 25%; 57% overall) and its spy_depth control still has zero episodes, so the promotion clock can\'t start.'}},
+    // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
+    // card from state/lob_flow/ (baselines + defense cards) on the ledger clock
+    rd:{kind:'lob', baseDays:13, baseNeed:21, tier:'cold', episodes:0, epNeed:30,
+      defNow:{n:57,hits:29,rate:0.51}, defNowLabel:'latest session', defPrev:{n:341,hits:224,rate:0.657}, defPrevLabel:'cumulative',
+      blockers:['LOB_LIVE off','baseline cold (13 / 21d)','control spy_depth has 0 episodes'],
+      summary:'Baseline day 13 of 21. The wall lie-detector still swings day to day (84% → 100% → 43% → 61% → 51% over the last 5 sessions; 66% on 341 episodes overall) and its spy_depth control has 0 episodes, so the promotion clock can\'t start. Refreshes live from state/lob_flow.'}},
   {id:'speed', num:'3', name:'Speedometer', code:'lefteye_speedometer', hue:'--l-speed', tier:'sensory',
     role:'≈ residual-stream norm / activation magnitude', status:['iris','shadow · diary'],
     plain:'Measures what the tape is ACTUALLY doing, not what anyone predicts: how much of a normal day\'s movement has been spent so far, whether a real jolt just hit and which way, and whether the scary downside kind of shaking is taking over.',
@@ -6041,9 +6046,11 @@ const LY = [
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ax" x1="6" y1="42" x2="122" y2="42"/><polyline class="dg-ln" points="14,32 40,20 58,12"/><path class="dg-hue" d="M58,12 Q80,10 90,26" fill="none"/><polygon class="dg-hue-f" points="94,32 84,28 90,22"/><text class="dg-txt-h" x="66" y="46" text-anchor="middle">hooks back</text></svg>'},
       {k:'Room to run', d:'Enough distance back to the magnet to be worth it (runway gate).',
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ax" x1="6" y1="42" x2="122" y2="42"/><circle class="dg-ball" cx="100" cy="18" r="4"/><text class="dg-txt" x="100" y="13" text-anchor="middle">price</text><line class="dg-ln" x1="24" y1="30" x2="114" y2="30" stroke-dasharray="3 3"/><text class="dg-txt" x="30" y="27">magnet</text><line class="dg-hue" x1="94" y1="23" x2="48" y2="30"/><polygon class="dg-hue-f" points="40,31 50,26 51,35"/><text class="dg-txt-h" x="62" y="46" text-anchor="middle">room back</text></svg>'}],
-    rd:{kind:'days', decided:0, need:12, sw:'REVERSION_LIVE off', rate:null, wl:null, note:'ungated twin 07-15: 4 decided · 2 wins',
-      blockers:['switch off','0 / 12 decided days'],
-      summary:'Still 0 of 12 decided days — the runway gate has blocked every gated setup so far, and the live switch is off. Its ungated pre-runway twin decided 4 on 07-15, winning 2. Gate: ≥12 days, Wilson floor > .50, ≥58%.'}},
+    // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
+    // card from reversion/polarity_history.jsonl (newest grade_v era) on the ledger clock
+    rd:{kind:'days', decided:1, need:12, sw:'REVERSION_LIVE off', rate:0.0, wl:0.0, note:'ungated twin: 25 wins on 47 episodes',
+      blockers:['switch off','1 / 12 decided days'],
+      summary:'1 of 12 decided days in the grade_v2 era (0W/1L on 1 gated episode); the runway gate blocks most setups and the live switch is off. The ungated pre-runway twin has 25 wins on 47 episodes. Gate: ≥12 days, Wilson floor > .50, ≥58%. Refreshes live from polarity_history.'}},
   {id:'break', num:'C', name:'Break Lens', code:'level_reclaim', hue:'--l-break', tier:'lens',
     role:'≈ an alternate expert — bet the escape', status:['coral','shadow'],
     plain:'The opposite bet: when buying or selling power smashes price through a level, it rides the breakout instead of fading it. A two-step arm-then-fire trigger.',
@@ -6408,10 +6415,101 @@ function siegeReadiness(L){
     <div class="rd-fr">${fresh}</div>
     <div class="rd-grid">
       <div class="rd-stat"><div class="k">Words composed today</div><div class="v">${words.length}</div></div>
-      <div class="rd-stat"><div class="k">Who hears them</div><div class="v" style="font-size:11px">watchtower payload · wt-8</div></div>
+      <div class="rd-stat"><div class="k">Who hears them</div><div class="v" style="font-size:11px">watchtower payload · wt-9</div></div>
     </div>
     <div class="blockers">${wiredBlk}<span class="blk">record-only grading · gates nothing</span></div>
     <div class="rd-sum">${L.rd.summary}</div></div>`;
+}
+
+// ---- MAIN-STACK LEDGERS (Gravity · Fade Lens · LOB): the three planes whose readiness
+// is a nightly-graded number. Baked values go stale the night after they're written, so
+// this loader re-derives them from state/ on the same 20-min clock as loadLedgers and
+// overwrites the LY rd objects in place — the existing 'graded'/'days'/'lob' renderers
+// never know the difference. A failed read keeps the last good numbers (the baked
+// snapshot at worst), never a blank card.
+function wilsonLo(w,n){ if(!n) return null; const z=1.96, p=w/n;
+  return Math.max(0,(p + z*z/(2*n) - z*Math.sqrt((p*(1-p) + z*z/(4*n))/n))/(1+z*z/n)); }
+let _planesLoading=false;
+async function loadPlaneLedgers(){
+  if(_planesLoading) return; _planesLoading=true;
+  const touched=[];
+  const jf=async(p,limit)=>{ const r=await fetch(`/api/raw/file?root=state&path=${p}${limit!=null?'&limit='+limit:''}`,{cache:'no-store'}); return r.json(); };
+  // store-sourced strings (verdicts) end up in innerHTML — escape them, same
+  // local-helper pattern as siegeReadiness
+  const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // 1 · GRAVITY + FADE LENS — the whole polarity history (one nightly row per graded day)
+  try{
+    const d=await jf('reversion/polarity_history.jsonl',0);   // limit=0 → every row
+    const rows=((d&&d.rows)||[]).filter(r=>r&&r.day&&!r._unparsed);
+    if(rows.length){
+      // gravity: cumulative A/B across every graded day + the newest nightly verdict.
+      // tickers.SPX is the canonical top-level grade (per-engine splits stay in the store).
+      let gn=0, gh=0, gdays=0, glast=null;
+      for(const r of rows){ const t=(r.tickers||{}).SPX;
+        if(t&&t.n){ gn+=t.n; gh+=t.hits||0; gdays++; glast=r; } }
+      if(gn){
+        const g=LY.find(l=>l.id==='grav').rd, v=esc(glast.tickers.SPX.verdict||'—');
+        g.n=gn; g.rate=gh/gn; g.inv=1-gh/gn; g.verdict=`latest: ${v}`;
+        g.summary=`Cumulative A/B across ${gdays} graded days: ${gh} of ${gn} idea-episodes right as-is (${Math.round(gh/gn*100)}%; ${Math.round((1-gh/gn)*100)}% if inverted). The nightly verdict still flip-flops — the latest graded night said "${v}" — so the sign stays under nightly A/B review. Derived live from polarity_history.`;
+        touched.push('grav');
+      }
+      // fade lens: decided days in the NEWEST grade_v era only (a version bump makes old
+      // episodes unpoolable — same era doctrine as the sweep ledger), plus the ungated twin
+      const lensRows=rows.filter(r=>r.lens&&r.lens.grade_v!=null);
+      if(lensRows.length){
+        const era=lensRows[lensRows.length-1].lens.grade_v;
+        const eraRows=lensRows.filter(r=>r.lens.grade_v===era);
+        const dec=eraRows.filter(r=>(r.lens.n||0)>0);
+        let n=0, w=0, sk=0, pn=0, pw=0;
+        for(const r of eraRows){ n+=r.lens.n||0; w+=r.lens.wins||0; sk+=r.lens.scratch||0;
+          const p=r.lens.pre_runway||{}; pn+=p.n||0; pw+=p.wins||0; }
+        const fd=LY.find(l=>l.id==='fade').rd;
+        fd.decided=dec.length; fd.rate=n?w/n:null; fd.wl=wilsonLo(w,n);
+        fd.note=`ungated twin: ${pw} win${pw===1?'':'s'} on ${pn} episodes`;
+        fd.blockers=['switch off', `${dec.length} / 12 decided days`];
+        const gate='Gate: ≥12 days, Wilson floor > .50, ≥58%. Derived live from polarity_history.';
+        const twin=`The ungated pre-runway twin has ${pw} win${pw===1?'':'s'} on ${pn} episodes.`;
+        fd.summary= dec.length
+          ? `${dec.length} of 12 decided days in the grade_v${era} era (${w}W/${Math.max(0,n-w-sk)}L${sk?'/'+sk+' scratch':''} on ${n} gated episode${n===1?'':'s'}); the runway gate blocks most gated setups and the live switch is off. ${twin} ${gate}`
+          : `Still 0 of 12 decided days in the grade_v${era} era — the runway gate has blocked every gated setup so far, and the live switch is off. ${twin} ${gate}`;
+        touched.push('fade');
+      }
+    }
+  }catch(e){}
+  // 2 · LOB — baseline clock (baselines/lob_flow.json) + per-day defense cards
+  try{
+    const b=await jf('lob_flow/baselines/lob_flow.json');
+    const days=(b&&b.kind==='json'&&b.data&&Array.isArray(b.data.days))?b.data.days.length:null;
+    const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
+    const files=(j.state||[]).filter(e=>/^lob_flow\/cards\/\d{4}-\d{2}-\d{2}\.json$/.test(e.rel||''))
+      .sort((a,c)=>String(a.rel).localeCompare(String(c.rel)));
+    const cards=(await Promise.all(files.slice(-45).map(async fm=>{
+      try{ const d=await jf(fm.rel);
+        return (d&&d.kind==='json'&&d.data)?{day:(fm.rel.match(/(\d{4}-\d{2}-\d{2})/)||[])[1], data:d.data}:null;
+      }catch(e){ return null; } }))).filter(Boolean);
+    if(days!=null||cards.length){
+      const r=LY.find(l=>l.id==='lob').rd;
+      // trust tiers from lob_flow/baselines.py: cold <15 clean days · percentile 15-20 · robust ≥21
+      if(days!=null){ r.baseDays=days; r.tier= days>=21?'robust':days>=15?'percentile':'cold'; }
+      let cn=0, ch=0, ctrl=0, sc=0, newest=null;
+      for(const c of cards){ const e=(c.data||{}).engines||{};
+        const df=(e.lob_flow||{}).defense||{}; cn+=df.n||0; ch+=df.hits||0;
+        sc+=((e.lob_flow||{}).scatter||{}).n||0;
+        ctrl+=((e.spy_depth||{}).defense||{}).n||0;
+        newest=c; }
+      r.episodes=sc;
+      if(newest){ const df=(((newest.data||{}).engines||{}).lob_flow||{}).defense||{};
+        r.defNow={n:df.n||0, hits:df.hits||0, rate:df.n?(df.hits||0)/df.n:0}; r.defNowLabel='latest session'; }
+      if(cn){ r.defPrev={n:cn, hits:ch, rate:ch/cn}; r.defPrevLabel='cumulative'; }
+      r.blockers=['LOB_LIVE off', `baseline ${r.tier} (${r.baseDays} / ${r.baseNeed}d)`, `control spy_depth has ${ctrl} episodes`];
+      const recent=cards.slice(-5).map(c=>{ const df=(((c.data||{}).engines||{}).lob_flow||{}).defense||{};
+        return df.n?Math.round((df.hits||0)/df.n*100)+'%':'—'; });
+      r.summary=`Baseline day ${r.baseDays} of ${r.baseNeed}. The wall lie-detector still swings day to day (${recent.join(' → ')} over the last ${recent.length} sessions; ${cn?Math.round(ch/cn*100)+'% on '+cn+' episodes overall':'no episodes yet'}) and its spy_depth control has ${ctrl} episodes, so the promotion clock can't start. Derived live from state/lob_flow.`;
+      touched.push('lob');
+    }
+  }catch(e){}
+  _planesLoading=false;
+  if(touched.includes(selLayer)) renderDetail();
 }
 
 // per-layer example diagrams — one per non-feed layer, all speaking the .dgm vocabulary
@@ -8661,7 +8759,7 @@ function switchTab(name){
 $("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b) switchTab(b.dataset.tab); });
 
 // ---------- boot ----------
-renderLayers(); renderDict(); renderDiary(false); renderHeads(); startLive(); loadSiege();
+renderLayers(); renderDict(); renderDiary(false); renderHeads(); startLive(); loadSiege(); loadPlaneLedgers();
 const _modal=document.getElementById('modal');
 _modal.addEventListener('click', e=>{ if(e.target===_modal) closeModal(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
