@@ -1010,8 +1010,8 @@ def test_prompt_teaches_chop_band_dominance_and_the_messy_gate():
 
 
 # ---------------------------------------------- wt-9 doctrine fold-ins (2026-07-27)
-def test_prompt_version_is_wt9():
-    assert wt.PROMPT_VERSION == "wt-9"
+def test_prompt_version_is_wt10():
+    assert wt.PROMPT_VERSION == "wt-10"
 
 
 def test_regime_intensity_1d_is_worded_by_the_sign_of_todays_level():
@@ -1097,3 +1097,188 @@ def test_prompt_carries_the_wt9_foldins():
     assert "SUBORDINATE to the gamma sign" in p        # air pocket dormant under long gamma
     assert "target-selection LEAN" in p                # siege role, regime-subordinate
     assert "tape_vs_positioning_conflict" not in p     # the removed field never reaches the prompt
+
+
+# ---------------------------------------------- wt-10 doctrine fold-ins (2026-07-27)
+def _nbs_clean(flip=7480.0):
+    """A net_by_strike surface with decisive short control below the flip and
+    decisive long control above it, with an ambiguous band in between."""
+    return [[7350.0, -1.0], [7400.0, -0.9], [7440.0, -0.05], [7460.0, 0.02],
+            [7500.0, 0.08], [7520.0, 0.9], [7550.0, 1.0]]
+
+
+def test_transition_fences_three_state_and_width():
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = _nbs_clean()
+    tz = wt.build_payload(t)["dealer_map_gravity"]["transition_zone_measured"]
+    # θ = 0.15 × 1.0 → cT = 7520 (first ≥ +θ above flip), pT = 7400 (first ≤ −θ below)
+    assert tz["ct_upper_fence_sigma_from_spot"] == wt._sd(7520.0, 7450.29, 106.9)
+    assert tz["pt_lower_fence_sigma_from_spot"] == wt._sd(7400.0, 7450.29, 106.9)
+    assert tz["zone_width_sigma"] == round((7520.0 - 7400.0) / 106.9, 2)
+    # spot 7450.29 sits between the fences → INSIDE, the measured no-regime read
+    assert "INSIDE" in tz["spot_position"] and "NO REGIME" in tz["spot_position"]
+    assert "never targets" in tz["note"]
+
+
+def test_transition_fences_missing_fence_is_named_not_defaulted():
+    t = _telemetry()
+    # no strike above the flip ever nets decisively long → cT missing, pT measured
+    t["gex_views"]["net_by_strike"] = [[7350.0, -1.0], [7400.0, -0.8], [7500.0, 0.05]]
+    tz = wt.build_payload(t)["dealer_map_gravity"]["transition_zone_measured"]
+    assert "MISSING" in tz["ct_upper_fence"]
+    assert "pt_lower_fence_sigma_from_spot" in tz
+    assert "zone_width_sigma" not in tz          # width needs BOTH fences
+
+
+def test_transition_fences_fail_open():
+    t = _telemetry()                              # no net_by_strike at all
+    assert "transition_zone_measured" not in wt.build_payload(t)["dealer_map_gravity"]
+    t["gex_views"]["net_by_strike"] = []
+    assert "transition_zone_measured" not in wt.build_payload(t)["dealer_map_gravity"]
+
+
+def _vols(wall_heavy=True):
+    """A gross-volume ladder (total 100k) where the call wall 7550 is either the
+    heaviest strike or a dead one; put wall 7350 always minor."""
+    base = [[7300.0, 4000], [7350.0, 300], [7400.0, 9000], [7420.0, 12000],
+            [7450.0, 20000], [7500.0, 14000], [7600.0, 6000]]
+    return base + [[7550.0, 34700 if wall_heavy else 300],
+                   [7460.0, 0 if wall_heavy else 34400]]
+
+
+def test_flow_confirmation_contested_vs_untested():
+    t = _telemetry()
+    t["gex_views"]["vol_gross_by_strike"] = _vols(wall_heavy=True)
+    t["gex_views"]["oi_by_strike"] = [[7550.0, -50000], [7350.0, 40000], [7450.0, 5000]]
+    fc = wt.build_payload(t)["flow_confirmation"]
+    # call wall: heavy volume + heavy standing OI → CONTESTED
+    assert "CONTESTED" in fc["call_wall"]["read"]
+    assert fc["call_wall"]["volume_rank"].startswith("1 ")
+    # put wall: heavy OI, ~no volume today → UNTESTED standing shelf
+    assert "UNTESTED" in fc["put_wall"]["read"]
+    assert "never picks a direction" in fc["note"]
+
+
+def test_flow_confirmation_volume_king_flagged_when_at_neither_wall():
+    t = _telemetry()
+    t["gex_views"]["vol_gross_by_strike"] = _vols(wall_heavy=False)  # king = 7460
+    t["gex_views"]["oi_by_strike"] = []
+    fc = wt.build_payload(t)["flow_confirmation"]
+    assert fc["volume_king"]["level_sigma_from_spot"] == wt._sd(7460.0, 7450.29, 106.9)
+    assert "HEAVIEST" in fc["volume_king"]["read"]
+
+
+def test_flow_confirmation_thin_tape_abstains():
+    t = _telemetry()
+    t["gex_views"]["vol_gross_by_strike"] = [[k, v // 10] for k, v in _vols()]  # 10k total
+    assert "flow_confirmation" not in wt.build_payload(t)
+
+
+def test_expected_move_decay_is_a_size_cap_and_sleeps_the_first_hour():
+    t = _telemetry()                              # NOW = 11:38 ET → 262m to close
+    word = wt.build_payload(t)["tape"]["expected_move_decay"]
+    assert f"~{(262 / 390) ** 0.5:.0%}" in word
+    assert "SIZE guidance only" in word and "never a direction" in word
+    early = dict(t, ts=NOW.replace(hour=9, minute=45).isoformat())   # 15m in → silent
+    assert "expected_move_decay" not in wt.build_payload(early)["tape"]
+    closed = dict(t, ts=NOW.replace(hour=16, minute=5).isoformat())  # after the bell
+    assert "expected_move_decay" not in wt.build_payload(closed)["tape"]
+
+
+def test_prompt_teaches_the_wt10_reads():
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = _nbs_clean()
+    t["gex_views"]["vol_gross_by_strike"] = _vols()
+    p = wt._prompt(wt.build_payload(t))
+    assert "THE FENCES ARE THE MEASURED VERSION" in p
+    assert "FLOW CONFIRMATION SEPARATES LIVE WALLS FROM PAPER SHELVES" in p
+    assert "THE DAY'S REACH DECAYS" in p
+    assert "boundaries of behaviour" in p
+
+
+# ------------------------------------------- wt-10 §3.4 strike-tag ladder (2026-07-27)
+def _sig(level):
+    return wt._sd(level, 7450.29, 106.9)
+
+
+def test_strike_tags_ranked_walls_mirror_the_table_rules():
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = [
+        [7300.0, -0.5], [7350.0, -2.0], [7380.0, -1.0],       # puts: P1=7350, P2=7380, P3=7300
+        [7500.0, 1.5], [7550.0, 3.0], [7600.0, 0.4], [7650.0, 0.2],  # calls: C1=7550, C2=7500, C3=7600
+    ]
+    tags = wt.build_payload(t)["strike_tags"]
+    assert tags["ranked_put_walls_sigma_P1_first"] == [_sig(7350.0), _sig(7380.0), _sig(7300.0)]
+    assert tags["ranked_call_walls_sigma_C1_first"] == [_sig(7550.0), _sig(7500.0), _sig(7600.0)]
+    # Ab is side-agnostic: 3.0 (7550), 2.0 (7350), 1.5 (7500)
+    assert tags["abs_gamma_peaks_sigma_Ab1_first"] == [_sig(7550.0), _sig(7350.0), _sig(7500.0)]
+    assert "CONFLUENCE OUTRANKS BAR LENGTH" in tags["note"]
+
+
+def test_strike_tags_oi_peaks_from_side_split_and_net_fallback():
+    t = _telemetry()
+    t["gex_views"]["oi_side_by_strike"] = [
+        [7300.0, 1000, 9000],   # POI (heaviest put OI) + nPOI (most put-dominant)
+        [7500.0, 8000, 500],    # COI
+        [7450.0, 5500, 5500],   # AbOI (heaviest total, 11000)
+    ]
+    tags = wt.build_payload(t)["strike_tags"]
+    assert tags["put_oi_peak_sigma_POI"] == _sig(7300.0)
+    assert tags["call_oi_peak_sigma_COI"] == _sig(7500.0)
+    assert tags["total_oi_peak_sigma_AbOI"] == _sig(7450.0)
+    assert tags["net_put_oi_peak_sigma_nPOI"] == _sig(7300.0)
+    # net-pane fallback (pre-07-27 rows): only nPOI derivable, and only when put-dominant
+    t2 = _telemetry()
+    t2["gex_views"]["oi_by_strike"] = [[7300.0, -4000], [7500.0, 6000]]
+    tags2 = wt.build_payload(t2)["strike_tags"]
+    assert tags2["net_put_oi_peak_sigma_nPOI"] == _sig(7300.0)
+    assert "put_oi_peak_sigma_POI" not in tags2       # gross per-side not derivable
+    # all-call-dominant book → nPOI must NOT fire (the argmaxPos mislabel guard)
+    t3 = _telemetry()
+    t3["gex_views"]["oi_by_strike"] = [[7300.0, 2000], [7500.0, 6000]]
+    assert "net_put_oi_peak_sigma_nPOI" not in wt.build_payload(t3).get("strike_tags", {})
+
+
+def test_strike_tags_volume_peaks_derive_exactly_from_net_plus_gross():
+    t = _telemetry()
+    # call=(g+n)/2, put=(g−n)/2: 7420 → 18k call/12k put (CV+nCV), 7400 → 6k call/14k put (PV+nPV)
+    t["gex_views"]["vol_by_strike"] = [[7400.0, -8000], [7420.0, 6000]]
+    t["gex_views"]["vol_gross_by_strike"] = [[7400.0, 20000], [7420.0, 30000]]
+    tags = wt.build_payload(t)["strike_tags"]
+    assert tags["call_volume_peak_sigma_CV"] == _sig(7420.0)
+    assert tags["put_volume_peak_sigma_PV"] == _sig(7400.0)
+    assert tags["net_call_volume_peak_sigma_nCV"] == _sig(7420.0)
+    assert tags["net_put_volume_peak_sigma_nPV"] == _sig(7400.0)
+    # engine side-split, when present, takes precedence over the derivation
+    t["gex_views"]["vol_side_by_strike"] = [[7500.0, 40000, 100], [7400.0, 100, 39000]]
+    tags2 = wt.build_payload(t)["strike_tags"]
+    assert tags2["call_volume_peak_sigma_CV"] == _sig(7500.0)
+
+
+def test_strike_tags_volume_family_respects_the_thin_tape_floor():
+    t = _telemetry()
+    t["gex_views"]["vol_by_strike"] = [[7400.0, -300], [7420.0, 200]]
+    t["gex_views"]["vol_gross_by_strike"] = [[7400.0, 900], [7420.0, 800]]  # << floor
+    tags = wt.build_payload(t).get("strike_tags", {})
+    assert "call_volume_peak_sigma_CV" not in tags
+
+
+def test_strike_tags_delta_pressure_peaks_need_a_genuine_sign():
+    t = _telemetry()
+    t["dex_views"] = {"net_dex_total": 1e9,
+                      "dex_flow_by_strike": [[7400.0, 2e9], [7500.0, -3e9]]}
+    tags = wt.build_payload(t)["strike_tags"]
+    assert tags["delta_buy_pressure_peak_sigma_Dplus"] == _sig(7400.0)
+    assert tags["delta_sell_pressure_peak_sigma_Dminus"] == _sig(7500.0)
+    # an all-buy tape must not emit a D− tag
+    t["dex_views"]["dex_flow_by_strike"] = [[7400.0, 2e9], [7500.0, 1e9]]
+    assert "delta_sell_pressure_peak_sigma_Dminus" not in wt.build_payload(t)["strike_tags"]
+
+
+def test_strike_tags_fail_open_and_prompt_teaches_confluence():
+    assert "strike_tags" not in wt.build_payload(_telemetry())   # no surfaces at all
+    t = _telemetry()
+    t["gex_views"]["net_by_strike"] = [[7350.0, -2.0], [7550.0, 3.0]]
+    p = wt._prompt(wt.build_payload(t))
+    assert "TAG CONFLUENCE OUTRANKS BAR LENGTH" in p
+    assert "LOCATIONS, never a direction" in p

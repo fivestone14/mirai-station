@@ -67,7 +67,32 @@ STATE_DIR = SKILL_DIR.parent.parent / "state"
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
-PROMPT_VERSION = "wt-9"     # bump on ANY prompt change — a bump resets the record
+PROMPT_VERSION = "wt-10"    # bump on ANY prompt change — a bump resets the record
+# wt-10 (2026-07-27): the three remaining chart-visible doctrine reads the tower could not
+# see, all COLOR-tier advisory/record-only (no gate reads any of them), batched into one era
+# bump (wt-9 never ran a live scan, so the clock resets at zero cost):
+# (1) flow_confirmation — §7 standing OI vs live volume AT the operative walls: is today's
+#     tape actually fighting at each wall (live battleground) or is the wall untested
+#     standing inventory? Plus the volume king when today's heaviest strike is at neither
+#     wall. Relative shares/ranks only (uniform-share baseline, no absolute contract counts
+#     as signals), thin-tape abstain floor, σ-distances only.
+# (2) transition_zone_measured — §4's cT/pT fences MEASURED from net_by_strike: the first
+#     strike each side of the flip where one-signed control decisively resumes (θ = a share
+#     of the surface's peak |net|). Three-state read (above cT / INSIDE / below pT), zone
+#     width as the ambiguity-depth signal, missing fences named honestly (§4.6). The fixed
+#     ±0.25σ chop band stays as the fallback heuristic; the measured zone refines it.
+# (3) tape.expected_move_decay — §6.5: remaining reach ≈ √(time-left) share of the full-day
+#     EM band, worded as a SIZE cap (shrink magnitude/range late day), never a direction.
+#     Pure clock math (no store dependency); silent for the first hour.
+# (4) strike_tags — the §3.4 doctrine tag ladder (same rank/argmax rules as the
+#     viewstation TABLE tag column, GXTAG in index.html): ranked gamma walls P1-P6/C1-C3 +
+#     Ab1-Ab3, OI peaks POI/COI/AbOI/nPOI, volume peaks CV/PV/nCV/nPV, delta-pressure
+#     peaks D+/D−, all as σ-distances. Confluence doctrine (§3.3): several lenses on ONE
+#     level = independent corroboration, outranks bar length. OI side-splits arrive with
+#     the 07-27 gex_box build (oi_side_by_strike); volume side-splits also derive exactly
+#     from net+gross (call=(g+n)/2) so CV/PV work on older rows; net tags fire only on a
+#     strike that GENUINELY carries the sign (the viewstation's argmaxPos rule — a
+#     one-sided book can never mislabel). Added pre-first-live, so wt-10 stays wt-10.
 # wt-9 (2026-07-27): three COLOR-tier doctrine fold-ins added to the payload+prompt as
 # advisory/record-only reads (no gate reads them): regime_intensity_1d (1-day net-γ trend),
 # siege role (PAUSE vs TERMINUS target lean), and air_pocket_above/below (extend the
@@ -226,6 +251,14 @@ AIR_POCKET_MIN_SIGMA = 0.5   # clear span behind the near wall (near.hi → next
                              # σ) that counts as an AIR POCKET — thin space price
                              # crosses fast, so a break of the near wall extends the
                              # objective ACROSS the gap to the far wall, not to the near
+
+# --- wt-10 doctrine gaps ---------------------------------------------------------
+FENCE_CONTROL_SHARE = 0.15   # cT/pT fence threshold: a strike "decisively controls" its
+                             # side when |net γ| ≥ this share of the surface's peak |net|
+                             # — relative to the day's own book, never an absolute
+FLOW_CONFIRM_MIN_CONTRACTS = 25_000  # thin-tape abstain floor for flow_confirmation: below
+                             # this total gross volume the shares are noise (same abstain
+                             # doctrine as the DEX flow-signed floor) — field absent
 
 
 # ==============================================================================
@@ -650,6 +683,270 @@ def _gw_cluster_read(net_by_strike, spot, sigma) -> tuple[dict, str | None]:
         return {}, None      # fail-open: a broken read stays out of the room
 
 
+def _transition_fences(net_by_strike, flip, spot, sigma) -> dict:
+    """wt-10 doctrine gap (§4 cT/pT) — the MEASURED transition fences. The doctrine's
+    three-state regime read (above cT = confirmed calm / inside = NO regime / below
+    pT = confirmed fast) has only existed here as the fixed ±FLIP_CHOP_BAND_SIGMA
+    heuristic; this measures the actual fences off the same net_by_strike surface the
+    cluster read uses: walking outward from the flip, the first strike each side where
+    one-signed control decisively resumes (|net| ≥ FENCE_CONTROL_SHARE × peak |net|,
+    correct sign). Zone WIDTH is the §4.4 ambiguity-depth signal; a side where control
+    never resumes is a MISSING FENCE named honestly (§4.6), never silently defaulted.
+    Fences are boundaries of behaviour — no tiering, no targets, no order flow of
+    their own. Fail-open: no surface / no flip / no decisive strike either side → {}."""
+    try:
+        if not net_by_strike or flip is None or not spot or not sigma:
+            return {}
+        pts = sorted((float(k), float(v)) for k, v in net_by_strike)
+        peak = max(abs(v) for _, v in pts)
+        if peak <= 0:
+            return {}
+        theta = FENCE_CONTROL_SHARE * peak
+        ct = next((k for k, v in pts if k > flip and v >= theta), None)          # upper fence
+        pt = next((k for k, v in reversed(pts) if k < flip and v <= -theta), None)  # lower fence
+        if ct is None and pt is None:
+            return {}
+        out: dict = {}
+        if ct is not None:
+            out["ct_upper_fence_sigma_from_spot"] = _sd(ct, spot, sigma)
+        else:
+            out["ct_upper_fence"] = ("MISSING — no strike above the flip decisively nets "
+                                     "long: the calm side has no measured floor of control")
+        if pt is not None:
+            out["pt_lower_fence_sigma_from_spot"] = _sd(pt, spot, sigma)
+        else:
+            out["pt_lower_fence"] = ("MISSING — no strike below the flip decisively nets "
+                                     "short: the fast side has no measured ceiling of control")
+        if ct is not None and pt is not None:
+            width = round((ct - pt) / sigma, 2)
+            out["zone_width_sigma"] = width
+            out["width_note"] = (f"the fences bracket {width}σ of no-man's-land "
+                                 "(WIDE = deep ambiguity across the whole neighborhood; "
+                                 "NARROW = the regime switches cleanly)")
+        if ct is not None and spot > ct:
+            pos = ("above cT — the CALM side is measured-confirmed here (three-state read); "
+                   "still confirm against gamma_sign_at_spot")
+        elif pt is not None and spot < pt:
+            pos = ("below pT — the FAST side is measured-confirmed here (three-state read); "
+                   "still confirm against gamma_sign_at_spot")
+        else:
+            pos = ("INSIDE the transition zone — between the fences NEITHER side controls: "
+                   "the measured answer is NO REGIME (same stand-down as the chop band, "
+                   "measured rather than assumed); no directional play from inside")
+        out["spot_position"] = pos
+        out["note"] = ("MEASURED cT/pT fences (the chop band's measured refinement). Fences "
+                       "are boundaries of behaviour, not walls: they carry no order flow, "
+                       "take no tier, and are never targets.")
+        return out
+    except Exception:
+        return {}      # fail-open
+
+
+def _flow_confirmation(gx: dict, call_wall, put_wall, spot, sigma) -> dict:
+    """wt-10 doctrine gap (§7 standing OI vs live volume) — is today's tape actually
+    FIGHTING at the operative walls? The per-strike gross-volume and standing-OI
+    ladders have been drawn on the viewstation since wt-8 but never summarized into
+    the room. For each 0DTE wall: today's gross-volume share and standing-|OI| share
+    at the wall's strike, judged against the UNIFORM share (1/n strikes — relative to
+    the day's own book, generalizing across days), composed into one word:
+      live volume + standing OI  → CONTESTED — the wall's verdict is being decided today
+      volume, thin OI            → a volume-built level (0DTE flow) — can melt by close
+      OI, no volume              → UNTESTED standing shelf — strength unproven today
+    Plus the VOLUME KING when today's heaviest strike is at neither wall — the fight
+    is somewhere else. Shares/ranks only (no absolute contract counts as signals),
+    σ-distances only, thin-tape abstain below FLOW_CONFIRM_MIN_CONTRACTS total.
+    Fail-open: no surface / thin tape / no walls → {}."""
+    try:
+        vol = gx.get("vol_gross_by_strike")
+        if not vol or not spot or not sigma:
+            return {}
+        vv = sorted(((float(k), abs(float(v))) for k, v in vol), key=lambda p: -p[1])
+        total = sum(v for _, v in vv)
+        n = len(vv)
+        if total < FLOW_CONFIRM_MIN_CONTRACTS or n < 5:
+            return {}                              # thin-tape abstain (shares are noise)
+        uniform = 1.0 / n
+        vol_share = {k: v / total for k, v in vv}
+        vol_rank = {k: i + 1 for i, (k, _) in enumerate(vv)}
+        oi_abs = {float(k): abs(float(v)) for k, v in (gx.get("oi_by_strike") or [])}
+        oi_total = sum(oi_abs.values())
+        # walls come FROM this strike grid, so nearest-strike matching with a one-step
+        # tolerance is exact in practice and safe when grids drift
+        strikes = sorted(vol_share)
+        step = min((b - a for a, b in zip(strikes, strikes[1:])), default=None)
+
+        def _at(level):
+            if level is None or step is None:
+                return None
+            k = min(strikes, key=lambda s: abs(s - level))
+            return k if abs(k - level) <= 1.5 * step else None
+
+        def _wall_row(level):
+            k = _at(level)
+            if k is None:
+                return None
+            vs, vr = vol_share[k], vol_rank[k]
+            os_ = (oi_abs.get(k, 0.0) / oi_total) if oi_total else None
+            v_hi, v_lo = vs >= 3 * uniform, vs <= 0.5 * uniform
+            o_hi = os_ is not None and os_ >= 3 * uniform
+            if v_hi and o_hi:
+                word = ("CONTESTED — heavy standing OI AND heavy volume today: the wall's "
+                        "verdict is being decided live (a fought wall is a live battleground, "
+                        "not a proven shelf — weigh siege/effort, not the bar length)")
+            elif v_hi:
+                word = ("a VOLUME-BUILT level — today's 0DTE flow made this wall, thin "
+                        "standing OI behind it: less durable than an OI wall, can melt "
+                        "into the close")
+            elif v_lo and o_hi:
+                word = ("UNTESTED standing-OI shelf — nobody has fought here today: its "
+                        "strength is UNPROVEN either way (standing inventory, not a "
+                        "demonstrated hold)")
+            elif v_lo:
+                word = "minor traffic — neither today's volume nor standing OI concentrates here"
+            else:
+                word = ("moderately traded — some of today's tape has visited this wall; "
+                        "neither clearly contested nor clearly untested")
+            return {"level_sigma_from_spot": _sd(k, spot, sigma),
+                    "todays_volume_share": round(vs, 3),
+                    "volume_rank": f"{vr} of {n}",
+                    **({"standing_oi_share": round(os_, 3)} if os_ is not None else {}),
+                    "read": word}
+
+        out: dict = {}
+        cw, pw = _wall_row(call_wall), _wall_row(put_wall)
+        if cw:
+            out["call_wall"] = cw
+        if pw:
+            out["put_wall"] = pw
+        # the VOLUME KING — where today's fight actually is, when it is at neither wall
+        king, king_v = vv[0]
+        _kc, _kp = _at(call_wall), _at(put_wall)
+        if king not in (_kc, _kp) and king_v / total >= 3 * uniform:
+            out["volume_king"] = {
+                "level_sigma_from_spot": _sd(king, spot, sigma),
+                "todays_volume_share": round(king_v / total, 3),
+                "read": ("today's HEAVIEST options volume sits HERE — at neither operative "
+                         "wall: the live fight/defense is at this level, so expect price "
+                         "reactions here even though the wall map does not mark it"),
+            }
+        if not out:
+            return {}
+        out["note"] = ("§7 flow confirmation: TODAY'S volume vs STANDING OI at the "
+                       "operative walls — separates live battlegrounds from untested "
+                       "paper shelves. Advisory context on wall RELIABILITY only; it "
+                       "never picks a direction. Shares are of today's whole 0DTE book "
+                       f"(uniform share ≈ {uniform:.1%}).")
+        return out
+    except Exception:
+        return {}      # fail-open
+
+
+def _strike_tags(gx: dict, dx: dict, spot, sigma) -> dict:
+    """wt-10 (§3.4) — the doctrine tag ladder, summarized into the room. Same
+    rank/argmax rules as the viewstation TABLE's tag column (GXTAG): ranked gamma
+    walls (P1-P6 / C1-C3, largest |net γ| first) + side-agnostic Ab1-Ab3; the OI
+    peaks POI/COI/AbOI/nPOI (standing structure — these BUILD the map); the volume
+    peaks CV/PV/nCV/nPV (today's flow — which parts of the map are LIVE); and the
+    flow-signed delta-pressure peaks D+/D−. All σ-distances, locations only.
+
+    Accuracy guards, each verified against the table's logic:
+      * net tags (nPOI/nCV/nPV/D±) fire ONLY when the winning strike genuinely
+        carries that sign (argmaxPos) — a one-sided book can never mislabel;
+      * volume side-splits prefer the engine's vol_side_by_strike and otherwise
+        derive EXACTLY from the stored net+gross panes (call=(g+n)/2, put=(g−n)/2
+        — an identity, both built in the same loop);
+      * per-side OI has no derivable fallback (only net OI is stored pre-07-27),
+        so POI/COI/AbOI attach only when oi_side_by_strike is present; nPOI falls
+        back to the net pane (put-dominant = net < 0, strictly);
+      * the volume family shares flow_confirmation's thin-tape abstain floor.
+    Fail-open: any missing surface drops its family; nothing left → {}."""
+    try:
+        if not spot or not sigma:
+            return {}
+        out: dict = {}
+
+        def _argmax(pts, score, pos_only=False):
+            bk, bs = None, (0 if pos_only else float("-inf"))
+            for p in pts or []:
+                try:
+                    s = score(p)
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if s is not None and s > bs:
+                    bs, bk = s, float(p[0])
+            return _sd(bk, spot, sigma)
+
+        # gamma ranks — net_by_strike (calls +, puts −), largest |net| first
+        nbs = [(float(k), float(v)) for k, v in (gx.get("net_by_strike") or [])]
+        if nbs:
+            def _ranked(keep, n):
+                won = sorted((p for p in nbs if keep(p[1])),
+                             key=lambda p: abs(p[1]), reverse=True)[:n]
+                return [_sd(k, spot, sigma) for k, _ in won]
+            p_ranks = _ranked(lambda v: v < 0, 6)
+            c_ranks = _ranked(lambda v: v > 0, 3)
+            ab_ranks = _ranked(lambda v: True, 3)
+            if p_ranks:
+                out["ranked_put_walls_sigma_P1_first"] = p_ranks
+            if c_ranks:
+                out["ranked_call_walls_sigma_C1_first"] = c_ranks
+            if ab_ranks:
+                out["abs_gamma_peaks_sigma_Ab1_first"] = ab_ranks
+        # standing OI peaks — per-side [k, callOI, putOI] when the engine emits it
+        oi_side = gx.get("oi_side_by_strike")
+        if oi_side:
+            out.update({k: v for k, v in {
+                "put_oi_peak_sigma_POI": _argmax(oi_side, lambda p: float(p[2])),
+                "call_oi_peak_sigma_COI": _argmax(oi_side, lambda p: float(p[1])),
+                "total_oi_peak_sigma_AbOI": _argmax(oi_side, lambda p: float(p[1]) + float(p[2])),
+                "net_put_oi_peak_sigma_nPOI": _argmax(
+                    oi_side, lambda p: float(p[2]) - float(p[1]), pos_only=True),
+            }.items() if v is not None})
+        elif gx.get("oi_by_strike"):     # net-pane fallback: put-dominant = net < 0
+            npoi = _argmax(gx["oi_by_strike"], lambda p: -float(p[1]), pos_only=True)
+            if npoi is not None:
+                out["net_put_oi_peak_sigma_nPOI"] = npoi
+        # today's volume peaks — behind the same thin-tape floor as flow_confirmation
+        vol_side = gx.get("vol_side_by_strike")
+        if not vol_side:
+            vnet = dict((float(k), float(v)) for k, v in (gx.get("vol_by_strike") or []))
+            vgross = [(float(k), float(v)) for k, v in (gx.get("vol_gross_by_strike") or [])]
+            vol_side = [[k, (g + vnet.get(k, 0.0)) / 2, (g - vnet.get(k, 0.0)) / 2]
+                        for k, g in vgross]
+        if vol_side and sum(float(p[1]) + float(p[2]) for p in vol_side) >= FLOW_CONFIRM_MIN_CONTRACTS:
+            out.update({k: v for k, v in {
+                "call_volume_peak_sigma_CV": _argmax(vol_side, lambda p: float(p[1])),
+                "put_volume_peak_sigma_PV": _argmax(vol_side, lambda p: float(p[2])),
+                "net_call_volume_peak_sigma_nCV": _argmax(
+                    vol_side, lambda p: float(p[1]) - float(p[2]), pos_only=True),
+                "net_put_volume_peak_sigma_nPV": _argmax(
+                    vol_side, lambda p: float(p[2]) - float(p[1]), pos_only=True),
+            }.items() if v is not None})
+        # delta-pressure peaks — the flow-SIGNED per-strike delta (the only live sign)
+        fbs = (dx or {}).get("dex_flow_by_strike")
+        if fbs:
+            out.update({k: v for k, v in {
+                "delta_buy_pressure_peak_sigma_Dplus": _argmax(
+                    fbs, lambda p: float(p[1]), pos_only=True),
+                "delta_sell_pressure_peak_sigma_Dminus": _argmax(
+                    fbs, lambda p: -float(p[1]), pos_only=True),
+            }.items() if v is not None})
+        if not out:
+            return {}
+        out["note"] = ("§3.4 tag ladder (locations only, NEVER a direction). OI tags "
+                       "(POI/COI/AbOI/nPOI) are STANDING structure — they build the map; "
+                       "volume tags (CV/PV/nCV/nPV) are TODAY'S flow — they say which "
+                       "parts are live right now; D± are where today's flow-signed hedge "
+                       "pressure concentrates. CONFLUENCE OUTRANKS BAR LENGTH (§3.3): "
+                       "several independent lenses landing on ONE level (within ~0.05σ) "
+                       "is independent corroboration — weight that level above a longer "
+                       "bare bar; a stacked level that ALSO carries a volume tag is the "
+                       "strongest configuration on the board.")
+        return out
+    except Exception:
+        return {}      # fail-open
+
+
 def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     """THE SCENE — everything the model may see, as one dict of precomputed,
     σ-normalized numbers with the signs spelled out. `reveal_gates=False` is
@@ -928,6 +1225,24 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # clustering pass answers the doctrine's CLEAN? gate. Fail-open in the helper:
     # no measured surface → both absent.
     gw_walls, profile_word = _gw_cluster_read(gx.get("net_by_strike"), spot, sigma)
+    # wt-10: the measured cT/pT fences (§4) + flow confirmation at the walls (§7) —
+    # both fail-open helpers ({} stays out of the room), both advisory this era
+    transition_zone = _transition_fences(gx.get("net_by_strike"), t.get("gamma_flip"),
+                                         spot, sigma)
+    flow_confirm = _flow_confirmation(gx, t.get("call_wall"), t.get("put_wall"), spot, sigma)
+    # wt-10 (§3.4): the doctrine tag ladder — ranked walls, OI/volume/delta peaks
+    strike_tags = _strike_tags(gx, t.get("dex_views") or {}, spot, sigma)
+    # wt-10 (§6.5): the day's reach DECAYS — remaining expected-move ≈ √(time-left) share
+    # of the full-day band. Pure clock math, worded as a SIZE cap only; silent the first
+    # hour (the band is still ~full) and outside market hours (no clock).
+    em_decay = None
+    if mins_open is not None and mins_close is not None and mins_open >= 60 and mins_close > 0:
+        _rem = (min(mins_close, 390) / 390) ** 0.5
+        em_decay = (f"~{_rem:.0%} of the full-day expected-move band remains "
+                    f"({mins_close}m to the close; reach shrinks as √time-left) — a target "
+                    "beyond that share of a full-day σ move is no longer realistic: cap "
+                    "magnitude_sigma and range_sigma accordingly. SIZE guidance only, "
+                    "never a direction.")
     lr = t.get("level_reclaim") or {}
     _bstate = lr.get("break_state")
     _bdir = lr.get("direction") if lr.get("direction") not in (None, "none") else lr.get("cock_direction")
@@ -1094,6 +1409,8 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
                if fade_target_sd is not None else {}),
             "gamma_flip_sigma_from_spot": flip_sd,
             **({"regime_transition_band": transition_word} if transition_word else {}),
+            # wt-10: the §4 fences, measured — the chop band's three-state refinement
+            **({"transition_zone_measured": transition_zone} if transition_zone else {}),
             # NEAR walls: today's 0DTE gamma walls (H2) — the bounds price actually
             # fights this session; the structural band walls follow as outer terrain
             "call_wall_sigma_above": _sd(t.get("call_wall"), spot, sigma),
@@ -1113,6 +1430,12 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         # wt-8 (Fix 2): only the WINDOWED tape rides — the whole-day cumulative is gone.
         # Attached only when it carries a read (payload hygiene: a cold window ≠ zero flow).
         **({"live_flow": {"tape_recent_window": flow_recent_word}} if flow_recent_word else {}),
+        # wt-10 (§7): today's volume vs standing OI at the operative walls — live
+        # battleground or untested shelf; advisory on wall RELIABILITY, never direction
+        **({"flow_confirmation": flow_confirm} if flow_confirm else {}),
+        # wt-10 (§3.4): the tag ladder — ranked gamma walls + OI/volume/delta peaks,
+        # locations only; confluence (several lenses on one level) outranks bar length
+        **({"strike_tags": strike_tags} if strike_tags else {}),
         # N2 (wt-5): the event clock — the biggest eruption predictor, finally visible
         **({"scheduled_event": event_clock} if event_clock else {}),
         # N1/N16 (wt-5): containment facts — a broken fence and an open road are the
@@ -1157,6 +1480,8 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             "vwap_stretch_sigma": rev.get("vwap_stretch"),
             "last_bar_turned_back": rev.get("reaction"),
             "range_vs_expected_move": t.get("range_em"),
+            # wt-10 (§6.5): the remaining reach, √time-decayed — a SIZE cap, no direction
+            **({"expected_move_decay": em_decay} if em_decay else {}),
             "variance_ratio": t.get("variance_ratio"),
             "vix_term_structure": t.get("vix_ts"),
             # m8: HOW VIOLENT, and WHO OWNS THE MOTION — the speedometer, finally in
@@ -1219,6 +1544,15 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "flip scan to scan. NO directional play from inside the band; conviction is CAPPED "
         "low; stance leans settle or fight on the rest of the evidence — NEVER a drift call "
         "from the band itself.\n"
+        "  * THE FENCES ARE THE MEASURED VERSION (wt-10): transition_zone_measured carries the "
+        "cT/pT fences read off today's actual gamma surface — a THREE-STATE regime read: above "
+        "cT the calm side is measured-confirmed, below pT the fast side is, and INSIDE the "
+        "zone the measured answer is NO REGIME (same stand-down as the chop band, but measured "
+        "rather than assumed — trust it over the fixed band when both are present). "
+        "zone_width_sigma is the ambiguity DEPTH: a wide zone means the whole neighborhood is "
+        "regime-less, so regime-dependent plays deserve less conviction even outside it. A "
+        "MISSING fence means that side never decisively resumes control — the zone has no "
+        "measured edge there. Fences are boundaries of behaviour, NEVER walls or targets.\n"
         "- THE MAGNET IS A LOCATION, NOT A DIRECTION. pull_toward_magnet names where the "
         "map's pin sits — a LOCATION/late-day pin target (intraday pull toward it hit ~33% in "
         "backtest); it is NOT a directional default at any hour under any regime. Use it to "
@@ -1246,6 +1580,25 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "dominant (share of the strongest structure on the surface). A ''' wall outranks "
         "a ' wall: a pin or fade at a ''' wall is backed by real mass; a ' wall is thin "
         "and breaks cheap. Weigh the tier, never the name.\n"
+        "- FLOW CONFIRMATION SEPARATES LIVE WALLS FROM PAPER SHELVES (wt-10). "
+        "flow_confirmation reads TODAY'S options volume against STANDING OI at each operative "
+        "wall: a CONTESTED wall is a live battleground whose verdict is being decided right "
+        "now (weigh siege/effort there, not the bar length); a VOLUME-BUILT level is today's "
+        "0DTE flow and can melt into the close; an UNTESTED standing-OI shelf has not been "
+        "fought today — its strength is UNPROVEN, so a pin/fade leaning on it deserves less "
+        "conviction than one at a contested-and-holding wall. volume_king marks where today's "
+        "heaviest volume actually sits when it is at NEITHER wall — expect live reactions "
+        "there even though the wall map does not mark it. Advisory on wall RELIABILITY only — "
+        "it never picks a direction. Absent = thin tape or no surface; absence ≠ untested.\n"
+        "- TAG CONFLUENCE OUTRANKS BAR LENGTH (wt-10). strike_tags is the doctrine tag "
+        "ladder: ranked gamma walls (P1/C1 = largest each side, Ab = largest regardless of "
+        "side), the standing-OI peaks (POI/COI/AbOI/nPOI — structure, they BUILD the map), "
+        "today's volume peaks (CV/PV/nCV/nPV — which parts of the map are LIVE now), and the "
+        "flow-signed delta-pressure peaks (D+/D−). These are LOCATIONS, never a direction. "
+        "The one rule: when several INDEPENDENT lenses land on the same level (within "
+        "~0.05σ), that level is independently corroborated — weight it above a longer bare "
+        "bar; a stacked level that also carries a volume tag is the strongest level on the "
+        "board. A missing family (e.g. no OI side-split, thin tape) is absent, not zero.\n"
         "- AN AIR POCKET EXTENDS THE OBJECTIVE (wt-9). air_pocket_above / air_pocket_below name "
         "a stretch of CLEAR space (in σ) behind the nearest wall, before the next same-side "
         "structure. Thin space has no hedging to slow price, so once the near wall breaks the "
@@ -1301,6 +1654,13 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "pace suppress the continuation — the pace often shows up AFTER the ignition bar, and "
         "waiting for it forfeits the move. Convert with scale.points_per_sigma when comparing a "
         "σ-magnitude to a point-range.\n"
+        "- THE DAY'S REACH DECAYS (wt-10). tape.expected_move_decay reports how much of the "
+        "full-day expected-move band remains — reach shrinks as √(time-left), so a full-day-"
+        "sized target called mid-afternoon is not realistic even when the thesis is right. Cap "
+        "magnitude_sigma and range_sigma to roughly the remaining share. It is a SIZE cap "
+        "layered on top of the pace guidance, never a direction and never a stand-down; the "
+        "confirmed-negative-gamma ignition exemption above still applies to DIRECTION, but "
+        "even an ignition ride sizes within the remaining reach.\n"
         "- UNDER LONG GAMMA the only directional play is the FADE AT AN EDGE: the tape "
         "stretched into a NEAR wall or range edge with a turn bar and flow rolling over. No "
         "edge, no fade — then the honest answer is pin/settle (fired=false, stance=settle) or "
