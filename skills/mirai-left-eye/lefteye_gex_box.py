@@ -869,6 +869,48 @@ CONTESTED_BLEND_MAX_GAP = 100.0  # pts — rival zone centers farther apart than
 # ~1.5σ on a high-vol morning (live σ reached 1.30% of spot on 07-10), so a wall
 # the engine sees at 1.6-2σ would never reach the drawn bars.
 NBS_WINDOW = 0.03
+# CEILING on that window (2026-08-01). The width itself is already volatility-scaled
+# — `_need` below is 2σ/spot — so this only bounds it. The previous bound was a flat
+# 0.06, chosen for index vol ("crash regimes up to σ/spot ≈ 3% stay covered"), and on
+# any instrument whose σ exceeds that it silently truncated the σ-scaling it was meant
+# to protect. Measured across the recorded diaries:
+#     SPX   2σ/spot  median 2.65%, MAX 3.76%  -> under 0.06 on 535/535 rows
+#     SNDK  2σ/spot  median 19.1%, range 14.1-26.4% -> over 0.06 on 757/757 rows
+# So the old bound never once bound SPX (min(cap, _need) == _need whenever
+# _need <= cap, so raising it is a provable no-op there — SPX in fact lands on the
+# ±3% FLOOR on 453/535 rows), while it clamped SNDK on every single scan, leaving a
+# map ±0.60σ wide against the ±1.8σ this window exists to reach. A frame narrower
+# than one day's move slides out from under its own history: on 07-31 the 09:30 and
+# 09:55 windows shared ZERO strikes, so a strike's data "vanishing" meant the window
+# walked away from it, and any total summed over the window could FALL.
+# So the ceiling is REGIME-SCALED rather than flat — one number cannot serve an index
+# book and a single-name book. Above NBS_WIDE_SIGMA_FRAC of daily vol the wide ceiling
+# applies; at or below it, the historic ±6% is kept EXACTLY, so the index path is
+# bit-identical (raising it unconditionally would have widened SPX on 73 rows of
+# 2026-07-29, when its σ touched 3.9% — small, but the SPX head is the graded one and
+# must not move underneath its own ledger).
+# The threshold sits in a clean, empty gap: SPX's σ/spot maxes at 3.88% over 3,604
+# recorded rows; SNDK's MINIMUM is 7.03% over 757. 5% is 1.1pp clear of one and 2.0pp
+# clear of the other, so no recorded scan of either instrument sits near the boundary.
+# 0.25 is not arbitrary either: it is sndk_feed._WINDOW_MAX, the clamp on the chain
+# FETCH itself. Past it there are no contracts to persist, so this can never ask for
+# a strike the book does not contain.
+NBS_WINDOW_MAX = 0.06          # index regime — unchanged, and unchanged on purpose
+NBS_WINDOW_MAX_WIDE = 0.25     # single-name regime — the chain's own fetch clamp
+NBS_WIDE_SIGMA_FRAC = 0.05     # σ/spot above this = single-name regime
+
+
+def _nbs_cap(sigma, spot) -> float:
+    """Ceiling on the per-strike persistence window, scaled by the instrument's own
+    daily vol. Fails to the index ceiling when σ or spot is missing — the narrow
+    window is the safe default, since a too-wide one only ever costs diary bytes but
+    a silently-widened index book would move the graded head."""
+    try:
+        if sigma and spot and (sigma / spot) > NBS_WIDE_SIGMA_FRAC:
+            return NBS_WINDOW_MAX_WIDE
+    except (TypeError, ZeroDivisionError):
+        pass
+    return NBS_WINDOW_MAX
 
 
 def pin_zones(by_strike: dict, spot: float,
@@ -1212,11 +1254,12 @@ def slide_0dte(zero_dte: list[dict], spot: float,
             # as the frame the tablet draws — BOTH the σ-headroom (≈±1.8σ) AND any framed
             # structural tenor wall (nbs_reach, ≤2.5σ, passed from build_views) — or the
             # outer lane renders permanent blank bars a caption still calls "measured".
-            # ±3% floor keeps the historic width; cap raised to ±6% (crash regimes up to
-            # σ/spot ≈ 3% stay covered; diary cost ≈ +1.2KB/row at the cap).
+            # ±3% floor keeps the historic width; the ceiling is NBS_WINDOW_MAX — see
+            # its note, which records why a flat ±6% silently truncated the σ-scaling on
+            # any name whose vol exceeds an index's.
             _need = max((2.0 * sigma / spot) if sigma else 0.0,
                         (nbs_reach / spot + 0.002) if nbs_reach else 0.0)
-            _w = max(NBS_WINDOW, min(0.06, _need))
+            _w = max(NBS_WINDOW, min(_nbs_cap(sigma, spot), _need))
             _lo, _hi = spot * (1.0 - _w), spot * (1.0 + _w)
             # round the STRIKE too: SPY-proxy strikes are rescaled floats (~10.4-pt
             # grid) that would otherwise serialize at full precision and bloat the
@@ -1244,7 +1287,7 @@ def slide_0dte(zero_dte: list[dict], spot: float,
     try:
         _need = max((2.0 * sigma / spot) if sigma else 0.0,
                     (nbs_reach / spot + 0.002) if nbs_reach else 0.0)
-        _w = max(NBS_WINDOW, min(0.06, _need))
+        _w = max(NBS_WINDOW, min(_nbs_cap(sigma, spot), _need))
         _lo, _hi = spot * (1.0 - _w), spot * (1.0 + _w)
         _oi: dict[float, float] = {}
         _vol: dict[float, float] = {}

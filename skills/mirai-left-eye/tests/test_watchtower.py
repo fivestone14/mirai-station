@@ -263,7 +263,7 @@ def test_observe_never_raises_even_when_the_call_layer_explodes(armed_tower, mon
 
 def test_observe_agreement_path_votes_and_skips_reveal(armed_tower, monkeypatch):
     calls = []
-    def fake_ask(prompt, model, timeout=60.0):
+    def fake_ask(prompt, model, timeout=60.0, system=None):
         calls.append(prompt)
         return _verdict(), None, 8.0                   # tower agrees with gates (put)
     monkeypatch.setattr(wt, "_ask_claude", fake_ask)
@@ -281,7 +281,7 @@ def test_observe_reveal_cannot_delete_a_unanimous_majority(armed_tower, monkeypa
     # 07-10 every one of 5 revisions was the tower abandoning its own fire to agree
     # with the gates. The majority now STANDS; the dissent is recorded, visibly.
     calls = []
-    def fake_ask(prompt, model, timeout=60.0):
+    def fake_ask(prompt, model, timeout=60.0, system=None):
         calls.append(prompt)
         if "gates_verdict_head_a" in prompt:           # the reveal pass
             return _verdict(fired=False, direction=None), None, 8.0
@@ -301,7 +301,7 @@ def test_observe_reveal_can_revise_a_split_vote_and_refolds_conviction(armed_tow
     # shipped conviction then re-folds over ALL samples (votes + reveal), so it
     # describes the revised call rather than the majority it replaced.
     seq = [_verdict(), _verdict(), _verdict(fired=False, direction=None)]   # 2-1 split
-    def fake_ask(prompt, model, timeout=60.0):
+    def fake_ask(prompt, model, timeout=60.0, system=None):
         if "gates_verdict_head_a" in prompt:
             return _verdict(fired=False, direction=None), None, 8.0
         return seq.pop(0), None, 8.0
@@ -425,6 +425,75 @@ def test_shove_asymmetry_wording_is_non_directional_and_needs_objective_confirm(
     assert "LOWER-RESISTANCE side IF something pushes" in a and "not a push itself" in a
     assert "CHEAPER direction to move" not in a
     assert "never your own read of 'confirmed'" in a
+
+
+def test_prompt_split_reassembles_and_the_doctrine_never_varies():
+    # THE CACHE SEAM. The doctrine rides in the system block so the server caches it
+    # once and reads it back all day; that only pays off while it is byte-identical
+    # across every call. Two different scenes and a reveal pass must all yield the
+    # SAME doctrine — and the split must reassemble to exactly what _prompt returns,
+    # so the model reads the same words in the same order as before the split.
+    payload_a = wt.build_payload(_telemetry())
+    payload_b = wt.build_payload(_telemetry(fired=True, direction="put"))
+    head_a, body_a = wt._prompt_parts(payload_a)
+    head_b, _ = wt._prompt_parts(payload_b)
+    blind = {"fired": True, "direction": "put", "stance": "fight", "conviction_stated": 0.6}
+    head_r, body_r = wt._prompt_parts(payload_b, blind_verdict=blind)
+    assert head_a == head_b == head_r                   # one prefix, blind and reveal
+    assert head_a + body_a == wt._prompt(payload_a)     # nothing lost at the seam
+    assert head_r + body_r == wt._prompt(payload_b, blind_verdict=blind)
+    assert "SCENE:" not in head_a                       # no live data in the cached half
+    assert "YOUR BLIND VERDICT" in body_r               # the varying half carries it
+
+
+def _argv_of_one_call(**kwargs):
+    seen = {}
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        raise wt.subprocess.TimeoutExpired(cmd, 1)      # we only care about the argv
+    wt.subprocess.run, real = fake_run, wt.subprocess.run
+    try:
+        wt._ask_claude("BODY", "claude-sonnet-5", **kwargs)
+    finally:
+        wt.subprocess.run = real
+    return seen["cmd"]
+
+
+def test_append_never_replaces_the_system_block():
+    # --append-system-prompt is deliberate: --system-prompt was measured 8x cheaper
+    # but collapsed the model's reasoning to a bare answer. The saving was the think.
+    cmd = _argv_of_one_call(system="DOCTRINE")
+    assert "--append-system-prompt" in cmd and "--system-prompt" not in cmd
+    assert cmd[cmd.index("--append-system-prompt") + 1] == "DOCTRINE"
+
+
+def test_tool_denial_is_on_now_that_the_ab_cleared_it():
+    # 07-31: ab_deny_tools.py, 144 paired samples over 24 scenes and 6 sessions,
+    # arms interleaved. The 07-29 objection (tools-off = a shallower think) did not
+    # hold at width: conviction 0.325 -> 0.312, self-consistency 0.958 -> 0.972,
+    # stance hit 0.556 -> 0.563, and the modal verdict was identical on 21 of 24
+    # scenes. Cost 50.3k -> 34.1k tokens a call. The flag is on; the kill condition
+    # (fire rate over the next 10 sessions) is pre-registered beside the constant.
+    assert wt.DENY_TOOLS is True
+    cmd = _argv_of_one_call(system="DOCTRINE")
+    assert "--disallowedTools" in cmd
+    # the point of the flag is that the schemas LEAVE the request, not merely that
+    # the model is forbidden to call one — the MCP config must be emptied too.
+    assert "--strict-mcp-config" in cmd
+    assert cmd[cmd.index("--mcp-config") + 1] == '{"mcpServers":{}}'
+
+
+def test_tool_denial_when_enabled_keeps_the_variadic_flag_last():
+    # If a future A/B clears it, the argv must still be well-formed: --disallowedTools
+    # is variadic and swallows anything that follows it.
+    wt.DENY_TOOLS, real = True, wt.DENY_TOOLS
+    try:
+        cmd = _argv_of_one_call(system="DOCTRINE")
+    finally:
+        wt.DENY_TOOLS = real
+    assert "--strict-mcp-config" in cmd
+    assert cmd[cmd.index("--disallowedTools") + 1:] == list(wt._NO_TOOLS)
+    assert "Bash" in wt._NO_TOOLS and "Read" in wt._NO_TOOLS
 
 
 def test_prompt_carries_the_wt8_corrections():

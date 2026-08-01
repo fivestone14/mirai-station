@@ -216,6 +216,36 @@ DAILY_CALL_CAP = 35         # judged scans per day (cost guard). 25 burned out
                             # the held-scene throttle (INTEREST_REJUDGE_MIN)
                             # covers a full session.
 VOTES_ON_FIRE = 3           # samples when the blind verdict says "fire"
+_NO_TOOLS = ("Bash", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
+             "Grep", "WebFetch", "WebSearch", "Task", "Agent", "TodoWrite",
+             "ExitPlanMode", "BashOutput", "KillShell", "SlashCommand", "Skill")
+DENY_TOOLS = True           # ON since 07-31. The tower never calls a tool, so it
+                            # stops paying to ship their schemas: 50.3k -> 34.1k
+                            # tokens a call (-32%), read block 43.0k -> 30.9k.
+                            # The 07-29 test said no on the ground that tools-off
+                            # buys a shallower think (wall 44.0s -> 15.7s, stated
+                            # conviction 0.38 -> 0.31, n=6 on ONE marginal scene).
+                            # That does not survive width. ab_deny_tools.py, 144
+                            # paired samples, 24 scenes, 6 sessions, arms
+                            # interleaved (run-2026-07-31T093110):
+                            #   conviction   0.325 -> 0.312  (-4%, was -18%)
+                            #   self-consist 0.958 -> 0.972  (no loss of stability)
+                            #   stance hit   0.556 -> 0.563  (median-split bar)
+                            #   modal verdict identical on 21 of 24 scenes
+                            # Wall (26.4 -> 19.2s) and output (2046 -> 1422 tok) do
+                            # fall, but the think being shorter did not make it worse
+                            # on any axis the tape can score.
+                            # THE ONE REAL DIFFERENCE — fire rate 12/72 -> 5/72. All
+                            # three scenes that changed went the same way: tools-on
+                            # fired a PUT, tools-off stood down. Tools-off is the more
+                            # conservative tower. The sample cannot say whether that is
+                            # a loss: directional hits ran 1/12 (on) vs 1/5 (off), too
+                            # few and too wrong in BOTH arms to defend the extra fires.
+                            # KILL CONDITION, pre-registered: if the fired-scan rate
+                            # over the next 10 live sessions falls below half the
+                            # trailing-10 rate under tools-on (diary `watchtower.fired`),
+                            # flip this back to False and re-open the question. A cost
+                            # cut that quietly mutes the tower is not a cost cut.
 INTEREST_REJUDGE_MIN = 15   # an interesting but UNCHANGED scene re-judges at
                             # most this often. An armed scene stays "interesting"
                             # for hours and used to re-burn a call every 5-min
@@ -1514,10 +1544,21 @@ _VERDICT_SHAPE = {          # the exact JSON the model must return (schema-by-ex
 }
 
 
-def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
-    """Assemble the full prompt. With `blind_verdict` set this is the REVEAL
-    pass: the model sees its own blind answer + the gates' verdict and must
-    confirm or revise, explaining any override of the gates."""
+def _prompt_parts(payload: dict, blind_verdict: dict | None = None) -> tuple[str, str]:
+    """Assemble the prompt SPLIT at the cache seam: (doctrine, body).
+
+    `doctrine` is byte-identical on every call, every scan, all day — it rides in
+    the system block (`--append-system-prompt`) where the server caches it once and
+    reads it back at a tenth the price. `body` is everything that changes scan to
+    scan: the reveal preamble, the SCENE, and the output shape. Splitting here is
+    purely a transport decision — the model receives the same text in the same
+    order as `_prompt` returns.
+
+    With `blind_verdict` set this is the REVEAL pass: the model sees its own blind
+    answer + the gates' verdict and must confirm or revise, explaining any override
+    of the gates. That preamble lives in the BODY, not the doctrine, so the blind
+    and reveal passes share one cached prefix instead of forking it.
+    """
     head = (
         "You forecast the next ~hour of 0DTE SPX from the dealer-positioning map. "
         "Answer THREE things: STANCE (does the range erupt or settle?), DIRECTION, and SIZE.\n"
@@ -1727,8 +1768,9 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
         "- The checklist numbers are evidence, not the answer — judge the whole scene.\n"
     )
     scene = f"SCENE:\n{json.dumps(payload, indent=1)}\n"
+    reveal = ""
     if blind_verdict is not None:
-        head += (
+        reveal = (
             "\nYou already judged this scene blind; now the rule-checklist's verdict "
             "is revealed inside the scene (gates_verdict_head_a). CONFIRM or REVISE "
             "your verdict. If you stand against the checklist, say exactly why in an "
@@ -1740,7 +1782,15 @@ def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
     tail = ("\nOutput ONLY this JSON object (no fences, no commentary):\n"
             + json.dumps({**_VERDICT_SHAPE, **({"overrides": ["why I stand against the gates"]}
                                                if blind_verdict is not None else {})}))
-    return head + scene + tail
+    return head, reveal + scene + tail
+
+
+def _prompt(payload: dict, blind_verdict: dict | None = None) -> str:
+    """The whole prompt as ONE string — the shape the replay path and the tests
+    read. The live path uses `_prompt_parts` instead so the doctrine can ride in
+    the cached system block; the text and its order are identical either way."""
+    head, body = _prompt_parts(payload, blind_verdict)
+    return head + body
 
 
 def validate_verdict(v) -> dict | None:
@@ -1891,15 +1941,32 @@ def _extract_json(text: str):
     return None
 
 
-def _ask_claude(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
+def _ask_claude(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
+                system: str | None = None):
     """ONE `claude -p` subprocess call — deliberately NOT the watch package's
     claude_cli wrapper: that one retries with backoff (3 attempts), which is
     right for a nightly brief and wrong inside a 5-minute scan tick. Here a
-    slow call fails ONCE and the tick moves on (fail-open). Tool-less by
-    construction: no --allowedTools, so the model can only read the prompt.
+    slow call fails ONCE and the tick moves on (fail-open).
+
+    TOOL-LESS BY CONSTRUCTION. Omitting --allowedTools stops the model USING a
+    tool; the schemas still ship. Stripping them outright (DENY_TOOLS) is cheaper
+    still but measured as buying a shallower think — see that flag. Off by default.
+
+    `system` rides in --append-system-prompt: an APPEND, never --system-prompt.
+    Replacing the CLI's own system block measured 8x cheaper but collapsed the
+    model's reasoning (output 3.3k -> 0.4k tokens on the same scene) — the saving
+    was the thinking, which is the one thing this call is for. Same lesson, twice:
+    on this call path, cheap and quiet is how a regression gets in.
+
     Returns (verdict_dict | None, error | None, wall_seconds)."""
     cmd = ["claude", "-p", prompt, "--model", model,
            "--output-format", "json"]     # envelope carries the served model id
+    if system:
+        cmd.extend(["--append-system-prompt", system])
+    if DENY_TOOLS:
+        # --disallowedTools is variadic — it must stay LAST or it swallows what follows.
+        cmd.extend(["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+                    "--disallowedTools", *_NO_TOOLS])
     t0 = _clock.time()
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -2160,8 +2227,12 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
                                   "lifetime_scorecards": _scorecards()}
 
         # --- pass 1: BLIND vote(s) — majority decides ------------------------
+        # One doctrine string serves the blind votes AND the reveal below: built
+        # once, byte-identical, so the first call of the day warms the server-side
+        # cache and every later call reads it back instead of re-sending it.
         votes, walls = [], 0.0
-        raw, err, wall = _ask_claude(_prompt(payload), model)
+        doctrine, body = _prompt_parts(payload)
+        raw, err, wall = _ask_claude(body, model, system=doctrine)
         walls += wall
         v = validate_verdict(raw)
         if v is None:
@@ -2174,7 +2245,7 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
         while (len(votes) < VOTES_ON_FIRE
                and (votes[0]["fired"] or gates_fired)
                and _clock.time() - t_start < TICK_BUDGET_S - CALL_TIMEOUT_S):
-            raw, err, wall = _ask_claude(_prompt(payload), model)
+            raw, err, wall = _ask_claude(body, model, system=doctrine)
             walls += wall
             v = validate_verdict(raw)
             if v is not None:
@@ -2195,7 +2266,8 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
         if disagree and _clock.time() - t_start < TICK_BUDGET_S - CALL_TIMEOUT_S:
             reveal_payload = build_payload(telemetry, reveal_gates=True)
             reveal_payload["day_context"] = payload["day_context"]
-            raw, err, wall = _ask_claude(_prompt(reveal_payload, blind_verdict=blind), model)
+            _, reveal_body = _prompt_parts(reveal_payload, blind_verdict=blind)
+            raw, err, wall = _ask_claude(reveal_body, model, system=doctrine)
             walls += wall
             v = validate_verdict(raw)
             if v is not None:
@@ -2266,7 +2338,8 @@ def _replay(day: str, live: bool) -> None:
         ts = (r.get("ts") or "")[11:16]
         print(f"--- {ts}  interest: {why}")
         if live:
-            v, err, wall = _ask_claude(_prompt(build_payload(r)), _model())
+            doctrine, body = _prompt_parts(build_payload(r))
+            v, err, wall = _ask_claude(body, _model(), system=doctrine)
             print(json.dumps(validate_verdict(v) or {"error": err}, indent=1), f"({wall}s)")
         else:
             print(json.dumps(build_payload(r), indent=1)[:800], "…\n")
