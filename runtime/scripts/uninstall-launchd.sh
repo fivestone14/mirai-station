@@ -14,7 +14,14 @@ PLISTS=(
   "com.mirai-station.gex-polarity"
   "com.mirai-station.viewstation"
   "com.mirai-station.lob-collector"
+  "com.mirai-station.dated-book"
+  "com.mirai-station.sndk"
+  "com.mirai-station.sndk-read"
 )
+# MUST stay in step with install-launchd.sh's PLISTS. A job missing from THIS
+# list survives an uninstall and keeps firing on its interval — and for the two
+# added 08-01 that means a "removed" station still spending `claude -p` calls
+# every 120s with nothing left to read them.
 
 for label in "${PLISTS[@]}"; do
   launchctl bootout "gui/$UID/$label" 2>/dev/null && log "uninstall: booted out $label" || log "uninstall: $label was not loaded"

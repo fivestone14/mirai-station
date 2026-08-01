@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.sndk</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk.sh</string>
+  </array>
+
+  <!-- SNDK-PRO scanner: fire every 2 min; the script (run-sndk.sh) enforces the
+       weekday + 09:30-16:00 ET market window and the SNDK_PRO_DISABLE kill
+       switch. 120s = half the SPX left-eye rate on purpose — beta cadence,
+       conservative with the shared Cassandra server (no explicit rate limiter
+       upstream). Each tick is a FRESH process (no in-memory cache can survive),
+       so the raw book is cached ON DISK (state/sndk_gex/chain_cache.json, 240s
+       freshness): only every other tick pulls the chain; the off tick re-prices
+       the cached book at the fresh Schwab quote (row meta.book_source /
+       cache_age_s record which). launchd will not run two copies at once. -->
+  <key>StartInterval</key>
+  <integer>120</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.sndk.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.sndk.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.sndk-read</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk-read.sh</string>
+  </array>
+
+  <!-- The SNDK reading: fire every 2 min, in step with the scanner so it always
+       sees the newest diary row, but the MODEL is not called every fire. Each
+       run recomputes the arrow for free (pure python over a row already on
+       disk) and only spends a call when the wake gate says the book actually
+       moved. Replayed over the four recorded sessions (2026-07-28..31) that is
+       23 / 22 / 20 / 32 calls a day against ~189 scans — ~12% — with the
+       heartbeat filling only 1-4 of them, i.e. genuinely event-driven rather
+       than a clock in disguise. DAILY_CALL_CAP=40 in sndk_read.py is the hard
+       backstop above that.
+
+       Separate from com.mirai-station.sndk on purpose: a model call can hang to
+       its 60s timeout, and it must never be able to eat the scanner's tick and
+       cost a diary row. launchd will not run two copies of this at once. -->
+  <key>StartInterval</key>
+  <integer>120</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.sndk-read.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.sndk-read.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

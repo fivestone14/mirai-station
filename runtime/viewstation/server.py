@@ -8,8 +8,9 @@ under the mirai-station venv so snapshot.py can import the skill modules.
     python runtime/viewstation/server.py            # binds 0.0.0.0:8787
     MIRAI_VIEW_PORT=9000 python .../server.py        # custom port
 
-LAN-only by design: read-only, no auth, no writes. Don't expose it to the
-public internet.
+LAN-only by design: no auth, and read-only with ONE deliberate exception —
+POST /api/sndk/reasoning flips the SNDK reasoning pause (see _CONTROL_PATH and
+do_POST). Nothing else here writes. Don't expose it to the public internet.
 """
 from __future__ import annotations
 
@@ -19,9 +20,13 @@ import re
 import sys
 import threading
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo("America/New_York")   # the pause stamp reads in market time
 
 HERE = Path(__file__).resolve().parent
 STATIC = HERE / "static"
@@ -33,6 +38,13 @@ PLUGIN_ROOT = snap.PLUGIN_ROOT
 STATE_DIR = snap.STATE_DIR
 CONFIG_DIR = PLUGIN_ROOT / "runtime" / "watch" / "config"
 PORT = int(os.environ.get("MIRAI_VIEW_PORT", "8787"))
+
+# The SNDK reasoning PAUSE — the only file this server writes, and the one path
+# the GET and the POST below must agree on. skills/sndk-pro/sndk_read.py reads
+# the same file (reasoning_on) and fails open the same way; it is deliberately
+# NOT imported here, because the viewstation must stay free of skill imports.
+# The contract between the two processes is this file's shape, not a function.
+_CONTROL_PATH = STATE_DIR / "sndk_reads" / "control.json"
 
 # directories the raw explorer is allowed to read from (read-only)
 RAW_ROOTS = {
@@ -134,6 +146,20 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
     return {"kind": "text", "text": text[: 200_000]}
 
 
+# --- sndk reasoning pause -----------------------------------------------------
+def _reasoning_state() -> dict:
+    """Current pause state. Fails OPEN (reasoning on) to match sndk_read's own
+    default — an absent control file means nobody has touched the switch, which
+    is not the same as having asked for silence."""
+    try:
+        d = json.loads(_CONTROL_PATH.read_text())
+        if isinstance(d, dict) and isinstance(d.get("reasoning"), bool):
+            return d
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    return {"reasoning": True, "since": None, "by": "default"}
+
+
 # --- request handler ----------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     server_version = "MiraiViewstation/1.0"
@@ -219,6 +245,9 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/health":
                 return self._send_json({"ok": True, "port": PORT})
 
+            if route == "/api/sndk/reasoning":
+                return self._send_json(_reasoning_state())
+
             # static assets
             rel = route.lstrip("/")
             asset = _safe_join(STATIC, rel)
@@ -231,6 +260,43 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             try:
                 self._send_json({"error": str(exc)}, 500)
+            except Exception:
+                pass
+
+    def do_POST(self):
+        """The ONLY write this server accepts, and it stays that way.
+
+        Everything else here is read-only by design, so this is deliberately
+        not a general write path: one route, one boolean, one file, and an
+        explicit reject for anything else. It flips the SNDK reasoning pause —
+        the scanners, the stores and the arrow are untouched by it, so the worst
+        a bad request can do is stop or start one sentence being written on a
+        beta chart. Note the server binds 0.0.0.0 with no auth, so anyone on the
+        LAN can reach this; that blast radius is the reason it is scoped this
+        tightly rather than being a generic settings endpoint."""
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/sndk/reasoning":
+            return self._send_json({"error": "not found"}, 404)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n <= 0 or n > 512:                      # a boolean needs ~20 bytes
+                return self._send_json({"error": "bad body"}, 400)
+            body = json.loads(self.rfile.read(n).decode("utf-8"))
+            if not isinstance(body, dict) or not isinstance(body.get("reasoning"), bool):
+                return self._send_json({"error": "expected {\"reasoning\": bool}"}, 400)
+            _CONTROL_PATH.parent.mkdir(parents=True, exist_ok=True)
+            state = {"reasoning": body["reasoning"],
+                     "since": datetime.now(_ET).isoformat(),
+                     "by": "viewstation"}
+            tmp = _CONTROL_PATH.with_suffix(".json.tmp")   # atomic: the reader
+            tmp.write_text(json.dumps(state))              # must never see a
+            tmp.replace(_CONTROL_PATH)                     # torn file
+            return self._send_json(state)
+        except BrokenPipeError:
+            pass
+        except Exception as exc:
+            try:
+                self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
             except Exception:
                 pass
 
