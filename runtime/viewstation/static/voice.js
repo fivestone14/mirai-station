@@ -139,8 +139,19 @@
     try {
       V._ctx = V._ctx || new (window.AudioContext || window.webkitAudioContext)();
       await V._ctx.resume();                       // the tap IS the unlock
-      V._stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true } });
+      try {
+        V._stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true } });
+      } catch (ce) {
+        // Safari: "Invalid constraint" (OverconstrainedError) on audio
+        // constraint dictionaries — retry with the plainest possible ask;
+        // EC/NS are on by default there anyway
+        if (ce && (ce.name === 'OverconstrainedError' ||
+                   String(ce.message || '').match(/constraint/i))) {
+          console.warn('[mirai-voice] constraints rejected, retrying plain audio');
+          V._stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } else { throw ce; }
+      }
       V._ws = (V._ws && V._ws.readyState <= 1) ? V._ws : connect();
       await new Promise(function (res, rej) {
         if (V._ws.readyState === 1) return res();
