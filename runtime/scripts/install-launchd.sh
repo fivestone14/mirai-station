@@ -19,6 +19,7 @@ PLISTS=(
   "com.mirai-station.dated-book.plist"
   "com.mirai-station.sndk.plist"
   "com.mirai-station.sndk-read.plist"
+  "com.mirai-station.voice.plist"
 )
 
 TARGET_DIR="${HOME}/Library/LaunchAgents"

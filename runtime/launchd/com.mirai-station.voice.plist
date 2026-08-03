@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.voice</string>
+
+  <!-- The SNDK spoken-conversation sidecar (skills/mirai-voice). Daemon mode
+       like the viewstation: RunAtLoad + KeepAlive. Models warm at boot
+       (~20s); the WebSocket on :8788 is idle until the tab's talk button
+       opens a session. Kill switch: MIRAI_VOICE_DISABLE=1 in run-voice.sh. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-voice.sh</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.voice.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.voice.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>MIRAI_VOICE_PORT</key>
+    <string>8788</string>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
