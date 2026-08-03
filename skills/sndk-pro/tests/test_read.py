@@ -293,8 +293,7 @@ def test_scene_carries_no_inadmissible_field():
                         "dex_flow_word": None}
     row["gex_views"]["pin_contested"] = False
     row["gex_views"]["pin_basis"] = "open_interest"
-    a = SR.aggregate(row, None, T0)
-    blob = json.dumps(SR.build_scene(row, a, SR.magnet_band(row), [], [row], T0))
+    blob = json.dumps(SR.build_scene(row, SR.magnet_band(row), [], [row], T0))
     for banned in SR.INADMISSIBLE:
         assert banned not in blob
     assert "SELL_on_rallies" not in blob
@@ -304,8 +303,7 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
     rows = [mkrow([[1300, 60], [1100, 20]], spot=1200 + i * 3,
                   ts=T0 - timedelta(minutes=40 - i * 2)) for i in range(21)]
     row = SR.with_path(rows[-1], rows)
-    a = SR.aggregate(row, None, T0)
-    sc = SR.build_scene(row, a, SR.magnet_band(row), [], rows, T0)
+    sc = SR.build_scene(row, SR.magnet_band(row), [], rows, T0)
     assert sc["price"]["session_low"] is not None
     assert sc["price"]["session_high"] is not None
     assert sc["scale"]["typical_30min_move_sigma"] == 0.08
@@ -313,31 +311,41 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
 
 def test_scene_names_the_frozen_fields_as_uncitable():
     row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    a = SR.aggregate(row, None, T0)
-    sc = SR.build_scene(row, a, SR.magnet_band(row),
+    sc = SR.build_scene(row, SR.magnet_band(row),
                         [{"field": "magnet", "value": 1300, "for_min": 120}],
                         [row], T0)
     assert sc["frozen_do_not_cite"] == ["magnet unchanged 120m"]
 
 
-def test_scene_tells_the_model_the_arrow_is_already_decided():
-    """The model writes the reading; it must never think it picks direction."""
+def test_scene_carries_no_verdict_at_all():
+    """sr-2: the pre-baked arrow anchored the model and is GONE from the scene.
+    The deterministic arrow still computes and still draws — it just never
+    enters the model's evidence."""
     row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
     a = SR.aggregate(row, None, T0)
-    sc = SR.build_scene(row, a, SR.magnet_band(row), [], [row], T0)
-    assert sc["arrow_already_decided"]["direction"] == "up"
-    assert "never pick a direction" in SR._DOCTRINE.replace("you never pick",
-                                                            "never pick")
+    assert a["dir"] == "up"                     # the arrow itself still works
+    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
+    assert "arrow_already_decided" not in sc
+    assert "arrow" not in json.dumps(sc)
+    assert "infer a direction vector" in SR._DOCTRINE
 
 
 # --- reply handling --------------------------------------------------------
-def test_only_the_three_reading_fields_survive():
-    """A model that writes extra keys must not smuggle a direction through one."""
-    obj = {"line": "x", "breaks_if": "y", "cited": "z",
-           "direction": "up", "conviction": 0.9}
-    kept = {k: str(obj.get(k, ""))[:400] for k in ("line", "breaks_if", "cited")
-            if obj.get(k)}
-    assert kept == {"line": "x", "breaks_if": "y", "cited": "z"}
+def test_reading_validation_keeps_schema_and_drops_junk():
+    """sr-2: vector + magnitude are the model's own call now — but only the
+    schema's fields survive, a malformed vector is dropped never guessed, and
+    the magnitude is clamped sane."""
+    validate = SR._validate_reading
+    ok = validate({"vector": "up", "magnitude_sigma": 0.12, "line": "x",
+                   "breaks_if": "y", "cited": "z", "conviction": 0.9})
+    assert ok["vector"] == "up" and ok["magnitude_sigma"] == 0.12
+    assert "conviction" not in ok
+    bad = validate({"vector": "sideways-ish", "magnitude_sigma": 9, "line": "x"})
+    assert "vector" not in bad and "magnitude_sigma" not in bad
+    none = validate({"vector": "none", "magnitude_sigma": 0.4, "line": "x"})
+    assert none["vector"] == "none" and "magnitude_sigma" not in none
+    huge = validate({"vector": "down", "magnitude_sigma": 99, "line": "x"})
+    assert huge["magnitude_sigma"] == 3.0
 
 
 def test_extract_json_finds_the_object_in_a_wrapped_reply():

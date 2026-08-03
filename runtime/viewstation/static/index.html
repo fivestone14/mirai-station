@@ -1688,6 +1688,16 @@
   /* an arrow standing on the dwell clock while its own gate has already failed draws
      dimmed, never solid (sndk_read.aggregate's `fading`) */
   .snk-read .gx-call.fading{opacity:.62}
+  /* MODEL VECTOR (sr-2) — the model's OWN inference from the unbiased scene, a separate
+     surface from the gated arrow above it (the two are decoupled by design and may
+     disagree; that disagreement is information, so both always show). */
+  .snk-read .vec{display:flex; align-items:baseline; gap:8px; margin-top:7px; padding:4px 8px;
+    border-radius:8px; background:var(--surface-3); border:1px solid var(--hairline);
+    font-family:var(--mono); font-size:12.5px; font-weight:700}
+  .snk-read .vec i{flex:0 0 auto; font-style:normal; font-size:9.5px; font-weight:700;
+    letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
+  .snk-read .vec.up span{color:var(--jade)} .snk-read .vec.down span{color:var(--coral)}
+  .snk-read .vec.none span{color:var(--ink-dim); font-weight:500}
   .snk-read .tr-next{font-size:13.5px; line-height:1.5; margin:9px 0 0}
   .snk-read .br{font-family:var(--sans); font-size:12px; line-height:1.45; color:var(--ink-dim); margin-top:6px}
   .snk-read .br i{font-style:normal; font-weight:600; color:var(--ink-faint)}
@@ -9133,6 +9143,24 @@ function snkExpiries(meta, todayIso){
 }
 // one diary row → the tab's model. Mirrors rowToScan's field names (the pinned
 // contract) but carries ONLY what this tab draws; absent field = null, never zero.
+// snkAemModel — the expected-move band's view-model, from the SAME source the sr-2 scene
+// payload hands the reading model (the IV-skew split of the ruler's em budget), so the
+// drawn band and the model's cited aem can never disagree. Rows without an iv_skew (pre
+// ROW_V 3, or no clean solves that scan) fall back to the recorded semivar split; `src`
+// says which spoke. Shape mirrors adaptive_em's consumed keys exactly.
+function snkAemModel(r){
+  const num=v=>(v==null||!isFinite(v))?null:+v;
+  const em=num(r.range_ruler&&r.range_ruler.em_points);
+  const d=num(r.iv_skew&&r.iv_skew.down_share), sp=num(r.spot);
+  if(em!=null&&em>0&&d!=null&&d>0&&d<1){
+    const dn=2*em*d, up=2*em*(1-d);
+    return {em_up_pts:up, em_down_pts:dn,
+      em_up_pct:(sp&&sp>0)?up/sp:null, em_down_pct:(sp&&sp>0)?dn/sp:null,
+      em_quality:(r.range_ruler&&r.range_ruler.quality)||null, src:'iv_skew'};
+  }
+  return (r.adaptive_em&&r.adaptive_em.em_v===1)
+    ? Object.assign({src:'semivar'}, r.adaptive_em) : null;
+}
 function snkModel(r){
   const gv=r.gex_views||{}, dv=r.dex_views||{}, meta=r.meta||{};
   const num=v=>(v==null||!isFinite(v))?null:+v;
@@ -9151,7 +9179,10 @@ function snkModel(r){
     dex:(r.dex_views&&(dv.dex_v==null||dv.dex_v===1))?{ nbs:arr(dv.net_dex_by_strike), fbs:arr(dv.dex_flow_by_strike),
       tot:num(dv.net_dex_total), word:dv.dex_word??null, fword:dv.dex_flow_word??null }:null,
     ladder:(r.profile_ladder&&r.profile_ladder.ladder_v===1)?r.profile_ladder:null,
-    aem:(r.adaptive_em&&r.adaptive_em.em_v===1)?r.adaptive_em:null,
+    aem:snkAemModel(r),
+    // ROW_V 3 (sr-2) sources — version-gated like ladder/aem, honest-absent before
+    vwap:num(r.vwap),
+    flows:(r.flows_front&&r.flows_front.flows_v===1)?r.flows_front:null,
     ne:(r.net_exposure&&r.net_exposure.net_exposure_v===1)?r.net_exposure:null,
     flowR:num(gv.aggressor_flow),                       // SPX-only in practice — honest-absent
     expiries:snkExpiries(meta, String(r.ts||'').slice(0,10)),
@@ -9896,9 +9927,29 @@ function snkArrowBlock(a, now){
   return { cls:'', html:`<span class="dir">■ QUIET</span>`
     +`<span class="mag">${snkSafe(a.silent_because)||'no direction — the gate did not clear'}</span>` };
 }
-// snkReadCard — the side panel's live-read card: the call block, the model's one sentence,
-// what would change it, the receipt, then the honesty flags and the gate strip. '' when
-// there is no read row, so the tab degrades to exactly its pre-sr-1 self.
+// snkVectorRow (sr-2) — the model's OWN direction + magnitude, inferred cold from the
+// unbiased scene. A separate surface from the gated arrow ON PURPOSE: the two are
+// decoupled paths and may disagree — showing both is the honesty, not a bug. σ converts
+// to dollars off the read row's own ruler so the magnitude lands in plain money.
+function snkVectorRow(R, sigma){
+  const v=R&&R.vector;
+  // the producer already validates this enum, but v lands inside a class attribute — it is
+  // re-checked at the boundary so a corrupted row degrades to absence, never to markup
+  if(v!=='up'&&v!=='down'&&v!=='none') return '';
+  const m=(R.magnitude_sigma!=null&&isFinite(R.magnitude_sigma))?+R.magnitude_sigma:null;
+  const dol=(m!=null&&sigma!=null&&isFinite(sigma)&&sigma>0)?` · ~$${Math.round(m*sigma)}`:'';
+  const glyph=v==='up'?'▲':v==='down'?'▼':'◆';
+  const word=v==='none'?'balanced — no lean':`${v}${m!=null?` ${m.toFixed(2)}σ${dol}`:''}`;
+  const tip='The model’s own read of the scene — direction and how far over ~30 min.'
+    +'¦f:decoupled from the gated arrow above; they can disagree, and that is information'
+    +(m!=null?`¦k:magnitude=${m.toFixed(2)}σ${dol.replace(' · ','=')}`:'')
+    +'¦n:a typical 30-min move here is ~0.08σ';
+  return `<div class="vec ${v}" data-name="Model vector" data-tip="${tip}">`
+    +`<i>model vector</i><span>${glyph} ${word}</span></div>`;
+}
+// snkReadCard — the side panel's live-read card: the call block, the model's own vector
+// (sr-2), the sentence, what would change it, the receipt, then the honesty flags and the
+// gate strip. '' when there is no read row, so the tab degrades to its pre-sr-1 self.
 function snkReadCard(rd, now){
   if(!rd||typeof rd!=='object') return '';
   const a=(rd.arrow&&typeof rd.arrow==='object')?rd.arrow:null;
@@ -9913,6 +9964,7 @@ function snkReadCard(rd, now){
     .filter(f=>f[1]).map(f=>`<div class="fl"><i>${f[0]}</i><span>${snkSafe(f[1])}</span></div>`).join('');
   return `<div class="snk-read"><span class="k">The read${rd.wake?` · ${snkSafe(rd.wake)}`:''}</span>`
     +`<div class="gx-call${c.cls?' '+c.cls:''}">${c.html}</div>`
+    +snkVectorRow(R, (rd.sigma!=null&&isFinite(rd.sigma))?+rd.sigma:null)
     +(R?`<p class="tr-next${aged?' aged':''}">${snkSafe(R.line)}`
         +`${aged?` <span style="color:var(--ink-faint)">· read is ${snkDur(age)} old</span>`:''}</p>`
       :(rd.error?`<div class="br"><i>No sentence —</i> the last reading call failed (${snkSafe(rd.error)}); the arrow above is unaffected.</div>`:''))
@@ -10056,6 +10108,8 @@ const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK
   <circle cx="209" cy="208" r="3.2" fill="none" stroke="var(--l-grav)" stroke-width="1.4"/>
   <line x1="122" y1="118" x2="482" y2="118" stroke="var(--ink)" opacity=".5"/>
   <text x="476" y="132" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">Now · 1,250</text>
+  <line x1="122" y1="252" x2="482" y2="252" stroke="var(--ink-dim)" stroke-width="1.2" stroke-dasharray="1 5" opacity=".7"/>
+  <text x="476" y="248" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)" opacity=".7">VWAP</text>
   <line x1="122" y1="278" x2="482" y2="278" stroke="var(--ink-faint)" opacity=".32"/>
   <text x="476" y="272" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-faint)" opacity=".6">Floor · unchanged 3h</text>
   <line x1="34" y1="118" x2="34" y2="66" stroke="var(--jade)" stroke-width="2.5" opacity=".9"/>
@@ -10093,6 +10147,8 @@ const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK
     <circle cx="548" cy="170" r="8" fill="var(--iris)"/><text x="548" y="173.5" text-anchor="middle" fill="var(--ground)">9</text>
     <circle cx="548" cy="205" r="8" fill="var(--iris)"/><text x="548" y="208.5" text-anchor="middle" fill="var(--ground)">10</text>
     <circle cx="548" cy="236" r="8" fill="var(--iris)"/><text x="548" y="239.5" text-anchor="middle" fill="var(--ground)">11</text>
+    <circle cx="548" cy="90" r="8" fill="var(--iris)"/><text x="548" y="93.5" text-anchor="middle" fill="var(--ground)">12</text>
+    <circle cx="392" cy="252" r="8" fill="var(--iris)"/><text x="392" y="255.5" text-anchor="middle" fill="var(--ground)">13</text>
   </g>
 </svg>`;
 // WORDING IS LOAD-BEARING HERE and was rewritten 08-01 after an audit checked all eleven
@@ -10109,11 +10165,13 @@ const _SNKI_KEY=[
   ['4','Arrow, or a grey dot','A direction only once the gate has earned it, otherwise a grey dot. Before the reading engine has written anything, this mark is the ungated raw magnet pull instead.'],
   ['5','Faint dashed mark','Where the last finished call was made, so a bad one stays visible. It marks that call’s start, never a target, and it holds until another call finishes.'],
   ['6','Greyed level','This level has not moved for at least half an hour. Faded so old information stops looking like news — hover it for exactly how long.'],
-  ['7','The read','The current call and its age, one sentence on the terrain, and what would change it. The sentence carries its own age separately and dims once it is stale.'],
+  ['7','The read','The gated call, then the model’s own vector — its direction and expected travel, inferred cold from an unbiased snapshot (sr-2). The two can disagree; both always show. Then the sentence, and what would change it.'],
   ['8','Amber row','Either price already ran the way the arrow points, or the call’s evidence has expired and it is being held briefly before it drops.'],
   ['9','Gate chips','Which layers cleared their own bar. Magnet and Breadth read the same pile of gamma and clear together by construction; a lit Price path is a warning against the arrow, not support for it.'],
   ['10','Day chip','Calls versus puts among strikes near price, in this expiry only. It leaves out a third to a half of the day’s tape and can swing hard as price travels.'],
   ['11','Spoke counter','How many scans an arrow was live on. One call held for an hour counts on every scan it covered, so read it as coverage, not as a count of calls.'],
+  ['12','Model vector','A second opinion that lives inside The read card, under the call block: the model reads the snapshot cold and says which way it leans and roughly how far price might travel in about half an hour, in dollars. It is separate from the arrow above it, and the two can disagree — seeing that disagreement is the point, not a glitch. A typical half-hour move here is small, so a big number deserves suspicion.'],
+  ['13','VWAP dotted line','The average price paid so far today, weighted by how many shares traded at each price. Big trading desks use it as their anchor, so price often reacts near it. It only appears once the day has real traded volume behind it — no line means it could not be measured, not that it is zero.'],
 ];
 function openSndkInfoModal(){
   const M=document.getElementById('modal'); if(!M) return;
@@ -10134,6 +10192,15 @@ function openSndkInfoModal(){
           calls or writing them against stock. And the arrow is silent most of the day by design: on the
           four recorded sessions an arrow was live on 14% of scans, because the rest of the time no strike was
           clearly in charge.</div>
+        <div class="snki-note"><b>Also new, in the side panel (not drawn on the schematic).</b>
+          The <b>Expected Move</b> box now says how its up/down split was measured: “IV-skew split” means it
+          leans toward the side where option protection is priced richer right now; “realized-tape split” is the
+          fallback, read from how today’s actual trading has skewed. The <b>Dealer Delta</b> box can carry
+          “decay tilt → $X”: as options lose value with the passing clock, hedging pressure eases toward that
+          price — it names a location the pull points to, never a promise price will get there, and it says
+          nothing about up or down on its own. And the <b>Data layers</b> strip gained two chips, VWAP and
+          Charm·Vanna — lit means that layer was measured on the latest scan; dim means it could not be
+          measured cleanly, which this system always treats as “no data”, never as zero.</div>
       </div>
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
@@ -10755,7 +10822,7 @@ const SNDK = {
     for(let j=0;j<n;j++){
       if((g&&g.has[j])||(dxN&&dxN.has[j])||(dxF&&dxF.has[j])||(vol&&vol.has[j])) keepP.push(grid[j]);
     }
-    for(const v of [sp, spRef, m.magnet, m.flip, m.callWall, m.putWall]) if(v!=null&&isFinite(v)) keepP.push(+v);
+    for(const v of [sp, spRef, m.magnet, m.flip, m.callWall, m.putWall, m.vwap]) if(v!=null&&isFinite(v)) keepP.push(+v);
     if(m.ladder) for(const kk of ['hvl','ct','pt','gwc','gwp']){
       const v=m.ladder[kk]; if(v!=null&&isFinite(v)) keepP.push(+v); }
     if(sp!=null&&m.aem){
@@ -11247,6 +11314,12 @@ const SNDK = {
       'Calmer above it, faster below it.¦f:the gamma flip (HVL)');
     addL(ct, 'Call edge', 'var(--ink-faint)', 1, 'stroke-dasharray="3 5"', 'Call edge', 'Top edge of the choppy zone — fakeouts live in here.¦f:the cT fence');
     addL(pt, 'Put edge', 'var(--ink-faint)', 1, 'stroke-dasharray="3 5"', 'Put edge', 'Bottom edge of the choppy zone — fakeouts live in here.¦f:the pT fence');
+    // VWAP (sr-2) — the session's volume-weighted average price, the hedging anchor. Its
+    // own dot pattern so it can never be mistaken for a fence; honest-absent pre ROW_V 3.
+    addL(m.vwap, 'VWAP', 'var(--ink-dim)', 1.2, 'stroke-dasharray="1 5"', 'VWAP',
+      'The average price paid today, weighted by volume.'
+      +'¦f:market makers anchor hedging to it — a wall sitting on VWAP matters more'
+      +(spRef!=null&&m.vwap!=null?`¦k:now vs vwap=${snkUsd(spRef,0)} / ${snkUsd(m.vwap,0)}`:''));
     let lvls='', tags='';
     for(const lv of levels){
       const yy=yFor(lv.p).toFixed(1);
@@ -11629,7 +11702,10 @@ const SNDK = {
       // to light on vol_by_strike, reporting a layer this surface had never rendered.
       +dorm(!!(m&&m.volGrossBS),'Volume', m&&m.volGrossBS?'traded volume — the whiskers past the bar tips':'no traded-volume array on this row')
       +dorm(!!(m&&m.ladder),'Fences', 'profile ladder (HVL/cT/pT fences)')
-      +dorm(!!(m&&m.aem),'Exp. move', 'adaptive expected move')
+      +dorm(!!(m&&m.aem),'Exp. move', m&&m.aem&&m.aem.src==='iv_skew'
+        ?'expected move split by put/call IV skew (sr-2)':'adaptive expected move (semivar split)')
+      +dorm(!!(m&&m.vwap),'VWAP', m&&m.vwap?'session volume-weighted average price — the dotted line':'no volumed bars this scan')
+      +dorm(!!(m&&m.flows),'Charm·Vanna', m&&m.flows?'front-book time-decay + vol-shift hedging recorded':'front-book flows not cleanly computed this scan')
       +dorm(false,'Watchtower', 'Watchtower is an SPX-only layer — dormant here by design')
       +dorm(false,'Siege', 'Siege is an SPX-only layer — dormant here by design')
       +`</div></div>`;
@@ -11656,13 +11732,16 @@ const SNDK = {
     const gMean=m.sign==='negative'?'Dealers amplify moves':m.sign==='positive'?'Dealers cushion moves':'';
     const gTrend=gDl!=null?`<span class="${gDl>=0?'j':'c'}">${gDl>=0?'▲':'▼'} ${snkMoney(gDl)}</span> vs yesterday`:'';
     const gSub=(gMean||gTrend)?(gMean+(gMean&&gTrend?' · ':'')+gTrend):'whole recorded book';
-    let emB='—', emI='recorded adaptive_em absent';
+    let emB='—', emI='expected-move split absent this scan';
     if(m.aem&&isFinite(m.aem.em_up_pts)&&isFinite(m.aem.em_down_pts)){
       emB=`▲$${(+m.aem.em_up_pts).toFixed(2)} ▼$${(+m.aem.em_down_pts).toFixed(2)}`;
       const pu=isFinite(m.aem.em_up_pct)?(100*m.aem.em_up_pct).toFixed(2):null,
             pd=isFinite(m.aem.em_down_pct)?(100*m.aem.em_down_pct).toFixed(2):null;
       const emQ=snkEmQual(m.aem.em_quality);   // '' when 'ok' — never leak the bookkeeping token (L2)
-      emI=(pu!=null&&pd!=null)?`+${pu}% / −${pd}% · likely range today${emQ}`:('likely range today'+emQ);
+      // the split's source rides the subtitle (sr-2): the IV-skew split is what the
+      // reading model is handed; the semivar split is the recorded shadow fallback
+      const emSrc=m.aem.src==='iv_skew'?' · IV-skew split':m.aem.src==='semivar'?' · realized-tape split':'';
+      emI=(pu!=null&&pd!=null)?`+${pu}% / −${pd}% · likely range today${emSrc}${emQ}`:('likely range today'+emSrc+emQ);
     }
     // the REGIME tile is where the sr-1 frozen wash is VISIBLE (the chart's one coloured
     // regime chip keeps its hue; there is room for the words here). The subtitle dates it.
@@ -11671,7 +11750,9 @@ const SNDK = {
       <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b class="${gTot!=null?(gTot>=0?'j':'c'):''}">${snkSMoney(gTot)}</b>
         <i>${gSub}</i></div>
       <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX)">Dealer Delta</span><b>${snkSMoney(dTot)}</b>
-        <i>${(m.dex&&(snkDexEnglish(m.dex.fword)||snkDexEnglish(m.dex.word)))||'watch the change, not the sign'}</i></div>
+        <i>${(m.dex&&(snkDexEnglish(m.dex.fword)||snkDexEnglish(m.dex.word)))||'watch the change, not the sign'}${
+          (m.flows&&m.flows.charm_wall!=null&&isFinite(m.flows.charm_wall))
+            ?` · decay tilt → ${snkUsd(+m.flows.charm_wall,0)}`:''}</i></div>
       <div class="snk-tile regime"><span class="k">Regime</span><b class="${mood}${regFz?' fz':''}">${regPlain}</b>
         <i>${regSub}${regFz?` · unchanged ${snkDur(regFz.for_min)}`:''}</i></div>
       <div class="snk-tile em"><span class="k">Expected Move · today</span><b>${emB}</b><i>${emI}</i></div>

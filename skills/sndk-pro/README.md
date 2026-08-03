@@ -56,15 +56,43 @@ clock, verbatim.
 | `sndk_feed.py` | The Chain Runner | Per-day probe discovery (day-cached; probe ERRORS on a candidate front day → degraded, never cached), one batched `cass_market_run` pull per 240s (raw book persisted to `state/sndk_gex/chain_cache.json` — each tick is a fresh process, so the off tick re-prices the cached book at the fresh quote instead of re-pulling), chunked + clip-detected, IV rebuild + gamma fill on the front-book clock, front-expiry coverage teeth |
 | `sndk_views.py` | The Map Maker | Pure: chain + live spot → one diary row via the left-eye engines (gex/dex/ladder/EM/net-exposure) |
 | `sndk_hunter.py` | The Shift Worker | One tick per invocation: quote → chain → row → append `state/sndk_reversion/{date}.jsonl`. `--force` bypasses the RTH gate (manual proof runs) |
-| `sndk_read.py` | The Reader | The chart's live reading. Recomputes the ARROW every run (pure, free) and spends one `claude -p` call for the plain-English READING only when the wake gate fires → `state/sndk_reads/{date}.jsonl` |
+| `sndk_read.py` | The Reader | The chart's live reading. Recomputes the ARROW every run (pure, free) and spends one `claude -p` call — the model's OWN vector + magnitude off an unbiased scene (sr-2) — only when the wake gate fires → `state/sndk_reads/{date}.jsonl` |
+| `sndk_rag.py` | The Memory | On-demand history TOOL (never auto-injected): per-read slice records (metadata face + narrative face), day summaries with a sentiment read, month-tier standing terrain, hybrid metadata-filter→narrative-rank retrieval → `state/sndk_rag/` |
 
 ## The arrow and the reading are separate on purpose
 
 `sndk_read.py` is **not** a ported Watchtower. The SPX tower's call *is* the
-model's opinion; here the split is inverted:
+model's opinion; here the two paths are decoupled:
 
-* the **arrow** is decided by a deterministic aggregator — no model,
-* the **reading** is written by the model — no direction.
+* the **arrow** is decided by a deterministic aggregator — no model — and
+  still draws on the chart exactly as before,
+* the **reading** (sr-2, 2026-08-02 blueprint) is the model's **own
+  inference** — a direction vector + a magnitude in σ — made cold from an
+  **unbiased scene** that carries evidence only. The old
+  `arrow_already_decided` block anchored the model and was removed from the
+  scene JSON; the arrow never enters the payload, the model never sees it,
+  and the two surfaces may disagree on the chart (that disagreement is
+  information, not a bug).
+
+The sr-2 scene (docs/sndk-payload-inventory.md is the field-by-field map):
+grouped by force — `scale` (σ + **aem**, the IV-skew-split asymmetric range),
+`price` (+ **vwap_dist_sigma**), `regime` (+ **vol_trend**, **flip** band
+with center + position, **charm** magnitude/drift-target on the front-book
+clock), `magnet` (the tie, told honestly), **momentum** (gamma-share +
+gross-volume deltas over the last 5 scans; `oi_d` and `cvd` deliberately
+absent — OI is static intraday upstream, and no aggressor tape exists for
+the stock leg), **dealer_flow** (dex $-delta + front-book vanna), **walls**
+(laddered, 2 per side, nearest first — gwc/gwp migrated to `walls.*[0]`),
+`named_levels` (ct/hvl/pt), `history` flags (the under-pull guard), and
+`frozen_do_not_cite`. Omit-never-null throughout: a field without a clean
+source is absent, not nulled — the model treats missing as "no data".
+
+The read call may reach for exactly two on-demand tools, doctrine-gated:
+the **history CLI** (`sndk_rag.py` — day slices / day summaries / month
+terrain; the payload's `history.level_unseen_today` flag taps the model on
+the shoulder) and **WebSearch** (abnormal-tape catalyst checks only,
+`history.abnormal_tape`). Everything else stays banned; the live scene is
+always primary.
 
 That is what four recorded sessions measured (2026-07-28..31, 756 rows):
 
@@ -107,10 +135,13 @@ and writes nothing; that is how every number above was measured.
   row.
 * Store: `state/sndk_reversion/` (diary rows — the viewstation reads them via
   the generic `/api/raw` endpoints; **pinned UI contract**),
-  `state/sndk_reads/` (the arrow + reading rows, same pinned contract), and
-  `state/sndk_gex/` (discovery cache + raw-book cache + vol hint + fetch log).
+  `state/sndk_reads/` (the arrow + reading rows, same pinned contract),
+  `state/sndk_gex/` (discovery cache + raw-book cache + vol hint + fetch log),
+  and `state/sndk_rag/` (slice records + day summaries + terrain — the
+  on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-1`) so a later read
+  silently with live rows. Read rows are stamped `era` (`sr-2` since
+  2026-08-02; `sr-1` rows are the pre-blueprint rule set) so a later read
   of the history can never blend two rule sets — bump it on ANY change to the
   gates or the prompt.
 * Kill switches: `SNDK_PRO_DISABLE=1` (scanner), `SNDK_READ_DISABLE=1`

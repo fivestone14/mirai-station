@@ -22,9 +22,12 @@ CHAIN_META = {"expiries": [{"date": "2026-07-31", "dte": 4},
               "iv_clamped": 0, "iv_dropped": 0}
 
 # THE PINNED CONTRACT — the frontend agent builds against these names.
+# ROW_V 3 (2026-08-02): + atm_iv, vwap, iv_skew, flows_front (payload-v2
+# sources — additive, nothing pre-existing re-based).
 ROW_KEYS = {"ts", "ticker", "spot", "gex_source", "gamma_sign", "gamma_flip",
             "call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor",
             "sigma", "sigma_live", "sigma_anchor", "prior_close",
+            "atm_iv", "vwap", "iv_skew", "flows_front",
             "regime", "regime_conf", "regime_reads",
             "gex_views", "dex_views", "profile_ladder", "adaptive_em",
             "net_exposure", "range_ruler", "meta"}
@@ -231,3 +234,54 @@ def test_hunter_rth_gate(monkeypatch):
     monkeypatch.setattr(lefteye_fetcher, "intraday_bars", lambda t: [])
     assert sndk_hunter.tick(NOW, force=True) == 0
     assert (sndk_hunter._diary_dir() / f"{NOW.date().isoformat()}.jsonl").exists()
+
+
+# --- ROW_V 3 payload-v2 sources (2026-08-02) --------------------------------
+def test_vwap_rides_the_row_when_bars_carry_volume():
+    bars = [{"high": 1252.0, "low": 1248.0, "close": 1250.0, "volume": 100},
+            {"high": 1262.0, "low": 1258.0, "close": 1260.0, "volume": 300}]
+    row = _row(intraday_bars=bars)
+    assert row["vwap"] == 1257.5                 # (1250·100 + 1260·300)/400
+    assert _row(intraday_bars=None)["vwap"] is None
+    unvolumed = [{"high": 1252.0, "low": 1248.0, "close": 1250.0, "volume": 0}]
+    assert _row(intraday_bars=unvolumed)["vwap"] is None
+
+
+def test_iv_skew_reads_the_rebuilt_smile():
+    """The synth book prices every quote at ONE flat IV, so the rebuilt smile
+    must read ~balanced — a skew appearing here would be manufactured."""
+    row = _row()
+    sk = row["iv_skew"]
+    assert sk is not None and sk["skew_v"] == 1
+    assert sk["n_down"] >= 3 and sk["n_up"] >= 3
+    assert abs(sk["down_share"] - 0.5) < 0.03    # flat smile → ~0.5 split
+    assert sk["source"] == "bs_mid quotes"
+
+
+def test_iv_skew_absent_without_clean_solves():
+    b = synth.prepared_book()
+    for c in b:
+        c.pop("iv_src", None)                    # no clean quote solves at all
+    row = sndk_views.build_row(b, synth.SPOT, NOW, spot_source="schwab_quote",
+                               chain_meta=CHAIN_META)
+    assert row["iv_skew"] is None                # absent, never a 0.5 stand-in
+
+
+def test_flows_front_charm_vanna_on_the_front_book():
+    row = _row()
+    fl = row["flows_front"]
+    assert fl is not None and fl["clock"] == "front_book"
+    assert fl["flows_v"] == 1 and fl["basis"] in ("open_interest", "volume")
+    assert isinstance(fl["cex"], float) and isinstance(fl["vex"], float)
+    assert fl["charm_wall"] is not None and fl["n"] > 0
+    # magnitudes are uncalibrated but must be finite and serialize
+    json.dumps(fl)
+
+
+def test_atm_iv_recorded_beside_sigma():
+    row = _row()
+    assert row["atm_iv"] is not None
+    # sigma_live = spot·iv/√252 — the recorded pair must agree
+    assert row["sigma_live"] == round(
+        row["spot"] * row["atm_iv"] / math.sqrt(252.0), 4) or \
+        abs(row["sigma_live"] - row["spot"] * row["atm_iv"] / math.sqrt(252.0)) < 0.51

@@ -23,7 +23,8 @@
        backstop above that.
 
        Separate from com.mirai-station.sndk on purpose: a model call can hang to
-       its 60s timeout, and it must never be able to eat the scanner's tick and
+       its 100s timeout (sr-2 — the read may spend a history lookup or a
+       WebSearch inside the call), and it must never be able to eat the scanner's tick and
        cost a diary row. launchd will not run two copies of this at once. -->
   <key>StartInterval</key>
   <integer>120</integer>

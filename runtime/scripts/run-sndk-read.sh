@@ -6,9 +6,10 @@
 # viewstation's /api/raw readers.
 #
 # WHY THIS IS ITS OWN JOB and not a step inside run-sndk.sh: a model call takes
-# seconds and can hang to its 60s timeout. Inline, that would eat the scanner's
-# 120s tick and could drop a diary row — the one artifact that must never be
-# lost. Separate process = a slow or failed read can never cost a scan.
+# seconds and can hang to its timeout (100s in sr-2 — the read may spend a
+# history lookup or a WebSearch inside the call). Inline, that would eat the
+# scanner's 120s tick and could drop a diary row — the one artifact that must
+# never be lost. Separate process = a slow or failed read can never cost a scan.
 #
 # Gated on the authoritative market-status (RTH only); python gates again
 # (defense in depth; --force bypasses for manual runs).

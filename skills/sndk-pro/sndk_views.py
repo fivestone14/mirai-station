@@ -47,9 +47,19 @@ from reversion_lens import classify_regime, sigma_ruler                        #
 from sndk_feed import _tau_front                     # noqa: E402 — M1 front-book clock (pure)
 
 _ET = ZoneInfo("America/New_York")
-ROW_V = 2                     # row-schema era tag (cf. pin_field_v / dex_v);
+ROW_V = 3                     # row-schema era tag (cf. pin_field_v / dex_v);
                               # v2 = 2026-07-27 audit fixes: front-book τ (M1 —
                               # σ/EM values re-based) + meta honesty fields
+                              # v3 = 2026-08-02 payload-v2 sources (additive):
+                              # atm_iv, vwap, iv_skew, flows_front — nothing
+                              # pre-existing re-based
+
+# --- payload-v2 source constants (2026-08-02 blueprint) ----------------------
+_SKEW_LO_SIGMA = 0.10         # IV-skew band: exclude the ATM noise strip…
+_SKEW_HI_SIGMA = 1.25         # …and stay inside the magnet's own reach window
+_SKEW_MIN_STRIKES = 3         # a side with fewer clean solves proves nothing
+_VEX_SCALE = 0.01             # per 1 vol-point IV move (slide_flows verbatim)
+_CEX_SCALE = 1.0 / _gxb._TRADING_DAYS   # per trading day of decay (verbatim)
 
 
 def _num(x) -> Optional[float]:
@@ -180,6 +190,118 @@ def _semivar_down_share(bars: Optional[list]) -> Optional[float]:
         return None
 
 
+def _vwap(bars: Optional[list]) -> Optional[float]:
+    """Session VWAP off today's 1-min bars: Σ(typical price × volume) / Σvolume,
+    typical = (H+L+C)/3. None when the bars carry no usable volume — an
+    unvolumed VWAP is a moving average wearing the wrong name."""
+    try:
+        pv = vv = 0.0
+        for b in bars or []:
+            h, l, c = _num(b.get("high")), _num(b.get("low")), _num(b.get("close"))
+            v = _num(b.get("volume"))
+            if h is None or l is None or c is None or not v or v <= 0:
+                continue
+            pv += (h + l + c) / 3.0 * v
+            vv += v
+        return round(pv / vv, 4) if vv > 0 else None
+    except Exception:
+        return None
+
+
+def _iv_skew(front: list, spot: float, sigma: Optional[float]) -> Optional[dict]:
+    """Put/call IV skew off the REBUILT quote surface — the aem's asymmetry
+    source (2026-08-02 blueprint: "richer puts vs calls = downside tilt").
+
+    Only strikes whose IV was cleanly solved from live mids count
+    (iv_src == "bs_mid"; parity twins share one IV, so each strike is one
+    voice). Down side = strikes below spot, up side = above, both inside
+    (_SKEW_LO_SIGMA, _SKEW_HI_SIGMA] of spot on the σ ruler — the ATM strip is
+    excluded (its IV is the level, not the tilt) and the far tail is outside
+    the day's reach. down_share maps side-mean IVs to a range split the same
+    way the semivariance module maps one-sided vol: one-sided range scales
+    with one-sided vol, so d = σ_dn / (σ_dn + σ_up). A side with fewer than
+    _SKEW_MIN_STRIKES clean solves proves nothing → None (absent, never 0.5).
+
+    NOTE (flagged in docs/sndk-payload-inventory.md): this is a DIFFERENT
+    asymmetry source from `adaptive_em` (realized downside semivariance).
+    Both record; the scene payload's aem reads THIS one per the blueprint."""
+    if not spot or not sigma or sigma <= 0:
+        return None
+    dn_iv: dict[float, float] = {}
+    up_iv: dict[float, float] = {}
+    for c in front or []:
+        if c.get("iv_src") != "bs_mid":
+            continue
+        k, iv = _num(c.get("strike")), _num(c.get("iv"))
+        if k is None or iv is None or iv <= 0:
+            continue
+        d = (k - spot) / sigma
+        if -_SKEW_HI_SIGMA <= d < -_SKEW_LO_SIGMA:
+            dn_iv[k] = iv
+        elif _SKEW_LO_SIGMA < d <= _SKEW_HI_SIGMA:
+            up_iv[k] = iv
+    if len(dn_iv) < _SKEW_MIN_STRIKES or len(up_iv) < _SKEW_MIN_STRIKES:
+        return None
+    p = sum(dn_iv.values()) / len(dn_iv)
+    q = sum(up_iv.values()) / len(up_iv)
+    if p + q <= 0:
+        return None
+    return {"put_side_iv": round(p, 4), "call_side_iv": round(q, 4),
+            "skew_pts": round((p - q) * 100.0, 2),
+            "down_share": round(p / (p + q), 4),
+            "n_down": len(dn_iv), "n_up": len(up_iv),
+            "band_sigma": [_SKEW_LO_SIGMA, _SKEW_HI_SIGMA],
+            "source": "bs_mid quotes", "skew_v": 1}
+
+
+def _flows_front(front: list, spot: float,
+                 minutes_to_close: Optional[float]) -> Optional[dict]:
+    """Front-book charm + vanna on the SNDK front-book clock (_tau_front).
+
+    The engine's own CEX is 0DTE-only by SPX design — measured ABSENT on 4 of
+    5 recorded SNDK days — and its dated τ excludes today's remaining session
+    (the M1 clock error, ×1.5 on a Thursday charm). So SNDK reads both greeks
+    off its actual tradeable book with its own clock, composing the engine's
+    pure primitives exactly as sndk_feed does for gamma: same dealer sign
+    convention (calls +, puts −), same Σ greek·weight·100·S·scale aggregation,
+    same basis rule (pick_basis, OI-preferred — the front weekly listed days
+    ago, so standing OI is real, unlike a 0DTE open). Magnitudes remain
+    uncalibrated (shadow doctrine); N11 stands: the NUMBER records, no
+    consumer may speak a charm direction word off it."""
+    if not spot or not front:
+        return None
+    basis = _gxb.pick_basis(front, spot)
+    if not basis:
+        return None
+    cex = vex = 0.0
+    cx_by: dict[float, float] = {}
+    vx_by: dict[float, float] = {}
+    n = 0
+    for c in front:
+        k, w = _num(c.get("strike")), _num(c.get(basis))
+        iv, dte = _num(c.get("iv")), c.get("dte")
+        if not k or not w or not iv or dte is None:
+            continue
+        tau = _tau_front(int(dte), minutes_to_close)
+        if not tau or tau <= 0:
+            continue
+        sgn = 1.0 if c.get("right") == "call" else -1.0
+        cx = _gxb._bs_charm(spot, k, iv, tau) * w * 100.0 * spot * _CEX_SCALE * sgn
+        vx = _gxb._bs_vanna(spot, k, iv, tau) * w * 100.0 * spot * _VEX_SCALE * sgn
+        cex += cx
+        vex += vx
+        cx_by[k] = cx_by.get(k, 0.0) + cx
+        vx_by[k] = vx_by.get(k, 0.0) + vx
+        n += 1
+    if n == 0:
+        return None
+    charm_wall = max(cx_by, key=lambda x: abs(cx_by[x])) if cx_by else None
+    vanna_wall = max(vx_by, key=lambda x: abs(vx_by[x])) if vx_by else None
+    return {"cex": round(cex, 2), "vex": round(vex, 2),
+            "charm_wall": charm_wall, "vanna_wall": vanna_wall,
+            "basis": basis, "n": n, "clock": "front_book", "flows_v": 1}
+
+
 def build_row(contracts: list, spot: float, now: datetime, *,
               spot_source: str,
               chain_meta: Optional[dict] = None,
@@ -306,6 +428,21 @@ def build_row(contracts: list, spot: float, now: datetime, *,
     except Exception:
         profile_ladder = None
 
+    # payload-v2 sources (ROW_V 3, each measured-or-absent):
+    # VWAP off the session's 1-min bars, put/call IV skew off the rebuilt
+    # quote surface, charm/vanna off the front book on the SNDK clock
+    vwap = _vwap(intraday_bars)
+    iv_skew = None
+    try:
+        iv_skew = _iv_skew(front, spot, sigma)
+    except Exception:
+        iv_skew = None
+    flows_front = None
+    try:
+        flows_front = _flows_front(front, spot, mtc)
+    except Exception:
+        flows_front = None
+
     # net-exposure tiles (SPX rule verbatim: blended net GEX + whole-book DEX)
     net_exposure = None
     try:
@@ -356,6 +493,10 @@ def build_row(contracts: list, spot: float, now: datetime, *,
         "sigma": sigma,
         "sigma_live": sigma_live,
         "sigma_anchor": mem["sigma_anchor"] or sigma_live,
+        "atm_iv": round(atm_iv, 4) if atm_iv else None,
+        "vwap": vwap,
+        "iv_skew": iv_skew,
+        "flows_front": flows_front,
         "prior_close": prior_close,
         "regime": reg["regime"],
         "regime_conf": reg["confidence"],

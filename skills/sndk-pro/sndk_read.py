@@ -4,10 +4,14 @@
 sndk_read.py — the SNDK chart's live reading. One wake = one read row.
 
 WHAT THIS IS NOT: a ported Watchtower. The SPX tower is a forward forecaster
-whose call IS the model's opinion. Here the split is deliberate and inverted:
+whose call IS the model's opinion. Here the two paths are deliberately
+DECOUPLED (sr-2, 2026-08-02 blueprint):
 
     the ARROW is decided by a deterministic aggregator (this module, no model)
-    the READING is written by the model (one terse call, no direction)
+    and still draws on the chart, exactly as before;
+    the READING is the model's OWN inference — vector + magnitude — from an
+    UNBIASED scene that carries evidence only, never a verdict. The old
+    arrow_already_decided block anchored the model and is gone from the scene.
 
 That split is not stylistic — it is what four sessions of recorded SNDK rows
 measured (2026-07-28..31, 756 rows, verified against state/sndk_reversion/):
@@ -55,6 +59,7 @@ CLI:
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -70,12 +75,23 @@ if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
 
 import atomic_io                       # noqa: E402
+import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
+                                       # (walls ladder = the ladder's own walls)
 
 _ET = ZoneInfo("America/New_York")
+_SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-1"                # bump on ANY change to the gates or the prompt.
+ERA = "sr-2"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
+                            # sr-2 (2026-08-02, blueprint v3): the verdict left
+                            # the payload — build_scene no longer carries
+                            # arrow_already_decided; the model now infers its
+                            # OWN vector + magnitude from an unbiased scene
+                            # (aem / vol_trend / flip / charm / momentum /
+                            # dealer_flow / walls ladder added), with the
+                            # on-demand history tool + external fetch. The
+                            # deterministic arrow is unchanged and still draws.
 PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protection)
 
 # --- wake gate ---------------------------------------------------------------
@@ -121,11 +137,33 @@ INADMISSIBLE = ("dex_word", "pin_contested", "zone1_share", "pin_basis",
                 "regime_basis", "dex_flow_word", "dex_flow_signed",
                 "variance_ratio", "vix_ts", "event_flag")
 
+# --- scene v2 derivations (each measured-or-absent; thresholds from the
+# --- recorded 07-28..31 distributions, pre-registered here) ------------------
+MOMENTUM_ROWS = 5           # rolling window: last 5 scans (~10 min at 120s) —
+                            # the blueprint's "3-5 snapshots"; 3 was twitch
+                            # (gex_d p50 −0.04pp over 3 rows)
+MOMENTUM_BUILD_PP = 0.5     # |Δ share| below this is "steady" (≈p75 of |gex_d|)
+VOL_TREND_MIN = 28          # minutes of history before a 30-min IV read exists
+VOL_TREND_MAX = 45          # a reference older than this is an outage artifact,
+                            # not a 30-min window — the read is omitted instead
+VOL_TREND_FLAT = 2.5        # |Δ IV| under this many vol pts reads "flat"
+                            # (recorded Δ30m: p10 −9.0 / p50 +1.8 / p90 +12.6)
+WALLS_PER_SIDE = 2          # the ladder stops at 2 — deeper strikes are noise
+
 # --- the model call ----------------------------------------------------------
-CALL_TIMEOUT_S = 60.0       # one attempt, no retries — a slow read is skipped
-_NO_TOOLS = ("Bash", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
-             "Grep", "WebFetch", "WebSearch", "Task", "Agent", "TodoWrite",
+CALL_TIMEOUT_S = 100.0      # one attempt, no retries — a slow read is skipped.
+                            # Raised from 60s in sr-2: the read may now spend a
+                            # history lookup or an external search inside the
+                            # call. Still under the 120s tick, and this is its
+                            # own launchd job so a slow read never costs a scan.
+_NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
+             "Grep", "WebFetch", "Task", "Agent", "TodoWrite",
              "ExitPlanMode", "BashOutput", "KillShell", "SlashCommand", "Skill")
+# sr-2 on-demand paths: the ONE Bash command the read may run (the history
+# tool) and WebSearch for the abnormal-tape catalyst check. Everything else
+# stays banned — the scene is still the primary evidence.
+_RAG_CMD = f"{sys.executable} {_SKILL_DIR / 'sndk_rag.py'}"
+_ALLOWED_TOOLS = (f"Bash({_RAG_CMD}:*)", "WebSearch")
 
 
 def _state_dir() -> Path:
@@ -255,14 +293,24 @@ def magnet_band(row: dict) -> dict:
     (max(+-8%, 2sigma/spot), clamped +-25%) and moved from +-8.0% to +-23.4%
     WITHIN 07-31 — so a magnet that "relocated" may only be the telescope moving.
     A caller must not narrate a gravity story about a geometry artifact."""
-    gv = row.get("gex_views") or {}
-    mb = gv.get("mass_by_strike") or []
+    gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
     spot = row.get("spot")
-    tot = sum(v for _, v in mb if isinstance(v, (int, float)))
+    # tolerate a torn surface: non-numeric strikes/masses and NaN are skipped,
+    # never allowed to crash the wake (this module tolerates torn JSONL lines
+    # by design — a poisoned pair must not silence the reader AND the arrow)
+    mb = []
+    for pair in (gv.get("mass_by_strike") or []):
+        try:
+            k, v = _fin(pair[0]), _fin(pair[1])
+        except (TypeError, IndexError, KeyError):
+            continue
+        if k is not None and v is not None:
+            mb.append((k, v))
+    tot = sum(v for _, v in mb)
     if not mb or tot <= 0 or spot is None:
         return {"top": [], "gap_pp": None, "tie": True, "lo": None, "hi": None,
                 "reported": gv.get("magnet"), "in_window": None}
-    ranked = sorted(((float(k), float(v) / tot * 100.0) for k, v in mb),
+    ranked = sorted(((k, v / tot * 100.0) for k, v in mb),
                     key=lambda x: -x[1])[:3]
     gap = round(ranked[0][1] - ranked[1][1], 2) if len(ranked) >= 2 else None
     band = [k for k, _ in ranked[:2]] or [ranked[0][0]]
@@ -562,28 +610,60 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
 
 
 # ---------------------------------------------------------------------------
-# the model call — the READING only, never the direction
+# the model call — sr-2: the model infers its OWN vector from an unbiased scene
 # ---------------------------------------------------------------------------
-_DOCTRINE = """You read one stock's dealer-gamma map and say what you see, in plain English, for a smart reader who does not know options jargon.
+_DOCTRINE = f"""You read one stock's dealer-positioning snapshot COLD and infer a direction vector and a magnitude from the evidence — nothing in the scene is a conclusion, and nobody has decided anything for you. Write for a smart reader who does not know options jargon.
 
-WHAT YOU DO NOT DO: you never pick a direction. The arrow on this chart is decided by a deterministic aggregator before you are called, and it is handed to you already made. Do not argue with it, do not restate it as a prediction, do not add one of your own.
+THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical day's move) runs 8-10% of the share price — enormous. It has weekly expiries, not daily, so most days have no expiry at all. Standing levels come from open interest, which is yesterday's positioning about a stock that can move 12% in a session.
 
-WHAT YOU DO: describe the terrain the reader is looking at, and name the one thing that would change the picture.
+HOW TO READ THE SCENE (grouped by force, not by metric):
+- scale: the sigma ruler, plus aem — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
+- regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
+- magnet: strikes pulling price, with the tie told honestly. gap_pp small = no strike in charge.
+- momentum: change over the stated window, top magnet strikes only — building vs fading beats any static level. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
+- dealer_flow: standing dealer positioning. dex net is signed $-delta in billions from an assumed-sign book (positive = dealers estimated net LONG delta); the LEVEL is structural and slow, so net_change_30min is the part that can actually be news. vanna (in $M per vol point) only matters when vol_trend is moving.
+- walls: standing structure, up to two per side, nearest first — walls.call[0]/put[0] are the strongest near ceilings/floors; the second wall says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent. Walls are NOT the magnet strikes.
+- named_levels / lowest_named_level: distances in sigma. hvl here is the gamma flip (the band center), not a volume shelf; vwap_dist_sigma in price is the volume-anchored level.
+- ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero.
 
-THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical day's move) runs 8-10% of the share price — enormous. It has weekly expiries, not daily, so most days have no expiry at all. Levels here come from open interest, which is yesterday's positioning about a stock that can move 12% in a session.
+WHEN TO REACH OUTSIDE THE SCENE (both optional, most reads need neither):
+- History: run `{_RAG_CMD} query --help` for narrative recall, and `{_RAG_CMD} series --help` for the numeric spot/magnet/walls series by time (and per-strike with --strike). Reach for them when something does not add up from the live snapshot alone — price testing a level unseen today (history.level_unseen_today flags it), a level acting out of character, or a cross-day question ("has 1300 held before?"). Day tier = today's slices + day summaries; month tier = standing terrain. History is context, never the trigger — the live scene stays primary.
+- Outside world: when the tape is genuinely abnormal (history.abnormal_tape, an outsized gap or move), a human would ask WHY — use WebSearch for the catalyst (earnings, macro, news) or sector context. Extreme cases only, not every scan.
 
 HONESTY RULES, all of them load-bearing:
-- Never cite a field listed as frozen as the reason for anything new. If the magnet has not moved in two hours, it is not news.
-- The magnet is usually a TIE. When the gap between the top two strikes is small, say so plainly ("no strike is really in charge") rather than naming one.
-- If the aggregator is silent, the honest reading explains what is missing, and does NOT supply a direction to fill the gap.
+- Never cite a field listed in frozen_do_not_cite as the reason for anything new. If the magnet has not moved in two hours, it is not news.
+- The magnet is usually a TIE. When gap_pp is small, no strike is really in charge — say so rather than naming one.
 - Never invent a level. If price is past the last named level on the board, say exactly that — on this name it is often true.
-- Distances are what matter, and a typical 30-minute move here is about 0.08 sigma while the named levels sit 0.6 sigma away. Do not imply price is about to reach something eight times further than it usually travels.
+- A typical 30-minute move here is about 0.08 sigma. Your magnitude must respect that: several times 0.08 needs a named force behind it, and pointing at a level 0.6 sigma away is a landmark, not a 30-minute target.
+- The one pattern this tape has shown any short-horizon stability in is MEAN REVERSION: a vector pointing the same way price just travelled (moved_last_30min_sigma) is the least trustworthy kind and needs extra evidence beyond the move itself.
+- "none" is an honest vector. When the evidence genuinely balances, say what is balanced instead of forcing a lean.
 
 OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence:
-{"line": "<one sentence, max 22 words, what the terrain looks like right now>",
- "breaks_if": "<one short clause naming the specific level or condition that would change this read>",
- "cited": "<the one field and number you leaned on, e.g. 'resistance up 1.47 vs down 0.48'>"}
-Keep it under 80 words total. Plain words. No jargon, no hedging stacks, no restating the numbers you were given."""
+{{"vector": "up" | "down" | "none",
+ "magnitude_sigma": <expected travel over the next ~30 minutes, in sigma — omit when vector is "none">,
+ "line": "<one sentence, max 24 words: the read and the force behind it>",
+ "breaks_if": "<one short clause naming the specific level or condition that would flip this read>",
+ "cited": "<the one or two fields and numbers you leaned on>"}}
+Keep it under 100 words total. Plain words. No jargon, no hedging stacks, no restating numbers you were given."""
+
+
+def _validate_reading(obj: dict) -> Optional[dict]:
+    """Keep ONLY the schema's fields, validated — a malformed vector is
+    dropped (never guessed at), a magnitude is clamped sane and only rides
+    with a directional vector, and extra keys do not ride along."""
+    reading = {k: str(obj.get(k, ""))[:400]
+               for k in ("line", "breaks_if", "cited") if obj.get(k)}
+    vec = obj.get("vector")
+    if vec in ("up", "down", "none"):
+        reading["vector"] = vec
+        if vec != "none":
+            try:
+                mag = float(obj.get("magnitude_sigma"))
+                if math.isfinite(mag):
+                    reading["magnitude_sigma"] = round(min(max(mag, 0.0), 3.0), 2)
+            except (TypeError, ValueError):
+                pass               # a vector without a magnitude is honest
+    return reading or None
 
 
 def _extract_json(text: str):
@@ -602,15 +682,18 @@ def _extract_json(text: str):
 
 
 def _ask(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
-    """ONE `claude -p` call. Tool-less by construction (the read never needs a
-    tool, so it stops paying to ship their schemas — measured -32% tokens on the
-    SPX path). Doctrine rides --append-system-prompt so it stays byte-identical
-    all day and is served from cache; the varying scene rides the body.
+    """ONE `claude -p` call. sr-2 grants exactly TWO tools — the history CLI
+    (a single allow-listed Bash prefix) and WebSearch — because the on-demand
+    reach is part of the design; everything else stays banned, so the scene
+    remains the primary evidence and the schema bill stays small. Doctrine
+    rides --append-system-prompt so it stays byte-identical all day and is
+    served from cache; the varying scene rides the body.
 
     Returns (obj | None, error | None, wall_seconds)."""
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
            "--append-system-prompt", _DOCTRINE,
            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+           "--allowedTools", ",".join(_ALLOWED_TOOLS),
            "--disallowedTools", *_NO_TOOLS]   # variadic — must stay LAST
     t0 = _clock.time()
     try:
@@ -627,58 +710,406 @@ def _ask(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
     return _extract_json(text if isinstance(text, str) else r.stdout), None, wall
 
 
-def build_scene(row: dict, arrow: dict, band: dict, frozen: list,
-                rows: list[dict], now: datetime) -> dict:
-    """The model's view of the world. Deliberately SMALL and free of constants.
+def _fin(v) -> Optional[float]:
+    """A finite, non-bool number or None. NaN is the dangerous one: it rides
+    isinstance checks, renders as a token in the prompt, and NaN < threshold
+    comparisons silently pick the CONFIDENT branch (adversarial audit 08-02:
+    NaN masses read as 'a strike IS in charge')."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    v = float(v)
+    return v if math.isfinite(v) else None
 
-    Everything the constancy audit found frozen across 756 rows is omitted
-    rather than nulled — 'absent' and 'zero' must never look alike, and a field
-    that cannot vary cannot inform."""
+
+def _row_atm_iv(r: dict) -> Optional[float]:
+    """A row's front-book ATM IV. ROW_V 3 records it; older rows derive it
+    exactly (sigma_live = spot·iv/√252, so iv = sigma_live·√252/spot)."""
+    iv = r.get("atm_iv")
+    if isinstance(iv, (int, float)) and iv > 0:
+        return float(iv)
+    sl, sp = r.get("sigma_live"), r.get("spot")
+    if isinstance(sl, (int, float)) and isinstance(sp, (int, float)) and sl > 0 and sp > 0:
+        return sl * _SQRT_TDAYS / sp
+    return None
+
+
+def vol_trend(rows: list[dict], now: datetime) -> Optional[dict]:
+    """Is implied vol rising or falling NOW — the switch that arms vanna/charm.
+    30-min ATM-IV change in vol points, by timestamp (a scan gap must not
+    shorten the window); flat band VOL_TREND_FLAT pre-registered off the
+    recorded Δ30m distribution. None without ~30 min of history.
+
+    EXPIRY-AFTERNOON GUARD: on the weekly's own expiry day the front-book ATM
+    IV reprices on minutes-to-close, so into the bell the solve balloons on
+    pure clock mechanics (recorded 07-31: +59 vol pts in 30 min at the close
+    vs a ±12 p90 on normal days). A τ→0 artifact is not a vol signal — the
+    read is omitted once the ruler itself says late_day on a 0-DTE book."""
+    if rows:
+        last = rows[-1]
+        rr = last.get("range_ruler") or {}
+        if (last.get("gex_views") or {}).get("front_dte") == 0 \
+                and rr.get("quality") == "late_day":
+            return None
+    ser = []
+    for r in rows:
+        t, iv = _ts(r), _row_atm_iv(r)
+        if t is not None and iv is not None:
+            ser.append((t, iv))
+    if not ser:
+        return None
+    t_now, iv_now = ser[-1]
+    ref = next(((t, iv) for t, iv in reversed(ser[:-1])
+                if (t_now - t) >= timedelta(minutes=VOL_TREND_MIN)), None)
+    # the reference must actually BE ~30 min back: after a scan outage the
+    # nearest old-enough row can be hours old, and shipping that Δ under a
+    # 30-min name would lie about its window — no read beats a mislabeled one
+    if ref is None or (t_now - ref[0]) > timedelta(minutes=VOL_TREND_MAX):
+        return None
+    d = (iv_now - ref[1]) * 100.0
+    word = ("flat" if abs(d) < VOL_TREND_FLAT
+            else "rising" if d > 0 else "falling")
+    return {"direction": word, "iv_change_last_30min": round(d, 1)}
+
+
+def flip_block(row: dict, sd, ran_30m: Optional[float]) -> Optional[dict]:
+    """The chop band told as one object: edges, center, and where price sits.
+    ct/pt are the ladder's transition edges; the center IS the gamma flip
+    (live-schema fact: profile_ladder.hvl = the flip — there is no volume-shelf
+    hvl on this book). price_in_band is position from the ladder's own zone
+    word, plus a drift clause only when the last 30 min actually moved."""
+    ladder = row.get("profile_ladder")
+    ladder = ladder if isinstance(ladder, dict) else {}
+    ct_s, pt_s = sd(ladder.get("ct")), sd(ladder.get("pt"))
+    center_s = sd(row.get("gamma_flip"))
+    if ct_s is None and pt_s is None and center_s is None:
+        return None
+    words = {"positive": "above ct (clear positive)",
+             "positive transition": "inside band, gamma-positive side",
+             "negative transition": "inside band, gamma-negative side",
+             "negative": "below pt (clear negative)"}
+    pos = words.get(ladder.get("state"))
+    if pos and "inside band" in pos and isinstance(ran_30m, (int, float)) and abs(ran_30m) >= 0.05:
+        pos += ", drifting toward " + ("ct (pos edge)" if ran_30m > 0 else "pt (neg edge)")
+    out = {"ct_sigma": ct_s, "pt_sigma": pt_s, "center_sigma": center_s,
+           "price_in_band": pos}
+    return {k: v for k, v in out.items() if v is not None} or None
+
+
+def charm_block(row: dict) -> Optional[dict]:
+    """Front-book charm: magnitude (uncalibrated $M of delta bleed per day —
+    compare day to day, not to other books) and the strike the clock funnels
+    toward. N11 stands: no direction word, ever — net charm's sign is
+    structurally locked by the assumed-sign book, and a constant that reads
+    like a signal manufactures conviction. Omitted when not cleanly computed."""
+    fl = row.get("flows_front") or {}
+    cex = fl.get("cex")
+    if not isinstance(cex, (int, float)):
+        return None
+    out = {"magnitude": round(abs(cex) / 1e6, 2)}
+    if isinstance(fl.get("charm_wall"), (int, float)):
+        out["drift_toward"] = fl["charm_wall"]
+    return out
+
+
+def momentum_block(rows: list[dict], band: dict) -> Optional[dict]:
+    """Snapshot-over-snapshot deltas for the top magnet strikes over the last
+    MOMENTUM_ROWS scans. gex_d = the strike's share of front-book gamma mass,
+    in pp (scale-free — raw gamma is unit-opaque); vol_d = gross contracts
+    traded there since the reference scan, only when the strike sat inside
+    both windows (a window shift is the telescope, not flow).
+
+    DELIBERATELY ABSENT (omit-never-null, flagged in the inventory doc):
+    oi_d — upstream OI updates once daily, an intraday delta is a frozen 0;
+    cvd — no bid/ask aggressor tape exists for the stock leg, and a
+    bar-direction proxy measures drift, not aggression (the 07-17 BVC lesson)."""
+    if len(rows) <= MOMENTUM_ROWS or not band.get("top"):
+        return None
+    cur, ref = rows[-1], rows[-1 - MOMENTUM_ROWS]
+    t_c, t_r = _ts(cur), _ts(ref)
+    if t_c is None or t_r is None:
+        return None
+    def _pairs(r, key, absolute=False):
+        # same torn-surface tolerance magnet_band has: a NaN or non-numeric
+        # pair is skipped, never crashed on and never allowed to poison the
+        # denominator into confident NaN reads (final verification pass 08-02)
+        out = {}
+        for pair in ((r.get("gex_views") or {}).get(key) or []):
+            try:
+                k, v = _fin(pair[0]), _fin(pair[1])
+            except (TypeError, IndexError, KeyError):
+                continue
+            if k is not None and v is not None:
+                out[k] = abs(v) if absolute else v
+        return out
+
+    mb_c = _pairs(cur, "mass_by_strike", absolute=True)
+    mb_r = _pairs(ref, "mass_by_strike", absolute=True)
+    vg_c = _pairs(cur, "vol_gross_by_strike")
+    vg_r = _pairs(ref, "vol_gross_by_strike")
+    # shares are computed over the INTERSECTION of the two windows: the strike
+    # window is spot-relative and moves with price, so a strike entering or
+    # leaving the frame shifts a full-window denominator — the same telescope
+    # artifact magnet_band documents. Comparing like against like keeps a
+    # "building" read about the book, never about the frame (SE review 08-02).
+    common = set(mb_c) & set(mb_r)
+    tot_c = sum(mb_c[k] for k in common)
+    tot_r = sum(mb_r[k] for k in common)
+    if tot_c <= 0 or tot_r <= 0:
+        return None
+    by = {}
+    for k, _share in band["top"][:2]:
+        k = float(k)
+        if k not in mb_c or k not in mb_r:
+            continue
+        gex_d = mb_c[k] / tot_c * 100.0 - mb_r[k] / tot_r * 100.0
+        entry = {"gex_share_d_pp": round(gex_d, 2)}
+        if k in vg_c and k in vg_r:            # _pairs already guarantees finite
+            entry["vol_d"] = int(vg_c[k] - vg_r[k])
+        vol_d = entry.get("vol_d")
+        # symmetric evidentiary standard: fading earns its hedge exactly the
+        # way building does (an unhedged "fading" was a one-way tilt)
+        if gex_d >= MOMENTUM_BUILD_PP:
+            entry["read"] = ("building" if (vol_d or 0) > 0
+                             else "building (vol unconfirmed)")
+        elif gex_d <= -MOMENTUM_BUILD_PP:
+            entry["read"] = ("fading" if (vol_d or 0) > 0
+                             else "fading (vol unconfirmed)")
+        else:
+            entry["read"] = "steady"
+        by[f"{k:g}"] = entry
+    if not by:
+        return None
+    span = int((t_c - t_r).total_seconds() // 60)
+    return {"window": f"last {MOMENTUM_ROWS} scans ({span}m)", "by_strike": by}
+
+
+def dealer_flow_block(rows: list[dict]) -> Optional[dict]:
+    """Second-order dealer lean, one place. dex = standing signed $-delta
+    (billions; + = dealers net long delta, sign convention glossed once in
+    the doctrine) plus its timestamp-true 30-min change. vanna = front-book
+    net ($M per vol point), armed by vol_trend. Each field measured-or-absent;
+    an empty block is dropped, never shipped hollow.
+
+    NO LEAN WORD (adversarial audit 08-02): a sign-derived word read
+    "long delta" on 756/756 simulated scenes — the exact banned pattern the
+    module header documents (a constant that reads like a signal manufactures
+    conviction, in one direction, forever). The blueprint's own frame is that
+    the CHANGE is the signal, so the change is what ships; the model can read
+    the sign off the signed number without being handed a conclusion."""
+    if not rows:
+        return None
+    row = rows[-1]
+    out = {}
+    net = _fin((row.get("dex_views") or {}).get("net_dex_total"))
+    if net is not None:
+        dex = {"net": round(net / 1e9, 2)}
+        t_now = _ts(row)
+        if t_now is not None:
+            for r in reversed(rows[:-1]):
+                t = _ts(r)
+                if t is None or (t_now - t) < timedelta(minutes=VOL_TREND_MIN):
+                    continue
+                if (t_now - t) > timedelta(minutes=VOL_TREND_MAX):
+                    break            # outage-shaped window — no honest 30m read
+                ref = _fin((r.get("dex_views") or {}).get("net_dex_total"))
+                if ref is not None:
+                    dex["net_change_30min"] = round((net - ref) / 1e9, 2)
+                break
+        out["dex"] = dex
+    vex = _fin((row.get("flows_front") or {}).get("vex"))
+    if vex is not None:
+        out["vanna"] = {"net": round(vex / 1e6, 2),
+                        "note": "most alive on IV moves"}
+    return out or None
+
+
+def walls_ladder(row: dict, sd) -> Optional[dict]:
+    """Laddered standing walls, up to WALLS_PER_SIDE a side, NEAREST first —
+    walls.call[0]/put[0] are the old gwc/gwp (same clustering rule the ladder
+    used: gw_vocab.cluster_walls on the measured net_by_strike surface).
+    `gex` = the cluster's share of total book |γ| in percent — scale-free, so
+    the model can weigh wall against wall without unit-opaque raw gamma. The
+    denominator is the FULL net_by_strike surface, not the surviving clusters:
+    a cluster-only total shifts scan-to-scan as strikes cross the 25%
+    concentration floor, so "the wall's share rose" could be pure denominator
+    churn (SE review 08-02)."""
     spot = row.get("spot")
-    sig = row.get("sigma") or 0
+    nbs = (row.get("gex_views") or {}).get("net_by_strike")
+    if not nbs or not isinstance(spot, (int, float)):
+        return None
+    try:
+        clusters = _gw.cluster_walls(nbs, spot)
+    except (TypeError, ValueError):
+        return None
+    if not clusters:
+        return None
+    tot = 0.0
+    for pair in nbs:
+        try:
+            g = _fin(pair[1])
+        except (TypeError, IndexError, KeyError):
+            continue
+        if g is not None:
+            tot += abs(g)
+    if not math.isfinite(tot) or tot <= 0:
+        return None
+
+    def entry(c):
+        e = {"strike": c["peak"], "sigma": sd(c["peak"]),
+             "gex": round(c["strength"] / tot * 100.0, 1)}
+        return {k: v for k, v in e.items() if v is not None}
+    calls = sorted((c for c in clusters if c["side"] == "call" and c["peak"] > spot),
+                   key=lambda c: c["peak"])[:WALLS_PER_SIDE]
+    puts = sorted((c for c in clusters if c["side"] == "put" and c["peak"] < spot),
+                  key=lambda c: -c["peak"])[:WALLS_PER_SIDE]
+    out = {}
+    if calls:
+        out["call"] = [entry(c) for c in calls]
+    if puts:
+        out["put"] = [entry(c) for c in puts]
+    return out or None
+
+
+ABNORMAL_DAY_SIGMA = 1.5    # a day move beyond this many σ is abnormal FOR
+                            # THIS NAME — a fixed 8% is ~1σ on a 10%-σ stock
+                            # and fired on 56% of recorded scans (adversarial
+                            # audit 08-02): "extreme cases only" must be
+                            # measured on the stock's own ruler
+ABNORMAL_PCT_FLOOR = 12.0   # σ unavailable → absolute fallback, still rare
+
+
+def history_flags(row: dict, rows: list[dict], vs_prior_pct: Optional[float],
+                  ran_30m: Optional[float]) -> Optional[dict]:
+    """The under-pull guard: cheap, unmissable payload flags that tap the
+    model on the shoulder to reach for the history tool / outside world.
+    Omitted entirely when there is nothing to say — and calibrated so
+    "abnormal" stays a genuine exception, never a majority state (a flag
+    that is usually on trains the model to ignore it, and it licenses the
+    outside-world reach far too often)."""
+    out = {}
+    spot = _fin(row.get("spot"))
+    prior = [s for r in rows[:-1] if (s := _fin(r.get("spot"))) is not None]
+    if spot is not None and len(prior) >= 30 and \
+            (spot > max(prior) or spot < min(prior)):
+        out["level_unseen_today"] = True
+    sig, vs = _fin(row.get("sigma")), _fin(vs_prior_pct)
+    sigma_pct = (sig / spot * 100.0) if (sig and spot) else None
+    day_bar = (ABNORMAL_DAY_SIGMA * sigma_pct if sigma_pct
+               else ABNORMAL_PCT_FLOOR)
+    if (vs is not None and abs(vs) >= day_bar) or \
+            ((r30 := _fin(ran_30m)) is not None and abs(r30) >= 0.5):
+        out["abnormal_tape"] = True
+    return out or None
+
+
+def build_scene(row: dict, band: dict, frozen: list,
+                rows: list[dict], now: datetime) -> dict:
+    """The model's view of the world — sr-2: an UNBIASED snapshot, no verdict.
+
+    The old arrow_already_decided block is gone (a pre-baked conclusion anchors
+    the read); the deterministic arrow still computes and still draws on the
+    chart, it just never enters this JSON. Fields are grouped by force (scale /
+    regime / magnet / momentum / dealer_flow / walls), and everything the
+    constancy audit found frozen across 756 rows stays omitted rather than
+    nulled — 'absent' and 'zero' must never look alike, and a field that
+    cannot vary cannot inform. Same rule for every new block: not cleanly
+    computed → absent."""
+    spot = _fin(row.get("spot"))
+    sig = _fin(row.get("sigma")) or 0
 
     def sd(v):
-        if not isinstance(v, (int, float)) or not sig or spot is None:
+        v = _fin(v)
+        if v is None or not sig or spot is None:
             return None
         return round((v - spot) / sig, 2)
 
     # the day's own path, which the old design never handed over at all
-    path = [r.get("spot") for r in rows if isinstance(r.get("spot"), (int, float))]
-    ladder = row.get("profile_ladder") or {}
-    named = {k: sd(ladder.get(k)) for k in ("gwc", "ct", "hvl", "pt", "gwp")
-             if isinstance(ladder.get(k), (int, float))}
+    path = [s for r in rows if (s := _fin(r.get("spot"))) is not None]
+    ladder = row.get("profile_ladder")
+    ladder = ladder if isinstance(ladder, dict) else {}
+    # gwc/gwp migrated to walls.call[0]/put[0] — same clustering rule, told
+    # as a ladder with the second wall behind the first
+    named = {k: sd(ladder.get(k)) for k in ("ct", "hvl", "pt")}
     named = {k: v for k, v in named.items() if v is not None}
+
+    pc = _fin(row.get("prior_close"))
+    vs_prior = (round((spot / pc - 1) * 100, 2)
+                if pc and spot else None)
+    # ONE ruler for every 30-min claim: the timestamp-true window with_path
+    # measured. The old count-based path[-15] silently shortened across scan
+    # gaps — the exact lie with_path's own docstring pre-registers, and it
+    # disagreed with the honest window on 20/700 recorded scans, once by
+    # 0.81σ (adversarial audit 08-02).
+    ran_30m = _fin(row.get("_ran_30m_sigma"))
+    moved_30m = round(ran_30m, 2) if ran_30m is not None else None
+
+    # scale — the rulers: sigma + aem (asymmetric, from the rebuilt IV smile)
+    scale = {"one_sigma_dollars": round(sig, 2) if sig else None,
+             "sigma_pct_of_price": round(sig / spot * 100, 1)
+             if sig and spot else None,
+             "typical_30min_move_sigma": 0.08}
+    skew = row.get("iv_skew") if isinstance(row.get("iv_skew"), dict) else {}
+    em = _fin((row.get("range_ruler") or {}).get("em_points"))
+    d = _fin(skew.get("down_share"))
+    if em is not None and em > 0 and d is not None:
+        scale["aem"] = {
+            "up_dollars": round(2 * em * (1 - d), 2),
+            "down_dollars": round(2 * em * d, 2),
+            "skew": ("downside" if d >= 0.52 else
+                     "upside" if d <= 0.48 else "balanced"),
+            "source": "put/call IV skew"}
+
+    regime = {"gamma_sign": row.get("gamma_sign"), "word": row.get("regime")}
+    vt = vol_trend(rows, now)
+    if vt:
+        regime["vol_trend"] = vt
+    fb = flip_block(row, sd, ran_30m)
+    if fb:
+        regime["flip"] = fb
+    cb = charm_block(row)
+    if cb:
+        regime["charm"] = cb
+
+    price = {"now": spot,
+             "vs_prior_close_pct": vs_prior,
+             "session_low": min(path) if path else None,
+             "session_high": max(path) if path else None,
+             "moved_last_30min_sigma": moved_30m}
+    vw = sd(row.get("vwap"))
+    if vw is not None:
+        price["vwap_dist_sigma"] = vw
+
+    def prune(d):
+        # omit-never-null INSIDE the blocks too: an early-session
+        # moved_last_30min or a missing prior_close must vanish, not read as
+        # null — the doctrine promises "missing = not measured", and a null
+        # keep-field would break that promise (fidelity audit #5, 08-02)
+        return {k: v for k, v in d.items() if v is not None}
 
     scene = {
         "instrument": "SNDK",
         "clock": {"minutes_since_open": int((now - now.replace(
             hour=9, minute=30, second=0, microsecond=0)).total_seconds() // 60)},
-        "scale": {"one_sigma_dollars": round(sig, 2) if sig else None,
-                  "sigma_pct_of_price": round(sig / spot * 100, 1)
-                  if sig and spot else None,
-                  "typical_30min_move_sigma": 0.08},
-        "price": {"now": spot,
-                  "vs_prior_close_pct": round(
-                      (spot / row["prior_close"] - 1) * 100, 2)
-                  if row.get("prior_close") and spot else None,
-                  "session_low": min(path) if path else None,
-                  "session_high": max(path) if path else None,
-                  "moved_last_30min_sigma": (
-                      round((spot - path[-15]) / sig, 2)
-                      if sig and len(path) >= 15 else None)},
-        "regime": {"gamma_sign": row.get("gamma_sign"),
-                   "word": row.get("regime")},
-        "magnet": {"is_a_tie": band["tie"], "gap_pp": band["gap_pp"],
-                   "top_strikes": band["top"],
-                   "sigma_from_spot": sd(band["top"][0][0]) if band["top"] else None},
+        "scale": prune(scale),
+        "price": prune(price),
+        "regime": prune(regime),
+        # magnet: evidence only when a book was measured. An empty/absent book
+        # must not ship a bare {"is_a_tie": true} (a manufactured "no strike
+        # in charge" claim), and a SINGLE-strike book — maximal dominance —
+        # must not read as a tie either: with no runner-up the tie question is
+        # unanswerable, so is_a_tie/gap_pp are omitted (adversarial audit 08-02).
+        "magnet": (prune({
+            "is_a_tie": band["tie"] if len(band["top"]) >= 2 else None,
+            "gap_pp": band["gap_pp"] if len(band["top"]) >= 2 else None,
+            "top_strikes": band["top"],
+            "sigma_from_spot": sd(band["top"][0][0])})
+            if band["top"] else None),
+        "momentum": momentum_block(rows, band),
+        "dealer_flow": dealer_flow_block(rows),
+        "walls": walls_ladder(row, sd),
         "named_levels_sigma_from_spot": named,
         "lowest_named_level": (min(named.values()) if named else None),
-        "arrow_already_decided": {"direction": arrow["dir"],
-                                  "silent_because": arrow["silent_because"],
-                                  "layers": [{"name": l["name"], "dir": l["dir"],
-                                              "cite": l["cite"],
-                                              "separated": l["admissible"]}
-                                             for l in arrow["layers"]]},
+        "history": history_flags(row, rows, vs_prior, ran_30m),
         "frozen_do_not_cite": [f"{f['field']} unchanged {f['for_min']}m"
                                for f in frozen],
     }
@@ -699,8 +1130,13 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         return 0
 
     day = now.date().isoformat()
+    # forced (off-hours --force) rows are excluded from the READER's view of
+    # the day: they are not live tape, and on 07-28 a single 00:05 warmup row
+    # overstated session_high by ~0.7σ all day and inflated every frozen age
+    # (adversarial audit 08-02). The diary keeps them; the reader ignores them.
     rows = [r for r in _read_jsonl(_diary_dir() / f"{day}.jsonl")
-            if r.get("ticker") == "SNDK"]
+            if r.get("ticker") == "SNDK"
+            and not (r.get("meta") or {}).get("forced")]
     if not rows:
         print("sndk-read :: no diary rows yet")
         return 0
@@ -739,7 +1175,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     if arrow["dir"] != prev_dir and not arrow.get("held_reversal"):
         wake = wake or ("arrow appeared" if arrow["dir"] else "arrow stood down")
 
-    scene = build_scene(row, arrow, band, frozen, rows, now)
+    scene = build_scene(row, band, frozen, rows, now)
     out = {
         "ts": now.isoformat(), "era": ERA, "wake": wake or "quiet",
         "spot": row.get("spot"), "sigma": row.get("sigma"),
@@ -787,26 +1223,29 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         print(json.dumps(scene, indent=1, default=str))
         return 0
 
-    prompt = ("Read this dealer-gamma scene and reply with the JSON object only.\n\n"
+    prompt = ("Read this scene cold and reply with the JSON object only.\n\n"
               "SCENE:\n" + json.dumps(scene, default=str))
     obj, err, wall = _ask(prompt, PINNED_MODEL)
     out["wall_s"], out["model"] = wall, PINNED_MODEL
     if err or not isinstance(obj, dict):
         out["error"] = err or "unparseable reply"
     else:
-        # keep only the three fields; a model that writes extra keys does not get
-        # to smuggle a direction in through one of them
-        out["reading"] = {k: str(obj.get(k, ""))[:400]
-                          for k in ("line", "breaks_if", "cited")
-                          if obj.get(k)}
+        out["reading"] = _validate_reading(obj)
         out["reading_ts"] = now.isoformat()   # stamped once, carried forward after
         out["reading_age_min"] = 0
     atomic_io.append_jsonl(_reads_dir() / f"{day}.jsonl", out)
+    if out["reading"]:
+        # one RAG slice per completed read (payload + what the model concluded).
+        # Fail-open: memory must never cost a read row.
+        try:
+            import sndk_rag
+            sndk_rag.record_slice(row, out, scene, now)
+        except Exception:
+            pass
     r = out["reading"] or {}
-    print(f"sndk-read :: {wake} | arrow={arrow['dir'] or 'silent'} "
-          # not "both layers agree" — there is no agreement step, and saying so
-          # in the log is the same false-confidence the design removed
-          f"({arrow['silent_because'] or 'magnet separated, breadth clear'}) | "
+    print(f"sndk-read :: {wake} | arrow={arrow['dir'] or 'silent'} | "
+          f"vector={r.get('vector', '—')}"
+          f"{' ' + format(r.get('magnitude_sigma'), '.2f') + 'σ' if r.get('magnitude_sigma') is not None else ''} | "
           f"{wall}s | {r.get('line', out['error'] or '')}")
     return 0
 
@@ -815,7 +1254,8 @@ def replay(day: str) -> int:
     """Re-run the gate over a recorded day. Writes nothing — this is how the
     wake rate and the arrow count were measured before shipping."""
     rows = [r for r in _read_jsonl(_diary_dir() / f"{day}.jsonl")
-            if r.get("ticker") == "SNDK"]
+            if r.get("ticker") == "SNDK"
+            and not (r.get("meta") or {}).get("forced")]   # same rule as live
     if not rows:
         print(f"no rows for {day}")
         return 1
