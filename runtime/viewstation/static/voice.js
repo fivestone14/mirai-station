@@ -63,8 +63,13 @@
 
   // ---- socket -----------------------------------------------------------
   function connect() {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(proto + '://' + location.hostname + ':' + PORT);
+    // Two transports for one sidecar: plain ws://host:8788 on the LAN/localhost,
+    // wss://host:8443 when the page rides the Tailscale HTTPS proxy (443→8787,
+    // 8443→8788 — tailscale serve terminates TLS and forwards to localhost).
+    const url = location.protocol === 'https:'
+      ? 'wss://' + location.hostname + ':8443'
+      : 'ws://' + location.hostname + ':' + PORT;
+    const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     ws.onmessage = function (ev) {
       if (ev.data instanceof ArrayBuffer) {
