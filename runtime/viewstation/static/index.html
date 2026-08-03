@@ -10084,6 +10084,81 @@ function snkGhostSVG(gh, P){
     +`<rect x="${x1}" y="${(y-6).toFixed(1)}" width="${(x2-x1+16).toFixed(1)}" height="12" fill="transparent" data-name="Earlier call ${up?'▲':'▼'}" data-tip="${tip}"/>`
     +`</g>`;
 }
+// ---- snkMiraiSVG (08-03, user-requested) — THE MIRAI VOICE ON THE CANVAS. The model's own
+// sr-2 read (vector + magnitude) drawn WHERE IT POINTS: a dashed thought-line from the live
+// price to the expected price ~30 min out, captioned in a few words ("mirai ▼ ~$1,221 · 30m").
+// Deliberately SPARSE — at most one voice mark + one late-day charm note — and every state is
+// honest: "balanced" when the model saw no lean, "paused" when the switch silenced it, dimmed
+// "(old)" past 10 min (the read card's own aging rule), and NOTHING when no read row exists.
+// The dashes + the word "mirai" are the styling contract: a thought, never a measured level —
+// the solid lines on this chart remain reserved for what was measured. Decoupled from the
+// gated arrow/comet on purpose; the two may disagree, and showing both is the information.
+// PURE (numbers in / svg out). Captions register in `avoid` so the zone captions dodge them.
+function snkMiraiSVG(m, rd, P){
+  if(!rd||typeof rd!=='object'||!P) return {svg:'', avoid:[]};
+  const x0=snkNum(P.x0,0), yFor=(typeof P.yFor==='function')?P.yFor:(v=>v);
+  const yTop=snkNum(P.yTop,0), yBot=snkNum(P.yBot,0);
+  const capTop=snkNum(P.capTop, yTop+9);
+  const fs=snkNum(P.fs,9.5), r=fs/9.5, pad=10*r;
+  const sp=(P.sp!=null&&isFinite(P.sp))?+P.sp:null;
+  const sg=(P.sigma!=null&&isFinite(P.sigma)&&P.sigma>0)?+P.sigma:null;
+  const avoidIn=Array.isArray(P.avoid)?P.avoid:[];
+  const clampY=y=>Math.max(Math.max(yTop+pad,capTop), Math.min(yBot-pad, y));
+  // nudge a caption off anything already printed in the left column (EM legs, fold
+  // captions, earlier mirai marks) — the arrow tip itself never moves, only its words
+  const dodge=y=>{ let yy=clampY(y), guard=0;
+    while(guard++<8&&avoidIn.concat(avoid).some(v=>Math.abs(v-yy)<12*r))
+      yy=clampY(yy+13*r*(y<=(yTop+yBot)/2?1:-1));
+    return yy; };
+  const out=[], avoid=[];
+  const R=(rd.reading&&typeof rd.reading==='object')?rd.reading:null;
+  const ageM=(rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null;
+  const aged=ageM!=null&&ageM>10;
+  const halo='paint-order:stroke;stroke:var(--ground);stroke-width:2.5px;stroke-linejoin:round';
+  const xB=x0+30;
+  const mag=(R&&R.magnitude_sigma!=null&&isFinite(R.magnitude_sigma))?+R.magnitude_sigma:null;
+
+  if(R&&(R.vector==='up'||R.vector==='down')&&mag!=null&&sp!=null&&sg){
+    const up=R.vector==='up', hue=up?'var(--jade)':'var(--coral)';
+    let tgt=sp+(up?1:-1)*mag*sg, clip='';
+    const bLo=P.band?P.band.pLow:-Infinity, bHi=P.band?P.band.pHigh:Infinity;
+    if(tgt>bHi){ tgt=bHi; clip='≈'; } if(tgt<bLo){ tgt=bLo; clip='≈'; }
+    const yS=yFor(sp), yT=yFor(tgt);
+    const yCap=dodge(yT+(up?-8*r:14*r));
+    const txt=`mirai ${up?'▲':'▼'} ${clip}${snkUsd(tgt,0)} · 30m${aged?' (old)':''}`;
+    const tip=`Mirai's own read of the snapshot — which way, and how far over ~30 min.`
+      +`¦k:expects ${up?'up':'down'}=${mag.toFixed(2)}σ ≈ $${Math.round(mag*sg)}`
+      +(clip?`¦f:target sits past the frame edge — drawn clamped`:'')
+      +`¦f:separate from the gated arrow — they can disagree, and that is information`
+      +(aged?`¦f:read is ${ageM}m old — memory, not news`:'')
+      +`¦n:a typical 30 min here moves ~0.08σ`;
+    out.push(`<g${aged?' opacity=".5"':''}>`
+      +`<circle cx="${xB}" cy="${yS.toFixed(1)}" r="2.2" fill="${hue}" opacity=".8"/>`
+      +`<line x1="${xB}" x2="${xB}" y1="${yS.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:${hue};stroke-width:1.5;opacity:.55" stroke-dasharray="4 4"/>`
+      +`<path d="M${(xB-3.5).toFixed(1)},${(yT+(up?4.5:-4.5)).toFixed(1)} L${xB.toFixed(1)},${yT.toFixed(1)} L${(xB+3.5).toFixed(1)},${(yT+(up?4.5:-4.5)).toFixed(1)}" fill="none" style="stroke:${hue};stroke-width:1.6;opacity:.85"/>`
+      +`<text x="${(xB+8).toFixed(1)}" y="${(yCap+3*r).toFixed(1)}" font-size="${fs}" font-weight="700" font-family="var(--mono)" style="fill:${hue};${halo};letter-spacing:.04em" data-name="Mirai's read" data-tip="${tip}">${txt}</text>`
+      +`</g>`);
+    avoid.push(yCap);
+  } else if(R&&R.vector==='none'&&sp!=null){
+    const y=dodge(yFor(sp)-14*r);
+    out.push(`<text x="${(xB+8).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${fs}" font-weight="500" font-family="var(--mono)" style="fill:var(--ink-dim);${halo};letter-spacing:.04em" data-name="Mirai's read" data-tip="Mirai read the snapshot and saw no lean either way.¦f:an honest 'balanced' — not a missing reading${aged?`¦f:read is ${ageM}m old`:''}">mirai · balanced${aged?' (old)':''}</text>`);
+    avoid.push(y);
+  } else if(rd.paused===true&&sp!=null){
+    const y=dodge(yFor(sp)-14*r);
+    out.push(`<text x="${(xB+8).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${fs}" font-weight="500" font-family="var(--mono)" style="fill:var(--ink-faint);opacity:.8;${halo};letter-spacing:.04em" data-name="Mirai paused" data-tip="The reasoning switch is off — every measured layer keeps running, only Mirai's sentence and vector are withheld.¦n:flip it in this panel's toggle">mirai · paused</text>`);
+    avoid.push(y);
+  }
+
+  // late-day charm note — MEASURED (front-book charm peak), worded as a place, never a
+  // promise (N11: no direction may be spoken off net charm)
+  const cw=(P.flows&&P.flows.charm_wall!=null&&isFinite(P.flows.charm_wall))?+P.flows.charm_wall:null;
+  if(P.late&&cw!=null&&P.band&&cw>P.band.pLow&&cw<P.band.pHigh){
+    const y=dodge(yFor(cw));
+    out.push(`<text x="${(x0+7).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${snkNum(P.fsZone,9)}" font-weight="600" font-family="var(--mono)" style="fill:var(--lantern);opacity:.7;${halo};letter-spacing:.08em" data-name="Decay tilt" data-tip="As options lose value into the close, hedging pressure eases toward this strike.¦k:charm peak=${snkUsd(cw,0)}¦f:a place the pull points to — never a promise, and no up/down on its own">⌛ decay tilt</text>`);
+    avoid.push(y);
+  }
+  return { svg: out.length?out.join(''):'', avoid };
+}
 // ---- "what am I looking at" — the tab's own legend, as a figure plus a numbered key.
 // The chart carries a lot of marks that each explain themselves on hover; this is the one
 // place they are all shown TOGETHER and pointed at. Numbering matches the pipeline
@@ -10120,6 +10195,10 @@ const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK
   <circle cx="209" cy="208" r="3.2" fill="none" stroke="var(--l-grav)" stroke-width="1.4"/>
   <line x1="122" y1="118" x2="482" y2="118" stroke="var(--ink)" opacity=".5"/>
   <text x="476" y="132" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">Now · 1,250</text>
+  <circle cx="200" cy="118" r="2.2" fill="var(--jade)" opacity=".8"/>
+  <line x1="200" y1="118" x2="200" y2="90" stroke="var(--jade)" stroke-width="1.4" stroke-dasharray="4 4" opacity=".6"/>
+  <path d="M196.5,94.5 L200,90 L203.5,94.5" fill="none" stroke="var(--jade)" stroke-width="1.5" opacity=".85"/>
+  <text x="206" y="93" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--jade)">mirai ▲ ~1,280 · 30m</text>
   <line x1="122" y1="252" x2="482" y2="252" stroke="var(--ink-dim)" stroke-width="1.2" stroke-dasharray="1 5" opacity=".7"/>
   <text x="476" y="248" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)" opacity=".7">VWAP</text>
   <line x1="122" y1="278" x2="482" y2="278" stroke="var(--ink-faint)" opacity=".32"/>
@@ -10161,6 +10240,7 @@ const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK
     <circle cx="548" cy="236" r="8" fill="var(--iris)"/><text x="548" y="239.5" text-anchor="middle" fill="var(--ground)">11</text>
     <circle cx="548" cy="90" r="8" fill="var(--iris)"/><text x="548" y="93.5" text-anchor="middle" fill="var(--ground)">12</text>
     <circle cx="392" cy="252" r="8" fill="var(--iris)"/><text x="392" y="255.5" text-anchor="middle" fill="var(--ground)">13</text>
+    <circle cx="176" cy="97" r="8" fill="var(--iris)"/><text x="176" y="100.5" text-anchor="middle" fill="var(--ground)">14</text>
   </g>
 </svg>`;
 // WORDING IS LOAD-BEARING HERE and was rewritten 08-01 after an audit checked all eleven
@@ -10184,6 +10264,7 @@ const _SNKI_KEY=[
   ['11','Spoke counter','How many scans an arrow was live on. One call held for an hour counts on every scan it covered, so read it as coverage, not as a count of calls.'],
   ['12','Model vector','A second opinion that lives inside The read card, under the call block: the model reads the snapshot cold and says which way it leans and roughly how far price might travel in about half an hour, in dollars. It is separate from the arrow above it, and the two can disagree — seeing that disagreement is the point, not a glitch. A typical half-hour move here is small, so a big number deserves suspicion.'],
   ['13','VWAP dotted line','The average price paid so far today, weighted by how many shares traded at each price. Big trading desks use it as their anchor, so price often reacts near it. It only appears once the day has real traded volume behind it — no line means it could not be measured, not that it is zero.'],
+  ['14','Mirai’s thought-line','A dashed line from the live price to where the model expects price in about half an hour, captioned in its own voice ("mirai ▼ ~$1,221 · 30m"). Dashes mean a thought, never a measured level — solid lines stay reserved for what was measured. It says "balanced" when the model saw no lean, "paused" when the switch silenced it, and dims with "(old)" once the read is stale. It can disagree with the arrow; seeing that disagreement is the point.'],
 ];
 function openSndkInfoModal(){
   const M=document.getElementById('modal'); if(!M) return;
@@ -11514,6 +11595,16 @@ const SNDK = {
     SNDK._hudOn=!!(hm&&hm.present);
     SNDK.paintTape();
     SNDK.paintHud(hm);
+    // ---- THE MIRAI VOICE (08-03, user-requested): the model's own vector drawn where it
+    // points — a dashed thought-line from the live price to the expected price ~30 min out,
+    // plus honest quiet states and a late-day charm note. Built BEFORE the zone captions so
+    // its words register in gutAvoid and the zones dodge them, never the reverse. ----
+    const lateDay=(clockIn(new Date().toISOString(), ET)||'').slice(0,5)>='14:30';
+    const mirai=snkMiraiSVG(m, RD, { x0, sp:spRef,
+      sigma:(RD&&RD.sigma!=null&&isFinite(RD.sigma))?+RD.sigma:m.sigma,
+      yFor, yTop:padT, yBot:h-padB, capTop, fs:fz(9.5), fsZone:fz(9),
+      band, avoid:gutAvoid, flows:m.flows, late:lateDay });
+    for(const vy of mirai.avoid) gutAvoid.push(vy);
     // ---- ZONE CAPTIONS (07-28): faint left-anchored labels naming what each price area means
     // — the flip's calmer/faster halves, the walls as support/resistance, the magnet, an air
     // pocket. Muted guide text (≤4, present-only), drawn last so it sits above the washes. ----
@@ -11539,6 +11630,7 @@ const SNDK = {
       <g id="snk-hits">${hits}</g>
       <g id="snk-whisk">${whisk.svg}</g>
       <g>${lvls}</g><g id="snk-ghost">${ghostSVG}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband">${magBand.lbl}</g><g>${emLbl}</g><g>${gapLbl}</g><g id="snk-flow">${flowTags}</g><g>${walls}</g><g>${edges}</g><g>${tagStrip}</g><g>${tags}</g>
+      <g id="snk-mirai">${mirai.svg}</g>
       <g id="snk-zones">${zones}</g>
     </svg>`;
     // #snk-hud is NOT in this list any more — it lives in the header row, and adopting it
