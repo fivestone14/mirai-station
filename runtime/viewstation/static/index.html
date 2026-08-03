@@ -1677,6 +1677,12 @@
   .snk-read{background:var(--surface-2); border:1px solid var(--hairline); border-left:3px solid var(--l-grav);
     border-radius:var(--r-md); padding:10px 12px 9px}
   .snk-read>.k{display:block; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap); text-transform:uppercase; font-weight:700; color:var(--ink-faint); margin-bottom:8px}
+  /* HISTORY — the one button on the read card; opens the day's readings ledger (.snkh modal) */
+  .snk-read .hist{float:right; appearance:none; cursor:pointer; font-family:var(--mono);
+    font-size:9.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-faint); background:transparent; border:1px solid var(--hairline-2);
+    border-radius:999px; padding:1px 9px 2px; margin:-2px 0 0 8px; -webkit-tap-highlight-color:transparent}
+  .snk-read .hist:hover{color:var(--ink); border-color:var(--hairline)}
   /* the call block goes FULL WIDTH here: the side column is ~200–275px of usable ink, so
      the map's side-by-side call+sentence layout would leave the sentence about 90px. Block
      on top, sentence under it. */
@@ -1782,6 +1788,21 @@
     background:color-mix(in srgb,var(--lantern) 9%, transparent); border-radius:0 8px 8px 0;
     font-size:12.5px; color:var(--ink-dim); line-height:1.5}
   .snki-note b{color:var(--ink)}
+  /* ---- SNDK reading HISTORY modal (.snkh) — today's calls newest-first, one reading per
+     row pair: the span it was live for, the call, the derived aim, and how close the
+     2-min scans got inside that span. Same .modal shell as every other explainer. ---- */
+  .modal-card.snkh{width:min(680px,94vw)}
+  .snkh-tbl{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px}
+  .snkh-tbl th{text-align:left; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink-faint); font-weight:700; padding:4px 10px 6px; border-bottom:1px solid var(--hairline-2)}
+  .snkh-tbl td{padding:7px 10px 2px; vertical-align:baseline; white-space:nowrap}
+  .snkh-tbl td.dir.up{color:var(--jade); font-weight:700}
+  .snkh-tbl td.dir.down{color:var(--coral); font-weight:700}
+  .snkh-tbl td.dir.none{color:var(--ink-dim)}
+  .snkh-tbl td.hit{color:var(--jade); font-weight:700}
+  .snkh-tbl tr.ln td{padding:0 10px 8px; border-bottom:1px solid var(--hairline);
+    font-family:var(--sans); font-size:11.5px; line-height:1.4; color:var(--ink-faint); white-space:normal}
+  .snkh-note{margin-top:10px; font-family:var(--mono); font-size:10px; color:var(--ink-faint); line-height:1.5}
   /* plain-language legend — the color/level key, quiet muted ink so it reads as a
      footnote and never competes with the chart (small-caps head like the tiles) */
   .snk-legend{padding:9px 12px 8px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md)}
@@ -9959,6 +9980,46 @@ function snkVectorRow(R, sigma){
   return `<div class="vec ${v}" data-name="Model vector" data-tip="${tip}">`
     +`<i>model vector</i><span>${glyph} ${word}</span></div>`;
 }
+// ---- LABEL DECLUTTER (08-03) — runs AFTER every full SVG build, over the labels that are
+// free to move (the .decl groups: level tags, walls, gap/EM captions, ghost, mirai voice,
+// zones, flow tags — never the axis, the fold rail, or the self-spaced strips). Each painter
+// above dodges its OWN neighbours; this is the one pass that sees ACROSS painters, on real
+// rendered geometry (getBBox), so a collision between two surfaces that have never heard of
+// each other costs no new pairwise rule. The later-painted label yields (it is the one doing
+// the overprinting) and steps vertically clear. Bounded: a label that would need more than
+// ~3 line-heights stays put — that row is genuinely full, and a long teleport would lie
+// about where its level is worse than the overlap does.
+function snkDeclutter(svg){
+  if(!svg) return;
+  const items=[];
+  try{
+    for(const t of svg.querySelectorAll('g.decl text')){
+      const b=t.getBBox();
+      if(!b||!(b.width>0)||!(b.height>0)) continue;
+      items.push({t, x1:b.x, x2:b.x+b.width, y1:b.y, y2:b.y+b.height, dy:0});
+    }
+  }catch(e){ return; }   // getBBox throws on a detached/hidden svg — this pass is best-effort
+  if(items.length<2) return;
+  const vb=(svg.viewBox&&svg.viewBox.baseVal)?svg.viewBox.baseVal:null;
+  const yMin=vb?vb.y:0, yMax=vb?vb.y+vb.height:1e9;
+  const PAD=2, CAP=40;
+  for(let sweep=0; sweep<4; sweep++){
+    let moved=false;
+    for(let i=0;i<items.length;i++) for(let j=i+1;j<items.length;j++){
+      const a=items[i], b=items[j];
+      const xo=Math.min(a.x2,b.x2)-Math.max(a.x1,b.x1);
+      const yo=Math.min(a.y2+a.dy,b.y2+b.dy)-Math.max(a.y1+a.dy,b.y1+b.dy);
+      if(xo<=2||yo<=0.5) continue;
+      const down=((b.y1+b.y2)/2+b.dy)>=((a.y1+a.y2)/2+a.dy);
+      let d=down?(yo+PAD):-(yo+PAD);
+      if(b.y1+b.dy+d<yMin||b.y2+b.dy+d>yMax) d=-d;   // frame edge — step the other way instead
+      if(Math.abs(b.dy+d)>CAP) continue;             // row genuinely full — leave it honest
+      b.dy+=d; moved=true;
+    }
+    if(!moved) break;
+  }
+  for(const it of items) if(it.dy) it.t.setAttribute('transform',`translate(0 ${it.dy.toFixed(1)})`);
+}
 // snkReadCard — the side panel's live-read card: the call block, the model's own vector
 // (sr-2), the sentence, what would change it, the receipt, then the honesty flags and the
 // gate strip. '' when there is no read row, so the tab degrades to its pre-sr-1 self.
@@ -9974,7 +10035,8 @@ function snkReadCard(rd, now){
   const aged=(age!=null&&age>10);
   const flags=(a?[['caution',a.caution],['fading',a.fading]]:[])
     .filter(f=>f[1]).map(f=>`<div class="fl"><i>${f[0]}</i><span>${snkSafe(f[1])}</span></div>`).join('');
-  return `<div class="snk-read"><span class="k">The read${rd.wake?` · ${snkSafe(rd.wake)}`:''}</span>`
+  return `<div class="snk-read"><span class="k">The read${rd.wake?` · ${snkSafe(rd.wake)}`:''}`
+    +`<button type="button" class="hist" id="snk-hist-btn" aria-label="Today's reading history">history</button></span>`
     +`<div class="gx-call${c.cls?' '+c.cls:''}">${c.html}</div>`
     +snkVectorRow(R, (rd.sigma!=null&&isFinite(rd.sigma))?+rd.sigma:null)
     +(R?`<p class="tr-next${aged?' aged':''}">${snkSafe(R.line)}`
@@ -9983,6 +10045,75 @@ function snkReadCard(rd, now){
     +(R&&R.breaks_if?`<div class="br"><i>Changes if —</i> ${snkSafe(R.breaks_if)}</div>`:'')
     +(R&&R.cited?`<div class="ct">${snkSafe(R.cited)}</div>`:'')
     +flags+snkLayerChips(a?a.layers:null)+`</div>`;
+}
+// ---- READING HISTORY (sr-2) — every distinct reading today, NEWEST FIRST, each with the
+// span it was aiming over ("from x to y" = issue + 30 min — this table's scoring rule,
+// not the model's; the reading itself names no horizon), the derived aim price, and how
+// close the scans got inside that span. The aim is DERIVED (issue price ± size×σ — the
+// reading never emits a target price) and the footnote says so. Read-only over the same
+// raw-explorer file pollRead already tails; nothing here grades into any ledger.
+async function openSnkHistModal(){
+  const M=document.getElementById('modal'); if(!M) return;
+  const shell=body=>{
+    M.innerHTML=`<div class="modal-card snkh" role="dialog" aria-modal="true" aria-label="SNDK reading history">
+      <div class="modal-head"><div class="mt">Today’s readings <em>newest first</em></div>
+        <button class="modal-x" id="modal-x" style="margin-left:auto" aria-label="Close">✕</button></div>
+      <div class="modal-body">${body}</div></div>`;
+    M.classList.add('open'); M.setAttribute('aria-hidden','false');
+    document.getElementById('modal-x').onclick=closeModal; _modalOpened();
+  };
+  shell(`<div class="snkh-note">loading state/sndk_reads…</div>`);
+  let rows=[];
+  try{
+    const rel=SNDK.readFile||((SNDK.read&&SNDK.read.ts)?`sndk_reads/${String(SNDK.read.ts).slice(0,10)}.jsonl`:null);
+    if(!rel) throw new Error('no reads file recorded yet');
+    const r=await fetch(`/api/raw/file?root=state&path=${rel}&limit=0`,{cache:'no-store'});
+    const d=await r.json();
+    rows=((d&&d.rows)||[]).filter(x=>x&&typeof x==='object'&&x.ts&&x.spot!=null&&isFinite(+x.spot));
+  }catch(e){ return shell(`<div class="snkh-note">No reading history available — ${snkSafe(String((e&&e.message)||e))}.</div>`); }
+  const T=s=>{ const t=Date.parse(s); return isFinite(t)?t:null; };
+  const clock=t=>new Date(t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+  // one entry per DISTINCT reading: reading_ts is the issue stamp, quiet scans re-carry it.
+  // Issue price/σ come from the scan row NEAREST the stamp (the reading lands between scans).
+  const calls=[], seen=new Set();
+  for(const x of rows){
+    const rd=x.reading, rts=x.reading_ts;
+    if(!rd||typeof rd!=='object'||!rts||seen.has(rts)) continue;
+    seen.add(rts);
+    const t0=T(rts); if(t0==null) continue;
+    let near=null, bd=Infinity;
+    for(const y of rows){ const ty=T(y.ts); if(ty==null) continue;
+      const dd=Math.abs(ty-t0); if(dd<bd){ bd=dd; near=y; } }
+    calls.push({t0, rd, spot:+near.spot, sigma:(near.sigma!=null&&isFinite(near.sigma))?+near.sigma:null});
+  }
+  if(!calls.length) return shell(`<div class="snkh-note">No readings recorded yet today.</div>`);
+  calls.sort((a,b)=>b.t0-a.t0);
+  const WIN=30*60*1000, now=Date.now();
+  const body=calls.map(c=>{
+    const v=c.rd.vector, mag=(c.rd.magnitude_sigma!=null&&isFinite(c.rd.magnitude_sigma))?+c.rd.magnitude_sigma:null;
+    const t1=c.t0+WIN, open=now<t1;
+    const dirTd=v==='up'?`<td class="dir up">▲ up${mag!=null?` ${mag}σ`:''}</td>`
+      :v==='down'?`<td class="dir down">▼ down${mag!=null?` ${mag}σ`:''}</td>`
+      :`<td class="dir none">■ stood down</td>`;
+    let aim='—', res='—', resCls='';
+    if((v==='up'||v==='down')&&mag!=null&&c.sigma!=null){
+      const tgt=c.spot+(v==='up'?1:-1)*mag*c.sigma;
+      aim=snkUsd(tgt,0);
+      const win=rows.map(y=>({t:T(y.ts), p:+y.spot})).filter(y=>y.t!=null&&y.t>=c.t0&&y.t<=t1&&isFinite(y.p));
+      if(win.length){
+        const best=v==='up'?Math.max(...win.map(y=>y.p)):Math.min(...win.map(y=>y.p));
+        const hit=v==='up'?best>=tgt:best<=tgt;
+        if(hit){ res='hit'; resCls=' class="hit"'; }
+        else res=`${snkUsd(best,0)} · ${Math.abs(best-tgt).toFixed(1)} shy${open?' · open':''}`;
+      }else res=open?'window open':'—';
+    }
+    return `<tr><td>${clock(c.t0)} → ${clock(t1)}</td>${dirTd}<td>${aim}</td><td${resCls}>${res}</td></tr>`
+      +`<tr class="ln"><td colspan="4">${snkSafe(c.rd.line||'')}</td></tr>`;
+  }).join('');
+  shell(`<table class="snkh-tbl"><thead><tr><th>aiming from → to</th><th>call</th><th>aim</th><th>closest</th></tr></thead><tbody>${body}</tbody></table>
+    <div class="snkh-note">aim = price at issue ± size×σ, derived for this table — the reading never names a target ·
+    the 30-min span is this table's scoring rule, not the model's · closest is from ~2-min scans, a wick between scans can beat it ·
+    times are this device's timezone</div>`);
 }
 // snkSpokeTxt — the abstention counter. Small, quiet, always present once a read row is:
 // how many of today's scans the arrow said ANYTHING on, out of all of them. The numerator
@@ -11629,9 +11760,9 @@ const SNDK = {
       <g id="snk-bars">${bars}</g>
       <g id="snk-hits">${hits}</g>
       <g id="snk-whisk">${whisk.svg}</g>
-      <g>${lvls}</g><g id="snk-ghost">${ghostSVG}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband">${magBand.lbl}</g><g>${emLbl}</g><g>${gapLbl}</g><g id="snk-flow">${flowTags}</g><g>${walls}</g><g>${edges}</g><g>${tagStrip}</g><g>${tags}</g>
-      <g id="snk-mirai">${mirai.svg}</g>
-      <g id="snk-zones">${zones}</g>
+      <g class="decl">${lvls}</g><g id="snk-ghost" class="decl">${ghostSVG}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g>${tagStrip}</g><g>${tags}</g>
+      <g id="snk-mirai" class="decl">${mirai.svg}</g>
+      <g id="snk-zones" class="decl">${zones}</g>
     </svg>`;
     // #snk-hud is NOT in this list any more — it lives in the header row, and adopting it
     // back into the chart is exactly the bug that would silently undo the layout fix.
@@ -11640,6 +11771,7 @@ const SNDK = {
     cc.innerHTML=svgHtml;
     if(tip) cc.appendChild(tip); if(capEl) cc.appendChild(capEl);
     if(tapeEl) cc.appendChild(tapeEl);
+    snkDeclutter(cc.querySelector('svg'));   // cross-painter label collisions — after mount, on real geometry
     snkMountInfoBtn();          // innerHTML above wiped it — remount (idempotent)
     // ---- ORPHANED HOVER CARDS (08-01). Both tip surfaces are bound by DELEGATION, so they
     // survive this wipe — but the element a card was opened ON does not, and removing a node
