@@ -9298,10 +9298,22 @@ function snkTicks(pLow, pHigh, plotH, step, ts){
   const PAIRS=[[st,st*5],[st*2,st*10],[st*5,st*25],[st*10,st*50],[st*20,st*100]];
   let minor=PAIRS[PAIRS.length-1][0], major=PAIRS[PAIRS.length-1][1];
   for(const pr of PAIRS){ if(pr[0]*pxPer>=15*T&&pr[1]*pxPer>=44*T){ minor=pr[0]; major=pr[1]; break; } }
+  // the LABELING pitch for small in-between prices (08-03): every minor keeps its tick, but a
+  // small number prints only on the finest multiple of the minor that clears ~24px×T — on a
+  // dense frame that is every 2nd or 3rd rung (one-two small prices between bolds), on a roomy
+  // frame every rung. Measured before shipping: labeling EVERY minor put 30-odd numbers 16px
+  // apart — the exact 08-01 wall this ladder already tore down once.
+  const mid=minor*Math.max(1, Math.ceil((24*T)/(minor*pxPer)));
   const ticks=[];
-  for(let k=Math.ceil(pLow/minor)*minor; k<=pHigh+1e-9; k+=minor)
-    ticks.push({ p:Math.round(k*100)/100, major:Math.abs(k/major-Math.round(k/major))<1e-6 });
-  return { minor, major, ticks };
+  for(let k=Math.ceil(pLow/minor)*minor; k<=pHigh+1e-9; k+=minor){
+    const isMaj=Math.abs(k/major-Math.round(k/major))<1e-6;
+    // a small price never prints inside a bold label's height of a major —
+    // measured: a $10 mid grid put 1,170 sixteen px under a bold 1,175
+    const dMaj=Math.abs(k-Math.round(k/major)*major)*pxPer;
+    ticks.push({ p:Math.round(k*100)/100, major:isMaj,
+                 mid:!isMaj&&Math.abs(k/mid-Math.round(k/mid))<1e-6&&dMaj>=18*T });
+  }
+  return { minor, major, mid, ticks };
 }
 // ---- snkFolds (08-01) — THE FOLDED AXIS. PURE (numbers in / a mapping out).
 // snkBand tightens the frame around what matters, but it can only ever produce ONE rectangle,
@@ -10860,15 +10872,16 @@ const SNDK = {
     const lblX=x0-cmW-12, tkMaj=x0-(cmW?5:7), tkMin=x0-(cmW?3:4);
     // THE PRICE LADDER IS THE MOST-READ TEXT ON THIS CHART and it was the smallest thing on
     // it. Major rungs lead (15.3px at the top of the ramp).
-    // MINORS ARE TICKS, NOT NUMBERS (08-01). Every minor rung used to print its own price, so
-    // the axis was a column of 30-odd numbers of which 5 were structural and the rest repeated
-    // what the gridline already said — and the eye has to re-read the whole stack to find the
-    // one rung it wants. The minor rung still marks the pitch as a tick; only the labelling is
-    // withdrawn. This also decouples the ladder from the band fixes above: a tighter frame
-    // makes snkTicks choose a FINER pitch, so labelling every minor would have printed MORE
-    // numbers into a smaller space, not fewer. The minor tick earns a little more presence to
-    // pay for its lost number.
-    const fzMaj=fz(12.5);
+    // MINORS PRINT SMALL NUMBERS AGAIN (08-03, user-requested). The 08-01 pass withdrew every
+    // minor label because 30-odd EQUAL-WEIGHT numbers buried the 5 structural ones; living with
+    // majors-only exposed the opposite failure — placing a wall label or level against the
+    // ladder meant interpolating between $50-apart rungs in your head. Both lessons are honored
+    // with HIERARCHY, not volume: the minor's price returns at 9.5px, faint and unbold, with no
+    // gridline, while the major keeps its bold 12.5px + gridline lead. Overlap is impossible by
+    // construction — snkTicks only picks a minor pitch that clears 15px×T per rung (the labeled-
+    // minor rule it inherited from gxAxisTicks), so a tighter frame chooses a coarser pitch
+    // rather than stacking small numbers.
+    const fzMaj=fz(12.5), fzMin=fz(9.5);
     const majY=[];   // where the ladder actually printed a number — the fold's end labels must not double up on one
     let axis=`<line x1="${x0}" y1="${padT}" x2="${x0}" y2="${(h-padB).toFixed(1)}" style="stroke:var(--ink-faint);opacity:.35"/>`;
     for(const t of TK.ticks){ const yn=yFor(t.p), yy=yn.toFixed(1);
@@ -10881,6 +10894,13 @@ const SNDK = {
         axis+=`<line x1="${x0}" y1="${yy}" x2="${lineEnd}" y2="${yy}" style="stroke:var(--hairline);opacity:.5" stroke-dasharray="2 6"/>`
           +`<line x1="${tkMaj}" y1="${yy}" x2="${x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.75"/>`
           +`<text x="${lblX}" y="${(yn+px(4)).toFixed(1)}" text-anchor="end" font-size="${fzMaj}" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round">${snkUsd(t.p,0)}</text>`;
+      } else if(t.mid){
+        // a labeled in-between rung joins majY: fold end-labels must treat a small printed
+        // price as a printed price — the list's own comment says "where the ladder actually
+        // printed a number", now true of both weights
+        majY.push(yn);
+        axis+=`<line x1="${tkMin-2}" y1="${yy}" x2="${x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.55"/>`
+          +`<text x="${lblX}" y="${(yn+px(3)).toFixed(1)}" text-anchor="end" font-size="${fzMin}" font-weight="500" font-family="var(--mono)" style="fill:var(--ink-faint);opacity:.85;paint-order:stroke;stroke:var(--ground);stroke-width:2.5px;stroke-linejoin:round">${snkUsd(t.p,0)}</text>`;
       } else {
         axis+=`<line x1="${tkMin-2}" y1="${yy}" x2="${x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.55"/>`;
       }
