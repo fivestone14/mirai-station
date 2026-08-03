@@ -1767,6 +1767,28 @@
     letter-spacing:.04em; color:var(--jade)}
   .snk-rsn.off .lb b{color:var(--ink-dim)}
   .snk-rsn .lb span{display:block; font-size:12px; color:var(--ink-faint); line-height:1.35}
+  /* ---- voice talk widget. Same shell as the reasoning switch; the dot is the state
+     lamp (idle→hollow, listening→jade pulse, thinking→iris, speaking→amber). All logic
+     lives in /voice.js — this panel only renders MiraiVoice.state after every repaint. ---- */
+  .snk-ctl{display:flex; flex-direction:column; gap:8px; margin-bottom:10px}
+  .snk-voice{display:flex; align-items:center; gap:10px; padding:9px 11px; background:var(--surface-2);
+    border:1px solid var(--hairline); border-radius:var(--r-md)}
+  .snk-voice .mic{appearance:none; cursor:pointer; flex:none; width:34px; height:34px; padding:0;
+    border-radius:50%; border:1px solid var(--hairline-2); background:var(--surface-3);
+    display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1}
+  .snk-voice .mic:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .snk-voice.listening .mic{border-color:var(--jade); animation:snkVoicePulse 1.6s ease infinite}
+  .snk-voice.thinking .mic{border-color:var(--iris)}
+  .snk-voice.speaking .mic{border-color:var(--amber, #d9a441)}
+  .snk-voice.unsupported .mic{opacity:.45; cursor:not-allowed}
+  @keyframes snkVoicePulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--jade) 45%, transparent)}
+    50%{box-shadow:0 0 0 6px transparent}}
+  .snk-voice .lb{min-width:0}
+  .snk-voice .lb b{display:block; font-family:var(--mono); font-size:12px; font-weight:700;
+    letter-spacing:.04em; color:var(--ink)}
+  .snk-voice.listening .lb b{color:var(--jade)}
+  .snk-voice .lb span{display:block; font-size:12px; color:var(--ink-faint); line-height:1.35;
+    max-height:4.1em; overflow:hidden}
   /* ---- SNDK "what am I looking at" modal. Same shell as the GEX explainer (.modal /
      .modal-card / .modal-head), its own body: a labelled figure over a numbered key.
      Numbers match the pipeline schematic exactly so the two can be read together. ---- */
@@ -1914,6 +1936,7 @@
 
 <div class="modal" id="modal" aria-hidden="true"></div>
 
+<script src="/voice.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -9753,6 +9776,52 @@ async function snkSetReasoning(on){
   }catch(e){ /* leave SNDK.reasoning alone; the next poll reconciles */ }
   SNDK.paintSide();
 }
+// ---- voice talk widget. Renders MiraiVoice's current state; every ounce of audio/socket
+// logic lives in /voice.js. Tap = toggle an OPEN conversation (server-side VAD turn-taking,
+// barge-in by talking over it, auto-off after 3 min of silence). Repainted in place on the
+// 'mirai-voice' event rather than through paintSide — state changes are chatty and must not
+// re-render the whole side panel. ----
+function snkVoiceToggle(){
+  const mv=window.MiraiVoice, st=(mv&&mv.state)||'off';
+  const unsupported=(mv&&!mv.supported())||st==='unsupported';
+  const tip=`Open a spoken conversation about this board.`
+    +`¦k:turn-taking=automatic — it hears when you stop`
+    +`¦k:stop=tap the button again, anytime — even mid-answer`
+    +`¦f:speak over it to interrupt · shuts itself off after 3 quiet minutes`
+    +`¦f:mic needs localhost or HTTPS — on the tablet this lights up after the cert step`
+    +`¦v:reasoning runs on the desk Mac; nothing is sent anywhere but this LAN and Claude`;
+  const label={off:'Talk to the board', connecting:'Connecting…', listening:'Listening',
+    thinking:'Thinking…', speaking:'Speaking', unsupported:'Voice needs HTTPS'}[unsupported?'unsupported':st]||'Talk to the board';
+  const sub=snkVoiceSub(st,unsupported);
+  return `<div class="snk-voice ${unsupported?'unsupported':st}" id="snk-voice">
+    <button type="button" id="snk-voice-btn" class="mic" aria-pressed="${st!=='off'}"
+      aria-label="Voice conversation">${st==='off'||unsupported?'🎙':'●'}</button>
+    <div class="lb" data-name="Voice" data-tip="${tip}"><b>${label}</b><span id="snk-voice-sub">${sub}</span></div></div>`;
+}
+function snkVoiceSub(st,unsupported){
+  const mv=window.MiraiVoice;
+  if(!mv) return 'voice.js not loaded — hard refresh (Cmd+Shift+R)';
+  if(mv.err&&(st==='off'||unsupported)) return mv.err;   // failures speak for themselves
+  if(unsupported) return 'open this page on the Mac (localhost) or add the HTTPS cert';
+  if(st==='off') return 'tap to open an open-mic conversation';
+  if(mv.lastTool) return 'checking '+mv.lastTool+'…';
+  if(mv.lastMirai) return mv.lastMirai;
+  if(mv.lastYou) return '“'+mv.lastYou+'”';
+  return 'ask about the board — walls, magnet, regime, the reader’s line';
+}
+function snkVoicePaint(){
+  const w=document.getElementById('snk-voice'); if(!w) return;
+  const mv=window.MiraiVoice, st=(mv&&mv.state)||'off';
+  const unsupported=(mv&&!mv.supported())||st==='unsupported';
+  w.className='snk-voice '+(unsupported?'unsupported':st);
+  const b=w.querySelector('#snk-voice-btn');
+  if(b){ b.textContent=(st==='off'||unsupported)?'🎙':'●'; b.setAttribute('aria-pressed',String(st!=='off')); }
+  const lb=w.querySelector('.lb b'); if(lb) lb.textContent={off:'Talk to the board',
+    connecting:'Connecting…', listening:'Listening', thinking:'Thinking…', speaking:'Speaking',
+    unsupported:'Voice needs HTTPS'}[unsupported?'unsupported':st]||'Talk to the board';
+  const sub=document.getElementById('snk-voice-sub'); if(sub) sub.textContent=snkVoiceSub(st,unsupported);
+}
+document.addEventListener('mirai-voice', snkVoicePaint);
 // snkShelves — the price rungs a slide would stop at (ladder fences + clustered wall peaks +
 // the book's outer walls), deduped and sorted, in the gxWallStack shape gxGapBands expects.
 // gxGapBands is PURE and tenor-blind, so the SNDK book feeds it directly rather than forking a twin.
@@ -11954,12 +12023,18 @@ const SNDK = {
       +dorm(false,'Siege', 'Siege is an SPX-only layer — dormant here by design')
       +`</div></div>`;
     if(!m){
-      el.innerHTML=readCard+`<div class="snk-tiles">
+      el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`+readCard+`<div class="snk-tiles">
         <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX)">Dealer Delta</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k">Regime</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k">Expected Move · today</span><b>—</b><i>awaiting first scan</i></div>
       </div>${lyr}`;
+      const rb0=el.querySelector('#snk-rsn-btn');
+      if(rb0) rb0.onclick=()=>snkSetReasoning(SNDK.reasoning===false);
+      const vb0=el.querySelector('#snk-voice-btn');
+      if(vb0) vb0.onclick=()=>{ if(window.MiraiVoice) MiraiVoice.toggle(); else { const s=document.getElementById('snk-voice-sub'); if(s) s.textContent='voice.js failed to load — hard refresh (Cmd+Shift+R)'; } };
+      const hb0=el.querySelector('#snk-hist-btn');
+      if(hb0) hb0.onclick=openSnkHistModal;
       return;
     }
     // NET Γ + 1-day change (net_exposure carries its own prev-close anchor)
@@ -11990,7 +12065,9 @@ const SNDK = {
     // the REGIME tile is where the sr-1 frozen wash is VISIBLE (the chart's one coloured
     // regime chip keeps its hue; there is room for the words here). The subtitle dates it.
     const regFz=snkFrozenAt(FZP,'gamma sign')||snkFrozenAt(FZP,'regime');
-    el.innerHTML=readCard+`<div class="snk-tiles">
+    // controls FIRST (08-03, user ask): live-reasoning + talk-to-the-board sit at the
+    // top of the rail, directly above The Read — the two things you touch, where you look.
+    el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`+readCard+`<div class="snk-tiles">
       <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b class="${gTot!=null?(gTot>=0?'j':'c'):''}">${snkSMoney(gTot)}</b>
         <i>${gSub}</i></div>
       <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX)">Dealer Delta</span><b>${snkSMoney(dTot)}</b>
@@ -12001,10 +12078,14 @@ const SNDK = {
         <i>${regSub}${regFz?` · unchanged ${snkDur(regFz.for_min)}`:''}</i></div>
       <div class="snk-tile em"><span class="k">Expected Move · today</span><b>${emB}</b><i>${emI}</i></div>
     </div>
-    ${snkWallLadder(SNDK.clusters, SNDK.liveSpot()??m.spot)}${snkDaySummary(m)}${lyr}${snkReasonToggle(SNDK.reasoning!==false)}${snkLegend()}`;
+    ${snkWallLadder(SNDK.clusters, SNDK.liveSpot()??m.spot)}${snkDaySummary(m)}${lyr}${snkLegend()}`;
     // re-bound after every innerHTML swap; gwBindTips is already delegated on the host
     const rb=el.querySelector('#snk-rsn-btn');
     if(rb) rb.onclick=()=>snkSetReasoning(SNDK.reasoning===false);
+    const vb=el.querySelector('#snk-voice-btn');
+    if(vb) vb.onclick=()=>{ if(window.MiraiVoice) MiraiVoice.toggle(); else { const s=document.getElementById('snk-voice-sub'); if(s) s.textContent='voice.js failed to load — hard refresh (Cmd+Shift+R)'; } };
+    const hb=el.querySelector('#snk-hist-btn');
+    if(hb) hb.onclick=openSnkHistModal;
   },
   // THE TEACHER CARD — the map's plain-English HUD, seated in the HEADER ROW beside the price
   // lead (08-01; it used to float over the plot's top-left corner). It reads left-to-right like
