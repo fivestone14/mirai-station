@@ -1783,6 +1783,18 @@
   .snk-voice.unsupported .mic{opacity:.45; cursor:not-allowed}
   @keyframes snkVoicePulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--jade) 45%, transparent)}
     50%{box-shadow:0 0 0 6px transparent}}
+  /* ---- LIVE VOICE METER (08-03, user ask): while you talk, the button IS a VU meter.
+     voice.js writes --amp (0..1, mic RMS, fast attack/slow decay) at 60fps and flips .hot
+     above the speech floor; all motion is CSS from that one variable. .hot suspends the
+     idle pulse so the level ring owns the shadow — works over listening AND speaking
+     (talking over it = visible barge-in). ---- */
+  .snk-voice .mic{transition:transform .06s linear, box-shadow .06s linear}
+  .snk-voice.hot .mic{animation:none;
+    transform:scale(calc(1 + var(--amp,0)*.5));
+    border-color:var(--jade);
+    box-shadow:0 0 0 calc(2px + var(--amp,0)*18px) color-mix(in srgb,var(--jade) 38%, transparent),
+               0 0 calc(6px + var(--amp,0)*22px) color-mix(in srgb,var(--jade) 55%, transparent)}
+  .snk-voice.hot .lb b{color:var(--jade)}
   .snk-voice .lb{min-width:0}
   .snk-voice .lb b{display:block; font-family:var(--mono); font-size:12px; font-weight:700;
     letter-spacing:.04em; color:var(--ink)}
@@ -1936,7 +1948,7 @@
 
 <div class="modal" id="modal" aria-hidden="true"></div>
 
-<script src="/voice.js?v=4"></script><!-- bump ?v= on every voice.js change: the
+<script src="/voice.js?v=5"></script><!-- bump ?v= on every voice.js change: the
   stdlib server sends no cache headers, and a stale cached voice.js resurrects
   already-fixed bugs (the 08-03 "Invalid constraint" ghost) -->
 <script>

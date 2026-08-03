@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const VERSION = 4;      // keep in step with index.html's /voice.js?v= tag
+  const VERSION = 5;      // keep in step with index.html's /voice.js?v= tag
   const PORT = 8788;
   console.log('[mirai-voice] v' + VERSION + ' loaded');
   const V = {
@@ -27,6 +27,7 @@
     lastYou: '', lastMirai: '', lastTool: '', err: '',
     _ws: null, _ctx: null, _stream: null, _proc: null, _src: null,
     _playQ: [], _playing: null, _rate: 24000, _pcm: [], _inAudio: false,
+    _amp: 0, _raf: 0,
   };
 
   function emit() { document.dispatchEvent(new CustomEvent('mirai-voice')); }
@@ -120,6 +121,26 @@
   // ---- mic --------------------------------------------------------------
   function micOn() { return !!V._stream; }
 
+  // 60fps voice-level painter: the widget is rebuilt by paintSide's innerHTML
+  // swaps, so we re-query per frame (getElementById is nanoseconds) and write
+  // a CSS var + a .hot class — all motion lives in CSS off --amp
+  function ampLoop() {
+    cancelAnimationFrame(V._raf);
+    (function tick() {
+      const w = document.getElementById('snk-voice');
+      if (w) {
+        if (micOn()) {
+          w.style.setProperty('--amp', V._amp.toFixed(3));
+          w.classList.toggle('hot', V._amp > 0.07);
+        } else {
+          w.style.removeProperty('--amp');
+          w.classList.remove('hot');
+        }
+      }
+      if (micOn()) V._raf = requestAnimationFrame(tick);
+    }());
+  }
+
   function downsampleTo16k(f32, fromRate) {
     const ratio = fromRate / 16000, n = Math.floor(f32.length / ratio);
     const out = new Int16Array(n);
@@ -191,11 +212,19 @@
       V._proc = V._ctx.createScriptProcessor(4096, 1, 1);
       V._proc.onaudioprocess = function (e) {
         if (!micOn() || !V._ws || V._ws.readyState !== 1) return;
-        const pcm = downsampleTo16k(e.inputBuffer.getChannelData(0),
-                                    V._ctx.sampleRate);
-        V._ws.send(pcm.buffer);
+        const f32 = e.inputBuffer.getChannelData(0);
+        // voice level for the widget: RMS with fast attack / slow decay, so
+        // the ring jumps when you start talking and relaxes when you stop
+        let sum = 0;
+        for (let i = 0; i < f32.length; i += 4) sum += f32[i] * f32[i];
+        const rms = Math.sqrt(sum / (f32.length / 4));
+        const target = Math.min(1, rms * 7);
+        V._amp = target > V._amp ? V._amp * 0.4 + target * 0.6
+                                 : V._amp * 0.88;
+        V._ws.send(downsampleTo16k(f32, V._ctx.sampleRate).buffer);
       };
       V._src.connect(V._proc); V._proc.connect(V._ctx.destination);
+      ampLoop();
       chime(880);
       setState('listening');
     } catch (e) {
@@ -234,6 +263,9 @@
       V._stream.getTracks().forEach(function (t) { t.stop(); });
       V._stream = null;
     }
+    V._amp = 0; cancelAnimationFrame(V._raf);
+    const w = document.getElementById('snk-voice');
+    if (w) { w.style.removeProperty('--amp'); w.classList.remove('hot'); }
     setState('off');
   }
 
