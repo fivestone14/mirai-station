@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const VERSION = 3;      // keep in step with index.html's /voice.js?v= tag
+  const VERSION = 4;      // keep in step with index.html's /voice.js?v= tag
   const PORT = 8788;
   console.log('[mirai-voice] v' + VERSION + ' loaded');
   const V = {
@@ -144,6 +144,19 @@
     }
     setState('connecting');
     try {
+      // no-mic machines (a bare Mac mini has NO built-in microphone) make
+      // Safari throw a misleading "Invalid constraint" — check for actual
+      // input hardware first and say the true reason (08-03 diagnosis)
+      try {
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        if (!devs.some(function (d) { return d.kind === 'audioinput'; })) {
+          V.err = 'no microphone on this machine — plug one in (USB mic, ' +
+                  'AirPods, iPhone continuity) or talk from the iPad/Air ' +
+                  'via the tailscale address';
+          console.warn('[mirai-voice]', V.err);
+          off(); emit(); return;
+        }
+      } catch (ee) { /* enumeration blocked — let getUserMedia speak */ }
       V._ctx = V._ctx || new (window.AudioContext || window.webkitAudioContext)();
       await V._ctx.resume();                       // the tap IS the unlock
       try {
