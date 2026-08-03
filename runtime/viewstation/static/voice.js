@@ -19,7 +19,9 @@
 (function () {
   'use strict';
 
+  const VERSION = 3;      // keep in step with index.html's /voice.js?v= tag
   const PORT = 8788;
+  console.log('[mirai-voice] v' + VERSION + ' loaded');
   const V = {
     state: 'off',          // off|unsupported|connecting|listening|thinking|speaking
     lastYou: '', lastMirai: '', lastTool: '', err: '',
@@ -148,14 +150,21 @@
         V._stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true } });
       } catch (ce) {
-        // Safari: "Invalid constraint" (OverconstrainedError) on audio
-        // constraint dictionaries — retry with the plainest possible ask;
-        // EC/NS are on by default there anyway
-        if (ce && (ce.name === 'OverconstrainedError' ||
-                   String(ce.message || '').match(/constraint/i))) {
-          console.warn('[mirai-voice] constraints rejected, retrying plain audio');
+        // Safari rejects constraint dictionaries ("Invalid constraint" /
+        // OverconstrainedError). Retry with the plainest possible ask for
+        // ANYTHING except an explicit permission denial — EC/NS are browser
+        // defaults anyway. If the plain ask fails too, the error message is
+        // version-stamped so a stale cached voice.js can never masquerade
+        // as this code.
+        if (ce && String(ce.name || '').match(/NotAllowed|Security/i)) throw ce;
+        console.warn('[mirai-voice] constrained ask failed (' +
+                     (ce && ce.name) + '), retrying plain {audio:true}');
+        try {
           V._stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } else { throw ce; }
+        } catch (pe) {
+          pe._plainRetryFailed = true;
+          throw pe;
+        }
       }
       V._ws = (V._ws && V._ws.readyState <= 1) ? V._ws : connect();
       await new Promise(function (res, rej) {
@@ -178,11 +187,18 @@
       setState('listening');
     } catch (e) {
       V.err = String(e && e.message || e);
-      if (V.err.match(/denied|permission|NotAllowed/i)) {
-        V.err = 'mic permission denied — allow it in the address-bar mic icon';
+      if ((e && String(e.name || '').match(/NotAllowed|Security/i)) ||
+          V.err.match(/denied|permission/i)) {
+        V.err = 'mic permission denied — check the address-bar mic icon AND ' +
+                'System Settings › Privacy › Microphone for this browser';
+      } else if (e && e._plainRetryFailed) {
+        V.err = 'v' + VERSION + ': mic failed even with a plain request — ' +
+                (e.name || '') + ': ' + (e.message || e);
       } else if (V.err.match(/WebSocket|error/i) &&
                  (!V._ws || V._ws.readyState > 1)) {
-        V.err = 'voice sidecar not reachable on :8788 — is the service up?';
+        V.err = 'voice sidecar not reachable — is the service up?';
+      } else {
+        V.err = 'v' + VERSION + ': ' + V.err;
       }
       console.warn('[mirai-voice] start failed:', V.err, e);
       off(); setState(V.err.match(/denied|permission/i) ? 'unsupported' : 'off');
@@ -219,7 +235,8 @@
     },
     toggle: function () { (micOn() || V.state === 'connecting') ? off() : on(); },
     debug: function () {   // paste MiraiVoice.debug() in the console when stuck
-      return { state: V.state, err: V.err, secure: window.isSecureContext,
+      return { version: VERSION, state: V.state, err: V.err,
+               secure: window.isSecureContext,
                host: location.hostname,
                mediaDevices: !!navigator.mediaDevices,
                ws: V._ws ? V._ws.readyState : 'none',

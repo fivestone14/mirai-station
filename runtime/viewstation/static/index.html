@@ -1936,7 +1936,9 @@
 
 <div class="modal" id="modal" aria-hidden="true"></div>
 
-<script src="/voice.js"></script>
+<script src="/voice.js?v=3"></script><!-- bump ?v= on every voice.js change: the
+  stdlib server sends no cache headers, and a stale cached voice.js resurrects
+  already-fixed bugs (the 08-03 "Invalid constraint" ghost) -->
 <script>
 "use strict";
 /* ============================================================
