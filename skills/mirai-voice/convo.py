@@ -1,0 +1,360 @@
+"""mirai-voice :: convo — the persistent spoken conversation with Claude.
+
+One `ClaudeSDKClient` session per trading day, held open so a turn costs no
+CLI spawn (the repo's one-shot `claude -p` calls run 7–100 s wall; a held
+session streams first tokens in well under a second). Auth is the Claude
+subscription via the CLI credential chain — this process scrubs
+ANTHROPIC_API_KEY so a stray exported key can never silently take over
+billing (env.sh:22-24 is the policy; the SDK honors the same precedence).
+
+Scene discipline: every user turn MAY open with a <scene> block — the same
+unbiased snapshot the reading model gets (reused verbatim from
+sndk_read.build_scene, never reimplemented). Anti-bloat rule: the full scene
+rides only when it is stale (>120 s) or materially changed (spot >0.25σ,
+regime flip, new top magnet strike); otherwise a one-liner. The doctrine
+never repeats — it lives in the appended system prompt.
+
+Tool surface: exactly sndk_read's grant — the RAG CLI plus WebSearch,
+everything else denied (see sndk_read.py:159-166 for the precedent and
+_NO_TOOLS for the deny list). Default permission mode, never bypass.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+# a stray exported key would outrank the subscription profile — scrub before
+# the SDK ever spawns the CLI
+os.environ.pop("ANTHROPIC_API_KEY", None)
+
+_SKILL_DIR = Path(__file__).resolve().parent
+_ROOT = _SKILL_DIR.parent.parent
+_SNDK_PRO = str(_SKILL_DIR.parent / "sndk-pro")
+if _SNDK_PRO not in sys.path:
+    sys.path.insert(0, _SNDK_PRO)
+
+import sndk_read as _sr                # noqa: E402 — scene builder, reused not rebuilt
+import atomic_io                       # noqa: E402 — via the left-eye path sndk_read inserts
+
+from doctrine import VOICE_DOCTRINE    # noqa: E402
+
+PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protection)
+TURN_TIMEOUT_S = 100.0                 # mirrors sndk_read.CALL_TIMEOUT_S
+MAX_TURNS = 8                          # tool-loop bound inside one user turn
+_SCENE_FRESH_S = 120.0
+_SCENE_SPOT_SIGMA = 0.25
+
+_RAG_CMD = f"{sys.executable} {Path(_SNDK_PRO) / 'sndk_rag.py'}"
+_ALLOWED_TOOLS = (f"Bash({_RAG_CMD}:*)", "WebSearch")
+_NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
+             "Grep", "WebFetch", "Task", "Agent", "TodoWrite", "ExitPlanMode",
+             "BashOutput", "KillShell", "SlashCommand", "Skill")
+
+# transient-failure detector, kept in sync with runtime/watch/claude_cli.py:27
+_RATE_LIMIT_RE = re.compile(
+    r"(rate.?limit|429|too\s+many\s+requests|usage\s+limit|quota|please\s+wait)",
+    re.IGNORECASE)
+
+_STATE_DIR = Path(os.environ.get("MIRAI_STATE_DIR",
+                                 _ROOT / "state")) / "voice"
+_SESSION_FILE = _STATE_DIR / "session.json"
+
+SPOKEN_TIMEOUT = "That one timed out on me. Ask again."
+SPOKEN_RATELIMIT = "I've hit the usage limit. Give me a few minutes."
+SPOKEN_ERROR = "Something broke on my end. It's logged. Try once more."
+
+
+# ---------------------------------------------------------------------------
+# sentence chunking — deltas in, speakable sentences out
+# ---------------------------------------------------------------------------
+_BOUNDARY = re.compile(r"[.!?;](?=\s|$)")
+_DIGIT_DOT = re.compile(r"\d\.\d")
+
+
+class SentenceChunker:
+    def __init__(self) -> None:
+        self._buf = ""
+        self._first = True
+
+    def feed(self, delta: str) -> list[str]:
+        self._buf += delta
+        out: list[str] = []
+        while True:
+            cut = self._cut_at()
+            if cut is None:
+                break
+            out.append(self._buf[:cut].strip())
+            self._buf = self._buf[cut:].lstrip()
+            self._first = False
+        return [s for s in out if s]
+
+    def _cut_at(self) -> int | None:
+        for m in _BOUNDARY.finditer(self._buf):
+            end = m.end()
+            if end < 25:
+                continue
+            around = self._buf[max(0, m.start() - 1):m.start() + 2]
+            if _DIGIT_DOT.search(around):
+                continue
+            return end
+        # first chunk may break on a comma to cut perceived latency
+        if self._first:
+            c = self._buf.find(",", 40)
+            if c != -1:
+                return c + 1
+        if len(self._buf) >= 250:
+            sp = self._buf.rfind(" ", 0, 250)
+            return sp if sp > 0 else 250
+        return None
+
+    def flush(self) -> str | None:
+        s, self._buf, self._first = self._buf.strip(), "", True
+        return s or None
+
+
+# ---------------------------------------------------------------------------
+# the scene block — reused from the reader, with the reader's own line added
+# ---------------------------------------------------------------------------
+def _load_rows(day: str) -> list[dict]:
+    rows = [r for r in _sr._read_jsonl(_sr._diary_dir() / f"{day}.jsonl")
+            if r.get("ticker") == "SNDK"
+            and not (r.get("meta") or {}).get("forced")]
+    return rows
+
+
+def _latest_read(day: str) -> dict | None:
+    reads = [r for r in _sr._read_jsonl(_sr._reads_dir() / f"{day}.jsonl")
+             if r.get("era") == _sr.ERA]
+    return reads[-1] if reads else None
+
+
+def build_voice_scene(now: datetime | None = None) -> dict | None:
+    """The reader's exact scene + a reader_line block. None when no tape."""
+    now = now or datetime.now(_sr._ET)
+    day = now.date().isoformat()
+    rows = _load_rows(day)
+    if not rows:
+        return None
+    row = _sr.with_path(rows[-1], rows)
+    band = _sr.magnet_band(row)
+    frozen = _sr.frozen_fields(rows, now)
+    scene = _sr.build_scene(row, band, frozen, rows, now)
+    read = _latest_read(day)
+    if read:
+        r = read.get("reading") or {}
+        reader = {
+            "line": r.get("line"),
+            "vector": r.get("vector"),
+            "age_min": read.get("reading_age_min"),
+            "arrow": (read.get("arrow") or {}).get("dir") or "silent",
+        }
+        if read.get("paused"):
+            reader["paused"] = True
+        why = (read.get("arrow") or {}).get("silent_because")
+        if why:
+            reader["arrow_silent_because"] = why
+        scene["reader_line"] = {k: v for k, v in reader.items()
+                               if v is not None}
+    return scene
+
+
+class _SceneGate:
+    """Full scene only when stale or materially moved; else a one-liner."""
+
+    def __init__(self) -> None:
+        self._t = 0.0
+        self._spot: float | None = None
+        self._sig: dict = {}
+
+    def block(self, now: datetime) -> str:
+        scene = build_voice_scene(now)
+        stamp = now.strftime("%H:%M ET")
+        if scene is None:
+            return (f'<scene ts="{stamp}">no SNDK diary rows yet today — '
+                    f'the tape has not started</scene>')
+        spot = (scene.get("price") or {}).get("now")
+        sig = {
+            "regime": (scene.get("regime") or {}).get("gamma_sign"),
+            "magnet": ((scene.get("magnet") or {}).get("top_strikes")
+                       or [[None]])[0][0],
+        }
+        one_sigma = (scene.get("scale") or {}).get("one_sigma_dollars") or 0
+        moved = (self._spot is not None and spot is not None and one_sigma
+                 and abs(spot - self._spot) / one_sigma >= _SCENE_SPOT_SIGMA)
+        fresh = (time.monotonic() - self._t) < _SCENE_FRESH_S
+        if fresh and not moved and sig == self._sig:
+            return (f'<scene ts="{stamp}">unchanged since last turn; '
+                    f'spot {spot}</scene>')
+        self._t, self._spot, self._sig = time.monotonic(), spot, sig
+        return (f'<scene ts="{stamp}">\n'
+                + json.dumps(scene, default=str) + "\n</scene>")
+
+
+# ---------------------------------------------------------------------------
+# the session
+# ---------------------------------------------------------------------------
+class VoiceSession:
+    """Lazy, day-scoped, restart-resumable. `ask()` yields:
+    ("sentence", str) · ("tool", str) · ("error", spoken) · ("done", dict)."""
+
+    def __init__(self) -> None:
+        self._client = None
+        self._day: str | None = None
+        self._gate = _SceneGate()
+        self._lock = asyncio.Lock()
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # -- lifecycle ----------------------------------------------------------
+    def _options(self, resume: str | None):
+        from claude_agent_sdk import ClaudeAgentOptions
+        return ClaudeAgentOptions(
+            model=PINNED_MODEL,
+            system_prompt={"type": "preset", "preset": "claude_code",
+                           "append": VOICE_DOCTRINE},
+            allowed_tools=list(_ALLOWED_TOOLS),
+            disallowed_tools=list(_NO_TOOLS),
+            mcp_servers={},
+            strict_mcp_config=True,
+            max_turns=MAX_TURNS,
+            cwd=str(_ROOT),
+            include_partial_messages=True,
+            resume=resume,
+        )
+
+    async def _ensure(self) -> None:
+        from claude_agent_sdk import ClaudeSDKClient
+        today = datetime.now(_sr._ET).date().isoformat()
+        if self._client is not None and self._day == today:
+            return
+        if self._client is not None:
+            await self._disconnect()
+        resume = None
+        try:
+            saved = json.loads(_SESSION_FILE.read_text())
+            if saved.get("date") == today:
+                resume = saved.get("session_id")
+        except Exception:
+            pass
+        self._client = ClaudeSDKClient(options=self._options(resume))
+        await self._client.connect()
+        self._day = today
+
+    async def _disconnect(self) -> None:
+        try:
+            await self._client.disconnect()
+        except Exception:
+            pass
+        self._client = None
+
+    async def reset(self) -> None:
+        async with self._lock:
+            if self._client is not None:
+                await self._disconnect()
+            _SESSION_FILE.unlink(missing_ok=True)
+            self._day = None
+
+    # -- one spoken turn ----------------------------------------------------
+    async def ask(self, transcript: str):
+        async with self._lock:
+            try:
+                await self._ensure()
+            except Exception as e:
+                yield ("error", SPOKEN_ERROR)
+                self._log({"event": "connect_error", "detail": repr(e)})
+                return
+
+            now = datetime.now(_sr._ET)
+            prompt = self._gate.block(now) + "\n\n" + transcript
+            chunker = SentenceChunker()
+            spoken: list[str] = []
+            info: dict = {}
+            try:
+                async with asyncio.timeout(TURN_TIMEOUT_S):
+                    await self._client.query(prompt)
+                    async for msg in self._client.receive_response():
+                        for kind, payload in self._digest(msg, chunker, info):
+                            if kind == "sentence":
+                                spoken.append(payload)
+                            yield (kind, payload)
+                tail = chunker.flush()
+                if tail:
+                    spoken.append(tail)
+                    yield ("sentence", tail)
+            except TimeoutError:
+                await self._interrupt_drain()
+                yield ("error", SPOKEN_TIMEOUT)
+                info["timeout"] = True
+            except Exception as e:
+                detail = repr(e)
+                if _RATE_LIMIT_RE.search(detail):
+                    yield ("error", SPOKEN_RATELIMIT)
+                else:
+                    yield ("error", SPOKEN_ERROR)
+                    await self._disconnect()   # unknown state → rebuild lazily
+                info["exception"] = detail
+
+            self._log({"ts": now.isoformat(), "heard": transcript,
+                       "spoke": spoken, **info})
+            yield ("done", info)
+
+    def _digest(self, msg, chunker: SentenceChunker, info: dict):
+        """One SDK message → zero or more (kind, payload) events."""
+        from claude_agent_sdk import (AssistantMessage, ResultMessage,
+                                      StreamEvent, ToolUseBlock)
+        out: list[tuple[str, str | dict]] = []
+        if isinstance(msg, StreamEvent):
+            ev = msg.event or {}
+            if ev.get("type") == "content_block_delta":
+                delta = ev.get("delta") or {}
+                if delta.get("type") == "text_delta":
+                    for s in chunker.feed(delta.get("text", "")):
+                        out.append(("sentence", s))
+            elif ev.get("type") == "content_block_start":
+                block = ev.get("content_block") or {}
+                if block.get("type") == "tool_use":
+                    out.append(("tool", block.get("name", "tool")))
+        elif isinstance(msg, AssistantMessage):
+            for block in msg.content:
+                if isinstance(block, ToolUseBlock):
+                    info.setdefault("tools", []).append(block.name)
+        elif isinstance(msg, ResultMessage):
+            info["session_id"] = msg.session_id
+            info["is_error"] = msg.is_error
+            if msg.total_cost_usd is not None:
+                info["cost_usd"] = msg.total_cost_usd
+            if msg.is_error and msg.result and \
+                    _RATE_LIMIT_RE.search(str(msg.result)):
+                out.append(("error", SPOKEN_RATELIMIT))
+            self._persist(msg.session_id)
+        return out
+
+    async def _interrupt_drain(self) -> None:
+        try:
+            await self._client.interrupt()
+            async for _ in self._client.receive_response():
+                pass
+        except Exception:
+            await self._disconnect()
+
+    # -- bookkeeping --------------------------------------------------------
+    def _persist(self, session_id: str | None) -> None:
+        if not session_id or not self._day:
+            return
+        try:
+            _SESSION_FILE.write_text(json.dumps(
+                {"date": self._day, "session_id": session_id}))
+        except Exception:
+            pass
+
+    def _log(self, rec: dict) -> None:
+        try:
+            day = datetime.now(_sr._ET).date().isoformat()
+            atomic_io.append_jsonl(_STATE_DIR / f"convo-{day}.jsonl", rec)
+        except Exception:
+            pass
