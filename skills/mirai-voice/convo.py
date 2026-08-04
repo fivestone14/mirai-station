@@ -46,6 +46,9 @@ from doctrine import VOICE_DOCTRINE    # noqa: E402
 
 PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protection)
 TURN_TIMEOUT_S = 100.0                 # mirrors sndk_read.CALL_TIMEOUT_S
+CONNECT_TIMEOUT_S = 30.0               # session connect/resume — a wedged resume
+                                       # must fail loud, never hang the lock (08-03)
+LOCK_WAIT_S = 20.0                     # a stuck prior turn speaks, never starves
 MAX_TURNS = 8                          # tool-loop bound inside one user turn
 _SCENE_FRESH_S = 120.0
 _SCENE_SPOT_SIGMA = 0.25
@@ -68,6 +71,7 @@ _SESSION_FILE = _STATE_DIR / "session.json"
 SPOKEN_TIMEOUT = "That one timed out on me. Ask again."
 SPOKEN_RATELIMIT = "I've hit the usage limit. Give me a few minutes."
 SPOKEN_ERROR = "Something broke on my end. It's logged. Try once more."
+SPOKEN_BUSY = "Still chewing on the last one. Give me a second, then ask again."
 
 
 # ---------------------------------------------------------------------------
@@ -78,9 +82,14 @@ _DIGIT_DOT = re.compile(r"\d\.\d")
 
 
 class SentenceChunker:
+    """Whole sentences only. The old first-chunk-at-a-comma rule bought ~a
+    second of perceived latency and paid for it in choppy delivery — comma
+    fragments synthesized as separate utterances with dead air at the seams
+    (user report 08-03: "talks then breaks then talks"). Flow beats snap:
+    the speak-ahead queue in voice_server now hides the latency instead."""
+
     def __init__(self) -> None:
         self._buf = ""
-        self._first = True
 
     def feed(self, delta: str) -> list[str]:
         self._buf += delta
@@ -91,7 +100,6 @@ class SentenceChunker:
                 break
             out.append(self._buf[:cut].strip())
             self._buf = self._buf[cut:].lstrip()
-            self._first = False
         return [s for s in out if s]
 
     def _cut_at(self) -> int | None:
@@ -103,18 +111,13 @@ class SentenceChunker:
             if _DIGIT_DOT.search(around):
                 continue
             return end
-        # first chunk may break on a comma to cut perceived latency
-        if self._first:
-            c = self._buf.find(",", 40)
-            if c != -1:
-                return c + 1
         if len(self._buf) >= 250:
             sp = self._buf.rfind(" ", 0, 250)
             return sp if sp > 0 else 250
         return None
 
     def flush(self) -> str | None:
-        s, self._buf, self._first = self._buf.strip(), "", True
+        s, self._buf = self._buf.strip(), ""
         return s or None
 
 
@@ -241,8 +244,24 @@ class VoiceSession:
                 resume = saved.get("session_id")
         except Exception:
             pass
-        self._client = ClaudeSDKClient(options=self._options(resume))
-        await self._client.connect()
+        # Connect is bounded, and a wedged RESUME is not fatal: burn the
+        # session file and start fresh rather than hang the whole desk.
+        # (08-03: a service restart orphaned the CLI child; the new process's
+        # resume then hung forever inside connect, silently starving every
+        # later question behind the turn lock.)
+        try:
+            self._client = ClaudeSDKClient(options=self._options(resume))
+            async with asyncio.timeout(CONNECT_TIMEOUT_S):
+                await self._client.connect()
+        except Exception as e:
+            await self._disconnect()
+            if resume is None:
+                raise
+            self._log({"event": "resume_failed_going_fresh", "detail": repr(e)})
+            _SESSION_FILE.unlink(missing_ok=True)
+            self._client = ClaudeSDKClient(options=self._options(None))
+            async with asyncio.timeout(CONNECT_TIMEOUT_S):
+                await self._client.connect()
         self._day = today
 
     async def _disconnect(self) -> None:
@@ -259,14 +278,37 @@ class VoiceSession:
             _SESSION_FILE.unlink(missing_ok=True)
             self._day = None
 
+    async def close(self) -> None:
+        """Shutdown path: hang up the CLI child cleanly, KEEP the session
+        file — the next boot resumes the day's conversation."""
+        if self._client is not None:
+            await self._disconnect()
+
     # -- one spoken turn ----------------------------------------------------
     async def ask(self, transcript: str):
-        async with self._lock:
+        """Yields ("sentence"|"tool"|"error"|"done", payload).
+
+        Discipline learned 08-03: the lock is acquired with a deadline (a
+        stuck prior turn SPEAKS instead of starving you), and abandonment is
+        first-class — when the consumer aclose()es us mid-stream (barge-in),
+        the GeneratorExit path interrupts the model and drains the transport
+        WHILE STILL HOLDING THE LOCK, so the next turn meets a clean session,
+        never a wedged one."""
+        try:
+            async with asyncio.timeout(LOCK_WAIT_S):
+                await self._lock.acquire()
+        except TimeoutError:
+            yield ("error", SPOKEN_BUSY)
+            self._log({"event": "lock_starved", "heard": transcript})
+            yield ("done", {"lock_starved": True})
+            return
+        try:
             try:
                 await self._ensure()
             except Exception as e:
                 yield ("error", SPOKEN_ERROR)
                 self._log({"event": "connect_error", "detail": repr(e)})
+                yield ("done", {"connect_error": True})
                 return
 
             now = datetime.now(_sr._ET)
@@ -274,18 +316,29 @@ class VoiceSession:
             chunker = SentenceChunker()
             spoken: list[str] = []
             info: dict = {}
+            mid_stream = False
             try:
                 async with asyncio.timeout(TURN_TIMEOUT_S):
                     await self._client.query(prompt)
+                    mid_stream = True
                     async for msg in self._client.receive_response():
                         for kind, payload in self._digest(msg, chunker, info):
                             if kind == "sentence":
                                 spoken.append(payload)
                             yield (kind, payload)
+                    mid_stream = False
                 tail = chunker.flush()
                 if tail:
                     spoken.append(tail)
                     yield ("sentence", tail)
+            except GeneratorExit:
+                # consumer walked away (barge-in / socket died) — clean the
+                # session up under the lock, then let aclose complete
+                if mid_stream:
+                    await self._interrupt_drain()
+                self._log({"ts": now.isoformat(), "heard": transcript,
+                           "spoke": spoken, "abandoned": True, **info})
+                raise
             except TimeoutError:
                 await self._interrupt_drain()
                 yield ("error", SPOKEN_TIMEOUT)
@@ -302,6 +355,8 @@ class VoiceSession:
             self._log({"ts": now.isoformat(), "heard": transcript,
                        "spoke": spoken, **info})
             yield ("done", info)
+        finally:
+            self._lock.release()
 
     def _digest(self, msg, chunker: SentenceChunker, info: dict):
         """One SDK message → zero or more (kind, payload) events."""
@@ -333,6 +388,16 @@ class VoiceSession:
                 out.append(("error", SPOKEN_RATELIMIT))
             self._persist(msg.session_id)
         return out
+
+    async def interrupt_now(self) -> None:
+        """Fire-and-forget interrupt from OUTSIDE the turn (barge-in): a pure
+        control write, safe alongside the streaming reader. The drain stays
+        with the generator that holds the lock — never two readers."""
+        try:
+            if self._client is not None:
+                await self._client.interrupt()
+        except Exception:
+            pass
 
     async def _interrupt_drain(self) -> None:
         try:

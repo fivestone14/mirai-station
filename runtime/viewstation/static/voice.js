@@ -19,7 +19,10 @@
 (function () {
   'use strict';
 
-  const VERSION = 5;      // keep in step with index.html's /voice.js?v= tag
+  const VERSION = 6;      // keep in step with index.html's /voice.js?v= tag
+  const PREBUFFER_MS = 600; // hold the first utterance this long (or until a
+                            // second one lands / turn_end) so playback starts
+                            // with runway instead of running dry at each seam
   const PORT = 8788;
   console.log('[mirai-voice] v' + VERSION + ' loaded');
   const V = {
@@ -27,8 +30,25 @@
     lastYou: '', lastMirai: '', lastTool: '', err: '',
     _ws: null, _ctx: null, _stream: null, _proc: null, _src: null,
     _playQ: [], _playing: null, _rate: 24000, _pcm: [], _inAudio: false,
-    _amp: 0, _raf: 0,
+    _amp: 0, _raf: 0, _preT: null, _firstUtt: true,
   };
+
+  // prebuffer gate: first utterance of a turn waits PREBUFFER_MS (or a second
+  // utterance, or turn_end — whichever first) before playback starts
+  function maybePlay() {
+    if (V._playing || !V._playQ.length) return;
+    if (V._firstUtt && V._playQ.length === 1) {
+      if (!V._preT) {
+        V._preT = setTimeout(function () {
+          V._preT = null; V._firstUtt = false; playNext();
+        }, PREBUFFER_MS);
+      }
+      return;
+    }
+    if (V._preT) { clearTimeout(V._preT); V._preT = null; }
+    V._firstUtt = false;
+    playNext();
+  }
 
   function emit() { document.dispatchEvent(new CustomEvent('mirai-voice')); }
   function setState(s) { if (V.state !== s) { V.state = s; emit(); } }
@@ -54,6 +74,7 @@
   }
   function stopPlayback() {
     V._playQ.length = 0;
+    if (V._preT) { clearTimeout(V._preT); V._preT = null; }
     if (V._playing) { try { V._playing.stop(); } catch (e) {} V._playing = null; }
   }
   function chime(freq) {
@@ -90,6 +111,8 @@
       }
       if (m.type === 'final') {
         V.lastYou = m.text; V.lastMirai = ''; V.lastTool = '';
+        V._firstUtt = true;                       // new turn → re-arm prebuffer
+        if (V._preT) { clearTimeout(V._preT); V._preT = null; }
         setState('thinking'); emit();
       } else if (m.type === 'sentence') {
         V.lastMirai = (V.lastMirai ? V.lastMirai + ' ' : '') + m.text; emit();
@@ -104,8 +127,12 @@
         const all = new Int16Array(n); let off = 0;
         V._pcm.forEach(function (c) { all.set(c, off); off += c.length; });
         V._pcm = [];
-        if (all.length) { V._playQ.push({ pcm: all, rate: V._rate }); playNext(); }
+        if (all.length) { V._playQ.push({ pcm: all, rate: V._rate }); maybePlay(); }
       } else if (m.type === 'turn_end') {
+        // audio tail already delivered (server sends turn_end last): flush the
+        // prebuffer gate so a one-sentence answer never sits on its timer
+        if (V._preT) { clearTimeout(V._preT); V._preT = null; }
+        V._firstUtt = false; maybePlay();
         V.lastTool = ''; if (V.state === 'thinking') setState('listening');
         emit();
       } else if (m.type === 'timeout') {

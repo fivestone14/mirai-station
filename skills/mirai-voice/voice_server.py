@@ -71,6 +71,7 @@ class Conn:
         self.utt = 0
         self.turn_task: asyncio.Task | None = None
         self.cancel_flag = asyncio.Event()
+        self._tts_q: asyncio.Queue | None = None
         from silero_vad import VADIterator, load_silero_vad
         self._vad = VADIterator(load_silero_vad(), sampling_rate=SAMPLE_RATE,
                                 min_silence_duration_ms=500, speech_pad_ms=100)
@@ -130,35 +131,57 @@ class Conn:
         self.turn_task = asyncio.create_task(self._turn(text))
 
     async def _turn(self, text: str) -> None:
+        """Producer/consumer, NOT serial (08-03 stutter fix): sentences from
+        the model land in a queue the moment they stream in; a speak-ahead
+        worker synthesizes the NEXT sentence while the browser is still
+        playing the current one. The old inline await serialized model →
+        synth → send per sentence, so every boundary gaped by Claude-time +
+        Kokoro-time — heard as "talks, breaks, talks"."""
         loop = asyncio.get_running_loop()
         cancel = self.cancel_flag
+        q: asyncio.Queue = asyncio.Queue()
+        self._tts_q = q
+
+        async def speak_ahead() -> None:
+            while True:
+                item = await q.get()
+                if item is None or cancel.is_set():
+                    return
+                u, sent = item
+                sp = await loop.run_in_executor(_tts_pool, _mouth.speak, sent)
+                if cancel.is_set():
+                    return
+                if sp.pcm16:
+                    await self.ws.send(_j(type="audio_start", utt=u,
+                                          rate=sp.rate))
+                    await self.ws.send(sp.pcm16)
+                    await self.ws.send(_j(type="audio_end", utt=u,
+                                          cancelled=False))
+
+        speaker = asyncio.create_task(speak_ahead())
+        done_info: dict = {}
+        agen = _session.ask(text)
         try:
-            async for kind, payload in _session.ask(text):
+            async for kind, payload in agen:
                 if cancel.is_set():
                     break
                 if kind in ("sentence", "error"):
                     self.utt += 1
-                    u = self.utt
-                    await self.ws.send(_j(type="sentence", utt=u,
+                    await self.ws.send(_j(type="sentence", utt=self.utt,
                                           text=str(payload),
                                           err=(kind == "error")))
-                    sp = await loop.run_in_executor(
-                        _tts_pool, _mouth.speak, str(payload))
-                    if cancel.is_set():
-                        break
-                    if sp.pcm16:
-                        await self.ws.send(_j(type="audio_start", utt=u,
-                                              rate=sp.rate))
-                        await self.ws.send(sp.pcm16)
-                        await self.ws.send(_j(type="audio_end", utt=u,
-                                              cancelled=False))
+                    q.put_nowait((self.utt, str(payload)))
                 elif kind == "tool":
                     await self.ws.send(_j(type="tool", name=str(payload)))
                 elif kind == "done":
-                    await self.ws.send(_j(type="turn_end",
-                                          **{k: v for k, v in
-                                             (payload or {}).items()
-                                             if k in ("cost_usd", "tools")}))
+                    done_info = payload or {}
+            q.put_nowait(None)
+            await speaker
+            # turn_end AFTER the audio tail: the client uses it to flush its
+            # prebuffer gate and flip back to listening
+            await self.ws.send(_j(type="turn_end",
+                                  **{k: v for k, v in done_info.items()
+                                     if k in ("cost_usd", "tools")}))
         except websockets.ConnectionClosed:
             pass
         except Exception as e:
@@ -166,18 +189,34 @@ class Conn:
                 await self.ws.send(_j(type="error", text=repr(e)))
             except Exception:
                 pass
+        finally:
+            # DETERMINISTIC teardown (08-03 hang fix): a bare `break` leaves
+            # an async generator suspended INSIDE the session lock until GC
+            # gets around to it — every later question then starves silently.
+            # aclose() runs convo's GeneratorExit path now: interrupt, drain,
+            # release, done. Shielded so a task cancellation can't abort the
+            # cleanup halfway and leak the lock anyway.
+            try:
+                await asyncio.shield(agen.aclose())
+            except (asyncio.CancelledError, Exception):
+                pass
+            if not speaker.done():
+                speaker.cancel()
+            self._tts_q = None
 
     async def _barge_in(self) -> None:
         self.cancel_flag.set()
+        if self._tts_q is not None:            # unblock a parked speak-ahead worker
+            self._tts_q.put_nowait(None)
         try:
             await self.ws.send(_j(type="audio_end", utt=self.utt,
                                   cancelled=True))
         except Exception:
             pass
-        try:
-            await _session._interrupt_drain()
-        except Exception:
-            pass
+        # control-write only — the DRAIN belongs to the turn generator that
+        # holds the session lock (its aclose path). Two concurrent readers on
+        # one stream was part of the 08-03 wedge.
+        asyncio.create_task(_session.interrupt_now())
 
     async def _mic_off(self, timeout: bool = False) -> None:
         self.mic_on = False
@@ -251,6 +290,9 @@ async def main() -> None:
     async with websockets.serve(_handler, "0.0.0.0", PORT, max_size=2 ** 22):
         print(f"mirai-voice :: listening on :{PORT}")
         await stop.wait()
+    # hang up the CLI child properly — an orphaned child from a hard exit is
+    # what wedged the next boot's session resume (08-03)
+    await _session.close()
     print("mirai-voice :: stopped")
 
 

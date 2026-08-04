@@ -36,7 +36,11 @@
     <string>8788</string>
   </dict>
 
+  <!-- Interactive, NOT Background (08-03): Background QoS throttles CPU/GPU —
+       measured 7-11s per Kokoro sentence and 6x slower Parakeet under it,
+       vs ~1s / 157ms unthrottled. A realtime voice engine is the one job in
+       this fleet that must never nap. -->
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
 </dict>
 </plist>
