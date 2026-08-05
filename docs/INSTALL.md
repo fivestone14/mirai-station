@@ -59,24 +59,34 @@ Or `git clone` if you've put it in a private repo.
 
 The runtime reads all secrets from the macOS Keychain at run time, never from
 files. There is **no** Anthropic API key — the model calls go through a `claude -p`
-subscription. The alert channel (ntfy) has no key either: its topic is set in
-`runtime/watch/config/limits-and-cooldowns.json` (see §6). What goes in the
-Keychain is the market-data credentials:
+subscription. The ntfy topic **is** a secret and lives in the Keychain too (§6).
+What goes in the Keychain is that, plus the market-data credentials:
 
 ```bash
-# Schwab credentials (mirror the names the iv-viability vault uses)
-security add-generic-password -a "$USER" -s "mirai-station/schwab-app-key"     -w "…"
-security add-generic-password -a "$USER" -s "mirai-station/schwab-app-secret"  -w "…"
-security add-generic-password -a "$USER" -s "mirai-station/schwab-token-path"  -w "$HOME/.local/share/mirai-station/schwab-token.json"
+PY=~/.local/share/mirai-station/venv/bin/python
+
+# ntfy topic — the alert channel's only credential (§6). Generated in place, so
+# the value never lands in a file or your shell history.
+security add-generic-password -U -a "$USER" -s "mirai-station-ntfy" \
+  -w "mirai-$(openssl rand -hex 16)"
+
+# Schwab — interactive enrollment. Do NOT add these by hand: the vault writes
+# through `keyring`, which pairs service `iv-viability-schwab` with the accounts
+# api_key / app_secret / callback_url / fernet_key, and it mints the Fernet key
+# that encrypts the token file. A hand-added entry lands under the wrong account
+# and the vault never finds it.
+$PY skills/iv-viability/iv_fetcher.py --setup
 
 # ThetaData / Cassandra's Edge bearer — the native SPX chain (primary GEX source).
-# Stored under the service name the iv-viability vault reads (vault.CASS_SERVICE).
-security add-generic-password -a "$USER" -s "iv-viability-cassandra"           -w "<bearer-token>"
+# Service iv-viability-cassandra, account cassandra_edge_token.
+$PY skills/mirai-left-eye/native_gex_feed.py --setup
 ```
 
 Test retrieval:
 ```bash
-security find-generic-password -a "$USER" -s "iv-viability-cassandra" -w
+security find-generic-password -a "$USER" -s "mirai-station-ntfy" -w
+$PY -c "import sys; sys.path.insert(0,'skills/iv-viability'); import vault; \
+        print('schwab:', vault.has_credentials(), '| cassandra:', vault.has_cassandra_token())"
 ```
 
 ## 4. Provision the Python venv
@@ -117,12 +127,36 @@ claude -p --model haiku \
 ## 6. Phone alerts (ntfy)
 
 The only push channel is **ntfy** (the old Discord webhook path was removed
-2026-07). It needs no account and no Keychain entry — just a long, unguessable
-topic name shared between the mini and your phone.
+2026-07). It needs no account — but it is **unauthenticated pub/sub, so the topic
+name IS the credential**: anyone holding it can read every alert this station
+sends and publish fakes into it. Treat it like a password.
 
-1. Pick a topic, e.g. `mirai-station-<random>`.
-2. Set it in `runtime/watch/config/limits-and-cooldowns.json` under the `ntfy` block.
-3. Install the **ntfy** app on your phone and subscribe to that same topic.
+1. Generate one straight into the Keychain — the value never touches a file or
+   your shell history:
+
+   ```bash
+   security add-generic-password -U -a "$USER" -s "mirai-station-ntfy" \
+     -w "mirai-$(openssl rand -hex 16)"
+   ```
+
+2. Read it back once, to type into the phone:
+
+   ```bash
+   security find-generic-password -a "$USER" -s "mirai-station-ntfy" -w
+   ```
+
+3. Install the **ntfy** app on your phone and subscribe to that topic.
+
+`runtime/scripts/env.sh` exports it as `MIRAI_NTFY_TOPIC`, which
+`settings.ntfy_topic()` reads ahead of the config file. Every run wrapper sources
+`env.sh`, so all eleven agents pick it up.
+
+> **Never put the topic in `runtime/watch/config/limits-and-cooldowns.json`.**
+> That file is tracked by git — a topic written there is a secret published to the
+> repo and to every clone of its history. The `topic` key is deliberately left
+> empty; empty **and** no env var means log-only, which fails safe. (This is not
+> hypothetical: the original topic was committed that way and had to be rotated on
+> 2026-08-04.)
 
 Fresh paper fires, wall-breach mood re-dives, and EOD direction scoring push
 through it; every push intent is also logged to

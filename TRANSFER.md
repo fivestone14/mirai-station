@@ -49,18 +49,34 @@ cd ~/.claude/plugins/mirai-station
 
 ### 3. Populate Keychain secrets
 
-Model calls use a `claude -p` subscription (no Anthropic API key); alerts use ntfy
-(no key — just a topic in `runtime/watch/config/limits-and-cooldowns.json`). The
-Keychain holds only the market-data credentials:
+Model calls use a `claude -p` subscription (no Anthropic API key). Everything else
+is a Keychain entry — including the ntfy topic, which is unauthenticated pub/sub
+and therefore a credential in its own right:
 
 ```bash
-# Schwab credentials (SPY proxy, bars, quotes)
-security add-generic-password -a "$USER" -s "mirai-station/schwab-app-key"      -w "..."
-security add-generic-password -a "$USER" -s "mirai-station/schwab-app-secret"   -w "..."
-security add-generic-password -a "$USER" -s "mirai-station/schwab-refresh-token" -w "..."
+# ntfy topic — generated straight into the Keychain; never printed, never in a file.
+# NOT in limits-and-cooldowns.json: that file is tracked, and a topic written there
+# is a secret committed to the repo (see docs/INSTALL.md §6).
+security add-generic-password -U -a "$USER" -s "mirai-station-ntfy" \
+  -w "mirai-$(openssl rand -hex 16)"
+```
+
+The market-data credentials are **not** enrolled with `security` by hand — the
+`iv-viability` vault writes them through `keyring`, which pairs a *service* with an
+*account* name the vault expects, and it also mints a Fernet key to encrypt the
+token file. Hand-added entries land under the wrong account and the vault never
+sees them. Use the interactive setup paths:
+
+```bash
+PY=~/.local/share/mirai-station/venv/bin/python
+
+# Schwab — service iv-viability-schwab
+# (accounts: api_key, app_secret, callback_url, fernet_key)
+$PY skills/iv-viability/iv_fetcher.py --setup
 
 # ThetaData / Cassandra's Edge bearer — the native SPX chain (primary GEX source)
-security add-generic-password -a "$USER" -s "iv-viability-cassandra"            -w "<bearer-token>"
+# service iv-viability-cassandra, account cassandra_edge_token
+$PY skills/mirai-left-eye/native_gex_feed.py --setup
 ```
 
 Also copy the `mcpServers` block into the target's `~/.claude.json` (see INSTALL §5)

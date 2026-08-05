@@ -8,7 +8,7 @@
     "_hard_note": "Schwab's hard ceiling; the token is dead at/after this age. Do not raise \u2014 it just won't work."
   },
   "ntfy": {
-    "_about": "Push channel for alerts + the weekly re-auth ping. A plain HTTPS POST to a public ntfy topic; the topic name is the only secret, so make it long and unguessable. Leave 'topic' empty to log-only (no send). The env var MIRAI_NTFY_TOPIC overrides this value.",
+    "_about": "Push channel for alerts + the weekly re-auth ping. A plain HTTPS POST to a public ntfy topic. The topic name IS the credential — ntfy.sh is unauthenticated, so anyone holding it can read every alert and publish fakes. It therefore lives in Keychain (service 'mirai-station-ntfy'), exported as MIRAI_NTFY_TOPIC by runtime/scripts/env.sh, which wins over this value. KEEP 'topic' EMPTY HERE: this file is tracked, and a topic written here is a secret committed to the repo and to every future clone of its history. Empty + no env var = log-only, no send.",
     "topic": "",
     "server": "https://ntfy.sh",
     "_server_note": "Public relay by default; point at a self-hosted ntfy server if you run one."

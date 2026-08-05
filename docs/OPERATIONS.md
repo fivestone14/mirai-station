@@ -42,9 +42,31 @@ This bypasses launchd entirely; useful for debugging. (Or `mirai-watch tick --dr
 
 ## ntfy alert channel
 
-There is no key to rotate — ntfy uses a shared topic name, set in
-`runtime/watch/config/limits-and-cooldowns.json` (`ntfy` block). To change it,
-edit that file and re-subscribe the phone app to the new topic. No restart needed.
+ntfy has no API key, but the **topic name is the credential** — the channel is
+unauthenticated, so anyone holding it can read every alert and publish fakes. It
+lives in the Keychain under service `mirai-station-ntfy`, and
+`runtime/scripts/env.sh` exports it as `MIRAI_NTFY_TOPIC` (which beats the config
+file, whose `topic` key stays empty because that file is tracked).
+
+Rotate it — after any suspected exposure, and note that a topic that ever reached
+the repo is exposed permanently, since git history keeps it:
+
+```bash
+# 1. new topic, generated straight into the Keychain (never printed, never in a file)
+security add-generic-password -U -a "$USER" -s "mirai-station-ntfy" \
+  -w "mirai-$(openssl rand -hex 16)"
+
+# 2. read it once to re-subscribe the phone app
+security find-generic-password -a "$USER" -s "mirai-station-ntfy" -w
+
+# 3. the agents re-read env.sh on their next run — no restart needed, but to
+#    prove it end to end:
+./runtime/scripts/run-auth-check.sh
+```
+
+Until the phone is re-subscribed it receives nothing; the old topic keeps working
+for whoever else knows it, which is exactly why rotation is the fix rather than
+editing history.
 
 ## Market-data credential rotation
 
