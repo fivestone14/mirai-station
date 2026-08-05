@@ -44,7 +44,7 @@ Follow `docs/INSTALL.md` from §4 onward. The short version:
 ```bash
 cd ~/.claude/plugins/mirai-station
 ./runtime/scripts/venv-bootstrap.sh      # builds ~/.local/share/mirai-station/venv (schwab-py, scipy, …)
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 7-agent fleet
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 11-agent fleet
 ```
 
 ### 3. Populate Keychain secrets
@@ -73,7 +73,7 @@ so the morning macro brief can reach the Cassandra's Edge MCP servers.
 ./runtime/scripts/run-watch-left-eye.sh
 
 # Confirm the fleet is loaded:
-launchctl list | grep mirai-station      # all seven agents
+launchctl list | grep mirai-station      # all eleven agents
 
 # Tail today's diary:
 tail -f state/reversion/$(date +%Y-%m-%d).jsonl
@@ -89,21 +89,27 @@ mirai-station/
 ├── README.md                            ← what the system is (start here)
 ├── TRANSFER.md                          ← this file
 ├── skills/
-│   ├── mirai-left-eye/                  ← the brain: hunter · reversion_lens (3 heads) ·
+│   ├── mirai-left-eye/                  ← the SPX brain: hunter · reversion_lens (3 heads) ·
 │   │                                       lefteye_gex_box · native_gex_feed · watchtower ·
-│   │                                       gex_polarity_ab · uw_periscope · dashboard · …
+│   │                                       dated_gex_feed · gex_polarity_ab · uw_periscope · …
+│   ├── sndk-pro/                        ← the isolated SNDK station (beta, record-only)
+│   ├── mirai-voice/                     ← ears · mouth · the day-session conversation (:8788)
+│   ├── siege/                           ← effort-at-the-wall sensor (shadow)
 │   ├── lob-flow/                        ← Layer-2 order-book FLOW sensor (shadow)
 │   ├── iv-viability/                    ← per-contract IV gate + the Schwab/Cassandra vault
 │   └── mirai-right-eye/                 ← embedder only (RAG retired) → feeds macro-mood
 ├── runtime/
-│   ├── launchd/                         ← 7 LaunchAgent plists (the fleet)
+│   ├── launchd/                         ← 11 LaunchAgent plists (the fleet)
 │   ├── scripts/                         ← env.sh · venv-bootstrap · install-launchd · run-*.sh
 │   ├── viewstation/                     ← the Nightglass tablet (read-only HTTP :8787)
 │   └── watch/                           ← the tick chassis: cli · intraday/ (market_status,
 │                                           gex_alerts, push_ntfy, macro_mood, auth) · tests
 └── state/                               ← runtime state — DO NOT copy across machines
-    ├── reversion/                       ← the diary + nightly grades
-    ├── gex_fills/ · gex_learn/ · gex_uw/ · lob_flow/ · market_expectation/ · logs/
+    ├── reversion/                       ← the SPX diary + nightly grades
+    ├── sndk_reversion/ · sndk_reads/ · sndk_gex/ · sndk_rag/   ← the SNDK station
+    ├── gex_fills/ · dated_gex/ · gex_learn/ · gex_uw/
+    ├── siege/ · lob_flow/ · market_expectation/ · tape_prev/
+    └── voice/ · logs/
 ```
 
 > Historical note: an earlier "Mirai Watch" LangGraph tick-graph (`graph.py`,
