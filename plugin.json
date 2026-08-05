@@ -1,13 +1,15 @@
 {
   "name": "mirai-station",
   "version": "0.1.0",
-  "description": "Gex-module 0DTE system: the Fade Lens (paper brain) driven by the gravity engine (dealer positioning) + flow sensor, graded nightly by report cards. Runs unattended on a Mac mini via launchd. Restructured 2026-07-03 (gex-only).",
+  "description": "Always-on options dealer-positioning research station. SPX: the gravity engine (GexBox) + flow sensor feeding three paper heads (Fade Lens, Watchtower, Break Lens). SNDK: an isolated second station with its own model-written reading. Plus the SIEGE and LOB-FLOW shadow sensors, the dated-book sidecar, the Nightglass tablet (:8787) and the spoken desk (:8788). Everything is graded nightly by report cards behind a Wilson promotion gate; nothing trades. Runs unattended on a Mac mini via launchd.",
   "author": "fivestone",
   "homepage": "",
   "license": "private",
   "skills": [
     "skills/mirai-left-eye",
     "skills/mirai-right-eye",
+    "skills/sndk-pro",
+    "skills/mirai-voice",
     "skills/iv-viability",
     "skills/lob-flow",
     "skills/siege"
@@ -18,7 +20,8 @@
     "python_venv": "~/.local/share/mirai-station/venv",
     "state_dir": "~/.claude/plugins/mirai-station/state",
     "secrets": {
-      "schwab_credentials": "keychain:iv-viability-schwab/*"
+      "schwab_credentials": "keychain:iv-viability-schwab/*",
+      "cassandra_edge_bearer": "keychain:iv-viability-cassandra/cassandra_edge_token"
     },
     "watch": {
       "module": "runtime/watch",
