@@ -40,7 +40,9 @@ store; never touches any SPX store. Called two ways:
 CLI:
   sndk_rag.py query --tier slices  [--date D] [--from HH:MM --to HH:MM]
                     [--near-strike K [--tolerance PTS]] [--text "..."] [--limit N]
-  sndk_rag.py query --tier days    [--days-back N] [--text "..."]
+  sndk_rag.py query --tier days    [--days-back N] [--date D]
+                    [--from-date D --to-date D] [--min-move ±PCT]
+                    [--near-strike K [--tolerance PTS]] [--text "..."]
   sndk_rag.py query --tier month
   sndk_rag.py series [--date D] [--from HH:MM] [--to HH:MM] [--step MIN]
   sndk_rag.py rollup [--date D] [--force]      # manual; queries auto-rollup
@@ -66,10 +68,14 @@ if _LEFT_EYE not in sys.path:
 import atomic_io                       # noqa: E402
 
 _ET = ZoneInfo("America/New_York")
-RAG_V = 1                    # record-schema era tag — bump on ANY shape change
+RAG_V = 2                    # record-schema era tag — bump on ANY shape change
+                             # v2 (08-05): stitched day narratives, terrain
+                             # recent/all_time split, days-tier Face-A filters
 MONTH_SESSIONS = 22          # the month tier looks back this many sessions
+RECENT_SESSIONS = 6          # terrain's "recent" window — the map price is on NOW
 NEAR_TOL_PTS = 15.0          # default "near a strike" tolerance, $ (3 grid steps)
 QUERY_LIMIT = 6              # default rows returned — context, not a dump
+STORY_BIT_CHARS = 200        # cap per stitched slice sentence in a day summary
 
 
 def _state_dir() -> Path:
@@ -201,11 +207,76 @@ def _mode(xs) -> Optional[str]:
     return Counter(xs).most_common(1)[0][0] if xs else None
 
 
+def _story_bit(narrative: str) -> str:
+    """One slice sentence, trimmed for a day summary: the model's line only —
+    the 'Changes if' invalidation is a live-read artifact, stale by the next
+    session. Capped BEFORE punctuating so a truncated bit still ends cleanly
+    (verification round 08-05: cap-after-punctuate ran bits together)."""
+    cut = narrative.split(" Changes if")[0].strip()[:STORY_BIT_CHARS].rstrip()
+    if cut and cut[-1] not in ".!?":
+        cut += "."
+    return cut
+
+
+def _slice_time(s: dict) -> str:
+    """A slice's HH:MM — meta.time, falling back to the record ts (a null
+    time must never crash a rollup: verification round 08-05)."""
+    return ((s.get("meta") or {}).get("time")
+            or str(s.get("ts") or "")[11:16] or "")
+
+
+def _pick_story_slices(slices: list[dict], diary: list[dict]) -> list[dict]:
+    """The day's arc in ≤3 of the model's OWN sentences: the first read, the
+    read nearest the tape's biggest jump (the diary locates it), the last
+    read. Deterministic selection — uniqueness comes free from sentences the
+    model already wrote; no new model call, no idempotency change."""
+    ordered = sorted((s for s in slices if s.get("narrative")),
+                     key=_slice_time)
+    if not ordered:
+        return []
+    picks = [ordered[0], ordered[-1]]
+    jump_t = None
+    prev = None
+    best = 0.0
+    for r in diary:
+        sp = _num(r.get("spot"))
+        if sp is None:
+            continue
+        if prev is not None and abs(sp - prev) > best:
+            best = abs(sp - prev)
+            jump_t = str(r.get("ts") or "")[11:16]
+        prev = sp
+    if jump_t:
+        mid = min(ordered, key=lambda s: abs(
+            _mins(_slice_time(s)) - _mins(jump_t)))
+        if mid not in picks:
+            picks.insert(1, mid)
+    # dedup by identity, not time — two distinct same-minute reads must both
+    # survive (verification round 08-05: time-keyed dedup ate the close read)
+    seen, out = set(), []
+    for p in picks:
+        if id(p) not in seen:
+            seen.add(id(p))
+            out.append(p)
+    return out
+
+
+def _mins(hhmm: Optional[str]) -> int:
+    try:
+        return int(hhmm[:2]) * 60 + int(hhmm[3:5])
+    except (TypeError, ValueError, IndexError):
+        return 0
+
+
 def build_summary(day: str) -> Optional[dict]:
     """One session, one row: metadata + a deterministic sentiment sentence.
     Slices preferred (they carry the model's reads); the diary alone still
     yields an honest pre-RAG summary (source says which). None = no data."""
     slices = _read_jsonl(_slices_path(day))
+    # same live-tape rule the diary side applies: an off-hours forced read
+    # must not narrate the session (verification round 08-05 — a warmup slice
+    # hijacked the story while its diary row was correctly excluded)
+    slices = [s for s in slices if "09:25" <= _slice_time(s) <= "16:05"]
     diary = _diary_day(day)
     spots = [s for r in diary if (s := _num(r.get("spot"))) is not None]
     if not spots:
@@ -245,7 +316,18 @@ def build_summary(day: str) -> Optional[dict]:
             f"{meta['regime_mode']} regime most of the day" if meta["regime_mode"] else None,
             f"magnet camped at {meta['magnet_mode']}" if meta["magnet_mode"] else None,
             f"the model leaned {lean}" if lean else None]
-    narrative = "; ".join(b for b in bits if b) + f" — closed {mood}."
+    # spine first — the numbers stay authoritative, and the ISO date prefix
+    # gives exact tokens no prose date can (narrative-uniqueness pressure test
+    # 08-05: embeddings rank neither dates nor magnitudes; the spine is the
+    # honest core, the stitched story below is the searchable/readable face)
+    narrative = f"{day}: " + "; ".join(b for b in bits if b) + f" — closed {mood}."
+    # each stitched bit carries its slice time: the read is anchored to its
+    # moment, never presented as the day's verdict (doctrine audit 08-05),
+    # and the exact HH:MM tokens stay searchable
+    story = [f"{_slice_time(s)}: {_story_bit(s['narrative'])}"
+             for s in _pick_story_slices(slices, diary)]
+    if story:
+        narrative += " " + " ".join(story)
     return {"kind": "day_summary", "date": day, "rag_v": RAG_V,
             "source": "slices+diary" if slices else "diary",
             "meta": {k: v for k, v in meta.items() if v is not None},
@@ -265,14 +347,20 @@ def rollup(day: Optional[str] = None, force: bool = False) -> list[str]:
     sits inside the reading model's Bash grant, and a mid-session summary
     would freeze half a day as "the day" (and poison terrain counts) since
     idempotency keeps first writes forever (SE review 08-02)."""
-    have = {s["date"] for s in _summaries()}
+    day = _ymd(day)
+    existing = {s["date"] for s in _summaries()}
+    # a summary from an older schema era counts as MISSING: the store
+    # self-migrates from its still-present diaries on the next query, so a
+    # RAG_V bump never leaves a mixed-era corpus to skew ranking
+    # (verification round 08-05 — mixed v1/v2 measured worst for retrieval)
+    have = {s["date"] for s in _summaries() if s.get("rag_v") == RAG_V}
     today = datetime.now(_ET).date().isoformat()
     if day:
         days = [day] if day < today else []
     else:
         days = sorted({p.stem for p in _diary_dir().glob("*.jsonl")}
                       | {p.stem for p in (_rag_dir() / "slices").glob("*.jsonl")})
-        days = [d for d in days if d < today]
+    days = [d for d in days if d < today]
     done = []
     rows = _summaries()
     for d in days:
@@ -283,8 +371,11 @@ def rollup(day: Optional[str] = None, force: bool = False) -> list[str]:
             # a forced rebuild that comes back EMPTY must also retire any
             # stale summary — a day with no live tape is not a session, and
             # leaving the old row made 07-27's single midnight warmup a
-            # phantom session in the terrain (final verification pass 08-02)
-            if force and d in have:
+            # phantom session in the terrain (final verification pass 08-02).
+            # WITHOUT --force an unbuildable old row is KEPT: a summary whose
+            # diary was cleaned up is history we can no longer rebuild —
+            # migration must never delete it (verification round 08-05)
+            if force and d in existing:
                 rows = [r for r in rows if r["date"] != d]
                 done.append(d)
             continue
@@ -314,7 +405,10 @@ def terrain(rebuild: bool = False) -> Optional[dict]:
     if not rebuild:
         try:
             t = json.loads(_terrain_path().read_text())
-            if t.get("built") == today:
+            # same day AND same schema era — a v1 terrain built this morning
+            # must not be served in the old shape all day (verification
+            # round 08-05)
+            if t.get("built") == today and t.get("rag_v") == RAG_V:
                 return t
         except (OSError, json.JSONDecodeError, ValueError):
             pass
@@ -323,33 +417,49 @@ def terrain(rebuild: bool = False) -> Optional[dict]:
     if not sums:
         return None
     n = len(sums)
-    walls_c = Counter(s["meta"].get("call_wall_mode") for s in sums
-                      if s["meta"].get("call_wall_mode"))
-    walls_p = Counter(s["meta"].get("put_wall_mode") for s in sums
-                      if s["meta"].get("put_wall_mode"))
-    mags = Counter(s["meta"].get("magnet_mode") for s in sums
-                   if s["meta"].get("magnet_mode"))
-    regs = Counter(s["meta"].get("regime_mode") for s in sums
-                   if s["meta"].get("regime_mode"))
+
+    def _cnt(rows, key):
+        return Counter(s["meta"].get(key) for s in rows if s["meta"].get(key))
+
+    # RECENT vs ALL-TIME (pressure test 08-05): most_common(3) over the whole
+    # window let a fast-moving stock's OLD levels crowd out the walls price is
+    # actually trading against now — the headline speaks from the recent map,
+    # the all-time counts stay alongside for depth
+    # recent counters fill newest-first: Counter.most_common's stable order
+    # then breaks ties toward the LATEST sessions' levels, not the oldest
+    # (verification round 08-05 — recency inversion inside the window)
+    recent = list(reversed(sums[-RECENT_SESSIONS:]))
+    rn = len(recent)
+    walls_c, walls_p = _cnt(sums, "call_wall_mode"), _cnt(sums, "put_wall_mode")
+    mags, regs = _cnt(sums, "magnet_mode"), _cnt(sums, "regime_mode")
+    r_walls_c, r_walls_p = (_cnt(recent, "call_wall_mode"),
+                            _cnt(recent, "put_wall_mode"))
+    r_mags, r_regs = _cnt(recent, "magnet_mode"), _cnt(recent, "regime_mode")
     lows = [s["meta"].get("low") for s in sums if s["meta"].get("low")]
     highs = [s["meta"].get("high") for s in sums if s["meta"].get("high")]
-    trend_n = regs.get("trending", 0)
+    trend_n = r_regs.get("trending", 0)
     bits = []
-    if mags:
-        k, c = mags.most_common(1)[0]
-        bits.append(f"{k} has been the magnet {c} of {n} sessions")
-    if walls_c:
-        k, c = walls_c.most_common(1)[0]
-        bits.append(f"{k} the recurring ceiling ({c}/{n})")
-    if walls_p:
-        k, c = walls_p.most_common(1)[0]
-        bits.append(f"{k} the recurring floor ({c}/{n})")
-    bits.append(f"character: trending {trend_n} of {n} sessions"
-                + (" (chops otherwise)" if trend_n < n else ""))
+    if r_mags:
+        k, c = r_mags.most_common(1)[0]
+        bits.append(f"{k} has been the magnet {c} of the last {rn} sessions")
+    if r_walls_c:
+        k, c = r_walls_c.most_common(1)[0]
+        bits.append(f"{k} the recent ceiling ({c}/{rn})")
+    if r_walls_p:
+        k, c = r_walls_p.most_common(1)[0]
+        bits.append(f"{k} the recent floor ({c}/{rn})")
+    bits.append(f"character: trending {trend_n} of the last {rn} sessions"
+                + (" (chops otherwise)" if trend_n < rn else ""))
     out = {"kind": "terrain", "built": today, "sessions": n, "rag_v": RAG_V,
-           "standing": {"magnets": dict(mags.most_common(3)),
-                        "call_walls": dict(walls_c.most_common(3)),
-                        "put_walls": dict(walls_p.most_common(3))},
+           "standing": {
+               "recent": {"sessions": rn,
+                          "magnets": dict(r_mags.most_common(3)),
+                          "call_walls": dict(r_walls_c.most_common(3)),
+                          "put_walls": dict(r_walls_p.most_common(3))},
+               "all_time": {"sessions": n,
+                            "magnets": dict(mags.most_common(3)),
+                            "call_walls": dict(walls_c.most_common(3)),
+                            "put_walls": dict(walls_p.most_common(3))}},
            "range": {"low": min(lows) if lows else None,
                      "high": max(highs) if highs else None},
            "regimes": dict(regs),
@@ -377,12 +487,23 @@ def _lex_score(query: str, text: str) -> float:
     return j + (0.25 if query.lower().strip() in text.lower() else 0.0)
 
 
+def _chunks(narrative: str) -> list[str]:
+    """A narrative's sentences, for max-scoring. Ranking whole narratives let
+    story-rich v2 rows blanket-outrank short rows on sheer vocabulary
+    (verification round 08-05: crash asks returned rally days) — a sentence
+    can only ADD match signal, never pad it."""
+    parts = [p.strip() for p in re.split(r"(?<=[.!?]) ", narrative or "")]
+    parts = [p for p in parts if len(p) > 15][:6]
+    return parts or [narrative or ""]
+
+
 def _rank(query: str, records: list[dict]) -> tuple[list[dict], str]:
-    """Rank survivors by narrative meaning. Embedder preferred (right-eye
-    bge-small, FORCED offline so a hub outage can never hang a read); lexical
-    overlap otherwise. Returns (ranked, method) — the method ships in the
-    output so a reader knows which ranker spoke."""
-    texts = [r.get("narrative") or "" for r in records]
+    """Rank survivors by narrative meaning — a record scores as the BEST of
+    its sentences. Embedder preferred (right-eye bge-small, FORCED offline so
+    a hub outage can never hang a read); lexical overlap otherwise. Returns
+    (ranked, method) — the method ships in the output so a reader knows which
+    ranker spoke."""
+    texts = [_chunks(r.get("narrative") or "") for r in records]
     try:
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
@@ -395,14 +516,16 @@ def _rank(query: str, records: list[dict]) -> tuple[list[dict], str]:
                           "config.json").read_text())
         qv = embed_text(query, cfg)
         scored = []
-        for r, t in zip(records, texts):
-            tv = embed_text(t, cfg)
-            scored.append((sum(a * b for a, b in zip(qv, tv)), r))
+        for r, chunks in zip(records, texts):
+            best = max(sum(a * b for a, b in zip(qv, embed_text(c, cfg)))
+                       for c in chunks)
+            scored.append((best, r))
         scored.sort(key=lambda x: -x[0])
         return [r for _, r in scored], "semantic"
     except Exception:
-        scored = sorted(((_lex_score(query, t), r)
-                         for r, t in zip(records, texts)), key=lambda x: -x[0])
+        scored = sorted(((max(_lex_score(query, c) for c in chunks), r)
+                         for r, chunks in zip(records, texts)),
+                        key=lambda x: -x[0])
         return [r for _, r in scored], "lexical"
 
 
@@ -416,6 +539,23 @@ def _hhmm(s: Optional[str]) -> Optional[str]:
     return f"{int(m.group(1)):02d}:{m.group(2)}" if m else s
 
 
+def _ymd(s: Optional[str]) -> Optional[str]:
+    """Normalize a date arg to zero-padded ISO ('2026-7-1' → '2026-07-01');
+    blank → None; anything else raises LOUDLY. Dates compare lexically here —
+    an unpadded or slash-format date silently matched the wrong sessions (or,
+    worse, disarmed the days_back page entirely) before this gate
+    (verification round 08-05)."""
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None                      # a templated-but-empty flag is absent
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if not m:
+        raise ValueError(f"bad date {s!r} — use YYYY-MM-DD")
+    return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+
+
 def _near(meta: dict, strike: float, tol: float) -> bool:
     """Face-A gate: does this slice touch `strike` (magnet/walls/levels/spot)?"""
     levels = ([meta.get("spot"), meta.get("ct"), meta.get("hvl"),
@@ -426,24 +566,79 @@ def _near(meta: dict, strike: float, tol: float) -> bool:
                for x in levels)
 
 
+def _near_day(meta: dict, strike: float, tol: float) -> bool:
+    """Face-A gate for a day summary: did the session TRADE THROUGH `strike`
+    (range containment — "has 1300 held before?" must match a day that
+    printed 1300 mid-range, verification round 08-05), or touch it with its
+    endpoints or modal magnet/walls?"""
+    lo, hi = _num(meta.get("low")), _num(meta.get("high"))
+    if lo is not None and hi is not None and lo - tol <= strike <= hi + tol:
+        return True
+    vals = [meta.get(k) for k in ("open", "close", "low", "high")]
+    for k in ("magnet_mode", "call_wall_mode", "put_wall_mode"):
+        try:
+            vals.append(float(meta.get(k)))
+        except (TypeError, ValueError):
+            pass
+    return any(isinstance(x, (int, float)) and abs(x - strike) <= tol
+               for x in vals)
+
+
 def query(tier: str = "slices", date: Optional[str] = None,
           t_from: Optional[str] = None, t_to: Optional[str] = None,
           near_strike: Optional[float] = None, tolerance: float = NEAR_TOL_PTS,
           text: Optional[str] = None, days_back: int = 5,
+          d_from: Optional[str] = None, d_to: Optional[str] = None,
+          min_move: Optional[float] = None,
           limit: int = QUERY_LIMIT) -> dict:
     """The hybrid lookup, always in the same order: metadata narrows,
     narrative carries the meaning."""
     now = datetime.now(_ET)
+    limit = max(0, limit)                # a negative page must not wrap around
+    date, d_from, d_to = _ymd(date), _ymd(d_from), _ymd(d_to)
     if tier == "month":
         t = terrain()
         return {"tier": "month", "terrain": t or "no terrain yet"}
     if tier == "days":
         rollup()
-        cands = _summaries()[-max(1, days_back):]
+        cands = _summaries()
+        # Face-A filters FIRST (narrative-uniqueness pressure test 08-05:
+        # embeddings cannot rank dates or magnitudes — exact asks go through
+        # the numbers). A filtered ask searches ALL history, not the last N —
+        # --date 3 weeks back must not be silently cut by the days_back page.
+        filtered = any(x is not None
+                       for x in (date, d_from, d_to, min_move, near_strike))
+        if date:
+            cands = [s for s in cands if s["date"] == date]
+        if d_from:
+            cands = [s for s in cands if s["date"] >= d_from]
+        if d_to:
+            cands = [s for s in cands if s["date"] <= d_to]
+        if min_move is not None:
+            # signed: --min-move -5 → sessions that fell ≥5%; 5 → rose ≥5%;
+            # 0 → any session with a recorded open-to-close move
+            cands = [s for s in cands
+                     if (p := _num(s["meta"].get("pct_open_to_close")))
+                     is not None
+                     and (min_move == 0
+                          or (p <= min_move if min_move < 0
+                              else p >= min_move))]
+        if near_strike is not None:
+            cands = [s for s in cands
+                     if _near_day(s["meta"], float(near_strike), tolerance)]
+        if not filtered:
+            # a text-only ask ranks the month window, not the 5-day page —
+            # "has 1300 held before?" must reach further back than a week,
+            # while an unbounded corpus would blow the ranking budget
+            # (verification round 08-05)
+            cands = cands[-(MONTH_SESSIONS if text else max(1, days_back)):]
+        n_matched = len(cands)
         method = "chronological"
         if text and cands:
             cands, method = _rank(text, cands)
-        return {"tier": "days", "rank": method,
+        else:
+            cands = cands[-limit:]       # newest page when un-ranked
+        return {"tier": "days", "rank": method, "n_matched": n_matched,
                 "results": [{"date": s["date"], "narrative": s["narrative"],
                              "meta": s["meta"]} for s in cands[:limit]]}
     # slices (default) — today unless asked otherwise
@@ -533,16 +728,32 @@ def main(argv: list[str]) -> int:
                    default="slices",
                    help="slices=today's moments · days=multi-day summaries · "
                         "month=standing terrain")
-    q.add_argument("--date", help="YYYY-MM-DD (slices tier; default today)")
+    q.add_argument("--date",
+                   help="YYYY-MM-DD — slices: which day (default today); "
+                        "days: that exact session, searched across ALL history")
     q.add_argument("--from", dest="t_from", help="HH:MM lower bound (slices)")
     q.add_argument("--to", dest="t_to", help="HH:MM upper bound (slices)")
+    q.add_argument("--from-date", dest="d_from",
+                   help="YYYY-MM-DD lower bound (days tier)")
+    q.add_argument("--to-date", dest="d_to",
+                   help="YYYY-MM-DD upper bound (days tier)")
+    q.add_argument("--min-move", type=float,
+                   help="days tier, signed %% open-to-close: -5 → sessions "
+                        "that fell ≥5%%, 5 → rose ≥5%%, 0 → any session "
+                        "with a recorded move")
     q.add_argument("--near-strike", type=float,
-                   help="only slices touching this level (magnet/walls/spot)")
+                   help="only records touching this level (slices: "
+                        "magnet/walls/spot; days: session levels/modal walls)")
     q.add_argument("--tolerance", type=float, default=NEAR_TOL_PTS,
                    help=f"near-strike tolerance in $ (default {NEAR_TOL_PTS:g})")
-    q.add_argument("--text", help="semantic ask, e.g. 'rejected the call wall'")
+    q.add_argument("--text", help="semantic ask, e.g. 'rejected the call wall'"
+                                  f" (days tier: ranks the last "
+                                  f"{MONTH_SESSIONS} sessions unless a "
+                                  f"metadata filter widens it)")
     q.add_argument("--days-back", type=int, default=5,
-                   help="days tier: how many summaries (default 5)")
+                   help="days tier: how many summaries when UNfiltered "
+                        "(default 5); any metadata filter searches all "
+                        "history")
     q.add_argument("--limit", type=int, default=QUERY_LIMIT)
 
     s = sub.add_parser("series", help="numeric spot/magnet/walls by time (diary)")
@@ -559,15 +770,23 @@ def main(argv: list[str]) -> int:
     r.add_argument("--force", action="store_true")
 
     a = ap.parse_args(argv)
-    if a.cmd == "query":
-        out = query(tier=a.tier, date=a.date, t_from=a.t_from, t_to=a.t_to,
-                    near_strike=a.near_strike, tolerance=a.tolerance,
-                    text=a.text, days_back=a.days_back, limit=a.limit)
-    elif a.cmd == "series":
-        out = series(date=a.date, t_from=a.t_from, t_to=a.t_to,
-                     step_min=a.step, strike=a.strike)
-    else:
-        out = {"rolled_up": rollup(a.date, force=a.force)}
+    try:
+        if a.cmd == "query":
+            out = query(tier=a.tier, date=a.date, t_from=a.t_from,
+                        t_to=a.t_to, near_strike=a.near_strike,
+                        tolerance=a.tolerance, text=a.text,
+                        days_back=a.days_back, d_from=a.d_from, d_to=a.d_to,
+                        min_move=a.min_move, limit=a.limit)
+        elif a.cmd == "series":
+            out = series(date=_ymd(a.date), t_from=a.t_from, t_to=a.t_to,
+                         step_min=a.step, strike=a.strike)
+        else:
+            out = {"rolled_up": rollup(a.date, force=a.force)}
+    except ValueError as e:
+        # a malformed date must error LOUDLY, never silently match the wrong
+        # sessions (verification round 08-05)
+        print(json.dumps({"error": str(e)}))
+        return 2
     print(json.dumps(out, indent=1, default=str))
     return 0
 
