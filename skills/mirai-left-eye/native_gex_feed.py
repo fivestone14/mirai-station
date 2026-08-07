@@ -527,9 +527,9 @@ def reset_chain_cache() -> None:
 def cached_chain(ticker: str) -> Optional[dict]:
     """Cache-ONLY peek: return the fresh cached chain if present, else None.
 
-    NEVER fetches — for shadow consumers (e.g. gex_uw_bridge) that must reuse the
-    book the live map already pulled this tick and must not add a second fetch to
-    the 60s tick budget when native is degraded/uncached.
+    NEVER fetches — for shadow consumers that must reuse the book the live map
+    already pulled this tick and must not add a second fetch to the 60s tick
+    budget when native is degraded/uncached.
     """
     hit = _CHAIN_CACHE.get(ticker)
     if hit and (datetime.now(_ET) - hit[0]).total_seconds() < _CHAIN_TTL_S:
