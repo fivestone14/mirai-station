@@ -54,7 +54,6 @@ if str(SKILL_DIR) not in sys.path:
 
 import dashboard as dash  # noqa: E402
 import reversion_lens as reversion  # noqa: E402
-import gex_uw_bridge as uw_shadow  # noqa: E402  (SHADOW UW blend + learning)
 
 
 def load_config() -> dict[str, Any]:
@@ -273,14 +272,8 @@ def scan(
             pass
         if not dry_run:
             reversion.record(t, now)
-            # SHADOW: UW Periscope blend + learning. Records/compares alongside the
-            # native map; never mutates `t` or any decision. Fail-open by contract,
-            # but the exception is recorded in the heartbeat so a silent stall is visible.
-            try:
-                uw_shadow.run(t, ticker, now)
-            except Exception as _uw_err:
-                heartbeat.setdefault("shadow_errors", []).append(
-                    {"ticker": ticker, "error": repr(_uw_err)})
+            # (A shadow UW-Periscope blend ran here; the vendor feed it depended on
+            #  is not part of this build — see docs/gex-glossary.md.)
 
         heartbeat["evaluated"].append({
             "ticker": ticker,

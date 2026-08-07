@@ -1,5 +1,11 @@
 """lefteye_gamma_roll.py — SHADOW gamma-roll lens over the UW Periscope v2 mark.
 
+NOT ACTIVE IN THIS BUILD: the vendor feed that writes uw_mark.json is not
+included here, so this lens finds no mark and returns its "no data" stub on
+every tick. It is kept because the shape of the question it asks — does the
+0DTE wall sit somewhere different from the structural wall? — is reusable
+against any per-strike, per-expiry gamma source.
+
 Pure, READ-ONLY consumer of state/gex_uw/uw_mark.json (mark_version >= 2). It
 never fetches, never writes, never touches the live GEX map. One question only:
 does the 0DTE gamma wall sit somewhere DIFFERENT from the 8-45 DTE wall near

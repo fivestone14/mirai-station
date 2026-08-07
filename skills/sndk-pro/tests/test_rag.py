@@ -136,17 +136,212 @@ def test_rollup_never_summarizes_a_live_day(tmp_path):
     assert today not in RAG.rollup()
 
 
+# --- v2: the stitched day narrative -----------------------------------------
+def test_summary_narrative_is_dated_and_stitched_from_slices(tmp_path):
+    """v2: date prefix + numeric spine + the model's OWN sentences (first,
+    biggest-move, last), 'Changes if' clauses stripped — uniqueness for free,
+    no model call (narrative-uniqueness pressure test 08-05)."""
+    _seed_slices()
+    _diary_day(tmp_path, "2026-07-31", [1213.7, 1195.0, 1130.0])
+    s = RAG.build_summary("2026-07-31")
+    n = s["narrative"]
+    assert n.startswith("2026-07-31: SNDK closed")          # spine, dated
+    assert "rejected the call wall and faded." in n         # first read
+    assert "broke the floor and kept going." in n           # last read
+    assert "Changes if" not in n                            # stale live-read bit
+    assert s["source"] == "slices+diary"
+
+
+def test_summary_without_slices_keeps_the_dated_spine(tmp_path):
+    _diary_day(tmp_path, "2026-07-30", [1200.0, 1150.0, 1120.0])
+    s = RAG.build_summary("2026-07-30")
+    assert s["narrative"].startswith("2026-07-30: SNDK closed")
+    assert s["source"] == "diary"
+
+
+# --- v2: days-tier Face-A filters -------------------------------------------
+def _seed_summaries():
+    rows = [("2026-07-28", -5.7, 1100.0), ("2026-07-29", -7.2, 1100.0),
+            ("2026-07-30", 12.4, 1100.0), ("2026-07-31", -13.5, 1300.0),
+            ("2026-08-03", 13.3, 1370.0), ("2026-08-04", 4.6, 1370.0)]
+    RAG._rag_dir().mkdir(parents=True, exist_ok=True)
+    RAG._summaries_path().write_text("\n".join(json.dumps(
+        {"kind": "day_summary", "date": d, "rag_v": 2,
+         "meta": {"open": 1200.0, "close": 1200.0 * (1 + p / 100),
+                  "low": 1150.0, "high": 1250.0, "pct_open_to_close": p,
+                  "magnet_mode": f"{m:g}"},
+         "narrative": f"{d}: SNDK moved {p}%."}) for d, p, m in rows) + "\n")
+
+
+def test_days_exact_date_beats_the_days_back_page(tmp_path):
+    """--date must reach ALL history — the old code cut to the last N first,
+    silently dropping any older day (the ordering trap)."""
+    _seed_summaries()
+    out = RAG.query(tier="days", date="2026-07-28", days_back=2)
+    assert out["n_matched"] == 1
+    assert out["results"][0]["date"] == "2026-07-28"
+
+
+def test_days_min_move_finds_the_crash_no_embedding_needed(tmp_path):
+    """'biggest crash' is an ordinal ask — the numbers answer it, not cosine
+    similarity (which ranked the +12.4% rally first on the real corpus)."""
+    _seed_summaries()
+    out = RAG.query(tier="days", min_move=-10.0)
+    assert [r["date"] for r in out["results"]] == ["2026-07-31"]
+    up = RAG.query(tier="days", min_move=10.0)
+    assert {r["date"] for r in up["results"]} == {"2026-07-30", "2026-08-03"}
+
+
+def test_days_date_range_and_near_strike_gate_before_ranking(tmp_path):
+    _seed_summaries()
+    rng = RAG.query(tier="days", d_from="2026-07-29", d_to="2026-07-31")
+    assert [r["date"] for r in rng["results"]] == [
+        "2026-07-29", "2026-07-30", "2026-07-31"]
+    near = RAG.query(tier="days", near_strike=1370.0, tolerance=5.0)
+    assert {r["date"] for r in near["results"]} == {"2026-08-03", "2026-08-04"}
+
+
+def test_days_unfiltered_keeps_the_days_back_page(tmp_path):
+    _seed_summaries()
+    out = RAG.query(tier="days", days_back=2)
+    assert out["n_matched"] == 2
+    assert [r["date"] for r in out["results"]] == ["2026-08-03", "2026-08-04"]
+
+
+# --- 25-agent verification round (08-05): confirmed-defect regressions ------
+def test_min_move_zero_keeps_down_sessions_too(tmp_path):
+    """0 = 'any recorded move' per its own help — it silently kept only
+    flat-or-up days, a directionally biased memory."""
+    _seed_summaries()
+    out = RAG.query(tier="days", min_move=0.0, limit=10)
+    assert out["n_matched"] == 6            # every session with a recorded pct
+
+
+def test_near_day_matches_a_session_that_traded_through_the_strike(tmp_path):
+    """'has 1250 held before?' must match a day that printed 1250 mid-range,
+    even when every endpoint sits outside tolerance."""
+    assert RAG._near_day({"open": 1400.0, "close": 1300.0,
+                          "low": 1197.0, "high": 1403.0}, 1250.0, 5.0)
+    assert not RAG._near_day({"open": 1400.0, "close": 1300.0,
+                              "low": 1290.0, "high": 1403.0}, 1250.0, 5.0)
+
+
+def test_date_args_normalize_unpadded_and_reject_garbage(tmp_path):
+    _seed_summaries()
+    out = RAG.query(tier="days", date="2026-7-31")       # unpadded → padded
+    assert [r["date"] for r in out["results"]] == ["2026-07-31"]
+    with pytest.raises(ValueError):
+        RAG.query(tier="days", d_from="08/01/2026")
+    with pytest.raises(ValueError):
+        RAG.query(tier="slices", date="../../etc/passwd")
+
+
+def test_blank_date_flag_is_absent_not_filtered(tmp_path):
+    """--date "" (an unset shell variable) must not disarm the days_back
+    page and dump all history as a 'match'."""
+    _seed_summaries()
+    out = RAG.query(tier="days", date="", days_back=2)
+    assert out["n_matched"] == 2
+
+
+def test_text_only_days_ask_reaches_the_month_window(tmp_path):
+    """A semantic ask was silently confined to the 5-day page — 'magnet
+    camped at 1100' lived on a day just off it."""
+    _seed_summaries()
+    out = RAG.query(tier="days", text="SNDK moved -5.7", days_back=2, limit=10)
+    assert out["n_matched"] == 6            # month window, not the 2-day page
+    assert any(r["date"] == "2026-07-28" for r in out["results"])
+
+
+def test_terrain_cache_from_an_older_schema_era_is_rebuilt(tmp_path):
+    _diary_day(tmp_path, "2026-07-30", [1200.0, 1210.0])
+    t = RAG.terrain(rebuild=True)
+    stale = dict(t, rag_v=RAG.RAG_V - 1)
+    RAG._terrain_path().write_text(json.dumps(stale))
+    assert RAG.terrain()["rag_v"] == RAG.RAG_V           # not served stale
+
+
+def test_story_pick_ignores_off_hours_slices(tmp_path):
+    """A forced warmup read must not narrate the session — same live-tape
+    rule the diary side already applies."""
+    warm = _read_out("midnight warmup read, ignore me")
+    RAG.record_slice(_row(), warm, _scene(),
+                     datetime(2026, 7, 31, 0, 5, tzinfo=ET))
+    _seed_slices()
+    _diary_day(tmp_path, "2026-07-31", [1213.7, 1195.0, 1130.0])
+    n = RAG.build_summary("2026-07-31")["narrative"]
+    assert "midnight warmup" not in n
+    assert "rejected the call wall and faded." in n
+
+
+def test_story_bit_cap_never_cuts_mid_word_unpunctuated():
+    long = "word " * 60                                   # > STORY_BIT_CHARS
+    bit = RAG._story_bit(long)
+    assert len(bit) <= RAG.STORY_BIT_CHARS + 1
+    assert bit.endswith(".")
+
+
+def test_null_slice_time_never_crashes_a_rollup(tmp_path):
+    _seed_slices()
+    p = RAG._slices_path("2026-07-31")
+    rec = json.loads(p.read_text().splitlines()[0])
+    rec["meta"]["time"] = None                            # explicit null
+    with p.open("a") as f:
+        f.write(json.dumps(rec) + "\n")
+    _diary_day(tmp_path, "2026-07-31", [1213.7, 1195.0, 1130.0])
+    assert RAG.build_summary("2026-07-31") is not None
+
+
+def test_stale_era_summaries_self_migrate_but_never_delete(tmp_path):
+    """A rag_v bump re-rolls old rows from their diaries on the next rollup;
+    a stale row whose diary is GONE is history — kept, not deleted."""
+    _diary_day(tmp_path, "2026-07-30", [1200.0, 1150.0])
+    RAG._rag_dir().mkdir(parents=True, exist_ok=True)
+    RAG._summaries_path().write_text("\n".join(json.dumps(r) for r in [
+        {"kind": "day_summary", "date": "2026-07-30", "rag_v": RAG.RAG_V - 1,
+         "meta": {"open": 1.0}, "narrative": "old era"},
+        {"kind": "day_summary", "date": "2026-07-01", "rag_v": RAG.RAG_V - 1,
+         "meta": {"open": 1.0}, "narrative": "diary long gone"}]) + "\n")
+    assert RAG.rollup() == ["2026-07-30"]
+    sums = {s["date"]: s for s in RAG._summaries()}
+    assert sums["2026-07-30"]["rag_v"] == RAG.RAG_V      # migrated
+    assert sums["2026-07-01"]["narrative"] == "diary long gone"  # preserved
+
+
 # --- month tier: standing terrain, context not trigger ----------------------
 def test_terrain_counts_recurring_walls(tmp_path):
     for i, day in enumerate(("2026-07-28", "2026-07-29", "2026-07-30")):
         _diary_day(tmp_path, day, [1200.0 + i, 1210.0 + i])
     t = RAG.terrain(rebuild=True)
     assert t["sessions"] == 3
-    assert t["standing"]["magnets"].get("1300") == 3
-    assert t["standing"]["call_walls"].get("1300") == 3
+    assert t["standing"]["all_time"]["magnets"].get("1300") == 3
+    assert t["standing"]["all_time"]["call_walls"].get("1300") == 3
     assert "context, never the trigger" in t["note"]
     # cached for the day after the first build
     assert RAG.terrain()["built"] == t["built"]
+
+
+def test_terrain_recent_outranks_stale_alltime_levels(tmp_path):
+    """A fast mover's OLD walls must not crowd the headline: 8 sessions at
+    1300, then RECENT_SESSIONS at 1500 — the headline and the recent block
+    speak from the map price is on NOW; all-time keeps the depth."""
+    days = [f"2026-07-{d:02d}" for d in range(1, 9 + RAG.RECENT_SESSIONS)]
+    for i, day in enumerate(days):
+        old = i < 8
+        _diary_day(tmp_path, day, [1200.0 + i, 1210.0 + i],
+                   magnet=1300.0 if old else 1500.0)
+        if not old:                       # recent sessions live at 1500 walls
+            p = tmp_path / "sndk_reversion" / f"{day}.jsonl"
+            rows = [json.loads(ln) for ln in p.read_text().splitlines()]
+            for r in rows:
+                r["call_wall"], r["put_wall"] = 1500.0, 1400.0
+            p.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    t = RAG.terrain(rebuild=True)
+    rec = t["standing"]["recent"]
+    assert rec["magnets"].get("1500") == RAG.RECENT_SESSIONS
+    assert "1300" not in rec["magnets"] and "1300" not in rec["call_walls"]
+    assert t["standing"]["all_time"]["magnets"].get("1300") == 8
+    assert "1500 has been the magnet" in t["narrative"]
 
 
 # --- the numeric series (the diary IS the plain store) ----------------------

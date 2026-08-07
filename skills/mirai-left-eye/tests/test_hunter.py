@@ -160,10 +160,6 @@ def wired_scan(monkeypatch):
     monkeypatch.setattr(H, "load_state", fake_load_state)
     monkeypatch.setattr(H, "load_config", lambda: {"push_to_phone": False})
     monkeypatch.setattr(H, "_persist_scan", lambda hb, st, now: None)
-    # the UW shadow bridge is NOT under test here — without this stub the suite
-    # fires live Periscope fetches and overwrites production state/gex_uw files
-    # with fixture-clock records (observed 2026-07-09).
-    monkeypatch.setattr(H.uw_shadow, "run", lambda *a, **k: None)
     return captured
 
 

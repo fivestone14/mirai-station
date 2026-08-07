@@ -107,7 +107,7 @@ mirai-station/
 ├── skills/
 │   ├── mirai-left-eye/                  ← the SPX brain: hunter · reversion_lens (3 heads) ·
 │   │                                       lefteye_gex_box · native_gex_feed · watchtower ·
-│   │                                       dated_gex_feed · gex_polarity_ab · uw_periscope · …
+│   │                                       dated_gex_feed · gex_polarity_ab · …
 │   ├── sndk-pro/                        ← the isolated SNDK station (beta, record-only)
 │   ├── mirai-voice/                     ← ears · mouth · the day-session conversation (:8788)
 │   ├── siege/                           ← effort-at-the-wall sensor (shadow)

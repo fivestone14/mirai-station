@@ -308,7 +308,6 @@ reads it, and it is the single gate between paper and live. **Nothing has cleare
 |---|---|---|
 | **ThetaData** (via Cassandra's Edge MCP) | the **native SPX option chain** — the primary GEX source — the SNDK chain, and a Schwab-independent 1-min price path | Keychain bearer `iv-viability-cassandra` |
 | **Schwab** (`schwab-py`) | daily/1-min bars, live quotes, the SPY chain (the ×10 proxy) | Keychain OAuth (7-day token, kept alive by `auth-watch`) |
-| **Unusual Whales Periscope** | a free, no-auth dealer-gamma heatmap — a shadow cross-check on the assumed-sign map | none |
 | **Cassandra's Edge MCP** (twitter / reddit / fetch) | the morning Macro-Mood news read | per-server bearer |
 | **Claude** (subscription) | the Watchtower vote and the SNDK reading via one-shot `claude -p`; the voice conversation via a held-open `claude-agent-sdk` day session (a CLI spawn costs 7–100 s — far too slow to speak) | Claude Code CLI login — **no API key** |
 
@@ -329,7 +328,6 @@ mirai-station/
 │   │                           lefteye_dex (direction-side twin, shadow) ·
 │   │                           profile_ladder + adaptive_em (display, shadow) ·
 │   │                           fill_ledger · gex_polarity_ab (grader) ·
-│   │                           uw_periscope + gex_uw_bridge (UW cross-check) ·
 │   │                           siege_bridge · lob_bridge · dashboard · price lenses
 │   ├── sndk-pro/               the isolated SNDK station: feed · views · hunter ·
 │   │                           read (arrow + model reading) · rag (on-demand memory)
