@@ -20,10 +20,11 @@ copy only ({**prev, "stale": True}) and the written mark always carries
 stale=False. A reader of the file therefore cannot trust the stale field; the
 (now_ms - grid_ms) <= MAX_AGE_MS gate is what actually rejects a dead feed.
 
-FIX #2 (tick ordering): in hunter.py the mark is refreshed by gex_uw_bridge.run
-AFTER reversion.evaluate(), so anything evaluate-side reads the PREVIOUS grid
-bucket. MAX_AGE_MS = 25 min deliberately covers 2 grid buckets (20 min) plus
-the ~3-min publish lag, so a healthy feed always passes even one bucket behind.
+FIX #2 (tick ordering): where the feed was wired, the mark was refreshed AFTER
+reversion.evaluate(), so anything evaluate-side read the PREVIOUS grid bucket.
+MAX_AGE_MS = 25 min deliberately covers 2 grid buckets (20 min) plus the ~3-min
+publish lag, so a healthy feed always passes even one bucket behind. Any future
+writer of uw_mark.json inherits that constraint.
 
 FIX #3 (independent noisy estimates): bucket signs are NEVER netted or summed
 across buckets — UW's flow-inferred sign per DTE slice is an independent noisy
