@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Pinned interpreter: same venv as sndk_hunter.py.
+# Interpreter: same venv as sndk_hunter.py, and the shebang cannot pin it — name
+# the venv python explicitly or use runtime/scripts/run-sndk-read.sh.
 """
 sndk_read.py — the SNDK chart's live reading. One wake = one read row.
 

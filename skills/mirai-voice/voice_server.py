@@ -3,7 +3,9 @@
 
 WebSocket on MIRAI_VOICE_PORT (default 8788), binding 0.0.0.0 like the
 viewstation — LAN-open by design, no auth; the perimeter is the LAN
-(runtime/viewstation/README.md documents the stance). Kill switch:
+(runtime/viewstation/README.md documents the stance). An Origin guard keeps
+that perimeter honest: WebSockets ignore CORS, so without it any page the
+user visits is inside the LAN too (see _origin_ok). Kill switch:
 MIRAI_VOICE_DISABLE=1 (checked here AND in run-voice.sh — defense in depth).
 
 Protocol (design: plan calm-rolling-mountain):
@@ -24,6 +26,7 @@ single-worker executor (serialized — one GPU, no contention).
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 import signal
@@ -31,6 +34,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlsplit
 
 _SKILL_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SKILL_DIR))
@@ -57,6 +61,51 @@ _tts_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tts")
 
 def _j(**kw) -> str:
     return json.dumps(kw)
+
+
+# ---------------------------------------------------------------------------
+# Origin guard — the one thing standing between "LAN-open" and "internet-open".
+# WebSockets are exempt from CORS, so without this any page the user happens to
+# visit could open ws://localhost:8788 and drive the agent on their Claude
+# subscription (and read the SNDK scene back out). Browsers always attach Origin
+# and cannot forge it; non-browser clients (repl.py, bench.py) send none.
+# Allowlisted by SHAPE, not a fixed address, so the tablet keeps working when
+# the router reassigns the lease: loopback, private/CGNAT (incl. Tailscale
+# 100.64/10), .local, .ts.net. Extra origins via MIRAI_VOICE_ORIGINS (csv).
+# ---------------------------------------------------------------------------
+_EXTRA_ORIGINS = {
+    o.strip() for o in os.environ.get("MIRAI_VOICE_ORIGINS", "").split(",") if o.strip()
+}
+# Tailscale hands out tailnet addresses from CGNAT space, which Python does not
+# count as private — without this, reaching the tablet view by tailnet IP
+# (rather than by MagicDNS name) would be rejected.
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _local_host(host: str) -> bool:
+    if host == "localhost" or host.endswith(".local") or host.endswith(".ts.net"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or (ip.version == 4 and ip in _CGNAT)
+
+
+def _origin_ok(origin: str | None) -> bool:
+    if origin is None:                      # non-browser client
+        return True
+    if origin in _EXTRA_ORIGINS:
+        return True
+    return _local_host(urlsplit(origin).hostname or "")
+
+
+def _request_origin(ws) -> str | None:
+    req = getattr(ws, "request", None)
+    headers = getattr(req, "headers", None)
+    if headers is None:
+        headers = getattr(ws, "request_headers", None)
+    return headers.get("Origin") if headers is not None else None
 
 
 class Conn:
@@ -252,6 +301,11 @@ class Conn:
 
 async def _handler(ws) -> None:
     peer = getattr(ws, "remote_address", ("?",))[0]
+    origin = _request_origin(ws)
+    if not _origin_ok(origin):
+        print(f"mirai-voice :: REJECTED {peer} — origin {origin!r}")
+        await ws.close(code=1008, reason="origin not allowed")
+        return
     print(f"mirai-voice :: connect from {peer}")
     conn = Conn(ws)
     await ws.send(_j(type="ready", engine=_mouth._engine))

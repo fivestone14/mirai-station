@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Pinned interpreter: same venv as sndk_read.py (embedder lives there).
+# Interpreter: same venv as sndk_read.py (the embedder lives there); the shebang
+# cannot pin it, so name the venv python explicitly.
 """
 sndk_rag.py — SNDK's on-demand memory: day tier + month tier, as a TOOL.
 

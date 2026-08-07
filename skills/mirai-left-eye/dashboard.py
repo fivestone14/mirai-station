@@ -50,7 +50,7 @@ STATE_DIR = Path(
 ).expanduser()
 
 # Default render target — the user's Obsidian vault root. Overridable via
-# config.json -> {"dashboard_path": "/abs/path/to/file.md"}.
+# $MIRAI_STATION_DASHBOARD, else config.json -> {"dashboard_path": "/abs/path/to/file.md"}.
 DEFAULT_VAULT_FILE = (
     "~/Documents/Obsidian Vault/Mirai Awakening — Today.md"
 )
@@ -88,13 +88,16 @@ GEX_WATCHERS: list[dict[str, str]] = [
 
 
 def _vault_file() -> Path:
+    env = os.environ.get("MIRAI_STATION_DASHBOARD")
+    if env:
+        return Path(env).expanduser()
     try:
         cfg = json.loads(CONFIG_PATH.read_text())
         if isinstance(cfg.get("dashboard_path"), str):
-            return Path(cfg["dashboard_path"])
+            return Path(cfg["dashboard_path"]).expanduser()
     except (OSError, json.JSONDecodeError):
         pass
-    return Path(DEFAULT_VAULT_FILE)
+    return Path(DEFAULT_VAULT_FILE).expanduser()
 
 
 # ---------------------------------------------------------------------------

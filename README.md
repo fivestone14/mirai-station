@@ -400,17 +400,20 @@ cd ~/.claude/plugins/mirai-station
 
 Then:
 
-Every Python entry point pins the venv interpreter in its shebang — there is only one
-interpreter with `schwab-py` + `httpx`, and nothing here is meant to run under a
-system `python3`.
+Always name the venv interpreter explicitly. There is only one interpreter with
+`schwab-py` + `httpx`, and nothing here is meant to run under a system `python3` —
+but the shebangs are `#!/usr/bin/env python3` (an absolute path would hardcode one
+machine's home directory), so `./script.py` gets system python and most signal
+modules silently fail. The launchd path is unaffected: every `run-*.sh` calls
+`"${MIRAI_STATION_VENV}/bin/python"` explicitly.
 
 ```bash
 PY=~/.local/share/mirai-station/venv/bin/python
 
 ./runtime/scripts/run-watch-left-eye.sh                    # one SPX tick by hand
-./skills/sndk-pro/sndk_hunter.py --force                   # one SNDK tick, off-hours
+$PY skills/sndk-pro/sndk_hunter.py --force                 # one SNDK tick, off-hours
 $PY skills/sndk-pro/sndk_read.py --replay YYYY-MM-DD       # re-run a recorded day, writes nothing
-./skills/mirai-voice/repl.py --mute                        # the whole voice loop in a terminal
+$PY skills/mirai-voice/repl.py --mute                      # the whole voice loop in a terminal
 ```
 
 Tests — **one suite directory at a time** (each box ships its own `conftest.py`, and

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# Pinned interpreter: the mirai-station venv is the only one with schwab-py +
-# httpx (see skills/mirai-left-eye/hunter.py for the rationale).
+# Interpreter: the mirai-station venv is the only one with schwab-py + httpx, and
+# the shebang cannot pin it — name it explicitly or use runtime/scripts/run-sndk.sh
+# (see skills/mirai-left-eye/hunter.py for the rationale).
 """
 sndk_hunter.py — SNDK-PRO scanner: one tick = one diary row.
 

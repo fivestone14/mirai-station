@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-# Pinned interpreter: the mirai-station venv (~/.local/share/mirai-station/venv) is the
+# Interpreter: the mirai-station venv (~/.local/share/mirai-station/venv) is the
 # only one with schwab-py + scipy. System python3 lacks schwab → most signal modules
 # silently fail → bogus quiet scans. Provision via runtime/scripts/venv-bootstrap.sh.
-# (Absolute path on purpose: macOS env -S mangles quoted sh -c shebangs, and launchd
-# also invokes this via run-watch-left-eye.sh with $MIRAI_STATION_VENV explicitly.)
+# The shebang CANNOT pin it — an absolute path hardcodes one machine's home, and a
+# tilde never expands in a shebang — so name the venv python explicitly, or go
+# through run-watch-left-eye.sh, which passes $MIRAI_STATION_VENV. Running this as
+# ./hunter.py gets system python and scans quiet for the wrong reason.
 """
 hunter.py — the SHIFT MANAGER: /mirai-left-eye scan orchestrator (gex-only).
 (The every-5-minutes worker: wakes up, runs the Scan on each index, records the

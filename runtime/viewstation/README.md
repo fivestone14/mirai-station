@@ -6,7 +6,7 @@ live state on the Mac mini and renders five surfaces:
 
 | Surface | What it shows |
 |---|---|
-| **Overview** | Ambient, glanceable: the 0DTE enter/stay-out entry widget (SPX with a mood emoji), real-money scoreboard, paper win-rate ring, morning-mood gauge, SPX regime, the "in one breath" line. |
+| **Overview** | Ambient, glanceable: the 0DTE enter/stay-out entry widget (SPX with a mood emoji), the paper scoreboard, paper win-rate ring, morning-mood gauge, SPX regime, the "in one breath" line. |
 | **Deep** | Under the hood: live GEX dealer-gamma heatmap, the LOOK→STRETCH→RUNWAY→TURN→SCORE pipeline with current gate states, the GEX-views numbers, per-ticker counts, a tappable day-timeline (tap a scan → plain-English ⇄ raw JSON), and the paper-grading table. |
 | **Learning** | The dials it can tune, paper performance + outcome distribution, "what it learned today," the learning loop. |
 | **🗺️ Pipeline** | The whole system, stage by stage (Senses → Brain → Record → Memory → Tell), each module translated to plain English with its data opened in a formatted view (Plain ⇄ Raw). The raw file explorer lives here as a "Browse all raw files" drill-down. |

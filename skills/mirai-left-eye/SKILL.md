@@ -23,9 +23,11 @@ description: |
 > historical context. The live system is: hunter (Shift Manager) → Fade Lens →
 > gravity engine + flow sensor → diary → report cards. See docs/gex-glossary.md.
 
-> **Interpreter**: invoke as `./hunter.py` (shebang pins
-> `~/.local/share/mirai-station/venv/bin/python`). Do NOT use `python3 hunter.py` —
-> system python lacks `schwab`/`scipy` and 4 of 5 signal modules silently fail.
+> **Interpreter**: invoke as
+> `~/.local/share/mirai-station/venv/bin/python hunter.py`. Do NOT use
+> `python3 hunter.py` or `./hunter.py` — the shebang is `#!/usr/bin/env python3`
+> (an absolute path would hardcode one machine's home), so both get system
+> python, which lacks `schwab`/`scipy`: 4 of 5 signal modules silently fail.
 
 # /mirai-left-eye — Intraday 0DTE Tape Hunter
 

@@ -11,9 +11,14 @@ under the mirai-station venv so snapshot.py can import the skill modules.
 LAN-only by design: no auth, and read-only with ONE deliberate exception —
 POST /api/sndk/reasoning flips the SNDK reasoning pause (see _CONTROL_PATH and
 do_POST). Nothing else here writes. Don't expose it to the public internet.
+
+"LAN-only" is enforced, not merely assumed: every request must carry a Host
+naming this machine locally (see Handler._host_ok), which is what stops a
+DNS-rebinding page from reading the raw explorer from the open internet.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -23,7 +28,7 @@ import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, urlsplit, parse_qs, unquote
 from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")   # the pause stamp reads in market time
@@ -45,6 +50,25 @@ PORT = int(os.environ.get("MIRAI_VIEW_PORT", "8787"))
 # NOT imported here, because the viewstation must stay free of skill imports.
 # The contract between the two processes is this file's shape, not a function.
 _CONTROL_PATH = STATE_DIR / "sndk_reads" / "control.json"
+
+# Extra Host names the tablet may use, beyond the local/private shapes allowed
+# by Handler._host_ok (e.g. a public DNS name in front of a reverse proxy).
+_EXTRA_HOSTS = {
+    h.strip() for h in os.environ.get("MIRAI_VIEW_HOSTS", "").split(",") if h.strip()
+}
+# Tailscale tailnet addresses live in CGNAT space, which Python does not count
+# as private; without this, reaching the view by tailnet IP would 403.
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _local_host(host: str) -> bool:
+    if host == "localhost" or host.endswith(".local") or host.endswith(".ts.net"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or (ip.version == 4 and ip in _CGNAT)
 
 # directories the raw explorer is allowed to read from (read-only)
 RAW_ROOTS = {
@@ -168,6 +192,45 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # quiet; launchd captures stdout anyway
         pass
 
+    def _host_ok(self) -> bool:
+        """Reject requests not addressed to this machine by a LAN/local name.
+
+        "LAN-only" is an assumption about the network, and DNS rebinding breaks
+        it without touching the network: an attacker's page re-resolves its own
+        domain to this box's private IP, so the browser treats the reply as
+        same-origin and can read /api/raw/file — the diary, the push log, the
+        voice transcripts. The Host header still says the attacker's domain,
+        which is what this catches. Shape-based, so a new DHCP lease or tailnet
+        name keeps working; extra names via MIRAI_VIEW_HOSTS (csv).
+        """
+        raw = self.headers.get("Host") or ""
+        if not raw:
+            # HTTP/1.1 makes Host mandatory and no browser speaks 1.0, so an
+            # absent Host is a raw-socket caller. Refusing it also closes the
+            # absolute-form request line (GET http://evil.com/... HTTP/1.1),
+            # which otherwise skips this check by carrying no Host at all.
+            return self.request_version < "HTTP/1.1"
+        host = urlsplit("//" + raw).hostname or ""
+        return host in _EXTRA_HOSTS or _local_host(host)
+
+    def _same_site_ok(self) -> bool:
+        """CSRF guard for the one write route — the job _host_ok cannot do.
+
+        A page on evil.com that fetches straight to http://127.0.0.1:8787/...
+        makes the browser send `Host: 127.0.0.1:8787` — the fetch target, not
+        the page — so the Host check passes and always will. What does give the
+        caller away is Origin, which browsers attach to every cross-origin POST,
+        and Sec-Fetch-Site. A caller sending neither is not a browser, and a
+        non-browser gains nothing here it could not do with a raw socket.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site not in ("same-origin", "same-site", "none"):
+            return False
+        origin = self.headers.get("Origin")
+        if origin is None:                    # non-browser client
+            return True
+        return _local_host(urlsplit(origin).hostname or "")
+
     def _send_json(self, obj, status=200):
         body = json.dumps(obj, default=str).encode("utf-8")
         self.send_response(status)
@@ -191,6 +254,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self._host_ok():
+            return self._send_json({"error": "bad host"}, 403)
         parsed = urlparse(self.path)
         route = parsed.path
         qs = parse_qs(parsed.query)
@@ -274,6 +339,8 @@ class Handler(BaseHTTPRequestHandler):
         beta chart. Note the server binds 0.0.0.0 with no auth, so anyone on the
         LAN can reach this; that blast radius is the reason it is scoped this
         tightly rather than being a generic settings endpoint."""
+        if not self._host_ok() or not self._same_site_ok():
+            return self._send_json({"error": "bad host"}, 403)
         parsed = urlparse(self.path)
         if parsed.path != "/api/sndk/reasoning":
             return self._send_json({"error": "not found"}, 404)
