@@ -13,15 +13,22 @@ Estimated setup time: 60–90 min.
 
 ## 0. Mac mini base prep
 
+> **Read this section as trade-offs, not a checklist.** Several steps below buy
+> unattended operation by giving up defense-in-depth, and they compound: an
+> auto-logged-in machine that never sleeps has an unlocked Keychain around the
+> clock, which is what lets the launchd jobs read broker credentials with no
+> prompt — and equally what lets anyone who gets a shell as this user read them.
+> Run this box on a network you trust, and prefer Tailscale over opening ports.
+
 1. **OS up to date** (System Settings → General → Software Update).
-2. **Auto-login** for the local user (System Settings → Users & Groups → Automatic login). LaunchAgents only fire when a user is logged in.
+2. **Auto-login** for the local user (System Settings → Users & Groups → Automatic login). LaunchAgents only fire when a user is logged in. This leaves the session — and the Keychain — unlocked whenever the machine is powered on; use a dedicated user account, not your daily one, and enable FileVault so the disk is still protected at rest.
 3. **Energy** — System Settings → Energy:
    - Prevent automatic sleeping when display is off → On
    - Wake for network access → On
    - Start up automatically after a power failure → On
 4. **Time zone** — set to `America/New_York` (or rely on the per-plist `TZ` env; both belt and suspenders).
-5. **Screen Sharing / SSH** — Settings → General → Sharing → enable Screen Sharing and Remote Login. Restrict to your account.
-6. **Optional: Tailscale** for zero-config SSH from anywhere: `brew install tailscale && sudo tailscaled install-system-daemon && tailscale up`.
+5. **Remote access** — prefer **Tailscale** (step 6) and leave Screen Sharing and Remote Login **off**. If you do enable them (Settings → General → Sharing), restrict to a single account, require a key rather than a password for SSH, and do not expose either to the internet.
+6. **Tailscale** for SSH from anywhere without opening a port: `brew install tailscale && sudo tailscaled install-system-daemon && tailscale up`.
 
 ## 1. Install developer essentials
 

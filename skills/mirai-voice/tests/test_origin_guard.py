@@ -53,9 +53,9 @@ def test_extra_origins_env_is_honored(monkeypatch):
 
 def test_request_origin_reads_both_websockets_api_shapes():
     """websockets moved the handshake headers from ws.request_headers (legacy)
-    to ws.request.headers (asyncio server); the guard must not silently read
-    None — a missing Origin is treated as a non-browser client and let through,
-    so reading the wrong attribute would fail open."""
+    to ws.request.headers (asyncio server); the guard must read whichever is
+    present, because a missing Origin is treated as a trusted non-browser
+    client — so reading the wrong attribute would fail open."""
     class _New:
         class request:
             headers = {"Origin": "https://evil.com"}
@@ -65,4 +65,19 @@ def test_request_origin_reads_both_websockets_api_shapes():
 
     assert V._request_origin(_New()) == "https://evil.com"
     assert V._request_origin(_Legacy()) == "https://evil.com"
-    assert V._request_origin(object()) is None
+
+
+def test_unlocatable_headers_fail_closed():
+    """The dangerous case is not "no Origin" but "cannot find the headers at
+    all": a websockets release that moves them again would downgrade every
+    browser to trusted-non-browser and silently undo this guard."""
+    assert V._request_origin(object()) is V._ORIGIN_UNKNOWN
+    assert V._origin_ok(V._ORIGIN_UNKNOWN) is False
+
+
+def test_ipv4_mapped_ipv6_is_judged_by_the_embedded_address():
+    """::ffff:8.8.8.8 is a public address wearing a v6 prefix; some Python
+    versions call the mapped form private on the prefix alone."""
+    assert V._origin_ok("http://[::ffff:8.8.8.8]:8787") is False
+    assert V._origin_ok("http://[::ffff:192.168.1.40]:8787") is True
+    assert V._origin_ok("http://[::1]:8787") is True

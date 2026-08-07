@@ -114,3 +114,48 @@ def test_non_browser_post_passes():
     """curl sends no Origin, and a raw-socket caller gains nothing here it
     could not already do — the guard is aimed at browsers."""
     assert _post_ok() is True
+
+
+def test_ipv4_mapped_ipv6_is_judged_by_the_embedded_address():
+    """[::ffff:8.8.8.8] is a public address wearing a v6 prefix; some Python
+    versions call the mapped form private on the strength of the prefix."""
+    assert _ok("[::ffff:8.8.8.8]:8787") is False
+    assert _ok("[::ffff:192.168.1.40]:8787") is True
+    assert _ok("[::1]:8787") is True
+
+
+# ---------------------------------------------------------------------------
+# The raw explorer's readable set. The suffix allowlist used to live only on
+# the directory listing — but the listing is a convenience and the fetch is the
+# actual permission, so anything the fetch skipped was readable by name.
+# ---------------------------------------------------------------------------
+
+def test_raw_fetch_enforces_the_suffix_allowlist(tmp_path, monkeypatch):
+    (tmp_path / "ok.json").write_text('{"a": 1}')
+    (tmp_path / "secret.enc").write_bytes(b"\x00binary")
+    (tmp_path / "notes.pem").write_text("-----BEGIN PRIVATE KEY-----")
+    monkeypatch.setattr(server, "RAW_ROOTS", {"state": tmp_path})
+
+    assert server._raw_file("state", "ok.json", 50).get("kind") == "json"
+    assert server._raw_file("state", "secret.enc", 50) == {"error": "not found"}
+    assert server._raw_file("state", "notes.pem", 50) == {"error": "not found"}
+
+
+def test_voice_transcripts_are_never_served(tmp_path, monkeypatch):
+    """Verbatim recordings of the operator talking, and a live agent session
+    id, are a different category of private than a diary row."""
+    (tmp_path / "voice").mkdir()
+    (tmp_path / "voice" / "convo-2026-08-06.jsonl").write_text('{"said": "..."}\n')
+    (tmp_path / "voice" / "session.json").write_text('{"session_id": "abc"}')
+    (tmp_path / "reversion").mkdir()
+    (tmp_path / "reversion" / "2026-08-06.jsonl").write_text('{"row": 1}\n')
+    monkeypatch.setattr(server, "RAW_ROOTS", {"state": tmp_path})
+
+    assert server._raw_file("state", "voice/convo-2026-08-06.jsonl", 50) == {"error": "not found"}
+    assert server._raw_file("state", "voice/session.json", 50) == {"error": "not found"}
+    # the ordinary diary still reads, or the explorer would be pointless
+    assert server._raw_file("state", "reversion/2026-08-06.jsonl", 50).get("kind") == "jsonl"
+
+    listed = [i["rel"] for i in server._raw_index()["state"]]
+    assert not any(r.startswith("voice") for r in listed)
+    assert "reversion/2026-08-06.jsonl" in listed

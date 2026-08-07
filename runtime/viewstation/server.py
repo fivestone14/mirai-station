@@ -68,6 +68,12 @@ def _local_host(host: str) -> bool:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return False
+    # ::ffff:8.8.8.8 must be judged as 8.8.8.8. Some Python versions call the
+    # mapped form private on the strength of the v6 prefix alone, which would
+    # wave a public address straight through a check written to stop exactly
+    # that.
+    if getattr(ip, "ipv4_mapped", None) is not None:
+        ip = ip.ipv4_mapped
     return ip.is_private or ip.is_loopback or (ip.version == 4 and ip in _CGNAT)
 
 # directories the raw explorer is allowed to read from (read-only)
@@ -120,13 +126,33 @@ def _safe_join(root: Path, rel: str) -> Path | None:
     return target
 
 
+# The explorer's readable types. This lives here, and is enforced by BOTH the
+# index and the fetch, because having it on the listing alone was worth nothing:
+# the listing is a convenience, the fetch is the actual permission, and anything
+# the fetch does not check is readable by anyone who can guess a name.
+_RAW_SUFFIXES = (".json", ".jsonl", ".txt", ".md")
+
+# Subtrees the explorer never exposes even though they sit under a readable
+# root. The voice logs are verbatim recordings of the operator talking, and a
+# live agent session id — a different category of private than a diary row.
+_RAW_DENY = ("voice",)
+
+
+def _raw_denied(root: Path, path: Path) -> bool:
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        return True
+    return bool(parts) and parts[0] in _RAW_DENY
+
+
 def _raw_index() -> dict:
     out = {}
     for label, root in RAW_ROOTS.items():
         items = []
         if root.exists():
             for p in sorted(root.rglob("*")):
-                if p.is_file() and p.suffix in (".json", ".jsonl", ".txt", ".md"):
+                if p.is_file() and p.suffix in _RAW_SUFFIXES and not _raw_denied(root, p):
                     try:
                         st = p.stat()
                     except OSError:
@@ -147,6 +173,8 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
         return {"error": "unknown root"}
     path = _safe_join(root, rel)
     if path is None or not path.is_file():
+        return {"error": "not found"}
+    if path.suffix not in _RAW_SUFFIXES or _raw_denied(root, path):
         return {"error": "not found"}
     text = path.read_text(errors="replace")
     if path.suffix == ".jsonl":
@@ -237,8 +265,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
+
+    def _deny(self, msg="bad host"):
+        """Refuse a request without leaving its body on the socket.
+
+        Rejecting before reading the body is what makes a 403 smuggleable: the
+        unread bytes stay buffered, and on a keep-alive connection the next
+        parse reads them as a *fresh* request — one that arrives with no Origin
+        and therefore sails through both guards. Closing the connection is what
+        makes the refusal actually stick.
+        """
+        self.close_connection = True
+        self._send_json({"error": msg}, 403)
 
     def _send_file(self, path: Path):
         if not path.is_file():
@@ -255,7 +297,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not self._host_ok():
-            return self._send_json({"error": "bad host"}, 403)
+            return self._deny()
         parsed = urlparse(self.path)
         route = parsed.path
         qs = parse_qs(parsed.query)
@@ -340,7 +382,7 @@ class Handler(BaseHTTPRequestHandler):
         LAN can reach this; that blast radius is the reason it is scoped this
         tightly rather than being a generic settings endpoint."""
         if not self._host_ok() or not self._same_site_ok():
-            return self._send_json({"error": "bad host"}, 403)
+            return self._deny()
         parsed = urlparse(self.path)
         if parsed.path != "/api/sndk/reasoning":
             return self._send_json({"error": "not found"}, 404)

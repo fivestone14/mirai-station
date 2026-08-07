@@ -89,10 +89,24 @@ def _local_host(host: str) -> bool:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return False
+    # ::ffff:8.8.8.8 must be judged as 8.8.8.8 — see the twin note in
+    # runtime/viewstation/server.py.
+    if getattr(ip, "ipv4_mapped", None) is not None:
+        ip = ip.ipv4_mapped
     return ip.is_private or ip.is_loopback or (ip.version == 4 and ip in _CGNAT)
 
 
-def _origin_ok(origin: str | None) -> bool:
+# Returned when the handshake headers cannot be located at all — distinct from
+# "the client sent no Origin", which is a legitimate non-browser caller.
+_ORIGIN_UNKNOWN = object()
+
+
+def _origin_ok(origin) -> bool:
+    if origin is _ORIGIN_UNKNOWN:
+        # A websockets release that moves the headers again would otherwise
+        # downgrade EVERY browser to "trusted non-browser" and silently undo
+        # this guard. Not being able to look is a refusal, not a pass.
+        return False
     if origin is None:                      # non-browser client
         return True
     if origin in _EXTRA_ORIGINS:
@@ -100,12 +114,14 @@ def _origin_ok(origin: str | None) -> bool:
     return _local_host(urlsplit(origin).hostname or "")
 
 
-def _request_origin(ws) -> str | None:
+def _request_origin(ws):
     req = getattr(ws, "request", None)
     headers = getattr(req, "headers", None)
     if headers is None:
         headers = getattr(ws, "request_headers", None)
-    return headers.get("Origin") if headers is not None else None
+    if headers is None:
+        return _ORIGIN_UNKNOWN
+    return headers.get("Origin")
 
 
 class Conn:
