@@ -158,6 +158,9 @@ VOL_TREND_MAX = 45          # a reference older than this is an outage artifact,
                             # not a 30-min window — the read is omitted instead
 VOL_TREND_FLAT = 2.5        # |Δ IV| under this many vol pts reads "flat"
                             # (recorded Δ30m: p10 −9.0 / p50 +1.8 / p90 +12.6)
+_WALL_AGE_LOOKBACK = 120    # rows walked back when ageing a wall (~4h at 120s).
+                            # A bound, not a judgement: past it the age reports
+                            # absent rather than making the read quadratic.
 WALLS_PER_SIDE = 2          # the ladder stops at 2 — deeper strikes are noise
 
 # --- the model call ----------------------------------------------------------
@@ -632,7 +635,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - magnet: strikes pulling price, with the tie told honestly. gap_pp small = no strike in charge.
 - momentum: change over the stated window, top magnet strikes only — building vs fading beats any static level. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
 - dealer_flow: standing dealer positioning. dex net is $-delta in billions from an assumed-sign book, and it is POSITIVE ON EVERY SCAN BY CONSTRUCTION — the arithmetic cannot produce another sign, and it has been positive on 1,675 of 1,675 recorded rows. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only net_change_30min can be news. vanna (in $M per vol point) only matters when vol_trend is moving.
-- walls: standing structure, up to two per side, nearest first — walls.call[0]/put[0] are the strongest near ceilings/floors; the second wall says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent. Walls are NOT the magnet strikes.
+- walls: standing structure, up to two per side, ordered by DISTANCE — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_behind / put_heaviest_behind. unchanged_min is how long that wall has held; a wall that has not moved in hours is standing structure, not news.
 - price.vwap_dist_sigma is the volume-anchored level, and the only level on this board that is not derived from the flip.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero.
 
@@ -947,10 +950,13 @@ def dealer_flow_block(rows: list[dict]) -> Optional[dict]:
     return out or None
 
 
-def walls_ladder(row: dict, sd) -> Optional[dict]:
+def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
+                 now: Optional[datetime] = None) -> Optional[dict]:
     """Laddered standing walls, up to WALLS_PER_SIDE a side, NEAREST first —
     walls.call[0]/put[0] are the old gwc/gwp (same clustering rule the ladder
     used: gw_vocab.cluster_walls on the measured net_by_strike surface).
+    NEAREST is the whole ordering: [0] is what price meets first, never
+    "the strongest" — see `_wall_ages` and the *_heaviest_behind key below.
     `gex` = the cluster's share of total book |γ| in percent — scale-free, so
     the model can weigh wall against wall without unit-opaque raw gamma. The
     denominator is the FULL net_by_strike surface, not the surviving clusters:
@@ -978,20 +984,96 @@ def walls_ladder(row: dict, sd) -> Optional[dict]:
     if not math.isfinite(tot) or tot <= 0:
         return None
 
-    def entry(c):
+    def entry(c, age=None):
         e = {"strike": c["peak"], "sigma": sd(c["peak"]),
              "gex": round(c["strength"] / tot * 100.0, 1)}
+        if age is not None:
+            mins, exact = age
+            e["unchanged_min" if exact else "unchanged_min_at_least"] = mins
         return {k: v for k, v in e.items() if v is not None}
-    calls = sorted((c for c in clusters if c["side"] == "call" and c["peak"] > spot),
-                   key=lambda c: c["peak"])[:WALLS_PER_SIDE]
-    puts = sorted((c for c in clusters if c["side"] == "put" and c["peak"] < spot),
-                  key=lambda c: -c["peak"])[:WALLS_PER_SIDE]
+
+    # selection is UNCHANGED from sr-2 on purpose: a cluster must match the
+    # side by gamma sign AND sit on that side of spot. Only the ageing and the
+    # heaviest-behind key are new — widening the filter would quietly redefine
+    # what a wall is, which is not a documentation fix.
     out = {}
-    if calls:
-        out["call"] = [entry(c) for c in calls]
-    if puts:
-        out["put"] = [entry(c) for c in puts]
+    for key, pool, near in (
+            ("call", [c for c in clusters
+                      if c["side"] == "call" and c["peak"] > spot],
+             lambda c: c["peak"]),
+            ("put", [c for c in clusters
+                     if c["side"] == "put" and c["peak"] < spot],
+             lambda c: -c["peak"])):
+        if not pool:
+            continue
+        ladder = sorted(pool, key=near)[:WALLS_PER_SIDE]
+        ages = _wall_ages(rows, key, [c["peak"] for c in ladder], now)
+        out[key] = [entry(c, ages.get(c["peak"])) for c in ladder]
+        # sr-3: the ladder is ordered by DISTANCE, so the heaviest cluster on a
+        # side can sit third and never ship at all. Measured 2026-08-06 15:59:
+        # walls.put shipped 1250 (gex 6.8) and 1225 while 1150 — the heaviest
+        # put cluster on the board — was cut for being further away, under a
+        # doctrine that called walls.put[0] "the strongest". The ladder keeps
+        # its job (what price meets FIRST); the heaviest is named separately
+        # when it is not already in it, so neither fact can hide the other.
+        top = max(pool, key=lambda c: c["strength"])
+        if top["peak"] not in {c["peak"] for c in ladder}:
+            out[key + "_heaviest_behind"] = entry(top)
     return out or None
+
+
+def _wall_ages(rows: Optional[list[dict]], side: str, strikes: list[float],
+               now: Optional[datetime]) -> dict:
+    """How long each laddered wall has held, in minutes — measured on the SAME
+    cluster rule build_scene ships, walking today's rows back until that side's
+    ladder no longer contains the strike.
+
+    This exists because `frozen_fields` probes the DIARY's scalar call_wall /
+    put_wall while the scene ships walls re-derived by cluster_walls. On
+    2026-08-06 15:59 that mismatch had the payload warning "put wall unchanged
+    371m" about 1200 — a strike that is not a cluster at all and appears
+    NOWHERE in the scene — while walls.put[0]=1250, sitting 0.15σ under price,
+    carried no staleness word of any kind. A guard pointed at a number the
+    model cannot see is worse than no guard: it spends the model's trust.
+
+    Bounded at _WALL_AGE_LOOKBACK rows so a long session cannot make the read
+    quadratic. Returns {} on any missing input — absent, never a guessed 0."""
+    if not rows or now is None or not strikes:
+        return {}
+    want = set(strikes)
+    seen: dict = {}
+    oldest = None
+    for r in reversed(rows[:-1][-_WALL_AGE_LOOKBACK:]):
+        sp, nbs = r.get("spot"), (r.get("gex_views") or {}).get("net_by_strike")
+        t = _ts(r)
+        if not nbs or not isinstance(sp, (int, float)) or t is None:
+            break                      # a hole is not evidence of holding
+        try:
+            cl = _gw.cluster_walls(nbs, sp)
+        except (TypeError, ValueError):
+            break
+        oldest = t
+        pool = [c for c in cl if c["side"] == side
+                and (c["peak"] > sp if side == "call" else c["peak"] < sp)]
+        held = {c["peak"] for c in sorted(
+            pool, key=(lambda c: c["peak"]) if side == "call" else (lambda c: -c["peak"])
+        )[:WALLS_PER_SIDE]}
+        gone = want - held
+        for k in gone:
+            seen.setdefault(k, (max(0, round((now - t).total_seconds() / 60.0)), True))
+        want -= gone
+        if not want:
+            break
+    # A wall still standing at the far end of the window is CENSORED, not
+    # unmeasured: we know it held at least that long and no more than that is
+    # knowable from here. Reporting it as a plain age would understate the
+    # staleness of the very field the guard exists to flag, and dropping it
+    # would tell the model "not measured" about something we did measure.
+    if want and oldest is not None:
+        floor = max(0, round((now - oldest).total_seconds() / 60.0))
+        for k in want:
+            seen[k] = (floor, False)
+    return seen
 
 
 ABNORMAL_DAY_SIGMA = 1.5    # a day move beyond this many σ is abnormal FOR
@@ -1131,10 +1213,19 @@ def build_scene(row: dict, band: dict, frozen: list,
             if band["top"] else None),
         "momentum": momentum_block(rows, band),
         "dealer_flow": dealer_flow_block(rows),
-        "walls": walls_ladder(row, sd),
+        "walls": walls_ladder(row, sd, rows, now),
         "history": history_flags(row, rows, vs_prior, ran_30m),
+        # sr-3: wall entries are dropped here. frozen_fields probes the DIARY's
+        # scalar call_wall/put_wall; the scene ships walls re-derived by
+        # cluster_walls, and on 2026-08-06 those disagreed — the list warned
+        # about put wall 1200, a strike absent from the whole scene, while
+        # walls.put[0]=1250 went unlabelled. The walls now carry their own
+        # `unchanged_min`, measured on the numbers the model actually reads.
+        # The row's frozen list is untouched: the chart greys diary fields and
+        # is right to keep describing them.
         "frozen_do_not_cite": [f"{f['field']} unchanged {f['for_min']}m"
-                               for f in frozen],
+                               for f in frozen
+                               if f["field"] not in ("call wall", "put wall")],
     }
     return {k: v for k, v in scene.items() if v not in (None, {}, [])}
 

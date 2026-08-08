@@ -472,3 +472,31 @@ def test_walls_survive_nan_in_the_surface():
         for w in (sc.get("walls") or {}).get(side, []):
             assert w["gex"] == w["gex"]          # never NaN
     assert "NaN" not in json.dumps(sc)
+
+
+# --- sr-3: gates become numbers, guards point at what the model can see ------
+def test_walls_age_on_the_numbers_the_scene_ships():
+    """The staleness guard used to probe the diary's call_wall/put_wall while
+    the scene shipped cluster_walls output — it warned about strikes absent
+    from the payload. Ages now ride the wall entries themselves."""
+    rows = [rich_row(ts=T0 - timedelta(minutes=(60 - i))) for i in range(60)]
+    sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]),
+                        [{"field": "put wall", "value": 1100.0, "for_min": 300},
+                         {"field": "regime", "value": "trending", "for_min": 90}],
+                        rows, T0)
+    assert "put wall" not in " ".join(sc["frozen_do_not_cite"])
+    assert "regime unchanged 90m" in sc["frozen_do_not_cite"]
+    w = sc["walls"]["put"][0]
+    assert "unchanged_min" in w or "unchanged_min_at_least" in w
+
+
+def test_heaviest_wall_ships_when_the_ladder_would_hide_it():
+    """The ladder is ordered by DISTANCE, so a side's heaviest cluster can sit
+    third and never ship — measured live on 2026-08-06, where put 1150 (the
+    heaviest) was cut while walls.put[0] was called 'the strongest'."""
+    sc = scene_of(rich_row())
+    puts = sc["walls"]["put"]
+    hb = sc["walls"].get("put_heaviest_behind")
+    if hb:                                   # only when it is not in the ladder
+        assert hb["gex"] >= max(p["gex"] for p in puts)
+        assert hb["strike"] not in {p["strike"] for p in puts}
