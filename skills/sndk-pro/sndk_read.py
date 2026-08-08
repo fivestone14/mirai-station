@@ -631,7 +631,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and ct/pt are that center plus and minus a fixed 0.25 sigma — the edges are arithmetic, not three independent levels, so three of them agreeing is one witness, not three. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
 - magnet: strikes pulling price, with the tie told honestly. gap_pp small = no strike in charge.
 - momentum: change over the stated window, top magnet strikes only — building vs fading beats any static level. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
-- dealer_flow: standing dealer positioning. dex net is signed $-delta in billions from an assumed-sign book (positive = dealers estimated net LONG delta); the LEVEL is structural and slow, so net_change_30min is the part that can actually be news. vanna (in $M per vol point) only matters when vol_trend is moving.
+- dealer_flow: standing dealer positioning. dex net is $-delta in billions from an assumed-sign book, and it is POSITIVE ON EVERY SCAN BY CONSTRUCTION — the arithmetic cannot produce another sign, and it has been positive on 1,675 of 1,675 recorded rows. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only net_change_30min can be news. vanna (in $M per vol point) only matters when vol_trend is moving.
 - walls: standing structure, up to two per side, nearest first — walls.call[0]/put[0] are the strongest near ceilings/floors; the second wall says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent. Walls are NOT the magnet strikes.
 - price.vwap_dist_sigma is the volume-anchored level, and the only level on this board that is not derived from the flip.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero.
@@ -894,25 +894,39 @@ def momentum_block(rows: list[dict], band: dict) -> Optional[dict]:
 
 
 def dealer_flow_block(rows: list[dict]) -> Optional[dict]:
-    """Second-order dealer lean, one place. dex = standing signed $-delta
-    (billions; + = dealers net long delta, sign convention glossed once in
-    the doctrine) plus its timestamp-true 30-min change. vanna = front-book
-    net ($M per vol point), armed by vol_trend. Each field measured-or-absent;
-    an empty block is dropped, never shipped hollow.
+    """Second-order dealer lean, one place. dex = standing $-delta (billions)
+    plus its timestamp-true 30-min change. vanna = front-book net ($M per vol
+    point), armed by vol_trend. Each field measured-or-absent; an empty block
+    is dropped, never shipped hollow.
 
     NO LEAN WORD (adversarial audit 08-02): a sign-derived word read
     "long delta" on 756/756 simulated scenes — the exact banned pattern the
     module header documents (a constant that reads like a signal manufactures
     conviction, in one direction, forever). The blueprint's own frame is that
-    the CHANGE is the signal, so the change is what ships; the model can read
-    the sign off the signed number without being handed a conclusion."""
+    the CHANGE is the signal, so the change is what ships.
+
+    sr-3 (2026-08-08) finishes that job. Deleting the word was not enough: the
+    doctrine still glossed the sign as "positive = dealers estimated net LONG
+    delta", which is the same constant wearing a definition instead of an
+    adjective. `net_dex_total` is > 0 BY CONSTRUCTION (lefteye_dex.py:22, its
+    own words) and measured positive on 1,675 of 1,675 recorded rows — so that
+    gloss was a permanently-bullish reading handed over as a fact about the
+    market. The doctrine now names the constancy, and the field carries its own
+    note so the model meets the caveat where it meets the number. The LEVEL
+    stays because net_change_30min is measured off it."""
     if not rows:
         return None
     row = rows[-1]
     out = {}
     net = _fin((row.get("dex_views") or {}).get("net_dex_total"))
     if net is not None:
-        dex = {"net": round(net / 1e9, 2)}
+        # sr-3: the note rides the FIELD, not only the doctrine. The doctrine is
+        # one paragraph read once at the top of a cached block; the number is
+        # what the model is actually looking at when it reasons, and a bare
+        # signed figure invites the reading the sign cannot support.
+        dex = {"net": round(net / 1e9, 2),
+               "note": "sign is fixed by the formula, not the market — "
+                       "read net_change_30min, never the level"}
         t_now = _ts(row)
         if t_now is not None:
             for r in reversed(rows[:-1]):

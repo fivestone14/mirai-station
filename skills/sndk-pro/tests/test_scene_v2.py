@@ -221,9 +221,13 @@ def test_momentum_skips_strikes_outside_both_windows():
 def test_dealer_flow_dex_and_vanna():
     df = scene_of(rich_row())["dealer_flow"]
     # NO lean word (adversarial audit: sign-derived word was constant on
-    # 756/756 scenes — the banned pattern); the signed number carries the sign
-    assert df["dex"] == {"net": 3.93}
+    # 756/756 scenes — the banned pattern)
+    assert df["dex"]["net"] == 3.93
     assert "lean" not in df["dex"]
+    # sr-3: net_dex_total is > 0 BY CONSTRUCTION (1,675/1,675 recorded rows),
+    # so the field must say so where the model reads the number — a caveat that
+    # lives only in the cached doctrine is a caveat the number travels without.
+    assert "net_change_30min" in df["dex"]["note"]
     assert df["vanna"]["net"] == pytest.approx(0.26, abs=0.01)
 
 
