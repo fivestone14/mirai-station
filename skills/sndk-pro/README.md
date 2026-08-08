@@ -83,7 +83,7 @@ gross-volume deltas over the last 5 scans; `oi_d` and `cvd` deliberately
 absent — OI is static intraday upstream, and no aggressor tape exists for
 the stock leg), **dealer_flow** (dex $-delta + front-book vanna), **walls**
 (laddered, 2 per side, nearest first — gwc/gwp migrated to `walls.*[0]`),
-`named_levels` (ct/hvl/pt), `history` flags (the under-pull guard), and
+`history` flags (the under-pull guard), and
 `frozen_do_not_cite`. Omit-never-null throughout: a field without a clean
 source is absent, not nulled — the model treats missing as "no data".
 

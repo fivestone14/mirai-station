@@ -268,14 +268,23 @@ def test_walls_absent_without_a_surface():
     assert "walls" not in sc
 
 
-def test_gwc_gwp_migrated_out_of_named_levels():
+def test_gwc_gwp_live_in_the_walls_ladder():
     row = rich_row()
     row["profile_ladder"].update({"gwc": 1240.0, "gwp": 1150.0})
     sc = scene_of(row)
-    named = sc["named_levels_sigma_from_spot"]
-    assert set(named) <= {"ct", "hvl", "pt"}      # gwc/gwp live in walls[0] now
     assert sc["walls"]["call"][0]["strike"] == 1240.0
     assert sc["walls"]["put"][0]["strike"] == 1150.0
+
+
+def test_flip_band_is_told_once(monkeypatch):
+    """sr-3: the flip family speaks through flip_block alone. hvl IS the flip
+    and ct/pt are that centre ±0.25σ (923/923 recorded rows), so shipping them
+    a second time as named levels dressed one measurement as three witnesses."""
+    sc = scene_of(rich_row())
+    assert "named_levels_sigma_from_spot" not in sc
+    assert "lowest_named_level" not in sc
+    assert set(sc["regime"]["flip"]) <= {"ct_sigma", "pt_sigma",
+                                         "center_sigma", "price_in_band"}
 
 
 # --- history flags (the under-pull guard) -----------------------------------

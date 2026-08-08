@@ -82,7 +82,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-2"                # bump on ANY change to the gates or the prompt.
+ERA = "sr-3"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-2 (2026-08-02, blueprint v3): the verdict left
@@ -93,6 +93,15 @@ ERA = "sr-2"                # bump on ANY change to the gates or the prompt.
                             # dealer_flow / walls ladder added), with the
                             # on-demand history tool + external fetch. The
                             # deterministic arrow is unchanged and still draws.
+                            # sr-3 (2026-08-08): the flip band stops speaking
+                            # four times. named_levels_sigma_from_spot and
+                            # lowest_named_level left the scene — measured on
+                            # 923 recorded rows, hvl IS gamma_flip and the edges
+                            # are that centre ±0.25σ exactly, so those keys
+                            # restated flip_block's own ct/pt/center numbers and
+                            # gave one measurement the appearance of three
+                            # agreeing levels. The doctrine now says the edges
+                            # are arithmetic. Gates and arrow unchanged.
 PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protection)
 
 # --- wake gate ---------------------------------------------------------------
@@ -619,12 +628,12 @@ THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical
 
 HOW TO READ THE SCENE (grouped by force, not by metric):
 - scale: the sigma ruler, plus aem — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
-- regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
+- regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and ct/pt are that center plus and minus a fixed 0.25 sigma — the edges are arithmetic, not three independent levels, so three of them agreeing is one witness, not three. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
 - magnet: strikes pulling price, with the tie told honestly. gap_pp small = no strike in charge.
 - momentum: change over the stated window, top magnet strikes only — building vs fading beats any static level. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
 - dealer_flow: standing dealer positioning. dex net is signed $-delta in billions from an assumed-sign book (positive = dealers estimated net LONG delta); the LEVEL is structural and slow, so net_change_30min is the part that can actually be news. vanna (in $M per vol point) only matters when vol_trend is moving.
 - walls: standing structure, up to two per side, nearest first — walls.call[0]/put[0] are the strongest near ceilings/floors; the second wall says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent. Walls are NOT the magnet strikes.
-- named_levels / lowest_named_level: distances in sigma. hvl here is the gamma flip (the band center), not a volume shelf; vwap_dist_sigma in price is the volume-anchored level.
+- price.vwap_dist_sigma is the volume-anchored level, and the only level on this board that is not derived from the flip.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero.
 
 WHEN TO REACH OUTSIDE THE SCENE (both optional, most reads need neither):
@@ -1026,13 +1035,14 @@ def build_scene(row: dict, band: dict, frozen: list,
 
     # the day's own path, which the old design never handed over at all
     path = [s for r in rows if (s := _fin(r.get("spot"))) is not None]
-    ladder = row.get("profile_ladder")
-    ladder = ladder if isinstance(ladder, dict) else {}
     # gwc/gwp migrated to walls.call[0]/put[0] — same clustering rule, told
-    # as a ladder with the second wall behind the first
-    named = {k: sd(ladder.get(k)) for k in ("ct", "hvl", "pt")}
-    named = {k: v for k, v in named.items() if v is not None}
-
+    # as a ladder with the second wall behind the first. named_levels went the
+    # same way in sr-3: measured over all 923 recorded rows carrying the family,
+    # profile_ladder.hvl == gamma_flip on 923/923 and (ct-flip)/sigma,
+    # (pt-flip)/sigma take exactly ONE value, (+0.25, -0.25) — so ct/hvl/pt were
+    # flip_block's own three numbers a second time, and lowest_named_level was
+    # min() of that duplicate. Four scene keys, one measurement; the model cited
+    # them 0 times in 61 sr-2 readings. flip_block is now the sole owner.
     pc = _fin(row.get("prior_close"))
     vs_prior = (round((spot / pc - 1) * 100, 2)
                 if pc and spot else None)
@@ -1108,8 +1118,6 @@ def build_scene(row: dict, band: dict, frozen: list,
         "momentum": momentum_block(rows, band),
         "dealer_flow": dealer_flow_block(rows),
         "walls": walls_ladder(row, sd),
-        "named_levels_sigma_from_spot": named,
-        "lowest_named_level": (min(named.values()) if named else None),
         "history": history_flags(row, rows, vs_prior, ran_30m),
         "frozen_do_not_cite": [f"{f['field']} unchanged {f['for_min']}m"
                                for f in frozen],

@@ -28,8 +28,8 @@ Sources: diary row = `sndk_views.build_row` (ROW_V 3), read row =
 | dealer_flow.dex {net, net_change_30min} | `dex_views.net_dex_total` + timestamp-true 30-min Δ across rows | assumed-sign book, signed $bn (+ = dealers net long delta, glossed once in doctrine). **No lean word** — the adversarial audit measured a sign-derived word constant on 756/756 scenes, the exact banned pattern; the change is the signal and now actually ships |
 | dealer_flow.vanna {net, note} | `flows_front.vex` (front-book clock) | omitted when not cleanly computed; block dropped when empty |
 | walls {call[2], put[2]} each {strike, sigma, gex} | `gw_vocab.cluster_walls(net_by_strike)` nearest-first per side | `gex` = cluster share of total \|net γ\| in % (scale-free); walls.call[0] ≡ old `gwc`, walls.put[0] ≡ old `gwp` (same clustering rule the ladder used) |
-| named_levels_sigma_from_spot {ct, hvl, pt} | `profile_ladder` | gwc/gwp migrated → walls[0] |
-| lowest_named_level | min of named | |
+| ~~named_levels_sigma_from_spot {ct, hvl, pt}~~ | — | **DELETED sr-3 (2026-08-08)**: a duplicate of `regime.flip`. Measured over the 923 recorded rows carrying the family, `profile_ladder.hvl == gamma_flip` on 923/923 and `(ct−flip)/σ, (pt−flip)/σ` take exactly one value, `(+0.25, −0.25)` — so these were flip_block's own three numbers a second time, presenting one measurement as three levels agreeing. Cited 0 times in 61 sr-2 readings |
+| ~~lowest_named_level~~ | — | **DELETED sr-3**: `min()` of the duplicate above |
 | history {level_unseen_today, abnormal_tape} | today's rows (spot beyond all prior scans = new session ground; ≥1.5σ day move on the stock's OWN ruler or ≥0.5σ/30min = abnormal) | the under-pull flags; block omitted when nothing to say. σ-relative on purpose: a fixed 8% is ~1σ on this name and fired on 56% of recorded scans |
 | frozen_do_not_cite | `frozen_fields` over today's rows | guardrail, kept |
 
