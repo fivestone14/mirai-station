@@ -7,7 +7,7 @@ surface, deliberately NOT reasoning input. This list is the pressure-test
 shortlist: anything marked *not in payload* is a candidate to argue back in.
 
 Sources: diary row = `sndk_views.build_row` (ROW_V 3), read row =
-`sndk_read.read_once` (ERA sr-2), chain = `sndk_feed.sndk_chain`.
+`sndk_read.read_once` (ERA sr-3), chain = `sndk_feed.sndk_chain`.
 
 ## In the scene payload (v2 — the blueprint shape)
 
@@ -23,7 +23,8 @@ Sources: diary row = `sndk_views.build_row` (ROW_V 3), read row =
 | regime.vol_trend {direction, iv_change_last_30min} | `atm_iv` across today's rows (30-min lookback) | vol pts; the switch that arms vanna/charm |
 | regime.flip {ct_sigma, pt_sigma, center_sigma, price_in_band} | `profile_ladder.ct/pt`, `gamma_flip`, ladder `state` | **live schema fact: `hvl` IS the gamma flip** (High Volatility Level), so center ≡ hvl — see flag below |
 | regime.charm {magnitude, drift_toward} | `flows_front.cex` / `charm_wall` (front-book clock) | N11: no direction word ever (net charm structurally sign-locked); magnitude + target strike only; omitted when not cleanly computed |
-| magnet {is_a_tie, gap_pp, top_strikes, sigma_from_spot} | `gex_views.mass_by_strike` band | unchanged (evidence, not verdict) |
+| magnet {gap_pp, gap_vs_own_history, top_strikes, sigma_from_spot} | `gex_views.mass_by_strike` band | **sr-3 (08-08)**: `is_a_tie` DELETED — it was `gap_pp < MAGNET_SEP_PP`, a July constant (5.0pp) shipped as a finished verdict and true on ~95% of August scans, the third instance of the `dex_word` pattern. The gap is the evidence; `gap_vs_own_history` grades it against prior sessions instead of a fixed cut |
+| breadth {lopsidedness, heavier, note, vs_own_history} | `gex_views.shove` (`\|up−dn\|/max(\|up\|,\|dn\|)`) | **NEW sr-3.** The number existed only inside the aggregator, spent on one `>= 0.30` comparison and discarded — 0.299 and 0.001 both read "not admissible" and the model saw neither. Ships with NO direction (both conventions unestablished across 86 sign runs) and a note naming the magnet as the same witness (they agreed 69/69 on replay) |
 | momentum {window, by_strike gex_share_d_pp/vol_d + read} | `mass_by_strike` share deltas + `vol_gross_by_strike` deltas over the last 5 scans (~10 min), intersection-denominated | `oi_d` **omitted**: upstream OI updates once daily — an intraday oi_d is a permanent 0 (measured 07-30: OI@1300 unique value all day). `cvd` **omitted**: no bid/ask aggressor tape exists for SNDK stock (1-min bars only; a bar-direction proxy measures drift, not aggression — the 07-17 BVC lesson) |
 | dealer_flow.dex {net, note, net_change_30min} | `dex_views.net_dex_total` + timestamp-true 30-min Δ across rows | assumed-sign book, $bn. **No lean word** — the adversarial audit measured a sign-derived word constant on 756/756 scenes, the exact banned pattern; the change is the signal and now actually ships. **sr-3 (08-08)**: the doctrine's gloss "+ = dealers net long delta" was the same constant wearing a definition — `net_dex_total > 0` BY CONSTRUCTION (`lefteye_dex.py:22`), measured positive on 1,675/1,675 recorded rows. Doctrine now names the constancy and `note` rides the field itself; the level stays only because the 30-min Δ is measured off it |
 | dealer_flow.vanna {net, note} | `flows_front.vex` (front-book clock) | omitted when not cleanly computed; block dropped when empty |
@@ -46,7 +47,7 @@ payload and arrow are decoupled paths.
 | `dex_views.dex_word / dex_flow_word / dex_flow_signed` | INADMISSIBLE (constant string / muted flow read) |
 | `gex_views.net_gex / net_gex_tenor / gross_gex` | magnitude uncalibrated; regime word already carries the sign; raw $ units are unit-opaque to the model |
 | `gex_views.net_by_strike / mass_by_strike / oi_by_strike / vol_*_by_strike` (raw arrays) | view surfaces — the payload carries their *derived* reads (walls ladder, magnet band, momentum deltas); raw 29–78-element arrays dilute the read |
-| `gex_views.shove` | breadth gate for the aggregator arrow only; its sign convention is unestablished (README) — feeding it to the model would smuggle a vote |
+| `gex_views.shove` (raw margins) | the raw up/down margins stay out; **sr-3 ships their RATIO as `breadth.lopsidedness`** — a magnitude with no direction, so no vote is smuggled (the sign convention stays unestablished, per README) |
 | `gex_views.vex/cex` (whole-book SPX-clock) | replaced in-payload by `flows_front` on the SNDK front-book clock; SPX-clock cex is 0DTE-only (absent 4 of 5 days) |
 | `gex_views.flip_band / flip_tenor / regime_tenor / regime_source` | flip band ships as ct/pt already; tenor twins are display honesty fields |
 | `dex_views.net_dex_by_strike / dex_above/below_spot / basis / n` | per-strike view surface + provenance; headline net is the read |

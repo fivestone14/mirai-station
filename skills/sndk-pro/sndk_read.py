@@ -161,6 +161,13 @@ VOL_TREND_FLAT = 2.5        # |Δ IV| under this many vol pts reads "flat"
 _WALL_AGE_LOOKBACK = 120    # rows walked back when ageing a wall (~4h at 120s).
                             # A bound, not a judgement: past it the age reports
                             # absent rather than making the read quadratic.
+PCTL_MIN_SESSIONS = 5       # a number's percentile against its own history is
+                            # OMITTED under this many prior sessions. Round-2
+                            # measured that per-day medians on this tape swing
+                            # 3x, so a percentile drawn from three days is a
+                            # sentence about three days wearing the authority
+                            # of a distribution. n always ships with the word.
+PCTL_MAX_SESSIONS = 22      # and it forgets past this, like terrain's month
 WALLS_PER_SIDE = 2          # the ladder stops at 2 — deeper strikes are noise
 
 # --- the model call ----------------------------------------------------------
@@ -632,7 +639,8 @@ THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical
 HOW TO READ THE SCENE (grouped by force, not by metric):
 - scale: the sigma ruler, plus aem — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
 - regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and ct/pt are that center plus and minus a fixed 0.25 sigma — the edges are arithmetic, not three independent levels, so three of them agreeing is one witness, not three. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
-- magnet: strikes pulling price, with the tie told honestly. gap_pp small = no strike in charge.
+- magnet: strikes pulling price. gap_pp is the top strike's lead over the runner-up in points of gamma mass — SMALL means no strike is really in charge, and there is no threshold where it flips: read the number, and read gap_vs_own_history for whether today's lead is unusual for this tape.
+- breadth: how lopsided the book's resistance is (0 = even). It NEVER points a direction — both readings of which side a heavy book favours are unestablished here. It also reads the same gamma pile as the magnet, so treat the two as one witness, not two.
 - momentum: change over the stated window, top magnet strikes only — building vs fading beats any static level. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
 - dealer_flow: standing dealer positioning. dex net is $-delta in billions from an assumed-sign book, and it is POSITIVE ON EVERY SCAN BY CONSTRUCTION — the arithmetic cannot produce another sign, and it has been positive on 1,675 of 1,675 recorded rows. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only net_change_30min can be news. vanna (in $M per vol point) only matters when vol_trend is moving.
 - walls: standing structure, up to two per side, ordered by DISTANCE — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_behind / put_heaviest_behind. unchanged_min is how long that wall has held; a wall that has not moved in hours is standing structure, not news.
@@ -950,6 +958,123 @@ def dealer_flow_block(rows: list[dict]) -> Optional[dict]:
     return out or None
 
 
+def _prior_sessions(today: str) -> dict:
+    """Every measured value of the graded quantities, from CLOSED sessions only.
+
+    Causal by construction — today's own file is never opened, so a number can
+    never be graded against a distribution it is itself inside, and the answer
+    a scan gets at 09:31 is the answer it gets at 15:59. Cached to disk against
+    the exact session list it was built from, so a fresh process re-reads ~8
+    small files once a day rather than on every tick.
+
+    Forced/off-hours rows are excluded on the same rule the reader uses
+    everywhere else: a midnight row is not a scan of the tape."""
+    days = sorted(p for p in _diary_dir().glob("2026-*.jsonl")
+                  if p.stem < today)[-PCTL_MAX_SESSIONS:]
+    key = [p.stem for p in days]
+    cache = _reads_dir() / "pctl_prior.json"
+    try:
+        blob = json.loads(cache.read_text())
+        if blob.get("sessions") == key:
+            return blob
+    except (OSError, ValueError):
+        pass
+    gaps: list[float] = []
+    lops: list[float] = []
+    for p in days:
+        try:
+            lines = p.read_text().splitlines()
+        except OSError:
+            continue
+        for ln in lines:
+            try:
+                r = json.loads(ln)
+            except ValueError:
+                continue                      # a torn line is skipped, never fatal
+            if (r.get("meta") or {}).get("forced"):
+                continue
+            b = magnet_band(r)
+            if b and len(b["top"]) >= 2 and b["gap_pp"] is not None:
+                gaps.append(b["gap_pp"])
+            lp = _lopsided(r)
+            if lp is not None:
+                lops.append(lp)
+    blob = {"sessions": key, "magnet_gap_pp": sorted(gaps),
+            "lopsidedness": sorted(lops)}
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(blob))
+    except OSError:
+        pass                                   # a cache that cannot write still answers
+    return blob
+
+
+def _pctl_word(name: str, value, now: Optional[datetime]) -> Optional[str]:
+    """"bigger than 12% of scans (8 prior sessions)" — a number's standing in
+    its own recorded history, with n on its face.
+
+    This is the granular replacement for a pass/fail threshold, and it is
+    granular in the one way that survives: a fixed 5.0pp cut fitted in July
+    still says 5.0pp in August, while a percentile re-reads the tape it is
+    describing. OMITTED — never guessed — under PCTL_MIN_SESSIONS, because a
+    percentile is a claim about a distribution and three days is not one."""
+    if value is None or now is None:
+        return None
+    try:
+        blob = _prior_sessions(now.strftime("%Y-%m-%d"))
+    except Exception:                          # history is a nicety, never a blocker
+        return None
+    xs, n = blob.get(name) or [], len(blob.get("sessions") or [])
+    if n < PCTL_MIN_SESSIONS or not xs:
+        return None
+    below = sum(1 for x in xs if x < value)
+    return (f"bigger than {round(below / len(xs) * 100)}% of scans "
+            f"in the {n} prior sessions")
+
+
+def _lopsided(row: dict) -> Optional[float]:
+    """How one-sided the book's resistance is, 0 = even. The aggregator's own
+    `shove` quantity, unchanged — `|up - dn| / max(|up|, |dn|)`."""
+    sh = _shove(row)
+    up, dn = sh.get("shove_up_margin"), sh.get("shove_down_margin")
+    if not isinstance(up, (int, float)) or not isinstance(dn, (int, float)):
+        return None
+    return round(abs(up - dn) / max(abs(up), abs(dn), 1e-9), 3)
+
+
+def breadth_block(row: dict, now: Optional[datetime]) -> Optional[dict]:
+    """How lopsided the book is — a NUMBER, first time it has ever reached the
+    model.
+
+    Until sr-3 this quantity existed only inside the aggregator, where it was
+    spent on one comparison (`rel >= 0.30`) and thrown away: 0.299 and 0.001
+    both came out "not admissible", and the model was told neither. That
+    threshold was fitted in July and the tape moved under it — which is the
+    general case, since a constant cannot track a distribution.
+
+    NO DIRECTION, and that is load-bearing: on four sessions the two possible
+    conventions (heavier side resists / heavier side wins) swing ~30 points day
+    to day across 86 sign runs, so neither is established and this module will
+    not assert one. `heavier` names a side as a fact; it is not a lean.
+
+    Also NOT independent of the magnet — both read the same gamma pile, and
+    replay had them agreeing on 69 of 69 scans where both cleared. The note
+    says so, because two witnesses who are one witness is exactly the failure
+    the flip band was carrying."""
+    rel = _lopsided(row)
+    if rel is None:
+        return None
+    sh = _shove(row)
+    up, dn = sh.get("shove_up_margin"), sh.get("shove_down_margin")
+    out = {"lopsidedness": rel,
+           "heavier": "up" if up > dn else "down",
+           "note": "same gamma pile as magnet — not a second opinion"}
+    w = _pctl_word("lopsidedness", rel, now)
+    if w:
+        out["vs_own_history"] = w
+    return out
+
+
 def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
                  now: Optional[datetime] = None) -> Optional[dict]:
     """Laddered standing walls, up to WALLS_PER_SIDE a side, NEAREST first —
@@ -1201,16 +1326,25 @@ def build_scene(row: dict, band: dict, frozen: list,
         "price": prune(price),
         "regime": prune(regime),
         # magnet: evidence only when a book was measured. An empty/absent book
-        # must not ship a bare {"is_a_tie": true} (a manufactured "no strike
-        # in charge" claim), and a SINGLE-strike book — maximal dominance —
-        # must not read as a tie either: with no runner-up the tie question is
-        # unanswerable, so is_a_tie/gap_pp are omitted (adversarial audit 08-02).
+        # must not ship a bare gap claim, and a SINGLE-strike book — maximal
+        # dominance — has no runner-up, so gap_pp is unanswerable and omitted
+        # (adversarial audit 08-02).
+        #
+        # sr-3 drops `is_a_tie`. It was `gap_pp < MAGNET_SEP_PP`, i.e. a
+        # hardcoded July constant (5.0pp) shipped to the model as a finished
+        # verdict — and it read True on ~95% of August scans, which is the
+        # dex_word pattern a third time: a near-constant that sounds like a
+        # discovery. The gap itself is the evidence and it is already here;
+        # `vs_own_history` says how unusual today's gap is against the tape's
+        # own record, which is the part a fixed threshold could never track.
         "magnet": (prune({
-            "is_a_tie": band["tie"] if len(band["top"]) >= 2 else None,
             "gap_pp": band["gap_pp"] if len(band["top"]) >= 2 else None,
+            "gap_vs_own_history": (_pctl_word("magnet_gap_pp", band["gap_pp"], now)
+                                   if len(band["top"]) >= 2 else None),
             "top_strikes": band["top"],
             "sigma_from_spot": sd(band["top"][0][0])})
             if band["top"] else None),
+        "breadth": breadth_block(row, now),
         "momentum": momentum_block(rows, band),
         "dealer_flow": dealer_flow_block(rows),
         "walls": walls_ladder(row, sd, rows, now),

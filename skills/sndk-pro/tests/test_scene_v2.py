@@ -475,6 +475,37 @@ def test_walls_survive_nan_in_the_surface():
 
 
 # --- sr-3: gates become numbers, guards point at what the model can see ------
+def test_magnet_ships_the_gap_not_a_tie_verdict():
+    """`is_a_tie` was `gap_pp < MAGNET_SEP_PP` — a July constant shipped as a
+    finished verdict, and true on ~95% of August scans. The gap is the
+    evidence; a threshold is not."""
+    m = scene_of(rich_row())["magnet"]
+    assert "is_a_tie" not in m
+    assert m["gap_pp"] is not None
+
+
+def test_breadth_ships_a_number_and_never_a_direction():
+    b = scene_of(rich_row())["breadth"]
+    assert b["lopsidedness"] == pytest.approx(0.9, abs=0.01)   # |2.0-0.2|/2.0
+    assert b["heavier"] in ("up", "down")        # a fact about mass...
+    assert "dir" not in b and "vector" not in b  # ...never a lean
+    assert "magnet" in b["note"]                 # names the shared witness
+
+
+def test_breadth_absent_without_a_shove_read():
+    row = rich_row()
+    row["gex_views"].pop("shove")
+    assert "breadth" not in scene_of(row)
+
+
+def test_percentile_omitted_below_the_session_floor():
+    """A percentile is a claim about a distribution; the tmp state dir holds no
+    prior sessions, so the word must be ABSENT rather than guessed."""
+    sc = scene_of(rich_row())
+    assert "gap_vs_own_history" not in sc["magnet"]
+    assert "vs_own_history" not in sc["breadth"]
+
+
 def test_walls_age_on_the_numbers_the_scene_ships():
     """The staleness guard used to probe the diary's call_wall/put_wall while
     the scene shipped cluster_walls output — it warned about strikes absent
