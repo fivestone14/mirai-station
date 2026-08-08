@@ -56,7 +56,7 @@ clock, verbatim.
 | `sndk_feed.py` | The Chain Runner | Per-day probe discovery (day-cached; probe ERRORS on a candidate front day → degraded, never cached), one batched `cass_market_run` pull per 240s (raw book persisted to `state/sndk_gex/chain_cache.json` — each tick is a fresh process, so the off tick re-prices the cached book at the fresh quote instead of re-pulling), chunked + clip-detected, IV rebuild + gamma fill on the front-book clock, front-expiry coverage teeth |
 | `sndk_views.py` | The Map Maker | Pure: chain + live spot → one diary row via the left-eye engines (gex/dex/ladder/EM/net-exposure) |
 | `sndk_hunter.py` | The Shift Worker | One tick per invocation: quote → chain → row → append `state/sndk_reversion/{date}.jsonl`. `--force` bypasses the RTH gate (manual proof runs) |
-| `sndk_read.py` | The Reader | The chart's live reading. Recomputes the ARROW every run (pure, free) and spends one `claude -p` call — the model's OWN vector + magnitude off an unbiased scene (sr-2) — only when the wake gate fires → `state/sndk_reads/{date}.jsonl` |
+| `sndk_read.py` | The Reader | The chart's live reading. Recomputes the ARROW every run (pure, free) and spends one `claude -p` call — the model's OWN vector + magnitude off an unbiased scene (sr-3) — only when the wake gate fires → `state/sndk_reads/{date}.jsonl` |
 | `sndk_rag.py` | The Memory | On-demand history TOOL (never auto-injected): per-read slice records (metadata face + narrative face), day summaries with a sentiment read, month-tier standing terrain, hybrid metadata-filter→narrative-rank retrieval → `state/sndk_rag/` |
 
 ## The arrow and the reading are separate on purpose
@@ -66,7 +66,7 @@ model's opinion; here the two paths are decoupled:
 
 * the **arrow** is decided by a deterministic aggregator — no model — and
   still draws on the chart exactly as before,
-* the **reading** (sr-2, 2026-08-02 blueprint) is the model's **own
+* the **reading** (sr-2 blueprint 2026-08-02, sr-3 since 2026-08-08) is the model's **own
   inference** — a direction vector + a magnitude in σ — made cold from an
   **unbiased scene** that carries evidence only. The old
   `arrow_already_decided` block anchored the model and was removed from the
@@ -74,18 +74,26 @@ model's opinion; here the two paths are decoupled:
   and the two surfaces may disagree on the chart (that disagreement is
   information, not a bug).
 
-The sr-2 scene (docs/sndk-payload-inventory.md is the field-by-field map):
+The scene (docs/sndk-payload-inventory.md is the field-by-field map):
 grouped by force — `scale` (σ + **aem**, the IV-skew-split asymmetric range),
 `price` (+ **vwap_dist_sigma**), `regime` (+ **vol_trend**, **flip** band
-with center + position, **charm** magnitude/drift-target on the front-book
-clock), `magnet` (the tie, told honestly), **momentum** (gamma-share +
-gross-volume deltas over the last 5 scans; `oi_d` and `cvd` deliberately
-absent — OI is static intraday upstream, and no aggressor tape exists for
-the stock leg), **dealer_flow** (dex $-delta + front-book vanna), **walls**
-(laddered, 2 per side, nearest first — gwc/gwp migrated to `walls.*[0]`),
-`history` flags (the under-pull guard), and
-`frozen_do_not_cite`. Omit-never-null throughout: a field without a clean
-source is absent, not nulled — the model treats missing as "no data".
+with center + position — told ONCE since sr-3: the edges are the flip ±0.25σ
+by construction, and the old named_levels duplicate left the scene — plus
+**charm** magnitude/drift-target on the front-book clock), `magnet` (the gap
+as a NUMBER + its percentile against prior sessions; the `is_a_tie` verdict
+was a July threshold worn as a finding and left in sr-3), **breadth** (the
+shove ratio, direction-free — sr-3 is the first time it reaches the model),
+**momentum** (gamma-share + gross-volume deltas over the last 5 scans; `oi_d`
+and `cvd` deliberately absent — OI is static intraday upstream, and no
+aggressor tape exists for the stock leg), **dealer_flow** (dex $-delta +
+front-book vanna; the sign is positive by construction and the field now says
+so), **walls** (laddered, 2 per side, NEAREST first — never "strongest";
+each wall carries its own `unchanged_min`, and the heaviest cluster ships as
+`*_heaviest_behind` when the distance cut would hide it), `history` flags
+(the under-pull guard), and `frozen_do_not_cite` (minus walls — their
+staleness rides the wall entries now). Omit-never-null throughout: a field
+without a clean source is absent, not nulled — the model treats missing as
+"no data".
 
 The read call may reach for exactly two on-demand tools, doctrine-gated:
 the **history CLI** (`sndk_rag.py` — day slices / day summaries / month
@@ -140,7 +148,9 @@ and writes nothing; that is how every number above was measured.
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-2` since
+  silently with live rows. Read rows are stamped `era` (`sr-3` since
+  2026-08-08 — the flip told once, dex's sign named, walls aged +
+  heaviest-behind, gates handed over as numbers; `sr-2` since
   2026-08-02; `sr-1` rows are the pre-blueprint rule set) so a later read
   of the history can never blend two rule sets — bump it on ANY change to the
   gates or the prompt.
