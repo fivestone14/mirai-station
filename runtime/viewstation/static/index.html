@@ -1965,6 +1965,7 @@ let GX_SRC = null;   // newest row's gex_source ('native' | 'spy_proxy×10.03xx'
 let GX_SRC_NOTE = null;   // N7: engine's own reason for a non-native read ('coverage' = half-fetched native book)
 let GX_DGONE = 0, GX_DHAD = false;   // H9: consecutive scans with the dated book missing (after having one)
 let GX_PSIG = null;                  // H10: the signed-flow shadow pin (zones modal surface)
+let GX_CHARMW = null;                // wt-11: charm_wall — the strike decay funnels settlement toward (late-day chip; a place, never a direction)
 let GX_COV = null;        // N7: native chain coverage verdict {complete, missing[], ...} from the row
 
 // walls/magnet are ~constant intraday; spot walks down into the flip by 10:21
@@ -2472,6 +2473,10 @@ function rowToScan(r){
     ne:(r.net_exposure&&r.net_exposure.net_exposure_v===1)?r.net_exposure:null,
     ladder:(r.profile_ladder&&r.profile_ladder.ladder_v===1)?r.profile_ladder:null,
     aem:(r.adaptive_em&&r.adaptive_em.em_v===1)?r.adaptive_em:null,
+    /* wt-11 (08-10): the raw session VWAP price — the row so far only carried the σ-stretch
+       (reversion_extreme.vwap_stretch, kept above for the Replay table); the raw level is
+       what the map needs to DRAW the line. Absent on pre-wt-11 rows → never drawn. */
+    vwap:(r.vwap!=null&&isFinite(r.vwap))?+r.vwap:null,
     /* 2026-07-18 SIEGE stack (wt-7) — the SECOND deck's diary field, kept apart from the
        main-stack lenses on every replay surface. Rows before 07-18 carry no key → null
        → the siege cell/column says so instead of faking a quiet read. */
@@ -2793,6 +2798,11 @@ function measureChart(){ const cc=document.querySelector('#p-map .gx-chart'); if
 const MMETA = {   // key dealer levels, drawn as horizontal lines with right-edge price tags
   magnet:  {c:"var(--l-grav)",  n:"MagP",      d:0, sw:2.2, glow:7, dash:''},   // GW standard: MagP + tier (gxPaint overrides per scan); shares the zones' gravity gold; --lantern is Watchtower-only. glow = a 7px same-hue wash UNDER the casing (07-22) so the magnet reads at a glance in the crowded band
   flip:    {c:"var(--ink-dim)", n:"HVL", d:0, sw:1.5, dash:'stroke-dasharray="6 4"'},   // high volatility level — the ladder's name for the gamma-flip line (07-25); the tag's tip card keeps the plain English
+  /* wt-11 (08-10): the session VWAP — the one level on this board NOT derived from the
+     flip (volume-anchored). 1-5 dash is deliberately distinct from the fences (3 5) and
+     the flip (6 4) — the SNDK chart's dash grammar, kept consistent across stations.
+     Absent on pre-wt-11 rows (no r.vwap) → the line simply never lights. */
+  vwap:    {c:"var(--ink-dim)", n:"VWAP", d:0, sw:1.2, dash:'stroke-dasharray="1 5"'},
   spot:    {c:"var(--iris)",    n:"SPOT",       d:2, sw:2.6, dash:''},
 };
 // The always-on level lines. CALL γ / PUT γ (the 0DTE gamma-weighted peaks) were
@@ -2803,7 +2813,7 @@ const MMETA = {   // key dealer levels, drawn as horizontal lines with right-edg
 // ATM gamma concentration is already shown by the measured bars. MAGNET (the pin)
 // is the single near-spot gravity line. (callWall/putWall stay in D for the
 // modeled-bar fallback and the frame band; they just no longer draw as lines.)
-const MIDS = ["magnet","flip","spot"];
+const MIDS = ["magnet","flip","vwap","spot"];
 // ---- WALL LEVEL STACK (tape, IMAGE B) — the named gw_vocab levels drawn as full-canvas
 // horizontal reference lines, each with a two-line Dictionary-voice tag ([name] over
 // [price], the shared gutter grammar). SOURCE = profile_ladder's DOMINANT clusters (gwc/gwp) + the
@@ -2825,7 +2835,7 @@ const _wallSw=tier=>tier==="'''"?2.4:tier==="''"?1.7:1.1;   // prime-tier stroke
 // so a call wall above spot always reads "Ceiling", a put wall below "Floor"). Unknown
 // key (e.g. 'ct'/'pt', which the plain face drops in favor of the chop band) → null.
 // The JSC label harness drills this by name. LADDER/TABLE never call it (tape-only).
-const GXPLAIN={ magnet:'Magnet', flip:'Tipping point', spot:'Now', wt:'Headed here', aem:'Likely range today', c:'Ceiling', p:'Floor' };
+const GXPLAIN={ magnet:'Magnet', flip:'Tipping point', spot:'Now', wt:'Headed here', aem:'Likely range today', c:'Ceiling', p:'Floor', vwap:'Avg price' };
 function gxPlainLabel(k){ return GXPLAIN[k]||null; }
 // PURE tag-spreader (the JSC smoke harness drills this by name): seat each right-edge
 // tag {y} at its true y, then fan the stack out so no two adjacent label slots (.ly)
@@ -2911,7 +2921,7 @@ const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZ
 function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, putWall:s.putWall, magnet:s.magnet, pin:s.pin,
   gAbove:s.gAbove, gBelow:s.gBelow, flow:s.flow, shoveUp:s.shove.up, shoveDown:s.shove.down, sigma:s.sigma,
   netByStrike:s.netByStrike??null, nbsTenor:s.nbsTenor??null, oiBS:s.oiBS??null, volBS:s.volBS??null, volGrossBS:s.volGrossBS??null, putFloor:s.putFloor??null, callCeil:s.callCeil??null, dated:s.dated??null, dex:s.dex??null,
-  ladder:s.ladder??null, aem:s.aem??null,
+  ladder:s.ladder??null, aem:s.aem??null, vwap:s.vwap??null,
   sign:s.sign, regime:s.regime, downFlip:s.shove.downFlip }; }
 
 /* _demo marks the hardcoded 07-07 snapshot verdict (N20): the moment the feed goes
@@ -3546,7 +3556,7 @@ function gxPaint(){
   // result in _hudGaps there; the render block past the wall stack reads it.
   let _hudGaps=[];
   // level lines + de-collided right-edge tags (off-plot levels hidden, no phantom tag)
-  const valOf={magnet:D.magnet,flip:D.flip,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
+  const valOf={magnet:D.magnet,flip:D.flip,vwap:D.vwap,spot:D.spot};   // callWall/putWall stay in D for the modeled bars, but no longer draw as lines
   const loY=X.padT+14, hiY=X.H-X.padB-14;
   // UNIFIED right-edge de-collision (07-27): the MID levels (magnet/HVL/spot), the
   // Watchtower target, and — in TAPE — the profile_ladder walls all fan out in ONE
@@ -3606,6 +3616,7 @@ function gxPaint(){
     // in the plain face the code (HVL) + σ live here as the secondary detail
     if(id==='flip'&&!R.nm.dataset.tip){ R.nm.dataset.name='HVL'; R.nm.dataset.tip='The tipping point: above it the market tends to calm down and drift, below it moves get bigger and faster.'+(plainT?`¦f:HVL · ${sig(sd)} from price`:''); R.nm.style.cursor='pointer'; }
     if(id==='spot'&&!R.nm.dataset.tip){ R.nm.dataset.name='SPOT'; R.nm.dataset.tip='Where the price is right now.'; R.nm.style.cursor='pointer'; }
+    if(id==='vwap'&&!R.nm.dataset.tip){ R.nm.dataset.name='VWAP'; R.nm.dataset.tip='Today’s volume-weighted average price — the one level here not derived from the tipping point. Price above it = today’s buyers are ahead; below = underwater.'+(plainT?`¦f:VWAP · ${sig(sd)} from price`:''); R.nm.style.cursor='pointer'; }
     R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
     // per-level right-edge strength bar dropped (PASS B): the γ-profile bars already
     // carry net-γ mass by strike and the level line points straight into them — one
@@ -5698,6 +5709,16 @@ function gxOverview(){
   if(!dd && GX_DHAD && GX_DGONE>10){
     datedChips+=`<span class="gx-chip" style="border-color:var(--coral);color:var(--coral)"><b>Dated Book GONE</b><i>walls erased · nightly sidecar not reporting</i></span>`;
   }
+  // wt-11 (08-10): the decay-tilt chip — the SNDK chart's late-day charm note, ported.
+  // N11 stands on BOTH stations: the strike the clock funnels settlement toward is a
+  // PLACE, never a direction (the sign is fixed by the assumed-sign book). Gated on the
+  // TAPE's own clock (the newest row's ts, not the wall clock — a stale map must not
+  // make a live claim) and only once the afternoon grip is real (≥14:30 ET).
+  let charmChip='';
+  const _cw=GX_CHARMW, _rowHM=String(GX_ASOF||'').slice(11,16);
+  if(_cw!=null&&isFinite(_cw)&&_rowHM>='14:30'&&_rowHM<='16:05'){
+    charmChip=`<span class="gx-chip" title="Charm — as options decay, dealer re-hedging tends to pull settlement toward this strike late in the day. It is a place pinning gets easier, NOT a promised move; the raw charm sign is fixed by the book's assumed-sign convention and is never evidence."><b>⌛ Decay tilt</b><i>→ ${f(_cw,0)} into the close · a place, not a push</i></span>`;
+  }
   // ── THE SWITCH ROW ──────────────────────────────────────────────────────────
   // ORDER DOCTRINE (07-19): info chips (road / lead / balance / dated-book bands)
   // stay left; the switches follow in two groups — WHAT to draw, then HOW:
@@ -5794,7 +5815,7 @@ function gxOverview(){
   el.innerHTML=`${roadChip}
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → MagP ${f(D.magnet,0)} · ${flow}${freshTag}</i></span>
     <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
-    ${_neTiles()}${datedChips}${layersChip}${lyOpen?swChips.join(''):''}`;
+    ${_neTiles()}${datedChips}${charmChip}${layersChip}${lyOpen?swChips.join(''):''}`;
   if(typeof paintTenorPills==='function') paintTenorPills();   // the date-pill row rides every strip rebuild
 }
 function gxTower(){
@@ -5833,9 +5854,14 @@ function towerCallHTML(w){
     // a fired row can arrive sizeless (mag null/0) — the direction is real, the
     // ruler isn't: say "size unstated" instead of demoting a live call to FLAT
     // while the sentence beside it still reads ▲/▼ (second review, 07-16)
+    /* wt-11 (08-10): disagreement is information — the SNDK decoupled-paths doctrine,
+       ported. When the tower stands against the fade gates (agrees_with_gates===false)
+       the call wears a quiet "overrides gates" so the Map says what Replay always did;
+       null/undefined (old rows, skips) stays silent — absence is not agreement. */
+    const ovr=(w.agrees===false)?' · overrides gates':'';
     const magT=`${mag?`${mag.toFixed(2)}σ${pts!=null?` ≈ ${Math.round(pts)} pts`:''}`:'size unstated'} · ${hz(hzm)}`;
-    if(ageMin>hzm) return {cls:'', aged:true, html:`<span class="dir">${dirT}</span><span class="mag">${magT} · aged out</span>`};   // horizon spent — the map marker is down too
-    return {cls:up?'up':'dn', html:`<span class="dir">${dirT}</span><span class="mag">${magT}</span>`};
+    if(ageMin>hzm) return {cls:'', aged:true, html:`<span class="dir">${dirT}</span><span class="mag">${magT} · aged out${ovr}</span>`};   // horizon spent — the map marker is down too
+    return {cls:up?'up':'dn', html:`<span class="dir">${dirT}</span><span class="mag">${magT}${ovr}</span>`};
   }
   if(w && w.stance==='fight') return {cls:'fight', html:`<span class="dir">⚔ FIGHT</span><span class="mag">two-sided · no call</span>`};
   if(w && w.stance==='settle') return {cls:'', html:`<span class="dir">■ SETTLE</span><span class="mag">pin / drift · no call</span>`};
@@ -5985,6 +6011,7 @@ function applyMap(r){
   GX_COV = r.native_coverage || (r.gex_theta||{}).native_coverage || null;   // N7: live leg first, shadow twin fallback
   T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
   GX_PSIG = (r.gex_theta||{}).pin_signed ?? GX_PSIG;             // H10: shadow signed-flow pin (zones modal)
+  GX_CHARMW = gv.charm_wall ?? null;                             // wt-11: decay-tilt chip source (null = no chip, never sticky)
   T.dex = normDex(r.dex_views);                                  // DEX surface (07-25, shadow) — absent key = no read, never a zero
   // phase-P records (07-25, shadow, version-gated): ladder panel, AEM bracket, tiles
   T.ladder = (r.profile_ladder&&r.profile_ladder.ladder_v===1) ? r.profile_ladder : null;
@@ -6009,6 +6036,9 @@ function applyMap(r){
   if(r.dated_gex!=null){ T.dated=r.dated_gex; GX_DGONE=0; GX_DHAD=true; }
   else if(GX_DHAD){ GX_DGONE++; T.dated = (GX_DGONE>10) ? null : D.dated; }
   else { T.dated = D.dated; }
+  // wt-11: the raw session VWAP level (snaps, not eased — a reference line, and a
+  // null must never be lerped); pre-wt-11 rows carry no key → the line never lights
+  T.vwap = (r.vwap!=null&&isFinite(r.vwap)) ? +r.vwap : null;
   // magnet zones — same engine dict the magnet reads from, the other as fallback;
   // pre-zone rows carry no key → null → exact single-magnet fallback
   const g2=(g===gt)?gv:gt;
@@ -6037,6 +6067,9 @@ function applyWt(w, rows){
     range:w.range_sigma||w.range||null,
     conv:w.conviction ?? (w.votes&&(w.votes.agreement??w.votes.agree)) ?? null,
     votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??1}:null,
+    /* wt-11: carry the gates-disagreement flag to the Map (normWt always had it;
+       this path dropped it — the fourth field-set divergence bug pattern) */
+    agrees:(w.agrees_with_gates!==undefined)?w.agrees_with_gates:(w.agrees??null),
     anchorSpot:(aSpot!=null&&isFinite(aSpot))?aSpot:(isFinite(D.spot)?D.spot:null),
     anchorSigma:(aSig!=null&&isFinite(aSig)&&aSig>0)?aSig:((D.sigma>0)?D.sigma:null) };
   wtDirty=true; updateTower();
@@ -6152,7 +6185,7 @@ function frame(){
     else if(Math.abs(d)>mv) mv=Math.abs(d); }
   D.sign=T.sign; D.regime=T.regime; D.downFlip=T.downFlip;
   D.zones=T.zones; D.contested=T.contested;   // zones snap (structural), the magnet line still eases
-  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; D.volGrossBS=T.volGrossBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem; D.flowR=T.flowR??null;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem + windowed order-tape (flow_recent) snap (not eased)
+  D.netByStrike=T.netByStrike; D.nbsTenor=T.nbsTenor; D.oiBS=T.oiBS; D.volBS=T.volBS; D.volGrossBS=T.volGrossBS; if(T.putFloor!=null) D.putFloor=T.putFloor; if(T.callCeil!=null) D.callCeil=T.callCeil; if(T.dated!==undefined) D.dated=T.dated; if(T.dex!==undefined) D.dex=T.dex; if(T.ladder!==undefined) D.ladder=T.ladder; if(T.aem!==undefined) D.aem=T.aem; if(T.vwap!==undefined) D.vwap=T.vwap; D.flowR=T.flowR??null;   // measured field + tenor outlines + raw-book panes + structural floor/ceiling + dated book + dex/ladder/aem + windowed order-tape (flow_recent) snap (not eased)
   // PERF (07-25): 60fps repaints only while something is actually EASING; converged,
   // drop to ~1Hz so the time-driven reads (comet aging, spot lane, the path's
   // live-edge crawl + price chip via gxPathLive) still advance — a wall display
@@ -6437,13 +6470,27 @@ const LY = [
     rd:{kind:'days', decided:0, need:12, sw:'shadow', rate:null, wl:null, note:'cocked 07-07 · 08 · 13 · 16 — 0 fires ever',
       blockers:['0 fires ever','0 / 12 decided days'],
       summary:'Has reached the "cocked" state on four days (07-07, 07-08, 07-13, 07-16) and never fired. Since 07-12 the fence ledger hands it real wall-breach events, and an open pin→trend road tilts the regime toward trending — opening the FIRE gate it has never yet passed (cocking only needs storm-side gamma and a rejected fade at a level).'}},
-  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-9', hue:'--l-tower', tier:'processor',
+  {id:'tower', num:'B', name:'Watchtower', code:'watchtower.py · wt-11', hue:'--l-tower', tier:'processor',
     role:'≈ a reasoning / critic head', status:['lantern','shadow'],
-    plain:'The reasoning brain. It reads the whole stack — blind to the lenses\' verdicts at first — anchors its prior on the MagP pull, forms its own call on direction, size, and stance (fight day or settle day), then compares notes with the lenses.',
+    plain:'The reasoning brain. It reads the whole stack — blind to the lenses\' verdicts at first — forms its own call on direction, size, and stance (fight day or settle day), then compares notes with the lenses. Since wt-11 it can also look things up: its own past reads (a searchable memory of every sentence it has written) and, on a genuinely abnormal tape, the outside world for the catalyst.',
     example:'The layers below each lean a direction; the Watchtower weighs them all and says, e.g., "up, about half a normal day\'s move, and this is a settle day, not a fight."',
-    rd:{kind:'days', decided:0, need:12, sw:'shadow · cap 35/day', rate:0.0, wl:null, note:'wt-9 era · ledger reset 07-27',
-      blockers:['0 / 12 decided days (wt-9 era)'],
-      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired. wt-7 (07-18) un-blinded the Siege stack: effort-at-wall verdicts reach the payload as siege_effort_at_walls, REVERSED SIGN spelled out. wt-8 (07-25) made the gamma sign the PERMISSION SLIP — positive gamma forbids drift/momentum bets, shove asymmetry is worded as terrain (resistance, not live pushing), soft_side wears a stuck-vane guard, and the magnet is demoted to a location/late-day pin target. wt-9 (07-27) folded in three COLOR-tier chart-reading advisories (record-only, no gate reads them): regime_intensity_1d (the 1-day whole-book net-γ trend — a pin entrenching/weakening or amplification deepening/easing), the siege PAUSE-vs-TERMINUS target lean (subordinate to the gamma regime), and air pockets (a thin same-side gap behind the near wall extends the objective across it, dormant under long gamma). Every era restarts the ledger: 0 of 12 decided days so far.'}},
+    rd:{kind:'days', decided:0, need:12, sw:'shadow · cap 35/day', rate:0.0, wl:null, note:'wt-11 era · ledger reset 08-10',
+      blockers:['0 / 12 decided days (wt-11 era)'],
+      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired. wt-7 (07-18) un-blinded the Siege stack: effort-at-wall verdicts reach the payload as siege_effort_at_walls, REVERSED SIGN spelled out. wt-8 (07-25) made the gamma sign the PERMISSION SLIP — positive gamma forbids drift/momentum bets, shove asymmetry is worded as terrain (resistance, not live pushing), soft_side wears a stuck-vane guard, and the magnet is demoted to a location/late-day pin target. wt-9 (07-27) folded in three COLOR-tier chart-reading advisories: regime_intensity_1d, the siege PAUSE-vs-TERMINUS lean, and air pockets. wt-10 (07-27) added flow confirmation at the walls, the measured cT/pT fences, the √time reach decay, and the strike-tag ladder. wt-11 (08-10) is the SNDK sr-2→sr-5 port, every threshold re-measured on the SPX tape: the scene stopped carrying constants (the dex sign word, the charm/vanna sign fields, and the never-fired charm drift word are gone — what varies is what ships: neutral strength+level blocks, the timestamp-true 30-min dex change), gained the magnet band (the pin is usually a ~1pp statistical tie), vol_trend, per-strike momentum, the measured 30-min move SPREAD, measured-empty clear flags, and the date; and the memory opened — exactly two tools (its own history CLI + WebSearch), doctrine-gated by history flags, one memory slice written per judged read into state/spx_rag. Every era restarts the ledger: 0 of 12 decided days so far.'},
+    /* wt-11: the diary + memory schema, on the plane itself (the sword plane's card
+       grammar) — the record the grader reads and the store the tower can recall */
+    schema:{src:'diary row · watchtower + state/spx_rag/slices', code:[
+      '"watchtower": {',
+      '  "prompt_version": "wt-11",   // era — a bump resets the Wilson clock',
+      '  "fired": true, "direction": "put",   // the graded pair (sweep ledger)',
+      '  "magnitude_sigma": 0.4, "range_sigma": [-0.1, 0.6],',
+      '  "horizon_min": 60, "stance": "settle",   // fight / settle / no_read',
+      '  "conviction": 0.67,          // vote agreement — the number we trust',
+      '  "votes": {"n": 3, "agreement": 0.67},',
+      '  "agrees_with_gates": false,  // disagreement is information',
+      '  "scene": "one-sentence read → also a state/spx_rag memory slice",',
+      '  "wall_s": 41.2 }             // seconds the calls spent',
+    ]}},
   // ---- SIEGE stack (stack:'siege') — underlying-volume effort at the GexBox walls.
   // Shadow with one reader since wt-7 (2026-07-18): rendered on the second deck at
   // STK.SPOTS.siege; the effort word now enters the Watchtower payload
@@ -6787,7 +6834,7 @@ function siegeReadiness(L){
     <div class="rd-fr">${fresh}</div>
     <div class="rd-grid">
       <div class="rd-stat"><div class="k">Words composed today</div><div class="v">${words.length}</div></div>
-      <div class="rd-stat"><div class="k">Who hears them</div><div class="v" style="font-size:11px">watchtower payload · wt-9</div></div>
+      <div class="rd-stat"><div class="k">Who hears them</div><div class="v" style="font-size:11px">watchtower payload · wt-11</div></div>
     </div>
     <div class="blockers">${wiredBlk}<span class="blk">record-only grading · gates nothing</span></div>
     <div class="rd-sum">${L.rd.summary}</div></div>`;
@@ -7329,10 +7376,11 @@ function annotatedJSON(s){
     `${i(1)}${K('watchtower')}: {${c('HEAD B · WATCHTOWER — the Claude reasoning second opinion (shadow only)')}`,
     `${i(2)}${K('fired')}: ${Bl(s.wt.fired)}, ${K('direction')}: ${wdir?S(wdir):NU},${c('the tower’s own call, formed blind to the gates')}`,
     `${i(2)}${K('magnitude_sigma')}: ${N(s.wt.mag)},${c('expected move size in σ — this drives the ▶▶ NEXT read on the map')}`,
+    `${i(2)}${K('stance')}: ${s.wt.stance?S(s.wt.stance):NU},${c('fight (range erupts) / settle (pins) / no_read — graded separately from direction')}`,
     `${i(2)}${K('conviction')}: ${N(s.wt.conv)},${c('share of votes that agreed = the conviction we actually trust')}`,
     `${i(2)}${K('votes')}: ${votes},${c('times it was asked (up to 3 on a fire) and the agreement among them')}`,
     `${i(2)}${K('agrees_with_gates')}: ${Bl(s.wt.agrees)},${c('did the reasoning head and the machine gates concur?')}`,
-    `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read of the setup')}`,
+    `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read — since wt-11 also written to state/spx_rag as a recallable memory slice')}`,
     `${i(1)}}`,
     '}',
   ];
