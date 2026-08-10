@@ -56,6 +56,7 @@ import json
 import math
 import os
 import subprocess
+import sys
 import time as _clock
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -67,7 +68,53 @@ STATE_DIR = SKILL_DIR.parent.parent / "state"
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
-PROMPT_VERSION = "wt-10"    # bump on ANY prompt change — a bump resets the record
+PROMPT_VERSION = "wt-11"    # bump on ANY prompt change — a bump resets the record
+# wt-11 (2026-08-10): THE SNDK sr-2→sr-5 PORT — the honesty upgrades the SNDK reader
+# proved on its own tape, re-measured on THIS one before shipping (every threshold below
+# is from SPX's own recorded rows, never copied):
+# (1) dex tells no constant: naive_net_sign REMOVED — net_dex_total > 0 by construction,
+#     measured positive on 2,627/2,627 recorded rows, and a field the doctrine tells you
+#     to ignore is a field that must not ship (the SNDK dex_word lesson, third form). The
+#     news is the CHANGE: net_change_30min (timestamp-true off today's rows) now rides.
+# (2) charm/vanna stop wearing constant signs: vanna_sign/charm_sign REMOVED (vex_sign
+#     96% positive, cex_sign 97% negative on 5,092 rows — near-constants that read like
+#     signals) and charm_drift_into_close REMOVED (its charm_word_ok gate has never once
+#     opened: False/None on 5,176/5,176 rows — a word that has never shipped is dead
+#     weight in the room). Both flows now ship as NEUTRAL magnitude + level blocks
+#     (charm: strength + the strike the clock funnels toward; vanna: strength, armed by
+#     vol_trend) — N11's final form: no direction word off a structurally-locked sign.
+# (3) the magnet band tells the tie: magnet_band {gap_pp, top_strikes (σ-from-spot +
+#     share), sigma_from_spot} — the SPX magnet is a statistical TIE most of the day
+#     (median top1−top2 gap 0.99pp of mass, n=4,258 scans); pin_top_share alone hid it.
+# (4) vol_trend — 30-min ATM-IV change in vol pts (the switch that arms vanna/charm),
+#     flat band 2.0 pts ≈ p72 of the recorded |Δ30m| (n=3,390 windows), omitted on a
+#     late_day ruler (the τ→0 solve balloons on clock mechanics, not vol).
+# (5) momentum — per-strike gamma-share deltas for the top magnet strikes over the last
+#     5 scans, intersection-denominated (a strike window shift is the telescope, not
+#     flow); build/fade bar 0.15pp ≈ p75 of the recorded |Δshare| (n=4,064).
+# (6) the measured 30-min spread replaces silence on size: scale.move_30min_sigma
+#     {half_under 0.08 / one_in_five_over 0.15 / one_in_twenty_over 0.27 / worst 0.46,
+#     30 sessions, disjoint windows} + tape.moved_last_30min_sigma (timestamp-true) —
+#     a spread teaches a distribution where a point teaches a ceiling (sr-5).
+# (7) measured-empty stops impersonating unmeasured (sr-5): a cluster surface that was
+#     READ and holds nothing on one side ships wall_cluster_above/below_clear — price
+#     in open air is a real reading, often the loudest; absence stays "not measured".
+# (8) THE MEMORY OPENS (sr-2): exactly two tools un-banned — the lefteye_rag history
+#     CLI (one allow-listed Bash prefix; slices of the tower's own past reads, day
+#     summaries, month terrain, numeric series) and WebSearch for the abnormal-tape
+#     catalyst check. payload.history {level_unseen_today, abnormal_tape} is the
+#     under-pull guard. Doctrine: history is context, never the trigger. The deny-list
+#     stays for everything else, so the schema bill stays small (the 07-31 A/B's cost
+#     finding holds; its fired-rate kill condition keeps running unchanged).
+# (9) clock gains DATE (sr-4) — a doctrine AMENDMENT, documented: the no-dates rule was
+#     written when golden replays fed in-training-window scenes to a model that has SPX
+#     history memorized; live dates now sit past the pinned model's cutoff, and the
+#     history CLI's --date/--from-date filters are unusable without today's date. The
+#     no-ABSOLUTE-LEVELS rule stands untouched — the scene still speaks only σ; the
+#     model meets levels only if it chooses to query history.
+# (10) scale.aem — today's expected move split by the side the tape fears, from
+#     adaptive_em, shipped ONLY when its asym_source is not the tower itself (a model
+#     fed its own prior range as evidence is a feedback loop, not a measurement).
 # wt-10 (2026-07-27): the three remaining chart-visible doctrine reads the tower could not
 # see, all COLOR-tier advisory/record-only (no gate reads any of them), batched into one era
 # bump (wt-9 never ran a live scan, so the clock resets at zero cost):
@@ -199,11 +246,13 @@ PROMPT_VERSION = "wt-10"    # bump on ANY prompt change — a bump resets the re
 # confirm the pull against the tape and never fade a real break. See mirai-watchtower memory.
 PINNED_MODEL = "claude-sonnet-5"   # exact id, never an alias (drift protection);
                                    # config models.watchtower overrides if present
-CALL_TIMEOUT_S = 90.0       # hard per-call limit — one attempt, no retries
+CALL_TIMEOUT_S = 100.0      # hard per-call limit — one attempt, no retries
                             # (07-05 golden replay: median call 45s, and every
-                            #  error in the set was a 60s timeout — 90s clears
-                            #  the observed tail while the tick budget still
-                            #  caps the total; votes degrade gracefully)
+                            #  error in the set was a 60s timeout — 90s cleared
+                            #  the observed tail; wt-11 raises to 100s because
+                            #  a call may now spend a history lookup or an
+                            #  external search inside itself. The tick budget
+                            #  still caps the total; votes degrade gracefully)
 TICK_BUDGET_S = 240.0       # total wall-clock all calls may spend in one scan.
                             # (07-09 live: at 150s the 3-vote + reveal design
                             #  NEVER ran — max 2 votes, 0 reveals all day; 240s
@@ -216,9 +265,17 @@ DAILY_CALL_CAP = 35         # judged scans per day (cost guard). 25 burned out
                             # the held-scene throttle (INTEREST_REJUDGE_MIN)
                             # covers a full session.
 VOTES_ON_FIRE = 3           # samples when the blind verdict says "fire"
-_NO_TOOLS = ("Bash", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
-             "Grep", "WebFetch", "WebSearch", "Task", "Agent", "TodoWrite",
+# wt-11: Bash and WebSearch left this list — they are the sr-2 on-demand paths,
+# granted back below as ONE allow-listed CLI prefix + the catalyst search. A tool
+# may never sit on both lists (the CLI errors on the contradiction).
+_NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
+             "Grep", "WebFetch", "Task", "Agent", "TodoWrite",
              "ExitPlanMode", "BashOutput", "KillShell", "SlashCommand", "Skill")
+# sr-2 on-demand paths (wt-11): the ONE Bash command the tower may run (the
+# lefteye_rag history CLI) and WebSearch for the abnormal-tape catalyst check.
+# sys.executable pins the venv the tower itself runs in — the embedder lives there.
+_RAG_CMD = f"{sys.executable} {SKILL_DIR / 'lefteye_rag.py'}"
+_ALLOWED_TOOLS = (f"Bash({_RAG_CMD}:*)", "WebSearch")
 DENY_TOOLS = True           # ON since 07-31. The tower never calls a tool, so it
                             # stops paying to ship their schemas: 50.3k -> 34.1k
                             # tokens a call (-32%), read block 43.0k -> 30.9k.
@@ -289,6 +346,28 @@ FENCE_CONTROL_SHARE = 0.15   # cT/pT fence threshold: a strike "decisively contr
 FLOW_CONFIRM_MIN_CONTRACTS = 25_000  # thin-tape abstain floor for flow_confirmation: below
                              # this total gross volume the shares are noise (same abstain
                              # doctrine as the DEX flow-signed floor) — field absent
+
+# --- wt-11 scene derivations (each measured-or-absent; every threshold from THIS
+# --- tape's recorded distributions, pre-registered here — never copied from SNDK) -----
+MOMENTUM_ROWS = 5            # rolling window: last 5 scans (~10 min at the ~2-min
+                             # diary cadence — same wall-clock the SNDK window covers)
+MOMENTUM_BUILD_PP = 0.15     # |Δ share| below this is "steady" (≈p75 of the recorded
+                             # 5-scan |Δshare| for the top magnet strike, n=4,064)
+VOL_TREND_MIN = 28           # minutes of history before a 30-min IV read exists
+VOL_TREND_MAX = 45           # a reference older than this is an outage artifact,
+                             # not a 30-min window — the read is omitted instead
+VOL_TREND_FLAT = 2.0         # |Δ IV| under this many vol pts reads "flat"
+                             # (≈p72 of the recorded |Δ30m|, n=3,390 windows)
+# the measured 30-min move spread (sr-5's form): 30 sessions, 336 disjoint windows,
+# 2026-06-25..08-10. A spread teaches a distribution; a point teaches a ceiling.
+MOVE_30M_SPREAD = {"half_under": 0.08, "one_in_five_over": 0.15,
+                   "one_in_twenty_over": 0.27, "worst_recorded": 0.46,
+                   "sessions_measured": 30}
+ABNORMAL_DAY_SIGMA = 1.5     # a day move beyond this many σ is abnormal for this
+                             # tape — σ-relative on purpose (the SNDK fixed-% lesson)
+ABNORMAL_30M_SIGMA = 0.5     # a 30-min sprint at ≈2× the recorded p95 — rare by
+                             # construction, so the outside-world reach stays licensed
+                             # for genuine exceptions only
 
 
 # ==============================================================================
@@ -696,18 +775,30 @@ def _gw_cluster_read(net_by_strike, spot, sigma) -> tuple[dict, str | None]:
 
         _clean = bool(profile_word and profile_word.startswith("CLEAN"))
         walls: dict = {}
+        # wt-11 (sr-5): measured-empty is a FINDING, not an absence. We are in
+        # the successful branch — the surface WAS read and clusters exist — so
+        # a side with nothing on it ships a clear-flag: price in open air that
+        # way is a real reading, often the loudest one in the scene. A true
+        # sensor failure still returns ({}, None) above, unchanged: absence
+        # keeps meaning "not measured", a clear-flag means "measured empty".
+        _CLEAR = ("MEASURED CLEAR — the surface was read and holds no wall "
+                  "cluster on this side; price is in open air that way")
         if near["above"]:
             walls["wall_cluster_above"] = _row(near["above"][0])
             if _clean and len(near["above"]) > 1:   # no pocket while the profile reads MESSY
                 _ap = _pocket(near["above"][0], near["above"][1])
                 if _ap:
                     walls["air_pocket_above"] = _ap
+        else:
+            walls["wall_cluster_above_clear"] = _CLEAR
         if near["below"]:
             walls["wall_cluster_below"] = _row(near["below"][0])
             if _clean and len(near["below"]) > 1:
                 _bp = _pocket(near["below"][0], near["below"][1])
                 if _bp:
                     walls["air_pocket_below"] = _bp
+        else:
+            walls["wall_cluster_below_clear"] = _CLEAR
         return walls, profile_word
     except Exception:
         return {}, None      # fail-open: a broken read stays out of the room
@@ -977,7 +1068,241 @@ def _strike_tags(gx: dict, dx: dict, spot, sigma) -> dict:
         return {}      # fail-open
 
 
-def build_payload(t: dict, reveal_gates: bool = False) -> dict:
+# --- wt-11 scene helpers (pure, fail-open — an unreadable input is ABSENT) ----
+def _fin(v):
+    """A finite, non-bool number or None. NaN is the dangerous one: it rides
+    isinstance checks, renders as a token in the prompt, and NaN < threshold
+    comparisons silently pick the CONFIDENT branch (the SNDK adversarial
+    audit's finding, enforced here from day one)."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    v = float(v)
+    return v if math.isfinite(v) else None
+
+
+def _parse_row_ts(r: dict):
+    """A diary row's ts → aware datetime, or None — a malformed stamp must
+    degrade to 'unknown', never to a date (an age computed off epoch zero
+    reads as decades-stale and freezes the whole board)."""
+    try:
+        return datetime.fromisoformat(r["ts"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _row_atm_iv(r: dict):
+    """A row's front-book ATM IV. wt-11 rows record it (atm_iv, None when the
+    1%-of-spot fallback priced σ); older rows derive it exactly (sigma_live =
+    spot·iv/√252, so iv = sigma_live·√252/spot)."""
+    iv = _fin(r.get("atm_iv"))
+    if iv is not None and iv > 0:
+        return iv
+    sl, sp = _fin(r.get("sigma_live")), _fin(r.get("spot"))
+    if sl and sp and sl > 0 and sp > 0:
+        return sl * math.sqrt(252.0) / sp
+    return None
+
+
+def _vol_trend(rows: list[dict]) -> dict | None:
+    """Is implied vol rising or falling NOW — the switch that arms vanna and
+    charm. 30-min ATM-IV change in vol points, by timestamp (a scan gap must
+    not shorten the window); flat band VOL_TREND_FLAT pre-registered off the
+    recorded Δ30m distribution. None without ~30 min of history.
+
+    LATE-DAY GUARD: the 0DTE front-book ATM IV reprices on minutes-to-close,
+    so into the bell the solve balloons on pure clock mechanics — a τ→0
+    artifact is not a vol signal. The read is omitted once the range ruler
+    itself stamps the day late_day (the same authority the EM read trusts)."""
+    if not rows:
+        return None
+    rr = rows[-1].get("range_ruler") or {}
+    if rr.get("quality") == "late_day":
+        return None
+    ser = []
+    for r in rows:
+        t, iv = _parse_row_ts(r), _row_atm_iv(r)
+        if t is not None and iv is not None:
+            ser.append((t, iv))
+    if not ser:
+        return None
+    t_now, iv_now = ser[-1]
+    ref = next(((t, iv) for t, iv in reversed(ser[:-1])
+                if (t_now - t) >= timedelta(minutes=VOL_TREND_MIN)), None)
+    # the reference must actually BE ~30 min back: after a scan outage the
+    # nearest old-enough row can be hours old, and shipping that Δ under a
+    # 30-min name would lie about its window — no read beats a mislabeled one
+    if ref is None or (t_now - ref[0]) > timedelta(minutes=VOL_TREND_MAX):
+        return None
+    d = (iv_now - ref[1]) * 100.0
+    word = ("flat" if abs(d) < VOL_TREND_FLAT
+            else "rising" if d > 0 else "falling")
+    return {"direction": word, "iv_change_last_30min": round(d, 1)}
+
+
+def _magnet_band(gx: dict) -> dict | None:
+    """The magnet's tie, told in numbers — top strikes by share of gamma mass
+    and the top1−top2 gap in pp. The SPX magnet is a statistical tie most of
+    the day (median gap 0.99pp over 4,258 recorded scans); pin_top_share alone
+    cannot say so. Returns strikes in RAW form — the caller converts to
+    σ-distances before anything ships (no absolute levels in the scene)."""
+    mb = []
+    for pair in (gx.get("mass_by_strike") or []):
+        try:
+            k, v = _fin(pair[0]), _fin(pair[1])
+        except (TypeError, IndexError, KeyError):
+            continue
+        if k is not None and v is not None:
+            mb.append((k, abs(v)))
+    tot = sum(v for _, v in mb)
+    if not mb or tot <= 0:
+        return None
+    ranked = sorted(mb, key=lambda x: -x[1])[:3]
+    gap = (round((ranked[0][1] - ranked[1][1]) / tot * 100.0, 2)
+           if len(ranked) >= 2 else None)
+    return {"top": [(k, round(v / tot * 100.0, 2)) for k, v in ranked],
+            "gap_pp": gap}
+
+
+def _momentum_block(rows: list[dict], band: dict | None, sd) -> dict | None:
+    """Snapshot-over-snapshot deltas for the top magnet strikes over the last
+    MOMENTUM_ROWS scans. gex_share_d_pp = the strike's share of gamma mass, in
+    pp (scale-free — raw gamma is unit-opaque); vol_d = gross contracts traded
+    there since the reference scan. Shares are computed over the INTERSECTION
+    of the two strike windows: the window is spot-relative and moves with
+    price, so a full-window denominator turns a frame shift into fake flow
+    (the SNDK telescope lesson). Keys are σ-distances — no absolute levels."""
+    if not band or not band.get("top") or len(rows) <= MOMENTUM_ROWS:
+        return None
+    cur, ref = rows[-1], rows[-1 - MOMENTUM_ROWS]
+    t_c, t_r = _parse_row_ts(cur), _parse_row_ts(ref)
+    if t_c is None or t_r is None:
+        return None
+
+    def _pairs(r, key, absolute=False):
+        out = {}
+        for pair in ((r.get("gex_views") or {}).get(key) or []):
+            try:
+                k, v = _fin(pair[0]), _fin(pair[1])
+            except (TypeError, IndexError, KeyError):
+                continue
+            if k is not None and v is not None:
+                out[k] = abs(v) if absolute else v
+        return out
+
+    mb_c = _pairs(cur, "mass_by_strike", absolute=True)
+    mb_r = _pairs(ref, "mass_by_strike", absolute=True)
+    vg_c = _pairs(cur, "vol_gross_by_strike")
+    vg_r = _pairs(ref, "vol_gross_by_strike")
+    common = set(mb_c) & set(mb_r)
+    tot_c = sum(mb_c[k] for k in common)
+    tot_r = sum(mb_r[k] for k in common)
+    if tot_c <= 0 or tot_r <= 0:
+        return None
+    by = {}
+    for k, _share in band["top"][:2]:
+        k = float(k)
+        if k not in mb_c or k not in mb_r:
+            continue
+        gex_d = mb_c[k] / tot_c * 100.0 - mb_r[k] / tot_r * 100.0
+        entry = {"gex_share_d_pp": round(gex_d, 2)}
+        if k in vg_c and k in vg_r:
+            entry["vol_d"] = int(vg_c[k] - vg_r[k])
+        vol_d = entry.get("vol_d")
+        # symmetric evidentiary standard: fading earns its hedge exactly the
+        # way building does (an unhedged "fading" is a one-way tilt)
+        if gex_d >= MOMENTUM_BUILD_PP:
+            entry["read"] = ("building" if (vol_d or 0) > 0
+                             else "building (vol unconfirmed)")
+        elif gex_d <= -MOMENTUM_BUILD_PP:
+            entry["read"] = ("fading" if (vol_d or 0) > 0
+                             else "fading (vol unconfirmed)")
+        else:
+            entry["read"] = "steady"
+        k_sd = sd(k)
+        if k_sd is None:
+            continue
+        if k_sd == 0:
+            k_sd = 0.0                   # never a "-0.00" key (negative zero)
+        by[f"strike_at_{k_sd:+.2f}sigma"] = entry
+    if not by:
+        return None
+    span = int((t_c - t_r).total_seconds() // 60)
+    return {"window": f"last {MOMENTUM_ROWS} scans ({span}m)", "by_strike": by}
+
+
+def _dex_change_30m(rows: list[dict], cur_net: float) -> float | None:
+    """The timestamp-true 30-min change in net dealer delta, $bn — the one
+    part of the dex level that can be news (the level's sign is fixed by the
+    formula). Same window discipline as _vol_trend: a reference that is not
+    genuinely ~30 min old is no reference at all."""
+    if not rows:
+        return None
+    t_now = _parse_row_ts(rows[-1])
+    if t_now is None:
+        return None
+    for r in reversed(rows[:-1]):
+        t = _parse_row_ts(r)
+        if t is None or (t_now - t) < timedelta(minutes=VOL_TREND_MIN):
+            continue
+        if (t_now - t) > timedelta(minutes=VOL_TREND_MAX):
+            break                        # outage-shaped window — no honest read
+        ref = _fin((r.get("dex_views") or {}).get("net_dex_total"))
+        if ref is not None:
+            return round((cur_net - ref) / 1e9, 2)
+        break
+    return None
+
+
+def _moved_30m(rows: list[dict], sigma) -> float | None:
+    """How far price travelled in the last ~30 minutes, in σ — timestamp-true
+    (a scan gap must not silently shorten the window; the count-based twin
+    lied on 20/700 SNDK scans, once by 0.81σ)."""
+    if not rows or not sigma:
+        return None
+    cur = rows[-1]
+    spot, t = _fin(cur.get("spot")), _parse_row_ts(cur)
+    if spot is None or t is None:
+        return None
+    cutoff = t - timedelta(minutes=30)
+    ref = None
+    for r in reversed(rows):
+        rt = _parse_row_ts(r)
+        if rt is None or rt > t:
+            continue
+        ref = r
+        if rt <= cutoff:
+            break
+    if ref is None:
+        return None
+    rs, rt = _fin(ref.get("spot")), _parse_row_ts(ref)
+    # only claim a 30-min read when we actually have ~30 min of history
+    if rs is None or rt is None or (t - rt) < timedelta(minutes=20):
+        return None
+    return round((spot - rs) / sigma, 2)
+
+
+def _history_flags(t: dict, rows: list[dict], moved_30m) -> dict | None:
+    """The under-pull guard: cheap, unmissable flags that tap the model on the
+    shoulder to reach for the history tool / outside world. Omitted entirely
+    when there is nothing to say — calibrated so "abnormal" stays a genuine
+    exception (a flag that is usually on trains the model to ignore it, and it
+    licenses the outside-world reach far too often)."""
+    out = {}
+    spot, sigma = _fin(t.get("spot")), _fin(t.get("sigma"))
+    prior = [s for r in rows[:-1] if (s := _fin(r.get("spot"))) is not None]
+    if spot is not None and len(prior) >= 30 and \
+            (spot > max(prior) or spot < min(prior)):
+        out["level_unseen_today"] = True
+    pc = _fin(t.get("prior_close"))
+    day_sd = ((spot - pc) / sigma) if (spot is not None and pc and sigma) else None
+    if (day_sd is not None and abs(day_sd) >= ABNORMAL_DAY_SIGMA) or \
+            ((m := _fin(moved_30m)) is not None and abs(m) >= ABNORMAL_30M_SIGMA):
+        out["abnormal_tape"] = True
+    return out or None
+
+
+def build_payload(t: dict, reveal_gates: bool = False,
+                  rows: list[dict] | None = None) -> dict:
     """THE SCENE — everything the model may see, as one dict of precomputed,
     σ-normalized numbers with the signs spelled out. `reveal_gates=False` is
     the BLIND pass: the four gates' continuous inputs are present (they are
@@ -985,11 +1310,20 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     Live order-book flow (`order_flow`) and the sibling Break Lens escape read
     (`break_lens_head_c`) ride along as raw facts too — attached only when they
     carry a genuine read, so the tower can confirm the pull against the tape and
-    avoid fading a real break. Field order is stable on purpose (payload hygiene)."""
+    avoid fading a real break. Field order is stable on purpose (payload hygiene).
+
+    `rows` (wt-11) = today's PRIOR diary rows — the current scan is not on disk
+    yet (the _session_path convention), so it is folded in here as the newest
+    row. Every rows-derived block (vol_trend / momentum / dex change / the
+    30-min path / history flags) is measured-or-absent: no rows, no claim."""
     rev = t.get("reversion_extreme") or {}
     gx = t.get("gex_views") or {}
     spot, sigma = t.get("spot"), t.get("sigma")
-    # clock: minutes only, never a date (charm/pin decay reasoning needs time-of-day)
+    allrows = [r for r in (rows or []) if isinstance(r, dict)] + [t]
+    # clock: minutes + (wt-11) the DATE. The no-dates rule was written when golden
+    # replays fed in-training-window scenes to a model with SPX history memorized;
+    # live dates sit past the pinned model's cutoff, and the history CLI's date
+    # filters are unusable without today's date. Absolute LEVELS stay banned.
     mins_open = mins_close = None
     event_clock = ts = None
     try:
@@ -1107,26 +1441,36 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
     # is the map's containment breaking, and which way? A cocked/fired break warns the scene
     # may TREND (escape) rather than revert — never fade INTO a confirmed break. Evidence,
     # not a verdict to defer to. Attached only when the lens is actually active.
-    # CHARM DRIFT (H6, wt-4): the clock's tug, spelled out as a word (payload
-    # hygiene — signs in words, precomputed). Net dealer charm NEGATIVE ⇒ dealer
-    # deltas bleed LOWER as time passes ⇒ dealers BUY to re-hedge ⇒ drift pressure
-    # UP into the close (the classic put-heavy charm grind-up); POSITIVE ⇒ the
-    # mirror, hedge SELLING, drift DOWN. Charm ∝ 1/time-left, so the pull is weak
-    # in the morning and grips hardest in the last ~2 hours — the wording carries
-    # that so the model never reads a 10am charm sign as a 3pm force.
-    # N11 (wt-5): the WORD only speaks when the engine's gate is open. Net dealer charm
-    # is structurally locked negative by the assumed-sign artifact — it said "UP into
-    # the close" on 804/806 live rows, and H6/wt-4 told the model to vote on it every
-    # afternoon. charm_word_ok stays False until charm has a graded record; the raw
-    # cex/cex_sign numbers still ride the payload as (unworded) facts.
-    charm_drift = None
-    if gx.get("charm_word_ok"):
-        charm_drift = {
-            "negative": "UP into the close — net dealer charm is negative: hedge re-balancing "
-                        "BUYS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
-            "positive": "DOWN into the close — net dealer charm is positive: hedge re-balancing "
-                        "SELLS as time decays; weak before ~13:00 ET, grips hardest in the last ~2h",
-        }.get(gx.get("cex_sign"))
+    # CHARM + VANNA, N11's FINAL FORM (wt-11): neutral magnitude + level, no sign
+    # word, no raw sign field. The history of this block is the whole argument —
+    # wt-4 spelled the drift direction out, N11/wt-5 gated the word on
+    # charm_word_ok (the sign is structurally locked by the assumed-sign book:
+    # cex_sign read "negative" on 97% of 5,092 recorded rows, vex_sign "positive"
+    # on 96%), and that gate then never once opened (False/None on 5,176/5,176
+    # rows) — so the word was dead weight and the raw sign fields were
+    # near-constants wearing signal clothes. What survives is what varies: the
+    # STRENGTH (uncalibrated — compare day to day, never across books) and the
+    # LEVEL the clock funnels toward (charm_wall — a location, never a promised
+    # direction). vanna's strength rides beside it, armed by tape.vol_trend
+    # (vanna only matters when implied vol is actually moving).
+    charm_block = None
+    _cex = _fin(gx.get("cex"))
+    if _cex is not None:
+        charm_block = {"strength": round(abs(_cex) / 1e6, 1),
+                       "note": "uncalibrated $M/day of hedge re-balancing as time "
+                               "decays — compare day to day; grips hardest in the "
+                               "last ~2h; NO direction (the sign is fixed by the "
+                               "assumed-sign book, not by dealers)"}
+        _cw_sd = _sd(gx.get("charm_wall"), spot, sigma)
+        if _cw_sd is not None:
+            charm_block["funnels_toward_sigma"] = _cw_sd
+    vanna_block = None
+    _vex = _fin(gx.get("vex"))
+    if _vex is not None:
+        vanna_block = {"strength": round(abs(_vex) / 1e6, 1),
+                       "note": "uncalibrated $M per vol point — only alive when "
+                               "tape.vol_trend is actually moving; NO direction "
+                               "(same assumed-sign caveat as charm)"}
     # DATED STRUCTURE (wt-4, tenor doctrine level 3): the far-dated OI walls from
     # the nightly sidecar — outer terrain the tower was previously blind to.
     # Unsigned LOCATIONS only (assumed-sign is wrong ~44% out there; magnitude
@@ -1384,10 +1728,21 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         # flow sign that CONTRADICTED the flow_signed_read in this very block and was not the
         # doctrine's §2.6 lean-vs-price-tape conflict at all. A faithful §2.6 read (flow hedge
         # direction vs the live PRICE tape) is a future item, not this.
+        # wt-11: naive_net_sign REMOVED — dex_word is a constant string riding a
+        # net that is > 0 BY CONSTRUCTION (measured positive on 2,627/2,627
+        # recorded rows). wt-8 demoted it to last with a caveat; the SNDK sr-3
+        # lesson is that a demoted constant is still a constant in the room — a
+        # field the doctrine tells you to ignore must not ship at all. The one
+        # thing the naive level can be is a BASELINE for its own change, so the
+        # timestamp-true 30-min Δ now rides instead (measured off today's rows).
+        _dx_d30 = _dex_change_30m(allrows, _fin(dx.get("net_dex_total")) or 0.0)
         dex_block = {k: v for k, v in {
             "magnitude": (f"≈ ${dx['net_dex_total'] / 1e9:.1f}bn underlying-equivalent "
                           "— UNCALIBRATED: no graded baseline yet, 'large' is not "
-                          "defined this era"),
+                          "defined this era. The SIGN of this number is fixed by the "
+                          "formula (positive on every recorded row) — it is never "
+                          "evidence; only the change below can be news"),
+            **({"net_change_30min_bn": _dx_d30} if _dx_d30 is not None else {}),
             "standing_inventory_geography": ({**_geo,
                 "note": "WHERE standing dealer-delta inventory sits vs spot — geography, "
                         "not a live directional call"} if _geo else None),
@@ -1397,27 +1752,68 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
                     "only — UNCALIBRATED and on a DIFFERENT scale than the naive net above "
                     "(it swings ~100× intraday); read the SIGN and its move, not the level")}
                if _dx_fs is not None else {}),
-            # DEMOTED: the naive sign is the weakest part of this read, so it rides last
-            "naive_net_sign": dx.get("dex_word"),
             "note": "DEX = the direction side: net dealer delta still to re-hedge — "
                     "mechanical pressure, the strongest DIRECTIONAL read in the stack "
                     "when large. ADVISORY THIS ERA: record-only and ungraded — context "
-                    "beside the gamma map, never a gate. The naive_net_sign shares the "
-                    "gamma map's assumed-sign caveat (flow-inferred sign disagrees on "
-                    "~44% of strikes) and is structurally LONG by construction — weigh the "
-                    "flow_signed_read and the geography, not that sign.",
+                    "beside the gamma map, never a gate. Weigh the flow_signed_read "
+                    "(whose sign is actually alive) and the geography; the naive "
+                    "magnitude's sign is a fact about the formula, not the market.",
+        }.items() if v is not None}
+    # --- wt-11 rows-derived blocks (each measured-or-absent) -------------------
+    _sdf = lambda k: _sd(k, spot, sigma)               # noqa: E731 — the σ ruler
+    vol_tr = _vol_trend(allrows)
+    band = _magnet_band(gx)
+    moved30 = _moved_30m(allrows, _fin(sigma))
+    momentum = _momentum_block(allrows, band, _sdf)
+    history = _history_flags(t, allrows, moved30)
+    # aem — today's likely range split toward the side the tape fears. Shipped ONLY
+    # when the split's source is not the tower itself: adaptive_em prefers the
+    # tower's own called range when one is live (asym_source="watchtower"), and a
+    # model fed its own prior as evidence is a feedback loop, not a measurement.
+    aem = None
+    _ae = t.get("adaptive_em") if isinstance(t.get("adaptive_em"), dict) else None
+    if _ae and _ae.get("asym_source") and _ae["asym_source"] != "watchtower":
+        _up, _dn = _fin(_ae.get("em_up_pts")), _fin(_ae.get("em_down_pts"))
+        if _up is not None and _dn is not None and sigma:
+            aem = {"up_sigma": round(_up / sigma, 2),
+                   "down_sigma": round(_dn / sigma, 2),
+                   "source": f"{_ae['asym_source']} (realized-tape split)",
+                   "note": "today's likely range, split toward the side the tape "
+                           "fears — it breathes with vol, never a target"}
+    _mb_payload = None
+    if band and band.get("top"):
+        _tops = []
+        for k, sh in band["top"]:
+            k_sd = _sdf(k)
+            if k_sd is not None:
+                _tops.append([k_sd, sh])
+        _mb_payload = {k: v for k, v in {
+            # the tie is the headline: gap_pp small = no strike is in charge
+            "gap_pp": band["gap_pp"],
+            "top_strikes": _tops or None,
+            "note": "top strikes by share of gamma mass, as [σ-from-spot, share%] — "
+                    "the median top1−top2 gap on this tape is ~1pp of mass, so the "
+                    "magnet is usually a statistical TIE: when gap_pp is small, no "
+                    "strike is really in charge — say so rather than naming one",
         }.items() if v is not None}
     payload = {
         "task": "You are the Watchtower: forecast where 0DTE SPX goes over the next hour — "
                 "the gamma sign is the PERMISSION SLIP: fade/pin plays under LONG gamma, "
                 "continuation allowed under SHORT gamma, stand down when it is unknown.",
-        "clock": {"minutes_since_open": mins_open, "minutes_to_close": mins_close},
+        "clock": {"minutes_since_open": mins_open, "minutes_to_close": mins_close,
+                  # wt-11 (sr-4): the date — the history CLI's day filters are
+                  # unusable without it; absolute levels stay banned above
+                  **({"date": ts.date().isoformat()} if ts else {})},
         # wt-8 (Fix 3a): the σ↔points ruler. Read at the top of this builder and never
         # emitted before — the tower needs it to reconcile σ-targets with the point-range
         # facts (tape.rest_of_day_range_pts, tape_speed) it is already handed. This is a
         # SCALE, not an absolute index level (the no-absolute-levels hygiene rule holds:
         # 1σ ≈ points_per_sigma index points; reason in σ, never anchor to the level).
-        "scale": {"points_per_sigma": round(sigma, 2) if sigma else None},
+        "scale": {"points_per_sigma": round(sigma, 2) if sigma else None,
+                  # wt-11 (sr-5): the measured 30-min spread — a distribution to size
+                  # against, not a single number to copy as a ceiling
+                  "move_30min_sigma": dict(MOVE_30M_SPREAD),
+                  **({"aem": aem} if aem else {})},
         "dealer_map_gravity": {
             # wt-8: the PERMISSION SLIP leads the block — the sign decides which
             # plays exist at all before the magnet says where the pin sits
@@ -1430,6 +1826,9 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
             **({"regime_intensity_1d": regime_1d_word} if regime_1d_word else {}),
             "pull_toward_magnet": pull_word,
             "magnet_sigma_from_spot": magnet_sd,
+            # wt-11: the magnet's TIE, in numbers — median top1−top2 gap is
+            # 0.99pp of mass on this tape, and pin_top_share alone hid it
+            **({"magnet_band": _mb_payload} if _mb_payload else {}),
             **({"magnet_contested": contested_word} if contested_word else {}),
             # the Fade lens's wall-clamped revert-target — present only when the tape
             # is armed; a fade context read, NOT the gravity pull (absent, never null)
@@ -1454,8 +1853,11 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
                if tenor_pw_sd is not None else {}),
             **({"profile_clean": profile_word} if profile_word else {}),
             "pin_top_share": gx.get("pin_top_share"),
-            "vanna_sign": gx.get("vex_sign"), "charm_sign": gx.get("cex_sign"),
-            **({"charm_drift_into_close": charm_drift} if charm_drift else {}),
+            # wt-11: charm/vanna as NEUTRAL strength+level blocks — the raw sign
+            # fields were near-constants (97%/96% one-way) and the drift word's
+            # gate never once opened; what varies is what ships
+            **({"charm": charm_block} if charm_block else {}),
+            **({"vanna": vanna_block} if vanna_block else {}),
         },
         # wt-8 (Fix 2): only the WINDOWED tape rides — the whole-day cumulative is gone.
         # Attached only when it carries a read (payload hygiene: a cold window ≠ zero flow).
@@ -1496,6 +1898,10 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         # SIEGE (wt-7): effort-at-wall verdicts — containment evidence about the
         # touched wall itself, never a standalone direction
         **({"siege_effort_at_walls": siege_block} if siege_block else {}),
+        # wt-11: change over the stated window for the top magnet strikes —
+        # building vs fading beats any static level; intersection-denominated
+        # so a strike-window shift can never read as flow
+        **({"momentum": momentum} if momentum else {}),
         # DEX (SHADOW): the direction-side dealer-delta read — advisory context
         # this era, record-only, no gate reads it
         **({"dealer_delta_dex": dex_block} if dex_block else {}),
@@ -1508,16 +1914,26 @@ def build_payload(t: dict, reveal_gates: bool = False) -> dict:
         "tape": {
             "gap_from_prior_close_sigma": rev.get("gap_stretch"),
             "vwap_stretch_sigma": rev.get("vwap_stretch"),
+            # wt-11: the timestamp-true 30-min path — the live number the
+            # scale.move_30min_sigma spread exists to size against
+            **({"moved_last_30min_sigma": moved30} if moved30 is not None else {}),
             "last_bar_turned_back": rev.get("reaction"),
             "range_vs_expected_move": t.get("range_em"),
             # wt-10 (§6.5): the remaining reach, √time-decayed — a SIZE cap, no direction
             **({"expected_move_decay": em_decay} if em_decay else {}),
             "variance_ratio": t.get("variance_ratio"),
             "vix_term_structure": t.get("vix_ts"),
+            # wt-11: is implied vol rising or falling NOW — the switch that arms
+            # vanna/charm; omitted on a late_day ruler (the τ→0 solve balloons
+            # on clock mechanics, not vol)
+            **({"vol_trend": vol_tr} if vol_tr else {}),
             # m8: HOW VIOLENT, and WHO OWNS THE MOTION — the speedometer, finally in
             # the room. Absent (never null) when the feed is not clean.
             **({"tape_speed": speed_words} if speed_words else {}),
         },
+        # wt-11: the under-pull guard — flags that license the history tool /
+        # outside-world reach; omitted entirely when there is nothing to say
+        **({"history": history} if history else {}),
         "note": ("All levels are signed σ-distances from spot (+ above, − below). "
                  "Numbers above are precomputed and authoritative — do not re-derive."),
     }
@@ -1594,11 +2010,20 @@ def _prompt_parts(payload: dict, blind_verdict: dict | None = None) -> tuple[str
         "regime-less, so regime-dependent plays deserve less conviction even outside it. A "
         "MISSING fence means that side never decisively resumes control — the zone has no "
         "measured edge there. Fences are boundaries of behaviour, NEVER walls or targets.\n"
-        "- THE MAGNET IS A LOCATION, NOT A DIRECTION. pull_toward_magnet names where the "
-        "map's pin sits — a LOCATION/late-day pin target (intraday pull toward it hit ~33% in "
-        "backtest); it is NOT a directional default at any hour under any regime. Use it to "
-        "place pins and fades, never to pick a drift direction. If magnet_contested is "
-        "present, the field has TWO pins — expect chop between them, not a clean run.\n"
+        "- THE MAGNET IS A LOCATION, NOT A DIRECTION — AND USUALLY A TIE. pull_toward_magnet "
+        "names where the map's pin sits — a LOCATION/late-day pin target (intraday pull toward "
+        "it hit ~33% in backtest); it is NOT a directional default at any hour under any "
+        "regime. Use it to place pins and fades, never to pick a drift direction. "
+        "magnet_band carries the top strikes' shares and the top1−top2 gap in pp of mass: "
+        "the median gap on this tape is ~1pp, so when gap_pp is small NO strike is really in "
+        "charge — say so rather than naming one; there is no threshold where it flips, read "
+        "the number. If magnet_contested is present, the field has TWO pins — expect chop "
+        "between them, not a clean run.\n"
+        "- MOMENTUM BEATS ANY STATIC LEVEL (wt-11). momentum reports how the top magnet "
+        "strikes' share of gamma mass moved over the stated window (building / fading / "
+        "steady, with today's traded volume as the hedge on the word). A building pin is "
+        "worth more than a big one; a fading wall is worth less than its size. Keys are "
+        "σ-distances; absent = not cleanly measured this scan, never zero.\n"
         "- BINDING STRENGTH IS A CONVICTION SCALER (wt-8). net_gex_binding is the NORMALIZED "
         "net/gross gamma share at spot — how one-signed the book is, comparable across days and "
         "hours where the raw $ is not. It does NOT pick a direction; it scales conviction on the "
@@ -1713,11 +2138,15 @@ def _prompt_parts(payload: dict, blind_verdict: dict | None = None) -> tuple[str
         "the pull. Any read marked FLAT adds zero confidence to any thesis. NEVER fade into a "
         "confirmed break; be wary of calling against strong book flow. All attached only when "
         "present; absence ≠ zero.\n"
-        "- CHARM IS THE CLOCK'S TUG — and it grips hardest near the bell. IF "
-        "dealer_map_gravity.charm_drift_into_close is PRESENT it is precomputed (direction "
-        "included — never re-derive a drift direction from charm_sign yourself): before ~13:00 ET "
-        "background, in the afternoon a real vote on the drift call. IF IT IS ABSENT, charm has "
-        "no graded record yet — give charm/charm_sign NO directional weight at all.\n"
+        "- CHARM AND VANNA HAVE STRENGTH AND A LEVEL, NEVER A DIRECTION (wt-11). Their raw "
+        "signs are locked by the assumed-sign book (near-constant on every recorded row), so "
+        "a sign-derived drift word would be a permanent lean wearing signal clothes — none "
+        "ships, and you may NEVER re-derive one. What the scene carries is honest: "
+        "charm.strength (uncalibrated hedge re-balancing $/day — compare day to day, grips "
+        "hardest in the last ~2h) and charm.funnels_toward_sigma, the LEVEL the clock pulls "
+        "settlement toward — a place pinning gets easier, not a promised move. vanna.strength "
+        "matters only while tape.vol_trend is actually rising or falling — flat vol, dormant "
+        "vanna. vol_trend is the switch; read it first.\n"
         "- SIEGE IS THE WALL'S STRESS TEST — WITH A REVERSED SIGN (wt-7). "
         "siege_effort_at_walls reads the UNDERLYING (SPY) volume spent while price touched a "
         "wall. HEAVY effort (SIEGE) means expect that wall to BREAK — heavy volume at a wall "
@@ -1739,11 +2168,11 @@ def _prompt_parts(payload: dict, blind_verdict: dict | None = None) -> tuple[str
         "dealer DELTA still to re-hedge: mechanical pressure, the strongest DIRECTIONAL read "
         "in the stack when large — but here it is UNGRADED and record-only. Treat it as "
         "context that sharpens a read the gamma sign and the tape already support; NEVER a "
-        "standalone direction, never a reason to override the gamma-sign defaults. Its "
-        "naive_net_sign is structurally LONG (the same assumed-sign convention as the gamma "
-        "map, wrong on ~44% of strikes per the flow-inferred cross-check) — weigh the "
-        "standing_inventory_geography split and the flow_signed_read (whose sign is actually "
-        "alive), not the naive sign.\n"
+        "standalone direction, never a reason to override the gamma-sign defaults. The naive "
+        "magnitude's sign is fixed BY THE FORMULA (positive on every recorded row) — it is "
+        "never evidence and never means dealers are long or bullish; only "
+        "net_change_30min_bn can be news there. Weigh the flow_signed_read (whose sign is "
+        "actually alive) and the standing_inventory_geography split.\n"
         "- READ THE MAP IN TENOR ORDER: today's 0DTE book first (the walls and magnet — they are "
         "what dealers re-balance TODAY), the structural_*_wall band walls second (multi-day "
         "terrain), dated_structure last (far monthly/quarter-end OI shelves — react to them only "
@@ -1764,7 +2193,34 @@ def _prompt_parts(payload: dict, blind_verdict: dict | None = None) -> tuple[str
         "then the map is telling you your read was wrong, so switch to the side that is working.\n"
         "- magnitude_sigma: expected move in your direction over horizon_min. range_sigma: "
         "[worst, best] in σ. conviction: 0-1, honest probability price reaches +0.30σ in your "
-        "direction before −0.30σ within 120 min.\n"
+        "direction before −0.30σ within 120 min. SIZE AGAINST THE MEASURED SPREAD (wt-11): "
+        "thirty-minute moves on this tape have a SPREAD, not a typical size — "
+        "scale.move_30min_sigma gives it (half under 0.08σ, one in five over 0.15σ, one in "
+        "twenty over 0.27σ, worst recorded 0.46σ, with how many sessions it rests on) and "
+        "tape.moved_last_30min_sigma is the live number beside it. Size your magnitude "
+        "against the whole spread — a big call needs a named force behind it, but the tail "
+        "is real, so never let the median become your ceiling. The √time decay cap and the "
+        "pace guidance still layer on top.\n"
+        "- ABSENT MEANS UNMEASURED; A CLEAR-FLAG MEANS MEASURED-EMPTY (wt-11). Any missing "
+        "field was not cleanly measured this scan — treat absence as no data, never as "
+        "neutral, never as zero. The OPPOSITE case is stated outright: "
+        "wall_cluster_above_clear / wall_cluster_below_clear mean the surface WAS read and "
+        "holds nothing on that side — price in open air is a real reading, often the loudest "
+        "one in the scene. Never confuse the two.\n"
+        "- WHEN TO REACH OUTSIDE THE SCENE (wt-11 — both optional, most scans need "
+        "neither). History: run `" + _RAG_CMD + " query --help` for narrative recall of "
+        "your own past reads (today's slices, day summaries, standing terrain), and `"
+        + _RAG_CMD + " series --help` for the numeric spot/magnet/walls series by time "
+        "(and per-strike with --strike). Reach for them when something does not add up "
+        "from the live snapshot alone — price testing a level unseen today "
+        "(history.level_unseen_today flags it), a level acting out of character, or a "
+        "cross-day question. Exact asks go through the numbers (--date/--from-date/"
+        "--to-date, --min-move signed %, --near-strike) — use --text only for meaning, "
+        "never for dates or biggest/worst. Outside world: when the tape is genuinely "
+        "abnormal (history.abnormal_tape), a human would ask WHY — use WebSearch for the "
+        "catalyst (a print, macro news) or context. Extreme cases only, not every scan. "
+        "History is context, NEVER the trigger — the live scene stays primary, and a "
+        "recalled read is your own past opinion, not a fact about today.\n"
         "- The checklist numbers are evidence, not the answer — judge the whole scene.\n"
     )
     scene = f"SCENE:\n{json.dumps(payload, indent=1)}\n"
@@ -1948,9 +2404,11 @@ def _ask_claude(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
     right for a nightly brief and wrong inside a 5-minute scan tick. Here a
     slow call fails ONCE and the tick moves on (fail-open).
 
-    TOOL-LESS BY CONSTRUCTION. Omitting --allowedTools stops the model USING a
-    tool; the schemas still ship. Stripping them outright (DENY_TOOLS) is cheaper
-    still but measured as buying a shallower think — see that flag. Off by default.
+    EXACTLY TWO TOOLS (wt-11, the sr-2 grant): the lefteye_rag history CLI as
+    one allow-listed Bash prefix, and WebSearch for the abnormal-tape catalyst
+    check. Everything else stays stripped (DENY_TOOLS) so the schema bill stays
+    small — the 07-31 A/B's cost finding holds, and its pre-registered
+    fired-rate kill condition keeps running unchanged under this era.
 
     `system` rides in --append-system-prompt: an APPEND, never --system-prompt.
     Replacing the CLI's own system block measured 8x cheaper but collapsed the
@@ -1963,8 +2421,10 @@ def _ask_claude(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
            "--output-format", "json"]     # envelope carries the served model id
     if system:
         cmd.extend(["--append-system-prompt", system])
+    cmd.extend(["--allowedTools", ",".join(_ALLOWED_TOOLS)])
     if DENY_TOOLS:
         # --disallowedTools is variadic — it must stay LAST or it swallows what follows.
+        # A tool may never sit on both lists (Bash/WebSearch left _NO_TOOLS in wt-11).
         cmd.extend(["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                     "--disallowedTools", *_NO_TOOLS])
     t0 = _clock.time()
@@ -2220,7 +2680,11 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
         model = _model()
         t_start = _clock.time()
 
-        payload = build_payload(telemetry, reveal_gates=False)
+        # wt-11: today's prior rows feed the rows-derived blocks (vol_trend /
+        # momentum / dex change / 30-min path / history flags) — read once,
+        # reused by the reveal pass so both passes describe the same tape
+        rows_today = _today_rows(now)
+        payload = build_payload(telemetry, reveal_gates=False, rows=rows_today)
         payload["day_context"] = {"macro_mood": _macro_mood(),
                                   "session": _session_path(now, telemetry),
                                   "my_recent_verdicts": recent,
@@ -2264,7 +2728,8 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
         revised = False
         reveal_dissent = None
         if disagree and _clock.time() - t_start < TICK_BUDGET_S - CALL_TIMEOUT_S:
-            reveal_payload = build_payload(telemetry, reveal_gates=True)
+            reveal_payload = build_payload(telemetry, reveal_gates=True,
+                                           rows=rows_today)
             reveal_payload["day_context"] = payload["day_context"]
             _, reveal_body = _prompt_parts(reveal_payload, blind_verdict=blind)
             raw, err, wall = _ask_claude(reveal_body, model, system=doctrine)
@@ -2319,6 +2784,14 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
             result["snippet"] = render_snippet(result, telemetry, now, why)
         except Exception:                        # noqa: BLE001
             pass
+        # wt-11: one RAG slice per judged verdict — the tower's own sentence
+        # becomes tomorrow's recallable memory. Fail-open: memory must never
+        # cost a scan row (the sndk_read rule, kept verbatim).
+        try:
+            import lefteye_rag
+            lefteye_rag.record_slice(telemetry, result, now)
+        except Exception:                        # noqa: BLE001
+            pass
         return result
     except Exception as e:  # noqa: BLE001 — shadow head must NEVER break a scan
         return {"prompt_version": PROMPT_VERSION, "error": f"{type(e).__name__}: {e}"}
@@ -2331,22 +2804,23 @@ def _replay(day: str, live: bool) -> None:
     f = STATE_DIR / "reversion" / f"{day}.jsonl"
     rows = [json.loads(ln) for ln in f.read_text().splitlines() if ln.strip()]
     print(f"replay {day}: {len(rows)} rows — payloads for the interesting scans\n")
-    for r in rows:
+    for i, r in enumerate(rows):
         ok, why = interesting(r.get("reversion_extreme") or {})
         if not ok:
             continue
         ts = (r.get("ts") or "")[11:16]
         print(f"--- {ts}  interest: {why}")
+        # rows[:i] = the tape as it stood BEFORE this scan — the same causal
+        # window the live path hands build_payload (the current row folds in)
         if live:
-            doctrine, body = _prompt_parts(build_payload(r))
+            doctrine, body = _prompt_parts(build_payload(r, rows=rows[:i]))
             v, err, wall = _ask_claude(body, _model(), system=doctrine)
             print(json.dumps(validate_verdict(v) or {"error": err}, indent=1), f"({wall}s)")
         else:
-            print(json.dumps(build_payload(r), indent=1)[:800], "…\n")
+            print(json.dumps(build_payload(r, rows=rows[:i]), indent=1)[:800], "…\n")
 
 
 if __name__ == "__main__":
-    import sys
     args = sys.argv[1:]
     if "--replay" in args:
         day = next((a for a in args if a[:2] != "--"), None)

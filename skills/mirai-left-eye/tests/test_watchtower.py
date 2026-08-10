@@ -114,23 +114,29 @@ def test_reveal_payload_shows_the_gates_as_evidence():
 
 
 # --- wt-4 payload: charm drift + tenor terrain (H6/H2/H8) -----------------------
-def test_charm_drift_word_gated_and_direction_mapping():
-    # N11 (wt-5): the WORD only speaks when the engine's charm_word_ok gate is open —
-    # net dealer charm said "UP into the close" on 804/806 live rows (a constant, not
-    # a signal), so the gate ships False until charm earns a graded record.
+def test_charm_and_vanna_ship_neutral_blocks_never_a_direction():
+    # wt-11 (N11's final form): the raw sign fields were near-constants (cex_sign
+    # 97% negative, vex_sign 96% positive on 5,092 rows) and the drift word's
+    # charm_word_ok gate never once opened — what varies is what ships: strength
+    # + the level the clock funnels toward, NO sign field, NO direction word.
     t = _telemetry()
-    t["gex_views"]["cex_sign"] = "negative"
-    assert "charm_drift_into_close" not in wt.build_payload(t)["dealer_map_gravity"]
-    t["gex_views"]["charm_word_ok"] = False
-    assert "charm_drift_into_close" not in wt.build_payload(t)["dealer_map_gravity"]
-    # ...and when the gate is EARNED open, the 3/3 derivation panel mapping holds:
-    # negative charm ⇒ hedge BUYING into the close ⇒ UP; positive ⇒ DOWN; unknown ⇒ absent
-    t["gex_views"]["charm_word_ok"] = True
-    assert wt.build_payload(t)["dealer_map_gravity"]["charm_drift_into_close"].startswith("UP")
-    t["gex_views"]["cex_sign"] = "positive"
-    assert wt.build_payload(t)["dealer_map_gravity"]["charm_drift_into_close"].startswith("DOWN")
-    t["gex_views"]["cex_sign"] = "unknown"
-    assert "charm_drift_into_close" not in wt.build_payload(t)["dealer_map_gravity"]
+    t["gex_views"].update({"cex": -3.6e11, "vex": 2.5e9, "charm_wall": 7440.0,
+                           "cex_sign": "negative", "vex_sign": "positive",
+                           "charm_word_ok": True})   # even an open gate ships no word
+    dm = wt.build_payload(t)["dealer_map_gravity"]
+    assert "charm_drift_into_close" not in dm
+    assert "charm_sign" not in dm and "vanna_sign" not in dm
+    assert dm["charm"]["strength"] == 360000.0        # |cex|/1e6, uncalibrated $M
+    assert dm["charm"]["funnels_toward_sigma"] == pytest.approx(-0.1, abs=0.01)
+    assert "NO direction" in dm["charm"]["note"]
+    assert dm["vanna"]["strength"] == 2500.0
+    assert "vol_trend" in dm["vanna"]["note"]
+    blob = json.dumps(dm)
+    assert "UP into the close" not in blob and "DOWN into the close" not in blob
+    # not cleanly computed → absent, never null (and no half-empty block)
+    t2 = _telemetry()
+    dm2 = wt.build_payload(t2)["dealer_map_gravity"]
+    assert "charm" not in dm2 and "vanna" not in dm2
 
 
 def test_structural_walls_reach_filtered_and_deduped():
@@ -493,7 +499,13 @@ def test_tool_denial_when_enabled_keeps_the_variadic_flag_last():
         wt.DENY_TOOLS = real
     assert "--strict-mcp-config" in cmd
     assert cmd[cmd.index("--disallowedTools") + 1:] == list(wt._NO_TOOLS)
-    assert "Bash" in wt._NO_TOOLS and "Read" in wt._NO_TOOLS
+    # wt-11: Bash/WebSearch moved to the allow list — a tool may never sit on
+    # both lists, and the two sr-2 grants must actually reach the argv
+    assert "Bash" not in wt._NO_TOOLS and "WebSearch" not in wt._NO_TOOLS
+    assert "Read" in wt._NO_TOOLS
+    allowed = cmd[cmd.index("--allowedTools") + 1]
+    assert "lefteye_rag.py:*" in allowed and "WebSearch" in allowed
+    assert cmd.index("--allowedTools") < cmd.index("--disallowedTools")
 
 
 def test_prompt_carries_the_wt8_corrections():
@@ -1079,8 +1091,8 @@ def test_prompt_teaches_chop_band_dominance_and_the_messy_gate():
 
 
 # ---------------------------------------------- wt-9 doctrine fold-ins (2026-07-27)
-def test_prompt_version_is_wt10():
-    assert wt.PROMPT_VERSION == "wt-10"
+def test_prompt_version_is_wt11():
+    assert wt.PROMPT_VERSION == "wt-11"
 
 
 def test_regime_intensity_1d_is_worded_by_the_sign_of_todays_level():

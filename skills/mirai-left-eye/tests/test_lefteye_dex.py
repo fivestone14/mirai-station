@@ -218,13 +218,17 @@ class TestWatchtowerDexBlock:
         blk = p["dealer_delta_dex"]
         assert "bn underlying-equivalent" in blk["magnitude"]
         assert "UNCALIBRATED" in blk["magnitude"]
-        # wt-8 Fix 6c: the naive sign is DEMOTED (renamed, rides last) and the above/below
-        # split is kept as standing-inventory GEOGRAPHY, not a top-level directional field
-        assert blk["naive_net_sign"].startswith("dealers_need_to_SELL_on_rallies")
+        # wt-11: the naive sign word is GONE — net_dex_total > 0 by construction
+        # (2,627/2,627 recorded rows), and a demoted constant is still a constant
+        # in the room. The magnitude line itself now names the formula-fixed sign.
+        import json as _json
+        assert "naive_net_sign" not in blk
+        assert "dealers_need_to_SELL_on_rallies" not in _json.dumps(blk)
+        assert "fixed by the formula" in blk["magnitude"]
         geo = blk["standing_inventory_geography"]
         assert geo["delta_mass_above_spot_share"] == rec["dex_above_spot"]
         assert "geography" in geo["note"]
-        assert "ADVISORY THIS ERA" in blk["note"] and "~44%" in blk["note"]
+        assert "ADVISORY THIS ERA" in blk["note"]
         # no tape annotation this row → the flow-signed lines stay absent
         assert "flow_signed_read" not in blk and "flow_signed_magnitude" not in blk
         # payload hygiene: no absolute strike levels leak through the block
