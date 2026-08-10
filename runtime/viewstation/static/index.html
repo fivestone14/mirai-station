@@ -2915,7 +2915,6 @@ function gxGapBands(walls, spot, nbs, fr){
   }
   return out;
 }
-const gauss = (k,mu,sd)=>Math.exp(-((k-mu)*(k-mu))/(2*sd*sd));
 const nowClock = ()=> new Date().toLocaleTimeString('en-US',{hour12:false, timeZone:PT});
 
 function stateOf(s){ return { spot:s.spot, flip:s.flip, callWall:s.callWall, putWall:s.putWall, magnet:s.magnet, pin:s.pin,
