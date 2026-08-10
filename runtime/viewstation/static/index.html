@@ -2379,7 +2379,11 @@ function normWt(w){
     range:w.range_sigma||[0,0], horizon:w.horizon_min??60,
     conv:w.conviction ?? (w.votes&&(w.votes.agreement??w.votes.agree)) ?? 1, convStated:w.conviction_stated??null,
     votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??1}:{n:1,agree:1},
-    agrees:('agrees_with_gates' in w)?!!w.agrees_with_gates:(w.agrees??true),
+    /* wt-11: a row that never carried the flag reads null, not a fabricated true —
+       "absence is not agreement" (the applyWt twin already said so; the JSON view
+       was printing an invented value for pre-flag rows). Consumers test ===false /
+       ===true, never truthiness. */
+    agrees:('agrees_with_gates' in w)?!!w.agrees_with_gates:(w.agrees??null),
     scene:w.scene||'', change:w.would_change_mind||w.change||'', interest:w.interest||'',
     wallS:w.wall_s??w.wallS??0, revised:!!w.revised, snippet:w.snippet||null, skipped:w.skipped||null,
     pv:w.prompt_version||null,     // actual head version from the row (H1: badge must not be inferred from a constant)
@@ -3564,7 +3568,7 @@ function gxPaint(){
   // (a 3-tag day and a 7-tag cluster both open cleanly); replaces the old split where
   // the MID spreader and the wall stack de-collided on their own and could still stack.
   const TAGGAP=34;
-  const mids=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1)
+  const mids=MIDS.map(id=>({id,y:yFor(valOf[id])})).filter(m=>valOf[m.id]!=null&&isFinite(m.y)&&m.y>=X.padT-1&&m.y<=X.H-X.padB+1)
     .concat(wtI?[{id:'wt',y:wtI.ty}]:[]);
   const onOf={}; mids.forEach(m=>onOf[m.id]=true);
   // wall SELECTION (TAPE only) up front so its tags join the same spread; gxWallStack
@@ -6967,9 +6971,11 @@ function renderDetail(){
     <div class="dt-meta">${tchip}${pill(L.status)}</div>
     <div class="dt-role">${L.role}</div>
     <p class="dt-plain">${L.plain}</p>
-    ${L.schema
+    ${L.example && !(L.schema && L.tier==='feed')
+      ? `<div class="dt-eg"><span class="eg-k">For example</span>${L.example}${DGM[L.id]||''}</div>` : ''}${
+    L.schema
       ? `<div class="dt-schema"><div class="sc-head"><span class="sc-k">Schema · incoming record</span><span class="sc-src">${L.schema.src}</span></div><pre>${L.schema.code.map(hlLine).join('\n')}</pre></div>`
-      : `<div class="dt-eg"><span class="eg-k">For example</span>${L.example}${DGM[L.id]||''}</div>`}
+      : ''}
     ${L.subs ? `<div class="dt-subs"><span class="subs-k">What it contributes</span><div class="subs-grid">${
       L.subs.map(s=>`<div class="dt-sub"><div class="sub-h">${s.k}</div>${s.dgm}<div class="sub-d">${s.d}</div></div>`).join('')
     }</div></div>` : ''}
@@ -7331,9 +7337,9 @@ function childSentence(s){
   const g=gateStates(s).filter(x=>x.on).length, w=s.wt;
   const wd = w.dir==='call' ? 'bounce back up' : 'drop back down';
   const fd = s.fade.dir==='call' ? 'spring back up' : 'come back down';
-  if(w.fired && !w.agrees)
+  if(w.fired && w.agrees===false)
     return `The price slid close to an edge and the thinking robot wanted to bet it would ${wd}, but the careful rule robot said there wasn’t enough room yet — so it waited.`;
-  if(s.fade.fired && w.fired && w.agrees)
+  if(s.fade.fired && w.fired && w.agrees===true)
     return `The price stretched too far from the middle, so both robots agreed it should ${fd} and pointed the same way — a clean, matching call.`;
   if(w.votes && w.votes.agree < 0.6)
     return `The market was wiggly and hard to read, so the thinking robot shrugged and decided to sit still instead of guessing.`;
@@ -7378,7 +7384,7 @@ function annotatedJSON(s){
     `${i(2)}${K('stance')}: ${s.wt.stance?S(s.wt.stance):NU},${c('fight (range erupts) / settle (pins) / no_read — graded separately from direction')}`,
     `${i(2)}${K('conviction')}: ${N(s.wt.conv)},${c('share of votes that agreed = the conviction we actually trust')}`,
     `${i(2)}${K('votes')}: ${votes},${c('times it was asked (up to 3 on a fire) and the agreement among them')}`,
-    `${i(2)}${K('agrees_with_gates')}: ${Bl(s.wt.agrees)},${c('did the reasoning head and the machine gates concur?')}`,
+    `${i(2)}${K('agrees_with_gates')}: ${s.wt.agrees==null?NU:Bl(s.wt.agrees)},${c('did the reasoning head and the machine gates concur? (null = the row never carried the flag)')}`,
     `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read — since wt-11 also written to state/spx_rag as a recallable memory slice')}`,
     `${i(1)}}`,
     '}',
