@@ -531,3 +531,35 @@ def test_heaviest_wall_ships_when_the_ladder_would_hide_it():
     if hb:                                   # only when it is not in the ladder
         assert hb["gex"] >= max(p["gex"] for p in puts)
         assert hb["strike"] not in {p["strike"] for p in puts}
+
+
+# --- sr-4: the day-scoped calendar -------------------------------------------
+def test_clock_carries_the_calendar():
+    """sr-4: date, minutes each way, and the front-expiry cycle position —
+    a Monday 4-dte book must not read like expiry Friday."""
+    ck = scene_of(rich_row())["clock"]
+    assert ck["date"] == "2026-07-31"
+    assert ck["minutes_since_open"] == 150
+    assert ck["minutes_to_close"] == 240
+    assert ck["front_expiry"] == {"dte": 3}       # rich_row carries no expiries
+    assert "weekday" not in ck                    # == dte on every session; one
+                                                  # fact must not wear two names
+
+
+def test_front_expiry_date_rides_when_the_row_carries_it():
+    row = rich_row()
+    # live rows carry {"date","dte"} dicts; early fixtures carried bare
+    # strings — both shapes must resolve (the first live sr-4 scan shipped a
+    # stringified dict as the date because only strings were pinned here)
+    row["meta"] = {"expiries": [{"date": "2026-07-25", "dte": -6},
+                                {"date": "2026-08-01", "dte": 1}]}
+    fe = scene_of(row)["clock"]["front_expiry"]
+    assert fe == {"dte": 3, "date": "2026-08-01"}   # first at/after today
+    row["meta"] = {"expiries": ["2026-07-25", "2026-08-01"]}
+    assert scene_of(row)["clock"]["front_expiry"]["date"] == "2026-08-01"
+
+
+def test_front_expiry_absent_without_a_dte():
+    row = rich_row()
+    del row["gex_views"]["front_dte"]
+    assert "front_expiry" not in scene_of(row)["clock"]

@@ -7,13 +7,13 @@ surface, deliberately NOT reasoning input. This list is the pressure-test
 shortlist: anything marked *not in payload* is a candidate to argue back in.
 
 Sources: diary row = `sndk_views.build_row` (ROW_V 3), read row =
-`sndk_read.read_once` (ERA sr-3), chain = `sndk_feed.sndk_chain`.
+`sndk_read.read_once` (ERA sr-4), chain = `sndk_feed.sndk_chain`.
 
 ## In the scene payload (v2 — the blueprint shape)
 
 | Scene field | Source (row/derived) | Note |
 |---|---|---|
-| instrument, clock.minutes_since_open | constant / wall clock | |
+| instrument, clock {minutes_since_open, minutes_to_close, date, front_expiry {dte, date}} | wall clock + `gex_views.front_dte` + `meta.expiries` | **sr-4 (08-10)**: the day-scoped calendar — the model could not tell a Monday 4-dte book from expiry Friday, could not use the history CLI's `--date` filters, and could not know a 15:45 call has no room to resolve. Weekday deliberately absent (≡ dte on every recorded session — one fact must not wear two names); 16:00 close is the standing RTH assumption, half-days owned by the open no-pulse blind spot |
 | scale.one_sigma_dollars / sigma_pct_of_price | `sigma` (σ-ruler: max(anchor, live), N10) | σ from rebuilt front-book ATM IV |
 | scale.typical_30min_move_sigma | measured constant 0.08 (756-row study) | honesty yardstick, not a signal |
 | scale.aem {up/down_dollars, skew, source} | `range_ruler.em_points` split by `iv_skew.down_share` | **IV-skew split** (blueprint semantics); the pre-existing `adaptive_em` (realized-semivariance split) stays recorded on the row as shadow — divergence flagged in the 08-02 report |

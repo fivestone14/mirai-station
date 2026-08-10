@@ -82,7 +82,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-3"                # bump on ANY change to the gates or the prompt.
+ERA = "sr-4"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-2 (2026-08-02, blueprint v3): the verdict left
@@ -102,6 +102,12 @@ ERA = "sr-3"                # bump on ANY change to the gates or the prompt.
                             # gave one measurement the appearance of three
                             # agreeing levels. The doctrine now says the edges
                             # are arithmetic. Gates and arrow unchanged.
+                            # sr-4 (2026-08-10): the scene learns what day it
+                            # is — clock grows date, minutes_to_close and
+                            # front_expiry {dte, date}, all from values already
+                            # on the row. Weekday deliberately absent (== dte
+                            # on every recorded session). Gates, arrow and the
+                            # output schema unchanged.
 PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protection)
 
 # --- wake gate ---------------------------------------------------------------
@@ -637,6 +643,7 @@ _DOCTRINE = f"""You read one stock's dealer-positioning snapshot COLD and infer 
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical day's move) runs 8-10% of the share price — enormous. It has weekly expiries, not daily, so most days have no expiry at all. Standing levels come from open interest, which is yesterday's positioning about a stock that can move 12% in a session.
 
 HOW TO READ THE SCENE (grouped by force, not by metric):
+- clock: front_expiry.dte is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while dte 0 collapses to expiry-day mechanics where pinning and charm run at full strength. minutes_to_close says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape.
 - scale: the sigma ruler, plus aem — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
 - regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and ct/pt are that center plus and minus a fixed 0.25 sigma — the edges are arithmetic, not three independent levels, so three of them agreeing is one witness, not three. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
 - magnet: strikes pulling price. gap_pp is the top strike's lead over the runner-up in points of gamma mass — SMALL means no strike is really in charge, and there is no threshold where it flips: read the number, and read gap_vs_own_history for whether today's lead is unusual for this tape.
@@ -1318,10 +1325,39 @@ def build_scene(row: dict, band: dict, frozen: list,
         # keep-field would break that promise (fidelity audit #5, 08-02)
         return {k: v for k, v in d.items() if v is not None}
 
+    # sr-4: the day-scoped calendar. Until now the model read a Monday 4-dte
+    # book with the same eyes as expiry Friday — no date, no dte, no idea how
+    # much session remained for a 30-minute call to resolve in — on a name
+    # whose whole dealer story cycles weekly (charm magnitude swells ~5x
+    # across one cycle for pure calendar reasons). Every value is already on
+    # the row or the wall clock; weekday is deliberately NOT shipped — on the
+    # recorded tape weekday and dte are the same number (Mon=4..Fri=0), and
+    # one fact must not wear two names (the flip-band lesson). The 16:00
+    # close is the standing RTH assumption — a half-day session will overstate
+    # minutes_to_close (the no-pulse blind spot, still open, owns that).
+    open_t = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    close_t = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    clock = {"minutes_since_open": int((now - open_t).total_seconds() // 60),
+             "minutes_to_close": max(0, int((close_t - now).total_seconds() // 60)),
+             "date": now.strftime("%Y-%m-%d")}
+    fd = _fin((row.get("gex_views") or {}).get("front_dte"))
+    if fd is not None:
+        fe = {"dte": int(fd)}
+        # meta.expiries entries are {"date","dte"} dicts on live rows and were
+        # bare strings in early fixtures — accept both, coerce neither.
+        exps = (row.get("meta") or {}).get("expiries")
+        if isinstance(exps, list):
+            ds = [x for x in exps if isinstance(x, str)]
+            ds += [x["date"] for x in exps
+                   if isinstance(x, dict) and isinstance(x.get("date"), str)]
+            nxt = next((e for e in sorted(ds) if e >= clock["date"]), None)
+            if nxt:
+                fe["date"] = nxt
+        clock["front_expiry"] = fe
+
     scene = {
         "instrument": "SNDK",
-        "clock": {"minutes_since_open": int((now - now.replace(
-            hour=9, minute=30, second=0, microsecond=0)).total_seconds() // 60)},
+        "clock": clock,
         "scale": prune(scale),
         "price": prune(price),
         "regime": prune(regime),

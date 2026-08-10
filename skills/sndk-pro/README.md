@@ -75,7 +75,10 @@ model's opinion; here the two paths are decoupled:
   information, not a bug).
 
 The scene (docs/sndk-payload-inventory.md is the field-by-field map):
-grouped by force — `scale` (σ + **aem**, the IV-skew-split asymmetric range),
+grouped by force — `clock` (**day-scoped since sr-4**: date, minutes each
+way, and `front_expiry` {dte, date} — the weekly-cycle position; weekday
+deliberately absent, it equals dte on every recorded session), `scale`
+(σ + **aem**, the IV-skew-split asymmetric range),
 `price` (+ **vwap_dist_sigma**), `regime` (+ **vol_trend**, **flip** band
 with center + position — told ONCE since sr-3: the edges are the flip ±0.25σ
 by construction, and the old named_levels duplicate left the scene — plus
@@ -148,7 +151,9 @@ and writes nothing; that is how every number above was measured.
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-3` since
+  silently with live rows. Read rows are stamped `era` (`sr-4` since
+  2026-08-10 — the scene learns what day it is: date, minutes_to_close,
+  front_expiry dte; `sr-3` since
   2026-08-08 — the flip told once, dex's sign named, walls aged +
   heaviest-behind, gates handed over as numbers; `sr-2` since
   2026-08-02; `sr-1` rows are the pre-blueprint rule set) so a later read
