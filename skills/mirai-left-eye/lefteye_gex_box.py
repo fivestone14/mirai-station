@@ -1938,6 +1938,11 @@ class _Cache:
     source: str
     coverage: Optional[dict] = None   # N7: the native fetch's own coverage verdict —
                                       # rides the LIVE engine leg, not just the shadow read
+    atm_iv: Optional[float] = None    # the solved ATM IV behind sigma — None when the
+                                      # 1%-of-spot fallback priced sigma instead (a
+                                      # fallback σ derived back to an "IV" would read
+                                      # ~15.9% on SPX, plausible enough to poison a
+                                      # vol-trend read; absence is the honest value)
 
 
 _CACHE: dict[str, _Cache] = {}
@@ -2030,7 +2035,8 @@ def _rescaled_chain(ticker: str, chain_lookup: Callable[[str], Optional[dict]],
     return _Cache(contracts=contracts, spot=round(idx_spot, 4), sigma=round(sigma, 4),
                   anchor_spot=round(idx_spot, 4), ts=now,
                   source=("spy_proxy×%.4f" % scale) if proxy else "native",
-                  coverage=(chain.get("meta") or {}).get("coverage") if native_served else None)
+                  coverage=(chain.get("meta") or {}).get("coverage") if native_served else None,
+                  atm_iv=round(atm_iv, 6) if (atm_iv and atm_iv > 0) else None)
 
 
 def should_refresh(cache: Optional[_Cache], now: datetime,
@@ -2101,6 +2107,7 @@ def GexBox(ticker: str, *, now: Optional[datetime] = None,
     views["meta"] = {"gex_source": entry.source, "snapshot_spot": entry.anchor_spot,
                      "age_min": age, "repriced": live_spot is not None and live_spot != entry.spot,
                      "sigma": entry.sigma, "minutes_to_close": mtc,
+                     "atm_iv": entry.atm_iv,              # None when σ was the 1% fallback
                      "native_coverage": entry.coverage}   # N7: live-leg coverage verdict
     # N7: when the read is NOT native and the native feed rejected its last fetch on
     # coverage, say so — "proxy because the native book came back half-fetched" is a

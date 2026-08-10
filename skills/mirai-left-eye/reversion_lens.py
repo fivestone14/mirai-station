@@ -1186,6 +1186,14 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
             # live σ and the day anchor ride beside so the A/B and the tablet can show basis
             "call_wall": call_wall, "put_wall": put_wall, "sigma": sigma,
             "sigma_live": sigma_live, "sigma_anchor": sigma_anchor or sigma_live,
+            # wt-11 row additions (2026-08-10, additive — no reader keyed on absence):
+            # the solved front-book ATM IV behind sigma_live (None when the 1%-of-spot
+            # fallback priced it — a fallback derived back to an "IV" is a plausible
+            # constant, the exact poison a vol-trend read cannot survive), and the raw
+            # session VWAP price. vwap_stretch keeps recording the σ-distance beside it;
+            # the raw level is what the viewstation needs to DRAW the line.
+            "atm_iv": _meta.get("atm_iv"),
+            "vwap": round(idx_vwap, 4) if idx_vwap else None,
             # outer terrain (H2): the structural 1-7DTE band walls the near walls
             # replaced as the operative bound — recorded so nothing is silently
             # lost and the A/B can compare the two doctrines row by row

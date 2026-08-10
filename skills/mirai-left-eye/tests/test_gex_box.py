@@ -428,6 +428,27 @@ class TestCache:
         # no calls carry IV → puts remain the honest fallback
         assert gv._atm_iv([_c(5000.0, "put", 0, 0.02, iv=0.09)], 5000.0) == 0.09
 
+    def test_meta_carries_atm_iv_and_none_on_fallback_sigma(self):
+        # wt-11: the solved ATM IV rides meta so the diary row can record it.
+        def lookup_iv(t):
+            return {"contracts": [_c(5000.0, "call", 0, 0.02, iv=0.14),
+                                  _c(5000.0, "put", 0, 0.02, iv=0.14)],
+                    "spot": 5000.0}
+        v = gv.GexBox("QQQ", now=NOW, live_spot=5000.0, chain_lookup=lookup_iv,
+                      spot_lookup=lambda t: 5000.0, cache={})
+        assert v and v["meta"]["atm_iv"] == 0.14
+        # no IV anywhere → σ falls back to 1% of spot, and atm_iv must be None:
+        # a fallback σ derived back to an "IV" is a plausible constant, which is
+        # exactly what a vol-trend read cannot be allowed to eat.
+        def lookup_no_iv(t):
+            return {"contracts": [_c(5000.0, "call", 0, 0.02, iv=0),
+                                  _c(5000.0, "put", 0, 0.02, iv=0)],
+                    "spot": 5000.0}
+        v2 = gv.GexBox("QQQ", now=NOW, live_spot=5000.0, chain_lookup=lookup_no_iv,
+                       spot_lookup=lambda t: 5000.0, cache={})
+        assert v2 and v2["meta"]["atm_iv"] is None
+        assert v2["meta"]["sigma"] == 50.0                 # the 1%-of-spot fallback
+
     def test_native_chain_primary_spy_fallback(self):
         # native lookup healthy → chain used as-is (already index space), labeled native
         def native(t):
