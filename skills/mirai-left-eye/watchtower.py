@@ -276,9 +276,13 @@ _NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
 # sys.executable pins the venv the tower itself runs in — the embedder lives there.
 _RAG_CMD = f"{sys.executable} {SKILL_DIR / 'lefteye_rag.py'}"
 _ALLOWED_TOOLS = (f"Bash({_RAG_CMD}:*)", "WebSearch")
-DENY_TOOLS = True           # ON since 07-31. The tower never calls a tool, so it
-                            # stops paying to ship their schemas: 50.3k -> 34.1k
-                            # tokens a call (-32%), read block 43.0k -> 30.9k.
+DENY_TOOLS = True           # ON since 07-31; under wt-11 it strips everything
+                            # EXCEPT the two sr-2 grants (_ALLOWED_TOOLS), whose
+                            # schemas ship again — the figures below were measured
+                            # tool-less under wt-10 and bound the saving, they are
+                            # not this era's exact bill. Original measurement:
+                            # 50.3k -> 34.1k tokens a call (-32%), read block
+                            # 43.0k -> 30.9k.
                             # The 07-29 test said no on the ground that tools-off
                             # buys a shallower think (wall 44.0s -> 15.7s, stated
                             # conviction 0.38 -> 0.31, n=6 on ONE marginal scene).
@@ -360,8 +364,12 @@ VOL_TREND_FLAT = 2.0         # |Δ IV| under this many vol pts reads "flat"
                              # (≈p72 of the recorded |Δ30m|, n=3,390 windows)
 # the measured 30-min move spread (sr-5's form): 30 sessions, 336 disjoint windows,
 # 2026-06-25..08-10. A spread teaches a distribution; a point teaches a ceiling.
+# worst_recorded is the SLIDING-window worst (0.52σ, 2026-07-31 10:08) — the
+# disjoint sampling used for the quantiles clipped the true peak to 0.46, and a
+# "worst" that underreports the tape defeats its own purpose (adversarial
+# replay, 08-10: overlapping windows across all 5,176 scans).
 MOVE_30M_SPREAD = {"half_under": 0.08, "one_in_five_over": 0.15,
-                   "one_in_twenty_over": 0.27, "worst_recorded": 0.46,
+                   "one_in_twenty_over": 0.27, "worst_recorded": 0.52,
                    "sessions_measured": 30}
 ABNORMAL_DAY_SIGMA = 1.5     # a day move beyond this many σ is abnormal for this
                              # tape — σ-relative on purpose (the SNDK fixed-% lesson)
@@ -379,7 +387,10 @@ def _sd(level, spot, sigma):
     model — never as an absolute index number it may have memorized."""
     if level is None or not spot or not sigma:
         return None
-    return round((level - spot) / sigma, 2)
+    r = round((level - spot) / sigma, 2)
+    return 0.0 if r == 0 else r          # never a "-0.0" in the scene (JSON keeps
+                                         # the sign; an at-the-money level must not
+                                         # read as fractionally below spot)
 
 
 def interesting(rev: dict) -> tuple[bool, str]:
@@ -781,15 +792,26 @@ def _gw_cluster_read(net_by_strike, spot, sigma) -> tuple[dict, str | None]:
         # way is a real reading, often the loudest one in the scene. A true
         # sensor failure still returns ({}, None) above, unchanged: absence
         # keeps meaning "not measured", a clear-flag means "measured empty".
+        # COVERAGE GUARD (SE review 08-10): the flag may only speak where the
+        # strike window actually REACHED — a clipped book whose strikes stop at
+        # spot did not measure the far side, and "clear" there would be the
+        # exact inversion sr-5 warns against. The window must extend past spot
+        # on that side, or the side stays honestly absent.
         _CLEAR = ("MEASURED CLEAR — the surface was read and holds no wall "
                   "cluster on this side; price is in open air that way")
+        try:
+            _ks = [float(k) for k, _v in net_by_strike]
+        except (TypeError, ValueError):
+            _ks = []
+        _covers_above = bool(_ks) and max(_ks) > spot
+        _covers_below = bool(_ks) and min(_ks) < spot
         if near["above"]:
             walls["wall_cluster_above"] = _row(near["above"][0])
             if _clean and len(near["above"]) > 1:   # no pocket while the profile reads MESSY
                 _ap = _pocket(near["above"][0], near["above"][1])
                 if _ap:
                     walls["air_pocket_above"] = _ap
-        else:
+        elif _covers_above:
             walls["wall_cluster_above_clear"] = _CLEAR
         if near["below"]:
             walls["wall_cluster_below"] = _row(near["below"][0])
@@ -797,7 +819,7 @@ def _gw_cluster_read(net_by_strike, spot, sigma) -> tuple[dict, str | None]:
                 _bp = _pocket(near["below"][0], near["below"][1])
                 if _bp:
                     walls["air_pocket_below"] = _bp
-        else:
+        elif _covers_below:
             walls["wall_cluster_below_clear"] = _CLEAR
         return walls, profile_word
     except Exception:
@@ -1080,6 +1102,13 @@ def _fin(v):
     return v if math.isfinite(v) else None
 
 
+def _r0(x, nd=2):
+    """round() that never emits negative zero — the scene-wide rule (_sd has
+    the same clause): a delta that rounds to nothing must not wear a sign."""
+    r = round(x, nd)
+    return 0.0 if r == 0 else r
+
+
 def _parse_row_ts(r: dict):
     """A diary row's ts → aware datetime, or None — a malformed stamp must
     degrade to 'unknown', never to a date (an age computed off epoch zero
@@ -1092,11 +1121,17 @@ def _parse_row_ts(r: dict):
 
 def _row_atm_iv(r: dict):
     """A row's front-book ATM IV. wt-11 rows record it (atm_iv, None when the
-    1%-of-spot fallback priced σ); older rows derive it exactly (sigma_live =
-    spot·iv/√252, so iv = sigma_live·√252/spot)."""
-    iv = _fin(r.get("atm_iv"))
-    if iv is not None and iv > 0:
-        return iv
+    1%-of-spot fallback priced σ); pre-wt-11 rows derive it exactly (sigma_live
+    = spot·iv/√252, so iv = sigma_live·√252/spot).
+
+    THE KEY ITSELF IS THE ERA GATE (SE review 08-10): a wt-11 row carrying
+    atm_iv: null is the recorded HONEST ABSENCE — the fallback priced σ, and
+    deriving an "IV" back out of it returns the constant ~15.9% the row-field
+    exists to keep out of vol_trend (a native→fallback seam derived as a fake
+    8-vol-pt crash). Only a row from BEFORE the field existed may derive."""
+    if "atm_iv" in r:
+        iv = _fin(r.get("atm_iv"))
+        return iv if iv is not None and iv > 0 else None
     sl, sp = _fin(r.get("sigma_live")), _fin(r.get("spot"))
     if sl and sp and sl > 0 and sp > 0:
         return sl * math.sqrt(252.0) / sp
@@ -1115,7 +1150,8 @@ def _vol_trend(rows: list[dict]) -> dict | None:
     itself stamps the day late_day (the same authority the EM read trusts)."""
     if not rows:
         return None
-    rr = rows[-1].get("range_ruler") or {}
+    rr = rows[-1].get("range_ruler")
+    rr = rr if isinstance(rr, dict) else {}      # a torn non-dict must not crash the guard
     if rr.get("quality") == "late_day":
         return None
     ser = []
@@ -1136,7 +1172,7 @@ def _vol_trend(rows: list[dict]) -> dict | None:
     d = (iv_now - ref[1]) * 100.0
     word = ("flat" if abs(d) < VOL_TREND_FLAT
             else "rising" if d > 0 else "falling")
-    return {"direction": word, "iv_change_last_30min": round(d, 1)}
+    return {"direction": word, "iv_change_last_30min": _r0(d, 1)}
 
 
 def _magnet_band(gx: dict) -> dict | None:
@@ -1189,6 +1225,11 @@ def _momentum_block(rows: list[dict], band: dict | None, sd) -> dict | None:
                 out[k] = abs(v) if absolute else v
         return out
 
+    # the build/fade bar was measured on ~10-min windows — after a scan outage
+    # the 5-row window can span hours, and the label's honesty ("(187m)") does
+    # not make the threshold's dishonesty acceptable (SE review 08-10)
+    if (t_c - t_r) > timedelta(minutes=VOL_TREND_MAX):
+        return None
     mb_c = _pairs(cur, "mass_by_strike", absolute=True)
     mb_r = _pairs(ref, "mass_by_strike", absolute=True)
     vg_c = _pairs(cur, "vol_gross_by_strike")
@@ -1204,7 +1245,7 @@ def _momentum_block(rows: list[dict], band: dict | None, sd) -> dict | None:
         if k not in mb_c or k not in mb_r:
             continue
         gex_d = mb_c[k] / tot_c * 100.0 - mb_r[k] / tot_r * 100.0
-        entry = {"gex_share_d_pp": round(gex_d, 2)}
+        entry = {"gex_share_d_pp": _r0(gex_d)}
         if k in vg_c and k in vg_r:
             entry["vol_d"] = int(vg_c[k] - vg_r[k])
         vol_d = entry.get("vol_d")
@@ -1248,7 +1289,7 @@ def _dex_change_30m(rows: list[dict], cur_net: float) -> float | None:
             break                        # outage-shaped window — no honest read
         ref = _fin((r.get("dex_views") or {}).get("net_dex_total"))
         if ref is not None:
-            return round((cur_net - ref) / 1e9, 2)
+            return _r0((cur_net - ref) / 1e9)
         break
     return None
 
@@ -1275,10 +1316,15 @@ def _moved_30m(rows: list[dict], sigma) -> float | None:
     if ref is None:
         return None
     rs, rt = _fin(ref.get("spot")), _parse_row_ts(ref)
-    # only claim a 30-min read when we actually have ~30 min of history
-    if rs is None or rt is None or (t - rt) < timedelta(minutes=20):
+    # only claim a 30-min read when we actually have ~30 min of history — and
+    # the SAME upper bound as the sibling windows: after a scan outage the
+    # nearest old-enough row can be hours old, and shipping that Δ under a
+    # 30-min name lies about its window (adversarial replay 08-10: 5 attaches
+    # rode 161-188-min refs before this bound)
+    if rs is None or rt is None or (t - rt) < timedelta(minutes=20) \
+            or (t - rt) > timedelta(minutes=VOL_TREND_MAX):
         return None
-    return round((spot - rs) / sigma, 2)
+    return _r0((spot - rs) / sigma)      # the _sd rule: never a "-0.0" in the scene
 
 
 def _history_flags(t: dict, rows: list[dict], moved_30m) -> dict | None:
@@ -1318,7 +1364,11 @@ def build_payload(t: dict, reveal_gates: bool = False,
     30-min path / history flags) is measured-or-absent: no rows, no claim."""
     rev = t.get("reversion_extreme") or {}
     gx = t.get("gex_views") or {}
-    spot, sigma = t.get("spot"), t.get("sigma")
+    # _fin at the door: a NaN spot/sigma rides isinstance checks and floods the
+    # whole scene with NaN tokens (adversarial replay 08-10 built one — 36 of 46
+    # fields poisoned). None degrades every field to absent, which is the honest
+    # shape; NaN degrades them to confident nonsense.
+    spot, sigma = _fin(t.get("spot")), _fin(t.get("sigma"))
     allrows = [r for r in (rows or []) if isinstance(r, dict)] + [t]
     # clock: minutes + (wt-11) the DATE. The no-dates rule was written when golden
     # replays fed in-training-window scenes to a model with SPX history memorized;
@@ -1709,8 +1759,12 @@ def build_payload(t: dict, reveal_gates: bool = False,
     # null) when the scan carried no dex read.
     dx = t.get("dex_views") or {}
     dex_block: dict = {}
-    if dx.get("net_dex_total") is not None:
-        _dx_fs = dx.get("dex_flow_signed")
+    # _fin at the gate (SE review 08-10): a NaN net rode the `is not None` gate,
+    # printed "$nanbn", and — through the old `or 0.0` — fabricated a ±150bn
+    # 30-min change out of thin air. NaN degrades the whole block to absent.
+    _dx_net = _fin(dx.get("net_dex_total"))
+    if _dx_net is not None:
+        _dx_fs = _fin(dx.get("dex_flow_signed"))
         # wt-8 (Fix 6c): the naive above/below split is DEMOTED, not deleted — kept as
         # standing-inventory GEOGRAPHY (where the delta mass sits), and the naive SIGN rides
         # LAST, de-emphasized, since it is structurally LONG by construction (a constant, not
@@ -1735,9 +1789,9 @@ def build_payload(t: dict, reveal_gates: bool = False,
         # field the doctrine tells you to ignore must not ship at all. The one
         # thing the naive level can be is a BASELINE for its own change, so the
         # timestamp-true 30-min Δ now rides instead (measured off today's rows).
-        _dx_d30 = _dex_change_30m(allrows, _fin(dx.get("net_dex_total")) or 0.0)
+        _dx_d30 = _dex_change_30m(allrows, _dx_net)
         dex_block = {k: v for k, v in {
-            "magnitude": (f"≈ ${dx['net_dex_total'] / 1e9:.1f}bn underlying-equivalent "
+            "magnitude": (f"≈ ${_dx_net / 1e9:.1f}bn underlying-equivalent "
                           "— UNCALIBRATED: no graded baseline yet, 'large' is not "
                           "defined this era. The SIGN of this number is fixed by the "
                           "formula (positive on every recorded row) — it is never "
@@ -1748,7 +1802,7 @@ def build_payload(t: dict, reveal_gates: bool = False,
                         "not a live directional call"} if _geo else None),
             **({"flow_signed_read": dx.get("dex_flow_word"),
                 "flow_signed_magnitude": (
-                    f"≈ {dx['dex_flow_signed'] / 1e6:+.0f}M underlying-δ on TODAY'S tape "
+                    f"≈ {_dx_fs / 1e6:+.0f}M underlying-δ on TODAY'S tape "
                     "only — UNCALIBRATED and on a DIFFERENT scale than the naive net above "
                     "(it swings ~100× intraday); read the SIGN and its move, not the level")}
                if _dx_fs is not None else {}),
@@ -1912,8 +1966,12 @@ def build_payload(t: dict, reveal_gates: bool = False,
                         "(they are hard shelves on approach), NEVER a drift target.",
             }} if dated_bands else {}),
         "tape": {
-            "gap_from_prior_close_sigma": rev.get("gap_stretch"),
-            "vwap_stretch_sigma": rev.get("vwap_stretch"),
+            # the two row passthroughs go through the same no-negative-zero
+            # boundary as every derived field (the diary records -0.0 stretches)
+            "gap_from_prior_close_sigma": (0.0 if rev.get("gap_stretch") == 0
+                                           else rev.get("gap_stretch")),
+            "vwap_stretch_sigma": (0.0 if rev.get("vwap_stretch") == 0
+                                   else rev.get("vwap_stretch")),
             # wt-11: the timestamp-true 30-min path — the live number the
             # scale.move_30min_sigma spread exists to size against
             **({"moved_last_30min_sigma": moved30} if moved30 is not None else {}),
@@ -2196,7 +2254,7 @@ def _prompt_parts(payload: dict, blind_verdict: dict | None = None) -> tuple[str
         "direction before −0.30σ within 120 min. SIZE AGAINST THE MEASURED SPREAD (wt-11): "
         "thirty-minute moves on this tape have a SPREAD, not a typical size — "
         "scale.move_30min_sigma gives it (half under 0.08σ, one in five over 0.15σ, one in "
-        "twenty over 0.27σ, worst recorded 0.46σ, with how many sessions it rests on) and "
+        "twenty over 0.27σ, worst recorded 0.52σ, with how many sessions it rests on) and "
         "tape.moved_last_30min_sigma is the live number beside it. Size your magnitude "
         "against the whole spread — a big call needs a named force behind it, but the tail "
         "is real, so never let the median become your ceiling. The √time decay cap and the "
@@ -2718,6 +2776,20 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
         blind = {"fired": final["fired"], "direction": final["direction"],
                  "stance": final.get("stance"),
                  "conviction_stated": final["conviction_stated"]}
+        # wt-11 memory rule (SE review 08-10): the RAG slice records the BLIND
+        # read, snapshotted HERE — a sentence authored on the reveal pass was
+        # written with Head A's verdict visible, and a recallable "the gates
+        # fired put; agreeing" served back into a future blind pass is exactly
+        # the anchoring the 08-02 rule exists to block. The diary row still
+        # ships the final (possibly revised) verdict; only the MEMORY is
+        # pinned to the unanchored opinion.
+        mem_read = {"prompt_version": PROMPT_VERSION,
+                    "fired": final["fired"], "direction": final["direction"],
+                    "magnitude_sigma": final["magnitude_sigma"],
+                    "stance": final.get("stance"),
+                    "scene": final["scene"],
+                    "would_change_mind": final["would_change_mind"],
+                    "interest": why}
 
         # --- pass 2: REVEAL, only on disagreement ----------------------------
         # (agreement with the gates needs no second look; a disagreement gets
@@ -2784,12 +2856,13 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
             result["snippet"] = render_snippet(result, telemetry, now, why)
         except Exception:                        # noqa: BLE001
             pass
-        # wt-11: one RAG slice per judged verdict — the tower's own sentence
-        # becomes tomorrow's recallable memory. Fail-open: memory must never
-        # cost a scan row (the sndk_read rule, kept verbatim).
+        # wt-11: one RAG slice per judged verdict — the tower's own BLIND
+        # sentence becomes tomorrow's recallable memory (mem_read, snapshotted
+        # before the reveal — see the rule above). Fail-open: memory must
+        # never cost a scan row (the sndk_read rule, kept verbatim).
         try:
             import lefteye_rag
-            lefteye_rag.record_slice(telemetry, result, now)
+            lefteye_rag.record_slice(telemetry, mem_read, now)
         except Exception:                        # noqa: BLE001
             pass
         return result

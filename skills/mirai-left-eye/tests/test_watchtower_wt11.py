@@ -184,6 +184,41 @@ def test_moved_last_30min_is_timestamp_true_and_needs_history():
     # a 5-minute-old day has no 30-min read (never a silently shortened window)
     assert "moved_last_30min_sigma" not in wt.build_payload(
         _t(), rows=[_row(5, spot=7430.0)])["tape"]
+    # SE review + adversarial replay (08-10, convergent finding): after a scan
+    # outage the nearest old-enough row can be HOURS old — a 3-hour drift must
+    # not ship under a 30-minute name, and must not false-trip abnormal_tape
+    p = wt.build_payload(_t(), rows=[_row(180, spot=7390.0)])
+    assert "moved_last_30min_sigma" not in p["tape"]
+    assert "history" not in p                 # the fake 0.56σ sprint is gone
+
+
+def test_atm_iv_null_key_is_honest_absence_never_a_derived_constant():
+    # SE review 08-10 (HIGH): a wt-11 row carrying atm_iv: null RECORDS the
+    # 1%-of-spot fallback — deriving an "IV" back out of sigma_live returns
+    # the constant ~15.9%, and a native→fallback seam then reads as a fake
+    # 8-vol-pt crash that arms vanna/charm. The key itself is the era gate.
+    r_fallback = _row(2); r_fallback["atm_iv"] = None
+    assert wt._row_atm_iv(r_fallback) is None       # never derived
+    r_old = _row(2)                                 # pre-wt-11 row: no key
+    assert "atm_iv" not in r_old
+    assert wt._row_atm_iv(r_old) == pytest.approx(
+        37.6 * (252.0 ** 0.5) / 7450.0, rel=1e-6)   # derivation still exact
+    r_live = _row(2); r_live["atm_iv"] = 0.14
+    assert wt._row_atm_iv(r_live) == 0.14
+    # end to end: a native→fallback seam ships NO vol_trend, not a crash read
+    rows = [_row(31, sigma_live=35.0)]
+    t = _t(atm_iv=None, sigma_live=18.0)            # fallback-priced current scan
+    assert "vol_trend" not in wt.build_payload(t, rows=rows)["tape"]
+
+
+def test_nan_dex_net_is_absent_never_a_fabricated_change():
+    # SE review 08-10 (MED): NaN rode the `is not None` gate, printed "$nanbn",
+    # and the old `or 0.0` fabricated a ±150bn 30-min change from thin air
+    rows = [_row(31, net_dex=1.5e11), _row(2, net_dex=1.6e11)]
+    t = _t()
+    t["dex_views"] = {"net_dex_total": float("nan"), "dex_above_spot": 0.2,
+                      "dex_below_spot": 0.8}
+    assert "dealer_delta_dex" not in wt.build_payload(t, rows=rows)
 
 
 # --- history flags (the under-pull guard) ------------------------------------
@@ -201,9 +236,11 @@ def test_history_flags_level_unseen_and_abnormal_day():
 
 # --- measured-empty vs unmeasured (sr-5) -------------------------------------
 def test_one_sided_cluster_surface_ships_a_clear_flag():
-    # a real one-sided book: every strike below spot, put-side gamma — the
-    # call side was MEASURED and holds nothing
-    nbs = [[7300.0 + 10 * i, -4e9 if i < 6 else -6e9] for i in range(10)]
+    # a real one-sided book: heavy put-side gamma below spot, only noise-floor
+    # dust above — the call side was MEASURED (the window reaches past spot)
+    # and holds nothing
+    nbs = [[7300.0 + 10 * i, -4e9 if i < 6 else -6e9] for i in range(10)] \
+        + [[7460.0, -1e7], [7470.0, -5e6]]     # window covers above; no cluster
     t = _t()
     t["gex_views"]["net_by_strike"] = nbs
     dm = wt.build_payload(t)["dealer_map_gravity"]
@@ -214,6 +251,18 @@ def test_one_sided_cluster_surface_ships_a_clear_flag():
     dm2 = wt.build_payload(_t())["dealer_map_gravity"]
     assert "wall_cluster_above_clear" not in dm2
     assert "wall_cluster_below_clear" not in dm2
+
+
+def test_clear_flag_never_speaks_past_a_clipped_window():
+    # SE review 08-10: a clipped book whose strikes STOP at spot did not
+    # measure the far side — "clear" there is the exact sr-5 inversion. The
+    # side stays honestly absent instead.
+    nbs = [[7300.0 + 10 * i, -4e9 if i < 6 else -6e9] for i in range(10)]
+    t = _t()                                    # spot 7450.29 — no strike above
+    t["gex_views"]["net_by_strike"] = nbs
+    dm = wt.build_payload(t)["dealer_map_gravity"]
+    assert "wall_cluster_above" not in dm
+    assert "wall_cluster_above_clear" not in dm  # unmeasured, not clear
 
 
 # --- the doctrine + the grant ------------------------------------------------
@@ -263,3 +312,49 @@ def test_observe_records_a_rag_slice_fail_open(monkeypatch, tmp_path):
                         lambda *a, **k: (_ for _ in ()).throw(OSError("disk")))
     rec2 = wt.observe(t, now=NOW + timedelta(minutes=20))
     assert rec2 and "error" not in rec2
+
+
+def test_memory_stores_the_blind_read_never_a_reveal_sentence(monkeypatch, tmp_path):
+    """SE review 08-10 (MED): a sentence authored on the REVEAL pass was
+    written with Head A's verdict visible — recallable "the gates fired put;
+    agreeing" served into a future blind pass is exactly the anchoring the
+    08-02 rule blocks. The diary row ships the revised verdict; the MEMORY
+    keeps the blind one."""
+    import lefteye_rag
+    monkeypatch.delenv("WATCHTOWER_DISABLE", raising=False)
+    monkeypatch.setattr(wt, "CONFIG", tmp_path / "nope.json")
+    calls = {"n": 0}
+
+    def fake_ask(prompt, model, timeout=None, system=None):
+        # gates fired → the tower takes 3 BLIND votes, then (on disagreement
+        # with a non-unanimous majority) one REVEAL pass that may revise.
+        calls["n"] += 1
+        if calls["n"] in (1, 3):               # blind majority: stand down
+            return ({"fired": False, "direction": None, "magnitude_sigma": None,
+                     "range_sigma": [-0.2, 0.2], "horizon_min": 60,
+                     "conviction": 0.4, "stance": "settle",
+                     "scene": "blind read: two-sided pin, no edge",
+                     "would_change_mind": "a fired break"}, None, 1.0)
+        if calls["n"] == 2:                    # one stray blind fire → NOT unanimous
+            return ({"fired": True, "direction": "call", "magnitude_sigma": 0.3,
+                     "range_sigma": [-0.2, 0.6], "horizon_min": 60,
+                     "conviction": 0.5, "stance": "settle",
+                     "scene": "blind stray vote", "would_change_mind": "x"}, None, 1.0)
+        return ({"fired": True, "direction": "put", "magnitude_sigma": 0.5,   # reveal: capitulates
+                 "range_sigma": [-0.2, 0.8], "horizon_min": 60,
+                 "conviction": 0.8, "stance": "settle",
+                 "scene": "the gates fired put and I agree with them",
+                 "would_change_mind": "gates stand down",
+                 "overrides": []}, None, 1.0)
+
+    monkeypatch.setattr(wt, "_ask_claude", fake_ask)
+    t = _t()
+    t["reversion_extreme"].update({"fired": True, "armed": True,
+                                   "direction": "put"})
+    rec = wt.observe(t, now=NOW)
+    assert rec["fired"] is True and rec["revised"] is True   # the row revised
+    sl = lefteye_rag._read_jsonl(lefteye_rag._slices_path("2026-08-07"))
+    assert len(sl) == 1
+    assert sl[0]["narrative"].startswith("blind read:")      # memory stayed blind
+    assert "gates fired put" not in sl[0]["narrative"]
+    assert sl[0]["meta"]["vector"] == "none"                 # the blind stand-down

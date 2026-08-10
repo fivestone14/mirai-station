@@ -20,10 +20,12 @@ the SNDK scene is lean).
 - **No absolute index levels, ever** — every level is a signed σ-distance from
   spot (models have SPX history memorized; test-pinned in
   `test_clock_carries_the_date_and_no_absolute_levels_leak`).
-- **The date ships since wt-11** — a documented amendment: live dates sit past
-  the pinned model's cutoff, and the history CLI's `--date` filters are
-  unusable without today's date. Levels stay banned; the model meets absolute
-  strikes only if it *chooses* to query history.
+- **Dates are sanctioned since wt-11** — a documented amendment: live dates sit
+  past the pinned model's cutoff, and the history CLI's `--date` filters are
+  unusable without today's date. Two date literals ride the scene: `clock.date`
+  and `regime_intensity_1d`'s `prev_close_date` (a wt-9 field, now covered by
+  the same amendment). Levels stay banned; the model meets absolute strikes
+  only if it *chooses* to query history.
 - **Omit-never-null** — an absent field means *not measured*; a
   `wall_cluster_*_clear` flag means *measured empty* (sr-5). The doctrine
   forbids confusing the two.
@@ -37,14 +39,14 @@ the SNDK scene is lean).
 | Scene field | Source | Note |
 |---|---|---|
 | clock.date | row ts | sr-4 port; the amendment above |
-| scale.move_30min_sigma {half_under 0.08, one_in_five_over 0.15, one_in_twenty_over 0.27, worst_recorded 0.46, sessions_measured 30} | measured spread, 30 sessions / 336 disjoint windows (06-25→08-10) | sr-5: a spread teaches a distribution; a point teaches a ceiling. `tape.moved_last_30min_sigma` (timestamp-true) is the live number beside it |
+| scale.move_30min_sigma {half_under 0.08, one_in_five_over 0.15, one_in_twenty_over 0.27, worst_recorded 0.52, sessions_measured 30} | measured spread, 30 sessions / 336 disjoint windows (06-25→08-10); worst = the sliding-window peak (2026-07-31 10:08 — disjoint sampling clipped it to 0.46) | sr-5: a spread teaches a distribution; a point teaches a ceiling. `tape.moved_last_30min_sigma` (timestamp-true, 20–45-min window bound like its siblings) is the live number beside it |
 | scale.aem {up_sigma, down_sigma, source} | `adaptive_em` | shipped ONLY when `asym_source != "watchtower"` — the tower must never eat its own called range as evidence (feedback loop) |
 | dealer_map_gravity.magnet_band {gap_pp, top_strikes [[σ, share%]]} | `gex_views.mass_by_strike` | the tie in numbers — median top1−top2 gap 0.99pp (n=4,258 scans); pin_top_share alone hid it. Strikes as σ-distances only |
 | dealer_map_gravity.charm {strength, funnels_toward_sigma} · vanna {strength} | `gex_views.cex/vex/charm_wall` | N11's final form — neutral magnitude + level, NO sign field, NO direction word (cex_sign was 97% one-way, vex_sign 96%, and charm_word_ok never once opened on 5,176 rows) |
 | dealer_delta_dex.net_change_30min_bn | today's rows, timestamp-true (28–45 min window) | the one part of the naive dex level that can be news |
 | momentum {window, by_strike strike_at_±σ → gex_share_d_pp / vol_d / read} | `mass_by_strike` + `vol_gross_by_strike` deltas over the last 5 scans, intersection-denominated | build/fade bar 0.15pp ≈ p75 of the recorded \|Δshare\| (n=4,064); a window shift is the telescope, not flow |
 | tape.vol_trend {direction, iv_change_last_30min} | `atm_iv` (new row field) / derived from `sigma_live` on older rows | the switch that arms vanna/charm; flat band 2.0 vol pts ≈ p72 (n=3,390); omitted on a `late_day` ruler (the τ→0 solve balloons on clock mechanics) or an outage-shaped window |
-| wall_cluster_above_clear / wall_cluster_below_clear | `_gw_cluster_read` | sr-5 measured-empty: the surface WAS read and the side holds nothing — open air is a reading, often the loudest |
+| wall_cluster_above_clear / wall_cluster_below_clear | `_gw_cluster_read` | sr-5 measured-empty: the surface WAS read and the side holds nothing — open air is a reading, often the loudest. Coverage-guarded: the flag only speaks where the strike window actually reached past spot (a clipped book stays honestly absent) |
 | history {level_unseen_today, abnormal_tape} | today's rows | the under-pull guard licensing the two tools; abnormal = ≥1.5σ day move or ≥0.5σ/30min (≈2× the recorded p95) — rare by construction |
 
 ## wt-11 removals (constants retired)
@@ -106,6 +108,9 @@ gates_verdict_head_a (reveal pass only).
 
 Built and dry-verified against a real recorded session (2026-08-07): all new
 blocks present, all retired fields absent, no raw index level anywhere in the
-scene. 18 new tests in `tests/test_watchtower_wt11.py`; 33 in
-`tests/test_lefteye_rag.py`; full suites green. Multi-agent verification
-round logged in the wt-11 commit series.
+scene. 17 new tests in `tests/test_watchtower_wt11.py` (plus the reworked
+charm/vanna test in `test_watchtower.py`); 33 in `tests/test_lefteye_rag.py`;
+full suites green. Three-agent verification round (software-engineer review,
+adversarial full-tape replay of 5,176 payloads across 32 days, viewstation
+consistency audit) logged in the wt-11 commit series; every confirmed finding
+fixed pre-first-live.
