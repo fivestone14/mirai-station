@@ -138,15 +138,18 @@ entry, not an order.
 | Head | Code key | Thesis | Fires when… |
 |---|---|---|---|
 | **A · Fade Lens** | `reversion_extreme` | GRAVITY wins — price snaps back to the magnet | four gates all pass: **stretched** (σ from close / VWAP / wall), **pinning** regime, **reaction** (last bar turns back), and **runway** to the magnet |
-| **B · Watchtower** | `watchtower` | an independent LLM "second opinion" that forecasts direction from the map | blind-then-reveal, 3-vote majority, `claude-sonnet-5` pinned by exact id, capped 35 judged scans/day. **Never touches the phone and can never place or veto a trade** — it exists only to be graded |
+| **B · Watchtower** | `watchtower` | an independent LLM "second opinion" that forecasts direction from the map | blind-then-reveal, 3-vote majority, `claude-sonnet-5` pinned by exact id, capped 35 judged scans/day. Since **wt-11** it may reach for exactly two tools — its own history CLI (`lefteye_rag.py` → `state/spx_rag/`, its past reads as searchable memory) and WebSearch for the catalyst behind a genuinely abnormal tape — doctrine-gated, history is context never the trigger. **Never touches the phone and can never place or veto a trade** — it exists only to be graded |
 | **C · Break Lens** | `level_reclaim` | FLOW wins — a weakened map is overpowered and price breaks away | a two-stage *cock → fire*: gravity cocks the hammer on a rejection at the storm side; live one-way flow fires it. Recording-only |
 
 The Fade Lens and Break Lens are opposite twins — one bets the pin holds, the other
 bets it breaks. When they disagree, the hunter marks a `referee` note in the diary.
 
-The Watchtower's prompt is versioned by **era** (`wt-10` current; `docs/wt8-doctrine.md`
-records the reasoning doctrine). Bump the era on any change to the payload or the
-prompt so a later read of the record can never blend two rule sets.
+The Watchtower's prompt is versioned by **era** (`wt-11` current — the SNDK
+sr-2→sr-5 honesty port, every threshold re-measured on the SPX tape;
+`docs/spx-payload-inventory.md` is the field-by-field scene inventory and
+`docs/wt8-doctrine.md` records the wt-8-era reasoning foundations). Bump the
+era on any change to the payload or the prompt so a later read of the record
+can never blend two rule sets.
 
 ### The Gravity Engine (`GexBox`)
 
@@ -344,12 +347,14 @@ mirai-station/
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
 ├── state/                      runtime-mutable — never copied between machines
 │   ├── reversion/              the SPX diary + nightly grades
+│   ├── spx_rag/                the Watchtower's memory (slices · summaries · terrain)
 │   ├── sndk_reversion/ sndk_reads/ sndk_gex/ sndk_rag/   the SNDK station
 │   ├── gex_fills/ dated_gex/ gex_learn/ gex_uw/          the book + learned baselines
 │   ├── siege/ lob_flow/ market_expectation/ tape_prev/   the shadow sensors
 │   └── voice/ logs/            conversation log + session continuity
 └── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
-                                wt8-doctrine · sndk-payload-inventory · salvage-notes
+                                wt8-doctrine · spx-payload-inventory ·
+                                sndk-payload-inventory · salvage-notes
 ```
 
 ### The launchd fleet (11 agents)
@@ -421,7 +426,7 @@ they collide if collected together):
 for t in skills/mirai-left-eye/tests skills/sndk-pro/tests skills/siege/tests \
          skills/lob-flow/tests skills/iv-viability/tests runtime/watch/tests; do
   $PY -m pytest "$t" -q
-done                                                       # ~1,050 tests
+done                                                       # ~1,150 tests
 ```
 
 - **Full setup** (auto-login, Caffeinate, Keychain secrets, MCP servers, ntfy):
@@ -431,7 +436,8 @@ done                                                       # ~1,050 tests
 - **Plain-name glossary** (every code identifier → what it actually does):
   `docs/gex-glossary.md`
 - **Label notation** (`GWc`/`GWp`/`MagP`/`Pin` + primes): `docs/gw-vocab.md`
-- **Watchtower reasoning doctrine**: `docs/wt8-doctrine.md`
+- **Watchtower reasoning doctrine** (wt-8-era foundations): `docs/wt8-doctrine.md`
+- **SPX scene, field by field** (wt-11): `docs/spx-payload-inventory.md`
 - **SNDK scene, field by field**: `docs/sndk-payload-inventory.md`
 
 There is also a human-facing, numbered walkthrough of the whole project at
