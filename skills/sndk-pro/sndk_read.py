@@ -82,7 +82,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-4"                # bump on ANY change to the gates or the prompt.
+ERA = "sr-5"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-2 (2026-08-02, blueprint v3): the verdict left
@@ -108,6 +108,17 @@ ERA = "sr-4"                # bump on ANY change to the gates or the prompt.
                             # on the row. Weekday deliberately absent (== dte
                             # on every recorded session). Gates, arrow and the
                             # output schema unchanged.
+                            # sr-5 (2026-08-10): two honesty fixes, one bump.
+                            # (a) Measured-empty stops impersonating unmeasured
+                            # — walls ship *_side_clear and the flip ships
+                            # none_on_board when the board was read and holds
+                            # nothing, so "price in open air" no longer looks
+                            # like a dead sensor. (b) The 0.08 point becomes
+                            # the measured SPREAD (scale.move_30min_sigma:
+                            # half_under/one_in_five_over/one_in_twenty_over
+                            # + sessions_measured) in scene, doctrine AND the
+                            # voice doctrine — the model's magnitudes copied
+                            # the single number as a ceiling.
 PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protection)
 
 # --- wake gate ---------------------------------------------------------------
@@ -652,7 +663,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - dealer_flow: standing dealer positioning. dex net is $-delta in billions from an assumed-sign book, and it is POSITIVE ON EVERY SCAN BY CONSTRUCTION — the arithmetic cannot produce another sign, and it has been positive on 1,675 of 1,675 recorded rows. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only net_change_30min can be news. vanna (in $M per vol point) only matters when vol_trend is moving.
 - walls: standing structure, up to two per side, ordered by DISTANCE — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_behind / put_heaviest_behind. unchanged_min is how long that wall has held; a wall that has not moved in hours is standing structure, not news.
 - price.vwap_dist_sigma is the volume-anchored level, and the only level on this board that is not derived from the flip.
-- ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero.
+- ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_clear` flag or `flip.none_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a clear-flag = known empty. Never confuse the two.
 
 WHEN TO REACH OUTSIDE THE SCENE (both optional, most reads need neither):
 - History: run `{_RAG_CMD} query --help` for narrative recall, and `{_RAG_CMD} series --help` for the numeric spot/magnet/walls series by time (and per-strike with --strike). Reach for them when something does not add up from the live snapshot alone — price testing a level unseen today (history.level_unseen_today flags it), a level acting out of character, or a cross-day question ("has 1300 held before?"). Day tier = today's slices + day summaries; month tier = standing terrain. Exact asks go through the numbers, not the text: past sessions answer to --date/--from-date/--to-date, --min-move (signed %: -5 = fell 5%+), and --near-strike (matches any day that traded through the level) — use --text only for meaning ("rejected the wall"), never for dates or biggest/worst. History is context, never the trigger — the live scene stays primary.
@@ -662,7 +673,7 @@ HONESTY RULES, all of them load-bearing:
 - Never cite a field listed in frozen_do_not_cite as the reason for anything new. If the magnet has not moved in two hours, it is not news.
 - The magnet is usually a TIE. When gap_pp is small, no strike is really in charge — say so rather than naming one.
 - Never invent a level. If price is past the last named level on the board, say exactly that — on this name it is often true.
-- A typical 30-minute move here is about 0.08 sigma. Your magnitude must respect that: several times 0.08 needs a named force behind it, and pointing at a level 0.6 sigma away is a landmark, not a 30-minute target.
+- Thirty-minute moves here have a SPREAD, not a typical size: half run under 0.09 sigma, one in five exceeds 0.20, one in twenty exceeds 0.46, and the worst recorded is 1.71 (see scale.move_30min_sigma, with how many sessions it rests on). Size your magnitude against the whole spread — a big call needs a named force behind it, but the tail is real, so never let the median become your ceiling. Pointing at a level 0.6 sigma away is still a landmark, not a 30-minute target.
 - The one pattern this tape has shown any short-horizon stability in is MEAN REVERSION: a vector pointing the same way price just travelled (moved_last_30min_sigma) is the least trustworthy kind and needs extra evidence beyond the move itself.
 - "none" is an honest vector. When the evidence genuinely balances, say what is balanced instead of forcing a lean.
 
@@ -1137,6 +1148,13 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
                      if c["side"] == "put" and c["peak"] < spot],
              lambda c: -c["peak"])):
         if not pool:
+            # sr-5: measured-empty is a FINDING, not an absence. The board was
+            # measured (clusters exist — we are in the successful branch) and
+            # this side holds nothing between price and open air; deleting the
+            # key made that indistinguishable from a torn feed, and on this
+            # name price in the clear is often the loudest fact in the scene.
+            # A true sensor failure still returns None above — unchanged.
+            out[key + "_side_clear"] = True
             continue
         ladder = sorted(pool, key=near)[:WALLS_PER_SIDE]
         ages = _wall_ages(rows, key, [c["peak"] for c in ladder], now)
@@ -1283,10 +1301,22 @@ def build_scene(row: dict, band: dict, frozen: list,
     moved_30m = round(ran_30m, 2) if ran_30m is not None else None
 
     # scale — the rulers: sigma + aem (asymmetric, from the rebuilt IV smile)
+    # sr-5: the 0.08 point becomes a spread. The single "typical move" number
+    # was the one calibration hint the model got and it copied it — all 33
+    # magnitudes ever emitted sat inside 0.06-0.20 while a fifth of real
+    # 30-minute windows exceed 0.20 (replication 08-08: median 0.094, p95
+    # 0.46, max 1.71 over 8 sessions; disjoint-window check agrees). A point
+    # teaches a ceiling; a spread teaches a distribution. Still frozen numbers
+    # measured on an extreme post-earnings stretch — sessions_measured says so
+    # on the field, and a standing recompute is future work, not this change.
     scale = {"one_sigma_dollars": round(sig, 2) if sig else None,
              "sigma_pct_of_price": round(sig / spot * 100, 1)
              if sig and spot else None,
-             "typical_30min_move_sigma": 0.08}
+             "move_30min_sigma": {"half_under": 0.09,
+                                  "one_in_five_over": 0.20,
+                                  "one_in_twenty_over": 0.46,
+                                  "worst_recorded": 1.71,
+                                  "sessions_measured": 8}}
     skew = row.get("iv_skew") if isinstance(row.get("iv_skew"), dict) else {}
     em = _fin((row.get("range_ruler") or {}).get("em_points"))
     d = _fin(skew.get("down_share"))
@@ -1305,6 +1335,12 @@ def build_scene(row: dict, band: dict, frozen: list,
     fb = flip_block(row, sd, ran_30m)
     if fb:
         regime["flip"] = fb
+    elif (row.get("gex_views") or {}).get("net_by_strike"):
+        # sr-5: the book WAS measured and holds no flip — gamma one-signed at
+        # every strike (the recorded case: a net-negative board). That is a
+        # regime fact, not a hole; omitting it read as "flip unknown" on 49%
+        # of scenes and the model was told absence means "not measured".
+        regime["flip"] = {"none_on_board": True}
     cb = charm_block(row)
     if cb:
         regime["charm"] = cb

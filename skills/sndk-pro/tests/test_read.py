@@ -306,7 +306,11 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
     sc = SR.build_scene(row, SR.magnet_band(row), [], rows, T0)
     assert sc["price"]["session_low"] is not None
     assert sc["price"]["session_high"] is not None
-    assert sc["scale"]["typical_30min_move_sigma"] == 0.08
+    # sr-5: the point became a spread — a single "typical" number taught the
+    # model a ceiling (33/33 emitted magnitudes inside 0.06-0.20 vs p95 0.46)
+    sp = sc["scale"]["move_30min_sigma"]
+    assert sp["half_under"] == 0.09 and sp["one_in_five_over"] == 0.20
+    assert sp["sessions_measured"] == 8
 
 
 def test_scene_names_the_frozen_fields_as_uncitable():

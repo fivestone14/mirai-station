@@ -96,7 +96,9 @@ each wall carries its own `unchanged_min`, and the heaviest cluster ships as
 (the under-pull guard), and `frozen_do_not_cite` (minus walls — their
 staleness rides the wall entries now). Omit-never-null throughout: a field
 without a clean source is absent, not nulled — the model treats missing as
-"no data".
+"no data" — and, since sr-5, measured-empty is stated rather than deleted:
+a `*_side_clear` flag or `flip.none_on_board` means the board WAS read and
+genuinely holds nothing there.
 
 The read call may reach for exactly two on-demand tools, doctrine-gated:
 the **history CLI** (`sndk_rag.py` — day slices / day summaries / month
@@ -151,7 +153,10 @@ and writes nothing; that is how every number above was measured.
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-4` since
+  silently with live rows. Read rows are stamped `era` (`sr-5` since
+  2026-08-10 PM — measured-empty says so (`*_side_clear`,
+  `flip.none_on_board`) and the 0.08 point became the measured spread
+  (`scale.move_30min_sigma`); `sr-4` since
   2026-08-10 — the scene learns what day it is: date, minutes_to_close,
   front_expiry dte; `sr-3` since
   2026-08-08 — the flip told once, dex's sign named, walls aged +

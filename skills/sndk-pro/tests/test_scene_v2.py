@@ -160,9 +160,11 @@ def test_flip_drift_clause_needs_actual_motion():
 
 
 def test_flip_absent_without_a_ladder():
+    """sr-5 rewrote this pin: a missing ladder on a MEASURED book is now a
+    stated finding (none_on_board), not an absence — absence is reserved for
+    the case where the book itself was never read (see the sr-5 tests)."""
     row = rich_row(profile_ladder=None, gamma_flip=None)
-    sc = scene_of(row)
-    assert "flip" not in sc["regime"]
+    assert scene_of(row)["regime"]["flip"] == {"none_on_board": True}
 
 
 # --- regime.charm (N11: magnitude + target, never a direction) --------------
@@ -563,3 +565,30 @@ def test_front_expiry_absent_without_a_dte():
     row = rich_row()
     del row["gex_views"]["front_dte"]
     assert "front_expiry" not in scene_of(row)["clock"]
+
+
+# --- sr-5: measured-empty stops impersonating unmeasured ---------------------
+def test_side_clear_when_board_measured_but_side_empty():
+    """Every cluster below spot → the call side is genuinely open air. That is
+    a finding and must ship, not vanish like a torn feed would."""
+    row = rich_row(spot=1400.0)                    # above every strike
+    w = scene_of(row)["walls"]
+    assert w["call_side_clear"] is True
+    assert "call" not in w
+    assert w["put"]                                # the put ladder still ships
+
+
+def test_walls_absent_entirely_stays_absent_on_sensor_failure():
+    sc = scene_of(rich_row(nbs=None))
+    assert "walls" not in sc                       # unmeasured stays silent
+
+
+def test_flip_none_on_board_when_book_is_one_signed():
+    row = rich_row(profile_ladder=None, gamma_flip=None)
+    sc = scene_of(row)                             # book present, no flip
+    assert sc["regime"]["flip"] == {"none_on_board": True}
+
+
+def test_flip_stays_absent_when_nothing_was_measured():
+    row = rich_row(profile_ladder=None, gamma_flip=None, nbs=None)
+    assert "flip" not in scene_of(row)["regime"]
