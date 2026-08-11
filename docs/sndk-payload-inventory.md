@@ -7,13 +7,13 @@ surface, deliberately NOT reasoning input. This list is the pressure-test
 shortlist: anything marked *not in payload* is a candidate to argue back in.
 
 Sources: diary row = `sndk_views.build_row` (ROW_V 3), read row =
-`sndk_read.read_once` (ERA sr-5), chain = `sndk_feed.sndk_chain`.
+`sndk_read.read_once` (ERA sr-6), chain = `sndk_feed.sndk_chain`.
 
 ## In the scene payload (v2 — the blueprint shape)
 
 | Scene field | Source (row/derived) | Note |
 |---|---|---|
-| instrument, clock {minutes_since_open, minutes_to_close, date, front_expiry {dte, date}} | wall clock + `gex_views.front_dte` + `meta.expiries` | **sr-4 (08-10)**: the day-scoped calendar — the model could not tell a Monday 4-dte book from expiry Friday, could not use the history CLI's `--date` filters, and could not know a 15:45 call has no room to resolve. Weekday deliberately absent (≡ dte on every recorded session — one fact must not wear two names); 16:00 close is the standing RTH assumption, half-days owned by the open no-pulse blind spot |
+| instrument, clock {minutes_since_open, minutes_to_close, date, front_expiry {dte, date}} | wall clock + `gex_views.front_dte` + `meta.expiries` | **sr-4 (08-10)**: the day-scoped calendar — the model could not tell a Monday 4-dte book from expiry Friday, could not use the history CLI's `--date` filters, and could not know a 15:45 call has no room to resolve. **sr-6 (08-11)**: + `book_age_min` — the book's own pulse; the reader never wakes the model past STALE_BOOK_MIN=6, rows land stamped `wake:"stale_book"`, and the marginal band stays visible in-scene instead of laundered. Weekday deliberately absent (≡ dte on every recorded session — one fact must not wear two names); 16:00 close is the standing RTH assumption, half-days owned by the open no-pulse blind spot |
 | scale.one_sigma_dollars / sigma_pct_of_price | `sigma` (σ-ruler: max(anchor, live), N10) | σ from rebuilt front-book ATM IV |
 | scale.move_30min_sigma {half_under, one_in_five_over, one_in_twenty_over, worst_recorded, sessions_measured} | measured spread, 8 sessions (replication 08-08: p50 0.094 / p95 0.46 / max 1.71) | **sr-5 (08-10)**: replaced `typical_30min_move_sigma: 0.08` — the single point was the model's one calibration hint and it copied it as a ceiling (33/33 emitted magnitudes inside 0.06–0.20 while a fifth of real windows exceed 0.20). Doctrine + voice doctrine restated as the spread. Still frozen numbers from an extreme stretch — `sessions_measured` says so; a standing recompute is future work |
 | scale.aem {up/down_dollars, skew, source} | `range_ruler.em_points` split by `iv_skew.down_share` | **IV-skew split** (blueprint semantics); the pre-existing `adaptive_em` (realized-semivariance split) stays recorded on the row as shadow — divergence flagged in the 08-02 report |

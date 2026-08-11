@@ -153,7 +153,10 @@ and writes nothing; that is how every number above was measured.
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-5` since
+  silently with live rows. Read rows are stamped `era` (`sr-6` since
+  2026-08-11 — the pulse check: a stale book (newest row > 6 min old)
+  never wakes the model, rows stamp `wake:"stale_book"` + book_age_min;
+  `sr-5` since
   2026-08-10 PM — measured-empty says so (`*_side_clear`,
   `flip.none_on_board`) and the 0.08 point became the measured spread
   (`scale.move_30min_sigma`); `sr-4` since

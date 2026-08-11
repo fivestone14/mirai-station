@@ -82,7 +82,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-5"                # bump on ANY change to the gates or the prompt.
+ERA = "sr-6"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-2 (2026-08-02, blueprint v3): the verdict left
@@ -119,6 +119,13 @@ ERA = "sr-5"                # bump on ANY change to the gates or the prompt.
                             # + sessions_measured) in scene, doctrine AND the
                             # voice doctrine — the model's magnitudes copied
                             # the single number as a ceiling.
+                            # sr-6 (2026-08-11): the pulse check. A book whose
+                            # newest row is older than STALE_BOOK_MIN never
+                            # wakes the model (the heartbeat would otherwise
+                            # narrate a frozen board every 45m); rows land
+                            # stamped wake="stale_book" + book_age_min, and
+                            # the scene ships clock.book_age_min so marginal
+                            # staleness is visible instead of laundered.
 PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protection)
 
 # --- wake gate ---------------------------------------------------------------
@@ -132,6 +139,14 @@ PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protect
 # those slots, i.e. genuinely event-driven.
 WAKE_PRICE_SIGMA = 0.15     # spot travelled this far since the last read
 WAKE_MAGNET_SIGMA = 0.12    # magnet relocated this far = a different scene
+STALE_BOOK_MIN = 6          # newest diary row older than this → the tape is
+                            # not breathing (scanner down, halt, feed refusing
+                            # ticks) and the model is NEVER woken: a sentence
+                            # about a frozen board is worse than silence, and
+                            # the heartbeat wake would otherwise fire on
+                            # exactly this case every 45 minutes. Three missed
+                            # 120s ticks; the worst recorded live hole (277s,
+                            # 08-05 fetch refusal) stays under it.
 HEARTBEAT_MIN = 45          # read at least this often even on a dead tape
 MIN_GAP_MIN = 8             # spam guard: no two reads closer than this
 DAILY_CALL_CAP = 40         # hard ceiling (busiest replayed day spent 32) — a
@@ -654,7 +669,7 @@ _DOCTRINE = f"""You read one stock's dealer-positioning snapshot COLD and infer 
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical day's move) runs 8-10% of the share price — enormous. It has weekly expiries, not daily, so most days have no expiry at all. Standing levels come from open interest, which is yesterday's positioning about a stock that can move 12% in a session.
 
 HOW TO READ THE SCENE (grouped by force, not by metric):
-- clock: front_expiry.dte is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while dte 0 collapses to expiry-day mechanics where pinning and charm run at full strength. minutes_to_close says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape.
+- clock: front_expiry.dte is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while dte 0 collapses to expiry-day mechanics where pinning and charm run at full strength. minutes_to_close says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape. book_age_min is how old the newest scan is: 0-2 is a live tape, older means every number in this scene is that many minutes stale — say so if you lean on one.
 - scale: the sigma ruler, plus aem — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
 - regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and ct/pt are that center plus and minus a fixed 0.25 sigma — the edges are arithmetic, not three independent levels, so three of them agreeing is one witness, not three. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
 - magnet: strikes pulling price. gap_pp is the top strike's lead over the runner-up in points of gamma mass — SMALL means no strike is really in charge, and there is no threshold where it flips: read the number, and read gap_vs_own_history for whether today's lead is unusual for this tape.
@@ -1376,6 +1391,12 @@ def build_scene(row: dict, band: dict, frozen: list,
     clock = {"minutes_since_open": int((now - open_t).total_seconds() // 60),
              "minutes_to_close": max(0, int((close_t - now).total_seconds() // 60)),
              "date": now.strftime("%Y-%m-%d")}
+    # sr-6: the book's own pulse, visible where the model reads. 0-2 is a live
+    # tape; the reader never wakes past STALE_BOOK_MIN, so the model only ever
+    # sees the marginal band — but marginal must be visible, not laundered.
+    t_row = _ts(row)
+    if t_row is not None:
+        clock["book_age_min"] = max(0, int((now - t_row).total_seconds() // 60))
     fd = _fin((row.get("gex_views") or {}).get("front_dte"))
     if fd is not None:
         fe = {"dte": int(fd)}
@@ -1495,9 +1516,27 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     if arrow["dir"] != prev_dir and not arrow.get("held_reversal"):
         wake = wake or ("arrow appeared" if arrow["dir"] else "arrow stood down")
 
+    # sr-6: the pulse check. Nothing here ever asked how old the newest row
+    # was — a dead scanner, a halt, or a feed refusing ticks all read as an
+    # ordinarily quiet tape, and the HEARTBEAT wake would then spend a model
+    # call narrating the same frozen board every 45 minutes. A stale book
+    # never wakes the model (an unparseable timestamp counts as stale — fail
+    # closed, like the feed's own no-quote rule). The row still lands, stamped
+    # stale_book so an outage can never pool with genuine quiet; the arrow is
+    # pure recomputation and stays. Manual --force remains a human override.
+    t_row = _ts(row)
+    book_age = (max(0, int((now - t_row).total_seconds() // 60))
+                if t_row is not None else None)
+    stale = book_age is None or book_age > STALE_BOOK_MIN
+    if stale and wake and not force:
+        print(f"sndk-read :: STALE BOOK ({book_age}m) — '{wake}' suppressed")
+        wake = None
+
     scene = build_scene(row, band, frozen, rows, now)
     out = {
-        "ts": now.isoformat(), "era": ERA, "wake": wake or "quiet",
+        "ts": now.isoformat(), "era": ERA,
+        "wake": ("stale_book" if stale and not force else (wake or "quiet")),
+        "book_age_min": book_age,
         "spot": row.get("spot"), "sigma": row.get("sigma"),
         "arrow": arrow, "magnet_band": band, "frozen": frozen,
         "spoke": spoken + (1 if arrow["dir"] else 0), "scans": len(rows),

@@ -390,3 +390,42 @@ def test_reading_age_measures_from_when_it_was_written(tmp_path, monkeypatch):
     assert last["reading"]["line"] == "old sentence"      # carried forward
     assert last["reading_ts"] == written.isoformat()      # stamp travels with it
     assert last["reading_age_min"] == 47                  # NOT the scan gap
+
+
+# --- sr-6: the pulse check ---------------------------------------------------
+def test_stale_book_never_wakes_the_model(tmp_path, monkeypatch):
+    """A dead scanner used to read as a quiet tape, and the heartbeat would
+    then spend a call narrating the same frozen board every 45 minutes."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(SR, "_market_live", lambda: True)
+    monkeypatch.setattr(SR, "_ask", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("model call on a stale book")))
+    day = T0.date().isoformat()
+    (tmp_path / "sndk_reversion").mkdir(parents=True)
+    (tmp_path / "sndk_reads").mkdir(parents=True)
+    diary = tmp_path / "sndk_reversion" / f"{day}.jsonl"
+    reads = tmp_path / "sndk_reads" / f"{day}.jsonl"
+    # newest row is 20 minutes old — the scanner has missed ~9 ticks
+    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=20))
+    diary.write_text(json.dumps(row) + "\n")
+    # the last CALL is 50 minutes back, so the heartbeat wake WOULD fire
+    reads.write_text(json.dumps({
+        "ts": (T0 - timedelta(minutes=50)).isoformat(), "era": SR.ERA,
+        "spot": 1200.0, "arrow": {"dir": None, "layers": []},
+        "reading": {"line": "old"}, "reading_ts":
+        (T0 - timedelta(minutes=50)).isoformat(), "wall_s": 1.0}) + "\n")
+    SR.read_once(now=T0, force=False)
+    last = SR._read_jsonl(reads)[-1]
+    assert last["wake"] == "stale_book"          # an outage never pools with quiet
+    assert last["book_age_min"] == 20
+    assert last["wall_s"] is None                # and never cost a call
+    assert last["reading"] == {"line": "old"}    # sentence carried, not re-made
+
+
+def test_fresh_book_stamps_its_age_and_scene_carries_it():
+    sc = SR.build_scene(mkrow([[1300, 104], [1100, 100]],
+                              ts=T0 - timedelta(minutes=2)),
+                        {"top": [], "gap_pp": None, "tie": None,
+                         "lo": None, "hi": None, "reported": None,
+                         "in_window": None}, [], [], T0)
+    assert sc["clock"]["book_age_min"] == 2
