@@ -428,6 +428,39 @@ _SPOT_CACHE: dict = {"ts": 0.0, "val": None, "src": None}
 _SPOT_TTL_S = 2.0          # ≥ the tablet's poll gap, so the quote is shared, not multiplied
 _SPOT_LOCK = __import__("threading").Lock()
 
+# --- SNDK spot tape (08-11) --------------------------------------------------
+# The SNDK tab's 5s /api/spot poll already buys a fresh Schwab quote (2s TTL
+# above); persisting it is FREE — zero additional upstream calls, no sampler
+# process. Only fresh (non-cached) fetches for a tape ticker append, only
+# inside a pure-clock RTH window (never a market-hours API call — the tape may
+# not add load to earn its gate), so the file is exactly "what a watcher
+# already paid for". Unwatched stretches keep the hunter's 2-min diary spots.
+_TAPE_TICKERS = ("SNDK",)
+_TAPE_DIR = STATE_DIR / "sndk_tape"
+_TAPE_MIN_GAP_S = 4.0      # append floor: a burst of pollers still writes ≤1 row/4s
+_TAPE_LAST: dict = {"ts": 0.0}
+
+
+def _tape_append(ticker: str, px: float, mono_ts: float) -> None:
+    """Best-effort by contract: the tape is a by-product, so any failure here
+    (full disk, bad perms) must never dent the /api/spot response."""
+    if ticker not in _TAPE_TICKERS or mono_ts - _TAPE_LAST["ts"] < _TAPE_MIN_GAP_S:
+        return
+    try:
+        now = _now_et()
+        if now.weekday() >= 5:
+            return
+        hm = now.hour * 60 + now.minute
+        if not (9 * 60 + 30 <= hm <= 16 * 60):
+            return
+        import atomic_io               # SKILL_DIR is on sys.path (module header)
+        atomic_io.append_jsonl(_TAPE_DIR / f"{now.date().isoformat()}.jsonl",
+                               {"ts": now.isoformat(), "spot": round(float(px), 4),
+                                "src": "schwab_quote"})
+        _TAPE_LAST["ts"] = mono_ts
+    except Exception:
+        pass
+
 
 def live_spot(ticker: str = "SPX") -> dict:
     """The current index print for the map. Cached `_SPOT_TTL_S` so a room full of
@@ -450,6 +483,8 @@ def live_spot(ticker: str = "SPX") -> dict:
     with _SPOT_LOCK:
         if px is not None:
             _SPOT_CACHE.update({"ts": now, "val": px, "src": "schwab_quote", "tk": ticker})
+    if px is not None:
+        _tape_append(ticker, px, now)      # outside the lock — file IO never blocks a poll
     return {"ticker": ticker, "spot": px,
             "source": "schwab_quote" if px is not None else None,
             "age_s": 0.0, "cached": False,

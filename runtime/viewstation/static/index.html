@@ -10893,6 +10893,21 @@ function snkMergeSeries(a, b){
   for(const q of (b||[])) if(isFinite(q.t)) byT.set(q.t, q.p);
   return [...byT.entries()].map(([t,p])=>({t,p})).sort((x,y)=>x.t-y.t);
 }
+// snkThinSeries — cap what the fine tape can grow the polyline to: the newest hour keeps
+// native (2-5s) resolution, older samples decimate to one point per 30s bucket. A full
+// session tops out near ~1.4k points — one <path>, cheap on the tablet. Decimation DROPS
+// points, never averages prices: every plotted point is a real print.
+function snkThinSeries(pts){
+  const n=pts.length; if(n<=1200) return pts;
+  const keepFrom=pts[n-1].t-3600000;
+  const out=[]; let bucket=null;
+  for(const q of pts){
+    if(q.t>=keepFrom){ out.push(q); continue; }
+    const b=Math.floor(q.t/30000);
+    if(b!==bucket){ out.push(q); bucket=b; }
+  }
+  return out;
+}
 // snkSpotPath — the day's series + its session window: 09:30→16:00 of the NEWEST row's own
 // day IN ITS UTC OFFSET (the rpLoadDay lesson — an ET session must not plot skewed). Points
 // are filtered to the [t0,t1] session window: unlike SPX, the SNDK scanner records overnight
@@ -10911,10 +10926,17 @@ function snkSpotPath(){
   for(const q of (SNDK.path||[])) inWin(q.t, q.p, cache);
   const tail=[];
   for(const r of SNDK.rows){ if(r&&r.ts!=null) inWin(+new Date(r.ts), r.spot, tail); }
-  const pts=snkMergeSeries(cache, tail);
+  // the FINE layer (08-11): server tape + this tab's own accumulated spot samples — the
+  // 2-5s wiggle between the 2-min scan nodes. Merged LAST so a fine print wins any
+  // same-ms collision with a coarse node, then thinned so a full session stays one
+  // cheap polyline.
+  const fine=[];
+  for(const q of (SNDK.tape||[])) inWin(q.t, q.p, fine);
+  for(const q of (SNDK.tapeLive||[])) inWin(q.t, q.p, fine);
+  const pts=snkThinSeries(snkMergeSeries(snkMergeSeries(cache, tail), fine));
   const streaming=SNDK.spot.live&&SNDK.spot.px!=null;
   if(streaming&&pts.length) pts.push({t:Math.min(Date.now(),t1), p:+SNDK.spot.px});
-  return {t0, t1, pts, streaming};
+  return {t0, t1, pts, streaming, fine:fine.length>0};
 }
 // snkPathGeom — PURE projection: x = TIME (clamped to the session), y = PRICE on the shared
 // axis. y is CLIPPED to the plot rect (not rescaled): the band was tightened around the book,
@@ -10943,20 +10965,25 @@ const SNDK = {
   // spot at 5s (not 2.5s): the server's spot cache is a single 2s slot shared with the
   // always-on SPX poller, so 2.5s here alternated tickers through it — near-zero cache
   // hits, ~2× upstream quote rate. The CSS-eased spot line stays smooth at 5s.
-  pollMs:8000, spotMs:5000, spotStaleMs:15000, pathMs:75000,
+  pollMs:8000, spotMs:5000, spotStaleMs:15000, pathMs:75000, tapeMs:60000,
   booted:false, on:false, fails:0,
   file:null, rows:[], model:null, prevModel:null, lastTs:null,
   clusters:null, step:5, band:null, geo:null, grid:[], fold:null,
   _frameAt:null, _frameT:0,        // the quote the current frame+fold were cut for, and when
   gaps:[], _pullUp:null, _hudOn:false,              // air-pockets (chart + narrator read one model) · comet direction · is the teacher card speaking
   path:[], _pathEdge:null,                          // full-day per-scan spot trail (limit=400) + the live-edge nodes
+  // FINE TAPE (08-11): tape = the server's sndk_tape file (each row a quote this tab's own
+  // /api/spot polls already paid for — the server persists them as a free by-product, zero
+  // extra upstream calls); tapeLive = the same samples accumulated client-side between the
+  // slow tape reads, so the trail wiggles at spot cadence without a single added fetch.
+  tape:[], tapeLive:[],
   // THE LIVE READ (sr-1) — the newest state/sndk_reads row: the gated arrow, the magnet
   // band, the ghost, the frozen list and the model's sentence. Its own file, its own
   // producer, its own poll; null until one lands and every new surface hides while it is.
   readFile:null, read:null, readTs:null, readFails:0, _readNode:false,
   reasoning:true,          // the pause switch; refreshed on resume, set by the toggle
   spot:{ px:null, prev:null, at:0, src:null, live:false, fails:0 },
-  timers:{ diary:null, spot:null, path:null, read:null }, _ro:null, _empty:null,
+  timers:{ diary:null, spot:null, path:null, read:null, tape:null }, _ro:null, _empty:null,
 
   boot(){
     if(SNDK.booted) return; SNDK.booted=true;
@@ -10975,12 +11002,12 @@ const SNDK = {
   },
   hide(){
     SNDK.on=false;
-    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read);
-    SNDK.timers.diary=SNDK.timers.spot=SNDK.timers.path=SNDK.timers.read=null;
+    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read); clearTimeout(SNDK.timers.tape);
+    SNDK.timers.diary=SNDK.timers.spot=SNDK.timers.path=SNDK.timers.read=SNDK.timers.tape=null;
   },
   resume(){   // (re)start every poller exactly once each
-    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read);
-    SNDK.pollDiary(); SNDK.pollSpot(); SNDK.pollPath(); SNDK.pollRead();
+    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read); clearTimeout(SNDK.timers.tape);
+    SNDK.pollDiary(); SNDK.pollSpot(); SNDK.pollPath(); SNDK.pollRead(); SNDK.pollTape();
     // the switch is server-side state, so re-read it on every wake rather than trusting
     // what this tab remembered — it may have been flipped from another device, or the
     // backend may have been restarted since. Fail-open to ON, matching sndk_read.
@@ -11075,7 +11102,12 @@ const SNDK = {
       const r=await fetch('/api/spot?ticker=SNDK',{cache:'no-store'}); const j=await r.json();
       const px=(j&&typeof j.spot==='number'&&isFinite(j.spot)&&j.spot>0)?j.spot:null;
       if(px!=null){ SNDK.spot.prev=SNDK.spot.px; SNDK.spot.px=px; SNDK.spot.at=Date.now();
-        SNDK.spot.src=j.source||null; SNDK.spot.live=true; SNDK.spot.fails=0; }
+        SNDK.spot.src=j.source||null; SNDK.spot.live=true; SNDK.spot.fails=0;
+        // fold the sample into the client tape — the fetch already happened for the dot,
+        // so the trail's fine history costs nothing extra. Capped ≈2h at 5s.
+        const tl=SNDK.tapeLive, tn=Date.now();
+        if(!tl.length||tn-tl[tl.length-1].t>=2000) tl.push({t:tn, p:px});
+        if(tl.length>1440) tl.splice(0, tl.length-1440); }
       else SNDK.spot.fails++;
     }catch(e){ SNDK.spot.fails++; }
     if(Date.now()-SNDK.spot.at>SNDK.spotStaleMs) SNDK.spot.live=false;   // stopped arriving → stop claiming live
@@ -11104,6 +11136,29 @@ const SNDK = {
       }
     }catch(e){}
     SNDK.timers.path=setTimeout(()=>SNDK.pollPath(), SNDK.pathMs);
+  },
+  // FINE TAPE readback — state/sndk_tape/{today}.jsonl on a SLOW clock (60s): its only job
+  // is history (a reload, a second device, the morning before this tab opened) — the live
+  // edge already rides tapeLive + the streaming tip. Fetched by today's ET date directly
+  // (no /api/raw/index round-trip: a tape only ever exists for a live session day; a 404
+  // is just "no watcher yet today" and stays an empty tape). LOCAL server call, not an
+  // upstream quote — the Schwab budget is untouched by any number of readers.
+  async pollTape(){
+    SNDK.timers.tape=null;
+    if(!SNDK.on||document.hidden) return;    // visibilitychange/show() restarts us
+    try{
+      const day=new Date().toLocaleDateString('en-CA',{timeZone:ET});
+      const res=await fetch(`/api/raw/file?root=state&path=sndk_tape/${day}.jsonl&limit=4800`,{cache:'no-store'});
+      const d=await res.json();
+      const raw=(d&&d.rows)?d.rows:[];
+      const pts=[];
+      for(const r of raw){ if(!r||typeof r!=='object'||!r.ts||r.spot==null||!isFinite(r.spot)) continue;
+        const t=+new Date(r.ts); if(isFinite(t)) pts.push({t, p:+r.spot}); }
+      const grew=pts.length!==SNDK.tape.length;
+      SNDK.tape=pts;
+      if(grew&&SNDK.on&&SNDK.model) SNDK.buildChart();
+    }catch(e){}
+    SNDK.timers.tape=setTimeout(()=>SNDK.pollTape(), SNDK.tapeMs);
   },
   liveSpot(){ return SNDK.spot.live?SNDK.spot.px:(SNDK.model?SNDK.model.spot:null); },
   // diary staleness — 3 recorded scan intervals (floored at 12 min: a weekly-tenor
@@ -12001,7 +12056,7 @@ const SNDK = {
         +`<circle id="snk-pdot" class="snk-pdot${S.streaming?' live':''}" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="var(--iris)" opacity=".8"/>`
         +`</g>`;
       SNDK._pathEdge={ax:G.P[ci].x, ay:G.P[ci].y, fr:pfr};
-      pathCap=` · path = per-scan spots${S.streaming?' + live quote':''}`;
+      pathCap=` · path = per-scan spots${S.fine?' + 5s tape':''}${S.streaming?' + live quote':''}`;
     }
     // ---- caption: surface honesty in one line ----
     const fr=SNDK.staleInfo();
