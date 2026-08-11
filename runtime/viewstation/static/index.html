@@ -114,7 +114,11 @@
 
   /* ---- status strip ---- */
   .statusbar{
-    display:flex; align-items:center; gap:16px; padding:12px 18px;
+    display:flex; align-items:center; gap:16px;
+    /* 20-agent sweep 08-11: the PWA shell declares full-bleed standalone
+       (black-translucent) — without the safe-area inset the iOS status bar
+       drew ON TOP of this strip when launched from the Home Screen */
+    padding:calc(12px + env(safe-area-inset-top, 0px)) calc(18px + env(safe-area-inset-right, 0px)) 12px calc(18px + env(safe-area-inset-left, 0px));
     border-bottom:1px solid var(--hairline);
     background:linear-gradient(var(--surface-2),var(--surface));
   }
@@ -602,8 +606,12 @@
   .tower3d .beacon{position:absolute; left:50%; top:50%; width:7px; height:7px; margin:-3.5px 0 0 -3.5px; border-radius:50%; pointer-events:none;
     background:color-mix(in srgb,var(--l-tower) 90%, #fff);
     box-shadow:0 0 10px 2px color-mix(in srgb,var(--l-tower) 60%, transparent)}
-  .deck.hassel .tower3d{opacity:.52; filter:saturate(.7)}
-  .deck.hassel .tower3d.sel{opacity:1; filter:none}
+  /* 20-agent sweep 08-11: opacity/filter on a preserve-3d CONTAINER force flat
+     transform-style in Chrome/Firefox — the unselected tower's perpendicular
+     faces rendered edge-on and the mast collapsed flat (Safari kept 3D, which
+     is why it looked fine on the mini). Dim the FACES, never the container. */
+  .deck.hassel .tower3d>*{opacity:.52; filter:saturate(.7)}
+  .deck.hassel .tower3d.sel>*{opacity:1; filter:none}
   .tower3d.sel .tw.head{border-color:color-mix(in srgb,var(--l-tower) 92%, transparent);
     box-shadow:0 0 30px color-mix(in srgb,var(--l-tower) 45%, transparent)}
   .tower3d.sel .sight{border-top-color:color-mix(in srgb,var(--l-tower) 92%, transparent)}
@@ -1883,7 +1891,10 @@
   .snk-chart svg [data-tip]{cursor:pointer}
 
   @media (prefers-reduced-motion:reduce){
-    *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
+    /* the bare * never matches pseudo-elements — the statusbar pulse dot and the
+       tower eye (both ::after pings) kept looping forever under Reduce Motion
+       (20-agent sweep 08-11) */
+    *,*::before,*::after{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
   }
 </style>
 </head>
@@ -2382,6 +2393,12 @@ let MODE = 'connecting';   // 'connecting' → 'live' | 'demo'; feedBadge derive
 // Ask the viewstation's file index for the newest reversion/<date>.jsonl (robust across the
 // midnight rollover / pre-market gap), pull its last 40 rows: newest row drives the map,
 // and the most-recent JUDGED watchtower (skipping quiet/cap rows) drives the reading.
+/* MODEL-AUTHORED text that reaches innerHTML goes through here (20-agent sweep
+   08-11): scene/would_change_mind are the Watchtower's own free text — real
+   recorded rows already carry raw <> ('variance ratio <1'), and an angle
+   bracket that ever parses as a tag would swallow the clause (or worse). The
+   siege panes always escaped; these three surfaces now match. */
+const escT=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 // map a raw diary row → the internal scan shape used by the Map / Diary / Heads renderers
 function normWt(w){
   w=w||{};
@@ -6568,7 +6585,7 @@ const LY = [
     // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
     // card from reversion/polarity_history.jsonl (newest grade_v era) on the ledger clock
     rd:{kind:'days', decided:5, need:12, sw:'REVERSION_LIVE off', rate:0.471, wl:null, note:'ungated twin: 82 wins on 204 episodes',
-      blockers:['switch off','1 / 12 decided days'],
+      blockers:['switch off','5 / 12 decided days'],   // matches the baked rd/summary (sweep 08-11: the chip said 1/12 under a card saying 5/12)
       summary:'Snapshot 08-10: 5 of 12 decided days in the grade_v2 era (8W/7L/2 scratch on 17 gated episodes, 47%, Wilson floor 0.26); the runway gate blocks most setups and the live switch is off. The ungated pre-runway twin has 82 wins on 204 episodes. Gate: ≥12 days, Wilson floor > .50, ≥58%. Refreshes live from polarity_history.'}},
   {id:'break', num:'C', name:'Break Lens', code:'level_reclaim', hue:'--l-break', tier:'lens',
     role:'≈ an alternate expert — bet the escape', status:['coral','shadow'],
@@ -6930,7 +6947,13 @@ function siegeReadiness(L){
   if(L.id==='sscore'){
     const res=cards.filter(c=>c&&c.outcome&&c.outcome!=='UNRESOLVED');
     const br=res.filter(c=>c.outcome==='BREAK').length, hd=res.filter(c=>c.outcome==='HOLD').length;
-    const hit=res.filter(c=>(c.verdict==='SIEGE'&&c.outcome==='BREAK')||(c.verdict==='QUIET'&&c.outcome==='HOLD')).length;
+    /* 20-agent sweep 08-11: the hit DENOMINATOR counts only episodes that
+       actually carried a doctrine verdict — a near-spot-suppressed (null) or
+       NEUTRAL episode is not a doctrine miss, and '0 / 5' on an all-suppressed
+       day implied the doctrine went 0-for-5 when it never spoke */
+    const judged=res.filter(c=>c.verdict==='SIEGE'||c.verdict==='QUIET');
+    const hit=judged.filter(c=>(c.verdict==='SIEGE'&&c.outcome==='BREAK')||(c.verdict==='QUIET'&&c.outcome==='HOLD')).length;
+    const supp=res.length-judged.length;
     const bl=lt.baseline||{}, bw={cold:12,warming:55,robust:100}[bl.label]||0;
     return `<div class="rd">
       <div class="rd-h"><span class="lab">Baseline clock</span><span class="pct">${esc(bl.label||'—')}</span></div>
@@ -6939,14 +6962,19 @@ function siegeReadiness(L){
       <div class="rd-grid">
         <div class="rd-stat"><div class="k">Resolved today</div><div class="v">${res.length}</div></div>
         <div class="rd-stat"><div class="k">BREAK / HOLD</div><div class="v">${br} / ${hd}</div></div>
-        <div class="rd-stat"><div class="k">Doctrine hits</div><div class="v">${res.length?hit+' / '+res.length:'—'}</div></div>
+        <div class="rd-stat"><div class="k">Doctrine hits</div><div class="v">${judged.length?hit+' / '+judged.length:'—'}${supp?` <span style="opacity:.6;font-size:10px">(+${supp} no-verdict)</span>`:''}</div></div>
         <div class="rd-stat"><div class="k">Cards file</div><div class="v" style="font-size:11px">cards/${lt.session?esc(lt.session):'&lt;date&gt;'}.jsonl</div></div>
       </div>
       <div class="blockers"><span class="blk">record-only · gates nothing</span></div>
       <div class="rd-sum">${L.rd.summary}</div></div>`;
   }
   // sword — the mouth, open since wt-7 (2026-07-18)
-  const words=tw.filter(t=>t.verdict&&t.verdict!=='NEUTRAL');
+  /* 20-agent sweep 08-11: count the DAY'S composed words off the cards, not the
+     latest scan's towers — a word composed and resolved at 12:06 read as 0 by
+     the close because the final scan carried no live verdict */
+  const liveWords=tw.filter(t=>t.verdict&&t.verdict!=='NEUTRAL');
+  const cardWords=cards.filter(c=>c&&(c.verdict==='SIEGE'||c.verdict==='QUIET'));
+  const words=cardWords.length?cardWords:liveWords;
   return `<div class="rd">
     <div class="rd-h"><span class="lab">Watchtower wiring</span><span class="pct" style="color:var(--jade)">wired</span></div>
     <div class="track"><i style="width:${words.length?100:35}%"></i></div>
@@ -7011,6 +7039,24 @@ async function loadPlaneLedgers(){
           ? `${dec.length} of 12 decided days in the grade_v${era} era (${w}W/${Math.max(0,n-w-sk)}L${sk?'/'+sk+' scratch':''} on ${n} gated episode${n===1?'':'s'}); the runway gate blocks most gated setups and the live switch is off. ${twin} ${gate}`
           : `Still 0 of 12 decided days in the grade_v${era} era — the runway gate has blocked every gated setup so far, and the live switch is off. ${twin} ${gate}`;
         touched.push('fade');
+      }
+      /* TOWER (20-agent sweep 08-11): the Watchtower plane was the last baked
+         readiness card with no live derivation — its '0 / 12 decided days
+         (wt-11 era)' went stale the moment the first wt-11 day decided (a HIT,
+         13:15 PT today) while the Sweep card beside it showed the win. Same
+         era-pool doctrine as fade: newest sweep era only. */
+      const twRows=rows.filter(r=>r.watchtower_sweep&&r.watchtower_sweep.prompt_version);
+      if(twRows.length){
+        const twEra=twRows[twRows.length-1].watchtower_sweep.prompt_version;
+        const eraTw=twRows.filter(r=>r.watchtower_sweep.prompt_version===twEra);
+        const twDec=eraTw.filter(r=>r.watchtower_sweep.day_hit==='hit'||r.watchtower_sweep.day_hit==='miss');
+        const twW=twDec.filter(r=>r.watchtower_sweep.day_hit==='hit').length;
+        const td=LY.find(l=>l.id==='tower').rd;
+        td.decided=twDec.length; td.rate=twDec.length?twW/twDec.length:null;
+        td.wl=wilsonLo(twW,twDec.length);
+        td.note=`${esc(twEra)} era · derived live from polarity_history`;
+        td.blockers=[`${twDec.length} / 12 decided days (${esc(twEra)} era)`];
+        touched.push('tower');
       }
     }
   }catch(e){}
@@ -7532,8 +7578,8 @@ function openModal(s){
   const body=document.getElementById('modal-body');
   const detail=()=>`
     <div class="modal-plain"><b>In plain words</b>${childSentence(s)}</div>
-    <p class="md-scene">“${s.wt.scene||'Quiet scan — the Watchtower stood down.'}”</p>
-    ${s.wt.change?`<div class="md-change"><b>What would change its mind</b>${s.wt.change}</div>`:''}
+    <p class="md-scene">“${s.wt.scene?escT(s.wt.scene):'Quiet scan — the Watchtower stood down.'}”</p>
+    ${s.wt.change?`<div class="md-change"><b>What would change its mind</b>${escT(s.wt.change)}</div>`:''}
     <div class="md-stats">
       <div class="md-stat"><div class="k">Regime</div><div class="v" style="font-size:13px">${cap(s.regime)}</div></div>
       <div class="md-stat"><div class="k">Fade gates</div><div class="v">${gateStates(s).filter(g=>g.on).length} / 4</div></div>
@@ -7657,14 +7703,19 @@ async function loadLedgers(){
   try{
     const res=await fetch('/api/raw/file?root=state&path=reversion/polarity_history.jsonl&limit=14',{cache:'no-store'});
     const d=await res.json(); const rows=(d&&d.rows)||[];
-    for(let i=rows.length-1;i>=0;i--){
-      const r=rows[i]; if(!r) continue;
+    /* 20-agent sweep 08-11: pick the newest by DAY, not by file position — the
+       grader's upsert rewrites a re-graded PAST day at the file tail, and the
+       tail-first walk presented that old day's card as the current record */
+    let best=null;
+    for(const r of rows){
+      if(!r) continue;
       const c=r.watchtower_sweep||r.sweep;
-      if(c){ LEDGERS={day:r.day||null, sweep:c, stance:r.stance||null, legacy:false}; break; }
-      // old-key rows only → remember we saw a graded past, but NEVER render the old
-      // cards — and STOP: without the break an older legacy row overwrote a newer one
-      if(!LEDGERS && (r.watchtower||r.watchtower_scene)){ LEDGERS={day:r.day||null, sweep:null, stance:null, legacy:true}; break; }
+      if(c&&r.day&&(!best||r.day>best.day)) best={day:r.day, sweep:c, stance:r.stance||null, legacy:false};
     }
+    if(best) LEDGERS=best;
+    else for(let i=rows.length-1;i>=0;i--){ const r=rows[i];
+      // old-key rows only → remember we saw a graded past, but NEVER render the old cards
+      if(r&&(r.watchtower||r.watchtower_scene)){ LEDGERS={day:r.day||null, sweep:null, stance:null, legacy:true}; break; } }
   }catch(e){ if(!LEDGERS) LEDGERS={day:null, sweep:null, legacy:false}; }   // a failed REFRESH must not wipe a good card
   if(!LEDGERS) LEDGERS={day:null, sweep:null, legacy:false};
   _ledgersLoading=false;   // re-entrant: the 20-min timer re-runs this so the nightly grade lands without a reload
@@ -8586,7 +8637,7 @@ function rpReadout(now,t){
   const dec=rw+rl;
   RP.els.wthead.innerHTML=
     `<i class="rp-wt-mark"></i>`+
-    `<div class="rp-wt-main"><div class="rp-wt-call">${call}</div><div class="rp-wt-scene">“${scene}”</div></div>`+
+    `<div class="rp-wt-main"><div class="rp-wt-call">${call}</div><div class="rp-wt-scene">“${escT(scene)}”</div></div>`+
     `<div class="rp-wt-side">${verdict}<span class="rp-wt-rec">${rlab} ${rw}–${rl}${dec?` · ${Math.round(100*rw/dec)}%`:''}</span></div>`;
   // (the per-moment layer stream + consensus tally moved to the TABLE view's Lean
   //  column, 2026-07-18 — the chart keeps only the head card)
@@ -8620,7 +8671,7 @@ function rpWhyPhrase(name,s,dir){
 // the plain-English "why" — synthesise from which layers backed the call; fall back to the
 // tower's own scene sentence when the synthesis is thin, and stay honest when it stood down
 function rpWhy(s,fired,dir,rows){
-  const scene=(s.wt&&s.wt.scene)?s.wt.scene:'';
+  const scene=(s.wt&&s.wt.scene)?escT(s.wt.scene):'';
   if(!fired) return scene||'The tower stood down — no clear edge to call here.';
   const byOrder=(a,b)=>RP_WHY_ORDER.indexOf(a.name)-RP_WHY_ORDER.indexOf(b.name);
   const agree=rows.filter(r=>r.agree===true).sort(byOrder);
@@ -8730,9 +8781,13 @@ async function rpFetchBars(day){
   // frozen path under a live sweep grade would shade area the chart can't show
   const liveDay = day===new Date().toLocaleDateString('en-CA',{timeZone:ET});
   if(!liveDay && RP.barsCache[day]!==undefined) return RP.barsCache[day];
+  /* 20-agent sweep 08-11: only a DURABLE miss (clean response, no bars file)
+     caches null — a transient failure (server restart, timeout, 500) used to
+     pin the day to the coarse scan-spot path for the whole browser session */
   try{ const res=await fetch(`/api/raw/file?root=state&path=reversion/bars/${day}-SPX.json&limit=1000`,{cache:'no-store'});
+    if(!res.ok&&res.status!==404) return null;               // transient — retry next visit
     const d=await res.json(); RP.barsCache[day]=(d&&d.kind==='json'&&Array.isArray(d.data))?d.data:null; }
-  catch(e){ RP.barsCache[day]=null; }
+  catch(e){ return null; }                                   // transient — no cache poison
   return RP.barsCache[day];
 }
 async function rpLoadDay(di){
@@ -8747,12 +8802,22 @@ async function rpLoadDay(di){
   const _tzm=((D0.scans.find(s=>s.ts)||{}).ts||'').match(/([+-]\d\d:\d\d|Z)$/);
   const _tz=_tzm?(_tzm[1]==='Z'?'+00:00':_tzm[1]):'-04:00';
   RP.t0=+new Date(D0.day+'T09:30:00'+_tz); RP.t1=+new Date(D0.day+'T16:00:00'+_tz);
+  /* 20-agent sweep 08-11: an EARLY-CLOSE past day (13:00 bell) used to keep the
+     16:00 window — 46% dead x-axis and the last sweep call's shading stretched
+     flat across three untraded hours. A CLOSED day whose data ends well before
+     the bell shrinks the window to its last print (+2 min); a live day keeps
+     the full session so the chart fills rightward as it records. */
+  const _today=new Date().toLocaleDateString('en-CA',{timeZone:ET});
+  if(D0.day!==_today&&D0.scans.length){
+    const _last=+new Date(scanTs(D0.scans[D0.scans.length-1]));
+    if(isFinite(_last)&&_last<RP.t1-60*60000) RP.t1=Math.min(RP.t1,_last+2*60000);
+  }
   RP.playing=false; RP.pos=0; RP.last=0; rpSyncPlayBtn(); rpUpdateDayNav();
   RP.bars=await rpFetchBars(D0.day);
-  if(RP.days[RP.di]!==D0) return;            // day changed while awaiting — abort this load
+  if(!RP.days[RP.di]||RP.days[RP.di].day!==D0.day) return;   // day changed while awaiting — abort. Compare by DAY STRING: the 20-min sync rebuilds RP.days with fresh objects, and an identity compare aborted a user's in-flight load on every benign refresh (sweep 08-11)
   RP.path=rpPricePath();
   const graded=await rpFetchGraded(D0.day);
-  if(RP.days[RP.di]!==D0) return;
+  if(!RP.days[RP.di]||RP.days[RP.di].day!==D0.day) return;   // same day-string guard (sweep 08-11)
   RP.fires=rpAssembleFires(graded);
   // Sweep Ledger area shading — this day's calls ride the same on-demand grade
   RP.swp=rpAssembleSweepCalls(graded && graded.sweep);
@@ -8914,6 +8979,11 @@ function rpRenderTable(){
       : s.sg.health!=='OK' ? `<span class="rp-pill mute" title="SPY tape ${s.sg.health==='FEED-LOST'?'lost':'degraded'} — the deck stood down, no fabricated reads">${s.sg.health==='FEED-LOST'?'feed lost':'degraded'}</span>`
       : s.sg.sat ? '<span class="rp-pill mute" title="touch windows covered most of the session — new verdicts say nothing">saturated</span>'
       : sgv.length ? sgv.map(sgPill).join(' ')
+      /* sweep 08-11: the suppressed-vs-no-touch distinction (the 08-10 fix)
+         reaches the TABLE cell too — its own expand chips already said
+         "suppressed" under a pill claiming "no touch" */
+      : (s.sg.towers||[]).some(t=>t.near&&!t.verdict&&t.status&&t.status!=='watching')
+        ? '<span class="rp-pill mute" title="near-spot touch reads suppressed (ATM artifact guard until the baseline is robust) — a touched tower, not an untouched one">suppressed</span>'
       : '<span class="rp-pill mute" title="towers watched — no touch carried a verdict at this scan">watching</span>';
     // NEUTRAL made no claim, so a resolved NEUTRAL grades nothing — only SIEGE/QUIET
     // episodes carry a doctrine to hit or miss
@@ -8946,9 +9016,13 @@ function rpRenderTable(){
     if(s.wt.dir){
       const want=s.wt.dir==='call'?'up':'down';
       against=!!acc && acc!==want;
-      const cv=s.wt.convStated!=null?s.wt.convStated:s.wt.conv;
+      /* sweep 08-11: same preference + LABEL as the chart head — the table
+         preferred the model's stated number unlabeled while the head preferred
+         measured vote agreement labeled '(votes)', so the two surfaces showed
+         different confidences for one call (1.0 vs 0.45 on 322 real rows) */
+      const cv=s.wt.conv!=null?{v:s.wt.conv,t:'votes'}:(s.wt.convStated!=null?{v:s.wt.convStated,t:'stated'}:null);
       verdict=`<span class="rp-vd ${s.wt.dir}">${s.wt.dir.toUpperCase()}</span>`
-            + `<span class="rp-sm"> ${cv!=null?(+cv).toFixed(2):''}</span>`+stance;
+            + `<span class="rp-sm" title="${cv?(cv.t==='votes'?'vote agreement — the measured confidence':'the model’s own stated confidence (no multi-vote agreement on this scan)'):''}"> ${cv?(+cv.v).toFixed(2)+' ('+cv.t+')':''}</span>`+stance;
     }
     /* FRESH vs HELD. The sweep grader opens a call on a FRESH fire only: when the tower
        keeps the same direction across scans it is REAFFIRMING the open sweep, not opening
@@ -8975,7 +9049,7 @@ function rpRenderTable(){
                    ldn.length?`down: ${ldn.map(r=>r.name).join(', ')}`:''].filter(Boolean).join(' · ')||'no directional reads';
     const lean=`<span title="${leanTip}"><span class="rp-up">${lup.length}▲</span><span class="rp-sm">/</span><span class="rp-dn">${ldn.length}▼</span></span>`;
 
-    return `<tr class="${cls}" data-ts="${s.ts||''}">
+    return `<tr class="${cls}" data-ts="${s.ts||''}" tabindex="0" aria-label="scan ${rpClockET(+new Date(s.ts))} ET — Enter scrubs here, Shift+Enter opens the layer detail">
       <td class="rp-tcol">${rpClock(+new Date(s.ts))}<span class="et">${rpClockET(+new Date(s.ts))} ET</span></td>
       <td class="num">${s.spot!=null?Math.round(s.spot):'·'}</td>
       <td>${gam}</td>
@@ -8997,6 +9071,20 @@ function rpRenderTable(){
   // ONE delegated listener (not 50 closures), and the Lean/Siege cells are the exception:
   // on a touch tablet the hover tooltips never show, so those cells TAP-EXPAND into the
   // per-moment layer detail (the old chart-console stream) instead of scrubbing.
+  /* 20-agent sweep 08-11: the table was pointer-only — rows now carry
+     tabindex, Enter scrubs to the row, Shift+Enter (or Space) opens the
+     per-moment layer detail the Lean/Siege tap-expand serves to touch users */
+  T.querySelector('tbody').onkeydown=e=>{
+    if(e.key!=='Enter'&&e.key!==' ') return;
+    const tr=e.target.closest('tr[data-ts]'); if(!tr) return;
+    e.preventDefault();
+    if(e.key===' '||e.shiftKey){ rpToggleDetail(T, tr); return; }
+    const ts=tr.dataset.ts; if(!ts) return;
+    const f=(+new Date(ts)-RP.t0)/((RP.t1-RP.t0)||1);
+    RP.pos=Math.max(0,Math.min(1,f)); RP.playing=false;
+    if(RP.els.scrub) RP.els.scrub.value=Math.round(RP.pos*1000);
+    rpSyncPlayBtn(); rpPaint();
+  };
   T.querySelector('tbody').onclick=e=>{
     const tr=e.target.closest('tr[data-ts]'); if(!tr) return;
     const td=e.target.closest('td');
