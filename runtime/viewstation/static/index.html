@@ -1966,6 +1966,7 @@ let GX_SRC_NOTE = null;   // N7: engine's own reason for a non-native read ('cov
 let GX_DGONE = 0, GX_DHAD = false;   // H9: consecutive scans with the dated book missing (after having one)
 let GX_PSIG = null;                  // H10: the signed-flow shadow pin (zones modal surface)
 let GX_CHARMW = null;                // wt-11: charm_wall — the strike decay funnels settlement toward (late-day chip; a place, never a direction)
+let GX_GBAL_NULL = false;            // fidelity 08-10: this scan carried no gamma_above/below split — the balance chip shows the last measured one and says so
 let GX_COV = null;        // N7: native chain coverage verdict {complete, missing[], ...} from the row
 
 // walls/magnet are ~constant intraday; spot walks down into the flip by 10:21
@@ -2377,15 +2378,20 @@ function normWt(w){
   w=w||{};
   return { fired:!!w.fired, dir:w.direction||w.dir||null, mag:w.magnitude_sigma??w.mag??0,
     range:w.range_sigma||[0,0], horizon:w.horizon_min??60,
-    conv:w.conviction ?? (w.votes&&(w.votes.agreement??w.votes.agree)) ?? 1, convStated:w.conviction_stated??null,
-    votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??1}:{n:1,agree:1},
+    /* fidelity audit 08-10: conviction/agreement bottomed out on 1 — MAXIMUM
+       certainty — for rows the backend deliberately records as null (a
+       single-vote scan has no agreement; watchtower.py computes it over ≥2
+       votes only). Same "absence is not agreement" rule as the flag below:
+       null means unmeasured, and consumers null-guard. */
+    conv:w.conviction ?? (w.votes&&(w.votes.agreement??w.votes.agree)) ?? null, convStated:w.conviction_stated??null,
+    votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??null}:null,
     /* wt-11: a row that never carried the flag reads null, not a fabricated true —
        "absence is not agreement" (the applyWt twin already said so; the JSON view
        was printing an invented value for pre-flag rows). Consumers test ===false /
        ===true, never truthiness. */
     agrees:('agrees_with_gates' in w)?!!w.agrees_with_gates:(w.agrees??null),
     scene:w.scene||'', change:w.would_change_mind||w.change||'', interest:w.interest||'',
-    wallS:w.wall_s??w.wallS??0, revised:!!w.revised, snippet:w.snippet||null, skipped:w.skipped||null,
+    wallS:w.wall_s??w.wallS??null, revised:!!w.revised, snippet:w.snippet||null, skipped:w.skipped||null,
     pv:w.prompt_version||null,     // actual head version from the row (H1: badge must not be inferred from a constant)
     stance:w.stance||null,         // N4 (wt-5): fight / settle / no_read — the prison-yard axis
     dissent:w.reveal_dissent||null };  // N19: a reveal sample that disagreed with a unanimous majority
@@ -2434,20 +2440,32 @@ function rowToScan(r){
     /* magnet policy (locked, mirrors resolve_dealer_map): gex_views LEADS, gex_theta is the
        challenger; the armed-only reversion magnet is wall-clamped (a fade target, not the pull) */
     magnet:gv.magnet??g.magnet??re.magnet_raw??r.gamma_flip,
-    pin:gv.pin_centroid??g.pin_centroid??g.magnet??r.spot, sigma:r.sigma??1, gAbove:g.gamma_above_spot??0, gBelow:g.gamma_below_spot??0, flow:g.aggressor_flow??0,
+    /* fidelity audit 08-10: flow keeps null when unmeasured — a fabricated 0
+       rendered as 'flat — confirms nothing', which is a READING (the row's own
+       doctrine: absent key = no read, never a zero). gAbove/gBelow keep ??0 for
+       geometry (they only ratio into a balance bar; the null-tell rides the
+       map's own GX flag). */
+    pin:gv.pin_centroid??g.pin_centroid??g.magnet??r.spot, sigma:r.sigma??1, gAbove:g.gamma_above_spot??0, gBelow:g.gamma_below_spot??0, gBalNull:(g.gamma_above_spot==null||g.gamma_below_spot==null), flow:g.aggressor_flow??null,
     /* magnet MASS field (2026-07-18): the sign-free per-strike gravity mass the magnet
        v3 engine resolves its winner FROM — [[strike, mass], ...] at 5-pt strikes, both
        sides of spot, on every row. The replay cloud draws this; the magnet line stays
        the resolved winner. */
     massBS:Array.isArray(gv.mass_by_strike)?gv.mass_by_strike:null,
     cwShare:g.call_wall_gamma_share??0, pwShare:g.put_wall_gamma_share??0, pinShare:g.pin_top_share??0, zones:normZones(g), contested:(g.pin_contested!=null?!!g.pin_contested:null),   // shares/zones for the live GEX field
-    shove:{ up:sh.shove_up_margin??0, down:sh.shove_down_margin??0, upFlip:sh.up_flips||false, downFlip:sh.down_flips||false },
+    shove:{ up:sh.shove_up_margin??null, down:sh.shove_down_margin??null, upFlip:sh.up_flips||false, downFlip:sh.down_flips||false },
     fade:{ score:re.score??0, fired:!!re.fired, armed:!!re.armed, reaction:!!re.reaction, dir:re.direction||'none', arm:re.arm_reason||'none',
-      runway:re.runway_sigma??0, runwayOk:!!re.runway_ok, dCall:re.wall_dist_call, dPut:re.wall_dist_put,
+      runway:re.runway_sigma??null, runwayOk:!!re.runway_ok, dCall:re.wall_dist_call, dPut:re.wall_dist_put,
       /* the raw tape stretches — carried for the Replay TABLE (gap = how far below/above
          yesterday's close we opened; vwap = are today's buyers underwater) */
       gap:re.gap_stretch??null, vwap:re.vwap_stretch??null },
-    brk:{ state:lr.break_state||'idle', cocks:lr.cock_count||0, dir:lr.cock_direction||lr.direction||'none',
+    /* fidelity audit 08-10: the recorded key is cock_count_today (cock_count
+       never existed — the JSON view printed a hardcoded 0 for a lens that
+       armed 94 times in August); and dir may borrow the RECLAIM signal's
+       direction only while the lens is actually active/fired — on an idle
+       lens level_reclaim.direction is the reclaim side, and borrowing it
+       painted "idle · escape up" on 860 of 1,572 August rows. */
+    brk:{ state:lr.break_state||'idle', cocks:lr.cock_count_today??null,
+      dir:lr.cock_direction||(((lr.break_state&&lr.break_state!=='idle')||lr.fired)?lr.direction:null)||'none',
       /* COCKED IS NOT FIRED (wt-6/m8): the table must never show a cocked trigger as a
          direction the map took — only a FIRED break is a directional fact */
       fired:!!lr.fired || lr.break_state==='fired' },
@@ -3548,6 +3566,9 @@ function gxPaint(){
         // pins to the edge instead of stamping into the caption/legend strip
         wtI={up, tgt, pts, mag:+w.mag, ty:Math.min(X.H-X.padB-8, Math.max(X.padT+8, yFor(tgt))),
              conv:(w.conv!=null&&isFinite(w.conv))?Math.max(0,Math.min(1,+w.conv)):null,
+             /* stated conviction fallback (fidelity audit 08-10): agreement is
+                null on single-vote scans, which is most of them */
+             convStated:(w.convStated!=null&&isFinite(w.convStated))?Math.max(0,Math.min(1,+w.convStated)):null,
              rLo:Math.min(rLo,rHi), rHi:Math.max(rLo,rHi), rEst:!rr};
       }
     }
@@ -3734,7 +3755,7 @@ function gxPaint(){
       MAP.wtTgtN.style.cursor='pointer';
       MAP.wtTgtN.dataset.name=wtName;
       MAP.wtTgtN.dataset.tip=`k:target=${Math.round(wtI.tgt)}`
-        +`¦f:${wtI.mag.toFixed(2)}σ of a typical day's range${wtI.conv!=null?` · conviction ${Math.round(wtI.conv*100)}%`:''}`
+        +`¦f:${wtI.mag.toFixed(2)}σ of a typical day's range${wtI.conv!=null?` · conviction ${Math.round(wtI.conv*100)}% (votes)`:wtI.convStated!=null?` · conviction ${Math.round(wtI.convStated*100)}% (stated)`:''}`
         +`¦f:range ${Math.round(wtI.rLo)}–${Math.round(wtI.rHi)}${wtI.rEst?' · est. ±0.25σ (row stated no range)':' · as called'}`
         +`¦v:the Watchtower's forward call — bracket = its stated range`;
       MAP.wtTgtV.setAttribute('y',(ly+11).toFixed(1)); MAP.wtTgtV.textContent=f(wtI.tgt,0); MAP.wtTgtV.style.fill=col;
@@ -3759,7 +3780,7 @@ function gxPaint(){
       MAP.wtG.setAttribute('y1',ysC.toFixed(1)); MAP.wtG.setAttribute('y2',y2.toFixed(1));
       if(MAP.wtG1) MAP.wtG1.setAttribute('stop-color',wtI.up?'var(--jade)':'var(--coral)');
       MAP.wtComCore.setAttribute('marker-end',`url(#gxWtA${wtI.up?'j':'c'})`);
-      MAP.wtComCore.style.opacity=(wtI.conv!=null?0.55+0.35*wtI.conv:0.9).toFixed(2);
+      MAP.wtComCore.style.opacity=((c=>c!=null?0.55+0.35*c:0.9)(wtI.conv??wtI.convStated)).toFixed(2);
       const cT=y=>Math.min(X.H-X.padB, Math.max(X.padT, y));
       const yLo=cT(yFor(wtI.rLo)).toFixed(1), yHi=cT(yFor(wtI.rHi)).toFixed(1);
       MAP.wtComBr.style.display='';
@@ -5692,8 +5713,15 @@ function gxOverview(){
   // N5: the WINDOWED tape leads when present — the day-cumulative can say "buyers" at
   // 15:30 on a day whose last 45 minutes were pure selling. Label carries the basis.
   const fv=(T.flowR!=null&&isFinite(T.flowR))?T.flowR:null;
-  const fx=fv!=null?fv:D.flow, ftag=fv!=null?' now':' (day)';
-  const flow=(fx>0.02?'buyers pressing':fx<-0.02?'sellers pressing':'flow balanced')+ftag;
+  /* fidelity audit 08-10: only the WINDOWED tape earns a buyers/sellers word,
+     at the backend's own 0.05 flat band (the payload's _tape_word) — the old
+     ±0.02 was a UI invention on an axis the engine refuses to calibrate
+     (TAPE_TRIP_* = None, "a threshold borrowed across axes is how guards
+     die"). The whole-day cumulative never turns and never decays (the wt-8
+     lesson), so it rides as bare context, never a verdict. */
+  const flow=fv!=null
+    ? ((Math.abs(fv)<0.05?'flow flat':fv>0?'buyers pressing':'sellers pressing')+' now')
+    : (isFinite(D.flow)?`day flow ${D.flow>=0?'+':''}${(+D.flow).toFixed(2)} (context only)`:'flow unmeasured');
   const tot=(D.gAbove+D.gBelow)||1, aP=Math.round(D.gAbove/tot*100);
   // DATED BOOK — the per-band info chips became the tenor DATE PILLS above the chart
   // (07-25, merge not duplicate): walls + OI age now ride each pill's tooltip. Only
@@ -5705,7 +5733,12 @@ function gxOverview(){
     // that read the oldest band, and the quarterly's weekly cadence is 1-6d old
     // by design (cadence must not read as breakage; per-band ages carry it)
     const bookAge=dd.stale_days;
-    if(bookAge>=1) datedChips+=`<span class="gx-chip"><b>Dated Book</b><i>Stale ${bookAge}d · as of ${String(dd.oi_date||'')}</i></span>`;
+    /* fidelity audit 08-10: >=1 fired every single morning (the book is pulled
+       NIGHTLY, so 1 is the design, and a weekend Monday is 3) — a health check
+       that is always on is wallpaper. Quiet as-of note at 2-3d; coral alarm
+       only when the nightly job has genuinely missed (>=4d). */
+    if(bookAge>=4) datedChips+=`<span class="gx-chip" style="border-color:var(--coral);color:var(--coral)"><b>Dated Book STALE</b><i>${bookAge}d — nightly pull missing · as of ${String(dd.oi_date||'')}</i></span>`;
+    else if(bookAge>=2) datedChips+=`<span class="gx-chip"><b>Dated Book</b><i>as of ${String(dd.oi_date||'')} (${bookAge}d)</i></span>`;
   }
   // H9: a dropped book is LOUD — the silence after erasing the walls must not read
   // as "no walls today"
@@ -5817,7 +5850,7 @@ function gxOverview(){
   const layersChip=`<button type="button" class="gx-chip gx-toggle" onclick="toggleGxLayers()" aria-expanded="${lyOpen}" title="Show / hide the map's layer switches (Walls, 1-7D γ, Dated γ, Hedge Rail, Net DEX, Net OI, Net Vol, γ scale)"><span class="gx-tx"><b>Layers ${lyOpen?'▴':'▾'}</b><i>${lyOn} on · walls + γ layers</i></span></button>`;
   el.innerHTML=`${roadChip}
     <span class="gx-chip gx-lead ${pullUp?'up':'dn'}"><b>SPX ${f(D.spot,0)}</b><i><span style="color:var(--${pullUp?'jade':'coral'})">${pullUp?'▲':'▼'} ~${Math.round(pts)} pts</span> → MagP ${f(D.magnet,0)} · ${flow}${freshTag}</i></span>
-    <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${aP}% above spot</i></span>
+    <span class="gx-chip gx-net"><b>Gamma Balance</b><i><span class="gx-netbar"><i class="up" style="width:${aP}%"></i><i class="dn" style="width:${100-aP}%"></i></span> ${GX_GBAL_NULL?`<span title="this scan carried no gamma split — showing the last measured one">${aP}% (last measured)</span>`:`${aP}% above spot`}</i></span>
     ${_neTiles()}${datedChips}${charmChip}${layersChip}${lyOpen?swChips.join(''):''}`;
   if(typeof paintTenorPills==='function') paintTenorPills();   // the date-pill row rides every strip rebuild
 }
@@ -6015,6 +6048,7 @@ function applyMap(r){
   T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
   GX_PSIG = (r.gex_theta||{}).pin_signed ?? GX_PSIG;             // H10: shadow signed-flow pin (zones modal)
   GX_CHARMW = gv.charm_wall ?? null;                             // wt-11: decay-tilt chip source (null = no chip, never sticky)
+  GX_GBAL_NULL = (g.gamma_above_spot==null||g.gamma_below_spot==null);   // the balance chip's staleness tell (values keep easing for geometry)
   T.dex = normDex(r.dex_views);                                  // DEX surface (07-25, shadow) — absent key = no read, never a zero
   // phase-P records (07-25, shadow, version-gated): ladder panel, AEM bracket, tiles
   T.ladder = (r.profile_ladder&&r.profile_ladder.ladder_v===1) ? r.profile_ladder : null;
@@ -6069,6 +6103,10 @@ function applyWt(w, rows){
     // already carried all three; this path dropped them)
     range:w.range_sigma||w.range||null,
     conv:w.conviction ?? (w.votes&&(w.votes.agreement??w.votes.agree)) ?? null,
+    /* fidelity audit 08-10: conviction_stated rides too — vote agreement is
+       null on every single-vote scan (the live majority), so a Map that only
+       reads conv never shows a number; stated is the model's own, labeled */
+    convStated:w.conviction_stated??null,
     votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??1}:null,
     /* wt-11: carry the gates-disagreement flag to the Map (normWt always had it;
        this path dropped it — the fourth field-set divergence bug pattern) */
@@ -6110,7 +6148,11 @@ function wtJudgedToday(){
     seen.add(s.ts);
     const w=s.wt; if(!w) continue;
     if(w.skipped){ any=true; continue; }
-    if(w.scene||w.snippet||w.fired){ n++; any=true; }
+    /* fidelity audit 08-10: count what the BACKEND counts (_was_call: votes
+       or wall_s) — an errored/timed-out call records wall_s but no scene, and
+       it burns budget; the old scene-based count under-read the spend by 18%
+       on 2026-08-06 (23 shown vs 28 spent). */
+    if(w.votes||w.wallS!=null||w.scene||w.snippet){ n++; any=true; }
   }
   return {n, any};
 }
@@ -7341,7 +7383,7 @@ function childSentence(s){
     return `The price slid close to an edge and the thinking robot wanted to bet it would ${wd}, but the careful rule robot said there wasn’t enough room yet — so it waited.`;
   if(s.fade.fired && w.fired && w.agrees===true)
     return `The price stretched too far from the middle, so both robots agreed it should ${fd} and pointed the same way — a clean, matching call.`;
-  if(w.votes && w.votes.agree < 0.6)
+  if(w.votes && w.votes.agree!=null && w.votes.agree < 0.6)
     return `The market was wiggly and hard to read, so the thinking robot shrugged and decided to sit still instead of guessing.`;
   if(g < 4 && !w.fired)
     return `A trade was starting to take shape but wasn’t ready yet, so everyone just watched and waited.`;
@@ -7354,7 +7396,9 @@ function annotatedJSON(s){
   const N=v=>`<span class="j-num">${v}</span>`, Bl=v=>`<span class="j-bool">${v}</span>`, NU=`<span class="j-null">null</span>`;
   const c=t=>`  <span class="j-cm">// ${t}</span>`, i=n=>'  '.repeat(n);
   const dir=s.fade.dir, wdir=s.wt.dir;
-  const votes=`{ ${K('n')}: ${N(s.wt.votes.n)}, ${K('agreement')}: ${N(s.wt.votes.agree)} }`;
+  const votes=s.wt.votes
+    ?`{ ${K('n')}: ${N(s.wt.votes.n)}, ${K('agreement')}: ${s.wt.votes.agree==null?NU:N(s.wt.votes.agree)} }`
+    :NU;   // a row that recorded no votes prints null — never an invented {1, 1}
   const L=[
     '{',
     `${i(1)}${K('ts')}: ${S(scanTs(s))},${c('when this scan was taken (recorded in Eastern; shown in Pacific elsewhere)')}`,
@@ -7372,17 +7416,17 @@ function annotatedJSON(s){
     `${i(2)}${K('armed')}: ${Bl(s.fade.armed)},${c('gate 2 (stretch): price is ≥1σ stretched or tagging a wall')}`,
     `${i(2)}${K('reaction')}: ${Bl(s.fade.reaction)},${c('gate 4 (turn): the last bar turned back against the stretch')}`,
     `${i(2)}${K('direction')}: ${dir?S(dir):NU},${c('which way the fade leans — call = up, put = down')}`,
-    `${i(2)}${K('runway_sigma')}: ${N(s.fade.runway)}, ${K('runway_ok')}: ${Bl(s.fade.runwayOk)}${c('gate 3 (runway): room to the magnet in σ — ok only when ≥ 0.35σ')}`,
+    `${i(2)}${K('runway_sigma')}: ${s.fade.runway==null?NU:N(s.fade.runway)}, ${K('runway_ok')}: ${Bl(s.fade.runwayOk)}${c('gate 3 (runway): room to the magnet in σ — null when no magnet was derivable; ok only when ≥ 0.35σ')}`,
     `${i(1)}},`,
     `${i(1)}${K('level_reclaim')}: {${c('HEAD C · BREAK LENS — the twin that bets the escape when flow overpowers the map')}`,
     `${i(2)}${K('break_state')}: ${S(s.brk.state)},${c('idle → cocked → fired state machine')}`,
-    `${i(2)}${K('cock_count')}: ${N(s.brk.cocks)}${c('times it armed today')}`,
+    `${i(2)}${K('cock_count_today')}: ${s.brk.cocks==null?NU:N(s.brk.cocks)}${c('times it armed today (the recorded key — a phantom cock_count printed 0 here before the 08-10 audit)')}`,
     `${i(1)}},`,
     `${i(1)}${K('watchtower')}: {${c('HEAD B · WATCHTOWER — the Claude reasoning second opinion (shadow only)')}`,
     `${i(2)}${K('fired')}: ${Bl(s.wt.fired)}, ${K('direction')}: ${wdir?S(wdir):NU},${c('the tower’s own call, formed blind to the gates')}`,
     `${i(2)}${K('magnitude_sigma')}: ${N(s.wt.mag)},${c('expected move size in σ — this drives the ▶▶ NEXT read on the map')}`,
     `${i(2)}${K('stance')}: ${s.wt.stance?S(s.wt.stance):NU},${c('fight (range erupts) / settle (pins) / no_read — graded separately from direction')}`,
-    `${i(2)}${K('conviction')}: ${N(s.wt.conv)},${c('share of votes that agreed = the conviction we actually trust')}`,
+    `${i(2)}${K('conviction')}: ${s.wt.conv==null?NU:N(s.wt.conv)},${c('share of votes that agreed — null on a single-vote scan (agreement needs ≥2 votes)')}`,
     `${i(2)}${K('votes')}: ${votes},${c('times it was asked (up to 3 on a fire) and the agreement among them')}`,
     `${i(2)}${K('agrees_with_gates')}: ${s.wt.agrees==null?NU:Bl(s.wt.agrees)},${c('did the reasoning head and the machine gates concur? (null = the row never carried the flag)')}`,
     `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read — since wt-11 also written to state/spx_rag as a recallable memory slice')}`,
@@ -7508,8 +7552,11 @@ function gateStates(s){
   return [
     {on:s.regime==="pinning", nm:"Regime", dsc:"Stack reads pinning", val:`${cap(s.regime)} · ${f(s.conf,2)}`},
     {on:s.fade.armed, nm:"Stretch", dsc:`Armed · ${s.fade.arm==='none'?'—':s.fade.arm.replace('_',' ')}`, val:s.fade.dir==='none'?'—':`${cap(s.fade.dir)} fade`},
+    /* fidelity audit 08-10: doctrine order is LOOK → STRETCH → RUNWAY → TURN
+       (the JSON view already numbers runway gate 3, turn gate 4 — this list
+       had them swapped) */
+    {on:s.fade.runwayOk, nm:"Runway", dsc:"Room to magnet ≥ 0.35σ", val:s.fade.runway==null?'—':`${sig(s.fade.runway)}`},
     {on:s.fade.reaction, nm:"Turn", dsc:"Last bar turned back", val:s.fade.reaction?"true":"false"},
-    {on:s.fade.runwayOk, nm:"Runway", dsc:"Room to magnet ≥ 0.35σ", val:`${sig(s.fade.runway)}`},
   ];
 }
 // ---- SWEEP LEDGER — the one Watchtower report card (replaced the Trade/Scene two-up) ----
@@ -8399,7 +8446,10 @@ function rpReadout(now,t){
     ?` · <span style="color:var(--ink-dim)">${w.stance==='fight'?'fight — range should erupt':'settle — should pin'}</span>`:'';
   let call;
   if(w&&w.fired&&w.dir){
-    const conv=w.conv!=null?` · ${Math.round(w.conv*100)}% sure`:'';
+    /* fidelity audit 08-10: vote agreement when measured; else the model's own
+       stated number, labeled as such — never a fabricated 100% */
+    const conv=w.conv!=null?` · ${Math.round(w.conv*100)}% sure (votes)`
+      :(w.convStated!=null?` · ${Math.round(w.convStated*100)}% sure (stated)`:'');
     const vs=w.agrees===false?` <span class="rp-vs">overrides Fade</span>`:'';
     call=`<span class="who">🗼 Watchtower</span> · <span class="dir">${w.dir==='call'?'UP ▲':'DOWN ▼'}</span> · ${sig(w.mag)}${conv}${stn}${vs}`;
   } else call=`<span class="who">🗼 Watchtower</span> · <span style="color:var(--ink-dim)">stands aside</span>${stn}`;
@@ -8478,7 +8528,7 @@ function rpPopOpen(i){
     : `<span class="rp-pop-dir aside">Stood aside</span>`;
   const chip=fired?`<span class="rp-pop-chip ${state}">${lab}</span>`:'';
   const stance=(w.stance==='fight'||w.stance==='settle')?`<span class="rp-pop-stance">${w.stance}</span>`:'';
-  const votes=(w.votes&&w.votes.n)?`${Math.round((w.votes.agree!=null?w.votes.agree:1)*w.votes.n)}/${w.votes.n} agreed`:'';   // votes.agree is a RATIO (see head detail) → back to a count
+  const votes=(w.votes&&w.votes.n&&w.votes.agree!=null)?`${Math.round(w.votes.agree*w.votes.n)}/${w.votes.n} agreed`:'';   // votes.agree is a RATIO (see head detail) → back to a count; a null agreement (single vote) says nothing
   const sub=`<div class="rp-pop-sub"><span>${rpClock(fr.t)}</span>`
     +(stance?`<span>·</span>${stance}`:'')+(votes?`<span>·</span><span>${votes}</span>`:'')+`</div>`;
   // the parent sweep call's score in one line — matched by t_open ≤ ts < t_close
@@ -8682,6 +8732,8 @@ function rpRenderTable(){
     const acc=rpAccelSide(s);
     const shove=acc
       ? `${rpArrow(acc)} <span class="rp-sm" title="shove margins ${rpSig(s.shove.down)}↓ ${rpSig(s.shove.up)}↑ — the lower margin is the side hedging feeds">fuel ${acc==='down'?'▼':'▲'}</span>`
+      : (s.shove.up==null||s.shove.down==null)
+      ? `${rpArrow(null)} <span class="rp-sm" title="no shove margins recorded this scan — unmeasured, not symmetric">—</span>`
       : `${rpArrow(null)} <span class="rp-sm" title="both shove margins within 0.15 — neither side is the accelerant">symmetric</span>`;
 
     // speed: pace × leads when present (how fast vs a normal day — the strongest read
@@ -8748,7 +8800,9 @@ function rpRenderTable(){
         }).join(' ')+sgBase
       : `<span class="rp-sm" title="no episode has graded yet this scan">open</span>`+sgBase;
 
-    const flow=(s.flow==null||Math.abs(s.flow)<0.05)
+    const flow=s.flow==null
+      ? `${rpArrow(null)} <span class="rp-sm" title="no aggressor-flow read recorded this scan — unmeasured, not flat">—</span>`
+      : Math.abs(s.flow)<0.05
       ? `${rpArrow('flat')} <span class="rp-sm" title="a flat tape confirms nothing either way">flat</span>`
       : `${rpArrow(s.flow>0?'up':'down')} <span class="rp-sm" title="whole-day average of option buying vs selling — it cannot show a turn">${rpSig(s.flow)} ${s.flow>0?'buy':'sell'}</span>`;
 
