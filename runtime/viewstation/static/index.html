@@ -1960,11 +1960,13 @@
 /* SYS carries DEMO-snapshot defaults ONLY (N21/H1): every header readout that can be
    known live is re-painted from the feed each poll — mode from row.live, WT count from
    the diary itself, chain source from row.gex_source. Nothing here is shown as live. */
-const SYS = { date:"2026-07-07", mode:"PAPER", wtCap:35 };
+const SYS = { date:"2026-07-07", mode:"PAPER", wtCap:35,
+  wtEra:"wt-11" };   // the LIVE tower era (watchtower.py PROMPT_VERSION) — bump WITH the era;
+                     // the Sweep card compares the graded record's era against this so a
+                     // retired-era grade can never present as the current tower's record
 let GX_SRC = null;   // newest row's gex_source ('native' | 'spy_proxy×10.03xx') — the engine that actually drew the map
 let GX_SRC_NOTE = null;   // N7: engine's own reason for a non-native read ('coverage' = half-fetched native book)
 let GX_DGONE = 0, GX_DHAD = false;   // H9: consecutive scans with the dated book missing (after having one)
-let GX_PSIG = null;                  // H10: the signed-flow shadow pin (zones modal surface)
 let GX_CHARMW = null;                // wt-11: charm_wall — the strike decay funnels settlement toward (late-day chip; a place, never a direction)
 let GX_GBAL_NULL = false;            // fidelity 08-10: this scan carried no gamma_above/below split — the balance chip shows the last measured one and says so
 let GX_COV = null;        // N7: native chain coverage verdict {complete, missing[], ...} from the row
@@ -2433,7 +2435,7 @@ function normDex(dv){
 function rowToScan(r){
   const gt=r.gex_theta||{}, gv=r.gex_views||{}, g=Object.keys(gt).length?gt:gv, sh=gv.shove||gt.shove||{};
   const re=r.reversion_extreme||{}, lr=r.level_reclaim||{}, mo=r.gex_motion;
-  return { ts:r.ts, t:clockIn(r.ts,ET), spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
+  return { ts:r.ts, t:clockIn(r.ts,ET), ticker:r.ticker||'SPX', spot:r.spot, regime:r.regime, conf:r.regime_conf??1, sign:r.gamma_sign,
     /* H2 (07-12): r.call/put_wall are now the OPERATIVE near walls; the structural
        ceiling/floor moved to r.*_wall_tenor (fallback keeps pre-H2 rows correct) */
     flip:r.gamma_flip, flipSrc:gv.regime_source??null, flipGv:(gv.flip!=null&&isFinite(gv.flip))?+gv.flip:null, flipBand:Array.isArray(gv.flip_band)?gv.flip_band:null, callWall:gv.call_wall_gamma??r.call_wall, putWall:gv.put_wall_gamma??r.put_wall, putFloor:r.put_wall_tenor??r.put_wall??null, callCeil:r.call_wall_tenor??r.call_wall??null, netByStrike:g.net_by_strike??gv.net_by_strike??null, nbsTenor:g.net_by_strike_tenor??gv.net_by_strike_tenor??null, oiBS:g.oi_by_strike??gv.oi_by_strike??null, volBS:g.vol_by_strike??gv.vol_by_strike??null, volGrossBS:g.vol_gross_by_strike??gv.vol_gross_by_strike??null, oiSideBS:g.oi_side_by_strike??gv.oi_side_by_strike??null, volSideBS:g.vol_side_by_strike??gv.vol_side_by_strike??null, dated:r.dated_gex??null,
@@ -2820,10 +2822,10 @@ function measureChart(){ const cc=document.querySelector('#p-map .gx-chart'); if
 const MMETA = {   // key dealer levels, drawn as horizontal lines with right-edge price tags
   magnet:  {c:"var(--l-grav)",  n:"MagP",      d:0, sw:2.2, glow:7, dash:''},   // GW standard: MagP + tier (gxPaint overrides per scan); shares the zones' gravity gold; --lantern is Watchtower-only. glow = a 7px same-hue wash UNDER the casing (07-22) so the magnet reads at a glance in the crowded band
   flip:    {c:"var(--ink-dim)", n:"HVL", d:0, sw:1.5, dash:'stroke-dasharray="6 4"'},   // high volatility level — the ladder's name for the gamma-flip line (07-25); the tag's tip card keeps the plain English
-  /* wt-11 (08-10): the session VWAP — the one level on this board NOT derived from the
-     flip (volume-anchored). 1-5 dash is deliberately distinct from the fences (3 5) and
-     the flip (6 4) — the SNDK chart's dash grammar, kept consistent across stations.
-     Absent on pre-wt-11 rows (no r.vwap) → the line simply never lights. */
+  /* wt-11 (08-10): the session VWAP — the one line here anchored to traded volume
+     rather than the options book. 1-5 dash is deliberately distinct from the fences
+     (5 4) and the flip (6 4) — the SNDK chart's dash grammar, kept consistent across
+     stations. Absent on pre-wt-11 rows (no r.vwap) → the line simply never lights. */
   vwap:    {c:"var(--ink-dim)", n:"VWAP", d:0, sw:1.2, dash:'stroke-dasharray="1 5"'},
   spot:    {c:"var(--iris)",    n:"SPOT",       d:2, sw:2.6, dash:''},
 };
@@ -3640,7 +3642,7 @@ function gxPaint(){
     // in the plain face the code (HVL) + σ live here as the secondary detail
     if(id==='flip'&&!R.nm.dataset.tip){ R.nm.dataset.name='HVL'; R.nm.dataset.tip='The tipping point: above it the market tends to calm down and drift, below it moves get bigger and faster.'+(plainT?`¦f:HVL · ${sig(sd)} from price`:''); R.nm.style.cursor='pointer'; }
     if(id==='spot'&&!R.nm.dataset.tip){ R.nm.dataset.name='SPOT'; R.nm.dataset.tip='Where the price is right now.'; R.nm.style.cursor='pointer'; }
-    if(id==='vwap'&&!R.nm.dataset.tip){ R.nm.dataset.name='VWAP'; R.nm.dataset.tip='Today’s volume-weighted average price — the one level here not derived from the tipping point. Price above it = today’s buyers are ahead; below = underwater.'+(plainT?`¦f:VWAP · ${sig(sd)} from price`:''); R.nm.style.cursor='pointer'; }
+    if(id==='vwap'&&!R.nm.dataset.tip){ R.nm.dataset.name='VWAP'; R.nm.dataset.tip='Today’s volume-weighted average price — where the average dollar actually traded, the only line here anchored to traded volume rather than the options book. Price above it = today’s buyers are ahead; below = underwater.'+(plainT?`¦f:VWAP · ${sig(sd)} from price`:''); R.nm.style.cursor='pointer'; }
     R.vl.style.opacity=1; R.vl.setAttribute('y',(ly+11).toFixed(1)); R.vl.textContent=f(valOf[id],mm.d);
     // per-level right-edge strength bar dropped (PASS B): the γ-profile bars already
     // carry net-γ mass by strike and the level line points straight into them — one
@@ -5783,7 +5785,7 @@ function gxOverview(){
   // switch is never dead. If it is ON but the map is too narrow for even one lane, the
   // chip says "no room" — it must never read Off while the user believes it is On.
   const railChip=(typeof railAvail==='function'&&railAvail())
-    ? `<button type="button" class="gx-chip gx-toggle" id="gx-rail-chip" onclick="toggleHedgeRail()" aria-pressed="${railOn()}" title="Hedge Rail (>7DTE) — net dealer gamma vs price, one lane per dated expiry, on the map's own price axis. RIGHT of the zero rule = dealers DAMP the move (they sell rallies and buy dips); LEFT = they AMPLIFY it. The header number is what a +1% move forces them to trade to stay delta-neutral. CONTESTED = sweeping the spot-vol beta flips the sign, so no direction is claimed. Sign is assumed (calls long / puts short). Record-only: feeds nothing."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Hedge Rail</b><i id="gx-rail-v">${RAIL_ON?((MAPX.nR||0)?'<span style="color:var(--iris)">On</span> · '+_railBands().slice(0,MAPX.nR).map(bd=>_dexp(bd.expiry)).join('·')+_railChipTail():'<span style="color:var(--lantern)">On · no room</span> — widen the map'):'Off · &gt;7DTE dealer hedge'}</i></span></button>`
+    ? `<button type="button" class="gx-chip gx-toggle" id="gx-rail-chip" onclick="toggleHedgeRail()" aria-pressed="${railOn()}" title="Hedge Rail (>7DTE) — net dealer gamma vs price, one lane per dated expiry, on the map's own price axis. RIGHT of the zero rule = dealers DAMP the move (they sell rallies and buy dips); LEFT = they AMPLIFY it. The header number is what a +1% move forces them to trade to stay delta-neutral (the gamma-only answer, β=0). CONTESTED = sweeping the spot-vol beta flips the sign, so no direction is claimed. Sign is assumed (calls long / puts short). Record-only: feeds nothing."><span class="gx-sw" aria-hidden="true"></span><span class="gx-tx"><b>Hedge Rail</b><i id="gx-rail-v">${RAIL_ON?((MAPX.nR||0)?'<span style="color:var(--iris)">On</span> · '+_railBands().slice(0,MAPX.nR).map(bd=>_dexp(bd.expiry)).join('·')+_railChipTail():'<span style="color:var(--lantern)">On · no room</span> — widen the map'):'Off · &gt;7DTE dealer hedge'}</i></span></button>`
     : '';
   // 4.5 NET DEX pane (07-25): the direction-side lane left of the axis — offered only
   // when the latest row carries a dex_v==1 dex_views surface (never a dead switch).
@@ -6046,7 +6048,6 @@ function applyMap(r){
   T.road = r.regime_road || null;                                // N16: pin→trend road open (breach/reclaim/held)
   GX_COV = r.native_coverage || (r.gex_theta||{}).native_coverage || null;   // N7: live leg first, shadow twin fallback
   T.flowR = (r.gex_theta||{}).flow_recent ?? null;               // N5: windowed bullish lean (4-30m) — the live tape word
-  GX_PSIG = (r.gex_theta||{}).pin_signed ?? GX_PSIG;             // H10: shadow signed-flow pin (zones modal)
   GX_CHARMW = gv.charm_wall ?? null;                             // wt-11: decay-tilt chip source (null = no chip, never sticky)
   GX_GBAL_NULL = (g.gamma_above_spot==null||g.gamma_below_spot==null);   // the balance chip's staleness tell (values keep easing for geometry)
   T.dex = normDex(r.dex_views);                                  // DEX surface (07-25, shadow) — absent key = no read, never a zero
@@ -7380,7 +7381,7 @@ function childSentence(s){
   const wd = w.dir==='call' ? 'bounce back up' : 'drop back down';
   const fd = s.fade.dir==='call' ? 'spring back up' : 'come back down';
   if(w.fired && w.agrees===false)
-    return `The price slid close to an edge and the thinking robot wanted to bet it would ${wd}, but the careful rule robot said there wasn’t enough room yet — so it waited.`;
+    return `The price slid close to an edge and the thinking robot wanted to bet it would ${wd}, but the careful rule robot’s checklist read the scene differently — so the bet stayed on paper with a disagreement note.`;
   if(s.fade.fired && w.fired && w.agrees===true)
     return `The price stretched too far from the middle, so both robots agreed it should ${fd} and pointed the same way — a clean, matching call.`;
   if(w.votes && w.votes.agree!=null && w.votes.agree < 0.6)
@@ -7402,14 +7403,14 @@ function annotatedJSON(s){
   const L=[
     '{',
     `${i(1)}${K('ts')}: ${S(scanTs(s))},${c('when this scan was taken (recorded in Eastern; shown in Pacific elsewhere)')}`,
-    `${i(1)}${K('ticker')}: ${S('SPX')},${c('the index Mirai trades — SPX, 0DTE options')}`,
+    `${i(1)}${K('ticker')}: ${S(s.ticker||'SPX')},${c('the index Mirai trades — 0DTE options')}`,
     `${i(1)}${K('spot')}: ${N(+s.spot.toFixed(2))},${c('SPX price at the moment of the scan')}`,
     `${i(1)}${K('gamma_sign')}: ${S(s.sign)},${c('dealer gamma at spot — positive = they dampen moves (pin), negative = amplify (storm)')}`,
     `${i(1)}${K('regime')}: ${S(s.regime)},${c('the regime read — "pinning" = mean-reverting, "trending" = directional')}`,
     `${i(1)}${K('gamma_flip')}: ${N(+s.flip.toFixed(2))},${c('zero-gamma level; above it dealers are long gamma (calm), below it short (volatile)')}`,
-    `${i(1)}${K('call_γ')}: ${N(s.callWall)}, ${K('put_γ')}: ${N(s.putWall)},${c('the 0DTE at-the-money gamma peaks — they track spot, they are NOT the structural wall')}`,
-    `${i(1)}${K('magnet')}: ${N(s.magnet)},${c('the fill-weighted 0DTE strike price gravitates toward')}`,
-    `${i(1)}${K('pin_centroid')}: ${N(s.pin)},${c('gamma-weighted centre of the whole map')}`,
+    `${i(1)}${K('call_wall_gamma')}: ${N(s.callWall)}, ${K('put_wall_gamma')}: ${N(s.putWall)},${c('the recorded keys (gex_views) — 0DTE at-the-money gamma peaks; they track spot, they are NOT the structural wall')}`,
+    `${i(1)}${K('magnet')}: ${N(s.magnet)},${c('the strike holding the biggest pile of standing bets + today’s trades (OI+volume, within reach of spot) — where price gravitates')}`,
+    `${i(1)}${K('pin_centroid')}: ${N(s.pin)},${c('mass-weighted mean strike of the reach-windowed field — the pile’s centre of gravity, not the whole map’s')}`,
     `${i(1)}${K('reversion_extreme')}: {${c('HEAD A · FADE LENS — the 4-gate head that fades stretch back toward the magnet')}`,
     `${i(2)}${K('score')}: ${N(s.fade.score)},${c('signed conviction: + = fade long / − = fade short')}`,
     `${i(2)}${K('fired')}: ${Bl(s.fade.fired)},${c('did all four gates pass? — this is what fires the paper alert')}`,
@@ -7424,12 +7425,12 @@ function annotatedJSON(s){
     `${i(1)}},`,
     `${i(1)}${K('watchtower')}: {${c('HEAD B · WATCHTOWER — the Claude reasoning second opinion (shadow only)')}`,
     `${i(2)}${K('fired')}: ${Bl(s.wt.fired)}, ${K('direction')}: ${wdir?S(wdir):NU},${c('the tower’s own call, formed blind to the gates')}`,
-    `${i(2)}${K('magnitude_sigma')}: ${N(s.wt.mag)},${c('expected move size in σ — this drives the ▶▶ NEXT read on the map')}`,
+    `${i(2)}${K('magnitude_sigma')}: ${N(s.wt.mag)},${c('the size of the tower’s call, in σ of a typical day')}`,
     `${i(2)}${K('stance')}: ${s.wt.stance?S(s.wt.stance):NU},${c('fight (range erupts) / settle (pins) / no_read — graded separately from direction')}`,
     `${i(2)}${K('conviction')}: ${s.wt.conv==null?NU:N(s.wt.conv)},${c('share of votes that agreed — null on a single-vote scan (agreement needs ≥2 votes)')}`,
     `${i(2)}${K('votes')}: ${votes},${c('times it was asked (up to 3 on a fire) and the agreement among them')}`,
     `${i(2)}${K('agrees_with_gates')}: ${s.wt.agrees==null?NU:Bl(s.wt.agrees)},${c('did the reasoning head and the machine gates concur? (null = the row never carried the flag)')}`,
-    `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read — since wt-11 also written to state/spx_rag as a recallable memory slice')}`,
+    `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read — since wt-11 a memory slice also lands in state/spx_rag, pinned to the BLIND sentence (a revised row’s memory may differ from this one)')}`,
     `${i(1)}}`,
     '}',
   ];
@@ -7577,17 +7578,18 @@ async function loadLedgers(){
     for(let i=rows.length-1;i>=0;i--){
       const r=rows[i]; if(!r) continue;
       const c=r.watchtower_sweep||r.sweep;
-      if(c){ LEDGERS={day:r.day||null, sweep:c, legacy:false}; break; }
-      // old-key rows only → remember we saw a graded past, but NEVER render the old cards
-      if(!LEDGERS && (r.watchtower||r.watchtower_scene)) LEDGERS={day:r.day||null, sweep:null, legacy:true};
+      if(c){ LEDGERS={day:r.day||null, sweep:c, stance:r.stance||null, legacy:false}; break; }
+      // old-key rows only → remember we saw a graded past, but NEVER render the old
+      // cards — and STOP: without the break an older legacy row overwrote a newer one
+      if(!LEDGERS && (r.watchtower||r.watchtower_scene)){ LEDGERS={day:r.day||null, sweep:null, stance:null, legacy:true}; break; }
     }
   }catch(e){ if(!LEDGERS) LEDGERS={day:null, sweep:null, legacy:false}; }   // a failed REFRESH must not wipe a good card
   if(!LEDGERS) LEDGERS={day:null, sweep:null, legacy:false};
   _ledgersLoading=false;   // re-entrant: the 20-min timer re-runs this so the nightly grade lands without a reload
   renderHeads();
 }
-const SWEEP_EXPLAIN='One Watchtower call = one row. Every minute, the call earns credit for how far price sat on its side and loses credit for how far it sat against — added up, that is the Score. WIN = right by both score and time; LOSS = wrong by both; MIXED = they disagree (reported, not scored). The day is a HIT when all the scores added together come out positive. A call ends only when the tower flips direction or the closing bell rings.';
-function sweepCardHTML(c, day, legacy){
+const SWEEP_EXPLAIN='One Watchtower call = one row. Every minute, the call earns credit for how far price sat on its side and loses credit for how far it sat against — added up, that is the Score. WIN = right by both score and time; LOSS = wrong by both; MIXED = they disagree (reported, not scored). The day is a HIT when the CLOSED calls’ scores add up positive (a still-pending call waits — it is excluded until it closes). A call ends only when the tower flips direction or the closing bell rings.';
+function sweepCardHTML(c, day, legacy, stance){
   const num=(v,dp=2)=>(v==null||isNaN(v))?'—':(+v).toFixed(dp);
   const sgn=(v,dp=3)=>(v==null||isNaN(v))?'—':((v>=0?'+':'')+(+v).toFixed(dp));
   const pct=v=>(v==null||isNaN(v))?'—':Math.round(v*100)+'%';
@@ -7606,6 +7608,15 @@ function sweepCardHTML(c, day, legacy){
   const net=c.net_area_sess, hit=c.day_hit==='hit'?true:c.day_hit==='miss'?false:null;   // the card says "hit"/"miss"/null (sign of Σ area)
   const dot=hit===true?'var(--jade)':hit===false?'var(--coral)':'var(--ink-faint)';
   const era=[c.prompt_version, c.sweep_grade_v!=null?('sweep_v'+c.sweep_grade_v):null].filter(Boolean).join(' · ');
+  /* fidelity audit 08-10: a graded record from a RETIRED era must say so — an
+     era bump resets the ledger (the promotion gate era-filters), and this card
+     was presenting a wt-10 grade under a wt-11 tower with no signal */
+  const eraStale=(c.prompt_version&&SYS.wtEra&&c.prompt_version!==SYS.wtEra)
+    ?`<div class="lg-sub" style="color:var(--lantern)">graded under ${c.prompt_version} — the live tower is ${SYS.wtEra}; a new era's ledger starts on its first decided day (the promotion gate reads one era at a time)</div>`:'';
+  /* the stance card (fight/settle — the tower's second graded axis, N4) is in
+     the nightly record and had no surface anywhere; band σ is its own dial */
+  const stanceHTML=(stance&&stance.n)
+    ?`<div class="lg-sub" data-tip="The tower's second graded answer: FIGHT (range erupts) vs SETTLE (pins). Accuracy over the day's judged scans, banded at ±${num(stance.band_sigma,2)}σ — the stance grader's own dial, separate from the chop band." data-name="Stance record">stance ${pct(stance.acc)} on ${stance.n}${stance.fight?` · fight ${stance.fight.wins??0}/${stance.fight.n??0}`:''}${stance.settle?` · settle ${stance.settle.wins??0}/${stance.settle.n??0}`:''}</div>`:'';
   const hue=v=>v>=0?'var(--jade)':'var(--coral)';
   // the slice table — one row per CALL, newest first. 2026-07-18 rework: 11 engine
   // columns → 9 human ones. Bars and Dur% said the same thing (merged as "Time right"),
@@ -7659,9 +7670,10 @@ function sweepCardHTML(c, day, legacy){
     </div>
     <div class="lg-hero" data-tip="${SWEEP_EXPLAIN}" data-name="The day's score">
       <b style="color:${net!=null&&isFinite(net)?hue(net):'var(--ink)'}">${sgn(net)}</b>
-      <span>the day's whole score — every call added up${hit!=null?` · <b style="color:${hit?'var(--jade)':'var(--coral)'}">day ${hit?'HIT':'MISS'}</b>`:''}${day?' · '+day:''}</span>
+      <span>the day's whole score — every CLOSED call added up (pending ones wait)${hit!=null?` · <b style="color:${hit?'var(--jade)':'var(--coral)'}">day ${hit?'HIT':'MISS'}</b>`:''}${day?' · '+day:''}</span>
     </div>
     <div class="lg-sub">${c.n_calls!=null?c.n_calls:calls.length} calls · <span style="color:var(--jade)">${c.wins??0}W</span> / <span style="color:var(--coral)">${c.losses??0}L</span> / <span style="color:var(--lantern)">${c.mixed??0}M</span>${c.pending?` · ${c.pending} pending`:''}</div>
+    ${eraStale}${stanceHTML}
     <div class="lg-grid">
       <div class="lg-stat" data-tip="the typical call spent this share of its life with price on the right side"><div class="k">Time right · typical</div><div class="v">${pct(mDur)}</div></div>
       <div class="lg-stat" data-tip="on a typical minute, how far price sat in the typical call's favor"><div class="k">Edge σ · typical</div><div class="v">${num(mFav)}</div></div>
@@ -7740,7 +7752,7 @@ function renderHeads(){
   $("#p-heads").innerHTML = `
     <div class="phead"><div><h2>Processor</h2><div class="desc">The Sweep Ledger at ${s.t} — every Watchtower call graded by signed area, the day on one page</div></div></div>
     <div class="ledgers">
-      ${sweepCardHTML(LEDGERS&&LEDGERS.sweep, LEDGERS&&LEDGERS.day, LEDGERS&&LEDGERS.legacy)}
+      ${sweepCardHTML(LEDGERS&&LEDGERS.sweep, LEDGERS&&LEDGERS.day, LEDGERS&&LEDGERS.legacy, LEDGERS&&LEDGERS.stance)}
     </div>`;
   document.querySelectorAll('#p-heads .lg-tablewrap').forEach((el,i)=>{ if(keepScroll[i]) el.scrollTop=keepScroll[i]; });
   lgBindTips();
@@ -7825,15 +7837,24 @@ function rpPriceDomain(){
   const pad=(hi-lo)*0.08 || 5; return {lo:lo-pad, hi:hi+pad};
 }
 // Outcomes come from the SERVER (/api/replay): each fire's `outcome` is its parent SWEEP
-// call's verdict, so the tab agrees with the Sweep Ledger card exactly. If that endpoint
-// is unreachable (older server), fall back to the legacy client rule: 0.30σ
-// target-before-stop, ≤2h and to the close (win/loss/scratch only — never a sweep verdict).
+// call's verdict — but fires are per-scan MARKERS, and a reaffirmed call draws several,
+// so counting fires is not counting calls (the head's tally reads RP.swp for that). The
+// authoritative grade is the sweep's AREA rule (signed area vs the entry + duration
+// majority, closed on dir_flip/session_close) — there is no target barrier in it; its
+// only σ constant is the 0.20σ stop that freezes mfe_before_stop. If the endpoint is
+// unreachable (older server), fall back to the legacy client rule below: 0.30σ
+// target-before-stop, ≤2h and to the close (win/loss/scratch only — never a sweep verdict,
+// and the client rule's constants are NOT the grader's).
 const RP_TARGET=0.30, RP_STOP=0.30, RP_HOLD_MIN=120;   // legacy fallback rule only
 async function rpFetchGraded(day){
   try{
     const r=await fetch(`/api/replay?day=${day}`,{cache:'no-store'}); if(!r.ok) return null;
     const j=await r.json(); if(!j||!Array.isArray(j.fires)) return null;
-    return { target:j.target_sigma||RP_TARGET, stop:j.stop_sigma||RP_STOP,
+    /* the server ships no target (the sweep grade is area-based); the one σ it
+       does ship is sweep.params.stop_sigma — read it instead of pretending
+       j.target_sigma/j.stop_sigma exist (they never did) */
+    return { target:RP_TARGET,
+      stop:(j.sweep&&j.sweep.params&&isFinite(j.sweep.params.stop_sigma))?j.sweep.params.stop_sigma:RP_STOP,
       byTs:new Map(j.fires.map(fr=>[fr.ts,{ outcome:fr.outcome, ttr_min:fr.ttr_min,
         mfe:fr.mfe_sigma, mae:fr.mae_sigma, move60:fr.move_60m }])),
       // the Sweep Ledger card rides the SAME on-demand grade, so the area shading appears
@@ -8397,11 +8418,17 @@ function rpStream(s){
     :s.sg.health!=='OK'?`SPY tape ${s.sg.health==='FEED-LOST'?'lost':'degraded'} — stood down`
     :s.sg.sat?'session saturated — verdicts say nothing'
     :sgAll.length?(sgBothWalls?'BOTH walls under siege — no single side · ':'')+sgAll.map(sgWord).join(' · ')
+    /* fidelity audit 08-10: a near-spot touch is SUPPRESSED (an ATM artifact
+       until the baseline is robust), which is a different fact from "no touch" */
+    :(s.sg.towers||[]).some(t=>t.near&&!t.verdict)?'towers watched · near-spot reads suppressed (ATM artifact guard)'
     :'towers watched · no touch verdict', !!s.sg);
   // — sensory (top → base) —
   const ev=s.evl;
+  /* fidelity audit 08-10: the lens records ONLY on event days (a non-event day
+     leaves the diary key absent by design) — an absent key is a quiet calendar,
+     not a recording gap */
   push('Event Lens','sensory','none',
-    ev?(ev.kind?`${ev.kind}${ev.ratio!=null?` · ratio ${f(ev.ratio,2)}`:''}`:'no event today'):'not recorded this day', !!ev);
+    ev?(ev.kind?`${ev.kind}${ev.ratio!=null?` · ratio ${f(ev.ratio,2)}`:''}`:'event day · phase pending'):'no scheduled event today (the lens records only on event days)', !!ev);
   const gr=s.groll;
   const grDir=gr&&gr.div?(gr.dir==='far_above'?'up':gr.dir==='far_below'?'down':'flat'):'flat';   // divergence_dir = far_above/far_below
   // N12: an ACCELERANT strike (net short γ) must never be worded as "the pin" —
@@ -8410,14 +8437,18 @@ function rpStream(s){
     gr?(gr.div?(gr.kind==='accelerant'
         ?`0DTE mass at ${f(gr.zw,0)} is net SHORT γ — fuel, not a defended pin (structural wall ${f(gr.fw,0)})`
         :`pin may roll ${grDir==='up'?'up':grDir==='down'?'down':'sideways'}${gr.zw!=null&&gr.fw!=null?` (${f(gr.zw,0)}→${f(gr.fw,0)})`:''}`)
-      :'walls aligned'):'not recorded this day', !!gr);
+      /* fidelity audit 08-10: the sensor hard-gates on its UW mark's freshness —
+         a whole day of absence usually means the mark froze, not a pre-sensor day */
+      :'walls aligned'):'no roll read (sensor absent or its UW mark stale)', !!gr);
   const rr=s.rr;
   push('Range Ruler','sensory','none',
     rr&&rr.cons!=null?`${Math.round(rr.cons*100)}% of ±${f(rr.emo??rr.em,0)}pt budget used`:'not recorded this day', !!(rr&&rr.cons!=null));
-  const sp=s.spd;
+  /* fidelity audit 08-10: same quality gate as the table's Speed column — a
+     'thin' read voted in the Lean while the cell beside it refused to print */
+  const sp=(s.spd&&s.spd.q==='ok')?s.spd:null;
   const spDir=sp?(sp.jsign==='up'?'up':sp.jsign==='down'?'down':sp.down==null?'flat':sp.down>0.6?'down':sp.down<0.4?'up':'flat'):'none';   // jump-sign first, else semivar down-share
   push('Speedometer','sensory', spDir,
-    sp?(sp.jsign?`jolt ${sp.jsign==='up'?'↑':'↓'}${sp.jz!=null?` · z ${f(sp.jz,1)}`:''}`:`${sp.pace!=null?`pace ${f(sp.pace,1)}×`:'running'}${sp.down!=null?(sp.down>0.6?' · downside heavy':sp.down<0.4?' · upside tilt':''):''}`):'not recorded this day', !!sp);
+    sp?(sp.jsign?`jolt ${sp.jsign==='up'?'↑':'↓'}${sp.jz!=null?` · z ${f(sp.jz,1)}`:''}`:`${sp.pace!=null?`pace ${f(sp.pace,1)}×`:'running'}${sp.down!=null?(sp.down>0.6?' · downside heavy':sp.down<0.4?' · upside tilt':''):''}`):(s.spd?'read too thin this scan':'not recorded this day'), !!sp);
   const tilt=s.lob&&s.lob.tilt;
   push('Flow','sensory', dv(tilt,0.02,-0.02),
     tilt==null?'no book read':Math.abs(tilt)<0.02?'balanced tape':`${tilt>0?'buyers':'sellers'} leaning`, tilt!=null);
@@ -8455,11 +8486,22 @@ function rpReadout(now,t){
   } else call=`<span class="who">🗼 Watchtower</span> · <span style="color:var(--ink-dim)">stands aside</span>${stn}`;
   const lab={win:'right',loss:'wrong',mixed:'mixed',pending:'open',scratch:'flat',live:'live'}[curState];
   const verdict=curFr?`<span class="rp-wt-verdict ${curState}">${lab}</span>`:'';
-  const dec=t.win+t.loss;
+  /* fidelity audit 08-10: the tally reads the SWEEP calls when the server
+     graded the day — fires are per-scan markers and a reaffirmed call draws
+     several of them, so a per-fire count double-books what the Sweep Ledger
+     grades as ONE call (measured 08-07: fires said 2–0 where the ledger says
+     1 win). Reveal-with-the-scrub: a call counts once the playhead passes
+     its close. The per-fire count remains the fallback for ungraded days. */
+  let rw=t.win, rl=t.loss, rlab='today';
+  if((RP.swp||[]).length){
+    const closed=RP.swp.filter(c=>c.tClose<=now&&(c.verdict==='win'||c.verdict==='loss'));
+    rw=closed.filter(c=>c.verdict==='win').length; rl=closed.length-rw; rlab='today (sweep)';
+  }
+  const dec=rw+rl;
   RP.els.wthead.innerHTML=
     `<i class="rp-wt-mark"></i>`+
     `<div class="rp-wt-main"><div class="rp-wt-call">${call}</div><div class="rp-wt-scene">“${scene}”</div></div>`+
-    `<div class="rp-wt-side">${verdict}<span class="rp-wt-rec">today ${t.win}–${t.loss}${dec?` · ${Math.round(100*t.win/dec)}%`:''}</span></div>`;
+    `<div class="rp-wt-side">${verdict}<span class="rp-wt-rec">${rlab} ${rw}–${rl}${dec?` · ${Math.round(100*rw/dec)}%`:''}</span></div>`;
   // (the per-moment layer stream + consensus tally moved to the TABLE view's Lean
   //  column, 2026-07-18 — the chart keeps only the head card)
 }
@@ -8479,7 +8521,7 @@ const RP_WHY_ORDER=['Gravity','Flow','Motion','Speedometer','Gamma Roll','Siege'
 function rpWhyPhrase(name,s,dir){
   switch(name){
     case 'Gravity': return (s.magnet!=null&&isFinite(s.magnet))?`gravity is pulling toward ${f(s.magnet,0)}`:`gravity is leaning ${dir}`;
-    case 'Flow':{ const t=s.lob&&s.lob.tilt; return (t!=null&&Math.abs(t)>=0.02)?`${t>0?'buyers':'sellers'} are leaning in`:'the flow of trades agrees'; }
+    case 'Flow':{ const t=s.lob&&s.lob.tilt; return (t!=null&&Math.abs(t)>=0.02)?`${t>0?'buyers':'sellers'} are leaning on the order book`:'the order book agrees'; }   // this "Flow" = the SPY order book (lob_flow.tilt), NOT the options-tape Flow column
     case 'Motion': return `the map is opening ${dir}`;
     case 'Speedometer': return 'the move is picking up speed';
     case 'Gamma Roll': return `the pin may roll ${dir}`;
@@ -8641,9 +8683,10 @@ async function rpLoadDay(di){
    actually SAYING at the moment the tower spoke?" — one row per judged scan, one column
    per lens, each cell an arrow (which way it pointed) plus the number behind it.
 
-   Two columns carry a "was blind" tag: SHOVE and SPEED were computed on every scan since
-   the Break Lens build and never reached the Watchtower prompt until wt-6/m8 (2026-07-13),
-   the day all five of its CALLs fired into the absorbing side of the book and all five lost.
+   (Historical note: SHOVE and SPEED were computed on every scan since the Break Lens
+   build and never reached the Watchtower prompt until wt-6/m8 (2026-07-13), the day all
+   five of its CALLs fired into the absorbing side of the book and all five lost — no
+   per-cell tag marks this; the eras are in the Anatomy tab's changelog.)
    The tag stays until the wt-6 record is long enough to retire it — it is the whole reason
    this table exists: a reading nobody can see is a reading nobody uses.
 
@@ -8695,12 +8738,12 @@ function rpRenderTable(){
     <th scope="col" class="lt-grav" data-tip="Whether dealers are LONG gamma (their hedging calms the market — moves get damped) or SHORT (their hedging amplifies — moves get fuel). This is the master switch for reading everything else.">Gamma<span class="nw">gravity</span></th>
     <th scope="col" class="lt-grav" data-tip="The price level dealer positioning pulls toward; the arrow says which side of the current price it sits on. Under short gamma it is a location, not a target.">Magnet<span class="nw">gravity</span></th>
     <th scope="col" class="lt-grav" data-tip="Which direction dealer hedging would FEED a move (the accelerant side) versus the side it would swallow. Calling into the absorbing side needs real flow behind it.">Shove<span class="nw">gravity · book slope</span></th>
-    <th scope="col" class="lt-speed" data-tip="How fast the tape is running versus a normal day by this time (the × number) and who owns the motion — the percentage is how much of the movement was selling.">Speed<span class="nw">speedometer</span></th>
+    <th scope="col" class="lt-speed" data-tip="Variance the tape has SPENT versus a normal day by this time — the × number is a variance ratio, so 4.0× means about twice the usual movement, not four times. The percentage is how much of the movement was selling.">Speed<span class="nw">speedometer</span></th>
     <th scope="col" class="lt-motion" data-tip="Which side of the dealer map is structurally weaker right now — the direction the path opens if price gets pushed.">Soft side<span class="nw">motion</span></th>
     <th scope="col" class="lt-break" data-tip="The escape detector. COCKED means a breakout trigger is armed — a place to watch, not a direction. FIRED means price actually broke out, and only that is a directional fact.">Break lens</th>
     <th scope="col" class="lt-fade" data-tip="The snap-back detector: armed means price looks stretched enough to consider a bet on it returning toward the average.">Fade lens</th>
     <th scope="col" class="lt-fade" data-tip="How far price is stretched, in σ — from yesterday's close (gap) and from today's average price (vwap). Negative means below.">Stretch<span class="nw">fade · gap · vwap σ</span></th>
-    <th scope="col" class="lt-flow" data-tip="The day's running balance of option buying versus selling pressure. A whole-day average — it decays nothing and cannot show a turn.">Flow<span class="nw">options flow</span></th>
+    <th scope="col" class="lt-flow" data-tip="The day's running balance of option buying versus selling pressure (the options aggressor tape — a different sensor from the Lean list's order-book Flow). A whole-day average — it decays nothing and cannot show a turn.">Flow<span class="nw">options tape</span></th>
     <th scope="col" data-tip="How many main-stack layers pointed up versus down at that moment. Tap the cell to see exactly which layers and what each was thinking.">Lean<span class="nw">main stack ▲/▼ · tap</span></th>
     <th scope="col" class="rp-sgcol lt-seffort" data-tip="The siege deck's verdict at a touched wall — REVERSED SIGN: heavy volume at the wall (SIEGE) means expect it to BREAK; a quiet touch means expect it to HOLD.">Siege<span class="nw">effort-at-wall · reversed sign</span></th>
     <th scope="col" class="rp-sgcol2 lt-sscore" data-tip="How each siege verdict actually graded once the fight resolved — ✓ means the doctrine called it, ✕ means it missed. Open means the episode has not graded yet.">Outcome<span class="nw">scorekeeper</span></th>
@@ -8743,7 +8786,7 @@ function rpRenderTable(){
     const spBits=[sp2&&sp2.pace!=null?`${(+sp2.pace).toFixed(1)}×`:'',
                   dn!=null?`${Math.round(dn*100)}% sell`:''].filter(Boolean).join(' · ');
     const speed=!spBits?rpArrow(null)
-      : `${rpArrow(dn==null?'flat':dn>=0.6?'down':dn<=0.4?'up':'flat')} <span class="rp-sm" title="pace = today's movement vs a normal day by this time · sell % = share of the motion that was selling">${spBits}</span>`;
+      : `${rpArrow(dn==null?'flat':dn>=0.6?'down':dn<=0.4?'up':'flat')} <span class="rp-sm" title="pace = variance spent vs a normal day by this time (4.0× ≈ 2× the usual movement — it is a variance ratio) · sell % = share of the motion that was selling">${spBits}</span>`;
 
     // soft side: a ~50% gamma split is a coin flip wearing a direction's clothes — say so
     const sAb=s.motion&&s.motion.above;
@@ -8755,6 +8798,7 @@ function rpRenderTable(){
     const bs=s.brk&&s.brk.state;
     const brk = bs==='cocked' ? `<span class="rp-pill warn">cocked ${s.brk.dir!=='none'?s.brk.dir:''}</span>`
               : s.brk&&s.brk.fired ? `<span class="rp-pill up">FIRED ${s.brk.dir!=='none'?s.brk.dir:''}</span>`
+              : bs==='decocked' ? '<span class="rp-pill mute" title="the trigger armed and then withdrew — a different fact from never arming">decocked</span>'
               : bs==='expired' ? '<span class="rp-pill mute">expired</span>'
               : '<span class="rp-pill mute">idle</span>';
 
@@ -9045,7 +9089,7 @@ function rpEnsureDom(){
       <div class="rp-wt-head" id="rp-wt-head"></div>
     </div>
     <div class="rp-legend">
-      <span class="k">markers +1h:</span>
+      <span class="k">markers (sweep grade):</span>
       <span><i style="background:var(--jade)"></i>right</span>
       <span><i style="background:var(--coral)"></i>wrong</span>
       <span><i style="background:var(--lantern)"></i>mixed / live</span>
@@ -9100,7 +9144,26 @@ function rpSyncDays(reload){
   if(!RP.days.length){ rpEmpty(); return; }
   let di=0; if(prev){ const j=RP.days.findIndex(d=>d.day===prev); if(j>=0) di=j; }
   RP.di=di;
-  if(reload||wasEmpty) rpLoadDay(di); else rpUpdateDayNav();
+  if(reload||wasEmpty){ rpLoadDay(di); return; }
+  /* fidelity audit 08-10: the LIVE day used to freeze at whatever scan set was
+     present when the tab first loaded — the 20-min sync only refreshed the day
+     NAV. If the selected day has grown, soft-reload it, preserving the
+     playhead's ABSOLUTE time (the day span stretches as scans land, so the raw
+     0..1 fraction would drift; a user parked mid-scrub stays parked, a user at
+     the live edge stays at the live edge). */
+  const cur=RP.days[RP.di];
+  if(cur && cur.scans && RP.scans && cur.scans.length>RP.scans.length){
+    const oldSpan=(isFinite(RP.t0)&&isFinite(RP.t1)&&RP.t1>RP.t0)?(RP.t1-RP.t0):null;
+    const oldPos=RP.pos, atEdge=oldPos>=0.995, wasPlaying=RP.playing;
+    Promise.resolve(rpLoadDay(RP.di)).then(()=>{
+      if(atEdge) RP.pos=1;
+      else if(oldSpan && isFinite(RP.t0) && isFinite(RP.t1) && RP.t1>RP.t0)
+        RP.pos=Math.max(0,Math.min(1, oldPos*oldSpan/(RP.t1-RP.t0)));
+      RP.playing=wasPlaying; rpPaint();
+    }).catch(()=>{});
+    return;
+  }
+  rpUpdateDayNav();
 }
 function initReplay(){ rpEnsureDom(); rpSyncDays(true); }
 
