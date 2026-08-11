@@ -3726,7 +3726,7 @@ function gxPaint(){
       if(MAP._ordkey!==GX_ASOF){ MAP._ordkey=GX_ASOF;
         MAP._ord=gxOrderLean(D.flowR, (D.dex&&Array.isArray(D.dex.fbs))?D.dex.fbs:null); }
       const hm=gxHudModel({ sign:D.sign, regime:D.regime, ladder:D.ladder, spot:D.spot, gaps:_hudGaps,
-        wt:wtI?{up:wtI.up, tgt:wtI.tgt, conv:wtI.conv}:null, orders:MAP._ord });
+        wt:wtI?{up:wtI.up, tgt:wtI.tgt, conv:wtI.conv??wtI.convStated}:null, orders:MAP._ord });
       if(hm.id!==MAP._hudkey){
         MAP._hudkey=hm.id;
         if(hm.present){
@@ -5723,7 +5723,9 @@ function gxOverview(){
      lesson), so it rides as bare context, never a verdict. */
   const flow=fv!=null
     ? ((Math.abs(fv)<0.05?'flow flat':fv>0?'buyers pressing':'sellers pressing')+' now')
-    : (isFinite(D.flow)?`day flow ${D.flow>=0?'+':''}${(+D.flow).toFixed(2)} (context only)`:'flow unmeasured');
+    /* Number.isFinite, not the coercing global — isFinite(null) is true, so the
+       old guard minted "day flow +0.00" out of a null (diff review 08-10) */
+    : (Number.isFinite(D.flow)?`day flow ${D.flow>=0?'+':''}${(+D.flow).toFixed(2)} (context only)`:'flow unmeasured');
   const tot=(D.gAbove+D.gBelow)||1, aP=Math.round(D.gAbove/tot*100);
   // DATED BOOK — the per-band info chips became the tenor DATE PILLS above the chart
   // (07-25, merge not duplicate): walls + OI age now ride each pill's tooltip. Only
@@ -6038,7 +6040,7 @@ function applyMap(r){
   T={ spot:spotNow, flip:r.gamma_flip??D.flip, callWall:gv.call_wall_gamma??r.call_wall??D.callWall, putWall:gv.put_wall_gamma??r.put_wall??D.putWall,
     magnet:gv.magnet??g.magnet??D.magnet /* gex_views LEADS (locked policy) */, pin:gv.pin_centroid??g.pin_centroid??D.pin,
     gAbove:g.gamma_above_spot??D.gAbove, gBelow:g.gamma_below_spot??D.gBelow,
-    flow:g.aggressor_flow??0, shoveUp:sh.shove_up_margin??D.shoveUp,
+    flow:g.aggressor_flow??null, shoveUp:sh.shove_up_margin??D.shoveUp,
     shoveDown:sh.shove_down_margin??D.shoveDown, sigma:r.sigma??D.sigma,
     sign:r.gamma_sign, regime:r.regime, downFlip:sh.down_flips||false };
   GX_ASOF = r.ts || GX_ASOF;                                     // freshness anchor: the newest row's own clock
@@ -6108,7 +6110,7 @@ function applyWt(w, rows){
        null on every single-vote scan (the live majority), so a Map that only
        reads conv never shows a number; stated is the model's own, labeled */
     convStated:w.conviction_stated??null,
-    votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??1}:null,
+    votes:w.votes?{n:w.votes.n??1, agree:w.votes.agreement??w.votes.agree??null}:null,
     /* wt-11: carry the gates-disagreement flag to the Map (normWt always had it;
        this path dropped it — the fourth field-set divergence bug pattern) */
     agrees:(w.agrees_with_gates!==undefined)?w.agrees_with_gates:(w.agrees??null),
@@ -8430,8 +8432,9 @@ function rpStream(s){
     :s.sg.sat?'session saturated — verdicts say nothing'
     :sgAll.length?(sgBothWalls?'BOTH walls under siege — no single side · ':'')+sgAll.map(sgWord).join(' · ')
     /* fidelity audit 08-10: a near-spot touch is SUPPRESSED (an ATM artifact
-       until the baseline is robust), which is a different fact from "no touch" */
-    :(s.sg.towers||[]).some(t=>t.near&&!t.verdict)?'towers watched · near-spot reads suppressed (ATM artifact guard)'
+       until the baseline is robust), which is a different fact from "no touch"
+       — but only an ENGAGED/RESOLVED tower was touched; a watching one wasn't */
+    :(s.sg.towers||[]).some(t=>t.near&&!t.verdict&&t.status&&t.status!=='watching')?'towers watched · near-spot reads suppressed (ATM artifact guard)'
     :'towers watched · no touch verdict', !!s.sg);
   // — sensory (top → base) —
   const ev=s.evl;
@@ -8477,7 +8480,15 @@ function rpReadout(now,t){
   const s=rpScanAtMs(now)||{};
   const curFr=s.ts&&RP.fireByTs?RP.fireByTs.get(s.ts):null;
   const curState=curFr?(now>=curFr.lockT?curFr.verdict:'live'):'-';
-  const key=(s.ts||'-')+`|${t.win}|${t.loss}|${t.scr}|${t.live}|${curState}`;
+  /* the sweep tally is computed BEFORE the repaint memo and rides its key —
+     the day's LAST call closes at the bell, when no per-fire value changes,
+     and a key without rw|rl froze the head one call short (diff review 08-10) */
+  let rw=t.win, rl=t.loss, rlab='today';
+  if((RP.swp||[]).length){
+    const closed=RP.swp.filter(c=>c.tClose<=now&&(c.verdict==='win'||c.verdict==='loss'));
+    rw=closed.filter(c=>c.verdict==='win').length; rl=closed.length-rw; rlab='today (sweep)';
+  }
+  const key=(s.ts||'-')+`|${t.win}|${t.loss}|${t.scr}|${t.live}|${curState}|${rw}|${rl}`;
   if(key===RP._rk) return; RP._rk=key;
   const w=s.wt;
   // --- the Watchtower head (the decision the stream feeds into) ---
@@ -8497,17 +8508,12 @@ function rpReadout(now,t){
   } else call=`<span class="who">🗼 Watchtower</span> · <span style="color:var(--ink-dim)">stands aside</span>${stn}`;
   const lab={win:'right',loss:'wrong',mixed:'mixed',pending:'open',scratch:'flat',live:'live'}[curState];
   const verdict=curFr?`<span class="rp-wt-verdict ${curState}">${lab}</span>`:'';
-  /* fidelity audit 08-10: the tally reads the SWEEP calls when the server
-     graded the day — fires are per-scan markers and a reaffirmed call draws
-     several of them, so a per-fire count double-books what the Sweep Ledger
-     grades as ONE call (measured 08-07: fires said 2–0 where the ledger says
-     1 win). Reveal-with-the-scrub: a call counts once the playhead passes
-     its close. The per-fire count remains the fallback for ungraded days. */
-  let rw=t.win, rl=t.loss, rlab='today';
-  if((RP.swp||[]).length){
-    const closed=RP.swp.filter(c=>c.tClose<=now&&(c.verdict==='win'||c.verdict==='loss'));
-    rw=closed.filter(c=>c.verdict==='win').length; rl=closed.length-rw; rlab='today (sweep)';
-  }
+  /* fidelity audit 08-10: rw/rl computed above the memo — the tally reads the
+     SWEEP calls when the server graded the day (fires are per-scan markers; a
+     reaffirmed call draws several, so a per-fire count double-books what the
+     ledger grades as ONE call — measured 08-07: fires said 2–0 where the
+     ledger says 1 win). Reveal-with-the-scrub: a call counts once the
+     playhead passes its close. Per-fire count = the ungraded-day fallback. */
   const dec=rw+rl;
   RP.els.wthead.innerHTML=
     `<i class="rp-wt-mark"></i>`+
@@ -9156,21 +9162,23 @@ function rpSyncDays(reload){
   let di=0; if(prev){ const j=RP.days.findIndex(d=>d.day===prev); if(j>=0) di=j; }
   RP.di=di;
   if(reload||wasEmpty){ rpLoadDay(di); return; }
-  /* fidelity audit 08-10: the LIVE day used to freeze at whatever scan set was
-     present when the tab first loaded — the 20-min sync only refreshed the day
-     NAV. If the selected day has grown, soft-reload it, preserving the
-     playhead's ABSOLUTE time (the day span stretches as scans land, so the raw
-     0..1 fraction would drift; a user parked mid-scrub stays parked, a user at
-     the live edge stays at the live edge). */
+  /* fidelity audit 08-10 (+ diff review): the LIVE day used to freeze at
+     whatever scan set was present when the tab first loaded — the 20-min sync
+     only refreshed the day NAV. If the selected day has grown, soft-reload it
+     and restore the playhead: RP.t0/t1 are the FIXED 09:30–16:00 session
+     window, so the 0..1 fraction is already absolute-time-stable — restoring
+     it verbatim is the whole preservation. A day-nav click during the reload
+     wins (the .then re-checks the selected day before stamping anything), and
+     a playing session actually resumes (rpLoadDay stops the animation loop —
+     restoring the flag without restarting rAF froze playback). */
   const cur=RP.days[RP.di];
   if(cur && cur.scans && RP.scans && cur.scans.length>RP.scans.length){
-    const oldSpan=(isFinite(RP.t0)&&isFinite(RP.t1)&&RP.t1>RP.t0)?(RP.t1-RP.t0):null;
-    const oldPos=RP.pos, atEdge=oldPos>=0.995, wasPlaying=RP.playing;
+    const curDay=cur.day, oldPos=RP.pos, wasPlaying=RP.playing;
     Promise.resolve(rpLoadDay(RP.di)).then(()=>{
-      if(atEdge) RP.pos=1;
-      else if(oldSpan && isFinite(RP.t0) && isFinite(RP.t1) && RP.t1>RP.t0)
-        RP.pos=Math.max(0,Math.min(1, oldPos*oldSpan/(RP.t1-RP.t0)));
-      RP.playing=wasPlaying; rpPaint();
+      if(!RP.days[RP.di]||RP.days[RP.di].day!==curDay) return;   // nav won the race
+      RP.pos=Math.max(0,Math.min(1,oldPos));
+      if(wasPlaying){ RP.playing=true; RP.last=0; RP.raf=requestAnimationFrame(rpFrame); rpSyncPlayBtn(); }
+      rpPaint();
     }).catch(()=>{});
     return;
   }
@@ -9392,8 +9400,10 @@ function snkAemModel(r){
   const em=num(r.range_ruler&&r.range_ruler.em_points);
   /* fidelity audit 08-10: skew_v gate — every sibling source is version-gated
      (ladder_v/em_v/flows_v/net_exposure_v); iv_skew was the one un-gated read,
-     so a future skew_v bump would silently pool two eras into the drawn band */
-  const d=num(r.iv_skew&&r.iv_skew.skew_v===1&&r.iv_skew.down_share), sp=num(r.spot);
+     so a future skew_v bump would silently pool two eras into the drawn band.
+     Two-step so a gated-out read is null, never num(false)=0 (diff review). */
+  const sk=(r.iv_skew&&r.iv_skew.skew_v===1)?r.iv_skew:null;
+  const d=sk?num(sk.down_share):null, sp=num(r.spot);
   if(em!=null&&em>0&&d!=null&&d>0&&d<1){
     const dn=2*em*d, up=2*em*(1-d);
     return {em_up_pts:up, em_down_pts:dn,
@@ -10066,17 +10076,23 @@ function snkPull(m, sp, step){
    window rule the wt-11 payload uses (28-45 min, no outage-stretched refs). */
 function snkDexD30(rows){
   if(!Array.isArray(rows)||rows.length<2) return null;
-  const tot=m=>(m.ne&&isFinite(m.ne.net_delta_total))?+m.ne.net_delta_total
-    :(m.dex&&m.dex.tot!=null&&isFinite(m.dex.tot)?+m.dex.tot:null);
-  const cur=rows[rows.length-1], cv=tot(cur), tNow=+new Date(cur.ts||0);
-  if(cv==null||!isFinite(tNow)) return null;
+  /* SOURCE-MATCHED pairs (diff review 08-10): ne.net_delta_total and dex.tot
+     are the same quantity from two recorders, but differencing one against
+     the other across a version boundary could mint a phantom Δ — the ref is
+     read from the SAME field the current row used. */
+  const neT=m=>(m.ne&&isFinite(m.ne.net_delta_total))?+m.ne.net_delta_total:null;
+  const dxT=m=>(m.dex&&m.dex.tot!=null&&isFinite(m.dex.tot))?+m.dex.tot:null;
+  const cur=rows[rows.length-1], tNow=+new Date(cur.ts||0);
+  const src=neT(cur)!=null?neT:(dxT(cur)!=null?dxT:null);
+  if(!src||!isFinite(tNow)) return null;
+  const cv=src(cur);
   for(let i=rows.length-2;i>=0;i--){
     const t=+new Date(rows[i].ts||0); if(!isFinite(t)) continue;
     const age=(tNow-t)/60000;
     if(age<28) continue;
     if(age>45) break;                    // outage-shaped window — no honest 30m read
-    const rv=tot(rows[i]);
-    return rv!=null?cv-rv:null;
+    const rv=src(rows[i]);
+    return rv!=null?cv-rv:null;          // one look, like the backend's rule
   }
   return null;
 }
@@ -12293,7 +12309,7 @@ const SNDK = {
     el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`+readCard+`<div class="snk-tiles">
       <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b class="${gTot!=null?(gTot>=0?'j':'c'):''}">${snkSMoney(gTot)}</b>
         <i>${gSub}</i></div>
-      <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX). The naive net's sign is fixed by the book's assumed-sign formula — positive on every recorded row — so the level's sign is never news; only the CHANGE can be.">Dealer Delta</span><b>${snkMoney(dTot)}</b>
+      <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX). The naive net's sign is fixed by the book's assumed-sign formula — positive on every recorded row — so the level's sign is never news; only the CHANGE can be.">Dealer Delta</span><b>${(dTot!=null&&isFinite(dTot)&&dTot<0?'−':'')+snkMoney(dTot)}</b>
         <i>${(dD30!=null)?`<span class="${dD30>=0?'j':'c'}">${dD30>=0?'▲':'▼'} ${snkMoney(Math.abs(dD30))}</span> last 30m · `:''}sign fixed by the formula — watch the change${
           (m.flows&&m.flows.charm_wall!=null&&isFinite(m.flows.charm_wall))
             ?` · decay tilt → ${snkUsd(+m.flows.charm_wall,0)}`:''}</i></div>
