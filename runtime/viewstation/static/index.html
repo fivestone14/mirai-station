@@ -9390,7 +9390,10 @@ function snkExpiries(meta, todayIso){
 function snkAemModel(r){
   const num=v=>(v==null||!isFinite(v))?null:+v;
   const em=num(r.range_ruler&&r.range_ruler.em_points);
-  const d=num(r.iv_skew&&r.iv_skew.down_share), sp=num(r.spot);
+  /* fidelity audit 08-10: skew_v gate — every sibling source is version-gated
+     (ladder_v/em_v/flows_v/net_exposure_v); iv_skew was the one un-gated read,
+     so a future skew_v bump would silently pool two eras into the drawn band */
+  const d=num(r.iv_skew&&r.iv_skew.skew_v===1&&r.iv_skew.down_share), sp=num(r.spot);
   if(em!=null&&em>0&&d!=null&&d>0&&d<1){
     const dn=2*em*d, up=2*em*(1-d);
     return {em_up_pts:up, em_down_pts:dn,
@@ -10054,19 +10057,28 @@ function snkPull(m, sp, step){
   if(Math.abs(g-sp)<=2*st) return null;
   return { up:g>sp, tgt:g, dist:Math.abs(g-sp) };
 }
-// the DEX word ships as "token — plain-English caveat"; the leading token is snake_case
-// machine vocab (dealers_need_to_SELL_on_rallies) that must never reach the tile. Map the
-// known tokens to real English; else fall back to the caveat after the em-dash (already
-// English), else de-snake the bare token.
-function snkDexEnglish(word){
-  if(!word) return null;
-  const raw=String(word), tok=raw.split(' — ')[0].trim();
-  const MAP={
-    dealers_need_to_SELL_on_rallies:'Dealers sell into strength — read the size, not the sign',
-    dealers_need_to_BUY_on_dips:'Dealers buy into weakness — read the size, not the sign' };
-  if(MAP[tok]) return MAP[tok];
-  const dash=raw.indexOf(' — ');
-  return (dash>=0?raw.slice(dash+3).trim():'') || tok.replace(/_/g,' ').toLowerCase();
+/* fidelity audit 08-10: snkDexEnglish is GONE. Both words it translated —
+   dex_word and dex_flow_word — are on sndk_read's INADMISSIBLE list (dex_word
+   was the identical string on 756/756 rows and read as a permanent bearish
+   verdict; wt-11 deleted its SPX twin outright: a field the doctrine tells
+   you to ignore must not ship at all). What CAN be news is the change, so
+   the tile now computes the timestamp-true 30-min Δ instead — the same
+   window rule the wt-11 payload uses (28-45 min, no outage-stretched refs). */
+function snkDexD30(rows){
+  if(!Array.isArray(rows)||rows.length<2) return null;
+  const tot=m=>(m.ne&&isFinite(m.ne.net_delta_total))?+m.ne.net_delta_total
+    :(m.dex&&m.dex.tot!=null&&isFinite(m.dex.tot)?+m.dex.tot:null);
+  const cur=rows[rows.length-1], cv=tot(cur), tNow=+new Date(cur.ts||0);
+  if(cv==null||!isFinite(tNow)) return null;
+  for(let i=rows.length-2;i>=0;i--){
+    const t=+new Date(rows[i].ts||0); if(!isFinite(t)) continue;
+    const age=(tNow-t)/60000;
+    if(age<28) continue;
+    if(age>45) break;                    // outage-shaped window — no honest 30m read
+    const rv=tot(rows[i]);
+    return rv!=null?cv-rv:null;
+  }
+  return null;
 }
 // em_quality is engine bookkeeping: 'ok' means nothing to say (drop it), a non-ok token
 // carries a caveat worth humanizing. Returns '' or a ' · caveat' suffix.
@@ -10240,7 +10252,7 @@ function snkVectorRow(R, sigma){
   const tip='The model’s own read of the scene — direction and how far over ~30 min.'
     +'¦f:decoupled from the gated arrow above; they can disagree, and that is information'
     +(m!=null?`¦k:magnitude=${m.toFixed(2)}σ${dol.replace(' · ','=')}`:'')
-    +'¦n:a typical 30-min move here is ~0.08σ';
+    +'¦n:30-min moves here have a spread, not a typical size — half run under ~0.09σ, one in five tops 0.20σ (sr-5)';
   return `<div class="vec ${v}" data-name="Model vector" data-tip="${tip}">`
     +`<i>model vector</i><span>${glyph} ${word}</span></div>`;
 }
@@ -10305,7 +10317,8 @@ function snkReadCard(rd, now){
     +snkVectorRow(R, (rd.sigma!=null&&isFinite(rd.sigma))?+rd.sigma:null)
     +(R?`<p class="tr-next${aged?' aged':''}">${snkSafe(R.line)}`
         +`${aged?` <span style="color:var(--ink-faint)">· read is ${snkDur(age)} old</span>`:''}</p>`
-      :(rd.error?`<div class="br"><i>No sentence —</i> the last reading call failed (${snkSafe(rd.error)}); the arrow above is unaffected.</div>`:''))
+      :(rd.paused?`<div class="br"><i>Reasoning paused —</i> the wake gate fired but the sentence is switched off; every deterministic layer keeps running and rows keep landing.</div>`
+      :rd.error?`<div class="br"><i>No sentence —</i> the last reading call failed (${snkSafe(rd.error)}); the arrow above is unaffected.</div>`:''))
     +(R&&R.breaks_if?`<div class="br"><i>Changes if —</i> ${snkSafe(R.breaks_if)}</div>`:'')
     +(R&&R.cited?`<div class="ct">${snkSafe(R.cited)}</div>`:'')
     +flags+snkLayerChips(a?a.layers:null)+`</div>`;
@@ -10334,6 +10347,18 @@ async function openSnkHistModal(){
     const r=await fetch(`/api/raw/file?root=state&path=${rel}&limit=0`,{cache:'no-store'});
     const d=await r.json();
     rows=((d&&d.rows)||[]).filter(x=>x&&typeof x==='object'&&x.ts&&x.spot!=null&&isFinite(+x.spot));
+    /* fidelity audit 08-10: the store is ERA-STAMPED so a later read can never
+       blend two rule sets (sndk_read's own doctrine — the backend filters
+       r.era == ERA everywhere). Score only the file's NEWEST era; older-era
+       rows are counted and named, never silently pooled into one table. */
+    const eras=rows.map(x=>x.era).filter(Boolean);
+    if(eras.length){
+      const newest=eras[eras.length-1];
+      const older=rows.filter(x=>x.era&&x.era!==newest).length;
+      rows=rows.filter(x=>!x.era||x.era===newest);
+      if(older) SNDK._histEraNote=`${older} older-era read${older===1?'':'s'} excluded (the store is era-stamped — rule sets never blend) · scoring ${newest}`;
+      else SNDK._histEraNote=null;
+    } else SNDK._histEraNote=null;
   }catch(e){ return shell(`<div class="snkh-note">No reading history available — ${snkSafe(String((e&&e.message)||e))}.</div>`); }
   const T=s=>{ const t=Date.parse(s); return isFinite(t)?t:null; };
   const clock=t=>new Date(t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
@@ -10375,7 +10400,7 @@ async function openSnkHistModal(){
       +`<tr class="ln"><td colspan="4">${snkSafe(c.rd.line||'')}</td></tr>`;
   }).join('');
   shell(`<table class="snkh-tbl"><thead><tr><th>aiming from → to</th><th>call</th><th>aim</th><th>closest</th></tr></thead><tbody>${body}</tbody></table>
-    <div class="snkh-note">aim = price at issue ± size×σ, derived for this table — the reading never names a target ·
+    <div class="snkh-note">${SNDK._histEraNote?snkSafe(SNDK._histEraNote)+' · ':''}aim = price at issue ± size×σ, derived for this table — the reading never names a target ·
     the 30-min span is this table's scoring rule, not the model's · closest is from ~2-min scans, a wick between scans can beat it ·
     times are this device's timezone</div>`);
 }
@@ -10526,7 +10551,7 @@ function snkMiraiSVG(m, rd, P){
       +(clip?`¦f:target sits past the frame edge — drawn clamped`:'')
       +`¦f:separate from the gated arrow — they can disagree, and that is information`
       +(aged?`¦f:read is ${ageM}m old — memory, not news`:'')
-      +`¦n:a typical 30 min here moves ~0.08σ`;
+      +`¦n:30-min moves here have a spread — half under ~0.09σ, one in five over 0.20σ (sr-5)`;
     out.push(`<g${aged?' opacity=".5"':''}>`
       +`<circle cx="${xB}" cy="${yS.toFixed(1)}" r="2.2" fill="${hue}" opacity=".8"/>`
       +`<line x1="${xB}" x2="${xB}" y1="${yS.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:${hue};stroke-width:1.5;opacity:.55" stroke-dasharray="4 4"/>`
@@ -10652,7 +10677,7 @@ const _SNKI_KEY=[
   ['4','Arrow, or a grey dot','A direction only once the gate has earned it, otherwise a grey dot. Before the reading engine has written anything, this mark is the ungated raw magnet pull instead.'],
   ['5','Faint dashed mark','Where the last finished call was made, so a bad one stays visible. It marks that call’s start, never a target, and it holds until another call finishes.'],
   ['6','Greyed level','This level has not moved for at least half an hour. Faded so old information stops looking like news — hover it for exactly how long.'],
-  ['7','The read','The gated call, then the model’s own vector — its direction and expected travel, inferred cold from an unbiased snapshot (sr-2). The two can disagree; both always show. Then the sentence, and what would change it.'],
+  ['7','The read','The gated call, then the model’s own vector — its direction and expected travel, inferred cold from an unbiased snapshot (the sr-2 redesign; era now sr-5). The two can disagree; both always show. Then the sentence, and what would change it.'],
   ['8','Amber row','Either price already ran the way the arrow points, or the call’s evidence has expired and it is being held briefly before it drops.'],
   ['9','Gate chips','Which layers cleared their own bar. Magnet and Breadth read the same pile of gamma and clear together by construction; a lit Price path is a warning against the arrow, not support for it.'],
   ['10','Day chip','Calls versus puts among strikes near price, in this expiry only. It leaves out a third to a half of the day’s tape and can swing hard as price travels.'],
@@ -12222,7 +12247,7 @@ const SNDK = {
         <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX)">Dealer Delta</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k">Regime</span><b>—</b><i>awaiting first scan</i></div>
-        <div class="snk-tile"><span class="k">Expected Move · today</span><b>—</b><i>awaiting first scan</i></div>
+        <div class="snk-tile"><span class="k">Expected Move · rest of day</span><b>—</b><i>awaiting first scan</i></div>
       </div>${lyr}`;
       const rb0=el.querySelector('#snk-rsn-btn');
       if(rb0) rb0.onclick=()=>snkSetReasoning(SNDK.reasoning===false);
@@ -12237,6 +12262,7 @@ const SNDK = {
     const gTot=ne?ne.net_gamma_total:null, gPrev=ne?ne.prev_close_gamma:null;
     const gDl=(gTot!=null&&gPrev!=null&&isFinite(gTot)&&isFinite(gPrev))?gTot-gPrev:null;
     const dTot=ne?ne.net_delta_total:(m.dex?m.dex.tot:null);
+    const dD30=snkDexD30(SNDK.rows);   // the timestamp-true 30-min Δ — the one part of dex that can be news
     const mood=m.sign==='positive'?'j':m.sign==='negative'?'c':'n';
     // regime tile reads as the plain STATE (jumpy/calm); Net-Gamma tile owns the $ + trend, so
     // the two stay complementary. The dealer-gamma term lives quietly in the subtitle.
@@ -12244,7 +12270,9 @@ const SNDK = {
     const regSub=m.sign==='negative'?'negative gamma':m.sign==='positive'?'positive gamma':'gamma sign unclear';
     // Net-Gamma subtitle carries the MEANING (dealers amplify/cushion) joined to the 1-day trend
     const gMean=m.sign==='negative'?'Dealers amplify moves':m.sign==='positive'?'Dealers cushion moves':'';
-    const gTrend=gDl!=null?`<span class="${gDl>=0?'j':'c'}">${gDl>=0?'▲':'▼'} ${snkMoney(gDl)}</span> vs yesterday`:'';
+    /* the prior close is DATED on the row — "vs yesterday" lied across a
+       weekend (Monday's prior is Friday's book) */
+    const gTrend=gDl!=null?`<span class="${gDl>=0?'j':'c'}">${gDl>=0?'▲':'▼'} ${snkMoney(gDl)}</span> vs ${(ne&&ne.prev_close_date)?ne.prev_close_date.slice(5):'prior close'}`:'';
     const gSub=(gMean||gTrend)?(gMean+(gMean&&gTrend?' · ':'')+gTrend):'whole recorded book';
     let emB='—', emI='expected-move split absent this scan';
     if(m.aem&&isFinite(m.aem.em_up_pts)&&isFinite(m.aem.em_down_pts)){
@@ -12255,7 +12283,7 @@ const SNDK = {
       // the split's source rides the subtitle (sr-2): the IV-skew split is what the
       // reading model is handed; the semivar split is the recorded shadow fallback
       const emSrc=m.aem.src==='iv_skew'?' · IV-skew split':m.aem.src==='semivar'?' · realized-tape split':'';
-      emI=(pu!=null&&pd!=null)?`+${pu}% / −${pd}% · likely range today${emSrc}${emQ}`:('likely range today'+emSrc+emQ);
+      emI=(pu!=null&&pd!=null)?`+${pu}% / −${pd}% · likely range, rest of day${emSrc}${emQ}`:('likely range, rest of day'+emSrc+emQ);
     }
     // the REGIME tile is where the sr-1 frozen wash is VISIBLE (the chart's one coloured
     // regime chip keeps its hue; there is room for the words here). The subtitle dates it.
@@ -12265,14 +12293,15 @@ const SNDK = {
     el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`+readCard+`<div class="snk-tiles">
       <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b class="${gTot!=null?(gTot>=0?'j':'c'):''}">${snkSMoney(gTot)}</b>
         <i>${gSub}</i></div>
-      <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX)">Dealer Delta</span><b>${snkSMoney(dTot)}</b>
-        <i>${(m.dex&&(snkDexEnglish(m.dex.fword)||snkDexEnglish(m.dex.word)))||'watch the change, not the sign'}${
+      <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX). The naive net's sign is fixed by the book's assumed-sign formula — positive on every recorded row — so the level's sign is never news; only the CHANGE can be.">Dealer Delta</span><b>${snkMoney(dTot)}</b>
+        <i>${(dD30!=null)?`<span class="${dD30>=0?'j':'c'}">${dD30>=0?'▲':'▼'} ${snkMoney(Math.abs(dD30))}</span> last 30m · `:''}sign fixed by the formula — watch the change${
           (m.flows&&m.flows.charm_wall!=null&&isFinite(m.flows.charm_wall))
             ?` · decay tilt → ${snkUsd(+m.flows.charm_wall,0)}`:''}</i></div>
       <div class="snk-tile regime"><span class="k">Regime</span><b class="${mood}${regFz?' fz':''}">${regPlain}</b>
         <i>${regSub}${regFz?` · unchanged ${snkDur(regFz.for_min)}`:''}</i></div>
-      <div class="snk-tile em"><span class="k">Expected Move · today</span><b>${emB}</b><i>${emI}</i></div>
+      <div class="snk-tile em"><span class="k" title="The √time-decayed expected move for the REST of the session (em_points decays toward the close — at 3:56pm ±$5 is the remaining reach, not the day's range)">Expected Move · rest of day</span><b>${emB}</b><i>${emI}</i></div>
     </div>
+    ${(m.coverage&&m.coverage.complete===false)?`<div style="color:var(--coral);font-size:11px;padding:4px 2px">⚠ book half-fetched this scan${m.coverage.missing?` (${snkSafe(String(m.coverage.missing))})`:''} — bars and totals may under-read</div>`:''}
     ${snkWallLadder(SNDK.clusters, SNDK.liveSpot()??m.spot)}${snkDaySummary(m)}${lyr}${snkLegend()}`;
     // re-bound after every innerHTML swap; gwBindTips is already delegated on the host
     const rb=el.querySelector('#snk-rsn-btn');
