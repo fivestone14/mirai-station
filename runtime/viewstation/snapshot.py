@@ -427,6 +427,7 @@ Rules it must obey:
 _SPOT_CACHE: dict = {"ts": 0.0, "val": None, "src": None}
 _SPOT_TTL_S = 2.0          # ≥ the tablet's poll gap, so the quote is shared, not multiplied
 _SPOT_LOCK = __import__("threading").Lock()
+_SPOT_FETCH_LOCK = __import__("threading").Lock()   # single-flight for the upstream call (sweep 08-11)
 
 # --- SNDK spot tape (08-11) --------------------------------------------------
 # The SNDK tab's 5s /api/spot poll already buys a fresh Schwab quote (2s TTL
@@ -474,15 +475,25 @@ def live_spot(ticker: str = "SPX") -> dict:
             return {"ticker": ticker, "spot": c["val"], "source": c["src"],
                     "age_s": round(now - c["ts"], 2), "cached": True}
     px = None
-    try:
-        import lefteye_fetcher
-        px = lefteye_fetcher.live_spot(ticker)
-    except Exception:
-        px = None
-    px = float(px) if isinstance(px, (int, float)) and px > 0 else None
-    with _SPOT_LOCK:
-        if px is not None:
-            _SPOT_CACHE.update({"ts": now, "val": px, "src": "schwab_quote", "tk": ticker})
+    # SINGLE-FLIGHT (20-agent sweep 08-11): the upstream call rides its own lock so
+    # N tablets missing the cache at the same instant serialize into ONE Schwab hit
+    # — the "N tablets never multiply into N× upstream calls" guarantee, made true.
+    # Late arrivals re-check the cache after acquiring; the winner's fill serves them.
+    with _SPOT_FETCH_LOCK:
+        with _SPOT_LOCK:
+            c = _SPOT_CACHE
+            if c["val"] is not None and (_t.time() - c["ts"]) < _SPOT_TTL_S and c.get("tk") == ticker:
+                return {"ticker": ticker, "spot": c["val"], "source": c["src"],
+                        "age_s": round(_t.time() - c["ts"], 2), "cached": True}
+        try:
+            import lefteye_fetcher
+            px = lefteye_fetcher.live_spot(ticker)
+        except Exception:
+            px = None
+        px = float(px) if isinstance(px, (int, float)) and px > 0 else None
+        with _SPOT_LOCK:
+            if px is not None:
+                _SPOT_CACHE.update({"ts": now, "val": px, "src": "schwab_quote", "tk": ticker})
     if px is not None:
         _tape_append(ticker, px, now)      # outside the lock — file IO never blocks a poll
     return {"ticker": ticker, "spot": px,

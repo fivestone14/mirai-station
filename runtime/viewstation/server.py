@@ -257,7 +257,11 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin is None:                    # non-browser client
             return True
-        return _local_host(urlsplit(origin).hostname or "")
+        # 20-agent sweep 08-11: an operator-declared MIRAI_VIEW_HOSTS name is a
+        # first-party origin too — _host_ok admits its GETs, so refusing its
+        # same-origin POST here 403'd the reasoning toggle on any proxied name.
+        o_host = urlsplit(origin).hostname or ""
+        return o_host in _EXTRA_HOSTS or _local_host(o_host)
 
     def _send_json(self, obj, status=200):
         body = json.dumps(obj, default=str).encode("utf-8")

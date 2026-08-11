@@ -483,7 +483,10 @@
 
   /* ---- layers : 3D deck + readiness detail ---- */
   .layers3d{display:grid; grid-template-columns:minmax(300px,1fr) minmax(300px,1.05fr); grid-template-rows:minmax(0,1fr); gap:20px; align-items:stretch; flex:1; min-height:0}
-  @media (max-width:840px){.layers3d{grid-template-columns:1fr}}
+  /* 20-agent sweep 08-11 (HIGH): single-column MUST re-declare the rows — the detail
+     card's implicit auto row otherwise eats the whole grid height and the fr scene row
+     computes to 0px, so the deck vanished on every tablet-portrait/phone viewport */
+  @media (max-width:840px){.layers3d{grid-template-columns:1fr; grid-template-rows:minmax(340px,55%) minmax(0,1fr)}}
   .scene-card{position:relative; border-radius:16px; overflow:hidden; border:1px solid var(--hairline);
     background:radial-gradient(130% 100% at 30% 0%, color-mix(in srgb,var(--iris) 9%,var(--surface-2)) 0%, var(--surface) 60%);
     min-height:0; display:flex; flex-direction:column}
@@ -2326,15 +2329,17 @@ const FEED = { pollMs: 4000, fails: 0, lastOkAt: null };   // fails = CONSECUTIV
    clock from /api/spot (one cached Schwab quote) and the diary keeps owning the GRAVITY.
    A live price on stale gravity is honest — and the readout says which is which. */
 const SPOT = { pollMs: 2500, px: null, at: 0, fails: 0, prev: null, live: false,
-               paused: 'boot', timer: null };
+               paused: 'boot', timer: null,
+               gen: 0 };   // chain identity — a kick mid-fetch used to fork a second permanent poll chain (sweep 08-11)
 const SPOT_STALE_MS = 15000;         // 6 missed polls → stop claiming the price is live
-/* IDLE = 60 min, not 5. This screen is a WALL DISPLAY — it is meant to be watched, not
-   touched, so "no interaction" is its normal resting state, not a sign nobody is there.
-   A 5-min gate froze the price for most of the session and defeated the point of making
-   it live at all. An hour still reaps a genuinely abandoned tab (a laptop left open on
-   another desk) while a wall display streams the whole session untouched. The gates that
-   actually carry the savings are market-hours and visibility, which are unaffected. */
-const SPOT_IDLE_MS  = 3600000;       // 60 min with no touch/click/key → the tab is abandoned
+/* NO IDLE GATE (20-agent sweep 08-11). This screen is a WALL DISPLAY — watched, not
+   touched, so "no interaction" is its normal resting state. The old 60-min idle gate
+   paused the stream mid-session on exactly that display (its own comment claimed the
+   wall display was protected — it wasn't: a visible, untouched tab froze at ~10:30 for
+   the rest of the day). An abandoned-but-visible tab is indistinguishable from a wall
+   display by inputs alone, and the gates that actually carry the savings — market
+   hours and visibility — are untouched. Worst case is one visible tab polling a
+   2s-cached server quote through one session; that is the product working. */
 const SPOT_RECHECK_MS = 30000;       // while paused, re-ask LOCALLY (no network) every 30s
 let SPOT_LAST_ACT = Date.now();
 
@@ -2357,13 +2362,15 @@ function spotIsRTH(){
 function spotPauseReason(){
   if(document.hidden)                              return 'screen off / tab hidden';
   if(!spotIsRTH())                                 return 'market closed';
-  if(Date.now()-SPOT_LAST_ACT > SPOT_IDLE_MS)      return 'idle — no activity for 60 min';
-  return null;
+  return null;                                     // no idle gate — see the wall-display note above
 }
 // any sign of life resumes the stream IMMEDIATELY — a paused price must never make you
-// wait for the next tick to find out what the market is doing
+// wait for the next tick to find out what the market is doing. The generation bump
+// retires any chain whose fetch is still in flight (its tail re-arm no-ops), so a kick
+// can never fork a second permanent poll chain (sweep 08-11).
 function spotKick(){
   SPOT_LAST_ACT = Date.now();
+  SPOT.gen++;
   if(SPOT.timer){ clearTimeout(SPOT.timer); SPOT.timer=null; }
   pollSpot();
 }
@@ -2518,7 +2525,11 @@ async function fetchRecent(){
   files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
   const res = await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=60`,{cache:'no-store'});
   const d = await res.json();
-  const raw = (d && d.rows) ? d.rows : [];
+  /* 20-agent sweep 08-11: the server tags a torn tail line {_unparsed:...} (a
+     40KB row mid-append is NOT atomic) — it must never become newestRaw and
+     drive the header (paper pill flipped, regime greyed). Same filter the
+     plane loaders already apply. */
+  const raw = ((d && d.rows) ? d.rows : []).filter(r=>r&&typeof r==='object'&&!r._unparsed);
   if(!raw.length) return null;
   let wt=null;
   for(let k=raw.length-1;k>=0;k--){ const w=raw[k].watchtower; if(w && !w.skipped && (w.scene||w.fired!==undefined)){ wt={...w, _ts:raw[k].ts}; break; } }
@@ -2534,7 +2545,7 @@ async function loadDiaryHistory(){
       try{ const res=await fetch(`/api/raw/file?root=state&path=${fm.rel}&limit=500`,{cache:'no-store'});
         const d=await res.json();
         // per-row guard (same as fetchRecent): one malformed row must drop itself, not the day
-        return (d&&d.rows)?d.rows.map(r=>{ try{ return rowToScan(r); }catch(e){ return null; } }).filter(Boolean):[]; }catch(e){ return []; }
+        return (d&&d.rows)?d.rows.filter(r=>r&&typeof r==='object'&&!r._unparsed&&r.ts).map(r=>{ try{ return rowToScan(r); }catch(e){ return null; } }).filter(Boolean):[]; }catch(e){ return []; }   // torn {_unparsed} tails never become book pages (sweep 08-11)
     }));
     const all=[].concat(...chunks);
     if(all.length){ DIARY_ROWS=all; if(dpage===0) renderDiary(false); if(RP.els) rpSyncDays(false);
@@ -3604,7 +3615,13 @@ function gxPaint(){
   const plainWalls=X.tape&&!GXPRO;
   const tagWalls=plainWalls?walls.filter(w=>w.id!=='ct'&&w.id!=='pt'):walls;
   const spread=mids.concat(tagWalls.filter(w=>!w.edge).map(w=>({id:'w:'+w.id, y:w.y, w}))).sort((a,b)=>a.y-b.y);
-  gxSpreadTags(spread, loY, hiY, TAGGAP);
+  /* 20-agent sweep 08-11: off-frame edge CHIPS live on fixed rail rows
+     (padT+8 / H-padB-6, 13px per chip) OUTSIDE this spread — a gutter tag
+     clamping to loY/hiY landed on the same pixels and two price strings
+     garbled (measured 8.7-10.5px overlaps on real rows). The chip rows are
+     reserved here, so the spread can never clamp into them. */
+  const _chTop=walls.filter(w=>w.edge==='top').length, _chBot=walls.filter(w=>w.edge&&w.edge!=='top').length;
+  gxSpreadTags(spread, loY+(_chTop?_chTop*13+4:0), hiY-(_chBot?_chBot*13+4:0), TAGGAP);
   const lyOf={}; spread.forEach(m=>{ if(m.w) m.w.ly=m.ly; else lyOf[m.id]=m.ly; });
   MAP._tagLys=spread.map(m=>m.ly);   // every in-plot gutter slot — the live price chip hides off ANY of them (gxPathLive)
   MIDS.forEach(id=>{ const mm=MMETA[id], yy=yFor(valOf[id]), R=MAP.lvl[id];
@@ -3669,7 +3686,10 @@ function gxPaint(){
         const yT=Math.min(gp.yHi,gp.yLo), hB=Math.abs(gp.yLo-gp.yHi);
         if(!(hB>4)) continue;
         const a=gp.active?1:.55, cx=(X.x0+X.canvasR)/2, cy=yT+hB/2, wPl=(X.canvasR-X.x0).toFixed(1);
-        const lbl=`⇣ GAP · ${gp.active?'nothing to hold it':'little holds price'} → fast to ${f(gp.target,0)}`;
+        /* 20-agent sweep 08-11: the glyph follows the band's SIDE — a ceiling
+           gap slides UP to its target; a hard-coded ⇣ announced a downside
+           move over a target 20 pts above price */
+        const lbl=`${gp.side==='ceil'?'⇡':'⇣'} GAP · ${gp.active?'nothing to hold it':'little holds price'} → fast to ${f(gp.target,0)}`;
         wsvg+=`<rect x="${X.x0}" y="${yT.toFixed(1)}" width="${wPl}" height="${hB.toFixed(1)}" fill="var(--iris)" opacity="${(.03*a+.012).toFixed(3)}"/>`
           +`<rect x="${X.x0}" y="${yT.toFixed(1)}" width="${wPl}" height="${hB.toFixed(1)}" fill="url(#gxGapHatch)" opacity="${(.5*a+.2).toFixed(2)}"/>`
           +`<line x1="${X.x0}" x2="${X.canvasR}" y1="${yT.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:var(--iris);opacity:${(.22*a+.05).toFixed(2)};stroke-width:1" stroke-dasharray="4 4"/>`
@@ -4019,7 +4039,7 @@ function _dglHead(bd){                       // column header: monthly = 3-lette
 function _dbAge(bd){                         // a band's OWN age in CALENDAR days (H9) —
   try{                                       // date-string diff to match the engine's
     const a=String(bd.as_of||(DBOOK.book&&DBOOK.book.as_of)||'').slice(0,10);   // age_days (a rolling-24h floor read 2d as 1d overnight)
-    const d=Math.round((new Date(new Date().toISOString().slice(0,10))-new Date(a))/86400000);
+    const d=Math.round((new Date(_etDay())-new Date(a))/86400000);   // ET day, like its siblings (sweep 08-11)
     return isFinite(d)?Math.max(0,d):Infinity;   // unparsable stamp = unverifiable → over-floor (drop)
   }catch(e){ return Infinity; }
 }
@@ -5118,8 +5138,13 @@ function paintPanes(){
   if(!MAP||!MAP.panesG) return;
   const X=MAPX, ok=(X.nP||0)>0&&MSTRIKES.length;
   const show0=(typeof gxT0On==='function')?gxT0On():true;   // 0DTE pill governs the 0DTE book
+  /* 20-agent sweep 08-11: the key must SEE the data it buckets — D snaps one
+     frame after applyMap, so a GX_ASOF-only key froze "no strikes in frame"
+     over real data until the NEXT row (paintDexPane already keys on lengths;
+     this pane learned the same lesson its own _ld comment teaches). */
   const key=(ok?String(GX_ASOF||'')+'|'+(X.paneOi?1:0)+(X.paneVol?1:0)+(show0?1:0):'off')
-    +`#${X.pLow}|${X.pHigh}|${MSTRIKES.length}|${X.lineEnd}|${X.paneW}|${X.padT}`;
+    +`#${X.pLow}|${X.pHigh}|${MSTRIKES.length}|${X.lineEnd}|${X.paneW}|${X.padT}`
+    +`~${Array.isArray(D.oiBS)?D.oiBS.length:0}|${Array.isArray(D.volBS)?D.volBS.length:0}`;
   if(key===MAP._pkey) return;
   MAP._pkey=key;
   if(!ok){ MAP.panesG.innerHTML=''; return; }
@@ -5193,8 +5218,15 @@ let RAIL_ON=(function(){ try{ return localStorage.getItem('gx.hedgeRail')==='1';
 let RAIL_CUR=null;                        // scrubbed price, or null = the resting +1% read
 let RAIL_DRAG=false;                      // an in-flight hedge-rail pointer drag — defer gutter-reclaim reframes (they detach the SVG mid-drag) until pointerup
 function railOn(){ return RAIL_ON; }
+function _etDay(){                         // the ET calendar day — the market's own
+  // (20-agent sweep 08-11: toISOString() is UTC, one day AHEAD every ET evening
+  //  20:00-24:00 — the exact bug class the 07-25 pill-list comment fixed; the
+  //  siblings _dglBands/gxTenorBands already count ET days)
+  try{ return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date()); }
+  catch(e){ return new Date().toISOString().slice(0,10); }
+}
 function _rlDte(bd){                       // LIVE dte — the book only ships dte_at_pull
-  try{ const d=Math.round((new Date(String(bd.expiry))-new Date(new Date().toISOString().slice(0,10)))/86400000);
+  try{ const d=Math.round((new Date(String(bd.expiry))-new Date(_etDay()))/86400000);
        return isFinite(d)?d:-1; }catch(e){ return -1; }
 }
 // ADMISSION GATE — a lane draws only with a nightly profile, an EXPLICIT contested
@@ -5284,8 +5316,15 @@ function paintHedgeRail(){
     const scrub=(RAIL_CUR!=null&&isFinite(RAIL_CUR))?+RAIL_CUR:null;
     const tgt=scrub!=null?scrub:spot*1.01;
     const gv=_rlAt(p, scrub!=null?scrub:spot);              // net γ AT the read price
+    /* 20-agent sweep 08-11: ONE formula for both answers. The nightly h1 is a
+       POINT estimate (γ-at-spot × 1% × spot — dated_gex_feed's own math) while
+       the scrub INTEGRATES the profile; scrubbing to exactly +1% and releasing
+       used to change the headline 25-61% for the identical question. The
+       resting headline now integrates too (same trapezoid as the scrub, for
+       real this time), falling back to the recorded h1 only without a grid. */
     const h1=scrub!=null ? _rlHedge(p,spot,scrub)
-                         : ((p.h1!=null&&isFinite(p.h1))?+p.h1:null);
+                         : (Array.isArray(p.grid)&&p.grid.length>1 ? _rlHedge(p,spot,spot*1.01)
+                            : ((p.h1!=null&&isFinite(p.h1))?+p.h1:null));
     const rg=Array.isArray(p.h1_range)?p.h1_range:null;
     // the curve, sampled ONLY across the visible frame — the sills close the fill exactly
     const N=60, pts=[];
@@ -6026,7 +6065,11 @@ function nextTarget(){
     flow:Math.max(-0.4,Math.min(0.4,D.flow+(Math.random()-0.5)*0.07)),
     shoveUp:Math.max(0.2,D.shoveUp+(Math.random()-0.5)*0.16), shoveDown:Math.min(-0.02,D.shoveDown+(Math.random()-0.5)*0.06),
     sigma:D.sigma, sign:D.sign, regime:D.regime, downFlip:true };
-  const w=pickWt(T.spot); if(w!==curWt){ curWt=w; wtDirty=true; updateTower(); }
+  /* 20-agent sweep 08-11 (HIGH): the demo swap MUST stamp _demo — a raw SCANS
+     verdict adopted here without the flag defeated the N20 eviction forever
+     after a boot-probe blip, and the hardcoded 07-07 call painted as a LIVE
+     session's own read. Everything pickWt serves is demo by definition. */
+  const w=pickWt(T.spot); if(w!==curWt&&!(curWt&&curWt._demo&&curWt.__src===w)){ curWt={...w,_demo:true,__src:w}; wtDirty=true; updateTower(); }
   maybeReframe();
 }
 function applyMap(r){
@@ -6173,9 +6216,23 @@ function feedAll(L){
   lastFedTs = ts;
   applyMap(L.newestRaw);              // new target → the map eases to it (60fps)
   if(L.wt) applyWt(L.wt, L.rows);    // refresh the NEXT read (anchored to its own row — N22)
-  else if(curWt&&curWt._demo){       // N20: live feed with no judged row yet — evict the demo
-    curWt={fired:false,dir:null,mag:0,scene:'',snippet:null,_none:true};   // verdict, say "no read yet"
-    wtDirty=true; updateTower();
+  else if(curWt&&(curWt._demo||curWt._none)){
+    /* N20 eviction + the >60-row-gap fallback (20-agent sweep 08-11): the poll
+       window is the newest file's last 60 rows, so a reload INSIDE a long judged
+       gap (real case: 08-06's 94-row gap) found no read there while the WT pill
+       counted 26 judged scans from the same day — two adjacent header surfaces
+       contradicting. Before saying "no read yet", adopt today's newest judged
+       read from the full-day DIARY_ROWS; only a genuinely read-less day evicts
+       to _none (and the _none case re-checks each poll until history loads). */
+    const day=ts?String(ts).slice(0,10):null;
+    let fb=null;
+    if(day) for(let k=DIARY_ROWS.length-1;k>=0;k--){ const s=DIARY_ROWS[k];
+      if(s&&s.ts&&String(s.ts).slice(0,10)===day&&s.wt&&!s.wt.skipped&&(s.wt.votes||s.wt.scene||s.wt.snippet)){ fb=s; break; } }
+    if(fb){ applyWt({...fb.wt, _ts:fb.ts}, DIARY_ROWS); }
+    else if(curWt._demo){              // demo verdict on a live feed → say "no read yet"
+      curWt={fired:false,dir:null,mag:0,scene:'',snippet:null,_none:true};
+      wtDirty=true; updateTower();
+    }
   }
   paintSource(); paintPaper(L.newestRaw); paintWtPill();   // header readouts follow the feed (N21/H1)
   // PERF+FLUID (07-25): a new scan REPAINTS the standing map instead of tearing the
@@ -6201,6 +6258,7 @@ async function poll(){
    Fail-open: a null/failed quote leaves T.spot exactly where the last scan put it, so
    the worst case is the OLD behaviour, never a fabricated or frozen-but-confident price. */
 async function pollSpot(){
+  const g=SPOT.gen;                 // this chain's identity — a newer kick retires it
   SPOT.timer=null;
   const why=spotPauseReason();
   if(why){
@@ -6208,7 +6266,7 @@ async function pollSpot(){
     // number can never masquerade as a streaming one (the exact lie this whole change exists
     // to kill). The map keeps showing the diary's scan price, which is what it always did.
     SPOT.paused=why; SPOT.live=false;
-    SPOT.timer=setTimeout(pollSpot, SPOT_RECHECK_MS);       // local re-check, costs nothing
+    if(g===SPOT.gen) SPOT.timer=setTimeout(pollSpot, SPOT_RECHECK_MS);   // local re-check, costs nothing
     return;
   }
   SPOT.paused=null;
@@ -6222,7 +6280,7 @@ async function pollSpot(){
     } else { SPOT.fails++; }
   }catch(e){ SPOT.fails++; }
   if(Date.now()-SPOT.at > SPOT_STALE_MS) SPOT.live=false;   // stopped arriving → stop claiming live
-  SPOT.timer=setTimeout(pollSpot, SPOT.pollMs);
+  if(g===SPOT.gen) SPOT.timer=setTimeout(pollSpot, SPOT.pollMs);
 }
 let _fzTick=0;   // last painted 1s bucket while converged
 function frame(){
@@ -6261,7 +6319,9 @@ async function probeAndRun(){
     if(GX.demoTimer){ clearInterval(GX.demoTimer); GX.demoTimer=null; }   // recovered → stop demo
     FEED.fails=0; FEED.lastOkAt=Date.now();
     setMode(true); feedAll(L); setTimeout(poll, FEED.pollMs);
-    pollSpot();                                                   // the price streams on its own clock
+    spotKick();                        // the price streams on its own clock — kick, never a bare
+                                       // pollSpot(): a recovery landing mid-fetch would fork a
+                                       // second permanent poll chain (sweep 08-11)
     loadDiaryHistory(); setInterval(loadDiaryHistory, 1200000);   // fill the book's past pages; refresh every 20 min
     fetchPathSeries(); setInterval(fetchPathSeries, 90000);       // full-day spot path — morning is static, so a slow clock; the LIVEROWS tail keeps the live edge fresh
     setInterval(loadLedgers, 1200000);                            // Sweep Ledger card — the nightly grade (13:15 PT) + date rollover land without a reload
@@ -6398,7 +6458,7 @@ const LY = [
       '  dex_v: 1                  // era tag — v≠1 rows are unpoolable',
       '}']},
     rd:{kind:'dex',
-      summary:'SHADOW, record-only — consumed by nothing, priced off the same cached chain as the γ map (no extra fetch). Naive net is LONG by construction — read the split + flow-signed twin; the flow-signed series (today\'s tape, aggressor-annotated) is the only axis whose sign is alive. Gated on dex_v==1: an era bump makes rows unreadable here until re-audited.'}},
+      summary:'SHADOW for grading (no gate reads it) — but NOT unread: the Watchtower payload has carried a dealer_delta_dex block built from these rows since wt-8 (flow-signed read + inventory geography, and the wt-11 timestamp-true 30-min change), so every judged scan sees it as advisory context. Priced off the same cached chain as the γ map (no extra fetch). Naive net is LONG by construction — read the split + flow-signed twin; the flow-signed series (today\'s tape, aggressor-annotated) is the only axis whose sign is alive. Gated on dex_v==1: an era bump makes rows unreadable here until re-audited.'}},
   {id:'motion', num:'1.5', name:'GEX · Motion', code:'gex_motion + shove', hue:'--l-motion', tier:'sensory',
     role:'≈ attention over the strike axis, in motion', status:['iris','shadow · feature'],
     plain:'Watches how the map MOVES scan to scan — [0DTE]GW(s) melting, the MagP walking, the tipping point (where the pull flips to a push) creeping. The map as a film, not a photo.',
@@ -6748,7 +6808,7 @@ function dexReadiness(L){
     <div class="rd-h"><span class="lab">Store · dex_views (diary rows)</span><span class="pct">cold</span></div>
     <div class="track" style="opacity:.45"><i style="width:100%;background:repeating-linear-gradient(90deg,var(--c) 0 5px,transparent 5px 11px)"></i></div>
     <div class="rd-fr">no diary row carries dex_views yet — absent = no read, never a zero</div>
-    <div class="blockers"><span class="blk">⛔ not yet recorded</span>${caveat}<span class="blk">record-only · consumed by nothing</span></div>
+    <div class="blockers"><span class="blk">⛔ not yet recorded</span>${caveat}<span class="blk">record-only grading · advisory in the wt payload since wt-8</span></div>
     <div class="rd-sum">${L.rd.summary}</div></div>`;
   const d=newestDex.dex;
   if(d.v!==1) return `<div class="rd">
@@ -6777,7 +6837,7 @@ function dexReadiness(L){
       <div class="rd-stat"><div class="k">Basis</div><div class="v" style="font-size:11px">${esc(d.basis||'—')} · 0DTE ${esc(d.basis0||'—')}</div></div>
       <div class="rd-stat"><div class="k">Strikes</div><div class="v" style="font-size:11px">${d.n!=null?d.n+' priced':'—'}${d.fN!=null?' · '+d.fN+' on tape':''}</div></div>
     </div>
-    <div class="blockers">${caveat}<span class="blk">record-only · consumed by nothing</span><span class="blk ok">✓ dex_v 1</span></div>
+    <div class="blockers">${caveat}<span class="blk">record-only grading · advisory in the wt payload since wt-8</span><span class="blk ok">✓ dex_v 1</span></div>
     <div class="rd-sum">${L.rd.summary}</div></div>`;
 }
 
@@ -7397,6 +7457,15 @@ function childSentence(s){
     return `The price slid close to an edge and the thinking robot wanted to bet it would ${wd}, but the careful rule robot’s checklist read the scene differently — so the bet stayed on paper with a disagreement note.`;
   if(s.fade.fired && w.fired && w.agrees===true)
     return `The price stretched too far from the middle, so both robots agreed it should ${fd} and pointed the same way — a clean, matching call.`;
+  /* 20-agent sweep 08-11 (HIGH): the missing fire branches. 62 real fade-fired
+     rows (all four gates ticked) read "nothing much happened" — the default was
+     reachable ONLY by fired rows, denying the very alert the record shows. */
+  if(s.fade.fired && w.fired)
+    return `Both robots made the bet at once — the careful rule robot’s four boxes all ticked and the thinking robot called ${wd} on its own read too.`;
+  if(s.fade.fired)
+    return `The careful rule robot’s four boxes all ticked, so it made its paper bet that the price would ${fd} — while the thinking robot chose to sit this one out.`;
+  if(w.fired)
+    return `The thinking robot made a bet on its own — it called ${wd} — while the careful rule robot’s checklist stayed short of firing.`;
   if(w.votes && w.votes.agree!=null && w.votes.agree < 0.6)
     return `The market was wiggly and hard to read, so the thinking robot shrugged and decided to sit still instead of guessing.`;
   if(g < 4 && !w.fired)
@@ -7417,10 +7486,10 @@ function annotatedJSON(s){
     '{',
     `${i(1)}${K('ts')}: ${S(scanTs(s))},${c('when this scan was taken (recorded in Eastern; shown in Pacific elsewhere)')}`,
     `${i(1)}${K('ticker')}: ${S(s.ticker||'SPX')},${c('the index Mirai trades — 0DTE options')}`,
-    `${i(1)}${K('spot')}: ${N(+s.spot.toFixed(2))},${c('SPX price at the moment of the scan')}`,
+    `${i(1)}${K('spot')}: ${s.spot==null?NU:N(+(+s.spot).toFixed(2))},${c('SPX price at the moment of the scan')}`,
     `${i(1)}${K('gamma_sign')}: ${S(s.sign)},${c('dealer gamma at spot — positive = they dampen moves (pin), negative = amplify (storm)')}`,
     `${i(1)}${K('regime')}: ${S(s.regime)},${c('the regime read — "pinning" = mean-reverting, "trending" = directional')}`,
-    `${i(1)}${K('gamma_flip')}: ${N(+s.flip.toFixed(2))},${c('zero-gamma level; above it dealers are long gamma (calm), below it short (volatile)')}`,
+    `${i(1)}${K('gamma_flip')}: ${s.flip==null?NU:N(+(+s.flip).toFixed(2))},${c('zero-gamma level; above it dealers are long gamma (calm), below it short (volatile) — null when no flip was measured (20-agent sweep: the JSON tab crashed dead on 131 real June/July rows here)')}`,
     `${i(1)}${K('call_wall_gamma')}: ${N(s.callWall)}, ${K('put_wall_gamma')}: ${N(s.putWall)},${c('the recorded keys (gex_views) — 0DTE at-the-money gamma peaks; they track spot, they are NOT the structural wall')}`,
     `${i(1)}${K('magnet')}: ${N(s.magnet)},${c('the strike holding the biggest pile of standing bets + today’s trades (OI+volume, within reach of spot) — where price gravitates')}`,
     `${i(1)}${K('pin_centroid')}: ${N(s.pin)},${c('mass-weighted mean strike of the reach-windowed field — the pile’s centre of gravity, not the whole map’s')}`,
