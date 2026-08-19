@@ -24,11 +24,13 @@ CHAIN_META = {"expiries": [{"date": "2026-07-31", "dte": 4},
 # THE PINNED CONTRACT — the frontend agent builds against these names.
 # ROW_V 3 (2026-08-02): + atm_iv, vwap, iv_skew, flows_front (payload-v2
 # sources — additive, nothing pre-existing re-based).
+# ROW_V 4 (2026-08-19): + range_em, and regime/regime_conf RE-BASED onto it
+# (the tape voter was the probationary, un-prorated em_consumed).
 ROW_KEYS = {"ts", "ticker", "spot", "gex_source", "gamma_sign", "gamma_flip",
             "call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor",
             "sigma", "sigma_live", "sigma_anchor", "prior_close",
             "atm_iv", "vwap", "iv_skew", "flows_front",
-            "regime", "regime_conf", "regime_reads",
+            "range_em", "regime", "regime_conf", "regime_reads",
             "gex_views", "dex_views", "profile_ladder", "adaptive_em",
             "net_exposure", "range_ruler", "meta"}
 GEX_VIEWS_KEYS = {"magnet", "flip", "regime", "net_by_strike", "oi_by_strike",
@@ -285,3 +287,59 @@ def test_atm_iv_recorded_beside_sigma():
     assert row["sigma_live"] == round(
         row["spot"] * row["atm_iv"] / math.sqrt(252.0), 4) or \
         abs(row["sigma_live"] - row["spot"] * row["atm_iv"] / math.sqrt(252.0)) < 0.51
+
+
+# --- range_em: the regime stack's tape voter (ROW_V 4) ----------------------
+
+def _row_at(now, **kw):
+    return sndk_views.build_row(
+        synth.prepared_book(), synth.SPOT, now,
+        spot_source="schwab_quote", chain_meta=CHAIN_META,
+        prior_close=1240.0, day_open=1245.0, **kw)
+
+
+def test_range_em_prorates_against_elapsed_session():
+    # NOW is 11:00 ET → 90 min elapsed; 80 pts of range on a 100-pt σ ruler
+    v = sndk_views._range_em(1300.0, 1220.0, 100.0, NOW)
+    assert abs(v - 80.0 / (100.0 * math.sqrt(90.0 / 390.0))) < 1e-9
+
+
+def test_range_em_abstains_inside_the_warmup_window():
+    early = datetime(2026, 7, 27, 9, 45, tzinfo=ET)          # 15 min in
+    assert sndk_views._range_em(1300.0, 1220.0, 100.0, early) is None
+    at_bar = datetime(2026, 7, 27, 9, 50, tzinfo=ET)         # exactly 20 min
+    assert sndk_views._range_em(1300.0, 1220.0, 100.0, at_bar) is not None
+
+
+def test_range_em_degrades_to_none_never_to_zero():
+    for bad in ((None, 1220.0, 100.0), (1300.0, None, 100.0),
+                (1300.0, 1220.0, None), (1300.0, 1220.0, 0.0),
+                (1220.0, 1300.0, 100.0)):        # inverted high/low
+        assert sndk_views._range_em(*bad, NOW) is None
+
+
+def test_regime_no_longer_gates_on_probationary_em_consumed():
+    """2026-08-19: em_consumed carries no time proration, so it starts near zero
+    every morning and only grows — it voted "pin" all morning whatever the tape
+    did, printing regime "pinning" at confidence 1.0 while SNDK fell 42 points
+    (-2.47%) in four minutes. The tape voter is range_em now, and inside the
+    warm-up window it abstains rather than guessing off three minutes of tape."""
+    open_tick = datetime(2026, 7, 27, 9, 33, tzinfo=ET)      # 3 min in
+    row = _row_at(open_tick, day_high=1260.0, day_low=1180.0)
+    assert row["range_ruler"]["em_consumed"] is not None     # the old voter spoke…
+    assert row["range_em"] is None                           # …the new one abstains
+    assert row["regime_reads"]["range_em"] is None
+    # gamma alone cannot reach the ">=2 reads must agree" bar
+    assert row["regime"] == "neutral"
+
+
+def test_range_em_votes_trend_on_an_expanded_tape():
+    row = _row_at(NOW, day_high=1400.0, day_low=1100.0)
+    assert row["range_em"] > 1.0
+    assert row["regime_reads"]["range_em"] == "trend"
+
+
+def test_range_em_votes_pin_on_a_compressed_tape():
+    row = _row_at(NOW, day_high=1252.0, day_low=1248.0)
+    assert row["range_em"] <= 0.70
+    assert row["regime_reads"]["range_em"] == "pin"

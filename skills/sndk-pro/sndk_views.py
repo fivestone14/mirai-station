@@ -47,17 +47,24 @@ from reversion_lens import classify_regime, sigma_ruler                        #
 from sndk_feed import _tau_front                     # noqa: E402 — M1 front-book clock (pure)
 
 _ET = ZoneInfo("America/New_York")
-ROW_V = 3                     # row-schema era tag (cf. pin_field_v / dex_v);
+ROW_V = 4                     # row-schema era tag (cf. pin_field_v / dex_v);
                               # v2 = 2026-07-27 audit fixes: front-book τ (M1 —
                               # σ/EM values re-based) + meta honesty fields
                               # v3 = 2026-08-02 payload-v2 sources (additive):
                               # atm_iv, vwap, iv_skew, flows_front — nothing
                               # pre-existing re-based
+                              # v4 = 2026-08-19 regime RE-BASED: the tape voter
+                              # is now range_em (time-prorated), not the
+                              # probationary em_consumed — regime/regime_conf
+                              # before and after are incommensurable; + range_em
 
 # --- payload-v2 source constants (2026-08-02 blueprint) ----------------------
 _SKEW_LO_SIGMA = 0.10         # IV-skew band: exclude the ATM noise strip…
 _SKEW_HI_SIGMA = 1.25         # …and stay inside the magnet's own reach window
 _SKEW_MIN_STRIKES = 3         # a side with fewer clean solves proves nothing
+_RANGE_EM_WARMUP_MIN = 20.0   # SPX rule verbatim: under this many minutes of
+                              # session the prorated range read is too thin to
+                              # vote (sqrt(t) denominator explodes at the open)
 _VEX_SCALE = 0.01             # per 1 vol-point IV move (slide_flows verbatim)
 _CEX_SCALE = 1.0 / _gxb._TRADING_DAYS   # per trading day of decay (verbatim)
 
@@ -170,6 +177,47 @@ def _em_read(front: list, front_dte: Optional[int], spot: float,
                 "em_consumed": None, "spent_pts": None, "anchor": None,
                 "front_dte": front_dte, "quality": "missing",
                 "event_flag": None, "vol_carry": None, "source": "native_chain"}
+
+
+def _range_em(day_high, day_low, sigma, now: datetime) -> Optional[float]:
+    """The session's realized range measured against the sigma ruler PRORATED to
+    elapsed session time — the regime stack's tape voter, SPX's rule verbatim
+    (reversion_lens: realized_range / (sigma * sqrt(elapsed / 390))).
+
+    Why this exists instead of range_ruler.em_consumed: that gauge is the range
+    ruler's own straddle-consumption read, declared PROBATIONARY by its module
+    ("consumers must not gate on it yet"). It carries NO time proration, so it
+    starts near zero every morning and only ever grows — it votes "pin" all
+    morning regardless of the tape. On 2026-08-19 that stamped regime "pinning"
+    at confidence 1.0 while SNDK fell 42 points (-2.47%) in four minutes.
+
+    WARM-UP ABSTENTION: the sqrt(t) denominator is tiny at the open, so a few
+    ticks of range read as an enormous expansion off a sample too thin to
+    judge (08-19 09:31 scored >5 on one minute of tape). Under
+    _RANGE_EM_WARMUP_MIN the read abstains (None) and the regime stack falls
+    back to gamma alone, which cannot reach the 2-vote bar — an honest
+    "neutral" instead of a confident wrong word.
+
+    NOTE (calibration, 2026-08-19): RANGE_EM_PIN/RANGE_EM_TREND are SPX-fitted
+    constants. Measured over 18 SNDK sessions this ratio runs ~2.4x SPX's
+    (median 1.58 vs 0.667), because SNDK's ATM-IV sigma does not carry the
+    index variance risk premium. The formula is SPX's on purpose; the
+    thresholds are NOT re-fitted here — that needs the backtest record, same
+    discipline the sigma question is held to. Pure; never raises."""
+    try:
+        dh, dl, sig = _num(day_high), _num(day_low), _num(sigma)
+        if dh is None or dl is None or sig is None or sig <= 0:
+            return None
+        realized_range = dh - dl
+        now_et = now.astimezone(_ET) if now.tzinfo else now.replace(tzinfo=_ET)
+        mins_elapsed = min(390.0, max(0.0, (now_et.hour * 60 + now_et.minute)
+                                      - (9 * 60 + 30)))
+        if realized_range <= 0 or mins_elapsed < _RANGE_EM_WARMUP_MIN:
+            return None
+        em_so_far = sig * math.sqrt(mins_elapsed / 390.0)
+        return (realized_range / em_so_far) if em_so_far else None
+    except Exception:
+        return None
 
 
 def _semivar_down_share(bars: Optional[list]) -> Optional[float]:
@@ -459,8 +507,12 @@ def build_row(contracts: list, spot: float, now: datetime, *,
         net_exposure = None
 
     # regime word — the SPX voting stack with the voters SNDK actually has
-    # (gamma + range_em; variance_ratio / vix_ts are SPX-only and abstain)
-    reg = classify_regime(gamma_sign, range_ruler.get("em_consumed"), None, None)
+    # (gamma + range_em; variance_ratio / vix_ts are SPX-only and abstain).
+    # range_em is SNDK's OWN time-prorated tape read, never em_consumed: that
+    # field is probationary and un-prorated, and gated the regime to "pin" every
+    # morning until 2026-08-19.
+    range_em = _range_em(day_high, day_low, sigma, now)
+    reg = classify_regime(gamma_sign, range_em, None, None)
 
     meta = {"spot_source": spot_source,
             "chain_spot": chain_spot,
@@ -498,6 +550,7 @@ def build_row(contracts: list, spot: float, now: datetime, *,
         "iv_skew": iv_skew,
         "flows_front": flows_front,
         "prior_close": prior_close,
+        "range_em": round(range_em, 3) if range_em is not None else None,
         "regime": reg["regime"],
         "regime_conf": reg["confidence"],
         "regime_reads": reg["reads"],
