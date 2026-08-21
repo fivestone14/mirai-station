@@ -51,6 +51,19 @@ PORT = int(os.environ.get("MIRAI_VIEW_PORT", "8787"))
 # The contract between the two processes is this file's shape, not a function.
 _CONTROL_PATH = STATE_DIR / "sndk_reads" / "control.json"
 
+# The SNDK Payload tab is LOCKED to one name: the route answers only when the
+# request names that user (?user=will). This is a deliberate UI lock, not
+# authentication — the server is LAN-only, no-auth by choice (see README) and
+# the payload is already derivable from the raw explorer; the lock keeps the
+# model's scene off a casually-open tablet screen, which is the user's ask.
+_PAYLOAD_USER = os.environ.get("MIRAI_PAYLOAD_USER", "will").strip().lower()
+
+
+def _payload_unlocked(qs: dict) -> bool:
+    """True iff the query names the one permitted user (case/space-insensitive)."""
+    user = (qs.get("user") or [""])[0]
+    return bool(_PAYLOAD_USER) and user.strip().lower() == _PAYLOAD_USER
+
 # Extra Host names the tablet may use, beyond the local/private shapes allowed
 # by Handler._host_ok (e.g. a public DNS name in front of a reverse proxy).
 _EXTRA_HOSTS = {
@@ -358,6 +371,17 @@ class Handler(BaseHTTPRequestHandler):
 
             if route == "/api/sndk/reasoning":
                 return self._send_json(_reasoning_state())
+
+            if route == "/api/sndk/payload":
+                # the exact scene the reader hands the model — locked to one user
+                if not _payload_unlocked(qs):
+                    return self._send_json({"error": "locked"}, 403)
+                try:
+                    return self._send_json(snap.sndk_payload())
+                except Exception as exc:  # never 500 the tablet
+                    import traceback
+                    return self._send_json({"error": f"{type(exc).__name__}: {exc}",
+                                            "trace": traceback.format_exc()})
 
             # static assets
             rel = route.lstrip("/")

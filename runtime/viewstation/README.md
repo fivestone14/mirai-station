@@ -31,6 +31,7 @@ runtime/viewstation/
 - `GET /api/raw/index|file` — opt-in raw explorer (whitelisted to `state/`, the paper
   ledgers, and `config/`; path-traversal blocked; opened read-only).
 - `GET /api/health` — liveness.
+- `GET /api/sndk/payload?user=will` — the SNDK Payload tab: the exact scene JSON `sndk_read.build_scene` hands the model (rebuilt live through the same functions) + the user-message wrapper; 403 unless `user` names the permitted user (`MIRAI_PAYLOAD_USER`, default `will`) — a UI lock, not auth.
 
 LAN-only by design: **read-only, no auth, no writes.** Don't port-forward it.
 

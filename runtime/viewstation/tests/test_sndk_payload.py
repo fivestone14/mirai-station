@@ -1,0 +1,110 @@
+"""The SNDK Payload tab's two contracts.
+
+1. The route is LOCKED to one name. This is a UI lock, not authentication (the
+   server is LAN-only and no-auth by choice); the test pins that the lock is
+   exactly one name, case/space-insensitive, and that the name is configurable.
+2. The builder hands back the scene the READER itself would build for the newest
+   live SNDK row — through sndk_read's own functions, never a copy of the logic —
+   plus the user-message wrapper the scene rides in, and it ignores forced
+   (off-hours --force) rows the way read_once does.
+"""
+import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import pytest
+
+import server
+import snapshot
+
+ET = ZoneInfo("America/New_York")
+
+
+@pytest.mark.parametrize("qs,ok", [
+    ({"user": ["will"]}, True),
+    ({"user": [" Will "]}, True),
+    ({"user": ["WILL"]}, True),
+    ({"user": ["bob"]}, False),
+    ({"user": ["will2"]}, False),
+    ({"user": [""]}, False),
+    ({}, False),
+])
+def test_payload_lock_is_exactly_one_name(qs, ok, monkeypatch):
+    monkeypatch.setattr(server, "_PAYLOAD_USER", "will")
+    assert server._payload_unlocked(qs) is ok
+
+
+def test_payload_lock_name_is_configurable(monkeypatch):
+    monkeypatch.setattr(server, "_PAYLOAD_USER", "ada")
+    assert server._payload_unlocked({"user": ["ada"]})
+    assert not server._payload_unlocked({"user": ["will"]})
+
+
+def test_payload_lock_empty_name_locks_everyone(monkeypatch):
+    monkeypatch.setattr(server, "_PAYLOAD_USER", "")
+    assert not server._payload_unlocked({"user": [""]})
+    assert not server._payload_unlocked({"user": ["will"]})
+
+
+def _row(ts, spot, sigma=80.0, forced=False):
+    r = {
+        "ticker": "SNDK", "ts": ts.isoformat(), "spot": spot, "sigma": sigma,
+        "prior_close": round(spot * 0.98, 2), "gamma_sign": "negative", "regime": "trending",
+        "gex_views": {
+            "front_dte": 2, "magnet": 1600.0,
+            "mass_by_strike": [[1600.0, 40.0], [1700.0, 30.0], [1500.0, 25.0]],
+            "net_by_strike": [[1550.0, -3.0e6], [1600.0, -2.0e6], [1700.0, 4.0e6]],
+        },
+        "meta": {"expiries": [{"date": "2026-08-21", "dte": 2}]},
+    }
+    if forced:
+        r["meta"]["forced"] = True
+    return r
+
+
+def _write_day(tmp_path, day, rows):
+    d = tmp_path / "sndk_reversion"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{day}.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+
+def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))      # sndk_read reads it per call
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    rows = [_row(t, 1580.0), _row(t.replace(minute=57), 1583.0), _row(t.replace(hour=13, minute=1), 1586.2),
+            _row(t.replace(hour=13, minute=3), 1590.0, forced=True)]   # a forced row must NOT be the scene
+    _write_day(tmp_path, "2026-08-19", rows)
+
+    now = datetime(2026, 8, 19, 13, 2, tzinfo=ET)               # one minute after the scan → live
+    d = snapshot.sndk_payload(now)
+
+    assert d["session"] == "2026-08-19"
+    assert d["row_ts"].startswith("2026-08-19T13:01")
+    assert d["as_of"] == "live" and d["built_at"] == now.isoformat()
+    assert d["scans_today"] == 3
+    sc = d["scene"]
+    assert sc["instrument"] == "SNDK"
+    assert sc["price"]["now"] == 1586.2
+    assert sc["clock"]["minutes_to_close"] == 178 and sc["clock"]["front_expiry"] == {"dte": 2, "date": "2026-08-21"}
+    assert sc["magnet"]["top_strikes"][0][0] == 1600.0
+    # the wrapper is the reader's own, byte for byte, with the same compact JSON inside
+    assert d["user_prompt"].startswith("Read this scene cold and reply with the JSON object only.\n\nSCENE:\n")
+    assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == sc
+    assert d["scene_chars"] == len(json.dumps(sc, default=str))
+
+
+def test_builder_falls_back_to_the_last_scan_after_hours(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 8, 19, 15, 58, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1590.0)])
+    d = snapshot.sndk_payload(datetime(2026, 8, 20, 6, 30, tzinfo=ET))   # next morning, pre-open
+    assert d["as_of"] == "last scan"
+    assert d["built_at"].startswith("2026-08-19T15:58")
+    assert d["scene"]["clock"]["minutes_to_close"] == 2       # built as of the scan, not a dead 0
+
+
+def test_builder_says_so_when_there_is_no_tape(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    (tmp_path / "sndk_reversion").mkdir()
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    assert d["scene"] is None and "no SNDK diary rows" in d["error"]

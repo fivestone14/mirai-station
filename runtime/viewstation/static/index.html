@@ -1896,6 +1896,46 @@
        (20-agent sweep 08-11) */
     *,*::before,*::after{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
   }
+
+  /* ---- SNDK Payload tab (08-21, user ask): ONLY the scene JSON the reader hands the model,
+     behind a one-name lock, plus a one-line source→output pipeline. The lock is a UI
+     affordance (this box is LAN-only, no auth by choice), not security — the server route
+     refuses any other name too, so the two agree. ---- */
+  .pl-wrap{display:flex; flex-direction:column; gap:12px; height:100%; min-height:0}
+  .pl-lock{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; background:var(--surface-2);
+    border:1px solid var(--hairline); border-radius:var(--r-md); flex:0 0 auto}
+  .pl-lock .ico{width:34px; height:34px; border-radius:50%; border:1px solid var(--hairline-2); background:var(--surface-3);
+    display:flex; align-items:center; justify-content:center; color:var(--ink-dim); flex:none}
+  .pl-lock.open .ico{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 55%,transparent); background:var(--jade-wash)}
+  .pl-lock .lb{display:flex; flex-direction:column; min-width:0; margin-right:auto}
+  .pl-lock .lb b{font-family:var(--mono); font-size:12px; letter-spacing:.04em; color:var(--ink-dim)}
+  .pl-lock.open .lb b{color:var(--jade)}
+  .pl-lock .lb span{font-size:12px; color:var(--ink-faint); line-height:1.35}
+  .pl-lock input{font:inherit; font-family:var(--mono); font-size:13px; padding:7px 10px; border-radius:8px;
+    border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink); min-width:150px}
+  .pl-lock input:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
+  .pl-btn{appearance:none; font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em;
+    padding:7px 12px; border-radius:8px; border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink); cursor:pointer}
+  .pl-btn:disabled{opacity:.4; cursor:not-allowed}
+  .pl-btn:not(:disabled).go{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 50%,transparent); background:var(--jade-wash)}
+  .pl-btn:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .pl-pipe{display:flex; flex-wrap:wrap; align-items:stretch; gap:6px 0; padding:8px 10px; background:var(--surface-2);
+    border:1px solid var(--hairline); border-radius:var(--r-md); flex:0 0 auto}
+  .pl-pipe .st{display:flex; flex-direction:column; gap:2px; padding:6px 10px; border-radius:8px; border:1px solid var(--hairline-2);
+    background:var(--surface-3); min-width:0; max-width:170px}
+  .pl-pipe .st b{font-family:var(--mono); font-size:11px; letter-spacing:.04em; white-space:nowrap; color:var(--ink)}
+  .pl-pipe .st span{font-size:11px; color:var(--ink-faint); line-height:1.3}
+  .pl-pipe .st.hot{border-color:color-mix(in srgb,var(--iris) 60%,transparent); background:var(--iris-wash)}
+  .pl-pipe .st.hot b{color:var(--iris)}
+  .pl-pipe .ar{align-self:center; padding:0 6px; color:var(--ink-faint); font-size:15px; flex:none}
+  .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:12px 14px; background:var(--surface-2); border:1px solid var(--hairline);
+    border-radius:var(--r-md); font-family:var(--mono); font-size:12px; line-height:1.45; white-space:pre; tab-size:2; color:var(--ink)}
+  .pl-json .k{color:var(--ink); font-weight:700} .pl-json .n{color:var(--lantern)} .pl-json .s{color:var(--jade)}
+  .pl-json .b{color:var(--coral)} .pl-json .p{color:var(--ink-faint)}
+  .pl-json:focus-visible{outline:2px solid var(--iris)}
+  .pl-empty{flex:1 1 auto; display:flex; align-items:center; justify-content:center; color:var(--ink-faint); font-size:13px;
+    border:1px dashed var(--hairline-2); border-radius:var(--r-md); text-align:center; padding:20px}
+  .pl-wrap [hidden]{display:none !important}   /* the hidden attribute must beat the display rules above */
 </style>
 </head>
 <body>
@@ -1940,6 +1980,10 @@
           <svg viewBox="0 0 24 24"><path d="M12 4v16"/><path d="M12 7.5h6M12 15.5h4"/><path d="M12 11.5H5M12 19.5H8"/><circle cx="12" cy="4" r="1.2" fill="currentColor" stroke="none"/></svg>
           SNDK<span class="snk-beta">beta</span>
         </button>
+        <button class="tab" data-tab="payload" title="SNDK Payload — the exact scene JSON the reader hands the model (locked)">
+          <svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.3" r="1.2" fill="currentColor" stroke="none"/></svg>
+          SNDK<span class="snk-beta">payload</span>
+        </button>
         <div class="spacer"></div>
         <div class="glyph">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>
@@ -1955,6 +1999,7 @@
         <section class="panel" data-panel="replay" id="p-replay"></section>
         <section class="panel" data-panel="dict" id="p-dict"></section>
         <section class="panel" data-panel="sndk" id="p-sndk"></section>
+        <section class="panel" data-panel="payload" id="p-payload"></section>
       </div>
     </div>
   </div>
@@ -12609,6 +12654,118 @@ const SNDK = {
   },
 };
 
+// ---------- SNDK Payload (08-21): the exact scene the reader hands the model, behind a one-name lock ----------
+// Shows ONLY the varying payload (the scene JSON, via /api/sndk/payload → snapshot.sndk_payload →
+// sndk_read.build_scene) and a one-line pipeline. The lock is a UI affordance: the button stays
+// disabled until the typed name is the permitted one, and the server refuses any other name too.
+const PL_LOCK_SVG=`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>`;
+const PAYLOAD = {
+  USER:'will', open:false, data:null, timer:null, busy:false, mounted:false,
+  okName(v){ return String(v||'').trim().toLowerCase()===PAYLOAD.USER; },
+  mount(){
+    const host=document.getElementById('p-payload'); if(!host||PAYLOAD.mounted) return; PAYLOAD.mounted=true;
+    host.innerHTML=`<div class="pl-wrap">
+      <div class="phead"><div><h2>SNDK Payload</h2><div class="desc">Only what the reading model is fed: the scene JSON <span class="mono">sndk_read.build_scene</span> builds from the newest SNDK scan, rebuilt here through the same code. One name opens it.</div></div><span class="pill grey" id="pl-pill">locked</span></div>
+      <div class="pl-lock" id="pl-lock">
+        <div class="ico">${PL_LOCK_SVG}</div>
+        <div class="lb"><b id="pl-lb">Locked</b><span id="pl-sub">Enter your name to unlock the payload.</span></div>
+        <input id="pl-user" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="user" aria-label="user name">
+        <button class="pl-btn" id="pl-unlock" disabled>Unlock</button>
+        <button class="pl-btn" id="pl-refresh" hidden>Refresh</button>
+        <button class="pl-btn" id="pl-copy" hidden>Copy JSON</button>
+        <button class="pl-btn" id="pl-relock" hidden>Lock</button>
+      </div>
+      <div class="pl-pipe" id="pl-pipe" aria-label="pipeline from data source to output"></div>
+      <div class="pl-empty" id="pl-empty">Payload hidden until unlocked.</div>
+      <pre class="pl-json" id="pl-json" hidden tabindex="0" aria-label="the scene JSON handed to the model"></pre>
+    </div>`;
+    const inp=host.querySelector('#pl-user'), btn=host.querySelector('#pl-unlock');
+    const sync=()=>{ const ok=PAYLOAD.okName(inp.value); btn.disabled=!ok; btn.classList.toggle('go', ok); };
+    inp.addEventListener('input', sync);
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter'&&PAYLOAD.okName(inp.value)) PAYLOAD.unlock(); });
+    btn.addEventListener('click', ()=>{ if(PAYLOAD.okName(inp.value)) PAYLOAD.unlock(); });
+    host.querySelector('#pl-refresh').addEventListener('click', ()=>PAYLOAD.fetch());
+    host.querySelector('#pl-copy').addEventListener('click', ()=>PAYLOAD.copy());
+    host.querySelector('#pl-relock').addEventListener('click', ()=>PAYLOAD.lock());
+    PAYLOAD.paintPipe();
+    // a reload inside the same tab session keeps the unlock; a new tab/window starts locked
+    if(sessionStorage.getItem('pl-user')===PAYLOAD.USER){ inp.value=PAYLOAD.USER; sync(); PAYLOAD.unlock(); }
+  },
+  show(){ PAYLOAD.mount(); if(PAYLOAD.open){ PAYLOAD.fetch(); PAYLOAD.arm(); } },
+  hide(){ PAYLOAD.disarm(); },
+  arm(){ PAYLOAD.disarm(); PAYLOAD.timer=setInterval(()=>{ if(PAYLOAD.open) PAYLOAD.fetch(); }, 60000); },
+  disarm(){ if(PAYLOAD.timer){ clearInterval(PAYLOAD.timer); PAYLOAD.timer=null; } },
+  unlock(){ PAYLOAD.open=true; try{ sessionStorage.setItem('pl-user', PAYLOAD.USER); }catch(e){} PAYLOAD.paintLock(); PAYLOAD.render(); PAYLOAD.fetch(); PAYLOAD.arm(); },
+  lock(){ PAYLOAD.open=false; PAYLOAD.data=null; try{ sessionStorage.removeItem('pl-user'); }catch(e){} PAYLOAD.disarm(); PAYLOAD.paintLock(); PAYLOAD.render(); },
+  paintLock(){
+    const lock=document.getElementById('pl-lock'); if(!lock) return;
+    const on=PAYLOAD.open; lock.classList.toggle('open', on);
+    lock.querySelector('#pl-lb').textContent=on?'Unlocked · '+PAYLOAD.USER:'Locked';
+    lock.querySelector('#pl-sub').textContent=on?'Live scene, refreshed every minute while this tab is open. Lock it when you walk away.':'Enter your name to unlock the payload.';
+    lock.querySelector('#pl-user').hidden=on; lock.querySelector('#pl-unlock').hidden=on;
+    for(const id of ['pl-refresh','pl-copy','pl-relock']) lock.querySelector('#'+id).hidden=!on;
+    const pill=document.getElementById('pl-pill'); if(pill){ pill.className='pill '+(on?'jade':'grey'); pill.textContent=on?'unlocked':'locked'; }
+    if(!on){ const i=lock.querySelector('#pl-user'); i.value=''; const b=lock.querySelector('#pl-unlock'); b.disabled=true; b.classList.remove('go'); }
+  },
+  async fetch(){
+    if(!PAYLOAD.open||PAYLOAD.busy) return; PAYLOAD.busy=true;
+    try{
+      const r=await fetch('/api/sndk/payload?user='+encodeURIComponent(PAYLOAD.USER), {cache:'no-store'});
+      const j=await r.json();
+      PAYLOAD.data=(r.status===403)?{error:'locked by the server (user not permitted)'}:j;
+    }catch(e){ PAYLOAD.data={error:'payload endpoint unreachable: '+e}; }
+    PAYLOAD.busy=false; PAYLOAD.render();
+  },
+  render(){
+    const pre=document.getElementById('pl-json'), empty=document.getElementById('pl-empty'); if(!pre||!empty) return;
+    const d=PAYLOAD.data;
+    const say=t=>{ pre.hidden=true; empty.hidden=false; empty.textContent=t; };
+    if(!PAYLOAD.open){ say('Payload hidden until unlocked.'); PAYLOAD.paintPipe(); return; }
+    if(!d){ say('Loading the scene…'); return; }
+    if(d.error||!d.scene){ say(d.error||'no scene yet — the scanner has not written a row'); PAYLOAD.paintPipe(); return; }
+    empty.hidden=true; pre.hidden=false;
+    const when=String(d.row_ts||'').slice(11,19);
+    const hdr=`<span class="p">// ${d.as_of==='live'?'LIVE scene':'last scan (market closed or scanner idle)'} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${d.era} · ${d.model} · ${d.scene_chars} chars ≈ ${Math.round(d.scene_chars/3.6)} tokens</span>\n`
+      +`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · the doctrine rides the cached system prompt</span>\n\n`;
+    pre.innerHTML=hdr+plJson(d.scene,0);
+    PAYLOAD.paintPipe();
+  },
+  copy(){
+    const d=PAYLOAD.data; if(!d||!d.scene||!navigator.clipboard) return;
+    navigator.clipboard.writeText(JSON.stringify(d.scene)).then(()=>{ const b=document.getElementById('pl-copy'); if(b){ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy JSON'; },1200); } }).catch(()=>{});
+  },
+  paintPipe(){
+    const el=document.getElementById('pl-pipe'); if(!el) return;
+    const live=PAYLOAD.open&&PAYLOAD.data&&PAYLOAD.data.scene;
+    const st=(b,s,hot)=>`<div class="st${hot?' hot':''}"><b>${b}</b><span>${s}</span></div>`, ar=`<span class="ar" aria-hidden="true">›</span>`;
+    el.innerHTML=[
+      st('Schwab quote','live SNDK price'),
+      st('ThetaData chain','the weekly option book'),
+      st('sndk_feed','IV rebuilt off the live quote'),
+      st('sndk_views','one diary row: gamma · walls · flip · EM'),
+      st('diary','state/sndk_reversion · every 120s'),
+      st('sndk_read','wake gate → build_scene = this JSON', !!live),
+      st('claude -p','cached doctrine + this JSON'),
+      st('reading','vector · σ · one line → chart · voice · memory'),
+    ].join(ar);
+  },
+};
+function plJson(v,ind){
+  const pad='  '.repeat(ind), esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  if(v===null) return '<span class="b">null</span>';
+  if(typeof v==='boolean') return `<span class="b">${v}</span>`;
+  if(typeof v==='number') return `<span class="n">${v}</span>`;
+  if(typeof v==='string') return `<span class="s">"${esc(v)}"</span>`;
+  if(Array.isArray(v)){
+    if(!v.length) return '<span class="p">[]</span>';
+    const flat=v.every(x=>typeof x!=='object'||x===null)&&JSON.stringify(v).length<60;
+    if(flat) return '<span class="p">[</span>'+v.map(x=>plJson(x,ind+1)).join('<span class="p">, </span>')+'<span class="p">]</span>';
+    return '<span class="p">[</span>\n'+v.map(x=>pad+'  '+plJson(x,ind+1)).join('<span class="p">,</span>\n')+'\n'+pad+'<span class="p">]</span>';
+  }
+  const ks=Object.keys(v); if(!ks.length) return '<span class="p">{}</span>';
+  return '<span class="p">{</span>\n'+ks.map(k=>`${pad}  <span class="k">"${esc(k)}"</span><span class="p">: </span>${plJson(v[k],ind+1)}`).join('<span class="p">,</span>\n')+'\n'+pad+'<span class="p">}</span>';
+}
+
 // ---------- tabs ----------
 function switchTab(name){
   document.querySelectorAll(".tab").forEach(t=>{ const on=t.dataset.tab===name;
@@ -12622,6 +12779,9 @@ function switchTab(name){
   // them (after layout, so the chart cell has real size), leaving stops them cold
   if(name==='sndk') requestAnimationFrame(()=>SNDK.show());
   else if(SNDK.booted&&SNDK.on) SNDK.hide();
+  // SNDK Payload: mounts on first open; its 60s refresh runs only while it is showing
+  if(name==='payload') requestAnimationFrame(()=>PAYLOAD.show());
+  else if(PAYLOAD.mounted) PAYLOAD.hide();
 }
 $("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b) switchTab(b.dataset.tab); });
 

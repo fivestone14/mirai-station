@@ -551,3 +551,61 @@ def replay_day(day: str) -> dict:
 
 if __name__ == "__main__":
     print(json.dumps(build_snapshot(), indent=2, default=str))
+
+
+# --- SNDK payload (08-21) — the exact scene JSON the reader hands the model ------
+# The "SNDK Payload" tab shows ONLY what Claude is fed: the scene dict that
+# skills/sndk-pro/sndk_read.build_scene assembles from the newest diary row,
+# rebuilt here through the SAME functions (never a copy of the logic), plus the
+# 12-word user-message wrapper it rides in. The cached doctrine is deliberately
+# not returned — the tab's job is the varying payload, not the rulebook.
+#
+# `now` matters: clock.*, book_age_min, wall/frozen ages and the 30-minute
+# windows are all measured against it. During the session the scene is built
+# against the wall clock, exactly as a live read would; once the newest row is
+# more than _PAYLOAD_LIVE_MIN old (after hours, a dead scanner) it is built as
+# of that row's own timestamp, so the tab shows the last scene the reader COULD
+# have built rather than a 17-hour-old book with minutes_to_close 0. The
+# response says which (`as_of`).
+_SNDK_PRO_DIR = PLUGIN_ROOT / "skills" / "sndk-pro"
+_PAYLOAD_LIVE_MIN = 10
+
+
+def sndk_payload(now: Optional[datetime] = None) -> dict:
+    if str(_SNDK_PRO_DIR) not in sys.path:
+        sys.path.insert(0, str(_SNDK_PRO_DIR))
+    import sndk_read as R   # lazy: the tab is rarely open; keeps server start light
+    now = now or _now_et()
+    diary = R._diary_dir()
+    files = sorted(diary.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"))
+    rows: list = []
+    day = None
+    for path in reversed(files):                      # newest session with live rows
+        rows = [r for r in R._read_jsonl(path)
+                if r.get("ticker") == "SNDK" and not (r.get("meta") or {}).get("forced")]
+        if rows:
+            day = path.stem
+            break
+    if not rows:
+        return {"error": "no SNDK diary rows yet", "scene": None}
+    row = rows[-1]
+    t_row = R._ts(row)
+    live = t_row is not None and 0 <= (now - t_row).total_seconds() <= _PAYLOAD_LIVE_MIN * 60
+    build_now = now if live else (t_row or now)
+    rw = R.with_path(row, rows)
+    band = R.magnet_band(rw)
+    frozen = R.frozen_fields(rows, build_now)
+    scene = R.build_scene(rw, band, frozen, rows, build_now)
+    text = json.dumps(scene, default=str)
+    return {
+        "session": day,
+        "row_ts": row.get("ts"),
+        "built_at": build_now.isoformat(),
+        "as_of": "live" if live else "last scan",
+        "era": R.ERA,
+        "model": R.PINNED_MODEL,
+        "scans_today": len(rows),
+        "scene": scene,
+        "scene_chars": len(text),
+        "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
+    }
