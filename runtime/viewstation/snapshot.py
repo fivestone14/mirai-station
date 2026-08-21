@@ -609,3 +609,76 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         "scene_chars": len(text),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
     }
+
+
+# --- SNDK memory overview (08-21) — what the model's history tool can reach -----
+# Read-only inventory of state/sndk_rag (the SNDK RAG store): the per-read
+# slices (Face A metadata + the model's own sentence), the rolled-up day
+# summaries, and the standing terrain. Counts and dates only — the records
+# themselves come back through the real CLI (server._memory_query), so the
+# Memory view shows exactly what the model would be handed.
+_RAG_DIR = STATE_DIR / "sndk_rag"
+
+
+def sndk_memory_overview() -> dict:
+    days = []
+    sl_dir = _RAG_DIR / "slices"
+    if sl_dir.exists():
+        for p in sorted(sl_dir.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")):
+            rows = []
+            try:
+                for line in p.read_text().splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        r = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if r.get("kind") == "slice":
+                        rows.append(r)
+            except OSError:
+                continue
+            if not rows:
+                continue
+            vec = {"up": 0, "down": 0, "none": 0}
+            for r in rows:
+                v = (r.get("meta") or {}).get("vector")
+                if v in vec:
+                    vec[v] += 1
+            days.append({"date": p.stem, "n": len(rows),
+                         "first": (rows[0].get("meta") or {}).get("time"),
+                         "last": (rows[-1].get("meta") or {}).get("time"),
+                         "vectors": vec,
+                         "last_line": (rows[-1].get("narrative") or "")[:160]})
+    summaries = {"n": 0, "last": None, "first": None, "rag_v": None}
+    sp = _RAG_DIR / "summaries.jsonl"
+    if sp.exists():
+        try:
+            dates = []
+            vers = set()
+            for line in sp.read_text().splitlines():
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if r.get("kind") == "day_summary":
+                    dates.append(r.get("date"))
+                    vers.add(r.get("rag_v"))
+            dates = sorted(d for d in dates if d)
+            summaries = {"n": len(dates), "first": dates[0] if dates else None,
+                         "last": dates[-1] if dates else None,
+                         "rag_v": sorted(v for v in vers if v is not None)}
+        except OSError:
+            pass
+    terrain = None
+    tp = _RAG_DIR / "terrain.json"
+    if tp.exists():
+        try:
+            t = json.loads(tp.read_text())
+            terrain = {"built": t.get("built"), "sessions": t.get("sessions"),
+                       "rag_v": t.get("rag_v"), "narrative": t.get("narrative")}
+        except (OSError, json.JSONDecodeError, ValueError):
+            terrain = {"error": "unreadable"}
+    return {"store": str(_RAG_DIR), "days": days, "summaries": summaries, "terrain": terrain,
+            "slices_total": sum(d["n"] for d in days)}

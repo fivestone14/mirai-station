@@ -22,6 +22,7 @@ import ipaddress
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -63,6 +64,102 @@ def _payload_unlocked(qs: dict) -> bool:
     """True iff the query names the one permitted user (case/space-insensitive)."""
     user = (qs.get("user") or [""])[0]
     return bool(_PAYLOAD_USER) and user.strip().lower() == _PAYLOAD_USER
+
+
+# --- SNDK memory (08-21) — the model's history tool, run the way the model runs it
+# The Memory view (behind the same lock) shows what the reading model can
+# remember: the SNDK RAG store. The overview is a read-only inventory
+# (snapshot.sndk_memory_overview); a query runs the SAME allow-listed CLI the
+# model runs (skills/sndk-pro/sndk_rag.py, same interpreter, in a subprocess so
+# the embedder never loads into this server) and hands back both the parsed
+# result and the exact text the model would see. Note the CLI's own documented
+# side effect: a days/month ask rolls closed sessions up into summaries.jsonl /
+# terrain.json under state/sndk_rag — the memory maintaining itself, exactly as
+# when the model asks; no trading state is touched.
+_RAG_CLI = PLUGIN_ROOT / "skills" / "sndk-pro" / "sndk_rag.py"
+_MEMORY_TIMEOUT_S = 60.0
+_MEMORY_MAX_LIMIT = 60
+_DATE_RX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_HHMM_RX = re.compile(r"^\d{2}:\d{2}$")
+
+
+def _memory_args(qs: dict) -> list[str] | None:
+    """Build the CLI argv from the query string, or None when it is malformed.
+    Only the documented flags, every value validated — this is user input
+    reaching a subprocess, even if the subprocess is ours."""
+    kind = (qs.get("kind") or ["query"])[0]
+    one = lambda k: (qs.get(k) or [""])[0].strip()
+    argv: list[str] = []
+    if kind == "series":
+        argv.append("series")
+        if one("date"):
+            if not _DATE_RX.match(one("date")): return None
+            argv += ["--date", one("date")]
+        for flag, key in (("--from", "from"), ("--to", "to")):
+            if one(key):
+                if not _HHMM_RX.match(one(key)): return None
+                argv += [flag, one(key)]
+        if one("step"):
+            if not one("step").isdigit() or not 1 <= int(one("step")) <= 120: return None
+            argv += ["--step", one("step")]
+        if one("strike"):
+            try: float(one("strike"))
+            except ValueError: return None
+            argv += ["--strike", one("strike")]
+        return argv
+    if kind != "query":
+        return None
+    tier = one("tier") or "slices"
+    if tier not in ("slices", "days", "month"): return None
+    argv += ["query", "--tier", tier]
+    for flag, key in (("--date", "date"), ("--from-date", "from_date"), ("--to-date", "to_date")):
+        if one(key):
+            if not _DATE_RX.match(one(key)): return None
+            argv += [flag, one(key)]
+    for flag, key in (("--from", "from"), ("--to", "to")):
+        if one(key):
+            if not _HHMM_RX.match(one(key)): return None
+            argv += [flag, one(key)]
+    for flag, key in (("--near-strike", "near"), ("--tolerance", "tol"), ("--min-move", "min_move")):
+        if one(key):
+            try: float(one(key))
+            except ValueError: return None
+            argv += [flag, one(key)]
+    if one("text"):
+        t = one("text")
+        if len(t) > 240: return None
+        argv += ["--text", t]
+    if one("days_back"):
+        if not one("days_back").isdigit() or not 1 <= int(one("days_back")) <= 60: return None
+        argv += ["--days-back", one("days_back")]
+    if one("limit"):
+        if not one("limit").isdigit() or not 1 <= int(one("limit")) <= _MEMORY_MAX_LIMIT: return None
+        argv += ["--limit", one("limit")]
+    return argv
+
+
+def _memory_query(qs: dict) -> dict:
+    argv = _memory_args(qs)
+    if argv is None:
+        return {"error": "bad query"}
+    cmd = [sys.executable, str(_RAG_CLI), *argv]
+    t0 = time.monotonic()
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=_MEMORY_TIMEOUT_S,
+                           cwd=str(_RAG_CLI.parent))
+    except subprocess.TimeoutExpired:
+        return {"error": f"the history tool did not answer within {_MEMORY_TIMEOUT_S:.0f}s",
+                "cmd": "sndk_rag.py " + " ".join(argv)}
+    except OSError as exc:
+        return {"error": f"could not run the history tool: {exc}"}
+    wall = round(time.monotonic() - t0, 1)
+    out = {"cmd": "sndk_rag.py " + " ".join(argv), "rc": r.returncode, "seconds": wall,
+           "raw": (r.stdout or "")[-200_000:], "stderr": (r.stderr or "")[-2000:]}
+    try:
+        out["result"] = json.loads(r.stdout)
+    except (ValueError, TypeError):
+        out["result"] = None
+    return out
 
 # Extra Host names the tablet may use, beyond the local/private shapes allowed
 # by Handler._host_ok (e.g. a public DNS name in front of a reverse proxy).
@@ -388,6 +485,20 @@ class Handler(BaseHTTPRequestHandler):
 
             if route == "/api/sndk/reasoning":
                 return self._send_json(_reasoning_state())
+
+            if route == "/api/sndk/memory":
+                # the model's memory (SNDK RAG store) — same lock as the payload
+                if not _payload_unlocked(qs):
+                    return self._send_json({"error": "locked"}, 403)
+                try:
+                    kind = (qs.get("kind") or ["query"])[0]
+                    if kind == "overview":
+                        return self._send_json(snap.sndk_memory_overview())
+                    return self._send_json(_memory_query(qs))
+                except Exception as exc:  # never 500 the tablet
+                    import traceback
+                    return self._send_json({"error": f"{type(exc).__name__}: {exc}",
+                                            "trace": traceback.format_exc()})
 
             if route == "/api/sndk/payload":
                 # the exact scene the reader hands the model — locked to one user
