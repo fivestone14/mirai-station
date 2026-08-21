@@ -1969,10 +1969,13 @@
     box-shadow:0 8px 28px rgba(0,0,0,.28); animation:fade .32s ease both}
   #reload-bar:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
   #reload-bar[hidden]{display:none}
+  #ver-stamp{position:fixed; left:10px; bottom:6px; z-index:59; font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink-faint); opacity:.75; pointer-events:none}
+  #ver-stamp[hidden]{display:none}
 </style>
 </head>
 <body>
 <button id="reload-bar" type="button" hidden aria-live="polite">New version · tap to refresh</button>
+<div id="ver-stamp" hidden aria-hidden="true"></div>
 <div class="device">
   <div class="screen">
     <div class="statusbar">
@@ -12745,9 +12748,18 @@ const PAYLOAD = {
     if(!PAYLOAD.open||PAYLOAD.busy) return; PAYLOAD.busy=true;
     try{
       const r=await fetch('/api/sndk/payload?user='+encodeURIComponent(PAYLOAD.USER), {cache:'no-store'});
-      const j=await r.json();
-      PAYLOAD.data=(r.status===403)?{error:'locked by the server (user not permitted)'}:j;
-    }catch(e){ PAYLOAD.data={error:'payload endpoint unreachable: '+e}; }
+      const text=await r.text();
+      let j=null; try{ j=JSON.parse(text); }catch(e){}
+      if(r.status===403) PAYLOAD.data={error:'locked by the server (user not permitted)'};
+      else if(j&&typeof j==='object') PAYLOAD.data=j;
+      else{
+        // not JSON: a proxy's HTML error page (the server restarting behind Tailscale) or the wrong
+        // host — say exactly what came back, and try again shortly
+        const ct=r.headers.get('content-type')||'?';
+        PAYLOAD.data={error:`the server answered HTTP ${r.status} (${ct}) instead of JSON — ${r.status>=500?'it is probably restarting; ':''}retrying in 5 s · first bytes: ${text.slice(0,60).replace(/\s+/g,' ')}`};
+        setTimeout(()=>{ if(PAYLOAD.open) PAYLOAD.fetch(); }, 5000);
+      }
+    }catch(e){ PAYLOAD.data={error:'payload endpoint unreachable ('+e+') — retrying in 5 s'}; setTimeout(()=>{ if(PAYLOAD.open) PAYLOAD.fetch(); }, 5000); }
     PAYLOAD.busy=false; PAYLOAD.render();
   },
   render(){
@@ -12819,6 +12831,27 @@ function plLines(v, d, pre, suf, out){
   out.push([d, P('}')+P(suf)]);
 }
 const plRows=out=>out.map(([d,h])=>`<div class="ln" style="--i:${d}">${h}</div>`).join('');
+
+// ---------- new-version pill (08-21): poll the page's own build id, offer a refresh when it changes ----------
+// /api/version is index.html's mtime — any save / pull / deploy that touches the page changes it.
+// The first answer is the version this page was loaded with; a different one later means a newer
+// page is on the mini. Polls only while this tab is visible (a sleeping tablet asks nothing). The
+// small stamp bottom-left ("page HH:MM · checked HH:MM") is the proof the check is running.
+(function(){
+  let seen=null; const bar=document.getElementById('reload-bar'); if(!bar) return;
+  const stamp=document.getElementById('ver-stamp');
+  const hhmm=ms=>new Date(ms).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  bar.addEventListener('click', ()=>location.reload());
+  async function tick(){
+    if(document.visibilityState!=='visible') return;
+    try{ const r=await fetch('/api/version',{cache:'no-store'}); const j=await r.json(); const v=j&&j.v;
+      if(!v) return; if(seen&&v!==seen) bar.hidden=false; seen=v;
+      if(stamp){ stamp.textContent=`page ${hhmm(Number(v)/1e6)} · checked ${hhmm(Date.now())}${bar.hidden?'':' · newer page on the server'}`; stamp.hidden=false; } }
+    catch(e){ if(stamp){ stamp.textContent=`version check failed at ${hhmm(Date.now())} — retrying`; stamp.hidden=false; } }
+  }
+  tick(); setInterval(tick, 10000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') tick(); });
+})();
 
 // ---------- tabs ----------
 function switchTab(name){
