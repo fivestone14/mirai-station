@@ -1919,17 +1919,27 @@
   .pl-btn:disabled{opacity:.4; cursor:not-allowed}
   .pl-btn:not(:disabled).go{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 50%,transparent); background:var(--jade-wash)}
   .pl-btn:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
-  .pl-pipe{display:flex; flex-wrap:wrap; align-items:stretch; gap:6px 0; padding:8px 10px; background:var(--surface-2);
+  /* the pipeline: eight plain-English steps from data source to the model's answer, as a grid of cards
+     that re-flows by width (8 across on a monitor, 4 on a tablet, 2 on a phone); a chevron in each gap
+     carries the order, the step that produces THIS JSON is lit */
+  .pl-pipe{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px 14px; padding:12px 14px 14px; background:var(--surface-2);
     border:1px solid var(--hairline); border-radius:var(--r-md); flex:0 0 auto}
-  .pl-pipe .st{display:flex; flex-direction:column; gap:2px; padding:6px 10px; border-radius:8px; border:1px solid var(--hairline-2);
-    background:var(--surface-3); min-width:0; max-width:170px}
-  .pl-pipe .st b{font-family:var(--mono); font-size:11px; letter-spacing:.04em; white-space:nowrap; color:var(--ink)}
-  .pl-pipe .st span{font-size:11px; color:var(--ink-faint); line-height:1.3}
+  .pl-pipe .st:nth-of-type(4n)::after{content:none}                                          /* no chevron at a row's end */
+  @media (min-width:1560px){ .pl-pipe{grid-template-columns:repeat(8, minmax(0,1fr))} .pl-pipe .st:nth-of-type(4n)::after{content:"\203A"} .pl-pipe .st:last-child::after{content:none} }   /* one row on a monitor */
+  @media (max-width:860px){ .pl-pipe{grid-template-columns:repeat(2, minmax(0,1fr))} .pl-pipe .st:nth-of-type(2n)::after{content:none} }     /* two across on a phone / split view */
+  .pl-pipe .cap{grid-column:1 / -1; font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
+  .pl-pipe .st{position:relative; display:flex; flex-direction:column; gap:3px; padding:10px 12px 9px; border-radius:10px; border:1px solid var(--hairline-2);
+    background:var(--surface-3); min-width:0}
+  .pl-pipe .st .num{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink-faint)}
+  .pl-pipe .st b{font-size:13px; font-weight:650; letter-spacing:.005em; color:var(--ink); line-height:1.25}
+  .pl-pipe .st span{font-size:11.5px; color:var(--ink-dim); line-height:1.38}
+  .pl-pipe .st code{margin-top:auto; padding-top:4px; font-family:var(--mono); font-size:10px; color:var(--ink-faint)}
+  .pl-pipe .st::after{content:"›"; position:absolute; right:-11px; top:50%; transform:translateY(-50%); color:var(--ink-faint); font-size:16px; line-height:1}
+  .pl-pipe .st:last-child::after{content:none}
   .pl-pipe .st.hot{border-color:color-mix(in srgb,var(--iris) 60%,transparent); background:var(--iris-wash)}
-  .pl-pipe .st.hot b{color:var(--iris)}
-  .pl-pipe .ar{align-self:center; padding:0 6px; color:var(--ink-faint); font-size:15px; flex:none}
-  .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:14px 18px 18px; background:var(--surface-2); border:1px solid var(--hairline);
-    border-radius:var(--r-md); font-family:var(--mono); font-size:15px; line-height:1.5; tab-size:2; color:var(--ink)}
+  .pl-pipe .st.hot b,.pl-pipe .st.hot .num{color:var(--iris)}
+  .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:14px clamp(10px,1.4vw,18px) 18px; background:var(--surface-2); border:1px solid var(--hairline);
+    border-radius:var(--r-md); font-family:var(--mono); font-size:clamp(12px, 0.45vw + 10.5px, 15px); line-height:1.5; tab-size:2; color:var(--ink)}
   /* one JSON document laid out by SECTION: the opening brace, then each top-level block (clock, scale,
      price, regime, …) as an unbreakable unit flowing into as many ~52-character columns as the pane is
      wide (balanced by height), then the closing brace. A block never splits across the fold; short
@@ -1937,8 +1947,13 @@
   .pl-json .pl-hdr{white-space:pre-wrap; color:var(--ink-faint); margin:0 0 10px}
   .pl-json .pl-open,.pl-json .pl-close{white-space:pre}
   .pl-json .pl-close{margin-top:4px}
-  .pl-json .pl-cols{column-width:52ch; column-gap:40px; column-rule:1px dashed var(--hairline-2)}
-  .pl-json .pl-blk{break-inside:avoid; -webkit-column-break-inside:avoid; white-space:pre-wrap; overflow-wrap:anywhere; margin:0 0 6px}
+  .pl-json .pl-cols{columns:52ch 3; column-gap:clamp(20px,3vw,44px); column-rule:1px dashed var(--hairline-2)}
+  .pl-json .pl-blk{break-inside:avoid; -webkit-column-break-inside:avoid; margin:0 0 6px}
+  /* every JSON line is its own row with a HANGING indent: the line starts at its nesting depth and any
+     wrapped continuation sits one level deeper, so a long string or a one-line object stays attached to
+     its key at every screen width — never flush-left under the braces */
+  .pl-json .ln{padding-left:calc(var(--i,0) * 2ch + 2ch); text-indent:-2ch; white-space:pre-wrap; overflow-wrap:anywhere}
+  .pl-json .pl-open .ln,.pl-json .pl-close .ln{padding-left:0; text-indent:0}
   .pl-json .k{color:var(--ink); font-weight:700} .pl-json .n{color:var(--lantern)} .pl-json .s{color:var(--jade)}
   .pl-json .b{color:var(--coral)} .pl-json .p{color:var(--ink-faint)}
   .pl-json:focus-visible{outline:2px solid var(--iris)}
@@ -12746,10 +12761,10 @@ const PAYLOAD = {
     const when=String(d.row_ts||'').slice(11,19);
     const hdr=`<span class="p">// ${d.as_of==='live'?'LIVE scene':'last scan (market closed or scanner idle)'} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${d.era} · ${d.model} · ${d.scene_chars} chars ≈ ${Math.round(d.scene_chars/3.6)} tokens</span>\n`
       +`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · the doctrine rides the cached system prompt</span>\n\n`;
-    // by section: each top-level key is one unbreakable block, flowing into balanced columns
+    // by section: each top-level key is one unbreakable block of depth-tagged lines, flowing into balanced columns
     const ks=Object.keys(d.scene);
-    const blocks=ks.map((k,i)=>`<div class="pl-blk">  <span class="k">"${k}"</span><span class="p">: </span>${plJson(d.scene[k],1)}${i<ks.length-1?'<span class="p">,</span>':''}</div>`).join('');
-    pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-open"><span class="p">{</span></div><div class="pl-cols">${blocks}</div><div class="pl-close"><span class="p">}</span></div>`;
+    const blocks=ks.map((k,i)=>{ const out=[]; plLines(d.scene[k], 1, plKey(k)+'<span class="p">: </span>', i<ks.length-1?',':'', out); return `<div class="pl-blk">${plRows(out)}</div>`; }).join('');
+    pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-open"><div class="ln"><span class="p">{</span></div></div><div class="pl-cols">${blocks}</div><div class="pl-close"><div class="ln"><span class="p">}</span></div></div>`;
     PAYLOAD.paintPipe();
   },
   copy(){
@@ -12759,54 +12774,51 @@ const PAYLOAD = {
   paintPipe(){
     const el=document.getElementById('pl-pipe'); if(!el) return;
     const live=PAYLOAD.open&&PAYLOAD.data&&PAYLOAD.data.scene;
-    const st=(b,s,hot)=>`<div class="st${hot?' hot':''}"><b>${b}</b><span>${s}</span></div>`, ar=`<span class="ar" aria-hidden="true">›</span>`;
-    el.innerHTML=[
-      st('Schwab quote','live SNDK price'),
-      st('ThetaData chain','the weekly option book'),
-      st('sndk_feed','IV rebuilt off the live quote'),
-      st('sndk_views','one diary row: gamma · walls · flip · EM'),
-      st('diary','state/sndk_reversion · every 120s'),
-      st('sndk_read','wake gate → build_scene = this JSON', !!live),
-      st('claude -p','cached doctrine + this JSON'),
-      st('reading','vector · σ · one line → chart · voice · memory'),
-    ].join(ar);
+    const STAGES=[
+      ['Live price',         'Schwab streams SanDisk\u2019s current price on every scan.',                                        'Schwab quote'],
+      ['Option book',        'ThetaData supplies this week\u2019s option chain \u2014 strikes, open interest, volume.',            'ThetaData chain'],
+      ['Clean and price',    'Each option\u2019s implied volatility is re-solved against the live price.',                        'sndk_feed'],
+      ['Build the map',      'The book becomes one snapshot: gamma by strike, walls, the flip, the expected move.',              'sndk_views'],
+      ['Record',             'Every 120 seconds the snapshot is written to the diary.',                                          'state/sndk_reversion'],
+      ['Assemble the scene', 'When the tape has moved enough, the newest snapshot becomes this JSON.',                           'sndk_read \u00b7 build_scene'],
+      ['Ask the model',      'Claude reads the cached rulebook plus this JSON and answers with a direction, a size and one line.','claude -p'],
+      ['Use the reading',    'The answer lands on the chart card, the voice desk and the memory store.',                         'reading'],
+    ];
+    el.innerHTML=`<div class="cap">How this JSON comes to be \u00b7 data source \u2192 model answer</div>`+STAGES.map((x,i)=>
+      `<div class="st${i===5&&live?' hot':''}"><span class="num">STEP ${i+1}</span><b>${x[0]}</b><span>${x[1]}</span><code>${x[2]}</code></div>`).join('');
   },
 };
-function plJson(v,ind){
-  const pad='  '.repeat(ind), esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const plEsc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const plKey=k=>`<span class="k">"${plEsc(k)}"</span>`;
+function plInline(v){   // scalars and short flat arrays, on one line
   if(v===null) return '<span class="b">null</span>';
   if(typeof v==='boolean') return `<span class="b">${v}</span>`;
   if(typeof v==='number') return `<span class="n">${v}</span>`;
-  if(typeof v==='string') return `<span class="s">"${esc(v)}"</span>`;
-  if(Array.isArray(v)){
-    if(!v.length) return '<span class="p">[]</span>';
-    const flat=v.every(x=>typeof x!=='object'||x===null)&&JSON.stringify(v).length<60;
-    if(flat) return '<span class="p">[</span>'+v.map(x=>plJson(x,ind+1)).join('<span class="p">, </span>')+'<span class="p">]</span>';
-    return '<span class="p">[</span>\n'+v.map(x=>pad+'  '+plJson(x,ind+1)).join('<span class="p">,</span>\n')+'\n'+pad+'<span class="p">]</span>';
-  }
-  const ks=Object.keys(v); if(!ks.length) return '<span class="p">{}</span>';
-  // a short, flat object prints on one line (no nested objects/arrays-of-objects, under ~64 chars)
-  const flatObj=ks.every(k=>typeof v[k]!=='object'||v[k]===null||(Array.isArray(v[k])&&v[k].every(x=>typeof x!=='object')))&&JSON.stringify(v).length<=64;
-  if(flatObj) return '<span class="p">{</span>'+ks.map(k=>`<span class="k">"${esc(k)}"</span><span class="p">: </span>${plJson(v[k],ind+1)}`).join('<span class="p">, </span>')+'<span class="p">}</span>';
-  return '<span class="p">{</span>\n'+ks.map(k=>`${pad}  <span class="k">"${esc(k)}"</span><span class="p">: </span>${plJson(v[k],ind+1)}`).join('<span class="p">,</span>\n')+'\n'+pad+'<span class="p">}</span>';
+  if(typeof v==='string') return `<span class="s">"${plEsc(v)}"</span>`;
+  if(Array.isArray(v)) return '<span class="p">[</span>'+v.map(plInline).join('<span class="p">, </span>')+'<span class="p">]</span>';
+  const ks=Object.keys(v); return '<span class="p">{</span>'+ks.map(k=>plKey(k)+'<span class="p">: </span>'+plInline(v[k])).join('<span class="p">, </span>')+'<span class="p">}</span>';
 }
-
-// ---------- new-version pill (08-21): poll the page's own build id, offer a refresh when it changes ----------
-// /api/version is index.html's mtime — any save / pull / deploy that touches the page changes it.
-// The first answer is the version this page was loaded with; a different one later means a newer
-// page is on the mini. Polls only while this tab is visible (a sleeping tablet asks nothing).
-(function(){
-  let seen=null; const bar=document.getElementById('reload-bar'); if(!bar) return;
-  bar.addEventListener('click', ()=>location.reload());
-  async function tick(){
-    if(document.visibilityState!=='visible') return;
-    try{ const r=await fetch('/api/version',{cache:'no-store'}); const j=await r.json(); const v=j&&j.v;
-      if(!v) return; if(seen&&v!==seen) bar.hidden=false; seen=v; }
-    catch(e){ /* offline or restarting — try again next tick */ }
+const plIsFlatArr=v=>Array.isArray(v)&&v.every(x=>typeof x!=='object'||x===null)&&JSON.stringify(v).length<60;
+const plIsFlatObj=v=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).every(k=>typeof v[k]!=='object'||v[k]===null||plIsFlatArr(v[k]))&&JSON.stringify(v).length<=64;
+// plLines: emit [depth, html] rows for one value — pre = the "key": prefix html ('' inside arrays),
+// suf = ',' or ''. Short flat arrays/objects print on one line as a formatter would; everything
+// else opens a brace, indents its children one level, and closes at its own depth.
+function plLines(v, d, pre, suf, out){
+  const P=x=>x?`<span class="p">${x}</span>`:'';
+  if(v===null||typeof v!=='object'||plIsFlatArr(v)||plIsFlatObj(v)){ out.push([d, pre+plInline(v)+P(suf)]); return; }
+  if(Array.isArray(v)){
+    if(!v.length){ out.push([d, pre+P('[]')+P(suf)]); return; }
+    out.push([d, pre+P('[')]);
+    v.forEach((x,i)=>plLines(x, d+1, '', i<v.length-1?',':'', out));
+    out.push([d, P(']')+P(suf)]); return;
   }
-  tick(); setInterval(tick, 10000);
-  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') tick(); });
-})();
+  const ks=Object.keys(v);
+  if(!ks.length){ out.push([d, pre+P('{}')+P(suf)]); return; }
+  out.push([d, pre+P('{')]);
+  ks.forEach((k,i)=>plLines(v[k], d+1, plKey(k)+P(': '), i<ks.length-1?',':'', out));
+  out.push([d, P('}')+P(suf)]);
+}
+const plRows=out=>out.map(([d,h])=>`<div class="ln" style="--i:${d}">${h}</div>`).join('');
 
 // ---------- tabs ----------
 function switchTab(name){
