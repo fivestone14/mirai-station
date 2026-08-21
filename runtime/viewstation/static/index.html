@@ -1936,9 +1936,19 @@
   .pl-empty{flex:1 1 auto; display:flex; align-items:center; justify-content:center; color:var(--ink-faint); font-size:13px;
     border:1px dashed var(--hairline-2); border-radius:var(--r-md); text-align:center; padding:20px}
   .pl-wrap [hidden]{display:none !important}   /* the hidden attribute must beat the display rules above */
+  /* ---- new-version pill (08-21): every open page polls /api/version (the page file's mtime)
+     every 10 s; when it changes the pill appears. Offer, don't yank — a tablet mid-read is never
+     reloaded under the reader's thumb. ---- */
+  #reload-bar{position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:60; display:flex; align-items:center; gap:8px;
+    padding:9px 14px; border-radius:999px; font-size:13px; font-weight:600; letter-spacing:.02em; cursor:pointer;
+    color:var(--iris); background:color-mix(in srgb,var(--surface) 88%, var(--iris)); border:1px solid color-mix(in srgb,var(--iris) 45%,transparent);
+    box-shadow:0 8px 28px rgba(0,0,0,.28); animation:fade .32s ease both}
+  #reload-bar:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  #reload-bar[hidden]{display:none}
 </style>
 </head>
 <body>
+<button id="reload-bar" type="button" hidden aria-live="polite">New version · tap to refresh</button>
 <div class="device">
   <div class="screen">
     <div class="statusbar">
@@ -12765,6 +12775,23 @@ function plJson(v,ind){
   const ks=Object.keys(v); if(!ks.length) return '<span class="p">{}</span>';
   return '<span class="p">{</span>\n'+ks.map(k=>`${pad}  <span class="k">"${esc(k)}"</span><span class="p">: </span>${plJson(v[k],ind+1)}`).join('<span class="p">,</span>\n')+'\n'+pad+'<span class="p">}</span>';
 }
+
+// ---------- new-version pill (08-21): poll the page's own build id, offer a refresh when it changes ----------
+// /api/version is index.html's mtime — any save / pull / deploy that touches the page changes it.
+// The first answer is the version this page was loaded with; a different one later means a newer
+// page is on the mini. Polls only while this tab is visible (a sleeping tablet asks nothing).
+(function(){
+  let seen=null; const bar=document.getElementById('reload-bar'); if(!bar) return;
+  bar.addEventListener('click', ()=>location.reload());
+  async function tick(){
+    if(document.visibilityState!=='visible') return;
+    try{ const r=await fetch('/api/version',{cache:'no-store'}); const j=await r.json(); const v=j&&j.v;
+      if(!v) return; if(seen&&v!==seen) bar.hidden=false; seen=v; }
+    catch(e){ /* offline or restarting — try again next tick */ }
+  }
+  tick(); setInterval(tick, 10000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') tick(); });
+})();
 
 // ---------- tabs ----------
 function switchTab(name){

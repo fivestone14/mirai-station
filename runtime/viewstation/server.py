@@ -211,6 +211,19 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
     return {"kind": "text", "text": text[: 200_000]}
 
 
+# --- page version (08-21) -------------------------------------------------------
+# The viewstation has no version number of its own, so the page's modified-time
+# stands in for one: any save / pull / deploy that touches index.html gives it a
+# new mtime. The open pages poll this every 10 s and offer a refresh when it
+# changes (see the reload pill in index.html). mtime, not a hash: one stat call,
+# no file read, and "changed" is all the tablet needs to know.
+def _page_version() -> str:
+    try:
+        return str((STATIC / "index.html").stat().st_mtime_ns)
+    except OSError:
+        return "0"
+
+
 # --- sndk reasoning pause -----------------------------------------------------
 def _reasoning_state() -> dict:
     """Current pause state. Fails OPEN (reasoning on) to match sndk_read's own
@@ -368,6 +381,10 @@ class Handler(BaseHTTPRequestHandler):
 
             if route == "/api/health":
                 return self._send_json({"ok": True, "port": PORT})
+
+            if route == "/api/version":
+                # the page's own build id (index.html mtime) — polled by every open page
+                return self._send_json({"v": _page_version()})
 
             if route == "/api/sndk/reasoning":
                 return self._send_json(_reasoning_state())
