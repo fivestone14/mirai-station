@@ -108,3 +108,15 @@ def test_builder_says_so_when_there_is_no_tape(tmp_path, monkeypatch):
     (tmp_path / "sndk_reversion").mkdir()
     d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
     assert d["scene"] is None and "no SNDK diary rows" in d["error"]
+
+
+class _H:
+    def __init__(self, **h): self.h = h
+    def get(self, k): return self.h.get(k)
+
+
+def test_forwarded_user_comes_from_the_front_door_only():
+    assert server._forwarded_user(_H()) is None
+    assert server._forwarded_user(_H(**{"X-Forwarded-User": " Will "})) == "will"
+    assert server._forwarded_user(_H(**{"Remote-User": "bob"})) == "bob"
+    assert server._forwarded_user(_H(**{"X-Forwarded-User": "   "})) is None

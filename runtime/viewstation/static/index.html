@@ -1924,9 +1924,11 @@
      carries the order, the step that produces THIS JSON is lit */
   .pl-pipe{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px 14px; padding:12px 14px 14px; background:var(--surface-2);
     border:1px solid var(--hairline); border-radius:var(--r-md); flex:0 0 auto}
-  .pl-pipe .st:nth-of-type(4n)::after{content:none}                                          /* no chevron at a row's end */
-  @media (min-width:1560px){ .pl-pipe{grid-template-columns:repeat(8, minmax(0,1fr))} .pl-pipe .st:nth-of-type(4n)::after{content:"\203A"} .pl-pipe .st:last-child::after{content:none} }   /* one row on a monitor */
-  @media (max-width:860px){ .pl-pipe{grid-template-columns:repeat(2, minmax(0,1fr))} .pl-pipe .st:nth-of-type(2n)::after{content:none} }     /* two across on a phone / split view */
+  /* no chevron at a row's end — the caption is the grid's first div, so the cards are divs 2..9:
+     row ends in 4-across are divs 5 and 9 (4n+1), in 2-across divs 3/5/7/9 (2n+1) */
+  .pl-pipe .st:nth-of-type(4n+1)::after{content:none}
+  @media (min-width:1560px){ .pl-pipe{grid-template-columns:repeat(8, minmax(0,1fr))} .pl-pipe .st:nth-of-type(4n+1)::after{content:"\203A"} .pl-pipe .st:last-child::after{content:none} }   /* one row on a monitor */
+  @media (max-width:860px){ .pl-pipe{grid-template-columns:repeat(2, minmax(0,1fr))} .pl-pipe .st:nth-of-type(2n+1)::after{content:none} }     /* two across on a phone / split view */
   .pl-pipe .cap{grid-column:1 / -1; font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
   .pl-pipe .st{position:relative; display:flex; flex-direction:column; gap:3px; padding:10px 12px 9px; border-radius:10px; border:1px solid var(--hairline-2);
     background:var(--surface-3); min-width:0}
@@ -2021,6 +2023,12 @@
   .mc .cols span{font-family:var(--mono); font-size:12px; color:var(--ink)}
   .mem-raw-out{margin:0; padding:12px 14px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md); font-family:var(--mono); font-size:11.5px; line-height:1.45; white-space:pre-wrap; overflow:auto; max-height:40vh; color:var(--ink-dim); flex:0 0 auto}
   .mem-empty{color:var(--ink-faint); font-size:13px; padding:18px; text-align:center; border:1px dashed var(--hairline-2); border-radius:var(--r-md)}
+  /* the Payload rail button reads as locked for anyone who is not the permitted user: greyed, with
+     the lock icon; it still opens the tab (that is where the name is typed) — the server refuses
+     the data either way */
+  .tab.locked{opacity:.42; filter:grayscale(1)}
+  .tab.locked .snk-beta{opacity:.8}
+  .tab.locked:hover,.tab.locked:focus-visible{opacity:.7}
 </style>
 </head>
 <body>
@@ -2067,7 +2075,7 @@
           <svg viewBox="0 0 24 24"><path d="M12 4v16"/><path d="M12 7.5h6M12 15.5h4"/><path d="M12 11.5H5M12 19.5H8"/><circle cx="12" cy="4" r="1.2" fill="currentColor" stroke="none"/></svg>
           SNDK<span class="snk-beta">beta</span>
         </button>
-        <button class="tab" data-tab="payload" title="SNDK Payload — the exact scene JSON the reader hands the model (locked)">
+        <button class="tab locked" data-tab="payload" id="tab-payload" title="SNDK Payload — locked: access is granted to one user" aria-label="SNDK Payload (locked)">
           <svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.3" r="1.2" fill="currentColor" stroke="none"/></svg>
           SNDK<span class="snk-beta">payload</span>
         </button>
@@ -12749,6 +12757,12 @@ const PL_LOCK_SVG=`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" s
 const PAYLOAD = {
   USER:'will', open:false, data:null, timer:null, busy:false, mounted:false,
   okName(v){ return String(v||'').trim().toLowerCase()===PAYLOAD.USER; },
+  who:null,                          // the front door's forwarded user (null without a proxy)
+  // the rail button greys for anyone who is not the permitted user — identity = the proxy's
+  // forwarded user when there is one, else the name that unlocked this tab session
+  paintRail(){ const b=document.getElementById('tab-payload'); if(!b) return; const ok=PAYLOAD.open||PAYLOAD.who===PAYLOAD.USER;
+    b.classList.toggle('locked', !ok); b.title=ok?'SNDK Payload — unlocked for '+PAYLOAD.USER:'SNDK Payload — locked: access is granted to one user'; b.setAttribute('aria-label', ok?'SNDK Payload':'SNDK Payload (locked)'); },
+  async whoami(){ try{ const r=await fetch('/api/whoami',{cache:'no-store'}); const j=await r.json(); PAYLOAD.who=(j&&j.user)||null; if(j&&j.permitted){ try{ sessionStorage.setItem('pl-user', PAYLOAD.USER); }catch(e){} if(PAYLOAD.mounted&&!PAYLOAD.open) PAYLOAD.unlock(); } }catch(e){} PAYLOAD.paintRail(); },
   mount(){
     const host=document.getElementById('p-payload'); if(!host||PAYLOAD.mounted) return; PAYLOAD.mounted=true;
     host.innerHTML=`<div class="pl-wrap">
@@ -12797,7 +12811,8 @@ const PAYLOAD = {
     host.querySelector('#mem-days').addEventListener('click', e=>{ const b=e.target.closest('button[data-day]'); if(b) MEM.day(b.dataset.day); });
     PAYLOAD.paintPipe();
     // a reload inside the same tab session keeps the unlock; a new tab/window starts locked
-    if(sessionStorage.getItem('pl-user')===PAYLOAD.USER){ inp.value=PAYLOAD.USER; sync(); PAYLOAD.unlock(); }
+    let remembered=false; try{ remembered=sessionStorage.getItem('pl-user')===PAYLOAD.USER; }catch(e){}
+    if(remembered||PAYLOAD.who===PAYLOAD.USER){ inp.value=PAYLOAD.USER; sync(); PAYLOAD.open=false; PAYLOAD.unlock(); }
   },
   view:'payload',
   setView(v){
@@ -12813,8 +12828,8 @@ const PAYLOAD = {
   hide(){ PAYLOAD.disarm(); },
   arm(){ PAYLOAD.disarm(); PAYLOAD.timer=setInterval(()=>{ if(!PAYLOAD.open) return; if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); }, 60000); },
   disarm(){ if(PAYLOAD.timer){ clearInterval(PAYLOAD.timer); PAYLOAD.timer=null; } },
-  unlock(){ PAYLOAD.open=true; try{ sessionStorage.setItem('pl-user', PAYLOAD.USER); }catch(e){} PAYLOAD.paintLock(); PAYLOAD.setView(PAYLOAD.view); if(PAYLOAD.view!=='memory') PAYLOAD.fetch(); PAYLOAD.arm(); },
-  lock(){ PAYLOAD.open=false; PAYLOAD.data=null; MEM.clear(); try{ sessionStorage.removeItem('pl-user'); }catch(e){} PAYLOAD.disarm(); PAYLOAD.paintLock(); PAYLOAD.setView('payload'); PAYLOAD.render(); },
+  unlock(){ PAYLOAD.open=true; try{ sessionStorage.setItem('pl-user', PAYLOAD.USER); }catch(e){} PAYLOAD.paintLock(); PAYLOAD.paintRail(); PAYLOAD.setView(PAYLOAD.view); if(PAYLOAD.view!=='memory') PAYLOAD.fetch(); PAYLOAD.arm(); },
+  lock(){ PAYLOAD.open=false; PAYLOAD.data=null; MEM.clear(); try{ sessionStorage.removeItem('pl-user'); }catch(e){} PAYLOAD.disarm(); PAYLOAD.paintLock(); PAYLOAD.paintRail(); PAYLOAD.setView('payload'); PAYLOAD.render(); },
   paintLock(){
     const lock=document.getElementById('pl-lock'); if(!lock) return;
     const on=PAYLOAD.open; lock.classList.toggle('open', on);
@@ -13049,6 +13064,8 @@ $("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b
 // ---------- boot ----------
 renderLayers(); renderDict(); renderDiary(false); renderHeads(); startLive(); loadSiege(); loadPlaneLedgers();
 SNDK.boot();   // SNDK-PRO beta tab — visibility listener only; pollers start on first open
+try{ if(sessionStorage.getItem('pl-user')===PAYLOAD.USER){ PAYLOAD.open=true; } }catch(e){}   // a same-session unlock un-greys the rail before the tab is ever opened
+PAYLOAD.paintRail(); PAYLOAD.whoami();   // the front door's forwarded user (if any) decides the rail; permitted → opens without typing
 const _modal=document.getElementById('modal');
 _modal.addEventListener('click', e=>{ if(e.target===_modal) closeModal(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });

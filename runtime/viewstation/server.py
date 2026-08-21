@@ -60,6 +60,19 @@ _CONTROL_PATH = STATE_DIR / "sndk_reads" / "control.json"
 _PAYLOAD_USER = os.environ.get("MIRAI_PAYLOAD_USER", "will").strip().lower()
 
 
+def _forwarded_user(headers) -> str | None:
+    """The identity a front door (Caddy/nginx basic_auth or forward_auth) hands
+    us, if any. The viewstation itself has no login; when a proxy authenticates
+    and forwards the user name, the page greys the Payload rail button for
+    anyone who is not the permitted user and opens it without typing for the
+    one who is. Absent header → unknown (None)."""
+    for h in ("X-Forwarded-User", "Remote-User", "X-Remote-User", "X-Auth-User"):
+        v = headers.get(h)
+        if v and v.strip():
+            return v.strip().lower()
+    return None
+
+
 def _payload_unlocked(qs: dict) -> bool:
     """True iff the query names the one permitted user (case/space-insensitive)."""
     user = (qs.get("user") or [""])[0]
@@ -486,9 +499,15 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/sndk/reasoning":
                 return self._send_json(_reasoning_state())
 
+            if route == "/api/whoami":
+                # who the front door says you are (None without a proxy) and whether that is the permitted user
+                u = _forwarded_user(self.headers)
+                return self._send_json({"user": u, "permitted": bool(u) and u == _PAYLOAD_USER,
+                                        "permitted_user": _PAYLOAD_USER})
+
             if route == "/api/sndk/memory":
                 # the model's memory (SNDK RAG store) — same lock as the payload
-                if not _payload_unlocked(qs):
+                if not _payload_unlocked(qs) and _forwarded_user(self.headers) != _PAYLOAD_USER:
                     return self._send_json({"error": "locked"}, 403)
                 try:
                     kind = (qs.get("kind") or ["query"])[0]
@@ -501,8 +520,9 @@ class Handler(BaseHTTPRequestHandler):
                                             "trace": traceback.format_exc()})
 
             if route == "/api/sndk/payload":
-                # the exact scene the reader hands the model — locked to one user
-                if not _payload_unlocked(qs):
+                # the exact scene the reader hands the model — locked to one user (the ?user= name,
+                # or the front door's forwarded user when a proxy authenticates for us)
+                if not _payload_unlocked(qs) and _forwarded_user(self.headers) != _PAYLOAD_USER:
                     return self._send_json({"error": "locked"}, 403)
                 try:
                     return self._send_json(snap.sndk_payload())
