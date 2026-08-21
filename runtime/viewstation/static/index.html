@@ -1928,13 +1928,17 @@
   .pl-pipe .st.hot{border-color:color-mix(in srgb,var(--iris) 60%,transparent); background:var(--iris-wash)}
   .pl-pipe .st.hot b{color:var(--iris)}
   .pl-pipe .ar{align-self:center; padding:0 6px; color:var(--ink-faint); font-size:15px; flex:none}
-  .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:12px 16px 16px; background:var(--surface-2); border:1px solid var(--hairline);
-    border-radius:var(--r-md); font-family:var(--mono); font-size:13.5px; line-height:1.5; tab-size:2; color:var(--ink)}
-  /* the JSON flows newspaper-style into as many ~58-character columns as the pane is wide — one document,
-     read down column 1 then column 2 (the dashed rule is the fold); short objects sit on one line so a
-     wall or a strike pair reads as one glance, exactly as a formatter would print it */
-  .pl-json .pl-hdr{white-space:pre-wrap; color:var(--ink-faint); margin:0 0 10px; column-span:all}
-  .pl-json .pl-cols{column-width:58ch; column-gap:34px; column-rule:1px dashed var(--hairline-2); white-space:pre-wrap; overflow-wrap:anywhere}
+  .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:14px 18px 18px; background:var(--surface-2); border:1px solid var(--hairline);
+    border-radius:var(--r-md); font-family:var(--mono); font-size:15px; line-height:1.5; tab-size:2; color:var(--ink)}
+  /* one JSON document laid out by SECTION: the opening brace, then each top-level block (clock, scale,
+     price, regime, …) as an unbreakable unit flowing into as many ~52-character columns as the pane is
+     wide (balanced by height), then the closing brace. A block never splits across the fold; short
+     objects sit on one line as a formatter would print them */
+  .pl-json .pl-hdr{white-space:pre-wrap; color:var(--ink-faint); margin:0 0 10px}
+  .pl-json .pl-open,.pl-json .pl-close{white-space:pre}
+  .pl-json .pl-close{margin-top:4px}
+  .pl-json .pl-cols{column-width:52ch; column-gap:40px; column-rule:1px dashed var(--hairline-2)}
+  .pl-json .pl-blk{break-inside:avoid; -webkit-column-break-inside:avoid; white-space:pre-wrap; overflow-wrap:anywhere; margin:0 0 6px}
   .pl-json .k{color:var(--ink); font-weight:700} .pl-json .n{color:var(--lantern)} .pl-json .s{color:var(--jade)}
   .pl-json .b{color:var(--coral)} .pl-json .p{color:var(--ink-faint)}
   .pl-json:focus-visible{outline:2px solid var(--iris)}
@@ -12742,7 +12746,10 @@ const PAYLOAD = {
     const when=String(d.row_ts||'').slice(11,19);
     const hdr=`<span class="p">// ${d.as_of==='live'?'LIVE scene':'last scan (market closed or scanner idle)'} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${d.era} · ${d.model} · ${d.scene_chars} chars ≈ ${Math.round(d.scene_chars/3.6)} tokens</span>\n`
       +`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · the doctrine rides the cached system prompt</span>\n\n`;
-    pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-cols">${plJson(d.scene,0)}</div>`;
+    // by section: each top-level key is one unbreakable block, flowing into balanced columns
+    const ks=Object.keys(d.scene);
+    const blocks=ks.map((k,i)=>`<div class="pl-blk">  <span class="k">"${k}"</span><span class="p">: </span>${plJson(d.scene[k],1)}${i<ks.length-1?'<span class="p">,</span>':''}</div>`).join('');
+    pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-open"><span class="p">{</span></div><div class="pl-cols">${blocks}</div><div class="pl-close"><span class="p">}</span></div>`;
     PAYLOAD.paintPipe();
   },
   copy(){
