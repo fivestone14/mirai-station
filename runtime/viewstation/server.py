@@ -321,6 +321,32 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
     return {"kind": "text", "text": text[: 200_000]}
 
 
+# --- recent-requests ring (08-21) ----------------------------------------------
+# A small in-memory record of the last requests (time, path, Host, client, UA,
+# status), behind the payload lock at /api/_access?user=will. Diagnostic only —
+# the answer to "is my tablet actually polling, and what is it asking?" without
+# turning on access logging for good. Nothing is written to disk.
+import collections
+_ACCESS = collections.deque(maxlen=300)
+_ACCESS_LOCK = threading.RLock()   # re-entrant: the access route itself is noted while it answers
+
+
+def _note_access(handler, status: int) -> None:
+    try:
+        with _ACCESS_LOCK:
+            _ACCESS.append({
+                "t": datetime.now(_ET).strftime("%H:%M:%S"),
+                "path": handler.path[:120],
+                "host": (handler.headers.get("Host") or "")[:80],
+                "client": handler.client_address[0] if handler.client_address else None,
+                "ua": (handler.headers.get("User-Agent") or "")[:90],
+                "fwd": (handler.headers.get("X-Forwarded-For") or "")[:60],
+                "status": status,
+            })
+    except Exception:
+        pass
+
+
 # --- page version (08-21) -------------------------------------------------------
 # The viewstation has no version number of its own, so the page's modified-time
 # stands in for one: any save / pull / deploy that touches index.html gives it a
@@ -400,6 +426,7 @@ class Handler(BaseHTTPRequestHandler):
         return o_host in _EXTRA_HOSTS or _local_host(o_host)
 
     def _send_json(self, obj, status=200):
+        _note_access(self, status)
         body = json.dumps(obj, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -427,6 +454,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "not found"}, 404)
             return
         body = path.read_bytes()
+        _note_access(self, 200)
         self.send_response(200)
         self.send_header("Content-Type",
                          _CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
@@ -498,6 +526,13 @@ class Handler(BaseHTTPRequestHandler):
 
             if route == "/api/sndk/reasoning":
                 return self._send_json(_reasoning_state())
+
+            if route == "/api/_access":
+                if not _payload_unlocked(qs) and _forwarded_user(self.headers) != _PAYLOAD_USER:
+                    return self._send_json({"error": "locked"}, 403)
+                with _ACCESS_LOCK:
+                    recent = list(_ACCESS)          # copy INSIDE the lock, send OUTSIDE it — _send_json notes the request too
+                return self._send_json({"recent": recent})
 
             if route == "/api/whoami":
                 # who the front door says you are (None without a proxy) and whether that is the permitted user

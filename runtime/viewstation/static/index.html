@@ -13032,7 +13032,10 @@ function esc(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,
   const hhmm=ms=>new Date(ms).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   bar.addEventListener('click', ()=>location.reload());
   async function tick(){
-    if(document.visibilityState!=='visible') return;
+    // no visibility gate: a covered or background window must still learn about a new build
+    // (Chrome reports an occluded window as hidden — the one case where "only while visible"
+    // silently stopped the check for as long as another window sat on top). One tiny request
+    // every 10 s is nothing; the visibilitychange hook below still fires an immediate check.
     try{ const r=await fetch('/api/version',{cache:'no-store'}); const j=await r.json(); const v=j&&j.v;
       if(!v) return; if(seen&&v!==seen) bar.hidden=false; seen=v;
       if(stamp){ stamp.textContent=`page ${hhmm(Number(v)/1e6)} · checked ${hhmm(Date.now())}${bar.hidden?'':' · newer page on the server'}`; stamp.hidden=false; } }

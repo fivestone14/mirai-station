@@ -13,7 +13,7 @@ def test_page_has_the_refresh_pill_and_its_poller():
     assert "fetch('/api/version'" in PAGE       # the poller asks the server
     assert "let seen=null" in PAGE              # ...and compares against the version it loaded with
     assert "setInterval(tick, 10000)" in PAGE   # every 10 s
-    assert "visibilitychange" in PAGE           # and re-checks when the tab comes back
+    assert "visibilitychange" in PAGE           # and re-checks the moment the tab comes back
 
 
 def test_page_has_the_payload_tab_wired():
