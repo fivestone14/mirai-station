@@ -1928,8 +1928,13 @@
   .pl-pipe .st.hot{border-color:color-mix(in srgb,var(--iris) 60%,transparent); background:var(--iris-wash)}
   .pl-pipe .st.hot b{color:var(--iris)}
   .pl-pipe .ar{align-self:center; padding:0 6px; color:var(--ink-faint); font-size:15px; flex:none}
-  .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:12px 14px; background:var(--surface-2); border:1px solid var(--hairline);
-    border-radius:var(--r-md); font-family:var(--mono); font-size:12px; line-height:1.45; white-space:pre; tab-size:2; color:var(--ink)}
+  .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:12px 16px 16px; background:var(--surface-2); border:1px solid var(--hairline);
+    border-radius:var(--r-md); font-family:var(--mono); font-size:13.5px; line-height:1.5; tab-size:2; color:var(--ink)}
+  /* the JSON flows newspaper-style into as many ~58-character columns as the pane is wide — one document,
+     read down column 1 then column 2 (the dashed rule is the fold); short objects sit on one line so a
+     wall or a strike pair reads as one glance, exactly as a formatter would print it */
+  .pl-json .pl-hdr{white-space:pre-wrap; color:var(--ink-faint); margin:0 0 10px; column-span:all}
+  .pl-json .pl-cols{column-width:58ch; column-gap:34px; column-rule:1px dashed var(--hairline-2); white-space:pre-wrap; overflow-wrap:anywhere}
   .pl-json .k{color:var(--ink); font-weight:700} .pl-json .n{color:var(--lantern)} .pl-json .s{color:var(--jade)}
   .pl-json .b{color:var(--coral)} .pl-json .p{color:var(--ink-faint)}
   .pl-json:focus-visible{outline:2px solid var(--iris)}
@@ -12687,7 +12692,7 @@ const PAYLOAD = {
       </div>
       <div class="pl-pipe" id="pl-pipe" aria-label="pipeline from data source to output"></div>
       <div class="pl-empty" id="pl-empty">Payload hidden until unlocked.</div>
-      <pre class="pl-json" id="pl-json" hidden tabindex="0" aria-label="the scene JSON handed to the model"></pre>
+      <div class="pl-json" id="pl-json" hidden tabindex="0" aria-label="the scene JSON handed to the model"></div>
     </div>`;
     const inp=host.querySelector('#pl-user'), btn=host.querySelector('#pl-unlock');
     const sync=()=>{ const ok=PAYLOAD.okName(inp.value); btn.disabled=!ok; btn.classList.toggle('go', ok); };
@@ -12737,7 +12742,7 @@ const PAYLOAD = {
     const when=String(d.row_ts||'').slice(11,19);
     const hdr=`<span class="p">// ${d.as_of==='live'?'LIVE scene':'last scan (market closed or scanner idle)'} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${d.era} · ${d.model} · ${d.scene_chars} chars ≈ ${Math.round(d.scene_chars/3.6)} tokens</span>\n`
       +`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · the doctrine rides the cached system prompt</span>\n\n`;
-    pre.innerHTML=hdr+plJson(d.scene,0);
+    pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-cols">${plJson(d.scene,0)}</div>`;
     PAYLOAD.paintPipe();
   },
   copy(){
@@ -12773,6 +12778,9 @@ function plJson(v,ind){
     return '<span class="p">[</span>\n'+v.map(x=>pad+'  '+plJson(x,ind+1)).join('<span class="p">,</span>\n')+'\n'+pad+'<span class="p">]</span>';
   }
   const ks=Object.keys(v); if(!ks.length) return '<span class="p">{}</span>';
+  // a short, flat object prints on one line (no nested objects/arrays-of-objects, under ~64 chars)
+  const flatObj=ks.every(k=>typeof v[k]!=='object'||v[k]===null||(Array.isArray(v[k])&&v[k].every(x=>typeof x!=='object')))&&JSON.stringify(v).length<=64;
+  if(flatObj) return '<span class="p">{</span>'+ks.map(k=>`<span class="k">"${esc(k)}"</span><span class="p">: </span>${plJson(v[k],ind+1)}`).join('<span class="p">, </span>')+'<span class="p">}</span>';
   return '<span class="p">{</span>\n'+ks.map(k=>`${pad}  <span class="k">"${esc(k)}"</span><span class="p">: </span>${plJson(v[k],ind+1)}`).join('<span class="p">,</span>\n')+'\n'+pad+'<span class="p">}</span>';
 }
 
