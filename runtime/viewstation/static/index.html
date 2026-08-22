@@ -2076,11 +2076,31 @@
   .mem-head .scale{font-size:11.5px; color:var(--ink-faint)}
   .mem-head .scale i{font-style:normal; color:var(--l-grav)}
   .mem-head code{font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-left:auto}
-  .mem-res{flex:1 1 auto; min-height:0; overflow:auto; padding:2px 3px 6px}
+  /* 112px is the narrowest gutter that fits THREE four-digit labels without them touching
+     (~20px each at 8.5px mono, inside the 82px the axis actually spans) — the scale is only
+     worth having if its numbers can be read */
+  .mem-res{flex:1 1 auto; min-height:0; overflow:auto; padding:0 3px 6px; --gut:112px}
 
   /* ---- the spine: the day drawn down the gutter, one dot per read ---- */
-  .mspine{position:relative; --gut:88px}
+  /* --gut lives on the SCROLLER, not on the spine: the sticky scale is a sibling of the
+     spine, and an axis that does not share the gutter's exact width is worse than none */
+  .mspine{position:relative}
   .mspine.on{padding-left:var(--gut)}
+  /* the scale rides at the top of the scroll: the gutter has no printed axis of its own, so
+     without this the numbers are gone the moment the head line scrolls away */
+  .mspine-key{position:sticky; top:0; z-index:6; display:flex; align-items:center; gap:10px;
+    padding:5px 0 6px; margin-bottom:2px; background:var(--surface); border-bottom:1px solid var(--hairline)}
+  .mspine-key .ax{flex:0 0 var(--gut); line-height:0}
+  .mspine-key .ax svg{display:block}
+  .mspine-key .ax line{stroke-width:1}
+  .mspine-key .ax line.base{stroke:var(--hairline-2)}
+  .mspine-key .ax line.cap{stroke:var(--ink-faint)}
+  .mspine-key .ax line.mag{stroke:var(--l-grav); stroke-dasharray:2 3}
+  .mspine-key .ax text{font-family:var(--mono); font-size:8.5px; letter-spacing:.02em; fill:var(--ink-faint)}
+  .mspine-key .rd{min-width:0; font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--ink-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .mspine-key .rd em{font-style:normal; color:var(--ink-dim)}
+  .mspine-key .rd i{font-style:normal; color:var(--l-grav)}
   .mspine>svg{position:absolute; left:0; top:0; height:100%; pointer-events:none}
   .mspine>svg circle.hit{pointer-events:auto; cursor:pointer}
   .mem-list{display:flex; flex-direction:column; gap:8px; padding-bottom:24px}
@@ -2128,8 +2148,43 @@
   .mc-facts b{font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
   .mc-facts span{font-family:var(--mono); font-size:11.5px; color:var(--ink); overflow-wrap:anywhere}
   .mc-facts span em{font-style:normal; color:var(--ink-faint)}
-  .mc.terrain .mc-facts{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
-  .mc.terrain .mc-facts span{color:var(--ink-dim)}
+  /* ---- Terrain: the standing map is a COMPARISON — what keeps recurring lately against what
+     keeps recurring at all — so it reads as two blocks of three families, not as ten equal
+     cells jammed into one row. Family colour follows the page-wide vocabulary (docs/gw-vocab):
+     magnets gravity-gold, ceilings jade, floors coral. ---- */
+  .mc.terrain .mc-read{margin-bottom:0}
+  .tr-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(272px,1fr)); gap:12px 20px; margin-top:11px}
+  .tr-blk{display:flex; flex-direction:column; gap:8px; padding:11px 12px 12px; border-radius:10px;
+    background:var(--surface-3); border:1px solid var(--hairline)}
+  .tr-blk h4{margin:0; display:flex; align-items:baseline; gap:8px; font-family:var(--mono); font-size:10px;
+    font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-dim)}
+  .tr-blk h4 em{font-style:normal; letter-spacing:.05em; text-transform:none; color:var(--ink-faint)}
+  .tr-row{display:grid; grid-template-columns:74px minmax(0,1fr); gap:10px; align-items:start}
+  .tr-row>b{padding-top:4px; font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase}
+  .tr-row>b.m{color:var(--l-grav)} .tr-row>b.c{color:var(--jade)} .tr-row>b.p{color:var(--coral)}
+  .tr-chips{display:flex; flex-wrap:wrap; gap:5px}
+  .tr-chips .none{padding-top:3px; font-size:11.5px; color:var(--ink-faint)}
+  /* each chip carries its own share as a fill behind the text — how OFTEN a strike stood is
+     the whole point of the standing map, and "x3" alone does not rank at a glance */
+  .tr-chips .ch{position:relative; overflow:hidden; display:inline-flex; align-items:baseline; gap:5px;
+    padding:3px 9px; border-radius:7px; font-family:var(--mono); font-size:12px;
+    border:1px solid color-mix(in srgb,currentColor 32%,transparent)}
+  .tr-chips .ch.m{color:var(--l-grav)} .tr-chips .ch.c{color:var(--jade)} .tr-chips .ch.p{color:var(--coral)}
+  .tr-chips .ch::before{content:""; position:absolute; left:0; top:0; bottom:0; width:var(--f,0%); background:currentColor; opacity:.15}
+  .tr-chips .ch .v{position:relative; font-weight:600; color:var(--ink)}
+  .tr-chips .ch em{position:relative; font-style:normal; font-size:10.5px; color:var(--ink-faint)}
+  .tr-foot{display:flex; flex-wrap:wrap; gap:12px 28px; align-items:flex-start;
+    margin-top:11px; padding-top:11px; border-top:1px solid var(--hairline)}
+  .tr-range,.tr-char{display:flex; flex-direction:column; gap:5px; min-width:0}
+  .tr-range b,.tr-char b{font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
+  .tr-range span{font-family:var(--mono); font-size:14px; color:var(--ink); white-space:nowrap}
+  .tr-range span em{margin:0 5px; font-style:normal; color:var(--ink-faint)}
+  .tr-char{flex:1 1 280px}
+  .tr-char .mix{display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--hairline)}
+  .tr-char .mix i{display:block; min-width:2px}
+  .tr-char .leg{display:flex; flex-wrap:wrap; gap:3px 14px; font-family:var(--mono); font-size:10.5px; color:var(--ink-dim)}
+  .tr-char .leg span{display:inline-flex; align-items:center; gap:5px}
+  .tr-char .leg i{width:7px; height:7px; border-radius:2px}
   .mc-note{margin:8px 0 0; font-size:11.5px; line-height:1.45; color:var(--ink-faint)}
   /* a day summary carries the session's own reads quoted at the end — they are moments,
      so they are laid out as moments, not run together into the paragraph */
@@ -2140,13 +2195,22 @@
     background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md);
     font-family:var(--mono); font-size:11.5px; line-height:1.45; color:var(--ink-dim)}
   .mem-empty{padding:18px; text-align:center; font-size:13px; color:var(--ink-faint); border:1px dashed var(--hairline-2); border-radius:var(--r-md)}
+  /* switching shelves clears the pane at once: the old view lingering while the next one loads
+     reads as a dead click, and the three shelves look alike enough that the wrong one is not
+     obviously the wrong one */
+  .mem-wait{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px;
+    min-height:180px; padding:26px; color:var(--ink-faint); font-size:12.5px; letter-spacing:.02em; animation:fade .18s ease both}
+  .mem-wait .sp{width:20px; height:20px; border-radius:50%; border:2px solid var(--hairline-2);
+    border-top-color:var(--iris); animation:memspin .7s linear infinite}
+  @keyframes memspin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){ .mem-wait .sp{animation-duration:2.4s} }
   @media (max-width:1080px){
     .pl-mem{grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr)}
     .mem-side{overflow:visible}
     .mem-tiers{flex-direction:row; flex-wrap:wrap}
     .mem-tier{flex:1 1 190px}
     .mem-side .foot,.mem-key{display:none}
-    .mspine{--gut:64px}
+    .mem-res{--gut:64px}
   }
 </style>
 </head>
@@ -13087,7 +13151,7 @@ const plRows=out=>out.map(([d,h])=>`<div class="ln" style="--i:${d}">${h}</div>`
 // a SPINE that draws the session (the price trail down the gutter, one dot per read coloured by
 // the side the model took), because 27 cards in a row hide the very thing they are evidence of.
 const MEM = {
-  ov:null, last:null, sel:null, tier:'slices', busy:false, ro:null, roT:null, spineMagnet:null, painted:null,
+  ov:null, last:null, sel:null, tier:'slices', seq:0, ro:null, roT:null, spineMagnet:null, spineWord:'price', painted:null,
   // server.py's _MEMORY_MAX_LIMIT — asking for more is not a bigger page, it is a rejected
   // query ("bad query"), because the route validates every flag before it reaches the CLI
   MAX:60,
@@ -13236,10 +13300,22 @@ const MEM = {
     const what=tier==='days'?'Days':`Moments · ${p.date||'today'}`;
     MEM.run(p, what+(text?` · “${text}”`:'')+(near?` · near ${near}`:''));
   },
+  // Every ask takes a ticket. The old busy flag returned EARLY while a request was in flight,
+  // so switching shelves quickly did nothing at all and the previous shelf sat there until its
+  // own answer landed — the click looked ignored because it was. Now the newest ask always
+  // wins: a superseded answer is thrown away when it arrives, and the pane says it is working.
   async run(params, title){
-    if(MEM.busy) return; MEM.busy=true; MEM.last={params, title}; MEM.paintHead(`${title} · asking…`);
+    const seq=++MEM.seq;
+    MEM.last={params, title}; MEM.paintHead(`${title} · asking…`);
+    if(MEM.painted!==title) MEM.spin(title);   // a same-view repaint (the 60 s refresh) stays silent
     let j; try{ j=await MEM.get(params); }catch(e){ j={error:'memory endpoint unreachable ('+e+')'}; }
-    MEM.busy=false; MEM.last.data=j; MEM.paintResult(title, j); MEM.paintRaw();
+    if(seq!==MEM.seq) return;                  // a newer ask already owns the pane
+    MEM.last.data=j; MEM.paintResult(title, j); MEM.paintRaw();
+  },
+  spin(title){
+    const res=document.getElementById('mem-res'); if(!res) return;
+    MEM.stopObserver(); MEM.painted=null;      // nothing to hold a scroll position for
+    res.innerHTML=`<div class="mem-wait" role="status" aria-live="polite"><i class="sp" aria-hidden="true"></i><span>${esc(title)}</span></div>`;
   },
   paintHead(text){ const h=document.getElementById('mem-head'); if(h) h.innerHTML=`<b>${esc(text)}</b>`; },
 
@@ -13267,23 +13343,31 @@ const MEM = {
     const meta=[
       `${n} ${slices?(n===1?'read':'reads'):(n===1?'session':'sessions')}`,
       (r.n_matched!=null&&r.n_matched>n)?`of ${r.n_matched} matched`:'',
-      chrono?'in time order, earliest first':(r.rank==='semantic'?'ranked by meaning':'ranked by word overlap'),
+      chrono?'in time order, newest first':(r.rank==='semantic'?'ranked by meaning':'ranked by word overlap'),
       (slices&&asked)?'this session only — the history is one file per day':'',
       j.seconds!=null?`${j.seconds}s`:'',
     ].filter(Boolean).join(' · ');
     if(slices&&chrono) MEM.spineMagnet=MEM.dominantMagnet(rows);
-    const html=rows.map((x,i)=>slices?MEM.cardSlice(x,i,chrono):MEM.cardDay(x,i,chrono)).join('');
+    MEM.spineWord=slices?'price':'closing price';
+    // newest first: the read you want is almost always the last one written, and a session
+    // you are reviewing reads backwards from its close as naturally as forwards from its open.
+    // The CLI answers oldest-first, so a chronological answer is flipped here; a RANKED answer
+    // is left exactly as the ranker ordered it.
+    const ordered=chrono?rows.slice().reverse():rows;
+    const html=ordered.map((x,i)=>slices?MEM.cardSlice(x,i,chrono):MEM.cardDay(x,i,chrono)).join('');
     const px=rows.map(x=>MEM.n(slices?(x.meta||{}).spot:(x.meta||{}).close)).filter(v=>v!=null);
     const spine=chrono&&px.length>=2;
     let scale='';
     if(spine){
-      const lo=Math.min.apply(null,px), hi=Math.max.apply(null,px);
-      scale=`<span class="scale">Spine: ${slices?'price':'closing price'} ${MEM.fx(lo)} → ${MEM.fx(hi)} left to right, one dot per ${slices?'read':'session'}`
+      // the NUMBERS live in the sticky scale at the top of the scroll; the head says what the
+      // marks MEAN, which is the half you only need to read once
+      scale=`<span class="scale">One dot per ${slices?'read':'session'}, placed across the gutter by ${MEM.spineWord}`
         +(MEM.spineMagnet!=null?` · <i>the gold line is the ${MEM.fx(MEM.spineMagnet,0)} magnet</i>`:'')
         +(slices?' · a dash across the gutter marks where the day’s character or the gamma sign changed':'')+`</span>`;
     }
     h.innerHTML=`<b>${esc(title)}</b><span>${esc(meta)}</span>${scale}${cmd}`;
-    res.innerHTML=`<div class="mspine${spine?' on':''}" id="mem-spine">${spine?'<svg aria-hidden="true"></svg>':''}<div class="mem-list">${html}</div></div>`;
+    res.innerHTML=(spine?`<div class="mspine-key"><span class="ax" id="mem-key-ax"></span><span class="rd" id="mem-key-rd"></span></div>`:'')
+      +`<div class="mspine${spine?' on':''}" id="mem-spine">${spine?'<svg aria-hidden="true"></svg>':''}<div class="mem-list">${html}</div></div>`;
     if(keep) res.scrollTop=keep;
     MEM.paintKey(slices?rows:null);
     requestAnimationFrame(()=>MEM.drawSpine());
@@ -13340,18 +13424,39 @@ const MEM = {
   cardTerrain(t){
     if(!t||typeof t!=='object') return `<div class="mem-empty">${esc(String(t||'No standing map yet.'))}</div>`;
     const st=t.standing||{}, rg=t.range||{}, rec=st.recent||null, all=st.all_time||null;
-    const list=(o,word)=>{ const ks=o?Object.keys(o):[]; if(!ks.length) return '<em>—</em>';
-      return ks.sort((a,b)=>o[b]-o[a]).map(k=>`${esc(word?MEM.cap(k):k)} <em>×${o[k]}</em>`).join(' · '); };
-    const F=[];
-    if(rec) F.push([`Magnets · last ${rec.sessions}`, list(rec.magnets)], [`Ceilings · last ${rec.sessions}`, list(rec.call_walls)], [`Floors · last ${rec.sessions}`, list(rec.put_walls)]);
-    if(all) F.push([`Magnets · all ${all.sessions}`, list(all.magnets)], [`Ceilings · all ${all.sessions}`, list(all.call_walls)], [`Floors · all ${all.sessions}`, list(all.put_walls)]);
-    if(!rec&&!all) F.push(['Magnets', list(st.magnets)], ['Ceilings', list(st.call_walls)], ['Floors', list(st.put_walls)]);
-    if(rg.low!=null) F.push(['Range seen', `${MEM.fx(rg.low)} – ${MEM.fx(rg.high)}`]);
-    if(t.regimes) F.push(['Character', list(t.regimes, true)]);
-    F.push(['Built', esc(String(t.built||'—'))]);
+    // one chip per strike, its fill the share of the most-seen strike in that family
+    const chips=(o, fam)=>{
+      const ks=o?Object.keys(o):[]; if(!ks.length) return `<span class="none">none on record</span>`;
+      ks.sort((a,b)=>o[b]-o[a]); const top=o[ks[0]]||1;
+      return ks.map(k=>`<span class="ch ${fam}" style="--f:${Math.round(o[k]/top*100)}%"`
+        +` title="${esc(k)} stood in ${o[k]} session${o[k]===1?'':'s'}">`
+        +`<span class="v">${esc(k)}</span><em>×${o[k]}</em></span>`).join('');
+    };
+    const block=(title, note, o)=>`<section class="tr-blk"><h4>${esc(title)}${note?`<em>${esc(note)}</em>`:''}</h4>`
+      +`<div class="tr-row"><b class="m">Magnets</b><div class="tr-chips">${chips(o.magnets,'m')}</div></div>`
+      +`<div class="tr-row"><b class="c">Ceilings</b><div class="tr-chips">${chips(o.call_walls,'c')}</div></div>`
+      +`<div class="tr-row"><b class="p">Floors</b><div class="tr-chips">${chips(o.put_walls,'p')}</div></div></section>`;
+    const grid=(rec||all)
+      ? (rec?block('Recent', `last ${rec.sessions} sessions`, rec):'')+(all?block('All time', `${all.sessions} sessions`, all):'')
+      : block('Standing', t.sessions?`${t.sessions} sessions`:'', st);   // RAG v1 kept a flat map
+    let char='';
+    const rgm=t.regimes, rks=rgm?Object.keys(rgm).sort((a,b)=>rgm[b]-rgm[a]):[];
+    if(rks.length){
+      const HUE={trending:'--lantern', neutral:'--ink-faint', pinning:'--iris'};
+      const tot=rks.reduce((s,k)=>s+rgm[k],0)||1;
+      const col=k=>`var(${HUE[k]||'--hairline-2'})`;
+      char=`<div class="tr-char"><b>Character</b>`
+        +`<div class="mix">${rks.map(k=>`<i style="flex:${rgm[k]}; background:${col(k)}" title="${esc(MEM.cap(k))} in ${rgm[k]} of ${tot} sessions"></i>`).join('')}</div>`
+        +`<span class="leg">${rks.map(k=>`<span><i style="background:${col(k)}"></i>${esc(MEM.cap(k))} ${rgm[k]}</span>`).join('')}</span></div>`;
+    }
+    const range=rg.low!=null?`<div class="tr-range"><b>Range seen</b><span>${MEM.fx(rg.low)}<em>—</em>${MEM.fx(rg.high)}</span></div>`:'';
     return `<article class="mc terrain">`
-      +`<div class="mc-hd"><span class="mc-t">Standing map</span><span class="vec">${esc(String(t.sessions||'?'))} sessions</span></div>`
-      +`<p class="mc-read">${esc(t.narrative||'')}</p>`+MEM.facts(F)
+      +`<div class="mc-hd"><span class="mc-t">Standing map</span>`
+      +`<span class="vec">${esc(String(t.sessions||'?'))} sessions</span>`
+      +`<span class="pct">Built ${esc(String(t.built||'—'))}</span></div>`
+      +`<p class="mc-read">${esc(t.narrative||'')}</p>`
+      +`<div class="tr-grid">${grid}</div>`
+      +((range||char)?`<div class="tr-foot">${range}${char}</div>`:'')
       +(t.note?`<p class="mc-note">${esc(MEM.cap(t.note))}${/[.!?]$/.test(String(t.note).trim())?'':'.'}</p>`:'')+`</article>`;
   },
   facts(F){ return F.length?`<div class="mc-facts">`+F.map(kv=>`<div><b>${esc(kv[0])}</b><span>${kv[1]}</span></div>`).join('')+`</div>`:''; },
@@ -13375,6 +13480,14 @@ const MEM = {
   },
 
   // ---- the spine ----
+  // how many labelled gradations the gutter can carry without two numbers touching. A label
+  // that overlaps its neighbour is worse than a label that is not there, so this returns 3, 2
+  // or none and the readout picks up the range when it returns none.
+  ticks(lo, hi, span){
+    const n = span>=78 ? 3 : span>=44 ? 2 : 0, out=[];
+    for(let i=0;i<n;i++) out.push(lo+(hi-lo)*(i/(n-1)));
+    return out;
+  },
   dominantMagnet(rows){
     const c={}; rows.forEach(x=>{ const t=((x.meta||{}).magnet_top||[])[0]; if(t&&t[0]!=null) c[t[0]]=(c[t[0]]||0)+1; });
     let best=null, n=0; Object.keys(c).forEach(k=>{ if(c[k]>n){ n=c[k]; best=parseFloat(k); } });
@@ -13392,7 +13505,11 @@ const MEM = {
     if(!(hi>lo)){ lo-=1; hi+=1; }
     const X=px=>(PAD+(px-lo)/(hi-lo)*(W-RIGHT-PAD)).toFixed(1);
     const hue=v=>v==='up'?'var(--jade)':v==='down'?'var(--coral)':'var(--ink-faint)';
+    const ticks=MEM.ticks(lo, hi, W-RIGHT-PAD);
     let g='';
+    // the gradations run the FULL height, so a dot's price can still be read a hundred cards
+    // down where the sticky labels are the only thing left on screen
+    ticks.forEach(v=>{ g+=`<line x1="${X(v)}" y1="0" x2="${X(v)}" y2="${H}" stroke="var(--hairline)" stroke-width="1" opacity=".55"/>`; });
     if(MEM.spineMagnet!=null&&MEM.spineMagnet>=lo&&MEM.spineMagnet<=hi)
       g+=`<line x1="${X(MEM.spineMagnet)}" y1="0" x2="${X(MEM.spineMagnet)}" y2="${H}" stroke="var(--l-grav)" stroke-width="1" stroke-dasharray="3 5" opacity=".45"/>`;
     for(let k=1;k<pts.length;k++){
@@ -13410,6 +13527,31 @@ const MEM = {
     });
     svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svg.style.width=W+'px'; svg.innerHTML=g;
+    MEM.drawKey(W, lo, hi, X, ticks);
+  },
+  // the sticky scale: the same X mapping the dots use, so a tick and a dot at the same price
+  // sit on the same pixel. Redrawn with the spine, because the range re-fits to what is shown.
+  drawKey(W, lo, hi, X, ticks){
+    const ax=document.getElementById('mem-key-ax'), rd=document.getElementById('mem-key-rd');
+    const mag=MEM.spineMagnet, onMap=(mag!=null&&mag>=lo&&mag<=hi);
+    if(ax){
+      let a=`<line class="base" x1="${X(lo)}" y1="9" x2="${X(hi)}" y2="9"/>`;
+      const marks=ticks.length?ticks:[lo,hi];
+      marks.forEach((v,i)=>{
+        a+=`<line class="cap" x1="${X(v)}" y1="5" x2="${X(v)}" y2="13"/>`;
+        if(ticks.length) a+=`<text x="${X(v)}" y="23" text-anchor="${i===0?'start':i===marks.length-1?'end':'middle'}">${Math.round(v)}</text>`;
+      });
+      if(onMap) a+=`<line class="mag" x1="${X(mag)}" y1="2" x2="${X(mag)}" y2="16"/>`;
+      ax.innerHTML=`<svg width="${W}" height="26" viewBox="0 0 ${W} 26" aria-hidden="true">${a}</svg>`;
+    }
+    if(rd){
+      const bits=[];
+      if(!ticks.length) bits.push(`${MEM.fx(lo)} <em>→</em> ${MEM.fx(hi)}`);   // no room on the axis
+      bits.push(esc(MEM.spineWord||'price')+' across');
+      if(onMap) bits.push(`<i>${MEM.fx(mag,0)} magnet</i>`);
+      bits.push('newest first down');
+      rd.innerHTML=bits.join(' · ');
+    }
   },
   focus(i){
     const wrap=document.getElementById('mem-spine'); if(!wrap) return;
