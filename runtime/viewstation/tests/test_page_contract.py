@@ -57,3 +57,13 @@ def test_the_memory_view_never_asks_for_a_page_the_route_will_refuse():
     caps |= {int(n) for n in re.findall(r"MAX:(\d+)", PAGE)}
     assert caps, "the page asks for no page size at all"
     assert max(caps) <= server._MEMORY_MAX_LIMIT
+
+def test_a_chart_callout_can_never_reach_the_right_hand_readouts():
+    """08-22, seen on the SNDK chart: the in-plot callout "Abs Gamma 3 \u00b7 1,590" printed hard
+    against "Tipping point" in the value gutter \u2014 two unrelated facts fused into one run of
+    text. Trusting the plot edge (lineEnd-4) was the mistake: the tick lane and the value
+    column both start within a few pixels of it. Three things keep it from coming back and
+    all three are pinned here, because a search rule is easy to reintroduce without them."""
+    assert "gx1=lineEnd-px(12)" in PAGE                       # a real margin, not the bare edge
+    assert "mark(gx1, gy0, gx0+nc*CW, gy1)" in PAGE           # ...and the strip past it is no-go
+    assert "put.x=Math.max(gx0, Math.min(put.x, gx1-tw))" in PAGE   # ...and every branch is clamped

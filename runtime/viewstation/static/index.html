@@ -11891,9 +11891,25 @@ const SNDK = {
     //     (15 chars, no rank suffix) plus a "+7" counter ≈ 93px at 11.6px sans ⇒ 112 with
     //     margin. The old 128px cap was ~35px wider than anything that lane can draw, and at
     //     980px of canvas that surplus alone cost the plot 36px.
-    const tagW=px(Math.max(76,Math.min(95,Math.round(w*0.078))));
-    const tagStripW=hasTags?px(Math.max(84,Math.min(92,Math.round(w*0.13)))):0;   // plain words are wider than the old codes
-    const lineEnd=w-tagW-tagStripW, tagStripX=lineEnd+6, tagX=w-10;
+    // measured against the longest string each lane can print, at the sizes above:
+    //   · values  — "$1,598.00" is 9 mono glyphs at the live-price step ≈ 77px, +10 ⇒ 72 pre-ramp
+    //   · strip   — "Call Wall 2 +1" is 14 sans glyphs at the label step ≈ 95px ⇒ 80 pre-ramp
+    // Between them that is 78px handed back to the plot, on a right side that was spending
+    // 262px — a fifth of the canvas — on eleven short facts.
+    const tagW=px(Math.max(60,Math.min(72,Math.round(w*0.056))));
+    // ---- TICKS, NOT A COLUMN OF WORDS (08-22). The wall strip was 98px of prose down the
+    // right edge — a fifth of the chart's remaining width spent naming five strikes. Each one
+    // is a TICK now, and its name is called out into the plot's own empty space on a leader
+    // line, so the words cost nothing and the chart gets the width back.
+    const tagStripW=hasTags?px(11):0;
+    // ---- OPEN INTEREST (08-22) stops claiming a lane of its own. Both it and the wall strip are
+    // PER-STRIKE and sit on the same rows, so a faint bar behind a wall's name is the standing
+    // size of the very strike being named — the same information in none of the width. Only a
+    // card with no strip at all (no doctrine tags on the row) still gives it a thin lane.
+    const hasOI=!!(m.oiBS)&&w>=520;
+    const oiW=(hasOI&&!hasTags)?px(20):0;
+    const lineEnd=w-tagW-tagStripW-oiW, tagStripX=lineEnd+oiW+6, tagX=w-10;
+    const oiX0=hasTags?tagStripX:(lineEnd+5), oiX1=hasTags?(tagStripX+tagStripW-6):(lineEnd+oiW-4);
     // the top-docked TAPE (top:5, one chip-row ~21px since the chips went to 11.5px) overlays
     // the plot's top strip — the only chart text that high is the far-wall edge markers + the
     // top zone captions, so they clear to capTop. The tape is CSS-sized (it is HTML, not SVG)
@@ -12205,10 +12221,12 @@ const SNDK = {
     }
     // ---- γ bars: diverging from the zero axis (+ calls jade right / − puts coral left) ----
     let bars='', hits='';
+    const barBoxes=[];   // what the bars occupy — the callout placer must not cover a reading
     if(g&&gMax>0) for(let j=0;j<n;j++){
       if(!g.has[j]) continue;
       const v=g.v[j], bw=Math.max(1.2, Math.abs(v)/gMax*half);
       const y=(yFor(grid[j])-barH/2).toFixed(1);
+      barBoxes.push({x1:v>=0?xZ:xZ-bw, x2:v>=0?xZ+bw:xZ, y1:+y, y2:+y+barH});
       bars+=v>=0
         ?`<rect class="snk-bar" x="${xZ}" y="${y}" width="${bw.toFixed(1)}" height="${barH.toFixed(1)}" rx="1.5" fill="url(#snkJ)"/>`
         :`<rect class="snk-bar" x="${(xZ-bw).toFixed(1)}" y="${y}" width="${bw.toFixed(1)}" height="${barH.toFixed(1)}" rx="1.5" fill="url(#snkCm)"/>`;
@@ -12260,7 +12278,7 @@ const SNDK = {
       }
     }
     // ---- GXTAG doctrine strip (each source gated exactly like its own lane) ----
-    let tagStrip='';
+    let tagStrip='', CALLOUTS=[];
     const rawTagsByJ=GXTAG.tagsBySlot({ n, k0, step, nbs:m.nbs,
       oiSide:m.oiSideBS, volSide:m.volSideBS, dexSigned:m.dex?m.dex.fbs:null,
       hvl:(L&&isFinite(L.hvl))?L.hvl:(isFinite(m.flip)?m.flip:null),
@@ -12305,7 +12323,7 @@ const SNDK = {
       // collect first, then de-collide the doctrine strip on a ≥13px single-line gap (as the
       // level tags spread on 30px) — near-spot strikes must not stack "Put Wall 1" on "Put Wall 4".
       // Both gaps ride the type ramp: a 11.6px line needs ~16px of pitch, not 13.
-      const strip=[], stripGap=px(13), fzStrip=fz(9.5);
+      const strip=[], stripGap=px(5);   // ticks are 3px tall — they need clearance, not a line's worth
       for(const jj of Object.keys(SNDK.tagsByJ)){
         const j=+jj; if(j<0||j>=n) continue;
         const list=SNDK.tagsByJ[jj];
@@ -12313,11 +12331,9 @@ const SNDK = {
         // then OI/Vol/Delta peaks, then fences) — strip the "(abbr)" so only prose shows.
         // A "+N" carries the rest, which the hover tooltip spells out in full.
         const t0=list[0], plain=t0.full.replace(/\s*\([^)]*\)\s*$/,'');
-        let run=`<tspan style="fill:${kc[t0.kind]||'var(--ink-dim)'}">${plain}</tspan>`;
-        if(list.length>1) run+=`<tspan dx="5" style="fill:var(--ink-faint)">+${list.length-1}</tspan>`;
-        // the label (and its "+N") is the ONE thing on this row the pointer can reach — the
-        // strike hit-lanes end at the plot edge, so before this the strip was mute and the
-        // "+N" had no way to say what it was counting. Hovering it now opens the full list.
+        // the TICK is the one thing on this row the pointer can reach — the strike hit-lanes
+        // end at the plot edge — so the card that used to hang off the words hangs off it, and
+        // the "+N" the callout prints has somewhere to say what it is counting.
         // the card's TITLE already names the level and its price — so the body opens straight
         // into how far away it is, then one line per reading. No preamble, ≤3 lines, no repeats.
         const dK=(spRef!=null)?Math.abs(grid[j]-spRef):null;
@@ -12327,12 +12343,19 @@ const SNDK = {
         // EVERY reading is shown — a hidden "+N" told the reader something was here and then
         // refused to say what it was. The card grows instead; it is the one place with room.
         const tTip=dAway+snkTagRows(list).map(r=>`¦f:${r}`).join('');
-        strip.push({y:yFor(grid[j])+px(3), run, name:`${plain} · ${snkUsd(grid[j],0)}`, tip:tTip});
+        strip.push({y:yFor(grid[j]), hue:kc[t0.kind]||'var(--ink-dim)',
+                    name:`${plain} · ${snkUsd(grid[j],0)}`,
+                    text:`${plain} · ${snkUsd(grid[j],0).replace('$','')}`+(list.length>1?` +${list.length-1}`:''),
+                    tip:tTip});
       }
       strip.sort((a,b)=>a.y-b.y);
       for(let i=1;i<strip.length;i++) if(strip[i].y-strip[i-1].y<stripGap) strip[i].y=strip[i-1].y+stripGap;
+      // the tick IS the hover target, so the card that used to hang off the words hangs off it
+      const tkH=px(3), tkW=Math.max(6, tagStripW-3);
       for(const s of strip)
-        tagStrip+=`<text x="${tagStripX}" y="${s.y.toFixed(1)}" font-size="${fzStrip}" font-weight="700" font-family="var(--sans)" style="letter-spacing:.01em" data-name="${s.name}" data-tip="${s.tip}">${s.run}</text>`;
+        tagStrip+=`<rect x="${tagStripX}" y="${(s.y-tkH/2).toFixed(1)}" width="${tkW}" height="${tkH}" rx="1"`
+          +` fill="${s.hue}" opacity=".9" data-name="${s.name}" data-tip="${s.tip}"/>`;
+      CALLOUTS=strip;
     }
     // ---- THE PATH IS PROJECTED EARLY (08-22) ----
     // A wall label that lands on the price line is ink on ink ("Ceiling ●●● " printing through
@@ -12536,13 +12559,17 @@ const SNDK = {
     tagList.sort((a,b)=>a.y-b.y);
     // the 30px spread is a TWO-LINE TAG HEIGHT, so it rides the ramp with the two lines: at
     // the top of it a name+value pair measures ~29px of ink and 30px of pitch would touch.
-    const tagGap=px(30), fzTagNm=fz(10.5), fzTagV=fz(14.5);
+    // the six readouts on the right are REFERENCE — every one of them is already a drawn line
+    // on the plot — so they are sized as reference: names at the scale's smallest text step,
+    // values one step up, and the live price one above that. It was the live price at display
+    // size that made this lane 115px wide, and the header two inches above already prints it.
+    const tagGap=px(24), fzTagNm=fz(8), fzTagV=fz(9.5);
     // …and the lead size is clamped by the gutter it is anchored in. The live price is the one
     // value here that carries cents — 9 mono glyphs where every other level prints 6 — so an
     // emphasis the reserve cannot hold would simply push it back over the plot's right edge.
     // Below ~1200px of canvas tagW cannot hold it, and there the lead falls back to fzTagV
     // (byte-identical to the pre-08-01 tag) rather than shrinking below its own siblings.
-    const fzTagLead=Math.max(fzTagV, Math.min(fz(16), +((tagW-10)/(9*0.6)).toFixed(1)));
+    const fzTagLead=Math.max(fzTagV, Math.min(fz(10.5), +((tagW-10)/(9*0.6)).toFixed(1)));
     for(let i=1;i<tagList.length;i++) if(tagList[i].y-tagList[i-1].y<tagGap) tagList[i].y=tagList[i-1].y+tagGap;
     for(const t of tagList){
       const tipA=t.tip?` data-name="${t.label||''}" data-tip="${t.tip}"`:'';
@@ -12731,6 +12758,120 @@ const SNDK = {
     const zones=snkZones(m, band, { x0, yTop:padT, yBot:h-padB, capTop, sp:spRef, fs:fz(9),
       flip:flipZ, emU:(emTop!=null&&sp!=null)?emTop-sp:null, emD:(emBot!=null&&sp!=null)?sp-emBot:null,
       gaps:SNDK.gaps, avoid:gutAvoid, yFor });   // the same pockets the GAP bands shade (measured) — never a second, disagreeing model
+    // ---- OPEN INTEREST, quietly. A third of the bars' weight, no gridline, no numbers: this
+    // is yesterday's standing positioning, context for the hero and never the hero. Scaled to
+    // its own peak so the lane always uses its full width — it is answering "which strikes are
+    // big relative to each other", not "how big against gamma", which is a different unit.
+    let oiSVG='';
+    if(hasOI&&oi){
+      let oMax=0; for(const v of oi.v){ const a=Math.abs(v); if(a>oMax) oMax=a; }
+      if(oMax>0){
+        const laneW=Math.max(8, oiX1-oiX0), oh=Math.max(1.5, Math.min(rowH-4, px(6.5)));
+        oiSVG+=`<text x="${oiX0.toFixed(1)}" y="${(padT-px(5)).toFixed(1)}" font-size="${fz(8.5)}" font-weight="700"`
+          +` font-family="var(--mono)" style="fill:var(--ink-faint);opacity:.55;letter-spacing:.12em">OI</text>`;
+        for(let j=0;j<grid.length;j++){
+          if(!oi.has[j]) continue;
+          const k=grid[j], v=oi.v[j];
+          if(!v||(FOLD&&FOLD.inFold(k))) continue;
+          const y=yFor(k); if(y<padT||y>h-padB) continue;
+          oiSVG+=`<rect x="${oiX0.toFixed(1)}" y="${(y-oh/2).toFixed(1)}" width="${Math.max(1,Math.abs(v)/oMax*laneW).toFixed(1)}"`
+            +` height="${oh.toFixed(1)}" rx="1" fill="var(${v>=0?'--jade':'--coral'})" opacity=".18"/>`;
+        }
+      }
+    }
+    // ---- CALLOUTS (08-22): the wall names, placed in the plot's own empty space ----
+    // Each tick throws its name into the nearest genuinely clear patch of canvas and keeps a
+    // hairline leader back to the strike it belongs to. The search is dynamic, not a layout:
+    // the plot is walked as a coarse occupancy grid, everything that is a READING is marked
+    // no-go, and each label takes the first free slot nearest its own row. What counts as a
+    // reading, in order of how much canvas it claims:
+    //   · the price story — the path AND the ground it shades against the open. This is the
+    //     focal point of the chart and is never covered, which is what pushes the labels out
+    //     into the quiet bands above and below the day's range.
+    //   · every γ bar's own rectangle, so a label can never lie across a bar's tip.
+    //   · plotBoxes — the break mark, the EM readouts, the air-pocket sentence.
+    //   · the left gutter, where the zone captions and EM legs live, and the top tape strip.
+    // Labels are placed in ladder order and each one marks its own slot, so they cannot collide
+    // with each other either. A label that finds nothing free falls back to its own row at the
+    // right edge rather than going unsaid — a name withheld is worse than a name overlapping.
+    let callSVG='';
+    if(CALLOUTS.length){
+      const fsC=fz(9.5), padC=4;
+      // THE INVARIANT, and the reason this line exists: A CALLOUT MAY NEVER REACH THE RIGHT-HAND
+      // READOUTS. Seen on 08-22 — "Abs Gamma 3 · 1,590" printed hard against "Tipping point" in
+      // the value gutter, two unrelated facts fused into one string of text. gx1 was lineEnd-4,
+      // which trusted the plot edge to be enough; it is not, because the tick lane and the value
+      // column both begin within a few pixels of it. The right limit is now a real margin AND
+      // the strip beyond it is marked occupied outright, so no search — not the preferred pass,
+      // not the relaxed pass, not the last-resort fallback — can put a word there.
+      const gx0=x0+6, gx1=lineEnd-px(12), gy0=capTop+2, gy1=h-padB-4;
+      const CW=14, CH=Math.max(10, Math.round(fsC*1.25));
+      const nc=Math.max(1, Math.ceil((gx1-gx0)/CW)), nr=Math.max(1, Math.ceil((gy1-gy0)/CH));
+      const occ=new Uint8Array(nc*nr);
+      const mark=(ax,ay,bx,by)=>{
+        const c0=Math.max(0,Math.floor((Math.min(ax,bx)-gx0)/CW)), c1=Math.min(nc-1,Math.floor((Math.max(ax,bx)-gx0)/CW));
+        const r0=Math.max(0,Math.floor((Math.min(ay,by)-gy0)/CH)), r1=Math.min(nr-1,Math.floor((Math.max(ay,by)-gy0)/CH));
+        if(c1<0||r1<0||c0>nc-1||r0>nr-1) return;
+        for(let r=Math.max(0,r0);r<=r1;r++) for(let c=Math.max(0,c0);c<=c1;c++) occ[r*nc+c]=1;
+      };
+      if(pathPts&&pathOpenY!=null) for(let i=1;i<pathPts.length;i++){
+        const a=pathPts[i-1], b=pathPts[i];
+        mark(a.x, Math.min(a.y,b.y,pathOpenY)-4, b.x, Math.max(a.y,b.y,pathOpenY)+4);
+      }
+      for(const bb of barBoxes) mark(bb.x1-2, bb.y1-2, bb.x2+2, bb.y2+2);
+      for(const pb of plotBoxes) mark(pb.x1-3, pb.y-(pb.h||CH)/2-2, pb.x2+3, pb.y+(pb.h||CH)/2+2);
+      mark(gx0, gy0, x0+Math.max(96, (lineEnd-x0)*0.10), gy1);       // zone captions + EM legs
+      mark(gx1, gy0, gx0+nc*CW, gy1);                                // the ticks and the readouts
+      // the WIDEST clear run in a row, or null if nothing in it is wide enough. Asking for the
+      // widest — rather than the first slot that fits — is what stops every label crowding the
+      // right edge: a row whose only gap is a sliver beside the price band no longer qualifies,
+      // so the label steps out to the open canvas above or below the day's range instead.
+      const rowFree=(cy, needW)=>{
+        const r=Math.floor((cy-gy0)/CH); if(r<0||r>nr-1) return null;
+        let best=null, run=0;
+        for(let c=0;c<nc;c++){
+          if(occ[r*nc+c]){ run=0; continue; }
+          run++;
+          const wpx=run*CW;
+          if(wpx>=needW && (!best||wpx>best.w)) best={x:gx0+(c-run+1)*CW, w:wpx};
+        }
+        return best;
+      };
+      const AIR=4*CW;   // room AROUND the words, not merely room for them
+      let joinN=0;
+      for(const s of CALLOUTS){
+        const tw=Math.round(txW(s.text, fsC, 0.56))+padC*2;
+        let put=null;
+        // two passes: first insisting on breathing room, then settling for a bare fit. Within a
+        // pass, nearest row first — this one, then one out either way — so the leader stays short.
+        for(const air of [AIR, 0]){
+          for(let d=0; d<=nr && !put; d++){
+            for(const sign of (d?[-1,1]:[0])){
+              const cy=s.y+sign*d*CH;
+              if(cy<gy0+CH/2||cy>gy1-CH/2) continue;
+              const run=rowFree(cy, tw+air);
+              if(run){ put={x:Math.min(gx1-tw, run.x+run.w-tw), y:cy}; break; }
+            }
+          }
+          if(put) break;
+        }
+        if(!put) put={x:Math.max(gx0, gx1-tw), y:s.y};              // say it anyway, but not there
+        // the invariant, enforced once at the end whichever branch produced the position — a
+        // clamp cannot be forgotten by a future pass the way a search rule can
+        put.x=Math.max(gx0, Math.min(put.x, gx1-tw));
+        mark(put.x-3, put.y-CH/2, put.x+tw+3, put.y+CH/2);
+        // the leader: out of the label, along a column of its own near the edge, then to the tick
+        const jx=lineEnd+2-(joinN++%3)*3, lx2=put.x+tw;
+        const kink=Math.abs(put.y-s.y)>1.5;
+        callSVG+=`<path d="M${lx2.toFixed(1)} ${put.y.toFixed(1)} H${jx.toFixed(1)}`
+          +(kink?` V${s.y.toFixed(1)} H${(tagStripX-1).toFixed(1)}`:` H${(tagStripX-1).toFixed(1)}`)
+          +`" fill="none" stroke="${s.hue}" stroke-width="1" opacity=".38"/>`
+          +`<circle cx="${lx2.toFixed(1)}" cy="${put.y.toFixed(1)}" r="1.7" fill="${s.hue}" opacity=".7"/>`
+          +`<text x="${(put.x+padC).toFixed(1)}" y="${(put.y+fsC*0.34).toFixed(1)}" font-size="${fsC}" font-weight="700"`
+          +` font-family="var(--sans)" style="letter-spacing:.01em;fill:${s.hue};paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round"`
+          +` data-name="${s.name}" data-tip="${s.tip}">${esc(s.text)}</text>`;
+      }
+    }
     // ---- assemble ----
     const svgHtml=`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
       <defs>
@@ -12748,7 +12889,7 @@ const SNDK = {
       <g id="snk-bars">${bars}</g>
       <g id="snk-hits">${hits}</g>
       <g id="snk-whisk">${whisk.svg}</g>
-      <g class="decl">${lvls}</g><g id="snk-ghost" class="decl">${ghostSVG}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g>${tagStrip}</g><g>${tags}</g>
+      <g class="decl">${lvls}</g><g id="snk-ghost" class="decl">${ghostSVG}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g id="snk-oi">${oiSVG}</g><g>${tagStrip}</g><g id="snk-calls" class="decl">${callSVG}</g><g>${tags}</g>
       <g id="snk-mirai" class="decl">${mirai.svg}</g>
       <g id="snk-zones" class="decl">${zones}</g>
     </svg>`;
