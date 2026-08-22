@@ -1,0 +1,17 @@
+# What CI installs to import and exercise the tree.
+#
+# The suites themselves import nothing but pytest; everything here is what the
+# modules UNDER test reach for. Where a box already pins its own dependencies,
+# this file points at that pin file rather than restating it, so CI inherits a
+# version bump instead of drifting away from one.
+
+-r ../skills/iv-viability/requirements.txt   # httpx, keyring, cryptography, filelock, numpy, pytest, schwab-py
+
+# Not pinned anywhere else: the voice box is wired by venv-bootstrap.sh on the
+# mini rather than by a requirements file of its own.
+rapidfuzz                                    # the intent matcher, imported at module level
+websockets                                   # voice_server's transport
+
+# Deliberately absent: torch, sounddevice and the agent SDK. Each is imported
+# lazily inside a function, so nothing needs them to collect or run a test — and
+# a CPU torch wheel would cost more install time than the whole suite takes.

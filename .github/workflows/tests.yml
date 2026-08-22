@@ -37,13 +37,11 @@ jobs:
         with:
           python-version: '3.12'   # what the mini's venv runs
 
-      # The tests themselves import nothing but pytest. These three are what the
-      # modules under test import at module level: httpx (native_gex_feed,
-      # options_feed), numpy (iv_metrics, the voice boxes), websockets
-      # (voice_server). torch, sounddevice and the agent SDK are imported lazily
-      # inside functions, so they are not needed to collect or run anything.
+      # The tests import nothing but pytest; the list is what the modules UNDER
+      # test reach for, and it lives in one file so both repos and the port job
+      # install exactly the same thing. See its header for what is left out.
       - name: install
-        run: python -m pip install --disable-pip-version-check -q pytest httpx numpy websockets
+        run: python -m pip install --disable-pip-version-check -q -r .github/requirements-ci.txt
 
       # The suites are offline by construction (every conftest fixes state on
       # tmp_path and asserts zero network) and the clock work is zoneinfo-based,
