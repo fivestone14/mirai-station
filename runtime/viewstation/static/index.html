@@ -2008,7 +2008,11 @@
   .pl-seg button{appearance:none; border:0; background:transparent; color:var(--ink-dim); font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em; padding:7px 14px; cursor:pointer}
   .pl-seg button.on{background:var(--iris-wash); color:var(--iris)}
   .pl-seg button:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
-  .pl-mem{flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(198px,24%) minmax(0,1fr); gap:14px; align-items:stretch}
+  /* the rail is sized by what it HOLDS, not by a fraction of the pane: it takes the width its
+     own content needs up to a ceiling, and the memory takes every pixel left over. On a narrow
+     pane fit-content is the track that gives ground first, which is the right way round — the
+     scroll is the point of this view and the rail is the label on it. */
+  .pl-mem{flex:1 1 auto; min-height:0; display:grid; grid-template-columns:fit-content(272px) minmax(0,1fr); gap:14px; align-items:stretch}
 
   /* ---- the left rail: inventory + tier switch + the wake legend ---- */
   .mem-side{display:flex; flex-direction:column; gap:11px; min-height:0; overflow:auto; padding:12px;
@@ -2018,7 +2022,19 @@
   .mem-tier{appearance:none; font:inherit; text-align:left; cursor:pointer; display:grid;
     grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; padding:9px 11px; border-radius:10px;
     border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink)}
-  .mem-tier .nm{grid-column:1; font-size:13px; font-weight:650}
+  .mem-tier .nm{grid-column:1; display:flex; align-items:center; flex-wrap:wrap; gap:4px 7px; font-size:13px; font-weight:650}
+  /* the horizon tag: which memory this shelf IS — three dots for depth, then the word. Loud
+     enough to read at a glance, quiet enough that the tier name stays the headline, and in
+     UI iris rather than jade/coral, which carry market meaning everywhere else on this page */
+  .mem-tier .hz{display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border-radius:999px;
+    border:1px solid var(--hairline-2); background:var(--surface-2); cursor:help;
+    font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-faint)}
+  .mem-tier .hz i{width:4px; height:4px; border-radius:50%; background:var(--hairline-2)}
+  .mem-tier .hz i.f{background:var(--ink-dim)}
+  .mem-tier .hz i:last-of-type{margin-right:2px}
+  .mem-tier.on .hz{border-color:color-mix(in srgb,var(--iris) 40%,transparent); background:var(--iris-wash);
+    color:color-mix(in srgb,var(--iris) 78%, var(--ink-dim))}
+  .mem-tier.on .hz i.f{background:var(--iris)}
   .mem-tier .n{grid-column:2; grid-row:1 / span 2; align-self:center; font-family:var(--mono); font-size:18px; font-weight:700; line-height:1; color:var(--ink-dim)}
   .mem-tier .sub{grid-column:1; font-size:11px; line-height:1.4; color:var(--ink-dim)}
   .mem-tier:hover{background:color-mix(in srgb,var(--surface-3) 72%, var(--iris-wash))}
@@ -13075,7 +13091,12 @@ const MEM = {
   // server.py's _MEMORY_MAX_LIMIT — asking for more is not a bigger page, it is a rejected
   // query ("bad query"), because the route validates every flag before it reaches the CLI
   MAX:60,
-  TIERS:[['slices','Moments'],['days','Days'],['month','Terrain']],
+  // the three horizons, said out loud on the shelf itself: a reader should not have to infer
+  // that Moments is the short-term memory and Terrain the standing one from their contents.
+  // [key, name, horizon, depth 1-3, what that horizon means in plain words]
+  TIERS:[['slices','Moments','Short term',1,'Short-term memory — one session at a time, minute by minute. The store keeps one file per day, so a search here reads that day.'],
+         ['days','Days','Medium term',2,'Medium-term memory — one line per closed session, rolled up out of that day’s moments.'],
+         ['month','Terrain','Long term',3,'Long-term memory — the standing map across every session on record.']],
   HUE:{iris:'--iris', lantern:'--lantern', grav:'--l-grav', tower:'--tower', coral:'--coral', faint:'--ink-faint'},
   // every wake reason sndk_read can write, each with the one sentence that says what it means.
   // 'gate event' is deliberately vague in the STORE — the arrow's own name is stripped before a
@@ -13132,10 +13153,12 @@ const MEM = {
       month:t?`Which strikes keep turning up as magnets and walls, the multi-session range, the stock’s character. Built ${t.built}${newest&&t.built<newest?' — rebuilds when Terrain is asked':''}.`:'No standing map has been built yet.',
     };
     const n={slices:o.slices_total||0, days:sm.n||0, month:(t&&t.sessions!=null)?t.sessions:'—'};
-    box.innerHTML=MEM.TIERS.map(([k,name])=>{
+    box.innerHTML=MEM.TIERS.map(([k,name,horizon,depth,why])=>{
       const on=MEM.tier===k;
+      const dots=[1,2,3].map(i=>`<i class="${i<=depth?'f':''}"></i>`).join('');
       return `<button type="button" class="mem-tier${on?' on':''}" data-tier="${k}" role="tab" aria-selected="${on?'true':'false'}">`
-        +`<span class="nm">${name}</span><span class="n">${n[k]}</span><span class="sub">${esc(sub[k])}</span></button>`;
+        +`<span class="nm">${name}<span class="hz" title="${esc(why)}">${dots}${horizon}</span></span>`
+        +`<span class="n">${n[k]}</span><span class="sub">${esc(sub[k])}</span></button>`;
     }).join('');
     if(foot) foot.innerHTML=`Read through the same command the model runs — <code>sndk_rag.py query</code>. None of this is injected into a reading: the model has to ask for it, exactly as you do here.`;
   },
@@ -13147,7 +13170,7 @@ const MEM = {
     const ks=Object.keys(c).sort((a,b)=>c[b]-c[a]);
     if(!ks.length){ el.hidden=true; el.innerHTML=''; return; }
     el.hidden=false;
-    el.innerHTML=`<div class="cap">Why it woke</div>`+ks.map(k=>{
+    el.innerHTML=`<div class="cap">Why It Woke (Model Call)</div>`+ks.map(k=>{
       const w=MEM.WAKE[k]||['○','faint',''];
       return `<div class="row" title="${esc(w[2])}"><span class="g" style="color:var(${MEM.HUE[w[1]]||'--ink-faint'})">${w[0]}</span>`
         +`<span>${esc(MEM.cap(k))}</span><span class="c">×${c[k]}</span></div>`;
@@ -13341,9 +13364,9 @@ const MEM = {
   wakeBadge(w){
     if(!w) return '';
     const d=MEM.WAKE[w]||['○','faint','The model looked, but the reason was filed under a name this page does not know.'];
-    return `<span class="wake c-${d[1]}" tabindex="0" role="note" aria-label="Why it woke: ${esc(MEM.cap(w))}. ${esc(d[2])}">`
+    return `<span class="wake c-${d[1]}" tabindex="0" role="note" aria-label="Why it woke (model call): ${esc(MEM.cap(w))}. ${esc(d[2])}">`
       +`<span class="g">${d[0]}</span>${esc(MEM.cap(w))}`
-      +`<span class="why"><b>Why it woke</b><i>${esc(d[2])}</i></span></span>`;
+      +`<span class="why"><b>Why It Woke (Model Call)</b><i>${esc(d[2])}</i></span></span>`;
   },
   walls(m){
     const c=(m.walls_call||[]).map(v=>MEM.fx(v,0)), p=(m.walls_put||[]).map(v=>MEM.fx(v,0));

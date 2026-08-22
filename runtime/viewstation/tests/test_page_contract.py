@@ -44,6 +44,7 @@ def test_memory_view_is_two_columns_with_a_spine():
     assert "MEM.setTier(" in PAGE and "MEM.showDay(" in PAGE
     assert "drawSpine()" in PAGE and 'id="mem-spine"' in PAGE
     assert "MEM.WAKE" in PAGE and "'gate event'" in PAGE
+    assert "'Short term'" in PAGE and "'Medium term'" in PAGE and "'Long term'" in PAGE
     assert "if(tier==='slices'){ const d=MEM.sel||MEM.newestDay(); if(d){ MEM.sel=d; p.date=d; } }" in PAGE
 
 def test_the_memory_view_never_asks_for_a_page_the_route_will_refuse():
