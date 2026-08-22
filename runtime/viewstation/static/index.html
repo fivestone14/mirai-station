@@ -1996,55 +1996,142 @@
   #ver-stamp{position:fixed; left:10px; bottom:6px; z-index:59; font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink-faint); opacity:.75; pointer-events:none}
   #ver-stamp[hidden]{display:none}
 
-  /* ---- Memory view (08-21): the model's history tool, behind the same lock. A Payload ⇄ Memory
-     switch in the lock row; the memory reads as a plain timeline of the model's own remembered
-     sentences (slices), rolled-up days, and the standing terrain — cards, not JSON, with an
-     optional "what the model sees" raw pane. ---- */
+  /* ---- Memory view (08-21; two-column redesign 08-22): the model's history tool.
+     LEFT RAIL (~25 %) is the inventory and the tier switch — what the memory holds, and
+     which shelf you are standing on. RIGHT COLUMN (~75 %) is nothing but the memory
+     itself: the day chips, one ask bar, and the scroll. Moments hang off a SPINE — the
+     session's own price trail drawn down the gutter, one dot per read coloured by the
+     side the model took — so a scroll reads as a day unfolding rather than as 27
+     unrelated cards. Everything a read knew is shown as one compact inset under its
+     sentence; the badge on the right says what woke the model, in plain words. ---- */
   .pl-seg{display:inline-flex; border:1px solid var(--hairline-2); border-radius:999px; overflow:hidden; background:var(--surface-3)}
   .pl-seg button{appearance:none; border:0; background:transparent; color:var(--ink-dim); font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em; padding:7px 14px; cursor:pointer}
   .pl-seg button.on{background:var(--iris-wash); color:var(--iris)}
   .pl-seg button:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
-  .pl-mem{flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:12px}
-  .mem-ov{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px 14px; padding:12px 14px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md); flex:0 0 auto}
-  .mem-ov .cap{grid-column:1 / -1; font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
-  .mem-ov .tile{display:flex; flex-direction:column; gap:3px; padding:10px 12px; border-radius:10px; border:1px solid var(--hairline-2); background:var(--surface-3)}
-  .mem-ov .tile b{font-size:13px; font-weight:650; color:var(--ink)}
-  .mem-ov .tile .n{font-family:var(--mono); font-size:20px; font-weight:700; color:var(--iris); line-height:1.1}
-  .mem-ov .tile span{font-size:11.5px; color:var(--ink-dim); line-height:1.38}
-  .mem-ov .note{grid-column:1 / -1; font-size:12px; color:var(--ink-faint)}
-  .mem-ctl{display:flex; flex-direction:column; gap:8px; flex:0 0 auto}
-  .mem-days{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
-  .mem-days .lbl{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-right:4px}
-  .mem-days button{appearance:none; font:inherit; font-family:var(--mono); font-size:11.5px; padding:4px 9px; border-radius:999px; border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink-dim); cursor:pointer}
+  .pl-mem{flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(198px,24%) minmax(0,1fr); gap:14px; align-items:stretch}
+
+  /* ---- the left rail: inventory + tier switch + the wake legend ---- */
+  .mem-side{display:flex; flex-direction:column; gap:11px; min-height:0; overflow:auto; padding:12px;
+    background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md)}
+  .mem-side .cap{font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-faint)}
+  .mem-tiers{display:flex; flex-direction:column; gap:6px}
+  .mem-tier{appearance:none; font:inherit; text-align:left; cursor:pointer; display:grid;
+    grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; padding:9px 11px; border-radius:10px;
+    border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink)}
+  .mem-tier .nm{grid-column:1; font-size:13px; font-weight:650}
+  .mem-tier .n{grid-column:2; grid-row:1 / span 2; align-self:center; font-family:var(--mono); font-size:18px; font-weight:700; line-height:1; color:var(--ink-dim)}
+  .mem-tier .sub{grid-column:1; font-size:11px; line-height:1.4; color:var(--ink-dim)}
+  .mem-tier:hover{background:color-mix(in srgb,var(--surface-3) 72%, var(--iris-wash))}
+  .mem-tier.on{border-color:color-mix(in srgb,var(--iris) 55%,transparent); background:var(--iris-wash)}
+  .mem-tier.on .nm,.mem-tier.on .n{color:var(--iris)}
+  .mem-tier:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .mem-key{display:flex; flex-direction:column; gap:5px; padding-top:10px; border-top:1px solid var(--hairline)}
+  .mem-key .row{display:grid; grid-template-columns:15px minmax(0,1fr) auto; gap:7px; align-items:baseline; font-size:11.5px; color:var(--ink-dim)}
+  .mem-key .row .g{font-family:var(--mono); font-size:12px; text-align:center; line-height:1}
+  .mem-key .row .c{font-family:var(--mono); font-size:11px; color:var(--ink-faint)}
+  .mem-side .foot{margin-top:auto; padding-top:10px; border-top:1px solid var(--hairline); font-size:11px; line-height:1.5; color:var(--ink-faint)}
+  .mem-side .foot code{font-family:var(--mono); font-size:10.5px; color:var(--ink-dim)}
+  .mem-side .err{font-size:12px; line-height:1.45; color:var(--coral)}
+
+  /* ---- the right column: chips, one ask bar, the scroll ---- */
+  .mem-main{display:flex; flex-direction:column; gap:10px; min-height:0}
+  .mem-days{display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:0 0 auto}
+  .mem-days .lbl{font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); margin-right:2px}
+  .mem-days button{appearance:none; font:inherit; display:inline-flex; flex-direction:column; gap:4px; min-width:62px;
+    padding:5px 9px 6px; border-radius:9px; border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink-dim); cursor:pointer}
+  .mem-days button .d{font-family:var(--mono); font-size:11.5px; white-space:nowrap}
+  .mem-days button .d small{color:var(--ink-faint); margin-left:5px}
+  .mem-days button:hover{background:color-mix(in srgb,var(--surface-3) 72%, var(--iris-wash))}
   .mem-days button.on{color:var(--iris); border-color:color-mix(in srgb,var(--iris) 55%,transparent); background:var(--iris-wash)}
-  .mem-days button small{color:var(--ink-faint); margin-left:4px}
-  .mem-ask{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 12px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md)}
-  .mem-ask select,.mem-ask input{font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink)}
+  .mem-days button:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  /* the day's rhythm in 3 px: how the model's calls fell that session */
+  .mem-days .rhy{display:flex; height:3px; border-radius:2px; overflow:hidden; background:var(--hairline)}
+  .mem-days .rhy i{display:block; min-width:0}
+  .mem-days .rhy i.u{background:var(--jade)} .mem-days .rhy i.d{background:var(--coral)} .mem-days .rhy i.z{background:var(--hairline-2)}
+  .mem-ask{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 12px; flex:0 0 auto;
+    background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md)}
+  .mem-ask input{font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink)}
   .mem-ask input[type=text]{flex:1 1 260px; min-width:0}
-  .mem-ask input.near{width:150px; font-family:var(--mono)}
-  .mem-ask select:focus-visible,.mem-ask input:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
-  .mem-ask label.raw{display:inline-flex; gap:6px; align-items:center; font-size:12px; color:var(--ink-dim); margin-left:auto; cursor:pointer}
-  .mem-head{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline; font-size:12.5px; color:var(--ink-dim); flex:0 0 auto}
-  .mem-head b{color:var(--ink)}
-  .mem-head code{font-family:var(--mono); font-size:11px; color:var(--ink-faint)}
-  .mem-res{flex:1 1 auto; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:8px; padding:2px 2px 8px}
-  .mc{display:grid; grid-template-columns:64px minmax(0,1fr); gap:4px 12px; padding:10px 12px; border-radius:10px; border:1px solid var(--hairline); background:var(--surface-2)}
-  .mc .t{font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--ink-dim); padding-top:2px}
-  .mc .vec{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.04em; padding:2px 8px; border-radius:999px; border:1px solid var(--hairline-2); color:var(--ink-dim); margin-bottom:4px}
-  .mc .vec.up{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 45%,transparent); background:var(--jade-wash)}
-  .mc .vec.down{color:var(--coral); border-color:color-mix(in srgb,var(--coral) 45%,transparent); background:var(--coral-wash)}
-  .mc p{margin:0; font-size:14px; line-height:1.45; color:var(--ink)}
-  .mc .m{font-family:var(--mono); font-size:11px; color:var(--ink-faint); line-height:1.5; margin-top:4px; overflow-wrap:anywhere}
-  .mc.day{grid-template-columns:96px minmax(0,1fr)}
-  .mc.day .t{font-size:12px}
-  .mc .pct{font-family:var(--mono); font-weight:700}
-  .mc .pct.up{color:var(--jade)} .mc .pct.dn{color:var(--coral)}
-  .mc.terrain{grid-template-columns:1fr}
-  .mc .cols{display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:8px 16px; margin-top:6px}
-  .mc .cols b{display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:2px}
-  .mc .cols span{font-family:var(--mono); font-size:12px; color:var(--ink)}
-  .mem-raw-out{margin:0; padding:12px 14px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md); font-family:var(--mono); font-size:11.5px; line-height:1.45; white-space:pre-wrap; overflow:auto; max-height:40vh; color:var(--ink-dim); flex:0 0 auto}
-  .mem-empty{color:var(--ink-faint); font-size:13px; padding:18px; text-align:center; border:1px dashed var(--hairline-2); border-radius:var(--r-md)}
+  .mem-ask input.near{flex:0 0 auto; width:154px; font-family:var(--mono)}
+  .mem-ask input:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
+  .mem-ask label.raw{display:inline-flex; gap:6px; align-items:center; font-size:12px; color:var(--ink-dim); margin-left:auto; cursor:pointer; white-space:nowrap}
+  .mem-head{display:flex; flex-wrap:wrap; gap:4px 14px; align-items:baseline; font-size:12.5px; color:var(--ink-dim); flex:0 0 auto}
+  .mem-head b{color:var(--ink); font-weight:650}
+  .mem-head .scale{font-size:11.5px; color:var(--ink-faint)}
+  .mem-head .scale i{font-style:normal; color:var(--l-grav)}
+  .mem-head code{font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-left:auto}
+  .mem-res{flex:1 1 auto; min-height:0; overflow:auto; padding:2px 3px 6px}
+
+  /* ---- the spine: the day drawn down the gutter, one dot per read ---- */
+  .mspine{position:relative; --gut:88px}
+  .mspine.on{padding-left:var(--gut)}
+  .mspine>svg{position:absolute; left:0; top:0; height:100%; pointer-events:none}
+  .mspine>svg circle.hit{pointer-events:auto; cursor:pointer}
+  .mem-list{display:flex; flex-direction:column; gap:8px; padding-bottom:24px}
+
+  /* ---- one remembered moment ---- */
+  .mc{padding:11px 13px 12px; border-radius:11px; border:1px solid var(--hairline); background:var(--surface-2)}
+  .mc.hl{border-color:color-mix(in srgb,var(--iris) 50%,transparent); background:color-mix(in srgb,var(--surface-2) 80%, var(--iris-wash))}
+  .mc-hd{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:6px}
+  .mc-t{font-family:var(--mono); font-size:13px; font-weight:700; letter-spacing:.02em; color:var(--ink)}
+  .mc-t .dt{margin-right:7px; font-weight:400; color:var(--ink-faint)}
+  .vec{display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px;
+    font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink-dim)}
+  .vec.up{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 45%,transparent); background:var(--jade-wash)}
+  .vec.down{color:var(--coral); border-color:color-mix(in srgb,var(--coral) 45%,transparent); background:var(--coral-wash)}
+  .pct{font-family:var(--mono); font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px; border:1px solid var(--hairline-2); background:var(--surface-3)}
+  .pct.up{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 45%,transparent); background:var(--jade-wash)}
+  .pct.dn{color:var(--coral); border-color:color-mix(in srgb,var(--coral) 45%,transparent); background:var(--coral-wash)}
+  /* the wake badge — WHY the model looked, and the one sentence that explains it */
+  .wake{position:relative; margin-left:auto; display:inline-flex; align-items:center; gap:6px; padding:2px 9px;
+    border-radius:999px; border:1px solid var(--hairline); background:var(--surface-3);
+    font-family:var(--mono); font-size:10px; letter-spacing:.05em; color:var(--ink-faint); cursor:help}
+  .wake .g{font-size:11px; line-height:1}
+  .wake.c-iris .g{color:var(--iris)} .wake.c-lantern .g{color:var(--lantern)} .wake.c-grav .g{color:var(--l-grav)}
+  .wake.c-tower .g{color:var(--tower)} .wake.c-coral .g{color:var(--coral)} .wake.c-faint .g{color:var(--ink-faint)}
+  .wake:hover,.wake.open{border-color:var(--hairline-2); color:var(--ink-dim)}
+  .wake:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .wake .why{position:absolute; z-index:45; top:calc(100% + 7px); right:0; width:max-content; max-width:min(330px,64vw);
+    padding:9px 12px 10px; text-align:left; pointer-events:none; letter-spacing:0; text-transform:none;
+    background:var(--surface); border:1px solid var(--hairline-2); border-radius:10px; box-shadow:var(--shadow);
+    opacity:0; visibility:hidden; transition:opacity .12s ease}
+  .wake:hover .why,.wake.open .why{opacity:1; visibility:visible}
+  .wake .why b{display:block; font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--iris); margin-bottom:5px}
+  .wake .why i{display:block; font-family:var(--sans); font-style:normal; font-size:12px; line-height:1.45; color:var(--ink-dim)}
+  /* near the foot of the scroll the card would fall off the bottom — flip it above the badge */
+  .mem-list .mc:nth-last-child(-n+3) .wake .why{top:auto; bottom:calc(100% + 7px)}
+  .mc-read{margin:0; font-size:14px; line-height:1.45; color:var(--ink)}
+  .mc-if{position:relative; margin:6px 0 0; padding-left:17px; font-size:12.5px; line-height:1.45; color:var(--ink-dim)}
+  .mc-if::before{content:"\21B3"; position:absolute; left:0; color:var(--ink-faint)}
+  .mc-if b{margin-right:6px; font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
+  /* the inset: everything that was true at that minute, always on, two lines at most */
+  .mc-facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(124px,1fr)); gap:5px 14px; margin-top:9px;
+    padding:8px 10px; border-radius:9px; background:var(--surface-3); border:1px solid var(--hairline)}
+  .mc-facts div{display:flex; flex-direction:column; gap:1px; min-width:0}
+  .mc-facts b{font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
+  .mc-facts span{font-family:var(--mono); font-size:11.5px; color:var(--ink); overflow-wrap:anywhere}
+  .mc-facts span em{font-style:normal; color:var(--ink-faint)}
+  .mc.terrain .mc-facts{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+  .mc.terrain .mc-facts span{color:var(--ink-dim)}
+  .mc-note{margin:8px 0 0; font-size:11.5px; line-height:1.45; color:var(--ink-faint)}
+  /* a day summary carries the session's own reads quoted at the end — they are moments,
+     so they are laid out as moments, not run together into the paragraph */
+  .mc-quotes{display:flex; flex-direction:column; gap:5px; margin-top:9px; padding-left:11px; border-left:2px solid var(--hairline-2)}
+  .mc-quotes div{display:grid; grid-template-columns:46px minmax(0,1fr); gap:9px; font-size:12.5px; line-height:1.4; color:var(--ink-dim)}
+  .mc-quotes b{font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--ink-faint)}
+  .mem-raw-out{margin:0; padding:12px 14px; flex:0 0 auto; max-height:34vh; overflow:auto; white-space:pre-wrap;
+    background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md);
+    font-family:var(--mono); font-size:11.5px; line-height:1.45; color:var(--ink-dim)}
+  .mem-empty{padding:18px; text-align:center; font-size:13px; color:var(--ink-faint); border:1px dashed var(--hairline-2); border-radius:var(--r-md)}
+  @media (max-width:1080px){
+    .pl-mem{grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr)}
+    .mem-side{overflow:visible}
+    .mem-tiers{flex-direction:row; flex-wrap:wrap}
+    .mem-tier{flex:1 1 190px}
+    .mem-side .foot,.mem-key{display:none}
+    .mspine{--gut:64px}
+  }
 </style>
 </head>
 <body>
@@ -12787,20 +12874,24 @@ const PAYLOAD = {
       <div class="pl-empty" id="pl-empty">Loading the scene…</div>
       <div class="pl-json" id="pl-json" hidden tabindex="0" aria-label="the scene JSON handed to the model"></div>
       <div class="pl-mem" id="pl-mem" hidden>
-        <div class="mem-ov" id="mem-ov"></div>
-        <div class="mem-ctl">
+        <aside class="mem-side">
+          <div class="cap">What it can remember</div>
+          <div class="mem-tiers" id="mem-tiers" role="tablist" aria-label="which memory"></div>
+          <div class="mem-key" id="mem-key" hidden></div>
+          <div class="foot" id="mem-foot"></div>
+        </aside>
+        <div class="mem-main">
           <div class="mem-days" id="mem-days"></div>
           <form class="mem-ask" id="mem-ask">
-            <select id="mem-tier" aria-label="which memory"><option value="slices">Moments — one per read</option><option value="days">Days — one per session</option><option value="month">Terrain — the standing map</option></select>
-            <input id="mem-text" type="text" autocomplete="off" placeholder="Ask in plain words — e.g. rejected the call wall, pinned into the close" aria-label="ask the memory">
-            <input id="mem-near" class="near" type="text" inputmode="decimal" autocomplete="off" placeholder="near strike, e.g. 1600" aria-label="near strike">
-            <button class="pl-btn go" type="submit">Ask the memory</button>
-            <label class="raw"><input type="checkbox" id="mem-rawtoggle"> show what the model sees</label>
+            <input id="mem-text" type="text" autocomplete="off" placeholder="Search in plain words" aria-label="search the memory">
+            <input id="mem-near" class="near" type="text" inputmode="decimal" autocomplete="off" placeholder="Near strike, e.g. 1600" aria-label="near strike">
+            <button class="pl-btn go" type="submit" id="mem-go">Search</button>
+            <label class="raw"><input type="checkbox" id="mem-rawtoggle"> Show what the model sees</label>
           </form>
+          <div class="mem-head" id="mem-head"></div>
+          <div class="mem-res" id="mem-res"></div>
+          <pre class="mem-raw-out" id="mem-rawout" hidden></pre>
         </div>
-        <div class="mem-head" id="mem-head"></div>
-        <div class="mem-res" id="mem-res"></div>
-        <pre class="mem-raw-out" id="mem-rawout" hidden></pre>
       </div>
     </div>`;
     host.querySelector('#pl-refresh').addEventListener('click', ()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); });
@@ -12815,7 +12906,19 @@ const PAYLOAD = {
     document.addEventListener('keydown', e=>{ if(e.key==='Escape') PAYLOAD.closeTip(); });
     host.querySelector('#mem-ask').addEventListener('submit', e=>{ e.preventDefault(); MEM.ask(); });
     host.querySelector('#mem-rawtoggle').addEventListener('change', ()=>MEM.paintRaw());
-    host.querySelector('#mem-days').addEventListener('click', e=>{ const b=e.target.closest('button[data-day]'); if(b) MEM.day(b.dataset.day); });
+    host.querySelector('#mem-days').addEventListener('click', e=>{ const b=e.target.closest('button[data-day]'); if(b) MEM.showDay(b.dataset.day); });
+    host.querySelector('#mem-tiers').addEventListener('click', e=>{ const b=e.target.closest('button[data-tier]'); if(b) MEM.setTier(b.dataset.tier); });
+    // the scroll owns three gestures: tap a wake badge for its sentence (no hover on a
+    // tablet), hover a card to light its dot on the spine, click a dot to jump to its card
+    const res=host.querySelector('#mem-res');
+    res.addEventListener('click', e=>{
+      const w=e.target.closest('.wake');
+      if(w){ const was=w.classList.contains('open'); MEM.closeWhy(); w.classList.toggle('open', !was); return; }
+      MEM.closeWhy();
+      const dot=e.target.closest('circle[data-i]'); if(dot) MEM.jump(dot.dataset.i);
+    });
+    res.addEventListener('pointerover', e=>{ const c=e.target.closest('.mc[data-i]'); MEM.focus(c?c.dataset.i:null); });
+    res.addEventListener('pointerleave', ()=>MEM.focus(null));
     PAYLOAD.paintPipe();
   },
   view:'payload',
@@ -12961,12 +13064,36 @@ function plLines(v, d, pre, suf, out){
 }
 const plRows=out=>out.map(([d,h])=>`<div class="ln" style="--i:${d}">${h}</div>`).join('');
 
-// ---------- Memory (08-21): what the reading model can remember — the SNDK RAG store, read through
-// the model's own history CLI (/api/sndk/memory runs sndk_rag.py exactly as the model would). Shown
-// as plain cards: the model's remembered sentences (moments), rolled-up days, the standing terrain.
+// ---------- Memory (08-21; redesigned 08-22): what the reading model can remember — the SNDK
+// RAG store, read through the model's own history CLI (/api/sndk/memory runs sndk_rag.py exactly
+// as the model would). Two columns: a left rail holding the inventory and the tier switch, and a
+// right column that is only the memory — day chips, one ask bar, and the scroll. Moments hang off
+// a SPINE that draws the session (the price trail down the gutter, one dot per read coloured by
+// the side the model took), because 27 cards in a row hide the very thing they are evidence of.
 const MEM = {
-  ov:null, last:null, day:null, busy:false,
-  clear(){ MEM.ov=null; MEM.last=null; MEM.day=null; ['mem-ov','mem-days','mem-head','mem-res'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; }); const r=document.getElementById('mem-rawout'); if(r){ r.hidden=true; r.textContent=''; } },
+  ov:null, last:null, sel:null, tier:'slices', busy:false, ro:null, roT:null, spineMagnet:null, painted:null,
+  // server.py's _MEMORY_MAX_LIMIT — asking for more is not a bigger page, it is a rejected
+  // query ("bad query"), because the route validates every flag before it reaches the CLI
+  MAX:60,
+  TIERS:[['slices','Moments'],['days','Days'],['month','Terrain']],
+  HUE:{iris:'--iris', lantern:'--lantern', grav:'--l-grav', tower:'--tower', coral:'--coral', faint:'--ink-faint'},
+  // every wake reason sndk_read can write, each with the one sentence that says what it means.
+  // 'gate event' is deliberately vague in the STORE — the arrow's own name is stripped before a
+  // slice is filed so the model can never anchor on its past arrow — and the sentence says so.
+  WAKE:{
+    'first read':         ['▷','iris',   'The day’s opening look. There was nothing yet to compare against, so the model simply read the board.'],
+    'price ran':          ['↗','lantern','Price travelled at least 0.15 of a typical day’s move since the model last looked.'],
+    'magnet moved':       ['◆','grav',   'The strike pulling hardest relocated by at least 0.12 of that same ruler — a different scene, not the same one drifting.'],
+    'regime changed':     ['≡','tower',  'The day’s character changed — pinning, neutral or trending.'],
+    'gamma sign flipped': ['±','coral',  'Dealer gamma flipped sign, so moves stop being damped and start being amplified, or the reverse.'],
+    'call wall crossed':  ['⇄','lantern','The call wall relocated to the other side of price — the ceiling is now underneath.'],
+    'put wall crossed':   ['⇄','lantern','The put wall relocated to the other side of price — the floor is now overhead.'],
+    'heartbeat':          ['○','faint',  'Forty-five minutes passed with nothing else to report, so the model looked anyway. An unprompted check, not a reaction.'],
+    'gate event':         ['◇','iris',   'The arrow on the chart appeared, vanished or reversed. It is filed under a neutral name on purpose, so the model can never read its own past arrow back out of its memory.'],
+  },
+  clear(){ MEM.stopObserver(); MEM.ov=null; MEM.last=null; MEM.sel=null;
+    ['mem-tiers','mem-key','mem-foot','mem-days','mem-head','mem-res'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
+    const r=document.getElementById('mem-rawout'); if(r){ r.hidden=true; r.textContent=''; } },
   url(params){ const u=new URLSearchParams({user:PAYLOAD.USER, ...params}); return '/api/sndk/memory?'+u.toString(); },
   async get(params){
     const r=await fetch(MEM.url(params), {cache:'no-store'}); const text=await r.text();
@@ -12977,37 +13104,114 @@ const MEM = {
   },
   async open(){
     const memEl=document.getElementById('pl-mem'); if(!memEl) return; memEl.hidden=false;
-    if(!MEM.ov){ MEM.paintHead('Reading the memory store…'); try{ MEM.ov=await MEM.get({kind:'overview'}); }catch(e){ MEM.ov={error:String(e)}; } MEM.paintOverview(); }
-    if(!MEM.last){ const days=(MEM.ov&&MEM.ov.days)||[]; MEM.day(days.length?days[days.length-1].date:null); }
+    if(!MEM.ov){
+      MEM.paintHead('Reading the memory store…');
+      try{ MEM.ov=await MEM.get({kind:'overview'}); }catch(e){ MEM.ov={error:String(e)}; }
+      MEM.paintSide(); MEM.paintDays(); MEM.paintAsk();
+    }
+    if(!MEM.last) MEM.setTier(MEM.tier);
   },
-  refresh(){ MEM.ov=null; MEM.open(); if(MEM.last&&MEM.last.params) MEM.run(MEM.last.params, MEM.last.title); },
-  paintOverview(){
-    const el=document.getElementById('mem-ov'); if(!el) return; const o=MEM.ov;
-    if(!o||o.error){ el.innerHTML=`<div class="note">${o&&o.error?esc(o.error):'no memory store yet'}</div>`; return; }
-    const days=o.days||[], today=new Date().toLocaleDateString('en-CA',{timeZone:ET}), td=days.find(d=>d.date===today);
-    const sm=o.summaries||{}, t=o.terrain;
-    el.innerHTML=`<div class="cap">What the model can remember · its history tool · never injected, only fetched on request</div>
-      <div class="tile"><b>Moments</b><span class="n">${o.slices_total||0}</span><span>one per read the model made — its own sentence plus the numbers that were true at that minute · ${days.length} day${days.length===1?'':'s'} on record${td?` · today ${td.n} (${td.first}–${td.last})`:' · none yet today'}</span></div>
-      <div class="tile"><b>Days</b><span class="n">${sm.n||0}</span><span>one summary per closed session — open-to-close move, range, the regime and levels that ruled, and a stitched story · ${sm.last?`rolled up through ${sm.last}`:'none rolled up yet'}${sm.last&&days.length&&sm.last<days[days.length-1].date?' · rolls forward the next time the model (or you) asks the Days tier':''}</span></div>
-      <div class="tile"><b>Terrain</b><span class="n">${t&&t.sessions!=null?t.sessions:'—'}</span><span>${t&&!t.error?`sessions in the standing map built ${t.built} — which strikes keep showing up as magnets and walls, the multi-session range, the stock's character${t.built&&days.length&&t.built<days[days.length-1].date?' · rebuilds when the Terrain tier is asked':''}`:'no terrain built yet'}</span></div>
-      <div class="note">The numbers below are read through the same command the model runs (<span class="mono">sndk_rag.py query</span>); toggle “show what the model sees” for the exact text it would be handed.</div>`;
+  async refresh(){
+    try{ MEM.ov=await MEM.get({kind:'overview'}); }catch(e){ MEM.ov={error:String(e)}; }
+    MEM.paintSide(); MEM.paintDays(); MEM.paintAsk();
+    if(MEM.last&&MEM.last.params) MEM.run(MEM.last.params, MEM.last.title); else MEM.setTier(MEM.tier);
+  },
+  newestDay(){ const d=((MEM.ov||{}).days)||[]; return d.length?d[d.length-1].date:null; },
+
+  // ---- the left rail ----
+  paintSide(){
+    const box=document.getElementById('mem-tiers'), foot=document.getElementById('mem-foot'); if(!box) return;
+    const o=MEM.ov||{};
+    if(o.error){ box.innerHTML=`<div class="err">${esc(o.error)}</div>`; if(foot) foot.innerHTML=''; return; }
+    const days=o.days||[], sm=o.summaries||{}, t=(o.terrain&&!o.terrain.error)?o.terrain:null;
+    const today=new Date().toLocaleDateString('en-CA',{timeZone:ET}), td=days.find(d=>d.date===today);
+    const newest=MEM.newestDay();
+    const sub={
+      slices:`One per read the model made — its own sentence, and the numbers that were true that minute. ${days.length} day${days.length===1?'':'s'} on record${td?`, ${td.n} today (${td.first}–${td.last})`:', none yet today'}.`,
+      days:`One summary per closed session: the move, the range, the levels that ruled, and a stitched story. ${sm.last?`Rolled up through ${sm.last}`:'None rolled up yet'}${sm.last&&newest&&sm.last<newest?' — rolls forward the next time Days is asked':''}.`,
+      month:t?`Which strikes keep turning up as magnets and walls, the multi-session range, the stock’s character. Built ${t.built}${newest&&t.built<newest?' — rebuilds when Terrain is asked':''}.`:'No standing map has been built yet.',
+    };
+    const n={slices:o.slices_total||0, days:sm.n||0, month:(t&&t.sessions!=null)?t.sessions:'—'};
+    box.innerHTML=MEM.TIERS.map(([k,name])=>{
+      const on=MEM.tier===k;
+      return `<button type="button" class="mem-tier${on?' on':''}" data-tier="${k}" role="tab" aria-selected="${on?'true':'false'}">`
+        +`<span class="nm">${name}</span><span class="n">${n[k]}</span><span class="sub">${esc(sub[k])}</span></button>`;
+    }).join('');
+    if(foot) foot.innerHTML=`Read through the same command the model runs — <code>sndk_rag.py query</code>. None of this is injected into a reading: the model has to ask for it, exactly as you do here.`;
+  },
+  // the legend earns the glyphs: only the wake reasons actually present in what is on screen,
+  // with how many of each — the day's own mix of "the tape forced this" versus "I looked anyway"
+  paintKey(rows){
+    const el=document.getElementById('mem-key'); if(!el) return;
+    const c={}; (rows||[]).forEach(x=>{ const w=((x.meta||{}).wake)||''; if(w) c[w]=(c[w]||0)+1; });
+    const ks=Object.keys(c).sort((a,b)=>c[b]-c[a]);
+    if(!ks.length){ el.hidden=true; el.innerHTML=''; return; }
+    el.hidden=false;
+    el.innerHTML=`<div class="cap">Why it woke</div>`+ks.map(k=>{
+      const w=MEM.WAKE[k]||['○','faint',''];
+      return `<div class="row" title="${esc(w[2])}"><span class="g" style="color:var(${MEM.HUE[w[1]]||'--ink-faint'})">${w[0]}</span>`
+        +`<span>${esc(MEM.cap(k))}</span><span class="c">×${c[k]}</span></div>`;
+    }).join('');
+  },
+
+  // ---- the right column's controls ----
+  paintDays(){
     const dd=document.getElementById('mem-days'); if(!dd) return;
-    const list=days.slice().reverse().slice(0,16);
-    dd.innerHTML=`<span class="lbl">Moments by day</span>`+list.map(d=>`<button type="button" data-day="${d.date}" class="${d.date===MEM.day?'on':''}" title="${d.n} reads · ${d.first}–${d.last}">${d.date.slice(5)}<small>${d.n}</small></button>`).join('');
+    if(MEM.tier!=='slices'){ dd.hidden=true; dd.innerHTML=''; return; }
+    dd.hidden=false;
+    const days=((MEM.ov||{}).days)||[];
+    if(!days.length){ dd.innerHTML=`<span class="lbl">Moments by day</span><span class="lbl">nothing on record yet</span>`; return; }
+    dd.innerHTML=`<span class="lbl">Moments by day</span>`+days.slice().reverse().slice(0,18).map(d=>{
+      const v=d.vectors||{}, seg=(c,k)=>k?`<i class="${c}" style="flex:${k}"></i>`:'';
+      return `<button type="button" data-day="${d.date}" class="${d.date===MEM.sel?'on':''}"`
+        +` title="${d.n} read${d.n===1?'':'s'} · ${d.first}–${d.last} · up ${v.up||0}, down ${v.down||0}, no call ${v.none||0}">`
+        +`<span class="d">${d.date.slice(5)}<small>${d.n}</small></span>`
+        +`<span class="rhy">${seg('u',v.up)}${seg('d',v.down)}${seg('z',v.none)}</span></button>`;
+    }).join('');
   },
-  day(date){
-    MEM.day=date; const sel=document.getElementById('mem-tier'); if(sel) sel.value='slices';
-    document.querySelectorAll('#mem-days button').forEach(b=>b.classList.toggle('on', b.dataset.day===date));
-    const p={kind:'query', tier:'slices', limit:'60'}; if(date) p.date=date;
-    MEM.run(p, date?`Moments · ${date}`:'Moments · today');
+  paintAsk(){
+    const f=document.getElementById('mem-ask'), tx=document.getElementById('mem-text'),
+          nr=document.getElementById('mem-near'), go=document.getElementById('mem-go');
+    if(!f||!tx||!go) return;
+    f.hidden=MEM.tier==='month';
+    if(f.hidden) return;
+    if(MEM.tier==='days'){
+      const n=(((MEM.ov||{}).summaries)||{}).n||0;
+      tx.placeholder=`Search ${n?'all '+n+' sessions':'the sessions'} — e.g. gapped down and never recovered`;
+      go.textContent='Search sessions';
+    }else{
+      tx.placeholder=`Search ${MEM.sel?MEM.sel+'’s':'this day’s'} moments — e.g. rejected the call wall`;
+      go.textContent='Search this day';
+    }
+    if(nr) nr.placeholder='Near strike, e.g. 1600';
+  },
+  setTier(t){
+    MEM.tier=(t==='days'||t==='month')?t:'slices';
+    MEM.paintSide(); MEM.paintDays(); MEM.paintAsk();
+    if(MEM.tier==='month') MEM.run({kind:'query', tier:'month'}, 'Terrain');
+    else if(MEM.tier==='days') MEM.run({kind:'query', tier:'days', limit:'24'}, 'Days');
+    else MEM.showDay(MEM.sel||MEM.newestDay());
+  },
+  showDay(date){
+    MEM.sel=date||null; MEM.tier='slices';
+    MEM.paintSide(); MEM.paintDays(); MEM.paintAsk();
+    const p={kind:'query', tier:'slices', limit:String(MEM.MAX)}; if(MEM.sel) p.date=MEM.sel;
+    MEM.run(p, `Moments · ${MEM.sel||'today'}`);
   },
   ask(){
-    const tier=document.getElementById('mem-tier').value, text=document.getElementById('mem-text').value.trim(), near=document.getElementById('mem-near').value.trim();
-    const p={kind:'query', tier, limit: tier==='days'?'12':'40'};
-    if(text) p.text=text.slice(0,240); if(near&&!isNaN(parseFloat(near))) p.near=String(parseFloat(near));
-    if(tier==='slices'&&MEM.day) p.date=MEM.day;
-    document.querySelectorAll('#mem-days button').forEach(b=>b.classList.toggle('on', tier==='slices'&&b.dataset.day===MEM.day));
-    MEM.run(p, {slices:'Moments', days:'Days', month:'Terrain'}[tier]+(text?` · “${text}”`:'')+(near?` · near ${near}`:''));
+    const text=(document.getElementById('mem-text').value||'').trim();
+    const near=(document.getElementById('mem-near').value||'').trim();
+    const tier=MEM.tier==='days'?'days':'slices';
+    const p={kind:'query', tier, limit: tier==='days'?'24':String(MEM.MAX)};
+    if(text) p.text=text.slice(0,240);
+    if(near&&!isNaN(parseFloat(near))) p.near=String(parseFloat(near));
+    // moments live one file per session, so the history CLI searches ONE day: an ask that names
+    // no date silently falls back to today, which is empty before the first read of the morning.
+    // The selected day always rides along — the button and the head both say which one.
+    if(tier==='slices'){ const d=MEM.sel||MEM.newestDay(); if(d){ MEM.sel=d; p.date=d; } }
+    MEM.paintDays(); MEM.paintAsk();
+    const what=tier==='days'?'Days':`Moments · ${p.date||'today'}`;
+    MEM.run(p, what+(text?` · “${text}”`:'')+(near?` · near ${near}`:''));
   },
   async run(params, title){
     if(MEM.busy) return; MEM.busy=true; MEM.last={params, title}; MEM.paintHead(`${title} · asking…`);
@@ -13015,40 +13219,231 @@ const MEM = {
     MEM.busy=false; MEM.last.data=j; MEM.paintResult(title, j); MEM.paintRaw();
   },
   paintHead(text){ const h=document.getElementById('mem-head'); if(h) h.innerHTML=`<b>${esc(text)}</b>`; },
+
+  // ---- the result ----
   paintResult(title, j){
     const h=document.getElementById('mem-head'), res=document.getElementById('mem-res'); if(!h||!res) return;
-    if(!j||j.error){ h.innerHTML=`<b>${esc(title)}</b>`; res.innerHTML=`<div class="mem-empty">${esc((j&&j.error)||'no answer')}</div>`; return; }
-    const r=j.result||{}; const n=(r.results||[]).length;
-    const meta=[ r.tier==='month'?'the standing map':`${r.n_matched!=null?r.n_matched+' matched':''}${n?` · showing ${n}`:''}`, r.rank?`ranked ${r.rank==='chronological'?'by time':'by meaning ('+r.rank+')'}`:'', j.seconds!=null?`${j.seconds}s`:'' ].filter(Boolean).join(' · ');
-    h.innerHTML=`<b>${esc(title)}</b><span>${esc(meta)}</span><code>$ ${esc(j.cmd||'')}</code>`;
-    if(r.tier==='month'){ res.innerHTML=MEM.cardTerrain(r.terrain); return; }
-    if(!n){ res.innerHTML=`<div class="mem-empty">Nothing remembered for that ask.</div>`; return; }
-    res.innerHTML=(r.tier==='days'?r.results.slice().reverse().map(MEM.cardDay):r.results.map(MEM.cardSlice)).join('');
+    MEM.stopObserver(); MEM.spineMagnet=null;
+    // the pane repaints itself every 60 s while it is open; a reader half-way down a session
+    // must not be thrown back to 09:32 by a refresh that changed nothing
+    const keep=(MEM.painted===title)?res.scrollTop:0; MEM.painted=title;
+    const cmd=`<code>$ ${esc(j&&j.cmd||'')}</code>`;
+    if(!j||j.error){ h.innerHTML=`<b>${esc(title)}</b>`; res.innerHTML=`<div class="mem-empty">${esc((j&&j.error)||'no answer')}</div>`; MEM.paintKey(null); return; }
+    const r=j.result||{};
+    if(r.tier==='month'){
+      h.innerHTML=`<b>${esc(title)}</b><span>the standing map — context, never the trigger</span>${cmd}`;
+      res.innerHTML=MEM.cardTerrain(r.terrain); MEM.paintKey(null); return;
+    }
+    const rows=r.results||[], n=rows.length, slices=r.tier!=='days';
+    if(!n){
+      h.innerHTML=`<b>${esc(title)}</b><span>nothing matched</span>${cmd}`;
+      res.innerHTML=`<div class="mem-empty">Nothing remembered for that ask.</div>`; MEM.paintKey(null); return;
+    }
+    const chrono=r.rank==='chronological';
+    const asked=(MEM.last&&MEM.last.params&&MEM.last.params.text)||'';
+    const meta=[
+      `${n} ${slices?(n===1?'read':'reads'):(n===1?'session':'sessions')}`,
+      (r.n_matched!=null&&r.n_matched>n)?`of ${r.n_matched} matched`:'',
+      chrono?'in time order, earliest first':(r.rank==='semantic'?'ranked by meaning':'ranked by word overlap'),
+      (slices&&asked)?'this session only — the history is one file per day':'',
+      j.seconds!=null?`${j.seconds}s`:'',
+    ].filter(Boolean).join(' · ');
+    if(slices&&chrono) MEM.spineMagnet=MEM.dominantMagnet(rows);
+    const html=rows.map((x,i)=>slices?MEM.cardSlice(x,i,chrono):MEM.cardDay(x,i,chrono)).join('');
+    const px=rows.map(x=>MEM.n(slices?(x.meta||{}).spot:(x.meta||{}).close)).filter(v=>v!=null);
+    const spine=chrono&&px.length>=2;
+    let scale='';
+    if(spine){
+      const lo=Math.min.apply(null,px), hi=Math.max.apply(null,px);
+      scale=`<span class="scale">Spine: ${slices?'price':'closing price'} ${MEM.fx(lo)} → ${MEM.fx(hi)} left to right, one dot per ${slices?'read':'session'}`
+        +(MEM.spineMagnet!=null?` · <i>the gold line is the ${MEM.fx(MEM.spineMagnet,0)} magnet</i>`:'')
+        +(slices?' · a dash across the gutter marks where the day’s character or the gamma sign changed':'')+`</span>`;
+    }
+    h.innerHTML=`<b>${esc(title)}</b><span>${esc(meta)}</span>${scale}${cmd}`;
+    res.innerHTML=`<div class="mspine${spine?' on':''}" id="mem-spine">${spine?'<svg aria-hidden="true"></svg>':''}<div class="mem-list">${html}</div></div>`;
+    if(keep) res.scrollTop=keep;
+    MEM.paintKey(slices?rows:null);
+    requestAnimationFrame(()=>MEM.drawSpine());
+    MEM.observe();
   },
-  vecChip(v, mag){ if(!v) return ''; const a=v==='up'?'▲':v==='down'?'▼':'●'; return `<span class="vec ${v}">${a} ${v}${mag!=null&&v!=='none'?` · ${Number(mag).toFixed(2)}σ`:''}</span>`; },
-  cardSlice(x){
-    const m=x.meta||{}; const mt=(m.magnet_top||[])[0];
-    const bits=[ m.spot!=null?`spot ${Number(m.spot).toFixed(2)}`:'', mt?`magnet ${mt[0]} (${Number(mt[1]).toFixed(1)}%${m.gap_pp!=null?`, lead ${m.gap_pp}pp`:''})`:'',
-      (m.walls_call||[]).length?`call wall ${m.walls_call.join('/')}`:'', (m.walls_put||[]).length?`put wall ${m.walls_put.join('/')}`:'',
-      m.gamma_sign?`${m.gamma_sign} gamma`:'', m.regime||'', m.wake?`woke: ${m.wake}`:'' ].filter(Boolean);
-    return `<div class="mc"><div class="t">${esc(x.time||m.time||'')}</div><div>${MEM.vecChip(m.vector, m.magnitude_sigma)}<p>${esc(x.narrative||'')}</p><div class="m">${esc(bits.join(' · '))}</div></div></div>`;
+
+  // ---- the cards ----
+  cardSlice(x,i,chrono){
+    const m=x.meta||{}, sp=MEM.n(m.spot);
+    const parts=MEM.split(x.narrative||'');
+    const top=(m.magnet_top||[])[0]||null;
+    const F=[];
+    if(sp!=null) F.push(['Spot', MEM.fx(sp)]);
+    if(top){
+      const pull=MEM.n(top[1]), lead=MEM.n(m.gap_pp);
+      F.push(['Magnet', `${MEM.fx(top[0],0)}${pull!=null||lead!=null?` <em>${[pull!=null?pull.toFixed(1)+'% pull':'', lead!=null?'lead '+lead.toFixed(1)+'pp':''].filter(Boolean).join(', ')}</em>`:''}`]);
+    }
+    if(MEM.n(m.pt)!=null&&MEM.n(m.ct)!=null)
+      F.push(['Flip band', `${MEM.fx(m.pt)} · ${MEM.fx(m.hvl)} · ${MEM.fx(m.ct)} <em>${MEM.where(sp,m.pt,m.ct)}</em>`]);
+    if(MEM.n(m.vwap)!=null)
+      F.push(['VWAP', `${MEM.fx(m.vwap)}${sp!=null?` <em>price ${sp>=MEM.n(m.vwap)?'above':'below'}</em>`:''}`]);
+    F.push(['Walls', MEM.walls(m)]);
+    if(m.gamma_sign) F.push(['Gamma', esc(MEM.cap(m.gamma_sign))]);
+    if(m.regime) F.push(['Regime', esc(MEM.cap(m.regime))]);
+    if(MEM.n(m.sigma)!=null) F.push(['Typical day', `±${MEM.fx(m.sigma)}`]);
+    const when=chrono?esc(x.time||m.time||'') : `<span class="dt">${esc(m.date||'')}</span>${esc(x.time||m.time||'')}`;
+    return `<article class="mc" data-i="${i}"${sp!=null?` data-px="${sp}"`:''} data-v="${esc(m.vector||'none')}"`
+      +` data-rg="${esc(m.regime||'')}" data-gs="${esc(m.gamma_sign||'')}">`
+      +`<div class="mc-hd"><span class="mc-t">${when}</span>${MEM.vecChip(m.vector,m.magnitude_sigma)}${MEM.wakeBadge(m.wake)}</div>`
+      +(parts[0]?`<p class="mc-read">${esc(parts[0])}</p>`:'')
+      +(parts[1]?`<p class="mc-if"><b>Changes if</b>${esc(parts[1])}</p>`:'')
+      +MEM.facts(F)+`</article>`;
   },
-  cardDay(x){
-    const m=x.meta||{}; const p=m.pct_open_to_close; const vc=m.vector_counts||{};
-    const bits=[ (m.low!=null&&m.high!=null)?`ranged ${m.low}–${m.high}`:'', m.regime_mode?`${m.regime_mode} most of the day`:'', m.magnet_mode?`magnet ${m.magnet_mode}`:'', m.call_wall_mode?`call wall ${m.call_wall_mode}`:'', m.put_wall_mode?`put wall ${m.put_wall_mode}`:'', m.n_scans?`${m.n_scans} scans`:'', (vc.up!=null||vc.down!=null)?`reads ▲${vc.up||0} ▼${vc.down||0} ●${vc.none||0}`:'' ].filter(Boolean);
-    return `<div class="mc day"><div class="t">${esc(x.date||'')}</div><div>${p!=null?`<span class="pct ${p>=0?'up':'dn'}">${p>=0?'+':''}${p}% open→close</span> `:''}<p>${esc(x.narrative||'')}</p><div class="m">${esc(bits.join(' · '))}</div></div></div>`;
+  cardDay(x,i,chrono){
+    const m=x.meta||{}, p=MEM.n(m.pct_open_to_close), vc=m.vector_counts||{}, cl=MEM.n(m.close);
+    const d=MEM.dayParts(String(x.narrative||'').replace(/^\d{4}-\d{2}-\d{2}:\s*/,''));
+    const F=[];
+    if(MEM.n(m.open)!=null||cl!=null) F.push(['Open → close', `${MEM.fx(m.open)} → ${MEM.fx(m.close)}`]);
+    if(MEM.n(m.low)!=null) F.push(['Range', `${MEM.fx(m.low)} – ${MEM.fx(m.high)}`]);
+    if(m.regime_mode) F.push(['Character', esc(MEM.cap(m.regime_mode))]);
+    if(m.gamma_sign_mode&&m.gamma_sign_mode!=='unknown') F.push(['Gamma', esc(MEM.cap(m.gamma_sign_mode))]);
+    if(m.magnet_mode!=null) F.push(['Magnet', esc(String(m.magnet_mode))]);
+    if(m.call_wall_mode!=null||m.put_wall_mode!=null)
+      F.push(['Walls', [m.call_wall_mode!=null?'Call '+esc(String(m.call_wall_mode)):'', m.put_wall_mode!=null?'Put '+esc(String(m.put_wall_mode)):''].filter(Boolean).join(' <em>·</em> ')]);
+    if(m.n_scans!=null) F.push(['Scans', `${m.n_scans}${m.n_slices!=null?` <em>· ${m.n_slices} reads</em>`:''}`]);
+    if(vc.up!=null||vc.down!=null||vc.none!=null) F.push(['How it leaned', `▲${vc.up||0} ▼${vc.down||0} ○${vc.none||0}`]);
+    return `<article class="mc day" data-i="${i}"${cl!=null?` data-px="${cl}"`:''} data-v="${p==null?'none':(p>=0?'up':'down')}">`
+      +`<div class="mc-hd"><span class="mc-t">${esc(x.date||'')}</span>`
+      +(p!=null?`<span class="pct ${p>=0?'up':'dn'}">${p>=0?'+':''}${p}% open→close</span>`:'')+`</div>`
+      +(d.head?`<p class="mc-read">${esc(d.head)}</p>`:'')
+      +(d.quotes.length?`<div class="mc-quotes">`+d.quotes.map(q=>`<div><b>${esc(q[0])}</b><span>${esc(q[1])}</span></div>`).join('')+`</div>`:'')
+      +MEM.facts(F)+`</article>`;
   },
   cardTerrain(t){
-    if(!t||typeof t!=='object') return `<div class="mem-empty">${esc(String(t||'no terrain yet'))}</div>`;
-    const list=o=>o&&Object.keys(o).length?Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`${k} ×${n}`).join(', '):'—';
-    const st=t.standing||{}; const rg=t.range||{};
-    const recent=st.recent||null, all=st.all_time||null;   // RAG v2 splits recent / all-time; v1 is flat
-    const block=(label,o)=>`<div><b>${label}</b><span>${esc(list(o))}</span></div>`;
-    const stand=recent||all?`<div class="cols">${block('magnets · recent',(recent||{}).magnets)}${block('call walls · recent',(recent||{}).call_walls)}${block('put walls · recent',(recent||{}).put_walls)}${block('magnets · all time',(all||{}).magnets)}${block('call walls · all time',(all||{}).call_walls)}${block('put walls · all time',(all||{}).put_walls)}</div>`
-      :`<div class="cols">${block('magnets',st.magnets)}${block('call walls',st.call_walls)}${block('put walls',st.put_walls)}</div>`;
-    return `<div class="mc terrain"><div><p>${esc(t.narrative||'')}</p><div class="m">built ${esc(t.built||'?')} over ${esc(t.sessions||'?')} sessions${rg.low!=null?` · range ${rg.low}–${rg.high}`:''}${t.regimes?` · character ${esc(list(t.regimes))}`:''}</div>${stand}${t.note?`<div class="m">${esc(t.note)}</div>`:''}</div></div>`;
+    if(!t||typeof t!=='object') return `<div class="mem-empty">${esc(String(t||'No standing map yet.'))}</div>`;
+    const st=t.standing||{}, rg=t.range||{}, rec=st.recent||null, all=st.all_time||null;
+    const list=(o,word)=>{ const ks=o?Object.keys(o):[]; if(!ks.length) return '<em>—</em>';
+      return ks.sort((a,b)=>o[b]-o[a]).map(k=>`${esc(word?MEM.cap(k):k)} <em>×${o[k]}</em>`).join(' · '); };
+    const F=[];
+    if(rec) F.push([`Magnets · last ${rec.sessions}`, list(rec.magnets)], [`Ceilings · last ${rec.sessions}`, list(rec.call_walls)], [`Floors · last ${rec.sessions}`, list(rec.put_walls)]);
+    if(all) F.push([`Magnets · all ${all.sessions}`, list(all.magnets)], [`Ceilings · all ${all.sessions}`, list(all.call_walls)], [`Floors · all ${all.sessions}`, list(all.put_walls)]);
+    if(!rec&&!all) F.push(['Magnets', list(st.magnets)], ['Ceilings', list(st.call_walls)], ['Floors', list(st.put_walls)]);
+    if(rg.low!=null) F.push(['Range seen', `${MEM.fx(rg.low)} – ${MEM.fx(rg.high)}`]);
+    if(t.regimes) F.push(['Character', list(t.regimes, true)]);
+    F.push(['Built', esc(String(t.built||'—'))]);
+    return `<article class="mc terrain">`
+      +`<div class="mc-hd"><span class="mc-t">Standing map</span><span class="vec">${esc(String(t.sessions||'?'))} sessions</span></div>`
+      +`<p class="mc-read">${esc(t.narrative||'')}</p>`+MEM.facts(F)
+      +(t.note?`<p class="mc-note">${esc(MEM.cap(t.note))}${/[.!?]$/.test(String(t.note).trim())?'':'.'}</p>`:'')+`</article>`;
   },
-  paintRaw(){ const pre=document.getElementById('mem-rawout'), cb=document.getElementById('mem-rawtoggle'); if(!pre||!cb) return; const on=cb.checked&&MEM.last&&MEM.last.data&&MEM.last.data.raw; pre.hidden=!on; pre.textContent=on?`$ ${MEM.last.data.cmd}\n\n${MEM.last.data.raw}`:''; },
+  facts(F){ return F.length?`<div class="mc-facts">`+F.map(kv=>`<div><b>${esc(kv[0])}</b><span>${kv[1]}</span></div>`).join('')+`</div>`:''; },
+  vecChip(v,mag){
+    const k=(v==='up'||v==='down')?v:'none';
+    const g=k==='up'?'▲':k==='down'?'▼':'○', label=k==='none'?'No call':MEM.cap(k);
+    const size=(k!=='none'&&MEM.n(mag)!=null)?` · ${MEM.n(mag).toFixed(2)}σ`:'';
+    return `<span class="vec ${k}">${g} ${label}${size}</span>`;
+  },
+  wakeBadge(w){
+    if(!w) return '';
+    const d=MEM.WAKE[w]||['○','faint','The model looked, but the reason was filed under a name this page does not know.'];
+    return `<span class="wake c-${d[1]}" tabindex="0" role="note" aria-label="Why it woke: ${esc(MEM.cap(w))}. ${esc(d[2])}">`
+      +`<span class="g">${d[0]}</span>${esc(MEM.cap(w))}`
+      +`<span class="why"><b>Why it woke</b><i>${esc(d[2])}</i></span></span>`;
+  },
+  walls(m){
+    const c=(m.walls_call||[]).map(v=>MEM.fx(v,0)), p=(m.walls_put||[]).map(v=>MEM.fx(v,0));
+    if(!c.length&&!p.length) return '<em>None standing</em>';
+    return [c.length?'Call '+esc(c.join(' / ')):'', p.length?'Put '+esc(p.join(' / ')):''].filter(Boolean).join(' <em>·</em> ');
+  },
+
+  // ---- the spine ----
+  dominantMagnet(rows){
+    const c={}; rows.forEach(x=>{ const t=((x.meta||{}).magnet_top||[])[0]; if(t&&t[0]!=null) c[t[0]]=(c[t[0]]||0)+1; });
+    let best=null, n=0; Object.keys(c).forEach(k=>{ if(c[k]>n){ n=c[k]; best=parseFloat(k); } });
+    return (n>1)?best:null;      // one appearance is not a standing magnet, it is just the last read
+  },
+  drawSpine(){
+    const wrap=document.getElementById('mem-spine'); if(!wrap||!wrap.classList.contains('on')) return;
+    const svg=wrap.querySelector('svg'); if(!svg) return;
+    const cards=Array.prototype.slice.call(wrap.querySelectorAll('.mc[data-px]'));
+    if(cards.length<2){ svg.innerHTML=''; return; }
+    const W=parseFloat(getComputedStyle(wrap).paddingLeft)||88, H=wrap.offsetHeight||1, PAD=12, RIGHT=18;
+    const pts=cards.map(c=>({ y:c.offsetTop+18, px:parseFloat(c.dataset.px), v:c.dataset.v||'none',
+                              rg:c.dataset.rg||'', gs:c.dataset.gs||'', i:c.dataset.i }));
+    const xs=pts.map(p=>p.px); let lo=Math.min.apply(null,xs), hi=Math.max.apply(null,xs);
+    if(!(hi>lo)){ lo-=1; hi+=1; }
+    const X=px=>(PAD+(px-lo)/(hi-lo)*(W-RIGHT-PAD)).toFixed(1);
+    const hue=v=>v==='up'?'var(--jade)':v==='down'?'var(--coral)':'var(--ink-faint)';
+    let g='';
+    if(MEM.spineMagnet!=null&&MEM.spineMagnet>=lo&&MEM.spineMagnet<=hi)
+      g+=`<line x1="${X(MEM.spineMagnet)}" y1="0" x2="${X(MEM.spineMagnet)}" y2="${H}" stroke="var(--l-grav)" stroke-width="1" stroke-dasharray="3 5" opacity=".45"/>`;
+    for(let k=1;k<pts.length;k++){
+      const a=pts[k-1], b=pts[k];
+      // a dash across the gutter where the scene itself turned over — the pattern a scroll
+      // through 27 near-identical sentences otherwise hides
+      const brk=(a.rg&&b.rg&&a.rg!==b.rg)?'var(--tower)':((a.gs&&b.gs&&a.gs!==b.gs)?'var(--coral)':null);
+      if(brk) g+=`<line x1="2" y1="${((a.y+b.y)/2).toFixed(1)}" x2="${W-6}" y2="${((a.y+b.y)/2).toFixed(1)}" stroke="${brk}" stroke-width="1" stroke-dasharray="2 4" opacity=".6"/>`;
+      g+=`<line x1="${X(a.px)}" y1="${a.y}" x2="${X(b.px)}" y2="${b.y}" stroke="${hue(b.v)}" stroke-width="1.6" stroke-linecap="round" opacity=".5"/>`;
+    }
+    pts.forEach(p=>{ const x=X(p.px);
+      g+=`<line x1="${x}" y1="${p.y}" x2="${W-4}" y2="${p.y}" stroke="var(--hairline-2)" stroke-width="1" opacity=".4"/>`
+        +`<circle class="dot" data-dot="${p.i}" cx="${x}" cy="${p.y}" r="3.6" fill="${hue(p.v)}" stroke="var(--surface-2)" stroke-width="2"/>`
+        +`<circle class="hit" data-i="${p.i}" cx="${x}" cy="${p.y}" r="11" fill="transparent"><title>jump to this read</title></circle>`;
+    });
+    svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.style.width=W+'px'; svg.innerHTML=g;
+  },
+  focus(i){
+    const wrap=document.getElementById('mem-spine'); if(!wrap) return;
+    wrap.querySelectorAll('.mc.hl').forEach(c=>c.classList.remove('hl'));
+    wrap.querySelectorAll('circle.dot').forEach(d=>d.setAttribute('r','3.6'));
+    if(i==null) return;
+    const c=wrap.querySelector(`.mc[data-i="${i}"]`); if(c) c.classList.add('hl');
+    const d=wrap.querySelector(`circle.dot[data-dot="${i}"]`); if(d) d.setAttribute('r','6');
+  },
+  jump(i){
+    const wrap=document.getElementById('mem-spine'); if(!wrap) return;
+    const c=wrap.querySelector(`.mc[data-i="${i}"]`); if(!c) return;
+    c.scrollIntoView({block:'center', behavior:'smooth'}); MEM.focus(i);
+  },
+  observe(){
+    MEM.stopObserver(); const wrap=document.getElementById('mem-spine');
+    if(!wrap||typeof ResizeObserver==='undefined') return;
+    // the cards reflow with the pane (and the fonts land late) — the gutter is redrawn from the
+    // laid-out card positions, never from an assumed row height
+    MEM.ro=new ResizeObserver(()=>{ clearTimeout(MEM.roT); MEM.roT=setTimeout(()=>MEM.drawSpine(), 60); });
+    MEM.ro.observe(wrap);
+  },
+  stopObserver(){ if(MEM.ro){ MEM.ro.disconnect(); MEM.ro=null; } clearTimeout(MEM.roT); MEM.roT=null; },
+  closeWhy(){ document.querySelectorAll('.wake.open').forEach(w=>w.classList.remove('open')); },
+
+  // ---- small helpers ----
+  n(v){ if(typeof v==='number') return isFinite(v)?v:null;
+        if(v==null||v==='') return null; const x=parseFloat(v); return isNaN(x)?null:x; },
+  // prices always carry their two decimals — a spot that lands exactly on 1600 must not
+  // print narrower than the 1599.03 above it; fx(v,0) is the strike form
+  fx(v,d){ const x=MEM.n(v); if(x==null) return '—';
+           return d===0?String(Math.round(x)):x.toFixed(d==null?2:d); },
+  cap(s){ s=String(s==null?'':s); return s.charAt(0).toUpperCase()+s.slice(1); },
+  where(sp,pt,ct){ const s=MEM.n(sp), a=MEM.n(pt), b=MEM.n(ct);
+    return (s==null||a==null||b==null)?'':(s>b?'price above':s<a?'price below':'price inside'); },
+  // every stored read ends with its own invalidation clause; it is the half worth seeing on its
+  // own line, so the sentence and the thing that would kill it stop being one paragraph
+  split(s){
+    s=String(s||'').trim();
+    const i=s.search(/(^|[\s.;,—-])Changes if\b/i);
+    if(i<0) return [s,''];
+    const head=s.slice(0,i).replace(/[\s.;,—-]+$/,'');
+    const tail=s.slice(i).replace(/^[\s.;,—-]*Changes if\s*/i,'').replace(/\s+$/,'');
+    return [head?head+'.':'', tail];
+  },
+  // a day summary is one paragraph with the session's own quoted reads stitched onto the end
+  dayParts(s){
+    s=String(s||'').trim(); const out={head:s, quotes:[]};
+    const i=s.search(/\s\d{2}:\d{2}:\s/); if(i<0) return out;
+    out.head=s.slice(0,i).trim();
+    const rest=s.slice(i), re=/(\d{2}:\d{2}):\s([\s\S]*?)(?=\s\d{2}:\d{2}:\s|$)/g;
+    let m; while((m=re.exec(rest))) out.quotes.push([m[1], m[2].trim()]);
+    return out;
+  },
+  paintRaw(){ const pre=document.getElementById('mem-rawout'), cb=document.getElementById('mem-rawtoggle'); if(!pre||!cb) return;
+    const on=cb.checked&&MEM.last&&MEM.last.data&&MEM.last.data.raw;
+    pre.hidden=!on; pre.textContent=on?`$ ${MEM.last.data.cmd}\n\n${MEM.last.data.raw}`:''; },
 };
 function esc(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 

@@ -51,7 +51,8 @@ def test_memory_args_refuse_bad_input():
     assert server._memory_args({"date": ["21-08-2026"]}) is None
     assert server._memory_args({"from": ["9am"]}) is None
     assert server._memory_args({"near": ["abc"]}) is None
-    assert server._memory_args({"limit": ["999"]}) is None
+    assert server._memory_args({"limit": ["abc"]}) is None                    # a page size that is not a number
+    assert server._memory_args({"limit": ["-5"]}) is None
     assert server._memory_args({"text": ["x" * 300]}) is None
     assert server._memory_args({"kind": ["rollup"]}) is None                  # never the write command
     assert server._memory_args({"kind": ["series"], "step": ["0"]}) is None
@@ -62,3 +63,12 @@ def test_memory_query_rejects_before_touching_the_cli(monkeypatch):
     monkeypatch.setattr(server.subprocess, "run", lambda *a, **k: called.append(a))
     assert server._memory_query({"tier": ["nope"]}) == {"error": "bad query"}
     assert called == []
+
+def test_an_oversized_page_is_trimmed_not_refused():
+    """A limit above the ceiling is a caller asking for more than this route serves, not a
+    malformed one — it comes back trimmed to the ceiling. Refusing it instead cost the
+    08-22 Memory view its whole scroll: an 80-read ask answered "bad query" and the pane
+    rendered empty, which reads as a dead store rather than as a page size."""
+    assert server._memory_args({"limit": ["999"]})[-1] == str(server._MEMORY_MAX_LIMIT)
+    assert server._memory_args({"limit": ["0"]})[-1] == "1"
+    assert server._memory_args({"limit": ["5"]})[-1] == "5"                   # under the ceiling, untouched

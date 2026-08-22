@@ -148,8 +148,13 @@ def _memory_args(qs: dict) -> list[str] | None:
         if not one("days_back").isdigit() or not 1 <= int(one("days_back")) <= 60: return None
         argv += ["--days-back", one("days_back")]
     if one("limit"):
-        if not one("limit").isdigit() or not 1 <= int(one("limit")) <= _MEMORY_MAX_LIMIT: return None
-        argv += ["--limit", one("limit")]
+        # the page size CLAMPS, it does not refuse: an over-ask is a caller wanting more
+        # than this route serves, not a malformed one, and the 08-22 Memory redesign proved
+        # what the refusal costs — a page asking for 80 got "bad query" and rendered EMPTY,
+        # which reads as a dead memory store rather than as a page size. Everything that can
+        # be wrong rather than merely large — a non-number, a negative — is still refused.
+        if not one("limit").isdigit(): return None
+        argv += ["--limit", str(max(1, min(int(one("limit")), _MEMORY_MAX_LIMIT)))]
     return argv
 
 
