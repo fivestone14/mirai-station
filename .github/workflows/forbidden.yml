@@ -1,0 +1,21 @@
+name: forbidden
+
+# PUBLIC REPO ONLY — the highest-stakes check here.
+#
+# This repo is a stripped variant, not a mirror. Three vendor-scraper modules were
+# removed from all of its history because they document their own terms-of-service
+# bypass. A hand-run port is exactly where they come back. This job says no.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  stripped-modules:
+    name: no scraper code in the public tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/forbidden.sh

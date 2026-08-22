@@ -1,0 +1,54 @@
+name: tests
+
+# Every push runs the whole suite on a throwaway Ubuntu box, so a green check on
+# the commit means what the README loop means — without anyone remembering to run
+# it on the mini.
+#
+# The eight suite directories each ship their own conftest.py and collide if
+# pytest collects them together, so they run as eight parallel jobs. Same split as
+# the README; the failing box is named in the job title.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suite:
+    name: ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false          # one red box must not hide the other seven
+      matrix:
+        suite:
+          - runtime/viewstation/tests
+          - runtime/watch/tests
+          - skills/iv-viability/tests
+          - skills/lob-flow/tests
+          - skills/mirai-left-eye/tests
+          - skills/mirai-voice/tests
+          - skills/siege/tests
+          - skills/sndk-pro/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'   # what the mini's venv runs
+
+      # The tests themselves import nothing but pytest. These three are what the
+      # modules under test import at module level: httpx (native_gex_feed,
+      # options_feed), numpy (iv_metrics, the voice boxes), websockets
+      # (voice_server). torch, sounddevice and the agent SDK are imported lazily
+      # inside functions, so they are not needed to collect or run anything.
+      - name: install
+        run: python -m pip install --disable-pip-version-check -q pytest httpx numpy websockets
+
+      # The suites are offline by construction (every conftest fixes state on
+      # tmp_path and asserts zero network) and the clock work is zoneinfo-based,
+      # so the runner is pinned to UTC to keep a machine's timezone out of it.
+      - name: pytest
+        env:
+          TZ: UTC
+        run: python -m pytest "${{ matrix.suite }}" -q

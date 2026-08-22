@@ -1,0 +1,39 @@
+name: scrub
+
+# The leak police. Two jobs, because a leak hides in two different places:
+#
+#   tree     strings inside the files — an account name in a path, the LAN
+#            address as a "realistic" fixture, a real ntfy topic
+#   commits  the commit metadata itself — the personal e-mail from the global git
+#            config, and the local -0700 stamp that pins the region
+#
+# Neither can un-push anything; they turn a leak from something nobody notices
+# into a red X within a minute. The pre-push hook is the gate, this is the net.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tree:
+    name: tree — machine-identifying strings
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/scrub.sh
+
+  commits:
+    name: commits — noreply identity, +0000 stamp
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # the range may reach back past a shallow clone
+      # Only the commits this push actually added. On a new branch or a
+      # force-push `before` is unusable and the script falls back to HEAD~20.
+      - env:
+          RANGE: ${{ github.event_name == 'push' && format('{0}..{1}', github.event.before, github.sha) || '' }}
+        run: .github/scripts/commit-hygiene.sh
