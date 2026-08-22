@@ -11831,7 +11831,56 @@ const SNDK = {
     // lane actually need — not a fixed 64/80px gutter that floated DEX off the axis (S4). The
     // label allowance rides the ramp: a 6-glyph price measures ~47px at 12.5px mono and ~57px
     // at 15.3px, so a fixed 44px would have run the ladder into the gutter at the top of it.
-    const lblW=px(44);
+    // the column holds every tier now, so the allowance is the widest thing in it: a major
+    // price, "$1,625", six mono glyphs at the lead step ≈ 50px pre-ramp
+    const lblW=px(54);
+    // ---- THE DOLLAR RULER (08-22). The ladder's finest rung was the STRIKE step, so pricing
+    // anything BETWEEN two rungs — a wall label, a level, where the path actually sits — meant
+    // interpolating $5 by eye. A third, quieter tier prints the dollars. The rule it obeys is
+    // the one the whole chart obeys: never stack text — but never silently withhold it either
+    // while there is somewhere to put it. Where one column of dollar labels would collide it
+    // FANS THEM SIDEWAYS into two or three columns, so the vertical gap between two labels in
+    // the same column is always cols x pitch. Only past three columns does it give up the
+    // numbers and keep the ticks, and only under ~3.5px a rung does it drop the ticks too.
+    const DOL=(function(){
+      const pxPerDollar=plotH/Math.max(1e-9, band.pHigh-band.pLow);
+      const finest=snkTicks(band.pLow, band.pHigh, plotH, step, TS).minor;
+      // GRADUATIONS, NOT TEXT. The first cut printed these at the type scale's micro step and
+      // they came out the same weight as the $5 rungs — sixty five-glyph numbers competing with
+      // the thirteen that carry the structure, which buried the ladder instead of refining it.
+      // A ruler's numbers belong a clear tier BELOW the smallest label on the surface, so this
+      // one sits off the text scale entirely at 7.2, dim, in a single right-aligned column.
+      // ONE COLUMN (08-22). The ruler used to hold a strip of its own beside the named rungs,
+      // which cost the plot 34px and split the axis into two ladders the eye had to read
+      // together. Every tier is end-anchored on the SAME line now — which is simply what a
+      // price axis looks like — and it fits because digits have no descenders: the clearance
+      // that decides this is CAP HEIGHT, ~0.72em, not the whole line box the old rule reserved.
+      // With one column the sideways fan has nothing left to do, so it is gone; a frame too
+      // tight for $1 coarsens to $2 or $5 instead, which still reads straight down.
+      const fs=fzRaw(7.2), cap=v=>v*0.72;
+      const need=(cap(fs)+cap(fz(9.5)))/2+2;     // the tight pair: a graduation beside a $5 rung
+      // A GRADUATION STEP MUST DIVIDE THE RUNG IT SITS UNDER (08-22). $2 beneath a $5 ladder
+      // prints 1,624 · 1,622 · $1,620 · 1,618 · 1,616 · $1,615 — a 1-2-2 then 2-2-1 stutter that
+      // reads as a mistake rather than a scale, because 2 does not go into 5. Nothing but a
+      // divisor is a candidate now, so the rhythm between two named rungs is always even.
+      const fits=s=>s<finest && finest%s===0 && s*pxPerDollar>=3.5;
+      // THREE OUTCOMES, IN ORDER OF HOW MUCH THE FRAME CAN CARRY.
+      for(const s of [1,2,5,10]) if(fits(s) && s*pxPerDollar>=need)
+        return {step:s, fs, finest, num:true, absorb:false};
+      // ...the graduations cannot fit BESIDE the $5 numbers — but they fit beside each other,
+      // because that pair is two small labels rather than a small one next to a large one. So
+      // the $5 numbers stand down and the graduation carries every rung instead, with the ones
+      // on the $5 grid kept brighter as the anchors. Same information, one even rhythm, and
+      // every dollar still printed — which beats dropping to a coarser step that does not
+      // divide the rung and stutters.
+      const solo=cap(fs)+2;
+      for(const s of [1,2,5,10]) if(fits(s) && s*pxPerDollar>=solo)
+        return {step:s, fs, finest, num:true, absorb:true};
+      // ...nothing can be numbered at all: keep the finest divisor as bare ticks so the
+      // resolution is still there to read against, and let the $5 ladder do the talking
+      for(const s of [1,2,5,10]) if(fits(s)) return {step:s, fs, finest, num:false, absorb:false};
+      return null;
+    })();
     const x0=Math.max(28+(hasDex?dexW+14:0), (lblW+12)+(hasDex?dexW+8:0))+cmW;
     // level-VALUE tags are 4-digit equity prices, not a 108-148px column; the freed width
     // flows into the plot. BOTH right-hand reserves are now sized off the LONGEST STRING EACH
@@ -11952,7 +12001,9 @@ const SNDK = {
     const TK=snkTicks(band.pLow, band.pHigh, plotH, step, TS);
     // the ticks stop short of the comet lane and the labels step left by it — the ladder's
     // reading position is unchanged relative to the numbers, the comet just gets its air
-    const lblX=x0-cmW-12, tkMaj=x0-(cmW?5:7), tkMin=x0-(cmW?3:4);
+    // ONE right edge for every price on this axis — major, minor and graduation all end here
+    const axR=x0-cmW;                            // the ladder's right reference (inside the comet lane)
+    const lblX=axR-12, tkMaj=x0-(cmW?5:7), tkMin=x0-(cmW?3:4);
     // THE PRICE LADDER IS THE MOST-READ TEXT ON THIS CHART and it was the smallest thing on
     // it. Major rungs lead (15.3px at the top of the ramp).
     // MINORS PRINT SMALL NUMBERS AGAIN (08-03, user-requested). The 08-01 pass withdrew every
@@ -11977,7 +12028,7 @@ const SNDK = {
         axis+=`<line x1="${x0}" y1="${yy}" x2="${lineEnd}" y2="${yy}" style="stroke:var(--hairline);opacity:.5" stroke-dasharray="2 6"/>`
           +`<line x1="${tkMaj}" y1="${yy}" x2="${x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.75"/>`
           +`<text x="${lblX}" y="${(yn+px(4)).toFixed(1)}" text-anchor="end" font-size="${fzMaj}" font-weight="700" font-family="var(--mono)" style="fill:var(--ink-dim);paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round">${snkUsd(t.p,0)}</text>`;
-      } else if(t.mid){
+      } else if(t.mid && !(DOL&&DOL.absorb)){
         // a labeled in-between rung joins majY: fold end-labels must treat a small printed
         // price as a printed price — the list's own comment says "where the ladder actually
         // printed a number", now true of both weights
@@ -11986,6 +12037,23 @@ const SNDK = {
           +`<text x="${lblX}" y="${(yn+px(3)).toFixed(1)}" text-anchor="end" font-size="${fzMin}" font-weight="500" font-family="var(--mono)" style="fill:var(--ink-faint);opacity:.85;paint-order:stroke;stroke:var(--ground);stroke-width:2.5px;stroke-linejoin:round">${snkUsd(t.p,0)}</text>`;
       } else {
         axis+=`<line x1="${tkMin-2}" y1="${yy}" x2="${x0}" y2="${yy}" style="stroke:var(--ink-faint);opacity:.55"/>`;
+      }
+    }
+    // the dollars, on the same right edge as the rungs they sit between — the whole price on
+    // every one, at a step clearly below the smallest label, so nothing is reassembled in the head
+    if(DOL){
+      for(let v=Math.ceil(band.pLow/DOL.step)*DOL.step; v<=band.pHigh+1e-9; v+=DOL.step){
+        const onMajor=Math.abs(v/TK.major-Math.round(v/TK.major))<1e-6;
+        if(onMajor) continue;                    // the bold rung already prints this price
+        const onRung=Math.abs(v/TK.minor-Math.round(v/TK.minor))<1e-6;
+        if(onRung && !DOL.absorb) continue;      // the $5 ladder already speaks here
+        const yn=yFor(v); if(yn<padT+5||yn>h-padB-4) continue;
+        if(FOLD&&FOLD.inFold(v)) continue;       // a folded run has no room to be read
+        const yy=yn.toFixed(1);
+        axis+=`<line x1="${(axR-(onRung?5:3)).toFixed(1)}" y1="${yy}" x2="${axR}" y2="${yy}" style="stroke:var(--ink-faint);opacity:${onRung?'.5':'.22'}"/>`
+          +(DOL.num?`<text x="${lblX.toFixed(1)}" y="${(yn+DOL.fs*0.34).toFixed(1)}" text-anchor="end" font-size="${DOL.fs}" font-weight="${onRung?700:500}"`
+            +` font-family="var(--mono)" style="fill:var(--ink-${onRung?'dim':'faint'});opacity:${onRung?'.95':'.45'};paint-order:stroke;stroke:var(--ground);stroke-width:2px;stroke-linejoin:round"`
+            +`>${snkUsd(Math.round(v),0).replace('$','')}</text>`:'');
       }
     }
     // ---- THE BREAK MARK (08-01): every collapsed run declares itself and how much price it
