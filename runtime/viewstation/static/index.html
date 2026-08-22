@@ -11754,14 +11754,36 @@ const SNDK = {
     // ---- TYPE SCALE (08-01): ONE ramp, and every size AND every de-collision pitch on this
     // chart is derived from it. MEASURED, not taste — the tab is read on a 1786px screen
     // where this canvas measures ~1440px, and at that size the marks sat at 8.5–14.5px while
-    // the rest of the sheet reads at 12–15px. The ramp tops out at 1.22 (≥1440px of canvas)
-    // and FLOORS AT 1.0, so every card ≤1180px keeps byte-identical sizes and pitches: at
-    // 620px the doctrine strip and the value tags already pass within ~8px of each other and
-    // that lane genuinely cannot absorb a bump. A size raised without its pitch is exactly
-    // how this chart would start stacking labels on each other, so the two share one source.
-    const TS=Math.max(1, Math.min(1.22, w/1180));
-    const fz=v=>+(v*TS).toFixed(1);        // a font size on the ramp
+    // the rest of the sheet reads at 12–15px. It FLOORS AT 1.0, so every card ≤1180px keeps
+    // byte-identical sizes and pitches: at 620px the doctrine strip and the value tags
+    // already pass within ~8px of each other and that lane genuinely cannot absorb a bump.
+    // A size raised without its pitch is exactly how this chart would start stacking labels
+    // on each other, so the two share one source — which is why the CEILING could move.
+    // It was 1.22 over w/1180, reached at 1440px of canvas, so on the 1783px screen this tab
+    // is read on, the chart stopped growing with a third of the window still to come — and the
+    // wider side rail would have pushed it BACKWARDS down that ramp. 1.34 over w/1120 tops out
+    // at ~1500px and lands the post-rail canvas on the same 1.21 it renders at today; the 1.0
+    // floor still covers every canvas under 1120px. padT/padB below ride the same ramp now, so
+    // vertical clearance grows with the type instead of staying at a flat 20/30.
+    const TS=Math.max(1, Math.min(1.34, w/1120));
+    let fz=v=>+(v*TS).toFixed(1);          // a font size on the ramp (re-pointed at the scale below)
     const px=v=>Math.round(v*TS);          // a pitch / offset / reserve on the same ramp
+    // ---- ONE TYPE SCALE (08-22). Nine ad-hoc sizes had accreted on this surface — 8, 8.5, 9,
+    // 9.5, 10, 10.5, then a jump to 12.5 / 14.5 / 16 — six of them inside 2.5px of each other.
+    // That is not a hierarchy, it is noise: a half-pixel difference reads as ragged weight, not
+    // as rank, which is exactly why the chart looked unresolved while every individual number
+    // was "fine". Five steps on ONE ratio (1.175) replace them, mapped by ROLE — micro 8.5,
+    // caption 10, body 11.75, lead 13.8, title 16.2, display 19 — and the mapping is applied
+    // inside fz() so all 25 call sites keep saying what they mean and simply land on a step.
+    // Everything that de-collides is fed the resolved size (txW, plotBoxes, gutAvoid), so the
+    // clearances track the scale instead of having to be re-tuned alongside it.
+    const FSTEP={8:8.5, 8.5:8.5, 9:10, 9.5:10, 10:11.75, 10.5:11.75, 12.5:13.8, 14.5:16.2, 16:19};
+    const fzRaw=fz;
+    fz=v=>fzRaw(FSTEP[v]!=null?FSTEP[v]:v);
+    // hoisted above the horizontal budget (08-22): the fine ruler below decides how many
+    // COLUMNS of dollar labels it needs from how many pixels a dollar is worth, and the left
+    // gutter has to reserve that width before x0 is fixed. Neither pad depends on x.
+    const padT=px(20), padB=px(30), plotH=h-padT-padB;
     // ---- geometry (sheds right-to-left on a narrow card: tags first, then DEX) ----
     const hasDex=!!(m.dex&&(m.dex.nbs||m.dex.fbs))&&w>=460;
     const hasTags=w>=560;
@@ -11823,7 +11845,6 @@ const SNDK = {
     const tagW=px(Math.max(76,Math.min(95,Math.round(w*0.078))));
     const tagStripW=hasTags?px(Math.max(84,Math.min(92,Math.round(w*0.13)))):0;   // plain words are wider than the old codes
     const lineEnd=w-tagW-tagStripW, tagStripX=lineEnd+6, tagX=w-10;
-    const padT=20, padB=30, plotH=h-padT-padB;
     // the top-docked TAPE (top:5, one chip-row ~21px since the chips went to 11.5px) overlays
     // the plot's top strip — the only chart text that high is the far-wall edge markers + the
     // top zone captions, so they clear to capTop. The tape is CSS-sized (it is HTML, not SVG)
