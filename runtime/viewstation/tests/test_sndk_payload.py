@@ -1,12 +1,14 @@
-"""The SNDK Payload tab's two contracts.
+"""The SNDK Payload tab's three contracts.
 
-1. The route is LOCKED to one name. This is a UI lock, not authentication (the
-   server is LAN-only and no-auth by choice); the test pins that the lock is
-   exactly one name, case/space-insensitive, and that the name is configurable.
+1. The route answers exactly one name. This was never authentication (the server
+   is LAN-only and no-auth by choice, and the page's matching UI lock was removed
+   08-22); the test pins that the check is one name, case/space-insensitive, and
+   that the name is configurable.
 2. The builder hands back the scene the READER itself would build for the newest
    live SNDK row — through sndk_read's own functions, never a copy of the logic —
    plus the user-message wrapper the scene rides in, and it ignores forced
    (off-hours --force) rows the way read_once does.
+3. The wake-gate numbers the tab quotes on STEP 7 ARE the reader's constants.
 """
 import json
 from datetime import datetime
@@ -91,6 +93,21 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     assert d["user_prompt"].startswith("Read this scene cold and reply with the JSON object only.\n\nSCENE:\n")
     assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == sc
     assert d["scene_chars"] == len(json.dumps(sc, default=str))
+
+
+def test_payload_ships_the_wake_gate_the_reader_actually_uses(tmp_path, monkeypatch):
+    """STEP 7's tooltip quotes these numbers in plain English. They must BE the
+    reader's own constants: a page quoting a threshold sndk_read has stopped
+    using is the doctrine-drifts-from-code trap, and it has bitten six times."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0)])
+    gates = snapshot.sndk_payload(datetime(2026, 8, 19, 12, 56, tzinfo=ET))["gates"]
+
+    import sndk_read as R      # on sys.path once the builder above has run
+    assert gates == {"min_gap_min": R.MIN_GAP_MIN, "daily_cap": R.DAILY_CALL_CAP,
+                     "stale_book_min": R.STALE_BOOK_MIN, "heartbeat_min": R.HEARTBEAT_MIN,
+                     "price_sigma": R.WAKE_PRICE_SIGMA, "magnet_sigma": R.WAKE_MAGNET_SIGMA}
 
 
 def test_builder_falls_back_to_the_last_scan_after_hours(tmp_path, monkeypatch):

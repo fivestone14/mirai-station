@@ -1932,6 +1932,36 @@
   .pl-pipe .st:last-child::after{content:none}
   .pl-pipe .st.hot{border-color:color-mix(in srgb,var(--iris) 60%,transparent); background:var(--iris-wash)}
   .pl-pipe .st.hot b,.pl-pipe .st.hot .num{color:var(--iris)}
+  /* STEP 7 is the only step most scans never reach, so it carries the wake gate in plain words —
+     on hover, on focus, or on tap. The cue pill is the affordance: a card hiding something has to
+     look like it does, or the answer is only found by accident. */
+  .pl-pipe .st.tip{cursor:help}
+  .pl-pipe .st.tip:hover{border-color:color-mix(in srgb,var(--iris) 55%,transparent)}
+  .pl-pipe .st.tip:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .pl-pipe .st .cue{position:absolute; top:8px; right:9px; display:inline-flex; align-items:center; gap:4px;
+    font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--iris); background:var(--iris-wash); border:1px solid color-mix(in srgb,var(--iris) 34%,transparent);
+    border-radius:999px; padding:2px 7px}
+  .pl-pipe .st .cue .q{display:inline-flex; align-items:center; justify-content:center; width:11px; height:11px;
+    border-radius:50%; background:color-mix(in srgb,var(--iris) 26%,transparent); font-size:8px; line-height:1}
+  .pl-pipe .st.tip:hover .cue,.pl-pipe .st.tip.open .cue{background:color-mix(in srgb,var(--iris) 22%,transparent)}
+  .pl-pipe .st.tip .num{padding-right:104px}   /* the cue sits over this row — never let STEP 7 run under it */
+  /* the gate itself: opens DOWNWARD over the JSON (the panel clips, and there is always room below) */
+  .pl-pipe .st .gate{position:absolute; z-index:40; top:calc(100% + 9px); left:50%; transform:translateX(-50%);
+    width:max-content; max-width:min(400px,86vw); padding:12px 15px 13px; text-align:left; pointer-events:none;
+    background:var(--surface); border:1px solid var(--hairline-2); border-radius:12px; box-shadow:var(--shadow);
+    opacity:0; visibility:hidden; transition:opacity .12s ease}
+  .pl-pipe .st.tip:hover .gate,.pl-pipe .st.tip:focus-visible .gate,.pl-pipe .st.tip.open .gate{opacity:1; visibility:visible}
+  @media (max-width:860px){ .pl-pipe .st .gate{left:0; transform:none} }   /* 2-across: STEP 7 is the left column */
+  .pl-pipe .st .gate b{display:block; font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--iris); margin-bottom:7px}
+  .pl-pipe .st .gate i{display:block; font-style:normal; font-size:11.5px; line-height:1.45; color:var(--ink-dim); margin-top:8px}
+  .pl-pipe .st .gate i:first-of-type{margin-top:0}
+  .pl-pipe .st .gate ul{margin:5px 0 0; padding:0 0 0 15px; list-style:none}
+  .pl-pipe .st .gate li{position:relative; font-size:11.5px; line-height:1.45; color:var(--ink); margin-top:3px}
+  .pl-pipe .st .gate li::before{content:"·"; position:absolute; left:-11px; color:var(--iris); font-weight:700}
+  .pl-pipe .st .gate em{display:block; font-style:normal; font-size:11px; line-height:1.45; color:var(--ink-faint);
+    margin-top:10px; padding-top:9px; border-top:1px solid var(--hairline)}
   .pl-json{flex:1 1 auto; min-height:0; overflow:auto; margin:0; padding:14px clamp(10px,1.4vw,18px) 18px; background:var(--surface-2); border:1px solid var(--hairline);
     border-radius:var(--r-md); font-family:var(--mono); font-size:clamp(12px, 0.45vw + 10.5px, 15px); line-height:1.5; tab-size:2; color:var(--ink)}
   /* one JSON document laid out by SECTION: the opening brace, then each top-level block (clock, scale,
@@ -12742,6 +12772,7 @@ const SNDK = {
 // not a gate. USER survives only as the name the route still expects in its query string.
 const PAYLOAD = {
   USER:'will', data:null, timer:null, busy:false, mounted:false,
+  tipOpen:false,   // the STEP 7 gate card, tapped open — kept here so the 60 s repaint restores it
   mount(){
     const host=document.getElementById('p-payload'); if(!host||PAYLOAD.mounted) return; PAYLOAD.mounted=true;
     host.innerHTML=`<div class="pl-wrap">
@@ -12775,6 +12806,13 @@ const PAYLOAD = {
     host.querySelector('#pl-refresh').addEventListener('click', ()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); });
     host.querySelector('#pl-copy').addEventListener('click', ()=>PAYLOAD.copy());
     host.querySelector('#pl-seg').addEventListener('click', e=>{ const b=e.target.closest('button[data-view]'); if(b) PAYLOAD.setView(b.dataset.view); });
+    // hover shows the gate on a mouse; tap toggles it on a tablet, where there is no hover at all
+    host.querySelector('#pl-pipe').addEventListener('click', e=>{
+      const c=e.target.closest('.st.tip'); if(!c) return;
+      PAYLOAD.tipOpen=!PAYLOAD.tipOpen; c.classList.toggle('open', PAYLOAD.tipOpen);
+    });
+    document.addEventListener('click', e=>{ if(PAYLOAD.tipOpen&&!e.target.closest('.st.tip')) PAYLOAD.closeTip(); });
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape') PAYLOAD.closeTip(); });
     host.querySelector('#mem-ask').addEventListener('submit', e=>{ e.preventDefault(); MEM.ask(); });
     host.querySelector('#mem-rawtoggle').addEventListener('change', ()=>MEM.paintRaw());
     host.querySelector('#mem-days').addEventListener('click', e=>{ const b=e.target.closest('button[data-day]'); if(b) MEM.day(b.dataset.day); });
@@ -12791,9 +12829,10 @@ const PAYLOAD = {
     else PAYLOAD.render();
   },
   show(){ PAYLOAD.mount(); if(PAYLOAD.view==='memory') MEM.open(); else PAYLOAD.fetch(); PAYLOAD.arm(); },
-  hide(){ PAYLOAD.disarm(); },
+  hide(){ PAYLOAD.disarm(); PAYLOAD.closeTip(); },
   arm(){ PAYLOAD.disarm(); PAYLOAD.timer=setInterval(()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); }, 60000); },
   disarm(){ if(PAYLOAD.timer){ clearInterval(PAYLOAD.timer); PAYLOAD.timer=null; } },
+  closeTip(){ PAYLOAD.tipOpen=false; document.querySelectorAll('.st.tip.open').forEach(c=>c.classList.remove('open')); },
   async fetch(){
     if(PAYLOAD.busy) return; PAYLOAD.busy=true;
     try{
@@ -12840,6 +12879,34 @@ const PAYLOAD = {
     const d=PAYLOAD.data; if(!d||!d.scene||!navigator.clipboard) return;
     navigator.clipboard.writeText(JSON.stringify(d.scene)).then(()=>{ const b=document.getElementById('pl-copy'); if(b){ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy JSON'; },1200); } }).catch(()=>{});
   },
+  // STEP 7's tooltip: the tab's most-asked question — "why did it not say anything?" — answered on
+  // the card that does the asking. Every number comes from the payload's `gates` block, which the
+  // server reads off sndk_read's own constants, so this text cannot quote a threshold the reader
+  // has stopped using; the fallbacks are only for a server too old to send the block.
+  gateTip(){
+    const g=(PAYLOAD.data&&PAYLOAD.data.gates)||{};
+    const n=(v,d)=>typeof v==='number'?v:d;
+    const gap=n(g.min_gap_min,8), cap=n(g.daily_cap,40), stale=n(g.stale_book_min,6),
+          beat=n(g.heartbeat_min,45), px=n(g.price_sigma,0.15), mg=n(g.magnet_sigma,0.12);
+    const ul=a=>'<ul>'+a.map(x=>`<li>${x}</li>`).join('')+'</ul>';
+    return `<div class="gate" role="tooltip">`
+      +`<b>What has to be true first</b>`
+      +`<i>Most scans never reach this step. All of these must hold:</i>`
+      +ul(['The market is open.',
+           `At least ${gap} minutes since the model last looked.`,
+           `Fewer than ${cap} readings so far today — a runaway guard, not a budget.`,
+           `The newest scan is under ${stale} minutes old; a frozen board is never narrated.`,
+           'Reasoning is switched on.'])
+      +`<i>…and at least one thing has genuinely changed:</i>`
+      +ul([`Price has run about ${px} of a typical day’s move since that last look.`,
+           `The strike pulling hardest has shifted by ${mg} of the same ruler.`,
+           'The day’s character or the gamma sign flipped.',
+           'Price crossed one of the standing walls.',
+           'The arrow on the chart appeared, vanished or reversed.',
+           `Nothing at all for ${beat} minutes — a heartbeat read.`])
+      +`<em>If not, the scene is still built and filed and the last reading carries forward — no call is spent.</em>`
+      +`</div>`;
+  },
   paintPipe(){
     const el=document.getElementById('pl-pipe'); if(!el) return;
     const live=PAYLOAD.data&&PAYLOAD.data.scene;
@@ -12853,8 +12920,13 @@ const PAYLOAD = {
       ['Ask the model',      'Claude reads the cached rulebook plus this JSON and answers with a direction, a size and one line.','claude -p'],
       ['Use the reading',    'The answer lands on the chart card, the voice desk and the memory store.',                         'reading'],
     ];
-    el.innerHTML=`<div class="cap">How this JSON comes to be \u00b7 data source \u2192 model answer</div>`+STAGES.map((x,i)=>
-      `<div class="st${i===5&&live?' hot':''}"><span class="num">STEP ${i+1}</span><b>${x[0]}</b><span>${x[1]}</span><code>${x[2]}</code></div>`).join('');
+    el.innerHTML=`<div class="cap">How this JSON comes to be \u00b7 data source \u2192 model answer</div>`+STAGES.map((x,i)=>{
+      const gated=i===6;   // "Ask the model" \u2014 the only step behind the wake gate
+      return `<div class="st${i===5&&live?' hot':''}${gated?' tip'+(PAYLOAD.tipOpen?' open':''):''}"`
+        +`${gated?' tabindex="0" aria-label="Ask the model \u2014 what has to be true first"':''}>`
+        +`<span class="num">STEP ${i+1}</span><b>${x[0]}</b><span>${x[1]}</span><code>${x[2]}</code>`
+        +`${gated?'<span class="cue"><span class="q">?</span>when this fires</span>'+PAYLOAD.gateTip():''}</div>`;
+    }).join('');
   },
 };
 const plEsc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');

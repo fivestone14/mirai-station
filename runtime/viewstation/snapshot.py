@@ -608,6 +608,18 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         "scene": scene,
         "scene_chars": len(text),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
+        # what must be true before this scene is worth a model call. Read off the
+        # reader's OWN constants rather than retyped into the page: a tab that
+        # quotes a threshold the reader stopped using is the doctrine-drifts-from-
+        # code trap, and this build has already been caught by it six times.
+        "gates": {
+            "min_gap_min": R.MIN_GAP_MIN,
+            "daily_cap": R.DAILY_CALL_CAP,
+            "stale_book_min": R.STALE_BOOK_MIN,
+            "heartbeat_min": R.HEARTBEAT_MIN,
+            "price_sigma": R.WAKE_PRICE_SIGMA,
+            "magnet_sigma": R.WAKE_MAGNET_SIGMA,
+        },
     }
 
 

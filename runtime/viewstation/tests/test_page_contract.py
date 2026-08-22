@@ -21,3 +21,13 @@ def test_page_has_the_payload_tab_wired():
     assert "const PAYLOAD = {" in PAGE
     assert "/api/sndk/payload?user=" in PAGE
     assert "PAYLOAD.show()" in PAGE             # switchTab mounts it
+
+
+def test_step_seven_explains_the_wake_gate():
+    """The pipeline's STEP 7 is the only step most scans never reach, so it
+    carries the gate in plain words — built from the server's numbers, and
+    advertised, because a card that hides something has to look like it does."""
+    assert "PAYLOAD.gateTip()" in PAGE          # the tooltip is rendered into the card
+    assert "PAYLOAD.data.gates" in PAGE         # ...from the payload's own gate block, not retyped
+    assert 'class="cue"' in PAGE                # the hover/tap cue
+    assert "PAYLOAD.tipOpen" in PAGE            # tap works where there is no hover (tablet)
