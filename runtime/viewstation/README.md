@@ -32,7 +32,7 @@ runtime/viewstation/
   ledgers, and `config/`; path-traversal blocked; opened read-only).
 - `GET /api/health` — liveness.
 - `GET /api/version` — the page's build id (`index.html` mtime); every open page polls it every 10 s and shows a "new version · tap to refresh" pill when it changes.
-- `GET /api/sndk/payload?user=will` — the SNDK Payload tab: the exact scene JSON `sndk_read.build_scene` hands the model (rebuilt live through the same functions) + the user-message wrapper; 403 unless `user` names the permitted user (`MIRAI_PAYLOAD_USER`, default `will`) — a UI lock, not auth.
+- `GET /api/sndk/payload?user=will` — the SNDK Payload tab: the exact scene JSON `sndk_read.build_scene` hands the model (rebuilt live through the same functions) + the user-message wrapper; 403 unless `user` names the permitted user (`MIRAI_PAYLOAD_USER`, default `will`) or a front door forwards that name — a route-level name check, never auth. The page's matching UI lock (name box + Unlock) was removed 08-22: the tab now opens straight into the live scene, because nothing reaches it that has not already come through the front door.
 
 LAN-only by design: **read-only, no auth, no writes.** Don't port-forward it.
 

@@ -1898,26 +1898,18 @@
   }
 
   /* ---- SNDK Payload tab (08-21, user ask): ONLY the scene JSON the reader hands the model,
-     behind a one-name lock, plus a one-line source→output pipeline. The lock is a UI
-     affordance (this box is LAN-only, no auth by choice), not security — the server route
-     refuses any other name too, so the two agree. ---- */
+     plus a one-line source→output pipeline. 08-22: the one-name lock and its name box are gone.
+     They were never security (this box is LAN-only, no auth by choice — the front door is the
+     proxy's), so the tab now opens straight into the live scene. ---- */
   .pl-wrap{display:flex; flex-direction:column; gap:12px; height:100%; min-height:0}
-  .pl-lock{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; background:var(--surface-2);
+  .pl-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; background:var(--surface-2);
     border:1px solid var(--hairline); border-radius:var(--r-md); flex:0 0 auto}
-  .pl-lock .ico{width:34px; height:34px; border-radius:50%; border:1px solid var(--hairline-2); background:var(--surface-3);
-    display:flex; align-items:center; justify-content:center; color:var(--ink-dim); flex:none}
-  .pl-lock.open .ico{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 55%,transparent); background:var(--jade-wash)}
-  .pl-lock .lb{display:flex; flex-direction:column; min-width:0; margin-right:auto}
-  .pl-lock .lb b{font-family:var(--mono); font-size:12px; letter-spacing:.04em; color:var(--ink-dim)}
-  .pl-lock.open .lb b{color:var(--jade)}
-  .pl-lock .lb span{font-size:12px; color:var(--ink-faint); line-height:1.35}
-  .pl-lock input{font:inherit; font-family:var(--mono); font-size:13px; padding:7px 10px; border-radius:8px;
-    border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink); min-width:150px}
-  .pl-lock input:focus-visible{outline:2px solid var(--iris); outline-offset:1px}
+  .pl-bar .lb{display:flex; flex-direction:column; min-width:0; margin-right:auto}
+  .pl-bar .lb b{font-family:var(--mono); font-size:12px; letter-spacing:.04em; color:var(--ink-dim)}
+  .pl-bar .lb span{font-size:12px; color:var(--ink-faint); line-height:1.35}
   .pl-btn{appearance:none; font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em;
     padding:7px 12px; border-radius:8px; border:1px solid var(--hairline-2); background:var(--surface-3); color:var(--ink); cursor:pointer}
-  .pl-btn:disabled{opacity:.4; cursor:not-allowed}
-  .pl-btn:not(:disabled).go{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 50%,transparent); background:var(--jade-wash)}
+  .pl-btn.go{color:var(--jade); border-color:color-mix(in srgb,var(--jade) 50%,transparent); background:var(--jade-wash)}
   .pl-btn:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
   /* the pipeline: eight plain-English steps from data source to the model's answer, as a grid of cards
      that re-flows by width (8 across on a monitor, 4 on a tablet, 2 on a phone); a chevron in each gap
@@ -2023,12 +2015,6 @@
   .mc .cols span{font-family:var(--mono); font-size:12px; color:var(--ink)}
   .mem-raw-out{margin:0; padding:12px 14px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md); font-family:var(--mono); font-size:11.5px; line-height:1.45; white-space:pre-wrap; overflow:auto; max-height:40vh; color:var(--ink-dim); flex:0 0 auto}
   .mem-empty{color:var(--ink-faint); font-size:13px; padding:18px; text-align:center; border:1px dashed var(--hairline-2); border-radius:var(--r-md)}
-  /* the Payload rail button reads as locked for anyone who is not the permitted user: greyed, with
-     the lock icon; it still opens the tab (that is where the name is typed) — the server refuses
-     the data either way */
-  .tab.locked{opacity:.42; filter:grayscale(1)}
-  .tab.locked .snk-beta{opacity:.8}
-  .tab.locked:hover,.tab.locked:focus-visible{opacity:.7}
 </style>
 </head>
 <body>
@@ -2075,8 +2061,8 @@
           <svg viewBox="0 0 24 24"><path d="M12 4v16"/><path d="M12 7.5h6M12 15.5h4"/><path d="M12 11.5H5M12 19.5H8"/><circle cx="12" cy="4" r="1.2" fill="currentColor" stroke="none"/></svg>
           SNDK<span class="snk-beta">beta</span>
         </button>
-        <button class="tab locked" data-tab="payload" id="tab-payload" title="SNDK Payload — locked: access is granted to one user" aria-label="SNDK Payload (locked)">
-          <svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.3" r="1.2" fill="currentColor" stroke="none"/></svg>
+        <button class="tab" data-tab="payload" id="tab-payload" title="SNDK Payload — the scene handed to the model" aria-label="SNDK Payload">
+          <svg viewBox="0 0 24 24"><path d="M9.5 4C7.5 4 7.8 7 7.8 8.6 7.8 10.2 6.8 12 5 12c1.8 0 2.8 1.8 2.8 3.4 0 1.6-.3 4.6 1.7 4.6"/><path d="M14.5 4c2 0 1.7 3 1.7 4.6 0 1.6 1 3.4 2.8 3.4-1.8 0-2.8 1.8-2.8 3.4 0 1.6.3 4.6-1.7 4.6"/></svg>
           SNDK<span class="snk-beta">payload</span>
         </button>
         <div class="spacer"></div>
@@ -12749,36 +12735,25 @@ const SNDK = {
   },
 };
 
-// ---------- SNDK Payload (08-21): the exact scene the reader hands the model, behind a one-name lock ----------
+// ---------- SNDK Payload (08-21): the exact scene the reader hands the model ----------
 // Shows ONLY the varying payload (the scene JSON, via /api/sndk/payload → snapshot.sndk_payload →
-// sndk_read.build_scene) and a one-line pipeline. The lock is a UI affordance: the button stays
-// disabled until the typed name is the permitted one, and the server refuses any other name too.
-const PL_LOCK_SVG=`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>`;
+// sndk_read.build_scene) and a one-line pipeline. 08-22: the one-name UI lock is gone — nothing
+// reaches this tab that has not already come through the front door, so a typed name was a ritual,
+// not a gate. USER survives only as the name the route still expects in its query string.
 const PAYLOAD = {
-  USER:'will', open:false, data:null, timer:null, busy:false, mounted:false,
-  okName(v){ return String(v||'').trim().toLowerCase()===PAYLOAD.USER; },
-  who:null,                          // the front door's forwarded user (null without a proxy)
-  // the rail button greys for anyone who is not the permitted user — identity = the proxy's
-  // forwarded user when there is one, else the name that unlocked this tab session
-  paintRail(){ const b=document.getElementById('tab-payload'); if(!b) return; const ok=PAYLOAD.open||PAYLOAD.who===PAYLOAD.USER;
-    b.classList.toggle('locked', !ok); b.title=ok?'SNDK Payload — unlocked for '+PAYLOAD.USER:'SNDK Payload — locked: access is granted to one user'; b.setAttribute('aria-label', ok?'SNDK Payload':'SNDK Payload (locked)'); },
-  async whoami(){ try{ const r=await fetch('/api/whoami',{cache:'no-store'}); const j=await r.json(); PAYLOAD.who=(j&&j.user)||null; if(j&&j.permitted){ try{ sessionStorage.setItem('pl-user', PAYLOAD.USER); }catch(e){} if(PAYLOAD.mounted&&!PAYLOAD.open) PAYLOAD.unlock(); } }catch(e){} PAYLOAD.paintRail(); },
+  USER:'will', data:null, timer:null, busy:false, mounted:false,
   mount(){
     const host=document.getElementById('p-payload'); if(!host||PAYLOAD.mounted) return; PAYLOAD.mounted=true;
     host.innerHTML=`<div class="pl-wrap">
-      <div class="phead"><div><h2>SNDK Payload</h2><div class="desc">Only what the reading model is fed: the scene JSON <span class="mono">sndk_read.build_scene</span> builds from the newest SNDK scan, rebuilt here through the same code. One name opens it.</div></div><span class="pill grey" id="pl-pill">locked</span></div>
-      <div class="pl-lock" id="pl-lock">
-        <div class="ico">${PL_LOCK_SVG}</div>
-        <div class="lb"><b id="pl-lb">Locked</b><span id="pl-sub">Enter your name to unlock the payload.</span></div>
-        <div class="pl-seg" id="pl-seg" hidden role="tablist" aria-label="Payload or Memory"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button></div>
-        <input id="pl-user" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="user" aria-label="user name">
-        <button class="pl-btn" id="pl-unlock" disabled>Unlock</button>
-        <button class="pl-btn" id="pl-refresh" hidden>Refresh</button>
-        <button class="pl-btn" id="pl-copy" hidden>Copy JSON</button>
-        <button class="pl-btn" id="pl-relock" hidden>Lock</button>
+      <div class="phead"><div><h2>SNDK Payload</h2><div class="desc">Only what the reading model is fed: the scene JSON <span class="mono">sndk_read.build_scene</span> builds from the newest SNDK scan, rebuilt here through the same code.</div></div><span class="pill grey" id="pl-pill">loading</span></div>
+      <div class="pl-bar" id="pl-bar">
+        <div class="lb"><b>Live scene</b><span>Refreshed every minute while this tab is open.</span></div>
+        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload or Memory"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button></div>
+        <button class="pl-btn" id="pl-refresh">Refresh</button>
+        <button class="pl-btn" id="pl-copy">Copy JSON</button>
       </div>
       <div class="pl-pipe" id="pl-pipe" aria-label="pipeline from data source to output"></div>
-      <div class="pl-empty" id="pl-empty">Payload hidden until unlocked.</div>
+      <div class="pl-empty" id="pl-empty">Loading the scene…</div>
       <div class="pl-json" id="pl-json" hidden tabindex="0" aria-label="the scene JSON handed to the model"></div>
       <div class="pl-mem" id="pl-mem" hidden>
         <div class="mem-ov" id="mem-ov"></div>
@@ -12797,22 +12772,13 @@ const PAYLOAD = {
         <pre class="mem-raw-out" id="mem-rawout" hidden></pre>
       </div>
     </div>`;
-    const inp=host.querySelector('#pl-user'), btn=host.querySelector('#pl-unlock');
-    const sync=()=>{ const ok=PAYLOAD.okName(inp.value); btn.disabled=!ok; btn.classList.toggle('go', ok); };
-    inp.addEventListener('input', sync);
-    inp.addEventListener('keydown', e=>{ if(e.key==='Enter'&&PAYLOAD.okName(inp.value)) PAYLOAD.unlock(); });
-    btn.addEventListener('click', ()=>{ if(PAYLOAD.okName(inp.value)) PAYLOAD.unlock(); });
     host.querySelector('#pl-refresh').addEventListener('click', ()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); });
     host.querySelector('#pl-copy').addEventListener('click', ()=>PAYLOAD.copy());
-    host.querySelector('#pl-relock').addEventListener('click', ()=>PAYLOAD.lock());
     host.querySelector('#pl-seg').addEventListener('click', e=>{ const b=e.target.closest('button[data-view]'); if(b) PAYLOAD.setView(b.dataset.view); });
     host.querySelector('#mem-ask').addEventListener('submit', e=>{ e.preventDefault(); MEM.ask(); });
     host.querySelector('#mem-rawtoggle').addEventListener('change', ()=>MEM.paintRaw());
     host.querySelector('#mem-days').addEventListener('click', e=>{ const b=e.target.closest('button[data-day]'); if(b) MEM.day(b.dataset.day); });
     PAYLOAD.paintPipe();
-    // a reload inside the same tab session keeps the unlock; a new tab/window starts locked
-    let remembered=false; try{ remembered=sessionStorage.getItem('pl-user')===PAYLOAD.USER; }catch(e){}
-    if(remembered||PAYLOAD.who===PAYLOAD.USER){ inp.value=PAYLOAD.USER; sync(); PAYLOAD.open=false; PAYLOAD.unlock(); }
   },
   view:'payload',
   setView(v){
@@ -12820,52 +12786,45 @@ const PAYLOAD = {
     const mem=PAYLOAD.view==='memory';
     document.querySelectorAll('#pl-seg button').forEach(b=>{ const on=b.dataset.view===PAYLOAD.view; b.classList.toggle('on', on); b.setAttribute('aria-selected', on?'true':'false'); });
     const pipe=document.getElementById('pl-pipe'), memEl=document.getElementById('pl-mem'), copy=document.getElementById('pl-copy');
-    if(pipe) pipe.hidden=mem; if(memEl) memEl.hidden=!mem||!PAYLOAD.open; if(copy) copy.hidden=mem||!PAYLOAD.open;
-    if(mem){ const j=document.getElementById('pl-json'), e=document.getElementById('pl-empty'); if(j) j.hidden=true; if(e) e.hidden=true; if(PAYLOAD.open) MEM.open(); }
+    if(pipe) pipe.hidden=mem; if(memEl) memEl.hidden=!mem; if(copy) copy.hidden=mem;
+    if(mem){ const j=document.getElementById('pl-json'), e=document.getElementById('pl-empty'); if(j) j.hidden=true; if(e) e.hidden=true; MEM.open(); }
     else PAYLOAD.render();
   },
-  show(){ PAYLOAD.mount(); if(PAYLOAD.open){ if(PAYLOAD.view==='memory') MEM.open(); else PAYLOAD.fetch(); PAYLOAD.arm(); } },
+  show(){ PAYLOAD.mount(); if(PAYLOAD.view==='memory') MEM.open(); else PAYLOAD.fetch(); PAYLOAD.arm(); },
   hide(){ PAYLOAD.disarm(); },
-  arm(){ PAYLOAD.disarm(); PAYLOAD.timer=setInterval(()=>{ if(!PAYLOAD.open) return; if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); }, 60000); },
+  arm(){ PAYLOAD.disarm(); PAYLOAD.timer=setInterval(()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); }, 60000); },
   disarm(){ if(PAYLOAD.timer){ clearInterval(PAYLOAD.timer); PAYLOAD.timer=null; } },
-  unlock(){ PAYLOAD.open=true; try{ sessionStorage.setItem('pl-user', PAYLOAD.USER); }catch(e){} PAYLOAD.paintLock(); PAYLOAD.paintRail(); PAYLOAD.setView(PAYLOAD.view); if(PAYLOAD.view!=='memory') PAYLOAD.fetch(); PAYLOAD.arm(); },
-  lock(){ PAYLOAD.open=false; PAYLOAD.data=null; MEM.clear(); try{ sessionStorage.removeItem('pl-user'); }catch(e){} PAYLOAD.disarm(); PAYLOAD.paintLock(); PAYLOAD.paintRail(); PAYLOAD.setView('payload'); PAYLOAD.render(); },
-  paintLock(){
-    const lock=document.getElementById('pl-lock'); if(!lock) return;
-    const on=PAYLOAD.open; lock.classList.toggle('open', on);
-    lock.querySelector('#pl-lb').textContent=on?'Unlocked · '+PAYLOAD.USER:'Locked';
-    lock.querySelector('#pl-sub').textContent=on?'Live scene, refreshed every minute while this tab is open. Lock it when you walk away.':'Enter your name to unlock the payload.';
-    lock.querySelector('#pl-user').hidden=on; lock.querySelector('#pl-unlock').hidden=on;
-    for(const id of ['pl-refresh','pl-copy','pl-relock']) lock.querySelector('#'+id).hidden=!on;
-    lock.querySelector('#pl-seg').hidden=!on;
-    const pill=document.getElementById('pl-pill'); if(pill){ pill.className='pill '+(on?'jade':'grey'); pill.textContent=on?'unlocked':'locked'; }
-    if(!on){ const i=lock.querySelector('#pl-user'); i.value=''; const b=lock.querySelector('#pl-unlock'); b.disabled=true; b.classList.remove('go'); }
-  },
   async fetch(){
-    if(!PAYLOAD.open||PAYLOAD.busy) return; PAYLOAD.busy=true;
+    if(PAYLOAD.busy) return; PAYLOAD.busy=true;
     try{
       const r=await fetch('/api/sndk/payload?user='+encodeURIComponent(PAYLOAD.USER), {cache:'no-store'});
       const text=await r.text();
       let j=null; try{ j=JSON.parse(text); }catch(e){}
-      if(r.status===403) PAYLOAD.data={error:'locked by the server (user not permitted)'};
+      if(r.status===403) PAYLOAD.data={error:'the server refused the request — its permitted-user check said no'};
       else if(j&&typeof j==='object') PAYLOAD.data=j;
       else{
         // not JSON: a proxy's HTML error page (the server restarting behind Tailscale) or the wrong
-        // host — say exactly what came back, and try again shortly
+        // host — say exactly what came back, and try again shortly. The retry rides the refresh
+        // timer's own life: armed means this tab is on screen, so a hidden tab never re-fetches.
         const ct=r.headers.get('content-type')||'?';
         PAYLOAD.data={error:`the server answered HTTP ${r.status} (${ct}) instead of JSON — ${r.status>=500?'it is probably restarting; ':''}retrying in 5 s · first bytes: ${text.slice(0,60).replace(/\s+/g,' ')}`};
-        setTimeout(()=>{ if(PAYLOAD.open) PAYLOAD.fetch(); }, 5000);
+        setTimeout(()=>{ if(PAYLOAD.timer) PAYLOAD.fetch(); }, 5000);
       }
-    }catch(e){ PAYLOAD.data={error:'payload endpoint unreachable ('+e+') — retrying in 5 s'}; setTimeout(()=>{ if(PAYLOAD.open) PAYLOAD.fetch(); }, 5000); }
+    }catch(e){ PAYLOAD.data={error:'payload endpoint unreachable ('+e+') — retrying in 5 s'}; setTimeout(()=>{ if(PAYLOAD.timer) PAYLOAD.fetch(); }, 5000); }
     PAYLOAD.busy=false; PAYLOAD.render();
   },
+  // the head pill was the lock's status light; with the lock gone it reports the FEED instead —
+  // a dead endpoint must never sit under a pill that still says live
+  paintPill(state){ const p=document.getElementById('pl-pill'); if(!p) return;
+    p.className='pill '+(state==='error'?'coral':state==='wait'?'grey':'jade');
+    p.textContent=state==='error'?'no feed':state==='wait'?'loading':'live'; },
   render(){
     const pre=document.getElementById('pl-json'), empty=document.getElementById('pl-empty'); if(!pre||!empty) return;
-    if(PAYLOAD.open&&PAYLOAD.view==='memory'){ pre.hidden=true; empty.hidden=true; return; }
+    if(PAYLOAD.view==='memory'){ pre.hidden=true; empty.hidden=true; return; }
     const d=PAYLOAD.data;
     const say=t=>{ pre.hidden=true; empty.hidden=false; empty.textContent=t; };
-    if(!PAYLOAD.open){ say('Payload hidden until unlocked.'); PAYLOAD.paintPipe(); return; }
-    if(!d){ say('Loading the scene…'); return; }
+    if(!d){ PAYLOAD.paintPill('wait'); say('Loading the scene…'); return; }
+    PAYLOAD.paintPill(d.error||!d.scene?'error':'live');
     if(d.error||!d.scene){ say(d.error||'no scene yet — the scanner has not written a row'); PAYLOAD.paintPipe(); return; }
     empty.hidden=true; pre.hidden=false;
     const when=String(d.row_ts||'').slice(11,19);
@@ -12883,7 +12842,7 @@ const PAYLOAD = {
   },
   paintPipe(){
     const el=document.getElementById('pl-pipe'); if(!el) return;
-    const live=PAYLOAD.open&&PAYLOAD.data&&PAYLOAD.data.scene;
+    const live=PAYLOAD.data&&PAYLOAD.data.scene;
     const STAGES=[
       ['Live price',         'Schwab streams SanDisk\u2019s current price on every scan.',                                        'Schwab quote'],
       ['Option book',        'ThetaData supplies this week\u2019s option chain \u2014 strikes, open interest, volume.',            'ThetaData chain'],
@@ -12945,7 +12904,7 @@ const MEM = {
     return j;
   },
   async open(){
-    const memEl=document.getElementById('pl-mem'); if(!memEl||!PAYLOAD.open) return; memEl.hidden=false;
+    const memEl=document.getElementById('pl-mem'); if(!memEl) return; memEl.hidden=false;
     if(!MEM.ov){ MEM.paintHead('Reading the memory store…'); try{ MEM.ov=await MEM.get({kind:'overview'}); }catch(e){ MEM.ov={error:String(e)}; } MEM.paintOverview(); }
     if(!MEM.last){ const days=(MEM.ov&&MEM.ov.days)||[]; MEM.day(days.length?days[days.length-1].date:null); }
   },
@@ -13067,8 +13026,6 @@ $("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b
 // ---------- boot ----------
 renderLayers(); renderDict(); renderDiary(false); renderHeads(); startLive(); loadSiege(); loadPlaneLedgers();
 SNDK.boot();   // SNDK-PRO beta tab — visibility listener only; pollers start on first open
-try{ if(sessionStorage.getItem('pl-user')===PAYLOAD.USER){ PAYLOAD.open=true; } }catch(e){}   // a same-session unlock un-greys the rail before the tab is ever opened
-PAYLOAD.paintRail(); PAYLOAD.whoami();   // the front door's forwarded user (if any) decides the rail; permitted → opens without typing
 const _modal=document.getElementById('modal');
 _modal.addEventListener('click', e=>{ if(e.target===_modal) closeModal(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });

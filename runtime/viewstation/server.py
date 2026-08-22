@@ -52,20 +52,22 @@ PORT = int(os.environ.get("MIRAI_VIEW_PORT", "8787"))
 # The contract between the two processes is this file's shape, not a function.
 _CONTROL_PATH = STATE_DIR / "sndk_reads" / "control.json"
 
-# The SNDK Payload tab is LOCKED to one name: the route answers only when the
-# request names that user (?user=will). This is a deliberate UI lock, not
-# authentication — the server is LAN-only, no-auth by choice (see README) and
-# the payload is already derivable from the raw explorer; the lock keeps the
-# model's scene off a casually-open tablet screen, which is the user's ask.
+# The payload routes answer only when the request names this user (?user=will),
+# or when a front door forwards that name for us. This was never authentication
+# — the server is LAN-only, no-auth by choice (see README) and the payload is
+# derivable from the raw explorer anyway; the real door is the proxy's.
+# 08-22: the page's matching UI lock (a name box and an Unlock button) was
+# removed as deprecated — nothing reaches the tab that has not already come
+# through the front door. The check stays here because it still costs nothing
+# and still turns away a bare request that names nobody.
 _PAYLOAD_USER = os.environ.get("MIRAI_PAYLOAD_USER", "will").strip().lower()
 
 
 def _forwarded_user(headers) -> str | None:
     """The identity a front door (Caddy/nginx basic_auth or forward_auth) hands
     us, if any. The viewstation itself has no login; when a proxy authenticates
-    and forwards the user name, the page greys the Payload rail button for
-    anyone who is not the permitted user and opens it without typing for the
-    one who is. Absent header → unknown (None)."""
+    and forwards the user name, these routes accept it in place of the ?user=
+    query. Absent header → unknown (None)."""
     for h in ("X-Forwarded-User", "Remote-User", "X-Remote-User", "X-Auth-User"):
         v = headers.get(h)
         if v and v.strip():
@@ -323,7 +325,7 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
 
 # --- recent-requests ring (08-21) ----------------------------------------------
 # A small in-memory record of the last requests (time, path, Host, client, UA,
-# status), behind the payload lock at /api/_access?user=will. Diagnostic only —
+# status), behind the payload route's name check at /api/_access?user=will. Diagnostic only —
 # the answer to "is my tablet actually polling, and what is it asking?" without
 # turning on access logging for good. Nothing is written to disk.
 import collections
@@ -535,7 +537,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"recent": recent})
 
             if route == "/api/whoami":
-                # who the front door says you are (None without a proxy) and whether that is the permitted user
+                # who the front door says you are (None without a proxy) and whether that is the
+                # permitted user. Diagnostic only since 08-22 — the page stopped consuming it when
+                # the payload lock was removed; it stays because it is the one way to ask, from a
+                # browser, which user the proxy thinks is looking (two machines, two logins).
                 u = _forwarded_user(self.headers)
                 return self._send_json({"user": u, "permitted": bool(u) and u == _PAYLOAD_USER,
                                         "permitted_user": _PAYLOAD_USER})
