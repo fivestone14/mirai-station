@@ -12334,11 +12334,35 @@ const SNDK = {
       for(const s of strip)
         tagStrip+=`<text x="${tagStripX}" y="${s.y.toFixed(1)}" font-size="${fzStrip}" font-weight="700" font-family="var(--sans)" style="letter-spacing:.01em" data-name="${s.name}" data-tip="${s.tip}">${s.run}</text>`;
     }
+    // ---- THE PATH IS PROJECTED EARLY (08-22) ----
+    // A wall label that lands on the price line is ink on ink ("Ceiling ●●● " printing through
+    // the trail, seen 08-22), and the placer below cannot avoid what it has not been shown. The
+    // projection moves up here, ahead of every painter that has to dodge it; the trail is still
+    // DRAWN in its own place further down, off this same object, so nothing is computed twice.
+    let PFR=null, PG=null;
+    if(S.pts.length>=2){
+      PFR={t0:S.t0, t1:S.t1, x0, x1:lineEnd, yTop:padT, yBot:h-padB, pLow:band.pLow, pHigh:band.pHigh, yFor};
+      PG=snkPathGeom(S.pts, PFR);
+    }
+    // does a label's rectangle touch the drawn LINE? Only the line: the area shaded beneath it
+    // is a wash, and a haloed label reads over a wash perfectly well — it is the 1.8px trail
+    // itself that a word must not sit on. Segment bounding boxes, which err toward saying yes.
+    const pathHit=(ax,bx,cy,hh)=>{
+      if(!PG) return false;
+      const x1=ax-2, x2=bx+2, y1=cy-hh/2-2, y2=cy+hh/2+2, P=PG.P;
+      for(let i=1;i<P.length;i++){
+        const a=P[i-1], b=P[i];
+        if(Math.max(a.x,b.x)<x1 || Math.min(a.x,b.x)>x2) continue;
+        if(Math.max(a.y,b.y)<y1 || Math.min(a.y,b.y)>y2) continue;
+        return true;
+      }
+      return false;
+    };
     // ---- wall labels at bar tips (GW vocabulary; caption declares the surface once,
     // so labels ride un-prefixed — gw-vocab's single-tenor-surface rule) ----
     let walls='';
     const near=SNDK.clusters?GW.nearestWalls(SNDK.clusters, spRef, 2):[];   // "nearest" means nearest to where price IS
-    const fzWall=fz(10.5), fzDots=fz(8.5);
+    const fzWall=fz(9.5), fzDots=fz(8.5);   // a wall's NAME is a label, not body copy
     // ---- WALL LABELS ARE PLACED, NOT OFFSET (08-01). The old rule was "8px past the tip, and
     // if that runs off the plot, clamp to the edge" — which breaks both ways on a long bar:
     //   1. THE TIP IS THE READING. A bar's length is the whole measurement, so a label lying
@@ -12384,8 +12408,16 @@ const SNDK = {
            {x:xTip+T, a:'start', x1:xTip+T, x2:xTip+T+wPx},
            {x:x0+6, a:'start',  x1:x0+6, x2:x0+6+wPx}];
       const inPlot=cd=>cd.x1>=x0+6&&cd.x2<=lineEnd-4;
-      let pick=cands.find(cd=>inPlot(cd)&&!boxAt(cd.x1,cd.x2,yN))
-            || cands.find(inPlot) || cands[cands.length-1];
+      // SCORED, not first-past-the-post. There are two things a label must dodge and they are
+      // not equally bad: printing through other TEXT is unreadable, printing through the price
+      // LINE is merely ugly — so an off-plot candidate costs most, a text collision next, and
+      // the trail last. Ordering the candidates by cost keeps the old outcome exactly wherever
+      // nothing touches the path, and picks the clear one wherever something does.
+      const cost=cd=>(inPlot(cd)?0:100)
+                   +(boxAt(cd.x1,cd.x2,yN)?40:0)
+                   +(pathHit(cd.x1,cd.x2,yN,lblH)?12:0)
+                   +cands.indexOf(cd)*0.1;      // ties keep the author's preference order
+      let pick=cands.slice().sort((a,b)=>cost(a)-cost(b))[0]||cands[cands.length-1];
       // still sitting on something — walk it clear, away from the obstruction's centre. Bounded
       // at 3 steps: past that the row is genuinely full and the halo is the honest answer.
       for(let tries=0; tries<3; tries++){
@@ -12607,13 +12639,10 @@ const SNDK = {
     // with a live edge, the SPX map's squiggly-line ported. A whisper by design (area at low
     // --iris + recency-faded history segments): bars stay the hero, so it renders BEFORE them.
     // Off-window prices are clipped to the plot rect (snkPathGeom), never rescaled.
-    let pathSVG='', pathCap='';
+    let pathSVG='', pathCap='', pathPts=null, pathOpenY=null;
     SNDK._pathEdge=null;
-    if(S.pts.length>=2){
-      const pfr={t0:S.t0, t1:S.t1, x0, x1:lineEnd, yTop:padT, yBot:h-padB, pLow:band.pLow, pHigh:band.pHigh, yFor};
-      const G=snkPathGeom(S.pts, pfr), n=G.P.length;
-      const d=G.P.map((q,i)=>`${i?'L':'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ');
-      const yB=(h-padB).toFixed(1);
+    if(PG){
+      const pfr=PFR, G=PG, n=G.P.length;
       // history in ≤7 index-buckets (boundaries shared → the line stays continuous), each at
       // its snkPathFade rung; index-based so an uneven scan cadence never punches a brightness step.
       const K=Math.min(7, n-1);
@@ -12625,17 +12654,37 @@ const SNDK = {
         for(let jj=a+1;jj<=b;jj++) sd+=` L${G.P[jj].x.toFixed(1)} ${G.P[jj].y.toFixed(1)}`;
         segs+=`<path d="${sd}" fill="none" stroke="var(--iris)" stroke-width="${s===K-1?1.8:1.5}" stroke-linejoin="round" opacity="${snkPathFade(s,K)}"/>`;
       }
+      // ---- THE DAY, SHADED AGAINST ITS OPEN (08-22). Two polygons clamped to the opening
+      // price: the jade one keeps only what is ABOVE the open and lies flat on the line
+      // everywhere else, the coral one only what is below. Together they tile the path↔open
+      // region exactly — no seam where the path crosses, no double-painted overlap, and the
+      // sign of the day is legible without reading a single number. The clamp idiom is the one
+      // the Replay tab uses for an excursion against its entry; the code is this chart's own —
+      // its own projection, its own ids, no shared helper, class or state with the SPX side, so
+      // either can be re-tuned without touching the other.
+      const pOpen=S.pts[0].p;
+      const yO=snkPathGeom([{t:S.t0, p:pOpen}], pfr).P[0].y;
+      const side=up=>{
+        const cl=G.P.map(q=>`${q.x.toFixed(1)},${(up?Math.min(q.y,yO):Math.max(q.y,yO)).toFixed(1)}`).join(' ');
+        return `<polygon points="${G.P[0].x.toFixed(1)},${yO.toFixed(1)} ${cl} ${G.P[n-1].x.toFixed(1)},${yO.toFixed(1)}"`
+          +` fill="var(${up?'--jade':'--coral'})" opacity=".13"/>`;
+      };
+      const areaSVG=side(true)+side(false)
+        +`<line x1="${G.P[0].x.toFixed(1)}" y1="${yO.toFixed(1)}" x2="${G.P[n-1].x.toFixed(1)}" y2="${yO.toFixed(1)}"`
+        +` stroke="var(--ink-dim)" stroke-width="1" stroke-dasharray="2 3" opacity=".45"/>`;
       // committed edge = last real scan point; the tip is S's appended live quote when streaming
       const ci=S.streaming?Math.max(0,n-2):n-1, ex=G.P[n-1].x, ey=G.P[n-1].y;
       pathSVG=`<g id="snk-path">`
-        +`<path d="${d} L${ex.toFixed(1)} ${yB} L${G.P[0].x.toFixed(1)} ${yB} Z" fill="var(--iris)" opacity=".035"/>`
+        +areaSVG
         +segs
         +`<line id="snk-plead" x1="${G.P[ci].x.toFixed(1)}" y1="${G.P[ci].y.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="var(--iris)" stroke-width="1.6" opacity=".6"/>`
         +`<circle id="snk-phalo" class="snk-phalo${S.streaming?' live':''}" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="7" fill="var(--iris)" opacity=".10"/>`
         +`<circle id="snk-pdot" class="snk-pdot${S.streaming?' live':''}" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="var(--iris)" opacity=".8"/>`
         +`</g>`;
       SNDK._pathEdge={ax:G.P[ci].x, ay:G.P[ci].y, fr:pfr};
-      pathCap=` · path = per-scan spots${S.fine?' + 5s tape':''}${S.streaming?' + live quote':''}`;
+      pathPts=G.P; pathOpenY=yO;   // the price story, handed to the callout placer as no-go ground
+      pathCap=` · path = per-scan spots${S.fine?' + 5s tape':''}${S.streaming?' + live quote':''}`
+        +` · shaded green above the ${snkUsd(pOpen,0)} open, red below`;
     }
     // ---- caption: surface honesty in one line ----
     const fr=SNDK.staleInfo();
