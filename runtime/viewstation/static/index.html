@@ -11145,9 +11145,21 @@ function snkMiraiSVG(m, rd, P){
   // promise (N11: no direction may be spoken off net charm)
   const cw=(P.flows&&P.flows.charm_wall!=null&&isFinite(P.flows.charm_wall))?+P.flows.charm_wall:null;
   if(P.late&&cw!=null&&P.band&&cw>P.band.pLow&&cw<P.band.pHigh){
-    const y=dodge(yFor(cw));
-    out.push(`<text x="${(x0+7).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${snkNum(P.fsZone,9)}" font-weight="600" font-family="var(--mono)" style="fill:var(--lantern);opacity:.7;${halo};letter-spacing:.08em" data-name="Decay tilt" data-tip="As options lose value into the close, hedging pressure eases toward this strike.¦k:charm peak=${snkUsd(cw,0)}¦f:a place the pull points to — never a promise, and no up/down on its own">⌛ decay tilt</text>`);
-    avoid.push(y);
+    const cTip=`As options lose value into the close, hedging pressure eases toward this strike.`
+      +`¦k:charm peak=${snkUsd(cw,0)}¦f:a place the pull points to — never a promise, and no up/down on its own`;
+    // P.msgs (08-23) — the chart's airspace rails. This is the ONE caption in this column that
+    // is not anchored to the arrow it sits beside: it names a ROW and nothing else, so where
+    // there is airspace to hold it, it goes out with the wall names and stops thickening a
+    // gutter that already carries the EM legs, the zone words and mirai's own voice. Absent
+    // (every other caller, and the drills) it prints exactly where it always has.
+    if(Array.isArray(P.msgs)){
+      P.msgs.push({ y:yFor(cw), hue:'var(--lantern)', text:'⌛ decay tilt', name:'Decay tilt', tip:cTip,
+                    fs:snkNum(P.fsZone,9), em:0.6, mono:true, wt:600, op:'.8' });
+    }else{
+      const y=dodge(yFor(cw));
+      out.push(`<text x="${(x0+7).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${snkNum(P.fsZone,9)}" font-weight="600" font-family="var(--mono)" style="fill:var(--lantern);opacity:.7;${halo};letter-spacing:.08em" data-name="Decay tilt" data-tip="${cTip}">⌛ decay tilt</text>`);
+      avoid.push(y);
+    }
   }
   return { svg: out.length?out.join(''):'', avoid };
 }
@@ -12902,7 +12914,7 @@ const SNDK = {
     const mirai=snkMiraiSVG(m, RD, { x0, sp:spRef,
       sigma:(RD&&RD.sigma!=null&&isFinite(RD.sigma))?+RD.sigma:m.sigma,
       yFor, yTop:padT, yBot:h-padB, capTop, fs:fz(9.5), fsZone:fz(9),
-      band, avoid:gutAvoid, flows:m.flows, late:lateDay });
+      band, avoid:gutAvoid, flows:m.flows, late:lateDay, msgs:RAILS.length?AIRMSG:null });
     for(const vy of mirai.avoid) gutAvoid.push(vy);
     // the mirai caption starts at x0+38 and runs the better part of 200px — well past the 96px
     // the left gutter reserves — so the airspace rails are told where its words ACTUALLY end
