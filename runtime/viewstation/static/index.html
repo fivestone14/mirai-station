@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#0C1017">
-<link rel="manifest" href="/manifest.webmanifest">
+<!-- crossorigin="use-credentials" is the whole reason the password prompt appeared TWICE
+     behind the public front door (08-23). Every other request on this page reuses the
+     Basic-auth header the browser already holds; a manifest fetch is specified to go out
+     with credentials OMITTED unless this attribute says otherwise, so Caddy answered it
+     401 and the browser asked again. Nothing here is cross-origin — the file is ours,
+     one origin, one wall — the attribute is simply HTML's only switch for "send my
+     login with this one". Do not drop it while the station sits behind basic_auth. -->
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
 <link rel="icon" href="/icon.svg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

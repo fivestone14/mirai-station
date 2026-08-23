@@ -67,3 +67,11 @@ def test_a_chart_callout_can_never_reach_the_right_hand_readouts():
     assert "gx1=lineEnd-px(12)" in PAGE                       # a real margin, not the bare edge
     assert "mark(gx1, gy0, gx0+nc*CW, gy1)" in PAGE           # ...and the strip past it is no-go
     assert "put.x=Math.max(gx0, Math.min(put.x, gx1-tw))" in PAGE   # ...and every branch is clamped
+
+def test_the_manifest_link_carries_the_login():
+    """08-23: the public front door asked for the password TWICE. One wall, two requests \u2014 the
+    page carried the Basic-auth header, the manifest did not, because a manifest fetch is
+    specified to omit credentials unless the link says otherwise, so Caddy 401'd it and the
+    browser prompted again. Pinned: dropping the attribute brings the double prompt back."""
+    assert 'rel="manifest"' in PAGE
+    assert 'href="/manifest.webmanifest" crossorigin="use-credentials"' in PAGE
