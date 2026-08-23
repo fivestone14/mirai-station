@@ -23,15 +23,32 @@ the station password with it.
 
 The toolchain, once (about 1 GB — not the 8 GB Android Studio):
 
-    brew install --cask temurin@17 android-commandlinetools
-    brew install gradle
-    sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+    brew install openjdk@17 gradle
+    brew install --cask android-commandlinetools
+
+    export JAVA_HOME=/opt/homebrew/opt/openjdk@17
+    export ANDROID_HOME="$HOME/Library/Android/sdk"
+    yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
+    sdkmanager --sdk_root="$ANDROID_HOME" \
+               "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+`openjdk@17` rather than the Temurin cask: the cask wants sudo to symlink into
+/Library/Java, and Gradle only needs JAVA_HOME. openjdk@17 is keg-only, so it
+will not be on PATH — set JAVA_HOME and let Gradle find it.
+
+Every build prints one warning, which is not a problem:
+
+    This version only understands SDK XML versions up to 3 but an SDK XML
+    file of version 4 was encountered
+
+It means the command-line tools are newer than the Android Gradle Plugin. The
+build completes and the APK is correct.
 
 There is no `gradlew` in the tree: the wrapper ships as a binary jar, and a
 binary in a public repo is a thing nobody reads. Run `gradle wrapper` once if
 you want one.
 
-Your credentials, once:
+Your credentials, once:Your credentials, once:
 
     cp local.properties.example local.properties
     $EDITOR local.properties
@@ -62,6 +79,17 @@ Then `keystore.properties` next to `build.gradle.kts` (untracked):
     keyPassword=...
 
 Put the `.jks` and its passwords in the password manager.
+
+## What the APK contains
+
+The station password, in plain text. `strings` on the built APK will show it,
+and so will anyone who pulls the file off the phone. That is inherent to
+carrying a password rather than a token, and it is why the bearer token is the
+planned successor and why the copy served from the station deserves a name
+nobody would guess.
+
+Verified toolchain, 2026-08-23: JDK 17.0.20.1, Gradle 9.7.1, AGP 8.5.2,
+compileSdk 34, minSdk 26. Debug APK 3.2 MB, release 2.5 MB.
 
 ## Getting it onto the phone
 
