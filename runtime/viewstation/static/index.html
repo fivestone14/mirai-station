@@ -1554,7 +1554,7 @@
   /* the header ROW: the price lead and its pills, and nothing else since the teacher card
      was cut (08-23). paintStrip owns #snk-strip's innerHTML, so anything added here later has
      to be a SIBLING of it rather than a child, or every repaint would wipe it. */
-  .snk-head{flex:0 0 auto; display:flex; gap:8px; align-items:stretch; margin-bottom:8px; min-width:0}
+  .snk-head{flex:0 0 auto; display:flex; gap:10px; align-items:stretch; margin-bottom:10px; min-width:0}
   @media (max-width:900px){ .snk-head{flex-wrap:wrap} .snk-draws{width:100%} }
   .snk-strip{flex:0 0 auto; display:flex; gap:8px; align-items:stretch}
   .snk-strip .pill{align-self:center}
@@ -1567,15 +1567,21 @@
      against. --lead-hue is the single knob and every layer below reads it, so the whole surface
      now says the direction that used to live in a 3px accent bar alone. */
   .snk-lead{--lead-hue:var(--lantern);
-    display:flex; flex-direction:column; justify-content:center; gap:1px; padding:6px 14px; min-width:0; white-space:nowrap;
+    display:flex; flex-direction:column; justify-content:center; gap:4px;
+    padding:10px clamp(14px,1.1vw,20px); min-width:0; white-space:nowrap;
     border:1px solid color-mix(in srgb,var(--lead-hue) 22%, var(--hairline-2)); border-radius:10px;
     background:
       radial-gradient(120% 90% at 0% 0%, color-mix(in srgb,var(--lead-hue) 11%, transparent) 0%, transparent 62%),
       color-mix(in srgb,var(--surface-2) 78%, transparent);
     -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
     box-shadow:0 14px 34px -18px rgba(0,0,0,.72), 0 0 26px -14px color-mix(in srgb,var(--lead-hue) 55%, transparent)}
-  .snk-lead b{font-family:var(--sans); font-size:17px; font-weight:700; color:var(--ink); letter-spacing:.01em}
-  .snk-lead i{font-family:var(--sans); font-size:13.5px; font-weight:500; font-style:normal; color:var(--ink-dim)}
+  /* the box stretches to the drawer column beside it, so it is the tallest thing in the header
+     — 17px type in a 140px box read as a small label lost in a large frame. The price is the
+     anchor of the whole tab; it is sized like one, and on the same ramp as everything else. */
+  .snk-lead b{font-family:var(--sans); font-size:clamp(19px,1.4vw,27px); font-weight:700; color:var(--ink);
+    letter-spacing:-.005em; line-height:1.15}
+  .snk-lead i{font-family:var(--sans); font-size:clamp(12px,0.85vw,14.5px); font-weight:500; font-style:normal;
+    color:var(--ink-dim); line-height:1.4}
   /* the accent bar rides INSIDE the same shadow stack — declared on its own it would REPLACE
      the glow rather than join it, and the card would lose the very thing being borrowed */
   .snk-lead.up{--lead-hue:var(--jade);
@@ -1675,8 +1681,8 @@
      Plain inline content in a block is the only thing that actually ellipses. */
   .snk-draw .tg .sum{grid-column:2; min-width:0; text-align:right;
     overflow:hidden; white-space:nowrap; text-overflow:ellipsis}
-  .snk-draw .tg .chev{grid-column:3; padding:0 8px; font-size:15px; line-height:1; color:var(--ink-faint);
-    transition:transform .16s ease}
+  .snk-draw .tg .chev{grid-column:3; width:26px; text-align:center; font-size:15px; line-height:1;
+    color:var(--ink-faint); transition:transform .16s ease}
   .snk-draw .tg:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
   .snk-draw:hover .hd{border-color:var(--hairline-2)}
   .snk-draw.open .hd{border-color:color-mix(in srgb,var(--iris) 45%,transparent); background:var(--iris-wash)}
@@ -1687,9 +1693,10 @@
   .snk-draw .rs b{font-family:var(--mono); font-size:12.5px; font-weight:700; letter-spacing:.03em; color:var(--ink-dim)}
   .snk-draw .rs.up b{color:var(--jade)}  .snk-draw .rs.dn b{color:var(--coral)}
   .snk-draw .rs .q{font-size:11px; color:var(--ink-faint)}
-  .snk-draw .hist{flex:0 0 auto; appearance:none; cursor:pointer; font-family:var(--mono); font-size:10px;
+  .snk-draw .hist,.snk-draw .hist-slot{flex:0 0 auto; width:var(--hist-w,74px)}
+  .snk-draw .hist{appearance:none; cursor:pointer; font-family:var(--mono); font-size:10px;
     letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); background:transparent;
-    border:0; border-left:1px solid var(--hairline); padding:0 11px}
+    border:0; border-left:1px solid var(--hairline); padding:0}
   .snk-draw .hist:hover{color:var(--ink); background:var(--surface-3)}
   /* ONE gap rule for everything inside a drawer. The blocks in here come from five different
      painters, none of which carries a margin, so they sat flush against each other in places and
@@ -10852,7 +10859,12 @@ function snkDrawer(id, title, head, body){
       +`<button type="button" class="tg" aria-expanded="${open?'true':'false'}">`
         +`<span class="t">${title}</span><span class="sum">${head||''}</span>`
         +`<span class="chev" aria-hidden="true">›</span></button>`
-    +(id==='read'?`<button type="button" class="hist" id="snk-hist-btn" aria-label="Today's reading history">history</button>`:'')
+    // EVERY strip reserves the same right slot, whether or not it has anything to put in it.
+    // Without this the read's chevron sat a button's width further left than the other two, and
+    // three stacked strips whose chevrons do not line up read as broken before they read as
+    // anything else.
+    +(id==='read'?`<button type="button" class="hist" id="snk-hist-btn" aria-label="Today's reading history">history</button>`
+                 :`<span class="hist-slot" aria-hidden="true"></span>`)
     +`</div><div class="body">${body}</div></section>`;
 }
 function snkReadCard(rd, now, bare){
