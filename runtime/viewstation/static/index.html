@@ -12349,18 +12349,24 @@ const SNDK = {
         +`<rect x="${x0}" y="${yT.toFixed(1)}" width="${wPl}" height="${hB.toFixed(1)}" fill="url(#snkGapHatch)" opacity="${(.5*a+.2).toFixed(2)}"/>`
         +`<line x1="${x0}" x2="${lineEnd}" y1="${yT.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:var(--iris);opacity:${eo};stroke-width:1" stroke-dasharray="4 4"/>`
         +`<line x1="${x0}" x2="${lineEnd}" y1="${yB2.toFixed(1)}" y2="${yB2.toFixed(1)}" style="stroke:var(--iris);opacity:${eo};stroke-width:1" stroke-dasharray="4 4"/>`;
-      // THE POCKET SENTENCE MOVES OFF THE BARS (08-01). It was centre-anchored at (x0+lineEnd)/2
-      // — which is exactly where xZ puts the zero axis, so the longest sentence on the chart was
-      // laid across the tallest bars in the book. It rides the plot's right edge now: the only
-      // other thing out there is the price trail, which is a whisper by design, and the halo
-      // carries it over that. Right-anchored so a long target price grows INTO the plot, never
-      // out through the level tags.
-      gapLbl+=`<text x="${(lineEnd-6).toFixed(1)}" y="${(cy+px(3)).toFixed(1)}" text-anchor="end" font-size="${fz(10)}" font-family="var(--mono)" style="fill:var(--iris);opacity:${gp.active?'.95':'.75'};${_HALO}"`
-        +` data-name="Thin zone" data-tip="Little in the way here — price travels fast.`
-        +`¦k:runs to=${snkUsd(gp.target,0)}¦f:${snkUsd(gp.lo,0)}–${snkUsd(gp.hi,0)}${gp.active?' · you are in it now':''}">`
-        +`⇣ ${gp.active?'nothing to hold it':'little holds price'} → fast to ${snkUsd(gp.target,0)}</text>`;
+      // THE POCKET SENTENCE GOES TO THE AIRSPACE (08-23). It moved off the bars to the plot's
+      // right edge on 08-01, which was the quietest lane on the chart right up until the wall
+      // callouts arrived in it too — two long sentences and five names inside 160px is exactly
+      // the pile the rails exist to undo. It is handed to the placer instead, and out there it
+      // ends in a BRACKET across the pocket rather than an arrow at a row: a pocket is a span,
+      // and pointing at its middle would under-say the one thing it measures. On a frame with
+      // no airspace on either side nothing changes — same string, same anchor, same reserve.
       const gTxt=`⇣ ${gp.active?'nothing to hold it':'little holds price'} → fast to ${snkUsd(gp.target,0)}`;
-      plotBoxes.push({x1:lineEnd-6-txW(gTxt,fz(10),0.6), x2:lineEnd-6, y:cy+px(3), h:fz(10)*1.25});
+      const gTip=`Little in the way here — price travels fast.`
+        +`¦k:runs to=${snkUsd(gp.target,0)}¦f:${snkUsd(gp.lo,0)}–${snkUsd(gp.hi,0)}${gp.active?' · you are in it now':''}`;
+      if(RAILS.length){
+        AIRMSG.push({y:cy, span:[yT,yB2], hue:'var(--iris)', text:gTxt, name:'Thin zone', tip:gTip,
+                     fs:fz(10), em:0.6, mono:true, wt:400, op:gp.active?'.95':'.75'});
+      }else{
+        gapLbl+=`<text x="${(lineEnd-6).toFixed(1)}" y="${(cy+px(3)).toFixed(1)}" text-anchor="end" font-size="${fz(10)}" font-family="var(--mono)" style="fill:var(--iris);opacity:${gp.active?'.95':'.75'};${_HALO}"`
+          +` data-name="Thin zone" data-tip="${gTip}">${gTxt}</text>`;
+        plotBoxes.push({x1:lineEnd-6-txW(gTxt,fz(10),0.6), x2:lineEnd-6, y:cy+px(3), h:fz(10)*1.25});
+      }
     }
     // ---- γ bars: diverging from the zero axis (+ calls jade right / − puts coral left) ----
     let bars='', hits='';
