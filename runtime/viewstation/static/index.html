@@ -12931,31 +12931,43 @@ const SNDK = {
         }
       }
     }
-    // ---- CALLOUTS (08-22): the wall names, placed in the plot's own empty space ----
-    // Each tick throws its name into the nearest genuinely clear patch of canvas and keeps a
-    // hairline leader back to the strike it belongs to. The search is dynamic, not a layout:
-    // the plot is walked as a coarse occupancy grid, everything that is a READING is marked
-    // no-go, and each label takes the first free slot nearest its own row. What counts as a
-    // reading, in order of how much canvas it claims:
-    //   · the price story — the path AND the ground it shades against the open. This is the
-    //     focal point of the chart and is never covered, which is what pushes the labels out
-    //     into the quiet bands above and below the day's range.
-    //   · every γ bar's own rectangle, so a label can never lie across a bar's tip.
-    //   · plotBoxes — the break mark, the EM readouts, the air-pocket sentence.
-    //   · the left gutter, where the zone captions and EM legs live, and the top tape strip.
-    // Labels are placed in ladder order and each one marks its own slot, so they cannot collide
-    // with each other either. A label that finds nothing free falls back to its own row at the
-    // right edge rather than going unsaid — a name withheld is worse than a name overlapping.
+    // ---- MESSAGES IN THE AIRSPACE (08-23) ----
+    // Every message this chart writes now takes a slot on the RAIL nearest its own row — the
+    // empty band above the call edge or below the put edge — laid ALONG the rail rather than
+    // stacked down the right margin, and keeps a leader back to what it names. Before this the
+    // search below was the only rule, and it did what it was told: it found each label the
+    // widest clear run in its OWN row, which on a live tape is always the strip beside the
+    // price story, so seven names ended up shoulder to shoulder in a column and no reader could
+    // say which one pointed where. The airspace was sitting there empty the whole time.
+    //
+    // THE ORDER IS THE WHOLE TRICK. On each rail the furthest target takes the leftmost slot.
+    // Every shorter reach then sits outboard of every longer one, and that is the single
+    // arrangement in which no two leaders can cross — so a line can always be followed to its
+    // end without being lost in another. Everything else follows from it:
+    //   · a wall names a ROW, so its leader drops to that row and turns along it, finishing on
+    //     the tick with an arrowhead. The turn is a whisper (dotted, barely inked) because it
+    //     crosses the whole map and must never be mistaken for a level of its own; the
+    //     arrowhead, not the line, is what the eye is meant to land on.
+    //   · a pocket names a SPAN, so its leader ends in a bracket across the band instead. An
+    //     arrow at the middle of a pocket would name a row the pocket does not have.
+    // What the rails cannot take — no fence on that side, a band too shallow, a sentence wider
+    // than the rail, a rail already full — falls through to the in-plot search unchanged, so a
+    // squeezed frame degrades to the 08-22 behaviour rather than losing a name.
     let callSVG='';
-    if(CALLOUTS.length){
+    // one list, two vocabularies: the wall names ride sans at the label step, the pocket
+    // sentences keep their own mono voice and size, so nothing is re-styled by being moved
+    const MSGS=CALLOUTS.map(s=>({y:s.y, hue:s.hue, name:s.name, text:s.text, tip:s.tip,
+                                 fs:fz(9.5), em:0.56, mono:false, wt:700, op:'1'}))
+                       .concat(AIRMSG);
+    if(MSGS.length){
       const fsC=fz(9.5), padC=4;
-      // THE INVARIANT, and the reason this line exists: A CALLOUT MAY NEVER REACH THE RIGHT-HAND
+      // THE INVARIANT, and the reason this line exists: A MESSAGE MAY NEVER REACH THE RIGHT-HAND
       // READOUTS. Seen on 08-22 — "Abs Gamma 3 · 1,590" printed hard against "Tipping point" in
       // the value gutter, two unrelated facts fused into one string of text. gx1 was lineEnd-4,
       // which trusted the plot edge to be enough; it is not, because the tick lane and the value
-      // column both begin within a few pixels of it. The right limit is now a real margin AND
-      // the strip beyond it is marked occupied outright, so no search — not the preferred pass,
-      // not the relaxed pass, not the last-resort fallback — can put a word there.
+      // column both begin within a few pixels of it. The right limit is a real margin AND the
+      // strip beyond it is marked occupied outright, so no pass — rail, preferred, relaxed or
+      // last-resort — can put a word there.
       const gx0=x0+6, gx1=lineEnd-px(12), gy0=capTop+2, gy1=h-padB-4;
       const CW=14, CH=Math.max(10, Math.round(fsC*1.25));
       const nc=Math.max(1, Math.ceil((gx1-gx0)/CW)), nr=Math.max(1, Math.ceil((gy1-gy0)/CH));
@@ -12966,18 +12978,67 @@ const SNDK = {
         if(c1<0||r1<0||c0>nc-1||r0>nr-1) return;
         for(let r=Math.max(0,r0);r<=r1;r++) for(let c=Math.max(0,c0);c<=c1;c++) occ[r*nc+c]=1;
       };
+      // what counts as a READING, in order of how much canvas it claims: the price story and the
+      // ground it shades against the open (the focal point, never covered), every gamma bar's own
+      // rectangle, the boxes other painters have already claimed, the off-frame chips docked in
+      // the airspace itself, and the two lanes at the edges.
       if(pathPts&&pathOpenY!=null) for(let i=1;i<pathPts.length;i++){
         const a=pathPts[i-1], b=pathPts[i];
         mark(a.x, Math.min(a.y,b.y,pathOpenY)-4, b.x, Math.max(a.y,b.y,pathOpenY)+4);
       }
       for(const bb of barBoxes) mark(bb.x1-2, bb.y1-2, bb.x2+2, bb.y2+2);
       for(const pb of plotBoxes) mark(pb.x1-3, pb.y-(pb.h||CH)/2-2, pb.x2+3, pb.y+(pb.h||CH)/2+2);
-      mark(gx0, gy0, x0+Math.max(96, (lineEnd-x0)*0.10), gy1);       // zone captions + EM legs
+      for(const ab of airBoxes) mark(ab.x1-3, ab.y-(ab.h||CH)/2-2, ab.x2+3, ab.y+(ab.h||CH)/2+2);
+      const gutR=x0+Math.max(96, (lineEnd-x0)*0.10);
+      mark(gx0, gy0, gutR, gy1);                                     // zone captions + EM legs
       mark(gx1, gy0, gx0+nc*CW, gy1);                                // the ticks and the readouts
+      const wOf=s=>Math.round(txW(s.text, s.fs, s.em))+padC*2;
+      const seat=new Map();
+      // ---- THE RAILS: seat what the airspace can take ----
+      if(RAILS.length){
+        const ix0=gutR+px(6), ix1=gx1-px(2), room=ix1-ix0, GAPX=px(16);
+        // …and a rail is only worth taking if the reach is honest. A message whose own rail is
+        // full will otherwise take the far one and drag a leader across the entire price story
+        // to get back to its row, which is worse than leaving it in the plot: seen at 560px,
+        // where "Call Wall 3 · 1,620" seated itself at the FOOT of the chart. Past this it
+        // falls through to the in-plot search instead.
+        const maxReach=(gy1-gy0)*0.62;
+        // the rail hugs the frame edge. The further the words sit off the map, the less any one
+        // of them can be misread as belonging to a row it merely passes on the way out.
+        const lanes=RAILS.map(r=>({ side:r.side, items:[], used:0,
+          y:(r.side==='top')?Math.min(r.y1-railH/2, r.y0+railH/2+px(2))
+                            :Math.max(r.y0+railH/2, r.y1-railH/2-px(2)) }));
+        for(const s of MSGS){
+          const w2=wOf(s); if(w2>room) continue;      // wider than the rail itself — leave it where it was
+          let best=null, bd=Infinity;
+          for(const ln of lanes){
+            if(ln.used+w2+(ln.items.length?GAPX:0)>room) continue;   // this rail is full
+            // the rail on the message's OWN side of the action, and of two the nearer one: a
+            // leader that crosses the price story to reach its row is worse than no move at all
+            const d=(ln.side==='top')?(s.y-ln.y):(ln.y-s.y);
+            if(Math.abs(d)>maxReach) continue;
+            const cost=(d<0?1e5:0)+Math.abs(d);
+            if(cost<bd){ bd=cost; best=ln; }
+          }
+          if(!best) continue;
+          best.used+=w2+(best.items.length?GAPX:0); best.items.push(s);
+        }
+        for(const ln of lanes){
+          if(!ln.items.length) continue;
+          ln.items.sort((a,b)=>(ln.side==='top')?(b.y-a.y):(a.y-b.y));   // furthest reach leftmost — see above
+          const tot=ln.items.reduce((t,s)=>t+wOf(s),0), nI=ln.items.length;
+          // spread into the room there is, up to a point: past ~110px the gaps stop reading as
+          // separation and start reading as three unrelated captions on one line
+          const gap=(nI>1)?Math.max(GAPX, Math.min(px(110), (room-tot)/(nI-1))):0;
+          let cx=ix0+Math.max(0,(room-tot-gap*(nI-1))/2);              // spare room splits either side
+          for(const s of ln.items){ const w2=wOf(s); seat.set(s,{x:cx, y:ln.y, w:w2}); cx+=w2+gap; }
+        }
+        for(const p of seat.values()) mark(p.x-3, p.y-railH/2-2, p.x+p.w+3, p.y+railH/2+2);
+      }
+      // ---- WHAT THE AIRSPACE COULD NOT TAKE: the in-plot search, unchanged since 08-22 ----
       // the WIDEST clear run in a row, or null if nothing in it is wide enough. Asking for the
       // widest — rather than the first slot that fits — is what stops every label crowding the
-      // right edge: a row whose only gap is a sliver beside the price band no longer qualifies,
-      // so the label steps out to the open canvas above or below the day's range instead.
+      // right edge: a row whose only gap is a sliver beside the price band no longer qualifies.
       const rowFree=(cy, needW)=>{
         const r=Math.floor((cy-gy0)/CH); if(r<0||r>nr-1) return null;
         let best=null, run=0;
@@ -12990,13 +13051,16 @@ const SNDK = {
         return best;
       };
       const AIR=4*CW;   // room AROUND the words, not merely room for them
-      let joinN=0;
-      for(const s of CALLOUTS){
-        const tw=Math.round(txW(s.text, fsC, 0.56))+padC*2;
-        let put=null;
+      for(const s of MSGS){
+        if(seat.has(s)) continue;
+        const tw=wOf(s);
+        // a pocket sentence that missed the rail goes back to the plot's right edge ON ITS OWN
+        // ROW — inside the band it is describing, which is where it lived before the rails and
+        // the only place it needs no leader to be understood
+        let put=s.span?{x:Math.max(gx0, gx1-tw), y:s.y}:null;
         // two passes: first insisting on breathing room, then settling for a bare fit. Within a
         // pass, nearest row first — this one, then one out either way — so the leader stays short.
-        for(const air of [AIR, 0]){
+        if(!put) for(const air of [AIR, 0]){
           for(let d=0; d<=nr && !put; d++){
             for(const sign of (d?[-1,1]:[0])){
               const cy=s.y+sign*d*CH;
@@ -13012,15 +13076,46 @@ const SNDK = {
         // clamp cannot be forgotten by a future pass the way a search rule can
         put.x=Math.max(gx0, Math.min(put.x, gx1-tw));
         mark(put.x-3, put.y-CH/2, put.x+tw+3, put.y+CH/2);
-        // the leader: out of the label, along a column of its own near the edge, then to the tick
-        const jx=lineEnd+2-(joinN++%3)*3, lx2=put.x+tw;
-        const kink=Math.abs(put.y-s.y)>1.5;
-        callSVG+=`<path d="M${lx2.toFixed(1)} ${put.y.toFixed(1)} H${jx.toFixed(1)}`
-          +(kink?` V${s.y.toFixed(1)} H${(tagStripX-1).toFixed(1)}`:` H${(tagStripX-1).toFixed(1)}`)
-          +`" fill="none" stroke="${s.hue}" stroke-width="1" opacity=".38"/>`
-          +`<circle cx="${lx2.toFixed(1)}" cy="${put.y.toFixed(1)}" r="1.7" fill="${s.hue}" opacity=".7"/>`
-          +`<text x="${(put.x+padC).toFixed(1)}" y="${(put.y+fsC*0.34).toFixed(1)}" font-size="${fsC}" font-weight="700"`
-          +` font-family="var(--sans)" style="letter-spacing:.01em;fill:${s.hue};paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round"`
+        seat.set(s, {x:put.x, y:put.y, w:tw, inplot:true});
+      }
+      // ---- DRAW ----
+      let joinN=0;
+      for(const s of MSGS){
+        const p=seat.get(s); if(!p) continue;
+        const cxm=p.x+p.w/2;
+        let lead='';
+        if(p.inplot&&s.span){
+          lead='';                                                   // it is sitting in its own band; a leader would point at itself
+        }else if(p.inplot){
+          // the 08-22 leader: out of the label, down a column of its own near the edge, then in
+          const jx=lineEnd+2-(joinN++%3)*3, lx2=p.x+p.w;
+          const kink=Math.abs(p.y-s.y)>1.5;
+          lead=`<path d="M${lx2.toFixed(1)} ${p.y.toFixed(1)} H${jx.toFixed(1)}`
+            +(kink?` V${s.y.toFixed(1)} H${(tagStripX-1).toFixed(1)}`:` H${(tagStripX-1).toFixed(1)}`)
+            +`" fill="none" stroke="${s.hue}" stroke-width="1" opacity=".38"/>`
+            +`<circle cx="${lx2.toFixed(1)}" cy="${p.y.toFixed(1)}" r="1.7" fill="${s.hue}" opacity=".7"/>`;
+        }else{
+          const down=(p.y<s.y), dir=down?1:-1;
+          const yE=p.y+dir*(railH/2-1);                              // leaves the label, never crosses it
+          const b0=s.span?Math.min(s.span[0],s.span[1]):null, b1=s.span?Math.max(s.span[0],s.span[1]):null;
+          const yEnd=s.span?(down?b0:b1):s.y;
+          lead=`<path d="M${cxm.toFixed(1)} ${yE.toFixed(1)} V${yEnd.toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1" opacity=".45"/>`
+            +`<circle cx="${cxm.toFixed(1)}" cy="${yE.toFixed(1)}" r="1.7" fill="${s.hue}" opacity=".75"/>`;
+          if(s.span){
+            const sw=px(5);
+            lead+=`<path d="M${(cxm-sw).toFixed(1)} ${b0.toFixed(1)} H${(cxm+sw).toFixed(1)} M${cxm.toFixed(1)} ${b0.toFixed(1)} V${b1.toFixed(1)} M${(cxm-sw).toFixed(1)} ${b1.toFixed(1)} H${(cxm+sw).toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1.2" opacity=".6"/>`;
+          }else{
+            const ax=tagStripX-2, aw=px(5), ah=px(3);
+            if(ax>cxm+px(10))
+              lead+=`<path d="M${cxm.toFixed(1)} ${s.y.toFixed(1)} H${ax.toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1" stroke-dasharray="1 5" opacity=".3"/>`
+                +`<path d="M${(ax-aw).toFixed(1)} ${(s.y-ah).toFixed(1)} L${ax.toFixed(1)} ${s.y.toFixed(1)} L${(ax-aw).toFixed(1)} ${(s.y+ah).toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1.4" opacity=".8"/>`;
+            else
+              lead+=`<path d="M${(cxm-aw).toFixed(1)} ${(s.y-px(4)*dir).toFixed(1)} L${cxm.toFixed(1)} ${s.y.toFixed(1)} L${(cxm+aw).toFixed(1)} ${(s.y-px(4)*dir).toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1.4" opacity=".8"/>`;
+          }
+        }
+        callSVG+=lead
+          +`<text x="${(p.x+padC).toFixed(1)}" y="${(p.y+s.fs*0.34).toFixed(1)}" font-size="${s.fs}" font-weight="${s.wt}"`
+          +` font-family="var(--${s.mono?'mono':'sans'})" style="letter-spacing:.01em;fill:${s.hue};opacity:${s.op};paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round"`
           +` data-name="${s.name}" data-tip="${s.tip}">${esc(s.text)}</text>`;
       }
     }
