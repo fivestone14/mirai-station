@@ -84,36 +84,14 @@ def test_extra_hosts_env_is_honored(monkeypatch):
 # actually names the caller.
 # ---------------------------------------------------------------------------
 
-def _post_ok(**headers):
-    return server.Handler._same_site_ok(_Req("127.0.0.1:8787", **headers))
-
-
-def test_cross_origin_post_is_refused():
-    """The exact shape of a drive-by: text/plain dodges the preflight, and the
-    attacker never reads the response — but the write would still land."""
-    assert _post_ok(Origin="http://evil.com") is False
-    assert _post_ok(Origin="https://evil.com:8787") is False
-
-
-def test_cross_site_fetch_metadata_is_refused():
-    assert _post_ok(**{"Sec-Fetch-Site": "cross-site"}) is False
-    assert _post_ok(**{"Sec-Fetch-Site": "same-site"}) is True
-    assert _post_ok(**{"Sec-Fetch-Site": "same-origin"}) is True
-    assert _post_ok(**{"Sec-Fetch-Site": "none"}) is True
-
-
-def test_same_origin_post_from_the_tablet_still_works():
-    """The tablet page is served by this very server, so its Origin is the
-    address it loaded from — the guard must not break the reasoning toggle."""
-    assert _post_ok(Origin="http://192.168.1.40:8787") is True
-    assert _post_ok(Origin="http://localhost:8787") is True
-    assert _post_ok(Origin="http://mirai-station.local:8787") is True
-
-
-def test_non_browser_post_passes():
-    """curl sends no Origin, and a raw-socket caller gains nothing here it
-    could not already do — the guard is aimed at browsers."""
-    assert _post_ok() is True
+def test_the_server_has_no_write_path_at_all():
+    """08-23: the station went public and the reasoning switch — its one write — went with
+    it. A visitor must not be able to silence the model. The guard that protected that POST
+    (Origin / Sec-Fetch-Site) went too, because a read-only server does not need one; if a
+    write ever returns here, BOTH have to come back with it, which is what this pins."""
+    assert not hasattr(server.Handler, "do_POST")
+    assert not hasattr(server.Handler, "_same_site_ok")
+    assert not hasattr(server, "_CONTROL_PATH")
 
 
 def test_ipv4_mapped_ipv6_is_judged_by_the_embedded_address():

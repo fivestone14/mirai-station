@@ -8,9 +8,15 @@ under the mirai-station venv so snapshot.py can import the skill modules.
     python runtime/viewstation/server.py            # binds 0.0.0.0:8787
     MIRAI_VIEW_PORT=9000 python .../server.py        # custom port
 
-LAN-only by design: no auth, and read-only with ONE deliberate exception —
-POST /api/sndk/reasoning flips the SNDK reasoning pause (see _CONTROL_PATH and
-do_POST). Nothing else here writes. Don't expose it to the public internet.
+LAN-only by design: no auth, and STRICTLY READ-ONLY — there is no do_POST and no
+route that writes anything. It had one write once, the SNDK reasoning pause, and
+that went on 2026-08-23 when the station went public: a switch that silences the
+model is not something a visitor should be able to reach. The pause itself still
+exists as an operator control — edit state/sndk_reads/control.json, which
+skills/sndk-pro/sndk_read.py reads (reasoning_on) and which fails OPEN. Anything
+that re-introduces a write here must bring back the Origin / Sec-Fetch-Site
+guard that went with it; a read-only server does not need one, a writing one
+does. Don't expose this to the public internet without a front door.
 
 "LAN-only" is enforced, not merely assumed: every request must carry a Host
 naming this machine locally (see Handler._host_ok), which is what stops a
@@ -44,13 +50,6 @@ PLUGIN_ROOT = snap.PLUGIN_ROOT
 STATE_DIR = snap.STATE_DIR
 CONFIG_DIR = PLUGIN_ROOT / "runtime" / "watch" / "config"
 PORT = int(os.environ.get("MIRAI_VIEW_PORT", "8787"))
-
-# The SNDK reasoning PAUSE — the only file this server writes, and the one path
-# the GET and the POST below must agree on. skills/sndk-pro/sndk_read.py reads
-# the same file (reasoning_on) and fails open the same way; it is deliberately
-# NOT imported here, because the viewstation must stay free of skill imports.
-# The contract between the two processes is this file's shape, not a function.
-_CONTROL_PATH = STATE_DIR / "sndk_reads" / "control.json"
 
 # The payload routes answer only when the request names this user (?user=will),
 # or when a front door forwards that name for us. This was never authentication
@@ -367,20 +366,6 @@ def _page_version() -> str:
         return "0"
 
 
-# --- sndk reasoning pause -----------------------------------------------------
-def _reasoning_state() -> dict:
-    """Current pause state. Fails OPEN (reasoning on) to match sndk_read's own
-    default — an absent control file means nobody has touched the switch, which
-    is not the same as having asked for silence."""
-    try:
-        d = json.loads(_CONTROL_PATH.read_text())
-        if isinstance(d, dict) and isinstance(d.get("reasoning"), bool):
-            return d
-    except (OSError, json.JSONDecodeError, ValueError):
-        pass
-    return {"reasoning": True, "since": None, "by": "default"}
-
-
 # --- request handler ----------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     server_version = "MiraiViewstation/1.0"
@@ -409,40 +394,6 @@ class Handler(BaseHTTPRequestHandler):
             return self.request_version < "HTTP/1.1"
         host = urlsplit("//" + raw).hostname or ""
         return host in _EXTRA_HOSTS or _local_host(host)
-
-    def _same_site_ok(self) -> bool:
-        """CSRF guard for the one write route — the job _host_ok cannot do.
-
-        A page on evil.com that fetches straight to http://127.0.0.1:8787/...
-        makes the browser send `Host: 127.0.0.1:8787` — the fetch target, not
-        the page — so the Host check passes and always will. What does give the
-        caller away is Origin, which browsers attach to every cross-origin POST,
-        and Sec-Fetch-Site. A caller sending neither is not a browser, and a
-        non-browser gains nothing here it could not do with a raw socket.
-        """
-        site = self.headers.get("Sec-Fetch-Site")
-        if site is not None and site not in ("same-origin", "same-site", "none"):
-            return False
-        origin = self.headers.get("Origin")
-        if origin is None:                    # non-browser client
-            return True
-        # 20-agent sweep 08-11: an operator-declared MIRAI_VIEW_HOSTS name is a
-        # first-party origin too — _host_ok admits its GETs, so refusing its
-        # same-origin POST here 403'd the reasoning toggle on any proxied name.
-        o_host = urlsplit(origin).hostname or ""
-        return o_host in _EXTRA_HOSTS or _local_host(o_host)
-
-    def _send_json(self, obj, status=200):
-        _note_access(self, status)
-        body = json.dumps(obj, default=str).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        if self.close_connection:
-            self.send_header("Connection", "close")
-        self.end_headers()
-        self.wfile.write(body)
 
     def _deny(self, msg="bad host"):
         """Refuse a request without leaving its body on the socket.
@@ -531,9 +482,6 @@ class Handler(BaseHTTPRequestHandler):
                 # the page's own build id (index.html mtime) — polled by every open page
                 return self._send_json({"v": _page_version()})
 
-            if route == "/api/sndk/reasoning":
-                return self._send_json(_reasoning_state())
-
             if route == "/api/_access":
                 if not _payload_unlocked(qs) and _forwarded_user(self.headers) != _PAYLOAD_USER:
                     return self._send_json({"error": "locked"}, 403)
@@ -591,44 +539,6 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-    def do_POST(self):
-        """The ONLY write this server accepts, and it stays that way.
-
-        Everything else here is read-only by design, so this is deliberately
-        not a general write path: one route, one boolean, one file, and an
-        explicit reject for anything else. It flips the SNDK reasoning pause —
-        the scanners, the stores and the arrow are untouched by it, so the worst
-        a bad request can do is stop or start one sentence being written on a
-        beta chart. Note the server binds 0.0.0.0 with no auth, so anyone on the
-        LAN can reach this; that blast radius is the reason it is scoped this
-        tightly rather than being a generic settings endpoint."""
-        if not self._host_ok() or not self._same_site_ok():
-            return self._deny()
-        parsed = urlparse(self.path)
-        if parsed.path != "/api/sndk/reasoning":
-            return self._send_json({"error": "not found"}, 404)
-        try:
-            n = int(self.headers.get("Content-Length") or 0)
-            if n <= 0 or n > 512:                      # a boolean needs ~20 bytes
-                return self._send_json({"error": "bad body"}, 400)
-            body = json.loads(self.rfile.read(n).decode("utf-8"))
-            if not isinstance(body, dict) or not isinstance(body.get("reasoning"), bool):
-                return self._send_json({"error": "expected {\"reasoning\": bool}"}, 400)
-            _CONTROL_PATH.parent.mkdir(parents=True, exist_ok=True)
-            state = {"reasoning": body["reasoning"],
-                     "since": datetime.now(_ET).isoformat(),
-                     "by": "viewstation"}
-            tmp = _CONTROL_PATH.with_suffix(".json.tmp")   # atomic: the reader
-            tmp.write_text(json.dumps(state))              # must never see a
-            tmp.replace(_CONTROL_PATH)                     # torn file
-            return self._send_json(state)
-        except BrokenPipeError:
-            pass
-        except Exception as exc:
-            try:
-                self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
-            except Exception:
-                pass
 
 
 def main():

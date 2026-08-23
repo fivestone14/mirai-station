@@ -172,16 +172,19 @@ and writes nothing; that is how every number above was measured.
   also stops the reading: with no fresh rows, reading on would only re-narrate
   a frozen book.
 * **Pause — not a kill switch**, and the difference is the whole point:
-  `state/sndk_reads/control.json` (`{"reasoning": bool}`), flipped from the
-  viewstation's SNDK tab (`GET`/`POST /api/sndk/reasoning` — the only write
-  that server accepts). It silences the model's **sentence** and nothing else:
-  the arrow, the gate separations, the magnet ranking, the frozen list and the
-  wake reason are all pure functions of a diary row already on disk, so they
-  keep computing and every scan still lands a row, stamped `paused: true`. A
-  gap in a training set costs far more than a gap in the prose. Both readers
-  (`sndk_read.reasoning_on`, `server._reasoning_state`) fail **OPEN** — a
-  missing or unreadable file means nobody ever touched the switch, which is not
-  the same as asking for silence.
+  `state/sndk_reads/control.json` (`{"reasoning": bool}`). It silences the
+  model's **sentence** and nothing else: the arrow, the gate separations, the
+  magnet ranking, the frozen list and the wake reason are all pure functions of
+  a diary row already on disk, so they keep computing and every scan still lands
+  a row, stamped `paused: true`. A gap in a training set costs far more than a
+  gap in the prose. `sndk_read.reasoning_on` fails **OPEN** — a missing or
+  unreadable file means nobody ever touched the switch, which is not the same as
+  asking for silence.
+  It is an **operator** control: edit the file. It used to be a toggle on the
+  viewstation's SNDK tab, backed by the only write that server accepted; both
+  went on 2026-08-23 when the station went public behind a password, because a
+  switch that silences the model is not something a visitor should reach. The
+  viewstation is strictly read-only now.
 * Tests: `tests/` (own conftest — all state redirected to tmp, transport
   dead-ended). Run: `~/.local/share/mirai-station/venv/bin/python -m pytest tests/ -q`.
 
