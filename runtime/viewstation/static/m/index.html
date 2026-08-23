@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e14">
+<meta name="color-scheme" content="dark">
+<title>SNDK · Mirai</title>
+<!--
+  The phone view (2026-08-23).
+
+  NOT the viewstation reflowed. The desktop page is a workstation — eight tabs,
+  a fifteen-plane layer deck, a megabyte of markup. This is a three-second read
+  of one name, and it answers exactly three questions in this order:
+
+      what kind of day is it   ·   where is price between the levels
+                    ·   what does the nearest level do to price
+
+  Everything it draws already exists. The scene comes from /api/sndk/payload —
+  the same JSON the reading model is handed — and the session's price line from
+  the diary through the raw explorer, which is how the desktop page reads every
+  other store. It adds no route of its own and asks nothing new of Schwab.
+
+  The rules that turn gamma into English live in glance.js, lifted from
+  index.html's snkArrows so the two screens can never describe one board in two
+  voices. The honest difference between them is documented at the top of that
+  file and said out loud on screen: this reads the BOARD's gamma sign, not each
+  strike's.
+-->
+<style>
+:root{
+  --bg:#0a0e14; --surface:#121924; --surface-2:#18212e;
+  --hair:#222d3a; --ink:#dbe4e0; --dim:#8494a0; --faint:#5b6a76;
+  --jade:#43c59e; --jade-dim:#17805f;
+  --coral:#eb6a57; --coral-dim:#c0402d;
+  --amber:#d8a13a;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink)}
+body{
+  font:15px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
+  padding:max(10px,env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:column;gap:12px;min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* ---- zone 1 : what kind of day ---- */
+header{display:flex;flex-direction:column;gap:5px}
+.row1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tick{font-size:13px;letter-spacing:.16em;color:var(--faint);font-family:ui-monospace,monospace}
+.px{font-size:34px;font-weight:600;letter-spacing:-.02em;font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.chg{font-size:16px;font-weight:600;font-family:ui-monospace,monospace}
+.up{color:var(--jade)} .dn{color:var(--coral)} .flat{color:var(--dim)}
+.row2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px;color:var(--dim)}
+.env{color:var(--ink)}
+.stamp{font-size:11.5px;font-family:ui-monospace,monospace;padding:2px 7px;border-radius:99px;border:1px solid var(--hair)}
+.stamp.ok{color:var(--jade);border-color:var(--jade-dim)}
+.stamp.warn{color:var(--amber);border-color:#5a4520}
+.stamp.bad{color:var(--coral);border-color:var(--coral-dim);background:#2a1613}
+
+/* ---- zone 2 : where price sits ---- */
+.chart{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:8px 6px 4px;flex:1;min-height:300px;display:flex}
+svg{width:100%;height:100%;display:block;overflow:visible}
+.pline{fill:none;stroke:var(--ink);stroke-width:1.9;stroke-linejoin:round;stroke-linecap:round}
+.pnow{fill:var(--ink)}
+.pnow-halo{fill:none;stroke:var(--ink);stroke-opacity:.28;stroke-width:1.2}
+.lv{stroke-width:1.2}
+.lv-call{stroke:var(--coral)}
+.lv-put{stroke:var(--jade)}
+.lv-magnet{stroke:var(--amber);stroke-dasharray:none;stroke-width:1.6}
+.lv-flip{stroke:#7f8fe0;stroke-dasharray:6 4}
+.band{stroke:none}
+.lv-flip-fill{fill:#7f8fe0;fill-opacity:.07}
+.lv-session{stroke:var(--faint);stroke-dasharray:2 4;stroke-width:1}
+.lv-second{stroke-opacity:.42}
+.lbl{font-family:ui-monospace,monospace;font-size:10.5px;fill:var(--dim)}
+.lbl-k{font-family:ui-monospace,monospace;font-size:11px;font-variant-numeric:tabular-nums}
+.k-call{fill:var(--coral)} .k-put{fill:var(--jade)}
+.k-magnet{fill:var(--amber)} .k-flip{fill:#7f8fe0} .k-session{fill:var(--faint)}
+
+/* ---- zone 3 : what happens there ---- */
+.wall{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:7px}
+.wall.brake{border-left:3px solid var(--jade)}
+.wall.accelerant{border-left:3px solid var(--coral)}
+.wtop{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.wname{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace}
+.wk{font-size:21px;font-weight:600;font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.wmeta{font-size:12.5px;color:var(--dim);font-family:ui-monospace,monospace}
+.wsay{font-size:15px;line-height:1.4}
+.wbeyond{font-size:13px;color:var(--dim)}
+.caveat{font-size:11.5px;color:var(--faint);line-height:1.35}
+
+body.stale .px,body.stale .chg{opacity:.42}
+body.stale .chart{opacity:.6}
+.msg{padding:22px 14px;text-align:center;color:var(--dim);font-size:14px;line-height:1.5}
+.msg b{color:var(--coral);font-weight:600}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="row1">
+    <span class="tick">SNDK</span>
+    <span class="px mono" id="px">—</span>
+    <span class="chg mono" id="chg"></span>
+  </div>
+  <div class="row2">
+    <span class="env" id="env">connecting…</span>
+    <span class="stamp" id="stamp">·</span>
+  </div>
+</header>
+
+<div class="chart" id="chartbox"><svg id="svg" preserveAspectRatio="none"></svg></div>
+
+<section class="wall" id="wall" hidden></section>
+<div class="msg" id="msg" hidden></div>
+
+<script src="/m/glance.js"></script>
+<script>
+/* The page: fetch, draw, and get out of the way. All reasoning is in glance.js. */
+
+const USER = new URLSearchParams(location.search).get('user') || 'will';
+const $ = id => document.getElementById(id);
+let TIMER = null;
+
+async function getJSON(url){
+  const r = await fetch(url, {cache:'no-store'});
+  const t = await r.text();
+  try { return {status:r.status, body:JSON.parse(t)}; }
+  catch(e){ return {status:r.status, body:null}; }
+}
+
+function fail(html){
+  $('msg').hidden = false; $('msg').innerHTML = html;
+  $('wall').hidden = true;
+}
+
+async function load(){
+  const p = await getJSON('/api/sndk/payload?user=' + encodeURIComponent(USER));
+  if(p.status === 403)
+    return fail('The station refused the request — its <b>permitted-user check</b> said no.'
+              + '<br>Open <span class="mono">/m?user=&lt;your name&gt;</span> with the name the front door knows you by.');
+  const pay = p.body;
+  if(!pay || pay.error || !pay.scene)
+    return fail('No SNDK scene yet.<br><span class="mono">' + ((pay && pay.error) || 'the station returned nothing') + '</span>');
+
+  $('msg').hidden = true;
+  const scene = pay.scene;
+  paintHeader(pay, scene);
+
+  // the session's own price line, read the way the desktop reads every store
+  let rows = [];
+  if(pay.session){
+    const d = await getJSON('/api/raw/file?root=state&path=sndk_reversion/'
+                            + encodeURIComponent(pay.session) + '.jsonl&limit=400');
+    if(d.body && Array.isArray(d.body.rows)) rows = d.body.rows;
+  }
+  paintChart(scene, tapePoints(rows));
+  paintWall(scene);
+}
+
+function paintHeader(pay, scene){
+  const price = scene.price || {};
+  const spot = price.now;
+  $('px').textContent = gUsd(spot) || '—';
+
+  const ch = price.vs_prior_close_pct;
+  const c = $('chg');
+  if(ch == null){ c.textContent = ''; }
+  else {
+    c.textContent = (ch > 0 ? '▲ +' : ch < 0 ? '▼ ' : '· ') + Math.abs(ch).toFixed(2) + '%';
+    c.className = 'chg mono ' + (ch > 0 ? 'up' : ch < 0 ? 'dn' : 'flat');
+  }
+
+  $('env').textContent = envWords(scene.regime) || 'regime not measured';
+
+  const f = freshness(pay);
+  const s = $('stamp');
+  s.textContent = f.text;
+  s.className = 'stamp ' + f.level;
+  // A stale scene must not look like a quiet one. The pill alone is too
+  // small a signal for a screen read at arm's length, so the price itself
+  // goes dim — the reading is still there, it just stops claiming to be now.
+  document.body.classList.toggle('stale', !!f.stale);
+}
+
+function paintChart(scene, points){
+  const box = $('chartbox').getBoundingClientRect();
+  const W = Math.max(240, box.width - 14), H = Math.max(240, box.height - 14);
+  const PAD_R = 58;                                  // the strike gutter on the right
+  const geom = {left:4, top:10, w:W - PAD_R, h:H - 26};
+  const spot = (scene.price || {}).now;
+  const levels = drawableLevels(scene);
+  const geo = chartGeometry(points, levels, spot, geom);
+
+  const svg = $('svg');
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.removeAttribute('preserveAspectRatio');
+
+  if(!geo){ svg.innerHTML = '<text class="lbl" x="8" y="24">no price measured yet</text>'; return; }
+
+  let out = '';
+
+  // Bands paint first and flat — the flip band is a zone price is inside or
+  // outside of, and a filled region says that where two more lines would not.
+  for(const l of levels){
+    if(!Array.isArray(l.band)) continue;
+    const a = geo.yFor(Math.min(l.band[1], geo.hi)), b = geo.yFor(Math.max(l.band[0], geo.lo));
+    if(!isFinite(a) || !isFinite(b)) continue;
+    out += '<rect class="band ' + l.cls + '-fill" x="4" y="' + Math.min(a, b).toFixed(1)
+         + '" width="' + (geom.left + geom.w - 4).toFixed(1)
+         + '" height="' + Math.abs(b - a).toFixed(1) + '"/>';
+    out += '<text class="lbl k-flip" x="8" y="' + (Math.min(a, b) + 12).toFixed(1) + '">' + l.label + '</text>';
+  }
+
+  // Then the ruled levels. Labels are stacked rather than overprinted: the
+  // magnet and the nearest wall land on the SAME strike often enough that two
+  // labels at one y is the ordinary case, not the edge case.
+  const taken = [];
+  const freeY = y => {
+    let v = y;
+    while(taken.some(t => Math.abs(t - v) < 13)) v += 13;
+    taken.push(v);
+    return v;
+  };
+  const ruled = levels.filter(l => isFinite(l.y) && l.y >= geo.lo && l.y <= geo.hi)   // off-window is dropped, never clamped
+                      .sort((a, b) => a.y - b.y);
+  for(const l of ruled){
+    const y = geo.yFor(l.y);
+    const cls = l.cls + (l.lead === false ? ' lv-second' : '');
+    out += '<line class="lv ' + cls + '" x1="4" y1="' + y.toFixed(1) + '" x2="' + (geom.left + geom.w) + '" y2="' + y.toFixed(1) + '"/>';
+    const ly = freeY(y);
+    const kcls = 'k-' + l.cls.slice(3);
+    out += '<text class="lbl-k ' + kcls + '" x="' + (geom.left + geom.w + 6) + '" y="' + (ly + 4).toFixed(1) + '">'
+         + gUsd(l.y, 0) + '</text>';
+    out += '<text class="lbl" x="' + (geom.left + geom.w + 6) + '" y="' + (ly + 15).toFixed(1) + '">' + l.label + '</text>';
+  }
+
+  const d = linePath(points, geo);
+  if(d) out += '<path class="pline" d="' + d + '"/>';
+
+  if(spot != null && isFinite(spot) && spot >= geo.lo && spot <= geo.hi){
+    const cx = points.length ? geo.xFor(points[points.length - 1].t) : geom.left + geom.w;
+    const cy = geo.yFor(spot);
+    out += '<circle class="pnow-halo" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6.5"/>';
+    out += '<circle class="pnow" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="3.4"/>';
+  }
+
+  // the session's own clock, so the line's width means something
+  const c = scene.clock || {};
+  if(c.minutes_since_open != null){
+    out += '<text class="lbl" x="4" y="' + (H - 4) + '">9:30</text>';
+    out += '<text class="lbl" x="' + (geom.left + geom.w) + '" y="' + (H - 4) + '" text-anchor="end">'
+         + (c.minutes_to_close > 0 ? gMinutes(c.minutes_to_close) + ' to close' : 'closed') + '</text>';
+  }
+  svg.innerHTML = out;
+}
+
+function paintWall(scene){
+  const spot = (scene.price || {}).now;
+  const w = nearestWall(scene.walls, spot);
+  const el = $('wall');
+  if(!w){ el.hidden = true; return; }
+
+  const b = wallBehaviour(scene.regime, w.strike, spot);
+  const beyond = beyondWall(scene.walls, w.side);
+  const far = farSideNote(scene.walls, w.side);
+  const held = w.unchanged_min != null ? w.unchanged_min : w.unchanged_min_at_least;
+  const exact = w.unchanged_min != null;
+
+  const meta = [];
+  if(w.sigma != null) meta.push(gSigma(Math.abs(w.sigma)) + ' ' + w.dir);
+  if(w.gex != null) meta.push(w.gex + '% of the book');
+  if(held != null) meta.push('held ' + (exact ? '' : '≥') + gMinutes(held));
+
+  el.hidden = false;
+  el.className = 'wall' + (b ? ' ' + b.kind : '');
+  el.innerHTML =
+      '<div class="wtop">'
+    +   '<span class="wname">' + (w.side === 'call' ? 'first above' : 'first below') + '</span>'
+    +   '<span class="wk mono">' + gUsd(w.strike, 0) + '</span>'
+    + '</div>'
+    + '<div class="wmeta">' + meta.join('  ·  ') + '</div>'
+    + (b ? '<div class="wsay">' + b.english + '</div>' : '')
+    + (beyond ? '<div class="wbeyond">' + beyond.text + '</div>' : '')
+    + (far ? '<div class="wbeyond">' + far + '</div>' : '')
+    + '<div class="caveat">Read off the board’s own gamma sign, not this strike’s. '
+    +   'The dealer buy/sell direction is assumed, as it is on the map.</div>';
+}
+
+/* Poll only while the screen is actually being looked at. A glance app has no
+   business waking the mini from a pocket, and battery is the whole argument. */
+function start(){
+  load();
+  clearInterval(TIMER);
+  TIMER = setInterval(load, 60000);
+}
+function stop(){ clearInterval(TIMER); TIMER = null; }
+
+document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
+window.addEventListener('resize', () => { if(!document.hidden) load(); });
+start();
+</script>
+</body>
+</html>
