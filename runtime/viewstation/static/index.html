@@ -12963,9 +12963,10 @@ const SNDK = {
     // arrangement in which no two leaders can cross — so a line can always be followed to its
     // end without being lost in another. Everything else follows from it:
     //   · a wall names a ROW, so its leader drops to that row and turns along it, finishing on
-    //     the tick with an arrowhead. The turn is a whisper (dotted, barely inked) because it
-    //     crosses the whole map and must never be mistaken for a level of its own; the
-    //     arrowhead, not the line, is what the eye is meant to land on.
+    //     the tick with an arrowhead. The turn stays dotted and a clear step back from the
+    //     plumb's own weight, because it crosses the whole map and must never be mistaken for a
+    //     level of its own — but it is INKED ENOUGH TO FOLLOW over the washes and the hatch,
+    //     which the first cut was not. The arrowhead is still what the eye is meant to land on.
     //   · a pocket names a SPAN, so its leader ends in a bracket across the band instead. An
     //     arrow at the middle of a pocket would name a row the pocket does not have.
     // What the rails cannot take — no fence on that side, a band too shallow, a sentence wider
@@ -13120,12 +13121,18 @@ const SNDK = {
           lead=`<path d="M${cxm.toFixed(1)} ${yE.toFixed(1)} V${yEnd.toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1" opacity=".45"/>`
             +`<circle cx="${cxm.toFixed(1)}" cy="${yE.toFixed(1)}" r="1.7" fill="${s.hue}" opacity=".75"/>`;
           if(s.span){
-            const sw=px(5);
+            const sw=px(7);   // the serifs have to read as a bracket at a glance, not as three stray ticks
             lead+=`<path d="M${(cxm-sw).toFixed(1)} ${b0.toFixed(1)} H${(cxm+sw).toFixed(1)} M${cxm.toFixed(1)} ${b0.toFixed(1)} V${b1.toFixed(1)} M${(cxm-sw).toFixed(1)} ${b1.toFixed(1)} H${(cxm+sw).toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1.2" opacity=".6"/>`;
           }else{
-            const ax=tagStripX-2, aw=px(5), ah=px(3);
+            const ax=tagStripX-2, aw=px(6), ah=px(3.5);
             if(ax>cxm+px(10))
-              lead+=`<path d="M${cxm.toFixed(1)} ${s.y.toFixed(1)} H${ax.toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1" stroke-dasharray="1 5" opacity=".3"/>`
+              // WEIGHT (08-23, user-called): the first cut ran this at 1px / "1 5" / .30, which was
+              // a whisper in the wrong sense — over the washes and the hatch it simply could not
+              // be followed, and a leader you cannot see is not a leader. Thicker, with the gaps
+              // closed up and more ink, so the run reads as one line across the map; it still
+              // sits well under the plumb's solid weight, which is what keeps it from being
+              // mistaken for a level of its own.
+              lead+=`<path d="M${cxm.toFixed(1)} ${s.y.toFixed(1)} H${ax.toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1.5" stroke-dasharray="1.5 4" opacity=".45"/>`
                 +`<path d="M${(ax-aw).toFixed(1)} ${(s.y-ah).toFixed(1)} L${ax.toFixed(1)} ${s.y.toFixed(1)} L${(ax-aw).toFixed(1)} ${(s.y+ah).toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1.4" opacity=".8"/>`;
             else
               lead+=`<path d="M${(cxm-aw).toFixed(1)} ${(s.y-px(4)*dir).toFixed(1)} L${cxm.toFixed(1)} ${s.y.toFixed(1)} L${(cxm+aw).toFixed(1)} ${(s.y-px(4)*dir).toFixed(1)}" fill="none" stroke="${s.hue}" stroke-width="1.4" opacity=".8"/>`;
