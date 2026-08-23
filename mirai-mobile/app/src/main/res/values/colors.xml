@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The station's own two colours, so the shell and the page it holds are
+         one surface rather than a page inside a frame. -->
+    <color name="ground">#0A0E14</color>
+    <color name="jade">#43C59E</color>
+</resources>
