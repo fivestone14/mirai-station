@@ -1635,24 +1635,28 @@
   /* the two drawers stack immediately right of the price box, and the status pills carry on
      from there. The lead stretches to their height (.snk-head is align-items:stretch), so the
      header stays one block rather than three things of different sizes floating in a row. */
-  .snk-draws{position:relative; z-index:40; flex:0 1 auto; display:flex; flex-direction:column; gap:5px;
-    width:clamp(292px,25vw,430px); min-width:0}
-  .snk-pills{flex:1 1 auto; min-width:0; display:flex; flex-wrap:wrap; align-content:center; align-items:center; gap:8px}
+  /* the three header blocks size by SHARE rather than by three unrelated clamps: the price box
+     takes what it needs, the drawers split what is left in a fixed ratio, and the pills take the
+     remainder. min-width is what stops any of them collapsing into an unreadable sliver, and
+     max-width is what stops them eating the pills on a very wide screen. */
+  .snk-draws{position:relative; z-index:40; flex:3 1 300px; min-width:250px; max-width:460px;
+    display:flex; flex-direction:column; gap:5px}
+  .snk-pills{flex:0 1 auto; min-width:0; display:flex; flex-wrap:wrap; align-content:center; align-items:center; gap:7px}
   /* THE READOUT is one drawer standing as tall as the two beside it, so the header reads as
      three blocks rather than a ragged row. Its header stacks name over state, because a single
      centred line in a 70px-tall strip looks like a mistake. */
-  .snk-draws.tall{width:clamp(212px,17vw,300px)}
+  .snk-draws.tall{flex:2 1 210px; min-width:186px; max-width:330px}
   .snk-draws.tall .snk-draw{flex:1 1 auto; display:flex; flex-direction:column}
   .snk-draws.tall .hd{flex:1 1 auto}
-  .snk-draws.tall .tg{display:grid; grid-template-columns:minmax(0,1fr) auto; align-content:center;
-    gap:4px 8px; padding:8px 4px 8px 12px}
+  .snk-draws.tall .tg{grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto;
+    align-content:center; gap:5px 8px; padding:8px 2px 8px 12px}
   .snk-draws.tall .tg .t{grid-column:1; grid-row:1}
-  .snk-draws.tall .tg .sum{grid-column:1; grid-row:2; justify-content:flex-start}
+  .snk-draws.tall .tg .sum{grid-column:1; grid-row:2; text-align:left}
   .snk-draws.tall .tg .chev{grid-column:2; grid-row:1 / span 2; align-self:center}
-  .snk-draws.tall .body{width:max(100%, min(560px, 46vw)); right:0; left:auto}
+  .snk-draws.tall .body{width:max(100%, min(680px, 54vw)); right:0; left:auto}
   /* the readout's own summary is state, not a call — no jade/coral shout, just the sign on the
      gamma figure the tile inside will repeat */
-  .snk-draws.tall .rs{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); gap:6px}
+  .snk-draws.tall .rs{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim)}
   .snk-draws.tall .rs b{font-size:11.5px}
   .snk-draws.tall .rs .j{color:var(--jade)} .snk-draws.tall .rs .c{color:var(--coral)} .snk-draws.tall .rs .n{color:var(--ink-dim)}
   @media (max-width:900px){ .snk-draws.tall{width:100%} .snk-draws.tall .body{right:auto; left:0} }
@@ -1660,19 +1664,28 @@
   .snk-draw .hd{display:flex; align-items:stretch; gap:0; border-radius:var(--r-md); overflow:hidden;
     border:1px solid var(--hairline); background:var(--surface-2)}
   .snk-draw .tg{flex:1 1 auto; min-width:0; appearance:none; border:0; background:transparent; color:var(--ink);
-    font:inherit; text-align:left; cursor:pointer; display:flex; align-items:center; gap:10px; padding:6px 4px 6px 12px}
-  .snk-draw .tg .t{flex:0 0 auto; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap);
-    text-transform:uppercase; font-weight:700; color:var(--ink-faint); white-space:nowrap}
-  .snk-draw .tg .sum{flex:1 1 auto; min-width:0; display:flex; align-items:baseline; justify-content:flex-end;
-    gap:7px; overflow:hidden; white-space:nowrap}
-  .snk-draw .tg .chev{flex:0 0 auto; padding:0 8px; font-size:15px; line-height:1; color:var(--ink-faint);
+    font:inherit; text-align:left; cursor:pointer; padding:6px 2px 6px 12px;
+    display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:0 10px}
+  .snk-draw .tg .t{grid-column:1; min-width:0; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap);
+    text-transform:uppercase; font-weight:700; color:var(--ink-faint);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  /* the state is the half that gives way. It shrinks to nothing before the title does, and it
+     ELLIPSES — the first cut of this clipped "▲ UP 0.06σ" through the middle of a glyph, which
+     reads as a rendering fault rather than as text that ran out of room. */
+  /* INLINE FLOW, deliberately. text-overflow is inert on a flex container, so the first cut of
+     this set ellipsis on a flex box and went on clipping through the middle of a glyph anyway.
+     Plain inline content in a block is the only thing that actually ellipses. */
+  .snk-draw .tg .sum{grid-column:2; min-width:0; text-align:right;
+    overflow:hidden; white-space:nowrap; text-overflow:ellipsis}
+  .snk-draw .tg .chev{grid-column:3; padding:0 8px; font-size:15px; line-height:1; color:var(--ink-faint);
     transition:transform .16s ease}
   .snk-draw .tg:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
   .snk-draw:hover .hd{border-color:var(--hairline-2)}
   .snk-draw.open .hd{border-color:color-mix(in srgb,var(--iris) 45%,transparent); background:var(--iris-wash)}
   .snk-draw.open .tg .chev{transform:rotate(90deg); color:var(--iris)}
   /* the closed read still says what the model thinks — the whole reason it can stay closed */
-  .snk-draw .rs{display:inline-flex; align-items:baseline; gap:7px; min-width:0; overflow:hidden}
+  .snk-draw .rs{white-space:nowrap}
+  .snk-draw .rs>*+*{margin-left:6px}
   .snk-draw .rs b{font-family:var(--mono); font-size:12.5px; font-weight:700; letter-spacing:.03em; color:var(--ink-dim)}
   .snk-draw .rs.up b{color:var(--jade)}  .snk-draw .rs.dn b{color:var(--coral)}
   .snk-draw .rs .q{font-size:11px; color:var(--ink-faint)}
@@ -1680,16 +1693,32 @@
     letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); background:transparent;
     border:0; border-left:1px solid var(--hairline); padding:0 11px}
   .snk-draw .hist:hover{color:var(--ink); background:var(--surface-3)}
-  .snk-draw .body{display:none; position:absolute; left:0; right:auto; top:calc(100% + 6px); z-index:41;
-    width:max(100%, min(460px, 40vw)); max-height:min(64vh,620px); overflow:auto; padding:11px 13px 12px;
+  /* ONE gap rule for everything inside a drawer. The blocks in here come from five different
+     painters, none of which carries a margin, so they sat flush against each other in places and
+     apart in others depending on whose padding happened to be bigger. */
+  .snk-draw .body{display:none; flex-direction:column; gap:10px;
+    position:absolute; left:0; right:auto; top:calc(100% + 6px); z-index:41;
+    width:max(100%, min(470px, 40vw)); max-height:min(64vh,620px); overflow:auto; padding:12px 13px 13px;
     background:var(--surface); border:1px solid color-mix(in srgb,var(--iris) 30%,var(--hairline-2));
     border-radius:var(--r-md); box-shadow:var(--shadow); animation:fade .16s ease both}
-  .snk-draw.open .body{display:block}
+  .snk-draw.open .body{display:flex}
   .snk-draw .body>.q{font-size:12px; color:var(--ink-faint)}
   /* inside a drawer both cards drop their own frame — the drawer IS the frame now, and the
      legend drops its heading too, which the header above already says */
   .snk-draw .snk-read.bare,.snk-draw .snk-legend{background:none; border:0; padding:0}
   .snk-draw .snk-legend>.k{display:none}
+  /* THE READOUT'S CONTENTS, given room to be read. Three tiles across a 210px column clipped
+     their own captions at two lines ("sign fixed by the formula —…"), which is the tile telling
+     you it has more to say and refusing to say it. The body is wider now, the columns are wider
+     inside it, and a caption gets a third line before it gives up. */
+  .snk-draw .snk-tiles{grid-template-columns:repeat(auto-fit,minmax(min(100%,204px),1fr)); gap:9px}
+  .snk-draw .snk-tile{padding:10px 13px 9px}
+  .snk-draw .snk-tile i{-webkit-line-clamp:3; line-clamp:3}
+  /* the wall ladder's distance column was right-aligned against the full width of the drawer,
+     which stranded "+$7" a hand's width from the strike it belongs to */
+  .snk-draw .snk-ladder .row{grid-template-columns:auto auto minmax(0,1fr); gap:11px}
+  .snk-draw .snk-ladder .ds{text-align:left}
+  .snk-draw .snk-layers{gap:8px}
   .snk-tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,172px),1fr)); gap:8px}
   .snk-tile{background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md); padding:9px 12px 8px; min-width:0}
   .snk-tile .k{display:block; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap); text-transform:uppercase; font-weight:700; color:var(--ink-faint); margin-bottom:3px}
@@ -13193,8 +13222,10 @@ const SNDK = {
     // here is the chart, and that is the price of putting them where the eye starts.
     const dEl=document.getElementById('snk-draws');
     if(dEl) dEl.innerHTML=
-       snkDrawer('read', `The read${(SNDK.read&&SNDK.read.wake)?` · ${snkSafe(SNDK.read.wake)}`:''}`,
-                 `<span class="rs ${rs.cls}">${rs.html}</span>`, readCard||'<div class="q">no reading has landed yet today</div>')
+       snkDrawer('read', 'The read',
+                 `<span class="rs ${rs.cls}">${rs.html}`
+                   +`${(SNDK.read&&SNDK.read.wake)?`<span class="q">· ${snkSafe(SNDK.read.wake)}</span>`:''}</span>`,
+                 readCard||'<div class="q">no reading has landed yet today</div>')
       +snkDrawer('map', 'Reading the map', '', snkLegend());
     const FZP=(SNDK.read&&Array.isArray(SNDK.read.frozen))?SNDK.read.frozen:null;
     const dorm=(on,label,tt)=>`<span class="${on?'on':''}" title="${tt}">${label}</span>`;
