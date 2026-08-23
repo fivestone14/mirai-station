@@ -73,6 +73,36 @@ EOF
     report 'private LAN address that is not a sanctioned fixture (use 192.168.1.40 / 10.0.0.7 / 172.16.4.9)' "$hits"
 fi
 
+# --- credentials -------------------------------------------------------------
+# New in 08-23, with mirai-mobile: until an app had to carry the station
+# password, no credential had any reason to be near this tree, and the scanner
+# had never been asked to think about one. These are shapes like everything
+# else here — the real hash and the real password are exactly what must not be
+# written down in a file that ships publicly.
+
+scan 'bcrypt hash — the shape the front door stores; it belongs in the Caddyfile on the mini, nowhere else' \
+     '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
+
+scan 'a literal Authorization header — a credential written into the source' \
+     '[Aa]uthorization["'"'"'[:space:]:=]+(Basic|Bearer)[[:space:]]+[A-Za-z0-9+/=._~-]{8,}'
+
+# The shell must take every URL from local.properties. A hostname compiled into
+# the source is not a leak on its own — the station's certificate is in the
+# public transparency logs — but it is how the configuration stops being in one
+# place, and the next hardcoded thing beside it is the password. Kotlin and Java
+# only: res/*.xml is full of http://schemas.android.com namespaces that are not
+# addresses of anything.
+apk_urls=$(git grep -nIE -e 'https?://' -- 'mirai-mobile/app/src/*.kt' 'mirai-mobile/app/src/*.java' || true)
+[ -n "$apk_urls" ] && report 'hardcoded URL in the app source (every URL comes from local.properties)' "$apk_urls"
+
+# Not a pattern but the same question: the credential files must not be tracked
+# at all. local.properties earns this twice — it holds the password AND Gradle
+# writes sdk.dir into it, an absolute home path, which has been refused above
+# since the first leak.
+tracked=$(git ls-files -- '*local.properties' '*keystore.properties' \
+                          '*.jks' '*.keystore' '*.apk' '*.aab' || true)
+[ -n "$tracked" ] && report 'a credential or signing file is TRACKED — it must only ever exist locally' "$tracked"
+
 if [ "$fail" = 0 ]; then
     echo "scrub: clean"
 else
