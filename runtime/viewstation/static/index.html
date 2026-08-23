@@ -1551,18 +1551,37 @@
   .snk-beta{font-size:9px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; line-height:1.5;
     color:var(--lantern); background:var(--lantern-wash);
     border:1px solid color-mix(in srgb,var(--lantern) 38%,transparent); border-radius:999px; padding:1px 7px; margin-top:-2px}
-  /* the header ROW: the price lead + its pills on the left, the teacher card taking every
-     pixel they leave over. paintStrip owns #snk-strip's innerHTML, so the card has to be a
-     SIBLING of it rather than a child, or every repaint would wipe the card. */
+  /* the header ROW: the price lead and its pills, and nothing else since the teacher card
+     was cut (08-23). paintStrip owns #snk-strip's innerHTML, so anything added here later has
+     to be a SIBLING of it rather than a child, or every repaint would wipe it. */
   .snk-head{flex:0 0 auto; display:flex; gap:8px; align-items:stretch; margin-bottom:8px; min-width:0}
-  @media (max-width:900px){ .snk-head{flex-wrap:wrap} .snk-hud{flex-basis:100%} }
-  .snk-strip{flex:0 0 auto; display:flex; flex-wrap:wrap; gap:8px; align-items:stretch}
+  @media (max-width:900px){ .snk-head{flex-wrap:wrap} .snk-draws{width:100%} }
+  .snk-strip{flex:0 0 auto; display:flex; gap:8px; align-items:stretch}
   .snk-strip .pill{align-self:center}
-  .snk-lead{display:flex; flex-direction:column; justify-content:center; gap:1px; padding:5px 12px; min-width:0; white-space:nowrap;
-    background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px}
+  /* THE PRICE LEAD INHERITS THE TEACHER CARD'S GLASS (08-23). That card was cut — every fact
+     on it was already somewhere else on the same screen, and it was the widest thing in the
+     header — but its treatment was the best-looking surface on the tab, so it moves onto the
+     one header element that will always be there. A soft bloom out of the top-left corner, a
+     hairline that glows rather than cuts, a long shadow that lifts it off the page.
+     The hue is the DAY's: jade up, coral down, lantern before there is a prior close to read
+     against. --lead-hue is the single knob and every layer below reads it, so the whole surface
+     now says the direction that used to live in a 3px accent bar alone. */
+  .snk-lead{--lead-hue:var(--lantern);
+    display:flex; flex-direction:column; justify-content:center; gap:1px; padding:6px 14px; min-width:0; white-space:nowrap;
+    border:1px solid color-mix(in srgb,var(--lead-hue) 22%, var(--hairline-2)); border-radius:10px;
+    background:
+      radial-gradient(120% 90% at 0% 0%, color-mix(in srgb,var(--lead-hue) 11%, transparent) 0%, transparent 62%),
+      color-mix(in srgb,var(--surface-2) 78%, transparent);
+    -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+    box-shadow:0 14px 34px -18px rgba(0,0,0,.72), 0 0 26px -14px color-mix(in srgb,var(--lead-hue) 55%, transparent)}
   .snk-lead b{font-family:var(--sans); font-size:17px; font-weight:700; color:var(--ink); letter-spacing:.01em}
   .snk-lead i{font-family:var(--sans); font-size:13.5px; font-weight:500; font-style:normal; color:var(--ink-dim)}
-  .snk-lead.up{box-shadow:inset 3px 0 0 var(--jade)}  .snk-lead.dn{box-shadow:inset 3px 0 0 var(--coral)}
+  /* the accent bar rides INSIDE the same shadow stack — declared on its own it would REPLACE
+     the glow rather than join it, and the card would lose the very thing being borrowed */
+  .snk-lead.up{--lead-hue:var(--jade);
+    box-shadow:inset 3px 0 0 var(--jade), 0 14px 34px -18px rgba(0,0,0,.72), 0 0 26px -14px color-mix(in srgb,var(--jade) 55%, transparent)}
+  .snk-lead.dn{--lead-hue:var(--coral);
+    box-shadow:inset 3px 0 0 var(--coral), 0 14px 34px -18px rgba(0,0,0,.72), 0 0 26px -14px color-mix(in srgb,var(--coral) 55%, transparent)}
   .snk-lead .mono, .snk-tile b{font-variant-numeric:tabular-nums}
   /* weekly expiry pills — the discovered ladder, status not switches (one recorded
      surface; a pill that can't change the data must not look like it could) */
@@ -1608,6 +1627,69 @@
   .snk-side::-webkit-scrollbar-thumb{background:var(--hairline-2); border-radius:9px; border:2px solid var(--surface)}
   /* two columns was a guess at the rail's width; auto-fit asks it instead — 2 on a narrow
      rail, 3 once there is room, without a breakpoint to keep in sync */
+  /* ---- RAIL DRAWERS (08-23). The read and the legend were two tall cards you scrolled past
+     to reach anything else: one is a legend you read once and never again, the other is live
+     but only needs its call visible at a glance. Collapsed they are header strips; opened, the
+     body drops OVER the cards beneath — never pushing them down, so nothing below moves and
+     the chart is never touched. One open at a time, because the bodies overlay. ---- */
+  /* the two drawers stack immediately right of the price box, and the status pills carry on
+     from there. The lead stretches to their height (.snk-head is align-items:stretch), so the
+     header stays one block rather than three things of different sizes floating in a row. */
+  .snk-draws{position:relative; z-index:40; flex:0 1 auto; display:flex; flex-direction:column; gap:5px;
+    width:clamp(292px,25vw,430px); min-width:0}
+  .snk-pills{flex:1 1 auto; min-width:0; display:flex; flex-wrap:wrap; align-content:center; align-items:center; gap:8px}
+  /* THE READOUT is one drawer standing as tall as the two beside it, so the header reads as
+     three blocks rather than a ragged row. Its header stacks name over state, because a single
+     centred line in a 70px-tall strip looks like a mistake. */
+  .snk-draws.tall{width:clamp(212px,17vw,300px)}
+  .snk-draws.tall .snk-draw{flex:1 1 auto; display:flex; flex-direction:column}
+  .snk-draws.tall .hd{flex:1 1 auto}
+  .snk-draws.tall .tg{display:grid; grid-template-columns:minmax(0,1fr) auto; align-content:center;
+    gap:4px 8px; padding:8px 4px 8px 12px}
+  .snk-draws.tall .tg .t{grid-column:1; grid-row:1}
+  .snk-draws.tall .tg .sum{grid-column:1; grid-row:2; justify-content:flex-start}
+  .snk-draws.tall .tg .chev{grid-column:2; grid-row:1 / span 2; align-self:center}
+  .snk-draws.tall .body{width:max(100%, min(560px, 46vw)); right:0; left:auto}
+  /* the readout's own summary is state, not a call — no jade/coral shout, just the sign on the
+     gamma figure the tile inside will repeat */
+  .snk-draws.tall .rs{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); gap:6px}
+  .snk-draws.tall .rs b{font-size:11.5px}
+  .snk-draws.tall .rs .j{color:var(--jade)} .snk-draws.tall .rs .c{color:var(--coral)} .snk-draws.tall .rs .n{color:var(--ink-dim)}
+  @media (max-width:900px){ .snk-draws.tall{width:100%} .snk-draws.tall .body{right:auto; left:0} }
+  .snk-draw{position:relative}
+  .snk-draw .hd{display:flex; align-items:stretch; gap:0; border-radius:var(--r-md); overflow:hidden;
+    border:1px solid var(--hairline); background:var(--surface-2)}
+  .snk-draw .tg{flex:1 1 auto; min-width:0; appearance:none; border:0; background:transparent; color:var(--ink);
+    font:inherit; text-align:left; cursor:pointer; display:flex; align-items:center; gap:10px; padding:6px 4px 6px 12px}
+  .snk-draw .tg .t{flex:0 0 auto; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap);
+    text-transform:uppercase; font-weight:700; color:var(--ink-faint); white-space:nowrap}
+  .snk-draw .tg .sum{flex:1 1 auto; min-width:0; display:flex; align-items:baseline; justify-content:flex-end;
+    gap:7px; overflow:hidden; white-space:nowrap}
+  .snk-draw .tg .chev{flex:0 0 auto; padding:0 8px; font-size:15px; line-height:1; color:var(--ink-faint);
+    transition:transform .16s ease}
+  .snk-draw .tg:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
+  .snk-draw:hover .hd{border-color:var(--hairline-2)}
+  .snk-draw.open .hd{border-color:color-mix(in srgb,var(--iris) 45%,transparent); background:var(--iris-wash)}
+  .snk-draw.open .tg .chev{transform:rotate(90deg); color:var(--iris)}
+  /* the closed read still says what the model thinks — the whole reason it can stay closed */
+  .snk-draw .rs{display:inline-flex; align-items:baseline; gap:7px; min-width:0; overflow:hidden}
+  .snk-draw .rs b{font-family:var(--mono); font-size:12.5px; font-weight:700; letter-spacing:.03em; color:var(--ink-dim)}
+  .snk-draw .rs.up b{color:var(--jade)}  .snk-draw .rs.dn b{color:var(--coral)}
+  .snk-draw .rs .q{font-size:11px; color:var(--ink-faint)}
+  .snk-draw .hist{flex:0 0 auto; appearance:none; cursor:pointer; font-family:var(--mono); font-size:10px;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); background:transparent;
+    border:0; border-left:1px solid var(--hairline); padding:0 11px}
+  .snk-draw .hist:hover{color:var(--ink); background:var(--surface-3)}
+  .snk-draw .body{display:none; position:absolute; left:0; right:auto; top:calc(100% + 6px); z-index:41;
+    width:max(100%, min(460px, 40vw)); max-height:min(64vh,620px); overflow:auto; padding:11px 13px 12px;
+    background:var(--surface); border:1px solid color-mix(in srgb,var(--iris) 30%,var(--hairline-2));
+    border-radius:var(--r-md); box-shadow:var(--shadow); animation:fade .16s ease both}
+  .snk-draw.open .body{display:block}
+  .snk-draw .body>.q{font-size:12px; color:var(--ink-faint)}
+  /* inside a drawer both cards drop their own frame — the drawer IS the frame now, and the
+     legend drops its heading too, which the header above already says */
+  .snk-draw .snk-read.bare,.snk-draw .snk-legend{background:none; border:0; padding:0}
+  .snk-draw .snk-legend>.k{display:none}
   .snk-tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,172px),1fr)); gap:8px}
   .snk-tile{background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md); padding:9px 12px 8px; min-width:0}
   .snk-tile .k{display:block; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap); text-transform:uppercase; font-weight:700; color:var(--ink-faint); margin-bottom:3px}
@@ -1638,50 +1720,6 @@
      rising from its top-left corner, a hairline that glows rather than cuts, and a long
      shadow that lets it float off the plot. Nothing here shouts; it should feel like
      someone quietly explaining the room to you. */
-  /* THE TEACHER CARD LIVES IN THE HEADER, NOT OVER THE PLOT (08-01). It used to float at
-     the plot's top-left as a ~348x200 card, which cost the bars a fifth of their canvas
-     while the whole right half of the header row sat empty. Same words, laid out as a row
-     instead of a stack: it now fills the header's dead space and the plot gets its corner
-     back. flex:1 so it takes exactly the width the lead + pills leave over. */
-  /* max-height is load-bearing, not cosmetic: .snk-mid takes what the header leaves, so an
-     unbounded card here would grow the header and steal canvas back from the bars — the
-     exact thing this move was meant to stop. Two clamped lines fit inside 64px. */
-  .snk-hud{flex:1 1 clamp(320px,32vw,760px); min-width:0; align-self:stretch; max-height:clamp(60px,8.4vh,94px);
-    display:flex; align-items:center; gap:14px; overflow:hidden;
-    border:1px solid color-mix(in srgb,var(--lantern) 22%, var(--hairline-2)); border-radius:10px; padding:6px 13px;
-    background:
-      radial-gradient(120% 90% at 0% 0%, color-mix(in srgb,var(--lantern) 11%, transparent) 0%, transparent 62%),
-      color-mix(in srgb,var(--surface-2) 78%, transparent);
-    -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
-    box-shadow:0 14px 34px -18px rgba(0,0,0,.72), 0 0 26px -14px color-mix(in srgb,var(--lantern) 55%, transparent)}
-  .snk-hud:empty{display:none}
-  /* the card's own voice, now read left-to-right: eyebrow, headline, then the guided facts
-     as columns divided by hairlines. The mood headline holds its own width so the facts
-     never reflow under it mid-session. */
-  .snk-hud .lead{flex:0 0 auto; max-width:clamp(210px,17vw,360px); display:flex; flex-direction:column; gap:1px; min-width:0}
-  .snk-hud .hd{display:block; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap); text-transform:uppercase; font-weight:700;
-    color:color-mix(in srgb,var(--lantern) 62%, var(--ink-faint))}
-  .snk-hud .r1{font-family:var(--mono); font-size:13px; font-weight:700; line-height:1.3; color:var(--ink); letter-spacing:.01em;
-    white-space:nowrap}
-  .snk-hud .r2{font-family:var(--sans); font-size:12px; line-height:1.3; color:var(--ink-dim);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .snk-hud .gl{flex:1 1 auto; min-width:0; display:flex; align-items:stretch; gap:0;
-    border-left:1px solid color-mix(in srgb,var(--lantern) 16%, var(--hairline)); padding-left:14px}
-  .snk-hud .gl .gr{flex:1 1 0; min-width:0; display:flex; flex-direction:column; gap:1px;
-    padding:0 11px; border-right:1px solid color-mix(in srgb,var(--lantern) 10%, var(--hairline))}
-  .snk-hud .gl .gr:last-child{border-right:0}
-  .snk-hud .gl .gr .k{display:block; margin:0; font-size:10.5px}
-  /* the guided facts are whole sentences ("1,220 — if it breaks, can jump fast to 1,230"),
-     so a single nowrap line would guillotine most of them. Two lines, clamped. */
-  .snk-hud .gl .gr .tx{font-family:var(--sans); font-size:12.5px; line-height:1.25; color:var(--ink);
-    white-space:normal; overflow:hidden;
-    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; line-clamp:2}
-  .snk-hud .gr{font-family:var(--sans); font-size:13px; line-height:1.45; color:var(--ink)}
-  .snk-hud .gr .k{font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
-    color:var(--ink-faint); display:inline-block; min-width:clamp(78px,6.2vw,116px)}
-  .snk-hud .chip{display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.06em;
-    border-radius:6px; padding:1px 6px; margin-right:7px; vertical-align:1px}
-  .snk-hud .j{color:var(--jade)} .snk-hud .c{color:var(--coral)} .snk-hud .m{color:var(--ink-faint)}
   /* dormant-layer chips: absent recorded layers say so — grey, alive ones lit.
      A small-caps head names the row (which data this scan carries), chips sit under it. */
   .snk-layers{display:flex; flex-direction:column; gap:7px}
@@ -10812,7 +10850,40 @@ function snkDeclutter(svg){
 // snkReadCard — the side panel's live-read card: the call block, the model's own vector
 // (sr-2), the sentence, what would change it, the receipt, then the honesty flags and the
 // gate strip. '' when there is no read row, so the tab degrades to its pre-sr-1 self.
-function snkReadCard(rd, now){
+// `bare` drops the card's own title row: inside a drawer the header already carries the name,
+// the wake word and the history button, and two of each is the duplication this tab keeps
+// removing. Called without it (anywhere else) the card is byte-identical to before.
+// THE CLOSED DRAWER'S ONE LINE. A title alone would mean opening the thing just to learn
+// whether the model is calling anything at all, so the header carries the call: the model's own
+// vector and size where there is one, the gated arrow's direction otherwise, and how old it is.
+function snkReadSummary(rd){
+  if(!rd||typeof rd!=='object') return {cls:'', html:`<span class="q">no read yet</span>`};
+  const a=(rd.arrow&&typeof rd.arrow==='object')?rd.arrow:null;
+  const R=(rd.reading&&rd.reading.line)?rd.reading:null;
+  const v=R&&R.vector;
+  const mag=(R&&R.magnitude_sigma!=null&&isFinite(R.magnitude_sigma))?+R.magnitude_sigma:null;
+  const age=(rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null;
+  const dir=(v==='up'||v==='down')?v:(a&&(a.dir==='up'||a.dir==='down')?a.dir:null);
+  if(!dir&&v!=='none'&&!R) return {cls:'', html:`<span class="q">${rd.paused?'reasoning paused':'no read yet'}</span>`};
+  const glyph=dir==='up'?'▲':dir==='down'?'▼':'◆';
+  const word=dir?dir.toUpperCase():'NO LEAN';
+  return { cls:dir==='up'?'up':dir==='down'?'dn':'',
+    html:`<b>${glyph} ${word}${(mag!=null&&dir)?` ${mag.toFixed(2)}σ`:''}</b>`
+      +(age!=null?`<span class="q">· ${snkDur(age)} old</span>`:'') };
+}
+// one drawer at a time: the bodies overlay what is under them, so a second open panel would
+// simply paint over the first one's header
+function snkDrawer(id, title, head, body){
+  const open=SNDK.draw===id;
+  return `<section class="snk-draw${open?' open':''}" data-draw="${id}">`
+    +`<div class="hd">`
+      +`<button type="button" class="tg" aria-expanded="${open?'true':'false'}">`
+        +`<span class="t">${title}</span><span class="sum">${head||''}</span>`
+        +`<span class="chev" aria-hidden="true">›</span></button>`
+    +(id==='read'?`<button type="button" class="hist" id="snk-hist-btn" aria-label="Today's reading history">history</button>`:'')
+    +`</div><div class="body">${body}</div></section>`;
+}
+function snkReadCard(rd, now, bare){
   if(!rd||typeof rd!=='object') return '';
   const a=(rd.arrow&&typeof rd.arrow==='object')?rd.arrow:null;
   const R=(rd.reading&&rd.reading.line)?rd.reading:null;
@@ -10824,8 +10895,12 @@ function snkReadCard(rd, now){
   const aged=(age!=null&&age>10);
   const flags=(a?[['caution',a.caution],['fading',a.fading]]:[])
     .filter(f=>f[1]).map(f=>`<div class="fl"><i>${f[0]}</i><span>${snkSafe(f[1])}</span></div>`).join('');
-  return `<div class="snk-read"><span class="k">The read${rd.wake?` · ${snkSafe(rd.wake)}`:''}`
-    +`<button type="button" class="hist" id="snk-hist-btn" aria-label="Today's reading history">history</button></span>`
+  // NO id on this button. The drawer header carries #snk-hist-btn, and two elements with one
+  // id is a bug waiting for the next call site; paintSide binds the header's, and a card
+  // rendered outside a drawer binds by class instead.
+  return `<div class="snk-read${bare?' bare':''}">`
+    +(bare?'':`<span class="k">The read${rd.wake?` · ${snkSafe(rd.wake)}`:''}`
+      +`<button type="button" class="hist" aria-label="Today's reading history">history</button></span>`)
     +`<div class="gx-call${c.cls?' '+c.cls:''}">${c.html}</div>`
     +snkVectorRow(R, (rd.sigma!=null&&isFinite(rd.sigma))?+rd.sigma:null)
     +(R?`<p class="tr-next${aged?' aged':''}">${snkSafe(R.line)}`
@@ -11270,10 +11345,12 @@ function snkFrozenFor(frozen, field, drawn, step){
 // Both PURE (return HTML/SVG strings, extractable by name for the jsc drills). ----
 // snkTape — the chip row. `sp` = the live spot; `orders` = gxOrderLean's read (or null). Each
 // chip is a tiny caps LABEL + a one/two-word VALUE; only the REGIME chip carries colour.
-// `hudOn` = the teacher card below is speaking. It already says the regime in words, names the
-// ceiling and the floor, and reads the orders — so those chips STEP BACK and the strip keeps
-// only what the card doesn't carry (where price sits vs the tipping point, the magnet, the
-// day's range). One fact, one place: the eye should never have to reconcile two versions.
+// `hudOn` = something ELSE on screen is already saying the regime in words, naming the ceiling
+// and the floor and reading the orders — those chips then STEP BACK and the strip keeps only
+// what the other surface does not carry. One fact, one place: the eye should never have to
+// reconcile two versions. The teacher card was that surface until it was cut on 08-23, so the
+// caller now passes false and the strip says everything; the parameter stays because the rule
+// is the useful part and the next surface to duplicate it will need somewhere to say so.
 function snkTape(m, band, sp, orders, hudOn, frozen){
   if(!m) return '';
   const chip=(cls,label,val,extra)=>`<span class="snk-tchip${cls?' '+cls:''}"><i>${label}</i><b>${val}</b>${extra?`<em>${extra}</em>`:''}</span>`;
@@ -11467,7 +11544,8 @@ const SNDK = {
   file:null, rows:[], model:null, prevModel:null, lastTs:null,
   clusters:null, step:5, band:null, geo:null, grid:[], fold:null,
   _frameAt:null, _frameT:0,        // the quote the current frame+fold were cut for, and when
-  gaps:[], _pullUp:null, _hudOn:false,              // air-pockets (chart + narrator read one model) · comet direction · is the teacher card speaking
+  gaps:[], _pullUp:null,                            // air-pockets (chart + narrator read one model) · comet direction
+  draw:null,                                        // which rail drawer is open ('read' | 'map' | null)
   path:[], _pathEdge:null,                          // full-day per-scan spot trail (limit=400) + the live-edge nodes
   // FINE TAPE (08-11): tape = the server's sndk_tape file (each row a quote this tab's own
   // /api/spot polls already paid for — the server persists them as a free by-product, zero
@@ -11515,11 +11593,12 @@ const SNDK = {
   },
   mount(){
     const host=document.getElementById('p-sndk'); if(!host) return;
-    // the teacher card sits in the HEADER ROW beside the price lead — not over the plot.
-    // #snk-hud is therefore a sibling of the strip's pills, and buildChart must NOT adopt it.
+    try{ const d=localStorage.getItem('snk.draw'); SNDK.draw=(d==='read'||d==='map')?d:null; }catch(e){}
     host.innerHTML=`<div class="snk-head">
         <div class="snk-strip" id="snk-strip"></div>
-        <div class="snk-hud" id="snk-hud"></div>
+        <div class="snk-draws" id="snk-draws"></div>
+        <div class="snk-draws tall" id="snk-draws3"></div>
+        <div class="snk-pills" id="snk-pills"></div>
       </div>
       <div class="snk-tenors" id="snk-tenors"></div>
       <div class="snk-mid">
@@ -11531,6 +11610,42 @@ const SNDK = {
     // marks use. Bound to the panel HOST (not its contents), so it survives every paintSide
     // innerHTML swap; gwBindTips is idempotent on a host it has already claimed.
     const side=document.getElementById('snk-side'); if(side) gwBindTips(side);
+    const dHost=document.getElementById('snk-draws'); if(dHost) gwBindTips(dHost);
+    // ONE listener, on the document: the drawers live in the header and their bodies hang over
+    // the chart, so binding per host would be three of them. Toggled by CLASS rather than by
+    // repainting — paintSide rebuilds the whole rail, which would be a wasted rebuild on every
+    // click and would fight the poll already rebuilding it on its own clock.
+    document.addEventListener('click', e=>{
+      if(e.target.closest('.snk-draw .hist')) return;          // the history button is not the toggle
+      const tg=e.target.closest('.snk-draw .tg');
+      if(tg){ SNDK.setDraw(tg.closest('.snk-draw').dataset.draw, true); return; }
+      // anything outside an OPEN body closes it — an overlay you can only dismiss by finding
+      // its own header again is a trap
+      if(SNDK.draw && !e.target.closest('.snk-draw .body')) SNDK.setDraw(null);
+    });
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape'&&SNDK.draw) SNDK.setDraw(null); });
+  },
+  // the readout is rebuilt on a new scan or a new read — a few times an hour, not on the spot
+  // clock — so a rebuild while it is open is rare. Its scroll position is carried across anyway:
+  // losing your place in the wall ladder because a number two cards up ticked is a small bug
+  // that would only ever be noticed at the worst moment.
+  paintReadout(sum, body){
+    const el=document.getElementById('snk-draws3'); if(!el) return;
+    const was=el.querySelector('.body'), top=was?was.scrollTop:0;
+    el.innerHTML=snkDrawer('readout', 'The readout', `<span class="rs">${sum}</span>`, body);
+    const now=el.querySelector('.body'); if(now&&top) now.scrollTop=top;
+  },
+  setDraw(id, toggle){
+    SNDK.draw=(toggle&&SNDK.draw===id)?null:(id||null);
+    try{ localStorage.setItem('snk.draw', SNDK.draw||''); }catch(e){}
+    // NOT scoped to #snk-side. The drawers moved into the header row on 08-23 and this selector
+    // did not move with them, so setDraw quietly found nothing and every click did nothing —
+    // the toggle looked broken while the handler was firing perfectly. Scope it to the class.
+    document.querySelectorAll('.snk-draw').forEach(s=>{
+      const on=s.dataset.draw===SNDK.draw;
+      s.classList.toggle('open', on);
+      const tg=s.querySelector('.tg'); if(tg) tg.setAttribute('aria-expanded', on?'true':'false');
+    });
   },
 
   async pollDiary(){
@@ -11683,13 +11798,18 @@ const SNDK = {
   },
 
   paintStrip(){
+    // the lead and the status pills used to share one element. They are two slots now (08-23)
+    // because the drawers sit BETWEEN them, and one innerHTML cannot have something in its
+    // middle. put() keeps the two writes together so neither can be forgotten.
     const el=document.getElementById('snk-strip'); if(!el) return;
+    const pl=document.getElementById('snk-pills');
+    const put=(lead,pills)=>{ el.innerHTML=lead; if(pl) pl.innerHTML=pills; };
     const m=SNDK.model, sp=SNDK.liveSpot();
     const beta=`<span class="pill lantern" title="SNDK-PRO is a beta surface: weekly-tenor SNDK diary + live quote, display-only">β BETA</span>`;
     if(!m){
-      el.innerHTML=`<span class="snk-lead"><b>SNDK ${sp!=null?snkUsd(sp,2):'—'}</b><i>${sp!=null?'live quote · awaiting first scan':'awaiting first scan'}</i></span>`
-        +(SNDK.spot.live?`<span class="pill jade" title="live quote from /api/spot — the diary map is not up yet">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
-                        :`<span class="pill grey">no live quote</span>`)+beta;
+      put(`<span class="snk-lead"><b>SNDK ${sp!=null?snkUsd(sp,2):'—'}</b><i>${sp!=null?'live quote · awaiting first scan':'awaiting first scan'}</i></span>`,
+          (SNDK.spot.live?`<span class="pill jade" title="live quote from /api/spot — the diary map is not up yet">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
+                         :`<span class="pill grey">no live quote</span>`)+beta);
       return;
     }
     const fr=SNDK.staleInfo();
@@ -11727,7 +11847,8 @@ const SNDK = {
     const srcPill=SNDK.spot.live
       ?`<span class="pill jade" title="price streams from /api/spot (${SNDK.spot.src||'live quote'}); gravity comes from the diary scan">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
       :`<span class="pill grey" title="no live quote — showing the scan price${m.spotSource?` (scan source: ${m.spotSource})`:''}">scan price${m.spotSource?` · ${m.spotSource}`:''}</span>`;
-    el.innerHTML=`<span class="snk-lead ${up==null?'':up?'up':'dn'}"><b>SNDK <span class="mono" id="snk-px">${snkUsd(sp,2)}</span></b><i>${bits.join(' · ')}</i></span>${feedPill}${srcPill}${beta}`;
+    put(`<span class="snk-lead ${up==null?'':up?'up':'dn'}"><b>SNDK <span class="mono" id="snk-px">${snkUsd(sp,2)}</span></b><i>${bits.join(' · ')}</i></span>`,
+        feedPill+srcPill+beta);
   },
   paintTenors(){
     const el=document.getElementById('snk-tenors'); if(!el) return;
@@ -12739,15 +12860,11 @@ const SNDK = {
       +(spoke?` · <span title="how many of today's scans the arrow said anything on — it is silent by default and has to be earned">${spoke}</span>`:'')
       +`<span class="def"> · Bar = net γ / strike · $${step} grid${pathCap}`
       +` · ◄ <span style="color:var(--coral)">▮</span> puts − | + calls <span style="color:var(--jade)">▮</span> ►</span>`;
-    // ---- THE TAPE STRIP + THE TEACHER CARD. Painted here (not after the SVG swap) because the
-    // zone captions below have to know whether the card is speaking: snkTape steps its own chips
-    // back from whatever the card already says, and _hudOn is what tells it. The card itself
-    // covers no canvas any more (08-01, it moved into the header row), so the captions start
-    // from the plot's own top margin — capTop is the tape's clearance and nothing else's.
-    const hm=SNDK.hudModel();
-    SNDK._hudOn=!!(hm&&hm.present);
+    // ---- THE TAPE STRIP. Painted here (not after the SVG swap) so the zone captions below
+    // know what it has already said. It used to step its chips back for the teacher card; with
+    // that card cut (08-23) there is nothing to defer to, so the tape says everything again —
+    // which is where those facts belonged, on the chart rather than beside it.
     SNDK.paintTape();
-    SNDK.paintHud(hm);
     // ---- THE MIRAI VOICE (08-03, user-requested): the model's own vector drawn where it
     // points — a dashed thought-line from the live price to the expected price ~30 min out,
     // plus honest quiet states and a late-day charm note. Built BEFORE the zone captions so
@@ -12900,8 +13017,6 @@ const SNDK = {
       <g id="snk-mirai" class="decl">${mirai.svg}</g>
       <g id="snk-zones" class="decl">${zones}</g>
     </svg>`;
-    // #snk-hud is NOT in this list any more — it lives in the header row, and adopting it
-    // back into the chart is exactly the bug that would silently undo the layout fix.
     const tip=document.getElementById('snk-tip'), capEl=document.getElementById('snk-cap'),
           tapeEl=document.getElementById('snk-tape');
     cc.innerHTML=svgHtml;
@@ -12936,8 +13051,6 @@ const SNDK = {
     SNDK._empty=cc.querySelector('#snk-await');
     const cap=document.getElementById('snk-cap'); if(cap) cap.innerHTML='';
     const tape=document.getElementById('snk-tape'); if(tape){ tape.innerHTML=''; tape.style.display='none'; }
-    const hud=document.getElementById('snk-hud'); if(hud){ hud.innerHTML=''; hud.style.display='none'; }
-    SNDK._hudOn=false;
     // the legend is static, so it is worth reading BEFORE the first scan lands — a reader
     // waiting on the open can learn the marks while the map is still empty
     snkMountInfoBtn();
@@ -12953,7 +13066,7 @@ const SNDK = {
     const g=SNDK.geo, sp=SNDK.liveSpot();
     el.style.left=g.x0+'px'; el.style.right=Math.max(0,g.W-g.lineEnd)+'px'; el.style.top='5px';
     const orders=(typeof gxOrderLean==='function')?gxOrderLean(m.flowR, m.dex?m.dex.fbs:null):null;
-    const html=snkTape(m, SNDK.band, sp, orders, SNDK._hudOn,
+    const html=snkTape(m, SNDK.band, sp, orders, false,   // nothing to step back for since the card was cut
       (SNDK.read&&Array.isArray(SNDK.read.frozen))?SNDK.read.frozen:null);
     el.innerHTML=html; el.style.display=html?'':'none';
   },
@@ -13071,7 +13184,18 @@ const SNDK = {
     const m=SNDK.model;
     // THE LIVE READ leads the panel (sr-1) — it is the one surface here that changes on its
     // own clock. '' when no read row has landed, so the panel is byte-identical to pre-sr-1.
-    const readCard=snkReadCard(SNDK.read);
+    const readCard=snkReadCard(SNDK.read, null, true);
+    const rs=snkReadSummary(SNDK.read);
+    // THE TWO DRAWERS SIT IN THE HEADER (08-23), stacked one above the other immediately right
+    // of the price box. Both were tall cards the rail made you scroll past: one is a legend you
+    // read once and never again, the other is live but only needs its call visible at a glance.
+    // Collapsed they are two strips; opened, the body drops over the canvas below — which up
+    // here is the chart, and that is the price of putting them where the eye starts.
+    const dEl=document.getElementById('snk-draws');
+    if(dEl) dEl.innerHTML=
+       snkDrawer('read', `The read${(SNDK.read&&SNDK.read.wake)?` · ${snkSafe(SNDK.read.wake)}`:''}`,
+                 `<span class="rs ${rs.cls}">${rs.html}</span>`, readCard||'<div class="q">no reading has landed yet today</div>')
+      +snkDrawer('map', 'Reading the map', '', snkLegend());
     const FZP=(SNDK.read&&Array.isArray(SNDK.read.frozen))?SNDK.read.frozen:null;
     const dorm=(on,label,tt)=>`<span class="${on?'on':''}" title="${tt}">${label}</span>`;
     const lyr=`<div class="snk-layers"><span class="k">Data layers · lit = present</span><div class="snk-lyr">`
@@ -13090,17 +13214,18 @@ const SNDK = {
       +dorm(false,'Siege', 'Siege is an SPX-only layer — dormant here by design')
       +`</div></div>`;
     if(!m){
-      el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`+readCard+`<div class="snk-tiles">
+      el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`;
+      SNDK.paintReadout('<span class="q">awaiting first scan</span>', `<div class="snk-tiles">
         <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX)">Dealer Delta</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k">Regime</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k">Expected Move · rest of day</span><b>—</b><i>awaiting first scan</i></div>
-      </div>${lyr}`;
+      </div>${lyr}`);
       const rb0=el.querySelector('#snk-rsn-btn');
       if(rb0) rb0.onclick=()=>snkSetReasoning(SNDK.reasoning===false);
       const vb0=el.querySelector('#snk-voice-btn');
       if(vb0) vb0.onclick=()=>{ if(window.MiraiVoice) MiraiVoice.toggle(); else { const s=document.getElementById('snk-voice-sub'); if(s) s.textContent='voice.js failed to load — hard refresh (Cmd+Shift+R)'; } };
-      const hb0=el.querySelector('#snk-hist-btn');
+      const hb0=document.getElementById('snk-hist-btn');
       if(hb0) hb0.onclick=openSnkHistModal;
       return;
     }
@@ -13135,9 +13260,16 @@ const SNDK = {
     // the REGIME tile is where the sr-1 frozen wash is VISIBLE (the chart's one coloured
     // regime chip keeps its hue; there is room for the words here). The subtitle dates it.
     const regFz=snkFrozenAt(FZP,'gamma sign')||snkFrozenAt(FZP,'regime');
-    // controls FIRST (08-03, user ask): live-reasoning + talk-to-the-board sit at the
-    // top of the rail, directly above The Read — the two things you touch, where you look.
-    el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`+readCard+`<div class="snk-tiles">
+    // the rail leads with the controls again — the drawers moved up into the header row (08-23).
+    // THE READOUT (08-23) — every measured card in one drawer. The rail was a column you
+    // scrolled to reach anything; these are reference numbers you consult, not a feed you
+    // watch, so they belong behind a header that says the state and opens on demand.
+    el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`;
+    SNDK.paintReadout(
+      [gTot!=null?`<b class="${gTot>=0?'j':'c'}">${snkSMoney(gTot)}</b> γ`:'',
+       `<span class="${mood}">${regPlain.split(' — ')[0]}</span>`,
+       emB&&emB!=='—'?`<span class="q">${emB}</span>`:''].filter(Boolean).join('<span class="q">·</span>'),
+      `<div class="snk-tiles">
       <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b class="${gTot!=null?(gTot>=0?'j':'c'):''}">${snkSMoney(gTot)}</b>
         <i>${gSub}</i></div>
       <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX). The naive net's sign is fixed by the book's assumed-sign formula — positive on every recorded row — so the level's sign is never news; only the CHANGE can be.">Dealer Delta</span><b>${(dTot!=null&&isFinite(dTot)&&dTot<0?'−':'')+snkMoney(dTot)}</b>
@@ -13149,49 +13281,15 @@ const SNDK = {
       <div class="snk-tile em"><span class="k" title="The √time-decayed expected move for the REST of the session (em_points decays toward the close — at 3:56pm ±$5 is the remaining reach, not the day's range)">Expected Move · rest of day</span><b>${emB}</b><i>${emI}</i></div>
     </div>
     ${(m.coverage&&m.coverage.complete===false)?`<div style="color:var(--coral);font-size:11px;padding:4px 2px">⚠ book half-fetched this scan${m.coverage.missing?` (${snkSafe(String(m.coverage.missing))})`:''} — bars and totals may under-read</div>`:''}
-    ${snkWallLadder(SNDK.clusters, SNDK.liveSpot()??m.spot)}${snkDaySummary(m)}${lyr}${snkLegend()}`;
+    ${snkWallLadder(SNDK.clusters, SNDK.liveSpot()??m.spot)}${snkDaySummary(m)}${lyr}`);
     // re-bound after every innerHTML swap; gwBindTips is already delegated on the host
     const rb=el.querySelector('#snk-rsn-btn');
     if(rb) rb.onclick=()=>snkSetReasoning(SNDK.reasoning===false);
     const vb=el.querySelector('#snk-voice-btn');
     if(vb) vb.onclick=()=>{ if(window.MiraiVoice) MiraiVoice.toggle(); else { const s=document.getElementById('snk-voice-sub'); if(s) s.textContent='voice.js failed to load — hard refresh (Cmd+Shift+R)'; } };
-    const hb=el.querySelector('#snk-hist-btn');
+    const hb=document.getElementById('snk-hist-btn');   // it lives in the header row now
     if(hb) hb.onclick=openSnkHistModal;
   },
-  // THE TEACHER CARD — the map's plain-English HUD, seated in the HEADER ROW beside the price
-  // lead (08-01; it used to float over the plot's top-left corner). It reads left-to-right like
-  // someone talking you through the room: what kind of day it is, what that means in a sentence,
-  // then one guided column per thing to watch (where price is, the ceiling above, the floor
-  // below, what the orders are doing). Present-only — a bare scan hides it rather than showing
-  // an empty frame. ONE narrator model, shared by the card and by the tape strip over the plot
-  // (which steps back from whatever the card already says) — the two can never drift into
-  // disagreeing.
-  hudModel(){
-    const m=SNDK.model; if(!m||typeof gxHudModel!=='function') return null;
-    const gaps=(SNDK.gaps&&SNDK.gaps.length)?SNDK.gaps:snkGaps(SNDK.clusters, m.spot, SNDK.step);
-    const orders=(typeof gxOrderLean==='function')?gxOrderLean(m.flowR, m.dex?m.dex.fbs:null):null;
-    return gxHudModel({ sign:m.sign, spot:SNDK.liveSpot()??m.spot, regime:m.regime,
-      ladder:m.ladder, wt:null, gaps, orders });
-  },
-  paintHud(pre){
-    const el=document.getElementById('snk-hud'); if(!el) return;
-    const m=SNDK.model, g=SNDK.geo;
-    const hide=()=>{ el.innerHTML=''; el.style.display='none'; };
-    if(!m||!g) return hide();
-    const hud=pre||SNDK.hudModel();
-    if(!hud||!hud.present) return hide();
-    // Laid out ACROSS the header, not stacked over the plot: eyebrow + mood on the left,
-    // then each guided fact as its own hairline-divided column. Same model, same words —
-    // only the direction of reading changed, so hudModel/gxHudModel stay untouched.
-    el.style.display='';
-    el.innerHTML=`<div class="lead"><span class="hd">Reading the room</span>`
-      +(hud.r1?`<span class="r1">${hud.r1}</span>`:'')
-      +(hud.r2?`<span class="r2">${hud.r2}</span>`:'')
-      +`</div>`
-      +(hud.lines.length?`<div class="gl">${hud.lines.map(l=>
-          `<div class="gr"><span class="k">${l.k}</span><span class="tx">${l.t}</span></div>`).join('')}</div>`:'');
-  },
-
   // per-strike tooltip: full-lane hit targets, values + spelled-out doctrine tags
   bindTips(){
     const cc=document.getElementById('snk-chart'); if(!cc||cc._snkTips) return; cc._snkTips=true;
