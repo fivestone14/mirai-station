@@ -395,6 +395,18 @@ class Handler(BaseHTTPRequestHandler):
         host = urlsplit("//" + raw).hostname or ""
         return host in _EXTRA_HOSTS or _local_host(host)
 
+    def _send_json(self, obj, status=200):
+        _note_access(self, status)
+        body = json.dumps(obj, default=str).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if self.close_connection:
+            self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _deny(self, msg="bad host"):
         """Refuse a request without leaving its body on the socket.
 

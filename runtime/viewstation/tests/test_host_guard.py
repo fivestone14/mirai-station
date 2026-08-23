@@ -137,3 +137,13 @@ def test_voice_transcripts_are_never_served(tmp_path, monkeypatch):
     listed = [i["rel"] for i in server._raw_index()["state"]]
     assert not any(r.startswith("voice") for r in listed)
     assert "reversion/2026-08-06.jsonl" in listed
+
+def test_the_handler_keeps_every_method_do_get_needs():
+    """08-23, and the reason this test exists: a cut aimed at _same_site_ok took _send_json
+    with it, because the two were adjacent. Every /api route then raised AttributeError, and
+    do_GET's own error path called that same missing method — so the connection HUNG instead
+    of answering 500, and `/` kept working because static files go through _send_file. It
+    looked healthy from the browser. Pin the handler's surface so a removal cannot quietly
+    take a neighbour."""
+    for m in ("do_GET", "_send_json", "_send_file", "_deny", "_host_ok"):
+        assert callable(getattr(server.Handler, m, None)), f"Handler.{m} is gone"
