@@ -12075,6 +12075,16 @@ const SNDK = {
     // paints first (the break mark, then the EM readouts, then the air-pocket sentence) and read
     // by the wall labels, which are the only marks on this chart free to slide along their row.
     const plotBoxes=[];
+    // …and the MESSAGES that have not been given a home yet (08-23). A wall's name and an
+    // air-pocket sentence are the two things this chart says that NAME a row without having to
+    // sit on it, so neither is painted where it was computed any more: both are collected here
+    // and the airspace placer at the foot of buildChart decides where they actually land.
+    const AIRMSG=[];
+    // marks that live outside the plot's own lanes — the off-frame wall/magnet chips docked at
+    // the top and bottom of the canvas, the mirai caption that overruns the left gutter's
+    // reserve. Nothing else reads these; they exist so the airspace rails cannot be seated on
+    // top of the few things that were already out there.
+    const airBoxes=[];
     // SVG has no measureText here, so widths are estimated off the glyph box: this chart's sans
     // runs ~0.56em bold, its mono ~0.6em, and the strength dots carry .05em of tracking on top.
     // An over-estimate is the safe direction — it buys clearance, it cannot cause an overlap.
@@ -12231,6 +12241,29 @@ const SNDK = {
     const ct=(L&&L.ct!=null&&isFinite(L.ct))?+L.ct:null, pt=(L&&L.pt!=null&&isFinite(L.pt))?+L.pt:null;
     if(ct!=null&&pt!=null&&ct>pt)
       wash+=`<rect x="${x0}" y="${yFor(ct).toFixed(1)}" width="${lineEnd-x0}" height="${(yFor(pt)-yFor(ct)).toFixed(1)}" style="fill:var(--l-grav);opacity:.06"/>`;
+    // ---- THE AIRSPACE (08-23, user-called). THE FENCES ARE THE EDGE OF THE ACTION: above the
+    // call edge and below the put edge the book has nothing left to say — that is what a fence
+    // MEANS — so on an ordinary frame those two bands are a third of the canvas standing empty
+    // while every message the chart writes is crammed into the contested middle. On 08-23 that
+    // middle held five wall names, two pocket sentences, the Ceiling tag and six value readouts
+    // inside about 160px of height, and the reader could not tell which name pointed where.
+    // Both bands are measured HERE, once, off the same two prices the plot already draws a line
+    // for — cT/pT, falling back to the outer walls when the fences are absent — and the placer
+    // at the foot of buildChart seats the wall names and the pocket sentences out in them.
+    // A band too shallow to hold one line of type reports nothing at all and every label falls
+    // back to the in-plot search: this widens what the chart can do, it never narrows it.
+    const railH=Math.max(12, Math.round(fz(10)*1.3));
+    const RAILS=(function(){
+      const inFrame=p=>(p!=null&&isFinite(p)&&p>band.pLow&&p<band.pHigh)?yFor(p):null;
+      const hiY=(inFrame(ct)!=null)?inFrame(ct):inFrame(m.callWall);
+      const loY=(inFrame(pt)!=null)?inFrame(pt):inFrame(m.putWall);
+      const rTop=capTop+2, rBot=h-padB-4, need=railH+px(12), out=[];
+      // px(6) of daylight between the rail's band and the fence itself, so the words never
+      // read as sitting ON the level they are standing clear of
+      if(hiY!=null&&(hiY-px(6))-rTop>=need) out.push({side:'top', y0:rTop, y1:hiY-px(6)});
+      if(loY!=null&&rBot-(loY+px(6))>=need) out.push({side:'bot', y0:loY+px(6), y1:rBot});
+      return out;
+    })();
     if(Array.isArray(m.zones)) for(const z of m.zones){
       if(!z||!isFinite(z.lo)||!isFinite(z.hi)) continue;
       wash+=`<rect x="${x0}" y="${yFor(z.hi).toFixed(1)}" width="${lineEnd-x0}" height="${Math.max(0,yFor(z.lo)-yFor(z.hi)).toFixed(1)}" style="fill:var(--lantern);opacity:.04"/>`;
@@ -12593,6 +12626,10 @@ const SNDK = {
         +`¦f:off the map — it sits ${above?'above the top':'below the bottom'} of this frame`
         +snkFrozenNote(eFz);
       edges+=`<text x="${ex.toFixed(1)}" y="${ey.toFixed(1)}" text-anchor="middle" font-size="${fz(9.5)}" font-weight="700" font-family="var(--sans)" style="fill:${hue};opacity:${eFz?'.45':'.9'};paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round" data-name="${pl} ${snkUsd(p,0)}" data-tip="${eTip}">${pl} ${snkUsd(p,0)} ${arw}</text>`;
+      // this chip is docked in the very band the airspace rails want, so it has to say where
+      // it is — the rails read airBoxes and step around it (08-23)
+      const eW=txW(`${pl} ${snkUsd(p,0)} ${arw}`, fz(9.5), 0.58);
+      airBoxes.push({x1:ex-eW/2, x2:ex+eW/2, y:ey, h:fz(9.5)*1.4});
     };
     edgeMk(m.callWall, true); edgeMk(m.putWall, false);
     // the magnet earns the same courtesy now that it no longer stretches the band to reach
@@ -12602,6 +12639,8 @@ const SNDK = {
       const mAbove=m.magnet>band.pHigh, mNm=gxPlainLabel('magnet')||'Magnet';
       const mFz=snkFrozenFor(FZ,'magnet', m.magnet, step);
       edges+=`<text x="${((x0+lineEnd)/2).toFixed(1)}" y="${(mAbove?capTop+px(13):h-padB-6-px(13)).toFixed(1)}" data-edge="magnet" text-anchor="middle" font-size="${fz(9.5)}" font-weight="700" font-family="var(--sans)" style="fill:var(--l-grav);opacity:${mFz?'.45':'.9'};paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round" data-name="${mNm} ${snkUsd(m.magnet,0)}" data-tip="The price the market is being pulled toward.¦k:${mNm}=${snkUsd(m.magnet,0)}¦f:off the map — it sits ${mAbove?'above the top':'below the bottom'} of this frame${snkFrozenNote(mFz)}">${mNm} ${snkUsd(m.magnet,0)} ${mAbove?'↑':'↓'}</text>`;
+      const mW=txW(`${mNm} ${snkUsd(m.magnet,0)} ↑`, fz(9.5), 0.58);
+      airBoxes.push({x1:(x0+lineEnd)/2-mW/2, x2:(x0+lineEnd)/2+mW/2, y:(mAbove?capTop+px(13):h-padB-6-px(13)), h:fz(9.5)*1.4});
     }
     // SESSION HIGH/LOW off the frame — the counterweight to snkBand's percentile path. The
     // band now frames the day's body, so the gap-day excursion has to SAY it left the map or
@@ -12623,6 +12662,8 @@ const SNDK = {
           ey=above?ob.y+px(13):ob.y-px(13);
         }
         edges+=`<text x="${(lineEnd-6).toFixed(1)}" y="${ey.toFixed(1)}" data-edge="path" text-anchor="end" font-size="${fz(9)}" font-weight="700" font-family="var(--sans)" style="fill:var(--iris);opacity:.75;paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round" data-name="Session ${above?'high':'low'} ${snkUsd(v,2)}" data-tip="The ${above?'highest':'lowest'} price this session actually traded.¦k:session ${above?'high':'low'}=${snkUsd(v,2)}¦f:off the map — the frame is drawn around where the day spent its time, so the trail runs clipped along this edge¦v:the price line is clipped here, never rescaled — the move was real">Session ${above?'high':'low'} ${snkUsd(v,2)} ${above?'↑':'↓'}</text>`;
+        const sW=txW(`Session ${above?'high':'low'} ${snkUsd(v,2)} ↑`, fz(9), 0.58);
+        airBoxes.push({x1:lineEnd-6-sW, x2:lineEnd-6, y:ey, h:fz(9)*1.4});
       };
       if(sHi>band.pHigh) pxEdge(sHi, true);
       if(sLo<band.pLow)  pxEdge(sLo, false);
@@ -12857,6 +12898,11 @@ const SNDK = {
       yFor, yTop:padT, yBot:h-padB, capTop, fs:fz(9.5), fsZone:fz(9),
       band, avoid:gutAvoid, flows:m.flows, late:lateDay });
     for(const vy of mirai.avoid) gutAvoid.push(vy);
+    // the mirai caption starts at x0+38 and runs the better part of 200px — well past the 96px
+    // the left gutter reserves — so the airspace rails are told where its words ACTUALLY end
+    // rather than where the reserve says they do (08-23)
+    for(const vy of mirai.avoid)
+      airBoxes.push({x1:x0+30, x2:x0+38+txW('mirai ▲ $1,234 · 30m (old)', fz(9.5), 0.6), y:vy, h:fz(9.5)*1.4});
     // ---- ZONE CAPTIONS (07-28): faint left-anchored labels naming what each price area means
     // — the flip's calmer/faster halves, the walls as support/resistance, the magnet, an air
     // pocket. Muted guide text (≤4, present-only), drawn last so it sits above the washes. ----
