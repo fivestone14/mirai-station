@@ -1,26 +1,39 @@
 #!/usr/bin/env python3
-"""Mirai Viewstation — tiny read-only HTTP server for the tablet view.
+"""Mirai Viewstation — the read-only HTTP server behind the whole view.
 
-Serves the single-page tablet app + a JSON snapshot of live Mirai state, plus an
-opt-in raw-data explorer over the on-disk state files. Pure Python stdlib — no third-party deps — but should be run
-under the mirai-station venv so snapshot.py can import the skill modules.
+Serves the single-page app plus a JSON snapshot of live Mirai state, and an
+opt-in raw-data explorer over the on-disk state files. Pure Python stdlib — no
+third-party deps — but run it under the mirai-station venv so snapshot.py can
+import the skill modules.
 
     python runtime/viewstation/server.py            # binds 0.0.0.0:8787
     MIRAI_VIEW_PORT=9000 python .../server.py        # custom port
 
-LAN-only by design: no auth, and STRICTLY READ-ONLY — there is no do_POST and no
-route that writes anything. It had one write once, the SNDK reasoning pause, and
-that went on 2026-08-23 when the station went public: a switch that silences the
-model is not something a visitor should be able to reach. The pause itself still
-exists as an operator control — edit state/sndk_reads/control.json, which
-skills/sndk-pro/sndk_read.py reads (reasoning_on) and which fails OPEN. Anything
-that re-introduces a write here must bring back the Origin / Sec-Fetch-Site
-guard that went with it; a read-only server does not need one, a writing one
-does. Don't expose this to the public internet without a front door.
+WHO READS THIS, AND FROM WHERE. It began as a tablet view on the desk and the
+comments still said so long after it stopped being true. It is a viewstation
+now, read on whatever is to hand — desktop, tablet or phone, in a browser, over
+the LAN, over the tailnet, or over the public internet at the hosted name. The
+page is responsive for that reason and this server must not assume a screen, a
+device or a network.
 
-"LAN-only" is enforced, not merely assumed: every request must carry a Host
-naming this machine locally (see Handler._host_ok), which is what stops a
-DNS-rebinding page from reading the raw explorer from the open internet.
+STRICTLY READ-ONLY. There is no do_POST and no route that writes anything. It
+had one write once, the SNDK reasoning pause, and that went on 2026-08-23 when
+the station went public: a switch that silences the model is not something a
+visitor should be able to reach. The pause still exists as an operator control —
+edit state/sndk_reads/control.json, which skills/sndk-pro/sndk_read.py reads
+(reasoning_on) and which fails OPEN. Anything re-introducing a write here must
+bring back the Origin / Sec-Fetch-Site guard that went with it: a read-only
+server does not need one, a writing one does.
+
+THIS SERVER HAS NO AUTHENTICATION, and that is deliberate rather than forgotten.
+Reaching it directly — by LAN address, tailnet address, or localhost — gets you
+everything, so the front door is somebody else's job: Cloudflare Tunnel into
+Caddy, which holds the password and proxies here. Never forward this port.
+What the server DOES enforce is that a request is addressed to it by a name it
+recognises (Handler._host_ok, plus MIRAI_VIEW_HOSTS for the public name). That
+is not authentication either — it is what stops a DNS-rebinding page pointing
+its own domain at this box and reading the raw explorer through a visitor's
+browser.
 """
 from __future__ import annotations
 
@@ -38,7 +51,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlsplit, parse_qs, unquote
 from zoneinfo import ZoneInfo
 
-_ET = ZoneInfo("America/New_York")   # the pause stamp reads in market time
+_ET = ZoneInfo("America/New_York")   # every stamp this server prints reads in market time
 
 HERE = Path(__file__).resolve().parent
 STATIC = HERE / "static"
@@ -53,8 +66,8 @@ PORT = int(os.environ.get("MIRAI_VIEW_PORT", "8787"))
 
 # The payload routes answer only when the request names this user (?user=will),
 # or when a front door forwards that name for us. This was never authentication
-# — the server is LAN-only, no-auth by choice (see README) and the payload is
-# derivable from the raw explorer anyway; the real door is the proxy's.
+# — the server has none by choice (see the module docstring), and the payload is
+# derivable from the raw explorer anyway; the real door is Caddy's.
 # 08-22: the page's matching UI lock (a name box and an Unlock button) was
 # removed as deprecated — nothing reaches the tab that has not already come
 # through the front door. The check stays here because it still costs nothing
@@ -180,8 +193,10 @@ def _memory_query(qs: dict) -> dict:
         out["result"] = None
     return out
 
-# Extra Host names the tablet may use, beyond the local/private shapes allowed
-# by Handler._host_ok (e.g. a public DNS name in front of a reverse proxy).
+# Extra Host names a client may arrive under, beyond the local/private shapes
+# Handler._host_ok allows — in practice the public DNS name Caddy proxies from.
+# Set MIRAI_VIEW_HOSTS (csv) when the hosted name changes, or the front door
+# starts 403ing every request it forwards.
 _EXTRA_HOSTS = {
     h.strip() for h in os.environ.get("MIRAI_VIEW_HOSTS", "").split(",") if h.strip()
 }
@@ -236,7 +251,7 @@ def _get_snapshot() -> dict:
             return _cache["data"]
         try:
             data = snap.build_snapshot()
-        except Exception as exc:  # never 500 the tablet — return an error envelope
+        except Exception as exc:  # never 500 the page — return an error envelope
             import traceback
             data = {"error": f"{type(exc).__name__}: {exc}",
                     "trace": traceback.format_exc()}
@@ -330,8 +345,9 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
 # --- recent-requests ring (08-21) ----------------------------------------------
 # A small in-memory record of the last requests (time, path, Host, client, UA,
 # status), behind the payload route's name check at /api/_access?user=will. Diagnostic only —
-# the answer to "is my tablet actually polling, and what is it asking?" without
-# turning on access logging for good. Nothing is written to disk.
+# the answer to "which device is actually polling, and what is it asking?" when the
+# same page is open on a desktop, a phone and a tablet at once and only one of them
+# looks wrong. No access logging left on for good; nothing written to disk.
 import collections
 _ACCESS = collections.deque(maxlen=300)
 _ACCESS_LOCK = threading.RLock()   # re-entrant: the access route itself is noted while it answers
@@ -358,7 +374,7 @@ def _note_access(handler, status: int) -> None:
 # stands in for one: any save / pull / deploy that touches index.html gives it a
 # new mtime. The open pages poll this every 10 s and offer a refresh when it
 # changes (see the reload pill in index.html). mtime, not a hash: one stat call,
-# no file read, and "changed" is all the tablet needs to know.
+# no file read, and "changed" is all any open page needs to know.
 def _page_version() -> str:
     try:
         return str((STATIC / "index.html").stat().st_mtime_ns)
@@ -375,15 +391,19 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _host_ok(self) -> bool:
-        """Reject requests not addressed to this machine by a LAN/local name.
+        """Reject requests not addressed to this machine by a name it recognises.
 
-        "LAN-only" is an assumption about the network, and DNS rebinding breaks
-        it without touching the network: an attacker's page re-resolves its own
-        domain to this box's private IP, so the browser treats the reply as
-        same-origin and can read /api/raw/file — the diary, the push log, the
-        voice transcripts. The Host header still says the attacker's domain,
-        which is what this catches. Shape-based, so a new DHCP lease or tailnet
-        name keeps working; extra names via MIRAI_VIEW_HOSTS (csv).
+        Not authentication, and not a network assumption either — DNS rebinding
+        defeats "it is only on my network" without touching the network: an
+        attacker's page re-resolves its own domain to this box's address, so the
+        browser treats the reply as same-origin and can read /api/raw/file — the
+        diary, the push log, the voice transcripts. The Host header still says
+        the attacker's domain, which is what this catches.
+
+        Shape-based rather than a list, so a new DHCP lease, a tailnet address
+        or a fresh container keeps working. The hosted name is the exception —
+        it is a real public name and cannot be recognised by shape, so it comes
+        in through MIRAI_VIEW_HOSTS (csv).
         """
         raw = self.headers.get("Host") or ""
         if not raw:
@@ -450,7 +470,7 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/pipeline":
                 try:
                     return self._send_json(pipe.build_pipeline())
-                except Exception as exc:  # never 500 the tablet
+                except Exception as exc:  # never 500 the page
                     import traceback
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
@@ -463,7 +483,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": "bad ticker"}, 400)
                 try:
                     return self._send_json(snap.live_spot(tk))
-                except Exception as exc:               # never 500 the tablet
+                except Exception as exc:               # never 500 the page
                     return self._send_json({"ticker": tk, "spot": None,
                                             "error": f"{type(exc).__name__}: {exc}"})
 
@@ -473,7 +493,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": "bad day"}, 400)
                 try:
                     return self._send_json(snap.replay_day(day))
-                except Exception as exc:  # never 500 the tablet
+                except Exception as exc:  # never 500 the page
                     import traceback
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
@@ -519,7 +539,7 @@ class Handler(BaseHTTPRequestHandler):
                     if kind == "overview":
                         return self._send_json(snap.sndk_memory_overview())
                     return self._send_json(_memory_query(qs))
-                except Exception as exc:  # never 500 the tablet
+                except Exception as exc:  # never 500 the page
                     import traceback
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
@@ -531,7 +551,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": "locked"}, 403)
                 try:
                     return self._send_json(snap.sndk_payload())
-                except Exception as exc:  # never 500 the tablet
+                except Exception as exc:  # never 500 the page
                     import traceback
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
