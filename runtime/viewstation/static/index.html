@@ -1600,8 +1600,10 @@
      is now wide enough that the vw term decides on every screen up to ~1730px. The chart's
      own type ramp knee moved with it (w/1120 below), so the pixels handed over here cannot
      come back out of the plot's type. */
-  .snk-mid{flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) clamp(236px,22vw,380px); gap:10px}
-  @media (max-width:900px){ .snk-mid{grid-template-columns:1fr} .snk-side{flex-direction:row; flex-wrap:wrap} .snk-side>*{flex:1 1 44%} }
+  /* ONE COLUMN. The rail went with the reasoning switch (08-23) — the tiles had already moved
+     into the readout drawer and the voice went up beside it, which left an empty aside holding
+     a fifth of the tab. The chart is the whole width now. */
+  .snk-mid{flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1fr); gap:10px}
   /* the plot's ground: lit from within rather than flat black — a very soft cool bloom in the
      upper body of the canvas so the bars and the price line sit IN light, not on a void. Low
      enough (≤5%) that nothing on top of it shifts hue; it reads as depth, not as colour. */
@@ -1622,9 +1624,6 @@
     .snk-pdot.live{animation:gxpulse 3s ease-in-out infinite}
     .snk-phalo.live{animation:gxhalop 3s ease-in-out infinite}
   }
-  .snk-side{min-height:0; display:flex; flex-direction:column; justify-content:flex-start; gap:12px; overflow:auto}
-  .snk-side::-webkit-scrollbar{width:9px}
-  .snk-side::-webkit-scrollbar-thumb{background:var(--hairline-2); border-radius:9px; border:2px solid var(--surface)}
   /* two columns was a guess at the rail's width; auto-fit asks it instead — 2 on a narrow
      rail, 3 once there is room, without a breakpoint to keep in sync */
   /* ---- RAIL DRAWERS (08-23). The read and the legend were two tall cards you scrolled past
@@ -1639,33 +1638,32 @@
      takes what it needs, the drawers split what is left in a fixed ratio, and the pills take the
      remainder. min-width is what stops any of them collapsing into an unreadable sliver, and
      max-width is what stops them eating the pills on a very wide screen. */
-  .snk-draws{position:relative; z-index:40; flex:3 1 300px; min-width:250px; max-width:460px;
-    display:flex; flex-direction:column; gap:5px}
-  .snk-pills{flex:0 1 auto; min-width:0; display:flex; flex-wrap:wrap; align-content:center; align-items:center; gap:7px}
-  /* THE READOUT is one drawer standing as tall as the two beside it, so the header reads as
-     three blocks rather than a ragged row. Its header stacks name over state, because a single
-     centred line in a 70px-tall strip looks like a mistake. */
-  .snk-draws.tall{flex:2 1 210px; min-width:186px; max-width:330px}
-  .snk-draws.tall .snk-draw{flex:1 1 auto; display:flex; flex-direction:column}
-  .snk-draws.tall .hd{flex:1 1 auto}
-  .snk-draws.tall .tg{grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto;
-    align-content:center; gap:5px 8px; padding:8px 2px 8px 12px}
-  .snk-draws.tall .tg .t{grid-column:1; grid-row:1}
-  .snk-draws.tall .tg .sum{grid-column:1; grid-row:2; text-align:left}
-  .snk-draws.tall .tg .chev{grid-column:2; grid-row:1 / span 2; align-self:center}
-  .snk-draws.tall .body{width:max(100%, min(680px, 54vw)); right:0; left:auto}
+  /* ONE COLUMN of identical strips — the readout sits with the other two, so all three are the
+     same shape and the same height and there is no "tall" variant to keep in step. The column
+     and the voice beside it split what the price box leaves: min-width stops either collapsing,
+     max-width stops the strips running to a silly measure on a wide screen. */
+  .snk-col{flex:3 1 360px; min-width:270px; max-width:620px; display:flex; flex-direction:column; gap:8px; min-height:0}
+  .snk-draws{position:relative; z-index:40; display:flex; flex-direction:column; gap:6px}
+  /* the voice rides at the TOP of its column, level with the first strip, rather than floating
+     in the middle of a stretched box */
+  .snk-vox{flex:2 1 240px; min-width:200px; max-width:400px; display:flex; flex-direction:column; gap:6px}
+  .snk-vox .snk-voice{flex:0 0 auto}
+  /* the status pills ride UNDER the two strips rather than out to the right, so the header is
+     two blocks of stacked content instead of three shapes in a row */
+  .snk-pills{display:flex; flex-wrap:wrap; align-items:center; gap:7px; padding-left:2px}
   /* the readout's own summary is state, not a call — no jade/coral shout, just the sign on the
-     gamma figure the tile inside will repeat */
-  .snk-draws.tall .rs{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim)}
-  .snk-draws.tall .rs b{font-size:11.5px}
-  .snk-draws.tall .rs .j{color:var(--jade)} .snk-draws.tall .rs .c{color:var(--coral)} .snk-draws.tall .rs .n{color:var(--ink-dim)}
-  @media (max-width:900px){ .snk-draws.tall{width:100%} .snk-draws.tall .body{right:auto; left:0} }
+     gamma figure the tile inside will repeat. Its body alone opens wider: it carries the most. */
+  .snk-draw[data-draw="readout"] .rs{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim)}
+  .snk-draw[data-draw="readout"] .rs b{font-size:11.5px}
+  .snk-draw[data-draw="readout"] .rs .j{color:var(--jade)} .snk-draw[data-draw="readout"] .rs .c{color:var(--coral)}
+  .snk-draw[data-draw="readout"] .rs .n{color:var(--ink-dim)}
+  .snk-draw[data-draw="readout"] .body{width:max(100%, min(700px, 56vw))}
   .snk-draw{position:relative}
   .snk-draw .hd{display:flex; align-items:stretch; gap:0; border-radius:var(--r-md); overflow:hidden;
     border:1px solid var(--hairline); background:var(--surface-2)}
   .snk-draw .tg{flex:1 1 auto; min-width:0; appearance:none; border:0; background:transparent; color:var(--ink);
-    font:inherit; text-align:left; cursor:pointer; padding:6px 2px 6px 12px;
-    display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:0 10px}
+    font:inherit; text-align:left; cursor:pointer; padding:8px 0 8px 13px;
+    display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:0 14px}
   .snk-draw .tg .t{grid-column:1; min-width:0; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap);
     text-transform:uppercase; font-weight:700; color:var(--ink-faint);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
@@ -1844,28 +1842,9 @@
   .snk-empty .t1{font-size:13px; font-weight:600; color:var(--ink-dim)}
   .snk-empty .t2{font-size:11.5px; color:var(--ink-faint); max-width:min(560px,58vw); line-height:1.55}
   .snk-empty .lv{font-family:var(--mono); font-size:13px; color:var(--ink); font-variant-numeric:tabular-nums}
-  /* ---- reasoning pause switch. Jade when running, plain when paused — deliberately NOT
-     coral: paused is a chosen, healthy state here (the recording continues), and dressing
-     it in the alarm colour would read as a fault. ---- */
-  .snk-rsn{display:flex; align-items:center; gap:10px; padding:9px 11px; background:var(--surface-2);
-    border:1px solid var(--hairline); border-radius:var(--r-md)}
-  .snk-rsn .sw{appearance:none; cursor:pointer; flex:none; width:34px; height:19px; padding:0;
-    border-radius:19px; border:1px solid var(--hairline-2); position:relative;
-    background:color-mix(in srgb,var(--jade) 42%, transparent); transition:background .16s ease}
-  .snk-rsn .sw .kn{position:absolute; top:2px; left:16px; width:13px; height:13px; border-radius:50%;
-    background:var(--jade); transition:left .16s ease, background .16s ease}
-  .snk-rsn.off .sw{background:var(--surface-3)}
-  .snk-rsn.off .sw .kn{left:2px; background:var(--ink-faint)}
-  .snk-rsn .sw:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
-  .snk-rsn .lb{min-width:0; cursor:pointer}
-  .snk-rsn .lb b{display:block; font-family:var(--mono); font-size:12px; font-weight:700;
-    letter-spacing:.04em; color:var(--jade)}
-  .snk-rsn.off .lb b{color:var(--ink-dim)}
-  .snk-rsn .lb span{display:block; font-size:12px; color:var(--ink-faint); line-height:1.35}
   /* ---- voice talk widget. Same shell as the reasoning switch; the dot is the state
      lamp (idle→hollow, listening→jade pulse, thinking→iris, speaking→amber). All logic
      lives in /voice.js — this panel only renders MiraiVoice.state after every repaint. ---- */
-  .snk-ctl{display:flex; flex-direction:column; gap:8px; margin-bottom:10px}
   .snk-voice{display:flex; align-items:center; gap:10px; padding:9px 11px; background:var(--surface-2);
     border:1px solid var(--hairline); border-radius:var(--r-md)}
   .snk-voice .mic{appearance:none; cursor:pointer; flex:none; width:34px; height:34px; padding:0;
@@ -10512,42 +10491,6 @@ function snkDaySummary(m){
     +`¦v:this describes today's activity — it is not a forecast, and it cannot say who was buying and who was selling`;
   return `<div class="snk-day"><span data-name="Today’s trading" data-tip="${tip}">Today’s trading · ${Math.round(100*p/tot)}% puts</span></div>`;
 }
-// ---- REASONING PAUSE. Two states, and the wording has to keep them apart or the control
-// is dangerous: this silences the model's SENTENCE, it does not stop the recording. The
-// arrow, the gate separations, the magnet ranking and the wake reason are all pure
-// functions of a diary row already on disk, so they keep computing and every read row keeps
-// landing whether this is on or off. Only `reading` goes null and the row carries
-// paused:true. That distinction is spelled out on the control itself, because "off" on a
-// data system reads as "stops collecting" to almost everyone, and here it does not. ----
-function snkReasonToggle(on){
-  const tip=`Pauses the written reading only.`
-    +`¦k:model calls=${on?'running':'paused'}`
-    +`¦f:the arrow, the gates and the strike ranking keep computing either way`
-    +`¦f:every scan still records to state/sndk_reads — no gap in the history`
-    +`¦v:this is a cost control, not a kill switch — SNDK_READ_DISABLE=1 is the kill switch`;
-  return `<div class="snk-rsn${on?'':' off'}">
-    <button type="button" id="snk-rsn-btn" class="sw" role="switch" aria-checked="${on?'true':'false'}"
-      aria-label="Live reasoning ${on?'on':'paused'}"><span class="kn"></span></button>
-    <div class="lb" data-name="Live reasoning" data-tip="${tip}">
-      <b>Live reasoning · ${on?'ON':'PAUSED'}</b>
-      <span>${on?'Writing a reading when the book moves':'Still recording every scan — no calls'}</span>
-    </div></div>`;
-}
-// The switch is the ONE thing on this tab that writes. Optimistic paint, then reconcile
-// against whatever the server actually stored — a failed write must never leave the UI
-// claiming a state the backend does not hold.
-async function snkSetReasoning(on){
-  const host=document.getElementById('snk-side'); if(host){
-    const w=host.querySelector('.snk-rsn'); if(w){ w.classList.toggle('off',!on);
-      const b=w.querySelector('.sw'); if(b) b.setAttribute('aria-checked',on?'true':'false'); } }
-  try{
-    const r=await fetch('/api/sndk/reasoning',{method:'POST',
-      headers:{'Content-Type':'application/json'}, body:JSON.stringify({reasoning:!!on})});
-    const j=await r.json();
-    SNDK.reasoning=(j&&typeof j.reasoning==='boolean')?j.reasoning:SNDK.reasoning;
-  }catch(e){ /* leave SNDK.reasoning alone; the next poll reconciles */ }
-  SNDK.paintSide();
-}
 // ---- voice talk widget. Renders MiraiVoice's current state; every ounce of audio/socket
 // logic lives in /voice.js. Tap = toggle an OPEN conversation (server-side VAD turn-taking,
 // barge-in by talking over it, auto-off after 3 min of silence). Repainted in place on the
@@ -11612,34 +11555,29 @@ const SNDK = {
   resume(){   // (re)start every poller exactly once each
     clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read); clearTimeout(SNDK.timers.tape);
     SNDK.pollDiary(); SNDK.pollSpot(); SNDK.pollPath(); SNDK.pollRead(); SNDK.pollTape();
-    // the switch is server-side state, so re-read it on every wake rather than trusting
-    // what this tab remembered — it may have been flipped from another device, or the
-    // backend may have been restarted since. Fail-open to ON, matching sndk_read.
-    fetch('/api/sndk/reasoning').then(r=>r.json()).then(j=>{
-      if(j&&typeof j.reasoning==='boolean'&&j.reasoning!==SNDK.reasoning){
-        SNDK.reasoning=j.reasoning; SNDK.paintSide(); }
-    }).catch(()=>{});
   },
   mount(){
     const host=document.getElementById('p-sndk'); if(!host) return;
     try{ const d=localStorage.getItem('snk.draw'); SNDK.draw=(d==='read'||d==='map')?d:null; }catch(e){}
     host.innerHTML=`<div class="snk-head">
         <div class="snk-strip" id="snk-strip"></div>
-        <div class="snk-draws" id="snk-draws"></div>
-        <div class="snk-draws tall" id="snk-draws3"></div>
-        <div class="snk-pills" id="snk-pills"></div>
+        <div class="snk-col">
+          <div class="snk-draws" id="snk-draws"></div>
+          <div class="snk-pills" id="snk-pills"></div>
+        </div>
+        <div class="snk-vox" id="snk-vox"></div>
       </div>
       <div class="snk-tenors" id="snk-tenors"></div>
       <div class="snk-mid">
         <div class="snk-chart" id="snk-chart" role="img" aria-label="SNDK weekly GEX map: net gamma by strike, dealer levels, expected-move band"><div class="snk-tape" id="snk-tape"></div><div class="snk-tip" id="snk-tip"></div><div class="snk-cap" id="snk-cap"></div></div>
-        <aside class="snk-side" id="snk-side" aria-label="SNDK stats and plain-English read"></aside>
       </div>`;
     SNDK.bindTips();
     // the read card's gate chips answer the pointer with the SAME structured card the chart
     // marks use. Bound to the panel HOST (not its contents), so it survives every paintSide
     // innerHTML swap; gwBindTips is idempotent on a host it has already claimed.
-    const side=document.getElementById('snk-side'); if(side) gwBindTips(side);
-    const dHost=document.getElementById('snk-draws'); if(dHost) gwBindTips(dHost);
+    // the rail is gone (08-23) — everything that was in it is in the header now, so the tip
+    // host is the header row itself
+    const hd=document.querySelector('#p-sndk .snk-head'); if(hd) gwBindTips(hd);
     // ONE listener, on the document: the drawers live in the header and their bodies hang over
     // the chart, so binding per host would be three of them. Toggled by CLASS rather than by
     // repainting — paintSide rebuilds the whole rail, which would be a wasted rebuild on every
@@ -11654,22 +11592,26 @@ const SNDK = {
     });
     document.addEventListener('keydown', e=>{ if(e.key==='Escape'&&SNDK.draw) SNDK.setDraw(null); });
   },
-  // the readout is rebuilt on a new scan or a new read — a few times an hour, not on the spot
-  // clock — so a rebuild while it is open is rare. Its scroll position is carried across anyway:
-  // losing your place in the wall ladder because a number two cards up ticked is a small bug
-  // that would only ever be noticed at the worst moment.
-  paintReadout(sum, body){
-    const el=document.getElementById('snk-draws3'); if(!el) return;
-    const was=el.querySelector('.body'), top=was?was.scrollTop:0;
-    el.innerHTML=snkDrawer('readout', 'The readout', `<span class="rs">${sum}</span>`, body);
-    const now=el.querySelector('.body'); if(now&&top) now.scrollTop=top;
+  // ONE painter for all three strips. They were two writers into two elements before, which is
+  // how #snk-pills ended up nested inside a host that innerHTML-swaps: the first repaint deleted
+  // it and the pills simply stopped appearing. One host, one write, and the pills live outside it.
+  // Rebuilt on a new scan or a new read — a few times an hour, not on the spot clock — so a
+  // rebuild while a drawer is open is rare; its scroll position is carried across regardless.
+  paintDrawers(readSum, readBody, roSum, roBody){
+    const el=document.getElementById('snk-draws'); if(!el) return;
+    const was=el.querySelector('.snk-draw.open .body'), top=was?was.scrollTop:0;
+    el.innerHTML=snkDrawer('read',    'The read',        readSum, readBody)
+                +snkDrawer('readout', 'The readout',     `<span class="rs">${roSum}</span>`, roBody)
+                +snkDrawer('map',     'Reading the map', '', snkLegend());
+    const now=el.querySelector('.snk-draw.open .body'); if(now&&top) now.scrollTop=top;
+    const vx=document.getElementById('snk-vox'); if(vx) vx.innerHTML=snkVoiceToggle();
   },
   setDraw(id, toggle){
     SNDK.draw=(toggle&&SNDK.draw===id)?null:(id||null);
     try{ localStorage.setItem('snk.draw', SNDK.draw||''); }catch(e){}
-    // NOT scoped to #snk-side. The drawers moved into the header row on 08-23 and this selector
-    // did not move with them, so setDraw quietly found nothing and every click did nothing —
-    // the toggle looked broken while the handler was firing perfectly. Scope it to the class.
+    // scoped to the CLASS, never to a container. These moved from the rail to the header once
+    // already and the old selector did not move with them — setDraw quietly matched nothing and
+    // every click did nothing, which looks like a dead toggle rather than a dead query.
     document.querySelectorAll('.snk-draw').forEach(s=>{
       const on=s.dataset.draw===SNDK.draw;
       s.classList.toggle('open', on);
@@ -11726,7 +11668,6 @@ const SNDK = {
         // eased spot line for the same frames
         // ground truth beats the toggle's memory: a row stamped paused:true is the backend
         // saying it actually skipped the call, so trust that over what this tab believes
-        if(nr&&nr.paused===true&&SNDK.reasoning!==false) SNDK.reasoning=false;
         if(nr&&nr.ts!==SNDK.readTs){
           SNDK.read=nr; SNDK.readTs=nr.ts;
           if(SNDK.model) SNDK.buildChart();
@@ -13208,8 +13149,10 @@ const SNDK = {
     lead.setAttribute('x2',x.toFixed(1)); lead.setAttribute('y2',y.toFixed(1));
   },
 
+  // no longer a side panel — the rail was emptied on 08-23 when the reasoning switch went and
+  // the voice moved up. The name stays because a dozen call sites say it and what it does is
+  // unchanged: paint everything that is not the chart.
   paintSide(){
-    const el=document.getElementById('snk-side'); if(!el) return;
     const m=SNDK.model;
     // THE LIVE READ leads the panel (sr-1) — it is the one surface here that changes on its
     // own clock. '' when no read row has landed, so the panel is byte-identical to pre-sr-1.
@@ -13220,13 +13163,9 @@ const SNDK = {
     // read once and never again, the other is live but only needs its call visible at a glance.
     // Collapsed they are two strips; opened, the body drops over the canvas below — which up
     // here is the chart, and that is the price of putting them where the eye starts.
-    const dEl=document.getElementById('snk-draws');
-    if(dEl) dEl.innerHTML=
-       snkDrawer('read', 'The read',
-                 `<span class="rs ${rs.cls}">${rs.html}`
-                   +`${(SNDK.read&&SNDK.read.wake)?`<span class="q">· ${snkSafe(SNDK.read.wake)}</span>`:''}</span>`,
-                 readCard||'<div class="q">no reading has landed yet today</div>')
-      +snkDrawer('map', 'Reading the map', '', snkLegend());
+    const readSum=`<span class="rs ${rs.cls}">${rs.html}`
+      +`${(SNDK.read&&SNDK.read.wake)?`<span class="q">· ${snkSafe(SNDK.read.wake)}</span>`:''}</span>`;
+    const readBody=readCard||'<div class="q">no reading has landed yet today</div>';
     const FZP=(SNDK.read&&Array.isArray(SNDK.read.frozen))?SNDK.read.frozen:null;
     const dorm=(on,label,tt)=>`<span class="${on?'on':''}" title="${tt}">${label}</span>`;
     const lyr=`<div class="snk-layers"><span class="k">Data layers · lit = present</span><div class="snk-lyr">`
@@ -13245,19 +13184,13 @@ const SNDK = {
       +dorm(false,'Siege', 'Siege is an SPX-only layer — dormant here by design')
       +`</div></div>`;
     if(!m){
-      el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`;
-      SNDK.paintReadout('<span class="q">awaiting first scan</span>', `<div class="snk-tiles">
+      SNDK.paintDrawers(readSum, readBody, '<span class="q">awaiting first scan</span>', `<div class="snk-tiles">
         <div class="snk-tile"><span class="k" title="Net dealer gamma (Γ)">Net Gamma</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX)">Dealer Delta</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k">Regime</span><b>—</b><i>awaiting first scan</i></div>
         <div class="snk-tile"><span class="k">Expected Move · rest of day</span><b>—</b><i>awaiting first scan</i></div>
       </div>${lyr}`);
-      const rb0=el.querySelector('#snk-rsn-btn');
-      if(rb0) rb0.onclick=()=>snkSetReasoning(SNDK.reasoning===false);
-      const vb0=el.querySelector('#snk-voice-btn');
-      if(vb0) vb0.onclick=()=>{ if(window.MiraiVoice) MiraiVoice.toggle(); else { const s=document.getElementById('snk-voice-sub'); if(s) s.textContent='voice.js failed to load — hard refresh (Cmd+Shift+R)'; } };
-      const hb0=document.getElementById('snk-hist-btn');
-      if(hb0) hb0.onclick=openSnkHistModal;
+      SNDK.bindPanel();
       return;
     }
     // NET Γ + 1-day change (net_exposure carries its own prev-close anchor)
@@ -13295,8 +13228,7 @@ const SNDK = {
     // THE READOUT (08-23) — every measured card in one drawer. The rail was a column you
     // scrolled to reach anything; these are reference numbers you consult, not a feed you
     // watch, so they belong behind a header that says the state and opens on demand.
-    el.innerHTML=`<div class="snk-ctl">${snkReasonToggle(SNDK.reasoning!==false)}${snkVoiceToggle()}</div>`;
-    SNDK.paintReadout(
+    SNDK.paintDrawers(readSum, readBody,
       [gTot!=null?`<b class="${gTot>=0?'j':'c'}">${snkSMoney(gTot)}</b> γ`:'',
        `<span class="${mood}">${regPlain.split(' — ')[0]}</span>`,
        emB&&emB!=='—'?`<span class="q">${emB}</span>`:''].filter(Boolean).join('<span class="q">·</span>'),
@@ -13313,12 +13245,13 @@ const SNDK = {
     </div>
     ${(m.coverage&&m.coverage.complete===false)?`<div style="color:var(--coral);font-size:11px;padding:4px 2px">⚠ book half-fetched this scan${m.coverage.missing?` (${snkSafe(String(m.coverage.missing))})`:''} — bars and totals may under-read</div>`:''}
     ${snkWallLadder(SNDK.clusters, SNDK.liveSpot()??m.spot)}${snkDaySummary(m)}${lyr}`);
-    // re-bound after every innerHTML swap; gwBindTips is already delegated on the host
-    const rb=el.querySelector('#snk-rsn-btn');
-    if(rb) rb.onclick=()=>snkSetReasoning(SNDK.reasoning===false);
-    const vb=el.querySelector('#snk-voice-btn');
+    SNDK.bindPanel();
+  },
+  // one place to re-bind after any innerHTML swap; gwBindTips is delegated on the host already
+  bindPanel(){
+    const vb=document.getElementById('snk-voice-btn');
     if(vb) vb.onclick=()=>{ if(window.MiraiVoice) MiraiVoice.toggle(); else { const s=document.getElementById('snk-voice-sub'); if(s) s.textContent='voice.js failed to load — hard refresh (Cmd+Shift+R)'; } };
-    const hb=document.getElementById('snk-hist-btn');   // it lives in the header row now
+    const hb=document.getElementById('snk-hist-btn');
     if(hb) hb.onclick=openSnkHistModal;
   },
   // per-strike tooltip: full-lane hit targets, values + spelled-out doctrine tags
