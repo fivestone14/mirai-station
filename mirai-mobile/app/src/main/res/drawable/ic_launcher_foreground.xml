@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The glance itself, reduced to its one shape: a price path meeting a wall.
+     Jade for the level that holds, drawn on the station's ground. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- the wall -->
+    <path
+        android:pathData="M30,42 L78,42"
+        android:strokeColor="#43C59E"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+
+    <!-- the session path running up into it -->
+    <path
+        android:pathData="M30,74 L40,66 L48,71 L58,56 L66,60 L78,46"
+        android:strokeColor="#DBE4E0"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

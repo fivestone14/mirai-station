@@ -1,0 +1,16 @@
+# Copy to local.properties and fill in. NEVER commit the copy — see .gitignore,
+# and .github/scripts/scrub.sh, which refuses it twice over.
+#
+# Gradle manages sdk.dir itself on first build; leave it out of this file.
+
+# The station's front door, no trailing slash. The shell appends /m.
+STATION_URL=https://station.example.com
+
+# The name and password the front door knows you by — the same pair Caddy's
+# basic_auth holds. Add or change users on the mini with `caddy hash-password`.
+STATION_USER=your-name
+STATION_PASS=your-password
+
+# Which reader the payload route unlocks for. The station's own default is
+# "will"; override only if MIRAI_PAYLOAD_USER is set differently on the mini.
+STATION_PAYLOAD_USER=will

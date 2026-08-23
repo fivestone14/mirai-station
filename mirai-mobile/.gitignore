@@ -1,0 +1,28 @@
+# Nothing here that names the machine, the owner, or the front door.
+
+# THE credential file. Gradle also writes sdk.dir into it, which is an absolute
+# path under the home directory — so this is refused by .github/scripts/scrub.sh
+# for naming the account even on a day the password happens to be clean. Two
+# independent reasons, one rule: it is never tracked.
+local.properties
+keystore.properties
+
+# signing material — losing these means uninstall-and-reinstall, publishing
+# them means anyone can ship an update that replaces the app on the phone
+*.jks
+*.keystore
+
+# the built shell carries the credential inside it
+*.apk
+*.aab
+
+# build output
+build/
+.gradle/
+.cxx/
+captures/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
