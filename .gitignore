@@ -26,3 +26,10 @@ skills/*/cache/
 skills/*/logs/
 skills/iv-viability/cache/
 skills/mirai-left-eye/logs/
+
+# The built phone shell, served from the station so a phone can install it over
+# the same front door. It is the one file under static/ that contains the
+# station password in plain text, so it must never be committable — the scrub
+# refuses a TRACKED apk, but an untracked one sitting in `git status` is an
+# invitation, and mirai-mobile/.gitignore only reaches its own directory.
+runtime/viewstation/static/m/*.apk
