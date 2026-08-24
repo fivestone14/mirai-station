@@ -320,6 +320,9 @@ function paintChart(scene, points){
   const levels = mergeLevels(raw, geo.hi - geo.lo);
   const drawn = {};
   const glyphs = [];
+  // read once, up here: the off-window flip chip needs it before the dot does
+  const q = pickPrice(scene, LIVE, PAY && PAY.as_of === 'live');
+  const px = q ? q.price : spot;
   const inWin = v => isFinite(v) && v >= geo.lo && v <= geo.hi;
   let out = '';
 
@@ -361,6 +364,14 @@ function paintChart(scene, points){
       out += '<path class="chev" d="M' + (plotL + geom.w / 2 - 6) + ',' + (up ? y + 4 : y - 4)
            + ' L' + (plotL + geom.w / 2) + ',' + y
            + ' L' + (plotL + geom.w / 2 + 6) + ',' + (up ? y + 4 : y - 4) + '"/>';
+      // The chevron is the only mark that had no key entry, because the key
+      // fired on `drawn.flip` and the flip had drawn nothing IN the window.
+      // A glyph nobody can name is a glyph that is not working: it earns a
+      // chip that says which way and how far, which is also more use than the
+      // band ever was on the ~36% of scans where it is off-screen entirely.
+      const near = up ? l.band[0] : l.band[1];
+      const away = (px != null && isFinite(near)) ? Math.abs(near - px) : null;
+      drawn.flipAway = {up, away};
     }
   }
 
@@ -438,8 +449,6 @@ function paintChart(scene, points){
   /* 7 — where price is NOW, from the same quote the header shows. These
          disagreed by 13px before: the header polled the live tape every 5s
          while the dot sat at the scan price from 60s ago. */
-  const q = pickPrice(scene, LIVE, PAY && PAY.as_of === 'live');
-  const px = q ? q.price : spot;
   if(px != null && inWin(px)){
     const cx = Math.min(points.length ? geo.xFor(points[points.length - 1].t) : plotR, plotR - 8);
     const cy = geo.yFor(px);
@@ -485,6 +494,12 @@ function paintChart(scene, points){
   if(drawn['clear-call']) key.push('<b class="g">\u2601\uFE0F</b>open air above');
   if(drawn['clear-put']) key.push('<b class="g">\uD83D\uDD73\uFE0F</b>nothing below');
   if(drawn.flip) key.push('<i class="s-flip"></i>flip band');
+  else if(drawn.flipAway){
+    const f = drawn.flipAway;
+    key.push('<b class="g">' + (f.up ? '\u25B4' : '\u25BE') + '</b>flip band '
+             + (f.away != null ? '$' + Math.round(f.away) + ' ' : '')
+             + (f.up ? 'above' : 'below') + ', off chart');
+  }
   $('key').innerHTML = key.slice(0, 5).join('');
 }
 

@@ -214,3 +214,14 @@ def test_the_chart_is_given_the_room():
     assert "min-height:300px" in PHONE               # the plot's floor
     assert "flex:1 1 auto" in PHONE
     assert "header,.wall,.key{flex:none}" in PHONE
+
+
+def test_the_off_window_flip_chevron_names_itself():
+    """The chevron was the one drawn mark with no key entry — the key fired on
+    `drawn.flip`, which is only set when the band paints INSIDE the window, and
+    the band is entirely off-screen on roughly a third of scans. A glyph nobody
+    can name is a glyph that is not working, so it carries which way and how
+    far, which is more use than the band itself was on those scans."""
+    assert "drawn.flipAway" in PHONE
+    assert "off chart" in PHONE
+    assert "else if(drawn.flipAway)" in PHONE
