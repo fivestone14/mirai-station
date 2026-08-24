@@ -94,47 +94,102 @@ body{
 /* the chart is the elastic element: header and card are only as tall as
    their content, and everything left over is plot. min-height:0 is what
    lets a flex child actually shrink below its content on a small phone. */
+/* the chart is the elastic element: header and card are only as tall as
+   their content, and everything left over is plot. min-height:0 is what
+   lets a flex child actually shrink below its content on a small phone. */
 .chart{background:var(--surface);border:1px solid var(--hair);border-radius:12px;
        padding:10px 12px 6px;flex:1 1 auto;min-height:240px;display:flex}
 header,.wall,.key{flex:none}
 svg{width:100%;height:100%;display:block;overflow:hidden}
+
+/* the regime lane — colour before text, per the doctrine's reading order */
+.rule{opacity:.85}
+.r-long{fill:var(--jade)} .r-short{fill:var(--coral)} .r-none{fill:var(--hair)}
+.wash{opacity:.05}
+.wash.r-none{opacity:0}
+
+/* the day's path */
 .pline{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .pnow{fill:var(--ink)}
 .pnow-halo{fill:none;stroke:var(--ink);stroke-opacity:.25;stroke-width:1.2}
-.lv{stroke-width:1.1}
-.lv-call{stroke:var(--coral)}
-.lv-put{stroke:var(--jade)}
-.lv-magnet{stroke:var(--amber);stroke-dasharray:5 4}
-.lv-flip{stroke:none}
-.band{fill:#7f8fe0;fill-opacity:.09;stroke:none}
-.band-edge{stroke:#7f8fe0;stroke-opacity:.5;stroke-width:1;stroke-dasharray:3 5;fill:none}
-.tie{fill:none;stroke:var(--faint);stroke-width:.8}
-.lbl{font-family:ui-monospace,monospace;font-size:10px;fill:var(--faint)}
-.k{font-family:ui-monospace,monospace;font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.k-call{fill:var(--coral)} .k-put{fill:var(--jade)} .k-magnet{fill:var(--amber)}
 
-.key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;color:var(--faint);
+/* walls. call = jade, put = coral — the desktop's own law (gwc jade / gwp
+   coral). The phone had these inverted until 08-24, which put a coral call
+   wall on the same screen as a coral negative-gamma rule meaning the opposite
+   thing. Stroke width is set per-line from the measured tier. */
+.lv-call{stroke:var(--jade)}
+.lv-put{stroke:var(--coral)}
+.wt{opacity:.75}
+.wt-call{fill:var(--jade)} .wt-put{fill:var(--coral)}
+.wt-clip{fill:var(--ink);opacity:.5}
+.clear{fill:none;stroke:var(--faint);stroke-width:1;stroke-dasharray:3 3}
+
+/* magnet: solid with a glow. The dash this used to carry belongs to the
+   desktop's fence mark, not its magnet. */
+.mag{stroke:var(--amber)}
+.magglow{stroke:var(--amber);stroke-width:7;opacity:.10}
+
+.flipband{fill:#7f8fe0;fill-opacity:.09}
+.flipedge{stroke:#7f8fe0;stroke-opacity:.5;stroke-width:1;stroke-dasharray:3 5;fill:none}
+.chev{fill:none;stroke:#7f8fe0;stroke-opacity:.55;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+.tie{fill:none;stroke:var(--faint);stroke-width:.8}
+.lbl{font-family:ui-monospace,monospace;font-size:10px;fill:var(--dim)}
+.k{font-family:ui-monospace,monospace;font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.k-call{fill:var(--jade)} .k-put{fill:var(--coral)} .k-magnet{fill:var(--amber)}
+
+.key{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:10.5px;color:var(--dim);
      font-family:ui-monospace,monospace;padding:0 2px}
 .key i{display:inline-block;width:12px;height:2px;margin-right:5px;vertical-align:middle;border-radius:1px}
-.s-call{background:var(--coral)} .s-put{background:var(--jade)}
-.s-magnet{background:linear-gradient(90deg,var(--amber) 60%,transparent 60%)}
-.s-flip{background:#7f8fe0;opacity:.45;height:8px !important;border-radius:2px}
+.s-call{background:var(--jade)} .s-put{background:var(--coral)}
+.s-wt{background:linear-gradient(90deg,var(--dim) 0,var(--dim) 50%,transparent 50%);height:3px !important}
+.s-magnet{background:var(--amber)}
+.s-clear{background:none !important;border:1px dashed var(--faint);height:5px !important}
+.s-flip{background:#7f8fe0;opacity:.5;height:7px !important;border-radius:2px}
 
 /* ---- zone 3 : what happens there ---- */
-.wall{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:11px 14px;display:flex;flex-direction:column;gap:6px}
-.wall.brake{border-left:3px solid var(--jade)}
-.wall.accelerant{border-left:3px solid var(--coral)}
-.wtop{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.wname{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace}
-.wk{font-size:21px;font-weight:600;font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums}
-.wmeta{font-size:12.5px;color:var(--dim);font-family:ui-monospace,monospace}
-.wsay{font-size:15px;line-height:1.4}
-.wbeyond{font-size:13px;color:var(--dim)}
-.caveat{font-size:11px;color:var(--faint);line-height:1.3;letter-spacing:.01em}
+.wall{position:relative;background:var(--surface);border:1px solid var(--hair);
+      border-left:3px solid var(--hair);border-radius:12px;padding:10px 13px 10px 12px;
+      overflow:hidden;display:flex;flex-direction:column;gap:0}
+.wall.brake{border-left-color:var(--jade)}
+.wall.accelerant{border-left-color:var(--coral)}
+.wall::before{content:"";position:absolute;inset:0;pointer-events:none}
+.wall.brake::before{background:linear-gradient(90deg,rgba(67,197,158,.07),transparent 42%)}
+.wall.accelerant::before{background:linear-gradient(90deg,rgba(235,106,87,.07),transparent 42%)}
+.wall>*{position:relative}
 
-body.stale .px{opacity:.5}
-body.stale .chg{opacity:.42}
-body.stale .chart{opacity:.6}
+.w-lab{display:flex;align-items:baseline;gap:6px;min-width:0;
+       font:11px/1.25 ui-monospace,monospace;letter-spacing:.11em;
+       text-transform:uppercase;color:var(--dim)}
+.w-lab .caret{font-size:9px;color:var(--dim);letter-spacing:0}
+.w-meas{margin-left:auto;display:flex;gap:7px;min-width:0;overflow:hidden;
+        letter-spacing:.04em;text-transform:none;white-space:nowrap;
+        font-variant-numeric:tabular-nums}
+.w-meas>span{flex:none}
+.w-meas .d1{order:9} .w-meas .d2{order:8}
+
+.w-head{display:flex;align-items:baseline;gap:9px;margin-top:3px;min-width:0}
+.w-k{flex:none;font:600 22px/1.15 ui-monospace,monospace;
+     font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:var(--ink)}
+.w-mech{flex:1 1 auto;min-width:0;font-size:11px;line-height:1.3;color:var(--dim)}
+
+/* both bars on ONE grid, so the two tracks are provably the same scale */
+.w-load{display:grid;grid-template-columns:1fr auto;align-items:center;
+        column-gap:9px;row-gap:4px;margin-top:8px}
+.w-bar{position:relative;height:8px;border-radius:2px;background:#1a2330;overflow:hidden}
+.w-bar>i{position:absolute;inset:0 auto 0 0;border-radius:2px;background:rgba(219,228,224,.80)}
+.w-bar.behind>i{background:rgba(219,228,224,.46)}
+.w-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--bg)}
+.w-val{font:11px/1.2 ui-monospace,monospace;font-variant-numeric:tabular-nums;
+       color:var(--dim);white-space:nowrap}
+.w-val b{font-weight:600;color:var(--ink)}
+
+/* a measured emptiness is a FINDING — ink, not dim */
+.w-far{margin-top:8px;font-size:11.5px;line-height:1.3;color:var(--ink)}
+/* apparatus is subordinate by SIZE, not by contrast: --faint is 3.17:1 on this
+   surface and fails AA, which outdoors means gone. */
+.w-cav{margin-top:6px;font-size:10px;line-height:1.3;color:var(--dim)}
+
 .msg{padding:22px 14px;text-align:center;color:var(--dim);font-size:14px;line-height:1.5}
 .msg b{color:var(--coral);font-weight:600}
 </style>
@@ -238,129 +293,239 @@ function paintHeader(pay, scene){
 
 function paintChart(scene, points){
   const box = $('chartbox').getBoundingClientRect();
-  const W = Math.max(240, box.width - 12), H = Math.max(220, box.height - 12);
+  const W = Math.max(260, box.width - 12), H = Math.max(220, box.height - 12);
 
-  // The gutter is sized to the widest thing that goes in it — one price at
-  // 12px monospace, which is 6 glyphs at 0.6em plus breathing room. The first
-  // cut guessed 58px for a gutter that had to hold "$1,600" AND "call wall",
-  // and "call wall" hung 9px outside the frame.
-  const GUT = 54, ROW = 16, PAD_T = 14, PAD_B = 22;
-  const geom = {left: 2, top: PAD_T, w: W - GUT, h: H - PAD_T - PAD_B};
-  const spot = (scene.price || {}).now;
+  /* Fixed lanes; only the plot flexes. A wider phone gets more chart, never a
+     different chart — and a rail whose datum is missing goes BLANK rather than
+     collapsing, so two scans stay geometrically comparable. */
+  const RULE = 3, GUT = 46, RAIL = 20, PAD_T = 14, PAD_B = 20, ROW = 16;
+  const plotL = RULE + 8;
+  const plotR = W - GUT - RAIL - 6;
+  const railX = plotR + 5;
+  const gutX  = W - GUT + 2;
+  const geom = {left: plotL, top: PAD_T, w: plotR - plotL, h: H - PAD_T - PAD_B};
 
   const svg = $('svg');
   svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
 
+  const spot = (scene.price || {}).now;
+  const sigma = (scene.scale || {}).one_sigma_dollars;
   const raw = drawableLevels(scene);
-  const geo = chartGeometry(points, raw, spot, geom);
+  const geo = chartGeometry(points, raw, spot, geom, sigma);
   if(!geo){ svg.innerHTML = '<text class="lbl" x="6" y="26">no price measured yet</text>'; return; }
 
   const levels = mergeLevels(raw, geo.hi - geo.lo);
-  const plotR = geom.left + geom.w;
+  const drawn = {};
+  const inWin = v => isFinite(v) && v >= geo.lo && v <= geo.hi;
   let out = '';
 
-  // 1 — the flip band. A tint reads as a zone only while it is a MINORITY of
-  //     the view; measured on the live board it spanned the whole session, and
-  //     a wash over everything says nothing at all. Past the threshold it drops
-  //     to its two edges, which is where the actual behaviour changes — the
-  //     information was always the boundary, not the fill.
+  /* 1 — the regime rule. Colour is read before anything else, and gamma sign
+         is the top of the doctrine's reading order, so it gets its own lane
+         rather than competing inside the plot. Unknown sign renders as chrome,
+         never as a guessed hue. */
+  const long = gammaIsLong(scene.regime);
+  const ruleCls = long == null ? 'r-none' : (long ? 'r-long' : 'r-short');
+  out += '<rect class="rule ' + ruleCls + '" x="0" y="' + PAD_T + '" width="' + RULE
+       + '" height="' + geom.h.toFixed(1) + '"/>';
+  if(long != null){
+    out += '<rect class="wash ' + ruleCls + '" x="' + plotL + '" y="' + PAD_T
+         + '" width="' + geom.w.toFixed(1) + '" height="' + geom.h.toFixed(1) + '"/>';
+    drawn[long ? 'long' : 'short'] = true;
+  }
+
+  /* 2 — the flip band, behind everything. Measured over 1,036 recorded scenes
+         it is entirely off-window 36% of the time, so "draw nothing" is a
+         normal outcome and the key must follow the painter, not the list. */
   for(const l of levels){
-    if(!Array.isArray(l.band)) continue;
+    if(l.kind !== 'flip' || !Array.isArray(l.band)) continue;
     const a = geo.yFor(Math.min(l.band[1], geo.hi)), b = geo.yFor(Math.max(l.band[0], geo.lo));
-    if(!isFinite(a) || !isFinite(b)) continue;
-    const top = Math.min(a, b), h = Math.abs(b - a);
-    if(h / geom.h < 0.55){
-      out += '<rect class="band" x="0" y="' + top.toFixed(1)
-           + '" width="' + plotR.toFixed(1) + '" height="' + h.toFixed(1) + '"/>';
-    } else {
-      for(const edge of [a, b]){
-        if(edge > PAD_T && edge < H - PAD_B)
-          out += '<line class="band-edge" x1="0" y1="' + edge.toFixed(1)
-               + '" x2="' + plotR.toFixed(1) + '" y2="' + edge.toFixed(1) + '"/>';
+    if(inWin(l.band[0]) || inWin(l.band[1])){
+      const top = Math.min(a, b), h = Math.abs(b - a);
+      if(h / geom.h < 0.55){
+        out += '<rect class="flipband" x="' + plotL + '" y="' + top.toFixed(1)
+             + '" width="' + geom.w.toFixed(1) + '" height="' + h.toFixed(1) + '"/>';
+      } else {
+        for(const e of [a, b]) if(e > PAD_T && e < H - PAD_B)
+          out += '<line class="flipedge" x1="' + plotL + '" y1="' + e.toFixed(1)
+               + '" x2="' + plotR + '" y2="' + e.toFixed(1) + '"/>';
       }
+      drawn.flip = true;
+    } else {
+      // wholly outside: a chevron in the margin it left through, no number —
+      // a zone's meaning is positional, and "somewhere above" is the meaning.
+      const up = l.band[0] > geo.hi, y = up ? 8 : H - 5;
+      out += '<path class="chev" d="M' + (plotL + geom.w / 2 - 6) + ',' + (up ? y + 4 : y - 4)
+           + ' L' + (plotL + geom.w / 2) + ',' + y
+           + ' L' + (plotL + geom.w / 2 + 6) + ',' + (up ? y + 4 : y - 4) + '"/>';
     }
   }
 
-  // 2 — the ruled levels, and their numbers solved into rows that cannot touch
-  const ruled = levels.filter(l => isFinite(l.y) && l.y >= geo.lo && l.y <= geo.hi);   // off-window is dropped, never clamped
-  const rows = layoutLabels(ruled.map(l => geo.yFor(l.y)), ROW, PAD_T + 4, H - PAD_B - 2);
-  ruled.forEach((l, i) => {
-    const y = geo.yFor(l.y), ly = rows[i];
-    out += '<line class="lv ' + l.cls + '" x1="0" y1="' + y.toFixed(1)
-         + '" x2="' + plotR.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
-    // A number that had to move gets a hairline back to the line it belongs to,
-    // because a label floating beside nothing is worse than no label.
-    if(Math.abs(ly - y) > 2)
-      out += '<path class="tie" d="M' + plotR.toFixed(1) + ',' + y.toFixed(1)
-           + ' L' + (plotR + 5).toFixed(1) + ',' + ly.toFixed(1) + '"/>';
-    out += '<text class="k ' + ('k-' + l.cls.slice(3)) + '" x="' + (plotR + 7)
-         + '" y="' + (ly + 4).toFixed(1) + '">' + gUsd(l.y, 0).replace('$', '') + '</text>';
-  });
+  /* 3 — magnets. Solid amber with a glow (the desktop's own magnet grammar;
+         the dash this used to carry is the desktop's FENCE mark). Runners-up
+         are weighted by their share of the pile, with no threshold anywhere —
+         sr-3 deleted the 5pp constant for shipping a near-constant as a
+         finding, so a near-tie has to LOOK like a tie without anyone deciding
+         where a tie begins. */
+  for(const l of levels){
+    if(l.kind !== 'magnet' || !inWin(l.y)) continue;
+    const y = geo.yFor(l.y).toFixed(1), wt = l.weight || 0.5;
+    if(l.lead) out += '<line class="magglow" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y + '"/>';
+    out += '<line class="mag" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y
+         + '" style="stroke-width:' + (l.lead ? 2 : 1).toFixed(1) + ';opacity:' + wt.toFixed(2) + '"/>';
+    drawn.magnet = true;
+  }
 
-  // 3 — the day's path on top of all of it
+  /* 4 — walls: weight as stroke tier, plus a rail bar for the continuum the
+         three tiers cannot express. A confluence lays the wall's casing over
+         the magnet's glow rather than inventing a third mark. */
+  for(const l of levels){
+    if(l.kind !== 'wall' || !inWin(l.y)) continue;
+    const y = geo.yFor(l.y).toFixed(1);
+    if(l.magnet) out += '<line class="magglow" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y + '"/>';
+    out += '<line class="lv lv-' + l.side + '" x1="' + plotL + '" y1="' + y + '" x2="' + plotR
+         + '" y2="' + y + '" style="stroke-width:' + wallTier(l.gex) + '"/>';
+    const bar = railWidth(l.gex, RAIL);
+    if(bar){
+      out += '<rect class="wt wt-' + l.side + '" x="' + railX + '" y="' + (+y - 2).toFixed(1)
+           + '" width="' + bar.w.toFixed(1) + '" height="4"/>';
+      if(bar.clipped)
+        out += '<rect class="wt-clip" x="' + (railX + RAIL - 2) + '" y="' + (+y - 3).toFixed(1) + '" width="2" height="6"/>';
+    }
+    drawn[l.side] = true;
+    if(l.magnet) drawn.magnet = true;
+  }
+
+  /* 5 — a side measured EMPTY is a finding, not an absence (sr-5). A hollow
+         slot where a bar would be: the board was read and there is nothing
+         there. No flag means no mark, which correctly reads "not measured". */
+  for(const l of levels){
+    if(l.kind !== 'clear') continue;
+    const y = l.side === 'call' ? PAD_T + 4 : H - PAD_B - 9;
+    out += '<rect class="clear" x="' + railX + '" y="' + y + '" width="' + RAIL + '" height="5"/>';
+    drawn['clear-' + l.side] = true;
+  }
+
+  /* 6 — the day's path, over the structure it moves through */
   const d = linePath(points, geo);
   if(d) out += '<path class="pline" d="' + d + '"/>';
 
-  if(spot != null && isFinite(spot) && spot >= geo.lo && spot <= geo.hi){
-    // held one halo-width inside the plot: at the bare right edge its 6.5px
-    // halo finished half a pixel from the price number in the gutter.
-    const cx = Math.min(points.length ? geo.xFor(points[points.length - 1].t) : plotR,
-                        plotR - 8);
-    const cy = geo.yFor(spot);
+  /* 7 — where price is NOW, from the same quote the header shows. These
+         disagreed by 13px before: the header polled the live tape every 5s
+         while the dot sat at the scan price from 60s ago. */
+  const q = pickPrice(scene, LIVE, PAY && PAY.as_of === 'live');
+  const px = q ? q.price : spot;
+  if(px != null && inWin(px)){
+    const cx = Math.min(points.length ? geo.xFor(points[points.length - 1].t) : plotR, plotR - 8);
+    const cy = geo.yFor(px);
     out += '<circle class="pnow-halo" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6.5"/>';
     out += '<circle class="pnow" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="3.4"/>';
   }
 
-  // 4 — the session's own clock, so the width of the line means something
+  /* 8 — the gutter: the plot's only text lane, whole dollars, rows solved so
+         no two can touch. Capped at six; the heaviest-behind and the lead
+         magnet are never the ones dropped. */
+  const numbered = levels.filter(l => (l.kind === 'wall' || (l.kind === 'magnet' && l.lead)) && inWin(l.y))
+                         .sort((a, b) => (b.behind ? 1 : 0) - (a.behind ? 1 : 0))
+                         .slice(0, 6)
+                         .sort((a, b) => a.y - b.y);
+  const rows = layoutLabels(numbered.map(l => geo.yFor(l.y)), ROW, PAD_T + 4, H - PAD_B - 2);
+  numbered.forEach((l, i) => {
+    const y = geo.yFor(l.y), ly = rows[i];
+    if(Math.abs(ly - y) > 2)
+      out += '<path class="tie" d="M' + (railX + RAIL) + ',' + y.toFixed(1)
+           + ' L' + (gutX - 3) + ',' + ly.toFixed(1) + '"/>';
+    const cls = l.kind === 'magnet' ? 'k-magnet' : ('k-' + l.side);
+    out += '<text class="k ' + cls + '" x="' + gutX + '" y="' + (ly + 4).toFixed(1) + '">'
+         + gUsd(l.y, 0).replace('$', '') + '</text>';
+  });
+
+  /* 9 — the session's own clock, so the width of the line means something */
   const c = scene.clock || {};
   if(c.minutes_since_open != null){
-    out += '<text class="lbl" x="0" y="' + (H - 6) + '">9:30</text>';
-    out += '<text class="lbl" x="' + plotR + '" y="' + (H - 6) + '" text-anchor="end">'
+    out += '<text class="lbl" x="' + plotL + '" y="' + (H - 5) + '">9:30</text>';
+    out += '<text class="lbl" x="' + plotR + '" y="' + (H - 5) + '" text-anchor="end">'
          + (c.minutes_to_close > 0 ? gMinutes(c.minutes_to_close) + ' left' : 'closed') + '</text>';
   }
   svg.innerHTML = out;
 
-  // The key lives in HTML under the chart, not inside it. Words in the plot
-  // are what crowded the first cut; here they cannot collide with anything.
-  const seen = {};
-  for(const l of levels){ seen[l.cls] = true; for(const a of (l.also || [])) seen[a] = true; }
+  /* The key describes the picture, so it is built from what the painter
+     actually filled. It used to be built from the candidate list, which meant
+     it advertised a flip band on the ~36% of scans where none was drawn. */
   const key = [];
-  if(seen['lv-call']) key.push('<i class="s-call"></i>call wall');
-  if(seen['lv-put']) key.push('<i class="s-put"></i>put wall');
-  if(seen['lv-magnet']) key.push('<i class="s-magnet"></i>magnet');
-  if(seen['lv-flip']) key.push('<i class="s-flip"></i>flip band');
-  $('key').innerHTML = key.join('');
+  if(drawn.call) key.push('<i class="s-call"></i>call wall');
+  if(drawn.put) key.push('<i class="s-put"></i>put wall');
+  if(drawn.call || drawn.put) key.push('<i class="s-wt"></i>thicker = heavier');
+  if(drawn.magnet) key.push('<i class="s-magnet"></i>magnet');
+  if(drawn['clear-call']) key.push('<i class="s-clear"></i>no wall above');
+  if(drawn['clear-put']) key.push('<i class="s-clear"></i>no wall below');
+  if(drawn.flip) key.push('<i class="s-flip"></i>flip band');
+  $('key').innerHTML = key.slice(0, 5).join('');
 }
 
 function paintWall(scene){
-  const spot = (scene.price || {}).now;
-  const w = nearestWall(scene.walls, spot);
   const el = $('wall');
+  const walls = scene.walls || {};
+  const sigma = (scene.scale || {}).one_sigma_dollars;
+  const q = pickPrice(scene, LIVE, PAY && PAY.as_of === 'live');
+  const price = q ? q.price : (scene.price || {}).now;
+
+  // The board measured clear both ways. This used to render nothing at all.
+  if(bothSidesClear(walls)){
+    el.hidden = false; el.className = 'wall';
+    el.innerHTML = '<div class="w-lab">no wall either way</div>'
+                 + '<div class="w-far">The board was read and holds nothing above or below price.</div>';
+    return;
+  }
+
+  const w = nearestWall(walls, price);
   if(!w){ el.hidden = true; return; }
 
-  const b = wallBehaviour(scene.regime, w.strike, spot);
-  const beyond = beyondWall(scene.walls, w.side);
-  const far = farSideNote(scene.walls, w.side);
+  const b = wallBehaviour(scene.regime, w.strike, price);
+  const beyond = beyondWall(walls, w.side);
+  const far = farSideNote(walls, w.side);
+  const dist = wallDistance(w.strike, price, sigma);
   const held = w.unchanged_min != null ? w.unchanged_min : w.unchanged_min_at_least;
   const exact = w.unchanged_min != null;
+  const FULL = 20;   // p90 of 18,510 recorded wall observations
 
-  const meta = [];
-  if(w.sigma != null) meta.push(gSigma(Math.abs(w.sigma)) + ' ' + w.dir);
-  if(w.gex != null) meta.push(w.gex + '% of the book');
-  if(held != null) meta.push('held ' + (exact ? '' : '≥') + gMinutes(held));
+  // Row 1 — apparatus. Dollars first: it needs no training to read.
+  const meas = [];
+  if(dist) meas.push('<span>$' + Math.round(dist.dollars) + '</span>');
+  if(dist && dist.sigma != null) meas.push('<span class="d1">' + dist.sigma.toFixed(2) + 'σ</span>');
+  if(held != null) meas.push('<span class="d2">held ' + gMinutes(held) + (exact ? '' : '+') + '</span>');
+
+  // Rows 3-4 — the weight ladder, both bars on ONE fixed scale so they are
+  // provably comparable (same denominator: the full net_by_strike surface).
+  let load = '';
+  const bar = (gex, cls, gloss) => {
+    const pctw = Math.max(2, Math.min(100, gex / FULL * 100));
+    return '<div class="w-bar ' + cls + '"><i style="width:' + pctw.toFixed(1) + '%"></i></div>'
+         + '<div class="w-val"><b>' + gex + '%</b> ' + gloss + '</div>';
+  };
+  if(w.gex != null) load += bar(w.gex, '', 'of book gamma');
+  if(beyond && beyond.gex != null)
+    load += bar(beyond.gex, 'behind', 'at ' + gUsd(beyond.strike, 0).replace('$', '')
+              + ' · ' + (beyond.heaviest ? 'heaviest behind' : 'next out'));
+
+  const behindText = beyond && beyond.gex == null
+    ? (beyond.alone ? 'Nothing else on this side of the board.'
+                    : 'Next wall at ' + gUsd(beyond.strike, 0) + '.')
+    : null;
 
   el.hidden = false;
   el.className = 'wall' + (b ? ' ' + b.kind : '');
   el.innerHTML =
-      '<div class="wtop">'
-    +   '<span class="wname">' + (w.side === 'call' ? 'first above' : 'first below') + '</span>'
-    +   '<span class="wk mono">' + gUsd(w.strike, 0) + '</span>'
+      '<div class="w-lab"><span class="caret">' + (w.side === 'call' ? '▲' : '▼') + '</span>'
+    +   'first ' + (w.side === 'call' ? 'above' : 'below')
+    +   (meas.length ? '<span class="w-meas">' + meas.join('') + '</span>' : '')
     + '</div>'
-    + '<div class="wmeta">' + meta.join('  ·  ') + '</div>'
-    + (b ? '<div class="wsay">' + b.english + '</div>' : '')
-    + (beyond ? '<div class="wbeyond">' + beyond.text + '</div>' : '')
-    + (far ? '<div class="wbeyond">' + far + '</div>' : '')
-    + '<div class="caveat">Board-level gamma sign · hedge direction assumed</div>';
+    + '<div class="w-head"><span class="w-k">' + gUsd(w.strike, 0).replace('$', '') + '</span>'
+    +   (b ? '<span class="w-mech">' + b.english + '</span>' : '')
+    + '</div>'
+    + (load ? '<div class="w-load">' + load + '</div>' : '')
+    + (behindText ? '<div class="w-far">' + behindText + '</div>' : '')
+    + (far ? '<div class="w-far">' + far + '</div>' : '')
+    + (b ? '<div class="w-cav">board gamma sign · hedge direction assumed</div>' : '');
 }
 
 /* Poll only while the screen is actually being looked at. A glance app has no

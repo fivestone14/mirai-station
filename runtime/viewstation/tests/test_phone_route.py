@@ -72,78 +72,118 @@ def test_the_phone_page_is_not_reachable_by_a_rebound_name():
 
 
 # --- the chart's layout contract ------------------------------------------
-# Measured at phone width on 2026-08-24 the first chart put eleven text
-# elements in a 374px frame: five overlapping pairs and one label hanging 9px
-# outside the border. The cause was two lines of text per level in a gutter
-# sized for one, "fixed" by stacking 13px apart when the pair needed 21. These
-# pin the rebuild's four rules as strings, the way test_page_contract pins the
-# desktop's — a later edit that drops one fails here rather than on the phone.
+# Measured at phone width the first chart put eleven text elements in a 374px
+# frame: five overlapping pairs and one label hanging 9px outside the border.
+# The cut-back that fixed it over-corrected, and on 2026-08-24 the chart drew
+# the LIGHTEST wall on the board (6.9%) while hiding the heaviest (14.8%).
+# These pin both lessons as strings, the way test_page_contract pins the
+# desktop's, so a later edit that drops one fails here and not on the phone.
 PHONE = (Path(__file__).resolve().parents[1] / "static" / "m" / "index.html").read_text()
 GLANCE = (Path(__file__).resolve().parents[1] / "static" / "m" / "glance.js").read_text()
 
 
 def test_label_rows_are_solved_not_nudged():
-    assert "function layoutLabels(" in GLANCE     # the two-pass separator
-    assert "layoutLabels(ruled.map(" in PHONE     # ...and the chart actually calls it
-    assert "const GUT = 54, ROW = 16" in PHONE    # a gutter sized to its content
+    assert "function layoutLabels(" in GLANCE
+    assert "layoutLabels(numbered.map(" in PHONE
+    assert "ROW = 16" in PHONE                   # a gutter row sized to its content
 
 
 def test_coincident_levels_merge_instead_of_stacking():
-    """The magnet sat exactly on the call wall in the first live scene read.
-    Two things in one place cannot be spaced apart, only merged."""
+    """The heaviest wall and the second magnet were the same strike on the
+    first live board tested. Two things in one place cannot be spaced apart."""
     assert "function mergeLevels(" in GLANCE
-    assert "prev.also" in GLANCE                  # ...and the merge keeps both names
-    assert "for(const a of (l.also || []))" in PHONE
-
-
-def test_the_chart_does_not_repeat_what_is_already_on_screen():
-    """session high/low duplicate the price path's own extremes, and the word
-    labels duplicated the card directly beneath the chart."""
-    assert "session_high" not in GLANCE.split("function drawableLevels")[1].split("function mergeLevels")[0]
-    assert "'call wall'" not in PHONE.split("function paintChart")[1].split("$('key')")[0]
+    assert "hit.magnet=true" in GLANCE            # ...and the merge keeps the confluence
+    assert "l.magnet) out +=" in PHONE            # painted as a glow under the wall's casing
 
 
 def test_a_band_that_covers_the_screen_becomes_its_edges():
     assert "h / geom.h < 0.55" in PHONE
-    assert "band-edge" in PHONE
+    assert "flipedge" in PHONE
 
 
-def test_ruled_levels_set_the_window_and_bands_do_not():
+def test_the_whole_ladder_reaches_the_canvas():
+    """The chart was not under-drawn, it was selecting wrong: only walls.X[0]
+    was read, so *_heaviest_behind — which exists precisely because the
+    distance-ordered ladder cuts the heaviest cluster — never rendered."""
+    sel = GLANCE.split("function drawableLevels")[1].split("function wallTier")[0]
+    assert "ladder.forEach" in sel                       # every rung, not just the first
+    assert "side+'_heaviest_behind'" in sel
+    assert "side+'_side_clear'" in sel
+
+
+def test_the_window_holds_the_structure_and_bands_never_widen_it():
     """A wall just outside the day's range is the whole question the chart
-    answers, so it must widen the view; the flip band routinely spans the
-    session and would squash the price path flat."""
+    answers. The flip band routinely spans multiples of that range."""
     geo = GLANCE.split("function chartGeometry")[1].split("function linePath")[0]
-    assert "l.rank!=null && l.rank<=2" in geo
-    # the exact line that once silently matched nothing. Checked as the
-    # STATEMENT, not the bare name: the comment above it names the field on
-    # purpose, and a test that cannot tell prose from code teaches you to
-    # delete the explanation.
-    assert "if(!l.lead) continue;" not in geo
+    assert "if(l.rank>3) continue;" in geo               # bands excluded from the window
+    assert "FAR_SIGMA" in geo and "exiled" in geo        # ...and far levels get a chevron
+    assert "if(!l.lead) continue;" not in geo            # the field rename that once matched nothing
 
 
-def test_the_header_shows_the_price_and_withholds_the_wrong_percentage():
-    """Measured 2026-08-24: the scan said 1598 while the stock was 1487. The
-    header led with the scan, which on a stale scene is simply the wrong
-    number. The quote leads now — but the CHANGE needs a prior close, and the
-    only one derivable belongs to the scene's own session, so across days it
-    is withheld rather than computed from a stale anchor."""
-    assert "function pickPrice(" in GLANCE
-    assert "function priorClose(" in GLANCE
-    assert "if(sceneIsLive){" in GLANCE          # the percentage is gated on it
-    assert "pickPrice(scene, LIVE, sceneLive)" in PHONE
+def test_weight_is_encoded_without_adding_text():
+    """18,510 recorded wall observations run p10 3.5%, p50 7.3%, p90 20.4% —
+    spread enough that weight is worth encoding, and the fixed 20% full scale
+    is that p90 rather than a guess or the scan's own maximum."""
+    assert "function wallTier(" in GLANCE and "function railWidth(" in GLANCE
+    assert "gex / 20 * full" in GLANCE
+    assert "const FULL = 20;" in PHONE                    # the card uses the same scale
 
 
-def test_the_quote_polls_faster_than_the_scene():
-    """The scene costs a real payload build and stays on 60s. The quote is a
-    2s-cached reading the station already buys for anyone watching, so 5s adds
-    nothing upstream."""
-    assert "setInterval(loadSpot, 5000)" in PHONE
-    assert "setInterval(load, 60000)" in PHONE
-    assert "/api/spot?ticker=SNDK" in PHONE
-    assert "clearInterval(SPOT_TIMER)" in PHONE   # ...and both stop with the screen
+def test_an_unmeasured_gamma_sign_is_not_a_direction():
+    """gamma_sign is literally 'unknown' on 241 of 3,393 recorded rows (7.1%),
+    and every one of them used to print "walls give way" and a confident
+    dealer sentence."""
+    assert "if(s==='negative'||s==='short'||s==='-') return false;" in GLANCE
+    assert "return null;\n}" in GLANCE.split("function gammaIsLong")[1][:900]
+    env = GLANCE.split("function envWords")[1].split("function gammaIsLong")[0]
+    assert "gammaIsLong(regime)" in env                   # header shares the one gate
 
 
-def test_the_chart_is_the_elastic_element():
-    assert "flex:1 1 auto" in PHONE
-    assert "header,.wall,.key{flex:none}" in PHONE
-    assert "min-height:100dvh" in PHONE
+def test_the_key_describes_what_was_painted():
+    """The flip band is entirely off-window on roughly a third of scans, and
+    the key was built from the candidate list, so it named a mark the reader
+    could not find."""
+    assert "const drawn = {}" in PHONE
+    assert "drawn.flip = true" in PHONE
+    assert "if(drawn.call)" in PHONE and "if(drawn.magnet)" in PHONE
+
+
+def test_call_and_put_keep_the_desktop_colour_law():
+    """The desktop's WMETA is gwc: jade / gwp: coral. The phone had these
+    inverted, which put a coral call wall on the same screen as a coral
+    negative-gamma rule meaning the opposite thing."""
+    assert ".lv-call{stroke:var(--jade)}" in PHONE
+    assert ".lv-put{stroke:var(--coral)}" in PHONE
+
+
+def test_the_card_survives_a_board_that_is_clear_both_ways():
+    """nearestWall returns null there and the card used to hide itself —
+    deleting the loudest reading the scene can produce."""
+    assert "function bothSidesClear(" in GLANCE
+    assert "bothSidesClear(walls)" in PHONE
+
+
+def test_the_dead_open_air_branch_is_gone():
+    """walls_ladder sets *_side_clear only when a side's pool is empty and
+    continues before writing the ladder, so beyondWall's first branch could
+    never be reached and that string never rendered."""
+    beyond = GLANCE.split("function beyondWall")[1].split("function farSideNote")[0]
+    assert "_side_clear" not in beyond.split('"""')[0].replace("//", "\n//").split("if(!walls")[1]
+    assert "alone:true" in beyond                        # the sound inference that replaced it
+
+
+def test_distance_is_measured_against_the_price_on_screen():
+    """The header repaints off the live quote every 5s while the scene rebuilds
+    every 60s, so the shipped sigma is measured from a spot the reader can no
+    longer see — 0.58 printed where 0.51 was honest."""
+    assert "function wallDistance(" in GLANCE
+    assert "wallDistance(w.strike, price, sigma)" in PHONE
+    assert "pickPrice(scene, LIVE," in PHONE.split("function paintWall")[1][:600]
+
+
+def test_card_apparatus_clears_the_contrast_floor():
+    """--faint is 3.17:1 on the card surface and fails WCAG AA, which outdoors
+    means gone. Apparatus is subordinate by size, not by contrast."""
+    card = PHONE.split("/* ---- zone 3")[1].split(".msg{")[0]
+    assert ".w-cav{" in card and "color:var(--dim)" in card
+    assert "var(--faint)" not in card.replace("--faint is 3.17:1", "")

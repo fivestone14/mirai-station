@@ -55,19 +55,29 @@ function envWords(regime){
   // positive gamma means dealers lean against moves, negative means they feed
   // them. regime.word is the reader's own label and leads when present.
   if(!regime) return null;
-  const sign=regime.gamma_sign, word=regime.word;
-  const lean = sign==null ? null
-    : (sign>0||sign==='positive'||sign==='long' ? 'walls hold' : 'walls give way');
-  if(word && lean) return String(word)+' · '+lean;
+  const word=regime.word;
+  const g=gammaIsLong(regime);
+  const lean = g==null ? null : (g ? 'walls hold' : 'walls give way');
+  if(word && lean) return String(word)+' \u00b7 '+lean;
   return word ? String(word) : lean;
 }
 
 function gammaIsLong(regime){
+  // Recognised tokens only; everything else is null.
+  //
+  // This returned FALSE for 'unknown' until 2026-08-24, and that is not a bug
+  // of degree. gamma_sign is literally the string 'unknown' on 241 of 3,393
+  // recorded rows (7.1%), and on every one of them the header said "walls give
+  // way" and the card said "Dealers must sell a break down - moves speed up."
+  // A confident direction, in the largest words on the screen, derived from a
+  // field whose value is the word unknown. This file's own header promises
+  // that no datum yields no sentence; this was the one place it lied.
   if(!regime) return null;
   const s=regime.gamma_sign;
-  if(s==null) return null;
-  if(typeof s==='number') return s>0;
-  return s==='positive'||s==='long'||s==='+';
+  if(typeof s==='number') return isFinite(s) ? s>0 : null;
+  if(s==='positive'||s==='long'||s==='+') return true;
+  if(s==='negative'||s==='short'||s==='-') return false;
+  return null;
 }
 
 /* ---- what happens at a wall ------------------------------------------- */
@@ -91,31 +101,35 @@ function wallBehaviour(regime, strike, spot){
 /* ---- what lies past it ------------------------------------------------ */
 
 function beyondWall(walls, side){
+  // What lies past the wall price meets first.
+  //
+  // This used to lead with a `walls[side + '_side_clear']` branch that was
+  // DEAD BY CONSTRUCTION and had therefore never once rendered: walls_ladder
+  // sets *_side_clear only when a side's pool is empty and `continue`s before
+  // writing the ladder (sndk_read.py:1165-1176), so a side can never hold both
+  // — and this function is only ever called with the side of a wall that
+  // exists. The far side's emptiness is a real fact and belongs on the card,
+  // but it is farSideNote's job, not this one's.
+  //
   // The desktop finds air pockets with snkGaps, which measures the space
   // between one cluster's far edge and the next one's near edge. The scene
   // ships wall PEAKS with no edges, so that measurement cannot be reproduced
-  // here and is not approximated — a fabricated gap is worse than none.
-  //
-  // What the scene does carry is the same fact told two other ways, both
-  // computed server-side and both deliberate findings rather than absences:
-  // *_side_clear means the board was measured and this side holds nothing
-  // between price and open air, and *_heaviest_behind names the heavier
-  // cluster sitting behind the one price meets first.
-  if(!walls) return null;
-  if(walls[side+'_side_clear']===true)
-    return {clear:true, text:'Nothing measured beyond — open air on this side.'};
+  // and is not approximated — a fabricated gap is worse than none.
+  if(!walls||!side) return null;
   const behind=walls[side+'_heaviest_behind'];
   if(behind&&behind.strike!=null)
-    return {clear:false, strike:behind.strike,
-            text:'Heavier wall behind it at '+gUsd(behind.strike,0)+'.'};
+    return {strike:behind.strike, gex:(behind.gex!=null&&isFinite(behind.gex))?behind.gex:null,
+            heaviest:true};
   const ladder=walls[side];
   if(Array.isArray(ladder)&&ladder.length>=2&&ladder[1].strike!=null)
-    return {clear:false, strike:ladder[1].strike,
-            text:'Next wall at '+gUsd(ladder[1].strike,0)+'.'};
+    return {strike:ladder[1].strike, gex:(ladder[1].gex!=null&&isFinite(ladder[1].gex))?ladder[1].gex:null,
+            heaviest:false};
+  // A complete ladder of one, with nothing named behind it, is a sound
+  // inference that the side holds exactly one cluster — WALLS_PER_SIDE is 2,
+  // so a second would have shipped if it existed.
+  if(Array.isArray(ladder)&&ladder.length===1) return {alone:true};
   return null;
 }
-
-/* ---- which wall price meets first ------------------------------------- */
 
 function farSideNote(walls, side){
   // walls.put_side_clear / call_side_clear are measured-empty: the board WAS
@@ -125,7 +139,33 @@ function farSideNote(walls, side){
   if(!walls||!side) return null;
   const far = side==='call' ? 'put' : 'call';
   if(walls[far+'_side_clear']!==true) return null;
-  return (far==='put' ? 'Below' : 'Above') + ': open air — nothing measured on that side.';
+  // Worded as what the flag MEANS. walls_ladder admits a cluster only if it
+  // matches the side by gamma sign AND sits on that side of spot
+  // (sndk_read.py:1158-1164), so a wrongly-signed pile there is dropped from
+  // both pools. "Nothing measured on that side" overstated it; the honest
+  // claim is that no wall of that kind stands between price and open air.
+  return far==='put' ? 'No put wall below price.' : 'No call wall above price.';
+}
+
+function bothSidesClear(walls){
+  // The card used to vanish entirely here: nearestWall returns null when
+  // neither side has a ladder, and the card hid itself. But a board measured
+  // clear on BOTH sides is not an absence of information — it is the loudest
+  // reading the scene can produce, and sndk_read.py:1166-1172 says so in as
+  // many words. Deleting the card was deleting the finding.
+  return !!walls && walls.call_side_clear === true && walls.put_side_clear === true;
+}
+
+function wallDistance(strike, price, sigma){
+  // Distance against the price actually ON SCREEN. The header repaints off the
+  // live quote every 5s while the scene rebuilds every 60s, so the card's
+  // shipped `sigma` is measured from a spot the reader can no longer see — it
+  // printed 0.58sigma when the honest figure against the displayed price was
+  // 0.51. Dollars lead because a general reader needs no training to read them.
+  if(strike==null||price==null||!isFinite(strike)||!isFinite(price)) return null;
+  const d=strike-price;
+  return {dollars:Math.abs(d), signed:d,
+          sigma:(sigma&&isFinite(sigma)&&sigma>0)?Math.abs(d)/sigma:null};
 }
 
 function nearestWall(walls, spot){
@@ -145,74 +185,120 @@ function nearestWall(walls, spot){
 /* ---- the levels worth drawing ----------------------------------------- */
 
 function drawableLevels(scene){
-  // WHAT EARNS A LINE. The first cut drew six, and measured at phone width the
-  // labels overlapped in five places and one ran off the edge. Three of the six
-  // were duplication rather than crowding, which is the part worth writing down:
+  // WHAT EARNS A LINE.
   //
-  //   session high / low  the price path's own extremes ARE the high and low.
-  //                       Ruling lines across them says the same thing twice
-  //                       and buys nothing a glance can use.
-  //   second wall         the ladder's job on a phone is "what price meets
-  //                       FIRST". The one behind it is a workstation question.
-  //   word labels         the card underneath already names the nearest wall
-  //                       and says what it does. Colour carries the rest.
+  // The first cut drew six and the labels collided. The second cut drew the
+  // nearest wall on each side and nothing else, and on 2026-08-24 that put the
+  // LIGHTEST object on the board on screen while hiding the heaviest: walls.put[0]
+  // was 1450 carrying 6.9% of the book, while put_heaviest_behind at 1400 carried
+  // 14.8% — more than double — and never reached the canvas at all. The chart was
+  // not under-drawn, it was selecting wrong.
   //
-  // So: the wall price meets first on each side, the magnet, and the flip band.
-  // Never more than four, usually two or three once coincident levels merge.
+  // So the ladder ships whole, plus the heaviest-behind on each side, which
+  // exists precisely because the distance-ordered ladder was cutting the
+  // heaviest cluster (sndk_read.py:1177-1186). Weight is carried by stroke and
+  // by a rail bar rather than by any new text.
+  //
+  // Still refused: session high/low (the price path IS them) and every word
+  // label (the card names things; the plot has one text lane and it holds
+  // prices).
   const out=[], w=scene.walls||{}, p=scene.price||{};
-  const near=(a)=>Array.isArray(a)&&a.length?a[0]:null;
 
-  const c=near(w.call);
-  if(c&&c.strike!=null) out.push({y:c.strike, cls:'lv-call', rank:1});
-  const pu=near(w.put);
-  if(pu&&pu.strike!=null) out.push({y:pu.strike, cls:'lv-put', rank:1});
+  for(const side of ['call','put']){
+    const ladder=w[side];
+    if(Array.isArray(ladder)) ladder.forEach((e,i)=>{
+      if(e.strike==null||!isFinite(e.strike)) return;
+      out.push({y:e.strike, kind:'wall', side, rank:1, nearest:i===0,
+                gex:(e.gex!=null&&isFinite(e.gex))?e.gex:null,
+                held:e.unchanged_min!=null?e.unchanged_min:e.unchanged_min_at_least,
+                heldExact:e.unchanged_min!=null});
+    });
+    const behind=w[side+'_heaviest_behind'];
+    if(behind&&behind.strike!=null&&isFinite(behind.strike))
+      out.push({y:behind.strike, kind:'wall', side, rank:1, behind:true,
+                gex:(behind.gex!=null&&isFinite(behind.gex))?behind.gex:null});
+    if(w[side+'_side_clear']===true) out.push({kind:'clear', side});
+  }
 
+  // The magnet's runners-up are drawn, weighted by their own share, and NOT
+  // gated on a threshold. sr-3 deleted `is_a_tie` because it was a hardcoded
+  // 5.0pp constant shipped as a finding (sndk_read.py:1426-1432); reintroducing
+  // any cutoff here would re-import exactly that mistake. Encoding the gap
+  // continuously means a near-tie LOOKS like a tie without anyone deciding
+  // where a tie begins.
   const mag=(scene.magnet||{}).top_strikes;
-  if(Array.isArray(mag)&&mag.length&&Array.isArray(mag[0])&&mag[0][0]!=null)
-    out.push({y:mag[0][0], cls:'lv-magnet', rank:2});
+  if(Array.isArray(mag)&&mag.length){
+    const top=(Array.isArray(mag[0])&&mag[0][1]!=null)?Number(mag[0][1]):null;
+    mag.forEach((m,i)=>{
+      if(!Array.isArray(m)||m[0]==null||!isFinite(m[0])) return;
+      const share=(m[1]!=null&&isFinite(m[1]))?Number(m[1]):null;
+      out.push({y:m[0], kind:'magnet', rank:i===0?2:3, lead:i===0,
+                share, weight:(share!=null&&top)?Math.max(0.28, share/top):0.5});
+    });
+  }
 
-  // The flip is the level where dealer behaviour inverts, so it is the loudest
-  // thing on the board — and it arrives as SIGMAS from spot (ct_sigma/pt_sigma
-  // are what flip_block measures), never as a price. Converting needs the
-  // scene's own ruler; with no sigma in dollars there is no honest line and
-  // none is drawn. It paints as a zone because that is what it is.
+  // The flip arrives as SIGMAS, never a price, so converting needs the scene's
+  // own ruler. Measured over 1,036 recorded scenes the band is entirely
+  // off-window 36% of the time, which is why the painter must be free to draw
+  // nothing and the key must follow the painter.
   const flip=(scene.regime||{}).flip, sig=(scene.scale||{}).one_sigma_dollars, sp=p.now;
   if(flip&&sig&&sp!=null&&isFinite(sig)&&isFinite(sp)
      &&flip.ct_sigma!=null&&flip.pt_sigma!=null){
     const hi=sp+Number(flip.ct_sigma)*sig, lo=sp+Number(flip.pt_sigma)*sig;
     if(isFinite(hi)&&isFinite(lo))
-      out.push({band:[Math.min(lo,hi), Math.max(lo,hi)], cls:'lv-flip', rank:3});
+      out.push({band:[Math.min(lo,hi), Math.max(lo,hi)], kind:'flip', rank:4});
   }
   return out;
 }
 
+function wallTier(gex){
+  // Quantised to three steps, because 1.2px against 1.6px is invisible at
+  // arm's length outdoors. Measured over 18,510 recorded wall observations the
+  // share of the book runs p10 3.5%, p50 7.3%, p90 20.4% — genuinely spread,
+  // so weight is worth encoding at all. The rail bar carries the continuum.
+  if(gex==null||!isFinite(gex)) return 1.4;      // no datum: a default, never a claim
+  if(gex >= 10) return 2.8;
+  if(gex >= 5)  return 1.9;
+  return 1.2;
+}
+
+function railWidth(gex, full){
+  // Fixed full-scale, not the scan's own maximum: a per-scan max makes the
+  // biggest wall full-width every single scan and destroys comparison between
+  // days. 20% of the book is p90 of the recorded tape (20.37% over 18,510
+  // observations), so roughly one wall in ten clips — and clipping is marked.
+  if(gex==null||!isFinite(gex)) return null;
+  const w=Math.max(2, Math.min(full, gex / 20 * full));
+  return {w, clipped: gex > 20};
+}
+
 function mergeLevels(levels, span){
-  // Two levels on one strike is the ordinary case, not the edge case — the
-  // magnet sat exactly on the call wall in the first live scene tested. Drawing
-  // both means two lines one pixel apart and two numbers fighting for one row.
-  // They merge, lowest rank wins the colour, and the number is printed once.
-  // Merging is what the old stack-the-labels-13px-apart hack was avoiding
-  // badly: you cannot space apart two things that are in the same place.
+  // Two levels on one strike is the ordinary case, not the edge case: on the
+  // live board of 2026-08-24 the heaviest wall (1400) was ALSO the second
+  // magnet, and the nearest wall (1450) was the third. Drawing both means two
+  // lines a pixel apart and two numbers fighting for one row.
+  //
+  // A wall absorbs a magnet rather than the reverse — the wall is the thing
+  // price meets, the magnet is a property of where it sits — and the merged
+  // line keeps a `magnet` flag so the painter can lay the amber glow beneath
+  // the wall's own casing. Losing the confluence because the pixels collided
+  // would be the chart editing the board.
   if(!Array.isArray(levels)) return [];
   const tol=(span>0?span:1)*0.006;
-  const ruled=levels.filter(l=>l.y!=null&&isFinite(l.y)).sort((a,b)=>a.y-b.y);
-  const bands=levels.filter(l=>Array.isArray(l.band));
+  const ruled=levels.filter(l=>l.y!=null&&isFinite(l.y))
+                    .sort((a,b)=>(a.rank-b.rank)||(a.y-b.y));
+  const other=levels.filter(l=>l.y==null);
   const out=[];
   for(const l of ruled){
-    const prev=out[out.length-1];
-    if(prev&&Math.abs(l.y-prev.y)<=tol){
-      // The merge must not swallow the fact. A magnet sitting exactly ON the
-      // wall price meets first is confluence — two different forces naming one
-      // strike — and dropping it because the pixels collided would be the
-      // chart editing the board. One line, one number, both names in the key.
-      const loser = l.rank<prev.rank ? prev.cls : l.cls;
-      if(l.rank<prev.rank){ prev.cls=l.cls; prev.rank=l.rank; }
-      (prev.also||(prev.also=[])).push(loser);
-      continue;
-    }
-    out.push({y:l.y, cls:l.cls, rank:l.rank});
+    const hit=out.find(o=>Math.abs(o.y-l.y)<=tol);
+    if(!hit){ out.push(Object.assign({}, l)); continue; }
+    if(l.kind==='magnet'){ hit.magnet=true; hit.share=hit.share!=null?hit.share:l.share; }
+    else if(hit.kind==='magnet'){
+      const share=hit.share, wasMagnet=true;
+      Object.assign(hit, l); hit.magnet=wasMagnet; hit.share=share;
+    } else if((l.gex||0) > (hit.gex||0)) { Object.assign(hit, l); }
   }
-  return out.concat(bands);
+  return out.concat(other);
 }
 
 function layoutLabels(desired, gap, top, bottom){
@@ -267,38 +353,41 @@ function tapePoints(rows){
   return out;
 }
 
-function chartGeometry(points, levels, spot, box){
-  // A view window wide enough to hold the price path AND the levels that
-  // matter, so distance on screen means distance in dollars. Levels that fall
-  // outside are dropped rather than clamped: a line pinned to the frame edge
-  // reads as "just off screen" when it may be nowhere near.
+function chartGeometry(points, levels, spot, box, sigma){
+  // A view window wide enough to hold the price path AND the structure that
+  // matters, so distance on screen means distance in dollars.
+  //
+  // Ruled levels widen the window; BANDS never do. The flip band routinely
+  // spans multiples of the day's range — on 2026-08-24 it sat $190 above price
+  // — and letting it set the scale would squash the session into a flat line
+  // to make room for a zone nobody can act on.
+  //
+  // Levels beyond FAR_SIGMA are exiled too, and the painter marks them with a
+  // margin chevron instead. Before this, walls.put[0] set a floor of 1412 and
+  // the heaviest wall on the board at 1400 fell outside it — the window was
+  // hiding the very thing the chart exists to show.
+  const FAR_SIGMA=1.75;
+  const far=(sigma&&isFinite(sigma)&&sigma>0)?sigma*FAR_SIGMA:null;
   const vals=[];
   for(const p of points) vals.push(p.s);
   if(spot!=null&&isFinite(spot)) vals.push(spot);
-  // Ruled levels widen the window; BANDS deliberately do not. A wall sitting
-  // just outside the day's range still has to be on screen — that is the whole
-  // question the chart answers — but the flip band routinely spans the entire
-  // session, and letting it set the scale would squash the price path into a
-  // flat line to make room for a zone that is already everywhere.
-  //
-  // (This read `l.lead` until 2026-08-24. The level rewrite renamed that field
-  // to `rank` and the loop went on quietly matching nothing, so for one build
-  // the window was set by price alone and an off-range wall would simply have
-  // been dropped. A field rename that leaves a reader still compiling is the
-  // kind of break only a render catches.)
+  const exiled=[];
   for(const l of levels){
-    if(l.rank!=null && l.rank<=2 && isFinite(l.y)) vals.push(l.y);
+    if(l.y==null||!isFinite(l.y)) continue;
+    if(l.rank>3) continue;
+    if(far!=null&&spot!=null&&Math.abs(l.y-spot)>far){ exiled.push(l); continue; }
+    vals.push(l.y);
   }
   if(!vals.length) return null;
   let lo=Math.min(...vals), hi=Math.max(...vals);
   if(!(hi>lo)){ lo-=1; hi+=1; }
-  const pad=(hi-lo)*0.12;
+  const pad=(hi-lo)*0.06;
   lo-=pad; hi+=pad;
   const t0=points.length?points[0].t:0, t1=points.length?points[points.length-1].t:1;
   const span=(t1>t0)?(t1-t0):1;
   const yFor=v=>box.top+(hi-v)/(hi-lo)*(box.h);
   const xFor=t=>box.left+((t-t0)/span)*(box.w);
-  return {lo, hi, yFor, xFor, t0, t1};
+  return {lo, hi, yFor, xFor, t0, t1, exiled, hasPath: points.length>=2};
 }
 
 function linePath(points, geo){
@@ -380,7 +469,9 @@ function freshness(payload, nowMs){
 
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gSigma, gMinutes, envWords, gammaIsLong, wallBehaviour,
-                  beyondWall, farSideNote, nearestWall, priorClose, pickPrice,
+                  beyondWall, farSideNote, bothSidesClear, wallDistance,
+                  nearestWall, priorClose, pickPrice,
+                  wallTier, railWidth,
                   drawableLevels, mergeLevels,
                   layoutLabels, tapePoints,
                   chartGeometry, linePath, freshness};
