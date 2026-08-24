@@ -225,3 +225,16 @@ def test_the_off_window_flip_chevron_names_itself():
     assert "drawn.flipAway" in PHONE
     assert "off chart" in PHONE
     assert "else if(drawn.flipAway)" in PHONE
+
+
+def test_each_legend_chip_is_one_flex_item():
+    """The swatch and its own label were siblings in the flex row, so the
+    inter-chip gap fell between every icon and the words it belonged to, and a
+    2px bar and an emoji sat on different baselines."""
+    assert 'class="chip"' in PHONE
+    assert ".key .chip{display:inline-flex;align-items:center" in PHONE
+
+
+def test_the_page_fills_the_viewport_and_the_chart_takes_the_slack():
+    assert "height:100dvh" in PHONE and "overflow:hidden" in PHONE
+    assert "flex:1 1 auto;min-height:0" in PHONE   # absorbs every spare pixel
