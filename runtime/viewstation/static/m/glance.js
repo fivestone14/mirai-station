@@ -310,6 +310,46 @@ function linePath(points, geo){
   return d;
 }
 
+/* ---- the price actually worth showing --------------------------------- */
+
+function priorClose(price){
+  // The scene ships the PERCENTAGE against prior close but not the close
+  // itself, and a live quote needs the close to say anything about the day.
+  // Recovering it is exact arithmetic on two numbers the scene already gives.
+  const now=price&&price.now, pct=price&&price.vs_prior_close_pct;
+  if(now==null||pct==null||!isFinite(now)||!isFinite(pct)) return null;
+  const d=1+pct/100;
+  if(!isFinite(d)||d===0) return null;
+  return now/d;
+}
+
+function pickPrice(scene, live, sceneIsLive){
+  // The header showed price.now — the price at the last SCAN. On a stale scene
+  // that is simply the wrong number: measured 2026-08-24, the scan said 1598
+  // while the stock was 1487. A screen glanced at for three seconds cannot
+  // show a three-day-old price as though it were the price.
+  //
+  // So the quote leads whenever there is one. The CHANGE is a different
+  // question: the percentage needs a prior close, and the only close derivable
+  // here belongs to the scene's own session. Across days that is the wrong
+  // close, and a wrong percentage is worse than none — so the change is
+  // reported only while the scene is live, and withheld otherwise rather than
+  // computed from a stale anchor.
+  const p=(scene&&scene.price)||{};
+  const q=(live&&live.spot!=null&&isFinite(live.spot))?Number(live.spot):null;
+  const shown=(q!=null)?q:p.now;
+  if(shown==null||!isFinite(shown)) return null;
+  let pct=null;
+  if(sceneIsLive){
+    if(q==null) pct=p.vs_prior_close_pct;
+    else {
+      const pc=priorClose(p);
+      if(pc) pct=(q/pc-1)*100;
+    }
+  }
+  return {price:shown, pct:(pct!=null&&isFinite(pct))?pct:null, live:q!=null};
+}
+
 /* ---- freshness --------------------------------------------------------- */
 
 function freshness(payload, nowMs){
@@ -340,7 +380,8 @@ function freshness(payload, nowMs){
 
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gSigma, gMinutes, envWords, gammaIsLong, wallBehaviour,
-                  beyondWall, farSideNote, nearestWall, drawableLevels, mergeLevels,
+                  beyondWall, farSideNote, nearestWall, priorClose, pickPrice,
+                  drawableLevels, mergeLevels,
                   layoutLabels, tapePoints,
                   chartGeometry, linePath, freshness};
 }

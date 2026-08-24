@@ -119,3 +119,31 @@ def test_ruled_levels_set_the_window_and_bands_do_not():
     # purpose, and a test that cannot tell prose from code teaches you to
     # delete the explanation.
     assert "if(!l.lead) continue;" not in geo
+
+
+def test_the_header_shows_the_price_and_withholds_the_wrong_percentage():
+    """Measured 2026-08-24: the scan said 1598 while the stock was 1487. The
+    header led with the scan, which on a stale scene is simply the wrong
+    number. The quote leads now — but the CHANGE needs a prior close, and the
+    only one derivable belongs to the scene's own session, so across days it
+    is withheld rather than computed from a stale anchor."""
+    assert "function pickPrice(" in GLANCE
+    assert "function priorClose(" in GLANCE
+    assert "if(sceneIsLive){" in GLANCE          # the percentage is gated on it
+    assert "pickPrice(scene, LIVE, sceneLive)" in PHONE
+
+
+def test_the_quote_polls_faster_than_the_scene():
+    """The scene costs a real payload build and stays on 60s. The quote is a
+    2s-cached reading the station already buys for anyone watching, so 5s adds
+    nothing upstream."""
+    assert "setInterval(loadSpot, 5000)" in PHONE
+    assert "setInterval(load, 60000)" in PHONE
+    assert "/api/spot?ticker=SNDK" in PHONE
+    assert "clearInterval(SPOT_TIMER)" in PHONE   # ...and both stop with the screen
+
+
+def test_the_chart_is_the_elastic_element():
+    assert "flex:1 1 auto" in PHONE
+    assert "header,.wall,.key{flex:none}" in PHONE
+    assert "min-height:100dvh" in PHONE

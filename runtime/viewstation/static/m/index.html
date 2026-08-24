@@ -39,28 +39,64 @@
 html,body{margin:0;padding:0;background:var(--bg);color:var(--ink)}
 body{
   font:15px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
-  padding:max(10px,env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));
-  display:flex;flex-direction:column;gap:12px;min-height:100vh;
+  padding:calc(env(safe-area-inset-top) + 20px) 14px calc(16px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:column;gap:11px;min-height:100vh;min-height:100dvh;
   -webkit-font-smoothing:antialiased;
 }
 .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
 
 /* ---- zone 1 : what kind of day ---- */
-header{display:flex;flex-direction:column;gap:5px}
-.row1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.tick{font-size:13px;letter-spacing:.16em;color:var(--faint);font-family:ui-monospace,monospace}
-.px{font-size:34px;font-weight:600;letter-spacing:-.02em;font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums}
-.chg{font-size:16px;font-weight:600;font-family:ui-monospace,monospace}
-.up{color:var(--jade)} .dn{color:var(--coral)} .flat{color:var(--dim)}
-.row2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px;color:var(--dim)}
-.env{color:var(--ink)}
-.stamp{font-size:11.5px;font-family:ui-monospace,monospace;padding:2px 7px;border-radius:99px;border:1px solid var(--hair)}
+.quote{
+  position:relative;background:var(--surface);border:1px solid var(--hair);
+  border-radius:14px;padding:12px 14px 11px 16px;overflow:hidden;
+  display:flex;flex-direction:column;gap:6px;
+}
+/* the day's direction, read before any number is */
+.quote::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--faint);transition:background .3s;
+}
+.quote.up::before{background:var(--jade)}
+.quote.dn::before{background:var(--coral)}
+
+.qtop{display:flex;align-items:center;gap:7px;min-height:16px}
+.tick{font-size:12px;letter-spacing:.18em;color:var(--dim);font-family:ui-monospace,monospace}
+.src{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+     font-family:ui-monospace,monospace}
+.livedot{width:6px;height:6px;border-radius:50%;background:var(--jade);
+         box-shadow:0 0 0 0 rgba(67,197,158,.55);animation:pulse 2.4s ease-out infinite;flex:none}
+@keyframes pulse{
+  0%{box-shadow:0 0 0 0 rgba(67,197,158,.5)}
+  70%{box-shadow:0 0 0 7px rgba(67,197,158,0)}
+  100%{box-shadow:0 0 0 0 rgba(67,197,158,0)}
+}
+@media (prefers-reduced-motion:reduce){ .livedot{animation:none} }
+.stamp{margin-left:auto;font-size:11px;font-family:ui-monospace,monospace;
+       padding:2px 8px;border-radius:99px;border:1px solid var(--hair);color:var(--dim);white-space:nowrap}
 .stamp.ok{color:var(--jade);border-color:var(--jade-dim)}
 .stamp.warn{color:var(--amber);border-color:#5a4520}
 .stamp.bad{color:var(--coral);border-color:var(--coral-dim);background:#2a1613}
 
+.qmain{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.px{font-size:40px;font-weight:600;letter-spacing:-.03em;line-height:1.05;
+    font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.chg{font-size:14px;font-weight:600;padding:3px 9px;border-radius:99px;
+     border:1px solid transparent;white-space:nowrap}
+.chg.up{color:var(--jade);background:rgba(67,197,158,.11);border-color:var(--jade-dim)}
+.chg.dn{color:var(--coral);background:rgba(235,106,87,.11);border-color:var(--coral-dim)}
+.chg.flat{color:var(--dim);border-color:var(--hair)}
+.chg:empty{display:none}
+
+.qfoot{border-top:1px solid var(--hair);padding-top:8px;margin-top:1px}
+.env{font-size:13.5px;color:var(--ink)}
+
 /* ---- zone 2 : where price sits ---- */
-.chart{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:8px 10px 4px;flex:1;min-height:260px;display:flex}
+/* the chart is the elastic element: header and card are only as tall as
+   their content, and everything left over is plot. min-height:0 is what
+   lets a flex child actually shrink below its content on a small phone. */
+.chart{background:var(--surface);border:1px solid var(--hair);border-radius:12px;
+       padding:10px 12px 6px;flex:1 1 auto;min-height:240px;display:flex}
+header,.wall,.key{flex:none}
 svg{width:100%;height:100%;display:block;overflow:hidden}
 .pline{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .pnow{fill:var(--ink)}
@@ -85,7 +121,7 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
 .s-flip{background:#7f8fe0;opacity:.45;height:8px !important;border-radius:2px}
 
 /* ---- zone 3 : what happens there ---- */
-.wall{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:7px}
+.wall{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:11px 14px;display:flex;flex-direction:column;gap:6px}
 .wall.brake{border-left:3px solid var(--jade)}
 .wall.accelerant{border-left:3px solid var(--coral)}
 .wtop{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -94,9 +130,10 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
 .wmeta{font-size:12.5px;color:var(--dim);font-family:ui-monospace,monospace}
 .wsay{font-size:15px;line-height:1.4}
 .wbeyond{font-size:13px;color:var(--dim)}
-.caveat{font-size:11.5px;color:var(--faint);line-height:1.35}
+.caveat{font-size:11px;color:var(--faint);line-height:1.3;letter-spacing:.01em}
 
-body.stale .px,body.stale .chg{opacity:.42}
+body.stale .px{opacity:.5}
+body.stale .chg{opacity:.42}
 body.stale .chart{opacity:.6}
 .msg{padding:22px 14px;text-align:center;color:var(--dim);font-size:14px;line-height:1.5}
 .msg b{color:var(--coral);font-weight:600}
@@ -104,16 +141,18 @@ body.stale .chart{opacity:.6}
 </head>
 <body>
 
-<header>
-  <div class="row1">
+<header class="quote" id="quote">
+  <div class="qtop">
     <span class="tick">SNDK</span>
+    <span class="livedot" id="livedot" hidden></span>
+    <span class="src" id="src"></span>
+    <span class="stamp" id="stamp">·</span>
+  </div>
+  <div class="qmain">
     <span class="px mono" id="px">—</span>
     <span class="chg mono" id="chg"></span>
   </div>
-  <div class="row2">
-    <span class="env" id="env">connecting…</span>
-    <span class="stamp" id="stamp">·</span>
-  </div>
+  <div class="qfoot"><span class="env" id="env">connecting…</span></div>
 </header>
 
 <div class="chart" id="chartbox"><svg id="svg" preserveAspectRatio="none"></svg></div>
@@ -128,7 +167,9 @@ body.stale .chart{opacity:.6}
 
 const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
-let TIMER = null;
+let TIMER = null, SPOT_TIMER = null;
+let LIVE = null;   // the streaming quote, or null when there isn't one
+let PAY = null;    // the last payload, kept so a new quote can repaint alone
 
 async function getJSON(url){
   const r = await fetch(url, {cache:'no-store'});
@@ -152,6 +193,7 @@ async function load(){
     return fail('No SNDK scene yet.<br><span class="mono">' + ((pay && pay.error) || 'the station returned nothing') + '</span>');
 
   $('msg').hidden = true;
+  PAY = pay;
   const scene = pay.scene;
   paintHeader(pay, scene);
 
@@ -167,17 +209,20 @@ async function load(){
 }
 
 function paintHeader(pay, scene){
-  const price = scene.price || {};
-  const spot = price.now;
-  $('px').textContent = gUsd(spot) || '—';
+  const sceneLive = pay.as_of === 'live';
+  const q = pickPrice(scene, LIVE, sceneLive);
 
-  const ch = price.vs_prior_close_pct;
+  $('px').textContent = q ? gUsd(q.price) : '—';
+  $('livedot').hidden = !(q && q.live);
+  $('src').textContent = q ? (q.live ? 'live' : 'last scan') : '';
+
+  const ch = q ? q.pct : null;
   const c = $('chg');
-  if(ch == null){ c.textContent = ''; }
-  else {
-    c.textContent = (ch > 0 ? '▲ +' : ch < 0 ? '▼ ' : '· ') + Math.abs(ch).toFixed(2) + '%';
-    c.className = 'chg mono ' + (ch > 0 ? 'up' : ch < 0 ? 'dn' : 'flat');
-  }
+  const dir = ch == null ? '' : (ch > 0 ? 'up' : ch < 0 ? 'dn' : 'flat');
+  c.textContent = ch == null ? ''
+    : (ch > 0 ? '▲ +' : ch < 0 ? '▼ ' : '· ') + Math.abs(ch).toFixed(2) + '%';
+  c.className = 'chg mono ' + dir;
+  $('quote').className = 'quote ' + dir;
 
   $('env').textContent = envWords(scene.regime) || 'regime not measured';
 
@@ -315,18 +360,33 @@ function paintWall(scene){
     + (b ? '<div class="wsay">' + b.english + '</div>' : '')
     + (beyond ? '<div class="wbeyond">' + beyond.text + '</div>' : '')
     + (far ? '<div class="wbeyond">' + far + '</div>' : '')
-    + '<div class="caveat">Read off the board’s own gamma sign, not this strike’s. '
-    +   'The dealer buy/sell direction is assumed, as it is on the map.</div>';
+    + '<div class="caveat">Board-level gamma sign · hedge direction assumed</div>';
 }
 
 /* Poll only while the screen is actually being looked at. A glance app has no
    business waking the mini from a pocket, and battery is the whole argument. */
-function start(){
-  load();
-  clearInterval(TIMER);
-  TIMER = setInterval(load, 60000);
+/* The quote moves on its own clock. The scene — walls, regime, flip — is
+   rebuilt by the reader every couple of minutes and costs a real payload
+   build, so it stays on 60s. The price is a 2s-cached quote the station is
+   already buying for anyone watching, so asking every 5s adds nothing
+   upstream and is the difference between a live number and a stale one. */
+async function loadSpot(){
+  const r = await getJSON('/api/spot?ticker=SNDK');
+  const s = r.body && r.body.spot;
+  LIVE = (typeof s === 'number' && isFinite(s)) ? r.body : null;   // fail-open: no quote, keep the scan price
+  if(PAY) paintHeader(PAY, PAY.scene);
 }
-function stop(){ clearInterval(TIMER); TIMER = null; }
+
+function start(){
+  load(); loadSpot();
+  clearInterval(TIMER); clearInterval(SPOT_TIMER);
+  TIMER = setInterval(load, 60000);
+  SPOT_TIMER = setInterval(loadSpot, 5000);
+}
+function stop(){
+  clearInterval(TIMER); clearInterval(SPOT_TIMER);
+  TIMER = SPOT_TIMER = null;
+}
 
 document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
 window.addEventListener('resize', () => { if(!document.hidden) load(); });
