@@ -210,10 +210,19 @@ def test_only_the_lead_magnet_earns_a_glyph():
     assert "if(l.magnetLead) glyphs.push" in PHONE
 
 
-def test_the_chart_is_given_the_room():
-    """No floor: a min-height on the plot is what keeps slack in the page on a
-    tall phone, because flex stops distributing once the floor is met."""
-    assert "flex:1 1 auto;min-height:0" in PHONE
+def test_the_chart_is_given_the_room_but_cannot_collapse():
+    """The plot takes the slack, and it keeps a floor.
+
+    Removing the floor blanked the chart on a real phone: with a FIXED
+    height:100dvh column and overflow:hidden, the plot was the only item
+    permitted to shrink, so the moment header + key + card exceeded the
+    viewport it absorbed the whole overflow and went to zero. The svg's
+    height:100% then resolved against 0 — correct viewBox, nothing drawn, no
+    error anywhere. min-height on the COLUMN (so the page may grow) plus a
+    floor on the plot (so it may not vanish) is the pair that holds."""
+    assert "min-height:100dvh" in PHONE
+    assert "height:100dvh;overflow:hidden" not in PHONE.replace(" ", "")
+    assert "flex:1 1 0;min-height:240px" in PHONE
     assert "header,.wall,.key{flex:none}" in PHONE
 
 
@@ -236,6 +245,3 @@ def test_each_legend_chip_is_one_flex_item():
     assert ".key .chip{display:inline-flex;align-items:center" in PHONE
 
 
-def test_the_page_fills_the_viewport_and_the_chart_takes_the_slack():
-    assert "height:100dvh" in PHONE and "overflow:hidden" in PHONE
-    assert "flex:1 1 auto;min-height:0" in PHONE   # absorbs every spare pixel
