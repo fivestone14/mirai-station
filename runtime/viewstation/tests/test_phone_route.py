@@ -10,6 +10,8 @@ these pin all three spellings onto the same file.
 Driving do_GET needs no socket: the handler's only I/O goes through _send_file
 and _send_json, and a subclass that captures both exercises the route table
 directly (the same stand-in habit test_host_guard uses for _host_ok)."""
+from pathlib import Path
+
 import pytest
 
 import server
@@ -67,3 +69,53 @@ def test_the_phone_page_is_not_reachable_by_a_rebound_name():
     h.headers = {"Host": "evil.com"}
     h.do_GET()
     assert h.sent_file is None
+
+
+# --- the chart's layout contract ------------------------------------------
+# Measured at phone width on 2026-08-24 the first chart put eleven text
+# elements in a 374px frame: five overlapping pairs and one label hanging 9px
+# outside the border. The cause was two lines of text per level in a gutter
+# sized for one, "fixed" by stacking 13px apart when the pair needed 21. These
+# pin the rebuild's four rules as strings, the way test_page_contract pins the
+# desktop's — a later edit that drops one fails here rather than on the phone.
+PHONE = (Path(__file__).resolve().parents[1] / "static" / "m" / "index.html").read_text()
+GLANCE = (Path(__file__).resolve().parents[1] / "static" / "m" / "glance.js").read_text()
+
+
+def test_label_rows_are_solved_not_nudged():
+    assert "function layoutLabels(" in GLANCE     # the two-pass separator
+    assert "layoutLabels(ruled.map(" in PHONE     # ...and the chart actually calls it
+    assert "const GUT = 54, ROW = 16" in PHONE    # a gutter sized to its content
+
+
+def test_coincident_levels_merge_instead_of_stacking():
+    """The magnet sat exactly on the call wall in the first live scene read.
+    Two things in one place cannot be spaced apart, only merged."""
+    assert "function mergeLevels(" in GLANCE
+    assert "prev.also" in GLANCE                  # ...and the merge keeps both names
+    assert "for(const a of (l.also || []))" in PHONE
+
+
+def test_the_chart_does_not_repeat_what_is_already_on_screen():
+    """session high/low duplicate the price path's own extremes, and the word
+    labels duplicated the card directly beneath the chart."""
+    assert "session_high" not in GLANCE.split("function drawableLevels")[1].split("function mergeLevels")[0]
+    assert "'call wall'" not in PHONE.split("function paintChart")[1].split("$('key')")[0]
+
+
+def test_a_band_that_covers_the_screen_becomes_its_edges():
+    assert "h / geom.h < 0.55" in PHONE
+    assert "band-edge" in PHONE
+
+
+def test_ruled_levels_set_the_window_and_bands_do_not():
+    """A wall just outside the day's range is the whole question the chart
+    answers, so it must widen the view; the flip band routinely spans the
+    session and would squash the price path flat."""
+    geo = GLANCE.split("function chartGeometry")[1].split("function linePath")[0]
+    assert "l.rank!=null && l.rank<=2" in geo
+    # the exact line that once silently matched nothing. Checked as the
+    # STATEMENT, not the bare name: the comment above it names the field on
+    # purpose, and a test that cannot tell prose from code teaches you to
+    # delete the explanation.
+    assert "if(!l.lead) continue;" not in geo

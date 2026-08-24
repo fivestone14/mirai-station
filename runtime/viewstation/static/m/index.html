@@ -60,24 +60,29 @@ header{display:flex;flex-direction:column;gap:5px}
 .stamp.bad{color:var(--coral);border-color:var(--coral-dim);background:#2a1613}
 
 /* ---- zone 2 : where price sits ---- */
-.chart{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:8px 6px 4px;flex:1;min-height:300px;display:flex}
-svg{width:100%;height:100%;display:block;overflow:visible}
-.pline{fill:none;stroke:var(--ink);stroke-width:1.9;stroke-linejoin:round;stroke-linecap:round}
+.chart{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:8px 10px 4px;flex:1;min-height:260px;display:flex}
+svg{width:100%;height:100%;display:block;overflow:hidden}
+.pline{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .pnow{fill:var(--ink)}
-.pnow-halo{fill:none;stroke:var(--ink);stroke-opacity:.28;stroke-width:1.2}
-.lv{stroke-width:1.2}
+.pnow-halo{fill:none;stroke:var(--ink);stroke-opacity:.25;stroke-width:1.2}
+.lv{stroke-width:1.1}
 .lv-call{stroke:var(--coral)}
 .lv-put{stroke:var(--jade)}
-.lv-magnet{stroke:var(--amber);stroke-dasharray:none;stroke-width:1.6}
-.lv-flip{stroke:#7f8fe0;stroke-dasharray:6 4}
-.band{stroke:none}
-.lv-flip-fill{fill:#7f8fe0;fill-opacity:.07}
-.lv-session{stroke:var(--faint);stroke-dasharray:2 4;stroke-width:1}
-.lv-second{stroke-opacity:.42}
-.lbl{font-family:ui-monospace,monospace;font-size:10.5px;fill:var(--dim)}
-.lbl-k{font-family:ui-monospace,monospace;font-size:11px;font-variant-numeric:tabular-nums}
-.k-call{fill:var(--coral)} .k-put{fill:var(--jade)}
-.k-magnet{fill:var(--amber)} .k-flip{fill:#7f8fe0} .k-session{fill:var(--faint)}
+.lv-magnet{stroke:var(--amber);stroke-dasharray:5 4}
+.lv-flip{stroke:none}
+.band{fill:#7f8fe0;fill-opacity:.09;stroke:none}
+.band-edge{stroke:#7f8fe0;stroke-opacity:.5;stroke-width:1;stroke-dasharray:3 5;fill:none}
+.tie{fill:none;stroke:var(--faint);stroke-width:.8}
+.lbl{font-family:ui-monospace,monospace;font-size:10px;fill:var(--faint)}
+.k{font-family:ui-monospace,monospace;font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.k-call{fill:var(--coral)} .k-put{fill:var(--jade)} .k-magnet{fill:var(--amber)}
+
+.key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;color:var(--faint);
+     font-family:ui-monospace,monospace;padding:0 2px}
+.key i{display:inline-block;width:12px;height:2px;margin-right:5px;vertical-align:middle;border-radius:1px}
+.s-call{background:var(--coral)} .s-put{background:var(--jade)}
+.s-magnet{background:linear-gradient(90deg,var(--amber) 60%,transparent 60%)}
+.s-flip{background:#7f8fe0;opacity:.45;height:8px !important;border-radius:2px}
 
 /* ---- zone 3 : what happens there ---- */
 .wall{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:7px}
@@ -112,6 +117,7 @@ body.stale .chart{opacity:.6}
 </header>
 
 <div class="chart" id="chartbox"><svg id="svg" preserveAspectRatio="none"></svg></div>
+<div class="key" id="key"></div>
 
 <section class="wall" id="wall" hidden></section>
 <div class="msg" id="msg" hidden></div>
@@ -187,74 +193,98 @@ function paintHeader(pay, scene){
 
 function paintChart(scene, points){
   const box = $('chartbox').getBoundingClientRect();
-  const W = Math.max(240, box.width - 14), H = Math.max(240, box.height - 14);
-  const PAD_R = 58;                                  // the strike gutter on the right
-  const geom = {left:4, top:10, w:W - PAD_R, h:H - 26};
+  const W = Math.max(240, box.width - 12), H = Math.max(220, box.height - 12);
+
+  // The gutter is sized to the widest thing that goes in it — one price at
+  // 12px monospace, which is 6 glyphs at 0.6em plus breathing room. The first
+  // cut guessed 58px for a gutter that had to hold "$1,600" AND "call wall",
+  // and "call wall" hung 9px outside the frame.
+  const GUT = 54, ROW = 16, PAD_T = 14, PAD_B = 22;
+  const geom = {left: 2, top: PAD_T, w: W - GUT, h: H - PAD_T - PAD_B};
   const spot = (scene.price || {}).now;
-  const levels = drawableLevels(scene);
-  const geo = chartGeometry(points, levels, spot, geom);
 
   const svg = $('svg');
   svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-  svg.removeAttribute('preserveAspectRatio');
 
-  if(!geo){ svg.innerHTML = '<text class="lbl" x="8" y="24">no price measured yet</text>'; return; }
+  const raw = drawableLevels(scene);
+  const geo = chartGeometry(points, raw, spot, geom);
+  if(!geo){ svg.innerHTML = '<text class="lbl" x="6" y="26">no price measured yet</text>'; return; }
 
+  const levels = mergeLevels(raw, geo.hi - geo.lo);
+  const plotR = geom.left + geom.w;
   let out = '';
 
-  // Bands paint first and flat — the flip band is a zone price is inside or
-  // outside of, and a filled region says that where two more lines would not.
+  // 1 — the flip band. A tint reads as a zone only while it is a MINORITY of
+  //     the view; measured on the live board it spanned the whole session, and
+  //     a wash over everything says nothing at all. Past the threshold it drops
+  //     to its two edges, which is where the actual behaviour changes — the
+  //     information was always the boundary, not the fill.
   for(const l of levels){
     if(!Array.isArray(l.band)) continue;
     const a = geo.yFor(Math.min(l.band[1], geo.hi)), b = geo.yFor(Math.max(l.band[0], geo.lo));
     if(!isFinite(a) || !isFinite(b)) continue;
-    out += '<rect class="band ' + l.cls + '-fill" x="4" y="' + Math.min(a, b).toFixed(1)
-         + '" width="' + (geom.left + geom.w - 4).toFixed(1)
-         + '" height="' + Math.abs(b - a).toFixed(1) + '"/>';
-    out += '<text class="lbl k-flip" x="8" y="' + (Math.min(a, b) + 12).toFixed(1) + '">' + l.label + '</text>';
+    const top = Math.min(a, b), h = Math.abs(b - a);
+    if(h / geom.h < 0.55){
+      out += '<rect class="band" x="0" y="' + top.toFixed(1)
+           + '" width="' + plotR.toFixed(1) + '" height="' + h.toFixed(1) + '"/>';
+    } else {
+      for(const edge of [a, b]){
+        if(edge > PAD_T && edge < H - PAD_B)
+          out += '<line class="band-edge" x1="0" y1="' + edge.toFixed(1)
+               + '" x2="' + plotR.toFixed(1) + '" y2="' + edge.toFixed(1) + '"/>';
+      }
+    }
   }
 
-  // Then the ruled levels. Labels are stacked rather than overprinted: the
-  // magnet and the nearest wall land on the SAME strike often enough that two
-  // labels at one y is the ordinary case, not the edge case.
-  const taken = [];
-  const freeY = y => {
-    let v = y;
-    while(taken.some(t => Math.abs(t - v) < 13)) v += 13;
-    taken.push(v);
-    return v;
-  };
-  const ruled = levels.filter(l => isFinite(l.y) && l.y >= geo.lo && l.y <= geo.hi)   // off-window is dropped, never clamped
-                      .sort((a, b) => a.y - b.y);
-  for(const l of ruled){
-    const y = geo.yFor(l.y);
-    const cls = l.cls + (l.lead === false ? ' lv-second' : '');
-    out += '<line class="lv ' + cls + '" x1="4" y1="' + y.toFixed(1) + '" x2="' + (geom.left + geom.w) + '" y2="' + y.toFixed(1) + '"/>';
-    const ly = freeY(y);
-    const kcls = 'k-' + l.cls.slice(3);
-    out += '<text class="lbl-k ' + kcls + '" x="' + (geom.left + geom.w + 6) + '" y="' + (ly + 4).toFixed(1) + '">'
-         + gUsd(l.y, 0) + '</text>';
-    out += '<text class="lbl" x="' + (geom.left + geom.w + 6) + '" y="' + (ly + 15).toFixed(1) + '">' + l.label + '</text>';
-  }
+  // 2 — the ruled levels, and their numbers solved into rows that cannot touch
+  const ruled = levels.filter(l => isFinite(l.y) && l.y >= geo.lo && l.y <= geo.hi);   // off-window is dropped, never clamped
+  const rows = layoutLabels(ruled.map(l => geo.yFor(l.y)), ROW, PAD_T + 4, H - PAD_B - 2);
+  ruled.forEach((l, i) => {
+    const y = geo.yFor(l.y), ly = rows[i];
+    out += '<line class="lv ' + l.cls + '" x1="0" y1="' + y.toFixed(1)
+         + '" x2="' + plotR.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
+    // A number that had to move gets a hairline back to the line it belongs to,
+    // because a label floating beside nothing is worse than no label.
+    if(Math.abs(ly - y) > 2)
+      out += '<path class="tie" d="M' + plotR.toFixed(1) + ',' + y.toFixed(1)
+           + ' L' + (plotR + 5).toFixed(1) + ',' + ly.toFixed(1) + '"/>';
+    out += '<text class="k ' + ('k-' + l.cls.slice(3)) + '" x="' + (plotR + 7)
+         + '" y="' + (ly + 4).toFixed(1) + '">' + gUsd(l.y, 0).replace('$', '') + '</text>';
+  });
 
+  // 3 — the day's path on top of all of it
   const d = linePath(points, geo);
   if(d) out += '<path class="pline" d="' + d + '"/>';
 
   if(spot != null && isFinite(spot) && spot >= geo.lo && spot <= geo.hi){
-    const cx = points.length ? geo.xFor(points[points.length - 1].t) : geom.left + geom.w;
+    // held one halo-width inside the plot: at the bare right edge its 6.5px
+    // halo finished half a pixel from the price number in the gutter.
+    const cx = Math.min(points.length ? geo.xFor(points[points.length - 1].t) : plotR,
+                        plotR - 8);
     const cy = geo.yFor(spot);
     out += '<circle class="pnow-halo" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6.5"/>';
     out += '<circle class="pnow" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="3.4"/>';
   }
 
-  // the session's own clock, so the line's width means something
+  // 4 — the session's own clock, so the width of the line means something
   const c = scene.clock || {};
   if(c.minutes_since_open != null){
-    out += '<text class="lbl" x="4" y="' + (H - 4) + '">9:30</text>';
-    out += '<text class="lbl" x="' + (geom.left + geom.w) + '" y="' + (H - 4) + '" text-anchor="end">'
-         + (c.minutes_to_close > 0 ? gMinutes(c.minutes_to_close) + ' to close' : 'closed') + '</text>';
+    out += '<text class="lbl" x="0" y="' + (H - 6) + '">9:30</text>';
+    out += '<text class="lbl" x="' + plotR + '" y="' + (H - 6) + '" text-anchor="end">'
+         + (c.minutes_to_close > 0 ? gMinutes(c.minutes_to_close) + ' left' : 'closed') + '</text>';
   }
   svg.innerHTML = out;
+
+  // The key lives in HTML under the chart, not inside it. Words in the plot
+  // are what crowded the first cut; here they cannot collide with anything.
+  const seen = {};
+  for(const l of levels){ seen[l.cls] = true; for(const a of (l.also || [])) seen[a] = true; }
+  const key = [];
+  if(seen['lv-call']) key.push('<i class="s-call"></i>call wall');
+  if(seen['lv-put']) key.push('<i class="s-put"></i>put wall');
+  if(seen['lv-magnet']) key.push('<i class="s-magnet"></i>magnet');
+  if(seen['lv-flip']) key.push('<i class="s-flip"></i>flip band');
+  $('key').innerHTML = key.join('');
 }
 
 function paintWall(scene){

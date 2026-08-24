@@ -145,36 +145,105 @@ function nearestWall(walls, spot){
 /* ---- the levels worth drawing ----------------------------------------- */
 
 function drawableLevels(scene){
-  // Everything the chart can rule a line for, each carrying its own label and
-  // class. Order matters only for paint: walls sit under the magnet, which
-  // sits under the flip, because a flip crossing is the loudest of the three.
+  // WHAT EARNS A LINE. The first cut drew six, and measured at phone width the
+  // labels overlapped in five places and one ran off the edge. Three of the six
+  // were duplication rather than crowding, which is the part worth writing down:
+  //
+  //   session high / low  the price path's own extremes ARE the high and low.
+  //                       Ruling lines across them says the same thing twice
+  //                       and buys nothing a glance can use.
+  //   second wall         the ladder's job on a phone is "what price meets
+  //                       FIRST". The one behind it is a workstation question.
+  //   word labels         the card underneath already names the nearest wall
+  //                       and says what it does. Colour carries the rest.
+  //
+  // So: the wall price meets first on each side, the magnet, and the flip band.
+  // Never more than four, usually two or three once coincident levels merge.
   const out=[], w=scene.walls||{}, p=scene.price||{};
-  (w.put||[]).forEach((e,i)=>{ if(e.strike!=null)
-    out.push({y:e.strike, cls:'lv-put', label:'put wall', gex:e.gex,
-              held:e.unchanged_min!=null?e.unchanged_min:e.unchanged_min_at_least,
-              lead:i===0}); });
-  (w.call||[]).forEach((e,i)=>{ if(e.strike!=null)
-    out.push({y:e.strike, cls:'lv-call', label:'call wall', gex:e.gex,
-              held:e.unchanged_min!=null?e.unchanged_min:e.unchanged_min_at_least,
-              lead:i===0}); });
+  const near=(a)=>Array.isArray(a)&&a.length?a[0]:null;
+
+  const c=near(w.call);
+  if(c&&c.strike!=null) out.push({y:c.strike, cls:'lv-call', rank:1});
+  const pu=near(w.put);
+  if(pu&&pu.strike!=null) out.push({y:pu.strike, cls:'lv-put', rank:1});
+
   const mag=(scene.magnet||{}).top_strikes;
   if(Array.isArray(mag)&&mag.length&&Array.isArray(mag[0])&&mag[0][0]!=null)
-    out.push({y:mag[0][0], cls:'lv-magnet', label:'magnet', lead:true});
+    out.push({y:mag[0][0], cls:'lv-magnet', rank:2});
+
   // The flip is the level where dealer behaviour inverts, so it is the loudest
-  // line on the chart — and it arrives as SIGMAS from spot (ct_sigma/pt_sigma
+  // thing on the board — and it arrives as SIGMAS from spot (ct_sigma/pt_sigma
   // are what flip_block measures), never as a price. Converting needs the
-  // scene's own ruler; without one sigma in dollars there is no honest line to
-  // draw and none is drawn.
+  // scene's own ruler; with no sigma in dollars there is no honest line and
+  // none is drawn. It paints as a zone because that is what it is.
   const flip=(scene.regime||{}).flip, sig=(scene.scale||{}).one_sigma_dollars, sp=p.now;
   if(flip&&sig&&sp!=null&&isFinite(sig)&&isFinite(sp)
      &&flip.ct_sigma!=null&&flip.pt_sigma!=null){
     const hi=sp+Number(flip.ct_sigma)*sig, lo=sp+Number(flip.pt_sigma)*sig;
     if(isFinite(hi)&&isFinite(lo))
-      out.push({band:[Math.min(lo,hi), Math.max(lo,hi)], cls:'lv-flip',
-                label:'flip band', lead:true});
+      out.push({band:[Math.min(lo,hi), Math.max(lo,hi)], cls:'lv-flip', rank:3});
   }
-  if(p.session_high!=null) out.push({y:p.session_high, cls:'lv-session', label:'high'});
-  if(p.session_low!=null)  out.push({y:p.session_low,  cls:'lv-session', label:'low'});
+  return out;
+}
+
+function mergeLevels(levels, span){
+  // Two levels on one strike is the ordinary case, not the edge case — the
+  // magnet sat exactly on the call wall in the first live scene tested. Drawing
+  // both means two lines one pixel apart and two numbers fighting for one row.
+  // They merge, lowest rank wins the colour, and the number is printed once.
+  // Merging is what the old stack-the-labels-13px-apart hack was avoiding
+  // badly: you cannot space apart two things that are in the same place.
+  if(!Array.isArray(levels)) return [];
+  const tol=(span>0?span:1)*0.006;
+  const ruled=levels.filter(l=>l.y!=null&&isFinite(l.y)).sort((a,b)=>a.y-b.y);
+  const bands=levels.filter(l=>Array.isArray(l.band));
+  const out=[];
+  for(const l of ruled){
+    const prev=out[out.length-1];
+    if(prev&&Math.abs(l.y-prev.y)<=tol){
+      // The merge must not swallow the fact. A magnet sitting exactly ON the
+      // wall price meets first is confluence — two different forces naming one
+      // strike — and dropping it because the pixels collided would be the
+      // chart editing the board. One line, one number, both names in the key.
+      const loser = l.rank<prev.rank ? prev.cls : l.cls;
+      if(l.rank<prev.rank){ prev.cls=l.cls; prev.rank=l.rank; }
+      (prev.also||(prev.also=[])).push(loser);
+      continue;
+    }
+    out.push({y:l.y, cls:l.cls, rank:l.rank});
+  }
+  return out.concat(bands);
+}
+
+function layoutLabels(desired, gap, top, bottom){
+  // Label rows solved, not nudged. The old pass only ever pushed DOWN and only
+  // by one row height, so a crowded pair stayed crowded and a low pair walked
+  // off the bottom. This is the standard two-pass: separate downward, then, if
+  // the run overflows, push the whole run back up and clamp. Pure, so the
+  // guarantee it makes — no two rows closer than `gap` — is testable without
+  // a browser.
+  const n=desired.length;
+  if(!n) return [];
+  const idx=desired.map((y,i)=>({y,i})).sort((a,b)=>a.y-b.y);
+  const out=new Array(n);
+  let prev=-Infinity;
+  for(const d of idx){
+    const y=Math.max(d.y, prev+gap, top);
+    out[d.i]=y; prev=y;
+  }
+  // backward pass: if the last row cleared the floor, walk the run up
+  let next=Infinity;
+  for(let k=idx.length-1;k>=0;k--){
+    const i=idx[k].i;
+    out[i]=Math.min(out[i], next-gap, bottom);
+    next=out[i];
+  }
+  // and never above the ceiling, even if that means re-crowding a full column
+  let floor=-Infinity;
+  for(const d of idx){
+    out[d.i]=Math.max(out[d.i], floor+gap, top);
+    floor=out[d.i];
+  }
   return out;
 }
 
@@ -206,10 +275,19 @@ function chartGeometry(points, levels, spot, box){
   const vals=[];
   for(const p of points) vals.push(p.s);
   if(spot!=null&&isFinite(spot)) vals.push(spot);
+  // Ruled levels widen the window; BANDS deliberately do not. A wall sitting
+  // just outside the day's range still has to be on screen — that is the whole
+  // question the chart answers — but the flip band routinely spans the entire
+  // session, and letting it set the scale would squash the price path into a
+  // flat line to make room for a zone that is already everywhere.
+  //
+  // (This read `l.lead` until 2026-08-24. The level rewrite renamed that field
+  // to `rank` and the loop went on quietly matching nothing, so for one build
+  // the window was set by price alone and an off-range wall would simply have
+  // been dropped. A field rename that leaves a reader still compiling is the
+  // kind of break only a render catches.)
   for(const l of levels){
-    if(!l.lead) continue;
-    if(isFinite(l.y)) vals.push(l.y);
-    if(Array.isArray(l.band)){ vals.push(l.band[0]); vals.push(l.band[1]); }
+    if(l.rank!=null && l.rank<=2 && isFinite(l.y)) vals.push(l.y);
   }
   if(!vals.length) return null;
   let lo=Math.min(...vals), hi=Math.max(...vals);
@@ -262,6 +340,7 @@ function freshness(payload, nowMs){
 
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gSigma, gMinutes, envWords, gammaIsLong, wallBehaviour,
-                  beyondWall, farSideNote, nearestWall, drawableLevels, tapePoints,
+                  beyondWall, farSideNote, nearestWall, drawableLevels, mergeLevels,
+                  layoutLabels, tapePoints,
                   chartGeometry, linePath, freshness};
 }
