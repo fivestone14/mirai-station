@@ -211,8 +211,9 @@ def test_only_the_lead_magnet_earns_a_glyph():
 
 
 def test_the_chart_is_given_the_room():
-    assert "min-height:300px" in PHONE               # the plot's floor
-    assert "flex:1 1 auto" in PHONE
+    """No floor: a min-height on the plot is what keeps slack in the page on a
+    tall phone, because flex stops distributing once the floor is met."""
+    assert "flex:1 1 auto;min-height:0" in PHONE
     assert "header,.wall,.key{flex:none}" in PHONE
 
 
