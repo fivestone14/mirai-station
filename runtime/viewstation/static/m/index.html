@@ -39,8 +39,8 @@
 html,body{margin:0;padding:0;background:var(--bg);color:var(--ink)}
 body{
   font:15px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
-  padding:calc(env(safe-area-inset-top) + 20px) 14px calc(16px + env(safe-area-inset-bottom));
-  display:flex;flex-direction:column;gap:11px;min-height:100vh;min-height:100dvh;
+  padding:calc(env(safe-area-inset-top) + 12px) 10px calc(10px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:column;gap:7px;min-height:100vh;min-height:100dvh;
   -webkit-font-smoothing:antialiased;
 }
 .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
@@ -48,8 +48,8 @@ body{
 /* ---- zone 1 : what kind of day ---- */
 .quote{
   position:relative;background:var(--surface);border:1px solid var(--hair);
-  border-radius:14px;padding:12px 14px 11px 16px;overflow:hidden;
-  display:flex;flex-direction:column;gap:6px;
+  border-radius:12px;padding:8px 12px 8px 14px;overflow:hidden;
+  display:flex;flex-direction:column;gap:3px;
 }
 /* the day's direction, read before any number is */
 .quote::before{
@@ -78,7 +78,7 @@ body{
 .stamp.bad{color:var(--coral);border-color:var(--coral-dim);background:#2a1613}
 
 .qmain{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.px{font-size:40px;font-weight:600;letter-spacing:-.03em;line-height:1.05;
+.px{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.05;
     font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 .chg{font-size:14px;font-weight:600;padding:3px 9px;border-radius:99px;
      border:1px solid transparent;white-space:nowrap}
@@ -87,7 +87,7 @@ body{
 .chg.flat{color:var(--dim);border-color:var(--hair)}
 .chg:empty{display:none}
 
-.qfoot{border-top:1px solid var(--hair);padding-top:8px;margin-top:1px}
+.qfoot{border-top:1px solid var(--hair);padding-top:5px;margin-top:1px}
 .env{font-size:13.5px;color:var(--ink)}
 
 /* ---- zone 2 : where price sits ---- */
@@ -98,7 +98,7 @@ body{
    their content, and everything left over is plot. min-height:0 is what
    lets a flex child actually shrink below its content on a small phone. */
 .chart{background:var(--surface);border:1px solid var(--hair);border-radius:12px;
-       padding:10px 12px 6px;flex:1 1 auto;min-height:240px;display:flex}
+       padding:6px 8px 2px;flex:1 1 auto;min-height:300px;display:flex}
 header,.wall,.key{flex:none}
 svg{width:100%;height:100%;display:block;overflow:hidden}
 
@@ -122,7 +122,10 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
 .wt{opacity:.75}
 .wt-call{fill:var(--jade)} .wt-put{fill:var(--coral)}
 .wt-clip{fill:var(--ink);opacity:.5}
-.clear{fill:none;stroke:var(--faint);stroke-width:1;stroke-dasharray:3 3}
+/* the glyph lane. Emoji render as colour bitmaps, so they carry no theme
+   token and must never be asked to mean a hue — they mark a PLACE. */
+.glyph{font-size:13px;text-anchor:middle;
+       font-family:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif}
 
 /* magnet: solid with a glow. The dash this used to carry belongs to the
    desktop's fence mark, not its magnet. */
@@ -141,15 +144,14 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
 .key{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:10.5px;color:var(--dim);
      font-family:ui-monospace,monospace;padding:0 2px}
 .key i{display:inline-block;width:12px;height:2px;margin-right:5px;vertical-align:middle;border-radius:1px}
+.key b{font-weight:400;font-size:11px;margin-right:4px;line-height:1}
 .s-call{background:var(--jade)} .s-put{background:var(--coral)}
 .s-wt{background:linear-gradient(90deg,var(--dim) 0,var(--dim) 50%,transparent 50%);height:3px !important}
-.s-magnet{background:var(--amber)}
-.s-clear{background:none !important;border:1px dashed var(--faint);height:5px !important}
 .s-flip{background:#7f8fe0;opacity:.5;height:7px !important;border-radius:2px}
 
 /* ---- zone 3 : what happens there ---- */
 .wall{position:relative;background:var(--surface);border:1px solid var(--hair);
-      border-left:3px solid var(--hair);border-radius:12px;padding:10px 13px 10px 12px;
+      border-left:3px solid var(--hair);border-radius:12px;padding:8px 12px 8px 11px;
       overflow:hidden;display:flex;flex-direction:column;gap:0}
 .wall.brake{border-left-color:var(--jade)}
 .wall.accelerant{border-left-color:var(--coral)}
@@ -175,7 +177,7 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
 
 /* both bars on ONE grid, so the two tracks are provably the same scale */
 .w-load{display:grid;grid-template-columns:1fr auto;align-items:center;
-        column-gap:9px;row-gap:4px;margin-top:8px}
+        column-gap:9px;row-gap:3px;margin-top:6px}
 .w-bar{position:relative;height:8px;border-radius:2px;background:#1a2330;overflow:hidden}
 .w-bar>i{position:absolute;inset:0 auto 0 0;border-radius:2px;background:rgba(219,228,224,.80)}
 .w-bar.behind>i{background:rgba(219,228,224,.46)}
@@ -185,10 +187,10 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
 .w-val b{font-weight:600;color:var(--ink)}
 
 /* a measured emptiness is a FINDING — ink, not dim */
-.w-far{margin-top:8px;font-size:11.5px;line-height:1.3;color:var(--ink)}
+.w-far{margin-top:6px;font-size:11.5px;line-height:1.3;color:var(--ink)}
 /* apparatus is subordinate by SIZE, not by contrast: --faint is 3.17:1 on this
    surface and fails AA, which outdoors means gone. */
-.w-cav{margin-top:6px;font-size:10px;line-height:1.3;color:var(--dim)}
+.w-cav{margin-top:5px;font-size:10px;line-height:1.3;color:var(--dim)}
 
 .msg{padding:22px 14px;text-align:center;color:var(--dim);font-size:14px;line-height:1.5}
 .msg b{color:var(--coral);font-weight:600}
@@ -298,10 +300,11 @@ function paintChart(scene, points){
   /* Fixed lanes; only the plot flexes. A wider phone gets more chart, never a
      different chart — and a rail whose datum is missing goes BLANK rather than
      collapsing, so two scans stay geometrically comparable. */
-  const RULE = 3, GUT = 46, RAIL = 20, PAD_T = 14, PAD_B = 20, ROW = 16;
+  const RULE = 3, GUT = 46, RAIL = 18, TERM = 16, PAD_T = 14, PAD_B = 20, ROW = 16;
   const plotL = RULE + 8;
-  const plotR = W - GUT - RAIL - 6;
-  const railX = plotR + 5;
+  const plotR = W - GUT - RAIL - TERM - 6;
+  const termX = plotR + TERM / 2;      // glyph lane: icons only, never a bar
+  const railX = plotR + TERM + 2;
   const gutX  = W - GUT + 2;
   const geom = {left: plotL, top: PAD_T, w: plotR - plotL, h: H - PAD_T - PAD_B};
 
@@ -316,6 +319,7 @@ function paintChart(scene, points){
 
   const levels = mergeLevels(raw, geo.hi - geo.lo);
   const drawn = {};
+  const glyphs = [];
   const inWin = v => isFinite(v) && v >= geo.lo && v <= geo.hi;
   let out = '';
 
@@ -372,6 +376,7 @@ function paintChart(scene, points){
     if(l.lead) out += '<line class="magglow" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y + '"/>';
     out += '<line class="mag" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y
          + '" style="stroke-width:' + (l.lead ? 2 : 1).toFixed(1) + ';opacity:' + wt.toFixed(2) + '"/>';
+    if(l.lead) glyphs.push({y: +y, ch: '\uD83E\uDDF2'});
     drawn.magnet = true;
   }
 
@@ -392,7 +397,14 @@ function paintChart(scene, points){
         out += '<rect class="wt-clip" x="' + (railX + RAIL - 2) + '" y="' + (+y - 3).toFixed(1) + '" width="2" height="6"/>';
     }
     drawn[l.side] = true;
-    if(l.magnet) drawn.magnet = true;
+    if(l.magnet){
+      // A confluence keeps the fact — the wall took the line, not the finding.
+      // But only the LEAD magnet earns the glyph: the runners-up are already
+      // spoken for by line weight, and three magnets in a 16px lane is how a
+      // legend stops meaning anything.
+      if(l.magnetLead) glyphs.push({y: +y, ch: '\uD83E\uDDF2'});
+      drawn.magnet = true;
+    }
   }
 
   /* 5 — a side measured EMPTY is a finding, not an absence (sr-5). A hollow
@@ -400,9 +412,23 @@ function paintChart(scene, points){
          there. No flag means no mark, which correctly reads "not measured". */
   for(const l of levels){
     if(l.kind !== 'clear') continue;
-    const y = l.side === 'call' ? PAD_T + 4 : H - PAD_B - 9;
-    out += '<rect class="clear" x="' + railX + '" y="' + y + '" width="' + RAIL + '" height="5"/>';
+    // Above price: clear sky, nothing capping. Below: a hole, nothing catching
+    // a fall. Position already carries the side, so the glyph carries the
+    // CONSEQUENCE — which the dotted box it replaces never did.
+    const up = l.side === 'call';
+    glyphs.push({y: up ? PAD_T + 6 : H - PAD_B - 9, ch: up ? '\u2601\uFE0F' : '\uD83D\uDD73\uFE0F'});
     drawn['clear-' + l.side] = true;
+  }
+
+  /* 5b — the glyph lane, rows SOLVED. A magnet sitting near the top of a
+          short chart lands on the open-air icon otherwise, which is the same
+          collision the gutter already solves — so it uses the same solver
+          rather than a second set of rules. */
+  if(glyphs.length){
+    const gy = layoutLabels(glyphs.map(x => x.y), 17, PAD_T + 6, H - PAD_B - 4);
+    glyphs.forEach((x, i) => {
+      out += '<text class="glyph" x="' + termX + '" y="' + (gy[i] + 5).toFixed(1) + '">' + x.ch + '</text>';
+    });
   }
 
   /* 6 — the day's path, over the structure it moves through */
@@ -455,9 +481,9 @@ function paintChart(scene, points){
   if(drawn.call) key.push('<i class="s-call"></i>call wall');
   if(drawn.put) key.push('<i class="s-put"></i>put wall');
   if(drawn.call || drawn.put) key.push('<i class="s-wt"></i>thicker = heavier');
-  if(drawn.magnet) key.push('<i class="s-magnet"></i>magnet');
-  if(drawn['clear-call']) key.push('<i class="s-clear"></i>no wall above');
-  if(drawn['clear-put']) key.push('<i class="s-clear"></i>no wall below');
+  if(drawn.magnet) key.push('<b class="g">\uD83E\uDDF2</b>magnet');
+  if(drawn['clear-call']) key.push('<b class="g">\u2601\uFE0F</b>open air above');
+  if(drawn['clear-put']) key.push('<b class="g">\uD83D\uDD73\uFE0F</b>nothing below');
   if(drawn.flip) key.push('<i class="s-flip"></i>flip band');
   $('key').innerHTML = key.slice(0, 5).join('');
 }

@@ -187,3 +187,30 @@ def test_card_apparatus_clears_the_contrast_floor():
     card = PHONE.split("/* ---- zone 3")[1].split(".msg{")[0]
     assert ".w-cav{" in card and "color:var(--dim)" in card
     assert "var(--faint)" not in card.replace("--faint is 3.17:1", "")
+
+
+def test_glyphs_mark_places_and_cannot_collide():
+    """Icons replaced the dotted rectangle for a measured-clear side, and the
+    magnet gets its own emoji. Position already carries the side, so the glyph
+    carries the CONSEQUENCE: clear sky above, a hole below. They live in their
+    own lane and their rows go through the same solver the gutter uses — a
+    magnet near the top of a short chart lands on the open-air icon otherwise."""
+    assert "const glyphs = []" in PHONE
+    assert "layoutLabels(glyphs.map(" in PHONE
+    assert "TERM = 16" in PHONE                      # a lane of its own, never a bar's
+    assert "\\uD83E\\uDDF2" in PHONE                 # magnet
+    assert "\\u2601\\uFE0F" in PHONE                 # open air above
+    assert "\\uD83D\\uDD73\\uFE0F" in PHONE          # nothing below
+
+
+def test_only_the_lead_magnet_earns_a_glyph():
+    """Runners-up are already spoken for by line weight. Three magnets in a
+    16px lane is how a legend stops meaning anything."""
+    assert "hit.magnetLead" in GLANCE
+    assert "if(l.magnetLead) glyphs.push" in PHONE
+
+
+def test_the_chart_is_given_the_room():
+    assert "min-height:300px" in PHONE               # the plot's floor
+    assert "flex:1 1 auto" in PHONE
+    assert "header,.wall,.key{flex:none}" in PHONE

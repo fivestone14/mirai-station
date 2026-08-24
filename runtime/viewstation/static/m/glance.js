@@ -292,10 +292,11 @@ function mergeLevels(levels, span){
   for(const l of ruled){
     const hit=out.find(o=>Math.abs(o.y-l.y)<=tol);
     if(!hit){ out.push(Object.assign({}, l)); continue; }
-    if(l.kind==='magnet'){ hit.magnet=true; hit.share=hit.share!=null?hit.share:l.share; }
+    if(l.kind==='magnet'){ hit.magnet=true; hit.magnetLead=hit.magnetLead||!!l.lead;
+                           hit.share=hit.share!=null?hit.share:l.share; }
     else if(hit.kind==='magnet'){
-      const share=hit.share, wasMagnet=true;
-      Object.assign(hit, l); hit.magnet=wasMagnet; hit.share=share;
+      const share=hit.share, wasLead=!!hit.lead;
+      Object.assign(hit, l); hit.magnet=true; hit.magnetLead=wasLead; hit.share=share;
     } else if((l.gex||0) > (hit.gex||0)) { Object.assign(hit, l); }
   }
   return out.concat(other);
