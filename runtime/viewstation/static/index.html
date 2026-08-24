@@ -1922,6 +1922,9 @@
      footnote and never competes with the chart (small-caps head like the tiles) */
   .snk-legend{padding:9px 12px 8px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md)}
   .snk-legend .k{display:block; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap); text-transform:uppercase; font-weight:700; color:var(--ink-faint); margin-bottom:7px}
+  /* a SECOND heading inside the card — the drawer hides the first one (its own title says it),
+     so the caption group needs a class of its own or it would vanish with it */
+  .snk-legend .k2{display:block; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap); text-transform:uppercase; font-weight:700; color:var(--ink-faint); margin:11px 0 6px}
   .snk-legend .lr{display:flex; align-items:center; gap:9px; font-family:var(--sans); font-size:11.5px; line-height:1.35; color:var(--ink-dim)}
   .snk-legend .lr+.lr{margin-top:5px}
   .snk-legend b{color:var(--ink); font-weight:600}
@@ -10643,7 +10646,7 @@ function snkWallLadder(clusters, spot){
 // card (muted ink, small caps). Static: it describes the surface, so it reads the same every
 // scan and needs no model. Level-line swatches mirror the chart strokes exactly.
 function snkLegend(){
-  const row=(sw,txt)=>`<div class="lr"><span class="sw ${sw.cls||''}" style="${sw.st}">${sw.g||''}</span><span>${txt}</span></div>`;
+  const row=(sw,txt)=>`<div class="lr"><span class="sw ${sw.cls||''}" style="${sw.st||''}">${sw.g||''}</span><span>${txt}</span></div>`;
   return `<div class="snk-legend"><span class="k">Reading the map</span>`
     +row({cls:'bar',st:'background:var(--coral)'}, '<b>Puts</b> · downside walls')
     +row({cls:'bar',st:'background:var(--jade)'}, '<b>Calls</b> · upside walls')
@@ -10656,6 +10659,18 @@ function snkLegend(){
     +row({cls:'gl',st:'color:var(--jade)',g:'━○'}, '<b>Whisker</b> — traded there today, this expiry · jade calls, coral puts, ring = unusually heavy')
     +row({cls:'gl',st:'color:var(--iris)',g:'⇣'}, '<b>Thin zone</b> — little in the way, price travels fast')
     +row({cls:'gl',st:'color:var(--ink-faint)',g:'┄'}, '<b>Faded mark</b> — this level has not moved in hours')
+    // THE WORDS DOWN THE LEFT EDGE (08-24). The captions were the one thing on the chart this
+    // card never mentioned, so a reader who wondered what the grey words meant had nowhere to
+    // look. Same voice as the rows above — what it is, in the plainest sentence that is still
+    // true — and each one also answers the pointer on the chart itself with the full card.
+    +`<span class="k2">Definitions</span>`
+    +row({}, 'The grey words down the left edge of the chart, each with the price it turns on — hover one there for the whole story')
+    +row({}, '<b>calmer ↑</b> — above the tipping point hedging works against moves: drift and chop')
+    +row({}, '<b>faster ↓</b> — below it the same hedging feeds moves: drops run further, faster')
+    +row({}, '<b>resistance</b> — the nearest wall above the price, the first thing in the way going up')
+    +row({}, '<b>support</b> — the nearest wall below the price, the first thing holding it going down')
+    +row({}, '<b>price magnet</b> — the heaviest strike; where an expiry day often settles late')
+    +row({}, '<b>thin · fast</b> — a stretch with almost nothing positioned in it; price crosses it quickly')
     +`</div>`;
 }
 
@@ -10809,6 +10824,10 @@ function snkDeclutter(svg){
   const vb=(svg.viewBox&&svg.viewBox.baseVal)?svg.viewBox.baseVal:null;
   const yMin=vb?vb.y:0, yMax=vb?vb.y+vb.height:1e9;
   const PAD=2, CAP=40;
+  // a group may declare its own, shorter leash (data-cap) — the zone captions do, because their
+  // row IS their meaning; anything else keeps the generous default
+  const capOf=t=>{ const g=t&&t.parentNode&&t.parentNode.getAttribute&&t.parentNode.getAttribute('data-cap');
+    const v=g==null?NaN:+g; return (isFinite(v)&&v>0)?v:CAP; };
   for(let sweep=0; sweep<4; sweep++){
     let moved=false;
     for(let i=0;i<items.length;i++) for(let j=i+1;j<items.length;j++){
@@ -10819,7 +10838,7 @@ function snkDeclutter(svg){
       const down=((b.y1+b.y2)/2+b.dy)>=((a.y1+a.y2)/2+a.dy);
       let d=down?(yo+PAD):-(yo+PAD);
       if(b.y1+b.dy+d<yMin||b.y2+b.dy+d>yMax) d=-d;   // frame edge — step the other way instead
-      if(Math.abs(b.dy+d)>CAP) continue;             // row genuinely full — leave it honest
+      if(Math.abs(b.dy+d)>capOf(b.t)) continue;      // past this label's leash — leave it honest
       b.dy+=d; moved=true;
     }
     if(!moved) break;
@@ -11389,7 +11408,19 @@ function snkTape(m, band, sp, orders, hudOn, frozen){
   }
   return chips.join('');
 }
-// snkZones — the faint left-anchored captions naming each AREA. P = {x0, yTop, yBot, sp, flip,
+// snkZoneCap — how far a zone caption may be nudged off the row it names, in pixels. ONE STRIKE
+// of price converted through this frame's own scale (a pixel budget is the wrong unit: the same
+// 24px is three dollars on a tight frame and seventeen on a wide one), floored so a caption can
+// always try at least one step, ceilinged so a zoomed-in frame cannot drift it a label height.
+// buildChart reads it too — it stamps the number on the caption group as data-cap so the
+// post-mount declutter pass is bounded by the same rule that placed them.
+function snkZoneCap(step, yFor, r){
+  const pxPerUsd=Math.abs(yFor(1001)-yFor(1000))||1;
+  const stepPx=(step!=null&&isFinite(step)&&step>0)?+step*pxPerUsd:16*r;
+  return Math.max(6*r, Math.min(16*r, stepPx));
+}
+// snkZones — the faint left-anchored captions naming each AREA, each with the price it turns on.
+// P = {x0, yTop, yBot, sp, flip,
 // emU, emD, gaps}. Priority-capped at 4 (the regime's two flip-zones lead the story, then the
 // walls, then the magnet, then an air pocket); each is muted --ink-faint small-caps at the plot's
 // left inside edge, well clear of the wall labels (mid-plot bar tips) and value tags (right gutter).
@@ -11408,31 +11439,56 @@ function snkZones(m, band, P){
   // captions clear the top-docked tape's first row when buildChart passes capTop (else yTop+9)
   const capTop=snkNum(P.capTop, yTop+9);
   const clamp=(y,pad)=>Math.max(Math.max(yTop+pad,capTop), Math.min(yBot-pad, y));
-  const caps=[], pad=9*r;   // {y, txt} in priority order — sliced to 4, then de-collided by y
+  // {y, txt, p} in priority order — sliced to 4, then de-collided by y. `p` is the PRICE the
+  // caption is about, and it is the level the zone is ENACTED at, never where the words ended up
+  // sitting: the flip halves both name the flip they turn on, a wall caption names the wall even
+  // when the frame clamped its row to the edge, and a caption with no level of its own carries
+  // none rather than an invented one.
+  const caps=[], pad=9*r;
+  // WHERE A CAPTION SITS IS HALF OF WHAT IT SAYS (08-23). These named an AREA and sat in the
+  // MIDDLE of it — "calmer ↑" floated halfway between the top of the frame and the flip, the wall
+  // words a fixed 16px into their own zone. The moment each caption started carrying its level
+  // that placement became a contradiction the eye catches instantly: the gutter read calmer
+  // $1,592 ABOVE resistance $1,600 — two labels whose numbers run the opposite way to the axis
+  // they are printed on. A caption with a price on it belongs on that price's ROW, so this column
+  // descends in price like every other column on the chart. The flip's two halves keep their
+  // arrows and straddle the flip row rather than floating mid-zone: the ARROW carries "everything
+  // above / below here", which is what the altitude was trying and failing to say.
+  const row=p=>yFor(p)+3.5*r;   // the wall labels' own baseline nudge — centres the words on the row
   const flip=P.flip;
   if(flip!=null&&isFinite(flip)&&flip>band.pLow&&flip<band.pHigh){
-    caps.push({ y:clamp((yTop+yFor(flip))/2, pad), txt:'calmer ↑' });
-    caps.push({ y:clamp((yFor(flip)+yBot)/2, pad), txt:'faster ↓' });
+    caps.push({ y:clamp(row(flip)-9.5*r, pad), txt:'calmer ↑', p:flip, d:-1 });
+    caps.push({ y:clamp(row(flip)+9.5*r, pad), txt:'faster ↓', p:flip, d:1 });
   }
-  // walls sit a clear 16px into their zone (past the bar-tip wall LABEL's line height), so a
-  // wide near-wall bar's label never shares a box with the caption
-  if(m.callWall!=null&&isFinite(m.callWall)&&(sp==null||m.callWall>sp))
-    caps.push({ y:clamp(yFor(Math.min(m.callWall, band.pHigh))-16*r, pad), txt:'resistance' });
-  if(m.putWall!=null&&isFinite(m.putWall)&&(sp==null||m.putWall<sp))
-    caps.push({ y:clamp(yFor(Math.max(m.putWall, band.pLow))+16*r, pad), txt:'support' });
+  // THE WALLS THE MAP ACTUALLY DRAWS (08-24). These two captions used to name the row's
+  // call_wall_gamma / put_wall_gamma — the heaviest CALL-only and PUT-only pile — while every
+  // bar, every Ceiling/Floor label and the air-pocket detector on this same chart read NET
+  // gamma (calls minus puts). The two definitions named a different strike in 139 of the last
+  // 600 recorded scans on the call side and 297 on the put side, and on 08-18 14:46 this chart
+  // printed 'resistance $1,650' and 'thin · fast $1,650' on the SAME ROW — one caption calling
+  // a wall what the other called empty air. A caption is a gloss on the PICTURE, so it reads
+  // from the clusters the Ceiling/Floor labels are placed from (P.walls = buildChart's `near`):
+  // the first drawn wall above the price, the first drawn wall below it. A side with no drawn
+  // wall gets no caption — the tab's present-only rule, not a fallback to a number the map is
+  // not showing. (The one-sided field wall keeps its own places: the tape chip and the scene.)
+  const WL=(Array.isArray(P.walls)?P.walls:[]).filter(w=>w&&isFinite(w.peak));
+  const ceil=(sp==null)?null:WL.filter(w=>w.peak>sp).sort((a,b)=>a.peak-b.peak)[0]||null;
+  const floor=(sp==null)?null:WL.filter(w=>w.peak<=sp).sort((a,b)=>b.peak-a.peak)[0]||null;
+  if(ceil) caps.push({ y:clamp(row(Math.min(ceil.peak, band.pHigh)), pad), txt:'resistance', p:+ceil.peak, d:-1, w:ceil });
+  if(floor) caps.push({ y:clamp(row(Math.max(floor.peak, band.pLow)), pad), txt:'support', p:+floor.peak, d:1, w:floor });
   // magnet — only OUT of the expected-move band; inside, the EM marker + magnet line already
   // own that zone and a caption there would clutter and clash with the EM glyph
   if(m.magnet!=null&&isFinite(m.magnet)&&sp!=null){
     const emU=isFinite(P.emU)?P.emU:0, emD=isFinite(P.emD)?P.emD:0;
     if((m.magnet>sp+emU||m.magnet<sp-emD)&&m.magnet>band.pLow&&m.magnet<band.pHigh)
-      caps.push({ y:clamp(yFor(m.magnet), pad), txt:'price magnet' });
+      caps.push({ y:clamp(row(m.magnet), pad), txt:'price magnet', p:+m.magnet });
   }
   // air-pocket gap — thin γ between walls = fast space (snkGaps target)
   if(Array.isArray(P.gaps)) for(const gp of P.gaps){
     if(gp&&isFinite(gp.target)&&gp.target>band.pLow&&gp.target<band.pHigh){
-      caps.push({ y:clamp(yFor(gp.target), pad), txt:'thin · fast' }); break; }
+      caps.push({ y:clamp(row(gp.target), pad), txt:'thin · fast', p:+gp.target }); break; }
   }
-  const sel=caps.slice(0,4).sort((a,b)=>a.y-b.y);
+  let sel=caps.slice(0,4).sort((a,b)=>a.y-b.y);
   for(let i=1;i<sel.length;i++) if(sel[i].y-sel[i-1].y<13*r) sel[i].y=Math.min(yBot-pad, sel[i-1].y+13*r);
   // P.avoid — rows the LEFT GUTTER is already spending on somebody else's label (08-01). This
   // column is shared: the EM leg readouts and any wall label whose bar ran the full width and
@@ -11440,16 +11496,116 @@ function snkZones(m, band, P){
   // result was four labels through one band of price. Optional and absent-by-default, so every
   // existing caller (and the jsc drills) keeps byte-identical output.
   const AV=Array.isArray(P.avoid)?P.avoid.filter(v=>isFinite(v)).sort((a,b)=>a-b):[];
+  // SEARCH for a clear row, never shove (08-23). The old pass stepped the caption a full
+  // clearance off whichever claimed row it hit — which works against one neighbour and fails
+  // against two: hemmed between the mirai caption and an EM leg 19px apart, each pass shoved it
+  // clear of one and straight into the other, and whichever pass happened to be last decided
+  // where it stopped. It stopped ON one of them. So: keep a caption that is already clear
+  // exactly where it is (every uncrowded frame renders byte-identical), and for one that is not,
+  // walk outward from the row it WANTS in half-line steps, nearest slot first, and take the
+  // first that clears everything. A gutter genuinely full for three line-heights either way
+  // gets the honest answer — stay on the level being named and let the halo carry the words.
+  // `c.d` sends a caption that has to move AWAY from the level it names first — a ceiling drifts
+  // up into its own airspace, a floor down into its own, the flip's halves out to their own sides
+  // — so a nudge can never carry a caption across the price it is about and describe the wrong
+  // side of it. The other direction is still tried; it is a preference, not a wall.
   if(AV.length) for(const c of sel){
-    for(let pass=0;pass<AV.length;pass++){
-      const hit=AV.find(v=>Math.abs(v-c.y)<12*r);
-      if(hit==null) break;
-      c.y=clamp(c.y<hit?hit-12*r:hit+12*r, pad);
+    const clear=y=>!AV.some(v=>Math.abs(v-y)<12*r);
+    if(clear(c.y)) continue;
+    // BOUNDED IN PRICE, NOT IN PIXELS (08-24). The search used to run out to 40 line-heights and
+    // take whatever it found: on 08-18 14:46 that seated 'resistance $1,630' seventeen dollars
+    // low, on the price line, because the two expected-move legs and the range label had the
+    // whole band around its own row. A pixel budget is the wrong unit — the same 24px is three
+    // dollars on a tight frame and seventeen on a wide one — so the budget is ONE STRIKE of
+    // price (converted through this frame's own scale, still capped in pixels so a zoomed-in
+    // frame cannot drift a whole label height). And if nothing inside that is clear, the caption
+    // is left ON ITS LEVEL and the halo carries it — the same answer the wall labels give when
+    // their own row is full ('the halo is the honest answer'), because a caption that has a
+    // price printed on it is claiming a row, and drifting off that row to find quiet canvas is
+    // the exact contradiction this pass exists to remove.
+    const CAP=(P.capPx!=null&&isFinite(P.capPx)&&P.capPx>0)?+P.capPx:snkZoneCap(P.step, yFor, r);
+    const want=c.y, away=(c.d>0)?1:-1;
+    let seat=null;
+    for(let d=6*r; d<=CAP; d+=3*r){
+      const first=clamp(want+away*d,pad), second=clamp(want-away*d,pad);
+      if(clear(first)){ seat=first; break; }
+      if(clear(second)){ seat=second; break; }
+    }
+    if(seat!=null) c.y=seat;
+  }
+  // ORDER IS NOT NEGOTIABLE (08-23). This column has to read the way the axis beside it does —
+  // the higher price above the lower one — or the captions contradict the chart they are printed
+  // on, which is exactly what "calmer $1,592" sitting above "resistance $1,600" did. So the last
+  // word belongs to the LEVEL each caption names, not to wherever the dodges left it: sort by
+  // price (ties keep the flip's calmer-above-faster), then walk down enforcing the line gap. A
+  // caption that had to jump a crowded row can still end up short of its own row — it carries the
+  // number for that — but it can never appear on the wrong side of a caption it outranks.
+  sel.sort((a,b)=>((b.p!=null&&isFinite(b.p))?+b.p:-Infinity)-((a.p!=null&&isFinite(a.p))?+a.p:-Infinity)||a.y-b.y);
+  for(let i=1;i<sel.length;i++) if(sel[i].y-sel[i-1].y<13*r) sel[i].y=Math.min(yBot-pad, sel[i-1].y+13*r);
+  // THE WORD, AND THE PRICE IT IS ABOUT (08-23). Two fixes with one cause: this column is shared
+  // with the γ bars, the gap hatch and the band washes, and a caption drawn straight onto them
+  // in flat faint ink was being swallowed by whatever it happened to land on — while never saying
+  // WHERE the area it names begins, so reading it meant walking the axis to find the level.
+  //   · the ground-coloured halo every other movable label on this chart already wears: the words
+  //     survive the ink under them without being painted any louder;
+  //   · the level itself, in the SAME colour and a notch of mono behind the word — "resistance
+  //     $1,600" — not a second, brighter tag competing with the wall label it belongs to.
+  // Still guide text: --ink-dim under .9 stays quieter than every named level on the map.
+  const halo=`paint-order:stroke;stroke:var(--ground);stroke-width:${(2.8*r).toFixed(1)}px;stroke-linejoin:round`;
+  const lvl=p=>(p!=null&&isFinite(p))
+    ? `<tspan dx="${(3.5*r).toFixed(1)}" font-family="var(--mono)" font-size="${(fs*0.88).toFixed(2)}" style="letter-spacing:.02em">${snkUsd(p,0)}</tspan>` : '';
+  // ---- THE HOVER CARD ON EVERY CAPTION (08-24) ----
+  // Each caption now answers the pointer with the SAME floating card the wall labels use
+  // (rpShowHeadTip's ¦k:/¦f:/¦v:/¦n: grammar; gwBindTips is already bound on the chart host and
+  // the CSS already hands the pointer to any [data-tip] mark in this svg — so this is attributes
+  // only, no new surface). Written for someone who has never seen the engine behind the page:
+  // ONE plain sentence for what the words mean and WHY that price behaves that way, then the
+  // level, how far it sits from the price right now, what to watch, and last — always — what
+  // the number is measured from, so a caption can be trusted or discounted on its own terms.
+  const dAway=p=>(sp==null||p==null||!isFinite(p))?''
+    :(Math.abs(p-sp)<0.5?'right where the price is now'
+      :`${p>=sp?'+':'−'}${snkUsd(Math.abs(p-sp),0)} from the price now`);
+  const rw=(k2,s)=>s?`¦${k2}:${s}`:'';
+  const BARS='read off the coloured bars on this map — calls minus puts at each strike';
+  for(const c of sel){
+    if(c.txt==='resistance'||c.txt==='support'){
+      const up=c.txt==='resistance', st=c.w?snkStrength(c.w.tier):null;
+      c.nm=`${up?'Resistance':'Support'} ${snkUsd(c.p,0)}`;
+      c.tip=(up
+          ?`The nearest wall above the price: the option book is heaviest here on the call side, so the dealers who sold those calls sell stock as price climbs into it — which is what usually stalls a rally.`
+          :`The nearest wall below the price: the book is heaviest here on the put side, so the dealers who sold those puts buy stock as price falls toward it — which is what usually cushions a drop.`)
+        +rw('k',`${up?'Resistance':'Support'}=${snkUsd(c.p,0)}`)
+        +rw('f',[dAway(c.p), st?`strength ${st.word}`:''].filter(Boolean).join(' · '))
+        +rw('v',up?'the first thing in the way going up — through it cleanly and the next wall above becomes the target'
+                 :'the first thing holding it going down — lose it and the next floor below becomes the target')
+        +rw('n',`${BARS}, the same stack the ${up?'Ceiling':'Floor'} label sits on`);
+    } else if(c.txt==='calmer ↑'||c.txt==='faster ↓'){
+      const hi=c.txt==='calmer ↑', at=snkUsd(c.p,0);
+      c.nm=`${hi?'Calmer above':'Faster below'} ${at}`;
+      c.tip=(hi
+          ?`Above ${at} the dealers who sold today's options hedge against moves — selling into rallies, buying dips — so while price is up here the tape tends to drift and chop rather than run.`
+          :`Below ${at} that same hedging feeds moves instead of fighting them — selling as price falls, buying as it rises — so moves down here tend to go further and faster.`)
+        +rw('k',`Tipping point=${at}`)
+        +rw('f',(sp==null)?'':`price is ${snkUsd(Math.abs(sp-c.p),0)} ${sp>=c.p?'above':'below'} it now`)
+        +rw('v',`one line, two sides — the ${hi?'faster':'calmer'} caption names the same price on the other side of it`)
+        +rw('n','not a fixed line: it is recomputed every scan and can walk several dollars in a session');
+    } else if(c.txt==='price magnet'){
+      c.nm=`Price magnet ${snkUsd(c.p,0)}`;
+      c.tip=`The strike holding the heaviest option position, where dealer hedging leans against moves from both sides — it is where an expiry day often settles late, not a level price gets dragged to during the session.`
+        +rw('k',`Magnet=${snkUsd(c.p,0)}`)
+        +rw('f',[dAway(c.p),'named here only because it sits outside today\'s expected range'].filter(Boolean).join(' · '))
+        +rw('n','measured on this tab\'s own tape the intraday pull is weak — read it as a place, not a forecast');
+    } else if(c.txt==='thin · fast'){
+      c.nm=`Thin zone ${snkUsd(c.p,0)}`;
+      c.tip=`Barely anything is positioned across this stretch of prices, so there is almost no hedging to slow the tape down and moves through it tend to be quick.`
+        +rw('k',`Thin through=${snkUsd(c.p,0)}`)
+        +rw('f',dAway(c.p))
+        +rw('n','this says nothing about direction — fast can mean fast down');
     }
   }
-  sel.sort((a,b)=>a.y-b.y);
-  for(let i=1;i<sel.length;i++) if(sel[i].y-sel[i-1].y<13*r) sel[i].y=Math.min(yBot-pad, sel[i-1].y+13*r);
-  return sel.map(c=>`<text x="${x}" y="${c.y.toFixed(1)}" text-anchor="start" font-size="${fs}" font-family="var(--sans)" style="fill:var(--ink-faint);opacity:.85;letter-spacing:.06em">${c.txt}</text>`).join('');
+  return sel.map(c=>`<text x="${x}" y="${c.y.toFixed(1)}" text-anchor="start" font-size="${fs}" font-family="var(--sans)"`
+    +(c.nm?` data-name="${c.nm}"`:'')+(c.tip?` data-tip="${c.tip}"`:'')
+    +` style="fill:var(--ink-dim);opacity:.88;letter-spacing:.06em;${halo}">${c.txt}${lvl(c.p)}</text>`).join('');
 }
 
 // ---- SNDK price-path helpers (the SPX gxSpotPath/gxPathGeom/gxPathFade twins — PURE,
@@ -12923,11 +13079,14 @@ const SNDK = {
       airBoxes.push({x1:x0+30, x2:x0+38+txW('mirai ▲ $1,234 · 30m (old)', fz(9.5), 0.6), y:vy, h:fz(9.5)*1.4});
     // ---- ZONE CAPTIONS (07-28): faint left-anchored labels naming what each price area means
     // — the flip's calmer/faster halves, the walls as support/resistance, the magnet, an air
-    // pocket. Muted guide text (≤4, present-only), drawn last so it sits above the washes. ----
+    // pocket — each followed by the level it is enacted at (08-23). Muted guide text (≤4,
+    // present-only), haloed and drawn last so it sits legibly above the bars and washes. ----
     const flipZ=(L&&L.hvl!=null&&isFinite(L.hvl))?+L.hvl:(m.flip!=null&&isFinite(m.flip)?+m.flip:null);
+    const zCap=snkZoneCap(step, yFor, fz(9)/9);   // one strike of price — placement budget AND declutter leash
     const zones=snkZones(m, band, { x0, yTop:padT, yBot:h-padB, capTop, sp:spRef, fs:fz(9),
       flip:flipZ, emU:(emTop!=null&&sp!=null)?emTop-sp:null, emD:(emBot!=null&&sp!=null)?sp-emBot:null,
-      gaps:SNDK.gaps, avoid:gutAvoid, yFor });   // the same pockets the GAP bands shade (measured) — never a second, disagreeing model
+      gaps:SNDK.gaps, avoid:gutAvoid, yFor, step, capPx:zCap,
+      walls:near });   // the same pockets the GAP bands shade and the same clusters the Ceiling/Floor labels sit on — never a second, disagreeing model
     // ---- OPEN INTEREST, quietly. A third of the bars' weight, no gridline, no numbers: this
     // is yesterday's standing positioning, context for the hero and never the hero. Scaled to
     // its own peak so the lane always uses its full width — it is answering "which strikes are
@@ -13008,7 +13167,11 @@ const SNDK = {
       for(const bb of barBoxes) mark(bb.x1-2, bb.y1-2, bb.x2+2, bb.y2+2);
       for(const pb of plotBoxes) mark(pb.x1-3, pb.y-(pb.h||CH)/2-2, pb.x2+3, pb.y+(pb.h||CH)/2+2);
       for(const ab of airBoxes) mark(ab.x1-3, ab.y-(ab.h||CH)/2-2, ab.x2+3, ab.y+(ab.h||CH)/2+2);
-      const gutR=x0+Math.max(96, (lineEnd-x0)*0.10);
+      // the shared left column, reserved outright. Sized to the WIDEST thing that lives in it,
+      // which since 08-23 is a zone caption carrying its level ("resistance $1,600" — about ten
+      // characters of caption plus a five-figure price): the old 96px floor was measured on the
+      // bare word and a rail message could seat itself on the caption's last two characters.
+      const gutR=x0+Math.max(112, (lineEnd-x0)*0.115);
       mark(gx0, gy0, gutR, gy1);                                     // zone captions + EM legs
       mark(gx1, gy0, gx0+nc*CW, gy1);                                // the ticks and the readouts
       const wOf=s=>Math.round(txW(s.text, s.fs, s.em))+padC*2;
@@ -13163,7 +13326,14 @@ const SNDK = {
       <g id="snk-whisk">${whisk.svg}</g>
       <g class="decl">${lvls}</g><g id="snk-ghost" class="decl">${ghostSVG}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g id="snk-oi">${oiSVG}</g><g>${tagStrip}</g><g id="snk-calls" class="decl">${callSVG}</g><g>${tags}</g>
       <g id="snk-mirai" class="decl">${mirai.svg}</g>
-      <g id="snk-zones" class="decl">${zones}</g>
+      <!-- .decl ON A LEASH (08-24): these captions still join the shared cross-painter pass —
+           it is the only thing that sees real rendered geometry — but every one of them now
+           prints the price of the row it sits on, so its position is part of what it says. The
+           pass moves the LATER-painted label and these are painted last, which left it free to
+           slide a caption clean off its own level to find quiet canvas. data-cap is the same
+           one-strike budget that placed them: past it the pass leaves the caption where it is
+           and the halo carries it, exactly as a full-row wall label is left to its halo. -->
+      <g id="snk-zones" class="decl" data-cap="${zCap.toFixed(1)}">${zones}</g>
     </svg>`;
     const tip=document.getElementById('snk-tip'), capEl=document.getElementById('snk-cap'),
           tapeEl=document.getElementById('snk-tape');
