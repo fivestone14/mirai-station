@@ -249,3 +249,110 @@ def test_market_time_not_viewer_time():
     assert "toLocaleTimeString" not in PAGE      # every clock face goes through etTime
     assert "etTime(" in PAGE
     assert "etToday()" in GLANCE
+
+
+# --- amendments after the 2026-08-24 adversarial review --------------------
+# 38 findings raised, 23 survived refutation, 14 work items. These pin the ones
+# that changed behaviour, so a later "tidy" cannot walk them back.
+
+def test_only_book_levels_are_named_at_an_edge():
+    """A tape point has no strike, and ~70 exiled ones could take both slots
+    while the wall the gate names in 30px type reached no pixel — the very bug
+    the edge marker exists to prevent, coming back through the queue."""
+    assert "l.kind === 'wall' || l.kind === 'magnet'" in PAGE
+    assert "!drawnY.has(+l.y)" in PAGE            # a level with a rule is not named twice
+    assert "rank(b) - rank(a)" in PAGE            # kind before weight: two denominators
+    assert "leftover.filter(l => l.y > ref)" in PAGE   # split on price, not padded bounds
+
+
+def test_the_frozen_window_is_actually_frozen():
+    """A fresh window seats price 5.36% inside its own edge, already within the
+    12% re-anchor band, so without a travel gate the board re-solved on every
+    quote — 296 of 300 ticks moved a rule."""
+    assert "WIN.anchor" in PAGE
+    assert "0.05*span0" in PAGE                   # and the constant sits under 5.36%
+    assert "if(w2){ WIN = w2;" in PAGE            # a null re-solve must not blank WIN
+
+
+def test_no_nan_reaches_an_svg_attribute():
+    """With one_sigma_dollars absent the degenerate floor cannot fire, and one
+    distinct core level gives a zero span. A browser silently falls back to 0
+    for each invalid length and renders garbage pinned to the top edge."""
+    assert "if(!(span > 0))" in PAGE
+
+
+def test_the_gate_direction_is_derived_not_read():
+    """walls_ladder buckets a cluster by the SCAN spot, so a live tick through
+    the wall makes the payload's side label contradict the plot above it."""
+    assert "w.strike > ref ? '▲ NEXT ABOVE' : '▼ NEXT BELOW'" in PAGE
+    assert "'g-k ' + w.side" in PAGE     # ...but the HUE stays the side of the BOOK
+
+
+def test_the_clear_side_bracket_is_qualified_and_conditional():
+    """call_side_clear means no CALL-SIGNED cluster above spot; a wrongly-signed
+    pile there is dropped from both pools and the flag still fires — true on 79
+    of 79 rows of the reference diary, over a cluster carrying 34.6% of book
+    gamma. And a live tick can cross a wall of the other pool."""
+    assert "NO CALL WALL ABOVE" in PAGE and "NO PUT WALL BELOW" in PAGE
+    assert "if(cross) continue;" in PAGE
+    assert "_side_clear'] !== true" in PAGE       # === true stays necessary
+
+
+def test_the_footer_speaks_only_when_the_label_did_not():
+    """Gating on the bracket PATH said the note twice in the withdrawn state and
+    lost it entirely at 320px, where the bracket is under 34px tall."""
+    assert "CLEAR_SAID" in PAGE
+    assert "CLEAR_SAID[_far]" in PAGE
+    assert "CLEAR_SAID = {call:false, put:false};   // reset" in PAGE
+
+
+def test_the_tag_cap_respects_the_never_drop_tiers():
+    """Without the tier a cap overflow could drop a heaviest_behind, leaving the
+    thickest stroke on the plot with its price nowhere on screen."""
+    assert "(l.nearest || l.behind) ? 2 : 1" in PAGE
+
+
+def test_a_dropped_request_does_not_blank_the_board():
+    """visibilitychange fires loadPayload on wake — exactly when the radio has
+    just reassociated — and a transport failure was byte-identical to an empty
+    station."""
+    assert "reached:false" in PAGE
+    assert "if(PAY && PAY.scene){ paintAll(); return; }" in PAGE
+
+
+def test_the_gate_region_holds_its_own_content():
+    """The one finding verified in a real engine: .g-foot is the only gate child
+    whose overflow:hidden zeroes its automatic minimum, so the whole deficit
+    landed on it and a sanctioned sentence rendered as a 2px smear."""
+    assert "--r-gate:144px" in PHONE
+    assert "FIXED = SHORT ? 332 : 392" in PAGE    # must move with the region
+    assert "height:48px" in PHONE                 # the head row holds a 30px strike
+    assert ".gate{gap:2px;padding:6px 0 6px}" in PHONE   # short sheds instead
+
+
+def test_the_measure_is_inviolable_and_the_label_gives_way():
+    """Both were nowrap with no min-width, so margin-left:auto collapsed under
+    overflow and the measure ran off the edge last-character-first. On the
+    censored path the first casualty is the '+', which turns 'held at least'
+    into 'held exactly'."""
+    # read to the closing brace, not a fixed slice: the explanatory comment
+    # inside the block pushes the declaration past any character count, and a
+    # test that cannot see past prose teaches you to delete the prose.
+    def block(sel):
+        return PHONE.split(sel)[1].split("}")[0]
+    assert "min-width:0" in block(".g-dir{") and "text-overflow:ellipsis" in block(".g-dir{")
+    assert "flex:none" in block(".g-meas{")
+
+
+def test_gminutes_cannot_print_sixty():
+    """Math.round(m % 60) returns 60 for the last thirty seconds of every hour,
+    and the chip repaints every 5s."""
+    gm = GLANCE.split("function gMinutes")[1].split("/* ---- the environment")[0]
+    assert "const t=Math.round(m);" in gm
+    assert "r=t%60" in gm
+    assert "Math.round(m%60)" not in gm.replace(" ", "")
+
+
+def test_the_named_edge_carries_the_weight_the_bug_cannot():
+    assert "namedEdge" in PAGE and "edgeCls" in PAGE
+    assert ".p-edge.lead{font-weight:600}" in PHONE

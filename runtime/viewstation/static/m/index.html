@@ -58,10 +58,16 @@
   --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
 
   --ladder-h:376px;
-  --r-mast:88px; --r-regime:48px; --r-gate:128px; --r-read:92px; --r-foot:20px;
+  --r-mast:88px; --r-regime:48px; --r-gate:144px; --r-read:92px; --r-foot:20px;
 }
 @media (max-height:700px){
   :root{ --r-mast:76px; --r-regime:44px; --r-gate:118px; --r-read:76px; --r-foot:18px; }
+  /* The gate cannot GROW here — 568 minus padding leaves the ladder's 200px
+     floor capping the region at 126, and at 126 .g-foot still resolved to 2px
+     and rendered a sanctioned sentence as nothing. So it sheds instead:
+     alignment and padding only, no type step and no string. */
+  .gate{gap:2px;padding:6px 0 6px}
+  .g-head{align-items:flex-start;height:36px}
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
@@ -160,6 +166,8 @@ body.failed > section, body.failed > .foot{display:none}
 .p-word.dim{fill:var(--ink-dim)}
 .p-edge    {font:500 11px/1 var(--mono);letter-spacing:.02em;
             font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--ink-faint)}
+/* weight only — the marker stays subordinate to in-window tags */
+.p-edge.lead{font-weight:600}
 .p-axis    {font:500 10px/1 var(--mono);letter-spacing:.14em;fill:var(--ink-faint)}
 
 /* ============ D. GATE ============ */
@@ -167,11 +175,20 @@ body.failed > section, body.failed > .foot{display:none}
       display:flex;flex-direction:column;gap:4px;padding:10px 0 10px}
 .g-lab{display:flex;align-items:baseline;gap:8px;height:14px}
 .g-dir{font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-       color:var(--ink-dim);white-space:nowrap}
+       color:var(--ink-dim);white-space:nowrap;
+       /* the item that gives way. Both were nowrap with no min-width, so
+          margin-left:auto collapsed under overflow and the MEASURE ran off the
+          right edge last-character-first — and on the censored path the first
+          casualty is the "+", which turns "held at least 2h40m" into "held
+          exactly 2h40m". */
+       min-width:0;overflow:hidden;text-overflow:ellipsis}
 .g-meas{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
         text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim);
-        white-space:nowrap}
-.g-head{display:flex;align-items:baseline;gap:10px;height:40px;min-width:0}
+        white-space:nowrap;flex:none}
+/* 48, not 40: a 30px/1.0 mono strike baseline-aligned against a 2-line
+   13/1.4 clamp measures 48 in a real engine, and at 40 the sentence's
+   second line sat on the gauge bars. */
+.g-head{display:flex;align-items:baseline;gap:10px;height:48px;min-width:0}
 .g-k{flex:none;font:600 30px/1.0 var(--mono);letter-spacing:-.01em;
      font-variant-numeric:tabular-nums}
 .g-k.call{color:var(--jade)} .g-k.put{color:var(--coral)}

@@ -10,6 +10,9 @@ const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
 
 let PAY = null, LIVE = null, DIARY = [], READS = [], WIN = null, LADDER_H = 376;
+// whether the plot's bracket LABEL said a side was empty this repaint. The
+// gate footer speaks only when it did not.
+let CLEAR_SAID = {call:false, put:false};
 let T_PAY = null, T_SPOT = null;
 
 /* ---- layout ------------------------------------------------------------ */
@@ -20,7 +23,9 @@ function sizeLadder(){
   // absorbed all of it and rendered at zero — correct viewBox, nothing drawn,
   // nothing thrown.
   const SHORT = window.innerHeight <= 700;
-  const FIXED = SHORT ? 332 : 376;
+  // A+B+D+E+F. Must move with any region height or the six overrun the
+  // viewport and body{overflow:hidden} clips the footer.
+  const FIXED = SHORT ? 332 : 392;
   const cs = getComputedStyle(document.body);
   const padV = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
   LADDER_H = Math.max(200, Math.min(560,
@@ -35,9 +40,9 @@ async function getJSON(url){
   try{
     const r = await fetch(url, {cache:'no-store'});
     const t = await r.text();
-    try { return {status:r.status, body:JSON.parse(t)}; }
-    catch(e){ return {status:r.status, body:null}; }
-  } catch(e){ return {status:0, body:null}; }
+    try { return {status:r.status, body:JSON.parse(t), reached:true}; }
+    catch(e){ return {status:r.status, body:null, reached:true}; }
+  } catch(e){ return {status:0, body:null, reached:false}; }
 }
 
 function fail(one, two){
@@ -53,11 +58,20 @@ async function loadPayload(){
     return fail('The station refused the request — its permitted-user check said no.',
                 'Open /m?user=<your name> with the name the front door knows you by.');
   const pay = r.body;
-  if(!pay || pay.error || !pay.scene)
+  if(!pay || pay.error || !pay.scene){
+    // A request that failed is not an empty station. visibilitychange fires this
+    // on wake — exactly when the radio has just reassociated — and blanking six
+    // regions while a good payload sits in memory is the worst possible answer.
+    // The retained payload cannot look fresh: bookAge() runs off row_ts against
+    // the wall clock, so it goes lantern past stale_book_min and withdraws past
+    // heartbeat_min on its own.
+    if(PAY && PAY.scene){ paintAll(); return; }
     return fail('No SNDK scene yet.', (pay && pay.error) || 'the station returned nothing');
+  }
 
   document.body.classList.remove('failed');
   $('fail').hidden = true;
+  $('fail1').textContent = ''; $('fail2').textContent = '';
   PAY = pay;
 
   if(pay.session){
@@ -194,6 +208,7 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 
 function paintLadder(st){
+  CLEAR_SAID = {call:false, put:false};   // reset above every early return
   const svg = $('svg');
   const CW = Math.max(240, Math.round($('ladder').getBoundingClientRect().width) || 356);
   const SVGH = LADDER_H - 1;
@@ -229,34 +244,83 @@ function paintLadder(st){
   if(!WIN){
     const core = coreLevels(sc, ref, st.vwap, st.points);
     WIN = solveWindow(core, optionalLevels(sc), ref, st.sigma, sessRange);
+    if(WIN) WIN.anchor = ref;
   }
   if(!WIN){ svg.innerHTML = '<text class="p-word" x="11" y="34">NO PRICE MEASURED</text>'; return; }
 
   // re-anchor: price near the edge earns a fresh window, and it JUMPS. A tween
   // would make every ordinary tick as salient as this rare one.
+  //
+  // The travel gate is what keeps it rare. A fresh window leaves price
+  // 6/112 = 5.36% of the span inside its own edge — already inside the 12% band
+  // — so without it the test is true again on the very next quote and the frozen
+  // board slides on every tick instead of jumping once. Measured before the
+  // gate: 296 of 300 ticks moved the 1450 rule, and a ten-cent oscillation at
+  // the exile radius swung it 34px, flipping a wall between a rule and a marker.
+  // Keep the constant BELOW 5.36%: that is what guarantees price re-anchors
+  // before it can leave the window it is anchored in.
   const span0 = WIN.hi - WIN.lo;
-  if(ref < WIN.lo + 0.12*span0 || ref > WIN.hi - 0.12*span0){
+  const nearEdge = (ref < WIN.lo + 0.12*span0 || ref > WIN.hi - 0.12*span0);
+  const moved = (WIN.anchor == null) || Math.abs(ref - WIN.anchor) >= 0.05*span0;
+  if(nearEdge && moved){
     const core = coreLevels(sc, ref, st.vwap, st.points);
-    WIN = solveWindow(core, optionalLevels(sc), ref, st.sigma, sessRange);
+    const w2 = solveWindow(core, optionalLevels(sc), ref, st.sigma, sessRange);
+    if(w2){ WIN = w2; WIN.anchor = ref; }        // a null re-solve must not blank WIN
   }
 
-  const refused = WIN.refused.concat(WIN.exiled);
-  const above = refused.filter(l => l.y > WIN.hi).slice(0, 2);
-  const below = refused.filter(l => l.y < WIN.lo).slice(0, 2);
+  // A zero span sends NaN into every y, cy and height below, and a browser
+  // silently falls back to 0 for each invalid length — the plot renders as
+  // garbage pinned to the top edge with no message. Reachable with
+  // one_sigma_dollars absent (the degenerate floor cannot fire) and one
+  // distinct core level. Guarded here rather than inside solveWindow so the
+  // re-anchor path above cannot throw.
+  const span = WIN.hi - WIN.lo;
+  if(!(span > 0)){ svg.innerHTML = '<text class="p-word" x="11" y="34">NO PRICE MEASURED</text>'; return; }
+  const inWin = v => v != null && isFinite(v) && v >= WIN.lo && v <= WIN.hi;
+
+  const wc = (sc.walls||{}).call || [], wp = (sc.walls||{}).put || [];
+  const mag = (sc.magnet||{}).top_strikes;
+
+  // every y that WILL receive a rule below, gated by push()'s own test
+  const drawnY = new Set();
+  const markDrawn = y => { if(inWin(y)) drawnY.add(+y); };
+  if(wc[0] && wc[0].strike != null) markDrawn(Number(wc[0].strike));
+  if(wp[0] && wp[0].strike != null) markDrawn(Number(wp[0].strike));
+  for(const l of WIN.admitted) markDrawn(l.y);
+  if(Array.isArray(mag) && mag.length && Array.isArray(mag[0]) && mag[0][0] != null)
+    markDrawn(Number(mag[0][0]));
+  for(const m of magnetRunners(sc)) markDrawn(m.y);
+
+  // Only a BOOK level can be named at an edge. A tape price or the session low
+  // has no strike, and its off-window portion is already carried by the clip;
+  // admitting them breaks the slot count the never-silently-dropped guarantee
+  // rests on — which is the 2026-08-24 bug reappearing, ~70 exiled tape points
+  // taking both slots while the wall the gate names in 30px type reaches no
+  // pixel. Rank by KIND first: a wall's gex and a magnet's share are different
+  // denominators and must never share a gauge. A level that already got a rule
+  // is not named again. Split on the PRICE, not the padded bounds, or a level
+  // exiled by less than the pad width lands in neither stack.
+  const rank = l => (l.kind === 'wall' ? 2 : 1);
+  const leftover = WIN.refused.concat(WIN.exiled)
+    .filter(l => (l.kind === 'wall' || l.kind === 'magnet') && !drawnY.has(+l.y))
+    .sort((a, b) => rank(b) - rank(a) || (b.gex || 0) - (a.gex || 0));
+  // gex priority picks the pair; PRICE decides the row, on a plot whose whole
+  // grammar is vertical = price. Descending on BOTH stacks: the top stack's row
+  // 0 is the row farthest from the plot, the bottom stack's row 0 the nearest.
+  const byPrice = a => a.sort((x, y) => y.y - x.y);
+  const above = byPrice(leftover.filter(l => l.y > ref).slice(0, 2));
+  const below = byPrice(leftover.filter(l => l.y < ref).slice(0, 2));
   const PAD_T = 12 + 13*above.length, PAD_B = 18 + 13*below.length;
   const plotTop = PAD_T, plotBottom = SVGH - PAD_B, plotH = plotBottom - plotTop;
-  const span = WIN.hi - WIN.lo, k = plotH / span;
+  const k = plotH / span;
   const yFor = v => plotTop + (WIN.hi - v) * k;
-  const inWin = v => v != null && isFinite(v) && v >= WIN.lo && v <= WIN.hi;
 
   // ---- levels ------------------------------------------------------------
   const ruled = [];
-  const wc = (sc.walls||{}).call || [], wp = (sc.walls||{}).put || [];
   const push = l => { if(inWin(l.y)) ruled.push(l); };
   if(wc[0] && wc[0].strike != null) push(_lvlWall(wc[0], 'call', true));
   if(wp[0] && wp[0].strike != null) push(_lvlWall(wp[0], 'put', true));
   for(const l of WIN.admitted) push(l);
-  const mag = (sc.magnet||{}).top_strikes;
   if(Array.isArray(mag) && mag.length && Array.isArray(mag[0]) && mag[0][0] != null)
     push({y:Number(mag[0][0]), kind:'magnet', lead:true, share:Number(mag[0][1]), weight:1});
   for(const m of magnetRunners(sc)) push(m);
@@ -300,14 +364,28 @@ function paintLadder(st){
   const wordRows = [];
   for(const side of ['call','put']){
     if((sc.walls||{})[side + '_side_clear'] !== true) continue;
+    // The flag was measured against the SCAN spot. If a wall of the other pool
+    // now sits on this side of the price on screen, the side is not empty as
+    // drawn — say nothing here and let the gate footer carry the qualified note.
+    const other = side === 'call' ? 'put' : 'call';
+    const cross = ((sc.walls||{})[other] || [])
+      .concat([(sc.walls||{})[other + '_heaviest_behind']])
+      .some(e => e && e.strike != null &&
+                 (side === 'call' ? Number(e.strike) > ref : Number(e.strike) < ref));
+    if(cross) continue;
     const a = side === 'call' ? plotTop : priceY, b = side === 'call' ? priceY : plotBottom;
     if(!(b > a)) continue;
     o += '<path class="p-brk" d="M9,' + n1(a) + ' L3,' + n1(a) + ' L3,' + n1(b) + ' L9,' + n1(b) + '"/>';
     if((b - a) >= 34){
       const by = (a + b) / 2;
+      // qualified, because the flag is qualified: call_side_clear means no
+      // CALL-SIGNED cluster above spot. A wrongly-signed pile there is dropped
+      // from both pools and the flag still fires — true on 79 of 79 rows of the
+      // reference diary, over a cluster carrying 34.6% of book gamma.
       o += '<text class="p-word dim" x="12" y="' + n1(by) + '">'
-         + (side === 'call' ? 'NO WALL ABOVE' : 'NO WALL BELOW') + '</text>';
+         + (side === 'call' ? 'NO CALL WALL ABOVE' : 'NO PUT WALL BELOW') + '</text>';
       wordRows.push(by);
+      CLEAR_SAID[side] = true;
     }
   }
 
@@ -356,7 +434,13 @@ function paintLadder(st){
   // ---- tag rows, solved once for every member including the price chip ---
   const members = [];
   for(const l of levels){
-    if(l.kind === 'wall') members.push({y:l.y, cls:'p-tag ' + l.side, lvl:l, keep:2});
+    // The never-drop set is exactly six (chip, both nearest, both
+    // heaviest_behind, the lead magnet), which is what the cap of 7 was sized
+    // for. walls.*[1] is the one wall that may drop, and VWAP drops before it.
+    // Without the tier, a cap overflow could drop a heaviest_behind and leave
+    // the thickest stroke on the plot with its price nowhere on screen.
+    if(l.kind === 'wall')
+      members.push({y:l.y, cls:'p-tag ' + l.side, lvl:l, keep:(l.nearest || l.behind) ? 2 : 1});
     else if(l.kind === 'magnet' && l.lead) members.push({y:l.y, cls:'p-tag mag', lvl:l, keep:2});
   }
   if(inWin(st.vwap)) members.push({y:st.vwap, cls:'p-tag vwap', vwap:true, keep:0});
@@ -394,12 +478,18 @@ function paintLadder(st){
   });
 
   // ---- refused levels are NAMED, never silently dropped -------------------
+  // When the nearest wall is itself off-window the bug triangle cannot point at
+  // it, so its marker carries the weight instead. Matched on kind AND side AND
+  // strike, so an exiled magnet on the same strike cannot steal the emphasis.
+  const namedEdge = (near && !inWin(near.strike)) ? Number(near.strike) : null;
+  const edgeCls = l => 'p-edge' + ((namedEdge != null && l.kind === 'wall'
+                     && l.side === near.side && +l.y === namedEdge) ? ' lead' : '');
   above.forEach((l, i) => {
-    o += '<text class="p-edge" x="' + TAG_R + '" y="' + (10 + 13*i) + '">▲ '
+    o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + (10 + 13*i) + '">▲ '
        + gUsd(l.y,0).replace('$','') + (l.behind ? ' HEAVIEST' : '') + '</text>';
   });
   below.forEach((l, i) => {
-    o += '<text class="p-edge" x="' + TAG_R + '" y="' + n1(plotBottom + 12 + 13*i) + '">▼ '
+    o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + n1(plotBottom + 12 + 13*i) + '">▼ '
        + gUsd(l.y,0).replace('$','') + (l.behind ? ' HEAVIEST' : '') + '</text>';
   });
 
@@ -456,7 +546,11 @@ function paintGate(st){
   }
   gate.className = 'gate';
 
-  let dir = (w.side === 'call' ? '▲ NEXT ABOVE' : '▼ NEXT BELOW');
+  // Against the price ON SCREEN, like the distance and the sentence beside it.
+  // walls_ladder buckets a cluster by the SCAN spot, so a live tick through the
+  // nearest wall makes the payload's side label name a direction the plot
+  // directly above this card contradicts.
+  let dir = (w.strike > ref ? '▲ NEXT ABOVE' : '▼ NEXT BELOW');
   if(st.withdrawn){
     const t = Date.parse(PAY.row_ts);
     const et = etTime(t);
@@ -504,10 +598,14 @@ function paintGate(st){
       else if(beyond && beyond.strike != null) foot = 'Next wall at ' + gUsd(beyond.strike,0) + '.';
     }
   }
-  // the measured-empty side appears exactly once: as the bracket in the plot,
-  // which also shows its extent. The footer only speaks when the bracket could
-  // not draw.
-  if(!foot && !(st.ref && !st.withdrawn)) foot = farSideNote(walls, w.side) || '';
+  // The measured-empty side appears exactly once. It is normally said by the
+  // bracket's LABEL in the plot, which also shows its extent; the footer speaks
+  // only when that label did not draw — a bracket under 34px, a bracket
+  // suppressed because price crossed a wall of the other pool, or a ladder that
+  // took an early return. Gating on the path instead said it twice in the
+  // withdrawn state and lost it entirely at 320px.
+  const _far = w.side === 'call' ? 'put' : 'call';
+  if(!foot && !CLEAR_SAID[_far]) foot = farSideNote(walls, w.side) || '';
   set('gFoot', foot);
 }
 

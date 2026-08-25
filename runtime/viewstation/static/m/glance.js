@@ -24,8 +24,12 @@ function gUsd(v, dp){
 function gMinutes(m){
   if(m==null||!isFinite(m)) return null;
   if(m<1) return 'just now';
-  if(m<60) return Math.round(m)+'m';
-  const h=Math.floor(m/60), r=Math.round(m%60);
+  // Round ONCE, then split. Rounding the remainder separately returns 60 for
+  // the last thirty seconds of every hour, so the freshness chip printed
+  // "1H 60M" — repainted every 5s, so reliably visible.
+  const t=Math.round(m);
+  if(t<60) return t+'m';
+  const h=Math.floor(t/60), r=t%60;
   return r? h+'h '+r+'m' : h+'h';
 }
 
@@ -417,7 +421,7 @@ function modelRead(rows, nowMs){
 // and the session opens at 06:31, which is not a small error: it moves every
 // label on the plot three hours and invites the reader to compare a market
 // event against their own wall clock.
-const _ET_TIME = {hour:'numeric', minute:'2-digit', hour12:false, timeZone:'America/New_York'};
+const _ET_TIME = {hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'America/New_York'};
 const _ET_DAY  = {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'America/New_York'};
 
 function etTime(ms){
