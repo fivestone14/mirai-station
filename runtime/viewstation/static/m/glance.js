@@ -461,6 +461,35 @@ function livePoint(live, nowMs){
   return {t, s:Number(live.spot), live:true};
 }
 
+function modelRead(rows, nowMs){
+  // The reader's own sentence. Written for a human, capped at 24 words, and
+  // present on 2,878 of 2,929 recorded rows.
+  //
+  // It ships with its age or not at all. Measured across the sr-6 store the
+  // median reading is 12 minutes old, but p95 is 214 and the oldest on record
+  // is 341. A sentence that says "the 1450 put wall has held 62 minutes as a
+  // floor" is worth reading at 12 minutes and is a liability at 250, and
+  // nothing in the sentence itself says which one you are looking at.
+  if(!Array.isArray(rows)) return null;
+  let best=null;
+  for(const r of rows){
+    const line=((r||{}).reading||{}).line;
+    if(!line) continue;
+    const t=Date.parse(r.reading_ts||r.ts);
+    if(!isFinite(t)) continue;
+    if(!best||t>best.t) best={t, r};
+  }
+  if(!best) return null;
+  const now=(nowMs==null)?Date.now():nowMs;
+  const age=Math.max(0,(now-best.t)/60000);
+  const rd=best.r.reading||{};
+  const v=rd.vector;
+  return {line:String(rd.line),
+          vector:(v==='up'||v==='down')?v:null,
+          ageMin:age,
+          stale:age>30};
+}
+
 /* ---- freshness --------------------------------------------------------- */
 
 function freshness(payload, nowMs){
@@ -491,7 +520,7 @@ function freshness(payload, nowMs){
 
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gSigma, gMinutes, envWords, gammaIsLong, wallBehaviour,
-                  beyondWall, farSideNote, bothSidesClear, wallDistance, livePoint,
+                  beyondWall, farSideNote, bothSidesClear, wallDistance, livePoint, modelRead,
                   nearestWall, priorClose, pickPrice,
                   wallTier, railWidth,
                   drawableLevels, mergeLevels,

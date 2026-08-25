@@ -90,6 +90,25 @@ body{
 .qfoot{border-top:1px solid var(--hair);padding-top:5px;margin-top:1px}
 .env{font-size:13.5px;color:var(--ink)}
 
+/* ---- the reader's own sentence ---- */
+.read{display:flex;align-items:baseline;gap:8px;padding:8px 12px 8px 11px;
+      background:var(--surface);border:1px solid var(--hair);
+      border-left:3px solid var(--hair);border-radius:12px}
+.read.up{border-left-color:var(--jade)}
+.read.dn{border-left-color:var(--coral)}
+.r-mark{flex:none;font-size:11px;line-height:1.5}
+.read.up .r-mark{color:var(--jade)} .read.dn .r-mark{color:var(--dim)}
+.read.flat .r-mark{color:var(--dim)}
+.r-line{flex:1 1 auto;font-size:13px;line-height:1.4;color:var(--ink)}
+.r-age{flex:none;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--dim);
+       font-variant-numeric:tabular-nums}
+/* past 30 minutes the sentence is history, not a reading. The median is 12
+   minutes but p95 is 214, and nothing in the words says which. */
+.read.old{border-left-color:var(--hair) !important}
+.read.old .r-line{color:var(--dim)}
+.read.old .r-mark{color:var(--faint)}
+.read.old .r-age{color:var(--coral)}
+
 /* ---- zone 2 : where price sits ---- */
 /* the chart is the elastic element: header and card are only as tall as
    their content, and everything left over is plot. min-height:0 is what
@@ -99,7 +118,7 @@ body{
    lets a flex child actually shrink below its content on a small phone. */
 .chart{background:var(--surface);border:1px solid var(--hair);border-radius:12px;
        padding:5px 7px 2px;flex:1 1 0;min-height:240px;display:flex}
-header,.wall,.key{flex:none}
+header,.wall,.key,.read{flex:none}
 svg{width:100%;height:100%;display:block;overflow:hidden}
 
 /* the regime lane — colour before text, per the doctrine's reading order */
@@ -216,6 +235,8 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
   <div class="qfoot"><span class="env" id="env">connecting…</span></div>
 </header>
 
+<section class="read" id="read" hidden></section>
+
 <div class="chart" id="chartbox"><svg id="svg" preserveAspectRatio="none"></svg></div>
 <div class="key" id="key"></div>
 
@@ -267,6 +288,13 @@ async function load(){
   }
   paintChart(scene, tapePoints(rows));
   paintWall(scene);
+
+  // the reader's own sentence, from the same raw route the diary uses
+  if(pay.session){
+    const rd = await getJSON('/api/raw/file?root=state&path=sndk_reads/'
+                             + encodeURIComponent(pay.session) + '.jsonl&limit=40');
+    paintRead(rd.body && Array.isArray(rd.body.rows) ? rd.body.rows : null);
+  }
 }
 
 function paintHeader(pay, scene){
@@ -295,6 +323,19 @@ function paintHeader(pay, scene){
   // small a signal for a screen read at arm's length, so the price itself
   // goes dim — the reading is still there, it just stops claiming to be now.
   document.body.classList.toggle('stale', !!f.stale);
+}
+
+function paintRead(rows){
+  const el = $('read');
+  const m = modelRead(rows);
+  if(!m){ el.hidden = true; return; }
+  const mark = m.vector === 'up' ? '\u25B2' : m.vector === 'down' ? '\u25BC' : '\u00B7';
+  const cls = m.vector === 'up' ? 'up' : m.vector === 'down' ? 'dn' : 'flat';
+  el.hidden = false;
+  el.className = 'read ' + cls + (m.stale ? ' old' : '');
+  el.innerHTML = '<span class="r-mark">' + mark + '</span>'
+               + '<span class="r-line">' + m.line + '</span>'
+               + '<span class="r-age">' + gMinutes(m.ageMin) + '</span>';
 }
 
 function paintChart(scene, points){

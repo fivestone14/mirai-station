@@ -223,7 +223,7 @@ def test_the_chart_is_given_the_room_but_cannot_collapse():
     assert "min-height:100dvh" in PHONE
     assert "height:100dvh;overflow:hidden" not in PHONE.replace(" ", "")
     assert "flex:1 1 0;min-height:240px" in PHONE
-    assert "header,.wall,.key{flex:none}" in PHONE
+    assert "header,.wall,.key,.read{flex:none}" in PHONE
 
 
 def test_the_off_window_flip_chevron_names_itself():
@@ -268,3 +268,31 @@ def test_the_quote_is_timed_off_age_not_off_ts():
     lp = GLANCE.split("function livePoint")[1].split("/* ---- freshness")[0]
     assert "live.age_s" in lp
     assert "Date.parse(live.ts)" in lp                       # exact when offered, never required
+
+
+def test_the_readers_own_sentence_reaches_the_phone():
+    """reading.line is written for a human and capped at 24 words, and 2,878 of
+    2,929 recorded rows carry one. It comes through the same raw route the
+    diary already uses, so no backend route was added."""
+    assert "function modelRead(" in GLANCE
+    assert "sndk_reads/" in PHONE
+    assert "paintRead(" in PHONE
+
+
+def test_the_reading_never_appears_without_its_age():
+    """The median reading is 12 minutes old, p95 is 214, and the oldest on
+    record is 341. 'the 1450 put wall has held 62 minutes as a floor' is worth
+    reading at 12 minutes and is a liability at 250, and nothing in the
+    sentence says which one you have."""
+    mr = GLANCE.split("function modelRead")[1].split("/* ---- freshness")[0]
+    assert "age>30" in mr.replace(" ", "")          # the line goes to history past 30m
+    assert "r-age" in PHONE
+    assert ".read.old .r-line{color:var(--dim)}" in PHONE
+
+
+def test_the_reading_shows_no_magnitude():
+    """magnitude_sigma clusters at 0.15 against a true median 30-minute move of
+    0.089 and never exceeds 0.35 against a true max of 2.44. It over-predicts
+    the ordinary day and cannot see the tail."""
+    assert "magnitude_sigma" not in GLANCE
+    assert "magnitude_sigma" not in PHONE
