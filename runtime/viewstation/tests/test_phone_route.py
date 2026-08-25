@@ -255,7 +255,7 @@ def test_the_now_dot_is_joined_to_the_line_it_left():
     observed and a solid line would invent one. The quote never enters the
     measured path."""
     assert "function livePoint(" in GLANCE
-    assert "class=\\"preach\\"" in PHONE
+    assert 'class="preach"' in PHONE
     assert "const d = linePath(points, geo);" in PHONE      # measured points only
     assert "const dotX =" in PHONE and "dotX.toFixed(1)" in PHONE   # one shared endpoint
 
