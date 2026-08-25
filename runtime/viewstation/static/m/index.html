@@ -3,678 +3,286 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0e14">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0C1017">
 <title>SNDK · Mirai</title>
 <!--
-  The phone view (2026-08-23).
+  The phone glance (rebuilt 2026-08-24).
 
-  NOT the viewstation reflowed. The desktop page is a workstation — eight tabs,
-  a fifteen-plane layer deck, a megabyte of markup. This is a three-second read
-  of one name, and it answers exactly three questions in this order:
+  One price ladder under one price. It answers three questions in reading
+  order: what kind of day, where price sits against the levels that matter,
+  and what happens at the nearest one.
 
-      what kind of day is it   ·   where is price between the levels
-                    ·   what does the nearest level do to price
+  Three laws it is built on.
+    1. Honest-absent. No datum yields no mark. A measured emptiness is a
+       finding and gets drawn; a missing datum is not zero.
+    2. One hue, one meaning. Iris is price and only price. Jade is the call
+       side, coral the put side, l-grav the magnet, lantern staleness. The one
+       reuse is separated by form: filled and coloured is the day's move, of
+       which there is exactly one on screen; stroked or ruled and coloured is a
+       level on the book.
+    3. No Greek on the surface. Every distance is in dollars. The ruler is
+       stated once, in English, in the regime row.
 
-  Everything it draws already exists. The scene comes from /api/sndk/payload —
-  the same JSON the reading model is handed — and the session's price line from
-  the diary through the raw explorer, which is how the desktop page reads every
-  other store. It adds no route of its own and asks nothing new of Schwab.
+  Gamma sign colours nothing. It is the literal string "unknown" on 7.1% of
+  rows, so its entire blast radius here is one gloss line, one sentence and the
+  footer. If the sign is wrong, one sentence is wrong, not the instrument.
 
-  The rules that turn gamma into English live in glance.js, lifted from
-  index.html's snkArrows so the two screens can never describe one board in two
-  voices. The honest difference between them is documented at the top of that
-  file and said out loud on screen: this reads the BOARD's gamma sign, not each
-  strike's.
+  Tokens are the Mirai Awakening desktop's own, byte-for-byte.
 -->
 <style>
 :root{
-  --bg:#0a0e14; --surface:#121924; --surface-2:#18212e;
-  --hair:#222d3a; --ink:#dbe4e0; --dim:#8494a0; --faint:#5b6a76;
-  --jade:#43c59e; --jade-dim:#17805f;
-  --coral:#eb6a57; --coral-dim:#c0402d;
-  --amber:#d8a13a;
+  --ground:#0C1017;
+  --surface:#141A24;
+  --surface-2:#1B2330;
+  --hairline:#28313F;
+  --hairline-2:#333E50;
+
+  /* ink is subordinate by SIZE, never by contrast: this is read outdoors, and
+     a low-contrast grey outdoors means gone. All three pass AA on --ground. */
+  --ink:#E7EBF3;
+  --ink-dim:#98A2B6;
+  --ink-faint:#8A93A8;
+
+  --iris:#8B9CFF;      /* price, and only price   */
+  --jade:#43C59E;      /* the call side           */
+  --coral:#EB6A57;     /* the put side            */
+  --lantern:#E7B85C;   /* aging, and nothing else */
+  --l-grav:#F3AB3E;    /* the magnet, and nothing else */
+
+  --jade-wash:rgba(67,197,158,.10);
+  --coral-wash:rgba(235,106,87,.10);
+
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;
+  --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
+
+  --ladder-h:376px;
+  --r-mast:88px; --r-regime:48px; --r-gate:128px; --r-read:92px; --r-foot:20px;
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--ink)}
+@media (max-height:700px){
+  :root{ --r-mast:76px; --r-regime:44px; --r-gate:118px; --r-read:76px; --r-foot:18px; }
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html{height:100%}
 body{
-  font:15px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
-  padding:calc(env(safe-area-inset-top) + 12px) 10px calc(10px + env(safe-area-inset-bottom));
-  display:flex;flex-direction:column;gap:6px;min-height:100vh;min-height:100dvh;
+  height:100dvh; overflow:hidden;
+  background:var(--ground); color:var(--ink);
+  font:400 13px/1.4 var(--sans);
   -webkit-font-smoothing:antialiased;
+  padding:calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 14px);
+  display:flex; flex-direction:column;
 }
-.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+body.failed > section, body.failed > .foot{display:none}
 
-/* ---- zone 1 : what kind of day ---- */
-.quote{
-  position:relative;background:var(--surface);border:1px solid var(--hair);
-  border-radius:12px;padding:8px 12px 8px 14px;overflow:hidden;
-  display:flex;flex-direction:column;gap:3px;
-}
-/* the day's direction, read before any number is */
-.quote::before{
-  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
-  background:var(--faint);transition:background .3s;
-}
-.quote.up::before{background:var(--jade)}
-.quote.dn::before{background:var(--coral)}
+/* ============ A. MASTHEAD ============ */
+.masthead{height:var(--r-mast);flex:none;display:flex;flex-direction:column;
+          justify-content:center;gap:6px}
+.mast-row{display:flex;align-items:center;gap:8px;height:14px}
+.ticker{font:500 11px/1.2 var(--mono);letter-spacing:.18em;color:var(--ink-dim)}
+.livedot{width:5px;height:5px;border-radius:50%;background:var(--iris);flex:none;
+         box-shadow:0 0 0 0 rgba(139,156,255,.55);animation:pulse 2.4s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(139,156,255,.5)}
+                 70%{box-shadow:0 0 0 7px rgba(139,156,255,0)}
+                 100%{box-shadow:0 0 0 0 rgba(139,156,255,0)}}
+@media (prefers-reduced-motion:reduce){.livedot{animation:none}}
+.expiry{font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+        color:var(--ink-faint)}
+.fresh{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
+       text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim);
+       white-space:nowrap}
+.fresh.warn{color:var(--lantern)}
+.fresh.bad{color:var(--lantern);border:1px solid var(--lantern);border-radius:3px;padding:1px 6px}
 
-.qtop{display:flex;align-items:center;gap:7px;min-height:16px}
-.tick{font-size:12px;letter-spacing:.18em;color:var(--dim);font-family:ui-monospace,monospace}
-.src{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
-     font-family:ui-monospace,monospace}
-.livedot{width:6px;height:6px;border-radius:50%;background:var(--jade);
-         box-shadow:0 0 0 0 rgba(67,197,158,.55);animation:pulse 2.4s ease-out infinite;flex:none}
-@keyframes pulse{
-  0%{box-shadow:0 0 0 0 rgba(67,197,158,.5)}
-  70%{box-shadow:0 0 0 7px rgba(67,197,158,0)}
-  100%{box-shadow:0 0 0 0 rgba(67,197,158,0)}
-}
-@media (prefers-reduced-motion:reduce){ .livedot{animation:none} }
-.stamp{margin-left:auto;font-size:11px;font-family:ui-monospace,monospace;
-       padding:2px 8px;border-radius:99px;border:1px solid var(--hair);color:var(--dim);white-space:nowrap}
-.stamp.ok{color:var(--jade);border-color:var(--jade-dim)}
-.stamp.warn{color:var(--amber);border-color:#5a4520}
-.stamp.bad{color:var(--coral);border-color:var(--coral-dim);background:#2a1613}
+.mast-price{display:flex;align-items:baseline;gap:10px;min-width:0}
+.px{font:600 40px/1.0 var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums;
+    color:var(--ink);flex:none}
+.px.withdrawn{color:var(--ink-dim)}
+.chg{font:600 11px/1.2 var(--mono);letter-spacing:.02em;font-variant-numeric:tabular-nums;
+     border-radius:999px;padding:3px 9px;white-space:nowrap;flex:none}
+.chg.up{color:var(--jade);background:var(--jade-wash)}
+.chg.dn{color:var(--coral);background:var(--coral-wash)}
+.chg.flat{color:var(--ink-dim);background:none}
+.lastscan{font:500 11px/1.2 var(--mono);letter-spacing:.02em;text-transform:uppercase;
+          font-variant-numeric:tabular-nums;color:var(--ink-faint);white-space:nowrap;
+          overflow:hidden;text-overflow:ellipsis}
 
-.qmain{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.px{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.05;
-    font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
-.chg{font-size:14px;font-weight:600;padding:3px 9px;border-radius:99px;
-     border:1px solid transparent;white-space:nowrap}
-.chg.up{color:var(--jade);background:rgba(67,197,158,.11);border-color:var(--jade-dim)}
-.chg.dn{color:var(--coral);background:rgba(235,106,87,.11);border-color:var(--coral-dim)}
-.chg.flat{color:var(--dim);border-color:var(--hair)}
-.chg:empty{display:none}
+/* ============ B. REGIME ============ */
+.regime{height:var(--r-regime);flex:none;border-top:1px solid var(--hairline);
+        display:flex;align-items:center;gap:10px;padding-top:6px}
+.reg-left{min-width:0;flex:1 1 auto}
+.reg-word{font:600 18px/1.15 var(--sans);letter-spacing:-.01em;color:var(--ink);
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reg-word:empty{display:none}
+.reg-gloss{font:400 13px/1.4 var(--sans);color:var(--ink-dim);
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reg-ruler{flex:none;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
+           text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim)}
 
-.qfoot{border-top:1px solid var(--hair);padding-top:5px;margin-top:1px}
-.env{font-size:13.5px;color:var(--ink)}
+/* ============ C. LADDER ============ */
+.ladder{height:var(--ladder-h);flex:none;border-top:1px solid var(--hairline)}
+#svg{display:block}
 
-/* ---- the reader's own sentence ---- */
-.read{display:flex;align-items:baseline;gap:8px;padding:8px 12px 8px 11px;
-      background:var(--surface);border:1px solid var(--hair);
-      border-left:3px solid var(--hair);border-radius:12px}
-.read.up{border-left-color:var(--jade)}
-.read.dn{border-left-color:var(--coral)}
-.r-mark{flex:none;font-size:11px;line-height:1.5}
-.read.up .r-mark{color:var(--jade)} .read.dn .r-mark{color:var(--dim)}
-.read.flat .r-mark{color:var(--dim)}
-.r-line{flex:1 1 auto;font-size:13px;line-height:1.4;color:var(--ink)}
-.r-age{flex:none;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--dim);
-       font-variant-numeric:tabular-nums}
-/* past 30 minutes the sentence is history, not a reading. The median is 12
-   minutes but p95 is 214, and nothing in the words says which. */
-.read.old{border-left-color:var(--hair) !important}
-.read.old .r-line{color:var(--dim)}
-.read.old .r-mark{color:var(--faint)}
-.read.old .r-age{color:var(--coral)}
+.p-band   {fill:var(--ink);fill-opacity:.045}
+.p-path   {fill:none;stroke:var(--ink-dim);stroke-width:1.6;stroke-opacity:.85;
+           stroke-linejoin:round;stroke-linecap:round}
+.p-reach  {fill:none;stroke:var(--ink);stroke-opacity:.35;stroke-width:1.2;stroke-dasharray:2 4}
+.p-break  {stroke:var(--hairline-2);stroke-width:1}
+.p-vwap   {stroke:var(--ink-dim);stroke-opacity:.7;stroke-width:1;stroke-dasharray:1 5}
+.p-wall   {stroke-linecap:butt}
+.p-wall.call{stroke:var(--jade)} .p-wall.put{stroke:var(--coral)}
+.p-mag    {stroke:var(--l-grav);stroke-width:2.2}
+.p-magrun {stroke:var(--l-grav);stroke-width:1.4}
+.p-magglow{stroke:var(--l-grav);stroke-width:7;stroke-opacity:.10}
+.p-prule  {stroke:var(--iris);stroke-opacity:.28;stroke-width:1}
+.p-dot    {fill:var(--iris);stroke:var(--ground);stroke-width:1.2}
+.p-halo   {fill:none;stroke:var(--iris);stroke-opacity:.28;stroke-width:1.2}
+.p-brk    {fill:none;stroke:var(--ink-dim);stroke-opacity:.55;stroke-width:1.5;
+           stroke-linecap:butt}
+.p-chip   {fill:var(--iris)}
+.p-chiptx {fill:var(--ground);font:500 13px/1 var(--mono);font-variant-numeric:tabular-nums;
+           text-anchor:end}
+.p-tie    {fill:none;stroke:var(--hairline-2);stroke-width:.8}
+.p-bar    {fill-opacity:.85}
+.p-bar.call{fill:var(--jade)} .p-bar.put{fill:var(--coral)}
+.p-clip   {fill:var(--ink)}
+.p-diamond{fill:var(--l-grav)}
+.p-tag    {font:500 13px/1 var(--mono);font-variant-numeric:tabular-nums;text-anchor:end;
+           fill-opacity:.78}
+.p-tag.lead{fill-opacity:1;font-weight:600}
+.p-tag.call{fill:var(--jade)} .p-tag.put{fill:var(--coral)}
+.p-tag.mag {fill:var(--l-grav)} .p-tag.vwap{fill:var(--ink-dim)}
+.p-lane    {font:500 10px/1 var(--mono);letter-spacing:.12em;fill:var(--ink-dim);
+            text-anchor:end}
+.p-word    {font:500 10px/1 var(--mono);letter-spacing:.14em;fill:var(--ink-faint);
+            paint-order:stroke;stroke:var(--ground);stroke-width:3;stroke-linejoin:round}
+.p-word.dim{fill:var(--ink-dim)}
+.p-edge    {font:500 11px/1 var(--mono);letter-spacing:.02em;
+            font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--ink-faint)}
+.p-axis    {font:500 10px/1 var(--mono);letter-spacing:.14em;fill:var(--ink-faint)}
 
-/* ---- zone 2 : where price sits ---- */
-/* the chart is the elastic element: header and card are only as tall as
-   their content, and everything left over is plot. min-height:0 is what
-   lets a flex child actually shrink below its content on a small phone. */
-/* the chart is the elastic element: header and card are only as tall as
-   their content, and everything left over is plot. min-height:0 is what
-   lets a flex child actually shrink below its content on a small phone. */
-.chart{background:var(--surface);border:1px solid var(--hair);border-radius:12px;
-       padding:5px 7px 2px;flex:1 1 0;min-height:240px;display:flex}
-header,.wall,.key,.read{flex:none}
-svg{width:100%;height:100%;display:block;overflow:hidden}
+/* ============ D. GATE ============ */
+.gate{height:var(--r-gate);flex:none;border-top:1px solid var(--hairline);
+      display:flex;flex-direction:column;gap:4px;padding:10px 0 10px}
+.g-lab{display:flex;align-items:baseline;gap:8px;height:14px}
+.g-dir{font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+       color:var(--ink-dim);white-space:nowrap}
+.g-meas{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
+        text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim);
+        white-space:nowrap}
+.g-head{display:flex;align-items:baseline;gap:10px;height:40px;min-width:0}
+.g-k{flex:none;font:600 30px/1.0 var(--mono);letter-spacing:-.01em;
+     font-variant-numeric:tabular-nums}
+.g-k.call{color:var(--jade)} .g-k.put{color:var(--coral)}
+.g-mech{flex:1 1 auto;min-width:0;font:400 13px/1.4 var(--sans);color:var(--ink-dim);
+        display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.g-load{display:grid;grid-template-columns:1fr auto;column-gap:10px;row-gap:4px;
+        align-items:center}
+.g-row{display:contents}
+.g-row[hidden]{display:none}
+.g-bar{position:relative;height:6px;border-radius:2px;background:var(--surface-2);
+       overflow:hidden}
+.g-bar>i{position:absolute;inset:0 auto 0 0;border-radius:2px;background:var(--ink);
+         opacity:.80;width:0}
+.g-bar.behind>i{opacity:.42}
+.g-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;
+              background:var(--ground)}
+.g-val{font:500 11px/1.2 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-dim);
+       white-space:nowrap}
+.g-val b{font-weight:600;color:var(--ink)}
+.g-foot{font:400 13px/1.4 var(--sans);color:var(--ink-dim);
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gate.empty .g-head{height:auto}
+.gate.empty .g-mech{-webkit-line-clamp:3}
 
-/* the regime lane — colour before text, per the doctrine's reading order */
-.rule{opacity:.85}
-.r-long{fill:var(--jade)} .r-short{fill:var(--coral)} .r-none{fill:var(--hair)}
-.wash{opacity:.05}
-.wash.r-none{opacity:0}
+/* ============ E. READ ============ */
+.read{height:var(--r-read);flex:none;border-top:1px solid var(--hairline);
+      display:flex;flex-direction:column;gap:4px;padding:8px 0 8px}
+.rd-lab{display:flex;align-items:baseline;height:14px;
+        font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+        color:var(--ink-faint)}
+.rd-age{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
+        font-variant-numeric:tabular-nums;color:var(--ink-dim)}
+.rd-age.old{color:var(--lantern)}
+.rd-body{display:flex;gap:6px;min-width:0;flex:1 1 auto}
+.rd-mark{flex:none;font-size:9px;line-height:1.9;color:var(--ink-dim)}
+.rd-mark:empty{display:none}
+.rd-line{flex:1 1 auto;min-width:0;font:italic 400 13px/1.45 var(--serif);color:var(--ink);
+         display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.rd-line.aged{color:var(--ink-dim)}
+.rd-line.expired{font:400 13px/1.4 var(--sans);font-style:normal;color:var(--ink-dim)}
 
-/* the day's path */
-.pline{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
-.preach{fill:none;stroke:var(--ink);stroke-opacity:.42;stroke-width:1.4;stroke-dasharray:2 4;stroke-linecap:round}
-.pnow{fill:var(--ink)}
-.pnow-halo{fill:none;stroke:var(--ink);stroke-opacity:.25;stroke-width:1.2}
+/* ============ F. FOOT ============ */
+.foot{height:var(--r-foot);flex:none;display:flex;align-items:flex-end;
+      font:400 10px/1.35 var(--sans);color:var(--ink-faint);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* walls. call = jade, put = coral — the desktop's own law (gwc jade / gwp
-   coral). The phone had these inverted until 08-24, which put a coral call
-   wall on the same screen as a coral negative-gamma rule meaning the opposite
-   thing. Stroke width is set per-line from the measured tier. */
-.lv-call{stroke:var(--jade)}
-.lv-put{stroke:var(--coral)}
-.wt{opacity:.75}
-.wt-call{fill:var(--jade)} .wt-put{fill:var(--coral)}
-.wt-clip{fill:var(--ink);opacity:.5}
-/* the glyph lane. Emoji render as colour bitmaps, so they carry no theme
-   token and must never be asked to mean a hue — they mark a PLACE. */
-.glyph{font-size:13px;text-anchor:middle;
-       font-family:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif}
-
-/* magnet: solid with a glow. The dash this used to carry belongs to the
-   desktop's fence mark, not its magnet. */
-.mag{stroke:var(--amber)}
-.magglow{stroke:var(--amber);stroke-width:7;opacity:.10}
-
-.flipband{fill:#7f8fe0;fill-opacity:.09}
-.flipedge{stroke:#7f8fe0;stroke-opacity:.5;stroke-width:1;stroke-dasharray:3 5;fill:none}
-.chev{fill:none;stroke:#7f8fe0;stroke-opacity:.55;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-
-.tie{fill:none;stroke:var(--faint);stroke-width:.8}
-.lbl{font-family:ui-monospace,monospace;font-size:10px;fill:var(--dim)}
-.k{font-family:ui-monospace,monospace;font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.k-call{fill:var(--jade)} .k-put{fill:var(--coral)} .k-magnet{fill:var(--amber)}
-
-.key{display:flex;flex-wrap:wrap;gap:2px 11px;font-size:10.5px;color:var(--dim);
-     font-family:ui-monospace,monospace;padding:0 2px;line-height:1.5}
-/* one chip = one flex item; the swatch and its words never separate */
-.key .chip{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-.key i{display:block;width:12px;height:2px;border-radius:1px;flex:none}
-.key b{display:block;font-weight:400;font-size:11px;line-height:1;flex:none;
-       font-family:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif}
-.s-call{background:var(--jade)} .s-put{background:var(--coral)}
-.s-wt{background:linear-gradient(90deg,var(--dim) 0,var(--dim) 50%,transparent 50%);height:3px !important}
-.s-flip{background:#7f8fe0;opacity:.5;height:7px !important;border-radius:2px}
-
-/* ---- zone 3 : what happens there ---- */
-.wall{position:relative;background:var(--surface);border:1px solid var(--hair);
-      border-left:3px solid var(--hair);border-radius:12px;padding:8px 12px 8px 11px;
-      overflow:hidden;display:flex;flex-direction:column;gap:0}
-.wall.brake{border-left-color:var(--jade)}
-.wall.accelerant{border-left-color:var(--coral)}
-.wall::before{content:"";position:absolute;inset:0;pointer-events:none}
-.wall.brake::before{background:linear-gradient(90deg,rgba(67,197,158,.07),transparent 42%)}
-.wall.accelerant::before{background:linear-gradient(90deg,rgba(235,106,87,.07),transparent 42%)}
-.wall>*{position:relative}
-
-.w-lab{display:flex;align-items:baseline;gap:6px;min-width:0;
-       font:11px/1.25 ui-monospace,monospace;letter-spacing:.11em;
-       text-transform:uppercase;color:var(--dim)}
-.w-lab .caret{font-size:9px;color:var(--dim);letter-spacing:0}
-.w-meas{margin-left:auto;display:flex;gap:7px;min-width:0;overflow:hidden;
-        letter-spacing:.04em;text-transform:none;white-space:nowrap;
-        font-variant-numeric:tabular-nums}
-.w-meas>span{flex:none}
-.w-meas .d1{order:9} .w-meas .d2{order:8}
-
-.w-head{display:flex;align-items:baseline;gap:9px;margin-top:3px;min-width:0}
-.w-k{flex:none;font:600 22px/1.15 ui-monospace,monospace;
-     font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:var(--ink)}
-.w-mech{flex:1 1 auto;min-width:0;font-size:11px;line-height:1.3;color:var(--dim)}
-
-/* both bars on ONE grid, so the two tracks are provably the same scale */
-.w-load{display:grid;grid-template-columns:1fr auto;align-items:center;
-        column-gap:9px;row-gap:3px;margin-top:6px}
-.w-bar{position:relative;height:8px;border-radius:2px;background:#1a2330;overflow:hidden}
-.w-bar>i{position:absolute;inset:0 auto 0 0;border-radius:2px;background:rgba(219,228,224,.80)}
-.w-bar.behind>i{background:rgba(219,228,224,.46)}
-.w-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--bg)}
-.w-val{font:11px/1.2 ui-monospace,monospace;font-variant-numeric:tabular-nums;
-       color:var(--dim);white-space:nowrap}
-.w-val b{font-weight:600;color:var(--ink)}
-
-/* a measured emptiness is a FINDING — ink, not dim */
-.w-far{margin-top:6px;font-size:11.5px;line-height:1.3;color:var(--ink)}
-/* apparatus is subordinate by SIZE, not by contrast: --faint is 3.17:1 on this
-   surface and fails AA, which outdoors means gone. */
-.w-cav{margin-top:5px;font-size:10px;line-height:1.3;color:var(--dim)}
-
-.msg{padding:22px 14px;text-align:center;color:var(--dim);font-size:14px;line-height:1.5}
-.msg b{color:var(--coral);font-weight:600}
+/* ============ FAILURE ============ */
+.fail{margin:auto 0;padding:0 6px;text-align:left}
+.fail-1{font:400 15px/1.5 var(--sans);color:var(--ink);margin-bottom:10px}
+.fail-2{font:500 12px/1.5 var(--mono);color:var(--ink-dim)}
 </style>
 </head>
 <body>
 
-<header class="quote" id="quote">
-  <div class="qtop">
-    <span class="tick">SNDK</span>
+<section class="masthead" id="masthead">
+  <div class="mast-row">
+    <span class="ticker"  id="ticker"></span>
     <span class="livedot" id="livedot" hidden></span>
-    <span class="src" id="src"></span>
-    <span class="stamp" id="stamp">·</span>
+    <span class="expiry"  id="expiry"></span>
+    <span class="fresh"   id="fresh"></span>
   </div>
-  <div class="qmain">
-    <span class="px mono" id="px">—</span>
-    <span class="chg mono" id="chg"></span>
+  <div class="mast-price">
+    <span class="px"  id="px">—</span>
+    <span class="chg" id="chg" hidden></span>
+    <span class="lastscan" id="lastscan" hidden></span>
   </div>
-  <div class="qfoot"><span class="env" id="env">connecting…</span></div>
-</header>
+</section>
 
-<section class="read" id="read" hidden></section>
+<section class="regime">
+  <div class="reg-left">
+    <div class="reg-word"  id="regWord"></div>
+    <div class="reg-gloss" id="regGloss"></div>
+  </div>
+  <div class="reg-ruler" id="ruler"></div>
+</section>
 
-<div class="chart" id="chartbox"><svg id="svg" preserveAspectRatio="none"></svg></div>
-<div class="key" id="key"></div>
+<section class="ladder" id="ladder"><svg id="svg"></svg></section>
 
-<section class="wall" id="wall" hidden></section>
-<div class="msg" id="msg" hidden></div>
+<section class="gate" id="gate">
+  <div class="g-lab">
+    <span class="g-dir"  id="gDir"></span>
+    <span class="g-meas" id="gMeas"></span>
+  </div>
+  <div class="g-head">
+    <span class="g-k"    id="gStrike"></span>
+    <span class="g-mech" id="gMech"></span>
+  </div>
+  <div class="g-load" id="gLoad">
+    <div class="g-row" id="gRowA">
+      <div class="g-bar"><i id="gBarA"></i></div><div class="g-val" id="gValA"></div>
+    </div>
+    <div class="g-row" id="gRowB">
+      <div class="g-bar behind"><i id="gBarB"></i></div><div class="g-val" id="gValB"></div>
+    </div>
+  </div>
+  <div class="g-foot" id="gFoot"></div>
+</section>
+
+<section class="read" id="read">
+  <div class="rd-lab"><span>MODEL READ</span><span class="rd-age" id="rdAge"></span></div>
+  <div class="rd-body"><span class="rd-mark" id="rdMark"></span><span class="rd-line" id="rdLine"></span></div>
+</section>
+
+<div class="foot" id="foot"></div>
+
+<div class="fail" id="fail" hidden>
+  <p class="fail-1" id="fail1"></p>
+  <p class="fail-2" id="fail2"></p>
+</div>
 
 <script src="/m/glance.js"></script>
-<script>
-/* The page: fetch, draw, and get out of the way. All reasoning is in glance.js. */
-
-const USER = new URLSearchParams(location.search).get('user') || 'will';
-const $ = id => document.getElementById(id);
-let TIMER = null, SPOT_TIMER = null;
-let LIVE = null;   // the streaming quote, or null when there isn't one
-let PAY = null;    // the last payload, kept so a new quote can repaint alone
-
-async function getJSON(url){
-  const r = await fetch(url, {cache:'no-store'});
-  const t = await r.text();
-  try { return {status:r.status, body:JSON.parse(t)}; }
-  catch(e){ return {status:r.status, body:null}; }
-}
-
-function fail(html){
-  $('msg').hidden = false; $('msg').innerHTML = html;
-  $('wall').hidden = true;
-}
-
-async function load(){
-  const p = await getJSON('/api/sndk/payload?user=' + encodeURIComponent(USER));
-  if(p.status === 403)
-    return fail('The station refused the request — its <b>permitted-user check</b> said no.'
-              + '<br>Open <span class="mono">/m?user=&lt;your name&gt;</span> with the name the front door knows you by.');
-  const pay = p.body;
-  if(!pay || pay.error || !pay.scene)
-    return fail('No SNDK scene yet.<br><span class="mono">' + ((pay && pay.error) || 'the station returned nothing') + '</span>');
-
-  $('msg').hidden = true;
-  PAY = pay;
-  const scene = pay.scene;
-  paintHeader(pay, scene);
-
-  // the session's own price line, read the way the desktop reads every store
-  let rows = [];
-  if(pay.session){
-    const d = await getJSON('/api/raw/file?root=state&path=sndk_reversion/'
-                            + encodeURIComponent(pay.session) + '.jsonl&limit=400');
-    if(d.body && Array.isArray(d.body.rows)) rows = d.body.rows;
-  }
-  paintChart(scene, tapePoints(rows));
-  paintWall(scene);
-
-  // the reader's own sentence, from the same raw route the diary uses
-  if(pay.session){
-    const rd = await getJSON('/api/raw/file?root=state&path=sndk_reads/'
-                             + encodeURIComponent(pay.session) + '.jsonl&limit=40');
-    paintRead(rd.body && Array.isArray(rd.body.rows) ? rd.body.rows : null);
-  }
-}
-
-function paintHeader(pay, scene){
-  const sceneLive = pay.as_of === 'live';
-  const q = pickPrice(scene, LIVE, sceneLive);
-
-  $('px').textContent = q ? gUsd(q.price) : '—';
-  $('livedot').hidden = !(q && q.live);
-  $('src').textContent = q ? (q.live ? 'live' : 'last scan') : '';
-
-  const ch = q ? q.pct : null;
-  const c = $('chg');
-  const dir = ch == null ? '' : (ch > 0 ? 'up' : ch < 0 ? 'dn' : 'flat');
-  c.textContent = ch == null ? ''
-    : (ch > 0 ? '▲ +' : ch < 0 ? '▼ ' : '· ') + Math.abs(ch).toFixed(2) + '%';
-  c.className = 'chg mono ' + dir;
-  $('quote').className = 'quote ' + dir;
-
-  $('env').textContent = envWords(scene.regime) || 'regime not measured';
-
-  const f = freshness(pay);
-  const s = $('stamp');
-  s.textContent = f.text;
-  s.className = 'stamp ' + f.level;
-  // A stale scene must not look like a quiet one. The pill alone is too
-  // small a signal for a screen read at arm's length, so the price itself
-  // goes dim — the reading is still there, it just stops claiming to be now.
-  document.body.classList.toggle('stale', !!f.stale);
-}
-
-function paintRead(rows){
-  const el = $('read');
-  const m = modelRead(rows);
-  if(!m){ el.hidden = true; return; }
-  const mark = m.vector === 'up' ? '\u25B2' : m.vector === 'down' ? '\u25BC' : '\u00B7';
-  const cls = m.vector === 'up' ? 'up' : m.vector === 'down' ? 'dn' : 'flat';
-  el.hidden = false;
-  el.className = 'read ' + cls + (m.stale ? ' old' : '');
-  el.innerHTML = '<span class="r-mark">' + mark + '</span>'
-               + '<span class="r-line">' + m.line + '</span>'
-               + '<span class="r-age">' + gMinutes(m.ageMin) + '</span>';
-}
-
-function paintChart(scene, points){
-  const box = $('chartbox').getBoundingClientRect();
-  const W = Math.max(260, box.width - 12), H = Math.max(220, box.height - 12);
-
-  /* Fixed lanes; only the plot flexes. A wider phone gets more chart, never a
-     different chart — and a rail whose datum is missing goes BLANK rather than
-     collapsing, so two scans stay geometrically comparable. */
-  const RULE = 3, GUT = 46, RAIL = 18, TERM = 16, PAD_T = 14, PAD_B = 20, ROW = 16;
-  const plotL = RULE + 8;
-  const plotR = W - GUT - RAIL - TERM - 6;
-  const termX = plotR + TERM / 2;      // glyph lane: icons only, never a bar
-  const railX = plotR + TERM + 2;
-  const gutX  = W - GUT + 2;
-  const geom = {left: plotL, top: PAD_T, w: plotR - plotL, h: H - PAD_T - PAD_B};
-
-  const svg = $('svg');
-  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-
-  const spot = (scene.price || {}).now;
-  const sigma = (scene.scale || {}).one_sigma_dollars;
-  const raw = drawableLevels(scene);
-  // The quote joins the axis so the window and the time scale reach NOW, but
-  // it never joins `points` — see linePath below.
-  const lp = livePoint(LIVE);
-  const axis = (lp && (!points.length || lp.t > points[points.length - 1].t))
-             ? points.concat([lp]) : points;
-  const geo = chartGeometry(axis, raw, spot, geom, sigma);
-  if(!geo){ svg.innerHTML = '<text class="lbl" x="6" y="26">no price measured yet</text>'; return; }
-
-  const levels = mergeLevels(raw, geo.hi - geo.lo);
-  const drawn = {};
-  const glyphs = [];
-  // read once, up here: the off-window flip chip needs it before the dot does
-  const q = pickPrice(scene, LIVE, PAY && PAY.as_of === 'live');
-  const px = q ? q.price : spot;
-  const inWin = v => isFinite(v) && v >= geo.lo && v <= geo.hi;
-  let out = '';
-
-  /* 1 — the regime rule. Colour is read before anything else, and gamma sign
-         is the top of the doctrine's reading order, so it gets its own lane
-         rather than competing inside the plot. Unknown sign renders as chrome,
-         never as a guessed hue. */
-  const long = gammaIsLong(scene.regime);
-  const ruleCls = long == null ? 'r-none' : (long ? 'r-long' : 'r-short');
-  out += '<rect class="rule ' + ruleCls + '" x="0" y="' + PAD_T + '" width="' + RULE
-       + '" height="' + geom.h.toFixed(1) + '"/>';
-  if(long != null){
-    out += '<rect class="wash ' + ruleCls + '" x="' + plotL + '" y="' + PAD_T
-         + '" width="' + geom.w.toFixed(1) + '" height="' + geom.h.toFixed(1) + '"/>';
-    drawn[long ? 'long' : 'short'] = true;
-  }
-
-  /* 2 — the flip band, behind everything. Measured over 1,036 recorded scenes
-         it is entirely off-window 36% of the time, so "draw nothing" is a
-         normal outcome and the key must follow the painter, not the list. */
-  for(const l of levels){
-    if(l.kind !== 'flip' || !Array.isArray(l.band)) continue;
-    const a = geo.yFor(Math.min(l.band[1], geo.hi)), b = geo.yFor(Math.max(l.band[0], geo.lo));
-    if(inWin(l.band[0]) || inWin(l.band[1])){
-      const top = Math.min(a, b), h = Math.abs(b - a);
-      if(h / geom.h < 0.55){
-        out += '<rect class="flipband" x="' + plotL + '" y="' + top.toFixed(1)
-             + '" width="' + geom.w.toFixed(1) + '" height="' + h.toFixed(1) + '"/>';
-      } else {
-        for(const e of [a, b]) if(e > PAD_T && e < H - PAD_B)
-          out += '<line class="flipedge" x1="' + plotL + '" y1="' + e.toFixed(1)
-               + '" x2="' + plotR + '" y2="' + e.toFixed(1) + '"/>';
-      }
-      drawn.flip = true;
-    } else {
-      // wholly outside: a chevron in the margin it left through, no number —
-      // a zone's meaning is positional, and "somewhere above" is the meaning.
-      const up = l.band[0] > geo.hi, y = up ? 8 : H - 5;
-      out += '<path class="chev" d="M' + (plotL + geom.w / 2 - 6) + ',' + (up ? y + 4 : y - 4)
-           + ' L' + (plotL + geom.w / 2) + ',' + y
-           + ' L' + (plotL + geom.w / 2 + 6) + ',' + (up ? y + 4 : y - 4) + '"/>';
-      // The chevron is the only mark that had no key entry, because the key
-      // fired on `drawn.flip` and the flip had drawn nothing IN the window.
-      // A glyph nobody can name is a glyph that is not working: it earns a
-      // chip that says which way and how far, which is also more use than the
-      // band ever was on the ~36% of scans where it is off-screen entirely.
-      const near = up ? l.band[0] : l.band[1];
-      const away = (px != null && isFinite(near)) ? Math.abs(near - px) : null;
-      drawn.flipAway = {up, away};
-    }
-  }
-
-  /* 3 — magnets. Solid amber with a glow (the desktop's own magnet grammar;
-         the dash this used to carry is the desktop's FENCE mark). Runners-up
-         are weighted by their share of the pile, with no threshold anywhere —
-         sr-3 deleted the 5pp constant for shipping a near-constant as a
-         finding, so a near-tie has to LOOK like a tie without anyone deciding
-         where a tie begins. */
-  for(const l of levels){
-    if(l.kind !== 'magnet' || !inWin(l.y)) continue;
-    const y = geo.yFor(l.y).toFixed(1), wt = l.weight || 0.5;
-    if(l.lead) out += '<line class="magglow" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y + '"/>';
-    out += '<line class="mag" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y
-         + '" style="stroke-width:' + (l.lead ? 2 : 1).toFixed(1) + ';opacity:' + wt.toFixed(2) + '"/>';
-    if(l.lead) glyphs.push({y: +y, ch: '\uD83E\uDDF2'});
-    drawn.magnet = true;
-  }
-
-  /* 4 — walls: weight as stroke tier, plus a rail bar for the continuum the
-         three tiers cannot express. A confluence lays the wall's casing over
-         the magnet's glow rather than inventing a third mark. */
-  for(const l of levels){
-    if(l.kind !== 'wall' || !inWin(l.y)) continue;
-    const y = geo.yFor(l.y).toFixed(1);
-    if(l.magnet) out += '<line class="magglow" x1="' + plotL + '" y1="' + y + '" x2="' + plotR + '" y2="' + y + '"/>';
-    out += '<line class="lv lv-' + l.side + '" x1="' + plotL + '" y1="' + y + '" x2="' + plotR
-         + '" y2="' + y + '" style="stroke-width:' + wallTier(l.gex) + '"/>';
-    const bar = railWidth(l.gex, RAIL);
-    if(bar){
-      out += '<rect class="wt wt-' + l.side + '" x="' + railX + '" y="' + (+y - 2).toFixed(1)
-           + '" width="' + bar.w.toFixed(1) + '" height="4"/>';
-      if(bar.clipped)
-        out += '<rect class="wt-clip" x="' + (railX + RAIL - 2) + '" y="' + (+y - 3).toFixed(1) + '" width="2" height="6"/>';
-    }
-    drawn[l.side] = true;
-    if(l.magnet){
-      // A confluence keeps the fact — the wall took the line, not the finding.
-      // But only the LEAD magnet earns the glyph: the runners-up are already
-      // spoken for by line weight, and three magnets in a 16px lane is how a
-      // legend stops meaning anything.
-      if(l.magnetLead) glyphs.push({y: +y, ch: '\uD83E\uDDF2'});
-      drawn.magnet = true;
-    }
-  }
-
-  /* 5 — a side measured EMPTY is a finding, not an absence (sr-5). A hollow
-         slot where a bar would be: the board was read and there is nothing
-         there. No flag means no mark, which correctly reads "not measured". */
-  for(const l of levels){
-    if(l.kind !== 'clear') continue;
-    // Above price: clear sky, nothing capping. Below: a hole, nothing catching
-    // a fall. Position already carries the side, so the glyph carries the
-    // CONSEQUENCE — which the dotted box it replaces never did.
-    const up = l.side === 'call';
-    glyphs.push({y: up ? PAD_T + 6 : H - PAD_B - 9, ch: up ? '\u2601\uFE0F' : '\uD83D\uDD73\uFE0F'});
-    drawn['clear-' + l.side] = true;
-  }
-
-  /* 5b — the glyph lane, rows SOLVED. A magnet sitting near the top of a
-          short chart lands on the open-air icon otherwise, which is the same
-          collision the gutter already solves — so it uses the same solver
-          rather than a second set of rules. */
-  if(glyphs.length){
-    const gy = layoutLabels(glyphs.map(x => x.y), 17, PAD_T + 6, H - PAD_B - 4);
-    glyphs.forEach((x, i) => {
-      out += '<text class="glyph" x="' + termX + '" y="' + (gy[i] + 5).toFixed(1) + '">' + x.ch + '</text>';
-    });
-  }
-
-  /* 6 — the day's path, over the structure it moves through. Only the MEASURED
-          points; the quote is not spliced in. */
-  const d = linePath(points, geo);
-  if(d) out += '<path class="pline" d="' + d + '"/>';
-
-  /* 6b — the unobserved stretch. The diary stops at the last scan while the
-           quote keeps moving, so the dot used to hang in space at the live
-           price while pinned to the last scan's X — measured $15.70 and five
-           hours adrift on 2026-08-24, jumping every 5s against a frozen line.
-           The gap is real and is drawn as what it is: a dashed reach from the
-           last thing measured to where price actually is. Dashed because the
-           path across it was never observed and a solid line would invent
-           one. */
-  // The dot's x is settled here, once, and the reach is drawn to it — they
-  // were computed separately and the dot's clamp left an 8px stub hanging off
-  // its own endpoint.
-  const lastPt = points.length ? points[points.length - 1] : null;
-  const atT = (lp && lastPt && lp.t > lastPt.t) ? lp.t : (lastPt ? lastPt.t : null);
-  const dotX = Math.min(atT != null ? geo.xFor(atT) : plotR, plotR - 8);
-
-  if(lp && lastPt && lp.t > lastPt.t && inWin(lp.s)){
-    out += '<path class="preach" d="M' + geo.xFor(lastPt.t).toFixed(1) + ',' + geo.yFor(lastPt.s).toFixed(1)
-         + ' L' + dotX.toFixed(1) + ',' + geo.yFor(lp.s).toFixed(1) + '"/>';
-  }
-
-  /* 7 — where price is NOW, from the same quote the header shows. These
-         disagreed by 13px before: the header polled the live tape every 5s
-         while the dot sat at the scan price from 60s ago. */
-  if(px != null && inWin(px)){
-    const cx = dotX, cy = geo.yFor(px);
-    out += '<circle class="pnow-halo" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6.5"/>';
-    out += '<circle class="pnow" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="3.4"/>';
-  }
-
-  /* 8 — the gutter: the plot's only text lane, whole dollars, rows solved so
-         no two can touch. Capped at six; the heaviest-behind and the lead
-         magnet are never the ones dropped. */
-  const numbered = levels.filter(l => (l.kind === 'wall' || (l.kind === 'magnet' && l.lead)) && inWin(l.y))
-                         .sort((a, b) => (b.behind ? 1 : 0) - (a.behind ? 1 : 0))
-                         .slice(0, 6)
-                         .sort((a, b) => a.y - b.y);
-  const rows = layoutLabels(numbered.map(l => geo.yFor(l.y)), ROW, PAD_T + 4, H - PAD_B - 2);
-  numbered.forEach((l, i) => {
-    const y = geo.yFor(l.y), ly = rows[i];
-    if(Math.abs(ly - y) > 2)
-      out += '<path class="tie" d="M' + (railX + RAIL) + ',' + y.toFixed(1)
-           + ' L' + (gutX - 3) + ',' + ly.toFixed(1) + '"/>';
-    const cls = l.kind === 'magnet' ? 'k-magnet' : ('k-' + l.side);
-    out += '<text class="k ' + cls + '" x="' + gutX + '" y="' + (ly + 4).toFixed(1) + '">'
-         + gUsd(l.y, 0).replace('$', '') + '</text>';
-  });
-
-  /* 9 — the session's own clock, so the width of the line means something */
-  const c = scene.clock || {};
-  if(c.minutes_since_open != null){
-    out += '<text class="lbl" x="' + plotL + '" y="' + (H - 5) + '">9:30</text>';
-    out += '<text class="lbl" x="' + plotR + '" y="' + (H - 5) + '" text-anchor="end">'
-         + (c.minutes_to_close > 0 ? gMinutes(c.minutes_to_close) + ' left' : 'closed') + '</text>';
-  }
-  svg.innerHTML = out;
-
-  /* The key describes the picture, so it is built from what the painter
-     actually filled. It used to be built from the candidate list, which meant
-     it advertised a flip band on the ~36% of scans where none was drawn. */
-  // Each chip is ONE flex item. It was not: a swatch and its bare text label
-  // were siblings in the flex row, so the 12px gap fell between every icon and
-  // the words it belonged to, and a 2px bar and an emoji sat on different
-  // baselines. A legend whose parts drift apart is worse than no legend.
-  const key = [];
-  const chip = (mark, label) => '<span class="chip">' + mark + '<span>' + label + '</span></span>';
-  const sw = cls => '<i class="' + cls + '"></i>';
-  const gl = ch => '<b class="g">' + ch + '</b>';
-
-  if(drawn.call) key.push(chip(sw('s-call'), 'call wall'));
-  if(drawn.put) key.push(chip(sw('s-put'), 'put wall'));
-  if(drawn.call || drawn.put) key.push(chip(sw('s-wt'), 'thicker = heavier'));
-  if(drawn.magnet) key.push(chip(gl('\uD83E\uDDF2'), 'magnet'));
-  if(drawn['clear-call']) key.push(chip(gl('\u2601\uFE0F'), 'open air above'));
-  if(drawn['clear-put']) key.push(chip(gl('\uD83D\uDD73\uFE0F'), 'nothing below'));
-  if(drawn.flip) key.push(chip(sw('s-flip'), 'flip band'));
-  else if(drawn.flipAway){
-    const f = drawn.flipAway;
-    key.push(chip(gl(f.up ? '\u25B4' : '\u25BE'),
-             'flip band ' + (f.away != null ? '$' + Math.round(f.away) + ' ' : '')
-             + (f.up ? 'above' : 'below') + ', off chart'));
-  }
-  $('key').innerHTML = key.slice(0, 5).join('');
-}
-
-function paintWall(scene){
-  const el = $('wall');
-  const walls = scene.walls || {};
-  const sigma = (scene.scale || {}).one_sigma_dollars;
-  const q = pickPrice(scene, LIVE, PAY && PAY.as_of === 'live');
-  const price = q ? q.price : (scene.price || {}).now;
-
-  // The board measured clear both ways. This used to render nothing at all.
-  if(bothSidesClear(walls)){
-    el.hidden = false; el.className = 'wall';
-    el.innerHTML = '<div class="w-lab">no wall either way</div>'
-                 + '<div class="w-far">The board was read and holds nothing above or below price.</div>';
-    return;
-  }
-
-  const w = nearestWall(walls, price);
-  if(!w){ el.hidden = true; return; }
-
-  const b = wallBehaviour(scene.regime, w.strike, price);
-  const beyond = beyondWall(walls, w.side);
-  const far = farSideNote(walls, w.side);
-  const dist = wallDistance(w.strike, price, sigma);
-  const held = w.unchanged_min != null ? w.unchanged_min : w.unchanged_min_at_least;
-  const exact = w.unchanged_min != null;
-  const FULL = 20;   // p90 of 18,510 recorded wall observations
-
-  // Row 1 — apparatus. Dollars first: it needs no training to read.
-  const meas = [];
-  if(dist) meas.push('<span>$' + Math.round(dist.dollars) + '</span>');
-  if(dist && dist.sigma != null) meas.push('<span class="d1">' + dist.sigma.toFixed(2) + 'σ</span>');
-  if(held != null) meas.push('<span class="d2">held ' + gMinutes(held) + (exact ? '' : '+') + '</span>');
-
-  // Rows 3-4 — the weight ladder, both bars on ONE fixed scale so they are
-  // provably comparable (same denominator: the full net_by_strike surface).
-  let load = '';
-  const bar = (gex, cls, gloss) => {
-    const pctw = Math.max(2, Math.min(100, gex / FULL * 100));
-    return '<div class="w-bar ' + cls + '"><i style="width:' + pctw.toFixed(1) + '%"></i></div>'
-         + '<div class="w-val"><b>' + gex + '%</b> ' + gloss + '</div>';
-  };
-  if(w.gex != null) load += bar(w.gex, '', 'of book gamma');
-  if(beyond && beyond.gex != null)
-    load += bar(beyond.gex, 'behind', 'at ' + gUsd(beyond.strike, 0).replace('$', '')
-              + ' · ' + (beyond.heaviest ? 'heaviest behind' : 'next out'));
-
-  const behindText = beyond && beyond.gex == null
-    ? (beyond.alone ? 'Nothing else on this side of the board.'
-                    : 'Next wall at ' + gUsd(beyond.strike, 0) + '.')
-    : null;
-
-  el.hidden = false;
-  el.className = 'wall' + (b ? ' ' + b.kind : '');
-  el.innerHTML =
-      '<div class="w-lab"><span class="caret">' + (w.side === 'call' ? '▲' : '▼') + '</span>'
-    +   'first ' + (w.side === 'call' ? 'above' : 'below')
-    +   (meas.length ? '<span class="w-meas">' + meas.join('') + '</span>' : '')
-    + '</div>'
-    + '<div class="w-head"><span class="w-k">' + gUsd(w.strike, 0).replace('$', '') + '</span>'
-    +   (b ? '<span class="w-mech">' + b.english + '</span>' : '')
-    + '</div>'
-    + (load ? '<div class="w-load">' + load + '</div>' : '')
-    + (behindText ? '<div class="w-far">' + behindText + '</div>' : '')
-    + (far ? '<div class="w-far">' + far + '</div>' : '')
-    + (b ? '<div class="w-cav">board gamma sign · hedge direction assumed</div>' : '');
-}
-
-/* Poll only while the screen is actually being looked at. A glance app has no
-   business waking the mini from a pocket, and battery is the whole argument. */
-/* The quote moves on its own clock. The scene — walls, regime, flip — is
-   rebuilt by the reader every couple of minutes and costs a real payload
-   build, so it stays on 60s. The price is a 2s-cached quote the station is
-   already buying for anyone watching, so asking every 5s adds nothing
-   upstream and is the difference between a live number and a stale one. */
-async function loadSpot(){
-  const r = await getJSON('/api/spot?ticker=SNDK');
-  const s = r.body && r.body.spot;
-  LIVE = (typeof s === 'number' && isFinite(s)) ? r.body : null;   // fail-open: no quote, keep the scan price
-  if(PAY) paintHeader(PAY, PAY.scene);
-}
-
-function start(){
-  load(); loadSpot();
-  clearInterval(TIMER); clearInterval(SPOT_TIMER);
-  TIMER = setInterval(load, 60000);
-  SPOT_TIMER = setInterval(loadSpot, 5000);
-}
-function stop(){
-  clearInterval(TIMER); clearInterval(SPOT_TIMER);
-  TIMER = SPOT_TIMER = null;
-}
-
-document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
-window.addEventListener('resize', () => { if(!document.hidden) load(); });
-start();
-</script>
+<script src="/m/page.js"></script>
 </body>
 </html>

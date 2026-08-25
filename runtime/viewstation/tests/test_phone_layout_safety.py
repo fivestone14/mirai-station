@@ -1,74 +1,82 @@
 """Layout invariants the render harness is structurally blind to.
 
-The harness SUPPLIES the chart's height instead of deriving it from the page,
-so a chart that collapses to zero in a real browser passes every headless
-check. That is not hypothetical: it shipped on 2026-08-24. A fixed-height flex
-column (height:100dvh + overflow:hidden) made the plot the only shrinkable
-item, so the moment the other rows exceeded the viewport it absorbed the whole
-overflow and went to nothing. The svg's height:100% then resolved against a
-zero-height parent. Correct viewBox, nothing drawn, no error anywhere.
+The harness SUPPLIES the ladder's height instead of deriving it from the page,
+so a region that collapses to zero in a real browser passes every headless
+check. That shipped once, on 2026-08-24: a fixed-height flex column made the
+plot the only shrinkable item, it absorbed the whole overflow and rendered at
+nothing, and the svg's height:100% resolved against a zero-height parent.
+Correct viewBox, nothing drawn, no error anywhere.
 
-There is no browser in this environment, so these read the CSS directly and
-pin the two halves of that lesson as rules rather than as anecdote.
+The rebuilt page is safe by a DIFFERENT mechanism, so these pin that mechanism
+rather than the old one: no region flexes at all. Every region is flex:none at
+a fixed height, and the ladder's height is an explicit pixel value JS computes
+from what is left over. There is nothing for an overflow to squeeze.
 """
 import re
 from pathlib import Path
 
-PHONE = (Path(__file__).resolve().parents[1] / "static" / "m" / "index.html").read_text()
+M = Path(__file__).resolve().parents[1] / "static" / "m"
+PHONE = (M / "index.html").read_text()
+PAGE = (M / "page.js").read_text()
 
 
 def _rule(selector):
     """The declaration block for a rule whose selector STARTS a line.
 
     Anchored, because an unanchored search for "body" happily matches inside
-    "html,body{...}" and then asserts against the wrong block."""
+    "html,body{...}" and asserts against the wrong block. Normalised to single
+    spaces, not stripped of them: collapsing whitespace turns the shorthand
+    "flex:1 1 0" into "flex:110"."""
     m = re.search(r"(?m)^" + re.escape(selector) + r"\s*\{([^}]*)\}", PHONE)
-    # normalised to single spaces, not stripped of them: collapsing all
-    # whitespace turns the shorthand "flex:1 1 0" into "flex:110".
-    return re.sub(r"\s*\n\s*", "", re.sub(r"[ \t]+", " ", m.group(1))) if m else None
+    if not m:
+        return None
+    return re.sub(r"\s*\n\s*", "", re.sub(r"[ \t]+", " ", m.group(1)))
 
 
-def test_the_column_may_grow_rather_than_crush_its_children():
-    """min-height on the column, never a fixed height with hidden overflow.
+def test_no_region_can_be_squeezed():
+    """Every region is flex:none. An overflow has nothing to take space from,
+    so no region can be driven to zero by another region growing."""
+    for sel in (".masthead", ".regime", ".ladder", ".gate", ".read", ".foot"):
+        r = _rule(sel)
+        assert r is not None, f"{sel} rule not found"
+        assert "flex:none" in r, f"{sel} must not flex"
 
-    With `height` the column cannot grow, so overflow has to come out of some
-    child. With `min-height` the page grows instead and nothing is crushed."""
+
+def test_the_ladder_height_is_an_explicit_pixel_value():
+    """Never flex:1. The height is computed from the viewport minus the fixed
+    regions and written as a custom property, so it cannot be negotiated."""
+    r = _rule(".ladder")
+    assert "height:var(--ladder-h)" in r
+    assert "setProperty('--ladder-h'" in PAGE
+    assert "clientHeight" in PAGE and "paddingTop" in PAGE  # env() resolved, not guessed
+    assert "flex:1" not in r
+
+
+def test_the_ladder_height_is_clamped_at_both_ends():
+    """A floor so it cannot vanish, a ceiling so a tall screen does not hand it
+    absurd space that the marks cannot fill."""
+    m = re.search(r"Math\.max\((\d+),\s*Math\.min\((\d+)", PAGE)
+    assert m, "the clamp is not where it is expected"
+    assert int(m.group(1)) >= 180 and int(m.group(2)) <= 700
+
+
+def test_a_collapse_would_be_visible_rather_than_silent():
+    """The explicit height makes a collapse impossible. This makes it LOUD if
+    one occurs anyway, because the failure mode last time was silence."""
+    assert "LADDER TOO SHORT" in PAGE
+    assert re.search(r"getBoundingClientRect\(\)\.height\s*<\s*180", PAGE)
+
+
+def test_the_svg_is_sized_by_attribute_not_by_percentage():
+    """svg{height:100%} against a parent with no definite height resolves to
+    nothing. This page sets width and height as ATTRIBUTES from the same number
+    the CSS custom property carries."""
+    svg = _rule("#svg")
+    assert svg is not None and "height:100%" not in svg
+    assert "setAttribute('height', SVGH)" in PAGE
+    assert "setAttribute('viewBox'" in PAGE
+
+
+def test_the_page_does_not_scroll():
     body = _rule("body")
-    assert body is not None, "body rule not found"
-    assert "min-height:100dvh" in body, "the column must size with min-height"
-    fixed = re.search(r"(?<!min-)height:100dvh", body)
-    assert not (fixed and "overflow:hidden" in body), (
-        "height:100dvh with overflow:hidden makes the column fixed, and the "
-        "flexible child then absorbs every overflow down to zero"
-    )
-
-
-def test_the_flexible_child_keeps_a_floor():
-    """The plot takes the slack AND cannot vanish. Both, not either."""
-    chart = _rule(".chart")
-    assert chart is not None, ".chart rule not found"
-    assert "flex:1 1 0" in chart, "the plot must take the slack"
-    m = re.search(r"min-height:(\d+)px", chart)
-    assert m and int(m.group(1)) >= 120, (
-        "the plot needs a real floor; min-height:0 is what let it collapse"
-    )
-
-
-def test_only_the_plot_is_allowed_to_flex():
-    """Every other row is sized by its content, so the slack has one home and
-    the layout cannot redistribute in a way nobody designed."""
-    assert re.search(r"header,[^{]*\.wall,[^{]*\.key[^{]*\{flex:none\}", PHONE), (
-        "header, card and key must be flex:none"
-    )
-
-
-def test_no_element_hangs_its_height_off_a_zero_height_parent():
-    """An svg at height:100% inside a container with no definite height
-    resolves to nothing. The container must carry a floor (asserted above) and
-    the svg must not be what defines it."""
-    svg = _rule("svg")
-    assert svg is not None and "height:100%" in svg
-    chart = _rule(".chart")
-    assert "min-height" in chart, (
-        "svg{height:100%} is only safe because .chart has a definite minimum"
-    )
+    assert "height:100dvh" in body and "overflow:hidden" in body

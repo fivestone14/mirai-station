@@ -53,6 +53,7 @@ def test_the_desktop_page_is_untouched_by_the_phone_route():
 def test_the_phone_page_exists_on_disk():
     assert (server.STATIC / "m" / "index.html").is_file()
     assert (server.STATIC / "m" / "glance.js").is_file()
+    assert (server.STATIC / "m" / "page.js").is_file()
 
 
 def test_an_apk_declares_itself_installable():
@@ -71,228 +72,180 @@ def test_the_phone_page_is_not_reachable_by_a_rebound_name():
     assert h.sent_file is None
 
 
-# --- the chart's layout contract ------------------------------------------
-# Measured at phone width the first chart put eleven text elements in a 374px
-# frame: five overlapping pairs and one label hanging 9px outside the border.
-# The cut-back that fixed it over-corrected, and on 2026-08-24 the chart drew
-# the LIGHTEST wall on the board (6.9%) while hiding the heaviest (14.8%).
-# These pin both lessons as strings, the way test_page_contract pins the
-# desktop's, so a later edit that drops one fails here and not on the phone.
-PHONE = (Path(__file__).resolve().parents[1] / "static" / "m" / "index.html").read_text()
-GLANCE = (Path(__file__).resolve().parents[1] / "static" / "m" / "glance.js").read_text()
+# --- the rebuilt glance: §14 MUST NOT REGRESS ------------------------------
+# Every item below is measured. Breaking one is a defect, not a taste call.
+# The numbers in the docstrings are the evidence, kept here so a later reader
+# can weigh the rule instead of guessing at it.
+M = Path(__file__).resolve().parents[1] / "static" / "m"
+PHONE = (M / "index.html").read_text()
+GLANCE = (M / "glance.js").read_text()
+PAGE = (M / "page.js").read_text()
 
 
-def test_label_rows_are_solved_not_nudged():
-    assert "function layoutLabels(" in GLANCE
-    assert "layoutLabels(numbered.map(" in PHONE
-    assert "ROW = 16" in PHONE                   # a gutter row sized to its content
-
-
-def test_coincident_levels_merge_instead_of_stacking():
-    """The heaviest wall and the second magnet were the same strike on the
-    first live board tested. Two things in one place cannot be spaced apart."""
-    assert "function mergeLevels(" in GLANCE
-    assert "hit.magnet=true" in GLANCE            # ...and the merge keeps the confluence
-    assert "l.magnet) out +=" in PHONE            # painted as a glow under the wall's casing
-
-
-def test_a_band_that_covers_the_screen_becomes_its_edges():
-    assert "h / geom.h < 0.55" in PHONE
-    assert "flipedge" in PHONE
-
-
-def test_the_whole_ladder_reaches_the_canvas():
-    """The chart was not under-drawn, it was selecting wrong: only walls.X[0]
-    was read, so *_heaviest_behind — which exists precisely because the
-    distance-ordered ladder cuts the heaviest cluster — never rendered."""
-    sel = GLANCE.split("function drawableLevels")[1].split("function wallTier")[0]
-    assert "ladder.forEach" in sel                       # every rung, not just the first
-    assert "side+'_heaviest_behind'" in sel
-    assert "side+'_side_clear'" in sel
-
-
-def test_the_window_holds_the_structure_and_bands_never_widen_it():
-    """A wall just outside the day's range is the whole question the chart
-    answers. The flip band routinely spans multiples of that range."""
-    geo = GLANCE.split("function chartGeometry")[1].split("function linePath")[0]
-    assert "if(l.rank>3) continue;" in geo               # bands excluded from the window
-    assert "FAR_SIGMA" in geo and "exiled" in geo        # ...and far levels get a chevron
-    assert "if(!l.lead) continue;" not in geo            # the field rename that once matched nothing
-
-
-def test_weight_is_encoded_without_adding_text():
-    """18,510 recorded wall observations run p10 3.5%, p50 7.3%, p90 20.4% —
-    spread enough that weight is worth encoding, and the fixed 20% full scale
-    is that p90 rather than a guess or the scan's own maximum."""
-    assert "function wallTier(" in GLANCE and "function railWidth(" in GLANCE
-    assert "gex / 20 * full" in GLANCE
-    assert "const FULL = 20;" in PHONE                    # the card uses the same scale
-
-
-def test_an_unmeasured_gamma_sign_is_not_a_direction():
-    """gamma_sign is literally 'unknown' on 241 of 3,393 recorded rows (7.1%),
-    and every one of them used to print "walls give way" and a confident
-    dealer sentence."""
+def test_an_unmeasured_gamma_sign_claims_nothing():
+    """gamma_sign is the literal string 'unknown' on 241 of 3,393 recorded rows
+    (7.1%). No sign, no sentence — the strike, direction, distance and gauge
+    all still stand."""
     assert "if(s==='negative'||s==='short'||s==='-') return false;" in GLANCE
-    assert "return null;\n}" in GLANCE.split("function gammaIsLong")[1][:900]
-    env = GLANCE.split("function envWords")[1].split("function gammaIsLong")[0]
-    assert "gammaIsLong(regime)" in env                   # header shares the one gate
+    assert "set('gMech', b ? b.english : '');" in PAGE
+    assert "gamma sign not measured" in PAGE
+    assert "no dealer behaviour claimed" in PAGE
 
 
-def test_the_key_describes_what_was_painted():
-    """The flip band is entirely off-window on roughly a third of scans, and
-    the key was built from the candidate list, so it named a mark the reader
-    could not find."""
-    assert "const drawn = {}" in PHONE
-    assert "drawn.flip = true" in PHONE
-    assert "if(drawn.call)" in PHONE and "if(drawn.magnet)" in PHONE
+def test_gamma_sign_colours_nothing():
+    """Its whole blast radius is one gloss line, one sentence and the footer.
+    If the sign is wrong, one sentence is wrong, not the instrument."""
+    assert "regime-wash" not in PHONE and "r-long" not in PHONE and "r-short" not in PHONE
+    assert ".wash" not in PHONE
 
 
-def test_call_and_put_keep_the_desktop_colour_law():
-    """The desktop's WMETA is gwc: jade / gwp: coral. The phone had these
-    inverted, which put a coral call wall on the same screen as a coral
-    negative-gamma rule meaning the opposite thing."""
-    assert ".lv-call{stroke:var(--jade)}" in PHONE
-    assert ".lv-put{stroke:var(--coral)}" in PHONE
+def test_vwap_is_a_price_at_a_position():
+    """vwap_dist_sigma is (vwap - spot)/sigma, so a NEGATIVE value means price
+    is ABOVE its average. 13 of 15 reviewers read it backwards. A price cannot
+    be read backwards."""
+    assert "function vwapPrice(" in GLANCE
+    assert "diaryLast&&diaryLast.vwap" in GLANCE.replace(" ", "")   # exact source preferred
+    assert "vwap_dist_sigma" not in PAGE                            # the ratio never printed
 
 
-def test_the_card_survives_a_board_that_is_clear_both_ways():
-    """nearestWall returns null there and the card used to hide itself —
-    deleting the loudest reading the scene can produce."""
-    assert "function bothSidesClear(" in GLANCE
-    assert "bothSidesClear(walls)" in PHONE
+def test_weight_rides_a_fixed_scale_and_absence_is_not_zero():
+    """20.4% is p90 of 18,510 recorded wall observations. A per-scan maximum
+    makes the biggest wall full-width every scan and destroys comparison
+    between days. gex null draws no bar AND no track: an empty track reads as
+    zero."""
+    assert "gex/20*full" in GLANCE.replace(" ", "")
+    assert "FULL = 20" in PAGE
+    rw = GLANCE.split("function railWidth")[1].split("/* ---- level assembly")[0]
+    assert "return null;" in rw
 
 
-def test_the_dead_open_air_branch_is_gone():
-    """walls_ladder sets *_side_clear only when a side's pool is empty and
-    continues before writing the ladder, so beyondWall's first branch could
-    never be reached and that string never rendered."""
-    beyond = GLANCE.split("function beyondWall")[1].split("function farSideNote")[0]
-    assert "_side_clear" not in beyond.split('"""')[0].replace("//", "\n//").split("if(!walls")[1]
-    assert "alone:true" in beyond                        # the sound inference that replaced it
+def test_a_refused_level_is_always_named():
+    """Exiled or refused by the legibility test, it becomes an edge marker
+    carrying its strike. That is the 2026-08-24 bug, where the heaviest wall on
+    the board reached no pixel at all."""
+    assert "refused" in GLANCE and "exiled" in GLANCE
+    assert "p-edge" in PAGE and "HEAVIEST" in PAGE
+
+
+def test_the_magnet_never_shares_the_gex_gauge():
+    """top_strikes shares are a fraction of mass_by_strike; wall gex is a
+    fraction of net_by_strike. Two denominators must never share one gauge."""
+    assert "p-diamond" in PAGE
+    assert "railWidth(l.gex" in PAGE
+    tag = PAGE.split("if(l && l.kind === 'wall'){")[1].split("}")[0]
+    assert "railWidth" in tag                      # bars are drawn for walls only
+
+
+def test_no_magnet_tie_threshold():
+    """sr-3 deleted a hardcoded 5.0pp constant for shipping a near-constant as
+    a finding. A near-tie must look like a tie without anyone deciding where a
+    tie begins."""
+    mr = GLANCE.split("function magnetRunners")[1].split("function solveWindow")[0]
+    assert "Math.max(0.28, share/top)" in mr.replace(" ", "").replace("Math.max(0.28,share/top)", "Math.max(0.28, share/top)") or "share/top" in mr.replace(" ", "")
+    assert "gap_pp" not in mr
+
+
+def test_book_age_min_is_never_read():
+    """Off-live, build_scene stamps clock.book_age_min from the row's own
+    timestamp, so it reads ~0 however old the scan is. That is the failure that
+    let a dead Schwab login look healthy for 3.1 days."""
+    assert "book_age_min" not in PAGE
+    assert "book_age_min" not in GLANCE.split("function bookAge")[1].split("function shownPrice")[0].replace(
+        "clock.book_age_min is never read", "")
+
+
+def test_staleness_thresholds_come_from_the_payload():
+    assert "gates.stale_book_min" in PAGE and "gates.heartbeat_min" in PAGE
+
+
+def test_the_countdown_does_not_age_silently():
+    """minutes_to_close is computed at scan time. A countdown read hours later
+    is a lie, and it is the one label on the plot that ages without saying so."""
+    assert "if(st.stale)" in PAGE and "'SCAN '" in PAGE
+
+
+def test_the_reading_is_sourced_by_reading_ts_and_never_shown_without_its_age():
+    """The store re-emits the same reading with a fresh ts while reading_ts
+    stays put: the reference row carries ts 15:58 and reading_ts 11:47, a
+    251-minute reading wearing a 0-minute timestamp. Median 12, p95 214,
+    max 341."""
+    mr = GLANCE.split("function modelRead")[1]
+    assert "Date.parse(r.reading_ts)" in mr
+    assert "r.ts" not in mr.split("if(!best)")[0]
+    assert "age>120" in mr.replace(" ", "") and "age>30" in mr.replace(" ", "")
+    assert "LAST READING" in PAGE and "NO READING TODAY" in PAGE
+
+
+def test_model_output_never_touches_innerhtml():
+    """It is model output. It never enters the SVG string either."""
+    assert "line.textContent =" in PAGE
+    assert "rdLine').innerHTML" not in PAGE
+
+
+def test_the_english_is_not_authored_here():
+    """The four mechanism sentences are byte-identical to snkArrows and the
+    gloss strings to envWords. The desktop and the phone must never describe
+    one board in two voices."""
+    for s_ in ("Dealers buy the dips here — it holds price up.",
+               "Dealers sell the rallies here — it caps the move.",
+               "Dealers must buy a break up — moves speed up.",
+               "Dealers must sell a break down — moves speed up."):
+        assert s_ in GLANCE
+    assert "'walls hold'" in GLANCE and "'walls give way'" in GLANCE
 
 
 def test_distance_is_measured_against_the_price_on_screen():
-    """The header repaints off the live quote every 5s while the scene rebuilds
-    every 60s, so the shipped sigma is measured from a spot the reader can no
-    longer see — 0.58 printed where 0.51 was honest."""
-    assert "function wallDistance(" in GLANCE
-    assert "wallDistance(w.strike, price, sigma)" in PHONE
-    assert "pickPrice(scene, LIVE," in PHONE.split("function paintWall")[1][:600]
+    assert "wallDistance(w.strike, ref)" in PAGE
+    # checked on the CODE lines only. The comment above the function names
+    # `sigma` on purpose, to say what it refuses to use, and a test that cannot
+    # tell prose from code teaches you to delete the explanation.
+    wd = GLANCE.split("function wallDistance")[1].split("/* ---- price, age")[0]
+    code = "\n".join(l for l in wd.splitlines() if not l.strip().startswith("//"))
+    assert "sigma" not in code
 
 
-def test_card_apparatus_clears_the_contrast_floor():
-    """--faint is 3.17:1 on the card surface and fails WCAG AA, which outdoors
-    means gone. Apparatus is subordinate by size, not by contrast."""
-    card = PHONE.split("/* ---- zone 3")[1].split(".msg{")[0]
-    assert ".w-cav{" in card and "color:var(--dim)" in card
-    assert "var(--faint)" not in card.replace("--faint is 3.17:1", "")
+def test_side_clear_absent_is_not_false():
+    assert "_side_clear'] !== true" in PAGE
 
 
-def test_glyphs_mark_places_and_cannot_collide():
-    """Icons replaced the dotted rectangle for a measured-clear side, and the
-    magnet gets its own emoji. Position already carries the side, so the glyph
-    carries the CONSEQUENCE: clear sky above, a hole below. They live in their
-    own lane and their rows go through the same solver the gutter uses — a
-    magnet near the top of a short chart lands on the open-air icon otherwise."""
-    assert "const glyphs = []" in PHONE
-    assert "layoutLabels(glyphs.map(" in PHONE
-    assert "TERM = 16" in PHONE                      # a lane of its own, never a bar's
-    assert "\\uD83E\\uDDF2" in PHONE                 # magnet
-    assert "\\u2601\\uFE0F" in PHONE                 # open air above
-    assert "\\uD83D\\uDD73\\uFE0F" in PHONE          # nothing below
+def test_the_banned_fields_reach_no_pixel():
+    for f in ("magnitude_sigma", "dealer_flow", "breadth", "momentum",
+              "drift_toward", "gap_vs_own_history", "frozen_do_not_cite"):
+        assert f not in PAGE, f
+        assert f not in GLANCE, f
 
 
-def test_only_the_lead_magnet_earns_a_glyph():
-    """Runners-up are already spoken for by line weight. Three magnets in a
-    16px lane is how a legend stops meaning anything."""
-    assert "hit.magnetLead" in GLANCE
-    assert "if(l.magnetLead) glyphs.push" in PHONE
+def test_no_emoji_no_legend_no_greek():
+    """Emoji are colour bitmaps: no theme token, cannot be tinted to mean a
+    side, do not dim with the page. A legend is a confession that the marks do
+    not read. And no Greek: the ruler is stated once, in English."""
+    import re as _re
+    for blob in (PHONE, PAGE, GLANCE):
+        assert not _re.search(r"[\U0001F300-\U0001FAFF]", blob)
+    assert "σ" not in PHONE and "σ" not in PAGE
+    assert "TYPICAL MOVE $" in PAGE
+    assert "class=\"key\"" not in PHONE
 
 
-def test_the_chart_is_given_the_room_but_cannot_collapse():
-    """The plot takes the slack, and it keeps a floor.
-
-    Removing the floor blanked the chart on a real phone: with a FIXED
-    height:100dvh column and overflow:hidden, the plot was the only item
-    permitted to shrink, so the moment header + key + card exceeded the
-    viewport it absorbed the whole overflow and went to zero. The svg's
-    height:100% then resolved against 0 — correct viewBox, nothing drawn, no
-    error anywhere. min-height on the COLUMN (so the page may grow) plus a
-    floor on the plot (so it may not vanish) is the pair that holds."""
-    assert "min-height:100dvh" in PHONE
-    assert "height:100dvh;overflow:hidden" not in PHONE.replace(" ", "")
-    assert "flex:1 1 0;min-height:240px" in PHONE
-    assert "header,.wall,.key,.read{flex:none}" in PHONE
+def test_nothing_is_tappable():
+    for bad in ("cursor:pointer", "onclick", "addEventListener('click'", "<button", "<a ", "title="):
+        assert bad not in PHONE, bad
+    assert "addEventListener('click'" not in PAGE
 
 
-def test_the_off_window_flip_chevron_names_itself():
-    """The chevron was the one drawn mark with no key entry — the key fired on
-    `drawn.flip`, which is only set when the band paints INSIDE the window, and
-    the band is entirely off-screen on roughly a third of scans. A glyph nobody
-    can name is a glyph that is not working, so it carries which way and how
-    far, which is more use than the band itself was on those scans."""
-    assert "drawn.flipAway" in PHONE
-    assert "off chart" in PHONE
-    assert "else if(drawn.flipAway)" in PHONE
+def test_the_window_is_frozen_between_payloads():
+    """At every 5-second repaint the geometry is bit-identical and exactly one
+    mark has moved, so a glance is a comparison rather than a fresh read."""
+    assert "WIN = null;" in PAGE                 # only a new payload earns a new window
+    assert "if(!WIN){" in PAGE
+    assert "0.12*span0" in PAGE                  # ...and the re-anchor test
 
 
-def test_each_legend_chip_is_one_flex_item():
-    """The swatch and its own label were siblings in the flex row, so the
-    inter-chip gap fell between every icon and the words it belonged to, and a
-    2px bar and an emoji sat on different baselines."""
-    assert 'class="chip"' in PHONE
-    assert ".key .chip{display:inline-flex;align-items:center" in PHONE
-
-
-
-
-def test_the_now_dot_is_joined_to_the_line_it_left():
-    """The dot took its height from the live quote and its X from the last
-    diary point, so it hung in space — measured $15.70 and five hours adrift,
-    jumping every 5s against a frozen line. The unobserved stretch is now drawn
-    as what it is: a DASHED reach, because the path across it was never
-    observed and a solid line would invent one. The quote never enters the
-    measured path."""
-    assert "function livePoint(" in GLANCE
-    assert 'class="preach"' in PHONE
-    assert "const d = linePath(points, geo);" in PHONE      # measured points only
-    assert "const dotX =" in PHONE and "dotX.toFixed(1)" in PHONE   # one shared endpoint
-
-
-def test_the_quote_is_timed_off_age_not_off_ts():
-    """live_spot stamps `ts` only on a FRESH fetch; every cached branch omits
-    the key, and with a 2s cache against a 5s poll a good share of readings are
-    cached. Keying on `ts` left the quote with no time and the reach never
-    drew."""
-    lp = GLANCE.split("function livePoint")[1].split("/* ---- freshness")[0]
-    assert "live.age_s" in lp
-    assert "Date.parse(live.ts)" in lp                       # exact when offered, never required
-
-
-def test_the_readers_own_sentence_reaches_the_phone():
-    """reading.line is written for a human and capped at 24 words, and 2,878 of
-    2,929 recorded rows carry one. It comes through the same raw route the
-    diary already uses, so no backend route was added."""
-    assert "function modelRead(" in GLANCE
-    assert "sndk_reads/" in PHONE
-    assert "paintRead(" in PHONE
-
-
-def test_the_reading_never_appears_without_its_age():
-    """The median reading is 12 minutes old, p95 is 214, and the oldest on
-    record is 341. 'the 1450 put wall has held 62 minutes as a floor' is worth
-    reading at 12 minutes and is a liability at 250, and nothing in the
-    sentence says which one you have."""
-    mr = GLANCE.split("function modelRead")[1].split("/* ---- freshness")[0]
-    assert "age>30" in mr.replace(" ", "")          # the line goes to history past 30m
-    assert "r-age" in PHONE
-    assert ".read.old .r-line{color:var(--dim)}" in PHONE
-
-
-def test_the_reading_shows_no_magnitude():
-    """magnitude_sigma clusters at 0.15 against a true median 30-minute move of
-    0.089 and never exceeds 0.35 against a true max of 2.44. It over-predicts
-    the ordinary day and cannot see the tail."""
-    assert "magnitude_sigma" not in GLANCE
-    assert "magnitude_sigma" not in PHONE
+def test_market_time_not_viewer_time():
+    """The session is 09:30-16:00 in New York and the scene is stamped that
+    way. Rendered locally on a Pacific machine the 12:12 scan reads 09:12 and
+    the open reads 06:31."""
+    assert "America/New_York" in GLANCE
+    assert "toLocaleTimeString" not in PAGE      # every clock face goes through etTime
+    assert "etTime(" in PAGE
+    assert "etToday()" in GLANCE
