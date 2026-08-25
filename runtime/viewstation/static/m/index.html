@@ -110,6 +110,7 @@ svg{width:100%;height:100%;display:block;overflow:hidden}
 
 /* the day's path */
 .pline{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.preach{fill:none;stroke:var(--ink);stroke-opacity:.42;stroke-width:1.4;stroke-dasharray:2 4;stroke-linecap:round}
 .pnow{fill:var(--ink)}
 .pnow-halo{fill:none;stroke:var(--ink);stroke-opacity:.25;stroke-width:1.2}
 
@@ -317,7 +318,12 @@ function paintChart(scene, points){
   const spot = (scene.price || {}).now;
   const sigma = (scene.scale || {}).one_sigma_dollars;
   const raw = drawableLevels(scene);
-  const geo = chartGeometry(points, raw, spot, geom, sigma);
+  // The quote joins the axis so the window and the time scale reach NOW, but
+  // it never joins `points` — see linePath below.
+  const lp = livePoint(LIVE);
+  const axis = (lp && (!points.length || lp.t > points[points.length - 1].t))
+             ? points.concat([lp]) : points;
+  const geo = chartGeometry(axis, raw, spot, geom, sigma);
   if(!geo){ svg.innerHTML = '<text class="lbl" x="6" y="26">no price measured yet</text>'; return; }
 
   const levels = mergeLevels(raw, geo.hi - geo.lo);
@@ -445,16 +451,36 @@ function paintChart(scene, points){
     });
   }
 
-  /* 6 — the day's path, over the structure it moves through */
+  /* 6 — the day's path, over the structure it moves through. Only the MEASURED
+          points; the quote is not spliced in. */
   const d = linePath(points, geo);
   if(d) out += '<path class="pline" d="' + d + '"/>';
+
+  /* 6b — the unobserved stretch. The diary stops at the last scan while the
+           quote keeps moving, so the dot used to hang in space at the live
+           price while pinned to the last scan's X — measured $15.70 and five
+           hours adrift on 2026-08-24, jumping every 5s against a frozen line.
+           The gap is real and is drawn as what it is: a dashed reach from the
+           last thing measured to where price actually is. Dashed because the
+           path across it was never observed and a solid line would invent
+           one. */
+  // The dot's x is settled here, once, and the reach is drawn to it — they
+  // were computed separately and the dot's clamp left an 8px stub hanging off
+  // its own endpoint.
+  const lastPt = points.length ? points[points.length - 1] : null;
+  const atT = (lp && lastPt && lp.t > lastPt.t) ? lp.t : (lastPt ? lastPt.t : null);
+  const dotX = Math.min(atT != null ? geo.xFor(atT) : plotR, plotR - 8);
+
+  if(lp && lastPt && lp.t > lastPt.t && inWin(lp.s)){
+    out += '<path class="preach" d="M' + geo.xFor(lastPt.t).toFixed(1) + ',' + geo.yFor(lastPt.s).toFixed(1)
+         + ' L' + dotX.toFixed(1) + ',' + geo.yFor(lp.s).toFixed(1) + '"/>';
+  }
 
   /* 7 — where price is NOW, from the same quote the header shows. These
          disagreed by 13px before: the header polled the live tape every 5s
          while the dot sat at the scan price from 60s ago. */
   if(px != null && inWin(px)){
-    const cx = Math.min(points.length ? geo.xFor(points[points.length - 1].t) : plotR, plotR - 8);
-    const cy = geo.yFor(px);
+    const cx = dotX, cy = geo.yFor(px);
     out += '<circle class="pnow-halo" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6.5"/>';
     out += '<circle class="pnow" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="3.4"/>';
   }

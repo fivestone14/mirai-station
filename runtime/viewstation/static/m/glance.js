@@ -440,6 +440,27 @@ function pickPrice(scene, live, sceneIsLive){
   return {price:shown, pct:(pct!=null&&isFinite(pct))?pct:null, live:q!=null};
 }
 
+function livePoint(live, nowMs){
+  // The streaming quote as a point on the time axis. It is a real measurement,
+  // just from a different instrument than the diary — so it may sit on the
+  // chart, but it may never be spliced into the measured path: the stretch
+  // between the last scan and now was not observed, and a solid line across it
+  // would invent a shape.
+  //
+  // Timed from `age_s`, not from `ts`. live_spot only stamps `ts` on a FRESH
+  // fetch — every cached branch omits the key entirely (snapshot.py:10-11,
+  // 21-22 vs 34-37) — and with a 2s cache against a 5s poll a good share of
+  // readings are cached. Keying on `ts` meant the quote silently had no time
+  // and the reach never drew. `age_s` is present in every branch.
+  if(!live||live.spot==null||!isFinite(live.spot)) return null;
+  const now=(nowMs==null)?Date.now():nowMs;
+  const age=(live.age_s!=null&&isFinite(live.age_s))?Number(live.age_s)*1000:0;
+  let t=now-age;
+  const stamped=Date.parse(live.ts);
+  if(isFinite(stamped)) t=stamped;        // exact when the server gave us one
+  return {t, s:Number(live.spot), live:true};
+}
+
 /* ---- freshness --------------------------------------------------------- */
 
 function freshness(payload, nowMs){
@@ -470,7 +491,7 @@ function freshness(payload, nowMs){
 
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gSigma, gMinutes, envWords, gammaIsLong, wallBehaviour,
-                  beyondWall, farSideNote, bothSidesClear, wallDistance,
+                  beyondWall, farSideNote, bothSidesClear, wallDistance, livePoint,
                   nearestWall, priorClose, pickPrice,
                   wallTier, railWidth,
                   drawableLevels, mergeLevels,

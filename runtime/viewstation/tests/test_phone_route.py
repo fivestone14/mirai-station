@@ -245,3 +245,26 @@ def test_each_legend_chip_is_one_flex_item():
     assert ".key .chip{display:inline-flex;align-items:center" in PHONE
 
 
+
+
+def test_the_now_dot_is_joined_to_the_line_it_left():
+    """The dot took its height from the live quote and its X from the last
+    diary point, so it hung in space — measured $15.70 and five hours adrift,
+    jumping every 5s against a frozen line. The unobserved stretch is now drawn
+    as what it is: a DASHED reach, because the path across it was never
+    observed and a solid line would invent one. The quote never enters the
+    measured path."""
+    assert "function livePoint(" in GLANCE
+    assert "class=\\"preach\\"" in PHONE
+    assert "const d = linePath(points, geo);" in PHONE      # measured points only
+    assert "const dotX =" in PHONE and "dotX.toFixed(1)" in PHONE   # one shared endpoint
+
+
+def test_the_quote_is_timed_off_age_not_off_ts():
+    """live_spot stamps `ts` only on a FRESH fetch; every cached branch omits
+    the key, and with a 2s cache against a 5s poll a good share of readings are
+    cached. Keying on `ts` left the quote with no time and the reach never
+    drew."""
+    lp = GLANCE.split("function livePoint")[1].split("/* ---- freshness")[0]
+    assert "live.age_s" in lp
+    assert "Date.parse(live.ts)" in lp                       # exact when offered, never required
