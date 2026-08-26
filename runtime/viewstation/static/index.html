@@ -11024,7 +11024,7 @@ async function openSnkHistModal(){
     } else SNDK._histEraNote=null;
   }catch(e){ return shell(`<div class="snkh-note">No reading history available — ${snkSafe(String((e&&e.message)||e))}.</div>`); }
   const T=s=>{ const t=Date.parse(s); return isFinite(t)?t:null; };
-  const clock=t=>new Date(t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+  const clock=t=>new Date(t).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:PT});   // AM/PM ⇒ Pacific, the page's rule (was browser-local)
   // one entry per DISTINCT reading: reading_ts is the issue stamp, quiet scans re-carry it.
   // Issue price/σ come from the scan row NEAREST the stamp (the reading lands between scans).
   const calls=[], seen=new Set();
@@ -11403,7 +11403,7 @@ const _SNKI_KEY=[
    '<line x1="8" y1="20" x2="112" y2="20" stroke="var(--ink-faint)" opacity=".35" stroke-width="1.2"/><text x="112" y="15" text-anchor="end" font-size="7" fill="var(--ink-faint)" opacity=".7" font-family="var(--mono)">Floor · unchanged 3h</text>',
    'Unchanged for 30 min or more. Faded so old news stops looking new; hover for how long.'],
   ['7','The read',
-   '<rect x="6" y="5" width="108" height="30" rx="4" fill="var(--surface-2)" stroke="var(--jade)"/><text x="12" y="17" font-size="9" font-weight="700" fill="var(--jade)" font-family="var(--mono)">▲ UP</text><text x="44" y="17" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">since 2:34 PM</text><text x="12" y="29" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">Top strike pulled clear…</text>',
+   '<rect x="6" y="5" width="108" height="30" rx="4" fill="var(--surface-2)" stroke="var(--jade)"/><text x="12" y="17" font-size="9" font-weight="700" fill="var(--jade)" font-family="var(--mono)">▲ UP</text><text x="44" y="17" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">since 14:34</text><text x="12" y="29" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">Top strike pulled clear…</text>',
    'The gated call, the model’s own vector, its sentence, and what would change it. The two can disagree — both always show.'],
   ['8','Amber row',
    '<rect x="6" y="11" width="108" height="18" fill="color-mix(in srgb,var(--lantern) 14%, transparent)"/><text x="11" y="23" font-size="7.5" fill="var(--lantern)" font-family="var(--mono)">⚠ price already ran this way</text>',
@@ -11428,7 +11428,7 @@ const _SNKI_KEY=[
    'From live price to where the model expects it in ~30 min, with when it said so and how long ago. Dashes = a thought, not a level. “balanced” = no lean; “paused” = switched off; dims past 10 min.'],
   ['15','Freshness chip',
    '<rect x="18" y="6" width="84" height="28" rx="4" fill="var(--surface-2)" stroke="var(--hairline-2)"/><text x="24" y="17" font-size="6.5" font-weight="700" fill="var(--ink-faint)" letter-spacing=".08em" font-family="var(--mono)">FRESH</text><text x="96" y="17" text-anchor="end" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">bars 1m 12s</text><text x="24" y="28" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">price</text><text x="96" y="28" text-anchor="end" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">4s</text>',
-   'The FRESH chip at the right end of the expiry strip, above the plot. Hover to peek, click to pin: one row per layer — the clock its data carries, a counter since, how often it refreshes. Red = stale (bars: 3 scan gaps; price: 15 s).'],
+   'The FRESH chip at the right end of the expiry strip, above the plot. Hover to peek, click to pin: one row per layer — the clock its data carries, a counter since, how often it refreshes — clocks in Pacific time. Red = stale (bars: 3 scan gaps; price: 15 s).'],
 ];
 function openSndkInfoModal(){
   const M=document.getElementById('modal'); if(!M) return;
@@ -11468,11 +11468,13 @@ function snkMountInfoBtn(){
   b.addEventListener('click', ()=>openSndkInfoModal());
   cc.appendChild(b);
 }
-// the freshness box's clock: 12-hour with AM/PM (user-requested 08-26 — the rest of the chart keeps
-// the 24-hour ET stamps its rows are written in); seconds only where the layer ticks that fast
+// the freshness chip's clock: 12-hour with AM/PM in PACIFIC time — this page's standing rule is
+// that every AM/PM clock is Pacific (rowTime, rpClock) and every 24-hour clock is the ET stamp the
+// rows are written in (the caption's "14:15", the read card's "since 14:34"). Seconds only where
+// the layer ticks that fast.
 function snkClock12(at, secs){
   const t=(at!=null)?+new Date(at):NaN; if(!isFinite(t)) return '—';
-  const o={hour:'numeric', minute:'2-digit', hour12:true, timeZone:ET}; if(secs) o.second='2-digit';
+  const o={hour:'numeric', minute:'2-digit', hour12:true, timeZone:PT}; if(secs) o.second='2-digit';
   return new Date(t).toLocaleTimeString('en-US', o);
 }
 // a ticking counter in the chart's voice: seconds under a minute, then minutes and seconds,
@@ -11508,7 +11510,7 @@ function snkMountFresh(){
     box=document.createElement('div'); box.id='snk-fresh'; box.className='snk-fresh closed';
     let pinned=false; try{ pinned=localStorage.getItem('snk.fresh')==='1'; }catch(e){}
     if(pinned) box.classList.remove('closed');
-    box.innerHTML=`<div class="hd" role="button" tabindex="0" aria-expanded="${pinned?'true':'false'}" title="when each layer of this chart last refreshed — hover to peek, click to pin">`
+    box.innerHTML=`<div class="hd" role="button" tabindex="0" aria-expanded="${pinned?'true':'false'}" title="when each layer of this chart last refreshed (Pacific clocks) — hover to peek, click to pin">`
         +`<i>fresh</i><b id="snk-fresh-lead">—</b><span class="chev" aria-hidden="true">›</span></div>`
       +`<div class="rows">`
       +ROWS.map(([k,c,tip])=>`<div class="r" data-k="${k}" data-name="Refresh · ${k}" data-tip="${tip}"><i>${k}</i><b>—</b><em>—</em><s>⟳ ${c}</s></div>`).join('')
