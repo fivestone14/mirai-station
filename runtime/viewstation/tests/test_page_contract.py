@@ -90,3 +90,20 @@ def test_mirai_caption_says_when_and_how_long_ago():
     assert "{{ago}}¦m:{{pct}}¦f:{{left}}" in PAGE                      # the card's live tokens...
     assert "snkLapseFill(snkMinsSince(sinceEl.dataset.since))" in PAGE  # ...filled at hover time
     assert "function snkLapseFill(" in PAGE and "SNK_HORIZON_MIN=30" in PAGE
+
+
+def test_freshness_box_covers_every_layer_and_ticks():
+    """08-26: the chart carries a small per-layer freshness box under the ⓘ. Each layer
+    prints the clock its data carries and a counter; the counter is a 1 s ticker that reads
+    state only. Pinned: the mounter, the ticker on the poller lifecycle, the slow fetches'
+    stamps, the chain's own clock on the model, and the info-modal entry."""
+    assert "function snkMountFresh(" in PAGE and 'id="snk-fresh-lead"' in PAGE
+    assert "SNDK.timers.fresh=setInterval(()=>SNDK.freshTick(), 1000)" in PAGE
+    assert "clearInterval(SNDK.timers.fresh)" in PAGE                 # dies with the pollers
+    for k in ("bars", "chain", "price", "read", "mirai", "path", "tape"):
+        assert f"['{k}'," in PAGE                                      # one row per layer
+    assert "SNDK.pathAt=Date.now()" in PAGE and "SNDK.tapeAt=Date.now()" in PAGE
+    assert "bookAsof:(typeof meta.book_asof==='string')" in PAGE       # the chain's own stamp
+    assert "['15','Freshness chip'," in PAGE                           # documented in the key
+    assert "SNDK._freshEl=box" in PAGE and "getElementById('snk-tenors')" in PAGE   # lives in the tenors strip, node kept across rewrites
+    assert "at least TWICE the whole book’s turnover" in PAGE          # the ring's exact rule, in the key
