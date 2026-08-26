@@ -75,3 +75,18 @@ def test_the_manifest_link_carries_the_login():
     browser prompted again. Pinned: dropping the attribute brings the double prompt back."""
     assert 'rel="manifest"' in PAGE
     assert 'href="/manifest.webmanifest" crossorigin="use-credentials"' in PAGE
+
+
+def test_mirai_caption_says_when_and_how_long_ago():
+    """08-26: the thought-line caption carries the clock the read was issued at and how long
+    ago, measured from reading_ts against the wall clock (the row's own reading_age_min froze
+    between scans and all evening after the close). Four pieces a later edit must not drop:
+    the stamp tspans, the in-place ticker on the spot poll, the hover card's live token fill,
+    and the pure helper both of them read from."""
+    assert 'class="snk-ago"' in PAGE and 'class="snk-when"' in PAGE   # the caption's second voice
+    assert "data-since=" in PAGE                                       # the stamp the ticker/tip read
+    assert "SNDK.tickAges();" in PAGE and "tickAges(){" in PAGE        # re-ticked on the spot poll
+    assert "snkMinsSince(since, now)" in PAGE                          # age is measured, not read
+    assert "{{ago}}¦m:{{pct}}¦f:{{left}}" in PAGE                      # the card's live tokens...
+    assert "snkLapseFill(snkMinsSince(sinceEl.dataset.since))" in PAGE  # ...filled at hover time
+    assert "function snkLapseFill(" in PAGE and "SNK_HORIZON_MIN=30" in PAGE

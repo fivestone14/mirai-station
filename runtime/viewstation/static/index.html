@@ -9520,11 +9520,21 @@ function rpShowHeadTip(th){
   const verbatim=/(?:GW[cp]|MagP|Pin)/.test(name)?' class="gw-verbatim"':'';
   // the card tints toward what it is about: side ink for walls, lantern MagP, iris Pin
   const tint=/GWc/.test(name)?' tt-jade':/GWp/.test(name)?' tt-coral'
-    :/^MagP/.test(name)?' tt-mag':/^Pin/.test(name)?' tt-pin':'';
+    :/^MagP/.test(name)?' tt-mag':/^Pin/.test(name)?' tt-pin'
+    :/^Mirai.*▲/.test(name)?' tt-jade':/^Mirai.*▼/.test(name)?' tt-coral':'';
   // '¦' breaks a tip into rows; a row may carry a role prefix — k:label=key (the loud
   // number), f:fact, m:share-meter (0-100), v:verdict, n:footnote. Un-prefixed rows
   // render as plain .tp-r, so prose tips (table headers, ledger) are untouched.
-  const body=String(th.dataset.tip||'').split('¦').filter(Boolean).map(r=>{
+  // a mark inside a [data-since] group (the mirai caption) fills its time-lapse tokens NOW,
+  // from the stamp — a card opened at 15:40 on a read issued at 10:14 says so, whatever the
+  // chart's last build believed (08-26)
+  let tipRaw=String(th.dataset.tip||'');
+  const sinceEl=(th.closest&&th.closest('[data-since]'))||null;
+  if(sinceEl&&/\{\{(?:ago|pct|left)\}\}/.test(tipRaw)){
+    const L=snkLapseFill(snkMinsSince(sinceEl.dataset.since));
+    tipRaw=tipRaw.replace(/\{\{ago\}\}/g, L.ago).replace(/\{\{pct\}\}/g, String(L.pct)).replace(/\{\{left\}\}/g, L.left);
+  }
+  const body=tipRaw.split('¦').filter(Boolean).map(r=>{
     const m=/^([kfmvn]):/.exec(r); if(!m) return `<span class="tp-r">${r}</span>`;
     const s=r.slice(2);
     if(m[1]==='k'){ const i=s.indexOf('=');
@@ -10710,6 +10720,32 @@ function snkDur(min){
   const m=Math.round(+min);
   return m>90?`${Math.round(m/60)}h`:`${m}m`;
 }
+// "12m ago" / "2h ago" / "just now" — the caption's own past tense
+const snkAgo=min=>{ if(min==null||!isFinite(min)) return ''; const m=Math.round(+min); return m<1?'just now':`${snkDur(m)} ago`; };
+// The three live values a mirai hover card fills in from a read's age: the ago-string, the
+// share (0-100) of its ~30-min window that has run, and a sentence about what is left of it.
+// PURE — the drills pin the age directly.
+const SNK_HORIZON_MIN=30;
+function snkLapseFill(ageM){
+  const H=SNK_HORIZON_MIN;
+  if(ageM==null||!isFinite(ageM)) return {ago:'', pct:0, left:''};
+  const m=Math.max(0, Math.round(+ageM)), left=H-m;
+  return { ago:snkAgo(m), pct:Math.max(0, Math.min(100, Math.round(m/H*100))),
+    left: left>0?`${left}m of its ${H}-min window still to run`
+        : left===0?`its ${H}-min window closes about now`
+        : `its ${H}-min window closed ${snkDur(-left)} ago — memory, not news` };
+}
+// The time-lapse rows of a mirai tip: issued clock · ago, the window meter, what is left. With
+// a stamp (`live`) the rows carry {{ago}}/{{pct}}/{{left}} tokens that rpShowHeadTip fills from
+// data-since AT HOVER TIME — so the card is true when it is read, not when the chart was last
+// built. Without one, the row's own age is all there is and the values are baked.
+function snkLapseRows(clock, ageM, live){
+  if(!clock&&ageM==null) return '';
+  if(live&&clock) return `¦k:issued=${clock} ET · {{ago}}¦m:{{pct}}¦f:{{left}}`;
+  const L=snkLapseFill(ageM);
+  return (clock?`¦k:issued=${clock} ET${L.ago?` · ${L.ago}`:''}`:`¦k:age=${L.ago}`)
+    +(L.left?`¦m:${L.pct}¦f:${L.left}`:'');
+}
 const snkOrd=n=>{ const v=Math.abs(Math.round(+n||0)), t=v%100;
   return v+((t>=11&&t<=13)?'th':(['th','st','nd','rd'][v%10]||'th')); };
 // a layer's separation reading in its OWN units (pp = share of gamma mass, σ = the day's
@@ -11100,7 +11136,13 @@ function snkGhostSVG(gh, P){
 // price to the expected price ~30 min out, captioned in a few words ("mirai ▼ ~$1,221 · 30m").
 // Deliberately SPARSE — at most one voice mark + one late-day charm note — and every state is
 // honest: "balanced" when the model saw no lean, "paused" when the switch silenced it, dimmed
-// "(old)" past 10 min (the read card's own aging rule), and NOTHING when no read row exists.
+// past 10 min (the read card's own aging rule), and NOTHING when no read row exists.
+// 08-26 (user-requested): the caption also says WHEN — the clock the read was issued at and how
+// long ago, in a dimmer second voice after the thought (`mirai ▼ $1,456 · 30m  10:14 · 12m ago`).
+// The age is measured from reading_ts against the wall clock, never read off the row, and the
+// "ago" is re-ticked in place by SNDK.tickAges so it keeps counting between scans and after the
+// close. "(old)" survives only for a row that carries no stamp to show. The hover card leads
+// with the same two facts and a meter of how much of the ~30-min window has run.
 // The dashes + the word "mirai" are the styling contract: a thought, never a measured level —
 // the solid lines on this chart remain reserved for what was measured. Decoupled from the
 // gated arrow/comet on purpose; the two may disagree, and showing both is the information.
@@ -11123,8 +11165,24 @@ function snkMiraiSVG(m, rd, P){
     return yy; };
   const out=[], avoid=[];
   const R=(rd.reading&&typeof rd.reading==='object')?rd.reading:null;
-  const ageM=(rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null;
+  // AGE IS MEASURED HERE, NOT TRUSTED. The row's reading_age_min was true when the row was
+  // written; quiet scans re-carry the sentence every ~2 min and after the close the last row
+  // sits all evening, so a baked age freezes the way bookAge once froze at "just now".
+  // reading_ts is the issue stamp: age = minutes from it to `now` (P.now lets a drill pin the
+  // clock); the row's own number is the fallback for an old row that carries no stamp.
+  const since=(typeof rd.reading_ts==='string'&&isFinite(+new Date(rd.reading_ts)))?rd.reading_ts:null;
+  const now=(P.now!=null&&isFinite(P.now))?+P.now:Date.now();
+  const ageM=since?snkMinsSince(since, now)
+    :((rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null);
   const aged=ageM!=null&&ageM>10;
+  const clock=since?snkClock(since):'';
+  // the caption's second voice — the clock it was said at, then how long ago — dimmer than the
+  // thought so the number the line exists for still leads. `.snk-ago` is re-ticked in place.
+  const stamp=clock
+    ?`<tspan class="snk-when" dx="9" style="fill:var(--ink-dim);font-weight:500;letter-spacing:.02em">${clock} ·</tspan>`
+     +`<tspan class="snk-ago" dx="6" style="fill:var(--ink-faint);font-weight:500;letter-spacing:.02em">${snkAgo(ageM)}</tspan>`
+    :'';
+  const sinceAttr=since?` data-since="${since}"`:'';
   const halo='paint-order:stroke;stroke:var(--ground);stroke-width:2.5px;stroke-linejoin:round';
   const xB=x0+30;
   const mag=(R&&R.magnitude_sigma!=null&&isFinite(R.magnitude_sigma))?+R.magnitude_sigma:null;
@@ -11136,23 +11194,31 @@ function snkMiraiSVG(m, rd, P){
     if(tgt>bHi){ tgt=bHi; clip='≈'; } if(tgt<bLo){ tgt=bLo; clip='≈'; }
     const yS=yFor(sp), yT=yFor(tgt);
     const yCap=dodge(yT+(up?-8*r:14*r));
-    const txt=`mirai ${up?'▲':'▼'} ${clip}${snkUsd(tgt,0)} · 30m${aged?' (old)':''}`;
-    const tip=`Mirai's own read of the snapshot — which way, and how far over ~30 min.`
+    const txt=`mirai ${up?'▲':'▼'} ${clip}${snkUsd(tgt,0)} · 30m${(aged&&!clock)?' (old)':''}${stamp}`;
+    // the card leads with WHEN (issued clock · how long ago, a meter of the window run, what is
+    // left of it) and only then with how far — the lapse is what a reader cannot get from the
+    // line itself, and it fills in live at hover time (see rpShowHeadTip)
+    const tip=`Mirai's own read of the snapshot — which way, how far over ~30 min, and when it said so.`
+      +snkLapseRows(clock, ageM, !!since)
       +`¦k:expects ${up?'up':'down'}=${mag.toFixed(2)}σ ≈ $${Math.round(mag*sg)}`
       +(clip?`¦f:target sits past the frame edge — drawn clamped`:'')
       +`¦f:separate from the gated arrow — they can disagree, and that is information`
-      +(aged?`¦f:read is ${ageM}m old — memory, not news`:'')
       +`¦n:30-min moves here have a spread — half under ~0.09σ, one in five over 0.20σ (sr-5)`;
-    out.push(`<g${aged?' opacity=".5"':''}>`
+    out.push(`<g${sinceAttr}${aged?' opacity=".5"':''}>`
       +`<circle cx="${xB}" cy="${yS.toFixed(1)}" r="2.2" fill="${hue}" opacity=".8"/>`
       +`<line x1="${xB}" x2="${xB}" y1="${yS.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:${hue};stroke-width:1.5;opacity:.55" stroke-dasharray="4 4"/>`
       +`<path d="M${(xB-3.5).toFixed(1)},${(yT+(up?4.5:-4.5)).toFixed(1)} L${xB.toFixed(1)},${yT.toFixed(1)} L${(xB+3.5).toFixed(1)},${(yT+(up?4.5:-4.5)).toFixed(1)}" fill="none" style="stroke:${hue};stroke-width:1.6;opacity:.85"/>`
-      +`<text x="${(xB+8).toFixed(1)}" y="${(yCap+3*r).toFixed(1)}" font-size="${fs}" font-weight="700" font-family="var(--mono)" style="fill:${hue};${halo};letter-spacing:.04em" data-name="Mirai's read" data-tip="${tip}">${txt}</text>`
+      +`<text x="${(xB+8).toFixed(1)}" y="${(yCap+3*r).toFixed(1)}" font-size="${fs}" font-weight="700" font-family="var(--mono)" style="fill:${hue};${halo};letter-spacing:.04em" data-name="Mirai's read ${up?'▲':'▼'}" data-tip="${tip}">${txt}</text>`
       +`</g>`);
     avoid.push(yCap);
   } else if(R&&R.vector==='none'&&sp!=null){
     const y=dodge(yFor(sp)-14*r);
-    out.push(`<text x="${(xB+8).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${fs}" font-weight="500" font-family="var(--mono)" style="fill:var(--ink-dim);${halo};letter-spacing:.04em" data-name="Mirai's read" data-tip="Mirai read the snapshot and saw no lean either way.¦f:an honest 'balanced' — not a missing reading${aged?`¦f:read is ${ageM}m old`:''}">mirai · balanced${aged?' (old)':''}</text>`);
+    const bTip=`Mirai read the snapshot and saw no lean either way.`
+      +snkLapseRows(clock, ageM, !!since)
+      +`¦f:an honest 'balanced' — not a missing reading`;
+    out.push(`<g${sinceAttr}${aged?' opacity=".5"':''}>`
+      +`<text x="${(xB+8).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${fs}" font-weight="500" font-family="var(--mono)" style="fill:var(--ink-dim);${halo};letter-spacing:.04em" data-name="Mirai's read" data-tip="${bTip}">mirai · balanced${(aged&&!clock)?' (old)':''}${stamp}</text>`
+      +`</g>`);
     avoid.push(y);
   } else if(rd.paused===true&&sp!=null){
     const y=dodge(yFor(sp)-14*r);
@@ -11221,7 +11287,7 @@ const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK
   <circle cx="200" cy="118" r="2.2" fill="var(--jade)" opacity=".8"/>
   <line x1="200" y1="118" x2="200" y2="90" stroke="var(--jade)" stroke-width="1.4" stroke-dasharray="4 4" opacity=".6"/>
   <path d="M196.5,94.5 L200,90 L203.5,94.5" fill="none" stroke="var(--jade)" stroke-width="1.5" opacity=".85"/>
-  <text x="206" y="93" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--jade)">mirai ▲ ~1,280 · 30m</text>
+  <text x="206" y="93" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--jade)">mirai ▲ ~1,280 · 30m<tspan dx="6" font-weight="500" fill="var(--ink-dim)">14:34</tspan><tspan dx="4" font-weight="500" fill="var(--ink-faint)">22m ago</tspan></text>
   <line x1="122" y1="252" x2="482" y2="252" stroke="var(--ink-dim)" stroke-width="1.2" stroke-dasharray="1 5" opacity=".7"/>
   <text x="476" y="248" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)" opacity=".7">VWAP</text>
   <line x1="122" y1="278" x2="482" y2="278" stroke="var(--ink-faint)" opacity=".32"/>
@@ -11287,7 +11353,7 @@ const _SNKI_KEY=[
   ['11','Spoke counter','How many scans an arrow was live on. One call held for an hour counts on every scan it covered, so read it as coverage, not as a count of calls.'],
   ['12','Model vector','A second opinion that lives inside The read card, under the call block: the model reads the snapshot cold and says which way it leans and roughly how far price might travel in about half an hour, in dollars. It is separate from the arrow above it, and the two can disagree — seeing that disagreement is the point, not a glitch. A typical half-hour move here is small, so a big number deserves suspicion.'],
   ['13','VWAP dotted line','The average price paid so far today, weighted by how many shares traded at each price. Big trading desks use it as their anchor, so price often reacts near it. It only appears once the day has real traded volume behind it — no line means it could not be measured, not that it is zero.'],
-  ['14','Mirai’s thought-line','A dashed line from the live price to where the model expects price in about half an hour, captioned in its own voice ("mirai ▼ ~$1,221 · 30m"). Dashes mean a thought, never a measured level — solid lines stay reserved for what was measured. It says "balanced" when the model saw no lean, "paused" when the switch silenced it, and dims with "(old)" once the read is stale. It can disagree with the arrow; seeing that disagreement is the point.'],
+  ['14','Mirai’s thought-line','A dashed line from the live price to where the model expects price in about half an hour, captioned in its own voice ("mirai ▼ ~$1,221 · 30m"), then the clock it said so at and how long ago — the "ago" keeps counting between scans and after the close, and hovering the line shows how much of its half-hour window has already run. Dashes mean a thought, never a measured level — solid lines stay reserved for what was measured. It says "balanced" when the model saw no lean, "paused" when the switch silenced it, and dims once the read is more than ten minutes old. It can disagree with the arrow; seeing that disagreement is the point.'],
 ];
 function openSndkInfoModal(){
   const M=document.getElementById('modal'); if(!M) return;
@@ -11857,6 +11923,18 @@ const SNDK = {
     }catch(e){ SNDK.readFails++; }
     SNDK.timers.read=setTimeout(()=>SNDK.pollRead(), SNDK.pollMs);
   },
+  // The mirai caption's "ago" and its >10-min dimming are re-ticked IN PLACE from data-since:
+  // the read poll only rebuilds the chart on a NEW row (after the close one never comes), and a
+  // full rebuild every minute would fight the eased spot line for the same frames (08-26).
+  tickAges(){
+    const host=document.getElementById('snk-mirai'); if(!host) return;
+    for(const g of host.querySelectorAll('g[data-since]')){
+      const m=snkMinsSince(g.dataset.since); if(m==null) continue;
+      const a=g.querySelector('.snk-ago');
+      if(a){ const s=snkAgo(m); if(a.textContent!==s) a.textContent=s; }
+      if(m>10) g.setAttribute('opacity','.5'); else g.removeAttribute('opacity');
+    }
+  },
   async pollSpot(){
     SNDK.timers.spot=null;
     if(!SNDK.on||document.hidden) return;
@@ -11874,6 +11952,7 @@ const SNDK = {
     }catch(e){ SNDK.spot.fails++; }
     if(Date.now()-SNDK.spot.at>SNDK.spotStaleMs) SNDK.spot.live=false;   // stopped arriving → stop claiming live
     SNDK.paintSpot();
+    SNDK.tickAges();
     SNDK.timers.spot=setTimeout(()=>SNDK.pollSpot(), SNDK.spotMs);
   },
   // FULL-DAY spot path — a SEPARATE slow fetch (the live-map poll's limit=60 misses the
@@ -13076,7 +13155,7 @@ const SNDK = {
     // the left gutter reserves — so the airspace rails are told where its words ACTUALLY end
     // rather than where the reserve says they do (08-23)
     for(const vy of mirai.avoid)
-      airBoxes.push({x1:x0+30, x2:x0+38+txW('mirai ▲ $1,234 · 30m (old)', fz(9.5), 0.6), y:vy, h:fz(9.5)*1.4});
+      airBoxes.push({x1:x0+30, x2:x0+38+txW('mirai ▲ $1,234 · 30m   10:14 · 12m ago', fz(9.5), 0.6), y:vy, h:fz(9.5)*1.4});
     // ---- ZONE CAPTIONS (07-28): faint left-anchored labels naming what each price area means
     // — the flip's calmer/faster halves, the walls as support/resistance, the magnet, an air
     // pocket — each followed by the level it is enacted at (08-23). Muted guide text (≤4,
