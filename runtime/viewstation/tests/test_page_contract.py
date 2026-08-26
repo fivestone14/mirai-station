@@ -106,4 +106,5 @@ def test_freshness_box_covers_every_layer_and_ticks():
     assert "bookAsof:(typeof meta.book_asof==='string')" in PAGE       # the chain's own stamp
     assert "['15','Freshness chip'," in PAGE                           # documented in the key
     assert "SNDK._freshEl=box" in PAGE and "getElementById('snk-tenors')" in PAGE   # lives in the tenors strip, node kept across rewrites
-    assert "at least TWICE the whole book’s turnover" in PAGE          # the ring's exact rule, in the key
+    assert "at least 2× what the whole book turns over" in PAGE       # the ring's exact rule, in the key
+    assert '<svg class="snki-g"' in PAGE                              # every entry carries its glyph

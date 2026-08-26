@@ -1892,13 +1892,15 @@
   .snki-cap{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); margin:7px 0 14px;
     letter-spacing:var(--track-hd)}
   .snki-grid{display:grid; gap:7px 16px; grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
-  .snki-row{display:grid; grid-template-columns:20px 1fr; gap:9px; align-items:start;
+  .snki-row{display:grid; grid-template-columns:20px 84px 1fr; gap:9px; align-items:start;
     padding:7px 9px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:8px}
   .snki-n{font-family:var(--mono); font-size:10.5px; font-weight:700; color:var(--iris);
     background:color-mix(in srgb,var(--iris) 15%, transparent); border-radius:4px;
     text-align:center; line-height:18px; height:18px}
   .snki-row b{display:block; font-size:12.5px; font-weight:600; color:var(--ink); margin-bottom:1px}
   .snki-row span{font-size:12px; color:var(--ink-dim); line-height:1.44}
+  /* the GLYPH (08-26): a 3:1 miniature of the mark, on the chart's own ground so its colours read true */
+  .snki-g{display:block; width:84px; height:28px; border-radius:6px; background:var(--surface); border:1px solid var(--hairline)}
   .snki-note{margin-top:14px; padding:10px 13px; border-left:2px solid var(--lantern);
     background:color-mix(in srgb,var(--lantern) 9%, transparent); border-radius:0 8px 8px 0;
     font-size:12.5px; color:var(--ink-dim); line-height:1.5}
@@ -11378,27 +11380,60 @@ const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK
 // on 07-31 the day chip's own total FELL 125,644 -> 104,839 in eight minutes as strikes slid
 // out of the window, and its closing print inverted the day's lean (53% puts against 42% on
 // the full tape). Keep these sentences scoped; do not restore the shorter, friendlier ones.
+// 08-26 (user-requested): every entry is now SHORT — two or three plain sentences — and carries a
+// GLYPH, a 120×40 miniature of the mark drawn in the chart's own idiom (same tokens, same shapes), so
+// the picture does the explaining and the words only name the rule. Entry = [n, title, glyph, text].
 const _SNKI_KEY=[
-  ['1','Trading whisker','The thin line growing out of a bar’s tip is today’s trading at that strike: every contract that changed hands there since the open, in the front expiry only, from the scan’s per-strike arrays (a strike outside the scan’s window around price carries none). It starts a few pixels past the bar’s tip on the bar’s own side — a strike with trading but no measured gamma bar grows into whichever side is open — and its length is that strike’s contracts divided by the busiest strike in view, with a hair-thin floor so a 200-contract strike still shows beside a 14,000 leader. Green is the calls’ share of the line, red the puts’; one grey line means the row recorded a total but no split. No line at all means no volume datum for that strike, never “nothing traded”. It only ever grows through the day. Hover it for the contracts, the call/put split and the traded-against-open ratio.'],
-  ['2','Gold ring','The hollow gold circle on a whisker’s tip flags turnover: today’s contracts traded at that strike divided by the contracts still open there from overnight (open interest). It lights when that ratio is at least TWICE the whole book’s turnover on the same scan, so the bar moves with the day instead of sitting at a fixed number — the book itself turned over 2.1× on one recorded session and 6.1× on another, and a fixed rule would have lit everything on one day and nothing on the other. A strike holding fewer than 25 open contracts never gets a ring: a three-contract book turns over hundreds of times on a single lot. It says busy against what was open, and nothing more — the tape cannot tell whether that opened new positions or closed old ones, nor who was buying.'],
-  ['3','Magnet band','The top two strikes are too close to call, so the magnet line is replaced by a shaded span across both. It fires on most scans and often covers half the map.'],
-  ['4','Arrow, or a grey dot','A direction only once the gate has earned it, otherwise a grey dot. Before the reading engine has written anything, this mark is the ungated raw magnet pull instead.'],
-  ['5','Faint dashed mark','Where the last finished call was made, so a bad one stays visible. It marks that call’s start, never a target, and it holds until another call finishes.'],
-  ['6','Greyed level','This level has not moved for at least half an hour. Faded so old information stops looking like news — hover it for exactly how long.'],
-  ['7','The read','The gated call, then the model’s own vector — its direction and expected travel, inferred cold from an unbiased snapshot (the sr-2 redesign; era now sr-5). The two can disagree; both always show. Then the sentence, and what would change it.'],
-  ['8','Amber row','Either price already ran the way the arrow points, or the call’s evidence has expired and it is being held briefly before it drops.'],
-  ['9','Gate chips','Which layers cleared their own bar. Magnet and Breadth read the same pile of gamma and clear together by construction; a lit Price path is a warning against the arrow, not support for it.'],
-  ['10','Day chip','Calls versus puts among strikes near price, in this expiry only. It leaves out a third to a half of the day’s tape and can swing hard as price travels.'],
-  ['11','Spoke counter','How many scans an arrow was live on. One call held for an hour counts on every scan it covered, so read it as coverage, not as a count of calls.'],
-  ['12','Model vector','A second opinion that lives inside The read card, under the call block: the model reads the snapshot cold and says which way it leans and roughly how far price might travel in about half an hour, in dollars. It is separate from the arrow above it, and the two can disagree — seeing that disagreement is the point, not a glitch. A typical half-hour move here is small, so a big number deserves suspicion.'],
-  ['13','VWAP dotted line','The average price paid so far today, weighted by how many shares traded at each price. Big trading desks use it as their anchor, so price often reacts near it. It only appears once the day has real traded volume behind it — no line means it could not be measured, not that it is zero.'],
-  ['14','Mirai’s thought-line','A dashed line from the live price to where the model expects price in about half an hour, captioned in its own voice ("mirai ▼ ~$1,221 · 30m"), then the clock it said so at and how long ago — the "ago" keeps counting between scans and after the close, and hovering the line shows how much of its half-hour window has already run. Dashes mean a thought, never a measured level — solid lines stay reserved for what was measured. It says "balanced" when the model saw no lean, "paused" when the switch silenced it, and dims once the read is more than ten minutes old. It can disagree with the arrow; seeing that disagreement is the point.'],
-  ['15','Freshness chip','The FRESH chip at the right end of the expiry strip, above the plot. Hover to peek, click to pin: one row per layer — the clock its data carries, a counter since, how often it refreshes. Red = stale (bars: 3 scan gaps; price: 15 s).'],
+  ['1','Trading whisker',
+   '<rect x="8" y="14" width="40" height="12" fill="var(--jade)" opacity=".62"/><line x1="53" y1="20" x2="82" y2="20" stroke="var(--jade)" stroke-width="2.4" opacity=".7"/><line x1="82" y1="20" x2="104" y2="20" stroke="var(--coral)" stroke-width="2.4" opacity=".7"/><text x="53" y="34" font-size="7" fill="var(--ink-faint)" font-family="var(--mono)">calls</text><text x="86" y="34" font-size="7" fill="var(--ink-faint)" font-family="var(--mono)">puts</text>',
+   'Today’s trading at that strike — front expiry only. Longer = more contracts (against the busiest strike); green = calls, red = puts; grey = no split; no line = no data. Hover for the numbers.'],
+  ['2','Gold ring',
+   '<rect x="8" y="14" width="30" height="12" fill="var(--coral)" opacity=".62"/><line x1="43" y1="20" x2="70" y2="20" stroke="var(--jade)" stroke-width="2.4" opacity=".7"/><line x1="70" y1="20" x2="92" y2="20" stroke="var(--coral)" stroke-width="2.4" opacity=".7"/><circle cx="94" cy="20" r="3.4" fill="none" stroke="var(--l-grav)" stroke-width="1.5"/><text x="102" y="23" font-size="7.5" font-weight="700" fill="var(--l-grav)" font-family="var(--mono)">2×</text>',
+   'A busy strike: today’s volume is at least 2× what the whole book turns over against overnight open interest. Needs 25+ open contracts. Busy — not who bought or sold.'],
+  ['3','Magnet band',
+   '<rect x="8" y="11" width="104" height="18" fill="var(--l-grav)" opacity=".12"/><line x1="8" y1="11" x2="112" y2="11" stroke="var(--l-grav)" stroke-dasharray="4 3" opacity=".8"/><line x1="8" y1="29" x2="112" y2="29" stroke="var(--l-grav)" stroke-dasharray="4 3" opacity=".8"/><text x="12" y="23.5" font-size="7" fill="var(--l-grav)" font-family="var(--mono)">1,500 · 1,495</text>',
+   'The top two strikes are too close to call (under 5pp apart), so the magnet is a span, not a line. Fires on most scans; often covers half the map.'],
+  ['4','Arrow, or a grey dot',
+   '<line x1="24" y1="34" x2="24" y2="12" stroke="var(--jade)" stroke-width="2.4" opacity=".9"/><path d="M19,13 L29,13 L24,5 Z" fill="var(--jade)"/><line x1="24" y1="34" x2="24" y2="14" stroke="var(--l-grav)" stroke-width="2.4" stroke-dasharray="2 10" opacity=".9"/><circle cx="72" cy="20" r="4" fill="var(--ink-dim)" opacity=".7"/><text x="82" y="23" font-size="7" fill="var(--ink-faint)" font-family="var(--mono)">silent</text>',
+   'The gated call. An arrow only when one strike is clearly in charge; a grey dot when the gate stays silent. Before any read exists, it is the raw magnet pull.'],
+  ['5','Faint dashed mark',
+   '<line x1="10" y1="20" x2="52" y2="20" stroke="var(--coral)" stroke-width="1.6" stroke-dasharray="3 4" opacity=".45"/><text x="57" y="23" font-size="8" font-weight="700" fill="var(--coral)" opacity=".5" font-family="var(--mono)">▼</text><text x="70" y="23" font-size="7" fill="var(--ink-faint)" font-family="var(--mono)">earlier call</text>',
+   'Where the last finished call was made — its start, never a target. Stays until another call ends.'],
+  ['6','Greyed level',
+   '<line x1="8" y1="20" x2="112" y2="20" stroke="var(--ink-faint)" opacity=".35" stroke-width="1.2"/><text x="112" y="15" text-anchor="end" font-size="7" fill="var(--ink-faint)" opacity=".7" font-family="var(--mono)">Floor · unchanged 3h</text>',
+   'Unchanged for 30 min or more. Faded so old news stops looking new; hover for how long.'],
+  ['7','The read',
+   '<rect x="6" y="5" width="108" height="30" rx="4" fill="var(--surface-2)" stroke="var(--jade)"/><text x="12" y="17" font-size="9" font-weight="700" fill="var(--jade)" font-family="var(--mono)">▲ UP</text><text x="44" y="17" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">since 2:34 PM</text><text x="12" y="29" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">Top strike pulled clear…</text>',
+   'The gated call, the model’s own vector, its sentence, and what would change it. The two can disagree — both always show.'],
+  ['8','Amber row',
+   '<rect x="6" y="11" width="108" height="18" fill="color-mix(in srgb,var(--lantern) 14%, transparent)"/><text x="11" y="23" font-size="7.5" fill="var(--lantern)" font-family="var(--mono)">⚠ price already ran this way</text>',
+   'Price already ran the arrow’s way (0.30σ+ in 30 min), or the call’s evidence expired and it is held briefly before it drops.'],
+  ['9','Gate chips',
+   '<rect x="4" y="11" width="34" height="18" rx="3" fill="color-mix(in srgb,var(--jade) 12%, transparent)" stroke="var(--jade)"/><text x="21" y="23" text-anchor="middle" font-size="6.5" fill="var(--jade)" font-family="var(--mono)">Magnet ✓</text><rect x="42" y="11" width="36" height="18" rx="3" fill="color-mix(in srgb,var(--jade) 12%, transparent)" stroke="var(--jade)"/><text x="60" y="23" text-anchor="middle" font-size="6.5" fill="var(--jade)" font-family="var(--mono)">Breadth ✓</text><rect x="82" y="11" width="34" height="18" rx="3" fill="var(--surface-3)" stroke="var(--hairline)"/><text x="99" y="23" text-anchor="middle" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">Path —</text>',
+   'Which layers cleared their bar. Magnet and Breadth read the same gamma pile and clear together; a lit Price path warns against the arrow.'],
+  ['10','Day chip',
+   '<rect x="14" y="10" width="92" height="20" rx="10" fill="color-mix(in srgb,var(--coral) 11%, transparent)" stroke="var(--coral)"/><text x="60" y="23.5" text-anchor="middle" font-size="7" fill="var(--coral)" font-family="var(--mono)">Today’s trading · 53% puts</text>',
+   'Calls vs puts at strikes near price, this expiry only. Misses a third to half of the tape; swings as price moves.'],
+  ['11','Spoke counter',
+   '<text x="8" y="23" font-size="8" fill="var(--ink-faint)" font-family="var(--mono)">spoke 21 of 188 scans</text>',
+   'How many scans an arrow was live on. Coverage, not a count of calls.'],
+  ['12','Model vector',
+   '<text x="8" y="14" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">model vector</text><text x="8" y="28" font-size="9" font-weight="700" fill="var(--jade)" font-family="var(--mono)">▲ up 0.20σ · ~$13</text>',
+   'Inside The read: the model’s own lean and how far in ~30 min, in dollars. Separate from the arrow. A big number deserves suspicion.'],
+  ['13','VWAP dotted line',
+   '<line x1="8" y1="22" x2="112" y2="22" stroke="var(--ink-dim)" stroke-width="1.4" stroke-dasharray="1 5" opacity=".8"/><text x="112" y="15" text-anchor="end" font-size="7" fill="var(--ink-dim)" font-family="var(--mono)">VWAP</text>',
+   'Today’s average price paid, volume-weighted — the desks’ anchor. Missing = could not be measured, not zero.'],
+  ['14','Mirai’s thought-line',
+   '<circle cx="16" cy="8" r="2.2" fill="var(--coral)" opacity=".8"/><line x1="16" y1="8" x2="16" y2="30" stroke="var(--coral)" stroke-width="1.5" stroke-dasharray="4 4" opacity=".6"/><path d="M12.5,25.5 L16,30 L19.5,25.5" fill="none" stroke="var(--coral)" stroke-width="1.6"/><text x="24" y="19" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">10:22 · 2m ago</text><text x="24" y="32" font-size="7.5" font-weight="700" fill="var(--coral)" font-family="var(--mono)">mirai ▼ $1,456 · 30m</text>',
+   'From live price to where the model expects it in ~30 min, with when it said so and how long ago. Dashes = a thought, not a level. “balanced” = no lean; “paused” = switched off; dims past 10 min.'],
+  ['15','Freshness chip',
+   '<rect x="18" y="6" width="84" height="28" rx="4" fill="var(--surface-2)" stroke="var(--hairline-2)"/><text x="24" y="17" font-size="6.5" font-weight="700" fill="var(--ink-faint)" letter-spacing=".08em" font-family="var(--mono)">FRESH</text><text x="96" y="17" text-anchor="end" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">bars 1m 12s</text><text x="24" y="28" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">price</text><text x="96" y="28" text-anchor="end" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">4s</text>',
+   'The FRESH chip at the right end of the expiry strip, above the plot. Hover to peek, click to pin: one row per layer — the clock its data carries, a counter since, how often it refreshes. Red = stale (bars: 3 scan gaps; price: 15 s).'],
 ];
 function openSndkInfoModal(){
   const M=document.getElementById('modal'); if(!M) return;
-  const rows=_SNKI_KEY.map(([n,t,d])=>
-    `<div class="snki-row"><span class="snki-n">${n}</span><div><b>${t}</b><span>${d}</span></div></div>`).join('');
+  const rows=_SNKI_KEY.map(([n,t,g,d])=>
+    `<div class="snki-row"><span class="snki-n">${n}</span><svg class="snki-g" viewBox="0 0 120 40" aria-hidden="true">${g}</svg><div><b>${t}</b><span>${d}</span></div></div>`).join('');
   M.innerHTML=`
     <div class="modal-card snki" role="dialog" aria-modal="true" aria-label="What am I looking at — the SNDK map">
       <div class="modal-head">
@@ -11409,20 +11444,14 @@ function openSndkInfoModal(){
         <div class="snki-fig" aria-hidden="true">${_SNKI_FIG}</div>
         <div class="snki-cap">Numbers match the pipeline schematic · every mark also explains itself on hover</div>
         <div class="snki-grid">${rows}</div>
-        <div class="snki-note"><b>Two things the map cannot tell you.</b> The whiskers show what traded
-          and on which side, never whether it was bought or sold — heavy call volume can be someone buying
-          calls or writing them against stock. And the arrow is silent most of the day by design: on the
-          four recorded sessions an arrow was live on 14% of scans, because the rest of the time no strike was
-          clearly in charge.</div>
-        <div class="snki-note"><b>Also new, in the side panel (not drawn on the schematic).</b>
-          The <b>Expected Move</b> box now says how its up/down split was measured: “IV-skew split” means it
-          leans toward the side where option protection is priced richer right now; “realized-tape split” is the
-          fallback, read from how today’s actual trading has skewed. The <b>Dealer Delta</b> box can carry
-          “decay tilt → $X”: as options lose value with the passing clock, hedging pressure eases toward that
-          price — it names a location the pull points to, never a promise price will get there, and it says
-          nothing about up or down on its own. And the <b>Data layers</b> strip gained two chips, VWAP and
-          Charm·Vanna — lit means that layer was measured on the latest scan; dim means it could not be
-          measured cleanly, which this system always treats as “no data”, never as zero.</div>
+        <div class="snki-note"><b>Two things the map cannot tell you.</b> Whiskers show what traded and on
+          which side — never whether it was bought or sold. And the arrow is silent most of the day on purpose:
+          live on about 14% of scans, because the rest of the time no strike is clearly in charge.</div>
+        <div class="snki-note"><b>In the side panel (not on the schematic).</b> <b>Expected Move</b> says how its
+          up/down split was measured — “IV-skew” (protection priced richer on that side) or “realized-tape” (how
+          today’s trading skewed). <b>Dealer Delta</b> may carry “decay tilt → $X”: a place the pull eases toward
+          as options decay — not a promise, and no up/down on its own. <b>Data layers</b> chips: lit = measured
+          this scan; dim = no data, never zero.</div>
       </div>
     </div>`;
   M.classList.add('open'); M.setAttribute('aria-hidden','false');
