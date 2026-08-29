@@ -13464,6 +13464,30 @@ const SNDK = {
           +` font-family="var(--mono)" style="fill:var(--ink-faint);opacity:.55;letter-spacing:.12em"`
           +` data-tip="&lt;b&gt;Open interest resting at each strike&lt;/b&gt;How many contracts are parked there — jade is calls, coral is puts, and the whole bar is the two added together. It is NOT a direction: every contract has a buyer and a seller, so no side can be read from it. Set at yesterday&#39;s close and unchanged until tonight: the standing book, not today&#39;s trading.&lt;br&gt;Bar length is proportional to the count, so twice the bar really is twice the contracts. Hover any bar for its own split."`
           +` class="snk-hit">OI</text>`;
+        // HOW OLD THE BOOK IS, BESIDE THE MARKS IT DREW (2026-08-28). The OI bars and
+        // the volume whiskers are the same pull — one `meta.book_asof` governs both —
+        // so one stamp serves them, and it rides the lane header rather than claiming
+        // new canvas. The 08-26 placement study found no free in-plot corner at any
+        // width, and it still holds: this is the header's own line, not a new chip.
+        //
+        // The AGE leads because staleness is the question a reader actually has; the
+        // wall-clock is one hover away. No date — the chart is one session, and a
+        // date on every repaint would be noise. Age recomputed each paint (the tab
+        // repolls every ~8s), so no timer of its own. Coral on the same staleInfo()
+        // the FRESH chip uses, so the two can never disagree about the same book.
+        const bkT=(m&&m.bookAsof!=null)?+new Date(m.bookAsof):NaN;
+        if(isFinite(bkT)){
+          const fr=(typeof SNDK.staleInfo==='function')?SNDK.staleInfo():null;
+          const bkAge=snkCount(Date.now()-bkT);
+          oiSVG+=`<text x="${oiX1.toFixed(1)}" y="${(padT-px(5)).toFixed(1)}" text-anchor="end"`
+            +` font-size="${fz(7.5)}" font-weight="700" font-family="var(--mono)"`
+            +` style="fill:var(${fr&&fr.stale?'--coral':'--ink-faint'});opacity:${fr&&fr.stale?'.95':'.5'}"`
+            +` class="snk-hit" data-name="Book age"`
+            +` data-tip="&lt;b&gt;The option book behind these marks was pulled ${bkAge} ago&lt;/b&gt;`
+            +`Both the OI bars and the volume whiskers come from that one pull, so this is their shared age.`
+            +`¦k:pulled at ${snkClock12(bkT, true)} PT`
+            +`¦f:the chain refreshes on its own clock and can trail the scan when a tick is served from cache">${bkAge}</text>`;
+        }
         // LINEAR LENGTH, SPLIT BY SIDE (2026-08-28). Proportional on purpose: the
         // question is "which strikes hold more", and a sqrt or log lane answers a
         // softer one by flattening the very spread being asked about. A strike with
