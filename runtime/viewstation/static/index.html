@@ -1940,6 +1940,38 @@
      by design — only the REGIME chip carries colour; the rest are a quiet glance, not a paragraph. */
   .snk-tape{position:absolute; z-index:4; top:5px; display:flex; flex-wrap:wrap; gap:5px 6px; align-items:center; pointer-events:none}
   .snk-tape:empty{display:none}
+  /* THE LEVELS CARD (2026-08-28). The right margin used to print five reference
+     readouts down a 115px gutter — Call edge / VWAP / Now / Tipping point / Put
+     edge — every one of which is ALREADY a drawn line on the plot, so the gutter
+     was a second, quieter copy of the chart competing with it for width. Only the
+     live price stays out there (it is the one number with no line of its own to
+     read off, and the eye looks for it at the price axis). The other four moved
+     into this card: draggable, closable, and out of the plot's way. */
+  .snk-levels{position:absolute; z-index:6; right:10px; top:44px; min-width:132px;
+    background:color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter:blur(7px);
+    border:1px solid var(--hairline); border-radius:10px; padding:0 0 5px;
+    box-shadow:0 10px 30px rgba(0,0,0,.34); font-family:var(--mono); user-select:none}
+  .snk-levels[hidden]{display:none}
+  .snk-levels .lv-hd{display:flex; align-items:center; gap:6px; padding:5px 7px 4px;
+    cursor:grab; border-bottom:1px solid var(--hairline)}
+  .snk-levels .lv-hd:active{cursor:grabbing}
+  .snk-levels .lv-ti{flex:1; font-size:8.5px; font-weight:700; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-faint)}
+  .snk-levels .lv-x{all:unset; cursor:pointer; line-height:1; padding:1px 3px; border-radius:4px;
+    color:var(--ink-faint); font-size:12px}
+  .snk-levels .lv-x:hover{color:var(--ink); background:var(--hairline)}
+  .snk-levels .lv-r{display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    padding:3px 8px 2px}
+  .snk-levels .lv-n{font-size:8.5px; font-weight:700; color:var(--ink-dim);
+    letter-spacing:var(--track-tag)}
+  .snk-levels .lv-v{font-size:11px; font-weight:700; font-variant-numeric:tabular-nums}
+  /* the way back in, once it is closed — same chip species as the rest of the strip */
+  .snk-lvbtn{position:absolute; z-index:5; right:10px; top:44px; all:unset; cursor:pointer;
+    font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-faint); background:var(--surface);
+    border:1px solid var(--hairline); border-radius:8px; padding:3px 7px}
+  .snk-lvbtn:hover{color:var(--ink)}
+  .snk-lvbtn[hidden]{display:none}
   /* THE FRESHNESS CHIP (08-26): the right end of the tenors strip, ABOVE the plot. Measured at
      1280/1440/1800/2400 wide, no in-plot corner is free — the top-right is Call Wall 1 and the
      OI lane, the bottom-right is Put Wall 4 and the caption — while this strip carries three
@@ -11551,6 +11583,50 @@ function snkFrozenFor(frozen, field, drawn, step){
 // anchored captions naming what each price AREA means. Present-only throughout (a chip/caption
 // exists only when its datum does), so a bare row degrades to silence, never an empty widget.
 // Both PURE (return HTML/SVG strings, extractable by name for the jsc drills). ----
+/* THE LEVELS CARD (2026-08-28) — the four reference readouts the right gutter used
+   to print, in a card that can be moved or dismissed. Closed state and drag offset
+   both persist (localStorage), because a reader who moved it once meant it.
+   Rebuilt on every chart paint from SNDK.levelRows; the element itself is
+   re-appended rather than recreated, so a drag survives the repaint. */
+function snkLevelsOpen(on){
+  const el=document.getElementById('snk-levels'), b=document.getElementById('snk-lvbtn');
+  try{ localStorage.setItem('snk.levels', on?'1':'0'); }catch(e){}
+  const rows=Array.isArray(SNDK.levelRows)?SNDK.levelRows.length:0;
+  if(el) el.hidden=!on||!rows;
+  if(b) b.hidden=on||!rows;      // no rows on the row ⇒ neither card nor button
+}
+function snkPaintLevels(){
+  const el=document.getElementById('snk-levels'); if(!el) return;
+  const rows=Array.isArray(SNDK.levelRows)?SNDK.levelRows:[];
+  let open=true; try{ open=localStorage.getItem('snk.levels')!=='0'; }catch(e){}
+  if(!rows.length){ el.innerHTML=''; snkLevelsOpen(open); return; }
+  el.innerHTML=`<div class="lv-hd" id="snk-lvhd"><span class="lv-ti">levels</span>`
+    +`<button type="button" class="lv-x" title="Hide — reopen from the levels chip" onclick="snkLevelsOpen(false)">×</button></div>`
+    +rows.map(r=>`<div class="lv-r${r.tip?' snk-hit':''}"${r.tip?` data-name="${snkSafe(r.name)}" data-tip="${r.tip}"`:''}>`
+      +`<span class="lv-n">${r.name}</span>`
+      +`<span class="lv-v" style="color:${r.color}">${r.val}</span></div>`).join('');
+  snkLevelsOpen(open);
+  // drag by the header only, clamped to the chart so it can never be lost off-edge
+  const hd=document.getElementById('snk-lvhd'); if(!hd) return;
+  hd.onpointerdown=(e)=>{
+    const cc=document.getElementById('snk-chart'); if(!cc) return;
+    const cr=cc.getBoundingClientRect(), er=el.getBoundingClientRect();
+    const dx=e.clientX-er.left, dy=e.clientY-er.top;
+    hd.setPointerCapture(e.pointerId);
+    const mv=(ev)=>{
+      const L=Math.max(0, Math.min(cr.width-er.width, ev.clientX-cr.left-dx));
+      const T=Math.max(0, Math.min(cr.height-er.height, ev.clientY-cr.top-dy));
+      el.style.left=L+'px'; el.style.top=T+'px'; el.style.right='auto';
+      try{ localStorage.setItem('snk.levelsXY', L+','+T); }catch(e2){}
+    };
+    const up=()=>{ hd.onpointermove=null; hd.onpointerup=null; };
+    hd.onpointermove=mv; hd.onpointerup=up;
+  };
+  try{ const xy=(localStorage.getItem('snk.levelsXY')||'').split(',');
+    if(xy.length===2&&isFinite(+xy[0])){ el.style.left=+xy[0]+'px'; el.style.top=+xy[1]+'px'; el.style.right='auto'; }
+  }catch(e){}
+}
+
 // snkTape — the chip row. `sp` = the live spot; `orders` = gxOrderLean's read (or null). Each
 // chip is a tiny caps LABEL + a one/two-word VALUE; only the REGIME chip carries colour.
 // `hudOn` = something ELSE on screen is already saying the regime in words, naming the ceiling
@@ -11949,7 +12025,7 @@ const SNDK = {
       </div>
       <div class="snk-tenors" id="snk-tenors"></div>
       <div class="snk-mid">
-        <div class="snk-chart" id="snk-chart" role="img" aria-label="SNDK weekly GEX map: net gamma by strike, dealer levels, expected-move band"><div class="snk-tape" id="snk-tape"></div><div class="snk-tip" id="snk-tip"></div><div class="snk-cap" id="snk-cap"></div></div>
+        <div class="snk-chart" id="snk-chart" role="img" aria-label="SNDK weekly GEX map: net gamma by strike, dealer levels, expected-move band"><div class="snk-tape" id="snk-tape"></div><div class="snk-levels" id="snk-levels" hidden></div><button type="button" class="snk-lvbtn" id="snk-lvbtn" hidden onclick="snkLevelsOpen(true)" title="Show the reference levels card">levels</button><div class="snk-tip" id="snk-tip"></div><div class="snk-cap" id="snk-cap"></div></div>
       </div>`;
     SNDK.bindTips();
     // the read card's gate chips answer the pointer with the SAME structured card the chart
@@ -13170,7 +13246,15 @@ const SNDK = {
     // (byte-identical to the pre-08-01 tag) rather than shrinking below its own siblings.
     const fzTagLead=Math.max(fzTagV, Math.min(fz(10.5), +((tagW-10)/(9*0.6)).toFixed(1)));
     for(let i=1;i<tagList.length;i++) if(tagList[i].y-tagList[i-1].y<tagGap) tagList[i].y=tagList[i-1].y+tagGap;
-    for(const t of tagList){
+    // ONLY THE LIVE PRICE STAYS IN THE GUTTER (2026-08-28). The other readouts are
+    // reference — each one is already a line drawn across the plot — so printing
+    // them again down the right margin was the chart quoting itself at the cost of
+    // its own width. They move to the floating levels card; `Now` stays, because it
+    // is the one figure with no line of its own to read a value off, and the eye
+    // goes to the price axis for it. The lines themselves are untouched.
+    SNDK.levelRows=tagList.filter(t=>!t.spot)
+      .map(t=>({name:t.label||t.name, val:t.val, color:t.color, tip:t.tip||''}));
+    for(const t of tagList.filter(t=>t.spot)){
       const tipA=t.tip?` data-name="${t.label||''}" data-tip="${t.tip}"`:'';
       // THE HEADLINE FIGURES LEAD THE SCALE rather than flattening into it: where price IS and
       // where the book is pulling it are the two numbers this chart exists to say, so they get
@@ -13644,10 +13728,15 @@ const SNDK = {
       <g id="snk-zones" class="decl" data-cap="${zCap.toFixed(1)}">${zones}</g>
     </svg>`;
     const tip=document.getElementById('snk-tip'), capEl=document.getElementById('snk-cap'),
-          tapeEl=document.getElementById('snk-tape');
+          tapeEl=document.getElementById('snk-tape'),
+          lvEl=document.getElementById('snk-levels'), lvBtn=document.getElementById('snk-lvbtn');
     cc.innerHTML=svgHtml;
     if(tip) cc.appendChild(tip); if(capEl) cc.appendChild(capEl);
     if(tapeEl) cc.appendChild(tapeEl);
+    // the card and its way back in survive the wipe the same way the tape does —
+    // re-appended, never rebuilt, so a drag position and a closed state both hold
+    if(lvEl) cc.appendChild(lvEl); if(lvBtn) cc.appendChild(lvBtn);
+    snkPaintLevels();
     snkDeclutter(cc.querySelector('svg'));   // cross-painter label collisions — after mount, on real geometry
     snkMountInfoBtn();          // innerHTML above wiped it — remount (idempotent)
     // ---- ORPHANED HOVER CARDS (08-01). Both tip surfaces are bound by DELEGATION, so they
@@ -13673,7 +13762,7 @@ const SNDK = {
           recorded row — strike pitch, price window and σ all derive from the data, so nothing here is
           simulated and no placeholder terrain is shown.</div>
         ${sp!=null?`<div class="lv">live ${snkUsd(sp,2)} <span style="color:var(--ink-faint)">· ${SNDK.spot.src||'quote'}</span></div>`:''}
-      </div><div class="snk-tape" id="snk-tape"></div><div class="snk-tip" id="snk-tip"></div><div class="snk-cap" id="snk-cap"></div>`;
+      </div><div class="snk-tape" id="snk-tape"></div><div class="snk-levels" id="snk-levels" hidden></div><button type="button" class="snk-lvbtn" id="snk-lvbtn" hidden onclick="snkLevelsOpen(true)" title="Show the reference levels card">levels</button><div class="snk-tip" id="snk-tip"></div><div class="snk-cap" id="snk-cap"></div>`;
     SNDK._empty=cc.querySelector('#snk-await');
     const cap=document.getElementById('snk-cap'); if(cap) cap.innerHTML='';
     const tape=document.getElementById('snk-tape'); if(tape){ tape.innerHTML=''; tape.style.display='none'; }
