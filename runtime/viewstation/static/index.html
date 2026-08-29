@@ -12431,10 +12431,16 @@ const SNDK = {
     // PER-STRIKE and sit on the same rows, so a faint bar behind a wall's name is the standing
     // size of the very strike being named — the same information in none of the width. Only a
     // card with no strip at all (no doctrine tags on the row) still gives it a thin lane.
-    const hasOI=!!(m.oiBS)&&w>=520;
-    const oiW=(hasOI&&!hasTags)?px(20):0;
+    const hasOI=!!(m.oiSideBS||m.oiBS)&&w>=520;   // side ladder preferred: the lane sums it
+    // …that lane is back, and wider (2026-08-28). Riding inside the 11px tick strip
+    // floored laneW at 8px, and 8px cannot separate open interest's real spread —
+    // measured on a live row, 164 to 4,387 contracts across 36 strikes, of which 30
+    // rendered under 3px and read as one uniform column. The lane now takes its own
+    // width whether or not the row carries tags; the strip seats after it, as it
+    // already did in the no-tags case.
+    const oiW=hasOI?px(34):0;
     const lineEnd=w-tagW-tagStripW-oiW, tagStripX=lineEnd+oiW+6, tagX=w-10;
-    const oiX0=hasTags?tagStripX:(lineEnd+5), oiX1=hasTags?(tagStripX+tagStripW-6):(lineEnd+oiW-4);
+    const oiX0=lineEnd+5, oiX1=lineEnd+oiW-4;
     // the top-docked TAPE (top:5, one chip-row ~21px since the chips went to 11.5px) overlays
     // the plot's top strip — the only chart text that high is the far-wall edge markers + the
     // top zone captions, so they clear to capTop. The tape is CSS-sized (it is HTML, not SVG)
@@ -12451,6 +12457,27 @@ const SNDK = {
     // ---- data buckets (bucket-sum discipline; absent field = no lane, no zeros) ----
     const k0=grid[0], n=grid.length;
     const g=snkBucket(m.nbs, k0, step, n);
+    // OI LANE READS THE TOTAL, NOT THE DIFFERENCE (2026-08-28). `oi_by_strike` is
+    // callOI − putOI, and that subtraction has no meaning to draw: open interest
+    // counts contracts OUTSTANDING and every one of them has a long and a short,
+    // so no side can be inferred from it. Measured over 96,709 strike-obs on 14
+    // days, 68% of that difference's sign is explained by nothing but whether the
+    // strike sits above or below spot — it was re-drawing the price axis. The
+    // question this lane is actually asking is "how many contracts rest here",
+    // which is a magnitude: callOI + putOI, off the side ladder. Legacy rows that
+    // predate `oi_side_by_strike` fall back to |net|, which understates a strike
+    // holding both sides but never invents a direction.
+    const oiTot=snkBucket(
+      Array.isArray(m.oiSideBS)
+        ? m.oiSideBS.map(p=>[p[0], Math.abs(+p[1]||0)+Math.abs(+p[2]||0)])
+        : (Array.isArray(m.oiBS) ? m.oiBS.map(p=>[p[0], Math.abs(+p[1]||0)]) : null),
+      k0, step, n);
+    // …and the two sides kept apart, so the lane can show WHICH KIND of contract is
+    // resting there without ever subtracting one from the other. Absent on legacy
+    // rows that predate `oi_side_by_strike`; the painter falls back to one neutral
+    // bar there rather than inventing a split.
+    const oiC=Array.isArray(m.oiSideBS)?snkBucket(m.oiSideBS.map(p=>[p[0], Math.abs(+p[1]||0)]), k0, step, n):null;
+    const oiP=Array.isArray(m.oiSideBS)?snkBucket(m.oiSideBS.map(p=>[p[0], Math.abs(+p[2]||0)]), k0, step, n):null;
     const oi=snkBucket(m.oiBS, k0, step, n), vol=snkBucket(m.volBS, k0, step, n);
     const dxN=hasDex?snkBucket(m.dex.nbs, k0, step, n):null;
     const dxF=hasDex?snkBucket(m.dex.fbs, k0, step, n):null;
@@ -13339,19 +13366,53 @@ const SNDK = {
     // its own peak so the lane always uses its full width — it is answering "which strikes are
     // big relative to each other", not "how big against gamma", which is a different unit.
     let oiSVG='';
-    if(hasOI&&oi){
-      let oMax=0; for(const v of oi.v){ const a=Math.abs(v); if(a>oMax) oMax=a; }
+    if(hasOI&&oiTot){
+      let oMax=0; for(const v of oiTot.v){ const a=Math.abs(v); if(a>oMax) oMax=a; }
       if(oMax>0){
         const laneW=Math.max(8, oiX1-oiX0), oh=Math.max(1.5, Math.min(rowH-4, px(6.5)));
+        // ONE HUE, ON PURPOSE. The lane used to paint jade above / coral below off
+        // the sign of callOI − putOI, and two opposing colours read as a LEAN — the
+        // single thing this number cannot support. A magnitude gets a magnitude
+        // encoding: one neutral ink, length carries the size, and nothing on the
+        // lane claims a side. The label says so too, since a reader who never hovers
+        // still deserves to know this is the standing book and not today's tape.
         oiSVG+=`<text x="${oiX0.toFixed(1)}" y="${(padT-px(5)).toFixed(1)}" font-size="${fz(8.5)}" font-weight="700"`
-          +` font-family="var(--mono)" style="fill:var(--ink-faint);opacity:.55;letter-spacing:.12em">OI</text>`;
+          +` font-family="var(--mono)" style="fill:var(--ink-faint);opacity:.55;letter-spacing:.12em"`
+          +` data-tip="&lt;b&gt;Open interest resting at each strike&lt;/b&gt;How many contracts are parked there — jade is calls, coral is puts, and the whole bar is the two added together. It is NOT a direction: every contract has a buyer and a seller, so no side can be read from it. Set at yesterday&#39;s close and unchanged until tonight: the standing book, not today&#39;s trading.&lt;br&gt;Bar length is proportional to the count, so twice the bar really is twice the contracts. Hover any bar for its own split."`
+          +` class="snk-hit">OI</text>`;
+        // LINEAR LENGTH, SPLIT BY SIDE (2026-08-28). Proportional on purpose: the
+        // question is "which strikes hold more", and a sqrt or log lane answers a
+        // softer one by flattening the very spread being asked about. A strike with
+        // 27x the open interest of another should look 27x bigger — that is the
+        // reading. What made the old lane unreadable was 8px of width, not the
+        // scale, so the width is what changed.
+        //
+        // The bar is one length (the total) divided at the ratio of the two sides:
+        // calls from the left in jade, puts continuing in coral, matching the
+        // plot's own vocabulary. Two magnitudes side by side, never one minus the
+        // other — the subtraction is the thing that has no meaning here.
         for(let j=0;j<grid.length;j++){
-          if(!oi.has[j]) continue;
-          const k=grid[j], v=oi.v[j];
+          if(!oiTot.has[j]) continue;
+          const k=grid[j], v=Math.abs(oiTot.v[j]);
           if(!v||(FOLD&&FOLD.inFold(k))) continue;
           const y=yFor(k); if(y<padT||y>h-padB) continue;
-          oiSVG+=`<rect x="${oiX0.toFixed(1)}" y="${(y-oh/2).toFixed(1)}" width="${Math.max(1,Math.abs(v)/oMax*laneW).toFixed(1)}"`
-            +` height="${oh.toFixed(1)}" rx="1" fill="var(${v>=0?'--jade':'--coral'})" opacity=".18"/>`;
+          const yTop=(y-oh/2).toFixed(1), wTot=Math.max(1, v/oMax*laneW);
+          const cv=(oiC&&oiC.has[j])?Math.abs(oiC.v[j]):null;
+          const pv=(oiP&&oiP.has[j])?Math.abs(oiP.v[j]):null;
+          const tip=` class="snk-hit" data-tip="&lt;b&gt;${snkUsd(k,0)} · ${Math.round(v).toLocaleString()} contracts resting&lt;/b&gt;`
+            +((cv!=null&&pv!=null)?`${Math.round(cv).toLocaleString()} calls · ${Math.round(pv).toLocaleString()} puts. `:'')
+            +`Both sides added — it says how much is parked here, not which way anyone is positioned. Yesterday&#39;s close."`;
+          if(cv!=null&&pv!=null&&(cv+pv)>0){
+            const wC=wTot*(cv/(cv+pv)), wP=wTot-wC;
+            // sub-pixel segments are dropped rather than rounded up to a 1px lie
+            if(wC>=0.4) oiSVG+=`<rect x="${oiX0.toFixed(1)}" y="${yTop}" width="${wC.toFixed(1)}"`
+              +` height="${oh.toFixed(1)}" rx="1" fill="var(--jade)" opacity=".42"${tip}/>`;
+            if(wP>=0.4) oiSVG+=`<rect x="${(oiX0+wC).toFixed(1)}" y="${yTop}" width="${wP.toFixed(1)}"`
+              +` height="${oh.toFixed(1)}" rx="1" fill="var(--coral)" opacity=".42"${tip}/>`;
+          } else {
+            oiSVG+=`<rect x="${oiX0.toFixed(1)}" y="${yTop}" width="${wTot.toFixed(1)}"`
+              +` height="${oh.toFixed(1)}" rx="1" fill="var(--ink-dim)" opacity=".28"${tip}/>`;
+          }
         }
       }
     }
@@ -13766,7 +13827,7 @@ const SNDK = {
     const lyr=`<div class="snk-layers"><span class="k">Data layers · lit = present</span><div class="snk-lyr">`
       +dorm(!!(m&&m.nbs),'Gamma', m&&m.nbs?'per-strike net gamma recorded':'no per-strike gamma on this row')
       +dorm(!!(m&&m.dex),'Dealer Δ', m&&m.dex?'dealer delta by strike recorded':'dex_views not carried — dormant, not broken')
-      +dorm(!!(m&&(m.oiBS||m.oiSideBS)),'Open int.', 'open-interest lanes')
+      +dorm(!!(m&&(m.oiSideBS||m.oiBS)),'Open int.', 'contracts resting at each strike, calls and puts added together — yesterday’s standing book, not today’s trading, and it carries no direction')
       // lit on the array the chart actually DRAWS (vol_gross_by_strike → the whiskers). It used
       // to light on vol_by_strike, reporting a layer this surface had never rendered.
       +dorm(!!(m&&m.volGrossBS),'Volume', m&&m.volGrossBS?'traded volume — the whiskers past the bar tips':'no traded-volume array on this row')
