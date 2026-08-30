@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.sndk-deadman</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk-deadman.sh</string>
+  </array>
+
+  <!-- Every 5 minutes. The check asserts the newest SNDK diary row is younger
+       than 6 minutes, so the interval has to sit under that ceiling or the
+       watchdog's own sampling becomes the blind spot it is looking for.
+
+       SEPARATE FROM EVERY OTHER JOB ON PURPOSE. gex-alerts runs inside the
+       left-eye tick and watches only SPX (LENS_TICKERS); if that pipeline is
+       what died, its siren dies with it. This process imports nothing from the
+       scanner, reads no market feed and calls no model — its only input is the
+       diary file's own contents, so the single failure that could silence it is
+       launchd itself being down, which is a condition with its own symptoms.
+
+       Four whole SNDK sessions died unpaged in August (08-07, 08-14, 08-17,
+       08-24). Each looked like a quiet tape on every screen in the house. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.sndk-deadman.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.sndk-deadman.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

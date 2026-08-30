@@ -17,6 +17,11 @@ PLISTS=(
   "com.mirai-station.dated-book"
   "com.mirai-station.sndk"
   "com.mirai-station.sndk-read"
+  "com.mirai-station.sndk-deadman"
+  # 08-30: `voice` was in install-launchd.sh's list and missing from this one,
+  # which is exactly the drift the note below warns about — an uninstalled
+  # station kept a voice agent loaded. Found while adding the deadman.
+  "com.mirai-station.voice"
 )
 # MUST stay in step with install-launchd.sh's PLISTS. A job missing from THIS
 # list survives an uninstall and keeps firing on its interval — and for the two

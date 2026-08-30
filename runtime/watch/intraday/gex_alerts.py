@@ -31,6 +31,17 @@ from .. import paths, push
 from . import macro_mood, market_status, push_ntfy, settings
 
 ET = ZoneInfo("America/New_York")
+# SPX only, and deliberately so. This module's passes are index-shaped — the
+# wall-breach re-dive spends a Morning-Mood analyst call, and the EOD pass
+# scores the mood's direction — so adding "SNDK" here would not give the stock
+# a watchdog, it would give it a second opinion machine nobody asked for.
+#
+# SNDK's scanner IS watched, by its own process: runtime/watch/intraday/
+# sndk_deadman.py on com.mirai-station.sndk-deadman (2026-08-30). It lives
+# outside this module on purpose — gex_alerts runs from the left-eye tick, so
+# a siren that shares that process cannot report the tick's own death. Four
+# SNDK sessions died unpaged in August (08-07, 08-14, 08-17, 08-24) while this
+# tuple sat here looking like coverage.
 LENS_TICKERS = ("SPX",)
 _EOD_MINUTES = 16 * 60
 

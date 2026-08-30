@@ -19,6 +19,10 @@ PLISTS=(
   "com.mirai-station.dated-book.plist"
   "com.mirai-station.sndk.plist"
   "com.mirai-station.sndk-read.plist"
+  # The SNDK scanner's dead-man's switch. It has to be in this list to exist at
+  # all — the installer enumerates explicitly, so a plist that is written but
+  # never named here is a watchdog that was built and never hired.
+  "com.mirai-station.sndk-deadman.plist"
   "com.mirai-station.voice.plist"
 )
 
