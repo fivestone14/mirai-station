@@ -71,8 +71,20 @@ def send(message: str, *, title: Optional[str] = None, click_url: Optional[str] 
 
 
 def make_channel():
-    """Return a `push.set_channel`-compatible callable that sends plain text."""
+    """Return a `push.set_channel`-compatible callable that sends plain text.
+
+    2026-08-30: the result of `send` used to be discarded. `push.send` decides
+    `dispatched` by whether this callable raised, so every alert in the system —
+    including the two feed sirens and the new SNDK dead-man's switch — was
+    logged as delivered whether or not it left the machine, and with no ntfy
+    topic configured NONE of them do. A pager whose log says "sent" while the
+    phone stays quiet is worse than no pager: it is a guard that reports success
+    for its own failure. Raising is what `push.send` already understands — it
+    catches and records the reason on the row."""
     def _channel(text: str) -> None:
-        send(text)
+        res = send(text)
+        if not res.get("dispatched"):
+            raise RuntimeError(res.get("reason") or res.get("error")
+                               or "ntfy did not dispatch")
     _channel.__name__ = "ntfy"
     return _channel
