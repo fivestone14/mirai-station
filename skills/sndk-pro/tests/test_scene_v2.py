@@ -596,7 +596,7 @@ def test_clock_carries_the_calendar():
     assert ck["minutes_since_open"] == 150
     assert ck["minutes_to_close"] == 240
     # rich_row carries no expiries
-    assert ck["front_expiry"] == {"built_from": ["options_book"], "days_to_expiry": 3}
+    assert ck["front_expiry"] == {"days_to_expiry": 3}
     assert "weekday" not in ck                    # == dte on every session; one
                                                   # fact must not wear two names
     assert "book_age_min" not in ck               # a measurement's age is not
@@ -612,8 +612,7 @@ def test_front_expiry_date_rides_when_the_row_carries_it():
                                 {"date": "2026-08-01", "dte": 1}]}
     fe = scene_of(row)["clock"]["front_expiry"]
     # first at/after today
-    assert fe == {"built_from": ["options_book"], "days_to_expiry": 3,
-                  "expiry_date": "2026-08-01"}
+    assert fe == {"days_to_expiry": 3, "expiry_date": "2026-08-01"}
     row["meta"] = {"expiries": ["2026-07-25", "2026-08-01"]}
     assert scene_of(row)["clock"]["front_expiry"]["expiry_date"] == "2026-08-01"
 
@@ -696,7 +695,12 @@ def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
     # the gate walks TOP-LEVEL blocks only, on purpose: minutes_to_close stays
     # true when the book is dead and an expiry date does not go stale in six
     # minutes, so clock keeps its book-sourced front_expiry
-    assert sc["clock"]["front_expiry"]["built_from"] == [SR.OPTIONS_BOOK]
+    # front_expiry is filed apart from `clock` in the map: it is the one thing
+    # in the session calendar that is NOT the wall clock, and filing the whole
+    # calendar under the book would take minutes_to_close down with a dead feed.
+    built = sc["data_sources"]["built_from"]
+    assert "clock.front_expiry" in built[SR.OPTIONS_BOOK]
+    assert built[SR.WALL_CLOCK] == ["clock"]
 
 
 def test_a_source_with_no_ceiling_is_never_dropped_however_old():
@@ -705,8 +709,10 @@ def test_a_source_with_no_ceiling_is_never_dropped_however_old():
     session calendar cannot go stale at all. A source missing from that table
     is never dropped, at any age."""
     scene = {"instrument": "SNDK",
-             "standing_book": {"built_from": [SR.OI_SNAPSHOT], "oi": 1},
-             "calendar": {"built_from": [SR.WALL_CLOCK], "date": "2026-07-31"}}
+             "standing_book": {"oi": 1},
+             "calendar": {"date": "2026-07-31"},
+             "data_sources": {"built_from": {SR.OI_SNAPSHOT: ["standing_book"],
+                                             SR.WALL_CLOCK: ["calendar"]}}}
     fr = SR._drop_stale_blocks(scene, {SR.OI_SNAPSHOT: 18 * 60.0,
                                        SR.WALL_CLOCK: 9_999.0})
     assert fr["blocks_dropped_this_scan"] == []
@@ -756,7 +762,7 @@ def test_the_forbidden_list_names_blocks_the_scene_actually_ships():
         # ...and every one of them is OI-derived, which is why the list exists:
         # open interest updates once overnight, so "dealers are buying" about it
         # is a false statement about time, not a debatable read
-        assert SR.OI_SNAPSHOT in (sc[head].get("built_from") or []), name
+        assert head in sc["data_sources"]["built_from"][SR.OI_SNAPSHOT], name
 
 
 # --- sr-7: the ruler is the spot the BOOK was measured at --------------------

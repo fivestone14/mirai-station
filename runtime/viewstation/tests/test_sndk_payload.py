@@ -88,9 +88,7 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     sc = d["scene"]
     assert sc["instrument"] == "SNDK"
     assert sc["price"]["live_spot"] == 1586.2
-    assert sc["clock"]["minutes_to_close"] == 178 and sc["clock"]["front_expiry"] == {"built_from": ["options_book"],
-                                                                "days_to_expiry": 2,
-                                                                "expiry_date": "2026-08-21"}
+    assert sc["clock"]["minutes_to_close"] == 178 and sc["clock"]["front_expiry"] == {"days_to_expiry": 2, "expiry_date": "2026-08-21"}
     assert sc["magnet"]["top_strikes"][0]["strike"] == 1600.0
     # the wrapper is the reader's own, byte for byte, with the same compact JSON inside
     assert d["user_prompt"].startswith("Read this scene cold and reply with the JSON object only.\n\nSCENE:\n")

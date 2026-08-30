@@ -276,6 +276,28 @@ _MAX_AGE_MIN = {OPTIONS_BOOK: MAX_BOOK_AGE_MIN}
 # time, not a debatable read. LEXICON_ENFORCE runs the check in the shadow
 # first (the standing house rule for any new guard): the flag is recorded on the
 # read row so the rate can be measured before it is allowed to reject anything.
+# Which blocks rest on which source, declared once for the whole payload rather
+# than repeated inside all nine blocks.
+#
+# SOURCE -> BLOCKS, not block -> sources, and the direction is the whole saving.
+# Written the obvious way round it came out LONGER than the inline lists it
+# replaced (+25 chars): a forward map has to spell out all eleven block names as
+# keys AND still repeat the long source strings beside each one. Inverted, the
+# four source names appear once each instead of eighteen times, and the block
+# names — short words like "magnet" — carry the repetition instead.
+#
+# `clock.front_expiry` is listed apart from `clock` because it is the one thing
+# in the session calendar that is NOT the wall clock (dte comes off the book),
+# and filing the whole calendar under the book would take minutes_to_close down
+# with a dead feed.
+BUILT_FROM = {
+    WALL_CLOCK: ["clock"],
+    LIVE_TAPE: ["price", "history"],
+    OPTIONS_BOOK: ["clock.front_expiry", "scale", "price", "regime", "magnet",
+                   "breadth", "momentum", "dealer_positioning", "walls"],
+    OI_SNAPSHOT: ["regime", "magnet", "breadth", "dealer_positioning", "walls"],
+}
+
 PRESENT_TENSE_FORBIDDEN_FOR = ("magnet", "walls", "breadth",
                                "dealer_positioning", "regime.charm", "regime.flip")
 LEXICON_ENFORCE = False
@@ -838,6 +860,7 @@ THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical
 FIELD NAMES SAY WHAT THEY ARE. Every leaf in this scene is named so it can be read alone: a `_pp` suffix is percentage points, `_bn` is billions of dollars, `_musd` is millions, `_min` is minutes, `_sigma` is a distance in sigma. Read the name before you read the number.
 
 WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any other block is worth):
+- data_sources.built_from maps every block in this scene to what it was built from — `live_tape`, `options_book`, `open_interest_snapshot` or `wall_clock`. Read a block's entry there before you read the block. A block missing from the map was deleted; see freshness_rules.
 - data_sources holds THREE separate clocks and they disagree on purpose. `scan_taken_at` is when this row was written. `price_quote.quoted_at` is when the spot was good — seconds. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
 - `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves that on every scan against `strikes_compared_today` strikes. What moves intraday is price moving under a fixed map, not the map moving.
 - Because of that, THESE BLOCKS MAY NEVER BE NARRATED IN THE PRESENT TENSE: {", ".join(PRESENT_TENSE_FORBIDDEN_FOR)}. "Dealers are buying", "the wall is building", "gamma is piling up" are false statements about time, not debatable reads. Say "as of last night's close" or say nothing. Only `momentum` and `*_change_30min` fields describe something that moved today.
@@ -1163,8 +1186,7 @@ def momentum_block(rows: list[dict], band: dict) -> Optional[dict]:
               "span_min": round((b_c - b_r).total_seconds() / 60.0, 1),
               "first_book_measured_at": b_r.isoformat(),
               "last_book_measured_at": b_c.isoformat()}
-    return {"built_from": [OPTIONS_BOOK],
-            "window_between_books": window, "by_strike": by}
+    return {"window_between_books": window, "by_strike": by}
 
 
 def dealer_positioning_block(rows: list[dict]) -> Optional[dict]:
@@ -1198,7 +1220,6 @@ def dealer_positioning_block(rows: list[dict]) -> Optional[dict]:
         # one paragraph read once at the top of a cached block; the number is
         # what the model is actually looking at when it reasons, and a bare
         # signed figure invites the reading the sign cannot support.
-        out["built_from"] = [OI_SNAPSHOT, OPTIONS_BOOK]
         out["net_delta_bn"] = round(net / 1e9, 2)
         out["net_delta_sign_is_formula_artifact"] = True
         t_now = _ts(row)
@@ -1215,7 +1236,6 @@ def dealer_positioning_block(rows: list[dict]) -> Optional[dict]:
                 break
     vex = _fin((row.get("flows_front") or {}).get("vex"))
     if vex is not None:
-        out.setdefault("built_from", [OI_SNAPSHOT, OPTIONS_BOOK])
         out["net_vanna_musd_per_vol_point"] = round(vex / 1e6, 2)
         out["vanna_matters_when"] = "vol_trend is rising or falling"
     return out or None
@@ -1345,8 +1365,7 @@ def breadth_block(row: dict, now: Optional[datetime]) -> Optional[dict]:
         return None
     sh = _shove(row)
     up, dn = sh.get("shove_up_margin"), sh.get("shove_down_margin")
-    out = {"built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
-           "lopsidedness_0_is_even": rel,
+    out = {"lopsidedness_0_is_even": rel,
            "heavier_side": "up" if up > dn else "down",
            "measures_same_gamma_pile_as": "magnet"}
     w = _pctl_word("lopsidedness", rel, now)
@@ -1414,8 +1433,7 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
     # side by gamma sign AND sit on that side of spot. Only the ageing and the
     # heaviest-behind key are new — widening the filter would quietly redefine
     # what a wall is, which is not a documentation fix.
-    out = {"built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
-           "sigma_measured_from": ruler_name,
+    out = {"sigma_measured_from": ruler_name,
            "ordered_by": "distance_from_spot_nearest_first"}
     for key, pool, near in (
             ("call", [c for c in clusters
@@ -1525,7 +1543,7 @@ def history_flags(row: dict, rows: list[dict], vs_prior_pct: Optional[float],
     "abnormal" stays a genuine exception, never a majority state (a flag
     that is usually on trains the model to ignore it, and it licenses the
     outside-world reach far too often)."""
-    out = {"built_from": [LIVE_TAPE]}
+    out = {}
     spot = _fin(row.get("spot"))
     prior = [s for r in rows[:-1] if (s := _fin(r.get("spot"))) is not None]
     if spot is not None and len(prior) >= 30 and \
@@ -1538,9 +1556,7 @@ def history_flags(row: dict, rows: list[dict], vs_prior_pct: Optional[float],
     if (vs is not None and abs(vs) >= day_bar) or \
             ((r30 := _fin(ran_30m)) is not None and abs(r30) >= 0.5):
         out["tape_abnormal_vs_own_history"] = True
-    # the declaration alone is not a finding — a block holding only `built_from`
-    # is an empty block and must be omitted, not shipped as structure
-    return out if len(out) > 1 else None
+    return out or None
 
 
 OI_MIN_STRIKES_COMPARED = 5   # below this the "unchanged" claim is not worth
@@ -1614,7 +1630,8 @@ def build_scene(row: dict, band: dict, frozen: list,
         measured from. Zero of 53 leaves carried a source tag or a timestamp,
         and the scene re-priced one overnight OI snapshot ~190 times a day
         against a live quote while presenting the result in the present tense.
-        Every block now declares `built_from`, `data_sources` carries the three
+        `data_sources.built_from` maps each block to its source, `data_sources`
+        carries the three
         clocks (scan / quote / book), and `freshness_rules` DROPS a block whose
         source has aged out rather than trusting the reader to notice a label.
 
@@ -1749,6 +1766,20 @@ def build_scene(row: dict, band: dict, frozen: list,
         "price_quote": prune(quote) or None,
         "options_book": prune(book) or None,
         "open_interest": prune(oi) or None,
+        # WHAT EACH BLOCK IS BUILT FROM, said once.
+        #
+        # sr-7 first shipped this as a `built_from` list INSIDE every block.
+        # That was 687 characters of the payload — the single largest line item
+        # in a packet that had doubled — spent repeating nine short lists on
+        # every one of ~190 scans a day. A block-level declaration is not a leaf,
+        # so nothing about "a leaf must survive being read alone" required it to
+        # sit inside the block; it only had to be findable, and here it is
+        # findable next to the three clocks it refers to.
+        #
+        # `_drop_stale_blocks` reads this map, and prunes an entry when it
+        # deletes the block — a provenance map that names a block the scene no
+        # longer carries is the frozen_do_not_cite bug wearing a different hat.
+        "built_from": {k: list(v) for k, v in BUILT_FROM.items()},
     })
 
     # sr-4: the day-scoped calendar. Until now the model read a Monday 4-dte
@@ -1767,8 +1798,7 @@ def build_scene(row: dict, band: dict, frozen: list,
     # data_sources, where all three clocks can be read against each other.
     open_t = now.replace(hour=9, minute=30, second=0, microsecond=0)
     close_t = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    clock = {"built_from": [WALL_CLOCK],
-             "minutes_since_open": int((now - open_t).total_seconds() // 60),
+    clock = {"minutes_since_open": int((now - open_t).total_seconds() // 60),
              "minutes_to_close": max(0, int((close_t - now).total_seconds() // 60)),
              "session_date": now.strftime("%Y-%m-%d")}
     fd = _fin((row.get("gex_views") or {}).get("front_dte"))
@@ -1778,7 +1808,7 @@ def build_scene(row: dict, band: dict, frozen: list,
         # own declaration rather than dragging the whole session calendar under
         # the book's ceiling: minutes_to_close stays true when the book is dead,
         # and an expiry date does not go stale in six minutes.
-        fe = {"built_from": [OPTIONS_BOOK], "days_to_expiry": int(fd)}
+        fe = {"days_to_expiry": int(fd)}
         # meta.expiries entries are {"date","dte"} dicts on live rows and were
         # bare strings in early fixtures — accept both, coerce neither.
         exps = meta.get("expiries")
@@ -1800,8 +1830,7 @@ def build_scene(row: dict, band: dict, frozen: list,
     # teaches a ceiling; a spread teaches a distribution. Still frozen numbers
     # measured on an extreme post-earnings stretch — sessions_measured says so
     # on the field, and a standing recompute is future work, not this change.
-    scale = {"built_from": [OPTIONS_BOOK],
-             "one_sigma_dollars": round(sig, 2) if sig else None,
+    scale = {"one_sigma_dollars": round(sig, 2) if sig else None,
              "sigma_pct_of_price": round(sig / spot * 100, 1)
              if sig and spot else None,
              "move_30min_sigma_distribution": {
@@ -1821,8 +1850,7 @@ def build_scene(row: dict, band: dict, frozen: list,
                               "upside" if d <= 0.48 else "balanced"),
             "derived_from": "put/call IV skew"}
 
-    regime = {"built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
-              "sigma_measured_from": ruler_name,
+    regime = {"sigma_measured_from": ruler_name,
               "gamma_sign": row.get("gamma_sign"),
               "regime_label": row.get("regime")}
     vt = vol_trend(rows, now)
@@ -1850,8 +1878,7 @@ def build_scene(row: dict, band: dict, frozen: list,
     # field is that second term. The doctrine said "add" for one afternoon,
     # which walks the wrong way by twice the gap; the name now carries the
     # direction so the verb is not something anyone has to hold in their head.)
-    price = {"built_from": [LIVE_TAPE, OPTIONS_BOOK],
-             "live_spot": spot,
+    price = {"live_spot": spot,
              "spot_when_book_was_measured": book_spot,
              "live_minus_book_spot_dollars": (round(spot - book_spot, 2)
                                               if spot is not None and book_spot is not None
@@ -1887,7 +1914,6 @@ def build_scene(row: dict, band: dict, frozen: list,
         # top_strike_lead_vs_own_history says how unusual today's lead is
         # against the tape's own record, which a fixed threshold could not track.
         "magnet": (prune({
-            "built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
             "sigma_measured_from": ruler_name,
             "top_strikes": [{"strike": k, "share_of_book_gamma_pp": v}
                             for k, v in band["top"]],
@@ -1936,18 +1962,44 @@ def _drop_stale_blocks(scene: dict, ages: dict) -> dict:
     open_interest carries no ceiling on purpose: it is ~18 hours old BY DESIGN
     and saying so is the fix, not dropping it. WALL_CLOCK never ages."""
     dropped = []
-    for name in list(scene):
-        block = scene.get(name)
+    built = ((scene.get("data_sources") or {}).get("built_from")) or {}
+    # BUILT_FROM is a static map of every block that CAN ship. Blocks omitted
+    # for want of data — history on a quiet tape, momentum before the window
+    # fills — were leaving their entry behind, so the map named things the scene
+    # did not carry. Reconcile first, drop second: the map describes the payload
+    # as shipped, never as intended.
+    def _present(name):
+        head, _, sub = name.partition(".")
+        block = scene.get(head)
         if not isinstance(block, dict):
+            return head in scene
+        return sub in block if sub else True
+    for src in list(built):
+        here = [x for x in built[src] if _present(x)]
+        if here:
+            built[src] = here
+        else:
+            built.pop(src)
+    for src, names in list(built.items()):
+        age, cap = ages.get(src), _MAX_AGE_MIN.get(src)
+        if age is None or cap is None or age <= cap:
             continue
-        for src in block.get("built_from") or ():
-            age, cap = ages.get(src), _MAX_AGE_MIN.get(src)
-            if age is None or cap is None or age <= cap:
+        for name in names:
+            if "." in name or scene.pop(name, None) is None:
                 continue
             dropped.append({"block": name, "source": src,
                             "age_min": age, "max_age_min": cap})
-            scene.pop(name, None)
-            break
+    # the map must not outlive the blocks it describes: a provenance entry
+    # naming a block the scene no longer carries is the frozen_do_not_cite bug
+    # wearing a different hat.
+    gone_blocks = {d["block"] for d in dropped}
+    if gone_blocks:
+        for src in list(built):
+            kept = [x for x in built[src] if x not in gone_blocks]
+            if kept:
+                built[src] = kept
+            else:
+                built.pop(src)
     # A guardrail may only name fields the scene actually ships — the same rule
     # that moved wall staleness onto the walls in sr-3. Without this the model
     # is handed "magnet unchanged 387m, do not cite" about a magnet block that
