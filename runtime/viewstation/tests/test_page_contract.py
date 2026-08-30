@@ -109,3 +109,138 @@ def test_freshness_box_covers_every_layer_and_ticks():
     assert "hour12:true, timeZone:PT" in PAGE                        # AM/PM clocks are Pacific here — the page's rule
     assert "at least 2× what the whole book turns over" in PAGE       # the ring's exact rule, in the key
     assert '<svg class="snki-g"' in PAGE                              # every entry carries its glyph
+
+
+def test_the_chain_row_is_judged_on_the_books_own_clock():
+    """08-30: the chain row inherited `bars.stale`, which measures how old the
+    SCAN is. The feed serves a disk cache on about half the scans, so a book
+    2-4 minutes older than its own scan sat under a chip that said fresh because
+    the scan was fresh — the layer with the longest lag was the one layer that
+    could not report it. It carries its own stamp and its own ceiling now, and
+    that ceiling is the reader's STALE_BOOK_MIN."""
+    ft = PAGE.split("freshTick(){")[1].split("liveSpot(){")[0]
+    assert "const bookAt=m?T(m.bookAsof):null;" in ft
+    assert "const bookCap=(window.SNDK_STALE_BOOK_MIN||6)*60000;" in ft
+    assert "chain: { at:bookAt, stale:bookAt!=null&&(now-bookAt)>bookCap }," in ft
+    # Exactly one row may inherit staleInfo(), and it is `bars` — the row whose
+    # clock staleInfo() actually measures. A second occurrence is the bug back.
+    assert ft.count("stale:!!(fr&&fr.stale)") == 1
+
+
+def test_the_oi_lanes_book_stamp_is_judged_on_the_books_own_clock():
+    """08-30, the same fix in the second place it was wrong: the age printed
+    at the head of the OI/volume lane took its colour from staleInfo(), which
+    measures the SCAN clock. The book is never younger than the scan and lagged
+    it by up to 3.35 min on the recorded tape, so there was a band where the
+    FRESH chip called the book stale and the number printed right beside the
+    bars that book drew stayed grey. The stamp reads meta.book_asof and applies
+    the reader's own STALE_BOOK_MIN, exactly as the chip's chain row does.
+
+    Sliced from the `const bkT` line so the paragraph above it — which names
+    staleInfo() to explain what it replaced — cannot satisfy the last
+    assertion."""
+    assert "const bkT=(m&&m.bookAsof!=null)?+new Date(m.bookAsof):NaN;" in PAGE
+    stamp = PAGE.split("const bkT=(m&&m.bookAsof!=null)?+new Date(m.bookAsof):NaN;")[1].split("// LINEAR LENGTH, SPLIT BY SIDE")[0]
+    assert "const bkStale=(Date.now()-bkT)>((window.SNDK_STALE_BOOK_MIN||6)*60000);" in stamp
+    assert "const fr={stale:bkStale};" in stamp          # the only fr in scope
+    assert "staleInfo(" not in stamp                     # never the scan clock
+    assert "?'--coral':'--ink-faint'" in stamp           # coral on the book's age
+    assert 'data-name="Book age"' in stamp
+
+
+def test_the_freshness_chip_leads_with_the_oldest_layer():
+    """A chip that reports the freshest layer is reporting the layer that cannot
+    be wrong. The lead line and the box colour both take the option book, which
+    is the oldest thing on the board on any cached scan; bars is the fallback
+    for a board carrying no book stamp yet, and neither one alone sets stale."""
+    ft = PAGE.split("freshTick(){")[1].split("liveSpot(){")[0]
+    assert "const stale=(!!rows.bars.stale&&rows.bars.at!=null)||(!!rows.chain.stale&&rows.chain.at!=null);" in ft
+    assert "box.classList.toggle('stale', stale);" in ft
+    assert "lead.textContent=rows.chain.at!=null?`book ${snkCount(now-rows.chain.at)}`" in ft
+    assert ":(rows.bars.at!=null?`bars ${snkCount(now-rows.bars.at)}`:'awaiting scan');" in ft
+
+
+def test_the_stale_floor_is_the_readers_own_ceiling():
+    """08-30: the floor was a hardcoded 12 minutes, on the reasoning that a
+    weekly-tenor scanner breathes slower than the SPX 0DTE loop. But the scan
+    cadence is ~2 minutes, so 3*median is ~6 and the 12-minute floor was the
+    binding constraint on every ordinary day — a scanner that died at 10:00 kept
+    a live chip until 10:12.
+
+    Six is not an arbitrary replacement for twelve. It is sndk_read's own
+    STALE_BOOK_MIN, the age at which the reader itself stops spending a model
+    call on the book, and PAYLOAD.render() lifts it off the payload's gate
+    block — so the chip cannot quote a ceiling the reader has stopped enforcing.
+    test_sndk_payload pins the same join from the server's end."""
+    si = PAGE.split("staleInfo(){")[1].split("\n  },")[0]
+    assert "const floor=(window.SNDK_STALE_BOOK_MIN||6)*60000;" in si
+    assert "stale:age>Math.max(3*med, floor)" in si
+    assert "720000" not in PAGE                  # the retired 12-minute floor
+    assert "if(d.gates&&d.gates.stale_book_min!=null) window.SNDK_STALE_BOOK_MIN=d.gates.stale_book_min;" in PAGE
+
+
+def test_the_payload_tab_says_the_three_clocks_before_the_json():
+    """sr-7 (08-30): the scene's provenance is all inside the JSON, but the JSON
+    is ~3,000 characters and nobody discounts a number for an age they had to go
+    looking for. Three header lines answer it first — how old the quote is, how
+    old the BOOK the structure came from is, and which night's open interest
+    every wall and magnet rests on — and a block the freshness gate deleted gets
+    a coral line of its own, because an absence is the one thing a JSON dump
+    cannot show you.
+
+    Run under JavaScriptCore against a real scene, an artificially staled one (a
+    12-minute-old book behind a 1-minute-old scan: five blocks dropped, five
+    coral lines) and a null scene (every field degrades to — or ?, none
+    fabricated). These pin the pieces that carried it."""
+    assert "+PAYLOAD.provLines(d.scene)" in PAGE      # rendered, not merely defined
+    pl = PAGE.split("provLines(scene){")[1].split("\n  },")[0]
+    assert "const ds=(scene&&scene.data_sources)||{}, fr=(scene&&scene.freshness_rules)||{};" in pl
+    assert "const q=ds.price_quote||{}, b=ds.options_book||{}, oi=ds.open_interest||{};" in pl
+    assert "is_repeat_of_previous_scan===true?', REPEAT of the previous scan'" in pl
+    # ...and the cadence line, which is the one a reader checks the other two
+    # against: two counts and two intervals. Pinned by the call, so the 08-30
+    # reshape that gave the counts their singular form could not have slipped
+    # past this test the way it did the first time it was written.
+    assert "${many(b.distinct_books_so_far_today,'distinct book')}" in pl
+    assert "across ${many(ds.scans_so_far_today,'scan')} today" in pl
+    # a deleted block is the one fact the dump below cannot carry, so it gets
+    # its own line and its own colour
+    assert "const dropped=fr.blocks_dropped_this_scan||[];" in pl
+    assert "// DROPPED before the model saw it: " in pl
+    assert "color:var(--coral,#e06c75)" in pl
+    # and it builds innerHTML, so every free-text field goes through the escaper
+    assert "const esc=x=>String(x).replace(/[&<>]/g," in pl
+    for field in ("esc(q.feed||'?')", "esc(b.served_from||'?')",
+                  "esc(x.block)", "esc(x.source)"):
+        assert field in pl, field
+
+
+def test_every_provlines_helper_escapes():
+    """provLines builds innerHTML, and it once applied its escaper to ten fields
+    and missed two: `t` (the clock) and `age` (the minutes) interpolated raw.
+    Neither was reachable — both carry isoformat strings and rounded floats the
+    local scanner produced, and `t` slices to eight characters besides — but
+    reaching for an escaper and missing a path is exactly how the comment-form
+    hole got into this page, so it was closed rather than argued about.
+
+    It closed into a SHAPE, which is what makes it testable: every helper that
+    turns a scene value into display text is now defined in terms of esc. This
+    checks that structurally rather than by naming the three that exist today,
+    so a FOURTH helper interpolating raw is a red test instead of a judgement
+    call at review time — and the set assertion means adding one is a decision
+    somebody has to make here, in writing.
+
+    Verified by execution too, under JavaScriptCore: fed a scene with all
+    fourteen string leaves carrying a different payload (<img onerror>,
+    <script>, <svg onload>, <iframe>, <object>, <embed>), the raw un-stripped
+    innerHTML contains only the two <span> tags provLines writes itself."""
+    import re
+    pl = PAGE.split("provLines(scene){")[1].split("\n  },")[0]
+    helpers = dict(re.findall(r"^\s*const (\w+)\s*=\s*\(?[\w, ]*\)?\s*=>(.*)$", pl, re.M))
+    assert set(helpers) == {"esc", "t", "age", "many"}, sorted(helpers)
+    for name, body in helpers.items():
+        if name == "esc":
+            continue
+        assert "esc(" in body, f"{name}() interpolates a scene value without esc()"
+    # and esc itself still covers all three characters that open a tag or an entity
+    assert "String(x).replace(/[&<>]/g," in helpers["esc"]

@@ -12221,9 +12221,18 @@ const SNDK = {
     const T=s=>{ const t=s?+new Date(s):NaN; return isFinite(t)?t:null; };
     const fr=SNDK.staleInfo();
     const rAt=rd?T(rd.reading_ts):null;
+    // 08-30 — the CHAIN row is judged on the CHAIN's clock. It used to inherit
+    // `bars.stale`, which measures how old the SCAN is; the feed serves a disk
+    // cache on about half the scans, so a book 2-4 minutes older than its own
+    // scan sat under a chip that said fresh because the scan was fresh. The
+    // ceiling is the reader's STALE_BOOK_MIN — the same number that decides
+    // whether the book is worth a model call — picked up from the payload
+    // endpoint when that tab has been open, and 6 minutes until it has.
+    const bookAt=m?T(m.bookAsof):null;
+    const bookCap=(window.SNDK_STALE_BOOK_MIN||6)*60000;
     const rows={
       bars:  { at:m?T(m.ts):null,            stale:!!(fr&&fr.stale) },
-      chain: { at:m?T(m.bookAsof):null,      stale:!!(fr&&fr.stale) },
+      chain: { at:bookAt, stale:bookAt!=null&&(now-bookAt)>bookCap },
       price: { at:SNDK.spot.at||null,        stale:!SNDK.spot.live, secs:true },
       read:  { at:rd?T(rd.ts):null },
       mirai: { at:rAt, off:!!(rd&&rd.paused===true), aged:rAt!=null&&(now-rAt)>10*60000 },
@@ -12241,12 +12250,25 @@ const SNDK = {
       e.textContent=snkCount(now-v.at);
     }
     const lead=box.querySelector('#snk-fresh-lead');
-    if(lead) lead.textContent=rows.bars.at!=null?`bars ${snkCount(now-rows.bars.at)}`:'awaiting scan';
-    box.classList.toggle('stale', !!rows.bars.stale&&rows.bars.at!=null);
+    // The lead line and the box colour lead with the OLDEST thing on the board,
+    // which is the option book on any cached scan. A chip that reports the
+    // freshest layer is reporting the layer that cannot be wrong.
+    const stale=(!!rows.bars.stale&&rows.bars.at!=null)||(!!rows.chain.stale&&rows.chain.at!=null);
+    if(lead) lead.textContent=rows.chain.at!=null?`book ${snkCount(now-rows.chain.at)}`
+                             :(rows.bars.at!=null?`bars ${snkCount(now-rows.bars.at)}`:'awaiting scan');
+    box.classList.toggle('stale', stale);
   },
   liveSpot(){ return SNDK.spot.live?SNDK.spot.px:(SNDK.model?SNDK.model.spot:null); },
-  // diary staleness — 3 recorded scan intervals (floored at 12 min: a weekly-tenor
-  // scanner breathes slower than the SPX 0DTE loop), from the rows themselves
+  // diary staleness — 3 recorded scan intervals, floored at the reader's own
+  // STALE_BOOK_MIN, from the rows themselves.
+  //
+  // 08-30: the floor was 12 minutes, on the reasoning that a weekly-tenor
+  // scanner breathes slower than the SPX 0DTE loop. But the scan cadence is
+  // ~2 minutes, so 3*median is ~6 and the floor was the binding constraint on
+  // every ordinary day: a scanner that died at 10:00 kept a live chip until
+  // 10:12. Six minutes is not an arbitrary replacement — it is the age at
+  // which the reader itself refuses to spend a model call on the book, so the
+  // chip now goes amber exactly when the reader stops believing the data.
   staleInfo(){
     const m=SNDK.model; if(!m||!m.ts) return null;
     const ages=[];
@@ -12257,7 +12279,8 @@ const SNDK = {
     ages.sort((x,y)=>x-y);
     const med=ages.length?ages[Math.floor(ages.length/2)]:360000;
     const age=Date.now()-(+new Date(m.ts));
-    return { age, stale:age>Math.max(3*med, 720000), txt:`as-of ${clockIn(m.ts,ET).slice(0,5)} ET` };
+    const floor=(window.SNDK_STALE_BOOK_MIN||6)*60000;
+    return { age, stale:age>Math.max(3*med, floor), txt:`as-of ${clockIn(m.ts,ET).slice(0,5)} ET` };
   },
 
   render(){
@@ -13473,11 +13496,20 @@ const SNDK = {
         // The AGE leads because staleness is the question a reader actually has; the
         // wall-clock is one hover away. No date — the chart is one session, and a
         // date on every repaint would be noise. Age recomputed each paint (the tab
-        // repolls every ~8s), so no timer of its own. Coral on the same staleInfo()
-        // the FRESH chip uses, so the two can never disagree about the same book.
+        // repolls every ~8s), so no timer of its own.
+        //
+        // 08-30: this number goes coral on the BOOK's own age, on the same
+        // ceiling the FRESH chip's chain row uses. It used to take its colour
+        // from staleInfo(), which measures the SCAN clock — and since the book
+        // is never younger than the scan and lagged it by up to 3.35 min on the
+        // recorded tape, there was a band where the chip called the book stale
+        // and the number printed right beside the bars it drew stayed grey. The
+        // old comment claimed the two "can never disagree about the same book";
+        // they were measuring two different clocks to say it.
         const bkT=(m&&m.bookAsof!=null)?+new Date(m.bookAsof):NaN;
         if(isFinite(bkT)){
-          const fr=(typeof SNDK.staleInfo==='function')?SNDK.staleInfo():null;
+          const bkStale=(Date.now()-bkT)>((window.SNDK_STALE_BOOK_MIN||6)*60000);
+          const fr={stale:bkStale};
           const bkAge=snkCount(Date.now()-bkT);
           oiSVG+=`<text x="${oiX1.toFixed(1)}" y="${(padT-px(5)).toFixed(1)}" text-anchor="end"`
             +` font-size="${fz(7.5)}" font-weight="700" font-family="var(--mono)"`
@@ -14177,13 +14209,52 @@ const PAYLOAD = {
     if(d.error||!d.scene){ say(d.error||'no scene yet — the scanner has not written a row'); PAYLOAD.paintPipe(); return; }
     empty.hidden=true; pre.hidden=false;
     const when=String(d.row_ts||'').slice(11,19);
+    // The reader's freshness ceilings come from the server, which reads them off
+    // sndk_read's own constants — so the chip on the chart and the floor in
+    // staleInfo() can never quote a number the reader has stopped enforcing.
+    if(d.gates&&d.gates.stale_book_min!=null) window.SNDK_STALE_BOOK_MIN=d.gates.stale_book_min;
     const hdr=`<span class="p">// ${d.as_of==='live'?'LIVE scene':'last scan (market closed or scanner idle)'} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${d.era} · ${d.model} · ${d.scene_chars} chars ≈ ${Math.round(d.scene_chars/3.6)} tokens</span>\n`
+      +PAYLOAD.provLines(d.scene)
       +`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · the doctrine rides the cached system prompt</span>\n\n`;
     // by section: each top-level key is one unbreakable block of depth-tagged lines, flowing into balanced columns
     const ks=Object.keys(d.scene);
     const blocks=ks.map((k,i)=>{ const out=[]; plLines(d.scene[k], 1, plKey(k)+'<span class="p">: </span>', i<ks.length-1?',':'', out); return `<div class="pl-blk">${plRows(out)}</div>`; }).join('');
     pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-open"><div class="ln"><span class="p">{</span></div></div><div class="pl-cols">${blocks}</div><div class="pl-close"><div class="ln"><span class="p">}</span></div></div>`;
     PAYLOAD.paintPipe();
+  },
+  // sr-7 (08-30): the three clocks, said out loud at the top of the tab.
+  //
+  // They are all inside the JSON below, but the JSON is 3,000 characters and
+  // the whole point of the sr-7 pass is that nobody discounts a number for an
+  // age they had to go looking for. These four lines answer, before any value
+  // is read: how old is the quote, how old is the BOOK the structure came from,
+  // which night's open interest every wall and magnet rests on, and did the
+  // freshness gate delete anything on the way here. `blocks_dropped_this_scan`
+  // gets its own coral line because a deleted block is an absence, and an
+  // absence is the one thing a JSON dump cannot show you.
+  provLines(scene){
+    const ds=(scene&&scene.data_sources)||{}, fr=(scene&&scene.freshness_rules)||{};
+    const q=ds.price_quote||{}, b=ds.options_book||{}, oi=ds.open_interest||{};
+    const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    const t=v=>esc(String(v||'').slice(11,19)||'—');
+    const age=v=>v==null?'?':esc(v)+'m';
+    const many=(v,w)=>v==null?('? '+w+'s'):`${esc(v)} ${w}${Number(v)===1?'':'s'}`;
+    const out=[];
+    out.push(`// quote ${t(q.quoted_at)} ET (${age(q.age_min)} old, ${esc(q.feed||'?')}) `
+      +`· book ${t(b.measured_at)} ET (${age(b.age_min)} old, ${esc(b.served_from||'?')}`
+      +`${b.is_repeat_of_previous_scan===true?', REPEAT of the previous scan':''})`);
+    out.push(`// every wall, magnet, breadth and dealer number below is open interest `
+      +`struck at the ${esc(oi.prior_session_date||'prior session')} close — not intraday`
+      +`${oi.measured_unchanged_so_far_today===true?`, re-verified unchanged today across ${esc(oi.strikes_compared_today)} strikes`:''}`);
+    out.push(`// ${many(b.distinct_books_so_far_today,'distinct book')} `
+      +`across ${many(ds.scans_so_far_today,'scan')} today `
+      +`· book refreshes every ${age(b.refresh_interval_min)}, scans every ${age(ds.scan_interval_min)}`);
+    const dropped=fr.blocks_dropped_this_scan||[];
+    const lines=out.map(x=>`<span class="p">${x}</span>\n`).join('');
+    if(!dropped.length) return lines;
+    return lines+dropped.map(x=>`<span class="p" style="color:var(--coral,#e06c75)">`
+      +`// DROPPED before the model saw it: ${esc(x.block)} — its ${esc(x.source)} was `
+      +`${esc(x.age_min)}m old, ceiling ${esc(x.max_age_min)}m</span>\n`).join('');
   },
   copy(){
     const d=PAYLOAD.data; if(!d||!d.scene||!navigator.clipboard) return;
