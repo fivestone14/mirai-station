@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# pre-push — the gate the scrub workflow keeps calling "the gate".
+#
+# scrub.yml's own header says it: "Neither can un-push anything; they turn a leak
+# from something nobody notices into a red X within a minute. The pre-push hook
+# is the gate, this is the net." The net has been there since 2026-08-22. The
+# gate was never written, and on 2026-08-30 that cost exactly what it was meant
+# to prevent — five commits stamped -0700 reached the remote, and the merge that
+# followed published the personal e-mail address into main. Every one of those
+# was caught by the net, a minute too late to matter.
+#
+# It runs THE SAME TWO SCRIPTS the workflow runs, deliberately. A gate with its
+# own copy of the rules is a gate that drifts from them, and this repo has been
+# bitten by a local copy disagreeing with the shipped one more than once.
+#
+# INSTALL:  git config core.hooksPath .github/hooks
+# BYPASS:   git push --no-verify   (it is a gate, not a lock — but every bypass
+#           lands in the history where the net will find it)
+
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+ZERO='0000000000000000000000000000000000000000'
+fail=0
+
+# --- the tree: machine-identifying strings inside the files -----------------
+if [ -x .github/scripts/scrub.sh ]; then
+    .github/scripts/scrub.sh || fail=1
+fi
+
+# --- the commits: identity and timestamp on what is actually being pushed ---
+# git feeds one line per ref on stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -n "${local_sha:-}" ] || continue
+    [ "$local_sha" = "$ZERO" ] && continue          # a delete pushes no commits
+
+    if [ "$remote_sha" = "$ZERO" ] || \
+       ! git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null 2>&1; then
+        RANGE=''                                     # new branch — the script's
+    else                                             # own HEAD~20 fallback applies
+        RANGE="$remote_sha..$local_sha"
+    fi
+
+    if [ -x .github/scripts/commit-hygiene.sh ]; then
+        RANGE="$RANGE" .github/scripts/commit-hygiene.sh || fail=1
+    fi
+done
+
+if [ "$fail" != 0 ]; then
+    cat >&2 <<'MSG'
+
+push refused — fix it here, where it is still cheap.
+
+  dates     re-commit with GIT_AUTHOR_DATE and GIT_COMMITTER_DATE forced to
+            +0000, or amend:
+              GIT_COMMITTER_DATE="$(git log -1 --format=%ad --date=raw \
+                | sed 's/ .*/ +0000/')" git commit --amend --no-edit --date=...
+  identity  git config user.email fivestone14@users.noreply.github.com
+            (repo-local — the global config still holds the real one)
+  strings   see the FAIL lines above; the pattern is a shape, not the secret
+
+Once pushed, none of this can be un-pushed: it takes a history rewrite.
+MSG
+    exit 1
+fi
+exit 0
