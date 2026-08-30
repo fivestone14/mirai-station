@@ -560,15 +560,29 @@ if __name__ == "__main__":
 # 12-word user-message wrapper it rides in. The cached doctrine is deliberately
 # not returned — the tab's job is the varying payload, not the rulebook.
 #
-# `now` matters: clock.*, book_age_min, wall/frozen ages and the 30-minute
-# windows are all measured against it. During the session the scene is built
-# against the wall clock, exactly as a live read would; once the newest row is
-# more than _PAYLOAD_LIVE_MIN old (after hours, a dead scanner) it is built as
-# of that row's own timestamp, so the tab shows the last scene the reader COULD
-# have built rather than a 17-hour-old book with minutes_to_close 0. The
-# response says which (`as_of`).
+# `now` matters: clock.*, data_sources.*.age_min, wall/frozen ages and the
+# 30-minute windows are all measured against it. While the newest row is fresh
+# the scene is built against the wall clock, exactly as a live read would; once
+# it is not, the scene is built as of that row's own timestamp, so the tab shows
+# the last scene the reader COULD have built rather than a 17-hour-old book with
+# minutes_to_close 0. The response says which (`as_of`).
+#
+# 2026-08-30 — THE CUTOVER IS THE BOOK'S CEILING, not a round number. It was 10
+# minutes, chosen before sr-7 gave build_scene a freshness gate that DELETES an
+# aged-out block. Those two rules met in the middle and made the tab
+# non-monotonic: a 1-minute-old row rendered 4,363 chars, a 5-minute-old row
+# rendered 1,871 (eight evidence blocks deleted, because the book behind it had
+# crossed six minutes), and an 11-minute-old row rendered the full 4,363 again
+# because the as-of build reset every age to ~0. The payload was most complete
+# when the data was oldest, every trading day from about 16:02 to 16:09 ET.
+#
+# Pinning the cutover to the book's own ceiling closes it: while the book would
+# survive the gate we build live and nothing is dropped; the moment it would
+# not, we switch to the as-of build and show the whole scene with data_sources
+# saying how old it is. The tab never renders a gutted scene, which matters
+# because the phone reads neither `freshness_rules` nor `data_sources` and would
+# otherwise print "NO WALL MEASURED" about walls that were measured and deleted.
 _SNDK_PRO_DIR = PLUGIN_ROOT / "skills" / "sndk-pro"
-_PAYLOAD_LIVE_MIN = 10
 
 
 def sndk_payload(now: Optional[datetime] = None) -> dict:
@@ -590,7 +604,10 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         return {"error": "no SNDK diary rows yet", "scene": None}
     row = rows[-1]
     t_row = R._ts(row)
-    live = t_row is not None and 0 <= (now - t_row).total_seconds() <= _PAYLOAD_LIVE_MIN * 60
+    # the BOOK's age decides, not the scan's: the book is always the older of
+    # the two, and it is the one the freshness gate measures.
+    book_age = R._age_min(R._book_asof(row), now)
+    live = book_age is not None and book_age <= R.MAX_BOOK_AGE_MIN
     build_now = now if live else (t_row or now)
     rw = R.with_path(row, rows)
     band = R.magnet_band(rw)
@@ -619,6 +636,10 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
             "heartbeat_min": R.HEARTBEAT_MIN,
             "price_sigma": R.WAKE_PRICE_SIGMA,
             "magnet_sigma": R.WAKE_MAGNET_SIGMA,
+            # sr-7 freshness ceilings, read off the reader's own constants for
+            # the same reason as every gate above: the tab must not be able to
+            # quote a ceiling the reader has stopped enforcing.
+            "max_book_age_min": R.MAX_BOOK_AGE_MIN,
         },
     }
 

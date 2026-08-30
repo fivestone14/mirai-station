@@ -181,11 +181,15 @@ class _SceneGate:
         if scene is None:
             return (f'<scene ts="{stamp}">no SNDK diary rows yet today — '
                     f'the tape has not started</scene>')
-        spot = (scene.get("price") or {}).get("now")
+        # sr-7 key names. This gate fails SILENTLY when it misses — a None
+        # here does not raise, it just makes every turn look unchanged — so
+        # these four reads move in lockstep with build_scene, and
+        # test_convo_scene_gate pins them against a real scene.
+        spot = (scene.get("price") or {}).get("live_spot")
         sig = {
             "regime": (scene.get("regime") or {}).get("gamma_sign"),
             "magnet": ((scene.get("magnet") or {}).get("top_strikes")
-                       or [[None]])[0][0],
+                       or [{}])[0].get("strike"),
         }
         one_sigma = (scene.get("scale") or {}).get("one_sigma_dollars") or 0
         moved = (self._spot is not None and spot is not None and one_sigma

@@ -65,38 +65,41 @@ def scene_of(row, rows=None):
     return SR.build_scene(row, SR.magnet_band(row), [], rows, T0)
 
 
-# --- scale.aem --------------------------------------------------------------
-def test_aem_splits_the_priced_budget_by_iv_skew():
+# --- scale.expected_move_today_asym -----------------------------------------
+def test_asym_expected_move_splits_the_priced_budget_by_iv_skew():
     sc = scene_of(rich_row())
-    aem = sc["scale"]["aem"]
+    aem = sc["scale"]["expected_move_today_asym"]
     # asymmetry REALLOCATES the ruler's 2·em budget, never adds to it
     assert aem["down_dollars"] + aem["up_dollars"] == pytest.approx(80.0)
     assert aem["down_dollars"] == pytest.approx(44.0)   # d=0.55
-    assert aem["skew"] == "downside"
-    assert aem["source"] == "put/call IV skew"
+    assert aem["skewed_toward"] == "downside"
+    assert aem["derived_from"] == "put/call IV skew"
 
 
-def test_aem_absent_without_skew_or_em():
+def test_asym_expected_move_absent_without_skew_or_em():
     sc = scene_of(rich_row(iv_skew=None))
-    assert "aem" not in sc["scale"]
+    assert "expected_move_today_asym" not in sc["scale"]
     sc = scene_of(rich_row(range_ruler={"em_points": None}))
-    assert "aem" not in sc["scale"]
+    assert "expected_move_today_asym" not in sc["scale"]
 
 
-def test_aem_balanced_band_is_named_balanced():
+def test_asym_expected_move_balanced_band_is_named_balanced():
     sc = scene_of(rich_row(iv_skew={"down_share": 0.5}))
-    assert sc["scale"]["aem"]["skew"] == "balanced"
+    assert sc["scale"]["expected_move_today_asym"]["skewed_toward"] == "balanced"
 
 
-# --- price.vwap_dist_sigma --------------------------------------------------
+# --- price.vwap_dist_sigma_from_live_spot -----------------------------------
 def test_vwap_ships_as_sigma_distance():
+    """sr-7: vwap is a live-tape level, so it is the one distance still measured
+    from the LIVE spot while the book-derived blocks moved to the book's own
+    spot — and the leaf name now carries which ruler it used."""
     sc = scene_of(rich_row(vwap=1212.0))
-    assert sc["price"]["vwap_dist_sigma"] == pytest.approx(0.12)
+    assert sc["price"]["vwap_dist_sigma_from_live_spot"] == pytest.approx(0.12)
 
 
 def test_vwap_absent_when_unmeasured():
     sc = scene_of(rich_row(vwap=None))
-    assert "vwap_dist_sigma" not in sc["price"]
+    assert "vwap_dist_sigma_from_live_spot" not in sc["price"]
 
 
 # --- regime.vol_trend -------------------------------------------------------
@@ -144,11 +147,13 @@ def test_flip_block_edges_center_and_position():
     row = rich_row()
     row["_ran_30m_sigma"] = -0.25
     fb = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)["regime"]["flip"]
-    assert fb["ct_sigma"] == pytest.approx(0.31)
-    assert fb["pt_sigma"] == pytest.approx(-0.19)
-    assert fb["center_sigma"] == pytest.approx(0.06)   # the flip IS the center
-    assert "gamma-negative side" in fb["price_in_band"]
-    assert "drifting toward pt" in fb["price_in_band"]
+    assert fb["band_upper_edge_ct_sigma"] == pytest.approx(0.31)
+    assert fb["band_lower_edge_pt_sigma"] == pytest.approx(-0.19)
+    # the flip IS the center, and the edges are that center ± this much
+    assert fb["band_center_is_gamma_flip_sigma"] == pytest.approx(0.06)
+    assert fb["edges_are_center_plus_minus_sigma"] == pytest.approx(0.25)
+    assert "gamma-negative side" in fb["live_price_vs_band"]
+    assert "drifting toward pt" in fb["live_price_vs_band"]
 
 
 def test_flip_drift_clause_needs_actual_motion():
@@ -156,23 +161,25 @@ def test_flip_drift_clause_needs_actual_motion():
     row["_ran_30m_sigma"] = 0.01                    # under the 0.05σ floor
     fb = SR.flip_block(row, lambda v: round((v - 1200.0) / 100.0, 2)
                        if isinstance(v, (int, float)) else None, 0.01)
-    assert "drifting" not in fb["price_in_band"]
+    assert "drifting" not in fb["live_price_vs_band"]
 
 
 def test_flip_absent_without_a_ladder():
     """sr-5 rewrote this pin: a missing ladder on a MEASURED book is now a
-    stated finding (none_on_board), not an absence — absence is reserved for
-    the case where the book itself was never read (see the sr-5 tests)."""
+    stated finding (no_flip_anywhere_on_board), not an absence — absence is
+    reserved for the case where the book itself was never read (see the sr-5
+    tests)."""
     row = rich_row(profile_ladder=None, gamma_flip=None)
-    assert scene_of(row)["regime"]["flip"] == {"none_on_board": True}
+    assert scene_of(row)["regime"]["flip"] == {"no_flip_anywhere_on_board": True}
 
 
 # --- regime.charm (N11: magnitude + target, never a direction) --------------
 def test_charm_magnitude_and_drift_target_no_direction_word():
     sc = scene_of(rich_row())
     ch = sc["regime"]["charm"]
-    assert ch == {"magnitude": pytest.approx(4.28, abs=0.01),
-                  "drift_toward": 1370.0}
+    assert ch == {
+        "magnitude_musd_per_day_uncalibrated": pytest.approx(4.28, abs=0.01),
+        "drifts_toward_strike": 1370.0}
     assert "sign" not in ch and "direction" not in ch
 
 
@@ -195,12 +202,27 @@ def _mom_rows(shift_pp=8.0, vol_add=340):
     return rows
 
 
-def test_momentum_reads_building_with_volume_confirming():
+def _verdict_words_in(momentum):
+    """Any surviving trace of momentum's deleted `read` (building / fading /
+    steady). It was MOMENTUM_BUILD_PP — a 0.5pp constant fitted in July and
+    shipped to the model as a finished judgement, the same pattern already cut
+    from is_a_tie and dex_word. sr-7 removed it: the change itself is the
+    evidence, and no word may ride beside it under any spelling."""
+    blob = json.dumps(momentum)
+    return [w for w in ("read", "building", "fading", "steady") if w in blob]
+
+
+def test_momentum_ships_the_rising_share_and_its_volume():
     rows = _mom_rows()
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     m = sc["momentum"]["by_strike"]["1300"]
-    assert m["gex_share_d_pp"] > 0.5 and m["vol_d"] == 340
-    assert m["read"] == "building"
+    assert m["share_of_book_gamma_change_pp"] > 0.5
+    assert m["gross_volume_change_contracts"] == 340
+    assert _verdict_words_in(sc["momentum"]) == []
+    # sr-7: the window is told on the BOOK clock, because these are differences
+    # between two books — the old "last 5 scans (10m)" label was the scan clock
+    w = sc["momentum"]["window_between_books"]
+    assert w["books_compared"] == 6 and w["span_min"] == 10.0
     assert "oi_d" not in m                        # static intraday — never faked
     assert "cvd" not in json.dumps(sc)            # no aggressor tape — absent
 
@@ -219,43 +241,52 @@ def test_momentum_skips_strikes_outside_both_windows():
     assert "1300" not in ((sc.get("momentum") or {}).get("by_strike") or {})
 
 
-# --- dealer_flow ------------------------------------------------------------
-def test_dealer_flow_dex_and_vanna():
-    df = scene_of(rich_row())["dealer_flow"]
+# --- dealer_positioning ------------------------------------------------------
+def test_dealer_positioning_dex_and_vanna():
+    df = scene_of(rich_row())["dealer_positioning"]
     # NO lean word (adversarial audit: sign-derived word was constant on
     # 756/756 scenes — the banned pattern)
-    assert df["dex"]["net"] == 3.93
-    assert "lean" not in df["dex"]
+    assert df["net_delta_bn"] == 3.93
+    assert "lean" not in df
     # sr-3: net_dex_total is > 0 BY CONSTRUCTION (1,675/1,675 recorded rows),
     # so the field must say so where the model reads the number — a caveat that
     # lives only in the cached doctrine is a caveat the number travels without.
-    assert "net_change_30min" in df["dex"]["note"]
-    assert df["vanna"]["net"] == pytest.approx(0.26, abs=0.01)
+    # sr-7 flattened that prose note into its own named flag, which says the
+    # same thing without asking the model to parse a sentence.
+    assert df["net_delta_sign_is_formula_artifact"] is True
+    assert df["net_vanna_musd_per_vol_point"] == pytest.approx(0.26, abs=0.01)
 
 
-def test_dealer_flow_ships_the_measured_30min_change():
+def test_dealer_positioning_ships_the_measured_30min_change():
     """The doctrine says the change is the news — so the change must actually
     be obtainable, timestamp-true, outage-refusing."""
     rows = [rich_row(ts=T0 - timedelta(minutes=35),
                      dex_views={"net_dex_total": 3.00e9}),
             rich_row(ts=T0, dex_views={"net_dex_total": 3.93e9})]
-    df = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)["dealer_flow"]
-    assert df["dex"]["net_change_30min"] == pytest.approx(0.93)
+    df = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows,
+                        T0)["dealer_positioning"]
+    assert df["net_delta_change_30min_bn"] == pytest.approx(0.93)
     # outage-shaped reference → no change claim
     rows[0] = rich_row(ts=T0 - timedelta(hours=3),
                        dex_views={"net_dex_total": 3.00e9})
-    df = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)["dealer_flow"]
-    assert "net_change_30min" not in df["dex"]
+    df = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows,
+                        T0)["dealer_positioning"]
+    assert "net_delta_change_30min_bn" not in df
 
 
-def test_dealer_flow_block_dropped_when_empty():
+def test_dealer_positioning_block_dropped_when_empty():
     sc = scene_of(rich_row(dex_views=None, flows_front=None))
-    assert "dealer_flow" not in sc
+    assert "dealer_positioning" not in sc
 
 
-def test_dealer_flow_partial_keeps_only_the_measured_field():
-    df = scene_of(rich_row(flows_front=None))["dealer_flow"]
-    assert "dex" in df and "vanna" not in df
+def test_dealer_positioning_partial_keeps_only_the_measured_field():
+    # sr-7 flattened dex{} and vanna{} into named leaves, so "only the measured
+    # field survives" is now checked leaf by leaf rather than sub-block by
+    # sub-block — an unmeasured vanna must take its caveat with it.
+    df = scene_of(rich_row(flows_front=None))["dealer_positioning"]
+    assert "net_delta_bn" in df
+    assert "net_vanna_musd_per_vol_point" not in df
+    assert "vanna_matters_when" not in df
 
 
 # --- walls ladder -----------------------------------------------------------
@@ -265,7 +296,8 @@ def test_walls_two_per_side_nearest_first():
     assert [x["strike"] for x in w["call"]] == [1240.0, 1300.0]  # nearest first
     assert [x["strike"] for x in w["put"]] == [1150.0, 1100.0]
     for x in w["call"] + w["put"]:
-        assert 0 < x["gex"] <= 100                # share of book |γ|, percent
+        # share of book |γ|, percentage points
+        assert 0 < x["share_of_book_gamma_pp"] <= 100
     assert w["call"][0]["sigma"] == pytest.approx(0.4)
 
 
@@ -289,27 +321,30 @@ def test_flip_band_is_told_once(monkeypatch):
     sc = scene_of(rich_row())
     assert "named_levels_sigma_from_spot" not in sc
     assert "lowest_named_level" not in sc
-    assert set(sc["regime"]["flip"]) <= {"ct_sigma", "pt_sigma",
-                                         "center_sigma", "price_in_band"}
+    assert set(sc["regime"]["flip"]) <= {"band_upper_edge_ct_sigma",
+                                         "band_lower_edge_pt_sigma",
+                                         "band_center_is_gamma_flip_sigma",
+                                         "edges_are_center_plus_minus_sigma",
+                                         "live_price_vs_band"}
 
 
 # --- history flags (the under-pull guard) -----------------------------------
-def test_level_unseen_today_flags_new_session_ground():
+def test_level_unseen_earlier_today_flags_new_session_ground():
     rows = [rich_row(ts=T0 - timedelta(minutes=(40 - i)), spot=1200.0 + (i % 5))
             for i in range(35)]
     row = rich_row(ts=T0, spot=1260.0)            # above everything prior
     sc = SR.build_scene(row, SR.magnet_band(row), [], rows + [row], T0)
-    assert sc["history"]["level_unseen_today"] is True
+    assert sc["history"]["price_at_level_unseen_earlier_today"] is True
 
 
-def test_abnormal_tape_is_sigma_relative_not_a_fixed_pct():
+def test_tape_abnormal_flag_is_sigma_relative_not_a_fixed_pct():
     """Adversarial audit: a fixed 8% bar is ~1σ on a 10%-σ name and fired on
     56% of recorded scans — 'extreme' must be measured on the stock's own
     ruler (1.5σ), so a 12% day here is ordinary and a 21% day is abnormal."""
     ordinary = rich_row(spot=1100.0, prior_close=1250.0)   # −12% ≈ 1.3σ
     assert "history" not in scene_of(ordinary)
     extreme = rich_row(spot=1100.0, prior_close=1400.0)    # −21.4% ≈ 2.4σ
-    assert scene_of(extreme)["history"]["abnormal_tape"] is True
+    assert scene_of(extreme)["history"]["tape_abnormal_vs_own_history"] is True
 
 
 def test_history_block_absent_on_a_quiet_tape():
@@ -320,7 +355,7 @@ def test_history_block_absent_on_a_quiet_tape():
 # --- the doctrine carries the on-demand signposts ---------------------------
 def test_doctrine_signposts_history_and_websearch():
     assert "sndk_rag.py" in SR._DOCTRINE
-    assert "level_unseen_today" in SR._DOCTRINE
+    assert "price_at_level_unseen_earlier_today" in SR._DOCTRINE
     assert "WebSearch" in SR._DOCTRINE
     assert "none" in SR._DOCTRINE                 # an honest "no vector" exists
 
@@ -334,14 +369,15 @@ def test_allowed_tools_are_exactly_the_two_on_demand_paths():
 
 
 # --- SE-review regressions (08-02) ------------------------------------------
-def test_walls_gex_share_is_of_the_full_surface():
+def test_wall_gamma_share_is_of_the_full_surface():
     """The denominator is Σ|γ| over ALL of net_by_strike, not the surviving
     clusters — a cluster-only total shifts as strikes cross the concentration
     floor, so 'the wall's share rose' could be pure denominator churn."""
     sc = scene_of(rich_row())
     # full surface: 6+7+8+7+6.5 walls + 36 sub-floor strikes at 0.1 = 38.1
-    assert sc["walls"]["call"][0]["gex"] == pytest.approx(15.0 / 38.1 * 100, abs=0.2)
-    assert sum(w["gex"] for s in ("call", "put")
+    assert sc["walls"]["call"][0]["share_of_book_gamma_pp"] == pytest.approx(
+        15.0 / 38.1 * 100, abs=0.2)
+    assert sum(w["share_of_book_gamma_pp"] for s in ("call", "put")
                for w in sc["walls"].get(s, [])) < 100.0
 
 
@@ -361,10 +397,10 @@ def test_momentum_shares_use_the_window_intersection():
                                                [1200, 10.0], [1350, 80.0]]
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     by = (sc.get("momentum") or {}).get("by_strike") or {}
-    # 1300's share within the common strikes is unchanged → steady, ~0pp
+    # 1300's share within the common strikes is unchanged → ~0pp
     assert "1300" in by
-    assert abs(by["1300"]["gex_share_d_pp"]) < 0.05
-    assert by["1300"]["read"] == "steady"
+    assert abs(by["1300"]["share_of_book_gamma_change_pp"]) < 0.05
+    assert _verdict_words_in(sc["momentum"]) == []
 
 
 def test_no_nulls_anywhere_in_the_scene():
@@ -401,8 +437,9 @@ def test_single_strike_book_makes_no_tie_claim():
     TIE was inverted truth; with no runner-up the question is unanswerable."""
     sc = scene_of(rich_row(mass=[[1300, 60.0]]))
     m = sc["magnet"]
-    assert m["top_strikes"] == [[1300.0, 100.0]]
-    assert "is_a_tie" not in m and "gap_pp" not in m
+    assert m["top_strikes"] == [{"strike": 1300.0,
+                                 "share_of_book_gamma_pp": 100.0}]
+    assert "is_a_tie" not in m and "top_strike_lead_pp" not in m
 
 
 def test_nan_masses_cannot_fabricate_confidence():
@@ -420,10 +457,12 @@ def test_malformed_rows_degrade_instead_of_crashing():
     row = rich_row(mass=[[1300, None], ["junk", 5], [1100, 30.0]])
     row["profile_ladder"] = "corrupted-string"
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
-    assert sc["magnet"]["top_strikes"] == [[1100.0, 100.0]]  # the clean pair
-    # torn ladder → no ct/pt/position; the row's own measured flip center
-    # (gamma_flip is intact) rightly survives
-    assert set(sc["regime"]["flip"]) == {"center_sigma"}
+    assert sc["magnet"]["top_strikes"] == [{"strike": 1100.0,
+                                            "share_of_book_gamma_pp": 100.0}]
+    # torn ladder → no ct/pt/position, and with one edge missing the width is
+    # unanswerable too; the row's own measured flip center (gamma_flip is
+    # intact) rightly survives
+    assert set(sc["regime"]["flip"]) == {"band_center_is_gamma_flip_sigma"}
 
 
 def test_moved_30min_uses_the_timestamp_true_ruler():
@@ -438,14 +477,20 @@ def test_moved_30min_uses_the_timestamp_true_ruler():
     assert "moved_last_30min_sigma" not in sc2["price"]
 
 
-def test_momentum_fading_earns_its_hedge_symmetrically():
+def test_momentum_ships_a_bleeding_share_the_same_way():
+    """The deleted `read` hedged a fade with "(vol unconfirmed)" — an
+    evidentiary standard the model was handed instead of the evidence. sr-7
+    ships no word in either direction, so the SIGN of the raw change is the
+    whole reading and it must survive symmetrically."""
     rows = _mom_rows(shift_pp=-8.0, vol_add=0)
-    for r in rows:                                 # volume flat → unconfirmed
+    for r in rows:                                 # volume flat → zero change
         r["gex_views"]["vol_gross_by_strike"] = [[1300, 5000], [1100, 2000]]
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    # 1300 is the strike whose share bled (−3.5pp) with zero volume change —
-    # it must read fading AND carry the same hedge building would
-    assert sc["momentum"]["by_strike"]["1300"]["read"] == "fading (vol unconfirmed)"
+    # 1300 is the strike whose share bled (−3.5pp) with zero volume change
+    m = sc["momentum"]["by_strike"]["1300"]
+    assert m["share_of_book_gamma_change_pp"] < -0.5
+    assert m["gross_volume_change_contracts"] == 0
+    assert _verdict_words_in(sc["momentum"]) == []
 
 
 # --- final verification pass regressions (08-02) ----------------------------
@@ -461,7 +506,8 @@ def test_momentum_survives_nan_and_junk_pairs():
             r["gex_views"]["vol_gross_by_strike"] + [[1100, nan]])
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     m = sc["momentum"]["by_strike"]["1300"]
-    assert m["read"] == "building" and m["vol_d"] == 340
+    assert m["share_of_book_gamma_change_pp"] > 0.5
+    assert m["gross_volume_change_contracts"] == 340
     assert "NaN" not in json.dumps(sc)
 
 
@@ -472,26 +518,29 @@ def test_walls_survive_nan_in_the_surface():
     sc = scene_of(row)
     for side in ("call", "put"):
         for w in (sc.get("walls") or {}).get(side, []):
-            assert w["gex"] == w["gex"]          # never NaN
+            share = w["share_of_book_gamma_pp"]
+            assert share == share                # never NaN
     assert "NaN" not in json.dumps(sc)
 
 
 # --- sr-3: gates become numbers, guards point at what the model can see ------
-def test_magnet_ships_the_gap_not_a_tie_verdict():
+def test_magnet_ships_the_lead_not_a_tie_verdict():
     """`is_a_tie` was `gap_pp < MAGNET_SEP_PP` — a July constant shipped as a
-    finished verdict, and true on ~95% of August scans. The gap is the
-    evidence; a threshold is not."""
+    finished verdict, and true on ~95% of August scans. The top strike's lead
+    over the runner-up is the evidence; a threshold is not."""
     m = scene_of(rich_row())["magnet"]
     assert "is_a_tie" not in m
-    assert m["gap_pp"] is not None
+    assert m["top_strike_lead_pp"] is not None
 
 
 def test_breadth_ships_a_number_and_never_a_direction():
     b = scene_of(rich_row())["breadth"]
-    assert b["lopsidedness"] == pytest.approx(0.9, abs=0.01)   # |2.0-0.2|/2.0
-    assert b["heavier"] in ("up", "down")        # a fact about mass...
+    # |2.0-0.2|/2.0
+    assert b["lopsidedness_0_is_even"] == pytest.approx(0.9, abs=0.01)
+    assert b["heavier_side"] in ("up", "down")   # a fact about mass...
     assert "dir" not in b and "vector" not in b  # ...never a lean
-    assert "magnet" in b["note"]                 # names the shared witness
+    # names the shared witness
+    assert "magnet" in b["measures_same_gamma_pile_as"]
 
 
 def test_breadth_absent_without_a_shove_read():
@@ -504,8 +553,8 @@ def test_percentile_omitted_below_the_session_floor():
     """A percentile is a claim about a distribution; the tmp state dir holds no
     prior sessions, so the word must be ABSENT rather than guessed."""
     sc = scene_of(rich_row())
-    assert "gap_vs_own_history" not in sc["magnet"]
-    assert "vs_own_history" not in sc["breadth"]
+    assert "top_strike_lead_vs_own_history" not in sc["magnet"]
+    assert "lopsidedness_vs_own_history" not in sc["breadth"]
 
 
 def test_walls_age_on_the_numbers_the_scene_ships():
@@ -520,7 +569,7 @@ def test_walls_age_on_the_numbers_the_scene_ships():
     assert "put wall" not in " ".join(sc["frozen_do_not_cite"])
     assert "regime unchanged 90m" in sc["frozen_do_not_cite"]
     w = sc["walls"]["put"][0]
-    assert "unchanged_min" in w or "unchanged_min_at_least" in w
+    assert "unchanged_for_min" in w or "unchanged_for_at_least_min" in w
 
 
 def test_heaviest_wall_ships_when_the_ladder_would_hide_it():
@@ -529,23 +578,29 @@ def test_heaviest_wall_ships_when_the_ladder_would_hide_it():
     heaviest) was cut while walls.put[0] was called 'the strongest'."""
     sc = scene_of(rich_row())
     puts = sc["walls"]["put"]
-    hb = sc["walls"].get("put_heaviest_behind")
+    hb = sc["walls"].get("put_heaviest_wall_behind_the_ladder")
     if hb:                                   # only when it is not in the ladder
-        assert hb["gex"] >= max(p["gex"] for p in puts)
+        assert hb["share_of_book_gamma_pp"] >= max(
+            p["share_of_book_gamma_pp"] for p in puts)
         assert hb["strike"] not in {p["strike"] for p in puts}
 
 
 # --- sr-4: the day-scoped calendar -------------------------------------------
 def test_clock_carries_the_calendar():
     """sr-4: date, minutes each way, and the front-expiry cycle position —
-    a Monday 4-dte book must not read like expiry Friday."""
+    a Monday 4-dte book must not read like expiry Friday. sr-7 narrowed this
+    block to the SESSION calendar alone: book_age_min left for data_sources,
+    where how old a measurement is sits beside the measurement."""
     ck = scene_of(rich_row())["clock"]
-    assert ck["date"] == "2026-07-31"
+    assert ck["session_date"] == "2026-07-31"
     assert ck["minutes_since_open"] == 150
     assert ck["minutes_to_close"] == 240
-    assert ck["front_expiry"] == {"dte": 3}       # rich_row carries no expiries
+    # rich_row carries no expiries
+    assert ck["front_expiry"] == {"built_from": ["options_book"], "days_to_expiry": 3}
     assert "weekday" not in ck                    # == dte on every session; one
                                                   # fact must not wear two names
+    assert "book_age_min" not in ck               # a measurement's age is not
+                                                  # the session calendar
 
 
 def test_front_expiry_date_rides_when_the_row_carries_it():
@@ -556,9 +611,11 @@ def test_front_expiry_date_rides_when_the_row_carries_it():
     row["meta"] = {"expiries": [{"date": "2026-07-25", "dte": -6},
                                 {"date": "2026-08-01", "dte": 1}]}
     fe = scene_of(row)["clock"]["front_expiry"]
-    assert fe == {"dte": 3, "date": "2026-08-01"}   # first at/after today
+    # first at/after today
+    assert fe == {"built_from": ["options_book"], "days_to_expiry": 3,
+                  "expiry_date": "2026-08-01"}
     row["meta"] = {"expiries": ["2026-07-25", "2026-08-01"]}
-    assert scene_of(row)["clock"]["front_expiry"]["date"] == "2026-08-01"
+    assert scene_of(row)["clock"]["front_expiry"]["expiry_date"] == "2026-08-01"
 
 
 def test_front_expiry_absent_without_a_dte():
@@ -568,12 +625,12 @@ def test_front_expiry_absent_without_a_dte():
 
 
 # --- sr-5: measured-empty stops impersonating unmeasured ---------------------
-def test_side_clear_when_board_measured_but_side_empty():
+def test_no_wall_flag_when_board_measured_but_side_empty():
     """Every cluster below spot → the call side is genuinely open air. That is
     a finding and must ship, not vanish like a torn feed would."""
     row = rich_row(spot=1400.0)                    # above every strike
     w = scene_of(row)["walls"]
-    assert w["call_side_clear"] is True
+    assert w["call_side_has_no_wall"] is True
     assert "call" not in w
     assert w["put"]                                # the put ladder still ships
 
@@ -583,12 +640,375 @@ def test_walls_absent_entirely_stays_absent_on_sensor_failure():
     assert "walls" not in sc                       # unmeasured stays silent
 
 
-def test_flip_none_on_board_when_book_is_one_signed():
+def test_flip_says_no_flip_anywhere_when_book_is_one_signed():
     row = rich_row(profile_ladder=None, gamma_flip=None)
     sc = scene_of(row)                             # book present, no flip
-    assert sc["regime"]["flip"] == {"none_on_board": True}
+    assert sc["regime"]["flip"] == {"no_flip_anywhere_on_board": True}
 
 
 def test_flip_stays_absent_when_nothing_was_measured():
     row = rich_row(profile_ladder=None, gamma_flip=None, nbs=None)
     assert "flip" not in scene_of(row)["regime"]
+
+
+# --- sr-7: the freshness gate DELETES, it does not label ---------------------
+def _book_rows(**kw):
+    """Six staggered scans — the momentum window's own minimum, so every one of
+    the eight book-derived blocks is on the board and the gate has all eight to
+    take away."""
+    return [rich_row(ts=T0 - timedelta(minutes=(5 - i) * 2), **kw)
+            for i in range(6)]
+
+
+_BOOK_BLOCKS = ("scale", "price", "regime", "magnet", "breadth", "momentum",
+                "dealer_positioning", "walls")
+
+
+def _scene_at(rows, now, frozen=None):
+    return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), frozen or [],
+                          rows, now)
+
+
+def test_a_fresh_book_drops_nothing():
+    sc = _scene_at(_book_rows(), T0)
+    assert sc["freshness_rules"]["blocks_dropped_this_scan"] == []
+    assert all(b in sc for b in _BOOK_BLOCKS)
+    assert sc["freshness_rules"]["max_options_book_age_min"] == SR.MAX_BOOK_AGE_MIN
+
+
+def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
+    """Shipping an age beside a number and hoping the reader discounts it is
+    the design that already failed — the doctrine told the model every number
+    was N minutes stale and no reading ever discounted anything. A ceiling that
+    deletes cannot be ignored, and it lands in a vocabulary the scene already
+    has: absence means "not measured", which is exactly true of an observation
+    too old to stand."""
+    rows = _book_rows()
+    sc = _scene_at(rows, T0 + timedelta(minutes=7))   # 7.0 min book, 6.0 cap
+    assert list(sc) == ["instrument", "data_sources", "clock", "freshness_rules"]
+    dropped = sc["freshness_rules"]["blocks_dropped_this_scan"]
+    assert [d["block"] for d in dropped] == list(_BOOK_BLOCKS)
+    for d in dropped:
+        assert d["source"] == SR.OPTIONS_BOOK
+        assert (d["age_min"], d["max_age_min"]) == (7.0, 6.0)
+    # the age it deleted on is the same age it publishes
+    assert sc["data_sources"]["options_book"]["age_min"] == 7.0
+    # the gate walks TOP-LEVEL blocks only, on purpose: minutes_to_close stays
+    # true when the book is dead and an expiry date does not go stale in six
+    # minutes, so clock keeps its book-sourced front_expiry
+    assert sc["clock"]["front_expiry"]["built_from"] == [SR.OPTIONS_BOOK]
+
+
+def test_a_source_with_no_ceiling_is_never_dropped_however_old():
+    """_MAX_AGE_MIN holds ONE entry and it is the book's. Open interest is ~18
+    hours old BY DESIGN — saying so is the fix, dropping it is not — and the
+    session calendar cannot go stale at all. A source missing from that table
+    is never dropped, at any age."""
+    scene = {"instrument": "SNDK",
+             "standing_book": {"built_from": [SR.OI_SNAPSHOT], "oi": 1},
+             "calendar": {"built_from": [SR.WALL_CLOCK], "date": "2026-07-31"}}
+    fr = SR._drop_stale_blocks(scene, {SR.OI_SNAPSHOT: 18 * 60.0,
+                                       SR.WALL_CLOCK: 9_999.0})
+    assert fr["blocks_dropped_this_scan"] == []
+    assert "standing_book" in scene and "calendar" in scene
+    assert set(SR._MAX_AGE_MIN) == {SR.OPTIONS_BOOK}
+    assert fr["only_the_options_book_has_a_ceiling"] is True
+
+
+def test_a_dropped_block_takes_its_own_do_not_cite_line_with_it():
+    """A guardrail may only name fields the scene actually ships — the same
+    rule that moved wall staleness onto the walls in sr-3. Without it the model
+    is handed "magnet unchanged 387m, do not cite" about a magnet block deleted
+    three lines earlier: a warning about a fact it cannot see."""
+    rows = _book_rows()
+    frozen = [{"field": "magnet", "value": 1300.0, "for_min": 387},
+              {"field": "gamma sign", "value": "negative", "for_min": 120}]
+    fresh = _scene_at(rows, T0, frozen)
+    assert fresh["frozen_do_not_cite"] == ["magnet unchanged 387m",
+                                           "gamma sign unchanged 120m"]
+    late = _scene_at(rows, T0 + timedelta(minutes=7), frozen)
+    # magnet went with the book; `gamma sign` names no block, so it stays
+    assert late["frozen_do_not_cite"] == ["gamma sign unchanged 120m"]
+
+
+def test_the_do_not_cite_key_disappears_when_the_gate_empties_it():
+    """An empty list is not the same absence: it reads as "nothing here is
+    frozen" rather than "the frozen things are gone with their blocks"."""
+    rows = _book_rows()
+    frozen = [{"field": "magnet", "value": 1300.0, "for_min": 387},
+              {"field": "regime", "value": "trending", "for_min": 95}]
+    assert "frozen_do_not_cite" not in _scene_at(rows, T0 + timedelta(minutes=7),
+                                           frozen)
+
+
+def test_the_forbidden_list_names_blocks_the_scene_actually_ships():
+    """PRESENT_TENSE_FORBIDDEN_FOR is published to the model inside
+    freshness_rules, so every name on it has to resolve in the scene beside it
+    — the sr-3 lesson about a guard that warned about put wall 1200, a strike
+    absent from the whole payload."""
+    sc = _scene_at(_book_rows(), T0)
+    published = sc["freshness_rules"]["present_tense_forbidden_for"]
+    assert published == list(SR.PRESENT_TENSE_FORBIDDEN_FOR)
+    for name in published:
+        head, _, leaf = name.partition(".")
+        assert head in sc, name
+        assert not leaf or leaf in sc[head], name
+        # ...and every one of them is OI-derived, which is why the list exists:
+        # open interest updates once overnight, so "dealers are buying" about it
+        # is a false statement about time, not a debatable read
+        assert SR.OI_SNAPSHOT in (sc[head].get("built_from") or []), name
+
+
+# --- sr-7: the ruler is the spot the BOOK was measured at --------------------
+def _sigma_rulers(scene):
+    """Every `sigma_measured_from` value anywhere in the scene — one scene may
+    not carry two answers to which frame it is in."""
+    found = set()
+
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if k == "sigma_measured_from":
+                    found.add(v)
+                else:
+                    walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    walk(scene)
+    return found
+
+
+def test_every_book_derived_sigma_divides_the_books_own_spot():
+    """The live spot and the chain's spot are different numbers — median $2.13
+    apart on cached rows, $41.99 at worst — and dividing the live one into a
+    book measured at the other was costing up to 0.9σ of distance. Here they
+    sit $10 apart on a $100 sigma, so every book-derived distance moves by
+    exactly 0.1σ and three blocks say which frame they are in."""
+    live = scene_of(rich_row())
+    book = scene_of(rich_row(meta={"chain_spot": 1190.0}))
+    assert live["walls"]["call"][0]["sigma"] == pytest.approx(0.4)   # off 1200
+    assert book["walls"]["call"][0]["sigma"] == pytest.approx(0.5)   # off 1190
+    assert live["magnet"]["top_strike_sigma"] == pytest.approx(1.0)
+    assert book["magnet"]["top_strike_sigma"] == pytest.approx(1.1)  # 1300
+    assert book["regime"]["flip"]["band_center_is_gamma_flip_sigma"] == (
+        pytest.approx(0.16))                                         # flip 1206
+    assert _sigma_rulers(book) == {"spot_when_book_was_measured"}
+    for blk in ("walls", "magnet", "regime"):
+        assert book[blk]["sigma_measured_from"] == "spot_when_book_was_measured"
+    assert book["price"]["spot_when_book_was_measured"] == 1190.0
+    assert book["price"]["live_minus_book_spot_dollars"] == pytest.approx(10.0)
+
+
+def test_vwap_is_the_one_distance_that_stays_on_the_live_spot():
+    """Every other σ in the scene moved onto the book's spot; vwap did not,
+    because vwap is a LIVE-TAPE level and measuring it against a spot the chain
+    saw four minutes ago would put a live number in a stale frame. The leaf
+    name is the guard: it says which ruler it used."""
+    live = scene_of(rich_row())["price"]["vwap_dist_sigma_from_live_spot"]
+    book = scene_of(rich_row(meta={"chain_spot": 1190.0}))["price"]
+    assert live == pytest.approx(0.12)                 # (1212 − 1200) / 100
+    assert book["vwap_dist_sigma_from_live_spot"] == pytest.approx(0.12)
+    assert "vwap_dist_sigma" not in book               # never the bare name
+
+
+def test_the_offset_converts_a_book_sigma_the_way_the_doctrine_says_it_does():
+    """The doctrine hands the model ONE conversion between the two frames, and
+    it is the only route from a book-measured distance to a distance from where
+    price actually is. Both halves are pinned together because either alone is
+    unfalsifiable — the sentence the model is given, and the arithmetic it
+    would do with it.
+
+    1240 sits 0.5σ above the book's spot (1190) and 0.4σ above the live spot
+    (1200); live_minus_book_spot_sigma is (1200 − 1190) / 100 = +0.10.
+
+    IT IS A SUBTRACTION, and this test was RED for the hour it took to say so.
+    live σ = (K − live) / σ = book σ − (live − book) / σ, and the field is that
+    second term — so the doctrine's original "add" walked the wrong way by
+    twice the gap: 0.5 + 0.10 = 0.6 here against a true 0.4. The median cached
+    gap is $2.13 and the worst recorded is $41.99, i.e. up to ~0.8σ of error
+    handed to a model the same doctrine tells that half of all 30-minute
+    windows come in under 0.09σ.
+
+    The verb moved and the NAME moved with it. `live_minus_book_spot_sigma`
+    sits beside `live_minus_book_spot_dollars`, the identical quantity in
+    dollars — same subject, same direction, same word — so nobody has to hold
+    the sign in their head to use it. That is why both halves stay pinned
+    together here: the sentence the model is given, and the arithmetic it would
+    do with it. Either alone is unfalsifiable."""
+    assert "SUBTRACT `price.live_minus_book_spot_sigma`" in SR._DOCTRINE
+    assert "add `price.live_minus_book_spot_sigma`" not in SR._DOCTRINE
+    sc = scene_of(rich_row(meta={"chain_spot": 1190.0}))
+    book_sigma = sc["walls"]["call"][0]["sigma"]
+    offset = sc["price"]["live_minus_book_spot_sigma"]
+    live_sigma = round((1240.0 - sc["price"]["live_spot"]) / 100.0, 2)
+    assert book_sigma - offset == pytest.approx(live_sigma)
+
+
+def test_an_impossible_chain_spot_is_refused_and_the_live_spot_stands_in():
+    """chain_spot is an external dependency and `_fin` returns 0.0 as happily
+    as 1190.0. A zero ruler would have shipped top_strike_sigma 33.29 and walls
+    at +32.54 with nothing complaining. Refused values fall back to the live
+    spot rather than shipping the absurd number."""
+    for absurd in (0.0, -5.0, 99999.0):
+        sc = scene_of(rich_row(meta={"chain_spot": absurd}))
+        assert sc["walls"]["call"][0]["sigma"] == pytest.approx(0.4)  # off 1200
+        assert sc["magnet"]["top_strike_sigma"] == pytest.approx(1.0)
+        assert "spot_when_book_was_measured" not in sc["price"]
+        assert "live_minus_book_spot_sigma" not in sc["price"]
+
+
+def test_the_drift_ceiling_cannot_reject_real_data():
+    """The widest gap over 3,392 recorded August rows is $43.27 on a ~$1,480
+    name — 2.9%, an order of magnitude inside the ceiling. A tighter ceiling
+    would start refusing books that were merely moving."""
+    worst_recorded = 43.27 / 1480.0
+    assert SR.RULER_MAX_DRIFT == 0.25 and worst_recorded < SR.RULER_MAX_DRIFT
+    drifted = round(1200 * (1 - worst_recorded), 2)          # 1164.9
+    sc = scene_of(rich_row(meta={"chain_spot": drifted}))
+    assert sc["price"]["spot_when_book_was_measured"] == drifted
+    assert _sigma_rulers(sc) == {"spot_when_book_was_measured"}
+
+
+def test_the_fallback_ruler_never_wears_the_books_name():
+    """The one place an sr-7 provenance tag could lie. sigma_measured_from used
+    to read "spot_when_book_was_measured" even when there was no chain_spot to
+    measure from — and the doctrine then told the model to convert those
+    distances with price.live_minus_book_spot_sigma, the one field the scene does
+    not contain in exactly that case."""
+    for row in (rich_row(),                          # no meta at all
+                rich_row(meta={}),                   # meta, no chain_spot
+                rich_row(meta={"chain_spot": None}),
+                rich_row(meta={"chain_spot": 0.0}),      # refused: not positive
+                rich_row(meta={"chain_spot": 99999.0})):  # refused: drift
+        sc = scene_of(row)
+        assert _sigma_rulers(sc) == {"live_spot_because_chain_spot_was_absent"}
+        assert "live_minus_book_spot_sigma" not in sc["price"]
+
+
+def test_no_wall_carries_a_sigma_that_contradicts_its_own_side():
+    """sr-7 ONE-FRAME RULE: ruler_spot decides BOTH which side a cluster is
+    filed under and how far away it is reported to be. The first draft moved
+    only the distance onto the book's spot and left the side filter on the live
+    spot, which put 52 of 10,101 recorded wall entries under a side their own
+    sigma contradicted — 2026-08-05 11:58 shipped walls.call[0] = {strike:
+    1400.0, sigma: -0.04} under a doctrine that calls call[0] the first thing
+    price meets going UP.
+
+    chain_spot 1250 against a live spot of 1200 straddles the 1240/1245 call
+    cluster, which is the shape that produced those 52."""
+    for meta in ({}, {"chain_spot": 1150.0}, {"chain_spot": 1250.0}):
+        w = scene_of(rich_row(meta=meta))["walls"]
+        for side, sign in (("call", 1), ("put", -1)):
+            entries = list(w.get(side) or [])
+            behind = w.get(side + "_heaviest_wall_behind_the_ladder")
+            if behind:
+                entries.append(behind)
+            for e in entries:
+                assert e["sigma"] * sign > 0, (meta, side, e)
+    straddled = scene_of(rich_row(meta={"chain_spot": 1250.0}))["walls"]
+    # in one frame 1240 is simply not above the book's spot; in two frames it
+    # was walls.call[0] at −0.10σ
+    assert 1240.0 not in {e["strike"] for e in straddled.get("call") or []}
+
+
+# --- sr-7: a stored null is not a missing key --------------------------------
+def test_a_row_with_an_explicit_null_meta_does_not_take_the_read_down():
+    """`.get("meta", {})` returns a STORED None rather than the default, so a
+    row written with `"meta": null` raised out of build_scene and took the read
+    row AND the arrow with it — the one thing this module's torn-row rule says
+    must never happen. Every other meta read in the file uses the `or {}`
+    idiom; _book_is_repeat's read of the PREVIOUS row was the exception."""
+    prev = rich_row(ts=T0 - timedelta(minutes=2), meta=None)
+    cur = rich_row(meta={"book_asof": T0.isoformat()})
+    assert SR._book_is_repeat(cur, prev) is None
+    assert SR._book_is_repeat(cur, None) is None
+    book = SR.build_scene(cur, SR.magnet_band(cur), [], [prev, cur],
+                          T0)["data_sources"]["options_book"]
+    # unanswerable, so absent — never a guessed False
+    assert "is_repeat_of_previous_scan" not in book
+    # ...and a null meta on the row being READ is survivable the same way
+    cur["meta"] = None
+    book = SR.build_scene(cur, SR.magnet_band(cur), [], [prev, cur],
+                          T0)["data_sources"]["options_book"]
+    assert book["measured_at_is_fallback_scan_clock"] is True
+    assert book["distinct_books_so_far_today"] == 2
+
+
+# --- sr-7: did open interest actually hold still today? ----------------------
+def _oi_surface(strikes):
+    """An oi_by_strike surface keyed BY STRIKE, so a window that walks with
+    spot carries the same OI on the strikes it still contains."""
+    return [[float(k), 1000 + int(k) % 97] for k in strikes]
+
+
+def _oi_rows(*surfaces):
+    rows = []
+    for i, s in enumerate(surfaces):
+        r = rich_row(ts=T0 - timedelta(minutes=(len(surfaces) - 1 - i) * 2))
+        if s is not None:
+            r["gex_views"]["oi_by_strike"] = s
+        rows.append(r)
+    return rows
+
+
+def _oi_of(rows):
+    return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows,
+                          T0)["data_sources"]["open_interest"]
+
+
+def test_open_interest_holding_still_is_measured_not_asserted():
+    """The scene states outright that every structural number rests on last
+    night's OI, so that claim is re-measured on every scan instead of resting
+    on a one-off audit."""
+    same = _oi_surface(range(1100, 1165, 5))
+    oi = _oi_of(_oi_rows(same, same))
+    assert oi["measured_unchanged_so_far_today"] is True
+    assert oi["strikes_compared_today"] == 13
+    assert oi["snapshot_is"] == "prior_session_close"
+    assert oi["updates_intraday"] is False
+
+
+def test_a_single_changed_strike_is_enough_to_say_no():
+    moved = _oi_surface(range(1100, 1165, 5))
+    moved[3] = [moved[3][0], moved[3][1] + 1]
+    oi = _oi_of(_oi_rows(_oi_surface(range(1100, 1165, 5)), moved))
+    assert oi["measured_unchanged_so_far_today"] is False
+    assert oi["strikes_compared_today"] == 13
+
+
+def test_only_the_intersection_is_compared_because_the_window_walks():
+    """The strike window is spot-relative and moves with price, so the two
+    surfaces list different strikes. Comparing the raw lists answers a question
+    about the telescope, not about the book — these two share nine strikes,
+    carry identical OI on all nine, and differ in four at each end."""
+    first = _oi_surface(range(1100, 1165, 5))       # 1100..1160
+    last = _oi_surface(range(1120, 1185, 5))        # 1120..1180
+    assert [k for k, _ in first] != [k for k, _ in last]
+    oi = _oi_of(_oi_rows(first, last))
+    assert oi["measured_unchanged_so_far_today"] is True
+    assert oi["strikes_compared_today"] == 9
+
+
+def test_too_few_common_strikes_says_nothing_rather_than_yes():
+    """Below OI_MIN_STRIKES_COMPARED the claim is not worth making, and an
+    absent answer is the scene's word for unanswerable — a guessed "unchanged"
+    would be the reader inventing the reassurance it was asked for."""
+    thin = _oi_rows(_oi_surface(range(1100, 1125, 5)),   # 1100..1120
+                    _oi_surface(range(1115, 1140, 5)))   # 1115..1135, 2 shared
+    assert SR._oi_unchanged_today(thin) == (None, None)
+    oi = _oi_of(thin)
+    assert "measured_unchanged_so_far_today" not in oi
+    assert "strikes_compared_today" not in oi
+    assert SR.OI_MIN_STRIKES_COMPARED == 5
+
+
+def test_a_warmup_row_with_no_surface_is_skipped_not_fatal():
+    """The first row of a session often carries no oi_by_strike at all, so the
+    comparison starts at the first row that HAS one — starting at rows[0]
+    turned every session's opening scan into "unanswerable" for the whole
+    day."""
+    same = _oi_surface(range(1100, 1165, 5))
+    assert SR._oi_unchanged_today(_oi_rows(None, same, same)) == (True, 13)
+    oi = _oi_of(_oi_rows(None, same, same))
+    assert oi["measured_unchanged_so_far_today"] is True

@@ -308,8 +308,9 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
     assert sc["price"]["session_high"] is not None
     # sr-5: the point became a spread — a single "typical" number taught the
     # model a ceiling (33/33 emitted magnitudes inside 0.06-0.20 vs p95 0.46)
-    sp = sc["scale"]["move_30min_sigma"]
-    assert sp["half_under"] == 0.09 and sp["one_in_five_over"] == 0.20
+    sp = sc["scale"]["move_30min_sigma_distribution"]
+    assert sp["half_of_windows_under"] == 0.09
+    assert sp["one_in_five_over"] == 0.20
     assert sp["sessions_measured"] == 8
 
 
@@ -422,10 +423,123 @@ def test_stale_book_never_wakes_the_model(tmp_path, monkeypatch):
     assert last["reading"] == {"line": "old"}    # sentence carried, not re-made
 
 
+_EMPTY_BAND = {"top": [], "gap_pp": None, "tie": None, "lo": None, "hi": None,
+               "reported": None, "in_window": None}
+
+
 def test_fresh_book_stamps_its_age_and_scene_carries_it():
-    sc = SR.build_scene(mkrow([[1300, 104], [1100, 100]],
-                              ts=T0 - timedelta(minutes=2)),
-                        {"top": [], "gap_pp": None, "tie": None,
-                         "lo": None, "hi": None, "reported": None,
-                         "in_window": None}, [], [], T0)
-    assert sc["clock"]["book_age_min"] == 2
+    """sr-7 moved this age off clock and onto the measurement it describes:
+    clock is the session calendar, data_sources holds the three disagreeing
+    clocks. It is also measured off meta.book_asof now — the feed re-serves a
+    cached book on about half of all scans, so a scan-clock age read 0-1 minute
+    on a book that was 2-4 minutes old."""
+    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=2))
+    row["meta"] = {"book_asof": (T0 - timedelta(minutes=5)).isoformat()}
+    sc = SR.build_scene(row, _EMPTY_BAND, [], [], T0)
+    assert sc["data_sources"]["options_book"]["age_min"] == 5   # the BOOK clock
+    assert "book_age_min" not in sc["clock"]
+
+    # no book stamp (early fixtures, pre-row_v4 rows) → the scan clock stands
+    # in, and says so: a scan is never older than the book it carries, so the
+    # fallback can only understate
+    bare = SR.build_scene(mkrow([[1300, 104], [1100, 100]],
+                                ts=T0 - timedelta(minutes=2)),
+                          _EMPTY_BAND, [], [], T0)["data_sources"]["options_book"]
+    assert bare["age_min"] == 2
+    assert bare["measured_at_is_fallback_scan_clock"] is True
+
+
+# --- sr-7: ONE age function, so the two gates cannot disagree ----------------
+@pytest.mark.parametrize("age_s, age_min", [(365.2, 6.1), (400.0, 6.7),
+                                            (419.9, 7.0)])
+def test_the_wake_gate_and_the_payload_gate_round_the_same_book(
+        age_s, age_min, tmp_path, monkeypatch):
+    """sr-7 shipped two age functions for an hour: read_once floored
+    (`int(secs // 60)`) while build_scene rounded, so a book aged in
+    [6.05, 7.00) minutes cleared the wake gate and failed the payload gate —
+    the model would have been asked for a direction and a magnitude in sigma
+    with no sigma ruler, no price and no book in the scene. It happened once in
+    3,409 recorded August scans (2026-08-24 12:18:15, 365.2s), on a quiet scan
+    that spent no call. A comment two lines from the constant claimed the two
+    gates "can never disagree"; the only way to make that true is for there to
+    be one function, so this walks the whole band that used to split them."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(SR, "_market_live", lambda: True)
+    monkeypatch.setattr(SR, "_ask", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("model call on a book the payload gate would empty")))
+    day = T0.date().isoformat()
+    (tmp_path / "sndk_reversion").mkdir(parents=True)
+    (tmp_path / "sndk_reads").mkdir(parents=True)
+    diary = tmp_path / "sndk_reversion" / f"{day}.jsonl"
+    reads = tmp_path / "sndk_reads" / f"{day}.jsonl"
+    # the scan clock is 2 minutes old and healthy-looking; the BOOK it carries
+    # is the one sitting in the band — the exact cached-feed shape that made
+    # the two roundings reachable in the first place
+    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=2))
+    row["meta"] = {"book_asof": (T0 - timedelta(seconds=age_s)).isoformat()}
+    diary.write_text(json.dumps(row) + "\n")
+
+    SR.read_once(now=T0, force=False)
+    last = SR._read_jsonl(reads)[-1]
+    assert last["book_age_min"] == age_min       # rounded, not floored
+    assert last["scan_age_min"] == 2.0
+    assert last["wake"] == "stale_book"          # ...and the wake gate agrees
+    assert last["wall_s"] is None
+
+    # the same book, through the payload's own gate at the same instant
+    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
+    dropped = sc["freshness_rules"]["blocks_dropped_this_scan"]
+    assert {d["age_min"] for d in dropped} == {age_min}
+    assert list(sc) == ["instrument", "data_sources", "clock", "freshness_rules"]
+
+
+def test_the_two_gates_agree_a_book_just_inside_the_ceiling_is_fine():
+    """The other edge of the same band: 6.0 minutes exactly is not stale, and
+    a gate that refused it would be refusing the ordinary cached scan."""
+    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=2))
+    row["meta"] = {"book_asof": (T0 - timedelta(seconds=362.9)).isoformat()}
+    assert SR._age_min(SR._book_asof(row), T0) == 6.0
+    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
+    assert sc["freshness_rules"]["blocks_dropped_this_scan"] == []
+    assert "magnet" in sc and "price" in sc
+
+
+# --- sr-7: the present-tense lexicon, running in the shadow ------------------
+def test_present_tense_narration_of_a_standing_field_is_flagged():
+    """The scene labels every OI-derived block "as of last night's close", and
+    a label is not a control — the doctrine already told the model the book was
+    N minutes stale and no reading ever discounted anything for it. A hit needs
+    BOTH halves: a noun that names a standing surface AND a verb that puts it
+    in the present. Either alone is ordinary prose."""
+    flags = SR._stale_language_flags(
+        {"line": "dealers are buying the 1500 wall right now"})
+    assert flags == ["are buying", "right now"]          # sorted, deduped
+    # a standing noun with no live verb — the sentence the scene wants
+    assert SR._stale_language_flags(
+        {"line": "the 1240 call wall sits 0.4σ above price"}) == []
+    # a live verb about something that really is live
+    assert SR._stale_language_flags(
+        {"line": "price is building a base right now"}) == []
+    # every field the model writes is read, not just the headline
+    assert SR._stale_language_flags(
+        {"line": "x", "cited": "vanna is stacking"}) == ["is stacking"]
+
+
+def test_the_lexicon_records_and_keeps_the_prose_while_it_is_measuring():
+    """The standing house rule for a new guard: run it in the shadow first. The
+    flag rides the read row so the rate is known before LEXICON_ENFORCE is
+    allowed to reject anything — a guard that has never fired is not evidence
+    that nothing is wrong, and one that fires on 40% of readings is not a guard
+    either. Measured on the recorded history: 17 of 391 distinct sentences."""
+    assert SR.LEXICON_ENFORCE is False
+    r = SR._validate_reading({"vector": "up", "magnitude_sigma": 0.12,
+                              "line": "dealers are buying the 1500 wall right now",
+                              "breaks_if": "a close back under 1240",
+                              "cited": "walls.call[0]"})
+    assert r["stale_language_flags"] == ["are buying", "right now"]
+    assert r["line"].startswith("dealers are buying")   # prose survives...
+    assert r["breaks_if"] and r["cited"]                # ...and so does the rest
+    assert r["vector"] == "up" and r["magnitude_sigma"] == 0.12
+    # a clean reading carries no key at all — absence is the scene's own word
+    clean = SR._validate_reading({"vector": "none", "line": "price sits mid-band"})
+    assert "stale_language_flags" not in clean

@@ -82,9 +82,33 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-6"                # bump on ANY change to the gates or the prompt.
+ERA = "sr-7"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
+                            # sr-7 (2026-08-30): PROVENANCE, and leaf names that
+                            # survive being read alone. The scene was honest
+                            # about arithmetic and silent about time — 0 of 53
+                            # leaves carried a source or a timestamp, and one
+                            # overnight OI snapshot was re-priced ~190x a day
+                            # against a live quote and told in the present
+                            # tense. Now: every block declares built_from;
+                            # data_sources carries the scan / quote / BOOK
+                            # clocks separately (the feed serves a cached book
+                            # on half the scans, so book age was understated by
+                            # 2-4 min on every one of them); book-derived sigma
+                            # distances measure from meta.chain_spot, which the
+                            # live spot misses by a median $2.13 and by $41.99
+                            # at worst; percentiles count DISTINCT BOOKS, not
+                            # scans; momentum's window is told on the book
+                            # clock and its "building/fading/steady" verdict is
+                            # gone (a fitted 0.5pp constant, the is_a_tie
+                            # pattern again); and freshness_rules DELETES a
+                            # block whose source aged out rather than labelling
+                            # it, because labelling was already tried. Renames:
+                            # dealer_flow -> dealer_positioning, gex ->
+                            # share_of_book_gamma_pp, price.now -> live_spot,
+                            # clock.book_age_min -> data_sources.options_book.
+                            # age_min (and finally measured off the book).
                             # sr-2 (2026-08-02, blueprint v3): the verdict left
                             # the payload — build_scene no longer carries
                             # arrow_already_decided; the model now infers its
@@ -181,10 +205,14 @@ INADMISSIBLE = ("dex_word", "pin_contested", "zone1_share", "pin_basis",
 
 # --- scene v2 derivations (each measured-or-absent; thresholds from the
 # --- recorded 07-28..31 distributions, pre-registered here) ------------------
-MOMENTUM_ROWS = 5           # rolling window: last 5 scans (~10 min at 120s) —
-                            # the blueprint's "3-5 snapshots"; 3 was twitch
-                            # (gex_d p50 −0.04pp over 3 rows)
-MOMENTUM_BUILD_PP = 0.5     # |Δ share| below this is "steady" (≈p75 of |gex_d|)
+MOMENTUM_ROWS = 5           # rolling window: the last 5 SCANS — the
+                            # blueprint's "3-5 snapshots"; 3 was twitch
+                            # (share-change p50 −0.04pp over 3 rows). Note it
+                            # is 5 scans, not 5 books: with the feed's ~50%
+                            # cache rate those 5 scans carry 3 distinct books
+                            # and span 8-12 minutes, which is why the window
+                            # is REPORTED off the book clock (sr-7) instead of
+                            # being labelled "10m" off a 120s scan cadence.
 VOL_TREND_MIN = 28          # minutes of history before a 30-min IV read exists
 VOL_TREND_MAX = 45          # a reference older than this is an outage artifact,
                             # not a 30-min window — the read is omitted instead
@@ -193,6 +221,8 @@ VOL_TREND_FLAT = 2.5        # |Δ IV| under this many vol pts reads "flat"
 _WALL_AGE_LOOKBACK = 120    # rows walked back when ageing a wall (~4h at 120s).
                             # A bound, not a judgement: past it the age reports
                             # absent rather than making the read quadratic.
+PCTL_CACHE_V = 2            # bump to invalidate pctl_prior.json — v2 counts
+                            # one observation per BOOK, not per scan (sr-7)
 PCTL_MIN_SESSIONS = 5       # a number's percentile against its own history is
                             # OMITTED under this many prior sessions. Round-2
                             # measured that per-day medians on this tape swing
@@ -200,6 +230,62 @@ PCTL_MIN_SESSIONS = 5       # a number's percentile against its own history is
                             # sentence about three days wearing the authority
                             # of a distribution. n always ships with the word.
 PCTL_MAX_SESSIONS = 22      # and it forgets past this, like terrain's month
+# sr-7 — the three things a scene number can be measured FROM, named once so a
+# block can declare its own provenance and a reader never has to infer it. These
+# strings are the scene's public vocabulary: `built_from` on a block, and
+# `freshness_rules.present_tense_forbidden_for` keys off the same names.
+WALL_CLOCK = "wall_clock"               # the session calendar — never ages
+LIVE_TAPE = "live_tape"                 # this scan's quote/path — seconds old
+OPTIONS_BOOK = "options_book"           # the chain snapshot: minutes old, cached
+OI_SNAPSHOT = "open_interest_snapshot"  # last night's close — NOT intraday
+
+# sr-7 freshness gate. A leaf whose source is older than its ceiling is DROPPED,
+# not annotated: the scene's own doctrine is "absence = not measured", and an
+# observation nobody can date is exactly that. The book ceiling matches
+# STALE_BOOK_MIN so the gate the wake uses and the gate the payload uses can
+# never disagree; the quote ceiling is deliberately tighter — a quote is the one
+# thing here that is supposed to be seconds old.
+MAX_BOOK_AGE_MIN = float(STALE_BOOK_MIN)
+RULER_MAX_DRIFT = 0.25      # a chain_spot further than this from the live spot
+                            # is a broken field, not a stale one: the worst
+                            # recorded gap over 3,392 August rows is $43.27 on a
+                            # ~$1,480 name (2.9%), so 25% cannot reject real data
+
+# ONE ceiling, and it is the book's. The first draft of sr-7 also carried
+# MAX_QUOTE_AGE_MIN = 2.0 against `now - row.ts`, on the reasoning that a quote
+# is supposed to be seconds old. That was a ceiling on the SCAN CADENCE wearing
+# a quote's name: the diary carries no quote timestamp at all (meta has
+# spot_source and no clock), the scanner fires every 120s, and the reader fires
+# on its own 120s timer — so the ceiling sat exactly on the cadence and deleted
+# `price` on 42 of 3,409 recorded August scans, on healthy tape, taking
+# live_spot out of a scene whose every other block was still telling the model
+# to convert distances using price.live_minus_book_spot_sigma.
+#
+# Nothing is lost by removing it. Book age is never smaller than scan age, so
+# the book ceiling already covers every case a real quote ceiling would, and
+# data_sources.scan_taken_at states the scan's own age for anyone who wants it.
+#
+# open_interest and wall_clock are absent for the opposite reason: OI is ~18
+# hours old BY DESIGN (saying so is the fix, dropping it is not) and the
+# calendar cannot go stale. A source missing from this table is never dropped.
+_MAX_AGE_MIN = {OPTIONS_BOOK: MAX_BOOK_AGE_MIN}
+
+# sr-7: which blocks may never be narrated in the present tense. Everything here
+# derives from open interest, which updates once overnight — "dealers are
+# buying" about a field measured at yesterday's close is a false statement about
+# time, not a debatable read. LEXICON_ENFORCE runs the check in the shadow
+# first (the standing house rule for any new guard): the flag is recorded on the
+# read row so the rate can be measured before it is allowed to reject anything.
+PRESENT_TENSE_FORBIDDEN_FOR = ("magnet", "walls", "breadth",
+                               "dealer_positioning", "regime.charm", "regime.flip")
+LEXICON_ENFORCE = False
+_STALE_NOUNS = ("magnet", "wall", "walls", "dealer", "gamma", "charm",
+                "breadth", "vanna", "open interest", "oi")
+_LIVE_VERBS = ("is building", "are building", "is fading", "are fading",
+               "is buying", "are buying", "is selling", "are selling",
+               "right now", "currently", "just now", "is stacking",
+               "are stacking", "is piling", "are piling")
+
 WALLS_PER_SIDE = 2          # the ladder stops at 2 — deeper strikes are noise
 
 # --- the model call ----------------------------------------------------------
@@ -300,6 +386,87 @@ def _ts(r: dict) -> Optional[datetime]:
         return _parse_ts(r["ts"])
     except (KeyError, TypeError):
         return None
+
+
+def _book_asof(row: dict) -> Optional[datetime]:
+    """When the OPTIONS BOOK in this row was actually measured.
+
+    sr-7. Every structural number in the scene — magnet, walls, breadth, dealer
+    positioning, charm, flip — is re-priced from this snapshot, and the snapshot
+    is NOT the scan: the feed serves a disk cache on half the scans, so a row
+    written at 11:04 routinely carries a book measured at 11:02 (measured over
+    2026-08-28: 188 scans, 94 distinct books, every second row a repeat). Age
+    measured off the scan clock therefore reads 0-1 minute on a book that is
+    2-4 minutes old, which is the error this function exists to end.
+
+    Falls back to the row's own timestamp when meta.book_asof is absent (early
+    fixtures, pre-row_v4 rows) — a fallback that can only UNDERSTATE age, so it
+    is stamped as such by `_book_clock` rather than passed off as measured."""
+    t = _parse_ts((row.get("meta") or {}).get("book_asof"))
+    return t if t is not None else _ts(row)
+
+
+def _age_min(t: Optional[datetime], now: datetime) -> Optional[float]:
+    """Minutes between `t` and `now`, to one decimal. None when undated.
+
+    Module-level and singular ON PURPOSE. sr-7 shipped two of these for an hour:
+    read_once floored (`int(secs // 60)`) while build_scene rounded, so a book
+    aged in [6.05, 7.00) minutes passed the wake gate and failed the payload
+    gate — the model would have been asked for a direction and a magnitude in
+    sigma with no sigma ruler, no price and no book in the scene. It happened
+    once in 3,409 recorded August scans (2026-08-24 12:18:15, 365.2s), on a
+    quiet scan that spent no call. A comment two lines from the constant claimed
+    the two gates "can never disagree"; the only way to make that true is for
+    there to be one function."""
+    if t is None:
+        return None
+    return round(max(0.0, (now - t).total_seconds() / 60.0), 1)
+
+
+def _book_is_repeat(row: dict, prev_row: Optional[dict]) -> Optional[bool]:
+    """True when this scan re-serves the previous scan's book unchanged."""
+    a = (row.get("meta") or {}).get("book_asof")
+    # `.get("meta", {})` returns a STORED None rather than the default, so a row
+    # written with an explicit `"meta": null` crashed build_scene outright and
+    # took the read row and the arrow down with it — the one thing this module's
+    # torn-row rule says must never happen. Every other meta read here uses this
+    # idiom; this line was the exception.
+    b = ((prev_row or {}).get("meta") or {}).get("book_asof")
+    if a is None or b is None:
+        return None
+    return a == b
+
+
+def _distinct_books(rows: list[dict]) -> list[datetime]:
+    """Today's book timestamps with consecutive repeats collapsed, oldest first.
+
+    This is the denominator every "unusual for this tape" claim must use. A
+    percentile over SCANS counts each cached book twice and quietly halves the
+    effective sample — the tag then describes the scan cadence, not the book."""
+    out: list[datetime] = []
+    seen = None
+    for r in rows:
+        raw = (r.get("meta") or {}).get("book_asof")
+        key = raw if raw is not None else r.get("ts")
+        if key is None or key == seen:
+            continue
+        seen = key
+        t = _book_asof(r)
+        if t is not None:
+            out.append(t)
+    return out
+
+
+def _median_gap_min(stamps: list[datetime]) -> Optional[float]:
+    """Median minutes between consecutive stamps — the measured cadence, never
+    an assumed one. None under two stamps."""
+    if len(stamps) < 2:
+        return None
+    gaps = sorted((b - a).total_seconds() / 60.0
+                  for a, b in zip(stamps, stamps[1:]))
+    m = len(gaps) // 2
+    val = gaps[m] if len(gaps) % 2 else (gaps[m - 1] + gaps[m]) / 2.0
+    return round(val, 1)
 
 
 def with_path(row: dict, rows: list[dict]) -> dict:
@@ -668,28 +835,41 @@ _DOCTRINE = f"""You read one stock's dealer-positioning snapshot COLD and infer 
 
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical day's move) runs 8-10% of the share price — enormous. It has weekly expiries, not daily, so most days have no expiry at all. Standing levels come from open interest, which is yesterday's positioning about a stock that can move 12% in a session.
 
+FIELD NAMES SAY WHAT THEY ARE. Every leaf in this scene is named so it can be read alone: a `_pp` suffix is percentage points, `_bn` is billions of dollars, `_musd` is millions, `_min` is minutes, `_sigma` is a distance in sigma. Read the name before you read the number.
+
+WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any other block is worth):
+- data_sources holds THREE separate clocks and they disagree on purpose. `scan_taken_at` is when this row was written. `price_quote.quoted_at` is when the spot was good — seconds. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
+- `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves that on every scan against `strikes_compared_today` strikes. What moves intraday is price moving under a fixed map, not the map moving.
+- Because of that, THESE BLOCKS MAY NEVER BE NARRATED IN THE PRESENT TENSE: {", ".join(PRESENT_TENSE_FORBIDDEN_FOR)}. "Dealers are buying", "the wall is building", "gamma is piling up" are false statements about time, not debatable reads. Say "as of last night's close" or say nothing. Only `momentum` and `*_change_30min` fields describe something that moved today.
+- freshness_rules is enforced, not advisory: a block whose source aged past its ceiling is DELETED before you see it, and `blocks_dropped_this_scan` names what went. So an absent block may mean "measured but too old" — check there before calling anything unknown.
+
+THE TWO RULERS, AND WHICH ONE A DISTANCE USES:
+- `price.live_spot` is where the stock is NOW. `price.spot_when_book_was_measured` is where it was when the chain was pulled. On a cached row these differ by a median of about $2 and by as much as $42.
+- Any block carrying `sigma_measured_from: spot_when_book_was_measured` measures its distances from the BOOK's spot, because that is the only frame in which the book's own numbers are consistent. To convert any of those to a distance from where price actually is, SUBTRACT `price.live_minus_book_spot_sigma` — it is how far the live spot sits above the book's spot, so taking it off a book-measured distance is what moves that distance into the live frame. Its dollar twin `price.live_minus_book_spot_dollars` sits beside it and reads the same way. Only `price.vwap_dist_sigma_from_live_spot` is already measured from the live spot, and its name says so.
+
 HOW TO READ THE SCENE (grouped by force, not by metric):
-- clock: front_expiry.dte is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while dte 0 collapses to expiry-day mechanics where pinning and charm run at full strength. minutes_to_close says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape. book_age_min is how old the newest scan is: 0-2 is a live tape, older means every number in this scene is that many minutes stale — say so if you lean on one.
-- scale: the sigma ruler, plus aem — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
-- regime: the day's character. vol_trend says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. flip shows the chop band (ct=upper edge, pt=lower edge, center) and where price sits in it — price_in_band words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and ct/pt are that center plus and minus a fixed 0.25 sigma — the edges are arithmetic, not three independent levels, so three of them agreeing is one witness, not three. charm is time-decay hedging: magnitude (uncalibrated, compare day to day) and the strike it funnels toward late in the session — a level, never a promised direction.
-- magnet: strikes pulling price. gap_pp is the top strike's lead over the runner-up in points of gamma mass — SMALL means no strike is really in charge, and there is no threshold where it flips: read the number, and read gap_vs_own_history for whether today's lead is unusual for this tape.
-- breadth: how lopsided the book's resistance is (0 = even). It NEVER points a direction — both readings of which side a heavy book favours are unestablished here. It also reads the same gamma pile as the magnet, so treat the two as one witness, not two.
-- momentum: change over the stated window, top magnet strikes only — building vs fading beats any static level. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
-- dealer_flow: standing dealer positioning. dex net is $-delta in billions from an assumed-sign book, and it is POSITIVE ON EVERY SCAN BY CONSTRUCTION — the arithmetic cannot produce another sign, and it has been positive on 1,675 of 1,675 recorded rows. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only net_change_30min can be news. vanna (in $M per vol point) only matters when vol_trend is moving.
-- walls: standing structure, up to two per side, ordered by DISTANCE — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). gex is the wall's share of total book gamma in percent — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_behind / put_heaviest_behind. unchanged_min is how long that wall has held; a wall that has not moved in hours is standing structure, not news.
-- price.vwap_dist_sigma is the volume-anchored level, and the only level on this board that is not derived from the flip.
-- ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_clear` flag or `flip.none_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a clear-flag = known empty. Never confuse the two.
+- clock is the SESSION calendar and nothing else. `front_expiry.days_to_expiry` is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while 0 collapses to expiry-day mechanics where pinning and charm run at full strength. `minutes_to_close` says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape.
+- scale: the sigma ruler, plus `expected_move_today_asym` — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
+- regime: the day's character. `vol_trend` says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. `flip` is the chop band: `band_upper_edge_ct_sigma`, `band_lower_edge_pt_sigma`, `band_center_is_gamma_flip_sigma`, and `live_price_vs_band` for where price sits in it. Words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and the edges are that center plus and minus `edges_are_center_plus_minus_sigma` — arithmetic, not three independent levels, so three of them agreeing is one witness, not three. `charm` is time-decay hedging: `magnitude_musd_per_day_uncalibrated` (compare day to day, never to another book) and `drifts_toward_strike`, the level it funnels toward late in the session — a level, never a promised direction.
+- magnet: strikes pulling price, each with its `share_of_book_gamma_pp`. `top_strike_lead_pp` is the top strike's lead over the runner-up in points of gamma mass — SMALL means no strike is really in charge, and there is no threshold where it flips: read the number, and read `top_strike_lead_vs_own_history` for whether today's lead is unusual for this tape. That comparison counts DISTINCT BOOKS, not scans, so a cached book never votes twice.
+- breadth: `lopsidedness_0_is_even` is how one-sided the book's resistance is. It NEVER points a direction — both readings of which side a heavy book favours are unestablished here. `heavier_side` names a side as a fact, not a lean. It also reads the same gamma pile as the magnet (`measures_same_gamma_pile_as` says so), so treat the two as one witness, not two.
+- momentum: the ONLY block here that describes change during today's session. `window_between_books` tells you exactly what was compared — `books_compared` distinct books spanning `span_min` minutes, measured on the book clock, not the scan clock. `share_of_book_gamma_change_pp` and `gross_volume_change_contracts` are the change itself; there is no verdict word, because a fixed threshold cannot tell building from noise. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
+- dealer_positioning: standing dealer positioning as of last night's close. `net_delta_bn` is $-delta in billions from an assumed-sign book, and `net_delta_sign_is_formula_artifact` is true because the arithmetic cannot produce another sign — it has been positive on 1,675 of 1,675 recorded rows. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only `net_delta_change_30min_bn` can be news. `net_vanna_musd_per_vol_point` only matters when vol_trend is moving.
+- walls: standing structure, up to two per side, ordered by DISTANCE (`ordered_by` says so) — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `share_of_book_gamma_pp` is the wall's share of total book gamma — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
+- history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
+- ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_has_no_wall` flag or `flip.no_flip_anywhere_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a no-wall flag = known empty. Never confuse the two.
 
 WHEN TO REACH OUTSIDE THE SCENE (both optional, most reads need neither):
-- History: run `{_RAG_CMD} query --help` for narrative recall, and `{_RAG_CMD} series --help` for the numeric spot/magnet/walls series by time (and per-strike with --strike). Reach for them when something does not add up from the live snapshot alone — price testing a level unseen today (history.level_unseen_today flags it), a level acting out of character, or a cross-day question ("has 1300 held before?"). Day tier = today's slices + day summaries; month tier = standing terrain. Exact asks go through the numbers, not the text: past sessions answer to --date/--from-date/--to-date, --min-move (signed %: -5 = fell 5%+), and --near-strike (matches any day that traded through the level) — use --text only for meaning ("rejected the wall"), never for dates or biggest/worst. History is context, never the trigger — the live scene stays primary.
-- Outside world: when the tape is genuinely abnormal (history.abnormal_tape, an outsized gap or move), a human would ask WHY — use WebSearch for the catalyst (earnings, macro, news) or sector context. Extreme cases only, not every scan.
+- History: run `{_RAG_CMD} query --help` for narrative recall, and `{_RAG_CMD} series --help` for the numeric spot/magnet/walls series by time (and per-strike with --strike). Reach for them when something does not add up from the live snapshot alone — price testing a level unseen today (history.price_at_level_unseen_earlier_today flags it), a level acting out of character, or a cross-day question ("has 1300 held before?"). Day tier = today's slices + day summaries; month tier = standing terrain. Exact asks go through the numbers, not the text: past sessions answer to --date/--from-date/--to-date, --min-move (signed %: -5 = fell 5%+), and --near-strike (matches any day that traded through the level) — use --text only for meaning ("rejected the wall"), never for dates or biggest/worst. History is context, never the trigger — the live scene stays primary.
+- Outside world: when the tape is genuinely abnormal (history.tape_abnormal_vs_own_history, an outsized gap or move), a human would ask WHY — use WebSearch for the catalyst (earnings, macro, news) or sector context. Extreme cases only, not every scan.
 
 HONESTY RULES, all of them load-bearing:
 - Never cite a field listed in frozen_do_not_cite as the reason for anything new. If the magnet has not moved in two hours, it is not news.
-- The magnet is usually a TIE. When gap_pp is small, no strike is really in charge — say so rather than naming one.
+- Never narrate an open-interest block in the present tense. See the provenance rules above — this is the one that will be checked.
+- The magnet is usually a TIE. When top_strike_lead_pp is small, no strike is really in charge — say so rather than naming one.
 - Never invent a level. If price is past the last named level on the board, say exactly that — on this name it is often true.
-- Thirty-minute moves here have a SPREAD, not a typical size: half run under 0.09 sigma, one in five exceeds 0.20, one in twenty exceeds 0.46, and the worst recorded is 1.71 (see scale.move_30min_sigma, with how many sessions it rests on). Size your magnitude against the whole spread — a big call needs a named force behind it, but the tail is real, so never let the median become your ceiling. Pointing at a level 0.6 sigma away is still a landmark, not a 30-minute target.
-- The one pattern this tape has shown any short-horizon stability in is MEAN REVERSION: a vector pointing the same way price just travelled (moved_last_30min_sigma) is the least trustworthy kind and needs extra evidence beyond the move itself.
+- Thirty-minute moves here have a SPREAD, not a typical size: half run under 0.09 sigma, one in five exceeds 0.20, one in twenty exceeds 0.46, and the worst recorded is 1.71 (see scale.move_30min_sigma_distribution, with how many sessions it rests on). Size your magnitude against the whole spread — a big call needs a named force behind it, but the tail is real, so never let the median become your ceiling. Pointing at a level 0.6 sigma away is still a landmark, not a 30-minute target.
+- The one pattern this tape has shown any short-horizon stability in is MEAN REVERSION: a vector pointing the same way price just travelled (price.moved_last_30min_sigma) is the least trustworthy kind and needs extra evidence beyond the move itself.
 - "none" is an honest vector. When the evidence genuinely balances, say what is balanced instead of forcing a lean.
 
 OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence:
@@ -697,8 +877,25 @@ OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence:
  "magnitude_sigma": <expected travel over the next ~30 minutes, in sigma — omit when vector is "none">,
  "line": "<one sentence, max 24 words: the read and the force behind it>",
  "breaks_if": "<one short clause naming the specific level or condition that would flip this read>",
- "cited": "<the one or two fields and numbers you leaned on>"}}
-Keep it under 100 words total. Plain words. No jargon, no hedging stacks, no restating numbers you were given."""
+ "cited": "<the one or two fields and numbers you leaned on>"}}"""
+
+
+def _stale_language_flags(reading: dict) -> list[str]:
+    """Phrases that narrate an open-interest field as if it were happening now.
+
+    sr-7. The scene labels every OI-derived block "as of last night's close",
+    and a label is not a control: the same doctrine already told the model the
+    book was N minutes stale and no reading ever discounted anything for it.
+    This is the measurement half of the control — every hit is recorded on the
+    read row so the rate is known before LEXICON_ENFORCE is allowed to reject
+    anything. A guard that has never fired is not evidence that nothing is
+    wrong; a guard that fires on 40% of readings is not a guard either, and
+    only the tape can say which one this is."""
+    text = " ".join(str(reading.get(k) or "")
+                    for k in ("line", "breaks_if", "cited")).lower()
+    if not any(w in text for w in _STALE_NOUNS):
+        return []
+    return sorted({v for v in _LIVE_VERBS if v in text})
 
 
 def _validate_reading(obj: dict) -> Optional[dict]:
@@ -717,6 +914,17 @@ def _validate_reading(obj: dict) -> Optional[dict]:
                     reading["magnitude_sigma"] = round(min(max(mag, 0.0), 3.0), 2)
             except (TypeError, ValueError):
                 pass               # a vector without a magnitude is honest
+    if reading:
+        flags = _stale_language_flags(reading)
+        if flags:
+            reading["stale_language_flags"] = flags
+            if LEXICON_ENFORCE:
+                # the enforcing branch does NOT silently rewrite the sentence:
+                # a laundered read is worse than a refused one. The row keeps
+                # the flags and loses the prose, which is a visible failure.
+                return {k: v for k, v in reading.items()
+                        if k in ("vector", "magnitude_sigma",
+                                 "stale_language_flags")}
     return reading or None
 
 
@@ -829,7 +1037,7 @@ def flip_block(row: dict, sd, ran_30m: Optional[float]) -> Optional[dict]:
     """The chop band told as one object: edges, center, and where price sits.
     ct/pt are the ladder's transition edges; the center IS the gamma flip
     (live-schema fact: profile_ladder.hvl = the flip — there is no volume-shelf
-    hvl on this book). price_in_band is position from the ladder's own zone
+    hvl on this book). live_price_vs_band is position from the ladder's own zone
     word, plus a drift clause only when the last 30 min actually moved."""
     ladder = row.get("profile_ladder")
     ladder = ladder if isinstance(ladder, dict) else {}
@@ -844,8 +1052,15 @@ def flip_block(row: dict, sd, ran_30m: Optional[float]) -> Optional[dict]:
     pos = words.get(ladder.get("state"))
     if pos and "inside band" in pos and isinstance(ran_30m, (int, float)) and abs(ran_30m) >= 0.05:
         pos += ", drifting toward " + ("ct (pos edge)" if ran_30m > 0 else "pt (neg edge)")
-    out = {"ct_sigma": ct_s, "pt_sigma": pt_s, "center_sigma": center_s,
-           "price_in_band": pos}
+    out = {"band_upper_edge_ct_sigma": ct_s,
+           "band_lower_edge_pt_sigma": pt_s,
+           "band_center_is_gamma_flip_sigma": center_s,
+           "edges_are_center_plus_minus_sigma": (
+               round((ct_s - pt_s) / 2.0, 2)
+               if ct_s is not None and pt_s is not None else None),
+           "live_price_vs_band": pos}
+    # the edge width is computed only when BOTH edges exist, so the None-filter
+    # below is the whole guard it needs — it cannot survive alone.
     return {k: v for k, v in out.items() if v is not None} or None
 
 
@@ -859,18 +1074,25 @@ def charm_block(row: dict) -> Optional[dict]:
     cex = fl.get("cex")
     if not isinstance(cex, (int, float)):
         return None
-    out = {"magnitude": round(abs(cex) / 1e6, 2)}
+    out = {"magnitude_musd_per_day_uncalibrated": round(abs(cex) / 1e6, 2)}
     if isinstance(fl.get("charm_wall"), (int, float)):
-        out["drift_toward"] = fl["charm_wall"]
+        out["drifts_toward_strike"] = fl["charm_wall"]
     return out
 
 
 def momentum_block(rows: list[dict], band: dict) -> Optional[dict]:
-    """Snapshot-over-snapshot deltas for the top magnet strikes over the last
-    MOMENTUM_ROWS scans. gex_d = the strike's share of front-book gamma mass,
-    in pp (scale-free — raw gamma is unit-opaque); vol_d = gross contracts
-    traded there since the reference scan, only when the strike sat inside
-    both windows (a window shift is the telescope, not flow).
+    """Book-over-book deltas for the top magnet strikes over the last
+    MOMENTUM_ROWS scans. share_of_book_gamma_change_pp = the strike's share of
+    front-book gamma mass, in pp (scale-free — raw gamma is unit-opaque);
+    gross_volume_change_contracts = contracts traded there since the reference
+    book, only when the strike sat inside both windows (a window shift is the
+    telescope, not flow).
+
+    sr-7 removed the verdict word (`read`: building / fading / steady). It was
+    MOMENTUM_BUILD_PP, a 0.5pp constant fitted in July, shipped to the model as
+    a finished judgement — the same pattern already deleted from `is_a_tie` and
+    `dex_word`. The change itself is the evidence and it is right here; a
+    threshold that cannot track a distribution must not speak for it.
 
     DELIBERATELY ABSENT (omit-never-null, flagged in the inventory doc):
     oi_d — upstream OI updates once daily, an intraday delta is a frozen 0;
@@ -881,6 +1103,12 @@ def momentum_block(rows: list[dict], band: dict) -> Optional[dict]:
     cur, ref = rows[-1], rows[-1 - MOMENTUM_ROWS]
     t_c, t_r = _ts(cur), _ts(ref)
     if t_c is None or t_r is None:
+        return None
+    # sr-7: comparing a book against itself yields 0.00 on every strike and
+    # reads as "steady" — a manufactured non-event. The feed serves a cached
+    # book on half the scans, so this is reachable whenever the cadence slips.
+    b_c, b_r = _book_asof(cur), _book_asof(ref)
+    if b_c is None or b_r is None or b_c <= b_r:
         return None
     def _pairs(r, key, absolute=False):
         # same torn-surface tolerance magnet_band has: a NaN or non-numeric
@@ -916,28 +1144,30 @@ def momentum_block(rows: list[dict], band: dict) -> Optional[dict]:
         if k not in mb_c or k not in mb_r:
             continue
         gex_d = mb_c[k] / tot_c * 100.0 - mb_r[k] / tot_r * 100.0
-        entry = {"gex_share_d_pp": round(gex_d, 2)}
+        entry = {"share_of_book_gamma_change_pp": round(gex_d, 2)}
         if k in vg_c and k in vg_r:            # _pairs already guarantees finite
-            entry["vol_d"] = int(vg_c[k] - vg_r[k])
-        vol_d = entry.get("vol_d")
-        # symmetric evidentiary standard: fading earns its hedge exactly the
-        # way building does (an unhedged "fading" was a one-way tilt)
-        if gex_d >= MOMENTUM_BUILD_PP:
-            entry["read"] = ("building" if (vol_d or 0) > 0
-                             else "building (vol unconfirmed)")
-        elif gex_d <= -MOMENTUM_BUILD_PP:
-            entry["read"] = ("fading" if (vol_d or 0) > 0
-                             else "fading (vol unconfirmed)")
-        else:
-            entry["read"] = "steady"
+            entry["gross_volume_change_contracts"] = int(vg_c[k] - vg_r[k])
         by[f"{k:g}"] = entry
     if not by:
         return None
-    span = int((t_c - t_r).total_seconds() // 60)
-    return {"window": f"last {MOMENTUM_ROWS} scans ({span}m)", "by_strike": by}
+    # sr-7: the window is told on the BOOK clock, because the numbers above are
+    # differences between two books, not between two scans. The old label said
+    # "last 5 scans (10m)" off the scan clock; measured book-to-book the same
+    # five scans span 8 or 12 minutes (median 12.3 over August), so the label
+    # was wrong by up to a quarter of its own window and wrong in a direction
+    # the model could not check. books_compared says how many distinct books
+    # the span actually contains — 5 cached scans can be as few as 3.
+    books = [t for t in (_book_asof(r) for r in rows[-1 - MOMENTUM_ROWS:])
+             if t is not None]
+    window = {"books_compared": len({t.isoformat() for t in books}),
+              "span_min": round((b_c - b_r).total_seconds() / 60.0, 1),
+              "first_book_measured_at": b_r.isoformat(),
+              "last_book_measured_at": b_c.isoformat()}
+    return {"built_from": [OPTIONS_BOOK],
+            "window_between_books": window, "by_strike": by}
 
 
-def dealer_flow_block(rows: list[dict]) -> Optional[dict]:
+def dealer_positioning_block(rows: list[dict]) -> Optional[dict]:
     """Second-order dealer lean, one place. dex = standing $-delta (billions)
     plus its timestamp-true 30-min change. vanna = front-book net ($M per vol
     point), armed by vol_trend. Each field measured-or-absent; an empty block
@@ -968,9 +1198,9 @@ def dealer_flow_block(rows: list[dict]) -> Optional[dict]:
         # one paragraph read once at the top of a cached block; the number is
         # what the model is actually looking at when it reasons, and a bare
         # signed figure invites the reading the sign cannot support.
-        dex = {"net": round(net / 1e9, 2),
-               "note": "sign is fixed by the formula, not the market — "
-                       "read net_change_30min, never the level"}
+        out["built_from"] = [OI_SNAPSHOT, OPTIONS_BOOK]
+        out["net_delta_bn"] = round(net / 1e9, 2)
+        out["net_delta_sign_is_formula_artifact"] = True
         t_now = _ts(row)
         if t_now is not None:
             for r in reversed(rows[:-1]):
@@ -981,13 +1211,13 @@ def dealer_flow_block(rows: list[dict]) -> Optional[dict]:
                     break            # outage-shaped window — no honest 30m read
                 ref = _fin((r.get("dex_views") or {}).get("net_dex_total"))
                 if ref is not None:
-                    dex["net_change_30min"] = round((net - ref) / 1e9, 2)
+                    out["net_delta_change_30min_bn"] = round((net - ref) / 1e9, 2)
                 break
-        out["dex"] = dex
     vex = _fin((row.get("flows_front") or {}).get("vex"))
     if vex is not None:
-        out["vanna"] = {"net": round(vex / 1e6, 2),
-                        "note": "most alive on IV moves"}
+        out.setdefault("built_from", [OI_SNAPSHOT, OPTIONS_BOOK])
+        out["net_vanna_musd_per_vol_point"] = round(vex / 1e6, 2)
+        out["vanna_matters_when"] = "vol_trend is rising or falling"
     return out or None
 
 
@@ -1008,7 +1238,7 @@ def _prior_sessions(today: str) -> dict:
     cache = _reads_dir() / "pctl_prior.json"
     try:
         blob = json.loads(cache.read_text())
-        if blob.get("sessions") == key:
+        if blob.get("sessions") == key and blob.get("pctl_v") == PCTL_CACHE_V:
             return blob
     except (OSError, ValueError):
         pass
@@ -1019,6 +1249,7 @@ def _prior_sessions(today: str) -> dict:
             lines = p.read_text().splitlines()
         except OSError:
             continue
+        seen_book = None
         for ln in lines:
             try:
                 r = json.loads(ln)
@@ -1026,14 +1257,25 @@ def _prior_sessions(today: str) -> dict:
                 continue                      # a torn line is skipped, never fatal
             if (r.get("meta") or {}).get("forced"):
                 continue
+            # sr-7: ONE VOTE PER BOOK. Both graded quantities are pure functions
+            # of the option book, and the feed re-serves a cached book on half
+            # the scans — so a per-scan distribution counts every second
+            # observation twice and calls the duplicate independent evidence.
+            # Measured on 2026-08-28: 188 scans, 94 books. The correction is not
+            # cosmetic — today's lopsidedness graded "bigger than 78% of scans"
+            # and "bigger than 58% of distinct books" off the same tape.
+            bk = (r.get("meta") or {}).get("book_asof") or r.get("ts")
+            if bk is not None and bk == seen_book:
+                continue
+            seen_book = bk
             b = magnet_band(r)
             if b and len(b["top"]) >= 2 and b["gap_pp"] is not None:
                 gaps.append(b["gap_pp"])
             lp = _lopsided(r)
             if lp is not None:
                 lops.append(lp)
-    blob = {"sessions": key, "magnet_gap_pp": sorted(gaps),
-            "lopsidedness": sorted(lops)}
+    blob = {"sessions": key, "pctl_v": PCTL_CACHE_V,
+            "magnet_gap_pp": sorted(gaps), "lopsidedness": sorted(lops)}
     try:
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(blob))
@@ -1043,8 +1285,12 @@ def _prior_sessions(today: str) -> dict:
 
 
 def _pctl_word(name: str, value, now: Optional[datetime]) -> Optional[str]:
-    """"bigger than 12% of scans (8 prior sessions)" — a number's standing in
-    its own recorded history, with n on its face.
+    """"bigger than 12% of 1,001 distinct books in the 8 prior sessions" — a
+    number's standing in its own recorded history, with n on its face.
+
+    sr-7: n is DISTINCT BOOKS, not scans. The denominator is on the face of the
+    string because the two differ by 2x and the difference moves the answer —
+    the same lopsidedness reads p78 against scans and p58 against books.
 
     This is the granular replacement for a pass/fail threshold, and it is
     granular in the one way that survives: a fixed 5.0pp cut fitted in July
@@ -1061,8 +1307,8 @@ def _pctl_word(name: str, value, now: Optional[datetime]) -> Optional[str]:
     if n < PCTL_MIN_SESSIONS or not xs:
         return None
     below = sum(1 for x in xs if x < value)
-    return (f"bigger than {round(below / len(xs) * 100)}% of scans "
-            f"in the {n} prior sessions")
+    return (f"bigger than {round(below / len(xs) * 100)}% of {len(xs):,} "
+            f"distinct books in the {n} prior sessions")
 
 
 def _lopsided(row: dict) -> Optional[float]:
@@ -1099,29 +1345,42 @@ def breadth_block(row: dict, now: Optional[datetime]) -> Optional[dict]:
         return None
     sh = _shove(row)
     up, dn = sh.get("shove_up_margin"), sh.get("shove_down_margin")
-    out = {"lopsidedness": rel,
-           "heavier": "up" if up > dn else "down",
-           "note": "same gamma pile as magnet — not a second opinion"}
+    out = {"built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
+           "lopsidedness_0_is_even": rel,
+           "heavier_side": "up" if up > dn else "down",
+           "measures_same_gamma_pile_as": "magnet"}
     w = _pctl_word("lopsidedness", rel, now)
     if w:
-        out["vs_own_history"] = w
+        out["lopsidedness_vs_own_history"] = w
     return out
 
 
 def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
-                 now: Optional[datetime] = None) -> Optional[dict]:
+                 now: Optional[datetime] = None, ruler_spot=None,
+                 ruler_name: str = "spot_when_book_was_measured") -> Optional[dict]:
     """Laddered standing walls, up to WALLS_PER_SIDE a side, NEAREST first —
     walls.call[0]/put[0] are the old gwc/gwp (same clustering rule the ladder
     used: gw_vocab.cluster_walls on the measured net_by_strike surface).
     NEAREST is the whole ordering: [0] is what price meets first, never
-    "the strongest" — see `_wall_ages` and the *_heaviest_behind key below.
+    "the strongest" — see `_wall_ages` and the *_heaviest_wall_behind_the_ladder
+    key below.
     `gex` = the cluster's share of total book |γ| in percent — scale-free, so
     the model can weigh wall against wall without unit-opaque raw gamma. The
     denominator is the FULL net_by_strike surface, not the surviving clusters:
     a cluster-only total shifts scan-to-scan as strikes cross the 25%
     concentration floor, so "the wall's share rose" could be pure denominator
-    churn (SE review 08-02)."""
-    spot = row.get("spot")
+    churn (SE review 08-02).
+
+    sr-7 ONE-FRAME RULE. `ruler_spot` decides BOTH which side a cluster is filed
+    under and how far away it is reported to be. The first draft of sr-7 moved
+    only the distance to the book's spot and left clustering and the side filter
+    on the live spot, which put 52 of 10,101 recorded wall entries under a side
+    their own sigma contradicted — 2026-08-05 11:58 shipped
+    walls.call[0] = {strike: 1400.0, sigma: -0.04} while the doctrine told the
+    model call[0] is the first thing price meets going UP. Whichever frame is
+    the right one to argue about, a single wall entry must not be measured in
+    two of them."""
+    spot = ruler_spot if ruler_spot is not None else row.get("spot")
     nbs = (row.get("gex_views") or {}).get("net_by_strike")
     if not nbs or not isinstance(spot, (int, float)):
         return None
@@ -1144,17 +1403,20 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
 
     def entry(c, age=None):
         e = {"strike": c["peak"], "sigma": sd(c["peak"]),
-             "gex": round(c["strength"] / tot * 100.0, 1)}
+             "share_of_book_gamma_pp": round(c["strength"] / tot * 100.0, 1)}
         if age is not None:
             mins, exact = age
-            e["unchanged_min" if exact else "unchanged_min_at_least"] = mins
+            e["unchanged_for_min" if exact
+              else "unchanged_for_at_least_min"] = mins
         return {k: v for k, v in e.items() if v is not None}
 
     # selection is UNCHANGED from sr-2 on purpose: a cluster must match the
     # side by gamma sign AND sit on that side of spot. Only the ageing and the
     # heaviest-behind key are new — widening the filter would quietly redefine
     # what a wall is, which is not a documentation fix.
-    out = {}
+    out = {"built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
+           "sigma_measured_from": ruler_name,
+           "ordered_by": "distance_from_spot_nearest_first"}
     for key, pool, near in (
             ("call", [c for c in clusters
                       if c["side"] == "call" and c["peak"] > spot],
@@ -1169,10 +1431,10 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
             # key made that indistinguishable from a torn feed, and on this
             # name price in the clear is often the loudest fact in the scene.
             # A true sensor failure still returns None above — unchanged.
-            out[key + "_side_clear"] = True
+            out[key + "_side_has_no_wall"] = True
             continue
         ladder = sorted(pool, key=near)[:WALLS_PER_SIDE]
-        ages = _wall_ages(rows, key, [c["peak"] for c in ladder], now)
+        ages = _wall_ages(rows, key, [c["peak"] for c in ladder], now)  # noqa: E501
         out[key] = [entry(c, ages.get(c["peak"])) for c in ladder]
         # sr-3: the ladder is ordered by DISTANCE, so the heaviest cluster on a
         # side can sit third and never ship at all. Measured 2026-08-06 15:59:
@@ -1183,8 +1445,8 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
         # when it is not already in it, so neither fact can hide the other.
         top = max(pool, key=lambda c: c["strength"])
         if top["peak"] not in {c["peak"] for c in ladder}:
-            out[key + "_heaviest_behind"] = entry(top)
-    return out or None
+            out[key + "_heaviest_wall_behind_the_ladder"] = entry(top)
+    return out
 
 
 def _wall_ages(rows: Optional[list[dict]], side: str, strikes: list[float],
@@ -1209,7 +1471,13 @@ def _wall_ages(rows: Optional[list[dict]], side: str, strikes: list[float],
     seen: dict = {}
     oldest = None
     for r in reversed(rows[:-1][-_WALL_AGE_LOOKBACK:]):
-        sp, nbs = r.get("spot"), (r.get("gex_views") or {}).get("net_by_strike")
+        # each historical row is clustered in ITS OWN book frame, matching what
+        # walls_ladder did for the newest row. Walking back in a different frame
+        # would make a wall look like it moved when only the ruler did.
+        sp = _fin((r.get("meta") or {}).get("chain_spot"))
+        if sp is None:
+            sp = r.get("spot")
+        nbs = (r.get("gex_views") or {}).get("net_by_strike")
         t = _ts(r)
         if not nbs or not isinstance(sp, (int, float)) or t is None:
             break                      # a hole is not evidence of holding
@@ -1257,20 +1525,73 @@ def history_flags(row: dict, rows: list[dict], vs_prior_pct: Optional[float],
     "abnormal" stays a genuine exception, never a majority state (a flag
     that is usually on trains the model to ignore it, and it licenses the
     outside-world reach far too often)."""
-    out = {}
+    out = {"built_from": [LIVE_TAPE]}
     spot = _fin(row.get("spot"))
     prior = [s for r in rows[:-1] if (s := _fin(r.get("spot"))) is not None]
     if spot is not None and len(prior) >= 30 and \
             (spot > max(prior) or spot < min(prior)):
-        out["level_unseen_today"] = True
+        out["price_at_level_unseen_earlier_today"] = True
     sig, vs = _fin(row.get("sigma")), _fin(vs_prior_pct)
     sigma_pct = (sig / spot * 100.0) if (sig and spot) else None
     day_bar = (ABNORMAL_DAY_SIGMA * sigma_pct if sigma_pct
                else ABNORMAL_PCT_FLOOR)
     if (vs is not None and abs(vs) >= day_bar) or \
             ((r30 := _fin(ran_30m)) is not None and abs(r30) >= 0.5):
-        out["abnormal_tape"] = True
-    return out or None
+        out["tape_abnormal_vs_own_history"] = True
+    # the declaration alone is not a finding — a block holding only `built_from`
+    # is an empty block and must be omitted, not shipped as structure
+    return out if len(out) > 1 else None
+
+
+OI_MIN_STRIKES_COMPARED = 5   # below this the "unchanged" claim is not worth
+                              # making — say nothing rather than say it thinly
+
+
+def _oi_unchanged_today(rows: list[dict]) -> tuple:
+    """Did open interest actually hold still across today's scans?
+
+    sr-7. The scene now states outright that every structural number rests on
+    last night's OI, so that claim gets re-measured on every scan instead of
+    resting on a one-off audit. Compares today's EARLIEST recorded oi_by_strike
+    surface against the newest one.
+
+    Two traps, both hit on live data while writing this:
+      * the first row of a session often carries no surface at all (warm-up),
+        so the comparison starts at the first row that HAS one, not at rows[0];
+      * the strike window is spot-relative and walks with price, so the two
+        surfaces list different strikes. Comparing the raw lists answers a
+        question about the telescope. Only the INTERSECTION is compared, which
+        is the question actually being asked: did the OI on a strike change?
+
+    Returns (unchanged, strikes_compared); (None, None) when unanswerable —
+    absence is never a "yes"."""
+    def surf(r):
+        out = {}
+        for pair in ((r.get("gex_views") or {}).get("oi_by_strike") or []):
+            try:
+                k, v = _fin(pair[0]), _fin(pair[1])
+            except (TypeError, IndexError, KeyError):
+                continue
+            if k is not None and v is not None:
+                out[k] = v
+        return out
+
+    last = surf(rows[-1]) if rows else {}
+    first = next((f for f in (surf(r) for r in rows[:-1]) if f), {})
+    common = set(first) & set(last)
+    if len(common) < OI_MIN_STRIKES_COMPARED:
+        return None, None
+    return all(first[k] == last[k] for k in common), len(common)
+
+
+def _prior_session_date(today: str) -> Optional[str]:
+    """The most recent session BEFORE today that this tape actually recorded —
+    the session whose close the standing open interest was struck at. Read off
+    the diary rather than off a weekday calendar, so a holiday or a dark day
+    can never be handed over as a date that was never traded."""
+    days = sorted(pp.stem for pp in _diary_dir().glob("2026-*.jsonl")
+                  if pp.stem < today)
+    return days[-1] if days else None
 
 
 def build_scene(row: dict, band: dict, frozen: list,
@@ -1280,19 +1601,83 @@ def build_scene(row: dict, band: dict, frozen: list,
     The old arrow_already_decided block is gone (a pre-baked conclusion anchors
     the read); the deterministic arrow still computes and still draws on the
     chart, it just never enters this JSON. Fields are grouped by force (scale /
-    regime / magnet / momentum / dealer_flow / walls), and everything the
+    regime / magnet / momentum / dealer_positioning / walls), and everything the
     constancy audit found frozen across 756 rows stays omitted rather than
     nulled — 'absent' and 'zero' must never look alike, and a field that
     cannot vary cannot inform. Same rule for every new block: not cleanly
-    computed → absent."""
+    computed -> absent.
+
+    sr-7 (2026-08-30) is a NAMING and PROVENANCE pass, not a new measurement.
+    Two findings drove it:
+
+    (1) Nothing in the scene said WHEN any number was measured or WHAT it was
+        measured from. Zero of 53 leaves carried a source tag or a timestamp,
+        and the scene re-priced one overnight OI snapshot ~190 times a day
+        against a live quote while presenting the result in the present tense.
+        Every block now declares `built_from`, `data_sources` carries the three
+        clocks (scan / quote / book), and `freshness_rules` DROPS a block whose
+        source has aged out rather than trusting the reader to notice a label.
+
+    (2) Distances lied by a spot. Every sigma distance divided a LIVE spot into
+        a book measured at a different spot — median $2.13 apart on cached
+        rows, $41.99 at worst. Book-derived distances are now measured from
+        `spot_when_book_was_measured`, the blocks that use that ruler say so in
+        `sigma_measured_from`, and `price.live_minus_book_spot_sigma` is the
+        single number that converts one frame to the other.
+
+    Leaf names are the deliverable of this pass: a name must survive being read
+    alone, out of context, by someone who has never seen the rest of the file.
+    `gex` became `share_of_book_gamma_pp`; `net` became `net_delta_bn`; `now`
+    became `live_spot`; `window` became `window_between_books`. Nothing here is
+    a new number — it is the same book, finally saying what it is."""
     spot = _fin(row.get("spot"))
     sig = _fin(row.get("sigma")) or 0
+    meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+    # THE RULER. Every structural number below was computed against the spot the
+    # CHAIN saw, not the spot the quote feed is showing now. Dividing a live
+    # spot into that book is a category error that was silently costing up to
+    # 0.9 sigma of distance on a cached row, so the book's own spot is the
+    # denominator wherever the numerator came out of the book.
+    #
+    # Two guards, both learned the hard way from the book-age fallback next door.
+    # (1) SANITY. chain_spot is a new external dependency and _fin happily
+    #     returns 0.0 or a negative; a zero here would have shipped
+    #     top_strike_sigma 33.29 and walls at +32.54 with nothing complaining.
+    #     Recorded range over 3,392 August rows is 1170-1520, so a value that is
+    #     not positive and within RULER_MAX_DRIFT of the live spot is refused.
+    # (2) HONESTY. The fallback is announced. sigma_measured_from used to say
+    #     "spot_when_book_was_measured" even when there was no chain_spot to
+    #     measure from — the one place an sr-7 provenance tag could lie, and the
+    #     doctrine would then tell the model to convert with a field the scene
+    #     does not contain.
+    book_spot = _fin(meta.get("chain_spot"))
+    if book_spot is not None and spot is not None and (
+            book_spot <= 0 or abs(book_spot - spot) / spot > RULER_MAX_DRIFT):
+        book_spot = None
+    ruler_spot = book_spot if book_spot is not None else spot
+    ruler_name = ("spot_when_book_was_measured" if book_spot is not None
+                  else "live_spot_because_chain_spot_was_absent")
 
     def sd(v):
+        """Sigma distance from the spot the BOOK was measured at."""
+        v = _fin(v)
+        if v is None or not sig or ruler_spot is None:
+            return None
+        return round((v - ruler_spot) / sig, 2)
+
+    def sd_live(v):
+        """Sigma distance from the LIVE spot — for live-tape levels only."""
         v = _fin(v)
         if v is None or not sig or spot is None:
             return None
         return round((v - spot) / sig, 2)
+
+    def prune(d):
+        # omit-never-null INSIDE the blocks too: an early-session
+        # moved_last_30min or a missing prior_close must vanish, not read as
+        # null — the doctrine promises "missing = not measured", and a null
+        # keep-field would break that promise (fidelity audit #5, 08-02)
+        return {k: v for k, v in d.items() if v is not None}
 
     # the day's own path, which the old design never handed over at all
     path = [s for r in rows if (s := _fin(r.get("spot"))) is not None]
@@ -1311,70 +1696,60 @@ def build_scene(row: dict, band: dict, frozen: list,
     # measured. The old count-based path[-15] silently shortened across scan
     # gaps — the exact lie with_path's own docstring pre-registers, and it
     # disagreed with the honest window on 20/700 recorded scans, once by
-    # 0.81σ (adversarial audit 08-02).
+    # 0.81 sigma (adversarial audit 08-02).
     ran_30m = _fin(row.get("_ran_30m_sigma"))
     moved_30m = round(ran_30m, 2) if ran_30m is not None else None
 
-    # scale — the rulers: sigma + aem (asymmetric, from the rebuilt IV smile)
-    # sr-5: the 0.08 point becomes a spread. The single "typical move" number
-    # was the one calibration hint the model got and it copied it — all 33
-    # magnitudes ever emitted sat inside 0.06-0.20 while a fifth of real
-    # 30-minute windows exceed 0.20 (replication 08-08: median 0.094, p95
-    # 0.46, max 1.71 over 8 sessions; disjoint-window check agrees). A point
-    # teaches a ceiling; a spread teaches a distribution. Still frozen numbers
-    # measured on an extreme post-earnings stretch — sessions_measured says so
-    # on the field, and a standing recompute is future work, not this change.
-    scale = {"one_sigma_dollars": round(sig, 2) if sig else None,
-             "sigma_pct_of_price": round(sig / spot * 100, 1)
-             if sig and spot else None,
-             "move_30min_sigma": {"half_under": 0.09,
-                                  "one_in_five_over": 0.20,
-                                  "one_in_twenty_over": 0.46,
-                                  "worst_recorded": 1.71,
-                                  "sessions_measured": 8}}
-    skew = row.get("iv_skew") if isinstance(row.get("iv_skew"), dict) else {}
-    em = _fin((row.get("range_ruler") or {}).get("em_points"))
-    d = _fin(skew.get("down_share"))
-    if em is not None and em > 0 and d is not None:
-        scale["aem"] = {
-            "up_dollars": round(2 * em * (1 - d), 2),
-            "down_dollars": round(2 * em * d, 2),
-            "skew": ("downside" if d >= 0.52 else
-                     "upside" if d <= 0.48 else "balanced"),
-            "source": "put/call IV skew"}
+    # ------------------------------------------------------------ the clocks
+    # sr-7. Three of them, and they are not the same clock. `scan_taken_at` is
+    # when this row was written; `price_quote.quoted_at` is when the spot was
+    # good; `options_book.measured_at` is when the CHAIN was pulled, which on
+    # half of all scans is a disk cache from the previous scan. Measured
+    # 2026-08-28: 188 scans, 94 distinct books — so the book's real cadence is
+    # ~4 minutes while the scan cadence is ~2, and every age taken off the scan
+    # clock understated the book by the difference.
+    t_row = _ts(row)
+    b_asof = _book_asof(row)
+    prev_row = rows[-2] if len(rows) >= 2 else None
+    scan_stamps = [t for r in rows if (t := _ts(r)) is not None]
+    books = _distinct_books(rows)
 
-    regime = {"gamma_sign": row.get("gamma_sign"), "word": row.get("regime")}
-    vt = vol_trend(rows, now)
-    if vt:
-        regime["vol_trend"] = vt
-    fb = flip_block(row, sd, ran_30m)
-    if fb:
-        regime["flip"] = fb
-    elif (row.get("gex_views") or {}).get("net_by_strike"):
-        # sr-5: the book WAS measured and holds no flip — gamma one-signed at
-        # every strike (the recorded case: a net-negative board). That is a
-        # regime fact, not a hole; omitting it read as "flip unknown" on 49%
-        # of scenes and the model was told absence means "not measured".
-        regime["flip"] = {"none_on_board": True}
-    cb = charm_block(row)
-    if cb:
-        regime["charm"] = cb
+    quote_age = _age_min(t_row, now)
+    book_age = _age_min(b_asof, now)
 
-    price = {"now": spot,
-             "vs_prior_close_pct": vs_prior,
-             "session_low": min(path) if path else None,
-             "session_high": max(path) if path else None,
-             "moved_last_30min_sigma": moved_30m}
-    vw = sd(row.get("vwap"))
-    if vw is not None:
-        price["vwap_dist_sigma"] = vw
+    quote = {"quoted_at": t_row.isoformat() if t_row else None,
+             "age_min": quote_age,
+             "feed": meta.get("spot_source")}
+    book = {"measured_at": b_asof.isoformat() if b_asof else None,
+            "age_min": book_age,
+            "served_from": meta.get("book_source"),
+            "is_repeat_of_previous_scan": _book_is_repeat(row, prev_row),
+            "cache_age_s": _fin(meta.get("cache_age_s")),
+            "distinct_books_so_far_today": len(books) or None,
+            "refresh_interval_min": _median_gap_min(books)}
+    if meta.get("book_asof") is None:
+        # honesty about the fallback: this age is the SCAN's, and a scan is
+        # never older than the book it carries, so the number can only be too
+        # small. Say which clock produced it rather than passing it off.
+        book["measured_at_is_fallback_scan_clock"] = True
+    oi_same, oi_n = _oi_unchanged_today(rows)
+    oi = {"snapshot_is": "prior_session_close",
+          "updates_intraday": False,
+          "prior_session_date": _prior_session_date(now.strftime("%Y-%m-%d")),
+          "measured_unchanged_so_far_today": oi_same,
+          "strikes_compared_today": oi_n}
 
-    def prune(d):
-        # omit-never-null INSIDE the blocks too: an early-session
-        # moved_last_30min or a missing prior_close must vanish, not read as
-        # null — the doctrine promises "missing = not measured", and a null
-        # keep-field would break that promise (fidelity audit #5, 08-02)
-        return {k: v for k, v in d.items() if v is not None}
+    # pruned like every other block: on the first scan of a session there is no
+    # gap to measure yet, and a null `scan_interval_min` would be this block
+    # breaking the omit-never-null rule in the middle of explaining it.
+    data_sources = prune({
+        "scan_taken_at": t_row.isoformat() if t_row else None,
+        "scans_so_far_today": len(rows),
+        "scan_interval_min": _median_gap_min(scan_stamps),
+        "price_quote": prune(quote) or None,
+        "options_book": prune(book) or None,
+        "open_interest": prune(oi) or None,
+    })
 
     # sr-4: the day-scoped calendar. Until now the model read a Monday 4-dte
     # book with the same eyes as expiry Friday — no date, no dte, no idea how
@@ -1386,75 +1761,210 @@ def build_scene(row: dict, band: dict, frozen: list,
     # one fact must not wear two names (the flip-band lesson). The 16:00
     # close is the standing RTH assumption — a half-day session will overstate
     # minutes_to_close (the no-pulse blind spot, still open, owns that).
+    #
+    # sr-7 moved book_age_min OUT of here. This block is the SESSION clock and
+    # nothing else; how old a measurement is belongs with the measurement, in
+    # data_sources, where all three clocks can be read against each other.
     open_t = now.replace(hour=9, minute=30, second=0, microsecond=0)
     close_t = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    clock = {"minutes_since_open": int((now - open_t).total_seconds() // 60),
+    clock = {"built_from": [WALL_CLOCK],
+             "minutes_since_open": int((now - open_t).total_seconds() // 60),
              "minutes_to_close": max(0, int((close_t - now).total_seconds() // 60)),
-             "date": now.strftime("%Y-%m-%d")}
-    # sr-6: the book's own pulse, visible where the model reads. 0-2 is a live
-    # tape; the reader never wakes past STALE_BOOK_MIN, so the model only ever
-    # sees the marginal band — but marginal must be visible, not laundered.
-    t_row = _ts(row)
-    if t_row is not None:
-        clock["book_age_min"] = max(0, int((now - t_row).total_seconds() // 60))
+             "session_date": now.strftime("%Y-%m-%d")}
     fd = _fin((row.get("gex_views") or {}).get("front_dte"))
     if fd is not None:
-        fe = {"dte": int(fd)}
+        # front_expiry is the one thing in `clock` that is NOT the wall clock —
+        # dte comes off the book and the date off meta.expiries. It carries its
+        # own declaration rather than dragging the whole session calendar under
+        # the book's ceiling: minutes_to_close stays true when the book is dead,
+        # and an expiry date does not go stale in six minutes.
+        fe = {"built_from": [OPTIONS_BOOK], "days_to_expiry": int(fd)}
         # meta.expiries entries are {"date","dte"} dicts on live rows and were
         # bare strings in early fixtures — accept both, coerce neither.
-        exps = (row.get("meta") or {}).get("expiries")
+        exps = meta.get("expiries")
         if isinstance(exps, list):
             ds = [x for x in exps if isinstance(x, str)]
             ds += [x["date"] for x in exps
                    if isinstance(x, dict) and isinstance(x.get("date"), str)]
-            nxt = next((e for e in sorted(ds) if e >= clock["date"]), None)
+            nxt = next((e for e in sorted(ds) if e >= clock["session_date"]), None)
             if nxt:
-                fe["date"] = nxt
+                fe["expiry_date"] = nxt
         clock["front_expiry"] = fe
+
+    # scale — the rulers: sigma + the asymmetric expected move (rebuilt IV smile)
+    # sr-5: the 0.08 point becomes a spread. The single "typical move" number
+    # was the one calibration hint the model got and it copied it — all 33
+    # magnitudes ever emitted sat inside 0.06-0.20 while a fifth of real
+    # 30-minute windows exceed 0.20 (replication 08-08: median 0.094, p95
+    # 0.46, max 1.71 over 8 sessions; disjoint-window check agrees). A point
+    # teaches a ceiling; a spread teaches a distribution. Still frozen numbers
+    # measured on an extreme post-earnings stretch — sessions_measured says so
+    # on the field, and a standing recompute is future work, not this change.
+    scale = {"built_from": [OPTIONS_BOOK],
+             "one_sigma_dollars": round(sig, 2) if sig else None,
+             "sigma_pct_of_price": round(sig / spot * 100, 1)
+             if sig and spot else None,
+             "move_30min_sigma_distribution": {
+                 "half_of_windows_under": 0.09,
+                 "one_in_five_over": 0.20,
+                 "one_in_twenty_over": 0.46,
+                 "worst_recorded": 1.71,
+                 "sessions_measured": 8}}
+    skew = row.get("iv_skew") if isinstance(row.get("iv_skew"), dict) else {}
+    em = _fin((row.get("range_ruler") or {}).get("em_points"))
+    d = _fin(skew.get("down_share"))
+    if em is not None and em > 0 and d is not None:
+        scale["expected_move_today_asym"] = {
+            "up_dollars": round(2 * em * (1 - d), 2),
+            "down_dollars": round(2 * em * d, 2),
+            "skewed_toward": ("downside" if d >= 0.52 else
+                              "upside" if d <= 0.48 else "balanced"),
+            "derived_from": "put/call IV skew"}
+
+    regime = {"built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
+              "sigma_measured_from": ruler_name,
+              "gamma_sign": row.get("gamma_sign"),
+              "regime_label": row.get("regime")}
+    vt = vol_trend(rows, now)
+    if vt:
+        regime["vol_trend"] = vt
+    fb = flip_block(row, sd, ran_30m)
+    if fb:
+        regime["flip"] = fb
+    elif (row.get("gex_views") or {}).get("net_by_strike"):
+        # sr-5: the book WAS measured and holds no flip — gamma one-signed at
+        # every strike (the recorded case: a net-negative board). That is a
+        # regime fact, not a hole; omitting it read as "flip unknown" on 49%
+        # of scenes and the model was told absence means "not measured".
+        regime["flip"] = {"no_flip_anywhere_on_board": True}
+    cb = charm_block(row)
+    if cb:
+        regime["charm"] = cb
+
+    # price is the ONE block that reads from two clocks at once, so it is the
+    # one block whose leaf names carry their own basis.
+    # live_minus_book_spot_sigma is the conversion between the two frames and
+    # the reason every other distance can stay short: SUBTRACT it from any
+    # book-measured sigma to get the distance from where price actually is.
+    # (live sigma = (K - live)/sig = book sigma - (live - book)/sig, and this
+    # field is that second term. The doctrine said "add" for one afternoon,
+    # which walks the wrong way by twice the gap; the name now carries the
+    # direction so the verb is not something anyone has to hold in their head.)
+    price = {"built_from": [LIVE_TAPE, OPTIONS_BOOK],
+             "live_spot": spot,
+             "spot_when_book_was_measured": book_spot,
+             "live_minus_book_spot_dollars": (round(spot - book_spot, 2)
+                                              if spot is not None and book_spot is not None
+                                              else None),
+             "live_minus_book_spot_sigma": (round((spot - book_spot) / sig, 2)
+                                            if spot is not None and book_spot is not None and sig
+                                            else None),
+             "vs_prior_close_pct": vs_prior,
+             "session_low": min(path) if path else None,
+             "session_high": max(path) if path else None,
+             "moved_last_30min_sigma": moved_30m}
+    vw = sd_live(row.get("vwap"))
+    if vw is not None:
+        price["vwap_dist_sigma_from_live_spot"] = vw
 
     scene = {
         "instrument": "SNDK",
+        "data_sources": data_sources,
         "clock": clock,
         "scale": prune(scale),
         "price": prune(price),
         "regime": prune(regime),
         # magnet: evidence only when a book was measured. An empty/absent book
         # must not ship a bare gap claim, and a SINGLE-strike book — maximal
-        # dominance — has no runner-up, so gap_pp is unanswerable and omitted
+        # dominance — has no runner-up, so the lead is unanswerable and omitted
         # (adversarial audit 08-02).
         #
         # sr-3 drops `is_a_tie`. It was `gap_pp < MAGNET_SEP_PP`, i.e. a
         # hardcoded July constant (5.0pp) shipped to the model as a finished
         # verdict — and it read True on ~95% of August scans, which is the
         # dex_word pattern a third time: a near-constant that sounds like a
-        # discovery. The gap itself is the evidence and it is already here;
-        # `vs_own_history` says how unusual today's gap is against the tape's
-        # own record, which is the part a fixed threshold could never track.
+        # discovery. The lead itself is the evidence and it is already here;
+        # top_strike_lead_vs_own_history says how unusual today's lead is
+        # against the tape's own record, which a fixed threshold could not track.
         "magnet": (prune({
-            "gap_pp": band["gap_pp"] if len(band["top"]) >= 2 else None,
-            "gap_vs_own_history": (_pctl_word("magnet_gap_pp", band["gap_pp"], now)
-                                   if len(band["top"]) >= 2 else None),
-            "top_strikes": band["top"],
-            "sigma_from_spot": sd(band["top"][0][0])})
+            "built_from": [OI_SNAPSHOT, OPTIONS_BOOK],
+            "sigma_measured_from": ruler_name,
+            "top_strikes": [{"strike": k, "share_of_book_gamma_pp": v}
+                            for k, v in band["top"]],
+            "top_strike_lead_pp": band["gap_pp"] if len(band["top"]) >= 2 else None,
+            "top_strike_lead_vs_own_history": (
+                _pctl_word("magnet_gap_pp", band["gap_pp"], now)
+                if len(band["top"]) >= 2 else None),
+            "top_strike_sigma": sd(band["top"][0][0])})
             if band["top"] else None),
         "breadth": breadth_block(row, now),
         "momentum": momentum_block(rows, band),
-        "dealer_flow": dealer_flow_block(rows),
-        "walls": walls_ladder(row, sd, rows, now),
+        "dealer_positioning": dealer_positioning_block(rows),
+        "walls": walls_ladder(row, sd, rows, now,
+                              ruler_spot=ruler_spot, ruler_name=ruler_name),
         "history": history_flags(row, rows, vs_prior, ran_30m),
         # sr-3: wall entries are dropped here. frozen_fields probes the DIARY's
         # scalar call_wall/put_wall; the scene ships walls re-derived by
         # cluster_walls, and on 2026-08-06 those disagreed — the list warned
         # about put wall 1200, a strike absent from the whole scene, while
         # walls.put[0]=1250 went unlabelled. The walls now carry their own
-        # `unchanged_min`, measured on the numbers the model actually reads.
+        # `unchanged_for_min`, measured on the numbers the model actually reads.
         # The row's frozen list is untouched: the chart greys diary fields and
         # is right to keep describing them.
         "frozen_do_not_cite": [f"{f['field']} unchanged {f['for_min']}m"
                                for f in frozen
                                if f["field"] not in ("call wall", "put wall")],
     }
-    return {k: v for k, v in scene.items() if v not in (None, {}, [])}
+    scene = {k: v for k, v in scene.items() if v not in (None, {}, [])}
+    scene["freshness_rules"] = _drop_stale_blocks(
+        scene, {LIVE_TAPE: quote_age, OPTIONS_BOOK: book_age})
+    return scene
+
+
+def _drop_stale_blocks(scene: dict, ages: dict) -> dict:
+    """Enforce the freshness ceilings by DELETING what has aged out, and report
+    exactly what was deleted.
+
+    sr-7, and the whole point of the sr-7 provenance work. Shipping an age
+    beside a number and hoping the reader discounts it is the design that
+    already failed: the doctrine told the model every number was N minutes
+    stale, the N was measured off the wrong clock, and no reading ever
+    discounted anything. A ceiling that deletes cannot be ignored, and the
+    deletion lands in a vocabulary the scene already has — absence means "not
+    measured", which is precisely true of an observation too old to stand.
+
+    open_interest carries no ceiling on purpose: it is ~18 hours old BY DESIGN
+    and saying so is the fix, not dropping it. WALL_CLOCK never ages."""
+    dropped = []
+    for name in list(scene):
+        block = scene.get(name)
+        if not isinstance(block, dict):
+            continue
+        for src in block.get("built_from") or ():
+            age, cap = ages.get(src), _MAX_AGE_MIN.get(src)
+            if age is None or cap is None or age <= cap:
+                continue
+            dropped.append({"block": name, "source": src,
+                            "age_min": age, "max_age_min": cap})
+            scene.pop(name, None)
+            break
+    # A guardrail may only name fields the scene actually ships — the same rule
+    # that moved wall staleness onto the walls in sr-3. Without this the model
+    # is handed "magnet unchanged 387m, do not cite" about a magnet block that
+    # was deleted three lines ago, which is a warning about a fact it cannot see.
+    gone = {d["block"] for d in dropped}
+    if gone and scene.get("frozen_do_not_cite"):
+        kept = [f for f in scene["frozen_do_not_cite"]
+                if f.split(" ")[0] not in gone]
+        if kept:
+            scene["frozen_do_not_cite"] = kept
+        else:
+            scene.pop("frozen_do_not_cite")
+    return {"when_source_exceeds_max_age": "drop_the_block",
+            "max_options_book_age_min": MAX_BOOK_AGE_MIN,
+            "only_the_options_book_has_a_ceiling": True,
+            "blocks_dropped_this_scan": dropped,
+            "present_tense_forbidden_for": list(PRESENT_TENSE_FORBIDDEN_FOR)}
 
 
 # ---------------------------------------------------------------------------
@@ -1524,19 +2034,36 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # closed, like the feed's own no-quote rule). The row still lands, stamped
     # stale_book so an outage can never pool with genuine quiet; the arrow is
     # pure recomputation and stays. Manual --force remains a human override.
-    t_row = _ts(row)
-    book_age = (max(0, int((now - t_row).total_seconds() // 60))
-                if t_row is not None else None)
-    stale = book_age is None or book_age > STALE_BOOK_MIN
+    # sr-7: measured off the BOOK, not off the scan. The scan clock said 0-1
+    # minute while the book was up to 3.4 minutes old, so a gate written to
+    # refuse a 6-minute-old book was really refusing a ~9-minute-old one, and
+    # every row it let through was stamped with an age that was not the age of
+    # anything in it.
+    t_row, t_book = _ts(row), _book_asof(row)
+    book_age = _age_min(t_book, now)
+    scan_age = _age_min(t_row, now)
+    # same function, same rounding, same constant as the payload's own gate
+    stale = book_age is None or book_age > MAX_BOOK_AGE_MIN
     if stale and wake and not force:
         print(f"sndk-read :: STALE BOOK ({book_age}m) — '{wake}' suppressed")
         wake = None
 
-    scene = build_scene(row, band, frozen, rows, now)
+    # sr-7: a forced read on a stale book builds AS OF THE ROW, not as of the
+    # wall clock. Otherwise `--force` at 18:30 hands the freshness gate a
+    # 150-minute-old book, every evidence block is deleted, and the run spends a
+    # real model call asking for a direction from a scene containing a calendar
+    # and nothing else. The row is old either way; the honest thing is to show
+    # the last scene the reader COULD have built and let `data_sources` say when
+    # that was — which is exactly the rule the payload tab already follows.
+    scene_now = (t_row or now) if (stale and force and t_row is not None) else now
+    scene = build_scene(row, band, frozen_fields(rows, scene_now)
+                        if scene_now is not now else frozen, rows, scene_now)
     out = {
         "ts": now.isoformat(), "era": ERA,
         "wake": ("stale_book" if stale and not force else (wake or "quiet")),
         "book_age_min": book_age,
+        "book_asof": (row.get("meta") or {}).get("book_asof"),
+        "scan_age_min": scan_age,
         "spot": row.get("spot"), "sigma": row.get("sigma"),
         "arrow": arrow, "magnet_band": band, "frozen": frozen,
         "spoke": spoken + (1 if arrow["dir"] else 0), "scans": len(rows),

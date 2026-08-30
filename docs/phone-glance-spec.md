@@ -432,7 +432,7 @@ Both timers cleared on `visibilitychange:hidden`, restarted on show. `/api/spot`
 
 ```js
 // ---- ONE AGE, from row_ts against the wall clock. -------------------------
-// clock.book_age_min is NEVER read: off-live, build_scene stamps it from the
+// data_sources.options_book.age_min is NEVER read: off-live, build_scene stamps it from the
 // row's own timestamp, so it reads ~0 however old the scan is. Believing it is
 // exactly the failure that let a dead Schwab login look healthy for 3.1 days.
 function bookAge(pay){
@@ -479,8 +479,8 @@ function dayChange(scene, live, diaryLast){
 function vwapPrice(scene, diaryLast){
   if(diaryLast && isFinite(Number(diaryLast.vwap))) return Number(diaryLast.vwap);  // exact
   const p = scene.price||{}, sig = (scene.scale||{}).one_sigma_dollars;
-  if(p.now==null||p.vwap_dist_sigma==null||!isFinite(sig)) return null;
-  return p.now + p.vwap_dist_sigma * sig;     // (vwap - spot)/sigma, so ADD it
+  if(p.now==null||p.vwap_dist_sigma_from_live_spot==null||!isFinite(sig)) return null;
+  return p.now + p.vwap_dist_sigma_from_live_spot * sig;     // (vwap - spot)/sigma, so ADD it
 }
 ```
 
@@ -550,7 +550,7 @@ CORE  (always admitted; each still subject to the exile radius)
   vwapPrice()
 
 OPTIONAL (tried one at a time, DESCENDING gex, each must pass the admission test)
-  scene.walls.call_heaviest_behind, scene.walls.put_heaviest_behind,
+  scene.walls.call_heaviest_wall_behind_the_ladder, scene.walls.put_heaviest_wall_behind_the_ladder,
   scene.walls.call[1], scene.walls.put[1]
 ```
 
@@ -584,7 +584,7 @@ const far = (sig>0 && isFinite(sig)) ? sig*FAR : null;
 
 **RE-ANCHOR.** On each quote tick, if `shownPrice.v < lo + 0.12*span` or `> hi - 0.12*span` AND price has travelled `>= 0.05*span` since the window was anchored, recompute and repaint. The travel gate is not optional: a fresh window seats price `6/112 = 5.36%` inside its own edge, already within the 12% band, so without it the board re-solves on EVERY quote — measured, 296 of 300 ticks moved a rule. The constant must stay BELOW 5.36%, which is what guarantees price re-anchors before it can leave the window it is anchored in. **No transition, no tween** — the board jumps. It is rare, and a tween would make every ordinary tick as salient as this one.
 
-**The flip band is not on this screen at all.** It is entirely off-window on ~36% of scans; when in-window it is a zone whose character is already stated by the regime word; and it cost a three-branch painter, a margin chevron and a legend chip. `regime.flip` and `flip.none_on_board` reach no pixel. Do not re-add a chevron, a distance chip or a legend entry for it.
+**The flip band is not on this screen at all.** It is entirely off-window on ~36% of scans; when in-window it is a zone whose character is already stated by the regime word; and it cost a three-branch painter, a margin chevron and a legend chip. `regime.flip` and `flip.no_flip_anywhere_on_board` reach no pixel. Do not re-add a chevron, a distance chip or a legend entry for it.
 
 ### 9.3 Draw order — back to front
 
@@ -597,13 +597,13 @@ Each row states: what it encodes · its JSON path · geometry · degradation.
 | c | **range label** | — | `TODAY'S RANGE`, class `p-word`, `x=11`, baseline `yFor(high)-4` | band under 24px tall, or baseline above `plotTop+9` → omitted |
 | d | **day path** | `tapePoints(DIARY)` | `<polyline class="p-path">` inside the clip. x maps `t0`(first point) → `t1`(max of last point and the live quote's t) across `8..PLOT_R`. The live quote is **never spliced into this path**. | fewer than 2 points → no path; the ladder still draws every level, the price rule and the dot |
 | e | **reach** | `livePoint(LIVE)` newer than the last diary point | gap ≤ 30 min → `<path class="p-reach">` from the last measured point to the dot. gap > 30 min → **no dash**; instead `<line class="p-break">` vertical at the last measured x, full plot height. A dash across six hours implies a continuity that does not exist. | no live quote → neither mark |
-| f | **wall rules** | `walls.call[]`, `walls.put[]`, `walls.*_heaviest_behind` | `<line class="p-wall call\|put" x1=8 x2=PLOT_R>`, `stroke-width = wallTier(gex)`. Nearest wall on its side: `stroke-opacity:1`. Every other: `.62`. | strike absent → nothing. Level refused by the window → mark p |
+| f | **wall rules** | `walls.call[]`, `walls.put[]`, `walls.*_heaviest_wall_behind_the_ladder` | `<line class="p-wall call\|put" x1=8 x2=PLOT_R>`, `stroke-width = wallTier(gex)`. Nearest wall on its side: `stroke-opacity:1`. Every other: `.62`. | strike absent → nothing. Level refused by the window → mark p |
 | g | **magnet glow (lead)** | `magnet.top_strikes[0]` | `<line class="p-magglow">` beneath the lead magnet's y (a second wide low-opacity stroke — **never an SVG filter**) | absent → nothing |
 | h | **magnet rules** | `magnet.top_strikes[i]` | lead → `class="p-mag"`. Runners-up → `class="p-magrun"` with `stroke-opacity = max(0.28, share / topShare)` — **continuous, no threshold anywhere**. sr-3 deleted a hardcoded 5.0pp tie constant; any cutoff here re-imports it. A near-tie must *look* like a tie without anyone deciding where a tie begins. | absent → nothing |
 | i | **merge** | `mergeLevels(levels, hi-lo)`, tol = span × 0.006 | A wall within tolerance of a magnet absorbs it: the wall keeps its own stroke and hue, the magnet's glow is laid beneath, and the merged level carries a magnet flag (→ diamond in the mark lane, mark n). Two levels on one strike is the ordinary case, not the edge case. | — |
 | j | **VWAP** | `vwapPrice()` | `<line class="p-vwap" x1=8 x2=PLOT_R>`, dash `1 5` — the desktop's own VWAP grammar. **Rendered as a price at a position. The signed ratio is never printed, never shown.** | neither source → no line, no tag |
-| k | **clear-side bracket** | `walls.call_side_clear === true` / `walls.put_side_clear === true`, AND no wall of the other pool now sits on that side of the price on screen | `<path class="p-brk">` at x=3: a vertical from `plotTop` to `priceY` (call) or `priceY` to `plotBottom` (put), with 6px ticks turned **inward** at both ends. A measured emptiness has an *extent*, and the bracket draws it. | flag absent or false → **no bracket** — which correctly reads "not measured", a different thing from "measured empty" |
-| l | **bracket label** | — | `NO CALL WALL ABOVE` / `NO PUT WALL BELOW`, class `p-word dim`. Qualified because the flag is: `call_side_clear` means no CALL-SIGNED cluster above spot, and a wrongly-signed pile there is dropped from both pools while the flag still fires, `x=12`, baseline at the bracket's vertical midpoint. The `--ground` halo (`paint-order:stroke`) lets it survive the path crossing it. | bracket under 34px tall → bracket only, no label |
+| k | **clear-side bracket** | `walls.call_side_has_no_wall === true` / `walls.put_side_has_no_wall === true`, AND no wall of the other pool now sits on that side of the price on screen | `<path class="p-brk">` at x=3: a vertical from `plotTop` to `priceY` (call) or `priceY` to `plotBottom` (put), with 6px ticks turned **inward** at both ends. A measured emptiness has an *extent*, and the bracket draws it. | flag absent or false → **no bracket** — which correctly reads "not measured", a different thing from "measured empty" |
+| l | **bracket label** | — | `NO CALL WALL ABOVE` / `NO PUT WALL BELOW`, class `p-word dim`. Qualified because the flag is: `call_side_has_no_wall` means no CALL-SIGNED cluster above spot, and a wrongly-signed pile there is dropped from both pools while the flag still fires, `x=12`, baseline at the bracket's vertical midpoint. The `--ground` halo (`paint-order:stroke`) lets it survive the path crossing it. | bracket under 34px tall → bracket only, no label |
 | m | **price rule** | `shownPrice()` | `<line class="p-prule" x1=8 x2=PLOT_R>` at `yFor(price)` — this is what lets the eye read above/below for every level in one saccade | WITHDRAWN, or price off-window → not drawn |
 | n | **price dot** | same | `<circle class="p-halo" r=7>` then `<circle class="p-dot" r=3.6>` at (dotX, priceY), where `dotX = min(xFor(t_now), PLOT_R - 8)` | WITHDRAWN → not drawn. Price cannot be off-window — it is an unconditional member of `coreLevels` (200,000 randomised solver trials: zero) — so the `inWin` guards are cheap defence, not a branch |
 | o | **the bug** | `nearestWall(walls, shownPrice.v)` | one filled triangle, apex touching the nearest wall's rule end: `M PLOT_R,y L PLOT_R+5,y-5 L PLOT_R+5,y+5 Z`, fill = that wall's hue. It says "this one — this is the level the card below is about", with no word, no legend. | no wall → no triangle. That wall exiled → no triangle, and its edge marker renders at weight 600 instead (`.p-edge.lead`), matched on kind AND side AND strike so an exiled magnet on the same strike cannot steal it |
@@ -626,7 +626,7 @@ rows = layoutLabels(desiredYs, 20, plotTop + 10, plotBottom - 10);
 ```
 Members, sorted by true y: every drawable wall tag, the lead magnet's tag when it did not merge, the VWAP tag, and the price chip. Edge markers are **not** members — they sit outside the solver's bounds at their fixed rows.
 
-**Cap 7 rows.** Never dropped: the price chip, the nearest wall on each side, `*_heaviest_behind`, the lead magnet. Drop order: VWAP first, then `walls.*[1]`.
+**Cap 7 rows.** Never dropped: the price chip, the nearest wall on each side, `*_heaviest_wall_behind_the_ladder`, the lead magnet. Drop order: VWAP first, then `walls.*[1]`.
 
 ---
 
@@ -638,19 +638,19 @@ Members, sorted by true y: every drawable wall tag, the lead magnet's tag when i
 |---|---|---|---|
 | `ticker` | `scene.instrument` | T7, `.18em`, `--ink-dim`, uppercased | **nothing.** Never a hardcoded `"SNDK"` |
 | `livedot` | derived: `/api/spot` returned a finite `.spot` | 5px `--iris` disc, 2.4s pulse; static under `prefers-reduced-motion` | hidden. **Never a grey dot** — a grey dot reads as "live, calm" |
-| `expiry` | `clock.front_expiry.dte`, `.date` | T7, `--ink-faint`. `dte === 0` → `EXPIRES TODAY`. `.date` present → `EXP ` + 3-letter weekday, uppercase → `EXP FRI`. `.date` absent, `dte` present → `EXP IN 4 DAYS` (`EXP IN 1 DAY` at 1) | nothing |
+| `expiry` | `clock.front_expiry.days_to_expiry`, `.date` | T7, `--ink-faint`. `dte === 0` → `EXPIRES TODAY`. `.date` present → `EXP ` + 3-letter weekday, uppercase → `EXP FRI`. `.date` absent, `dte` present → `EXP IN 4 DAYS` (`EXP IN 1 DAY` at 1) | nothing |
 | `fresh` | `bookAge(PAY)` + `PAY.as_of` | T6, right-aligned. `as_of === 'live'` → `BOOK ` + age; else → `LAST SCAN ` + age, both uppercased. Class: `age <= S` → none (`--ink-dim`); `S < age <= H` → `.warn`; `age > H` → `.bad` (a 1px `--lantern` box). `row_ts` unparseable → `LAST SCAN · AGE UNKNOWN`, `.bad` | — |
-| `px` | `shownPrice()` | T1. `gUsd(v)` with `$` stripped → `1,489.21`. **WITHDRAWN** → `—`, class `.withdrawn` | no quote and no `price.now` → `—`, and the ladder enters its no-price state |
+| `px` | `shownPrice()` | T1. `gUsd(v)` with `$` stripped → `1,489.21`. **WITHDRAWN** → `—`, class `.withdrawn` | no quote and no `price.live_spot` → `—`, and the ladder enters its no-price state |
 | `chg` | `dayChange()` | T6 filled chip. `▲ 1.18%` / `▼ 6.70%` / `· 0.00%` (`Math.abs(pct).toFixed(2)`). Classes `.up` / `.dn` / `.flat` | **hidden entirely.** No dash, no zero |
 | `lastscan` | shown only when WITHDRAWN | T6, `--ink-faint`, replaces the chip: `LAST SCAN 1,489.21 · 3H 46M AGO` | hidden |
 
-> **Withdrawal, not dimming.** Past the payload's own `heartbeat_min` with no live quote, the price becomes an em-dash and the price rule, dot, chip and reach leave the plot. **The levels stay.** A 45-minute-old *price* is worthless; a 45-minute-old *wall* is not — the measured `unchanged_min` on real boards reads 86, 160+, 233 and 247 minutes. Dimming a stale price outdoors is the same as hiding it, so it is stated instead.
+> **Withdrawal, not dimming.** Past the payload's own `heartbeat_min` with no live quote, the price becomes an em-dash and the price rule, dot, chip and reach leave the plot. **The levels stay.** A 45-minute-old *price* is worthless; a 45-minute-old *wall* is not — the measured `unchanged_for_min` on real boards reads 86, 160+, 233 and 247 minutes. Dimming a stale price outdoors is the same as hiding it, so it is stated instead.
 
 ### B. REGIME
 
 | id | path | text |
 |---|---|---|
-| `regWord` | `regime.word` | T3, `--ink`, first letter capitalised: `Trending` |
+| `regWord` | `regime.regime_label` | T3, `--ink`, first letter capitalised: `Trending` |
 | `regGloss` | `gammaIsLong(scene.regime)` | T4, `--ink-dim`. `true` → `walls hold`; `false` → `walls give way`; `null` → `gamma sign not measured`. **The two live strings are copied byte-for-byte from `envWords()`** so the phone and the desktop can never describe one board in two voices |
 | `ruler` | `scale.one_sigma_dollars` | T6, right-aligned, `--ink-dim`: `TYPICAL MOVE $67` (`Math.round`). This states the ruler once, in English. It is why no Greek letter appears anywhere else |
 
@@ -660,12 +660,12 @@ Degradation: word absent → the gloss promotes to the T3 line and `regGloss` is
 
 ### D. GATE — the amplification of the nearest level. **This region never hides.**
 
-Fed by `nearestWall(scene.walls, shownPrice.v)`. When WITHDRAWN, `scene.price.now` is the geometric reference and `gDir` gains the clause `· AT THE 12:12 SCAN` (the scan's local `HH:MM`).
+Fed by `nearestWall(scene.walls, shownPrice.v)`. When WITHDRAWN, `scene.price.live_spot` is the geometric reference and `gDir` gains the clause `· AT THE 12:12 SCAN` (the scan's local `HH:MM`).
 
 | id | path | text |
 |---|---|---|
 | `gDir` | the wall's strike against the price on screen | `▼ NEXT BELOW` / `▲ NEXT ABOVE`. Not `w.side`: walls_ladder buckets by the SCAN spot, so a live tick through the wall makes that label contradict the plot directly above it |
-| `gMeas` | `wallDistance(strike, shownPrice.v)` + `unchanged_min` | `$39 · HELD 1H 26M`. `unchanged_min_at_least` → a `+` suffix (`HELD 2H 40M+`) — the datum is censored and the `+` is load-bearing. Each clause drops independently with its own datum, and its separator goes with it. **Distance is measured against the price ON SCREEN, never `walls[].sigma`**, which was measured against a spot the reader can no longer see. **No sigma term.** |
+| `gMeas` | `wallDistance(strike, shownPrice.v)` + `unchanged_for_min` | `$39 · HELD 1H 26M`. `unchanged_for_at_least_min` → a `+` suffix (`HELD 2H 40M+`) — the datum is censored and the `+` is load-bearing. Each clause drops independently with its own datum, and its separator goes with it. **Distance is measured against the price ON SCREEN, never `walls[].sigma`**, which was measured against a spot the reader can no longer see. **No sigma term.** |
 | `gStrike` | the wall's `.strike` | T2, `gUsd(strike,0)` minus `$` → `1,450`. Class `.call` / `.put` — the same hue as its rule in the ladder and as the bug triangle pointing at it |
 | `gMech` | `wallBehaviour(scene.regime, strike, shownPrice.v).english` | T4, 2-line clamp. **The four `snkArrows` strings, verbatim, never reworded** (§11) |
 | `gRowA` | the wall's `.gex` | bar width `clamp(2%, gex/20*100%, 100%)`, `--ink` at .80. Value: `<b>6.9%</b> of book gamma` |
@@ -759,7 +759,7 @@ Y TABLE   yFor(v) = 12 + (1506 - v) * 3.080357
   1500.00  →  30.48  magnet lead        1450.00 → 184.50  walls.put[0]
   1492.23  →  54.41  band top           1422.21 → 270.10  band bottom
   1489.21  →  63.72  price              1420.00 → 276.91  walls.put[1]
-                                        1400.00 → 338.52  put_heaviest_behind
+                                        1400.00 → 338.52  put_heaviest_wall_behind_the_ladder
                                         1394.00 → 357.00  (plot floor)
 
   range band = 215.7px tall = 62.5% of the plot.
@@ -773,13 +773,13 @@ TAG SOLVER  layoutLabels([30.48, 63.72, 180.16, 184.50, 276.91, 338.52], 20, 22,
   MARK-LANE word "VWAP" make both unambiguous.
 
 MERGES     magnet #3 (1450, 9.46) merges into walls.put[0]  → diamond on 1,450
-           magnet #2 (1400, 9.56) merges into put_heaviest_behind → diamond on 1,400
+           magnet #2 (1400, 9.56) merges into put_heaviest_wall_behind_the_ladder → diamond on 1,400
            magnet #1 (1500, 15.47) stands alone → p-mag rule + glow + its own tag
 
 WEIGHT     1450: 6.9/20*20  =  6.9px bar     1420: 4.9px     1400: 14.8px
            No clip notch anywhere (nothing exceeds 20%).
 
-BRACKET    walls.call_side_clear === true → bracket from y 12 to y 63.7 at x=3,
+BRACKET    walls.call_side_has_no_wall === true → bracket from y 12 to y 63.7 at x=3,
            label "NO WALL ABOVE" at x=12, baseline ~38. Bracket 51.7px tall > 34 ✓
 
 MASTHEAD   SNDK · no live dot · EXP FRI · "LAST SCAN 2M" (2 <= S=6, plain --ink-dim)
@@ -796,7 +796,7 @@ FOOT       "Hedge direction assumed from the board's gamma sign."
 
 **Second state, same file, read at 15:58 ET** (the state the payload was actually captured in): scan age 226m > H=45 → `fresh` reads `LAST SCAN 3H 46M` in a `--lantern` box; `px` = `—` in `--ink-dim`; `chg` hidden; `lastscan` = `LAST SCAN 1,489.21 · 3H 46M AGO`; the price rule, dot, chip and reach leave the plot; **every level and the range band draw exactly as above, at exactly the same y values**; the axis right foot reads `SCAN 12:12` instead of `3H 47M LEFT`; `gDir` = `▼ NEXT BELOW · AT THE 12:12 SCAN`; the read region shows `LAST READING 4H 11M AGO` and no sentence.
 
-**Third state, the pinned-day check (2026-08-11, 14:40 ET):** spot 1268.09, σ 67.60, session 1246.17–1285.12, `put_heaviest_behind` 1150 at **1.746σ — just inside the 1.75 exile radius.** Core window padded = [1236.4, 1303.6], range 58%. Admitting 1150 → span 168, range 23.2% < 50% → **REFUSED**. So do `walls.put[1]` 1180 (29.0%) and `walls.call[1]` 1350 (31.6%), so three levels are refused: bottom markers `▼ 1,180` then `▼ 1,150 HEAVIEST` (`PAD_B` 44) and top marker `▲ 1,350` (`PAD_T` 25). Without the 50% test this day renders as a flat line inside a 224-dollar window, which is the single failure mode a pinned board has.
+**Third state, the pinned-day check (2026-08-11, 14:40 ET):** spot 1268.09, σ 67.60, session 1246.17–1285.12, `put_heaviest_wall_behind_the_ladder` 1150 at **1.746σ — just inside the 1.75 exile radius.** Core window padded = [1236.4, 1303.6], range 58%. Admitting 1150 → span 168, range 23.2% < 50% → **REFUSED**. So do `walls.put[1]` 1180 (29.0%) and `walls.call[1]` 1350 (31.6%), so three levels are refused: bottom markers `▼ 1,180` then `▼ 1,150 HEAVIEST` (`PAD_B` 44) and top marker `▲ 1,350` (`PAD_T` 25). Without the 50% test this day renders as a flat line inside a 224-dollar window, which is the single failure mode a pinned board has.
 
 ---
 
@@ -822,23 +822,23 @@ Every item below is measured. Breaking one is a defect, not a taste call.
 
 1. **`gamma_sign === "unknown"`** (7.1% of rows) → `gammaIsLong()` returns null → **no mechanism sentence and no dealer claim anywhere on the page.** The regime gloss says `gamma sign not measured` out loud; it does not fall silent.
 2. **Gamma sign colours nothing.** No regime wash, no regime-tinted rules, no hue-coded card accent. Its total blast radius is one gloss line, one sentence and one footer line.
-3. **VWAP is rendered as a price at a position.** `vwap_dist_sigma` is `(vwap − spot)/σ`, so a *negative* value means price is *above* its average, and 13 of 15 reviewers read it backwards. The signed ratio is never printed. Prefer the diary row's exact `vwap` (1451.4096) over the derived value.
+3. **VWAP is rendered as a price at a position.** `vwap_dist_sigma_from_live_spot` is `(vwap − spot)/σ`, so a *negative* value means price is *above* its average, and 13 of 15 reviewers read it backwards. The signed ratio is never printed. Prefer the diary row's exact `vwap` (1451.4096) over the derived value.
 4. **Weight rides a fixed 0–20%-of-book scale**, never the scan's own maximum. 20.4% is p90 of 18,510 recorded observations; roughly one wall in ten clips, and the clip is marked.
 5. **`gex` null → no bar and no track.** An empty track reads as zero. Absence is not zero.
 6. **A refused BOOK level is always named.** Exiled or refused by the 50% test, a wall or magnet becomes an edge marker with its strike. Tape points and session extremes are not eligible: they carry no strike, their off-window portion is already handled by the clip, and admitting them takes the slots. Ranked by kind then weight, split on the price, laid out descending on both stacks. Max 2 per side is exactly the size of the optional set, so nothing can be silently dropped — that is the 2026-08-24 bug where the heaviest wall on the board reached no pixel at all.
 7. **The magnet's share never touches the gex scale.** `top_strikes` shares are a fraction of `mass_by_strike`; wall `gex` is a fraction of `net_by_strike`. Two denominators must never share one gauge. The magnet gets a diamond; it never gets a bar.
 8. **No magnet-tie threshold, ever.** Runner-up opacity is `max(0.28, share/topShare)`, continuous. sr-3 deleted a hardcoded 5.0pp constant for shipping a near-constant as a finding.
-9. **`clock.book_age_min` is never read.** Off-live, `build_scene` stamps it from the row's own timestamp, so it reads ~0 however old the scan is — the failure that let a dead Schwab login look healthy for 3.1 days. One age, from `row_ts` against the wall clock.
+9. **`data_sources.options_book.age_min` is never read.** Off-live, `build_scene` stamps it from the row's own timestamp, so it reads ~0 however old the scan is — the failure that let a dead Schwab login look healthy for 3.1 days. One age, from `row_ts` against the wall clock.
 10. **Staleness thresholds come from `payload.gates`** (`stale_book_min`, `heartbeat_min`), never hardcoded.
 11. **The countdown must not age silently.** `minutes_to_close` is computed at scan time; when STALE, the axis right foot shows the scan's clock time instead.
 12. **The model reading is sourced by `reading_ts`, never `ts`**, and is never shown without its age. Median 12 min, p95 214, max 341.
 13. **`reading.line` is written with `textContent` only.** It is model output. It never touches `innerHTML` and never enters the SVG string.
 14. **The four mechanism sentences are byte-identical to `snkArrows`.** The regime gloss strings are byte-identical to `envWords()`. The desktop and the phone must never describe one board in two voices, so **no English on this page is authored.**
 15. **Distance is measured against the price on screen**, never `walls[].sigma`, which was taken against a spot the reader can no longer see.
-16. **`*_side_clear` absent ≠ false.** Only `=== true` draws the bracket; absence correctly reads "not measured".
-17. **Banned outright, reaching no pixel:** `reading.magnitude_sigma` (over-predicts the ordinary day, blind to the tail), `dealer_flow`, `breadth`, `momentum`, `regime.charm` — and `charm.drift_toward` in particular, a target price inside a key on a block whose own docstring refuses to emit a direction word.
-18. **Never parse prose.** `frozen_do_not_cite`, `magnet.gap_vs_own_history` and `breadth.vs_own_history` are never regexed, never re-worded, and never printed.
-19. **The change % is gated on `scene.clock.date === the browser's local date`.** A mismatch withholds it; nothing is ever guessed.
+16. **`*_side_has_no_wall` absent ≠ false.** Only `=== true` draws the bracket; absence correctly reads "not measured".
+17. **Banned outright, reaching no pixel:** `reading.magnitude_sigma` (over-predicts the ordinary day, blind to the tail), `dealer_positioning`, `breadth`, `momentum`, `regime.charm` — and `charm.drifts_toward_strike` in particular, a target price inside a key on a block whose own docstring refuses to emit a direction word.
+18. **Never parse prose.** `frozen_do_not_cite`, `magnet.top_strike_lead_vs_own_history` and `breadth.vs_own_history` are never regexed, never re-worded, and never printed.
+19. **The change % is gated on `scene.clock.session_date === the browser's local date`.** A mismatch withholds it; nothing is ever guessed.
 20. **No emoji.** They are colour bitmaps: they carry no theme token, cannot be tinted to mean a side, do not dim with the page, and render differently on every OS.
 21. **No legend.** Every mark either labels itself in the mark lane or is named in the card. A legend is a confession that the marks do not read.
 22. **No Greek letter, anywhere.** All distances in dollars; the ruler is stated once as `TYPICAL MOVE $67`.

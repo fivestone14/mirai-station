@@ -8,7 +8,8 @@ CORE RULE (2026-08-02 blueprint, section 05): history is a callable tool the
 reading model reaches for when the live scene does not add up — it is NEVER
 auto-injected into the payload. That keeps the live snapshot primary by
 default: recalled context is supporting/sentiment, never equal weight. The
-payload's own `history` flags (level_unseen_today / abnormal_tape) are the
+payload's own `history` flags (price_at_level_unseen_earlier_today /
+tape_abnormal_vs_own_history) are the
 under-pull guard that taps the model on the shoulder.
 
 WHAT ONE RECORD IS — one entry, two faces:

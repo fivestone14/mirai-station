@@ -75,36 +75,57 @@ model's opinion; here the two paths are decoupled:
   information, not a bug).
 
 The scene (docs/sndk-payload-inventory.md is the field-by-field map):
-grouped by force — `clock` (**day-scoped since sr-4**: date, minutes each
-way, and `front_expiry` {dte, date} — the weekly-cycle position; weekday
-deliberately absent, it equals dte on every recorded session), `scale`
-(σ + **aem**, the IV-skew-split asymmetric range),
-`price` (+ **vwap_dist_sigma**), `regime` (+ **vol_trend**, **flip** band
+grouped by force — **data_sources** (**new in sr-7**: the three clocks that
+were being conflated — the scan, the price quote, and the option book, which
+the feed re-serves from a disk cache on half of all scans and which is
+routinely minutes older than both; plus the night the standing open interest
+was struck, re-verified unchanged on every scan), **freshness_rules**
+(**new in sr-7**: the ceilings, and the blocks DELETED for exceeding them —
+labelling a stale number had already been tried and ignored), `clock`
+(**day-scoped since sr-4**, and the session calendar and nothing else since
+sr-7: session_date, minutes each way, and `front_expiry`
+{days_to_expiry, expiry_date}; weekday deliberately absent, it equals dte on
+every recorded session), `scale` (σ + **expected_move_today_asym**, the
+IV-skew-split asymmetric range), `price` (the live spot AND the spot the book
+was measured at, the gap between them, and
+**vwap_dist_sigma_from_live_spot**), `regime` (+ **vol_trend**, **flip** band
 with center + position — told ONCE since sr-3: the edges are the flip ±0.25σ
 by construction, and the old named_levels duplicate left the scene — plus
-**charm** magnitude/drift-target on the front-book clock), `magnet` (the gap
-as a NUMBER + its percentile against prior sessions; the `is_a_tie` verdict
-was a July threshold worn as a finding and left in sr-3), **breadth** (the
-shove ratio, direction-free — sr-3 is the first time it reaches the model),
-**momentum** (gamma-share + gross-volume deltas over the last 5 scans; `oi_d`
-and `cvd` deliberately absent — OI is static intraday upstream, and no
-aggressor tape exists for the stock leg), **dealer_flow** (dex $-delta +
-front-book vanna; the sign is positive by construction and the field now says
-so), **walls** (laddered, 2 per side, NEAREST first — never "strongest";
-each wall carries its own `unchanged_min`, and the heaviest cluster ships as
-`*_heaviest_behind` when the distance cut would hide it), `history` flags
-(the under-pull guard), and `frozen_do_not_cite` (minus walls — their
-staleness rides the wall entries now). Omit-never-null throughout: a field
-without a clean source is absent, not nulled — the model treats missing as
-"no data" — and, since sr-5, measured-empty is stated rather than deleted:
-a `*_side_clear` flag or `flip.none_on_board` means the board WAS read and
-genuinely holds nothing there.
+**charm** magnitude/drift-target on the front-book clock), `magnet` (the lead
+as a NUMBER + its percentile against prior sessions, counted per distinct
+BOOK since sr-7; the `is_a_tie` verdict was a July threshold worn as a
+finding and left in sr-3), **breadth** (the shove ratio, direction-free —
+sr-3 is the first time it reaches the model), **momentum** (gamma-share +
+gross-volume deltas over the last 5 scans, its window told on the book clock
+since sr-7; `oi_d` and `cvd` deliberately absent — OI is static intraday
+upstream, and no aggressor tape exists for the stock leg; the `read` verdict
+word left in sr-7 for the same reason `is_a_tie` did), **dealer_positioning**
+(dex $-delta + front-book vanna; the sign is positive by construction and the
+field name now says so), **walls** (laddered, 2 per side, NEAREST first —
+never "strongest"; each wall carries its own `unchanged_for_min`, and the
+heaviest cluster ships as `*_heaviest_wall_behind_the_ladder` when the
+distance cut would hide it), `history` flags (the under-pull guard), and
+`frozen_do_not_cite` (minus walls — their staleness rides the wall entries
+now). Omit-never-null throughout: a field without a clean source is absent,
+not nulled — the model treats missing as "no data" — and, since sr-5,
+measured-empty is stated rather than deleted: a `*_side_has_no_wall` flag or
+`flip.no_flip_anywhere_on_board` means the board WAS read and genuinely holds
+nothing there.
+
+Every block declares `built_from`, and every σ distance derived from the book
+is measured from `spot_when_book_was_measured`, not from the live quote — the
+two disagree by a median $2.13 on a cached row and by $41.99 at worst, and
+`price.live_minus_book_spot_sigma` is subtracted to convert between the
+frames — the same subject and direction as its dollar twin one line up. Leaf
+names carry
+their own units (`_pp`, `_bn`, `_musd`, `_min`, `_sigma`) so a name survives
+being read alone, which is the whole sr-7 rename.
 
 The read call may reach for exactly two on-demand tools, doctrine-gated:
 the **history CLI** (`sndk_rag.py` — day slices / day summaries / month
-terrain; the payload's `history.level_unseen_today` flag taps the model on
+terrain; the payload's `history.price_at_level_unseen_earlier_today` flag taps the model on
 the shoulder) and **WebSearch** (abnormal-tape catalyst checks only,
-`history.abnormal_tape`). Everything else stays banned; the live scene is
+`history.tape_abnormal_vs_own_history`). Everything else stays banned; the live scene is
 always primary.
 
 That is what four recorded sessions measured (2026-07-28..31, 756 rows):
@@ -153,12 +174,21 @@ and writes nothing; that is how every number above was measured.
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-6` since
+  silently with live rows. Read rows are stamped `era` (`sr-7` since
+  2026-08-30 — provenance and the leaf rename: every block declares
+  `built_from`, `data_sources` carries the scan / quote / book clocks
+  separately, book-derived σ distances measure from the book's own spot,
+  percentiles count distinct books rather than scans, and `freshness_rules`
+  deletes a block whose source aged out instead of labelling it. Read rows
+  gain `book_asof` + `scan_age_min`, and `book_age_min` is finally measured
+  off the book; `sr-6` since
   2026-08-11 — the pulse check: a stale book (newest row > 6 min old)
   never wakes the model, rows stamp `wake:"stale_book"` + book_age_min;
   `sr-5` since
-  2026-08-10 PM — measured-empty says so (`*_side_clear`,
-  `flip.none_on_board`) and the 0.08 point became the measured spread
+  2026-08-10 PM — measured-empty says so (`*_side_clear`, renamed
+  `*_side_has_no_wall` in sr-7,
+  `flip.none_on_board`, renamed `flip.no_flip_anywhere_on_board` in sr-7)
+  and the 0.08 point became the measured spread
   (`scale.move_30min_sigma`); `sr-4` since
   2026-08-10 — the scene learns what day it is: date, minutes_to_close,
   front_expiry dte; `sr-3` since
