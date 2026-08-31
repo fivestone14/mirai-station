@@ -179,7 +179,7 @@ def test_the_stale_floor_is_the_readers_own_ceiling():
     assert "if(d.gates&&d.gates.stale_book_min!=null) window.SNDK_STALE_BOOK_MIN=d.gates.stale_book_min;" in PAGE
 
 
-def test_the_payload_tab_says_the_three_clocks_before_the_json():
+def test_the_payload_tab_says_the_clocks_before_the_json():
     """sr-7 (08-30): the scene's provenance is all inside the JSON, but the JSON
     is ~3,000 characters and nobody discounts a number for an age they had to go
     looking for. Three header lines answer it first — how old the quote is, how
@@ -195,7 +195,7 @@ def test_the_payload_tab_says_the_three_clocks_before_the_json():
     assert "+PAYLOAD.provLines(d.scene)" in PAGE      # rendered, not merely defined
     pl = PAGE.split("provLines(scene){")[1].split("\n  },")[0]
     assert "const ds=(scene&&scene.data_sources)||{}, fr=(scene&&scene.freshness_rules)||{};" in pl
-    assert "const q=ds.price_quote||{}, b=ds.options_book||{}, oi=ds.open_interest||{};" in pl
+    assert "const b=ds.options_book||{}, oi=ds.open_interest||{};" in pl
     assert "is_repeat_of_previous_scan===true?', REPEAT of the previous scan'" in pl
     # ...and the cadence line, which is the one a reader checks the other two
     # against: two counts and two intervals. Pinned by the call, so the 08-30
@@ -210,7 +210,7 @@ def test_the_payload_tab_says_the_three_clocks_before_the_json():
     assert "color:var(--coral,#e06c75)" in pl
     # and it builds innerHTML, so every free-text field goes through the escaper
     assert "const esc=x=>String(x).replace(/[&<>]/g," in pl
-    for field in ("esc(q.feed||'?')", "esc(b.served_from||'?')",
+    for field in ("esc(ds.spot_feed||'?')", "esc(b.served_from||'?')",
                   "esc(x.block)", "esc(x.source)"):
         assert field in pl, field
 

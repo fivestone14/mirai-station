@@ -14234,13 +14234,13 @@ const PAYLOAD = {
   // absence is the one thing a JSON dump cannot show you.
   provLines(scene){
     const ds=(scene&&scene.data_sources)||{}, fr=(scene&&scene.freshness_rules)||{};
-    const q=ds.price_quote||{}, b=ds.options_book||{}, oi=ds.open_interest||{};
+    const b=ds.options_book||{}, oi=ds.open_interest||{};
     const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     const t=v=>esc(String(v||'').slice(11,19)||'—');
     const age=v=>v==null?'?':esc(v)+'m';
     const many=(v,w)=>v==null?('? '+w+'s'):`${esc(v)} ${w}${Number(v)===1?'':'s'}`;
     const out=[];
-    out.push(`// quote ${t(q.quoted_at)} ET (${age(q.age_min)} old, ${esc(q.feed||'?')}) `
+    out.push(`// scan ${t(ds.scan_taken_at)} ET (spot from ${esc(ds.spot_feed||'?')}) `
       +`· book ${t(b.measured_at)} ET (${age(b.age_min)} old, ${esc(b.served_from||'?')}`
       +`${b.is_repeat_of_previous_scan===true?', REPEAT of the previous scan':''})`);
     out.push(`// every wall, magnet, breadth and dealer number below is open interest `

@@ -109,7 +109,8 @@ ERA = "sr-8"                # bump on ANY change to the gates or the prompt.
                             # survive being read alone. The scene was honest
                             # about arithmetic and silent about time — 0 of 53
                             # leaves carried a source or a timestamp, and one
-                            # overnight OI snapshot was re-priced ~190x a day
+                            # overnight OI snapshot was re-priced on every one
+                            # of ~190 daily scans
                             # against a live quote and told in the present
                             # tense. Then: every block declared built_from
                             # (sr-8 moved that map out of the payload);
@@ -886,7 +887,7 @@ FIELD NAMES SAY WHAT THEY ARE. Every leaf in this scene is named so it can be re
 
 WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any other block is worth):
 - WHICH BLOCK RESTS ON WHAT, and it decides how much each is worth. `price` and `history` are the LIVE TAPE, good to the second. `clock` is the wall clock. `scale`, `regime`, `magnet`, `breadth`, `momentum`, `dealer_positioning`, `walls` and `clock.front_expiry` come out of the OPTIONS BOOK, which is minutes old and often a cached repeat. Of those, `regime`, `magnet`, `breadth`, `dealer_positioning` and `walls` rest further on the OPEN INTEREST SNAPSHOT struck at last night's close. A block you cannot find was either not measured or deleted for age; see freshness_rules.
-- data_sources holds THREE separate clocks and they disagree on purpose. `scan_taken_at` is when this row was written. `price_quote.quoted_at` is when the spot was good — seconds. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
+- data_sources holds TWO clocks and they disagree on purpose. `scan_taken_at` is when this row was written, which is also when the spot was quoted — there is no separate quote clock, and `spot_feed` names where that price came from. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
 - `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves it against `strikes_compared_today` strikes whenever today's scans give it enough overlapping strikes to answer — and says nothing at all rather than guessing when they do not. What moves intraday is price moving under a fixed map, not the map moving.
 - Because of that, THESE BLOCKS MAY NEVER BE NARRATED IN THE PRESENT TENSE: {", ".join(PRESENT_TENSE_FORBIDDEN_FOR)}. "Dealers are buying", "the wall is building", "gamma is piling up" are false statements about time, not debatable reads. Say "as of last night's close" or say nothing. Only `momentum` and `*_change_30min` fields describe something that moved today.
 - freshness_rules is enforced, not advisory: a block whose source aged past its ceiling is DELETED before you see it, and `blocks_dropped_this_scan` names what went. So an absent block may mean "measured but too old" — check there before calling anything unknown.
@@ -1225,10 +1226,13 @@ def momentum_block(rows: list[dict], band: dict) -> Optional[dict]:
     # the span actually contains — 5 cached scans can be as few as 3.
     books = [t for t in (_book_asof(r) for r in rows[-1 - MOMENTUM_ROWS:])
              if t is not None]
+    # sr-8 drops `last_book_measured_at`: it is the CURRENT book, so it equalled
+    # data_sources.options_book.measured_at on 4,026 of 4,026 recorded scans
+    # that carried momentum. The window's FAR end is the one a reader cannot get
+    # anywhere else, so that is the one that ships.
     window = {"books_compared": len({t.isoformat() for t in books}),
               "span_min": round((b_c - b_r).total_seconds() / 60.0, 1),
-              "first_book_measured_at": b_r.isoformat(),
-              "last_book_measured_at": b_c.isoformat()}
+              "first_book_measured_at": b_r.isoformat()}
     return {"window_between_books": window, "by_strike": by}
 
 
@@ -1677,8 +1681,9 @@ def build_scene(row: dict, band: dict, frozen: list,
 
     (1) Nothing in the scene said WHEN any number was measured or WHAT it was
         measured from. Zero of 53 leaves carried a source tag or a timestamp,
-        and the scene re-priced one overnight OI snapshot ~190 times a day
-        against a live quote while presenting the result in the present tense.
+        and the scene re-priced one overnight OI snapshot on every one of ~190
+        daily scans against a live quote while presenting the result in the
+        present tense.
         `data_sources` carries the three clocks (scan / quote / book) and
         `freshness_rules` DROPS a block whose source has aged out rather than
         trusting the reader to notice a label. The block-to-source map itself
@@ -1778,10 +1783,11 @@ def build_scene(row: dict, band: dict, frozen: list,
     moved_30m = round(ran_30m, 2) if ran_30m is not None else None
 
     # ------------------------------------------------------------ the clocks
-    # sr-7. Three of them, and they are not the same clock. `scan_taken_at` is
-    # when this row was written; `price_quote.quoted_at` is when the spot was
-    # good; `options_book.measured_at` is when the CHAIN was pulled, which on
-    # half of all scans is a disk cache from the previous scan. Measured
+    # sr-7, corrected by sr-8: TWO of them, not three. `scan_taken_at` is when
+    # this row was written; `options_book.measured_at` is when the CHAIN was
+    # pulled, which on half of all scans is a disk cache from the previous
+    # scan. (sr-7's third clock, `price_quote`, was `scan_taken_at` wearing
+    # another name — see the deletion below.) Measured
     # 2026-08-28: 188 scans, 94 distinct books — so the book's real cadence is
     # ~4 minutes while the scan cadence is ~2, and every age taken off the scan
     # clock understated the book by the difference.
@@ -1791,12 +1797,31 @@ def build_scene(row: dict, band: dict, frozen: list,
     scan_stamps = [t for r in rows if (t := _ts(r)) is not None]
     books = _distinct_books(rows)
 
-    quote_age = _age_min(t_row, now)
+    # the LIVE_TAPE age is the SCAN's age, and calling it anything else is how
+    # sr-7 ended up shipping a quote clock that was this number twice.
+    scan_age = _age_min(t_row, now)
     book_age = _age_min(b_asof, now)
 
-    quote = {"quoted_at": t_row.isoformat() if t_row else None,
-             "age_min": quote_age,
-             "feed": meta.get("spot_source")}
+    # sr-8: THE THIRD CLOCK WAS THE FIRST ONE WEARING A HAT. sr-7 shipped
+    # `price_quote {quoted_at, age_min, feed}` as one of "three separate clocks
+    # that disagree on purpose". Measured over 4,149 recorded scans they did not
+    # disagree at all: `quoted_at` equalled `scan_taken_at` on 4,149/4,149 and
+    # `age_min` was 0.0 on 4,149/4,149 — necessarily, since both came off the
+    # row's own `ts`.
+    #
+    # sr-7 had already diagnosed this and shipped the block anyway. The comment
+    # above MAX_BOOK_AGE_MIN rejects a quote ceiling in these words: "the diary
+    # carries no quote timestamp at all (meta has spot_source and no clock)".
+    # There are two clocks on this row, the scan and the book. Telling the model
+    # there are three invites it to read a 0.0-minute quote age as evidence the
+    # price is fresh, when it is only evidence that the row timestamped itself.
+    #
+    # `spot_source` survives as a single leaf because it is the one part of that
+    # block which was never the scan clock: it names WHERE the price came from,
+    # and a fallback source would change it. Constant on the recorded tape,
+    # which by sr-8's own rule argues for the doctrine — but the desktop payload
+    # tab reads it out of the scene, and a provenance tag with a real second
+    # value is not the same kind of thing as a frozen literal like `instrument`.
     book = {"measured_at": b_asof.isoformat() if b_asof else None,
             "age_min": book_age,
             "served_from": meta.get("book_source"),
@@ -1827,7 +1852,7 @@ def build_scene(row: dict, band: dict, frozen: list,
         "scan_taken_at": t_row.isoformat() if t_row else None,
         "scans_so_far_today": len(rows),
         "scan_interval_min": _median_gap_min(scan_stamps),
-        "price_quote": prune(quote) or None,
+        "spot_feed": meta.get("spot_source"),
         "options_book": prune(book) or None,
         "open_interest": prune(oi) or None,
     })
@@ -1885,7 +1910,10 @@ def build_scene(row: dict, band: dict, frozen: list,
     # windows exceed 0.20) and that lesson is not in question. What changed is
     # WHERE it rides: five frozen literals from one 8-session post-earnings
     # study, identical on every scan, were being paid for at full payload price
-    # ~190 times a day while the doctrine already restated all five in prose.
+    # on every model call while the doctrine already restated all five in prose.
+    # (~190 SCANS a day, but the wake gate and DAILY_CALL_CAP mean the MODEL
+    # speaks about 19 times — measured: 391 calls over 21 sessions. The scan
+    # rate is not the billing rate, and sr-7's comments conflated the two.)
     # The doctrine is byte-identical all day and prompt-cached, so the same
     # sentence costs about a tenth there. A frozen number belongs in the cached
     # half; only what varies earns a place in the scene.
@@ -2014,7 +2042,7 @@ def build_scene(row: dict, band: dict, frozen: list,
     }
     scene = {k: v for k, v in scene.items() if v not in (None, {}, [])}
     scene["freshness_rules"] = _drop_stale_blocks(
-        scene, {LIVE_TAPE: quote_age, OPTIONS_BOOK: book_age})
+        scene, {LIVE_TAPE: scan_age, OPTIONS_BOOK: book_age})
     return scene
 
 

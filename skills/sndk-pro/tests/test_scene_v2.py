@@ -835,6 +835,8 @@ def _every_scene_shape(tmp_path):
     return [
         scene([rich_row()]),
         scene([rich_row(meta={})]),                        # the fallback ruler tag
+        scene([rich_row(meta={"chain_spot": 1200.0,
+                              "spot_source": "schwab_quote"})]),   # spot_feed
         scene([rich_row(meta={"chain_spot": 1190.0})]),     # both spots + the gap
         scene([moved]),                                     # moved_last_30min_sigma
         scene([rich_row(profile_ladder=None, gamma_flip=None)]),   # no flip at all
