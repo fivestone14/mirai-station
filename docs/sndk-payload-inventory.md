@@ -95,8 +95,10 @@ added a measurement; both changed what the existing ones say about themselves.
 **1. Nothing said when, or from what.** Zero of 53 leaves carried a source tag
 or a measurement timestamp. The scene re-priced one overnight open-interest
 snapshot ~190 times a day against a live quote and presented the result in the
-present tense. Every block now declares `built_from` (`live_tape` /
-`options_book` / `open_interest_snapshot` / `wall_clock`); `data_sources`
+present tense. Every block declared `built_from` (`live_tape` /
+`options_book` / `open_interest_snapshot` / `wall_clock`) — *sr-8 moved that map
+out of the payload into the `BUILT_FROM` constant and the doctrine; nothing but
+the freshness gate had ever read it, at 269 bytes a scan*; `data_sources`
 carries the three clocks that were being conflated; and `freshness_rules`
 **deletes** a block whose source has aged out rather than labelling it — a label
 had already been tried and ignored.
@@ -104,8 +106,10 @@ had already been tried and ignored.
 **2. Distances lied by a spot.** Every σ distance divided a LIVE spot into a
 book measured at a different spot — median $2.13 apart on cached rows, $41.99 at
 worst. Book-derived distances now measure from `spot_when_book_was_measured`,
-the blocks say so in `sigma_measured_from`, and `price.live_minus_book_spot_sigma`
-converts between the two frames.
+the blocks said so in `sigma_measured_from` — *sr-8 inverted that tag: the rule
+is stated once in the doctrine and the tag now ships only on the fallback, since
+it read the same word on 4,149 of 4,149 scans* — and
+`price.live_minus_book_spot_sigma` converts between the two frames.
 
 **And the cadence was wrong by 2x.** The feed serves a disk cache on half the
 scans (measured 08-28: 188 scans, 94 distinct books), so "bigger than N% of

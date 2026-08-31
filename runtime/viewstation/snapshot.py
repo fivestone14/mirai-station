@@ -616,6 +616,15 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
     text = json.dumps(scene, default=str)
     return {
         "session": day,
+        # sr-8 deleted scene.instrument — the string "SNDK" on every scan of a
+        # reader that watches nothing else, which the model does not need told
+        # ~190 times a day. The phone masthead DID need it, so it moves here,
+        # to the display wrapper, off the diary row that already carries it.
+        # This is not a hardcoded ticker in the view (the phone spec forbids
+        # that outright: absent means show nothing, never a literal "SNDK"),
+        # it is the same value from the same source, on the side of the fence
+        # that pays no model tokens for it.
+        "instrument": row.get("ticker"),
         "row_ts": row.get("ts"),
         "built_at": build_now.isoformat(),
         "as_of": "live" if live else "last scan",

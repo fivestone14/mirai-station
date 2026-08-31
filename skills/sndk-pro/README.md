@@ -112,11 +112,11 @@ measured-empty is stated rather than deleted: a `*_side_has_no_wall` flag or
 `flip.no_flip_anywhere_on_board` means the board WAS read and genuinely holds
 nothing there.
 
-Every block declares `built_from`, and every σ distance derived from the book
+Every block's source is declared once, in `BUILT_FROM` and in the doctrine, and every σ distance derived from the book
 is measured from `spot_when_book_was_measured`, not from the live quote — the
 two disagree by a median $2.13 on a cached row and by $41.99 at worst, and
 `price.live_minus_book_spot_sigma` is subtracted to convert between the
-frames — the same subject and direction as its dollar twin one line up. Leaf
+frames — the subject and direction spelled out in the name itself. Leaf
 names carry
 their own units (`_pp`, `_bn`, `_musd`, `_min`, `_sigma`) so a name survives
 being read alone, which is the whole sr-7 rename.

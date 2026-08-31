@@ -82,16 +82,37 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-7"                # bump on ANY change to the gates or the prompt.
+ERA = "sr-8"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
+                            # sr-8 (2026-08-30): the payload pays only for what
+                            # VARIES. 30 leaves left the scene — 18 that held a
+                            # single value across all 4,149 recorded scans, and
+                            # 12 exactly reconstructable from leaves that stay
+                            # — and their explanations moved into _DOCTRINE,
+                            # which is prompt-cached and so costs about a tenth
+                            # per repeat. Measured 3,868 -> 2,645 bytes, 144 ->
+                            # 115 leaf names. Nothing measured was lost: what
+                            # went was second copies, standing facts about the
+                            # instrument and the feed, and one-step arithmetic.
+                            # `sigma_measured_from` is INVERTED — it named the
+                            # rule on every scan and now names only the
+                            # exception. Fields deliberately KEPT though
+                            # derivable: top_strike_lead_pp and walls[].sigma
+                            # (the read leans on them, and reasoning tokens are
+                            # paid for too) and front_expiry.expiry_date
+                            # (business-day arithmetic). One rename, no bytes:
+                            # vwap_dist_sigma_from_live_spot ->
+                            # vwap_minus_live_spot_sigma, because 13 of 15
+                            # reviewers read the old name's sign backwards.
                             # sr-7 (2026-08-30): PROVENANCE, and leaf names that
                             # survive being read alone. The scene was honest
                             # about arithmetic and silent about time — 0 of 53
                             # leaves carried a source or a timestamp, and one
                             # overnight OI snapshot was re-priced ~190x a day
                             # against a live quote and told in the present
-                            # tense. Now: every block declares built_from;
+                            # tense. Then: every block declared built_from
+                            # (sr-8 moved that map out of the payload);
                             # data_sources carries the scan / quote / BOOK
                             # clocks separately (the feed serves a cached book
                             # on half the scans, so book age was understated by
@@ -233,7 +254,11 @@ PCTL_MAX_SESSIONS = 22      # and it forgets past this, like terrain's month
 # sr-7 — the three things a scene number can be measured FROM, named once so a
 # block can declare its own provenance and a reader never has to infer it. These
 # strings are the scene's public vocabulary: `built_from` on a block, and
-# `freshness_rules.present_tense_forbidden_for` keys off the same names.
+# sr-8: these names are no longer echoed back inside the payload — `built_from`
+# left the scene and `present_tense_forbidden_for` moved into the doctrine, which
+# interpolates PRESENT_TENSE_FORBIDDEN_FOR directly. They remain the vocabulary
+# BUILT_FROM and the freshness gate are written in, and the doctrine speaks them
+# aloud, so the names still have to mean the same thing in both places.
 WALL_CLOCK = "wall_clock"               # the session calendar — never ages
 LIVE_TAPE = "live_tape"                 # this scan's quote/path — seconds old
 OPTIONS_BOOK = "options_book"           # the chain snapshot: minutes old, cached
@@ -862,7 +887,7 @@ FIELD NAMES SAY WHAT THEY ARE. Every leaf in this scene is named so it can be re
 WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any other block is worth):
 - WHICH BLOCK RESTS ON WHAT, and it decides how much each is worth. `price` and `history` are the LIVE TAPE, good to the second. `clock` is the wall clock. `scale`, `regime`, `magnet`, `breadth`, `momentum`, `dealer_positioning`, `walls` and `clock.front_expiry` come out of the OPTIONS BOOK, which is minutes old and often a cached repeat. Of those, `regime`, `magnet`, `breadth`, `dealer_positioning` and `walls` rest further on the OPEN INTEREST SNAPSHOT struck at last night's close. A block you cannot find was either not measured or deleted for age; see freshness_rules.
 - data_sources holds THREE separate clocks and they disagree on purpose. `scan_taken_at` is when this row was written. `price_quote.quoted_at` is when the spot was good — seconds. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
-- `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves that on every scan against `strikes_compared_today` strikes. What moves intraday is price moving under a fixed map, not the map moving.
+- `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves it against `strikes_compared_today` strikes whenever today's scans give it enough overlapping strikes to answer — and says nothing at all rather than guessing when they do not. What moves intraday is price moving under a fixed map, not the map moving.
 - Because of that, THESE BLOCKS MAY NEVER BE NARRATED IN THE PRESENT TENSE: {", ".join(PRESENT_TENSE_FORBIDDEN_FOR)}. "Dealers are buying", "the wall is building", "gamma is piling up" are false statements about time, not debatable reads. Say "as of last night's close" or say nothing. Only `momentum` and `*_change_30min` fields describe something that moved today.
 - freshness_rules is enforced, not advisory: a block whose source aged past its ceiling is DELETED before you see it, and `blocks_dropped_this_scan` names what went. So an absent block may mean "measured but too old" — check there before calling anything unknown.
 
@@ -1650,10 +1675,12 @@ def build_scene(row: dict, band: dict, frozen: list,
         measured from. Zero of 53 leaves carried a source tag or a timestamp,
         and the scene re-priced one overnight OI snapshot ~190 times a day
         against a live quote while presenting the result in the present tense.
-        `data_sources.built_from` maps each block to its source, `data_sources`
-        carries the three
-        clocks (scan / quote / book), and `freshness_rules` DROPS a block whose
-        source has aged out rather than trusting the reader to notice a label.
+        `data_sources` carries the three clocks (scan / quote / book) and
+        `freshness_rules` DROPS a block whose source has aged out rather than
+        trusting the reader to notice a label. The block-to-source map itself
+        is BUILT_FROM, a module constant the gate reads and sr-8 stopped
+        shipping — 269 bytes of static map on every scan, which the doctrine
+        now states once in prose.
 
     (2) Distances lied by a spot. Every sigma distance divided a LIVE spot into
         a book measured at a different spot — median $2.13 apart on cached

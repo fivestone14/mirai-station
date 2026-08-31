@@ -131,7 +131,7 @@ function paintAll(){
 
 function paintMast(st){
   const sc = st.scene, c = sc.clock || {};
-  $('ticker').textContent = sc.instrument ? String(sc.instrument) : '';
+  $('ticker').textContent = d.instrument ? String(d.instrument) : '';
   $('livedot').hidden = !(LIVE && LIVE.spot != null);
 
   let exp = '';

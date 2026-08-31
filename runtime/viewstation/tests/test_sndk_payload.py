@@ -86,10 +86,13 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     assert d["as_of"] == "live" and d["built_at"] == now.isoformat()
     assert d["scans_today"] == 3
     sc = d["scene"]
-    # sr-8: `instrument` moved to the doctrine — one frozen string from a reader
-    # that has never watched anything else. What the wrapper must still hand
-    # back is the reader's own scene, so that is what is checked.
+    # sr-8: `instrument` left the SCENE — one frozen string the model does not
+    # need told ~190 times a day — but the phone masthead reads it, so it moved
+    # to the WRAPPER, off the diary row that already carries it. The phone spec
+    # forbids the view hardcoding a ticker (absent means show nothing, never a
+    # literal "SNDK"), so the wrapper has to keep supplying one.
     assert "instrument" not in sc
+    assert d["instrument"] == "SNDK"
     assert sc["price"]["live_spot"] == 1586.2
     assert sc["clock"]["minutes_to_close"] == 178 and sc["clock"]["front_expiry"] == {"days_to_expiry": 2, "expiry_date": "2026-08-21"}
     assert sc["magnet"]["top_strikes"][0]["strike"] == 1600.0
