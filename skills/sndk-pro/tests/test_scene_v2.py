@@ -90,18 +90,24 @@ def test_asym_expected_move_balanced_band_is_named_balanced():
     assert sc["scale"]["expected_move_today_asym"]["skewed_toward"] == "balanced"
 
 
-# --- price.vwap_dist_sigma_from_live_spot -----------------------------------
+# --- price.vwap_minus_live_spot_sigma ---------------------------------------
 def test_vwap_ships_as_sigma_distance():
     """sr-7: vwap is a live-tape level, so it is the one distance still measured
     from the LIVE spot while the book-derived blocks moved to the book's own
-    spot — and the leaf name now carries which ruler it used."""
+    spot. sr-8: the name now carries the SUBTRACTION as well as the ruler —
+    vwap 1212 over spot 1200 on a 100 sigma is +0.12, positive because vwap is
+    ABOVE price."""
     sc = scene_of(rich_row(vwap=1212.0))
-    assert sc["price"]["vwap_dist_sigma_from_live_spot"] == pytest.approx(0.12)
+    assert sc["price"]["vwap_minus_live_spot_sigma"] == pytest.approx(0.12)
+    # ...and the sign is the opposite sense to a 30-min move, which is what
+    # 13 of 15 reviewers got backwards under the old name
+    below = scene_of(rich_row(vwap=1188.0))
+    assert below["price"]["vwap_minus_live_spot_sigma"] == pytest.approx(-0.12)
 
 
 def test_vwap_absent_when_unmeasured():
     sc = scene_of(rich_row(vwap=None))
-    assert "vwap_dist_sigma_from_live_spot" not in sc["price"]
+    assert "vwap_minus_live_spot_sigma" not in sc["price"]
 
 
 # --- regime.vol_trend -------------------------------------------------------
@@ -841,12 +847,14 @@ def test_vwap_is_the_one_distance_that_stays_on_the_live_spot():
     """Every other σ in the scene moved onto the book's spot; vwap did not,
     because vwap is a LIVE-TAPE level and measuring it against a spot the chain
     saw four minutes ago would put a live number in a stale frame. The leaf
-    name is the guard: it says which ruler it used."""
-    live = scene_of(rich_row())["price"]["vwap_dist_sigma_from_live_spot"]
+    name is the guard: it says which ruler it used, and since sr-8 which way it
+    points."""
+    live = scene_of(rich_row())["price"]["vwap_minus_live_spot_sigma"]
     book = scene_of(rich_row(meta={"chain_spot": 1190.0}))["price"]
     assert live == pytest.approx(0.12)                 # (1212 − 1200) / 100
-    assert book["vwap_dist_sigma_from_live_spot"] == pytest.approx(0.12)
+    assert book["vwap_minus_live_spot_sigma"] == pytest.approx(0.12)
     assert "vwap_dist_sigma" not in book               # never the bare name
+    assert "vwap_dist_sigma_from_live_spot" not in book       # nor the old one
 
 
 def test_the_offset_converts_a_book_sigma_the_way_the_doctrine_says_it_does():

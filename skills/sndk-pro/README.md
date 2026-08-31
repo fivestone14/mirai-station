@@ -88,7 +88,7 @@ sr-7: session_date, minutes each way, and `front_expiry`
 every recorded session), `scale` (σ + **expected_move_today_asym**, the
 IV-skew-split asymmetric range), `price` (the live spot AND the spot the book
 was measured at, the gap between them, and
-**vwap_dist_sigma_from_live_spot**), `regime` (+ **vol_trend**, **flip** band
+**vwap_minus_live_spot_sigma**), `regime` (+ **vol_trend**, **flip** band
 with center + position — told ONCE since sr-3: the edges are the flip ±0.25σ
 by construction, and the old named_levels duplicate left the scene — plus
 **charm** magnitude/drift-target on the front-book clock), `magnet` (the lead

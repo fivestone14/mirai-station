@@ -868,7 +868,7 @@ WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any 
 
 THE TWO RULERS, AND WHICH ONE A DISTANCE USES:
 - `price.live_spot` is where the stock is NOW. `price.spot_when_book_was_measured` is where it was when the chain was pulled. On a cached row these differ by a median of about $2 and by as much as $42.
-- EVERY book-derived distance in this scene — `regime.flip`, `magnet`, `walls` — is measured from the BOOK's spot, not the live one, because that is the only frame in which the book's own numbers are consistent. That is the standing rule and blocks do not restate it. The EXCEPTION announces itself: a block carrying `sigma_measured_from: live_spot_because_chain_spot_was_absent` had no book spot to divide, so its distances are already in the live frame and `price.live_minus_book_spot_sigma` will be missing from the scene as well. To convert a book-measured distance to a distance from where price actually is, SUBTRACT `price.live_minus_book_spot_sigma` — it is how far the live spot sits above the book's spot, so taking it off a book-measured distance is what moves that distance into the live frame. Only `price.vwap_dist_sigma_from_live_spot` is already measured from the live spot, and its name says so.
+- EVERY book-derived distance in this scene — `regime.flip`, `magnet`, `walls` — is measured from the BOOK's spot, not the live one, because that is the only frame in which the book's own numbers are consistent. That is the standing rule and blocks do not restate it. The EXCEPTION announces itself: a block carrying `sigma_measured_from: live_spot_because_chain_spot_was_absent` had no book spot to divide, so its distances are already in the live frame and `price.live_minus_book_spot_sigma` will be missing from the scene as well. To convert a book-measured distance to a distance from where price actually is, SUBTRACT `price.live_minus_book_spot_sigma` — it is how far the live spot sits above the book's spot, so taking it off a book-measured distance is what moves that distance into the live frame. The one distance NOT in the book's frame is `price.vwap_minus_live_spot_sigma`, which is measured off the live quote because vwap is a live-tape level; read its name as the subtraction it is, so POSITIVE means vwap is ABOVE price — price trading BELOW its average for the day. That is the opposite sense to `price.moved_last_30min_sigma`, which is positive when price ROSE.
 
 HOW TO READ THE SCENE (grouped by force, not by metric):
 - clock is the SESSION calendar and nothing else. `front_expiry.days_to_expiry` is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while 0 collapses to expiry-day mechanics where pinning and charm run at full strength. `minutes_to_close` says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape.
@@ -1915,7 +1915,21 @@ def build_scene(row: dict, band: dict, frozen: list,
              "moved_last_30min_sigma": moved_30m}
     vw = sd_live(row.get("vwap"))
     if vw is not None:
-        price["vwap_dist_sigma_from_live_spot"] = vw
+        # sr-8 RENAME, and the reason is measured. As
+        # `vwap_dist_sigma_from_live_spot` this field said which SPOT it was
+        # measured from and never which way it pointed: 13 of 15 reviewers read
+        # its sign backwards (recorded in the phone glance, which sidestepped
+        # the trap by rendering the vwap price instead of the ratio). It is
+        # (vwap - live spot) / sigma, so POSITIVE means vwap sits ABOVE price,
+        # i.e. price is BELOW its average — the opposite feel to
+        # moved_last_30min_sigma, which is positive when price ROSE.
+        #
+        # The fix is the name, because `price.live_minus_book_spot_sigma` sits
+        # four lines up doing the same thing — a difference of two prices over
+        # sigma — and names its subtraction. One block should not hold two
+        # differences, one of which spells out its direction and one of which
+        # does not. sr-7's own rule: a leaf must survive being read alone.
+        price["vwap_minus_live_spot_sigma"] = vw
 
     scene = {
         # sr-8: `instrument` was the string "SNDK" on every scan of a reader
