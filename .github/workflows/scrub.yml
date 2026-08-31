@@ -49,8 +49,25 @@ jobs:
       # still at HEAD~10 to HEAD~18 and were still failing PRs today.
       #
       # base.sha..head.sha is the PR's own range and excludes the merge commit.
+      #
+      # The third case is branch CREATION, where `github.event.before` is the
+      # zero sha and `0000..sha` resolves to nothing — which lands right back in
+      # the HEAD~20 fallback. What the new branch actually adds is what it holds
+      # and the default branch does not, so that is what gets checked. A YAML
+      # ternary cannot express three cases, so the range is computed in shell.
       - env:
-          RANGE: ${{ github.event_name == 'push'
-                     && format('{0}..{1}', github.event.before, github.sha)
-                     || format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) }}
-        run: .github/scripts/commit-hygiene.sh
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          MAIN: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ -n "$PR_BASE" ]; then
+              RANGE="$PR_BASE..$PR_HEAD"
+          elif [ -n "$BEFORE" ] && [ -n "${BEFORE##*[!0]*}" ]; then
+              git fetch -q origin "$MAIN" 2>/dev/null || true
+              RANGE="$AFTER --not origin/$MAIN"      # branch creation
+          else
+              RANGE="$BEFORE..$AFTER"
+          fi
+          RANGE="$RANGE" .github/scripts/commit-hygiene.sh
