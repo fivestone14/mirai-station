@@ -309,8 +309,16 @@ def build_summary(day: str) -> Optional[dict]:
         return None
     o, c, lo, hi = spots[0], spots[-1], min(spots), max(spots)
     pct = round((c / o - 1) * 100, 2) if o else None
-    vecs = Counter(s["meta"].get("vector") for s in slices
-                   if (s.get("meta") or {}).get("vector"))
+    # obs-1: a day is summarised by how much it had to SAY, not by which way it
+    # leaned. `meta.vector` is no longer written, so counting it produced an
+    # empty histogram and a day summary that had quietly lost its shape.
+    obs = Counter()
+    for sl in slices:
+        m = sl.get("meta") or {}
+        obs["unusual" if m.get("notable_count") else
+            "dropped" if m.get("abstain") == "forced" else "quiet"] += 1
+    n_unusual = sum((sl.get("meta") or {}).get("notable_count") or 0
+                    for sl in slices)
     magnets = [(s.get("meta") or {}).get("magnet_top") for s in slices]
     magnets = [m[0][0] for m in magnets if m]
     if not magnets:
@@ -326,13 +334,13 @@ def build_summary(day: str) -> Optional[dict]:
         "put_wall_mode": _mode(f"{w:g}" for r in diary
                                if (w := _num(r.get("put_wall"))) is not None),
         "n_scans": len(diary), "n_slices": len(slices),
-        "vector_counts": dict(vecs) or None,
+        "read_counts": dict(obs) or None,
+        "observations": n_unusual or None,
     }
-    lean = None
-    if vecs:
-        top, n = vecs.most_common(1)[0]
-        if top in ("up", "down") and n > vecs.get("none", 0):
-            lean = top
+    # how loud the day was, in the vocabulary the reads now use. A day of pure
+    # quiet is a real and useful thing to be able to search for — it is the
+    # baseline every "unusual" claim on a later day is measured against.
+    quiet_day = bool(slices) and not obs.get("unusual")
     mood = ("more bearish than it opened" if (pct or 0) <= -1.0 else
             "more bullish than it opened" if (pct or 0) >= 1.0 else
             "little changed from its open")
@@ -341,7 +349,9 @@ def build_summary(day: str) -> Optional[dict]:
             f"ranged {lo:g}–{hi:g}",
             f"{meta['regime_mode']} regime most of the day" if meta["regime_mode"] else None,
             f"magnet camped at {meta['magnet_mode']}" if meta["magnet_mode"] else None,
-            f"the model leaned {lean}" if lean else None]
+            ("the model found nothing unusual all day" if quiet_day else
+             f"the model flagged {n_unusual} unusual reading{'' if n_unusual == 1 else 's'}"
+             if n_unusual else None)]
     # spine first — the numbers stay authoritative, and the ISO date prefix
     # gives exact tokens no prose date can (narrative-uniqueness pressure test
     # 08-05: embeddings rank neither dates nor magnitudes; the spine is the

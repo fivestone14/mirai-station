@@ -14645,7 +14645,7 @@ const MEM = {
     if(m.regime) F.push(['Regime', esc(MEM.cap(m.regime))]);
     if(MEM.n(m.sigma)!=null) F.push(['Typical day', `±${MEM.fx(m.sigma)}`]);
     const when=chrono?esc(x.time||m.time||'') : `<span class="dt">${esc(m.date||'')}</span>${esc(x.time||m.time||'')}`;
-    return `<article class="mc" data-i="${i}"${sp!=null?` data-px="${sp}"`:''} data-v="${esc(m.vector||'none')}"`
+    return `<article class="mc" data-i="${i}"${sp!=null?` data-px="${sp}"`:''} data-v="${esc(m.notable_count?'unusual':(m.abstain==='forced'?'dropped':'quiet'))}"`
       +` data-rg="${esc(m.regime||'')}" data-gs="${esc(m.gamma_sign||'')}">`
       +`<div class="mc-hd"><span class="mc-t">${when}</span>${MEM.obsChip(m)}${MEM.wakeBadge(m.wake)}</div>`
       +(parts[0]?`<p class="mc-read">${esc(parts[0])}</p>`:'')
@@ -14653,7 +14653,7 @@ const MEM = {
       +MEM.facts(F)+`</article>`;
   },
   cardDay(x,i,chrono){
-    const m=x.meta||{}, p=MEM.n(m.pct_open_to_close), vc=m.vector_counts||{}, cl=MEM.n(m.close);
+    const m=x.meta||{}, p=MEM.n(m.pct_open_to_close), vc=m.read_counts||{}, cl=MEM.n(m.close);
     const d=MEM.dayParts(String(x.narrative||'').replace(/^\d{4}-\d{2}-\d{2}:\s*/,''));
     const F=[];
     if(MEM.n(m.open)!=null||cl!=null) F.push(['Open → close', `${MEM.fx(m.open)} → ${MEM.fx(m.close)}`]);

@@ -698,21 +698,32 @@ def test_present_tense_narration_of_a_standing_field_is_flagged():
         {"quiet_because": "the wall is building"}) == ["is building"]
 
 
-def _retired_lexicon_shadow_test():
+def test_the_shadow_guard_rides_the_row_and_never_rejects():
     """The standing house rule for a new guard: run it in the shadow first. The
     flag rides the read row so the rate is known before LEXICON_ENFORCE is
     allowed to reject anything — a guard that has never fired is not evidence
     that nothing is wrong, and one that fires on 40% of readings is not a guard
-    either. Measured on the recorded history: 17 of 391 distinct sentences."""
+    either. Measured on the recorded history: 17 of 391 distinct sentences.
+
+    obs-1 kept the guard and moved it onto the fields that exist. It is checked
+    through the real validator, on a scene, so a future rename breaks this test
+    rather than silently zeroing the rate."""
     assert SR.LEXICON_ENFORCE is False
-    r = SR._validate_reading({"vector": "up", "magnitude_sigma": 0.12,
-                              "line": "dealers are buying the 1500 wall right now",
-                              "breaks_if": "a close back under 1240",
-                              "cited": "walls.call[0]"})
+    sc = _scene_for_obs()
+    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
+    r = SR._validate_observation({"quiet": False,
+        # no bare number here on purpose: a number the gates did not verify
+        # blanks `say` before the tense guard ever sees it, which is the
+        # validator working and would make this test measure the wrong thing
+        "say": "Dealers are buying the heaviest strike right now.",
+        "notable": [{"what": "The heaviest strike carries most of the board.",
+                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+                     "values": [top]}]}, sc)
     assert r["stale_language_flags"] == ["are buying", "right now"]
-    assert r["line"].startswith("dealers are buying")   # prose survives...
-    assert r["breaks_if"] and r["cited"]                # ...and so does the rest
-    assert r["vector"] == "up" and r["magnitude_sigma"] == 0.12
-    # a clean reading carries no key at all — absence is the scene's own word
-    clean = SR._validate_reading({"vector": "none", "line": "price sits mid-band"})
+    assert len(r["notable"]) == 1        # shadow only — it rejects nothing
+    clean = SR._validate_observation({"quiet": False,
+        "say": "The heaviest strike sits above price.",
+        "notable": [{"what": "The heaviest strike carries most of the board.",
+                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+                     "values": [top]}]}, sc)
     assert "stale_language_flags" not in clean

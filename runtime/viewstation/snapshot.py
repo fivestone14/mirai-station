@@ -689,11 +689,14 @@ def sndk_memory_overview() -> dict:
                 continue
             if not rows:
                 continue
-            vec = {"up": 0, "down": 0, "none": 0}
+            # obs-1: the histogram counts what each read FOUND, not which way it
+            # leaned. Reading `meta.vector` — a field obs-1 stopped writing —
+            # produced three zeros on every day and a bar chart of nothing.
+            vec = {"unusual": 0, "quiet": 0, "dropped": 0}
             for r in rows:
-                v = (r.get("meta") or {}).get("vector")
-                if v in vec:
-                    vec[v] += 1
+                m = r.get("meta") or {}
+                vec["unusual" if m.get("notable_count") else
+                    "dropped" if m.get("abstain") == "forced" else "quiet"] += 1
             days.append({"date": p.stem, "n": len(rows),
                          "first": (rows[0].get("meta") or {}).get("time"),
                          "last": (rows[-1].get("meta") or {}).get("time"),

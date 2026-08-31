@@ -12,8 +12,8 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
     rag = tmp_path / "sndk_rag"
     (rag / "slices").mkdir(parents=True)
     rows = [
-        {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "10:12", "vector": "down"}, "narrative": "first"},
-        {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "14:21", "vector": "up"}, "narrative": "last line"},
+        {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "10:12", "quiet": True, "notable_count": 0, "abstain": "chosen"}, "narrative": "first"},
+        {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "14:21", "quiet": False, "notable_count": 2}, "narrative": "last line"},
         {"kind": "not-a-slice"},
     ]
     (rag / "slices" / "2026-08-19.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
@@ -24,7 +24,11 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
     assert ov["slices_total"] == 2 and len(ov["days"]) == 1
     d = ov["days"][0]
     assert d["date"] == "2026-08-19" and d["first"] == "10:12" and d["last"] == "14:21"
-    assert d["vectors"] == {"up": 1, "down": 1, "none": 0} and d["last_line"] == "last line"
+    # obs-1: the histogram counts what each read FOUND. Reading meta.vector — a
+    # field obs-1 stopped writing — gave three zeros on every day, a bar chart
+    # of nothing that no test would have noticed because zero is a valid count.
+    assert d["vectors"] == {"unusual": 1, "quiet": 1, "dropped": 0}
+    assert d["last_line"] == "last line"
     assert ov["summaries"] == {"n": 1, "first": "2026-08-05", "last": "2026-08-05", "rag_v": [2]}
     assert ov["terrain"]["built"] == "2026-08-03" and ov["terrain"]["sessions"] == 4
 
