@@ -868,7 +868,7 @@ WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any 
 
 THE TWO RULERS, AND WHICH ONE A DISTANCE USES:
 - `price.live_spot` is where the stock is NOW. `price.spot_when_book_was_measured` is where it was when the chain was pulled. On a cached row these differ by a median of about $2 and by as much as $42.
-- Any block carrying `sigma_measured_from: spot_when_book_was_measured` measures its distances from the BOOK's spot, because that is the only frame in which the book's own numbers are consistent. To convert any of those to a distance from where price actually is, SUBTRACT `price.live_minus_book_spot_sigma` — it is how far the live spot sits above the book's spot, so taking it off a book-measured distance is what moves that distance into the live frame. Its dollar twin `price.live_minus_book_spot_dollars` sits beside it and reads the same way. Only `price.vwap_dist_sigma_from_live_spot` is already measured from the live spot, and its name says so.
+- EVERY book-derived distance in this scene — `regime.flip`, `magnet`, `walls` — is measured from the BOOK's spot, not the live one, because that is the only frame in which the book's own numbers are consistent. That is the standing rule and blocks do not restate it. The EXCEPTION announces itself: a block carrying `sigma_measured_from: live_spot_because_chain_spot_was_absent` had no book spot to divide, so its distances are already in the live frame and `price.live_minus_book_spot_sigma` will be missing from the scene as well. To convert a book-measured distance to a distance from where price actually is, SUBTRACT `price.live_minus_book_spot_sigma` — it is how far the live spot sits above the book's spot, so taking it off a book-measured distance is what moves that distance into the live frame. Its dollar twin `price.live_minus_book_spot_dollars` sits beside it and reads the same way. Only `price.vwap_dist_sigma_from_live_spot` is already measured from the live spot, and its name says so.
 
 HOW TO READ THE SCENE (grouped by force, not by metric):
 - clock is the SESSION calendar and nothing else. `front_expiry.days_to_expiry` is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while 0 collapses to expiry-day mechanics where pinning and charm run at full strength. `minutes_to_close` says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape.
@@ -1440,7 +1440,7 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
     # and the 08-06 incident below is what happens when that is misread — so
     # the rule stays stated, in the doctrine, where a standing rule costs a
     # tenth as much and has room to say why it matters.
-    out = {"sigma_measured_from": ruler_name}
+    out = {} if ruler_name is None else {"sigma_measured_from": ruler_name}
     for key, pool, near in (
             ("call", [c for c in clusters
                       if c["side"] == "call" and c["peak"] > spot],
@@ -1678,7 +1678,16 @@ def build_scene(row: dict, band: dict, frozen: list,
             book_spot <= 0 or abs(book_spot - spot) / spot > RULER_MAX_DRIFT):
         book_spot = None
     ruler_spot = book_spot if book_spot is not None else spot
-    ruler_name = ("spot_when_book_was_measured" if book_spot is not None
+    # sr-8 INVERTS the provenance tag. sr-7 stamped `sigma_measured_from` on
+    # three blocks on every scan, and it read "spot_when_book_was_measured" on
+    # 4,149 of 4,149 — a tag that says the same word every time is not telling
+    # the reader anything, it is being read past. The RULE now lives in the
+    # doctrine ("book-derived distances divide the book's spot") and the tag
+    # ships only when that rule does NOT hold, which is the case it was written
+    # for: the fallback, where there is no chain_spot and the doctrine's
+    # conversion field does not exist either. A guard that only speaks when
+    # something is wrong is a guard that gets read.
+    ruler_name = (None if book_spot is not None
                   else "live_spot_because_chain_spot_was_absent")
 
     def sd(v):
@@ -1756,9 +1765,13 @@ def build_scene(row: dict, band: dict, frozen: list,
         # small. Say which clock produced it rather than passing it off.
         book["measured_at_is_fallback_scan_clock"] = True
     oi_same, oi_n = _oi_unchanged_today(rows)
-    oi = {"snapshot_is": "prior_session_close",
-          "updates_intraday": False,
-          "prior_session_date": _prior_session_date(now.strftime("%Y-%m-%d")),
+    # sr-8: `snapshot_is` and `updates_intraday` were a fixed string and a
+    # fixed False describing how the FEED works, not what it measured today.
+    # The doctrine makes that point at length and in the place it matters (the
+    # present-tense ban). What stays here is what varies and can be checked:
+    # which session the snapshot was struck at, and whether it has in fact held
+    # still across today's scans.
+    oi = {"prior_session_date": _prior_session_date(now.strftime("%Y-%m-%d")),
           "measured_unchanged_so_far_today": oi_same,
           "strikes_compared_today": oi_n}
 
@@ -1836,12 +1849,11 @@ def build_scene(row: dict, band: dict, frozen: list,
             "up_dollars": round(2 * em * (1 - d), 2),
             "down_dollars": round(2 * em * d, 2),
             "skewed_toward": ("downside" if d >= 0.52 else
-                              "upside" if d <= 0.48 else "balanced"),
-            "derived_from": "put/call IV skew"}
+                              "upside" if d <= 0.48 else "balanced")}
 
-    regime = {"sigma_measured_from": ruler_name,
-              "gamma_sign": row.get("gamma_sign"),
-              "regime_label": row.get("regime")}
+    regime = prune({"sigma_measured_from": ruler_name,
+                    "gamma_sign": row.get("gamma_sign"),
+                    "regime_label": row.get("regime")})
     vt = vol_trend(rows, now)
     if vt:
         regime["vol_trend"] = vt
@@ -1884,7 +1896,10 @@ def build_scene(row: dict, band: dict, frozen: list,
         price["vwap_dist_sigma_from_live_spot"] = vw
 
     scene = {
-        "instrument": "SNDK",
+        # sr-8: `instrument` was the string "SNDK" on every scan of a reader
+        # that has never watched anything else. The doctrine opens on it —
+        # "THE INSTRUMENT. This is SNDK, a single stock, not an index" — with
+        # the sigma scale and the weekly-expiry cadence that actually matter.
         "data_sources": data_sources,
         "clock": clock,
         "scale": prune(scale),

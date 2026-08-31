@@ -492,7 +492,8 @@ def test_the_wake_gate_and_the_payload_gate_round_the_same_book(
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
     dropped = sc["freshness_rules"]["blocks_dropped_this_scan"]
     assert {d["age_min"] for d in dropped} == {age_min}
-    assert list(sc) == ["instrument", "data_sources", "clock", "freshness_rules"]
+    # sr-8: `instrument` went to the doctrine, which opens on it
+    assert list(sc) == ["data_sources", "clock", "freshness_rules"]
 
 
 def test_the_two_gates_agree_a_book_just_inside_the_ceiling_is_fine():

@@ -73,7 +73,9 @@ def test_asym_expected_move_splits_the_priced_budget_by_iv_skew():
     assert aem["down_dollars"] + aem["up_dollars"] == pytest.approx(80.0)
     assert aem["down_dollars"] == pytest.approx(44.0)   # d=0.55
     assert aem["skewed_toward"] == "downside"
-    assert aem["derived_from"] == "put/call IV skew"
+    # sr-8: `derived_from` was one frozen string; the doctrine names the source
+    assert "derived_from" not in aem
+    assert "put/call IV skew" in SR._DOCTRINE
 
 
 def test_asym_expected_move_absent_without_skew_or_em():
@@ -688,7 +690,8 @@ def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
     too old to stand."""
     rows = _book_rows()
     sc = _scene_at(rows, T0 + timedelta(minutes=7))   # 7.0 min book, 6.0 cap
-    assert list(sc) == ["instrument", "data_sources", "clock", "freshness_rules"]
+    # sr-8: `instrument` went to the doctrine, which opens on it
+    assert list(sc) == ["data_sources", "clock", "freshness_rules"]
     dropped = sc["freshness_rules"]["blocks_dropped_this_scan"]
     assert [d["block"] for d in dropped] == list(_BOOK_BLOCKS)
     for d in dropped:
@@ -793,7 +796,10 @@ def test_every_book_derived_sigma_divides_the_books_own_spot():
     apart on cached rows, $41.99 at worst — and dividing the live one into a
     book measured at the other was costing up to 0.9σ of distance. Here they
     sit $10 apart on a $100 sigma, so every book-derived distance moves by
-    exactly 0.1σ and three blocks say which frame they are in."""
+    exactly 0.1σ. sr-8: the frame is the standing rule, stated in the doctrine
+    and no longer stamped on three blocks — a tag that read the same word on
+    4,149 of 4,149 scans was being read past, so it now speaks only for the
+    exception (see the fallback test below)."""
     live = scene_of(rich_row())
     book = scene_of(rich_row(meta={"chain_spot": 1190.0}))
     assert live["walls"]["call"][0]["sigma"] == pytest.approx(0.4)   # off 1200
@@ -802,9 +808,8 @@ def test_every_book_derived_sigma_divides_the_books_own_spot():
     assert book["magnet"]["top_strike_sigma"] == pytest.approx(1.1)  # 1300
     assert book["regime"]["flip"]["band_center_is_gamma_flip_sigma"] == (
         pytest.approx(0.16))                                         # flip 1206
-    assert _sigma_rulers(book) == {"spot_when_book_was_measured"}
-    for blk in ("walls", "magnet", "regime"):
-        assert book[blk]["sigma_measured_from"] == "spot_when_book_was_measured"
+    assert _sigma_rulers(book) == set()      # the rule holds: nothing to say
+    assert "SUBTRACT `price.live_minus_book_spot_sigma`" in SR._DOCTRINE
     assert book["price"]["spot_when_book_was_measured"] == 1190.0
     assert book["price"]["live_minus_book_spot_dollars"] == pytest.approx(10.0)
 
@@ -876,7 +881,7 @@ def test_the_drift_ceiling_cannot_reject_real_data():
     drifted = round(1200 * (1 - worst_recorded), 2)          # 1164.9
     sc = scene_of(rich_row(meta={"chain_spot": drifted}))
     assert sc["price"]["spot_when_book_was_measured"] == drifted
-    assert _sigma_rulers(sc) == {"spot_when_book_was_measured"}
+    assert _sigma_rulers(sc) == set()        # accepted: the standing rule holds
 
 
 def test_the_fallback_ruler_never_wears_the_books_name():
@@ -974,8 +979,11 @@ def test_open_interest_holding_still_is_measured_not_asserted():
     oi = _oi_of(_oi_rows(same, same))
     assert oi["measured_unchanged_so_far_today"] is True
     assert oi["strikes_compared_today"] == 13
-    assert oi["snapshot_is"] == "prior_session_close"
-    assert oi["updates_intraday"] is False
+    # sr-8: `snapshot_is` and `updates_intraday` described the FEED, not today.
+    # They were a fixed string and a fixed False; the doctrine makes the point
+    # where it bites, in the present-tense ban.
+    assert "snapshot_is" not in oi and "updates_intraday" not in oi
+    assert "PRIOR SESSION'S CLOSE" in SR._DOCTRINE
 
 
 def test_a_single_changed_strike_is_enough_to_say_no():
@@ -1006,9 +1014,13 @@ def test_too_few_common_strikes_says_nothing_rather_than_yes():
     thin = _oi_rows(_oi_surface(range(1100, 1125, 5)),   # 1100..1120
                     _oi_surface(range(1115, 1140, 5)))   # 1115..1135, 2 shared
     assert SR._oi_unchanged_today(thin) == (None, None)
-    oi = _oi_of(thin)
-    assert "measured_unchanged_so_far_today" not in oi
-    assert "strikes_compared_today" not in oi
+    # sr-8: with the two constants gone, an open_interest block that can say
+    # nothing measurable has nothing left to ship — and under omit-never-null
+    # the block itself vanishes rather than shipping a hollow shell. (Here the
+    # tmp state dir holds no closed session either, so prior_session_date is
+    # absent too; in production it is the field that keeps the block alive.)
+    sc = SR.build_scene(thin[-1], SR.magnet_band(thin[-1]), [], thin, T0)
+    assert "open_interest" not in sc["data_sources"]
     assert SR.OI_MIN_STRIKES_COMPARED == 5
 
 
