@@ -173,16 +173,36 @@ def test_flip_block_edges_center_and_position():
     assert "drifting toward pt" in fb["live_price_vs_band"]
 
 
-def test_a_partial_band_keeps_the_raw_edge_it_has():
+@pytest.mark.parametrize("ladder, kept, gone", [
+    ({"ct": 1231.0, "state": "positive transition"},
+     "band_upper_edge_ct_sigma", "band_lower_edge_pt_sigma"),
+    ({"pt": 1181.0, "state": "negative transition"},
+     "band_lower_edge_pt_sigma", "band_upper_edge_ct_sigma"),
+])
+def test_a_partial_band_keeps_the_raw_edge_it_has(ladder, kept, gone):
     """The width is only computable when BOTH edges exist, so a one-edge band
     has nothing to reconstruct from and the raw edge is the only reading there
-    is. Unreached on the recorded tape, reachable in the code."""
+    is. Unreached on the recorded tape, reachable in the code — and checked in
+    both directions, since ct-only and pt-only are separate paths."""
     row = rich_row()
-    row["profile_ladder"] = {"ct": 1231.0, "state": "positive transition"}
+    row["profile_ladder"] = ladder
     fb = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)["regime"]["flip"]
-    assert fb["band_upper_edge_ct_sigma"] == pytest.approx(0.31)
+    assert fb[kept] is not None
     assert "edges_are_center_plus_minus_sigma" not in fb
-    assert "band_lower_edge_pt_sigma" not in fb
+    assert gone not in fb
+
+
+def test_the_width_never_outlives_the_centre_it_is_measured_from():
+    """Both edges, no `gamma_flip`. Dropping them here would ship a half-width
+    measured from a centre the model cannot see — the old code's own warning
+    ("the edge width ... cannot survive alone") pointed at the field that
+    inherited the risk when sr-8 made the width the survivor."""
+    row = rich_row(gamma_flip=None)
+    fb = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)["regime"]["flip"]
+    assert "band_center_is_gamma_flip_sigma" not in fb
+    # so the edges STAY: they are the only levels left in the block
+    assert fb["band_upper_edge_ct_sigma"] == pytest.approx(0.31)
+    assert fb["band_lower_edge_pt_sigma"] == pytest.approx(-0.19)
 
 
 def test_flip_drift_clause_needs_actual_motion():
@@ -781,7 +801,70 @@ def test_the_do_not_cite_key_disappears_when_the_gate_empties_it():
                                            frozen)
 
 
-def test_the_doctrine_never_names_a_field_the_scene_stopped_shipping():
+def _every_scene_shape(tmp_path):
+    """Scenes covering every conditional leaf the builder can write.
+
+    One scene cannot reach them all — a censored wall age, a board with no flip,
+    an absent chain_spot, a repeated book and a history flag are mutually
+    exclusive states of the same tape — so the guard below unions them."""
+    prev = T0 - timedelta(days=1)
+    diary = tmp_path / "sndk_reversion"
+    diary.mkdir(parents=True, exist_ok=True)
+    (diary / f"{prev.date().isoformat()}.jsonl").write_text("\n".join(
+        json.dumps(rich_row(ts=prev - timedelta(minutes=i * 2))) for i in range(40)) + "\n")
+
+    def scene(rows, frozen=None):
+        return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), frozen or [],
+                              rows, T0)
+
+    moved = rich_row(); moved["_ran_30m_sigma"] = 0.31
+    repeat_asof = (T0 - timedelta(minutes=3)).isoformat()
+    dense = [[k, 0.1] for k in range(1105, 1300, 5)
+             if k not in (1150, 1240, 1245, 1260, 1265)]
+    walked = [rich_row(ts=T0 - timedelta(minutes=(5 - i) * 2),
+                       nbs=([[1100, -6.0], [1150, -7.0], [1240, 8.0],
+                             [1245, 7.0], [1300, 6.5]] if i else
+                            [[1100, -6.0], [1150, -7.0], [1260, 9.0],
+                             [1265, 7.0]]) + dense)
+              for i in range(6)]
+    ran = [rich_row(ts=T0 - timedelta(minutes=(40 - i) * 2), spot=1200.0 + i * 6)
+           for i in range(40)]
+    ran[-1]["_ran_30m_sigma"] = 0.9
+    same_oi = _oi_surface(range(1100, 1165, 5))
+
+    return [
+        scene([rich_row()]),
+        scene([rich_row(meta={})]),                        # the fallback ruler tag
+        scene([rich_row(meta={"chain_spot": 1190.0})]),     # both spots + the gap
+        scene([moved]),                                     # moved_last_30min_sigma
+        scene([rich_row(profile_ladder=None, gamma_flip=None)]),   # no flip at all
+        scene([rich_row()], [{"field": "magnet", "value": 1.0, "for_min": 99}]),
+        scene([rich_row(ts=T0 - timedelta(minutes=35),
+                        dex_views={"net_dex_total": 3.0e9}),
+               rich_row(ts=T0, dex_views={"net_dex_total": 3.93e9})]),
+        scene(_iv_rows(1.50, 2.30)),                        # regime.vol_trend
+        scene(_book_rows()),                                # censored wall ages
+        scene(walked),                                      # an exact wall age
+        scene([rich_row(ts=T0 - timedelta(minutes=2),
+                        meta={"chain_spot": 1200.0, "book_asof": repeat_asof}),
+               rich_row(ts=T0,
+                        meta={"chain_spot": 1200.0, "book_asof": repeat_asof})]),
+        scene(_oi_rows(same_oi, same_oi)),
+        scene(ran),                                         # the history flags
+    ]
+
+
+# Named leaves the fixtures above cannot reach, each with the reason. A name may
+# only sit here because REACHING it is expensive, never because it is doubtful.
+_UNREACHABLE_IN_FIXTURES = {
+    # needs the percentile cache warm with several CLOSED sessions of distinct
+    # books; test_percentile_omitted_below_the_session_floor covers the absence
+    # side, and test_magnet_ships_the_lead_not_a_verdict the presence side.
+    "top_strike_lead_vs_own_history",
+}
+
+
+def test_the_doctrine_never_names_a_field_the_scene_stopped_shipping(tmp_path):
     """THE sr-8 GUARD, and the reason the field deletions and the doctrine edits
     had to land in the same commits.
 
@@ -794,23 +877,51 @@ def test_the_doctrine_never_names_a_field_the_scene_stopped_shipping():
     warned "magnet unchanged 387m, do not cite" about a magnet block deleted
     three lines earlier.
 
-    The check is static on purpose. Building a scene that exercises every
-    conditional leaf (a censored wall age, a board with no flip, an absent
-    chain_spot, a percentile with prior sessions on disk) would make this test a
-    fixture problem rather than a contract check. What actually has to hold is
-    narrower and stronger: every field name the doctrine speaks aloud must still
-    be a key the builder can write."""
-    doctrine_names = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_.]*)`", SR._DOCTRINE))
-    # the doctrine also quotes the unit suffixes it teaches the model to read
-    doctrine_names -= {"_pp", "_bn", "_musd", "_min", "_sigma"}
-    assert doctrine_names, "the doctrine names no fields at all — regex broke"
-    source = Path(SR.__file__).read_text()
-    emitted = set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', source))
-    for name in sorted(doctrine_names):
+    The first draft of this guard checked doctrine names against every quoted
+    bareword in the module source, which is not the same set as "keys the
+    builder writes": it admitted 282 tokens including raw diary-row keys
+    (`gex_views`, `gap_pp`, `spot`) and — the reason it was rewritten — both
+    flip-band edges, which `flip_block` still constructs before popping. It
+    would have passed this branch's own deletion. The allow-list is now built
+    from scenes that were actually BUILT."""
+    shipped = set()
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                shipped.add(k)
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for sc in _every_scene_shape(tmp_path):
+        walk(sc)
+    shipped |= _UNREACHABLE_IN_FIXTURES
+
+    named = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_.]*)`", SR._DOCTRINE))
+    named -= {"_pp", "_bn", "_musd", "_min", "_sigma"}   # the unit suffixes
+    assert named, "the doctrine names no fields at all — the regex broke"
+    for name in sorted(named):
         for part in name.split("."):
-            assert part in emitted, (
-                f"doctrine names `{name}`, but the builder never writes "
-                f"a key {part!r} — a sentence outliving its field")
+            assert part in shipped, (
+                f"the doctrine names `{name}`, but no scene the builder can "
+                f"produce carries a key {part!r} — a sentence outliving its field")
+
+
+def test_the_guard_rejects_a_name_the_builder_stopped_writing():
+    """The guard is only worth having if it FAILS on the thing it exists to
+    catch, and its first draft did not. These four are the real shapes: two
+    leaves sr-8 deleted (one of which the old guard admitted, because
+    flip_block still constructs it before popping it), a whole block that left
+    the payload, and a raw diary-row key a doctrine author might reach for
+    believing it ships."""
+    for gone in ("band_upper_edge_ct_sigma", "instrument", "built_from",
+                 "gex_views"):
+        assert gone not in SR._DOCTRINE, (
+            f"`{gone}` is back in the doctrine — either the scene ships it "
+            f"again, in which case update this test, or a sentence has "
+            f"outlived its field")
 
 
 def test_the_forbidden_list_names_blocks_the_scene_actually_ships():

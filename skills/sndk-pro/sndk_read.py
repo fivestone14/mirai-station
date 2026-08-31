@@ -1116,11 +1116,15 @@ def flip_block(row: dict, sd, ran_30m: Optional[float]) -> Optional[dict]:
     # number, so if the ladder ever produces a different band the scene says so
     # instead of a doctrine constant quietly lying.
     #
-    # Dropped only when `half` exists, which by construction means both edges
-    # did. A partial band (one edge, no width) is unreached on the recorded tape
-    # but reachable in the code, and there the raw edge is the only reading
-    # there is — so it ships.
-    if half is not None:
+    # Dropped only when `half` exists (which by construction means both edges
+    # did) AND the CENTRE survived. Both conditions are load-bearing. A partial
+    # band — one edge, no width — is unreached on the recorded tape but reachable
+    # in the code, and there the raw edge is the only reading there is. So is a
+    # band with both edges and no `gamma_flip`: dropping the edges there would
+    # ship a half-width measured from a centre the model cannot see, which is
+    # the old comment's own warning ("it cannot survive alone") pointed at the
+    # field that inherited the risk.
+    if half is not None and center_s is not None:
         out.pop("band_upper_edge_ct_sigma")
         out.pop("band_lower_edge_pt_sigma")
     return {k: v for k, v in out.items() if v is not None} or None
@@ -1417,7 +1421,7 @@ def breadth_block(row: dict, now: Optional[datetime]) -> Optional[dict]:
 
 def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
                  now: Optional[datetime] = None, ruler_spot=None,
-                 ruler_name: str = "spot_when_book_was_measured") -> Optional[dict]:
+                 ruler_name: Optional[str] = None) -> Optional[dict]:
     """Laddered standing walls, up to WALLS_PER_SIDE a side, NEAREST first —
     walls.call[0]/put[0] are the old gwc/gwp (same clustering rule the ladder
     used: gw_vocab.cluster_walls on the measured net_by_strike surface).
