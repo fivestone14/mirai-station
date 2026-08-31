@@ -62,6 +62,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -83,7 +84,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "wk-1"                # bump on ANY change to the gates or the prompt.
+ERA = "obs-1"               # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-8 (2026-08-30): the payload pays only for what
@@ -394,7 +395,16 @@ _NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
 # tool) and WebSearch for the abnormal-tape catalyst check. Everything else
 # stays banned — the scene is still the primary evidence.
 _RAG_CMD = f"{sys.executable} {_SKILL_DIR / 'sndk_rag.py'}"
-_ALLOWED_TOOLS = (f"Bash({_RAG_CMD}:*)", "WebSearch")
+# obs-1 REVOKES the tool grant. It was used 0 times across all 391 production
+# calls. That alone would not settle it — the doctrine's own named triggers
+# fired 94 times and the model never reached, which is the PROMPT failing, not
+# the tool — but the observation contract removes the reason to reach at all:
+# an observation is a statement about the snapshot in hand, and every claim has
+# to resolve to a pointer INTO that snapshot. History cannot be cited under this
+# contract even when consulted, so granting the tool buys a latency risk and a
+# licence to wander with no reachable upside. `sndk_rag` keeps running on the
+# write side, filing a slice per read; it is the read side that is closed.
+_ALLOWED_TOOLS = ()
 
 
 def _state_dir() -> Path:
@@ -1048,7 +1058,11 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
 # ---------------------------------------------------------------------------
 # the model call — sr-2: the model infers its OWN vector from an unbiased scene
 # ---------------------------------------------------------------------------
-_DOCTRINE = f"""You read one stock's dealer-positioning snapshot COLD and infer a direction vector and a magnitude from the evidence — nothing in the scene is a conclusion, and nobody has decided anything for you. Write for a smart reader who does not know options jargon.
+_DOCTRINE = f"""You are watching one stock's option book and saying what you NOTICE. You are not forecasting. Nobody wants to know where you think price is going — that question was asked of you for a year, measured, and found to carry no information at all.
+
+TALK LIKE A PERSON. Imagine someone sitting next to you who knows markets but not options jargon, and you are pointing at the screen. "The heaviest strike on the board is 1500, and it has been all session" is what a human says. "top_strike_lead_pp = 1.81" is not. Full sentences, plain words, no shorthand, no bullet fragments, no field names in the prose — the field names ride in `paths`, where a machine checks them.
+
+THE ONE THING THAT MAKES THIS WORK: every number you say out loud has to come from a field you point at, and the pointer is checked against the scene before anyone reads your answer. A sentence whose number cannot be traced is deleted, not corrected. So point at what you actually looked at.
 
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical day's move) runs 8-10% of the share price — enormous. It has weekly expiries, not daily, so most days have no expiry at all. Standing levels come from open interest, which is yesterday's positioning about a stock that can move 12% in a session.
 
@@ -1074,28 +1088,41 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - momentum: the ONLY block here that describes change during today's session. `window_between_books` tells you exactly what was compared — `books_compared` distinct books spanning `span_min` minutes, measured on the book clock, not the scan clock. `share_of_book_gamma_change_pp` and `gross_volume_change_contracts` are the change itself; there is no verdict word, because a fixed threshold cannot tell building from noise. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
 - dealer_positioning: standing dealer positioning as of last night's close. `net_delta_bn` is $-delta in billions from an assumed-sign book, and ITS SIGN IS AN ARTIFACT OF THE FORMULA, which cannot produce another one — it has been positive on every one of 4,149 recorded scans, ranging 1.15 to 8.24 and never once crossing zero. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only `net_delta_change_30min_bn` can be news. `net_vanna_musd_per_vol_point` only matters when vol_trend is moving.
 - walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `share_of_book_gamma_pp` is the wall's share of total book gamma — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
+- WHICH LEVELS YOU MAY NAME. You may name the magnet's top strike, and the strikes in the magnet list. You may NOT name a call wall or a put wall as a level where anything happens. This is arithmetic, not politeness: those two are DEFINED as the heaviest strike on their side of spot, so the call wall is above price and the put wall below it, always, on every row ever recorded. The instant price rises through a call wall, that strike stops qualifying and a different one takes the name. Measured: a wall relabels on a crossing 100% of the time, within a median of zero minutes, while the magnet relabels 0% of the time and is still the same strike 40 minutes later on 99% of occasions. A wall is real structure and you may describe how heavy it is; it is not a place price can be said to reach or break, because the label moves out of the way.
 - history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_has_no_wall` flag or `flip.no_flip_anywhere_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a no-wall flag = known empty. Never confuse the two.
 
-WHEN TO REACH OUTSIDE THE SCENE (both optional, most reads need neither):
-- History: run `{_RAG_CMD} query --help` for narrative recall, and `{_RAG_CMD} series --help` for the numeric spot/magnet/walls series by time (and per-strike with --strike). Reach for them when something does not add up from the live snapshot alone — price testing a level unseen today (history.price_at_level_unseen_earlier_today flags it), a level acting out of character, or a cross-day question ("has 1300 held before?"). Day tier = today's slices + day summaries; month tier = standing terrain. Exact asks go through the numbers, not the text: past sessions answer to --date/--from-date/--to-date, --min-move (signed %: -5 = fell 5%+), and --near-strike (matches any day that traded through the level) — use --text only for meaning ("rejected the wall"), never for dates or biggest/worst. History is context, never the trigger — the live scene stays primary.
-- Outside world: when the tape is genuinely abnormal (history.tape_abnormal_vs_own_history, an outsized gap or move), a human would ask WHY — use WebSearch for the catalyst (earnings, macro, news) or sector context. Extreme cases only, not every scan.
+YOU HAVE NO TOOLS, AND THAT IS THE POINT. Earlier versions granted a history
+lookup and a web search. They were used zero times in 391 production calls, and
+the contract now removes the reason to want them: an observation is a statement
+about the snapshot in front of you, and every claim has to resolve to a pointer
+INTO that snapshot. Anything you learned elsewhere could not be pointed at, so
+it could not survive the gate. Work from what you were given, and say plainly
+when what you were given is not enough — that is what `unknowns` is for.
 
 HONESTY RULES, all of them load-bearing:
 - Never cite a field listed in frozen_do_not_cite as the reason for anything new. If the magnet has not moved in two hours, it is not news.
 - Never narrate an open-interest block in the present tense. See the provenance rules above — this is the one that will be checked.
 - The magnet is usually a TIE. When top_strike_lead_pp is small, no strike is really in charge — say so rather than naming one.
 - Never invent a level. If price is past the last named level on the board, say exactly that — on this name it is often true.
-- Thirty-minute moves here have a SPREAD, not a typical size: half run under 0.09 sigma, one in five exceeds 0.20, one in twenty exceeds 0.46, and the worst recorded is 1.71 — measured over 8 sessions of an extreme post-earnings stretch, so treat it as the shape of the tail, not a calibrated table. Size your magnitude against the whole spread — a big call needs a named force behind it, but the tail is real, so never let the median become your ceiling. Pointing at a level 0.6 sigma away is still a landmark, not a 30-minute target.
-- The one pattern this tape has shown any short-horizon stability in is MEAN REVERSION: a vector pointing the same way price just travelled (price.moved_last_30min_sigma) is the least trustworthy kind and needs extra evidence beyond the move itself.
-- "none" is an honest vector. When the evidence genuinely balances, say what is balanced instead of forcing a lean.
+- NOTHING NOTABLE IS THE COMMON ANSWER AND IT IS COMPLETE WORK. Most scans of most sessions hold nothing worth saying. Returning an empty list with a sentence about what you checked is a correct, finished answer and the one expected most often. Inventing something to fill the list is the worst failure available to you — worse than missing something, because a screen that cries wolf gets ignored and then the real thing goes unread too.
+- A NUMBER BEING BIG IS NOT NEWS. A number is worth saying only when it is extreme against this stock's OWN recorded history, or it CHANGED since the last look, or something a reader would assume was measured is missing, or two numbers in the scene disagree with each other. Present, large and unchanged are all ordinary.
+
+WORDS YOU MAY NOT USE, and why it is correctness rather than caution. Anything about where price goes or how likely something is: rally, bounce, breakout, target, support, resistance, squeeze, bullish, bearish, expect, likely, should, will, suggests, implies, bias, lean, higher, lower, upside, downside, pull, attract, pin, magnet (the word — you may still name the strike), push. And any cause-and-effect connective: because, due to, driving, as a result, in response to, which is why, causing, defending. You are describing a board, and a board does not make things happen. A measured past change with its window named is fine and welcome — "implied vol came down about two points over the last half hour" says only what was measured.
 
 OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence:
-{{"vector": "up" | "down" | "none",
- "magnitude_sigma": <expected travel over the next ~30 minutes, in sigma — omit when vector is "none">,
- "line": "<one sentence, max 24 words: the read and the force behind it>",
- "breaks_if": "<one short clause naming the specific level or condition that would flip this read>",
- "cited": "<the one or two fields and numbers you leaned on>"}}"""
+{{"quiet": true | false,
+ "say": "<two or three plain sentences, present tense, spoken to a person — what you notice and how unusual it is. Every number here must also appear in some observation's `values` below. Omit when quiet is true and nothing is worth saying.>",
+ "quiet_because": "<required when quiet: one plain sentence saying what you checked and found ordinary>",
+ "notable": [                 // at most 3, and fewer is normal; empty is normal
+   {{"what": "<one sentence, plain words, present tense, the same fact `say` covers>",
+     "paths": ["<JSON Pointer into the scene, e.g. /magnet/top_strikes/0/share_of_book_gamma_pp>"],
+     "values": [<the value at that pointer, copied exactly>],
+     "window": "now" | "30m" | "session" | "prior_sessions",
+     "novelty": "new_this_scan" | "changed_this_scan" | "extreme_vs_own_history" | "measured_empty" | "disagreement",
+     "basis": {{"stale_min": <how old the measurement is>, "n_sessions": <sessions the comparison rests on, or null>, "pctile": <rank among those sessions, or null>, "one_witness_with": ["<pointer to any field that is really the same evidence>"]}}}}],
+ "unknowns": [{{"field": "<name>", "why": "not_measured" | "too_few_sessions" | "window_too_short" | "stale_book"}}],
+ "watch": [{{"path": "<pointer>", "would_change": "<what about the SNAPSHOT would be different — never what price does>"}}]}}"""
 
 
 def _stale_language_flags(reading: dict) -> list[str]:
@@ -1116,34 +1143,231 @@ def _stale_language_flags(reading: dict) -> list[str]:
     return sorted({v for v in _LIVE_VERBS if v in text})
 
 
-def _validate_reading(obj: dict) -> Optional[dict]:
-    """Keep ONLY the schema's fields, validated — a malformed vector is
-    dropped (never guessed at), a magnitude is clamped sane and only rides
-    with a directional vector, and extra keys do not ride along."""
-    reading = {k: str(obj.get(k, ""))[:400]
-               for k in ("line", "breaks_if", "cited") if obj.get(k)}
-    vec = obj.get("vector")
-    if vec in ("up", "down", "none"):
-        reading["vector"] = vec
-        if vec != "none":
+# --- obs-1: the observation contract ----------------------------------------
+#
+# WHAT THE MODEL IS ASKED FOR CHANGED, and the gates below are the reason it can
+# be trusted. The old contract asked for a direction and a magnitude; the 08-27b
+# audit measured that forecast at zero forward value, and the model declined to
+# make it at all on 154 of 390 calls. The new contract asks what is UNUSUAL in
+# the snapshot, in a human voice, with every number traceable to the field it
+# came from.
+#
+# THE LEVEL RULE, and it is the one that came out of measurement rather than
+# taste. A statement may name the MAGNET / heaviest-cluster family and no other
+# level. Measured over 1,395 arrivals on the recorded tape: "X is the magnet"
+# is still true when price actually reaches X on 95.3% of occasions, and the
+# magnet relabels on a crossing with probability 0.000. "X is the call wall"
+# survives 73.1%, and on a crossing it relabels with probability 1.000 — median
+# 0.0 minutes — because `_weight_wall` is DEFINED as the heaviest strike on the
+# requested side of spot (lefteye_gex_box.py:318). call_wall >= spot on
+# 4,149 of 4,149 recorded rows. "Price broke the call wall" is not a hard claim
+# to check, it is an unobservable one: the wall steps aside as price arrives.
+# So the walls may be described as structure and may never be named as a level
+# something happens AT.
+_OBS_MAX = 3
+
+# Forecast vocabulary. Nothing about where price goes, how far, or how likely.
+_BANNED_FORECAST = (
+    "rally", "sell off", "selloff", "bounce", "breakout", "break out",
+    "break down", "breakdown", "target", "support", "resistance", "squeeze",
+    "bullish", "bearish", "expect", "likely", "unlikely", "should", "will",
+    "suggests", "implies", "favours", "favors", "sets up", "poised", "primed",
+    "bias", "lean", "risk of", "pull", "pulls", "pulling", "attract",
+    "attracts", "magnet", "pin", "pins", "pinning", "push", "pushes",
+    "higher", "lower", "upside", "downside", "rebound", "reversal",
+)
+# Causal connectives. Banned for CORRECTNESS, not caution: the walls relabel to
+# follow price with probability 1.000 on a crossing, so a causal verb about them
+# is false by measurement, and Zhu et al. (14,922 explanations) found evidence-
+# bounded prompting cuts unsupported causal attribution by only ~40% and never
+# eliminates it — the risk peaking exactly where evidence is rich but
+# insufficient, which describes an option book.
+_BANNED_CAUSAL = (
+    "because", "due to", "driving", "drove", "as a result", "in response to",
+    "which is why", "causing", "caused", "defending", "thanks to", "owing to",
+)
+# The two levels that cannot be named as places where something happens.
+_BANNED_LEVELS = ("call wall", "put wall")
+
+_BANNED_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in
+                      _BANNED_FORECAST + _BANNED_CAUSAL + _BANNED_LEVELS)
+    + r")\b", re.I)
+
+_NOVELTY = ("new_this_scan", "changed_this_scan", "extreme_vs_own_history",
+            "measured_empty", "disagreement")
+_WINDOW = ("now", "30m", "session", "prior_sessions")
+_UNKNOWN_WHY = ("not_measured", "too_few_sessions", "window_too_short",
+                "stale_book")
+_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def banned_words(text: str) -> list[str]:
+    """Every banned term in a piece of prose, lowercased and deduplicated."""
+    return sorted({m.group(0).lower() for m in _BANNED_RE.finditer(text or "")})
+
+
+def json_pointer(scene: dict, ptr: str):
+    """Resolve an RFC-6901 JSON Pointer against the scene. _MISS when it does
+    not resolve — distinct from a field whose value is legitimately None."""
+    if not isinstance(ptr, str) or not ptr.startswith("/"):
+        return _MISS
+    cur = scene
+    for raw in ptr[1:].split("/"):
+        tok = raw.replace("~1", "/").replace("~0", "~")
+        if isinstance(cur, dict):
+            if tok not in cur:
+                return _MISS
+            cur = cur[tok]
+        elif isinstance(cur, list):
             try:
-                mag = float(obj.get("magnitude_sigma"))
-                if math.isfinite(mag):
-                    reading["magnitude_sigma"] = round(min(max(mag, 0.0), 3.0), 2)
-            except (TypeError, ValueError):
-                pass               # a vector without a magnitude is honest
-    if reading:
-        flags = _stale_language_flags(reading)
-        if flags:
-            reading["stale_language_flags"] = flags
-            if LEXICON_ENFORCE:
-                # the enforcing branch does NOT silently rewrite the sentence:
-                # a laundered read is worse than a refused one. The row keeps
-                # the flags and loses the prose, which is a visible failure.
-                return {k: v for k, v in reading.items()
-                        if k in ("vector", "magnitude_sigma",
-                                 "stale_language_flags")}
-    return reading or None
+                cur = cur[int(tok)]
+            except (ValueError, IndexError):
+                return _MISS
+        else:
+            return _MISS
+    return cur
+
+
+_MISS = object()
+
+
+def _same_value(a, b) -> bool:
+    """Echoed value matches the scene's, within the rounding the scene ships."""
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)) \
+            and not isinstance(a, bool) and not isinstance(b, bool):
+        return abs(float(a) - float(b)) <= 0.011
+    return a == b
+
+
+def _validate_observation(obj: dict, scene: dict) -> dict:
+    """The five gates, in order. Returns the reading and never raises.
+
+    Gates DROP rather than repair. FinGround's own ablation (arXiv 2604.23588,
+    Table 2) measured that deletion alone carries the entire hallucination
+    reduction — 18.6% to 3.6% on FinQA — and that the regeneration step adds
+    nothing to it. A default output of silence makes deletion the natural
+    remedy: there is nothing to fall back to that needs writing."""
+    dropped = []
+    out = []
+    for ob in (obj.get("notable") or [])[:_OBS_MAX * 3]:
+        if not isinstance(ob, dict):
+            continue
+        what = str(ob.get("what") or "").strip()[:200]
+        paths = ob.get("paths") if isinstance(ob.get("paths"), list) else []
+        values = ob.get("values") if isinstance(ob.get("values"), list) else []
+        if not what or not (1 <= len(paths) <= 3):
+            dropped.append("malformed")
+            continue
+        # GATE 2 — provenance. Every pointer resolves, every echoed value matches.
+        resolved = [json_pointer(scene, p) for p in paths]
+        if any(r is _MISS for r in resolved):
+            dropped.append("pointer_did_not_resolve")
+            continue
+        if len(values) != len(resolved) or not all(
+                _same_value(v, r) for v, r in zip(values, resolved)):
+            dropped.append("value_did_not_match")
+            continue
+        # GATE 3 — staleness, and it applies ONLY to a claim of change.
+        #
+        # The first draft dropped any observation whose fields were all named in
+        # `frozen_do_not_cite`, which deleted a perfectly good statement on the
+        # first real scene it met: "the heaviest strike holds 11.53% of the
+        # board" was thrown away because the diary's coarse `magnet` scalar had
+        # not moved in 387 minutes.
+        #
+        # That is the frozen_do_not_cite defect wearing a third hat. The list
+        # probes the DIARY's scalar — the magnet's strike — while the model
+        # cites leaves underneath it, and sr-8 measured those disagreeing: where
+        # the list said "magnet unchanged", the magnet's own gamma share had in
+        # fact changed on 309 of 315 occasions. Mechanising a rule that is wrong
+        # 98% of the time makes it worse, not better, because code cannot be
+        # argued with.
+        #
+        # What the rule is actually for is stopping "X just moved" about
+        # something that has not moved. So it now bites only on a claim of
+        # CHANGE. An extremity claim about a level that has stood still all day
+        # is not only allowed, it is often the most useful thing on the board.
+        if ob.get("novelty") in ("new_this_scan", "changed_this_scan"):
+            frozen = {f.split(" ")[0]
+                      for f in (scene.get("frozen_do_not_cite") or [])}
+            heads = {p.strip("/").split("/")[0] for p in paths}
+            if heads and heads <= frozen:
+                dropped.append("change_claimed_on_a_frozen_field")
+                continue
+        # GATE 4 — lexicon.
+        hits = banned_words(what)
+        if hits:
+            dropped.append("banned:" + ",".join(hits))
+            continue
+        keep = {"what": what, "paths": [str(x) for x in paths],
+                "values": list(values)}
+        if ob.get("novelty") in _NOVELTY:
+            keep["novelty"] = ob["novelty"]
+        if ob.get("window") in _WINDOW:
+            keep["window"] = ob["window"]
+        if isinstance(ob.get("basis"), dict):
+            b = {k: v for k, v in ob["basis"].items()
+                 if k in ("stale_min", "n_sessions", "pctile", "one_witness_with")}
+            if b:
+                keep["basis"] = b
+        out.append(keep)
+        if len(out) >= _OBS_MAX:
+            break
+
+    say = str(obj.get("say") or "").strip()[:600]
+    say_hits = banned_words(say)
+    if say_hits:
+        dropped.append("say_banned:" + ",".join(say_hits))
+        say = ""
+    # A number in the human sentence must be a number the gates verified. This
+    # is what stops the prose drifting away from the evidence underneath it.
+    if say and out:
+        ok = set()
+        for k in out:
+            for v in k["values"]:
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    ok.add(round(float(v), 2))
+        for m in _NUM_RE.finditer(say):
+            n = round(float(m.group(0)), 2)
+            if n not in ok and abs(n) > 1.0:      # small ints are counts/clock
+                dropped.append("say_number_not_in_evidence")
+                say = ""
+                break
+
+    reading = {"quiet": not out, "notable": out}
+    # `say` is the prose ABOUT the observations. If every one of them was
+    # deleted, the sentence is describing evidence the reader cannot see, which
+    # is the whole failure this contract exists to prevent — so it goes with
+    # them. A quiet answer speaks through `quiet_because` instead.
+    if say and out:
+        reading["say"] = say
+    if not out:
+        # GATE 1 — the biconditional, rewritten to the notable-derived truth
+        # rather than rejected. GATE 5 — chosen quiet and forced quiet must be
+        # separately countable; that distinction is the whole audit.
+        reading["abstain"] = "forced" if dropped else "chosen"
+        qb = str(obj.get("quiet_because") or "").strip()[:200]
+        if qb and not banned_words(qb):
+            reading["quiet_because"] = qb
+    unknowns = []
+    for u in (obj.get("unknowns") or [])[:4]:
+        if isinstance(u, dict) and u.get("why") in _UNKNOWN_WHY and u.get("field"):
+            unknowns.append({"field": str(u["field"])[:60], "why": u["why"]})
+    if unknowns:
+        reading["unknowns"] = unknowns
+    watch = []
+    for w in (obj.get("watch") or [])[:2]:
+        if not isinstance(w, dict):
+            continue
+        wc = str(w.get("would_change") or "").strip()[:120]
+        if w.get("path") and wc and not banned_words(wc):
+            watch.append({"path": str(w["path"])[:80], "would_change": wc})
+    if watch:
+        reading["watch"] = watch
+    if dropped:
+        reading["dropped_observations"] = dropped[:8]
+    return reading
 
 
 def _extract_json(text: str):
@@ -1173,7 +1397,6 @@ def _ask(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
            "--append-system-prompt", _DOCTRINE,
            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-           "--allowedTools", ",".join(_ALLOWED_TOOLS),
            "--disallowedTools", *_NO_TOOLS]   # variadic — must stay LAST
     t0 = _clock.time()
     try:
@@ -2419,7 +2642,15 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     if err or not isinstance(obj, dict):
         out["error"] = err or "unparseable reply"
     else:
-        out["reading"] = _validate_reading(obj)
+        reading = _validate_observation(obj, scene)
+        out["reading"] = reading
+        # obs-1: the two numbers the nightly audit lives on. `quiet` says the
+        # model found nothing; `abstain` says whether it CHOSE that or whether
+        # the gates forced it by deleting everything. Counting them together
+        # would hide exactly the failure the gates exist to catch.
+        out["quiet"] = reading.get("quiet")
+        out["abstain"] = reading.get("abstain")
+        out["dropped_observations"] = reading.get("dropped_observations")
         out["reading_ts"] = now.isoformat()   # stamped once, carried forward after
         out["reading_age_min"] = 0
     atomic_io.append_jsonl(_reads_dir() / f"{day}.jsonl", out)

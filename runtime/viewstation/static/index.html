@@ -1797,6 +1797,28 @@
   /* MODEL VECTOR (sr-2) — the model's OWN inference from the unbiased scene, a separate
      surface from the gated arrow above it (the two are decoupled by design and may
      disagree; that disagreement is information, so both always show). */
+  /* obs-1 observation overlay — small, calm, and quiet by default */
+  .snk-read .obs{margin-top:7px; padding:6px 9px; border-radius:6px;
+    background:var(--panel,rgba(255,255,255,.03)); border:1px solid var(--rule,rgba(255,255,255,.08));}
+  .snk-read .obs > i{display:block; font-style:normal; font-size:11px; letter-spacing:.04em;
+    text-transform:uppercase; color:var(--ink-faint,#8b93a7); margin-bottom:3px;}
+  .snk-read .obs.quiet > i{color:var(--ink-faint,#8b93a7);}
+  .snk-read .obs.quiet.forced{border-color:var(--coral,#e06c75);}
+  .snk-read .obs.quiet.forced b{display:block; margin-top:3px; font-weight:400;
+    color:var(--coral,#e06c75); font-size:11px;}
+  .snk-read .obs.quiet > span{color:var(--ink-dim,#aab2c4); font-size:12px;}
+  .snk-read .obs .say{margin:2px 0 6px; font-size:13px; line-height:1.45;}
+  .snk-read .obs ul{list-style:none; margin:0; padding:0;}
+  .snk-read .obs li{display:grid; grid-template-columns:1fr auto; gap:2px 10px;
+    padding:4px 0; border-top:1px solid var(--rule,rgba(255,255,255,.06));}
+  .snk-read .obs li .w{font-size:12px;}
+  .snk-read .obs li .m{font-size:11px; color:var(--ink-dim,#aab2c4); white-space:nowrap;}
+  .snk-read .obs li .p{grid-column:1/-1; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10px; color:var(--ink-faint,#8b93a7); opacity:.75; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;}
+  .snk-read .obs .unk,.snk-read .obs .wch{margin-top:5px; font-size:11px;
+    color:var(--ink-faint,#8b93a7);}
+  .snk-read .obs .unk em{font-style:normal; opacity:.8;}
   .snk-read .vec{display:flex; align-items:baseline; gap:8px; margin-top:7px; padding:4px 8px;
     border-radius:8px; background:var(--surface-3); border:1px solid var(--hairline);
     font-family:var(--mono); font-size:12.5px; font-weight:700}
@@ -10885,25 +10907,55 @@ function snkArrowBlock(a, now){
   return { cls:'', html:`<span class="dir">■ QUIET</span>`
     +`<span class="mag">${snkSafe(a.silent_because)||'no direction — the gate did not clear'}</span>` };
 }
-// snkVectorRow (sr-2) — the model's OWN direction + magnitude, inferred cold from the
-// unbiased scene. A separate surface from the gated arrow ON PURPOSE: the two are
-// decoupled paths and may disagree — showing both is the honesty, not a bug. σ converts
-// to dollars off the read row's own ruler so the magnitude lands in plain money.
-function snkVectorRow(R, sigma){
-  const v=R&&R.vector;
-  // the producer already validates this enum, but v lands inside a class attribute — it is
-  // re-checked at the boundary so a corrupted row degrades to absence, never to markup
-  if(v!=='up'&&v!=='down'&&v!=='none') return '';
-  const m=(R.magnitude_sigma!=null&&isFinite(R.magnitude_sigma))?+R.magnitude_sigma:null;
-  const dol=(m!=null&&sigma!=null&&isFinite(sigma)&&sigma>0)?` · ~$${Math.round(m*sigma)}`:'';
-  const glyph=v==='up'?'▲':v==='down'?'▼':'◆';
-  const word=v==='none'?'balanced — no lean':`${v}${m!=null?` ${m.toFixed(2)}σ${dol}`:''}`;
-  const tip='The model’s own read of the scene — direction and how far over ~30 min.'
-    +'¦f:decoupled from the gated arrow above; they can disagree, and that is information'
-    +(m!=null?`¦k:magnitude=${m.toFixed(2)}σ${dol.replace(' · ','=')}`:'')
-    +'¦n:30-min moves here have a spread, not a typical size — half run under ~0.09σ, one in five tops 0.20σ (sr-5)';
-  return `<div class="vec ${v}" data-name="Model vector" data-tip="${tip}">`
-    +`<i>model vector</i><span>${glyph} ${word}</span></div>`;
+// snkObsBox (obs-1) — the OBSERVATION overlay. Replaces snkVectorRow, which drew
+// the model's direction and magnitude. That forecast was measured at zero forward
+// value and the model declined to make it on 154 of 390 calls; the contract now
+// asks what is UNUSUAL in the snapshot instead, in a human voice, with every
+// number traceable to the field it came from.
+//
+// The box is deliberately small and deliberately calm. Its most common state is
+// "nothing unusual", and that state must not look like a failure or an empty
+// panel — a quiet answer is complete work, and a screen that dresses silence up
+// as a problem teaches you to stop reading it.
+function snkObsBox(R){
+  if(!R) return '';
+  const e=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const obs=Array.isArray(R.notable)?R.notable:[];
+  // `quiet` is authoritative — the producer rewrites it to the notable-derived
+  // truth, so the two can never disagree by the time they reach here.
+  if(R.quiet||!obs.length){
+    const forced=R.abstain==='forced';
+    const tip='A quiet read is a finished read, not a missing one.'
+      +'¦f:the model is asked what is UNUSUAL, and most scans of most sessions hold nothing'
+      +(forced?'¦n:FORCED — the model did offer observations and every one was deleted by the checks. That is worth looking at.':'¦k:chosen — the model looked and found nothing');
+    return `<div class="obs quiet${forced?' forced':''}" data-name="Observation" data-tip="${e(tip)}">`
+      +`<i>nothing unusual</i>`
+      +(R.quiet_because?`<span>${e(R.quiet_because)}</span>`:'')
+      +(forced?`<b>every observation was dropped by the checks</b>`:'')
+      +`</div>`;
+  }
+  const rows=obs.map(o=>{
+    const v=Array.isArray(o.values)?o.values.join(', '):'';
+    const b=o.basis||{};
+    const rank=(b.pctile!=null&&b.n_sessions!=null)
+      ? ` · ${e(b.pctile)}th of ${e(b.n_sessions)} sessions` : '';
+    // the pointer is shown, not hidden: it is the thing that was checked, and
+    // seeing it is how a reader knows the sentence was not free-written
+    const src=(o.paths||[]).map(x=>e(x)).join(' ');
+    return `<li><span class="w">${e(o.what)}</span>`
+      +`<span class="m">${e(v)}${rank}${o.window?` · ${e(o.window)}`:''}</span>`
+      +`<span class="p" title="${src}">${e((o.paths||[])[0]||'')}</span></li>`;
+  }).join('');
+  const n=obs.length;
+  return `<div class="obs" data-name="Observation" data-tip="${e(n+' thing'+(n===1?'':'s')+' the model found unusual.¦f:every number below was checked against the scene before you saw it — a claim whose pointer did not resolve was deleted, not corrected¦k:at most 3, and fewer is normal')}">`
+    +`<i>${n} unusual</i>`
+    +(R.say?`<p class="say">${e(R.say)}</p>`:'')
+    +`<ul>${rows}</ul>`
+    +((R.unknowns||[]).length?`<div class="unk">not measured: `
+        +R.unknowns.map(u=>`${e(u.field)} <em>(${e(u.why)})</em>`).join(', ')+`</div>`:'')
+    +((R.watch||[]).length?`<div class="wch">watching: `
+        +R.watch.map(w=>e(w.would_change)).join('; ')+`</div>`:'')
+    +`</div>`;
 }
 // ---- LABEL DECLUTTER (08-03) — runs AFTER every full SVG build, over the labels that are
 // free to move (the .decl groups: level tags, walls, gap/EM captions, ghost, mirai voice,
@@ -11009,13 +11061,11 @@ function snkReadCard(rd, now, bare){
     +(bare?'':`<span class="k">The read${rd.wake?` · ${snkSafe(rd.wake)}`:''}`
       +`<button type="button" class="hist" aria-label="Today's reading history">history</button></span>`)
     +`<div class="gx-call${c.cls?' '+c.cls:''}">${c.html}</div>`
-    +snkVectorRow(R, (rd.sigma!=null&&isFinite(rd.sigma))?+rd.sigma:null)
-    +(R?`<p class="tr-next${aged?' aged':''}">${snkSafe(R.line)}`
-        +`${aged?` <span style="color:var(--ink-faint)">· read is ${snkDur(age)} old</span>`:''}</p>`
+    +snkObsBox(R)
+    +(aged&&R?`<div class="ct">read is ${snkDur(age)} old</div>`:'')
+    +(R?''
       :(rd.paused?`<div class="br"><i>Reasoning paused —</i> the wake gate fired but the sentence is switched off; every deterministic layer keeps running and rows keep landing.</div>`
-      :rd.error?`<div class="br"><i>No sentence —</i> the last reading call failed (${snkSafe(rd.error)}); the arrow above is unaffected.</div>`:''))
-    +(R&&R.breaks_if?`<div class="br"><i>Changes if —</i> ${snkSafe(R.breaks_if)}</div>`:'')
-    +(R&&R.cited?`<div class="ct">${snkSafe(R.cited)}</div>`:'')
+      :rd.error?`<div class="br"><i>No observation —</i> the last reading call failed (${snkSafe(rd.error)}); the arrow above is unaffected.</div>`:''))
     +flags+snkLayerChips(a?a.layers:null)+`</div>`;
 }
 // ---- READING HISTORY (sr-2) — every distinct reading today, NEWEST FIRST, each with the

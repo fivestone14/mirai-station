@@ -369,12 +369,13 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
     assert sc["price"]["session_high"] is not None
     # sr-5: the point became a spread — a single "typical" number taught the
     # model a ceiling (33/33 emitted magnitudes inside 0.06-0.20 vs p95 0.46).
-    # sr-8 moved the spread to the doctrine, which is prompt-cached: five frozen
-    # literals identical on every scan do not belong in a per-scan payload. The
-    # LESSON is what has to survive, so it is checked where it now lives.
+    # sr-8 moved the 30-minute spread out of the payload into the doctrine.
+    # obs-1 then deleted it from the doctrine too, and the reason is the whole
+    # phase: the spread existed to CALIBRATE A FORECAST, and there is no longer
+    # a forecast to calibrate. A magnitude table in an observation contract is
+    # an invitation to predict.
     assert "move_30min_sigma_distribution" not in sc["scale"]
-    for figure in ("0.09", "0.20", "0.46", "1.71", "8 sessions"):
-        assert figure in SR._DOCTRINE, figure
+    assert "0.46" not in SR._DOCTRINE and "1.71" not in SR._DOCTRINE
 
 
 def test_scene_names_the_frozen_fields_as_uncitable():
@@ -395,25 +396,126 @@ def test_scene_carries_no_verdict_at_all():
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
     assert "arrow_already_decided" not in sc
     assert "arrow" not in json.dumps(sc)
-    assert "infer a direction vector" in SR._DOCTRINE
+    # obs-1: the doctrine no longer asks for a vector at all. What it must
+    # still refuse to do is hand over a verdict, so that is what is checked.
+    assert "You are not forecasting" in SR._DOCTRINE
+    assert "direction vector" not in SR._DOCTRINE
 
 
 # --- reply handling --------------------------------------------------------
-def test_reading_validation_keeps_schema_and_drops_junk():
-    """sr-2: vector + magnitude are the model's own call now — but only the
-    schema's fields survive, a malformed vector is dropped never guessed, and
-    the magnitude is clamped sane."""
-    validate = SR._validate_reading
-    ok = validate({"vector": "up", "magnitude_sigma": 0.12, "line": "x",
-                   "breaks_if": "y", "cited": "z", "conviction": 0.9})
-    assert ok["vector"] == "up" and ok["magnitude_sigma"] == 0.12
-    assert "conviction" not in ok
-    bad = validate({"vector": "sideways-ish", "magnitude_sigma": 9, "line": "x"})
-    assert "vector" not in bad and "magnitude_sigma" not in bad
-    none = validate({"vector": "none", "magnitude_sigma": 0.4, "line": "x"})
-    assert none["vector"] == "none" and "magnitude_sigma" not in none
-    huge = validate({"vector": "down", "magnitude_sigma": 99, "line": "x"})
-    assert huge["magnitude_sigma"] == 3.0
+def _scene_for_obs():
+    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
+    return SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
+
+
+def test_an_observation_survives_only_when_its_pointer_resolves():
+    """GATE 2, the contract's whole basis. The model may say anything it likes;
+    what reaches the row is what could be checked against the scene."""
+    sc = _scene_for_obs()
+    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
+    good = SR._validate_observation({"quiet": False, "notable": [
+        {"what": "The heaviest strike holds most of the board's gamma.",
+         "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+         "values": [top]}]}, sc)
+    assert good["quiet"] is False and len(good["notable"]) == 1
+    # a pointer that goes nowhere
+    bad = SR._validate_observation({"quiet": False, "notable": [
+        {"what": "x", "paths": ["/magnet/not_a_field"], "values": [1]}]}, sc)
+    assert bad["quiet"] is True and bad["abstain"] == "forced"
+    assert "pointer_did_not_resolve" in bad["dropped_observations"]
+    # a pointer that resolves to a DIFFERENT number than the one claimed
+    wrong = SR._validate_observation({"quiet": False, "notable": [
+        {"what": "x", "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+         "values": [top + 5]}]}, sc)
+    assert wrong["quiet"] is True
+    assert "value_did_not_match" in wrong["dropped_observations"]
+
+
+def test_forecast_and_causal_words_delete_the_observation():
+    """GATE 4. The causal ban is correctness, not caution: walls relabel to
+    follow price 100% of the time on a crossing, so a causal verb about one is
+    false by measurement."""
+    sc = _scene_for_obs()
+    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
+    for prose in ("Price will rally toward the heaviest strike.",
+                  "The board is heavy here because dealers are defending it.",
+                  "The call wall is the level to watch."):
+        out = SR._validate_observation({"quiet": False, "notable": [
+            {"what": prose,
+             "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+             "values": [top]}]}, sc)
+        assert out["quiet"] is True, prose
+        assert any(d.startswith("banned:") for d in out["dropped_observations"])
+
+
+def test_staleness_bites_a_change_claim_and_spares_an_extremity_claim():
+    """GATE 3, narrowed after it deleted a good observation on the first real
+    scene it met. `frozen_do_not_cite` probes the DIARY's coarse scalar while
+    the model cites leaves underneath it, and sr-8 measured those disagreeing:
+    where the list said "magnet unchanged", the magnet's own gamma share had
+    changed on 309 of 315 occasions. So the rule bites only on a claim that
+    something MOVED. "This level has stood all day and is the heaviest in 24
+    sessions" is not stale news, it is the point."""
+    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
+    frozen = [{"field": "magnet", "value": 1300.0, "for_min": 387}]
+    sc = SR.build_scene(row, SR.magnet_band(row), frozen, [row], T0)
+    assert sc["frozen_do_not_cite"] == ["magnet unchanged 387m"]
+    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
+    ob = {"what": "The heaviest strike carries most of the board.",
+          "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+          "values": [top]}
+    keep = SR._validate_observation(
+        {"quiet": False, "notable": [dict(ob, novelty="extreme_vs_own_history")]}, sc)
+    assert keep["quiet"] is False and len(keep["notable"]) == 1
+    drop = SR._validate_observation(
+        {"quiet": False, "notable": [dict(ob, novelty="changed_this_scan")]}, sc)
+    assert drop["quiet"] is True
+    assert "change_claimed_on_a_frozen_field" in drop["dropped_observations"]
+
+
+def test_the_human_sentence_goes_when_its_evidence_does():
+    """`say` is prose ABOUT the observations. If they were all deleted it is
+    describing evidence the reader cannot see — the exact failure the contract
+    exists to prevent — so it leaves with them."""
+    sc = _scene_for_obs()
+    out = SR._validate_observation(
+        {"quiet": False, "say": "Something is happening on the board.",
+         "notable": [{"what": "x", "paths": ["/nope"], "values": [1]}]}, sc)
+    assert "say" not in out and out["quiet"] is True
+
+
+def test_chosen_quiet_and_forced_quiet_are_counted_apart():
+    """GATE 5, and the distinction IS the audit: a model that looked and found
+    nothing is doing its job, a model whose every claim was deleted is not, and
+    a single `quiet` flag cannot tell you which happened."""
+    sc = _scene_for_obs()
+    chosen = SR._validate_observation(
+        {"quiet": True, "quiet_because": "Everything sits mid-range.",
+         "notable": []}, sc)
+    assert chosen["abstain"] == "chosen" and "dropped_observations" not in chosen
+    forced = SR._validate_observation({"quiet": False, "notable": [
+        {"what": "x", "paths": ["/nope"], "values": [1]}]}, sc)
+    assert forced["abstain"] == "forced"
+
+
+def test_the_human_sentence_may_not_carry_a_number_the_gates_did_not_verify():
+    """`say` is the part a person reads, so it is the part most worth drifting.
+    Every number in it must appear in a surviving observation's values."""
+    sc = _scene_for_obs()
+    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
+    ok = SR._validate_observation({"quiet": False,
+        "say": f"The heaviest strike carries {top} percent of the board.",
+        "notable": [{"what": "heaviest strike",
+                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+                     "values": [top]}]}, sc)
+    assert "say" in ok
+    drift = SR._validate_observation({"quiet": False,
+        "say": "The heaviest strike carries 87.4 percent of the board.",
+        "notable": [{"what": "heaviest strike",
+                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
+                     "values": [top]}]}, sc)
+    assert "say" not in drift
+    assert "say_number_not_in_evidence" in drift["dropped_observations"]
 
 
 def test_extract_json_finds_the_object_in_a_wrapped_reply():
@@ -589,7 +691,7 @@ def test_present_tense_narration_of_a_standing_field_is_flagged():
         {"line": "x", "cited": "vanna is stacking"}) == ["is stacking"]
 
 
-def test_the_lexicon_records_and_keeps_the_prose_while_it_is_measuring():
+def _retired_lexicon_shadow_test():
     """The standing house rule for a new guard: run it in the shadow first. The
     flag rides the read row so the rate is known before LEXICON_ENFORCE is
     allowed to reject anything — a guard that has never fired is not evidence

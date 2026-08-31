@@ -402,19 +402,24 @@ def test_history_block_absent_on_a_quiet_tape():
 
 
 # --- the doctrine carries the on-demand signposts ---------------------------
-def test_doctrine_signposts_history_and_websearch():
-    assert "sndk_rag.py" in SR._DOCTRINE
-    assert "price_at_level_unseen_earlier_today" in SR._DOCTRINE
-    assert "WebSearch" in SR._DOCTRINE
-    assert "none" in SR._DOCTRINE                 # an honest "no vector" exists
+def test_the_read_has_no_tools_and_the_doctrine_does_not_offer_any():
+    """obs-1 revoked the grant, and the two halves have to move together — a
+    doctrine that still signposts a tool the model cannot call is the
+    frozen_do_not_cite bug in its purest form.
 
-
-def test_allowed_tools_are_exactly_the_two_on_demand_paths():
-    assert any(t.startswith("Bash(") and "sndk_rag.py" in t
-               for t in SR._ALLOWED_TOOLS)
-    assert "WebSearch" in SR._ALLOWED_TOOLS
-    assert "Bash" in " ".join(SR._ALLOWED_TOOLS)  # restricted prefix, not bare
-    assert "Bash" not in SR._NO_TOOLS and "WebSearch" not in SR._NO_TOOLS
+    Zero uses across 391 production calls would not on its own settle it: the
+    doctrine's own named triggers fired 94 times and the model never reached,
+    which is the prompt failing rather than the tool. What settles it is the
+    contract. Every claim must resolve to a pointer INTO the scene, so anything
+    fetched from outside could not be pointed at and could not survive the
+    gate — the grant buys latency and licence with no reachable upside."""
+    assert SR._ALLOWED_TOOLS == ()
+    assert "--allowedTools" not in Path(SR.__file__).read_text()
+    for gone in ("sndk_rag.py query", "WebSearch", "Outside world"):
+        assert gone not in SR._DOCTRINE, gone
+    assert "YOU HAVE NO TOOLS" in SR._DOCTRINE
+    # ...and the write side is untouched: a slice is still filed per read
+    assert "sndk_rag" in Path(SR.__file__).read_text()
 
 
 # --- SE-review regressions (08-02) ------------------------------------------
@@ -858,6 +863,15 @@ def _every_scene_shape(tmp_path):
 
 # Named leaves the fixtures above cannot reach, each with the reason. A name may
 # only sit here because REACHING it is expensive, never because it is doubtful.
+# obs-1 OUTPUT-schema names. The doctrine necessarily speaks these aloud while
+# describing the reply it wants, and they are not scene fields — checking them
+# against the scene is a category error, not a caught bug.
+_OUTPUT_SCHEMA_NAMES = {
+    "paths", "values", "say", "quiet", "quiet_because", "notable", "unknowns",
+    "watch", "novelty", "basis", "window", "what", "would_change", "path",
+    "stale_min", "n_sessions", "pctile", "one_witness_with",
+}
+
 _UNREACHABLE_IN_FIXTURES = {
     # needs the percentile cache warm with several CLOSED sessions of distinct
     # books; test_percentile_omitted_below_the_session_floor covers the absence
@@ -903,6 +917,7 @@ def test_the_doctrine_never_names_a_field_the_scene_stopped_shipping(tmp_path):
 
     named = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_.]*)`", SR._DOCTRINE))
     named -= {"_pp", "_bn", "_musd", "_min", "_sigma"}   # the unit suffixes
+    named -= _OUTPUT_SCHEMA_NAMES                        # the reply's own shape
     assert named, "the doctrine names no fields at all — the regex broke"
     for name in sorted(named):
         for part in name.split("."):
