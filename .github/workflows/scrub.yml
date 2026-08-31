@@ -32,8 +32,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # the range may reach back past a shallow clone
-      # Only the commits this push actually added. On a new branch or a
-      # force-push `before` is unusable and the script falls back to HEAD~20.
+      # ONLY THE COMMITS UNDER REVIEW, on both event types.
+      #
+      # A push passed `before..after` and a pull_request passed nothing, so on
+      # every PR the script fell back to its own HEAD~20..HEAD default. That
+      # window is a fixed slice of history, not a diff, so a PR was audited
+      # against twenty commits that were already on main — and against the
+      # synthetic merge commit GitHub builds for `refs/pull/N/merge`, which is
+      # authored with the account's real e-mail in the local timezone and is
+      # not a commit anyone can rewrite. Both are guaranteed failures that say
+      # nothing about the change being reviewed.
+      #
+      # It is self-perpetuating, which is why it looked like "scrub keeps
+      # failing": once a bad commit lands, EVERY later PR re-finds it until it
+      # scrolls out of the twenty. The five -0700 commits from 2026-08-30 are
+      # still at HEAD~10 to HEAD~18 and were still failing PRs today.
+      #
+      # base.sha..head.sha is the PR's own range and excludes the merge commit.
       - env:
-          RANGE: ${{ github.event_name == 'push' && format('{0}..{1}', github.event.before, github.sha) || '' }}
+          RANGE: ${{ github.event_name == 'push'
+                     && format('{0}..{1}', github.event.before, github.sha)
+                     || format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) }}
         run: .github/scripts/commit-hygiene.sh
