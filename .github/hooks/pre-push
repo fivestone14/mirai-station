@@ -36,8 +36,15 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
 
     if [ "$remote_sha" = "$ZERO" ] || \
        ! git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null 2>&1; then
-        RANGE=''                                     # new branch — the script's
-    else                                             # own HEAD~20 fallback applies
+        # A NEW BRANCH still has a real range, and it is not HEAD~20. What is
+        # actually new is what this branch carries that no remote ref does. The
+        # old code passed nothing here and let the script fall back to a fixed
+        # twenty-commit window, which re-audited already-pushed history: on
+        # 2026-08-31 that refused a branch whose own commit was spotless,
+        # because five -0700 commits from the day before still sat inside the
+        # window and no longer belonged to anyone's branch to fix.
+        RANGE="$local_sha --not --remotes=origin"
+    else
         RANGE="$remote_sha..$local_sha"
     fi
 

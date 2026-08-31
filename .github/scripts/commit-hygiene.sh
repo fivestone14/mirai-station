@@ -7,16 +7,25 @@
 #   stamp     every commit must be stamped +0000. A local commit stamps the
 #             machine's own offset, which pins the region on every future commit.
 #
-# RANGE may be set by the caller (a push's before..after); otherwise the last 20
-# commits are checked, which also covers a brand-new branch.
+# RANGE is any revision range git log understands, and it is WORD-SPLIT on use,
+# so a caller with no single base may pass '<sha> --not --remotes=origin' — the
+# commits that are genuinely new — rather than guessing a depth.
+#
+# The HEAD~20 fallback below is a last resort and it is a BAD one, because it is
+# a fixed slice of history rather than a diff: it re-audits commits that already
+# landed, so one bad commit fails every later check until it scrolls out of the
+# window, and it says nothing about the change in hand. Callers should always
+# pass a real range. Kept only so the script cannot silently check nothing.
 
 set -uo pipefail
 
 EXPECTED="${EXPECTED_EMAIL:-fivestone14@users.noreply.github.com}"
 RANGE="${RANGE:-}"
 
-# A new branch, a first push or a force-push gives no usable base.
-if [ -z "$RANGE" ] || ! git rev-parse --quiet --verify "${RANGE%%..*}^{commit}" >/dev/null 2>&1; then
+# Usable only if git itself can resolve it — covers 'a..b', a bare sha, and the
+# '--not --remotes' form. A new branch, a first push or a force-push may give
+# none of those.
+if [ -z "$RANGE" ] || ! git rev-list --quiet $RANGE >/dev/null 2>&1; then
     if git rev-parse --quiet --verify 'HEAD~20' >/dev/null 2>&1; then
         RANGE='HEAD~20..HEAD'
     else
@@ -49,7 +58,8 @@ while IFS="$(printf '\t')" read -r sha ae ce ad cd subj; do
             fail=1
         fi
     done
-done < <(git log --format='%H%x09%ae%x09%ce%x09%ad%x09%cd%x09%s' --date=raw "$RANGE")
+  # unquoted on purpose — RANGE may carry several tokens (see the header)
+done < <(git log --format='%H%x09%ae%x09%ce%x09%ad%x09%cd%x09%s' --date=raw $RANGE)
 
 if [ "$fail" = 0 ]; then
     echo "commit hygiene: $n commit(s) clean"
