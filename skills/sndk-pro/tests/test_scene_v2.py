@@ -858,6 +858,14 @@ def _every_scene_shape(tmp_path):
                         meta={"chain_spot": 1200.0, "book_asof": repeat_asof})]),
         scene(_oi_rows(same_oi, same_oi)),
         scene(ran),                                         # the history flags
+        # a scene carrying Python-found candidates: the gamma sign differs
+        # between two distinct books, which is `changed_this_scan`
+        scene([rich_row(ts=T0 - timedelta(minutes=4), gamma_sign="negative",
+                        meta={"chain_spot": 1200.0,
+                              "book_asof": (T0 - timedelta(minutes=4)).isoformat()}),
+               rich_row(ts=T0, gamma_sign="positive",
+                        meta={"chain_spot": 1200.0,
+                              "book_asof": T0.isoformat()})]),
     ]
 
 
@@ -870,6 +878,7 @@ _OUTPUT_SCHEMA_NAMES = {
     "paths", "values", "say", "quiet", "quiet_because", "notable", "unknowns",
     "watch", "novelty", "basis", "window", "what", "would_change", "path",
     "stale_min", "n_sessions", "pctile", "one_witness_with",
+    "used",          # obs-1b: the model names the candidates it is speaking about
 }
 
 _UNREACHABLE_IN_FIXTURES = {

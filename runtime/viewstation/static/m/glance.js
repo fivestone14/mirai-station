@@ -381,21 +381,27 @@ function livePoint(live, nowMs){
 
 /* ---- the reader's own sentence ---------------------------------------- */
 
+/* obs-1: the reader's own book ceiling, so the phone and the gate agree on
+   when a measurement has stopped being current. */
+const STALE_BOOK_MIN_UI = 6;
+
 function modelRead(rows, nowMs){
   // Sourced by reading_ts, NEVER by ts. The store re-emits the same reading
   // every couple of minutes with a fresh `ts` while `reading_ts` stays put: on
   // the reference file the last row carries ts 15:58 and reading_ts 11:47, a
   // 251-minute reading wearing a 0-minute timestamp.
   //
-  // Three tiers. 120 minutes is FOUR TIMES the reading's own horizon — every
-  // claim it makes is about a 30-minute window — so a reading four horizons old
-  // has expired rather than merely aged. Measured p95 is 214 and the record is
-  // 341, so the expiry fires often and is meant to.
+  // obs-1: two tiers, not three — see the note on the return below.
   if(!Array.isArray(rows)) return null;
   let best=null;
   for(const r of rows){
-    const line=((r||{}).reading||{}).line;
-    if(!line) continue;
+    // SELECT ON THE READING, not on a field it no longer has. The body below
+    // was migrated to the observation shape and this filter was not, so the
+    // phone kept choosing the newest row that still carried `line` — a wk-1 row
+    // hours old — and was blind to every obs-1 reading. Once those rows rolled
+    // off it would have painted NO READING TODAY permanently.
+    const rdg=(r||{}).reading;
+    if(!rdg || (rdg.quiet!==true && !Array.isArray(rdg.notable))) continue;
     const t=Date.parse(r.reading_ts);
     if(!isFinite(t)) continue;
     if(!best||t>best.t) best={t, r};
@@ -404,12 +410,24 @@ function modelRead(rows, nowMs){
   const now=(nowMs==null)?Date.now():nowMs;
   const age=Math.max(0,(now-best.t)/60000);
   const rd=best.r.reading||{};
-  const v=rd.vector;
-  return {line:String(rd.line),
-          vector:(age<=30&&(v==='up'||v==='down'))?v:null,
+  // obs-1: there is no vector any more. The read is an OBSERVATION — `say` is
+  // the human sentence, `quiet` means the model looked and found nothing, and
+  // "nothing unusual" is the expected answer rather than a missing one.
+  //
+  // The `expired` tier also goes. It expired at 120 minutes because that was
+  // four times a 30-minute forecast horizon; an observation has no horizon, so
+  // what makes it stale is the measurement it describes no longer being
+  // current, which is the book's own ceiling.
+  const quiet = rd.quiet === true || !(rd.notable||[]).length;
+  const line = quiet
+    ? (rd.quiet_because ? String(rd.quiet_because) : 'Nothing unusual on the board.')
+    : String(rd.say || (rd.notable && rd.notable[0] && rd.notable[0].what) || '');
+  return {line, quiet,
+          count:(rd.notable||[]).length,
+          forced: rd.abstain === 'forced',
           ageMin:age,
           at:new Date(best.t),
-          tier: age>120 ? 'expired' : (age>30 ? 'aged' : 'fresh')};
+          tier: age>STALE_BOOK_MIN_UI ? 'aged' : 'fresh'};
 }
 
 /* ---- market time ------------------------------------------------------- */

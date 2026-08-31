@@ -172,8 +172,23 @@ def test_the_reading_is_sourced_by_reading_ts_and_never_shown_without_its_age():
     mr = GLANCE.split("function modelRead")[1]
     assert "Date.parse(r.reading_ts)" in mr
     assert "r.ts" not in mr.split("if(!best)")[0]
-    assert "age>120" in mr.replace(" ", "") and "age>30" in mr.replace(" ", "")
-    assert "LAST READING" in PAGE and "NO READING TODAY" in PAGE
+    # obs-1: the 120/30-minute tiers are gone. They were pegged to a 30-minute
+    # forecast horizon that no longer exists — an observation describes a
+    # measurement, so what makes it stale is that measurement no longer being
+    # current, which is the reader's own book ceiling.
+    assert "STALE_BOOK_MIN_UI" in mr
+    assert "'expired'" not in mr and '"expired"' not in mr   # the tier, not the word
+    # declared BEFORE modelRead, so it is not inside this slice — check the
+    # whole file, and check the ordering explicitly rather than by accident
+    assert GLANCE.index("const STALE_BOOK_MIN_UI") < GLANCE.index("function modelRead")
+    # obs-1 removed the LAST READING blanking branch with the expired tier. The
+    # invariant this test is named for survives and is now unconditional: the
+    # age is written on every painted reading, so a reading can never appear
+    # without one. Genuine ABSENCE is still its own message.
+    assert "NO READING TODAY" in PAGE
+    assert "LAST READING" not in PAGE
+    body = PAGE.split("function paintRead")[1].split("function ")[0]
+    assert body.count("age.textContent") == 2      # the absent case, then always
 
 
 def test_model_output_never_touches_innerhtml():

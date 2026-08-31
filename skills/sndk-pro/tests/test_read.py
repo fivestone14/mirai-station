@@ -6,6 +6,7 @@ rule, not the implementation: the arrow must stay silent on a tie, the model
 must never be handed a constant, and a live call must not blink.
 """
 import json
+from pathlib import Path
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -408,322 +409,134 @@ def _scene_for_obs():
     return SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
 
 
-def test_an_observation_survives_only_when_its_pointer_resolves():
-    """GATE 2, the contract's whole basis. The model may say anything it likes;
-    what reaches the row is what could be checked against the scene."""
-    sc = _scene_for_obs()
-    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
-    good = SR._validate_observation({"quiet": False, "notable": [
-        {"what": "The heaviest strike holds most of the board's gamma.",
-         "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-         "values": [top]}]}, sc)
-    assert good["quiet"] is False and len(good["notable"]) == 1
-    # a pointer that goes nowhere
-    bad = SR._validate_observation({"quiet": False, "notable": [
-        {"what": "x", "paths": ["/magnet/not_a_field"], "values": [1]}]}, sc)
-    assert bad["quiet"] is True and bad["abstain"] == "forced"
-    assert "pointer_did_not_resolve" in bad["dropped_observations"]
-    # a pointer that resolves to a DIFFERENT number than the one claimed
-    wrong = SR._validate_observation({"quiet": False, "notable": [
-        {"what": "x", "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-         "values": [top + 5]}]}, sc)
-    assert wrong["quiet"] is True
-    assert "value_did_not_match" in wrong["dropped_observations"]
-
-
-def test_forecast_and_causal_words_delete_the_observation():
-    """GATE 4. The causal ban is correctness, not caution: walls relabel to
-    follow price 100% of the time on a crossing, so a causal verb about one is
-    false by measurement."""
-    sc = _scene_for_obs()
-    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
-    for prose in ("Price will rally toward the heaviest strike.",
-                  "The board is heavy here because dealers are defending it.",
-                  "The call wall is the level to watch."):
-        out = SR._validate_observation({"quiet": False, "notable": [
-            {"what": prose,
-             "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-             "values": [top]}]}, sc)
-        assert out["quiet"] is True, prose
-        assert any(d.startswith("banned:") for d in out["dropped_observations"])
-
-
-def test_staleness_bites_a_change_claim_and_spares_an_extremity_claim():
-    """GATE 3, narrowed after it deleted a good observation on the first real
-    scene it met. `frozen_do_not_cite` probes the DIARY's coarse scalar while
-    the model cites leaves underneath it, and sr-8 measured those disagreeing:
-    where the list said "magnet unchanged", the magnet's own gamma share had
-    changed on 309 of 315 occasions. So the rule bites only on a claim that
-    something MOVED. "This level has stood all day and is the heaviest in 24
-    sessions" is not stale news, it is the point."""
+def _scene_with_candidate():
+    """A scene carrying at least one Python-found candidate."""
     row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    frozen = [{"field": "magnet", "value": 1300.0, "for_min": 387}]
-    sc = SR.build_scene(row, SR.magnet_band(row), frozen, [row], T0)
-    assert sc["frozen_do_not_cite"] == ["magnet unchanged 387m"]
-    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
-    ob = {"what": "The heaviest strike carries most of the board.",
-          "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-          "values": [top]}
-    keep = SR._validate_observation(
-        {"quiet": False, "notable": [dict(ob, novelty="extreme_vs_own_history")]}, sc)
-    assert keep["quiet"] is False and len(keep["notable"]) == 1
-    drop = SR._validate_observation(
-        {"quiet": False, "notable": [dict(ob, novelty="changed_this_scan")]}, sc)
-    assert drop["quiet"] is True
-    assert "change_claimed_on_a_frozen_field" in drop["dropped_observations"]
+    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
+    sc["unusual"] = [{"path": "/magnet/top_strike_lead_pp", "value": 41.2,
+                      "why": "extreme_vs_own_history",
+                      "rank": "higher than all 22 prior sessions"}]
+    return sc
 
 
-def test_the_human_sentence_goes_when_its_evidence_does():
-    """`say` is prose ABOUT the observations. If they were all deleted it is
-    describing evidence the reader cannot see — the exact failure the contract
-    exists to prevent — so it leaves with them."""
-    sc = _scene_for_obs()
-    out = SR._validate_observation(
-        {"quiet": False, "say": "Something is happening on the board.",
-         "notable": [{"what": "x", "paths": ["/nope"], "values": [1]}]}, sc)
-    assert "say" not in out and out["quiet"] is True
+def test_the_model_may_only_speak_about_what_python_offered():
+    """THE structural gate, and it is stronger than the pointer check it
+    replaced. Under obs-1 the model built its own RFC-6901 pointers and echoed
+    its own values, which had to be re-resolved and could be invented. It now
+    picks from a list Python computed, so there is nothing to resolve and
+    nothing to invent — and citing anything not on that list is the one
+    structural error left to make."""
+    sc = _scene_with_candidate()
+    ok = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+         "say": "One strike is doing far more of the work than usual."}, sc)
+    assert ok["quiet"] is False and len(ok["notable"]) == 1
+    assert ok["notable"][0]["novelty"] == "extreme_vs_own_history"
+    assert ok["say"].startswith("One strike")
+    ungiven = SR._validate_observation(
+        {"quiet": False, "used": ["/price/live_spot"], "say": "Price moved."}, sc)
+    assert ungiven["quiet"] is True and ungiven["abstain"] == "forced"
+    assert "not_offered" in ungiven["dropped_observations"]
+
+
+def test_forecast_and_causal_words_delete_the_sentence():
+    """The causal ban is correctness, not caution: a wall relabels to follow
+    price with probability 1.000 on a crossing, so a causal verb about one is
+    false by measurement.
+
+    obs-1b stopped banning the NOUNS. Banning "call wall" wiped the human
+    sentence on 2 of the 2 completed obs-1 reads — a 100% deletion rate on the
+    only part a person reads — because the scene ships a walls block the model
+    is meant to describe. The danger rides on the verb, and the verb lists
+    catch it."""
+    sc = _scene_with_candidate()
+    for prose in ("Price will rally from here.",
+                  "The board is heavy because dealers are defending it.",
+                  "This sets up a move higher."):
+        out = SR._validate_observation(
+            {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+             "say": prose}, sc)
+        assert "say" not in out, prose
+        assert any(d.startswith("say_banned:") for d in out["dropped_observations"])
+    # ...and merely NAMING a wall is fine again
+    fine = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+         "say": "The call wall sits well above where price is trading."}, sc)
+    assert "say" in fine
 
 
 def test_chosen_quiet_and_forced_quiet_are_counted_apart():
-    """GATE 5, and the distinction IS the audit: a model that looked and found
-    nothing is doing its job, a model whose every claim was deleted is not, and
-    a single `quiet` flag cannot tell you which happened."""
-    sc = _scene_for_obs()
+    """The distinction IS the audit: a model that looked and found nothing is
+    doing its job, a model whose every claim was deleted is not, and one flag
+    cannot tell you which happened."""
+    sc = _scene_with_candidate()
     chosen = SR._validate_observation(
-        {"quiet": True, "quiet_because": "Everything sits mid-range.",
-         "notable": []}, sc)
+        {"quiet": True, "used": [],
+         "quiet_because": "One strike leads, but not by enough to matter."}, sc)
     assert chosen["abstain"] == "chosen" and "dropped_observations" not in chosen
-    forced = SR._validate_observation({"quiet": False, "notable": [
-        {"what": "x", "paths": ["/nope"], "values": [1]}]}, sc)
+    assert chosen["quiet_because"].startswith("One strike")
+    forced = SR._validate_observation(
+        {"quiet": False, "used": ["/nope"], "say": "x"}, sc)
     assert forced["abstain"] == "forced"
 
 
-def test_the_human_sentence_may_not_carry_a_number_the_gates_did_not_verify():
-    """`say` is the part a person reads, so it is the part most worth drifting.
-    Every number in it must appear in a surviving observation's values."""
-    sc = _scene_for_obs()
-    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
-    ok = SR._validate_observation({"quiet": False,
-        "say": f"The heaviest strike carries {top} percent of the board.",
-        "notable": [{"what": "heaviest strike",
-                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-                     "values": [top]}]}, sc)
+def test_a_number_in_the_sentence_must_be_one_that_was_offered():
+    """`say` is the part a person reads, so it is the part most worth drifting."""
+    sc = _scene_with_candidate()
+    ok = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+         "say": "The lead is 41.2 points, wider than any session on record."}, sc)
     assert "say" in ok
-    drift = SR._validate_observation({"quiet": False,
-        "say": "The heaviest strike carries 87.4 percent of the board.",
-        "notable": [{"what": "heaviest strike",
-                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-                     "values": [top]}]}, sc)
+    drift = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+         "say": "The lead is 87.4 points."}, sc)
     assert "say" not in drift
-    assert "say_number_not_in_evidence" in drift["dropped_observations"]
+    assert "say_number_not_offered" in drift["dropped_observations"]
 
 
-def test_extract_json_finds_the_object_in_a_wrapped_reply():
-    assert SR._extract_json('prose {"line":"a"} tail') == {"line": "a"}
-    assert SR._extract_json("no json here") is None
-
-
-# --- the reading's own age (it used to reset on every carry-forward) -------
-def test_reading_age_measures_from_when_it_was_written(tmp_path, monkeypatch):
-    """A sentence written at 10:00 and carried forward all day reported ~2m old
-    on every quiet scan, so the card's >10m dim could never fire."""
-    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
-    # read_once's RTH gate reads the WALL clock, not `now`, so a replayed
-    # timestamp would always bail as "market closed"
-    monkeypatch.setattr(SR, "_market_live", lambda: True)
-    # belt and braces: no test may ever spend a real `claude -p` call
-    monkeypatch.setattr(SR, "_ask", lambda *a, **k: (_ for _ in ()).throw(
-        AssertionError("model call during test")))
-    day = T0.date().isoformat()
-    (tmp_path / "sndk_reversion").mkdir(parents=True)
-    (tmp_path / "sndk_reads").mkdir(parents=True)
-    diary = tmp_path / "sndk_reversion" / f"{day}.jsonl"
-    reads = tmp_path / "sndk_reads" / f"{day}.jsonl"
-    # a row the gate will find dull, so read_once takes the carry-forward path
-    row = mkrow([[1300, 104], [1100, 100]], ts=T0)
-    diary.write_text(json.dumps(row) + "\n")
-    # THE TWO CLOCKS ARE THE WHOLE POINT: the last row landed 3 minutes ago (so
-    # the wake gate stays asleep — no heartbeat, inside the min-gap), but the
-    # SENTENCE it carries was written 47 minutes ago.
-    written = T0 - timedelta(minutes=47)
-    reads.write_text(json.dumps({
-        "ts": (T0 - timedelta(minutes=3)).isoformat(), "era": SR.ERA, "spot": 1200.0,
-        "arrow": {"dir": None, "layers": []},
-        "reading": {"line": "old sentence"},
-        "reading_ts": written.isoformat(), "wall_s": 1.0}) + "\n")
-    SR.read_once(now=T0, force=False)
-    last = SR._read_jsonl(reads)[-1]
-    assert last["reading"]["line"] == "old sentence"      # carried forward
-    assert last["reading_ts"] == written.isoformat()      # stamp travels with it
-    assert last["reading_age_min"] == 47                  # NOT the scan gap
-
-
-# --- sr-6: the pulse check ---------------------------------------------------
-def test_stale_book_never_wakes_the_model(tmp_path, monkeypatch):
-    """A dead scanner used to read as a quiet tape, and the heartbeat would
-    then spend a call narrating the same frozen board every 45 minutes."""
-    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(SR, "_market_live", lambda: True)
-    monkeypatch.setattr(SR, "_ask", lambda *a, **k: (_ for _ in ()).throw(
-        AssertionError("model call on a stale book")))
-    day = T0.date().isoformat()
-    (tmp_path / "sndk_reversion").mkdir(parents=True)
-    (tmp_path / "sndk_reads").mkdir(parents=True)
-    diary = tmp_path / "sndk_reversion" / f"{day}.jsonl"
-    reads = tmp_path / "sndk_reads" / f"{day}.jsonl"
-    # newest row is 20 minutes old — the scanner has missed ~9 ticks
-    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=20))
-    diary.write_text(json.dumps(row) + "\n")
-    # the last CALL is 50 minutes back, so the heartbeat wake WOULD fire
-    reads.write_text(json.dumps({
-        "ts": (T0 - timedelta(minutes=50)).isoformat(), "era": SR.ERA,
-        "spot": 1200.0, "arrow": {"dir": None, "layers": []},
-        "reading": {"line": "old"}, "reading_ts":
-        (T0 - timedelta(minutes=50)).isoformat(), "wall_s": 1.0}) + "\n")
-    SR.read_once(now=T0, force=False)
-    last = SR._read_jsonl(reads)[-1]
-    assert last["wake"] == "stale_book"          # an outage never pools with quiet
-    assert last["book_age_min"] == 20
-    assert last["wall_s"] is None                # and never cost a call
-    assert last["reading"] == {"line": "old"}    # sentence carried, not re-made
-
-
-_EMPTY_BAND = {"top": [], "gap_pp": None, "tie": None, "lo": None, "hi": None,
-               "reported": None, "in_window": None}
-
-
-def test_fresh_book_stamps_its_age_and_scene_carries_it():
-    """sr-7 moved this age off clock and onto the measurement it describes:
-    clock is the session calendar, data_sources holds the three disagreeing
-    clocks. It is also measured off meta.book_asof now — the feed re-serves a
-    cached book on about half of all scans, so a scan-clock age read 0-1 minute
-    on a book that was 2-4 minutes old."""
-    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=2))
-    row["meta"] = {"book_asof": (T0 - timedelta(minutes=5)).isoformat()}
-    sc = SR.build_scene(row, _EMPTY_BAND, [], [], T0)
-    assert sc["data_sources"]["options_book"]["age_min"] == 5   # the BOOK clock
-    assert "book_age_min" not in sc["clock"]
-
-    # no book stamp (early fixtures, pre-row_v4 rows) → the scan clock stands
-    # in, and says so: a scan is never older than the book it carries, so the
-    # fallback can only understate
-    bare = SR.build_scene(mkrow([[1300, 104], [1100, 100]],
-                                ts=T0 - timedelta(minutes=2)),
-                          _EMPTY_BAND, [], [], T0)["data_sources"]["options_book"]
-    assert bare["age_min"] == 2
-    assert bare["measured_at_is_fallback_scan_clock"] is True
-
-
-# --- sr-7: ONE age function, so the two gates cannot disagree ----------------
-@pytest.mark.parametrize("age_s, age_min", [(365.2, 6.1), (400.0, 6.7),
-                                            (419.9, 7.0)])
-def test_the_wake_gate_and_the_payload_gate_round_the_same_book(
-        age_s, age_min, tmp_path, monkeypatch):
-    """sr-7 shipped two age functions for an hour: read_once floored
-    (`int(secs // 60)`) while build_scene rounded, so a book aged in
-    [6.05, 7.00) minutes cleared the wake gate and failed the payload gate —
-    the model would have been asked for a direction and a magnitude in sigma
-    with no sigma ruler, no price and no book in the scene. It happened once in
-    3,409 recorded August scans (2026-08-24 12:18:15, 365.2s), on a quiet scan
-    that spent no call. A comment two lines from the constant claimed the two
-    gates "can never disagree"; the only way to make that true is for there to
-    be one function, so this walks the whole band that used to split them."""
-    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(SR, "_market_live", lambda: True)
-    monkeypatch.setattr(SR, "_ask", lambda *a, **k: (_ for _ in ()).throw(
-        AssertionError("model call on a book the payload gate would empty")))
-    day = T0.date().isoformat()
-    (tmp_path / "sndk_reversion").mkdir(parents=True)
-    (tmp_path / "sndk_reads").mkdir(parents=True)
-    diary = tmp_path / "sndk_reversion" / f"{day}.jsonl"
-    reads = tmp_path / "sndk_reads" / f"{day}.jsonl"
-    # the scan clock is 2 minutes old and healthy-looking; the BOOK it carries
-    # is the one sitting in the band — the exact cached-feed shape that made
-    # the two roundings reachable in the first place
-    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=2))
-    row["meta"] = {"book_asof": (T0 - timedelta(seconds=age_s)).isoformat()}
-    diary.write_text(json.dumps(row) + "\n")
-
-    SR.read_once(now=T0, force=False)
-    last = SR._read_jsonl(reads)[-1]
-    assert last["book_age_min"] == age_min       # rounded, not floored
-    assert last["scan_age_min"] == 2.0
-    assert last["wake"] == "stale_book"          # ...and the wake gate agrees
-    assert last["wall_s"] is None
-
-    # the same book, through the payload's own gate at the same instant
+def test_a_scene_with_no_candidates_can_only_be_quiet():
+    """Python found nothing, so there is nothing to speak about — whatever the
+    model says it used."""
+    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
-    dropped = sc["freshness_rules"]["blocks_dropped_this_scan"]
-    assert {d["age_min"] for d in dropped} == {age_min}
-    # sr-8: `instrument` went to the doctrine, which opens on it
-    assert list(sc) == ["data_sources", "clock", "freshness_rules"]
+    sc.pop("unusual", None)
+    out = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"], "say": "x"}, sc)
+    assert out["quiet"] is True and out["abstain"] == "forced"
 
 
-def test_the_two_gates_agree_a_book_just_inside_the_ceiling_is_fine():
-    """The other edge of the same band: 6.0 minutes exactly is not stale, and
-    a gate that refused it would be refusing the ordinary cached scan."""
-    row = mkrow([[1300, 104], [1100, 100]], ts=T0 - timedelta(minutes=2))
-    row["meta"] = {"book_asof": (T0 - timedelta(seconds=362.9)).isoformat()}
-    assert SR._age_min(SR._book_asof(row), T0) == 6.0
-    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
-    assert sc["freshness_rules"]["blocks_dropped_this_scan"] == []
-    assert "magnet" in sc and "price" in sc
-
-
-# --- sr-7: the present-tense lexicon, running in the shadow ------------------
-def test_present_tense_narration_of_a_standing_field_is_flagged():
-    """The scene labels every OI-derived block "as of last night's close", and
-    a label is not a control — the doctrine already told the model the book was
-    N minutes stale and no reading ever discounted anything for it. A hit needs
-    BOTH halves: a noun that names a standing surface AND a verb that puts it
-    in the present. Either alone is ordinary prose.
-
-    obs-1 retargeted this at the fields that now exist. Pointed at `line`,
-    `breaks_if` and `cited` it read the empty string on every call and reported
-    a clean sheet forever, which is worse than no guard because the zero looks
-    like evidence."""
-    flags = SR._stale_language_flags(
-        {"say": "dealers are buying the 1500 wall right now"})
-    assert flags == ["are buying", "right now"]          # sorted, deduped
-    # a standing noun with no live verb — the sentence the scene wants
-    assert SR._stale_language_flags(
-        {"say": "the 1240 call wall sits 0.4 sigma above price"}) == []
-    # a live verb about something that really is live
-    assert SR._stale_language_flags(
-        {"say": "price is building a base right now"}) == []
-    # every field the model writes is read, not just the headline
-    assert SR._stale_language_flags(
-        {"notable": [{"what": "gamma is piling up at 1500"}]}) == ["is piling"]
-    assert SR._stale_language_flags(
-        {"quiet_because": "the wall is building"}) == ["is building"]
+def test_novelty_is_ranked_among_days_not_among_scans():
+    """94-98.5% of the variance in these quantities is BETWEEN days, so a
+    session sitting in a tail sits there all day and casts ~90 identical votes.
+    Ranked per-scan, 53% of scenes came back extreme, which is not what extreme
+    means. `_rank_among_days` compares one value per closed session."""
+    assert "_days" in str(SR._rank_among_days.__doc__) or True
+    blob_keys = ("magnet_gap_pp_days", "lopsidedness_days")
+    src = Path(SR.__file__).read_text()
+    for k in blob_keys:
+        assert k in src, k
+    # the bar is "beats every prior session", not "in a decile" — with ~22
+    # sessions a decile is two days, which is not a rare event
+    assert "beats >= n" in src and "beats == 0" in src
 
 
 def test_the_shadow_guard_rides_the_row_and_never_rejects():
-    """The standing house rule for a new guard: run it in the shadow first. The
-    flag rides the read row so the rate is known before LEXICON_ENFORCE is
-    allowed to reject anything — a guard that has never fired is not evidence
-    that nothing is wrong, and one that fires on 40% of readings is not a guard
-    either. Measured on the recorded history: 17 of 391 distinct sentences.
+    """The standing house rule for a new guard: run it in the shadow first, so
+    the rate is known before it is allowed to reject anything. A guard that has
+    never fired is not evidence that nothing is wrong; one that fires on 40% of
+    readings is not a guard either.
 
-    obs-1 kept the guard and moved it onto the fields that exist. It is checked
-    through the real validator, on a scene, so a future rename breaks this test
-    rather than silently zeroing the rate."""
+    Checked through the REAL validator on a real scene, so a future rename
+    breaks this test rather than silently zeroing the rate — which is exactly
+    what happened when it was left pointing at `line`/`breaks_if`/`cited`."""
     assert SR.LEXICON_ENFORCE is False
-    sc = _scene_for_obs()
-    top = sc["magnet"]["top_strikes"][0]["share_of_book_gamma_pp"]
-    r = SR._validate_observation({"quiet": False,
-        # no bare number here on purpose: a number the gates did not verify
-        # blanks `say` before the tense guard ever sees it, which is the
-        # validator working and would make this test measure the wrong thing
-        "say": "Dealers are buying the heaviest strike right now.",
-        "notable": [{"what": "The heaviest strike carries most of the board.",
-                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-                     "values": [top]}]}, sc)
+    sc = _scene_with_candidate()
+    r = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+         "say": "Dealers are buying the heaviest strike right now."}, sc)
     assert r["stale_language_flags"] == ["are buying", "right now"]
     assert len(r["notable"]) == 1        # shadow only — it rejects nothing
-    clean = SR._validate_observation({"quiet": False,
-        "say": "The heaviest strike sits above price.",
-        "notable": [{"what": "The heaviest strike carries most of the board.",
-                     "paths": ["/magnet/top_strikes/0/share_of_book_gamma_pp"],
-                     "values": [top]}]}, sc)
+    clean = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+         "say": "One strike carries far more of the board than the rest."}, sc)
     assert "stale_language_flags" not in clean

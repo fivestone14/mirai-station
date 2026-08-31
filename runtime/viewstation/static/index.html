@@ -14500,11 +14500,17 @@ const MEM = {
     const days=((MEM.ov||{}).days)||[];
     if(!days.length){ dd.innerHTML=`<span class="lbl">Moments by day</span><span class="lbl">nothing on record yet</span>`; return; }
     dd.innerHTML=`<span class="lbl">Moments by day</span>`+days.slice().reverse().slice(0,18).map(d=>{
+      // obs-1: the producer emits unusual/quiet/dropped. This read up/down/none
+      // and drew an empty bar on every day — a chart of nothing, with a tooltip
+      // confidently reporting three zeros.
       const v=d.vectors||{}, seg=(c,k)=>k?`<i class="${c}" style="flex:${k}"></i>`:'';
+      const un=v.unusual||0, qt=v.quiet||0, dr=v.dropped||0;
+      const pre=(un+qt+dr)?`${un} unusual, ${qt} quiet${dr?`, ${dr} dropped`:''}`
+                          :'before the observation contract';
       return `<button type="button" data-day="${d.date}" class="${d.date===MEM.sel?'on':''}"`
-        +` title="${d.n} read${d.n===1?'':'s'} · ${d.first}–${d.last} · up ${v.up||0}, down ${v.down||0}, no call ${v.none||0}">`
+        +` title="${d.n} read${d.n===1?'':'s'} · ${d.first}–${d.last} · ${pre}">`
         +`<span class="d">${d.date.slice(5)}<small>${d.n}</small></span>`
-        +`<span class="rhy">${seg('u',v.up)}${seg('d',v.down)}${seg('z',v.none)}</span></button>`;
+        +`<span class="rhy">${seg('u',un)}${seg('z',qt)}${seg('d',dr)}</span></button>`;
     }).join('');
   },
   paintAsk(){

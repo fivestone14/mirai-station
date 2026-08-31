@@ -151,11 +151,18 @@ def build_voice_scene(now: datetime | None = None) -> dict | None:
     read = _latest_read(day)
     if read:
         r = read.get("reading") or {}
+        # obs-1. `line` and `vector` are gone. Left as they were, this handed
+        # the voice model a scene whose reader_line was `{"arrow": "up"}` and
+        # nothing else — a bare DETERMINISTIC direction, labelled as another
+        # model's opinion, which the voice doctrine then tells it to quote and
+        # attribute. It would have spoken a forecast the reader never made,
+        # which is precisely the artefact obs-1 exists to delete.
+        notable = r.get("notable") or []
         reader = {
-            "line": r.get("line"),
-            "vector": r.get("vector"),
+            "says": r.get("say") or (r.get("quiet_because") if r.get("quiet") else None),
+            "found_unusual": len(notable),
+            "quiet": True if r.get("quiet") else None,
             "age_min": read.get("reading_age_min"),
-            "arrow": (read.get("arrow") or {}).get("dir") or "silent",
         }
         if read.get("paused"):
             reader["paused"] = True

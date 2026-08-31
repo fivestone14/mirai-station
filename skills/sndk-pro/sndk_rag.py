@@ -70,7 +70,12 @@ if _LEFT_EYE not in sys.path:
 import atomic_io                       # noqa: E402
 
 _ET = ZoneInfo("America/New_York")
-RAG_V = 2                    # record-schema era tag — bump on ANY shape change
+RAG_V = 3                   # bumped for obs-1: a summary's read counts became
+                            # read_counts/observations/reads_graded. Safe to bump
+                            # only now that build_summary refuses to grade a
+                            # pre-obs-1 session — bumping before that fix would
+                            # have rewritten all 22 stored summaries with the
+                            # false "found nothing unusual all day".                    # record-schema era tag — bump on ANY shape change
                              # v2 (08-05): stitched day narratives, terrain
                              # recent/all_time split, days-tier Face-A filters
 MONTH_SESSIONS = 22          # the month tier looks back this many sessions
@@ -312,13 +317,27 @@ def build_summary(day: str) -> Optional[dict]:
     # obs-1: a day is summarised by how much it had to SAY, not by which way it
     # leaned. `meta.vector` is no longer written, so counting it produced an
     # empty histogram and a day summary that had quietly lost its shape.
+    # ONLY obs-1 SLICES CAN ANSWER THIS QUESTION, and the guard matters because
+    # rollup() is write-once-forever. A pre-obs-1 slice carries neither
+    # `notable_count` nor `abstain`, so bucketing it falls through to "quiet"
+    # and the day summarises as "the model found nothing unusual all day" — for
+    # 2026-08-27 that would have been written about a session with 28 model
+    # calls, every one of which produced a directional reading, and it would
+    # have been written the next time anyone opened the Memory tab.
+    #
+    # A day whose reads predate the contract has nothing measurable to say about
+    # what was noticed, so it says nothing rather than something false.
+    obs_slices = [sl for sl in slices
+                  if "notable_count" in (sl.get("meta") or {})
+                  or (sl.get("meta") or {}).get("abstain")]
     obs = Counter()
-    for sl in slices:
+    for sl in obs_slices:
         m = sl.get("meta") or {}
         obs["unusual" if m.get("notable_count") else
             "dropped" if m.get("abstain") == "forced" else "quiet"] += 1
     n_unusual = sum((sl.get("meta") or {}).get("notable_count") or 0
-                    for sl in slices)
+                    for sl in obs_slices)
+    graded = bool(obs_slices)
     magnets = [(s.get("meta") or {}).get("magnet_top") for s in slices]
     magnets = [m[0][0] for m in magnets if m]
     if not magnets:
@@ -336,11 +355,15 @@ def build_summary(day: str) -> Optional[dict]:
         "n_scans": len(diary), "n_slices": len(slices),
         "read_counts": dict(obs) or None,
         "observations": n_unusual or None,
+        # says WHICH question this day's reads can answer. Absent means the
+        # session predates the observation contract, and the summary is silent
+        # about what was noticed rather than guessing.
+        "reads_graded": graded or None,
     }
     # how loud the day was, in the vocabulary the reads now use. A day of pure
     # quiet is a real and useful thing to be able to search for — it is the
     # baseline every "unusual" claim on a later day is measured against.
-    quiet_day = bool(slices) and not obs.get("unusual")
+    quiet_day = graded and not obs.get("unusual")
     mood = ("more bearish than it opened" if (pct or 0) <= -1.0 else
             "more bullish than it opened" if (pct or 0) >= 1.0 else
             "little changed from its open")
@@ -349,7 +372,8 @@ def build_summary(day: str) -> Optional[dict]:
             f"ranged {lo:g}–{hi:g}",
             f"{meta['regime_mode']} regime most of the day" if meta["regime_mode"] else None,
             f"magnet camped at {meta['magnet_mode']}" if meta["magnet_mode"] else None,
-            ("the model found nothing unusual all day" if quiet_day else
+            (None if not graded else
+             "the model found nothing unusual all day" if quiet_day else
              f"the model flagged {n_unusual} unusual reading{'' if n_unusual == 1 else 's'}"
              if n_unusual else None)]
     # spine first — the numbers stay authoritative, and the ISO date prefix

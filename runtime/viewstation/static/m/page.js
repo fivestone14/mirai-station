@@ -619,16 +619,16 @@ function paintRead(){
     line.textContent = 'NO READING TODAY'; line.className = 'rd-line expired';
     return;
   }
+  // obs-1 removed the 'expired' tier. It hid a reading past 120 minutes, which
+  // was four times a 30-minute forecast horizon; an observation has no horizon,
+  // so age is shown rather than used to blank the text. NO READING TODAY above
+  // is a different thing and stays: that is absence, not age.
   const a = gMinutes(m.ageMin);
-  if(m.tier === 'expired'){
-    mark.textContent = ''; age.textContent = ''; age.className = 'rd-age';
-    line.textContent = ('LAST READING ' + a + ' AGO').toUpperCase();
-    line.className = 'rd-line expired';
-    return;
-  }
   age.textContent = a.toUpperCase();
   age.className = 'rd-age' + (m.tier === 'aged' ? ' old' : '');
-  mark.textContent = m.vector === 'up' ? '▲' : m.vector === 'down' ? '▼' : '';
+  // obs-1: a count of what is unusual, not a direction. Empty when quiet,
+  // because the common answer must not look like an alarm.
+  mark.textContent = m.quiet ? '' : String(m.count || '');
   // model output, written with textContent only: it never touches innerHTML and
   // never enters the SVG string
   const at = etTime(m.at);
