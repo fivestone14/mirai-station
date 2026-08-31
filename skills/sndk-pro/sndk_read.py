@@ -868,12 +868,12 @@ WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any 
 
 THE TWO RULERS, AND WHICH ONE A DISTANCE USES:
 - `price.live_spot` is where the stock is NOW. `price.spot_when_book_was_measured` is where it was when the chain was pulled. On a cached row these differ by a median of about $2 and by as much as $42.
-- EVERY book-derived distance in this scene — `regime.flip`, `magnet`, `walls` — is measured from the BOOK's spot, not the live one, because that is the only frame in which the book's own numbers are consistent. That is the standing rule and blocks do not restate it. The EXCEPTION announces itself: a block carrying `sigma_measured_from: live_spot_because_chain_spot_was_absent` had no book spot to divide, so its distances are already in the live frame and `price.live_minus_book_spot_sigma` will be missing from the scene as well. To convert a book-measured distance to a distance from where price actually is, SUBTRACT `price.live_minus_book_spot_sigma` — it is how far the live spot sits above the book's spot, so taking it off a book-measured distance is what moves that distance into the live frame. Its dollar twin `price.live_minus_book_spot_dollars` sits beside it and reads the same way. Only `price.vwap_dist_sigma_from_live_spot` is already measured from the live spot, and its name says so.
+- EVERY book-derived distance in this scene — `regime.flip`, `magnet`, `walls` — is measured from the BOOK's spot, not the live one, because that is the only frame in which the book's own numbers are consistent. That is the standing rule and blocks do not restate it. The EXCEPTION announces itself: a block carrying `sigma_measured_from: live_spot_because_chain_spot_was_absent` had no book spot to divide, so its distances are already in the live frame and `price.live_minus_book_spot_sigma` will be missing from the scene as well. To convert a book-measured distance to a distance from where price actually is, SUBTRACT `price.live_minus_book_spot_sigma` — it is how far the live spot sits above the book's spot, so taking it off a book-measured distance is what moves that distance into the live frame. Only `price.vwap_dist_sigma_from_live_spot` is already measured from the live spot, and its name says so.
 
 HOW TO READ THE SCENE (grouped by force, not by metric):
 - clock is the SESSION calendar and nothing else. `front_expiry.days_to_expiry` is where you are in the weekly cycle — a 4-dte Monday book holds standing positioning with all week to migrate, while 0 collapses to expiry-day mechanics where pinning and charm run at full strength. `minutes_to_close` says how much session is left for any read to resolve in — a 30-minute call needs 30 minutes of tape.
 - scale: the sigma ruler, plus `expected_move_today_asym` — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
-- regime: the day's character. `vol_trend` says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. `flip` is the chop band: `band_upper_edge_ct_sigma`, `band_lower_edge_pt_sigma`, `band_center_is_gamma_flip_sigma`, and `live_price_vs_band` for where price sits in it. Words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and the edges are that center plus and minus `edges_are_center_plus_minus_sigma` — arithmetic, not three independent levels, so three of them agreeing is one witness, not three. `charm` is time-decay hedging: `magnitude_musd_per_day_uncalibrated` (compare day to day, never to another book) and `drifts_toward_strike`, the level it funnels toward late in the session — a level, never a promised direction.
+- regime: the day's character. `vol_trend` says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. `flip` is the chop band, and it ships as ONE measured level plus a width: `band_center_is_gamma_flip_sigma` IS the gamma flip, the band runs that centre plus and minus `edges_are_center_plus_minus_sigma`, and `live_price_vs_band` says where price sits in it. Compute an edge if you need one — it is arithmetic on two numbers in front of you, not a third independent level, so an edge "agreeing" with the centre is one witness, not two. Words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. `charm` is time-decay hedging: `magnitude_musd_per_day_uncalibrated` (compare day to day, never to another book) and `drifts_toward_strike`, the level it funnels toward late in the session — a level, never a promised direction.
 - magnet: strikes pulling price, each with its `share_of_book_gamma_pp`. `top_strike_lead_pp` is the top strike's lead over the runner-up in points of gamma mass — SMALL means no strike is really in charge, and there is no threshold where it flips: read the number, and read `top_strike_lead_vs_own_history` for whether today's lead is unusual for this tape. That comparison counts DISTINCT BOOKS, not scans, so a cached book never votes twice.
 - breadth: `lopsidedness_0_is_even` is how one-sided the book's resistance is. It NEVER points a direction — both readings of which side a heavy book favours are unestablished here. `heavier_side` names a side as a fact, not a lean. It reads THE SAME GAMMA PILE as the magnet — always, by construction — so breadth agreeing with the magnet is one witness twice, not two witnesses.
 - momentum: the ONLY block here that describes change during today's session. `window_between_books` tells you exactly what was compared — `books_compared` distinct books spanning `span_min` minutes, measured on the book clock, not the scan clock. `share_of_book_gamma_change_pp` and `gross_volume_change_contracts` are the change itself; there is no verdict word, because a fixed threshold cannot tell building from noise. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
@@ -1075,15 +1075,29 @@ def flip_block(row: dict, sd, ran_30m: Optional[float]) -> Optional[dict]:
     pos = words.get(ladder.get("state"))
     if pos and "inside band" in pos and isinstance(ran_30m, (int, float)) and abs(ran_30m) >= 0.05:
         pos += ", drifting toward " + ("ct (pos edge)" if ran_30m > 0 else "pt (neg edge)")
+    half = (round((ct_s - pt_s) / 2.0, 2)
+            if ct_s is not None and pt_s is not None else None)
     out = {"band_upper_edge_ct_sigma": ct_s,
            "band_lower_edge_pt_sigma": pt_s,
            "band_center_is_gamma_flip_sigma": center_s,
-           "edges_are_center_plus_minus_sigma": (
-               round((ct_s - pt_s) / 2.0, 2)
-               if ct_s is not None and pt_s is not None else None),
+           "edges_are_center_plus_minus_sigma": half,
            "live_price_vs_band": pos}
-    # the edge width is computed only when BOTH edges exist, so the None-filter
-    # below is the whole guard it needs — it cannot survive alone.
+    # sr-8: when the half-width is known the two edges are the CENTRE, restated.
+    # Measured over 4,149 recorded scans: ct == centre + 0.25 and pt ==
+    # centre - 0.25 on 2,814 of 2,814 scans that carried a band, one distinct
+    # half-width. sr-7's own doctrine already called them "arithmetic, not three
+    # independent levels" — this stops paying for the arithmetic twice. The
+    # width itself STAYS and is the reason this is safe: it is the measured
+    # number, so if the ladder ever produces a different band the scene says so
+    # instead of a doctrine constant quietly lying.
+    #
+    # Dropped only when `half` exists, which by construction means both edges
+    # did. A partial band (one edge, no width) is unreached on the recorded tape
+    # but reachable in the code, and there the raw edge is the only reading
+    # there is — so it ships.
+    if half is not None:
+        out.pop("band_upper_edge_ct_sigma")
+        out.pop("band_lower_edge_pt_sigma")
     return {k: v for k, v in out.items() if v is not None} or None
 
 
@@ -1803,8 +1817,14 @@ def build_scene(row: dict, band: dict, frozen: list,
     # data_sources, where all three clocks can be read against each other.
     open_t = now.replace(hour=9, minute=30, second=0, microsecond=0)
     close_t = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    clock = {"minutes_since_open": int((now - open_t).total_seconds() // 60),
-             "minutes_to_close": max(0, int((close_t - now).total_seconds() // 60)),
+    # sr-8 drops `minutes_since_open` and keeps `minutes_to_close`. The two sum
+    # to 389 on 4,148 of 4,149 recorded scans, so one is the other — and the
+    # question the reader is actually asked is whether a 30-minute call has 30
+    # minutes of tape left to resolve in, which is the one that was kept. (The
+    # sum is not quite a constant, so the kept field is the measured one rather
+    # than a subtraction: both floor, and minutes_to_close clamps at zero, which
+    # is the honest answer after the close and not a negative.)
+    clock = {"minutes_to_close": max(0, int((close_t - now).total_seconds() // 60)),
              "session_date": now.strftime("%Y-%m-%d")}
     fd = _fin((row.get("gex_views") or {}).get("front_dte"))
     if fd is not None:
@@ -1838,9 +1858,10 @@ def build_scene(row: dict, band: dict, frozen: list,
     # The doctrine is byte-identical all day and prompt-cached, so the same
     # sentence costs about a tenth there. A frozen number belongs in the cached
     # half; only what varies earns a place in the scene.
-    scale = {"one_sigma_dollars": round(sig, 2) if sig else None,
-             "sigma_pct_of_price": round(sig / spot * 100, 1)
-             if sig and spot else None}
+    # sr-8 drops `sigma_pct_of_price`: it is one_sigma_dollars over
+    # price.live_spot, both of which ship, and the doctrine states the 8-10%
+    # band this name actually exists to convey.
+    scale = {"one_sigma_dollars": round(sig, 2) if sig else None}
     skew = row.get("iv_skew") if isinstance(row.get("iv_skew"), dict) else {}
     em = _fin((row.get("range_ruler") or {}).get("em_points"))
     d = _fin(skew.get("down_share"))
@@ -1879,11 +1900,12 @@ def build_scene(row: dict, band: dict, frozen: list,
     # field is that second term. The doctrine said "add" for one afternoon,
     # which walks the wrong way by twice the gap; the name now carries the
     # direction so the verb is not something anyone has to hold in their head.)
+    # sr-8 drops `live_minus_book_spot_dollars`. It was the same quantity as
+    # the sigma twin below in the other unit, and both spots it is the
+    # difference of are right here. Sigma is the frame every distance in this
+    # scene is already in, so sigma is the copy that survives.
     price = {"live_spot": spot,
              "spot_when_book_was_measured": book_spot,
-             "live_minus_book_spot_dollars": (round(spot - book_spot, 2)
-                                              if spot is not None and book_spot is not None
-                                              else None),
              "live_minus_book_spot_sigma": (round((spot - book_spot) / sig, 2)
                                             if spot is not None and book_spot is not None and sig
                                             else None),

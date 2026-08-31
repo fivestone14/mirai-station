@@ -149,13 +149,31 @@ def test_flip_block_edges_center_and_position():
     row = rich_row()
     row["_ran_30m_sigma"] = -0.25
     fb = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)["regime"]["flip"]
-    assert fb["band_upper_edge_ct_sigma"] == pytest.approx(0.31)
-    assert fb["band_lower_edge_pt_sigma"] == pytest.approx(-0.19)
-    # the flip IS the center, and the edges are that center ± this much
+    # sr-8: the band ships as ONE measured level plus a width. The edges were
+    # the centre restated — ct == centre+0.25 and pt == centre-0.25 on 2,814 of
+    # 2,814 recorded scans carrying a band — so they are computed, not sent.
     assert fb["band_center_is_gamma_flip_sigma"] == pytest.approx(0.06)
     assert fb["edges_are_center_plus_minus_sigma"] == pytest.approx(0.25)
+    assert "band_upper_edge_ct_sigma" not in fb
+    assert "band_lower_edge_pt_sigma" not in fb
+    half = fb["edges_are_center_plus_minus_sigma"]
+    ctr = fb["band_center_is_gamma_flip_sigma"]
+    assert (ctr + half, ctr - half) == (pytest.approx(0.31),
+                                        pytest.approx(-0.19))
     assert "gamma-negative side" in fb["live_price_vs_band"]
     assert "drifting toward pt" in fb["live_price_vs_band"]
+
+
+def test_a_partial_band_keeps_the_raw_edge_it_has():
+    """The width is only computable when BOTH edges exist, so a one-edge band
+    has nothing to reconstruct from and the raw edge is the only reading there
+    is. Unreached on the recorded tape, reachable in the code."""
+    row = rich_row()
+    row["profile_ladder"] = {"ct": 1231.0, "state": "positive transition"}
+    fb = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)["regime"]["flip"]
+    assert fb["band_upper_edge_ct_sigma"] == pytest.approx(0.31)
+    assert "edges_are_center_plus_minus_sigma" not in fb
+    assert "band_lower_edge_pt_sigma" not in fb
 
 
 def test_flip_drift_clause_needs_actual_motion():
@@ -597,8 +615,11 @@ def test_clock_carries_the_calendar():
     where how old a measurement is sits beside the measurement."""
     ck = scene_of(rich_row())["clock"]
     assert ck["session_date"] == "2026-07-31"
-    assert ck["minutes_since_open"] == 150
+    # sr-8: `minutes_since_open` went — the two summed to 389 on 4,148 of 4,149
+    # recorded scans, and the question actually asked of this block is whether
+    # a 30-minute call has 30 minutes of tape left to resolve in.
     assert ck["minutes_to_close"] == 240
+    assert "minutes_since_open" not in ck
     # rich_row carries no expiries
     assert ck["front_expiry"] == {"days_to_expiry": 3}
     assert "weekday" not in ck                    # == dte on every session; one
@@ -811,7 +832,9 @@ def test_every_book_derived_sigma_divides_the_books_own_spot():
     assert _sigma_rulers(book) == set()      # the rule holds: nothing to say
     assert "SUBTRACT `price.live_minus_book_spot_sigma`" in SR._DOCTRINE
     assert book["price"]["spot_when_book_was_measured"] == 1190.0
-    assert book["price"]["live_minus_book_spot_dollars"] == pytest.approx(10.0)
+    # sr-8: the dollar twin went; both spots it differences are right here
+    assert "live_minus_book_spot_dollars" not in book["price"]
+    assert book["price"]["live_minus_book_spot_sigma"] == pytest.approx(0.1)
 
 
 def test_vwap_is_the_one_distance_that_stays_on_the_live_spot():
