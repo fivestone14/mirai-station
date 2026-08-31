@@ -307,11 +307,13 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
     assert sc["price"]["session_low"] is not None
     assert sc["price"]["session_high"] is not None
     # sr-5: the point became a spread — a single "typical" number taught the
-    # model a ceiling (33/33 emitted magnitudes inside 0.06-0.20 vs p95 0.46)
-    sp = sc["scale"]["move_30min_sigma_distribution"]
-    assert sp["half_of_windows_under"] == 0.09
-    assert sp["one_in_five_over"] == 0.20
-    assert sp["sessions_measured"] == 8
+    # model a ceiling (33/33 emitted magnitudes inside 0.06-0.20 vs p95 0.46).
+    # sr-8 moved the spread to the doctrine, which is prompt-cached: five frozen
+    # literals identical on every scan do not belong in a per-scan payload. The
+    # LESSON is what has to survive, so it is checked where it now lives.
+    assert "move_30min_sigma_distribution" not in sc["scale"]
+    for figure in ("0.09", "0.20", "0.46", "1.71", "8 sessions"):
+        assert figure in SR._DOCTRINE, figure
 
 
 def test_scene_names_the_frozen_fields_as_uncitable():

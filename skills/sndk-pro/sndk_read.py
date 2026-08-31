@@ -860,7 +860,7 @@ THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical
 FIELD NAMES SAY WHAT THEY ARE. Every leaf in this scene is named so it can be read alone: a `_pp` suffix is percentage points, `_bn` is billions of dollars, `_musd` is millions, `_min` is minutes, `_sigma` is a distance in sigma. Read the name before you read the number.
 
 WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any other block is worth):
-- data_sources.built_from maps every block in this scene to what it was built from — `live_tape`, `options_book`, `open_interest_snapshot` or `wall_clock`. Read a block's entry there before you read the block. A block missing from the map was deleted; see freshness_rules.
+- WHICH BLOCK RESTS ON WHAT, and it decides how much each is worth. `price` and `history` are the LIVE TAPE, good to the second. `clock` is the wall clock. `scale`, `regime`, `magnet`, `breadth`, `momentum`, `dealer_positioning`, `walls` and `clock.front_expiry` come out of the OPTIONS BOOK, which is minutes old and often a cached repeat. Of those, `regime`, `magnet`, `breadth`, `dealer_positioning` and `walls` rest further on the OPEN INTEREST SNAPSHOT struck at last night's close. A block you cannot find was either not measured or deleted for age; see freshness_rules.
 - data_sources holds THREE separate clocks and they disagree on purpose. `scan_taken_at` is when this row was written. `price_quote.quoted_at` is when the spot was good — seconds. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
 - `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves that on every scan against `strikes_compared_today` strikes. What moves intraday is price moving under a fixed map, not the map moving.
 - Because of that, THESE BLOCKS MAY NEVER BE NARRATED IN THE PRESENT TENSE: {", ".join(PRESENT_TENSE_FORBIDDEN_FOR)}. "Dealers are buying", "the wall is building", "gamma is piling up" are false statements about time, not debatable reads. Say "as of last night's close" or say nothing. Only `momentum` and `*_change_30min` fields describe something that moved today.
@@ -875,10 +875,10 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - scale: the sigma ruler, plus `expected_move_today_asym` — today's likely range split unevenly toward the side the options market fears (from put/call IV skew). It breathes with vol.
 - regime: the day's character. `vol_trend` says whether implied vol is rising or falling NOW — it is the switch that arms vanna and charm. `flip` is the chop band: `band_upper_edge_ct_sigma`, `band_lower_edge_pt_sigma`, `band_center_is_gamma_flip_sigma`, and `live_price_vs_band` for where price sits in it. Words like "clear negative" describe WHERE PRICE SITS relative to the dealer-hedging flip, a location on the map, not a bearish or bullish stamp. ONE measured number lives here: the center IS the gamma flip, and the edges are that center plus and minus `edges_are_center_plus_minus_sigma` — arithmetic, not three independent levels, so three of them agreeing is one witness, not three. `charm` is time-decay hedging: `magnitude_musd_per_day_uncalibrated` (compare day to day, never to another book) and `drifts_toward_strike`, the level it funnels toward late in the session — a level, never a promised direction.
 - magnet: strikes pulling price, each with its `share_of_book_gamma_pp`. `top_strike_lead_pp` is the top strike's lead over the runner-up in points of gamma mass — SMALL means no strike is really in charge, and there is no threshold where it flips: read the number, and read `top_strike_lead_vs_own_history` for whether today's lead is unusual for this tape. That comparison counts DISTINCT BOOKS, not scans, so a cached book never votes twice.
-- breadth: `lopsidedness_0_is_even` is how one-sided the book's resistance is. It NEVER points a direction — both readings of which side a heavy book favours are unestablished here. `heavier_side` names a side as a fact, not a lean. It also reads the same gamma pile as the magnet (`measures_same_gamma_pile_as` says so), so treat the two as one witness, not two.
+- breadth: `lopsidedness_0_is_even` is how one-sided the book's resistance is. It NEVER points a direction — both readings of which side a heavy book favours are unestablished here. `heavier_side` names a side as a fact, not a lean. It reads THE SAME GAMMA PILE as the magnet — always, by construction — so breadth agreeing with the magnet is one witness twice, not two witnesses.
 - momentum: the ONLY block here that describes change during today's session. `window_between_books` tells you exactly what was compared — `books_compared` distinct books spanning `span_min` minutes, measured on the book clock, not the scan clock. `share_of_book_gamma_change_pp` and `gross_volume_change_contracts` are the change itself; there is no verdict word, because a fixed threshold cannot tell building from noise. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
-- dealer_positioning: standing dealer positioning as of last night's close. `net_delta_bn` is $-delta in billions from an assumed-sign book, and `net_delta_sign_is_formula_artifact` is true because the arithmetic cannot produce another sign — it has been positive on 1,675 of 1,675 recorded rows. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only `net_delta_change_30min_bn` can be news. `net_vanna_musd_per_vol_point` only matters when vol_trend is moving.
-- walls: standing structure, up to two per side, ordered by DISTANCE (`ordered_by` says so) — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `share_of_book_gamma_pp` is the wall's share of total book gamma — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
+- dealer_positioning: standing dealer positioning as of last night's close. `net_delta_bn` is $-delta in billions from an assumed-sign book, and ITS SIGN IS AN ARTIFACT OF THE FORMULA, which cannot produce another one — it has been positive on every one of 4,149 recorded scans, ranging 1.15 to 8.24 and never once crossing zero. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only `net_delta_change_30min_bn` can be news. `net_vanna_musd_per_vol_point` only matters when vol_trend is moving.
+- walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `share_of_book_gamma_pp` is the wall's share of total book gamma — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
 - history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_has_no_wall` flag or `flip.no_flip_anywhere_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a no-wall flag = known empty. Never confuse the two.
 
@@ -891,7 +891,7 @@ HONESTY RULES, all of them load-bearing:
 - Never narrate an open-interest block in the present tense. See the provenance rules above — this is the one that will be checked.
 - The magnet is usually a TIE. When top_strike_lead_pp is small, no strike is really in charge — say so rather than naming one.
 - Never invent a level. If price is past the last named level on the board, say exactly that — on this name it is often true.
-- Thirty-minute moves here have a SPREAD, not a typical size: half run under 0.09 sigma, one in five exceeds 0.20, one in twenty exceeds 0.46, and the worst recorded is 1.71 (see scale.move_30min_sigma_distribution, with how many sessions it rests on). Size your magnitude against the whole spread — a big call needs a named force behind it, but the tail is real, so never let the median become your ceiling. Pointing at a level 0.6 sigma away is still a landmark, not a 30-minute target.
+- Thirty-minute moves here have a SPREAD, not a typical size: half run under 0.09 sigma, one in five exceeds 0.20, one in twenty exceeds 0.46, and the worst recorded is 1.71 — measured over 8 sessions of an extreme post-earnings stretch, so treat it as the shape of the tail, not a calibrated table. Size your magnitude against the whole spread — a big call needs a named force behind it, but the tail is real, so never let the median become your ceiling. Pointing at a level 0.6 sigma away is still a landmark, not a 30-minute target.
 - The one pattern this tape has shown any short-horizon stability in is MEAN REVERSION: a vector pointing the same way price just travelled (price.moved_last_30min_sigma) is the least trustworthy kind and needs extra evidence beyond the move itself.
 - "none" is an honest vector. When the evidence genuinely balances, say what is balanced instead of forcing a lean.
 
@@ -1216,12 +1216,14 @@ def dealer_positioning_block(rows: list[dict]) -> Optional[dict]:
     out = {}
     net = _fin((row.get("dex_views") or {}).get("net_dex_total"))
     if net is not None:
-        # sr-3: the note rides the FIELD, not only the doctrine. The doctrine is
-        # one paragraph read once at the top of a cached block; the number is
-        # what the model is actually looking at when it reasons, and a bare
-        # signed figure invites the reading the sign cannot support.
+        # sr-3 put the sign caveat on the FIELD as well as in the doctrine, on
+        # the reasoning that the model meets the number, not the paragraph.
+        # sr-8 returns it to the doctrine alone: `True` on 4,149 of 4,149 scans
+        # is a constant, the doctrine states the same caveat at more length
+        # (naming the 1,675/1,675 measurement the field could only assert), and
+        # the field's own name had become the argument for keeping it. The
+        # caveat is not weakened — it is stated once, where repetition is free.
         out["net_delta_bn"] = round(net / 1e9, 2)
-        out["net_delta_sign_is_formula_artifact"] = True
         t_now = _ts(row)
         if t_now is not None:
             for r in reversed(rows[:-1]):
@@ -1237,7 +1239,6 @@ def dealer_positioning_block(rows: list[dict]) -> Optional[dict]:
     vex = _fin((row.get("flows_front") or {}).get("vex"))
     if vex is not None:
         out["net_vanna_musd_per_vol_point"] = round(vex / 1e6, 2)
-        out["vanna_matters_when"] = "vol_trend is rising or falling"
     return out or None
 
 
@@ -1365,9 +1366,10 @@ def breadth_block(row: dict, now: Optional[datetime]) -> Optional[dict]:
         return None
     sh = _shove(row)
     up, dn = sh.get("shove_up_margin"), sh.get("shove_down_margin")
+    # sr-8: the "one witness, not two" warning was a frozen string here and a
+    # sentence in the doctrine. The warning stands; only the duplicate goes.
     out = {"lopsidedness_0_is_even": rel,
-           "heavier_side": "up" if up > dn else "down",
-           "measures_same_gamma_pile_as": "magnet"}
+           "heavier_side": "up" if up > dn else "down"}
     w = _pctl_word("lopsidedness", rel, now)
     if w:
         out["lopsidedness_vs_own_history"] = w
@@ -1433,8 +1435,12 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
     # side by gamma sign AND sit on that side of spot. Only the ageing and the
     # heaviest-behind key are new — widening the filter would quietly redefine
     # what a wall is, which is not a documentation fix.
-    out = {"sigma_measured_from": ruler_name,
-           "ordered_by": "distance_from_spot_nearest_first"}
+    # sr-8: `ordered_by` was one frozen string on every scan. The ordering is
+    # load-bearing — walls[0] is what price MEETS FIRST, never "the strongest",
+    # and the 08-06 incident below is what happens when that is misread — so
+    # the rule stays stated, in the doctrine, where a standing rule costs a
+    # tenth as much and has room to say why it matters.
+    out = {"sigma_measured_from": ruler_name}
     for key, pool, near in (
             ("call", [c for c in clusters
                       if c["side"] == "call" and c["peak"] > spot],
@@ -1766,20 +1772,6 @@ def build_scene(row: dict, band: dict, frozen: list,
         "price_quote": prune(quote) or None,
         "options_book": prune(book) or None,
         "open_interest": prune(oi) or None,
-        # WHAT EACH BLOCK IS BUILT FROM, said once.
-        #
-        # sr-7 first shipped this as a `built_from` list INSIDE every block.
-        # That was 687 characters of the payload — the single largest line item
-        # in a packet that had doubled — spent repeating nine short lists on
-        # every one of ~190 scans a day. A block-level declaration is not a leaf,
-        # so nothing about "a leaf must survive being read alone" required it to
-        # sit inside the block; it only had to be findable, and here it is
-        # findable next to the three clocks it refers to.
-        #
-        # `_drop_stale_blocks` reads this map, and prunes an entry when it
-        # deletes the block — a provenance map that names a block the scene no
-        # longer carries is the frozen_do_not_cite bug wearing a different hat.
-        "built_from": {k: list(v) for k, v in BUILT_FROM.items()},
     })
 
     # sr-4: the day-scoped calendar. Until now the model read a Monday 4-dte
@@ -1822,23 +1814,20 @@ def build_scene(row: dict, band: dict, frozen: list,
         clock["front_expiry"] = fe
 
     # scale — the rulers: sigma + the asymmetric expected move (rebuilt IV smile)
-    # sr-5: the 0.08 point becomes a spread. The single "typical move" number
-    # was the one calibration hint the model got and it copied it — all 33
-    # magnitudes ever emitted sat inside 0.06-0.20 while a fifth of real
-    # 30-minute windows exceed 0.20 (replication 08-08: median 0.094, p95
-    # 0.46, max 1.71 over 8 sessions; disjoint-window check agrees). A point
-    # teaches a ceiling; a spread teaches a distribution. Still frozen numbers
-    # measured on an extreme post-earnings stretch — sessions_measured says so
-    # on the field, and a standing recompute is future work, not this change.
+    #
+    # sr-8 drops `move_30min_sigma_distribution`. The SPREAD itself stands —
+    # sr-5 measured it because a single "typical move" number taught a ceiling
+    # (all 33 magnitudes ever emitted sat inside 0.06-0.20 while a fifth of real
+    # windows exceed 0.20) and that lesson is not in question. What changed is
+    # WHERE it rides: five frozen literals from one 8-session post-earnings
+    # study, identical on every scan, were being paid for at full payload price
+    # ~190 times a day while the doctrine already restated all five in prose.
+    # The doctrine is byte-identical all day and prompt-cached, so the same
+    # sentence costs about a tenth there. A frozen number belongs in the cached
+    # half; only what varies earns a place in the scene.
     scale = {"one_sigma_dollars": round(sig, 2) if sig else None,
              "sigma_pct_of_price": round(sig / spot * 100, 1)
-             if sig and spot else None,
-             "move_30min_sigma_distribution": {
-                 "half_of_windows_under": 0.09,
-                 "one_in_five_over": 0.20,
-                 "one_in_twenty_over": 0.46,
-                 "worst_recorded": 1.71,
-                 "sessions_measured": 8}}
+             if sig and spot else None}
     skew = row.get("iv_skew") if isinstance(row.get("iv_skew"), dict) else {}
     em = _fin((row.get("range_ruler") or {}).get("em_points"))
     d = _fin(skew.get("down_share"))
@@ -1962,25 +1951,14 @@ def _drop_stale_blocks(scene: dict, ages: dict) -> dict:
     open_interest carries no ceiling on purpose: it is ~18 hours old BY DESIGN
     and saying so is the fix, not dropping it. WALL_CLOCK never ages."""
     dropped = []
-    built = ((scene.get("data_sources") or {}).get("built_from")) or {}
-    # BUILT_FROM is a static map of every block that CAN ship. Blocks omitted
-    # for want of data — history on a quiet tape, momentum before the window
-    # fills — were leaving their entry behind, so the map named things the scene
-    # did not carry. Reconcile first, drop second: the map describes the payload
-    # as shipped, never as intended.
-    def _present(name):
-        head, _, sub = name.partition(".")
-        block = scene.get(head)
-        if not isinstance(block, dict):
-            return head in scene
-        return sub in block if sub else True
-    for src in list(built):
-        here = [x for x in built[src] if _present(x)]
-        if here:
-            built[src] = here
-        else:
-            built.pop(src)
-    for src, names in list(built.items()):
+    # sr-8: read the static map, do not ship it. sr-7 sent `built_from` in the
+    # payload and therefore had to reconcile it against what the scene actually
+    # carried, so the map could never name a block the reader could not see.
+    # Nothing reads it now but this loop, and popping a block the scene does not
+    # have is already a no-op below — so the reconcile pass went with the field
+    # it existed to keep honest.
+    built = BUILT_FROM
+    for src, names in built.items():
         age, cap = ages.get(src), _MAX_AGE_MIN.get(src)
         if age is None or cap is None or age <= cap:
             continue
@@ -1989,17 +1967,6 @@ def _drop_stale_blocks(scene: dict, ages: dict) -> dict:
                 continue
             dropped.append({"block": name, "source": src,
                             "age_min": age, "max_age_min": cap})
-    # the map must not outlive the blocks it describes: a provenance entry
-    # naming a block the scene no longer carries is the frozen_do_not_cite bug
-    # wearing a different hat.
-    gone_blocks = {d["block"] for d in dropped}
-    if gone_blocks:
-        for src in list(built):
-            kept = [x for x in built[src] if x not in gone_blocks]
-            if kept:
-                built[src] = kept
-            else:
-                built.pop(src)
     # A guardrail may only name fields the scene actually ships — the same rule
     # that moved wall staleness onto the walls in sr-3. Without this the model
     # is handed "magnet unchanged 387m, do not cite" about a magnet block that
@@ -2012,11 +1979,12 @@ def _drop_stale_blocks(scene: dict, ages: dict) -> dict:
             scene["frozen_do_not_cite"] = kept
         else:
             scene.pop("frozen_do_not_cite")
-    return {"when_source_exceeds_max_age": "drop_the_block",
-            "max_options_book_age_min": MAX_BOOK_AGE_MIN,
-            "only_the_options_book_has_a_ceiling": True,
-            "blocks_dropped_this_scan": dropped,
-            "present_tense_forbidden_for": list(PRESENT_TENSE_FORBIDDEN_FOR)}
+    # sr-8: only `blocks_dropped_this_scan` varies. The rule itself, the
+    # ceiling and the present-tense ban were three constants and a fixed
+    # six-name list on every scan, all of them already spelled out in the
+    # doctrine — which is where a standing rule belongs. What is left here is
+    # the one thing that is news: what actually went missing on THIS scan.
+    return {"blocks_dropped_this_scan": dropped}
 
 
 # ---------------------------------------------------------------------------

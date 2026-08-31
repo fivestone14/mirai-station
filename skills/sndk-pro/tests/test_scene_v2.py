@@ -248,12 +248,12 @@ def test_dealer_positioning_dex_and_vanna():
     # 756/756 scenes — the banned pattern)
     assert df["net_delta_bn"] == 3.93
     assert "lean" not in df
-    # sr-3: net_dex_total is > 0 BY CONSTRUCTION (1,675/1,675 recorded rows),
-    # so the field must say so where the model reads the number — a caveat that
-    # lives only in the cached doctrine is a caveat the number travels without.
-    # sr-7 flattened that prose note into its own named flag, which says the
-    # same thing without asking the model to parse a sentence.
-    assert df["net_delta_sign_is_formula_artifact"] is True
+    # sr-3 put the sign caveat on the field; sr-8 took it back off. `True` on
+    # 4,149 of 4,149 scans is a constant, and the doctrine states the caveat at
+    # more length than a flag can. What must not happen is the caveat vanishing
+    # with the field, so that is what is checked.
+    assert "net_delta_sign_is_formula_artifact" not in df
+    assert "ARTIFACT OF THE FORMULA" in SR._DOCTRINE
     assert df["net_vanna_musd_per_vol_point"] == pytest.approx(0.26, abs=0.01)
 
 
@@ -539,8 +539,10 @@ def test_breadth_ships_a_number_and_never_a_direction():
     assert b["lopsidedness_0_is_even"] == pytest.approx(0.9, abs=0.01)
     assert b["heavier_side"] in ("up", "down")   # a fact about mass...
     assert "dir" not in b and "vector" not in b  # ...never a lean
-    # names the shared witness
-    assert "magnet" in b["measures_same_gamma_pile_as"]
+    # sr-8: the shared-witness warning was a frozen string in the payload and a
+    # sentence in the doctrine. The duplicate went; the warning did not.
+    assert "measures_same_gamma_pile_as" not in b
+    assert "SAME GAMMA PILE" in SR._DOCTRINE
 
 
 def test_breadth_absent_without_a_shove_read():
@@ -672,7 +674,9 @@ def test_a_fresh_book_drops_nothing():
     sc = _scene_at(_book_rows(), T0)
     assert sc["freshness_rules"]["blocks_dropped_this_scan"] == []
     assert all(b in sc for b in _BOOK_BLOCKS)
-    assert sc["freshness_rules"]["max_options_book_age_min"] == SR.MAX_BOOK_AGE_MIN
+    # sr-8: freshness_rules carries ONLY what varies. The rule, the ceiling and
+    # the present-tense ban are standing facts and ride in the doctrine.
+    assert list(sc["freshness_rules"]) == ["blocks_dropped_this_scan"]
 
 
 def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
@@ -698,9 +702,11 @@ def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
     # front_expiry is filed apart from `clock` in the map: it is the one thing
     # in the session calendar that is NOT the wall clock, and filing the whole
     # calendar under the book would take minutes_to_close down with a dead feed.
-    built = sc["data_sources"]["built_from"]
-    assert "clock.front_expiry" in built[SR.OPTIONS_BOOK]
-    assert built[SR.WALL_CLOCK] == ["clock"]
+    # sr-8: the map is a module constant now, not a payload field — nothing but
+    # the gate ever read it, and it was 269 bytes on every scan.
+    assert "built_from" not in sc["data_sources"]
+    assert "clock.front_expiry" in SR.BUILT_FROM[SR.OPTIONS_BOOK]
+    assert SR.BUILT_FROM[SR.WALL_CLOCK] == ["clock"]
 
 
 def test_a_source_with_no_ceiling_is_never_dropped_however_old():
@@ -708,17 +714,12 @@ def test_a_source_with_no_ceiling_is_never_dropped_however_old():
     hours old BY DESIGN — saying so is the fix, dropping it is not — and the
     session calendar cannot go stale at all. A source missing from that table
     is never dropped, at any age."""
-    scene = {"instrument": "SNDK",
-             "standing_book": {"oi": 1},
-             "calendar": {"date": "2026-07-31"},
-             "data_sources": {"built_from": {SR.OI_SNAPSHOT: ["standing_book"],
-                                             SR.WALL_CLOCK: ["calendar"]}}}
+    scene = {"regime": {"x": 1}, "walls": {"y": 2}}
     fr = SR._drop_stale_blocks(scene, {SR.OI_SNAPSHOT: 18 * 60.0,
                                        SR.WALL_CLOCK: 9_999.0})
     assert fr["blocks_dropped_this_scan"] == []
-    assert "standing_book" in scene and "calendar" in scene
+    assert "regime" in scene and "walls" in scene
     assert set(SR._MAX_AGE_MIN) == {SR.OPTIONS_BOOK}
-    assert fr["only_the_options_book_has_a_ceiling"] is True
 
 
 def test_a_dropped_block_takes_its_own_do_not_cite_line_with_it():
@@ -748,13 +749,15 @@ def test_the_do_not_cite_key_disappears_when_the_gate_empties_it():
 
 
 def test_the_forbidden_list_names_blocks_the_scene_actually_ships():
-    """PRESENT_TENSE_FORBIDDEN_FOR is published to the model inside
-    freshness_rules, so every name on it has to resolve in the scene beside it
-    — the sr-3 lesson about a guard that warned about put wall 1200, a strike
-    absent from the whole payload."""
+    """PRESENT_TENSE_FORBIDDEN_FOR is published to the model — sr-7 sent it in
+    freshness_rules, sr-8 sends it in the doctrine — so every name on it still
+    has to resolve in the scene beside it. The sr-3 lesson about a guard that
+    warned about put wall 1200, a strike absent from the whole payload, does not
+    care which half of the prompt the guard rode in on."""
     sc = _scene_at(_book_rows(), T0)
-    published = sc["freshness_rules"]["present_tense_forbidden_for"]
-    assert published == list(SR.PRESENT_TENSE_FORBIDDEN_FOR)
+    published = list(SR.PRESENT_TENSE_FORBIDDEN_FOR)
+    assert ", ".join(published) in SR._DOCTRINE
+    assert "present_tense_forbidden_for" not in sc["freshness_rules"]
     for name in published:
         head, _, leaf = name.partition(".")
         assert head in sc, name
@@ -762,7 +765,7 @@ def test_the_forbidden_list_names_blocks_the_scene_actually_ships():
         # ...and every one of them is OI-derived, which is why the list exists:
         # open interest updates once overnight, so "dealers are buying" about it
         # is a false statement about time, not a debatable read
-        assert head in sc["data_sources"]["built_from"][SR.OI_SNAPSHOT], name
+        assert head in SR.BUILT_FROM[SR.OI_SNAPSHOT], name
 
 
 # --- sr-7: the ruler is the spot the BOOK was measured at --------------------
