@@ -174,9 +174,16 @@ and writes nothing; that is how every number above was measured.
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-7` since
-  2026-08-30 — provenance and the leaf rename: every block declares
-  `built_from`, `data_sources` carries the scan / quote / book clocks
+  silently with live rows. Read rows are stamped `era` (`sr-8` since
+  2026-08-30 — the payload pays only for what VARIES: 30 leaves left the scene,
+  18 of them a single value across 4,149 recorded scans and 12 exactly
+  reconstructable from leaves that stay, their explanations moved into the
+  prompt-cached doctrine. `sigma_measured_from` now names only the EXCEPTION,
+  `price_quote` is gone (it was `scan_taken_at` twice over, so there are two
+  clocks and not three), and `vwap_dist_sigma_from_live_spot` became
+  `vwap_minus_live_spot_sigma` so its sign reads off its name; `sr-7` since
+  the same day — provenance and the leaf rename: every block's source was
+  declared, `data_sources` carries the scan and book clocks
   separately, book-derived σ distances measure from the book's own spot,
   percentiles count distinct books rather than scans, and `freshness_rules`
   deletes a block whose source aged out instead of labelling it. Read rows
