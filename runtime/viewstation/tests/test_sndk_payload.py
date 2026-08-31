@@ -86,7 +86,10 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     assert d["as_of"] == "live" and d["built_at"] == now.isoformat()
     assert d["scans_today"] == 3
     sc = d["scene"]
-    assert sc["instrument"] == "SNDK"
+    # sr-8: `instrument` moved to the doctrine — one frozen string from a reader
+    # that has never watched anything else. What the wrapper must still hand
+    # back is the reader's own scene, so that is what is checked.
+    assert "instrument" not in sc
     assert sc["price"]["live_spot"] == 1586.2
     assert sc["clock"]["minutes_to_close"] == 178 and sc["clock"]["front_expiry"] == {"days_to_expiry": 2, "expiry_date": "2026-08-21"}
     assert sc["magnet"]["top_strikes"][0]["strike"] == 1600.0

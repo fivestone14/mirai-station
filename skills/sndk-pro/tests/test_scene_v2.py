@@ -8,6 +8,9 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import re
+from pathlib import Path
+
 import pytest
 
 import sndk_read as SR
@@ -776,6 +779,38 @@ def test_the_do_not_cite_key_disappears_when_the_gate_empties_it():
               {"field": "regime", "value": "trending", "for_min": 95}]
     assert "frozen_do_not_cite" not in _scene_at(rows, T0 + timedelta(minutes=7),
                                            frozen)
+
+
+def test_the_doctrine_never_names_a_field_the_scene_stopped_shipping():
+    """THE sr-8 GUARD, and the reason the field deletions and the doctrine edits
+    had to land in the same commits.
+
+    Two halves reach the model on every call: the scene (per-scan, full price)
+    and the doctrine (byte-identical, prompt-cached). Delete a number but leave
+    its sentence and the model is handed an instruction about something it
+    cannot see. This module has been bitten by exactly that before —
+    `_drop_stale_blocks` carries a guard for it, and the comment there calls it
+    "the frozen_do_not_cite bug wearing a different hat" after the payload
+    warned "magnet unchanged 387m, do not cite" about a magnet block deleted
+    three lines earlier.
+
+    The check is static on purpose. Building a scene that exercises every
+    conditional leaf (a censored wall age, a board with no flip, an absent
+    chain_spot, a percentile with prior sessions on disk) would make this test a
+    fixture problem rather than a contract check. What actually has to hold is
+    narrower and stronger: every field name the doctrine speaks aloud must still
+    be a key the builder can write."""
+    doctrine_names = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_.]*)`", SR._DOCTRINE))
+    # the doctrine also quotes the unit suffixes it teaches the model to read
+    doctrine_names -= {"_pp", "_bn", "_musd", "_min", "_sigma"}
+    assert doctrine_names, "the doctrine names no fields at all — regex broke"
+    source = Path(SR.__file__).read_text()
+    emitted = set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', source))
+    for name in sorted(doctrine_names):
+        for part in name.split("."):
+            assert part in emitted, (
+                f"doctrine names `{name}`, but the builder never writes "
+                f"a key {part!r} — a sentence outliving its field")
 
 
 def test_the_forbidden_list_names_blocks_the_scene_actually_ships():
