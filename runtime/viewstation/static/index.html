@@ -11010,19 +11010,32 @@ function snkDeclutter(svg){
 // THE CLOSED DRAWER'S ONE LINE. A title alone would mean opening the thing just to learn
 // whether the model is calling anything at all, so the header carries the call: the model's own
 // vector and size where there is one, the gated arrow's direction otherwise, and how old it is.
+// snkObs (obs-1) — IS there a reading, and is it the observation shape?
+//
+// This exists because the old test was `rd.reading && rd.reading.line`, and
+// obs-1 deleted `line`. Every surface that used it silently decided there was
+// no reading at all — the read card, the header summary and the chart caption
+// all went blank together while the row underneath was perfectly good. One
+// predicate now, so the next schema change breaks one place instead of four.
+function snkObs(rd){
+  const R=(rd&&typeof rd==='object'&&rd.reading&&typeof rd.reading==='object')?rd.reading:null;
+  if(!R) return null;
+  return (R.quiet===true||Array.isArray(R.notable)) ? R : null;
+}
+
 function snkReadSummary(rd){
   if(!rd||typeof rd!=='object') return {cls:'', html:`<span class="q">no read yet</span>`};
-  const a=(rd.arrow&&typeof rd.arrow==='object')?rd.arrow:null;
-  const R=(rd.reading&&rd.reading.line)?rd.reading:null;
-  const v=R&&R.vector;
-  const mag=(R&&R.magnitude_sigma!=null&&isFinite(R.magnitude_sigma))?+R.magnitude_sigma:null;
+  const R=snkObs(rd);
   const age=(rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null;
-  const dir=(v==='up'||v==='down')?v:(a&&(a.dir==='up'||a.dir==='down')?a.dir:null);
-  if(!dir&&v!=='none'&&!R) return {cls:'', html:`<span class="q">${rd.paused?'reasoning paused':'no read yet'}</span>`};
-  const glyph=dir==='up'?'▲':dir==='down'?'▼':'◆';
-  const word=dir?dir.toUpperCase():'NO LEAN';
-  return { cls:dir==='up'?'up':dir==='down'?'dn':'',
-    html:`<b>${glyph} ${word}${(mag!=null&&dir)?` ${mag.toFixed(2)}σ`:''}</b>`
+  if(!R) return {cls:'', html:`<span class="q">${rd.paused?'reasoning paused':'no read yet'}</span>`};
+  const n=(R.notable||[]).length;
+  // a quiet read is the COMMON state and is written in ordinary ink. Only a
+  // FORCED quiet — the model spoke and the checks deleted all of it — is
+  // marked, because that one is a fault rather than an answer.
+  const forced=R.abstain==='forced';
+  return { cls: n?'up':(forced?'dn':''),
+    html:`<b>${n?`${n} UNUSUAL`:'NOTHING UNUSUAL'}</b>`
+      +(forced?`<span class="q">· all dropped</span>`:'')
       +(age!=null?`<span class="q">· ${snkDur(age)} old</span>`:'') };
 }
 // one drawer at a time: the bodies overlay what is under them, so a second open panel would
@@ -11045,7 +11058,7 @@ function snkDrawer(id, title, head, body){
 function snkReadCard(rd, now, bare){
   if(!rd||typeof rd!=='object') return '';
   const a=(rd.arrow&&typeof rd.arrow==='object')?rd.arrow:null;
-  const R=(rd.reading&&rd.reading.line)?rd.reading:null;
+  const R=snkObs(rd);
   const c=snkArrowBlock(a, now);
   // the reading CARRIES FORWARD between wakes (a quiet scan re-stamps the previous row's
   // sentence rather than blanking the card). Past 10 minutes it is memory, not news: it
@@ -11122,31 +11135,33 @@ async function openSnkHistModal(){
   }
   if(!calls.length) return shell(`<div class="snkh-note">No readings recorded yet today.</div>`);
   calls.sort((a,b)=>b.t0-a.t0);
-  const WIN=30*60*1000, now=Date.now();
+  // obs-1: THIS TABLE USED TO GRADE A FORECAST. It projected each reading's
+  // spot forward by the model's magnitude, called that an "aim", and scored the
+  // next 30 minutes hit or shy. There is no target any more and nothing to
+  // score — the direction call was measured at zero forward value and removed.
+  //
+  // What replaces it is a log of what was SAID: when, how many things the model
+  // found unusual, and the sentence itself. Grading belongs to the nightly
+  // audit, against the checks, not to a table that invented its own target and
+  // then marked its own homework.
   const body=calls.map(c=>{
-    const v=c.rd.vector, mag=(c.rd.magnitude_sigma!=null&&isFinite(c.rd.magnitude_sigma))?+c.rd.magnitude_sigma:null;
-    const t1=c.t0+WIN, open=now<t1;
-    const dirTd=v==='up'?`<td class="dir up">▲ up${mag!=null?` ${mag}σ`:''}</td>`
-      :v==='down'?`<td class="dir down">▼ down${mag!=null?` ${mag}σ`:''}</td>`
-      :`<td class="dir none">■ stood down</td>`;
-    let aim='—', res='—', resCls='';
-    if((v==='up'||v==='down')&&mag!=null&&c.sigma!=null){
-      const tgt=c.spot+(v==='up'?1:-1)*mag*c.sigma;
-      aim=snkUsd(tgt,0);
-      const win=rows.map(y=>({t:T(y.ts), p:+y.spot})).filter(y=>y.t!=null&&y.t>=c.t0&&y.t<=t1&&isFinite(y.p));
-      if(win.length){
-        const best=v==='up'?Math.max(...win.map(y=>y.p)):Math.min(...win.map(y=>y.p));
-        const hit=v==='up'?best>=tgt:best<=tgt;
-        if(hit){ res='hit'; resCls=' class="hit"'; }
-        else res=`${snkUsd(best,0)} · ${Math.abs(best-tgt).toFixed(1)} shy${open?' · open':''}`;
-      }else res=open?'window open':'—';
-    }
-    return `<tr><td>${clock(c.t0)} → ${clock(t1)}</td>${dirTd}<td>${aim}</td><td${resCls}>${res}</td></tr>`
-      +`<tr class="ln"><td colspan="4">${snkSafe(c.rd.line||'')}</td></tr>`;
+    const R=(c.rd&&typeof c.rd==='object')?c.rd:{};
+    const obs=Array.isArray(R.notable)?R.notable:[];
+    const n=obs.length;
+    const forced=R.abstain==='forced';
+    const cls=n?' class="hit"':(forced?' class="dir down"':'');
+    const what=n?`${n} unusual`:(forced?'all dropped':'nothing unusual');
+    const said=R.say||(obs[0]&&obs[0].what)||R.quiet_because||'';
+    // the pointer is shown because it is the thing that was checked
+    const src=obs.map(o=>(o.paths||[])[0]).filter(Boolean).join('  ');
+    return `<tr><td>${clock(c.t0)}</td><td${cls}>${what}</td>`
+      +`<td>${snkSafe(src)}</td></tr>`
+      +(said?`<tr class="ln"><td colspan="3">${snkSafe(said)}</td></tr>`:'');
   }).join('');
-  shell(`<table class="snkh-tbl"><thead><tr><th>aiming from → to</th><th>call</th><th>aim</th><th>closest</th></tr></thead><tbody>${body}</tbody></table>
-    <div class="snkh-note">${SNDK._histEraNote?snkSafe(SNDK._histEraNote)+' · ':''}aim = price at issue ± size×σ, derived for this table — the reading never names a target ·
-    the 30-min span is this table's scoring rule, not the model's · closest is from ~2-min scans, a wick between scans can beat it ·
+  shell(`<table class="snkh-tbl"><thead><tr><th>said at</th><th>found</th><th>checked against</th></tr></thead><tbody>${body}</tbody></table>
+    <div class="snkh-note">${SNDK._histEraNote?snkSafe(SNDK._histEraNote)+' · ':''}the model is asked what is UNUSUAL, never where price is going ·
+    every number it said was resolved against the scene before the row was written, and a claim whose pointer did not resolve was deleted rather than corrected ·
+    "nothing unusual" is the expected answer and a finished one · "all dropped" means it did speak and the checks removed everything, which is worth a look ·
     times are this device's timezone</div>`);
 }
 // snkSpokeTxt — the abstention counter. Small, quiet, always present once a read row is:
@@ -11303,39 +11318,26 @@ function snkMiraiSVG(m, rd, P){
   const sinceAttr=since?` data-since="${since}"`:'';
   const halo='paint-order:stroke;stroke:var(--ground);stroke-width:2.5px;stroke-linejoin:round';
   const xB=x0+30;
-  const mag=(R&&R.magnitude_sigma!=null&&isFinite(R.magnitude_sigma))?+R.magnitude_sigma:null;
-
-  if(R&&(R.vector==='up'||R.vector==='down')&&mag!=null&&sp!=null&&sg){
-    const up=R.vector==='up', hue=up?'var(--jade)':'var(--coral)';
-    let tgt=sp+(up?1:-1)*mag*sg, clip='';
-    const bLo=P.band?P.band.pLow:-Infinity, bHi=P.band?P.band.pHigh:Infinity;
-    if(tgt>bHi){ tgt=bHi; clip='≈'; } if(tgt<bLo){ tgt=bLo; clip='≈'; }
-    const yS=yFor(sp), yT=yFor(tgt);
-    const yCap=dodge(yT+(up?-8*r:14*r));
-    const txt=`mirai ${up?'▲':'▼'} ${clip}${snkUsd(tgt,0)} · 30m${(aged&&!clock)?' (old)':''}${stamp}`;
-    // the card leads with WHEN (issued clock · how long ago, a meter of the window run, what is
-    // left of it) and only then with how far — the lapse is what a reader cannot get from the
-    // line itself, and it fills in live at hover time (see rpShowHeadTip)
-    const tip=`Mirai's own read of the snapshot — which way, how far over ~30 min, and when it said so.`
-      +snkLapseRows(clock, ageM, !!since)
-      +`¦k:expects ${up?'up':'down'}=${mag.toFixed(2)}σ ≈ $${Math.round(mag*sg)}`
-      +(clip?`¦f:target sits past the frame edge — drawn clamped`:'')
-      +`¦f:separate from the gated arrow — they can disagree, and that is information`
-      +`¦n:30-min moves here have a spread — half under ~0.09σ, one in five over 0.20σ (sr-5)`;
-    out.push(`<g${sinceAttr}${aged?' opacity=".5"':''}>`
-      +`<circle cx="${xB}" cy="${yS.toFixed(1)}" r="2.2" fill="${hue}" opacity=".8"/>`
-      +`<line x1="${xB}" x2="${xB}" y1="${yS.toFixed(1)}" y2="${yT.toFixed(1)}" style="stroke:${hue};stroke-width:1.5;opacity:.55" stroke-dasharray="4 4"/>`
-      +`<path d="M${(xB-3.5).toFixed(1)},${(yT+(up?4.5:-4.5)).toFixed(1)} L${xB.toFixed(1)},${yT.toFixed(1)} L${(xB+3.5).toFixed(1)},${(yT+(up?4.5:-4.5)).toFixed(1)}" fill="none" style="stroke:${hue};stroke-width:1.6;opacity:.85"/>`
-      +`<text x="${(xB+8).toFixed(1)}" y="${(yCap+3*r).toFixed(1)}" font-size="${fs}" font-weight="700" font-family="var(--mono)" style="fill:${hue};${halo};letter-spacing:.04em" data-name="Mirai's read ${up?'▲':'▼'}" data-tip="${tip}">${txt}</text>`
-      +`</g>`);
-    avoid.push(yCap);
-  } else if(R&&R.vector==='none'&&sp!=null){
+  // obs-1: THE DRAWN TARGET IS GONE. This block used to project spot forward by
+  // the model's magnitude and draw an arrow to the price it named — a forecast,
+  // rendered as geometry, in the most authoritative place on the chart. That
+  // forecast measured at zero forward value. What replaces it is a caption at
+  // spot saying how many things the model found unusual, and nothing about
+  // where price is headed, because there is no longer an opinion about that.
+  if(R&&sp!=null){
+    const n=(R.notable||[]).length;
+    const forced=R.abstain==='forced';
     const y=dodge(yFor(sp)-14*r);
-    const bTip=`Mirai read the snapshot and saw no lean either way.`
+    const hue=n?'var(--ink)':(forced?'var(--coral)':'var(--ink-dim)');
+    const word=n?`${n} unusual`:(forced?'all observations dropped':'nothing unusual');
+    const tip=(n?`Mirai read the snapshot and found ${n} thing${n===1?'':'s'} worth saying.`
+                :forced?`Mirai offered observations and every one failed its own checks — worth a look.`
+                :`Mirai read the snapshot and found nothing unusual. That is a finished read, not a missing one.`)
       +snkLapseRows(clock, ageM, !!since)
-      +`¦f:an honest 'balanced' — not a missing reading`;
+      +`¦f:it is asked what is UNUSUAL, never where price is going — the direction call was measured at zero forward value and removed`
+      +(n?`¦k:every number it said was checked against the scene before you saw it`:'');
     out.push(`<g${sinceAttr}${aged?' opacity=".5"':''}>`
-      +`<text x="${(xB+8).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${fs}" font-weight="500" font-family="var(--mono)" style="fill:var(--ink-dim);${halo};letter-spacing:.04em" data-name="Mirai's read" data-tip="${bTip}">mirai · balanced${(aged&&!clock)?' (old)':''}${stamp}</text>`
+      +`<text x="${(xB+8).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${fs}" font-weight="${n?700:500}" font-family="var(--mono)" style="fill:${hue};${halo};letter-spacing:.04em" data-name="Mirai's observation" data-tip="${tip}">mirai · ${word}${(aged&&!clock)?' (old)':''}${stamp}</text>`
       +`</g>`);
     avoid.push(y);
   } else if(rd.paused===true&&sp!=null){
@@ -14645,7 +14647,7 @@ const MEM = {
     const when=chrono?esc(x.time||m.time||'') : `<span class="dt">${esc(m.date||'')}</span>${esc(x.time||m.time||'')}`;
     return `<article class="mc" data-i="${i}"${sp!=null?` data-px="${sp}"`:''} data-v="${esc(m.vector||'none')}"`
       +` data-rg="${esc(m.regime||'')}" data-gs="${esc(m.gamma_sign||'')}">`
-      +`<div class="mc-hd"><span class="mc-t">${when}</span>${MEM.vecChip(m.vector,m.magnitude_sigma)}${MEM.wakeBadge(m.wake)}</div>`
+      +`<div class="mc-hd"><span class="mc-t">${when}</span>${MEM.obsChip(m)}${MEM.wakeBadge(m.wake)}</div>`
       +(parts[0]?`<p class="mc-read">${esc(parts[0])}</p>`:'')
       +(parts[1]?`<p class="mc-if"><b>Changes if</b>${esc(parts[1])}</p>`:'')
       +MEM.facts(F)+`</article>`;
@@ -14709,11 +14711,16 @@ const MEM = {
       +(t.note?`<p class="mc-note">${esc(MEM.cap(t.note))}${/[.!?]$/.test(String(t.note).trim())?'':'.'}</p>`:'')+`</article>`;
   },
   facts(F){ return F.length?`<div class="mc-facts">`+F.map(kv=>`<div><b>${esc(kv[0])}</b><span>${kv[1]}</span></div>`).join('')+`</div>`:''; },
-  vecChip(v,mag){
-    const k=(v==='up'||v==='down')?v:'none';
-    const g=k==='up'?'▲':k==='down'?'▼':'○', label=k==='none'?'No call':MEM.cap(k);
-    const size=(k!=='none'&&MEM.n(mag)!=null)?` · ${MEM.n(mag).toFixed(2)}σ`:'';
-    return `<span class="vec ${k}">${g} ${label}${size}</span>`;
+  // obs-1: a slice records what was NOTICED, not which way the model leaned.
+  // Quiet is the common state and is written plainly; a forced quiet — the
+  // model spoke and the checks deleted all of it — is the one worth marking.
+  obsChip(m){
+    const n=MEM.n(m.notable_count)||0;
+    const forced=m.abstain==='forced';
+    const k=n?'up':(forced?'down':'none');
+    const g=n?'●':(forced?'○':'○');
+    const label=n?`${n} unusual`:(forced?'All dropped':'Nothing unusual');
+    return `<span class="vec ${k}">${g} ${label}</span>`;
   },
   wakeBadge(w){
     if(!w) return '';

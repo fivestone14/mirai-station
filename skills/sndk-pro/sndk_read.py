@@ -1136,8 +1136,14 @@ def _stale_language_flags(reading: dict) -> list[str]:
     anything. A guard that has never fired is not evidence that nothing is
     wrong; a guard that fires on 40% of readings is not a guard either, and
     only the tape can say which one this is."""
-    text = " ".join(str(reading.get(k) or "")
-                    for k in ("line", "breaks_if", "cited")).lower()
+    # obs-1 retargets this at the fields that exist now. Left pointing at
+    # `line`/`breaks_if`/`cited` it read the empty string on every call and
+    # reported a clean sheet forever — a guard that cannot see its subject is
+    # worse than no guard, because the zero looks like evidence.
+    text = " ".join([str(reading.get("say") or ""),
+                     str(reading.get("quiet_because") or "")]
+                    + [str(o.get("what") or "")
+                       for o in (reading.get("notable") or [])]).lower()
     if not any(w in text for w in _STALE_NOUNS):
         return []
     return sorted({v for v in _LIVE_VERBS if v in text})
@@ -1336,6 +1342,16 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
                 break
 
     reading = {"quiet": not out, "notable": out}
+    # The present-tense guard survives obs-1 and still runs in the shadow: the
+    # doctrine forbids narrating an open-interest block as if it were happening
+    # now, and the lexicon gate above does not cover tense. Recorded, never
+    # enforcing, until the rate is known — the standing house rule for a new
+    # guard, and the reason it is worth keeping is that it has never once had a
+    # subject to look at.
+    _tense = _stale_language_flags(
+        {"say": say, "quiet_because": obj.get("quiet_because"), "notable": out})
+    if _tense:
+        reading["stale_language_flags"] = _tense
     # `say` is the prose ABOUT the observations. If every one of them was
     # deleted, the sentence is describing evidence the reader cannot see, which
     # is the whole failure this contract exists to prevent — so it goes with
@@ -2663,10 +2679,11 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         except Exception:
             pass
     r = out["reading"] or {}
+    n = len(r.get("notable") or [])
     print(f"sndk-read :: {wake} | arrow={arrow['dir'] or 'silent'} | "
-          f"vector={r.get('vector', '—')}"
-          f"{' ' + format(r.get('magnitude_sigma'), '.2f') + 'σ' if r.get('magnitude_sigma') is not None else ''} | "
-          f"{wall}s | {r.get('line', out['error'] or '')}")
+          f"{n} unusual" + (f" ({r['abstain']})" if r.get("abstain") else "")
+          + f" | {wall}s | "
+          + (r.get("say") or r.get("quiet_because") or out["error"] or ""))
     return 0
 
 

@@ -676,19 +676,26 @@ def test_present_tense_narration_of_a_standing_field_is_flagged():
     a label is not a control — the doctrine already told the model the book was
     N minutes stale and no reading ever discounted anything for it. A hit needs
     BOTH halves: a noun that names a standing surface AND a verb that puts it
-    in the present. Either alone is ordinary prose."""
+    in the present. Either alone is ordinary prose.
+
+    obs-1 retargeted this at the fields that now exist. Pointed at `line`,
+    `breaks_if` and `cited` it read the empty string on every call and reported
+    a clean sheet forever, which is worse than no guard because the zero looks
+    like evidence."""
     flags = SR._stale_language_flags(
-        {"line": "dealers are buying the 1500 wall right now"})
+        {"say": "dealers are buying the 1500 wall right now"})
     assert flags == ["are buying", "right now"]          # sorted, deduped
     # a standing noun with no live verb — the sentence the scene wants
     assert SR._stale_language_flags(
-        {"line": "the 1240 call wall sits 0.4σ above price"}) == []
+        {"say": "the 1240 call wall sits 0.4 sigma above price"}) == []
     # a live verb about something that really is live
     assert SR._stale_language_flags(
-        {"line": "price is building a base right now"}) == []
+        {"say": "price is building a base right now"}) == []
     # every field the model writes is read, not just the headline
     assert SR._stale_language_flags(
-        {"line": "x", "cited": "vanna is stacking"}) == ["is stacking"]
+        {"notable": [{"what": "gamma is piling up at 1500"}]}) == ["is piling"]
+    assert SR._stale_language_flags(
+        {"quiet_because": "the wall is building"}) == ["is building"]
 
 
 def _retired_lexicon_shadow_test():

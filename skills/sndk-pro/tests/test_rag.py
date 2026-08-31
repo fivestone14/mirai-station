@@ -17,11 +17,18 @@ ET = ZoneInfo("America/New_York")
 T0 = datetime(2026, 7, 31, 14, 30, tzinfo=ET)
 
 
-def _read_out(line="rejected the call wall and faded", vector="down", mag=0.12,
+def _read_out(line="the heaviest strike sat at 1300 all afternoon", quiet=False,
               wake="price ran"):
-    return {"era": "sr-2", "wake": wake,
-            "reading": {"line": line, "breaks_if": "1300 breaks",
-                        "vector": vector, "magnitude_sigma": mag},
+    """obs-1: a slice now records what was NOTICED. `line` keeps its parameter
+    name so the retrieval tests below still read naturally, but it lands in the
+    observation's own sentence."""
+    reading = ({"quiet": True, "abstain": "chosen", "quiet_because": line,
+                "notable": []} if quiet else
+               {"quiet": False, "say": line,
+                "notable": [{"what": line,
+                             "paths": ["/magnet/top_strikes/0/strike"],
+                             "values": [1300.0]}]})
+    return {"era": "obs-1", "wake": wake, "reading": reading,
             "arrow": {"dir": None},
             "magnet_band": {"top": [[1300.0, 9.5], [1100.0, 8.7]],
                             "gap_pp": 0.8}}
@@ -57,23 +64,44 @@ def test_record_slice_writes_both_faces(tmp_path):
     recs = RAG._read_jsonl(RAG._slices_path("2026-07-31"))
     assert len(recs) == 1
     r = recs[0]
-    assert r["kind"] == "slice" and r["era"] == "sr-2"
-    # Face B: the model's own sentence, breaks_if folded in
-    assert r["narrative"].startswith("rejected the call wall")
-    assert "Changes if 1300 breaks" in r["narrative"]
+    assert r["kind"] == "slice" and r["era"] == "obs-1"
+    # Face B: the model's own sentence. obs-1 dropped the "Changes if" clause
+    # with the forecast it belonged to.
+    assert r["narrative"].startswith("the heaviest strike sat at 1300")
+    assert "Changes if" not in r["narrative"]
     # Face A: exact-filterable metadata, numbers never embedded
     m = r["meta"]
-    assert m["spot"] == 1213.7 and m["vector"] == "down"
+    assert m["spot"] == 1213.7
+    assert m["quiet"] is False and m["notable_count"] == 1
+    assert m["cited_paths"] == ["/magnet/top_strikes/0/strike"]
     assert m["walls_call"] == [1220.0, 1250.0]
     assert m["magnet_top"] == [[1300.0, 9.5], [1100.0, 8.7]]
     assert m["time"] == "14:30"
 
 
-def test_record_slice_without_a_sentence_stores_nothing(tmp_path):
+def test_record_slice_without_a_reading_stores_nothing(tmp_path):
     out = _read_out()
     out["reading"] = None
     RAG.record_slice(_row(), out, _scene(), T0)
     assert RAG._read_jsonl(RAG._slices_path("2026-07-31")) == []
+
+
+def test_a_quiet_read_is_stored_too(tmp_path):
+    """obs-1 changed the principle, not just the field names. Under the forecast
+    contract a slice WAS the model's past call, so a read with no call held
+    nothing to remember. An observation contract's commonest answer is "the
+    board was ordinary", and a history made only of the loud moments cannot say
+    what normal looked like — which is the comparison every novelty claim rests
+    on. The old `reading.line` test also returned early on every obs-1 read,
+    which would have killed the store silently."""
+    out = _read_out("everything sat mid-range for this name", quiet=True)
+    RAG.record_slice(_row(), out, _scene(), T0)
+    rows = RAG._read_jsonl(RAG._slices_path("2026-07-31"))
+    assert len(rows) == 1
+    assert "mid-range" in rows[0]["narrative"]
+    assert rows[0]["meta"]["quiet"] is True
+    assert rows[0]["meta"]["notable_count"] == 0
+    assert rows[0]["meta"]["abstain"] == "chosen"
 
 
 # --- retrieval: metadata gates FIRST, then narrative ranks ------------------
@@ -82,7 +110,7 @@ def _seed_slices():
                                              wake="price ran"),
                      _scene(), T0)
     RAG.record_slice(_row(1195.0), _read_out("pinned to vwap all afternoon",
-                                             vector="none", mag=None),
+                                             quiet=True),
                      _scene(), T0 + timedelta(minutes=40))
     RAG.record_slice(_row(1130.0),
                      _read_out("broke the floor and kept going", "down", 0.3),

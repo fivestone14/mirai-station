@@ -137,13 +137,30 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
     happened, so memory costs no extra call. Raw numeric series are NOT
     duplicated here (the diary is the plain store `series` reads); this file
     holds only the memorable-narrative record."""
-    reading = read_out.get("reading") or {}
-    line = reading.get("line")
-    if not line:
-        return                      # no sentence → nothing memorable to store
-    narrative = str(line)
-    if reading.get("breaks_if"):
-        narrative += f" Changes if {reading['breaks_if']}"
+    reading = read_out.get("reading")
+    if not isinstance(reading, dict) or not reading:
+        return          # no reading at all (error, paused, carry-forward gap)
+    # obs-1. The old test was `reading.line`, and that field no longer exists —
+    # left as it was, this returned early on EVERY read and the memory store
+    # would have gone quietly dead while everything else looked fine.
+    #
+    # A QUIET READ IS NOW WORTH STORING, which is a change of principle and not
+    # just of field names. Under the forecast contract a slice was the model's
+    # past call, so a read with no call held nothing to remember. Under the
+    # observation contract "the board was ordinary at 11:40, and here is what I
+    # checked" is a real record of the session, and a history made only of the
+    # loud moments is a history that cannot say what normal looked like.
+    notable = reading.get("notable") or []
+    say = reading.get("say") or ""
+    if notable:
+        narrative = str(say) if say else " ".join(
+            str(o.get("what") or "") for o in notable).strip()
+    else:
+        narrative = str(reading.get("quiet_because") or "").strip()
+        if not narrative:
+            narrative = "Nothing unusual on the board."
+    if not narrative:
+        return
     walls = scene.get("walls") or {}
     ladder = row.get("profile_ladder") or {}
     band = read_out.get("magnet_band") or {}
@@ -160,8 +177,15 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
         "walls_put": [w.get("strike") for w in (walls.get("put") or [])],
         "ct": _num(ladder.get("ct")), "hvl": _num(ladder.get("hvl")),
         "pt": _num(ladder.get("pt")), "vwap": _num(row.get("vwap")),
-        "vector": reading.get("vector"),
-        "magnitude_sigma": reading.get("magnitude_sigma"),
+        # obs-1 replaces the stored vector. `quiet` and `abstain` are the pair
+        # the nightly audit reads: a model that looked and found nothing is
+        # working, a model whose every claim was deleted is not, and one flag
+        # cannot tell them apart. `cited_paths` is what makes a past slice
+        # re-checkable — the pointers that were resolved at the time.
+        "quiet": bool(reading.get("quiet")),
+        "abstain": reading.get("abstain"),
+        "notable_count": len(notable),
+        "cited_paths": [p for o in notable for p in (o.get("paths") or [])][:6],
         # THE AGGREGATOR'S ARROW IS DELIBERATELY NOT STORED (adversarial audit
         # 08-02): §05's Face A holds "the direction + magnitude CLAUDE gave" —
         # the model's own past vector is sanctioned memory; the deterministic
