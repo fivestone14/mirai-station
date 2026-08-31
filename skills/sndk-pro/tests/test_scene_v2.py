@@ -413,8 +413,17 @@ def test_the_read_has_no_tools_and_the_doctrine_does_not_offer_any():
     contract. Every claim must resolve to a pointer INTO the scene, so anything
     fetched from outside could not be pointed at and could not survive the
     gate — the grant buys latency and licence with no reachable upside."""
+    # `--allowedTools` was never the gate. Probed directly, `claude -p` executed
+    # a Bash command under BOTH the old allow-listed argv and the new one — so
+    # removing the flag was a no-op and the doctrine's "no tools" claim was
+    # false until Bash and WebSearch were added to the DISALLOW list, which is
+    # the only thing that actually gates.
     assert SR._ALLOWED_TOOLS == ()
-    assert "--allowedTools" not in Path(SR.__file__).read_text()
+    src = Path(SR.__file__).read_text()
+    # the FLAG, not the word: it is discussed at length in the comments that
+    # explain why it was never doing anything
+    assert '"--allowedTools"' not in src
+    assert "Bash" in SR._NO_TOOLS and "WebSearch" in SR._NO_TOOLS
     for gone in ("sndk_rag.py query", "WebSearch", "Outside world"):
         assert gone not in SR._DOCTRINE, gone
     assert "YOU HAVE NO TOOLS" in SR._DOCTRINE

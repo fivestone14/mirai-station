@@ -487,11 +487,30 @@ def test_a_number_in_the_sentence_must_be_one_that_was_offered():
         {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
          "say": "The lead is 41.2 points, wider than any session on record."}, sc)
     assert "say" in ok
+    # a HUMAN ROUNDING of an offered value is not invention — the doctrine
+    # tells the model to talk like a person, and a person says 41.2 for 41.23
+    rounded = SR._validate_observation(
+        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
+         "say": "The lead is about 41 points, wider than any session on record."}, sc)
+    assert "say" in rounded
     drift = SR._validate_observation(
         {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
          "say": "The lead is 87.4 points."}, sc)
     assert "say" not in drift
-    assert "say_number_not_offered" in drift["dropped_observations"]
+    assert any(d.startswith("say_number_not_offered")
+               for d in drift["dropped_observations"])
+
+
+def test_a_dotted_path_names_the_same_field_as_a_pointer():
+    """Measured: asked for `/magnet/top_strike_lead_pp`, the model returns
+    `magnet.top_strike_lead_pp` about as often as not. Both name the field
+    unambiguously; the gate exists to stop invention, not to mark punctuation."""
+    sc = _scene_with_candidate()
+    for form in ("/magnet/top_strike_lead_pp", "magnet.top_strike_lead_pp"):
+        out = SR._validate_observation(
+            {"quiet": False, "used": [form], "say": "One strike leads."}, sc)
+        assert out["quiet"] is False, form
+        assert out["notable"][0]["paths"] == ["/magnet/top_strike_lead_pp"]
 
 
 def test_a_scene_with_no_candidates_can_only_be_quiet():

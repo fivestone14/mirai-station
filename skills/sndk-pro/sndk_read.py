@@ -384,14 +384,46 @@ _LIVE_VERBS = ("is building", "are building", "is fading", "are fading",
 WALLS_PER_SIDE = 2          # the ladder stops at 2 — deeper strikes are noise
 
 # --- the model call ----------------------------------------------------------
+CALL_EFFORT = "medium"      # PIN THE REASONING BUDGET, for the same reason
+                            # PINNED_MODEL exists two lines up: an unpinned
+                            # setting is production configured from outside the
+                            # repo. On 2026-08-31 `"effortLevel": "xhigh"` was
+                            # written into ~/.claude/settings.json at 07:11 and
+                            # every `claude -p` on the machine started reasoning
+                            # ~10x longer. Measured on one live scene: xhigh
+                            # 72-121s and 7,100-11,300 output tokens, high 50s,
+                            # medium 15-28s, low 9-11s — while the ANSWER stayed
+                            # the same ~460 tokens at every level. At xhigh ~95%
+                            # of what the model generated was private thinking.
+                            #
+                            # 12 of 14 obs-1 calls hit the 100s cap that day.
+                            # The floor proves the setting moved rather than the
+                            # prompt: 08-26/27/28 logged minimum call times of
+                            # 4.6, 4.8 and 4.9 seconds across ~95 calls, and
+                            # xhigh cannot produce a 5-second call.
+                            #
+                            # medium reproduces the historical operating point
+                            # (live median 17.2s yesterday). No quality cost is
+                            # measurable — scored through _validate_observation,
+                            # high kept FEWER observations than low — but that
+                            # is one sample per level, so read it as "no measured
+                            # benefit" rather than "proven equivalent".
 CALL_TIMEOUT_S = 100.0      # one attempt, no retries — a slow read is skipped.
                             # Raised from 60s in sr-2: the read may now spend a
                             # history lookup or an external search inside the
                             # call. Still under the 120s tick, and this is its
                             # own launchd job so a slow read never costs a scan.
+# Bash and WebSearch are ON THIS LIST NOW, and the omission was a live hole.
+# `--allowedTools` was assumed to be the gate; it is not. Probed directly under
+# both the old and the new argv, `claude -p` executed a Bash command and
+# returned its output (num_turns 2) — so removing `--allowedTools` in obs-1 was
+# a no-op, and the doctrine's claim "YOU HAVE NO TOOLS" was simply false.
+# `--disallowedTools` is the only thing that actually gates, and a single
+# WebSearch inside a read would eat the entire latency budget on its own.
 _NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
              "Grep", "WebFetch", "Task", "Agent", "TodoWrite",
-             "ExitPlanMode", "BashOutput", "KillShell", "SlashCommand", "Skill")
+             "ExitPlanMode", "BashOutput", "KillShell", "SlashCommand", "Skill",
+             "Bash", "WebSearch")
 # sr-2 on-demand paths: the ONE Bash command the read may run (the history
 # tool) and WebSearch for the abnormal-tape catalyst check. Everything else
 # stays banned — the scene is still the primary evidence.
@@ -1295,9 +1327,23 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
                if isinstance(c, dict) and c.get("path")}
     dropped: list[str] = []
 
+    def _norm(x):
+        """Accept the dotted form as well as the pointer form.
+
+        Measured: asked for `/magnet/top_strike_lead_pp`, the model returns
+        `magnet.top_strike_lead_pp` about as often as not. Both name the same
+        field unambiguously, and refusing one of them deletes good work over
+        punctuation — the gate is there to stop invention, not to mark spelling.
+        """
+        x = str(x).strip()
+        if x in offered:
+            return x
+        alt = "/" + x.strip("/").replace(".", "/")
+        return alt if alt in offered else x
+
     used = []
-    for ptr in (obj.get("used") or [])[:_OBS_MAX * 2]:
-        ptr = str(ptr)
+    for raw in (obj.get("used") or [])[:_OBS_MAX * 2]:
+        ptr = _norm(raw)
         if ptr not in offered:
             # the ONE structural gate left, and it is stronger than the pointer
             # check it replaces: the model cannot cite anything Python did not
@@ -1321,9 +1367,18 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
               if isinstance(u.get("value"), (int, float))
               and not isinstance(u.get("value"), bool)}
         for m in _NUM_RE.finditer(say):
-            n = round(float(m.group(0)), 2)
-            if n not in ok and abs(n) > 1.0:
-                dropped.append("say_number_not_offered")
+            n = float(m.group(0))
+            # ROUNDING IS NOT INVENTION. The doctrine tells the model to talk
+            # like a person, and a person says "17.5" for 17.51. The first
+            # draft matched to two decimals and deleted the whole sentence over
+            # exactly that, on 2 of 4 sampled replies. A number counts as
+            # offered when it is within half a unit in the last place the model
+            # chose to speak to — close enough that no reader is misled, tight
+            # enough that a different number is still caught.
+            dp = len(m.group(0).split(".")[1]) if "." in m.group(0) else 0
+            tol = max(0.5 * 10 ** -dp, 0.011)
+            if abs(n) > 1.0 and not any(abs(n - v) <= tol for v in ok):
+                dropped.append(f"say_number_not_offered:{m.group(0)}")
                 say = ""
                 break
 
@@ -1384,6 +1439,7 @@ def _ask(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
            "--append-system-prompt", _DOCTRINE,
            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+           "--effort", CALL_EFFORT,
            "--disallowedTools", *_NO_TOOLS]   # variadic — must stay LAST
     t0 = _clock.time()
     try:
@@ -2803,6 +2859,14 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     else:
         reading = _validate_observation(obj, scene)
         out["reading"] = reading
+        # WHAT WAS DROPPED, IN THE MODEL'S OWN WORDS. `dropped_observations`
+        # records the REASON a gate fired and never the text it fired on, so a
+        # drop left no evidence of what was actually said — which made the two
+        # live obs-1 mutilations diagnosable only by reproducing the symptom.
+        # Kept only when something was dropped, and truncated: this is an audit
+        # trail, not a second copy of the reply.
+        if reading.get("dropped_observations"):
+            out["raw_reply"] = json.dumps(obj, default=str)[:1200]
         # obs-1: the two numbers the nightly audit lives on. `quiet` says the
         # model found nothing; `abstain` says whether it CHOSE that or whether
         # the gates forced it by deleting everything. Counting them together
