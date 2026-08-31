@@ -643,8 +643,14 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
             "daily_cap": R.DAILY_CALL_CAP,
             "stale_book_min": R.STALE_BOOK_MIN,
             "heartbeat_min": R.HEARTBEAT_MIN,
-            "price_sigma": R.WAKE_PRICE_SIGMA,
-            "magnet_sigma": R.WAKE_MAGNET_SIGMA,
+            # wk-1 renamed and re-scoped these: the gate now measures spot
+            # travel against the state at the last SPEECH, reads implied vol off
+            # a 5-book median rather than the raw print, and needs a discrete
+            # flip to hold for two consecutive books before it counts.
+            "spot_sigma": R.WAKE_SPOT_SIGMA,
+            "iv_pp": R.WAKE_IV_PP,
+            "flip_sigma": R.WAKE_FLIP_SIGMA,
+            "confirm_books": R.WAKE_CONFIRM_BOOKS,
             # sr-7 freshness ceilings, read off the reader's own constants for
             # the same reason as every gate above: the tab must not be able to
             # quote a ceiling the reader has stopped enforcing.

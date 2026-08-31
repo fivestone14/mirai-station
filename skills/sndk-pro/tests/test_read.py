@@ -216,9 +216,30 @@ def test_with_path_needs_real_history():
 
 
 # --- the wake gate ---------------------------------------------------------
-def _read(ts, spot=1200.0, magnet=1300.0):
+def _read(ts, spot=1200.0, magnet=1300.0, **gate):
+    """A READ row, which is what the gate actually receives as `prev`.
+
+    Deliberately shaped like the real thing: a read row carries ts / spot /
+    sigma / arrow / magnet_band and NOT call_wall, gamma_flip, atm_iv or
+    gamma_sign. wk-1 adds the `gate` snapshot precisely because those are
+    missing, so the fixture carries it too — a stub that quietly held the
+    structural fields flat would hide the bug the snapshot exists to fix."""
+    g = {"spot": spot, "magnet": magnet}
+    g.update(gate)
     return {"ts": ts.isoformat(), "spot": spot,
-            "magnet_band": {"reported": magnet}, "arrow": {"dir": None}}
+            "magnet_band": {"reported": magnet}, "arrow": {"dir": None},
+            "gate": g}
+
+
+def _books(*rows):
+    """Rows carrying distinct book stamps, so _books_since sees them apart."""
+    out = []
+    for i, r in enumerate(rows):
+        r = dict(r)
+        r["meta"] = dict(r.get("meta") or {},
+                         book_asof=(T0 - timedelta(minutes=10 - i)).isoformat())
+        out.append(r)
+    return out
 
 
 def test_first_scan_always_wakes():
@@ -232,33 +253,73 @@ def test_min_gap_holds_the_spam_down():
 
 def test_price_ran_wakes():
     prev = _read(T0 - timedelta(minutes=20), spot=1200.0)
-    row = mkrow([[1300, 9]], spot=1200 + SR.WAKE_PRICE_SIGMA * 100 + 1)
+    row = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 + 1)
     assert SR.should_wake(row, None, prev, T0) == "price ran"
+    quiet = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 - 1)
+    assert SR.should_wake(quiet, None, prev, T0) is None
 
 
-def test_magnet_move_wakes_on_sndk_scale():
-    """The SPX threshold (0.5σ) sits ~4x above SNDK's real p90 and starves."""
-    prev = _read(T0 - timedelta(minutes=20), magnet=1300.0)
-    row = mkrow([[1300, 9]], magnet=1300 + SR.WAKE_MAGNET_SIGMA * 100 + 1)
-    assert SR.should_wake(row, None, prev, T0) == "magnet moved"
-    assert SR.WAKE_MAGNET_SIGMA < 0.5
+def test_a_discrete_flip_must_hold_for_two_books():
+    """wk-1's anti-flicker rule, and the measurement behind it: on the recorded
+    tape a changed gamma sign reverts one book later 37% of the time. One
+    differing book is not evidence that anything moved."""
+    prev = _read(T0 - timedelta(minutes=20), gamma_sign="negative")
+    row = mkrow([[1300, 9]], gamma_sign="positive")
+    one = _books(mkrow([[1300, 9]], gamma_sign="positive"))
+    assert SR.should_wake(row, None, prev, T0, one) is None
+    two = _books(mkrow([[1300, 9]], gamma_sign="positive"),
+                 mkrow([[1300, 9]], gamma_sign="positive"))
+    assert SR.should_wake(row, None, prev, T0, two) == "gamma sign flipped"
+    # ...and a flip that flickers back does NOT count, however many books pass
+    flicker = _books(mkrow([[1300, 9]], gamma_sign="positive"),
+                     mkrow([[1300, 9]], gamma_sign="negative"))
+    assert SR.should_wake(row, None, prev, T0, flicker) is None
 
 
-def test_regime_change_wakes():
-    prev = _read(T0 - timedelta(minutes=20))
-    row = mkrow([[1300, 9]], regime="pinning")
-    prev_row = mkrow([[1300, 9]], regime="trending")
-    assert SR.should_wake(row, prev_row, prev, T0) == "regime changed"
+def test_a_wall_relabelling_is_not_an_event_but_a_crossing_is():
+    """45% of wall relocations happen in a step where spot moved under 0.05
+    sigma, and ~30% undo themselves one book later — the wall is chasing price,
+    so waking on the relabel is waking on our own arithmetic. The crossing is
+    measured against the wall that was true when it last SPOKE."""
+    prev = _read(T0 - timedelta(minutes=20), spot=1200.0, call_wall=1400.0)
+    # the wall moves a long way; price has not crossed anything
+    assert SR.should_wake(mkrow([[1300, 9]], call_wall=1250.0), None,
+                          prev, T0) is None
+    # price crosses the wall the last reading actually spoke about
+    crossed = mkrow([[1300, 9]], spot=1450.0, call_wall=1400.0)
+    assert SR.should_wake(crossed, None, prev, T0) == "call wall crossed"
 
 
-def test_wall_cross_wakes_only_when_it_crosses_spot():
-    prev = _read(T0 - timedelta(minutes=20))
-    moved_far = mkrow([[1300, 9]], call_wall=1450.0)
-    assert SR.should_wake(moved_far, mkrow([[1300, 9]], call_wall=1400.0),
-                          prev, T0) is None       # both still above spot
-    crossed = mkrow([[1300, 9]], call_wall=1100.0)
-    assert SR.should_wake(crossed, mkrow([[1300, 9]], call_wall=1400.0),
-                          prev, T0) == "call wall crossed"
+def test_regime_word_alone_no_longer_wakes():
+    """`regime` is a word derived from the gamma sign at spot, so waking on it
+    woke twice for one fact. The sign itself still wakes, with confirmation."""
+    prev = _read(T0 - timedelta(minutes=20), gamma_sign="negative")
+    row = mkrow([[1300, 9]], regime="pinning", gamma_sign="negative")
+    prev_row = mkrow([[1300, 9]], regime="trending", gamma_sign="negative")
+    assert SR.should_wake(row, prev_row, prev, T0) is None
+
+
+def test_the_gate_reads_a_snapshot_because_prev_is_not_a_diary_row():
+    """THE wk-1 REGRESSION TEST. `read_once` hands the gate the last row that
+    SPENT A CALL, and those live in state/sndk_reads/, whose schema carries no
+    call_wall, gamma_flip, atm_iv or gamma_sign. A gate reading those straight
+    off `prev` sees None every time and silently degenerates into a clock —
+    which is what the first draft of wk-1 did, and what should_wake's own
+    docstring records happening once before.
+
+    So: a read-shaped row WITHOUT the snapshot must not fire a structural wake,
+    and the same row WITH it must."""
+    bare = {"ts": (T0 - timedelta(minutes=20)).isoformat(), "spot": 1200.0,
+            "magnet_band": {"reported": 1300.0}, "arrow": {"dir": None}}
+    crossed = mkrow([[1300, 9]], spot=1450.0, call_wall=1400.0)
+    assert SR.should_wake(crossed, None, bare, T0) == "price ran"   # not the wall
+    stamped = dict(bare, gate=SR.gate_state(mkrow([[1300, 9]], spot=1200.0,
+                                                  call_wall=1400.0)))
+    assert SR.should_wake(crossed, None, stamped, T0) == "call wall crossed"
+    # and the snapshot must actually carry the structural fields
+    g = SR.gate_state(mkrow([[1300, 9]], spot=1200.0, call_wall=1400.0,
+                            gamma_sign="negative"))
+    assert g["call_wall"] == 1400.0 and g["gamma_sign"] == "negative"
 
 
 def test_heartbeat_is_the_last_resort():

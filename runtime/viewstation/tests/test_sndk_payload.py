@@ -114,7 +114,9 @@ def test_payload_ships_the_wake_gate_the_reader_actually_uses(tmp_path, monkeypa
     import sndk_read as R      # on sys.path once the builder above has run
     assert gates == {"min_gap_min": R.MIN_GAP_MIN, "daily_cap": R.DAILY_CALL_CAP,
                      "stale_book_min": R.STALE_BOOK_MIN, "heartbeat_min": R.HEARTBEAT_MIN,
-                     "price_sigma": R.WAKE_PRICE_SIGMA, "magnet_sigma": R.WAKE_MAGNET_SIGMA,
+                     "spot_sigma": R.WAKE_SPOT_SIGMA, "iv_pp": R.WAKE_IV_PP,
+                     "flip_sigma": R.WAKE_FLIP_SIGMA,
+                     "confirm_books": R.WAKE_CONFIRM_BOOKS,
                      "max_book_age_min": R.MAX_BOOK_AGE_MIN}
     assert not hasattr(R, "MAX_QUOTE_AGE_MIN"), (
         "a quote ceiling measured off row.ts is a ceiling on the scan cadence, "

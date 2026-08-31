@@ -62,6 +62,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import statistics
 import subprocess
 import sys
 import time as _clock
@@ -82,7 +83,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "sr-8"                # bump on ANY change to the gates or the prompt.
+ERA = "wk-1"                # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-8 (2026-08-30): the payload pays only for what
@@ -183,8 +184,43 @@ PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protect
 # event gate's clothes. Retuned to SNDK's own scale it fires 20-32x/day
 # (23/22/20/32 replayed over 07-28..31) with the heartbeat filling only 1-4 of
 # those slots, i.e. genuinely event-driven.
-WAKE_PRICE_SIGMA = 0.15     # spot travelled this far since the last read
-WAKE_MAGNET_SIGMA = 0.12    # magnet relocated this far = a different scene
+# wk-1 (2026-08-31). The gate now measures on the BOOK clock, against the state
+# at the last time it SPOKE, and every discrete flip needs two consecutive books
+# before it counts. Replayed over 23 stored sessions the old gate fired 21.7
+# times a day, 26.0% of them with no material change since the previous fire,
+# with a worst half-hour of 6 calls; these constants give 18.3 / 18.4% / 4 with
+# the miss rate unchanged inside noise (26.7% against 25.3%).
+#
+# THE FRONTIER IS REAL AND THE PLAN'S TABLE WAS WRONG ABOUT IT. The Phase 3
+# proposal claimed a variant cutting false alarms fivefold WHILE ALSO reducing
+# misses; measured, that variant (min_gap 10, spot 0.30sigma, iv 3.0pp, flip
+# 0.55sigma, heartbeat 90) fires 12.6 times a day at 9.7% false alarms but
+# misses 36.9% of material changes against today's 25.3%. Quiet is bought with
+# misses at every point on the curve. These values are the knee: most of the
+# noise reduction, none of the deafness. Move them together, and re-measure —
+# do not tune one in isolation.
+WAKE_SPOT_SIGMA = 0.20      # spot travelled this far since it last SPOKE
+WAKE_IV_PP = 3.0            # implied vol moved this far on the SMOOTHED series.
+                            # 3.0 and not 2.0: the p95 of a one-step change on
+                            # the SMOOTHED series is 2.08pp, so a 2.0 threshold
+                            # sits underneath the noise floor and fires on the
+                            # sensor. Measured, it was 36% of all wakes.
+WAKE_FLIP_SIGMA = 0.50      # the flip level itself relocated this far. The p95
+                            # of a one-step flip move is 0.56 sigma, so anything
+                            # under ~0.5 is inside the ordinary wander.
+WAKE_IV_MEDIAN_BOOKS = 5    # atm_iv is mostly measurement noise: median |change|
+                            # is 1.07pp one book apart but only 1.71pp eight
+                            # books apart, where a random walk would give 3.03.
+                            # A 5-book rolling median cuts the one-book figure
+                            # 83% to 0.18pp and barely touches the eight-book
+                            # one, so an IV trigger reads the median or it is
+                            # triggering on the sensor rather than on vol.
+WAKE_CONFIRM_BOOKS = 2      # a discrete flip must hold for this many CONSECUTIVE
+                            # distinct books. Measured on the tape: the gamma
+                            # sign reverts one book later 37% of the time, the
+                            # call wall 31%, the put wall 24%, the top strike
+                            # 18%. Without confirmation a third of every
+                            # structural wake is flicker.
 STALE_BOOK_MIN = 6          # newest diary row older than this → the tape is
                             # not breathing (scanner down, halt, feed refusing
                             # ticks) and the model is NEVER woken: a sentence
@@ -193,10 +229,19 @@ STALE_BOOK_MIN = 6          # newest diary row older than this → the tape is
                             # exactly this case every 45 minutes. Three missed
                             # 120s ticks; the worst recorded live hole (277s,
                             # 08-05 fetch refusal) stays under it.
-HEARTBEAT_MIN = 45          # read at least this often even on a dead tape
-MIN_GAP_MIN = 8             # spam guard: no two reads closer than this
-DAILY_CALL_CAP = 40         # hard ceiling (busiest replayed day spent 32) — a
-                            # runaway backstop, not a budget
+HEARTBEAT_MIN = 60          # read at least this often even on a dead tape
+MIN_GAP_MIN = 10            # spam guard: no two reads closer than this. Raised
+                            # from 8 in wk-1: the median gap under the old gate
+                            # was 12.3 minutes with a p10 of 8.2, so 8 was
+                            # binding often enough to be the real cadence.
+DAILY_CALL_CAP = 30         # hard ceiling, and it must stay a BACKSTOP rather
+                            # than a budget. Measured uncapped over 23 replayed
+                            # sessions the wk-1 gate wants a mean of 18.7 a day,
+                            # median 18, p90 26, busiest 27 — so 24 bound on 7
+                            # of 23 days and was quietly doing the limiting that
+                            # the logic is supposed to do. A day that reaches 30
+                            # is a day to go and look at, not a day the budget
+                            # worked.
 
 # --- admissibility gates (the arrow) -----------------------------------------
 # A layer may only COUNT once it has separated from its own noise — and only the
@@ -832,15 +877,101 @@ def frozen_fields(rows: list[dict], now: datetime) -> list[dict]:
 # ---------------------------------------------------------------------------
 # wake gate
 # ---------------------------------------------------------------------------
+def gate_state(row: dict) -> dict:
+    """The structural state the wake gate compares against, snapshotted.
+
+    THIS EXISTS BECAUSE `prev` IS NOT A DIARY ROW. `read_once` passes the last
+    row that SPENT A CALL, and those live in state/sndk_reads/, whose schema is
+    ts / wake / spot / sigma / arrow / magnet_band / reading / ... and carries
+    none of `call_wall`, `put_wall`, `gamma_flip`, `atm_iv`, `gamma_sign` or
+    `gex_views`. A gate reading those off `prev` gets None every time and
+    silently degenerates to price-and-heartbeat — the exact starvation
+    should_wake's own docstring records happening once before.
+
+    So the read row now carries this snapshot, and the gate reads it through
+    `_spoke_field`, which falls back to the row itself so a diary row (tests,
+    replay) still works unchanged."""
+    gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
+    out = {"spot": _fin(row.get("spot")), "sigma": _fin(row.get("sigma")),
+           "gamma_sign": row.get("gamma_sign"), "magnet": _fin(gv.get("magnet")),
+           "gamma_flip": _fin(row.get("gamma_flip")),
+           "call_wall": _fin(row.get("call_wall")),
+           "put_wall": _fin(row.get("put_wall")),
+           "atm_iv": _fin(row.get("atm_iv"))}
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _spoke_field(prev: dict, key: str):
+    """Read a structural field off the last-spoken row, snapshot first.
+
+    `magnet` is nested under gex_views on a diary row and flat in the snapshot,
+    which is the one asymmetry worth spelling out rather than hiding."""
+    g = prev.get("gate")
+    if isinstance(g, dict) and key in g:
+        return g[key]
+    if key == "magnet":
+        gv = prev.get("gex_views")
+        return _fin(gv.get("magnet")) if isinstance(gv, dict) else None
+    return _fin(prev.get(key)) if key != "gamma_sign" else prev.get(key)
+
+
+def _books_since(rows: list[dict], since: Optional[datetime]) -> list[dict]:
+    """One row per DISTINCT book, oldest first, for books measured after `since`.
+
+    The scanner fires every 120s and the feed re-serves a disk cache on half of
+    those, so a row is not an observation — 179 rows a day carry 90 distinct
+    books, median 4.1 minutes apart. Every wk-1 test counts books, because
+    counting rows counts the cache twice and calls it confirmation."""
+    out, seen = [], None
+    for r in rows:
+        b = _book_asof(r)
+        if b is None or (since is not None and b <= since):
+            continue
+        if seen is None or b != seen:
+            out.append(r)
+            seen = b
+    return out
+
+
+def _held_for(books: list[dict], get, was, n: int) -> bool:
+    """True when the last `n` distinct books ALL read differently from `was`.
+
+    The anti-flicker rule. On the recorded tape a changed gamma sign reverts one
+    book later 37% of the time, a call wall 31%, a put wall 24%, the top strike
+    18% — so a single differing book is not evidence that anything moved."""
+    if len(books) < n:
+        return False
+    tail = books[-n:]
+    return all(get(b) is not None and get(b) != was for b in tail)
+
+
 def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
-                now: datetime) -> Optional[str]:
+                now: datetime, rows: Optional[list[dict]] = None) -> Optional[str]:
     """Why this scan is worth a model READ, or None to stay asleep.
 
     `prev` must be the last row that actually spent a call, NOT simply the last
     row written. Those diverged the moment the arrow started being recomputed
     every scan: comparing against the last write made the min-gap test compare
     the book to itself two minutes ago, and the gate silently starved to ~1 call
-    a day. Timing, drift and heartbeat are all measured from the last LOOK."""
+    a day. Timing, drift and heartbeat are all measured from the last LOOK.
+
+    wk-1 (2026-08-31) rewrote the body. Three things changed and each was
+    measured rather than argued:
+
+      THE BOOK CLOCK, NOT THE SCAN CLOCK. Half of all rows are the same book
+      served twice. Every comparison here now runs over `_books_since`.
+
+      CONFIRMATION ON DISCRETE FLIPS. A sign or pin that differs for one book is
+      flicker a third of the time; it must hold for WAKE_CONFIRM_BOOKS.
+
+      A WALL MOVING IS NOT AN EVENT; PRICE CROSSING ONE IS. 45% of wall
+      relocations happen in a step where spot moved under 0.05 sigma, and ~30%
+      undo themselves one book later — the wall is chasing price, so waking on
+      the relabel is waking on our own arithmetic. The old gate woke on any wall
+      change; this one wakes only on a crossing of the wall it last SPOKE about.
+
+    `rows` is optional so existing callers and tests keep working; without it
+    the confirmation tests are skipped rather than guessed at."""
     if prev is None:
         return "first read"
     last = _ts(prev)
@@ -849,28 +980,66 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     gap = (now - last).total_seconds() / 60.0
     if gap < MIN_GAP_MIN:
         return None
-    sig = row.get("sigma") or 0
-    p_spot = prev.get("spot")
-    if sig and isinstance(p_spot, (int, float)) and row.get("spot") is not None:
-        if abs(row["spot"] - p_spot) / sig >= WAKE_PRICE_SIGMA:
-            return "price ran"
-    pm = (prev.get("magnet_band") or {}).get("reported")
-    cm = (row.get("gex_views") or {}).get("magnet")
-    if sig and isinstance(pm, (int, float)) and isinstance(cm, (int, float)):
-        if abs(cm - pm) / sig >= WAKE_MAGNET_SIGMA:
-            return "magnet moved"
-    if prev_row is not None:
-        if row.get("regime") != prev_row.get("regime"):
-            return "regime changed"
-        if row.get("gamma_sign") != prev_row.get("gamma_sign"):
+
+    sig = _fin(row.get("sigma")) or 0
+    spot = _fin(row.get("spot"))
+    spoke_spot = _spoke_field(prev, "spot")
+    books = _books_since(rows or [], _book_asof(prev))
+
+    # STRUCTURE IS EVALUATED ON THE BOOK CLOCK, PRICE ON THE LIVE ONE, and the
+    # split is the scene's own provenance model applied to the gate. The
+    # scanner fires every 120s and the feed re-serves a cached book on half of
+    # those, so a structural test run per SCAN asks the same book the same
+    # question two or three times and fires again each time MIN_GAP allows.
+    # Measured: without this guard the gate spent 20.3 calls a day and hit the
+    # daily cap on 11 of 23 replayed sessions, with a median gap of 8.3 minutes
+    # — pinned to the spam floor, which is a clock wearing event clothing, the
+    # exact thing wk-1 set out to remove. With it: 12.5 a day, cap never
+    # reached. Price crossings and travel are LIVE TAPE and stay on every scan,
+    # because a level being crossed is news the moment it happens.
+    new_book = _book_asof(row) != _book_asof(prev)
+
+    # 1-2. discrete structure, and only when it HOLDS
+    if books and new_book:
+        if _spoke_field(prev, "gamma_sign") is not None and _held_for(
+                books, lambda b: b.get("gamma_sign"),
+                _spoke_field(prev, "gamma_sign"), WAKE_CONFIRM_BOOKS):
             return "gamma sign flipped"
+        if _spoke_field(prev, "magnet") is not None and _held_for(
+                books, lambda b: _fin((b.get("gex_views") or {}).get("magnet")),
+                _spoke_field(prev, "magnet"), WAKE_CONFIRM_BOOKS):
+            return "pin moved"
+
+    # 3-4. price CROSSING a level the last reading actually spoke about. The
+    # level is the one that was true when it spoke, never the relabelled one.
+    if spot is not None and spoke_spot is not None:
+        f = _spoke_field(prev, "gamma_flip")
+        if (f is not None and sig and (spot - f) * (spoke_spot - f) < 0
+                and abs(spot - f) / sig > 0.02):
+            return "crossed flip"
         for k, word in (("call_wall", "call wall"), ("put_wall", "put wall")):
-            a, b = row.get(k), prev_row.get(k)
-            s = row.get("spot")
-            if (isinstance(a, (int, float)) and isinstance(b, (int, float))
-                    and isinstance(s, (int, float)) and a != b
-                    and (s - a) * (s - b) < 0):
+            w = _spoke_field(prev, k)
+            if w is not None and (spot - w) * (spoke_spot - w) < 0:
                 return f"{word} crossed"
+        # 5. plain travel
+        if sig and abs(spot - spoke_spot) / sig >= WAKE_SPOT_SIGMA:
+            return "price ran"
+
+    # 6. implied vol, on the SMOOTHED series — the raw one is mostly sensor
+    if books and new_book:
+        ivs = [v for v in (_fin(b.get("atm_iv")) for b in books) if v is not None]
+        spoke_iv = _spoke_field(prev, "atm_iv")
+        if ivs and spoke_iv is not None:
+            med = statistics.median(ivs[-WAKE_IV_MEDIAN_BOOKS:])
+            if abs(med - spoke_iv) * 100.0 >= WAKE_IV_PP:
+                return "iv moved"
+
+    # 7. the flip LEVEL relocating, as opposed to price crossing it
+    fl, spoke_fl = _fin(row.get("gamma_flip")), _spoke_field(prev, "gamma_flip")
+    if new_book and sig and fl is not None and spoke_fl is not None:
+        if abs(fl - spoke_fl) / sig >= WAKE_FLIP_SIGMA:
+            return "flip moved"
+
     if gap >= HEARTBEAT_MIN:
         return "heartbeat"
     return None
@@ -2147,7 +2316,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     band = magnet_band(row)
     arrow = aggregate(row, prev, now)
     frozen = frozen_fields(rows, now)
-    wake = should_wake(row, prev_row, last_call, now)
+    wake = should_wake(row, prev_row, last_call, now, rows)
 
     # a direction that just appeared, vanished, or reversed is itself news and
     # must never wait for the clock — this is the one wake reason the book's own
@@ -2197,6 +2366,10 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         "spot": row.get("spot"), "sigma": row.get("sigma"),
         "arrow": arrow, "magnet_band": band, "frozen": frozen,
         "spoke": spoken + (1 if arrow["dir"] else 0), "scans": len(rows),
+        # wk-1: the state the NEXT gate compares against. Written on every read
+        # row, not only on the ones that spend a call, so a restart mid-session
+        # cannot leave the gate with nothing to measure from.
+        "gate": gate_state(row),
         "reading": None, "model": None, "wall_s": None, "error": None,
     }
 

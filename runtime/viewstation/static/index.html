@@ -14267,8 +14267,9 @@ const PAYLOAD = {
   gateTip(){
     const g=(PAYLOAD.data&&PAYLOAD.data.gates)||{};
     const n=(v,d)=>typeof v==='number'?v:d;
-    const gap=n(g.min_gap_min,8), cap=n(g.daily_cap,40), stale=n(g.stale_book_min,6),
-          beat=n(g.heartbeat_min,45), px=n(g.price_sigma,0.15), mg=n(g.magnet_sigma,0.12);
+    const gap=n(g.min_gap_min,10), cap=n(g.daily_cap,30), stale=n(g.stale_book_min,6),
+          beat=n(g.heartbeat_min,60), px=n(g.spot_sigma,0.20), iv=n(g.iv_pp,3.0),
+          fs=n(g.flip_sigma,0.50), cb=n(g.confirm_books,2);
     const ul=a=>'<ul>'+a.map(x=>`<li>${x}</li>`).join('')+'</ul>';
     return `<div class="gate" role="tooltip">`
       +`<b>What has to be true first</b>`
@@ -14280,10 +14281,10 @@ const PAYLOAD = {
            'Reasoning is switched on.'])
       +`<i>…and at least one thing has genuinely changed:</i>`
       +ul([`Price has run about ${px} of a typical day’s move since that last look.`,
-           `The strike pulling hardest has shifted by ${mg} of the same ruler.`,
-           'The day’s character or the gamma sign flipped.',
-           'Price crossed one of the standing walls.',
-           'The arrow on the chart appeared, vanished or reversed.',
+           `Price crossed the gamma flip, or one of the walls, as they stood at that last look — a wall MOVING is not an event, because on this tape walls mostly shift to follow price.`,
+           `The gamma sign or the strike pulling hardest changed, and stayed changed for ${cb} consecutive option books — one book on its own reverses about a third of the time.`,
+           `Implied vol moved ${iv} points on a 5-book median — the raw print is mostly sensor noise.`,
+           `The gamma flip itself relocated by ${fs} of a typical day’s move.`,
            `Nothing at all for ${beat} minutes — a heartbeat read.`])
       +`<em>If not, the scene is still built and filed and the last reading carries forward — no call is spent.</em>`
       +`</div>`;
