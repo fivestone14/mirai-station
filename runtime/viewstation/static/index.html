@@ -10917,10 +10917,16 @@ function snkArrowBlock(a, now){
 // "nothing unusual", and that state must not look like a failure or an empty
 // panel — a quiet answer is complete work, and a screen that dresses silence up
 // as a problem teaches you to stop reading it.
+// obs-2: a level is a price, and a price carrying four decimals reads as
+// machine output. One formatter, shared by the overlay and the history modal.
+function MEM_PX(v){
+  const n=Number(v);
+  return isFinite(n) ? (Math.abs(n)>=100 ? n.toFixed(0) : n.toFixed(2)) : '';
+}
 function snkObsBox(R){
   if(!R) return '';
   const e=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const obs=Array.isArray(R.notable)?R.notable:[];
+  const obs=Array.isArray(R.points)?R.points:[];
   // `quiet` is authoritative — the producer rewrites it to the notable-derived
   // truth, so the two can never disagree by the time they reach here.
   if(R.quiet||!obs.length){
@@ -10930,7 +10936,7 @@ function snkObsBox(R){
       +(forced?'¦n:FORCED — the model did offer observations and every one was deleted by the checks. That is worth looking at.':'¦k:chosen — the model looked and found nothing');
     return `<div class="obs quiet${forced?' forced':''}" data-name="Observation" data-tip="${e(tip)}">`
       +`<i>nothing unusual</i>`
-      +(R.quiet_because?`<span>${e(R.quiet_because)}</span>`:'')
+      +(R.read?`<span>${e(R.read)}</span>`:'')
       +(forced?`<b>every observation was dropped by the checks</b>`:'')
       +`</div>`;
   }
@@ -10949,7 +10955,7 @@ function snkObsBox(R){
   const n=obs.length;
   return `<div class="obs" data-name="Observation" data-tip="${e(n+' thing'+(n===1?'':'s')+' the model found unusual.¦f:every number below was checked against the scene before you saw it — a claim whose pointer did not resolve was deleted, not corrected¦k:at most 3, and fewer is normal')}">`
     +`<i>${n} unusual</i>`
-    +(R.say?`<p class="say">${e(R.say)}</p>`:'')
+    +(R.read?`<p class="say">${e(R.read)}</p>`:'')
     +`<ul>${rows}</ul>`
     +((R.unknowns||[]).length?`<div class="unk">not measured: `
         +R.unknowns.map(u=>`${e(u.field)} <em>(${e(u.why)})</em>`).join(', ')+`</div>`:'')
@@ -11020,7 +11026,7 @@ function snkDeclutter(svg){
 function snkObs(rd){
   const R=(rd&&typeof rd==='object'&&rd.reading&&typeof rd.reading==='object')?rd.reading:null;
   if(!R) return null;
-  return (R.quiet===true||Array.isArray(R.notable)) ? R : null;
+  return (R.quiet===true||Array.isArray(R.points)||R.read) ? R : null;
 }
 
 function snkReadSummary(rd){
@@ -11028,13 +11034,13 @@ function snkReadSummary(rd){
   const R=snkObs(rd);
   const age=(rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null;
   if(!R) return {cls:'', html:`<span class="q">${rd.paused?'reasoning paused':'no read yet'}</span>`};
-  const n=(R.notable||[]).length;
+  const n=(R.points||[]).length;
   // a quiet read is the COMMON state and is written in ordinary ink. Only a
   // FORCED quiet — the model spoke and the checks deleted all of it — is
   // marked, because that one is a fault rather than an answer.
   const forced=R.abstain==='forced';
   return { cls: n?'up':(forced?'dn':''),
-    html:`<b>${n?`${n} UNUSUAL`:'NOTHING UNUSUAL'}</b>`
+    html:`<b>${n?`${n} TO WATCH`:'NOTHING STANDING OUT'}</b>`
       +(forced?`<span class="q">· all dropped</span>`:'')
       +(age!=null?`<span class="q">· ${snkDur(age)} old</span>`:'') };
 }
@@ -11146,14 +11152,14 @@ async function openSnkHistModal(){
   // then marked its own homework.
   const body=calls.map(c=>{
     const R=(c.rd&&typeof c.rd==='object')?c.rd:{};
-    const obs=Array.isArray(R.notable)?R.notable:[];
+    const obs=Array.isArray(R.points)?R.points:[];
     const n=obs.length;
     const forced=R.abstain==='forced';
     const cls=n?' class="hit"':(forced?' class="dir down"':'');
-    const what=n?`${n} unusual`:(forced?'all dropped':'nothing unusual');
-    const said=R.say||(obs[0]&&obs[0].what)||R.quiet_because||'';
-    // the pointer is shown because it is the thing that was checked
-    const src=obs.map(o=>(o.paths||[])[0]).filter(Boolean).join('  ');
+    const what=n?`${n} to watch`:(forced?'all dropped':'nothing standing out');
+    const said=R.read||(obs[0]&&obs[0].note)||'';
+    // the LEVEL is shown, because a level is what a reader acts on
+    const src=obs.map(o=>o.level).filter(v=>v!=null).map(v=>MEM_PX(v)).join('  ');
     return `<tr><td>${clock(c.t0)}</td><td${cls}>${what}</td>`
       +`<td>${snkSafe(src)}</td></tr>`
       +(said?`<tr class="ln"><td colspan="3">${snkSafe(said)}</td></tr>`:'');
@@ -11325,12 +11331,12 @@ function snkMiraiSVG(m, rd, P){
   // spot saying how many things the model found unusual, and nothing about
   // where price is headed, because there is no longer an opinion about that.
   if(R&&sp!=null){
-    const n=(R.notable||[]).length;
+    const n=(R.points||[]).length;
     const forced=R.abstain==='forced';
     const y=dodge(yFor(sp)-14*r);
     const hue=n?'var(--ink)':(forced?'var(--coral)':'var(--ink-dim)');
-    const word=n?`${n} unusual`:(forced?'all observations dropped':'nothing unusual');
-    const tip=(n?`Mirai read the snapshot and found ${n} thing${n===1?'':'s'} worth saying.`
+    const word=n?`${n} to watch`:(forced?'everything it said was dropped':'nothing standing out');
+    const tip=(n?`Mirai read the whole board and picked ${n} level${n===1?'':'s'} worth watching.`
                 :forced?`Mirai offered observations and every one failed its own checks — worth a look.`
                 :`Mirai read the snapshot and found nothing unusual. That is a finished read, not a missing one.`)
       +snkLapseRows(clock, ageM, !!since)

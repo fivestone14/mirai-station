@@ -401,7 +401,7 @@ function modelRead(rows, nowMs){
     // hours old — and was blind to every obs-1 reading. Once those rows rolled
     // off it would have painted NO READING TODAY permanently.
     const rdg=(r||{}).reading;
-    if(!rdg || (rdg.quiet!==true && !Array.isArray(rdg.notable))) continue;
+    if(!rdg || (rdg.quiet!==true && !Array.isArray(rdg.points) && !rdg.read)) continue;
     const t=Date.parse(r.reading_ts);
     if(!isFinite(t)) continue;
     if(!best||t>best.t) best={t, r};
@@ -418,12 +418,12 @@ function modelRead(rows, nowMs){
   // four times a 30-minute forecast horizon; an observation has no horizon, so
   // what makes it stale is the measurement it describes no longer being
   // current, which is the book's own ceiling.
-  const quiet = rd.quiet === true || !(rd.notable||[]).length;
-  const line = quiet
-    ? (rd.quiet_because ? String(rd.quiet_because) : 'Nothing unusual on the board.')
-    : String(rd.say || (rd.notable && rd.notable[0] && rd.notable[0].what) || '');
+  const pts = rd.points || [];
+  const quiet = rd.quiet === true || (!pts.length && !rd.read);
+  const line = String(rd.read || (pts[0] && pts[0].note) || '')
+            || 'Nothing standing out on the board.';
   return {line, quiet,
-          count:(rd.notable||[]).length,
+          count:pts.length,
           forced: rd.abstain === 'forced',
           ageMin:age,
           at:new Date(best.t),
