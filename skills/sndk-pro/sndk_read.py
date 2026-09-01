@@ -1360,6 +1360,19 @@ def _scene_numbers(scene) -> set:
                 walk(v)
         elif isinstance(x, (int, float)) and not isinstance(x, bool):
             out.add(round(float(x), 2))
+        elif isinstance(x, str):
+            # NUMBERS INSIDE STRINGS COUNT. `context.vs_prior_sessions` states
+            # its ranks as prose — "higher than 16 of the 22 prior sessions" —
+            # and walking numeric leaves alone made 16 and 22 invisible to the
+            # gate. The model would quote the rank it was just handed and lose
+            # the whole sentence for inventing it. Measured live: the read was
+            # deleted on every call, a 0% prose-survival rate, which is a broken
+            # contract however good the rest of it is.
+            for m in _NUM_RE.finditer(x):
+                try:
+                    out.add(round(float(m.group(0)), 2))
+                except ValueError:
+                    pass
     walk(scene)
     return out
 
