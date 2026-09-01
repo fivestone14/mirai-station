@@ -100,12 +100,17 @@ def test_gamma_sign_colours_nothing():
 
 
 def test_vwap_is_a_price_at_a_position():
-    """vwap_dist_sigma is (vwap - spot)/sigma, so a NEGATIVE value means price
-    is ABOVE its average. 13 of 15 reviewers read it backwards. A price cannot
-    be read backwards."""
+    """vwap_minus_live_spot_sigma (sr-8 rename of vwap_dist_sigma, the value
+    unchanged) is (vwap - live spot)/sigma, so a NEGATIVE value means price is
+    ABOVE its average. 13 of 15 reviewers read it backwards. A price cannot be
+    read backwards."""
     assert "function vwapPrice(" in GLANCE
     assert "diaryLast&&diaryLast.vwap" in GLANCE.replace(" ", "")   # exact source preferred
-    assert "vwap_dist_sigma" not in PAGE                            # the ratio never printed
+    # the CURRENT name, recovered by ADDING the subtraction back to the spot —
+    # pinning the retired name here is how this test stayed green while the
+    # phone read a field that no longer shipped
+    assert "p.live_spot + p.vwap_minus_live_spot_sigma * sig" in GLANCE
+    assert "vwap_minus_live_spot_sigma" not in PAGE                 # the ratio never printed
 
 
 def test_weight_rides_a_fixed_scale_and_absence_is_not_zero():
@@ -115,6 +120,10 @@ def test_weight_rides_a_fixed_scale_and_absence_is_not_zero():
     zero."""
     assert "gex/20*full" in GLANCE.replace(" ", "")
     assert "FULL = 20" in PAGE
+    # `gex` is the INTERNAL name only; the scene entry ships the share as
+    # cluster_share_of_book_gamma_pp (sr-7/obs-2) and both files must read that
+    assert "cluster_share_of_book_gamma_pp" in GLANCE
+    assert "cluster_share_of_book_gamma_pp" in PAGE
     rw = GLANCE.split("function railWidth")[1].split("/* ---- level assembly")[0]
     assert "return null;" in rw
 
@@ -134,6 +143,17 @@ def test_the_magnet_never_shares_the_gex_gauge():
     assert "railWidth(l.gex" in PAGE
     tag = PAGE.split("if(l && l.kind === 'wall'){")[1].split("}")[0]
     assert "railWidth" in tag                      # bars are drawn for walls only
+
+
+def test_the_magnet_list_is_read_as_dicts():
+    """sr-7 reshaped magnet.top_strikes from [strike, share] pairs into
+    {strike, share_of_book_gamma_pp} dicts. The phone kept indexing arrays,
+    Array.isArray(mag[0]) went false on every scan, and the magnet never drew
+    again — while nothing here noticed."""
+    assert "mag[0].strike" in GLANCE and "m.strike" in GLANCE
+    assert "mag[0].strike" in PAGE
+    assert "share_of_book_gamma_pp" in GLANCE and "share_of_book_gamma_pp" in PAGE
+    assert "mag[0][0]" not in GLANCE and "mag[0][0]" not in PAGE
 
 
 def test_no_magnet_tie_threshold():
@@ -219,8 +239,8 @@ def test_distance_is_measured_against_the_price_on_screen():
     assert "sigma" not in code
 
 
-def test_side_clear_absent_is_not_false():
-    assert "_side_clear'] !== true" in PAGE
+def test_side_has_no_wall_absent_is_not_false():
+    assert "_side_has_no_wall'] !== true" in PAGE
 
 
 def test_the_banned_fields_reach_no_pixel():
@@ -228,6 +248,38 @@ def test_the_banned_fields_reach_no_pixel():
               "drift_toward", "gap_vs_own_history", "frozen_do_not_cite"):
         assert f not in PAGE, f
         assert f not in GLANCE, f
+
+
+def _code_only(js):
+    """Strip comments first: the measured-history comments in these files cite
+    retired names on purpose, and a pin that cannot tell prose from code
+    teaches you to delete the history (the wallDistance lesson)."""
+    lines = [l for l in js.splitlines() if not l.strip().startswith(("//", "*", "/*"))]
+    return "\n".join(l.split("//")[0] for l in lines)
+
+
+def test_the_scene_is_read_by_its_current_names():
+    """sr-7/sr-8 (2026-08-30) renamed every scene key and reshaped the magnet
+    list; the phone was built against the old names and painted nothing while
+    this file stayed green, because every pin here spelt the OLD names. The
+    source of truth is build_scene (docs/sndk-payload-inventory.md). If a
+    rename lands upstream, this is the test that must go red."""
+    code = _code_only(GLANCE) + _code_only(PAGE)
+    for current in ("regime_label", "session_date", "live_spot",
+                    "days_to_expiry", "expiry_date",
+                    "vwap_minus_live_spot_sigma",
+                    "cluster_share_of_book_gamma_pp",
+                    "unchanged_for_min", "unchanged_for_at_least_min",
+                    "_side_has_no_wall", "_heaviest_wall_behind_the_ladder",
+                    "share_of_book_gamma_pp"):
+        assert current in code, current
+    # sr-8 moved `instrument` to the wrapper; reading it off the scene — or off
+    # `d`, the stash-transplant typo that threw on every paint — must not return
+    assert "PAY.instrument" in code
+    assert "d.instrument" not in code
+    for stale in ("vwap_dist_sigma", "_side_clear", "unchanged_min",
+                  "heaviest_behind", "fe.dte", "fe.date", "regime.word"):
+        assert stale not in code, stale
 
 
 def test_no_emoji_no_legend_no_greek():
@@ -304,13 +356,13 @@ def test_the_gate_direction_is_derived_not_read():
 
 
 def test_the_clear_side_bracket_is_qualified_and_conditional():
-    """call_side_clear means no CALL-SIGNED cluster above spot; a wrongly-signed
+    """call_side_has_no_wall means no CALL-SIGNED cluster above spot; a wrongly-signed
     pile there is dropped from both pools and the flag still fires — true on 79
     of 79 rows of the reference diary, over a cluster carrying 34.6% of book
     gamma. And a live tick can cross a wall of the other pool."""
     assert "NO CALL WALL ABOVE" in PAGE and "NO PUT WALL BELOW" in PAGE
     assert "if(cross) continue;" in PAGE
-    assert "_side_clear'] !== true" in PAGE       # === true stays necessary
+    assert "_side_has_no_wall'] !== true" in PAGE  # === true stays necessary
 
 
 def test_the_footer_speaks_only_when_the_label_did_not():
@@ -322,7 +374,7 @@ def test_the_footer_speaks_only_when_the_label_did_not():
 
 
 def test_the_tag_cap_respects_the_never_drop_tiers():
-    """Without the tier a cap overflow could drop a heaviest_behind, leaving the
+    """Without the tier a cap overflow could drop a heaviest_wall_behind_the_ladder, leaving the
     thickest stroke on the plot with its price nowhere on screen."""
     assert "(l.nearest || l.behind) ? 2 : 1" in PAGE
 

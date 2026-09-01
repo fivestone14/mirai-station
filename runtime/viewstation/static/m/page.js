@@ -131,15 +131,19 @@ function paintAll(){
 
 function paintMast(st){
   const sc = st.scene, c = sc.clock || {};
-  $('ticker').textContent = d.instrument ? String(d.instrument) : '';
+  // PAY, not the scene: sr-8 moved `instrument` out to the wrapper. (A stash
+  // transplant had this reading `d`, a name in no scope — every paint threw.)
+  $('ticker').textContent = PAY.instrument ? String(PAY.instrument) : '';
   $('livedot').hidden = !(LIVE && LIVE.spot != null);
 
   let exp = '';
   const fe = c.front_expiry || {};
-  if(fe.dte === 0) exp = 'EXPIRES TODAY';
-  else if(fe.date) exp = 'EXP ' + new Date(fe.date + 'T00:00:00')
+  // sr-7 renames: dte -> days_to_expiry, date -> expiry_date
+  if(fe.days_to_expiry === 0) exp = 'EXPIRES TODAY';
+  else if(fe.expiry_date) exp = 'EXP ' + new Date(fe.expiry_date + 'T00:00:00')
                               .toLocaleDateString('en-US', {weekday:'short'}).toUpperCase();
-  else if(fe.dte != null) exp = 'EXP IN ' + fe.dte + (fe.dte === 1 ? ' DAY' : ' DAYS');
+  else if(fe.days_to_expiry != null)
+    exp = 'EXP IN ' + fe.days_to_expiry + (fe.days_to_expiry === 1 ? ' DAY' : ' DAYS');
   $('expiry').textContent = exp;
 
   const f = $('fresh');
@@ -182,7 +186,7 @@ function paintRegime(st){
   // byte-for-byte the strings envWords() uses, so the phone and the desktop can
   // never describe one board in two voices
   const gloss = g == null ? 'gamma sign not measured' : (g ? 'walls hold' : 'walls give way');
-  const word = r.word ? String(r.word) : '';
+  const word = r.regime_label ? String(r.regime_label) : '';   // sr-7 rename
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
   if(word){ $('regWord').textContent = cap(word); $('regGloss').textContent = gloss; }
@@ -287,8 +291,8 @@ function paintLadder(st){
   if(wc[0] && wc[0].strike != null) markDrawn(Number(wc[0].strike));
   if(wp[0] && wp[0].strike != null) markDrawn(Number(wp[0].strike));
   for(const l of WIN.admitted) markDrawn(l.y);
-  if(Array.isArray(mag) && mag.length && Array.isArray(mag[0]) && mag[0][0] != null)
-    markDrawn(Number(mag[0][0]));
+  if(Array.isArray(mag) && mag.length && mag[0] && mag[0].strike != null)
+    markDrawn(Number(mag[0].strike));                    // sr-7: dict entries
   for(const m of magnetRunners(sc)) markDrawn(m.y);
 
   // Only a BOOK level can be named at an edge. A tape price or the session low
@@ -321,8 +325,9 @@ function paintLadder(st){
   if(wc[0] && wc[0].strike != null) push(_lvlWall(wc[0], 'call', true));
   if(wp[0] && wp[0].strike != null) push(_lvlWall(wp[0], 'put', true));
   for(const l of WIN.admitted) push(l);
-  if(Array.isArray(mag) && mag.length && Array.isArray(mag[0]) && mag[0][0] != null)
-    push({y:Number(mag[0][0]), kind:'magnet', lead:true, share:Number(mag[0][1]), weight:1});
+  if(Array.isArray(mag) && mag.length && mag[0] && mag[0].strike != null)
+    push({y:Number(mag[0].strike), kind:'magnet', lead:true,
+          share:Number(mag[0].share_of_book_gamma_pp), weight:1});
   for(const m of magnetRunners(sc)) push(m);
   const levels = mergeLevels(ruled, span);
 
@@ -363,13 +368,13 @@ function paintLadder(st){
   // words at the left edge, and on a 280px ladder they landed 8px apart.
   const wordRows = [];
   for(const side of ['call','put']){
-    if((sc.walls||{})[side + '_side_clear'] !== true) continue;
+    if((sc.walls||{})[side + '_side_has_no_wall'] !== true) continue;   // sr-7 rename
     // The flag was measured against the SCAN spot. If a wall of the other pool
     // now sits on this side of the price on screen, the side is not empty as
     // drawn — say nothing here and let the gate footer carry the qualified note.
     const other = side === 'call' ? 'put' : 'call';
     const cross = ((sc.walls||{})[other] || [])
-      .concat([(sc.walls||{})[other + '_heaviest_behind']])
+      .concat([(sc.walls||{})[other + '_heaviest_wall_behind_the_ladder']])
       .some(e => e && e.strike != null &&
                  (side === 'call' ? Number(e.strike) > ref : Number(e.strike) < ref));
     if(cross) continue;
@@ -378,7 +383,7 @@ function paintLadder(st){
     o += '<path class="p-brk" d="M9,' + n1(a) + ' L3,' + n1(a) + ' L3,' + n1(b) + ' L9,' + n1(b) + '"/>';
     if((b - a) >= 34){
       const by = (a + b) / 2;
-      // qualified, because the flag is qualified: call_side_clear means no
+      // qualified, because the flag is qualified: call_side_has_no_wall means no
       // CALL-SIGNED cluster above spot. A wrongly-signed pile there is dropped
       // from both pools and the flag still fires — true on 79 of 79 rows of the
       // reference diary, over a cluster carrying 34.6% of book gamma.
@@ -515,10 +520,13 @@ function paintLadder(st){
 }
 
 function _lvlWall(e, side, nearest){
+  // sr-7/obs-2 renames on the scene entry, mirroring glance.js _wall — the
+  // INTERNAL name for the share stays `gex`.
+  const g = e.cluster_share_of_book_gamma_pp;
   return {y:Number(e.strike), kind:'wall', side, nearest:!!nearest,
-          gex:(e.gex != null && isFinite(e.gex)) ? Number(e.gex) : null,
-          held:(e.unchanged_min != null) ? e.unchanged_min : e.unchanged_min_at_least,
-          heldExact:e.unchanged_min != null};
+          gex:(g != null && isFinite(g)) ? Number(g) : null,
+          held:(e.unchanged_for_min != null) ? e.unchanged_for_min : e.unchanged_for_at_least_min,
+          heldExact:e.unchanged_for_min != null};
 }
 
 /* ---- D. gate — the amplification of the nearest level. Never hides. ----- */
@@ -561,8 +569,9 @@ function paintGate(st){
   // measured against the price ON SCREEN, never walls[].sigma — that was taken
   // against a spot the reader can no longer see
   const d = wallDistance(w.strike, ref);
-  const held = (w.unchanged_min != null) ? w.unchanged_min : w.unchanged_min_at_least;
-  const exact = w.unchanged_min != null;
+  // sr-7 rename: unchanged_for_min / unchanged_for_at_least_min
+  const held = (w.unchanged_for_min != null) ? w.unchanged_for_min : w.unchanged_for_at_least_min;
+  const exact = w.unchanged_for_min != null;
   const bits = [];
   if(d) bits.push('$' + Math.round(d.dollars));
   if(held != null) bits.push(('held ' + gMinutes(held) + (exact ? '' : '+')).toUpperCase());
@@ -579,10 +588,13 @@ function paintGate(st){
   const beyond = beyondWall(walls, w.side);
   let foot = '';
 
-  if(w.gex != null && isFinite(w.gex)){
+  // w is the raw scene entry (nearestWall passes it through), so the share
+  // wears its obs-2 scene name here rather than the internal `gex`
+  const share = w.cluster_share_of_book_gamma_pp;
+  if(share != null && isFinite(share)){
     $('gRowA').hidden = false;
-    $('gBarA').style.width = Math.max(2, Math.min(100, w.gex / FULL * 100)).toFixed(1) + '%';
-    $('gValA').innerHTML = '<b>' + esc(w.gex) + '%</b> of book gamma';
+    $('gBarA').style.width = Math.max(2, Math.min(100, share / FULL * 100)).toFixed(1) + '%';
+    $('gValA').innerHTML = '<b>' + esc(share) + '%</b> of book gamma';
   } else { $('gRowA').hidden = true; foot = 'Weight not measured.'; }
 
   if(beyond && beyond.gex != null && isFinite(beyond.gex)){

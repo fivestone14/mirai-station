@@ -37,7 +37,7 @@ function gMinutes(m){
 
 function envWords(regime){
   if(!regime) return null;
-  const word=regime.word;
+  const word=regime.regime_label;   // sr-7 rename: regime.word -> regime_label
   const g=gammaIsLong(regime);
   const lean = g==null ? null : (g ? 'walls hold' : 'walls give way');
   if(word && lean) return String(word)+' · '+lean;
@@ -85,13 +85,15 @@ function beyondWall(walls, side){
   // CONSTRUCTION: walls_ladder sets *_side_clear only when a side's pool is
   // empty and continues before writing the ladder, so a side can never hold
   // both — and this is only ever called with the side of a wall that exists.
+  // sr-7 rename: *_heaviest_behind -> *_heaviest_wall_behind_the_ladder; the
+  // share is obs-2's cluster_share_of_book_gamma_pp, held internally as `gex`.
   if(!walls||!side) return null;
-  const behind=walls[side+'_heaviest_behind'];
+  const behind=walls[side+'_heaviest_wall_behind_the_ladder'];
   if(behind&&behind.strike!=null)
-    return {strike:behind.strike, gex:_fin(behind.gex), heaviest:true};
+    return {strike:behind.strike, gex:_fin(behind.cluster_share_of_book_gamma_pp), heaviest:true};
   const ladder=walls[side];
   if(Array.isArray(ladder)&&ladder.length>=2&&ladder[1].strike!=null)
-    return {strike:ladder[1].strike, gex:_fin(ladder[1].gex), heaviest:false};
+    return {strike:ladder[1].strike, gex:_fin(ladder[1].cluster_share_of_book_gamma_pp), heaviest:false};
   // A complete ladder of one with nothing named behind it is a sound
   // inference that the side holds exactly one cluster: WALLS_PER_SIDE is 2, so
   // a second would have shipped if it existed.
@@ -106,7 +108,8 @@ function farSideNote(walls, side){
   // that side" overstated it.
   if(!walls||!side) return null;
   const far = side==='call' ? 'put' : 'call';
-  if(walls[far+'_side_clear']!==true) return null;
+  // sr-7 rename: *_side_clear -> *_side_has_no_wall
+  if(walls[far+'_side_has_no_wall']!==true) return null;
   return far==='put' ? 'No put wall below price.' : 'No call wall above price.';
 }
 
@@ -114,7 +117,7 @@ function bothSidesClear(walls){
   // A board measured clear on BOTH sides is not an absence of information. It
   // is the loudest reading the scene can produce, and the card used to delete
   // itself there because nearestWall returns null.
-  return !!walls && walls.call_side_clear === true && walls.put_side_clear === true;
+  return !!walls && walls.call_side_has_no_wall === true && walls.put_side_has_no_wall === true;
 }
 
 function nearestWall(walls, spot){
@@ -141,7 +144,8 @@ function wallDistance(strike, price){
 /* ---- price, age, and the two things that must never be guessed --------- */
 
 function priorClose(price){
-  const now=price&&price.now, pct=price&&price.vs_prior_close_pct;
+  // sr-7 rename: price.now -> live_spot
+  const now=price&&price.live_spot, pct=price&&price.vs_prior_close_pct;
   if(now==null||pct==null||!isFinite(now)||!isFinite(pct)) return null;
   const d=1+pct/100;
   if(!isFinite(d)||d===0) return null;
@@ -163,7 +167,7 @@ function bookAge(pay, nowMs){
 
 function shownPrice(scene, live){
   const q=_fin(live&&live.spot);
-  const v=(q!=null)?q:((scene&&scene.price)||{}).now;
+  const v=(q!=null)?q:((scene&&scene.price)||{}).live_spot;   // sr-7 rename
   return (v!=null&&isFinite(v)) ? {v:Number(v), live:q!=null} : null;
 }
 
@@ -173,7 +177,8 @@ function dayChange(scene, live, diaryLast, todayStr){
   // exactly that and still lets a zero-minute-old scan show its own change. A
   // mismatch WITHHOLDS the figure. It never misstates it.
   const local=todayStr||etToday();
-  if((((scene||{}).clock)||{}).date !== local) return null;
+  // sr-7 rename: clock.date -> session_date
+  if((((scene||{}).clock)||{}).session_date !== local) return null;
   const p=(scene||{}).price||{};
   const q=_fin(live&&live.spot);
   if(q==null) return _fin(p.vs_prior_close_pct);
@@ -184,15 +189,17 @@ function dayChange(scene, live, diaryLast, todayStr){
 }
 
 function vwapPrice(scene, diaryLast){
-  // A PRICE at a position. vwap_dist_sigma is (vwap - spot)/sigma, so a
-  // NEGATIVE value means price is ABOVE its average — 13 of 15 reviewers read
-  // it backwards. Rendering the level instead of the ratio makes the sign trap
-  // structurally impossible: a price cannot be read backwards.
+  // A PRICE at a position. vwap_minus_live_spot_sigma (sr-8 rename of
+  // vwap_dist_sigma — the VALUE never changed, only the name now spells its
+  // subtraction) is (vwap - live spot)/sigma, so a NEGATIVE value means price
+  // is ABOVE its average — 13 of 15 reviewers read it backwards. Rendering the
+  // level instead of the ratio makes the sign trap structurally impossible: a
+  // price cannot be read backwards. Recovering the level is still an ADD.
   const exact=_fin(diaryLast&&diaryLast.vwap);
   if(exact!=null) return exact;
   const p=((scene||{}).price)||{}, sig=_fin(((scene||{}).scale||{}).one_sigma_dollars);
-  if(p.now==null||p.vwap_dist_sigma==null||sig==null) return null;
-  return p.now + p.vwap_dist_sigma * sig;
+  if(p.live_spot==null||p.vwap_minus_live_spot_sigma==null||sig==null) return null;
+  return p.live_spot + p.vwap_minus_live_spot_sigma * sig;
 }
 
 /* ---- weight ------------------------------------------------------------ */
@@ -229,10 +236,12 @@ function coreLevels(scene, price, vwap, points){
   const c=(w.call||[])[0], u=(w.put||[])[0];
   if(c&&c.strike!=null) out.push(_wall(c,'call',true));
   if(u&&u.strike!=null) out.push(_wall(u,'put',true));
+  // sr-7 reshape: top_strikes entries are {strike, share_of_book_gamma_pp}
+  // dicts now, not [strike, share] pairs
   const mag=((scene||{}).magnet||{}).top_strikes;
-  if(Array.isArray(mag)&&mag.length&&Array.isArray(mag[0])&&_fin(mag[0][0])!=null)
-    out.push({y:Number(mag[0][0]), kind:'magnet', lead:true, share:_fin(mag[0][1]),
-              weight:1});
+  if(Array.isArray(mag)&&mag.length&&mag[0]&&_fin(mag[0].strike)!=null)
+    out.push({y:Number(mag[0].strike), kind:'magnet', lead:true,
+              share:_fin(mag[0].share_of_book_gamma_pp), weight:1});
   if(vwap!=null) out.push({y:vwap, kind:'vwap'});
   return out;
 }
@@ -241,7 +250,7 @@ function optionalLevels(scene){
   // Tried one at a time, HEAVIEST FIRST, each subject to the admission test.
   const out=[], w=(scene||{}).walls||{};
   for(const side of ['call','put']){
-    const b=w[side+'_heaviest_behind'];
+    const b=w[side+'_heaviest_wall_behind_the_ladder'];   // sr-7 rename
     if(b&&b.strike!=null) out.push(Object.assign(_wall(b,side,false),{behind:true}));
     const l=w[side];
     if(Array.isArray(l)&&l[1]&&l[1].strike!=null) out.push(_wall(l[1],side,false));
@@ -252,16 +261,17 @@ function optionalLevels(scene){
 function magnetRunners(scene){
   const out=[], mag=((scene||{}).magnet||{}).top_strikes;
   if(!Array.isArray(mag)||mag.length<2) return out;
-  const top=_fin(mag[0][1]);
+  // sr-7 reshape: dict entries, as in coreLevels
+  const top=_fin(mag[0]&&mag[0].share_of_book_gamma_pp);
   for(let i=1;i<mag.length;i++){
     const m=mag[i];
-    if(!Array.isArray(m)||_fin(m[0])==null) continue;
-    const share=_fin(m[1]);
+    if(!m||_fin(m.strike)==null) continue;
+    const share=_fin(m.share_of_book_gamma_pp);
     // continuous, no threshold anywhere: sr-3 deleted a hardcoded 5.0pp tie
     // constant for shipping a near-constant as a finding, and any cutoff here
     // re-imports it. A near-tie must LOOK like a tie without anyone deciding
     // where a tie begins.
-    out.push({y:Number(m[0]), kind:'magnet', lead:false, share,
+    out.push({y:Number(m.strike), kind:'magnet', lead:false, share,
               weight:(share!=null&&top)?Math.max(0.28, share/top):0.5});
   }
   return out;
@@ -449,7 +459,7 @@ function etTime(ms){
 }
 
 function etToday(nowMs){
-  // YYYY-MM-DD in New York, to compare against scene.clock.date — which is also
+  // YYYY-MM-DD in New York, to compare against scene.clock.session_date — also
   // New York. Comparing it to the viewer's local date puts a Pacific reader on
   // the wrong side of the boundary for three hours every evening.
   const d = (nowMs == null) ? new Date() : new Date(nowMs);
@@ -466,10 +476,13 @@ function _fin(v){
 }
 
 function _wall(e, side, nearest){
+  // sr-7/obs-2 renames on the scene entry: gex -> cluster_share_of_book_gamma_pp,
+  // unchanged_min -> unchanged_for_min, unchanged_min_at_least ->
+  // unchanged_for_at_least_min. `gex` stays the INTERNAL name for the share.
   return {y:Number(e.strike), kind:'wall', side, nearest:!!nearest,
-          gex:_fin(e.gex),
-          held:(e.unchanged_min!=null)?_fin(e.unchanged_min):_fin(e.unchanged_min_at_least),
-          heldExact:e.unchanged_min!=null};
+          gex:_fin(e.cluster_share_of_book_gamma_pp),
+          held:(e.unchanged_for_min!=null)?_fin(e.unchanged_for_min):_fin(e.unchanged_for_at_least_min),
+          heldExact:e.unchanged_for_min!=null};
 }
 
 if(typeof module!=='undefined'&&module.exports){
