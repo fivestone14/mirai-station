@@ -867,6 +867,18 @@ def _every_scene_shape(tmp_path):
                         meta={"chain_spot": 1200.0, "book_asof": repeat_asof})]),
         scene(_oi_rows(same_oi, same_oi)),
         scene(ran),                                         # the history flags
+        # obs-3: a scene carrying the since-last-read frame — a crossing, so the
+        # frozen level, the delta, the clock string and the range all ship
+        SR.build_scene(rich_row(spot=1520.0), SR.magnet_band(rich_row()), [],
+                       [rich_row(ts=T0 - timedelta(minutes=30), spot=1490.0),
+                        rich_row(spot=1520.0)], T0,
+                       since_last_read=SR.frame_since_last_read(
+                           rich_row(spot=1520.0),
+                           [rich_row(ts=T0 - timedelta(minutes=30), spot=1490.0),
+                            rich_row(spot=1520.0)],
+                           {"ts": (T0 - timedelta(minutes=30)).isoformat(),
+                            "gate": SR.gate_state(rich_row(spot=1490.0, call_wall=1500.0))},
+                           "call wall crossed", False, T0)),
         # a scene carrying Python-found candidates: the gamma sign differs
         # between two distinct books, which is `changed_this_scan`
         scene([rich_row(ts=T0 - timedelta(minutes=4), gamma_sign="negative",

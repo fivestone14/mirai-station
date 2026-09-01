@@ -147,7 +147,16 @@ def build_voice_scene(now: datetime | None = None) -> dict | None:
     row = _sr.with_path(rows[-1], rows)
     band = _sr.magnet_band(row)
     frozen = _sr.frozen_fields(rows, now)
-    scene = _sr.build_scene(row, band, frozen, rows, now)
+    # obs-3: the voice hands the model the same scene the reader does, frame
+    # included — its own charter says verbatim. Same anchor, same divergence
+    # as the payload tab: no wake here, so `why_this_read` is absent.
+    _reads = [r for r in _sr._read_jsonl(_sr._reads_dir() / f"{day}.jsonl")
+              if r.get("era") == _sr.ERA]
+    _lc = next((r for r in reversed(_reads)
+                if r.get("wall_s") is not None), None)
+    scene = _sr.build_scene(row, band, frozen, rows, now,
+                            since_last_read=_sr.frame_since_last_read(
+                                row, rows, _lc, None, False, now))
     read = _latest_read(day)
     if read:
         r = read.get("reading") or {}

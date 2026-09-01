@@ -543,3 +543,115 @@ def test_a_transition_out_of_not_measured_is_not_a_change():
                   meta={"book_asof": T0.isoformat()})]
     ctx = SR.session_context({}, rows, T0) or {}
     assert "gamma_sign" not in (ctx.get("changed_since_last_book") or {})
+
+
+# --- obs-3: the since-last-read frame ---------------------------------------
+def _last_call(minutes_ago=47, **gate_kw):
+    r = mkrow([[1300, 60], [1100, 20]], **gate_kw)
+    return {"ts": (T0 - timedelta(minutes=minutes_ago)).isoformat(),
+            "wall_s": 9.9, "gate": SR.gate_state(r)}
+
+
+def test_every_wake_reason_translates_and_every_translation_is_speakable():
+    """The RAW wake reason is never handed to the model — "pin moved" baited it
+    into echoing "pin", a banned word, and the whole read died in testing. So
+    the table must cover every reason the gate can produce, and every value
+    must pass the lexicon."""
+    reasons = ("first read", "price ran", "pin moved", "gamma sign flipped",
+               "crossed flip", "call wall crossed", "put wall crossed",
+               "iv moved", "flip moved", "heartbeat",
+               "arrow appeared", "arrow stood down")
+    for r in reasons:
+        assert r in SR._WAKE_WORDS, r
+    for phrase in SR._WAKE_WORDS.values():
+        assert SR.banned_words(phrase) == [], phrase
+
+
+def test_a_wall_crossed_wake_yields_a_frozen_crossing():
+    """Pins the frame's straddle test to the wake gate's: if the gate said a
+    wall was crossed, the frame must name the frozen level it was measured
+    against — otherwise the wake reason and the block contradict each other."""
+    lc = _last_call(spot=1490.0, call_wall=1500.0)
+    row = mkrow([[1300, 60], [1100, 20]], spot=1520.0)
+    fr = SR.frame_since_last_read(row, [row], lc, "call wall crossed", False, T0)
+    assert fr["crossed_since_then"] == [
+        {"level": 1500.0, "was_labelled_then": "nearest_call_wall",
+         "price_went": "up"}]
+    assert fr["spot_change_dollars"] == 30.0
+    assert fr["why_this_read"] == "price crossed a level from the last read"
+
+
+def test_example_a_survives_only_because_the_frame_ships():
+    """The user's crossing sentence, proven both ways through the REAL gates.
+    The frozen level is not a price on today's board — the wall relabelled the
+    moment price crossed it — so without the frame the point dies as
+    level_not_on_the_board and the row logs a FALSE forced abstain."""
+    lc = _last_call(spot=1490.0, call_wall=1497.0)     # off today's strike grid
+    row = mkrow([[1300, 60], [1100, 20]], spot=1520.0)
+    rows = [mkrow([[1300, 60], [1100, 20]], spot=1490.0,
+                  ts=T0 - timedelta(minutes=30)), row]
+    fr = SR.frame_since_last_read(row, rows, lc, "call wall crossed", False, T0)
+    sc = SR.build_scene(row, SR.magnet_band(row), [], rows, T0,
+                        since_last_read=fr)
+    reply = {"quiet": False,
+             "read": "Price moved up just through 1497 since the last read, "
+                     "the call wall as it stood then.",
+             "points": [{"level": 1497.0,
+                         "note": "crossed level, the wall as it stood at the last read"}]}
+    ok = SR._validate_observation(reply, sc)
+    assert "read" in ok and len(ok["points"]) == 1
+    bare = SR.build_scene(row, SR.magnet_band(row), [], rows, T0)
+    dead = SR._validate_observation(reply, bare)
+    assert dead["quiet"] is True and dead["abstain"] == "forced"
+    assert any(d.startswith("level_not_on_the_board")
+               for d in dead["dropped_observations"])
+
+
+def test_example_b_survives_only_because_the_frame_ships():
+    """The honest nothing-changed sentence: the since-window range is not a
+    number on today's board, so without the block the read is deleted as
+    invented — which is precisely the failure that made this block load-bearing
+    rather than garnish."""
+    lc = _last_call(minutes_ago=61, spot=1543.2)
+    rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
+                  ts=T0 - timedelta(minutes=m))
+            for v, m in ((1543.2, 61), (1538.8, 40), (1546.1, 20), (1541.7, 0))]
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
+    assert fr["range_since"] == {"low": 1538.8, "high": 1546.1}
+    assert fr["nothing_crossed_since_then"] is True
+    sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0,
+                        since_last_read=fr)
+    reply = {"quiet": True,
+             "read": "Price has held between 1538.8 and 1546.1 since the "
+                     f"{fr['last_read_at']} read; nothing on the board moved."}
+    ok = SR._validate_observation(reply, sc)
+    assert ok["read"].startswith("Price has held") and ok["abstain"] == "chosen"
+    bare = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+    dead = SR._validate_observation(reply, bare)
+    assert "read" not in dead
+
+
+def test_first_read_has_no_frame_and_says_so():
+    row = mkrow([[1300, 60], [1100, 20]])
+    fr = SR.frame_since_last_read(row, [row], None, "first read", False, T0)
+    assert fr == {"first_read_of_session": True}
+
+
+def test_the_range_anchor_names_when_the_session_range_last_grew():
+    """"since HH:MM" needs an anchor the scene can vouch for — the measurement
+    pass found 15% of quiet gaps actually extended the session range, so the
+    anchor is the last time an extreme moved, computed over the whole day."""
+    rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
+                  ts=T0 - timedelta(minutes=m))
+            for v, m in ((1500.0, 90), (1530.0, 75), (1510.0, 50), (1512.0, 0))]
+    lc = _last_call(minutes_ago=50, spot=1510.0)
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
+    # the high was set 75 minutes ago and nothing extended it since
+    assert fr["session_range_unbroken_since"] == (
+        (T0 - timedelta(minutes=75)).astimezone(SR._ET).strftime("%H:%M"))
+
+
+def test_build_scene_without_the_kwarg_is_unchanged():
+    row = mkrow([[1300, 60], [1100, 20]])
+    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
+    assert "since_last_read" not in (sc.get("context") or {})

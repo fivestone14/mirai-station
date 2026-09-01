@@ -84,7 +84,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "obs-2"               # bump on ANY change to the gates or the prompt.
+ERA = "obs-3"               # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-8 (2026-08-30): the payload pays only for what
@@ -958,6 +958,124 @@ def _spoke_field(prev: dict, key: str):
     return _fin(prev.get(key)) if key != "gamma_sign" else prev.get(key)
 
 
+
+# obs-3: what each wake reason means, said in words the lexicon allows. The RAW
+# reason is never handed to the model — "pin moved" baits it into echoing "pin",
+# which is a banned word, and in testing that deleted the entire read. Every
+# value here is asserted lexicon-clean by a test. Arrow wakes translate to a
+# neutral phrase because the scene deliberately never shows the arrow.
+_WAKE_WORDS = {
+    "first read": "the session's first look",
+    "price ran": "price travelled since the last read",
+    "pin moved": "the heaviest strike is a different strike than at the last read",
+    "gamma sign flipped": "the book's computed gamma sign changed and held for two fresh books",
+    "crossed flip": "price moved to the other side of the hedging flip as it stood at the last read",
+    "call wall crossed": "price crossed a level from the last read",
+    "put wall crossed": "price crossed a level from the last read",
+    "iv moved": "implied vol moved since the last read",
+    "flip moved": "the hedging-flip level relocated",
+    "heartbeat": "timed check-in; nothing crossed a wake threshold",
+    "arrow appeared": "routine check",
+    "arrow stood down": "routine check",
+    "quiet": "routine check",
+    "stale_book": "routine check",
+}
+
+
+def frame_since_last_read(row: dict, rows: list[dict],
+                          last_call: Optional[dict], wake: Optional[str],
+                          force: bool, now: datetime) -> dict:
+    """The bridge from the model's last reading to this one — obs-3's one new
+    block, and the reason the honest nothing-changed sentence is possible at
+    all. Proven the hard way: "price has held between 1538.8 and 1546.1 since
+    the 13:05 read" was DELETED by the number gate without this block (the
+    since-window range is not a number on today's board) and the row was then
+    falsely logged as a forced abstain.
+
+    Anchored on the last LOOK (the gate's own frame), not the last surviving
+    sentence — the wake reason and this block must agree about what "since"
+    means. Every number a model might quote ships as a value, pre-computed,
+    because the doctrine forbids the model doing arithmetic and the gate
+    deletes what is not on the board: the delta in dollars, the clock as an
+    HH:MM string, the since-window range.
+
+    Crossings are tested against the FROZEN levels in the last call's `gate`
+    snapshot — the same straddle arithmetic the wake gate uses — because a
+    crossing is only observable against a frozen frame; the live label steps
+    aside as price arrives. The gamma flip is deliberately excluded from the
+    crossed list: it is barred as a nameable level for measured reasons
+    (its uncertainty exceeds its distance from spot), and freezing it does not
+    cure that. A flip crossing is narrated in words via the wake reason."""
+    t_last = _ts(last_call) if last_call else None
+    if t_last is None:
+        return {"first_read_of_session": True}
+    out: dict = {"last_read_at": t_last.astimezone(_ET).strftime("%H:%M"),
+                 "minutes_since": max(0, int((now - t_last).total_seconds() // 60))}
+    spot_then = _spoke_field(last_call, "spot")
+    spot_now = _fin(row.get("spot"))
+    if spot_then is not None and spot_now is not None:
+        out["spot_then"] = round(spot_then, 2)
+        out["spot_now"] = round(spot_now, 2)
+        out["spot_change_dollars"] = round(spot_now - spot_then, 2)
+    if wake:
+        out["why_this_read"] = _WAKE_WORDS.get(wake, "routine check")
+    elif force:
+        out["why_this_read"] = "manual check"
+
+    crossed = []
+    seen = set()
+    if spot_then is not None and spot_now is not None:
+        for key, label in (("call_wall", "nearest_call_wall"),
+                           ("put_wall", "nearest_put_wall"),
+                           ("magnet", "heaviest_strike")):
+            lvl = _spoke_field(last_call, key)
+            if lvl is None or round(lvl, 2) in seen:
+                continue
+            if (spot_now - lvl) * (spot_then - lvl) < 0:
+                crossed.append({"level": round(lvl, 2),
+                                "was_labelled_then": label,
+                                "price_went": "up" if spot_now > lvl else "down"})
+                seen.add(round(lvl, 2))
+    if crossed:
+        out["crossed_since_then"] = crossed
+    else:
+        # measured-empty, said outright — the sr-5 house pattern. Absence in
+        # this scene means "not measured", and this WAS measured.
+        out["nothing_crossed_since_then"] = True
+
+    unchanged = {}
+    for key, cur in (("gamma_sign", row.get("gamma_sign")),
+                     ("heaviest_strike", _fin((row.get("gex_views") or {}).get("magnet"))),
+                     ("call_wall", _fin(row.get("call_wall"))),
+                     ("put_wall", _fin(row.get("put_wall")))):
+        then = _spoke_field(last_call, "magnet" if key == "heaviest_strike" else key)
+        if then is not None and cur is not None and then == cur:
+            unchanged[key] = then if not isinstance(then, float) else round(then, 2)
+    if unchanged:
+        out["unchanged_since_then"] = unchanged
+
+    lo = hi = None
+    ext_at = None            # when the SESSION range last grew — the anchor for
+    run_lo = run_hi = None   # "the range has held since HH:MM"
+    for r in rows:
+        sp = _fin(r.get("spot"))
+        t = _ts(r)
+        if sp is None or t is None:
+            continue
+        if run_lo is None or sp < run_lo:
+            run_lo, ext_at = sp, t
+        if run_hi is None or sp > run_hi:
+            run_hi, ext_at = sp, t
+        if t > t_last:
+            lo = sp if lo is None else min(lo, sp)
+            hi = sp if hi is None else max(hi, sp)
+    if lo is not None and hi is not None:
+        out["range_since"] = {"low": round(lo, 2), "high": round(hi, 2)}
+    if ext_at is not None:
+        out["session_range_unbroken_since"] = ext_at.astimezone(_ET).strftime("%H:%M")
+    return out
+
+
 def _books_since(rows: list[dict], since: Optional[datetime]) -> list[dict]:
     """One row per DISTINCT book, oldest first, for books measured after `since`.
 
@@ -1176,9 +1294,9 @@ TALK LIKE A PERSON. Imagine someone sitting next to you who knows markets but no
 
 YOU READ THE WHOLE BOARD AND YOU DECIDE WHAT MATTERS. Nothing has been pre-selected for you. Go through the scene, weigh the parts against each other, and point at the few things a person watching this stock would actually want to know about right now — usually one or two, often none at all.
 
-ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snapshot, so you cannot know how today compares with other days, or what moved since the last option book. `context` supplies exactly that and nothing else — where today's numbers rank against this stock's own closed sessions, and what changed since the last book. It states facts, never conclusions. Whether any of it is worth saying is your call.
+ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snapshot, so you cannot know how today compares with other days, or what moved since the last option book. `context` supplies exactly that and nothing else — where today's numbers rank against this stock's own closed sessions, what changed since the last book, and what changed since your OWN last reading (`since_last_read`). It states facts, never conclusions. Whether any of it is worth saying is your call.
 
-ALWAYS WRITE `read`, EVEN WHEN NOTHING STANDS OUT — one line saying what you looked at and why it was ordinary is what makes a quiet session distinguishable from every other quiet session later on.
+OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since HH:MM; nothing on the board moved" is a complete, correct read. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read there is no frame yet; describe the standing board instead.
 
 KEEP IT SHORT AND PLAIN. TWO SENTENCES, forty words at the outside — the way you would say it to someone sitting beside you, not the way you would write it down. No jargon, no field names, no padding, no listing everything you looked at. Say the one or two things that matter and stop. The levels go in `points` with a few words each; do not repeat them in the prose. Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears. That includes numbers you work out yourself: do not convert a distance into sigma, do not turn a share into a percentage of something else, do not average two figures. A number you computed is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far away, say which level and let the reader see the two prices.
 
@@ -1206,7 +1324,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - momentum: the ONLY block here that describes change during today's session. `window_between_books` tells you exactly what was compared — `books_compared` distinct books spanning `span_min` minutes, measured on the book clock, not the scan clock. `share_of_book_gamma_change_pp` and `gross_volume_change_contracts` are the change itself; there is no verdict word, because a fixed threshold cannot tell building from noise. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
 - dealer_positioning: standing dealer positioning as of last night's close. `net_delta_bn` is $-delta in billions from an assumed-sign book, and ITS SIGN IS AN ARTIFACT OF THE FORMULA, which cannot produce another one — it has been positive on every one of 4,149 recorded scans, ranging 1.15 to 8.24 and never once crossing zero. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only `net_delta_change_30min_bn` can be news. `net_vanna_musd_per_vol_point` only matters when vol_trend is moving.
 - walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `cluster_share_of_book_gamma_pp` is the CLUSTER's share of the whole signed surface — that number, not the position, says how heavy a wall is. It is deliberately NOT called `share_of_book_gamma_pp`: the magnet's field of that name is ONE STRIKE's share of a different surface, and the two disagree by a median 38% on strikes that appear in both. Never compare one to the other or add them together. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
-- WHICH LEVELS YOU MAY NAME. You may name the magnet's top strike, and the strikes in the magnet list. You may NOT name a call wall or a put wall as a level where anything happens. This is arithmetic, not politeness: those two are DEFINED as the heaviest strike on their side of spot, so the call wall is above price and the put wall below it, always, on every row ever recorded. The instant price rises through a call wall, that strike stops qualifying and a different one takes the name. Measured: a wall relabels on a crossing 100% of the time, within a median of zero minutes, while the magnet relabels 0% of the time and is still the same strike 40 minutes later on 99% of occasions. A wall is real structure and you may describe how heavy it is; it is not a place price can be said to reach or break, because the label moves out of the way.
+- WHICH LEVELS YOU MAY NAME. You may name the magnet's top strike, and the strikes in the magnet list. You may NOT name a call wall or a put wall as a level where anything happens. This is arithmetic, not politeness: those two are DEFINED as the heaviest strike on their side of spot, so the call wall is above price and the put wall below it, always, on every row ever recorded. The instant price rises through a call wall, that strike stops qualifying and a different one takes the name. Measured: a wall relabels on a crossing 100% of the time, within a median of zero minutes, while the magnet relabels 0% of the time and is still the same strike 40 minutes later on 99% of occasions. A wall is real structure and you may describe how heavy it is; it is not a place price can be said to reach or break, because the label moves out of the way. THE ONE EXCEPTION is a level in `context.since_last_read.crossed_since_then`: that price is the wall AS IT STOOD AT YOUR LAST READING, frozen in the block, so it cannot relabel out from under the sentence — you may name it and say price moved through it, as the label it wore then.
 - history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
 - WHO HOLDS WHAT IS ASSUMED, NOT MEASURED, AND THE ASSUMPTION IS PROBABLY WRONG FOR A SINGLE STOCK. Every signed number here — the gamma sign, the regime word, the flip, dealer positioning — rests on a convention that dealers are long the calls and short the puts. That convention was written for the S&P index. The studies that MEASURED single-stock positioning instead of assuming it found the opposite: end users are net sellers of both legs, so dealers are net LONG single-stock options, and average measured market-maker gamma is positive. On this book the convention implies dealers hold about a fifth of the company in stock, which is not credible. So: never say what dealers are doing, never say hedging will amplify or damp anything, and never treat the flip as a level price respects. Describe where the number is; do not describe who is on the other side of it.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_has_no_wall` flag or `flip.no_flip_anywhere_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a no-wall flag = known empty. Never confuse the two.
@@ -1238,7 +1356,7 @@ WHAT TO SAY INSTEAD. Describe position, not consequence: not "1500 is resistance
 
 OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence:
 {{"quiet": true | false,
- "read": "<two or three plain sentences: what the board looks like and what stands out. Omit when nothing does.>",
+ "read": "<two or three plain sentences: what changed since your last reading — or that nothing did — and what the board shows now. Never omitted.>",
  "points": [{{"level": <a price that appears in the scene>, "note": "<a few words on why this one is worth watching>"}}]}}"""
 
 
@@ -1335,6 +1453,25 @@ def _board_levels(scene) -> set:
                 v = _fin(mv.get(side))
                 if v is not None:
                     out.add(round(v, 2))
+    # obs-3: the since-last-read frame's own prices. A crossed level is FROZEN
+    # in the block precisely so it can be named — without this admission the
+    # model narrates a crossing in prose and its point is deleted as
+    # level_not_on_the_board, which then logs a FALSE forced abstain. Only the
+    # price-shaped fields are admitted; minutes and deltas stay out, which is
+    # this function's whole charter.
+    slr = ((scene.get("context") or {}).get("since_last_read") or {})
+    for c in (slr.get("crossed_since_then") or []):
+        v = _fin(c.get("level") if isinstance(c, dict) else None)
+        if v is not None:
+            out.add(round(v, 2))
+    for k in ("spot_then", "spot_now"):
+        v = _fin(slr.get(k))
+        if v is not None:
+            out.add(round(v, 2))
+    for k in ("low", "high"):
+        v = _fin((slr.get("range_since") or {}).get(k))
+        if v is not None:
+            out.add(round(v, 2))
     # THE GAMMA FLIP IS DELIBERATELY NOT A NAMEABLE LEVEL, and this is the one
     # exclusion worth spelling out because the flip looks more like a level than
     # anything else on the board.
@@ -2318,7 +2455,8 @@ def _prior_session_date(today: str) -> Optional[str]:
 
 
 def build_scene(row: dict, band: dict, frozen: list,
-                rows: list[dict], now: datetime) -> dict:
+                rows: list[dict], now: datetime,
+                since_last_read: Optional[dict] = None) -> dict:
     """The model's view of the world — sr-2: an UNBIASED snapshot, no verdict.
 
     The old arrow_already_decided block is gone (a pre-baked conclusion anchors
@@ -2703,7 +2841,11 @@ def build_scene(row: dict, band: dict, frozen: list,
     # reader cannot take, so the gate runs first and every surviving pointer
     # resolves by construction. Re-checked anyway, because "by construction" is
     # what the last three bugs all said about themselves.
-    ctx = session_context(scene, rows, now)
+    ctx = session_context(scene, rows, now) or {}
+    if since_last_read:
+        # obs-3: the bridge from the model's own last reading — built by the
+        # caller, because only read_once knows which row last spent a call.
+        ctx["since_last_read"] = since_last_read
     if ctx:
         scene["context"] = ctx
     return scene
@@ -2862,7 +3004,9 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # that was — which is exactly the rule the payload tab already follows.
     scene_now = (t_row or now) if (stale and force and t_row is not None) else now
     scene = build_scene(row, band, frozen_fields(rows, scene_now)
-                        if scene_now is not now else frozen, rows, scene_now)
+                        if scene_now is not now else frozen, rows, scene_now,
+                        since_last_read=frame_since_last_read(
+                            row, rows, last_call, wake, force, scene_now))
     out = {
         "ts": now.isoformat(), "era": ERA,
         "wake": ("stale_book" if stale and not force else (wake or "quiet")),

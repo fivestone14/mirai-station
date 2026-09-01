@@ -612,7 +612,17 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
     rw = R.with_path(row, rows)
     band = R.magnet_band(rw)
     frozen = R.frozen_fields(rows, build_now)
-    scene = R.build_scene(rw, band, frozen, rows, build_now)
+    # obs-3: the payload tab's charter is the exact scene the reader hands the
+    # model, so it carries the same since-last-read frame — anchored on the
+    # last row that spent a call, exactly as read_once anchors it. One declared
+    # divergence: no wake fires here, so `why_this_read` is absent.
+    reads = [r for r in R._read_jsonl(R._reads_dir() / f"{day}.jsonl")
+             if r.get("era") == R.ERA]
+    last_call = next((r for r in reversed(reads)
+                      if r.get("wall_s") is not None), None)
+    scene = R.build_scene(rw, band, frozen, rows, build_now,
+                          since_last_read=R.frame_since_last_read(
+                              rw, rows, last_call, None, False, build_now))
     text = json.dumps(scene, default=str)
     return {
         "session": day,
