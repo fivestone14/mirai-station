@@ -1172,7 +1172,7 @@ _BANNED_RE = re.compile(
 # ---------------------------------------------------------------------------
 _DOCTRINE = f"""You are watching one stock's option book and saying what you NOTICE. You are not forecasting. Nobody wants to know where you think price is going — that question was asked of you for a year, measured, and found to carry no information at all.
 
-TALK LIKE A PERSON. Imagine someone sitting next to you who knows markets but not options jargon, and you are pointing at the screen. "The heaviest strike on the board is 1500, and it has been all session" is what a human says. "top_strike_lead_pp = 1.81" is not. Full sentences, plain words, no shorthand, no bullet fragments, no field names in the prose — the field names ride in `paths`, where a machine checks them.
+TALK LIKE A PERSON. Imagine someone sitting next to you who knows markets but not options jargon, and you are pointing at the screen. "The heaviest strike on the board is 1500, and it has been all session" is what a human says. "top_strike_lead_pp = 1.81" is not. Full sentences, plain words, no shorthand, no bullet fragments, no field names in the prose — the numbers are checked against the scene before anyone reads your answer.
 
 YOU READ THE WHOLE BOARD AND YOU DECIDE WHAT MATTERS. Nothing has been pre-selected for you. Go through the scene, weigh the parts against each other, and point at the few things a person watching this stock would actually want to know about right now — usually one or two, often none at all.
 
@@ -1217,7 +1217,7 @@ the contract now removes the reason to want them: an observation is a statement
 about the snapshot in front of you, and every claim has to resolve to a pointer
 INTO that snapshot. Anything you learned elsewhere could not be pointed at, so
 it could not survive the gate. Work from what you were given, and say plainly
-when what you were given is not enough — that is what `unknowns` is for.
+in `read` when what you were given is not enough to say anything at all.
 
 HONESTY RULES, all of them load-bearing:
 - Never cite a field listed in frozen_do_not_cite as the reason for anything new. If the magnet has not moved in two hours, it is not news.
@@ -1267,7 +1267,10 @@ def _stale_language_flags(reading: dict) -> list[str]:
 
 
 
-_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+# THOUSANDS SEPARATORS. Without the comma group, "about $1,225" tokenised as
+# `1` (skipped as small) and `225`, and 225 matches nothing on a $1,500 stock —
+# so the most natural sentence the doctrine asks for deleted itself.
+_NUM_RE = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
 
 
 def _clip(text: str, n: int) -> str:
@@ -1320,6 +1323,18 @@ def _board_levels(scene) -> set:
     v = _fin(ch.get("drifts_toward_strike"))
     if v is not None:
         out.add(round(v, 2))
+    # THE CONTEXT BLOCK'S OWN PRICES. `changed_since_last_book` names a was/now
+    # pair for the heaviest strike and each wall, read off the diary row rather
+    # than the rebuilt scene — so those prices were absent here and the gate
+    # deleted any point built on the very block the doctrine tells the model to
+    # trust. Measured: 14 of the 32 scans in the newest session that carried a
+    # change block named at least one price the gate would have rejected.
+    for mv in ((scene.get("context") or {}).get("changed_since_last_book") or {}).values():
+        if isinstance(mv, dict):
+            for side in ("was", "now"):
+                v = _fin(mv.get(side))
+                if v is not None:
+                    out.add(round(v, 2))
     # THE GAMMA FLIP IS DELIBERATELY NOT A NAMEABLE LEVEL, and this is the one
     # exclusion worth spelling out because the flip looks more like a level than
     # anything else on the board.
@@ -1398,8 +1413,13 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
         """Every number in the prose must exist in the scene, allowing the
         rounding a person would actually use out loud."""
         for m in _NUM_RE.finditer(text or ""):
-            n = float(m.group(0))
-            if abs(n) <= 1.0:            # counts, small ratios, clock figures
+            n = float(m.group(0).replace(",", ""))
+            # 1.0 was the floor because counts and clock figures cluster there.
+            # It also made every SIGMA unreachable — wall sigmas, the flip band,
+            # top_strike_sigma, moved_last_30min_sigma are all under 1.0 — which
+            # is exactly the class of number the doctrine forbids the model from
+            # computing. 0.05 keeps small counts out and brings sigmas back in.
+            if abs(n) <= 0.05:
                 continue
             dp = len(m.group(0).split(".")[1]) if "." in m.group(0) else 0
             tol = max(0.5 * 10 ** -dp, 0.011)
@@ -1424,13 +1444,16 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
     points = []
     for pt in (obj.get("points") or [])[:_OBS_MAX * 2]:
         if not isinstance(pt, dict):
+            dropped.append("point_malformed")
             continue
         note = _clip(str(pt.get("note") or "").strip(), 160)
         lvl = _fin(pt.get("level"))
         if not note or lvl is None:
             dropped.append("point_malformed")
             continue
-        if round(lvl, 2) not in levels:
+        # half a dollar of tolerance, matching the prose gate. The grid carries
+        # halves (1487.5, 1465), and a reader saying "1488" is speaking.
+        if not any(abs(lvl - x) <= 0.5 for x in levels):
             # a level the board does not contain is the one invention that
             # matters most: it sends a reader to a price nothing measured.
             dropped.append(f"level_not_on_the_board:{lvl:g}")
@@ -1442,8 +1465,12 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
         if not _numbers_check(note, "point"):
             continue
         points.append({"level": lvl, "note": note})
-        if len(points) >= _OBS_MAX:
-            break
+    if len(points) > _OBS_MAX:
+        # never drop without saying so. Truncating in silence recorded the model
+        # as having CHOSEN to say less than it did, which corrupts the one
+        # distinction the nightly audit is built on.
+        dropped.append(f"points_truncated_to_{_OBS_MAX}")
+        points = points[:_OBS_MAX]
 
     # QUIET MEANS NO LEVELS TO WATCH, not silence. The prose stays either way:
     # on a quiet read it says in one line why the board is ordinary, and that
@@ -2936,11 +2963,10 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         except Exception:
             pass
     r = out["reading"] or {}
-    n = len(r.get("notable") or [])
+    n = len(r.get("points") or [])
     print(f"sndk-read :: {wake} | arrow={arrow['dir'] or 'silent'} | "
-          f"{n} unusual" + (f" ({r['abstain']})" if r.get("abstain") else "")
-          + f" | {wall}s | "
-          + (r.get("say") or r.get("quiet_because") or out["error"] or ""))
+          f"{n} to watch" + (f" ({r['abstain']})" if r.get("abstain") else "")
+          + f" | {wall}s | " + (r.get("read") or out["error"] or ""))
     return 0
 
 

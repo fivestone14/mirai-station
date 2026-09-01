@@ -884,14 +884,12 @@ def _every_scene_shape(tmp_path):
 # describing the reply it wants, and they are not scene fields — checking them
 # against the scene is a category error, not a caught bug.
 _OUTPUT_SCHEMA_NAMES = {
-    "paths", "values", "say", "quiet", "quiet_because", "notable", "unknowns",
-    "watch", "novelty", "basis", "window", "what", "would_change", "path",
-    "stale_min", "n_sessions", "pctile", "one_witness_with",
-    "used",          # obs-1b: the model names the candidates it is speaking about
-    "read", "points", "level", "note", "context",   # obs-2's reply and its
-                    # one input block; `context` IS a scene key, but it is only
-                    # built when there is history to state, so the fixtures
-                    # cannot always produce it
+    # obs-2's reply shape, and ONLY obs-2's. The obs-1 vocabulary was left in
+    # here when the contract changed, and it exempted exactly the two fields the
+    # doctrine still wrongly named — `paths` and `unknowns` — so the guard
+    # written to catch a sentence outliving its field was blindfolded to the
+    # only two live instances of it. A stale allow-list is worse than none.
+    "read", "points", "level", "note", "quiet",
 }
 
 _UNREACHABLE_IN_FIXTURES = {

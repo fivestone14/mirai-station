@@ -520,9 +520,16 @@ def test_context_states_facts_and_never_verdicts():
     ctx = SR.session_context({}, rows, T0) or {}
     ch = ctx.get("changed_since_last_book") or {}
     assert ch.get("gamma_sign") == {"was": "negative", "now": "positive"}
-    # a rank is a fact; "unusual" would be a verdict
-    for v in (ctx.get("vs_prior_sessions") or {}).values():
-        assert "unusual" not in v and "extreme" not in v
+    # THE VERDICT HALF, ON A SCENE THAT CAN ACTUALLY PRODUCE A RANK. Passing an
+    # empty scene made `vs_prior_sessions` absent, so the loop below ran zero
+    # times and the half of this test its name promises was dead code.
+    sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+    ranks = (SR.session_context(sc, rows, T0) or {}).get("vs_prior_sessions")
+    if ranks:                       # absent under PCTL_MIN_SESSIONS, which is fine
+        for v in ranks.values():
+            assert not SR.banned_words(v), v
+            assert "unusual" not in v and "extreme" not in v
+            assert "of the" in v and "sessions" in v   # a rank states its n
 
 
 def test_a_transition_out_of_not_measured_is_not_a_change():

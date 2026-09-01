@@ -10921,7 +10921,11 @@ function snkArrowBlock(a, now){
 // machine output. One formatter, shared by the overlay and the history modal.
 function MEM_PX(v){
   const n=Number(v);
-  return isFinite(n) ? (Math.abs(n)>=100 ? n.toFixed(0) : n.toFixed(2)) : '';
+  if(!isFinite(n)) return '';
+  // HALF-STRIKES ARE REAL on this name (1487.5, 1465). Rounding every level
+  // over 100 to whole dollars displayed an accepted 1487.5 as "1488" — a price
+  // the level gate itself would have rejected. Show the halves, drop the noise.
+  return (Math.round(n*10)===Math.round(n)*10) ? n.toFixed(0) : n.toFixed(2);
 }
 function snkObsBox(R){
   if(!R) return '';
@@ -10940,21 +10944,17 @@ function snkObsBox(R){
       +(forced?`<b>every observation was dropped by the checks</b>`:'')
       +`</div>`;
   }
-  const rows=obs.map(o=>{
-    const v=Array.isArray(o.values)?o.values.join(', '):'';
-    const b=o.basis||{};
-    const rank=(b.pctile!=null&&b.n_sessions!=null)
-      ? ` · ${e(b.pctile)}th of ${e(b.n_sessions)} sessions` : '';
-    // the pointer is shown, not hidden: it is the thing that was checked, and
-    // seeing it is how a reader knows the sentence was not free-written
-    const src=(o.paths||[]).map(x=>e(x)).join(' ');
-    return `<li><span class="w">${e(o.what)}</span>`
-      +`<span class="m">${e(v)}${rank}${o.window?` · ${e(o.window)}`:''}</span>`
-      +`<span class="p" title="${src}">${e((o.paths||[])[0]||'')}</span></li>`;
-  }).join('');
+  // obs-2: a POINT is a level on the board plus a few words on why it is worth
+  // watching. The level leads, because a level is the thing a reader acts on.
+  // This mapper still read o.what/o.values/o.basis/o.paths after the header was
+  // switched to R.points — none of which exist on a point — and since
+  // e(undefined) is the empty string it threw nothing and rendered three empty
+  // boxes per row. The entire deliverable was invisible and no test touched it.
+  const rows=obs.map(o=>`<li><span class="m">${e(MEM_PX(o.level))}</span>`
+      +`<span class="w">${e(o.note)}</span></li>`).join('');
   const n=obs.length;
-  return `<div class="obs" data-name="Observation" data-tip="${e(n+' thing'+(n===1?'':'s')+' the model found unusual.¦f:every number below was checked against the scene before you saw it — a claim whose pointer did not resolve was deleted, not corrected¦k:at most 3, and fewer is normal')}">`
-    +`<i>${n} unusual</i>`
+  return `<div class="obs" data-name="Observation" data-tip="${e(n+' level'+(n===1?'':'s')+' the model picked out of the whole board.¦f:it reads every part of the scene and decides for itself what matters — nothing is pre-selected¦k:every number it says is checked against the scene first; one that is not on the board is deleted, not corrected¦n:at most 3, and fewer is normal')}">`
+    +`<i>${n} to watch</i>`
     +(R.read?`<p class="say">${e(R.read)}</p>`:'')
     +`<ul>${rows}</ul>`
     +((R.unknowns||[]).length?`<div class="unk">not measured: `

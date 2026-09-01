@@ -157,10 +157,16 @@ def build_voice_scene(now: datetime | None = None) -> dict | None:
         # model's opinion, which the voice doctrine then tells it to quote and
         # attribute. It would have spoken a forecast the reader never made,
         # which is precisely the artefact obs-1 exists to delete.
-        notable = r.get("notable") or []
+        # obs-2. `say`, `quiet_because` and `notable` are all gone, so `says`
+        # was always None and stripped by the prune below, and `found_unusual`
+        # was a constant zero — the voice model was told to attribute a reading
+        # that reached it empty, and would have said "the reader has seen
+        # nothing unusual" on a read that named three levels.
+        points = r.get("points") or []
         reader = {
-            "says": r.get("say") or (r.get("quiet_because") if r.get("quiet") else None),
-            "found_unusual": len(notable),
+            "says": r.get("read") or None,
+            "levels": [p.get("level") for p in points if p.get("level") is not None] or None,
+            "watching": len(points) or None,
             "quiet": True if r.get("quiet") else None,
             "age_min": read.get("reading_age_min"),
         }

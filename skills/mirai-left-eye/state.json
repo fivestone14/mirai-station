@@ -1,4 +1,12 @@
 {
-  "date": "2026-07-31",
-  "armed": {}
+  "date": "2026-08-31",
+  "armed": {
+    "SPX:call": {
+      "disarmed": false,
+      "fired_signals": [
+        "reversion_extreme"
+      ],
+      "ts": "2026-08-31T11:35:00.285347-04:00"
+    }
+  }
 }
