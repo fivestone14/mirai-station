@@ -346,7 +346,7 @@ def test_walls_two_per_side_nearest_first():
     assert [x["strike"] for x in w["put"]] == [1150.0, 1100.0]
     for x in w["call"] + w["put"]:
         # share of book |γ|, percentage points
-        assert 0 < x["share_of_book_gamma_pp"] <= 100
+        assert 0 < x["cluster_share_of_book_gamma_pp"] <= 100
     assert w["call"][0]["sigma"] == pytest.approx(0.4)
 
 
@@ -438,9 +438,9 @@ def test_wall_gamma_share_is_of_the_full_surface():
     floor, so 'the wall's share rose' could be pure denominator churn."""
     sc = scene_of(rich_row())
     # full surface: 6+7+8+7+6.5 walls + 36 sub-floor strikes at 0.1 = 38.1
-    assert sc["walls"]["call"][0]["share_of_book_gamma_pp"] == pytest.approx(
+    assert sc["walls"]["call"][0]["cluster_share_of_book_gamma_pp"] == pytest.approx(
         15.0 / 38.1 * 100, abs=0.2)
-    assert sum(w["share_of_book_gamma_pp"] for s in ("call", "put")
+    assert sum(w["cluster_share_of_book_gamma_pp"] for s in ("call", "put")
                for w in sc["walls"].get(s, [])) < 100.0
 
 
@@ -581,7 +581,7 @@ def test_walls_survive_nan_in_the_surface():
     sc = scene_of(row)
     for side in ("call", "put"):
         for w in (sc.get("walls") or {}).get(side, []):
-            share = w["share_of_book_gamma_pp"]
+            share = w["cluster_share_of_book_gamma_pp"]
             assert share == share                # never NaN
     assert "NaN" not in json.dumps(sc)
 
@@ -645,8 +645,8 @@ def test_heaviest_wall_ships_when_the_ladder_would_hide_it():
     puts = sc["walls"]["put"]
     hb = sc["walls"].get("put_heaviest_wall_behind_the_ladder")
     if hb:                                   # only when it is not in the ladder
-        assert hb["share_of_book_gamma_pp"] >= max(
-            p["share_of_book_gamma_pp"] for p in puts)
+        assert hb["cluster_share_of_book_gamma_pp"] >= max(
+            p["cluster_share_of_book_gamma_pp"] for p in puts)
         assert hb["strike"] not in {p["strike"] for p in puts}
 
 

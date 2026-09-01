@@ -1205,7 +1205,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - breadth: `lopsidedness_0_is_even` is how one-sided the book's resistance is. It NEVER points a direction — both readings of which side a heavy book favours are unestablished here. `heavier_side` names a side as a fact, not a lean. It reads THE SAME GAMMA PILE as the magnet — always, by construction — so breadth agreeing with the magnet is one witness twice, not two witnesses.
 - momentum: the ONLY block here that describes change during today's session. `window_between_books` tells you exactly what was compared — `books_compared` distinct books spanning `span_min` minutes, measured on the book clock, not the scan clock. `share_of_book_gamma_change_pp` and `gross_volume_change_contracts` are the change itself; there is no verdict word, because a fixed threshold cannot tell building from noise. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
 - dealer_positioning: standing dealer positioning as of last night's close. `net_delta_bn` is $-delta in billions from an assumed-sign book, and ITS SIGN IS AN ARTIFACT OF THE FORMULA, which cannot produce another one — it has been positive on every one of 4,149 recorded scans, ranging 1.15 to 8.24 and never once crossing zero. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only `net_delta_change_30min_bn` can be news. `net_vanna_musd_per_vol_point` only matters when vol_trend is moving.
-- walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `share_of_book_gamma_pp` is the wall's share of total book gamma — that number, not the position, says how heavy a wall is. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
+- walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `cluster_share_of_book_gamma_pp` is the CLUSTER's share of the whole signed surface — that number, not the position, says how heavy a wall is. It is deliberately NOT called `share_of_book_gamma_pp`: the magnet's field of that name is ONE STRIKE's share of a different surface, and the two disagree by a median 38% on strikes that appear in both. Never compare one to the other or add them together. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
 - WHICH LEVELS YOU MAY NAME. You may name the magnet's top strike, and the strikes in the magnet list. You may NOT name a call wall or a put wall as a level where anything happens. This is arithmetic, not politeness: those two are DEFINED as the heaviest strike on their side of spot, so the call wall is above price and the put wall below it, always, on every row ever recorded. The instant price rises through a call wall, that strike stops qualifying and a different one takes the name. Measured: a wall relabels on a crossing 100% of the time, within a median of zero minutes, while the magnet relabels 0% of the time and is still the same strike 40 minutes later on 99% of occasions. A wall is real structure and you may describe how heavy it is; it is not a place price can be said to reach or break, because the label moves out of the way.
 - history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_has_no_wall` flag or `flip.no_flip_anywhere_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a no-wall flag = known empty. Never confuse the two.
@@ -1285,6 +1285,43 @@ def banned_words(text: str) -> list[str]:
     return sorted({m.group(0).lower() for m in _BANNED_RE.finditer(text or "")})
 
 
+def _board_levels(scene) -> set:
+    """Prices the board actually names — strikes, walls, the flip, spot.
+
+    A `level` used to be checked against every number anywhere in the scene,
+    which let `4.1` (the book refresh interval), `13.1` (a gamma percentage),
+    `246` (minutes a wall had held) and `120` (the scan count) all pass as
+    prices on a $1,500 stock. A level is the one field a reader acts on, so it
+    is checked against the things that ARE prices."""
+    out = set()
+    mag = scene.get("magnet") or {}
+    for t in (mag.get("top_strikes") or []):
+        v = _fin(t.get("strike"))
+        if v is not None:
+            out.add(round(v, 2))
+    w = scene.get("walls") or {}
+    for side in ("call", "put"):
+        for e in (w.get(side) or []):
+            v = _fin(e.get("strike"))
+            if v is not None:
+                out.add(round(v, 2))
+        hv = w.get(f"{side}_heaviest_wall_behind_the_ladder") or {}
+        v = _fin(hv.get("strike"))
+        if v is not None:
+            out.add(round(v, 2))
+    pr = scene.get("price") or {}
+    for k in ("live_spot", "spot_when_book_was_measured",
+              "session_high", "session_low"):
+        v = _fin(pr.get(k))
+        if v is not None:
+            out.add(round(v, 2))
+    ch = ((scene.get("regime") or {}).get("charm") or {})
+    v = _fin(ch.get("drifts_toward_strike"))
+    if v is not None:
+        out.add(round(v, 2))
+    return out
+
+
 def _scene_numbers(scene) -> set:
     """Every number anywhere in the scene, rounded to 2dp.
 
@@ -1322,6 +1359,7 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
     that exists, and the vocabulary stays descriptive. Nothing here tells the
     model WHAT to find."""
     nums = _scene_numbers(scene)
+    levels = _board_levels(scene)
     dropped: list[str] = []
 
     def _numbers_check(text, tag):
@@ -1333,7 +1371,12 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
                 continue
             dp = len(m.group(0).split(".")[1]) if "." in m.group(0) else 0
             tol = max(0.5 * 10 ** -dp, 0.011)
-            if not any(abs(n - v) <= tol for v in nums):
+            # SIGN-BLIND ON PURPOSE. "down about 1.7% on the day" against a
+            # scene carrying vs_prior_close_pct: -1.72 was deleting the whole
+            # sentence, because the gate looked for +1.7. "Down about X" is how
+            # people say a negative number out loud, and the direction is
+            # already carried by the word next to it.
+            if not any(abs(abs(n) - abs(v)) <= tol for v in nums):
                 dropped.append(f"{tag}_number_not_on_the_board:{m.group(0)}")
                 return False
         return True
@@ -1355,7 +1398,7 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
         if not note or lvl is None:
             dropped.append("point_malformed")
             continue
-        if round(lvl, 2) not in nums:
+        if round(lvl, 2) not in levels:
             # a level the board does not contain is the one invention that
             # matters most: it sends a reader to a price nothing measured.
             dropped.append(f"level_not_on_the_board:{lvl:g}")
@@ -2006,8 +2049,24 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
         return None
 
     def entry(c, age=None):
+        # `cluster_share_of_book_gamma_pp`, NOT `share_of_book_gamma_pp`. The
+        # two were the same name carrying different quantities: the magnet's is
+        # ONE STRIKE's share of the window's mass surface, this one is a
+        # CLUSTER's share of the whole signed surface. Different numerator,
+        # different denominator, one name.
+        #
+        # Measured over 167 replayed scenes, 136 strikes appeared in both blocks
+        # and disagreed by a median 3.45pp — 38% relative — with 69% off by more
+        # than 2pp and a worst case of 23.14 against 82.1 for strike 1600 in the
+        # same scene. Handed both, a model has no way to reconcile them, and in
+        # trial it did what anyone would: invented a "live scan versus last
+        # night's close" distinction that does not exist, to explain a
+        # contradiction that is ours rather than the market's.
+        #
+        # sr-7's rule was that a leaf must survive being read alone. Two leaves
+        # sharing a name is the sharpest possible violation of it.
         e = {"strike": c["peak"], "sigma": sd(c["peak"]),
-             "share_of_book_gamma_pp": round(c["strength"] / tot * 100.0, 1)}
+             "cluster_share_of_book_gamma_pp": round(c["strength"] / tot * 100.0, 1)}
         if age is not None:
             mins, exact = age
             e["unchanged_for_min" if exact
