@@ -192,16 +192,10 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
         # search actually wants: "which prices did it keep coming back to, and
         # what did the board look like around them".
         "levels": [p.get("level") for p in points if p.get("level") is not None][:6],
-        # THE AGGREGATOR'S ARROW IS DELIBERATELY NOT STORED (adversarial audit
-        # 08-02): §05's Face A holds "the direction + magnitude CLAUDE gave" —
-        # the model's own past vector is sanctioned memory; the deterministic
-        # arrow is the very verdict the scene redesign stripped, and slices
-        # are one allow-listed call away at exactly the uncertain moments
-        # where anchoring bites. Same rule for wake strings that name the
-        # arrow ("arrow appeared"/"stood down") — neutralized to "gate event".
-        "wake": ("gate event"
-                 if str(read_out.get("wake") or "").startswith("arrow")
-                 else read_out.get("wake")),
+        # Lane A (the deterministic arrow) was removed with obs-3, so there is
+        # no arrow to withhold and no arrow-named wake left to neutralize —
+        # old slices keep their "gate event" stamps as history.
+        "wake": read_out.get("wake"),
     }
     rec = {"ts": now.isoformat(), "kind": "slice", "rag_v": RAG_V,
            "era": read_out.get("era"),

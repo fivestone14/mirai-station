@@ -256,9 +256,6 @@ SHOVE_SEP_REL = 0.30        # |up - down| / max(|up|,|down|). 53.5% of scans sit
 PATH_STRETCH_SIGMA = 0.30   # price already travelled this far in 30 min -> the
                             # arrow wears a "already ran" caution. Median 30-min
                             # move is 0.077σ, so this marks a genuine outlier.
-MIN_DWELL_MIN = 15          # no direction reversal within this many minutes of
-                            # the last one, ever (anti-flicker, S9)
-
 # --- what the model may NOT cite ---------------------------------------------
 # Neither of these gates the arrow; both gate the SENTENCE. A reading is only
 # honest if the number behind it could still have changed today.
@@ -773,121 +770,18 @@ def _layers(row: dict) -> list[dict]:
     return out
 
 
-def aggregate(row: dict, prev: Optional[dict], now: datetime) -> dict:
-    """Silence unless the magnet has genuinely separated AND the mass behind it
-    is broad. Direction comes from the magnet alone; shove can only veto.
-
-    This is the whole anti-narrative mechanism. An LLM handed this surface will
-    always find a coherent story; a gate handed a 3.9pp tie returns nothing, and
-    nothing is the honest answer on ~91% of scans."""
-    layers = _layers(row)
-    by = {l["name"]: l for l in layers}
-    src, breadth = by.get("magnet"), by.get("shove")
-
-    why: Optional[str] = None
-    direction: Optional[str] = None
-    if src is None:
-        why = "no strike mass reported"
-    elif not src["admissible"]:
-        why = (f"no strike is in charge — top two are "
-               f"{src['sep']}pp apart, needs {src['sep_needs']}pp")
-    elif breadth is None:
-        why = "terrain unreported"
-    elif not breadth["admissible"]:
-        why = (f"the book is too flat to trust one strike "
-               f"({breadth['sep']} lopsidedness, needs {breadth['sep_needs']})")
-    else:
-        direction = src["dir"]
-
-    # --- minimum dwell: a reversal must wait out MIN_DWELL_MIN ---------------
-    # Re-reasoning a barely-changed payload flips arrows for reasons that do not
-    # exist in the market. The payload is identical scan-to-scan 98.3% of the
-    # time for the magnet, so without this the arrow's motion IS the noise.
-    prev_arrow = (prev or {}).get("arrow") or {}
-    prev_dir = prev_arrow.get("dir")
-    since = prev_arrow.get("since")
-    run = int(prev_arrow.get("run") or 0)
-    issued_spot = prev_arrow.get("issued_spot")
-    held = False
-    if prev_dir and direction != prev_dir and since:
-        # Dwell covers EVERY state change, not just up<->down. Replayed on
-        # 07-31 a reversal-only rule still let the arrow appear and stand down
-        # 20 times in a session — the same flicker wearing a different shape,
-        # and each flap spent a call. A live arrow holds its ground for
-        # MIN_DWELL_MIN and says it is fading rather than blinking out.
-        st = _parse_ts(since)
-        if st and (now - st) < timedelta(minutes=MIN_DWELL_MIN):
-            age = int((now - st).total_seconds() // 60)
-            held_why = why
-            # NAME THE EVENT BEFORE REASSIGNING. `direction` is about to become
-            # prev_dir (always truthy here), so testing it after the assignment
-            # made the 'stand-down' branch unreachable and every held stand-down
-            # printed "reversal held" — seen live at 10:32 on 07-31.
-            kind = "reversal" if direction else "stand-down"
-            direction, held = prev_dir, True
-            why = (f"{kind} held — {prev_dir} is only {age}m old "
-                   f"(needs {MIN_DWELL_MIN}m)"
-                   + (f"; {held_why}" if held_why else ""))
-
-    if direction and direction != prev_dir:
-        since = now.isoformat()
-        run += 1
-        issued_spot = row.get("spot")
-    elif not direction:
-        since, issued_spot = None, None
-
-    # --- the ghost: the last COMPLETED call, and it persists ---------------
-    # The first cut read `prev_dir` straight off the previous row, which meant
-    # that while a call was live the "ghost" was that same call's own origin —
-    # replayed over 07-30 it duplicated the live arrow on 25 of the 26 rows it
-    # appeared — and one scan after a call died it vanished entirely, because
-    # the row after that had no prev_dir left to read. That is the opposite of
-    # its stated job: a bad call is supposed to STAY visible.
-    #
-    # So the ghost is now written only when a call ENDS (reverses or stands
-    # down), and it is carried forward untouched until another call ends. It can
-    # never be the live arrow, and it does not evaporate the moment it becomes
-    # inconvenient. A held reversal is not an ending — dwell restored the
-    # direction, so nothing completed.
-    ghost = prev_arrow.get("ghost")
-    if (prev_dir and not held and direction != prev_dir
-            and prev_arrow.get("issued_spot") is not None):
-        ghost = {"dir": prev_dir, "spot": prev_arrow.get("issued_spot"),
-                 "since": prev_arrow.get("since"), "ended": now.isoformat()}
-
-    # the caution flag — independent of the book, so it is the one cross-check
-    # here that is not the magnet wearing a different hat
-    path = by.get("path")
-    caution = None
-    if direction and path and path.get("stretched"):
-        ran_up = (path.get("ran") or 0) > 0
-        if (ran_up and direction == "up") or ((not ran_up) and direction == "down"):
-            caution = (f"price already ran {path['ran']:+.2f}σ this way in 30 min — "
-                       f"the move may be behind it")
-
-    return {
-        "dir": direction,
-        "state": "call" if direction else "silent",
-        "since": since,
-        # the run counter is the day's Nth call and it never rewinds — a silent
-        # scan keeps the count so the NEXT call is numbered against the session,
-        # not against the current streak
-        "run": run,
-        "issued_spot": issued_spot,
-        "held_reversal": held,
-        # the arrow is standing its ground on dwell while its own gate has
-        # already failed — the chart draws it dimmed, not solid
-        "fading": why if held else None,
-        "caution": caution,
-        "layers": layers,
-        "silent_because": None if direction else why,
-        "ghost": ghost,
-    }
-
-
-# ---------------------------------------------------------------------------
-# frozen-field detection — what the model may NOT cite
-# ---------------------------------------------------------------------------
+# LANE A REMOVED (obs-3, 2026-09-01). `aggregate()` — the deterministic arrow
+# with its magnet voter, breadth veto, 15-minute dwell, path caution and ghost —
+# lived here for two months. Deleted deliberately, not lost:
+#   it was a DIRECTION surface on a system whose redesign says the direction
+#     call measured worthless (391 readings, zero forward value);
+#   its own content was audited at pointing to the nearest round hundred on
+#     94% of 51 episodes — a round-number detector wearing a signal's clothes;
+#   its state changes woke the model (11% of calls) while the scene deliberately
+#     hid the arrow from the model, so those calls could never be narrated;
+#   and two philosophies on one screen teach a reader to trust neither.
+# The scene never carried it (sr-2), so the model's contract is untouched. Old
+# read rows keep their `arrow` field as history; nothing writes a new one.
 def frozen_fields(rows: list[dict], now: datetime) -> list[dict]:
     """Fields that have not moved for FROZEN_MIN minutes.
 
@@ -2951,27 +2845,14 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     calls = [r for r in reads if r.get("wall_s") is not None]
     last_call = calls[-1] if calls else None
 
-    spoken = sum(1 for r in reads if (r.get("arrow") or {}).get("dir"))
     if len(calls) >= DAILY_CALL_CAP:
         print(f"sndk-read :: daily cap {DAILY_CALL_CAP} reached")
         return 0
 
-    # The arrow is pure Python over a row already on disk, so it costs nothing
-    # and is recomputed EVERY run — the chart is never showing a stale direction
-    # just because the model was asleep. Only the READING is wake-gated, because
-    # only the reading costs a call.
     row = with_path(row, rows)
     band = magnet_band(row)
-    arrow = aggregate(row, prev, now)
     frozen = frozen_fields(rows, now)
     wake = should_wake(row, prev_row, last_call, now, rows)
-
-    # a direction that just appeared, vanished, or reversed is itself news and
-    # must never wait for the clock — this is the one wake reason the book's own
-    # fingerprint cannot express
-    prev_dir = ((prev or {}).get("arrow") or {}).get("dir")
-    if arrow["dir"] != prev_dir and not arrow.get("held_reversal"):
-        wake = wake or ("arrow appeared" if arrow["dir"] else "arrow stood down")
 
     # sr-6: the pulse check. Nothing here ever asked how old the newest row
     # was — a dead scanner, a halt, or a feed refusing ticks all read as an
@@ -3014,8 +2895,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         "book_asof": (row.get("meta") or {}).get("book_asof"),
         "scan_age_min": scan_age,
         "spot": row.get("spot"), "sigma": row.get("sigma"),
-        "arrow": arrow, "magnet_band": band, "frozen": frozen,
-        "spoke": spoken + (1 if arrow["dir"] else 0), "scans": len(rows),
+        "magnet_band": band, "frozen": frozen, "scans": len(rows),
         # wk-1: the state the NEXT gate compares against. Written on every read
         # row, not only on the ones that spend a call, so a restart mid-session
         # cannot leave the gate with nothing to measure from.
@@ -3037,26 +2917,23 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         out["reading_age_min"] = (int((now - rts).total_seconds() // 60)
                                   if rts else None)
         atomic_io.append_jsonl(_reads_dir() / f"{day}.jsonl", out)
-        print(f"sndk-read :: quiet | arrow={arrow['dir'] or 'silent'} "
-              f"(reading carried forward)")
+        print("sndk-read :: quiet (reading carried forward)")
         return 0
 
-    # PAUSED: the wake gate fired and we record that it fired — the row keeps its
-    # arrow, its gate separations, its magnet ranking and the reason it woke, so
-    # the training set has no hole where the reasoning would have been. Only the
-    # sentence is withheld, and the row says so rather than looking like a scan
-    # that had nothing to say.
+    # PAUSED: the wake gate fired and we record that it fired — the row keeps
+    # its magnet ranking and the reason it woke, so the record has no hole where
+    # the reasoning would have been. Only the sentence is withheld, and the row
+    # says so rather than looking like a scan that had nothing to say.
     if not reasoning_on():
         out["paused"] = True
         out["reading"] = None
         atomic_io.append_jsonl(_reads_dir() / f"{day}.jsonl", out)
-        print(f"sndk-read :: PAUSED | {wake} | arrow={arrow['dir'] or 'silent'} "
-              f"| row recorded, no model call")
+        print(f"sndk-read :: PAUSED | {wake} | row recorded, no model call")
         return 0
 
     if dry:
         print(json.dumps({k: out[k] for k in
-                          ("ts", "wake", "spot", "arrow", "magnet_band", "frozen")},
+                          ("ts", "wake", "spot", "magnet_band", "frozen")},
                          indent=1, default=str))
         print("--- scene handed to the model ---")
         print(json.dumps(scene, indent=1, default=str))
@@ -3108,8 +2985,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
             pass
     r = out["reading"] or {}
     n = len(r.get("points") or [])
-    print(f"sndk-read :: {wake} | arrow={arrow['dir'] or 'silent'} | "
-          f"{n} to watch" + (f" ({r['abstain']})" if r.get("abstain") else "")
+    print(f"sndk-read :: {wake} | {n} to watch"
+          + (f" ({r['abstain']})" if r.get("abstain") else "")
           + f" | {wall}s | " + (r.get("read") or out["error"] or ""))
     return 0
 

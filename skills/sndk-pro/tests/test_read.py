@@ -63,147 +63,10 @@ def test_band_empty_is_honest_not_zero():
     assert b["top"] == [] and b["gap_pp"] is None and b["tie"] is True
 
 
-# --- the aggregator: silence is the default --------------------------------
-def test_silent_when_no_strike_is_in_charge():
-    a = SR.aggregate(mkrow([[1300, 104], [1100, 100]]), None, T0)
-    assert a["dir"] is None and a["state"] == "silent"
-    assert "no strike is in charge" in a["silent_because"]
-
-
-def test_silent_when_the_book_is_too_flat():
-    """Magnet separated but the mass is not lopsided — breadth vetoes."""
-    a = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=1.0, dn=1.0), None, T0)
-    assert a["dir"] is None
-    assert "too flat" in a["silent_because"]
-
-
-def test_direction_comes_from_the_magnet_alone():
-    a = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1), None, T0)
-    assert a["dir"] == "up"                      # 1300 sits above spot 1200
-    src = [l for l in a["layers"] if l["name"] == "magnet"][0]
-    assert src["role"] == "source" and src["dir"] == "up"
-
-
-def test_shove_never_votes():
-    """Shove and the magnet are the same gamma mass measured twice — replayed,
-    they agreed 69/69. It may gate, it may never supply a direction."""
-    a = SR.aggregate(mkrow([[1100, 60], [1300, 20]], up=2.0, dn=0.1), None, T0)
-    sh = [l for l in a["layers"] if l["name"] == "shove"][0]
-    assert sh["role"] == "breadth"
-    assert sh["dir"] is None
-    assert "dir_raw" not in sh                   # no smuggled second opinion
-    assert a["dir"] == "down"                    # magnet 1100 is below spot
-
-
-def test_every_layer_cites_a_checkable_number():
-    a = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1), None, T0)
-    for l in a["layers"]:
-        assert l["cite"] and any(ch.isdigit() for ch in l["cite"])
-
-
-# --- dwell: a live call must not blink -------------------------------------
-def _prev(dir_, since, spot=1200.0):
-    return {"ts": since.isoformat(), "spot": spot,
-            "arrow": {"dir": dir_, "since": since.isoformat(), "run": 1,
-                      "issued_spot": spot}}
-
-
-def test_reversal_is_held_inside_the_dwell():
-    prev = _prev("up", T0 - timedelta(minutes=5))
-    a = SR.aggregate(mkrow([[1100, 60], [1300, 20]], up=2.0, dn=0.1),
-                     prev, T0)
-    assert a["dir"] == "up" and a["held_reversal"] is True
-    assert a["fading"] and "only 5m old" in a["fading"]
-
-
-def test_stand_down_is_also_held():
-    """A reversal-only rule still let the arrow blink 20x in one session."""
-    prev = _prev("up", T0 - timedelta(minutes=3))
-    a = SR.aggregate(mkrow([[1300, 104], [1100, 100]]), prev, T0)   # gate fails
-    assert a["dir"] == "up" and a["held_reversal"] is True
-    assert a["state"] == "call" and a["silent_because"] is None
-
-
-def test_reversal_allowed_once_the_dwell_expires():
-    prev = _prev("up", T0 - timedelta(minutes=SR.MIN_DWELL_MIN + 1))
-    a = SR.aggregate(mkrow([[1100, 60], [1300, 20]], up=2.0, dn=0.1),
-                     prev, T0)
-    assert a["dir"] == "down" and a["held_reversal"] is False
-    assert a["run"] == 2                        # a new call increments the run
-
-
-def test_ghost_is_written_when_a_call_ends():
-    prev = _prev("down", T0 - timedelta(minutes=40), spot=1150.0)
-    a = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1), prev, T0)
-    assert a["dir"] == "up"                      # the down call just ended
-    assert a["ghost"]["dir"] == "down"
-    assert a["ghost"]["spot"] == 1150.0
-    assert a["ghost"]["ended"] == T0.isoformat()
-
-
-def test_ghost_is_never_the_live_arrow():
-    """The first cut read prev_dir straight off the last row, so while a call was
-    live the ghost was that same call's own origin — 25 of 26 rows on 07-30."""
-    prev = _prev("up", T0 - timedelta(minutes=40))
-    a = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1), prev, T0)
-    assert a["dir"] == "up" and a["ghost"] is None
-
-
-def test_ghost_persists_while_nothing_ends():
-    """It used to survive exactly one row, which is the opposite of 'a bad call
-    stays visible'. Now it holds until ANOTHER call completes."""
-    prev = _prev("down", T0 - timedelta(minutes=40), spot=1150.0)
-    ended = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1), prev, T0)
-    assert ended["ghost"]["dir"] == "down"
-    # two more scans on the SAME live call — nothing completes, ghost untouched
-    cur = ended
-    for k in (2, 4):
-        cur = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1),
-                           {"ts": T0.isoformat(), "spot": 1200.0, "arrow": cur},
-                           T0 + timedelta(minutes=k))
-        assert cur["dir"] == "up"
-        assert cur["ghost"]["dir"] == "down" and cur["ghost"]["spot"] == 1150.0
-
-
-def test_the_newest_completed_call_becomes_the_ghost():
-    prev = _prev("down", T0 - timedelta(minutes=40), spot=1150.0)
-    up = SR.aggregate(mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1), prev, T0)
-    late = T0 + timedelta(minutes=SR.MIN_DWELL_MIN + 1)
-    dead = SR.aggregate(mkrow([[1300, 104], [1100, 100]]),        # gate fails
-                        {"ts": T0.isoformat(), "spot": 1200.0, "arrow": up}, late)
-    assert dead["dir"] is None                    # the up call has now ended...
-    assert dead["ghost"]["dir"] == "up"           # ...so IT is the ghost
-    assert dead["ghost"]["ended"] == late.isoformat()
-
-
-def test_a_held_reversal_does_not_end_a_call():
-    """Dwell restored the direction, so nothing completed and no ghost is cut."""
-    prev = _prev("up", T0 - timedelta(minutes=3))
-    a = SR.aggregate(mkrow([[1100, 60], [1300, 20]], up=2.0, dn=0.1), prev, T0)
-    assert a["held_reversal"] is True and a["ghost"] is None
-
-
-def test_held_stand_down_says_stand_down():
-    """`direction` was reassigned before the branch test, so 'stand-down' was
-    unreachable and every held stand-down printed 'reversal held'."""
-    prev = _prev("up", T0 - timedelta(minutes=3))
-    a = SR.aggregate(mkrow([[1300, 104], [1100, 100]]), prev, T0)
-    assert "stand-down held" in a["fading"]
-    assert "reversal" not in a["fading"]
-
-
-# --- the caution flag ------------------------------------------------------
-def test_caution_when_price_already_ran_that_way():
-    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    row["_ran_30m_sigma"] = 0.5                 # ran UP, arrow points UP
-    a = SR.aggregate(row, None, T0)
-    assert a["dir"] == "up" and a["caution"] and "already ran" in a["caution"]
-
-
-def test_no_caution_when_price_ran_the_other_way():
-    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    row["_ran_30m_sigma"] = -0.5
-    assert SR.aggregate(row, None, T0)["caution"] is None
+# --- Lane A (the deterministic arrow) was removed with obs-3 ----------------
+# Sixteen tests lived here: the magnet voter, the breadth veto, the dwell lock,
+# the ghost afterimage, and the path caution. They died with aggregate() — see
+# the tombstone in sndk_read.py for why the arrow itself was deleted.
 
 
 def test_with_path_needs_real_history():
@@ -388,12 +251,11 @@ def test_scene_names_the_frozen_fields_as_uncitable():
 
 
 def test_scene_carries_no_verdict_at_all():
-    """sr-2: the pre-baked arrow anchored the model and is GONE from the scene.
-    The deterministic arrow still computes and still draws — it just never
-    enters the model's evidence."""
+    """sr-2 stripped the pre-baked arrow from the scene because a verdict
+    anchors the read; obs-3 then deleted the arrow at the source, so the
+    exclusion is now structural — there is no aggregate() left to exclude."""
+    assert not hasattr(SR, "aggregate")
     row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    a = SR.aggregate(row, None, T0)
-    assert a["dir"] == "up"                     # the arrow itself still works
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
     assert "arrow_already_decided" not in sc
     assert "arrow" not in json.dumps(sc)

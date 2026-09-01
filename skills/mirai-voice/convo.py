@@ -181,9 +181,6 @@ def build_voice_scene(now: datetime | None = None) -> dict | None:
         }
         if read.get("paused"):
             reader["paused"] = True
-        why = (read.get("arrow") or {}).get("silent_because")
-        if why:
-            reader["arrow_silent_because"] = why
         scene["reader_line"] = {k: v for k, v in reader.items()
                                if v is not None}
     return scene

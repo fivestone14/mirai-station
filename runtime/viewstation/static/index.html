@@ -11063,29 +11063,24 @@ function snkDrawer(id, title, head, body){
 }
 function snkReadCard(rd, now, bare){
   if(!rd||typeof rd!=='object') return '';
-  const a=(rd.arrow&&typeof rd.arrow==='object')?rd.arrow:null;
   const R=snkObs(rd);
-  const c=snkArrowBlock(a, now);
   // the reading CARRIES FORWARD between wakes (a quiet scan re-stamps the previous row's
   // sentence rather than blanking the card). Past 10 minutes it is memory, not news: it
   // dims and states its own age instead of sitting there looking freshly written.
   const age=(rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null;
   const aged=(age!=null&&age>10);
-  const flags=(a?[['caution',a.caution],['fading',a.fading]]:[])
-    .filter(f=>f[1]).map(f=>`<div class="fl"><i>${f[0]}</i><span>${snkSafe(f[1])}</span></div>`).join('');
   // NO id on this button. The drawer header carries #snk-hist-btn, and two elements with one
   // id is a bug waiting for the next call site; paintSide binds the header's, and a card
   // rendered outside a drawer binds by class instead.
   return `<div class="snk-read${bare?' bare':''}">`
     +(bare?'':`<span class="k">The read${rd.wake?` · ${snkSafe(rd.wake)}`:''}`
       +`<button type="button" class="hist" aria-label="Today's reading history">history</button></span>`)
-    +`<div class="gx-call${c.cls?' '+c.cls:''}">${c.html}</div>`
     +snkObsBox(R)
     +(aged&&R?`<div class="ct">read is ${snkDur(age)} old</div>`:'')
     +(R?''
       :(rd.paused?`<div class="br"><i>Reasoning paused —</i> the wake gate fired but the sentence is switched off; every deterministic layer keeps running and rows keep landing.</div>`
-      :rd.error?`<div class="br"><i>No observation —</i> the last reading call failed (${snkSafe(rd.error)}); the arrow above is unaffected.</div>`:''))
-    +flags+snkLayerChips(a?a.layers:null)+`</div>`;
+      :rd.error?`<div class="br"><i>No observation —</i> the last reading call failed (${snkSafe(rd.error)}); the row still landed.</div>`:''))
+    +`</div>`;
 }
 // ---- READING HISTORY (sr-2) — every distinct reading today, NEWEST FIRST, each with the
 // span it was aiming over ("from x to y" = issue + 30 min — this table's scoring rule,
@@ -12499,12 +12494,11 @@ const SNDK = {
     const sp=(m.spot!=null)?m.spot:null;
     const spRef=(spPull!=null)?spPull:sp;
     const pull=snkPull(m, spPull, step);
-    // THE ARROW OWNS THE DIRECTION once a read row exists (sr-1). snkReadPull returns the
-    // gated vector, a {node:true} stand-down, or null when there is no read row at all —
-    // and only in that last case does the raw-magnet comet still draw a direction.
+    // Lane A removed (obs-3): the gated arrow no longer exists, so the comet is
+    // back to what it was before sr-1 — the raw magnet pull, whose own tooltip
+    // has always said "recorded gravity, not a forecast".
     const RD=SNDK.read;
-    const rPull=snkReadPull(RD, spPull, step);
-    const vec=rPull?(rPull.node?null:rPull):pull;
+    const vec=pull;
     const FZ=(RD&&Array.isArray(RD.frozen))?RD.frozen:null;
     // the lane is reserved off the MAGNET's presence exactly as before — a stand-down node
     // needs the same 16px the comet does, so geometry is unchanged either way
@@ -13421,11 +13415,7 @@ const SNDK = {
         +`<rect id="snk-pnhit" x="${(cx-7).toFixed(1)}" y="${(ys-9).toFixed(1)}" width="14" height="18" fill="transparent" data-name="No call" data-tip="${nTip}"/>`
         +`</g>`;
     }
-    // ---- THE AFTERIMAGE (sr-1): where the LAST call was issued, faint and dashed in its own
-    // hue. Painted with the level lines so it sits UNDER the live comet and the wall labels —
-    // memory is allowed on this chart, but it never competes with what is being said now.
-    const ghostSVG=snkGhostSVG((RD&&RD.arrow)?RD.arrow.ghost:null,
-      { x0, yFor, pLow:band.pLow, pHigh:band.pHigh, fs:fz(8.5) });
+    const ghostSVG='';   // Lane A removed — there are no calls to ghost
     // ---- spot PATH (07-28): the session's journey UNDER the bars — a faint per-scan trail
     // with a live edge, the SPX map's squiggly-line ported. A whisper by design (area at low
     // --iris + recency-faded history segments): bars stay the hero, so it renders BEFORE them.
@@ -13481,10 +13471,7 @@ const SNDK = {
     const fr=SNDK.staleInfo();
     const exs=m.expiries.length?`book: ${m.expiries.slice(0,2).map(e=>_dexp(e.date)).join('·')}${m.expiries.length>2?` +${m.expiries.length-2}`:''}`:'weekly book';
     const cap=document.getElementById('snk-cap');
-    // the ABSTENTION COUNTER rides the caption (sr-1) — the caption is where this surface
-    // already confesses what it is, and the plot may not give up a pixel for it. A small
-    // numerator is the gate working, so it is stated quietly and always, never as an alarm.
-    const spoke=snkSpokeTxt(RD);
+    const spoke='';   // Lane A removed — the arrow's abstention counter went with it
     // TWO TIERS, ONE LINE (08-01). This ran as nine facts at one weight in the smallest type on
     // the sheet, so the two that change — how fresh the book is, and how much of the day the
     // arrow has spoken on — read no louder than the definition of a bar, which has not changed
@@ -13946,11 +13933,8 @@ const SNDK = {
   // comet pointing the wrong way; a pull that dies (price sits on the magnet) rebuilds too.
   paintPull(px){
     const g=document.getElementById('snk-pullg');
-    // SAME resolution as buildChart (sr-1): the gated arrow first, the raw-magnet comet only
-    // when there is no read row at all. Resolving it twice from one helper is what keeps the
-    // 5s quote clock and the render from ever drawing two different directions.
-    const rp=snkReadPull(SNDK.read, px, SNDK.step);
-    const pull=rp?(rp.node?null:rp):snkPull(SNDK.model, px, SNDK.step);
+    // Lane A removed (obs-3): the raw magnet pull is the only comet left.
+    const pull=snkPull(SNDK.model, px, SNDK.step);
     // ---- REBUILD FLOOR (08-01). Every rebuild below is a real state change — the comet died,
     // or it turned over and would otherwise point the wrong way — and each one self-clears, so
     // none of them loops on its own. The shape that broke them was price SITTING on the magnet,

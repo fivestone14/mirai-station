@@ -435,23 +435,13 @@ def test_series_is_queryable_by_strike_too(tmp_path):
     assert all("gamma_mass_at_strike" not in r for r in out2["rows"])
 
 
-def test_slices_never_store_the_aggregator_arrow(tmp_path):
-    """Adversarial audit: the stripped verdict must not be one Bash call
-    away — no arrow_dir in Face A, and arrow-naming wake strings neutralize."""
-    out = _read_out()
-    out["arrow"] = {"dir": "up"}
-    out["wake"] = "arrow appeared"
-    RAG.record_slice(_row(), out, _scene(), T0)
+def test_wake_reasons_pass_through_unmodified(tmp_path):
+    """Lane A is gone, and with it the arrow-wake neutralizer: there is no
+    arrow-named wake left to launder, so the reason is stored as written. Old
+    slices keep their historical "gate event" stamps."""
+    RAG.record_slice(_row(), _read_out(wake="price ran"), _scene(), T0)
     rec = RAG._read_jsonl(RAG._slices_path("2026-07-31"))[-1]
-    assert "arrow_dir" not in rec["meta"]
-    assert "arrow" not in json.dumps(rec)
-    assert rec["meta"]["wake"] == "gate event"
-    # ordinary wake reasons pass through untouched
-    RAG.record_slice(_row(), _read_out(wake="price ran"), _scene(),
-                     T0 + timedelta(minutes=9))
-    rec2 = RAG._read_jsonl(RAG._slices_path("2026-07-31"))[-1]
-    assert rec2["meta"]["wake"] == "price ran"
-
+    assert rec["meta"]["wake"] == "price ran"
 
 def test_diary_day_excludes_forced_and_off_hours_rows(tmp_path):
     """History must never hand the model tape the reader ignores: forced
