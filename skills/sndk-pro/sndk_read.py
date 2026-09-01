@@ -1208,6 +1208,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `cluster_share_of_book_gamma_pp` is the CLUSTER's share of the whole signed surface — that number, not the position, says how heavy a wall is. It is deliberately NOT called `share_of_book_gamma_pp`: the magnet's field of that name is ONE STRIKE's share of a different surface, and the two disagree by a median 38% on strikes that appear in both. Never compare one to the other or add them together. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
 - WHICH LEVELS YOU MAY NAME. You may name the magnet's top strike, and the strikes in the magnet list. You may NOT name a call wall or a put wall as a level where anything happens. This is arithmetic, not politeness: those two are DEFINED as the heaviest strike on their side of spot, so the call wall is above price and the put wall below it, always, on every row ever recorded. The instant price rises through a call wall, that strike stops qualifying and a different one takes the name. Measured: a wall relabels on a crossing 100% of the time, within a median of zero minutes, while the magnet relabels 0% of the time and is still the same strike 40 minutes later on 99% of occasions. A wall is real structure and you may describe how heavy it is; it is not a place price can be said to reach or break, because the label moves out of the way.
 - history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
+- WHO HOLDS WHAT IS ASSUMED, NOT MEASURED, AND THE ASSUMPTION IS PROBABLY WRONG FOR A SINGLE STOCK. Every signed number here — the gamma sign, the regime word, the flip, dealer positioning — rests on a convention that dealers are long the calls and short the puts. That convention was written for the S&P index. The studies that MEASURED single-stock positioning instead of assuming it found the opposite: end users are net sellers of both legs, so dealers are net LONG single-stock options, and average measured market-maker gamma is positive. On this book the convention implies dealers hold about a fifth of the company in stock, which is not credible. So: never say what dealers are doing, never say hedging will amplify or damp anything, and never treat the flip as a level price respects. Describe where the number is; do not describe who is on the other side of it.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_has_no_wall` flag or `flip.no_flip_anywhere_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a no-wall flag = known empty. Never confuse the two.
 
 YOU HAVE NO TOOLS, AND THAT IS THE POINT. Earlier versions granted a history
@@ -1319,6 +1320,24 @@ def _board_levels(scene) -> set:
     v = _fin(ch.get("drifts_toward_strike"))
     if v is not None:
         out.add(round(v, 2))
+    # THE GAMMA FLIP IS DELIBERATELY NOT A NAMEABLE LEVEL, and this is the one
+    # exclusion worth spelling out because the flip looks more like a level than
+    # anything else on the board.
+    #
+    # It exists ONLY because the sign convention puts dealers on opposite sides
+    # of calls and puts. Per-option gamma is strictly positive, so under either
+    # same-sign convention the net is one-signed at every price and there is no
+    # flip anywhere. Computed on a live SNDK chain: a root at 1514 under
+    # long-calls/short-puts, and NO root in [100, 40000] under either same-sign
+    # convention. It is a property of an assumption, not of the market.
+    #
+    # And its uncertainty swamps its distance. Across defensible inputs — ±10
+    # vol points, rates 0-6%, expiry and OI filters — the level ranges 1472 to
+    # 1532, which is 0.46 of one day's sigma on this name, while sitting 0.27 of
+    # a sigma from spot. You cannot say which side of it price is on.
+    #
+    # The flip stays in the scene as a location and keeps its own block; it is
+    # simply not something the model may point a reader AT.
     return out
 
 
