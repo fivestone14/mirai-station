@@ -316,6 +316,9 @@ def _raw_index() -> dict:
     return out
 
 
+_RAW_FILE_GATE = threading.BoundedSemaphore(2)
+
+
 def _raw_file(root_label: str, rel: str, limit: int) -> dict:
     root = RAW_ROOTS.get(root_label)
     if root is None:
@@ -510,7 +513,14 @@ class Handler(BaseHTTPRequestHandler):
                 root = qs.get("root", ["state"])[0]
                 rel = unquote(qs.get("path", [""])[0])
                 limit = int(qs.get("limit", ["500"])[0])
-                return self._send_json(_raw_file(root, rel, limit))
+                # 09-01: the replay tab fans out a dozen ~12MB day reads at
+                # once, and fourteen concurrent parse+serialize passes starve
+                # every OTHER route of the interpreter for seconds — the spot
+                # poll stalling is what a phone reads as an outage. Two at a
+                # time is plenty (the tunnel is the real ceiling); the rest
+                # wait here, off the GIL, and the door stays instant.
+                with _RAW_FILE_GATE:
+                    return self._send_json(_raw_file(root, rel, limit))
 
             if route == "/api/health":
                 return self._send_json({"ok": True, "port": PORT})
@@ -591,8 +601,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
+class _Station(ThreadingHTTPServer):
+    # 09-01 502 storm: the replay tab fans out a dozen ~12MB day fetches at
+    # once, and while those stream, the OS listen queue (socketserver default:
+    # FIVE pending connections) overflowed — new dials from Caddy dropped
+    # silently and every other request 502'd at its 3s dial timeout. Streams
+    # may be slow; the DOOR must never be.
+    request_queue_size = 128
+
+
 def main():
-    httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    httpd = _Station(("0.0.0.0", PORT), Handler)
     print(f"Mirai Viewstation serving on http://0.0.0.0:{PORT}  (state: {STATE_DIR})",
           flush=True)
     try:
