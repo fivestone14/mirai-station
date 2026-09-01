@@ -24,7 +24,7 @@ export PATH="${HOME}/.local/bin:/usr/local/bin:/opt/homebrew/bin:${PATH}"
 # sensitive is set at this file's top level.
 keychain_get() {
   local label="$1"
-  security find-generic-password -a "$USER" -s "$label" -w 2>/dev/null
+  security find-generic-password -a "${USER:-$(id -un)}" -s "$label" -w 2>/dev/null
 }
 export -f keychain_get
 

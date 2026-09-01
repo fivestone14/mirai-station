@@ -13,18 +13,16 @@
   </array>
 
   <!-- The SNDK reading: fire every 2 min, in step with the scanner so it always
-       sees the newest diary row, but the MODEL is not called every fire. Each
-       run recomputes the arrow for free (pure python over a row already on
-       disk) and only spends a call when the wake gate says the book actually
-       moved. Replayed over the four recorded sessions (2026-07-28..31) that is
-       23 / 22 / 20 / 32 calls a day against ~189 scans — ~12% — with the
-       heartbeat filling only 1-4 of them, i.e. genuinely event-driven rather
-       than a clock in disguise. DAILY_CALL_CAP=40 in sndk_read.py is the hard
-       backstop above that.
+       sees the newest diary row, but the MODEL is not called every fire — the
+       wake gate (obs-3) spends a call only when something genuinely changed
+       since the model last SPOKE: a frozen level crossed, structure holding
+       changed for two fresh books, real travel, an IV move on the smoothed
+       series, or a 60-minute heartbeat. Replayed over 24 recorded sessions
+       that is ~19 calls a day against ~179 scans. DAILY_CALL_CAP=30 in
+       sndk_read.py is the hard backstop above that.
 
        Separate from com.mirai-station.sndk on purpose: a model call can hang to
-       its 100s timeout (sr-2 — the read may spend a history lookup or a
-       WebSearch inside the call), and it must never be able to eat the scanner's tick and
+       its 100s timeout, and it must never be able to eat the scanner's tick and
        cost a diary row. launchd will not run two copies of this at once. -->
   <key>StartInterval</key>
   <integer>120</integer>
