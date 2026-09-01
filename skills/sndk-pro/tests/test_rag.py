@@ -22,12 +22,9 @@ def _read_out(line="the heaviest strike sat at 1300 all afternoon", quiet=False,
     """obs-1: a slice now records what was NOTICED. `line` keeps its parameter
     name so the retrieval tests below still read naturally, but it lands in the
     observation's own sentence."""
-    reading = ({"quiet": True, "abstain": "chosen", "quiet_because": line,
-                "notable": []} if quiet else
-               {"quiet": False, "say": line,
-                "notable": [{"what": line,
-                             "paths": ["/magnet/top_strikes/0/strike"],
-                             "values": [1300.0]}]})
+    reading = ({"quiet": True, "abstain": "chosen", "read": line} if quiet else
+               {"quiet": False, "read": line,
+                "points": [{"level": 1300.0, "note": line}]})
     return {"era": "obs-1", "wake": wake, "reading": reading,
             "arrow": {"dir": None},
             "magnet_band": {"top": [[1300.0, 9.5], [1100.0, 8.7]],
@@ -73,7 +70,7 @@ def test_record_slice_writes_both_faces(tmp_path):
     m = r["meta"]
     assert m["spot"] == 1213.7
     assert m["quiet"] is False and m["notable_count"] == 1
-    assert m["cited_paths"] == ["/magnet/top_strikes/0/strike"]
+    assert m["levels"] == [1300.0]
     assert m["walls_call"] == [1220.0, 1250.0]
     assert m["magnet_top"] == [[1300.0, 9.5], [1100.0, 8.7]]
     assert m["time"] == "14:30"
@@ -101,6 +98,7 @@ def test_a_quiet_read_is_stored_too(tmp_path):
     assert "mid-range" in rows[0]["narrative"]
     assert rows[0]["meta"]["quiet"] is True
     assert rows[0]["meta"]["notable_count"] == 0
+    assert rows[0]["meta"]["levels"] == []
     assert rows[0]["meta"]["abstain"] == "chosen"
 
 

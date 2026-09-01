@@ -155,17 +155,15 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
     # observation contract "the board was ordinary at 11:40, and here is what I
     # checked" is a real record of the session, and a history made only of the
     # loud moments is a history that cannot say what normal looked like.
-    notable = reading.get("notable") or []
-    say = reading.get("say") or ""
-    if notable:
-        narrative = str(say) if say else " ".join(
-            str(o.get("what") or "") for o in notable).strip()
-    else:
-        narrative = str(reading.get("quiet_because") or "").strip()
-        if not narrative:
-            narrative = "Nothing unusual on the board."
+    points = reading.get("points") or []
+    read = str(reading.get("read") or "").strip()
+    # obs-2: the slice remembers the model's own plain sentence, and the levels
+    # it picked out. A quiet read is stored too — a history made only of the
+    # loud moments has no baseline for "unusual" to be measured against, which
+    # is the comparison every later pattern claim rests on.
+    narrative = read or " ".join(str(p.get("note") or "") for p in points).strip()
     if not narrative:
-        return
+        narrative = "Nothing standing out on the board."
     walls = scene.get("walls") or {}
     ladder = row.get("profile_ladder") or {}
     band = read_out.get("magnet_band") or {}
@@ -189,8 +187,11 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
         # re-checkable — the pointers that were resolved at the time.
         "quiet": bool(reading.get("quiet")),
         "abstain": reading.get("abstain"),
-        "notable_count": len(notable),
-        "cited_paths": [p for o in notable for p in (o.get("paths") or [])][:6],
+        "notable_count": len(points),
+        # the LEVELS the model pointed at. This is the column a later pattern
+        # search actually wants: "which prices did it keep coming back to, and
+        # what did the board look like around them".
+        "levels": [p.get("level") for p in points if p.get("level") is not None][:6],
         # THE AGGREGATOR'S ARROW IS DELIBERATELY NOT STORED (adversarial audit
         # 08-02): §05's Face A holds "the direction + magnitude CLAUDE gave" —
         # the model's own past vector is sanctioned memory; the deterministic
