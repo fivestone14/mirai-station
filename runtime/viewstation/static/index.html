@@ -1797,9 +1797,6 @@
     padding:4px 0; border-top:1px solid var(--rule,rgba(255,255,255,.06));}
   .snk-read .obs li .w{font-size:12px;}
   .snk-read .obs li .m{font-size:11px; color:var(--ink-dim,#aab2c4); white-space:nowrap;}
-  .snk-read .obs .unk,.snk-read .obs .wch{margin-top:5px; font-size:11px;
-    color:var(--ink-faint,#8b93a7);}
-  .snk-read .obs .unk em{font-style:normal; opacity:.8;}
   .snk-read .br{font-family:var(--sans); font-size:12px; line-height:1.45; color:var(--ink-dim); margin-top:6px}
   .snk-read .br i{font-style:normal; font-weight:600; color:var(--ink-faint)}
   .snk-read .ct{font-family:var(--mono); font-size:10.5px; line-height:1.4; color:var(--ink-faint); margin-top:6px; overflow-wrap:anywhere}
@@ -10839,10 +10836,6 @@ function snkObsBox(R){
     +`<i>${n} to watch</i>`
     +(R.read?`<p class="say">${e(R.read)}</p>`:'')
     +`<ul>${rows}</ul>`
-    +((R.unknowns||[]).length?`<div class="unk">not measured: `
-        +R.unknowns.map(u=>`${e(u.field)} <em>(${e(u.why)})</em>`).join(', ')+`</div>`:'')
-    +((R.watch||[]).length?`<div class="wch">watching: `
-        +R.watch.map(w=>e(w.would_change)).join('; ')+`</div>`:'')
     +`</div>`;
 }
 // ---- LABEL DECLUTTER (08-03) — runs AFTER every full SVG build, over the labels that are
@@ -11045,7 +11038,7 @@ async function openSnkHistModal(){
     <div class="snkh-note">${SNDK._histEraNote?snkSafe(SNDK._histEraNote)+' · ':''}the model is asked what is UNUSUAL, never where price is going ·
     every number it said was resolved against the scene before the row was written, and a claim whose pointer did not resolve was deleted rather than corrected ·
     "nothing unusual" is the expected answer and a finished one · "all dropped" means it did speak and the checks removed everything, which is worth a look ·
-    times are this device's timezone</div>`);
+    times are Pacific</div>`);
 }
 // snkMagBandSVG — the magnet as a BAND whenever the top two strikes are tied. Measured
 // justification, not taste: the median gap between the #1 and #2 strike is 3.87pp of gamma
@@ -14069,7 +14062,7 @@ const PAYLOAD = {
       +ul(['The market is open.',
            `At least ${gap} minutes since the model last looked.`,
            `Fewer than ${cap} readings so far today — a runaway guard, not a budget.`,
-           `The newest scan is under ${stale} minutes old; a frozen board is never narrated.`,
+           `The newest option BOOK is under ${stale} minutes old on its own clock; a frozen board is never narrated.`,
            'Reasoning is switched on.'])
       +`<i>…and at least one thing has genuinely changed:</i>`
       +ul([`Price has run about ${px} of a typical day’s move since that last look.`,
@@ -14077,7 +14070,8 @@ const PAYLOAD = {
            `The gamma sign or the strike pulling hardest changed, and stayed changed for ${cb} consecutive option books — one book on its own reverses about a third of the time.`,
            `Implied vol moved ${iv} points on a 5-book median — the raw print is mostly sensor noise.`,
            `The gamma flip itself relocated by ${fs} of a typical day’s move.`,
-           `Nothing at all for ${beat} minutes — a heartbeat read.`])
+           `Nothing at all for ${beat} minutes — a heartbeat read.`,
+           `Or it is simply the first look of the session — nothing to compare against yet.`])
       +`<em>If not, the scene is still built and filed and the last reading carries forward — no call is spent.</em>`
       +`</div>`;
   },
@@ -14175,6 +14169,8 @@ const MEM = {
     'iv moved':           ['~','grav',   'Implied volatility moved at least 3 points on a smoothed five-book average — the raw print is mostly measurement noise.'],
     'flip moved':         ['≠','tower',  'The gamma-flip level itself relocated by at least half a typical day’s move.'],
     'heartbeat':          ['○','faint',  'An hour passed with nothing else to report, so the model looked anyway. An unprompted check, not a reaction.'],
+    'quiet':              ['·','faint',  'The gate found nothing worth a call — this slice exists because a human forced a read on an otherwise quiet scan.'],
+    'stale_book':         ['⏸','faint',  'The option book had gone stale, so the wake was suppressed — a frozen board is never narrated. A forced read can still file under this name.'],
     'gate event':         ['◇','faint',  'Retired wake (Lane A, removed 09-01): the deterministic arrow appeared, vanished or reversed — filed under this neutral name so the model could never read its own past arrow back out of its memory.'],
     'magnet moved':       ['◆','faint',  'Retired wake (before 08-31): the heaviest strike relocated by 0.12 of a day’s move, with no confirmation required.'],
     'regime changed':     ['≡','faint',  'Retired wake (before 08-31): the day’s character word changed. It was derived from the gamma sign, so it woke twice for one fact.'],
@@ -14612,7 +14608,7 @@ const MEM = {
   // print narrower than the 1599.03 above it; fx(v,0) is the strike form
   fx(v,d){ const x=MEM.n(v); if(x==null) return '—';
            return d===0?String(Math.round(x)):x.toFixed(d==null?2:d); },
-  cap(s){ s=String(s==null?'':s); return s.charAt(0).toUpperCase()+s.slice(1); },
+  cap(s){ s=String(s==null?'':s).replace(/_/g,' '); return s.charAt(0).toUpperCase()+s.slice(1); },
   where(sp,pt,ct){ const s=MEM.n(sp), a=MEM.n(pt), b=MEM.n(ct);
     return (s==null||a==null||b==null)?'':(s>b?'price above':s<a?'price below':'price inside'); },
   // every stored read ends with its own invalidation clause; it is the half worth seeing on its
