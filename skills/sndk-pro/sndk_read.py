@@ -84,7 +84,7 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "obs-1"               # bump on ANY change to the gates or the prompt.
+ERA = "obs-2"               # bump on ANY change to the gates or the prompt.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-8 (2026-08-30): the payload pays only for what
@@ -1088,6 +1088,85 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     return None
 
 
+# --- obs-1: the observation contract ----------------------------------------
+#
+# WHAT THE MODEL IS ASKED FOR CHANGED, and the gates below are the reason it can
+# be trusted. The old contract asked for a direction and a magnitude; the 08-27b
+# audit measured that forecast at zero forward value, and the model declined to
+# make it at all on 154 of 390 calls. The new contract asks what is UNUSUAL in
+# the snapshot, in a human voice, with every number traceable to the field it
+# came from.
+#
+# THE LEVEL RULE, and it is the one that came out of measurement rather than
+# taste. A statement may name the MAGNET / heaviest-cluster family and no other
+# level. Measured over 1,395 arrivals on the recorded tape: "X is the magnet"
+# is still true when price actually reaches X on 95.3% of occasions, and the
+# magnet relabels on a crossing with probability 0.000. "X is the call wall"
+# survives 73.1%, and on a crossing it relabels with probability 1.000 — median
+# 0.0 minutes — because `_weight_wall` is DEFINED as the heaviest strike on the
+# requested side of spot (lefteye_gex_box.py:318). call_wall >= spot on
+# 4,149 of 4,149 recorded rows. "Price broke the call wall" is not a hard claim
+# to check, it is an unobservable one: the wall steps aside as price arrives.
+# So the walls may be described as structure and may never be named as a level
+# something happens AT.
+_OBS_MAX = 3
+
+# Forecast vocabulary. Nothing about where price goes, how far, or how likely.
+_BANNED_FORECAST = (
+    "rally", "sell off", "selloff", "bounce", "breakout", "break out",
+    "break down", "breakdown", "target", "support", "resistance", "squeeze",
+    "bullish", "bearish", "expect", "likely", "unlikely", "should", "will",
+    "suggests", "implies", "favours", "favors", "sets up", "poised", "primed",
+    "bias", "lean", "risk of", "pull", "pulls", "pulling", "attract",
+    "attracts", "pin", "pins", "pinning", "push", "pushes",
+    "rebound", "reversal",
+)
+# "higher", "lower", "upside" and "downside" were on the list and came off it.
+# On a board they are POSITIONAL — "no call wall to the upside" means nothing
+# above price, and "the heavier wall lower down" names a strike. Measured on a
+# live read, "read_banned:resistance,upside" deleted an otherwise good sentence
+# over the second word. "support" and "resistance" stay banned because they
+# assert that price will react at a level, which is the claim itself; direction
+# words that merely say WHERE do not.
+# NOUNS THE SCENE ITSELF USES ARE NOT BANNED, and the reason is a measured one.
+# The list above once held "magnet", "call wall" and "put wall". Every one of
+# them is the name of a block the model is handed and asked to read, so banning
+# the noun deleted the human sentence whenever the model referred to the thing
+# by the only name it has: 2 of 2 completed obs-1 reads lost `say` to "call
+# wall", and the first obs-1b read lost `quiet_because` to "magnet" — while
+# saying something entirely reasonable about it being ordinary.
+#
+# The danger was always the VERB. A wall relabels to follow price with
+# probability 1.000 on a crossing and the magnet's pull is unestablished, so
+# "price will reach the magnet" is the false claim — and it dies on "will",
+# "reach" being harmless on its own. Naming a level is description; asserting
+# what price does at it is forecasting, and the verb lists above catch that.
+# Causal connectives. Banned for CORRECTNESS, not caution: the walls relabel to
+# follow price with probability 1.000 on a crossing, so a causal verb about them
+# is false by measurement, and Zhu et al. (14,922 explanations) found evidence-
+# bounded prompting cuts unsupported causal attribution by only ~40% and never
+# eliminates it — the risk peaking exactly where evidence is rich but
+# insufficient, which describes an option book.
+_BANNED_CAUSAL = (
+    "because", "due to", "driving", "drove", "as a result", "in response to",
+    "which is why", "causing", "caused", "defending", "thanks to", "owing to",
+)
+# obs-1b REMOVES the wall-name ban. It was right about the danger and wrong
+# about the mechanism: the scene ships a `walls` block the model is meant to
+# read, so banning the NOUN wiped the human sentence on 2 of the 2 completed
+# obs-1 reads — a 100% deletion rate on the only part a person reads.
+#
+# The danger is real (a wall relabels on a crossing with probability 1.000, so
+# it cannot be named as a place price reaches), but what carries it is the VERB,
+# and the forecast and causal lists above already catch every verb that could.
+# Describing a wall is fine. "Price will reach the call wall" dies on "will".
+_BANNED_LEVELS = ()
+
+_BANNED_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in
+                      _BANNED_FORECAST + _BANNED_CAUSAL + _BANNED_LEVELS)
+    + r")\b", re.I)
+
 # ---------------------------------------------------------------------------
 # the model call — sr-2: the model infers its OWN vector from an unbiased scene
 # ---------------------------------------------------------------------------
@@ -1095,7 +1174,13 @@ _DOCTRINE = f"""You are watching one stock's option book and saying what you NOT
 
 TALK LIKE A PERSON. Imagine someone sitting next to you who knows markets but not options jargon, and you are pointing at the screen. "The heaviest strike on the board is 1500, and it has been all session" is what a human says. "top_strike_lead_pp = 1.81" is not. Full sentences, plain words, no shorthand, no bullet fragments, no field names in the prose — the field names ride in `paths`, where a machine checks them.
 
-THE ONE THING THAT MAKES THIS WORK: every number you say out loud has to come from a field you point at, and the pointer is checked against the scene before anyone reads your answer. A sentence whose number cannot be traced is deleted, not corrected. So point at what you actually looked at.
+YOU READ THE WHOLE BOARD AND YOU DECIDE WHAT MATTERS. Nothing has been pre-selected for you. Go through the scene, weigh the parts against each other, and point at the few things a person watching this stock would actually want to know about right now — usually one or two, often none at all.
+
+ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snapshot, so you cannot know how today compares with other days, or what moved since the last option book. `context` supplies exactly that and nothing else — where today's numbers rank against this stock's own closed sessions, and what changed since the last book. It states facts, never conclusions. Whether any of it is worth saying is your call.
+
+ALWAYS WRITE `read`, EVEN WHEN NOTHING STANDS OUT — one line saying what you looked at and why it was ordinary is what makes a quiet session distinguishable from every other quiet session later on.
+
+KEEP IT SHORT AND PLAIN. TWO SENTENCES, forty words at the outside — the way you would say it to someone sitting beside you, not the way you would write it down. No jargon, no field names, no padding, no listing everything you looked at. Say the one or two things that matter and stop. The levels go in `points` with a few words each; do not repeat them in the prose. Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears. That includes numbers you work out yourself: do not convert a distance into sigma, do not turn a share into a percentage of something else, do not average two figures. A number you computed is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far away, say which level and let the reader see the two prices.
 
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma (a typical day's move) runs 8-10% of the share price — enormous. It has weekly expiries, not daily, so most days have no expiry at all. Standing levels come from open interest, which is yesterday's positioning about a stock that can move 12% in a session.
 
@@ -1138,16 +1223,22 @@ HONESTY RULES, all of them load-bearing:
 - Never narrate an open-interest block in the present tense. See the provenance rules above — this is the one that will be checked.
 - The magnet is usually a TIE. When top_strike_lead_pp is small, no strike is really in charge — say so rather than naming one.
 - Never invent a level. If price is past the last named level on the board, say exactly that — on this name it is often true.
-- NOTHING NOTABLE IS THE COMMON ANSWER AND IT IS COMPLETE WORK. An empty `used` with a sentence about what you looked at is a correct, finished answer and the one expected most often — on this tape roughly half of all scans offer no candidate at all, and plenty that do are not worth a reader's attention. Inventing something is the worst failure available to you: a screen that cries wolf gets ignored, and then the real thing goes unread too.
-- AN ENTRY IN `unusual` IS A CANDIDATE, NOT AN INSTRUCTION. You may look at one and decide it does not matter. Say so in `quiet_because` and return nothing.
+- NOTHING STANDING OUT IS THE COMMON ANSWER AND IT IS COMPLETE WORK. Most scans of most sessions hold nothing a reader needs. Returning quiet is a correct, finished answer and the one expected most often. Inventing something to fill the space is the worst failure available to you: a screen that cries wolf gets ignored, and then the real thing goes unread too.
+- A FACT IN `context` IS NOT AN INSTRUCTION. A number ranking high against prior sessions may still be nothing worth mentioning. That judgement is the job.
 
-WORDS YOU MAY NOT USE, and why it is correctness rather than caution. Anything about where price goes or how likely something is: rally, bounce, breakout, target, support, resistance, squeeze, bullish, bearish, expect, likely, should, will, suggests, implies, bias, lean, higher, lower, upside, downside, pull, attract, pin, magnet (the word — you may still name the strike), push. And any cause-and-effect connective: because, due to, driving, as a result, in response to, which is why, causing, defending. You are describing a board, and a board does not make things happen. A measured past change with its window named is fine and welcome — "implied vol came down about two points over the last half hour" says only what was measured.
+WORDS THAT DELETE YOUR SENTENCE, listed in full so there is no guessing. Any of these appearing in `read` or in a note throws that text away — it is not softened, it is dropped, and the reader sees nothing:
+
+  {", ".join(sorted(_BANNED_FORECAST))}
+  {", ".join(sorted(_BANNED_CAUSAL))}
+
+The first group is anything about where price goes or how likely something is. The second is cause and effect: a board does not make things happen, and on this tape the walls relabel to follow price rather than the other way round, so a causal verb about one is false by measurement rather than merely unwise.
+
+WHAT TO SAY INSTEAD. Describe position, not consequence: not "1500 is resistance" but "1500 is the heaviest strike, and price is just under it". Not "this should hold" but "this is where the largest share of the board's gamma sits". A measured past change with its window named is always welcome — "implied vol came down about two points over the last half hour" says only what was measured. Naming a level is description; saying what price will do there is not.
 
 OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence:
 {{"quiet": true | false,
- "used": ["<the exact `path` string of each `unusual` entry you are speaking about — often empty>"],
- "say": "<two or three plain sentences a person would actually say out loud. Every number must come from an entry you listed in `used`. Omit when quiet.>",
- "quiet_because": "<required when quiet: one plain sentence saying what you looked at and why it was ordinary>"}}"""
+ "read": "<two or three plain sentences: what the board looks like and what stands out. Omit when nothing does.>",
+ "points": [{{"level": <a price that appears in the scene>, "note": "<a few words on why this one is worth watching>"}}]}}"""
 
 
 def _stale_language_flags(reading: dict) -> list[str]:
@@ -1174,83 +1265,7 @@ def _stale_language_flags(reading: dict) -> list[str]:
     return sorted({v for v in _LIVE_VERBS if v in text})
 
 
-# --- obs-1: the observation contract ----------------------------------------
-#
-# WHAT THE MODEL IS ASKED FOR CHANGED, and the gates below are the reason it can
-# be trusted. The old contract asked for a direction and a magnitude; the 08-27b
-# audit measured that forecast at zero forward value, and the model declined to
-# make it at all on 154 of 390 calls. The new contract asks what is UNUSUAL in
-# the snapshot, in a human voice, with every number traceable to the field it
-# came from.
-#
-# THE LEVEL RULE, and it is the one that came out of measurement rather than
-# taste. A statement may name the MAGNET / heaviest-cluster family and no other
-# level. Measured over 1,395 arrivals on the recorded tape: "X is the magnet"
-# is still true when price actually reaches X on 95.3% of occasions, and the
-# magnet relabels on a crossing with probability 0.000. "X is the call wall"
-# survives 73.1%, and on a crossing it relabels with probability 1.000 — median
-# 0.0 minutes — because `_weight_wall` is DEFINED as the heaviest strike on the
-# requested side of spot (lefteye_gex_box.py:318). call_wall >= spot on
-# 4,149 of 4,149 recorded rows. "Price broke the call wall" is not a hard claim
-# to check, it is an unobservable one: the wall steps aside as price arrives.
-# So the walls may be described as structure and may never be named as a level
-# something happens AT.
-_OBS_MAX = 3
 
-# Forecast vocabulary. Nothing about where price goes, how far, or how likely.
-_BANNED_FORECAST = (
-    "rally", "sell off", "selloff", "bounce", "breakout", "break out",
-    "break down", "breakdown", "target", "support", "resistance", "squeeze",
-    "bullish", "bearish", "expect", "likely", "unlikely", "should", "will",
-    "suggests", "implies", "favours", "favors", "sets up", "poised", "primed",
-    "bias", "lean", "risk of", "pull", "pulls", "pulling", "attract",
-    "attracts", "pin", "pins", "pinning", "push", "pushes",
-    "higher", "lower", "upside", "downside", "rebound", "reversal",
-)
-# NOUNS THE SCENE ITSELF USES ARE NOT BANNED, and the reason is a measured one.
-# The list above once held "magnet", "call wall" and "put wall". Every one of
-# them is the name of a block the model is handed and asked to read, so banning
-# the noun deleted the human sentence whenever the model referred to the thing
-# by the only name it has: 2 of 2 completed obs-1 reads lost `say` to "call
-# wall", and the first obs-1b read lost `quiet_because` to "magnet" — while
-# saying something entirely reasonable about it being ordinary.
-#
-# The danger was always the VERB. A wall relabels to follow price with
-# probability 1.000 on a crossing and the magnet's pull is unestablished, so
-# "price will reach the magnet" is the false claim — and it dies on "will",
-# "reach" being harmless on its own. Naming a level is description; asserting
-# what price does at it is forecasting, and the verb lists above catch that.
-# Causal connectives. Banned for CORRECTNESS, not caution: the walls relabel to
-# follow price with probability 1.000 on a crossing, so a causal verb about them
-# is false by measurement, and Zhu et al. (14,922 explanations) found evidence-
-# bounded prompting cuts unsupported causal attribution by only ~40% and never
-# eliminates it — the risk peaking exactly where evidence is rich but
-# insufficient, which describes an option book.
-_BANNED_CAUSAL = (
-    "because", "due to", "driving", "drove", "as a result", "in response to",
-    "which is why", "causing", "caused", "defending", "thanks to", "owing to",
-)
-# obs-1b REMOVES the wall-name ban. It was right about the danger and wrong
-# about the mechanism: the scene ships a `walls` block the model is meant to
-# read, so banning the NOUN wiped the human sentence on 2 of the 2 completed
-# obs-1 reads — a 100% deletion rate on the only part a person reads.
-#
-# The danger is real (a wall relabels on a crossing with probability 1.000, so
-# it cannot be named as a place price reaches), but what carries it is the VERB,
-# and the forecast and causal lists above already catch every verb that could.
-# Describing a wall is fine. "Price will reach the call wall" dies on "will".
-_BANNED_LEVELS = ()
-
-_BANNED_RE = re.compile(
-    r"\b(" + "|".join(re.escape(w) for w in
-                      _BANNED_FORECAST + _BANNED_CAUSAL + _BANNED_LEVELS)
-    + r")\b", re.I)
-
-_NOVELTY = ("new_this_scan", "changed_this_scan", "extreme_vs_own_history",
-            "measured_empty", "disagreement")
-_WINDOW = ("now", "30m", "session", "prior_sessions")
-_UNKNOWN_WHY = ("not_measured", "too_few_sessions", "window_too_short",
-                "stale_book")
 _NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
@@ -1270,141 +1285,107 @@ def banned_words(text: str) -> list[str]:
     return sorted({m.group(0).lower() for m in _BANNED_RE.finditer(text or "")})
 
 
-def json_pointer(scene: dict, ptr: str):
-    """Resolve an RFC-6901 JSON Pointer against the scene. _MISS when it does
-    not resolve — distinct from a field whose value is legitimately None."""
-    if not isinstance(ptr, str) or not ptr.startswith("/"):
-        return _MISS
-    cur = scene
-    for raw in ptr[1:].split("/"):
-        tok = raw.replace("~1", "/").replace("~0", "~")
-        if isinstance(cur, dict):
-            if tok not in cur:
-                return _MISS
-            cur = cur[tok]
-        elif isinstance(cur, list):
-            try:
-                cur = cur[int(tok)]
-            except (ValueError, IndexError):
-                return _MISS
-        else:
-            return _MISS
-    return cur
+def _scene_numbers(scene) -> set:
+    """Every number anywhere in the scene, rounded to 2dp.
 
+    obs-2 checks prose against THIS rather than against a shortlist of offered
+    pointers. The model now reads the whole board and reasons over all of it, so
+    the honest question is no longer "did you cite what we gave you" but "is the
+    number you said actually on the board" — which catches invention without
+    constraining thought."""
+    out = set()
 
-_MISS = object()
-
-
-def _same_value(a, b) -> bool:
-    """Echoed value matches the scene's, within the rounding the scene ships."""
-    if isinstance(a, (int, float)) and isinstance(b, (int, float)) \
-            and not isinstance(a, bool) and not isinstance(b, bool):
-        return abs(float(a) - float(b)) <= 0.011
-    return a == b
+    def walk(x):
+        if isinstance(x, dict):
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+        elif isinstance(x, (int, float)) and not isinstance(x, bool):
+            out.add(round(float(x), 2))
+    walk(scene)
+    return out
 
 
 def _validate_observation(obj: dict, scene: dict) -> dict:
-    """The gates. Returns the reading and never raises.
+    """The gates, for a model that reads the whole board and decides itself.
 
-    obs-1b MOVED THE WORK. The first draft asked the model to find what was
-    unusual, hand-build an RFC-6901 pointer to it, echo the value back exactly,
-    and state a percentile and a session count. Two things were wrong with that.
-    The statistics were unanswerable from one snapshot, so `pctile` could only
-    ever be invented. And the pointer-building was expensive: on 2026-08-31,
-    12 of 14 live calls hit the 100-second timeout against a previous contract
-    that answered in 50-74 seconds.
+    obs-2 GAVE THE REASONING BACK. obs-1b had Python nominate what was unusual
+    and left the model to narrate the shortlist; that was the wrong division of
+    labour, and the latency that seemed to justify it turned out to be a global
+    `effortLevel` setting rather than the contract. Judging what matters on a
+    board IS the reasoning, and it is the half the model is for.
 
-    Python now decides what is unusual (see `notable_candidates`) and ships the
-    candidates in `scene.unusual`, each with a pointer that resolves by
-    construction and a rank that is real. The model picks the ones worth saying
-    and says them. That is the half it is good at.
-
-    Gates DROP rather than repair — FinGround's ablation measured deletion
-    carrying the entire hallucination reduction with regeneration adding nothing
-    — and a contract whose default answer is silence has nothing to fall back
-    to that needs writing."""
-    offered = {c["path"]: c for c in (scene.get("unusual") or [])
-               if isinstance(c, dict) and c.get("path")}
+    What is still checked is what can be checked without constraining thought:
+    a number spoken must be a number on the board, a level named must be a level
+    that exists, and the vocabulary stays descriptive. Nothing here tells the
+    model WHAT to find."""
+    nums = _scene_numbers(scene)
     dropped: list[str] = []
 
-    def _norm(x):
-        """Accept the dotted form as well as the pointer form.
-
-        Measured: asked for `/magnet/top_strike_lead_pp`, the model returns
-        `magnet.top_strike_lead_pp` about as often as not. Both name the same
-        field unambiguously, and refusing one of them deletes good work over
-        punctuation — the gate is there to stop invention, not to mark spelling.
-        """
-        x = str(x).strip()
-        if x in offered:
-            return x
-        alt = "/" + x.strip("/").replace(".", "/")
-        return alt if alt in offered else x
-
-    used = []
-    for raw in (obj.get("used") or [])[:_OBS_MAX * 2]:
-        ptr = _norm(raw)
-        if ptr not in offered:
-            # the ONE structural gate left, and it is stronger than the pointer
-            # check it replaces: the model cannot cite anything Python did not
-            # already measure as unusual, so there is nothing to resolve and
-            # nothing to invent.
-            dropped.append("not_offered")
-            continue
-        if ptr not in [u["path"] for u in used]:
-            used.append(offered[ptr])
-        if len(used) >= _OBS_MAX:
-            break
-
-    say = _clip(str(obj.get("say") or "").strip(), 600)
-    hits = banned_words(say)
-    if hits:
-        dropped.append("say_banned:" + ",".join(hits))
-        say = ""
-    # every number spoken has to be a number that was offered
-    if say and used:
-        ok = {round(float(u["value"]), 2) for u in used
-              if isinstance(u.get("value"), (int, float))
-              and not isinstance(u.get("value"), bool)}
-        for m in _NUM_RE.finditer(say):
+    def _numbers_check(text, tag):
+        """Every number in the prose must exist in the scene, allowing the
+        rounding a person would actually use out loud."""
+        for m in _NUM_RE.finditer(text or ""):
             n = float(m.group(0))
-            # ROUNDING IS NOT INVENTION. The doctrine tells the model to talk
-            # like a person, and a person says "17.5" for 17.51. The first
-            # draft matched to two decimals and deleted the whole sentence over
-            # exactly that, on 2 of 4 sampled replies. A number counts as
-            # offered when it is within half a unit in the last place the model
-            # chose to speak to — close enough that no reader is misled, tight
-            # enough that a different number is still caught.
+            if abs(n) <= 1.0:            # counts, small ratios, clock figures
+                continue
             dp = len(m.group(0).split(".")[1]) if "." in m.group(0) else 0
             tol = max(0.5 * 10 ** -dp, 0.011)
-            if abs(n) > 1.0 and not any(abs(n - v) <= tol for v in ok):
-                dropped.append(f"say_number_not_offered:{m.group(0)}")
-                say = ""
-                break
+            if not any(abs(n - v) <= tol for v in nums):
+                dropped.append(f"{tag}_number_not_on_the_board:{m.group(0)}")
+                return False
+        return True
 
-    reading = {"quiet": not used}
-    if used:
-        reading["notable"] = [
-            {"what": u.get("rank") or u["why"], "paths": [u["path"]],
-             "values": [u["value"]], "novelty": u["why"]} for u in used]
-        if say:
-            reading["say"] = say
-    else:
+    read = _clip(str(obj.get("read") or "").strip(), 700)
+    hits = banned_words(read)
+    if hits:
+        dropped.append("read_banned:" + ",".join(hits))
+        read = ""
+    elif read and not _numbers_check(read, "read"):
+        read = ""
+
+    points = []
+    for pt in (obj.get("points") or [])[:_OBS_MAX * 2]:
+        if not isinstance(pt, dict):
+            continue
+        note = _clip(str(pt.get("note") or "").strip(), 160)
+        lvl = _fin(pt.get("level"))
+        if not note or lvl is None:
+            dropped.append("point_malformed")
+            continue
+        if round(lvl, 2) not in nums:
+            # a level the board does not contain is the one invention that
+            # matters most: it sends a reader to a price nothing measured.
+            dropped.append(f"level_not_on_the_board:{lvl:g}")
+            continue
+        h = banned_words(note)
+        if h:
+            dropped.append("point_banned:" + ",".join(h))
+            continue
+        if not _numbers_check(note, "point"):
+            continue
+        points.append({"level": lvl, "note": note})
+        if len(points) >= _OBS_MAX:
+            break
+
+    # QUIET MEANS NO LEVELS TO WATCH, not silence. The prose stays either way:
+    # on a quiet read it says in one line why the board is ordinary, and that
+    # line is the only thing distinguishing one quiet slice from another in the
+    # memory store. Without it every uneventful session records the same
+    # sentence, and a history of identical entries cannot support the pattern
+    # search it exists for.
+    quiet = not points
+    reading = {"quiet": quiet}
+    if read:
+        reading["read"] = read
+    if points:
+        reading["points"] = points
+    if quiet:
         reading["abstain"] = "forced" if dropped else "chosen"
-        qb = _clip(str(obj.get("quiet_because") or "").strip(), 320)
-        qhits = banned_words(qb) if qb else []
-        if qhits:
-            # never drop prose without saying so. The first draft discarded a
-            # banned `quiet_because` in silence, which is the same failure mode
-            # as every other silent drop found today: the row looks like the
-            # model said nothing when in fact it said something and was censored.
-            dropped.append("quiet_because_banned:" + ",".join(qhits))
-        elif qb:
-            reading["quiet_because"] = qb
-    # the present-tense guard, still shadow-only
-    tense = _stale_language_flags({"say": say,
-                                   "quiet_because": reading.get("quiet_because"),
-                                   "notable": reading.get("notable") or []})
+    tense = _stale_language_flags({"say": read,
+                                   "notable": [{"what": p["note"]} for p in points]})
     if tense:
         reading["stale_language_flags"] = tense
     if dropped:
@@ -1877,13 +1858,6 @@ def breadth_block(row: dict, now: Optional[datetime]) -> Optional[dict]:
     return out
 
 
-CANDIDATE_MAX = 6           # how many candidates the scene may offer. More than
-                            # this and the model is back to triaging a list,
-                            # which is the job this block exists to take off it.
-PCTL_EXTREME = 10           # a value is extreme when it ranks in the bottom or
-                            # top decile of its own prior sessions
-
-
 def _rank_among_days(name: str, value, now) -> Optional[tuple]:
     """(how many prior SESSIONS this value beats, how many there were).
 
@@ -1904,88 +1878,74 @@ def _rank_among_days(name: str, value, now) -> Optional[tuple]:
     return sum(1 for x in xs if x < value), len(xs)
 
 
-def notable_candidates(scene: dict, rows: list[dict], now) -> list[dict]:
-    """WHAT IS UNUSUAL, DECIDED IN PYTHON. The model never makes this call.
+def session_context(scene: dict, rows: list[dict], now) -> Optional[dict]:
+    """WHAT THE MODEL CANNOT SEE FROM ONE SNAPSHOT, and nothing else.
 
-    This block exists because the first draft of obs-1 asked the model to do it,
-    and that was wrong twice over. It was wrong on CORRECTNESS: a percentile is
-    a claim about a distribution of prior sessions, and the model is handed one
-    snapshot — asked for `pctile` and `n_sessions` it could only invent them,
-    while `_prior_sessions` has computed the real thing all along. And it was
-    wrong on COST: the model had to hand-build RFC-6901 pointers by traversing
-    the scene and echo each value back exactly, which on 2026-08-31 pushed 12 of
-    14 live calls into the 100-second timeout against a previous era that
-    answered in 50-74.
+    obs-2. The previous version of this function decided what was UNUSUAL and
+    handed the model a shortlist to narrate. That was the wrong division of
+    labour: judging what matters on a board is reasoning, and reasoning is the
+    half the model is for. It is also unnecessary — the latency that appeared to
+    justify moving the work into Python turned out to be a global `effortLevel`
+    setting, and simplifying the schema was measured at no effect (112-118s
+    either way). With effort pinned there is room for the model to think.
 
-    So Python offers the candidates, with real ranks and pointers that resolve
-    by construction, and the model is left the one thing it is actually good at:
-    saying what it means in plain English, or saying nothing.
+    What survives is the half Python must do because the model is structurally
+    unable to: it is handed ONE snapshot, so it cannot know that today's magnet
+    lead is the widest of 22 sessions, or that the gamma sign flipped since the
+    last book. Those are facts about time, and the payload has no time in it.
 
-    Four kinds, in the vocabulary the doctrine already uses. A number that is
-    merely present, merely large, or unchanged is not a candidate."""
-    out: list[dict] = []
+    So this block carries FACTS AND NO VERDICTS. A rank, not "extreme". A
+    before-and-after, not "changed_this_scan". Nothing here says what is
+    interesting; that is the model's call, on the whole scene, and it may
+    perfectly well decide none of it matters."""
+    out: dict = {}
 
-    def add(path, value, why, rank=None):
-        c = {"path": path, "value": value, "why": why}
-        if rank:
-            c["rank"] = rank
-        out.append(c)
-
-    # 1. EXTREME against this name's own closed SESSIONS — highest or lowest of
-    #    the lot, not merely in a decile. With ~22 sessions a decile is two
-    #    days, which is not a rare event; "beats every session on record" is.
+    # what today's numbers look like against this stock's own CLOSED sessions.
+    # One value per session — 94-98.5% of the variance in these is BETWEEN days,
+    # so a per-scan comparison lets one unusual session vote ~90 times.
+    ranks = {}
     mag = scene.get("magnet") or {}
-    for path, key, val in (
-            ("/magnet/top_strike_lead_pp", "magnet_gap_pp",
-             mag.get("top_strike_lead_pp")),
-            ("/breadth/lopsidedness_0_is_even", "lopsidedness",
+    for label, key, val in (
+            ("top_strike_lead_pp", "magnet_gap_pp", mag.get("top_strike_lead_pp")),
+            ("lopsidedness", "lopsidedness",
              (scene.get("breadth") or {}).get("lopsidedness_0_is_even"))):
         r = _rank_among_days(key, val, now)
-        if not r:
-            continue
-        beats, n = r
-        if beats >= n:
-            add(path, val, "extreme_vs_own_history",
-                f"higher than all {n} prior sessions")
-        elif beats == 0:
-            add(path, val, "extreme_vs_own_history",
-                f"lower than all {n} prior sessions")
+        if r:
+            beats, n = r
+            ranks[label] = (f"higher than {beats} of the {n} prior sessions"
+                            if beats else f"lower than all {n} prior sessions")
+    if ranks:
+        out["vs_prior_sessions"] = ranks
 
-    # 2. CHANGED since the last distinct book. Structure only — price moving is
-    #    what price does, and the wake gate already spent the call on it.
+    # what actually moved since the last OPTION BOOK — not the last scan, since
+    # half of all scans carry the same book served twice.
     books = _distinct_books_rows(rows)
     if len(books) >= 2:
         prev, cur = books[-2], books[-1]
-        if cur.get("gamma_sign") != prev.get("gamma_sign") and cur.get("gamma_sign"):
-            add("/regime/gamma_sign", cur.get("gamma_sign"), "changed_this_scan")
-        pm = (prev.get("gex_views") or {}).get("magnet")
-        cm = (cur.get("gex_views") or {}).get("magnet")
+        moved = {}
+        # BOTH sides have to be real. The first live scene came back with
+        # `gamma_sign: {was: "unknown", now: "positive"}` — a book that had not
+        # been read yet, reported as a flip. A transition out of not-measured is
+        # not a change in the market, and telling the model it is invites a
+        # sentence about something that never happened.
+        _known = lambda v: v not in (None, "", "unknown", "unmeasured")
+        if (_known(cur.get("gamma_sign")) and _known(prev.get("gamma_sign"))
+                and cur["gamma_sign"] != prev["gamma_sign"]):
+            moved["gamma_sign"] = {"was": prev["gamma_sign"],
+                                   "now": cur["gamma_sign"]}
+        pm = _fin((prev.get("gex_views") or {}).get("magnet"))
+        cm = _fin((cur.get("gex_views") or {}).get("magnet"))
         if cm is not None and pm is not None and cm != pm:
-            add("/magnet/top_strikes/0/strike", cm, "changed_this_scan")
+            moved["heaviest_strike"] = {"was": pm, "now": cm}
+        for k, name in (("call_wall", "nearest_call_wall"),
+                        ("put_wall", "nearest_put_wall")):
+            a, b = _fin(prev.get(k)), _fin(cur.get(k))
+            if a is not None and b is not None and a != b:
+                moved[name] = {"was": a, "now": b}
+        if moved:
+            out["changed_since_last_book"] = moved
 
-    # 3. MEASURED EMPTY, but only when it JUST BECAME empty. A side holding no
-    #    wall is an ordinary state on this name — measured over 4,274 scenes the
-    #    call side is empty on 17.5%, the put side on 20.8%, and the board has
-    #    no flip at all on 31.2%. Standing empty is the weather. A side that had
-    #    a wall a book ago and has none now is the event.
-    walls = scene.get("walls") or {}
-    if len(books) >= 2:
-        was = walls_ladder(books[-2], lambda v: None) or {}
-        for side in ("call", "put"):
-            if walls.get(f"{side}_side_has_no_wall") and not was.get(f"{side}_side_has_no_wall"):
-                add(f"/walls/{side}_side_has_no_wall", True, "measured_empty")
-
-    # 4. DISAGREEMENT: NOTHING QUALIFIES YET, and that is a finding rather than
-    #    an omission. The obvious construction — breadth's heavier side against
-    #    which way the magnet sits from spot — fires on 45.1% of scenes, which
-    #    makes it a coin flip wearing a contradiction's name. The two really do
-    #    read the same gamma pile (the doctrine says so), so they cannot
-    #    disagree in any way that means something. A real disagreement here
-    #    would need two INDEPENDENT measurements of one quantity, and this scene
-    #    does not carry a pair. Left empty on purpose rather than filled with
-    #    the first thing that looked like one.
-
-    return out[:CANDIDATE_MAX]
+    return out or None
 
 
 def _distinct_books_rows(rows: list[dict]) -> list[dict]:
@@ -2620,15 +2580,14 @@ def build_scene(row: dict, band: dict, frozen: list,
     scene["freshness_rules"] = _drop_stale_blocks(
         scene, {LIVE_TAPE: scan_age, OPTIONS_BOOK: book_age})
     # WHAT IS UNUSUAL, computed here rather than asked of the model — see
-    # notable_candidates. Built AFTER the freshness gate on purpose: a candidate
+    # session_context. Built AFTER the freshness gate on purpose: a fact
     # pointing into a block that was just deleted for age would be an offer the
     # reader cannot take, so the gate runs first and every surviving pointer
     # resolves by construction. Re-checked anyway, because "by construction" is
     # what the last three bugs all said about themselves.
-    cands = [c for c in notable_candidates(scene, rows, now)
-             if json_pointer(scene, c["path"]) is not _MISS]
-    if cands:
-        scene["unusual"] = cands
+    ctx = session_context(scene, rows, now)
+    if ctx:
+        scene["context"] = ctx
     return scene
 
 

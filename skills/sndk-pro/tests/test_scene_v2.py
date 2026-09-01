@@ -888,6 +888,10 @@ _OUTPUT_SCHEMA_NAMES = {
     "watch", "novelty", "basis", "window", "what", "would_change", "path",
     "stale_min", "n_sessions", "pctile", "one_witness_with",
     "used",          # obs-1b: the model names the candidates it is speaking about
+    "read", "points", "level", "note", "context",   # obs-2's reply and its
+                    # one input block; `context` IS a scene key, but it is only
+                    # built when there is history to state, so the fixtures
+                    # cannot always produce it
 }
 
 _UNREACHABLE_IN_FIXTURES = {

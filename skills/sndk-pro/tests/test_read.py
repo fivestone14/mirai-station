@@ -409,153 +409,130 @@ def _scene_for_obs():
     return SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
 
 
-def _scene_with_candidate():
-    """A scene carrying at least one Python-found candidate."""
+def _obs_scene():
     row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
-    sc["unusual"] = [{"path": "/magnet/top_strike_lead_pp", "value": 41.2,
-                      "why": "extreme_vs_own_history",
-                      "rank": "higher than all 22 prior sessions"}]
-    return sc
+    return SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
 
 
-def test_the_model_may_only_speak_about_what_python_offered():
-    """THE structural gate, and it is stronger than the pointer check it
-    replaced. Under obs-1 the model built its own RFC-6901 pointers and echoed
-    its own values, which had to be re-resolved and could be invented. It now
-    picks from a list Python computed, so there is nothing to resolve and
-    nothing to invent — and citing anything not on that list is the one
-    structural error left to make."""
-    sc = _scene_with_candidate()
+def test_the_model_reads_the_whole_board_and_picks_its_own_levels():
+    """obs-2 GAVE THE REASONING BACK. obs-1b had Python nominate what was
+    unusual and left the model narrating a shortlist; judging what matters on a
+    board IS the reasoning, and the latency that appeared to justify moving it
+    into Python turned out to be a global effortLevel setting. Nothing is
+    pre-selected now. What is still checked is what can be checked without
+    constraining thought."""
+    sc = _obs_scene()
+    strike = sc["magnet"]["top_strikes"][0]["strike"]
     ok = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-         "say": "One strike is doing far more of the work than usual."}, sc)
-    assert ok["quiet"] is False and len(ok["notable"]) == 1
-    assert ok["notable"][0]["novelty"] == "extreme_vs_own_history"
-    assert ok["say"].startswith("One strike")
-    ungiven = SR._validate_observation(
-        {"quiet": False, "used": ["/price/live_spot"], "say": "Price moved."}, sc)
-    assert ungiven["quiet"] is True and ungiven["abstain"] == "forced"
-    assert "not_offered" in ungiven["dropped_observations"]
+        {"quiet": False, "read": "One strike carries most of the board.",
+         "points": [{"level": strike, "note": "heaviest strike"}]}, sc)
+    assert ok["quiet"] is False
+    assert ok["points"] == [{"level": strike, "note": "heaviest strike"}]
+    assert ok["read"].startswith("One strike")
 
 
-def test_forecast_and_causal_words_delete_the_sentence():
+def test_a_level_that_is_not_on_the_board_is_deleted():
+    """The one invention that matters most: a price nothing measured sends a
+    reader somewhere the board never spoke about."""
+    sc = _obs_scene()
+    out = SR._validate_observation(
+        {"quiet": False, "read": "Watch this one.",
+         "points": [{"level": 4242.0, "note": "invented"}]}, sc)
+    assert not out.get("points")
+    assert any(d.startswith("level_not_on_the_board")
+               for d in out["dropped_observations"])
+
+
+def test_a_number_in_the_prose_must_be_on_the_board():
+    """obs-2 checks prose against every number in the SCENE rather than a
+    shortlist, because the model now reads all of it. A human rounding is not
+    invention — the doctrine says talk like a person."""
+    sc = _obs_scene()
+    strike = sc["magnet"]["top_strikes"][0]["strike"]
+    ok = SR._validate_observation(
+        {"quiet": False, "read": f"The heaviest strike is {strike:g}."}, sc)
+    assert "read" in ok
+    drift = SR._validate_observation(
+        {"quiet": False, "read": "The heaviest strike is 4242."}, sc)
+    assert "read" not in drift
+    assert any(d.startswith("read_number_not_on_the_board")
+               for d in drift["dropped_observations"])
+
+
+def test_forecast_and_causal_words_delete_the_prose():
     """The causal ban is correctness, not caution: a wall relabels to follow
     price with probability 1.000 on a crossing, so a causal verb about one is
     false by measurement.
 
-    obs-1b stopped banning the NOUNS. Banning "call wall" wiped the human
-    sentence on 2 of the 2 completed obs-1 reads — a 100% deletion rate on the
-    only part a person reads — because the scene ships a walls block the model
-    is meant to describe. The danger rides on the verb, and the verb lists
-    catch it."""
-    sc = _scene_with_candidate()
+    POSITIONAL words are not banned. "no call wall to the upside" means nothing
+    above price; banning it deleted an otherwise good live sentence over the
+    second word."""
+    sc = _obs_scene()
     for prose in ("Price will rally from here.",
                   "The board is heavy because dealers are defending it.",
-                  "This sets up a move higher."):
-        out = SR._validate_observation(
-            {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-             "say": prose}, sc)
-        assert "say" not in out, prose
-        assert any(d.startswith("say_banned:") for d in out["dropped_observations"])
-    # ...and merely NAMING a wall is fine again
+                  "1500 is acting as resistance."):
+        out = SR._validate_observation({"quiet": False, "read": prose}, sc)
+        assert "read" not in out, prose
+        assert any(d.startswith("read_banned:")
+                   for d in out["dropped_observations"]), prose
     fine = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-         "say": "The call wall sits well above where price is trading."}, sc)
-    assert "say" in fine
+        {"quiet": False,
+         "read": "No call wall to the upside, and the heavier cluster sits lower down."}, sc)
+    assert "read" in fine
 
 
 def test_chosen_quiet_and_forced_quiet_are_counted_apart():
     """The distinction IS the audit: a model that looked and found nothing is
-    doing its job, a model whose every claim was deleted is not, and one flag
+    doing its job, one whose every claim was deleted is not, and a single flag
     cannot tell you which happened."""
-    sc = _scene_with_candidate()
-    chosen = SR._validate_observation(
-        {"quiet": True, "used": [],
-         "quiet_because": "One strike leads, but not by enough to matter."}, sc)
+    sc = _obs_scene()
+    chosen = SR._validate_observation({"quiet": True}, sc)
     assert chosen["abstain"] == "chosen" and "dropped_observations" not in chosen
-    assert chosen["quiet_because"].startswith("One strike")
     forced = SR._validate_observation(
-        {"quiet": False, "used": ["/nope"], "say": "x"}, sc)
-    assert forced["abstain"] == "forced"
-
-
-def test_a_number_in_the_sentence_must_be_one_that_was_offered():
-    """`say` is the part a person reads, so it is the part most worth drifting."""
-    sc = _scene_with_candidate()
-    ok = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-         "say": "The lead is 41.2 points, wider than any session on record."}, sc)
-    assert "say" in ok
-    # a HUMAN ROUNDING of an offered value is not invention — the doctrine
-    # tells the model to talk like a person, and a person says 41.2 for 41.23
-    rounded = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-         "say": "The lead is about 41 points, wider than any session on record."}, sc)
-    assert "say" in rounded
-    drift = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-         "say": "The lead is 87.4 points."}, sc)
-    assert "say" not in drift
-    assert any(d.startswith("say_number_not_offered")
-               for d in drift["dropped_observations"])
-
-
-def test_a_dotted_path_names_the_same_field_as_a_pointer():
-    """Measured: asked for `/magnet/top_strike_lead_pp`, the model returns
-    `magnet.top_strike_lead_pp` about as often as not. Both name the field
-    unambiguously; the gate exists to stop invention, not to mark punctuation."""
-    sc = _scene_with_candidate()
-    for form in ("/magnet/top_strike_lead_pp", "magnet.top_strike_lead_pp"):
-        out = SR._validate_observation(
-            {"quiet": False, "used": [form], "say": "One strike leads."}, sc)
-        assert out["quiet"] is False, form
-        assert out["notable"][0]["paths"] == ["/magnet/top_strike_lead_pp"]
-
-
-def test_a_scene_with_no_candidates_can_only_be_quiet():
-    """Python found nothing, so there is nothing to speak about — whatever the
-    model says it used."""
-    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
-    sc.pop("unusual", None)
-    out = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"], "say": "x"}, sc)
-    assert out["quiet"] is True and out["abstain"] == "forced"
-
-
-def test_novelty_is_ranked_among_days_not_among_scans():
-    """94-98.5% of the variance in these quantities is BETWEEN days, so a
-    session sitting in a tail sits there all day and casts ~90 identical votes.
-    Ranked per-scan, 53% of scenes came back extreme, which is not what extreme
-    means. `_rank_among_days` compares one value per closed session."""
-    assert "_days" in str(SR._rank_among_days.__doc__) or True
-    blob_keys = ("magnet_gap_pp_days", "lopsidedness_days")
-    src = Path(SR.__file__).read_text()
-    for k in blob_keys:
-        assert k in src, k
-    # the bar is "beats every prior session", not "in a decile" — with ~22
-    # sessions a decile is two days, which is not a rare event
-    assert "beats >= n" in src and "beats == 0" in src
+        {"quiet": False, "read": "Price will rally."}, sc)
+    assert forced["quiet"] is True and forced["abstain"] == "forced"
 
 
 def test_the_shadow_guard_rides_the_row_and_never_rejects():
     """The standing house rule for a new guard: run it in the shadow first, so
-    the rate is known before it is allowed to reject anything. A guard that has
-    never fired is not evidence that nothing is wrong; one that fires on 40% of
-    readings is not a guard either.
-
-    Checked through the REAL validator on a real scene, so a future rename
-    breaks this test rather than silently zeroing the rate — which is exactly
-    what happened when it was left pointing at `line`/`breaks_if`/`cited`."""
+    the rate is known before it is allowed to reject anything."""
     assert SR.LEXICON_ENFORCE is False
-    sc = _scene_with_candidate()
+    sc = _obs_scene()
     r = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-         "say": "Dealers are buying the heaviest strike right now."}, sc)
+        {"quiet": False,
+         "read": "Dealers are buying the heaviest strike right now."}, sc)
     assert r["stale_language_flags"] == ["are buying", "right now"]
-    assert len(r["notable"]) == 1        # shadow only — it rejects nothing
+    assert "read" in r                    # shadow only — it rejects nothing
     clean = SR._validate_observation(
-        {"quiet": False, "used": ["/magnet/top_strike_lead_pp"],
-         "say": "One strike carries far more of the board than the rest."}, sc)
+        {"quiet": False, "read": "One strike carries most of the board."}, sc)
     assert "stale_language_flags" not in clean
+
+
+def test_context_states_facts_and_never_verdicts():
+    """obs-2's division of labour: Python supplies only what the model cannot
+    see from one snapshot — a rank against closed sessions, and what moved since
+    the last book. It never says whether any of it matters."""
+    rows = [mkrow([[1300, 60], [1100, 20]], gamma_sign="negative",
+                  ts=T0 - timedelta(minutes=4),
+                  meta={"book_asof": (T0 - timedelta(minutes=4)).isoformat()}),
+            mkrow([[1300, 60], [1100, 20]], gamma_sign="positive", ts=T0,
+                  meta={"book_asof": T0.isoformat()})]
+    ctx = SR.session_context({}, rows, T0) or {}
+    ch = ctx.get("changed_since_last_book") or {}
+    assert ch.get("gamma_sign") == {"was": "negative", "now": "positive"}
+    # a rank is a fact; "unusual" would be a verdict
+    for v in (ctx.get("vs_prior_sessions") or {}).values():
+        assert "unusual" not in v and "extreme" not in v
+
+
+def test_a_transition_out_of_not_measured_is_not_a_change():
+    """The first live obs-2 scene reported `gamma_sign: unknown -> positive`.
+    A book that had not been read yet is not a flip, and telling the model it is
+    invites a sentence about something that never happened."""
+    rows = [mkrow([[1300, 60], [1100, 20]], gamma_sign="unknown",
+                  ts=T0 - timedelta(minutes=4),
+                  meta={"book_asof": (T0 - timedelta(minutes=4)).isoformat()}),
+            mkrow([[1300, 60], [1100, 20]], gamma_sign="positive", ts=T0,
+                  meta={"book_asof": T0.isoformat()})]
+    ctx = SR.session_context({}, rows, T0) or {}
+    assert "gamma_sign" not in (ctx.get("changed_since_last_book") or {})
