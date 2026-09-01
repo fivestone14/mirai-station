@@ -165,13 +165,15 @@ on the name (`_pp`, `_bn`, `_musd`, `_min`, `_sigma`). `gex` →
 | ~~named_levels_sigma_from_spot {ct, hvl, pt}~~ | — | **DELETED sr-3 (2026-08-08)**: a duplicate of `regime.flip`. Measured over the 923 recorded rows carrying the family, `profile_ladder.hvl == gamma_flip` on 923/923 and `(ct−flip)/σ, (pt−flip)/σ` take exactly one value, `(+0.25, −0.25)` — so these were flip_block's own three numbers a second time, presenting one measurement as three levels agreeing. Cited 0 times in 61 sr-2 readings |
 | ~~lowest_named_level~~ | — | **DELETED sr-3**: `min()` of the duplicate above |
 | **context** {vs_prior_sessions {top_strike_lead_pp, lopsidedness}, changed_since_last_book {gamma_sign, heaviest_strike, nearest_call_wall, nearest_put_wall}} | `_prior_sessions` day medians + the last two DISTINCT books | **NEW obs-2 (08-31)**. The only thing Python still decides for the model, and it decides nothing: the model reads one snapshot, so it cannot know how today ranks against closed sessions or what moved since the last book. Those are facts about TIME and the payload has none. States facts, never verdicts — a rank, not "extreme"; a was/now, not "changed_this_scan". Ranked one value per SESSION, because 94-98.5% of the variance in these is between days and a per-scan rank lets one unusual session vote ~90 times |
+| context.since_last_read {last_read_at, minutes_since, spot_then/now, spot_change_dollars, why_this_read, crossed_since_then [{level, was_labelled_then, price_went}] \| nothing_crossed_since_then, unchanged_since_then, range_since {low, high}, session_range_unbroken_since \| first_read_of_session} | `frame_since_last_read` over the last row that SPENT a call — crossings tested against that row's frozen `gate` snapshot | **NEW obs-3 (09-01)**. The bridge every reading opens with. Every number a model might quote ships pre-computed, because the doctrine forbids model arithmetic and the number gate deletes what is not on the board — without this block the honest "price has held between X and Y since HH:MM" sentence was deleted and logged as a forced abstain. The gamma flip is deliberately NOT in the crossed list: its uncertainty exceeds its distance from spot, and freezing it does not cure that |
 | history {price_at_level_unseen_earlier_today, tape_abnormal_vs_own_history} | today's rows (spot beyond all prior scans = new session ground; ≥1.5σ day move on the stock's OWN ruler or ≥0.5σ/30min = abnormal) | the under-pull flags; block omitted when nothing to say. σ-relative on purpose: a fixed 8% is ~1σ on this name and fired on 56% of recorded scans |
 | frozen_do_not_cite | `frozen_fields` over today's rows, **minus the wall entries (sr-3)** | guardrail, kept — but it may only name fields the scene actually ships. Wall staleness moved onto the wall itself; the ROW's frozen list is untouched, since the chart greys diary fields and is right to keep describing them |
 
 **Removed from the payload:** `arrow_already_decided` (direction, silent_because,
-layer cites) — the verdict anchored the model. The deterministic arrow is still
-computed every scan, recorded on the read row, and drawn on the chart —
-payload and arrow are decoupled paths.
+layer cites) — the verdict anchored the model. The deterministic arrow itself
+outlived that exclusion by a month and was then deleted whole (Lane A removal,
+obs-3 2026-09-01): rows written before that date carry an `arrow` field as
+history, and nothing computes or draws one any more.
 
 ## On the diary row but NOT in the payload (and why)
 
@@ -199,9 +201,14 @@ payload and arrow are decoupled paths.
 
 ## Read-row fields (never in the payload)
 
-`arrow` (dir/state/since/run/fading/caution/layers/ghost), `magnet_band`,
-`frozen`, `wake`, `spoke/scans`, `reading`, `paused`, `wall_s/model/error` —
-these are the *output* surface (chart + training store), not model input.
+`magnet_band`, `frozen`, `wake`, `gate` (the frozen snapshot the NEXT wake
+gate and the obs-3 frame measure from), `scans`, `reading` (+ `reading_ts`,
+`reading_age_min`, `quiet`, `abstain`), `book_asof`/`book_age_min`/
+`scan_age_min`, `paused`, `wall_s/model/error` — these are the *output*
+surface (chart + training store), not model input. Rows written before obs-3
+(2026-09-01) also carry `arrow` (dir/state/since/run/fading/caution/layers/
+ghost) and `spoke`; those are history — Lane A is deleted and nothing writes
+them any more.
 
 ## Verification log (08-02, pre-deploy)
 

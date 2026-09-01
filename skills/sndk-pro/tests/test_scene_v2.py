@@ -418,7 +418,7 @@ def test_the_read_has_no_tools_and_the_doctrine_does_not_offer_any():
     # removing the flag was a no-op and the doctrine's "no tools" claim was
     # false until Bash and WebSearch were added to the DISALLOW list, which is
     # the only thing that actually gates.
-    assert SR._ALLOWED_TOOLS == ()
+    assert not hasattr(SR, "_ALLOWED_TOOLS")   # the empty grant itself is gone
     src = Path(SR.__file__).read_text()
     # the FLAG, not the word: it is discussed at length in the comments that
     # explain why it was never doing anything
@@ -516,7 +516,7 @@ def test_nan_masses_cannot_fabricate_confidence():
 
 
 def test_malformed_rows_degrade_instead_of_crashing():
-    """One poisoned upstream row must not silence the reader AND the arrow."""
+    """One poisoned upstream row must not silence the reader."""
     row = rich_row(mass=[[1300, None], ["junk", 5], [1100, 30.0]])
     row["profile_ladder"] = "corrupted-string"
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
@@ -877,7 +877,7 @@ def _every_scene_shape(tmp_path):
                            [rich_row(ts=T0 - timedelta(minutes=30), spot=1490.0),
                             rich_row(spot=1520.0)],
                            {"ts": (T0 - timedelta(minutes=30)).isoformat(),
-                            "gate": SR.gate_state(rich_row(spot=1490.0, call_wall=1500.0))},
+                            "gate": SR.state_for_next_wake(rich_row(spot=1490.0, call_wall=1500.0))},
                            "call wall crossed", False, T0)),
         # a scene carrying Python-found candidates: the gamma sign differs
         # between two distinct books, which is `changed_this_scan`

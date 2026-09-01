@@ -26,7 +26,6 @@ def _read_out(line="the heaviest strike sat at 1300 all afternoon", quiet=False,
                {"quiet": False, "read": line,
                 "points": [{"level": 1300.0, "note": line}]})
     return {"era": "obs-1", "wake": wake, "reading": reading,
-            "arrow": {"dir": None},
             "magnet_band": {"top": [[1300.0, 9.5], [1100.0, 8.7]],
                             "gap_pp": 0.8}}
 

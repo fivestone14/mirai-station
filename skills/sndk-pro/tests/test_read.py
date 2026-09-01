@@ -1,9 +1,9 @@
-"""sndk_read tests — the gates, the dwell, and the bans.
+"""sndk_read tests — the gates and the bans.
 
 Every rule this module enforces exists because the four recorded sessions
 (2026-07-28..31, 756 rows) measured a specific failure. These tests pin the
-rule, not the implementation: the arrow must stay silent on a tie, the model
-must never be handed a constant, and a live call must not blink.
+rule, not the implementation: the magnet must admit a tie, the model must
+never be handed a constant, and a wake must be earned, not scheduled.
 """
 import json
 from pathlib import Path
@@ -84,15 +84,14 @@ def _read(ts, spot=1200.0, magnet=1300.0, **gate):
     """A READ row, which is what the gate actually receives as `prev`.
 
     Deliberately shaped like the real thing: a read row carries ts / spot /
-    sigma / arrow / magnet_band and NOT call_wall, gamma_flip, atm_iv or
-    gamma_sign. wk-1 adds the `gate` snapshot precisely because those are
-    missing, so the fixture carries it too — a stub that quietly held the
-    structural fields flat would hide the bug the snapshot exists to fix."""
+    sigma / magnet_band and NOT call_wall, gamma_flip, atm_iv or gamma_sign.
+    wk-1 adds the `gate` snapshot precisely because those are missing, so the
+    fixture carries it too — a stub that quietly held the structural fields
+    flat would hide the bug the snapshot exists to fix."""
     g = {"spot": spot, "magnet": magnet}
     g.update(gate)
     return {"ts": ts.isoformat(), "spot": spot,
-            "magnet_band": {"reported": magnet}, "arrow": {"dir": None},
-            "gate": g}
+            "magnet_band": {"reported": magnet}, "gate": g}
 
 
 def _books(*rows):
@@ -174,14 +173,14 @@ def test_the_gate_reads_a_snapshot_because_prev_is_not_a_diary_row():
     So: a read-shaped row WITHOUT the snapshot must not fire a structural wake,
     and the same row WITH it must."""
     bare = {"ts": (T0 - timedelta(minutes=20)).isoformat(), "spot": 1200.0,
-            "magnet_band": {"reported": 1300.0}, "arrow": {"dir": None}}
+            "magnet_band": {"reported": 1300.0}}
     crossed = mkrow([[1300, 9]], spot=1450.0, call_wall=1400.0)
     assert SR.should_wake(crossed, None, bare, T0) == "price ran"   # not the wall
-    stamped = dict(bare, gate=SR.gate_state(mkrow([[1300, 9]], spot=1200.0,
+    stamped = dict(bare, gate=SR.state_for_next_wake(mkrow([[1300, 9]], spot=1200.0,
                                                   call_wall=1400.0)))
     assert SR.should_wake(crossed, None, stamped, T0) == "call wall crossed"
     # and the snapshot must actually carry the structural fields
-    g = SR.gate_state(mkrow([[1300, 9]], spot=1200.0, call_wall=1400.0,
+    g = SR.state_for_next_wake(mkrow([[1300, 9]], spot=1200.0, call_wall=1400.0,
                             gamma_sign="negative"))
     assert g["call_wall"] == 1400.0 and g["gamma_sign"] == "negative"
 
@@ -285,7 +284,7 @@ def test_the_model_reads_the_whole_board_and_picks_its_own_levels():
     constraining thought."""
     sc = _obs_scene()
     strike = sc["magnet"]["top_strikes"][0]["strike"]
-    ok = SR._validate_observation(
+    ok = SR.check_reading_against_scene(
         {"quiet": False, "read": "One strike carries most of the board.",
          "points": [{"level": strike, "note": "heaviest strike"}]}, sc)
     assert ok["quiet"] is False
@@ -297,7 +296,7 @@ def test_a_level_that_is_not_on_the_board_is_deleted():
     """The one invention that matters most: a price nothing measured sends a
     reader somewhere the board never spoke about."""
     sc = _obs_scene()
-    out = SR._validate_observation(
+    out = SR.check_reading_against_scene(
         {"quiet": False, "read": "Watch this one.",
          "points": [{"level": 4242.0, "note": "invented"}]}, sc)
     assert not out.get("points")
@@ -311,10 +310,10 @@ def test_a_number_in_the_prose_must_be_on_the_board():
     invention — the doctrine says talk like a person."""
     sc = _obs_scene()
     strike = sc["magnet"]["top_strikes"][0]["strike"]
-    ok = SR._validate_observation(
+    ok = SR.check_reading_against_scene(
         {"quiet": False, "read": f"The heaviest strike is {strike:g}."}, sc)
     assert "read" in ok
-    drift = SR._validate_observation(
+    drift = SR.check_reading_against_scene(
         {"quiet": False, "read": "The heaviest strike is 4242."}, sc)
     assert "read" not in drift
     assert any(d.startswith("read_number_not_on_the_board")
@@ -333,11 +332,11 @@ def test_forecast_and_causal_words_delete_the_prose():
     for prose in ("Price will rally from here.",
                   "The board is heavy because dealers are defending it.",
                   "1500 is acting as resistance."):
-        out = SR._validate_observation({"quiet": False, "read": prose}, sc)
+        out = SR.check_reading_against_scene({"quiet": False, "read": prose}, sc)
         assert "read" not in out, prose
         assert any(d.startswith("read_banned:")
                    for d in out["dropped_observations"]), prose
-    fine = SR._validate_observation(
+    fine = SR.check_reading_against_scene(
         {"quiet": False,
          "read": "No call wall to the upside, and the heavier cluster sits lower down."}, sc)
     assert "read" in fine
@@ -348,9 +347,9 @@ def test_chosen_quiet_and_forced_quiet_are_counted_apart():
     doing its job, one whose every claim was deleted is not, and a single flag
     cannot tell you which happened."""
     sc = _obs_scene()
-    chosen = SR._validate_observation({"quiet": True}, sc)
+    chosen = SR.check_reading_against_scene({"quiet": True}, sc)
     assert chosen["abstain"] == "chosen" and "dropped_observations" not in chosen
-    forced = SR._validate_observation(
+    forced = SR.check_reading_against_scene(
         {"quiet": False, "read": "Price will rally."}, sc)
     assert forced["quiet"] is True and forced["abstain"] == "forced"
 
@@ -360,12 +359,12 @@ def test_the_shadow_guard_rides_the_row_and_never_rejects():
     the rate is known before it is allowed to reject anything."""
     assert SR.LEXICON_ENFORCE is False
     sc = _obs_scene()
-    r = SR._validate_observation(
+    r = SR.check_reading_against_scene(
         {"quiet": False,
          "read": "Dealers are buying the heaviest strike right now."}, sc)
     assert r["stale_language_flags"] == ["are buying", "right now"]
     assert "read" in r                    # shadow only — it rejects nothing
-    clean = SR._validate_observation(
+    clean = SR.check_reading_against_scene(
         {"quiet": False, "read": "One strike carries most of the board."}, sc)
     assert "stale_language_flags" not in clean
 
@@ -411,7 +410,7 @@ def test_a_transition_out_of_not_measured_is_not_a_change():
 def _last_call(minutes_ago=47, **gate_kw):
     r = mkrow([[1300, 60], [1100, 20]], **gate_kw)
     return {"ts": (T0 - timedelta(minutes=minutes_ago)).isoformat(),
-            "wall_s": 9.9, "gate": SR.gate_state(r)}
+            "wall_s": 9.9, "gate": SR.state_for_next_wake(r)}
 
 
 def test_every_wake_reason_translates_and_every_translation_is_speakable():
@@ -421,8 +420,7 @@ def test_every_wake_reason_translates_and_every_translation_is_speakable():
     must pass the lexicon."""
     reasons = ("first read", "price ran", "pin moved", "gamma sign flipped",
                "crossed flip", "call wall crossed", "put wall crossed",
-               "iv moved", "flip moved", "heartbeat",
-               "arrow appeared", "arrow stood down")
+               "iv moved", "flip moved", "heartbeat")
     for r in reasons:
         assert r in SR._WAKE_WORDS, r
     for phrase in SR._WAKE_WORDS.values():
@@ -460,10 +458,10 @@ def test_example_a_survives_only_because_the_frame_ships():
                      "the call wall as it stood then.",
              "points": [{"level": 1497.0,
                          "note": "crossed level, the wall as it stood at the last read"}]}
-    ok = SR._validate_observation(reply, sc)
+    ok = SR.check_reading_against_scene(reply, sc)
     assert "read" in ok and len(ok["points"]) == 1
     bare = SR.build_scene(row, SR.magnet_band(row), [], rows, T0)
-    dead = SR._validate_observation(reply, bare)
+    dead = SR.check_reading_against_scene(reply, bare)
     assert dead["quiet"] is True and dead["abstain"] == "forced"
     assert any(d.startswith("level_not_on_the_board")
                for d in dead["dropped_observations"])
@@ -486,10 +484,10 @@ def test_example_b_survives_only_because_the_frame_ships():
     reply = {"quiet": True,
              "read": "Price has held between 1538.8 and 1546.1 since the "
                      f"{fr['last_read_at']} read; nothing on the board moved."}
-    ok = SR._validate_observation(reply, sc)
+    ok = SR.check_reading_against_scene(reply, sc)
     assert ok["read"].startswith("Price has held") and ok["abstain"] == "chosen"
     bare = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    dead = SR._validate_observation(reply, bare)
+    dead = SR.check_reading_against_scene(reply, bare)
     assert "read" not in dead
 
 

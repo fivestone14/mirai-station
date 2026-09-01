@@ -5,17 +5,19 @@
 sndk_read.py — the SNDK chart's live reading. One wake = one read row.
 
 WHAT THIS IS NOT: a ported Watchtower. The SPX tower is a forward forecaster
-whose call IS the model's opinion. Here the two paths are deliberately
-DECOUPLED (sr-2, 2026-08-02 blueprint):
+whose call IS the model's opinion. Here the model is asked what it NOTICES —
+observations checked number-by-number against the scene, never a direction:
+the direction call was asked for a year, measured at zero forward value, and
+removed (obs-1).
 
-    the ARROW is decided by a deterministic aggregator (this module, no model)
-    and still draws on the chart, exactly as before;
-    the READING is the model's OWN inference — vector + magnitude — from an
-    UNBIASED scene that carries evidence only, never a verdict. The old
-    arrow_already_decided block anchored the model and is gone from the scene.
+ONE LANE (obs-3, 2026-09-01). For two months a second, deterministic lane —
+the ARROW, a magnet voter with a breadth veto, a dwell clock and a ghost —
+drew on the chart beside the reading. It is deleted; the tombstone where
+aggregate() stood records the measured reasons. Old read rows keep their
+`arrow` field as history; nothing writes a new one.
 
-That split is not stylistic — it is what four sessions of recorded SNDK rows
-measured (2026-07-28..31, 756 rows, verified against state/sndk_reversion/):
+The design rests on what four sessions of recorded SNDK rows measured
+(2026-07-28..31, 756 rows, verified against state/sndk_reversion/):
 
   * 12 of the ~20 fields a "hand it everything" payload would carry are
     CONSTANTS. dex_word is the identical string on 756/756 rows and renders as
@@ -32,19 +34,12 @@ measured (2026-07-28..31, 756 rows, verified against state/sndk_reversion/):
     runs and 86 shove runs. Every accuracy claim on this surface is inside the
     noise band. Nothing here is presented as an edge.
 
-So: silence is the default and must be OVERCOME. Both layers must clear their
-OWN separation gate before an arrow exists — but only the magnet POINTS. Shove
-measures the same gamma mass the magnet does, so it can veto and can never vote
-(see _layers); there is no "the layers agreed" step and there must never be one.
-Measured on the four recorded sessions both gates clear on 69 of 756 scans
-(9.1%, ~17/day); dwell then holds the arrow alive on 103 of 756 (13.6%).
-
 Isolation (README doctrine): writes ONLY state/sndk_reads. Never imports
 watchtower, never touches the SPX diary, never blocks sndk_hunter's tick —
 this is its own launchd job so a slow model call cannot drop a scan.
 
 Two switches, and they are NOT the same thing:
-    SNDK_READ_DISABLE=1   KILL — no arrow, no row, no record at all (checked
+    SNDK_READ_DISABLE=1   KILL — no row, no record at all (checked
                           here AND in run-sndk-read.sh).
     sndk_reads/control.json  PAUSE — silences only the model's sentence; every
                           deterministic layer keeps running and every row keeps
@@ -53,9 +48,9 @@ Two switches, and they are NOT the same thing:
 CLI:
     python3 sndk_read.py              # one wake check (RTH-gated)
     python3 sndk_read.py --force      # bypass the RTH gate
-    python3 sndk_read.py --dry        # decide + aggregate, print, NO model call
+    python3 sndk_read.py --dry        # decide + build the scene, print, NO model call
     python3 sndk_read.py --replay DAY # re-run the gate over a recorded day,
-                                      # print the wake/arrow timeline, write nothing
+                                      # print the wake timeline, write nothing
 """
 from __future__ import annotations
 
@@ -244,21 +239,16 @@ DAILY_CALL_CAP = 30         # hard ceiling, and it must stay a BACKSTOP rather
                             # is a day to go and look at, not a day the budget
                             # worked.
 
-# --- admissibility gates (the arrow) -----------------------------------------
-# A layer may only COUNT once it has separated from its own noise — and only the
-# magnet ever points (see _layers). Both numbers are pre-registered here so a
-# later reader can see they were chosen before the arrow shipped, not fitted to it.
+# --- the magnet's tie rule ---------------------------------------------------
+# The top strike only counts as separated once it has beaten the runner-up by
+# this much of the day's gamma mass; magnet_band flags `tie` until it clears.
+# Pre-registered before the surface shipped, not fitted to it.
 MAGNET_SEP_PP = 5.0         # top1 - top2 share of gamma mass, percentage points.
                             # Median gap is 3.87pp, so this is silent by default
                             # and speaks on ~38% of scans.
-SHOVE_SEP_REL = 0.30        # |up - down| / max(|up|,|down|). 53.5% of scans sit
-                            # inside a 15% near-tie; this clears ~40%.
-PATH_STRETCH_SIGMA = 0.30   # price already travelled this far in 30 min -> the
-                            # arrow wears a "already ran" caution. Median 30-min
-                            # move is 0.077σ, so this marks a genuine outlier.
 # --- what the model may NOT cite ---------------------------------------------
-# Neither of these gates the arrow; both gate the SENTENCE. A reading is only
-# honest if the number behind it could still have changed today.
+# Both of these gate the SENTENCE. A reading is only honest if the number
+# behind it could still have changed today.
 FROZEN_MIN = 30             # a field unchanged this long renders as frozen and
                             # may not be cited as a reason for a NEW call
 # Fields measured constant across all 756 recorded rows. Named here rather than
@@ -401,15 +391,18 @@ CALL_EFFORT = "medium"      # PIN THE REASONING BUDGET, for the same reason
                             #
                             # medium reproduces the historical operating point
                             # (live median 17.2s yesterday). No quality cost is
-                            # measurable — scored through _validate_observation,
-                            # high kept FEWER observations than low — but that
-                            # is one sample per level, so read it as "no measured
-                            # benefit" rather than "proven equivalent".
+                            # measurable — scored through
+                            # check_reading_against_scene, high kept FEWER
+                            # observations than low — but that is one sample
+                            # per level, so read it as "no measured benefit"
+                            # rather than "proven equivalent".
 CALL_TIMEOUT_S = 100.0      # one attempt, no retries — a slow read is skipped.
-                            # Raised from 60s in sr-2: the read may now spend a
-                            # history lookup or an external search inside the
-                            # call. Still under the 120s tick, and this is its
-                            # own launchd job so a slow read never costs a scan.
+                            # Raised from 60s in sr-2, when the read could still
+                            # spend a history lookup or an external search
+                            # inside the call; that grant is gone (obs-1) and
+                            # the headroom is kept. Still under the 120s tick,
+                            # and this is its own launchd job so a slow read
+                            # never costs a scan.
 # Bash and WebSearch are ON THIS LIST NOW, and the omission was a live hole.
 # `--allowedTools` was assumed to be the gate; it is not. Probed directly under
 # both the old and the new argv, `claude -p` executed a Bash command and
@@ -417,24 +410,22 @@ CALL_TIMEOUT_S = 100.0      # one attempt, no retries — a slow read is skipped
 # a no-op, and the doctrine's claim "YOU HAVE NO TOOLS" was simply false.
 # `--disallowedTools` is the only thing that actually gates, and a single
 # WebSearch inside a read would eat the entire latency budget on its own.
+#
+# WHY THERE IS NO GRANT AT ALL. obs-1 revoked the sr-2 tool grant (the history
+# CLI plus WebSearch). It was used 0 times across all 391 production calls.
+# That alone would not settle it — the doctrine's own named triggers fired 94
+# times and the model never reached, which is the PROMPT failing, not the tool
+# — but the observation contract removes the reason to reach at all: an
+# observation is a statement about the snapshot in hand, and every claim has
+# to resolve to a pointer INTO that snapshot. History cannot be cited under
+# this contract even when consulted, so granting a tool buys a latency risk
+# and a licence to wander with no reachable upside. `sndk_rag` keeps running
+# on the write side, filing a slice per read; it is the read side that is
+# closed.
 _NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
              "Grep", "WebFetch", "Task", "Agent", "TodoWrite",
              "ExitPlanMode", "BashOutput", "KillShell", "SlashCommand", "Skill",
              "Bash", "WebSearch")
-# sr-2 on-demand paths: the ONE Bash command the read may run (the history
-# tool) and WebSearch for the abnormal-tape catalyst check. Everything else
-# stays banned — the scene is still the primary evidence.
-_RAG_CMD = f"{sys.executable} {_SKILL_DIR / 'sndk_rag.py'}"
-# obs-1 REVOKES the tool grant. It was used 0 times across all 391 production
-# calls. That alone would not settle it — the doctrine's own named triggers
-# fired 94 times and the model never reached, which is the PROMPT failing, not
-# the tool — but the observation contract removes the reason to reach at all:
-# an observation is a statement about the snapshot in hand, and every claim has
-# to resolve to a pointer INTO that snapshot. History cannot be cited under this
-# contract even when consulted, so granting the tool buys a latency risk and a
-# licence to wander with no reachable upside. `sndk_rag` keeps running on the
-# write side, filing a slice per read; it is the read side that is closed.
-_ALLOWED_TOOLS = ()
 
 
 def _state_dir() -> Path:
@@ -678,101 +669,16 @@ def magnet_band(row: dict) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# the aggregator — this, not the model, decides the arrow
-# ---------------------------------------------------------------------------
+# the raw shove block off a diary row — breadth_block and _lopsided read it
 def _shove(row: dict) -> dict:
     gv = row.get("gex_views") or {}
     return gv.get("shove") or {}
 
 
-def _layers(row: dict) -> list[dict]:
-    """The reads behind the arrow, each with its separation test and the number
-    that drove it.
-
-    THESE ARE NOT INDEPENDENT AND THE CODE MUST NOT PRETEND THEY ARE. The first
-    draft of this module required "two layers to agree" before drawing an arrow.
-    Replayed over the four recorded sessions both gates cleared on 69 of 756
-    scans and agreed on 69 of 69 — 100%. The reason is structural, not lucky:
-    the magnet IS the largest pile of gamma, and shove measures the asymmetry of
-    that same gamma mass, so agreement is guaranteed by construction. Two
-    correlated views of one measurement dressed as corroboration is exactly the
-    false-confidence pattern this module exists to remove.
-
-    So the roles are named honestly instead:
-        magnet  -> SOURCE. The direction comes from here and nowhere else.
-        shove   -> BREADTH. Not a second opinion; a check that the asymmetry is
-                   broad rather than one lucky strike. It can veto, never vote.
-        path    -> CAUTION. Genuinely independent of the book (it is price, not
-                   positioning) and used only to flag, never to point.
-
-    Every entry carries `cite` — the raw field and value a reader can check
-    against the chart with their own eyes. Constants (INADMISSIBLE) never appear
-    here at all."""
-    spot = row.get("spot")
-    out: list[dict] = []
-
-    # --- magnet: only once the top strike has actually beaten the runner-up ---
-    mb = magnet_band(row)
-    if spot is not None and mb["top"]:
-        top_k = mb["top"][0][0]
-        adm = (not mb["tie"]) and abs(top_k - spot) > 0
-        out.append({
-            "name": "magnet", "role": "source",
-            "dir": ("up" if top_k > spot else "down") if adm else None,
-            "admissible": adm,
-            "cite": f"top strike {top_k:g} holds {mb['top'][0][1]:.1f}% vs "
-                    f"{mb['top'][1][0]:g} at {mb['top'][1][1]:.1f}%"
-                    if len(mb["top"]) >= 2 else f"top strike {top_k:g}",
-            "sep": mb["gap_pp"], "sep_needs": MAGNET_SEP_PP, "sep_units": "pp",
-        })
-
-    # --- shove: BREADTH gate, not a vote ------------------------------------
-    # Records which side is heavier for the record, but deliberately emits no
-    # direction: on four sessions the terrain convention (heavier side resists)
-    # and the raw convention (heavier side is the way it goes) swing ~30 points
-    # day to day across only 86 sign runs, so neither is established and this
-    # module will not assert one. What it CAN say without picking a sign is
-    # whether the mass is lopsided enough for the top strike to mean anything.
-    sh = _shove(row)
-    up, dn = sh.get("shove_up_margin"), sh.get("shove_down_margin")
-    if isinstance(up, (int, float)) and isinstance(dn, (int, float)):
-        scale = max(abs(up), abs(dn), 1e-9)
-        rel = abs(up - dn) / scale
-        adm = rel >= SHOVE_SEP_REL
-        out.append({
-            "name": "shove", "role": "breadth",
-            "dir": None,                      # never votes — see the docstring
-            "heavier": "up" if up > dn else "down",
-            "admissible": adm,
-            "cite": f"resistance up {up:.2f} vs down {dn:.2f}",
-            "sep": round(rel, 3), "sep_needs": SHOVE_SEP_REL, "sep_units": "rel",
-        })
-
-    # --- path: CAUTION flag, genuinely independent of the book --------------
-    # The one pattern with any day-to-day stability in the recorded data is
-    # short-horizon mean reversion, so an arrow pointing the way price has just
-    # travelled is the least trustworthy kind. This does not vote and does not
-    # veto; it raises a flag the chart renders and the reading must acknowledge.
-    sig = row.get("sigma") or 0
-    ran = row.get("_ran_30m_sigma")
-    if sig and isinstance(ran, (int, float)):
-        out.append({
-            "name": "path", "role": "caution",
-            "dir": None,
-            "ran": round(ran, 2),
-            "stretched": abs(ran) >= PATH_STRETCH_SIGMA,
-            "admissible": True,
-            "cite": f"price ran {ran:+.2f}σ in the last 30 min",
-            "sep": abs(round(ran, 2)), "sep_needs": PATH_STRETCH_SIGMA,
-            "sep_units": "σ",
-        })
-    return out
-
-
-# LANE A REMOVED (obs-3, 2026-09-01). `aggregate()` — the deterministic arrow
-# with its magnet voter, breadth veto, 15-minute dwell, path caution and ghost —
-# lived here for two months. Deleted deliberately, not lost:
+# LANE A REMOVED (obs-3, 2026-09-01). `aggregate()` and its `_layers()`
+# evidence table — the deterministic arrow with its magnet voter, breadth
+# veto, 15-minute dwell, path caution and ghost — lived here for two months.
+# Deleted deliberately, not lost:
 #   it was a DIRECTION surface on a system whose redesign says the direction
 #     call measured worthless (391 readings, zero forward value);
 #   its own content was audited at pointing to the nearest round hundred on
@@ -814,20 +720,20 @@ def frozen_fields(rows: list[dict], now: datetime) -> list[dict]:
 # ---------------------------------------------------------------------------
 # wake gate
 # ---------------------------------------------------------------------------
-def gate_state(row: dict) -> dict:
+def state_for_next_wake(row: dict) -> dict:
     """The structural state the wake gate compares against, snapshotted.
 
     THIS EXISTS BECAUSE `prev` IS NOT A DIARY ROW. `read_once` passes the last
     row that SPENT A CALL, and those live in state/sndk_reads/, whose schema is
-    ts / wake / spot / sigma / arrow / magnet_band / reading / ... and carries
+    ts / wake / spot / sigma / magnet_band / reading / ... and carries
     none of `call_wall`, `put_wall`, `gamma_flip`, `atm_iv`, `gamma_sign` or
     `gex_views`. A gate reading those off `prev` gets None every time and
     silently degenerates to price-and-heartbeat — the exact starvation
     should_wake's own docstring records happening once before.
 
     So the read row now carries this snapshot, and the gate reads it through
-    `_spoke_field`, which falls back to the row itself so a diary row (tests,
-    replay) still works unchanged."""
+    `value_at_last_read`, which falls back to the row itself so a diary row
+    (tests, replay) still works unchanged."""
     gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
     out = {"spot": _fin(row.get("spot")), "sigma": _fin(row.get("sigma")),
            "gamma_sign": row.get("gamma_sign"), "magnet": _fin(gv.get("magnet")),
@@ -838,7 +744,7 @@ def gate_state(row: dict) -> dict:
     return {k: v for k, v in out.items() if v is not None}
 
 
-def _spoke_field(prev: dict, key: str):
+def value_at_last_read(prev: dict, key: str):
     """Read a structural field off the last-spoken row, snapshot first.
 
     `magnet` is nested under gex_views on a diary row and flat in the snapshot,
@@ -856,8 +762,7 @@ def _spoke_field(prev: dict, key: str):
 # obs-3: what each wake reason means, said in words the lexicon allows. The RAW
 # reason is never handed to the model — "pin moved" baits it into echoing "pin",
 # which is a banned word, and in testing that deleted the entire read. Every
-# value here is asserted lexicon-clean by a test. Arrow wakes translate to a
-# neutral phrase because the scene deliberately never shows the arrow.
+# value here is asserted lexicon-clean by a test.
 _WAKE_WORDS = {
     "first read": "the session's first look",
     "price ran": "price travelled since the last read",
@@ -869,8 +774,6 @@ _WAKE_WORDS = {
     "iv moved": "implied vol moved since the last read",
     "flip moved": "the hedging-flip level relocated",
     "heartbeat": "timed check-in; nothing crossed a wake threshold",
-    "arrow appeared": "routine check",
-    "arrow stood down": "routine check",
     "quiet": "routine check",
     "stale_book": "routine check",
 }
@@ -905,7 +808,7 @@ def frame_since_last_read(row: dict, rows: list[dict],
         return {"first_read_of_session": True}
     out: dict = {"last_read_at": t_last.astimezone(_ET).strftime("%H:%M"),
                  "minutes_since": max(0, int((now - t_last).total_seconds() // 60))}
-    spot_then = _spoke_field(last_call, "spot")
+    spot_then = value_at_last_read(last_call, "spot")
     spot_now = _fin(row.get("spot"))
     if spot_then is not None and spot_now is not None:
         out["spot_then"] = round(spot_then, 2)
@@ -922,7 +825,7 @@ def frame_since_last_read(row: dict, rows: list[dict],
         for key, label in (("call_wall", "nearest_call_wall"),
                            ("put_wall", "nearest_put_wall"),
                            ("magnet", "heaviest_strike")):
-            lvl = _spoke_field(last_call, key)
+            lvl = value_at_last_read(last_call, key)
             if lvl is None or round(lvl, 2) in seen:
                 continue
             if (spot_now - lvl) * (spot_then - lvl) < 0:
@@ -942,7 +845,8 @@ def frame_since_last_read(row: dict, rows: list[dict],
                      ("heaviest_strike", _fin((row.get("gex_views") or {}).get("magnet"))),
                      ("call_wall", _fin(row.get("call_wall"))),
                      ("put_wall", _fin(row.get("put_wall")))):
-        then = _spoke_field(last_call, "magnet" if key == "heaviest_strike" else key)
+        then = value_at_last_read(
+            last_call, "magnet" if key == "heaviest_strike" else key)
         if then is not None and cur is not None and then == cur:
             unchanged[key] = then if not isinstance(then, float) else round(then, 2)
     if unchanged:
@@ -1038,7 +942,7 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
 
     sig = _fin(row.get("sigma")) or 0
     spot = _fin(row.get("spot"))
-    spoke_spot = _spoke_field(prev, "spot")
+    spoke_spot = value_at_last_read(prev, "spot")
     books = _books_since(rows or [], _book_asof(prev))
 
     # STRUCTURE IS EVALUATED ON THE BOOK CLOCK, PRICE ON THE LIVE ONE, and the
@@ -1056,24 +960,24 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
 
     # 1-2. discrete structure, and only when it HOLDS
     if books and new_book:
-        if _spoke_field(prev, "gamma_sign") is not None and _held_for(
+        if value_at_last_read(prev, "gamma_sign") is not None and _held_for(
                 books, lambda b: b.get("gamma_sign"),
-                _spoke_field(prev, "gamma_sign"), WAKE_CONFIRM_BOOKS):
+                value_at_last_read(prev, "gamma_sign"), WAKE_CONFIRM_BOOKS):
             return "gamma sign flipped"
-        if _spoke_field(prev, "magnet") is not None and _held_for(
+        if value_at_last_read(prev, "magnet") is not None and _held_for(
                 books, lambda b: _fin((b.get("gex_views") or {}).get("magnet")),
-                _spoke_field(prev, "magnet"), WAKE_CONFIRM_BOOKS):
+                value_at_last_read(prev, "magnet"), WAKE_CONFIRM_BOOKS):
             return "pin moved"
 
     # 3-4. price CROSSING a level the last reading actually spoke about. The
     # level is the one that was true when it spoke, never the relabelled one.
     if spot is not None and spoke_spot is not None:
-        f = _spoke_field(prev, "gamma_flip")
+        f = value_at_last_read(prev, "gamma_flip")
         if (f is not None and sig and (spot - f) * (spoke_spot - f) < 0
                 and abs(spot - f) / sig > 0.02):
             return "crossed flip"
         for k, word in (("call_wall", "call wall"), ("put_wall", "put wall")):
-            w = _spoke_field(prev, k)
+            w = value_at_last_read(prev, k)
             if w is not None and (spot - w) * (spoke_spot - w) < 0:
                 return f"{word} crossed"
         # 5. plain travel
@@ -1083,14 +987,15 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     # 6. implied vol, on the SMOOTHED series — the raw one is mostly sensor
     if books and new_book:
         ivs = [v for v in (_fin(b.get("atm_iv")) for b in books) if v is not None]
-        spoke_iv = _spoke_field(prev, "atm_iv")
+        spoke_iv = value_at_last_read(prev, "atm_iv")
         if ivs and spoke_iv is not None:
             med = statistics.median(ivs[-WAKE_IV_MEDIAN_BOOKS:])
             if abs(med - spoke_iv) * 100.0 >= WAKE_IV_PP:
                 return "iv moved"
 
     # 7. the flip LEVEL relocating, as opposed to price crossing it
-    fl, spoke_fl = _fin(row.get("gamma_flip")), _spoke_field(prev, "gamma_flip")
+    fl = _fin(row.get("gamma_flip"))
+    spoke_fl = value_at_last_read(prev, "gamma_flip")
     if new_book and sig and fl is not None and spoke_fl is not None:
         if abs(fl - spoke_fl) / sig >= WAKE_FLIP_SIGMA:
             return "flip moved"
@@ -1254,7 +1159,7 @@ OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence:
  "points": [{{"level": <a price that appears in the scene>, "note": "<a few words on why this one is worth watching>"}}]}}"""
 
 
-def _stale_language_flags(reading: dict) -> list[str]:
+def present_tense_slips(reading: dict) -> list[str]:
     """Phrases that narrate an open-interest field as if it were happening now.
 
     sr-7. The scene labels every OI-derived block "as of last night's close",
@@ -1301,7 +1206,7 @@ def banned_words(text: str) -> list[str]:
     return sorted({m.group(0).lower() for m in _BANNED_RE.finditer(text or "")})
 
 
-def _board_levels(scene) -> set:
+def prices_on_the_board(scene) -> set:
     """Prices the board actually names — strikes, walls, the flip, spot.
 
     A `level` used to be checked against every number anywhere in the scene,
@@ -1387,7 +1292,7 @@ def _board_levels(scene) -> set:
     return out
 
 
-def _scene_numbers(scene) -> set:
+def numbers_on_the_board(scene) -> set:
     """Every number anywhere in the scene, rounded to 2dp.
 
     obs-2 checks prose against THIS rather than against a shortlist of offered
@@ -1423,8 +1328,8 @@ def _scene_numbers(scene) -> set:
     return out
 
 
-def _validate_observation(obj: dict, scene: dict) -> dict:
-    """The gates, for a model that reads the whole board and decides itself.
+def check_reading_against_scene(obj: dict, scene: dict) -> dict:
+    """Check the model's reading against the scene it was handed.
 
     obs-2 GAVE THE REASONING BACK. obs-1b had Python nominate what was unusual
     and left the model to narrate the shortlist; that was the wrong division of
@@ -1436,8 +1341,8 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
     a number spoken must be a number on the board, a level named must be a level
     that exists, and the vocabulary stays descriptive. Nothing here tells the
     model WHAT to find."""
-    nums = _scene_numbers(scene)
-    levels = _board_levels(scene)
+    nums = numbers_on_the_board(scene)
+    levels = prices_on_the_board(scene)
     dropped: list[str] = []
 
     def _numbers_check(text, tag):
@@ -1517,8 +1422,8 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
         reading["points"] = points
     if quiet:
         reading["abstain"] = "forced" if dropped else "chosen"
-    tense = _stale_language_flags({"say": read,
-                                   "notable": [{"what": p["note"]} for p in points]})
+    tense = present_tense_slips({"say": read,
+                                 "notable": [{"what": p["note"]} for p in points]})
     if tense:
         reading["stale_language_flags"] = tense
     if dropped:
@@ -1526,7 +1431,7 @@ def _validate_observation(obj: dict, scene: dict) -> dict:
     return reading
 
 
-def _extract_json(text: str):
+def first_json_object(text: str):
     """First balanced JSON object in a blob (the CLI envelope wraps the reply)."""
     if not isinstance(text, str):
         return None
@@ -1541,13 +1446,11 @@ def _extract_json(text: str):
     return None
 
 
-def _ask(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
-    """ONE `claude -p` call. sr-2 grants exactly TWO tools — the history CLI
-    (a single allow-listed Bash prefix) and WebSearch — because the on-demand
-    reach is part of the design; everything else stays banned, so the scene
-    remains the primary evidence and the schema bill stays small. Doctrine
-    rides --append-system-prompt so it stays byte-identical all day and is
-    served from cache; the varying scene rides the body.
+def call_the_model(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
+    """ONE `claude -p` call, every tool disallowed (_NO_TOOLS — obs-1 revoked
+    the sr-2 grant). Doctrine rides --append-system-prompt so it stays
+    byte-identical all day and is served from cache; the varying scene rides
+    the body.
 
     Returns (obj | None, error | None, wall_seconds)."""
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
@@ -1565,9 +1468,10 @@ def _ask(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
     wall = round(_clock.time() - t0, 1)
     if r.returncode != 0:
         return None, f"rc={r.returncode}: {(r.stderr or '')[-200:]}", wall
-    env = _extract_json(r.stdout)
+    env = first_json_object(r.stdout)
     text = env.get("result") if isinstance(env, dict) and "result" in env else r.stdout
-    return _extract_json(text if isinstance(text, str) else r.stdout), None, wall
+    return (first_json_object(text if isinstance(text, str) else r.stdout),
+            None, wall)
 
 
 def _fin(v) -> Optional[float]:
@@ -2860,8 +2764,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # call narrating the same frozen board every 45 minutes. A stale book
     # never wakes the model (an unparseable timestamp counts as stale — fail
     # closed, like the feed's own no-quote rule). The row still lands, stamped
-    # stale_book so an outage can never pool with genuine quiet; the arrow is
-    # pure recomputation and stays. Manual --force remains a human override.
+    # stale_book so an outage can never pool with genuine quiet. Manual
+    # --force remains a human override.
     # sr-7: measured off the BOOK, not off the scan. The scan clock said 0-1
     # minute while the book was up to 3.4 minutes old, so a gate written to
     # refuse a 6-minute-old book was really refusing a ~9-minute-old one, and
@@ -2899,13 +2803,13 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         # wk-1: the state the NEXT gate compares against. Written on every read
         # row, not only on the ones that spend a call, so a restart mid-session
         # cannot leave the gate with nothing to measure from.
-        "gate": gate_state(row),
+        "gate": state_for_next_wake(row),
         "reading": None, "model": None, "wall_s": None, "error": None,
     }
 
     if not wake and not force:
-        # still write the row: the arrow is current, the reading simply carries
-        # forward. A hidden surface must never read as a missing one.
+        # still write the row: the reading simply carries forward. A hidden
+        # surface must never read as a missing one.
         # Age is measured from when the SENTENCE was written, not from the last
         # row. Every quiet scan copies the reading forward, so measuring off the
         # previous row reset the age to the ~2-minute scan gap on every carry —
@@ -2941,7 +2845,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
 
     prompt = ("Read this scene cold and reply with the JSON object only.\n\n"
               "SCENE:\n" + json.dumps(scene, default=str))
-    obj, err, wall = _ask(prompt, PINNED_MODEL)
+    obj, err, wall = call_the_model(prompt, PINNED_MODEL)
     out["wall_s"], out["model"] = wall, PINNED_MODEL
     if err or not isinstance(obj, dict):
         out["error"] = err or "unparseable reply"
@@ -2955,7 +2859,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         out["reading_age_min"] = (int((now - rts).total_seconds() // 60)
                                   if rts else None)
     else:
-        reading = _validate_observation(obj, scene)
+        reading = check_reading_against_scene(obj, scene)
         out["reading"] = reading
         # WHAT WAS DROPPED, IN THE MODEL'S OWN WORDS. `dropped_observations`
         # records the REASON a gate fired and never the text it fired on, so a
@@ -2993,15 +2897,15 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
 
 def replay(day: str) -> int:
     """Re-run the gate over a recorded day. Writes nothing — this is how the
-    wake rate and the arrow count were measured before shipping."""
+    wake rate was measured before shipping."""
     rows = [r for r in _read_jsonl(_diary_dir() / f"{day}.jsonl")
             if r.get("ticker") == "SNDK"
             and not (r.get("meta") or {}).get("forced")]   # same rule as live
     if not rows:
         print(f"no rows for {day}")
         return 1
-    prev = last_call = None
-    wakes = arrow_scans = flips = 0
+    last_call = None
+    wakes = 0
     from collections import Counter
     why = Counter()
     for i, row in enumerate(rows):
@@ -3009,27 +2913,16 @@ def replay(day: str) -> int:
         if now is None:
             continue
         row = with_path(row, rows[:i + 1])
-        a = aggregate(row, prev, now)
-        if a["dir"]:
-            arrow_scans += 1
-        pd = ((prev or {}).get("arrow") or {}).get("dir")
         w = should_wake(row, rows[i - 1] if i else None, last_call, now)
-        if a["dir"] != pd and not a.get("held_reversal"):
-            w = w or ("arrow appeared" if a["dir"] else "arrow stood down")
-            flips += 1
-        prev = {"ts": row["ts"], "spot": row.get("spot"), "arrow": a,
-                "magnet_band": magnet_band(row)}
         if not w:
             continue
-        last_call = prev
+        last_call = {"ts": row["ts"], "spot": row.get("spot"),
+                     "magnet_band": magnet_band(row)}
         wakes += 1
         why[w] += 1
-        print(f"  {row['ts'][11:16]}  {w:18s} spot={row.get('spot'):>9}  "
-              f"arrow={(a['dir'] or '—'):6s} {a['silent_because'] or ''}"
-              f"{'  ⚠ ' + a['caution'] if a.get('caution') else ''}")
+        print(f"  {row['ts'][11:16]}  {w:18s} spot={row.get('spot'):>9}")
     print(f"\n{day}: {wakes} model calls / {len(rows)} scans "
-          f"({wakes/len(rows)*100:.0f}%) · arrow live on {arrow_scans} scans "
-          f"({arrow_scans/len(rows)*100:.0f}%) · {flips} changes · {dict(why)}")
+          f"({wakes/len(rows)*100:.0f}%) · {dict(why)}")
     return 0
 
 

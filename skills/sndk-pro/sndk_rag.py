@@ -37,7 +37,8 @@ drift out of sync with the rows.
 Isolation: writes ONLY under state/sndk_rag/. Reads the SNDK diary and reads
 store; never touches any SPX store. Called two ways:
   * imported by sndk_read (record_slice — fail-open, must never cost a read)
-  * as the allow-listed CLI the reading model may run (see sndk_read._RAG_CMD)
+  * as the allow-listed CLI the VOICE desk may run (mirai-voice convo._RAG_CMD);
+    the reading model's own grant was revoked at obs-1 — see sndk_read._NO_TOOLS
 
 CLI:
   sndk_rag.py query --tier slices  [--date D] [--from HH:MM --to HH:MM]

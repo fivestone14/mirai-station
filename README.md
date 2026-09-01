@@ -77,7 +77,7 @@ flowchart TB
   subgraph SNDKPRO["②b SNDK-PRO · its own lane · beta / record-only"]
     direction LR
     SFEED["own chain runner → map maker<br/><i>front weekly · rebuilt IV</i>"]
-    SREAD["the reader<br/><i>arrow (pure) + reading (model)</i>"]
+    SREAD["the reader<br/><i>one lane: the model's reading</i>"]
     SFEED --> SREAD
   end
 
@@ -197,12 +197,7 @@ Three facts drove its design (all live-verified, all covered by tests):
    IV is **rebuilt** per strike from the live bid/ask mid of the OTM right and shared
    with its parity twin; gamma is recomputed from the rebuilt IV.
 
-**The arrow and the reading are decoupled on purpose.** The arrow on the chart is a
-deterministic aggregator — no model. The *reading* is the model's own inference: a
-direction vector and a magnitude in σ, made cold from an **unbiased scene** that
-carries evidence only and never shows it the arrow. The two surfaces may disagree on
-the chart; that disagreement is information. Scene era `sr-2`; the field-by-field map
-is `docs/sndk-payload-inventory.md`.
+**One lane, on purpose (obs-3).** The deterministic arrow — Lane A — was removed on 2026-09-01: it was a direction surface on a system whose redesign measured the direction call at zero forward value, its own content pointed at the nearest round hundred on 94% of audited episodes, and its state changes spent 11% of model calls waking an observer that was forbidden from ever seeing it. The model's reading is the only live lane; old read rows keep their `arrow` field as history.
 
 The blunt findings that shaped it — measured over four recorded sessions, 756 rows:
 12 of ~20 candidate payload fields were **constants** (one read *"Dealers sell into
@@ -212,7 +207,7 @@ further than price travels** in the window it implied. Nothing on this surface i
 outside the noise band, and nothing here is presented as an edge.
 
 A **pause** switch (`state/sndk_reads/control.json`, flipped from the tablet) silences
-the model's *sentence* and nothing else — the arrow, gates, and rankings are pure
+the model's *sentence* and nothing else — the gates and rankings are pure
 functions of a row already on disk, so every scan still lands a row, stamped
 `paused: true`. A gap in a training set costs more than a gap in the prose. Both
 readers fail **open**.
@@ -270,7 +265,7 @@ A read-only web app on **`:8787`** showing the live state on the mini. Seven sur
 | **Processor** | The Sweep Ledger — every call graded by signed area, the day on one page |
 | **Replay** | How each call actually played out, scrubbed over any past day from `state/reversion/*.jsonl` |
 | **Dictionary** | How walls, magnets and pins are written everywhere on this station (`docs/gw-vocab.md` in plain English) |
-| **SNDK** β | The SNDK board, its arrow, the model's reading, the 🎙 talk button, and the reasoning pause |
+| **SNDK** β | The SNDK board, the model's reading, the 🎙 talk button, and the reasoning pause |
 
 It reuses the project's own renderers, so every number matches the canonical views.
 **LAN-only by design: read-only, no auth, and the SNDK reasoning toggle is the only
@@ -333,7 +328,7 @@ mirai-station/
 │   │                           fill_ledger · gex_polarity_ab (grader) ·
 │   │                           siege_bridge · lob_bridge · dashboard · price lenses
 │   ├── sndk-pro/               the isolated SNDK station: feed · views · hunter ·
-│   │                           read (arrow + model reading) · rag (on-demand memory)
+│   │                           read (model reading) · rag (on-demand memory)
 │   ├── mirai-voice/            ears · jargon · convo · doctrine · mouth · voice_server
 │   ├── siege/                  effort-at-the-wall sensor (shadow, self-contained)
 │   ├── lob-flow/               Layer-2 order-book FLOW sensor (shadow, self-contained)

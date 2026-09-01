@@ -1768,12 +1768,10 @@
   .snk-day{display:flex}
   .snk-day span{font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.05em; padding:3px 9px; border-radius:999px;
     color:var(--ink-dim); border:1px solid var(--hairline-2); background:color-mix(in srgb,var(--surface-2) 66%,transparent)}
-  /* ---- THE LIVE READ (sr-1, 07-31) — the gated arrow, its one-sentence reading and the
-     honesty flags, seated at the TOP of the side panel. Reuses the SPX tower's own grammar
-     (.gx-call block + .tr-next sentence) so a reader who learned the tower reads this for
-     free; only the metrics are re-scoped for the narrower column. Nothing here is a
-     forecast — the arrow is decided by a deterministic gate before the model is called,
-     and across four recorded sessions the arrow was drawn on ~14% of scans. ---- */
+  /* ---- THE LIVE READ (sr-1, 07-31; observation-only since obs-3) — the model's
+     observation of the board, seated at the TOP of the side panel. Nothing here is a
+     forecast: the model is asked what stands out, never where price is going, and the
+     deterministic arrow that once led this card was deleted with Lane A. ---- */
   .snk-read{background:var(--surface-2); border:1px solid var(--hairline); border-left:3px solid var(--l-grav);
     border-radius:var(--r-md); padding:10px 12px 9px}
   .snk-read>.k{display:block; font-size:var(--snk-cap-fs); letter-spacing:var(--track-cap); text-transform:uppercase; font-weight:700; color:var(--ink-faint); margin-bottom:8px}
@@ -1783,20 +1781,6 @@
     color:var(--ink-faint); background:transparent; border:1px solid var(--hairline-2);
     border-radius:999px; padding:1px 9px 2px; margin:-2px 0 0 8px; -webkit-tap-highlight-color:transparent}
   .snk-read .hist:hover{color:var(--ink); border-color:var(--hairline)}
-  /* the call block goes FULL WIDTH here: the side column is ~200–275px of usable ink, so
-     the map's side-by-side call+sentence layout would leave the sentence about 90px. Block
-     on top, sentence under it. */
-  .snk-read .gx-call{width:100%; min-width:0; padding:6px 10px}
-  .snk-read .gx-call .dir{font-size:19px}
-  /* the silent subtitle is a whole sentence ("no strike is in charge — top two are 0.83pp
-     apart, needs 5.0pp"), not a "0.42σ ≈ 12 pts" figure — let it wrap rather than clip */
-  .snk-read .gx-call .mag{white-space:normal; text-align:center; font-size:12px; line-height:1.4; margin-top:1px}
-  /* an arrow standing on the dwell clock while its own gate has already failed draws
-     dimmed, never solid (sndk_read.aggregate's `fading`) */
-  .snk-read .gx-call.fading{opacity:.62}
-  /* MODEL VECTOR (sr-2) — the model's OWN inference from the unbiased scene, a separate
-     surface from the gated arrow above it (the two are decoupled by design and may
-     disagree; that disagreement is information, so both always show). */
   /* obs-1 observation overlay — small, calm, and quiet by default */
   .snk-read .obs{margin-top:7px; padding:6px 9px; border-radius:6px;
     background:var(--panel,rgba(255,255,255,.03)); border:1px solid var(--rule,rgba(255,255,255,.08));}
@@ -1813,41 +1797,12 @@
     padding:4px 0; border-top:1px solid var(--rule,rgba(255,255,255,.06));}
   .snk-read .obs li .w{font-size:12px;}
   .snk-read .obs li .m{font-size:11px; color:var(--ink-dim,#aab2c4); white-space:nowrap;}
-  .snk-read .obs li .p{grid-column:1/-1; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-    font-size:10px; color:var(--ink-faint,#8b93a7); opacity:.75; overflow:hidden;
-    text-overflow:ellipsis; white-space:nowrap;}
   .snk-read .obs .unk,.snk-read .obs .wch{margin-top:5px; font-size:11px;
     color:var(--ink-faint,#8b93a7);}
   .snk-read .obs .unk em{font-style:normal; opacity:.8;}
-  .snk-read .vec{display:flex; align-items:baseline; gap:8px; margin-top:7px; padding:4px 8px;
-    border-radius:8px; background:var(--surface-3); border:1px solid var(--hairline);
-    font-family:var(--mono); font-size:12.5px; font-weight:700}
-  .snk-read .vec i{flex:0 0 auto; font-style:normal; font-size:9.5px; font-weight:700;
-    letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
-  .snk-read .vec.up span{color:var(--jade)} .snk-read .vec.down span{color:var(--coral)}
-  .snk-read .vec.none span{color:var(--ink-dim); font-weight:500}
-  .snk-read .tr-next{font-size:13.5px; line-height:1.5; margin:9px 0 0}
   .snk-read .br{font-family:var(--sans); font-size:12px; line-height:1.45; color:var(--ink-dim); margin-top:6px}
   .snk-read .br i{font-style:normal; font-weight:600; color:var(--ink-faint)}
   .snk-read .ct{font-family:var(--mono); font-size:10.5px; line-height:1.4; color:var(--ink-faint); margin-top:6px; overflow-wrap:anywhere}
-  /* HONESTY FLAGS — amber, on their own row, never folded into a tooltip: a caution
-     ("price already ran this way") or a fading arrow is the part of this surface most
-     likely to be wrong, so it is the part that must be impossible to miss. */
-  .snk-read .fl{display:flex; gap:7px; align-items:baseline; margin-top:8px; padding:5px 8px; border-radius:8px;
-    background:color-mix(in srgb,var(--lantern) 10%,transparent);
-    border:1px solid color-mix(in srgb,var(--lantern) 26%,transparent);
-    font-family:var(--sans); font-size:12px; line-height:1.4; color:var(--ink-dim)}
-  .snk-read .fl i{flex:0 0 auto; font-style:normal; font-family:var(--mono); font-size:9.5px; font-weight:700;
-    letter-spacing:.09em; text-transform:uppercase; color:var(--lantern)}
-  /* LAYER STRIP — one chip per gate, LIT once that layer has cleared its own separation bar.
-     Dim is the normal state (the magnet clears its 5.0pp bar on ~38% of scans, breadth its
-     0.30 bar on ~40%), so a dim strip is the surface working, not a surface broken. */
-  .snk-lstrip{display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; padding-top:8px; border-top:1px solid var(--hairline)}
-  .snk-lstrip span{font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:999px;
-    color:var(--ink-faint); border:1px solid var(--hairline-2); background:transparent; cursor:pointer}
-  .snk-lstrip span.lit{color:var(--l-grav); border-color:color-mix(in srgb,var(--l-grav) 34%,transparent);
-    background:color-mix(in srgb,var(--l-grav) 10%,transparent)}
-  .snk-lstrip span i{font-style:normal; font-weight:500; margin-left:4px; opacity:.7}
   /* FROZEN FIELDS (sr-1): a payload field that has not moved for ≥30 min washes out and
      says how long in its tip. Washing (opacity) rather than re-inking to grey on purpose —
      the jade/coral/gravity-gold hue IS the reading, and a frozen magnet is still a magnet.
@@ -1906,7 +1861,7 @@
     max-height:4.1em; overflow:hidden}
   /* ---- SNDK "what am I looking at" modal. Same shell as the GEX explainer (.modal /
      .modal-card / .modal-head), its own body: a labelled figure over a numbered key.
-     Numbers match the pipeline schematic exactly so the two can be read together. ---- */
+     Each figure number names the key entry that explains it. ---- */
   .modal-card.snki{width:min(940px,96vw)}
   .snki-fig{background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md);
     padding:6px; overflow-x:auto}
@@ -9969,8 +9924,8 @@ function renderDict(){
    never touched. Reads the parallel producer's diary via the SAME generic
    endpoints (/api/raw/index + /api/raw/file → state/sndk_reversion/*.jsonl),
    the sr-1 LIVE READ from the second producer (→ state/sndk_reads/*.jsonl —
-   the gated arrow, the magnet band, the ghost, the frozen list and the
-   model's one sentence; own file, own poll, absent until it lands), and
+   the magnet band, the frozen list and the model's observation; own file,
+   own poll, absent until it lands), and
    /api/spot?ticker=SNDK. Reused helpers (never forked, never edited — the
    whole list, so `grep -c` over this region is a real isolation check): GW
    (wall clustering/tiers — parity-guarded twin of gw_vocab.py), GXTAG (ranked
@@ -10775,16 +10730,14 @@ function snkLegend(){
 }
 
 // ================================================================
-// THE LIVE READ (sr-1, 07-31) — state/sndk_reads/*.jsonl, written by the parallel
-// producer skills/sndk-pro/sndk_read.py (its own launchd job, so a slow model call can
-// never delay a scan). TWO different things ride one row and the split is the whole point:
-//   * the ARROW is a deterministic gate, NO model. It stays silent unless the top strike
-//     has beaten the runner-up by ≥5.0pp of gamma mass AND the book is lopsided enough for
-//     that strike to mean anything. Replayed over four recorded sessions it points on ~9%
-//     of scans; silence is the default and has to be overcome.
-//   * the READING is one terse model sentence describing the terrain, forbidden by its own
-//     doctrine from naming a direction.
-// Every READ HELPER below (snkSafe … snkGhostSVG) is PURE — row in, HTML-or-SVG string out,
+// THE LIVE READ (sr-1, 07-31; ONE LANE since obs-3) — state/sndk_reads/*.jsonl, written by
+// the parallel producer skills/sndk-pro/sndk_read.py (its own launchd job, so a slow model
+// call can never delay a scan). One thing rides the row: the READING — the model's own
+// observations of the board, forbidden by its own doctrine from naming a direction. The
+// deterministic ARROW that shared this row for two months was deleted at obs-3 (Lane A
+// removal: it measured as a round-number detector, and its state changes spent model calls
+// the scene forbade the model from narrating); old rows keep their arrow field as history.
+// Every READ HELPER below (snkSafe … snkMiraiSVG) is PURE — row in, HTML-or-SVG string out,
 // extractable by name for the jsc drills — and honest-absent: no read row → each one returns
 // '' or null and the tab behaves exactly as it did before this layer existed. The DOM-touching
 // members of this layer (the info modal, the frozen washes' callers) carry their own banners.
@@ -10835,77 +10788,6 @@ function snkLapseRows(clock, ageM, live){
   const L=snkLapseFill(ageM);
   return (clock?`¦k:issued=${clock} ET${L.ago?` · ${L.ago}`:''}`:`¦k:age=${L.ago}`)
     +(L.left?`¦m:${L.pct}¦f:${L.left}`:'');
-}
-const snkOrd=n=>{ const v=Math.abs(Math.round(+n||0)), t=v%100;
-  return v+((t>=11&&t<=13)?'th':(['th','st','nd','rd'][v%10]||'th')); };
-// a layer's separation reading in its OWN units (pp = share of gamma mass, σ = the day's
-// own ruler, rel = a bare lopsidedness ratio). null when unmeasured — the caller drops the
-// row rather than printing a dash that could be read as zero.
-function snkSep(v, units){
-  if(v==null||!isFinite(v)) return null;
-  return (+v).toFixed(2)+(units==='pp'?'pp':units==='σ'?'σ':'');
-}
-// what each gate is ALLOWED to do, said plainly. These are not three opinions: the magnet
-// IS the largest pile of gamma and shove measures the asymmetry of that same pile, so over
-// the four recorded sessions they agreed on 69 of the 69 scans where both cleared —
-// agreement by construction, not corroboration. The tips say so, rather than letting three
-// lit chips read as three confirmations.
-const SNK_LAYER_ENG={
-  magnet:{ name:'Magnet', eng:'Where the direction comes from.',
-    role:'the source — if this does not separate there is no arrow at all' },
-  shove:{ name:'Breadth', eng:'A breadth check, not a second opinion.',
-    role:'it measures the same gamma mass the magnet does, so it can only veto — never vote' },
-  path:{ name:'Price path', eng:'The one genuinely independent read: price, not positioning.',
-    role:'a caution flag only — it never points and never vetoes' },
-};
-// snkLayerChips — the gate strip. One chip per layer, lit when that layer cleared its OWN
-// bar on this scan; the tip carries the raw citation a reader can check against the chart
-// with their own eyes.
-// Lit is measured off sep vs sep_needs, NOT off `admissible`, and the difference matters:
-// the caution layer ships admissible:true on every row it can be computed at all (it never
-// votes, so it has nothing to be inadmissible for). Lighting it off that field would mean
-// "this layer reported" while the strip's caption says "this layer separated" — two claims
-// wearing one colour. Off sep it lights only when price has genuinely stretched, which is
-// the only moment the caution says anything.
-function snkLayerChips(layers){
-  if(!Array.isArray(layers)||!layers.length) return '';
-  const out=[];
-  for(const l of layers){
-    if(!l||!l.name) continue;
-    const E=SNK_LAYER_ENG[l.name]||{name:snkCap(l.name), eng:'', role:''};
-    const sep=snkSep(l.sep, l.sep_units), needs=snkSep(l.sep_needs, l.sep_units);
-    const cleared=(l.sep!=null&&isFinite(l.sep)&&l.sep_needs!=null&&isFinite(l.sep_needs))
-      ? Math.abs(+l.sep)>=+l.sep_needs : !!l.admissible;
-    const caution=l.role==='caution';
-    const tip=(E.eng||`${E.name}.`)
-      +(sep!=null?`¦k:${caution?'ran':'separation'}=${sep}`:'')
-      +(needs!=null?`¦f:${caution?`${needs} is where it starts to matter`:`needs ${needs} before it counts`}`:'')
-      +(l.cite?`¦f:${snkSafe(l.cite)}`:'')
-      +(E.role?`¦v:${E.role}`:'')
-      +`¦n:${caution?(cleared?'the caution is raised on this scan':'quiet — price has not stretched')
-                    :(cleared?'separated — it counts on this scan':'not separated — silent on this scan')}`;
-    out.push(`<span${cleared?' class="lit"':''} data-name="${E.name}" data-tip="${tip}">${E.name}${sep!=null?`<i>${sep}</i>`:''}</span>`);
-  }
-  return out.length?`<div class="snk-lstrip">${out.join('')}</div>`:'';
-}
-// snkArrowBlock — the .gx-call block for the read's arrow. Mirrors towerCallHTML's contract
-// ({cls, html}) so the two surfaces share one grammar, and honours the SAME hard rule the
-// tower's CSS encodes: a NON-call may never wear jade or coral. Silent is the default state
-// here, not a failure — it is grey, square, and says exactly why.
-function snkArrowBlock(a, now){
-  if(!a||typeof a!=='object') return {cls:'', html:`<span class="dir">—</span><span class="mag">no read yet</span>`};
-  if(a.dir){
-    const up=a.dir==='up', age=snkMinsSince(a.since, now), bits=[];
-    if(a.since&&snkClock(a.since)) bits.push(`since ${snkClock(a.since)}`);
-    if(age!=null) bits.push(snkDur(age));
-    if(+a.run>0) bits.push(`${snkOrd(a.run)} call today`);
-    return { cls:(up?'up':'dn')+(a.fading?' fading':''),
-      html:`<span class="dir">${up?'▲ UP':'▼ DOWN'}</span><span class="mag">${bits.join(' · ')||'just issued'}</span>` };
-  }
-  // the reason is the gate's OWN sentence, verbatim — a paraphrase here would be a second
-  // version of the same words and the two would drift apart the first time a bar moved
-  return { cls:'', html:`<span class="dir">■ QUIET</span>`
-    +`<span class="mag">${snkSafe(a.silent_because)||'no direction — the gate did not clear'}</span>` };
 }
 // snkObsBox (obs-1) — the OBSERVATION overlay. Replaces snkVectorRow, which drew
 // the model's direction and magnitude. That forecast was measured at zero forward
@@ -11007,15 +10889,15 @@ function snkDeclutter(svg){
   }
   for(const it of items) if(it.dy) it.t.setAttribute('transform',`translate(0 ${it.dy.toFixed(1)})`);
 }
-// snkReadCard — the side panel's live-read card: the call block, the model's own vector
-// (sr-2), the sentence, what would change it, the receipt, then the honesty flags and the
-// gate strip. '' when there is no read row, so the tab degrades to its pre-sr-1 self.
+// snkReadCard — the side panel's live-read card: the observation box, its aging note and
+// the paused/error banners. '' when there is no read row, so the tab degrades to its
+// pre-sr-1 self.
 // `bare` drops the card's own title row: inside a drawer the header already carries the name,
 // the wake word and the history button, and two of each is the duplication this tab keeps
 // removing. Called without it (anywhere else) the card is byte-identical to before.
 // THE CLOSED DRAWER'S ONE LINE. A title alone would mean opening the thing just to learn
-// whether the model is calling anything at all, so the header carries the call: the model's own
-// vector and size where there is one, the gated arrow's direction otherwise, and how old it is.
+// whether the model found anything at all, so the header carries the count of levels worth
+// watching (or the quiet state) and how old the reading is.
 // snkObs (obs-1) — IS there a reading, and is it the observation shape?
 //
 // This exists because the old test was `rd.reading && rd.reading.line`, and
@@ -11165,37 +11047,6 @@ async function openSnkHistModal(){
     "nothing unusual" is the expected answer and a finished one · "all dropped" means it did speak and the checks removed everything, which is worth a look ·
     times are this device's timezone</div>`);
 }
-// snkSpokeTxt — the abstention counter. Small, quiet, always present once a read row is:
-// how many of today's scans the arrow said ANYTHING on, out of all of them. The numerator
-// is normally tiny and that is the surface working, not a dead feed.
-function snkSpokeTxt(rd){
-  if(!rd) return '';
-  const s=(rd.spoke!=null&&isFinite(rd.spoke))?Math.round(+rd.spoke):null;
-  const n=(rd.scans!=null&&isFinite(rd.scans))?Math.round(+rd.scans):null;
-  return (s==null||n==null||n<=0)?'':`spoke ${s} of ${n} scans today`;
-}
-// snkReadPull — the vector the DRIFT COMET draws once a read row exists. This REPLACES
-// snkPull as the source of the drawn direction, and the replacement is the point: the old
-// comet pointed at the raw magnet on every single scan, and the raw magnet is a measured
-// coin flip (42 independent sign runs over four sessions — every accuracy claim on it sits
-// inside the noise band). The gated arrow is drawn on ~14% of scans and stands down on the
-// rest, and a stand-down draws a grey static NODE at spot with NO direction (the SPX map's
-// own stance-only idiom, gxPaint's wtNode). snkPull itself is untouched and still runs the
-// no-read-row fallback. Returns null = no read at all, {node:true} = stood down.
-function snkReadPull(rd, sp, step){
-  const a=(rd&&rd.arrow&&typeof rd.arrow==='object')?rd.arrow:null;
-  if(!a||sp==null||!isFinite(sp)) return null;
-  if(!a.dir) return {node:true};
-  // the arrow points AT THE BAND, not at a scalar: `hi` going up, `lo` going down. On a
-  // live arrow the band is one strike wide by construction — a tie is exactly what makes
-  // the magnet layer inadmissible — so this is the top strike whenever the gate cleared.
-  const b=(rd.magnet_band&&typeof rd.magnet_band==='object')?rd.magnet_band:{};
-  const up=a.dir==='up', raw=up?(b.hi!=null?b.hi:b.reported):(b.lo!=null?b.lo:b.reported);
-  if(raw==null||!isFinite(raw)) return {node:true};
-  const tgt=+raw, st=(step&&step>0)?step:1;
-  if(Math.abs(tgt-sp)<=st) return {node:true};        // price sitting on it is a pin, not a pull
-  return {node:false, up, tgt, dist:Math.abs(tgt-sp), fading:a.fading||null, since:a.since||null};
-}
 // snkMagBandSVG — the magnet as a BAND whenever the top two strikes are tied. Measured
 // justification, not taste: the median gap between the #1 and #2 strike is 3.87pp of gamma
 // mass and it is under 5pp on 62% of scans, so a scalar magnet line hides a near-tie most
@@ -11236,50 +11087,21 @@ function snkMagBandSVG(mb, P){
     lbl:edge(yT, hi, sHi)+edge(yB, lo, sLo),
   };
 }
-// snkGhostSVG — the AFTERIMAGE: where the LAST call was issued, drawn faint and dashed in
-// that call's own hue at ~25%. This is MEMORY, not scoring — nothing here grades the old
-// call, it just refuses to let it vanish the moment it stopped being convenient.
-// Deliberately subordinate (a short left segment, a 8.5px glyph, quarter opacity): the live
-// arrow must always out-read it. Off-frame → nothing, never clamped onto an edge price
-// never touched.
-function snkGhostSVG(gh, P){
-  if(!gh||typeof gh!=='object'||!gh.dir) return '';
-  const p=(gh.spot!=null&&isFinite(gh.spot))?+gh.spot:null;
-  if(p==null) return '';
-  const {x0, yFor, pLow, pHigh}=P;
-  const fs=snkNum(P.fs,8.5);
-  if(p<pLow||p>pHigh) return '';
-  const up=gh.dir==='up', hue=up?'var(--jade)':'var(--coral)';
-  const y=yFor(p), x1=x0+4, x2=x0+52, when=snkClock(gh.since);
-  // Wording is deliberately spare: the ONE non-obvious fact is that this marks where the
-  // call was made, not where it was headed (the aggregator never emits a target price at
-  // all), so the lead spends its words there instead of restating the card's own title.
-  // Whole dollars — cents are noise on a $1,200 name and the chart's other levels round too.
-  const tip=`Where it was called from — not a target.`
-    +`¦k:said ${up?'UP':'DOWN'} at=${snkUsd(p,0)}`
-    +(when?`¦f:issued ${when} ET`:'')
-    +`¦v:memory, not a score — nothing here grades it`;
-  return `<g opacity=".25">`
-    +`<line x1="${x1}" x2="${x2}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" style="stroke:${hue};stroke-width:1.6" stroke-dasharray="3 4"/>`
-    +`<text x="${(x2+5).toFixed(1)}" y="${(y+3*fs/8.5).toFixed(1)}" font-size="${fs}" font-weight="700" font-family="var(--mono)" style="fill:${hue};letter-spacing:.06em">${up?'▲':'▼'}</text>`
-    +`<rect x="${x1}" y="${(y-6).toFixed(1)}" width="${(x2-x1+16).toFixed(1)}" height="12" fill="transparent" data-name="Earlier call ${up?'▲':'▼'}" data-tip="${tip}"/>`
-    +`</g>`;
-}
-// ---- snkMiraiSVG (08-03, user-requested) — THE MIRAI VOICE ON THE CANVAS. The model's own
-// sr-2 read (vector + magnitude) drawn WHERE IT POINTS: a dashed thought-line from the live
-// price to the expected price ~30 min out, captioned in a few words ("mirai ▼ ~$1,221 · 30m").
-// Deliberately SPARSE — at most one voice mark + one late-day charm note — and every state is
-// honest: "balanced" when the model saw no lean, "paused" when the switch silenced it, dimmed
-// past 10 min (the read card's own aging rule), and NOTHING when no read row exists.
+// ---- snkMiraiSVG (08-03, user-requested) — THE MIRAI VOICE ON THE CANVAS. Since obs-1 it is
+// a NOTE at the live price, not a vector: how many things the model found unusual ("mirai · 2
+// to watch", or "nothing standing out"), because the drawn 30-min target it used to point at
+// was a forecast measured at zero forward value. Deliberately SPARSE — at most one voice mark
+// + one late-day charm note — and every state is honest: "paused" when the switch silenced it,
+// dimmed past 10 min (the read card's own aging rule), and NOTHING when no read row exists.
 // 08-26 (user-requested): the caption also says WHEN — the clock the read was issued at and how
-// long ago, in a dimmer second voice after the thought (`mirai ▼ $1,456 · 30m  10:14 · 12m ago`).
+// long ago, in a dimmer second voice after the note (`mirai · 2 to watch  10:14 · 12m ago`).
 // The age is measured from reading_ts against the wall clock, never read off the row, and the
 // "ago" is re-ticked in place by SNDK.tickAges so it keeps counting between scans and after the
 // close. "(old)" survives only for a row that carries no stamp to show. The hover card leads
 // with the same two facts and a meter of how much of the ~30-min window has run.
-// The dashes + the word "mirai" are the styling contract: a thought, never a measured level —
-// the solid lines on this chart remain reserved for what was measured. Decoupled from the
-// gated arrow/comet on purpose; the two may disagree, and showing both is the information.
+// The word "mirai" is the styling contract: the model's voice, never a measured level — the
+// solid lines on this chart remain reserved for what was measured. Decoupled from the pull
+// comet on purpose; the two say different things, and showing both is the information.
 // PURE (numbers in / svg out). Captions register in `avoid` so the zone captions dodge them.
 function snkMiraiSVG(m, rd, P){
   if(!rd||typeof rd!=='object'||!P) return {svg:'', avoid:[]};
@@ -11292,7 +11114,7 @@ function snkMiraiSVG(m, rd, P){
   const avoidIn=Array.isArray(P.avoid)?P.avoid:[];
   const clampY=y=>Math.max(Math.max(yTop+pad,capTop), Math.min(yBot-pad, y));
   // nudge a caption off anything already printed in the left column (EM legs, fold
-  // captions, earlier mirai marks) — the arrow tip itself never moves, only its words
+  // captions, earlier mirai marks) — only the words move, never a mark
   const dodge=y=>{ let yy=clampY(y), guard=0;
     while(guard++<8&&avoidIn.concat(avoid).some(v=>Math.abs(v-yy)<12*r))
       yy=clampY(yy+13*r*(y<=(yTop+yBot)/2?1:-1));
@@ -11371,10 +11193,10 @@ function snkMiraiSVG(m, rd, P){
 }
 // ---- "what am I looking at" — the tab's own legend, as a figure plus a numbered key.
 // The chart carries a lot of marks that each explain themselves on hover; this is the one
-// place they are all shown TOGETHER and pointed at. Numbering matches the pipeline
-// schematic so a reader can hold both at once. Static: no live data, so it renders
+// place they are all shown TOGETHER and pointed at — each figure number names the key
+// entry that explains it. Static: no live data, so it renders
 // identically on a dead feed and can never imply a reading that is not there. ----
-const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK chart: bars with volume whiskers, magnet band, arrow lane, ghost, and the side panel's read card.">
+const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK chart: bars with volume whiskers, magnet band, pull comet, and the side panel's read card.">
   <rect x="10" y="24" width="536" height="300" rx="5" fill="var(--surface)" stroke="var(--hairline)"/>
   <line x1="34" y1="36" x2="34" y2="312" stroke="var(--hairline)" stroke-width="1"/>
   <line x1="122" y1="36" x2="122" y2="312" stroke="var(--hairline)" stroke-width="1"/>
@@ -11405,57 +11227,38 @@ const _SNKI_FIG=`<svg viewBox="0 0 880 340" role="img" aria-label="Labelled SNDK
   <circle cx="209" cy="208" r="3.2" fill="none" stroke="var(--l-grav)" stroke-width="1.4"/>
   <line x1="122" y1="118" x2="482" y2="118" stroke="var(--ink)" opacity=".5"/>
   <text x="476" y="132" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">Now · 1,250</text>
-  <circle cx="200" cy="118" r="2.2" fill="var(--jade)" opacity=".8"/>
-  <line x1="200" y1="118" x2="200" y2="90" stroke="var(--jade)" stroke-width="1.4" stroke-dasharray="4 4" opacity=".6"/>
-  <path d="M196.5,94.5 L200,90 L203.5,94.5" fill="none" stroke="var(--jade)" stroke-width="1.5" opacity=".85"/>
-  <text x="206" y="93" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--jade)">mirai ▲ ~1,280 · 30m<tspan dx="6" font-weight="500" fill="var(--ink-dim)">14:34</tspan><tspan dx="4" font-weight="500" fill="var(--ink-faint)">22m ago</tspan></text>
+  <text x="170" y="107" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--ink)">mirai · 2 to watch<tspan dx="6" font-weight="500" fill="var(--ink-dim)">14:34 ·</tspan><tspan dx="4" font-weight="500" fill="var(--ink-faint)">22m ago</tspan></text>
   <line x1="122" y1="252" x2="482" y2="252" stroke="var(--ink-dim)" stroke-width="1.2" stroke-dasharray="1 5" opacity=".7"/>
   <text x="476" y="248" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)" opacity=".7">VWAP</text>
   <line x1="122" y1="278" x2="482" y2="278" stroke="var(--ink-faint)" opacity=".32"/>
   <text x="476" y="272" text-anchor="end" font-family="var(--mono)" font-size="8.5" fill="var(--ink-faint)" opacity=".6">Floor · unchanged 3h</text>
   <line x1="34" y1="118" x2="34" y2="66" stroke="var(--jade)" stroke-width="2.5" opacity=".9"/>
   <path d="M30,64 L38,64 L34,55 Z" fill="var(--jade)"/>
-  <line x1="27" y1="178" x2="41" y2="178" stroke="var(--coral)" stroke-width="1.5" stroke-dasharray="3 4" opacity=".3"/>
   <rect x="562" y="24" width="308" height="300" rx="5" fill="var(--surface)" stroke="var(--hairline)"/>
-  <rect x="574" y="36" width="284" height="112" rx="4" fill="var(--surface-2)" stroke="var(--jade)"/>
-  <text x="586" y="56" font-family="var(--mono)" font-size="12" font-weight="700" fill="var(--jade)">▲ UP</text>
-  <text x="632" y="56" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">since 14:34 · 22 min · 2nd today</text>
-  <text x="586" y="74" font-family="var(--mono)" font-size="8" font-weight="700" letter-spacing=".08em" fill="var(--ink-faint)">2 TO WATCH</text>
-  <text x="586" y="89" font-family="var(--mono)" font-size="9" fill="var(--ink)">1300 leads the board; price sitting right on it.</text>
-  <text x="586" y="108" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">· 1300 — heaviest strike on the board</text>
-  <text x="586" y="122" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">· 1200 — heaviest put cluster, far below</text>
-  <rect x="574" y="128" width="284" height="20" fill="color-mix(in srgb,var(--lantern) 12%, transparent)"/>
-  <text x="586" y="142" font-family="var(--mono)" font-size="8.5" fill="var(--lantern)">⚠ price already ran this way in 30 min</text>
-  <rect x="574" y="160" width="88" height="20" rx="3" fill="color-mix(in srgb,var(--jade) 12%, transparent)" stroke="var(--jade)"/>
-  <text x="618" y="174" text-anchor="middle" font-family="var(--mono)" font-size="8.5" fill="var(--jade)">Magnet ✓</text>
-  <rect x="672" y="160" width="88" height="20" rx="3" fill="color-mix(in srgb,var(--jade) 12%, transparent)" stroke="var(--jade)"/>
-  <text x="716" y="174" text-anchor="middle" font-family="var(--mono)" font-size="8.5" fill="var(--jade)">Breadth ✓</text>
-  <rect x="770" y="160" width="88" height="20" rx="3" fill="var(--surface-3)" stroke="var(--hairline)"/>
-  <text x="814" y="174" text-anchor="middle" font-family="var(--mono)" font-size="8.5" fill="var(--ink-faint)">Path —</text>
-  <rect x="574" y="194" width="170" height="22" rx="11" fill="color-mix(in srgb,var(--coral) 11%, transparent)" stroke="var(--coral)"/>
-  <text x="659" y="209" text-anchor="middle" font-family="var(--mono)" font-size="8.5" fill="var(--coral)">Today's trading · 53% puts</text>
-  <text x="574" y="240" font-family="var(--mono)" font-size="8.5" fill="var(--ink-faint)">spoke 8 of 188 scans today</text>
+  <rect x="574" y="36" width="284" height="94" rx="4" fill="var(--surface-2)" stroke="var(--hairline)"/>
+  <text x="586" y="56" font-family="var(--mono)" font-size="8" font-weight="700" letter-spacing=".08em" fill="var(--ink-faint)">2 TO WATCH</text>
+  <text x="586" y="74" font-family="var(--mono)" font-size="9" fill="var(--ink)">1300 leads the board; price sitting right on it.</text>
+  <text x="586" y="93" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">· 1300 — heaviest strike on the board</text>
+  <text x="586" y="107" font-family="var(--mono)" font-size="8.5" fill="var(--ink-dim)">· 1200 — heaviest put cluster, far below</text>
+  <rect x="574" y="146" width="170" height="22" rx="11" fill="color-mix(in srgb,var(--coral) 11%, transparent)" stroke="var(--coral)"/>
+  <text x="659" y="161" text-anchor="middle" font-family="var(--mono)" font-size="8.5" fill="var(--coral)">Today's trading · 53% puts</text>
   <g font-family="var(--mono)" font-size="6.5">
     <rect x="452" y="2" width="92" height="18" rx="9" fill="var(--surface-2)" stroke="var(--hairline-2)"/>
     <text x="462" y="14" font-weight="700" fill="var(--ink-faint)" letter-spacing=".08em">FRESH</text><text x="536" y="14" text-anchor="end" fill="var(--ink-dim)">bars 1m 12s ›</text>
   </g>
   <g font-family="var(--mono)" font-size="9" font-weight="700">
-    <circle cx="440" cy="11" r="8" fill="var(--iris)"/><text x="440" y="14.5" text-anchor="middle" fill="var(--ground)">15</text>
+    <circle cx="440" cy="11" r="8" fill="var(--iris)"/><text x="440" y="14.5" text-anchor="middle" fill="var(--ground)">11</text>
     <circle cx="325" cy="118" r="8" fill="var(--iris)"/><text x="325" y="121.5" text-anchor="middle" fill="var(--ground)">1</text>
     <circle cx="231" cy="208" r="8" fill="var(--iris)"/><text x="231" y="211.5" text-anchor="middle" fill="var(--ground)">2</text>
     <circle cx="392" cy="71" r="8" fill="var(--iris)"/><text x="392" y="74.5" text-anchor="middle" fill="var(--ground)">3</text>
     <circle cx="34" cy="298" r="8" fill="var(--iris)"/><text x="34" y="301.5" text-anchor="middle" fill="var(--ground)">4</text>
     <line x1="34" y1="290" x2="34" y2="196" stroke="var(--iris)" stroke-dasharray="2 3"/>
-    <circle cx="62" cy="178" r="8" fill="var(--iris)"/><text x="62" y="181.5" text-anchor="middle" fill="var(--ground)">5</text>
-    <circle cx="392" cy="278" r="8" fill="var(--iris)"/><text x="392" y="281.5" text-anchor="middle" fill="var(--ground)">6</text>
-    <circle cx="548" cy="48" r="8" fill="var(--iris)"/><text x="548" y="51.5" text-anchor="middle" fill="var(--ground)">7</text>
-    <circle cx="548" cy="138" r="8" fill="var(--iris)"/><text x="548" y="141.5" text-anchor="middle" fill="var(--ground)">8</text>
-    <circle cx="548" cy="170" r="8" fill="var(--iris)"/><text x="548" y="173.5" text-anchor="middle" fill="var(--ground)">9</text>
-    <circle cx="548" cy="205" r="8" fill="var(--iris)"/><text x="548" y="208.5" text-anchor="middle" fill="var(--ground)">10</text>
-    <circle cx="548" cy="236" r="8" fill="var(--iris)"/><text x="548" y="239.5" text-anchor="middle" fill="var(--ground)">11</text>
-    <circle cx="548" cy="90" r="8" fill="var(--iris)"/><text x="548" y="93.5" text-anchor="middle" fill="var(--ground)">12</text>
-    <circle cx="392" cy="252" r="8" fill="var(--iris)"/><text x="392" y="255.5" text-anchor="middle" fill="var(--ground)">13</text>
-    <circle cx="176" cy="97" r="8" fill="var(--iris)"/><text x="176" y="100.5" text-anchor="middle" fill="var(--ground)">14</text>
+    <circle cx="392" cy="278" r="8" fill="var(--iris)"/><text x="392" y="281.5" text-anchor="middle" fill="var(--ground)">5</text>
+    <circle cx="548" cy="48" r="8" fill="var(--iris)"/><text x="548" y="51.5" text-anchor="middle" fill="var(--ground)">6</text>
+    <circle cx="548" cy="157" r="8" fill="var(--iris)"/><text x="548" y="160.5" text-anchor="middle" fill="var(--ground)">7</text>
+    <circle cx="548" cy="100" r="8" fill="var(--iris)"/><text x="548" y="103.5" text-anchor="middle" fill="var(--ground)">8</text>
+    <circle cx="392" cy="252" r="8" fill="var(--iris)"/><text x="392" y="255.5" text-anchor="middle" fill="var(--ground)">9</text>
+    <circle cx="152" cy="104" r="8" fill="var(--iris)"/><text x="152" y="107.5" text-anchor="middle" fill="var(--ground)">10</text>
   </g>
 </svg>`;
 // WORDING IS LOAD-BEARING HERE and was rewritten 08-01 after an audit checked all eleven
@@ -11478,40 +11281,28 @@ const _SNKI_KEY=[
   ['3','Magnet band',
    '<rect x="8" y="11" width="104" height="18" fill="var(--l-grav)" opacity=".12"/><line x1="8" y1="11" x2="112" y2="11" stroke="var(--l-grav)" stroke-dasharray="4 3" opacity=".8"/><line x1="8" y1="29" x2="112" y2="29" stroke="var(--l-grav)" stroke-dasharray="4 3" opacity=".8"/><text x="12" y="23.5" font-size="7" fill="var(--l-grav)" font-family="var(--mono)">1,500 · 1,495</text>',
    'The top two strikes are too close to call (under 5pp apart), so the magnet is a span, not a line. Fires on most scans; often covers half the map.'],
-  ['4','Arrow, or a grey dot',
-   '<line x1="24" y1="34" x2="24" y2="12" stroke="var(--jade)" stroke-width="2.4" opacity=".9"/><path d="M19,13 L29,13 L24,5 Z" fill="var(--jade)"/><line x1="24" y1="34" x2="24" y2="14" stroke="var(--l-grav)" stroke-width="2.4" stroke-dasharray="2 10" opacity=".9"/><circle cx="72" cy="20" r="4" fill="var(--ink-dim)" opacity=".7"/><text x="82" y="23" font-size="7" fill="var(--ink-faint)" font-family="var(--mono)">silent</text>',
-   'The gated call. An arrow only when one strike is clearly in charge; a grey dot when the gate stays silent. Before any read exists, it is the raw magnet pull.'],
-  ['5','Faint dashed mark',
-   '<line x1="10" y1="20" x2="52" y2="20" stroke="var(--coral)" stroke-width="1.6" stroke-dasharray="3 4" opacity=".45"/><text x="57" y="23" font-size="8" font-weight="700" fill="var(--coral)" opacity=".5" font-family="var(--mono)">▼</text><text x="70" y="23" font-size="7" fill="var(--ink-faint)" font-family="var(--mono)">earlier call</text>',
-   'Where the last finished call was made — its start, never a target. Stays until another call ends.'],
-  ['6','Greyed level',
+  ['4','Pull comet',
+   '<line x1="24" y1="34" x2="24" y2="12" stroke="var(--jade)" stroke-width="2.4" opacity=".9"/><path d="M19,13 L29,13 L24,5 Z" fill="var(--jade)"/><line x1="24" y1="34" x2="24" y2="14" stroke="var(--l-grav)" stroke-width="2.4" stroke-dasharray="2 10" opacity=".9"/><text x="38" y="23" font-size="7" fill="var(--ink-faint)" font-family="var(--mono)">price → magnet</text>',
+   'The book’s recorded pull, from live price toward the magnet — gravity already measured, never a forecast. Absent when price is sitting on the magnet: that is the pin doing its job.'],
+  ['5','Greyed level',
    '<line x1="8" y1="20" x2="112" y2="20" stroke="var(--ink-faint)" opacity=".35" stroke-width="1.2"/><text x="112" y="15" text-anchor="end" font-size="7" fill="var(--ink-faint)" opacity=".7" font-family="var(--mono)">Floor · unchanged 3h</text>',
    'Unchanged for 30 min or more. Faded so old news stops looking new; hover for how long.'],
-  ['7','The read',
-   '<rect x="6" y="5" width="108" height="30" rx="4" fill="var(--surface-2)" stroke="var(--jade)"/><text x="12" y="17" font-size="9" font-weight="700" fill="var(--jade)" font-family="var(--mono)">▲ UP</text><text x="44" y="17" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">since 14:34</text><text x="12" y="29" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">2 to watch · 1300 leads…</text>',
-   'The gated arrow, then the model’s observation — what stands out on the board, in plain words. They are separate surfaces and both always show; neither one is a forecast.'],
-  ['8','Amber row',
-   '<rect x="6" y="11" width="108" height="18" fill="color-mix(in srgb,var(--lantern) 14%, transparent)"/><text x="11" y="23" font-size="7.5" fill="var(--lantern)" font-family="var(--mono)">⚠ price already ran this way</text>',
-   'Price already ran the arrow’s way (0.30σ+ in 30 min), or the call’s evidence expired and it is held briefly before it drops.'],
-  ['9','Gate chips',
-   '<rect x="4" y="11" width="34" height="18" rx="3" fill="color-mix(in srgb,var(--jade) 12%, transparent)" stroke="var(--jade)"/><text x="21" y="23" text-anchor="middle" font-size="6.5" fill="var(--jade)" font-family="var(--mono)">Magnet ✓</text><rect x="42" y="11" width="36" height="18" rx="3" fill="color-mix(in srgb,var(--jade) 12%, transparent)" stroke="var(--jade)"/><text x="60" y="23" text-anchor="middle" font-size="6.5" fill="var(--jade)" font-family="var(--mono)">Breadth ✓</text><rect x="82" y="11" width="34" height="18" rx="3" fill="var(--surface-3)" stroke="var(--hairline)"/><text x="99" y="23" text-anchor="middle" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">Path —</text>',
-   'Which layers cleared their bar. Magnet and Breadth read the same gamma pile and clear together; a lit Price path warns against the arrow.'],
-  ['10','Day chip',
+  ['6','The read',
+   '<rect x="6" y="5" width="108" height="30" rx="4" fill="var(--surface-2)" stroke="var(--hairline)"/><text x="12" y="16" font-size="6.5" font-weight="700" letter-spacing=".08em" fill="var(--ink-faint)" font-family="var(--mono)">2 TO WATCH</text><text x="12" y="29" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">1300 leads the board…</text>',
+   'The model’s observation — what stands out on the board, in plain words, with the levels worth watching. Never a forecast, and “nothing standing out” is a finished read, not a missing one.'],
+  ['7','Day chip',
    '<rect x="14" y="10" width="92" height="20" rx="10" fill="color-mix(in srgb,var(--coral) 11%, transparent)" stroke="var(--coral)"/><text x="60" y="23.5" text-anchor="middle" font-size="7" fill="var(--coral)" font-family="var(--mono)">Today’s trading · 53% puts</text>',
    'Calls vs puts at strikes near price, this expiry only. Misses a third to half of the tape; swings as price moves.'],
-  ['11','Spoke counter',
-   '<text x="8" y="23" font-size="8" fill="var(--ink-faint)" font-family="var(--mono)">spoke 21 of 188 scans</text>',
-   'How many scans an arrow was live on. Coverage, not a count of calls.'],
-  ['12','Points to watch',
+  ['8','Points to watch',
    '<text x="8" y="14" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">2 to watch</text><text x="8" y="28" font-size="7.5" fill="var(--ink)" font-family="var(--mono)">· 1300 — heaviest strike</text>',
    'Inside The read: the price levels the model picked off the whole board, each with a few words on why. It reads everything and chooses for itself; every number is checked against the scene before it is shown. Never a direction — that call measured worthless and was removed.'],
-  ['13','VWAP dotted line',
+  ['9','VWAP dotted line',
    '<line x1="8" y1="22" x2="112" y2="22" stroke="var(--ink-dim)" stroke-width="1.4" stroke-dasharray="1 5" opacity=".8"/><text x="112" y="15" text-anchor="end" font-size="7" fill="var(--ink-dim)" font-family="var(--mono)">VWAP</text>',
    'Today’s average price paid, volume-weighted — the desks’ anchor. Missing = could not be measured, not zero.'],
-  ['14','Mirai’s thought-line',
-   '<circle cx="16" cy="8" r="2.2" fill="var(--coral)" opacity=".8"/><line x1="16" y1="8" x2="16" y2="30" stroke="var(--coral)" stroke-width="1.5" stroke-dasharray="4 4" opacity=".6"/><path d="M12.5,25.5 L16,30 L19.5,25.5" fill="none" stroke="var(--coral)" stroke-width="1.6"/><text x="24" y="19" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">10:22 · 2m ago</text><text x="24" y="32" font-size="7.5" font-weight="700" fill="var(--coral)" font-family="var(--mono)">mirai ▼ $1,456 · 30m</text>',
-   'From live price to where the model expects it in ~30 min, with when it said so and how long ago. Dashes = a thought, not a level. “balanced” = no lean; “paused” = switched off; dims past 10 min.'],
-  ['15','Freshness chip',
+  ['10','Mirai’s note',
+   '<text x="8" y="18" font-size="7.5" font-weight="700" fill="var(--ink)" font-family="var(--mono)">mirai · 2 to watch</text><text x="8" y="31" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">14:34 · 22m ago</text>',
+   'The model’s note at the price line: how many things it found unusual (or that nothing stood out), when it said so and how long ago. “paused” = switched off; dims past 10 min. It never points anywhere.'],
+  ['11','Freshness chip',
    '<rect x="18" y="6" width="84" height="28" rx="4" fill="var(--surface-2)" stroke="var(--hairline-2)"/><text x="24" y="17" font-size="6.5" font-weight="700" fill="var(--ink-faint)" letter-spacing=".08em" font-family="var(--mono)">FRESH</text><text x="96" y="17" text-anchor="end" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">bars 1m 12s</text><text x="24" y="28" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">price</text><text x="96" y="28" text-anchor="end" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">4s</text>',
    'The FRESH chip at the right end of the expiry strip, above the plot. Hover to peek, click to pin: one row per layer — the clock its data carries, a counter since, how often it refreshes — clocks in Pacific time. Red = stale (bars: 3 scan gaps; price: 15 s).'],
 ];
@@ -11527,11 +11318,11 @@ function openSndkInfoModal(){
       </div>
       <div class="modal-body">
         <div class="snki-fig" aria-hidden="true">${_SNKI_FIG}</div>
-        <div class="snki-cap">Numbers match the pipeline schematic · every mark also explains itself on hover</div>
+        <div class="snki-cap">Each number points at its key entry below · every mark also explains itself on hover</div>
         <div class="snki-grid">${rows}</div>
         <div class="snki-note"><b>Two things the map cannot tell you.</b> Whiskers show what traded and on
-          which side — never whether it was bought or sold. And the arrow is silent most of the day on purpose:
-          live on about 14% of scans, because the rest of the time no strike is clearly in charge.</div>
+          which side — never whether it was bought or sold. And nothing here forecasts: the comet is gravity
+          the book is already exerting, and the model is asked what stands out, never where price is going.</div>
         <div class="snki-note"><b>In the side panel (not on the schematic).</b> <b>Expected Move</b> says how its
           up/down split was measured — “IV-skew” (protection priced richer on that side) or “realized-tape” (how
           today’s trading skewed). <b>Dealer Delta</b> may carry “decay tilt → $X”: a place the pull eases toward
@@ -11587,8 +11378,8 @@ function snkMountFresh(){
       ['bars','~2m','Everything measured from the newest scan row — the gamma bars, trading whiskers, walls, magnet, flip, expected-move band, DEX rail and VWAP.¦k:scanner=every ~2 min¦f:this tab looks for a new row every 8 s¦f:red when the newest row is older than three scan gaps (12 min at least) — the map is then history, not the market'],
       ['chain','~2m','The option book the scan was measured from — its own stamp, which sits behind the scan clock when the pull was served from cache.¦k:pulled=each scan, cached up to ~2 min'],
       ['price','5s','The live quote: the blue line, its tag and the trail’s live edge.¦k:polled=every 5 s¦f:red when no quote has arrived for 15 s — the line stops claiming live'],
-      ['read','~2m','The gated call: the comet in the gutter, the magnet band, the earlier-call ghost, the frozen washes and the gate chips.¦k:reader=every ~2 min¦f:this tab looks for a new row every 8 s'],
-      ['mirai','wake','The model’s own sentence and vector — the thought-line. Written only when the wake gate fires, then carried forward scan to scan.¦k:issued=when woken¦f:dims past 10 min — memory, not news'],
+      ['read','~2m','The read row: the magnet band, the frozen washes and the observation card.¦k:reader=every ~2 min¦f:this tab looks for a new row every 8 s'],
+      ['mirai','wake','The model’s own sentence — the observation and its note at the price line. Written only when the wake gate fires, then carried forward scan to scan.¦k:issued=when woken¦f:dims past 10 min — memory, not news'],
       ['path','75s','The session’s per-scan spot trail under the bars.¦k:fetched=every 75 s¦f:its newest node is the newest scan'],
       ['tape','60s','The fine 5 s tape read back from the server — history for a reload or a second device; the live edge itself rides the price row.¦k:fetched=every 60 s'],
     ];
@@ -12026,10 +11817,10 @@ const SNDK = {
   // extra upstream calls); tapeLive = the same samples accumulated client-side between the
   // slow tape reads, so the trail wiggles at spot cadence without a single added fetch.
   tape:[], tapeLive:[],
-  // THE LIVE READ (sr-1) — the newest state/sndk_reads row: the gated arrow, the magnet
-  // band, the ghost, the frozen list and the model's sentence. Its own file, its own
-  // producer, its own poll; null until one lands and every new surface hides while it is.
-  readFile:null, read:null, readTs:null, readFails:0, _readNode:false,
+  // THE LIVE READ (sr-1) — the newest state/sndk_reads row: the magnet band, the frozen
+  // list and the model's observation. Its own file, its own producer, its own poll; null
+  // until one lands and every new surface hides while it is.
+  readFile:null, read:null, readTs:null, readFails:0,
   reasoning:true,          // the pause switch; refreshed on resume, set by the toggle
   spot:{ px:null, prev:null, at:0, src:null, live:false, fails:0 },
   timers:{ diary:null, spot:null, path:null, read:null, tape:null, fresh:null }, _ro:null, _empty:null,
@@ -12167,12 +11958,13 @@ const SNDK = {
         files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
         const res=await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=60`,{cache:'no-store'});
         const d=await res.json();
-        // an `arrow` object is the row's minimum shape — a torn or half-written tail line
-        // must not become a read with a null direction, which is a MEANING here (stood down)
-        const raw=(d&&d.rows)?d.rows.filter(x=>x&&typeof x==='object'&&x.arrow&&typeof x.arrow==='object'):[];
+        // a `magnet_band` object is the row's minimum shape — written on every row of every
+        // era (the old gate was `arrow`, which obs-3 rows no longer carry: it silently
+        // rejected every new row) — so a torn or half-written tail line still can't land
+        const raw=(d&&d.rows)?d.rows.filter(x=>x&&typeof x==='object'&&x.magnet_band&&typeof x.magnet_band==='object'):[];
         SNDK.readFails=0; SNDK.readFile=files[0].rel;
         const nr=raw.length?raw[raw.length-1]:null;
-        // repaint on a NEW row only: the arrow, the band, the ghost and the frozen washes
+        // repaint on a NEW row only: the band and the frozen washes
         // all live in the chart, and rebuilding the whole SVG every 8s would fight the
         // eased spot line for the same frames
         // ground truth beats the toggle's memory: a row stamped paused:true is the backend
@@ -12494,14 +12286,10 @@ const SNDK = {
     const sp=(m.spot!=null)?m.spot:null;
     const spRef=(spPull!=null)?spPull:sp;
     const pull=snkPull(m, spPull, step);
-    // Lane A removed (obs-3): the gated arrow no longer exists, so the comet is
-    // back to what it was before sr-1 — the raw magnet pull, whose own tooltip
-    // has always said "recorded gravity, not a forecast".
     const RD=SNDK.read;
-    const vec=pull;
     const FZ=(RD&&Array.isArray(RD.frozen))?RD.frozen:null;
-    // the lane is reserved off the MAGNET's presence exactly as before — a stand-down node
-    // needs the same 16px the comet does, so geometry is unchanged either way
+    // the lane is reserved off the MAGNET's presence, not the comet's: snkPull's dead zone
+    // can blank the comet between quotes, and the geometry must not breathe when it does
     const cmW=(m.magnet!=null&&isFinite(m.magnet)&&spPull!=null)?16:0;
     // lead reserves only what the end-anchored axis labels (drawn at x0-cmW-12) plus the DEX
     // lane actually need — not a fixed 64/80px gutter that floated DEX off the axis (S4). The
@@ -13366,56 +13154,33 @@ const SNDK = {
       grid, k0, step, n, yFor, xEnd:lineEnd-5, avoid:avoidY, fs:fz(9.5) });
     // ---- DRIFT COMET (07-29, the map's gutter vector ported): price → target in the reserved
     // 16px lane, casing + a gravity-gold→direction-hue core with an arrowhead at the target and
-    // flowing dashes running along it. WHAT IT POINTS AT CHANGED AT sr-1: with a read row the
-    // vector is the GATED ARROW's (silent on ~91% of scans); without one it stays the recorded
-    // raw-magnet pull it has always been. Either way it is never a forecast, and the card says so.
+    // flowing dashes running along it. Lane A removed (obs-3): the gated-arrow resolution and
+    // its stand-down node are gone, so this is back to what it was before sr-1 — the raw
+    // magnet pull, whose own tooltip has always said "recorded gravity, not a forecast".
     let comet='', cometDefs='';
-    SNDK._pullUp=vec?vec.up:null;
-    SNDK._readNode=!!(rPull&&rPull.node);
-    if(vec){
-      const cx=x0-9, hue=vec.up?'var(--jade)':'var(--coral)';
+    SNDK._pullUp=pull?pull.up:null;
+    if(pull){
+      const cx=x0-9, hue=pull.up?'var(--jade)':'var(--coral)';
       const ys=Math.max(padT, Math.min(h-padB, yFor(spPull)));
-      const yt0=Math.max(padT+5, Math.min(h-padB-5, yFor(vec.tgt)));
-      const yt=(Math.abs(yt0-ys)<1)?(ys+(vec.up?-1:1)):yt0;   // degenerate-gradient guard
-      const mk=vec.up?'snkPullAj':'snkPullAc';
+      const yt0=Math.max(padT+5, Math.min(h-padB-5, yFor(pull.tgt)));
+      const yt=(Math.abs(yt0-ys)<1)?(ys+(pull.up?-1:1)):yt0;   // degenerate-gradient guard
+      const mk=pull.up?'snkPullAj':'snkPullAc';
       cometDefs=`<linearGradient id="snkPullG" gradientUnits="userSpaceOnUse" x1="${cx}" y1="${ys.toFixed(1)}" x2="${cx}" y2="${yt.toFixed(1)}">`
         +`<stop offset="0" stop-color="var(--l-grav)"/><stop offset="1" stop-color="${hue}"/></linearGradient>`
         +`<marker id="snkPullAj" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="4" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--jade)"/></marker>`
         +`<marker id="snkPullAc" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="4" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--coral)"/></marker>`;
-      const pName=rPull?`The read ${vec.up?'▲':'▼'}`:`The pull ${vec.up?'▲':'▼'}`;
-      const pTip=rPull
-        ? `The read is pointing ${vec.up?'up':'down'}.`
-          +`¦k:toward=${snkUsd(vec.tgt,0)}`
-          +`¦f:${snkUsd(vec.dist,0)} away${vec.since&&snkClock(vec.since)?` · called ${snkClock(vec.since)} ET`:''}`
-          +(vec.fading?`¦f:fading — ${snkSafe(vec.fading)}`:'')
-          +`¦v:a gated call — the gate is silent on about 91% of scans`
-        : `The book is tugging price toward the magnet.`
-          +`¦k:pulled ${vec.up?'up to':'down to'}=${snkUsd(vec.tgt,0)}`
-          +`¦f:${snkUsd(vec.dist,0)} away`
-          +`¦v:recorded gravity, not a forecast`;
+      const pName=`The pull ${pull.up?'▲':'▼'}`;
+      const pTip=`The book is tugging price toward the magnet.`
+        +`¦k:pulled ${pull.up?'up to':'down to'}=${snkUsd(pull.tgt,0)}`
+        +`¦f:${snkUsd(pull.dist,0)} away`
+        +`¦v:recorded gravity, not a forecast`;
       comet=`<g id="snk-pullg">`
         +`<line id="snk-pcas" x1="${cx}" x2="${cx}" y1="${ys.toFixed(1)}" y2="${yt.toFixed(1)}" style="stroke:var(--ground);stroke-width:4.9;opacity:.5"/>`
-        +`<line id="snk-pcore" x1="${cx}" x2="${cx}" y1="${ys.toFixed(1)}" y2="${yt.toFixed(1)}" marker-end="url(#${mk})" style="stroke:url(#snkPullG);stroke-width:2.5;opacity:${vec.fading?'.55':'.9'}"/>`
-        +`<line id="snk-pdash" class="snk-flow" x1="${cx}" x2="${cx}" y1="${ys.toFixed(1)}" y2="${yt.toFixed(1)}" stroke-dasharray="2 10" style="stroke:var(--l-grav);stroke-width:2.5;opacity:${vec.fading?'.5':'.85'}"/>`
+        +`<line id="snk-pcore" x1="${cx}" x2="${cx}" y1="${ys.toFixed(1)}" y2="${yt.toFixed(1)}" marker-end="url(#${mk})" style="stroke:url(#snkPullG);stroke-width:2.5;opacity:.9"/>`
+        +`<line id="snk-pdash" class="snk-flow" x1="${cx}" x2="${cx}" y1="${ys.toFixed(1)}" y2="${yt.toFixed(1)}" stroke-dasharray="2 10" style="stroke:var(--l-grav);stroke-width:2.5;opacity:.85"/>`
         +`<rect x="${(cx-7).toFixed(1)}" y="${Math.min(ys,yt).toFixed(1)}" width="14" height="${Math.max(4,Math.abs(yt-ys)).toFixed(1)}" fill="transparent" data-name="${pName}" data-tip="${pTip}"/>`
         +`</g>`;
     }
-    else if(rPull&&rPull.node&&spPull!=null){
-      // STAND-DOWN NODE — the map's own stance-only idiom (gxPaint's wtNode): a silent read
-      // draws NO direction at all, just a grey 4px node at spot in the lane it already owns.
-      // A grey node cannot be misread as a call; a dimmed arrow can, which is why the comet
-      // is collapsed rather than faded.
-      const cx=x0-9, ys=Math.max(padT, Math.min(h-padB, yFor(spPull)));
-      const nTip=`The arrow is standing down.`
-        +(RD.arrow.silent_because?`¦f:${snkSafe(RD.arrow.silent_because)}`:'')
-        +`¦v:no direction is drawn — silence is this surface's default, not a fault`
-        +`¦n:an arrow is live on about 14% of scans`;
-      comet=`<g id="snk-pullg">`
-        +`<circle id="snk-pnode" cx="${cx}" cy="${ys.toFixed(1)}" r="4" style="fill:var(--ink-dim);opacity:.7"/>`
-        +`<rect id="snk-pnhit" x="${(cx-7).toFixed(1)}" y="${(ys-9).toFixed(1)}" width="14" height="18" fill="transparent" data-name="No call" data-tip="${nTip}"/>`
-        +`</g>`;
-    }
-    const ghostSVG='';   // Lane A removed — there are no calls to ghost
     // ---- spot PATH (07-28): the session's journey UNDER the bars — a faint per-scan trail
     // with a live edge, the SPX map's squiggly-line ported. A whisper by design (area at low
     // --iris + recency-faded history segments): bars stay the hero, so it renders BEFORE them.
@@ -13471,16 +13236,14 @@ const SNDK = {
     const fr=SNDK.staleInfo();
     const exs=m.expiries.length?`book: ${m.expiries.slice(0,2).map(e=>_dexp(e.date)).join('·')}${m.expiries.length>2?` +${m.expiries.length-2}`:''}`:'weekly book';
     const cap=document.getElementById('snk-cap');
-    const spoke='';   // Lane A removed — the arrow's abstention counter went with it
     // TWO TIERS, ONE LINE (08-01). This ran as nine facts at one weight in the smallest type on
-    // the sheet, so the two that change — how fresh the book is, and how much of the day the
-    // arrow has spoken on — read no louder than the definition of a bar, which has not changed
-    // since the tab shipped. The live half leads at the caption's own colour; the standing
-    // definitions (what a bar is, the pitch, the ± legend) step back behind .def. Nothing is
-    // dropped: this surface's whole caption exists to confess what it is.
+    // the sheet, so the part that changes — how fresh the book is — read no louder than the
+    // definition of a bar, which has not changed since the tab shipped. The live half leads at
+    // the caption's own colour; the standing definitions (what a bar is, the pitch, the ±
+    // legend) step back behind .def. Nothing is dropped: this surface's whole caption exists
+    // to confess what it is.
     if(cap) cap.innerHTML=`${exs} · ${m.nbs?'measured':'<span style="color:var(--coral)">no per-strike book</span>'}`
       +(fr?` · <span style="${fr.stale?'color:var(--coral);font-weight:700':''}">${fr.txt}</span>`:'')
-      +(spoke?` · <span title="how many of today's scans the arrow said anything on — it is silent by default and has to be earned">${spoke}</span>`:'')
       +`<span class="def"> · Bar = net γ / strike · $${step} grid${pathCap}`
       +` · ◄ <span style="color:var(--coral)">▮</span> puts − | + calls <span style="color:var(--jade)">▮</span> ►</span>`;
     // ---- THE TAPE STRIP. Painted here (not after the SVG swap) so the zone captions below
@@ -13817,7 +13580,7 @@ const SNDK = {
       <g id="snk-bars">${bars}</g>
       <g id="snk-hits">${hits}</g>
       <g id="snk-whisk">${whisk.svg}</g>
-      <g class="decl">${lvls}</g><g id="snk-ghost" class="decl">${ghostSVG}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g id="snk-oi">${oiSVG}</g><g>${tagStrip}</g><g id="snk-calls" class="decl">${callSVG}</g><g>${tags}</g>
+      <g class="decl">${lvls}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g id="snk-oi">${oiSVG}</g><g>${tagStrip}</g><g id="snk-calls" class="decl">${callSVG}</g><g>${tags}</g>
       <g id="snk-mirai" class="decl">${mirai.svg}</g>
       <!-- .decl ON A LEASH (08-24): these captions still join the shared cross-painter pass —
            it is the only thing that sees real rendered geometry — but every one of them now
@@ -13944,21 +13707,8 @@ const SNDK = {
     // What remains is a plain floor. The branches are self-clearing, so a deferred rebuild just
     // happens on the next quote; this bounds a shape nobody has thought of yet, and nothing more.
     const canRebuild=()=>Date.now()-(SNDK._frameT||0)>=2500;
-    // a stand-down NODE has no tail to slide — it just rides the quote's own y. Only its
-    // presence is structural, so it rebuilds when the arrow appears or disappears, never
-    // because the price moved.
-    if(rp&&rp.node){
-      const nd=document.getElementById('snk-pnode');
-      if(!nd||!SNDK._readNode){ if(SNDK.model&&canRebuild()) SNDK.buildChart(); return; }
-      const geo=SNDK.geo; if(!SNDK.yFor||!geo) return;
-      const ys=Math.max(geo.padT, Math.min(geo.H-geo.padB, SNDK.yFor(px)));
-      nd.setAttribute('cy', ys.toFixed(1));
-      const hit=document.getElementById('snk-pnhit'); if(hit) hit.setAttribute('y',(ys-9).toFixed(1));
-      return;
-    }
     if(!g||!SNDK.yFor){ if(pull&&SNDK._pullUp==null&&SNDK.model&&canRebuild()) SNDK.buildChart(); return; }
-    // a node left over from a silent scan must be rebuilt away
-    if(!pull||pull.up!==SNDK._pullUp||SNDK._readNode){
+    if(!pull||pull.up!==SNDK._pullUp){
       if(canRebuild()){ SNDK.buildChart(); return; }
       // under the floor: fall through so the tail still tracks the quote for the one beat it
       // waits. A frozen comet would read as a dead feed, which is worse than a late one.
@@ -14405,8 +14155,9 @@ const MEM = {
          ['month','Terrain','Long term',3,'Long-term memory — the standing map across every session on record.']],
   HUE:{iris:'--iris', lantern:'--lantern', grav:'--l-grav', tower:'--tower', coral:'--coral', faint:'--ink-faint'},
   // every wake reason sndk_read can write, each with the one sentence that says what it means.
-  // 'gate event' is deliberately vague in the STORE — the arrow's own name is stripped before a
-  // slice is filed so the model can never anchor on its past arrow — and the sentence says so.
+  // 'gate event' is a legacy stamp: while Lane A lived, arrow wakes were filed under that
+  // deliberately vague name so the model could never anchor on its own past arrow. Lane A is
+  // gone (obs-3) and old slices keep the stamp, so the entry stays, marked retired.
   // wk-1 rewrote the wake gate, so the glossary follows. Two rules applied here:
   // a reason's sentence must describe what the gate actually tests today, and it
   // must not smuggle a claim the tape has disproven — the old gamma-sign line
@@ -14424,7 +14175,7 @@ const MEM = {
     'iv moved':           ['~','grav',   'Implied volatility moved at least 3 points on a smoothed five-book average — the raw print is mostly measurement noise.'],
     'flip moved':         ['≠','tower',  'The gamma-flip level itself relocated by at least half a typical day’s move.'],
     'heartbeat':          ['○','faint',  'An hour passed with nothing else to report, so the model looked anyway. An unprompted check, not a reaction.'],
-    'gate event':         ['◇','iris',   'The arrow on the chart appeared, vanished or reversed. It is filed under a neutral name on purpose, so the model can never read its own past arrow back out of its memory.'],
+    'gate event':         ['◇','faint',  'Retired wake (Lane A, removed 09-01): the deterministic arrow appeared, vanished or reversed — filed under this neutral name so the model could never read its own past arrow back out of its memory.'],
     'magnet moved':       ['◆','faint',  'Retired wake (before 08-31): the heaviest strike relocated by 0.12 of a day’s move, with no confirmation required.'],
     'regime changed':     ['≡','faint',  'Retired wake (before 08-31): the day’s character word changed. It was derived from the gamma sign, so it woke twice for one fact.'],
   },

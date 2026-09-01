@@ -104,7 +104,7 @@ def test_freshness_box_covers_every_layer_and_ticks():
         assert f"['{k}'," in PAGE                                      # one row per layer
     assert "SNDK.pathAt=Date.now()" in PAGE and "SNDK.tapeAt=Date.now()" in PAGE
     assert "bookAsof:(typeof meta.book_asof==='string')" in PAGE       # the chain's own stamp
-    assert "['15','Freshness chip'," in PAGE                           # documented in the key
+    assert "['11','Freshness chip'," in PAGE                           # documented in the key
     assert "SNDK._freshEl=box" in PAGE and "getElementById('snk-tenors')" in PAGE   # lives in the tenors strip, node kept across rewrites
     assert "hour12:true, timeZone:PT" in PAGE                        # AM/PM clocks are Pacific here — the page's rule
     assert "at least 2× what the whole book turns over" in PAGE       # the ring's exact rule, in the key

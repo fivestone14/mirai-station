@@ -56,23 +56,31 @@ clock, verbatim.
 | `sndk_feed.py` | The Chain Runner | Per-day probe discovery (day-cached; probe ERRORS on a candidate front day → degraded, never cached), one batched `cass_market_run` pull per 240s (raw book persisted to `state/sndk_gex/chain_cache.json` — each tick is a fresh process, so the off tick re-prices the cached book at the fresh quote instead of re-pulling), chunked + clip-detected, IV rebuild + gamma fill on the front-book clock, front-expiry coverage teeth |
 | `sndk_views.py` | The Map Maker | Pure: chain + live spot → one diary row via the left-eye engines (gex/dex/ladder/EM/net-exposure) |
 | `sndk_hunter.py` | The Shift Worker | One tick per invocation: quote → chain → row → append `state/sndk_reversion/{date}.jsonl`. `--force` bypasses the RTH gate (manual proof runs) |
-| `sndk_read.py` | The Reader | The chart's live reading. Recomputes the ARROW every run (pure, free) and spends one `claude -p` call — the model's OWN vector + magnitude off an unbiased scene (sr-3) — only when the wake gate fires → `state/sndk_reads/{date}.jsonl` |
+| `sndk_read.py` | The Reader | The chart's live reading. Spends one `claude -p` call — the model says what stands out on an unbiased scene, every number checked against the board, never a direction — only when the wake gate fires → `state/sndk_reads/{date}.jsonl` |
 | `sndk_rag.py` | The Memory | On-demand history TOOL (never auto-injected): per-read slice records (metadata face + narrative face), day summaries with a sentiment read, month-tier standing terrain, hybrid metadata-filter→narrative-rank retrieval → `state/sndk_rag/` |
 
-## The arrow and the reading are separate on purpose
+## One lane on purpose (Lane A removed at obs-3, 2026-09-01)
 
 `sndk_read.py` is **not** a ported Watchtower. The SPX tower's call *is* the
-model's opinion; here the two paths are decoupled:
+model's opinion; here the model is asked what it **notices** — observations
+checked number-by-number against the scene, never a direction. The direction
+call was asked for a year, measured at zero forward value (391 readings), and
+removed at obs-1.
 
-* the **arrow** is decided by a deterministic aggregator — no model — and
-  still draws on the chart exactly as before,
-* the **reading** (sr-2 blueprint 2026-08-02, sr-3 since 2026-08-08) is the model's **own
-  inference** — a direction vector + a magnitude in σ — made cold from an
-  **unbiased scene** that carries evidence only. The old
-  `arrow_already_decided` block anchored the model and was removed from the
-  scene JSON; the arrow never enters the payload, the model never sees it,
-  and the two surfaces may disagree on the chart (that disagreement is
-  information, not a bug).
+For two months a second, deterministic lane — the **arrow** (magnet voter,
+breadth veto, dwell clock, ghost afterimage) — drew on the chart beside the
+reading. obs-3 deleted it: an audit measured it pointing at the nearest round
+hundred on 94% of 51 episodes, its state changes spent model calls the scene
+forbade the model from narrating, and two philosophies on one screen teach a
+reader to trust neither. The scene never carried it (`arrow_already_decided`
+left at sr-2), so the model's contract was untouched; old read rows keep
+their `arrow` field as history, and nothing writes a new one.
+
+Every reading now **opens with the frame** (obs-3): the scene's
+`context.since_last_read` block bridges the model's last reading to this one
+— when it last spoke, price then and now, any frozen level crossed since,
+what held still — which is what makes the honest "nothing changed" sentence
+possible at all.
 
 The scene (docs/sndk-payload-inventory.md is the field-by-field map):
 grouped by force — **data_sources** (**new in sr-7**: the three clocks that
@@ -104,7 +112,9 @@ word left in sr-7 for the same reason `is_a_tie` did), **dealer_positioning**
 field name now says so), **walls** (laddered, 2 per side, NEAREST first —
 never "strongest"; each wall carries its own `unchanged_for_min`, and the
 heaviest cluster ships as `*_heaviest_wall_behind_the_ladder` when the
-distance cut would hide it), `history` flags (the under-pull guard), and
+distance cut would hide it), `history` flags (the under-pull guard), **context** (the ranks against prior
+sessions, what changed since the last book, and — obs-3 — the
+`since_last_read` frame every reading opens with), and
 `frozen_do_not_cite` (minus walls — their staleness rides the wall entries
 now). Omit-never-null throughout: a field without a clean source is absent,
 not nulled — the model treats missing as "no data" — and, since sr-5,
@@ -121,12 +131,11 @@ names carry
 their own units (`_pp`, `_bn`, `_musd`, `_min`, `_sigma`) so a name survives
 being read alone, which is the whole sr-7 rename.
 
-The read call may reach for exactly two on-demand tools, doctrine-gated:
-the **history CLI** (`sndk_rag.py` — day slices / day summaries / month
-terrain; the payload's `history.price_at_level_unseen_earlier_today` flag taps the model on
-the shoulder) and **WebSearch** (abnormal-tape catalyst checks only,
-`history.tape_abnormal_vs_own_history`). Everything else stays banned; the live scene is
-always primary.
+The read call has **no tools** (obs-1 revoked the sr-2 grant of the history
+CLI and WebSearch: used 0 times across 391 production calls, and under the
+observation contract a claim must resolve to a pointer into the scene, so
+history could not be cited even when consulted). `sndk_rag.py` keeps running
+on the write side, filing a slice per read, and the voice desk keeps the CLI.
 
 That is what four recorded sessions measured (2026-07-28..31, 756 rows):
 
@@ -146,14 +155,13 @@ That is what four recorded sessions measured (2026-07-28..31, 756 rows):
 * Shove and the magnet are **not independent** — an earlier draft required
   "two layers to agree"; replayed, both gates cleared on 69 of 756 scans and
   agreed on **69 of 69**, because the magnet *is* the largest gamma pile and
-  shove measures that same mass's asymmetry. Roles are now named honestly:
-  magnet = source, shove = breadth gate (may veto, never votes), path =
-  caution flag (the one genuinely independent read).
+  shove measures that same mass's asymmetry. Two correlated views of one
+  measurement may never be dressed as corroboration; the ratio reaches the
+  model as the direction-free `breadth` block.
 
-Replayed over those four sessions the gate spends **23 / 22 / 20 / 32** calls a
-day against ~189 scans, with the heartbeat filling only 1–4 slots. The arrow is
-live on 0% / 0% / 14% / 41% of scans — the zeros are honest: on 07-28/29 the
-book's lopsidedness sat at 0.004 and there was nothing to say.
+Replayed over those four sessions the sr-1 gate spent **23 / 22 / 20 / 32**
+calls a day against ~189 scans, with the heartbeat filling only 1–4 slots
+(arrow-event wakes, since removed with Lane A, were ~11% of those calls).
 
 `python3 sndk_read.py --replay YYYY-MM-DD` re-runs the gate over a recorded day
 and writes nothing; that is how every number above was measured.
@@ -169,7 +177,7 @@ and writes nothing; that is how every number above was measured.
   row.
 * Store: `state/sndk_reversion/` (diary rows — the viewstation reads them via
   the generic `/api/raw` endpoints; **pinned UI contract**),
-  `state/sndk_reads/` (the arrow + reading rows, same pinned contract),
+  `state/sndk_reads/` (the read rows, same pinned contract),
   `state/sndk_gex/` (discovery cache + raw-book cache + vol hint + fetch log),
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
@@ -210,10 +218,9 @@ and writes nothing; that is how every number above was measured.
   a frozen book.
 * **Pause — not a kill switch**, and the difference is the whole point:
   `state/sndk_reads/control.json` (`{"reasoning": bool}`). It silences the
-  model's **sentence** and nothing else: the arrow, the gate separations, the
-  magnet ranking, the frozen list and the wake reason are all pure functions of
-  a diary row already on disk, so they keep computing and every scan still lands
-  a row, stamped `paused: true`. A gap in a training set costs far more than a
+  model's **sentence** and nothing else: the magnet ranking, the frozen list
+  and the wake reason are all pure functions of a diary row already on disk, so
+  they keep computing and every scan still lands a row, stamped `paused: true`. A gap in a training set costs far more than a
   gap in the prose. `sndk_read.reasoning_on` fails **OPEN** — a missing or
   unreadable file means nobody ever touched the switch, which is not the same as
   asking for silence.
