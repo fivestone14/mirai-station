@@ -477,7 +477,7 @@ def test_example_b_survives_only_because_the_frame_ships():
                   ts=T0 - timedelta(minutes=m))
             for v, m in ((1543.2, 61), (1538.8, 40), (1546.1, 20), (1541.7, 0))]
     fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
-    assert fr["range_since"] == {"low": 1538.8, "high": 1546.1}
+    assert fr["held_between_since_last_read"] == {"low": 1538.8, "high": 1546.1}
     assert fr["nothing_crossed_since_then"] is True
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0,
                         since_last_read=fr)
@@ -497,21 +497,140 @@ def test_first_read_has_no_frame_and_says_so():
     assert fr == {"first_read_of_session": True}
 
 
-def test_the_range_anchor_names_when_the_session_range_last_grew():
-    """"since HH:MM" needs an anchor the scene can vouch for — the measurement
-    pass found 15% of quiet gaps actually extended the session range, so the
-    anchor is the last time an extreme moved, computed over the whole day."""
+def test_the_session_range_anchor_is_gone_and_stays_gone():
+    """The whole-day range anchor shipped and was measured LYING: with two
+    clocks in the frame the model fused them — "held between X and Y since
+    <the session anchor>" — and 8 of 11 live quiet reads paired the since-last-
+    read range with the wrong timestamp. The frame now carries exactly one
+    range (`held_between_since_last_read`) and exactly one clock it may pair
+    with (`last_read_at`). This test memorialises the deletion."""
     rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
                   ts=T0 - timedelta(minutes=m))
             for v, m in ((1500.0, 90), (1530.0, 75), (1510.0, 50), (1512.0, 0))]
     lc = _last_call(minutes_ago=50, spot=1510.0)
     fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
-    # the high was set 75 minutes ago and nothing extended it since
-    assert fr["session_range_unbroken_since"] == (
-        (T0 - timedelta(minutes=75)).astimezone(SR._ET).strftime("%H:%M"))
+    assert "session_range_unbroken_since" not in fr
+    assert "range_since" not in fr
+    assert set(k for k in fr if "range" in k or "held" in k) <= {
+        "held_between_since_last_read"}
 
 
 def test_build_scene_without_the_kwarg_is_unchanged():
     row = mkrow([[1300, 60], [1100, 20]])
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
     assert "since_last_read" not in (sc.get("context") or {})
+
+
+# --- the night-crew regressions (obs-3 QA pass, 2026-09-01) -----------------
+def _scene_for(rows, fr=None):
+    return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0,
+                          since_last_read=fr)
+
+
+def test_comma_numbers_in_scene_strings_are_quotable():
+    """"1,893 distinct books" in the scene's own prose: float("1,893") raised,
+    the walker skipped it, and a verbatim quote of the board's own string was
+    deleted as invented."""
+    row = mkrow([[1300, 60], [1100, 20]])
+    row["breadth_note"] = "1,893 distinct books traded"
+    sc = _scene_for([row])
+    sc["context"] = {"note": "1,893 distinct books traded"}
+    assert 1893.0 in SR.numbers_on_the_board(sc)
+    out = SR.check_reading_against_scene(
+        {"quiet": True, "read": "About 1893 distinct books traded; "
+                                "nothing else moved."}, sc)
+    assert out.get("read", "").startswith("About 1893")
+
+
+def test_whole_numbers_get_a_dollar_of_rounding_slack():
+    """"about 64" against a measured 63.52 is rounded speech, not invention —
+    the old half-unit integer tolerance deleted true sentences."""
+    row = mkrow([[1300, 60], [1100, 20]])
+    sc = _scene_for([row])
+    sc["context"] = {"moved_pct": 63.52}
+    out = SR.check_reading_against_scene(
+        {"quiet": True, "read": "The measure sits near 64 on the day."}, sc)
+    assert "read" in out and not out.get("dropped_observations")
+
+
+def test_banned_inflections_do_not_walk_through_the_gate():
+    """Live QA: "pinned", "pulled", "leaning" escaped while their stems were
+    banned."""
+    row = mkrow([[1300, 60], [1100, 20]])
+    sc = _scene_for([row])
+    for verb in ("pinned", "pushed", "pulled", "rallied", "leaning"):
+        out = SR.check_reading_against_scene(
+            {"quiet": False, "read": f"Price got {verb} into the close.",
+             "points": []}, sc)
+        assert "read" not in out, verb
+        assert any("read_banned" in d
+                   for d in out.get("dropped_observations", [])), verb
+
+
+def test_lexicon_enforce_is_wired_to_a_real_drop(monkeypatch):
+    """The sr-7 switch was wired to NOTHING — flipping it on changed no
+    behaviour. Enforcement must drop the read and say so in dropped."""
+    row = mkrow([[1300, 60], [1100, 20]])
+    sc = _scene_for([row])
+    slipping = {"quiet": True,
+                "read": "The magnet is building right now under price."}
+    shadow = SR.check_reading_against_scene(dict(slipping), sc)
+    assert shadow.get("stale_language_flags")          # recorded…
+    assert "read" in shadow                            # …but not enforced
+    monkeypatch.setattr(SR, "LEXICON_ENFORCE", True)
+    hard = SR.check_reading_against_scene(dict(slipping), sc)
+    assert "read" not in hard
+    assert hard["abstain"] == "forced"
+    assert any(d.startswith("read_stale_tense:")
+               for d in hard["dropped_observations"])
+
+
+def test_unknown_gamma_sign_never_wakes_the_flip():
+    """"unknown" held for two books is agreement about ignorance, not a flip —
+    and a flip INTO unknown is a data gap, not an event."""
+    assert SR._known_sign("unknown") is None
+    assert SR._known_sign("unmeasured") is None
+    assert SR._known_sign("") is None
+    assert SR._known_sign(None) is None
+    assert SR._known_sign("negative") == "negative"
+
+
+def test_crossed_flip_wake_suppresses_the_nothing_crossed_flag():
+    """The flip is not in the frozen-level loop, so on a "crossed flip" wake
+    the loop finds nothing and stamped "nothing_crossed_since_then" onto a row
+    whose own wake reason says something crossed."""
+    lc = _last_call(minutes_ago=30, spot=1543.2)
+    rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
+                  ts=T0 - timedelta(minutes=m))
+            for v, m in ((1543.2, 30), (1544.0, 0))]
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "crossed flip",
+                                  False, T0)
+    assert "nothing_crossed_since_then" not in fr
+    quiet = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat",
+                                     False, T0)
+    assert quiet.get("nothing_crossed_since_then") is True
+
+
+def test_an_empty_gate_asserts_nothing_about_crossings():
+    """tested == 0: a last call whose gate carries no levels must not claim
+    "nothing crossed" — it measured nothing."""
+    lc = {"ts": (T0 - timedelta(minutes=30)).isoformat(), "wall_s": 9.9,
+          "gate": {"spot": 1543.2}}
+    rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
+                  ts=T0 - timedelta(minutes=m))
+            for v, m in ((1543.2, 30), (1544.0, 0))]
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
+    assert "nothing_crossed_since_then" not in fr
+
+
+def test_price_parked_on_a_level_then_leaving_counts_as_a_crossing():
+    """spot_then AT the frozen level: the strict sign product is zero, and the
+    departure was invisible to the old test."""
+    lc = _last_call(minutes_ago=30, spot=1400.0)   # parked ON the call wall
+    rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
+                  ts=T0 - timedelta(minutes=m))
+            for v, m in ((1400.0, 30), (1409.0, 0))]
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
+    crossed = fr.get("crossed_since_then") or []
+    assert any(c["level"] == 1400.0 and c["price_went"] == "up"
+               for c in crossed)

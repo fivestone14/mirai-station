@@ -110,7 +110,7 @@ def _seed_slices():
                                              quiet=True),
                      _scene(), T0 + timedelta(minutes=40))
     RAG.record_slice(_row(1130.0),
-                     _read_out("broke the floor and kept going", "down", 0.3),
+                     _read_out("broke the floor and kept going", wake="price ran"),
                      {"walls": {"put": [{"strike": 1100.0}]}},
                      T0 + timedelta(minutes=80))
 

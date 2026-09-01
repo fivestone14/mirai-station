@@ -14,7 +14,7 @@ under-pull guard that taps the model on the shoulder.
 
 WHAT ONE RECORD IS — one entry, two faces:
   Face A, structured metadata (the GATE): time, levels, gamma, walls, sigma,
-     and the vector + magnitude the model gave. Exact-filterable, NOT embedded
+     and the levels the model pointed at. Exact-filterable, NOT embedded
      (numbers embed poorly — similarity blurs strikes — but filter precisely).
   Face B, narrative (the MATCH): ONE natural-language sentence of what
      happened — the model's own line for that slice. This face is what gets
@@ -164,7 +164,12 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
     # is the comparison every later pattern claim rests on.
     narrative = read or " ".join(str(p.get("note") or "") for p in points).strip()
     if not narrative:
-        narrative = "Nothing standing out on the board."
+        # a FORCED abstain is not market quiet: the model said something and
+        # the gates deleted it. Filing "nothing standing out" for that read
+        # would make the searchable face lie about the day.
+        narrative = ("Reading withheld by the gates."
+                     if reading.get("abstain") == "forced"
+                     else "Nothing standing out on the board.")
     walls = scene.get("walls") or {}
     ladder = row.get("profile_ladder") or {}
     band = read_out.get("magnet_band") or {}
@@ -184,8 +189,9 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
         # obs-1 replaces the stored vector. `quiet` and `abstain` are the pair
         # the nightly audit reads: a model that looked and found nothing is
         # working, a model whose every claim was deleted is not, and one flag
-        # cannot tell them apart. `cited_paths` is what makes a past slice
-        # re-checkable — the pointers that were resolved at the time.
+        # cannot tell them apart. `levels` below is what makes a past slice
+        # re-checkable — the prices it pointed at, held next to what the board
+        # looked like around them.
         "quiet": bool(reading.get("quiet")),
         "abstain": reading.get("abstain"),
         "notable_count": len(points),
