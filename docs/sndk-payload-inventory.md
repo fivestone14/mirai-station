@@ -7,7 +7,7 @@ surface, deliberately NOT reasoning input. This list is the pressure-test
 shortlist: anything marked *not in payload* is a candidate to argue back in.
 
 Sources: diary row = `sndk_views.build_row` (ROW_V 3), read row =
-`sndk_read.read_once` (ERA sr-8), chain = `sndk_feed.sndk_chain`.
+`sndk_read.read_once` (ERA obs-3), chain = `sndk_feed.sndk_chain`.
 
 ## sr-8 (2026-08-30) — the payload pays only for what varies
 

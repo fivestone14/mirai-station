@@ -25,6 +25,9 @@ verdicts.
                               not the contract
   E. Tool grant actually shut Bash executed under both old and new argv until
                               Bash/WebSearch went on the DISALLOW list
+  F. One lane (obs-3)         Lane A deleted (direction surface measured
+                              worthless); every read opens with the
+                              since-last-read frame; plain-english renames
 
 ## Next, in order
 
@@ -33,7 +36,7 @@ verdicts.
      say about old tape as live tape, it is pattern-matching noise. Plus the
      nightly scorecard: chosen-vs-forced abstain split, prose-survival rate,
      repeat rate, wake-conditioned quiet.
-     WHY FIRST: obs-2 is one day old and we know only that it runs.
+     WHY FIRST: obs-3 is brand new and we know only that it runs.
 
   2. LEVEL EVIDENCE. Ship `gross_gex` as dollars of stock per 1% move — the
      board has no absolute magnitude at all today, only relative shares — and

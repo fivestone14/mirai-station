@@ -83,10 +83,11 @@ what held still — which is what makes the honest "nothing changed" sentence
 possible at all.
 
 The scene (docs/sndk-payload-inventory.md is the field-by-field map):
-grouped by force — **data_sources** (**new in sr-7**: the three clocks that
-were being conflated — the scan, the price quote, and the option book, which
-the feed re-serves from a disk cache on half of all scans and which is
-routinely minutes older than both; plus the night the standing open interest
+grouped by force — **data_sources** (**new in sr-7**: the two clocks that
+were being conflated — the scan and the option book, which the feed re-serves
+from a disk cache on half of all scans and which is routinely minutes older
+than the scan (sr-8 dropped the third, the price-quote clock, after measuring
+it was the scan clock twice over); plus the night the standing open interest
 was struck, re-verified unchanged on every scan), **freshness_rules**
 (**new in sr-7**: the ceilings, and the blocks DELETED for exceeding them —
 labelling a stale number had already been tried and ignored), `clock`
@@ -172,7 +173,7 @@ and writes nothing; that is how every number above was measured.
   120s (half the SPX rate — conservative with the shared server); the wrapper
   gates on `watch.intraday.market_status` RTH.
 * launchd: `com.mirai-station.sndk-read` fires `runtime/scripts/run-sndk-read.sh`
-  every 120s. **Its own job on purpose** — a model call can hang to its 60s
+  every 120s. **Its own job on purpose** — a model call can hang to its 100s
   timeout, and it must never be able to eat the scanner's tick and cost a diary
   row.
 * Store: `state/sndk_reversion/` (diary rows — the viewstation reads them via
@@ -182,7 +183,13 @@ and writes nothing; that is how every number above was measured.
   and `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory).
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
-  silently with live rows. Read rows are stamped `era` (`sr-8` since
+  silently with live rows. Read rows are stamped `era` (`obs-3` since
+  2026-09-01 — the current contract: every reading opens with the
+  since-last-read frame, replies `{quiet, read, points}`, and Lane A is gone;
+  `obs-2`/`obs-1` since 2026-08-31 — the observer rewrite: prose checked
+  against every number on the board, the tool grant revoked, points capped
+  at 3; `wk-1` since 2026-08-31 — the wake gate measures from the last LOOK
+  via a frozen `gate` snapshot written on every row; `sr-8` since
   2026-08-30 — the payload pays only for what VARIES: 30 leaves left the scene,
   18 of them a single value across 4,149 recorded scans and 12 exactly
   reconstructable from leaves that stay, their explanations moved into the
