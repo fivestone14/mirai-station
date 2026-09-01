@@ -14,9 +14,11 @@ rides only when it is stale (>120 s) or materially changed (spot >0.25σ,
 regime flip, new top magnet strike); otherwise a one-liner. The doctrine
 never repeats — it lives in the appended system prompt.
 
-Tool surface: exactly sndk_read's grant — the RAG CLI plus WebSearch,
-everything else denied (see sndk_read.py:159-166 for the precedent and
-_NO_TOOLS for the deny list). Default permission mode, never bypass.
+Tool surface: the RAG CLI plus WebSearch, everything else denied. This is
+the grant the READER once had — obs-1 revoked the reader's tools entirely,
+so sndk_read._NO_TOOLS is the deny-list precedent, not a shared grant; the
+voice keeps its tools on purpose (a conversation can reach for history).
+Default permission mode, never bypass.
 """
 from __future__ import annotations
 
@@ -181,8 +183,12 @@ def build_voice_scene(now: datetime | None = None) -> dict | None:
         }
         if read.get("paused"):
             reader["paused"] = True
-        scene["reader_line"] = {k: v for k, v in reader.items()
-                               if v is not None}
+        line = {k: v for k, v in reader.items() if v is not None}
+        # a stale_book or errored newest row prunes to {} — and an EMPTY block
+        # under an absence-means-unmeasured doctrine claims a reader line was
+        # measured and found blank. Omit it instead.
+        if line:
+            scene["reader_line"] = line
     return scene
 
 
