@@ -35,7 +35,7 @@ lifecycle, its own kill switch, and its own posture.
 | # | Piece | What it is | Ticker | Posture |
 |---|---|---|---|---|
 | 1 | **The SPX station** | The original system: senses → gravity engine → three heads → diary → report cards | SPX | paper |
-| 2 | **SNDK-PRO** | A second, fully isolated GEX station for a single equity name, with its own model-written reading | SNDK | beta, record-only |
+| 2 | **SNDK-PRO** | A second, fully isolated GEX station for a single equity name, with its own model-written reading | SNDK | record-only |
 | 3 | **SIEGE** | Shadow sensor: underlying volume spent *at* a wall, and whether that predicts the break | SPY→SPX | shadow |
 | 4 | **LOB-FLOW** | Shadow sensor: Layer-2 order-book pressure | SPY | shadow |
 | 5 | **Dated Book** | Nightly sidecar for far-dated structural OI walls the 0–7 DTE live fetch can't see | SPX | record-only |
@@ -74,7 +74,7 @@ flowchart TB
     BREAK["<b>C · Break Lens</b><br/><i>flow wins → ride the break</i>"]
   end
 
-  subgraph SNDKPRO["②b SNDK-PRO · its own lane · beta / record-only"]
+  subgraph SNDKPRO["②b SNDK-PRO · its own lane · record-only"]
     direction LR
     SFEED["own chain runner → map maker<br/><i>front weekly · rebuilt IV</i>"]
     SREAD["the reader<br/><i>one lane: the model's reading</i>"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launchd-fired wrapper: SNDK-PRO scan tick (beta, record-only).
+# launchd-fired wrapper: SNDK-PRO scan tick (record-only: nothing here trades).
 # One tick = pull the SNDK weekly chain (240s-TTL cached inside python), compute
 # gex/dex/ladder/EM views via the pure left-eye engines, append one diary row to
 # state/sndk_reversion/{date}.jsonl for the viewstation's /api/raw readers.

@@ -14,7 +14,7 @@
 
   <!-- SNDK-PRO scanner: fire every 2 min; the script (run-sndk.sh) enforces the
        weekday + 09:30-16:00 ET market window and the SNDK_PRO_DISABLE kill
-       switch. 120s = half the SPX left-eye rate on purpose — beta cadence,
+       switch. 120s = half the SPX left-eye rate on purpose — a deliberate cadence,
        conservative with the shared Cassandra server (no explicit rate limiter
        upstream). Each tick is a FRESH process (no in-memory cache can survive),
        so the raw book is cached ON DISK (state/sndk_gex/chain_cache.json, 240s

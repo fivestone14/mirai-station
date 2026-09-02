@@ -1538,7 +1538,7 @@
     .vitals{gap:9px}
   }
   /* ================================================================
-     SNDK-PRO (beta) — styles. Purely additive: every selector is snk-
+     SNDK-PRO — styles. Purely additive: every selector is snk-
      prefixed (plus the rail badge), nothing above this block is touched.
      Same token grammar as the rest of the sheet: jade/coral carry market
      meaning, iris is UI state, --l-grav is structural gravity gold.
@@ -2492,7 +2492,7 @@
         </button>
         <button class="tab" data-tab="sndk">
           <svg viewBox="0 0 24 24"><path d="M12 4v16"/><path d="M12 7.5h6M12 15.5h4"/><path d="M12 11.5H5M12 19.5H8"/><circle cx="12" cy="4" r="1.2" fill="currentColor" stroke="none"/></svg>
-          SNDK<span class="snk-beta">beta</span>
+          SNDK
         </button>
         <button class="tab" data-tab="payload" id="tab-payload" title="SNDK Payload — the scene handed to the model" aria-label="SNDK Payload">
           <svg viewBox="0 0 24 24"><path d="M9.5 4C7.5 4 7.8 7 7.8 8.6 7.8 10.2 6.8 12 5 12c1.8 0 2.8 1.8 2.8 3.4 0 1.6-.3 4.6 1.7 4.6"/><path d="M14.5 4c2 0 1.7 3 1.7 4.6 0 1.6 1 3.4 2.8 3.4-1.8 0-2.8 1.8-2.8 3.4 0 1.6.3 4.6-1.7 4.6"/></svg>
@@ -10038,7 +10038,7 @@ function renderDict(){
 }
 
 /* ================================================================
-   SNDK-PRO (beta) — the weekly-tenor GEX terminal tab. SELF-CONTAINED:
+   SNDK-PRO — the weekly-tenor GEX terminal tab. SELF-CONTAINED:
    every identifier is SNDK./snk-prefixed; the SPX Map/FEED/SPOT loops are
    never touched. Reads the parallel producer's diary via the SAME generic
    endpoints (/api/raw/index + /api/raw/file → state/sndk_reversion/*.jsonl),
@@ -12433,11 +12433,10 @@ const SNDK = {
     const pl=document.getElementById('snk-pills');
     const put=(lead,pills)=>{ el.innerHTML=lead; if(pl) pl.innerHTML=pills; };
     const m=SNDK.model, sp=SNDK.liveSpot();
-    const beta=`<span class="pill lantern" title="SNDK-PRO is a beta surface: weekly-tenor SNDK diary + live quote, display-only">β BETA</span>`;
     if(!m){
       put(`<span class="snk-lead"><b>SNDK ${sp!=null?snkUsd(sp,2):'—'}</b><i>${sp!=null?'live quote · awaiting first scan':'awaiting first scan'}</i></span>`,
           (SNDK.spot.live?`<span class="pill jade" title="live quote from /api/spot — the diary map is not up yet">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
-                         :`<span class="pill grey">no live quote</span>`)+beta);
+                         :`<span class="pill grey">no live quote</span>`));
       return;
     }
     const fr=SNDK.staleInfo();
@@ -12476,7 +12475,7 @@ const SNDK = {
       ?`<span class="pill jade" title="price streams from /api/spot (${SNDK.spot.src||'live quote'}); gravity comes from the diary scan">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
       :`<span class="pill grey" title="no live quote — showing the scan price${m.spotSource?` (scan source: ${m.spotSource})`:''}">scan price${m.spotSource?` · ${m.spotSource}`:''}</span>`;
     put(`<span class="snk-lead ${up==null?'':up?'up':'dn'}"><b>SNDK <span class="mono" id="snk-px">${snkUsd(sp,2)}</span></b><i>${bits.join(' · ')}</i></span>`,
-        feedPill+srcPill+beta);
+        feedPill+srcPill);
   },
   paintTenors(){
     const el=document.getElementById('snk-tenors'); if(!el) return;
@@ -15105,7 +15104,7 @@ function switchTab(name){
   if(name==='replay'){ if(!RP.els) initReplay();
     else requestAnimationFrame(()=>{ rpSetView(RP.view); if(RP.view==='chart'&&RP.path){ rpBuild(); rpPaint(); } }); }
   if(name==='map') requestAnimationFrame(()=>{ buildMap(); paintMap(); });
-  // SNDK-PRO (beta): pollers run only while its panel is showing — entering starts
+  // SNDK-PRO: pollers run only while its panel is showing — entering starts
   // them (after layout, so the chart cell has real size), leaving stops them cold
   if(name==='sndk') requestAnimationFrame(()=>SNDK.show());
   else if(SNDK.booted&&SNDK.on) SNDK.hide();
@@ -15117,7 +15116,7 @@ $("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b
 
 // ---------- boot ----------
 renderLayers(); renderDict(); renderDiary(false); renderHeads(); startLive(); loadSiege(); loadPlaneLedgers();
-SNDK.boot();   // SNDK-PRO beta tab — visibility listener only; pollers start on first open
+SNDK.boot();   // SNDK-PRO tab — visibility listener only; pollers start on first open
 const _modal=document.getElementById('modal');
 _modal.addEventListener('click', e=>{ if(e.target===_modal) closeModal(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });

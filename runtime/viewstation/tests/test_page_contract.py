@@ -298,3 +298,11 @@ def test_the_payload_tab_carries_the_diary_view():
     assert "legacy(m){ return !!m && ('vector' in m) && !('quiet' in m); }" in PAGE
     assert "seg('l',lg)" in PAGE and ".mem-days .rhy i.l{" in PAGE
     assert "['Since last read', esc(m.frame_is)]" in PAGE
+
+
+def test_sndk_pro_is_no_longer_labelled_beta():
+    """09-02: the SNDK tab left beta. No beta pill in the header, no beta tag on the rail;
+    the `snk-beta` class survives only as the small tag style the Payload rail item borrows."""
+    assert 'SNDK<span class="snk-beta">beta</span>' not in PAGE
+    assert "β BETA" not in PAGE and "is a beta surface" not in PAGE
+    assert 'SNDK<span class="snk-beta">payload</span>' in PAGE

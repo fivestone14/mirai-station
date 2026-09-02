@@ -1,4 +1,4 @@
-# sndk-pro — SNDK live GEX map (beta, record-only)
+# sndk-pro — SNDK live GEX map (record-only)
 
 A **fully isolated** subproject that produces a live GEX-map data stream for
 the equity ticker **SNDK** (SanDisk, ~$1,250, $5 strike grid, weekly Friday
@@ -297,4 +297,4 @@ sidecar's own clock. Absence falls back to the scans and never fabricates.
 * Tests: `tests/` (own conftest — all state redirected to tmp, transport
   dead-ended). Run: `~/.local/share/mirai-station/venv/bin/python -m pytest tests/ -q`.
 
-BETA / record-only: nothing here trades, alerts, or feeds any SPX consumer.
+Record-only: nothing here trades or feeds any SPX consumer; the only alert is the dead-man page.
