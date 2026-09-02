@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(_SKILLS, "mirai-left-eye"))
 
 import lefteye_fill_ledger  # noqa: E402
 import sndk_feed  # noqa: E402
+import sndk_read  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -48,3 +49,11 @@ def _no_network(monkeypatch):
     monkeypatch.setattr(sndk_feed._nf, "_run",
                         lambda code: (_ for _ in ()).throw(
                             AssertionError("network call during test")))
+
+
+@pytest.fixture(autouse=True)
+def _no_semantic_reviewer(monkeypatch):
+    """obs-4: the semantic reviewer is a real `claude -p` call. Off for every
+    test — the tests that exercise it inject a judge — so the suite never
+    spawns the CLI, never pays for a call, and never waits on one."""
+    monkeypatch.setattr(sndk_read, "SEMANTIC_GUARD", False)

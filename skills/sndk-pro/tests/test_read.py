@@ -471,8 +471,14 @@ def test_example_b_survives_only_because_the_frame_ships():
     """The honest nothing-changed sentence: the since-window range is not a
     number on today's board, so without the block the read is deleted as
     invented — which is precisely the failure that made this block load-bearing
-    rather than garnish."""
-    lc = _last_call(minutes_ago=61, spot=1543.2)
+    rather than garnish.
+
+    obs-4: the last call sits at 08:57, two minutes BEFORE the first scan. The
+    day's boxes now carry their own clock strings (`formed_over: "08:59-…"`),
+    so a last call on the same minute as the first scan put "59" on the bare
+    board through a different door and the sentence survived without the
+    frame — which is not what this test measures."""
+    lc = _last_call(minutes_ago=63, spot=1543.2)
     rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
                   ts=T0 - timedelta(minutes=m))
             for v, m in ((1543.2, 61), (1538.8, 40), (1546.1, 20), (1541.7, 0))]

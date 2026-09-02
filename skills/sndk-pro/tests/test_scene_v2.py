@@ -728,7 +728,7 @@ def _book_rows(**kw):
 
 
 _BOOK_BLOCKS = ("scale", "price", "regime", "magnet", "breadth", "momentum",
-                "dealer_positioning", "walls")
+                "dealer_positioning", "walls", "structure")
 
 
 def _scene_at(rows, now, frozen=None):
@@ -754,8 +754,12 @@ def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
     too old to stand."""
     rows = _book_rows()
     sc = _scene_at(rows, T0 + timedelta(minutes=7))   # 7.0 min book, 6.0 cap
-    # sr-8: `instrument` went to the doctrine, which opens on it
-    assert list(sc) == ["data_sources", "clock", "freshness_rules"]
+    # sr-8: `instrument` went to the doctrine, which opens on it.
+    # obs-4: `context` survives a dead book — the day's boxes are measured
+    # from the SCANS, not the book, and the prior sessions' range from their
+    # scans; a stale chain does not make yesterday's high unknown.
+    assert list(sc) == ["data_sources", "clock", "freshness_rules", "context"]
+    assert list(sc["context"]) == ["ranges"]
     dropped = sc["freshness_rules"]["blocks_dropped_this_scan"]
     assert [d["block"] for d in dropped] == list(_BOOK_BLOCKS)
     for d in dropped:
@@ -813,6 +817,11 @@ def test_the_do_not_cite_key_disappears_when_the_gate_empties_it():
               {"field": "regime", "value": "trending", "for_min": 95}]
     assert "frozen_do_not_cite" not in _scene_at(rows, T0 + timedelta(minutes=7),
                                            frozen)
+
+
+# a surface with call clusters only — the put side is measured EMPTY
+_CALLS_ONLY = ([[1240, 8.0], [1245, 7.0], [1300, 6.5]]
+               + [[k, 0.1] for k in range(1105, 1300, 5) if k not in (1240, 1245)])
 
 
 def _every_scene_shape(tmp_path):
@@ -876,9 +885,25 @@ def _every_scene_shape(tmp_path):
                            rich_row(spot=1520.0),
                            [rich_row(ts=T0 - timedelta(minutes=30), spot=1490.0),
                             rich_row(spot=1520.0)],
+                           # obs-4: the gate freezes the LADDER's wall, never the
+                           # diary scalar — rich_row's ladder has no call rung above
+                           # 1490, so the frozen level is stated outright here
                            {"ts": (T0 - timedelta(minutes=30)).isoformat(),
-                            "gate": SR.state_for_next_wake(rich_row(spot=1490.0, call_wall=1500.0))},
+                            "gate": {"spot": 1490.0, "call_wall": 1500.0,
+                                     "magnet": 1300.0}},
                            "call wall crossed", False, T0)),
+        # obs-4: a frame whose put side was empty at BOTH readings — the block
+        # says so in one word (walls_absent_then_and_now), never with a number
+        SR.build_scene(rich_row(nbs=_CALLS_ONLY), SR.magnet_band(rich_row()), [],
+                       [rich_row(ts=T0 - timedelta(minutes=30), nbs=_CALLS_ONLY),
+                        rich_row(nbs=_CALLS_ONLY)], T0,
+                       since_last_read=SR.frame_since_last_read(
+                           rich_row(nbs=_CALLS_ONLY),
+                           [rich_row(ts=T0 - timedelta(minutes=30), nbs=_CALLS_ONLY),
+                            rich_row(nbs=_CALLS_ONLY)],
+                           {"ts": (T0 - timedelta(minutes=30)).isoformat(),
+                            "gate": SR.state_for_next_wake(rich_row(nbs=_CALLS_ONLY))},
+                           "heartbeat", False, T0)),
         # a scene carrying Python-found candidates: the gamma sign differs
         # between two distinct books, which is `changed_this_scan`
         scene([rich_row(ts=T0 - timedelta(minutes=4), gamma_sign="negative",

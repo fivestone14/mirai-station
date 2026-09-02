@@ -167,6 +167,40 @@ calls a day against ~189 scans, with the heartbeat filling only 1–4 slots
 `python3 sndk_read.py --replay YYYY-MM-DD` re-runs the gate over a recorded day
 and writes nothing; that is how every number above was measured.
 
+### obs-4 (2026-09-02) — the frame repaired, the day's boxes, where the weight sits, and a guard that reads
+
+Four repairs to the frame, one new block, one new guard — all payload, none
+of it a forecast. (1) `held_between_since_last_read` is seeded with
+`spot_then`: a $34 drop had shipped as "held between 1518 and 1546" because
+the window began one scan after the reading it was measured from. The frame
+now also says `frame_is` "a move" or "a hold" (0.15 sigma rule) so the model
+opens with then→now on a move. (2) `unchanged_since_then` compares the
+ladder's walls to the ladder's walls — the old "now" was the diary's
+pre-cluster scalar, and the two disagreed inside one block. (3) no diary wall
+is ever frozen in the gate when a per-strike surface exists (`ladder_nearest`):
+a side the ladder found empty is empty, and `walls_absent_then_and_now` says
+so in a word, never a number. (4) the guard matches word STEMS (favoring died
+with favors), bans judgement words (strong, weak, ceiling, floor, due, at
+risk…), checks an above/under claim against the live spot, and a second small
+model (`semantic_review`, haiku, fail-open) reads the surviving sentence for
+a forecast hiding in ordinary words.
+
+`context.ranges` tells the day as boxes: the opening box (first 30 min),
+the box in force (the opening box until a scan sits 0.05 sigma beyond it;
+then the box forming since the break), today's breaks with clock and
+direction, and the prior five sessions' range on its own clock — a day can
+break its box while staying inside the week's range, and the block states
+both. `structure` says where the board's gamma sits: multi-strike bands with
+their span and share, air between price and the nearest wall, and the share
+of the surface above price. Measured before it was built (23 sessions):
+price spends no more time inside a band than inside a random band of the
+same width, moves toward one no more often than toward a random one, and a
+dominant strike holds no better than an imaginary line — so the doctrine
+tells the model a band is where the weight is, never where price is drawn.
+Also measured and NOT built: crossings and approaches as an angle — a crossing
+is a $2 event at a $2 noise floor with follow-through at placebo. Scene
+3,328 → 4,171 bytes on the 09-02 tape; 240 tests.
+
 ## Wiring
 
 * launchd: `com.mirai-station.sndk` fires `runtime/scripts/run-sndk.sh` every

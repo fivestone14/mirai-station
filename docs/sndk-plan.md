@@ -28,6 +28,13 @@ verdicts.
   F. One lane (obs-3)         Lane A deleted (direction surface measured
                               worthless); every read opens with the
                               since-last-read frame; plain-english renames
+  G. Honest frame (obs-4)     the since-last-read window seeded with spot_then,
+                            walls compared ladder-to-ladder, no diary wall frozen
+                            beside an empty ladder, a stem + position + semantic
+                            guard, and two new measured blocks: the day's boxes
+                            (context.ranges) and where the weight sits
+                            (structure). Crossings/approaches measured and NOT
+                            built (a $2 event at a $2 noise floor).
 
 ## Next, in order
 

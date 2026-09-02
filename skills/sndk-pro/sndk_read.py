@@ -79,7 +79,27 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "obs-3"               # bump on ANY change to the gates or the prompt.
+ERA = "obs-4"               # bump on ANY change to the gates or the prompt.
+                            # obs-4 (2026-09-02): four repairs to the frame and
+                            # one new block — all payload, none of it a forecast.
+                            # (1) held_between_since_last_read is SEEDED with
+                            # spot_then, so the range runs from where price was
+                            # at the last reading: a $34 drop shipped as "held
+                            # between 1518 and 1546" on 09-02 10:01 because the
+                            # start sat outside its own range. (2) the frame's
+                            # "unchanged" walls compare ladder to ladder; the
+                            # old "now" was the diary scalar and the two
+                            # disagreed inside one block (ladder 1550, diary
+                            # 1600, "unchanged 1600"). (3) no diary wall is ever
+                            # frozen in the gate when a per-strike surface
+                            # exists: a side the ladder found empty is empty,
+                            # never "1500, unchanged" beside "no put wall"
+                            # (09-01 12:33). (4) the guard matches word STEMS,
+                            # checks above/under against the live spot, and a
+                            # second small model reviews the surviving sentence
+                            # for forecast or judgement. NEW: context.ranges —
+                            # the opening box, the box in force, today's breaks
+                            # and the prior sessions' range: measured, no verdict.
                             # The store is era-stamped so a later read of the
                             # history can never blend two rule sets.
                             # sr-8 (2026-08-30): the payload pays only for what
@@ -276,6 +296,34 @@ VOL_TREND_FLAT = 2.5        # |Δ IV| under this many vol pts reads "flat"
 _WALL_AGE_LOOKBACK = 120    # rows walked back when ageing a wall (~4h at 120s).
                             # A bound, not a judgement: past it the age reports
                             # absent rather than making the read quadratic.
+# obs-4: RANGES, told as boxes. The first OPENING_RANGE_MIN minutes of the tape
+# form the opening box; a frozen box is BROKEN when a scan sits beyond it by
+# more than RANGE_BREAK_SIGMA (about $3 on this name — the median 2-minute
+# wobble is $2.12, so a one-dollar poke is not a break); a break starts a new
+# box, which forms over BOX_FORM_MIN minutes and then freezes in its turn. The
+# broken box is history and the new one is the box in force — "range bound"
+# inside a box that was breached is not a claim anyone should be handed. The
+# prior sessions' range is a separate fact on a separate clock: it can hold
+# while today's box breaks, and the block says both.
+OPENING_RANGE_MIN = 30
+BOX_FORM_MIN = 30
+RANGE_BREAK_SIGMA = 0.05
+PRIOR_RANGE_SESSIONS = 5
+RANGE_BREAKS_MAX = 8
+# obs-4: the frame is A MOVE when spot travelled this far since the last
+# reading, and the doctrine tells the model to open with then->now rather than
+# with the "held between" sentence — the template the 09-02 10:01 read reached
+# for across a 0.6-sigma drop.
+FRAME_MOVE_SIGMA = 0.15
+# obs-4: THE SEMANTIC GUARD. The word list catches the words it knows; a second
+# small model reads the surviving sentence for what a list cannot see — a
+# forecast, an expectation, a judgement about where price goes — and a hit
+# deletes the text the way a banned word does. Fails OPEN: a judge that errors
+# or times out is recorded as skipped, never treated as a verdict.
+SEMANTIC_GUARD = True
+SEMANTIC_GUARD_MODEL = "claude-haiku-4-5-20251001"
+SEMANTIC_GUARD_TIMEOUT_S = 40.0
+SEMANTIC_GUARD_EFFORT = "low"
 PCTL_CACHE_V = 3            # bump to invalidate pctl_prior.json — v3 adds the
                             # per-DAY medians novelty is ranked against; v2 counts
                             # one observation per BOOK, not per scan (sr-7)
@@ -354,12 +402,15 @@ BUILT_FROM = {
     WALL_CLOCK: ["clock"],
     LIVE_TAPE: ["price", "history"],
     OPTIONS_BOOK: ["clock.front_expiry", "scale", "price", "regime", "magnet",
-                   "breadth", "momentum", "dealer_positioning", "walls"],
-    OI_SNAPSHOT: ["regime", "magnet", "breadth", "dealer_positioning", "walls"],
+                   "breadth", "momentum", "dealer_positioning", "walls",
+                   "structure"],
+    OI_SNAPSHOT: ["regime", "magnet", "breadth", "dealer_positioning", "walls",
+                  "structure"],
 }
 
 PRESENT_TENSE_FORBIDDEN_FOR = ("magnet", "walls", "breadth",
-                               "dealer_positioning", "regime.charm", "regime.flip")
+                               "dealer_positioning", "regime.charm", "regime.flip",
+                               "structure")
 LEXICON_ENFORCE = False
 _STALE_NOUNS = ("magnet", "wall", "walls", "dealer", "gamma", "charm",
                 "breadth", "vanna", "open interest", "oi")
@@ -720,6 +771,49 @@ def frozen_fields(rows: list[dict], now: datetime) -> list[dict]:
 # ---------------------------------------------------------------------------
 # wake gate
 # ---------------------------------------------------------------------------
+def ladder_nearest(row: dict) -> dict:
+    """The nearest wall on each side under the SAME rule the scene ships —
+    gw_vocab.cluster_walls on the per-strike surface, sided and measured from
+    the book's own spot exactly as walls_ladder does — so a wall frozen in the
+    gate is always a wall the model was shown.
+
+    obs-4. Returns {"surface": bool, "call_wall": K|None, "put_wall": K|None}.
+    `surface` says whether the row carried a per-strike surface at all. When it
+    did, a side with no rung is None and STAYS None — the diary's pre-cluster
+    scalar is never substituted, because that substitution is how the frame
+    once said "put wall 1500, unchanged" beside a walls block saying the put
+    side was empty (09-01 12:33). When the row carries no surface (a thin row,
+    the tests' minimal rows), the scanner's own scalars are the only
+    measurement there is and they are used as such — consistently, on both
+    sides of every comparison, never mixed with the ladder."""
+    gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
+    nbs = gv.get("net_by_strike")
+    spot = _fin(row.get("spot"))
+    if not nbs:
+        return {"surface": False, "call_wall": _fin(row.get("call_wall")),
+                "put_wall": _fin(row.get("put_wall"))}
+    out = {"surface": True, "call_wall": None, "put_wall": None}
+    meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+    bs = _fin(meta.get("chain_spot"))
+    if bs is not None and spot is not None and (
+            bs <= 0 or abs(bs - spot) / spot > RULER_MAX_DRIFT):
+        bs = None
+    ruler = bs if bs is not None else spot
+    if ruler is None:
+        return out
+    try:
+        clusters = _gw.cluster_walls(nbs, ruler)
+    except (TypeError, ValueError):
+        return out
+    calls = [c["peak"] for c in clusters if c["side"] == "call" and c["peak"] > ruler]
+    puts = [c["peak"] for c in clusters if c["side"] == "put" and c["peak"] < ruler]
+    if calls:
+        out["call_wall"] = float(min(calls))
+    if puts:
+        out["put_wall"] = float(max(puts))
+    return out
+
+
 def state_for_next_wake(row: dict, scene: Optional[dict] = None) -> dict:
     """The structural state the wake gate compares against, snapshotted.
 
@@ -740,14 +834,21 @@ def state_for_next_wake(row: dict, scene: Optional[dict] = None) -> dict:
     # measured 142 such transitions across 8 sessions against 2 genuine sign
     # flips (~18 fake wakes a day waiting to happen). session_context already
     # guards this with _known(); the snapshot now applies the same rule.
+    lw = ladder_nearest(row)
     out = {"spot": _fin(row.get("spot")), "sigma": _fin(row.get("sigma")),
            "gamma_sign": _known_sign(row.get("gamma_sign")),
            "magnet": _fin(gv.get("magnet")),
            "gamma_flip": _fin(row.get("gamma_flip")),
-           "call_wall": _fin(row.get("call_wall")),
-           "put_wall": _fin(row.get("put_wall")),
+           "call_wall": lw["call_wall"],
+           "put_wall": lw["put_wall"],
            "atm_iv": _fin(row.get("atm_iv"))}
-    if scene is not None:
+    if scene is not None and lw["surface"]:
+        # obs-4: and ONLY the ladder's. The old branch kept the diary scalar
+        # whenever the ladder had no rung on a side, which is how a read was
+        # handed "put wall 1500, unchanged" beside a walls block saying the put
+        # side was empty (09-01 12:33). A side the ladder found empty is empty,
+        # and a walls block the freshness gate deleted freezes nothing at all —
+        # the frame may only name what the model was shown.
         # THE FRAME'S WALLS ARE THE LADDER'S, when a scene exists to read them
         # from. The diary scalars are the pre-cluster walls sr-3 evicted from
         # the scene because they disagreed with the ladder (08-06: diary said
@@ -757,9 +858,7 @@ def state_for_next_wake(row: dict, scene: Optional[dict] = None) -> dict:
         w = scene.get("walls") or {}
         for side, key in (("call", "call_wall"), ("put", "put_wall")):
             rungs = w.get(side) or []
-            lvl = _fin((rungs[0] or {}).get("strike")) if rungs else None
-            if lvl is not None:
-                out[key] = lvl
+            out[key] = _fin((rungs[0] or {}).get("strike")) if rungs else None
     return {k: v for k, v in out.items() if v is not None}
 
 
@@ -881,17 +980,31 @@ def frame_since_last_read(row: dict, rows: list[dict],
         # LIST for the measured reasons; the wake words carry that crossing.
         out["nothing_crossed_since_then"] = True
 
+    # obs-4: LIKE WITH LIKE. The "then" walls are the gate's, which are the
+    # ladder's; the "now" walls used to be the diary's pre-cluster scalars, and
+    # on 09-02 10:01 the two disagreed inside one block — ladder 1550, diary
+    # 1600, "call_wall unchanged 1600" beside a walls block showing 1550. Both
+    # sides now come from ladder_nearest, the same rule the gate freezes.
+    lw_now = ladder_nearest(row)
     unchanged = {}
-    for key, cur in (("gamma_sign", row.get("gamma_sign")),
+    absent = []
+    for key, cur in (("gamma_sign", _known_sign(row.get("gamma_sign"))),
                      ("heaviest_strike", _fin((row.get("gex_views") or {}).get("magnet"))),
-                     ("call_wall", _fin(row.get("call_wall"))),
-                     ("put_wall", _fin(row.get("put_wall")))):
+                     ("call_wall", lw_now["call_wall"]),
+                     ("put_wall", lw_now["put_wall"])):
         then = value_at_last_read(
             last_call, "magnet" if key == "heaviest_strike" else key)
         if then is not None and cur is not None and then == cur:
             unchanged[key] = then if not isinstance(then, float) else round(then, 2)
+        elif (key in ("call_wall", "put_wall") and then is None and cur is None
+                and lw_now["surface"]):
+            # measured empty at both readings is a fact worth one word — it is
+            # not a hole, and it is never a number
+            absent.append(key.split("_")[0])
     if unchanged:
         out["unchanged_since_then"] = unchanged
+    if absent:
+        out["walls_absent_then_and_now"] = absent
 
     # ONE range, and its anchor is IN ITS NAME. The first night of live-fire QA
     # shipped `range_since` beside `session_range_unbroken_since` — two
@@ -901,7 +1014,12 @@ def frame_since_last_read(row: dict, rows: list[dict],
     # individually on the board so no gate could see the lie. The session-
     # extremes anchor is gone; the only range here is the one since the last
     # read, and the only clock it pairs with is `last_read_at`, three lines up.
-    lo = hi = None
+    # obs-4: the range is SEEDED WITH spot_then. Rows strictly after the last
+    # read gave a window that began one scan late, so the price the model last
+    # spoke at sat outside its own "held between" — on 09-02 10:01 a fall from
+    # 1557 to 1518 shipped as held_between 1518-1546, and the model said
+    # "held". The window now runs from where price WAS to wherever it went.
+    lo = hi = spot_then
     for r in rows:
         sp = _fin(r.get("spot"))
         t = _ts(r)
@@ -912,6 +1030,14 @@ def frame_since_last_read(row: dict, rows: list[dict],
     if lo is not None and hi is not None:
         out["held_between_since_last_read"] = {"low": round(lo, 2),
                                                "high": round(hi, 2)}
+    # obs-4: is this frame A MOVE or A HOLD, said outright with its rule, so
+    # the model does not reach for the "held between" template across a drop
+    # the block itself measured. The threshold is FRAME_MOVE_SIGMA.
+    sig = _fin(row.get("sigma"))
+    if spot_then is not None and spot_now is not None and sig:
+        chg = round((spot_now - spot_then) / sig, 2)
+        out["spot_change_sigma"] = chg
+        out["frame_is"] = "a move" if abs(chg) >= FRAME_MOVE_SIGMA else "a hold"
     return out
 
 
@@ -1124,11 +1250,126 @@ _BANNED_CAUSAL = (
 # and the forecast and causal lists above already catch every verb that could.
 # Describing a wall is fine. "Price will reach the call wall" dies on "will".
 _BANNED_LEVELS = ()
+# obs-4: JUDGEMENT. Words that grade the board or price rather than describe
+# it — a wall is heavy or light (a share), never strong or weak (a promise);
+# a level is a strike, never a ceiling, a floor or a cap; and nothing on a
+# board is due, at risk, or setting up. Same fate as a forecast word.
+_BANNED_JUDGEMENT = (
+    "anticipate", "forecast", "projected", "projection", "odds", "probable",
+    "probably", "ceiling", "floor", "cap", "lid", "strong", "strongly",
+    "weak", "weakly", "overbought", "oversold", "overextended", "stretched",
+    "exhausted", "exhaustion", "fragile", "vulnerable", "at risk", "danger",
+    "dangerous", "threat", "threatens", "healthy", "unhealthy", "overdue",
+    "due for", "look for", "watch for", "call for", "calls for", "setting up",
+    "set up for", "favour", "favor", "favouring", "favoring",
+)
+
+
+def _stem_pattern(w: str) -> str:
+    """obs-4: a banned word bans its INFLECTIONS too. The list caught "favors"
+    and let "favoring" walk through (09-02 09:30); every earlier escape on the
+    live tape was the same shape — a stem on the list, its -ing or -ed form
+    not. Phrases stay exact; a word ending in y takes ies/ied/ying; a word
+    ending in e drops it before ing; every word takes s/es/ed/ing and the
+    doubled-consonant forms (pinned, pinning)."""
+    if " " in w:
+        return re.escape(w)
+    if w.endswith("y") and len(w) > 3:
+        return re.escape(w[:-1]) + r"(?:y|ies|ied|ying)"
+    if w.endswith("e"):
+        return re.escape(w[:-1]) + r"e?(?:s|d|ing)?"
+    last = re.escape(w[-1])
+    return re.escape(w) + rf"(?:s|es|ed|ing|{last}ed|{last}ing)?"
+
 
 _BANNED_RE = re.compile(
-    r"\b(" + "|".join(re.escape(w) for w in
-                      _BANNED_FORECAST + _BANNED_CAUSAL + _BANNED_LEVELS)
+    r"\b(?:" + "|".join(_stem_pattern(w) for w in
+                        _BANNED_FORECAST + _BANNED_CAUSAL + _BANNED_LEVELS
+                        + _BANNED_JUDGEMENT)
     + r")\b", re.I)
+
+# obs-4: A SENTENCE THAT PLACES PRICE ABOVE OR UNDER A NUMBER IS CHECKED
+# AGAINST THE LIVE SPOT. "still under the 1500 strike" shipped at 1528.70 on
+# 09-02 10:11 with every number on the board and no banned word in it. The
+# subject list is deliberately narrow — price, spot, the verbs that describe
+# where price sits — and a match whose preceding words name a wall, a strike,
+# a level or an absence is skipped, because "no wall sits above 1600" is about
+# walls. False negatives are accepted; a deleted true sentence is not.
+_POS_RE = re.compile(
+    r"\b(?:price|spot|now|still|sits|sitting|trading|trades|holding|holds|"
+    r"hovering|hovers|stays|staying|remains|remaining|parked)\b"
+    r"(?:[^.;,]{0,24}?)\b(above|over|under|below|beneath)\b\s+"
+    r"(?:the\s+|that\s+|its\s+)?\$?(\d{3,5}(?:,\d{3})?(?:\.\d+)?)", re.I)
+
+
+def position_slips(text: str, spot) -> list[str]:
+    """Every above/under claim about price that the live spot contradicts."""
+    spot = _fin(spot)
+    if spot is None or not text:
+        return []
+    out = []
+    for m in _POS_RE.finditer(text):
+        pre = text[max(0, m.start() - 40):m.start()].lower()
+        if any(w in pre for w in ("wall", "strike", "level", "no ", "nothing",
+                                  "none", "cluster")):
+            continue
+        n = float(m.group(2).replace(",", ""))
+        if n < 100:
+            continue
+        rel = m.group(1).lower()
+        ok = (spot > n + 0.5) if rel in ("above", "over") else (spot < n - 0.5)
+        if not ok:
+            out.append(f"{rel} {m.group(2)}")
+    return out
+
+
+# obs-4: THE SEMANTIC REVIEWER. A second, small model reads what survived the
+# word list and the number gate and answers one question per text: is this a
+# neutral observation, or does it predict, expect, or judge? The list can only
+# ban the words it knows; this catches the sentence that forecasts in
+# ordinary words. It is a reviewer, not an author — it never rewrites, and a
+# hit deletes the text the way a banned word does.
+_SEMANTIC_SYSTEM = """You are a strict reviewer of one-line market observations about a stock's option board. Each numbered text must be a NEUTRAL OBSERVATION: where price is or was, what changed and when, which strike holds how much of the board, what sits above or below price, whether a box or range held or broke in the past. It must NOT predict, expect, or judge: nothing about where price is going, what it will or should or could do next, how likely anything is, whether a level will hold or break or attract or push, and no words of approval, alarm, or advice. Describing position, size, and a past change is not a forecast; saying or implying what happens next is.
+
+Reply with ONLY a JSON object, no prose: {"verdicts": [{"i": <index>, "forecast": true|false, "phrase": "<the offending words, or an empty string>"}]} — exactly one entry per numbered text, in order."""
+
+
+def semantic_review(texts: list[str], model: str = None,
+                    timeout: float = None) -> Optional[list]:
+    """One small-model call over every surviving text. Returns a list aligned
+    with `texts` — None where the text is clean, the offending phrase where it
+    is not — or None as a whole when the judge could not answer (timeout,
+    spawn failure, unparseable reply), which the caller records as skipped."""
+    if not texts:
+        return []
+    model = model or SEMANTIC_GUARD_MODEL
+    timeout = timeout or SEMANTIC_GUARD_TIMEOUT_S
+    prompt = ("TEXTS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(texts))
+              + "\n\nReply with the JSON object only.")
+    cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
+           "--append-system-prompt", _SEMANTIC_SYSTEM,
+           "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+           "--effort", SEMANTIC_GUARD_EFFORT,
+           "--disallowedTools", *_NO_TOOLS]   # variadic — must stay LAST
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if r.returncode != 0:
+        return None
+    env = first_json_object(r.stdout)
+    text = env.get("result") if isinstance(env, dict) and "result" in env else r.stdout
+    obj = first_json_object(text if isinstance(text, str) else r.stdout)
+    if not isinstance(obj, dict) or not isinstance(obj.get("verdicts"), list):
+        return None
+    out: list = [None] * len(texts)
+    for v in obj["verdicts"]:
+        if not isinstance(v, dict):
+            continue
+        i = v.get("i")
+        if isinstance(i, int) and 0 <= i < len(texts) and v.get("forecast") is True:
+            out[i] = (str(v.get("phrase") or "")[:80] or "flagged")
+    return out
 
 # ---------------------------------------------------------------------------
 # the model call — sr-2: the model infers its OWN vector from an unbiased scene
@@ -1139,9 +1380,11 @@ TALK LIKE A PERSON. Imagine someone sitting next to you who knows markets but no
 
 YOU READ THE WHOLE BOARD AND YOU DECIDE WHAT MATTERS. Nothing has been pre-selected for you. Go through the scene, weigh the parts against each other, and point at the few things a person watching this stock would actually want to know about right now — usually one or two, often none at all.
 
-ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snapshot, so you cannot know how today compares with other days, or what moved since the last option book. `context` supplies exactly that and nothing else — where today's numbers rank against this stock's own closed sessions, what changed since the last book, and what changed since your OWN last reading (`since_last_read`). It states facts, never conclusions. Whether any of it is worth saying is your call.
+ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snapshot, so you cannot know how today compares with other days, or what moved since the last option book. `context` supplies exactly that and nothing else — where today's numbers rank against this stock's own closed sessions, what changed since the last book, what changed since your OWN last reading (`since_last_read`), and the day's price boxes (`ranges`). It states facts, never conclusions. Whether any of it is worth saying is your call.
 
-OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since your last read" is a complete, correct read — X and Y come from `held_between_since_last_read`, and the ONLY clock that range pairs with is `last_read_at`. Never anchor a range on any other time. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read (or the first under the current rules) there is no frame yet; describe the standing board instead.
+OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. `frame_is` says which kind of frame this is, by rule: "a move" when `spot_change_sigma` is 0.15 or more in either direction, "a hold" otherwise. On a move, OPEN WITH PRICE THEN AND PRICE NOW — both are in the block — and only then say what is on the board; the "held between" sentence belongs to a hold and never to a move, because a range whose two ends are a move apart is not a range anyone held. `walls_absent_then_and_now` names a side the ladder found empty at both readings: say "no put wall then, none now", never a number. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since your last read" is a complete, correct read when `frame_is` says a hold — X and Y come from `held_between_since_last_read`, and the ONLY clock that range pairs with is `last_read_at`. Never anchor a range on any other time. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read (or the first under the current rules) there is no frame yet; describe the standing board instead.
+
+THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a scan beyond a frozen box by more than a twentieth of a sigma breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions, from scans, with where the live price sits in it and whether today has traded beyond it. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
 
 KEEP IT SHORT AND PLAIN. TWO SENTENCES, forty words at the outside — the way you would say it to someone sitting beside you, not the way you would write it down. No jargon, no field names, no padding, no listing everything you looked at. Say the one or two things that matter and stop. The levels go in `points` with a few words each; do not repeat them in the prose. Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears. That includes numbers you work out yourself: do not convert a distance into sigma, do not turn a share into a percentage of something else, do not average two figures. A number you computed is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far away, say which level and let the reader see the two prices.
 
@@ -1169,6 +1412,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - momentum: the ONLY block here that describes change during today's session. `window_between_books` tells you exactly what was compared — `books_compared` distinct books spanning `span_min` minutes, measured on the book clock, not the scan clock. `share_of_book_gamma_change_pp` and `gross_volume_change_contracts` are the change itself; there is no verdict word, because a fixed threshold cannot tell building from noise. (OI deltas and true order-flow CVD are not measured here; absent means unmeasured, never zero.)
 - dealer_positioning: standing dealer positioning as of last night's close. `net_delta_bn` is $-delta in billions from an assumed-sign book, and ITS SIGN IS AN ARTIFACT OF THE FORMULA, which cannot produce another one — it has been positive on every one of 4,149 recorded scans, ranging 1.15 to 8.24 and never once crossing zero. Its sign is a fact about the formula, NOT a fact about dealers, so it is never evidence for anything and never means "dealers are long" or "dealers are bullish"; only `net_delta_change_30min_bn` can be news. `net_vanna_musd_per_vol_point` only matters when vol_trend is moving.
 - walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `cluster_share_of_book_gamma_pp` is the CLUSTER's share of the whole signed surface — that number, not the position, says how heavy a wall is. It is deliberately NOT called `share_of_book_gamma_pp`: the magnet's field of that name is ONE STRIKE's share of a different surface, and the two disagree by a median 38% on strikes that appear in both. Never compare one to the other or add them together. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
+- structure: where the board's gamma SITS, in dollars and shares, on the same book as `walls`. `bands` are runs of adjacent heavy strikes — low, high, the band's share of the whole surface, and which side of price it sits on — nearest first. `air` is a stretch between price and the nearest wall with almost no gamma in it. `weight_above_spot_pp` is the share of the whole surface sitting above price. Measured on this tape over 23 sessions: price spends no more time inside a band than inside a random band of the same width, moves toward one no more often than toward a random one, and the heaviest strike holds no better than an imaginary line at the same distance. So a band is a place the weight is, never a place price is drawn to, and a heavy wall is heavy, never overpowering. Name where the weight is; never what price will do about it.
 - WHICH LEVELS YOU MAY NAME. You may name the magnet's top strike, and the strikes in the magnet list. You may NOT name a call wall or a put wall as a level where anything happens. This is arithmetic, not politeness: those two are DEFINED as the heaviest strike on their side of spot, so the call wall is above price and the put wall below it, always, on every row ever recorded. The instant price rises through a call wall, that strike stops qualifying and a different one takes the name. Measured: a wall relabels on a crossing 100% of the time, within a median of zero minutes, while the magnet relabels 0% of the time and is still the same strike 40 minutes later on 99% of occasions. A wall is real structure and you may describe how heavy it is; it is not a place price can be said to reach or break, because the label moves out of the way. THE ONE EXCEPTION is a level in `context.since_last_read.crossed_since_then`: that price is the wall AS IT STOOD AT YOUR LAST READING, frozen in the block, so it cannot relabel out from under the sentence — you may name it and say price moved through it, as the label it wore then.
 - history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
 - WHO HOLDS WHAT IS ASSUMED, NOT MEASURED, AND THE ASSUMPTION IS PROBABLY WRONG FOR A SINGLE STOCK. Every signed number here — the gamma sign, the regime word, the flip, dealer positioning — rests on a convention that dealers are long the calls and short the puts. That convention was written for the S&P index. The studies that MEASURED single-stock positioning instead of assuming it found the opposite: end users are net sellers of both legs, so dealers are net LONG single-stock options, and average measured market-maker gamma is positive. On this book the convention implies dealers hold about a fifth of the company in stock, which is not credible. So: never say what dealers are doing, never say hedging will amplify or damp anything, and never treat the flip as a level price respects. Describe where the number is; do not describe who is on the other side of it.
@@ -1195,7 +1439,9 @@ WORDS THAT DELETE YOUR SENTENCE, listed in full so there is no guessing. Any of 
   {", ".join(sorted(_BANNED_FORECAST))}
   {", ".join(sorted(_BANNED_CAUSAL))}
 
-The first group is anything about where price goes or how likely something is. The second is cause and effect: a board does not make things happen, and on this tape the walls relabel to follow price rather than the other way round, so a causal verb about one is false by measurement rather than merely unwise.
+  {", ".join(sorted(_BANNED_JUDGEMENT))}
+
+The first group is anything about where price goes or how likely something is. The third grades the board — strong, weak, a ceiling, a floor, due, at risk — which is a forecast wearing an adjective. Every inflection counts: favouring, targeted, pinning die with their stems. Two more checks run on what survives the lists: a sentence that places price above or under a number is compared with the live price and deleted when it is backwards, and a second reviewer reads the sentence for a forecast, an expectation, or a judgement hiding in ordinary words and deletes it on a hit. Describe; do not judge. The second is cause and effect: a board does not make things happen, and on this tape the walls relabel to follow price rather than the other way round, so a causal verb about one is false by measurement rather than merely unwise.
 
 WHAT TO SAY INSTEAD. Describe position, not consequence: not "1500 is resistance" but "1500 is the heaviest strike, and price is just under it". Not "this should hold" but "this is where the largest share of the board's gamma sits". Not "the magnet is pulling price toward 1500" but "1500 holds the biggest share of the board's gamma, and price is drifting toward it" — drift describes, pull promises. The numbers inside these instructions are teaching aids, not board values: never quote a number you did not find in the scene. A measured past change with its window named is always welcome — "implied vol came down about two points over the last half hour" says only what was measured. Naming a level is description; saying what price will do there is not.
 
@@ -1319,6 +1565,14 @@ def prices_on_the_board(scene) -> set:
         v = _fin((slr.get("held_between_since_last_read") or {}).get(k))
         if v is not None:
             out.add(round(v, 2))
+    # obs-4: a box edge is a level a reader looks at — the opening box, the
+    # box in force and the prior sessions' range may all be pointed at
+    rg = ((scene.get("context") or {}).get("ranges") or {})
+    for blk in ("opening", "in_force", "prior_sessions"):
+        for k in ("low", "high"):
+            v = _fin((rg.get(blk) or {}).get(k))
+            if v is not None:
+                out.add(round(v, 2))
     # THE GAMMA FLIP IS DELIBERATELY NOT A NAMEABLE LEVEL, and this is the one
     # exclusion worth spelling out because the flip looks more like a level than
     # anything else on the board.
@@ -1380,7 +1634,7 @@ def numbers_on_the_board(scene) -> set:
     return out
 
 
-def check_reading_against_scene(obj: dict, scene: dict) -> dict:
+def check_reading_against_scene(obj: dict, scene: dict, judge=None) -> dict:
     """Check the model's reading against the scene it was handed.
 
     obs-2 GAVE THE REASONING BACK. obs-1b had Python nominate what was unusual
@@ -1424,12 +1678,18 @@ def check_reading_against_scene(obj: dict, scene: dict) -> dict:
                 return False
         return True
 
+    spot_now = _fin((scene.get("price") or {}).get("live_spot"))
     read = _clip(str(obj.get("read") or "").strip(), 700)
     hits = banned_words(read)
     if hits:
         dropped.append("read_banned:" + ",".join(hits))
         read = ""
     elif read and not _numbers_check(read, "read"):
+        read = ""
+    elif read and (ps := position_slips(read, spot_now)):
+        # obs-4: "still under the 1500 strike" at 1528.70 — every number on the
+        # board, no banned word, and backwards
+        dropped.append("read_position_contradicts_spot:" + ",".join(ps))
         read = ""
 
     points = []
@@ -1459,7 +1719,38 @@ def check_reading_against_scene(obj: dict, scene: dict) -> dict:
             continue
         if not _numbers_check(note, "point"):
             continue
+        ps = position_slips(note, spot_now)
+        if ps:
+            dropped.append("point_position_contradicts_spot:" + ",".join(ps))
+            continue
         points.append({"level": lvl, "note": note})
+    # obs-4: THE SEMANTIC REVIEW runs over what survived, before the cap, so
+    # the cap counts survivors. Injectable for tests; the module switch turns
+    # the live reviewer off entirely. A reviewer that could not answer is
+    # recorded as skipped and nothing is deleted on its account.
+    if judge is None and SEMANTIC_GUARD:
+        judge = semantic_review
+    if judge is not None:
+        texts = ([read] if read else []) + [p["note"] for p in points]
+        if texts:
+            verdicts = judge(texts)
+            if verdicts is None:
+                dropped.append("semantic_guard_skipped")
+            else:
+                k = 0
+                if read:
+                    if verdicts[0]:
+                        dropped.append("read_semantic_forecast:" + verdicts[0])
+                        read = ""
+                    k = 1
+                kept = []
+                for j, p in enumerate(points):
+                    v = verdicts[k + j] if k + j < len(verdicts) else None
+                    if v:
+                        dropped.append("point_semantic_forecast:" + v)
+                    else:
+                        kept.append(p)
+                points = kept
     if len(points) > _OBS_MAX:
         # never drop without saying so. Truncating in silence recorded the model
         # as having CHOSEN to say less than it did, which corrupts the one
@@ -2183,6 +2474,81 @@ def walls_ladder(row: dict, sd, rows: Optional[list[dict]] = None,
     return out
 
 
+def structure_block(row: dict, ruler_spot) -> Optional[dict]:
+    """obs-4: WHERE THE BOARD'S GAMMA SITS — bands, air, and the split above
+    and below price. Same surface and same cluster rule as walls_ladder
+    (gw_vocab.cluster_walls on net_by_strike, measured from the book's spot);
+    what is new is the SPAN of a band and the emptiness between price and the
+    nearest wall, neither of which the two-rung ladder carries.
+
+    Measured before it was built (2026-09-02, 23 sessions, 1,946 distinct
+    books): price spends no more time inside a band than inside a random band
+    of the same width (34.7% vs 28.7% expected, t=+1.6, 8 of 17 days above),
+    moves toward the nearest band no more often than toward a random one
+    (61.1% vs 59.7%, z=+0.46), and a dominant top strike holds no better than
+    an imaginary line at the same distance (hold 89% vs 92%, n=9, shuffle
+    p=1.0). So this block says where the weight is and nothing about what
+    price does near it — a band is not a magnet, and a heavy wall is heavy,
+    not overpowering. `times_next` was deliberately NOT added: it duplicates
+    magnet.top_strike_lead_pp on a different surface, and one fact must not
+    wear two names."""
+    gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
+    nbs = gv.get("net_by_strike")
+    ruler = _fin(ruler_spot)
+    if not nbs or ruler is None:
+        return None
+    pts = []
+    for pair in nbs:
+        try:
+            k, g = _fin(pair[0]), _fin(pair[1])
+        except (TypeError, IndexError, KeyError):
+            continue
+        if k is not None and g is not None:
+            pts.append((k, g))
+    pts.sort()
+    tot = sum(abs(g) for _, g in pts)
+    if not pts or not math.isfinite(tot) or tot <= 0:
+        return None
+    try:
+        clusters = _gw.cluster_walls(nbs, ruler)
+        step = _gw.infer_step([k for k, _ in pts])
+    except (TypeError, ValueError):
+        return None
+    out: dict = {}
+    bands = []
+    for c in clusters:
+        if c["hi"] <= c["lo"]:
+            continue                       # one strike is a wall, not a band
+        side = ("above" if c["lo"] > ruler else
+                "below" if c["hi"] < ruler else "straddling price")
+        near = (0.0 if side == "straddling price"
+                else min(abs(c["lo"] - ruler), abs(c["hi"] - ruler)))
+        bands.append((near, {"low": c["lo"], "high": c["hi"],
+                             "share_of_book_gamma_pp": round(c["strength"] / tot * 100.0, 1),
+                             "side": side}))
+    bands.sort(key=lambda x: x[0])
+    if bands:
+        out["bands"] = [b for _, b in bands[:3]]
+    strongest = max(abs(g) for _, g in pts)
+    air = []
+    for side, pool in (("above", [c for c in clusters if c["lo"] > ruler]),
+                       ("below", [c for c in clusters if c["hi"] < ruler])):
+        if not pool:
+            continue
+        c = min(pool, key=lambda c: abs(c["peak"] - ruler))
+        lo_e, hi_e = (ruler, c["lo"]) if side == "above" else (c["hi"], ruler)
+        if not step or (hi_e - lo_e) <= 1.5 * step:
+            continue
+        between = sum(abs(g) for k, g in pts if lo_e < k < hi_e)
+        if between < 0.15 * strongest:
+            air.append({"side": side, "from": round(lo_e, 2), "to": round(hi_e, 2)})
+    if air:
+        out["air"] = air
+    above = sum(abs(g) for k, g in pts if k > ruler)
+    out["weight_above_spot_pp"] = round(above / tot * 100.0, 1)
+    return out or None
+
+
 def _wall_ages(rows: Optional[list[dict]], side: str, strikes: list[float],
                now: Optional[datetime]) -> dict:
     """How long each laddered wall has held, in minutes — measured on the SAME
@@ -2324,6 +2690,152 @@ def _prior_session_date(today: str) -> Optional[str]:
     days = sorted(pp.stem for pp in _diary_dir().glob("2026-*.jsonl")
                   if pp.stem < today)
     return days[-1] if days else None
+
+
+def _prior_sessions_range(today: str) -> Optional[dict]:
+    """The last PRIOR_RANGE_SESSIONS closed sessions' low and high, from their
+    2-minute scans (so the true extremes may sit a little beyond — the block
+    says so). Today's own file is never opened. Forced rows are skipped on the
+    reader's standing rule."""
+    days = sorted(p for p in _diary_dir().glob(
+        "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")
+        if p.stem < today)[-PRIOR_RANGE_SESSIONS:]
+    lows: list[float] = []
+    highs: list[float] = []
+    used: list[str] = []
+    for p in days:
+        try:
+            lines = p.read_text().splitlines()
+        except OSError:
+            continue
+        sp_day: list[float] = []
+        for ln in lines:
+            try:
+                r = json.loads(ln)
+            except ValueError:
+                continue
+            if (r.get("meta") or {}).get("forced"):
+                continue
+            if r.get("ticker") not in (None, "SNDK"):
+                continue
+            sp = _fin(r.get("spot"))
+            if sp is not None:
+                sp_day.append(sp)
+        if sp_day:
+            lows.append(min(sp_day))
+            highs.append(max(sp_day))
+            used.append(p.stem)
+    if not lows:
+        return None
+    return {"sessions": len(used), "from": used[0], "to": used[-1],
+            "low": round(min(lows), 2), "high": round(max(highs), 2),
+            "measured_from": "scans_every_2_min"}
+
+
+def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
+                 today: Optional[str] = None) -> Optional[dict]:
+    """obs-4: THE DAY'S BOXES — every number measured, no verdict anywhere.
+
+    The opening box is the first OPENING_RANGE_MIN minutes of the tape, frozen
+    once formed. A frozen box BREAKS when a scan sits beyond it by more than
+    RANGE_BREAK_SIGMA (about $3 here; the 2-minute wobble is $2), and the break
+    is recorded with its clock and direction. A break starts a new box, which
+    forms over BOX_FORM_MIN minutes and freezes in its turn: that is the box in
+    force, and the broken one is history. The opening box stays in the block
+    only so the day's start can be named. The prior sessions' range rides on
+    its own clock beside all of this — it can hold while today's box breaks,
+    and the block states both without joining them.
+
+    Windows are anchored on the day's FIRST ROW, not on 09:30, so a late open
+    or a holiday session measures the same way and the fixtures (which sit
+    wherever their clock sits) reach every leaf."""
+    pts = []
+    for r in rows:
+        sp = _fin(r.get("spot"))
+        t = _ts(r)
+        if sp is not None and t is not None:
+            pts.append((t, sp))
+    if not pts:
+        return None
+    pts.sort(key=lambda x: x[0])
+
+    def hhmm(t):
+        return t.astimezone(_ET).strftime("%H:%M")
+
+    depth = (RANGE_BREAK_SIGMA * sig) if sig else None
+    t_first = pts[0][0]
+    form_start = t_first
+    lo = hi = pts[0][1]
+    frozen: Optional[dict] = None
+    opening: Optional[dict] = None
+    breaks: list[dict] = []
+    for t, sp in pts:
+        if frozen is None:
+            lo, hi = min(lo, sp), max(hi, sp)
+            span = OPENING_RANGE_MIN if opening is None else BOX_FORM_MIN
+            if (t - form_start) >= timedelta(minutes=span):
+                frozen = {"low": lo, "high": hi,
+                          "formed_over": f"{hhmm(form_start)}-{hhmm(t)}"}
+                if opening is None:
+                    opening = dict(frozen)
+            continue
+        if depth is not None and (sp > frozen["high"] + depth
+                                  or sp < frozen["low"] - depth):
+            breaks.append({"at": hhmm(t),
+                           "went": "up" if sp > frozen["high"] else "down",
+                           "box_low": round(frozen["low"], 2),
+                           "box_high": round(frozen["high"], 2)})
+            frozen = None
+            form_start = t
+            lo = hi = sp
+
+    spot_now = pts[-1][1]
+    out: dict = {}
+    if opening is not None:
+        op = {"low": round(opening["low"], 2), "high": round(opening["high"], 2),
+              "formed_over": opening["formed_over"]}
+        if breaks:
+            op["status"] = f"broke {breaks[0]['went']} at {breaks[0]['at']}"
+        else:
+            op["status"] = "held so far"
+        out["opening"] = op
+    else:
+        out["opening"] = {"still_forming": True, "since": hhmm(t_first),
+                          "low": round(lo, 2), "high": round(hi, 2)}
+    if frozen is not None:
+        inf = {"low": round(frozen["low"], 2), "high": round(frozen["high"], 2),
+               "formed_over": frozen["formed_over"],
+               "is_the_opening_box": not breaks}
+        inf["live_spot_is"] = ("inside" if frozen["low"] <= spot_now <= frozen["high"]
+                               else "just above" if spot_now > frozen["high"]
+                               else "just below")
+        out["in_force"] = inf
+    else:
+        out["in_force"] = {"still_forming": True, "since": hhmm(form_start),
+                           "low": round(lo, 2), "high": round(hi, 2),
+                           "replaced_a_box_broken_at": breaks[-1]["at"] if breaks else None}
+        out["in_force"] = {k: v for k, v in out["in_force"].items() if v is not None}
+    if breaks:
+        out["breaks_today"] = {"count": len(breaks),
+                               "breaks": breaks[-RANGE_BREAKS_MAX:]}
+    ps = _prior_sessions_range(today or now.strftime("%Y-%m-%d"))
+    if ps:
+        ps["live_spot_is"] = ("inside" if ps["low"] <= spot_now <= ps["high"]
+                              else "above" if spot_now > ps["high"] else "below")
+        d_lo, d_hi = min(p for _, p in pts), max(p for _, p in pts)
+        beyond = ("both" if d_hi > ps["high"] and d_lo < ps["low"]
+                  else "above" if d_hi > ps["high"]
+                  else "below" if d_lo < ps["low"] else None)
+        if beyond:
+            ps["today_traded_beyond_it"] = beyond
+        if opening is not None:
+            o_lo, o_hi = opening["low"], opening["high"]
+            ps["todays_opening_box_is"] = (
+                "inside" if o_lo >= ps["low"] and o_hi <= ps["high"]
+                else "above" if o_lo > ps["high"]
+                else "below" if o_hi < ps["low"] else "straddling an edge")
+        out["prior_sessions"] = ps
+    return out or None
 
 
 def build_scene(row: dict, band: dict, frozen: list,
@@ -2691,6 +3203,8 @@ def build_scene(row: dict, band: dict, frozen: list,
         "dealer_positioning": dealer_positioning_block(rows),
         "walls": walls_ladder(row, sd, rows, now,
                               ruler_spot=ruler_spot, ruler_name=ruler_name),
+        # obs-4: where the weight sits — bands, air, the split above/below
+        "structure": structure_block(row, ruler_spot),
         "history": history_flags(row, rows, vs_prior, ran_30m),
         # sr-3: wall entries are dropped here. frozen_fields probes the DIARY's
         # scalar call_wall/put_wall; the scene ships walls re-derived by
@@ -2714,6 +3228,10 @@ def build_scene(row: dict, band: dict, frozen: list,
     # resolves by construction. Re-checked anyway, because "by construction" is
     # what the last three bugs all said about themselves.
     ctx = session_context(scene, rows, now) or {}
+    # obs-4: the day's boxes — a fact about time, so it rides in `context`
+    rb = ranges_block(rows, now, sig, now.strftime("%Y-%m-%d"))
+    if rb:
+        ctx["ranges"] = rb
     if since_last_read:
         # obs-3: the bridge from the model's own last reading — built by the
         # caller, because only read_once knows which row last spent a call.
