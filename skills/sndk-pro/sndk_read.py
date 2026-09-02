@@ -74,6 +74,11 @@ if _LEFT_EYE not in sys.path:
 
 import atomic_io                       # noqa: E402
 import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
+try:
+    import sndk_bars                   # noqa: E402 — the minute-bar sidecar's reader half
+except Exception:                      # the reader must keep running without it
+    sndk_bars = None
+PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
                                        # (walls ladder = the ladder's own walls)
 
 _ET = ZoneInfo("America/New_York")
@@ -2706,76 +2711,95 @@ def _prior_session_date(today: str) -> Optional[str]:
 
 
 def minute_bars(day: str) -> list[dict]:
-    """The sidecar's completed minute bars for `day`, or [] — never zeros.
-    Lazy import: the reader must keep running if the sidecar module is absent."""
+    """The sidecar's completed minute bars for `day`, or [] — never zeros."""
+    if sndk_bars is None:
+        return []
     try:
-        import sndk_bars
         return sndk_bars.read_bars(day)
     except Exception:
         return []
 
 
-def _bars_trusted(bars: list[dict]) -> bool:
-    """A prior session's file is trusted for its extremes only when it holds
-    most of the session — a half-backfilled day would understate the range
-    and the 2-minute scans, which saw the whole day, are the better witness."""
+def _file_key(p: Optional[Path]):
     try:
-        import sndk_bars
-        floor = sndk_bars.COMPLETE_SESSION_MIN_BARS
-    except Exception:
-        floor = 300
-    return len(bars) >= floor
+        st = p.stat()
+        return (str(p), st.st_mtime_ns, st.st_size)
+    except (OSError, AttributeError):
+        return (str(p), None)
 
 
-def _prior_sessions_range(today: str) -> Optional[dict]:
-    """The last PRIOR_RANGE_SESSIONS closed sessions' low and high, from their
-    2-minute scans (so the true extremes may sit a little beyond — the block
-    says so). Today's own file is never opened. Forced rows are skipped on the
-    reader's standing rule."""
-    days = sorted(p for p in _diary_dir().glob(
-        "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")
-        if p.stem < today)[-PRIOR_RANGE_SESSIONS:]
-    lows: list[float] = []
-    highs: list[float] = []
-    used: list[str] = []
-    srcs: set = set()
-    for p in days:
-        try:
-            lines = p.read_text().splitlines()
-        except OSError:
-            continue
-        sp_day: list[float] = []
-        for ln in lines:
-            try:
-                r = json.loads(ln)
-            except ValueError:
-                continue
+_EXTREMES_CACHE: dict = {}
+
+
+def _day_extremes(day: str, diary_path: Path) -> Optional[tuple]:
+    """(low, high, witness) for one CLOSED session. The minute-bar file wins
+    when it holds most of the session (PRIOR_BARS_MIN of 390 — a half-filled
+    day would understate the range); otherwise the 2-minute scans, forced rows
+    skipped. Cached on both files' (path, mtime, size): a closed day's answer
+    never changes, so five days cost five stats per scan, not five parses."""
+    bars_path = sndk_bars.bars_path(day) if sndk_bars else None
+    key = (_file_key(diary_path), _file_key(bars_path))
+    hit = _EXTREMES_CACHE.get(day)
+    if hit and hit[0] == key:
+        return hit[1]
+    val = None
+    bars = minute_bars(day)
+    if len(bars) >= PRIOR_BARS_MIN:
+        val = (min(b["low"] for b in bars), max(b["high"] for b in bars),
+               "1_minute_bars")
+    else:
+        spots = []
+        for r in _read_jsonl(diary_path):
             if (r.get("meta") or {}).get("forced"):
                 continue
             if r.get("ticker") not in (None, "SNDK"):
                 continue
             sp = _fin(r.get("spot"))
             if sp is not None:
-                sp_day.append(sp)
-        # obs-5: a full minute-bar file for that day is the better witness —
-        # its wicks saw what the 2-minute scans stepped over
-        bars = minute_bars(p.stem)
-        if bars and _bars_trusted(bars):
-            lows.append(min(b["low"] for b in bars))
-            highs.append(max(b["high"] for b in bars))
-            used.append(p.stem)
-            srcs.add("1_minute_bars")
-            continue
-        if sp_day:
-            lows.append(min(sp_day))
-            highs.append(max(sp_day))
-            used.append(p.stem)
-            srcs.add("scans_every_2_min")
-    if not lows:
+                spots.append(sp)
+        if spots:
+            val = (min(spots), max(spots), "scans_every_2_min")
+    _EXTREMES_CACHE[day] = (key, val)
+    return val
+
+
+def _prior_sessions_range(today: str) -> Optional[dict]:
+    """The last PRIOR_RANGE_SESSIONS closed sessions' low and high, each day
+    from its minute bars when the file is full, else from its scans, with
+    `measured_from` saying which ("mixed" when the days differ). Today's own
+    file is never opened."""
+    days = sorted(p for p in _diary_dir().glob(
+        "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")
+        if p.stem < today)[-PRIOR_RANGE_SESSIONS:]
+    found = [(p.stem, ex) for p in days if (ex := _day_extremes(p.stem, p))]
+    if not found:
         return None
-    return {"sessions": len(used), "from": used[0], "to": used[-1],
-            "low": round(min(lows), 2), "high": round(max(highs), 2),
-            "measured_from": ("mixed" if len(srcs) > 1 else next(iter(srcs)))}
+    srcs = {ex[2] for _, ex in found}
+    return {"sessions": len(found), "from": found[0][0], "to": found[-1][0],
+            "low": round(min(ex[0] for _, ex in found), 2),
+            "high": round(max(ex[1] for _, ex in found), 2),
+            "measured_from": "mixed" if len(srcs) > 1 else srcs.pop()}
+
+
+def _range_points(rows: list[dict], bars: Optional[list[dict]]) -> tuple:
+    """(time, low, high) triples in time order, and which witness made them.
+    From the sidecar a point is a minute's wick; from the diary it is one spot
+    twice. The diary spots newer than the last completed bar ride along, so the
+    live price is never older than the bars."""
+    pts = []
+    for b in bars or []:
+        t = _parse_ts(b.get("ts"))
+        lo, hi = _fin(b.get("low")), _fin(b.get("high"))
+        if t is not None and lo is not None and hi is not None:
+            pts.append((t, lo, hi))
+    witness = "1_minute_bars" if pts else "scans_every_2_min"
+    last_bar = max((p[0] for p in pts), default=None)
+    for r in rows:
+        sp, t = _fin(r.get("spot")), _ts(r)
+        if sp is not None and t is not None and (last_bar is None or t > last_bar):
+            pts.append((t, sp, sp))
+    pts.sort(key=lambda p: p[0])
+    return pts, witness
 
 
 def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
@@ -2784,9 +2808,10 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
     """obs-4: THE DAY'S BOXES — every number measured, no verdict anywhere.
 
     The opening box is the first OPENING_RANGE_MIN minutes of the tape, frozen
-    once formed. A frozen box BREAKS when a scan sits beyond it by more than
-    RANGE_BREAK_SIGMA (about $3 here; the 2-minute wobble is $2), and the break
-    is recorded with its clock and direction. A break starts a new box, which
+    once formed. A frozen box BREAKS when a minute's wick — or a scan, when
+    there are no bars — sits beyond it by more than RANGE_BREAK_SIGMA (about
+    $3 here; the 2-minute wobble is $2), and the break is recorded with its
+    clock and direction. A break starts a new box, which
     forms over BOX_FORM_MIN minutes and freezes in its turn: that is the box in
     force, and the broken one is history. The opening box stays in the block
     only so the day's start can be named. The prior sessions' range rides on
@@ -2796,35 +2821,9 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
     Windows are anchored on the day's FIRST ROW, not on 09:30, so a late open
     or a holiday session measures the same way and the fixtures (which sit
     wherever their clock sits) reach every leaf."""
-    # obs-5: every point is (time, low, high). From the sidecar a point is a
-    # minute's wick; from the diary it is one spot twice. The newest diary spot
-    # rides along after the last completed bar so the live price is never
-    # older than the bars. Which witness was used is stated in the block.
-    pts = []
-    measured_from = "scans_every_2_min"
-    if bars:
-        for b in bars:
-            t = _parse_ts(b.get("ts"))
-            lo_b, hi_b = _fin(b.get("low")), _fin(b.get("high"))
-            if t is not None and lo_b is not None and hi_b is not None:
-                pts.append((t, lo_b, hi_b))
-        if pts:
-            measured_from = "1_minute_bars"
-            last_bar = max(p[0] for p in pts)
-            for r in rows:
-                sp = _fin(r.get("spot"))
-                t = _ts(r)
-                if sp is not None and t is not None and t > last_bar:
-                    pts.append((t, sp, sp))
-    if not pts:
-        for r in rows:
-            sp = _fin(r.get("spot"))
-            t = _ts(r)
-            if sp is not None and t is not None:
-                pts.append((t, sp, sp))
+    pts, measured_from = _range_points(rows, bars)
     if not pts:
         return None
-    pts.sort(key=lambda x: x[0])
 
     def hhmm(t):
         return t.astimezone(_ET).strftime("%H:%M")
@@ -2856,11 +2855,11 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
             form_start = t
             lo, hi = p_lo, p_hi
 
-    # the live price: the newest diary spot when there is one, else the last
-    # bar's close-side edge — never a wick pretending to be where price sits
-    live = [(_ts(r), _fin(r.get("spot"))) for r in rows]
-    live = [x for x in live if x[0] is not None and x[1] is not None]
-    spot_now = max(live, key=lambda x: x[0])[1] if live else pts[-1][2]
+    # the live price is the newest diary spot — never a wick pretending to be
+    # where price sits
+    live = [(t, sp) for r in rows
+            if (t := _ts(r)) is not None and (sp := _fin(r.get("spot"))) is not None]
+    spot_now = max(live)[1] if live else pts[-1][2]
     out: dict = {"measured_from": measured_from}
     if opening is not None:
         op = {"low": round(opening["low"], 2), "high": round(opening["high"], 2),
@@ -2882,10 +2881,11 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
                                else "just below")
         out["in_force"] = inf
     else:
-        out["in_force"] = {"still_forming": True, "since": hhmm(form_start),
-                           "low": round(lo, 2), "high": round(hi, 2),
-                           "replaced_a_box_broken_at": breaks[-1]["at"] if breaks else None}
-        out["in_force"] = {k: v for k, v in out["in_force"].items() if v is not None}
+        inf = {"still_forming": True, "since": hhmm(form_start),
+               "low": round(lo, 2), "high": round(hi, 2)}
+        if breaks:
+            inf["replaced_a_box_broken_at"] = breaks[-1]["at"]
+        out["in_force"] = inf
     if breaks:
         out["breaks_today"] = {"count": len(breaks),
                                "breaks": breaks[-RANGE_BREAKS_MAX:]}
