@@ -2211,6 +2211,35 @@
   .plsch-box p{margin:2px 0 0; font-size:12px; line-height:1.45; color:var(--ink-dim)}
   .plsch-box small{font-family:var(--mono); font-size:10px; color:var(--ink-faint); letter-spacing:.04em}
   .plsch-arrow{text-align:center; color:var(--ink-faint); font-size:12px; margin:6px 0 10px}
+  /* ---- the Diary view (09-02): the newest row beside its schema, checked live ---- */
+  .pl-diary{display:flex; flex-direction:column; gap:10px; padding:12px 14px 16px; background:var(--surface-2); border:1px solid var(--hairline); border-top:0; border-radius:0 0 var(--r-lg) var(--r-lg)}
+  .dia-head{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; font-size:12.5px; color:var(--ink-dim)}
+  .dia-head b{font-family:var(--mono); font-size:12px; color:var(--ink)}
+  .dia-head i{font-style:normal; font-family:var(--mono); color:var(--ink)}
+  .dia-head .sib{flex-basis:100%; font-size:11.5px; color:var(--ink-faint)}
+  .dia-head .sib b{font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+  .dia-head code{font-family:var(--mono); font-size:11px; color:var(--lantern)}
+  .dia-cols{display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,420px); gap:12px; align-items:start}
+  @media (max-width:1100px){ .dia-cols{grid-template-columns:1fr} }
+  .dia-json .cap, .dia-schema .cap{display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin:0 0 6px}
+  .dia-json .cap span{text-transform:none; letter-spacing:.02em}
+  .dia-json .cap .pl-btn{margin-left:auto}
+  .dia-pre{max-height:70vh; overflow:auto}
+  .dia-schema{max-height:70vh; overflow:auto; padding:0 2px}
+  .dia-legend{font-size:11px; color:var(--ink-faint); margin:0 0 8px}
+  .dia-legend i{display:inline-block; vertical-align:middle}
+  .dia-legend .dot, .dia-schema .dk .dot{display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--iris); margin-right:5px; vertical-align:middle}
+  .dia-legend .ab{width:14px; height:6px; background:var(--hairline-2); border-radius:3px}
+  .dia-schema h4{margin:10px 0 4px; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--iris); font-weight:700}
+  .dia-schema .dk{display:grid; grid-template-columns:minmax(120px,42%) 1fr; gap:0 10px; padding:4px 0; border-top:1px solid var(--hairline); font-size:12px}
+  .dia-schema .dk code{font-family:var(--mono); font-size:11px; color:var(--ink); overflow-wrap:anywhere}
+  .dia-schema .dk code small{color:var(--ink-faint); font-size:10px}
+  .dia-schema .dk span{color:var(--ink-dim); line-height:1.4}
+  .dia-schema .dk.ab{opacity:.5}
+  .dia-schema .dk.ab code{text-decoration:line-through; text-decoration-color:var(--ink-faint)}
+  /* memory: forecast-era slices are labelled, never counted as quiet */
+  .mem-days .rhy i.l{background:repeating-linear-gradient(45deg, var(--hairline-2) 0 3px, transparent 3px 6px)}
+  .vec.legacy{color:var(--ink-faint)}
   .pl-seg{display:inline-flex; border:1px solid var(--hairline-2); border-radius:999px; overflow:hidden; background:var(--surface-3)}
   .pl-seg button{appearance:none; border:0; background:transparent; color:var(--ink-dim); font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em; padding:7px 14px; cursor:pointer}
   .pl-seg button.on{background:var(--iris-wash); color:var(--iris)}
@@ -14147,6 +14176,79 @@ const SNDK = {
 // sndk_read.build_scene) and a one-line pipeline. 08-22: the one-name UI lock is gone — nothing
 // reaches this tab that has not already come through the front door, so a typed name was a ritual,
 // not a gate. USER survives only as the name the route still expects in its query string.
+// ---------- THE DIARY ROW'S SCHEMA (09-02): [key, plain meaning, read-into-the-payload]. Grouped
+// the way a reader thinks, not the way the row is nested. Meanings are stated, sources named;
+// legacy keys say so. Checked live against the newest row by paintDiary.
+const _DIARY_SCHEMA=[
+  ['Identity and clocks', [
+    ['ts', 'When this scan was written (Eastern). Also the price quote\u2019s clock \u2014 there is no separate one.', true],
+    ['ticker', 'Always SNDK; the reader watches nothing else.', false],
+    ['meta.book_asof', 'When the option chain was actually pulled. Half of all scans re-serve the previous pull from disk, so this trails ts by 2\u20134 minutes.', true],
+    ['meta.book_source', '\u201cpull\u201d = fetched this scan, \u201cdisk_cache\u201d = re-priced from the 240-second cache.', true],
+    ['meta.cache_age_s', 'How old that cached chain was, in seconds.', true],
+    ['meta.spot_source', 'Where the live price came from (Schwab quote).', true],
+    ['meta.forced', 'True on a row taken by hand outside market hours; the reader ignores those.', true],
+    ['meta.row_v', 'The row format version.', false],
+  ]],
+  ['Price and rulers', [
+    ['spot', 'The live price at the scan (Schwab quote).', true],
+    ['prior_close', 'Yesterday\u2019s close, for the day\u2019s percent change.', true],
+    ['vwap', 'Today\u2019s volume-weighted average price, from the minute bars.', true],
+    ['sigma', 'The day-move ruler in dollars \u2014 the larger of the day\u2019s first reading and the live one; distances in the payload divide by this.', true],
+    ['sigma_live', 'The ruler from the live implied vol alone.', false],
+    ['sigma_anchor', 'The ruler as first measured today (it never shrinks intraday).', false],
+    ['atm_iv', 'Nearest-the-money implied volatility, one contract, unsmoothed.', true],
+    ['range_em', 'Today\u2019s expected move in dollars (a straddle read).', false],
+    ['range_ruler', 'The expected-move budget: em_points, the open\u2019s figure, how much has been spent, a quality flag (late_day, event).', true],
+    ['adaptive_em', 'The expected move re-split by how one-sided today\u2019s trading has been.', false],
+    ['iv_skew', 'Put-side vs call-side implied vol; down_share is the share of the expected move the market prices to the downside.', true],
+  ]],
+  ['Levels', [
+    ['gamma_sign', 'Sign of net dealer gamma at the price, under the assumed-sign convention. A location on the map, never who holds what.', true],
+    ['gamma_flip', 'The price where that sign would change.', true],
+    ['call_wall', 'Nearest heaviest call strike above price, front book (pre-cluster scalar; the payload rebuilds walls from the per-strike surface and uses this only when no surface exists).', true],
+    ['put_wall', 'Nearest heaviest put strike below price, same rule.', true],
+    ['call_wall_tenor', 'The same wall from the later-expiry book.', false],
+    ['put_wall_tenor', 'The same wall from the later-expiry book.', false],
+    ['regime', 'The day\u2019s character word, derived from the gamma sign.', true],
+    ['regime_conf', 'How confident the character word is.', false],
+    ['regime_reads', 'How many reads agreed on it.', false],
+    ['profile_ladder', 'The flip band as prices: ct (upper edge), hvl (centre = the flip), pt (lower edge), plus the walls; state names where price sits.', true],
+  ]],
+  ['The book by strike (gex_views)', [
+    ['gex_views.magnet', 'The heaviest strike on the board by gamma mass.', true],
+    ['gex_views.front_dte', 'Days to the front expiry \u2014 which weekly book this row read.', true],
+    ['gex_views.net_by_strike', 'Signed gamma per strike, calls plus and puts minus. The walls and the structure block are built from this.', true],
+    ['gex_views.mass_by_strike', 'Weight per strike (open interest plus volume). The magnet and its shares come from this.', true],
+    ['gex_views.oi_by_strike', 'Open interest per strike \u2014 last night\u2019s positioning, unchanged all day.', true],
+    ['gex_views.vol_by_strike', 'Today\u2019s option volume per strike, net.', false],
+    ['gex_views.vol_gross_by_strike', 'Today\u2019s option volume per strike, gross. Momentum reads the change in this.', true],
+    ['gex_views.oi_side_by_strike', 'Open interest split by call and put side.', false],
+    ['gex_views.vol_side_by_strike', 'Volume split by call and put side.', false],
+    ['gex_views.net_by_strike_tenor', 'Signed gamma per strike from the later-expiry book.', false],
+    ['gex_views.shove', 'How one-sided the gamma pile is above versus below price. Breadth reads this.', true],
+    ['gex_views.net_gex', 'Whole-book net gamma (and the later book\u2019s in net_gex_tenor).', false],
+    ['gex_views.gross_gex', 'Whole-book gross gamma.', false],
+    ['gex_views.vex', 'Whole-book vanna.', false],
+    ['gex_views.cex', 'Whole-book charm.', false],
+    ['gex_views.gamma_above_spot', 'Gamma above price (below in gamma_below_spot).', false],
+    ['gex_views.flip', 'The flip and its band (flip_band), and the later book\u2019s (flip_tenor).', false],
+    ['gex_views.pin', 'LEGACY: pin scoring inherited from the S&P engine (pin_*, zone1_share, pin_top_share\u2026). Kept for the chart; the reader never reads it.', false],
+  ]],
+  ['Flows and dealer delta', [
+    ['flows_front', 'Charm (cex) and vanna (vex) totals for the front book, and the strikes they point at (charm_wall, vanna_wall).', true],
+    ['dex_views', 'Dealer delta still to hedge, assumed-sign: the total (net_dex_total), per strike, above and below price. Only the total reaches the payload; its sign is a formula artifact.', true],
+    ['net_exposure', 'Whole-book NET \u0393 and NET \u0394 for the dashboard strip tiles.', false],
+  ]],
+  ['Chain meta', [
+    ['meta.chain_spot', 'The price the chain itself carried when pulled \u2014 staler than spot; book-derived distances divide this one.', true],
+    ['meta.expiries', 'The weekly expiries the chain covered, with days to each.', true],
+    ['meta.window', 'The strike window half-width as a fraction of price (widens with volatility).', false],
+    ['meta.coverage', 'What the chain fetch covered and what it lacked.', false],
+    ['meta.chunks', 'How many chain requests one pull took.', false],
+    ['meta.iv_rebuilt', 'How many contracts had their implied vol re-solved against the live price (with iv_kept_provider, iv_clamped, iv_dropped).', false],
+  ]],
+];
 const PAYLOAD = {
   USER:'will', data:null, timer:null, busy:false, mounted:false,
   tipOpen:false,   // the STEP 7 gate card, tapped open — kept here so the 60 s repaint restores it
@@ -14156,7 +14258,7 @@ const PAYLOAD = {
       <div class="phead"><div><h2>SNDK Payload</h2><div class="desc">Only what the reading model is fed: the scene JSON <span class="mono">sndk_read.build_scene</span> builds from the newest SNDK scan, rebuilt here through the same code.</div></div><span class="pill grey" id="pl-pill">loading</span></div>
       <div class="pl-bar" id="pl-bar">
         <div class="lb"><b>Live scene</b><span>Refreshed every minute while this tab is open.</span></div>
-        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload or Memory"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button></div>
+        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload or Memory"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></div>
         <button class="pl-btn" id="pl-refresh">Refresh</button>
         <button class="pl-btn" id="pl-copy">Copy JSON</button>
         <button class="pl-btn" id="pl-schema" title="The whole pipeline — every file and what it does">Schema</button>
@@ -14164,6 +14266,16 @@ const PAYLOAD = {
       <div class="pl-pipe" id="pl-pipe" aria-label="pipeline from data source to output"></div>
       <div class="pl-empty" id="pl-empty">Loading the scene…</div>
       <div class="pl-json" id="pl-json" hidden tabindex="0" aria-label="the scene JSON handed to the model"></div>
+      <div class="pl-diary" id="pl-diary" hidden>
+        <div class="dia-head" id="dia-head">Reading the diary\u2026</div>
+        <div class="dia-cols">
+          <div class="dia-json">
+            <div class="cap">The newest row <span id="dia-when"></span><button class="pl-btn" id="dia-copy" type="button">Copy row</button></div>
+            <div class="pl-json dia-pre" id="dia-pre" tabindex="0" aria-label="the newest diary row"></div>
+          </div>
+          <aside class="dia-schema" id="dia-schema"></aside>
+        </div>
+      </div>
       <div class="pl-mem" id="pl-mem" hidden>
         <aside class="mem-side">
           <div class="cap">What it can remember</div>
@@ -14185,7 +14297,8 @@ const PAYLOAD = {
         </div>
       </div>
     </div>`;
-    host.querySelector('#pl-refresh').addEventListener('click', ()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); });
+    host.querySelector('#pl-refresh').addEventListener('click', ()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else if(PAYLOAD.view==='diary') PAYLOAD.diary(); else PAYLOAD.fetch(); });
+    host.querySelector('#dia-copy').addEventListener('click', ()=>{ const r=PAYLOAD.diaryRow; if(r) navigator.clipboard.writeText(JSON.stringify(r, null, 1)).catch(()=>{}); });
     host.querySelector('#pl-copy').addEventListener('click', ()=>PAYLOAD.copy());
     host.querySelector('#pl-schema').addEventListener('click', openPlSchemaModal);
     host.querySelector('#pl-seg').addEventListener('click', e=>{ const b=e.target.closest('button[data-view]'); if(b) PAYLOAD.setView(b.dataset.view); });
@@ -14215,17 +14328,62 @@ const PAYLOAD = {
   },
   view:'payload',
   setView(v){
-    PAYLOAD.view=(v==='memory')?'memory':'payload';
-    const mem=PAYLOAD.view==='memory';
+    PAYLOAD.view=(v==='memory'||v==='diary')?v:'payload';
+    const mem=PAYLOAD.view==='memory', dia=PAYLOAD.view==='diary';
     document.querySelectorAll('#pl-seg button').forEach(b=>{ const on=b.dataset.view===PAYLOAD.view; b.classList.toggle('on', on); b.setAttribute('aria-selected', on?'true':'false'); });
-    const pipe=document.getElementById('pl-pipe'), memEl=document.getElementById('pl-mem'), copy=document.getElementById('pl-copy');
-    if(pipe) pipe.hidden=mem; if(memEl) memEl.hidden=!mem; if(copy) copy.hidden=mem;
-    if(mem){ const j=document.getElementById('pl-json'), e=document.getElementById('pl-empty'); if(j) j.hidden=true; if(e) e.hidden=true; MEM.open(); }
-    else PAYLOAD.render();
+    const pipe=document.getElementById('pl-pipe'), memEl=document.getElementById('pl-mem'), copy=document.getElementById('pl-copy'), diaEl=document.getElementById('pl-diary');
+    if(pipe) pipe.hidden=mem||dia; if(memEl) memEl.hidden=!mem; if(copy) copy.hidden=mem||dia; if(diaEl) diaEl.hidden=!dia;
+    if(mem||dia){ const j=document.getElementById('pl-json'), e=document.getElementById('pl-empty'); if(j) j.hidden=true; if(e) e.hidden=true; }
+    if(mem) MEM.open(); else if(dia) PAYLOAD.diary(); else PAYLOAD.render();
   },
-  show(){ PAYLOAD.mount(); if(PAYLOAD.view==='memory') MEM.open(); else PAYLOAD.fetch(); PAYLOAD.arm(); },
+  show(){ PAYLOAD.mount(); if(PAYLOAD.view==='memory') MEM.open(); else if(PAYLOAD.view==='diary') PAYLOAD.diary(); else PAYLOAD.fetch(); PAYLOAD.arm(); },
   hide(){ PAYLOAD.disarm(); PAYLOAD.closeTip(); },
-  arm(){ PAYLOAD.disarm(); PAYLOAD.timer=setInterval(()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); }, 60000); },
+  arm(){ PAYLOAD.disarm(); PAYLOAD.timer=setInterval(()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else if(PAYLOAD.view==='diary') PAYLOAD.diary(); else PAYLOAD.fetch(); }, 60000); },
+  // ---- THE DIARY VIEW (09-02): the newest scanner row as it sits on disk, beside the schema of
+  // that row in plain words — every key, what it means, where it comes from, and a dot on the
+  // keys the reader actually reads into the payload. The schema is checked LIVE against the row:
+  // a key the row lacks is shown dim, an array shows its length, so the list can never describe a
+  // row that stopped being written that way.
+  diaryRow:null, diaryBusy:false,
+  async diary(){
+    if(PAYLOAD.diaryBusy) return; PAYLOAD.diaryBusy=true;
+    const head=document.getElementById('dia-head');
+    try{
+      const idx=await (await fetch('/api/raw/index',{cache:'no-store'})).json();
+      const st=idx.state||[];
+      const files=st.filter(e=>/^sndk_reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||'')).sort((a,b)=>(b.mtime||0)-(a.mtime||0));
+      if(!files.length){ if(head) head.textContent='No diary file yet.'; PAYLOAD.diaryBusy=false; return; }
+      const day=files[0].rel.slice(15,25);
+      const d=await (await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=1`,{cache:'no-store'})).json();
+      const row=(d.rows||[])[0]||null; PAYLOAD.diaryRow=row;
+      const sib=name=>st.find(e=>e.rel===name);
+      PAYLOAD.paintDiary(day, d.total||0, row, {bars:sib(`sndk_bars/${day}.jsonl`), reads:sib(`sndk_reads/${day}.jsonl`), rag:sib(`sndk_rag/slices/${day}.jsonl`)});
+    }catch(e){ if(head) head.textContent='The diary could not be read: '+e; }
+    PAYLOAD.diaryBusy=false;
+  },
+  paintDiary(day, total, row, sib){
+    const head=document.getElementById('dia-head'), pre=document.getElementById('dia-pre'), when=document.getElementById('dia-when'), sch=document.getElementById('dia-schema');
+    if(!head||!pre||!sch) return;
+    const m=(row&&row.meta)||{};
+    const age=x=>x&&x.mtime?snkDur(Math.max(0,(Date.now()/1000-x.mtime)/60))+' ago':'not today';
+    head.innerHTML=`<b>state/sndk_reversion/${esc(day)}.jsonl</b><span>one row per scan, every 2 minutes \u00b7 <i>${total}</i> rows today</span>`
+      +`<span class="sib"><b>beside it</b> `
+      +`<code>sndk_bars/${esc(day)}.jsonl</code> minute bars, ${age(sib.bars)} \u00b7 `
+      +`<code>sndk_reads/${esc(day)}.jsonl</code> readings, ${age(sib.reads)} \u00b7 `
+      +`<code>sndk_rag/slices/${esc(day)}.jsonl</code> memory, ${age(sib.rag)}</span>`;
+    if(!row){ pre.innerHTML='<div class="ln">no row</div>'; sch.innerHTML=''; return; }
+    if(when) when.textContent=`\u00b7 ${esc(String(row.ts||'').slice(11,19))} ET \u00b7 book ${m.book_source==='disk_cache'?'from the 240 s cache':'pulled fresh'}${m.cache_age_s!=null?`, ${Math.round(m.cache_age_s)} s old`:''}`;
+    const out=[]; plLines(row, 0, '', '', out); pre.innerHTML=plRows(out);
+    // the schema, checked against the row
+    const get=(o,path)=>path.split('.').reduce((a,k)=>(a&&typeof a==='object')?a[k]:undefined, o);
+    sch.innerHTML=`<div class="cap">What each key is</div><div class="dia-legend"><i class="dot"></i> read into the payload \u00b7 <i class="ab"></i> absent on this row</div>`
+      +_DIARY_SCHEMA.map(g=>`<section><h4>${esc(g[0])}</h4>${g[1].map(([k,txt,fed])=>{
+        const v=get(row,k); const absent=v===undefined||v===null;
+        const n=Array.isArray(v)?` <small>[${v.length}]</small>`:(v&&typeof v==='object'?` <small>{${Object.keys(v).length}}</small>`:'');
+        return `<div class="dk${absent?' ab':''}"><code>${fed?'<i class="dot"></i>':''}${esc(k)}${n}</code><span>${esc(txt)}</span></div>`;
+      }).join('')}</section>`).join('')
+      +`<section><h4>Not on the row</h4><div class="dk"><code>state/sndk_bars/&lt;day&gt;.jsonl</code><span>One completed minute bar per line, written by its own job. The reader takes the day\u2019s highs, lows and boxes from it.</span></div><div class="dk"><code>state/sndk_reads/&lt;day&gt;.jsonl</code><span>One row per scan from the reader: the reading, why it woke, the frozen gate, what the guards dropped.</span></div><div class="dk"><code>state/sndk_rag/slices/&lt;day&gt;.jsonl</code><span>One memory slice per completed reading: the model\u2019s sentence and the numbers true that minute.</span></div></section>`;
+  },
   disarm(){ if(PAYLOAD.timer){ clearInterval(PAYLOAD.timer); PAYLOAD.timer=null; } },
   closeTip(){ PAYLOAD.tipOpen=false; document.querySelectorAll('.st.tip.open').forEach(c=>c.classList.remove('open')); },
   async fetch(){
@@ -14253,6 +14411,7 @@ const PAYLOAD = {
     p.className='pill '+(state==='error'?'coral':state==='wait'?'grey':'jade');
     p.textContent=state==='error'?'no feed':state==='wait'?'loading':'live'; },
   render(){
+    if(PAYLOAD.view!=='payload') return;        // the memory and diary views own the pane then
     const pre=document.getElementById('pl-json'), empty=document.getElementById('pl-empty'); if(!pre||!empty) return;
     if(PAYLOAD.view==='memory'){ pre.hidden=true; empty.hidden=true; return; }
     const d=PAYLOAD.data;
@@ -14520,13 +14679,14 @@ const MEM = {
       // and drew an empty bar on every day — a chart of nothing, with a tooltip
       // confidently reporting three zeros.
       const v=d.vectors||{}, seg=(c,k)=>k?`<i class="${c}" style="flex:${k}"></i>`:'';
-      const un=v.unusual||0, qt=v.quiet||0, dr=v.dropped||0;
-      const pre=(un+qt+dr)?`${un} unusual, ${qt} quiet${dr?`, ${dr} dropped`:''}`
-                          :'before the observation contract';
+      const un=v.unusual||0, qt=v.quiet||0, dr=v.dropped||0, lg=v.legacy||0;
+      // 09-02: a forecast-era read is neither quiet nor unusual — it answered a
+      // different question. It is counted apart and drawn hatched, never as quiet.
+      const pre=[un?`${un} unusual`:'', qt?`${qt} quiet`:'', dr?`${dr} dropped`:'', lg?`${lg} forecast-era`:''].filter(Boolean).join(', ')||'nothing filed';
       return `<button type="button" data-day="${d.date}" class="${d.date===MEM.sel?'on':''}"`
         +` title="${d.n} read${d.n===1?'':'s'} · ${d.first}–${d.last} · ${pre}">`
         +`<span class="d">${d.date.slice(5)}<small>${d.n}</small></span>`
-        +`<span class="rhy">${seg('u',un)}${seg('z',qt)}${seg('d',dr)}</span></button>`;
+        +`<span class="rhy">${seg('u',un)}${seg('z',qt)}${seg('d',dr)}${seg('l',lg)}</span></button>`;
     }).join('');
   },
   paintAsk(){
@@ -14671,8 +14831,12 @@ const MEM = {
     if(m.gamma_sign) F.push(['Gamma', esc(MEM.cap(m.gamma_sign))]);
     if(m.regime) F.push(['Regime', esc(MEM.cap(m.regime))]);
     if(MEM.n(m.sigma)!=null) F.push(['Typical day', `±${MEM.fx(m.sigma)}`]);
+    // obs-4/5: the frame and the day's box as the reader saw them that minute
+    if(m.frame_is) F.push(['Since last read', esc(m.frame_is)]);
+    if(m.opening_box) F.push(['Opening box', esc(m.opening_box)]);
+    if(m.extremes_from) F.push(['Extremes from', esc(m.extremes_from==='1_minute_bars'?'minute bars':'2-minute scans')]);
     const when=chrono?esc(x.time||m.time||'') : `<span class="dt">${esc(m.date||'')}</span>${esc(x.time||m.time||'')}`;
-    return `<article class="mc" data-i="${i}"${sp!=null?` data-px="${sp}"`:''} data-v="${esc(m.notable_count?'unusual':(m.abstain==='forced'?'dropped':'quiet'))}"`
+    return `<article class="mc" data-i="${i}"${sp!=null?` data-px="${sp}"`:''} data-v="${esc(MEM.legacy(m)?'legacy':(m.notable_count?'unusual':(m.abstain==='forced'?'dropped':'quiet')))}"`
       +` data-rg="${esc(m.regime||'')}" data-gs="${esc(m.gamma_sign||'')}">`
       +`<div class="mc-hd"><span class="mc-t">${when}</span>${MEM.obsChip(m)}${MEM.wakeBadge(m.wake)}</div>`
       +(parts[0]?`<p class="mc-read">${esc(parts[0])}</p>`:'')
@@ -14746,7 +14910,11 @@ const MEM = {
   // obs-2: a slice records what was NOTICED, not which way the model leaned.
   // Quiet is the common state and is written plainly; a forced quiet — the
   // model spoke and the checks deleted all of it — is the one worth marking.
+  // a slice written under the forecast contract carries `vector`, never `quiet` — it
+  // answered a different question and must not be filed as a quiet observation
+  legacy(m){ return !!m && ('vector' in m) && !('quiet' in m); },
   obsChip(m){
+    if(MEM.legacy(m)) return `<span class="vec legacy">\u25c7 forecast era</span>`;
     const n=MEM.n(m.notable_count)||0;
     const forced=m.abstain==='forced';
     const k=n?'up':(forced?'down':'none');

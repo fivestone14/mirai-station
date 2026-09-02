@@ -203,6 +203,12 @@ def record_slice(row: dict, read_out: dict, scene: dict, now: datetime) -> None:
         # no arrow to withhold and no arrow-named wake left to neutralize —
         # old slices keep their "gate event" stamps as history.
         "wake": read_out.get("wake"),
+        # obs-4/5 (09-02): the frame the reader saw (a move / a hold), the
+        # opening box's status, and which witness the extremes came from — the
+        # facts a later pattern search over boxes and breaks will need.
+        "frame_is": ((scene.get("context") or {}).get("since_last_read") or {}).get("frame_is"),
+        "opening_box": (((scene.get("context") or {}).get("ranges") or {}).get("opening") or {}).get("status"),
+        "extremes_from": (scene.get("price") or {}).get("extremes_from"),
     }
     rec = {"ts": now.isoformat(), "kind": "slice", "rag_v": RAG_V,
            "era": read_out.get("era"),

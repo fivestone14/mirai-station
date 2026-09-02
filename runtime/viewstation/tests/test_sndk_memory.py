@@ -27,7 +27,7 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
     # obs-1: the histogram counts what each read FOUND. Reading meta.vector — a
     # field obs-1 stopped writing — gave three zeros on every day, a bar chart
     # of nothing that no test would have noticed because zero is a valid count.
-    assert d["vectors"] == {"unusual": 1, "quiet": 1, "dropped": 0}
+    assert d["vectors"] == {"unusual": 1, "quiet": 1, "dropped": 0, "legacy": 0}
     assert d["last_line"] == "last line"
     assert ov["summaries"] == {"n": 1, "first": "2026-08-05", "last": "2026-08-05", "rag_v": [2]}
     assert ov["terrain"]["built"] == "2026-08-03" and ov["terrain"]["sessions"] == 4

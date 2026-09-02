@@ -290,3 +290,21 @@ def test_the_doctrine_publishes_the_judgement_list_and_the_two_checks():
     assert "second reviewer" in SR._DOCTRINE
     assert "`frame_is`" in SR._DOCTRINE and "`context.ranges`" in SR._DOCTRINE
     assert SR.ERA >= "obs-4"          # obs-5 (the bar sidecar) rides on top of these rules
+
+
+def test_the_memory_slice_remembers_the_frame_the_box_and_the_witness():
+    """09-02: the slice carries frame_is, the opening box's status and which witness the
+    extremes came from — the columns a later pattern search over boxes will need."""
+    import sndk_rag
+    rows = _tape([1500] * 16 + [1520, 1522])
+    lc = _last_call(minutes_ago=10, spot=1500.0)
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0)
+    sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0, since_last_read=fr)
+    out = {"wake": "price ran", "era": SR.ERA, "magnet_band": SR.magnet_band(rows[-1]),
+           "reading": {"quiet": True, "read": "Price moved up out of the opening box.", "abstain": "chosen"}}
+    sndk_rag.record_slice(rows[-1], out, sc, T0)
+    rec = json.loads(sndk_rag._slices_path(T0.date().isoformat()).read_text().splitlines()[-1])
+    m = rec["meta"]
+    assert m["frame_is"] == "a move"
+    assert m["opening_box"].startswith("broke up at ")
+    assert m["extremes_from"] == "scans_every_2_min"

@@ -284,3 +284,17 @@ def test_the_payload_tab_carries_the_schema_card():
         assert rel.split("/")[-1].replace(".plist", "") in PAGE, rel
     assert "ThetaData supplies this week" not in PAGE       # the SNDK chain is the market-data server's
     assert "state/sndk_bars" in PAGE
+
+
+def test_the_payload_tab_carries_the_diary_view():
+    """09-02: a third segment shows the newest diary row beside the schema of that row —
+    every key in plain words, checked live against the row (absent keys dim, arrays with
+    their length, a dot on the keys the reader reads). The memory view stopped filing
+    forecast-era slices as quiet: they are counted apart and drawn hatched."""
+    assert 'data-view="diary"' in PAGE and 'id="pl-diary"' in PAGE
+    assert "async diary(){" in PAGE and "paintDiary(day, total, row, sib){" in PAGE
+    assert "const _DIARY_SCHEMA=[" in PAGE and "'gex_views.net_by_strike'" in PAGE
+    assert "if(PAYLOAD.view!=='payload') return;" in PAGE          # the JSON pane is the payload view's
+    assert "legacy(m){ return !!m && ('vector' in m) && !('quiet' in m); }" in PAGE
+    assert "seg('l',lg)" in PAGE and ".mem-days .rhy i.l{" in PAGE
+    assert "['Since last read', esc(m.frame_is)]" in PAGE

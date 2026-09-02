@@ -702,10 +702,14 @@ def sndk_memory_overview() -> dict:
             # obs-1: the histogram counts what each read FOUND, not which way it
             # leaned. Reading `meta.vector` — a field obs-1 stopped writing —
             # produced three zeros on every day and a bar chart of nothing.
-            vec = {"unusual": 0, "quiet": 0, "dropped": 0}
+            # 09-02: a forecast-era slice (it carries `vector`, never `quiet`)
+            # answered a different question and is counted apart — the Sep-1
+            # audit found 390 of them filed as "quiet".
+            vec = {"unusual": 0, "quiet": 0, "dropped": 0, "legacy": 0}
             for r in rows:
                 m = r.get("meta") or {}
-                vec["unusual" if m.get("notable_count") else
+                vec["legacy" if ("vector" in m and "quiet" not in m) else
+                    "unusual" if m.get("notable_count") else
                     "dropped" if m.get("abstain") == "forced" else "quiet"] += 1
             days.append({"date": p.stem, "n": len(rows),
                          "first": (rows[0].get("meta") or {}).get("time"),
