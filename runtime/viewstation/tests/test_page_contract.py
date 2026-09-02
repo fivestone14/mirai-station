@@ -244,3 +244,24 @@ def test_every_provlines_helper_escapes():
         assert "esc(" in body, f"{name}() interpolates a scene value without esc()"
     # and esc itself still covers all three characters that open a tag or an entity
     assert "String(x).replace(/[&<>]/g," in helpers["esc"]
+
+
+def test_the_read_pops_in_the_headers_air():
+    """09-02: the latest reading also stands in the open as a translucent card in the header's
+    one piece of measured air (below the mic card, out to the header's right edge, down to the
+    voice column's bottom). Pinned: the node is a SIBLING of the repainted strips — never a child
+    of #snk-vox, whose innerHTML paintDrawers rewrites — it is placed from live rects and
+    re-placed when the chart resizes, it pops only on a new reading_ts, dismissal is remembered
+    per reading, and its age is re-ticked in place on the spot poll like the caption's."""
+    assert '<div class="snk-vox" id="snk-vox"></div>\n        <div class="snk-pop" id="snk-pop" hidden></div>' in PAGE
+    assert "function snkPopBox(" in PAGE
+    assert "paintPop(){" in PAGE and "placePop(){" in PAGE and "dismissPop(){" in PAGE
+    assert "SNDK.paintPop();" in PAGE                                 # from paintDrawers, every paintSide
+    assert "SNDK.buildChart(); SNDK.placePop();" in PAGE              # re-placed on resize
+    assert "localStorage.setItem('snk.pop.x', key)" in PAGE           # dismissal is per reading
+    assert "pop.dataset.since" in PAGE and "pop.classList.toggle('aged', pm>10)" in PAGE
+    assert ".snk-pop{--pop-hue:var(--ink-faint); position:absolute" in PAGE and "backdrop-filter:blur(10px)" in PAGE
+    assert ".snk-head{position:relative;" in PAGE                     # the card's containing block
+    assert "openPop(on){" in PAGE and ".snk-pop.open{height:auto!important" in PAGE   # click = drawer-style overlay
+    assert "el.classList.toggle('clip'" in PAGE and ".snk-pop.clip .pb{-webkit-mask-image" in PAGE   # at rest it fades, never scrolls
+    assert 'class="lead"' in PAGE and "@keyframes snkPopGlow" in PAGE and "--pop-hue:var(--iris)" in PAGE   # round 2: leads, glows, wears its hue

@@ -1554,7 +1554,7 @@
   /* the header ROW: the price lead and its pills, and nothing else since the teacher card
      was cut (08-23). paintStrip owns #snk-strip's innerHTML, so anything added here later has
      to be a SIBLING of it rather than a child, or every repaint would wipe it. */
-  .snk-head{flex:0 0 auto; display:flex; gap:10px; align-items:stretch; margin-bottom:10px; min-width:0}
+  .snk-head{position:relative; flex:0 0 auto; display:flex; gap:10px; align-items:stretch; margin-bottom:10px; min-width:0}
   @media (max-width:900px){ .snk-head{flex-wrap:wrap} .snk-draws{width:100%} }
   .snk-strip{flex:0 0 auto; display:flex; gap:8px; align-items:stretch}
   .snk-strip .pill{align-self:center}
@@ -1664,6 +1664,81 @@
   .snk-draw[data-draw="readout"] .rs .j{color:var(--jade)} .snk-draw[data-draw="readout"] .rs .c{color:var(--coral)}
   .snk-draw[data-draw="readout"] .rs .n{color:var(--ink-dim)}
   .snk-draw[data-draw="readout"] .body{width:max(100%, min(700px, 56vw))}
+  /* ---- THE POP (09-02, user-requested). The reading used to live only behind the drawer
+     strip and on the chart's caption line; now the latest one also stands in the open, as a
+     translucent card that POPS when a new reading lands. Its home is the one piece of air the
+     header always has: the voice column below the mic card (the lead box is 145px tall, the mic
+     card 54) and, on a wide screen, the slack to the right of it. MEASURED 09-02 at
+     1786/1440/1280: 626×83 / 380×83 / 321×83 of nothing but the page ground, so the card covers
+     no mark, no strip, no chip. It is placed by placePop() from the live rects (the mic card's
+     height is not a CSS constant) and hidden outright when the header wraps and the air is gone,
+     rather than squeezed over something. Glass, not a panel: the ground shows through. Past its
+     slack it scrolls inside itself — it never grows the header, because a taller header is a
+     shorter chart. */
+  /* STANDS OUT (09-02 round 2, user-requested): a hue-tinted glass rather than a grey one, a 3px
+     edge in the state's colour — iris for "to watch", coral for "all dropped", quiet ink for a quiet
+     read — the same edge the price lead wears, and a glow that blooms and fades over ~1.5s when a
+     new reading lands. --pop-hue is the one knob; every layer reads it. */
+  .snk-pop{--pop-hue:var(--ink-faint); position:absolute; z-index:39; display:flex; flex-direction:column; gap:4px; min-width:0;
+    padding:7px 11px 9px 12px; border-radius:var(--r-md);
+    background:
+      linear-gradient(135deg, color-mix(in srgb,var(--pop-hue) 13%, transparent) 0%, transparent 55%),
+      color-mix(in srgb,var(--surface-2) 66%, transparent);
+    border:1px solid color-mix(in srgb,var(--pop-hue) 42%, var(--hairline-2));
+    box-shadow:inset 3px 0 0 var(--pop-hue), 0 14px 34px -18px rgba(0,0,0,.7), 0 0 22px -10px color-mix(in srgb,var(--pop-hue) 55%, transparent);
+    -webkit-backdrop-filter:blur(10px) saturate(1.15); backdrop-filter:blur(10px) saturate(1.15);
+    transition:opacity .3s ease, border-color .3s ease}
+  .snk-pop[hidden]{display:none}
+  .snk-pop.watch{--pop-hue:var(--iris)}
+  .snk-pop.dropped{--pop-hue:var(--coral)}
+  .snk-pop.aged{opacity:.74}
+  @media (prefers-reduced-motion:no-preference){
+    .snk-pop.pop{animation:snkPopIn .34s cubic-bezier(.2,.7,.2,1) both, snkPopGlow 1.5s ease-out .1s both} }
+  @keyframes snkPopIn{from{opacity:0; transform:translateY(7px) scale(.985)}to{opacity:1; transform:none}}
+  @keyframes snkPopGlow{0%{outline:2px solid color-mix(in srgb,var(--pop-hue) 70%, transparent); outline-offset:0}
+    100%{outline:2px solid transparent; outline-offset:10px}}
+  .snk-pop .ph{display:flex; align-items:baseline; gap:8px; min-width:0; font-family:var(--mono);
+    font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; white-space:nowrap}
+  .snk-pop .ph .k{font-weight:700; color:var(--ink-faint)}
+  .snk-pop .ph .s{font-weight:800; font-size:12px; color:var(--ink)}
+  .snk-pop.watch .ph .s{color:var(--iris)}
+  .snk-pop.dropped .ph .s{color:var(--coral)}
+  .snk-pop .ph .w{color:var(--ink-faint); font-weight:500; text-transform:none; letter-spacing:.02em;
+    overflow:hidden; text-overflow:ellipsis; min-width:0}
+  .snk-pop .ph .t{margin-left:auto; color:var(--ink-faint); font-weight:500; letter-spacing:.02em; text-transform:none}
+  .snk-pop .ph .x{appearance:none; border:0; background:transparent; color:var(--ink-faint); cursor:pointer;
+    font:inherit; font-size:14px; line-height:1; padding:0 0 0 4px; margin-right:-3px}
+  .snk-pop .ph .x:hover{color:var(--ink)}
+  /* AT REST the body is clipped to the slack with a fade, not a scrollbar — the fade says
+     "there is more" without a control; the head grows a "more ›". A click OPENS the card: it
+     drops over the canvas below exactly the way an opened drawer body does (that overlay is the
+     one idiom this tab already has for "read the whole thing"), more opaque while it is over
+     the bars so the words stay legible, and closes on a click anywhere else or Escape. A new
+     reading closes it again, so the card is always at rest — covering nothing — when it pops. */
+  .snk-pop .pb{min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:5px; scrollbar-width:thin}
+  .snk-pop.clip{cursor:pointer}
+  .snk-pop.clip .pb{-webkit-mask-image:linear-gradient(#000 calc(100% - 16px), transparent); mask-image:linear-gradient(#000 calc(100% - 16px), transparent)}
+  .snk-pop .ph .more, .snk-pop .ph .less{display:none; color:var(--iris); font-weight:700; letter-spacing:.06em}
+  .snk-pop.clip .ph .more{display:inline}
+  .snk-pop.open{height:auto!important; max-height:min(64vh,620px); z-index:41; cursor:default;
+    background:color-mix(in srgb,var(--surface) 97%, transparent);
+    border-color:color-mix(in srgb,var(--iris) 30%, var(--hairline-2)); box-shadow:var(--shadow)}
+  .snk-pop.open .pb{overflow:auto; -webkit-mask-image:none; mask-image:none}
+  .snk-pop.open .ph .more{display:none} .snk-pop.open .ph .less{display:inline}
+  .snk-pop .lead{margin:0; font-family:var(--sans); font-size:14px; line-height:1.4; font-weight:600; color:var(--ink); letter-spacing:-.005em}
+  .snk-pop .rest{margin:0; font-family:var(--sans); font-size:12.5px; line-height:1.45; color:var(--ink-dim)}
+  .snk-pop.quiet .lead{font-weight:500; color:var(--ink-dim)}
+  .snk-pop .n{font-family:var(--mono); font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink);
+    padding:0 3px; border-radius:4px; background:color-mix(in srgb,var(--pop-hue) 14%, transparent)}
+  .snk-pop .rest .n{font-weight:600}
+  .snk-pop ul{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:2px 14px}
+  .snk-pop li{display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 8px; align-items:baseline; padding:2px 0;
+    border-top:1px solid color-mix(in srgb,var(--hairline) 60%, transparent)}
+  .snk-pop li .m{font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap;
+    padding:0 3px; border-radius:4px; background:color-mix(in srgb,var(--pop-hue) 14%, transparent)}
+  .snk-pop li .w{font-family:var(--sans); font-size:12px; line-height:1.35; color:var(--ink-dim)}
+  .snk-pop .br{font-family:var(--sans); font-size:11.5px; line-height:1.4; color:var(--ink-dim)}
+  .snk-pop .br i{font-style:normal; font-weight:600; color:var(--coral)}
   .snk-draw{position:relative}
   .snk-draw .hd{display:flex; align-items:stretch; gap:0; border-radius:var(--r-md); overflow:hidden;
     border:1px solid var(--hairline); background:var(--surface-2)}
@@ -10957,6 +11032,50 @@ function snkReadCard(rd, now, bare){
       :rd.error?`<div class="br"><i>No observation —</i> the last reading call failed (${snkSafe(rd.error)}); the row still landed.</div>`:''))
     +`</div>`;
 }
+// ---- THE POP (09-02) — the latest reading standing in the open. One card, built from the
+// same read row and the same helpers as the drawer card, so the two can never say different
+// things; what differs is where it stands and that it announces itself. Age is measured from
+// reading_ts (the drawer's server-baked "· Xm old" freezes between scans — see snkReadCard),
+// and the card carries data-since so tickAges() re-ticks the "ago" in place. PURE: returns
+// {cls, since, ageM, html} or null when there is nothing to stand up.
+function snkPopBox(rd, now){
+  if(!rd||typeof rd!=='object') return null;
+  const R=snkObs(rd);
+  const since=(typeof rd.reading_ts==='string'&&isFinite(+new Date(rd.reading_ts)))?rd.reading_ts:null;
+  const ageM=since?snkMinsSince(since, now)
+    :((rd.reading_age_min!=null&&isFinite(rd.reading_age_min))?Math.round(+rd.reading_age_min):null);
+  const pts=(R&&Array.isArray(R.points))?R.points:[];
+  const n=pts.length;
+  const forced=!!(R&&R.abstain==='forced');
+  // the state word is the drawer strip's, verbatim — two surfaces, one vocabulary
+  const state=!R?(rd.paused?'reasoning paused':'no observation')
+    :(n?`${n} to watch`:(forced?'all dropped':'nothing standing out'));
+  const cls=!R?'':(n?'watch':(forced?'dropped':'quiet'));
+  const clock=since?snkClock(since):'';
+  const rows=pts.map(o=>`<li><span class="m">${snkSafe(MEM_PX(o.level))}</span>`
+    +`<span class="w">${snkSafe(o.note)}</span></li>`).join('');
+  // FAST TEXT: the first sentence leads (under the frame doctrine it is "what changed since you
+  // last spoke"), the rest follow one per line, and every price-sized number (3-5 digits, with or
+  // without a comma or cents) is set in bold mono. Escaped FIRST, then marked — the marks are the
+  // only tags that ever enter this string. No lookbehind in the split: an older tablet browser
+  // would fail to PARSE the whole script, not just this line.
+  const hi=t=>snkSafe(t).replace(/(\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?|\$?\d{3,5}(?:\.\d+)?)([.,;:!?](?=\s|$))?/g, (m,a,b)=>`<b class="n">${a}${b||''}</b>`);
+  const sents=(R&&R.read)?String(R.read).replace(/([.!?])\s+(?=[A-Z0-9])/g,'$1\n').split('\n').map(s=>s.trim()).filter(Boolean):[];
+  const said=sents.length?`<p class="lead">${hi(sents[0])}</p>`+(sents.length>1?`<p class="rest">${sents.slice(1).map(hi).join('<br>')}</p>`:''):'';
+  const body=R
+    ?said+(n?`<ul>${rows}</ul>`:'')
+      +(forced?`<div class="br"><i>every observation was dropped by the checks</i></div>`:'')
+    :(rd.paused?`<div class="br"><i>Reasoning paused —</i> the wake gate fired but the sentence is switched off; rows keep landing.</div>`
+      :rd.error?`<div class="br"><i>No observation —</i> the last reading call failed (${snkSafe(rd.error)}); the row still landed.</div>`:'');
+  if(!body) return null;
+  return { cls, since, ageM, html:
+    `<div class="ph"><span class="k">mirai</span><span class="s">${snkSafe(state)}</span>`
+      +(rd.wake?`<span class="w">· ${snkSafe(rd.wake)}</span>`:'')
+      +`<span class="t">${clock?`${clock} · `:''}<span class="snk-ago">${snkAgo(ageM)}</span></span>`
+      +`<span class="more">more ›</span><span class="less">close ‹</span>`
+      +`<button type="button" class="x" aria-label="Dismiss this reading">×</button></div>`
+    +`<div class="pb">${body}</div>` };
+}
 // ---- READING HISTORY (sr-2) — every distinct reading today, NEWEST FIRST, each with the
 // span it was aiming over ("from x to y" = issue + 30 min — this table's scoring rule,
 // not the model's; the reading itself names no horizon), the derived aim price, and how
@@ -11831,7 +11950,7 @@ const SNDK = {
     SNDK.resume();
     if(!SNDK._ro){
       let rt=null;
-      SNDK._ro=new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(SNDK.on) SNDK.buildChart(); },140); });
+      SNDK._ro=new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(SNDK.on){ SNDK.buildChart(); SNDK.placePop(); } },140); });
       const cc=document.getElementById('snk-chart'); if(cc) SNDK._ro.observe(cc);
     }
   },
@@ -11859,6 +11978,7 @@ const SNDK = {
           <div class="snk-pills" id="snk-pills"></div>
         </div>
         <div class="snk-vox" id="snk-vox"></div>
+        <div class="snk-pop" id="snk-pop" hidden></div>
       </div>
       <div class="snk-tenors" id="snk-tenors"></div>
       <div class="snk-mid">
@@ -11876,6 +11996,10 @@ const SNDK = {
     // repainting — paintSide rebuilds the whole rail, which would be a wasted rebuild on every
     // click and would fight the poll already rebuilding it on its own clock.
     document.addEventListener('click', e=>{
+      if(e.target.closest('#snk-pop .x')){ SNDK.dismissPop(); return; }   // the pop's × is its own
+      const pop=e.target.closest('#snk-pop');
+      if(pop){ if(pop.classList.contains('clip')||pop.classList.contains('open')) SNDK.openPop(!pop.classList.contains('open')); return; }
+      { const p=document.getElementById('snk-pop'); if(p&&p.classList.contains('open')) SNDK.openPop(false); }
       if(e.target.closest('.snk-draw .hist')) return;          // the history button is not the toggle
       const tg=e.target.closest('.snk-draw .tg');
       if(tg){ SNDK.setDraw(tg.closest('.snk-draw').dataset.draw, true); return; }
@@ -11883,13 +12007,67 @@ const SNDK = {
       // its own header again is a trap
       if(SNDK.draw && !e.target.closest('.snk-draw .body')) SNDK.setDraw(null);
     });
-    document.addEventListener('keydown', e=>{ if(e.key==='Escape'&&SNDK.draw) SNDK.setDraw(null); });
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(SNDK.draw) SNDK.setDraw(null); SNDK.openPop(false); } });
   },
   // ONE painter for all three strips. They were two writers into two elements before, which is
   // how #snk-pills ended up nested inside a host that innerHTML-swaps: the first repaint deleted
   // it and the pills simply stopped appearing. One host, one write, and the pills live outside it.
   // Rebuilt on a new scan or a new read — a few times an hour, not on the spot clock — so a
   // rebuild while a drawer is open is rare; its scroll position is carried across regardless.
+  // ---- THE POP (09-02). Painted from paintDrawers (so on every paintSide: a new read or a new
+  // scan), placed from live rects, re-placed on resize. It POPS — the rise animation replays —
+  // only on a NEW reading_ts: a quiet scan re-carrying the same sentence must not make the card
+  // jump, or it would jump every two minutes all day. Dismissal is remembered per reading, so a
+  // closed card stays closed until the model says something new.
+  popTs:null,
+  paintPop(){
+    const el=document.getElementById('snk-pop'); if(!el) return;
+    const rd=SNDK.read;
+    const box=snkPopBox(rd, Date.now());
+    const key=(rd&&(rd.reading_ts||rd.ts))||null;
+    let x=null; try{ x=localStorage.getItem('snk.pop.x'); }catch(e){}
+    if(!box||!key||x===key){
+      el.hidden=true; el.className='snk-pop'; el.removeAttribute('data-since'); SNDK.popTs=key; return;
+    }
+    const fresh=key!==SNDK.popTs;
+    el.className=`snk-pop${box.cls?' '+box.cls:''}${(box.ageM!=null&&box.ageM>10)?' aged':''}`;
+    if(box.since) el.setAttribute('data-since', box.since); else el.removeAttribute('data-since');
+    el.innerHTML=box.html;
+    el.hidden=false;
+    if(fresh) el.classList.remove('open');
+    SNDK.placePop();
+    if(fresh){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+    SNDK.popTs=key;
+  },
+  // The card's box is the header's air, measured from the live rects: below the mic card, from
+  // the voice column's left edge out to the header's right edge, down to the voice column's own
+  // bottom (its row's bottom — never the header's, which on a wrapped header is a row lower
+  // and would put the card over the strips). Under 48px of height it hides: squeezed, it would
+  // cover something, and covering nothing is the whole point of where it stands.
+  placePop(){
+    const el=document.getElementById('snk-pop'); if(!el||el.hidden) return;
+    const hd=el.parentElement, vx=document.getElementById('snk-vox'), vc=document.getElementById('snk-voice');
+    if(!hd||!vx) return;
+    const H=hd.getBoundingClientRect(), V=vx.getBoundingClientRect(), C=vc?vc.getBoundingClientRect():null;
+    const top=Math.round((C?C.bottom:V.top)-H.top)+8;
+    const left=Math.round(V.left-H.left);
+    const height=Math.round(V.bottom-H.top)-top;
+    if(height<48||V.width<120){ el.style.display='none'; return; }
+    el.style.display=''; el.style.top=top+'px'; el.style.left=left+'px'; el.style.right='0';
+    el.style.bottom=''; el.style.height=height+'px';
+    const pb=el.querySelector('.pb');
+    el.classList.toggle('clip', !!(pb&&!el.classList.contains('open')&&pb.scrollHeight>pb.clientHeight+1));
+  },
+  openPop(on){
+    const el=document.getElementById('snk-pop'); if(!el||el.hidden) return;
+    el.classList.toggle('open', !!on);
+    SNDK.placePop();
+  },
+  dismissPop(){
+    const rd=SNDK.read, key=(rd&&(rd.reading_ts||rd.ts))||null;
+    try{ if(key) localStorage.setItem('snk.pop.x', key); }catch(e){}
+    SNDK.paintPop();
+  },
   paintDrawers(readSum, readBody, roSum, roBody){
     const el=document.getElementById('snk-draws'); if(!el) return;
     const was=el.querySelector('.snk-draw.open .body'), top=was?was.scrollTop:0;
@@ -11898,6 +12076,7 @@ const SNDK = {
                 +snkDrawer('map',     'Reading the map', '', snkLegend());
     const now=el.querySelector('.snk-draw.open .body'); if(now&&top) now.scrollTop=top;
     const vx=document.getElementById('snk-vox'); if(vx) vx.innerHTML=snkVoiceToggle();
+    SNDK.paintPop();
   },
   setDraw(id, toggle){
     SNDK.draw=(toggle&&SNDK.draw===id)?null:(id||null);
@@ -11975,6 +12154,16 @@ const SNDK = {
   // the read poll only rebuilds the chart on a NEW row (after the close one never comes), and a
   // full rebuild every minute would fight the eased spot line for the same frames (08-26).
   tickAges(){
+    // the pop's "ago" and its >10-min dimming, same clock, same rule, ticked in place
+    const pop=document.getElementById('snk-pop');
+    if(pop&&!pop.hidden&&pop.dataset.since){
+      const pm=snkMinsSince(pop.dataset.since);
+      if(pm!=null){
+        const pa=pop.querySelector('.snk-ago');
+        if(pa){ const s=snkAgo(pm); if(pa.textContent!==s) pa.textContent=s; }
+        pop.classList.toggle('aged', pm>10);
+      }
+    }
     const host=document.getElementById('snk-mirai'); if(!host) return;
     for(const g of host.querySelectorAll('g[data-since]')){
       const m=snkMinsSince(g.dataset.since); if(m==null) continue;
