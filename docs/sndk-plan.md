@@ -35,6 +35,9 @@ verdicts.
                             (context.ranges) and where the weight sits
                             (structure). Crossings/approaches measured and NOT
                             built (a $2 event at a $2 noise floor).
+  H. Minute bars (obs-5)     a sidecar job keeps the 1-min bars the scanner
+                            already fetched; extremes, boxes and the prior
+                            range read the wicks and label the witness.
 
 ## Next, in order
 

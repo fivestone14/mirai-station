@@ -289,4 +289,4 @@ def test_the_doctrine_publishes_the_judgement_list_and_the_two_checks():
     assert "Every inflection counts" in SR._DOCTRINE
     assert "second reviewer" in SR._DOCTRINE
     assert "`frame_is`" in SR._DOCTRINE and "`context.ranges`" in SR._DOCTRINE
-    assert SR.ERA == "obs-4"
+    assert SR.ERA >= "obs-4"          # obs-5 (the bar sidecar) rides on top of these rules

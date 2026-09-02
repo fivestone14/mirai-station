@@ -201,7 +201,31 @@ Also measured and NOT built: crossings and approaches as an angle — a crossing
 is a $2 event at a $2 noise floor with follow-through at placebo. Scene
 3,328 → 4,171 bytes on the 09-02 tape; 240 tests.
 
+### obs-5 (2026-09-02) — the minute-bar sidecar
+
+The scanner fetched today's 1-minute bars on every tick and kept none of them,
+so every high, low, box and break the reader judged was a 2-minute SAMPLE:
+measured over 23 sessions, the session extremes sat a median 0.10σ (~$7)
+short, the opening box ~$8 too narrow, and one box break in three was missed
+or invented. `sndk_bars.py` is a SIDECAR with its own launchd job
+(`com.mirai-station.sndk-bars`, every 60 s in RTH plus twelve minutes after
+the close): one completed minute per line in `state/sndk_bars/<day>.jsonl`,
+idempotent and self-healing because Schwab returns the whole session in one
+call — a run after any gap writes the gap, and `--day` backfills a past
+session. It is deliberately NOT on the diary row: bars stored per row exist
+only for minutes the scanner ran, and the scanner's absences (8.4% of session
+minutes, whole-hour blocks) were the larger loss. The reader now takes
+`price.session_low/high`, the boxes in `context.ranges` and the prior
+sessions' range from the wicks when the file is there, folds the newest live
+spot in so the live print always counts, and LABELS the witness
+(`price.extremes_from`, `ranges.measured_from`: `1_minute_bars` /
+`scans_every_2_min` / `mixed`); a prior day's file is trusted only when it
+holds ≥300 of the 390 minutes. `data_sources.minute_bars` carries the
+sidecar's own clock. Absence falls back to the scans and never fabricates.
+
 ## Wiring
+
+- `com.mirai-station.sndk-bars` (launchd, every 60 s, RTH + 12 min) → `runtime/scripts/run-sndk-bars.sh` → `sndk_bars.py` → `state/sndk_bars/<day>.jsonl` (+ `health.json`). Backfill a session by hand: `sndk_bars.py --day YYYY-MM-DD`.
 
 * launchd: `com.mirai-station.sndk` fires `runtime/scripts/run-sndk.sh` every
   120s (half the SPX rate — conservative with the shared server); the wrapper

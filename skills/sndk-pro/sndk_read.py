@@ -79,7 +79,19 @@ import gw_vocab as _gw                 # noqa: E402 — the ONE clustering rule
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "obs-4"               # bump on ANY change to the gates or the prompt.
+ERA = "obs-5"               # bump on ANY change to the gates or the prompt.
+                            # obs-5 (2026-09-02): THE MINUTE-BAR SIDECAR. The
+                            # session's highs and lows, the opening box, every
+                            # box break and the prior sessions' range now read
+                            # state/sndk_bars/<day>.jsonl — one completed
+                            # minute per line, written by its own launchd job
+                            # (sndk_bars.py) — and fall back to the 2-minute
+                            # spots when the file is absent or thin, saying
+                            # which in price.extremes_from and
+                            # context.ranges.measured_from. Measured before:
+                            # scan-sampled extremes sat 0.10σ (~$7) short, the
+                            # opening box ~$8 narrow, one box break in three
+                            # missed or invented.
                             # obs-4 (2026-09-02): four repairs to the frame and
                             # one new block — all payload, none of it a forecast.
                             # (1) held_between_since_last_read is SEEDED with
@@ -1384,7 +1396,7 @@ ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snap
 
 OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. `frame_is` says which kind of frame this is, by rule: "a move" when `spot_change_sigma` is 0.15 or more in either direction, "a hold" otherwise. On a move, OPEN WITH PRICE THEN AND PRICE NOW — both are in the block — and only then say what is on the board; the "held between" sentence belongs to a hold and never to a move, because a range whose two ends are a move apart is not a range anyone held. `walls_absent_then_and_now` names a side the ladder found empty at both readings: say "no put wall then, none now", never a number. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since your last read" is a complete, correct read when `frame_is` says a hold — X and Y come from `held_between_since_last_read`, and the ONLY clock that range pairs with is `last_read_at`. Never anchor a range on any other time. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read (or the first under the current rules) there is no frame yet; describe the standing board instead.
 
-THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a scan beyond a frozen box by more than a twentieth of a sigma breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions, from scans, with where the live price sits in it and whether today has traded beyond it. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
+THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a scan beyond a frozen box by more than a twentieth of a sigma breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions with where the live price sits in it and whether today has traded beyond it. Every box and extreme names its witness: `measured_from` and `price.extremes_from` say "1_minute_bars" when the minute-bar record was used — its wicks saw what a 2-minute scan steps over — and "scans_every_2_min" when it was not, in which case the true extremes may sit a few dollars beyond what is stated. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
 
 KEEP IT SHORT AND PLAIN. TWO SENTENCES, forty words at the outside — the way you would say it to someone sitting beside you, not the way you would write it down. No jargon, no field names, no padding, no listing everything you looked at. Say the one or two things that matter and stop. The levels go in `points` with a few words each; do not repeat them in the prose. Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears. That includes numbers you work out yourself: do not convert a distance into sigma, do not turn a share into a percentage of something else, do not average two figures. A number you computed is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far away, say which level and let the reader see the two prices.
 
@@ -1394,6 +1406,7 @@ FIELD NAMES SAY WHAT THEY ARE. Every leaf in this scene is named so it can be re
 
 WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any other block is worth):
 - WHICH BLOCK RESTS ON WHAT. `price` and `history` are the LIVE TAPE, good to the second. `clock` is the wall clock. `scale`, `regime`, `magnet`, `breadth`, `momentum`, `dealer_positioning`, `walls` and `clock.front_expiry` come out of the OPTIONS BOOK, which is minutes old and often a cached repeat. Of those, `regime`, `magnet`, `breadth`, `dealer_positioning` and `walls` rest further on the OPEN INTEREST SNAPSHOT struck at last night's close. A block you cannot find was either not measured or deleted for age; see freshness_rules.
+- data_sources may also carry `minute_bars` — the minute-bar record's own clock: how many completed minutes it holds today and how old the newest is. It is the witness behind the session extremes and the boxes when present.
 - data_sources holds TWO clocks and they disagree on purpose. `scan_taken_at` is when this row was written, which is also when the spot was quoted — there is no separate quote clock, and `spot_feed` names where that price came from. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
 - `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves it against `strikes_compared_today` strikes whenever today's scans give it enough overlapping strikes to answer — and says nothing at all rather than guessing when they do not. What moves intraday is price moving under a fixed map, not the map moving.
 - Because of that, THESE BLOCKS MAY NEVER BE NARRATED IN THE PRESENT TENSE: {", ".join(PRESENT_TENSE_FORBIDDEN_FOR)}. "Dealers are buying", "the wall is building", "gamma is piling up" are false statements about time, not debatable reads. Say "as of last night's close" or say nothing. Only `momentum` and `*_change_30min` fields describe something that moved today.
@@ -2692,6 +2705,28 @@ def _prior_session_date(today: str) -> Optional[str]:
     return days[-1] if days else None
 
 
+def minute_bars(day: str) -> list[dict]:
+    """The sidecar's completed minute bars for `day`, or [] — never zeros.
+    Lazy import: the reader must keep running if the sidecar module is absent."""
+    try:
+        import sndk_bars
+        return sndk_bars.read_bars(day)
+    except Exception:
+        return []
+
+
+def _bars_trusted(bars: list[dict]) -> bool:
+    """A prior session's file is trusted for its extremes only when it holds
+    most of the session — a half-backfilled day would understate the range
+    and the 2-minute scans, which saw the whole day, are the better witness."""
+    try:
+        import sndk_bars
+        floor = sndk_bars.COMPLETE_SESSION_MIN_BARS
+    except Exception:
+        floor = 300
+    return len(bars) >= floor
+
+
 def _prior_sessions_range(today: str) -> Optional[dict]:
     """The last PRIOR_RANGE_SESSIONS closed sessions' low and high, from their
     2-minute scans (so the true extremes may sit a little beyond — the block
@@ -2703,6 +2738,7 @@ def _prior_sessions_range(today: str) -> Optional[dict]:
     lows: list[float] = []
     highs: list[float] = []
     used: list[str] = []
+    srcs: set = set()
     for p in days:
         try:
             lines = p.read_text().splitlines()
@@ -2721,19 +2757,30 @@ def _prior_sessions_range(today: str) -> Optional[dict]:
             sp = _fin(r.get("spot"))
             if sp is not None:
                 sp_day.append(sp)
+        # obs-5: a full minute-bar file for that day is the better witness —
+        # its wicks saw what the 2-minute scans stepped over
+        bars = minute_bars(p.stem)
+        if bars and _bars_trusted(bars):
+            lows.append(min(b["low"] for b in bars))
+            highs.append(max(b["high"] for b in bars))
+            used.append(p.stem)
+            srcs.add("1_minute_bars")
+            continue
         if sp_day:
             lows.append(min(sp_day))
             highs.append(max(sp_day))
             used.append(p.stem)
+            srcs.add("scans_every_2_min")
     if not lows:
         return None
     return {"sessions": len(used), "from": used[0], "to": used[-1],
             "low": round(min(lows), 2), "high": round(max(highs), 2),
-            "measured_from": "scans_every_2_min"}
+            "measured_from": ("mixed" if len(srcs) > 1 else next(iter(srcs)))}
 
 
 def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
-                 today: Optional[str] = None) -> Optional[dict]:
+                 today: Optional[str] = None,
+                 bars: Optional[list[dict]] = None) -> Optional[dict]:
     """obs-4: THE DAY'S BOXES — every number measured, no verdict anywhere.
 
     The opening box is the first OPENING_RANGE_MIN minutes of the tape, frozen
@@ -2749,12 +2796,32 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
     Windows are anchored on the day's FIRST ROW, not on 09:30, so a late open
     or a holiday session measures the same way and the fixtures (which sit
     wherever their clock sits) reach every leaf."""
+    # obs-5: every point is (time, low, high). From the sidecar a point is a
+    # minute's wick; from the diary it is one spot twice. The newest diary spot
+    # rides along after the last completed bar so the live price is never
+    # older than the bars. Which witness was used is stated in the block.
     pts = []
-    for r in rows:
-        sp = _fin(r.get("spot"))
-        t = _ts(r)
-        if sp is not None and t is not None:
-            pts.append((t, sp))
+    measured_from = "scans_every_2_min"
+    if bars:
+        for b in bars:
+            t = _parse_ts(b.get("ts"))
+            lo_b, hi_b = _fin(b.get("low")), _fin(b.get("high"))
+            if t is not None and lo_b is not None and hi_b is not None:
+                pts.append((t, lo_b, hi_b))
+        if pts:
+            measured_from = "1_minute_bars"
+            last_bar = max(p[0] for p in pts)
+            for r in rows:
+                sp = _fin(r.get("spot"))
+                t = _ts(r)
+                if sp is not None and t is not None and t > last_bar:
+                    pts.append((t, sp, sp))
+    if not pts:
+        for r in rows:
+            sp = _fin(r.get("spot"))
+            t = _ts(r)
+            if sp is not None and t is not None:
+                pts.append((t, sp, sp))
     if not pts:
         return None
     pts.sort(key=lambda x: x[0])
@@ -2765,13 +2832,13 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
     depth = (RANGE_BREAK_SIGMA * sig) if sig else None
     t_first = pts[0][0]
     form_start = t_first
-    lo = hi = pts[0][1]
+    lo, hi = pts[0][1], pts[0][2]
     frozen: Optional[dict] = None
     opening: Optional[dict] = None
     breaks: list[dict] = []
-    for t, sp in pts:
+    for t, p_lo, p_hi in pts:
         if frozen is None:
-            lo, hi = min(lo, sp), max(hi, sp)
+            lo, hi = min(lo, p_lo), max(hi, p_hi)
             span = OPENING_RANGE_MIN if opening is None else BOX_FORM_MIN
             if (t - form_start) >= timedelta(minutes=span):
                 frozen = {"low": lo, "high": hi,
@@ -2779,18 +2846,22 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
                 if opening is None:
                     opening = dict(frozen)
             continue
-        if depth is not None and (sp > frozen["high"] + depth
-                                  or sp < frozen["low"] - depth):
-            breaks.append({"at": hhmm(t),
-                           "went": "up" if sp > frozen["high"] else "down",
+        if depth is not None and (p_hi > frozen["high"] + depth
+                                  or p_lo < frozen["low"] - depth):
+            up = (p_hi - frozen["high"]) >= (frozen["low"] - p_lo)
+            breaks.append({"at": hhmm(t), "went": "up" if up else "down",
                            "box_low": round(frozen["low"], 2),
                            "box_high": round(frozen["high"], 2)})
             frozen = None
             form_start = t
-            lo = hi = sp
+            lo, hi = p_lo, p_hi
 
-    spot_now = pts[-1][1]
-    out: dict = {}
+    # the live price: the newest diary spot when there is one, else the last
+    # bar's close-side edge — never a wick pretending to be where price sits
+    live = [(_ts(r), _fin(r.get("spot"))) for r in rows]
+    live = [x for x in live if x[0] is not None and x[1] is not None]
+    spot_now = max(live, key=lambda x: x[0])[1] if live else pts[-1][2]
+    out: dict = {"measured_from": measured_from}
     if opening is not None:
         op = {"low": round(opening["low"], 2), "high": round(opening["high"], 2),
               "formed_over": opening["formed_over"]}
@@ -2822,7 +2893,7 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
     if ps:
         ps["live_spot_is"] = ("inside" if ps["low"] <= spot_now <= ps["high"]
                               else "above" if spot_now > ps["high"] else "below")
-        d_lo, d_hi = min(p for _, p in pts), max(p for _, p in pts)
+        d_lo, d_hi = min(p[1] for p in pts), max(p[2] for p in pts)
         beyond = ("both" if d_hi > ps["high"] and d_lo < ps["low"]
                   else "above" if d_hi > ps["high"]
                   else "below" if d_lo < ps["low"] else None)
@@ -2939,6 +3010,11 @@ def build_scene(row: dict, band: dict, frozen: list,
 
     # the day's own path, which the old design never handed over at all
     path = [s for r in rows if (s := _fin(r.get("spot"))) is not None]
+    # obs-5: the minute-bar sidecar, read once per scene. Its wicks are the
+    # session's true extremes; the 2-minute spots are the fallback and the
+    # block says which it used.
+    bars = minute_bars(now.strftime("%Y-%m-%d"))
+    bars_now = [b for b in bars if (bt := _parse_ts(b.get("ts"))) is not None and bt <= now]
     # gwc/gwp migrated to walls.call[0]/put[0] — same clustering rule, told
     # as a ladder with the second wall behind the first. named_levels went the
     # same way in sr-3: measured over all 923 recorded rows carrying the family,
@@ -3031,6 +3107,13 @@ def build_scene(row: dict, band: dict, frozen: list,
         "spot_feed": meta.get("spot_source"),
         "options_book": prune(book) or None,
         "open_interest": prune(oi) or None,
+        # obs-5: the sidecar's own clock — how many completed minutes it holds
+        # and how old the newest is. Absent means no bars file for the day.
+        "minute_bars": (prune({
+            "bars_so_far_today": len(bars_now),
+            "last_bar_at": bars_now[-1]["ts"],
+            "age_min": _age_min(_parse_ts(bars_now[-1]["ts"]), now)})
+            if bars_now else None),
     })
 
     # sr-4: the day-scoped calendar. Until now the model read a Monday 4-dte
@@ -3145,8 +3228,14 @@ def build_scene(row: dict, band: dict, frozen: list,
                                             if spot is not None and book_spot is not None and sig
                                             else None),
              "vs_prior_close_pct": vs_prior,
-             "session_low": min(path) if path else None,
-             "session_high": max(path) if path else None,
+             # obs-5: the wicks win when the sidecar has them; the live spot is
+             # folded in so a print newer than the last completed bar counts
+             "session_low": (min([b["low"] for b in bars_now] + path) if bars_now
+                             else (min(path) if path else None)),
+             "session_high": (max([b["high"] for b in bars_now] + path) if bars_now
+                              else (max(path) if path else None)),
+             "extremes_from": ("1_minute_bars" if bars_now else
+                               ("scans_every_2_min" if path else None)),
              "moved_last_30min_sigma": moved_30m}
     vw = sd_live(row.get("vwap"))
     if vw is not None:
@@ -3229,7 +3318,7 @@ def build_scene(row: dict, band: dict, frozen: list,
     # what the last three bugs all said about themselves.
     ctx = session_context(scene, rows, now) or {}
     # obs-4: the day's boxes — a fact about time, so it rides in `context`
-    rb = ranges_block(rows, now, sig, now.strftime("%Y-%m-%d"))
+    rb = ranges_block(rows, now, sig, now.strftime("%Y-%m-%d"), bars=bars_now)
     if rb:
         ctx["ranges"] = rb
     if since_last_read:

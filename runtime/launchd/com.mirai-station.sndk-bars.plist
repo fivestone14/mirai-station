@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.sndk-bars</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk-bars.sh</string>
+  </array>
+  <!-- SNDK minute-bar SIDECAR (09-02): every 60 s during RTH (+12 min after the
+       close) fetch today's 1-min session bars in one call and append the
+       completed minutes not yet on disk to state/sndk_bars/{date}.jsonl. Its own
+       clock and process on purpose: the scanner's absences (8.4% of session
+       minutes, in whole-hour blocks) were the largest measured loss in the
+       price record, and a job that shares the scanner's fate cannot fill them.
+       A run after any gap writes the gap; `sndk_bars.py --day` backfills a past
+       session by hand. launchd will not run two copies at once. -->
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.sndk-bars.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.sndk-bars.err</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

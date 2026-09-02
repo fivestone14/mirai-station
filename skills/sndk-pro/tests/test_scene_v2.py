@@ -824,6 +824,18 @@ _CALLS_ONLY = ([[1240, 8.0], [1245, 7.0], [1300, 6.5]]
                + [[k, 0.1] for k in range(1105, 1300, 5) if k not in (1240, 1245)])
 
 
+def _scene_with_bars(tmp_path):
+    import sndk_bars as SB
+    rows = [rich_row(ts=T0 - timedelta(minutes=(40 - i) * 2), spot=1200.0 + (i % 4))
+            for i in range(40)]
+    t0 = T0 - timedelta(minutes=80)
+    bars = [{"ts": (t0 + timedelta(minutes=i)).isoformat(), "open": 1200.0,
+             "high": 1206.0 if i == 50 else 1203.0, "low": 1195.0, "close": 1201.0,
+             "volume": 10.0} for i in range(80)]
+    SB.write_day(T0.date().isoformat(), bars, T0)
+    return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+
+
 def _every_scene_shape(tmp_path):
     """Scenes covering every conditional leaf the builder can write.
 
@@ -904,6 +916,9 @@ def _every_scene_shape(tmp_path):
                            {"ts": (T0 - timedelta(minutes=30)).isoformat(),
                             "gate": SR.state_for_next_wake(rich_row(nbs=_CALLS_ONLY))},
                            "heartbeat", False, T0)),
+        # obs-5: a scene with the minute-bar sidecar present — extremes and
+        # boxes from wicks, data_sources.minute_bars, the labels saying so
+        _scene_with_bars(tmp_path),
         # a scene carrying Python-found candidates: the gamma sign differs
         # between two distinct books, which is `changed_this_scan`
         scene([rich_row(ts=T0 - timedelta(minutes=4), gamma_sign="negative",

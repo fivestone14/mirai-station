@@ -23,6 +23,10 @@ PLISTS=(
   # all — the installer enumerates explicitly, so a plist that is written but
   # never named here is a watchdog that was built and never hired.
   "com.mirai-station.sndk-deadman.plist"
+  # The SNDK minute-bar sidecar (09-02): its own job on its own clock, so the
+  # price record survives a stuck scanner. Named here for the same reason the
+  # deadman is — an unlisted plist is a job that was built and never hired.
+  "com.mirai-station.sndk-bars.plist"
   "com.mirai-station.voice.plist"
 )
 
