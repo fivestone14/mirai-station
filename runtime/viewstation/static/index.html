@@ -14550,9 +14550,9 @@ const PAYLOAD = {
       ['Clean and price',    'Each option\u2019s implied volatility is re-solved against the live price.',                        'sndk_feed'],
       ['Build the map',      'The book becomes one snapshot: gamma by strike, walls, the flip, the expected move.',              'sndk_views'],
       ['Record',             'Every 120 seconds the snapshot is written to the diary; a sidecar job keeps the day\u2019s one-minute price bars beside it.', 'state/sndk_reversion \u00b7 state/sndk_bars'],
-      ['Assemble the scene', 'When the tape has moved enough, the newest snapshot becomes this JSON.',                           'sndk_read \u00b7 build_scene'],
-      ['Ask the model',      'Claude reads the cached rulebook plus this JSON and says, in plain words, what stands out and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed.','claude -p'],
-      ['Use the observation','What it noticed lands on the chart card, the voice desk and the memory store.',                    'reading'],
+      ['Assemble the scene', 'Every scan: the newest snapshot, today\u2019s earlier rows, the minute bars, the prior sessions and what changed since the model\u2019s last look become this JSON.', 'sndk_read \u00b7 build_scene'],
+      ['Ask the model',      'Only when something changed: Claude reads the standing rulebook plus this JSON and says, in plain words, what stands out and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed. Then every number and level is checked against this JSON and forecast language is deleted before anyone sees it.','claude -p \u00b7 guards'],
+      ['Use the observation','What it noticed lands on the chart card, the phone glance, the voice desk and \u2014 when the model actually spoke \u2014 the memory store.', 'reading'],
     ];
     el.innerHTML=`<div class="cap">How this JSON comes to be \u00b7 data source \u2192 model answer</div>`+STAGES.map((x,i)=>{
       const gated=i===6;   // "Ask the model" \u2014 the only step behind the wake gate

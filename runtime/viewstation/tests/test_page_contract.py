@@ -286,6 +286,10 @@ def test_the_payload_tab_carries_the_schema_card():
         assert rel.split("/")[-1].replace(".plist", "") in PAGE, rel
     assert "ThetaData supplies this week" not in PAGE       # the SNDK chain is the market-data server's
     assert "state/sndk_bars" in PAGE
+    # 09-02 verification pass (three agents against the code): the packet is built every
+    # scan, the guards are named
+    assert "Every scan: the newest snapshot" in PAGE
+    assert "forecast language is deleted before anyone sees it" in PAGE
 
 
 def test_the_payload_tab_carries_the_diary_view():
