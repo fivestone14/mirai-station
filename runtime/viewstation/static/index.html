@@ -183,16 +183,22 @@
   .rail .spacer{flex:1}
   /* the two instrument groups (09-02): a small header with a chevron, its tabs beneath it
      only while open. The header is a label with a state, not a tab — it never turns iris. */
+  /* round 2 (09-02): the header is the SIZE of a tab — same padding, the ticker set large in
+     the slot a tab's icon occupies, the chevron beneath it where a tab's label sits — so the
+     rail reads as one column of equal buttons, two of which are section heads. */
   .rail .grp{display:flex; flex-direction:column; gap:4px}
   .rail .grp+.grp{margin-top:6px; padding-top:8px; border-top:1px solid var(--hairline)}
-  .grp-hd{appearance:none; border:0; background:transparent; cursor:pointer; color:var(--ink-dim);
-    display:flex; align-items:center; justify-content:center; gap:5px; padding:6px 4px; border-radius:8px;
-    font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; font-weight:700}
+  .grp-hd{appearance:none; border:0; background:transparent; cursor:pointer; color:var(--ink-dim); width:100%;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:14px 6px 12px; border-radius:12px;
+    font-family:var(--sans); letter-spacing:.1em; text-transform:uppercase; font-weight:800; position:relative;
+    transition:color .18s ease, background .18s ease}
+  .grp-hd .gname{font-size:16px; line-height:29px}
   .grp-hd:hover{color:var(--ink); background:var(--surface-3)}
   .grp-hd:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
-  .grp-hd .chev{display:inline-block; font-size:14px; line-height:1; color:var(--ink-faint); transition:transform .18s ease}
+  .grp-hd .chev{display:inline-block; font-size:13px; line-height:1; color:var(--ink-faint); transition:transform .18s ease}
   .grp.open .grp-hd .chev{transform:rotate(90deg)}
   .grp.has-active .grp-hd{color:var(--iris)}
+  .grp.has-active .grp-hd .chev{color:var(--iris)}
   .grp-tabs{display:none; flex-direction:column; gap:4px}
   .grp.open .grp-tabs{display:flex}
   .rail .glyph{display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--ink-faint); font-size:8.5px; letter-spacing:.12em}
