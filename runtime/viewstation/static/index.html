@@ -15188,6 +15188,10 @@ syncRailGroups();
 // ---------- boot ----------
 renderLayers(); renderDict(); renderDiary(false); renderHeads(); startLive(); loadSiege(); loadPlaneLedgers();
 SNDK.boot();   // SNDK-PRO tab — visibility listener only; pollers start on first open
+// TEMPORARY (09-02, user-requested): the station opens on the SNDK map instead of the SPX map.
+// One constant; set it back to 'map' (or delete these two lines) to restore the SPX default.
+const DEFAULT_TAB='sndk';
+if(DEFAULT_TAB!=='map') switchTab(DEFAULT_TAB);
 const _modal=document.getElementById('modal');
 _modal.addEventListener('click', e=>{ if(e.target===_modal) closeModal(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });

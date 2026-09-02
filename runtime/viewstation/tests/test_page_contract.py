@@ -323,3 +323,10 @@ def test_the_rail_is_two_instrument_groups():
     spx = PAGE.index('data-grp="spx"'); sndk = PAGE.index('data-grp="sndk"')
     assert spx < PAGE.index('data-tab="dict"') < sndk < PAGE.index('data-tab="payload"')
     assert "SPX·0DTE</span>" not in PAGE                 # the footer glyph no longer names one instrument
+
+
+def test_the_station_opens_on_sndk_for_now():
+    """09-02, TEMPORARY by the user's word: the page boots into the SNDK map. One constant
+    carries it so restoring the SPX default is a one-word change."""
+    assert "const DEFAULT_TAB='sndk';" in PAGE
+    assert "if(DEFAULT_TAB!=='map') switchTab(DEFAULT_TAB);" in PAGE
