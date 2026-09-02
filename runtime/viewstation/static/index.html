@@ -14520,25 +14520,25 @@ const PAYLOAD = {
     const n=(v,d)=>typeof v==='number'?v:d;
     const gap=n(g.min_gap_min,10), cap=n(g.daily_cap,30), stale=n(g.stale_book_min,6),
           beat=n(g.heartbeat_min,60), px=n(g.spot_sigma,0.20), iv=n(g.iv_pp,3.0),
-          fs=n(g.flip_sigma,0.50), cb=n(g.confirm_books,2);
+          fs=n(g.flip_sigma,0.50), cb=n(g.confirm_books,2), ivb=n(g.iv_median_books,5);
     const ul=a=>'<ul>'+a.map(x=>`<li>${x}</li>`).join('')+'</ul>';
     return `<div class="gate" role="tooltip">`
       +`<b>What has to be true first</b>`
       +`<i>Most scans never reach this step. All of these must hold:</i>`
       +ul(['The market is open.',
            `At least ${gap} minutes since the model last looked.`,
-           `Fewer than ${cap} readings so far today — a runaway guard, not a budget.`,
+           `Fewer than ${cap} model calls so far today — a runaway guard, not a budget.`,
            `The newest option BOOK is under ${stale} minutes old on its own clock; a frozen board is never narrated.`,
            'Reasoning is switched on.'])
       +`<i>…and at least one thing has genuinely changed:</i>`
       +ul([`Price has run about ${px} of a typical day’s move since that last look.`,
-           `Price crossed the gamma flip, or one of the walls, as they stood at that last look — a wall MOVING is not an event, because on this tape walls mostly shift to follow price.`,
+           `Price crossed the gamma flip (by a hair more than noise), or one of the walls, as they stood at that last look — a wall MOVING is not an event, because on this tape walls mostly shift to follow price.`,
            `The gamma sign or the strike pulling hardest changed, and stayed changed for ${cb} consecutive option books — one book on its own reverses about a third of the time.`,
-           `Implied vol moved ${iv} points on a 5-book median — the raw print is mostly sensor noise.`,
+           `Implied vol moved ${iv} points on a ${ivb}-book median — the raw print is mostly sensor noise.`,
            `The gamma flip itself relocated by ${fs} of a typical day’s move.`,
            `Nothing at all for ${beat} minutes — a heartbeat read.`,
            `Or it is simply the first look of the session — nothing to compare against yet.`])
-      +`<em>If not, the scene is still built and filed and the last reading carries forward — no call is spent.</em>`
+      +`<em>If not, the scene is still built and filed and the last reading carries forward — no call is spent. Outside market hours nothing is filed at all.</em>`
       +`</div>`;
   },
   paintPipe(){

@@ -294,6 +294,7 @@ def test_the_payload_tab_carries_the_schema_card():
     assert "the scanner goes quiet (a silent reader is not yet watched)" in PAGE
     assert "the reading model has no tools and cannot reach it" in PAGE
     assert "the eight per-strike arrays" in PAGE
+    assert "ivb=n(g.iv_median_books,5)" in PAGE
 
 
 def test_the_payload_tab_carries_the_diary_view():

@@ -661,6 +661,9 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
             "iv_pp": R.WAKE_IV_PP,
             "flip_sigma": R.WAKE_FLIP_SIGMA,
             "confirm_books": R.WAKE_CONFIRM_BOOKS,
+            # 09-02: the two numbers the gate card used to carry as literals
+            "iv_median_books": R.WAKE_IV_MEDIAN_BOOKS,
+            "flip_cross_sigma": R.WAKE_FLIP_CROSS_SIGMA,
             # sr-7 freshness ceilings, read off the reader's own constants for
             # the same reason as every gate above: the tab must not be able to
             # quote a ceiling the reader has stopped enforcing.

@@ -238,6 +238,8 @@ WAKE_IV_PP = 3.0            # implied vol moved this far on the SMOOTHED series.
                             # the SMOOTHED series is 2.08pp, so a 2.0 threshold
                             # sits underneath the noise floor and fires on the
                             # sensor. Measured, it was 36% of all wakes.
+WAKE_FLIP_CROSS_SIGMA = 0.02  # a flip CROSSING must clear this much on the far side —
+                              # a hair more than the 2-minute wobble — or it is noise
 WAKE_FLIP_SIGMA = 0.50      # the flip level itself relocated this far. The p95
                             # of a one-step flip move is 0.56 sigma, so anything
                             # under ~0.5 is inside the ordinary wander.
@@ -1159,7 +1161,7 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     if spot is not None and spoke_spot is not None:
         f = value_at_last_read(prev, "gamma_flip")
         if (f is not None and sig and (spot - f) * (spoke_spot - f) < 0
-                and abs(spot - f) / sig > 0.02):
+                and abs(spot - f) / sig > WAKE_FLIP_CROSS_SIGMA):
             return "crossed flip"
         for k, word in (("call_wall", "call wall"), ("put_wall", "put wall")):
             w = value_at_last_read(prev, k)
