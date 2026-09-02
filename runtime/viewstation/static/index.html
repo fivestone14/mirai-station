@@ -181,6 +181,20 @@
   .tab.active::before{content:""; position:absolute; left:0; top:16px; bottom:16px; width:2.5px; border-radius:2px; background:var(--iris)}
   .tab:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
   .rail .spacer{flex:1}
+  /* the two instrument groups (09-02): a small header with a chevron, its tabs beneath it
+     only while open. The header is a label with a state, not a tab — it never turns iris. */
+  .rail .grp{display:flex; flex-direction:column; gap:4px}
+  .rail .grp+.grp{margin-top:6px; padding-top:8px; border-top:1px solid var(--hairline)}
+  .grp-hd{appearance:none; border:0; background:transparent; cursor:pointer; color:var(--ink-dim);
+    display:flex; align-items:center; justify-content:center; gap:5px; padding:6px 4px; border-radius:8px;
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; font-weight:700}
+  .grp-hd:hover{color:var(--ink); background:var(--surface-3)}
+  .grp-hd:focus-visible{outline:2px solid var(--iris); outline-offset:2px}
+  .grp-hd .chev{display:inline-block; font-size:14px; line-height:1; color:var(--ink-faint); transition:transform .18s ease}
+  .grp.open .grp-hd .chev{transform:rotate(90deg)}
+  .grp.has-active .grp-hd{color:var(--iris)}
+  .grp-tabs{display:none; flex-direction:column; gap:4px}
+  .grp.open .grp-tabs{display:flex}
   .rail .glyph{display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--ink-faint); font-size:8.5px; letter-spacing:.12em}
 
   .stagewrap{position:relative; min-height:0; overflow:hidden}
@@ -1531,6 +1545,8 @@
     .screen{border-radius:0; border:0}
     .body{grid-template-columns:1fr; grid-template-rows:1fr auto}
     .rail{flex-direction:row; border-right:0; border-top:1px solid var(--hairline); order:2; padding:8px 6px; justify-content:space-around}
+    .rail .grp{flex-direction:row; align-items:center} .rail .grp+.grp{margin:0 0 0 6px; padding:0 0 0 8px; border-top:0; border-left:1px solid var(--hairline)}
+    .grp-tabs{flex-direction:row}
     .rail .spacer,.rail .glyph{display:none}
     .tab{flex:1}
     .tab.active::before{left:16px; right:16px; top:0; bottom:auto; width:auto; height:2.5px}
@@ -2466,6 +2482,15 @@
 
     <div class="body">
       <nav class="rail" id="rail">
+        <!-- 09-02: the rail is two GROUPS, SPX and SNDK, each a header that expands its own
+             tabs — eight flat tabs read as one list and it was hard to tell which instrument a
+             tab belonged to. The group holding the active tab is always open; the other opens
+             on a click and remembers the last tab it showed. -->
+        <div class="grp open" data-grp="spx">
+          <button type="button" class="grp-hd" aria-expanded="true" aria-controls="grp-spx" title="S&amp;P 500 — the index station">
+            <span class="gname">SPX</span><span class="chev" aria-hidden="true">›</span>
+          </button>
+          <div class="grp-tabs" id="grp-spx">
         <button class="tab active" data-tab="map" aria-current="page">
           <svg viewBox="0 0 24 24"><path d="M4 18h16M4 6h16"/><path d="M8 6v12M16 6v12"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
           Map
@@ -2490,18 +2515,27 @@
           <svg viewBox="0 0 24 24"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v20H7.5A2.5 2.5 0 0 1 5 19.5z"/><path d="M5 19.5A2.5 2.5 0 0 1 7.5 17H19"/><path d="M9.5 7.5h5.5M9.5 10.5h4"/></svg>
           Dictionary
         </button>
+          </div>
+        </div>
+        <div class="grp" data-grp="sndk">
+          <button type="button" class="grp-hd" aria-expanded="false" aria-controls="grp-sndk" title="SanDisk — the single-stock station">
+            <span class="gname">SNDK</span><span class="chev" aria-hidden="true">›</span>
+          </button>
+          <div class="grp-tabs" id="grp-sndk">
         <button class="tab" data-tab="sndk">
           <svg viewBox="0 0 24 24"><path d="M12 4v16"/><path d="M12 7.5h6M12 15.5h4"/><path d="M12 11.5H5M12 19.5H8"/><circle cx="12" cy="4" r="1.2" fill="currentColor" stroke="none"/></svg>
-          SNDK
+          Map
         </button>
         <button class="tab" data-tab="payload" id="tab-payload" title="SNDK Payload — the scene handed to the model" aria-label="SNDK Payload">
           <svg viewBox="0 0 24 24"><path d="M9.5 4C7.5 4 7.8 7 7.8 8.6 7.8 10.2 6.8 12 5 12c1.8 0 2.8 1.8 2.8 3.4 0 1.6-.3 4.6 1.7 4.6"/><path d="M14.5 4c2 0 1.7 3 1.7 4.6 0 1.6 1 3.4 2.8 3.4-1.8 0-2.8 1.8-2.8 3.4 0 1.6.3 4.6-1.7 4.6"/></svg>
-          SNDK<span class="snk-beta">payload</span>
+          Payload
         </button>
+          </div>
+        </div>
         <div class="spacer"></div>
         <div class="glyph">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>
-          <span>SPX·0DTE</span>
+          <span>Station</span>
         </div>
       </nav>
 
@@ -15101,6 +15135,7 @@ function switchTab(name){
     t.classList.toggle("active", on);
     if(on) t.setAttribute("aria-current","page"); else t.removeAttribute("aria-current"); });
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active", p.dataset.panel===name));
+  if(typeof syncRailGroups==='function') syncRailGroups();
   if(name==='replay'){ if(!RP.els) initReplay();
     else requestAnimationFrame(()=>{ rpSetView(RP.view); if(RP.view==='chart'&&RP.path){ rpBuild(); rpPaint(); } }); }
   if(name==='map') requestAnimationFrame(()=>{ buildMap(); paintMap(); });
@@ -15112,7 +15147,37 @@ function switchTab(name){
   if(name==='payload') requestAnimationFrame(()=>PAYLOAD.show());
   else if(PAYLOAD.mounted) PAYLOAD.hide();
 }
-$("#rail").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b) switchTab(b.dataset.tab); });
+// the rail's two groups (09-02) — an ACCORDION. Exactly one group is open: the one holding
+// the active tab. A click on the other group's header switches to the tab it last showed
+// (its first tab until then), which opens it and closes this one; a click on the open
+// group's header does nothing, because a rail with no tabs showing is a rail with nothing
+// to click. Only "last tab per group" is remembered.
+function setRailGroup(name, open){
+  const g=document.querySelector(`.rail .grp[data-grp="${name}"]`); if(!g) return;
+  g.classList.toggle('open', !!open);
+  const hd=g.querySelector('.grp-hd'); if(hd) hd.setAttribute('aria-expanded', open?'true':'false');
+}
+function syncRailGroups(){
+  document.querySelectorAll('.rail .grp').forEach(g=>{
+    const on=g.querySelector('.tab.active');
+    g.classList.toggle('has-active', !!on);
+    setRailGroup(g.dataset.grp, !!on);
+    if(on){ try{ localStorage.setItem('rail.last.'+g.dataset.grp, on.dataset.tab); }catch(e){} }
+  });
+}
+$("#rail").addEventListener("click", e=>{
+  const hd=e.target.closest(".grp-hd");
+  if(hd){
+    const g=hd.closest('.grp'), name=g.dataset.grp;
+    if(g.querySelector('.tab.active')) return;        // already the open group
+    let last=null; try{ last=localStorage.getItem('rail.last.'+name); }catch(e){}
+    const t=(last&&g.querySelector(`.tab[data-tab="${last}"]`))||g.querySelector('.tab');
+    if(t) switchTab(t.dataset.tab);
+    return;
+  }
+  const b=e.target.closest(".tab"); if(b) switchTab(b.dataset.tab);
+});
+syncRailGroups();
 
 // ---------- boot ----------
 renderLayers(); renderDict(); renderDiary(false); renderHeads(); startLive(); loadSiege(); loadPlaneLedgers();

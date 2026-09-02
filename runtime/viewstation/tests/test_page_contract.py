@@ -305,4 +305,21 @@ def test_sndk_pro_is_no_longer_labelled_beta():
     the `snk-beta` class survives only as the small tag style the Payload rail item borrows."""
     assert 'SNDK<span class="snk-beta">beta</span>' not in PAGE
     assert "β BETA" not in PAGE and "is a beta surface" not in PAGE
-    assert 'SNDK<span class="snk-beta">payload</span>' in PAGE
+    assert 'data-tab="payload"' in PAGE
+
+
+def test_the_rail_is_two_instrument_groups():
+    """09-02: eight flat tabs read as one list and it was hard to tell SPX from SNDK. The rail
+    is two groups with a header each; the group holding the active tab is always open, a
+    header click opens the other and shows its last tab. Every tab still exists, inside its
+    group."""
+    assert 'data-grp="spx"' in PAGE and 'data-grp="sndk"' in PAGE
+    assert PAGE.count('class="grp-hd"') == 2
+    assert "function setRailGroup(" in PAGE and "function syncRailGroups(" in PAGE
+    assert "setRailGroup(g.dataset.grp, !!on);" in PAGE          # an accordion: one group open, the active one
+    assert "\\u203a" not in PAGE                            # the chevron is the character, not an escape
+    for tab in ("map", "layers", "diary", "heads", "replay", "dict", "sndk", "payload"):
+        assert f'data-tab="{tab}"' in PAGE, tab
+    spx = PAGE.index('data-grp="spx"'); sndk = PAGE.index('data-grp="sndk"')
+    assert spx < PAGE.index('data-tab="dict"') < sndk < PAGE.index('data-tab="payload"')
+    assert "SPX·0DTE</span>" not in PAGE                 # the footer glyph no longer names one instrument
