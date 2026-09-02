@@ -290,6 +290,10 @@ def test_the_payload_tab_carries_the_schema_card():
     # scan, the guards are named
     assert "Every scan: the newest snapshot" in PAGE
     assert "forecast language is deleted before anyone sees it" in PAGE
+    # ...the pager watches the scanner only, memory is not the reading model's to search
+    assert "the scanner goes quiet (a silent reader is not yet watched)" in PAGE
+    assert "the reading model has no tools and cannot reach it" in PAGE
+    assert "the eight per-strike arrays" in PAGE
 
 
 def test_the_payload_tab_carries_the_diary_view():

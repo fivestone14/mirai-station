@@ -11512,32 +11512,32 @@ const _SNKI_KEY=[
 const _PL_SCHEMA=[
   {row:'Sources', note:'What comes in, from where', boxes:[
     ['Live price',      'Schwab quote',                          'The current SanDisk price, fetched on every scan. No quote, no row.'],
-    ['Option book',     'market-data server · sndk_feed.py',     'This week\u2019s option chain: every strike\u2019s open interest, volume, bid and ask. Re-priced against the live quote; cached 240 s on disk so only every other scan pulls it.'],
-    ['Minute bars',     'Schwab price history',                  'Today\u2019s one-minute open, high, low, close and volume. Fetched by the scanner for VWAP and, since 09-02, kept by the sidecar.'],
+    ['Option book',     'market-data server · sndk_feed.py',     'The front one or two weekly expiries: open interest, volume, bid and ask for strikes within a band around the live price (about 8% either side, wider when vol is high). Re-priced against the live quote; cached 240 s on disk so only every other scan pulls it.'],
+    ['Minute bars',     'Schwab price history',                  'Today\u2019s one-minute open, high, low, close and volume. Fetched by the scanner for VWAP and the expected-move split and, since 09-02, kept by the sidecar.'],
   ]},
   {row:'Jobs', note:'Two clocks, two processes — neither waits on the other', boxes:[
     ['Scanner · every 2 min',    'sndk_hunter.py \u2192 sndk_views.py',   'Turns the book into one snapshot: gamma by strike, the heaviest strike, the walls, the flip, the expected move, VWAP. Appends ONE row to the diary.', 'launchd com.mirai-station.sndk'],
     ['Bar sidecar · every 1 min','sndk_bars.py',                            'Appends every COMPLETED minute bar not yet on disk. Self-healing: the whole session comes back in one call, so a run after a gap writes the gap; --day backfills a past session.', 'launchd com.mirai-station.sndk-bars'],
   ]},
   {row:'Records', note:'Append-only files, one per day', boxes:[
-    ['Diary',        'state/sndk_reversion/<day>.jsonl', 'One row per scan (~190 a day): price, sigma, walls, flip, the seven per-strike arrays, the book\u2019s own clock. The raw record everything downstream reads.'],
+    ['Diary',        'state/sndk_reversion/<day>.jsonl', 'One row per scan (~190 a day): price, sigma, walls, flip, the eight per-strike arrays, the book\u2019s own clock. The raw record everything downstream reads.'],
     ['Bars',         'state/sndk_bars/<day>.jsonl',      'One line per completed minute (390 a day). The witness for highs, lows and box breaks; 2-minute scans miss one break in three.'],
     ['Book cache',   'state/sndk_gex/chain_cache.json',  'The last chain pull, 240 s fresh. The off scan re-prices it at the live quote instead of pulling again.'],
   ]},
   {row:'Reader', note:'sndk_read.py · every 2 min · launchd com.mirai-station.sndk-read', boxes:[
-    ['1 · Wake gate',     'should_wake()',        'Decides whether this scan is worth a model call: price ran 0.20\u03c3, crossed a wall or the flip as frozen at the last reading, the heaviest strike or gamma sign changed and held two books, IV moved 3 points, or an hour passed. Ten-minute floor, 30 calls a day ceiling, stale book never narrated.'],
-    ['2 · Scene builder', 'build_scene()',        'The data packet, all facts and no verdicts: price and clocks, the ruler, regime, magnet, walls, structure (bands, air, weight above), momentum, dealer positioning, context — how today ranks, what changed since the last book, the day\u2019s boxes from the bars, and the frame since the model\u2019s own last reading.'],
-    ['3 · Doctrine + model','_DOCTRINE \u00b7 claude-sonnet-5', 'A fixed rulebook (prompt-cached) plus the packet. The model returns {quiet, read, points}: what it NOTICED and which prices are worth a look. Never a direction \u2014 that call measured worthless and was removed.'],
-    ['4 · Guards',        'check_reading_against_scene()', 'Four checks before anyone sees a word: banned words and all their inflections, every number must exist in the packet, an above/under claim must agree with the live price, and a second small model (haiku) deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
+    ['1 · Wake gate',     'should_wake()',        'Decides whether this scan is worth a model call: the day\u2019s first look, price ran 0.20\u03c3, crossed a wall or the flip as frozen at the last reading, the heaviest strike or gamma sign changed and held two books, IV moved 3 points on a five-book median, the flip level itself moved half a sigma, or an hour passed. Ten-minute floor, 30 calls a day ceiling, stale book never narrated.'],
+    ['2 · Scene builder', 'build_scene()',        'The data packet, all facts and no verdicts: price and clocks, the ruler and scale, regime, magnet, breadth, walls, structure (bands, air, weight above), momentum, dealer positioning, history flags, the frozen list, and context — how today ranks, what changed since the last book, the day\u2019s boxes from the bars, and the frame since the model\u2019s own last reading.'],
+    ['3 · Doctrine + model','_DOCTRINE \u00b7 claude-sonnet-5', 'A standing rulebook (assumed prompt-cached) plus the packet. The model returns {quiet, read, points}: what it NOTICED and which prices are worth a look. Never a direction \u2014 that call measured worthless and was removed.'],
+    ['4 · Guards',        'check_reading_against_scene()', 'Five checks before anyone sees a word: banned words and all their inflections, every number must exist in the packet, a pointed-at level must be a price on the board, an above/under claim must agree with the live price, and a second small model (haiku, fail-open) deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
   ]},
   {row:'Delivery', note:'Where the reading lands', boxes:[
-    ['Read row',      'state/sndk_reads/<day>.jsonl',        'One row per scan: the reading (or the last one carried forward), why it woke, the frozen gate the next wake compares against, what the guards dropped.'],
-    ['Memory',        'sndk_rag.py \u2192 state/sndk_rag/',  'One slice per completed reading: the model\u2019s sentence plus the numbers true that minute. Searchable by the model and by the Memory view; never injected unasked.'],
+    ['Read row',      'state/sndk_reads/<day>.jsonl',        'One row per reader tick, about one a scan: the reading (or the last one carried forward), why it woke, the frozen gate the next wake compares against, what the guards dropped.'],
+    ['Memory',        'sndk_rag.py \u2192 state/sndk_rag/',  'One slice per completed reading: the model\u2019s sentence plus the numbers true that minute. Searchable by the voice desk and the Memory view; the reading model has no tools and cannot reach it, and nothing is ever injected into a reading.'],
     ['Dashboard',     'runtime/viewstation/ \u2192 index.html', 'The SNDK tab: chart, drawer strip, the pop-up reading card, this Payload tab. The server rebuilds the exact packet through the reader\u2019s own code.'],
-    ['Phone · voice · pager', 'static/m/ · mirai-voice · sndk_deadman.py', 'The glance page shows the one-line read; the voice desk quotes it as an observation; the dead-man pages the phone only when the scanner or reader goes quiet.'],
+    ['Phone · voice · pager', 'static/m/ · mirai-voice · sndk_deadman.py', 'The glance page shows the one-line read; the voice desk quotes it as an observation; the dead-man pages the phone when the scanner goes quiet (a silent reader is not yet watched).'],
   ]},
   {row:'Measured and left out', note:'Deliberately absent — the record says why', boxes:[
-    ['The direction call', 'removed obs-1 \u00b7 arrow removed obs-3', '391 forecasts measured at zero forward value; the deterministic arrow pointed at the nearest round hundred 94% of the time.'],
+    ['The direction call', 'removed obs-1 \u00b7 arrow removed obs-3', '391 forecasts measured at zero forward value; the deterministic arrow pointed at the nearest round hundred on 94% of 51 episodes.'],
     ['Crossings and approaches', 'studied 09-02, not built', 'A crossing is a $2 event at a $2 noise floor; what follows one matches an imaginary line. The frame reports crossings as facts; nothing predicts from them.'],
     ['Attraction and overpowering walls', 'studied 09-02, not built', 'Price spends no more time inside a band than inside a random band, and a dominant strike holds no better than a line at the same distance. The structure block says where the weight is, never what price does about it.'],
   ]},
