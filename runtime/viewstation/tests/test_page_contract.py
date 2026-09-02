@@ -265,3 +265,22 @@ def test_the_read_pops_in_the_headers_air():
     assert "openPop(on){" in PAGE and ".snk-pop.open{height:auto!important" in PAGE   # click = drawer-style overlay
     assert "el.classList.toggle('clip'" in PAGE and ".snk-pop.clip .pb{-webkit-mask-image" in PAGE   # at rest it fades, never scrolls
     assert 'class="lead"' in PAGE and "@keyframes snkPopGlow" in PAGE and "--pop-hue:var(--iris)" in PAGE   # round 2: leads, glows, wears its hue
+
+
+def test_the_payload_tab_carries_the_schema_card():
+    """09-02: a Schema button on the Payload tab opens one card drawing the whole SNDK-PRO
+    pipeline — every file and what it does in plain words. The content is DATA (_PL_SCHEMA)
+    so this test can pin the file names it cites against the tree, and the strip beside it
+    no longer credits a vendor the SNDK chain never came from."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[3]
+    assert 'id="pl-schema"' in PAGE and "function openPlSchemaModal(" in PAGE
+    assert "const _PL_SCHEMA=[" in PAGE and ".modal-card.plsch{" in PAGE
+    for rel in ("skills/sndk-pro/sndk_hunter.py", "skills/sndk-pro/sndk_views.py",
+                "skills/sndk-pro/sndk_bars.py", "skills/sndk-pro/sndk_read.py",
+                "skills/sndk-pro/sndk_rag.py", "runtime/watch/intraday/sndk_deadman.py",
+                "runtime/launchd/com.mirai-station.sndk-bars.plist"):
+        assert (root / rel).exists(), rel
+        assert rel.split("/")[-1].replace(".plist", "") in PAGE, rel
+    assert "ThetaData supplies this week" not in PAGE       # the SNDK chain is the market-data server's
+    assert "state/sndk_bars" in PAGE

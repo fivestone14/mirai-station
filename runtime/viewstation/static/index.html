@@ -2193,6 +2193,24 @@
      side the model took — so a scroll reads as a day unfolding rather than as 27
      unrelated cards. Everything a read knew is shown as one compact inset under its
      sentence; the badge on the right says what woke the model, in plain words. ---- */
+  /* ---- the Schema card (09-02): rows of boxes, arrows between rows, one column on a narrow screen ---- */
+  .modal-card.plsch{width:min(1180px,96vw)}
+  .plsch-body{padding:14px 18px 18px}
+  .plsch-cap{font-size:12.5px; color:var(--ink-dim); line-height:1.5; margin:0 0 12px}
+  .plsch-row header{display:flex; align-items:baseline; gap:10px; margin:0 0 8px}
+  .plsch-row header b{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--iris)}
+  .plsch-row header span{font-size:12px; color:var(--ink-faint)}
+  .plsch-row.out header b{color:var(--ink-faint)}
+  .plsch-boxes{display:grid; grid-template-columns:repeat(var(--n,3), minmax(0,1fr)); gap:10px}
+  @media (max-width:900px){ .plsch-boxes{grid-template-columns:1fr} }
+  .plsch-box{display:flex; flex-direction:column; gap:4px; padding:10px 12px 11px; border:1px solid var(--hairline-2); border-radius:10px;
+    background:var(--surface-2); min-width:0}
+  .plsch-row.out .plsch-box{border-style:dashed; opacity:.85}
+  .plsch-box b{font-size:13px; color:var(--ink)}
+  .plsch-box code{font-family:var(--mono); font-size:11px; color:var(--lantern); overflow-wrap:anywhere}
+  .plsch-box p{margin:2px 0 0; font-size:12px; line-height:1.45; color:var(--ink-dim)}
+  .plsch-box small{font-family:var(--mono); font-size:10px; color:var(--ink-faint); letter-spacing:.04em}
+  .plsch-arrow{text-align:center; color:var(--ink-faint); font-size:12px; margin:6px 0 10px}
   .pl-seg{display:inline-flex; border:1px solid var(--hairline-2); border-radius:999px; overflow:hidden; background:var(--surface-3)}
   .pl-seg button{appearance:none; border:0; background:transparent; color:var(--ink-dim); font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em; padding:7px 14px; cursor:pointer}
   .pl-seg button.on{background:var(--iris-wash); color:var(--iris)}
@@ -11418,6 +11436,65 @@ const _SNKI_KEY=[
    '<rect x="18" y="6" width="84" height="28" rx="4" fill="var(--surface-2)" stroke="var(--hairline-2)"/><text x="24" y="17" font-size="6.5" font-weight="700" fill="var(--ink-faint)" letter-spacing=".08em" font-family="var(--mono)">FRESH</text><text x="96" y="17" text-anchor="end" font-size="6.5" fill="var(--ink-dim)" font-family="var(--mono)">bars 1m 12s</text><text x="24" y="28" font-size="6.5" fill="var(--ink-faint)" font-family="var(--mono)">price</text><text x="96" y="28" text-anchor="end" font-size="6.5" fill="var(--ink)" font-family="var(--mono)">4s</text>',
    'The FRESH chip at the right end of the expiry strip, above the plot. Hover to peek, click to pin: one row per layer — the clock its data carries, a counter since, how often it refreshes — clocks in Pacific time. Red = stale (bars: 3 scan gaps; price: 15 s).'],
 ];
+// ---------- THE SCHEMA (09-02): the whole SNDK-PRO pipeline on one card — every file, what it
+// does in plain words, and the two things that were measured and deliberately left out. Content is
+// DATA so the card can never drift into prose that no longer matches the tree; a page test pins the
+// file names against the repo. Rows flow top to bottom; boxes inside a row run side by side.
+const _PL_SCHEMA=[
+  {row:'Sources', note:'What comes in, from where', boxes:[
+    ['Live price',      'Schwab quote',                          'The current SanDisk price, fetched on every scan. No quote, no row.'],
+    ['Option book',     'market-data server · sndk_feed.py',     'This week\u2019s option chain: every strike\u2019s open interest, volume, bid and ask. Re-priced against the live quote; cached 240 s on disk so only every other scan pulls it.'],
+    ['Minute bars',     'Schwab price history',                  'Today\u2019s one-minute open, high, low, close and volume. Fetched by the scanner for VWAP and, since 09-02, kept by the sidecar.'],
+  ]},
+  {row:'Jobs', note:'Two clocks, two processes — neither waits on the other', boxes:[
+    ['Scanner · every 2 min',    'sndk_hunter.py \u2192 sndk_views.py',   'Turns the book into one snapshot: gamma by strike, the heaviest strike, the walls, the flip, the expected move, VWAP. Appends ONE row to the diary.', 'launchd com.mirai-station.sndk'],
+    ['Bar sidecar · every 1 min','sndk_bars.py',                            'Appends every COMPLETED minute bar not yet on disk. Self-healing: the whole session comes back in one call, so a run after a gap writes the gap; --day backfills a past session.', 'launchd com.mirai-station.sndk-bars'],
+  ]},
+  {row:'Records', note:'Append-only files, one per day', boxes:[
+    ['Diary',        'state/sndk_reversion/<day>.jsonl', 'One row per scan (~190 a day): price, sigma, walls, flip, the seven per-strike arrays, the book\u2019s own clock. The raw record everything downstream reads.'],
+    ['Bars',         'state/sndk_bars/<day>.jsonl',      'One line per completed minute (390 a day). The witness for highs, lows and box breaks; 2-minute scans miss one break in three.'],
+    ['Book cache',   'state/sndk_gex/chain_cache.json',  'The last chain pull, 240 s fresh. The off scan re-prices it at the live quote instead of pulling again.'],
+  ]},
+  {row:'Reader', note:'sndk_read.py · every 2 min · launchd com.mirai-station.sndk-read', boxes:[
+    ['1 · Wake gate',     'should_wake()',        'Decides whether this scan is worth a model call: price ran 0.20\u03c3, crossed a wall or the flip as frozen at the last reading, the heaviest strike or gamma sign changed and held two books, IV moved 3 points, or an hour passed. Ten-minute floor, 30 calls a day ceiling, stale book never narrated.'],
+    ['2 · Scene builder', 'build_scene()',        'The data packet, all facts and no verdicts: price and clocks, the ruler, regime, magnet, walls, structure (bands, air, weight above), momentum, dealer positioning, context — how today ranks, what changed since the last book, the day\u2019s boxes from the bars, and the frame since the model\u2019s own last reading.'],
+    ['3 · Doctrine + model','_DOCTRINE \u00b7 claude-sonnet-5', 'A fixed rulebook (prompt-cached) plus the packet. The model returns {quiet, read, points}: what it NOTICED and which prices are worth a look. Never a direction \u2014 that call measured worthless and was removed.'],
+    ['4 · Guards',        'check_reading_against_scene()', 'Four checks before anyone sees a word: banned words and all their inflections, every number must exist in the packet, an above/under claim must agree with the live price, and a second small model (haiku) deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
+  ]},
+  {row:'Delivery', note:'Where the reading lands', boxes:[
+    ['Read row',      'state/sndk_reads/<day>.jsonl',        'One row per scan: the reading (or the last one carried forward), why it woke, the frozen gate the next wake compares against, what the guards dropped.'],
+    ['Memory',        'sndk_rag.py \u2192 state/sndk_rag/',  'One slice per completed reading: the model\u2019s sentence plus the numbers true that minute. Searchable by the model and by the Memory view; never injected unasked.'],
+    ['Dashboard',     'runtime/viewstation/ \u2192 index.html', 'The SNDK tab: chart, drawer strip, the pop-up reading card, this Payload tab. The server rebuilds the exact packet through the reader\u2019s own code.'],
+    ['Phone · voice · pager', 'static/m/ · mirai-voice · sndk_deadman.py', 'The glance page shows the one-line read; the voice desk quotes it as an observation; the dead-man pages the phone only when the scanner or reader goes quiet.'],
+  ]},
+  {row:'Measured and left out', note:'Deliberately absent — the record says why', boxes:[
+    ['The direction call', 'removed obs-1 \u00b7 arrow removed obs-3', '391 forecasts measured at zero forward value; the deterministic arrow pointed at the nearest round hundred 94% of the time.'],
+    ['Crossings and approaches', 'studied 09-02, not built', 'A crossing is a $2 event at a $2 noise floor; what follows one matches an imaginary line. The frame reports crossings as facts; nothing predicts from them.'],
+    ['Attraction and overpowering walls', 'studied 09-02, not built', 'Price spends no more time inside a band than inside a random band, and a dominant strike holds no better than a line at the same distance. The structure block says where the weight is, never what price does about it.'],
+  ]},
+];
+function openPlSchemaModal(){
+  const M=document.getElementById('modal'); if(!M) return;
+  const rows=_PL_SCHEMA.map((r,i)=>`<section class="plsch-row${i===_PL_SCHEMA.length-1?' out':''}">`
+    +`<header><b>${esc(r.row)}</b><span>${esc(r.note)}</span></header>`
+    +`<div class="plsch-boxes" style="--n:${r.boxes.length}">`
+    +r.boxes.map(b=>`<div class="plsch-box"><b>${esc(b[0])}</b><code>${esc(b[1])}</code><p>${esc(b[2])}</p>${b[3]?`<small>${esc(b[3])}</small>`:''}</div>`).join('')
+    +`</div>${i<_PL_SCHEMA.length-1?'<div class="plsch-arrow" aria-hidden="true">\u25bc</div>':''}</section>`).join('');
+  M.innerHTML=`
+    <div class="modal-card plsch" role="dialog" aria-modal="true" aria-label="The SNDK-PRO pipeline">
+      <div class="modal-head">
+        <div class="mt">The pipeline <em>SNDK-PRO \u00b7 every file, what it does \u00b7 ${esc((PAYLOAD.data&&PAYLOAD.data.era)||'')}</em></div>
+        <button class="modal-x" id="modal-x" style="margin-left:auto" aria-label="Close">\u2715</button>
+      </div>
+      <div class="modal-body plsch-body">
+        <div class="plsch-cap">Top to bottom is time. Two jobs run on their own clocks and never wait on each other; everything below the records reads files, never the network. Nothing on this page forecasts.</div>
+        ${rows}
+      </div>
+    </div>`;
+  M.classList.add('open'); M.setAttribute('aria-hidden','false');
+  document.getElementById('modal-x').onclick=closeModal;
+  _modalOpened();
+}
 function openSndkInfoModal(){
   const M=document.getElementById('modal'); if(!M) return;
   const rows=_SNKI_KEY.map(([n,t,g,d])=>
@@ -14082,6 +14159,7 @@ const PAYLOAD = {
         <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload or Memory"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button></div>
         <button class="pl-btn" id="pl-refresh">Refresh</button>
         <button class="pl-btn" id="pl-copy">Copy JSON</button>
+        <button class="pl-btn" id="pl-schema" title="The whole pipeline — every file and what it does">Schema</button>
       </div>
       <div class="pl-pipe" id="pl-pipe" aria-label="pipeline from data source to output"></div>
       <div class="pl-empty" id="pl-empty">Loading the scene…</div>
@@ -14109,6 +14187,7 @@ const PAYLOAD = {
     </div>`;
     host.querySelector('#pl-refresh').addEventListener('click', ()=>{ if(PAYLOAD.view==='memory') MEM.refresh(); else PAYLOAD.fetch(); });
     host.querySelector('#pl-copy').addEventListener('click', ()=>PAYLOAD.copy());
+    host.querySelector('#pl-schema').addEventListener('click', openPlSchemaModal);
     host.querySelector('#pl-seg').addEventListener('click', e=>{ const b=e.target.closest('button[data-view]'); if(b) PAYLOAD.setView(b.dataset.view); });
     // hover shows the gate on a mouse; tap toggles it on a tablet, where there is no hover at all
     host.querySelector('#pl-pipe').addEventListener('click', e=>{
@@ -14269,10 +14348,10 @@ const PAYLOAD = {
     const live=PAYLOAD.data&&PAYLOAD.data.scene;
     const STAGES=[
       ['Live price',         'Schwab streams SanDisk\u2019s current price on every scan.',                                        'Schwab quote'],
-      ['Option book',        'ThetaData supplies this week\u2019s option chain \u2014 strikes, open interest, volume.',            'ThetaData chain'],
+      ['Option book',        'The market-data server supplies this week\u2019s option chain \u2014 strikes, open interest, volume, quotes.', 'sndk_feed \u00b7 market-data server'],
       ['Clean and price',    'Each option\u2019s implied volatility is re-solved against the live price.',                        'sndk_feed'],
       ['Build the map',      'The book becomes one snapshot: gamma by strike, walls, the flip, the expected move.',              'sndk_views'],
-      ['Record',             'Every 120 seconds the snapshot is written to the diary.',                                          'state/sndk_reversion'],
+      ['Record',             'Every 120 seconds the snapshot is written to the diary; a sidecar job keeps the day\u2019s one-minute price bars beside it.', 'state/sndk_reversion \u00b7 state/sndk_bars'],
       ['Assemble the scene', 'When the tape has moved enough, the newest snapshot becomes this JSON.',                           'sndk_read \u00b7 build_scene'],
       ['Ask the model',      'Claude reads the cached rulebook plus this JSON and says, in plain words, what stands out and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed.','claude -p'],
       ['Use the observation','What it noticed lands on the chart card, the voice desk and the memory store.',                    'reading'],
