@@ -11552,7 +11552,7 @@ function openPlSchemaModal(){
   M.innerHTML=`
     <div class="modal-card plsch" role="dialog" aria-modal="true" aria-label="The SNDK-PRO pipeline">
       <div class="modal-head">
-        <div class="mt">The pipeline <em>SNDK-PRO \u00b7 every file, what it does \u00b7 ${esc((PAYLOAD.data&&PAYLOAD.data.era)||'')}</em></div>
+        <div class="mt">Pipeline architecture <em>SNDK-PRO \u00b7 every file, what it does \u00b7 ${esc((PAYLOAD.data&&PAYLOAD.data.era)||'')}</em></div>
         <button class="modal-x" id="modal-x" style="margin-left:auto" aria-label="Close">\u2715</button>
       </div>
       <div class="modal-body plsch-body">
@@ -14297,10 +14297,10 @@ const PAYLOAD = {
       <div class="phead"><div><h2>SNDK Payload</h2><div class="desc">Only what the reading model is fed: the scene JSON <span class="mono">sndk_read.build_scene</span> builds from the newest SNDK scan, rebuilt here through the same code.</div></div><span class="pill grey" id="pl-pill">loading</span></div>
       <div class="pl-bar" id="pl-bar">
         <div class="lb"><b>Live scene</b><span>Refreshed every minute while this tab is open.</span></div>
-        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload or Memory"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></div>
+        <button class="pl-btn" id="pl-schema" title="The whole pipeline — every file and what it does">Pipeline Architecture</button>
+        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload, Memory or Diary"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></div>
         <button class="pl-btn" id="pl-refresh">Refresh</button>
         <button class="pl-btn" id="pl-copy">Copy JSON</button>
-        <button class="pl-btn" id="pl-schema" title="The whole pipeline — every file and what it does">Schema</button>
       </div>
       <div class="pl-pipe" id="pl-pipe" aria-label="pipeline from data source to output"></div>
       <div class="pl-empty" id="pl-empty">Loading the scene…</div>

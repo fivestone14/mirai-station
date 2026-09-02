@@ -275,6 +275,8 @@ def test_the_payload_tab_carries_the_schema_card():
     from pathlib import Path
     root = Path(__file__).resolve().parents[3]
     assert 'id="pl-schema"' in PAGE and "function openPlSchemaModal(" in PAGE
+    assert ">Pipeline Architecture</button>" in PAGE                 # renamed 09-02
+    assert PAGE.index('id="pl-schema"') < PAGE.index('id="pl-seg"')    # ...and sits left of the segments
     assert "const _PL_SCHEMA=[" in PAGE and ".modal-card.plsch{" in PAGE
     for rel in ("skills/sndk-pro/sndk_hunter.py", "skills/sndk-pro/sndk_views.py",
                 "skills/sndk-pro/sndk_bars.py", "skills/sndk-pro/sndk_read.py",
