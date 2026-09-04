@@ -498,3 +498,16 @@ def test_every_check_the_packet_ships_is_forced_to_fail_somewhere_here():
     forced |= set(re.findall(r'c\["check"\] == "(\w+)"[\s\S]{0,80}?"status"\] == "fail"', src))
     missing = shipped - forced
     assert not missing, f"checks with no test that forces them to fail: {sorted(missing)}"
+
+
+def test_the_volume_baseline_excludes_the_bar_it_measures_and_says_so():
+    """A bar compared against a baseline it is part of is compared partly
+    against itself, and reads quieter than it is."""
+    bars = _flat(60, 1500.0, vol=1000.0)
+    bars[59] = _bar(59, 1499.0, 1501.0, 1500.0, vol=30000.0)     # the loud bar
+    p = SS.build_side(bars, DAY, _now(59))
+    bl = next(b for b in p["baselines"] if b["id"] == "bl.vol_trailing_30")
+    assert bl["excludes_current_bar"] is True
+    assert bl["value"] == 1000.0                                 # untouched by the spike
+    vol = next(i for i in p["indicators"] if i["id"] == "ind.vol")
+    assert vol["x"] == 30.0
