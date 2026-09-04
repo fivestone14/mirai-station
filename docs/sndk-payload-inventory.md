@@ -9,6 +9,41 @@ shortlist: anything marked *not in payload* is a candidate to argue back in.
 Sources: diary row = `sndk_views.build_row` (ROW_V 3), read row =
 `sndk_read.read_once` (ERA obs-3), chain = `sndk_feed.sndk_chain`.
 
+## side-1 (2026-09-03) — a second packet, and why it is not in this budget
+
+Everything above is about the SCENE: what the model is handed, measured in
+bytes because the model is paid for by the token ~19 times a day. `sndk_side`
+builds a different document on the same scan — bars-first rather than
+options-first, its clock the bar rather than the two-minute scan — and it is
+**never sent to a model**. It rides the read row and the payload tab.
+
+That is the whole reason it does not belong in the sr-8 arithmetic. Its bytes
+are disk and display, not tokens, so the question "does this leaf vary?" is
+the wrong test for it; the right one is "can a person catch a wrong number
+here?" It still keeps sr-8's actual rule — its fifteen standing sentences live
+in `sndk_side.DOCTRINE` and the packet carries a version pointer, which took
+it from 6,549 to 5,577 bytes with no measurement lost.
+
+Measured over the seven recorded sessions on disk it builds at 5.5–6.0 KB
+compact, against the scene's 2,645. The viewstation test pins a ceiling of
+8 KB — not because smaller is better, but because it should not be able to
+grow without someone arguing for it.
+
+WHAT IT CARRIES THAT THE SCENE DOES NOT. Levels drawn from the tape (the
+session high and low as lines price has actually respected, not just extremes
+in a `price` block), how long a state has held in bars rather than minutes,
+each part of the session against what that part usually trades on this
+symbol's own recent sessions, and eight checks that run rather than being
+asserted. Every reduce returns the bar it came from, so every value can be
+checked against a bar the packet also carries.
+
+WHAT IT DELIBERATELY DOES NOT CARRY. Anything derivable from what is already
+in it, any combination rule (none qualifies yet on the data available), and
+any forecast at all. The four things it declares it cannot see — the
+operator's book, option premium, a calendar feed, and a combination with a
+measured control — are in `absent`, because an absence is the one thing a dump
+of what IS there cannot show you.
+
 ## sr-8 (2026-08-30) — the payload pays only for what varies
 
 sr-7 doubled the packet. Measured over 4,149 recorded scans replayed through the

@@ -43,12 +43,13 @@ same fix, that is usually the moment to check whether it actually does.
 | **Replay** | Any past day scrubbed back through the same renderers, with graded calls and the sweep ledger drawn on the tape. |
 | **Dictionary** | Every term this page uses, in plain English. |
 
-**SNDK Pro** — `SNDK`, `SNDK payload`
+**SNDK Pro** — `SNDK`, `SNDK payload` (Payload · Side · Memory · Diary)
 
 | Surface | What it shows |
 |---|---|
 | **SNDK** | The single-stock map: net gamma by strike, the walls as ticks called out into the plot, open interest, the flip band, the session path shaded against its open, and three header drawers — the model's read, the readout (gamma, dealer delta, regime, expected move, walls), and the legend. |
 | **SNDK payload** | What the reading model is actually handed: the exact scene JSON, rebuilt live through `sndk_read.build_scene`, with the wake-gate thresholds read off the reader's own constants. Its Memory view reads the model's RAG store through the same CLI the model uses. |
+| **SNDK payload → Side** | The second packet, built on the same scan from the minute-bar sidecar rather than the options book, through `sndk_side.build_side`. **Never sent to a model** — it is a record and a display, so it is allowed to be larger than the scene and none of it is a forecast. The header says the things a JSON dump cannot: that every time in it is derived from a bar index, how many bars older the option-book levels are than the price, whether any of the packet's own checks failed, and what it declares it cannot see. |
 
 It auto-refreshes on its own clock — the SPX side every 60 s and on ⟳, the SNDK
 side on its own pollers (quote, scan, read, tape) while its tab is showing and
@@ -74,7 +75,7 @@ runtime/viewstation/
   ledgers, and `config/`; path-traversal blocked; opened read-only).
 - `GET /api/health` — liveness.
 - `GET /api/version` — the page's build id (`index.html` mtime); every open page polls it every 10 s and shows a "new version · tap to refresh" pill when it changes.
-- `GET /api/sndk/payload?user=will` — the SNDK Payload tab: the exact scene JSON `sndk_read.build_scene` hands the model (rebuilt live through the same functions) + the user-message wrapper; 403 unless `user` names the permitted user (`MIRAI_PAYLOAD_USER`, default `will`) or a front door forwards that name — a route-level name check, never auth. The page's matching UI lock (name box + Unlock) was removed 08-22: the tab now opens straight into the live scene, because nothing reaches it that has not already come through the front door.
+- `GET /api/sndk/payload?user=will` — the SNDK Payload tab: the exact scene JSON `sndk_read.build_scene` hands the model (rebuilt live through the same functions) + the user-message wrapper; 403 unless `user` names the permitted user (`MIRAI_PAYLOAD_USER`, default `will`) or a front door forwards that name — a route-level name check, never auth. The page's matching UI lock (name box + Unlock) was removed 08-22: the tab now opens straight into the live scene, because nothing reaches it that has not already come through the front door. Since 09-03 the same response also carries `side`, the bar-anchored packet rebuilt through `sndk_side`'s own builder — a sibling of `scene`, never a child, because `user_prompt` and `scene_chars` are pinned to the scene alone. A packet that cannot be built comes back as `null` and the scene renders unaffected.
 
 **Read-only, no auth, no writes.** There is no `do_POST` and no route that
 writes anything — the one write it ever had (the SNDK reasoning pause) went on
