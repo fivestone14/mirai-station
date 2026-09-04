@@ -2133,6 +2133,23 @@
   @media (min-width:1560px){ .pl-pipe{grid-template-columns:repeat(8, minmax(0,1fr))} .pl-pipe .st:nth-of-type(4n+1)::after{content:"\203A"} .pl-pipe .st:last-child::after{content:none} }   /* one row on a monitor */
   @media (max-width:860px){ .pl-pipe{grid-template-columns:repeat(2, minmax(0,1fr))} .pl-pipe .st:nth-of-type(2n+1)::after{content:none} }     /* two across on a phone / split view */
   .pl-pipe .cap{grid-column:1 / -1; font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
+  /* 09-04: the eight steps fold away. They are reference — true every scan and
+     read once — while the JSON under them is what changes, so the strip opens
+     closed and remembers whichever way it was last left. The caption stays put
+     as the handle: a card that hides something has to look like it does, which
+     is the same rule STEP 7's cue pill follows. It is still a div, because the
+     chevron rules below count .st among its div siblings. */
+  .pl-pipe .cap{display:flex}
+  .pl-pipe .pipe-toggle{appearance:none; border:0; background:transparent; padding:2px 0; margin:0; width:100%;
+    display:flex; align-items:center; gap:8px; cursor:pointer; text-align:left;
+    font:inherit; color:inherit; letter-spacing:inherit; text-transform:inherit}
+  .pl-pipe .pipe-toggle:hover{color:var(--ink-dim)}
+  .pl-pipe .pipe-toggle:focus-visible{outline:2px solid var(--iris); outline-offset:3px; border-radius:4px}
+  .pl-pipe .pipe-toggle .chev{display:inline-block; transition:transform .15s ease; font-size:12px; line-height:1}
+  .pl-pipe .pipe-toggle[aria-expanded="true"] .chev{transform:rotate(90deg)}
+  .pl-pipe .pipe-toggle .hint{margin-left:auto; text-transform:none; letter-spacing:.02em; opacity:.75}
+  .pl-pipe.collapsed{padding-bottom:12px}
+  .pl-pipe.collapsed .st{display:none}
   .pl-pipe .st{position:relative; display:flex; flex-direction:column; gap:3px; padding:10px 12px 9px; border-radius:10px; border:1px solid var(--hairline-2);
     background:var(--surface-3); min-width:0}
   .pl-pipe .st .num{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink-faint)}
@@ -14294,6 +14311,16 @@ const _DIARY_SCHEMA=[
 const PAYLOAD = {
   USER:'will', data:null, timer:null, busy:false, mounted:false,
   tipOpen:false,   // the STEP 7 gate card, tapped open — kept here so the 60 s repaint restores it
+  // the pipeline strip, folded away by default: it says the same eight things
+  // on every scan, and the JSON beneath it is the thing that changes. Stored
+  // like the chart's own toggles so a reader sets it once.
+  pipeOpen:(function(){ try{ return localStorage.getItem('pl.pipeOpen')==='1'; }catch(e){ return false; } })(),
+  togglePipe(){
+    PAYLOAD.pipeOpen=!PAYLOAD.pipeOpen;
+    try{ localStorage.setItem('pl.pipeOpen', PAYLOAD.pipeOpen?'1':'0'); }catch(e){}
+    PAYLOAD.paintPipe();
+    const b=document.querySelector('#pl-pipe .pipe-toggle'); if(b) b.focus();
+  },
   mount(){
     const host=document.getElementById('p-payload'); if(!host||PAYLOAD.mounted) return; PAYLOAD.mounted=true;
     host.innerHTML=`<div class="pl-wrap">
@@ -14345,6 +14372,7 @@ const PAYLOAD = {
     host.querySelector('#pl-copy').addEventListener('click', ()=>PAYLOAD.copy());
     host.querySelector('#pl-schema').addEventListener('click', openPlSchemaModal);
     host.querySelector('#pl-seg').addEventListener('click', e=>{ const b=e.target.closest('button[data-view]'); if(b) PAYLOAD.setView(b.dataset.view); });
+    host.querySelector('#pl-pipe').addEventListener('click', e=>{ if(e.target.closest('.pipe-toggle')) PAYLOAD.togglePipe(); });
     // hover shows the gate on a mouse; tap toggles it on a tablet, where there is no hover at all
     host.querySelector('#pl-pipe').addEventListener('click', e=>{
       const c=e.target.closest('.st.tip'); if(!c) return;
@@ -14617,7 +14645,13 @@ const PAYLOAD = {
       ['Ask the model',      'Only when something changed: Claude reads the standing rulebook plus this JSON and says, in plain words, what stands out and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed. Then every number and level is checked against this JSON and forecast language is deleted before anyone sees it.','claude -p \u00b7 guards'],
       ['Use the observation','What it noticed lands on the chart card, the phone glance, the voice desk and \u2014 when the model actually spoke \u2014 the memory store.', 'reading'],
     ];
-    el.innerHTML=`<div class="cap">How this JSON comes to be \u00b7 data source \u2192 model answer</div>`+STAGES.map((x,i)=>{
+    const open=PAYLOAD.pipeOpen;
+    el.className='pl-pipe'+(open?'':' collapsed');
+    el.innerHTML=`<div class="cap"><button type="button" class="pipe-toggle" aria-expanded="${open?'true':'false'}" aria-controls="pl-pipe">`
+      +`<span class="chev" aria-hidden="true">›</span>`
+      +`<span>How this JSON comes to be \u00b7 data source \u2192 model answer</span>`
+      +`<span class="hint">${open?'hide':STAGES.length+' steps'}</span></button></div>`
+      +STAGES.map((x,i)=>{
       const gated=i===6;   // "Ask the model" \u2014 the only step behind the wake gate
       return `<div class="st${i===5&&live?' hot':''}${gated?' tip'+(PAYLOAD.tipOpen?' open':''):''}"`
         +`${gated?' tabindex="0" aria-label="Ask the model \u2014 what has to be true first"':''}>`
