@@ -272,8 +272,11 @@ def scan(
             pass
         if not dry_run:
             reversion.record(t, now)
-            # (A shadow UW-Periscope blend ran here; the vendor feed it depended on
-            #  is not part of this build — see docs/gex-glossary.md.)
+            # The UW shadow blend used to run here. It was removed 2026-09-04: the
+            # scrape had been failing every minute since 08-04, the mark it served
+            # was five weeks stale, and the layer reading it had not reached a diary
+            # in that time. Its verdict is kept in the docs — the vendor's gamma SIGN
+            # measured incoherent against ours, so the layer was never consulted.
 
         heartbeat["evaluated"].append({
             "ticker": ticker,
