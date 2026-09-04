@@ -153,3 +153,67 @@ def test_forwarded_user_comes_from_the_front_door_only():
     assert server._forwarded_user(_H(**{"X-Forwarded-User": " Will "})) == "will"
     assert server._forwarded_user(_H(**{"Remote-User": "bob"})) == "bob"
     assert server._forwarded_user(_H(**{"X-Forwarded-User": "   "})) is None
+
+
+# --- side-1: the bar-anchored packet beside the scene -------------------------
+def _write_bars(tmp_path, day, n=120, price=1580.0):
+    """The minute sidecar's own file shape, written straight to disk — the tab
+    reads it through sndk_read.minute_bars exactly as the reader does."""
+    from datetime import timedelta
+    d = tmp_path / "sndk_bars"
+    d.mkdir(parents=True, exist_ok=True)
+    open_at = datetime.fromisoformat(f"{day}T09:30:00-04:00")
+    (d / f"{day}.jsonl").write_text("\n".join(json.dumps({
+        "ts": (open_at + timedelta(minutes=i)).isoformat(),
+        "open": price, "high": price + 1.0, "low": price - 1.0,
+        "close": price, "volume": 1000.0}) for i in range(n)) + "\n")
+
+
+def test_the_payload_carries_the_side_packet_beside_the_scene(tmp_path, monkeypatch):
+    """side-1: a sibling of the scene, never a child. The wrapper's user_prompt
+    and scene_chars are pinned to the scene alone, so a packet nested inside it
+    would break both — and the model is not being asked to read this one."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0), _row(t.replace(hour=13, minute=1), 1586.2)])
+    _write_bars(tmp_path, "2026-08-19")
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+
+    side = d["side"]
+    assert side is not None and side["bars"]["count"] == 120
+    assert "side" not in d["scene"]
+    # the two contracts the scene wrapper still has to keep, unchanged
+    assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == d["scene"]
+    assert d["scene_chars"] == len(json.dumps(d["scene"], default=str))
+    # every check in the packet ran, and none of them failed
+    assert side["integrity"] and all(c["status"] in ("pass", "warn")
+                                     for c in side["integrity"])
+
+
+def test_the_side_packet_costs_the_model_nothing_and_stays_inside_its_ceiling(
+        tmp_path, monkeypatch):
+    """This packet is never sent to a model, so its bytes are disk and display,
+    not tokens — which is why it is allowed to be larger than the scene. What it
+    is NOT allowed to do is grow without anyone noticing: measured over the seven
+    recorded sessions on disk it builds at 5.5-6.0 KB compact, so the ceiling is
+    8 KB and a build that passes it should be argued for, not absorbed."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 8, 19, 13, 1, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1586.2)])
+    _write_bars(tmp_path, "2026-08-19", n=390)
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    # the model's half of the call is untouched by the packet's existence
+    assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == d["scene"]
+    assert len(json.dumps(d["side"], separators=(",", ":"), default=str)) < 8192
+
+
+def test_a_missing_bar_file_leaves_the_scene_untouched(tmp_path, monkeypatch):
+    """No sidecar file is an ordinary state — the packet says it has no bars
+    and the scene renders exactly as it did before this key existed."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 8, 19, 13, 1, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1586.2)])
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    assert d["side"]["bars_seen"] == 0
+    assert d["side"]["absent"][0]["path"] == "bars[]"
+    assert d["scene"]["price"]["live_spot"] == 1586.2

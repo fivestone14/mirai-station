@@ -585,6 +585,23 @@ if __name__ == "__main__":
 _SNDK_PRO_DIR = PLUGIN_ROOT / "skills" / "sndk-pro"
 
 
+def _side_packet(R, row: dict, rows: list, build_now: datetime,
+                 day: Optional[str]) -> Optional[dict]:
+    """The side payload as the reader would build it at `build_now`. Returns
+    None rather than raising: the tab must still render the scene when the
+    packet cannot be built, and an empty panel is a smaller failure than a
+    500 on the whole payload route."""
+    try:
+        import sndk_side as S
+        return S.build_side(
+            R.minute_bars(day), day, build_now,
+            levels=S.levels_from_row(row),
+            levels_as_of_bar=S.bar_index(R._book_asof(row) or R._ts(row), day),
+            profile=S.segment_profile(S.prior_sessions(day)))
+    except Exception:
+        return None
+
+
 def sndk_payload(now: Optional[datetime] = None) -> dict:
     if str(_SNDK_PRO_DIR) not in sys.path:
         sys.path.insert(0, str(_SNDK_PRO_DIR))
@@ -643,6 +660,12 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         "scans_today": len(rows),
         "scene": scene,
         "scene_chars": len(text),
+        # side-1: the bar-anchored packet, rebuilt live through its own builder
+        # exactly as the scene is, so the tab shows what the reader would put on
+        # the row rather than a copy that can drift from it. A sibling of the
+        # scene and never a child: user_prompt and scene_chars below are pinned
+        # to the scene alone, and this document is not sent to the model at all.
+        "side": _side_packet(R, row, rows, build_now, day),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
         # what must be true before this scene is worth a model call. Read off the
         # reader's OWN constants rather than retyped into the page: a tab that
