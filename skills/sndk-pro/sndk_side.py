@@ -392,7 +392,15 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
     is an optional list of {price, role} from the options engine, stamped with
     the bar its row was measured on. Pure: no clock, no disk, no network."""
     now = now or datetime.now(_ET)
-    b = indexed(bars, day)
+    # THE CLIP. `bars` may be the whole session — sndk_read.minute_bars hands
+    # back the file, not the completed prefix — so a packet built "as of" a past
+    # minute would otherwise carry bars from after it. Only minutes that had
+    # fully elapsed at `now` may be seen.
+    last_closed = bar_index(now - timedelta(minutes=1), day)
+    if last_closed is None:
+        nowi = bar_index(now, day)
+        last_closed = BARS_PER_SESSION - 1 if nowi is None and now.astimezone(_ET).time() >= SESSION_OPEN else -1
+    b = [x for x in indexed(bars, day) if x["bar_index"] <= last_closed]
     if not b:
         return {"version": VERSION, "session": day, "bars_seen": 0,
                 "absent": [{"path": "bars[]", "why": "not_observed",
@@ -464,10 +472,11 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
             price, role = _num(L.get("price")), L.get("role")
             if price is None or not role:
                 continue
+            # never fall back to "now": a book measured outside the session has
+            # no bar, and saying it was measured on the newest one is a stale
+            # level wearing a fresh stamp
             lv.append(level_record(price, role, b, nf, p90, b[0]["bar_index"],
-                                   "options_book",
-                                   levels_as_of_bar if levels_as_of_bar is not None
-                                   else last["bar_index"], "gex_engine"))
+                                   "options_book", levels_as_of_bar, "gex_engine"))
         for red, role in ((hi, "session_high"), (lo, "session_low")):
             lv.append(level_record(_r2(red["value"]), role, b, nf, p90,
                                    red["at_bar"], "live_tape", red["at_bar"],
@@ -513,6 +522,9 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
         {"path": "confluence[]", "why": "not_computed", "computable": True,
          },
     ]
+    if not nf:
+        absent.append({"path": "levels[]", "why": "not_computed", "computable": False,
+                       "bar_range_median": nf})
     if thin:
         absent.append({"path": "baselines[]", "why": "in_progress",
                        "computable": True,
@@ -587,30 +599,39 @@ def _integrity(out: dict, bars: list[dict], rsi: dict) -> list[dict]:
 
     eps = out.get("episodes", [])
     open_eps = [e for e in eps if e["open"]]
-    ok = all(all((rsi.get(i, 0) > RSI_BANDS["overbought"][0]) if e["state"] == "overbought"
-                 else (rsi.get(i, 100) < RSI_BANDS["oversold"][0])
-                 for i in range(e["from_bar"], bars[-1]["bar_index"] + 1))
+    # the EXIT rail, because that is what the episode was built on — checking an
+    # open spell against the entry rail fails a correct packet the moment the
+    # reading dips to 69.9 without releasing. And a minute the sidecar never got
+    # is absent, not out of band: `rsi` is keyed by bar index and a gap must be
+    # skipped, never defaulted to a value that fails the test.
+    ok = all(all((rsi[i] > RSI_BANDS[e["state"]][1]) if e["state"] == "overbought"
+                 else (rsi[i] < RSI_BANDS[e["state"]][1])
+                 for i in range(e["from_bar"], bars[-1]["bar_index"] + 1) if i in rsi)
              for e in open_eps)
     add("open_episode_not_merged",
         f"{len(open_eps)} open episode(s): every bar between from_bar and now is in the band", ok)
 
     # the check the first draft lacked: a merged spell spans a gap, so its
     # bars_in_state must count the bars that were IN the band, never the span
+    # A SANDWICH, not an equality. Re-deriving the count would just re-run the
+    # state machine, which proves nothing; and a plain threshold gets it wrong
+    # both ways, because hysteresis means a spell holds between the two rails
+    # while an IDLE bar can sit between them too. What must always be true is
+    # that the count is at least the bars past the entry rail and at most the
+    # bars on the state's side of the exit rail. Counting a merged spell's gap
+    # breaks the upper bound, which is the bug this exists for.
     bad = []
     for e in eps:
         end = e["to_bar"] if e["to_bar"] is not None else bars[-1]["bar_index"]
-        # HYSTERESIS, not the entry rail: a spell is entered at 70/30 and only
-        # released at 67/33, so the bars between the two rails are in state.
-        # Checking against the entry rail undercounts every episode by however
-        # long the reading loitered in the gap.
-        exit_rail = RSI_BANDS[e["state"]][1]
-        in_band = sum(1 for i in range(e["from_bar"], end + 1)
-                      if (rsi.get(i) is not None and
-                          (rsi[i] > exit_rail if e["state"] == "overbought"
-                           else rsi[i] < exit_rail)))
-        if in_band != e["bars_in_state"]:
-            bad.append(f"{e['id']}: says {e['bars_in_state']}, bars give {in_band}")
-    add("bars_in_state_counts_only_bars_in_the_band", f"{len(eps)} episodes",
+        enter_rail, exit_rail = RSI_BANDS[e["state"]]
+        over = e["state"] == "overbought"
+        span = [i for i in range(e["from_bar"], end + 1) if i in rsi]
+        lo = sum(1 for i in span if (rsi[i] > enter_rail) if over) or \
+             sum(1 for i in span if (rsi[i] < enter_rail) and not over)
+        hi = sum(1 for i in span if ((rsi[i] > exit_rail) if over else (rsi[i] < exit_rail)))
+        if not (lo <= e["bars_in_state"] <= hi):
+            bad.append(f"{e['id']}: says {e['bars_in_state']}, bars allow {lo}-{hi}")
+    add("bars_in_state_within_its_rails", f"{len(eps)} episodes",
         not bad, "; ".join(bad) if bad else None)
 
     add("counts_declare_their_rail", f"{len(out.get('levels', []))} levels",
