@@ -437,3 +437,64 @@ def test_a_quiet_row_does_not_carry_the_packet(tmp_path, monkeypatch):
     assert "side" not in rows[-1]
     # and it is still rebuildable for that minute, which is why dropping it is safe
     assert SS.side_for_day(day, NOW)["bars"]["count"] == 120
+
+
+def test_the_open_episode_check_fails_when_a_break_is_swallowed():
+    """The claim on the tab is that EVERY check is forced to fail once here.
+    This is one of the three that made that claim untrue until 09-03."""
+    # up, then a real break down, then up again — so there is a gap to swallow
+    up1 = _ramp(40, 1400.0, 1460.0)
+    down = [_bar(40 + i, 1459.0 - 3 * i, 1461.0 - 3 * i, 1460.0 - 3 * i) for i in range(20)]
+    up2 = [_bar(60 + i, 1399.0 + 3 * i, 1401.0 + 3 * i, 1400.0 + 3 * i) for i in range(40)]
+    bars = up1 + down + up2
+    ix = SS.indexed(bars, DAY)
+    rsi = SS.rsi_wilders(ix)
+    p = SS.build_side(bars, DAY, _now(99))
+    open_eps = [e for e in p.get("episodes", []) if e["open"]]
+    if not open_eps:
+        pytest.skip("this shape produced no open spell to corrupt")
+    open_eps[0]["from_bar"] = min(rsi)          # back across the break
+    rebuilt = SS._integrity(p, ix, rsi)
+    assert next(c for c in rebuilt
+                if c["check"] == "open_episode_not_merged")["status"] == "fail"
+
+
+def test_the_level_history_check_fails_when_an_interaction_predates_the_level():
+    """A pivot set at bar 20 cannot have been visited at bar 5."""
+    bars = _flat(40, 1500.0)
+    bars[20] = _bar(20, 1519.0, 1521.0, 1520.5)
+    ix = SS.indexed(bars, DAY)
+    p = SS.build_side(bars, DAY, _now(39))
+    hi = next(L for L in p["levels"] if L["role"] == "session_high")
+    hi["active_from_bar"] = hi["last_visit"][0] + 1      # claim it existed later
+    rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
+    assert next(c for c in rebuilt
+                if c["check"] == "no_interaction_before_level_existed")["status"] == "fail"
+
+
+def test_the_segment_share_check_fails_when_the_shares_stop_being_a_session():
+    """Four shares of one session sum to one. An earlier draft's summed to 0.93
+    and nothing said so."""
+    bars = _flat(100)
+    ix = SS.indexed(bars, DAY)
+    p = SS.build_side(bars, DAY, _now(99))
+    p["session_segments"][0]["volume_fraction_to_date"] += 0.2
+    rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
+    assert next(c for c in rebuilt
+                if c["check"] == "segment_fractions_sum_to_one")["status"] == "fail"
+
+
+def test_every_check_the_packet_ships_is_forced_to_fail_somewhere_here():
+    """The claim printed on the tab, pinned. If a new check is added without a
+    test that makes it fail, this fails instead — a check never observed
+    failing is not evidence, and saying it was tested when it was not is worse
+    than not testing it."""
+    import re
+    from pathlib import Path
+    p = SS.build_side(_ramp(200, 1400.0, 1500.0), DAY, _now(199))
+    shipped = {c["check"] for c in p["integrity"]}
+    src = Path(__file__).read_text()
+    forced = set(re.findall(r'if c\["check"\] == "(\w+)"\s*\n?\s*\)?\["status"\] == "fail"', src))
+    forced |= set(re.findall(r'c\["check"\] == "(\w+)"[\s\S]{0,80}?"status"\] == "fail"', src))
+    missing = shipped - forced
+    assert not missing, f"checks with no test that forces them to fail: {sorted(missing)}"
