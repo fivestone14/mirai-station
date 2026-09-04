@@ -286,24 +286,45 @@ def test_the_payload_tab_carries_the_schema_card():
     # connections between them, so this test can pin both against the tree.
     assert "const _PL_NODES=[" in PAGE and "const _PL_EDGES=[" in PAGE
     assert ".modal-card.plsch{" in PAGE
-    # every component declares one of the five kinds the legend explains, and every
-    # kind in the legend is used — a colour nothing carries teaches nothing
     import re as _re
-    kinds = set(_re.findall(r"^\s*\['[a-z0-9]+',\s*'[^']+',\s*'([a-z]+)'", 
-                            PAGE[PAGE.index("const _PL_NODES=["):PAGE.index("const _PL_EDGES=[")], _re.M))
-    _k0 = PAGE.index("const _PL_KINDS=[")
-    _kind_block = PAGE[_k0:PAGE.index("];", _k0)]
-    legend = set(_re.findall(r"\['([a-z]+)','[A-Z]", _kind_block))
-    assert kinds and kinds == legend, (sorted(kinds), sorted(legend))
-    # EVERY edge endpoint resolves to a component. A dangling id draws no line and
-    # says nothing about it — the same silent-miss this build keeps being bitten by.
-    node_ids = set(_re.findall(r"^\s*\['([a-z0-9]+)',", 
-                               PAGE[PAGE.index("const _PL_NODES=["):PAGE.index("const _PL_EDGES=[")], _re.M))
-    edge_block = PAGE[PAGE.index("const _PL_EDGES=["):PAGE.index("const _PL_LEFTOUT=[")]
-    ends = set(_re.findall(r"\['([a-z0-9]+)','([a-z0-9]+)'", edge_block))
-    flat = {x for pair in ends for x in pair}
-    assert flat, "no edges parsed"
-    assert flat <= node_ids, sorted(flat - node_ids)
+    _n0 = PAGE.index("const _PL_NODES=["); _n1 = PAGE.index("const _PL_EDGES=[")
+    _nodes = _re.findall(r"^\s*\['([a-z0-9]+)',\s*'([^']+)',\s*'([a-z]+)'",
+                         PAGE[_n0:_n1], _re.M)
+    assert len(_nodes) >= 15, len(_nodes)
+    # THE PROPERTY THE CARD NOW RESTS ON: kind and stage are one-to-one. That is
+    # what let the legend go — the stage heading IS the definition, so a reader
+    # does not learn a colour code before seeing anything to attach it to. If a
+    # stage ever mixes kinds the heading starts lying and the legend has to
+    # come back, so it is pinned here rather than left as an accident.
+    _by_stage = {}
+    for _id, _stage, _kind in _nodes:
+        _by_stage.setdefault(_stage, set()).add(_kind)
+    for _stage, _kinds in _by_stage.items():
+        assert len(_kinds) == 1, (_stage, sorted(_kinds))
+    # ...and every stage explains itself, in a line, where the reader meets it
+    _d0 = PAGE.index("const _PL_STAGE_DOC={")
+    _docs = set(_re.findall(r"'([A-Z][a-z]+)':", PAGE[_d0:PAGE.index("};", _d0)]))
+    assert _docs == set(_by_stage), (sorted(_docs), sorted(_by_stage))
+    # EVERY edge endpoint resolves to a component. A dangling id draws no line
+    # and says nothing about it — the silent miss this build keeps hitting.
+    _ids = {n[0] for n in _nodes}
+    _edges = _re.findall(r"\['([a-z0-9]+)','([a-z0-9]+)'",
+                         PAGE[_n1:PAGE.index("const _PL_STAGE_DOC={")])
+    assert _edges, "no edges parsed"
+    _flat = {x for pair in _edges for x in pair}
+    assert _flat <= _ids, sorted(_flat - _ids)
+    # the wiring shown in words is DERIVED from those same edges, never typed,
+    # so the sentence and the line can never disagree
+    assert "function _plWires(" in PAGE and "_PL_EDGES.filter(" in PAGE
+    assert "Fed by" in PAGE and "Feeds" in PAGE
+    # below this width the grid collapses, every card shares an x, and twenty
+    # edges become one stroke — the words carry it there instead
+    assert "const _PL_LINES_MIN_WIDTH=" in PAGE
+    assert "window.innerWidth<_PL_LINES_MIN_WIDTH" in PAGE
+    # Esc and the backdrop close the modal without touching the X, so the
+    # resize listener and the observer have to come off in closeModal
+    assert "function _plTeardown(" in PAGE
+    assert PAGE.index("_plTeardown();") > PAGE.index("function closeModal(")  # called from it
     # the side packet is part of the picture, not a footnote to it
     assert "sndk_side.build_side()" in PAGE and "state/sndk_side" in PAGE
     for rel in ("skills/sndk-pro/sndk_hunter.py", "skills/sndk-pro/sndk_views.py",
@@ -321,7 +342,9 @@ def test_the_payload_tab_carries_the_schema_card():
     # ...the pager watches the scanner only, memory is not the reading model's to search
     assert "the scanner goes quiet (a silent reader is not yet watched)" in PAGE
     assert "the reading model has no tools and cannot reach it" in PAGE
-    assert "the eight per-strike arrays" in PAGE
+    # 09-04: said in plain English now — the assertion is that the Diary card
+    # states what a row actually holds, not that it uses the word "arrays"
+    assert "eight numbers for every strike" in PAGE
     assert "ivb=n(g.iv_median_books,5)" in PAGE
 
 
