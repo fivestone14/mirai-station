@@ -405,3 +405,35 @@ def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
     assert rows, "the read row must still land"
     assert "side" not in rows[-1]
     assert "side payload skipped" in capsys.readouterr().out
+
+
+def test_a_quiet_row_does_not_carry_the_packet(tmp_path, monkeypatch):
+    """~190 rows a session, ~7.1 KB a packet: carrying it on every one would
+    take the reads file from 242 KB to 1.6 MB a day to store something that
+    replays exactly from the bars. The rows worth a stored copy are the ones
+    where the model spoke and a reading has to be graded against what it saw."""
+    import json
+    import sndk_bars as SB
+    import sndk_read as SR
+    from test_read_once import NOW, _diary_row
+
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(SR, "_market_live", lambda: True)
+    (tmp_path / "sndk_reversion").mkdir()
+    (tmp_path / "sndk_reads").mkdir()
+    day = NOW.date().isoformat()
+    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text("\n".join(
+        json.dumps(_diary_row(NOW - timedelta(minutes=m))) for m in (8, 6, 4, 2)) + "\n")
+    open_at = datetime.combine(NOW.date(), SS.SESSION_OPEN, tzinfo=SS._ET)
+    SB.write_day(day, [{"ts": (open_at + timedelta(minutes=i)).isoformat(),
+                        "open": 1200.0, "high": 1201.0, "low": 1199.0,
+                        "close": 1200.0, "volume": 1000.0} for i in range(120)], NOW)
+
+    monkeypatch.setattr(SR, "should_wake", lambda *a, **k: None)   # nothing to say
+    SR.read_once(now=NOW)
+    rows = [json.loads(l) for l in
+            (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
+    assert rows, "a quiet row must still land — a hidden surface is not a missing one"
+    assert "side" not in rows[-1]
+    # and it is still rebuildable for that minute, which is why dropping it is safe
+    assert SS.side_for_day(day, NOW)["bars"]["count"] == 120
