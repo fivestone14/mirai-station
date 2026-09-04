@@ -567,3 +567,40 @@ def test_a_torn_line_in_the_side_file_is_skipped_not_fatal(tmp_path, monkeypatch
     SS.append(DAY, {"version": SS.VERSION, "as_of": {"bar_index": 20}})
     kept = SS.read_day(DAY)
     assert [k["as_of"]["bar_index"] for k in kept] == [10, 20]
+
+
+def test_a_level_may_not_be_stamped_ahead_of_the_packets_own_clock():
+    """Found live on 2026-09-04: a packet stamped at bar 27 carried option-book
+    levels stamped bar 29. The book is sampled continuously so it CAN be fresher
+    than the last closed minute — but citing a bar that has not closed, and is
+    not on the wire, breaks the one promise this packet makes."""
+    p = SS.build_side(_flat(40), DAY, _now(39),
+                      levels=[{"price": 1500.0, "role": "flip"}],
+                      levels_as_of_bar=999)                  # the book, running ahead
+    lvl = next(L for L in p["levels"] if L["built_from"] == "options_book")
+    assert lvl["price_as_of_bar"] == p["as_of"]["bar_index"]
+    assert lvl["price_fresher_than_bar"] is True             # clamped, and says so
+    assert _status(p, "no_vintage_ahead_of_as_of") == "pass"
+
+
+def test_the_vintage_check_fails_when_a_level_cites_an_unclosed_bar():
+    bars = _flat(40)
+    ix = SS.indexed(bars, DAY)
+    p = SS.build_side(bars, DAY, _now(39),
+                      levels=[{"price": 1500.0, "role": "flip"}], levels_as_of_bar=30)
+    lvl = next(L for L in p["levels"] if L["built_from"] == "options_book")
+    lvl["price_as_of_bar"] = p["as_of"]["bar_index"] + 2      # two bars into the future
+    rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
+    assert next(c for c in rebuilt
+                if c["check"] == "no_vintage_ahead_of_as_of")["status"] == "fail"
+
+
+def test_a_levels_vintage_bar_is_carried_on_the_wire():
+    """It is a cited bar like any other — a value checked against a bar nobody
+    carries is not checked. This is the hole the live run found."""
+    p = SS.build_side(_flat(60), DAY, _now(59),
+                      levels=[{"price": 1500.0, "role": "flip"}], levels_as_of_bar=42)
+    on_wire = {r["bar_index"] for r in p["bars"]["records"]}
+    for L in p["levels"]:
+        if L.get("price_as_of_bar") is not None:
+            assert L["price_as_of_bar"] in on_wire, L["id"]

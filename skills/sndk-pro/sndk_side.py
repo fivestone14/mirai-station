@@ -481,9 +481,20 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
                 continue
             # never fall back to "now": a book measured outside the session has
             # no bar, and saying it was measured on the newest one is a stale
-            # level wearing a fresh stamp
-            lv.append(level_record(price, role, b, nf, p90, b[0]["bar_index"],
-                                   "options_book", levels_as_of_bar, "gex_engine"))
+            # level wearing a fresh stamp.
+            # And never AHEAD of as_of either: the book is sampled continuously,
+            # so its stamp can land past the last closed minute (live 09-04: a
+            # packet at bar 27 carried levels stamped bar 29). Citing a bar that
+            # has not closed, and is not on the wire, breaks the one promise this
+            # packet makes. Clamp it, and say the clamp happened.
+            lab, ahead = levels_as_of_bar, False
+            if lab is not None and lab > last["bar_index"]:
+                lab, ahead = last["bar_index"], True
+            rec = level_record(price, role, b, nf, p90, b[0]["bar_index"],
+                               "options_book", lab, "gex_engine")
+            if ahead:
+                rec["price_fresher_than_bar"] = True
+            lv.append(rec)
         for red, role in ((hi, "session_high"), (lo, "session_low")):
             lv.append(level_record(_r2(red["value"]), role, b, nf, p90,
                                    red["at_bar"], "live_tape", red["at_bar"],
@@ -508,6 +519,8 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
     cited |= {s["from_bar"] for s in readings if s.get("from_bar") is not None}
     cited |= {e["extreme_at_bar"] for e in eps}
     for L in lv:
+        if L.get("price_as_of_bar") is not None:
+            cited.add(L["price_as_of_bar"])
         if L.get("last_visit"):
             cited |= set(L["last_visit"])
         if L.get("last_cross"):
@@ -648,6 +661,16 @@ def _integrity(out: dict, bars: list[dict], rsi: dict) -> list[dict]:
         all((l["last_visit"] is None or l["last_visit"][0] >= l["active_from_bar"])
             and (l["last_cross"] is None or l["last_cross"]["at_bar"] >= l["active_from_bar"])
             for l in out.get("levels", [])))
+    # the hole the live run found: cited_bars_on_wire counted readings and
+    # episodes, never a level's vintage, so a level stamped two bars into the
+    # future passed clean.
+    a = out["as_of"]["bar_index"]
+    ahead = [f"{l['id']} at bar {l['price_as_of_bar']}"
+             for l in out.get("levels", [])
+             if l.get("price_as_of_bar") is not None and l["price_as_of_bar"] > a]
+    add("no_vintage_ahead_of_as_of", f"{len(out.get('levels', []))} levels against bar {a}",
+        not ahead, "; ".join(ahead) if ahead else None)
+
     add("levels_declare_origin_and_vintage", f"{len(out.get('levels', []))} levels",
         all({"built_from", "price_as_of_bar", "active_from_bar"} <= set(l)
             for l in out.get("levels", [])))
