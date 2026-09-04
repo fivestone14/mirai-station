@@ -19,8 +19,9 @@ first thing to know about this page.
 | What it is | A stock index, traded through 0DTE options | One company's shares, traded through weekly options |
 | Expiry cadence | An expiry **every day** — 0DTE mechanics all day, every day | **Weekly** expiries, so most days have no expiry at all and the book is standing positioning rather than same-day mechanics |
 | Scale of a day | A typical day's move is a fraction of a percent | A typical day's move is **8–10% of the share price** — enormous, and every threshold has to be re-measured for it |
-| Reasoner | Watchtower (`wt-11`), blind vote then reveal, its own memory in `state/spx_rag` | `sndk_read` (`sr-6`), reads the scene cold, its own memory in `state/sndk_rag` |
-| Scans land in | `state/reversion/` | `state/sndk_reversion/` |
+| Reasoner | Watchtower (`wt-11`), blind vote then reveal, its own memory in `state/spx_rag` | `sndk_read` (`obs-5`), reads the scene cold, its own memory in `state/sndk_rag` |
+| Scans land in | `state/reversion/` | `state/sndk_reversion/`, with the minute bars beside them in `state/sndk_bars/` |
+| Documents per scan | One: the scene | **Two**: the scene the model reads, and the bar-anchored side packet (`side-1`) that it does not — the second is a record and a display, never a prompt |
 | Extra layers | Siege, the Fade and Break lenses, the dated-book sidecar, LOB flow | **None of those** — they are SPX-only and show as dormant chips on the SNDK tab, by design, not by fault |
 | Maturity | The mature stack; the graded record, the learning loop and the paper scoreboard all belong to it | **Beta and display-only.** No grading, no ledger, nothing trades off it |
 
