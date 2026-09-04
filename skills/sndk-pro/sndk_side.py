@@ -421,6 +421,11 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
     hi, lo = (_reduce(b, lambda x: x["high"], max),
               _reduce(b, lambda x: x["low"], min))
     readings = [
+        # The open is a FIRST, so it carries its bar like every other reduce: on a clean
+        # session at_bar is 0, but when the watcher missed the bell it is the first minute
+        # actually seen, and a reader that wants "the open" must check the bar, not the word.
+        {"id": "px.session_open", "value": _r2(b[0]["open"]), "at_bar": b[0]["bar_index"],
+         "unit": "points"},
         {"id": "px.session_high", "value": _r2(hi["value"]), "at_bar": hi["at_bar"],
          "unit": "points"},
         {"id": "px.session_low", "value": _r2(lo["value"]), "at_bar": lo["at_bar"],
@@ -615,7 +620,9 @@ def _integrity(out: dict, bars: list[dict], rsi: dict) -> list[dict]:
             ok = False
         if s["id"] == "px.session_low" and _r2(b["low"]) != s["value"]:
             ok = False
-    add("values_recomputed_from_bars", "session extremes against the bar each names", ok)
+        if s["id"] == "px.session_open" and _r2(b["open"]) != s["value"]:
+            ok = False
+    add("values_recomputed_from_bars", "open and extremes against the bar each names", ok)
 
     eps = out.get("episodes", [])
     open_eps = [e for e in eps if e["open"]]

@@ -89,6 +89,38 @@ def test_a_reduce_keeps_the_bar_it_came_from():
     assert (lo["value"], lo["at_bar"]) == (1480.0, 23)
 
 
+def test_the_open_carries_the_bar_it_was_read_from():
+    """A FIRST is a reduce like any other. On a clean session that bar is 0; when
+    the watcher missed the bell it is the first minute seen, and the bar is the
+    only thing that tells the two apart."""
+    bars = _flat(40)
+    bars[0] = _bar(0, 1586.0, 1607.0, 1594.9)
+    p = SS.build_side(bars, DAY, _now(39))
+    op = next(r for r in p["readings"] if r["id"] == "px.session_open")
+    assert (op["value"], op["at_bar"]) == (1586.0, 0)
+
+
+def test_an_open_read_after_a_late_start_names_the_bar_it_really_had():
+    """46 minutes of a session went missing on 09-01 to a lapsed broker login.
+    The packet must not call bar 27's open the session open."""
+    bars = _flat(60)[27:]
+    p = SS.build_side(bars, DAY, _now(59))
+    op = next(r for r in p["readings"] if r["id"] == "px.session_open")
+    assert op["at_bar"] == 27
+
+
+def test_the_recompute_check_fails_when_the_open_does_not_match_its_bar():
+    bars = _flat(40)
+    ix = SS.indexed(bars, DAY)
+    p = SS.build_side(bars, DAY, _now(39))
+    for r in p["readings"]:
+        if r["id"] == "px.session_open":
+            r["value"] = r["value"] + 5.0          # a value bar 0 does not hold
+    rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
+    assert next(c for c in rebuilt
+                if c["check"] == "values_recomputed_from_bars")["status"] == "fail"
+
+
 def test_every_bar_the_packet_names_is_on_the_wire():
     """A value verified against a bar nobody can see is not verified."""
     bars = _flat(40)
