@@ -401,14 +401,33 @@ def test_the_shading_baseline_is_the_opening_minute_not_the_first_scan():
     painted red on a day price never traded below its open. The baseline now comes
     off the bar sidecar, and the word "open" is spent only when the reading really
     sits on bar 0."""
-    assert "async pullOpen()" in PAGE
+    assert "async pullDay()" in PAGE
     assert "path=sndk_side/${day}.jsonl&limit=1" in PAGE
-    assert "x.id==='px.session_open'" in PAGE
-    assert "SNDK.pullOpen();" in PAGE                       # pollPath drives it
+    assert "pick('px.session_open')" in PAGE
+    assert "SNDK.pullDay();" in PAGE                        # pollPath drives it
     assert "_op.bar===0" in PAGE                            # ...and only bar 0 earns the word
     assert "const pOpen=openTrue?_op.p:S.pts[0].p;" in PAGE  # else the scan still stands
     assert "${openTrue?'open':'first scan'}" in PAGE         # and the caption says which
     assert "+x.bar_index===0" in PAGE                        # the cited-record fallback, bar 0 only
+
+
+def test_the_session_extremes_chip_reads_the_bars_not_the_scans():
+    """The chip reported the highest/lowest per-scan SPOT. A scan is a glance every
+    ~2 minutes: on 09-04 it printed a $1,598.79 low while price traded $1,581.00 in
+    the 09:31 minute, between two glances. It now folds in the sidecar's completed
+    minutes the way sndk_read has since obs-5, so the chip can only be conservative,
+    never inventive."""
+    assert "pick('px.session_high')" in PAGE and "pick('px.session_low')" in PAGE
+    assert "sHi=Math.max(sHi, _dp.high.p)" in PAGE
+    assert "sLo=Math.min(sLo, _dp.low.p)" in PAGE
+    # ONE binding, hoisted to the top of buildChart. The chip runs ~140 lines before the
+    # shading baseline, so a `_dp` declared beside the baseline threw a ReferenceError in
+    # the chip — caught by a headless render, not by a human looking at the page.
+    assert PAGE.index("const _dp=(SNDK.dayPx&&S&&S.t0") < PAGE.index("sLo=Math.min(sLo, _dp.low.p)")
+    # the extremes get NO cited-record fallback — a sampled bar is not the day's high
+    body = PAGE.split("async pullDay()")[1].split("\n  },")[0]
+    assert "bar_index===0" in body and body.count("bar_index") == 1, \
+        "the bar-record fallback must stay scoped to the open"
 
 
 def test_the_gamma_zero_axis_never_leaves_the_middle():

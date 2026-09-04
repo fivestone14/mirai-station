@@ -12256,7 +12256,7 @@ const SNDK = {
   gaps:[], _pullUp:null,                            // air-pockets (chart + narrator read one model) · comet direction
   draw:null,                                        // which rail drawer is open ('read' | 'map' | null)
   path:[], _pathEdge:null,                          // full-day per-scan spot trail (limit=400) + the live-edge nodes
-  openPx:null,                                      // {day, p, bar} — the session's FIRST MINUTE, off the bar sidecar
+  dayPx:null,                                       // {day, open|high|low:{p,bar}} — the session's own minutes, off the bar sidecar
   // FINE TAPE (08-11): tape = the server's sndk_tape file (each row a quote this tab's own
   // /api/spot polls already paid for — the server persists them as a free by-product, zero
   // extra upstream calls); tapeLive = the same samples accumulated client-side between the
@@ -12546,7 +12546,7 @@ const SNDK = {
         if(SNDK.on&&SNDK.model) SNDK.buildChart();   // the morning fills in under the bars
       }
     }catch(e){}
-    SNDK.pullOpen();
+    SNDK.pullDay();
     SNDK.timers.path=setTimeout(()=>SNDK.pollPath(), SNDK.pathMs);
   },
   // THE DAY'S OPENING PRICE, once. The path this tab draws is per-scan spots, and the first
@@ -12557,24 +12557,31 @@ const SNDK = {
   // half that matters: on a session the watcher joined late that bar is not 0 and the number
   // is not the open. Fetched once per day (limit=1 = newest packet; the opening minute never
   // changes, so there is nothing to re-poll) and left null if anything is missing.
-  async pullOpen(){
+  async pullDay(){
     const day=new Date().toLocaleDateString('en-CA',{timeZone:ET});
-    if(SNDK.openPx&&SNDK.openPx.day===day) return;
+    if(SNDK.dayPx&&SNDK.dayPx.day===day&&SNDK.dayPx.settled) return;
     try{
       const res=await fetch(`/api/raw/file?root=state&path=sndk_side/${day}.jsonl&limit=1`,{cache:'no-store'});
       if(!res.ok) return;
       const d=await res.json(); const row=(d&&d.rows&&d.rows[0])||null;
-      let r=(row&&Array.isArray(row.readings)?row.readings:[]).find(x=>x&&x.id==='px.session_open');
-      // SECOND SOURCE: the packet ships the bars it cites, and on most sessions the opening
-      // minute is one of them. Used only when the reading is missing — a packet written
-      // before the reading existed, or by an older build — and only for a record that says
-      // bar 0, so this can never dress up some later minute as the open.
-      if(!r){ const b0=(row&&row.bars&&Array.isArray(row.bars.records)?row.bars.records:[])
-                .find(x=>x&&+x.bar_index===0&&isFinite(+x.open));
-        if(b0) r={value:+b0.open, at_bar:0}; }
-      if(!r||!isFinite(+r.value)) return;
-      SNDK.openPx={day, p:+r.value, bar:(r.at_bar==null?null:+r.at_bar)};
-      if(SNDK.on&&SNDK.model) SNDK.buildChart();   // the baseline snaps to the true open
+      const rds=(row&&Array.isArray(row.readings))?row.readings:[];
+      const pick=id=>{ const r=rds.find(x=>x&&x.id===id);
+        return (r&&isFinite(+r.value))?{p:+r.value, bar:(r.at_bar==null?null:+r.at_bar)}:null; };
+      let open=pick('px.session_open');
+      // SECOND SOURCE for the open only: the packet ships the bars it cites, and on most
+      // sessions the opening minute is one of them. Used when the reading is missing — a
+      // packet written before the reading existed — and only for a record that says bar 0,
+      // so this can never dress up some later minute as the open. The extremes get no such
+      // fallback: a cited-bar sample is not the day's high or low and must not pose as one.
+      if(!open){ const b0=(row&&row.bars&&Array.isArray(row.bars.records)?row.bars.records:[])
+                   .find(x=>x&&+x.bar_index===0&&isFinite(+x.open));
+        if(b0) open={p:+b0.open, bar:0}; }
+      const high=pick('px.session_high'), low=pick('px.session_low');
+      if(!open&&!high&&!low) return;
+      // the open is fixed for the day; the extremes are only current to the packet's own
+      // clock, so keep asking until the session is over.
+      SNDK.dayPx={day, open, high, low, settled:false};
+      if(SNDK.on&&SNDK.model) SNDK.buildChart();
     }catch(e){}
   },
   // FINE TAPE readback — state/sndk_tape/{today}.jsonl on a SLOW clock (60s): its only job
@@ -12760,6 +12767,13 @@ const SNDK = {
     if(w<80||h<80) return;
     const step=SNDK.step;
     const S=snkSpotPath();                                       // session journey — its extent frames the band too
+    // THE DAY'S OWN MINUTES, resolved once. `S` above is a ~2-minute sample of the price;
+    // these are the completed bars behind it, and two places below need them — the shading
+    // baseline and the off-frame extremes chip. Declared here so neither reads a binding the
+    // other owns (which is exactly the ReferenceError this hoist replaced).
+    const _dp=(SNDK.dayPx&&S&&S.t0
+               &&SNDK.dayPx.day===new Date(S.t0).toLocaleDateString('en-CA',{timeZone:ET}))
+              ?SNDK.dayPx:null;
     const band=snkBand(m, step, S.pts.map(q=>q.p)); if(!band){ SNDK.paintEmpty(); return; }
     SNDK.band=band;
     const grid=snkGrid(band, step); SNDK.grid=grid;
@@ -13580,8 +13594,19 @@ const SNDK = {
     // the walls, in the path's own iris, tucked to the plot's right where the trail's live
     // edge already lives (the wall/magnet markers own the centre).
     if(S.pts.length>=2){
+      // THE DAY'S EXTREMES ARE A BAR QUESTION (09-04). This chip used to report the highest
+      // and lowest per-scan SPOT, and a scan is a glance every ~2 minutes: on 09-04 the low
+      // printed $1,598.79 — the 09:30:12 scan — while price actually traded $1,581.00 in the
+      // 09:31 minute, between that glance and the next. A $17.79 lie on the one number the
+      // chip exists to tell. The completed minutes know; the sidecar has had them all along,
+      // and the scene the model reads has used them since obs-5 (`extremes_from`). The scan
+      // trail is still folded in, exactly as sndk_read does it, so a print newer than the
+      // last packet still counts and the chip can only ever be too CONSERVATIVE, never wrong
+      // in the direction that invents a move nobody made.
       let sHi=-Infinity, sLo=Infinity;
       for(const q of S.pts){ if(!isFinite(q.p)) continue; if(q.p>sHi) sHi=q.p; if(q.p<sLo) sLo=q.p; }
+      if(_dp&&_dp.high&&isFinite(_dp.high.p)) sHi=Math.max(sHi, _dp.high.p);
+      if(_dp&&_dp.low &&isFinite(_dp.low.p))  sLo=Math.min(sLo, _dp.low.p);
       const pxEdge=(v,above)=>{
         if(!isFinite(v)) return;
         // this chip shares the plot's right edge with the air-pocket sentence, and a pocket
@@ -13756,8 +13781,8 @@ const SNDK = {
       // The baseline is the session's OPENING MINUTE when the sidecar has it and it really is
       // bar 0; otherwise this tab's first scan, which is a different thing and gets said so in
       // the caption rather than quietly wearing the word "open".
-      const _op=SNDK.openPx, _cday=new Date(S.t0).toLocaleDateString('en-CA',{timeZone:ET});
-      const openTrue=!!(_op&&_op.day===_cday&&_op.bar===0&&isFinite(_op.p));
+      const _op=_dp?_dp.open:null;
+      const openTrue=!!(_op&&_op.bar===0&&isFinite(_op.p));
       const pOpen=openTrue?_op.p:S.pts[0].p;
       const yO=snkPathGeom([{t:S.t0, p:pOpen}], pfr).P[0].y;
       const side=up=>{
