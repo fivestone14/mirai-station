@@ -585,7 +585,7 @@ if __name__ == "__main__":
 _SNDK_PRO_DIR = PLUGIN_ROOT / "skills" / "sndk-pro"
 
 
-def _side_packet(R, row: dict, rows: list, build_now: datetime,
+def _side_packet(R, row: dict, build_now: datetime,
                  day: Optional[str]) -> Optional[dict]:
     """The side payload as the reader would build it at `build_now`. Returns
     None rather than raising: the tab must still render the scene when the
@@ -665,7 +665,7 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         # the row rather than a copy that can drift from it. A sibling of the
         # scene and never a child: user_prompt and scene_chars below are pinned
         # to the scene alone, and this document is not sent to the model at all.
-        "side": _side_packet(R, row, rows, build_now, day),
+        "side": _side_packet(R, row, build_now, day),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
         # what must be true before this scene is worth a model call. Read off the
         # reader's OWN constants rather than retyped into the page: a tab that
