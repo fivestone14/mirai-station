@@ -33,3 +33,12 @@ skills/mirai-left-eye/logs/
 # refuses a TRACKED apk, but an untracked one sitting in `git status` is an
 # invitation, and mirai-mobile/.gitignore only reaches its own directory.
 runtime/viewstation/static/m/*.apk
+
+# The scanner's rolling intraday state. It is runtime data like everything under
+# state/ — hunter.load_state() returns a fresh day when the file is absent and
+# resets it at 09:30 ET anyway — but it lived here, beside the code, and so was
+# tracked by accident rather than by decision. What it holds is a live signal:
+# which direction armed, on which instrument, at which second. Four commits
+# published one before 2026-09-04, and with development moving to the public
+# repo a `git commit -a` would publish today's.
+skills/mirai-left-eye/state.json
