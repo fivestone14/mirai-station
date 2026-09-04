@@ -3498,17 +3498,17 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # it: the payload tab pins user_prompt and scene_chars to the scene alone.
     # A failure here is logged and dropped — this packet reaches no model and
     # no gate, so nothing about it is worth failing a read for.
-    # ...but only on the rows that SPEND A CALL. Measured on 09-03: the packet
-    # is ~7.1 KB and the reader writes ~190 rows a session, so carrying it on
-    # every row would take the reads file from 242 KB to 1.6 MB a day — 336 MB
-    # a year — to store a document that is a pure function of the minute bars
-    # and the diary row, both of which are already on disk and both of which
-    # this module can replay. What a stored copy buys is the one thing a replay
-    # cannot: what the packet said under the rules of the day, before they were
-    # changed. That is worth keeping for the ~19 rows a day where the model
-    # actually spoke and a reading has to be graded against what it was shown,
-    # and it is not worth 90% of the bytes for the quiet rows in between, which
-    # rebuild exactly from `sndk_side.side_for_day`.
+    # ...into ITS OWN FILE, and only on the rows that SPEND A CALL. Two
+    # measurements decided both halves. The packet is ~6.4 KB against a 1.2 KB
+    # read row, and the phone polls the last forty rows of the reads file every
+    # sixty seconds (static/m/page.js) to read two fields the packet does not
+    # contain — so riding the row would send six times the bytes over a mobile
+    # radio for nothing. And it is a pure function of the minute bars and the
+    # diary row, both already on disk, so the quiet rows rebuild exactly through
+    # sndk_side.side_for_day. What a kept copy buys is the one thing a rebuild
+    # cannot: what the packet said under the rules of the day, before anyone
+    # changed them — worth keeping for the ~19 minutes a day the model actually
+    # spoke and a reading has to be graded against what it was shown.
     side = None
     if sndk_side is not None and (wake or force):
         try:
@@ -3517,6 +3517,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                 levels=sndk_side.levels_from_row(row),
                 levels_as_of_bar=sndk_side.bar_index(_book_asof(row) or t_row, day),
                 profile=sndk_side.segment_profile(sndk_side.prior_sessions(day)))
+            if side:
+                sndk_side.append(day, side)
         except Exception as exc:
             print(f"sndk-read :: side payload skipped: {exc!r}")
 
@@ -3534,7 +3536,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         # row, not only on the ones that spend a call, so a restart mid-session
         # cannot leave the gate with nothing to measure from.
         "gate": state_for_next_wake(row, scene),
-        **({"side": side} if side else {}),
+        # a pointer, not the packet: state/sndk_side/<day>.jsonl holds it
+        **({"side_bar": (side.get("as_of") or {}).get("bar_index")} if side else {}),
         "reading": None, "model": None, "wall_s": None, "error": None,
     }
 
