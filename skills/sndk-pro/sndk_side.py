@@ -60,10 +60,17 @@ from zoneinfo import ZoneInfo
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 if str(_SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_DIR))
+_LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
+if _LEFT_EYE not in sys.path:
+    sys.path.insert(0, _LEFT_EYE)
 try:
     import sndk_bars                       # the sidecar's reader half
 except Exception:                          # the packet must degrade, never crash
     sndk_bars = None
+try:
+    import atomic_io                       # the project's torn-write-proof writer
+except Exception:
+    atomic_io = None
 
 _ET = ZoneInfo("America/New_York")
 VERSION = "side-1"                # bump on ANY change to what this packet says
@@ -653,6 +660,60 @@ def _integrity(out: dict, bars: list[dict], rsi: dict) -> list[dict]:
         (abs(s - 1.0) < 0.002) if closed_or_active and fr else "warn",
         f"sum={round(s, 3)} over the segments that have any bars yet")
     return rows
+
+
+# ------------------------------------------------------------------ store ---
+# ITS OWN FILE, not the read row — the same call sndk_bars made, for the same
+# reason. Measured on 09-03: the packet is ~6.4 KB against a 1.2 KB read row,
+# and the phone polls the last forty rows of that file every sixty seconds
+# (static/m/page.js) to read two fields it does not contain. Riding the row
+# would have sent six times the bytes over a mobile radio for nothing, and made
+# the reader re-parse a file six times larger on every two-minute scan. The
+# diary keeps its one-scan-one-row shape; this keeps its own.
+def side_dir() -> Path:
+    env = os.environ.get("MIRAI_STATE_DIR")
+    base = Path(env) if env else (_SKILL_DIR.parent.parent / "state")
+    return base / "sndk_side"
+
+
+def side_path(day: str) -> Path:
+    return side_dir() / f"{day}.jsonl"
+
+
+def append(day: str, packet: dict) -> bool:
+    """One line per packet kept. Returns whether it landed — the caller treats
+    a miss as skippable, because nothing downstream blocks on this file."""
+    if atomic_io is None or not packet:
+        return False
+    try:
+        atomic_io.append_jsonl(side_path(day), packet)
+        return True
+    except OSError:
+        return False
+
+
+def read_day(day: str) -> list[dict]:
+    """Every packet kept for `day`, oldest first. A torn line is skipped, never
+    fatal; a missing file is an empty list."""
+    p = side_path(day)
+    if not p.exists():
+        return []
+    out = []
+    try:
+        lines = p.read_text().splitlines()
+    except OSError:
+        return []
+    for ln in lines:
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            o = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(o, dict):
+            out.append(o)
+    return out
 
 
 # ------------------------------------------------------------------ adapt ---

@@ -348,10 +348,11 @@ def test_the_packet_builds_on_a_recorded_session(tmp_path, monkeypatch):
 
 
 # --- the read row -------------------------------------------------------------
-def test_the_read_row_carries_the_packet_beside_the_scene(tmp_path, monkeypatch):
-    """It rides the read row so a replay can see exactly what it said. BESIDE
-    the scene, never inside it — the payload tab pins user_prompt and
-    scene_chars to the scene alone, and nesting would break both."""
+def test_the_packet_lands_in_its_own_file_and_the_row_only_points_at_it(
+        tmp_path, monkeypatch):
+    """Its own file, the same call sndk_bars made. The read row keeps its shape
+    and carries a bar pointer, because the phone polls forty of those rows a
+    minute to read two fields the packet does not contain."""
     import json
     import sndk_bars as SB
     import sndk_read as SR
@@ -373,12 +374,18 @@ def test_the_read_row_carries_the_packet_beside_the_scene(tmp_path, monkeypatch)
     SR.read_once(now=NOW)
     rows = [json.loads(l) for l in
             (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
-    side = rows[-1].get("side")
-    assert side is not None, "the read row should carry the packet"
+    assert "side" not in rows[-1], "the packet must not ride the row"
+    assert rows[-1]["side_bar"] is not None
+
+    kept = SS.read_day(day)
+    assert len(kept) == 1
+    side = kept[0]
     assert side["version"] == SS.VERSION and side["bars"]["count"] == 120
-    assert "scene" not in side and "side" not in (rows[-1].get("scene") or {})
+    assert side["as_of"]["bar_index"] == rows[-1]["side_bar"]
     # the engine's lines come off the same diary row the scene was built from
     assert {L["role"] for L in side["levels"]} >= {"wall_call", "wall_put"}
+    # and the row stayed small: the phone fetches forty of these a minute
+    assert len(json.dumps(rows[-1])) < 4000
 
 
 def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
@@ -404,7 +411,8 @@ def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
     rows = [json.loads(l) for l in
             (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
     assert rows, "the read row must still land"
-    assert "side" not in rows[-1]
+    assert "side" not in rows[-1] and "side_bar" not in rows[-1]
+    assert SS.read_day(day) == []
     assert "side payload skipped" in capsys.readouterr().out
 
 
@@ -435,7 +443,8 @@ def test_a_quiet_row_does_not_carry_the_packet(tmp_path, monkeypatch):
     rows = [json.loads(l) for l in
             (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
     assert rows, "a quiet row must still land — a hidden surface is not a missing one"
-    assert "side" not in rows[-1]
+    assert "side" not in rows[-1] and "side_bar" not in rows[-1]
+    assert SS.read_day(day) == [], "a quiet minute keeps nothing"
     # and it is still rebuildable for that minute, which is why dropping it is safe
     assert SS.side_for_day(day, NOW)["bars"]["count"] == 120
 
@@ -546,3 +555,15 @@ def test_a_level_measured_outside_the_session_does_not_claim_a_bar():
                       levels_as_of_bar=None)
     lvl = next(L for L in p["levels"] if L["role"] == "flip")
     assert lvl["price_as_of_bar"] is None
+
+
+def test_a_torn_line_in_the_side_file_is_skipped_not_fatal(tmp_path, monkeypatch):
+    """The same rule the bar sidecar keeps: a half-written line is skipped, a
+    missing file is an empty list, and neither is ever an exception."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    assert SS.read_day(DAY) == []                      # no file at all
+    SS.append(DAY, {"version": SS.VERSION, "as_of": {"bar_index": 10}})
+    SS.side_path(DAY).write_text(SS.side_path(DAY).read_text() + '{"half wri\n')
+    SS.append(DAY, {"version": SS.VERSION, "as_of": {"bar_index": 20}})
+    kept = SS.read_day(DAY)
+    assert [k["as_of"]["bar_index"] for k in kept] == [10, 20]
