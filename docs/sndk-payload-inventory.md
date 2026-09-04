@@ -15,7 +15,7 @@ Everything above is about the SCENE: what the model is handed, measured in
 bytes because the model is paid for by the token ~19 times a day. `sndk_side`
 builds a different document on the same scan — bars-first rather than
 options-first, its clock the bar rather than the two-minute scan — and it is
-**never sent to a model**. It rides the read row and the payload tab.
+**never sent to a model**. It is kept in its own file, `state/sndk_side/<day>.jsonl`, one line for each minute the model spoke; the read row carries only `side_bar`, the bar index it was built on. That split is measured too — the packet is ~6.4 KB against a 1.2 KB read row, and the phone polls forty of those rows a minute for two fields the packet does not contain. Quiet minutes keep nothing and rebuild exactly through `sndk_side.side_for_day`, because the packet is a pure function of the bars and the diary row.
 
 That is the whole reason it does not belong in the sr-8 arithmetic. Its bytes
 are disk and display, not tokens, so the question "does this leaf vary?" is
