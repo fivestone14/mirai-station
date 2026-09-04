@@ -12256,6 +12256,7 @@ const SNDK = {
   gaps:[], _pullUp:null,                            // air-pockets (chart + narrator read one model) · comet direction
   draw:null,                                        // which rail drawer is open ('read' | 'map' | null)
   path:[], _pathEdge:null,                          // full-day per-scan spot trail (limit=400) + the live-edge nodes
+  openPx:null,                                      // {day, p, bar} — the session's FIRST MINUTE, off the bar sidecar
   // FINE TAPE (08-11): tape = the server's sndk_tape file (each row a quote this tab's own
   // /api/spot polls already paid for — the server persists them as a free by-product, zero
   // extra upstream calls); tapeLive = the same samples accumulated client-side between the
@@ -12545,7 +12546,29 @@ const SNDK = {
         if(SNDK.on&&SNDK.model) SNDK.buildChart();   // the morning fills in under the bars
       }
     }catch(e){}
+    SNDK.pullOpen();
     SNDK.timers.path=setTimeout(()=>SNDK.pollPath(), SNDK.pathMs);
+  },
+  // THE DAY'S OPENING PRICE, once. The path this tab draws is per-scan spots, and the first
+  // of those is wherever the watcher's clock happened to land after the bell — on 09-04 that
+  // was 09:30:12 at 1598.79 against a real 09:30 open of 1586.00, so the shading was flying a
+  // $13 error. The completed first minute is a fact the bar sidecar has had all along; the
+  // side packet carries it as px.session_open WITH the bar it was read from, which is the
+  // half that matters: on a session the watcher joined late that bar is not 0 and the number
+  // is not the open. Fetched once per day (limit=1 = newest packet; the opening minute never
+  // changes, so there is nothing to re-poll) and left null if anything is missing.
+  async pullOpen(){
+    const day=new Date().toLocaleDateString('en-CA',{timeZone:ET});
+    if(SNDK.openPx&&SNDK.openPx.day===day) return;
+    try{
+      const res=await fetch(`/api/raw/file?root=state&path=sndk_side/${day}.jsonl&limit=1`,{cache:'no-store'});
+      if(!res.ok) return;
+      const d=await res.json(); const row=(d&&d.rows&&d.rows[0])||null;
+      const r=(row&&Array.isArray(row.readings)?row.readings:[]).find(x=>x&&x.id==='px.session_open');
+      if(!r||!isFinite(+r.value)) return;
+      SNDK.openPx={day, p:+r.value, bar:(r.at_bar==null?null:+r.at_bar)};
+      if(SNDK.on&&SNDK.model) SNDK.buildChart();   // the baseline snaps to the true open
+    }catch(e){}
   },
   // FINE TAPE readback — state/sndk_tape/{today}.jsonl on a SLOW clock (60s): its only job
   // is history (a reload, a second device, the morning before this tab opened) — the live
@@ -13721,7 +13744,12 @@ const SNDK = {
       // the Replay tab uses for an excursion against its entry; the code is this chart's own —
       // its own projection, its own ids, no shared helper, class or state with the SPX side, so
       // either can be re-tuned without touching the other.
-      const pOpen=S.pts[0].p;
+      // The baseline is the session's OPENING MINUTE when the sidecar has it and it really is
+      // bar 0; otherwise this tab's first scan, which is a different thing and gets said so in
+      // the caption rather than quietly wearing the word "open".
+      const _op=SNDK.openPx, _cday=new Date(S.t0).toLocaleDateString('en-CA',{timeZone:ET});
+      const openTrue=!!(_op&&_op.day===_cday&&_op.bar===0&&isFinite(_op.p));
+      const pOpen=openTrue?_op.p:S.pts[0].p;
       const yO=snkPathGeom([{t:S.t0, p:pOpen}], pfr).P[0].y;
       const side=up=>{
         const cl=G.P.map(q=>`${q.x.toFixed(1)},${(up?Math.min(q.y,yO):Math.max(q.y,yO)).toFixed(1)}`).join(' ');
@@ -13743,7 +13771,7 @@ const SNDK = {
       SNDK._pathEdge={ax:G.P[ci].x, ay:G.P[ci].y, fr:pfr};
       pathPts=G.P; pathOpenY=yO;   // the price story, handed to the callout placer as no-go ground
       pathCap=` · path = per-scan spots${S.fine?' + 5s tape':''}${S.streaming?' + live quote':''}`
-        +` · shaded green above the ${snkUsd(pOpen,0)} open, red below`;
+        +` · shaded green above the ${snkUsd(pOpen,0)} ${openTrue?'open':'first scan'}, red below`;
     }
     // ---- caption: surface honesty in one line ----
     const fr=SNDK.staleInfo();

@@ -392,3 +392,19 @@ def test_the_station_opens_on_sndk_for_now():
     carries it so restoring the SPX default is a one-word change."""
     assert "const DEFAULT_TAB='sndk';" in PAGE
     assert "if(DEFAULT_TAB!=='map') switchTab(DEFAULT_TAB);" in PAGE
+
+
+def test_the_shading_baseline_is_the_opening_minute_not_the_first_scan():
+    """08-22 shaded the day against S.pts[0] — this tab's first SCAN, which lands
+    wherever the watcher's clock fell after the bell. On 09-04 that was 09:30:12 at
+    1598.79 against a true 09:30 open of 1586.00, and the band between them was
+    painted red on a day price never traded below its open. The baseline now comes
+    off the bar sidecar, and the word "open" is spent only when the reading really
+    sits on bar 0."""
+    assert "async pullOpen()" in PAGE
+    assert "path=sndk_side/${day}.jsonl&limit=1" in PAGE
+    assert "x.id==='px.session_open'" in PAGE
+    assert "SNDK.pullOpen();" in PAGE                       # pollPath drives it
+    assert "_op.bar===0" in PAGE                            # ...and only bar 0 earns the word
+    assert "const pOpen=openTrue?_op.p:S.pts[0].p;" in PAGE  # else the scan still stands
+    assert "${openTrue?'open':'first scan'}" in PAGE         # and the caption says which
