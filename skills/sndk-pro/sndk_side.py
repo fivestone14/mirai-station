@@ -32,10 +32,11 @@ lets a reader disbelieve the document: what is missing and why, how old each
 feed is, and the bar index stapled to every derived number.
 
 TWO COUNTS THAT ARE NOT COMPARABLE. `visits` and `crosses` on a level are
-measured on different rails — a visit is price within half a noise floor of the
-level, a cross is a close a whole noise floor beyond it — so both rails ship
-with the counts in `level_rails`. Counting bars rather than visits inflated an
-early draft's touch count from 14 to 61.
+measured on different rails — a visit is a RUN of consecutive bars within half
+a bar-range-median of the line, counted once, and a cross is a close a whole
+bar-range-median onto the other side — so both rails ship with the counts in
+`level_rails`. Counting bars rather than runs inflated an early draft's touch
+count from 14 to 61.
 
 HONESTY. Only completed bars are read (`sndk_bars.completed`), so nothing here
 is computed from a minute still being written. Levels from the options engine
@@ -77,6 +78,55 @@ CLIMAX_X = (4.0, 3.0)             # enter, exit — against the trailing-30 medi
 VOL_WINDOW = 30
 SEGMENTS = (("open_drive", 0, 59), ("lull", 60, 269),
           ("afternoon", 270, 329), ("power_hour", 330, 389))
+
+
+# sr-8's rule, applied here: A SENTENCE THAT NEVER CHANGES DOES NOT RIDE THE
+# PACKET. These are the standing explanations — identical on every build, 16%
+# of the bytes when they shipped inline — held once and surfaced by whatever
+# renders the packet. The packet carries `doctrine` as a version pointer, so a
+# stored packet can always be paired with the words that were true when it was
+# built.
+DOCTRINE = {
+    "as_of": "Every timestamp in this packet is derived from a bar_index against "
+             "session_start; none is stored on its own. A reduce that dropped the "
+             "row it came from is what let times be typed in by hand.",
+    "bl.bar_range_median": "Median bar range, over bars that actually traded — the "
+                           "unit every distance here is quoted in. NOT "
+                           "gw_vocab.NOISE_FLOOR, which is a gamma-cluster share cut.",
+    "bars.records": "Every bar cited by an at_bar anywhere in this packet, plus the "
+                    "last two. A value checked against a bar nobody carries is not "
+                    "checked.",
+    "ind.vol": "The percentile leads; the raw multiple tracks the clock and inverts "
+               "inside the closing ramp.",
+    "ind.rsi14.warmup": "Undefined until RSI_LEN + 1 bars have closed. No value is "
+                        "invented for the opening minutes.",
+    "level_rails": "Visits and crosses are measured on DIFFERENT rails and are not "
+                   "comparable. A VISIT is a run of consecutive bars in which price "
+                   "came within half a bar-range-median of the line, counted ONCE; a "
+                   "CROSS is a close a whole bar-range-median onto the other side.",
+    "levels.vintage": "A level from the options book carries the bar its row was "
+                      "measured on and can be older than the price it is compared "
+                      "against; a level drawn from the tape cannot. Neither counts an "
+                      "interaction from before it existed.",
+    "episodes.bars_in_state": "The bars actually in the band, never the span. A merged "
+                              "spell covers a gap, and counting the gap credits the "
+                              "state to minutes that were never in it. An open spell "
+                              "is never merged.",
+    "session_segments": "Expected shares are measured from this symbol's own recent "
+                        "sessions and normalised, because a median taken per segment "
+                        "does not sum to a session on its own.",
+    "absent.positions": "The operator's own book. Nothing in this packet models it, so "
+                        "no reading here can say whether a level is a reason to act.",
+    "absent.premium": "Implied volatility and premium per strike.",
+    "absent.events": "No calendar feed is wired: index rebalances, macro releases and "
+                     "earnings are knowable in advance and are not here.",
+    "absent.confluence": "No combination rule qualifies yet. On the sessions on disk a "
+                         "strict three-condition rule fires too rarely to score.",
+    "absent.baselines": "Under MIN_BARS bars no baseline is honest.",
+    "integrity": "These checks run; they are not asserted. Every one of them is forced "
+                 "to fail once in the tests, because a check never observed failing is "
+                 "not evidence.",
+}
 
 
 # ---------------------------------------------------------------- the clock --
@@ -262,11 +312,12 @@ def level_record(price: float, role: str, bars: list[dict], nf: float,
                  price_as_of_bar: int, src: str) -> dict:
     """One price line and how price has behaved around it since it existed.
 
-    A VISIT is price coming within half a noise floor of the line, and
+    A VISIT is price coming within half a bar-range-median of the line, and
     consecutive bars are ONE visit — counting bars instead put an early draft's
-    touch count at 61 where there were 14. A CROSS is a close a whole noise
-    floor onto the other side; the side is tracked with that band so a close
-    that creeps over the line cannot swallow the next real crossing.
+    touch count at 61 where there were 14. A CROSS is a close a whole
+    bar-range-median onto the other side; the side is tracked against that same
+    distance, so a close that creeps over the line cannot swallow the next real
+    crossing.
     """
     touch, cross = nf / 2.0, nf
     window = [b for b in bars if b["bar_index"] >= active_from]
@@ -387,7 +438,7 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
     else:
         inds.append({"id": "ind.rsi14", "value": None, "label": "warmup",
                      "at_bar": last["bar_index"], "src": "bars_1m_sidecar",
-                     "_doc": f"undefined until {RSI_LEN + 1} bars have closed"})
+                     })
 
     vols = [x["volume"] for x in b]
     v30 = st.median(vols[-VOL_WINDOW - 1:-1]) if n > VOL_WINDOW else st.median(vols)
@@ -400,8 +451,7 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
                  "label": ("warmup" if thin else
                            "climax" if vx and vx >= CLIMAX_X[0] else "normal"),
                  "src": "bars_1m_sidecar",
-                 "_doc": "percentile leads; the raw multiple tracks the clock and "
-                         "inverts inside the closing ramp"})
+                 })
 
     lv: list[dict] = []
     if nf:
@@ -450,24 +500,22 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
     absent = [
         {"path": "positions[]", "why": "not_observed", "observer": "broker account",
          "computable": True,
-         "_doc": "the operator's own book. Nothing in this packet models it, so no "
-                 "reading here can say whether a level is a reason to act"},
+         },
         {"path": "premium[]", "why": "not_observed", "observer": "options chain",
-         "computable": True, "_doc": "implied volatility and premium per strike"},
+         "computable": True, },
         {"path": "events[]", "why": "not_computed", "computable": True,
-         "_doc": "no calendar feed is wired: index rebalances, macro releases and "
-                 "earnings are knowable in advance and are not here"},
+         },
         {"path": "confluence[]", "why": "not_computed", "computable": True,
-         "_doc": "no combination rule qualifies yet. Measured on the sessions on "
-                 "disk, a strict three-condition rule fires too rarely to score"},
+         },
     ]
     if thin:
         absent.append({"path": "baselines[]", "why": "in_progress",
                        "computable": True,
-                       "_doc": f"{n} bars: under {MIN_BARS} no baseline is honest"})
+                       "bars_seen": n})
 
     out = {
         "version": VERSION,
+        "doctrine": VERSION,          # the standing sentences: sndk_side.DOCTRINE
         "session": day,
         "as_of": {"bar_index": last["bar_index"],
                   "timestamp": bar_time(last["bar_index"], day),
@@ -475,12 +523,11 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
                   "bars_seen": n, "bars_in_session": BARS_PER_SESSION,
                   "session_start": bar_time(0, day), "interval": "1m",
                   "covered_until_bar": last["bar_index"],
-                  "_doc": "every timestamp in this packet is derived from a bar_index "
-                          "against session_start; none is stored on its own"},
+                  },
         "baselines": [
             {"id": "bl.bar_range_median", "value": _r2(nf), "kind": "session_to_date",
              "n": n, "drifts_intraday": True,
-             "_doc": "median bar range; the unit every distance here is quoted in"},
+             },
             {"id": "bl.vol_trailing_30", "value": round(v30, 1) if v30 else None,
              "kind": "trailing_window", "window_bars": min(VOL_WINDOW, n),
              "drifts_intraday": True},
@@ -488,18 +535,13 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
         "bars": {"count": n, "src": "bars_1m_sidecar",
                  "cumulative_volume": round(cum_vol),
                  "records": [by_i[i] for i in sorted(cited) if i in by_i],
-                 "_note": "every bar cited by an at_bar anywhere in this packet, "
-                          "plus the last two"},
+                 },
         "readings": readings,
         "indicators": inds,
         "episodes": eps,
         "levels": lv,
         "level_rails": ({"touch_abs": _r2(nf / 2.0), "cross_abs": _r2(nf),
-                         "decisive_abs": _r2(p90), "basis": "bl.bar_range_median",
-                         "_doc": "visits and crosses are measured on DIFFERENT rails "
-                                 "and are not comparable: a visit is price within "
-                                 "half a noise floor of the line, a cross is a close "
-                                 "a whole noise floor beyond it"} if nf else None),
+                         "decisive_abs": _r2(p90), "basis": "bl.bar_range_median",} if nf else None),
         "session_segments": ph,
         "absent": absent,
     }
