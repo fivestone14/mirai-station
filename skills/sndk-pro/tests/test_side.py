@@ -344,3 +344,64 @@ def test_the_packet_builds_on_a_recorded_session(tmp_path, monkeypatch):
     assert p["bars"]["count"] == 200
     assert p["as_of"]["bar_index"] == 199
     assert all(c["status"] in ("pass", "warn") for c in p["integrity"])
+
+
+# --- the read row -------------------------------------------------------------
+def test_the_read_row_carries_the_packet_beside_the_scene(tmp_path, monkeypatch):
+    """It rides the read row so a replay can see exactly what it said. BESIDE
+    the scene, never inside it — the payload tab pins user_prompt and
+    scene_chars to the scene alone, and nesting would break both."""
+    import json
+    import sndk_bars as SB
+    import sndk_read as SR
+    from test_read_once import NOW, _diary_row
+
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(SR, "_market_live", lambda: True)
+    (tmp_path / "sndk_reversion").mkdir()
+    (tmp_path / "sndk_reads").mkdir()
+    day = NOW.date().isoformat()
+    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text("\n".join(
+        json.dumps(_diary_row(NOW - timedelta(minutes=m))) for m in (8, 6, 4, 2)) + "\n")
+
+    open_at = datetime.combine(NOW.date(), SS.SESSION_OPEN, tzinfo=SS._ET)
+    SB.write_day(day, [{"ts": (open_at + timedelta(minutes=i)).isoformat(),
+                        "open": 1200.0, "high": 1201.0, "low": 1199.0,
+                        "close": 1200.0, "volume": 1000.0} for i in range(120)], NOW)
+
+    SR.read_once(now=NOW)
+    rows = [json.loads(l) for l in
+            (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
+    side = rows[-1].get("side")
+    assert side is not None, "the read row should carry the packet"
+    assert side["version"] == SS.VERSION and side["bars"]["count"] == 120
+    assert "scene" not in side and "side" not in (rows[-1].get("scene") or {})
+    # the engine's lines come off the same diary row the scene was built from
+    assert {L["role"] for L in side["levels"]} >= {"wall_call", "wall_put"}
+
+
+def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
+    """This packet reaches no model and no gate. If it raises, the read still
+    has to land — a silent extra must never be able to take the record down."""
+    import json
+    import sndk_read as SR
+    from test_read_once import NOW, _diary_row
+
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(SR, "_market_live", lambda: True)
+    (tmp_path / "sndk_reversion").mkdir()
+    (tmp_path / "sndk_reads").mkdir()
+    day = NOW.date().isoformat()
+    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text("\n".join(
+        json.dumps(_diary_row(NOW - timedelta(minutes=m))) for m in (8, 6, 4, 2)) + "\n")
+
+    def boom(*a, **k):
+        raise RuntimeError("side payload exploded")
+    monkeypatch.setattr(SR.sndk_side, "build_side", boom)
+
+    SR.read_once(now=NOW)
+    rows = [json.loads(l) for l in
+            (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
+    assert rows, "the read row must still land"
+    assert "side" not in rows[-1]
+    assert "side payload skipped" in capsys.readouterr().out

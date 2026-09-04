@@ -78,6 +78,10 @@ try:
     import sndk_bars                   # noqa: E402 — the minute-bar sidecar's reader half
 except Exception:                      # the reader must keep running without it
     sndk_bars = None
+try:
+    import sndk_side                   # noqa: E402 — the bar-anchored side payload
+except Exception:                      # a packet nobody reads must never stop a read
+    sndk_side = None
 PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
                                        # (walls ladder = the ladder's own walls)
 
@@ -3488,6 +3492,23 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                         since_last_read=frame_since_last_read(
                             row, rows, last_call, wake, force, scene_now,
                             prior_rows_today=bool(reads_all)))
+    # side-1: the bar-anchored packet, built from the same minute sidecar the
+    # scene's extremes come from. It rides the read row so a replay of the day
+    # can see exactly what it said, and it is BESIDE the scene, never inside
+    # it: the payload tab pins user_prompt and scene_chars to the scene alone.
+    # A failure here is logged and dropped — this packet reaches no model and
+    # no gate, so nothing about it is worth failing a read for.
+    side = None
+    if sndk_side is not None:
+        try:
+            side = sndk_side.build_side(
+                minute_bars(day), day, scene_now,
+                levels=sndk_side.levels_from_row(row),
+                levels_as_of_bar=sndk_side.bar_index(_book_asof(row) or t_row, day),
+                profile=sndk_side.segment_profile(sndk_side.prior_sessions(day)))
+        except Exception as exc:
+            print(f"sndk-read :: side payload skipped: {exc!r}")
+
     out = {
         "ts": now.isoformat(), "era": ERA,
         "wake": ("capped" if capped else
@@ -3502,6 +3523,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         # row, not only on the ones that spend a call, so a restart mid-session
         # cannot leave the gate with nothing to measure from.
         "gate": state_for_next_wake(row, scene),
+        **({"side": side} if side else {}),
         "reading": None, "model": None, "wall_s": None, "error": None,
     }
 
