@@ -269,15 +269,43 @@ def test_the_read_pops_in_the_headers_air():
 
 def test_the_payload_tab_carries_the_schema_card():
     """09-02: a Schema button on the Payload tab opens one card drawing the whole SNDK-PRO
-    pipeline — every file and what it does in plain words. The content is DATA (_PL_SCHEMA)
-    so this test can pin the file names it cites against the tree, and the strip beside it
-    no longer credits a vendor the SNDK chain never came from."""
+    pipeline — every file and what it does in plain words. The content is DATA so this test
+    can pin the file names it cites against the tree, and the strip beside it no longer
+    credits a vendor the SNDK chain never came from.
+
+    09-04: redrawn. Six rows of identical boxes with one chevron between each pair said
+    "everything above feeds everything below", which is not what happens. Components now
+    declare a kind and every connection is its own line, so the data is _PL_NODES plus
+    _PL_EDGES and this test pins that every edge endpoint actually resolves."""
     from pathlib import Path
     root = Path(__file__).resolve().parents[3]
     assert 'id="pl-schema"' in PAGE and "function openPlSchemaModal(" in PAGE
     assert ">Pipeline Architecture</button>" in PAGE                 # renamed 09-02
     assert PAGE.index('id="pl-schema"') < PAGE.index('id="pl-seg"')    # ...and sits left of the segments
-    assert "const _PL_SCHEMA=[" in PAGE and ".modal-card.plsch{" in PAGE
+    # 09-04 redesign: the content is still DATA, now split into components and the
+    # connections between them, so this test can pin both against the tree.
+    assert "const _PL_NODES=[" in PAGE and "const _PL_EDGES=[" in PAGE
+    assert ".modal-card.plsch{" in PAGE
+    # every component declares one of the five kinds the legend explains, and every
+    # kind in the legend is used — a colour nothing carries teaches nothing
+    import re as _re
+    kinds = set(_re.findall(r"^\s*\['[a-z0-9]+',\s*'[^']+',\s*'([a-z]+)'", 
+                            PAGE[PAGE.index("const _PL_NODES=["):PAGE.index("const _PL_EDGES=[")], _re.M))
+    _k0 = PAGE.index("const _PL_KINDS=[")
+    _kind_block = PAGE[_k0:PAGE.index("];", _k0)]
+    legend = set(_re.findall(r"\['([a-z]+)','[A-Z]", _kind_block))
+    assert kinds and kinds == legend, (sorted(kinds), sorted(legend))
+    # EVERY edge endpoint resolves to a component. A dangling id draws no line and
+    # says nothing about it — the same silent-miss this build keeps being bitten by.
+    node_ids = set(_re.findall(r"^\s*\['([a-z0-9]+)',", 
+                               PAGE[PAGE.index("const _PL_NODES=["):PAGE.index("const _PL_EDGES=[")], _re.M))
+    edge_block = PAGE[PAGE.index("const _PL_EDGES=["):PAGE.index("const _PL_LEFTOUT=[")]
+    ends = set(_re.findall(r"\['([a-z0-9]+)','([a-z0-9]+)'", edge_block))
+    flat = {x for pair in ends for x in pair}
+    assert flat, "no edges parsed"
+    assert flat <= node_ids, sorted(flat - node_ids)
+    # the side packet is part of the picture, not a footnote to it
+    assert "sndk_side.build_side()" in PAGE and "state/sndk_side" in PAGE
     for rel in ("skills/sndk-pro/sndk_hunter.py", "skills/sndk-pro/sndk_views.py",
                 "skills/sndk-pro/sndk_bars.py", "skills/sndk-pro/sndk_read.py",
                 "skills/sndk-pro/sndk_rag.py", "runtime/watch/intraday/sndk_deadman.py",
