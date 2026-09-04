@@ -2717,7 +2717,14 @@ def _prior_session_date(today: str) -> Optional[str]:
 
 
 def minute_bars(day: str) -> list[dict]:
-    """The sidecar's completed minute bars for `day`, or [] — never zeros."""
+    """Every minute bar the sidecar has on disk for `day`, or [] — never zeros.
+
+    They ARE completed bars, but that is the writer's discipline, not this
+    function's: sndk_bars.write_day only ever appends minutes that had fully
+    elapsed. What this does not do is clip to a caller's `now` — it returns the
+    whole file, so a caller rebuilding a PAST moment must clip for itself or it
+    will see bars from after the moment it is describing. That is exactly what
+    the side packet was doing until 09-03."""
     if sndk_bars is None:
         return []
     try:
