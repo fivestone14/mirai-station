@@ -14570,7 +14570,9 @@ const PAYLOAD = {
   },
   copy(){
     const d=PAYLOAD.data; if(!d||!d.scene||!navigator.clipboard) return;
-    navigator.clipboard.writeText(JSON.stringify(PAYLOAD.view==='side'?(d.side||{}):d.scene)).then(()=>{ const b=document.getElementById('pl-copy'); if(b){ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy JSON'; },1200); } }).catch(()=>{});
+    const doc = PAYLOAD.view==='side' ? d.side : d.scene;
+    if(!doc) return;                 // nothing to copy is not an empty object
+    navigator.clipboard.writeText(JSON.stringify(doc)).then(()=>{ const b=document.getElementById('pl-copy'); if(b){ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy JSON'; },1200); } }).catch(()=>{});
   },
   // STEP 7's tooltip: the tab's most-asked question — "why did it not say anything?" — answered on
   // the card that does the asking. Every number comes from the payload's `gates` block, which the
