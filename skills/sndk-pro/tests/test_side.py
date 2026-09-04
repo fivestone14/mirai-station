@@ -299,16 +299,17 @@ def test_the_recompute_check_fails_when_a_value_does_not_match_its_bar():
 
 
 def test_the_episode_count_check_fails_when_a_gap_is_counted():
+    """The upper rail: a merged spell that counts the gap it spans claims more
+    bars in state than there are bars on the state's side of the exit rail."""
     bars = _ramp(120, 1400.0, 1500.0)
     ix = SS.indexed(bars, DAY)
     p = SS.build_side(bars, DAY, _now(119))
     if not p.get("episodes"):
         pytest.skip("this ramp produced no spell to corrupt")
-    p["episodes"][0]["bars_in_state"] += 3         # credit the state to three more
+    p["episodes"][0]["bars_in_state"] += 50        # more than the span can hold
     rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
     assert next(c for c in rebuilt
-                if c["check"] == "bars_in_state_counts_only_bars_in_the_band"
-                )["status"] == "fail"
+                if c["check"] == "bars_in_state_within_its_rails")["status"] == "fail"
 
 
 def test_the_rail_check_fails_when_a_count_does_not_name_its_rail():
@@ -511,3 +512,37 @@ def test_the_volume_baseline_excludes_the_bar_it_measures_and_says_so():
     assert bl["value"] == 1000.0                                 # untouched by the spike
     vol = next(i for i in p["indicators"] if i["id"] == "ind.vol")
     assert vol["x"] == 30.0
+
+
+def test_the_packet_never_sees_a_bar_that_had_not_closed_yet():
+    """The clip. The caller hands over the whole session file, so a packet built
+    as of a past minute would otherwise carry bars from after it — look-ahead
+    with a timestamp on it."""
+    whole = _flat(200, 1500.0)
+    whole[150] = _bar(150, 1599.0, 1601.0, 1600.0)     # a high AFTER the as-of
+    p = SS.build_side(whole, DAY, _now(99))            # as of bar 99
+    assert p["as_of"]["bar_index"] == 99
+    assert p["bars"]["count"] == 100
+    hi = next(r for r in p["readings"] if r["id"] == "px.session_high")
+    assert hi["at_bar"] <= 99 and hi["value"] < 1600.0
+
+
+def test_an_open_spell_survives_a_minute_the_sidecar_never_got():
+    """A gap is an absence, not a bar out of the band. The sidecar exists
+    because gaps happen, so a hole inside an open spell must not fail a check."""
+    up = _ramp(60, 1400.0, 1500.0)
+    holed = [b for b in up if SS.bar_index(b["ts"], DAY) != 50]
+    p = SS.build_side(holed, DAY, _now(59))
+    assert all(c["status"] == "pass" for c in p["integrity"]), \
+        [c for c in p["integrity"] if c["status"] != "pass"]
+
+
+def test_a_level_measured_outside_the_session_does_not_claim_a_bar():
+    """A book stamped after the close has no bar index. Falling back to the
+    newest one is a stale level wearing a fresh stamp, and it fails in the
+    flattering direction — the tab's staleness line would never fire."""
+    p = SS.build_side(_flat(60), DAY, _now(59),
+                      levels=[{"price": 1500.0, "role": "flip"}],
+                      levels_as_of_bar=None)
+    lvl = next(L for L in p["levels"] if L["role"] == "flip")
+    assert lvl["price_as_of_bar"] is None
