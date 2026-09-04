@@ -3498,8 +3498,19 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # it: the payload tab pins user_prompt and scene_chars to the scene alone.
     # A failure here is logged and dropped — this packet reaches no model and
     # no gate, so nothing about it is worth failing a read for.
+    # ...but only on the rows that SPEND A CALL. Measured on 09-03: the packet
+    # is ~7.1 KB and the reader writes ~190 rows a session, so carrying it on
+    # every row would take the reads file from 242 KB to 1.6 MB a day — 336 MB
+    # a year — to store a document that is a pure function of the minute bars
+    # and the diary row, both of which are already on disk and both of which
+    # this module can replay. What a stored copy buys is the one thing a replay
+    # cannot: what the packet said under the rules of the day, before they were
+    # changed. That is worth keeping for the ~19 rows a day where the model
+    # actually spoke and a reading has to be graded against what it was shown,
+    # and it is not worth 90% of the bytes for the quiet rows in between, which
+    # rebuild exactly from `sndk_side.side_for_day`.
     side = None
-    if sndk_side is not None:
+    if sndk_side is not None and (wake or force):
         try:
             side = sndk_side.build_side(
                 minute_bars(day), day, scene_now,
