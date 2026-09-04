@@ -408,3 +408,4 @@ def test_the_shading_baseline_is_the_opening_minute_not_the_first_scan():
     assert "_op.bar===0" in PAGE                            # ...and only bar 0 earns the word
     assert "const pOpen=openTrue?_op.p:S.pts[0].p;" in PAGE  # else the scan still stands
     assert "${openTrue?'open':'first scan'}" in PAGE         # and the caption says which
+    assert "+x.bar_index===0" in PAGE                        # the cited-record fallback, bar 0 only

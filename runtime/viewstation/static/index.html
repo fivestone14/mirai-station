@@ -12564,7 +12564,14 @@ const SNDK = {
       const res=await fetch(`/api/raw/file?root=state&path=sndk_side/${day}.jsonl&limit=1`,{cache:'no-store'});
       if(!res.ok) return;
       const d=await res.json(); const row=(d&&d.rows&&d.rows[0])||null;
-      const r=(row&&Array.isArray(row.readings)?row.readings:[]).find(x=>x&&x.id==='px.session_open');
+      let r=(row&&Array.isArray(row.readings)?row.readings:[]).find(x=>x&&x.id==='px.session_open');
+      // SECOND SOURCE: the packet ships the bars it cites, and on most sessions the opening
+      // minute is one of them. Used only when the reading is missing — a packet written
+      // before the reading existed, or by an older build — and only for a record that says
+      // bar 0, so this can never dress up some later minute as the open.
+      if(!r){ const b0=(row&&row.bars&&Array.isArray(row.bars.records)?row.bars.records:[])
+                .find(x=>x&&+x.bar_index===0&&isFinite(+x.open));
+        if(b0) r={value:+b0.open, at_bar:0}; }
       if(!r||!isFinite(+r.value)) return;
       SNDK.openPx={day, p:+r.value, bar:(r.at_bar==null?null:+r.at_bar)};
       if(SNDK.on&&SNDK.model) SNDK.buildChart();   // the baseline snaps to the true open
