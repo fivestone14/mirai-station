@@ -90,6 +90,11 @@ DOCTRINE = {
     "as_of": "Every timestamp in this packet is derived from a bar_index against "
              "session_start; none is stored on its own. A reduce that dropped the "
              "row it came from is what let times be typed in by hand.",
+    "bl.vol_trailing_30": "The median volume of the bars BEFORE the current one, "
+                          "never including it — a bar compared against a baseline it "
+                          "is part of is compared against itself and reads quieter "
+                          "than it is. On 08-27 that is 10.25x excluding against "
+                          "9.14x including.",
     "bl.bar_range_median": "Median bar range, over bars that actually traded — the "
                            "unit every distance here is quoted in. NOT "
                            "gw_vocab.NOISE_FLOOR, which is a gamma-cluster share cut.",
@@ -530,7 +535,7 @@ def build_side(bars: list[dict], day: str, now: Optional[datetime] = None,
              },
             {"id": "bl.vol_trailing_30", "value": round(v30, 1) if v30 else None,
              "kind": "trailing_window", "window_bars": min(VOL_WINDOW, n),
-             "drifts_intraday": True},
+             "excludes_current_bar": n > VOL_WINDOW, "drifts_intraday": True},
         ],
         "bars": {"count": n, "src": "bars_1m_sidecar",
                  "cumulative_volume": round(cum_vol),
