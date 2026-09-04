@@ -409,3 +409,16 @@ def test_the_shading_baseline_is_the_opening_minute_not_the_first_scan():
     assert "const pOpen=openTrue?_op.p:S.pts[0].p;" in PAGE  # else the scan still stands
     assert "${openTrue?'open':'first scan'}" in PAGE         # and the caption says which
     assert "+x.bar_index===0" in PAGE                        # the cited-record fallback, bar 0 only
+
+
+def test_the_gamma_zero_axis_never_leaves_the_middle():
+    """It used to pin itself to whichever edge a one-sided ladder left empty, so
+    the bars could spend the whole lane. On 09-04 SNDK ran 1586 to 1740, carried
+    the last negative strike out of the plotted window at 11:55, and the axis
+    jumped to the left edge mid-session with every bar silently rescaled. The
+    axis is the chart's fixed landmark; it stays in the middle."""
+    assert "const xZ=x0+Math.round((lineEnd-x0)/2)" in PAGE   # const, not let — nothing reassigns it
+    assert "xZ=lineEnd-6" not in PAGE                         # the old right pin
+    assert "xZ=x0+6" not in PAGE                              # the old left pin
+    for gone in ("hasPos", "hasNeg", "sideFloor"):
+        assert gone not in PAGE, f"{gone} outlived the layout rule it existed for"

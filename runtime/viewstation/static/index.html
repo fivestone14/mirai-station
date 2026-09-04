@@ -10321,9 +10321,9 @@ function snkBand(m, step, pathPx){
   // every per-strike bar that CARRIES MASS must be on-canvas. The old rule framed off any
   // strike with any γ inside 2.5σ — and σ here is a ~10%-of-price weekly ruler, so that is
   // ±$300 on a $1,200 book: ~78 strikes framed the map while ~26 carried visible mass, and
-  // the tails were sub-pixel bars nobody can read (08-01). The floor is the SAME 4%-of-peak
-  // sliver test buildChart already uses to decide a book is one-sided (sideFloor), so the
-  // frame and the layout now agree on what counts as a drawn bar. A whisper strike still
+  // the tails were sub-pixel bars nobody can read (08-01). The floor is 4% of the peak bar:
+  // under that a strike is a sliver, and a sliver does not get a vote on where the frame sits.
+  // (It was shared with the layout's one-sided test until 09-04 fixed the axis.) A whisper strike still
   // RENDERS if it lands in frame — it just no longer gets a vote on where the frame is.
   const kFloor=0.04*kMax;
   if(nb.length) for(const p of nb){ const k=+p[0], a=Math.abs(+p[1]);
@@ -12965,11 +12965,6 @@ const SNDK = {
     const dxF=hasDex?snkBucket(m.dex.fbs, k0, step, n):null;
     SNDK.buckets={g,oi,vol,dxN,dxF};
     let gMax=0; if(g) for(const v of g.v){ const a=Math.abs(v); if(a>gMax) gMax=a; }
-    // sidedness-aware zero-axis: a one-sided book (all puts / all calls) must not spend half
-    // the canvas on the empty side. Two-sided (and empty) keep the centered axis (S1).
-    let hasPos=false, hasNeg=false;
-    const sideFloor=Math.max(1e-9, 0.04*gMax);   // a trivial opposite-side sliver (<4% of peak |γ|) must not flip a one-sided book to the centered layout
-    if(g) for(const v of g.v){ if(v>sideFloor) hasPos=true; if(v<-sideFloor) hasNeg=true; }
     // ---- VOLUME-WHISKER LANE (07-31): the whiskers grow PAST the bar tips, and the biggest γ
     // bar already ends at the plot edge (xZ±half) — so the lane comes out of `half` rather than
     // off the whiskers. A clipped whisker would encode a smaller number than it measured. The
@@ -12983,9 +12978,16 @@ const SNDK = {
     // marks in the lane) and hands 18px per side back to the bars, which are the hero here.
     const volW=(m.volGrossBS)?Math.max(26,Math.min(92,Math.round((lineEnd-x0)*0.20))):0;
     const volLane=volW?volW+5:0;   // +5 = the gap between the bar tip and the whisker's near end
-    let xZ=x0+Math.round((lineEnd-x0)/2), half=Math.max(30,Math.round((lineEnd-x0)/2)-8-volLane);
-    if(hasNeg&&!hasPos){ xZ=lineEnd-6; half=Math.max(30,lineEnd-x0-12-volLane); }        // coral puts grow LEFT, axis pinned right
-    else if(hasPos&&!hasNeg){ xZ=x0+6; half=Math.max(30,lineEnd-x0-12-volLane); }         // jade calls grow RIGHT, axis pinned left
+    // THE ZERO AXIS IS ALWAYS THE MIDDLE OF THE LANE (09-04). It used to pin itself to an edge
+    // on a one-sided ladder — left when every strike was positive, right when every strike was
+    // negative — so the bars could spend the whole lane instead of half of it. The width that
+    // bought is not worth what it cost: the axis is the one fixed landmark on this chart, and a
+    // reader who looks away and back finds it somewhere else, with every bar at a different
+    // scale, for a reason nothing on screen explains. It happened for real on 09-04, when SNDK
+    // ran 1586 → 1740 and carried the last negative strike out of the plotted window at 11:55 —
+    // the ladder went all-positive, the axis jumped to the left edge mid-session, and the change
+    // read as a bug. A landmark that moves is worse than a narrow bar.
+    const xZ=x0+Math.round((lineEnd-x0)/2), half=Math.max(30,Math.round((lineEnd-x0)/2)-8-volLane);
     const geo={W:w,H:h,padT,padB,x0,lineEnd,tagStripX,tagX,xZ,half,dexW,hasDex,hasTags,step};
     SNDK.geo=geo;
     // THE LEFT GUTTER'S SHARED OCCUPANCY (08-01). x0+7 (zone captions), x0+17 (EM readouts) and
