@@ -2191,6 +2191,9 @@
   .pl-json .pl-open .ln,.pl-json .pl-close .ln{padding-left:0; text-indent:0}
   .pl-json .k{color:var(--ink); font-weight:700} .pl-json .n{color:var(--lantern)} .pl-json .s{color:var(--jade)}
   .pl-json .b{color:var(--coral)} .pl-json .p{color:var(--ink-faint)}
+  /* side-1: the header's two loud lines — a check that did not pass, and what the
+     packet says it cannot see. Both are read before any value below them. */
+  .pl-json .pl-hdr .c{color:var(--coral)} .pl-json .pl-hdr .w{color:var(--lantern)}
   .pl-json:focus-visible{outline:2px solid var(--iris)}
   .pl-empty{flex:1 1 auto; display:flex; align-items:center; justify-content:center; color:var(--ink-faint); font-size:13px;
     border:1px dashed var(--hairline-2); border-radius:var(--r-md); text-align:center; padding:20px}
@@ -14298,13 +14301,14 @@ const PAYLOAD = {
       <div class="pl-bar" id="pl-bar">
         <div class="lb"><b>Live scene</b><span>Refreshed every minute while this tab is open.</span></div>
         <button class="pl-btn" id="pl-schema" title="The whole pipeline — every file and what it does">Pipeline Architecture</button>
-        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload, Memory or Diary"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></div>
+        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload, Side, Memory or Diary"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="side" role="tab" aria-selected="false" title="The bar-anchored second packet — built from the minute sidecar, never sent to the model">Side</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></div>
         <button class="pl-btn" id="pl-refresh">Refresh</button>
         <button class="pl-btn" id="pl-copy">Copy JSON</button>
       </div>
       <div class="pl-pipe" id="pl-pipe" aria-label="pipeline from data source to output"></div>
       <div class="pl-empty" id="pl-empty">Loading the scene…</div>
       <div class="pl-json" id="pl-json" hidden tabindex="0" aria-label="the scene JSON handed to the model"></div>
+      <div class="pl-json" id="pl-side" hidden tabindex="0" aria-label="the bar-anchored side packet"></div>
       <div class="pl-diary" id="pl-diary" hidden>
         <div class="dia-head" id="dia-head">Reading the diary\u2026</div>
         <div class="dia-cols">
@@ -14367,13 +14371,14 @@ const PAYLOAD = {
   },
   view:'payload',
   setView(v){
-    PAYLOAD.view=(v==='memory'||v==='diary')?v:'payload';
-    const mem=PAYLOAD.view==='memory', dia=PAYLOAD.view==='diary';
+    PAYLOAD.view=(v==='memory'||v==='diary'||v==='side')?v:'payload';
+    const mem=PAYLOAD.view==='memory', dia=PAYLOAD.view==='diary', sid=PAYLOAD.view==='side';
     document.querySelectorAll('#pl-seg button').forEach(b=>{ const on=b.dataset.view===PAYLOAD.view; b.classList.toggle('on', on); b.setAttribute('aria-selected', on?'true':'false'); });
-    const pipe=document.getElementById('pl-pipe'), memEl=document.getElementById('pl-mem'), copy=document.getElementById('pl-copy'), diaEl=document.getElementById('pl-diary');
-    if(pipe) pipe.hidden=mem||dia; if(memEl) memEl.hidden=!mem; if(copy) copy.hidden=mem||dia; if(diaEl) diaEl.hidden=!dia;
-    if(mem||dia){ const j=document.getElementById('pl-json'), e=document.getElementById('pl-empty'); if(j) j.hidden=true; if(e) e.hidden=true; }
-    if(mem) MEM.open(); else if(dia) PAYLOAD.diary(); else PAYLOAD.render();
+    const pipe=document.getElementById('pl-pipe'), memEl=document.getElementById('pl-mem'), copy=document.getElementById('pl-copy'), diaEl=document.getElementById('pl-diary'), sidEl=document.getElementById('pl-side');
+    if(pipe) pipe.hidden=mem||dia||sid; if(memEl) memEl.hidden=!mem; if(copy) copy.hidden=mem||dia; if(diaEl) diaEl.hidden=!dia;
+    if(sidEl) sidEl.hidden=!sid;
+    if(mem||dia||sid){ const j=document.getElementById('pl-json'), e=document.getElementById('pl-empty'); if(j) j.hidden=true; if(e&&!sid) e.hidden=true; }
+    if(mem) MEM.open(); else if(dia) PAYLOAD.diary(); else if(sid) PAYLOAD.renderSide(); else PAYLOAD.render();
   },
   show(){ PAYLOAD.mount(); if(PAYLOAD.view==='memory') MEM.open(); else if(PAYLOAD.view==='diary') PAYLOAD.diary(); else PAYLOAD.fetch(); PAYLOAD.arm(); },
   hide(){ PAYLOAD.disarm(); PAYLOAD.closeTip(); },
@@ -14442,7 +14447,7 @@ const PAYLOAD = {
         setTimeout(()=>{ if(PAYLOAD.timer) PAYLOAD.fetch(); }, 5000);
       }
     }catch(e){ PAYLOAD.data={error:'payload endpoint unreachable ('+e+') — retrying in 5 s'}; setTimeout(()=>{ if(PAYLOAD.timer) PAYLOAD.fetch(); }, 5000); }
-    PAYLOAD.busy=false; PAYLOAD.render();
+    PAYLOAD.busy=false; if(PAYLOAD.view==='side') PAYLOAD.renderSide(); else PAYLOAD.render();
   },
   // the head pill was the lock's status light; with the lock gone it reports the FEED instead —
   // a dead endpoint must never sit under a pill that still says live
@@ -14472,6 +14477,62 @@ const PAYLOAD = {
     const blocks=ks.map((k,i)=>{ const out=[]; plLines(d.scene[k], 1, plKey(k)+'<span class="p">: </span>', i<ks.length-1?',':'', out); return `<div class="pl-blk">${plRows(out)}</div>`; }).join('');
     pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-open"><div class="ln"><span class="p">{</span></div></div><div class="pl-cols">${blocks}</div><div class="pl-close"><div class="ln"><span class="p">}</span></div></div>`;
     PAYLOAD.paintPipe();
+  },
+  // side-1 (09-03): THE SIDE PACKET. A second document built on the same scan
+  // from the minute-bar sidecar rather than the options book, and NEVER sent to
+  // a model — which is why it may be larger than the scene and why nothing here
+  // is a forecast. It is shown for one reason: so a wrong number can be caught
+  // by a person, which two rounds of review say is the failure that keeps
+  // happening. Hence the order — what cannot be trusted first, then the facts.
+  //
+  // Three things the header says that the JSON alone cannot. How many of the
+  // packet's own checks ran and whether any failed; how old the option-book
+  // levels are against the bar the price came from, because they are two
+  // different ages and one stamp used to cover both; and what the packet
+  // declares it cannot see, which is an absence, and an absence is the one
+  // thing a JSON dump cannot show you.
+  renderSide(){
+    if(PAYLOAD.view!=='side') return;
+    const pre=document.getElementById('pl-side'), empty=document.getElementById('pl-empty');
+    if(!pre||!empty) return;
+    const d=PAYLOAD.data;
+    const say=t=>{ pre.hidden=true; empty.hidden=false; empty.textContent=t; };
+    if(!d){ PAYLOAD.paintPill('wait'); say('Loading the packet\u2026'); return; }
+    if(d.error){ PAYLOAD.paintPill('error'); say(d.error); return; }
+    const sd=d.side;
+    if(!sd){ PAYLOAD.paintPill('error'); say('the packet could not be built \u2014 the scene above is unaffected'); return; }
+    PAYLOAD.paintPill('live');
+    if(!sd.bars||!sd.bars.count){
+      empty.hidden=true; pre.hidden=false;
+      const why=((sd.absent||[])[0]||{}).why||'not_observed';
+      pre.innerHTML=`<div class="pl-hdr"><span class="p">// no minute bars on disk for ${plEsc(sd.session||'')} (${plEsc(why)}) \u2014 the packet says so rather than inventing a session</span></div>`;
+      return;
+    }
+    empty.hidden=true; pre.hidden=false;
+    const esc=x=>plEsc(String(x));
+    const chars=JSON.stringify(sd).length;
+    const checks=sd.integrity||[];
+    const bad=checks.filter(c=>c.status!=='pass');
+    const lvlAge=(sd.levels||[]).filter(l=>l.built_from==='options_book')
+      .map(l=>sd.as_of.bar_index-l.price_as_of_bar).sort((a,b)=>b-a)[0];
+    const out=[];
+    out.push(`<span class="p">// bar ${esc(sd.as_of.bar_index)} of ${esc(sd.as_of.bars_in_session)} \u00b7 `
+      +`${esc(sd.bars.count)} closed bars \u00b7 session ${esc(sd.session)} \u00b7 `
+      +`${esc(chars)} chars \u00b7 packet ${esc(sd.version)} \u00b7 never sent to a model</span>`);
+    out.push(`<span class="p">// every time below is derived from a bar index against `
+      +`${esc(String(sd.as_of.session_start||'').slice(11,16))} ET \u2014 the packet stores no clock of its own</span>`);
+    if(lvlAge!=null&&lvlAge>0)
+      out.push(`<span class="w">// the option-book levels are ${esc(lvlAge)} bar${lvlAge===1?'':'s'} older than the price they are measured against</span>`);
+    out.push(bad.length
+      ? `<span class="c">// ${esc(bad.length)} of ${esc(checks.length)} checks did not pass: `
+        +bad.map(c=>esc(c.check)+(c.detail?' \u2014 '+esc(c.detail):'')).join(' \u00b7 ')+`</span>`
+      : `<span class="p">// all ${esc(checks.length)} checks ran and passed \u2014 each one is forced to fail once in the tests</span>`);
+    const gone=(sd.absent||[]).map(a=>esc(a.path)).join(', ');
+    if(gone) out.push(`<span class="c">// cannot see: ${gone}</span>`);
+    const hdr=out.map(l=>l+'\n').join('');
+    const ks=Object.keys(sd);
+    const blocks=ks.map((k,i)=>{ const o=[]; plLines(sd[k], 1, plKey(k)+'<span class="p">: </span>', i<ks.length-1?',':'', o); return `<div class="pl-blk">${plRows(o)}</div>`; }).join('');
+    pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-open"><div class="ln"><span class="p">{</span></div></div><div class="pl-cols">${blocks}</div><div class="pl-close"><div class="ln"><span class="p">}</span></div></div>`;
   },
   // sr-7 (08-30): the three clocks, said out loud at the top of the tab.
   //
@@ -14509,7 +14570,7 @@ const PAYLOAD = {
   },
   copy(){
     const d=PAYLOAD.data; if(!d||!d.scene||!navigator.clipboard) return;
-    navigator.clipboard.writeText(JSON.stringify(d.scene)).then(()=>{ const b=document.getElementById('pl-copy'); if(b){ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy JSON'; },1200); } }).catch(()=>{});
+    navigator.clipboard.writeText(JSON.stringify(PAYLOAD.view==='side'?(d.side||{}):d.scene)).then(()=>{ const b=document.getElementById('pl-copy'); if(b){ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy JSON'; },1200); } }).catch(()=>{});
   },
   // STEP 7's tooltip: the tab's most-asked question — "why did it not say anything?" — answered on
   // the card that does the asking. Every number comes from the payload's `gates` block, which the
