@@ -2540,6 +2540,9 @@
     .mem-side .foot,.mem-key{display:none}
     .mem-res{--gut:64px}
   }
+  .obs .sides{margin:4px 0 0;font-size:12px;color:var(--ink-dim)}
+  .obs ul.piles li .w{color:var(--ink-dim)}
+  .obs.quiet-said i{opacity:.75}
 </style>
 </head>
 <body>
@@ -11042,16 +11045,32 @@ function snkObsBox(R){
   if(!R) return '';
   const e=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const obs=Array.isArray(R.points)?R.points:[];
-  // `quiet` is authoritative — the producer rewrites it to the notable-derived
-  // truth, so the two can never disagree by the time they reach here.
-  if(R.quiet||!obs.length){
+  const cl=Array.isArray(R.clusters)?R.clusters:[];
+  const sides=(R.sides&&typeof R.sides==='object')?R.sides:null;
+  // strikes-1 (09-05): `quiet` is the model's own flag now, and a quiet read may still name
+  // a level or a pile; the card shows whatever survived the guards. The old rule (quiet means
+  // no points) held only for the legacy reader.
+  const sideLine=(()=>{
+    if(!sides||sides.unavailable) return '';
+    const one=(k,v)=>{ if(!v||v.unavailable) return ''; if(v.empty) return `${k}: nothing in reach`;
+      if(v.heavy==null) return `${k}: nearest ${e(MEM_PX(v.nearest))}`;
+      const on=(v.heavy_leads_on||[]).join(', ');
+      return `${k}: ${e(MEM_PX(v.heavy))}${on?' leads '+e(on):''}${v.heavy_touched_today?' · touched '+e(v.heavy_last_touch||''):' · not reached'}`; };
+    const parts=[one('above',sides.above),one('below',sides.below)].filter(Boolean);
+    return parts.length?`<p class="sides">${parts.join(' \u00b7 ')}</p>`:'';
+  })();
+  const clRows=cl.map(c=>`<li><span class="m">${e(MEM_PX(c.center))}</span>`
+      +`<span class="w">${e((c.strikes||[]).length>1?(c.strikes||[]).map(MEM_PX).join('\u2013')+' \u00b7 ':'')}${e(c.change||'')}`
+      +`${c.contracts_share_pp_sum!=null?' \u00b7 '+e(c.contracts_share_pp_sum)+'% of contracts':''}${c.touched_today?' \u00b7 touched':''}</span></li>`).join('');
+  if(!obs.length&&!cl.length){
     const forced=R.abstain==='forced';
     const tip='A quiet read is a finished read, not a missing one.'
-      +'¦f:the model is asked what is UNUSUAL, and most scans of most sessions hold nothing'
-      +(forced?'¦n:FORCED — the model did offer observations and every one was deleted by the checks. That is worth looking at.':'¦k:chosen — the model looked and found nothing');
+      +'\u00a6f:the model is asked what is UNUSUAL, and most scans of most sessions hold nothing'
+      +(forced?'\u00a6n:FORCED \u2014 the model did offer observations and every one was deleted by the checks. That is worth looking at.':'\u00a6k:chosen \u2014 the model looked and found nothing');
     return `<div class="obs quiet${forced?' forced':''}" data-name="Observation" data-tip="${e(tip)}">`
       +`<i>nothing unusual</i>`
       +(R.read?`<span>${e(R.read)}</span>`:'')
+      +sideLine
       +(forced?`<b>every observation was dropped by the checks</b>`:'')
       +`</div>`;
   }
@@ -11064,10 +11083,13 @@ function snkObsBox(R){
   const rows=obs.map(o=>`<li><span class="m">${e(MEM_PX(o.level))}</span>`
       +`<span class="w">${e(o.note)}</span></li>`).join('');
   const n=obs.length;
-  return `<div class="obs" data-name="Observation" data-tip="${e(n+' level'+(n===1?'':'s')+' the model picked out of the whole board.¦f:it reads every part of the scene and decides for itself what matters — nothing is pre-selected¦k:every number it says is checked against the scene first; one that is not on the board is deleted, not corrected¦n:at most 3, and fewer is normal')}">`
-    +`<i>${n} to watch</i>`
+  const head=n?`${n} to watch`:(cl.length?`${cl.length} pile${cl.length===1?'':'s'}`:'nothing unusual');
+  return `<div class="obs${R.quiet?' quiet-said':''}" data-name="Observation" data-tip="${e((n?n+' level'+(n===1?'':'s')+' the model picked out of the whole board':'the piles the model drew')+'.\u00a6f:it reads every part of the scene and decides for itself what matters \u2014 nothing is pre-selected\u00a6k:every number it says is checked against the scene first; one that is not on the board is deleted, not corrected\u00a6n:at most 4 levels and 4 piles, and fewer is normal')}">`
+    +`<i>${e(head)}</i>`
     +(R.read?`<p class="say">${e(R.read)}</p>`:'')
-    +`<ul>${rows}</ul>`
+    +sideLine
+    +(cl.length?`<ul class="piles">${clRows}</ul>`:'')
+    +(rows?`<ul>${rows}</ul>`:'')
     +`</div>`;
 }
 // ---- LABEL DECLUTTER (08-03) — runs AFTER every full SVG build, over the labels that are
