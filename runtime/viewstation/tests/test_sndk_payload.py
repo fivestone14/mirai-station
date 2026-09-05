@@ -95,11 +95,30 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     assert d["instrument"] == "SNDK"
     assert sc["price"]["live_spot"] == 1586.2
     assert sc["clock"]["minutes_to_close"] == 178 and sc["clock"]["front_expiry"] == {"days_to_expiry": 2, "expiry_date": "2026-08-21"}
-    assert sc["magnet"]["top_strikes"][0]["strike"] == 1600.0
+    # strikes-1 (09-05): the scene handed back is the Strikes Payload; the old
+    # magnet lives on the legacy Scene Payload beside it, labelled deprecated
+    assert d["payload"] == "strikes" and d["payload_label"] == "Strikes Payload v1"
+    assert "magnet" not in sc and "walls" not in sc
+    assert d["legacy"]["status"] == "deprecated" and d["legacy"]["sent_to_model"] is False
+    assert d["legacy"]["scene"]["magnet"]["top_strikes"][0]["strike"] == 1600.0
+    assert d["legacy"]["era"] == "obs-5" and d["era"] == "strikes-1"
+    assert d["gate_payload"]["magnet"] == 1600.0
     # the wrapper is the reader's own, byte for byte, with the same compact JSON inside
     assert d["user_prompt"].startswith("Read this scene cold and reply with the JSON object only.\n\nSCENE:\n")
     assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == sc
     assert d["scene_chars"] == len(json.dumps(sc, default=str))
+
+
+def test_builder_reverts_to_the_scene_payload_on_the_switch(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("SNDK_PAYLOAD", "scene")
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    rows = [_row(t, 1580.0), _row(t.replace(minute=57), 1583.0), _row(t.replace(hour=13, minute=1), 1586.2)]
+    _write_day(tmp_path, "2026-08-19", rows)
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    assert d["payload"] == "scene" and d["legacy"] is None and d["gate_payload"] is None
+    assert d["era"] == "obs-5"
+    assert d["scene"]["magnet"]["top_strikes"][0]["strike"] == 1600.0
 
 
 def test_payload_ships_the_wake_gate_the_reader_actually_uses(tmp_path, monkeypatch):
@@ -217,3 +236,40 @@ def test_a_missing_bar_file_leaves_the_scene_untouched(tmp_path, monkeypatch):
     assert d["side"]["bars_seen"] == 0
     assert d["side"]["absent"][0]["path"] == "bars[]"
     assert d["scene"]["price"]["live_spot"] == 1586.2
+
+
+# ---------------------------------------------------------------- strikes-1 (2026-09-05)
+def test_builder_falls_back_when_the_board_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("SNDK_PAYLOAD", raising=False)
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0), _row(t.replace(minute=57), 1583.0), _row(t.replace(hour=13, minute=1), 1586.2)])
+    import sndk_board
+    monkeypatch.setattr(sndk_board, "build_scene_v2", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    assert d["payload"] == "scene" and d["legacy"] is None and "RuntimeError" in d["payload_label"]
+    assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == d["scene"]
+    assert d["scene"]["magnet"]["top_strikes"][0]["strike"] == 1600.0
+
+
+def test_pipeline_events_and_days_read_the_rows_own_clocks(tmp_path, monkeypatch):
+    monkeypatch.setattr(snapshot, "STATE_DIR", tmp_path)
+    day = "2026-08-19"
+    t = datetime(2026, 8, 19, 9, 30, tzinfo=ET)
+    rows = [_row(t.replace(minute=32), 1580.0), _row(t.replace(minute=34), 1581.0), _row(t.replace(minute=36), 1582.0, forced=True)]
+    rows[0]["meta"]["book_asof"] = rows[0]["ts"]
+    rows[1]["meta"]["book_asof"] = rows[0]["ts"]                          # a cached repeat: one distinct book
+    _write_day(tmp_path, day, rows)
+    (tmp_path / "sndk_bars").mkdir()
+    (tmp_path / "sndk_bars" / f"{day}.jsonl").write_text("\n".join(
+        json.dumps({"ts": t.replace(minute=30 + i).isoformat(), "open": 1, "high": 2, "low": 1, "close": 2, "volume": 10}) for i in range(5)) + "\n")
+    (tmp_path / "sndk_reads").mkdir()
+    (tmp_path / "sndk_reads" / f"{day}.jsonl").write_text(json.dumps(
+        {"ts": t.replace(minute=32, second=30).isoformat(), "era": "strikes-1", "payload": "strikes", "wake": "first read",
+         "model": "claude-sonnet-5", "wall_s": 4.5, "quiet": False, "error": None}) + "\n")
+    ev = snapshot.pipeline_events(day)
+    assert ev["scans"] == [2.0, 4.0] and ev["books"] == [2.0]             # the forced row is excluded, the repeat collapsed
+    assert len(ev["bars"]) == 5 and ev["absent"] == []
+    assert ev["reads"][0] == {"m": 2.5, "wake": "first read", "spoke": True, "wall": 4.5, "quiet": False, "err": False, "era": "strikes-1", "payload": "strikes"}
+    assert snapshot.pipeline_days() == [day]
+    assert snapshot.pipeline_events("2026-01-01")["absent"] == ["no diary rows for the day", "no minute bars on disk for the day", "no read rows for the day"]

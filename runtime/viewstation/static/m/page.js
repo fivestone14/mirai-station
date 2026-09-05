@@ -96,7 +96,11 @@ async function loadSpot(){
 /* ---- derived state shared by every region ------------------------------ */
 
 function state(){
-  const scene = PAY.scene;
+  // strikes-1 (09-05): the model now reads the Strikes Payload, which has no
+  // walls, magnet or regime. The station still builds the Scene Payload every
+  // scan for the wake gate and ships it under `legacy`; the glance draws its
+  // ladder from that, since every mark here is one of those.
+  const scene = (PAY.legacy && PAY.legacy.scene) || PAY.scene;
   const gates = PAY.gates || {};
   const S = (gates.stale_book_min != null) ? gates.stale_book_min : 6;
   const H = (gates.heartbeat_min  != null) ? gates.heartbeat_min  : 45;

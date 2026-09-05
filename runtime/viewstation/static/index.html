@@ -2240,7 +2240,9 @@
      definition and there is no separate legend to learn before the first box.
      The heading sits on the card's own background so a connector curve passing
      behind it does not run through the letters. */
-  .modal-card.plsch{width:min(1420px,96vw)}
+  .modal-card.plsch{width:min(1560px,97vw)}
+  .plsch-live{margin:0 0 18px; border:1px solid var(--hairline-2); border-radius:8px; overflow:hidden; background:#121517}
+  .plsch-live iframe{display:block; width:100%; height:min(1500px,84vh); border:0; background:#121517}
   .plsch-body{padding:14px 18px 20px}
   .plsch-body:focus-visible{outline:2px solid var(--iris); outline-offset:-3px}
   .plsch-cap{font-size:13px; color:var(--ink-dim); line-height:1.5; margin:0 0 16px}
@@ -2329,6 +2331,10 @@
   .pl-seg{display:inline-flex; border:1px solid var(--hairline-2); border-radius:999px; overflow:hidden; background:var(--surface-3)}
   .pl-seg button{appearance:none; border:0; background:transparent; color:var(--ink-dim); font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em; padding:7px 14px; cursor:pointer}
   .pl-seg button.on{background:var(--iris-wash); color:var(--iris)}
+  .pl-seg select{appearance:none; -webkit-appearance:none; border:0; background:transparent; color:var(--ink-dim); font:inherit; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.06em; padding:7px 26px 7px 14px; cursor:pointer; background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%); background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+  .pl-seg select.on{background-color:var(--iris-wash); color:var(--iris)}
+  .pl-seg select:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
+  .pl-seg select option{background:var(--surface-3); color:var(--ink)}
   .pl-seg button:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
   /* the rail is sized by what it HOLDS, not by a fraction of the pane: it takes the width its
      own content needs up to a ceiling, and the memory takes every pixel left over. On a narrow
@@ -11610,17 +11616,21 @@ const _PL_NODES=[
 
   ['r1',  'Reader','step',  '1 · Wake gate',         'should_wake()',
    'Is this scan worth a model call? The day’s first look; price ran 0.20 of the day’s implied move; it crossed a wall or the flip as those stood at the last reading; the heaviest strike or the flip’s sign changed and stayed changed across two book pulls; implied volatility moved 3 points against a five-book median; the flip itself moved half an implied move; or an hour passed. Ten minutes minimum between calls, 30 a day at most.'],
-  ['r2',  'Reader','step',  '2 · Scene',             'build_scene()',
-   'The packet the model reads: all facts, no verdicts. Price and clocks, the units everything is measured in, whether dealers are damping or amplifying, the strike price is being pulled toward, how broadly the book is spread, the walls, the shape around price, momentum, dealer positioning, and what changed since the model’s own last look.'],
-  ['r3',  'Reader','step',  '3 · Rulebook + model',  '_DOCTRINE · claude-sonnet-5',
+  ['r2',  'Reader','step',  '2 · Strikes Payload',   'sndk_board.py · build_scene_v2()',
+   'The packet the model reads: all facts, no verdicts. Price and clocks, the units everything is measured in, and the board itself as a table — every strike in reach with its open interest, today’s volume, contracts share, gamma sign and share, three separate ranks, what price did at it today, and twelve books of contracts added behind it; the rule’s regions (sndk_regions.py); what happened between frames; and what changed since the model’s own last look. No magnet, no wall, no regime word.'],
+  ['r2l', 'Reader','step',  '2 · Scene Payload (legacy)', 'sndk_read.build_scene()',
+   'The packet the model read until 2026-09-05, still built every scan: the wake gate freezes its walls, the frame reads them, the memory slice keeps them, and the Strikes Payload takes its clocks, price and boxes from it. The model no longer sees it.'],
+  ['r3',  'Reader','step',  '3 · Rulebook + model',  'DOCTRINE_V2 · claude-sonnet-5',
    'A standing rulebook, held in the model’s cache so it is not re-billed on every call, plus the packet. Back come three things: whether to stay quiet, the reading itself, and the prices worth a look. Never a direction — that call measured worthless and was removed.'],
-  ['r4',  'Reader','step',  '4 · Guards',            'check_reading_against_scene()',
-   'Five checks before anyone sees a word: banned words and their inflections; every number must exist in the packet; a named level must be a price on the board; an above-or-under claim must agree with the live price; and a small second model deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
+  ['r4',  'Reader','step',  '4 · Guards',            'sndk_board.py · check_reading_v2()',
+   'Six checks before anyone sees a word: banned words and their inflections, plus the words this scene forbids (magnet, momentum, stronger); every number must exist in the packet; a named level must be a price on the board; an above-or-under claim must agree with the live price; a cluster must name listed, adjacent strikes and its change word is set from the rule; and a small second model deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
   ['r2b', 'Reader','step',  '2b · Side packet',      'sndk_side.build_side()',
    'A second document, anchored to the minute bars rather than the option book, built beside the scene and never sent to a model. It takes its price lines from the same diary row the scene uses. Every time in it is derived from a bar index, so every value can be checked against the bar it came from.'],
 
   ['od',  'Delivery','sink','Read row',              'state/sndk_reads/<day>.jsonl',
-   'One row per reader tick: the reading or the last one carried forward, why it woke, the frozen gate the next wake measures against, and what the guards dropped.'],
+   'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, and what the guards dropped.'],
+  ['og',  'Delivery','sink','Gate Payload',          'state/sndk_legacy/<day>.jsonl',
+   'One line for each read that spends a call: the old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene. The wake gate reads them and the eval lines them up against the model’s clusters. Never sent to the model.'],
   ['os',  'Delivery','sink','Side packets',          'state/sndk_side/<day>.jsonl',
    'One line for each scan judged worth a model call. Written when the wake fires rather than when the model answers, so it also lands on a call that was capped, failed, or emptied by the guards. Quiet scans keep nothing and rebuild from the bars and the diary row.'],
   ['om',  'Delivery','sink','Memory',                'sndk_rag.py → state/sndk_rag/',
@@ -11637,9 +11647,9 @@ const _PL_NODES=[
 const _PL_EDGES=[
   ['q','js'],['bk','js'],['bf','jb'],
   ['js','sd'],['js','sc'],['sc','js','back'],['jb','sb'],
-  ['sd','r1'],['sd','r2'],['sb','r2'],['sb','r2b'],['sd','r2b'],
-  ['r1','r2'],['r2','r3'],['r3','r4'],
-  ['r4','od'],['r4','om'],['r2b','os'],
+  ['sd','r1'],['sd','r2l'],['sb','r2l'],['sd','r2'],['sb','r2'],['sb','r2b'],['sd','r2b'],
+  ['r2l','r1'],['r2l','r2'],['r1','r2'],['r2','r3'],['r3','r4'],
+  ['r4','od'],['r4','om'],['r2l','om'],['r2l','og'],['r2b','os'],
   ['sd','ow'],['sb','ow'],['od','ow'],
   ['od','op'],['sd','op'],
 ];
@@ -11659,6 +11669,8 @@ const _PL_LEFTOUT=[
    'Price spends no more time inside a band than inside a random band, and a dominant strike holds no better than a line at the same distance.'],
   ['A combination rule','measured 09-03, in the shadow log',
    'A strict three-condition rule fires too rarely to score on the sessions available, and no combination beat its own best single leg. The side packet ships the parts and joins none of them.'],
+  ['The magnet as an input','replaced 2026-09-05',
+   'A passed strike was returned to less often than a plain strike at the same distance, so a field asserting pull was measured false. The strike table carries three unblended ranks and the cluster is the model’s answer; the old magnet lives on in the Gate Payload for the wake gate only.'],
 ];
 
 const _PL_LINES_MIN_WIDTH=1000;   // below this the grid collapses and every edge shares an x
@@ -11729,7 +11741,8 @@ function openPlSchemaModal(){
         <button class="modal-x" id="modal-x" style="margin-left:auto" aria-label="Close">✕</button>
       </div>
       <div class="modal-body plsch-body" tabindex="0">
-        <p class="plsch-cap">Top to bottom is time, and every line is one real connection.</p>
+        <div class="plsch-live"><iframe id="plsch-frame" src="/pipeline.html?user=${encodeURIComponent(PAYLOAD.USER)}&embed=1" title="The pipeline replayed on a recorded session: every scan, book, bar and payload firing at the moment it did"></iframe></div>
+        <p class="plsch-cap">Below, every component in words. Top to bottom is time, and every line is one real connection.</p>
         <div class="plsch-flow" id="plsch-flow">
           <svg class="plsch-lines" id="plsch-lines" aria-hidden="true" preserveAspectRatio="none"></svg>
           ${stages}
@@ -11749,6 +11762,8 @@ function openPlSchemaModal(){
   window.addEventListener('resize',_plOnResize);
   if(window.ResizeObserver){ _plRO=new ResizeObserver(_plOnResize); _plRO.observe(document.getElementById('plsch-flow')); }
 }
+// Escape pressed inside the replay frame reaches the page as a message, since the frame's keydowns never do
+window.addEventListener('message', e=>{ if(e.data&&e.data.mirai==='close-modal'&&document.getElementById('modal')&&document.getElementById('modal').classList.contains('open')) closeModal(); });
 
 function openSndkInfoModal(){
   const M=document.getElementById('modal'); if(!M) return;
@@ -14503,17 +14518,19 @@ const _DIARY_SCHEMA=[
     ['profile_ladder', 'The flip band as prices: ct (upper edge), hvl (centre = the flip), pt (lower edge), plus the walls; state names where price sits.', true],
   ]],
   ['The book by strike (gex_views)', [
-    ['gex_views.magnet', 'The heaviest strike on the board by gamma mass.', true],
+    ['gex_views.magnet', 'The heaviest strike on the board by contracts. Legacy payload only: the Gate Payload reads it, the model does not.', true],
     ['gex_views.front_dte', 'Days to the front expiry \u2014 which weekly book this row read.', true],
     ['gex_views.net_by_strike', 'Signed gamma per strike, calls plus and puts minus. The walls and the structure block are built from this.', true],
     ['gex_views.mass_by_strike', 'Weight per strike (open interest plus volume). The magnet and its shares come from this.', true],
     ['gex_views.oi_by_strike', 'Open interest per strike \u2014 last night\u2019s positioning, unchanged all day.', true],
     ['gex_views.vol_by_strike', 'Today\u2019s option volume per strike, net.', false],
-    ['gex_views.vol_gross_by_strike', 'Today\u2019s option volume per strike, gross. Momentum reads the change in this.', true],
-    ['gex_views.oi_side_by_strike', 'Open interest split by call and put side.', false],
-    ['gex_views.vol_side_by_strike', 'Volume split by call and put side.', false],
+    ['gex_views.vol_gross_by_strike', 'Today\u2019s option volume per strike, gross. Legacy payload only: the strike table reads the side split instead.', true],
+    ['gex_views.oi_side_by_strike', 'Open interest split by call and put side. The strike table\u2019s oi_calls and oi_puts.', true],
+    ['gex_views.vol_side_by_strike', 'Volume split by call and put side. The strike table\u2019s vol_calls, vol_puts and the twelve-book series.', true],
+    ['gex_views.oi_side_by_strike_next', 'The next weekly expiry\u2019s open interest by side (kept from 2026-09-05). The strike table\u2019s next_week cell.', true],
+    ['gex_views.vol_side_by_strike_next', 'The next weekly expiry\u2019s volume by side (kept from 2026-09-05).', true],
     ['gex_views.net_by_strike_tenor', 'Signed gamma per strike from the later-expiry book.', false],
-    ['gex_views.shove', 'How one-sided the gamma pile is above versus below price. Breadth reads this.', true],
+    ['gex_views.shove', 'How one-sided the gamma pile is above versus below price. Legacy payload only: breadth read this, the strike table does not.', true],
     ['gex_views.net_gex', 'Whole-book net gamma (and the later book\u2019s in net_gex_tenor).', false],
     ['gex_views.gross_gex', 'Whole-book gross gamma.', false],
     ['gex_views.vex', 'Whole-book vanna.', false],
@@ -14524,7 +14541,7 @@ const _DIARY_SCHEMA=[
   ]],
   ['Flows and dealer delta', [
     ['flows_front', 'Charm (cex) and vanna (vex) totals for the front book, and the strikes they point at (charm_wall, vanna_wall).', true],
-    ['dex_views', 'Dealer delta still to hedge, assumed-sign: the total (net_dex_total), per strike, above and below price. Only the total reaches the payload; its sign is a formula artifact.', true],
+    ['dex_views', 'Dealer delta still to hedge, assumed-sign: the total (net_dex_total), per strike, above and below price. Legacy payload only: dropped from the strike table, its sign is a formula artifact and it was cited in none of 22 reads.', true],
     ['net_exposure', 'Whole-book NET \u0393 and NET \u0394 for the dashboard strip tiles.', false],
   ]],
   ['Chain meta', [
@@ -14552,11 +14569,11 @@ const PAYLOAD = {
   mount(){
     const host=document.getElementById('p-payload'); if(!host||PAYLOAD.mounted) return; PAYLOAD.mounted=true;
     host.innerHTML=`<div class="pl-wrap">
-      <div class="phead"><div><h2>SNDK Payload</h2><div class="desc">Only what the reading model is fed: the scene JSON <span class="mono">sndk_read.build_scene</span> builds from the newest SNDK scan, rebuilt here through the same code.</div></div><span class="pill grey" id="pl-pill">loading</span></div>
+      <div class="phead"><div><h2>SNDK Payload</h2><div class="desc">What the reading model is fed: the Strikes Payload <span class="mono">sndk_board.build_scene_v2</span> builds from the newest SNDK scan, rebuilt here through the same code. The Scene Payload it replaced is kept beside it as legacy, and the Gate Payload the wake gate reads is shown too; neither is sent to the model.</div></div><span class="pill grey" id="pl-pill">loading</span></div>
       <div class="pl-bar" id="pl-bar">
-        <div class="lb"><b>Live scene</b><span>Refreshed every minute while this tab is open.</span></div>
+        <div class="lb"><b>Live payload</b><span>Refreshed every minute while this tab is open.</span></div>
         <button class="pl-btn" id="pl-schema" title="The whole pipeline — every file and what it does">Pipeline Architecture</button>
-        <div class="pl-seg" id="pl-seg" role="tablist" aria-label="Payload, Side, Memory or Diary"><button type="button" data-view="payload" class="on" role="tab" aria-selected="true">Payload</button><button type="button" data-view="side" role="tab" aria-selected="false" title="The bar-anchored second packet — built from the minute sidecar, never sent to the model">Side</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></div>
+        <div class="pl-seg" id="pl-seg"><select id="pl-which" class="on" data-view="payload" aria-label="Which payload to show" title="The payloads: the one sent to the model, and the two kept beside it"><option value="strikes">Strikes Payload v1</option><option value="scene">Scene Payload v5 · legacy</option><option value="gate">Gate Payload · store</option></select><span role="tablist" aria-label="Side, Memory or Diary"><button type="button" data-view="side" role="tab" aria-selected="false" title="The bar-anchored second packet — built from the minute sidecar, never sent to the model">Side</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></span></div>
         <button class="pl-btn" id="pl-refresh">Refresh</button>
         <button class="pl-btn" id="pl-copy">Copy JSON</button>
       </div>
@@ -14600,6 +14617,14 @@ const PAYLOAD = {
     host.querySelector('#pl-copy').addEventListener('click', ()=>PAYLOAD.copy());
     host.querySelector('#pl-schema').addEventListener('click', openPlSchemaModal);
     host.querySelector('#pl-seg').addEventListener('click', e=>{ const b=e.target.closest('button[data-view]'); if(b) PAYLOAD.setView(b.dataset.view); });
+    // strikes-1 (09-05): the payload segment is a dropdown of the payloads, so three documents
+    // take the space one button took. Choosing one shows it; touching it at all returns to the
+    // payload view from Side, Memory or Diary.
+    const which=host.querySelector('#pl-which');
+    which.value=PAYLOAD.which;
+    which.addEventListener('change', ()=>{ PAYLOAD.which=which.value; try{ localStorage.setItem('pl.which', PAYLOAD.which); }catch(e){} PAYLOAD.setView('payload'); });
+    which.addEventListener('pointerdown', ()=>{ if(PAYLOAD.view!=='payload') PAYLOAD.setView('payload'); });
+    which.addEventListener('keydown', e=>{ if((e.key==='Enter'||e.key===' ')&&PAYLOAD.view!=='payload') PAYLOAD.setView('payload'); });
     host.querySelector('#pl-pipe').addEventListener('click', e=>{ if(e.target.closest('.pipe-toggle')) PAYLOAD.togglePipe(); });
     // hover shows the gate on a mouse; tap toggles it on a tablet, where there is no hover at all
     host.querySelector('#pl-pipe').addEventListener('click', e=>{
@@ -14626,10 +14651,12 @@ const PAYLOAD = {
     PAYLOAD.paintPipe();
   },
   view:'payload',
+  // which payload the payload view shows: strikes (sent to the model), scene (legacy), gate (store)
+  which:(function(){ try{ const w=localStorage.getItem('pl.which'); return (w==='scene'||w==='gate')?w:'strikes'; }catch(e){ return 'strikes'; } })(),
   setView(v){
     PAYLOAD.view=(v==='memory'||v==='diary'||v==='side')?v:'payload';
     const mem=PAYLOAD.view==='memory', dia=PAYLOAD.view==='diary', sid=PAYLOAD.view==='side';
-    document.querySelectorAll('#pl-seg button').forEach(b=>{ const on=b.dataset.view===PAYLOAD.view; b.classList.toggle('on', on); b.setAttribute('aria-selected', on?'true':'false'); });
+    document.querySelectorAll('#pl-seg button, #pl-seg select').forEach(b=>{ const on=b.dataset.view===PAYLOAD.view; b.classList.toggle('on', on); if(b.tagName==='BUTTON') b.setAttribute('aria-selected', on?'true':'false'); });
     const pipe=document.getElementById('pl-pipe'), memEl=document.getElementById('pl-mem'), copy=document.getElementById('pl-copy'), diaEl=document.getElementById('pl-diary'), sidEl=document.getElementById('pl-side');
     if(pipe) pipe.hidden=mem||dia||sid; if(memEl) memEl.hidden=!mem; if(copy) copy.hidden=mem||dia; if(diaEl) diaEl.hidden=!dia;
     if(sidEl) sidEl.hidden=!sid;
@@ -14719,18 +14746,34 @@ const PAYLOAD = {
     if(!d){ PAYLOAD.paintPill('wait'); say('Loading the scene…'); return; }
     PAYLOAD.paintPill(d.error||!d.scene?'error':'live');
     if(d.error||!d.scene){ say(d.error||'no scene yet — the scanner has not written a row'); PAYLOAD.paintPipe(); return; }
+    // strikes-1: the dropdown picks the document. `scene` is what the reader hands the model
+    // (the Strikes Payload when the reader runs it, the Scene Payload when reverted); `legacy`
+    // is the Scene Payload kept beside it; `gate_payload` is the old magnet and walls the gate reads.
+    const which=PAYLOAD.which;
+    let doc=d.scene, label=d.payload_label||'Scene Payload v5', tag='LIVE payload';
+    if(which==='scene'){
+      if(d.legacy&&d.legacy.scene){ doc=d.legacy.scene; label='Scene Payload v5 · LEGACY, deprecated'; tag='LEGACY · not sent to the model · '+(d.legacy.note||''); }
+      else if(d.payload==='scene'){ label='Scene Payload v5 · the reader is running this one'; }
+      else { say('no legacy document: the reader is not building the Scene Payload beside the Strikes Payload'); PAYLOAD.paintPipe(); return; }
+    } else if(which==='gate'){
+      if(d.gate_payload){ doc=d.gate_payload; label='Gate Payload'; tag='STORE · the old magnet, walls and the blocks the model stopped seeing · read by the wake gate and the eval · written to state/sndk_legacy on each call · never sent'; }
+      else { say('no Gate Payload: the reader is running the Scene Payload, so the gate reads that directly'); PAYLOAD.paintPipe(); return; }
+    } else if(d.payload!=='strikes'){ label='Scene Payload v5 · the reader is running the Scene Payload (the Strikes Payload is switched off)'; }
     empty.hidden=true; pre.hidden=false;
     const when=String(d.row_ts||'').slice(11,19);
+    const chars=(which==='strikes'&&d.payload==='strikes')?d.scene_chars:JSON.stringify(doc).length;
     // The reader's freshness ceilings come from the server, which reads them off
     // sndk_read's own constants — so the chip on the chart and the floor in
     // staleInfo() can never quote a number the reader has stopped enforcing.
     if(d.gates&&d.gates.stale_book_min!=null) window.SNDK_STALE_BOOK_MIN=d.gates.stale_book_min;
-    const hdr=`<span class="p">// ${d.as_of==='live'?'LIVE scene':'last scan (market closed or scanner idle)'} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${d.era} · ${d.model} · ${d.scene_chars} chars ≈ ${Math.round(d.scene_chars/3.6)} tokens</span>\n`
-      +PAYLOAD.provLines(d.scene)
-      +`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · the doctrine rides the cached system prompt</span>\n\n`;
+    const hdr=`<span class="p">// ${tag==='LIVE payload'?(d.as_of==='live'?'LIVE payload':'last scan (market closed or scanner idle)'):tag} · ${label} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${which==='scene'&&d.legacy?d.legacy.era:d.era} · ${d.model} · ${chars} chars ≈ ${Math.round(chars/3.6)} tokens</span>\n`
+      +(which==='gate'?'':which==='scene'?PAYLOAD.provLines(doc):''+PAYLOAD.provLines(d.scene))
+      +(doc===d.scene?`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · ${d.payload==='strikes'?'DOCTRINE_V2':'the doctrine'} rides the cached system prompt</span>\n\n`
+        :which==='scene'&&d.legacy?`<span class="p">// deprecated 2026-09-05: replaced by the Strikes Payload; still built every scan because the wake gate freezes its walls, the frame reads them and the memory slice keeps them</span>\n\n`
+        :`<span class="p">// not a prompt: this document never reaches the model</span>\n\n`);
     // by section: each top-level key is one unbreakable block of depth-tagged lines, flowing into balanced columns
-    const ks=Object.keys(d.scene);
-    const blocks=ks.map((k,i)=>{ const out=[]; plLines(d.scene[k], 1, plKey(k)+'<span class="p">: </span>', i<ks.length-1?',':'', out); return `<div class="pl-blk">${plRows(out)}</div>`; }).join('');
+    const ks=Object.keys(doc);
+    const blocks=ks.map((k,i)=>{ const out=[]; plLines(doc[k], 1, plKey(k)+'<span class="p">: </span>', i<ks.length-1?',':'', out); return `<div class="pl-blk">${plRows(out)}</div>`; }).join('');
     pre.innerHTML=`<div class="pl-hdr">${hdr}</div><div class="pl-open"><div class="ln"><span class="p">{</span></div></div><div class="pl-cols">${blocks}</div><div class="pl-close"><div class="ln"><span class="p">}</span></div></div>`;
     PAYLOAD.paintPipe();
   },
@@ -14802,6 +14845,7 @@ const PAYLOAD = {
   // absence is the one thing a JSON dump cannot show you.
   provLines(scene){
     const ds=(scene&&scene.data_sources)||{}, fr=(scene&&scene.freshness_rules)||{};
+    const strikes=!!(scene&&scene.strikes);   // the Strikes Payload names its own blocks
     const b=ds.options_book||{}, oi=ds.open_interest||{};
     const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     const t=v=>esc(String(v||'').slice(11,19)||'—');
@@ -14811,12 +14855,24 @@ const PAYLOAD = {
     out.push(`// scan ${t(ds.scan_taken_at)} ET (spot from ${esc(ds.spot_feed||'?')}) `
       +`· book ${t(b.measured_at)} ET (${age(b.age_min)} old, ${esc(b.served_from||'?')}`
       +`${b.is_repeat_of_previous_scan===true?', REPEAT of the previous scan':''})`);
-    out.push(`// every wall, magnet, breadth and dealer number below is open interest `
-      +`struck at the ${esc(oi.prior_session_date||'prior session')} close — not intraday`
-      +`${oi.measured_unchanged_so_far_today===true?`, re-verified unchanged today across ${esc(oi.strikes_compared_today)} strikes`:''}`);
-    out.push(`// ${many(b.distinct_books_so_far_today,'distinct book')} `
-      +`across ${many(ds.scans_so_far_today,'scan')} today `
-      +`· book refreshes every ${age(b.refresh_interval_min)}, scans every ${age(ds.scan_interval_min)}`);
+    out.push(strikes
+      ? `// every open-interest and dealer-gamma number in the strike table is open interest `
+        +`struck at the ${esc(oi.prior_session_date||'prior session')} close — not intraday`
+        +`${oi.measured_unchanged_so_far_today===true?`, re-verified unchanged today across ${esc(oi.strikes_compared_today)} strikes`:''}`
+        +` · today\u2019s volume, the touches and the series are the only things that moved today`
+      : `// every wall, magnet, breadth and dealer number below is open interest `
+        +`struck at the ${esc(oi.prior_session_date||'prior session')} close — not intraday`
+        +`${oi.measured_unchanged_so_far_today===true?`, re-verified unchanged today across ${esc(oi.strikes_compared_today)} strikes`:''}`);
+    if(strikes){
+      const st=scene.strikes||{}, fr2=scene.frames||{}, rg=scene.regions||{};
+      out.push(`// ${many(st.strikes_in_window,'strike')} in reach, ${many((st.rows||[]).length,'row')} listed `
+        +`· ${many(fr2.books_in_series,'book')} of history behind each · ${many((rg.regions||[]).length,'region')} by the rule`
+        +`${st.absent&&st.absent.length?` · not measured this scan: ${esc(st.absent.join('; '))}`:''}`);
+    } else {
+      out.push(`// ${many(b.distinct_books_so_far_today,'distinct book')} `
+        +`across ${many(ds.scans_so_far_today,'scan')} today `
+        +`· book refreshes every ${age(b.refresh_interval_min)}, scans every ${age(ds.scan_interval_min)}`);
+    }
     const dropped=fr.blocks_dropped_this_scan||[];
     const lines=out.map(x=>`<span class="p">${x}</span>\n`).join('');
     if(!dropped.length) return lines;
@@ -14826,7 +14882,7 @@ const PAYLOAD = {
   },
   copy(){
     const d=PAYLOAD.data; if(!d||!d.scene||!navigator.clipboard) return;
-    const doc = PAYLOAD.view==='side' ? d.side : d.scene;
+    const doc = PAYLOAD.view==='side' ? d.side : (PAYLOAD.which==='scene' ? ((d.legacy&&d.legacy.scene)||(d.payload==='scene'?d.scene:null)) : PAYLOAD.which==='gate' ? d.gate_payload : d.scene);
     if(!doc) return;                 // nothing to copy is not an empty object
     navigator.clipboard.writeText(JSON.stringify(doc)).then(()=>{ const b=document.getElementById('pl-copy'); if(b){ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy JSON'; },1200); } }).catch(()=>{});
   },
@@ -14869,8 +14925,8 @@ const PAYLOAD = {
       ['Clean and price',    'Implied vol is re-solved per strike from the bid/ask mid against Schwab\u2019s live price; a strike that cannot be solved keeps or loses the provider\u2019s number, and gamma is filled in where the provider left it blank.', 'sndk_feed'],
       ['Build the map',      'The book becomes one snapshot: gamma by strike, the heaviest strike, the walls, the flip, the expected move, VWAP and the dealer-delta surface.', 'sndk_views'],
       ['Record',             'Every 120 seconds during market hours the snapshot is written to the diary; a sidecar job keeps the day\u2019s completed one-minute bars beside it, from Schwab, every 60 seconds.', 'state/sndk_reversion \u00b7 state/sndk_bars'],
-      ['Assemble the scene', 'Every scan: the newest snapshot, today\u2019s earlier rows, the minute bars, the prior sessions and what changed since the model\u2019s last look become this JSON.', 'sndk_read \u00b7 build_scene'],
-      ['Ask the model',      'Only when something changed: Claude reads the standing rulebook plus this JSON and says, in plain words, what stands out and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed. Then every number and level is checked against this JSON and forecast language is deleted before anyone sees it.','claude -p \u00b7 guards'],
+      ['Assemble the payload','Every scan: the newest snapshot, today\u2019s earlier rows, the minute bars, the prior sessions and what changed since the model\u2019s last look become this JSON \u2014 the ranked strike table with twelve books of history behind each strike, the rule\u2019s regions, and what happened between frames. The old scene is still built beside it for the wake gate.', 'sndk_board \u00b7 build_scene_v2'],
+      ['Ask the model',      'Only when something changed: Claude reads the standing rulebook plus this JSON and says, in plain words, what stands out, the piles it draws as clusters, the heavy strike on each side, and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed. Then every number and level is checked against this JSON, a cluster naming an unlisted strike is dropped, and forecast language is deleted before anyone sees it.','claude -p \u00b7 DOCTRINE_V2 \u00b7 guards'],
       ['Use the observation','What it noticed lands on the chart card, the phone glance, the voice desk and \u2014 when the model actually spoke \u2014 the memory store.', 'reading'],
     ];
     const open=PAYLOAD.pipeOpen;

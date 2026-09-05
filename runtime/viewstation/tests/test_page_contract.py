@@ -441,3 +441,22 @@ def test_the_gamma_zero_axis_never_leaves_the_middle():
     assert "xZ=x0+6" not in PAGE                              # the old left pin
     for gone in ("hasPos", "hasNeg", "sideFloor"):
         assert gone not in PAGE, f"{gone} outlived the layout rule it existed for"
+
+
+def test_the_payload_tab_carries_the_payload_dropdown_and_the_replay():
+    """strikes-1 (09-05): the payload segment is a dropdown of the three payloads and is
+    not a tab; the header says "sent" only over the document the model reads; copy()
+    resolves the scene when the reader is reverted; the Pipeline Architecture modal embeds
+    the replay page; the diary schema marks what became legacy."""
+    assert 'id="pl-which"' in PAGE and 'value="strikes"' in PAGE and 'value="gate"' in PAGE
+    assert '<span role="tablist" aria-label="Side, Memory or Diary">' in PAGE
+    assert "if(b.tagName==='BUTTON') b.setAttribute('aria-selected'" in PAGE
+    assert "which.addEventListener('pointerdown'" in PAGE and "which.addEventListener('focus'" not in PAGE
+    assert "+(doc===d.scene?`<span class=\"p\">// user message" in PAGE
+    assert "(d.legacy&&d.legacy.scene)||(d.payload==='scene'?d.scene:null)" in PAGE
+    assert 'src="/pipeline.html?user=${encodeURIComponent(PAYLOAD.USER)}&embed=1"' in PAGE
+    assert "e.data.mirai==='close-modal'" in PAGE
+    assert "Legacy payload only" in PAGE and "'gex_views.oi_side_by_strike_next'" in PAGE
+    assert "sndk_board.py" in PAGE and "sndk_regions.py" in PAGE
+    from pathlib import Path
+    assert (Path(__file__).resolve().parents[1] / "static" / "pipeline.html").exists()

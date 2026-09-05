@@ -277,6 +277,9 @@ def test_the_scene_is_read_by_its_current_names():
     # `d`, the stash-transplant typo that threw on every paint — must not return
     assert "PAY.instrument" in code
     assert "d.instrument" not in code
+    # strikes-1 (09-05): the walls and the magnet live on the legacy Scene
+    # Payload now; the ladder must read them there or paint nothing
+    assert "PAY.legacy" in code
     for stale in ("vwap_dist_sigma", "_side_clear", "unchanged_min",
                   "heaviest_behind", "fe.dte", "fe.date", "regime.word"):
         assert stale not in code, stale

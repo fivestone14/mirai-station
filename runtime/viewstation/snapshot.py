@@ -634,14 +634,49 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
     # last row that spent a call, exactly as read_once anchors it. One declared
     # divergence: no wake fires here, so `why_this_read` is absent.
     reads = [r for r in R._read_jsonl(R._reads_dir() / f"{day}.jsonl")
-             if r.get("era") == R.ERA]
+             if r.get("era") == R.active_era()]
     last_call = next((r for r in reversed(reads)
                       if r.get("wall_s") is not None), None)
-    scene = R.build_scene(rw, band, frozen, rows, build_now,
-                          since_last_read=R.frame_since_last_read(
-                              rw, rows, last_call, None, False, build_now))
-    text = json.dumps(scene, default=str)
+    said = next((r for r in reversed(reads)
+                 if (r.get("reading") or {}).get("read")), None)
+    scene_v1 = R.build_scene(rw, band, frozen, rows, build_now,
+                             since_last_read=R.frame_since_last_read(
+                                 rw, rows, last_call, None, False, build_now))
+    # strikes-1 (2026-09-05): the tab shows what the reader hands the model,
+    # and that is now the Strikes Payload, built from the same v1 the reader
+    # builds it from. The Scene Payload rides beside it as LEGACY, still built
+    # every scan for the wake gate and the memory, no longer sent; the Gate
+    # Payload (the old magnet and walls) rides as its own document. Both are
+    # labelled so a reader can tell current from deprecated at a glance.
+    mode = R.payload_mode()
+    scene, legacy, gate_payload = scene_v1, None, None
+    payload_label = "Scene Payload v5"
+    if mode == "strikes":
+        try:
+            import sndk_board as board
+            frame = (scene_v1.get("context") or {}).get("since_last_read")
+            clusters_then = ((said or {}).get("reading") or {}).get("clusters") or None
+            scene, _ = board.build_scene_v2(
+                rw, rows, build_now, since_last_read=frame,
+                last_read_ts=(R._ts(last_call) if last_call else None),
+                bars=R.minute_bars(day), v1=scene_v1, clusters_then=clusters_then)
+            gate_payload = board.legacy(rw, rows, build_now, v1=scene_v1)
+            payload_label = "Strikes Payload v1"
+            v1_text = json.dumps(scene_v1, default=str)
+            legacy = {"label": "Scene Payload v5", "status": "deprecated",
+                      "era": R.LEGACY_ERA, "scene": scene_v1, "chars": len(v1_text),
+                      "sent_to_model": False,
+                      "note": "still built every scan for the wake gate and the memory slice; the model no longer sees it"}
+        except Exception as exc:   # the tab must show SOMETHING true, never a blank
+            scene, legacy, gate_payload = scene_v1, None, None
+            payload_label = f"Scene Payload v5 (strikes payload failed: {type(exc).__name__})"
+    text = (board.prompt_v2(scene).split("SCENE:\n", 1)[1] if (mode == "strikes" and legacy is not None)
+            else json.dumps(scene, default=str))
     return {
+        "payload": ("strikes" if legacy is not None else "scene"),
+        "payload_label": payload_label,
+        "legacy": legacy,
+        "gate_payload": gate_payload,
         "session": day,
         # sr-8 deleted scene.instrument — the string "SNDK" on every scan of a
         # reader that watches nothing else, which the model does not need told
@@ -655,7 +690,7 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         "row_ts": row.get("ts"),
         "built_at": build_now.isoformat(),
         "as_of": "live" if live else "last scan",
-        "era": R.ERA,
+        "era": R.active_era(),
         "model": R.PINNED_MODEL,
         "scans_today": len(rows),
         "scene": scene,
@@ -693,6 +728,79 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
             "max_book_age_min": R.MAX_BOOK_AGE_MIN,
         },
     }
+
+
+# --- SNDK pipeline events (09-05) — one session's firing times ------------------
+# The Pipeline Architecture modal replays a recorded session: every scan, every
+# distinct option book, every completed minute bar and every read row, as
+# minutes since the open, all derived from the rows' own timestamps. Nothing
+# is typed in and nothing is interpolated; a day that lacks a file says so.
+def _minutes_since_open(ts: str) -> Optional[float]:
+    try:
+        t = datetime.fromisoformat(ts).astimezone(ZoneInfo("America/New_York"))
+    except Exception:
+        return None
+    return round((t.hour - 9) * 60 + t.minute - 30 + t.second / 60.0, 2)
+
+
+def _jsonl_rows(path: Path) -> list:
+    out: list = []
+    if not path.exists():
+        return out
+    with open(path) as f:
+        for line in f:
+            try:
+                out.append(json.loads(line))
+            except Exception:
+                continue   # a torn line is skipped, never fabricated
+    return out
+
+
+def pipeline_days(limit: int = 30) -> list:
+    """Days that have a diary and minute bars, newest first."""
+    have_bars = {p.stem for p in (STATE_DIR / "sndk_bars").glob("[0-9]*-[0-9]*-[0-9]*.jsonl")}
+    days = sorted((p.stem for p in (STATE_DIR / "sndk_reversion").glob("[0-9]*-[0-9]*-[0-9]*.jsonl")
+                   if p.stem in have_bars), reverse=True)
+    return days[:limit]
+
+
+def pipeline_events(day: str) -> dict:
+    absent: list = []
+    scans, books, seen = [], [], None
+    for r in _jsonl_rows(STATE_DIR / "sndk_reversion" / f"{day}.jsonl"):
+        if r.get("ticker") != "SNDK" or (r.get("meta") or {}).get("forced"):
+            continue
+        m = _minutes_since_open(r.get("ts") or "")
+        if m is None:
+            continue
+        scans.append(m)
+        ba = (r.get("meta") or {}).get("book_asof")
+        key = ba or r.get("ts")
+        if key != seen:
+            seen = key
+            books.append(_minutes_since_open(ba) if ba else m)
+    if not scans:
+        absent.append("no diary rows for the day")
+    bars = [m for b in _jsonl_rows(STATE_DIR / "sndk_bars" / f"{day}.jsonl")
+            if (m := _minutes_since_open(b.get("ts") or "")) is not None]
+    if not bars:
+        absent.append("no minute bars on disk for the day")
+    reads = []
+    for r in _jsonl_rows(STATE_DIR / "sndk_reads" / f"{day}.jsonl"):
+        m = _minutes_since_open(r.get("ts") or "")
+        if m is None:
+            continue
+        spoke = r.get("model") not in (None, "None", "")
+        wall = r.get("wall_s")
+        reads.append({"m": m, "wake": r.get("wake") or "quiet", "spoke": spoke,
+                      "wall": (float(wall) if spoke and wall not in (None, "None") else None),
+                      "quiet": (bool(r.get("quiet")) if spoke else None),
+                      "err": (r.get("error") not in (None, "None")) if spoke else False,
+                      "era": r.get("era"), "payload": r.get("payload")})
+    if not reads:
+        absent.append("no read rows for the day")
+    return {"day": day, "scans": scans, "books": books, "bars": bars,
+            "reads": reads, "absent": absent}
 
 
 # --- SNDK memory overview (08-21) — what the model's history tool can reach -----

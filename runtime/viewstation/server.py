@@ -559,6 +559,25 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
 
+            if route in ("/api/sndk/pipeline", "/api/sndk/pipeline/days"):
+                # 09-05: the Pipeline Architecture modal's replay data — a
+                # session's firing times, derived from the rows' own clocks.
+                # Same lock as the payload: it names files and cadences.
+                if not _payload_unlocked(qs) and _forwarded_user(self.headers) != _PAYLOAD_USER:
+                    return self._send_json({"error": "locked"}, 403)
+                try:
+                    if route.endswith("/days"):
+                        return self._send_json({"days": snap.pipeline_days()})
+                    day = (qs.get("day") or [""])[0]
+                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day or ""):
+                        days = snap.pipeline_days()
+                        day = days[0] if days else ""
+                    return self._send_json(snap.pipeline_events(day) if day else {"error": "no recorded session"})
+                except Exception as exc:  # never 500 the page
+                    import traceback
+                    return self._send_json({"error": f"{type(exc).__name__}: {exc}",
+                                            "trace": traceback.format_exc()})
+
             if route == "/api/sndk/payload":
                 # the exact scene the reader hands the model — locked to one user (the ?user= name,
                 # or the front door's forwarded user when a proxy authenticates for us)
