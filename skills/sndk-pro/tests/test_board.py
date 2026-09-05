@@ -401,6 +401,23 @@ def test_guard_checks_a_touch_clock_and_a_superlative_against_the_record():
     assert "touch_clock_not_that_strikes:1300:09:41" in slips and "most_volume_unsupported:1150" in slips
 
 
+def test_a_superlative_is_read_per_side_as_the_doctrine_asks():
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    recs = {r["strike"]: r for r in B.rows_as_records(v2["strikes"])}
+    spot = v2["price"]["live_spot"]
+    top = min(recs.values(), key=lambda r: r["rank_by_contracts"])
+    other = "below" if top["side"] == "above" else "above"   # the side that does not hold the board's top strike
+    side = [r for r in recs.values() if r["side"] == other]
+    top_side = min(side, key=lambda r: r["rank_by_contracts"])
+    assert top_side["rank_by_contracts"] != 1
+    ok = B._prose_slips_v2(f"{other.capitalize()}, {top_side['strike']:g} holds the most contracts.", v2)
+    assert not [x for x in ok if x.startswith("most_")]
+    worst = max(side, key=lambda r: r["rank_by_contracts"])
+    bad = B._prose_slips_v2(f"{other.capitalize()}, {worst['strike']:g} holds the most contracts.", v2)
+    assert f"most_contracts_unsupported:{worst['strike']:g}" in bad
+
+
 def test_the_budget_is_a_note_never_a_drop():
     sc = _scene()
     obj = {"quiet": False, "read": " ".join(["word"] * 60) + " 1300 holds the most contracts.",

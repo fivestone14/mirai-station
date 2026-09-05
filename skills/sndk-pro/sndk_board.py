@@ -1071,6 +1071,14 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
         col = {"volume": "rank_by_volume_today", "contracts": "rank_by_contracts",
                "open interest": "rank_by_contracts", "gamma": "rank_by_dealer_gamma"}[what]
         leads_today = recs[k].get(col) == 1
+        if not leads_today:
+            # the doctrine names a heavy strike per side, so "above, 1600 holds
+            # the most contracts" is a claim about the above side and is true
+            # when 1600 out-ranks every other strike on that side
+            side = recs[k].get("side")
+            own = [r.get(col) for r in recs.values()
+                   if r.get("side") == side and isinstance(r.get(col), int)]
+            leads_today = side in ("above", "below") and bool(own) and recs[k].get(col) == min(own)
         added = [(r.get("vol_added_in_series") or 0, kk) for kk, r in recs.items()]
         leads_series = bool(added) and max(added)[1] == k and what == "volume"
         chg = [((c[1] or 0) + (c[2] or 0) if isinstance(c := r.get("change"), list) and len(c) == 3 else 0, kk) for kk, r in recs.items()]
