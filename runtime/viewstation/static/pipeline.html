@@ -126,6 +126,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
 .log span.w{color:var(--pulse)}
 .log span.e{color:var(--err)}
 /* panel */
+.panel:empty{display:none}
 .panel{margin-top:16px;border:1px solid var(--line-soft);background:var(--surface);border-radius:3px;padding:14px 18px 18px;max-width:1100px}
 .panel-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;margin-bottom:6px}
 .panel h2{font-family:var(--cond);font-weight:600;font-size:20px;margin:0}
@@ -500,7 +501,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [1,'nearest_above · nearest_below','number','nearest listed strike each side; no_strikes_above / no_strikes_below when a side is empty'],
       [1,'change_basis · change_books_compared · change_columns','mixed','which earlier book the change cells compare against, said once; change_unavailable when there is none'],
       [1,'next_book · next_week_columns','mixed','the next weekly expiry’s date and days, or not_recorded before 2026-09-05'],
-      [1,'entered_since_reference · left_since_reference · absent[] · null_means','mixed','strikes that joined or left the list, surfaces not measured this scan, what a missing field means'],
+      [1,'entered_since_reference · left_since_reference · absent[]','mixed','strikes that joined or left the list, surfaces not measured this scan, what a missing field means'],
       [1,'columns · rows[]','list','every field a record can carry, then one record per strike, heaviest by contracts first'],
       [2,'strike · side · dist_sigma','number, string','above, below or at, measured from the book’s spot'],
       [2,'touched_today · first_touch · last_touch · bars_touched_today · shares_traded_at_strike_pp','mixed','what price did at the strike today, from the minute bars’ wicks'],
@@ -515,7 +516,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [2,'touched_in_books','list','which of those intervals had a wick at the strike'],
       [2,'next_week','list','the next weekly expiry’s open interest and volume at the strike, once the diary keeps it'],
       [0,'frames','object','the History block’s time axis: books_in_series, book_times, interval_min, gaps, reaches_last_read, books_since_last_read, price_path_sigma_from_now'],
-      [0,'regions','object','the Regions block: the rule’s answer over the last twelve books'],
+      [0,'regions','object','not shipped since 2026-09-05: the rule still runs behind the scene, its answer is kept in the Gate Payload and checks the model’s change words'],
       [0,'between_frames','object','the gap’s tape: missing_minutes, low and high with their bars, path travelled, shares traded, implied vol from and to; or first_read_of_session'],
       [0,'frozen_do_not_cite','list','top of list for N minutes, list membership unchanged N minutes'],
       [0,'— the model’s reply —','',''],
@@ -599,15 +600,12 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       const n = N[id];
       panel.innerHTML = `<div class="panel-head"><h2>${esc(n.name)}</h2><span class="pill ${n.pill}">${esc(n.status)}</span></div><p>${esc(n.what)}</p><div class="note">${n.note.map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join('')}</div>`;
     }
-    try { localStorage.setItem('sndk-pipeline-node', id); } catch(e){}
   }
   document.querySelectorAll('.node').forEach(n=>{
     n.addEventListener('click', ()=> show(n.dataset.id));
     n.addEventListener('keydown', (e)=>{ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); show(n.dataset.id); } });
   });
-  let start = 'board';
-  try { const s = localStorage.getItem('sndk-pipeline-node'); if (s && (S[s] || N[s])) start = s; } catch(e){}
-  show(start);
+  // no box is selected on load: the panel below the diagram opens only when a box is clicked
 
   // ------------------------------------------------------------ the clock
   const USER = (new URLSearchParams(location.search).get('user')) || 'will';
