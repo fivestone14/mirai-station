@@ -449,6 +449,10 @@ def test_the_payload_tab_carries_the_payload_dropdown_and_the_replay():
     resolves the scene when the reader is reverted; the Pipeline Architecture modal embeds
     the replay page; the diary schema marks what became legacy."""
     assert 'id="pl-which"' in PAGE and 'value="strikes"' in PAGE and 'value="gate"' in PAGE
+    # the legacy scene is the last option, under its own group label, in dimmer ink
+    assert PAGE.index('value="strikes"') < PAGE.index('value="gate"') < PAGE.index('value="scene"')
+    assert '<optgroup label="Legacy" class="legacy"><option value="scene" class="legacy">' in PAGE
+    assert "which.classList.toggle('legacy', which.value==='scene')" in PAGE
     assert '<span role="tablist" aria-label="Side, Memory or Diary">' in PAGE
     assert "if(b.tagName==='BUTTON') b.setAttribute('aria-selected'" in PAGE
     assert "which.addEventListener('pointerdown'" in PAGE and "which.addEventListener('focus'" not in PAGE

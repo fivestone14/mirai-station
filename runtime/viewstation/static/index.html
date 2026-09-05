@@ -2335,6 +2335,12 @@
   .pl-seg select.on{background-color:var(--iris-wash); color:var(--iris)}
   .pl-seg select:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
   .pl-seg select option{background:var(--surface-3); color:var(--ink)}
+  /* the legacy scene sits last, under its own group label, in dimmer ink: the option where the
+     browser honours option colour, the group label everywhere, and the closed control whenever
+     the legacy document is the one showing */
+  .pl-seg select optgroup.legacy{color:var(--ink-faint); font-style:normal}
+  .pl-seg select option.legacy{color:var(--ink-faint)}
+  .pl-seg select.on.legacy{color:color-mix(in srgb,var(--iris) 55%,var(--ink-faint))}
   .pl-seg button:focus-visible{outline:2px solid var(--iris); outline-offset:-2px}
   /* the rail is sized by what it HOLDS, not by a fraction of the pane: it takes the width its
      own content needs up to a ceiling, and the memory takes every pixel left over. On a narrow
@@ -14595,7 +14601,7 @@ const PAYLOAD = {
       <div class="pl-bar" id="pl-bar">
         <div class="lb"><b>Live payload</b><span>Refreshed every minute while this tab is open.</span></div>
         <button class="pl-btn" id="pl-schema" title="The whole pipeline — every file and what it does">Pipeline Architecture</button>
-        <div class="pl-seg" id="pl-seg"><select id="pl-which" class="on" data-view="payload" aria-label="Which payload to show" title="The payloads: the one sent to the model, and the two kept beside it"><option value="strikes">Strikes Payload v1</option><option value="scene">Scene Payload v5 · legacy</option><option value="gate">Gate Payload · store</option></select><span role="tablist" aria-label="Side, Memory or Diary"><button type="button" data-view="side" role="tab" aria-selected="false" title="The bar-anchored second packet — built from the minute sidecar, never sent to the model">Side</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></span></div>
+        <div class="pl-seg" id="pl-seg"><select id="pl-which" class="on" data-view="payload" aria-label="Which payload to show" title="The payloads: the one sent to the model, the gate's record kept beside it, and the legacy scene at the bottom"><option value="strikes">Strikes Payload v1</option><option value="gate">Gate Payload · store</option><optgroup label="Legacy" class="legacy"><option value="scene" class="legacy">Scene Payload v5 · legacy</option></optgroup></select><span role="tablist" aria-label="Side, Memory or Diary"><button type="button" data-view="side" role="tab" aria-selected="false" title="The bar-anchored second packet — built from the minute sidecar, never sent to the model">Side</button><button type="button" data-view="memory" role="tab" aria-selected="false">Memory</button><button type="button" data-view="diary" role="tab" aria-selected="false">Diary</button></span></div>
         <button class="pl-btn" id="pl-refresh">Refresh</button>
         <button class="pl-btn" id="pl-copy">Copy JSON</button>
       </div>
@@ -14644,7 +14650,8 @@ const PAYLOAD = {
     // payload view from Side, Memory or Diary.
     const which=host.querySelector('#pl-which');
     which.value=PAYLOAD.which;
-    which.addEventListener('change', ()=>{ PAYLOAD.which=which.value; try{ localStorage.setItem('pl.which', PAYLOAD.which); }catch(e){} PAYLOAD.setView('payload'); });
+    which.classList.toggle('legacy', which.value==='scene');
+    which.addEventListener('change', ()=>{ PAYLOAD.which=which.value; which.classList.toggle('legacy', which.value==='scene'); try{ localStorage.setItem('pl.which', PAYLOAD.which); }catch(e){} PAYLOAD.setView('payload'); });
     which.addEventListener('pointerdown', ()=>{ if(PAYLOAD.view!=='payload') PAYLOAD.setView('payload'); });
     which.addEventListener('keydown', e=>{ if((e.key==='Enter'||e.key===' ')&&PAYLOAD.view!=='payload') PAYLOAD.setView('payload'); });
     host.querySelector('#pl-pipe').addEventListener('click', e=>{ if(e.target.closest('.pipe-toggle')) PAYLOAD.togglePipe(); });
