@@ -1,5 +1,20 @@
 # SNDK property inventory — in the scene payload vs not (living list)
 
+> **strikes-1 (2026-09-05).** The model now reads the **Strikes Payload**
+> (`sndk_board.build_scene_v2`), not the scene this inventory maps. The scene
+> (`sndk_read.build_scene`, era `obs-5`) is still built every scan for the wake
+> gate, the frame and the memory slice, and is served on the dashboard as
+> **legacy, deprecated**. What reaches the model now, per strike in reach:
+> `oi_calls`, `oi_puts`, `vol_calls`, `vol_puts`, `contracts_share_pp`,
+> `dealer_gamma_sign`, `dealer_gamma_share_pp`, three rank columns,
+> `touched_today` / `first_touch` / `last_touch` / `bars_touched_today` /
+> `shares_traded_at_strike_pp`, `on_list_for_min`, `change`,
+> `vol_added_per_book`, `vol_added_in_series`, `touched_in_books`, `next_week`;
+> plus `frames`, `regions` and `between_frames`. Everything marked "in payload"
+> below now means "in the legacy scene". `skills/sndk-pro/README.md`
+> (strikes-1) is the current map.
+
+
 Scope: **SNDK only** (blueprint `mirai-sndk-payload-blueprint.html`, draft v3,
 applied 2026-08-02). The scene payload is what `sndk_read.build_scene` hands the
 model. Everything else recorded on the diary row is view/telemetry/training

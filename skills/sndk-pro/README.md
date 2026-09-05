@@ -201,6 +201,64 @@ Also measured and NOT built: crossings and approaches as an angle — a crossing
 is a $2 event at a $2 noise floor with follow-through at placebo. Scene
 3,328 → 4,171 bytes on the 09-02 tape; 240 tests.
 
+### strikes-1 (2026-09-05) — the Strikes Payload
+
+The model no longer reads the scene described below. It reads the **Strikes
+Payload**, built by `sndk_board.build_scene_v2` from the same diary row, the
+same minute bars and the live scene itself: the clocks, the ruler, price, the
+day's boxes and the since-last-read frame are kept from `build_scene` with the
+verdict words stripped; the magnet, walls, regime, breadth, momentum,
+dealer-positioning and structure blocks are dropped; and four blocks are added.
+
+* `strikes` — one record per strike in reach (the union of the top 8 by
+  contracts, by today's volume and by absolute dealer gamma, the nearest two
+  each side, and anything crossed since the last read): open interest and
+  volume by side, contracts share, gamma sign and share, three separate rank
+  columns, what price did at the strike today (touched, first and last touch,
+  bars, the share of the day's shares that printed there), the change since
+  the reference book, contracts added per book over the last twelve books, and
+  the next weekly expiry's open interest and volume once the diary keeps them.
+  A surface that was not measured drops its columns and is named in `absent`.
+* `frames` — the shared time axis: the twelve book times once, the minutes
+  between them, gaps, whether the series reaches the last read, and where
+  price sat at each book in sigma from now.
+* `regions` — `sndk_regions.regions_block`, a stated rule's answer (8% of
+  contracts or of absolute gamma in reach to enter, 6% to stay, adjacent on the
+  grid, identity by a shared strike) with first-seen, presence over the series
+  and a change word judged on a drift-free strike set. It carries no number
+  from the strike list.
+* `between_frames` — the gap's tape: missing minutes, low and high with their
+  bars, path travelled, shares traded, implied vol from and to.
+
+The model's reply gained `clusters` (its own magnet call, adjacent listed
+strikes with a rank; the code appends side, distance, touch and summed shares,
+and sets the change word from the rule), `sides` (the heavy strike each way and
+what it leads on, checked against the list), `resolved` and `absent`.
+`check_reading_v2` runs the live gates plus the v2 ones: unlisted or
+non-adjacent clusters, repeated ranks, the words this scene forbids (magnet,
+momentum, stronger), a strike placed on the wrong side of the live price, and
+"unchanged" on a board whose change cells moved.
+
+**The switch.** `payload_mode()` reads `SNDK_PAYLOAD` (env), then
+`state/sndk_reads/control.json` (`"payload": "scene" | "strikes"`), then
+`PAYLOAD_DEFAULT`. The era follows it (`strikes-1` / `obs-5`), so rows written
+after a revert never pool. The live scene is still built every scan: the wake
+gate, the frame, the memory slice and the row's `gate` state read it, and its
+old magnet and walls are written as the **Gate Payload** to
+`state/sndk_legacy/<day>.jsonl` on every read that spends a call
+(`sndk_board.legacy`). The dashboard shows all three documents.
+
+**Measured before it shipped** (28 sessions, 5,038 scans): a magnet price had
+already passed was returned to within the hour less often than a plain strike
+at the same distance (15% vs 21%), a "building" share was worth about $3.50 on
+the magnet alone, and open interest changed on 0 of 18,000 strike comparisons.
+On 22 recorded moments with both payloads, no read was deleted either way; on
+11 with the final doctrine every read named both sides and the model's first
+cluster sat on a rule region every time (the anchoring risk `SHIP_REGIONS`
+exists to test). The engine now also keeps the next weekly's per-strike panes
+on every diary row (`sndk_views.build_row`, `oi_side_by_strike_next`,
+`vol_side_by_strike_next`); nothing before 2026-09-05 can be backfilled.
+
 ### obs-5 (2026-09-02) — the minute-bar sidecar
 
 The scanner fetched today's 1-minute bars on every tick and kept none of them,
