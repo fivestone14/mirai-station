@@ -371,6 +371,16 @@ def build_row(contracts: list, spot: float, now: datetime, *,
     # σ yardstick from the chain's own ATM IV (front book preferred — the
     # rebuilt quote-derived IV, never the provider's stale-spot garbage)
     front, front_dte = front_book(contracts)
+    # THE NEXT BOOK (history-1, 2026-09-05): the next expiry's contracts, so the
+    # diary keeps its open interest and volume per strike beside the front
+    # book's. Until now they were fetched on every pull and dropped after the
+    # row was written; the raw chain cache holds one pull only, so nothing
+    # before this change can be backfilled. Absent (None) when the chain has a
+    # single expiry, never an empty list wearing a zero.
+    later = sorted({c["dte"] for c in contracts
+                    if isinstance(c.get("dte"), int) and front_dte is not None
+                    and c["dte"] > front_dte})
+    nxt = [c for c in contracts if later and c.get("dte") == later[0]]
     atm_iv = _gxb._atm_iv(front or contracts, spot)
     sigma_live = (round(spot * atm_iv / math.sqrt(_gxb._TRADING_DAYS), 4)
                   if (atm_iv and atm_iv > 0) else None)
@@ -398,6 +408,15 @@ def build_row(contracts: list, spot: float, now: datetime, *,
         reach_hint = None
     B = _gxb.slide_0dte(front, spot, mtc, prev_pin=mem["prev_pin"],
                         sigma=reach_sigma, nbs_reach=reach_hint)
+    # the next book's side panes only; its pin and walls are computed and
+    # discarded, which costs one more slide per scan and no new engine code
+    Bn = {}
+    if nxt:
+        try:
+            Bn = _gxb.slide_0dte(nxt, spot, mtc, sigma=reach_sigma,
+                                 nbs_reach=reach_hint) or {}
+        except Exception:
+            Bn = {}
 
     magnet = B.get("pin") if B.get("pin") is not None else v.get("magnet")
     gamma_sign = {"long_gamma": "positive",
@@ -444,6 +463,10 @@ def build_row(contracts: list, spot: float, now: datetime, *,
         "oi_side_by_strike": B.get("oi_side_by_strike"),
         "vol_side_by_strike": B.get("vol_side_by_strike"),
         "net_by_strike_tenor": C.get("net_by_strike"),
+        # history-1: the next expiry's per-strike panes, [strike, calls, puts]
+        "next_dte": (later[0] if later else None),
+        "oi_side_by_strike_next": Bn.get("oi_side_by_strike"),
+        "vol_side_by_strike_next": Bn.get("vol_side_by_strike"),
     }
 
     # DEX — the whole-book standing-delta surface (pure reuse)

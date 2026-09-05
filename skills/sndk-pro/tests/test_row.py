@@ -343,3 +343,24 @@ def test_range_em_votes_pin_on_a_compressed_tape():
     row = _row_at(NOW, day_high=1252.0, day_low=1248.0)
     assert row["range_em"] <= 0.70
     assert row["regime_reads"]["range_em"] == "pin"
+
+
+
+# ---------------------------------------------------------------- history-1 (2026-09-05): the next book
+def test_the_next_books_panes_ride_the_row():
+    row = _row()
+    gv = row["gex_views"]
+    assert gv["next_dte"] == 11
+    nxt = {k for k, _, _ in gv["oi_side_by_strike_next"]}
+    front = {k for k, _, _ in gv["oi_side_by_strike"]}
+    assert nxt and nxt <= front | nxt              # the same grid, windowed the same way
+    assert all(len(x) == 3 for x in gv["vol_side_by_strike_next"])
+
+
+def test_a_one_expiry_chain_has_no_next_book():
+    book = [c for c in synth.prepared_book() if c.get("dte") == 4]
+    row = sndk_views.build_row(book, synth.SPOT, NOW, spot_source="schwab_quote",
+                               chain_meta=CHAIN_META, chain_spot=1088.5, prior_close=1240.0,
+                               day_open=1245.0, day_high=1260.0, day_low=1235.0)
+    gv = row["gex_views"]
+    assert gv["next_dte"] is None and gv["oi_side_by_strike_next"] is None and gv["vol_side_by_strike_next"] is None
