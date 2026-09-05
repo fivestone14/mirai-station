@@ -417,7 +417,9 @@ def test_the_packet_lands_in_its_own_file_and_the_row_only_points_at_it(
     # the engine's lines come off the same diary row the scene was built from
     assert {L["role"] for L in side["levels"]} >= {"wall_call", "wall_put"}
     # and the row stayed small: the phone fetches forty of these a minute
-    assert len(json.dumps(rows[-1])) < 4000
+    # strikes-1 (09-05): the reading carries clusters, sides and points now; a full
+    # wake row measured 4,623 bytes, so the ceiling moves to 6,500 and stays a ceiling
+    assert len(json.dumps(rows[-1])) < 6500
 
 
 def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):

@@ -169,4 +169,6 @@ def test_prior_sessions_prefer_a_full_bars_file_and_say_when_they_mixed():
 def test_the_doctrine_names_the_witness_and_the_era_moved():
     assert "`price.extremes_from`" in SR._DOCTRINE and "`measured_from`" in SR._DOCTRINE
     assert "`minute_bars`" in SR._DOCTRINE
-    assert SR.ERA == "obs-5"
+    # strikes-1 (2026-09-05): the era moved again when the Strikes Payload
+    # went live; obs-5 survives as the legacy era the revert switch writes
+    assert SR.ERA == "strikes-1" and SR.LEGACY_ERA == "obs-5"

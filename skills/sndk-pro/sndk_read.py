@@ -88,7 +88,13 @@ PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "obs-5"               # bump on ANY change to the gates or the prompt.
+ERA = "strikes-1"           # bump on ANY change to the gates or the prompt.
+                            # strikes-1 (2026-09-05): the Strikes Payload is
+                            # what the model reads; the Scene Payload (obs-5)
+                            # is still built every scan for the gate, the frame,
+                            # the memory slice and the Gate Payload record.
+LEGACY_ERA = "obs-5"        # rows written when the switch below says "scene"
+PAYLOAD_DEFAULT = "strikes" # which builder feeds the model unless the switch says otherwise
                             # obs-5 (2026-09-02): THE MINUTE-BAR SIDECAR. The
                             # session's highs and lows, the opening box, every
                             # box break and the prior sessions' range now read
@@ -435,8 +441,8 @@ PRESENT_TENSE_FORBIDDEN_FOR = ("magnet", "walls", "breadth",
                                "dealer_positioning", "regime.charm", "regime.flip",
                                "structure")
 LEXICON_ENFORCE = False
-_STALE_NOUNS = ("magnet", "wall", "walls", "dealer", "gamma", "charm",
-                "breadth", "vanna", "open interest", "oi")
+_STALE_NOUNS = ("magnet", "wall", "walls", "dealer", "dealers", "gamma", "charm",
+                "breadth", "vanna", "open interest", "oi", "positioning", "delta")
 _LIVE_VERBS = ("is building", "are building", "is fading", "are fading",
                "is buying", "are buying", "is selling", "are selling",
                "right now", "currently", "just now", "is stacking",
@@ -539,6 +545,33 @@ def reasoning_on() -> bool:
         return bool(d.get("reasoning", True)) if isinstance(d, dict) else True
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return True
+
+
+def payload_mode() -> str:
+    """'strikes' or 'scene': which payload the model reads. The environment
+    wins (manual runs), then the control file the pause switch already uses
+    (`state/sndk_reads/control.json`, key "payload"), then the module
+    default. Anything unrecognised reads as the default. The next 120 s tick
+    picks up a change; no code edit, no restart."""
+    v = os.environ.get("SNDK_PAYLOAD")
+    if v in ("scene", "strikes"):
+        return v
+    try:
+        d = json.loads(_control_path().read_text())
+        v = d.get("payload") if isinstance(d, dict) else None
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        v = None
+    return v if v in ("scene", "strikes") else PAYLOAD_DEFAULT
+
+
+def active_era() -> str:
+    """The era stamped on read rows follows the payload, so rows written
+    after a revert never pool with rows written under the other builder."""
+    return ERA if payload_mode() == "strikes" else LEGACY_ERA
+
+
+def _legacy_dir() -> Path:
+    return _state_dir() / "sndk_legacy"
 
 
 def _market_live() -> bool:
@@ -1262,6 +1295,9 @@ _BANNED_FORECAST = (
 _BANNED_CAUSAL = (
     "because", "due to", "driving", "drove", "as a result", "in response to",
     "which is why", "causing", "caused", "defending", "thanks to", "owing to",
+    # strikes-1 (2026-09-05): "defend" was banned only as its -ing form, so
+    # "1700 defended" and "dealers defend 1700" walked through
+    "defend",
 )
 # obs-1b REMOVES the wall-name ban. It was right about the danger and wrong
 # about the mechanism: the scene ships a `walls` block the model is meant to
@@ -1285,6 +1321,10 @@ _BANNED_JUDGEMENT = (
     "dangerous", "threat", "threatens", "healthy", "unhealthy", "overdue",
     "due for", "look for", "watch for", "call for", "calls for", "setting up",
     "set up for", "favour", "favor", "favouring", "favoring",
+    # strikes-1 (2026-09-05): the stem rule takes s/es/ed/ing, not the
+    # comparatives, so "stronger" and "weakest" passed a gate that bans
+    # "strong" and "weak" (measured: seventeen test sentences, two escapes)
+    "stronger", "strongest", "weaker", "weakest",
 )
 
 
@@ -1496,9 +1536,15 @@ def present_tense_slips(reading: dict) -> list[str]:
                      str(reading.get("quiet_because") or "")]
                     + [str(o.get("what") or "")
                        for o in (reading.get("notable") or [])]).lower()
-    if not any(w in text for w in _STALE_NOUNS):
+    # strikes-1 (2026-09-05): WORD BOUNDARIES. As a substring test, "oi"
+    # matched "points" and "going" and "wall" matched "swallowed", so every
+    # rate this guard has logged since sr-7 counted sentences that named no
+    # stale noun at all.
+    def _has(w):
+        return re.search(r"\b" + re.escape(w) + r"\b", text) is not None
+    if not any(_has(w) for w in _STALE_NOUNS):
         return []
-    return sorted({v for v in _LIVE_VERBS if v in text})
+    return sorted({v for v in _LIVE_VERBS if _has(v)})
 
 
 
@@ -1829,7 +1875,8 @@ def first_json_object(text: str):
     return None
 
 
-def call_the_model(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
+def call_the_model(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
+                   doctrine: str = None):
     """ONE `claude -p` call, every tool disallowed (_NO_TOOLS — obs-1 revoked
     the sr-2 grant). Doctrine rides --append-system-prompt so it stays
     byte-identical all day and is served from cache; the varying scene rides
@@ -1841,7 +1888,7 @@ def call_the_model(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S):
     largest drop there is (an unparseable reply) was the one case that kept
     none."""
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
-           "--append-system-prompt", _DOCTRINE,
+           "--append-system-prompt", (doctrine if doctrine is not None else _DOCTRINE),
            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
            "--effort", CALL_EFFORT,
            "--disallowedTools", *_NO_TOOLS]   # variadic — must stay LAST
@@ -3424,7 +3471,11 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # era-scoped: a row written under an older rule set may never seed today's
     # dwell clock or its run counter (the store is stamped for exactly this)
     reads_all = _read_jsonl(_reads_dir() / f"{day}.jsonl")
-    reads = [r for r in reads_all if r.get("era") == ERA]
+    reads = [r for r in reads_all if r.get("era") == active_era()]
+    # strikes-1: the call cap and the minimum gap span both eras, so flipping the
+    # payload switch mid-day can neither restart the 30-call budget nor allow a
+    # call inside the 10-minute floor (the carry-forward stays era-scoped)
+    reads_either = [r for r in reads_all if r.get("era") in (ERA, LEGACY_ERA)]
     prev = reads[-1] if reads else None
     # THE LAST ROW THAT ACTUALLY SAID SOMETHING, which is not the same row.
     # Carry-forward used `prev`, and `prev.reading` is None whenever that call
@@ -3445,7 +3496,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                  if (r.get("reading") or {}).get("read")), None)
     # the last row that actually spent a call — the wake gate measures drift
     # from the last LOOK, never from the last write (see should_wake)
-    calls = [r for r in reads if r.get("wall_s") is not None]
+    calls = [r for r in reads_either if r.get("wall_s") is not None]
     last_call = calls[-1] if calls else None
 
     capped = len(calls) >= DAILY_CALL_CAP
@@ -3499,6 +3550,32 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                         since_last_read=frame_since_last_read(
                             row, rows, last_call, wake, force, scene_now,
                             prior_rows_today=bool(reads_all)))
+    # strikes-1: THE STRIKES PAYLOAD RIDES BESIDE THE SCENE PAYLOAD. The scene
+    # (v1) still feeds the gate, the frame, the memory slice and the record;
+    # only what the model reads changes. Built from the v1 just made, so the
+    # two never disagree on a clock or a ruler. A failure here falls back to
+    # the scene payload and says so; a payload that cannot be built must
+    # never silence the read.
+    mode = payload_mode()
+    board = None
+    scene_v2 = None
+    legacy_doc = None
+    if mode == "strikes":
+        try:
+            # run as a script this module is __main__; register it under its
+            # own name first so sndk_board's `import sndk_read` gets THIS copy
+            sys.modules.setdefault("sndk_read", sys.modules[__name__])
+            import sndk_board as board
+            _frame = (scene.get("context") or {}).get("since_last_read")
+            _clusters_then = ((said or {}).get("reading") or {}).get("clusters") or None
+            scene_v2, _ = board.build_scene_v2(
+                row, rows, scene_now, since_last_read=_frame,
+                last_read_ts=(_ts(last_call) if last_call else None),
+                bars=minute_bars(day), v1=scene, clusters_then=_clusters_then)
+            legacy_doc = board.legacy(row, rows, scene_now, v1=scene)
+        except Exception as exc:
+            print(f"sndk-read :: strikes payload failed, scene payload used: {exc!r}")
+            board, scene_v2, legacy_doc = None, None, None
     # side-1: the bar-anchored packet, built from the same minute sidecar the
     # scene's extremes come from. It rides the read row so a replay of the day
     # can see exactly what it said, and it is BESIDE the scene, never inside
@@ -3530,7 +3607,9 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
             print(f"sndk-read :: side payload skipped: {exc!r}")
 
     out = {
-        "ts": now.isoformat(), "era": ERA,
+        "ts": now.isoformat(), "era": active_era(),
+        # strikes-1: which builder fed the model, on every row
+        "payload": ("strikes" if scene_v2 else "scene"),
         "wake": ("capped" if capped else
                  "stale_book" if stale and not force else (wake or "quiet")),
         "book_age_min": book_age,
@@ -3576,17 +3655,33 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         print(f"sndk-read :: PAUSED | {wake} | row recorded, no model call")
         return 0
 
+    if legacy_doc is not None and not dry:
+        # the Gate Payload: the old magnet, walls and the blocks the model
+        # stopped seeing, kept beside every read that spends a call, in its
+        # own file so the read row stays small. The row carries a flag, the
+        # eval and the dashboard read the file.
+        try:
+            atomic_io.append_jsonl(_legacy_dir() / f"{day}.jsonl",
+                                   {"ts": now.isoformat(), "era": active_era(), **legacy_doc})
+            out["legacy_kept"] = True
+        except Exception as exc:
+            print(f"sndk-read :: legacy record skipped: {exc!r}")
+
     if dry:
         print(json.dumps({k: out[k] for k in
-                          ("ts", "wake", "spot", "magnet_band", "frozen")},
+                          ("ts", "wake", "spot", "magnet_band", "frozen", "payload")},
                          indent=1, default=str))
         print("--- scene handed to the model ---")
-        print(json.dumps(scene, indent=1, default=str))
+        print(json.dumps(scene_v2 or scene, indent=1, default=str))
         return 0
 
-    prompt = ("Read this scene cold and reply with the JSON object only.\n\n"
-              "SCENE:\n" + json.dumps(scene, default=str))
-    obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL)
+    if scene_v2 is not None:
+        prompt = board.prompt_v2(scene_v2)
+        obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL, doctrine=board.DOCTRINE_V2)
+    else:
+        prompt = ("Read this scene cold and reply with the JSON object only.\n\n"
+                  "SCENE:\n" + json.dumps(scene, default=str))
+        obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL)
     out["wall_s"], out["model"] = wall, PINNED_MODEL
     if err or not isinstance(obj, dict):
         out["error"] = err or "unparseable reply"
@@ -3602,7 +3697,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         out["reading_age_min"] = (int((now - rts).total_seconds() // 60)
                                   if rts else None)
     else:
-        reading = check_reading_against_scene(obj, scene)
+        reading = (board.check_reading_v2(obj, scene_v2) if scene_v2 is not None
+                   else check_reading_against_scene(obj, scene))
         out["reading"] = reading
         # WHAT WAS DROPPED, IN THE MODEL'S OWN WORDS. `dropped_observations`
         # records the REASON a gate fired and never the text it fired on, so a
