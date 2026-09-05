@@ -463,4 +463,11 @@ def test_the_payload_tab_carries_the_payload_dropdown_and_the_replay():
     assert "Legacy payload only" in PAGE and "'gex_views.oi_side_by_strike_next'" in PAGE
     assert "sndk_board.py" in PAGE and "sndk_regions.py" in PAGE
     from pathlib import Path
-    assert (Path(__file__).resolve().parents[1] / "static" / "pipeline.html").exists()
+    pipe = Path(__file__).resolve().parents[1] / "static" / "pipeline.html"
+    assert pipe.exists()
+    # the regions rule left the prompt on 2026-09-05: the diagram routes its answer to the
+    # Gate Payload, never to the observer or the Strikes Payload, and says so
+    P = pipe.read_text()
+    assert "e_memo_shadow" in P and "e_memo_obs" not in P
+    assert "not shipped since 2026-09-05" in P and "S.memo.dest = 'store'" in P
+    assert "regions rule behind the scene, kept in the Gate Payload" in PAGE

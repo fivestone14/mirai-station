@@ -181,7 +181,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
 
 <div class="wrap">
   <h1>SNDK Payload Pipeline</h1>
-  <p class="sub">From Schwab to the observer model, replayed on a recorded session's clock. Press play and watch each scan, book and minute bar fire through the pipeline, and the payload leave for the model at the moment it actually did. One payload is headed to the model: the Strikes Payload, with the History block and the Regions block inside it. Three never are: the Scene Payload now only decides the wake, the Screen Payload feeds the dashboard, the Gate Payload feeds the gate and the eval. Click a box to read what it is; the payload boxes open their schema.</p>
+  <p class="sub">From Schwab to the observer model, replayed on a recorded session's clock. Press play and watch each scan, book and minute bar fire through the pipeline, and the payload leave for the model at the moment it actually did. One payload is headed to the model: the Strikes Payload, with the History block inside it. Four never are: the Scene Payload now only decides the wake, the Screen Payload feeds the dashboard, the Gate Payload feeds the gate and the eval, and the Regions block is computed behind the scene, checks the model’s change words and is kept in the Gate Payload. Click a box to read what it is; the payload boxes open their schema.</p>
   <div class="legend">
     <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="currentColor" stroke-width="1.4"/></svg>live now</span>
     <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="var(--accent)" stroke-width="1.4"/></svg>the strikes-1 path, live since 2026-09-05</span>
@@ -239,7 +239,8 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       <text class="elabel acc" x="628" y="207">rides inside</text>
       <path id="e_study_memo" class="edge" d="M720 417 L770 417" marker-end="url(#arr)"/>
       <text class="elabel" x="730" y="434">writes</text>
-      <path id="e_memo_obs" class="edge acc" d="M845 384 L845 300 L745 300 L745 180 L720 180" marker-end="url(#arrAcc)"/>
+      <!-- the rule's answer is kept in the Gate Payload and checks the reply; it never enters the prompt -->
+      <path id="e_memo_shadow" class="edge thin" d="M870 384 L870 278" marker-end="url(#arrThin)"/>
       <text class="elabel acc" x="752" y="296">rides inside</text>
       <path id="e_shadow_file" class="edge thin" d="M905 278 L905 340" marker-end="url(#arrThin)"/>
       <rect x="896" y="343" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1" opacity=".7"/>
@@ -368,8 +369,8 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       </g>
       <g class="node payload live" tabindex="0" role="button" data-id="memo" transform="translate(770,384)">
         <rect class="box" width="200" height="66" rx="3"/>
-        <text class="tag" x="188" y="59" text-anchor="end">in strikes</text>
-        <text class="name" x="12" y="24">Regions block</text><text class="dest model" x="188" y="24" text-anchor="end">→ model</text>
+        <text class="tag" x="188" y="59" text-anchor="end">not shipped</text>
+        <text class="name" x="12" y="24">Regions block</text><text class="dest store" x="188" y="24" text-anchor="end">→ store</text>
         <text class="meta" x="12" y="42">strikes · first seen · change</text>
         <text class="click" x="12" y="57">schema ›</text>
       </g>
@@ -405,7 +406,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       <g id="pulses"></g>
       <text id="firelabel" class="firelabel" x="1020" y="118"></text>
     </svg>
-    <figcaption>Solid paths run today. The Scene Payload is still built every scan and decides the wake; the Strikes Payload is what leaves for the observer, carrying the History block and the Regions block inside it. The Gate Payload is computed every scan, read by the gate and the eval, and written to its own file on each call. Pulses replay the recorded session chosen below.</figcaption>
+    <figcaption>Solid paths run today. The Scene Payload is still built every scan and decides the wake; the Strikes Payload is what leaves for the observer, carrying the History block inside it. The Regions block is computed every read but not shipped since 2026-09-05: it checks the model’s change words and is kept in the Gate Payload. The Gate Payload is computed every scan, read by the gate and the eval, and written to its own file on each call. Pulses replay the recorded session chosen below.</figcaption>
   </figure>
 
   <div class="anat">
@@ -419,11 +420,11 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       <rect class="seg cap" x="219" y="28" width="769" height="26"/><text class="sub" x="230" y="45">3, worst case: the reviewer's 40 s cap</text>
       <rect class="seg" x="988" y="28" width="12" height="26"/><text class="lab" x="994" y="45" text-anchor="middle">4</text>
       <rect class="seg" x="1000" y="28" width="237" height="26"/><text class="lab" x="1118" y="45" text-anchor="middle">5</text>
-      <text class="sub" x="40" y="18">typical firing: steps 1 to 5 in about 10 s on the Scene Payload, about 20 s on the Strikes Payload</text>
+      <text class="sub" x="40" y="18">typical firing: steps 1 to 5 in about 10 s on the Scene Payload, about 55 s on the Strikes Payload</text>
     </svg>
     <ol class="anat-list">
       <li><b>1</b> scan writes the diary row, payload built, gate decides <span>0 to about 1 s, code only</span></li>
-      <li><b>2</b> observer, Sonnet 5, reads the payload <span>about 4 s on the Scene Payload, 15 s on the Strikes Payload, 100 s timeout</span></li>
+      <li><b>2</b> observer, Sonnet 5, reads the payload <span>about 4 s on the Scene Payload, 50 s on the Strikes Payload, 180 s timeout</span></li>
       <li><b>3</b> reviewer, Haiku 4.5, deletes any forecast sentence <span>a few seconds, 40 s cap</span></li>
       <li><b>4</b> read row written <span>the sentence that stands until the next call</span></li>
       <li><b>5</b> dashboard sees it <span>the page polls every 10 s; a background tab once a minute</span></li>
@@ -492,7 +493,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
     ]};
 
   S.board = {name:'Strikes Payload · v1', status:'live since 2026-09-05 (era strikes-1)', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · build_scene_v2',
-    what:'What the model reads now. The Scene Payload with its verdicts stripped, plus the board itself as one record per strike, twelve books of history behind each, the rule’s regions and the gap since the last read. About 6 to 12 thousand characters; the model draws the clusters. Revert with "payload": "scene" in state/sndk_reads/control.json.',
+    what:'What the model reads now. The Scene Payload with its verdicts stripped, plus the board itself as one record per strike, twelve books of history behind each and the gap since the last read. About 6 to 12 thousand characters; the model draws the clusters. Revert with "payload": "scene" in state/sndk_reads/control.json.',
     rows:[
       [0,'data_sources · clock · scale · price · history · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm; context keeps only ranges and since_last_read (which gains clusters_then)'],
       [0,'strikes','object','the board as records'],
@@ -541,8 +542,8 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'contracts share series · touches series · lead view','measured','a share moves a median 0.04 points a book, the touch series was 97% zeros, and the front book leads every day'],
     ]};
 
-  S.memo = {name:'Regions block', status:'live, inside the Strikes Payload', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_regions.py · regions_block, at read time',
-    what:'A stated rule’s answer, computed from the diary at read time (about 70 ms a day): which listed strikes form piles, since when, and whether each grew, shrank, held, is new or has resolved. It carries no number from the strike list and points at nothing; the model may draw a cluster the rule did not.',
+  S.memo = {name:'Regions block', status:'live, not shipped since 2026-09-05', pill:'live', dest:'store', file:'skills/sndk-pro/sndk_regions.py · regions_block, at read time',
+    what:'A stated rule’s answer, computed from the diary at read time (about 70 ms a day): which listed strikes form piles, since when, and whether each grew, shrank, held, is new or has resolved. It carries no number from the strike list and points at nothing. It left the prompt on 2026-09-05: on eleven recorded moments the model’s clusters sat on the rule’s regions 34 times of 34, so the rule now runs behind the scene, checks the model’s change words, and is kept in the Gate Payload as regions_rule.',
     rows:[
       [0,'rule','string','regions-1: 8% of contracts or of absolute dealer gamma in reach to enter, 6% to stay, adjacent on the grid, the same region across books when a strike is shared'],
       [0,'books · first_book','int, time','books in the series and the day’s first distinct book'],
@@ -561,8 +562,9 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'magnet · magnet_top3 · magnet_lead_pp','mixed','the top strike by contracts, the band and its lead'],
       [0,'gamma_sign · regime_label','string','the one-sign and one-label verdicts the Strikes Payload dropped'],
       [0,'walls · structure · breadth · momentum · dealer_positioning · regime_block · magnet_block','object','the legacy scene’s blocks, verbatim'],
+      [0,'regions_rule','object','the Regions block, kept here since 2026-09-05 instead of in the prompt'],
     ]};
-  S.live.dest = 'store'; S.board.dest = 'model'; S.volume.dest = 'model'; S.memo.dest = 'model'; S.shadow.dest = 'store'; S.side.dest = 'screen';
+  S.live.dest = 'store'; S.board.dest = 'model'; S.volume.dest = 'model'; S.memo.dest = 'store'; S.shadow.dest = 'store'; S.side.dest = 'screen';
   const DEST = {model:['→ model','sent to the observer'], screen:['→ screen','shown on the dashboard, never sent'], store:['→ gate / → store','read by the wake gate and the eval, never sent']};
 
   const N = {
@@ -574,7 +576,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
     sidecar:{name:'Bars sidecar', status:'live', pill:'live', what:'Keeps the minute bars the scanner used to throw away. Appends completed bars only, so the running minute never lands.', note:[['job','com.mirai-station.sndk-bars, launchd'],['cadence','every minute'],['store','state/sndk_bars/<day>.jsonl']]},
     study:{name:'Regions rule', status:'live', pill:'live', what:'sndk_regions.regions_block, a pure function run at read time over the day’s distinct books already on disk: membership by an 8 percent bar with a 6 percent exit, adjacency on the grid, identity by a shared strike, and a change word on a drift-free strike set. No job, no store, no way to be stale; a failure leaves the block absent with its reason.', note:[['cadence','every read, about 70 ms for a whole day'],['input','the diary rows and the Strikes Payload’s own window and shares'],['no model','code only; the model may disagree with it']]},
     gate:{name:'Wake gate', status:'live', pill:'live', what:'Decides whether this scan spends a model call. It measures drift from the last call, not the last scan: price moved 0.2σ, implied vol moved 3 points on the smoothed series, a wall or the flip crossed, the magnet moved, or an hour passed with no read.', note:[['floor','10 min between calls'],['cap','30 calls a day'],['pulse','60 min'],['reads','the legacy scene and the Gate Payload; the Strikes Payload is what leaves for the model when it says yes']]},
-    observer:{name:'Observer · Sonnet 5', status:'live', pill:'live', what:'One headless call per wake with the doctrine on the system prompt and the scene in the body, no tools. Replies with JSON only.', note:[['model','claude-sonnet-5, pinned'],['effort','medium'],['wall','about 4 s on the Scene Payload, 15 s on the Strikes Payload'],['timeout','100 s, one attempt']]},
+    observer:{name:'Observer · Sonnet 5', status:'live', pill:'live', what:'One headless call per wake with the doctrine on the system prompt and the scene in the body, no tools. Replies with JSON only.', note:[['model','claude-sonnet-5, pinned'],['effort','medium'],['wall','about 4 s on the Scene Payload, 50 s on the Strikes Payload'],['timeout','180 s on the Strikes Payload, one attempt']]},
     reviewer:{name:'Reviewer · Haiku 4.5', status:'live', pill:'live', what:'Reads the sentences that survived the code gates and deletes any that hide a forecast, an expectation or a judgement. The code gates before it check every number against the scene, every level against the board, and the word bans.', note:[['model','claude-haiku-4-5'],['timeout','40 s'],['on a hit','the sentence is dropped, never softened']]},
     readrow:{name:'Read row', status:'live', pill:'live', what:'One row per scan whether or not a call was spent. Quiet scans carry the last sentence forward with its own timestamp, so a hidden surface never reads as a missing one.', note:[['store','state/sndk_reads/<day>.jsonl'],['carries','wake reason, gate state, the checked reading, the side pointer']]},
     dash:{name:'Dashboard', status:'live', pill:'live', what:'Serves the reading, the payload the model saw, the Screen Payload and the diary, plus the phone glance and the voice tab.', note:[['server','viewstation on :8787, public through Caddy and a tunnel'],['tabs','Payload (a dropdown of the Strikes, legacy Scene and Gate payloads), Side, Diary, Memory'],['note','a Python change needs a restart; HTML goes live on reload']]},
@@ -665,7 +667,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
             [1200,'p','e_live_gate',360], [1200,'f','shadow',360,'faint'], [1400,'p','e_shadow_gate',200,'grey',2.6], [1520,'f','gate',420]],
     scanProto: [[380,'p','r_scan_board',500,'acc',3.4], [840,'f','board',380,'faint'], [380,'p','r_scan_volume',540,'acc',3.0], [880,'f','volume',360,'faint'],
                 [380,'p','r_bars_board',500,'',3.0], [380,'p','r_bars_volume',540,'',3.0],
-                [900,'p','e_volume_gate',220,'acc',3.0], [380,'p','r_scan_study',560,'acc',3.0], [900,'f','study',380,'faint'], [1100,'p','e_study_memo',260,'acc',3.0], [1300,'f','memo',360,'faint'], [1300,'p','e_memo_obs',500,'acc',3.0]],
+                [900,'p','e_volume_gate',220,'acc',3.0], [380,'p','r_scan_study',560,'acc',3.0], [900,'f','study',380,'faint'], [1100,'p','e_study_memo',260,'acc',3.0], [1300,'f','memo',360,'faint'], [1300,'p','e_memo_shadow',300,'grey',2.6]],
     quiet: [[1900,'p','e_quiet',700,'grey',3.0], [2600,'f','readrow',300,'faint']],
     wake:  [[1900,'p','e_gate_obs',420,'',5], [1900,'p','r_bars_side',460], [2340,'f','side',420], [2760,'p','e_side_dash',900,'',3.6], [3660,'f','dash',400,'faint']],
     wakeProto: [[1900,'p','e_board_gate',380,'acc',3.4], [1900,'p','e_shadow_file',500,'grey',3.0]],

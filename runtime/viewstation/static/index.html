@@ -14893,9 +14893,11 @@ const PAYLOAD = {
         +`struck at the ${esc(oi.prior_session_date||'prior session')} close — not intraday`
         +`${oi.measured_unchanged_so_far_today===true?`, re-verified unchanged today across ${esc(oi.strikes_compared_today)} strikes`:''}`);
     if(strikes){
-      const st=scene.strikes||{}, fr2=scene.frames||{}, rg=scene.regions||{};
+      const st=scene.strikes||{}, fr2=scene.frames||{};
+      // the regions rule left the prompt on 2026-09-05; its answer is kept in the Gate Payload
+      const rgs=scene.regions?`${many((scene.regions.regions||[]).length,'region')} by the rule`:'regions rule behind the scene, kept in the Gate Payload';
       out.push(`// ${many(st.strikes_in_window,'strike')} in reach, ${many((st.rows||[]).length,'row')} listed `
-        +`· ${many(fr2.books_in_series,'book')} of history behind each · ${many((rg.regions||[]).length,'region')} by the rule`
+        +`· ${many(fr2.books_in_series,'book')} of history behind each · ${rgs}`
         +`${st.absent&&st.absent.length?` · not measured this scan: ${esc(st.absent.join('; '))}`:''}`);
     } else {
       out.push(`// ${many(b.distinct_books_so_far_today,'distinct book')} `
