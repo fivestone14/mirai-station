@@ -235,6 +235,7 @@ def test_a_dry_run_in_strikes_mode_writes_nothing(board_state, monkeypatch, caps
     monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no call on a dry run")))
     assert SR.read_once(now=NOW, force=True, dry=True) == 0
     assert not reads.exists() and not (tmp / "sndk_legacy").exists()
+    assert not (tmp / "sndk_side").exists()          # the side payload is not kept either
     out = capsys.readouterr().out
     assert '"payload": "strikes"' in out and '"strikes"' in out.split("--- scene handed to the model ---")[1]
 

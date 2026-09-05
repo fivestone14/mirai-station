@@ -3605,7 +3605,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                 levels=sndk_side.levels_from_row(row),
                 levels_as_of_bar=sndk_side.bar_index(_book_asof(row) or t_row, day),
                 profile=sndk_side.segment_profile(sndk_side.prior_sessions(day)))
-            if side:
+            if side and not dry:      # a dry run reads and prints, it keeps nothing
                 sndk_side.append(day, side)
         except Exception as exc:
             print(f"sndk-read :: side payload skipped: {exc!r}")
