@@ -63,10 +63,11 @@ STRIKE_LAYOUT = "records"       # "records": one object per strike, keys on ever
                                 # "table": columns once and one array per strike (half the
                                 # characters, measured 3x the model's wall time: 48 s vs 15 s
                                 # median on the 2026-09-05 eval, so records is the default)
-SHIP_REGIONS = True             # the rule's regions block in the scene; switch off if the
-                                # model stops drawing any cluster the rule did not (it drew
-                                # 34 of 34 on the rule in the first eval, the anchoring risk
-                                # the regions review named)
+SHIP_REGIONS = False            # the rule's regions block in the scene. Off: in the first
+                                # eval the model drew 34 of 34 clusters on the rule's regions,
+                                # the anchoring the regions review said to stop on. The rule
+                                # still runs every read for the guard's change word and for
+                                # the Gate Payload record (v1["regions_rule"]).
 READ_WORDS_BUDGET = 50          # the doctrine's ceiling; over it is logged, never deleted
                                 # (forty was a dead letter: 47 to 62 words on every eval read)
 GAP_FACTOR = 2.0                # an interval longer than this times the day's median cadence is a gap
@@ -78,7 +79,7 @@ NULL_MEANS = "not measured for that strike"
 # verdict words the live lists let through and this scene forbids; the live
 # reader keeps "magnet" because its scene has a block by that name
 BANNED_V2 = ("magnet", "magnets", "magnetic", "momentum", "building toward", "building towards",
-             "stronger", "strongest", "weaker", "weakest")
+             "stronger", "strongest", "weaker", "weakest", "wall", "walls", "flip")
 
 _ET = SR._ET
 
@@ -152,7 +153,7 @@ def surfaces(row: dict) -> dict:
     if not oi_side:
         absent.append("open interest by side per strike")
     if not vol_side:
-        absent.append("volume by side per strike")
+        absent.append("volume by side per strike; contracts counted from open interest only")
     if not net:
         absent.append("signed dealer gamma per strike")
     oi_next = _triples(gv.get("oi_side_by_strike_next"))
@@ -306,9 +307,16 @@ def _reference(rows: list, last_read_ts: Optional[datetime]) -> tuple:
         if before:
             ref = before[-1]
             n = len([b for b in books if (t := _asof(b)) is not None and t > _asof(ref)])
+            if n == 0:
+                # the book has not refreshed since the last read: comparing it with
+                # itself would ship a change of zero on every strike and read as calm
+                return None, {"unavailable": "no_new_book_since_last_read"}
             return ref, {"basis": "last_read", "books_compared": n}
     if len(books) > CHANGE_BOOKS_FALLBACK:
         ref = books[-1 - CHANGE_BOOKS_FALLBACK]
+        if _first_book_suspect(books) and ref is books[0] and len(books) > CHANGE_BOOKS_FALLBACK + 1:
+            ref = books[1]   # the day's first book carries the prior session's volume
+            return ref, {"basis": f"{CHANGE_BOOKS_FALLBACK - 1}_books", "books_compared": CHANGE_BOOKS_FALLBACK - 1}
         return ref, {"basis": f"{CHANGE_BOOKS_FALLBACK}_books", "books_compared": CHANGE_BOOKS_FALLBACK}
     return None, None
 
@@ -329,15 +337,37 @@ def _on_list_minutes(rows: list, now: datetime, k: float, crossed: Optional[list
     return int((now - since).total_seconds() // 60)
 
 
-def series_books(rows: list) -> list:
-    """The last SERIES_BOOKS distinct books, oldest first, each as
-    {row, asof, spot, surf}."""
-    books = SR._distinct_books_rows(rows)[-SERIES_BOOKS:]
+def _window_volume(row: dict) -> Optional[float]:
+    surf = surfaces(row)
+    vols = [v for k in surf["vol_side"] if (v := _volume_today(surf, k)) is not None]
+    return sum(vols) if vols else None
+
+
+def _first_book_suspect(books: list) -> bool:
+    """True when the day's first distinct book carries more volume than the
+    second: the vendor's first print of the day is usually the prior session's
+    cumulative count (measured on seven days, five had it)."""
+    if len(books) < 2:
+        return False
+    a, b = _window_volume(books[0]), _window_volume(books[1])
+    return a is not None and b is not None and a > b
+
+
+def series_books(rows: list) -> tuple:
+    """(books, first_book_dropped): the last SERIES_BOOKS distinct books,
+    oldest first, each as {row, asof, spot, surf}; the day's first book is left
+    out when its volume is the prior session's."""
+    all_books = SR._distinct_books_rows(rows)
+    dropped = False
+    if _first_book_suspect(all_books):
+        all_books = all_books[1:]
+        dropped = True
+    books = all_books[-SERIES_BOOKS:]
     out = []
     for r in books:
         rs, _, _, _ = _ruler(r)
         out.append({"row": r, "asof": _asof(r), "spot": rs, "surf": surfaces(r)})
-    return [b for b in out if b["asof"] is not None]
+    return [b for b in out if b["asof"] is not None], dropped
 
 
 def frames_block(books: list, now: datetime, last_read_ts: Optional[datetime],
@@ -409,7 +439,8 @@ def _next_book_header(row: dict, surf: dict, now: datetime) -> dict:
         for x in exps:
             if isinstance(x, dict) and x.get("dte") == surf["next_dte"] and isinstance(x.get("date"), str):
                 nb["expiry_date"] = x["date"]
-    return {"next_book": {k: v for k, v in nb.items() if v is not None}}
+    nb = {k: v for k, v in nb.items() if v is not None}
+    return {"next_book": nb} if nb else {"next_book_absent": "dte_unknown"}
 
 
 def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
@@ -431,7 +462,7 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         rrs, rsg, _, _ = _ruler(ref_row)
         rwin = _window(rsurf, rrs, rsg)
         ref = {"surf": rsurf, "shares": _shares(rsurf, rwin), "win": rwin, "ruler": rrs}
-    books = series_books(rows)
+    books, first_book_dropped = series_books(rows)
     day_volume = sum(SR._fin(b.get("volume")) or 0.0 for b in bars_now)
 
     # the columns present on THIS row: a surface that was not measured drops
@@ -478,7 +509,7 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
                "on_list_for_min": (_on_list_minutes(rows, now, k, None) if k in listed_by_weight else None)}
         if bars_now:
             rec.update(touch_facts(bars_now, k, day_volume))
-            rec["touched_in_books"] = _touched_in_books(books, k, bars_now)
+            rec["touched_in_books"] = _touched_in_books(books, k, bars_now) or None   # empty ships as absent
         # the change cell: differences against the reference book, or why not
         if ref is None:
             rec["change"] = None
@@ -521,10 +552,11 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         "no_strikes_below": True if not below else None,
         "nearest_above": (la[0] if la else None),
         "nearest_below": (lb[-1] if lb else None),
-        "change_basis": (ref_meta["basis"] if ref_meta else None),
-        "change_books_compared": (ref_meta["books_compared"] if ref_meta else None),
-        "change_unavailable": (None if ref_meta else "no_earlier_book"),
-        "change_columns": (["contracts_share_pp", "vol_calls", "vol_puts"] if ref_meta else None),
+        "change_basis": (ref_meta.get("basis") if ref_meta else None),
+        "change_books_compared": (ref_meta.get("books_compared") if ref_meta else None),
+        "change_unavailable": ((ref_meta or {}).get("unavailable") if ref_meta else "no_earlier_book"),
+        "change_columns": (["contracts_share_pp", "vol_calls", "vol_puts"] if ref is not None else None),
+        "first_book_dropped": ("the day's first book carried the prior session's volume" if first_book_dropped else None),
         "next_week_columns": (["oi_calls", "oi_puts", "vol_calls", "vol_puts"] if "next_week" in cols else None),
     }
     head.update(_next_book_header(row, surf, now))
@@ -536,7 +568,6 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         head["touches_unavailable"] = "no_minute_bars"
     if surf["absent"]:
         head["absent"] = surf["absent"]
-    head["null_means"] = NULL_MEANS
     head["columns"] = cols
     if STRIKE_LAYOUT == "table":
         head["rows"] = [[r.get(c) for c in cols] for r in rows_out]
@@ -609,9 +640,8 @@ def between_frames_block(rows: list, bars_now: list, now: datetime,
     if price:
         out["price"] = {k: v for k, v in price.items() if v is not None}
     iv_then = SR._fin(ref.get("atm_iv")) if ref is not None else None
-    iv_now = SR._fin(rows[-1].get("atm_iv")) if rows else None
-    if iv_then is not None and iv_now is not None:
-        out["implied_vol"] = {"from": round(iv_then, 4), "to": round(iv_now, 4)}
+    if iv_then is not None:
+        out["implied_vol_at_last_read"] = round(iv_then, 4)   # now is scale.implied_vol_atm
     return out or None
 
 
@@ -634,7 +664,7 @@ def legacy(row: dict, rows: list, now: datetime, v1: Optional[dict] = None) -> d
            "gamma_sign": row.get("gamma_sign"),
            "regime_label": row.get("regime")}
     if v1 is not None:
-        for k in ("walls", "structure", "breadth", "momentum", "dealer_positioning", "regime", "magnet"):
+        for k in ("walls", "structure", "breadth", "momentum", "dealer_positioning", "regime", "magnet", "regions_rule"):
             if k in v1:
                 out[k if k not in ("regime", "magnet") else k + "_block"] = v1[k]
         return out
@@ -687,8 +717,10 @@ def _strip_frame(slr: dict, bf: Optional[dict]) -> None:
                 lvl = next((SR._fin(c.get(key)) for key in ("level", "strike", "price") if SR._fin(c.get(key)) is not None), None)
                 if lvl is not None:
                     d = {"level": lvl}
-                    if isinstance(c.get("direction"), str):
-                        d["direction"] = c["direction"]
+                    for key in ("direction", "price_went"):
+                        if isinstance(c.get(key), str):
+                            d["direction"] = c[key]
+                            break
                     cleaned.append(d)
         if cleaned:
             slr["crossed_since_then"] = cleaned
@@ -696,6 +728,9 @@ def _strip_frame(slr: dict, bf: Optional[dict]) -> None:
             slr.pop("crossed_since_then", None)
     if isinstance((bf or {}).get("price"), dict):
         slr.pop("held_between_since_last_read", None)
+    for k in list(slr):
+        if k.startswith("first_read"):
+            slr.pop(k, None)   # between_frames says it, once
 
 
 def _trim_data_sources(ds: dict) -> None:
@@ -767,15 +802,18 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
     for k in KEPT_BLOCKS:
         if k in v1:
             v2[k] = json.loads(json.dumps(v1[k], default=str))
+    book_age = SR._fin(((v1.get("data_sources") or {}).get("options_book") or {}).get("age_min"))
+    book_too_old = book_age is not None and book_age > SR.MAX_BOOK_AGE_MIN
     if isinstance(v2.get("data_sources"), dict):
         _trim_data_sources(v2["data_sources"])
-    sc = v2.get("scale") or {}
-    if isinstance(sc.get("expected_move_today_asym"), dict):
-        sc["expected_move_today_asym"].pop("skewed_toward", None)
-    iv = SR._fin(row.get("atm_iv"))
-    if iv is not None:
-        sc["implied_vol_atm"] = round(iv, 4)
-    v2["scale"] = sc
+    if "scale" in v1:   # never rebuilt after the freshness gate dropped it
+        sc = v2.get("scale") or {}
+        if isinstance(sc.get("expected_move_today_asym"), dict):
+            sc["expected_move_today_asym"].pop("skewed_toward", None)
+        iv = SR._fin(row.get("atm_iv"))
+        if iv is not None and not book_too_old:
+            sc["implied_vol_atm"] = round(iv, 4)
+        v2["scale"] = sc
     hist = v2.get("history") or {}
     hist.pop("tape_abnormal_vs_own_history", None)
     if not hist:
@@ -789,12 +827,28 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         if k not in ("ranges", "since_last_read"):
             ctx.pop(k, None)
     slr = ctx.get("since_last_read")
-    crossed = _crossed_from_frame(slr)
+    # crossings are LISTED strikes price moved through since the last read, not the
+    # gate's three verdict levels: every window strike between price then and now
+    spot_then = SR._fin((slr or {}).get("spot_then"))
+    surf0 = surfaces(row)
+    crossed = []
+    if spot_then is not None and spot is not None:
+        for k in _window(surf0, ruler_spot, sig):
+            if (spot - k) * (spot_then - k) < 0 or (spot_then == k and spot != k):
+                crossed.append(k)
 
-    strikes, listed, ref_row, books = strikes_block(row, rows, now, bars_now, last_read_ts, crossed)
+    if book_too_old:
+        strikes, listed, ref_row, books = None, [], None, []
+        v2["strikes"] = {"unavailable": "book_too_old", "age_min": book_age, "ceiling_min": SR.MAX_BOOK_AGE_MIN}
+    else:
+        strikes, listed, ref_row, books = strikes_block(row, rows, now, bars_now, last_read_ts, crossed)
     bf = between_frames_block(rows, bars_now, now, last_read_ts, sig)
     if isinstance(slr, dict):
         _strip_frame(slr, bf)
+        if crossed:
+            slr["crossed_since_then"] = [{"level": k, "direction": ("up" if spot > k else "down")} for k in sorted(crossed)]
+        else:
+            slr.pop("crossed_since_then", None)
         if clusters_then:
             slr["clusters_then"] = [{"center": SR._fin(c.get("center")), "strikes": [SR._fin(k) for k in (c.get("strikes") or [])]}
                                     for c in clusters_then if isinstance(c, dict) and SR._fin(c.get("center")) is not None]
@@ -803,12 +857,15 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         fr = frames_block(books, now, last_read_ts, sig, ruler_spot, bars_now)
         if fr:
             v2["frames"] = fr
-        if SHIP_REGIONS:
-            try:
-                rg = sndk_regions.regions_block(rows, now, ref_row, listed, sys.modules[__name__])
-            except Exception as exc:   # the block goes absent with its reason, never a stale answer
-                rg = {"unavailable": f"{type(exc).__name__}: {exc}"[:120]}
-            if rg:
+        try:
+            rg = sndk_regions.regions_block(rows, now, ref_row, listed, sys.modules[__name__])
+        except Exception as exc:   # the block goes absent with its reason, never a stale answer
+            rg = {"unavailable": f"{type(exc).__name__}: {exc}"[:120]}
+        if rg:
+            # the rule's answer always rides on the legacy scene for the guard and
+            # the Gate Payload record; it reaches the model only when SHIP_REGIONS
+            v1["regions_rule"] = rg
+            if SHIP_REGIONS:
                 v2["regions"] = rg
     if bf:
         v2["between_frames"] = bf
@@ -868,15 +925,15 @@ THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contract
 - `dealer_gamma_sign`, `dealer_gamma_share_pp`: the sign at the strike and its share of the surface's absolute total. Report a sign as "positive under the assumed convention"; never as a behaviour. Bounce, break, punch through, how violent: all forecast, all deleted.
 - `rank_by_contracts`, `rank_by_volume_today`, `rank_by_dealer_gamma`: three separate rankings over every strike in reach, 1 is heaviest. A rank column that is missing was not measured this scan.
 - `on_list_for_min`: how long the strike has been on this list. Hours means standing structure, not news.
-- `change`: this book against an earlier one, three differences in the order `strikes.change_columns` gives: contracts share, calls traded, puts traded. The header says once which earlier book (`change_basis`: the book at your last read, or five books back on the session's first read) and how many books lie between (`change_books_compared`). The string `strike_not_in_earlier_book` means the strike was outside the earlier window, a fact about the window. A null cell means there was no earlier book at all.
-- `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was outside the window at one of the two books. A negative entry is the vendor correcting its count, not selling.
-- `touched_in_books`: which of those intervals had a wick at the strike, by index.
+- `change`: this book against an earlier one, three differences in the order `strikes.change_columns` gives: contracts share, calls traded, puts traded. The header says once which earlier book (`change_basis`: the book at your last read, or five books back on the session's first read) and how many books lie between (`change_books_compared`); `change_unavailable` says why there is none, including `no_new_book_since_last_read`, which means the book has not refreshed since you last spoke and nothing on it can have changed. The string `strike_not_in_earlier_book` means the strike was outside the earlier window, a fact about the window.
+- `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book was left out because it carried the prior session's volume.
+- `touched_in_books`: which of those intervals had a wick at the strike, by index; absent when none did.
 - `next_week`: the next weekly expiry's open interest and volume at the same strike, in the order `strikes.next_week_columns` gives. Open interest in either book is last night's; volume in either is today's. On expiry day the front list dies at the close and the next week's book is Monday's list. `not_recorded` on the header means the diary had not yet kept the next book that day.
 The header also carries `strikes_in_window` (how many were in reach), `contracts_above_spot_pp` and `dealer_gamma_above_spot_pp`, `nearest_above` and `nearest_below` (the nearest listed strike each side of the book's price, or absent when the side is empty; `no_strikes_above` and `no_strikes_below` say so outright), and `entered_since_reference` and `left_since_reference` (strikes that joined or left the list since the earlier book).
 
 THE FRAMES. `frames` is the shared time axis behind every series: `book_times` once, `interval_min` between them, `gaps` naming any long interval, `reaches_last_read` and `books_since_last_read` saying whether the series covers the stretch since you last spoke, and `price_path_sigma_from_now`: where price sat at each book, in today's sigma, zero at the price the book was measured at. It lets you say when volume arrived relative to where price was: "most of 1750's volume arrived while price sat below 1720". It does not let you say what price did about it. An entry over a long interval is one lump for the whole stretch: name the minutes and call its shape unknown. With fewer than six books in the series, say nothing about the shape of any series.
 
-THE REGIONS. `regions` is the output of a fixed rule that code ran over the last twelve distinct books. It is not a reading and not a truth about the market; it is a stated rule's answer, and you may disagree with it. The rule: a listed strike holding at least 8 percent of the contracts in reach, or 8 percent of the absolute dealer gamma in reach, is a member; a member stays while it holds 6; members with no other strike of the window between them are one region; a region at one book is the same region at the next when the two share a strike. `by` says which bar it cleared: contracts, gamma, both, or held (under the entry bar now, kept because it was over it earlier). `strikes` and `center` are listed strikes; every number about them lives in the strike table and none is repeated here. `first_seen` is the book the region has been present since without a break; when it equals `first_book` the region was already there when today's record began. `present` is how many of the last `books` books held it. `change` is judged on the region's share of contracts over a strike set every book of the series carries, so the window sliding as price moves does not read as trading: `increased` and `decreased` mean the straight-line fit over the series moved at least one point; `stable` means it did not; `new` means no region overlapped it at the book of your last read; `resolved` lists regions that were there at that book and are not now, with the last book that held them. These words count contracts. They say nothing about price, and a region price has already been through is still a region.
+THE REGIONS, when the scene carries a `regions` block (it usually does not: the rule runs behind the scene and checks your clusters' change words). `regions` is the output of a fixed rule that code ran over the last twelve distinct books. It is not a reading and not a truth about the market; it is a stated rule's answer, and you may disagree with it. The rule: a listed strike holding at least 8 percent of the contracts in reach, or 8 percent of the absolute dealer gamma in reach, is a member; a member stays while it holds 6; members with no other strike of the window between them are one region; a region at one book is the same region at the next when the two share a strike. `by` says which bar it cleared: contracts, gamma, both, or held (under the entry bar now, kept because it was over it earlier). `strikes` and `center` are listed strikes; every number about them lives in the strike table and none is repeated here. `first_seen` is the book the region has been present since without a break; when it equals `first_book` the region was already there when today's record began. `present` is how many of the last `books` books held it. `change` is judged on the region's share of contracts over a strike set every book of the series carries, so the window sliding as price moves does not read as trading: `increased` and `decreased` mean the straight-line fit over the series moved at least one point; `stable` means it did not; `new` means no region overlapped it at the book of your last read; `resolved` lists regions that were there at that book and are not now, with the last book that held them. These words count contracts. They say nothing about price, and a region price has already been through is still a region.
 
 WHAT THE MEASUREMENTS SAY, and the description rule each one sets. Measured on this stock over 28 sessions:
 - A strike price had already touched was returned to within the hour LESS often than a plain strike at the same distance, and almost never when a heavier strike sat between price and it. So a touched strike is a place price has been. DESCRIBE IT AS TOUCHED, WITH THE CLOCK, and never as anything price is drawn back to. "1700 holds the most contracts and was last touched at 12:27" is complete. The idea that a passed strike still counts because price could come back was tested and failed; do not carry it.
@@ -887,7 +944,7 @@ WHAT THE MEASUREMENTS SAY, and the description rule each one sets. Measured on t
 
 BOTH SIDES, EVERY TIME. Price always has a side above it and a side below it, and each side is either empty within reach or holds a nearest heavy strike. Your reading names that strike on each side, or says the side is empty, and for each says whether it has been touched today. Heavy means the strike ranks in the top three on its side by at least one of the three measures; say which. Naming the crowd above and forgetting the crowd below is half a reading. An empty side is a real reading and often the loudest one; say "nothing listed above within reach", never a number.
 
-INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up film is: NEW, INCREASED, DECREASED, STABLE, RESOLVED. On a cluster the word is the rule's word for the region it sits on, copied; `unknown` when it sits on none. In prose the same words apply to the change cell and to the series, and two rules ride with them. First, THE WINDOW IS ALWAYS NAMED: "since your last read at 12:35", "over the last twelve books", "against the book five books back". A change with no window is a guess. Second, GAMMA CHANGE IS NOT CROWD CHANGE: with open interest fixed, a strike's gamma share rises as price approaches it and falls as price leaves, because gamma is a function of distance. "The gamma share at 1750 rose as price approached it" is the honest sentence. "Gamma is building at 1750" is not.
+INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up film is: NEW, INCREASED, DECREASED, STABLE, and UNKNOWN when the earlier book is missing; RESOLVED is for a pile that was there at your last read and is gone. On a cluster the word is checked by the code against a fixed rule over the last twelve books and rewritten when it disagrees, so write what the change cells and the series show. In prose the same words apply to the change cell and to the series, and two rules ride with them. First, THE WINDOW IS ALWAYS NAMED: "since your last read at 12:35", "over the last twelve books", "against the book five books back". A change with no window is a guess. Second, YOU CANNOT SEE GAMMA CHANGE ON THIS BOARD: the scene ships one gamma sign and one gamma share per strike and no earlier value, so never say a gamma share rose or fell. Change is contracts and volume: "1750 added 1,296 calls since your last read", "1700's share of contracts slipped a point".
 
 BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` for bars the record did not have (a gap in the data is a gap, never calm), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and implied vol from and to. Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
 
@@ -903,6 +960,8 @@ Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appe
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Its sigma runs 8-10% of the share price. It has weekly expiries, so most days have no expiry at all; the table is built from the nearest one and `clock.front_expiry` says where in the week you are. On expiry day the whole table dies at the close, and gamma shares near price swing with every dollar; say so rather than reading the swing as a crowd.
 
 FIELD NAMES SAY WHAT THEY ARE. `_pp` is percentage points, `_min` is minutes, `_sigma` is a distance in sigma. `price.vwap_minus_live_spot_sigma` is positive when the day's average price sits ABOVE the live price. `price.moved_last_30min_sigma` is positive when price ROSE.
+
+THE KEPT BLOCKS, in a clause each. `clock.minutes_to_close` is session left for a read to resolve in; `scale.one_sigma_dollars` is a normal day's move, the ruler every distance uses; `scale.implied_vol_atm` is the at-the-money implied vol now; `scale.expected_move_today_asym` is the up and down dollars the options price for the rest of the day; `price.vs_prior_close_pct` is today's change; `price.session_high` and `session_low` are the day's extremes from the bars; `history.price_at_level_unseen_earlier_today` says price is somewhere it has not been today.
 
 WHERE EVERY NUMBER CAME FROM. `price` is the live tape. The table comes out of the options book, which is minutes old and often a cached repeat: `data_sources.options_book` carries its age and `is_repeat_of_previous_scan`. Open interest rests on last night's snapshot; `data_sources.open_interest` re-proves that it held still today. `freshness_rules.blocks_dropped_this_scan` names any block deleted for age. Every `dist_sigma` divides the price the book was measured at (`price.spot_when_book_was_measured`); to move a distance to the live frame, SUBTRACT `price.live_minus_book_spot_sigma`.
 
@@ -925,7 +984,7 @@ WORDS THAT DELETE YOUR SENTENCE, listed in full so there is no guessing. Any of 
 
   and in this scene: {", ".join(BANNED_V2)}
 
-Every inflection counts. A second reviewer reads what survives for a forecast hiding in ordinary words. Describe position, not consequence: not "1700 is support" but "1700 holds the most contracts and price is just above it". Not "the crowd is pulling price to 1750" but "1750 took the most volume in the last twenty minutes and price drifted up toward it". Not "gamma is building at 1750" but "the gamma share at 1750 rose as price approached it". Not "1700 is the magnet" but "1700 holds the most contracts and was last touched at 12:27".
+Every inflection counts. A second reviewer reads what survives for a forecast hiding in ordinary words. Describe position, not consequence: not "1700 is support" but "1700 holds the most contracts and price is just above it". Not "the crowd is pulling price to 1750" but "1750 took the most volume in the last twenty minutes and price drifted up toward it". Not "gamma is building at 1750" but "1750 added the most contracts since your last read". Not "1700 is the magnet" but "1700 holds the most contracts and was last touched at 12:27".
 
 OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence. Every key every time; lists may be empty:
 {{"quiet": true | false,
@@ -963,6 +1022,8 @@ _BANNED_V2_RE = __import__("re").compile(r"\b(" + "|".join(__import__("re").esca
 # sentence shape and belongs to the live position guard, not this one
 _SIDE_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)\s+(?:is\s+|sits\s+|sitting\s+|just\s+|now\s+)?(above|below)\b", __import__("re").I)
 _UNCHANGED_RE = __import__("re").compile(r"\b(unchanged|nothing (?:has )?changed|no change|the board is the same)\b", __import__("re").I)
+_TOUCH_CLOCK_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,60}?\b(?:touch|touched|touching|wick|wicks|tagged|brushed)\b[^.;]{0,40}?\b(\d\d:\d\d)\b", __import__("re").I)
+_MOST_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,50}?\b(?:took|added|holds|has|had|leads on|leads|with)\b[^.;]{0,30}?\bthe most (?:added |new )?(volume|contracts|open interest|gamma)\b", __import__("re").I)
 POINTS_MAX_V2 = 4
 NOTE_CHARS_V2 = 70
 
@@ -990,6 +1051,32 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
                 continue
             if (word == "above" and num < spot) or (word == "below" and num > spot):
                 out.append(f"strike_side_contradicts_spot:{num:g}:{word}")
+    for m in _TOUCH_CLOCK_RE.finditer(text):
+        try:
+            k = float(m.group(1))
+        except ValueError:
+            continue
+        if k in recs:
+            own = {recs[k].get("first_touch"), recs[k].get("last_touch")}
+            if m.group(2) not in own:
+                out.append(f"touch_clock_not_that_strikes:{k:g}:{m.group(2)}")
+    for m in _MOST_RE.finditer(text):
+        try:
+            k = float(m.group(1))
+        except ValueError:
+            continue
+        what = m.group(2).lower()
+        if k not in recs:
+            continue
+        col = {"volume": "rank_by_volume_today", "contracts": "rank_by_contracts",
+               "open interest": "rank_by_contracts", "gamma": "rank_by_dealer_gamma"}[what]
+        leads_today = recs[k].get(col) == 1
+        added = [(r.get("vol_added_in_series") or 0, kk) for kk, r in recs.items()]
+        leads_series = bool(added) and max(added)[1] == k and what == "volume"
+        chg = [((c[1] or 0) + (c[2] or 0) if isinstance(c := r.get("change"), list) and len(c) == 3 else 0, kk) for kk, r in recs.items()]
+        leads_gap = bool(chg) and max(chg)[1] == k and what == "volume"
+        if not (leads_today or leads_series or leads_gap):
+            out.append(f"most_{what.replace(' ', '_')}_unsupported:{k:g}")
     if _UNCHANGED_RE.search(text):
         moved = False
         for r in recs.values():
@@ -1026,7 +1113,7 @@ def _adjacent_on_list(ks: list, listed: list) -> bool:
     return all(b - a == 1 for a, b in zip(order, order[1:]))
 
 
-def check_reading_v2(obj: dict, scene: dict) -> dict:
+def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> dict:
     """The live word / number / position gates on `read` and `points`, plus
     the cluster gate: strikes must be listed and adjacent on the list, the
     center one of them, ranks unique; `change` is set from the rule's region
@@ -1045,8 +1132,7 @@ def check_reading_v2(obj: dict, scene: dict) -> dict:
         SR._OBS_MAX = _obs_max
     words = len((reading.get("read") or "").split())
     if words > READ_WORDS_BUDGET:
-        reading.setdefault("dropped_observations", [])
-        reading["dropped_observations"] = list(reading["dropped_observations"]) + [f"read_over_budget:{words}_words"]
+        reading["notes"] = [f"read_over_budget:{words}_words"]   # measured, never a drop
     v2_slips = _prose_slips_v2(reading.get("read") or "", scene)
     if v2_slips:
         reading["read"] = None
@@ -1068,7 +1154,7 @@ def check_reading_v2(obj: dict, scene: dict) -> dict:
     reading["points"] = kept_points
     recs = {r["strike"]: r for r in rows_as_records(scene.get("strikes"))}
     listed = sorted(recs)
-    regions = (scene.get("regions") or {})
+    regions = scene.get("regions") or regions or {}
     rule_regions = regions.get("regions") or []
     resolved_ok = {SR._fin(r.get("center")) for r in (regions.get("resolved") or []) if isinstance(r, dict)}
     dropped = list(reading.get("dropped_observations") or [])
@@ -1112,13 +1198,22 @@ def check_reading_v2(obj: dict, scene: dict) -> dict:
         if len(clusters) >= MAX_CLUSTERS:
             break
     clusters.sort(key=lambda c: c["rank"])
+    for i, c in enumerate(clusters, 1):
+        if c["rank"] != i:
+            dropped.append(f"cluster_rank_renumbered:{c['rank']}->{i}")
+            c["rank"] = i
     reading["clusters"] = clusters
     # sides: one entry each way, always; heavy must be a listed strike on that
     # side of the live price and in the top three there on some rank
-    spot = SR._fin((scene.get("price") or {}).get("live_spot"))
+    pr = scene.get("price") or {}
+    spot = SR._fin(pr.get("live_spot"))
+    if spot is None:
+        spot = SR._fin(pr.get("spot_when_book_was_measured"))
     sides = {}
     model_sides = obj.get("sides") if isinstance(obj.get("sides"), dict) else {}
-    for name, keep in (("above", lambda k: spot is not None and k > spot), ("below", lambda k: spot is not None and k < spot)):
+    if spot is None:
+        sides = {"unavailable": "no_spot"}
+    for name, keep in (() if spot is None else (("above", lambda k: k > spot), ("below", lambda k: k < spot))):
         on_side = sorted(k for k in recs if keep(k))
         entry = {"empty": not on_side,
                  "nearest": ((min(on_side) if name == "above" else max(on_side)) if on_side else None)}
@@ -1218,7 +1313,7 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
                "v2_top_by_contracts": (recs[0]["strike"] if recs else None),
                "v2_listed": len(recs),
                "v2_window": (v2.get("strikes") or {}).get("strikes_in_window"),
-               "rule_regions": (v2.get("regions") or {}).get("regions")}
+               "rule_regions": (v1.get("regions_rule") or {}).get("regions")}
         fut = [r for r in rows[i + 1:] if (t := SR._ts(r)) is not None and t <= now + timedelta(minutes=60)]
         if fut:
             rec["spot_60m"] = fut[-1].get("spot")
@@ -1235,7 +1330,8 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
             rec["v1_reply"] = (SR.check_reading_against_scene(o1, v1) if isinstance(o1, dict) else None)
             rec["v1_error"] = e1 or (None if isinstance(o1, dict) else "unparseable")
             rec["v1_wall_s"] = w1
-            rec["v2_reply"] = (check_reading_v2(o2, v2) if isinstance(o2, dict) else None)
+            rec["v2_obj"] = o2 if isinstance(o2, dict) else None
+            rec["v2_reply"] = (check_reading_v2(o2, v2, regions=v1.get("regions_rule")) if isinstance(o2, dict) else None)
             rec["v2_error"] = e2 or (None if isinstance(o2, dict) else "unparseable")
             rec["v2_wall_s"] = w2
             rec["v2_raw"] = raw2

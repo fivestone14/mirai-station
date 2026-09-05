@@ -54,7 +54,6 @@ ENTER_PP = 8.0
 EXIT_PP = 6.0
 SERIES_BOOKS = 12
 CHANGE_RAIL_PP = 1.0
-MIN_BOOKS_FOR_REFERENCE = 5      # a first read with fewer books has no reference
 CHANGE_WORDS = ("new", "increased", "decreased", "stable", "unknown")
 
 

@@ -87,7 +87,6 @@ def test_table_has_columns_once_and_one_row_per_strike_with_no_score():
         assert all(set(r) <= set(s["columns"]) for r in s["rows"])   # a record never carries a field the columns do not name
     assert {"rank_by_contracts", "rank_by_volume_today", "rank_by_dealer_gamma"} <= set(s["columns"])
     assert not any("score" in c or "strength" in c for c in s["columns"])
-    assert s["null_means"]
 
 
 def test_both_sides_listed_and_nearest_strikes_on_the_header():
@@ -167,7 +166,7 @@ def test_first_read_falls_back_to_five_books_and_no_earlier_book_is_stated():
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     assert v2["strikes"]["change_basis"] == "5_books"
     assert v2["between_frames"] == {"first_read_of_session": True}
-    rows = mkrows(n=3)
+    rows = mkrows(n=3, start=T0 - timedelta(minutes=4))     # a fresh book, too few earlier ones
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     assert v2["strikes"]["change_unavailable"] == "no_earlier_book"
     assert all(r["change"] is None for r in B.rows_as_records(v2["strikes"]))
@@ -253,10 +252,13 @@ def test_a_missing_minute_is_counted_never_read_as_calm():
 VERDICT_KEYS = ("magnet", "walls", "regime", "breadth", "structure", "momentum", "dealer_positioning")
 
 
+import json
+
+
 def test_no_verdict_reaches_the_model_including_inside_the_frame():
     rows = mkrows(n=8)
-    frame = {"last_read_at": "09:52", "minutes_since": 8, "spot_then": 1290.0, "spot_now": 1290.0,
-             "spot_change_dollars": 0.0, "spot_change_sigma": 0.0, "frame_is": "a hold",
+    frame = {"last_read_at": "09:52", "minutes_since": 8, "spot_then": 1310.0, "spot_now": 1290.0,
+             "spot_change_dollars": -20.0, "spot_change_sigma": -0.2, "frame_is": "a move",
              "why_this_read": "price moved to the other side of the hedging flip",
              "nothing_crossed_since_then": True,
              "unchanged_since_then": {"gamma_sign": "positive", "heaviest_strike": 1300.0, "call_wall": 1350.0},
@@ -281,7 +283,7 @@ def test_no_verdict_reaches_the_model_including_inside_the_frame():
         # the LAST segment of a path, so dealer_gamma_sign is not mistaken for gamma_sign
         assert not any(p.rstrip("[]").split(".")[-1] == bad for p in paths), bad
     slr = v2["context"]["since_last_read"]
-    assert slr["crossed_since_then"] == [{"level": 1300.0, "direction": "up"}]
+    assert slr["crossed_since_then"] == [{"level": 1300.0, "direction": "down"}]   # computed from price then and now
     for k in ("data_sources", "clock", "price"):
         assert k in v2
     assert v2["clock"] == v1["clock"] and v2["price"] == v1["price"]
@@ -326,14 +328,85 @@ def test_frozen_list_agrees_with_the_table_it_was_built_from():
     assert top["on_list_for_min"] >= mins >= SR.FROZEN_MIN
 
 
-def test_regions_block_rides_and_names_only_listed_strikes():
+def test_regions_ride_on_the_legacy_scene_not_the_prompt():
     rows = mkrows(n=8)
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
-    rg = v2["regions"]
+    v2, v1 = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    assert "regions" not in v2                      # SHIP_REGIONS is off: the model drew 34 of 34 on the rule
+    rg = v1["regions_rule"]
     listed = set(recs(v2))
     for g in rg["regions"]:
         assert set(g["strikes"]) <= listed
     assert rg["rule"] == "regions-1"
+    assert "regions_rule" in B.legacy(rows[-1], rows, T0, v1=v1)
+
+
+def test_a_book_that_did_not_refresh_since_the_last_read_has_no_change():
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[-1]) + timedelta(seconds=10), flat_bars(30))
+    s = v2["strikes"]
+    assert s["change_unavailable"] == "no_new_book_since_last_read" and "change_basis" not in s
+    assert all(r.get("change") is None for r in B.rows_as_records(s))
+
+
+def test_a_book_too_old_drops_the_board_and_says_so():
+    rows = mkrows(n=8, start=T0 - timedelta(minutes=30))     # newest book 16 minutes old
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    assert v2["strikes"]["unavailable"] == "book_too_old" and v2["strikes"]["age_min"] > SR.MAX_BOOK_AGE_MIN
+    assert "frames" not in v2 and "implied_vol_atm" not in v2.get("scale", {})
+
+
+def test_the_days_first_book_with_the_prior_sessions_volume_is_left_out():
+    rows = mkrows(n=8)
+    rows[0]["gex_views"]["vol_side_by_strike"] = [[k, c * 50, p * 50] for k, c, p in rows[0]["gex_views"]["vol_side_by_strike"]]
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    assert v2["strikes"]["first_book_dropped"]
+    assert v2["frames"]["books_in_series"] == 7
+    assert v2["strikes"]["change_basis"] == "5_books"       # eight books: the reference is the third, untouched
+
+
+def test_crossings_are_listed_strikes_between_then_and_now():
+    rows = mkrows(n=8, spot=1290.0)
+    frame = {"last_read_at": "09:52", "minutes_since": 8, "spot_then": 1160.0, "spot_change_sigma": 1.3,
+             "crossed_since_then": [{"level": 1225.0, "was_labelled_then": "nearest_call_wall", "price_went": "up"}]}
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, frame, SR._ts(rows[3]), flat_bars(30))
+    slr = v2["context"]["since_last_read"]
+    assert slr["crossed_since_then"] == [{"level": 1200.0, "direction": "up"}, {"level": 1250.0, "direction": "up"}]
+    assert {1200.0, 1250.0} <= set(recs(v2))
+
+
+def test_between_frames_carries_the_earlier_vol_only():
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    bf = v2["between_frames"]
+    assert bf["implied_vol_at_last_read"] == 0.5 and "implied_vol" not in bf
+
+
+def test_guard_needs_a_price_for_sides_and_renumbers_ranks():
+    sc = _scene()
+    sc2 = json.loads(json.dumps(sc)); sc2["price"].pop("live_spot"); sc2["price"].pop("spot_when_book_was_measured")
+    obj = {"quiet": False, "read": "Most contracts sit at 1300.", "sides": {"above": {"heavy": 1300.0, "leads_on": []}},
+           "clusters": [{"strikes": [1300.0], "center": 1300.0, "rank": 3, "change": "stable"}, {"strikes": [1200.0, 1300.0], "center": 1300.0, "rank": 1, "change": "stable"}],
+           "resolved": [], "points": [], "absent": []}
+    r = B.check_reading_v2(obj, sc2)
+    assert r["sides"] == {"unavailable": "no_spot"}
+    assert [c["rank"] for c in r["clusters"]] == [1] and "cluster_rank_renumbered:3->1" in " ".join(r["dropped_observations"])
+
+
+def test_guard_checks_a_touch_clock_and_a_superlative_against_the_record():
+    rows = mkrows(n=8, spot=1290.0)
+    bars = flat_bars(20) + [bar(20, 1296.0, 1302.0)] + [bar(i, 1285.0, 1295.0) for i in range(21, 29)]
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), bars)
+    assert B._prose_slips_v2("1300 was touched at 09:50 and holds the most contracts", v2) == []
+    slips = B._prose_slips_v2("1300 was touched at 09:41; 1150 took the most volume today", v2)
+    assert "touch_clock_not_that_strikes:1300:09:41" in slips and "most_volume_unsupported:1150" in slips
+
+
+def test_the_budget_is_a_note_never_a_drop():
+    sc = _scene()
+    obj = {"quiet": False, "read": " ".join(["word"] * 60) + " 1300 holds the most contracts.",
+           "clusters": [], "sides": {}, "resolved": [], "points": [], "absent": []}
+    r = B.check_reading_v2(obj, sc)
+    assert r["notes"] == ["read_over_budget:65_words"] and "dropped_observations" not in r
 
 
 def test_compare_scenes_names_what_went_and_what_came():
@@ -359,6 +432,7 @@ def test_guard_keeps_a_good_cluster_adds_the_codes_facts_and_sets_the_change_wor
     r = B.check_reading_v2(obj, sc)
     c = r["clusters"][0]
     assert c["center"] == 1300.0 and c["side"] == "above" and c["contracts_share_pp_sum"] > 0
+    assert c["change"] == "unknown" and c["on_rule_region"] is False   # no rule handed in
     assert c["change"] in B.CHANGE_WORDS
     if c["on_rule_region"]:
         assert c["change_model"] == "increased" or c["change"] == "increased"

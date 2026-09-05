@@ -477,6 +477,9 @@ CALL_EFFORT = "medium"      # PIN THE REASONING BUDGET, for the same reason
                             # per level, so read it as "no measured benefit"
                             # rather than "proven equivalent".
 CALL_TIMEOUT_S = 100.0      # one attempt, no retries — a slow read is skipped.
+CALL_TIMEOUT_STRIKES_S = 180.0  # strikes-1: the board scene spends 3k to 8k tokens of
+                            # hidden reasoning at medium effort, 49 to 85 s measured, so
+                            # the old ceiling would drop one call in six
                             # Raised from 60s in sr-2, when the read could still
                             # spend a history lookup or an external search
                             # inside the call; that grant is gone (obs-1) and
@@ -3567,7 +3570,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
             sys.modules.setdefault("sndk_read", sys.modules[__name__])
             import sndk_board as board
             _frame = (scene.get("context") or {}).get("since_last_read")
-            _clusters_then = ((said or {}).get("reading") or {}).get("clusters") or None
+            # the clusters the model drew at the read the frame is anchored on
+            _clusters_then = ((last_call or {}).get("reading") or {}).get("clusters") or None
             scene_v2, _ = board.build_scene_v2(
                 row, rows, scene_now, since_last_read=_frame,
                 last_read_ts=(_ts(last_call) if last_call else None),
@@ -3677,7 +3681,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
 
     if scene_v2 is not None:
         prompt = board.prompt_v2(scene_v2)
-        obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL, doctrine=board.DOCTRINE_V2)
+        obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL, timeout=CALL_TIMEOUT_STRIKES_S,
+                                             doctrine=board.DOCTRINE_V2)
     else:
         prompt = ("Read this scene cold and reply with the JSON object only.\n\n"
                   "SCENE:\n" + json.dumps(scene, default=str))
@@ -3697,8 +3702,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         out["reading_age_min"] = (int((now - rts).total_seconds() // 60)
                                   if rts else None)
     else:
-        reading = (board.check_reading_v2(obj, scene_v2) if scene_v2 is not None
-                   else check_reading_against_scene(obj, scene))
+        reading = (board.check_reading_v2(obj, scene_v2, regions=(legacy_doc or {}).get("regions_rule"))
+                   if scene_v2 is not None else check_reading_against_scene(obj, scene))
         out["reading"] = reading
         # WHAT WAS DROPPED, IN THE MODEL'S OWN WORDS. `dropped_observations`
         # records the REASON a gate fired and never the text it fired on, so a
