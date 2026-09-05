@@ -22,7 +22,10 @@ set -e
 cd "${MIRAI_STATION_ROOT}/runtime"
 HHMM="$(TZ=America/New_York date +%H%M)"
 if ! "${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 1)"; then
-  if [[ "$HHMM" -lt 1600 || "$HHMM" -gt 1612 ]]; then
+  # 10# forces decimal: "0929" is not octal, and without it every 08xx/09xx
+  # minute with an 8 or 9 in it errored and the gate fell open (722 lines in
+  # the err log before this was found on Sep 5)
+  if [[ "10#$HHMM" -lt 1600 || "10#$HHMM" -gt 1612 ]]; then
     echo "sndk-bars :: market closed — skipping"
     exit 0
   fi
