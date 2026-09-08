@@ -134,6 +134,25 @@ function paintAll(){
   paintFoot(st);
 }
 
+/* ---- in-plot word placement -------------------------------------------- */
+
+function clearRow(want, top, bottom, ruleYs){
+  // A 10px word occupies roughly baseline-8 .. baseline+2. CLEAR keeps the
+  // glyphs off the rule; STEP is the tag solver's own row pitch, so a displaced
+  // word lands on a row of the plot rather than between two of them — at 13 it
+  // cleared the VWAP rule but still sat 2px under the VWAP lane word and the
+  // two read as one row.
+  const CLEAR = 13, STEP = 20;
+  const ok = y => (y - 9) >= top && (y + 3) <= bottom
+                && !ruleYs.some(r => Math.abs(r - y) < CLEAR);
+  if(ok(want)) return want;
+  for(let i = 1; i <= 10; i++){
+    if(ok(want + i * STEP)) return want + i * STEP;
+    if(ok(want - i * STEP)) return want - i * STEP;
+  }
+  return null;
+}
+
 /* ---- A. masthead ------------------------------------------------------- */
 
 function paintMast(st){
@@ -238,6 +257,12 @@ function paintLadder(st){
   const sc = st.scene;
   const PLOT_R = CW - 86, PLOT_L = 8, PLOT_W = PLOT_R - PLOT_L;
   const MARK_L = PLOT_R + 6, MARK_R = MARK_L + 30, TAG_R = CW;
+  // The live quote is a continuation of the tape only inside this gap; past it
+  // it is a separate observation. One constant, used by BOTH the reach/break
+  // rule and the x-domain, because they are the same judgement.
+  const REACH_MAX_MIN = 30;
+  // the gutter a detached quote's dot is drawn in, past the end of the record
+  const DETACH_W = 20;
 
   const ref = st.ref ? st.ref.v : null;
   if(ref == null){
@@ -351,18 +376,43 @@ function paintLadder(st){
   }
   const lp = livePoint(LIVE);
   const pts = st.points;
+  const tapeEnd = pts.length ? pts[pts.length-1].t : null;
+  // ---- the x-domain -----------------------------------------------------
+  // The live quote may EXTEND the domain only while it is continuous with the
+  // tape. Past REACH_MAX_MIN it is a separate observation, and stretching the
+  // axis out to reach it crushes the session it is supposed to draw.
+  //
+  // Measured 2026-09-07: the newest scan was 2026-09-04's, 189 tape points
+  // across 6.47 hours, and the live quote was 78.5 hours newer. t1 took the
+  // quote's clock, so the domain ran 85.0 hours and the whole session drew
+  // inside the leftmost 7.6% of the plot (x 8..28 of 8..276) with 92% empty --
+  // under an axis still labelled 09:30 on the left and SCAN 15:58 on the right.
+  // The feet named an interval the plot did not draw.
+  //
+  // The reach/break rule below already rules that a gap this wide is not a
+  // continuation. The domain has to make the same ruling or the two contradict
+  // each other on the same pixels.
+  const gapMin = (lp && tapeEnd != null) ? (lp.t - tapeEnd) / 60000 : null;
+  const detached = gapMin != null && gapMin > REACH_MAX_MIN;
+  // detached: the record owns the plot, and the quote gets its own gutter at
+  // the right so the dot is legibly PAST the end of the record, not on it
+  const PATH_R = detached ? PLOT_R - DETACH_W : PLOT_R;
   const t0 = pts.length ? pts[0].t : 0;
-  const t1 = Math.max(pts.length ? pts[pts.length-1].t : 1, lp ? lp.t : -Infinity);
-  const xFor = t => PLOT_L + ((t - t0) / ((t1 > t0) ? (t1 - t0) : 1)) * PLOT_W;
+  const t1 = detached ? tapeEnd
+           : Math.max(tapeEnd != null ? tapeEnd : 1, lp ? lp.t : -Infinity);
+  const xFor = t => PLOT_L + ((t - t0) / ((t1 > t0) ? (t1 - t0) : 1)) * (PATH_R - PLOT_L);
   if(pts.length >= 2)
     g += '<polyline class="p-path" points="' + pts.map(q => n1(xFor(q.t)) + ',' + n1(yFor(q.s))).join(' ') + '"/>';
 
-  const dotX = Math.min(lp ? xFor(lp.t) : (pts.length ? xFor(pts[pts.length-1].t) : PLOT_R), PLOT_R - 8);
+  // Detached, the dot is centred in its own gutter, clear of the break rule on
+  // one side and the plot's right edge on the other. Clamped to PLOT_R-8 it sat
+  // half on the edge of the range band with its halo spilling over it.
+  const dotX = detached ? (PLOT_R - DETACH_W / 2)
+             : Math.min(lp ? xFor(lp.t) : (tapeEnd != null ? xFor(tapeEnd) : PLOT_R), PLOT_R - 8);
   const priceY = yFor(ref);
-  if(!st.withdrawn && lp && pts.length && lp.t > pts[pts.length-1].t){
-    const gapMin = (lp.t - pts[pts.length-1].t) / 60000;
-    const lx = xFor(pts[pts.length-1].t), ly = yFor(pts[pts.length-1].s);
-    if(gapMin <= 30)
+  if(!st.withdrawn && lp && tapeEnd != null && lp.t > tapeEnd){
+    const lx = xFor(tapeEnd), ly = yFor(pts[pts.length-1].s);
+    if(!detached)
       g += '<path class="p-reach" d="M' + n1(lx) + ',' + n1(ly) + ' L' + n1(dotX) + ',' + n1(priceY) + '"/>';
     else
       // a dash across six hours implies a continuity that does not exist
@@ -374,6 +424,15 @@ function paintLadder(st){
   // Drawn BEFORE the range label so its baselines are known: both are in-plot
   // words at the left edge, and on a 280px ladder they landed 8px apart.
   const wordRows = [];
+  // Every horizontal rule this plot will draw. An in-plot word that lands on
+  // one is unreadable: the --ground halo strokes GLYPHS, and the widest gaps in
+  // a word are its spaces, which have no glyph to stroke. Measured 2026-09-07,
+  // "NO PUT WALL BELOW" sat at baseline 244.5 with the VWAP rule at 240.7 — the
+  // dashes ran through the word's three spaces and on into "VWAP 1,684" in the
+  // lanes, so the whole row read as one sentence.
+  const ruleYs = levels.map(l => yFor(l.y));
+  if(inWin(st.vwap)) ruleYs.push(yFor(st.vwap));
+  if(!st.withdrawn && inWin(ref)) ruleYs.push(priceY);
   for(const side of ['call','put']){
     if((sc.walls||{})[side + '_side_has_no_wall'] !== true) continue;   // sr-7 rename
     // The flag was measured against the SCAN spot. If a wall of the other pool
@@ -389,7 +448,9 @@ function paintLadder(st){
     if(!(b > a)) continue;
     o += '<path class="p-brk" d="M9,' + n1(a) + ' L3,' + n1(a) + ' L3,' + n1(b) + ' L9,' + n1(b) + '"/>';
     if((b - a) >= 34){
-      const by = (a + b) / 2;
+      const by = clearRow((a + b) / 2, a, b, ruleYs);
+      if(by == null) continue;   // nowhere clear: the bracket alone states the
+                                 // extent and the gate footer takes the words
       // qualified, because the flag is qualified: call_side_has_no_wall means no
       // CALL-SIGNED cluster above spot. A wrongly-signed pile there is dropped
       // from both pools and the flag still fires — true on 79 of 79 rows of the
@@ -405,7 +466,13 @@ function paintLadder(st){
     const yh = yFor(p.session_high), yl = yFor(p.session_low), by = yh - 4;
     // The bracket label wins a collision: it reports a measured emptiness, a
     // finding, while this names something the band's own shading already shows.
-    const clash = wordRows.some(r => Math.abs(r - by) < 12);
+    // A RULE wins for the same reason, and this label cannot be moved the way
+    // the bracket's can — it means "the top of the band" and nowhere else. At
+    // 320x568 its baseline lands 10px under the 1,750 wall and its --ground
+    // halo takes a bite out of a 2.8px jade rule; the band's own shading still
+    // states the range, so the words go and the mark stays.
+    const clash = wordRows.some(r => Math.abs(r - by) < 12)
+               || ruleYs.some(r => Math.abs(r - by) < 12);
     if((yl - yh) >= 24 && by >= plotTop + 9 && !clash)
       o += '<text class="p-word" x="11" y="' + n1(by) + '">TODAY&#39;S RANGE</text>';
   }

@@ -62,12 +62,14 @@
 }
 @media (max-height:700px){
   :root{ --r-mast:76px; --r-regime:44px; --r-gate:118px; --r-read:76px; --r-foot:18px; }
-  /* The gate cannot GROW here — 568 minus padding leaves the ladder's 200px
-     floor capping the region at 126, and at 126 .g-foot still resolved to 2px
-     and rendered a sanctioned sentence as nothing. So it sheds instead:
-     alignment and padding only, no type step and no string. */
-  .gate{gap:2px;padding:6px 0 6px}
-  .g-head{align-items:flex-start;height:36px}
+  /* The element rules that used to live here are at the END of this sheet. They
+     set the same properties, at the same specificity, as the base rules below —
+     so declared HERE they lost every cascade and the block was dead: measured
+     2026-09-07 at 320x568, gap resolved to 4px, padding to 10px and .g-head to
+     47.4px, and .g-foot (the one gate child with overflow:hidden, so the one
+     with an automatic minimum of zero) absorbed the whole 7px deficit and
+     rendered a sanctioned sentence as an 11px slice of an 18px line. That is
+     the exact failure this block was written to prevent. */
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
@@ -127,7 +129,7 @@ body.failed > section, body.failed > .foot{display:none}
            text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim)}
 
 /* ============ C. LADDER ============ */
-.ladder{height:var(--ladder-h);flex:none;border-top:1px solid var(--hairline)}
+.ladder{height:var(--ladder-h);flex:none;border-top:1px solid var(--hairline-2)}
 #svg{display:block}
 
 .p-band   {fill:var(--ink);fill-opacity:.045}
@@ -171,8 +173,8 @@ body.failed > section, body.failed > .foot{display:none}
 .p-axis    {font:500 10px/1 var(--mono);letter-spacing:.14em;fill:var(--ink-faint)}
 
 /* ============ D. GATE ============ */
-.gate{height:var(--r-gate);flex:none;border-top:1px solid var(--hairline);
-      display:flex;flex-direction:column;gap:4px;padding:10px 0 10px}
+.gate{height:var(--r-gate);flex:none;border-top:1px solid var(--hairline-2);
+      display:flex;flex-direction:column;justify-content:center;gap:4px;padding:10px 0 10px}
 .g-lab{display:flex;align-items:baseline;gap:8px;height:14px}
 .g-dir{font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
        color:var(--ink-dim);white-space:nowrap;
@@ -237,6 +239,21 @@ body.failed > section, body.failed > .foot{display:none}
 .foot{height:var(--r-foot);flex:none;display:flex;align-items:flex-end;
       font:400 10px/1.35 var(--sans);color:var(--ink-faint);
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ============ SHORT VIEWPORTS ============ */
+/* Last in the sheet ON PURPOSE — see the note beside the :root block above.
+   The regions cannot GROW here: 568 minus padding leaves the ladder's 200px
+   floor capping the gate at 118. So they shed instead — alignment, padding and
+   one line of the reading. No type step and no string changes. */
+@media (max-height:700px){
+  .gate{gap:2px;padding:6px 0 6px}
+  .g-head{align-items:flex-start;height:36px}
+  /* 76px holds a 14px label, a 4px gap and TWO lines of 13/1.45 serif, not
+     three. At three the body measured 56.5px in a 46px box and the sentence's
+     last line printed straight through the footer. The whole reading is one tap
+     away in the archive; a line lying on top of another line is not a reading. */
+  .rd-line{-webkit-line-clamp:2}
+}
 
 /* ============ FAILURE ============ */
 .fail{margin:auto 0;padding:0 6px;text-align:left}
