@@ -1,6 +1,19 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/three.module.min.js",
+    "three/addons/": "/addons/"
+  }
+}
+</script><!-- three.js addons import the BARE specifier 'three', so this map is
+  what makes a vendored copy resolvable. It must appear before any module
+  script, and every importer must spell it 'three' — a second spelling of the
+  same file (a ?v= buster on one side, say) loads three TWICE and every
+  instanceof silently breaks. -->
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
@@ -2615,6 +2628,10 @@
           <svg viewBox="0 0 24 24"><path d="M9.5 4C7.5 4 7.8 7 7.8 8.6 7.8 10.2 6.8 12 5 12c1.8 0 2.8 1.8 2.8 3.4 0 1.6-.3 4.6 1.7 4.6"/><path d="M14.5 4c2 0 1.7 3 1.7 4.6 0 1.6 1 3.4 2.8 3.4-1.8 0-2.8 1.8-2.8 3.4 0 1.6.3 4.6-1.7 4.6"/></svg>
           Payload
         </button>
+        <button class="tab" data-tab="lob3d" id="tab-lob3d" title="Day Visual LOB (SPX) — size added and removed at each price, through the day" aria-label="Day Visual LOB">
+          <svg viewBox="0 0 24 24"><path d="M12 3l8 4.2-8 4.2-8-4.2L12 3z"/><path d="M4 12l8 4.2 8-4.2"/><path d="M4 16.2l8 4.2 8-4.2"/></svg>
+          Day Visual LOB
+        </button>
           </div>
         </div>
         <div class="spacer"></div>
@@ -2633,6 +2650,7 @@
         <section class="panel" data-panel="dict" id="p-dict"></section>
         <section class="panel" data-panel="sndk" id="p-sndk"></section>
         <section class="panel" data-panel="payload" id="p-payload"></section>
+        <section class="panel" data-panel="lob3d" id="p-lob3d"></section>
       </div>
     </div>
   </div>
@@ -15582,6 +15600,12 @@ function switchTab(name){
   // SNDK Payload: mounts on first open; its 60s refresh runs only while it is showing
   if(name==='payload') requestAnimationFrame(()=>PAYLOAD.show());
   else if(PAYLOAD.mounted) PAYLOAD.hide();
+  // Day Visual LOB: the three.js board. Guarded with ?. because it lives in a
+  // MODULE script, which is deferred — on a fast tab click during boot this
+  // function can run before the module has defined it, and an unguarded call
+  // would throw and leave every later tab switch dead.
+  if(name==='lob3d') requestAnimationFrame(()=>window.LOB3D&&window.LOB3D.show());
+  else if(window.LOB3D&&window.LOB3D.mounted) window.LOB3D.hide();
 }
 // the rail's two groups (09-02) — an ACCORDION. Exactly one group is open: the one holding
 // the active tab. A click on the other group's header switches to the tab it last showed
@@ -15626,5 +15650,9 @@ const _modal=document.getElementById('modal');
 _modal.addEventListener('click', e=>{ if(e.target===_modal) closeModal(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 </script>
+<script type="module" src="/lob3d.js"></script><!-- Day Visual LOB. A MODULE
+  because three.js ships ESM only since r150; it is deferred by definition, so
+  switchTab guards every call into window.LOB3D. Bump ?v= on every change: the
+  stdlib server sends no cache headers. -->
 </body>
 </html>

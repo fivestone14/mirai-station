@@ -390,6 +390,43 @@ def _page_version() -> str:
         return "0"
 
 
+# --- Day Visual LOB (09-05) ---------------------------------------------------
+# The board is price x time: what size was ADDED and REMOVED at each price
+# through a session. book_flow owns the arithmetic and the disk cache; this is
+# only the door. Imported lazily for the same reason the payload tab is — the
+# tab is rarely open and the import walks a recorded day.
+_BOOK_FLOW = PLUGIN_ROOT / "skills" / "book-flow"
+_LOB_BOARD_GATE = threading.Semaphore(1)
+
+
+def _book_flow():
+    if str(_BOOK_FLOW) not in sys.path:
+        sys.path.insert(0, str(_BOOK_FLOW))
+    from book_flow import cache as _c
+    return _c
+
+
+def _lob_days(ticker: str) -> dict:
+    try:
+        return {"ticker": ticker, "days": _book_flow().available_days(ticker)}
+    except Exception as exc:                       # never 500 the page
+        return {"ticker": ticker, "days": [], "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _lob_board(day: str, ticker: str, slice_s: int) -> dict:
+    # A cold day is a 2-3 s pass over ~900k rows. One at a time: two tablets
+    # opening the tab together would otherwise burn two cores and stall the
+    # spot poll, which a phone reads as an outage (same reasoning as the raw
+    # file gate above). The second caller waits, then hits the warm cache.
+    try:
+        with _LOB_BOARD_GATE:
+            return _book_flow().board_for_day(day, ticker, slice_s=slice_s)
+    except Exception as exc:                       # never 500 the page
+        import traceback
+        return {"error": f"{type(exc).__name__}: {exc}",
+                "trace": traceback.format_exc(), "prices": [], "slices": []}
+
+
 # --- request handler ----------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     server_version = "MiraiViewstation/1.0"
@@ -505,6 +542,27 @@ class Handler(BaseHTTPRequestHandler):
                     import traceback
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
+
+            if route == "/api/lob/days":
+                tk = qs.get("ticker", ["SPX"])[0]
+                if not re.fullmatch(r"[A-Z.$^]{1,8}", tk):
+                    return self._send_json({"error": "bad ticker"}, 400)
+                return self._send_json(_lob_days(tk))
+
+            if route == "/api/lob/board":
+                day = qs.get("day", [""])[0]
+                tk = qs.get("ticker", ["SPX"])[0]
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+                    return self._send_json({"error": "bad day"}, 400)
+                if not re.fullmatch(r"[A-Z.$^]{1,8}", tk):
+                    return self._send_json({"error": "bad ticker"}, 400)
+                try:
+                    slice_s = int(qs.get("slice_s", ["60"])[0])
+                except ValueError:
+                    return self._send_json({"error": "bad slice_s"}, 400)
+                if slice_s not in (30, 60, 120, 300):
+                    return self._send_json({"error": "bad slice_s"}, 400)
+                return self._send_json(_lob_board(day, tk, slice_s))
 
             if route == "/api/raw/index":
                 return self._send_json(_raw_index())
