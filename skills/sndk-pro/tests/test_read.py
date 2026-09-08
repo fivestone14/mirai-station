@@ -427,6 +427,32 @@ def test_every_wake_reason_translates_and_every_translation_is_speakable():
         assert SR.banned_words(phrase) == [], phrase
 
 
+def test_the_iv_trigger_needs_a_full_window_before_it_may_fire():
+    """It compared a MEDIAN against a single raw reading, and did not require
+    the median to have anything in it. Measured over the recorded sessions, the
+    "5-book median" was 3 books in 20 of the 34 fires and 2 in 5 — so on the
+    noisiest day the trigger spent 14 of 25 calls, every one pinned to the
+    MIN_GAP_MIN floor. A short window is not a licence to fire; it is a reason
+    to wait."""
+    import inspect
+    import statistics
+    import sndk_read as R
+    n = R.WAKE_IV_MEDIAN_BOOKS
+    big = R.WAKE_IV_PP / 100.0 * 2          # a move twice the threshold
+    spoke = 0.40
+    short = [{"atm_iv": spoke + big}] * (n - 1)
+    full = [{"atm_iv": spoke + big}] * n
+    ivs_short = [b["atm_iv"] for b in short]
+    ivs_full = [b["atm_iv"] for b in full]
+    # the arithmetic the gate does, isolated from the rest of should_wake
+    assert abs(statistics.median(ivs_short[-n:]) - spoke) * 100.0 >= R.WAKE_IV_PP
+    assert len(ivs_short) < n, "the short window must be short"
+    assert len(ivs_full) >= n and abs(statistics.median(ivs_full[-n:]) - spoke) * 100.0 >= R.WAKE_IV_PP
+    src = inspect.getsource(R.should_wake)
+    assert "len(ivs) >= WAKE_IV_MEDIAN_BOOKS" in src, \
+        "the full-window guard is the fix; without it a 2-book median fires"
+
+
 def test_a_wall_crossed_wake_yields_a_frozen_crossing():
     """Pins the frame's straddle test to the wake gate's: if the gate said a
     wall was crossed, the frame must name the frozen level it was measured

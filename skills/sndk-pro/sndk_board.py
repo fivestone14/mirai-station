@@ -580,10 +580,20 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         prev_listed = set(select_strikes(ref["surf"], ref["win"], ref["ruler"])) if ref["win"] else set()
         head["entered_since_reference"] = sorted(set(listed) - prev_listed) or None
         head["left_since_reference"] = sorted(prev_listed - set(listed)) or None
+    # `absent` is the ONE place the doctrine tells a reader to look for a
+    # missing column ("a field missing from `columns` ... `strikes.absent` says
+    # why"). The bar sidecar going down drops six columns and used to say so
+    # only through `touches_unavailable`, a second name for the same fact that
+    # the doctrine never mentions — so the promise was false exactly when it
+    # mattered. Both ship now: the flag for the consumers that already read it,
+    # the sentence for the reader the doctrine addressed.
+    absent = list(surf["absent"])
     if not bars_now:
         head["touches_unavailable"] = "no_minute_bars"
-    if surf["absent"]:
-        head["absent"] = surf["absent"]
+        absent.append("which strikes price touched today, and when; the minute-bar "
+                      "record was not on disk for this session")
+    if absent:
+        head["absent"] = absent
     head["columns"] = cols
     if STRIKE_LAYOUT == "table":
         head["rows"] = [[r.get(c) for c in cols] for r in rows_out]
@@ -1056,6 +1066,34 @@ POINTS_MAX_V2 = 4
 NOTE_CHARS_V2 = 70
 
 
+# The OTHER way a leadership claim is phrased, and the gap that let a false one
+# reach a screen. _MOST_RE requires the literal "the most &lt;measure&gt;"; on
+# 2026-09-03 15:18 the model wrote "1550 sits just above spot leading the same
+# three measures" while 1600 out-ranked it on all three. The sides gate caught
+# it (side_leads_on_unsupported x3) and stripped `heavy_leads_on` from the
+# structured block — and the sentence shipped anyway, so the phone drew a claim
+# the block beside it contradicted. A reading and its own fields must not
+# disagree on the screen.
+_LEADS_ALL_RE = __import__("re").compile(
+    r"(\d{3,4}(?:\.\d+)?)[^.;]{0,60}?\b(?:leads?|leading)\b[^.;]{0,30}?"
+    r"\b(?:all|every|each|the same)\b[^.;]{0,20}?"
+    r"\b(?:three|3|those|these|of them|measures?|measure)\b",
+    __import__("re").I)
+
+_RANK_COLS = ("rank_by_contracts", "rank_by_volume_today", "rank_by_dealer_gamma")
+
+
+def _leads_its_side(rec: dict, recs: dict, col: str) -> bool:
+    """Rank 1 outright, or rank 1 among the strikes on its own side — the same
+    two-step _MOST_RE uses, because the doctrine names a heavy strike per side."""
+    if rec.get(col) == 1:
+        return True
+    side = rec.get("side")
+    own = [r.get(col) for r in recs.values()
+           if r.get("side") == side and isinstance(r.get(col), int)]
+    return side in ("above", "below") and bool(own) and rec.get(col) == min(own)
+
+
 def _prose_slips_v2(text: str, scene: dict) -> list:
     """The v2-only checks on a sentence: a verdict word the live lists let
     through, a strike placed on the wrong side of the live price, and the
@@ -1088,6 +1126,18 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             own = {recs[k].get("first_touch"), recs[k].get("last_touch")}
             if m.group(2) not in own:
                 out.append(f"touch_clock_not_that_strikes:{k:g}:{m.group(2)}")
+    for m in _LEADS_ALL_RE.finditer(text):
+        try:
+            k = float(m.group(1))
+        except ValueError:
+            continue
+        rec = recs.get(k)
+        if rec is None:
+            continue
+        short = [c for c in _RANK_COLS if not _leads_its_side(rec, recs, c)]
+        if short:
+            out.append("leads_all_unsupported:%g:%s" % (k, ",".join(
+                c.replace("rank_by_", "").replace("_today", "") for c in short)))
     for m in _MOST_RE.finditer(text):
         try:
             k = float(m.group(1))
@@ -1190,9 +1240,21 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
     reading["points"] = kept_points
     recs = {r["strike"]: r for r in rows_as_records(scene.get("strikes"))}
     listed = sorted(recs)
-    regions = scene.get("regions") or regions or {}
-    rule_regions = regions.get("regions") or []
-    resolved_ok = {SR._fin(r.get("center")) for r in (regions.get("resolved") or []) if isinstance(r, dict)}
+    # Two SOURCES, not one, and collapsing them was a live regression (4dab972):
+    # the scene now carries a resolved-only view of the rule (SHIP_RESOLVED),
+    # while the rule's full output — the part holding `regions` — still arrives
+    # only as the argument. `scene.get("regions") or regions` therefore stopped
+    # falling through the moment `resolved` began shipping, because
+    # {"resolved": [...]} is truthy and has no "regions" key. Measured effect:
+    # on 26% of wakes rule_regions went empty, which forces every cluster's
+    # change word to "unknown" and on_rule_region to False. Read each from
+    # where it actually lives.
+    rule = regions or {}
+    scene_rg = scene.get("regions") or {}
+    rule_regions = rule.get("regions") or scene_rg.get("regions") or []
+    resolved_ok = {SR._fin(r.get("center"))
+                   for r in (rule.get("resolved") or scene_rg.get("resolved") or [])
+                   if isinstance(r, dict)}
     dropped = list(reading.get("dropped_observations") or [])
     clusters, ranks_seen = [], set()
     for c in (obj.get("clusters") or [])[:MAX_CLUSTERS * 2]:

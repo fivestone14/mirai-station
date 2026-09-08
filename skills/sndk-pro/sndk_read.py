@@ -483,7 +483,18 @@ CALL_TIMEOUT_STRIKES_S = 180.0  # strikes-1: the board scene spends 3k to 8k tok
                             # Raised from 60s in sr-2, when the read could still
                             # spend a history lookup or an external search
                             # inside the call; that grant is gone (obs-1) and
-                            # the headroom is kept. Still under the 120s tick,
+                            # the headroom is kept. NOT under the 120s tick, and
+                            # the old comment saying so was wrong twice over:
+                            # this job spends TWO subprocess calls, not one —
+                            # semantic_review adds SEMANTIC_GUARD_TIMEOUT_S — so
+                            # the worst case is 180 + 40 = 220 s against a 120 s
+                            # StartInterval. launchd runs one instance per label,
+                            # so the consequence is a DROPPED tick, never two
+                            # readers at once; and the wake gate's own
+                            # MIN_GAP_MIN floor means a dropped tick costs a
+                            # couple of minutes of latency, not a reading. The
+                            # ceiling stays where it is because truncating a
+                            # slow-but-honest call is the worse failure,
                             # and this is its own launchd job so a slow read
                             # never costs a scan.
 # Bash and WebSearch are ON THIS LIST NOW, and the omission was a live hole.
@@ -567,9 +578,19 @@ def payload_mode() -> str:
     return v if v in ("scene", "strikes") else PAYLOAD_DEFAULT
 
 
-def active_era() -> str:
-    """The era stamped on read rows follows the payload, so rows written
-    after a revert never pool with rows written under the other builder."""
+def active_era(built: Optional[bool] = None) -> str:
+    """The era stamped on read rows follows the payload, so rows written after
+    a revert never pool with rows written under the other builder.
+
+    `built` is what the row ACTUALLY got, and passing it is the difference
+    between a true stamp and a hopeful one: `build_scene_v2` can throw, and
+    read_once then falls back to the scene payload and carries on. Stamping
+    from the switch alone filed that fallback under strikes-1, so a day's
+    strikes-1 rows would silently include readings written from a different
+    scene by a different doctrine — the exact pooling this function exists to
+    prevent. None keeps the old behaviour for callers with nothing to declare."""
+    if built is not None:
+        return ERA if built else LEGACY_ERA
     return ERA if payload_mode() == "strikes" else LEGACY_ERA
 
 
@@ -1232,7 +1253,15 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     if books and new_book:
         ivs = [v for v in (_fin(b.get("atm_iv")) for b in books) if v is not None]
         spoke_iv = value_at_last_read(prev, "atm_iv")
-        if ivs and spoke_iv is not None:
+        # The window has to be FULL. This compared a median of however many
+        # books had arrived against `spoke_iv`, a single raw reading — and
+        # measured over the 34 IV fires in the recorded sessions, that "5-book
+        # median" was 3 books in 20 of them and 2 in 5. Half the smoothing the
+        # constant claims, applied to one side of the comparison only, which is
+        # how this trigger came to spend 14 of 25 calls on 2026-09-04, every one
+        # of them pinned to the MIN_GAP_MIN floor. Under a full window the
+        # trigger is not eligible; it is not a licence to fire on a short one.
+        if len(ivs) >= WAKE_IV_MEDIAN_BOOKS and spoke_iv is not None:
             med = statistics.median(ivs[-WAKE_IV_MEDIAN_BOOKS:])
             if abs(med - spoke_iv) * 100.0 >= WAKE_IV_PP:
                 return "iv moved"
@@ -1601,6 +1630,20 @@ def prices_on_the_board(scene) -> set:
     prices on a $1,500 stock. A level is the one field a reader acts on, so it
     is checked against the things that ARE prices."""
     out = set()
+    # A strike that has LEFT the list is still a price the board names, and as
+    # of the retraction rule it is a price the doctrine now ORDERS the model to
+    # name: "strikes.left_since_reference names strikes that have since dropped
+    # off the board altogether ... if a pile has gone, SAY SO, and say it
+    # first." Without this the guard deleted the very sentence it had just been
+    # asked for, and logged a false forced abstain for it — observed live as
+    # level_not_on_the_board:1660 on a read whose prose correctly said 1660 had
+    # dropped off. The same applies to a strike that has just joined.
+    st = scene.get("strikes") or {}
+    for key in ("left_since_reference", "entered_since_reference"):
+        for k in (st.get(key) or []):
+            v = _fin(k)
+            if v is not None:
+                out.add(round(v, 2))
     mag = scene.get("magnet") or {}
     for t in (mag.get("top_strikes") or []):
         v = _fin(t.get("strike"))
@@ -3662,8 +3705,11 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
             print(f"sndk-read :: side payload skipped: {exc!r}")
 
     out = {
-        "ts": now.isoformat(), "era": active_era(),
-        # strikes-1: which builder fed the model, on every row
+        "ts": now.isoformat(),
+        # Both of these describe what was BUILT, never what was intended: on a
+        # strikes-payload failure read_once falls back to the scene and this row
+        # must say so twice, or a replay pools two doctrines under one era.
+        "era": active_era(built=bool(scene_v2)),
         "payload": ("strikes" if scene_v2 else "scene"),
         "wake": ("capped" if capped else
                  "stale_book" if stale and not force else (wake or "quiet")),

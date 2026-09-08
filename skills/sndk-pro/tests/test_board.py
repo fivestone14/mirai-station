@@ -456,6 +456,86 @@ def test_guard_keeps_a_good_cluster_adds_the_codes_facts_and_sets_the_change_wor
     assert r["quiet"] is False and "abstain" not in r
 
 
+def test_a_strike_that_left_the_board_may_still_be_named():
+    """The retraction rule ORDERS the model to name departed strikes — "if a
+    pile has gone, SAY SO, and say it first" — and the level guard used to
+    reject them, deleting the sentence it had just asked for and logging a
+    false forced abstain. Observed live: level_not_on_the_board:1660 on a read
+    whose prose correctly said 1660 had dropped off the list."""
+    sc = _scene()
+    sc["strikes"]["left_since_reference"] = [1660.0]
+    sc["strikes"]["entered_since_reference"] = [1665.0]
+    allowed = SR.prices_on_the_board(sc)
+    assert 1660.0 in allowed, "a departed strike is still a price the board names"
+    assert 1665.0 in allowed, "and so is one that just joined"
+    # ...and a number that is not a price on this board is still refused
+    assert 4.1 not in allowed and 246 not in allowed
+
+
+def test_a_leadership_claim_in_other_words_is_still_checked():
+    """A REAL FALSE SENTENCE THAT SHIPPED. On 2026-09-03 15:18 the model wrote
+    "1550 sits just above spot leading the same three measures" while 1600
+    out-ranked it on contracts, volume and gamma. The sides gate caught it —
+    three side_leads_on_unsupported entries — and stripped `heavy_leads_on`
+    from the structured block. The sentence went out anyway, because the prose
+    gate only recognised the literal phrase "the most &lt;measure&gt;".
+
+    The screen draws `read` and `sides` side by side, so the reader saw a claim
+    the block beside it contradicted. A reading must not disagree with its own
+    fields."""
+    sc = _scene()
+    recs = {r["strike"]: r for r in B.rows_as_records(sc.get("strikes"))}
+    lead = next(k for k, r in recs.items()
+                if all(B._leads_its_side(r, recs, c) for c in B._RANK_COLS))
+    laggard = next(k for k, r in recs.items()
+                   if any(not B._leads_its_side(r, recs, c) for c in B._RANK_COLS))
+
+    false_claim = f"{laggard:g} sits just above spot leading the same three measures."
+    slips = B._prose_slips_v2(false_claim, sc)
+    assert any(x.startswith(f"leads_all_unsupported:{laggard:g}") for x in slips), slips
+
+    # ...and a true one is not punished for phrasing it the same way.
+    assert B._prose_slips_v2(
+        f"{lead:g} sits just above spot leading the same three measures.", sc) == []
+
+    # The whole reading is deleted, not merely flagged — the same treatment a
+    # banned word gets, because a false claim is worse than a missing one. The
+    # `read` key goes entirely rather than turning null: absence means "not
+    # said", which is this scene's vocabulary everywhere else.
+    obj = {"quiet": False, "read": false_claim, "clusters": [], "resolved": [],
+           "points": [], "absent": []}
+    r = B.check_reading_v2(obj, sc)
+    assert "read" not in r and r.get("abstain") == "forced", r
+    assert any(x.startswith("read_leads_all_unsupported:")
+               for x in r.get("dropped_observations") or []), r
+
+
+def test_the_rules_regions_survive_a_scene_that_carries_only_resolved():
+    """THE REGRESSION THIS EXISTS FOR (4dab972, caught by audit before it ran
+    live). The rule's full answer reaches the guard as the `regions` ARGUMENT;
+    the scene carries only a resolved-only view of it once SHIP_RESOLVED is on.
+    The guard used to read `scene.get("regions") or regions`, which stopped
+    falling through the moment `resolved` began shipping — {"resolved": [...]}
+    is truthy and has no "regions" key — so the rule's regions went silently
+    empty and every cluster's change word collapsed to "unknown" on a quarter
+    of all wakes.
+
+    No test caught it because no test passed the argument. This one does, with
+    the two sources disagreeing exactly as production makes them disagree."""
+    sc = _scene()
+    sc["regions"] = {"resolved": [{"center": 1250.0}]}          # what SHIP_RESOLVED puts in the scene
+    rule = {"regions": [{"strikes": [1300.0], "center": 1300.0, "change": "increased"}],
+            "resolved": [{"center": 1250.0}]}                   # what the rule actually returned
+    obj = {"quiet": False, "read": "Most contracts sit at 1300 and price is just under it.",
+           "clusters": [{"strikes": [1300.0], "center": 1300.0, "rank": 1, "change": "stable"}],
+           "resolved": [1250.0], "points": [], "absent": []}
+    r = B.check_reading_v2(obj, sc, regions=rule)
+    c = r["clusters"][0]
+    assert c["on_rule_region"] is True, "the rule's regions must survive the scene's resolved-only view"
+    assert c["change"] == "increased", c            # the RULE's word, not the model's
+    assert r["resolved"] == [1250.0]                # ...and resolved still validates
+
+
 def test_guard_drops_unlisted_non_adjacent_and_bad_rank_clusters_and_foreign_resolved():
     sc = _scene()
     bad1 = {"strikes": [1300.0, 1325.0], "center": 1300.0, "rank": 1, "change": "stable"}
