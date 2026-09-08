@@ -1529,7 +1529,7 @@ HOW TO READ THE SCENE (grouped by force, not by metric):
 - walls: standing structure, up to two per side, ALWAYS ordered by DISTANCE, nearest first — walls.call[0]/put[0] are simply the first thing price would meet going that way, NOT the strongest; the second says what is behind the first (right there, or open air). `cluster_share_of_book_gamma_pp` is the CLUSTER's share of the whole signed surface — that number, not the position, says how heavy a wall is. It is deliberately NOT called `share_of_book_gamma_pp`: the magnet's field of that name is ONE STRIKE's share of a different surface, and the two disagree by a median 38% on strikes that appear in both. Never compare one to the other or add them together. When the heaviest cluster on a side is further out than both, it ships separately as call_heaviest_wall_behind_the_ladder / put_heaviest_wall_behind_the_ladder. `unchanged_for_min` is how long that wall has held (`unchanged_for_at_least_min` when the lookback ran out first); a wall that has not moved in hours is standing structure, not news.
 - structure: where the board's gamma SITS, in dollars and shares, on the same book as `walls`. `bands` are runs of adjacent heavy strikes — low, high, the band's share of the whole surface, and which side of price it sits on — nearest first. `air` is a stretch between price and the nearest wall with almost no gamma in it. `weight_above_spot_pp` is the share of the whole surface sitting above price. Measured on this tape over 23 sessions: price spends no more time inside a band than inside a random band of the same width, moves toward one no more often than toward a random one, and the heaviest strike holds no better than an imaginary line at the same distance. So a band is a place the weight is, never a place price is drawn to, and a heavy wall is heavy, never overpowering. Name where the weight is; never what price will do about it.
 - WHICH LEVELS YOU MAY NAME. You may name the magnet's top strike, and the strikes in the magnet list. You may NOT name a call wall or a put wall as a level where anything happens. This is arithmetic, not politeness: those two are DEFINED as the heaviest strike on their side of spot, so the call wall is above price and the put wall below it, always, on every row ever recorded. The instant price rises through a call wall, that strike stops qualifying and a different one takes the name. Measured: a wall relabels on a crossing 100% of the time, within a median of zero minutes, while the magnet relabels 0% of the time and is still the same strike 40 minutes later on 99% of occasions. A wall is real structure and you may describe how heavy it is; it is not a place price can be said to reach or break, because the label moves out of the way. THE ONE EXCEPTION is a level in `context.since_last_read.crossed_since_then`: that price is the wall AS IT STOOD AT YOUR LAST READING, frozen in the block, so it cannot relabel out from under the sentence — you may name it and say price moved through it, as the label it wore then.
-- history flags when to reach outside: `price_at_level_unseen_earlier_today`, `tape_abnormal_vs_own_history`.
+- history flags when to reach outside: `tape_abnormal_vs_own_history`.
 - WHO HOLDS WHAT IS ASSUMED, NOT MEASURED, AND THE ASSUMPTION IS PROBABLY WRONG FOR A SINGLE STOCK. Every signed number here — the gamma sign, the regime word, the flip, dealer positioning — rests on a convention that dealers are long the calls and short the puts. That convention was written for the S&P index. The studies that MEASURED single-stock positioning instead of assuming it found the opposite: end users are net sellers of both legs, so dealers are net LONG single-stock options, and average measured market-maker gamma is positive. On this book the convention implies dealers hold about a fifth of the company in stock, which is not credible. So: never say what dealers are doing, never say hedging will amplify or damp anything, and never treat the flip as a level price respects. Describe where the number is; do not describe who is on the other side of it.
 - ANY missing field was not cleanly measured this scan. Treat absence as "no data", never as neutral, never as zero. The OPPOSITE case is stated outright: a `*_side_has_no_wall` flag or `flip.no_flip_anywhere_on_board` means the board WAS measured and genuinely holds nothing there — price in open air with no ceiling, or a book with no flip, is a real reading and often the loudest one in the scene. Absence = unknown; a no-wall flag = known empty. Never confuse the two.
 
@@ -2763,10 +2763,27 @@ def history_flags(row: dict, rows: list[dict], vs_prior_pct: Optional[float],
     outside-world reach far too often)."""
     out = {}
     spot = _fin(row.get("spot"))
-    prior = [s for r in rows[:-1] if (s := _fin(r.get("spot"))) is not None]
-    if spot is not None and len(prior) >= 30 and \
-            (spot > max(prior) or spot < min(prior)):
-        out["price_at_level_unseen_earlier_today"] = True
+    # `price_at_level_unseen_earlier_today` WAS HERE AND IS GONE. It asked
+    # whether price is somewhere it had not been today, and it asked the
+    # 2-minute scan record — while `price.session_high` and `session_low`,
+    # two fields away in the same payload, answer from the 1-minute bars.
+    # Replayed over 8 sessions it fired 16 times and the payload contradicted
+    # it 16 times: the live spot sat strictly inside the extremes shipped
+    # beside it, worst case an $11.35 gap.
+    #
+    # It cannot be repaired by swapping witnesses, and both repairs were tried
+    # and measured. Feeding it the bars makes it unsatisfiable — the newest
+    # completed minute contains the live spot inside its own high and low, so
+    # the flag never fires again. Excluding that bar still left 5 firings, all
+    # 5 contradicted, because a wick inside the current minute is "earlier"
+    # to one witness and "now" to the other. The two records disagree at the
+    # boundary by construction, which is exactly where a new-extreme flag
+    # lives.
+    #
+    # So it goes. Nothing is lost that the model cannot read directly:
+    # session_high, session_low and live_spot all ship, and comparing three
+    # numbers is not work worth risking a false claim on. A flag that has been
+    # wrong every time it has ever fired is not information.
     sig, vs = _fin(row.get("sigma")), _fin(vs_prior_pct)
     sigma_pct = (sig / spot * 100.0) if (sig and spot) else None
     day_bar = (ABNORMAL_DAY_SIGMA * sigma_pct if sigma_pct

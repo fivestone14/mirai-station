@@ -378,12 +378,21 @@ def test_flip_band_is_told_once(monkeypatch):
 
 
 # --- history flags (the under-pull guard) -----------------------------------
-def test_level_unseen_earlier_today_flags_new_session_ground():
+def test_the_unseen_level_flag_is_gone_and_stays_gone():
+    """It asked the 2-minute scan record whether price was somewhere new while
+    `price.session_high` and `session_low`, two fields away in the same payload,
+    answered from the 1-minute bars. Replayed over 8 sessions it fired 16 times
+    and the payload contradicted all 16. Both repairs were measured and both
+    failed — feeding it the bars makes it unsatisfiable, excluding the newest
+    bar still left 5 firings and 5 contradictions — so it was deleted rather
+    than patched. The three numbers it stood on all still ship."""
     rows = [rich_row(ts=T0 - timedelta(minutes=(40 - i)), spot=1200.0 + (i % 5))
             for i in range(35)]
     row = rich_row(ts=T0, spot=1260.0)            # above everything prior
     sc = SR.build_scene(row, SR.magnet_band(row), [], rows + [row], T0)
-    assert sc["history"]["price_at_level_unseen_earlier_today"] is True
+    assert "price_at_level_unseen_earlier_today" not in (sc.get("history") or {})
+    for k in ("session_high", "session_low", "live_spot"):
+        assert k in sc["price"], k
 
 
 def test_tape_abnormal_flag_is_sigma_relative_not_a_fixed_pct():
