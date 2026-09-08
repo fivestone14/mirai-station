@@ -621,6 +621,22 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class _Station(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        """A phone that locks mid-request, a tab closed on a slow board, a
+        cloudflared tunnel recycling a keep-alive — every one of them arrives
+        here as ConnectionResetError or BrokenPipeError, and socketserver's
+        default prints a nineteen-line traceback for each.
+
+        Silencing them is not a nicety. The launchd error log held 7,258 lines
+        on 2026-09-07 and 382 of the 383 tracebacks in it were exactly this,
+        which means a REAL failure would have been invisible inside the noise.
+        A client hanging up is not something this server can act on. Anything
+        else still prints, which is the whole point of keeping the log."""
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
+
     # 09-01 502 storm: the replay tab fans out a dozen ~12MB day fetches at
     # once, and while those stream, the OS listen queue (socketserver default:
     # FIVE pending connections) overflowed — new dials from Caddy dropped
