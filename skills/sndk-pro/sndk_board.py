@@ -1058,7 +1058,28 @@ def call_the_model_v2(prompt: str, model: str = SR.PINNED_MODEL,
 _BANNED_V2_RE = __import__("re").compile(r"\b(" + "|".join(__import__("re").escape(w) for w in BANNED_V2) + r")\b", __import__("re").I)
 # only "<strike> above/below": "price is just above 1700" is the doctrine's own
 # sentence shape and belongs to the live position guard, not this one
-_SIDE_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)\s+(?:is\s+|sits\s+|sitting\s+|just\s+|now\s+)?(above|below)\b", __import__("re").I)
+# The side claim, in both word orders and with more than one filler word.
+# The original allowed exactly ONE connector, so "1550 sits just above spot"
+# — the literal phrasing of the false reading that prompted this audit — walked
+# straight past it, as did every reversed form. Fillers are an explicit list
+# rather than \w+ so that "1200 and 1300 are above" cannot bind 1200 to the
+# wrong verb.
+_SIDE_FILL = (r"(?:is|are|was|were|sits|sitting|sat|now|just|still|right|"
+              r"currently|the|a|nearest|next|thing|one|strike|level)")
+_SIDE_RE = __import__("re").compile(
+    r"(\d{3,4}(?:\.\d+)?)\s+(?:" + _SIDE_FILL + r"\s+){0,4}(above|below)\b",
+    __import__("re").I)
+# ...and the reverse: "above spot, 1550 is the heaviest". The trailing
+# lookahead is what makes this safe: in "1300 is above price, 1250 just below"
+# the 1250 carries its OWN side word, so it belongs to that clause and not to
+# the "above" in front of it. A number with its own side word always wins, and
+# without that rule this pattern deletes true readings — which is the worse
+# failure, since a deleted reading is silence and a missed one is only a miss.
+_SIDE_REV_RE = __import__("re").compile(
+    r"\b(above|below)\s+(?:spot|the\s+price|price|here|it)\b[,\s]+"
+    r"(?:" + _SIDE_FILL + r"\s+){0,3}(\d{3,4}(?:\.\d+)?)"
+    r"(?!\s+(?:" + _SIDE_FILL + r"\s+){0,4}(?:above|below)\b)",
+    __import__("re").I)
 _UNCHANGED_RE = __import__("re").compile(r"\b(unchanged|nothing (?:has )?changed|no change|the board is the same)\b", __import__("re").I)
 _TOUCH_CLOCK_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,60}?\b(?:touch|touched|touching|wick|wicks|tagged|brushed)\b[^.;]{0,40}?\b(\d\d:\d\d)\b", __import__("re").I)
 _MOST_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,50}?\b(?:took|added|holds|has|had|leads on|leads|with)\b[^.;]{0,30}?\bthe most (?:added |new )?(volume|contracts|open interest|gamma)\b", __import__("re").I)
@@ -1107,12 +1128,14 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
     spot = SR._fin((scene.get("price") or {}).get("live_spot"))
     recs = {r["strike"]: r for r in rows_as_records(scene.get("strikes"))}
     if spot is not None:
-        for m in _SIDE_RE.finditer(text):
+        pairs = [(m.group(1), m.group(2)) for m in _SIDE_RE.finditer(text)]
+        pairs += [(m.group(2), m.group(1)) for m in _SIDE_REV_RE.finditer(text)]
+        for raw_num, raw_word in pairs:
             try:
-                num = float(m.group(1))
+                num = float(raw_num)
             except (TypeError, ValueError):
                 continue
-            word = (m.group(2) or "").lower()
+            word = (raw_word or "").lower()
             if num not in recs:
                 continue
             if (word == "above" and num < spot) or (word == "below" and num > spot):

@@ -583,11 +583,29 @@ def test_guard_admits_a_point_at_the_gaps_high():
 
 
 # ---------------------------------------------------------------- the review's fixes (09-05)
-def test_side_slip_reads_the_strike_first_shape_only():
+def test_side_slip_reads_both_word_orders_and_more_than_one_filler():
+    """WIDENED after the audit. The pattern allowed exactly ONE connector word,
+    so "1550 sits just above spot" — the literal phrasing of the false reading
+    this whole audit started from — walked past it, and so did every reversed
+    form. Both are covered now, and the true shapes still pass, which is the
+    half that matters: a false positive here deletes a true reading, and
+    silence is a worse failure than a miss."""
     sc = _scene()                                   # live spot 1290: 1300 is above, 1250 below
+    slips = lambda t: [x for x in B._prose_slips_v2(t, sc) if x.startswith("strike_side")]
+
     assert B._prose_slips_v2("1300 sits below spot and 1250 above it", sc) == [
         "strike_side_contradicts_spot:1300:below", "strike_side_contradicts_spot:1250:above"]
+    assert slips("1250 sits just above spot"), "two filler words must not hide it"
+    assert slips("1250 is now just above spot"), "nor three"
+    assert slips("Above spot, 1250 is the heaviest strike"), "nor the reverse order"
+
+    # ...and every TRUE shape still passes untouched.
+    assert slips("1300 sits just above spot") == []
     assert B._prose_slips_v2("1300 is above price, 1250 just below", sc) == []
+    # a number carrying its OWN side word belongs to that clause, not to the
+    # "above" in front of it — without that rule the reverse pattern eats this
+    # sentence, which is true
+    assert slips("1300 is above price, 1250 just below") == []
     # "price is just above 1700" is the doctrine's own sentence shape: not this guard's business
     assert B._prose_slips_v2("price is just above 1250 and holds below 1300", sc) == []
 
