@@ -816,6 +816,18 @@ def sndk_thread(day: str, since: str = "") -> dict:
         rd = r.get("reading") or {}
         if not isinstance(rd, dict):
             continue
+        # TWO CONTRACTS LIVE IN THIS ARCHIVE AND THEY ARE NOT THE SAME PRODUCT.
+        # The observer eras (obs-*, strikes-*) write their sentence to `read`.
+        # The retired eras (sr-*, wk-*) wrote a DIRECTION CALL to `line`, with
+        # `vector`, `magnitude_sigma` and `breaks_if` beside it — the design
+        # that was measured at zero forward value and removed. Reading only
+        # `read` made every one of those rows look like a reading whose every
+        # claim had been struck out by the checks: 34 of 34 on 2026-08-26,
+        # 33 of 33 on 08-28. They were nothing of the kind. Take the prose from
+        # whichever field the era actually used, and SAY which contract wrote
+        # it, so a forecast is never drawn as an observation.
+        forecast = "read" not in rd and rd.get("line") is not None
+        prose = rd.get("line") if forecast else rd.get("read")
         # `read` is None when every claim was deleted by the checks. That is a
         # message with something to say — the model spoke and was overruled —
         # so it ships with the flag rather than being dropped as empty.
@@ -823,7 +835,8 @@ def sndk_thread(day: str, since: str = "") -> dict:
             "ts": rts,
             "at": _hhmm_et(rts),
             "wake": r.get("wake") or "quiet",
-            "read": rd.get("read"),
+            "read": prose,
+            "contract": "direction_call" if forecast else "observation",
             "quiet": bool(rd.get("quiet")),
             "abstain": rd.get("abstain"),
             "points": rd.get("points") or [],

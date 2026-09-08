@@ -14,7 +14,7 @@
   it is read at arm's length in a second. This is the archive: it scrolls, it
   has a day picker, and it is arrived at on purpose.
 
-  Three things it is built on.
+  Five things it is built on.
 
     1. A SESSION IS ~26 MESSAGES, NOT ~190 ROWS. Every scan appends a row and a
        scan that did not wake the model carries the previous reading forward
@@ -29,14 +29,33 @@
        this screen would otherwise be. What it found something in gets the
        full bubble.
 
-    3. MARKET TIME, ALWAYS. Every clock here is ET, matching the glance and the
-       station's live card. The desktop's history modal renders these same
-       readings in Pacific; that is the odd one out, not this.
+    3. A QUIET STRETCH IS ONE SHAPE, NOT N PARAGRAPHS. Consecutive quiet reads
+       are gathered behind a single hairline spine, so a run of them reads as
+       one band of calm the eye can skip in a flick without any of it being
+       hidden or folded away. Every word the model wrote is still on screen.
+       The rhythm — spine, break, gold bubble, spine — is the whole point: the
+       gold left edges are the map of where the session actually moved.
+
+    4. THE THREAD HAS A CLOCK DOWN ITS SIDE. A sticky day bar names the session
+       and its span and never leaves. Sticky hour rules sit under it, so at any
+       scroll depth you know what hour you are reading. Where the model went
+       quiet for longer than its own cadence, that silence is drawn — in
+       lantern, which is this palette's colour for age — instead of being
+       closed up into an ordinary gap.
+
+    5. MARKET TIME, ALWAYS. Every clock here is ET, matching the glance and the
+       station's live card, and every one of them is the server's own string,
+       printed as given. The only time arithmetic on this page is a DIFFERENCE
+       between two ISO timestamps, which is offset-free and never displayed as
+       a clock. The desktop's history modal renders these same readings in
+       Pacific; that is the odd one out, not this.
 
   Model prose reaches the DOM through setSaid() only, which escapes first and
   then adds its own <b> tags for prices. Nothing else ever writes model text.
 
-  Tokens are the glance's, byte-for-byte, which are the desktop's.
+  Tokens are the glance's, byte-for-byte, which are the desktop's. The hue law
+  holds: iris is price, jade the call side, coral the put side, lantern is age
+  and only age, and the gold is the magnet.
 -->
 <style>
 :root{
@@ -63,6 +82,10 @@
   --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;
   --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
+
+  /* The sticky stack. The hour rule parks exactly under the day bar, so the
+     two are one 60px block of context that is always on screen. */
+  --daybar-h:31px;
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
@@ -86,26 +109,62 @@ body{
 .hd-1{font:500 11px/1.2 var(--mono);letter-spacing:.18em;color:var(--ink-dim)}
 .hd-2{font:400 11px/1.2 var(--sans);color:var(--ink-faint);
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd-2 b{font-weight:600;color:var(--ink-dim)}
 .day{margin-left:auto;flex:none;background:var(--surface);color:var(--ink);
      border:1px solid var(--hairline);border-radius:9px;
      font:500 12px/1 var(--mono);padding:8px 9px;appearance:none}
 
 /* ============ THREAD ============ */
+/* Spacing is per-block rather than a flex gap: the sticky bars have to sit
+   flush against what they cover, and the quiet spine has to swallow the space
+   between the readings inside it. */
 .wrap{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
-      overscroll-behavior:contain;padding:14px 14px calc(env(safe-area-inset-bottom) + 18px);
-      display:flex;flex-direction:column;gap:14px}
+      overscroll-behavior:contain;
+      padding:0 14px calc(env(safe-area-inset-bottom) + 16px);
+      display:flex;flex-direction:column}
 
-.rule{display:flex;align-items:center;gap:10px;color:var(--ink-faint);
-      font:500 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
-.rule::before,.rule::after{content:"";flex:1 1 auto;height:1px;background:var(--hairline)}
-
-.msg{display:flex;flex-direction:column;gap:5px;max-width:88%;align-self:flex-start}
-.m-top{display:flex;align-items:baseline;gap:7px;padding-left:2px}
-.m-at{font:500 11px/1.2 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-dim)}
-.m-why{font:500 9.5px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;
-       color:var(--ink-faint)}
-.m-spot{margin-left:auto;font:500 10.5px/1.2 var(--mono);
+/* ---- the day, which never leaves ---- */
+.daybar{position:sticky;top:0;z-index:3;flex:none;
+        height:var(--daybar-h);display:flex;align-items:center;gap:10px;
+        background:var(--ground);border-bottom:1px solid var(--hairline)}
+.d-day{font:600 10.5px/1 var(--mono);letter-spacing:.16em;
+       font-variant-numeric:tabular-nums;color:var(--ink-dim)}
+.d-span{margin-left:auto;font:500 10.5px/1 var(--mono);
         font-variant-numeric:tabular-nums;color:var(--ink-faint)}
+
+/* ---- the hour, which parks under it ---- */
+.oldcontract{flex:none;margin:2px 0 4px;padding:8px 11px;border-radius:9px;
+        border:1px solid var(--hairline-2);background:var(--surface);
+        font:400 11.5px/1.5 var(--sans);color:var(--ink-faint)}
+.hourbar{position:sticky;top:var(--daybar-h);z-index:2;flex:none;margin-top:6px;
+         display:flex;align-items:center;gap:9px;
+         padding:9px 0 8px;background:var(--ground)}
+.hourbar .h{flex:none;font:600 10px/1 var(--mono);letter-spacing:.14em;
+            font-variant-numeric:tabular-nums;color:var(--ink-faint)}
+.hourbar .hl{flex:1 1 auto;height:1px;background:var(--hairline)}
+/* A silence longer than the model's own cadence. Lantern, because on this
+   palette age is the only thing that colour ever means. */
+.hourbar .hgap,.gapbar .g{flex:none;font:600 9.5px/1 var(--mono);letter-spacing:.1em;
+                          text-transform:uppercase;color:var(--lantern)}
+.gapbar{flex:none;display:flex;align-items:center;gap:9px;margin:15px 0 1px}
+.gapbar .gl{flex:1 1 auto;height:1px;
+            background:repeating-linear-gradient(90deg,
+              var(--hairline-2) 0 2px,transparent 2px 6px)}
+
+/* ---- a reading ---- */
+.msg{flex:none;display:flex;flex-direction:column;gap:6px;margin-top:15px}
+.m-top{display:flex;align-items:baseline;gap:8px;padding-left:2px}
+.m-at{flex:none;font:600 11.5px/1.2 var(--mono);
+      font-variant-numeric:tabular-nums;color:var(--ink)}
+.m-why{font:600 9.5px/1.2 var(--mono);letter-spacing:.13em;text-transform:uppercase;
+       color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The wake reason is the one thing on this screen that names a side. */
+.m-why.call{color:var(--jade)}
+.m-why.put{color:var(--coral)}
+/* Spot is price, so it is iris — held back, because it is the same fact the
+   prose is about to state. Right-aligned so the column reads as the path. */
+.m-spot{margin-left:auto;flex:none;font:500 10.5px/1.2 var(--mono);
+        font-variant-numeric:tabular-nums;color:var(--iris);opacity:.7}
 
 /* A bubble the model had something to say in. */
 .bub{background:var(--surface-2);border:1px solid var(--hairline);
@@ -116,27 +175,58 @@ body{
                color:var(--iris);background:var(--iris-wash);
                border-radius:4px;padding:1px 4px;font-style:normal}
 
-/* Quiet: still a message, still says what it saw, but it must not shout. */
-.msg.q{max-width:94%}
+/* ---- quiet ---- */
+/* A run of consecutive quiet reads is one shape: a hairline spine with the
+   readings hung off it. Nothing is folded, nothing is summarised away — the
+   run is simply given a silhouette the eye can identify and pass over. */
+.run{flex:none;margin-top:15px;padding-left:13px;
+     border-left:1px solid var(--hairline-2);
+     display:flex;flex-direction:column}
+.run .msg{margin-top:0;gap:3px}
+.run .msg + .msg{margin-top:11px}
+
+.msg.q .m-at{font:500 10.5px/1.2 var(--mono);color:var(--ink-faint)}
+.msg.q .m-why{font-size:9px;letter-spacing:.11em;color:var(--ink-faint);opacity:.72}
+.msg.q .m-spot{font-size:10px;opacity:.5}
 .msg.q .bub{background:transparent;border-color:transparent;box-shadow:none;
-            padding:0 2px;border-radius:0}
-.msg.q .said{font:italic 400 12.5px/1.45 var(--serif);color:var(--ink-dim)}
-.msg.q .said b.n{color:var(--ink-dim);background:transparent;padding:0;
-                 font-weight:500;font-size:12px}
+            padding:0;border-radius:0}
+.msg.q .said{font:italic 400 12px/1.5 var(--serif);color:var(--ink-dim)}
+/* The numbers are the only thing anyone reads off a quiet line. They were the
+   same dim grey as the sentence around them; now they are price-coloured, and
+   they are the reason a quiet line is scannable at all. */
+.msg.q .said b.n{font:600 11.5px/1 var(--mono);font-variant-numeric:tabular-nums;
+                 color:var(--iris);background:transparent;padding:0;
+                 font-style:normal;opacity:.92}
 
 /* The model spoke and every claim was deleted by the checks. A fault, drawn
    as one — silence here would hide the one case worth seeing. */
 .msg.dropped .bub{box-shadow:inset 3px 0 0 var(--coral)}
 .msg.dropped .said{color:var(--ink-dim);font-style:italic}
 
-.pts{list-style:none;display:flex;flex-direction:column;gap:3px;margin-top:9px;
+.pts{list-style:none;display:flex;flex-direction:column;gap:4px;margin-top:9px;
      padding-top:8px;border-top:1px solid var(--hairline)}
 .pts li{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:baseline}
 .pts .lv{font:600 12px/1.3 var(--mono);font-variant-numeric:tabular-nums;color:var(--iris)}
 .pts .nt{font:400 12px/1.35 var(--sans);color:var(--ink-dim)}
 
+/* The bottom of the thread, so landing here reads as arrival and not as a
+   sentence cut in half. */
+.endcap{flex:none;display:flex;align-items:center;gap:9px;margin:17px 0 2px;
+        font:600 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+        color:var(--ink-faint)}
+.endcap::before,.endcap::after{content:"";flex:1 1 auto;height:1px;background:var(--hairline)}
+
 .state{flex:1 1 auto;display:flex;align-items:center;justify-content:center;
        padding:0 26px;text-align:center;font:400 13px/1.55 var(--sans);color:var(--ink-dim)}
+
+/* The small phone. Everything loses a little air; nothing loses a rank. */
+@media (max-width:359px){
+  .wrap{padding-left:11px;padding-right:11px}
+  .bub{padding:9px 11px 10px;border-radius:14px 14px 14px 5px}
+  .bub .said{font-size:13px}
+  .run{padding-left:11px}
+  .m-why{letter-spacing:.1em}
+}
 </style>
 </head>
 <body>
@@ -154,7 +244,11 @@ body{
 
 <script>
 const $ = id => document.getElementById(id);
-const S = {day:'', last:'', timer:0};
+const S = {day:'', last:'', timer:0, run:null, hour:'', ts:'', open:'', shut:''};
+
+/* A silence longer than this is drawn rather than closed up. The model's own
+   cadence is ten to twenty minutes, so this is "it skipped a turn or two". */
+const GAP_MIN = 25;
 
 async function getJSON(url){
   try{
@@ -180,6 +274,42 @@ function setSaid(el, text){
     (m, a) => `<b class="n">${a}</b>`);
 }
 
+/* The only time arithmetic on the page. Both operands carry their own offset,
+   so the subtraction is timezone-free, and the answer is a length rather than
+   a clock — no market time is ever re-derived here. */
+function minutesBetween(a, b){
+  const x = Date.parse(a), y = Date.parse(b);
+  if(!isFinite(x) || !isFinite(y)) return null;
+  const m = Math.round((y - x) / 60000);
+  return m > 0 ? m : null;
+}
+function elapsed(m){
+  if(m < 60) return m + ' min later';
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? h + 'h ' + r + 'm later' : h + 'h later';
+}
+
+function el(tag, cls, text){
+  const n = document.createElement(tag);
+  if(cls) n.className = cls;
+  if(text != null) n.textContent = text;
+  return n;
+}
+
+/* The hour this reading falls in, taken straight off the server's ET clock —
+   sliced, never parsed. */
+function hourBar(hh, gap){
+  const bar = el('div', 'hourbar');
+  bar.append(el('span', 'h', hh + ':00'), el('i', 'hl'));
+  if(gap != null && gap >= GAP_MIN) bar.append(el('span', 'hgap', elapsed(gap)));
+  return bar;
+}
+function gapBar(gap){
+  const bar = el('div', 'gapbar');
+  bar.append(el('i', 'gl'), el('span', 'g', elapsed(gap)), el('i', 'gl'));
+  return bar;
+}
+
 function bubble(m){
   const wrap = document.createElement('div');
   // A reading whose every claim was deleted carries read: null. That is a
@@ -187,36 +317,35 @@ function bubble(m){
   const dropped = !m.read;
   wrap.className = 'msg' + (m.quiet && !dropped ? ' q' : '') + (dropped ? ' dropped' : '');
 
-  const top = document.createElement('div');
-  top.className = 'm-top';
-  const at = document.createElement('span'); at.className = 'm-at'; at.textContent = m.at || '';
-  const why = document.createElement('span'); why.className = 'm-why';
-  why.textContent = dropped ? 'held back' : (m.wake || '');
-  top.append(at, why);
-  if(m.spot != null){
-    const sp = document.createElement('span'); sp.className = 'm-spot';
-    sp.textContent = Number(m.spot).toFixed(2);
-    top.append(sp);
-  }
+  const top = el('div', 'm-top');
+  top.append(el('span', 'm-at', m.at || ''));
 
-  const bub = document.createElement('div'); bub.className = 'bub';
-  const said = document.createElement('div'); said.className = 'said';
+  const why = el('span', 'm-why', dropped ? 'held back' : (m.wake || ''));
+  // The wake reason is the one label here that can name a side of the book,
+  // and the palette already has a colour for each of them.
+  const w = String(m.wake == null ? '' : m.wake).toLowerCase();
+  if(!dropped && /\bcall\b/.test(w)) why.classList.add('call');
+  else if(!dropped && /\bput\b/.test(w)) why.classList.add('put');
+  top.append(why);
+
+  if(m.spot != null) top.append(el('span', 'm-spot', Number(m.spot).toFixed(2)));
+
+  const bub = el('div', 'bub');
+  const said = el('div', 'said');
   if(dropped) said.textContent = 'It spoke, and every claim it made was struck out by the checks.';
   else setSaid(said, m.read);
   bub.append(said);
 
   if(Array.isArray(m.points) && m.points.length){
-    const ul = document.createElement('ul'); ul.className = 'pts';
+    const ul = el('ul', 'pts');
     for(const p of m.points){
       if(!p || p.level == null) continue;
       const li = document.createElement('li');
-      const lv = document.createElement('span'); lv.className = 'lv';
       // No thousands separator: the prose beside it writes 1750, the board
       // writes 1750, and 1,750 in the same bubble reads as a different number.
-      lv.textContent = String(Number(p.level));
-      const nt = document.createElement('span'); nt.className = 'nt';
-      nt.textContent = String(p.note == null ? '' : p.note).replace(/[<>"¦]/g, ' ');
-      li.append(lv, nt); ul.append(li);
+      li.append(el('span', 'lv', String(Number(p.level))),
+                el('span', 'nt', String(p.note == null ? '' : p.note).replace(/[<>"¦]/g, ' ')));
+      ul.append(li);
     }
     if(ul.childElementCount) bub.append(ul);
   }
@@ -225,28 +354,88 @@ function bubble(m){
   return wrap;
 }
 
+/* Newest at the bottom, which is where the eye already is — and landed on
+   cleanly, after layout, so it is the last message and not the middle of one. */
+function toBottom(){
+  const w = $('wrap');
+  w.scrollTop = w.scrollHeight;
+  requestAnimationFrame(() => {
+    w.scrollTop = w.scrollHeight;
+    requestAnimationFrame(() => { w.scrollTop = w.scrollHeight; });
+  });
+}
+function atBottom(){
+  const w = $('wrap');
+  return w.scrollHeight - w.scrollTop - w.clientHeight < 60;
+}
+
 function paint(doc, append){
   const wrap = $('wrap');
   const msgs = (doc && doc.messages) || [];
+  const stick = append ? atBottom() : true;
+
   if(!append){
     wrap.textContent = '';
+    S.run = null; S.hour = ''; S.ts = ''; S.open = ''; S.shut = '';
     if(!msgs.length){
-      const s = document.createElement('div'); s.className = 'state';
-      s.textContent = doc && doc.error
+      wrap.append(el('div', 'state', doc && doc.error
         ? 'Could not read this session.'
-        : 'Nothing said this session yet.';
-      wrap.append(s);
+        : 'Nothing said this session yet.'));
       $('sub').textContent = S.day;
       return;
     }
-    const rule = document.createElement('div'); rule.className = 'rule';
-    rule.textContent = S.day;
-    wrap.append(rule);
+    const bar = el('div', 'daybar');
+    bar.append(el('span', 'd-day', S.day), el('span', 'd-span'));
+    wrap.append(bar);
+    // A session written by the RETIRED design does not get drawn as if it were
+    // an observation. Those eras made direction calls — a vector, a magnitude
+    // and a level that would break the call — and that product was measured at
+    // zero forward value and removed. The sentences are still worth keeping and
+    // reading; they are just not the same claim as everything after them.
+    if(msgs.length && msgs.every(m => m.contract === 'direction_call')){
+      wrap.append(el('div', 'oldcontract',
+        'An earlier design. These read the board and called a direction — a '
+        + 'question later measured to carry no information, and retired.'));
+    }
   }
-  for(const m of msgs) wrap.append(bubble(m));
-  if(msgs.length) S.last = msgs[msgs.length - 1].ts;
-  // Newest at the bottom, which is where the eye already is.
-  wrap.scrollTop = wrap.scrollHeight;
+
+  const oldCap = wrap.querySelector('.endcap');
+  if(oldCap) oldCap.remove();
+
+  for(const m of msgs){
+    const at = String(m.at == null ? '' : m.at);
+    const hh = at.slice(0, 2);
+    const gap = S.ts ? minutesBetween(S.ts, m.ts) : null;
+
+    // An hour boundary and a long silence are the same kind of event, so when
+    // they land together the hour rule carries the silence rather than the
+    // page drawing two rules in a row.
+    if(hh && hh !== S.hour){
+      wrap.append(hourBar(hh, gap)); S.hour = hh; S.run = null;
+    }else if(gap != null && gap >= GAP_MIN){
+      wrap.append(gapBar(gap)); S.run = null;
+    }
+
+    const node = bubble(m);
+    if(node.classList.contains('q')){
+      if(!S.run){ S.run = el('div', 'run'); wrap.append(S.run); }
+      S.run.append(node);
+    }else{
+      S.run = null; wrap.append(node);
+    }
+
+    if(!S.open) S.open = at;
+    if(at) S.shut = at;
+    if(m.ts) S.ts = m.ts;
+  }
+
+  if(msgs.length){
+    S.last = msgs[msgs.length - 1].ts;
+    wrap.append(el('div', 'endcap', 'latest read'));
+    const span = wrap.querySelector('.d-span');
+    if(span) span.textContent = S.open && S.shut ? S.open + ' – ' + S.shut : '';
+  }
+  if(stick) toBottom();
 }
 
 async function loadDay(day){
@@ -255,7 +444,10 @@ async function loadDay(day){
   paint(doc, false);
   if(doc && doc.count != null){
     const n = doc.count, k = doc.with_something;
-    $('sub').textContent = `${n} message${n === 1 ? '' : 's'} · ${k} with something to say`;
+    const sub = $('sub');
+    sub.textContent = '';
+    sub.append(el('b', null, String(k)),
+               document.createTextNode(` of ${n} read${n === 1 ? '' : 's'} said something`));
   }
 }
 
@@ -274,9 +466,8 @@ async function poll(){
   const sel = $('day');
   if(!days.length){
     $('wrap').textContent = '';
-    const s = document.createElement('div'); s.className = 'state';
-    s.textContent = 'No recorded sessions.';
-    $('wrap').append(s); $('sub').textContent = '';
+    $('wrap').append(el('div', 'state', 'No recorded sessions.'));
+    $('sub').textContent = '';
     return;
   }
   for(const day of days){
