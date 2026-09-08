@@ -737,12 +737,12 @@ def _scene_at(rows, now, frozen=None):
 
 
 def test_a_fresh_book_drops_nothing():
+    """sr-9: and says so by SAYING NOTHING. An empty drop list on every scan of
+    every session is the doctrine repeating itself in the scene's own bytes; the
+    block now appears only when something actually went."""
     sc = _scene_at(_book_rows(), T0)
-    assert sc["freshness_rules"]["blocks_dropped_this_scan"] == []
+    assert "freshness_rules" not in sc
     assert all(b in sc for b in _BOOK_BLOCKS)
-    # sr-8: freshness_rules carries ONLY what varies. The rule, the ceiling and
-    # the present-tense ban are standing facts and ride in the doctrine.
-    assert list(sc["freshness_rules"]) == ["blocks_dropped_this_scan"]
 
 
 def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
@@ -788,7 +788,7 @@ def test_a_source_with_no_ceiling_is_never_dropped_however_old():
     scene = {"regime": {"x": 1}, "walls": {"y": 2}}
     fr = SR._drop_stale_blocks(scene, {SR.OI_SNAPSHOT: 18 * 60.0,
                                        SR.WALL_CLOCK: 9_999.0})
-    assert fr["blocks_dropped_this_scan"] == []
+    assert fr == {}                       # sr-9: nothing dropped, nothing said
     assert "regime" in scene and "walls" in scene
     assert set(SR._MAX_AGE_MIN) == {SR.OPTIONS_BOOK}
 
@@ -871,7 +871,12 @@ def _every_scene_shape(tmp_path):
         scene([rich_row()]),
         scene([rich_row(meta={})]),                        # the fallback ruler tag
         scene([rich_row(meta={"chain_spot": 1200.0,
-                              "spot_source": "schwab_quote"})]),   # spot_feed
+                              "spot_source": "schwab_quote"})]),   # the SILENT feed
+        # sr-9: `spot_feed` ships only when the feed is NOT the usual one, so
+        # the guard needs a scene where it is something else or the doctrine's
+        # sentence about it would look like a sentence outliving its field.
+        scene([rich_row(meta={"chain_spot": 1200.0,
+                              "spot_source": "backup_poll"})]),    # spot_feed fires
         scene([rich_row(meta={"chain_spot": 1190.0})]),     # both spots + the gap
         scene([moved]),                                     # moved_last_30min_sigma
         scene([rich_row(profile_ladder=None, gamma_flip=None)]),   # no flip at all
@@ -881,6 +886,10 @@ def _every_scene_shape(tmp_path):
                rich_row(ts=T0, dex_views={"net_dex_total": 3.93e9})]),
         scene(_iv_rows(1.50, 2.30)),                        # regime.vol_trend
         scene(_book_rows()),                                # censored wall ages
+        # sr-9: freshness_rules ships only when it dropped something, so the
+        # only scene carrying `blocks_dropped_this_scan` is one with a dead book.
+        SR.build_scene(_book_rows()[-1], SR.magnet_band(_book_rows()[-1]), [],
+                       _book_rows(), T0 + timedelta(minutes=7)),
         scene(walked),                                      # an exact wall age
         scene([rich_row(ts=T0 - timedelta(minutes=2),
                         meta={"chain_spot": 1200.0, "book_asof": repeat_asof}),
@@ -1022,7 +1031,9 @@ def test_the_forbidden_list_names_blocks_the_scene_actually_ships():
     sc = _scene_at(_book_rows(), T0)
     published = list(SR.PRESENT_TENSE_FORBIDDEN_FOR)
     assert ", ".join(published) in SR._DOCTRINE
-    assert "present_tense_forbidden_for" not in sc["freshness_rules"]
+    # sr-9: the freshness block is absent entirely on a clean scan, which is a
+    # stronger form of the same guarantee this line was making.
+    assert "freshness_rules" not in sc
     for name in published:
         head, _, leaf = name.partition(".")
         assert head in sc, name

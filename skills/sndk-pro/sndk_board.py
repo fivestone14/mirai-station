@@ -608,7 +608,11 @@ def between_frames_block(rows: list, bars_now: list, now: datetime,
     out = {}
     expected = max(0, int((now - last_read_ts).total_seconds() // 60) - 1)
     if bars_now:
-        out["missing_minutes"] = max(0, expected - len(bars))
+        # sr-9: zero on 130 of 130 replayed scans that carried it. A gap is a
+        # gap and must always be stated; NO gap is the standing case and is
+        # said once in the doctrine instead of on every scan.
+        if (missing := max(0, expected - len(bars))):
+            out["missing_minutes"] = missing
     else:
         out["minute_bars_unavailable"] = "no_minute_bars_on_disk"
     ref = next((r for r in reversed(rows) if (t := SR._ts(r)) is not None and t <= last_read_ts), None)
@@ -616,9 +620,11 @@ def between_frames_block(rows: list, bars_now: list, now: datetime,
     if bars:
         lo_b = min(bars, key=lambda b: SR._fin(b.get("low")) if SR._fin(b.get("low")) is not None else float("inf"))
         hi_b = max(bars, key=lambda b: SR._fin(b.get("high")) if SR._fin(b.get("high")) is not None else float("-inf"))
+        # sr-9: the witness is stated only when it is NOT the minute bars.
+        # This arm IS the minute bars, so it says nothing; the `elif span` arm
+        # below still names itself, because that is the case worth knowing.
         price = {"low": SR._fin(lo_b.get("low")), "low_at": _hhmm(_bar_ts(lo_b)),
-                 "high": SR._fin(hi_b.get("high")), "high_at": _hhmm(_bar_ts(hi_b)),
-                 "measured_from": "1_minute_bars"}
+                 "high": SR._fin(hi_b.get("high")), "high_at": _hhmm(_bar_ts(hi_b))}
         closes = [SR._fin(b.get("close")) for b in bars if SR._fin(b.get("close")) is not None]
         if len(closes) >= 2 and sig:
             price["path_travelled_sigma"] = round(sum(abs(b - a) for a, b in zip(closes, closes[1:])) / sig, 2)
@@ -946,7 +952,7 @@ BOTH SIDES, EVERY TIME. Price always has a side above it and a side below it, an
 
 INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up film is: NEW, INCREASED, DECREASED, STABLE, and UNKNOWN when the earlier book is missing; RESOLVED is for a pile that was there at your last read and is gone. On a cluster the word is checked by the code against a fixed rule over the last twelve books and rewritten when it disagrees, so write what the change cells and the series show. In prose the same words apply to the change cell and to the series, and two rules ride with them. First, THE WINDOW IS ALWAYS NAMED: "since your last read at 12:35", "over the last twelve books", "against the book five books back". A change with no window is a guess. Second, YOU CANNOT SEE GAMMA CHANGE ON THIS BOARD: the scene ships one gamma sign and one gamma share per strike and no earlier value, so never say a gamma share rose or fell. Change is contracts and volume: "1750 added 1,296 calls since your last read", "1700's share of contracts slipped a point".
 
-BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` for bars the record did not have (a gap in the data is a gap, never calm), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and implied vol from and to. Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
+BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window (a gap in the data is a gap, never calm — and its absence means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and implied vol from and to. Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
 
 OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, anything crossed since (`crossed_since_then`, as a level and a direction), and `clusters_then`, the clusters you drew last time. Price now is `price.live_spot`. A change of 0.15 sigma or more is a move: say price then and price now. Under that it is a hold: "price has held between X and Y since your last read at 14:44", with X and Y from `between_frames.price.low` and `high`. A crossing is named as the level, "just through 1650", never "decisively through" (crossings are shallow at the moment you speak, median about two dollars). Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point and vol held.
 
@@ -963,7 +969,7 @@ FIELD NAMES SAY WHAT THEY ARE. `_pp` is percentage points, `_min` is minutes, `_
 
 THE KEPT BLOCKS, in a clause each. `clock.minutes_to_close` is session left for a read to resolve in; `scale.one_sigma_dollars` is a normal day's move, the ruler every distance uses; `scale.implied_vol_atm` is the at-the-money implied vol now; `scale.expected_move_today_asym` is the up and down dollars the options price for the rest of the day; `price.vs_prior_close_pct` is today's change; `price.session_high` and `session_low` are the day's extremes from the bars; `history.price_at_level_unseen_earlier_today` says price is somewhere it has not been today.
 
-WHERE EVERY NUMBER CAME FROM. `price` is the live tape. The table comes out of the options book, which is minutes old and often a cached repeat: `data_sources.options_book` carries its age and `is_repeat_of_previous_scan`. Open interest rests on last night's snapshot; `data_sources.open_interest` re-proves that it held still today. `freshness_rules.blocks_dropped_this_scan` names any block deleted for age. Every `dist_sigma` divides the price the book was measured at (`price.spot_when_book_was_measured`); to move a distance to the live frame, SUBTRACT `price.live_minus_book_spot_sigma`.
+WHERE EVERY NUMBER CAME FROM. `price` is the live tape. The table comes out of the options book, which is minutes old and often a cached repeat: `data_sources.options_book` carries its age and `is_repeat_of_previous_scan`. Open interest rests on last night's snapshot; `data_sources.open_interest` re-proves that it held still today. `freshness_rules.blocks_dropped_this_scan` names any block deleted for age, and the whole freshness_rules block is absent when nothing was dropped. Every `dist_sigma` divides the price the book was measured at (`price.spot_when_book_was_measured`); to move a distance to the live frame, SUBTRACT `price.live_minus_book_spot_sigma`.
 
 HONESTY RULES, all of them load-bearing:
 - Never cite an entry in `frozen_do_not_cite` as the reason for anything new.

@@ -604,6 +604,23 @@ def _read_jsonl(path: Path) -> list[dict]:
     return out
 
 
+def _bar_record_complete(bars) -> bool:
+    """Does the sidecar hold every completed RTH minute up to its own last bar?
+
+    The count alone is not the test — a record can be short because the session
+    is young, which is not a fault. Complete means no INTERIOR gap: the number
+    of bars equals the number of minutes from the 09:30 open through the last
+    bar it holds."""
+    if not bars:
+        return False
+    last = _parse_ts(bars[-1].get("ts"))
+    if last is None:
+        return False
+    open_et = last.replace(hour=9, minute=30, second=0, microsecond=0)
+    expected = int((last - open_et).total_seconds() // 60) + 1
+    return expected > 0 and len(bars) >= expected
+
+
 def _parse_ts(s) -> Optional[datetime]:
     """An ISO stamp -> datetime, or None. Every clock in this module reads through
     here, so a malformed or absent stamp degrades to "unknown" and never to a
@@ -1450,7 +1467,7 @@ ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snap
 
 OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. `frame_is` says which kind of frame this is, by rule: "a move" when `spot_change_sigma` is 0.15 or more in either direction, "a hold" otherwise. On a move, OPEN WITH PRICE THEN AND PRICE NOW — both are in the block — and only then say what is on the board; the "held between" sentence belongs to a hold and never to a move, because a range whose two ends are a move apart is not a range anyone held. `walls_absent_then_and_now` names a side the ladder found empty at both readings: say "no put wall then, none now", never a number. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since your last read" is a complete, correct read when `frame_is` says a hold — X and Y come from `held_between_since_last_read`, and the ONLY clock that range pairs with is `last_read_at`. Never anchor a range on any other time. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read (or the first under the current rules) there is no frame yet; describe the standing board instead.
 
-THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a scan beyond a frozen box by more than a twentieth of a sigma breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions with where the live price sits in it and whether today has traded beyond it. Every box and extreme names its witness: `measured_from` and `price.extremes_from` say "1_minute_bars" when the minute-bar record was used — its wicks saw what a 2-minute scan steps over — and "scans_every_2_min" when it was not, in which case the true extremes may sit a few dollars beyond what is stated. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
+THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a scan beyond a frozen box by more than a twentieth of a sigma breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions with where the live price sits in it and whether today has traded beyond it. Every box and extreme rests on the minute-bar record, whose wicks see what a 2-minute scan steps over — and it says so by saying nothing. When the record was NOT used the block speaks up: `measured_from` and `price.extremes_from` appear carrying "scans_every_2_min", and the true extremes may then sit a few dollars beyond what is stated. Their absence is the ordinary case and means the bars were used. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
 
 KEEP IT SHORT AND PLAIN. TWO SENTENCES, forty words at the outside — the way you would say it to someone sitting beside you, not the way you would write it down. No jargon, no field names, no padding, no listing everything you looked at. Say the one or two things that matter and stop. The levels go in `points` with a few words each; do not repeat them in the prose. Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears. That includes numbers you work out yourself: do not convert a distance into sigma, do not turn a share into a percentage of something else, do not average two figures. A number you computed is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far away, say which level and let the reader see the two prices.
 
@@ -1461,10 +1478,10 @@ FIELD NAMES SAY WHAT THEY ARE. Every leaf in this scene is named so it can be re
 WHERE EVERY NUMBER CAME FROM (read this block first — it decides how much any other block is worth):
 - WHICH BLOCK RESTS ON WHAT. `price` and `history` are the LIVE TAPE, good to the second. `clock` is the wall clock. `scale`, `regime`, `magnet`, `breadth`, `momentum`, `dealer_positioning`, `walls` and `clock.front_expiry` come out of the OPTIONS BOOK, which is minutes old and often a cached repeat. Of those, `regime`, `magnet`, `breadth`, `dealer_positioning` and `walls` rest further on the OPEN INTEREST SNAPSHOT struck at last night's close. A block you cannot find was either not measured or deleted for age; see freshness_rules.
 - data_sources may also carry `minute_bars` — the minute-bar record's own clock: how many completed minutes it holds today and how old the newest is. It is the witness behind the session extremes and the boxes when present.
-- data_sources holds TWO clocks and they disagree on purpose. `scan_taken_at` is when this row was written, which is also when the spot was quoted — there is no separate quote clock, and `spot_feed` names where that price came from. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
+- data_sources holds TWO clocks and they disagree on purpose. `scan_taken_at` is when this row was written, which is also when the spot was quoted — there is no separate quote clock. `spot_feed` appears only when that price came from somewhere other than the usual quote feed; absent means it did not. `options_book.measured_at` is when the CHAIN was pulled, and `options_book.age_min` is its real age: the feed re-serves a cached book on about half of all scans (`is_repeat_of_previous_scan` says whether this one is a repeat), so the book is routinely 2-4 minutes old on a scan that is seconds old. Never quote the scan's freshness for a structural number.
 - `open_interest` is the one that matters most and the one most easily misread. Every standing structure in this scene — magnet, walls, breadth, dealer_positioning, charm, flip — is computed from open interest struck at the PRIOR SESSION'S CLOSE (`prior_session_date` names the day) and it does not change during the session: `measured_unchanged_so_far_today` re-proves it against `strikes_compared_today` strikes whenever today's scans give it enough overlapping strikes to answer — and says nothing at all rather than guessing when they do not. What moves intraday is price moving under a fixed map, not the map moving.
 - Because of that, THESE BLOCKS MAY NEVER BE NARRATED IN THE PRESENT TENSE: {", ".join(PRESENT_TENSE_FORBIDDEN_FOR)}. "Dealers are buying", "the wall is building", "gamma is piling up" are false statements about time, not debatable reads. Say "as of last night's close" or say nothing. Only `momentum` and `*_change_30min` fields describe something that moved today.
-- freshness_rules is enforced, not advisory: a block whose source aged past its ceiling is DELETED before you see it, and `blocks_dropped_this_scan` names what went. So an absent block may mean "measured but too old" — check there before calling anything unknown.
+- freshness_rules is enforced, not advisory: a block whose source aged past its ceiling is DELETED before you see it, and `blocks_dropped_this_scan` names what went. The whole block is absent on a scan that dropped nothing, which is the ordinary case — so an absent block may mean "measured but too old", and freshness_rules being there at all is the sign to check it.
 
 THE TWO RULERS, AND WHICH ONE A DISTANCE USES:
 - `price.live_spot` is where the stock is NOW. `price.spot_when_book_was_measured` is where it was when the chain was pulled. On a cached row these differ by a median of about $2 and by as much as $42.
@@ -2923,7 +2940,11 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
     live = [(t, sp) for r in rows
             if (t := _ts(r)) is not None and (sp := _fin(r.get("spot"))) is not None]
     spot_now = max(live)[1] if live else pts[-1][2]
-    out: dict = {"measured_from": measured_from}
+    # sr-9: "1_minute_bars" on 138 of 138 replayed scans. Same alarm-only rule
+    # as price.extremes_from, and the two must agree — both name the same
+    # witness, so both go quiet when that witness is the expected one.
+    out: dict = ({} if measured_from == "1_minute_bars"
+                 else {"measured_from": measured_from})
     if opening is not None:
         op = {"low": round(opening["low"], 2), "high": round(opening["high"], 2),
               "formed_over": opening["formed_over"]}
@@ -3157,6 +3178,12 @@ def build_scene(row: dict, band: dict, frozen: list,
     # which session the snapshot was struck at, and whether it has in fact held
     # still across today's scans.
     oi = {"prior_session_date": _prior_session_date(now.strftime("%Y-%m-%d")),
+          # sr-9 CONSIDERED AND REJECTED. This reads true on 119 of 119
+          # replayed scans, so it looks like the same alarm-only case as the
+          # witnesses below. It is not. `oi_same` is a TRI-state — true held,
+          # false moved, None could not be asked for want of common strikes —
+          # and silencing true leaves absence meaning either "held" or "could
+          # not ask". The doctrine promises missing = not measured; this stays.
           "measured_unchanged_so_far_today": oi_same,
           "strikes_compared_today": oi_n}
 
@@ -3167,13 +3194,22 @@ def build_scene(row: dict, band: dict, frozen: list,
         "scan_taken_at": t_row.isoformat() if t_row else None,
         "scans_so_far_today": len(rows),
         "scan_interval_min": _median_gap_min(scan_stamps),
-        "spot_feed": meta.get("spot_source"),
+        # sr-9: "schwab_quote" on 138 of 138 replayed scans. Which feed
+        # supplied the spot is doctrine while it is the usual one; it becomes
+        # news the moment it is anything else.
+        "spot_feed": (None if (src := meta.get("spot_source")) == "schwab_quote"
+                      else (src or "unrecorded")),
         "options_book": prune(book) or None,
         "open_interest": prune(oi) or None,
         # obs-5: the sidecar's own clock — how many completed minutes it holds
         # and how old the newest is. Absent means no bars file for the day.
         "minute_bars": (prune({
-            "bars_so_far_today": len(bars_now),
+            # sr-9: this equalled 390 - clock.minutes_to_close on 138 of 138
+            # replayed scans — two leaves carrying one fact. It is only ever
+            # news when the record is SHORT, so it ships only then, and the
+            # count then says how many minutes are actually held.
+            "bars_so_far_today": (None if _bar_record_complete(bars_now)
+                                  else len(bars_now)),
             "last_bar_at": bars_now[-1]["ts"],
             "age_min": _age_min(_parse_ts(bars_now[-1]["ts"]), now)})
             if bars_now else None),
@@ -3297,7 +3333,12 @@ def build_scene(row: dict, band: dict, frozen: list,
                              else (min(path) if path else None)),
              "session_high": (max([b["high"] for b in bars_now] + path) if bars_now
                               else (max(path) if path else None)),
-             "extremes_from": ("1_minute_bars" if bars_now else
+             # sr-9: SILENT when the minute-bar record was used, which it was
+             # on 138 of 138 replayed scans across 8 sessions. The field only
+             # ever earned its bytes as an alarm, so it now fires only when the
+             # alarm is real: present means the extremes came from 2-minute
+             # scans and the true high or low may sit a few dollars beyond.
+             "extremes_from": (None if bars_now else
                                ("scans_every_2_min" if path else None)),
              "moved_last_30min_sigma": moved_30m}
     vw = sd_live(row.get("vwap"))
@@ -3373,6 +3414,11 @@ def build_scene(row: dict, band: dict, frozen: list,
     scene = {k: v for k, v in scene.items() if v not in (None, {}, [])}
     scene["freshness_rules"] = _drop_stale_blocks(
         scene, {LIVE_TAPE: scan_age, OPTIONS_BOOK: book_age})
+    # sr-9: and the container goes too when it is empty. `freshness_rules: {}`
+    # is the same claim as no block at all, in more bytes and one more thing to
+    # read past — the gate still ran, it simply had nothing to report.
+    if not scene["freshness_rules"]:
+        scene.pop("freshness_rules")
     # WHAT IS UNUSUAL, computed here rather than asked of the model — see
     # session_context. Built AFTER the freshness gate on purpose: a fact
     # pointing into a block that was just deleted for age would be an offer the
@@ -3441,7 +3487,10 @@ def _drop_stale_blocks(scene: dict, ages: dict) -> dict:
     # six-name list on every scan, all of them already spelled out in the
     # doctrine — which is where a standing rule belongs. What is left here is
     # the one thing that is news: what actually went missing on THIS scan.
-    return {"blocks_dropped_this_scan": dropped}
+    # sr-9: an empty list on 138 of 138 replayed scans. A block that says
+    # "nothing went missing" on every scan of every session is the doctrine
+    # repeating itself; the block now appears only when something actually went.
+    return {"blocks_dropped_this_scan": dropped} if dropped else {}
 
 
 # ---------------------------------------------------------------------------

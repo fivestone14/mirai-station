@@ -108,13 +108,37 @@ def test_the_wicks_win_for_the_extremes_and_the_opening_box():
     for b in bars:
         SB.write_day(DAY, [b], T0 + timedelta(minutes=5))
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    assert sc["price"]["extremes_from"] == "1_minute_bars"
+    # sr-9: the witness is SILENT when it is the bars — the normal case on 138
+    # of 138 replayed scans — and speaks only on the fallback, which
+    # test_the_extremes_fall_back_to_the_scans_when_no_bars_exist covers.
+    assert "extremes_from" not in sc["price"]
     assert (sc["price"]["session_low"], sc["price"]["session_high"]) == (1490.0, 1515.0)
     rg = sc["context"]["ranges"]
-    assert rg["measured_from"] == "1_minute_bars"
+    assert "measured_from" not in rg
     assert (rg["opening"]["low"], rg["opening"]["high"]) == (1490.0, 1515.0)
     mb = sc["data_sources"]["minute_bars"]
-    assert mb["bars_so_far_today"] == 31 and mb["last_bar_at"] == bars[30]["ts"]
+    # sr-9: the count equalled 390 - clock.minutes_to_close on 138 of 138
+    # replayed scans — two leaves, one fact — so it now ships only when the
+    # record is SHORT, and then says how many minutes are actually held.
+    assert "bars_so_far_today" not in mb
+    assert mb["last_bar_at"] == bars[30]["ts"]
+
+
+def test_a_short_bar_record_says_how_many_minutes_it_actually_holds():
+    """sr-9's other half. Silence means the sidecar holds every completed minute
+    from the open; a HOLE has to speak, because every extreme and every box in
+    the scene is measured off a record the reader would otherwise assume whole.
+    The count is what the reader can check the hole against."""
+    rows = _tape([1500.0] * 4)
+    t0 = datetime.fromisoformat(rows[0]["ts"])
+    day_open = t0.replace(hour=9, minute=30, second=0, microsecond=0)
+    kept = [_bar(day_open + timedelta(minutes=i), 1500.0, 1504.0)
+            for i in range(0, 20) if i not in (5, 6, 7)]      # three minutes lost
+    for b in kept:
+        SB.write_day(DAY, [b], T0 + timedelta(minutes=5))
+    sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+    mb = sc["data_sources"]["minute_bars"]
+    assert mb["bars_so_far_today"] == len(kept) == 17
 
 
 def test_a_break_the_scans_stepped_over_is_seen_by_the_wick():
