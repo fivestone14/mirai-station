@@ -1,6 +1,6 @@
 # SNDK PHONE GLANCE — BUILD SPECIFICATION v1
 
-**One deliverable, implemented verbatim.** Portrait, dark only, 320–412 CSS px wide. Inline SVG built as a string. Plain JS, no framework, no build step, no CDN. Nothing is tappable.
+**One deliverable, implemented verbatim.** Portrait, dark only, 320–412 CSS px wide. Inline SVG built as a string. Plain JS, no framework, no build step, no CDN. Nothing is tappable except one link to the archive (amended 2026-09-07 — see rule 25).
 
 The screen is one price ladder under one price, and it answers three questions in reading order: **what kind of day** (the regime word, 18px, directly under the price), **where price sits** (the ladder, ~48% of the screen), **what happens at the nearest level** (one card, the only place sentences live).
 
@@ -847,7 +847,11 @@ Every item below is measured. Breaking one is a defect, not a taste call.
 22. **No Greek letter, anywhere.** All distances in dollars; the ruler is stated once as `TYPICAL MOVE $67`.
 23. **The chart height is an explicit pixel value.** Never `flex:1`. A clean harness run is not proof — the harness *supplies* the chart height and cannot see a CSS collapse.
 24. **The plot content is clipped.** The day path is in the window's candidate set *and* inside `clip-path:url(#pc)`.
-25. **Nothing is tappable.** No hover, no `cursor:pointer`, no `title` attributes, no tooltips, no toggles, no tabs.
+25. **Nothing is tappable, with one exception.** No hover, no `cursor:pointer`, no `title` attributes, no tooltips, no toggles, no tabs, and no click handler anywhere on the page.
+
+    **Amended 2026-09-07.** Exactly one link is permitted: a small `all ›` in the MODEL READ label row, going to `/m/thread.html`, the archive of everything the model has said. The rule's purpose was that the *reading* must never be a control — a screen you poke is a screen you are working, and this one is read at arm's length in a second. That purpose is untouched: the ladder, the price, the levels and the sentence remain inert. What the old wording also did, unintentionally, was throw the day away — the glance shows the newest reading and there was no way to reach the twenty-five before it.
+
+    The exception is counted, not merely allowed. `tests/test_phone_route.py::test_the_glance_itself_is_not_a_control` asserts the page holds exactly ONE `<a>` and that it points at the thread. A second link means this rule has started eroding, and the right response is to argue with it again rather than to edit the test again.
 26. **Nothing that is not in the payload is ever drawn.** No ghosts of levels that no longer exist, no trend vectors, no extrapolated direction, no invented history.
 
 ---

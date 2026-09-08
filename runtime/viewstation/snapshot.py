@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -754,6 +755,93 @@ def _jsonl_rows(path: Path) -> list:
             except Exception:
                 continue   # a torn line is skipped, never fabricated
     return out
+
+
+# ---------------------------------------------------------------------------
+# The reading THREAD — what the model actually said today, as messages.
+#
+# A session writes ~190 rows and the model speaks ~26 times. Every scan appends
+# a row, and a scan that did not wake the model CARRIES THE PREVIOUS READING
+# FORWARD verbatim, so rendering rows as messages would produce 190 duplicates
+# of 26 sentences. The utterances are the DISTINCT `reading_ts` values — the
+# same key the desktop history modal and the phone glance both already key on.
+#
+# This exists because the only way to read these files over HTTP today is
+# /api/raw/file, which returns the whole journal: 232 KB for 2026-09-04 against
+# the 10.5 KB a thread actually renders, behind a 2-permit semaphore that a
+# 09-01 incident proved can stall the live price poll. A phone re-fetching a
+# quarter-megabyte on cellular every few seconds is the thing to not build.
+# ---------------------------------------------------------------------------
+
+_DAY_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def sndk_thread_days(limit: int = 60) -> list:
+    """Sessions that recorded at least one reading, newest first. The directory
+    also holds control.json, deadman_state.json and pctl_prior.json, so the name
+    is matched rather than globbed loosely."""
+    d = STATE_DIR / "sndk_reads"
+    if not d.is_dir():
+        return []
+    return sorted((p.stem for p in d.glob("*.jsonl") if _DAY_FILE.match(p.stem)),
+                  reverse=True)[:limit]
+
+
+def sndk_thread(day: str, since: str = "") -> dict:
+    """One entry per thing the model actually said, oldest first.
+
+    Oldest first because this is a thread, not a table: the newest message
+    belongs at the bottom where a reader's eye already is. `since` takes a
+    reading_ts and returns only what came after it, so a phone polls for the
+    tail instead of the day.
+    """
+    if not _DAY_FILE.match(day or ""):
+        return {"error": "bad day", "day": day, "messages": []}
+
+    seen: set = set()
+    msgs: list = []
+    for r in _jsonl_rows(STATE_DIR / "sndk_reads" / f"{day}.jsonl"):
+        rts = r.get("reading_ts")
+        if not rts or rts in seen:
+            continue                      # a carried-forward row, not a new one
+        seen.add(rts)
+        rd = r.get("reading") or {}
+        if not isinstance(rd, dict):
+            continue
+        # `read` is None when every claim was deleted by the checks. That is a
+        # message with something to say — the model spoke and was overruled —
+        # so it ships with the flag rather than being dropped as empty.
+        msgs.append({
+            "ts": rts,
+            "at": _hhmm_et(rts),
+            "wake": r.get("wake") or "quiet",
+            "read": rd.get("read"),
+            "quiet": bool(rd.get("quiet")),
+            "abstain": rd.get("abstain"),
+            "points": rd.get("points") or [],
+            "clusters": rd.get("clusters") or [],
+            "sides": rd.get("sides") or None,
+            "spot": r.get("spot"),
+            "era": r.get("era"),
+        })
+
+    msgs.sort(key=lambda m: m["ts"])
+    if since:
+        msgs = [m for m in msgs if m["ts"] > since]
+    spoke = sum(1 for m in msgs if not m["quiet"])
+    return {"day": day, "messages": msgs, "count": len(msgs),
+            "with_something": spoke,
+            "eras": sorted({m["era"] for m in msgs if m["era"]})}
+
+
+def _hhmm_et(ts: str) -> str:
+    """Market time, always. The desktop history modal renders these in Pacific
+    while every other clock on the station and the whole phone page renders ET;
+    a thread that mixed the two would be unreadable beside either."""
+    try:
+        return datetime.fromisoformat(ts).astimezone(ET).strftime("%H:%M")
+    except Exception:
+        return ""
 
 
 def pipeline_days(limit: int = 30) -> list:

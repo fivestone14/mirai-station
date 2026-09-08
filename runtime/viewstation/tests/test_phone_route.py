@@ -10,6 +10,7 @@ these pin all three spellings onto the same file.
 Driving do_GET needs no socket: the handler's only I/O goes through _send_file
 and _send_json, and a subclass that captures both exercises the route table
 directly (the same stand-in habit test_host_guard uses for _host_ok)."""
+import re
 from pathlib import Path
 
 import pytest
@@ -297,10 +298,27 @@ def test_no_emoji_no_legend_no_greek():
     assert "class=\"key\"" not in PHONE
 
 
-def test_nothing_is_tappable():
-    for bad in ("cursor:pointer", "onclick", "addEventListener('click'", "<button", "<a ", "title="):
+def test_the_glance_itself_is_not_a_control():
+    """AMENDED 2026-09-07. The rule was "nothing is tappable", and its purpose
+    was that the READING must never be a control: a screen you poke is a screen
+    you are working, and this one is read at arm's length in a second.
+
+    That purpose survives verbatim. What changed is that the model's readings
+    now accumulate into a thread at /m/thread.html, and a glance with no way
+    into its own history is a glance that quietly throws the day away. So
+    exactly ONE link is permitted, in the label row, going to that archive —
+    and every mechanism that would make the DATA interactive stays banned:
+    no click handlers anywhere, no buttons, no pointer cursors, no tooltips.
+
+    The link is counted, not merely allowed. A second one means the rule has
+    started eroding and this test should be argued with again rather than
+    edited again."""
+    for bad in ("cursor:pointer", "onclick", "addEventListener('click'", "<button", "title="):
         assert bad not in PHONE, bad
     assert "addEventListener('click'" not in PAGE
+    links = re.findall(r"<a\s[^>]*>", PHONE)
+    assert len(links) == 1, f"exactly one link is allowed on the glance, found {len(links)}: {links}"
+    assert 'href="/m/thread.html"' in links[0], links[0]
 
 
 def test_the_window_is_frozen_between_payloads():

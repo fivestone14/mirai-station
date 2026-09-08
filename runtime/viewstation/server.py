@@ -578,6 +578,31 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
 
+            if route in ("/api/sndk/thread", "/api/sndk/thread/days"):
+                # What the model SAID, as messages. Deliberately NOT behind the
+                # payload lock: the phone glance is unauthenticated and already
+                # reads these exact bytes through /api/raw/file, so locking this
+                # would gate the one surface it exists for while leaving the
+                # wider door open. If reading prose should be private, the raw
+                # explorer is where that decision belongs, not here.
+                try:
+                    if route.endswith("/days"):
+                        return self._send_json({"days": snap.sndk_thread_days()})
+                    day = (qs.get("day") or [""])[0]
+                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day or ""):
+                        days = snap.sndk_thread_days()
+                        day = days[0] if days else ""
+                    if not day:
+                        return self._send_json({"error": "no recorded session",
+                                                "messages": []})
+                    since = (qs.get("since") or [""])[0]
+                    return self._send_json(snap.sndk_thread(day, since=since))
+                except Exception as exc:  # never 500 the page
+                    import traceback
+                    return self._send_json({"error": f"{type(exc).__name__}: {exc}",
+                                            "trace": traceback.format_exc(),
+                                            "messages": []})
+
             if route == "/api/sndk/payload":
                 # the exact scene the reader hands the model — locked to one user (the ?user= name,
                 # or the front door's forwarded user when a proxy authenticates for us)

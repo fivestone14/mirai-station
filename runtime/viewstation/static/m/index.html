@@ -219,6 +219,9 @@ body.failed > section, body.failed > .foot{display:none}
 .rd-lab{display:flex;align-items:baseline;height:14px;
         font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
         color:var(--ink-faint)}
+.rd-all{margin-left:8px;font:500 10px/1.2 var(--mono);letter-spacing:.12em;
+        text-transform:uppercase;color:var(--iris);text-decoration:none;
+        padding:2px 5px;margin-top:-2px;border:1px solid var(--hairline);border-radius:6px}
 .rd-age{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
         font-variant-numeric:tabular-nums;color:var(--ink-dim)}
 .rd-age.old{color:var(--lantern)}
@@ -288,7 +291,7 @@ body.failed > section, body.failed > .foot{display:none}
 </section>
 
 <section class="read" id="read">
-  <div class="rd-lab"><span>MODEL READ</span><span class="rd-age" id="rdAge"></span></div>
+  <div class="rd-lab"><span>MODEL READ</span><a class="rd-all" href="/m/thread.html">all&nbsp;›</a><span class="rd-age" id="rdAge"></span></div>
   <div class="rd-body"><span class="rd-mark" id="rdMark"></span><span class="rd-line" id="rdLine"></span></div>
 </section>
 

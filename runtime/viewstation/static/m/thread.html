@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0C1017">
+<title>SNDK thread · Mirai</title>
+<!--
+  The reading THREAD (2026-09-07) — everything the model said today, in order.
+
+  This is the glance's opposite number and deliberately breaks its two laws.
+  The glance is one screen that never scrolls and has nothing tappable, because
+  it is read at arm's length in a second. This is the archive: it scrolls, it
+  has a day picker, and it is arrived at on purpose.
+
+  Three things it is built on.
+
+    1. A SESSION IS ~26 MESSAGES, NOT ~190 ROWS. Every scan appends a row and a
+       scan that did not wake the model carries the previous reading forward
+       verbatim. /api/sndk/thread does the de-duplication server-side on
+       distinct reading_ts, which is the same key the desktop history modal and
+       the glance both already use.
+
+    2. QUIET IS A MESSAGE, NOT A GAP. Roughly half of what the model says is
+       "price has held between X and Y since your last read". The doctrine is
+       explicit that finding nothing is complete work, so those ship — but
+       subordinate, in one dim line, because fifteen of them in a row is what
+       this screen would otherwise be. What it found something in gets the
+       full bubble.
+
+    3. MARKET TIME, ALWAYS. Every clock here is ET, matching the glance and the
+       station's live card. The desktop's history modal renders these same
+       readings in Pacific; that is the odd one out, not this.
+
+  Model prose reaches the DOM through setSaid() only, which escapes first and
+  then adds its own <b> tags for prices. Nothing else ever writes model text.
+
+  Tokens are the glance's, byte-for-byte, which are the desktop's.
+-->
+<style>
+:root{
+  --ground:#0C1017;
+  --surface:#141A24;
+  --surface-2:#1B2330;
+  --hairline:#28313F;
+  --hairline-2:#333E50;
+
+  --ink:#E7EBF3;
+  --ink-dim:#98A2B6;
+  --ink-faint:#8A93A8;
+
+  --iris:#8B9CFF;      /* price, and only price   */
+  --jade:#43C59E;      /* the call side           */
+  --coral:#EB6A57;     /* the put side            */
+  --lantern:#E7B85C;   /* aging, and nothing else */
+  --l-grav:#F3AB3E;    /* the magnet, and nothing else */
+
+  --iris-wash:rgba(139,156,255,.10);
+  --jade-wash:rgba(67,197,158,.10);
+  --coral-wash:rgba(235,106,87,.10);
+
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;
+  --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html{height:100%}
+body{
+  height:100dvh; overflow:hidden;
+  background:var(--ground); color:var(--ink);
+  font:400 13px/1.4 var(--sans);
+  -webkit-font-smoothing:antialiased;
+  display:flex; flex-direction:column;
+}
+
+/* ============ HEAD ============ */
+.hd{flex:none;display:flex;align-items:center;gap:10px;
+    padding:calc(env(safe-area-inset-top) + 12px) 14px 10px;
+    border-bottom:1px solid var(--hairline);background:var(--ground)}
+.back{flex:none;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+      border:1px solid var(--hairline);border-radius:9px;background:var(--surface);
+      color:var(--ink-dim);font:400 16px/1 var(--sans);text-decoration:none}
+.hd-t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hd-1{font:500 11px/1.2 var(--mono);letter-spacing:.18em;color:var(--ink-dim)}
+.hd-2{font:400 11px/1.2 var(--sans);color:var(--ink-faint);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day{margin-left:auto;flex:none;background:var(--surface);color:var(--ink);
+     border:1px solid var(--hairline);border-radius:9px;
+     font:500 12px/1 var(--mono);padding:8px 9px;appearance:none}
+
+/* ============ THREAD ============ */
+.wrap{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+      overscroll-behavior:contain;padding:14px 14px calc(env(safe-area-inset-bottom) + 18px);
+      display:flex;flex-direction:column;gap:14px}
+
+.rule{display:flex;align-items:center;gap:10px;color:var(--ink-faint);
+      font:500 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.rule::before,.rule::after{content:"";flex:1 1 auto;height:1px;background:var(--hairline)}
+
+.msg{display:flex;flex-direction:column;gap:5px;max-width:88%;align-self:flex-start}
+.m-top{display:flex;align-items:baseline;gap:7px;padding-left:2px}
+.m-at{font:500 11px/1.2 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-dim)}
+.m-why{font:500 9.5px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+       color:var(--ink-faint)}
+.m-spot{margin-left:auto;font:500 10.5px/1.2 var(--mono);
+        font-variant-numeric:tabular-nums;color:var(--ink-faint)}
+
+/* A bubble the model had something to say in. */
+.bub{background:var(--surface-2);border:1px solid var(--hairline);
+     border-radius:16px 16px 16px 5px;padding:10px 13px 11px;
+     box-shadow:inset 3px 0 0 var(--l-grav)}
+.bub .said{font:400 13.5px/1.5 var(--serif);color:var(--ink)}
+.bub .said b.n{font:600 13px/1 var(--mono);font-variant-numeric:tabular-nums;
+               color:var(--iris);background:var(--iris-wash);
+               border-radius:4px;padding:1px 4px;font-style:normal}
+
+/* Quiet: still a message, still says what it saw, but it must not shout. */
+.msg.q{max-width:94%}
+.msg.q .bub{background:transparent;border-color:transparent;box-shadow:none;
+            padding:0 2px;border-radius:0}
+.msg.q .said{font:italic 400 12.5px/1.45 var(--serif);color:var(--ink-dim)}
+.msg.q .said b.n{color:var(--ink-dim);background:transparent;padding:0;
+                 font-weight:500;font-size:12px}
+
+/* The model spoke and every claim was deleted by the checks. A fault, drawn
+   as one — silence here would hide the one case worth seeing. */
+.msg.dropped .bub{box-shadow:inset 3px 0 0 var(--coral)}
+.msg.dropped .said{color:var(--ink-dim);font-style:italic}
+
+.pts{list-style:none;display:flex;flex-direction:column;gap:3px;margin-top:9px;
+     padding-top:8px;border-top:1px solid var(--hairline)}
+.pts li{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:baseline}
+.pts .lv{font:600 12px/1.3 var(--mono);font-variant-numeric:tabular-nums;color:var(--iris)}
+.pts .nt{font:400 12px/1.35 var(--sans);color:var(--ink-dim)}
+
+.state{flex:1 1 auto;display:flex;align-items:center;justify-content:center;
+       padding:0 26px;text-align:center;font:400 13px/1.55 var(--sans);color:var(--ink-dim)}
+</style>
+</head>
+<body>
+
+<header class="hd">
+  <a class="back" href="/m/" aria-label="Back to the glance">‹</a>
+  <div class="hd-t">
+    <div class="hd-1">SNDK · THE READ</div>
+    <div class="hd-2" id="sub">loading…</div>
+  </div>
+  <select class="day" id="day" aria-label="Session"></select>
+</header>
+
+<main class="wrap" id="wrap"><div class="state" id="state">loading…</div></main>
+
+<script>
+const $ = id => document.getElementById(id);
+const S = {day:'', last:'', timer:0};
+
+async function getJSON(url){
+  try{
+    const r = await fetch(url, {cache:'no-store'});
+    const t = await r.text();
+    try{ return JSON.parse(t); }catch(e){ return null; }
+  }catch(e){ return null; }
+}
+
+/* The one boundary for model-authored text. Strip the characters the desktop
+   strips (it learned the hard way that data-tip is decoded twice), then add
+   our own <b> around anything price-shaped. The <b> tags are the only markup
+   that ever enters this string. */
+function setSaid(el, text){
+  const safe = String(text == null ? '' : text)
+    .replace(/[<>"¦]/g, ' ').replace(/&/g, '&amp;').replace(/\s+/g, ' ').trim();
+  // The punctuation stays OUTSIDE the chip. The desktop folds it in, which is
+  // invisible there because its numbers are only bolded; here they carry a
+  // tinted background and a trailing comma inside the chip reads as part of
+  // the price.
+  el.innerHTML = safe.replace(
+    /(\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?|\$?\d{3,5}(?:\.\d+)?)/g,
+    (m, a) => `<b class="n">${a}</b>`);
+}
+
+function bubble(m){
+  const wrap = document.createElement('div');
+  // A reading whose every claim was deleted carries read: null. That is a
+  // message about a fault, not an empty one, and it says so.
+  const dropped = !m.read;
+  wrap.className = 'msg' + (m.quiet && !dropped ? ' q' : '') + (dropped ? ' dropped' : '');
+
+  const top = document.createElement('div');
+  top.className = 'm-top';
+  const at = document.createElement('span'); at.className = 'm-at'; at.textContent = m.at || '';
+  const why = document.createElement('span'); why.className = 'm-why';
+  why.textContent = dropped ? 'held back' : (m.wake || '');
+  top.append(at, why);
+  if(m.spot != null){
+    const sp = document.createElement('span'); sp.className = 'm-spot';
+    sp.textContent = Number(m.spot).toFixed(2);
+    top.append(sp);
+  }
+
+  const bub = document.createElement('div'); bub.className = 'bub';
+  const said = document.createElement('div'); said.className = 'said';
+  if(dropped) said.textContent = 'It spoke, and every claim it made was struck out by the checks.';
+  else setSaid(said, m.read);
+  bub.append(said);
+
+  if(Array.isArray(m.points) && m.points.length){
+    const ul = document.createElement('ul'); ul.className = 'pts';
+    for(const p of m.points){
+      if(!p || p.level == null) continue;
+      const li = document.createElement('li');
+      const lv = document.createElement('span'); lv.className = 'lv';
+      // No thousands separator: the prose beside it writes 1750, the board
+      // writes 1750, and 1,750 in the same bubble reads as a different number.
+      lv.textContent = String(Number(p.level));
+      const nt = document.createElement('span'); nt.className = 'nt';
+      nt.textContent = String(p.note == null ? '' : p.note).replace(/[<>"¦]/g, ' ');
+      li.append(lv, nt); ul.append(li);
+    }
+    if(ul.childElementCount) bub.append(ul);
+  }
+
+  wrap.append(top, bub);
+  return wrap;
+}
+
+function paint(doc, append){
+  const wrap = $('wrap');
+  const msgs = (doc && doc.messages) || [];
+  if(!append){
+    wrap.textContent = '';
+    if(!msgs.length){
+      const s = document.createElement('div'); s.className = 'state';
+      s.textContent = doc && doc.error
+        ? 'Could not read this session.'
+        : 'Nothing said this session yet.';
+      wrap.append(s);
+      $('sub').textContent = S.day;
+      return;
+    }
+    const rule = document.createElement('div'); rule.className = 'rule';
+    rule.textContent = S.day;
+    wrap.append(rule);
+  }
+  for(const m of msgs) wrap.append(bubble(m));
+  if(msgs.length) S.last = msgs[msgs.length - 1].ts;
+  // Newest at the bottom, which is where the eye already is.
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+async function loadDay(day){
+  S.day = day; S.last = '';
+  const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(day));
+  paint(doc, false);
+  if(doc && doc.count != null){
+    const n = doc.count, k = doc.with_something;
+    $('sub').textContent = `${n} message${n === 1 ? '' : 's'} · ${k} with something to say`;
+  }
+}
+
+/* Only ever asks for the tail. A session adds a message every twenty minutes
+   or so, so this is almost always an empty answer. */
+async function poll(){
+  if(!S.day || !S.last) return;
+  const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day)
+                            + '&since=' + encodeURIComponent(S.last));
+  if(doc && doc.messages && doc.messages.length) paint(doc, true);
+}
+
+(async function boot(){
+  const d = await getJSON('/api/sndk/thread/days');
+  const days = (d && d.days) || [];
+  const sel = $('day');
+  if(!days.length){
+    $('wrap').textContent = '';
+    const s = document.createElement('div'); s.className = 'state';
+    s.textContent = 'No recorded sessions.';
+    $('wrap').append(s); $('sub').textContent = '';
+    return;
+  }
+  for(const day of days){
+    const o = document.createElement('option');
+    o.value = day; o.textContent = day.slice(5);
+    sel.append(o);
+  }
+  sel.value = days[0];
+  sel.addEventListener('change', () => loadDay(sel.value));
+  await loadDay(days[0]);
+  S.timer = setInterval(poll, 45000);
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible') poll();
+  });
+})();
+</script>
+</body>
+</html>
