@@ -634,8 +634,16 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
     # model, so it carries the same since-last-read frame — anchored on the
     # last row that spent a call, exactly as read_once anchors it. One declared
     # divergence: no wake fires here, so `why_this_read` is absent.
-    reads = [r for r in R._read_jsonl(R._reads_dir() / f"{day}.jsonl")
-             if r.get("era") == R.active_era()]
+    # The era filter keeps two CONTRACTS from pooling, which is right when the
+    # question is "how did the reader do". It is wrong here, where the question
+    # is only "when did it last speak, and what did it say" — a sentence is a
+    # sentence whichever doctrine wrote it. Filtering strictly meant that on the
+    # day the era flipped, every row on disk was excluded, `last_call` came back
+    # None, and the tab announced `first_read_of_session: true` at 15:58 on a
+    # day with 26 recorded readings. Prefer the current era; fall back to the
+    # whole day rather than to nothing.
+    all_reads = R._read_jsonl(R._reads_dir() / f"{day}.jsonl")
+    reads = [r for r in all_reads if r.get("era") == R.active_era()] or all_reads
     last_call = next((r for r in reversed(reads)
                       if r.get("wall_s") is not None), None)
     said = next((r for r in reversed(reads)

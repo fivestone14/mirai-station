@@ -210,9 +210,16 @@ def test_the_payload_tab_says_the_clocks_before_the_json():
     assert "color:var(--coral,#e06c75)" in pl
     # and it builds innerHTML, so every free-text field goes through the escaper
     assert "const esc=x=>String(x).replace(/[&<>]/g," in pl
-    for field in ("esc(ds.spot_feed||'?')", "esc(b.served_from||'?')",
+    for field in ("esc(ds.spot_feed", "esc(b.served_from||'?')",
                   "esc(x.block)", "esc(x.source)"):
         assert field in pl, field
+    # spot_feed became ALARM-ONLY (a153e39): its absence now means the usual
+    # feed, so the old bare `||'?'` printed "spot from ?" on every ordinary
+    # scan — the provenance header calling the source unknown when the code
+    # knew it. The guarantee this line actually has to keep is that a NULL
+    # SCENE still degrades to "?" and fabricates nothing, so pin that instead
+    # of the literal expression.
+    assert "ds.spot_feed||(scene?'schwab_quote':'?')" in pl
 
 
 def test_every_provlines_helper_escapes():

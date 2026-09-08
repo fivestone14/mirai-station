@@ -103,7 +103,10 @@ function state(){
   const scene = (PAY.legacy && PAY.legacy.scene) || PAY.scene;
   const gates = PAY.gates || {};
   const S = (gates.stale_book_min != null) ? gates.stale_book_min : 6;
-  const H = (gates.heartbeat_min  != null) ? gates.heartbeat_min  : 45;
+  // 60, not 45: HEARTBEAT_MIN in sndk_read.py. The fallback only shows when the
+  // payload has not sent the gates, and a wrong fallback is worse than none —
+  // it tells the reader the model is due 15 minutes before it is.
+  const H = (gates.heartbeat_min  != null) ? gates.heartbeat_min  : 60;
   const age = bookAge(PAY);
   const q = shownPrice(scene, LIVE);
   const withdrawn = !(LIVE && LIVE.spot != null) && (age.unknown || age.min > H);

@@ -11271,7 +11271,7 @@ async function openSnkHistModal(){
   const M=document.getElementById('modal'); if(!M) return;
   const shell=body=>{
     M.innerHTML=`<div class="modal-card snkh" role="dialog" aria-modal="true" aria-label="SNDK reading history">
-      <div class="modal-head"><div class="mt">Today’s readings <em>newest first</em></div>
+      <div class="modal-head"><div class="mt">Today’s readings <em>newest first · market time</em></div>
         <button class="modal-x" id="modal-x" style="margin-left:auto" aria-label="Close">✕</button></div>
       <div class="modal-body">${body}</div></div>`;
     M.classList.add('open'); M.setAttribute('aria-hidden','false');
@@ -11299,7 +11299,12 @@ async function openSnkHistModal(){
     } else SNDK._histEraNote=null;
   }catch(e){ return shell(`<div class="snkh-note">No reading history available — ${snkSafe(String((e&&e.message)||e))}.</div>`); }
   const T=s=>{ const t=Date.parse(s); return isFinite(t)?t:null; };
-  const clock=t=>new Date(t).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:PT});   // AM/PM ⇒ Pacific, the page's rule (was browser-local)
+  // MARKET TIME, like the card three lines above it. This rendered Pacific,
+  // following the page's AM/PM-means-Pacific convention — but the readings it
+  // lists are stamped by snkClock in ET on the live card, so the same reading
+  // read 15:58 on the panel and 12:58 PM in this modal. One reading cannot have
+  // two clocks. The convention loses here because the subject is the session.
+  const clock=t=>snkClock(new Date(t).toISOString());
   // one entry per DISTINCT reading: reading_ts is the issue stamp, quiet scans re-carry it.
   // Issue price/σ come from the scan row NEAREST the stamp (the reading lands between scans).
   const calls=[], seen=new Set();
@@ -11342,7 +11347,7 @@ async function openSnkHistModal(){
     <div class="snkh-note">${SNDK._histEraNote?snkSafe(SNDK._histEraNote)+' · ':''}the model is asked what is UNUSUAL, never where price is going ·
     every number it said was resolved against the scene before the row was written, and a claim whose pointer did not resolve was deleted rather than corrected ·
     "nothing unusual" is the expected answer and a finished one · "all dropped" means it did speak and the checks removed everything, which is worth a look ·
-    times are Pacific</div>`);
+    times are market time</div>`);
 }
 // snkMagBandSVG — the magnet as a BAND whenever the top two strikes are tied. Measured
 // justification, not taste: the median gap between the #1 and #2 strike is 3.87pp of gamma
@@ -11368,7 +11373,16 @@ function snkMagBandSVG(mb, P){
   const gap=(mb.gap_pp!=null&&isFinite(mb.gap_pp))?+mb.gap_pp:null;
   const tip=`No strike is in charge — the top two are almost tied.`
     +`¦k:band=${snkUsd(lo,0)} – ${snkUsd(hi,0)}`
-    +(sHi!=null&&sLo!=null?`¦f:${snkUsd(hi,0)} holds ${sHi.toFixed(1)}% of the gamma · ${snkUsd(lo,0)} holds ${sLo.toFixed(1)}%`:'')
+    // NOT gamma. These shares come from magnet_band.top, which is built from
+    // gex_views.mass_by_strike — a CONTRACTS mass. Verified on the 2026-09-04
+    // 15:58 row: normalised mass_by_strike is 1700=16.29 / 1750=11.13, matching
+    // the strike table's contracts_share_pp to the hundredth, while the actual
+    // dealer-gamma shares for those two strikes are 5.81 and 34.08. So the old
+    // wording did not merely mislabel the unit — it reported the ranking of a
+    // different surface backwards, on the 95.7% of rows where this band draws.
+    // The doctrine warns the model about exactly this ("the two disagree by a
+    // median 38% ... never compare one to the other"); the reader was not.
+    +(sHi!=null&&sLo!=null?`¦f:${snkUsd(hi,0)} holds ${sHi.toFixed(1)}% of the contracts on the board · ${snkUsd(lo,0)} holds ${sLo.toFixed(1)}%`:'')
     +(gap!=null?`¦f:${gap.toFixed(2)}pp apart — it takes 5.0pp to name one`:'')
     +`¦v:drawn as a band because a single line here would be false confidence`
     +`¦n:median gap is 3.87pp; under 5pp on 62% of recorded scans`;
@@ -11651,14 +11665,14 @@ const _PL_NODES=[
   ['r3',  'Reader','step',  '3 · Rulebook + model',  'DOCTRINE_V2 · claude-sonnet-5',
    'A standing rulebook, held in the model’s cache so it is not re-billed on every call, plus the packet. Back come three things: whether to stay quiet, the reading itself, and the prices worth a look. Never a direction — that call measured worthless and was removed.'],
   ['r4',  'Reader','step',  '4 · Guards',            'sndk_board.py · check_reading_v2()',
-   'Six checks before anyone sees a word: banned words and their inflections, plus the words this scene forbids (magnet, momentum, stronger); every number must exist in the packet; a named level must be a price on the board; an above-or-under claim must agree with the live price; a cluster must name listed, adjacent strikes and its change word is set from the rule; and a small second model deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
+   'Every reading is checked before anyone sees a word: banned words and their inflections, plus the words this scene forbids (magnet, momentum, stronger); every number must exist in the packet; a named level must be a price on the board; an above-or-under claim must agree with the live price; a cluster must name listed, adjacent strikes and its change word is set from the rule; and a small second model deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
   ['r2b', 'Reader','step',  '2b · Side packet',      'sndk_side.build_side()',
    'A second document, anchored to the minute bars rather than the option book, built beside the scene and never sent to a model. It takes its price lines from the same diary row the scene uses. Every time in it is derived from a bar index, so every value can be checked against the bar it came from.'],
 
   ['od',  'Delivery','sink','Read row',              'state/sndk_reads/<day>.jsonl',
    'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, and what the guards dropped.'],
   ['og',  'Delivery','sink','Gate Payload',          'state/sndk_legacy/<day>.jsonl',
-   'One line for each read that spends a call: the old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene. The wake gate reads them and the eval lines them up against the model’s clusters. Never sent to the model.'],
+   'One line for each read that spends a call, from the first strikes-1 read onward — no session has run under it yet, so this file does not exist. The old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene. The wake gate reads them and the eval lines them up against the model’s clusters. Never sent to the model.'],
   ['os',  'Delivery','sink','Side packets',          'state/sndk_side/<day>.jsonl',
    'One line for each scan judged worth a model call. Written when the wake fires rather than when the model answers, so it also lands on a call that was capped, failed, or emptied by the guards. Quiet scans keep nothing and rebuild from the bars and the diary row.'],
   ['om',  'Delivery','sink','Memory',                'sndk_rag.py → state/sndk_rag/',
@@ -14785,7 +14799,7 @@ const PAYLOAD = {
       else if(d.payload==='scene'){ label='Scene Payload v5 · the reader is running this one'; }
       else { say('no legacy document: the reader is not building the Scene Payload beside the Strikes Payload'); PAYLOAD.paintPipe(); return; }
     } else if(which==='gate'){
-      if(d.gate_payload){ doc=d.gate_payload; label='Gate Payload'; tag='STORE · the old magnet, walls and the blocks the model stopped seeing · read by the wake gate and the eval · written to state/sndk_legacy on each call · never sent'; }
+      if(d.gate_payload){ doc=d.gate_payload; label='Gate Payload'; tag='STORE · the old magnet, walls and the blocks the model stopped seeing · read by the wake gate and the eval · written to state/sndk_legacy on each call from the first strikes-1 read — no session has run under it yet, so the directory does not exist · never sent'; }
       else { say('no Gate Payload: the reader is running the Scene Payload, so the gate reads that directly'); PAYLOAD.paintPipe(); return; }
     } else if(d.payload!=='strikes'){ label='Scene Payload v5 · the reader is running the Scene Payload (the Strikes Payload is switched off)'; }
     empty.hidden=true; pre.hidden=false;
@@ -14881,7 +14895,7 @@ const PAYLOAD = {
     const age=v=>v==null?'?':esc(v)+'m';
     const many=(v,w)=>v==null?('? '+w+'s'):`${esc(v)} ${w}${Number(v)===1?'':'s'}`;
     const out=[];
-    out.push(`// scan ${t(ds.scan_taken_at)} ET (spot from ${esc(ds.spot_feed||'?')}) `
+    out.push(`// scan ${t(ds.scan_taken_at)} ET (spot from ${esc(ds.spot_feed||(scene?'schwab_quote':'?'))}) `
       +`· book ${t(b.measured_at)} ET (${age(b.age_min)} old, ${esc(b.served_from||'?')}`
       +`${b.is_repeat_of_previous_scan===true?', REPEAT of the previous scan':''})`);
     out.push(strikes
@@ -14895,7 +14909,11 @@ const PAYLOAD = {
     if(strikes){
       const st=scene.strikes||{}, fr2=scene.frames||{};
       // the regions rule left the prompt on 2026-09-05; its answer is kept in the Gate Payload
-      const rgs=scene.regions?`${many((scene.regions.regions||[]).length,'region')} by the rule`:'regions rule behind the scene, kept in the Gate Payload';
+      const _rg=scene.regions||null, _rl=_rg&&Array.isArray(_rg.regions)?_rg.regions:null;
+      const _rs=_rg&&Array.isArray(_rg.resolved)?_rg.resolved.length:0;
+      const rgs=_rl?`${many(_rl.length,'region')} by the rule`
+               :_rs?`${many(_rs,'pile')} the rule says has gone`
+               :'regions rule behind the scene, kept in the Gate Payload';
       out.push(`// ${many(st.strikes_in_window,'strike')} in reach, ${many((st.rows||[]).length,'row')} listed `
         +`· ${many(fr2.books_in_series,'book')} of history behind each · ${rgs}`
         +`${st.absent&&st.absent.length?` · not measured this scan: ${esc(st.absent.join('; '))}`:''}`);
@@ -15044,7 +15062,7 @@ const MEM = {
     'crossed flip':       ['✕','tower',  'Price crossed the gamma-flip level as it stood at the last reading.'],
     'call wall crossed':  ['⇄','lantern','Price crossed the call wall as it stood at the last reading. The wall itself moving is deliberately NOT a wake — walls are defined as the heaviest strike on their side of price, so they step aside as price arrives.'],
     'put wall crossed':   ['⇄','lantern','Price crossed the put wall as it stood at the last reading — same frozen-level rule as the call side.'],
-    'iv moved':           ['~','grav',   'Implied volatility moved at least 3 points on a smoothed five-book average — the raw print is mostly measurement noise.'],
+    'iv moved':           ['~','grav',   'Implied volatility moved at least 3 points on a smoothed five-book median, and the window must be full — the raw print is mostly measurement noise.'],
     'flip moved':         ['≠','tower',  'The gamma-flip level itself relocated by at least half a typical day’s move.'],
     'heartbeat':          ['○','faint',  'An hour passed with nothing else to report, so the model looked anyway. An unprompted check, not a reaction.'],
     'quiet':              ['·','faint',  'The gate found nothing worth a call — this slice exists because a human forced a read on an otherwise quiet scan.'],
