@@ -48,8 +48,12 @@ android {
         applicationId = "com.mirai.mobile"
         minSdk = 26            // Android 8 — the first with per-app install permission
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // 2 / 1.1 (2026-09-09): the gesture, back-handling and haptic bridge.
+        // The bump is not cosmetic — Android will not install an APK whose
+        // versionCode is lower than the installed one, and leaving it equal
+        // makes an update indistinguishable from the build already on the phone.
+        versionCode = 2
+        versionName = "1.1"
 
         buildConfigField("String", "STATION_URL", "\"${secret("STATION_URL").trimEnd('/')}\"")
         buildConfigField("String", "STATION_USER", "\"${secret("STATION_USER")}\"")
