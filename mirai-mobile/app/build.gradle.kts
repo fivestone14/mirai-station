@@ -48,12 +48,17 @@ android {
         applicationId = "com.mirai.mobile"
         minSdk = 26            // Android 8 — the first with per-app install permission
         targetSdk = 34
-        // 2 / 1.1 (2026-09-09): the gesture, back-handling and haptic bridge.
+        // 3 / 1.2 (2026-09-09): the light rebuild. This one HAS to be a new
+        // build rather than a file edit on the mini — windowBackground, the
+        // status-bar colour, windowLightStatusBar and the offline page are all
+        // compiled in, and a light page under the dark shell gets white
+        // status-bar icons on cream.
+        //
         // The bump is not cosmetic — Android will not install an APK whose
         // versionCode is lower than the installed one, and leaving it equal
         // makes an update indistinguishable from the build already on the phone.
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         buildConfigField("String", "STATION_URL", "\"${secret("STATION_URL").trimEnd('/')}\"")
         buildConfigField("String", "STATION_USER", "\"${secret("STATION_USER")}\"")
