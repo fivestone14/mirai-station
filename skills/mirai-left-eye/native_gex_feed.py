@@ -8,8 +8,10 @@ spawning a claude subprocess. Read-only market data. Produces the `gex_theta`
 (native gravity+flow) snapshot.
 
 Security posture (audited):
-  * the bearer lives ONLY in the Keychain (vault.get_cassandra_token) and only ever
-    travels in the Authorization header — never in a URL, log, env var, or return value;
+  * the credential lives ONLY in the Keychain (vault) and only ever travels in the
+    Authorization header — never in a URL, log, env var, or return value. Since
+    2026-09-09 it is an OAuth refresh token spent per scan (cassandra_oauth), with
+    the retired static bearer honoured only until a station is re-enrolled;
   * the httpx.Response never escapes this module — only normalized primitives do;
   * runtime hardening (log redaction + traceback scrub) is installed before the first call.
 
@@ -36,6 +38,7 @@ _IV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 if _IV not in sys.path:
     sys.path.insert(0, _IV)
 import vault
+import cassandra_oauth
 
 ENDPOINT = "https://market-research.cassandrasedge.com/mcp"   # not secret; token is separate
 ROOT = {"SPX": "SPXW"}                              # 0DTE dailies trade under the SPXW root
@@ -53,6 +56,14 @@ _ET = ZoneInfo("America/New_York")
 _CLIENT: Optional[httpx.Client] = None
 _SESSION: Optional[str] = None
 _HARDENED = False
+# Set when a 401 has just been eaten, consumed by the next _bearer(): the one
+# forced refresh a bounced request is allowed before it is called a real refusal.
+_FORCE_REFRESH = False
+
+
+class _AuthRejected(RuntimeError):
+    """401/403 from the endpoint. A RuntimeError subclass on purpose — probe_token
+    and every existing caller still catch it exactly as they did."""
 
 
 def _today_iso() -> str:
@@ -69,8 +80,26 @@ def _client() -> httpx.Client:
     return _CLIENT
 
 
+def endpoint_bearer() -> str:
+    """The Authorization value for ANY client speaking to this endpoint.
+
+    Public because the LOB collector opens its own MCP session (lob_bridge) and
+    must not carry a second, divergent copy of the credential logic — that is
+    exactly how it kept presenting the retired static bearer for hours after the
+    scanner had moved to OAuth. OAuth (a refresh token spending itself into a
+    300-second access token) is the live path since 2026-09-09; the long-lived
+    bearer is honoured only while a station has not been re-enrolled yet, and is
+    gone the moment `--login` succeeds. Neither value is ever returned to a
+    caller that prints — it goes straight into the header dict below."""
+    global _FORCE_REFRESH
+    if cassandra_oauth.is_enrolled():
+        force, _FORCE_REFRESH = _FORCE_REFRESH, False
+        return cassandra_oauth.bearer(force_refresh=force)
+    return vault.get_cassandra_token()
+
+
 def _headers(with_session: bool) -> dict:
-    h = {"Authorization": f"Bearer {vault.get_cassandra_token()}",   # value stays in-header only
+    h = {"Authorization": f"Bearer {endpoint_bearer()}",   # value stays in-header only
          "Accept": "application/json, text/event-stream",
          "Content-Type": "application/json",
          "MCP-Protocol-Version": _PROTOCOL}
@@ -110,7 +139,7 @@ def _initialize() -> None:
         "params": {"protocolVersion": _PROTOCOL, "capabilities": {},
                    "clientInfo": {"name": "mirai-theta-gex", "version": "1.0"}}})
     if r.status_code in (401, 403):
-        raise RuntimeError(f"native_gex_feed: auth rejected ({r.status_code})")   # do not retry
+        raise _AuthRejected(f"native_gex_feed: auth rejected ({r.status_code})")
     r.raise_for_status()
     _SESSION = r.headers.get("mcp-session-id")
     c.post(ENDPOINT, headers=_headers(with_session=True),
@@ -121,7 +150,7 @@ def _run(code: str) -> Optional[dict]:
     """Call cass_market_run(code) and return the parsed tool result dict, or None. One
     bounded re-init retry on a dropped/expired session (transport error, 400/404, or a
     200 with no result)."""
-    global _SESSION
+    global _SESSION, _FORCE_REFRESH
     for attempt in range(2):
         try:
             if _SESSION is None:
@@ -132,8 +161,21 @@ def _run(code: str) -> Optional[dict]:
         except httpx.TransportError:
             _SESSION = None
             continue                                  # bounded retry on connect/read error
+        except _AuthRejected:
+            # An access token that died between the cache check and the request
+            # is indistinguishable from a revoked one at this layer, and with a
+            # 300-second token the first is far likelier. Worth exactly one
+            # forced refresh — if the REFRESH is what the server rejected, the
+            # OAuth layer raises NeedsLogin and this never becomes a loop.
+            if attempt == 0 and cassandra_oauth.is_enrolled():
+                _SESSION, _FORCE_REFRESH = None, True
+                continue
+            raise
         if r.status_code in (401, 403):
-            raise RuntimeError(f"native_gex_feed: auth rejected ({r.status_code})")
+            if attempt == 0 and cassandra_oauth.is_enrolled():
+                _SESSION, _FORCE_REFRESH = None, True
+                continue
+            raise _AuthRejected(f"native_gex_feed: auth rejected ({r.status_code})")
         if r.status_code in (400, 404) and attempt == 0:
             _SESSION = None                           # stale session → re-init once
             continue
@@ -164,7 +206,54 @@ def _run(code: str) -> Optional[dict]:
 
 # --- server-side normalizers (run inside cass_market_run; keep payloads small) -------------
 
-_CHAIN_CODE = """
+# THE 50-CALL CEILING (provider change, 2026-09-09). A single cass_market_run
+# execute() now refuses more than 50 call_tool() invocations — "Tool call limit
+# exceeded". The old one-shot fetch spent far more than that on a wide day
+# (discovery is up to 14 on its own, and every expiry x side chunk can recurse
+# to 8 on a clipped wing), so the whole pull came back as one tool error and the
+# scan fell to the SPY proxy with a perfectly good token in hand.
+#
+# The pull is therefore SPLIT: one discovery execute(), then the book in batches
+# of expiries, each batch its own execute() with its own budget, merged on this
+# side. Every server-side call goes through _ct(), which stops the batch cleanly
+# at the budget instead of letting the server kill it — a batch that runs out
+# returns what it already has plus the expiries it finished, and the client asks
+# for the rest in the next execute() rather than losing the lot.
+_CALL_BUDGET = 45           # of the server's 50; the margin absorbs a retry inside a chunk
+# Batch the whole window into ONE execute() and let the budget guard split it only
+# when a day is genuinely pathological. Sized from live measurement (2026-09-09):
+# discovery spends 13 calls and a 6-expiry book ~12-24, well inside 45.
+#
+# Batch size turned out NOT to drive latency — 6, 3 and 2 per run all returned the
+# same 2170 contracts in 3.4-8.0s, the spread being server-side variance rather
+# than the extra HTTP round-trips. So this is chosen for the fewest moving parts,
+# not for speed. A cold pull sitting anywhere in that range against read()'s 15s
+# budget is why a refill tick can still lose its flow reading; that tension is
+# older than the split (the budget_timeout line has been in this log for months)
+# and belongs to the budget, not to the batching.
+_EXPIRIES_PER_RUN = 6
+_MAX_BOOK_RUNS = 6          # a hard stop, so a misbehaving server cannot loop us
+
+# The sandbox that runs these blocks ("the monty syntax parser") does NOT support
+# class definitions — a `class _Budget(Exception)` sentinel comes back as
+# NotImplementedError, not as a syntax error, and takes the whole fetch with it.
+# So the budget signal is a plain RuntimeError carrying a marker in its message,
+# matched by string on the way out. Ugly, and the only shape the server accepts.
+_BUDGET_MARK = "__mirai_call_budget__"
+
+_CODE_PRELUDE = """
+_calls = [0]
+
+async def _ct(name, params):
+    # The budget is spent HERE rather than discovered as a server-side kill: an
+    # exception we raise ourselves leaves the partial result intact and tellable.
+    if _calls[0] >= %(budget)d:
+        raise RuntimeError(%(mark)r)
+    _calls[0] += 1
+    return await call_tool(name, params)
+"""
+
+_CHAIN_HELPERS = """
 import datetime as _dt
 def _v(x): return x.get('value', x) if isinstance(x, dict) else x
 def _side(t):
@@ -177,7 +266,7 @@ async def _probe_day(sym, d_iso):
     # Single-day existence ask. The server answers an UNMATCHED filter with the
     # ENTIRE chain (no error), so rows only count when their block really is the
     # asked-for expiry — a holiday probe filters to zero, never to noise.
-    r = _v(await call_tool('options_chain', {'symbol': sym,
+    r = _v(await _ct('options_chain', {'symbol': sym,
         'expiration_date': d_iso, 'limit': 25}))
     spot = (r.get('summary') or {}).get('underlying_price')
     n = 0
@@ -198,7 +287,7 @@ async def _discover(sym):
     spot = None
     found = set()
     try:
-        r = _v(await call_tool('options_chain', {'symbol': sym, 'expiry_from': %(d0)r,
+        r = _v(await _ct('options_chain', {'symbol': sym, 'expiry_from': %(d0)r,
             'expiry_to': %(d1)r, 'limit': 250}))
         spot = (r.get('summary') or {}).get('underlying_price')
         for e in (r.get('expirations') or []):
@@ -242,7 +331,7 @@ async def _chunk(sym, exp, side, lo, hi, depth=0):
     # treated as amputated when it is suspiciously large (>=250, the clip we have
     # observed) OR when the returned strikes stop short of the asked window by
     # more than 2x the strike gap inferred from the data itself.
-    r = _v(await call_tool('options_chain', {'symbol': sym, 'expiration_date': exp,
+    r = _v(await _ct('options_chain', {'symbol': sym, 'expiration_date': exp,
         'contract_type': side, 'strike_gte': lo, 'strike_lte': hi, 'limit': 250}))
     rows = []
     total = 0
@@ -274,6 +363,9 @@ async def _chunk(sym, exp, side, lo, hi, depth=0):
                 await _chunk(sym, exp, side, mid, hi, depth + 1))
     return rows
 
+"""
+
+_DISCOVER_CODE = _CODE_PRELUDE + _CHAIN_HELPERS + """
 spot, weekly_exps = await _discover(%(root)r)
 roots = {%(root)r: weekly_exps}
 monthly_root = %(monthly_root)r
@@ -284,13 +376,22 @@ if monthly_root and monthly_root != %(root)r:
     spot = spot or m_spot
     if m_exps:
         roots[monthly_root] = m_exps
-if not spot:
-    return {'spot': None, 'contracts': []}
+return {'spot': spot, 'roots': roots, 'calls': _calls[0]}
+"""
+
+_BOOK_CODE = _CODE_PRELUDE + _CHAIN_HELPERS + """
+spot = %(spot)r
+pairs = %(pairs)r
 lo, hi = spot * 0.92, spot * 1.08
-out, chunks, seen, sides = [], 0, set(), []
-for sym, exps in roots.items():
-    for exp in exps:
-        dte = (_dt.date.fromisoformat(exp) - today).days
+out, chunks, seen, sides, done = [], 0, set(), [], []
+budget_hit = False
+for sym, exp in pairs:
+    dte = (_dt.date.fromisoformat(exp) - today).days
+    # Stage this expiry's work and commit it only when BOTH sides came back: a
+    # half-fetched expiry looks exactly like a one-sided book to the coverage
+    # guard downstream, which is the very failure the side ledger exists to catch.
+    staged_rows, staged_sides = [], []
+    try:
         for side in ('call', 'put'):
             rows = await _chunk(sym, exp, side, lo, hi)
             chunks += 1
@@ -303,29 +404,38 @@ for sym, exps in roots.items():
             n_side = sum(1 for c in rows if _side(c.get('type')) == side)
             kk = [c.get('strike') for c in rows if _side(c.get('type')) == side
                   and isinstance(c.get('strike'), (int, float))]
-            sides.append({'root': sym, 'exp': exp, 'side': side,
-                          'rows': n_side, 'raw_rows': len(rows), 'dte': dte,
-                          'k_lo': min(kk) if kk else None,
-                          'k_hi': max(kk) if kk else None})
-            for c in rows:
-                s = _side(c.get('type'))
-                if s != side:
-                    continue
-                key = (sym, exp, s, c.get('strike'))
-                if key in seen:
-                    continue      # inclusive split halves / root overlap → dedup
-                seen.add(key)
-                g = c.get('greeks') or {}
-                out.append({'right': s, 'strike': c.get('strike'), 'dte': dte,
-                            'expiry': exp, 'root': sym, 'iv': c.get('iv'),
-                            'open_interest': c.get('open_interest'),
-                            'volume': c.get('volume'), 'gamma': g.get('gamma'),
-                            'delta': g.get('delta'), 'theta': g.get('theta'),
-                            'vega': g.get('vega'), 'bid': c.get('bid'),
-                            'ask': c.get('ask'), 'mark': c.get('mark'),
-                            'bid_size': c.get('bid_size'), 'ask_size': c.get('ask_size')})
-return {'spot': spot, 'contracts': out, 'chunks': chunks, 'sides': sides,
-        'expiries': sorted(set(e for es in roots.values() for e in es))}
+            staged_sides.append({'root': sym, 'exp': exp, 'side': side,
+                                 'rows': n_side, 'raw_rows': len(rows), 'dte': dte,
+                                 'k_lo': min(kk) if kk else None,
+                                 'k_hi': max(kk) if kk else None})
+            staged_rows.append((side, rows))
+    except RuntimeError as _e:
+        if %(mark)r not in str(_e):
+            raise                       # a real failure, not our own budget stop
+        budget_hit = True
+        break
+    sides.extend(staged_sides)
+    for side, rows in staged_rows:
+        for c in rows:
+            s = _side(c.get('type'))
+            if s != side:
+                continue
+            key = (sym, exp, s, c.get('strike'))
+            if key in seen:
+                continue      # inclusive split halves / root overlap → dedup
+            seen.add(key)
+            g = c.get('greeks') or {}
+            out.append({'right': s, 'strike': c.get('strike'), 'dte': dte,
+                        'expiry': exp, 'root': sym, 'iv': c.get('iv'),
+                        'open_interest': c.get('open_interest'),
+                        'volume': c.get('volume'), 'gamma': g.get('gamma'),
+                        'delta': g.get('delta'), 'theta': g.get('theta'),
+                        'vega': g.get('vega'), 'bid': c.get('bid'),
+                        'ask': c.get('ask'), 'mark': c.get('mark'),
+                        'bid_size': c.get('bid_size'), 'ask_size': c.get('ask_size')})
+    done.append([sym, exp])
+return {'contracts': out, 'chunks': chunks, 'sides': sides, 'done': done,
+        'budget_hit': budget_hit, 'calls': _calls[0]}
 """
 
 _FLOW_CODE = """
@@ -537,6 +647,57 @@ def cached_chain(ticker: str) -> Optional[dict]:
     return None
 
 
+def _fetch_book(root: str, monthly_root: Optional[str], today) -> Optional[dict]:
+    """The whole 0-7 DTE book, assembled from one discovery execute() and as many
+    budgeted book executes() as the expiry list needs (see _CALL_BUDGET).
+
+    Returns the same shape the single-shot fetch used to return — spot, contracts,
+    sides, chunks — so nothing downstream knows the pull was split. A batch that
+    runs out of budget reports the expiries it DID finish and the next run picks
+    up the rest; only an expiry that never completed is missing from `sides`,
+    which is exactly what the coverage guard is there to adjudicate."""
+    disc = _run(_DISCOVER_CODE % {"budget": _CALL_BUDGET, "mark": _BUDGET_MARK,
+                                  "root": root,
+                                  "monthly_root": monthly_root,
+                                  "d0": today.isoformat(),
+                                  "d1": (today + timedelta(days=7)).isoformat()})
+    if not disc or disc.get("spot") is None:
+        return None
+    spot = disc["spot"]
+    pending = [[sym, exp] for sym, exps in (disc.get("roots") or {}).items()
+               for exp in exps]
+    expiries = sorted({exp for _, exp in pending})
+    if not pending:
+        return {"spot": spot, "contracts": [], "sides": [], "chunks": 0, "expiries": []}
+
+    contracts: list = []
+    sides: list = []
+    chunks = 0
+    runs = 0
+    while pending and runs < _MAX_BOOK_RUNS:
+        batch, rest = pending[:_EXPIRIES_PER_RUN], pending[_EXPIRIES_PER_RUN:]
+        res = _run(_BOOK_CODE % {"budget": _CALL_BUDGET, "mark": _BUDGET_MARK,
+                                 "spot": spot,
+                                 "pairs": batch,
+                                 "d0": today.isoformat(),
+                                 "d1": (today + timedelta(days=7)).isoformat()})
+        runs += 1
+        if not res:
+            break                       # transport/tool failure — keep what we have
+        contracts.extend(res.get("contracts") or [])
+        sides.extend(res.get("sides") or [])
+        chunks += res.get("chunks") or 0
+        done = {tuple(p) for p in (res.get("done") or [])}
+        # Anything the batch did not finish goes back to the FRONT of the queue:
+        # a budget-truncated batch must be retried before the untouched ones, or a
+        # wide day would keep deferring the same expiry until the run cap ate it.
+        pending = [p for p in batch if tuple(p) not in done] + rest
+        if not res.get("budget_hit") and not done:
+            break                       # made no progress and blamed no budget: stop
+    return {"spot": spot, "contracts": contracts, "sides": sides, "chunks": chunks,
+            "expiries": expiries}
+
+
 def native_chain(ticker: str) -> Optional[dict]:
     """REAL CHAIN — pulls the actual SPX option book, strike by strike.
     Native 0-7 DTE index chain in GexBox's contract shape (no SPY proxy): chunked
@@ -555,9 +716,7 @@ def native_chain(ticker: str) -> Optional[dict]:
             return hit[1]
         root = ROOT.get(ticker, ticker)
         today = now.date()
-        res = _run(_CHAIN_CODE % {"root": root, "monthly_root": MONTHLY_ROOT.get(ticker),
-                                  "d0": today.isoformat(),
-                                  "d1": (today + timedelta(days=7)).isoformat()})
+        res = _fetch_book(root, MONTHLY_ROOT.get(ticker), today)
         if not res or res.get("spot") is None or not res.get("contracts"):
             return None
         spot, contracts = res["spot"], res["contracts"]
@@ -753,25 +912,20 @@ def read(ticker: str, spot: float, now: datetime, budget_s: float = 15.0,
 
 # --- ops helpers ---------------------------------------------------------------------------
 
-def _setup_from_claude_json() -> None:
-    """One-time: copy the market-research bearer from ~/.claude.json into the Keychain."""
-    cfg = json.load(open(os.path.expanduser("~/.claude.json")))
-    auth = cfg["mcpServers"]["market-research"]["headers"]["Authorization"]
-    tok = auth.split(" ", 1)[1] if auth.lower().startswith("bearer ") else auth
-    vault.set_cassandra_token(tok)
-    print("cassandra token stored:", vault.has_cassandra_token())
-
-
 def probe_token() -> tuple[str, str]:
-    """Lightweight authenticated health check of the Cassandra/ThetaData bearer.
+    """Lightweight authenticated health check of the Cassandra/ThetaData auth.
 
-    Does one `initialize` round-trip and classifies the outcome:
-      ('ok', ...)            the token authenticated cleanly.
-      ('auth_rejected', ...) the server returned 401/403 — the bearer is dead or
-                             revoked. `native_chain` will then silently fall back
-                             to the SPY×10 proxy until the token is re-minted.
-      ('unknown', ...)       transient/network/other error — NOT a token verdict,
-                             so callers must not page on it.
+    Does one `initialize` round-trip — which, on the OAuth path, also exercises
+    the refresh — and classifies the outcome:
+      ('ok', ...)            authenticated cleanly.
+      ('needs_login', ...)   the refresh token is gone or was rejected. Only a
+                             human at a browser can fix this (`--login`).
+      ('not_enrolled', ...)  nothing is enrolled at all.
+      ('auth_rejected', ...) the server returned 401/403 to a credential that
+                             should have worked. `native_chain` then falls back
+                             to the SPY×10 proxy until it is fixed.
+      ('unknown', ...)       transient/network/other error — NOT a verdict, so
+                             callers must not page on it.
 
     Never raises. Resets the cached session so the probe can't be fooled by a
     stale one. Used by the daily auth-watch job to turn the previously-silent
@@ -782,7 +936,13 @@ def probe_token() -> tuple[str, str]:
         _SESSION = None
         _initialize()
         return ("ok", "authenticated")
-    except RuntimeError as e:                       # our own explicit auth/https guards
+    except cassandra_oauth.NeedsLogin as e:
+        return ("needs_login", str(e))
+    except vault.CredentialsNotEnrolled as e:
+        return ("not_enrolled", str(e))
+    except _AuthRejected as e:
+        return ("auth_rejected", str(e))
+    except RuntimeError as e:                       # our own explicit https guard, etc.
         msg = str(e)
         return ("auth_rejected", msg) if "auth rejected" in msg else ("unknown", msg)
     except Exception as e:                          # httpx status/transport, anything else
@@ -790,8 +950,24 @@ def probe_token() -> tuple[str, str]:
 
 
 if __name__ == "__main__":
-    if "--setup" in sys.argv:
-        _setup_from_claude_json()
+    if "--login" in sys.argv:
+        # --manual for a station being enrolled over SSH: nothing listens on the
+        # mini, the URL is printed, and the redirected address is pasted back.
+        cassandra_oauth.login(manual="--manual" in sys.argv)
+    elif "--logout" in sys.argv:
+        cassandra_oauth.logout()
+        print("cassandra OAuth enrolment wiped")
+    elif "--status" in sys.argv:
+        st = cassandra_oauth.status() if cassandra_oauth.is_enrolled() else \
+            {"state": "not_enrolled", "detail": "run --login"}
+        print(f"cassandra auth: {st['state']} — {st['detail']}")
+    elif "--setup" in sys.argv:
+        # Kept so the old runbook line does something useful rather than
+        # silently enrolling a token that dies in 300 seconds.
+        print("--setup is retired: the endpoint moved to OAuth on 2026-09-09 and the\n"
+              "bearer in ~/.claude.json now expires 300s after it is minted.\n"
+              "Run:  python3 native_gex_feed.py --login")
+        sys.exit(2)
     elif "--selftest" in sys.argv:
         ch = native_chain("SPX")
         n = len(ch["contracts"]) if ch else 0
@@ -800,4 +976,4 @@ if __name__ == "__main__":
         if ch:
             print("aggressor_flow SPX:", aggressor_flow("SPX", ch["spot"]))
     else:
-        print("usage: native_gex_feed.py [--setup | --selftest]")
+        print("usage: native_gex_feed.py [--login [--manual] | --logout | --status | --selftest]")

@@ -18,6 +18,12 @@ fail=0
 # The scanner's own patterns read as hits; never scan the scripts themselves.
 EXCL=':(exclude).github/scripts/*'
 
+# --untracked (2026-09-09): plain `git grep` sees TRACKED files only, so a brand
+# new file was invisible to every scan below until the commit that added it had
+# already been made — exactly the moment the gate is supposed to speak. A file
+# git is ignoring is still skipped, which is what we want: state/ is 659 MB.
+UNTRACKED='--untracked'
+
 report() {                                  # report <label> <hits>
     printf '\nFAIL  %s\n' "$1"
     printf '%s\n' "$2" | sed 's/^/        /'
@@ -26,7 +32,7 @@ report() {                                  # report <label> <hits>
 
 scan() {                                    # scan <label> <regex> [allow-regex]
     local label="$1" re="$2" allow="${3:-}" hits
-    hits=$(git grep -nIE -e "$re" -- . "$EXCL" || true)
+    hits=$(git grep $UNTRACKED -nIE -e "$re" -- . "$EXCL" || true)
     if [ -n "$allow" ] && [ -n "$hits" ]; then
         hits=$(printf '%s\n' "$hits" | grep -Ev "$allow" || true)
     fi
@@ -60,12 +66,12 @@ scan 'Tailscale CGNAT address' \
 # good address on the same line.
 IP_RE='(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})'
 SANCTIONED='^(192\.168\.1\.40|10\.0\.0\.7|172\.16\.4\.9|10\.0\.0\.0|192\.168\.0\.0|172\.16\.0\.0)$'
-bad_ips=$(git grep -hIoE -e "$IP_RE" -- . "$EXCL" | sort -u | grep -Ev "$SANCTIONED" || true)
+bad_ips=$(git grep $UNTRACKED -hIoE -e "$IP_RE" -- . "$EXCL" | sort -u | grep -Ev "$SANCTIONED" || true)
 if [ -n "$bad_ips" ]; then
     hits=""
     while read -r ip; do
         [ -n "$ip" ] || continue
-        hits="$hits$(git grep -nIF -e "$ip" -- . "$EXCL")
+        hits="$hits$(git grep $UNTRACKED -nIF -e "$ip" -- . "$EXCL")
 "
     done <<EOF
 $bad_ips
@@ -92,7 +98,7 @@ scan 'a literal Authorization header — a credential written into the source' \
 # place, and the next hardcoded thing beside it is the password. Kotlin and Java
 # only: res/*.xml is full of http://schemas.android.com namespaces that are not
 # addresses of anything.
-apk_urls=$(git grep -nIE -e 'https?://' -- 'mirai-mobile/app/src/*.kt' 'mirai-mobile/app/src/*.java' || true)
+apk_urls=$(git grep $UNTRACKED -nIE -e 'https?://' -- 'mirai-mobile/app/src/*.kt' 'mirai-mobile/app/src/*.java' || true)
 [ -n "$apk_urls" ] && report 'hardcoded URL in the app source (every URL comes from local.properties)' "$apk_urls"
 
 # Not a pattern but the same question: the credential files must not be tracked

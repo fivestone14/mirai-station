@@ -304,7 +304,7 @@ reads it, and it is the single gate between paper and live. **Nothing has cleare
 
 | Provider | Supplies | Auth |
 |---|---|---|
-| **ThetaData** (via Cassandra's Edge MCP) | the **native SPX option chain** — the primary GEX source — the SNDK chain, and a Schwab-independent 1-min price path | Keychain bearer `iv-viability-cassandra` |
+| **ThetaData** (via Cassandra's Edge MCP) | the **native SPX option chain** — the primary GEX source — the SNDK chain, and a Schwab-independent 1-min price path | AuthKit OAuth since 2026-09-09: a Keychain **refresh** token (`iv-viability-cassandra`) spent per scan for a 300-second access token. Enrol with `native_gex_feed.py --login` |
 | **Schwab** (`schwab-py`) | daily/1-min bars, live quotes, the SPY chain (the ×10 proxy) | Keychain OAuth (7-day token, kept alive by `auth-watch`) |
 | **Cassandra's Edge MCP** (twitter / reddit / fetch) | the morning Macro-Mood news read | per-server bearer |
 | **Claude** (subscription) | the Watchtower vote and the SNDK reading via one-shot `claude -p`; the voice conversation via a held-open `claude-agent-sdk` day session (a CLI spawn costs 7–100 s — far too slow to speak) | Claude Code CLI login — **no API key** |

@@ -40,11 +40,45 @@ SKILL_DIR = Path(__file__).resolve().parent
 TOKEN_FILE = SKILL_DIR / ".schwab_token.json.enc"
 LOCK_FILE = SKILL_DIR / ".schwab_token.lock"
 
+# THE VALUE, NOT JUST THE LABEL (2026-09-09). The original pattern matched the
+# WORDS — so `refresh_token=eyJhbGci...` scrubbed to `[REDACTED]=eyJhbGci...` and
+# the credential itself sailed through, in a log line and in a traceback (both
+# measured). That was survivable while the only secret was a Schwab key nothing
+# ever put in a message body; it is not survivable now that an OAuth refresh
+# token rides in a POST body httpx can be asked to log.
+#
+# Two additions, both shaped tightly enough to leave ordinary market data alone:
+#   * a JWT is unmistakable — three base64url runs separated by dots, opening
+#     with the `eyJ` that every {"alg": header encodes to;
+#   * `secret=value` / "secret": "value" — the value is replaced first, then the
+#     older word pass takes the label, so the pair reads `[REDACTED]=[REDACTED]`.
+SECRET_WORDS = (r"api_key|app_secret|access_token|refresh_token|fernet_key|"
+                r"client_secret|authorization|code_verifier")
+
 SECRET_PATTERNS = re.compile(
-    r"(api_key|app_secret|access_token|refresh_token|fernet_key|"
-    r"authorization|bearer\s+[\w\-\.]+)",
+    r"("
+    r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"   # a JWT, whole
+    r"|bearer\s+[\w\-\.]+"                                         # Bearer <value>
+    r"|" + SECRET_WORDS +
+    r")",
     re.IGNORECASE,
 )
+
+# Applied BEFORE the word pattern, so the value dies with the label rather than
+# being orphaned next to a [REDACTED] that names it.
+SECRET_ASSIGNMENTS = re.compile(
+    r"(?P<label>" + SECRET_WORDS + r")"
+    r"(?P<sep>\s*[=:]\s*\"?)"
+    r"(?P<value>[^\s\"',&}]+)",
+    re.IGNORECASE,
+)
+
+
+def _scrub(text: str) -> str:
+    """Every redaction path goes through here, so log lines and tracebacks can
+    never drift apart on what counts as a secret."""
+    text = SECRET_ASSIGNMENTS.sub(lambda m: m.group("label") + m.group("sep") + "[REDACTED]", text)
+    return SECRET_PATTERNS.sub("[REDACTED]", text)
 
 
 class VaultError(RuntimeError):
@@ -174,7 +208,7 @@ def get_cassandra_token() -> str:
         raise VaultError(f"Keychain read failed for cassandra token: {type(e).__name__}") from e
     if tok is None:
         raise CredentialsNotEnrolled(
-            "Cassandra MCP token not enrolled. Run: python3 native_gex_feed.py --setup"
+            "Cassandra MCP not enrolled. Run: python3 native_gex_feed.py --login"
         )
     return tok
 
@@ -195,6 +229,117 @@ def has_cassandra_token() -> bool:
         return keyring.get_password(CASS_SERVICE, CASS_ACCOUNT) is not None
     except Exception:
         return False
+
+
+def clear_cassandra_token() -> None:
+    """Drop the legacy static bearer. Called by the OAuth enrolment so a dead
+    long-lived token cannot linger and be picked up by the fallback path."""
+    keyring = _import_keyring()
+    try:
+        keyring.delete_password(CASS_SERVICE, CASS_ACCOUNT)
+    except Exception:
+        pass
+
+
+# --- OAuth (2026-09-09) -----------------------------------------------------
+# The endpoint stopped honouring long-lived bearers on 2026-09-09 and moved to
+# AuthKit OAuth (the loopback authorization-code flow — its registration endpoint
+# refuses device-code clients) whose ACCESS tokens live 300 seconds. A static token
+# in CASS_ACCOUNT is therefore dead five minutes after it is minted, however
+# carefully it was copied. What survives is the REFRESH token, so that is what
+# is enrolled; the access token is a cache with an expiry beside it, and the
+# client registration (RFC 7591 dynamic registration) is kept so re-enrolling
+# does not register a new client every time.
+#
+# All three live in the same Keychain service as the token they replace, so a
+# rotation still touches exactly one place and `security delete-generic-password
+# -s iv-viability-cassandra` still wipes everything in one command.
+
+CASS_ACCOUNT_REFRESH = "cassandra_edge_refresh"   # the durable credential
+CASS_ACCOUNT_ACCESS = "cassandra_edge_access"     # {"token": ..., "expires_at": epoch}
+CASS_ACCOUNT_CLIENT = "cassandra_edge_client"     # {"issuer", "client_id", ...}
+
+
+def get_cassandra_refresh_token() -> str:
+    """The durable OAuth credential. Absent = not enrolled, which is a setup
+    problem and not a transient one, so it raises rather than returning None."""
+    tok = _cass_get(CASS_ACCOUNT_REFRESH)
+    if tok is None:
+        raise CredentialsNotEnrolled(
+            "Cassandra OAuth not enrolled. Run: python3 native_gex_feed.py --login"
+        )
+    return tok
+
+
+def set_cassandra_refresh_token(token: str) -> None:
+    if not token:
+        raise VaultError("set_cassandra_refresh_token: empty token")
+    _cass_set(CASS_ACCOUNT_REFRESH, token)
+
+
+def has_cassandra_refresh_token() -> bool:
+    return _cass_get(CASS_ACCOUNT_REFRESH) is not None
+
+
+def get_cassandra_access() -> dict | None:
+    """The cached access token as {"token", "expires_at"}, or None when there is
+    nothing cached or the cache is unreadable. A torn cache is not an error —
+    the caller simply refreshes."""
+    raw = _cass_get(CASS_ACCOUNT_ACCESS)
+    if not raw:
+        return None
+    try:
+        blob = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return blob if isinstance(blob, dict) and blob.get("token") else None
+
+
+def set_cassandra_access(token: str, expires_at: float) -> None:
+    _cass_set(CASS_ACCOUNT_ACCESS, json.dumps({"token": token, "expires_at": expires_at}))
+
+
+def get_cassandra_client() -> dict | None:
+    """The dynamic client registration + discovered endpoints, or None."""
+    raw = _cass_get(CASS_ACCOUNT_CLIENT)
+    if not raw:
+        return None
+    try:
+        blob = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return blob if isinstance(blob, dict) and blob.get("client_id") else None
+
+
+def set_cassandra_client(blob: dict) -> None:
+    _cass_set(CASS_ACCOUNT_CLIENT, json.dumps(blob))
+
+
+def wipe_cassandra_oauth() -> None:
+    """Forget the whole OAuth enrolment (used by --logout and by a failed login
+    so a half-finished enrolment never half-works)."""
+    keyring = _import_keyring()
+    for account in (CASS_ACCOUNT_REFRESH, CASS_ACCOUNT_ACCESS, CASS_ACCOUNT_CLIENT):
+        try:
+            keyring.delete_password(CASS_SERVICE, account)
+        except Exception:
+            pass
+
+
+def _cass_get(account: str) -> str | None:
+    keyring = _import_keyring()
+    try:
+        return keyring.get_password(CASS_SERVICE, account)
+    except Exception as e:
+        raise VaultError(f"Keychain read failed for {account}: {type(e).__name__}") from e
+
+
+def _cass_set(account: str, value: str) -> None:
+    keyring = _import_keyring()
+    try:
+        keyring.set_password(CASS_SERVICE, account, value)
+    except Exception as e:
+        raise VaultError(f"Keychain write failed for {account}: {type(e).__name__}") from e
 
 
 def _get_fernet():
@@ -304,8 +449,9 @@ class _RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             msg = record.getMessage()
-            if SECRET_PATTERNS.search(msg):
-                record.msg = SECRET_PATTERNS.sub("[REDACTED]", msg)
+            scrubbed = _scrub(msg)
+            if scrubbed != msg:
+                record.msg = scrubbed
                 record.args = ()
         except Exception:
             record.msg = "[REDACTED log record]"
@@ -315,7 +461,7 @@ class _RedactingFilter(logging.Filter):
 
 def _redacting_excepthook(exc_type, exc_value, tb):
     lines = traceback.format_exception(exc_type, exc_value, tb)
-    scrubbed = [SECRET_PATTERNS.sub("[REDACTED]", line) for line in lines]
+    scrubbed = [_scrub(line) for line in lines]
     sys.stderr.write("".join(scrubbed))
 
 

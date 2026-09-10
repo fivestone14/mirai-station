@@ -172,7 +172,12 @@ def _build_adapters():
                                        OptionsTapeFeedMcp)
 
     cfg = LobConfig()
-    client = McpClient(native_gex_feed.ENDPOINT, vault.get_cassandra_token,
+    # endpoint_bearer, NOT vault.get_cassandra_token (2026-09-09): the endpoint
+    # moved to OAuth and the static bearer is cleared the moment a station
+    # enrols. Wired straight to the vault, this collector went on presenting the
+    # retired token and reported a silent, trade-free tape — a board that looks
+    # calm rather than blind — while the scanner beside it was reading fine.
+    client = McpClient(native_gex_feed.ENDPOINT, native_gex_feed.endpoint_bearer,
                        harden=vault.install_runtime_hardening)   # OWN session
     stream = None
     try:

@@ -1,3 +1,4 @@
+import os
 """
 Hermetic tests for vault.py with a mocked keyring backend.
 
@@ -177,3 +178,59 @@ def test_install_runtime_hardening_clean_env(vault_mod, monkeypatch):
             monkeypatch.delenv(k, raising=False)
     # should not raise
     vault_mod.install_runtime_hardening()
+
+
+# --- the value, not just the label (2026-09-09) -----------------------------
+# The filter used to match the WORDS: `refresh_token=eyJhbGci...` scrubbed to
+# `[REDACTED]=eyJhbGci...` and the credential itself survived, in both a log line
+# and a traceback. Harmless while the only secret was a Schwab key that never
+# entered a message body; not harmless once an OAuth refresh token rides in a
+# POST body httpx can be asked to log.
+
+_REAL_JWT = ("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"
+             ".eyJzdWIiOiJ1c2VyXzAxSyIsImV4cCI6MTc4ODk3MzU2NX0"
+             ".SIGNATURE_SECRET_PART_aaaaaaaaaaaaaaaaaaaa")
+
+
+def test_scrub_removes_a_bare_jwt(vault_mod):
+    out = vault_mod._scrub(f"sending {_REAL_JWT} upstream")
+    assert "SIGNATURE_SECRET_PART" not in out and "[REDACTED]" in out
+
+
+def test_scrub_removes_the_value_beside_its_label(vault_mod):
+    for line in (f"refresh_token={_REAL_JWT}",
+                 f'"access_token": "{_REAL_JWT}"',
+                 f"client_secret={_REAL_JWT}&grant_type=refresh_token",
+                 f"code_verifier={_REAL_JWT}"):
+        out = vault_mod._scrub(line)
+        assert "SIGNATURE_SECRET_PART" not in out, line
+
+
+def test_scrub_redacts_label_and_value_together(vault_mod):
+    """Both halves go. The label pass would have kept `refresh_token=` for
+    readability, but the older word pass redacts the label too and there is no
+    security reason to unpick that — what matters is that no value survives."""
+    assert vault_mod._scrub(f"refresh_token={_REAL_JWT}") == "[REDACTED]=[REDACTED]"
+
+
+def test_scrub_leaves_ordinary_market_data_alone(vault_mod):
+    """Over-redaction is its own outage: a scrubber that eats strikes and prices
+    blinds the very logs an incident is diagnosed from."""
+    line = "SPXW 2026-09-09 strike=7650.0 gamma=0.0099 oi=1200 volume=5000 iv=0.1234"
+    assert vault_mod._scrub(line) == line
+
+
+def test_excepthook_scrubs_a_token_in_the_message(vault_mod):
+    import subprocess
+    import sys
+    prog = (
+        "import sys\n"
+        f"sys.path.insert(0, {os.path.dirname(os.path.dirname(os.path.abspath(vault_mod.__file__)))!r})\n"
+        "sys.path.insert(0, 'iv-viability')\n"
+        "import vault\n"
+        "vault.install_runtime_hardening()\n"
+        f"raise RuntimeError('refresh failed for ' + {_REAL_JWT!r})\n"
+    )
+    r = subprocess.run([sys.executable, "-c", prog], capture_output=True, text=True,
+                       cwd=os.path.dirname(os.path.dirname(os.path.abspath(vault_mod.__file__))))
+    assert "SIGNATURE_SECRET_PART" not in r.stderr

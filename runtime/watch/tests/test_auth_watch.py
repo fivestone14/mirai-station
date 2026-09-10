@@ -146,8 +146,11 @@ class TestNtfyRequest(unittest.TestCase):
 class TestCassandraTokenHealth(unittest.TestCase):
     """The native-GEX data-token probe decision + ping (pure, no network)."""
 
-    def test_needs_ping_only_on_auth_rejected(self):
+    def test_needs_ping_on_every_state_a_human_must_clear(self):
         self.assertTrue(auth_check.cassandra_needs_ping("auth_rejected"))
+        # 2026-09-09: on the OAuth path these two are just as definitive as a 401
+        self.assertTrue(auth_check.cassandra_needs_ping("needs_login"))
+        self.assertTrue(auth_check.cassandra_needs_ping("not_enrolled"))
         self.assertFalse(auth_check.cassandra_needs_ping("ok"))
         self.assertFalse(auth_check.cassandra_needs_ping("unknown"))  # no crying wolf on transient
 
@@ -155,8 +158,16 @@ class TestCassandraTokenHealth(unittest.TestCase):
         cp = auth_check.build_cassandra_ping("auth_rejected", "native_gex_feed: auth rejected (401)")
         self.assertEqual(cp.priority, "urgent")
         self.assertIn("proxy", cp.message.lower())     # says what degraded
-        self.assertIn("--setup", cp.message)           # says how to fix it
+        self.assertIn("--login", cp.message)           # says how to fix it
         self.assertIn("401", cp.message)
+
+    def test_needs_login_ping_names_both_casualties(self):
+        """The SNDK station dies with the same credential, and its own deadman
+        only says 'silent' — this is the ping that explains why."""
+        cp = auth_check.build_cassandra_ping("needs_login", "refresh token was rejected")
+        self.assertEqual(cp.priority, "urgent")
+        self.assertIn("--login", cp.message)
+        self.assertIn("SNDK", cp.message)
 
     def test_ok_probe_is_informational_not_urgent(self):
         cp = auth_check.build_cassandra_ping("ok", "authenticated")

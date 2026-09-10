@@ -91,21 +91,25 @@ def _load_native():
 
 
 def cassandra_needs_ping(state: str) -> bool:
-    """Page ONLY on a definitive dead token. Unlike the Schwab watcher we do NOT
+    """Page ONLY on a definitive dead credential. Unlike the Schwab watcher we do NOT
     fail-safe to a ping on 'unknown' — a flaky network probe must not cry wolf about
     a bearer that may be perfectly fine (the trading loop's own degrade covers a
-    transient outage; a truly revoked token returns a hard 401/403)."""
-    return state == "auth_rejected"
+    transient outage; a truly revoked token returns a hard 401/403).
+
+    'needs_login' and 'not_enrolled' page too (2026-09-09): on the OAuth path they
+    are the states a human has to clear, and they are just as definitive as a 401."""
+    return state in ("auth_rejected", "needs_login", "not_enrolled")
 
 
 def build_cassandra_ping(state: str, detail: str = "") -> CassandraPing:
     """Build the phone ping for a Cassandra/ThetaData token verdict."""
-    if state == "auth_rejected":
+    if state in ("auth_rejected", "needs_login", "not_enrolled"):
         return CassandraPing(
-            title="Data token rejected",
-            message=("Cassandra/ThetaData bearer rejected (" + (detail or "401/403") + "). "
-                     "Native SPX GEX has degraded to the SPY×10 proxy until it is re-minted "
-                     "— run: native_gex_feed.py --setup (copies the fresh bearer from ~/.claude.json)."),
+            title="Data login expired",
+            message=("Cassandra/ThetaData auth " + state + " (" + (detail or "401/403") + "). "
+                     "Native SPX GEX has degraded to the SPY×10 proxy and the SNDK station is "
+                     "down until it is re-enrolled — run: native_gex_feed.py --login "
+                     "(opens a browser; add --manual over SSH)."),
             priority="urgent", tags="key")
     return CassandraPing(   # ok / unknown — informational, only sent under --force
         title="Data token check",

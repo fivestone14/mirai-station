@@ -28,6 +28,14 @@ if [ -x .github/scripts/scrub.sh ]; then
     .github/scripts/scrub.sh || fail=1
 fi
 
+# --- the tree: scraper code that must never be published --------------------
+# forbidden.sh ran in CI only until 2026-09-09, which made it a net and not a
+# gate: it flagged the modules AFTER the push that published them. The whole
+# point of this file is that the check happens while the fix is still cheap.
+if [ -x .github/scripts/forbidden.sh ]; then
+    .github/scripts/forbidden.sh || fail=1
+fi
+
 # --- the commits: identity and timestamp on what is actually being pushed ---
 # git feeds one line per ref on stdin: <local ref> <local sha> <remote ref> <remote sha>
 while read -r _local_ref local_sha _remote_ref remote_sha; do

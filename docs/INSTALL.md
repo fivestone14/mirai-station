@@ -84,16 +84,23 @@ security add-generic-password -U -a "$USER" -s "mirai-station-ntfy" \
 # and the vault never finds it.
 $PY skills/iv-viability/iv_fetcher.py --setup
 
-# ThetaData / Cassandra's Edge bearer — the native SPX chain (primary GEX source).
-# Service iv-viability-cassandra, account cassandra_edge_token.
-$PY skills/mirai-left-eye/native_gex_feed.py --setup
+# ThetaData / Cassandra's Edge — the native SPX chain (primary GEX source) AND
+# the SNDK chain. OAuth since 2026-09-09: there is no bearer to paste. --login
+# opens a browser and catches the redirect on 127.0.0.1:8765; --login --manual
+# prints the URL instead and takes the redirected address back by paste, for a
+# station enrolled over SSH where the browser is on another machine.
+# Service iv-viability-cassandra, accounts cassandra_edge_{refresh,access,client}.
+$PY skills/mirai-left-eye/native_gex_feed.py --login
+$PY skills/mirai-left-eye/native_gex_feed.py --login --manual   # over SSH
 ```
 
 Test retrieval:
 ```bash
 security find-generic-password -a "$USER" -s "mirai-station-ntfy" -w
 $PY -c "import sys; sys.path.insert(0,'skills/iv-viability'); import vault; \
-        print('schwab:', vault.has_credentials(), '| cassandra:', vault.has_cassandra_token())"
+        print('schwab:', vault.has_credentials(), \
+              '| cassandra:', vault.has_cassandra_refresh_token())"
+$PY skills/mirai-left-eye/native_gex_feed.py --status   # the live verdict
 ```
 
 ## 4. Provision the Python venv

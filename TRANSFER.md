@@ -74,9 +74,14 @@ PY=~/.local/share/mirai-station/venv/bin/python
 # (accounts: api_key, app_secret, callback_url, fernet_key)
 $PY skills/iv-viability/iv_fetcher.py --setup
 
-# ThetaData / Cassandra's Edge bearer — the native SPX chain (primary GEX source)
-# service iv-viability-cassandra, account cassandra_edge_token
-$PY skills/mirai-left-eye/native_gex_feed.py --setup
+# ThetaData / Cassandra's Edge — the native SPX chain (primary GEX source) and
+# the SNDK chain. OAuth since 2026-09-09: nothing to paste, and the enrolment
+# does NOT transfer — the refresh token rotates on every use, so two stations
+# sharing one would lock each other out. Enrol the new station on its own.
+# service iv-viability-cassandra, accounts cassandra_edge_{refresh,access,client}
+$PY skills/mirai-left-eye/native_gex_feed.py --login
+$PY skills/mirai-left-eye/native_gex_feed.py --login --manual   # over SSH
+$PY skills/mirai-left-eye/native_gex_feed.py --status           # confirm
 ```
 
 Also copy the `mcpServers` block into the target's `~/.claude.json` (see INSTALL §5)
@@ -142,5 +147,7 @@ rm -rf ~/.claude/plugins/mirai-station   # plugin
 rm -rf ~/.local/share/mirai-station      # venv
 # Optionally remove Keychain secrets:
 # security delete-generic-password -a "$USER" -s "mirai-station/schwab-app-key"  (etc.)
-# security delete-generic-password -a "$USER" -s "iv-viability-cassandra"
+# The Cassandra OAuth items are keyed by account, NOT by $USER — wipe them with
+# the vault so nothing is left behind:
+# $PY skills/mirai-left-eye/native_gex_feed.py --logout
 ```

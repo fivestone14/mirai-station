@@ -1,8 +1,24 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import native_gex_feed as tf
+
+
+@pytest.fixture(autouse=True)
+def _no_live_provider(monkeypatch):
+    """No test may reach the real endpoint.
+
+    Before the fetch was split (2026-09-09) every test that stubbed `_run` also
+    happened to smother native_chain's Phase-0 per-strike flow annotation. Moving
+    those stubs to `_fetch_book` uncovered it, and the suite quietly started
+    pulling LIVE market data mid-session — 0.04s to 57s, and one test spent 50s
+    of it. Default the transport to "the provider said nothing", which every
+    caller already handles fail-open; a test that wants a real reply stubs `_run`
+    itself and this fixture gets out of the way."""
+    monkeypatch.setattr(tf, "_run", lambda code: None)
 
 
 def test_fill_gamma_from_iv_only_when_missing():
@@ -24,7 +40,7 @@ def test_native_chain_normalizes_and_fills(monkeypatch):
         {"right": "call", "strike": 7500, "dte": 0, "iv": 0.12, "gamma": None,
          "open_interest": 100, "volume": 5000},
     ]}
-    monkeypatch.setattr(tf, "_run", lambda code: fake)
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
     out = tf.native_chain("SPX")
     assert out["spot"] == 7500.0
     c = out["contracts"][0]
@@ -33,9 +49,9 @@ def test_native_chain_normalizes_and_fills(monkeypatch):
 
 
 def test_native_chain_none_on_empty(monkeypatch):
-    monkeypatch.setattr(tf, "_run", lambda code: {"spot": None, "contracts": []})
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: {"spot": None, "contracts": []})
     assert tf.native_chain("SPX") is None
-    monkeypatch.setattr(tf, "_run", lambda code: None)
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: None)
     assert tf.native_chain("SPX") is None
 
 
@@ -67,7 +83,7 @@ class TestCoverageGuard:
                                "gamma": None, "open_interest": 100, "volume": 5000}],
                 "sides": [{"root": "SPXW", "exp": today, "side": "call", "rows": 120, "dte": 0},
                           {"root": "SPXW", "exp": today, "side": "put", "rows": 0, "dte": 0}]}
-        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
         assert tf.native_chain("SPX") is None            # the half-book must not serve
         assert tf.LAST_REJECT and tf.LAST_REJECT["reason"] == "coverage"
         assert any(m["side"] == "put" for m in tf.LAST_REJECT["missing"])
@@ -80,7 +96,7 @@ class TestCoverageGuard:
                                "gamma": None, "open_interest": 100, "volume": 5000}],
                 "sides": [{"root": "SPXW", "exp": today, "side": "call", "rows": 120, "dte": 0},
                           {"root": "SPXW", "exp": today, "side": "put", "rows": 3, "dte": 0}]}
-        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
         assert tf.native_chain("SPX") is None
 
     def test_missing_tenor_side_degrades_not_rejects(self, monkeypatch):
@@ -93,7 +109,7 @@ class TestCoverageGuard:
                           {"root": "SPXW", "exp": today, "side": "put", "rows": 118, "dte": 0},
                           {"root": "SPXW", "exp": "2099-01-08", "side": "call", "rows": 90, "dte": 3},
                           {"root": "SPXW", "exp": "2099-01-08", "side": "put", "rows": 0, "dte": 3}]}
-        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
         out = tf.native_chain("SPX")
         assert out is not None
         cov = out["meta"]["coverage"]
@@ -107,7 +123,7 @@ class TestCoverageGuard:
                                "gamma": None, "open_interest": 100, "volume": 5000}],
                 "sides": [{"root": "SPXW", "exp": today, "side": "call", "rows": 120, "dte": 0},
                           {"root": "SPXW", "exp": today, "side": "put", "rows": 118, "dte": 0}]}
-        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
         out = tf.native_chain("SPX")
         assert out["meta"]["coverage"] == {"complete": True, "missing": None,
                                            "zero_dte_dead": False, "no_zero_dte": False}
@@ -117,7 +133,7 @@ class TestCoverageGuard:
         fake = {"spot": 7500.0,
                 "contracts": [{"right": "call", "strike": 7500, "dte": 0, "iv": 0.12,
                                "gamma": None, "open_interest": 100, "volume": 5000}]}
-        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
         out = tf.native_chain("SPX")
         assert out is not None
         assert out["meta"]["coverage"]["complete"] is True
@@ -129,7 +145,7 @@ class TestCoverageGuard:
                                "gamma": None, "open_interest": 100, "volume": 5000}],
                 "sides": [{"root": "SPXW", "exp": "2099-01-07", "side": "call", "rows": 90, "dte": 2},
                           {"root": "SPXW", "exp": "2099-01-07", "side": "put", "rows": 88, "dte": 2}]}
-        monkeypatch.setattr(tf, "_run", lambda code: fake)
+        monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
         out = tf.native_chain("SPX")
         assert out is not None
         assert out["meta"]["coverage"]["no_zero_dte"] is True
@@ -158,11 +174,11 @@ def test_parity_iv_fallback_rescues_itm_puts():
 
 def test_native_chain_ttl_cache_serves_second_caller(monkeypatch):
     calls = {"n": 0}
-    def fake_run(code):
+    def fake_run(*a):
         calls["n"] += 1
         return {"spot": 7500.0, "contracts": [
             {"right": "call", "strike": 7500, "dte": 0, "expiry": "2026-07-06", "iv": 0.12}]}
-    monkeypatch.setattr(tf, "_run", fake_run)
+    monkeypatch.setattr(tf, "_fetch_book", fake_run)
     a = tf.native_chain("SPX")
     n_cold = calls["n"]                    # cold fetch: chain + per-strike signed-flow (Phase 0)
     b = tf.native_chain("SPX")             # second caller must be served from the TTL cache
@@ -221,7 +237,7 @@ def test_native_chain_drops_am_settled_monthly_0dte(monkeypatch):
         {"right": "call", "strike": 6050, "dte": 3, "root": "SPX",   # live dated leg → keep
          "iv": 0.15, "gamma": 0.01, "open_interest": 40000, "volume": 5},
     ]}
-    monkeypatch.setattr(tf, "_run", lambda code: fake)
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
     out = tf.native_chain("SPX")
     roots_dtes = {(c["root"], c["dte"]) for c in out["contracts"]}
     assert ("SPX", 0) not in roots_dtes       # dead AM-settled 0DTE dropped
@@ -236,7 +252,7 @@ def test_native_chain_keeps_all_on_normal_day(monkeypatch):
         {"right": "call", "strike": 6000, "dte": 0, "root": "SPXW",
          "iv": 0.15, "gamma": 0.01, "open_interest": 2000, "volume": 5000},
     ]}
-    monkeypatch.setattr(tf, "_run", lambda code: fake)
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: fake)
     out = tf.native_chain("SPX")
     assert len(out["contracts"]) == 1
     assert out["meta"]["am_settled_dropped"] == 0
@@ -255,14 +271,29 @@ class TestDiscoveryProbes:
 
     @staticmethod
     def _exec_chain_code(call_tool, d0, d1, root="SPXW", monthly_root=None):
+        """Run the REAL two-phase fetch (2026-09-09) against a stub provider.
+
+        Since the provider capped one execute() at 50 tool calls, the pull is a
+        discovery block plus N book blocks driven by `_fetch_book`. These tests
+        drive that whole driver — not one rendered string — so the batching, the
+        budget stop and the re-queue of an unfinished expiry are covered by the
+        same provider-behaviour cases that have guarded the fetch since 07-13."""
         import asyncio
+        import datetime
         import textwrap
-        code = tf._CHAIN_CODE % {"root": root, "monthly_root": monthly_root,
-                                 "d0": d0, "d1": d1}
-        src = "async def __main(call_tool):\n" + textwrap.indent(code, "    ")
-        ns: dict = {}
-        exec(src, ns)
-        return asyncio.run(ns["__main"](call_tool))
+
+        def fake_run(code):
+            src = "async def __main(call_tool):\n" + textwrap.indent(code, "    ")
+            ns: dict = {}
+            exec(src, ns)
+            return asyncio.run(ns["__main"](call_tool))
+
+        orig, tf._run = tf._run, fake_run
+        try:
+            return tf._fetch_book(root, monthly_root,
+                                  datetime.date.fromisoformat(d0))
+        finally:
+            tf._run = orig
 
     @staticmethod
     def _block(exp, side=None, n=6):

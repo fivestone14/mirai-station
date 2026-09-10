@@ -75,11 +75,26 @@ editing history.
 # re-run the OAuth flow the iv-viability vault uses, then confirm:
 security find-generic-password -a "$USER" -s "mirai-station/schwab-token-path" -w
 
-# ThetaData / Cassandra's Edge bearer (the native SPX chain):
-security delete-generic-password -a "$USER" -s "iv-viability-cassandra"
-security add-generic-password    -a "$USER" -s "iv-viability-cassandra" -w "<new bearer>"
-# No restart needed — the vault reads Keychain on every invocation.
+# ThetaData / Cassandra's Edge (the native SPX chain AND the SNDK chain).
+# There is nothing to paste: the endpoint moved to AuthKit OAuth on 2026-09-09
+# and its ACCESS tokens live 300 seconds, so a static bearer is dead five
+# minutes after it is minted. Enrol once, interactively, at a browser:
+python3 skills/mirai-left-eye/native_gex_feed.py --login           # at the mini
+python3 skills/mirai-left-eye/native_gex_feed.py --login --manual  # over SSH
+python3 skills/mirai-left-eye/native_gex_feed.py --status          # confirm
+# The refresh token goes to the Keychain and every scan spends it for a short
+# access token. No restart needed — the vault reads Keychain on every call.
+#
+# --login opens a browser and catches the redirect on 127.0.0.1:8765.
+# --login --manual prints the URL instead and takes the redirected address back
+# by paste, for when the browser is on a different machine than the station.
 ```
+
+> [!warning] The old line here was wrong twice over
+> It said `security add-generic-password -a "$USER" -s "iv-viability-cassandra"`,
+> but the vault reads the account **`cassandra_edge_token`**, not `$USER` — a
+> hand re-key wrote to an item nothing ever read. And since 2026-09-09 no pasted
+> bearer survives five minutes anyway. Use `--login`.
 
 ## Common failure modes
 
@@ -87,7 +102,11 @@ security add-generic-password    -a "$USER" -s "iv-viability-cassandra" -w "<new
 |---|---|---|
 | `launchctl list` shows `Status: 78` for an agent | exit code != 0; check stderr | `tail /tmp/mirai-station.<label>.err` |
 | "schwab module not found" | venv not provisioned or wrong python | re-run `venv-bootstrap.sh`; confirm shebang resolves |
-| GEX read falls back to SPY-proxy every scan | dead ThetaData/Cassandra bearer | re-key `iv-viability-cassandra` (see above); auth-watch also pings on this |
+| GEX read falls back to SPY-proxy every scan | expired Cassandra/ThetaData login | `native_gex_feed.py --login` (see above); auth-watch pings on this |
+| SNDK scanner silent + SPY-proxy at the same moment | one credential, both casualties — it is never two faults | `native_gex_feed.py --status`, then `--login` |
+| `--login` says the server issued no refresh token | `offline_access` scope refused | check the account's permitted scopes with the provider |
+| `--login` cannot reach the browser (headless/SSH) | nothing can connect to 127.0.0.1:8765 | `--login --manual` and paste the redirected URL back |
+| `--login` refused at registration (422) | the provider changed what it accepts | the error quotes the field it disliked; fix `_register`'s body in `cassandra_oauth.py` |
 | No ntfy push on a fire | topic unset or phone not subscribed | check the `ntfy` block in `limits-and-cooldowns.json`; re-subscribe the app |
 | MCP tool calls fail (macro brief) | MCP server config missing on mini | copy the `mcpServers` block into the mini's `~/.claude.json` (see INSTALL §5) |
 | Mac mini sleeping | caffeinate plist not loaded | re-run `install-launchd.sh` |
