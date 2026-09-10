@@ -17,6 +17,24 @@ let T_PAY = null, T_SPOT = null;
 
 /* ---- layout ------------------------------------------------------------ */
 
+function fitTabs(){
+  // MEASURE the fixed tab bar; do not assert its height.
+  //
+  // --tab-h shipped at 64 against a bar that renders 74 — icon 22, two 4px
+  // gaps, a 10px label, a 5px dot, 6px of item padding and 23px of bar padding
+  // — so the body reserved ten pixels too few and the footer rendered five
+  // pixels under the bar. Every term in that sum is a CSS value someone can
+  // change without ever looking at the constant, which is precisely how the
+  // old region budget kept going wrong.
+  //
+  // getBoundingClientRect includes the safe-area inset the bar pads itself
+  // with, so the body must NOT add the inset again.
+  const bar = document.querySelector('.tabs');
+  if(!bar) return;
+  const h = Math.ceil(bar.getBoundingClientRect().height);
+  if(h > 0) document.documentElement.style.setProperty('--tab-h', h + 'px');
+}
+
 function sizeLadder(){
   // A CONSTANT since the light rebuild (2026-09-09), and the reason is the
   // whole shape of the page.
@@ -776,6 +794,7 @@ function paintRead(){
 /* ---- run --------------------------------------------------------------- */
 
 function start(){
+  fitTabs();
   sizeLadder();
   loadPayload(); loadSpot();
   clearInterval(T_PAY); clearInterval(T_SPOT);
@@ -785,5 +804,5 @@ function start(){
 function stop(){ clearInterval(T_PAY); clearInterval(T_SPOT); T_PAY = T_SPOT = null; }
 
 document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
-window.addEventListener('resize', () => { sizeLadder(); if(PAY) paintAll(); });
+window.addEventListener('resize', () => { fitTabs(); sizeLadder(); if(PAY) paintAll(); });
 start();

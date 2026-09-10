@@ -118,7 +118,16 @@
   --ease-out:cubic-bezier(.2,0,0,1);
 
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
-  --tab-h:64px;
+
+  /* The FIRST-PAINT value only. The tab bar is position:fixed, so the body has
+     to reserve its height or the last line of the page renders underneath it —
+     and this constant was 64 against a bar that measures 74, which clipped the
+     footer by 5px from the day it shipped. A number that asserts a measurement
+     is exactly what the old region budget was made of.
+     fitTabs() in page.js measures the bar and overwrites this on load and on
+     resize; 74 is here so the first frame is already right, and so the page
+     degrades to correct-and-slightly-roomy if the script never runs. */
+  --tab-h:74px;
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
@@ -130,8 +139,9 @@ body{
   font:400 15px/1.5 var(--sans);
   font-variant-numeric:tabular-nums;
   -webkit-font-smoothing:antialiased;
-  padding:calc(env(safe-area-inset-top) + 16px) 16px
-          calc(env(safe-area-inset-bottom) + var(--tab-h) + 20px);
+  /* the bar's own height already includes the safe-area inset it pads itself
+     with, so adding the inset again here would double-count it */
+  padding:calc(env(safe-area-inset-top) + 16px) 16px calc(var(--tab-h) + 16px);
   display:flex; flex-direction:column; gap:12px;
 }
 body.failed > *:not(.fail):not(.tabs){display:none}

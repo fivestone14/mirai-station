@@ -128,3 +128,40 @@ def test_the_svg_is_sized_by_attribute_not_by_percentage():
     assert "height:auto" in flat
     assert "setAttribute('height', SVGH)" in PAGE
     assert "setAttribute('viewBox'" in PAGE
+
+
+def test_the_tab_bar_is_measured_rather_than_asserted():
+    """--tab-h shipped at 64px against a bar that renders 74, so the body
+    reserved ten pixels too few for a position:fixed bar and the footer drew
+    five pixels underneath it.
+
+    The height is a sum of eight CSS values — an icon, two gaps, a label, a
+    dot, item padding and bar padding — every one of which someone can change
+    without ever looking at the constant. That is exactly the shape of the
+    region budget this rebuild removed, reintroduced at a smaller scale. So the
+    number is measured at runtime, and the constant is a first-paint fallback
+    that must be at least as large as the bar can be."""
+    assert "function fitTabs" in PAGE
+    src = PAGE.split("function fitTabs")[1].split("\nfunction ")[0]
+    assert "getBoundingClientRect" in src, "fitTabs is not measuring anything"
+    assert "setProperty('--tab-h'" in src
+
+    # measured on load AND on resize: a rotation changes the safe-area inset the
+    # bar pads itself with, and a stale reserve then clips the footer again
+    tail = PAGE.split("function fitTabs")[0] + PAGE.split("\nfunction ")[-1]
+    assert PAGE.count("fitTabs()") >= 2, "fitTabs runs once; a resize would leave it stale"
+    assert "resize" in PAGE and "fitTabs(); sizeLadder()" in PAGE
+
+    # the fallback must not UNDER-reserve — that is the bug, and a too-small
+    # literal reintroduces it for anyone whose script never runs
+    m = re.search(r"--tab-h:\s*(\d+)px", PHONE)
+    assert m, "--tab-h has no first-paint value"
+    assert int(m.group(1)) >= 74, "the fallback under-reserves and would clip the footer"
+
+    # and the inset must not be counted twice: the bar's measured height already
+    # contains the safe-area padding it applies to itself
+    body = _rule("body")
+    pad = body[body.index("padding:"):]
+    assert "var(--tab-h)" in pad
+    assert "safe-area-inset-bottom" not in pad, \
+        "the bottom inset is double-counted: it is already inside the measured bar"
