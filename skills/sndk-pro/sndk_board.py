@@ -1433,15 +1433,22 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
     clusters_then = None
     pending = set(at or [])
     call_every_wake = call_model and not pending
+    interrupts = 0
     for i, row in enumerate(rows):
         now = SR._ts(row)
         if now is None:
             continue
         rows_i = rows[:i + 1]
         row = SR.with_path(row, rows_i)
-        wake = SR.should_wake(row, rows[i - 1] if i else None, last_call, now, rows_i)
+        wake = SR.should_wake(row, rows[i - 1] if i else None, last_call, now,
+                              rows_i, interrupts_today=interrupts)
         if not wake:
             continue
+        # the eval replays the SHIPPED gate, interrupt budget included, or its
+        # cadence numbers describe a gate nobody runs
+        _lt = SR._ts(last_call) if last_call else None
+        if _lt is not None and (now - _lt).total_seconds() / 60.0 < SR.MIN_GAP_MIN:
+            interrupts += 1
         frame = SR.frame_since_last_read(row, rows_i, last_call, wake, False, now,
                                          prior_rows_today=i > 0)
         v2, v1 = build_scene_v2(row, rows_i, now, frame, last_read_ts, bars, clusters_then=clusters_then)

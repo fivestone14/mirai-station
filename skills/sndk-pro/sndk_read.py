@@ -279,6 +279,57 @@ MIN_GAP_MIN = 10            # spam guard: no two reads closer than this. Raised
                             # from 8 in wk-1: the median gap under the old gate
                             # was 12.3 minutes with a p10 of 8.2, so 8 was
                             # binding often enough to be the real cadence.
+                            # NOT absolute since 2026-09-09 — see INTERRUPT_*.
+
+# --- INTERRUPTS (2026-09-09) ------------------------------------------------
+# MIN_GAP_MIN was a flat floor: whatever happened inside ten minutes, the reader
+# was not told. That is right for the things the floor was built against — a
+# wall relabelling itself, IV wandering a point, the same book asked twice — and
+# wrong for the handful of events that ARE the news. A gamma sign flipping or
+# price walking through the flip line does not become less material because it
+# happened eight minutes after the last read; if anything the opposite, since
+# the reader's standing sentence is now describing a board that no longer
+# exists. Silence there is not thrift, it is a stale screen.
+#
+# So the floor stays for everything ordinary and yields to a short list. Three
+# separate guards keep this from re-opening the spam problem wk-1 closed:
+#
+#   1. ONLY DISCRETE, CONFIRMED EVENTS INTERRUPT. Every member of the set below
+#      is a thing that either happened or did not — a sign flip, a level
+#      crossed, a pin relocating. Continuous drift (IV wander, the flip level
+#      creeping) never interrupts, because "how far is far enough" inside ten
+#      minutes is exactly the argument the floor exists to end.
+#   2. A HARD FLOOR UNDER THE SOFT ONE. Nothing at all fires inside
+#      INTERRUPT_MIN_GAP_MIN, so a level being straddled tick after tick costs
+#      one read, not one per scan.
+#   3. ITS OWN DAILY BUDGET. Interrupts may never eat the reader's whole day:
+#      past INTERRUPT_DAILY_CAP the floor becomes absolute again. A trending
+#      session that crosses everything in sight spends its interrupts early and
+#      still has the ordinary cadence left for the afternoon.
+#
+# Plain travel is the one judgement call. "price ran" at 0.20 sigma is the most
+# frequent wake there is and would defeat the whole floor on any trending day,
+# so under the floor it must clear WAKE_SPOT_SIGMA_HARD instead — double the
+# distance, which on the recorded tape is a move nobody would call ordinary.
+INTERRUPT_WAKES = frozenset({
+    "gamma sign flipped",   # dealers switched from damping to amplifying
+    "pin moved",            # the magnet relocated to a different strike
+    "crossed flip",         # price walked through the dealer-behaviour boundary
+    "call wall crossed",
+    "put wall crossed",
+    "price ran",            # only at WAKE_SPOT_SIGMA_HARD — see _interrupts()
+})
+INTERRUPT_MIN_GAP_MIN = 3.0   # the hard floor under the soft one. The scanner
+                              # ticks every 120s and a new book lands about
+                              # every 4 min, so this costs at most one extra
+                              # read per book rather than one per scan.
+INTERRUPT_DAILY_CAP = 8       # interrupts alone may spend this much of the day.
+                              # The wk-1 gate wants a mean of 18.7 calls; 8 on
+                              # top keeps the busiest recorded session (27)
+                              # under DAILY_CALL_CAP with room to spare.
+WAKE_SPOT_SIGMA_HARD = 0.40   # travel that interrupts the floor. Double the
+                              # ordinary trigger: inside ten minutes that is a
+                              # move, not a drift.
 DAILY_CALL_CAP = 30         # hard ceiling, and it must stay a BACKSTOP rather
                             # than a budget. Measured uncapped over 23 replayed
                             # sessions the wk-1 gate wants a mean of 18.7 a day,
@@ -1168,9 +1219,17 @@ def _held_for(books: list[dict], get, was, n: int) -> bool:
     return all(get(b) is not None and get(b) != was for b in tail)
 
 
-def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
-                now: datetime, rows: Optional[list[dict]] = None) -> Optional[str]:
-    """Why this scan is worth a model READ, or None to stay asleep.
+def _wake_trigger(row: dict, prev_row: Optional[dict], prev: Optional[dict],
+                  now: datetime, rows: Optional[list[dict]] = None) -> Optional[str]:
+    """WHAT happened, with no opinion about whether there is time to say it.
+
+    Split out of should_wake on 2026-09-09 so the timing policy could stop being
+    a single flat floor. This function answers "did something change"; the
+    caller answers "is it worth breaking the gap for". Everything below is the
+    wk-1 body, unchanged — the same triggers, the same thresholds, the same
+    book-clock/tape-clock split.
+
+    Why this scan is worth a model READ, or None to stay asleep.
 
     `prev` must be the last row that actually spent a call, NOT simply the last
     row written. Those diverged the moment the arrow started being recomputed
@@ -1195,15 +1254,10 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
 
     `rows` is optional so existing callers and tests keep working; without it
     the confirmation tests are skipped rather than guessed at."""
-    if prev is None:
-        return "first read"
-    last = _ts(prev)
-    if last is None:
-        return "first read"
-    gap = (now - last).total_seconds() / 60.0
-    if gap < MIN_GAP_MIN:
+    # should_wake answers "no previous read" before it ever calls this; kept as a
+    # guard rather than an assert because every comparison below dereferences it.
+    if prev is None or _ts(prev) is None:
         return None
-
     sig = _fin(row.get("sigma")) or 0
     spot = _fin(row.get("spot"))
     spoke_spot = value_at_last_read(prev, "spot")
@@ -1273,9 +1327,66 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
         if abs(fl - spoke_fl) / sig >= WAKE_FLIP_SIGMA:
             return "flip moved"
 
-    if gap >= HEARTBEAT_MIN:
-        return "heartbeat"
     return None
+
+
+def _travelled_sigma(row: dict, prev: Optional[dict]) -> Optional[float]:
+    """How far spot has moved since the last READ, in sigma. None when either
+    end or the ruler is missing — an absent measurement never interrupts."""
+    sig = _fin(row.get("sigma")) or 0
+    spot = _fin(row.get("spot"))
+    spoke = value_at_last_read(prev, "spot") if prev else None
+    if spot is None or spoke is None or not sig:
+        return None
+    return abs(spot - spoke) / sig
+
+
+def _interrupts(reason: str, row: dict, prev: Optional[dict]) -> bool:
+    """May this reason break MIN_GAP_MIN? Plain travel has to earn it twice."""
+    if reason not in INTERRUPT_WAKES:
+        return False
+    if reason == "price ran":
+        d = _travelled_sigma(row, prev)
+        return d is not None and d >= WAKE_SPOT_SIGMA_HARD
+    return True
+
+
+def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
+                now: datetime, rows: Optional[list[dict]] = None,
+                interrupts_today: int = 0) -> Optional[str]:
+    """Why this scan is worth a model READ, or None to stay asleep.
+
+    `prev` must be the last row that actually spent a call, NOT simply the last
+    row written — see _wake_trigger for why that distinction cost a whole gate.
+
+    THE TIMING POLICY (2026-09-09). Past MIN_GAP_MIN anything wakes it, as
+    before. Inside MIN_GAP_MIN only a discrete, confirmed event does, no sooner
+    than INTERRUPT_MIN_GAP_MIN, and only while the day's interrupt budget holds.
+    `interrupts_today` is how many calls already spent today were interrupts;
+    the caller counts them off the read rows' own `wake` field, so the budget
+    survives a restart the way every other daily count here does.
+
+    Passing 0 (the default, and what the tests and older callers pass) means
+    "budget untouched" — a gate that fails OPEN on a missing count, because the
+    failure it guards against is spending too much, and the failure it would
+    cause by defaulting closed is going deaf to a regime change."""
+    if prev is None:
+        return "first read"
+    last = _ts(prev)
+    if last is None:
+        return "first read"
+    gap = (now - last).total_seconds() / 60.0
+
+    reason = _wake_trigger(row, prev_row, prev, now, rows)
+    if gap >= MIN_GAP_MIN:
+        return reason or ("heartbeat" if gap >= HEARTBEAT_MIN else None)
+
+    # --- inside the floor: only the news gets through ------------------------
+    if reason is None or gap < INTERRUPT_MIN_GAP_MIN:
+        return None
+    if interrupts_today >= INTERRUPT_DAILY_CAP:
+        return None
+    return reason if _interrupts(reason, row, prev) else None
 
 
 # --- obs-1: the observation contract ----------------------------------------
@@ -3625,9 +3736,24 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     row = with_path(row, rows)
     band = magnet_band(row)
     frozen = frozen_fields(rows, now)
-    wake = should_wake(row, prev_row, last_call, now, rows)
+    # The interrupt budget (2026-09-09). Counted off the read rows' own record of
+    # what they spent, so a restart mid-session inherits the true figure instead
+    # of a fresh allowance — the same reason the gate snapshot is written on
+    # every row rather than only on the ones that call.
+    interrupts_today = sum(1 for r in calls if r.get("wake_interrupt"))
+    wake = should_wake(row, prev_row, last_call, now, rows,
+                       interrupts_today=interrupts_today)
+    # Whether THIS wake broke the floor, measured rather than inferred from the
+    # reason: "price ran" is an interrupt at 0.40 sigma and an ordinary trigger
+    # at 0.20, so counting by name alone would over-spend the budget every time
+    # the gate fired normally.
+    _last_ts = _ts(last_call) if last_call else None
+    broke_floor = bool(
+        wake and _last_ts is not None
+        and (now - _last_ts).total_seconds() / 60.0 < MIN_GAP_MIN)
     if capped:
         wake = None
+        broke_floor = False
 
     # sr-6: the pulse check. Nothing here ever asked how old the newest row
     # was — a dead scanner, a halt, or a feed refusing ticks all read as an
@@ -3730,6 +3856,10 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         "payload": ("strikes" if scene_v2 else "scene"),
         "wake": ("capped" if capped else
                  "stale_book" if stale and not force else (wake or "quiet")),
+        # what the NEXT gate's interrupt budget counts. Only true on a wake that
+        # actually broke MIN_GAP_MIN; absent on every ordinary read.
+        **({"wake_interrupt": True} if broke_floor and not (stale and not force)
+           else {}),
         "book_age_min": book_age,
         "book_asof": (row.get("meta") or {}).get("book_asof"),
         "scan_age_min": scan_age,
@@ -3867,6 +3997,7 @@ def replay(day: str) -> int:
         return 1
     last_call = None
     wakes = 0
+    interrupts = 0
     from collections import Counter
     why = Counter()
     for i, row in enumerate(rows):
@@ -3875,9 +4006,12 @@ def replay(day: str) -> int:
             continue
         row = with_path(row, rows[:i + 1])
         w = should_wake(row, rows[i - 1] if i else None, last_call, now,
-                        rows[:i + 1])
+                        rows[:i + 1], interrupts_today=interrupts)
         if not w:
             continue
+        _lt = _ts(last_call) if last_call else None
+        if _lt is not None and (now - _lt).total_seconds() / 60.0 < MIN_GAP_MIN:
+            interrupts += 1      # this tool measures the SHIPPED gate or nothing
         # the gate snapshot, exactly as a live row would carry it — without it
         # every structural wake (walls, flip, IV, sign, pin) was unreachable
         # and this tool measured a crippled gate while claiming to measure the

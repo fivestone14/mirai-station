@@ -109,9 +109,91 @@ def test_first_scan_always_wakes():
     assert SR.should_wake(mkrow([[1300, 9]]), None, None, T0) == "first read"
 
 
-def test_min_gap_holds_the_spam_down():
+def test_min_gap_holds_the_ordinary_down():
+    """The floor still binds on drift. 0.25 sigma of travel is a real trigger
+    past the gap and nothing at all inside it — that is the spam wk-1 closed."""
     prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 1))
-    assert SR.should_wake(mkrow([[1300, 9]], spot=1400.0), None, prev, T0) is None
+    ordinary = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 + 5)
+    assert SR.should_wake(ordinary, None, prev, T0) is None
+    # ...and the same row past the floor is the ordinary trigger it always was
+    old_prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN + 1))
+    assert SR.should_wake(ordinary, None, old_prev, T0) == "price ran"
+
+
+def _books_at(offsets, *rows):
+    """Books stamped at explicit minutes-before-T0, so a fixture can put them
+    INSIDE the min-gap window. `_books` hard-codes T0-10/-9, which is older than
+    any prev read the interrupt path cares about — and a book older than the last
+    read is not a book _books_since will ever return."""
+    out = []
+    for off, r in zip(offsets, rows):
+        r = dict(r)
+        r["meta"] = dict(r.get("meta") or {},
+                         book_asof=(T0 - timedelta(minutes=off)).isoformat())
+        out.append(r)
+    return out
+
+
+def test_a_material_event_breaks_the_floor():
+    """2026-09-09. A gamma sign flipping does not become less material because
+    it happened eight minutes after the last read — the standing sentence is now
+    describing a board that no longer exists."""
+    prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), gamma_sign="negative")
+    row = mkrow([[1300, 9]], gamma_sign="positive")
+    two = _books_at([2, 1], mkrow([[1300, 9]], gamma_sign="positive"),
+                    mkrow([[1300, 9]], gamma_sign="positive"))
+    assert SR.should_wake(row, None, prev, T0, two) == "gamma sign flipped"
+
+
+def test_plain_travel_must_be_twice_as_far_to_break_the_floor():
+    """"price ran" is the most frequent wake there is; at 0.20 sigma it would
+    defeat the floor on any trending day. Inside it, the bar is 0.40."""
+    prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), spot=1200.0)
+    near = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 + 5)
+    assert SR.should_wake(near, None, prev, T0) is None
+    far = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA_HARD * 100 + 5)
+    assert SR.should_wake(far, None, prev, T0) == "price ran"
+
+
+def test_nothing_at_all_fires_inside_the_hard_floor():
+    """A level being straddled tick after tick costs one read, not one a scan."""
+    prev = _read(T0 - timedelta(minutes=SR.INTERRUPT_MIN_GAP_MIN - 1),
+                 gamma_sign="negative")
+    row = mkrow([[1300, 9]], gamma_sign="positive")
+    two = _books_at([1.5, 1], mkrow([[1300, 9]], gamma_sign="positive"),
+                    mkrow([[1300, 9]], gamma_sign="positive"))
+    # the trigger itself is live — it is the clock that refuses it
+    assert SR._wake_trigger(row, None, prev, T0, two) == "gamma sign flipped"
+    assert SR.should_wake(row, None, prev, T0, two) is None
+
+
+def test_interrupts_have_their_own_budget():
+    """Past the interrupt cap the floor is absolute again, so a trending session
+    cannot spend the whole day's reads before lunch. The ordinary cadence is
+    untouched — that is the point of a separate budget."""
+    prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), gamma_sign="negative")
+    row = mkrow([[1300, 9]], gamma_sign="positive")
+    two = _books_at([2, 1], mkrow([[1300, 9]], gamma_sign="positive"),
+                    mkrow([[1300, 9]], gamma_sign="positive"))
+    spent = SR.INTERRUPT_DAILY_CAP
+    assert SR.should_wake(row, None, prev, T0, two, interrupts_today=spent) is None
+    assert SR.should_wake(row, None, prev, T0, two,
+                          interrupts_today=spent - 1) == "gamma sign flipped"
+    # past the gap the interrupt budget is irrelevant — it only gates the floor
+    old_prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN + 1), gamma_sign="negative")
+    assert SR.should_wake(row, None, old_prev, T0, two,
+                          interrupts_today=spent) == "gamma sign flipped"
+
+
+def test_drift_never_interrupts_however_large():
+    """Continuous drift stays outside the interrupt set on purpose: "how far is
+    far enough inside ten minutes" is the argument the floor exists to end."""
+    prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), gamma_flip=1000.0)
+    row = mkrow([[1300, 9]], spot=1200.0,
+                gamma_flip=1000.0 + SR.WAKE_FLIP_SIGMA * 100 * 3)
+    two = _books_at([2, 1], row, row)
+    assert SR._wake_trigger(row, None, prev, T0, two) == "flip moved"
+    assert SR.should_wake(row, None, prev, T0, two) is None
 
 
 def test_price_ran_wakes():
@@ -448,7 +530,7 @@ def test_the_iv_trigger_needs_a_full_window_before_it_may_fire():
     assert abs(statistics.median(ivs_short[-n:]) - spoke) * 100.0 >= R.WAKE_IV_PP
     assert len(ivs_short) < n, "the short window must be short"
     assert len(ivs_full) >= n and abs(statistics.median(ivs_full[-n:]) - spoke) * 100.0 >= R.WAKE_IV_PP
-    src = inspect.getsource(R.should_wake)
+    src = inspect.getsource(R._wake_trigger)
     assert "len(ivs) >= WAKE_IV_MEDIAN_BOOKS" in src, \
         "the full-window guard is the fix; without it a 2-book median fires"
 
