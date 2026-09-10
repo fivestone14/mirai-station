@@ -1,7 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The station's own two colours, so the shell and the page it holds are
-         one surface rather than a page inside a frame. -->
-    <color name="ground">#0A0E14</color>
-    <color name="jade">#43C59E</color>
+    <!-- The station's own colours, so the shell and the page it holds are one
+         surface rather than a page inside a frame.
+
+         LIGHT SINCE 2026-09-09, and this is the file that makes the theme a
+         REBUILD rather than a file edit on the mini. The README's promise that
+         "changing the glance is a file edit, not a rebuild here" holds for the
+         glance's content and not for its ground: the status bar, the window
+         background and the launch flash are compiled in. Skip this file and a
+         light page gets white status-bar icons on a white ground — invisible.
+
+         `ground` is 74.8% relative luminance, warmed off the grey axis. Not
+         white: this is read outdoors, where a light screen beats a dark one but
+         a bright panel is its own problem. -->
+    <color name="ground">#E4E0D8</color>
+    <color name="surface">#F4F1EB</color>
+    <!-- the pull-to-refresh spinner, and the only saturated colour the shell
+         owns. It matches the page's call-side green, which is the one hue that
+         means something on both surfaces. -->
+    <color name="jade">#2A9070</color>
 </resources>

@@ -3,304 +3,186 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0C1017">
-<title>SNDK thread · Mirai</title>
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#E4E0D8">
+<title>SNDK reads · Mirai</title>
 <!--
-  The reading THREAD (2026-09-07) — everything the model said today, in order.
+  The reads — light rebuild, 2026-09-09.
 
-  This is the glance's opposite number and deliberately breaks its two laws.
-  The glance is one screen that never scrolls and has nothing tappable, because
-  it is read at arm's length in a second. This is the archive: it scrolls, it
-  has a day picker, and it is arrived at on purpose.
+  WHAT CHANGED, and it is the whole point of the rebuild: the list runs
+  NEWEST FIRST. The old page appended oldest-to-newest and auto-scrolled to the
+  bottom on arrival, which is the right shape for a chat you are catching up on
+  and the wrong one for this. You open it to see what the model just said. On a
+  33-message session the newest reading was 33 cards down and the banner
+  explaining a whole retired era scrolled past on every open.
 
-  Five things it is built on.
+  Descending also fixes the poll: a new reading now lands at the TOP, in view,
+  instead of below the fold.
 
-    1. A SESSION IS ~26 MESSAGES, NOT ~190 ROWS. Every scan appends a row and a
-       scan that did not wake the model carries the previous reading forward
-       verbatim. /api/sndk/thread does the de-duplication server-side on
-       distinct reading_ts, which is the same key the desktop history modal and
-       the glance both already use.
+  THE GUTTER holds the clock over the PRICE AT THAT READING. The reference this
+  design borrows from puts a start time over an end time; a reading has no end
+  time, so rather than invent one the second slot carries a fact the reader
+  actually wants. Read straight down the gutter and you get the session's path
+  in numbers, running beside the prose describing it.
 
-    2. QUIET IS A MESSAGE, NOT A GAP. Roughly half of what the model says is
-       "price has held between X and Y since your last read". The doctrine is
-       explicit that finding nothing is complete work, so those ship — but
-       subordinate, in one dim line, because fifteen of them in a row is what
-       this screen would otherwise be. What it found something in gets the
-       full bubble.
-
-    3. A QUIET STRETCH IS ONE SHAPE, NOT N PARAGRAPHS. Consecutive quiet reads
-       are gathered behind a single hairline spine, so a run of them reads as
-       one band of calm the eye can skip in a flick without any of it being
-       hidden or folded away. Every word the model wrote is still on screen.
-       The rhythm — spine, break, gold bubble, spine — is the whole point: the
-       gold left edges are the map of where the session actually moved.
-
-    4. THE THREAD HAS A CLOCK DOWN ITS SIDE. A sticky day bar names the session
-       and its span and never leaves. Sticky hour rules sit under it, so at any
-       scroll depth you know what hour you are reading. Where the model went
-       quiet for longer than its own cadence, that silence is drawn — in
-       lantern, which is this palette's colour for age — instead of being
-       closed up into an ordinary gap.
-
-    5. MARKET TIME, ALWAYS. Every clock here is ET, matching the glance and the
-       station's live card, and every one of them is the server's own string,
-       printed as given. The only time arithmetic on this page is a DIFFERENCE
-       between two ISO timestamps, which is offset-free and never displayed as
-       a clock. The desktop's history modal renders these same readings in
-       Pacific; that is the odd one out, not this.
-
-  Model prose reaches the DOM through setSaid() only, which escapes first and
-  then adds its own <b> tags for prices. Nothing else ever writes model text.
-
-  Tokens are the glance's, byte-for-byte, which are the desktop's. The hue law
-  holds: iris is price, jade the call side, coral the put side, lantern is age
-  and only age, and the gold is the magnet.
+  The four laws from the glance hold here: honest-absent, one hue one meaning
+  (nothing on this page is coloured except a strike chip), no Greek on the
+  surface, market time everywhere.
 -->
+<link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-:root{
-  --ground:#0C1017;
-  --surface:#141A24;
-  --surface-2:#1B2330;
-  --hairline:#28313F;
-  --hairline-2:#333E50;
+@font-face{
+  font-family:"Jakarta";
+  src:url("/m/pjs-153fc85b7029.woff2") format("woff2");
+  font-weight:200 800; font-style:normal; font-display:swap;
+}
 
-  /* TOUCH + PRESS (2026-09-09). See the same block in the glance for the
-     reasoning; the numbers are Material's md.sys tokens and the 48px target is
-     the strictest of the three specs in play. Both controls in this header
-     were under it: the back chevron was 30x30 (46% of the required AREA) and
-     the day picker 57x30. */
+:root{
+  --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --fill:#1F2622;
+  --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
+  --on:#FFFFFF; --on-body:#E4E6DF; --on-mute:#A9B0A6; --on-faint:#8E958A;
+  --px-ink:#2F44B8; --px-tint:#E2E4F5;
+  --put-ink:#AE3020; --rule-soft:#7E8779;
+
+  --sh1:0 1px 1px -.5px rgba(58,48,32,.05),
+        0 3px 6px -1px rgba(58,48,32,.06),
+        0 10px 22px -6px rgba(58,48,32,.07);
+  --sh2:0 1px 2px 0 rgba(31,38,34,.08),
+        0 6px 14px -3px rgba(31,38,34,.12),
+        0 20px 40px -12px rgba(31,38,34,.16);
+
   --tap-min:48px;
-  --state-hover:.08;
-  --state-press:.12;
-  --press-in:80ms;
-  --press-out:200ms;
+  --state-hover:.08; --state-press:.12;
+  --press-in:80ms; --press-out:200ms;
   --ease-in:cubic-bezier(0,0,0,1);
   --ease-out:cubic-bezier(.2,0,0,1);
   --press-scale:.97;
 
-  --ink:#E7EBF3;
-  --ink-dim:#98A2B6;
-  --ink-faint:#8A93A8;
-
-  --iris:#8B9CFF;      /* price, and only price   */
-  --jade:#43C59E;      /* the call side           */
-  --coral:#EB6A57;     /* the put side            */
-  --lantern:#E7B85C;   /* aging, and nothing else */
-  --l-grav:#F3AB3E;    /* the magnet, and nothing else */
-
-  --iris-wash:rgba(139,156,255,.10);
-  --jade-wash:rgba(67,197,158,.10);
-  --coral-wash:rgba(235,106,87,.10);
-
-  --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
-  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;
-  --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
-
-  /* The sticky stack. The hour rule parks exactly under the day bar, so the
-     two are one 60px block of context that is always on screen. */
-  --daybar-h:31px;
+  --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
-html{height:100%}
+html,body{height:100%}
 body{
-  height:100dvh; overflow:hidden;
-  background:var(--ground); color:var(--ink);
-  font:400 13px/1.4 var(--sans);
+  background:var(--g);color:var(--i-body);
+  font:400 15px/1.5 var(--sans);font-variant-numeric:tabular-nums;
   -webkit-font-smoothing:antialiased;
-  display:flex; flex-direction:column;
+  display:flex;flex-direction:column;overflow:hidden;
 }
 
-/* ============ HEAD ============ */
-.hd{flex:none;display:flex;align-items:center;gap:10px;
-    padding:calc(env(safe-area-inset-top) + 12px) 14px 10px;
-    border-bottom:1px solid var(--hairline);background:var(--ground)}
-/* 44 painted inside a 53px header, 48 tapped. Painting the full 48 would leave
-   2.5px each side; 44 leaves 4.5 and the invisible ::after carries the target
-   the rest of the way. The glyph grew with it — a 16px chevron in a 44px box
-   reads as a smudge. */
-.back{position:relative;isolation:isolate;
-      flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;
-      border:1px solid var(--hairline);border-radius:12px;background:var(--surface);
-      color:var(--ink-dim);font:400 22px/1 var(--sans);text-decoration:none;
-      -webkit-tap-highlight-color:transparent;
-      touch-action:manipulation;
-      -webkit-user-select:none;user-select:none;
-      transition:transform var(--press-out) var(--ease-out),
-                 border-color var(--press-out) var(--ease-out),
-                 color var(--press-out) var(--ease-out)}
-.back::after{content:"";position:absolute;top:50%;left:50%;
-             transform:translate(-50%,-50%);
+/* ============ HEADER ============ */
+.hd{
+  flex:none;display:flex;align-items:center;gap:12px;
+  padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  background:var(--g);
+}
+.back{
+  position:relative;isolation:isolate;flex:none;
+  width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+  border-radius:14px;background:var(--s);box-shadow:var(--sh1);
+  color:var(--i-mute);font:400 22px/1 var(--sans);text-decoration:none;
+  touch-action:manipulation;-webkit-user-select:none;user-select:none;
+  transition:transform var(--press-out) var(--ease-out),
+             color var(--press-out) var(--ease-out);
+}
+/* painted 44, tapped 48 */
+.back::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
              width:var(--tap-min);height:var(--tap-min)}
 .back::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;
-              background:var(--ink);opacity:0;
+              background:var(--i);opacity:0;
               transition:opacity var(--press-out) var(--ease-out)}
-/* The label brightening is not decoration. Modelled against veiling glare, a
-   12% state layer on this surface is a 2.84x luminance cue indoors but only
-   1.06x in bright shade — the glare floor swamps it. Dim->ink on the GLYPH is
-   1.94x/1.26x across the same conditions, because it moves the one thing on
-   screen that is actually bright. Iris is deliberately not used for this: at
-   Y=0.365 against ink-dim's 0.359 it is a pure hue change, worth 1.00x, and
-   hue is the first thing sunlight takes. Iris earns its place on the border. */
-.back.is-pressed{transform:scale(var(--press-scale));
-                 border-color:var(--iris);color:var(--ink);
-                 transition-duration:var(--press-in);
-                 transition-timing-function:var(--ease-in)}
-.back.is-pressed::before{opacity:var(--state-press);
-                         transition-duration:var(--press-in);
+/* the label brightening is the cue that survives daylight; a state layer alone
+   is a 2.8x luminance change indoors and 1.06x in bright shade */
+.back.is-pressed{transform:scale(var(--press-scale));color:var(--i);
+                 transition-duration:var(--press-in);transition-timing-function:var(--ease-in)}
+.back.is-pressed::before{opacity:var(--state-press);transition-duration:var(--press-in);
                          transition-timing-function:var(--ease-in)}
-@media (hover:hover){ .back:hover::before{opacity:var(--state-hover)} }
-.back:focus-visible{outline:2px solid var(--iris);outline-offset:2px}
-.hd-t{display:flex;flex-direction:column;gap:2px;min-width:0}
-.hd-1{font:500 11px/1.2 var(--mono);letter-spacing:.18em;color:var(--ink-dim)}
-.hd-2{font:400 11px/1.2 var(--sans);color:var(--ink-faint);
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hd-2 b{font-weight:600;color:var(--ink-dim)}
-/* 44 tall to match the chevron, and the year is back: "09-09" alone in a list
-   of 28 sessions spanning two months says nothing about which year, and the
-   picker is the one place the full date is cheap. */
-.day{position:relative;isolation:isolate;
-     margin-left:auto;flex:none;background:var(--surface);color:var(--ink);
-     border:1px solid var(--hairline);border-radius:12px;
-     font:500 13px/1 var(--mono);padding:0 12px;height:44px;min-width:var(--tap-min);
-     appearance:none;
-     -webkit-tap-highlight-color:transparent;
-     touch-action:manipulation;
-     transition:border-color var(--press-out) var(--ease-out),
-                background-color var(--press-out) var(--ease-out)}
-/* A native select opens an OS sheet, so the press state only has to live for
-   the moment before it appears — no transform, which would fight the sheet's
-   own entry animation. */
-.day.is-pressed{border-color:var(--iris);background:var(--surface-2);
-                transition-duration:var(--press-in);
-                transition-timing-function:var(--ease-in)}
-.day:focus-visible{outline:2px solid var(--iris);outline-offset:2px}
+@media (hover:hover){.back:hover::before{opacity:var(--state-hover)}}
+.back:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 
-/* Same rule as the glance: the state layer is opacity, which WCAG does not
-   count as motion, so it stays and takes over the whole cue. The transform is
-   perceived-size and goes. */
+.hd-t{min-width:0;flex:1 1 auto}
+.hd-1{font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint)}
+.hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd-2 b{font-weight:700;color:var(--i-body)}
+
+.day{
+  flex:none;height:44px;min-width:var(--tap-min);padding:0 12px;
+  background:var(--s);color:var(--i);border:none;border-radius:14px;
+  box-shadow:var(--sh1);
+  font:700 13px/1 var(--sans);font-variant-numeric:tabular-nums;
+  appearance:none;touch-action:manipulation;
+  transition:background-color var(--press-out) var(--ease-out);
+}
+/* a native select opens an OS sheet, so no transform — it would fight the
+   sheet's own entry animation */
+.day.is-pressed{background:var(--s2);transition-duration:var(--press-in)}
+.day:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+
+/* ============ THE LIST ============ */
+.wrap{
+  flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:4px 16px calc(env(safe-area-inset-bottom) + 28px);
+  display:flex;flex-direction:column;gap:16px;
+}
+.state{padding:40px 4px;font:400 15px/1.5 var(--sans);color:var(--i-mute);text-align:center}
+
+.row{display:flex;gap:12px;align-items:flex-start}
+.gut{flex:none;width:56px;text-align:right;padding-top:17px;
+     display:flex;flex-direction:column;gap:4px}
+.gut b{font:700 15px/1 var(--sans);color:var(--i)}
+.gut s{font:400 12px/1 var(--sans);color:var(--i-mute);text-decoration:none}
+
+.rc{flex:1;min-width:0;background:var(--s);border-radius:18px;padding:16px;
+    box-shadow:var(--sh1)}
+/* exactly one filled card per screen, and it is the newest reading */
+.rc.now{background:var(--fill);padding:20px;box-shadow:var(--sh2)}
+.rc.quiet{opacity:.82}
+
+.wake{display:inline-block;padding:3px 8px;border-radius:10px;background:var(--s2);
+      font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+      color:var(--i-mute)}
+.rc.now .wake{background:rgba(255,255,255,.10);color:var(--on-mute)}
+/* a reading whose every claim was struck out is a message about a fault */
+.rc.struck .wake{background:transparent;border:1px solid var(--put-ink);color:var(--put-ink)}
+
+.said{margin-top:11px;font:400 15px/1.5 var(--sans);color:var(--i-body);
+      text-wrap:pretty;hyphens:none}
+.rc.now .said{color:var(--on-body);font-size:16px;line-height:1.55}
+.said.none{color:var(--i-mute)}
+.rc.now .said.none{color:var(--on-mute)}
+.said .n{font-weight:700;color:var(--i);background:var(--px-tint);
+         border-radius:5px;padding:0 4px}
+.rc.now .said .n{color:var(--on);background:rgba(255,255,255,.12)}
+
+.pts{list-style:none;margin:13px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.pt{display:flex;gap:12px;align-items:baseline}
+.pt-l{flex:none;width:44px;text-align:right;font:700 13px/1.45 var(--sans);color:var(--i)}
+.pt-n{font:400 13px/1.45 var(--sans);color:var(--i-mute)}
+.rc.now .pt-l{color:var(--on)} .rc.now .pt-n{color:var(--on-mute)}
+
+/* A silence is a finding, not a gap to close up. Drawn BELOW the newer reading,
+   because in a descending list the older one comes after it. */
+.quiet-gap{display:flex;align-items:center;gap:10px;padding:0 4px 0 68px;
+           font:700 10px/1 var(--sans);letter-spacing:.11em;text-transform:uppercase;
+           color:var(--i-faint)}
+.quiet-gap i{flex:1;height:1px;background:var(--s2);display:block}
+
+.oldcontract{
+  background:var(--s2);border-radius:14px;padding:13px 15px;
+  font:400 13px/1.5 var(--sans);color:var(--i-mute);
+}
+.endcap{padding:6px 4px 0;text-align:center;
+        font:700 10px/1 var(--sans);letter-spacing:.13em;text-transform:uppercase;
+        color:var(--i-faint)}
+
 @media (prefers-reduced-motion:reduce){
   .back.is-pressed{transform:none}
   .back.is-pressed::before{opacity:.20}
 }
 @media (forced-colors:active){
   .back::before{display:none}
-  .back.is-pressed{border-color:Highlight;color:Highlight}
-}
-
-/* ============ THREAD ============ */
-/* Spacing is per-block rather than a flex gap: the sticky bars have to sit
-   flush against what they cover, and the quiet spine has to swallow the space
-   between the readings inside it. */
-.wrap{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
-      overscroll-behavior:contain;
-      padding:0 14px calc(env(safe-area-inset-bottom) + 16px);
-      display:flex;flex-direction:column}
-
-/* ---- the day, which never leaves ---- */
-.daybar{position:sticky;top:0;z-index:3;flex:none;
-        height:var(--daybar-h);display:flex;align-items:center;gap:10px;
-        background:var(--ground);border-bottom:1px solid var(--hairline)}
-.d-day{font:600 10.5px/1 var(--mono);letter-spacing:.16em;
-       font-variant-numeric:tabular-nums;color:var(--ink-dim)}
-.d-span{margin-left:auto;font:500 10.5px/1 var(--mono);
-        font-variant-numeric:tabular-nums;color:var(--ink-faint)}
-
-/* ---- the hour, which parks under it ---- */
-.oldcontract{flex:none;margin:2px 0 4px;padding:8px 11px;border-radius:9px;
-        border:1px solid var(--hairline-2);background:var(--surface);
-        font:400 11.5px/1.5 var(--sans);color:var(--ink-faint)}
-.hourbar{position:sticky;top:var(--daybar-h);z-index:2;flex:none;margin-top:6px;
-         display:flex;align-items:center;gap:9px;
-         padding:9px 0 8px;background:var(--ground)}
-.hourbar .h{flex:none;font:600 10px/1 var(--mono);letter-spacing:.14em;
-            font-variant-numeric:tabular-nums;color:var(--ink-faint)}
-.hourbar .hl{flex:1 1 auto;height:1px;background:var(--hairline)}
-/* A silence longer than the model's own cadence. Lantern, because on this
-   palette age is the only thing that colour ever means. */
-.hourbar .hgap,.gapbar .g{flex:none;font:600 9.5px/1 var(--mono);letter-spacing:.1em;
-                          text-transform:uppercase;color:var(--lantern)}
-.gapbar{flex:none;display:flex;align-items:center;gap:9px;margin:15px 0 1px}
-.gapbar .gl{flex:1 1 auto;height:1px;
-            background:repeating-linear-gradient(90deg,
-              var(--hairline-2) 0 2px,transparent 2px 6px)}
-
-/* ---- a reading ---- */
-.msg{flex:none;display:flex;flex-direction:column;gap:6px;margin-top:15px}
-.m-top{display:flex;align-items:baseline;gap:8px;padding-left:2px}
-.m-at{flex:none;font:600 11.5px/1.2 var(--mono);
-      font-variant-numeric:tabular-nums;color:var(--ink)}
-.m-why{font:600 9.5px/1.2 var(--mono);letter-spacing:.13em;text-transform:uppercase;
-       color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* The wake reason is the one thing on this screen that names a side. */
-.m-why.call{color:var(--jade)}
-.m-why.put{color:var(--coral)}
-/* Spot is price, so it is iris — held back, because it is the same fact the
-   prose is about to state. Right-aligned so the column reads as the path. */
-.m-spot{margin-left:auto;flex:none;font:500 10.5px/1.2 var(--mono);
-        font-variant-numeric:tabular-nums;color:var(--iris);opacity:.7}
-
-/* A bubble the model had something to say in. */
-.bub{background:var(--surface-2);border:1px solid var(--hairline);
-     border-radius:16px 16px 16px 5px;padding:10px 13px 11px;
-     box-shadow:inset 3px 0 0 var(--l-grav)}
-.bub .said{font:400 13.5px/1.5 var(--serif);color:var(--ink)}
-.bub .said b.n{font:600 13px/1 var(--mono);font-variant-numeric:tabular-nums;
-               color:var(--iris);background:var(--iris-wash);
-               border-radius:4px;padding:1px 4px;font-style:normal}
-
-/* ---- quiet ---- */
-/* A run of consecutive quiet reads is one shape: a hairline spine with the
-   readings hung off it. Nothing is folded, nothing is summarised away — the
-   run is simply given a silhouette the eye can identify and pass over. */
-.run{flex:none;margin-top:15px;padding-left:13px;
-     border-left:1px solid var(--hairline-2);
-     display:flex;flex-direction:column}
-.run .msg{margin-top:0;gap:3px}
-.run .msg + .msg{margin-top:11px}
-
-.msg.q .m-at{font:500 10.5px/1.2 var(--mono);color:var(--ink-faint)}
-.msg.q .m-why{font-size:9px;letter-spacing:.11em;color:var(--ink-faint);opacity:.72}
-.msg.q .m-spot{font-size:10px;opacity:.5}
-.msg.q .bub{background:transparent;border-color:transparent;box-shadow:none;
-            padding:0;border-radius:0}
-.msg.q .said{font:italic 400 12px/1.5 var(--serif);color:var(--ink-dim)}
-/* The numbers are the only thing anyone reads off a quiet line. They were the
-   same dim grey as the sentence around them; now they are price-coloured, and
-   they are the reason a quiet line is scannable at all. */
-.msg.q .said b.n{font:600 11.5px/1 var(--mono);font-variant-numeric:tabular-nums;
-                 color:var(--iris);background:transparent;padding:0;
-                 font-style:normal;opacity:.92}
-
-/* The model spoke and every claim was deleted by the checks. A fault, drawn
-   as one — silence here would hide the one case worth seeing. */
-.msg.dropped .bub{box-shadow:inset 3px 0 0 var(--coral)}
-.msg.dropped .said{color:var(--ink-dim);font-style:italic}
-
-.pts{list-style:none;display:flex;flex-direction:column;gap:4px;margin-top:9px;
-     padding-top:8px;border-top:1px solid var(--hairline)}
-.pts li{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:baseline}
-.pts .lv{font:600 12px/1.3 var(--mono);font-variant-numeric:tabular-nums;color:var(--iris)}
-.pts .nt{font:400 12px/1.35 var(--sans);color:var(--ink-dim)}
-
-/* The bottom of the thread, so landing here reads as arrival and not as a
-   sentence cut in half. */
-.endcap{flex:none;display:flex;align-items:center;gap:9px;margin:17px 0 2px;
-        font:600 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-        color:var(--ink-faint)}
-.endcap::before,.endcap::after{content:"";flex:1 1 auto;height:1px;background:var(--hairline)}
-
-.state{flex:1 1 auto;display:flex;align-items:center;justify-content:center;
-       padding:0 26px;text-align:center;font:400 13px/1.55 var(--sans);color:var(--ink-dim)}
-
-/* The small phone. Everything loses a little air; nothing loses a rank. */
-@media (max-width:359px){
-  .wrap{padding-left:11px;padding-right:11px}
-  .bub{padding:9px 11px 10px;border-radius:14px 14px 14px 5px}
-  .bub .said{font-size:13px}
-  .run{padding-left:11px}
-  .m-why{letter-spacing:.1em}
+  .back.is-pressed{border:1px solid Highlight;color:Highlight}
 }
 </style>
 </head>
@@ -309,28 +191,27 @@ body{
 <header class="hd">
   <a class="back" href="/m/" aria-label="Back to the glance" data-press data-haptic>‹</a>
   <div class="hd-t">
-    <div class="hd-1">SNDK · THE READ</div>
+    <div class="hd-1">SNDK · THE READS</div>
     <div class="hd-2" id="sub">loading…</div>
   </div>
   <select class="day" id="day" aria-label="Session" data-press></select>
 </header>
 
-<main class="wrap" id="wrap"><div class="state" id="state">loading…</div></main>
+<main class="wrap" id="wrap"><div class="state">loading…</div></main>
 
 <script src="/m/press.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const S = {day:'', last:'', timer:0, run:null, hour:'', ts:'', open:'', shut:''};
+const S = {day:'', last:'', timer:0, stalled:false, msgs:[]};
 
 /* A silence longer than this is drawn rather than closed up. The model's own
    cadence is ten to twenty minutes, so this is "it skipped a turn or two". */
 const GAP_MIN = 25;
 
 /* Returns the document, or null. `getJSON.failed` says which KIND of null the
-   last call produced (2026-09-09): a request that never landed is a different
-   fact from a session with nothing in it, and this function used to erase the
-   difference. Everything downstream then treated a dropped packet as "the model
-   said nothing today" — and, worse, never tried again. */
+   last call produced: a request that never landed is a different fact from a
+   session with nothing in it, and conflating them used to leave this page
+   reading "Nothing said this session yet" forever after one dropped packet. */
 async function getJSON(url){
   getJSON.failed = false;
   try{
@@ -341,24 +222,21 @@ async function getJSON(url){
 }
 
 /* The one boundary for model-authored text. Strip the characters the desktop
-   strips (it learned the hard way that data-tip is decoded twice), then add
-   our own <b> around anything price-shaped. The <b> tags are the only markup
-   that ever enters this string. */
-function setSaid(el, text){
+   strips, then add our own <b> around anything price-shaped. Those <b> tags are
+   the only markup that ever enters this string. */
+function setSaid(node, text){
   const safe = String(text == null ? '' : text)
     .replace(/[<>"¦]/g, ' ').replace(/&/g, '&amp;').replace(/\s+/g, ' ').trim();
-  // The punctuation stays OUTSIDE the chip. The desktop folds it in, which is
-  // invisible there because its numbers are only bolded; here they carry a
-  // tinted background and a trailing comma inside the chip reads as part of
-  // the price.
-  el.innerHTML = safe.replace(
+  // Punctuation stays OUTSIDE the chip: a trailing comma inside a tinted chip
+  // reads as part of the price.
+  node.innerHTML = safe.replace(
     /(\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?|\$?\d{3,5}(?:\.\d+)?)/g,
     (m, a) => `<b class="n">${a}</b>`);
 }
 
 /* The only time arithmetic on the page. Both operands carry their own offset,
-   so the subtraction is timezone-free, and the answer is a length rather than
-   a clock — no market time is ever re-derived here. */
+   so the subtraction is timezone-free and the answer is a length, never a
+   clock — no market time is re-derived here. */
 function minutesBetween(a, b){
   const x = Date.parse(a), y = Date.parse(b);
   if(!isFinite(x) || !isFinite(y)) return null;
@@ -366,9 +244,9 @@ function minutesBetween(a, b){
   return m > 0 ? m : null;
 }
 function elapsed(m){
-  if(m < 60) return m + ' min later';
+  if(m < 60) return m + ' MIN QUIET';
   const h = Math.floor(m / 60), r = m % 60;
-  return r ? h + 'h ' + r + 'm later' : h + 'h later';
+  return (r ? h + 'H ' + r + 'M' : h + 'H') + ' QUIET';
 }
 
 function el(tag, cls, text){
@@ -378,214 +256,157 @@ function el(tag, cls, text){
   return n;
 }
 
-/* The hour this reading falls in, taken straight off the server's ET clock —
-   sliced, never parsed. */
-function hourBar(hh, gap){
-  const bar = el('div', 'hourbar');
-  bar.append(el('span', 'h', hh + ':00'), el('i', 'hl'));
-  if(gap != null && gap >= GAP_MIN) bar.append(el('span', 'hgap', elapsed(gap)));
-  return bar;
-}
-function gapBar(gap){
-  const bar = el('div', 'gapbar');
-  bar.append(el('i', 'gl'), el('span', 'g', elapsed(gap)), el('i', 'gl'));
-  return bar;
+/* Whole dollars in the gutter. A decimal in a column being scanned downward is
+   noise, and the prose beside it carries the exact figure wherever it matters. */
+function gutPrice(v){
+  const n = Number(v);
+  return isFinite(n) ? n.toLocaleString('en-US', {maximumFractionDigits:0}) : '';
 }
 
-function bubble(m){
-  const wrap = document.createElement('div');
-  // A reading whose every claim was deleted is flagged `struck` by the station.
-  // That is a message about a fault, not an empty one, and it says so.
-  // NOT `!m.read` (2026-09-09): a reading that authored no prose line but did
-  // leave observations has no `read` either, and calling that "struck out"
-  // printed a denial directly above the surviving claims it was denying.
-  const dropped = m.struck === true;
-  const wordless = !dropped && !m.read;
-  wrap.className = 'msg' + (m.quiet && !dropped ? ' q' : '') + (dropped ? ' dropped' : '');
-  if(wordless) wrap.classList.add('q');   // no sentence: it reads as a quiet one
+function card(m, newest){
+  const rc = el('div', 'rc');
+  // `struck` comes from the station and means the model spoke and every claim
+  // was deleted by the checks. NOT `!m.read`: a reading that wrote no prose but
+  // left observations also has no `read`, and calling that "struck out" printed
+  // a denial directly above the claims it was denying.
+  const struck = m.struck === true;
+  const wordless = !struck && !m.read;
+  if(newest) rc.classList.add('now');
+  if(struck) rc.classList.add('struck');
+  else if(m.quiet && !newest) rc.classList.add('quiet');
 
-  const top = el('div', 'm-top');
-  top.append(el('span', 'm-at', m.at || ''));
+  rc.append(el('span', 'wake', struck ? 'Held back' : (m.wake || 'read')));
 
-  const why = el('span', 'm-why', dropped ? 'held back' : (m.wake || ''));
-  // The wake reason is the one label here that can name a side of the book,
-  // and the palette already has a colour for each of them.
-  const w = String(m.wake == null ? '' : m.wake).toLowerCase();
-  if(!dropped && /\bcall\b/.test(w)) why.classList.add('call');
-  else if(!dropped && /\bput\b/.test(w)) why.classList.add('put');
-  top.append(why);
-
-  if(m.spot != null) top.append(el('span', 'm-spot', Number(m.spot).toFixed(2)));
-
-  const bub = el('div', 'bub');
-  const said = el('div', 'said');
-  if(dropped){
-    said.textContent = 'It spoke, and every claim it made was struck out by the checks.';
-    bub.append(said);
+  if(struck){
+    rc.append(el('div', 'said none',
+      'It spoke, and every claim it made was struck out by the checks.'));
   }else if(wordless){
-    // It wrote no sentence this time. The levels below ARE the reading, and a
-    // caption invented for them would be the station speaking, not the model.
+    // No sentence this time. The levels below ARE the reading; a caption
+    // invented for them would be the station talking, not the model.
     if(!(Array.isArray(m.points) && m.points.length)){
-      said.textContent = 'Nothing to say at this scan.';
-      bub.append(said);
+      rc.append(el('div', 'said none', 'Nothing to say at this scan.'));
     }
   }else{
+    const said = el('div', 'said');
     setSaid(said, m.read);
-    bub.append(said);
+    rc.append(said);
   }
 
   if(Array.isArray(m.points) && m.points.length){
     const ul = el('ul', 'pts');
     for(const p of m.points){
       if(!p || p.level == null) continue;
-      const li = document.createElement('li');
-      // No thousands separator: the prose beside it writes 1750, the board
-      // writes 1750, and 1,750 in the same bubble reads as a different number.
-      li.append(el('span', 'lv', String(Number(p.level))),
-                el('span', 'nt', String(p.note == null ? '' : p.note).replace(/[<>"¦]/g, ' ')));
+      const li = el('li', 'pt');
+      // No thousands separator on a level: the prose beside it writes 1750 and
+      // the board writes 1750; 1,750 in the same card reads as a different
+      // number.
+      li.append(el('span', 'pt-l', String(Number(p.level))),
+                el('span', 'pt-n', String(p.note == null ? '' : p.note).replace(/[<>"¦]/g, ' ')));
       ul.append(li);
     }
-    if(ul.childElementCount) bub.append(ul);
+    if(ul.childElementCount) rc.append(ul);
   }
-
-  wrap.append(top, bub);
-  return wrap;
+  return rc;
 }
 
-/* Newest at the bottom, which is where the eye already is — and landed on
-   cleanly, after layout, so it is the last message and not the middle of one. */
-function toBottom(){
-  const w = $('wrap');
-  w.scrollTop = w.scrollHeight;
-  requestAnimationFrame(() => {
-    w.scrollTop = w.scrollHeight;
-    requestAnimationFrame(() => { w.scrollTop = w.scrollHeight; });
-  });
-}
-function atBottom(){
-  const w = $('wrap');
-  return w.scrollHeight - w.scrollTop - w.clientHeight < 60;
-}
-
-function paint(doc, append){
+function render(){
   const wrap = $('wrap');
-  const msgs = (doc && doc.messages) || [];
-  const stick = append ? atBottom() : true;
+  wrap.textContent = '';
+  const msgs = S.msgs;
 
-  if(!append){
-    wrap.textContent = '';
-    S.run = null; S.hour = ''; S.ts = ''; S.open = ''; S.shut = '';
-    if(!msgs.length){
-      wrap.append(el('div', 'state', doc && doc.error
-        ? 'Could not read this session.'
-        : 'Nothing said this session yet.'));
-      $('sub').textContent = S.day;
-      return;
-    }
-    const bar = el('div', 'daybar');
-    bar.append(el('span', 'd-day', S.day), el('span', 'd-span'));
-    wrap.append(bar);
-    // A session written by the RETIRED design does not get drawn as if it were
-    // an observation. Those eras made direction calls — a vector, a magnitude
-    // and a level that would break the call — and that product was measured at
-    // zero forward value and removed. The sentences are still worth keeping and
-    // reading; they are just not the same claim as everything after them.
-    if(msgs.length && msgs.every(m => m.contract === 'direction_call')){
-      wrap.append(el('div', 'oldcontract',
-        'An earlier design. These read the board and called a direction — a '
-        + 'question later measured to carry no information, and retired.'));
-    }
+  if(!msgs.length){
+    wrap.append(el('div', 'state', S.stalled
+      ? 'Could not reach the station. Retrying…'
+      : 'Nothing said this session yet.'));
+    return;
   }
 
-  const oldCap = wrap.querySelector('.endcap');
-  if(oldCap) oldCap.remove();
-
-  for(const m of msgs){
-    const at = String(m.at == null ? '' : m.at);
-    const hh = at.slice(0, 2);
-    const gap = S.ts ? minutesBetween(S.ts, m.ts) : null;
-
-    // An hour boundary and a long silence are the same kind of event, so when
-    // they land together the hour rule carries the silence rather than the
-    // page drawing two rules in a row.
-    if(hh && hh !== S.hour){
-      wrap.append(hourBar(hh, gap)); S.hour = hh; S.run = null;
-    }else if(gap != null && gap >= GAP_MIN){
-      wrap.append(gapBar(gap)); S.run = null;
-    }
-
-    const node = bubble(m);
-    if(node.classList.contains('q')){
-      if(!S.run){ S.run = el('div', 'run'); wrap.append(S.run); }
-      S.run.append(node);
-    }else{
-      S.run = null; wrap.append(node);
-    }
-
-    if(!S.open) S.open = at;
-    if(at) S.shut = at;
-    if(m.ts) S.ts = m.ts;
+  // A session written by the RETIRED design does not get drawn as if it were an
+  // observation. Those eras called a direction — a claim later measured to
+  // carry no information, and removed. Placed FIRST, where a descending list
+  // actually shows it; the old page appended it at the top and then scrolled to
+  // the bottom, so it was never seen.
+  if(msgs.every(m => m.contract === 'direction_call')){
+    wrap.append(el('div', 'oldcontract',
+      'An earlier design. These read the board and called a direction — a '
+      + 'question later measured to carry no information, and retired.'));
   }
 
-  if(msgs.length){
-    S.last = msgs[msgs.length - 1].ts;
-    wrap.append(el('div', 'endcap', 'latest read'));
-    const span = wrap.querySelector('.d-span');
-    if(span) span.textContent = S.open && S.shut ? S.open + ' – ' + S.shut : '';
+  // NEWEST FIRST. The API hands them oldest-first; this is the one place the
+  // order is inverted, and everything below reads bottom-up as a result.
+  for(let i = msgs.length - 1; i >= 0; i--){
+    const m = msgs[i];
+    const row = el('div', 'row');
+    const gut = el('div', 'gut');
+    gut.append(el('b', null, String(m.at == null ? '' : m.at)),
+               el('s', null, gutPrice(m.spot)));
+    row.append(gut, card(m, i === msgs.length - 1));
+    wrap.append(row);
+
+    // The silence BEFORE this reading, drawn under it — in a descending list
+    // the older reading is the next one down, so the gap belongs between them.
+    const prev = msgs[i - 1];
+    if(prev){
+      const gap = minutesBetween(prev.ts, m.ts);
+      if(gap != null && gap >= GAP_MIN){
+        const g = el('div', 'quiet-gap');
+        g.append(el('i'), el('span', null, elapsed(gap)), el('i'));
+        wrap.append(g);
+      }
+    }
   }
-  if(stick) toBottom();
+  wrap.append(el('div', 'endcap', 'first read of the session'));
 }
 
 async function loadDay(day){
-  S.day = day; S.last = '';
+  S.day = day; S.last = ''; S.msgs = [];
   const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(day));
-  S.stalled = getJSON.failed;      // the poll below is the retry
-  paint(doc, false);
-  if(S.stalled){
-    const w = $('wrap');
-    w.textContent = '';
-    w.append(el('div', 'state', 'Could not reach the station. Retrying…'));
-    return;
+  S.stalled = getJSON.failed;
+  if(!S.stalled && doc && Array.isArray(doc.messages)){
+    S.msgs = doc.messages;
+    if(S.msgs.length) S.last = S.msgs[S.msgs.length - 1].ts;
   }
-  if(doc && doc.count != null){
+  render();
+  $('wrap').scrollTop = 0;              // a new day opens at its newest reading
+
+  const sub = $('sub');
+  sub.textContent = '';
+  if(S.stalled){
+    sub.textContent = 'station unreachable';
+  }else if(doc && doc.count != null){
     const n = doc.count, k = doc.with_something;
-    const sub = $('sub');
-    sub.textContent = '';
     sub.append(el('b', null, String(k)),
-               document.createTextNode(` of ${n} read${n === 1 ? '' : 's'} said something`));
+               document.createTextNode(` of ${n} scan${n === 1 ? '' : 's'} said something`));
+  }else{
+    sub.textContent = day;
   }
 }
 
 /* Only ever asks for the tail, once there IS a tail. Otherwise it re-asks for
-   the whole day, which is what makes this the retry as well as the poll.
-
-   THE BUG THIS REPLACES (2026-09-09). The guard was `if(!S.day || !S.last)
-   return;`, and S.last is only set once a message has been painted. So:
-     * one dropped request on the first load — a phone changing cells, the
-       tunnel reconnecting — left the page reading "Nothing said this session
-       yet." with a poll that could never run again. Not for 45 seconds: for
-       the life of the page. The only recovery was a manual reload, and the
-       page gave no hint that one was needed.
-     * opening the thread before the model's first read of the day did the
-       same thing, permanently, on a session that was about to fill up.
-   Both looked from the phone like the history simply not working. */
+   the whole day, which is what makes this the retry as well as the poll — one
+   dropped request on the first load used to silence it for the life of the
+   page, and opening the thread before the day's first read did the same. */
 async function poll(){
   if(!S.day) return;
-  const tail = S.last
-    ? '&since=' + encodeURIComponent(S.last)
-    : '';                                   // no tail yet: ask for the day
+  const tail = S.last ? '&since=' + encodeURIComponent(S.last) : '';
   const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day) + tail);
-  if(getJSON.failed) return;                // still down; the next tick tries again
+  if(getJSON.failed) return;                    // still down; the next tick tries again
+  if(!doc || !Array.isArray(doc.messages)) return;
+  if(!doc.messages.length) return;
+
   if(!S.last){
-    // A recovery, or the session's first message. Repaint from scratch — and
-    // only now clear the stalled banner, so it stands while it is still true.
-    if(S.stalled || (doc && doc.messages && doc.messages.length)){
-      S.stalled = false;
-      paint(doc, false);
-    }
-    return;
+    S.msgs = doc.messages;                      // a recovery, or the day's first
+  }else{
+    S.msgs = S.msgs.concat(doc.messages);       // the tail
   }
-  if(doc && doc.messages && doc.messages.length) paint(doc, true);
+  S.last = S.msgs[S.msgs.length - 1].ts;
+  S.stalled = false;
+  // A new reading lands at the TOP now, so unlike the old bottom-anchored list
+  // it arrives in view. Hold the reader's place unless they are already there.
+  const wrap = $('wrap');
+  const atTop = wrap.scrollTop <= 8;
+  render();
+  if(atTop) wrap.scrollTop = 0;
 }
 
 async function boot(){
@@ -593,23 +414,24 @@ async function boot(){
   const days = (d && d.days) || [];
   const sel = $('day');
   if(!days.length){
-    // Same distinction as the poll: an unreachable station is not an empty
-    // archive, and the day list failing used to end the page outright — no
-    // timer was ever started below, so there was nothing left but a reload.
+    // An unreachable station is not an empty archive, and the day list failing
+    // used to end the page outright — no timer was started below, so there was
+    // nothing left but a manual reload.
     const down = getJSON.failed;
     $('wrap').textContent = '';
     $('wrap').append(el('div', 'state', down
       ? 'Could not reach the station. Retrying…'
       : 'No recorded sessions.'));
     $('sub').textContent = '';
-    if(down) setTimeout(boot, 5000);      // the station comes back; so do we
+    if(down) setTimeout(boot, 5000);
     return;
   }
+  sel.textContent = '';
   for(const day of days){
     const o = document.createElement('option');
-    // The whole date, not day.slice(5). "09-09" in a list that reaches back to
-    // 07-31 does not say which year, and the closed picker is the one place on
-    // this page where a reader looks to find out what they are reading.
+    // The whole date. "09-09" in a list reaching back to July does not say
+    // which year, and the closed picker is where a reader looks to find out
+    // what they are reading.
     o.value = day; o.textContent = day;
     sel.append(o);
   }
@@ -621,27 +443,24 @@ async function boot(){
     if(document.visibilityState === 'visible') poll();
   });
 
-  /* TELL THE ANDROID SHELL WHERE WE ARE (2026-09-09).
+  /* TELL THE ANDROID SHELL WHERE WE ARE.
      This page scrolls #wrap and pins the document at overflow:hidden, so the
      shell's SwipeRefreshLayout — which arms itself by asking the WEBVIEW
-     whether it can scroll up — was told "no" at every position in a 4300px
-     feed. Every drag downward became a reload that threw the reader back to
-     the top, which is what "the history does not work" looked like from the
-     phone. The document's scroll position is a lie here; #wrap's is the truth,
-     and only this page can say so.
+     whether it can scroll up — was told "no" at every position in the feed.
+     Every downward drag became a reload that threw the reader back to the top,
+     which is what "the history does not work" looked like from the phone.
+     The document's scroll position is a lie here; #wrap's is the truth, and
+     only this page can say so.
 
-     Guarded on every side: absent off the phone (a browser has no MiraiShell),
-     absent on an older shell that has no atTop, and wrapped because a bridge
-     call that throws inside a scroll handler would take the scrolling with it.
-     Only edge crossings are sent — a call per scroll event would be thousands
-     of binder hops for one boolean that changed twice. */
+     Guarded on every side: absent off the phone, absent on an older shell with
+     no atTop, and wrapped because a bridge call that throws inside a scroll
+     handler would take the scrolling with it. Only edge crossings are sent — a
+     call per scroll event would be thousands of binder hops for one boolean
+     that changed twice. */
   (function reportScrollToShell(){
     const bridge = window.MiraiShell;
     if(!bridge || typeof bridge.atTop !== 'function') return;
-    // getElementById, not the outer `wrap`: this file binds that name twice
-    // (a detached div in the message builder, and the scroller here), and the
-    // one that matters is too important to resolve by scope luck.
-    const scroller = document.getElementById('wrap');
+    const scroller = $('wrap');
     if(!scroller) return;
     let last = null;
     const send = () => {

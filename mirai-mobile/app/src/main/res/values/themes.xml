@@ -1,13 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Dark by commitment, not by preference: the glance is one dark screen and
-         a light system theme flashing behind it on launch is the only thing the
-         user would ever see of a second palette. -->
-    <style name="Theme.Mirai" parent="Theme.AppCompat.NoActionBar">
+    <!-- Light by commitment, not by preference. The glance is one light screen,
+         and a dark system theme flashing behind it on launch is the only thing
+         the user would ever see of a second palette.
+
+         windowLightStatusBar TRUE is the load-bearing line: it asks Android for
+         DARK status-bar icons, which is what a light ground needs. Left false
+         against this ground the clock and the battery are white on cream and
+         effectively gone. -->
+    <style name="Theme.Mirai" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@color/ground</item>
         <item name="android:colorBackground">@color/ground</item>
         <item name="android:statusBarColor">@color/ground</item>
-        <item name="android:navigationBarColor">@color/ground</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:navigationBarColor">@color/surface</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <!-- the nav bar sits under the page's own tab bar, which is surface
+             coloured; its icons need to be dark for the same reason -->
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
     </style>
 </resources>

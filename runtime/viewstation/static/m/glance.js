@@ -357,11 +357,41 @@ function layoutLabels(desired, gap, top, bottom){
 
 /* ---- the price line ---------------------------------------------------- */
 
+function barPoints(rows){
+  // THE SPINE (2026-09-09). One-minute bars from `sndk_bars`, written every 60s
+  // by its own launchd job — a job that shares no process, no import and no
+  // credential with the scanner.
+  //
+  // WHY IT REPLACED THE DIARY. tapePoints below drew the path from the
+  // scanner's own diary, which is fine only while the scanner is alive. On
+  // 2026-09-09 the diary held 14 rows: 09:30 to 09:45, then nothing until
+  // 15:48. The chart drew a straight line across that hole, 1737 to 1758 — and
+  // the real path inside it ran to 1807.22 at 10:06. The drawn line was wrong
+  // by $66.40, three quarters of the plot height, and it was wrong in the
+  // most dangerous way available: confidently, with no gap and no mark.
+  //
+  // The bar sidecar survived that outage untouched, because the thing that
+  // died was the option-chain credential and the bars come from the broker.
+  // That is the whole argument for it being the spine: it is the series least
+  // correlated with the failure that erases the other one.
+  if(!Array.isArray(rows)) return [];
+  const out=[];
+  for(const b of rows){
+    if(!b) continue;
+    const c=_fin(b.close), t=Date.parse(b.ts);
+    if(c==null||!isFinite(t)) continue;
+    out.push({t, s:c});
+  }
+  out.sort((a,b)=>a.t-b.t);
+  return out;
+}
+
 function tapePoints(rows){
-  // Diary rows carry ts + spot every couple of minutes, which is the session's
-  // own record and the only series reliably there. The finer sndk_tape fills
-  // only while somebody has the desktop tab open, so it cannot be the spine —
-  // a glance must draw something on a day nobody watched.
+  // THE FALLBACK. Diary rows carry ts + spot every couple of minutes. Used only
+  // when the bar sidecar has nothing for the day — a fresh install, a bars job
+  // that has not run, or a session before that job existed. Coarser and
+  // vulnerable to a scanner outage (see barPoints), but a glance must draw
+  // something rather than nothing.
   if(!Array.isArray(rows)) return [];
   const out=[];
   for(const r of rows){

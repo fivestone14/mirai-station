@@ -80,7 +80,10 @@ class MainActivity : AppCompatActivity() {
         window.navigationBarColor = GROUND
 
         web = WebView(this).apply {
-            setBackgroundColor(GROUND)          // no white flash before the page paints
+            // No FLASH before the page paints. It used to be a white flash against
+            // a dark page; against a light page it would be the same fault in
+            // reverse, so the constant does the work either way.
+            setBackgroundColor(GROUND)
             settings.apply {
                 javaScriptEnabled = true        // the glance is drawn in JS
                 domStorageEnabled = true
@@ -233,21 +236,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
-        const val GROUND = 0xFF0A0E14.toInt()      // the station's own background
-        const val SURFACE = 0xFF121924.toInt()
-        const val JADE = 0xFF43C59E.toInt()
+        // LIGHT SINCE 2026-09-09. These four values and the two res/values files
+        // are why a theme change is a rebuild here rather than a file edit on
+        // the mini: the window background, the status bar and the launch flash
+        // are compiled in. They must move together with the page's own tokens
+        // or the shell frames the page in the other palette.
+        const val GROUND = 0xFFE4E0D8.toInt()      // the page's ground, 74.8% luminance
+        const val SURFACE = 0xFFF4F1EB.toInt()     // the page's card
+        const val JADE = 0xFF2A9070.toInt()        // the call-side green, darkened for light
 
         /** Deliberately plain: it says which of the two things is wrong, because
          *  from a phone those are the only two worth telling apart. */
         val OFFLINE_HTML = """
             <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
             <style>
-              html,body{margin:0;height:100%;background:#0a0e14;color:#8494a0;
-                font:15px/1.5 -apple-system,system-ui,sans-serif;
+              html,body{margin:0;height:100%;background:#e4e0d8;color:#535b52;
+                font:15px/1.5 system-ui,Roboto,sans-serif;
                 display:flex;align-items:center;justify-content:center;text-align:center}
               div{padding:0 28px;max-width:22em}
-              b{color:#dbe4e0;font-weight:600;display:block;margin-bottom:8px}
-              span{color:#5b6a76;font-size:13px;display:block;margin-top:14px}
+              b{color:#161a17;font-weight:700;display:block;margin-bottom:8px}
+              span{color:#5c6459;font-size:13px;display:block;margin-top:14px}
             </style></head><body><div>
               <b>Can't reach the station</b>
               Either this phone has no connection, or the Mac mini is not answering.

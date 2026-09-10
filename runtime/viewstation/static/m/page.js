@@ -9,7 +9,7 @@
 const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
 
-let PAY = null, LIVE = null, DIARY = [], READS = [], WIN = null, LADDER_H = 376;
+let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], WIN = null, LADDER_H = 376;
 // whether the plot's bracket LABEL said a side was empty this repaint. The
 // gate footer speaks only when it did not.
 let CLEAR_SAID = {call:false, put:false};
@@ -18,29 +18,28 @@ let T_PAY = null, T_SPOT = null;
 /* ---- layout ------------------------------------------------------------ */
 
 function sizeLadder(){
-  // An explicit pixel height, never flex:1. A flexible child in a fixed column
-  // is the only thing that can absorb an overflow, and on 2026-08-24 it
-  // absorbed all of it and rendered at zero — correct viewBox, nothing drawn,
-  // nothing thrown.
-  // clientHeight, NOT window.innerHeight (2026-09-09). The CSS
-  // @media (max-height:700px) block keys off the LAYOUT viewport; this line
-  // used to key off the VISUAL one, and the two are not the same number.
-  // Measured this session at an emulated 320x568: innerHeight read 706 while
-  // clientHeight read 568, so JS took the tall FIXED (392) while CSS applied
-  // the short region heights (332) and 8px went unclaimed. That direction is
-  // merely wasteful. The reverse — JS short, CSS tall — makes the six regions
-  // sum to 60px MORE than the viewport, and body{overflow:hidden} then eats the
-  // footer and the reading's last line. It is reachable on iOS Safari, where
-  // innerHeight tracks the toolbar and the keyboard and media queries do not.
-  // One height source for one decision; the same source the CSS uses.
-  const vh = document.documentElement.clientHeight;
-  const SHORT = vh <= 700;
-  // A+B+D+E+F. Must move with any region height or the six overrun the
-  // viewport and body{overflow:hidden} clips the footer.
-  const FIXED = SHORT ? 340 : 431;
-  const cs = getComputedStyle(document.body);
-  const padV = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-  LADDER_H = Math.max(200, Math.min(560, vh - padV - FIXED));
+  // A CONSTANT since the light rebuild (2026-09-09), and the reason is the
+  // whole shape of the page.
+  //
+  // The old glance was a fixed-height column with overflow:hidden, so the six
+  // regions had to sum to less than the viewport and the ladder was the only
+  // elastic one — it absorbed every spare pixel and every deficit. That budget
+  // produced three separate documented failures: a region overrunning and
+  // printing through the footer, a media block that lost every cascade, and a
+  // JS/CSS disagreement about WHICH viewport height to measure (innerHeight is
+  // the visual one, the @media block is the layout one; measured 706 against
+  // 568 on the same screen).
+  //
+  // The page scrolls now, so there is no budget to balance and nothing for the
+  // chart to absorb. It gets the height the chart itself needs and the reading
+  // below it grows to whatever the model wrote. A paragraph that can be six
+  // lines or thirteen could never have lived in that column.
+  //
+  // 196: 158px of plot inside the current PAD_T/PAD_B, which is the height at
+  // which the wall rules stay separable and the price path keeps its shape.
+  // Below roughly 150 the label solver starts displacing labels further than
+  // the levels they name.
+  LADDER_H = 196;
   document.documentElement.style.setProperty('--ladder-h', LADDER_H + 'px');
   return LADDER_H;
 }
@@ -86,12 +85,16 @@ async function loadPayload(){
   PAY = pay;
 
   if(pay.session){
-    const [d, rd] = await Promise.all([
+    // 420, not 390: a session is 390 one-minute bars and the limit has to clear
+    // it, or the chart silently loses the close of every full day.
+    const [d, rd, bars] = await Promise.all([
       getJSON('/api/raw/file?root=state&path=sndk_reversion/' + encodeURIComponent(pay.session) + '.jsonl&limit=400'),
       getJSON('/api/raw/file?root=state&path=sndk_reads/'      + encodeURIComponent(pay.session) + '.jsonl&limit=40'),
+      getJSON('/api/raw/file?root=state&path=sndk_bars/'       + encodeURIComponent(pay.session) + '.jsonl&limit=420'),
     ]);
     DIARY = (d.body && Array.isArray(d.body.rows)) ? d.body.rows : [];
     READS = (rd.body && Array.isArray(rd.body.rows)) ? rd.body.rows : [];
+    BARS  = (bars.body && Array.isArray(bars.body.rows)) ? bars.body.rows : [];
   }
   WIN = null;                       // a new payload earns a new window
   paintAll();
@@ -129,10 +132,23 @@ function state(){
     price: withdrawn ? null : q,
     ref: q,                                     // geometric reference even when withdrawn
     diaryLast,
-    points: tapePoints(DIARY),
+    // Bars first, diary only when the sidecar has nothing. See barPoints for
+    // the 2026-09-09 outage that made this the default rather than a nicety:
+    // the diary's straight line across a six-hour hole was wrong by $66.40,
+    // and it looked exactly like a real price path.
+    points: pathPoints(),
     vwap: vwapPrice(scene, diaryLast),
     sigma: ((scene.scale || {}).one_sigma_dollars),
   };
+}
+
+function pathPoints(){
+  // A single bar is not a path, and a sidecar that has written one row while
+  // the diary holds a whole morning must not win on presence alone. Two is the
+  // minimum that can draw a line at all.
+  const b = barPoints(BARS);
+  if(b.length >= 2) return b;
+  return tapePoints(DIARY);
 }
 
 function paintAll(){
@@ -251,19 +267,28 @@ function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 function paintLadder(st){
   CLEAR_SAID = {call:false, put:false};   // reset above every early return
   const svg = $('svg');
-  const CW = Math.max(240, Math.round($('ladder').getBoundingClientRect().width) || 356);
+  // Measure RAW, then decide, then clamp. The old line did Math.max(240, ...)
+  // inline, which meant a collapsed container silently became a 240px chart —
+  // the clamp erased the very condition worth reporting.
+  const rawW = Math.round($('ladder').getBoundingClientRect().width);
+  // The height is a constant now, so a vertical collapse is not reachable; what
+  // still can be is a zero-WIDTH container — a card that has not laid out yet,
+  // or a parent with display:none. The old guard measured HEIGHT and would not
+  // have seen it. Under 240 there is no room for the plot plus the label
+  // gutter, and drawing anyway produces a garbled chart rather than an empty
+  // one. rawW of 0 is the not-laid-out case and must not draw either.
   const SVGH = LADDER_H - 1;
+  if(!isFinite(rawW) || rawW < 240){
+    svg.setAttribute('width', 240);
+    svg.setAttribute('height', SVGH);
+    svg.setAttribute('viewBox', '0 0 240 ' + SVGH);
+    svg.innerHTML = '<text class="p-word" x="10" y="24">CHART TOO NARROW</text>';
+    return;
+  }
+  const CW = rawW;
   svg.setAttribute('width', CW);
   svg.setAttribute('height', SVGH);
   svg.setAttribute('viewBox', '0 0 ' + CW + ' ' + SVGH);
-
-  // The explicit height makes a collapse impossible; this makes it visible if
-  // one ever occurs anyway. The headless harness supplies the chart height and
-  // therefore cannot see this class of fault at all.
-  if($('ladder').getBoundingClientRect().height < 180){
-    svg.innerHTML = '<text class="p-word" x="10" y="24">LADDER TOO SHORT</text>';
-    return;
-  }
 
   const sc = st.scene;
   const PLOT_R = CW - 86, PLOT_L = 8, PLOT_W = PLOT_R - PLOT_L;
@@ -623,7 +648,7 @@ function paintGate(st){
   const hideRows = () => { $('gRowA').hidden = true; $('gRowB').hidden = true; };
 
   if(bothSidesClear(walls)){
-    gate.className = 'gate empty';
+    gate.classList.add('empty');   // NOT className=: it would drop `card`
     set('gDir','NO WALL EITHER WAY'); set('gMeas',''); set('gStrike','');
     set('gMech','The board was read and holds nothing above or below price.');
     hideRows(); set('gFoot',''); $('gStrike').className = 'g-k';
@@ -632,12 +657,12 @@ function paintGate(st){
   const ref = st.ref ? st.ref.v : null;
   const w = nearestWall(walls, ref);
   if(!w){
-    gate.className = 'gate empty';
+    gate.classList.add('empty');   // NOT className=: it would drop `card`
     set('gDir','NO WALL MEASURED'); set('gMeas',''); set('gStrike',''); set('gMech','');
     hideRows(); set('gFoot',''); $('gStrike').className = 'g-k';
     return;
   }
-  gate.className = 'gate';
+  gate.classList.remove('empty');
 
   // Against the price ON SCREEN, like the distance and the sentence beside it.
   // walls_ladder buckets a cluster by the SCAN spot, so a live tick through the

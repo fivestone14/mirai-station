@@ -3,374 +3,335 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0C1017">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#E4E0D8">
 <title>SNDK · Mirai</title>
 <!--
-  The phone glance (rebuilt 2026-08-24).
+  The phone glance — light rebuild, 2026-09-09.
 
-  One price ladder under one price. It answers three questions in reading
-  order: what kind of day, where price sits against the levels that matter,
-  and what happens at the nearest one.
+  It answers three questions in reading order: what kind of day, where price
+  sits against the levels that matter, and what the model made of it. The
+  READING is the payload; the chart is context. The old build had that the
+  other way round — 44% of the screen was chart and the sentence got a strip at
+  the bottom, clamped to three lines, which cut 44.5% of recorded readings
+  mid-sentence.
 
-  Three laws it is built on.
+  FOUR LAWS, unchanged from the dark build. They are older than the theme.
+
     1. Honest-absent. No datum yields no mark. A measured emptiness is a
-       finding and gets drawn; a missing datum is not zero.
-    2. One hue, one meaning. Iris is price and only price. Jade is the call
-       side, coral the put side, l-grav the magnet, lantern staleness. The one
-       reuse is separated by form: filled and coloured is the day's move, of
-       which there is exactly one on screen; stroked or ruled and coloured is a
-       level on the book.
-    3. No Greek on the surface. Every distance is in dollars. The ruler is
-       stated once, in English, in the regime row.
+       finding and gets drawn; a missing datum is not zero. On a light ground
+       this needs ACTIVE work: empty dark space reads as unlit, empty white
+       space reads as loading. So an absence is drawn, never left blank.
+    2. One hue, one meaning. Green is the call side, coral the put side, amber
+       the magnet, blue price. NOTHING else on this screen is coloured — not
+       the live card, not the active tab. Chrome is neutral and hierarchy is
+       carried by fill, size and shadow. The one sanctioned exception is the
+       day's-move chip, of which there is exactly one on screen.
+    3. No Greek on the surface. Every distance is in dollars. The sigma ruler
+       is stated once, in English, in the regime row.
+    4. Market time everywhere. The station is on Pacific; every clock face
+       here is Eastern.
 
-  Gamma sign colours nothing. It is the literal string "unknown" on 7.1% of
-  rows, so its entire blast radius here is one gloss line, one sentence and the
-  footer. If the sign is wrong, one sentence is wrong, not the instrument.
+  WHY THE PAGE SCROLLS NOW. The old build was a fixed-height column with
+  overflow:hidden, and every region's height was a constant that had to sum to
+  less than the viewport. That budget was the source of three separate
+  documented failures — a region overrunning and printing through the footer,
+  a dead media block, and a JS/CSS disagreement about which viewport to
+  measure. It also made an unclamped reading impossible: a paragraph that can
+  be six lines or thirteen cannot live in a fixed box. The reading is the
+  payload, so the box goes.
 
-  Tokens are the Mirai Awakening desktop's own, byte-for-byte.
+  WHY THE COLOURS ARE NOT WHITE. The ground is 74.8% relative luminance and
+  the card 88.1%; pure white is 100%. Both are warmed off the grey axis. This
+  is read outdoors in daylight, where a light screen beats a dark one — but a
+  bright white panel in the same conditions is its own problem.
 -->
+<link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-:root{
-  --ground:#0C1017;
-  --surface:#141A24;
-  --surface-2:#1B2330;
-  --hairline:#28313F;
-  --hairline-2:#333E50;
-
-  /* ink is subordinate by SIZE, never by contrast: this is read outdoors, and
-     a low-contrast grey outdoors means gone. All three pass AA on --ground. */
-  --ink:#E7EBF3;
-  --ink-dim:#98A2B6;
-  --ink-faint:#8A93A8;
-
-  --iris:#8B9CFF;      /* price, and only price   */
-  --jade:#43C59E;      /* the call side           */
-  --coral:#EB6A57;     /* the put side            */
-  --lantern:#E7B85C;   /* aging, and nothing else */
-  --l-grav:#F3AB3E;    /* the magnet, and nothing else */
-
-  --jade-wash:rgba(67,197,158,.10);
-  --coral-wash:rgba(235,106,87,.10);
-
-  --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
-  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;
-  --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
-
-  /* TOUCH + PRESS (2026-09-09). Sizes are Material's 48dp, which on Android is
-     48 CSS px, and is the strictest of the three specs in play (WCAG 2.5.8 says
-     24, Apple says 44) — so meeting it meets all of them.
-     The state-layer opacities are Google's own md.sys.state tokens.
-     Timings are asymmetric on purpose: the press-down happens under a finger
-     that is covering the control, so what the eye actually sees is the RELEASE.
-     80ms in stays under Nielsen's 0.1s "instantaneous" limit; 200ms out is
-     md.sys.motion.duration.short4 and matches where the M3 spring settles. */
-  --tap-min:48px;
-  --state-hover:.08;          /* md.sys.state.hover-state-layer-opacity  */
-  --state-press:.12;          /* md.sys.state.pressed-state-layer-opacity */
-  --press-in:80ms;
-  --press-out:200ms;
-  --ease-in:cubic-bezier(0,0,0,1);      /* standard-decelerate: front-loaded */
-  --ease-out:cubic-bezier(.2,0,0,1);    /* standard                          */
-
-  --ladder-h:376px;
-  /* --r-read 92 -> 129 (2026-09-09). At 92 the sentence got 57px, three lines
-     of 13/1.45, and 44.5% of 119 recorded readings did not fit — the MEDIAN
-     reading needs four lines, so it was the ordinary case being severed, not
-     the outlier, and with no "more" affordance a cut sentence is indistinguish-
-     able from a finished one. Five lines fits 95.3%. The 37px comes from the
-     ladder, which is the only elastic region and is 431px on a tall phone
-     against a legibility floor near 234; it lands at 392. 131 rather than 129:
-     the row's own chrome (1 border + 16 padding + 14 label + 4 gap = 35) leaves
-     94.0px for 94.2px of text at 129, which clips the fifth line by a hair. FIXED in
-     sizeLadder() moved with it, in this same commit, or the six regions
-     overrun and body{overflow:hidden} eats the footer. */
-  --r-mast:88px; --r-regime:48px; --r-gate:144px; --r-read:131px; --r-foot:20px;
+/* The station serves this immutable for a year; the hash in the name is what
+   makes that safe. font-display:swap so a cold cache shows Roboto for a beat
+   rather than nothing — a glance must never wait on a typeface. */
+@font-face{
+  font-family:"Jakarta";
+  src:url("/m/pjs-153fc85b7029.woff2") format("woff2");
+  font-weight:200 800;
+  font-style:normal;
+  font-display:swap;
 }
-@media (max-height:700px){
-  /* --r-read 76 -> 84: the whole short-branch budget, and it is 8px. 568 minus
-     28 of padding leaves 340 for five regions above the ladder's 200 floor,
-     and the short block summed to 332 — so 8px were sitting unclaimed in the
-     ladder. (The note below this block used to say the gate was capped at 118;
-     the arithmetic caps it at 126.) Even spent, 82.4% of readings still do not
-     fit two lines. The read cannot be made whole inside a 568px viewport, and
-     the clamp stays at 2 rather than pretend otherwise. */
-  :root{ --r-mast:76px; --r-regime:44px; --r-gate:118px; --r-read:84px; --r-foot:18px; }
-  /* The element rules that used to live here are at the END of this sheet. They
-     set the same properties, at the same specificity, as the base rules below —
-     so declared HERE they lost every cascade and the block was dead: measured
-     2026-09-07 at 320x568, gap resolved to 4px, padding to 10px and .g-head to
-     47.4px, and .g-foot (the one gate child with overflow:hidden, so the one
-     with an automatic minimum of zero) absorbed the whole 7px deficit and
-     rendered a sanctioned sentence as an 11px slice of an 18px line. That is
-     the exact failure this block was written to prevent. */
+
+:root{
+  /* ---- surfaces ---- */
+  --g:#E4E0D8;          /* ground — warm putty, 74.8% luminance   */
+  --s:#F4F1EB;          /* card   — warm off-white, 88.1%         */
+  --s2:#DCD7CD;         /* inset  — bar track, chip               */
+  --fill:#1F2622;       /* the one filled card: the reading       */
+
+  /* ---- ink. Every step clears 4.5:1 on card AND ground. Subordination is
+         by SIZE, never by contrast: this is read outdoors, and a low-contrast
+         grey outdoors means gone. ---- */
+  --i:#161A17;          /* 15.60 on card · 13.36 on ground        */
+  --i-body:#333B35;     /* 10.25 · 8.78                           */
+  --i-mute:#535B52;     /*  6.24 · 5.34 · 4.90 on inset           */
+  --i-faint:#5C6459;    /*  5.44 · 4.66 — card+ground ONLY; it
+                            measures 4.28 on the inset            */
+  --on:#FFFFFF;         /* 15.46 on --fill                        */
+  --on-body:#E4E6DF;    /* 12.28 — not pure white; white halates
+                            over six lines of reversed prose      */
+  --on-mute:#A9B0A6;    /*  6.95                                  */
+  --on-faint:#8E958A;   /*  5.02                                  */
+
+  /* ---- one hue, one meaning.
+         -ink is text (>=4.5:1), -mark is a stroke (>=3:1), -tint a wash.
+         The dark build's values all FAIL on a light ground — jade measured
+         2.16:1 on white, amber 1.96:1 — so these are re-derived, not
+         re-used. ---- */
+  --call-ink:#136B52;  --call-mark:#2A9070;  --call-tint:#DDEBE0;
+  --put-ink:#AE3020;   --put-mark:#D2543E;   --put-tint:#F3E1DA;
+  --mag-ink:#845307;   --mag-mark:#B8740C;
+  --px-ink:#2F44B8;    --px-mark:#5470E4;
+  --path:#5F6A62;      --rule-soft:#7E8779;  --band:#EAE6DE;
+  --band-edge:#D5CFC4;
+
+  /* STALENESS HAS NO HUE ANY MORE. Amber carried both the magnet and aging in
+     the dark build. Darkened enough to be legible on this ground they land on
+     #845307 and #9B6E17 — six to thirteen units apart out of 255, which is no
+     distinction at all. Amber keeps the magnet; aging becomes a SHAPE, the
+     outlined chip below. */
+
+  /* ---- shadow: the card edge, since the card/ground step is only 1.17:1.
+         One light source, straight down. Blur grows faster than offset and
+         spread goes negative on the wide layers, or the ambient leaks
+         sideways and dirties the paper. Tinted with the ground's own warm
+         hue — black over a warm ground goes muddy. ---- */
+  --sh1:0 1px 1px -.5px rgba(58,48,32,.05),
+        0 3px 6px -1px rgba(58,48,32,.06),
+        0 10px 22px -6px rgba(58,48,32,.07);
+  --sh2:0 1px 2px 0 rgba(31,38,34,.08),
+        0 6px 14px -3px rgba(31,38,34,.12),
+        0 20px 40px -12px rgba(31,38,34,.16);
+
+  /* ---- touch + press. Material's md.sys tokens; 48px is the strictest of
+         the three target specs in play, so meeting it meets all of them. ---- */
+  --tap-min:48px;
+  --state-hover:.08; --state-press:.12;
+  --press-in:80ms; --press-out:200ms;
+  --ease-in:cubic-bezier(0,0,0,1);
+  --ease-out:cubic-bezier(.2,0,0,1);
+
+  --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
+  --tab-h:64px;
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
-html{height:100%}
+html{height:100%;background:var(--g)}
 body{
-  height:100dvh; overflow:hidden;
-  background:var(--ground); color:var(--ink);
-  font:400 13px/1.4 var(--sans);
+  min-height:100dvh;
+  background:var(--g);
+  color:var(--i-body);
+  font:400 15px/1.5 var(--sans);
+  font-variant-numeric:tabular-nums;
   -webkit-font-smoothing:antialiased;
-  padding:calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 14px);
-  display:flex; flex-direction:column;
+  padding:calc(env(safe-area-inset-top) + 16px) 16px
+          calc(env(safe-area-inset-bottom) + var(--tab-h) + 20px);
+  display:flex; flex-direction:column; gap:12px;
 }
-body.failed > section, body.failed > .foot{display:none}
+body.failed > *:not(.fail):not(.tabs){display:none}
 
-/* ============ A. MASTHEAD ============ */
-.masthead{height:var(--r-mast);flex:none;display:flex;flex-direction:column;
-          justify-content:center;gap:6px}
-.mast-row{display:flex;align-items:center;gap:8px;height:14px}
-.ticker{font:500 11px/1.2 var(--mono);letter-spacing:.18em;color:var(--ink-dim)}
-.livedot{width:5px;height:5px;border-radius:50%;background:var(--iris);flex:none;
-         box-shadow:0 0 0 0 rgba(139,156,255,.55);animation:pulse 2.4s ease-out infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(139,156,255,.5)}
-                 70%{box-shadow:0 0 0 7px rgba(139,156,255,0)}
-                 100%{box-shadow:0 0 0 0 rgba(139,156,255,0)}}
+/* ============ A. MASTHEAD — on the ground, uncarded ============ */
+.mast{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:0 4px}
+.mast-l{min-width:0}
+.mast-row{display:flex;align-items:center;gap:7px}
+.ticker{font:700 11px/1 var(--sans);letter-spacing:.16em;color:var(--i-faint)}
+.livedot{width:6px;height:6px;border-radius:50%;background:var(--call-mark);flex:none;
+         box-shadow:0 0 0 0 rgba(42,144,112,.5);animation:pulse 2.4s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(42,144,112,.45)}
+                 70%{box-shadow:0 0 0 7px rgba(42,144,112,0)}
+                 100%{box-shadow:0 0 0 0 rgba(42,144,112,0)}}
 @media (prefers-reduced-motion:reduce){.livedot{animation:none}}
-.expiry{font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-        color:var(--ink-faint)}
-.fresh{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
-       text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim);
-       white-space:nowrap}
-.fresh.warn{color:var(--lantern)}
-.fresh.bad{color:var(--lantern);border:1px solid var(--lantern);border-radius:3px;padding:1px 6px}
-
-.mast-price{display:flex;align-items:baseline;gap:10px;min-width:0}
-.px{font:600 40px/1.0 var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums;
-    color:var(--ink);flex:none}
-.px.withdrawn{color:var(--ink-dim)}
-.chg{font:600 11px/1.2 var(--mono);letter-spacing:.02em;font-variant-numeric:tabular-nums;
-     border-radius:999px;padding:3px 9px;white-space:nowrap;flex:none}
-.chg.up{color:var(--jade);background:var(--jade-wash)}
-.chg.dn{color:var(--coral);background:var(--coral-wash)}
-.chg.flat{color:var(--ink-dim);background:none}
-.lastscan{font:500 11px/1.2 var(--mono);letter-spacing:.02em;text-transform:uppercase;
-          font-variant-numeric:tabular-nums;color:var(--ink-faint);white-space:nowrap;
-          overflow:hidden;text-overflow:ellipsis}
+.expiry{font:500 11px/1 var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--i-faint)}
+.px{margin-top:10px;font:700 34px/1 var(--sans);letter-spacing:-.025em;color:var(--i);display:block}
+.px.withdrawn{color:var(--i-mute)}
+.chg{display:inline-flex;align-items:center;gap:4px;margin-top:9px;padding:5px 10px;
+     border-radius:999px;font:700 12px/1 var(--sans);white-space:nowrap}
+.chg.up{color:var(--call-ink);background:var(--call-tint)}
+.chg.dn{color:var(--put-ink);background:var(--put-tint)}
+.chg.flat{color:var(--i-mute);background:var(--s2)}
+.lastscan{display:block;margin-top:7px;font:500 11px/1.3 var(--sans);letter-spacing:.04em;
+          text-transform:uppercase;color:var(--i-faint)}
+/* aging is an OUTLINE, not a colour — see the staleness note in :root */
+.fresh{flex:none;font:700 11px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;
+       color:var(--i-mute);padding:5px 10px;border-radius:999px;white-space:nowrap}
+.fresh.warn,.fresh.bad{border:1px solid var(--i-mute)}
+.fresh.bad{color:var(--i);border-color:var(--i);border-width:1.5px}
 
 /* ============ B. REGIME ============ */
-.regime{height:var(--r-regime);flex:none;border-top:1px solid var(--hairline);
-        display:flex;align-items:center;gap:10px;padding-top:6px}
+.regime{display:flex;align-items:baseline;gap:10px;padding:0 4px}
 .reg-left{min-width:0;flex:1 1 auto}
-.reg-word{font:600 18px/1.15 var(--sans);letter-spacing:-.01em;color:var(--ink);
+.reg-word{font:700 17px/1.25 var(--sans);letter-spacing:-.01em;color:var(--i);
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .reg-word:empty{display:none}
-.reg-gloss{font:400 13px/1.4 var(--sans);color:var(--ink-dim);
+.reg-gloss{font:400 13px/1.4 var(--sans);color:var(--i-mute);
            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.reg-ruler{flex:none;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
-           text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim)}
+.reg-ruler{flex:none;font:500 11px/1 var(--sans);letter-spacing:.05em;
+           text-transform:uppercase;color:var(--i-faint)}
 
-/* ============ C. LADDER ============ */
-.ladder{height:var(--ladder-h);flex:none;border-top:1px solid var(--hairline-2)}
-#svg{display:block}
+/* ============ C. THE CARD SYSTEM ============ */
+.card{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
+.lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);
+     letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
+.lab .r{margin-left:auto;color:var(--i-mute);white-space:nowrap}
 
-.p-band   {fill:var(--ink);fill-opacity:.045}
-.p-path   {fill:none;stroke:var(--ink-dim);stroke-width:1.6;stroke-opacity:.85;
+/* ============ D. LADDER ============ */
+.ladder{margin-top:10px}
+#svg{display:block;width:100%;height:auto}
+
+.p-band   {fill:var(--band)}
+.p-bandedge{stroke:var(--band-edge);stroke-width:1}
+.p-path   {fill:none;stroke:var(--path);stroke-width:1.8;
            stroke-linejoin:round;stroke-linecap:round}
-.p-reach  {fill:none;stroke:var(--ink);stroke-opacity:.35;stroke-width:1.2;stroke-dasharray:2 4}
-.p-break  {stroke:var(--hairline-2);stroke-width:1}
-.p-vwap   {stroke:var(--ink-dim);stroke-opacity:.7;stroke-width:1;stroke-dasharray:1 5}
+.p-reach  {fill:none;stroke:var(--path);stroke-opacity:.5;stroke-width:1.2;stroke-dasharray:2 4}
+.p-break  {stroke:var(--band-edge);stroke-width:1}
+.p-vwap   {stroke:var(--rule-soft);stroke-width:1.25;stroke-dasharray:1 5}
 .p-wall   {stroke-linecap:butt}
-.p-wall.call{stroke:var(--jade)} .p-wall.put{stroke:var(--coral)}
-.p-mag    {stroke:var(--l-grav);stroke-width:2.2}
-.p-magrun {stroke:var(--l-grav);stroke-width:1.4}
-.p-magglow{stroke:var(--l-grav);stroke-width:7;stroke-opacity:.10}
-.p-prule  {stroke:var(--iris);stroke-opacity:.28;stroke-width:1}
-.p-dot    {fill:var(--iris);stroke:var(--ground);stroke-width:1.2}
-.p-halo   {fill:none;stroke:var(--iris);stroke-opacity:.28;stroke-width:1.2}
-.p-brk    {fill:none;stroke:var(--ink-dim);stroke-opacity:.55;stroke-width:1.5;
-           stroke-linecap:butt}
-.p-chip   {fill:var(--iris)}
-.p-chiptx {fill:var(--ground);font:500 13px/1 var(--mono);font-variant-numeric:tabular-nums;
-           text-anchor:end}
-.p-tie    {fill:none;stroke:var(--hairline-2);stroke-width:.8}
-.p-bar    {fill-opacity:.85}
-.p-bar.call{fill:var(--jade)} .p-bar.put{fill:var(--coral)}
-.p-clip   {fill:var(--ink)}
-.p-diamond{fill:var(--l-grav)}
-.p-tag    {font:500 13px/1 var(--mono);font-variant-numeric:tabular-nums;text-anchor:end;
-           fill-opacity:.78}
-.p-tag.lead{fill-opacity:1;font-weight:600}
-.p-tag.call{fill:var(--jade)} .p-tag.put{fill:var(--coral)}
-.p-tag.mag {fill:var(--l-grav)} .p-tag.vwap{fill:var(--ink-dim)}
-.p-lane    {font:500 10px/1 var(--mono);letter-spacing:.12em;fill:var(--ink-dim);
-            text-anchor:end}
-.p-word    {font:500 10px/1 var(--mono);letter-spacing:.14em;fill:var(--ink-faint);
-            paint-order:stroke;stroke:var(--ground);stroke-width:3;stroke-linejoin:round}
-.p-word.dim{fill:var(--ink-dim)}
-.p-edge    {font:500 11px/1 var(--mono);letter-spacing:.02em;
-            font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--ink-faint)}
-/* weight only — the marker stays subordinate to in-window tags */
-.p-edge.lead{font-weight:600}
-.p-axis    {font:500 10px/1 var(--mono);letter-spacing:.14em;fill:var(--ink-faint)}
+.p-wall.call{stroke:var(--call-mark)} .p-wall.put{stroke:var(--put-mark)}
+/* the magnet is a LONG DASH as well as amber. On a light ground hue alone is
+   not enough to separate five 1-3px lines, and it is the worst channel for a
+   red-green deficient reader. Position, dash and weight carry it redundantly. */
+.p-mag    {stroke:var(--mag-mark);stroke-width:1.8;stroke-dasharray:6 3}
+.p-magrun {stroke:var(--mag-mark);stroke-width:1.3;stroke-dasharray:4 3}
+.p-magglow{stroke:none}
+.p-prule  {stroke:var(--px-mark);stroke-opacity:.30;stroke-width:1}
+.p-dot    {fill:var(--px-mark);stroke:var(--s);stroke-width:2}
+.p-halo   {fill:none;stroke:var(--px-mark);stroke-opacity:.30;stroke-width:1.2}
+.p-brk    {fill:none;stroke:var(--path);stroke-opacity:.55;stroke-width:1.5;stroke-linecap:butt}
+.p-chip   {fill:var(--px-mark)}
+.p-chiptx {fill:var(--s);font:700 12px/1 var(--sans);text-anchor:end}
+.p-tie    {fill:none;stroke:var(--band-edge);stroke-width:.9}
+.p-bar    {fill-opacity:.9}
+.p-bar.call{fill:var(--call-mark)} .p-bar.put{fill:var(--put-mark)}
+.p-clip   {fill:var(--i-mute)}
+.p-diamond{fill:var(--mag-mark)}
+.p-tag    {font:700 12px/1 var(--sans);text-anchor:end;fill-opacity:.9}
+.p-tag.lead{fill-opacity:1}
+.p-tag.call{fill:var(--call-ink)} .p-tag.put{fill:var(--put-ink)}
+.p-tag.mag {fill:var(--mag-ink)}  .p-tag.vwap{fill:var(--i-mute)}
+.p-lane    {font:500 10px/1 var(--sans);letter-spacing:.1em;fill:var(--i-faint);text-anchor:end}
+/* the halo punches the word through whatever it crosses; it strokes the CARD
+   colour now, not the old dark ground */
+.p-word    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-mute);
+            paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
+.p-word.dim{fill:var(--i-faint)}
+.p-edge    {font:700 11px/1 var(--sans);text-anchor:end;fill:var(--i-mute)}
+.p-edge.lead{fill:var(--i)}
+.p-axis    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-faint)}
 
-/* ============ D. GATE ============ */
-.gate{height:var(--r-gate);flex:none;border-top:1px solid var(--hairline-2);
-      display:flex;flex-direction:column;justify-content:center;gap:4px;padding:10px 0 10px}
-.g-lab{display:flex;align-items:baseline;gap:8px;height:14px}
-.g-dir{font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-       color:var(--ink-dim);white-space:nowrap;
-       /* the item that gives way. Both were nowrap with no min-width, so
-          margin-left:auto collapsed under overflow and the MEASURE ran off the
-          right edge last-character-first — and on the censored path the first
-          casualty is the "+", which turns "held at least 2h40m" into "held
-          exactly 2h40m". */
-       min-width:0;overflow:hidden;text-overflow:ellipsis}
-.g-meas{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
-        text-transform:uppercase;font-variant-numeric:tabular-nums;color:var(--ink-dim);
-        white-space:nowrap;flex:none}
-/* 48, not 40: a 30px/1.0 mono strike baseline-aligned against a 2-line
-   13/1.4 clamp measures 48 in a real engine, and at 40 the sentence's
-   second line sat on the gauge bars. */
-.g-head{display:flex;align-items:baseline;gap:10px;height:48px;min-width:0}
-.g-k{flex:none;font:600 30px/1.0 var(--mono);letter-spacing:-.01em;
-     font-variant-numeric:tabular-nums}
-.g-k.call{color:var(--jade)} .g-k.put{color:var(--coral)}
-.g-mech{flex:1 1 auto;min-width:0;font:400 13px/1.4 var(--sans);color:var(--ink-dim);
-        display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.g-load{display:grid;grid-template-columns:1fr auto;column-gap:10px;row-gap:4px;
-        align-items:center}
+/* ============ E. THE READING — the one filled card ============ */
+.read{background:var(--fill);border-radius:18px;padding:20px;box-shadow:var(--sh2)}
+.read .lab{color:var(--on-faint)}
+.read .lab .r{color:var(--on-mute)}
+.rd-body{display:flex;gap:9px;margin-top:12px}
+.rd-mark{flex:none;font:700 11px/1.8 var(--sans);color:var(--on-faint)}
+.rd-mark:empty{display:none}
+/* NO CLAMP. Measured against 84 recorded readings at this measure: three lines
+   cut 47.6% of them and two lines cut every single one. The median reading
+   needs six. A truncated sentence is indistinguishable from a finished one,
+   which makes the clamp worse than the scroll it saves. */
+.rd-line{flex:1 1 auto;min-width:0;font:400 16px/1.55 var(--sans);color:var(--on-body);
+         text-wrap:pretty;hyphens:none}
+.rd-line.aged{color:var(--on-mute)}
+/* a level's annotation shown where a sentence would be: not the model's voice */
+.rd-line.wordless{color:var(--on-mute)}
+
+/* ============ F. THE NEAREST LEVEL ============ */
+.g-lab{display:flex;align-items:baseline;gap:8px}
+.g-dir{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+       color:var(--i-faint);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.g-meas{margin-left:auto;font:500 11px/1.2 var(--sans);letter-spacing:.04em;
+        text-transform:uppercase;color:var(--i-mute);white-space:nowrap;flex:none}
+.g-head{display:flex;align-items:baseline;gap:12px;margin-top:11px;min-width:0}
+.g-k{flex:none;font:700 26px/1 var(--sans);letter-spacing:-.02em}
+.g-k.call{color:var(--call-ink)} .g-k.put{color:var(--put-ink)}
+.g-mech{flex:1 1 auto;min-width:0;font:400 13px/1.45 var(--sans);color:var(--i-body)}
+.g-load{display:grid;grid-template-columns:1fr auto;column-gap:10px;row-gap:6px;
+        align-items:center;margin-top:13px}
 .g-row{display:contents}
 .g-row[hidden]{display:none}
-.g-bar{position:relative;height:6px;border-radius:2px;background:var(--surface-2);
-       overflow:hidden}
-.g-bar>i{position:absolute;inset:0 auto 0 0;border-radius:2px;background:var(--ink);
-         opacity:.80;width:0}
-.g-bar.behind>i{opacity:.42}
-.g-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;
-              background:var(--ground)}
-.g-val{font:500 11px/1.2 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-dim);
-       white-space:nowrap}
-.g-val b{font-weight:600;color:var(--ink)}
-.g-foot{font:400 13px/1.4 var(--sans);color:var(--ink-dim);
-        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gate.empty .g-head{height:auto}
-.gate.empty .g-mech{-webkit-line-clamp:3}
+.g-bar{position:relative;height:6px;border-radius:99px;background:var(--s2);overflow:hidden;
+       box-shadow:inset 0 1px 2px 0 rgba(58,48,32,.07)}
+/* NEUTRAL. Share-of-book is a magnitude, not a side, and colouring it would
+   assert a side the number does not carry. */
+.g-bar>i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:#3A4557;width:0}
+.g-bar.behind>i{opacity:.45}
+.g-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--s)}
+.g-val{font:500 11px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap}
+.g-val b{font-weight:700;color:var(--i-body)}
+.g-foot{margin-top:11px;font:400 13px/1.45 var(--sans);color:var(--i-mute)}
+.g-foot:empty{display:none}
+.gate.empty .g-head{margin-top:9px}
 
-/* ============ E. READ ============ */
-.read{height:var(--r-read);flex:none;border-top:1px solid var(--hairline);
-      display:flex;flex-direction:column;gap:4px;padding:8px 0 8px}
-.rd-lab{display:flex;align-items:baseline;height:14px;
-        font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-        color:var(--ink-faint)}
-/* PAINTED SMALL, TAPPED BIG (2026-09-09). The chip stays 18px because the row
-   it sits in is 14 and the read row's budget has no spare pixels — but the
-   TARGET is 48x48, drawn as an invisible ::after that overhangs the paint. That
-   is Google's own technique (button/internal/_touch-target.scss uses
-   height:max(48px,100%)) and it satisfies WCAG 2.5.5, which measures the target
-   rather than the ink. Before this the tap area was 48x18 — 41% of the required
-   height — inside a 92px region of which 74px did nothing. */
-.rd-all{position:relative;isolation:isolate;
-        margin-left:8px;font:500 10px/1.2 var(--mono);letter-spacing:.12em;
-        text-transform:uppercase;color:var(--iris);text-decoration:none;
-        padding:2px 5px;margin-top:-2px;border:1px solid var(--hairline);border-radius:6px;
-        -webkit-tap-highlight-color:transparent;   /* we paint our own — see press.js */
-        touch-action:manipulation;                 /* no double-tap-zoom delay */
-        -webkit-user-select:none;user-select:none;
-        transition:color var(--press-out) var(--ease-out),
-                   border-color var(--press-out) var(--ease-out)}
-.rd-all::after{content:"";position:absolute;top:50%;left:50%;
-               transform:translate(-50%,-50%);
-               width:max(100%,var(--tap-min));height:var(--tap-min)}
-.rd-all::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;
-                background:var(--ink);opacity:0;
-                transition:opacity var(--press-out) var(--ease-out)}
-/* No scale on this one. A 3% scale-down resamples a 1px border and 10px mono
-   glyphs onto fractional device pixels and reads as the text going soft. The
-   cue here is colour and border, which cost no resampling. */
-.rd-all.is-pressed{color:var(--ink);border-color:var(--iris);
-                   transition-duration:var(--press-in);
-                   transition-timing-function:var(--ease-in)}
-.rd-all.is-pressed::before{opacity:var(--state-press);
-                           transition-duration:var(--press-in);
-                           transition-timing-function:var(--ease-in)}
-@media (hover:hover){ .rd-all:hover::before{opacity:var(--state-hover)} }
-.rd-all:focus-visible{outline:2px solid var(--iris);outline-offset:2px}
-.rd-age{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
-        font-variant-numeric:tabular-nums;color:var(--ink-dim)}
-.rd-age.old{color:var(--lantern)}
-.rd-body{display:flex;gap:6px;min-width:0;flex:1 1 auto}
-.rd-mark{flex:none;font-size:9px;line-height:1.9;color:var(--ink-dim)}
-.rd-mark:empty{display:none}
-/* Roman, not italic (2026-09-09). The serif stays — it is this page's one prose
-   voice and it is what separates an opinion from a measurement. The italic went:
-   sustained italic serif over four and five lines is the slowest thing on this
-   screen to read, and this is the only text here read for MEANING rather than
-   scanned. Italic serif is the footnote treatment on this page, and it was being
-   applied to the most valuable sentence on it.
-   13px stays too. Measured against the archive, 13px buys more completeness per
-   pixel of row than 14 or 15 buys presence: at this row height 13/1.45 shows
-   95.3% of readings whole, 14/1.5 shows 73.3%. */
-.rd-line{flex:1 1 auto;min-width:0;font:400 13px/1.45 var(--serif);color:var(--ink);
-         display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden}
-.rd-line.aged{color:var(--ink-dim)}
-/* Not the reading's voice: this is a level's annotation, shown because it is
-   all there is. Sans, dimmed — the same treatment `expired` uses to say "this
-   is not the model talking". */
-.rd-line.wordless{font:400 13px/1.45 var(--sans);color:var(--ink-dim)}
-.rd-line.expired{font:400 13px/1.4 var(--sans);font-style:normal;color:var(--ink-dim)}
+/* ============ G. FOOT ============ */
+.foot{padding:2px 4px 0;font:400 11px/1.4 var(--sans);color:var(--i-faint)}
 
-/* ============ F. FOOT ============ */
-.foot{height:var(--r-foot);flex:none;display:flex;align-items:flex-end;
-      font:400 10px/1.35 var(--sans);color:var(--ink-faint);
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-/* ============ SHORT VIEWPORTS ============ */
-/* Last in the sheet ON PURPOSE — see the note beside the :root block above.
-   The regions cannot GROW here: 568 minus padding leaves the ladder's 200px
-   floor capping the gate at 118. So they shed instead — alignment, padding and
-   one line of the reading. No type step and no string changes. */
-@media (max-height:700px){
-  .gate{gap:2px;padding:6px 0 6px}
-  .g-head{align-items:flex-start;height:36px}
-  /* Still TWO lines. 84 minus the row's 35px of chrome leaves 49px, and three
-     lines of 13/1.45 is 56.5 — it does not fit, and the last line would print
-     straight through the footer, which is the exact 2026-09-07 failure. The
-     extra 8px buys air around two lines, not a third. 82.4% of recorded
-     readings are still cut here; a 568px viewport cannot hold this sentence and
-     the archive is one tap away. */
-  .rd-line{-webkit-line-clamp:2}
+/* ============ H. TABS ============ */
+.tabs{
+  position:fixed;left:0;right:0;bottom:0;z-index:10;
+  display:flex;justify-content:center;gap:64px;
+  padding:11px 0 calc(env(safe-area-inset-bottom) + 12px);
+  background:var(--s);border-radius:22px 22px 0 0;
+  box-shadow:0 -6px 22px -10px rgba(58,48,32,.16);
 }
+.tab{position:relative;isolation:isolate;
+     display:flex;flex-direction:column;align-items:center;gap:4px;
+     min-width:var(--tap-min);padding:4px 12px 2px;border-radius:14px;
+     color:var(--i-faint);text-decoration:none;
+     touch-action:manipulation;-webkit-user-select:none;user-select:none;
+     transition:color var(--press-out) var(--ease-out)}
+.tab::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+            width:max(100%,var(--tap-min));height:var(--tap-min)}
+.tab::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;
+             background:var(--i);opacity:0;
+             transition:opacity var(--press-out) var(--ease-out)}
+.tab.on{color:var(--i)}
+.tab.is-pressed{color:var(--i);transition-duration:var(--press-in);
+                transition-timing-function:var(--ease-in)}
+.tab.is-pressed::before{opacity:var(--state-press);transition-duration:var(--press-in);
+                        transition-timing-function:var(--ease-in)}
+@media (hover:hover){.tab:hover::before{opacity:var(--state-hover)}}
+.tab:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+.tab svg{display:block;width:22px;height:22px;stroke:currentColor;fill:none;
+         stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tab s{font:500 10px/1 var(--sans);letter-spacing:.1em;text-decoration:none}
+.tab i{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:1px}
+.tab.on i{background:var(--i)}
 
-/* ============ REDUCED MOTION ============ */
-/* WCAG's own definition settles what goes: "motion animation does not include
-   changes of colour, blurring or opacity which do not change the perceived
-   size, shape or position" — so the state layer is not motion and stays, while
-   a transform would be and would go. This page's chip has no transform to drop,
-   so the layer is simply strengthened to carry the whole cue. The anti-pattern
-   is the popular global `*{transition-duration:.01ms!important}` reset, which
-   deletes press feedback altogether — strictly worse for accessibility than the
-   animation it was meant to suppress. */
 @media (prefers-reduced-motion:reduce){
-  .rd-all.is-pressed::before{opacity:.20}
+  .tab.is-pressed::before{opacity:.20}
 }
 @media (forced-colors:active){
-  .rd-all::before{display:none}
-  .rd-all.is-pressed{border-color:Highlight;color:Highlight}
+  .tab::before{display:none}
+  .tab.is-pressed,.tab.on{color:Highlight}
 }
 
 /* ============ FAILURE ============ */
-.fail{margin:auto 0;padding:0 6px;text-align:left}
-.fail-1{font:400 15px/1.5 var(--sans);color:var(--ink);margin-bottom:10px}
-.fail-2{font:500 12px/1.5 var(--mono);color:var(--ink-dim)}
+.fail{margin:auto 0;padding:24px 6px;text-align:left}
+.fail-1{font:400 16px/1.5 var(--sans);color:var(--i);margin-bottom:10px}
+.fail-2{font:500 13px/1.5 var(--sans);color:var(--i-mute)}
 </style>
 </head>
 <body>
 
-<section class="masthead" id="masthead">
-  <div class="mast-row">
-    <span class="ticker"  id="ticker"></span>
-    <span class="livedot" id="livedot" hidden></span>
-    <span class="expiry"  id="expiry"></span>
-    <span class="fresh"   id="fresh"></span>
-  </div>
-  <div class="mast-price">
+<section class="mast" id="masthead">
+  <div class="mast-l">
+    <div class="mast-row">
+      <span class="ticker"  id="ticker"></span>
+      <span class="livedot" id="livedot" hidden></span>
+      <span class="expiry"  id="expiry"></span>
+    </div>
     <span class="px"  id="px">—</span>
     <span class="chg" id="chg" hidden></span>
     <span class="lastscan" id="lastscan" hidden></span>
   </div>
+  <span class="fresh" id="fresh"></span>
 </section>
 
 <section class="regime">
@@ -381,9 +342,20 @@ body.failed > section, body.failed > .foot{display:none}
   <div class="reg-ruler" id="ruler"></div>
 </section>
 
-<section class="ladder" id="ladder"><svg id="svg"></svg></section>
+<section class="card">
+  <div class="lab">Today</div>
+  <div class="ladder" id="ladder"><svg id="svg"></svg></div>
+</section>
 
-<section class="gate" id="gate">
+<section class="read" id="read">
+  <div class="lab">Model read<span class="r" id="rdAge"></span></div>
+  <div class="rd-body">
+    <span class="rd-mark" id="rdMark"></span>
+    <span class="rd-line" id="rdLine"></span>
+  </div>
+</section>
+
+<section class="card gate" id="gate">
   <div class="g-lab">
     <span class="g-dir"  id="gDir"></span>
     <span class="g-meas" id="gMeas"></span>
@@ -403,17 +375,23 @@ body.failed > section, body.failed > .foot{display:none}
   <div class="g-foot" id="gFoot"></div>
 </section>
 
-<section class="read" id="read">
-  <div class="rd-lab"><span>MODEL READ</span><a class="rd-all" href="/m/thread.html" data-press data-haptic>all&nbsp;›</a><span class="rd-age" id="rdAge"></span></div>
-  <div class="rd-body"><span class="rd-mark" id="rdMark"></span><span class="rd-line" id="rdLine"></span></div>
-</section>
-
 <div class="foot" id="foot"></div>
 
 <div class="fail" id="fail" hidden>
   <p class="fail-1" id="fail1"></p>
   <p class="fail-2" id="fail2"></p>
 </div>
+
+<nav class="tabs">
+  <span class="tab on" data-press>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>
+    <s>NOW</s><i></i>
+  </span>
+  <a class="tab" href="/m/thread.html" data-press data-haptic>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <s>READS</s><i></i>
+  </a>
+</nav>
 
 <script src="/m/press.js"></script>
 <script src="/m/glance.js"></script>
