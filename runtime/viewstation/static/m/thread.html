@@ -62,18 +62,34 @@
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
-html,body{height:100%}
+/* THE DOCUMENT SCROLLS (2026-09-09, second pass).
+   This was `html,body{height:100%}` with `body{overflow:hidden}` and an inner
+   flex scroller. In a desktop browser that measures correctly; in the Android
+   WebView the page came up showing only the top of the list with the rest
+   unreachable — `height:100%` needs a definite height to resolve against, and
+   when it does not get one the column collapses to its content while
+   overflow:hidden clips everything past it. There is no way to be sure of that
+   resolution across every WebView build, so the page stops depending on it:
+   nothing has a fixed height, the header sticks, and the document scrolls.
+   That also scales to any screen for free, which the fixed column never did.
+
+   It removes a second class of bug with it — the shell's SwipeRefreshLayout
+   asks the WEBVIEW whether it can scroll up, and that question is now
+   answerable, because the document is the thing that scrolls. */
+html{background:var(--g)}
 body{
+  min-height:100dvh;
   background:var(--g);color:var(--i-body);
   font:400 15px/1.5 var(--sans);font-variant-numeric:tabular-nums;
   -webkit-font-smoothing:antialiased;
-  display:flex;flex-direction:column;overflow:hidden;
 }
 
 /* ============ HEADER ============ */
 .hd{
-  flex:none;display:flex;align-items:center;gap:12px;
+  position:sticky;top:0;z-index:5;
+  display:flex;align-items:center;gap:12px;
   padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  /* opaque: the list scrolls UNDER this now */
   background:var(--g);
 }
 .back{
@@ -121,13 +137,10 @@ body{
 
 /* ============ THE LIST ============ */
 .wrap{
-  flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  /* CONTAIN, or a drag at the top of the list chains to the root document and
-     arms the browser's own pull-to-refresh — the same "every downward drag
-     became a reload that threw the reader back to the top" symptom the shell
-     bridge below exists to prevent, coming back through a different door. The
-     Android shell masks it (OVER_SCROLL_NEVER), a plain Chrome tab does not. */
-  overscroll-behavior:contain;
+  /* No height, no inner scrolling. The overscroll-behavior that used to live
+     here is gone with the inner scroller it was containing: the document is
+     the scroller now, so a drag at the top is the browser's own gesture and
+     the shell's SwipeRefreshLayout can read it directly. */
   padding:4px 16px calc(env(safe-area-inset-bottom) + 28px);
   display:flex;flex-direction:column;gap:16px;
 }
@@ -188,6 +201,41 @@ body{
         font:700 10px/1 var(--sans);letter-spacing:.13em;text-transform:uppercase;
         color:var(--i-faint)}
 
+/* ============ LOADING ============ */
+/* A glance that shows nothing while it fetches is indistinguishable from a
+   glance that is broken — and on a light ground an empty screen reads as
+   "loading" far less than an empty DARK one did, because blank white IS what a
+   loading page looks like. So say it.
+
+   The delay matters as much as the spinner: a station on the same LAN answers
+   in well under 200ms, and a spinner that flashes for 80ms is a flicker that
+   makes the page feel slower, not faster. It appears only if the wait is long
+   enough to be noticed. */
+.load{
+  position:fixed;inset:0;z-index:20;
+  display:flex;align-items:center;justify-content:center;gap:11px;
+  background:var(--g);
+  font:700 11px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--i-faint);
+  opacity:0;pointer-events:none;
+  animation:load-in .2s ease-out .35s forwards;
+}
+.load[hidden]{display:none}
+@keyframes load-in{to{opacity:1}}
+.load i{
+  width:17px;height:17px;flex:none;border-radius:50%;
+  border:2px solid var(--s2);border-top-color:var(--i-mute);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  /* the ring stops turning; the wait still has to be visible, so it pulses
+     instead — opacity is not motion under WCAG's own definition */
+  .load i{animation:pulse-dim 1.4s ease-in-out infinite}
+  .load{animation-duration:.01s}
+}
+@keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
+
 @media (prefers-reduced-motion:reduce){
   .back.is-pressed{transform:none}
   .back.is-pressed::before{opacity:.20}
@@ -209,7 +257,9 @@ body{
   <select class="day" id="day" aria-label="Session" data-press></select>
 </header>
 
-<main class="wrap" id="wrap"><div class="state">loading…</div></main>
+<main class="wrap" id="wrap"></main>
+
+<div class="load" id="load"><i></i>Reading the archive</div>
 
 <script src="/m/press.js"></script>
 <script>
@@ -379,8 +429,9 @@ async function loadDay(day){
     if(S.msgs.length) S.last = S.msgs[S.msgs.length - 1].ts;
   }
   render();
-  $('wrap').scrollTop = 0;              // a new day opens at its newest reading
+  window.scrollTo(0, 0);                // a new day opens at its newest reading
   paintSub(doc);
+  $('load').hidden = true;
 }
 
 /* The subheader, extracted because the POLL has to be able to repaint it. It
@@ -408,10 +459,10 @@ async function poll(){
   if(S.polling) return;      // no second request while one is airborne — see below
   if(!S.day) return;
   S.polling = true;
-  let doc;
+  let docJson;
   try{
     const tail = S.last ? '&since=' + encodeURIComponent(S.last) : '';
-    doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day) + tail);
+    docJson = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day) + tail);
   }finally{
     S.polling = false;
   }
@@ -425,14 +476,14 @@ async function poll(){
   // "station unreachable", and nothing else ever touches it again.
   const wasStalled = S.stalled;
   S.stalled = false;
-  if(!doc || !Array.isArray(doc.messages)) return;
-  if(!doc.messages.length){
-    if(wasStalled) render(), paintSub(doc);
+  if(!docJson || !Array.isArray(docJson.messages)) return;
+  if(!docJson.messages.length){
+    if(wasStalled) render(), paintSub(docJson);
     return;
   }
 
   if(!S.last){
-    S.msgs = doc.messages;                      // a recovery, or the day's first
+    S.msgs = docJson.messages;                      // a recovery, or the day's first
   }else{
     // DEDUP BY TIMESTAMP. `since` is exclusive on the server, but this function
     // has two callers — the 45s interval and every visibilitychange — and
@@ -442,8 +493,8 @@ async function poll(){
     // for equal timestamps. The guard makes this belt-and-braces; keep both,
     // because the cost is a string compare and the symptom is silent.
     const seen = S.last;
-    const fresh = doc.messages.filter(m => m && m.ts > seen);
-    if(!fresh.length){ if(wasStalled) paintSub(doc); return; }
+    const fresh = docJson.messages.filter(m => m && m.ts > seen);
+    if(!fresh.length){ if(wasStalled) paintSub(docJson); return; }
     S.msgs = S.msgs.concat(fresh);
   }
   S.last = S.msgs[S.msgs.length - 1].ts;
@@ -458,13 +509,13 @@ async function poll(){
   // the difference back. At the top (or near it) that difference is exactly
   // what we do NOT want to add, because arriving at the top is the whole point
   // of a descending list.
-  const wrap = $('wrap');
-  const atTop = wrap.scrollTop <= 8;
-  const hBefore = wrap.scrollHeight;
-  const yBefore = wrap.scrollTop;
+  const doc = document.documentElement;
+  const atTop = window.scrollY <= 8;
+  const hBefore = doc.scrollHeight;
+  const yBefore = window.scrollY;
   render();
-  paintSub(doc);
-  wrap.scrollTop = atTop ? 0 : yBefore + (wrap.scrollHeight - hBefore);
+  paintSub(docJson);
+  window.scrollTo(0, atTop ? 0 : yBefore + (doc.scrollHeight - hBefore));
 }
 
 async function boot(){
@@ -481,6 +532,7 @@ async function boot(){
       ? 'Could not reach the station. Retrying…'
       : 'No recorded sessions.'));
     $('sub').textContent = '';
+    $('load').hidden = true;
     if(down) setTimeout(boot, 5000);
     return;
   }
@@ -494,42 +546,32 @@ async function boot(){
     sel.append(o);
   }
   sel.value = days[0];
-  sel.addEventListener('change', () => loadDay(sel.value));
+  sel.addEventListener('change', () => {
+    // Switching sessions is a real wait — a whole day is fetched — so the
+    // spinner comes back rather than leaving the previous day's list on screen
+    // pretending to be the new one.
+    $('load').hidden = false;
+    loadDay(sel.value);
+  });
   await loadDay(days[0]);
   setInterval(poll, 45000);   // no handle: nothing on this page ever stops it
   document.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'visible') poll();
   });
 
-  /* TELL THE ANDROID SHELL WHERE WE ARE.
-     This page scrolls #wrap and pins the document at overflow:hidden, so the
-     shell's SwipeRefreshLayout — which arms itself by asking the WEBVIEW
-     whether it can scroll up — was told "no" at every position in the feed.
-     Every downward drag became a reload that threw the reader back to the top,
-     which is what "the history does not work" looked like from the phone.
-     The document's scroll position is a lie here; #wrap's is the truth, and
-     only this page can say so.
+  /* THE SHELL BRIDGE IS GONE, and its absence is the fix.
 
-     Guarded on every side: absent off the phone, absent on an older shell with
-     no atTop, and wrapped because a bridge call that throws inside a scroll
-     handler would take the scrolling with it. Only edge crossings are sent — a
-     call per scroll event would be thousands of binder hops for one boolean
-     that changed twice. */
-  (function reportScrollToShell(){
-    const bridge = window.MiraiShell;
-    if(!bridge || typeof bridge.atTop !== 'function') return;
-    const scroller = $('wrap');
-    if(!scroller) return;
-    let last = null;
-    const send = () => {
-      const atTop = scroller.scrollTop <= 0;
-      if(atTop === last) return;
-      last = atTop;
-      try { bridge.atTop(atTop); } catch(e){ /* never break the scroll */ }
-    };
-    scroller.addEventListener('scroll', send, {passive:true});
-    send();                       // the shell starts with no opinion; give it one
-  })();
+     It existed because this page used to scroll an inner element while the
+     document stayed pinned — so the shell's SwipeRefreshLayout, which arms
+     itself by asking the WEBVIEW whether it can scroll up, was told "no" at
+     every position in the feed and turned every downward drag into a reload.
+     The page had to report its own position through MiraiShell.atTop().
+
+     The document is the scroller now, so the WebView can answer that question
+     itself and correctly. The shell keeps its bridge and its callback — a page
+     that never calls in falls back to the WebView's own answer, which is
+     exactly right for this one. One fewer moving part between a finger and a
+     scroll. */
 }
 
 boot();

@@ -95,7 +95,7 @@ def test_a_recovered_station_stops_saying_it_is_unreachable():
     'station unreachable' — was written only by loadDay, so it never recanted."""
     p = _fn("poll")
     i_clear = p.index("S.stalled = false")
-    i_empty = p.index("if(!doc.messages.length)")
+    i_empty = p.index("if(!docJson.messages.length)")
     assert i_clear < i_empty, \
         "the stalled flag is cleared after the empty-answer return; the banner would stick"
     assert "paintSub" in p, "poll cannot repaint the subheader that says 'station unreachable'"
@@ -113,13 +113,58 @@ def test_the_poll_holds_the_readers_place():
         "arriving at the top must still land at the top; that is the point of descending"
 
 
-def test_the_scroller_contains_its_own_overscroll():
-    """Without this a drag at the top of the list chains to the root document
-    and arms the browser's own pull-to-refresh — the same reload-and-jump the
-    shell bridge below it exists to prevent, through a different door. The
-    Android shell masks it; a plain Chrome tab does not."""
-    m = re.search(r"(?ms)^\.wrap\{(.*?)\}", THREAD)
-    assert m and "overscroll-behavior:contain" in m.group(1).replace(" ", "")
+def test_the_document_is_the_scroller():
+    """This replaces an overscroll-containment test, because the inner scroller
+    it was containing is gone.
+
+    The page used to be `html,body{height:100%}` with `body{overflow:hidden}`
+    and a flex child that scrolled. A desktop browser measures that correctly;
+    the Android WebView came up showing only the top of the list with the rest
+    unreachable, because `height:100%` needs a definite height to resolve
+    against and the column collapses to its content when it does not get one —
+    while overflow:hidden clips everything past it.
+
+    Nothing has a fixed height now, so there is nothing to resolve and the page
+    scales to any screen. It also makes the shell's SwipeRefreshLayout question
+    ("can the child scroll up?") answerable, which is why the JS bridge that
+    used to answer it for this page could be deleted."""
+    body = re.search(r"(?ms)^body\{(.*?)\}", THREAD)
+    assert body is not None
+    flat = body.group(1).replace(" ", "").replace("\n", "")
+    assert "overflow:hidden" not in flat, "the body hides overflow again; the list would be cut off"
+    assert "height:100%" not in flat, "height:100% needs a definite parent and the WebView does not give one"
+    assert "min-height:100dvh" in flat
+
+    wrap = re.search(r"(?ms)^\.wrap\{(.*?)\}", THREAD)
+    assert wrap is not None
+    wflat = wrap.group(1).replace(" ", "")
+    assert "overflow-y:auto" not in wflat, "the inner scroller is back"
+    assert "flex:1" not in wflat
+
+    hd = re.search(r"(?ms)^\.hd\{(.*?)\}", THREAD)
+    assert hd and "position:sticky" in hd.group(1).replace(" ", ""), \
+        "the header must stick, or it scrolls away with the list"
+
+    # the bridge is not merely unused — it is gone, and the comment says why
+    assert "MiraiShell" in THREAD, "the note explaining why the bridge went is missing too"
+    assert "bridge.atTop" not in THREAD, "the page still reports a scroll position it no longer owns"
+
+
+def test_a_wait_is_shown_rather_than_a_blank_screen():
+    """On a light ground an empty screen IS what loading looks like, so silence
+    reads as breakage. The overlay is delayed: a station on the same LAN answers
+    well under 200ms, and a spinner that flashes for 80ms makes the page feel
+    slower, not faster."""
+    assert 'id="load"' in THREAD
+    load = re.search(r"(?ms)^\.load\{(.*?)\}", THREAD)
+    assert load is not None
+    flat = load.group(1).replace(" ", "")
+    assert "opacity:0" in flat and "forwards" in flat, "the overlay is not delayed"
+    assert re.search(r"animation:load-in[^;]*\s\.\d+s\s+forwards", load.group(1)), \
+        "no delay on the reveal"
+    # and every path that ends a load must clear it, including the empty archive
+    assert THREAD.count("$('load').hidden = true") >= 2, \
+        "a path that finishes loading leaves the spinner up"
 
 
 def test_the_struck_chip_stays_legible_on_the_filled_card():

@@ -74,6 +74,7 @@ async function getJSON(url){
 
 function fail(one, two){
   document.body.classList.add('failed');
+  clearLoading();
   $('fail').hidden = false;
   $('fail1').textContent = one;
   $('fail2').textContent = two || '';
@@ -184,6 +185,15 @@ function pathPoints(){
   return (d[d.length - 1].t - b[b.length - 1].t > GRACE_MS) ? d : b;
 }
 
+function clearLoading(){
+  // Real content is on screen; the overlay has done its job. Called from BOTH
+  // the success and the failure paths — a station that is down must not end up
+  // with a spinner sitting on top of its own error message, which is the
+  // classic way a loading state outlives the load.
+  const el = $('load');
+  if(el) el.hidden = true;
+}
+
 function paintAll(){
   const st = state();
   paintMast(st);
@@ -192,6 +202,7 @@ function paintAll(){
   paintGate(st);
   paintRead();
   paintFoot(st);
+  clearLoading();
 }
 
 /* ---- in-plot word placement -------------------------------------------- */
