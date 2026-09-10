@@ -185,13 +185,27 @@ function pathPoints(){
   return (d[d.length - 1].t - b[b.length - 1].t > GRACE_MS) ? d : b;
 }
 
+// The overlay is painted opaque, so it covers the empty page from the first
+// frame rather than arriving after it. That makes the FLOOR the thing to get
+// right: a station on the same LAN answers in ~40ms, and an overlay that
+// appears and vanishes inside 100ms is a flash that reads as a glitch. Held to
+// 260ms it is either genuinely unnoticed or genuinely a loading state.
+const LOAD_MIN_MS = 260;
+const LOAD_T0 = Date.now();
+
 function clearLoading(){
   // Real content is on screen; the overlay has done its job. Called from BOTH
   // the success and the failure paths — a station that is down must not end up
   // with a spinner sitting on top of its own error message, which is the
   // classic way a loading state outlives the load.
   const el = $('load');
-  if(el) el.hidden = true;
+  if(!el || el.hidden || el.dataset.going) return;
+  el.dataset.going = '1';                       // a repaint must not restart the fade
+  const wait = Math.max(0, LOAD_MIN_MS - (Date.now() - LOAD_T0));
+  setTimeout(() => {
+    el.classList.add('going');                  // fade, so it does not snap away
+    setTimeout(() => { el.hidden = true; }, 200);
+  }, wait);
 }
 
 function paintAll(){

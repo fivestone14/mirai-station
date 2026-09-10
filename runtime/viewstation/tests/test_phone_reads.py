@@ -150,21 +150,34 @@ def test_the_document_is_the_scroller():
     assert "bridge.atTop" not in THREAD, "the page still reports a scroll position it no longer owns"
 
 
-def test_a_wait_is_shown_rather_than_a_blank_screen():
-    """On a light ground an empty screen IS what loading looks like, so silence
-    reads as breakage. The overlay is delayed: a station on the same LAN answers
-    well under 200ms, and a spinner that flashes for 80ms makes the page feel
-    slower, not faster."""
+def test_the_overlay_covers_the_blank_page_from_the_first_frame():
+    """The first version faded in after 350ms, which inverted the thing it was
+    for: the reader saw the empty page for 350ms and the spinner arrived
+    afterwards. A loading state that appears after the wait is not a loading
+    state.
+
+    So it is painted opaque, and the flicker problem moves to the other end —
+    a floor on how briefly it may be shown."""
     assert 'id="load"' in THREAD
     load = re.search(r"(?ms)^\.load\{(.*?)\}", THREAD)
     assert load is not None
-    flat = load.group(1).replace(" ", "")
-    assert "opacity:0" in flat and "forwards" in flat, "the overlay is not delayed"
-    assert re.search(r"animation:load-in[^;]*\s\.\d+s\s+forwards", load.group(1)), \
-        "no delay on the reveal"
-    # and every path that ends a load must clear it, including the empty archive
-    assert THREAD.count("$('load').hidden = true") >= 2, \
+    flat = load.group(1).replace(" ", "").replace("\n", "")
+    assert "opacity:1" in flat, "the overlay starts transparent; the blank page shows first"
+    assert "animation:" not in flat, "a delayed reveal is back"
+    assert "position:fixed" in flat and "inset:0" in flat, "it does not cover the page"
+    assert "background:var(--g)" in flat, "a transparent overlay does not hide anything"
+
+    assert "LOAD_MIN_MS" in THREAD, "nothing stops a 40ms answer flashing the overlay"
+    m = re.search(r"LOAD_MIN_MS\s*=\s*(\d+)", THREAD)
+    assert m and int(m.group(1)) >= 200, "the floor is too short to read as anything but a stutter"
+
+    # every path that ends a load must clear it — including the empty archive,
+    # which never reaches loadDay at all
+    assert THREAD.count("hideLoading()") >= 2, \
         "a path that finishes loading leaves the spinner up"
+    # ...and switching sessions is a real fetch, so it must put the overlay back
+    assert "showLoading()" in THREAD, \
+        "a day switch leaves the previous session on screen pretending to be the new one"
 
 
 def test_the_struck_chip_stays_legible_on_the_filled_card():

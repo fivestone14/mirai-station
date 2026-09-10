@@ -346,11 +346,19 @@ body.failed > *:not(.fail):not(.tabs){display:none}
   background:var(--g);
   font:700 11px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;
   color:var(--i-faint);
-  opacity:0;pointer-events:none;
-  animation:load-in .2s ease-out .35s forwards;
+  /* OPAQUE FROM THE FIRST FRAME. The first version faded in after 350ms to
+     avoid flashing on a fast local load — but that inverted the thing it was
+     for: the reader saw the empty page for 350ms and the spinner arrived
+     afterwards, which is exactly the blank screen the overlay exists to cover.
+     A loading state that appears after the wait is not a loading state.
+     Flicker is handled at the other end instead: clearLoading holds it for
+     LOAD_MIN_MS, so a fast load either never shows it long enough to register
+     or shows it properly. Never a stutter. */
+  opacity:1;pointer-events:none;
+  transition:opacity .18s ease-out;
 }
+.load.going{opacity:0}
 .load[hidden]{display:none}
-@keyframes load-in{to{opacity:1}}
 .load i{
   width:17px;height:17px;flex:none;border-radius:50%;
   border:2px solid var(--s2);border-top-color:var(--i-mute);
@@ -361,7 +369,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
   /* the ring stops turning; the wait still has to be visible, so it pulses
      instead — opacity is not motion under WCAG's own definition */
   .load i{animation:pulse-dim 1.4s ease-in-out infinite}
-  .load{animation-duration:.01s}
+  .load{transition:none}
 }
 @keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
 
