@@ -393,9 +393,24 @@ def test_no_nan_reaches_an_svg_attribute():
 
 def test_the_gate_direction_is_derived_not_read():
     """walls_ladder buckets a cluster by the SCAN spot, so a live tick through
-    the wall makes the payload's side label contradict the plot above it."""
+    the wall makes the payload's side label contradict the plot above it.
+
+    2026-09-10: this used to end `assert "'g-k ' + w.side" in PAGE` with the
+    note "...but the HUE stays the side of the BOOK". That was a deliberate
+    choice, and the reasoning behind it is sound — the hue describes what the
+    cluster IS (call-signed), the word describes where it SITS (below you), and
+    two statements about different things cannot contradict each other.
+
+    It is overturned because the reader cannot see that distinction. This
+    screen's stated law is one hue, one meaning, and it teaches green as the
+    call side — so a green strike under the words "NEXT BELOW" reads as an
+    error, whatever it technically asserts. When the two frames disagree the
+    strike now goes neutral: the cluster is positive-gamma sitting below price,
+    which qualifies as neither side and will be re-filed or dropped at the next
+    scan. Saying nothing for two minutes beats saying something the line above
+    contradicts."""
     assert "w.strike > ref ? '▲ NEXT ABOVE' : '▼ NEXT BELOW'" in PAGE
-    assert "'g-k ' + w.side" in PAGE     # ...but the HUE stays the side of the BOOK
+    assert "'g-k ' + w.side" not in PAGE, "the hue is asserted without checking the frame"
 
 
 def test_the_clear_side_bracket_is_qualified_and_conditional():
@@ -582,3 +597,22 @@ def test_the_two_phone_pages_share_one_palette():
     assert len(shared) >= 20, f"the pages have stopped sharing a palette ({len(shared)} tokens)"
     drift = {k: (a[k].strip(), b[k].strip()) for k in shared if a[k].strip() != b[k].strip()}
     assert not drift, f"the two phone pages disagree about {drift}"
+
+
+def test_the_strike_colour_never_contradicts_the_direction_beside_it():
+    """The card names a direction from the LIVE price and takes the wall's side
+    from the scene, which was filed against the book's spot up to two minutes
+    earlier. Price crossing the nearest wall between scans put those two out of
+    step, and the card rendered "NEXT BELOW" in call-green.
+
+    Neither frame can just win: colouring by the live side would paint a
+    positive-gamma cluster coral, and coral means the put side and nothing else
+    on this screen. So a disagreement drops the strike to neutral ink and lets
+    the word carry it."""
+    src = PAGE.split("function paintGate")[1].split("\nfunction ")[0]
+    assert "const liveSide = w.strike > ref ? 'call' : 'put';" in src, \
+        "the live side is not computed; the colour cannot be checked against the word"
+    assert "liveSide === w.side ? ' ' + w.side : ''" in src, \
+        "the strike is coloured without comparing the two frames"
+    # the direction word and the colour must be derived from the SAME price
+    assert "w.strike > ref ? '\u25b2 NEXT ABOVE' : '\u25bc NEXT BELOW'" in src

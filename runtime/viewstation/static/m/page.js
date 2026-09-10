@@ -750,7 +750,25 @@ function paintGate(st){
   set('gMeas', bits.join(' · '));
 
   $('gStrike').textContent = gUsd(w.strike, 0).replace('$','');
-  $('gStrike').className = 'g-k ' + w.side;
+  // THE TWO FRAMES MUST AGREE OR THE COLOUR SAYS NOTHING.
+  //
+  // `w.side` was filed by walls_ladder against the BOOK's spot, up to two
+  // minutes ago. The direction word above is measured against the price on
+  // screen, which repaints every five seconds. They normally agree; when price
+  // crosses the nearest wall between scans they do not, and the card rendered
+  // "▼ NEXT BELOW" in call-green — a colour asserting a side the word directly
+  // above it contradicts.
+  //
+  // Neither frame can simply win. Colouring by the live side would paint a
+  // positive-gamma cluster coral, and on this screen coral means the put side
+  // and nothing else. Keeping the filed colour leaves the contradiction on
+  // screen. So when they disagree the strike drops to neutral ink: the
+  // cluster is a positive-gamma pile now sitting BELOW price, which qualifies
+  // as neither side and will be re-filed or dropped on the next scan. Until
+  // then the honest statement is that we do not know which side it is, and
+  // the direction word carries it alone.
+  const liveSide = w.strike > ref ? 'call' : 'put';
+  $('gStrike').className = 'g-k' + (liveSide === w.side ? ' ' + w.side : '');
 
   // gamma_sign is the literal string "unknown" on 7.1% of rows. No sign, no
   // sentence — the strike, direction, distance and gauge all still stand.
