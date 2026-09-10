@@ -10,6 +10,7 @@ these pin all three spellings onto the same file.
 Driving do_GET needs no socket: the handler's only I/O goes through _send_file
 and _send_json, and a subclass that captures both exercises the route table
 directly (the same stand-in habit test_host_guard uses for _host_ok)."""
+import inspect
 import re
 from pathlib import Path
 
@@ -487,3 +488,49 @@ def test_gminutes_cannot_print_sixty():
 def test_the_named_edge_carries_the_weight_the_bug_cannot():
     assert "namedEdge" in PAGE and "edgeCls" in PAGE
     assert ".p-edge.lead{font-weight:600}" in PHONE
+
+
+# --- the typeface, and the one header that makes it affordable -------------
+# The phone downloads a 27 KB variable font. Everything else this server sends
+# is `no-cache`, and it sends no ETag and no Last-Modified — so a revalidation
+# cannot return 304 and a no-cache font is re-fetched in full on every app
+# open, over a tunnel, on cell data. The filename's own content hash is what
+# makes a year-long immutable cache safe instead of reckless.
+
+def test_only_a_content_hashed_name_earns_an_immutable_cache():
+    assert server._looks_hashed("pjs-153fc85b7029")          # 12 hex, the real one
+    assert server._looks_hashed("x-0123456789abcdef")        # longer is fine
+    assert not server._looks_hashed("pjs")                   # no hash at all
+    assert not server._looks_hashed("pjs-153fc85b70")        # 10 hex, too short
+    assert not server._looks_hashed("pjs-153fc85b7029g")     # g is not hex
+    assert not server._looks_hashed("PlusJakartaSans-OFL")   # words, not a hash
+
+
+def test_an_unhashed_font_falls_back_to_no_cache():
+    """The failure worth having. An unhashed font served immutable can never be
+    replaced — every phone that fetched it holds it for a year and no edit on
+    the mini reaches them. Wasting bandwidth is the cheaper mistake."""
+    assert ".woff2" in server._IMMUTABLE_SUFFIXES
+    assert server._IMMUTABLE_MAX_AGE == 31536000
+    # the rule is (suffix AND hashed), not (suffix OR hashed)
+    src = inspect.getsource(server.Handler._send_file)
+    assert "_IMMUTABLE_SUFFIXES" in src and "_looks_hashed" in src
+    assert 'and _looks_hashed' in src
+
+
+def test_the_font_is_on_disk_and_named_by_its_own_bytes():
+    import hashlib
+    fonts = sorted((server.STATIC / "m").glob("*.woff2"))
+    assert fonts, "the phone's typeface is missing from static/m"
+    for f in fonts:
+        digest = hashlib.sha256(f.read_bytes()).hexdigest()[:12]
+        assert f.stem.endswith(digest), (
+            f"{f.name} claims a hash its bytes do not match — "
+            f"immutable caching would pin the wrong file for a year")
+        assert f.read_bytes()[:4] == b"wOF2", f"{f.name} is not a woff2"
+
+
+def test_the_font_ships_its_licence():
+    """Plus Jakarta Sans is OFL, which permits redistribution and requires the
+    licence to travel with the font."""
+    assert (server.STATIC / "m" / "PlusJakartaSans-OFL.txt").is_file()

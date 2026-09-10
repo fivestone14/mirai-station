@@ -241,7 +241,40 @@ _CONTENT_TYPES = {
     # reads this type as the file's own declaration of what it is, so it is
     # named rather than defaulted.
     ".apk": "application/vnd.android.package-archive",
+    # The phone's typeface. Browsers ignore the MIME type for @font-face and
+    # would load it as octet-stream anyway, but a file the station serves on
+    # purpose should say what it is.
+    ".woff2": "font/woff2",
+    ".txt": "text/plain; charset=utf-8",
 }
+
+# CONTENT-HASHED ASSETS MAY BE CACHED FOREVER (2026-09-09).
+#
+# _send_file sends `Cache-Control: no-cache` on everything, which is right for
+# a page whose whole job is to be current — but it is exactly wrong for a 27 KB
+# typeface. no-cache means revalidate on every request, and this server sends
+# no ETag and no Last-Modified, so a revalidation cannot come back 304: the
+# phone re-downloads the entire font on every app open, over a Cloudflare
+# tunnel, on cell data.
+#
+# The escape is the filename. `pjs-153fc85b7029.woff2` carries the first twelve
+# hex of its own sha256, so the name changes whenever the bytes do and a stale
+# copy can never be served under a name that means something else. That is what
+# makes `immutable` safe rather than reckless.
+_IMMUTABLE_SUFFIXES = (".woff2",)
+_IMMUTABLE_MAX_AGE = 31536000        # one year, the conventional ceiling
+
+
+def _looks_hashed(stem: str) -> bool:
+    """`name-<12+ hex>` — the shape that makes a year-long cache safe.
+
+    Deliberately strict. An UNHASHED font served immutable is a font that can
+    never be replaced: every phone that fetched it holds it for a year and no
+    edit on the mini reaches them. So a file that does not carry its own hash
+    falls through to no-cache and merely wastes bandwidth, which is the failure
+    worth having."""
+    tail = stem.rsplit("-", 1)[-1] if "-" in stem else ""
+    return len(tail) >= 12 and all(c in "0123456789abcdef" for c in tail)
 
 # --- snapshot memo (avoid rebuilding for every concurrent poll) ---------------
 _lock = threading.Lock()
@@ -485,6 +518,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({"error": msg}, 403)
 
     def _send_file(self, path: Path):
+        # (see _IMMUTABLE_SUFFIXES above for the caching rule this applies)
         if not path.is_file():
             self._send_json({"error": "not found"}, 404)
             return
@@ -494,7 +528,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type",
                          _CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-cache")
+        if path.suffix in _IMMUTABLE_SUFFIXES and _looks_hashed(path.stem):
+            self.send_header("Cache-Control",
+                             f"public, max-age={_IMMUTABLE_MAX_AGE}, immutable")
+        else:
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
