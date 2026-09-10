@@ -61,6 +61,29 @@ _FEED_SIREN_TEXT = {
     "zero_dte_dead": "today's 0DTE book half-dead — native fetch rejected",
 }
 
+# THE OTHER HALF OF EVERY SIREN (2026-09-09). Until today a degraded feed paged
+# once and then nothing — the last thing the phone ever said about the SPX feed
+# was that it was broken, however long ago it healed. On 2026-09-09 the native
+# chain fell to the SPY proxy at 09:37 ET and came back at 15:51; the degrade
+# page landed correctly and the recovery never came, so a phone glanced at after
+# lunch reported a proxy day that had ended hours earlier. The SNDK dead-man's
+# switch learned this in August and carries a recovery page for exactly this
+# reason; the gravity feed's siren never got one.
+_FEED_RECOVERY_TEXT = {
+    "no_zero_dte": "today's 0DTE expiry is back in the chain",
+    "zero_dte_dead": "today's 0DTE book is answering again",
+    "flow_dead": "options flow back — aggressor ticks landing again",
+    "scanner_silent": "scanner back — scan rows landing again",
+}
+
+
+def _recovery_text(flag: str) -> str:
+    """What the all-clear says. The `source:` family is dynamic (the proxy label
+    embeds a per-tick rescale) so it cannot live in a literal table."""
+    if flag.startswith("source:"):
+        return "native chain restored — the gravity map is off the proxy"
+    return _FEED_RECOVERY_TEXT.get(flag, f"back to normal: {flag}")
+
 
 def _alerts_state_path(state_dir: Path) -> Path:
     return Path(state_dir) / "market_expectation" / "alerts_state.json"
@@ -162,7 +185,8 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
 
     st = _load_alerts_state(state_dir, date_iso)
     out: Dict[str, Any] = {"pushed": 0, "breaches": 0, "redives": 0,
-                           "eod_scored": False, "feed_sirens": 0}
+                           "eod_scored": False, "feed_sirens": 0,
+                           "feed_recoveries": 0}
     rows = _lens_rows(state_dir, date_iso)   # today's diary — passes 2 and 4 read it
 
     # --- 1) fresh paper fires → phone (one push per fire, ever) --------------
@@ -286,21 +310,69 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     # --- 4) feed-health siren (2026-07-13) -------------------------------------
     # The 0DTE-discovery outage wrote `no_zero_dte` honestly on every live row and
     # paged no one — a diary flag is not an alarm. A fresh row means the scanner is
-    # in-session right now; each degraded-feed fact on it pushes once per day.
+    # in-session right now; each degraded-feed fact on it pushes once per OUTAGE
+    # (2026-09-09 — it was once per DAY, which made a heal-and-break-again session
+    # mute after the first break) and every siren now has an all-clear to match.
     try:
         sirens = set(st.get("feedSirens") or [])
+        down_since = dict(st.get("feedDownSince") or {})
         latest = next((r for r in reversed(rows)
                        if r.get("ticker") in LENS_TICKERS), None)
         age = _row_age_min(latest, now_et) if latest else None
+        tk = (latest.get("ticker") if latest else None) or "SPX"
+
+        def _siren(flag: str, text: str) -> None:
+            """Page ONCE PER OUTAGE, and only remember a page that was delivered.
+
+            Delivery, not intent: push.send swallows the channel's exception and
+            reports dispatched: False (unreachable ntfy, revoked topic). Marking
+            the flag anyway would retire the one notification the outage was ever
+            going to get. An undelivered siren stays un-marked so the next tick
+            tries again, and says so out loud."""
+            if flag in sirens:
+                return
+            rec = push.send(f"🩺 {tk} feed: {text}", tag="gex-feed")
+            if not rec.get("dispatched"):
+                out.setdefault("undelivered", []).append(
+                    {"flag": flag, "why": rec.get("error") or "channel did not dispatch"})
+                return
+            sirens.add(flag)
+            down_since[flag] = now_et.isoformat()
+            out["feed_sirens"] += 1
+
+        def _recover(flag: str) -> None:
+            """The all-clear, which also RE-ARMS the siren for a second outage
+            the same session. The old code never cleared a flag, so a feed that
+            broke at 09:37, healed at 11:00 and broke again at 14:00 paged once
+            for the morning and stayed mute through the afternoon."""
+            if flag not in sirens:
+                return
+            since = down_since.get(flag)
+            when = f" (degraded since {str(since)[11:16]} ET)" if since else ""
+            rec = push.send(f"🩺 {tk} feed: {_recovery_text(flag)}{when}",
+                            tag="gex-feed")
+            if not rec.get("dispatched"):
+                out.setdefault("undelivered", []).append(
+                    {"flag": flag + ":recovery",
+                     "why": rec.get("error") or "channel did not dispatch"})
+                return
+            sirens.discard(flag)
+            down_since.pop(flag, None)
+            out["feed_recoveries"] += 1
+
         if age is not None and age < _FEED_FRESH_MIN:
-            for flag in _feed_health_flags(latest):
-                if flag in sirens:
-                    continue
-                text = _FEED_SIREN_TEXT.get(flag, f"gravity feed degraded: {flag}")
-                push.send(f"🩺 {latest.get('ticker') or 'SPX'} feed: {text}",
-                          tag="gex-feed")
-                sirens.add(flag)
-                out["feed_sirens"] += 1
+            flags = _feed_health_flags(latest)
+            for flag in flags:
+                _siren(flag, _FEED_SIREN_TEXT.get(
+                    flag, f"gravity feed degraded: {flag}"))
+            # A fresh row IS the scanner speaking — clear the silence siren first
+            # so the sweep below never sees a flag this branch already answered.
+            _recover("scanner_silent")
+            # Anything still standing that this fresh row no longer reports has
+            # healed. flow_dead is excluded: it is a whole-session claim, not a
+            # per-row flag, so its own recovery test lives with its own siren.
+            for flag in sorted(sirens - set(flags) - {"flow_dead"}):
+                _recover(flag)
             # dead-flow siren (2026-07-20): the option_trade_flow feed was silently
             # empty for FIVE consecutive sessions (the provider's right:'both' path
             # died in its 07-11/12 deploy) and nothing paged — aggressor_flow=None
@@ -312,21 +384,25 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
                     and now_et.hour * 60 + now_et.minute >= 11 * 60
                     and all((r.get("gex_theta") or {}).get("aggressor_flow") is None
                             for r in lens_rows)):
-                push.send("🩺 SPX feed: options flow dead — every scan today is "
-                          "flow-blind (aggressor_flow None); check option_trade_flow "
-                          "upstream (right:'both' regression family)", tag="gex-feed")
-                sirens.add("flow_dead")
-                out["feed_sirens"] += 1
+                _siren("flow_dead",
+                       "options flow dead — every scan today is flow-blind "
+                       "(aggressor_flow None); check option_trade_flow upstream "
+                       "(right:'both' regression family)")
+            elif ("flow_dead" in sirens
+                    and (latest.get("gex_theta") or {}).get("aggressor_flow") is not None):
+                # one live tick is the whole claim refuted: "every scan today is
+                # flow-blind" stops being true the moment a scan is not
+                _recover("flow_dead")
         elif ((age is None or age >= _SCANNER_SILENT_MIN)
                 and "scanner_silent" not in sirens
                 and market_status.check(now_et).is_live):
             # the inverse siren: no fresh row while the market is live means the
             # scanner is down and writing NO honest flags — silence must also page
-            push.send("🩺 SPX feed: scanner silent — market is live but no scan row "
-                      f"in {int(_SCANNER_SILENT_MIN)} min", tag="gex-feed")
-            sirens.add("scanner_silent")
-            out["feed_sirens"] += 1
+            _siren("scanner_silent",
+                   "scanner silent — market is live but no scan row "
+                   f"in {int(_SCANNER_SILENT_MIN)} min")
         st["feedSirens"] = sorted(sirens)
+        st["feedDownSince"] = down_since
     except Exception as e:
         print(f"gex-alerts :: feed-health pass degraded: {e}", flush=True)
 

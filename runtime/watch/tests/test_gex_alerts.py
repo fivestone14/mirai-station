@@ -187,6 +187,90 @@ class TestFeedHealthSiren(unittest.TestCase):
             out2, _ = self._run(td)
             self.assertEqual(out2["feed_sirens"], 0)
 
+    # --- the all-clear (2026-09-09) ----------------------------------------
+    # The 09-09 outage paged "source:spy_proxy" at 09:37 ET correctly and then
+    # never spoke again: the native chain came back at 15:51 and the phone still
+    # read "degraded". A siren with no recovery leaves the last word wrong for
+    # the rest of the session, and — because the flag was never cleared — went
+    # deaf to a second outage the same day.
+
+    def test_proxy_recovery_pages_the_all_clear_and_says_when_it_broke(self):
+        with TemporaryDirectory() as td:
+            r = self._fresh_row()
+            r["gex_source"] = "spy_proxy\u00d710.0348"
+            _write_lens_rows(Path(td), [r])
+            out1, sent1 = self._run(td)
+            self.assertEqual(out1["feed_sirens"], 1)
+
+            r["gex_source"] = "native"            # the chain came back
+            _write_lens_rows(Path(td), [r])
+            out2, sent2 = self._run(td)
+            self.assertEqual(out2["feed_recoveries"], 1)
+            self.assertTrue(any("off the proxy" in s for s in sent2))
+            # the all-clear carries the time it broke, so a phone read at 16:00
+            # can tell a five-minute blip from a lost session
+            self.assertTrue(any("degraded since" in s for s in sent2))
+
+    def test_the_all_clear_is_sent_once_not_every_healthy_tick(self):
+        with TemporaryDirectory() as td:
+            r = self._fresh_row()
+            r["gex_source"] = "spy_proxy\u00d710.0348"
+            _write_lens_rows(Path(td), [r])
+            self._run(td)
+            r["gex_source"] = "native"
+            _write_lens_rows(Path(td), [r])
+            self._run(td)                          # the recovery
+            out3, sent3 = self._run(td)            # and every tick after it
+            self.assertEqual(out3["feed_recoveries"], 0)
+            self.assertEqual(sent3, [])
+
+    def test_a_second_outage_the_same_day_pages_again(self):
+        """The whole point of clearing the flag. Before this, a feed that broke
+        at 09:37, healed at 11:00 and broke again at 14:00 paged for the morning
+        and stayed mute all afternoon."""
+        with TemporaryDirectory() as td:
+            r = self._fresh_row()
+            r["gex_source"] = "spy_proxy\u00d710.0348"
+            _write_lens_rows(Path(td), [r])
+            self.assertEqual(self._run(td)[0]["feed_sirens"], 1)
+            r["gex_source"] = "native"
+            _write_lens_rows(Path(td), [r])
+            self.assertEqual(self._run(td)[0]["feed_recoveries"], 1)
+            r["gex_source"] = "spy_proxy\u00d710.0402"   # it broke again
+            _write_lens_rows(Path(td), [r])
+            out, sent = self._run(td)
+            self.assertEqual(out["feed_sirens"], 1)
+            self.assertTrue(any("source:spy_proxy" in s for s in sent))
+
+    def test_a_fresh_row_clears_the_scanner_silent_siren(self):
+        with TemporaryDirectory() as td:
+            stale = _row()                         # ts 10:00 vs NOW 13:00
+            _write_lens_rows(Path(td), [stale])
+            self.assertEqual(self._run(td)[0]["feed_sirens"], 1)
+            _write_lens_rows(Path(td), [self._fresh_row(), ])
+            out, sent = self._run(td)
+            self.assertEqual(out["feed_recoveries"], 1)
+            self.assertTrue(any("scanner back" in s for s in sent))
+
+    def test_an_undelivered_siren_is_not_marked_and_retries(self):
+        """Delivery, not intent. A swallowed send that still marked the flag
+        retired the one notification the outage was ever going to get."""
+        def _dead(_msg):
+            raise RuntimeError("ntfy unreachable")
+
+        with TemporaryDirectory() as td:
+            r = self._fresh_row()
+            r["gex_source"] = "spy_proxy\u00d710.0348"
+            _write_lens_rows(Path(td), [r])
+            out1 = gex_alerts.run(NOW, state_dir=Path(td),
+                                  redive_provider=lambda exp, ctx: None,
+                                  channel=_dead)
+            self.assertEqual(out1["feed_sirens"], 0)
+            self.assertTrue(out1.get("undelivered"))
+            out2, sent2 = self._run(td)            # channel back → it tries again
+            self.assertEqual(out2["feed_sirens"], 1)
+            self.assertTrue(any("source:spy_proxy" in s for s in sent2))
+
     def test_non_dict_state_file_resets_instead_of_crashing(self):
         with TemporaryDirectory() as td:
             p = Path(td) / "market_expectation"
