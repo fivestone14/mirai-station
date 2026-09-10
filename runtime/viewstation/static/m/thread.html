@@ -202,7 +202,7 @@ body{
 <script src="/m/press.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const S = {day:'', last:'', timer:0, stalled:false, msgs:[]};
+const S = {day:'', last:'', stalled:false, msgs:[]};
 
 /* A silence longer than this is drawn rather than closed up. The model's own
    cadence is ten to twenty minutes, so this is "it skipped a turn or two". */
@@ -438,7 +438,7 @@ async function boot(){
   sel.value = days[0];
   sel.addEventListener('change', () => loadDay(sel.value));
   await loadDay(days[0]);
-  S.timer = setInterval(poll, 45000);
+  setInterval(poll, 45000);   // no handle: nothing on this page ever stops it
   document.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'visible') poll();
   });

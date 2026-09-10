@@ -74,7 +74,6 @@
   --i-mute:#535B52;     /*  6.24 · 5.34 · 4.90 on inset           */
   --i-faint:#5C6459;    /*  5.44 · 4.66 — card+ground ONLY; it
                             measures 4.28 on the inset            */
-  --on:#FFFFFF;         /* 15.46 on --fill                        */
   --on-body:#E4E6DF;    /* 12.28 — not pure white; white halates
                             over six lines of reversed prose      */
   --on-mute:#A9B0A6;    /*  6.95                                  */
@@ -186,7 +185,6 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 #svg{display:block;width:100%;height:auto}
 
 .p-band   {fill:var(--band)}
-.p-bandedge{stroke:var(--band-edge);stroke-width:1}
 .p-path   {fill:none;stroke:var(--path);stroke-width:1.8;
            stroke-linejoin:round;stroke-linecap:round}
 .p-reach  {fill:none;stroke:var(--path);stroke-opacity:.5;stroke-width:1.2;stroke-dasharray:2 4}
@@ -199,7 +197,6 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    red-green deficient reader. Position, dash and weight carry it redundantly. */
 .p-mag    {stroke:var(--mag-mark);stroke-width:1.8;stroke-dasharray:6 3}
 .p-magrun {stroke:var(--mag-mark);stroke-width:1.3;stroke-dasharray:4 3}
-.p-magglow{stroke:none}
 .p-prule  {stroke:var(--px-mark);stroke-opacity:.30;stroke-width:1}
 .p-dot    {fill:var(--px-mark);stroke:var(--s);stroke-width:2}
 .p-halo   {fill:none;stroke:var(--px-mark);stroke-opacity:.30;stroke-width:1.2}
@@ -320,7 +317,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 </head>
 <body>
 
-<section class="mast" id="masthead">
+<section class="mast">
   <div class="mast-l">
     <div class="mast-row">
       <span class="ticker"  id="ticker"></span>
@@ -347,7 +344,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
   <div class="ladder" id="ladder"><svg id="svg"></svg></div>
 </section>
 
-<section class="read" id="read">
+<section class="read">
   <div class="lab">Model read<span class="r" id="rdAge"></span></div>
   <div class="rd-body">
     <span class="rd-mark" id="rdMark"></span>
@@ -364,7 +361,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
     <span class="g-k"    id="gStrike"></span>
     <span class="g-mech" id="gMech"></span>
   </div>
-  <div class="g-load" id="gLoad">
+  <div class="g-load">
     <div class="g-row" id="gRowA">
       <div class="g-bar"><i id="gBarA"></i></div><div class="g-val" id="gValA"></div>
     </div>

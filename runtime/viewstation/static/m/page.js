@@ -9,7 +9,7 @@
 const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
 
-let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], WIN = null, LADDER_H = 376;
+let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], WIN = null, LADDER_H = 196;
 // whether the plot's bracket LABEL said a side was empty this repaint. The
 // gate footer speaks only when it did not.
 let CLEAR_SAID = {call:false, put:false};
@@ -35,13 +35,12 @@ function sizeLadder(){
   // below it grows to whatever the model wrote. A paragraph that can be six
   // lines or thirteen could never have lived in that column.
   //
-  // 196: 158px of plot inside the current PAD_T/PAD_B, which is the height at
-  // which the wall rules stay separable and the price path keeps its shape.
-  // Below roughly 150 the label solver starts displacing labels further than
-  // the levels they name.
+  // 196. SVGH is LADDER_H-1, and PAD_T/PAD_B are 12 and 18 plus 13 per edge
+  // marker, so the plot is 165px with no edge markers, 152 with one, 139 with
+  // two on one side. That is the range in which the wall rules stay separable
+  // and the price path keeps its shape; below roughly 130 the label solver
+  // starts displacing a label further than the level it names.
   LADDER_H = 196;
-  document.documentElement.style.setProperty('--ladder-h', LADDER_H + 'px');
-  return LADDER_H;
 }
 
 /* ---- fetch ------------------------------------------------------------- */
@@ -236,10 +235,12 @@ function paintMast(st){
 function paintRegime(st){
   const r = st.scene.regime || {};
   const g = gammaIsLong(r);
-  // byte-for-byte the strings envWords() uses, so the phone and the desktop can
-  // never describe one board in two voices
-  const gloss = g == null ? 'gamma sign not measured' : (g ? 'walls hold' : 'walls give way');
-  const word = r.regime_label ? String(r.regime_label) : '';   // sr-7 rename
+  // From envParts, not written out again here. The phone and the desktop must
+  // never describe one board in two voices, and the previous version asked a
+  // comment to guarantee that.
+  const parts = envParts(r);
+  const gloss = parts.lean == null ? parts.unmeasured : parts.lean;
+  const word = parts.word;
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
   if(word){ $('regWord').textContent = cap(word); $('regGloss').textContent = gloss; }
@@ -302,7 +303,7 @@ function paintLadder(st){
 
   const ref = st.ref ? st.ref.v : null;
   if(ref == null){
-    svg.innerHTML = '<text class="p-word" x="11" y="' + (12 + 22) + '">NO PRICE MEASURED</text>';
+    svg.innerHTML = '<text class="p-word" x="11" y="34">NO PRICE MEASURED</text>';
     return;
   }
 
@@ -517,12 +518,10 @@ function paintLadder(st){
   for(const l of levels){
     const y = n1(yFor(l.y));
     if(l.kind === 'magnet'){
-      if(l.lead) o += '<line class="p-magglow" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y + '"/>';
       o += '<line class="' + (l.lead ? 'p-mag' : 'p-magrun') + '" x1="' + PLOT_L + '" y1="' + y
          + '" x2="' + PLOT_R + '" y2="' + y + '"'
          + (l.lead ? '' : ' style="stroke-opacity:' + (l.weight||0.5).toFixed(2) + '"') + '/>';
     } else if(l.kind === 'wall'){
-      if(l.magnetLead) o += '<line class="p-magglow" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y + '"/>';
       o += '<line class="p-wall ' + l.side + '" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y
          + '" style="stroke-width:' + wallTier(l.gex) + ';stroke-opacity:' + (l.nearest ? '1' : '.62') + '"/>';
     }
@@ -737,8 +736,16 @@ function paintRead(){
   const m = modelRead(READS);
   const mark = $('rdMark'), line = $('rdLine'), age = $('rdAge');
   if(!m){
-    mark.textContent = ''; age.textContent = ''; age.className = 'rd-age';
-    line.textContent = 'NO READING TODAY'; line.className = 'rd-line expired';
+    // classList, NOT className. The chip is `class="r"` — the label row's
+    // right-hand slot, which is what gives it margin-left:auto and its colour —
+    // and assigning className wiped that on every paint, so the age drifted
+    // left and dimmed. Same fault as the one paintGate had; the markup was
+    // renamed in the light rebuild and these two lines were not.
+    mark.textContent = ''; age.textContent = ''; age.classList.remove('old');
+    // `expired` was a tier obs-1 deleted (see below) and no rule has existed
+    // for it since. Absence is not age, and it is styled as itself.
+    line.textContent = 'NO READING TODAY';
+    line.className = 'rd-line wordless';
     return;
   }
   // obs-1 removed the 'expired' tier. It hid a reading past 120 minutes, which
@@ -747,7 +754,7 @@ function paintRead(){
   // is a different thing and stays: that is absence, not age.
   const a = gMinutes(m.ageMin);
   age.textContent = a.toUpperCase();
-  age.className = 'rd-age' + (m.tier === 'aged' ? ' old' : '');
+  age.classList.toggle('old', m.tier === 'aged');
   // obs-1: a count of what is unusual, not a direction. Empty when quiet,
   // because the common answer must not look like an alarm.
   mark.textContent = m.quiet ? '' : String(m.count || '');

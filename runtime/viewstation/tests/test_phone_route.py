@@ -97,6 +97,7 @@ M = Path(__file__).resolve().parents[1] / "static" / "m"
 PHONE = (M / "index.html").read_text()
 GLANCE = (M / "glance.js").read_text()
 PAGE = (M / "page.js").read_text()
+THREAD = (M / "thread.html").read_text()
 
 
 def test_an_unmeasured_gamma_sign_claims_nothing():
@@ -105,7 +106,12 @@ def test_an_unmeasured_gamma_sign_claims_nothing():
     all still stand."""
     assert "if(s==='negative'||s==='short'||s==='-') return false;" in GLANCE
     assert "set('gMech', b ? b.english : '');" in PAGE
-    assert "gamma sign not measured" in PAGE
+    # The sentence lives in envParts now, with the other two regime strings, so
+    # the phone and the desktop cannot describe one board in two voices. It used
+    # to be written out in both files under a comment asking the next reader to
+    # keep them byte-identical — which is a promise a comment cannot keep.
+    assert "gamma sign not measured" in GLANCE
+    assert "parts.unmeasured" in PAGE
     assert "no dealer behaviour claimed" in PAGE
 
 
@@ -542,3 +548,28 @@ def test_the_font_ships_its_licence():
     """Plus Jakarta Sans is OFL, which permits redistribution and requires the
     licence to travel with the font."""
     assert (server.STATIC / "m" / "PlusJakartaSans-OFL.txt").is_file()
+
+
+def test_the_two_phone_pages_share_one_palette():
+    """The glance and the reads page each carry their own :root block, and 25
+    tokens are declared in both. Duplicated bytes are not the risk — DRIFT is:
+    somebody darkens --i-mute on one page and the other quietly disagrees.
+
+    A shared stylesheet would cost more than it saves. This server sends
+    Cache-Control: no-cache to everything that is not a content-hashed woff2,
+    and sends no ETag, so a revalidation cannot come back 304 — a shared file
+    would be re-fetched in full on every open, plus a render-blocking round
+    trip before first paint on both pages. So the pages keep their own copies
+    and this test guards the only thing the shared file was for."""
+    import re
+
+    def tokens(css):
+        m = re.search(r"(?ms)^:root\{(.*?)^\}", css)
+        assert m, "no :root block"
+        return dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*([^;]+);", m.group(1)))
+
+    a, b = tokens(PHONE), tokens(THREAD)
+    shared = set(a) & set(b)
+    assert len(shared) >= 20, f"the pages have stopped sharing a palette ({len(shared)} tokens)"
+    drift = {k: (a[k].strip(), b[k].strip()) for k in shared if a[k].strip() != b[k].strip()}
+    assert not drift, f"the two phone pages disagree about {drift}"

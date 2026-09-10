@@ -35,13 +35,25 @@ function gMinutes(m){
 
 /* ---- the environment, in two words ------------------------------------ */
 
+function envParts(regime){
+  // THE strings, in one place. envWords joins them for a single-line caller;
+  // the phone's regime row needs them apart, for two elements. Before this they
+  // were written out twice with a comment asking the next reader to keep them
+  // byte-identical, which is a promise a comment cannot keep.
+  const word = regime ? regime.regime_label : null;   // sr-7: regime.word -> regime_label
+  const g = regime ? gammaIsLong(regime) : null;
+  return {
+    word: word ? String(word) : '',
+    lean: g == null ? null : (g ? 'walls hold' : 'walls give way'),
+    unmeasured: 'gamma sign not measured',
+  };
+}
+
 function envWords(regime){
   if(!regime) return null;
-  const word=regime.regime_label;   // sr-7 rename: regime.word -> regime_label
-  const g=gammaIsLong(regime);
-  const lean = g==null ? null : (g ? 'walls hold' : 'walls give way');
-  if(word && lean) return String(word)+' · '+lean;
-  return word ? String(word) : lean;
+  const p = envParts(regime);
+  if(p.word && p.lean) return p.word + ' · ' + p.lean;
+  return p.word || p.lean;
 }
 
 function gammaIsLong(regime){
@@ -472,7 +484,6 @@ function modelRead(rows, nowMs){
             || 'Nothing standing out on the board.';
   return {line, quiet, wordless,
           count:pts.length,
-          forced: rd.abstain === 'forced',
           ageMin:age,
           at:new Date(best.t),
           tier: age>STALE_BOOK_MIN_UI ? 'aged' : 'fresh'};
@@ -524,10 +535,10 @@ function _wall(e, side, nearest){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={gUsd, gMinutes, envWords, gammaIsLong, wallBehaviour, beyondWall,
+  module.exports={gUsd, gMinutes, envParts, envWords, gammaIsLong, wallBehaviour, beyondWall,
                   farSideNote, bothSidesClear, nearestWall, wallDistance, priorClose,
                   bookAge, shownPrice, dayChange, vwapPrice, wallTier, railWidth,
                   etTime, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
-                  layoutLabels, tapePoints, livePoint, modelRead};
+                  layoutLabels, barPoints, tapePoints, livePoint, modelRead};
 }

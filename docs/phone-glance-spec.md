@@ -1,5 +1,31 @@
 # SNDK PHONE GLANCE — BUILD SPECIFICATION v1
 
+> [!warning] RETIRED 2026-09-09. This describes the DARK build, which no longer
+> ships. It is kept for its reasoning, not as a reference — and reading it as
+> one has already cost three defects.
+>
+> Everything below is true of a phone screen that was a fixed-height,
+> non-scrolling, dark column. The live screen is light, scrolls, and lays its
+> content out in cards. Specifically, this document still documents:
+>
+> * `--ladder-h`, `.ladder{height:var(--ladder-h)}` and the region height
+>   budget — all removed; the page scrolls and the chart height is a constant.
+> * `.rd-age` — renamed to the label row's `.r` slot. Code written from this
+>   file clobbered the new class on every paint.
+> * `--jade` / `--coral` / `--lantern` / `--ground` / `--mono` — the dark
+>   palette. Every one of those values FAILS contrast on the light ground
+>   (jade measured 2.16:1 on white, amber 1.96:1), so the live tokens are
+>   re-derived, not renamed.
+> * the magnet glow — deleted; the magnet is a long dash now.
+> * an export list without `barPoints` — the price path's current source.
+> * "dark only" and "nothing is tappable except one link" — both false now.
+>
+> **The source of truth is the code**: `runtime/viewstation/static/m/`
+> (`index.html`, `thread.html`, `page.js`, `glance.js`, `press.js`), whose own
+> comments carry the current reasoning. Where this file and the code disagree,
+> the code is right and this file is history.
+
+
 **One deliverable, implemented verbatim.** Portrait, dark only, 320–412 CSS px wide. Inline SVG built as a string. Plain JS, no framework, no build step, no CDN. Nothing is tappable except one link to the archive (amended 2026-09-07 — see rule 25).
 
 The screen is one price ladder under one price, and it answers three questions in reading order: **what kind of day** (the regime word, 18px, directly under the price), **where price sits** (the ladder, ~48% of the screen), **what happens at the nearest level** (one card, the only place sentences live).
