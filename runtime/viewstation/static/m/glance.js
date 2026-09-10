@@ -430,9 +430,17 @@ function modelRead(rows, nowMs){
   // current, which is the book's own ceiling.
   const pts = rd.points || [];
   const quiet = rd.quiet === true || (!pts.length && !rd.read);
-  const line = String(rd.read || (pts[0] && pts[0].note) || '')
+  // A LEVEL ANNOTATION IS NOT A SENTENCE (2026-09-09). This used to fall back
+  // to pts[0].note, so a reading that authored no prose was drawn in the
+  // reading's own serif voice as though the model had written it — on
+  // 2026-09-09 the phone read "15:49 · lower edge of the box in force since
+  // 14:52", which is a caption on a level, in the place reserved for what the
+  // model said. The note stays on screen, but attached to its level and marked
+  // as such, so the surface never puts words in the model's mouth.
+  const wordless = !rd.read && !!(pts[0] && pts[0].note);
+  const line = String(rd.read || (wordless ? pts[0].note : '') || '')
             || 'Nothing standing out on the board.';
-  return {line, quiet,
+  return {line, quiet, wordless,
           count:pts.length,
           forced: rd.abstain === 'forced',
           ageMin:age,

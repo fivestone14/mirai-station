@@ -413,9 +413,52 @@ def test_the_gate_region_holds_its_own_content():
     whose overflow:hidden zeroes its automatic minimum, so the whole deficit
     landed on it and a sanctioned sentence rendered as a 2px smear."""
     assert "--r-gate:144px" in PHONE
-    assert "FIXED = SHORT ? 332 : 392" in PAGE    # must move with the region
     assert "height:48px" in PHONE                 # the head row holds a 30px strike
     assert ".gate{gap:2px;padding:6px 0 6px}" in PHONE   # short sheds instead
+
+
+def test_the_fixed_constant_equals_the_regions_it_stands_for():
+    """FIXED in sizeLadder() is A+B+D+E+F, and the ladder is the only elastic
+    region — so if the two ever disagree the six either overrun the viewport
+    (body{overflow:hidden} eats the footer and the reading's last line) or leave
+    dead ground under it. This used to be pinned as a literal string, which only
+    ever proved that nobody had edited that line; it now recomputes the sum from
+    the stylesheet, so moving a region without moving FIXED fails here."""
+    import re
+
+    # Match the declaration line itself rather than slicing a block: the blocks
+    # carry explanatory prose, and prose contains braces ("body{overflow:hidden}"),
+    # so a brace-delimited slice truncates before the values. A test that cannot
+    # see past a comment teaches you to delete the comment.
+    rows = re.findall(
+        r"--r-mast:(\d+)px;\s*--r-regime:(\d+)px;\s*--r-gate:(\d+)px;"
+        r"\s*--r-read:(\d+)px;\s*--r-foot:(\d+)px", PHONE)
+    assert len(rows) == 2, f"expected a tall and a short region budget, found {len(rows)}"
+    tall = sum(int(v) for v in rows[0])      # bare :root
+    short = sum(int(v) for v in rows[1])     # the max-height:700px block
+
+    m = re.search(r"FIXED\s*=\s*SHORT\s*\?\s*(\d+)\s*:\s*(\d+)", PAGE)
+    assert m, "sizeLadder no longer declares FIXED as SHORT ? short : tall"
+    js_short, js_tall = int(m.group(1)), int(m.group(2))
+
+    assert js_tall == tall, f"FIXED tall {js_tall} != the regions' {tall}"
+    assert js_short == short, f"FIXED short {js_short} != the regions' {short}"
+
+
+def test_the_short_branch_is_chosen_by_the_same_height_the_css_uses():
+    """window.innerHeight is the VISUAL viewport; the @media block is the LAYOUT
+    one. Measured 2026-09-09 at an emulated 320x568: innerHeight 706 against
+    clientHeight 568, so JS took the tall budget while CSS applied the short
+    heights. That direction merely wastes 8px; reversed, the regions sum to 60px
+    over the viewport and the footer is clipped."""
+    import re
+    sz = PAGE.split("function sizeLadder")[1].split("\nfunction ")[0]
+    # assert on the CODE, not on the absence of a word — the fix is explained in
+    # a comment that necessarily names the thing it replaced.
+    assert "const vh = document.documentElement.clientHeight;" in sz
+    assert "const SHORT = vh <= 700;" in sz
+    assert re.search(r"Math\.max\(200,\s*Math\.min\(560,\s*vh\s*-", sz), \
+        "the clamp must measure from the same height the SHORT branch chose"
 
 
 def test_the_measure_is_inviolable_and_the_label_gives_way():

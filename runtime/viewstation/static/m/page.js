@@ -22,14 +22,25 @@ function sizeLadder(){
   // is the only thing that can absorb an overflow, and on 2026-08-24 it
   // absorbed all of it and rendered at zero — correct viewBox, nothing drawn,
   // nothing thrown.
-  const SHORT = window.innerHeight <= 700;
+  // clientHeight, NOT window.innerHeight (2026-09-09). The CSS
+  // @media (max-height:700px) block keys off the LAYOUT viewport; this line
+  // used to key off the VISUAL one, and the two are not the same number.
+  // Measured this session at an emulated 320x568: innerHeight read 706 while
+  // clientHeight read 568, so JS took the tall FIXED (392) while CSS applied
+  // the short region heights (332) and 8px went unclaimed. That direction is
+  // merely wasteful. The reverse — JS short, CSS tall — makes the six regions
+  // sum to 60px MORE than the viewport, and body{overflow:hidden} then eats the
+  // footer and the reading's last line. It is reachable on iOS Safari, where
+  // innerHeight tracks the toolbar and the keyboard and media queries do not.
+  // One height source for one decision; the same source the CSS uses.
+  const vh = document.documentElement.clientHeight;
+  const SHORT = vh <= 700;
   // A+B+D+E+F. Must move with any region height or the six overrun the
   // viewport and body{overflow:hidden} clips the footer.
-  const FIXED = SHORT ? 332 : 392;
+  const FIXED = SHORT ? 340 : 431;
   const cs = getComputedStyle(document.body);
   const padV = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-  LADDER_H = Math.max(200, Math.min(560,
-             document.documentElement.clientHeight - padV - FIXED));
+  LADDER_H = Math.max(200, Math.min(560, vh - padV - FIXED));
   document.documentElement.style.setProperty('--ladder-h', LADDER_H + 'px');
   return LADDER_H;
 }
@@ -718,8 +729,16 @@ function paintRead(){
   // model output, written with textContent only: it never touches innerHTML and
   // never enters the SVG string
   const at = etTime(m.at);
-  line.textContent = (m.tier === 'aged' ? at + ' · ' : '') + m.line;
-  line.className = 'rd-line' + (m.tier === 'aged' ? ' aged' : '');
+  // `wordless` means the model authored no sentence and what follows is a note
+  // attached to a LEVEL. It is shown — it is the only thing there is — but not
+  // in the reading's own voice, and it names the level it belongs to, so the
+  // surface is never caught putting words in the model's mouth.
+  const lead = m.tier === 'aged' ? at + ' · ' : '';
+  line.textContent = m.wordless
+    ? lead + 'No sentence this scan — ' + m.line
+    : lead + m.line;
+  line.className = 'rd-line' + (m.tier === 'aged' ? ' aged' : '')
+                             + (m.wordless ? ' wordless' : '');
 }
 
 /* ---- run --------------------------------------------------------------- */

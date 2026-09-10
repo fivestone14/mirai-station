@@ -65,6 +65,20 @@
   --hairline:#28313F;
   --hairline-2:#333E50;
 
+  /* TOUCH + PRESS (2026-09-09). See the same block in the glance for the
+     reasoning; the numbers are Material's md.sys tokens and the 48px target is
+     the strictest of the three specs in play. Both controls in this header
+     were under it: the back chevron was 30x30 (46% of the required AREA) and
+     the day picker 57x30. */
+  --tap-min:48px;
+  --state-hover:.08;
+  --state-press:.12;
+  --press-in:80ms;
+  --press-out:200ms;
+  --ease-in:cubic-bezier(0,0,0,1);
+  --ease-out:cubic-bezier(.2,0,0,1);
+  --press-scale:.97;
+
   --ink:#E7EBF3;
   --ink-dim:#98A2B6;
   --ink-faint:#8A93A8;
@@ -102,17 +116,78 @@ body{
 .hd{flex:none;display:flex;align-items:center;gap:10px;
     padding:calc(env(safe-area-inset-top) + 12px) 14px 10px;
     border-bottom:1px solid var(--hairline);background:var(--ground)}
-.back{flex:none;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
-      border:1px solid var(--hairline);border-radius:9px;background:var(--surface);
-      color:var(--ink-dim);font:400 16px/1 var(--sans);text-decoration:none}
+/* 44 painted inside a 53px header, 48 tapped. Painting the full 48 would leave
+   2.5px each side; 44 leaves 4.5 and the invisible ::after carries the target
+   the rest of the way. The glyph grew with it — a 16px chevron in a 44px box
+   reads as a smudge. */
+.back{position:relative;isolation:isolate;
+      flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+      border:1px solid var(--hairline);border-radius:12px;background:var(--surface);
+      color:var(--ink-dim);font:400 22px/1 var(--sans);text-decoration:none;
+      -webkit-tap-highlight-color:transparent;
+      touch-action:manipulation;
+      -webkit-user-select:none;user-select:none;
+      transition:transform var(--press-out) var(--ease-out),
+                 border-color var(--press-out) var(--ease-out),
+                 color var(--press-out) var(--ease-out)}
+.back::after{content:"";position:absolute;top:50%;left:50%;
+             transform:translate(-50%,-50%);
+             width:var(--tap-min);height:var(--tap-min)}
+.back::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;
+              background:var(--ink);opacity:0;
+              transition:opacity var(--press-out) var(--ease-out)}
+/* The label brightening is not decoration. Modelled against veiling glare, a
+   12% state layer on this surface is a 2.84x luminance cue indoors but only
+   1.06x in bright shade — the glare floor swamps it. Dim->ink on the GLYPH is
+   1.94x/1.26x across the same conditions, because it moves the one thing on
+   screen that is actually bright. Iris is deliberately not used for this: at
+   Y=0.365 against ink-dim's 0.359 it is a pure hue change, worth 1.00x, and
+   hue is the first thing sunlight takes. Iris earns its place on the border. */
+.back.is-pressed{transform:scale(var(--press-scale));
+                 border-color:var(--iris);color:var(--ink);
+                 transition-duration:var(--press-in);
+                 transition-timing-function:var(--ease-in)}
+.back.is-pressed::before{opacity:var(--state-press);
+                         transition-duration:var(--press-in);
+                         transition-timing-function:var(--ease-in)}
+@media (hover:hover){ .back:hover::before{opacity:var(--state-hover)} }
+.back:focus-visible{outline:2px solid var(--iris);outline-offset:2px}
 .hd-t{display:flex;flex-direction:column;gap:2px;min-width:0}
 .hd-1{font:500 11px/1.2 var(--mono);letter-spacing:.18em;color:var(--ink-dim)}
 .hd-2{font:400 11px/1.2 var(--sans);color:var(--ink-faint);
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hd-2 b{font-weight:600;color:var(--ink-dim)}
-.day{margin-left:auto;flex:none;background:var(--surface);color:var(--ink);
-     border:1px solid var(--hairline);border-radius:9px;
-     font:500 12px/1 var(--mono);padding:8px 9px;appearance:none}
+/* 44 tall to match the chevron, and the year is back: "09-09" alone in a list
+   of 28 sessions spanning two months says nothing about which year, and the
+   picker is the one place the full date is cheap. */
+.day{position:relative;isolation:isolate;
+     margin-left:auto;flex:none;background:var(--surface);color:var(--ink);
+     border:1px solid var(--hairline);border-radius:12px;
+     font:500 13px/1 var(--mono);padding:0 12px;height:44px;min-width:var(--tap-min);
+     appearance:none;
+     -webkit-tap-highlight-color:transparent;
+     touch-action:manipulation;
+     transition:border-color var(--press-out) var(--ease-out),
+                background-color var(--press-out) var(--ease-out)}
+/* A native select opens an OS sheet, so the press state only has to live for
+   the moment before it appears — no transform, which would fight the sheet's
+   own entry animation. */
+.day.is-pressed{border-color:var(--iris);background:var(--surface-2);
+                transition-duration:var(--press-in);
+                transition-timing-function:var(--ease-in)}
+.day:focus-visible{outline:2px solid var(--iris);outline-offset:2px}
+
+/* Same rule as the glance: the state layer is opacity, which WCAG does not
+   count as motion, so it stays and takes over the whole cue. The transform is
+   perceived-size and goes. */
+@media (prefers-reduced-motion:reduce){
+  .back.is-pressed{transform:none}
+  .back.is-pressed::before{opacity:.20}
+}
+@media (forced-colors:active){
+  .back::before{display:none}
+  .back.is-pressed{border-color:Highlight;color:Highlight}
+}
 
 /* ============ THREAD ============ */
 /* Spacing is per-block rather than a flex gap: the sticky bars have to sit
@@ -232,16 +307,17 @@ body{
 <body>
 
 <header class="hd">
-  <a class="back" href="/m/" aria-label="Back to the glance">‹</a>
+  <a class="back" href="/m/" aria-label="Back to the glance" data-press data-haptic>‹</a>
   <div class="hd-t">
     <div class="hd-1">SNDK · THE READ</div>
     <div class="hd-2" id="sub">loading…</div>
   </div>
-  <select class="day" id="day" aria-label="Session"></select>
+  <select class="day" id="day" aria-label="Session" data-press></select>
 </header>
 
 <main class="wrap" id="wrap"><div class="state" id="state">loading…</div></main>
 
+<script src="/m/press.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const S = {day:'', last:'', timer:0, run:null, hour:'', ts:'', open:'', shut:''};
@@ -250,12 +326,18 @@ const S = {day:'', last:'', timer:0, run:null, hour:'', ts:'', open:'', shut:''}
    cadence is ten to twenty minutes, so this is "it skipped a turn or two". */
 const GAP_MIN = 25;
 
+/* Returns the document, or null. `getJSON.failed` says which KIND of null the
+   last call produced (2026-09-09): a request that never landed is a different
+   fact from a session with nothing in it, and this function used to erase the
+   difference. Everything downstream then treated a dropped packet as "the model
+   said nothing today" — and, worse, never tried again. */
 async function getJSON(url){
+  getJSON.failed = false;
   try{
     const r = await fetch(url, {cache:'no-store'});
     const t = await r.text();
-    try{ return JSON.parse(t); }catch(e){ return null; }
-  }catch(e){ return null; }
+    try{ return JSON.parse(t); }catch(e){ getJSON.failed = true; return null; }
+  }catch(e){ getJSON.failed = true; return null; }
 }
 
 /* The one boundary for model-authored text. Strip the characters the desktop
@@ -312,10 +394,15 @@ function gapBar(gap){
 
 function bubble(m){
   const wrap = document.createElement('div');
-  // A reading whose every claim was deleted carries read: null. That is a
-  // message about a fault, not an empty one, and it says so.
-  const dropped = !m.read;
+  // A reading whose every claim was deleted is flagged `struck` by the station.
+  // That is a message about a fault, not an empty one, and it says so.
+  // NOT `!m.read` (2026-09-09): a reading that authored no prose line but did
+  // leave observations has no `read` either, and calling that "struck out"
+  // printed a denial directly above the surviving claims it was denying.
+  const dropped = m.struck === true;
+  const wordless = !dropped && !m.read;
   wrap.className = 'msg' + (m.quiet && !dropped ? ' q' : '') + (dropped ? ' dropped' : '');
+  if(wordless) wrap.classList.add('q');   // no sentence: it reads as a quiet one
 
   const top = el('div', 'm-top');
   top.append(el('span', 'm-at', m.at || ''));
@@ -332,9 +419,20 @@ function bubble(m){
 
   const bub = el('div', 'bub');
   const said = el('div', 'said');
-  if(dropped) said.textContent = 'It spoke, and every claim it made was struck out by the checks.';
-  else setSaid(said, m.read);
-  bub.append(said);
+  if(dropped){
+    said.textContent = 'It spoke, and every claim it made was struck out by the checks.';
+    bub.append(said);
+  }else if(wordless){
+    // It wrote no sentence this time. The levels below ARE the reading, and a
+    // caption invented for them would be the station speaking, not the model.
+    if(!(Array.isArray(m.points) && m.points.length)){
+      said.textContent = 'Nothing to say at this scan.';
+      bub.append(said);
+    }
+  }else{
+    setSaid(said, m.read);
+    bub.append(said);
+  }
 
   if(Array.isArray(m.points) && m.points.length){
     const ul = el('ul', 'pts');
@@ -441,7 +539,14 @@ function paint(doc, append){
 async function loadDay(day){
   S.day = day; S.last = '';
   const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(day));
+  S.stalled = getJSON.failed;      // the poll below is the retry
   paint(doc, false);
+  if(S.stalled){
+    const w = $('wrap');
+    w.textContent = '';
+    w.append(el('div', 'state', 'Could not reach the station. Retrying…'));
+    return;
+  }
   if(doc && doc.count != null){
     const n = doc.count, k = doc.with_something;
     const sub = $('sub');
@@ -451,28 +556,61 @@ async function loadDay(day){
   }
 }
 
-/* Only ever asks for the tail. A session adds a message every twenty minutes
-   or so, so this is almost always an empty answer. */
+/* Only ever asks for the tail, once there IS a tail. Otherwise it re-asks for
+   the whole day, which is what makes this the retry as well as the poll.
+
+   THE BUG THIS REPLACES (2026-09-09). The guard was `if(!S.day || !S.last)
+   return;`, and S.last is only set once a message has been painted. So:
+     * one dropped request on the first load — a phone changing cells, the
+       tunnel reconnecting — left the page reading "Nothing said this session
+       yet." with a poll that could never run again. Not for 45 seconds: for
+       the life of the page. The only recovery was a manual reload, and the
+       page gave no hint that one was needed.
+     * opening the thread before the model's first read of the day did the
+       same thing, permanently, on a session that was about to fill up.
+   Both looked from the phone like the history simply not working. */
 async function poll(){
-  if(!S.day || !S.last) return;
-  const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day)
-                            + '&since=' + encodeURIComponent(S.last));
+  if(!S.day) return;
+  const tail = S.last
+    ? '&since=' + encodeURIComponent(S.last)
+    : '';                                   // no tail yet: ask for the day
+  const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day) + tail);
+  if(getJSON.failed) return;                // still down; the next tick tries again
+  if(!S.last){
+    // A recovery, or the session's first message. Repaint from scratch — and
+    // only now clear the stalled banner, so it stands while it is still true.
+    if(S.stalled || (doc && doc.messages && doc.messages.length)){
+      S.stalled = false;
+      paint(doc, false);
+    }
+    return;
+  }
   if(doc && doc.messages && doc.messages.length) paint(doc, true);
 }
 
-(async function boot(){
+async function boot(){
   const d = await getJSON('/api/sndk/thread/days');
   const days = (d && d.days) || [];
   const sel = $('day');
   if(!days.length){
+    // Same distinction as the poll: an unreachable station is not an empty
+    // archive, and the day list failing used to end the page outright — no
+    // timer was ever started below, so there was nothing left but a reload.
+    const down = getJSON.failed;
     $('wrap').textContent = '';
-    $('wrap').append(el('div', 'state', 'No recorded sessions.'));
+    $('wrap').append(el('div', 'state', down
+      ? 'Could not reach the station. Retrying…'
+      : 'No recorded sessions.'));
     $('sub').textContent = '';
+    if(down) setTimeout(boot, 5000);      // the station comes back; so do we
     return;
   }
   for(const day of days){
     const o = document.createElement('option');
-    o.value = day; o.textContent = day.slice(5);
+    // The whole date, not day.slice(5). "09-09" in a list that reaches back to
+    // 07-31 does not say which year, and the closed picker is the one place on
+    // this page where a reader looks to find out what they are reading.
+    o.value = day; o.textContent = day;
     sel.append(o);
   }
   sel.value = days[0];
@@ -482,7 +620,42 @@ async function poll(){
   document.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'visible') poll();
   });
-})();
+
+  /* TELL THE ANDROID SHELL WHERE WE ARE (2026-09-09).
+     This page scrolls #wrap and pins the document at overflow:hidden, so the
+     shell's SwipeRefreshLayout — which arms itself by asking the WEBVIEW
+     whether it can scroll up — was told "no" at every position in a 4300px
+     feed. Every drag downward became a reload that threw the reader back to
+     the top, which is what "the history does not work" looked like from the
+     phone. The document's scroll position is a lie here; #wrap's is the truth,
+     and only this page can say so.
+
+     Guarded on every side: absent off the phone (a browser has no MiraiShell),
+     absent on an older shell that has no atTop, and wrapped because a bridge
+     call that throws inside a scroll handler would take the scrolling with it.
+     Only edge crossings are sent — a call per scroll event would be thousands
+     of binder hops for one boolean that changed twice. */
+  (function reportScrollToShell(){
+    const bridge = window.MiraiShell;
+    if(!bridge || typeof bridge.atTop !== 'function') return;
+    // getElementById, not the outer `wrap`: this file binds that name twice
+    // (a detached div in the message builder, and the scroller here), and the
+    // one that matters is too important to resolve by scope luck.
+    const scroller = document.getElementById('wrap');
+    if(!scroller) return;
+    let last = null;
+    const send = () => {
+      const atTop = scroller.scrollTop <= 0;
+      if(atTop === last) return;
+      last = atTop;
+      try { bridge.atTop(atTop); } catch(e){ /* never break the scroll */ }
+    };
+    scroller.addEventListener('scroll', send, {passive:true});
+    send();                       // the shell starts with no opinion; give it one
+  })();
+}
+
+boot();
 </script>
 </body>
 </html>

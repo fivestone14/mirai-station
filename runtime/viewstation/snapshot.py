@@ -828,6 +828,16 @@ def sndk_thread(day: str, since: str = "") -> dict:
         # it, so a forecast is never drawn as an observation.
         forecast = "read" not in rd and rd.get("line") is not None
         prose = rd.get("line") if forecast else rd.get("read")
+        # ABSENT is not NULL (2026-09-09). `read: null` means the model spoke
+        # and every claim it made was deleted by the checks — a message about a
+        # fault, and worth saying out loud. `read` MISSING means it never
+        # authored a prose line at all: the reading is its points, and they are
+        # fine. The phone could not tell the two apart from `prose` alone, drew
+        # both as "every claim struck out", and so captioned the 2026-09-09
+        # 15:49 reading as having nothing left — printed directly above the two
+        # live observations it did have. Say which it is here; a view cannot
+        # reconstruct it.
+        struck = (not forecast) and ("read" in rd) and rd.get("read") is None
         # `read` is None when every claim was deleted by the checks. That is a
         # message with something to say — the model spoke and was overruled —
         # so it ships with the flag rather than being dropped as empty.
@@ -836,6 +846,7 @@ def sndk_thread(day: str, since: str = "") -> dict:
             "at": _hhmm_et(rts),
             "wake": r.get("wake") or "quiet",
             "read": prose,
+            "struck": struck,
             "contract": "direction_call" if forecast else "observation",
             "quiet": bool(rd.get("quiet")),
             "abstain": rd.get("abstain"),

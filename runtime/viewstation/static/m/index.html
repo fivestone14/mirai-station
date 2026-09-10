@@ -57,11 +57,45 @@
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;
   --serif:ui-serif,"New York","Iowan Old Style","Palatino",Georgia,serif;
 
+  /* TOUCH + PRESS (2026-09-09). Sizes are Material's 48dp, which on Android is
+     48 CSS px, and is the strictest of the three specs in play (WCAG 2.5.8 says
+     24, Apple says 44) — so meeting it meets all of them.
+     The state-layer opacities are Google's own md.sys.state tokens.
+     Timings are asymmetric on purpose: the press-down happens under a finger
+     that is covering the control, so what the eye actually sees is the RELEASE.
+     80ms in stays under Nielsen's 0.1s "instantaneous" limit; 200ms out is
+     md.sys.motion.duration.short4 and matches where the M3 spring settles. */
+  --tap-min:48px;
+  --state-hover:.08;          /* md.sys.state.hover-state-layer-opacity  */
+  --state-press:.12;          /* md.sys.state.pressed-state-layer-opacity */
+  --press-in:80ms;
+  --press-out:200ms;
+  --ease-in:cubic-bezier(0,0,0,1);      /* standard-decelerate: front-loaded */
+  --ease-out:cubic-bezier(.2,0,0,1);    /* standard                          */
+
   --ladder-h:376px;
-  --r-mast:88px; --r-regime:48px; --r-gate:144px; --r-read:92px; --r-foot:20px;
+  /* --r-read 92 -> 129 (2026-09-09). At 92 the sentence got 57px, three lines
+     of 13/1.45, and 44.5% of 119 recorded readings did not fit — the MEDIAN
+     reading needs four lines, so it was the ordinary case being severed, not
+     the outlier, and with no "more" affordance a cut sentence is indistinguish-
+     able from a finished one. Five lines fits 95.3%. The 37px comes from the
+     ladder, which is the only elastic region and is 431px on a tall phone
+     against a legibility floor near 234; it lands at 392. 131 rather than 129:
+     the row's own chrome (1 border + 16 padding + 14 label + 4 gap = 35) leaves
+     94.0px for 94.2px of text at 129, which clips the fifth line by a hair. FIXED in
+     sizeLadder() moved with it, in this same commit, or the six regions
+     overrun and body{overflow:hidden} eats the footer. */
+  --r-mast:88px; --r-regime:48px; --r-gate:144px; --r-read:131px; --r-foot:20px;
 }
 @media (max-height:700px){
-  :root{ --r-mast:76px; --r-regime:44px; --r-gate:118px; --r-read:76px; --r-foot:18px; }
+  /* --r-read 76 -> 84: the whole short-branch budget, and it is 8px. 568 minus
+     28 of padding leaves 340 for five regions above the ladder's 200 floor,
+     and the short block summed to 332 — so 8px were sitting unclaimed in the
+     ladder. (The note below this block used to say the gate was capped at 118;
+     the arithmetic caps it at 126.) Even spent, 82.4% of readings still do not
+     fit two lines. The read cannot be made whole inside a 568px viewport, and
+     the clamp stays at 2 rather than pretend otherwise. */
+  :root{ --r-mast:76px; --r-regime:44px; --r-gate:118px; --r-read:84px; --r-foot:18px; }
   /* The element rules that used to live here are at the END of this sheet. They
      set the same properties, at the same specificity, as the base rules below —
      so declared HERE they lost every cascade and the block was dead: measured
@@ -221,18 +255,61 @@ body.failed > section, body.failed > .foot{display:none}
 .rd-lab{display:flex;align-items:baseline;height:14px;
         font:500 10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;
         color:var(--ink-faint)}
-.rd-all{margin-left:8px;font:500 10px/1.2 var(--mono);letter-spacing:.12em;
+/* PAINTED SMALL, TAPPED BIG (2026-09-09). The chip stays 18px because the row
+   it sits in is 14 and the read row's budget has no spare pixels — but the
+   TARGET is 48x48, drawn as an invisible ::after that overhangs the paint. That
+   is Google's own technique (button/internal/_touch-target.scss uses
+   height:max(48px,100%)) and it satisfies WCAG 2.5.5, which measures the target
+   rather than the ink. Before this the tap area was 48x18 — 41% of the required
+   height — inside a 92px region of which 74px did nothing. */
+.rd-all{position:relative;isolation:isolate;
+        margin-left:8px;font:500 10px/1.2 var(--mono);letter-spacing:.12em;
         text-transform:uppercase;color:var(--iris);text-decoration:none;
-        padding:2px 5px;margin-top:-2px;border:1px solid var(--hairline);border-radius:6px}
+        padding:2px 5px;margin-top:-2px;border:1px solid var(--hairline);border-radius:6px;
+        -webkit-tap-highlight-color:transparent;   /* we paint our own — see press.js */
+        touch-action:manipulation;                 /* no double-tap-zoom delay */
+        -webkit-user-select:none;user-select:none;
+        transition:color var(--press-out) var(--ease-out),
+                   border-color var(--press-out) var(--ease-out)}
+.rd-all::after{content:"";position:absolute;top:50%;left:50%;
+               transform:translate(-50%,-50%);
+               width:max(100%,var(--tap-min));height:var(--tap-min)}
+.rd-all::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;
+                background:var(--ink);opacity:0;
+                transition:opacity var(--press-out) var(--ease-out)}
+/* No scale on this one. A 3% scale-down resamples a 1px border and 10px mono
+   glyphs onto fractional device pixels and reads as the text going soft. The
+   cue here is colour and border, which cost no resampling. */
+.rd-all.is-pressed{color:var(--ink);border-color:var(--iris);
+                   transition-duration:var(--press-in);
+                   transition-timing-function:var(--ease-in)}
+.rd-all.is-pressed::before{opacity:var(--state-press);
+                           transition-duration:var(--press-in);
+                           transition-timing-function:var(--ease-in)}
+@media (hover:hover){ .rd-all:hover::before{opacity:var(--state-hover)} }
+.rd-all:focus-visible{outline:2px solid var(--iris);outline-offset:2px}
 .rd-age{margin-left:auto;font:500 11px/1.2 var(--mono);letter-spacing:.02em;
         font-variant-numeric:tabular-nums;color:var(--ink-dim)}
 .rd-age.old{color:var(--lantern)}
 .rd-body{display:flex;gap:6px;min-width:0;flex:1 1 auto}
 .rd-mark{flex:none;font-size:9px;line-height:1.9;color:var(--ink-dim)}
 .rd-mark:empty{display:none}
-.rd-line{flex:1 1 auto;min-width:0;font:italic 400 13px/1.45 var(--serif);color:var(--ink);
-         display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+/* Roman, not italic (2026-09-09). The serif stays — it is this page's one prose
+   voice and it is what separates an opinion from a measurement. The italic went:
+   sustained italic serif over four and five lines is the slowest thing on this
+   screen to read, and this is the only text here read for MEANING rather than
+   scanned. Italic serif is the footnote treatment on this page, and it was being
+   applied to the most valuable sentence on it.
+   13px stays too. Measured against the archive, 13px buys more completeness per
+   pixel of row than 14 or 15 buys presence: at this row height 13/1.45 shows
+   95.3% of readings whole, 14/1.5 shows 73.3%. */
+.rd-line{flex:1 1 auto;min-width:0;font:400 13px/1.45 var(--serif);color:var(--ink);
+         display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden}
 .rd-line.aged{color:var(--ink-dim)}
+/* Not the reading's voice: this is a level's annotation, shown because it is
+   all there is. Sans, dimmed — the same treatment `expired` uses to say "this
+   is not the model talking". */
+.rd-line.wordless{font:400 13px/1.45 var(--sans);color:var(--ink-dim)}
 .rd-line.expired{font:400 13px/1.4 var(--sans);font-style:normal;color:var(--ink-dim)}
 
 /* ============ F. FOOT ============ */
@@ -248,11 +325,30 @@ body.failed > section, body.failed > .foot{display:none}
 @media (max-height:700px){
   .gate{gap:2px;padding:6px 0 6px}
   .g-head{align-items:flex-start;height:36px}
-  /* 76px holds a 14px label, a 4px gap and TWO lines of 13/1.45 serif, not
-     three. At three the body measured 56.5px in a 46px box and the sentence's
-     last line printed straight through the footer. The whole reading is one tap
-     away in the archive; a line lying on top of another line is not a reading. */
+  /* Still TWO lines. 84 minus the row's 35px of chrome leaves 49px, and three
+     lines of 13/1.45 is 56.5 — it does not fit, and the last line would print
+     straight through the footer, which is the exact 2026-09-07 failure. The
+     extra 8px buys air around two lines, not a third. 82.4% of recorded
+     readings are still cut here; a 568px viewport cannot hold this sentence and
+     the archive is one tap away. */
   .rd-line{-webkit-line-clamp:2}
+}
+
+/* ============ REDUCED MOTION ============ */
+/* WCAG's own definition settles what goes: "motion animation does not include
+   changes of colour, blurring or opacity which do not change the perceived
+   size, shape or position" — so the state layer is not motion and stays, while
+   a transform would be and would go. This page's chip has no transform to drop,
+   so the layer is simply strengthened to carry the whole cue. The anti-pattern
+   is the popular global `*{transition-duration:.01ms!important}` reset, which
+   deletes press feedback altogether — strictly worse for accessibility than the
+   animation it was meant to suppress. */
+@media (prefers-reduced-motion:reduce){
+  .rd-all.is-pressed::before{opacity:.20}
+}
+@media (forced-colors:active){
+  .rd-all::before{display:none}
+  .rd-all.is-pressed{border-color:Highlight;color:Highlight}
 }
 
 /* ============ FAILURE ============ */
@@ -308,7 +404,7 @@ body.failed > section, body.failed > .foot{display:none}
 </section>
 
 <section class="read" id="read">
-  <div class="rd-lab"><span>MODEL READ</span><a class="rd-all" href="/m/thread.html">all&nbsp;›</a><span class="rd-age" id="rdAge"></span></div>
+  <div class="rd-lab"><span>MODEL READ</span><a class="rd-all" href="/m/thread.html" data-press data-haptic>all&nbsp;›</a><span class="rd-age" id="rdAge"></span></div>
   <div class="rd-body"><span class="rd-mark" id="rdMark"></span><span class="rd-line" id="rdLine"></span></div>
 </section>
 
@@ -319,6 +415,7 @@ body.failed > section, body.failed > .foot{display:none}
   <p class="fail-2" id="fail2"></p>
 </div>
 
+<script src="/m/press.js"></script>
 <script src="/m/glance.js"></script>
 <script src="/m/page.js"></script>
 </body>

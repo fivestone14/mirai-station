@@ -4,13 +4,16 @@ import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.HttpAuthHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
@@ -32,11 +35,35 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
  *
  * The handler answers for ONE host and cancels for every other, so a redirect
  * cannot walk the password off the station and onto somebody else's server.
+ *
+ * ON THE GESTURE (2026-09-09). SwipeRefreshLayout decides whether to steal a
+ * downward drag by asking the WEBVIEW whether it can scroll up. That is the
+ * right question only when the page scrolls the document. The reading thread
+ * does not: it scrolls an inner element and pins the document at
+ * overflow:hidden, so the WebView answered "cannot scroll up" at every position
+ * in a 4300px feed and every drag became a reload that threw the reader back to
+ * the top. The glance never showed it, because the glance never scrolls.
+ *
+ * The page is the only thing that knows, so the page is asked. It reports its
+ * own scroll position through `MiraiShell.atTop()` and the refresh gesture is
+ * armed from that, falling back to the WebView's own answer when a page says
+ * nothing — which is exactly the old behaviour for any page that scrolls
+ * normally. A page that never calls in is a page that scrolls the document.
+ *
+ * ON BACK. Without a handler, Android's back button finished the activity from
+ * wherever you were, so leaving the thread meant leaving the app and coming
+ * back to a cold start. Back now walks the WebView's own history first.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var web: WebView
     private lateinit var refresh: SwipeRefreshLayout
+
+    /** What the page last said about its own scroll position, or null when this
+     *  page has never spoken — a page that scrolls the document, in other words,
+     *  for which the WebView's own answer was always correct. Reset on every
+     *  navigation so a silent page cannot inherit a talkative one's answer. */
+    @Volatile private var pageAtTop: Boolean? = null
 
     private val stationHost: String? = Uri.parse(BuildConfig.STATION_URL).host
 
@@ -68,6 +95,14 @@ class MainActivity : AppCompatActivity() {
             webViewClient = StationClient()
             isVerticalScrollBarEnabled = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
+            // Our own page, our own origin, one boolean in one direction. The
+            // usual objection to addJavascriptInterface is that it hands a
+            // reflective bridge to whatever HTML happens to load; here nothing
+            // but the station can load at all (shouldOverrideUrlLoading), and
+            // the surface is a single method that takes a Boolean and returns
+            // nothing. minSdk is 26, so the pre-17 reflection hole does not
+            // exist in any build this app runs on.
+            addJavascriptInterface(ShellBridge(), "MiraiShell")
         }
 
         refresh = SwipeRefreshLayout(this).apply {
@@ -75,7 +110,24 @@ class MainActivity : AppCompatActivity() {
             setProgressBackgroundColorSchemeColor(SURFACE)
             addView(web)
             setOnRefreshListener { web.reload() }
+            // "can the child still scroll up?" — answered by the page when the
+            // page has an opinion, and by the WebView when it does not.
+            setOnChildScrollUpCallback { _, _ ->
+                pageAtTop?.let { !it } ?: web.canScrollVertically(-1)
+            }
         }
+
+        // Back leaves the app only when there is nothing left to go back to.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (web.canGoBack()) {
+                    web.goBack()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
 
         setContentView(refresh)
         if (savedInstanceState == null) web.loadUrl(glanceUrl)
@@ -97,6 +149,42 @@ class MainActivity : AppCompatActivity() {
         refresh.removeAllViews()
         web.destroy()
         super.onDestroy()
+    }
+
+    /** What the page may tell, and ask of, the shell. Two methods, no reflection
+     *  surface worth the name, and nothing but the station can load here. */
+    private inner class ShellBridge {
+        /** Called by the page whenever its scroll position crosses the top.
+         *  WebView delivers this on a binder thread, hence @Volatile above. */
+        @JavascriptInterface
+        fun atTop(v: Boolean) { pageAtTop = v }
+
+        /**
+         * One haptic tick, on a confirmed tap.
+         *
+         * NOT navigator.vibrate(). A duration-only API cannot make a tick: the
+         * pulse-to-buzz perceptual boundary is around 28-30ms, while an LRA
+         * needs 20-60ms just to spin up and an ERM 50-100 — the crisp region
+         * sits underneath the actuator's own rise time, so the best the web API
+         * can produce is a soft thud. performHapticFeedback drives a tuned
+         * waveform with a braking signal, which is what makes it feel like a
+         * click rather than a buzz.
+         *
+         * Worth carrying for a screen read outdoors: haptics is the only channel
+         * here that a finger cannot cover and sunlight cannot wash out.
+         *
+         * No VIBRATE permission — this routes through the View's own haptic
+         * feedback, which respects the system's touch-feedback setting. A phone
+         * with haptics turned off stays silent, correctly.
+         */
+        @JavascriptInterface
+        fun tick() {
+            // No flags: the one-argument form honours the system's touch-feedback
+            // setting, which is the behaviour we want. FLAG_IGNORE_GLOBAL_SETTING
+            // exists to override a user who has turned haptics off, and a glance
+            // screen has no business doing that.
+            web.post { web.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY) }
+        }
     }
 
     private inner class StationClient : WebViewClient() {
@@ -129,6 +217,14 @@ class MainActivity : AppCompatActivity() {
             // must not blank a screen that is otherwise readable.
             if (request?.isForMainFrame != true) return
             view?.loadDataWithBaseURL(null, OFFLINE_HTML, "text/html", "utf-8", null)
+        }
+
+        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+            // A new page has said nothing yet, and must not inherit the last
+            // one's answer: navigating from the thread (which reports) to the
+            // glance (which does not) would otherwise leave the gesture armed
+            // from a stale boolean.
+            pageAtTop = null
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
