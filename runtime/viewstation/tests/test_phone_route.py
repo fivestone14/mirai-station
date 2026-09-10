@@ -500,8 +500,17 @@ def test_the_named_edge_carries_the_weight_the_bug_cannot():
     base = _block(".p-edge{")
     assert base is not None, ".p-edge has no rule"
     assert lead is not None, ".p-edge.lead has no rule"
-    assert "700" in base and "fill:var(--i)" in lead.replace(" ", ""), \
-        "the named edge is no longer distinguishable from an unnamed one"
+    # WEIGHT, not just fill. Both rules used to be 700 and differed only in
+    # colour, which makes the distinction contrast-only — and the stylesheet's
+    # own law is that subordination is by size or weight, because a
+    # low-contrast grey read outdoors is gone.
+    import re as _re
+    bw = _re.search(r"font:(\d+)", base)
+    lw = _re.search(r"font-weight:(\d+)", lead)
+    assert bw and lw, "the two edge rules no longer state a weight"
+    assert int(lw.group(1)) > int(bw.group(1)), \
+        "the named edge is no heavier than an unnamed one; the cue is contrast alone"
+    assert "fill:var(--i)" in lead.replace(" ", "")
 
 
 # --- the typeface, and the one header that makes it affordable -------------

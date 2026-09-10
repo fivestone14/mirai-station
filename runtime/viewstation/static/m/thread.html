@@ -122,6 +122,12 @@ body{
 /* ============ THE LIST ============ */
 .wrap{
   flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  /* CONTAIN, or a drag at the top of the list chains to the root document and
+     arms the browser's own pull-to-refresh — the same "every downward drag
+     became a reload that threw the reader back to the top" symptom the shell
+     bridge below exists to prevent, coming back through a different door. The
+     Android shell masks it (OVER_SCROLL_NEVER), a plain Chrome tab does not. */
+  overscroll-behavior:contain;
   padding:4px 16px calc(env(safe-area-inset-bottom) + 28px);
   display:flex;flex-direction:column;gap:16px;
 }
@@ -145,6 +151,12 @@ body{
 .rc.now .wake{background:rgba(255,255,255,.10);color:var(--on-mute)}
 /* a reading whose every claim was struck out is a message about a fault */
 .rc.struck .wake{background:transparent;border:1px solid var(--put-ink);color:var(--put-ink)}
+/* ...but --put-ink on the dark --fill card is 2.39:1, under even the 3:1 floor
+   for a border. Same specificity as .rc.now .wake, so source order alone was
+   deciding it. On the filled card the fault reads in the reversed ink and the
+   outline carries it. (Not reachable today: zero struck readings in the whole
+   archive. `read: null` is a live contract, so it is waiting rather than dead.) */
+.rc.now.struck .wake{border-color:var(--on-mute);color:var(--on-body)}
 
 .said{margin-top:11px;font:400 15px/1.5 var(--sans);color:var(--i-body);
       text-wrap:pretty;hyphens:none}
@@ -202,7 +214,7 @@ body{
 <script src="/m/press.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const S = {day:'', last:'', stalled:false, msgs:[]};
+const S = {day:'', last:'', stalled:false, polling:false, msgs:[]};
 
 /* A silence longer than this is drawn rather than closed up. The model's own
    cadence is ten to twenty minutes, so this is "it skipped a turn or two". */
@@ -368,7 +380,13 @@ async function loadDay(day){
   }
   render();
   $('wrap').scrollTop = 0;              // a new day opens at its newest reading
+  paintSub(doc);
+}
 
+/* The subheader, extracted because the POLL has to be able to repaint it. It
+   was written only by loadDay, so a page that recovered from a dropped request
+   kept asserting "station unreachable" above a fully populated list. */
+function paintSub(doc){
   const sub = $('sub');
   sub.textContent = '';
   if(S.stalled){
@@ -378,7 +396,7 @@ async function loadDay(day){
     sub.append(el('b', null, String(k)),
                document.createTextNode(` of ${n} scan${n === 1 ? '' : 's'} said something`));
   }else{
-    sub.textContent = day;
+    sub.textContent = S.day;
   }
 }
 
@@ -387,26 +405,66 @@ async function loadDay(day){
    dropped request on the first load used to silence it for the life of the
    page, and opening the thread before the day's first read did the same. */
 async function poll(){
+  if(S.polling) return;      // no second request while one is airborne — see below
   if(!S.day) return;
-  const tail = S.last ? '&since=' + encodeURIComponent(S.last) : '';
-  const doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day) + tail);
+  S.polling = true;
+  let doc;
+  try{
+    const tail = S.last ? '&since=' + encodeURIComponent(S.last) : '';
+    doc = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day) + tail);
+  }finally{
+    S.polling = false;
+  }
   if(getJSON.failed) return;                    // still down; the next tick tries again
+
+  // THE STATION IS BACK, and that is true whether or not it had anything to
+  // say. Clearing this only on a non-empty answer left the banner "Could not
+  // reach the station. Retrying…" on screen permanently for a day with no
+  // readings yet, while every poll behind it quietly succeeded. The subheader
+  // has to be repainted too: it is the element that was asserting
+  // "station unreachable", and nothing else ever touches it again.
+  const wasStalled = S.stalled;
+  S.stalled = false;
   if(!doc || !Array.isArray(doc.messages)) return;
-  if(!doc.messages.length) return;
+  if(!doc.messages.length){
+    if(wasStalled) render(), paintSub(doc);
+    return;
+  }
 
   if(!S.last){
     S.msgs = doc.messages;                      // a recovery, or the day's first
   }else{
-    S.msgs = S.msgs.concat(doc.messages);       // the tail
+    // DEDUP BY TIMESTAMP. `since` is exclusive on the server, but this function
+    // has two callers — the 45s interval and every visibilitychange — and
+    // before the in-flight guard above two of them could be airborne with the
+    // same `since`. Both answers concat, and the pair drew as two identical
+    // cards with no divider between them, because minutesBetween returns null
+    // for equal timestamps. The guard makes this belt-and-braces; keep both,
+    // because the cost is a string compare and the symptom is silent.
+    const seen = S.last;
+    const fresh = doc.messages.filter(m => m && m.ts > seen);
+    if(!fresh.length){ if(wasStalled) paintSub(doc); return; }
+    S.msgs = S.msgs.concat(fresh);
   }
   S.last = S.msgs[S.msgs.length - 1].ts;
-  S.stalled = false;
-  // A new reading lands at the TOP now, so unlike the old bottom-anchored list
-  // it arrives in view. Hold the reader's place unless they are already there.
+
+  // HOLD THE READER'S PLACE. render() empties the container and rebuilds every
+  // node, so scrollTop survives nothing and browser scroll anchoring has no
+  // anchor left to hold. A new reading is inserted ABOVE everything, so a
+  // reader parked mid-list would silently shift by the height of whatever
+  // arrived — a different card, mid-sentence.
+  //
+  // Measured rather than assumed: record the height before, re-render, and add
+  // the difference back. At the top (or near it) that difference is exactly
+  // what we do NOT want to add, because arriving at the top is the whole point
+  // of a descending list.
   const wrap = $('wrap');
   const atTop = wrap.scrollTop <= 8;
+  const hBefore = wrap.scrollHeight;
+  const yBefore = wrap.scrollTop;
   render();
-  if(atTop) wrap.scrollTop = 0;
+  paintSub(doc);
+  wrap.scrollTop = atTop ? 0 : yBefore + (wrap.scrollHeight - hBefore);
 }
 
 async function boot(){

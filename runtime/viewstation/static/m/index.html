@@ -192,7 +192,14 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 
 /* ============ D. LADDER ============ */
 .ladder{margin-top:10px}
-#svg{display:block;width:100%;height:auto}
+/* Author CSS beats a presentational attribute, so width:100% here overrode the
+   width JS sets — and the "CHART TOO NARROW" fallback then rendered at 100% of
+   the container that was too narrow to begin with. At rawW 0, which is the
+   not-laid-out case the guard exists for, the message was invisible. The svg
+   sizes from its own attributes; a min-width keeps the fallback legible even
+   when the container has none to give. */
+#svg{display:block;max-width:100%;height:auto}
+#svg.too-narrow{min-width:240px}
 
 .p-band   {fill:var(--band)}
 .p-path   {fill:none;stroke:var(--path);stroke-width:1.8;
@@ -228,8 +235,12 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-word    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-mute);
             paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
 .p-word.dim{fill:var(--i-faint)}
-.p-edge    {font:700 11px/1 var(--sans);text-anchor:end;fill:var(--i-mute)}
-.p-edge.lead{fill:var(--i)}
+/* The marker the gate NAMES is heavier as well as darker. Both were 700 and the
+   only difference was fill — which makes the distinction contrast-only, and
+   this file's own law (see the ink ramp) is that subordination is by SIZE or
+   weight, never by contrast, because a low-contrast grey outdoors means gone. */
+.p-edge    {font:500 11px/1 var(--sans);text-anchor:end;fill:var(--i-mute)}
+.p-edge.lead{font-weight:800;fill:var(--i)}
 .p-axis    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-faint)}
 
 /* ============ E. THE READING — the one filled card ============ */

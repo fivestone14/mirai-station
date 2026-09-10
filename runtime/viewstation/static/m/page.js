@@ -103,7 +103,9 @@ async function loadPayload(){
 
   if(pay.session){
     // 420, not 390: a session is 390 one-minute bars and the limit has to clear
-    // it, or the chart silently loses the close of every full day.
+    // it. The server implements limit as a TAIL slice, so a day that ever
+    // exceeded it would lose its OPENING rather than its close — the quiet end
+    // of the failure, and the reason the headroom is real rather than tidy.
     const [d, rd, bars] = await Promise.all([
       getJSON('/api/raw/file?root=state&path=sndk_reversion/' + encodeURIComponent(pay.session) + '.jsonl&limit=400'),
       getJSON('/api/raw/file?root=state&path=sndk_reads/'      + encodeURIComponent(pay.session) + '.jsonl&limit=40'),
@@ -160,12 +162,26 @@ function state(){
 }
 
 function pathPoints(){
-  // A single bar is not a path, and a sidecar that has written one row while
-  // the diary holds a whole morning must not win on presence alone. Two is the
-  // minimum that can draw a line at all.
-  const b = barPoints(BARS);
-  if(b.length >= 2) return b;
-  return tapePoints(DIARY);
+  // BY COVERAGE, not by presence.
+  //
+  // The first version was `if(bars.length >= 2) return bars` — which is the
+  // mirror image of the bug the bar sidecar was introduced to fix. A bars job
+  // that dies at 10:00 leaves 30 rows on disk, clears that test forever, and
+  // the chart then draws 09:30 to 10:00 for the rest of the session while the
+  // scanner's diary holds every minute of it. It fails honestly (the break
+  // rule and the detached-quote gutter still draw, so no line is invented),
+  // but honest is not the same as right.
+  //
+  // So the two series are compared on how far each one REACHES, and the fresher
+  // record wins. Bars keep the tie and every close call: they are one-minute
+  // and the diary is every couple of minutes, so on a healthy day the bars are
+  // both fresher and denser, and on a day the bars never covered the diary is
+  // the only thing there is.
+  const b = barPoints(BARS), d = tapePoints(DIARY);
+  if(b.length < 2) return d;
+  if(d.length < 2) return b;
+  const GRACE_MS = 10 * 60 * 1000;   // two missed bars plus a margin
+  return (d[d.length - 1].t - b[b.length - 1].t > GRACE_MS) ? d : b;
 }
 
 function paintAll(){
@@ -301,9 +317,13 @@ function paintLadder(st){
     svg.setAttribute('width', 240);
     svg.setAttribute('height', SVGH);
     svg.setAttribute('viewBox', '0 0 240 ' + SVGH);
+    // the class carries a min-width, so the message is readable even when the
+    // container it is reporting on has no width to give it
+    svg.classList.add('too-narrow');
     svg.innerHTML = '<text class="p-word" x="10" y="24">CHART TOO NARROW</text>';
     return;
   }
+  svg.classList.remove('too-narrow');
   const CW = rawW;
   svg.setAttribute('width', CW);
   svg.setAttribute('height', SVGH);
