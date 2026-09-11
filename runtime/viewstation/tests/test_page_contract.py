@@ -498,3 +498,25 @@ def test_the_sndk_chart_claims_nothing_about_what_dealers_do():
     for claim in ("Dealers buy the dips here", "Dealers sell the rallies here",
                   "Dealers must buy a break up", "Dealers must sell a break down"):
         assert claim not in code, claim
+
+
+def test_the_sndk_chart_says_where_the_weight_is_not_what_price_does():
+    """Reworded 2026-09-10, after the dealer arrows went: every caption, card,
+    chip and key entry on the SNDK chart that said what price or dealers would
+    do now says where the option weight sits. Each string below was on the
+    chart; none may come back. The SPX map's own vocabulary is not covered."""
+    code = "\n".join(l.split("//")[0] for l in PAGE.splitlines()
+                     if not l.strip().startswith("//"))
+    for gone in ("'Moves amplify'", "'Moves dampen'", "Dealers amplify moves",
+                 "Dealers cushion moves", "Jumpy — moves amplify", "Calm — moves dampen",
+                 "'Pull → '", "txt:'calmer ↑'", "txt:'faster ↓'", "txt:'resistance'",
+                 "txt:'support'", "txt:'thin · fast'", "txt:'price magnet'",
+                 "The price the market is being pulled toward.", "The book is tugging price",
+                 "fakeouts live in here", "little holds price", "price travels fast",
+                 "Calmer above it, faster below it.", "where price is pulled",
+                 "above: dealers dampen", "often settles late", "stalls a rally",
+                 "cushions a drop", "Below · faster", "Above · calmer"):
+        assert gone not in code, f"retired wording is back on the SNDK chart: {gone}"
+    # and what replaced the two most-read pieces is there
+    assert "txt:'call side ↑'" in code and "txt:'put side ↓'" in code
+    assert "'Gamma here'" in code
