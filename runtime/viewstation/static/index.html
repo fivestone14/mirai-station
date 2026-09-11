@@ -10932,13 +10932,18 @@ function snkLegend(){
   return `<div class="snk-legend"><span class="k">Reading the map</span>`
     +row({cls:'bar',st:'background:var(--coral)'}, '<b>Puts</b> · downside walls')
     +row({cls:'bar',st:'background:var(--jade)'}, '<b>Calls</b> · upside walls')
-    +row({st:'border-top-color:var(--l-grav)'}, '<b>Magnet</b> — where price is pulled')
-    +row({st:'border-top-color:var(--ink-dim); border-top-style:dashed'}, '<b>Tipping point</b> — above: dealers dampen · below: amplify')
+    // 2026-09-10: every row says where the weight IS, never what price will do about it —
+    // the reader's own doctrine, and what docs/sndk-plan.md measured ("Closed by
+    // measurement": no damping or amplifying effect, no pin on weeklies, walls relabelled
+    // on every crossing). These said "where price is pulled", "dealers dampen / amplify",
+    // "price travels fast", "the first thing holding it", "where an expiry day settles".
+    +row({st:'border-top-color:var(--l-grav)'}, '<b>Magnet</b> — the strike near price with the most contracts, calls and puts together')
+    +row({st:'border-top-color:var(--ink-dim); border-top-style:dashed'}, '<b>Tipping point</b> — where call and put gamma balance: calls carry more above it, puts below')
     +row({st:'border-top-color:var(--iris)'}, '<b>Price</b> path &amp; spot')
-    +row({cls:'gl',st:'color:var(--l-grav)',g:'⇕'}, '<b>Comet</b> — where the read points; a grey dot = no call')
+    +row({cls:'gl',st:'color:var(--l-grav)',g:'⇕'}, '<b>Comet</b> — the distance from price to the magnet')
     +row({cls:'gl',st:'color:var(--l-grav)',g:'▤'}, '<b>Magnet band</b> — two strikes too close to pick between')
     +row({cls:'gl',st:'color:var(--jade)',g:'━○'}, '<b>Whisker</b> — traded there today, this expiry · jade calls, coral puts, ring = unusually heavy')
-    +row({cls:'gl',st:'color:var(--iris)',g:'⇣'}, '<b>Thin zone</b> — little in the way, price travels fast')
+    +row({cls:'gl',st:'color:var(--iris)',g:'⇣'}, '<b>Thin zone</b> — a stretch with little option weight in it')
     +row({cls:'gl',st:'color:var(--ink-faint)',g:'┄'}, '<b>Faded mark</b> — this level has not moved in hours')
     // THE WORDS DOWN THE LEFT EDGE (08-24). The captions were the one thing on the chart this
     // card never mentioned, so a reader who wondered what the grey words meant had nowhere to
@@ -10946,12 +10951,12 @@ function snkLegend(){
     // true — and each one also answers the pointer on the chart itself with the full card.
     +`<span class="k2">Definitions</span>`
     +row({}, 'The grey words down the left edge of the chart, each with the price it turns on — hover one there for the whole story')
-    +row({}, '<b>calmer ↑</b> — above the tipping point hedging works against moves: drift and chop')
-    +row({}, '<b>faster ↓</b> — below it the same hedging feeds moves: drops run further, faster')
-    +row({}, '<b>resistance</b> — the nearest wall above the price, the first thing in the way going up')
-    +row({}, '<b>support</b> — the nearest wall below the price, the first thing holding it going down')
-    +row({}, '<b>price magnet</b> — the heaviest strike; where an expiry day often settles late')
-    +row({}, '<b>thin · fast</b> — a stretch with almost nothing positioned in it; price crosses it quickly')
+    +row({}, '<b>call side ↑</b> — above the tipping point, calls carry more of the gamma than puts')
+    +row({}, '<b>put side ↓</b> — below it, puts carry more')
+    +row({}, '<b>wall above</b> — the nearest pile of option weight above the price')
+    +row({}, '<b>wall below</b> — the nearest pile of option weight below the price')
+    +row({}, '<b>magnet</b> — the strike near price with the most contracts, named here when it sits outside today\'s likely range')
+    +row({}, '<b>thin</b> — a stretch with almost nothing positioned in it')
     +`</div>`;
 }
 
@@ -11973,25 +11978,29 @@ function snkTape(m, band, sp, orders, hudOn, frozen){
   if(!m) return '';
   const chip=(cls,label,val,extra)=>`<span class="snk-tchip${cls?' '+cls:''}"><i>${label}</i><b>${val}</b>${extra?`<em>${extra}</em>`:''}</span>`;
   const chips=[];
-  // 1 · REGIME — the dealer-gamma sign, the single most important read; the one bold chip.
-  // A regime frozen for hours keeps its HUE (the sign is still the sign) but trades its
-  // "Moves amplify" gloss for how long it has been saying the same thing — the tape's share
-  // of the sr-1 frozen rule. The visible wash lives on the side panel's Regime tile, where
+  // 1 · GAMMA AT PRICE — the sign of net gamma at today's price, calls counted positive and
+  // puts negative: which side carries more of the book's gamma HERE. It read JUMPY / "Moves
+  // amplify" and CALM / "Moves dampen" until 2026-09-10 — a claim about what hedging does to
+  // price, measured absent on SNDK and forbidden to the model. The measurement stays; the
+  // claim goes. Hue follows the side (jade calls, coral puts), which is what it always meant.
+  // A read frozen for hours keeps its HUE but trades its gloss for how long it has been
+  // saying the same thing — the tape's share of the sr-1 frozen rule. The visible wash lives on the side panel's Regime tile, where
   // there is room for it without demoting the only coloured chip on the strip.
   const rgFz=snkFrozenAt(frozen,'gamma sign')||snkFrozenAt(frozen,'regime');
   const rgX=rgFz?`unchanged ${snkDur(rgFz.for_min)}`:null;
   if(!hudOn){
-    if(m.sign==='negative') chips.push(chip('hd c','Regime','JUMPY',rgX||'Moves amplify'));
-    else if(m.sign==='positive') chips.push(chip('hd j','Regime','CALM',rgX||'Moves dampen'));
-    else if(m.sign!=null||m.regime) chips.push(chip('hd m','Regime','UNCLEAR',rgX||''));
+    if(m.sign==='negative') chips.push(chip('hd c','Gamma here','PUTS',rgX||'outweigh calls'));
+    else if(m.sign==='positive') chips.push(chip('hd j','Gamma here','CALLS',rgX||'outweigh puts'));
+    else if(m.sign!=null||m.regime) chips.push(chip('hd m','Gamma here','UNCLEAR',rgX||''));
   }
-  // 2 · vs FLIP — above the flip dealers brake (calmer), below they accelerate (faster).
+  // 2 · vs FLIP — which side of the balance point price is on: calls carry more of the
+  // gamma above it, puts below. (Read "calmer" / "faster" until 2026-09-10.)
   // explicit !=null gate: global isFinite(null) is TRUE, so a bare isFinite would coerce a
   // null flip to 0 and print a phantom "Above · calmer" on a flip-less row (the ct/pt lesson).
   const flip=(m.ladder&&m.ladder.hvl!=null&&isFinite(m.ladder.hvl))?+m.ladder.hvl:(m.flip!=null&&isFinite(m.flip)?+m.flip:null);
-  if(flip!=null&&sp!=null) chips.push(chip('','vs flip', sp<flip?'Below · faster':'Above · calmer'));
-  // 3 · MAGNET — the pull level
-  if(m.magnet!=null&&isFinite(m.magnet)) chips.push(chip('','Magnet','Pull → '+snkUsd(m.magnet,0)));
+  if(flip!=null&&sp!=null) chips.push(chip('','vs flip', sp<flip?'Below · put side':'Above · call side'));
+  // 3 · MAGNET — the strike near price with the most contracts (it read "Pull →" until 09-10)
+  if(m.magnet!=null&&isFinite(m.magnet)) chips.push(chip('','Magnet',snkUsd(m.magnet,0)));
   // 4 · WALLS — nearest ceiling above / floor below; an off-frame wall keeps its edge arrow
   const inHi=band?band.pHigh:Infinity, inLo=band?band.pLow:-Infinity;
   if(!hudOn&&m.callWall!=null&&isFinite(m.callWall)&&(sp==null||m.callWall>sp))
@@ -12060,8 +12069,8 @@ function snkZones(m, band, P){
   const row=p=>yFor(p)+3.5*r;   // the wall labels' own baseline nudge — centres the words on the row
   const flip=P.flip;
   if(flip!=null&&isFinite(flip)&&flip>band.pLow&&flip<band.pHigh){
-    caps.push({ y:clamp(row(flip)-9.5*r, pad), txt:'calmer ↑', p:flip, d:-1 });
-    caps.push({ y:clamp(row(flip)+9.5*r, pad), txt:'faster ↓', p:flip, d:1 });
+    caps.push({ y:clamp(row(flip)-9.5*r, pad), txt:'call side ↑', p:flip, d:-1 });
+    caps.push({ y:clamp(row(flip)+9.5*r, pad), txt:'put side ↓', p:flip, d:1 });
   }
   // THE WALLS THE MAP ACTUALLY DRAWS (08-24). These two captions used to name the row's
   // call_wall_gamma / put_wall_gamma — the heaviest CALL-only and PUT-only pile — while every
@@ -12077,19 +12086,19 @@ function snkZones(m, band, P){
   const WL=(Array.isArray(P.walls)?P.walls:[]).filter(w=>w&&isFinite(w.peak));
   const ceil=(sp==null)?null:WL.filter(w=>w.peak>sp).sort((a,b)=>a.peak-b.peak)[0]||null;
   const floor=(sp==null)?null:WL.filter(w=>w.peak<=sp).sort((a,b)=>b.peak-a.peak)[0]||null;
-  if(ceil) caps.push({ y:clamp(row(Math.min(ceil.peak, band.pHigh)), pad), txt:'resistance', p:+ceil.peak, d:-1, w:ceil });
-  if(floor) caps.push({ y:clamp(row(Math.max(floor.peak, band.pLow)), pad), txt:'support', p:+floor.peak, d:1, w:floor });
+  if(ceil) caps.push({ y:clamp(row(Math.min(ceil.peak, band.pHigh)), pad), txt:'wall above', p:+ceil.peak, d:-1, w:ceil });
+  if(floor) caps.push({ y:clamp(row(Math.max(floor.peak, band.pLow)), pad), txt:'wall below', p:+floor.peak, d:1, w:floor });
   // magnet — only OUT of the expected-move band; inside, the EM marker + magnet line already
   // own that zone and a caption there would clutter and clash with the EM glyph
   if(m.magnet!=null&&isFinite(m.magnet)&&sp!=null){
     const emU=isFinite(P.emU)?P.emU:0, emD=isFinite(P.emD)?P.emD:0;
     if((m.magnet>sp+emU||m.magnet<sp-emD)&&m.magnet>band.pLow&&m.magnet<band.pHigh)
-      caps.push({ y:clamp(row(m.magnet), pad), txt:'price magnet', p:+m.magnet });
+      caps.push({ y:clamp(row(m.magnet), pad), txt:'magnet', p:+m.magnet });
   }
-  // air-pocket gap — thin γ between walls = fast space (snkGaps target)
+  // air-pocket gap — thin γ between walls (snkGaps target)
   if(Array.isArray(P.gaps)) for(const gp of P.gaps){
     if(gp&&isFinite(gp.target)&&gp.target>band.pLow&&gp.target<band.pHigh){
-      caps.push({ y:clamp(row(gp.target), pad), txt:'thin · fast', p:+gp.target }); break; }
+      caps.push({ y:clamp(row(gp.target), pad), txt:'thin', p:+gp.target }); break; }
   }
   let sel=caps.slice(0,4).sort((a,b)=>a.y-b.y);
   for(let i=1;i<sel.length;i++) if(sel[i].y-sel[i-1].y<13*r) sel[i].y=Math.min(yBot-pad, sel[i-1].y+13*r);
@@ -12171,39 +12180,37 @@ function snkZones(m, band, P){
   const rw=(k2,s)=>s?`¦${k2}:${s}`:'';
   const BARS='read off the coloured bars on this map — calls minus puts at each strike';
   for(const c of sel){
-    if(c.txt==='resistance'||c.txt==='support'){
-      const up=c.txt==='resistance', st=c.w?snkStrength(c.w.tier):null;
-      c.nm=`${up?'Resistance':'Support'} ${snkUsd(c.p,0)}`;
+    if(c.txt==='wall above'||c.txt==='wall below'){
+      const up=c.txt==='wall above', st=c.w?snkStrength(c.w.tier):null;
+      c.nm=`${up?'Wall above':'Wall below'} ${snkUsd(c.p,0)}`;
       c.tip=(up
-          ?`The nearest wall above the price: the option book is heaviest here on the call side, so the dealers who sold those calls sell stock as price climbs into it — which is what usually stalls a rally.`
-          :`The nearest wall below the price: the book is heaviest here on the put side, so the dealers who sold those puts buy stock as price falls toward it — which is what usually cushions a drop.`)
-        +rw('k',`${up?'Resistance':'Support'}=${snkUsd(c.p,0)}`)
+          ?`The nearest wall above the price: the first pile of option weight the map draws above it.`
+          :`The nearest wall below the price: the first pile of option weight the map draws below it.`)
+        +rw('k',`${up?'Wall above':'Wall below'}=${snkUsd(c.p,0)}`)
         +rw('f',[dAway(c.p), st?`strength ${st.word}`:''].filter(Boolean).join(' · '))
-        +rw('v',up?'the first thing in the way going up — through it cleanly and the next wall above becomes the target'
-                 :'the first thing holding it going down — lose it and the next floor below becomes the target')
+        +rw('v','where positions sit — not a price the stock is known to react to; once price passes it, the name moves to the next pile')
         +rw('n',`${BARS}, the same stack the ${up?'Ceiling':'Floor'} label sits on`);
-    } else if(c.txt==='calmer ↑'||c.txt==='faster ↓'){
-      const hi=c.txt==='calmer ↑', at=snkUsd(c.p,0);
-      c.nm=`${hi?'Calmer above':'Faster below'} ${at}`;
+    } else if(c.txt==='call side ↑'||c.txt==='put side ↓'){
+      const hi=c.txt==='call side ↑', at=snkUsd(c.p,0);
+      c.nm=`${hi?'Call side above':'Put side below'} ${at}`;
       c.tip=(hi
-          ?`Above ${at} the dealers who sold today's options hedge against moves — selling into rallies, buying dips — so while price is up here the tape tends to drift and chop rather than run.`
-          :`Below ${at} that same hedging feeds moves instead of fighting them — selling as price falls, buying as it rises — so moves down here tend to go further and faster.`)
+          ?`Above ${at}, calls carry more of the book's gamma than puts.`
+          :`Below ${at}, puts carry more of the book's gamma than calls.`)
         +rw('k',`Tipping point=${at}`)
         +rw('f',(sp==null)?'':`price is ${snkUsd(Math.abs(sp-c.p),0)} ${sp>=c.p?'above':'below'} it now`)
-        +rw('v',`one line, two sides — the ${hi?'faster':'calmer'} caption names the same price on the other side of it`)
+        +rw('v',`one line, two sides — the ${hi?'put side':'call side'} caption names the same price from the other side`)
         +rw('n','not a fixed line: it is recomputed every scan and can walk several dollars in a session');
-    } else if(c.txt==='price magnet'){
-      c.nm=`Price magnet ${snkUsd(c.p,0)}`;
-      c.tip=`The strike holding the heaviest option position, where dealer hedging leans against moves from both sides — it is where an expiry day often settles late, not a level price gets dragged to during the session.`
+    } else if(c.txt==='magnet'){
+      c.nm=`Magnet ${snkUsd(c.p,0)}`;
+      c.tip=`The strike near price with the most option contracts on it, calls and puts together.`
         +rw('k',`Magnet=${snkUsd(c.p,0)}`)
         +rw('f',[dAway(c.p),'named here only because it sits outside today\'s expected range'].filter(Boolean).join(' · '))
-        +rw('n','measured on this tab\'s own tape the intraday pull is weak — read it as a place, not a forecast');
-    } else if(c.txt==='thin · fast'){
+        +rw('n','a place, not a forecast — whether SNDK\'s price moves toward it has not been established');
+    } else if(c.txt==='thin'){
       c.nm=`Thin zone ${snkUsd(c.p,0)}`;
-      c.tip=`Barely anything is positioned across this stretch of prices, so there is almost no hedging to slow the tape down and moves through it tend to be quick.`
+      c.tip=`Barely anything is positioned across this stretch of prices.`
         +rw('k',`Thin through=${snkUsd(c.p,0)}`)
-        +rw('f',dAway(c.p))
-        +rw('n','this says nothing about direction — fast can mean fast down');
+        +rw('f',dAway(c.p));
     }
   }
   return sel.map(c=>`<text x="${x}" y="${c.y.toFixed(1)}" text-anchor="start" font-size="${fs}" font-family="var(--sans)"`
@@ -13342,9 +13349,9 @@ const SNDK = {
       // ends in a BRACKET across the pocket rather than an arrow at a row: a pocket is a span,
       // and pointing at its middle would under-say the one thing it measures. On a frame with
       // no airspace on either side nothing changes — same string, same anchor, same reserve.
-      const gTxt=`⇣ ${gp.active?'nothing to hold it':'little holds price'} → fast to ${snkUsd(gp.target,0)}`;
-      const gTip=`Little in the way here — price travels fast.`
-        +`¦k:runs to=${snkUsd(gp.target,0)}¦f:${snkUsd(gp.lo,0)}–${snkUsd(gp.hi,0)}${gp.active?' · you are in it now':''}`;
+      const gTxt=`⇣ ${gp.active?'in a thin stretch':'thin stretch'} → next pile ${snkUsd(gp.target,0)}`;
+      const gTip=`Little option weight across this stretch of prices.`
+        +`¦k:next pile=${snkUsd(gp.target,0)}¦f:${snkUsd(gp.lo,0)}–${snkUsd(gp.hi,0)}${gp.active?' · price is in it now':''}`;
       if(RAILS.length){
         AIRMSG.push({y:cy, span:[yT,yB2], hue:'var(--iris)', text:gTxt, name:'Thin zone', tip:gTip,
                      fs:fz(10), em:0.6, mono:true, wt:400, op:gp.active?'.95':'.75'});
@@ -13627,7 +13634,7 @@ const SNDK = {
     if(m.magnet!=null&&isFinite(m.magnet)&&(m.magnet>band.pHigh||m.magnet<band.pLow)){
       const mAbove=m.magnet>band.pHigh, mNm=gxPlainLabel('magnet')||'Magnet';
       const mFz=snkFrozenFor(FZ,'magnet', m.magnet, step);
-      edges+=`<text x="${((x0+lineEnd)/2).toFixed(1)}" y="${(mAbove?capTop+px(13):h-padB-6-px(13)).toFixed(1)}" data-edge="magnet" text-anchor="middle" font-size="${fz(9.5)}" font-weight="700" font-family="var(--sans)" style="fill:var(--l-grav);opacity:${mFz?'.45':'.9'};paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round" data-name="${mNm} ${snkUsd(m.magnet,0)}" data-tip="The price the market is being pulled toward.¦k:${mNm}=${snkUsd(m.magnet,0)}¦f:off the map — it sits ${mAbove?'above the top':'below the bottom'} of this frame${snkFrozenNote(mFz)}">${mNm} ${snkUsd(m.magnet,0)} ${mAbove?'↑':'↓'}</text>`;
+      edges+=`<text x="${((x0+lineEnd)/2).toFixed(1)}" y="${(mAbove?capTop+px(13):h-padB-6-px(13)).toFixed(1)}" data-edge="magnet" text-anchor="middle" font-size="${fz(9.5)}" font-weight="700" font-family="var(--sans)" style="fill:var(--l-grav);opacity:${mFz?'.45':'.9'};paint-order:stroke;stroke:var(--ground);stroke-width:3px;stroke-linejoin:round" data-name="${mNm} ${snkUsd(m.magnet,0)}" data-tip="The strike near price with the most option contracts on it.¦k:${mNm}=${snkUsd(m.magnet,0)}¦f:off the map — it sits ${mAbove?'above the top':'below the bottom'} of this frame${snkFrozenNote(mFz)}">${mNm} ${snkUsd(m.magnet,0)} ${mAbove?'↑':'↓'}</text>`;
       const mW=txW(`${mNm} ${snkUsd(m.magnet,0)} ↑`, fz(9.5), 0.58);
       airBoxes.push({x1:(x0+lineEnd)/2-mW/2, x2:(x0+lineEnd)/2+mW/2, y:(mAbove?capTop+px(13):h-padB-6-px(13)), h:fz(9.5)*1.4});
     }
@@ -13683,14 +13690,14 @@ const SNDK = {
     // ONE magnet, ONE telling: when the band spoke above, the scalar line stands down rather
     // than drawing a confident level through the middle of its own tie.
     if(!magBand.wash) addL(m.magnet, magD?`${magNm} <tspan font-size="${fz(8.5)}" style="letter-spacing:.05em">${magD.dots}</tspan>`:magNm, 'var(--l-grav)', 2.2, '', magNm,
-      `The price the market is being pulled toward.`
+      `The strike near price with the most option contracts on it, calls and puts together.`
       +(spRef!=null&&m.magnet!=null?`¦k:price → magnet=${snkUsd(spRef,0)} → ${snkUsd(m.magnet,0)}`:'')
-      +(magD?`¦f:pull is ${magD.word}`:'')
+      +(magD?`¦f:${magD.word} concentration`:'')
       +snkFrozenNote(magFz), !!magFz);
     addL((L&&isFinite(L.hvl))?+L.hvl:m.flip, gxPlainLabel('flip')||'Tipping point', 'var(--ink-dim)', 1.5, 'stroke-dasharray="6 4"', gxPlainLabel('flip')||'Tipping point',
-      'Calmer above it, faster below it.¦f:the gamma flip (HVL)');
-    addL(ct, 'Call edge', 'var(--ink-faint)', 1, 'stroke-dasharray="3 5"', 'Call edge', 'Top edge of the choppy zone — fakeouts live in here.¦f:the cT fence');
-    addL(pt, 'Put edge', 'var(--ink-faint)', 1, 'stroke-dasharray="3 5"', 'Put edge', 'Bottom edge of the choppy zone — fakeouts live in here.¦f:the pT fence');
+      'Calls carry more of the gamma above it, puts more below it.¦f:the gamma flip (HVL)');
+    addL(ct, 'Call edge', 'var(--ink-faint)', 1, 'stroke-dasharray="3 5"', 'Call edge', 'Top edge of the band around the tipping point.¦f:the cT fence');
+    addL(pt, 'Put edge', 'var(--ink-faint)', 1, 'stroke-dasharray="3 5"', 'Put edge', 'Bottom edge of the band around the tipping point.¦f:the pT fence');
     // VWAP (sr-2) — the session's volume-weighted average price, the hedging anchor. Its
     // own dot pattern so it can never be mistaken for a fence; honest-absent pre ROW_V 3.
     addL(m.vwap, 'VWAP', 'var(--ink-dim)', 1.2, 'stroke-dasharray="1 5"', 'VWAP',
@@ -13782,11 +13789,11 @@ const SNDK = {
         +`<stop offset="0" stop-color="var(--l-grav)"/><stop offset="1" stop-color="${hue}"/></linearGradient>`
         +`<marker id="snkPullAj" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="4" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--jade)"/></marker>`
         +`<marker id="snkPullAc" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="4" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--coral)"/></marker>`;
-      const pName=`The pull ${pull.up?'▲':'▼'}`;
-      const pTip=`The book is tugging price toward the magnet.`
-        +`¦k:pulled ${pull.up?'up to':'down to'}=${snkUsd(pull.tgt,0)}`
+      const pName=`To the magnet ${pull.up?'▲':'▼'}`;
+      const pTip=`The strike with the most contracts sits ${pull.up?'above':'below'} the price.`
+        +`¦k:magnet=${snkUsd(pull.tgt,0)}`
         +`¦f:${snkUsd(pull.dist,0)} away`
-        +`¦v:recorded gravity, not a forecast`;
+        +`¦v:a distance, not a forecast`;
       comet=`<g id="snk-pullg">`
         +`<line id="snk-pcas" x1="${cx}" x2="${cx}" y1="${ys.toFixed(1)}" y2="${yt.toFixed(1)}" style="stroke:var(--ground);stroke-width:4.9;opacity:.5"/>`
         +`<line id="snk-pcore" x1="${cx}" x2="${cx}" y1="${ys.toFixed(1)}" y2="${yt.toFixed(1)}" marker-end="url(#${mk})" style="stroke:url(#snkPullG);stroke-width:2.5;opacity:.9"/>`
@@ -14411,12 +14418,13 @@ const SNDK = {
     const dTot=ne?ne.net_delta_total:(m.dex?m.dex.tot:null);
     const dD30=snkDexD30(SNDK.rows);   // the timestamp-true 30-min Δ — the one part of dex that can be news
     const mood=m.sign==='positive'?'j':m.sign==='negative'?'c':'n';
-    // regime tile reads as the plain STATE (jumpy/calm); Net-Gamma tile owns the $ + trend, so
-    // the two stay complementary. The dealer-gamma term lives quietly in the subtitle.
-    const regPlain=m.sign==='negative'?'Jumpy — moves amplify':m.sign==='positive'?'Calm — moves dampen':'Unclear';
+    // regime tile reads as the plain STATE — which side carries more gamma at the price (it read
+    // "Jumpy — moves amplify" / "Calm — moves dampen" until 2026-09-10); Net-Gamma tile owns the
+    // $ + trend, so the two stay complementary. The gamma term lives quietly in the subtitle.
+    const regPlain=m.sign==='negative'?'Puts heavier':m.sign==='positive'?'Calls heavier':'Unclear';
     const regSub=m.sign==='negative'?'negative gamma':m.sign==='positive'?'positive gamma':'gamma sign unclear';
-    // Net-Gamma subtitle carries the MEANING (dealers amplify/cushion) joined to the 1-day trend
-    const gMean=m.sign==='negative'?'Dealers amplify moves':m.sign==='positive'?'Dealers cushion moves':'';
+    // Net-Gamma subtitle carries the MEANING — which side outweighs — joined to the 1-day trend
+    const gMean=m.sign==='negative'?'Puts outweigh calls':m.sign==='positive'?'Calls outweigh puts':'';
     /* the prior close is DATED on the row — "vs yesterday" lied across a
        weekend (Monday's prior is Friday's book) */
     const gTrend=gDl!=null?`<span class="${gDl>=0?'j':'c'}">${gDl>=0?'▲':'▼'} ${snkMoney(gDl)}</span> vs ${(ne&&ne.prev_close_date)?ne.prev_close_date.slice(5):'prior close'}`:'';
