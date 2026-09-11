@@ -88,7 +88,11 @@ PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "strikes-2"           # bump on ANY change to the gates or the prompt.
+ERA = "strikes-3"           # bump on ANY change to the gates or the prompt.
+                            # strikes-3 (2026-09-11): the review items built
+                            # after the 09-11 close. Bumped between sessions,
+                            # so every gate or payload change made before the
+                            # 2026-09-14 open rides this one era.
                             # strikes-2 (2026-09-10): implied vol ships in
                             # percent (68.15, not 0.6815) and the doctrine
                             # names the unit. Bumped between sessions, so every

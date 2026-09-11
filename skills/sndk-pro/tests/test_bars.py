@@ -196,4 +196,5 @@ def test_the_doctrine_names_the_witness_and_the_era_moved():
     # strikes-1 (2026-09-05): the era moved again when the Strikes Payload
     # went live; obs-5 survives as the legacy era the revert switch writes.
     # strikes-2 (2026-09-10): implied vol moved to percent in the payload.
-    assert SR.ERA == "strikes-2" and SR.LEGACY_ERA == "obs-5"
+    # strikes-3 (2026-09-11): the review items built after the 09-11 close.
+    assert SR.ERA == "strikes-3" and SR.LEGACY_ERA == "obs-5"

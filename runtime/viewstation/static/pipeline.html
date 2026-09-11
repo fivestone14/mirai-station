@@ -184,7 +184,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
   <p class="sub">From Schwab to the observer model, replayed on a recorded session's clock. Press play and watch each scan, book and minute bar fire through the pipeline, and the payload leave for the model at the moment it actually did. One payload is headed to the model: the Strikes Payload, with the History block inside it. Four never are: the Scene Payload now only decides the wake, the Screen Payload feeds the dashboard, the Gate Payload feeds the gate and the eval, and the Regions block is computed behind the scene, checks the model’s change words and is kept in the Gate Payload — all but its `resolved` list, which since 2026-09-07 DOES ship, because it is the only evidence in the scene that a pile the model named an hour ago has since left the board. Click a box to read what it is; the payload boxes open their schema.</p>
   <div class="legend">
     <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="currentColor" stroke-width="1.4"/></svg>live now</span>
-    <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="var(--accent)" stroke-width="1.4"/></svg>the strikes path, live since 2026-09-05 (era strikes-2 since 2026-09-10)</span>
+    <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="var(--accent)" stroke-width="1.4"/></svg>the strikes path, live since 2026-09-05 (era strikes-3 since 2026-09-11)</span>
     <span><svg viewBox="0 0 34 12"><circle cx="17" cy="6" r="4" fill="var(--pulse)"/></svg>a firing: data or a payload on the move</span>
     <span><b style="font-family:var(--cond);color:var(--pulse)">→ model</b> sent to the observer</span>
     <span><b style="font-family:var(--cond);color:var(--ink-3)">→ screen</b> shown, never sent</span>
@@ -322,7 +322,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       </g>
       <g class="node payload live" tabindex="0" role="button" data-id="board" transform="translate(520,126)">
         <rect class="box" width="200" height="66" rx="3"/>
-        <text class="tag" x="188" y="59" text-anchor="end">live · strikes-2</text>
+        <text class="tag" x="188" y="59" text-anchor="end">live · strikes-3</text>
         <text class="name" x="12" y="24">Strikes Payload · v1</text><text class="dest model" x="188" y="24" text-anchor="end">→ model</text>
         <text class="meta" x="12" y="42">build_scene_v2 · 6 to 12k chars</text>
         <text class="click" x="12" y="57">schema ›</text>
@@ -492,7 +492,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'session_segments[] · absent[] · integrity[]','list','volume by session hour, what it cannot see, and eight checks each forced to fail once in the tests'],
     ]};
 
-  S.board = {name:'Strikes Payload · v1', status:'live since 2026-09-05 (era strikes-2 since 2026-09-10)', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · build_scene_v2',
+  S.board = {name:'Strikes Payload · v1', status:'live since 2026-09-05 (era strikes-3 since 2026-09-11)', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · build_scene_v2',
     what:'What the model reads now. The Scene Payload with its verdicts stripped, plus the board itself as one record per strike, twelve books of history behind each and the gap since the last read. About 6 to 12 thousand characters; the model draws the clusters. Revert with "payload": "scene" in state/sndk_reads/control.json.',
     rows:[
       [0,'data_sources · clock · scale · price · history · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm, in percent (68.15, not 0.6815); context keeps only ranges and since_last_read (which gains clusters_then)'],

@@ -201,6 +201,13 @@ Also measured and NOT built: crossings and approaches as an angle — a crossing
 is a $2 event at a $2 noise floor with follow-through at placebo. Scene
 3,328 → 4,171 bytes on the 09-02 tape; 240 tests.
 
+### strikes-3 (2026-09-11) — the review items built after the 09-11 close
+
+A new era for the next batch of review items (the wake gate, the watchlist
+memory and the first read's volume). Bumped between sessions: nothing is
+read until the 2026-09-14 open, so every change made before then rides this
+one era. Each change adds its own paragraph below.
+
 ### strikes-2 (2026-09-10) — volatility in percent
 
 Both implied-vol figures in the Strikes Payload (`scale.implied_vol_atm`,
@@ -280,7 +287,7 @@ momentum, stronger), a strike placed on the wrong side of the live price, and
 
 **The switch.** `payload_mode()` reads `SNDK_PAYLOAD` (env), then
 `state/sndk_reads/control.json` (`"payload": "scene" | "strikes"`), then
-`PAYLOAD_DEFAULT`. The era follows it (`strikes-2` / `obs-5`), so rows written
+`PAYLOAD_DEFAULT`. The era follows it (`strikes-3` / `obs-5`), so rows written
 after a revert never pool. The live scene is still built every scan: the wake
 gate, the frame, the memory slice and the row's `gate` state read it, and its
 old magnet and walls are written as the **Gate Payload** to
