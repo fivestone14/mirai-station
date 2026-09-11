@@ -504,8 +504,14 @@ def test_the_sndk_chart_says_where_the_weight_is_not_what_price_does():
     """Reworded 2026-09-10, after the dealer arrows went: every caption, card,
     chip and key entry on the SNDK chart that said what price or dealers would
     do now says where the option weight sits. Each string below was on the
-    chart; none may come back. The SPX map's own vocabulary is not covered."""
-    code = "\n".join(l.split("//")[0] for l in PAGE.splitlines()
+    chart; none may come back. The SPX map's own vocabulary is not covered, so
+    the scan starts at the SNDK chart's code (its key is the first SNDK block
+    that says any of these) and reads code only — the comments quote the
+    retired wording on purpose, in both comment styles."""
+    import re as _re
+    sndk = PAGE[PAGE.index("function snkLegend(){"):]
+    sndk = _re.sub(r"(?s)/\*.*?\*/", "", sndk)
+    code = "\n".join(l.split("//")[0] for l in sndk.splitlines()
                      if not l.strip().startswith("//"))
     for gone in ("'Moves amplify'", "'Moves dampen'", "Dealers amplify moves",
                  "Dealers cushion moves", "Jumpy — moves amplify", "Calm — moves dampen",
