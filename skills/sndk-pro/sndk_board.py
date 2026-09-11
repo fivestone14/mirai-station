@@ -95,7 +95,10 @@ NULL_MEANS = "not measured for that strike"
 # verdict words the live lists let through and this scene forbids; the live
 # reader keeps "magnet" because its scene has a block by that name
 BANNED_V2 = ("magnet", "magnets", "magnetic", "momentum", "building toward", "building towards",
-             "stronger", "strongest", "weaker", "weakest", "wall", "walls", "flip")
+             "stronger", "strongest", "weaker", "weakest", "wall", "walls", "flip",
+             # 2026-09-10: a crossing count invites a grade on top of it
+             "rejected", "rejection", "rejecting", "reclaimed", "reclaiming", "reclaim",
+             "contested")
 
 _ET = SR._ET
 
@@ -730,6 +733,48 @@ def legacy(row: dict, rows: list, now: datetime, v1: Optional[dict] = None) -> d
 # ---------------------------------------------------------------------------
 # the v2 scene
 # ---------------------------------------------------------------------------
+# 2026-09-10 (review item #4): EVERY CROSSING IN THE GAP, NOT ONLY THE NET ONE.
+# The frame used to compare two prices, then and now, so a level price went
+# through and came back over left no trace: replayed over 193 gaps, 78% of
+# real crossings were invisible, and an $11 rally through 1705 and back was
+# narrated as a $2.74 drift. The minute bars between the two reads are walked
+# instead. A crossing is two minute closes in a row beyond the level, one of
+# them clear of it by AT_SIGMA of the ruler: 38% of one-minute wick
+# "crossings" never closed beyond the level at all, and a close that never
+# leaves the "at" band never left the strike.
+CROSS_HOLD_BARS = 2
+
+
+def _gap_bars(bars_now: list, since: Optional[datetime]) -> list:
+    """The completed minute bars from the minute of the last read onward."""
+    if since is None or not bars_now:
+        return []
+    t0 = since.replace(second=0, microsecond=0)
+    return [b for b in bars_now if (t := _bar_ts(b)) is not None and t >= t0]
+
+
+def _gap_crossings(bars_gap: list, k: float, start_side: int, clear: float) -> int:
+    """How many times the minute closes crossed k, starting from `start_side`
+    (+1 above, -1 below, 0 exactly on it)."""
+    n, side, run, far = 0, start_side, 0, 0.0
+    for b in bars_gap:
+        c = SR._fin(b.get("close"))
+        if c is None:
+            continue
+        s = 1 if c > k else -1 if c < k else 0
+        if side == 0:                  # started on the level: the first close decides
+            side = s
+            continue
+        if s == -side:
+            run += 1
+            far = max(far, abs(c - k))
+            if run >= CROSS_HOLD_BARS and far >= clear:
+                n, side, run, far = n + 1, s, 0, 0.0
+        else:
+            run, far = 0, 0.0
+    return n
+
+
 def _crossed_from_frame(frame: Optional[dict]) -> list:
     out = []
     for c in ((frame or {}).get("crossed_since_then") or []):
@@ -882,14 +927,28 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
             ctx.pop(k, None)
     slr = ctx.get("since_last_read")
     # crossings are LISTED strikes price moved through since the last read, not the
-    # gate's three verdict levels: every window strike between price then and now
+    # gate's three verdict levels: every window strike the minute closes crossed
+    # in the gap (see _gap_crossings), plus any the live price has crossed since
+    # the last completed bar
     spot_then = SR._fin((slr or {}).get("spot_then"))
     surf0 = surfaces(row)
-    crossed = []
+    crossed, times = [], {}
     if spot_then is not None and spot is not None:
+        gap = _gap_bars(bars_now, last_read_ts)
+        clear = AT_SIGMA * sig if sig else 0.0
         for k in _window(surf0, ruler_spot, sig):
-            if (spot - k) * (spot_then - k) < 0 or (spot_then == k and spot != k):
+            start = 1 if spot_then > k else -1 if spot_then < k else 0
+            n = _gap_crossings(gap, k, start, clear) if gap else 0
+            # the count must agree with the two prices the frame ships: an odd
+            # number of crossings leaves price on the other side. When the live
+            # price has moved since the last completed bar, that last crossing
+            # is counted from the price itself.
+            straddle = (spot - k) * (spot_then - k) < 0 or (spot_then == k and spot != k)
+            if straddle != (n % 2 == 1):
+                n += 1
+            if n:
                 crossed.append(k)
+                times[k] = n
 
     if book_too_old:
         strikes, listed, ref_row, books = None, [], None, []
@@ -900,7 +959,10 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
     if isinstance(slr, dict):
         _strip_frame(slr, bf)
         if crossed:
-            slr["crossed_since_then"] = [{"level": k, "direction": ("up" if spot > k else "down")} for k in sorted(crossed)]
+            # `direction` is the side price is on now; `times` only when more than once
+            slr["crossed_since_then"] = [{"level": k, "direction": ("up" if spot > k else "down"),
+                                          **({"times": times[k]} if times[k] > 1 else {})}
+                                         for k in sorted(crossed)]
         else:
             slr.pop("crossed_since_then", None)
         if clusters_then:
@@ -1021,7 +1083,7 @@ INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up fi
 
 BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window (a gap in the data is a gap, never calm — and its absence means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and the implied vol at your last read (the value now is `scale.implied_vol_atm`). Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
 
-OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, anything crossed since (`crossed_since_then`, as a level and a direction), and `clusters_then`, the clusters you drew last time. Price now is `price.live_spot`. A change of 0.15 sigma or more is a move: say price then and price now. Under that it is a hold, and you say so in your own words with the two prices from `between_frames.price.low` and `high` and the clock — not in these words, which every reading for a month has copied. A crossing is named as the level and as a distance you can read off the scene, never with a word that grades it. Do not reach for "just through": measured over 294 crossings the median distance from the level to the live price at the moment of speaking is $6.52, the upper quartile $11.53, and 61 percent are more than $5 away — so "just" is wrong more often than right. Say the level and say where price is now. Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point and vol held.
+OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, anything crossed since (`crossed_since_then`: every listed-window level the minute closes went through, two minutes running, since then; `direction` is the side price is on now, and `times` appears when price went through it more than once, so a level crossed and crossed back is still there), and `clusters_then`, the clusters you drew last time. Price now is `price.live_spot`. A change of 0.15 sigma or more is a move: say price then and price now. Under that it is a hold, and you say so in your own words with the two prices from `between_frames.price.low` and `high` and the clock — not in these words, which every reading for a month has copied. A crossing is named as the level and as a distance you can read off the scene, never with a word that grades it. When `times` is there, say the level, how many times, and where price is now; a count is not a verdict, so never call the level rejected, reclaimed or contested. Do not reach for "just through": measured over 294 crossings the median distance from the level to the live price at the moment of speaking is $6.52, the upper quartile $11.53, and 61 percent are more than $5 away — so "just" is wrong more often than right. Say the level and say where price is now. Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point and vol held.
 
 THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured, no verdict. `opening` is the first half hour's box and whether it broke; `in_force` is the box that stands now; `breaks_today` lists every break with its clock and direction; `prior_sessions` is the range of the last few closed sessions. Say what a box DID, "broke above the opening box at 10:07", and nothing about what follows.
 

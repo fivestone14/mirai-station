@@ -222,6 +222,15 @@ saying so (`"change_share_basis": "strikes both books carry"`) was considered
 and deliberately left out, since the model never does that subtraction. Add it
 if someone reading the raw JSON gets confused.
 
+`context.since_last_read.crossed_since_then` now walks the minute bars between
+the two reads instead of comparing price then and price now (review item #4),
+so a level crossed and crossed back is still listed, with `times` when it was
+crossed more than once. A crossing is two minute closes in a row beyond the
+level, one of them clear of it by the 0.05-sigma "at" band; a one-minute poke
+is not one. The count always agrees with the two prices the frame ships.
+"rejected", "reclaimed" and "contested" join the banned words, so a count
+cannot turn into a verdict.
+
 ### strikes-1 (2026-09-05) — the Strikes Payload
 
 The model no longer reads the scene described below. It reads the **Strikes

@@ -388,6 +388,40 @@ def test_crossings_are_listed_strikes_between_then_and_now():
     assert {1200.0, 1250.0} <= set(recs(v2))
 
 
+def _gap_bars_closing(closes, start_min=22):
+    """Flat bars for the open, then the given closes from minute `start_min`
+    (09:52, the minute of the last read in these tests)."""
+    bars = flat_bars(start_min)
+    for j, c in enumerate(closes):
+        bars.append(bar(start_min + j, min(c, 1285.0), max(c, 1295.0), close=c))
+    return bars
+
+
+def test_a_level_crossed_and_crossed_back_is_still_listed_with_a_count():
+    """2026-09-10 (item #4): price went above 1300 for three minutes and came
+    back. Then and now are both below 1300, so comparing the two prices saw
+    nothing; the minute closes saw two crossings."""
+    rows = mkrows(n=8, spot=1290.0)
+    frame = {"last_read_at": "09:52", "minutes_since": 8, "spot_then": 1290.0}
+    bars = _gap_bars_closing([1290, 1310, 1312, 1311, 1290, 1289, 1290, 1291])
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, frame, SR._ts(rows[3]), bars)
+    assert v2["context"]["since_last_read"]["crossed_since_then"] == [
+        {"level": 1300.0, "direction": "down", "times": 2}]
+    assert 1300.0 in recs(v2)
+
+
+def test_a_one_minute_poke_or_a_close_inside_the_at_band_is_not_a_crossing():
+    rows = mkrows(n=8, spot=1290.0)
+    frame = {"last_read_at": "09:52", "minutes_since": 8, "spot_then": 1290.0}
+    one_minute = _gap_bars_closing([1290, 1320, 1290, 1290, 1290])
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, frame, SR._ts(rows[3]), one_minute)
+    assert "crossed_since_then" not in v2["context"]["since_last_read"]
+    # beyond 1300 two minutes running, but never by the 5-dollar "at" band
+    shallow = _gap_bars_closing([1290, 1302, 1303, 1290, 1290])
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, frame, SR._ts(rows[3]), shallow)
+    assert "crossed_since_then" not in v2["context"]["since_last_read"]
+
+
 def test_between_frames_carries_the_earlier_vol_only():
     rows = mkrows(n=8)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
