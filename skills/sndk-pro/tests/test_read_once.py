@@ -254,3 +254,66 @@ def test_the_call_cap_and_gap_span_both_eras(board_state, monkeypatch):
     monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (_ for _ in ()).throw(AssertionError("capped")))
     assert SR.read_once(now=NOW) == 0
     assert _rows(reads)[-1]["wake"] == "capped"
+
+
+# ------------------------------------------------------------- the bill (2026-09-10)
+# The envelope below has the shape of a real `claude -p --output-format json`
+# reply captured on 2026-09-10; the numbers are that probe's own.
+_ENVELOPE = {
+    "type": "result", "is_error": False, "result": '{"quiet": true}',
+    "total_cost_usd": 0.0702238,
+    "usage": {"input_tokens": 2, "cache_creation_input_tokens": 16136,
+              "cache_read_input_tokens": 28129, "output_tokens": 5,
+              "output_tokens_details": {"thinking_tokens": 0},
+              "cache_creation": {"ephemeral_1h_input_tokens": 16136,
+                                 "ephemeral_5m_input_tokens": 0}},
+}
+
+
+def test_the_bill_is_read_off_the_envelope_in_plain_names():
+    """Every count lands under a plain name, and the 1-hour and 5-minute
+    cache writes stay apart: a 5-minute write is the first sign the standing
+    instructions have stopped being cheap."""
+    assert SR.cost_of(_ENVELOPE) == {
+        "input_tokens": 2, "cache_read_tokens": 28129, "cache_write_tokens": 16136,
+        "cache_write_1h_tokens": 16136, "cache_write_5m_tokens": 0,
+        "output_tokens": 5, "thinking_tokens": 0, "cost_usd": 0.0702238}
+
+
+def test_an_envelope_without_a_bill_gives_nothing_not_an_empty_record():
+    assert SR.cost_of({"result": "x"}) is None
+    assert SR.cost_of(None) is None
+    assert SR.cost_of({"usage": {"output_tokens": 7}}) == {"output_tokens": 7}
+
+
+def test_call_the_model_keeps_the_bill(monkeypatch):
+    class _Done:
+        returncode, stderr = 0, ""
+        stdout = json.dumps(_ENVELOPE)
+    monkeypatch.setattr(SR.subprocess, "run", lambda *a, **k: _Done())
+    obj, err, _wall, _raw = SR.call_the_model("prompt", "model")
+    assert obj == {"quiet": True} and err is None
+    assert SR.LAST_COST["cache_read_tokens"] == 28129
+
+
+def test_a_spent_call_files_its_bill_on_the_row(board_state, monkeypatch):
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    bill = SR.cost_of(_ENVELOPE)
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        monkeypatch.setattr(SR, "LAST_COST", bill)
+        return _v2_reply(), None, 1.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    SR.read_once(now=NOW)
+    row = _rows(reads)[-1]
+    assert row["cost"] == bill and "review_cost" not in row
+
+
+def test_a_call_with_no_bill_leaves_no_cost_key(state, monkeypatch):
+    tmp, reads_path = state
+    reads_path.write_text(json.dumps(_call_row(NOW - timedelta(minutes=70))) + "\n")
+    monkeypatch.setattr(SR, "call_the_model",
+                        lambda *a, **k: (None, "timed out after 100s", 100.0, None))
+    SR.read_once(now=NOW)
+    assert "cost" not in _rows(reads_path)[-1]

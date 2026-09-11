@@ -257,7 +257,10 @@ history, and nothing computes or draws one any more.
 `magnet_band`, `frozen`, `wake`, `gate` (the frozen snapshot the NEXT wake
 gate and the obs-3 frame measure from), `scans`, `reading` (+ `reading_ts`,
 `reading_age_min`, `quiet`, `abstain`), `book_asof`/`book_age_min`/
-`scan_age_min`, `paused`, `wall_s/model/error` — these are the *output*
+`scan_age_min`, `paused`, `wall_s/model/error`, `cost` (and `review_cost`
+when the small reviewer ran: the call's tokens read from and written to the
+cache, split 1-hour/5-minute, thinking and output tokens, and the dollar
+figure, from 2026-09-10) — these are the *output*
 surface (chart + training store), not model input. Rows written before obs-3
 (2026-09-01) also carry `arrow` (dir/state/since/run/fading/caution/layers/
 ghost) and `spoke`; those are history — Lane A is deleted and nothing writes

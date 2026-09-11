@@ -1564,7 +1564,9 @@ def semantic_review(texts: list[str], model: str = None,
     """One small-model call over every surviving text. Returns a list aligned
     with `texts` — None where the text is clean, the offending phrase where it
     is not — or None as a whole when the judge could not answer (timeout,
-    spawn failure, unparseable reply), which the caller records as skipped."""
+    spawn failure, unparseable reply), which the caller records as skipped.
+    Its bill, when there is one, is left in LAST_REVIEW_COST."""
+    global LAST_REVIEW_COST
     if not texts:
         return []
     model = model or SEMANTIC_GUARD_MODEL
@@ -1580,9 +1582,10 @@ def semantic_review(texts: list[str], model: str = None,
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except (subprocess.TimeoutExpired, OSError):
         return None
+    env = first_json_object(r.stdout)
+    LAST_REVIEW_COST = cost_of(env)
     if r.returncode != 0:
         return None
-    env = first_json_object(r.stdout)
     text = env.get("result") if isinstance(env, dict) and "result" in env else r.stdout
     obj = first_json_object(text if isinstance(text, str) else r.stdout)
     if not isinstance(obj, dict) or not isinstance(obj.get("verdicts"), list):
@@ -2051,6 +2054,49 @@ def first_json_object(text: str):
     return None
 
 
+# THE BILL (2026-09-10). Every `claude -p` reply comes back inside an envelope
+# that says what the call was billed for: tokens read from the cache, written
+# to it, thought, and written out, plus the dollar figure. Until now the code
+# read the one `result` field and threw the rest away, so nothing on disk said
+# what a read cost, and every size argument about the payload was a guess.
+# The last call's bill waits here for read_once to file on the row; each tick
+# is its own process, so there is nobody to share it with. The 5-minute and
+# 1-hour cache-write counts are kept apart on purpose: the standing
+# instructions are only cheap while the 1-hour cache holds, and a 5-minute
+# write is the first sign it has stopped.
+LAST_COST: Optional[dict] = None
+LAST_REVIEW_COST: Optional[dict] = None
+
+
+def cost_of(env) -> Optional[dict]:
+    """The billing half of a CLI envelope, in plain names. A count the
+    envelope did not carry is absent, not null, and an envelope with no usage
+    block at all gives None rather than an empty record."""
+    if not isinstance(env, dict) or not isinstance(env.get("usage"), dict):
+        return None
+    u = env["usage"]
+    cw = u.get("cache_creation") if isinstance(u.get("cache_creation"), dict) else {}
+    od = u.get("output_tokens_details") if isinstance(u.get("output_tokens_details"), dict) else {}
+    rec = {
+        "input_tokens": u.get("input_tokens"),
+        "cache_read_tokens": u.get("cache_read_input_tokens"),
+        "cache_write_tokens": u.get("cache_creation_input_tokens"),
+        "cache_write_1h_tokens": cw.get("ephemeral_1h_input_tokens"),
+        "cache_write_5m_tokens": cw.get("ephemeral_5m_input_tokens"),
+        "output_tokens": u.get("output_tokens"),
+        "thinking_tokens": od.get("thinking_tokens"),
+        "cost_usd": env.get("total_cost_usd"),
+    }
+    rec = {k: v for k, v in rec.items()
+           if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    return rec or None
+
+
+def _clear_costs() -> None:
+    global LAST_COST, LAST_REVIEW_COST
+    LAST_COST = LAST_REVIEW_COST = None
+
+
 def call_the_model(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
                    doctrine: str = None):
     """ONE `claude -p` call, every tool disallowed (_NO_TOOLS — obs-1 revoked
@@ -2062,7 +2108,11 @@ def call_the_model(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
     truncated copy of what actually came back whenever parsing failed, because
     an undiagnosable drop is the blindness raw_reply exists to end, and the
     largest drop there is (an unparseable reply) was the one case that kept
-    none."""
+    none.
+
+    The call's bill, when the envelope carries one, is left in LAST_COST."""
+    global LAST_COST
+    LAST_COST = None
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
            "--append-system-prompt", (doctrine if doctrine is not None else _DOCTRINE),
            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
@@ -2076,10 +2126,11 @@ def call_the_model(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
     except OSError as e:
         return None, f"spawn: {e}", round(_clock.time() - t0, 1), None
     wall = round(_clock.time() - t0, 1)
+    env = first_json_object(r.stdout)
+    LAST_COST = cost_of(env)      # a failed call can still have been billed
     if r.returncode != 0:
         return (None, f"rc={r.returncode}: {(r.stderr or '')[-200:]}", wall,
                 (r.stdout or "")[:1200] or None)
-    env = first_json_object(r.stdout)
     text = env.get("result") if isinstance(env, dict) and "result" in env else r.stdout
     obj = first_json_object(text if isinstance(text, str) else r.stdout)
     return obj, None, wall, (None if obj is not None
@@ -3923,6 +3974,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         print(json.dumps(scene_v2 or scene, indent=1, default=str))
         return 0
 
+    _clear_costs()
     if scene_v2 is not None:
         prompt = board.prompt_v2(scene_v2)
         obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL, timeout=CALL_TIMEOUT_STRIKES_S,
@@ -3932,6 +3984,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                   "SCENE:\n" + json.dumps(scene, default=str))
         obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL)
     out["wall_s"], out["model"] = wall, PINNED_MODEL
+    if LAST_COST:
+        out["cost"] = LAST_COST
     if err or not isinstance(obj, dict):
         out["error"] = err or "unparseable reply"
         if raw:
@@ -3949,6 +4003,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         reading = (board.check_reading_v2(obj, scene_v2, regions=(legacy_doc or {}).get("regions_rule"))
                    if scene_v2 is not None else check_reading_against_scene(obj, scene))
         out["reading"] = reading
+        if LAST_REVIEW_COST:          # the second, small reviewer call, when it ran
+            out["review_cost"] = LAST_REVIEW_COST
         # WHAT WAS DROPPED, IN THE MODEL'S OWN WORDS. `dropped_observations`
         # records the REASON a gate fired and never the text it fired on, so a
         # drop left no evidence of what was actually said — which made the two

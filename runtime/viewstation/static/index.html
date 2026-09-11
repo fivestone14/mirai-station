@@ -11665,7 +11665,7 @@ const _PL_NODES=[
    'A second document, anchored to the minute bars rather than the option book, built beside the scene and never sent to a model. It takes its price lines from the same diary row the scene uses. Every time in it is derived from a bar index, so every value can be checked against the bar it came from.'],
 
   ['od',  'Delivery','sink','Read row',              'state/sndk_reads/<day>.jsonl',
-   'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, and what the guards dropped.'],
+   'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, what the guards dropped, and what each spent call was billed.'],
   ['og',  'Delivery','sink','Gate Payload',          'state/sndk_legacy/<day>.jsonl',
    'One line for each read that spends a call, from the first strikes-1 read onward — no session has run under it yet, so this file does not exist. The old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene. The wake gate reads them and the eval lines them up against the model’s clusters. Never sent to the model.'],
   ['os',  'Delivery','sink','Side packets',          'state/sndk_side/<day>.jsonl',
