@@ -3977,7 +3977,8 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                 last_read_ts=(_ts(last_call) if last_call else None),
                 bars=minute_bars(day), v1=scene, clusters_then=_clusters_then,
                 # the strike list the model was shown at that read (item #7)
-                strikes_sent_before=(last_call or {}).get("strikes_sent"))
+                strikes_sent_before=(last_call or {}).get("strikes_sent"),
+                sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")))
             legacy_doc = board.legacy(row, rows, scene_now, v1=scene)
         except Exception as exc:
             print(f"sndk-read :: strikes payload failed, scene payload used: {exc!r}")
@@ -4107,6 +4108,10 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         _sent = board.listed_strikes(scene_v2.get("strikes"))
         if _sent:
             out["strikes_sent"] = _sent
+            # item #8: a list drawn with volume withheld is picked on open
+            # interest alone, and the next read must know not to diff across it
+            if (row.get("meta") or {}).get("book_asof") in board.carried_books(rows, scene_now):
+                out["strikes_sent_without_volume"] = True
     if LAST_COST:
         out["cost"] = LAST_COST
     if err or not isinstance(obj, dict):

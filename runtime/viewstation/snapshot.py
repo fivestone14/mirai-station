@@ -771,7 +771,8 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
                 rw, rows, build_now, since_last_read=frame,
                 last_read_ts=(R._ts(last_call) if last_call else None),
                 bars=R.minute_bars(day), v1=scene_v1, clusters_then=clusters_then,
-                strikes_sent_before=(last_call or {}).get("strikes_sent"))
+                strikes_sent_before=(last_call or {}).get("strikes_sent"),
+                sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")))
             gate_payload = board.legacy(rw, rows, build_now, v1=scene_v1)
             payload_label = "Strikes Payload v1"
             v1_text = json.dumps(scene_v1, default=str)

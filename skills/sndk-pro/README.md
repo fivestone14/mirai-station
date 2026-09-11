@@ -241,6 +241,31 @@ table — both fields are absent rather than guessed. They no longer depend
 on a new book having arrived. The share-change cells still compare book
 against book (`common`, item #3).
 
+**A book still carrying yesterday's volume loses its volume (review item
+#8).** The vendor's first print of the day usually still holds the prior
+session's cumulative volume — 26 of 28 recorded open mornings — and the
+table's volume leader was wrong on 19 of 29 first reads. The old guard
+compared the first book with the second and so could never fire on the read
+that needed it. `carried_books` now decides per book, on a fact: a contract
+whose count equals the prior session's last recorded count for the same
+expiry (Friday's next book after an expiry) is that session's count, and a
+book is withheld when such contracts hold 10% of the volume in reach, when
+a later book shows its counts falling, or when it was measured before the
+open. Only when the prior record cannot answer (no prior day, a dark session
+between, a record that stops before the close) does the clock decide, and
+then only by withholding, for the first 15 minutes. Withheld means the
+volume arrays leave the row before anything reads it: the volume columns,
+ranks and series go, contracts count open interest only, `strikes.absent`
+says why, no change is measured from or to that book, and the next read does
+not diff a volume-drawn list against one drawn without it
+(`strikes_sent_without_volume`). Measured over 32 days: first books 26 of 26
+caught, 2 false alarms; a noon restart keeps its volume. Two checker rules
+follow: "every measure" means every measure the board shows, and "the most
+volume" cannot stand on a board with none. A strike with no trades now has
+no volume rank (a zero-volume open used to rank the lowest strike first), and
+the added-volume columns go when there is only one book instead of shipping
+empty.
+
 ### strikes-2 (2026-09-10) — volatility in percent
 
 Both implied-vol figures in the Strikes Payload (`scale.implied_vol_atm`,

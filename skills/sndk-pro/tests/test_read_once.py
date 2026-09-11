@@ -231,6 +231,22 @@ def test_a_call_keeps_the_list_it_showed_and_the_next_read_uses_it(board_state, 
     assert errored["error"] == "timeout" and errored["strikes_sent"]
 
 
+def test_a_list_shown_with_volume_withheld_is_marked_on_the_row(board_state, monkeypatch):
+    """Review item #8: a list drawn while the book still carried yesterday's
+    volume was picked on open interest alone, so the row says so and the next
+    read does not diff a volume-drawn list against it."""
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (_v2_reply(), None, 1.0, None))
+    import sndk_board
+    asof = _diary_row_with_board(NOW - timedelta(minutes=2))["meta"]["book_asof"]
+    monkeypatch.setattr(sndk_board, "carried_books",
+                        lambda rows, now: {asof: sndk_board.WITHHELD_CARRIED})
+    assert SR.read_once(now=NOW) == 0
+    row = _rows(reads)[-1]
+    assert row["strikes_sent"] and row["strikes_sent_without_volume"] is True
+
+
 def test_board_failure_falls_back_to_the_scene_payload(board_state, monkeypatch, capsys):
     tmp, reads, day = board_state
     monkeypatch.setenv("SNDK_PAYLOAD", "strikes")

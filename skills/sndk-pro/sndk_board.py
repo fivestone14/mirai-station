@@ -172,7 +172,9 @@ def surfaces(row: dict) -> dict:
     if not oi_side:
         absent.append("open interest by side per strike")
     if not vol_side:
-        absent.append("volume by side per strike; contracts counted from open interest only")
+        # review item #8: a book whose volume was withheld says why
+        absent.append(((row.get("meta") or {}).get("volume_withheld"))
+                      or "volume by side per strike; contracts counted from open interest only")
     if not net:
         absent.append("signed dealer gamma per strike")
     oi_next = _triples(gv.get("oi_side_by_strike_next"))
@@ -241,7 +243,9 @@ def _ranks(surf: dict, window: list) -> dict:
         order = sorted(ks, key=lambda k: (-key(k), k))
         return {k: i + 1 for i, k in enumerate(order)}
     by_c = rank(lambda k: surf["contracts"].get(k, 0.0), lambda k: k in surf["contracts"]) if surf["contracts"] else {}
-    by_v = rank(lambda k: _volume_today(surf, k) or 0.0, lambda k: _volume_today(surf, k) is not None) if surf["vol_side"] else {}
+    # a strike with no trades has no volume rank: on a zero-volume open every
+    # strike tied at nothing and the lowest one was ranked the leader (item #8)
+    by_v = rank(lambda k: _volume_today(surf, k) or 0.0, lambda k: (_volume_today(surf, k) or 0.0) > 0) if surf["vol_side"] else {}
     by_g = rank(lambda k: abs(surf["net"].get(k, 0.0)), lambda k: k in surf["net"]) if surf["net"] else {}
     return {k: (by_c.get(k), by_v.get(k), by_g.get(k)) for k in window}
 
@@ -321,6 +325,10 @@ def _reference(rows: list, last_read_ts: Optional[datetime]) -> tuple:
     books = SR._distinct_books_rows(rows)
     if not books:
         return None, None
+    # review item #8: a change measured from or to a book still carrying the
+    # prior session's volume would be a change against yesterday
+    if _withheld(books[-1]):
+        return None, {"unavailable": "this_book_carries_prior_session_volume"}
     if last_read_ts is not None:
         before = [b for b in books if (t := _asof(b)) is not None and t <= last_read_ts]
         if before:
@@ -330,12 +338,18 @@ def _reference(rows: list, last_read_ts: Optional[datetime]) -> tuple:
                 # the book has not refreshed since the last read: comparing it with
                 # itself would ship a change of zero on every strike and read as calm
                 return None, {"unavailable": "no_new_book_since_last_read"}
+            if _withheld(ref):
+                return None, {"unavailable": "earlier_book_carried_prior_session_volume"}
             return ref, {"basis": "last_read", "books_compared": n}
     if len(books) > CHANGE_BOOKS_FALLBACK:
         ref = books[-1 - CHANGE_BOOKS_FALLBACK]
-        if _first_book_suspect(books) and ref is books[0] and len(books) > CHANGE_BOOKS_FALLBACK + 1:
-            ref = books[1]   # the day's first book carries the prior session's volume
-            return ref, {"basis": f"{CHANGE_BOOKS_FALLBACK - 1}_books", "books_compared": CHANGE_BOOKS_FALLBACK - 1}
+        if _withheld(ref):
+            clean = [b for b in books[-1 - CHANGE_BOOKS_FALLBACK:-1] if not _withheld(b)]
+            if not clean:
+                return None, {"unavailable": "earlier_book_carried_prior_session_volume"}
+            ref = clean[0]
+            k = len(books) - 1 - books.index(ref)
+            return ref, {"basis": f"{k}_books", "books_compared": k}
         return ref, {"basis": f"{CHANGE_BOOKS_FALLBACK}_books", "books_compared": CHANGE_BOOKS_FALLBACK}
     return None, None
 
@@ -356,31 +370,179 @@ def _on_list_minutes(rows: list, now: datetime, k: float, crossed: Optional[list
     return int((now - since).total_seconds() // 60)
 
 
-def _window_volume(row: dict) -> Optional[float]:
-    surf = surfaces(row)
-    vols = [v for k in surf["vol_side"] if (v := _volume_today(surf, k)) is not None]
-    return sum(vols) if vols else None
+# ---------------------------------------------------------------------------
+# review item #8 (2026-09-11): A BOOK STILL CARRYING YESTERDAY'S VOLUME
+# ---------------------------------------------------------------------------
+# The vendor's first print of the day usually still holds the PRIOR session's
+# cumulative volume: on 26 of 28 recorded open mornings (93%), and the table's
+# volume leader was wrong on 19 of 29 first reads — the model twice announced a
+# crowd that was never there. The old guard compared the first book with the
+# second, so it could never fire on the one read that needed it (0 of 26).
+#
+# THE DETECTOR IS A FACT, NOT A CLOCK: a contract whose count today equals the
+# prior session's LAST recorded count for the same expiry is that session's
+# count. A book is withheld when such contracts hold CARRIED_EQ_SHARE of the
+# volume in reach, or when later books show its counts FALLING (volume is
+# cumulative; it cannot fall), or when it was measured before the open. Only
+# when the prior record cannot answer (no prior day, a dark session between, a
+# record that stops before the close, an expiry it never kept) does the clock
+# decide, and then only by WITHHOLDING, never by showing: the first
+# CARRIED_FALLBACK_MIN minutes. Measured over 32 days: first books 26 of 26
+# caught, 2 false alarms; a noon restart keeps its volume.
+#
+# Withheld means the volume arrays leave the row BEFORE anything reads it, so
+# the table, the shares and ranks (contracts are open interest plus volume),
+# the reference, the series and the regions rule all see one board, counted
+# on open interest alone, and `strikes.absent` says why.
+CARRIED_EQ_SHARE = 0.10       # share of in-reach volume matching the prior close
+CARRIED_FELL_SHARE = 0.25     # share of in-reach volume that a later book shows lower
+CARRIED_FALLBACK_MIN = 15     # minutes after the open the clock may withhold for
+PRIOR_CLOSE_WITHIN_MIN = 10   # the prior record must reach this close to the close
+WITHHELD_CARRIED = ("volume: this book still carries the prior session's counts; "
+                    "today's volume is left out and contracts count open interest only")
+WITHHELD_PREOPEN = ("volume: this book was measured before the open and carries the "
+                    "prior session's counts; contracts count open interest only")
+WITHHELD_UNPROVABLE = ("volume: this early in the session the prior session's counts "
+                       "cannot be told apart from today's; left out, contracts count "
+                       "open interest only")
 
 
-def _first_book_suspect(books: list) -> bool:
-    """True when the day's first distinct book carries more volume than the
-    second: the vendor's first print of the day is usually the prior session's
-    cumulative count (measured on seven days, five had it)."""
-    if len(books) < 2:
-        return False
-    a, b = _window_volume(books[0]), _window_volume(books[1])
-    return a is not None and b is not None and a > b
+def _front(row: dict) -> Optional[str]:
+    meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+    cov = meta.get("coverage") if isinstance(meta.get("coverage"), dict) else {}
+    if cov.get("front_expiry"):
+        return cov["front_expiry"]
+    ex = meta.get("expiries")
+    if isinstance(ex, list) and ex and isinstance(ex[0], dict):
+        return ex[0].get("date")
+    return None
+
+
+def _next_expiry(row: dict) -> Optional[str]:
+    gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
+    nd = gv.get("next_dte")
+    for x in ((row.get("meta") or {}).get("expiries") or []):
+        if isinstance(x, dict) and nd is not None and x.get("dte") == nd:
+            return x.get("date")
+    return None
+
+
+def _counts(seq) -> dict:
+    """{(strike, "c"|"p"): count} for one volume array."""
+    out = {}
+    for k, (c, p) in _triples(seq).items():
+        if c is not None:
+            out[(k, "c")] = c
+        if p is not None:
+            out[(k, "p")] = p
+    return out
+
+
+def _is_previous_session(prior_day: str, day: str) -> bool:
+    """True when no weekday session sits between the two dates — a dark day the
+    diary never recorded makes the prior record the wrong day to compare with."""
+    from datetime import date as _d
+    a, b = _d.fromisoformat(prior_day), _d.fromisoformat(day)
+    try:
+        import sndk_feed
+        hol = set(sndk_feed._holidays(a.year)) | set(sndk_feed._holidays(b.year))
+    except Exception:
+        hol = set()
+    x = a + timedelta(days=1)
+    while x < b:
+        if x.weekday() < 5 and x not in hol:
+            return False
+        x += timedelta(days=1)
+    return a < b
+
+
+def _prior_counts(day: str, front: Optional[str]) -> Optional[dict]:
+    """The prior SESSION's last recorded count per contract for this expiry, or
+    None when the record cannot answer. After an expiry the prior session's
+    NEXT book is today's front one, so that is the array compared."""
+    pd = SR._prior_session_date(day)
+    if pd is None or front is None or not _is_previous_session(pd, day):
+        return None
+    prior = _day_rows(pd)
+    if not prior:
+        return None
+    last = prior[-1]
+    t = SR._book_asof(last)
+    if t is None:
+        return None
+    t = t.astimezone(_ET)
+    if t.hour * 60 + t.minute < 16 * 60 - PRIOR_CLOSE_WITHIN_MIN:
+        return None
+    gv = last.get("gex_views") if isinstance(last.get("gex_views"), dict) else {}
+    if _front(last) == front:
+        c = _counts(gv.get("vol_side_by_strike"))
+    elif _next_expiry(last) == front:
+        c = _counts(gv.get("vol_side_by_strike_next"))
+    else:
+        return None
+    return c or None
+
+
+def carried_books(rows: list, now: datetime) -> dict:
+    """{book_asof: the absent sentence} for every distinct book of the day whose
+    volume is — or cannot yet be told from — the prior session's count. A later
+    book's counts are only ever used to judge an EARLIER one, so nothing here
+    looks past `rows`."""
+    books = [b for b in SR._distinct_books_rows(rows) if (b.get("meta") or {}).get("book_asof")]
+    if not books:
+        return {}
+    prior = _prior_counts(now.astimezone(_ET).strftime("%Y-%m-%d"), _front(books[-1]))
+    counts = [_counts((b.get("gex_views") or {}).get("vol_side_by_strike")) for b in books]
+    out, later_min = {}, {}
+    for i in range(len(books) - 1, -1, -1):
+        b = books[i]
+        t = SR._book_asof(b).astimezone(_ET)
+        mins = t.hour * 60 + t.minute - (9 * 60 + 30)
+        rs, sg, _, _ = _ruler(b)
+        win = set(_window(surfaces(b), rs, sg))
+        c = {k: v for k, v in counts[i].items() if k[0] in win and v and v > 0}
+        tot = float(sum(c.values()))
+        reason = None
+        if tot > 0:
+            eq = sum(v for k, v in c.items() if prior and prior.get(k) == v) / tot
+            fell = sum(v for k, v in c.items() if k in later_min and later_min[k] < v) / tot
+            cover = (sum(1 for k in c if prior and k in prior) / len(c)) if prior else 0.0
+            if mins < 0:
+                reason = WITHHELD_PREOPEN
+            elif eq >= CARRIED_EQ_SHARE or fell >= CARRIED_FELL_SHARE:
+                reason = WITHHELD_CARRIED
+            elif (prior is None or cover < 0.5) and mins < CARRIED_FALLBACK_MIN:
+                reason = WITHHELD_UNPROVABLE
+        if reason:
+            out[b["meta"]["book_asof"]] = reason
+        for k, v in counts[i].items():
+            later_min[k] = min(later_min.get(k, v), v)
+    return out
+
+
+def _withhold(row: dict, reason: str) -> dict:
+    """The row with its volume arrays gone and the reason stamped on it."""
+    r = dict(row)
+    gv = dict(r.get("gex_views") or {})
+    gv.pop("vol_side_by_strike", None)
+    gv.pop("vol_side_by_strike_next", None)
+    r["gex_views"] = gv
+    r["meta"] = {**(r.get("meta") or {}), "volume_withheld": reason}
+    return r
+
+
+def _withheld(row: Optional[dict]) -> bool:
+    return bool(((row or {}).get("meta") or {}).get("volume_withheld"))
 
 
 def series_books(rows: list) -> tuple:
     """(books, first_book_dropped): the last SERIES_BOOKS distinct books,
-    oldest first, each as {row, asof, spot, surf}; the day's first book is left
-    out when its volume is the prior session's."""
+    oldest first, each as {row, asof, spot, surf}; a book whose volume was
+    withheld as the prior session's is left out."""
     all_books = SR._distinct_books_rows(rows)
-    dropped = False
-    if _first_book_suspect(all_books):
-        all_books = all_books[1:]
-        dropped = True
+    n0 = len(all_books)
+    all_books = [b for b in all_books if not _withheld(b)]
+    dropped = len(all_books) < n0
     books = all_books[-SERIES_BOOKS:]
     out = []
     for r in books:
@@ -506,7 +668,7 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     cols = list(COLUMNS_BASE)
     if bars_now:
         cols += COLUMNS_TOUCH
-    cols += COLUMNS_BOOK
+    cols += [c for c in COLUMNS_BOOK if surf["vol_side"] or c not in ("vol_calls", "vol_puts")]
     if surf["net"]:
         cols += COLUMNS_GAMMA
     if surf["contracts"]:
@@ -515,7 +677,10 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         cols += COLUMNS_RANK_V
     if surf["net"]:
         cols += COLUMNS_RANK_G
-    cols += COLUMNS_TAIL
+    # contracts added between books need two books, and none is counted from a
+    # withheld one (item #8): with one book the columns go instead of shipping []
+    series_ok = len(books) >= 2
+    cols += [c for c in COLUMNS_TAIL if series_ok or c not in ("vol_added_per_book", "vol_added_in_series")]
     if bars_now:
         cols += COLUMNS_TOUCH_SERIES
     if surf["next_recorded"] and (surf["oi_next"] or surf["vol_next"]):
@@ -559,15 +724,17 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
                 (int(vp - rvp) if vp is not None and rvp is not None else None)]
         else:
             rec["change"] = "strike_not_in_earlier_book"
-        per, tot = _vol_added(books, k)
-        rec["vol_added_per_book"] = per
-        rec["vol_added_in_series"] = tot
+        if series_ok:
+            per, tot = _vol_added(books, k)
+            rec["vol_added_per_book"] = per
+            rec["vol_added_in_series"] = tot
         if "next_week" in cols:
             noc, nop = surf["oi_next"].get(k, (None, None))
             nvc, nvp = surf["vol_next"].get(k, (None, None))
             if k in surf["oi_next"] or k in surf["vol_next"]:
-                rec["next_week"] = [int(noc) if noc is not None else None, int(nop) if nop is not None else None,
-                                    int(nvc) if nvc is not None else None, int(nvp) if nvp is not None else None]
+                rec["next_week"] = [int(noc) if noc is not None else None, int(nop) if nop is not None else None]
+                if surf["vol_next"]:
+                    rec["next_week"] += [int(nvc) if nvc is not None else None, int(nvp) if nvp is not None else None]
             else:
                 rec["next_week"] = "strike_not_in_next_weekly_book"
         rows_out.append(rec)
@@ -592,8 +759,10 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         "change_books_compared": (ref_meta.get("books_compared") if ref_meta else None),
         "change_unavailable": ((ref_meta or {}).get("unavailable") if ref_meta else "no_earlier_book"),
         "change_columns": (["contracts_share_pp", "vol_calls", "vol_puts"] if ref is not None else None),
-        "first_book_dropped": ("the day's first book carried the prior session's volume" if first_book_dropped else None),
-        "next_week_columns": (["oi_calls", "oi_puts", "vol_calls", "vol_puts"] if "next_week" in cols else None),
+        "first_book_dropped": ("the day's first books still carried the prior session's volume and are left out"
+                               if first_book_dropped else None),
+        "next_week_columns": ((["oi_calls", "oi_puts"] + (["vol_calls", "vol_puts"] if surf["vol_next"] else []))
+                              if "next_week" in cols else None),
     }
     head.update(_next_book_header(row, surf, now))
     # 2026-09-11, review item #7: WHAT JOINED AND WHAT LEFT is measured against
@@ -896,7 +1065,8 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
                    bars: Optional[list] = None,
                    v1: Optional[dict] = None,
                    clusters_then: Optional[list] = None,
-                   strikes_sent_before: Optional[list] = None) -> tuple:
+                   strikes_sent_before: Optional[list] = None,
+                   sent_before_without_volume: bool = False) -> tuple:
     """(scene_v2, scene_v1). The kept blocks are the live builder's output with
     the labels stripped; the verdict blocks are dropped; `strikes`, `frames`,
     `between_frames` and `regions` are added. `bars` is the day's minute bars
@@ -904,11 +1074,28 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
     the caller already built it. `clusters_then` is what the model drew at its
     last read, so `new` and `resolved` have a reference. `strikes_sent_before`
     is the strike list that read showed it, so arrivals and departures are
-    measured against what it saw (None when no list was kept)."""
+    measured against what it saw (None when no list was kept);
+    `sent_before_without_volume` says that list was drawn with volume
+    withheld (item #8)."""
     if v1 is None:
         band = SR.magnet_band(row)
         frozen = SR.frozen_fields(rows, now)
         v1 = SR.build_scene(row, band, frozen, rows, now, since_last_read)
+    # review item #8: a book still carrying the prior session's volume loses it
+    # BEFORE anything below reads it, so the table, the reference, the series,
+    # the regions rule and the list all see one board
+    carried = carried_books(rows, now)
+    if carried:
+        rows = [_withhold(r, carried[k]) if (k := (r.get("meta") or {}).get("book_asof")) in carried else r
+                for r in rows]
+        k0 = (row.get("meta") or {}).get("book_asof")
+        if k0 in carried:
+            row = _withhold(row, carried[k0])
+    # a list drawn with volume and one drawn without it are picked by different
+    # measures: comparing them would report the switch as strikes joining and
+    # leaving, so across that switch nothing joined or left is claimed
+    if strikes_sent_before is not None and bool(sent_before_without_volume) != _withheld(row):
+        strikes_sent_before = None
     day = now.strftime("%Y-%m-%d")
     all_bars = bars if bars is not None else SR.minute_bars(day)
     bars_now = sndk_bars.completed(all_bars, now) if all_bars else []
@@ -1083,7 +1270,7 @@ THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contract
 - `rank_by_contracts`, `rank_by_volume_today`, `rank_by_dealer_gamma`: three separate rankings over every strike in reach, 1 is heaviest. A rank column that is missing was not measured this scan.
 - `on_list_for_min`: how long the strike has been on this list. Hours means standing structure, not news.
 - `change`: this book against an earlier one, three differences in the order `strikes.change_columns` gives: contracts share (measured over the strikes both books carry, so the window sliding as price moves does not read as trading), calls traded, puts traded. The header says once which earlier book (`change_basis`: the book at your last read, or five books back on the session's first read) and how many books lie between (`change_books_compared`); `change_unavailable` says why there is none, including `no_new_book_since_last_read`, which means the book has not refreshed since you last spoke and nothing on it can have changed. The string `strike_not_in_earlier_book` means the strike was outside the earlier window, a fact about the window.
-- `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book was left out because it carried the prior session's volume.
+- `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book or books were left out because they still carried the prior session's volume.
 - `touched_in_books`: which of those intervals had a wick at the strike, by index; absent when none did.
 - `next_week`: the next weekly expiry's open interest and volume at the same strike, in the order `strikes.next_week_columns` gives. Open interest in either book is last night's; volume in either is today's. On expiry day the front list dies at the close and the next week's book is Monday's list. `not_recorded` on the header means the diary had not yet kept the next book that day.
 The header also carries `strikes_in_window` (how many were in reach), `contracts_above_spot_pp` and `dealer_gamma_above_spot_pp`, `nearest_above` and `nearest_below` (the nearest listed strike each side of the book's price, or absent when the side is empty; `no_strikes_above` and `no_strikes_below` say so outright), and `entered_since_reference` and `left_since_reference` (strikes that joined or left the list since your last read, measured against the list you were shown then; both are absent when there is no earlier list).
@@ -1288,7 +1475,10 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
         rec = recs.get(k)
         if rec is None:
             continue
-        short = [c for c in _RANK_COLS if not _leads_its_side(rec, recs, c)]
+        # "every measure" means every measure the board SHOWS: with volume
+        # withheld (item #8) there is no volume rank to fall short on
+        shipped = set((scene.get("strikes") or {}).get("columns") or _RANK_COLS)
+        short = [c for c in _RANK_COLS if c in shipped and not _leads_its_side(rec, recs, c)]
         if short:
             out.append("leads_all_unsupported:%g:%s" % (k, ",".join(
                 c.replace("rank_by_", "").replace("_today", "") for c in short)))
@@ -1311,10 +1501,12 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             own = [r.get(col) for r in recs.values()
                    if r.get("side") == side and isinstance(r.get(col), int)]
             leads_today = side in ("above", "below") and bool(own) and recs[k].get(col) == min(own)
+        # a lead is a lead of something: with no volume on the board every
+        # strike ties at zero, and the highest strike must not win that tie
         added = [(r.get("vol_added_in_series") or 0, kk) for kk, r in recs.items()]
-        leads_series = bool(added) and max(added)[1] == k and what == "volume"
+        leads_series = bool(added) and max(added)[0] > 0 and max(added)[1] == k and what == "volume"
         chg = [((c[1] or 0) + (c[2] or 0) if isinstance(c := r.get("change"), list) and len(c) == 3 else 0, kk) for kk, r in recs.items()]
-        leads_gap = bool(chg) and max(chg)[1] == k and what == "volume"
+        leads_gap = bool(chg) and max(chg)[0] > 0 and max(chg)[1] == k and what == "volume"
         if not (leads_today or leads_series or leads_gap):
             out.append(f"most_{what.replace(' ', '_')}_unsupported:{k:g}")
     if _UNCHANGED_RE.search(text):
@@ -1609,7 +1801,8 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
         frame = SR.frame_since_last_read(row, rows_i, last_call, wake, False, now,
                                          prior_rows_today=i > 0, bars=bars)
         v2, v1 = build_scene_v2(row, rows_i, now, frame, last_read_ts, bars, clusters_then=clusters_then,
-                                strikes_sent_before=(last_call or {}).get("strikes_sent"))
+                                strikes_sent_before=(last_call or {}).get("strikes_sent"),
+                                sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")))
         cmp_ = compare_scenes(v1, v2)
         lg = legacy(row, rows_i, now, v1=v1)
         hhmm = now.strftime("%H:%M")
@@ -1652,7 +1845,9 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
         last_call = {"ts": row["ts"], "spot": row.get("spot"),
                      "magnet_band": SR.magnet_band(row),
                      "gate": SR.state_for_next_wake(row, v1),
-                     **({"strikes_sent": s} if (s := listed_strikes(v2.get("strikes"))) else {})}
+                     **({"strikes_sent": s} if (s := listed_strikes(v2.get("strikes"))) else {}),
+                     **({"strikes_sent_without_volume": True}
+                        if (row.get("meta") or {}).get("book_asof") in carried_books(rows_i, now) else {})}
         last_read_ts = now
     return out
 
