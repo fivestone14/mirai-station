@@ -1066,7 +1066,7 @@ The header also carries `strikes_in_window` (how many were in reach), `contracts
 
 THE FRAMES. `frames` is the shared time axis behind every series: `book_times` once, `interval_min` between them, `gaps` naming any long interval, `reaches_last_read` and `books_since_last_read` saying whether the series covers the stretch since you last spoke, and `price_path_sigma_from_now`: where price sat at each book, in today's sigma, zero at the price the book was measured at. It lets you say when volume arrived relative to where price was: "most of 1750's volume arrived while price sat below 1720". It does not let you say what price did about it. An entry over a long interval is one lump for the whole stretch: name the minutes and call its shape unknown. With fewer than six books in the series, say nothing about the shape of any series.
 
-WHAT HAS GONE. `regions.resolved` ships on every read that has one, and it is the shortest and most useful block in the scene: piles that were on the board at your last read and are not on it now, each with the last book that held them. It is the evidence behind the rule above about un-saying things. A centre in that list is a crowd that has left — say so before you say anything new, and name it in your `resolved` field. The live `regions` list is deliberately NOT shipped, because when it was, the model drew 34 of 34 clusters on it and stopped looking at the board; `resolved` cannot do that, because there is nothing at those prices left to draw.
+WHAT HAS GONE. `regions.resolved` ships on every read that has one, and it is the shortest and most useful block in the scene: piles that were on the board at your last read and are not on it now, each with the last book that held them. It is the evidence behind the rule above about un-saying things. A centre in that list is a crowd that has left — say so before you say anything new, and name it in your `resolved` field. A strike in `strikes.left_since_reference` is accepted there too. The live `regions` list is deliberately NOT shipped, because when it was, the model drew 34 of 34 clusters on it and stopped looking at the board; `resolved` cannot do that, because there is nothing at those prices left to draw.
 
 THE REGIONS RULE, for reading `resolved` and the change words. When the scene carries the full `regions` block (it usually does not), `regions` is the output of a fixed rule that code ran over the last twelve distinct books. It is not a reading and not a truth about the market; it is a stated rule's answer, and you may disagree with it. The rule: a listed strike holding at least 8 percent of the contracts in reach, or 8 percent of the absolute dealer gamma in reach, is a member; a member stays while it holds 6; members with no other strike of the window between them are one region; a region at one book is the same region at the next when the two share a strike. `by` says which bar it cleared: contracts, gamma, both, or held (under the entry bar now, kept because it was over it earlier). `strikes` and `center` are listed strikes; every number about them lives in the strike table and none is repeated here. `first_seen` is the book the region has been present since without a break; when it equals `first_book` the region was already there when today's record began. `present` is how many of the last `books` books held it. `change` is judged on the region's share of contracts over a strike set every book of the series carries, so the window sliding as price moves does not read as trading: `increased` and `decreased` mean the straight-line fit over the series moved at least one point; `stable` means it did not; `new` means no region overlapped it at the book of your last read; `resolved` lists regions that were there at that book and are not now, with the last book that held them. These words count contracts. They say nothing about price, and a region price has already been through is still a region.
 
@@ -1079,7 +1079,7 @@ WHAT THE MEASUREMENTS SAY, and the description rule each one sets. Measured on t
 
 BOTH SIDES, EVERY TIME. Price always has a side above it and a side below it, and each side is either empty within reach or holds a nearest heavy strike. Your reading names that strike on each side, or says the side is empty, and for each says whether it has been touched today. Heavy means the strike ranks in the top three on its side by at least one of the three measures; say which. Naming the crowd above and forgetting the crowd below is half a reading. An empty side is a real reading and often the loudest one; say "nothing listed above within reach", never a number.
 
-INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up film is: NEW, INCREASED, DECREASED, STABLE, and UNKNOWN when the earlier book is missing; RESOLVED is for a pile that was there at your last read and is gone. On a cluster the word is checked by the code against a fixed rule over the last twelve books and rewritten when it disagrees, so write what the change cells and the series show. In prose the same words apply to the change cell and to the series, and two rules ride with them. First, THE WINDOW IS ALWAYS NAMED: "since your last read at 12:35", "over the last twelve books", "against the book five books back". A change with no window is a guess. Second, YOU CANNOT SEE GAMMA CHANGE ON THIS BOARD: the scene ships one gamma sign and one gamma share per strike and no earlier value, so never say a gamma share rose or fell. Change is contracts and volume: "1750 added 1,296 calls since your last read", "1700's share of contracts slipped a point".
+INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up film is: NEW, INCREASED, DECREASED, STABLE, and UNKNOWN when the earlier book is missing; RESOLVED is for a pile that was there at your last read and is gone. On a cluster the word is checked against the change cells of its strikes and rewritten when it disagrees: added together, a point or more of contracts share up is increased, a point or more down is decreased, less than a point is stable, and a pile whose strikes all joined the list since your last read is new. In prose the same words apply to the change cell and to the series, and two rules ride with them. First, THE WINDOW IS ALWAYS NAMED: "since your last read at 12:35", "over the last twelve books", "against the book five books back". A change with no window is a guess. Second, YOU CANNOT SEE GAMMA CHANGE ON THIS BOARD: the scene ships one gamma sign and one gamma share per strike and no earlier value, so never say a gamma share rose or fell. Change is contracts and volume: "1750 added 1,296 calls since your last read", "1700's share of contracts slipped a point".
 
 BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window (a gap in the data is a gap, never calm — and its absence means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and the implied vol at your last read (the value now is `scale.implied_vol_atm`). Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
 
@@ -1144,7 +1144,7 @@ OUTPUT. Reply with ONLY a JSON object, no prose around it, no code fence. Every 
  "points": [{{"level": <a price that appears in the scene>, "note": "<ten words at most>"}}],
  "absent": ["<anything you looked for and the scene did not carry>"]}}
 
-SIDES is the both-ways rule made checkable: one entry per side, always; heavy must be a listed strike on that side of the live price and in the top three there by some measure, and `leads_on` names only the measures it ranks first on among that side's strikes. The code fills in whether it was touched and when. CLUSTERS are your reading of the piles, at most {MAX_CLUSTERS}, adjacent listed strikes grouped as one, ranked by your own weighing of the three measures; the code appends the pile's side, distance, touch and summed shares, so never add numbers yourself. You may draw a cluster the rule's regions did not, and you may leave a region out. Clusters are for piles that stand out: one or two is normal, zero is common, and a cluster for every heavy strike is a list, not a reading. POINTS are levels a reader should look at now, up to four, with a note of ten words or fewer; on an unchanged board an empty list beside your quiet sentence is usually the better answer. ABSENT goes to the diary, not the screen."""
+SIDES is the both-ways rule made checkable: one entry per side, always; heavy must be a listed strike the table puts on that side (its `side` column; a strike marked `at` is on neither side) and in the top three there by some measure, and `leads_on` names only the measures it ranks first on among that side's strikes. The code fills in whether it was touched and when. CLUSTERS are your reading of the piles, at most {MAX_CLUSTERS}, adjacent listed strikes grouped as one, ranked by your own weighing of the three measures; the code appends the pile's side, distance, touch and summed shares, so never add numbers yourself. You may draw a cluster the rule's regions did not, and you may leave a region out. Clusters are for piles that stand out: one or two is normal, zero is common, and a cluster for every heavy strike is a list, not a reading. POINTS are levels a reader should look at now, up to four, with a note of ten words or fewer; on an unchanged board an empty list beside your quiet sentence is usually the better answer. ABSENT goes to the diary, not the screen."""
 
 
 def prompt_v2(scene: dict) -> str:
@@ -1386,9 +1386,35 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
     rule = regions or {}
     scene_rg = scene.get("regions") or {}
     rule_regions = rule.get("regions") or scene_rg.get("regions") or []
+    # 2026-09-10 (review item #5): THE CHECKER GRADES WITH WHAT THE MODEL WAS
+    # SHOWN. A retraction is accepted when it names a strike the message itself
+    # said has left the list, not only a centre from the hidden regions rule:
+    # that list reached the model on about 1 read in 8, and 4 true retractions
+    # in 23 replies were deleted against it. A strike still on the list is
+    # still refused.
+    hdr = scene.get("strikes") or {}
+    left_now = {SR._fin(k) for k in (hdr.get("left_since_reference") or [])
+                if SR._fin(k) is not None and SR._fin(k) not in recs}
     resolved_ok = {SR._fin(r.get("center"))
                    for r in (rule.get("resolved") or scene_rg.get("resolved") or [])
-                   if isinstance(r, dict)}
+                   if isinstance(r, dict)} | left_now
+    entered = {SR._fin(k) for k in (hdr.get("entered_since_reference") or []) if SR._fin(k) is not None}
+
+    def cells_word(ks):
+        """The change word the cluster's own change cells support, on the
+        regions rule's one-point rail: summed contracts-share change of a point
+        or more is increased or decreased, less is stable; a pile whose strikes
+        all joined the list since the earlier book is new; no earlier book is
+        unknown."""
+        cells = [recs[k].get("change") for k in ks]
+        if all(k in entered or c == "strike_not_in_earlier_book" for k, c in zip(ks, cells)):
+            return "new"
+        nums = [c[0] for c in cells if isinstance(c, list) and c and isinstance(c[0], (int, float))]
+        if not nums:
+            return "unknown"
+        d = sum(nums)
+        rail = sndk_regions.CHANGE_RAIL_PP
+        return "increased" if d >= rail else "decreased" if d <= -rail else "stable"
     dropped = list(reading.get("dropped_observations") or [])
     clusters, ranks_seen = [], set()
     for c in (obj.get("clusters") or [])[:MAX_CLUSTERS * 2]:
@@ -1412,7 +1438,11 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
         ranks_seen.add(rank)
         on_region = next((r for r in rule_regions if set(SR._fin(k) for k in r.get("strikes") or []) & set(ks)), None)
         model_word = c.get("change") if c.get("change") in CHANGE_WORDS else "unknown"
-        word = (on_region.get("change") or "unknown") if on_region else "unknown"
+        # item #5: the word comes from the change cells the model was shown.
+        # It used to come from the hidden regions rule, which overwrote the
+        # model's word on 63% of piles and forced "unknown" on a third; the
+        # rule's word is kept beside it for the audit when the two differ.
+        word = cells_word(ks)
         rec = recs[center]
         out = {"strikes": sorted(ks), "center": center, "rank": rank, "change": word,
                "side": rec.get("side"), "dist_sigma": rec.get("dist_sigma"),
@@ -1420,6 +1450,9 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
                "on_rule_region": on_region is not None}
         if model_word != word:
             out["change_model"] = model_word
+        rule_word = on_region.get("change") if on_region else None
+        if rule_word and rule_word != word:
+            out["change_rule"] = rule_word
         cs = [recs[k].get("contracts_share_pp") for k in ks if recs[k].get("contracts_share_pp") is not None]
         gs = [recs[k].get("dealer_gamma_share_pp") for k in ks if recs[k].get("dealer_gamma_share_pp") is not None]
         if cs:
@@ -1436,16 +1469,28 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
             c["rank"] = i
     reading["clusters"] = clusters
     # sides: one entry each way, always; heavy must be a listed strike on that
-    # side of the live price and in the top three there on some rank
+    # side and in the top three there on some rank. item #5: "that side" is
+    # the table's own `side` column, the split the model reads. The live price
+    # used to decide it here while the table used the book's price and an "at"
+    # band, so a strike the table called "at" was counted below and true
+    # leadership claims were deleted (6 in 23 replies). A strike marked "at"
+    # is on neither side. Rows without a side fall back to the live price.
     pr = scene.get("price") or {}
     spot = SR._fin(pr.get("live_spot"))
     if spot is None:
         spot = SR._fin(pr.get("spot_when_book_was_measured"))
     sides = {}
     model_sides = obj.get("sides") if isinstance(obj.get("sides"), dict) else {}
-    if spot is None:
+    table_sides = any(r.get("side") in ("above", "below", "at") for r in recs.values())
+    if table_sides:
+        splits = (("above", lambda k: recs[k].get("side") == "above"),
+                  ("below", lambda k: recs[k].get("side") == "below"))
+    elif spot is not None:
+        splits = (("above", lambda k: k > spot), ("below", lambda k: k < spot))
+    else:
+        splits = ()
         sides = {"unavailable": "no_spot"}
-    for name, keep in (() if spot is None else (("above", lambda k: k > spot), ("below", lambda k: k < spot))):
+    for name, keep in splits:
         on_side = sorted(k for k in recs if keep(k))
         entry = {"empty": not on_side,
                  "nearest": ((min(on_side) if name == "above" else max(on_side)) if on_side else None)}

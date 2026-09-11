@@ -231,6 +231,15 @@ is not one. The count always agrees with the two prices the frame ships.
 "rejected", "reclaimed" and "contested" join the banned words, so a count
 cannot turn into a verdict.
 
+The answer checker (`check_reading_v2`) now grades the model with what the
+model was shown (review item #5): a retraction naming a strike from
+`strikes.left_since_reference` is accepted (it used to be checked only against
+the hidden regions list, which is usually empty); a cluster's change word is
+set from its strikes' change cells on the one-point rail (it used to be
+overwritten from the regions rule on 63% of piles; the rule's word is kept as
+`change_rule` when they differ); and the sides block splits on the table's own
+`side` column, so a strike marked "at" is on neither side.
+
 ### strikes-1 (2026-09-05) — the Strikes Payload
 
 The model no longer reads the scene described below. It reads the **Strikes

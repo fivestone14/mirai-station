@@ -446,8 +446,13 @@ def test_guard_needs_a_price_for_sides_and_renumbers_ranks():
            "clusters": [{"strikes": [1300.0], "center": 1300.0, "rank": 3, "change": "stable"}, {"strikes": [1200.0, 1300.0], "center": 1300.0, "rank": 1, "change": "stable"}],
            "resolved": [], "points": [], "absent": []}
     r = B.check_reading_v2(obj, sc2)
-    assert r["sides"] == {"unavailable": "no_spot"}
+    # item #5 (2026-09-10): the table's own side column is enough to split on
+    assert "unavailable" not in r["sides"] and r["sides"]["above"]["heavy"] == 1300.0
     assert [c["rank"] for c in r["clusters"]] == [1] and "cluster_rank_renumbered:3->1" in " ".join(r["dropped_observations"])
+    for row in sc2["strikes"]["rows"]:
+        row.pop("side", None)
+    r2 = B.check_reading_v2(obj, sc2)
+    assert r2["sides"] == {"unavailable": "no_spot"}   # no side column and no price: nothing to split on
 
 
 def test_guard_checks_a_touch_clock_and_a_superlative_against_the_record():
@@ -507,10 +512,10 @@ def test_guard_keeps_a_good_cluster_adds_the_codes_facts_and_sets_the_change_wor
     r = B.check_reading_v2(obj, sc)
     c = r["clusters"][0]
     assert c["center"] == 1300.0 and c["side"] == "above" and c["contracts_share_pp_sum"] > 0
-    assert c["change"] == "unknown" and c["on_rule_region"] is False   # no rule handed in
-    assert c["change"] in B.CHANGE_WORDS
-    if c["on_rule_region"]:
-        assert c["change_model"] == "increased" or c["change"] == "increased"
+    # item #5: the word comes from the change cells the model was shown. Nothing
+    # traded between these identical books, so "increased" is rewritten.
+    assert c["change"] == "stable" and c["change_model"] == "increased"
+    assert c["on_rule_region"] is False   # no rule handed in
     assert r["quiet"] is False and "abstain" not in r
 
 
@@ -590,8 +595,61 @@ def test_the_rules_regions_survive_a_scene_that_carries_only_resolved():
     r = B.check_reading_v2(obj, sc, regions=rule)
     c = r["clusters"][0]
     assert c["on_rule_region"] is True, "the rule's regions must survive the scene's resolved-only view"
-    assert c["change"] == "increased", c            # the RULE's word, not the model's
+    # item #5: the word is the change cells' (nothing moved: stable); the
+    # rule's disagreeing word is kept beside it for the audit
+    assert c["change"] == "stable" and c["change_rule"] == "increased", c
     assert r["resolved"] == [1250.0]                # ...and resolved still validates
+
+
+def test_a_retraction_of_a_strike_the_message_said_had_left_is_accepted():
+    """2026-09-10 (item #5): observed live on 09-08 11:47. The message listed
+    1785 as having left since the last read, the model filed "1785 is gone",
+    and the checker deleted it against the hidden regions list, which was
+    empty. A strike the message says has left is accepted; one still on the
+    list is not."""
+    sc = _scene()
+    sc["strikes"]["left_since_reference"] = [1450.0, 1300.0]    # 1300 is still listed
+    obj = {"quiet": False, "read": "Most contracts sit at 1300.", "clusters": [],
+           "resolved": [1450.0, 1300.0], "points": [], "absent": []}
+    r = B.check_reading_v2(obj, sc)
+    assert r["resolved"] == [1450.0]
+    assert "resolved_not_a_resolved_region:1300.0" in r["dropped_observations"]
+
+
+def _one_cluster(sc, ks):
+    obj = {"quiet": False, "read": "Most contracts sit at 1300.",
+           "clusters": [{"strikes": ks, "center": ks[-1], "rank": 1, "change": "stable"}],
+           "resolved": [], "points": [], "absent": []}
+    c = B.check_reading_v2(obj, sc)["clusters"]
+    return c[0]["change"] if c else None
+
+
+def test_the_change_word_follows_the_change_cells_the_model_was_shown():
+    """item #5: the word is set from the cluster's own change cells, summed,
+    on the regions rule's one-point rail."""
+    sc = _scene()
+    rows = {r["strike"]: r for r in sc["strikes"]["rows"]}
+    rows[1300.0]["change"] = [1.5, 40, 10]
+    rows[1250.0]["change"] = [-0.4, 0, 0]
+    assert _one_cluster(sc, [1300.0]) == "increased"           # +1.5 points
+    assert _one_cluster(sc, [1250.0]) == "stable"              # -0.4, inside the rail
+    assert _one_cluster(sc, [1250.0, 1300.0]) == "increased"   # summed: 1.5 - 0.4 = +1.1
+    sc["strikes"]["entered_since_reference"] = [1400.0]
+    rows[1400.0]["change"] = "strike_not_in_earlier_book"
+    assert _one_cluster(sc, [1400.0]) == "new"
+
+
+def test_a_strike_the_table_marks_at_is_on_neither_side():
+    """item #5: on 09-08 11:46 the table marked 1800 "at" while the checker
+    counted it below by the live price, and all three of the model's true
+    claims that 1750 led below were deleted."""
+    sc = _scene()
+    rows = {r["strike"]: r for r in sc["strikes"]["rows"]}
+    rows[1300.0]["side"] = "at"
+    obj = {"quiet": False, "read": "Most contracts sit at 1300.", "clusters": [], "resolved": [],
+           "sides": {"above": {"heavy": 1350.0, "leads_on": []}}, "points": [], "absent": []}
+    r = B.check_reading_v2(obj, sc)
+    assert r["sides"]["above"]["nearest"] != 1300.0 and r["sides"]["below"]["nearest"] != 1300.0
 
 
 def test_guard_drops_unlisted_non_adjacent_and_bad_rank_clusters_and_foreign_resolved():
