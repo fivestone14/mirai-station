@@ -87,7 +87,9 @@ def test_the_page_scrolls_and_says_so():
     flat = body.replace(" ", "")
     assert "overflow:hidden" not in flat, \
         "the body cannot hide overflow: the reading has no clamp and must be able to run"
-    assert "min-height:100dvh" in flat
+    # the MEASURED height, never a viewport unit — see
+    # test_no_phone_page_reads_a_viewport_unit for why
+    assert "min-height:var(--app-h)" in flat
 
 
 def test_the_reading_is_never_clamped():
@@ -165,3 +167,67 @@ def test_the_tab_bar_is_measured_rather_than_asserted():
     assert "var(--tab-h)" in pad
     assert "safe-area-inset-bottom" not in pad, \
         "the bottom inset is double-counted: it is already inside the measured bar"
+
+
+# --- the measured height (2026-09-10) ----------------------------------------
+# Inside the app every viewport unit reads ZERO. Measured on a Galaxy S20+
+# (Chrome 152 WebView): 100vh = 0 and 100dvh = 0 against a visible height of
+# 779px, because Android WebView reports a zero-height viewport to a page when
+# the view is sized wrap-content, and the shell's SwipeRefreshLayout gave it
+# that by default. The explainer sheet was max-height:84dvh and opened as a
+# 32px strip; the reads page's min-height:100dvh has never done anything on a
+# phone. Every desktop check passed, because desktop browsers report the real
+# height. So the phone pages read one measured number instead, and these pin
+# that no viewport unit can creep back in.
+
+_UNIT = re.compile(r"(?<![\w-])\d*\.?\d+(?:d|s|l)?v(?:h|w|min|max|i|b)\b")
+
+
+def _css_code(html):
+    """Every stylesheet in the page with its comments removed, because the
+    comments quote the retired units on purpose."""
+    css = "\n".join(re.findall(r"(?s)<style>(.*?)</style>", html))
+    return re.sub(r"(?s)/\*.*?\*/", "", css)
+
+
+def test_no_phone_page_reads_a_viewport_unit():
+    for name, html in (("index.html", PHONE), ("thread.html", THREAD)):
+        css = _css_code(html)
+        found = _UNIT.findall(css)
+        # the ONE permitted use is the fallback value of the token itself
+        assert found == ["100dvh"], f"{name} reads a viewport unit: {found}"
+        assert re.search(r"--app-h:100dvh;", css), f"{name} lost the token"
+        assert "var(--app-h)" in css, f"{name} declares the token and never reads it"
+    for name, js in (("page.js", PAGE),):
+        code = "\n".join(l.split("//")[0] for l in js.splitlines()
+                         if not l.strip().startswith(("//", "*", "/*")))
+        assert not re.search(r"['\"]\d+(?:d|s|l)?vh", code), f"{name} writes a vh"
+
+
+def _measure_script(html):
+    m = re.search(r"(?s)<body>\s*(<script>.*?</script>)", html)
+    return m.group(1) if m else None
+
+
+def test_both_pages_measure_the_height_before_anything_paints():
+    """The same script, as the first thing in <body>, on both pages — kept as
+    two copies for the same reason the palette is (a shared file is a full
+    re-fetch on every open over the tunnel), so the copies are pinned equal."""
+    a, b = _measure_script(PHONE), _measure_script(THREAD)
+    assert a and b, "a page has lost the script at the top of <body>"
+    assert a == b, "the two pages measure the height differently"
+    for need in ("window.innerHeight", "setProperty('--app-h'", "'resize'",
+                 "'orientationchange'", "visualViewport"):
+        assert need in a, need
+
+
+def test_the_shell_gives_the_webview_a_real_height():
+    """The cause, not the symptom: WRAP_CONTENT is what made the WebView report
+    a zero-height viewport. Android's WebView guidance is match_parent."""
+    kt = (Path(__file__).resolve().parents[3] / "mirai-mobile" / "app" / "src" / "main"
+          / "java" / "com" / "mirai" / "mobile" / "MainActivity.kt").read_text()
+    code = "\n".join(l.split("//")[0] for l in kt.splitlines())
+    assert re.search(r"addView\(web,\s*ViewGroup\.LayoutParams\(\s*ViewGroup\.LayoutParams\.MATCH_PARENT,"
+                     r"\s*ViewGroup\.LayoutParams\.MATCH_PARENT\)\)", code), \
+        "the WebView is added without MATCH_PARENT params"
+    assert "addView(web)" not in code

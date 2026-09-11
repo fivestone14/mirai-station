@@ -57,8 +57,8 @@ android {
         // The bump is not cosmetic — Android will not install an APK whose
         // versionCode is lower than the installed one, and leaving it equal
         // makes an update indistinguishable from the build already on the phone.
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
 
         buildConfigField("String", "STATION_URL", "\"${secret("STATION_URL").trimEnd('/')}\"")
         buildConfigField("String", "STATION_USER", "\"${secret("STATION_USER")}\"")

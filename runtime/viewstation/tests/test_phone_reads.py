@@ -133,7 +133,7 @@ def test_the_document_is_the_scroller():
     flat = body.group(1).replace(" ", "").replace("\n", "")
     assert "overflow:hidden" not in flat, "the body hides overflow again; the list would be cut off"
     assert "height:100%" not in flat, "height:100% needs a definite parent and the WebView does not give one"
-    assert "min-height:100dvh" in flat
+    assert "min-height:var(--app-h)" in flat, "the page must span the measured height, not a vh"
 
     wrap = re.search(r"(?ms)^\.wrap\{(.*?)\}", THREAD)
     assert wrap is not None

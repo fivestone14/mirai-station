@@ -59,6 +59,19 @@
   --press-scale:.97;
 
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
+
+  /* The visible height, MEASURED — the script at the top of <body> writes it
+     in pixels on load, resize and rotation. Nothing on the phone pages may
+     read a viewport unit directly, because inside the app every one of them
+     reads ZERO: measured 2026-09-10 on a Galaxy S20+ (Chrome 152 WebView),
+     100vh = 0 and 100dvh = 0 against a visible height of 779px. Android
+     WebView reports a zero-height viewport when the view is sized
+     wrap-content, which is what the shell's SwipeRefreshLayout gave it by
+     default, so every phone running the app did the same — and no desktop
+     browser ever showed it. The explainer sheet's max-height:84dvh came out
+     at 0 and it opened as a 32px strip of its own padding. 100dvh stays here
+     only as the value a page with no script would fall back to. */
+  --app-h:100dvh;
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
@@ -78,7 +91,7 @@
    answerable, because the document is the thing that scrolls. */
 html{background:var(--g)}
 body{
-  min-height:100dvh;
+  min-height:var(--app-h);
   background:var(--g);color:var(--i-body);
   font:400 15px/1.5 var(--sans);font-variant-numeric:tabular-nums;
   -webkit-font-smoothing:antialiased;
@@ -255,6 +268,20 @@ body{
 </style>
 </head>
 <body>
+<script>
+/* --app-h: the visible height in pixels, measured before anything paints. Why
+   the pages cannot use vh / dvh inside the app is on the token in :root. */
+(function(){
+  function set(){
+    var h = window.innerHeight || document.documentElement.clientHeight;
+    if(h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
+  }
+  set();
+  window.addEventListener('resize', set);
+  window.addEventListener('orientationchange', set);
+  if(window.visualViewport) window.visualViewport.addEventListener('resize', set);
+})();
+</script>
 
 <header class="hd">
   <a class="back" href="/m/" aria-label="Back to the glance" data-press data-haptic>‹</a>

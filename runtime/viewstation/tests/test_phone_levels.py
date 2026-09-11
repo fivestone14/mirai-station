@@ -247,8 +247,8 @@ def test_the_sheet_text_cannot_start_a_selection():
     assert m, ".sheet has no rule"
     flat = m.group(1).replace(" ", "").replace("\n", "")
     assert "user-select:none" in flat and "-webkit-touch-callout:none" in flat
-    # and a WebView without dvh keeps a ceiling instead of losing it
-    assert "max-height:84vh;max-height:84dvh" in flat
+    # 86% of the MEASURED height: as 84dvh it was 0px inside the app
+    assert "max-height:calc(var(--app-h)*.86)" in flat
 
 
 def test_back_closes_the_sheet_before_it_leaves_the_page():

@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.HttpAuthHandler
@@ -111,7 +112,18 @@ class MainActivity : AppCompatActivity() {
         refresh = SwipeRefreshLayout(this).apply {
             setColorSchemeColors(JADE)
             setProgressBackgroundColorSchemeColor(SURFACE)
-            addView(web)
+            // MATCH_PARENT, stated. addView(web) with no params gets
+            // ViewGroup's default, WRAP_CONTENT — and Android WebView treats a
+            // wrap-content height as "size to the page", reporting a
+            // zero-height viewport to it. Every vh and dvh on the page then
+            // resolves to 0: measured 2026-09-10 on a Galaxy S20+, 100vh = 0
+            // against a visible height of 779px, which is what opened the
+            // levels explainer as a 32px strip. Android's own WebView guidance
+            // is match_parent for exactly this. The pages no longer depend on
+            // viewport units (they measure --app-h), so this is the cause being
+            // removed, not the symptom being patched twice.
+            addView(web, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             setOnRefreshListener { web.reload() }
             // "can the child still scroll up?" — answered by the page when the
             // page has an opinion, and by the WebView when it does not.
