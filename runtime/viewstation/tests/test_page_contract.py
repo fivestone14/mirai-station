@@ -478,3 +478,23 @@ def test_the_payload_tab_carries_the_payload_dropdown_and_the_replay():
     assert "e_memo_shadow" in P and "e_memo_obs" not in P
     assert "not shipped since 2026-09-05" in P and "S.memo.dest = 'store'" in P
     assert "regions rule behind the scene, kept in the Gate Payload" in PAGE
+
+
+def test_the_sndk_chart_claims_nothing_about_what_dealers_do():
+    """snkArrows put one triangle on the strongest cluster with a card reading
+    "Dealers buy the dips here — it holds price up" and its three siblings,
+    from an ASSUMED gamma sign. The reader's doctrine forbids the model that
+    claim (never say what dealers are doing, never say hedging damps or
+    amplifies) and docs/sndk-plan.md records it as measured absent on SNDK.
+    Removed 2026-09-10 with the phone's copies of the same four sentences.
+
+    The SPX map's MM-action arrows in gxPaint are a different book and are not
+    covered here."""
+    code = "\n".join(l.split("//")[0] for l in PAGE.splitlines()
+                     if not l.strip().startswith("//"))
+    assert "snkArrows" not in code, "the dealer-action arrows are back on the SNDK chart"
+    assert 'id="snk-arrows"' not in code
+    assert "Dealer action" not in PAGE, "the legend still explains a mark that no longer exists"
+    for claim in ("Dealers buy the dips here", "Dealers sell the rallies here",
+                  "Dealers must buy a break up", "Dealers must sell a break down"):
+        assert claim not in code, claim

@@ -10525,53 +10525,18 @@ function snkGaps(clusters, spot, step){
   if(below.length>=2&&(below[0].lo-below[1].hi)>4*st) out.push({side:'floor', target:below[1].peak});
   return out;
 }
-// ---- ported from the SPX map (07-29): the ARROW vocabulary. Three marks, one grammar —
-// dealer-action triangles at the bar tips, the gravity comet in the axis gutter, and the
-// air-pocket band. All PURE (string in / SVG string out, extractable by name for the jsc
-// drills), all honest-absent: no datum → no mark, never a fabricated direction. ----
-// snkArrows — the map's validated MM-ACTION rule, ported strike-for-strike onto this book:
-// jade (net +γ) BELOW spot → dealers BUY dips toward it (arrow UP, toward price = support);
-// jade ABOVE → they SELL rallies into it (a cap). Coral (net −γ) ABOVE spot → hedging BUYS
-// an upward break (accelerant, arrow UP); coral BELOW → it SELLS a downward one. Green points
-// TOWARD spot, red AWAY — identical formula to gxPaint's. Same hard gates so the lane never
-// grows an arrow forest: MEASURED bars only (never fabricate intent), ONE arrow (the single
-// strongest contiguous same-sign cluster), ≥5% of the whole |γ| field, and never within one
-// strike step of spot — the ATM singularity carries no direction. Assumed-sign caveat rides the tip.
-function snkArrows(A){
-  const {g, grid, spot, step, gMax, half, xZ, x0, lineEnd, yFor, yTop, yBot}=A;
-  if(!g||!(gMax>0)||spot==null||!isFinite(spot)||!Array.isArray(grid)) return '';
-  const n=grid.length;
-  let total=0; for(let j=0;j<n;j++) if(g.has[j]) total+=Math.abs(g.v[j]);
-  if(!(total>0)) return '';
-  const cl=[]; let run=null;
-  for(let j=0;j<n;j++){
-    const v=g.has[j]?g.v[j]:0;
-    if(!v){ run=null; continue; }
-    const s=v>=0;
-    if(run&&run.s===s&&j===run.lastJ+1){ run.lastJ=j; run.M+=Math.abs(v); if(Math.abs(v)>Math.abs(g.v[run.pk])) run.pk=j; }
-    else { run={s, lastJ:j, M:Math.abs(v), pk:j}; cl.push(run); }
-  }
-  const best=cl.filter(r=>r.M>=0.05*total&&Math.abs(grid[r.pk]-spot)>step).sort((a,b)=>b.M-a.M)[0];
-  if(!best) return '';
-  const k=grid[best.pk], v=g.v[best.pk], green=best.s, up=green?(k<spot):(k>spot), t=5.5;
-  const w=Math.max(1.5, Math.abs(v)/gMax*half);
-  const x=Math.max(x0+7, Math.min(lineEnd-7, v>=0?xZ+w+8:xZ-w-8));   // never poke the gutter/axis labels
-  const yc=Math.max(yTop+6, Math.min(yBot-6, yFor(k)));
-  const d=up?`M${x.toFixed(1)},${(yc-t).toFixed(1)} L${(x-t).toFixed(1)},${(yc+t).toFixed(1)} L${(x+t).toFixed(1)},${(yc+t).toFixed(1)} Z`
-            :`M${(x-t).toFixed(1)},${(yc-t).toFixed(1)} L${(x+t).toFixed(1)},${(yc-t).toFixed(1)} L${x.toFixed(1)},${(yc+t).toFixed(1)} Z`;
-  const eng=green
-    ? (up?'Dealers buy the dips here — it holds price up.'
-        :'Dealers sell the rallies here — it caps the move.')
-    : (up?'Dealers must buy a break up — moves speed up.'
-        :'Dealers must sell a break down — moves speed up.');
-  const share=Math.round(100*best.M/total);
-  const tip=`${eng}`
-    +`¦k:${up?'pushes up at':'pushes down at'}=${snkUsd(k,0)}`
-    +`¦f:${share}% of the book’s gamma sits here`
-    +`¦v:their hedge — the buy/sell sign is assumed`;
-  return `<path d="${d}" style="fill:var(--ink);paint-order:stroke;stroke:var(--surface-2);stroke-width:2;stroke-linejoin:round"`
-    +` data-name="Dealer action ${up?'▲':'▼'}" data-tip="${tip}"/>`;
-}
+// ---- ported from the SPX map (07-29): the ARROW vocabulary. Two marks, one grammar — the
+// gravity comet in the axis gutter and the air-pocket band. All PURE (string in / SVG string
+// out, extractable by name for the jsc drills), all honest-absent: no datum → no mark, never a
+// fabricated direction. ----
+// DEALER-ACTION ARROWS REMOVED (2026-09-10). snkArrows put one triangle on the strongest
+// cluster with a card reading "Dealers buy the dips here — it holds price up", "Dealers sell
+// the rallies here — it caps the move", or the two "moves speed up" cases, from the book's
+// assumed gamma sign. That is the claim the reader's doctrine forbids the model to make
+// (never say what dealers are doing, never say hedging damps or amplifies), and
+// docs/sndk-plan.md records it as measured absent on SNDK. The phone dropped its copies of
+// the same four sentences in the same change; this screen was the last place saying them.
+// The SPX map's own MM-action arrows in gxPaint are a different book and were left alone.
 // snkTagPlain — the doctrine tags say WHAT a strike is ("Put Wall 1", "Net Call Vol"); this
 // says what that MEANS to someone who has never traded an option. One short sentence each, no
 // jargon, no numbers (the card carries those). Unknown tag → its own name, never a blank row.
@@ -10972,7 +10937,6 @@ function snkLegend(){
     +row({st:'border-top-color:var(--iris)'}, '<b>Price</b> path &amp; spot')
     +row({cls:'gl',st:'color:var(--l-grav)',g:'⇕'}, '<b>Comet</b> — where the read points; a grey dot = no call')
     +row({cls:'gl',st:'color:var(--l-grav)',g:'▤'}, '<b>Magnet band</b> — two strikes too close to pick between')
-    +row({cls:'gl',st:'color:var(--ink)',g:'▲▼'}, '<b>Dealer action</b> — which way hedging pushes there')
     +row({cls:'gl',st:'color:var(--jade)',g:'━○'}, '<b>Whisker</b> — traded there today, this expiry · jade calls, coral puts, ring = unusually heavy')
     +row({cls:'gl',st:'color:var(--iris)',g:'⇣'}, '<b>Thin zone</b> — little in the way, price travels fast')
     +row({cls:'gl',st:'color:var(--ink-faint)',g:'┄'}, '<b>Faded mark</b> — this level has not moved in hours')
@@ -13420,9 +13384,6 @@ const SNDK = {
       if(FOLD&&FOLD.inFold(grid[j])) continue;
       hits+=`<rect class="snk-hit" data-j="${j}" x="${x0}" y="${(yFor(grid[j])-rowH/2).toFixed(1)}" width="${Math.max(0,w-x0).toFixed(1)}" height="${Math.max(rowH,8).toFixed(1)}" fill="transparent"/>`;
     }
-    // ---- MM-ACTION ARROWS (07-29, ported): one triangle on the strongest cluster saying which
-    // way dealer hedging pushes there. Reads the LIVE quote (side-of-spot is what sets direction).
-    const arrows=snkArrows({ g, grid, spot:spPull, step, gMax, half, xZ, x0, lineEnd, yFor, yTop:padT, yBot:h-padB });
     // ---- NET DEX gutter (left of the axis, Tanuki order) — flow-signed leads when
     // carried (the only live sign); |naive| magnitude is the one-hue fallback ----
     let dex='';
@@ -14237,7 +14198,7 @@ const SNDK = {
       <g id="snk-bars">${bars}</g>
       <g id="snk-hits">${hits}</g>
       <g id="snk-whisk">${whisk.svg}</g>
-      <g class="decl">${lvls}</g>${spotG}${comet}<g id="snk-arrows">${arrows}</g><g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g id="snk-oi">${oiSVG}</g><g>${tagStrip}</g><g id="snk-calls" class="decl">${callSVG}</g><g>${tags}</g>
+      <g class="decl">${lvls}</g>${spotG}${comet}<g id="snk-mband" class="decl">${magBand.lbl}</g><g class="decl">${emLbl}</g><g class="decl">${gapLbl}</g><g id="snk-flow" class="decl">${flowTags}</g><g class="decl">${walls}</g><g class="decl">${edges}</g><g id="snk-oi">${oiSVG}</g><g>${tagStrip}</g><g id="snk-calls" class="decl">${callSVG}</g><g>${tags}</g>
       <g id="snk-mirai" class="decl">${mirai.svg}</g>
       <!-- .decl ON A LEASH (08-24): these captions still join the shared cross-painter pass —
            it is the only thing that sees real rendered geometry — but every one of them now

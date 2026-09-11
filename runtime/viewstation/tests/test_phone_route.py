@@ -261,7 +261,8 @@ def test_model_output_never_touches_innerhtml():
 
 def test_no_dealer_behaviour_is_claimed_anywhere_on_the_phone():
     """The four sentences were copied byte-for-byte from the desktop's snkArrows,
-    and the copying was never the problem — the sentences were. "Dealers sell
+    and the copying was never the problem — the sentences were. (The desktop's
+    arrows were removed the same day; test_page_contract pins that side.) "Dealers sell
     the rallies here — it caps the move" states what hedging does to price, on a
     name where no damping or amplifying effect was found, and it was keyed on a
     sign that is "unknown" on 9.0% of scans. Removed 2026-09-10, with the rule

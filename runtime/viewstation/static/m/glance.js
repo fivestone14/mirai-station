@@ -18,7 +18,9 @@
  *      This law used to read "no English is authored here; every sentence is
  *      copied from the desktop's snkArrows". The copying was faithful and the
  *      sentences were the problem: "Dealers sell the rallies here — it caps
- *      the move" and "walls hold / walls give way" were removed 2026-09-10.
+ *      the move" and "walls hold / walls give way" were removed 2026-09-10,
+ *      and the desktop's snkArrows went the same day, so neither screen says
+ *      them now.
  *   3. No Greek reaches the surface. Distances leave this file in dollars. The
  *      ruler is stated once, in English, by the page.
  */
