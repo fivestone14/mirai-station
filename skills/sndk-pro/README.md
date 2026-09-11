@@ -212,6 +212,16 @@ carry the call's bill (`cost`, and `review_cost` when the small reviewer
 runs); that changes nothing the model sees. One era for every payload change
 made before the 2026-09-11 open.
 
+The strike table's `change` cell now measures the contracts-share difference
+over the strikes BOTH books carry (review item #3). The window is redrawn
+around price every book, so the old cell subtracted two shares with different
+denominators and pointed the wrong way on 15-18% of cells. **Note to self:**
+because of this, today's `contracts_share_pp` minus `change[0]` no longer
+equals the earlier share exactly (median gap 0.03 points). A header label
+saying so (`"change_share_basis": "strikes both books carry"`) was considered
+and deliberately left out, since the model never does that subtraction. Add it
+if someone reading the raw JSON gets confused.
+
 ### strikes-1 (2026-09-05) — the Strikes Payload
 
 The model no longer reads the scene described below. It reads the **Strikes

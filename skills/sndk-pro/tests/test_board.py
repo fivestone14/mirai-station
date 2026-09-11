@@ -161,6 +161,20 @@ def test_change_cell_and_its_basis_on_the_header():
     assert isinstance(ch, list) and ch[1] == 200
 
 
+def test_a_heavy_strike_entering_the_window_does_not_fake_a_fall_elsewhere():
+    """2026-09-10: price rises, the window is redrawn, and a heavy strike
+    (1400) comes into reach. Nothing traded at 1300, so its change must read
+    zero. Measured over each book's own window it read as a fall, because
+    1400's weight joined only the later denominator."""
+    oi = {1150.0: (30, 15), 1200.0: (240, 120), 1250.0: (180, 90), 1300.0: (540, 270),
+          1350.0: (120, 60), 1400.0: (2000, 1000)}
+    rows = (mkrows(n=4, start=T0 - timedelta(minutes=14), spot=1240.0, oi=oi) +
+            mkrows(n=4, start=T0 - timedelta(minutes=6), spot=1290.0, oi=oi))
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    assert 1400.0 in v2["strikes"]["entered_since_reference"] or 1400.0 in recs(v2)
+    assert recs(v2)[1300.0]["change"][0] == 0.0
+
+
 def test_first_read_falls_back_to_five_books_and_no_earlier_book_is_stated():
     rows = mkrows(n=8)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))

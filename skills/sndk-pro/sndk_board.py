@@ -477,7 +477,22 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         rsurf = surfaces(ref_row)
         rrs, rsg, _, _ = _ruler(ref_row)
         rwin = _window(rsurf, rrs, rsg)
-        ref = {"surf": rsurf, "shares": _shares(rsurf, rwin), "win": rwin, "ruler": rrs}
+        # 2026-09-10: THE CHANGE CELL'S SHARE IS MEASURED OVER THE STRIKES BOTH
+        # BOOKS CARRY. The window is redrawn around price every book, so the
+        # old cell subtracted two shares with different denominators: a heavy
+        # strike entering the window shrank every other strike's share with no
+        # trade behind it. Replayed over 32 sessions the old cell pointed the
+        # wrong way on 15-18% of cells, 25% on the three heaviest strikes. The
+        # regions rule already worked this way; this was the one place the
+        # decision had not been carried over. Consequence worth knowing:
+        # today's share minus the change no longer equals the earlier share
+        # exactly (median gap 0.03pp). A header label saying so
+        # (`change_share_basis`) was considered and left out on purpose: the
+        # model never does that subtraction. Add it if a person reading the raw
+        # JSON needs it.
+        common = sorted(set(window) & set(rwin))
+        ref = {"surf": rsurf, "win": rwin, "ruler": rrs,
+               "shares_now": _shares(surf, common), "shares_then": _shares(rsurf, common)}
     books, first_book_dropped = series_books(rows)
     day_volume = sum(SR._fin(b.get("volume")) or 0.0 for b in bars_now)
 
@@ -531,10 +546,10 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
             rec["change"] = None
         elif k in ref["surf"]["contracts"] or k in ref["surf"]["vol_side"]:
             rvc, rvp = ref["surf"]["vol_side"].get(k, (None, None))
-            rshare = ref["shares"].get(k, {}).get("contracts_share_pp")
+            s_now = ref["shares_now"].get(k, {}).get("contracts_share_pp")
+            s_then = ref["shares_then"].get(k, {}).get("contracts_share_pp")
             rec["change"] = [
-                (round(shares[k]["contracts_share_pp"] - rshare, 2)
-                 if shares[k]["contracts_share_pp"] is not None and rshare is not None else None),
+                (round(s_now - s_then, 2) if s_now is not None and s_then is not None else None),
                 (int(vc - rvc) if vc is not None and rvc is not None else None),
                 (int(vp - rvp) if vp is not None and rvp is not None else None)]
         else:
@@ -981,7 +996,7 @@ THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contract
 - `dealer_gamma_sign`, `dealer_gamma_share_pp`: the sign at the strike and its share of the surface's absolute total. Report a sign as "positive under the assumed convention"; never as a behaviour. Bounce, break, punch through, how violent: all forecast, all deleted.
 - `rank_by_contracts`, `rank_by_volume_today`, `rank_by_dealer_gamma`: three separate rankings over every strike in reach, 1 is heaviest. A rank column that is missing was not measured this scan.
 - `on_list_for_min`: how long the strike has been on this list. Hours means standing structure, not news.
-- `change`: this book against an earlier one, three differences in the order `strikes.change_columns` gives: contracts share, calls traded, puts traded. The header says once which earlier book (`change_basis`: the book at your last read, or five books back on the session's first read) and how many books lie between (`change_books_compared`); `change_unavailable` says why there is none, including `no_new_book_since_last_read`, which means the book has not refreshed since you last spoke and nothing on it can have changed. The string `strike_not_in_earlier_book` means the strike was outside the earlier window, a fact about the window.
+- `change`: this book against an earlier one, three differences in the order `strikes.change_columns` gives: contracts share (measured over the strikes both books carry, so the window sliding as price moves does not read as trading), calls traded, puts traded. The header says once which earlier book (`change_basis`: the book at your last read, or five books back on the session's first read) and how many books lie between (`change_books_compared`); `change_unavailable` says why there is none, including `no_new_book_since_last_read`, which means the book has not refreshed since you last spoke and nothing on it can have changed. The string `strike_not_in_earlier_book` means the strike was outside the earlier window, a fact about the window.
 - `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book was left out because it carried the prior session's volume.
 - `touched_in_books`: which of those intervals had a wick at the strike, by index; absent when none did.
 - `next_week`: the next weekly expiry's open interest and volume at the same strike, in the order `strikes.next_week_columns` gives. Open interest in either book is last night's; volume in either is today's. On expiry day the front list dies at the close and the next week's book is Monday's list. `not_recorded` on the header means the diary had not yet kept the next book that day.
