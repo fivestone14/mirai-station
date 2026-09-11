@@ -191,6 +191,46 @@ def test_strikes_mode_end_to_end(board_state, monkeypatch):
     assert len(lg) == 1 and lg[0]["era"] == "strikes-3" and lg[0]["magnet"] == 1300.0
 
 
+def test_a_call_keeps_the_list_it_showed_and_the_next_read_uses_it(board_state, monkeypatch):
+    """Review item #7. The row that spends a call keeps `strikes_sent`, the
+    strikes the model was shown — never in the prompt itself — and the next
+    read measures what joined and left against exactly that list. An errored
+    call keeps it too: the next frame is anchored on that row regardless."""
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    seen = {}
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        seen["prompt"] = prompt
+        return _v2_reply(), None, 1.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    import sndk_board
+    assert SR.read_once(now=NOW) == 0
+    row = _rows(reads)[-1]
+    shown = json.loads(seen["prompt"].split("SCENE:\n", 1)[1])["strikes"]
+    assert row["strikes_sent"] == sndk_board.listed_strikes(shown) and row["strikes_sent"]
+    assert "strikes_sent" not in seen["prompt"]
+    assert "left_since_reference" not in shown          # the first read had no earlier list
+
+    # the next read, an hour on: the last call showed 9999, which is not listed now
+    later = NOW + timedelta(minutes=SR.HEARTBEAT_MIN + 1)
+    dp = tmp / "sndk_reversion" / f"{day}.jsonl"
+    dp.write_text(dp.read_text() + json.dumps(_diary_row_with_board(later, spot=1204.0)) + "\n")
+    rs = _rows(reads)
+    rs[-1]["strikes_sent"] = row["strikes_sent"] + [9999.0]
+    reads.write_text("\n".join(json.dumps(r) for r in rs) + "\n")
+
+    def broken(prompt, model, timeout=None, doctrine=None):
+        seen["prompt"] = prompt
+        return None, "timeout", 100.0, None
+    monkeypatch.setattr(SR, "call_the_model", broken)
+    assert SR.read_once(now=later) == 0
+    nxt = json.loads(seen["prompt"].split("SCENE:\n", 1)[1])["strikes"]
+    assert nxt["left_since_reference"] == [9999.0]
+    errored = _rows(reads)[-1]
+    assert errored["error"] == "timeout" and errored["strikes_sent"]
+
+
 def test_board_failure_falls_back_to_the_scene_payload(board_state, monkeypatch, capsys):
     tmp, reads, day = board_state
     monkeypatch.setenv("SNDK_PAYLOAD", "strikes")

@@ -226,6 +226,21 @@ calls a day (busiest 29, under the 30 cap), almost all of the extra after
 lunch; box breaks fall 32 → 28 and the ones back inside within five minutes
 12 → 4. If the model is called too often, raise `MOVE_MINUTES` and replay.
 
+**Joined and left are measured against what the model was shown (review
+item #7).** `strikes.entered_since_reference` and `left_since_reference`
+used to diff today's list against one rebuilt from the reference book: a
+different scan row with gamma re-priced at another spot, sometimes another
+sigma or a later book, and without the strikes listed only because price
+crossed them. On 09-11 the rebuilt list was wrong on 6 of 13 reads —
+strikes the model had drawn vanished unreported and departures were
+announced for strikes it never saw. Every read that spends a call now keeps
+`strikes_sent` on its row (never in the prompt; kept on an errored call
+too), and the next read diffs against exactly that. With no kept list — the
+day's first read, a row from before this change, a call that showed no
+table — both fields are absent rather than guessed. They no longer depend
+on a new book having arrived. The share-change cells still compare book
+against book (`common`, item #3).
+
 ### strikes-2 (2026-09-10) — volatility in percent
 
 Both implied-vol figures in the Strikes Payload (`scale.implied_vol_atm`,

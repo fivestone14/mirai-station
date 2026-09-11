@@ -260,7 +260,10 @@ gate and the obs-3 frame measure from), `scans`, `reading` (+ `reading_ts`,
 `scan_age_min`, `paused`, `wall_s/model/error`, `cost` (and `review_cost`
 when the small reviewer ran: the call's tokens read from and written to the
 cache, split 1-hour/5-minute, thinking and output tokens, and the dollar
-figure, from 2026-09-10) — these are the *output*
+figure, from 2026-09-10), `strikes_sent` (the strikes the Strikes Payload's
+table showed the model on that call, from 2026-09-11 — the next read's
+`entered_since_reference`/`left_since_reference` are measured against it,
+and are absent when it was not kept) — these are the *output*
 surface (chart + training store), not model input. Rows written before obs-3
 (2026-09-01) also carry `arrow` (dir/state/since/run/fading/caution/layers/
 ghost) and `spoke`; those are history — Lane A is deleted and nothing writes

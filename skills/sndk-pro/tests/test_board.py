@@ -170,9 +170,62 @@ def test_a_heavy_strike_entering_the_window_does_not_fake_a_fall_elsewhere():
           1350.0: (120, 60), 1400.0: (2000, 1000)}
     rows = (mkrows(n=4, start=T0 - timedelta(minutes=14), spot=1240.0, oi=oi) +
             mkrows(n=4, start=T0 - timedelta(minutes=6), spot=1290.0, oi=oi))
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    shown = _shown_at(rows, 3)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30),
+                             strikes_sent_before=shown)
     assert 1400.0 in v2["strikes"]["entered_since_reference"] or 1400.0 in recs(v2)
     assert recs(v2)[1300.0]["change"][0] == 0.0
+
+
+def _shown_at(rows, i):
+    """The strike list a read at rows[i] would have shown the model — what the
+    read row keeps as `strikes_sent` (review item #7)."""
+    v2, _ = B.build_scene_v2(rows[i], rows[:i + 1], SR._ts(rows[i]), None, None, flat_bars(30))
+    return B.listed_strikes(v2["strikes"])
+
+
+def test_arrivals_and_departures_are_measured_against_what_the_model_was_shown():
+    """Review item #7. The list the model saw last time is KEPT, not rebuilt
+    from an earlier book: a rebuild missed strikes listed only because price
+    crossed them (silent departures) and invented departures for strikes the
+    model never saw. On 09-11 it was wrong on 6 of 13 reads."""
+    rows = mkrows(n=8)
+    shown_now = B.listed_strikes(B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]),
+                                                  flat_bars(30))[0]["strikes"])
+    # last time the model saw 1450 (say it was listed because price crossed it)
+    # and had not yet seen the last strike on today's list
+    sent = shown_now[:-1] + [1450.0]
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30),
+                             strikes_sent_before=sent)
+    assert v2["strikes"]["left_since_reference"] == [1450.0]
+    assert v2["strikes"]["entered_since_reference"] == [shown_now[-1]]
+
+
+def test_with_no_kept_list_nothing_joined_or_left_is_claimed():
+    """The day's first read, a row written before the list was kept, a call
+    that showed no table: the fields are absent — never null, never [], never
+    a reconstruction. And a list that did not change says nothing either."""
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    assert v2["strikes"]["change_basis"] == "last_read"          # a reference book exists...
+    assert "entered_since_reference" not in v2["strikes"]       # ...and still nothing is guessed
+    assert "left_since_reference" not in v2["strikes"]
+    same = B.listed_strikes(v2["strikes"])
+    again, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30),
+                                strikes_sent_before=same)
+    assert "entered_since_reference" not in again["strikes"]
+    assert "left_since_reference" not in again["strikes"]
+
+
+def test_the_list_is_compared_even_when_no_new_book_arrived():
+    """The book can be the same cached print while the list the model sees
+    changes around it (the table is re-priced at the live spot). The change
+    cells say no new book; the arrivals and departures still say what moved."""
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[-1]), flat_bars(30),
+                             strikes_sent_before=[1450.0])
+    assert v2["strikes"]["change_unavailable"] == "no_new_book_since_last_read"
+    assert v2["strikes"]["left_since_reference"] == [1450.0]
 
 
 def test_first_read_falls_back_to_five_books_and_no_earlier_book_is_stated():
@@ -192,7 +245,8 @@ def test_a_strike_missing_from_the_earlier_book_says_so():
         gv = r["gex_views"]
         for key in ("mass_by_strike", "net_by_strike", "oi_side_by_strike", "vol_side_by_strike"):
             gv[key] = [x for x in gv[key] if x[0] != 1400.0]
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30),
+                             strikes_sent_before=_shown_at(rows, 3))
     assert recs(v2)[1400.0]["change"] == "strike_not_in_earlier_book"
     assert v2["strikes"]["entered_since_reference"] == [1400.0]
 

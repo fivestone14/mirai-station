@@ -3975,7 +3975,9 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
             scene_v2, _ = board.build_scene_v2(
                 row, rows, scene_now, since_last_read=_frame,
                 last_read_ts=(_ts(last_call) if last_call else None),
-                bars=minute_bars(day), v1=scene, clusters_then=_clusters_then)
+                bars=minute_bars(day), v1=scene, clusters_then=_clusters_then,
+                # the strike list the model was shown at that read (item #7)
+                strikes_sent_before=(last_call or {}).get("strikes_sent"))
             legacy_doc = board.legacy(row, rows, scene_now, v1=scene)
         except Exception as exc:
             print(f"sndk-read :: strikes payload failed, scene payload used: {exc!r}")
@@ -4096,6 +4098,15 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                   "SCENE:\n" + json.dumps(scene, default=str))
         obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL)
     out["wall_s"], out["model"] = wall, PINNED_MODEL
+    # review item #7: THE STRIKE LIST THE MODEL WAS JUST SHOWN, so the next read
+    # can say exactly which strikes joined or left it instead of rebuilding a
+    # guess from an earlier book. Never sent to the model. Kept on an errored
+    # call too: the next read's frame is anchored on this row whatever came
+    # back. Absent when no table was shown (the scene payload, a book too old).
+    if scene_v2 is not None:
+        _sent = board.listed_strikes(scene_v2.get("strikes"))
+        if _sent:
+            out["strikes_sent"] = _sent
     if LAST_COST:
         out["cost"] = LAST_COST
     if err or not isinstance(obj, dict):

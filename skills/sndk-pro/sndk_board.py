@@ -463,9 +463,11 @@ def _next_book_header(row: dict, surf: dict, now: datetime) -> dict:
 
 
 def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
-                  last_read_ts: Optional[datetime], crossed: Optional[list] = None) -> tuple:
+                  last_read_ts: Optional[datetime], crossed: Optional[list] = None,
+                  sent_before: Optional[list] = None) -> tuple:
     """(strikes, listed, ref_row, books). The table plus what the other blocks
-    need from it."""
+    need from it. `sent_before` is the strike list the model was shown at its
+    last read (the read row's `strikes_sent`), or None when none was kept."""
     ruler_spot, sig, spot, ruler_name = _ruler(row)
     surf = surfaces(row)
     window = _window(surf, ruler_spot, sig)
@@ -594,10 +596,21 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         "next_week_columns": (["oi_calls", "oi_puts", "vol_calls", "vol_puts"] if "next_week" in cols else None),
     }
     head.update(_next_book_header(row, surf, now))
-    if ref is not None:
-        prev_listed = set(select_strikes(ref["surf"], ref["win"], ref["ruler"])) if ref["win"] else set()
-        head["entered_since_reference"] = sorted(set(listed) - prev_listed) or None
-        head["left_since_reference"] = sorted(prev_listed - set(listed)) or None
+    # 2026-09-11, review item #7: WHAT JOINED AND WHAT LEFT is measured against
+    # the list the model was ACTUALLY SHOWN at its last read, which the read row
+    # now keeps. It used to be rebuilt from the reference book — a different
+    # scan row with gamma re-priced at a different spot, sometimes a different
+    # sigma or a later book, and never the strikes that were listed only because
+    # price had crossed them. Replayed over 09-08..09-11 the rebuilt list was
+    # wrong on 6 of 13 reads on 09-11 alone: strikes the model had drawn
+    # vanished unreported, and departures were announced for strikes it was
+    # never shown. With no kept list (the day's first read, a read before this
+    # change, a call that showed no table) both fields are absent: the model is
+    # told what it was shown, or nothing — never a reconstruction.
+    if sent_before is not None:
+        before = {v for k in sent_before if (v := SR._fin(k)) is not None}
+        head["entered_since_reference"] = sorted(set(listed) - before) or None
+        head["left_since_reference"] = sorted(before - set(listed)) or None
     # `absent` is the ONE place the doctrine tells a reader to look for a
     # missing column ("a field missing from `columns` ... `strikes.absent` says
     # why"). The bar sidecar going down drops six columns and used to say so
@@ -619,6 +632,13 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         head["rows"] = [{c: r.get(c) for c in cols if r.get(c) is not None} for r in rows_out]
     head = {k: v for k, v in head.items() if v is not None}
     return head, listed, ref_row, books
+
+
+def listed_strikes(strikes: Optional[dict]) -> list:
+    """The strikes a Strikes Payload's table listed, sorted — what the read row
+    keeps as `strikes_sent` (review item #7). [] when no table shipped."""
+    return sorted({v for r in rows_as_records(strikes)
+                   if (v := SR._fin(r.get("strike"))) is not None})
 
 
 def rows_as_records(strikes: Optional[dict]) -> list:
@@ -875,13 +895,16 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
                    last_read_ts: Optional[datetime] = None,
                    bars: Optional[list] = None,
                    v1: Optional[dict] = None,
-                   clusters_then: Optional[list] = None) -> tuple:
+                   clusters_then: Optional[list] = None,
+                   strikes_sent_before: Optional[list] = None) -> tuple:
     """(scene_v2, scene_v1). The kept blocks are the live builder's output with
     the labels stripped; the verdict blocks are dropped; `strikes`, `frames`,
     `between_frames` and `regions` are added. `bars` is the day's minute bars
     (clipped here), or None to read them off disk. `v1` is the live scene when
     the caller already built it. `clusters_then` is what the model drew at its
-    last read, so `new` and `resolved` have a reference."""
+    last read, so `new` and `resolved` have a reference. `strikes_sent_before`
+    is the strike list that read showed it, so arrivals and departures are
+    measured against what it saw (None when no list was kept)."""
     if v1 is None:
         band = SR.magnet_band(row)
         frozen = SR.frozen_fields(rows, now)
@@ -954,7 +977,8 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         strikes, listed, ref_row, books = None, [], None, []
         v2["strikes"] = {"unavailable": "book_too_old", "age_min": book_age, "ceiling_min": SR.MAX_BOOK_AGE_MIN}
     else:
-        strikes, listed, ref_row, books = strikes_block(row, rows, now, bars_now, last_read_ts, crossed)
+        strikes, listed, ref_row, books = strikes_block(row, rows, now, bars_now, last_read_ts, crossed,
+                                                        sent_before=strikes_sent_before)
     bf = between_frames_block(rows, bars_now, now, last_read_ts, sig)
     if isinstance(slr, dict):
         _strip_frame(slr, bf)
@@ -1062,7 +1086,7 @@ THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contract
 - `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book was left out because it carried the prior session's volume.
 - `touched_in_books`: which of those intervals had a wick at the strike, by index; absent when none did.
 - `next_week`: the next weekly expiry's open interest and volume at the same strike, in the order `strikes.next_week_columns` gives. Open interest in either book is last night's; volume in either is today's. On expiry day the front list dies at the close and the next week's book is Monday's list. `not_recorded` on the header means the diary had not yet kept the next book that day.
-The header also carries `strikes_in_window` (how many were in reach), `contracts_above_spot_pp` and `dealer_gamma_above_spot_pp`, `nearest_above` and `nearest_below` (the nearest listed strike each side of the book's price, or absent when the side is empty; `no_strikes_above` and `no_strikes_below` say so outright), and `entered_since_reference` and `left_since_reference` (strikes that joined or left the list since the earlier book).
+The header also carries `strikes_in_window` (how many were in reach), `contracts_above_spot_pp` and `dealer_gamma_above_spot_pp`, `nearest_above` and `nearest_below` (the nearest listed strike each side of the book's price, or absent when the side is empty; `no_strikes_above` and `no_strikes_below` say so outright), and `entered_since_reference` and `left_since_reference` (strikes that joined or left the list since your last read, measured against the list you were shown then; both are absent when there is no earlier list).
 
 THE FRAMES. `frames` is the shared time axis behind every series: `book_times` once, `interval_min` between them, `gaps` naming any long interval, `reaches_last_read` and `books_since_last_read` saying whether the series covers the stretch since you last spoke, and `price_path_sigma_from_now`: where price sat at each book, in today's sigma, zero at the price the book was measured at. It lets you say when volume arrived relative to where price was: "most of 1750's volume arrived while price sat below 1720". It does not let you say what price did about it. An entry over a long interval is one lump for the whole stretch: name the minutes and call its shape unknown. With fewer than six books in the series, say nothing about the shape of any series.
 
@@ -1584,7 +1608,8 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
             interrupts += 1
         frame = SR.frame_since_last_read(row, rows_i, last_call, wake, False, now,
                                          prior_rows_today=i > 0, bars=bars)
-        v2, v1 = build_scene_v2(row, rows_i, now, frame, last_read_ts, bars, clusters_then=clusters_then)
+        v2, v1 = build_scene_v2(row, rows_i, now, frame, last_read_ts, bars, clusters_then=clusters_then,
+                                strikes_sent_before=(last_call or {}).get("strikes_sent"))
         cmp_ = compare_scenes(v1, v2)
         lg = legacy(row, rows_i, now, v1=v1)
         hhmm = now.strftime("%H:%M")
@@ -1626,7 +1651,8 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
         out.append(rec)
         last_call = {"ts": row["ts"], "spot": row.get("spot"),
                      "magnet_band": SR.magnet_band(row),
-                     "gate": SR.state_for_next_wake(row, v1)}
+                     "gate": SR.state_for_next_wake(row, v1),
+                     **({"strikes_sent": s} if (s := listed_strikes(v2.get("strikes"))) else {})}
         last_read_ts = now
     return out
 
