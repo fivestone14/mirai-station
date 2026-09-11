@@ -11474,22 +11474,24 @@ function snkMiraiSVG(m, rd, P){
   }
 
   // late-day charm note — MEASURED (front-book charm peak), worded as a place, never a
-  // promise (N11: no direction may be spoken off net charm)
+  // promise (N11: no direction may be spoken off net charm). "Decay tilt" and "a place the
+  // pull points to" until 2026-09-10: a tilt and a pull are both a push, so it is named for
+  // what it is — the strike where time decay shifts the most option exposure.
   const cw=(P.flows&&P.flows.charm_wall!=null&&isFinite(P.flows.charm_wall))?+P.flows.charm_wall:null;
   if(P.late&&cw!=null&&P.band&&cw>P.band.pLow&&cw<P.band.pHigh){
-    const cTip=`As options lose value into the close, hedging pressure eases toward this strike.`
-      +`¦k:charm peak=${snkUsd(cw,0)}¦f:a place the pull points to — never a promise, and no up/down on its own`;
+    const cTip=`The strike where time decay shifts the most option exposure: as the day runs down, the options here change their share-equivalent size more than at any other strike.`
+      +`¦k:decay peak=${snkUsd(cw,0)}¦f:a place, not a forecast — and no up/down on its own`;
     // P.msgs (08-23) — the chart's airspace rails. This is the ONE caption in this column that
     // is not anchored to the arrow it sits beside: it names a ROW and nothing else, so where
     // there is airspace to hold it, it goes out with the wall names and stops thickening a
     // gutter that already carries the EM legs, the zone words and mirai's own voice. Absent
     // (every other caller, and the drills) it prints exactly where it always has.
     if(Array.isArray(P.msgs)){
-      P.msgs.push({ y:yFor(cw), hue:'var(--lantern)', text:'⌛ decay tilt', name:'Decay tilt', tip:cTip,
+      P.msgs.push({ y:yFor(cw), hue:'var(--lantern)', text:'⌛ decay peak', name:'Decay peak', tip:cTip,
                     fs:snkNum(P.fsZone,9), em:0.6, mono:true, wt:600, op:'.8' });
     }else{
       const y=dodge(yFor(cw));
-      out.push(`<text x="${(x0+7).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${snkNum(P.fsZone,9)}" font-weight="600" font-family="var(--mono)" style="fill:var(--lantern);opacity:.7;${halo};letter-spacing:.08em" data-name="Decay tilt" data-tip="${cTip}">⌛ decay tilt</text>`);
+      out.push(`<text x="${(x0+7).toFixed(1)}" y="${(y+3*r).toFixed(1)}" font-size="${snkNum(P.fsZone,9)}" font-weight="600" font-family="var(--mono)" style="fill:var(--lantern);opacity:.7;${halo};letter-spacing:.08em" data-name="Decay peak" data-tip="${cTip}">⌛ decay peak</text>`);
       avoid.push(y);
     }
   }
@@ -11816,12 +11818,12 @@ function openSndkInfoModal(){
         <div class="snki-cap">Each number points at its key entry below · every mark also explains itself on hover</div>
         <div class="snki-grid">${rows}</div>
         <div class="snki-note"><b>Two things the map cannot tell you.</b> Whiskers show what traded and on
-          which side — never whether it was bought or sold. And nothing here forecasts: the comet is gravity
-          the book is already exerting, and the model is asked what stands out, never where price is going.</div>
+          which side — never whether it was bought or sold. And nothing here forecasts: the comet is only the
+          distance from price to the magnet, and the model is asked what stands out, never where price is going.</div>
         <div class="snki-note"><b>In the side panel (not on the schematic).</b> <b>Expected Move</b> says how its
           up/down split was measured — “IV-skew” (protection priced richer on that side) or “realized-tape” (how
-          today’s trading skewed). <b>Dealer Delta</b> may carry “decay tilt → $X”: a place the pull eases toward
-          as options decay — not a promise, and no up/down on its own. <b>Data layers</b> chips: lit = measured
+          today’s trading skewed). <b>Dealer Delta</b> may carry “decay peak $X”: the strike where time decay
+          shifts the most option exposure — a place, not a forecast, and no up/down on its own. <b>Data layers</b> chips: lit = measured
           this scan; dim = no data, never zero.</div>
       </div>
     </div>`;
@@ -14457,7 +14459,7 @@ const SNDK = {
       <div class="snk-tile"><span class="k" title="Net dealer delta (Δ · DEX). The naive net's sign is fixed by the book's assumed-sign formula — positive on every recorded row — so the level's sign is never news; only the CHANGE can be.">Dealer Delta</span><b>${(dTot!=null&&isFinite(dTot)&&dTot<0?'−':'')+snkMoney(dTot)}</b>
         <i>${(dD30!=null)?`<span class="${dD30>=0?'j':'c'}">${dD30>=0?'▲':'▼'} ${snkMoney(Math.abs(dD30))}</span> last 30m · `:''}sign fixed by the formula — watch the change${
           (m.flows&&m.flows.charm_wall!=null&&isFinite(m.flows.charm_wall))
-            ?` · decay tilt → ${snkUsd(+m.flows.charm_wall,0)}`:''}</i></div>
+            ?` · decay peak ${snkUsd(+m.flows.charm_wall,0)}`:''}</i></div>
       <div class="snk-tile regime"><span class="k">Regime</span><b class="${mood}${regFz?' fz':''}">${regPlain}</b>
         <i>${regSub}${regFz?` · unchanged ${snkDur(regFz.for_min)}`:''}</i></div>
       <div class="snk-tile em"><span class="k" title="The √time-decayed expected move for the REST of the session (em_points decays toward the close — at 3:56pm ±$5 is the remaining reach, not the day's range)">Expected Move · rest of day</span><b>${emB}</b><i>${emI}</i></div>

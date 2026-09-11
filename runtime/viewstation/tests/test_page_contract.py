@@ -521,7 +521,9 @@ def test_the_sndk_chart_says_where_the_weight_is_not_what_price_does():
                  "fakeouts live in here", "little holds price", "price travels fast",
                  "Calmer above it, faster below it.", "where price is pulled",
                  "above: dealers dampen", "often settles late", "stalls a rally",
-                 "cushions a drop", "Below · faster", "Above · calmer"):
+                 "cushions a drop", "Below · faster", "Above · calmer",
+                 "decay tilt", "a place the pull points to", "a place the pull eases toward",
+                 "hedging pressure eases toward", "the comet is gravity"):
         assert gone not in code, f"retired wording is back on the SNDK chart: {gone}"
     # and what replaced the two most-read pieces is there
     assert "txt:'call side ↑'" in code and "txt:'put side ↓'" in code
