@@ -103,8 +103,8 @@ BANNED_V2 = ("magnet", "magnets", "magnetic", "momentum", "building toward", "bu
 _ET = SR._ET
 
 COLUMNS_BASE = ["strike", "side", "dist_sigma"]
-COLUMNS_TOUCH = ["touched_today", "first_touch", "last_touch", "bars_touched_today",
-                 "shares_traded_at_strike_pp"]
+COLUMNS_TOUCH = ["touched_today", "first_touch", "last_touch", "minutes_touched_today",
+                 "visits_today", "passed_through_today", "shares_traded_at_strike_pp"]
 COLUMNS_BOOK = ["oi_calls", "oi_puts", "vol_calls", "vol_puts", "contracts_share_pp"]
 COLUMNS_GAMMA = ["dealer_gamma_sign", "dealer_gamma_share_pp"]
 COLUMNS_RANK_C = ["rank_by_contracts"]
@@ -298,17 +298,61 @@ def _wick_includes(b: dict, k: float) -> bool:
     return lo is not None and hi is not None and lo <= k <= hi
 
 
+def _bar_side(b: dict, k: float) -> int:
+    """Which side of k a minute that did NOT touch it sat on: +1 above, -1 below."""
+    lo = SR._fin(b.get("low"))
+    return 1 if lo is not None and lo > k else -1
+
+
+def _visits(bars_now: list, k: float) -> tuple:
+    """(visits, passed_through) at k over the completed minute bars.
+
+    review item #10: a VISIT is a run of minutes whose low-to-high range held
+    the strike, and it ends when a whole minute passes without touching it. A
+    visit PASSED THROUGH when price came in from one side and left on the
+    other — the minute before it and the minute after it sit on opposite sides.
+    The day's first visit enters from the side the day opened on. A visit still
+    going on has not left yet, so it counts as a visit and not as passed
+    through, and passed_through can never exceed visits."""
+    visits = through = 0
+    entry = None        # the side the current visit came in from, None outside one
+    prev = None         # the side of the last minute that did not touch k
+    inside = False
+    for b in bars_now:
+        if _wick_includes(b, k):
+            if not inside:
+                visits += 1
+                inside = True
+                if prev is not None:
+                    entry = prev
+                else:
+                    o = SR._fin(b.get("open"))
+                    entry = (1 if o > k else -1 if o < k else None) if o is not None else None
+        else:
+            side = _bar_side(b, k)
+            if inside and entry is not None and side == -entry:
+                through += 1
+            inside = False
+            prev = side
+    return visits, through
+
+
 def touch_facts(bars_now: list, k: float, day_volume: float) -> dict:
     """What price did at the strike today, from the completed minute bars:
-    whether a wick held it, the first and last minute that did, how many bars
-    did, and the share of the day's traded shares that printed in those bars.
-    Every time is the bar's own timestamp."""
+    whether a minute's range held it, the first and last minute that did, how
+    many minutes did, in how many separate visits, how many of those went
+    through it, and the share of the day's traded shares that printed in those
+    minutes. Every time is the bar's own timestamp. The minutes are minutes and
+    not times: 43 of them were 10 separate visits on 09-08 (item #10)."""
     hits = [b for b in bars_now if _wick_includes(b, k)]
     vol = sum(SR._fin(b.get("volume")) or 0.0 for b in hits)
+    visits, through = _visits(bars_now, k)
     return {"touched_today": bool(hits),
             "first_touch": _hhmm(_bar_ts(hits[0])) if hits else None,
             "last_touch": _hhmm(_bar_ts(hits[-1])) if hits else None,
-            "bars_touched_today": len(hits),
+            "minutes_touched_today": len(hits),
+            "visits_today": visits,
+            "passed_through_today": through,
             "shares_traded_at_strike_pp": (round(vol / day_volume * 100, 1)
                                            if day_volume > 0 else None)}
 
@@ -1275,7 +1319,7 @@ THE BOARD IS AN AUCTION HOUSE, AND A SHARED DOCUMENT. Read it that way:
 
 THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contracts share, heaviest first, and `strikes.columns` names every field a record can carry. A field missing from a record was not measured for that strike; a field missing from `columns` was not measured for any strike this scan, and `strikes.absent` says why. The fields:
 - `strike`, `side`, `dist_sigma`: where the STRIKE sits relative to the live price, `price.live_spot`, in sigma (a normal day's move). "above" means the strike is above the live price; `at` is within a twentieth of a sigma of it and is on neither side. Every above and below in the table and its header is measured from that one price, so `side`, `dist_sigma`, `nearest_above`, `nearest_below` and the above-price shares always agree with each other and with `price.live_spot`.
-- `touched_today`, `first_touch`, `last_touch`, `bars_touched_today`: whether a completed minute bar's wick held that strike today, the first and last minute that did, and how many bars did. A strike price sat on for forty bars, a strike it brushed once, and a strike it has not reached are three different things; say which.
+- `touched_today`, `first_touch`, `last_touch`, `minutes_touched_today`, `visits_today`, `passed_through_today`: from the completed minute bars. A minute TOUCHED a strike when its low-to-high range included it. `minutes_touched_today` counts those minutes: minutes, not times, and not one stay. `visits_today` counts separate visits; a visit is a run of touching minutes and ends when a whole minute passes without touching the strike. `passed_through_today` is how many of those visits came in from one side and left on the other; the rest turned back the way they came, and a visit still going on is in neither count. Read the three together. 43 minutes in 10 visits, 9 passed through, is price coming back to the strike again and again and going through it: say "price has come back to 1775 ten times today and gone through it nine", never "sat at 1775 for 43 minutes" and never "touched it 43 times". A stay is one visit: 12 minutes in 1 visit is "price sat at 1775 for twelve minutes". When you give a number of times, it is `visits_today`.
 - `shares_traded_at_strike_pp`: the share of the day's stock volume that printed in bars whose range held the strike. NOT where the shares traded. A minute's whole volume is credited to every strike its high-low range covered, so one bar counts several times and these sum past 100 across the listed strikes — median 104, once 400. Read it as "the stock was trading across this strike in minutes carrying this much of the day's volume", and never as a share of anything.
 - `oi_calls`, `oi_puts`: open interest as of last night's close. "1700 holds the most open interest as of last night's close" is a correct sentence; "open interest is building at 1700" is false by construction.
 - `vol_calls`, `vol_puts`: contracts traded today so far, cumulative.
@@ -1316,7 +1360,7 @@ SAY THE ONE THING WORTH SAYING. `read` is three sentences at the outside, sixty 
 The standing board on both sides is a real duty and you pay it in `sides`, which is where the screen draws it from. Do not pay it twice. The prose is for the news, and four strikes in a read is already too many.
 Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears; a number you computed is not on the board and the sentence carrying it is deleted rather than corrected. If you want to say a level is far, name the two prices and let the reader see it.
 
-YOU ARE LOOKING DOWN AT THE WHOLE DAY, NOT THROUGH A TWENTY-MINUTE WINDOW. The scene carries the session and not merely the gap since you last spoke: `price.session_high` and `session_low`, `price.vs_prior_close_pct`, `context.ranges.opening.status` (whether the first half hour's box held, and the clock when it broke), `context.ranges.breaks_today.count`, `context.ranges.in_force.formed_over` (how long the box that stands now has stood), `context.ranges.prior_sessions.today_traded_beyond_it`, and per strike `on_list_for_min`, `first_touch`, `last_touch`, `bars_touched_today` and `vol_added_in_series`. Every one of those is a fact about the DAY. Measured over the last 71 readings, 77 percent framed everything against the previous read and 8 percent against the session — someone watching all day was handed twenty-minute weather reports and never once the day.
+YOU ARE LOOKING DOWN AT THE WHOLE DAY, NOT THROUGH A TWENTY-MINUTE WINDOW. The scene carries the session and not merely the gap since you last spoke: `price.session_high` and `session_low`, `price.vs_prior_close_pct`, `context.ranges.opening.status` (whether the first half hour's box held, and the clock when it broke), `context.ranges.breaks_today.count`, `context.ranges.in_force.formed_over` (how long the box that stands now has stood), `context.ranges.prior_sessions.today_traded_beyond_it`, and per strike `on_list_for_min`, `first_touch`, `last_touch`, `visits_today` and `vol_added_in_series`. Every one of those is a fact about the DAY. Measured over the last 71 readings, 77 percent framed everything against the previous read and 8 percent against the session — someone watching all day was handed twenty-minute weather reports and never once the day.
 
 SO SAY WHAT THE DAY HAS BEEN DOING, AND JOIN THE FACTS RATHER THAN LISTING THEM. A strike that has been on the list 214 minutes and led volume for most of them is a different thing from one that arrived at 15:40, and the scene tells you which. Three box breaks before noon is a day with a shape. Price above the whole of the last five sessions is where today sits, not a footnote. Two facts joined by what they have in common are worth more than four facts in a row, and the join is the part only something watching the whole day can supply.
 
@@ -1413,6 +1457,36 @@ _SIDE_REV_RE = __import__("re").compile(
     r"(?!\s+(?:" + _SIDE_FILL + r"\s+){0,4}(?:above|below)\b)",
     __import__("re").I)
 _UNCHANGED_RE = __import__("re").compile(r"\b(unchanged|nothing (?:has )?changed|no change|the board is the same)\b", __import__("re").I)
+# review item #10: the table counts touched MINUTES, separate VISITS and visits
+# that PASSED THROUGH. On 09-09 09:32 the model read two touched minutes (one
+# visit, 09:30-09:31) as "touched twice". Two readings are now checked against
+# the visits: a number of times price touched or came back to a strike must be
+# `visits_today`, and a stay ("sat at 1775 for 43 minutes") must be one visit.
+_COUNT_WORDS = {"once": 1, "twice": 2, "thrice": 3, "one": 1, "two": 2, "three": 3, "four": 4,
+                "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+                "eleven": 11, "twelve": 12}
+_COUNT = r"(once|twice|thrice|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+times)"
+_TOUCH_VERB = r"(?:touched|touching|visited|revisited|tagged|reached|came\s+back\s+to|come\s+back\s+to|returned\s+to)"
+_TOUCH_COUNT_RE = __import__("re").compile(
+    r"(\d{3,4}(?:\.\d+)?)\b[^.;\d]{0,40}?\b" + _TOUCH_VERB + r"\b[^.;\d]{0,20}?\b" + _COUNT + r"\b",
+    __import__("re").I)
+_TOUCH_COUNT_REV_RE = __import__("re").compile(
+    r"\b" + _TOUCH_VERB + r"\s+(\d{3,4}(?:\.\d+)?)\b[^.;\d]{0,20}?\b" + _COUNT + r"\b",
+    __import__("re").I)
+_STAY_VERB = r"(?:sat|sitting|sits|stayed|staying|parked|lingered|lingering|camped)"
+_STAY_RE = __import__("re").compile(
+    r"(\d{3,4}(?:\.\d+)?)\b[^.;]{0,30}?\b" + _STAY_VERB + r"\b[^.;]{0,30}?\bfor\s+\S+\s+(?:minutes|mins|bars)\b",
+    __import__("re").I)
+_STAY_REV_RE = __import__("re").compile(
+    r"\b" + _STAY_VERB + r"\s+(?:at|on|near|around)\s+(\d{3,4}(?:\.\d+)?)\b[^.;]{0,30}?\bfor\s+\S+\s+(?:minutes|mins|bars)\b",
+    __import__("re").I)
+
+
+def _count_of(word: str) -> Optional[int]:
+    w = word.lower().split()[0]
+    return int(w) if w.isdigit() else _COUNT_WORDS.get(w)
+
+
 _TOUCH_CLOCK_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,60}?\b(?:touch|touched|touching|wick|wicks|tagged|brushed)\b[^.;]{0,40}?\b(\d\d:\d\d)\b", __import__("re").I)
 _MOST_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,50}?\b(?:took|added|holds|has|had|leads on|leads|with)\b[^.;]{0,30}?\bthe most (?:added |new )?(volume|contracts|open interest|gamma)\b", __import__("re").I)
 POINTS_MAX_V2 = 4
@@ -1472,6 +1546,25 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
                 continue
             if (word == "above" and num < spot) or (word == "below" and num > spot):
                 out.append(f"strike_side_contradicts_spot:{num:g}:{word}")
+    for rx in (_TOUCH_COUNT_RE, _TOUCH_COUNT_REV_RE):
+        for m in rx.finditer(text):
+            try:
+                k = float(m.group(1))
+            except ValueError:
+                continue
+            said = _count_of(m.group(2))
+            visits = recs[k].get("visits_today") if k in recs else None
+            if isinstance(visits, int) and said is not None and said != visits:
+                out.append(f"touch_count_not_visits:{k:g}:{said}")
+    for rx in (_STAY_RE, _STAY_REV_RE):
+        for m in rx.finditer(text):
+            try:
+                k = float(m.group(1))
+            except ValueError:
+                continue
+            visits = recs[k].get("visits_today") if k in recs else None
+            if isinstance(visits, int) and visits > 1:
+                out.append(f"stay_over_several_visits:{k:g}:{visits}")
     for m in _TOUCH_CLOCK_RE.finditer(text):
         try:
             k = float(m.group(1))

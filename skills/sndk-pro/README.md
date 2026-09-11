@@ -278,6 +278,21 @@ so the nearest strikes each side skip it, exactly as the checker reads
 sides. The book's price still draws the window, and the regions rule still
 measures each book from its own price.
 
+**Minutes, visits and passes are three counts (review item #10).** The table
+counted the minutes whose range held a strike (`bars_touched_today`), and a
+minute count cannot tell a stay from ten quick passes: 1775 on 09-08 was 43
+minutes in 10 separate visits. The model read it as times — on 09-09 two
+minutes of one visit became "touched twice" — and the doctrine itself
+called forty bars "sat on". The row now carries `minutes_touched_today`
+(renamed), `visits_today` (a run of touching minutes, ended by a whole
+minute away) and `passed_through_today` (visits that came in one side and
+left the other; a visit still going on is in neither). The doctrine says how
+to read them together, with the sentence to write, and the checker holds
+the model to it: a number of times a strike was touched or revisited must
+be `visits_today`, and "sat at 1775 for N minutes" stands only on a single
+visit. Rechecked over the 42 recorded strikes-era readings, the guard
+catches the one misreading (09-09 09:32) and nothing true.
+
 ### strikes-2 (2026-09-10) — volatility in percent
 
 Both implied-vol figures in the Strikes Payload (`scale.implied_vol_atm`,

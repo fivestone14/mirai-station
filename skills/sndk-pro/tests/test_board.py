@@ -158,12 +158,69 @@ def test_a_missing_surface_drops_its_columns_and_is_named():
     assert "rank_by_dealer_gamma" not in s["columns"] and "dealer_gamma_sign" not in s["columns"]
 
 
+def test_minutes_visits_and_passes_are_three_different_counts():
+    """Review item #10. On 09-08 "touched for 43 minutes" was ten separate
+    visits and nine cut-throughs, and on 09-09 the model read two minutes of one
+    visit as "touched twice". A visit is a run of touching minutes; it passed
+    through when price came in one side and left the other; a visit still going
+    on is a visit and not yet a pass."""
+    below, above = (1285.0, 1295.0), (1305.0, 1315.0)
+    at = (1296.0, 1304.0)                                 # holds 1300
+    shape = ([below] * 3 + [at, at] + [above] * 2         # up through it: a pass
+             + [at] + [above] * 2                         # down to it and back up: turned back
+             + [at, at, at] + [below]                     # down through it: a pass
+             + [at])                                      # at it now: still visiting
+    bars = [bar(i, lo, hi) for i, (lo, hi) in enumerate(shape)]
+    r = B.touch_facts(bars, 1300.0, 0.0)
+    assert r["minutes_touched_today"] == 7
+    assert (r["visits_today"], r["passed_through_today"]) == (4, 2)
+    assert B.touch_facts([bar(i, *below) for i in range(5)], 1300.0, 0.0)["visits_today"] == 0
+
+
+def _read_about(text, recs_over):
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    st = v2["strikes"]
+    cols = st["columns"]
+    for i, r in enumerate(st["rows"]):
+        rec = dict(zip(cols, r)) if isinstance(r, list) else r
+        if rec["strike"] in recs_over:
+            rec.update(recs_over[rec["strike"]])
+            st["rows"][i] = [rec.get(c) for c in cols] if isinstance(r, list) else rec
+    reply = {"quiet": False, "read": text, "sides": {"above": {"heavy": None, "leads_on": []},
+                                                     "below": {"heavy": None, "leads_on": []}},
+             "clusters": [], "resolved": [], "points": [], "absent": []}
+    return B.check_reading_v2(reply, v2)
+
+
+def test_a_count_of_times_must_be_the_visits_and_a_stay_must_be_one_visit():
+    """The guard behind the doctrine: "touched twice" is checked against
+    visits_today, never against the minutes, and "sat at 1300 for 43 minutes"
+    stands only when those minutes were one visit."""
+    one_visit = {1300.0: {"minutes_touched_today": 2, "visits_today": 1, "passed_through_today": 0}}
+    bad = _read_about("1300 sits at the money, touched twice so far today.", one_visit)
+    assert bad.get("read") is None
+    assert any("touch_count_not_visits:1300:2" in d for d in bad["dropped_observations"])
+    ok = _read_about("1300 sits at the money, touched once so far today.", one_visit)
+    assert ok.get("read"), ok.get("dropped_observations")
+    many = {1300.0: {"minutes_touched_today": 43, "visits_today": 10, "passed_through_today": 9}}
+    stay = _read_about("Price sat at 1300 for 43 minutes this morning.", many)
+    assert any("stay_over_several_visits:1300:10" in d for d in stay["dropped_observations"])
+    right = _read_about("Price has come back to 1300 ten times today and gone through it nine.", many)
+    assert right.get("read"), right.get("dropped_observations")
+    single = {1300.0: {"minutes_touched_today": 12, "visits_today": 1, "passed_through_today": 0}}
+    assert _read_about("Price sat at 1300 for twelve minutes.", single).get("read")
+
+
 def test_touch_facts_come_off_the_wicks_and_their_times_off_the_bars():
     rows = mkrows(spot=1290.0)
     bars = flat_bars(20) + [bar(20, 1296.0, 1302.0, vol=5000.0), bar(21, 1297.0, 1301.0, vol=5000.0)] + [bar(i, 1285.0, 1295.0) for i in range(22, 29)]
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, bars)
     r = recs(v2)[1300.0]
-    assert r["touched_today"] is True and r["bars_touched_today"] == 2
+    assert r["touched_today"] is True and r["minutes_touched_today"] == 2
+    # two minutes back to back are ONE visit, and it came up from below and
+    # went back below: it turned back, it did not pass through
+    assert (r["visits_today"], r["passed_through_today"]) == (1, 0)
     assert r["first_touch"] == (OPEN_AT + timedelta(minutes=20)).strftime("%H:%M")
     assert r["last_touch"] == (OPEN_AT + timedelta(minutes=21)).strftime("%H:%M")
     assert r["shares_traded_at_strike_pp"] == round(10000 / (27 * 1000 + 10000) * 100, 1)
