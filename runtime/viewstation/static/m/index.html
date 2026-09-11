@@ -181,6 +181,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .reg-word:empty{display:none}
 .reg-gloss{font:400 13px/1.4 var(--sans);color:var(--i-mute);
            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reg-gloss:empty{display:none}
 .reg-ruler{flex:none;font:500 11px/1 var(--sans);letter-spacing:.05em;
            text-transform:uppercase;color:var(--i-faint)}
 
@@ -209,6 +210,9 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-vwap   {stroke:var(--rule-soft);stroke-width:1.25;stroke-dasharray:1 5}
 .p-wall   {stroke-linecap:butt}
 .p-wall.call{stroke:var(--call-mark)} .p-wall.put{stroke:var(--put-mark)}
+/* a wall price has already passed since the book was read: its weight stays,
+   its side's hue goes — see wallPassed in glance.js */
+.p-wall.passed{stroke:var(--rule-soft)}
 /* the magnet is a LONG DASH as well as amber. On a light ground hue alone is
    not enough to separate five 1-3px lines, and it is the worst channel for a
    red-green deficient reader. Position, dash and weight carry it redundantly. */
@@ -222,20 +226,20 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-chiptx {fill:var(--s);font:700 12px/1 var(--sans);text-anchor:end}
 .p-tie    {fill:none;stroke:var(--band-edge);stroke-width:.9}
 .p-bar    {fill-opacity:.9}
-.p-bar.call{fill:var(--call-mark)} .p-bar.put{fill:var(--put-mark)}
+.p-bar.call{fill:var(--call-mark)} .p-bar.put{fill:var(--put-mark)} .p-bar.passed{fill:var(--rule-soft)}
 .p-clip   {fill:var(--i-mute)}
 .p-diamond{fill:var(--mag-mark)}
 .p-tag    {font:700 12px/1 var(--sans);text-anchor:end;fill-opacity:.9}
 .p-tag.lead{fill-opacity:1}
 .p-tag.call{fill:var(--call-ink)} .p-tag.put{fill:var(--put-ink)}
-.p-tag.mag {fill:var(--mag-ink)}  .p-tag.vwap{fill:var(--i-mute)}
+.p-tag.mag {fill:var(--mag-ink)}  .p-tag.vwap{fill:var(--i-mute)}  .p-tag.passed{fill:var(--i-mute)}
 .p-lane    {font:500 10px/1 var(--sans);letter-spacing:.1em;fill:var(--i-faint);text-anchor:end}
 /* the halo punches the word through whatever it crosses; it strokes the CARD
    colour now, not the old dark ground */
 .p-word    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-mute);
             paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
 .p-word.dim{fill:var(--i-faint)}
-/* The marker the gate NAMES is heavier as well as darker. Both were 700 and the
+/* The markers the card NAMES are heavier as well as darker. Both were 700 and the
    only difference was fill — which makes the distinction contrast-only, and
    this file's own law (see the ink ramp) is that subordination is by SIZE or
    weight, never by contrast, because a low-contrast grey outdoors means gone. */
@@ -260,32 +264,98 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 /* a level's annotation shown where a sentence would be: not the model's voice */
 .rd-line.wordless{color:var(--on-mute)}
 
-/* ============ F. THE NEAREST LEVEL ============ */
-.g-lab{display:flex;align-items:baseline;gap:8px}
-.g-dir{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;
-       color:var(--i-faint);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.g-meas{margin-left:auto;font:500 11px/1.2 var(--sans);letter-spacing:.04em;
-        text-transform:uppercase;color:var(--i-mute);white-space:nowrap;flex:none}
-.g-head{display:flex;align-items:baseline;gap:12px;margin-top:11px;min-width:0}
-.g-k{flex:none;font:700 26px/1 var(--sans);letter-spacing:-.02em}
-.g-k.call{color:var(--call-ink)} .g-k.put{color:var(--put-ink)}
-.g-mech{flex:1 1 auto;min-width:0;font:400 13px/1.45 var(--sans);color:var(--i-body)}
-.g-load{display:grid;grid-template-columns:1fr auto;column-gap:10px;row-gap:6px;
-        align-items:center;margin-top:13px}
-.g-row{display:contents}
-.g-row[hidden]{display:none}
-.g-bar{position:relative;height:6px;border-radius:99px;background:var(--s2);overflow:hidden;
-       box-shadow:inset 0 1px 2px 0 rgba(58,48,32,.07)}
-/* NEUTRAL. Share-of-book is a magnitude, not a side, and colouring it would
-   assert a side the number does not carry. */
-.g-bar>i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:#3A4557;width:0}
-.g-bar.behind>i{opacity:.45}
-.g-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--s)}
-.g-val{font:500 11px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap}
-.g-val b{font-weight:700;color:var(--i-body)}
-.g-foot{margin-top:11px;font:400 13px/1.45 var(--sans);color:var(--i-mute)}
-.g-foot:empty{display:none}
-.gate.empty .g-head{margin-top:9px}
+/* ============ F. THE THREE LEVELS ============ */
+/* Both nearest walls and the strike with the most contracts, ordered by PRICE,
+   top first, with no direction word anywhere. Every number on it comes from one
+   book, and the only live input is the price that greys out a wall it has
+   already passed — so nothing on the card can contradict anything else on it.
+   See the note above paintLevels in page.js for what it replaced and why. */
+.levels{position:relative;-webkit-user-select:none;user-select:none;
+        -webkit-touch-callout:none;touch-action:manipulation}
+.levels:focus-visible{outline:2px solid var(--px-ink);outline-offset:3px}
+.lv-rows{display:flex;flex-direction:column;gap:15px;margin-top:14px}
+.lv{display:grid;grid-template-columns:minmax(76px,auto) 1fr 46px;column-gap:12px;row-gap:6px;
+    align-items:center}
+/* the label WRAPS rather than truncates: "Put wall · Most contracts · Heaviest"
+   is the longest it gets, and an ellipsis there would eat the tag that matters */
+.lv-side{grid-column:1 / -1;min-width:0;font:700 11px/1.35 var(--sans);letter-spacing:.12em;
+         text-transform:uppercase;color:var(--i-faint)}
+.lv-k{font:700 26px/1 var(--sans);letter-spacing:-.02em;color:var(--i)}
+.lv.call .lv-k{color:var(--call-ink)} .lv.put .lv-k{color:var(--put-ink)}
+.lv.mag  .lv-k{color:var(--mag-ink)}
+/* passed: the weight is still true, the side no longer is */
+.lv.passed .lv-k{color:var(--i-mute)}
+.lv.passed .lv-bar>i{opacity:.45}
+/* the bar is NEUTRAL: share-of-board is a magnitude, and the strike beside it
+   already says which side. Colouring the bar would say it twice. */
+.lv-bar{position:relative;height:8px;border-radius:99px;background:var(--s2);overflow:hidden;
+        box-shadow:inset 0 1px 2px rgba(58,48,32,.07)}
+.lv-bar>i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:#3A4557}
+.lv-bar.none{visibility:hidden}
+.lv-v{text-align:right;font:700 13px/1 var(--sans);color:var(--i-body)}
+/* the count sits where a bar would, and is plainly not one */
+.lv-n{grid-column:2 / -1;font:500 13px/1.3 var(--sans);color:var(--i-body)}
+.lv-none{grid-column:1 / -1;font:500 15px/1.3 var(--sans);color:var(--i-mute)}
+.lv-cap{margin-top:14px;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
+
+/* The hold has to be discoverable — nothing about a card says "hold me" — so
+   the caption says it, and the card answers the hold while it is happening: a
+   bar fills along its foot for the whole 450ms. The sheet opens on the LIFT;
+   see the note above the gesture in page.js for why never before it. */
+.hold-hint{display:inline-flex;align-items:center;gap:6px;margin-top:10px;
+           font:700 10px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+           color:var(--i-faint)}
+.hold-hint i{width:14px;height:14px;border-radius:50%;border:1.5px solid currentColor;
+             display:inline-flex;align-items:center;justify-content:center;font-style:normal;
+             font-size:9px;font-weight:700;letter-spacing:0}
+.levels::after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:3px;
+               border-radius:3px 3px 0 0;background:var(--i-mute);
+               transform:scaleX(0);transform-origin:left;opacity:0}
+.levels.holding::after{opacity:.55;transform:scaleX(1);transition:transform .45s linear,opacity .1s}
+/* armed: the hold is complete and lifting will open the sheet — the bar goes
+   solid, and the phone ticks, so the reader knows to let go */
+.levels.armed::after{opacity:1;background:var(--i)}
+
+/* ---- the sheet: what the three levels mean ---- */
+.scrim{position:fixed;inset:0;z-index:30;background:rgba(22,26,23,.40);
+       opacity:0;pointer-events:none;touch-action:none;transition:opacity .2s ease-out}
+/* Not selectable. A long press on the sheet's text started Android's text
+   selection, and while a selection is live a drag moves its handles instead of
+   scrolling — explanatory text has nothing worth copying at that price.
+   84vh first for a WebView that predates dvh, which would otherwise drop the
+   ceiling and bottom-anchor a 1,300px sheet with its top off the screen. */
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:84vh;max-height:84dvh;overflow-y:auto;
+       overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+       background:var(--s);border-radius:24px 24px 0 0;
+       padding:10px 20px calc(env(safe-area-inset-bottom) + 22px);
+       box-shadow:0 -12px 40px -12px rgba(22,26,23,.35);
+       transform:translateY(102%);visibility:hidden;
+       transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s linear .28s}
+body.sheet-open .scrim{opacity:1;pointer-events:auto}
+body.sheet-open .sheet{transform:none;visibility:visible;
+                       transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s}
+.sh-grab{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:0 auto 16px}
+.sh-h{margin-bottom:14px;font:700 11px/1.2 var(--sans);letter-spacing:.14em;
+      text-transform:uppercase;color:var(--i-faint)}
+.sh-item{padding:13px 0;border-top:1px solid var(--s2)}
+.sh-item:first-of-type{border-top:0;padding-top:0}
+.sh-item[hidden]{display:none}
+.sh-term{display:flex;align-items:baseline;gap:9px;margin-bottom:6px}
+.sh-term b{font:700 15px/1.2 var(--sans);color:var(--i)}
+.sh-term span{font:700 13px/1 var(--sans)}
+.sh-term .call{color:var(--call-ink)} .sh-term .mag{color:var(--mag-ink)} .sh-term .put{color:var(--put-ink)}
+.sh-item p{font:400 14px/1.55 var(--sans);color:var(--i-body)}
+.sh-item p + p{margin-top:8px}
+.sh-caveat{margin-top:6px;padding:13px 14px;border-radius:14px;background:var(--g);
+           font:400 14px/1.55 var(--sans);color:var(--i-body)}
+.sh-caveat b{font-weight:700;color:var(--i)}
+.sh-close{display:block;width:100%;margin-top:18px;height:var(--tap-min);border:0;border-radius:14px;
+          background:var(--fill);color:var(--on-body);font:700 14px/1 var(--sans)}
+.sh-close:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){
+  .sheet,body.sheet-open .sheet{transition:none}
+  .levels.holding::after{transition:opacity .1s}
+}
 
 /* ============ G. FOOT ============ */
 .foot{padding:2px 4px 0;font:400 11px/1.4 var(--sans);color:var(--i-faint)}
@@ -416,24 +486,13 @@ body.failed > *:not(.fail):not(.tabs){display:none}
   </div>
 </section>
 
-<section class="card gate" id="gate">
-  <div class="g-lab">
-    <span class="g-dir"  id="gDir"></span>
-    <span class="g-meas" id="gMeas"></span>
-  </div>
-  <div class="g-head">
-    <span class="g-k"    id="gStrike"></span>
-    <span class="g-mech" id="gMech"></span>
-  </div>
-  <div class="g-load">
-    <div class="g-row" id="gRowA">
-      <div class="g-bar"><i id="gBarA"></i></div><div class="g-val" id="gValA"></div>
-    </div>
-    <div class="g-row" id="gRowB">
-      <div class="g-bar behind"><i id="gBarB"></i></div><div class="g-val" id="gValB"></div>
-    </div>
-  </div>
-  <div class="g-foot" id="gFoot"></div>
+<section class="card levels" id="levels" data-hold tabindex="0" role="button"
+         aria-haspopup="dialog" aria-controls="sheet"
+         aria-label="The three levels. Press and hold for what each one means.">
+  <div class="lab">The three levels<span class="r" id="lvWhen"></span></div>
+  <div class="lv-rows" id="lvRows"></div>
+  <p class="lv-cap">Walls: the bar is the wall&#39;s share of all the gamma on the board, full at 30%. A heavier wall draws a thicker line on the chart. Most contracts is a head count of calls and puts at one strike.</p>
+  <div class="hold-hint"><i>i</i>Hold, then let go, for what these mean</div>
 </section>
 
 <div class="foot" id="foot"></div>
@@ -444,6 +503,41 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 </div>
 
 <div class="load" id="load"><i></i>Reading the board</div>
+
+<div class="scrim" data-sheet-close></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-hidden="true"
+     aria-labelledby="shTitle">
+  <div class="sh-grab"></div>
+  <div class="sh-h" id="shTitle">The three levels</div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>Call wall</b><span class="call" id="shCall"></span></div>
+    <p>The nearest call-heavy pile of options above price, in this week&#39;s contracts. The bar is its share of all the gamma on the board, built from last night&#39;s open positions. Gamma measures how sharply an option responds when the stock moves.</p>
+    <p>A wall shows where positions sit. It is not a level price is known to react to. The label only ever means &ldquo;above price&rdquo;, so once price passes it the card greys it out, and the next scan moves the name to the next pile up. A wall marked heaviest carries more gamma than any other pile on the board.</p>
+  </div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>Put wall</b><span class="put" id="shPut"></span></div>
+    <p>The same thing below price, for put-heavy piles. A call-heavy pile below price is not a put wall and does not show on the card.</p>
+  </div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>Most contracts</b><span class="mag" id="shMost"></span></div>
+    <p>The strike near price with the most option contracts on it, calls and puts counted together: last night&#39;s open positions plus today&#39;s trades. &ldquo;Near&rdquo; means within about one and a half typical days&#39; moves of price<span id="shWindow"></span>. It is the amber line on the chart.</p>
+    <p>The textbook says dealer hedging holds price close to a strike like this. That depends on who owns the options, which the station can&#39;t see, and SNDK&#39;s record hasn&#39;t shown price settling at it, late in the day or on expiry Fridays.</p>
+    <p>The walls and this strike measure different things. The walls are gamma piles sorted by distance. This is a head count of contracts.</p>
+  </div>
+
+  <div class="sh-item" id="shLight" hidden>
+    <div class="sh-term"><b>Why it can look light</b></div>
+    <p>This strike leads on contracts. The bars measure gamma from last night&#39;s positions, with calls and puts netted against each other and today&#39;s trades left out, so a strike where lots of calls and puts traded today can lead the count and barely register on the bars.</p>
+    <p id="shLightNow"></p>
+  </div>
+
+  <div class="sh-caveat"><b>A location, not a forecast.</b> These show where the options are, not where price is going. Whether SNDK&#39;s price tends to move toward any of them hasn&#39;t been established, so no number is given.</div>
+
+  <button class="sh-close" id="shClose" type="button" data-sheet-close>Got it</button>
+</div>
 
 <nav class="tabs">
   <span class="tab on" data-press>

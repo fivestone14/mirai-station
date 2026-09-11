@@ -10580,11 +10580,17 @@ function snkArrows(A){
 // differently at rank 1 than further down the list — "the biggest" vs "another heavy one" —
 // so those carry two forms; everything else is a single argmax and says "more than anywhere".
 const SNK_TAG_ENG={
-  'Put Wall':{top:'The biggest stack of downside bets on the board. Price tends to slow down or bounce when it reaches here.',
-              more:'Another heavy stack of downside bets. Price often slows as it passes through here.'},
-  'Call Wall':{top:'The biggest stack of upside bets on the board. Rallies tend to stall as they reach here.',
-               more:'Another heavy stack of upside bets. Rallies often lose steam around here.'},
-  'Abs Gamma':{top:'The largest option position at any price, counting both sides. Whatever happens here moves the whole board.',
+  // 2026-09-10: where the weight is, never what price does there. These said
+  // price "tends to slow down or bounce", rallies "stall", and the flip is where
+  // "moves get bigger and faster" — the effects docs/sndk-plan.md records as
+  // measured absent on SNDK ("Closed by measurement"), and the sentences the
+  // reader's own doctrine forbids the model to write. The phone dropped its
+  // copies of the same claims in the same change.
+  'Put Wall':{top:'The biggest stack of downside bets on the board. It marks where those positions sit, not a price the stock is known to react to.',
+              more:'Another heavy stack of downside bets.'},
+  'Call Wall':{top:'The biggest stack of upside bets on the board. It marks where those positions sit, not a price the stock is known to react to.',
+               more:'Another heavy stack of upside bets.'},
+  'Abs Gamma':{top:'The largest option position at any price, counting both sides.',
                more:'One of the largest option positions on the board, counting both sides.'},
   'Put OI':'More downside bets are being held here than at any other price.',
   'Call OI':'More upside bets are being held here than at any other price.',
@@ -10596,9 +10602,9 @@ const SNK_TAG_ENG={
   'Net Put Vol':'Of everything traded today, the trading here leaned to the downside the most.',
   'Pos Net Delta':'Positioning here leans to the upside more than at any other price.',
   'Neg Net Delta':'Positioning here leans to the downside more than at any other price.',
-  'Gamma Flip':'The tipping point. Above this price the market tends to calm down; below it, moves get bigger and faster.',
-  'Call Transition':'The top edge of the choppy zone around the tipping point — fakeouts live in here.',
-  'Put Transition':'The bottom edge of the choppy zone around the tipping point — fakeouts live in here.',
+  'Gamma Flip':'The price at which the board’s total gamma would change sign.',
+  'Call Transition':'The top edge of the band around the gamma flip.',
+  'Put Transition':'The bottom edge of the band around the gamma flip.',
 };
 // `bare` = the card's title already names this one, so drop the label and just say what it
 // means (no card should print the same word twice).
@@ -11661,7 +11667,7 @@ const _PL_NODES=[
    'The whole session comes back in one call, so a gap left by a stuck job or a dead machine is filled by the next run that succeeds.'],
 
   ['js',  'Jobs','job',     'Scanner · every 2 min', 'sndk_hunter.py → sndk_views.py',
-   'Turns the book into one snapshot — dealer exposure at each strike, the heaviest strike, the walls (the strikes with most weight above and below), the flip (where dealer hedging stops damping moves and starts amplifying them), the move the options imply for the day, and the day’s volume-weighted average price. Appends ONE row to the diary.',
+   'Turns the book into one snapshot — dealer exposure at each strike, the strike with the most contracts near price (open interest plus today’s volume, calls and puts together), the walls (the heaviest piles of gamma above and below), the flip (the price at which the board’s total gamma would change sign), the move the options imply for the day, and the day’s volume-weighted average price. Appends ONE row to the diary.',
    'launchd com.mirai-station.sndk'],
   ['jb',  'Jobs','job',     'Bar sidecar · every 1 min','sndk_bars.py',
    'Appends every COMPLETED minute not already on disk. A minute still running is a partial and never lands; --day backfills a past session.',
@@ -11675,7 +11681,7 @@ const _PL_NODES=[
    'The last option-chain pull, good for 240 seconds. Every second scan re-prices this cache against the live quote instead of pulling the chain again — which is why its arrow runs back up.'],
 
   ['r1',  'Reader','step',  '1 · Wake gate',         'should_wake()',
-   'Is this scan worth a model call? The day’s first look; price ran 0.20 of the day’s implied move; it crossed a wall or the flip as those stood at the last reading; the heaviest strike or the flip’s sign changed and stayed changed across two book pulls; implied volatility moved 3 points against a five-book median; the flip itself moved half an implied move; or an hour passed. Ten minutes minimum between calls, 30 a day at most.'],
+   'Is this scan worth a model call? The day’s first look; price ran 0.20 of the day’s implied move; it crossed a wall or the flip as those stood at the last reading; the most-contracts strike or the flip’s sign changed and stayed changed across two book pulls; implied volatility moved 3 points against a five-book median; the flip itself moved half an implied move; or an hour passed. Ten minutes minimum between calls, 30 a day at most.'],
   ['r2',  'Reader','step',  '2 · Strikes Payload',   'sndk_board.py · build_scene_v2()',
    'The packet the model reads: all facts, no verdicts. Price and clocks, the units everything is measured in, and the board itself as a table — every strike in reach with its open interest, today’s volume, contracts share, gamma sign and share, three separate ranks, what price did at it today, and twelve books of contracts added behind it; the rule’s regions (sndk_regions.py); what happened between frames; and what changed since the model’s own last look. No magnet, no wall, no regime word.'],
   ['r2l', 'Reader','step',  '2 · Scene Payload (legacy)', 'sndk_read.build_scene()',
@@ -11698,10 +11704,11 @@ const _PL_NODES=[
   ['ow',  'Delivery','sink','Dashboard',             'runtime/viewstation/',
    'Chart, drawers, the reading card, the Payload tab and its Side view. It REBUILDS both packets through the reader’s own code rather than reading a saved copy — which is why its arrows come off the records as well as the read row.'],
   ['op',  'Delivery','sink','Phone · voice · pager','static/m/ · mirai-voice · sndk_deadman.py',
-   'The glance page shows the one-line read, the voice desk quotes it as an observation, and the dead-man pages the phone when the scanner goes quiet (a silent reader is not yet watched).',
+   'The glance page shows the latest reading and a chart drawn from the minute bars, and under it the three levels — the nearest call and put walls with their share of the board’s gamma, and the strike with the most contracts as a count. Those come from the diary row through the payload route (snapshot.py adds the count, which the scene does not carry, and never sends it to a model); the live quote every 5 seconds greys out any wall price has already passed. The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet (a silent reader is not yet watched).',
    'launchd com.mirai-station.sndk-deadman · every 5 min'],
 ];
-// from, to, and 'back' for a return path. Checked against the code 09-04: an
+// from, to, and 'back' for a return path. Checked against the code 09-04, and
+// the phone's two reads of the bars and the live quote added 09-10: an
 // edge that is not in the code is worse than a missing one, because it is
 // drawn as fact.
 const _PL_EDGES=[
@@ -11711,7 +11718,7 @@ const _PL_EDGES=[
   ['r2l','r1'],['r2l','r2'],['r1','r2'],['r2','r3'],['r3','r4'],
   ['r4','od'],['r4','om'],['r2l','om'],['r2l','og'],['r2b','os'],
   ['sd','ow'],['sb','ow'],['od','ow'],
-  ['od','op'],['sd','op'],
+  ['od','op'],['sd','op'],['sb','op'],['q','op'],
 ];
 const _PL_STAGE_DOC={
   'Sources':"Feeds — what arrives from outside, and the only things here that can fail slowly.",

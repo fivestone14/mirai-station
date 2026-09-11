@@ -6,9 +6,19 @@
  *
  * THREE LAWS THIS FILE ENFORCES
  *   1. Honest-absent. No datum yields no value, never a zero and never a guess.
- *   2. No English is authored here. Every sentence the phone shows is copied
- *      byte-for-byte from the desktop (snkArrows, envWords) so the two screens
- *      can never describe one board in two voices.
+ *   2. Where the weight is, never what price will do about it. That is the
+ *      station's own rule for the model (sndk_read.py's doctrine: never say
+ *      what dealers are doing, never say hedging holds or speeds a move), and
+ *      docs/sndk-plan.md "Closed by measurement" records why — on SNDK no
+ *      damping or amplifying effect was found, weeklies show no pin, and a
+ *      wall is relabelled on every crossing on record. A screen that says what
+ *      the model is forbidden to say teaches the reader the opposite of the
+ *      finding.
+ *
+ *      This law used to read "no English is authored here; every sentence is
+ *      copied from the desktop's snkArrows". The copying was faithful and the
+ *      sentences were the problem: "Dealers sell the rallies here — it caps
+ *      the move" and "walls hold / walls give way" were removed 2026-09-10.
  *   3. No Greek reaches the surface. Distances leave this file in dollars. The
  *      ruler is stated once, in English, by the page.
  */
@@ -33,124 +43,130 @@ function gMinutes(m){
   return r? h+'h '+r+'m' : h+'h';
 }
 
-/* ---- the environment, in two words ------------------------------------ */
+/* ---- the environment, in a word --------------------------------------- */
 
 function envParts(regime){
-  // THE strings, in one place. envWords joins them for a single-line caller;
-  // the phone's regime row needs them apart, for two elements. Before this they
-  // were written out twice with a comment asking the next reader to keep them
-  // byte-identical, which is a promise a comment cannot keep.
+  // The regime word only. The gloss under it used to read "walls hold" or
+  // "walls give way" off the gamma sign, which is a claim that hedging damps
+  // or speeds a move — the one sentence the model is forbidden to write, and
+  // measured absent on SNDK. The sign was also the literal string "unknown" on
+  // 490 of 5,423 scans (9.0%) and on every other scan it rested on an assumed
+  // dealer convention. Nothing on this screen reads it any more.
   const word = regime ? regime.regime_label : null;   // sr-7: regime.word -> regime_label
-  const g = regime ? gammaIsLong(regime) : null;
-  return {
-    word: word ? String(word) : '',
-    lean: g == null ? null : (g ? 'walls hold' : 'walls give way'),
-    unmeasured: 'gamma sign not measured',
-  };
+  return {word: word ? String(word) : ''};
 }
 
-function envWords(regime){
-  if(!regime) return null;
-  const p = envParts(regime);
-  if(p.word && p.lean) return p.word + ' · ' + p.lean;
-  return p.word || p.lean;
+/* ---- the three levels -------------------------------------------------- */
+
+// ONE full scale for every weight on the screen: the card's bars, the chart's
+// rail bars and the chart's line thickness. A per-scan maximum would make the
+// biggest wall full every single scan and destroy comparison between days, so
+// the scale is fixed and chosen from the tape.
+//
+// 30, not 20. Measured over 15,653 wall observations since 07-27 the share of
+// the book runs p50 9.4%, p90 25.6%, p95 33.1%, and the last 8 sessions run
+// heavier (p50 12.6%, p90 28.1%). At 20 a full bar was 15.5% of all walls and
+// 27.1% of recent ones — a quarter of the levels drew identically at the cap,
+// which is the comparison the scale exists to make. At 30 the cap takes 6.4%
+// (8.1% recently), and the clip is still marked where it happens.
+const FULL_SHARE = 30;
+
+function shareBarPct(share){
+  // The card's bar, in percent of its track. No datum: no bar and no track,
+  // because an empty track reads as zero.
+  if(share==null||!isFinite(share)) return null;
+  return Math.max(2, Math.min(100, share/FULL_SHARE*100));
 }
 
-function gammaIsLong(regime){
-  // Recognised tokens only; everything else is null.
+function wallStroke(share){
+  // Heavier draws thicker, continuously: 1.2px for a wall that barely clears
+  // the cluster floor, 7.6px at FULL_SHARE and above. Linear on purpose — the
+  // card prints the exact number, so the line only has to rank, and a curve
+  // that exaggerated small differences would rank things that are level. Two
+  // walls a point apart draw alike, which is true: they weigh alike.
+  if(share==null||!isFinite(share)) return 1.8;   // a default, never a claim
+  return Math.round((1.2 + Math.min(share, FULL_SHARE)/FULL_SHARE*6.4)*100)/100;
+}
+
+function wallPassed(side, strike, price){
+  // Has price, AS SHOWN, gone past this wall since the book was read?
   //
-  // This returned FALSE for 'unknown' until 2026-08-24, and that is not a bug
-  // of degree. gamma_sign is literally the string 'unknown' on 241 of 3,393
-  // recorded rows (7.1%), and on every one of them the header said "walls give
-  // way" and the card claimed a dealer direction. A confident claim, in the
-  // largest words on the screen, from a field whose value is the word unknown.
-  if(!regime) return null;
-  const s=regime.gamma_sign;
-  if(typeof s==='number') return isFinite(s) ? s>0 : null;
-  if(s==='positive'||s==='long'||s==='+') return true;
-  if(s==='negative'||s==='short'||s==='-') return false;
-  return null;
+  // walls_ladder files a wall against the book's spot, up to a couple of
+  // minutes old, while the price on screen repaints every 5s. Replayed over 8
+  // sessions, price stood beyond a wall the card still showed on 2.7% of
+  // minutes (5.8% on 09-10). The wall is relabelled at the next scan — on
+  // every crossing on record — so until then the honest thing is to say price
+  // has passed it and drop its colour: a call wall below price is not the call
+  // side any more, and this screen teaches green as the call side.
+  const k=_fin(strike), p=_fin(price);
+  if(k==null||p==null) return false;
+  return side==='call' ? p>k : side==='put' ? p<k : false;
 }
 
-/* ---- what happens at a wall ------------------------------------------- */
-
-function wallBehaviour(regime, strike, spot){
-  // snkArrows' four cases, unchanged and unreworded. `up` there is
-  // green?(k<spot):(k>spot) — a positive-gamma level below price holds it up,
-  // the same level above caps it, and a negative-gamma level does the opposite
-  // on both sides because the hedge runs WITH the move instead of against it.
-  const green=gammaIsLong(regime);
-  if(green==null||strike==null||spot==null||!isFinite(strike)||!isFinite(spot)) return null;
-  const up = green ? (strike<spot) : (strike>spot);
-  const eng = green
-    ? (up ? 'Dealers buy the dips here — it holds price up.'
-          : 'Dealers sell the rallies here — it caps the move.')
-    : (up ? 'Dealers must buy a break up — moves speed up.'
-          : 'Dealers must sell a break down — moves speed up.');
-  return {up, english: eng, kind: green ? 'brake' : 'accelerant'};
+function levelRows(walls, most, heaviest, price){
+  // The card's rows: the nearest call wall, the strike with the most contracts,
+  // the nearest put wall — ORDERED BY PRICE, top first, and never by kind.
+  // The replay found the most-contracts strike above the call wall on 10.9% of
+  // scans and below the put wall on 1.4%; a fixed call/most/put order would
+  // draw those upside down. It is the same strike as a wall on 35.3%, and then
+  // the two share one row rather than printing one price twice.
+  //
+  // An absent wall is a ROW, never a gap and never a zero: the side flag is a
+  // measured emptiness (32.2% of recent scans had no put wall), and no flag
+  // with no entry is no measurement at all.
+  const rows=[], px=_fin(price);
+  for(const side of ['call','put']){
+    const e = walls && Array.isArray(walls[side]) ? walls[side][0] : null;
+    if(e && _fin(e.strike)!=null){
+      const k=Number(e.strike);
+      rows.push({kind:'wall', side, strike:k,
+                 share:_fin(e.cluster_share_of_book_gamma_pp),
+                 passed:wallPassed(side, k, px),
+                 heaviest:!!(heaviest && heaviest.role===side)});
+    } else {
+      rows.push({kind:'absent', side,
+                 text:(walls && walls[side+'_side_has_no_wall']===true)
+                      ? (side==='call' ? 'None above price' : 'None below price')
+                      : 'Not measured'});
+    }
+  }
+  const mk = most ? _fin(most.strike) : null;
+  if(mk!=null){
+    const m={count:_fin(most.contracts), traded:_fin(most.traded_today)};
+    const hit=rows.find(r=>r.kind==='wall' && r.strike===mk);
+    if(hit) hit.most=m;
+    else rows.push({kind:'most', side:'most', strike:mk, most:m,
+                    heaviest:!!(heaviest && _fin(heaviest.strike)===mk)});
+  } else rows.push({kind:'absent', side:'most', text:'Not measured'});
+  const key=r=> r.strike!=null ? r.strike
+             : r.side==='call' ? Infinity : r.side==='put' ? -Infinity
+             : (px!=null ? px : 0);
+  return rows.sort((a,b)=>key(b)-key(a));
 }
 
-/* ---- what lies past it ------------------------------------------------ */
-
-function beyondWall(walls, side){
-  // This once led with a `walls[side + '_side_clear']` branch that was DEAD BY
-  // CONSTRUCTION: walls_ladder sets *_side_clear only when a side's pool is
-  // empty and continues before writing the ladder, so a side can never hold
-  // both — and this is only ever called with the side of a wall that exists.
-  // sr-7 rename: *_heaviest_behind -> *_heaviest_wall_behind_the_ladder; the
-  // share is obs-2's cluster_share_of_book_gamma_pp, held internally as `gex`.
-  if(!walls||!side) return null;
-  const behind=walls[side+'_heaviest_wall_behind_the_ladder'];
-  if(behind&&behind.strike!=null)
-    return {strike:behind.strike, gex:_fin(behind.cluster_share_of_book_gamma_pp), heaviest:true};
-  const ladder=walls[side];
-  if(Array.isArray(ladder)&&ladder.length>=2&&ladder[1].strike!=null)
-    return {strike:ladder[1].strike, gex:_fin(ladder[1].cluster_share_of_book_gamma_pp), heaviest:false};
-  // A complete ladder of one with nothing named behind it is a sound
-  // inference that the side holds exactly one cluster: WALLS_PER_SIDE is 2, so
-  // a second would have shipped if it existed.
-  if(Array.isArray(ladder)&&ladder.length===1) return {alone:true};
-  return null;
-}
-
-function farSideNote(walls, side){
-  // Worded as what the flag MEANS. walls_ladder admits a cluster only if it
-  // matches the side by gamma sign AND sits on that side of spot, so a
-  // wrongly-signed pile there is dropped from both pools. "Nothing measured on
-  // that side" overstated it.
-  if(!walls||!side) return null;
-  const far = side==='call' ? 'put' : 'call';
-  // sr-7 rename: *_side_clear -> *_side_has_no_wall
-  if(walls[far+'_side_has_no_wall']!==true) return null;
-  return far==='put' ? 'No put wall below price.' : 'No call wall above price.';
-}
-
-function bothSidesClear(walls){
-  // A board measured clear on BOTH sides is not an absence of information. It
-  // is the loudest reading the scene can produce, and the card used to delete
-  // itself there because nearestWall returns null.
-  return !!walls && walls.call_side_has_no_wall === true && walls.put_side_has_no_wall === true;
-}
-
-function nearestWall(walls, spot){
-  if(!walls||spot==null||!isFinite(spot)) return null;
-  const cands=[];
-  const up=(walls.call||[])[0], dn=(walls.put||[])[0];
-  if(up&&up.strike!=null) cands.push(Object.assign({side:'call', dir:'up'}, up));
-  if(dn&&dn.strike!=null) cands.push(Object.assign({side:'put', dir:'down'}, dn));
-  if(!cands.length) return null;
-  cands.sort((a,b)=>Math.abs(a.strike-spot)-Math.abs(b.strike-spot));
-  return cands[0];
-}
-
-function wallDistance(strike, price){
-  // Against the price actually ON SCREEN. The masthead repaints off the live
-  // quote every 5s while the scene rebuilds every 60s, so the shipped `sigma`
-  // is measured from a spot the reader can no longer see. Dollars only: no
-  // Greek leaves this file.
-  if(strike==null||price==null||!isFinite(strike)||!isFinite(price)) return null;
-  const d=strike-price;
-  return {dollars:Math.abs(d), signed:d};
+function lightNote(levels){
+  // "Why the most-contracts strike can look light", or null when the sentence
+  // would have nothing to point at.
+  //
+  // The two measures disagree because they count different things — the walls
+  // are gamma from last night's positions with calls netted against puts; the
+  // strike is a head count including today's trades — NOT because of distance.
+  // The first draft said the heavier strike was "too far from price to count";
+  // that was true on 3.4% of replayed scans.
+  //
+  // Hidden when: the heaviest pile peaks AT this strike (35.0% of scans) or
+  // contains it (40.6%) — it does not look light then; or the heaviest pile is
+  // not a wall at all (role null), so the sentence would name a level the
+  // screen never draws.
+  if(!levels) return null;
+  const m=levels.most_contracts, h=levels.heaviest;
+  if(!m || !h || _fin(m.strike)==null || _fin(h.strike)==null || _fin(h.share_pct)==null) return null;
+  if(!h.role || h.holds_most_contracts || _fin(h.strike)===_fin(m.strike)) return null;
+  const role={call:['call',false], put:['put',false],
+              call_further:['call',true], put_further:['put',true]}[h.role];
+  if(!role) return null;
+  return {side:role[0], further:role[1], heavy:_fin(h.strike), share:_fin(h.share_pct),
+          strike:_fin(m.strike), count:_fin(m.contracts), traded:_fin(m.traded_today)};
 }
 
 /* ---- price, age, and the two things that must never be guessed --------- */
@@ -216,24 +232,12 @@ function vwapPrice(scene, diaryLast){
 
 /* ---- weight ------------------------------------------------------------ */
 
-function wallTier(gex){
-  // Three steps, because 1.2px against 1.6px is invisible at arm's length
-  // outdoors. Floor raised to 1.6 for the same reason. Measured over 18,510
-  // recorded wall observations the share of the book runs p10 3.5%, p50 7.3%,
-  // p90 20.4% — spread enough that weight is worth encoding at all.
-  if(gex==null||!isFinite(gex)) return 1.8;      // a default, never a claim
-  if(gex >= 10) return 2.8;
-  if(gex >= 5)  return 2.0;
-  return 1.6;
-}
-
 function railWidth(gex, full){
-  // Fixed full scale: 20% of the book fills the bar, always. A per-scan maximum
-  // makes the biggest wall full-width every single scan and destroys
-  // comparison between days. 20.4% is p90 of the recorded tape, so roughly one
-  // wall in ten clips, and the clip is marked.
+  // The chart's small rail bar beside a wall tag, on the same FULL_SHARE as the
+  // card and the line thickness, so the three can never rank a wall
+  // differently. The clip is marked where it happens.
   if(gex==null||!isFinite(gex)) return null;     // no datum: no bar AND no track
-  return {w:Math.max(2, Math.min(full, gex/20*full)), clipped: gex>20};
+  return {w:Math.max(2, Math.min(full, gex/FULL_SHARE*full)), clipped: gex>FULL_SHARE};
 }
 
 /* ---- level assembly ---------------------------------------------------- */
@@ -535,9 +539,9 @@ function _wall(e, side, nearest){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={gUsd, gMinutes, envParts, envWords, gammaIsLong, wallBehaviour, beyondWall,
-                  farSideNote, bothSidesClear, nearestWall, wallDistance, priorClose,
-                  bookAge, shownPrice, dayChange, vwapPrice, wallTier, railWidth,
+  module.exports={gUsd, gMinutes, envParts, FULL_SHARE, shareBarPct, wallStroke, wallPassed,
+                  levelRows, lightNote, priorClose,
+                  bookAge, shownPrice, dayChange, vwapPrice, railWidth,
                   etTime, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, barPoints, tapePoints, livePoint, modelRead};

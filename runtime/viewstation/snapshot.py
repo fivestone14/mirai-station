@@ -603,6 +603,107 @@ def _side_packet(R, row: dict, build_now: datetime,
         return None
 
 
+def _levels_display(R, row: dict, scene: dict) -> Optional[dict]:
+    """The two facts the phone's "three levels" card needs that the scene does
+    not carry. DISPLAY ONLY: a sibling of the scene on the wrapper, never sent
+    to a model and never read by the wake gate.
+
+    most_contracts — the scene's magnet, top_strikes[0], with the COUNT that
+    chose it. That strike is the argmax of mass_by_strike: open interest plus
+    today's volume, calls and puts added together, inside a reach window of
+    MAG_WINDOW_SIGMA x the row's sigma (lefteye_gex_box, magnet v3). Gamma plays
+    no part. The scene ships only a share of that window, under the name
+    `share_of_book_gamma_pp`, which is a share of contracts and not of gamma.
+    The card shows the count instead, so a contracts figure never sits in the
+    same unit as the gamma bars beside it: on 2026-09-10 15:58 the strike held
+    14.6% of nearby contracts and the heaviest wall held 15.0% of the gamma,
+    two near-identical percentages over different denominators.
+
+    heaviest — the single heaviest gamma cluster on the board, on the same
+    share the wall bars use (cluster strength over the whole net_by_strike
+    surface, as walls_ladder computes it), with the role it plays on the card
+    and whether the most-contracts strike sits inside it. The card's "why it
+    can look light" note is built from this and hidden when it has no
+    referent: over 5,423 scans the heaviest pile peaks AT the most-contracts
+    strike on 35.0% of them and contains it on 40.6%.
+
+    None when neither can be computed; each half is absent on its own when its
+    inputs are, never a zero."""
+    gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
+
+    def pairs(key):
+        out = {}
+        for p in (gv.get(key) or []):
+            try:
+                k, v = float(p[0]), float(p[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if math.isfinite(k) and math.isfinite(v):
+                out[round(k, 2)] = v
+        return out
+
+    out: dict = {}
+    most = None
+    # Each half in its own try: a torn pair in the gamma surface must not take
+    # a perfectly good contract count down with it, and vice versa.
+    try:
+        top = (scene.get("magnet") or {}).get("top_strikes") or []
+        k0 = top[0].get("strike") if top and isinstance(top[0], dict) else None
+        mass = pairs("mass_by_strike")
+        most = round(float(k0), 2) if isinstance(k0, (int, float)) else None
+        if most is not None and most in mass:
+            mc = {"strike": most, "contracts": int(round(mass[most]))}
+            # the same front-expiry contracts mass_by_strike counts, so the
+            # traded figure is a part of the count; guarded anyway, because a
+            # "traded" larger than the total is a sentence nobody can parse
+            v = pairs("vol_gross_by_strike").get(most)
+            if v is not None and 0 <= v <= mass[most]:
+                mc["traded_today"] = int(round(v))
+            sig = row.get("sigma")
+            if isinstance(sig, (int, float)) and math.isfinite(sig) and sig > 0:
+                # read off the engine's own constant (reversion_lens has already
+                # imported it), never retyped into this file
+                import lefteye_gex_box as _gxb
+                mc["window_dollars"] = round(_gxb.MAG_WINDOW_SIGMA * float(sig), 2)
+            out["most_contracts"] = mc
+    except Exception:
+        pass
+
+    try:
+        # the CLEANED pairs, not the raw surface: one [strike, None] in the
+        # diary would otherwise throw inside the clustering rule
+        net = pairs("net_by_strike")
+        tot = sum(abs(g) for g in net.values())
+        spot = row.get("spot")
+        clusters = (R._gw.cluster_walls(sorted(net.items()), float(spot))
+                    if net and isinstance(spot, (int, float)) else [])
+        if clusters and tot > 0:
+            h = max(clusters, key=lambda c: c["strength"])
+            walls = scene.get("walls") if isinstance(scene.get("walls"), dict) else {}
+            role = None
+            for side in ("call", "put"):
+                lad = [e for e in (walls.get(side) or []) if isinstance(e, dict)]
+                behind = walls.get(side + "_heaviest_wall_behind_the_ladder")
+                behind = behind if isinstance(behind, dict) else {}
+                if lad and lad[0].get("strike") == h["peak"]:
+                    role = side
+                elif (any(e.get("strike") == h["peak"] for e in lad[1:])
+                      or behind.get("strike") == h["peak"]):
+                    role = side + "_further"
+            out["heaviest"] = {
+                "strike": h["peak"],
+                "share_pct": round(h["strength"] / tot * 100.0, 1),
+                # None: the heaviest pile is not a wall at all — a call-heavy
+                # pile below price, say, which qualifies as neither side
+                "role": role,
+                "holds_most_contracts": (most is not None
+                                         and h["lo"] <= most <= h["hi"]),
+            }
+    except Exception:
+        pass
+    return out or None
+
+
 def sndk_payload(now: Optional[datetime] = None) -> dict:
     if str(_SNDK_PRO_DIR) not in sys.path:
         sys.path.insert(0, str(_SNDK_PRO_DIR))
@@ -710,6 +811,10 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         # scene and never a child: user_prompt and scene_chars below are pinned
         # to the scene alone, and this document is not sent to the model at all.
         "side": _side_packet(R, row, build_now, day),
+        # the phone's three-levels card: a count and a heaviest-pile check the
+        # scene does not carry. On the display side of the fence, like
+        # `instrument` above — it costs the model nothing and it reaches no model.
+        "levels": _levels_display(R, rw, scene_v1),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
         # what must be true before this scene is worth a model call. Read off the
         # reader's OWN constants rather than retyped into the page: a tab that

@@ -100,19 +100,24 @@ PAGE = (M / "page.js").read_text()
 THREAD = (M / "thread.html").read_text()
 
 
-def test_an_unmeasured_gamma_sign_claims_nothing():
-    """gamma_sign is the literal string 'unknown' on 241 of 3,393 recorded rows
-    (7.1%). No sign, no sentence — the strike, direction, distance and gauge
-    all still stand."""
-    assert "if(s==='negative'||s==='short'||s==='-') return false;" in GLANCE
-    assert "set('gMech', b ? b.english : '');" in PAGE
-    # The sentence lives in envParts now, with the other two regime strings, so
-    # the phone and the desktop cannot describe one board in two voices. It used
-    # to be written out in both files under a comment asking the next reader to
-    # keep them byte-identical — which is a promise a comment cannot keep.
-    assert "gamma sign not measured" in GLANCE
-    assert "parts.unmeasured" in PAGE
-    assert "no dealer behaviour claimed" in PAGE
+def test_the_regime_word_carries_no_claim_about_what_price_will_do():
+    """The gloss under the regime word said "walls hold" or "walls give way",
+    read off the gamma sign. That is a claim that hedging damps or speeds a
+    move — the sentence the model is forbidden to write (sndk_read.py's
+    doctrine) and the effect docs/sndk-plan.md records as measured absent on
+    SNDK. The sign itself was the literal string "unknown" on 490 of 5,423
+    scans (9.0%), and on the rest it rests on an assumed dealer convention.
+
+    So the gamma sign reaches no pixel at all now: not the gloss, not the card,
+    not the footer. The regime word stands alone."""
+    code = _code_only(GLANCE) + _code_only(PAGE)
+    assert "gamma_sign" not in code, "the phone reads the gamma sign again"
+    assert "gammaIsLong" not in code
+    for gone in ("walls hold", "walls give way"):
+        assert gone not in code, gone
+    assert "Regime not measured" in PAGE
+    # the footer names what every mark is, rather than caveating a claim
+    assert "not a forecast of where price goes" in PAGE
 
 
 def test_gamma_sign_colours_nothing():
@@ -136,19 +141,33 @@ def test_vwap_is_a_price_at_a_position():
     assert "vwap_minus_live_spot_sigma" not in PAGE                 # the ratio never printed
 
 
-def test_weight_rides_a_fixed_scale_and_absence_is_not_zero():
-    """20.4% is p90 of 18,510 recorded wall observations. A per-scan maximum
-    makes the biggest wall full-width every scan and destroys comparison
-    between days. gex null draws no bar AND no track: an empty track reads as
-    zero."""
-    assert "gex/20*full" in GLANCE.replace(" ", "")
-    assert "FULL = 20" in PAGE
+def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
+    """ONE full scale for the card's bars, the chart's rail bars and the chart's
+    line thickness, so the three can never rank a wall differently.
+
+    30, not 20. Over 15,653 wall observations since 07-27 the share runs p50
+    9.4%, p90 25.6%, p95 33.1%; the last eight sessions run heavier. At 20 a
+    full bar was 15.5% of all walls and 27.1% of recent ones — a quarter of the
+    levels drew identically at the cap. At 30 the cap takes 6.4%. A per-scan
+    maximum is still wrong: it makes the biggest wall full every scan and
+    destroys comparison between days. gex null draws no bar AND no track: an
+    empty track reads as zero."""
+    g = GLANCE.replace(" ", "")
+    assert "constFULL_SHARE=30;" in g
+    assert "gex/FULL_SHARE*full" in g                     # the rail bar
+    assert "share/FULL_SHARE*100" in g                    # the card's bar
+    assert "Math.min(share,FULL_SHARE)/FULL_SHARE" in g   # the line thickness
+    # no second scale hiding anywhere
+    assert "FULL = 20" not in PAGE and "gex/20" not in g
+    assert "wallStroke(l.gex)" in PAGE and "wallTier" not in PAGE + GLANCE
     # `gex` is the INTERNAL name only; the scene entry ships the share as
     # cluster_share_of_book_gamma_pp (sr-7/obs-2) and both files must read that
     assert "cluster_share_of_book_gamma_pp" in GLANCE
     assert "cluster_share_of_book_gamma_pp" in PAGE
     rw = GLANCE.split("function railWidth")[1].split("/* ---- level assembly")[0]
     assert "return null;" in rw
+    sb = GLANCE.split("function shareBarPct")[1].split("function wallStroke")[0]
+    assert "return null;" in sb
 
 
 def test_a_refused_level_is_always_named():
@@ -240,26 +259,33 @@ def test_model_output_never_touches_innerhtml():
     assert "rdLine').innerHTML" not in PAGE
 
 
-def test_the_english_is_not_authored_here():
-    """The four mechanism sentences are byte-identical to snkArrows and the
-    gloss strings to envWords. The desktop and the phone must never describe
-    one board in two voices."""
-    for s_ in ("Dealers buy the dips here — it holds price up.",
-               "Dealers sell the rallies here — it caps the move.",
-               "Dealers must buy a break up — moves speed up.",
-               "Dealers must sell a break down — moves speed up."):
-        assert s_ in GLANCE
-    assert "'walls hold'" in GLANCE and "'walls give way'" in GLANCE
+def test_no_dealer_behaviour_is_claimed_anywhere_on_the_phone():
+    """The four sentences were copied byte-for-byte from the desktop's snkArrows,
+    and the copying was never the problem — the sentences were. "Dealers sell
+    the rallies here — it caps the move" states what hedging does to price, on a
+    name where no damping or amplifying effect was found, and it was keyed on a
+    sign that is "unknown" on 9.0% of scans. Removed 2026-09-10, with the rule
+    that replaced them: say where the weight is, never what price will do."""
+    for blob, where in ((_code_only(GLANCE), "glance.js"), (_code_only(PAGE), "page.js"),
+                        (PHONE, "index.html")):
+        for claim in ("Dealers buy", "Dealers sell", "Dealers must", "caps the move",
+                      "holds price up", "moves speed up", "wallBehaviour", "gMech"):
+            assert claim not in blob, f"{claim!r} is back in {where}"
 
 
-def test_distance_is_measured_against_the_price_on_screen():
-    assert "wallDistance(w.strike, ref)" in PAGE
-    # checked on the CODE lines only. The comment above the function names
-    # `sigma` on purpose, to say what it refuses to use, and a test that cannot
-    # tell prose from code teaches you to delete the explanation.
-    wd = GLANCE.split("function wallDistance")[1].split("/* ---- price, age")[0]
-    code = "\n".join(l for l in wd.splitlines() if not l.strip().startswith("//"))
+def test_a_passed_wall_is_judged_against_the_price_on_screen():
+    """The card and the chart both ask one question of the price the reader can
+    SEE — the 5-second quote — never of the book's spot or the shipped sigma,
+    which were measured against a price that has since moved. Replayed over 8
+    sessions, price stood beyond a wall the card still showed on 2.7% of
+    minutes, 5.8% on 09-10."""
+    assert "levelRows(walls, most, lv.heaviest || null, ref)" in PAGE
+    assert PAGE.count("wallPassed(l.side, l.y, ref)") >= 3     # line, tag, rail bar
+    assert "wallPassed(side, k, ref)" in PAGE                  # the bug triangles
+    wp = GLANCE.split("function wallPassed")[1].split("function levelRows")[0]
+    code = "\n".join(l for l in wp.splitlines() if not l.strip().startswith("//"))
     assert "sigma" not in code
+    assert "side==='call' ? p>k : side==='put' ? p<k" in code
 
 
 def test_side_has_no_wall_absent_is_not_false():
@@ -321,26 +347,43 @@ def test_no_emoji_no_legend_no_greek():
 
 
 def test_the_glance_itself_is_not_a_control():
-    """AMENDED 2026-09-07. The rule was "nothing is tappable", and its purpose
-    was that the READING must never be a control: a screen you poke is a screen
-    you are working, and this one is read at arm's length in a second.
+    """AMENDED 2026-09-07, and again 2026-09-10. The rule was "nothing is
+    tappable", and its purpose was that the READING must never be a control: a
+    screen you poke is a screen you are working, and this one is read at arm's
+    length in a second.
 
-    That purpose survives verbatim. What changed is that the model's readings
-    now accumulate into a thread at /m/thread.html, and a glance with no way
-    into its own history is a glance that quietly throws the day away. So
-    exactly ONE link is permitted, in the label row, going to that archive —
-    and every mechanism that would make the DATA interactive stays banned:
-    no click handlers anywhere, no buttons, no pointer cursors, no tooltips.
+    That purpose survives verbatim. 09-07 permitted exactly ONE link, to the
+    readings archive. 09-10 permits exactly ONE press-and-hold, on the
+    three-levels card, because the user asked for the card to explain itself —
+    and a card whose words (gamma, call wall, most contracts) need a paragraph
+    each cannot carry those paragraphs at arm's length. What the hold opens is
+    an EXPLANATION: nothing on the card changes by touching it, and it is
+    dismissed by one button.
 
-    The link is counted, not merely allowed. A second one means the rule has
-    started eroding and this test should be argued with again rather than
-    edited again."""
-    for bad in ("cursor:pointer", "onclick", "addEventListener('click'", "<button", "title="):
+    Everything that would make the DATA interactive stays banned: no onclick,
+    no pointer cursors, no tooltips, no second button, no second hold, and the
+    one click listener on the page does nothing but close the sheet. Each count
+    is exact. A second of anything means the rule has started eroding and this
+    test should be argued with again rather than edited again."""
+    for bad in ("cursor:pointer", "onclick", "title="):
         assert bad not in PHONE, bad
-    assert "addEventListener('click'" not in PAGE
     links = re.findall(r"<a\s[^>]*>", PHONE)
     assert len(links) == 1, f"exactly one link is allowed on the glance, found {len(links)}: {links}"
     assert 'href="/m/thread.html"' in links[0], links[0]
+
+    holds = re.findall(r"<[^>]*\bdata-hold\b[^>]*>", PHONE)
+    assert len(holds) == 1 and 'id="levels"' in holds[0], holds
+    dialogs = re.findall(r'role="dialog"', PHONE)
+    assert len(dialogs) == 1
+    buttons = re.findall(r"<button\b[^>]*>", PHONE)
+    assert len(buttons) == 1, buttons
+    assert "data-sheet-close" in buttons[0], "the one button must close the sheet"
+    sheet = PHONE.split('id="sheet"')[1]
+    assert "<button" in sheet, "the button lives outside the sheet"
+
+    assert PAGE.count("addEventListener('click'") == 1
+    click = PAGE.split("addEventListener('click'")[1].split("});")[0]
+    assert "data-sheet-close" in click and "dismiss()" in click
 
 
 def test_the_window_is_frozen_between_payloads():
@@ -391,26 +434,20 @@ def test_no_nan_reaches_an_svg_attribute():
     assert "if(!(span > 0))" in PAGE
 
 
-def test_the_gate_direction_is_derived_not_read():
-    """walls_ladder buckets a cluster by the SCAN spot, so a live tick through
-    the wall makes the payload's side label contradict the plot above it.
+def test_the_levels_card_asserts_no_direction():
+    """"▲ NEXT ABOVE" / "▼ NEXT BELOW" came from the live price while the wall
+    beside it came from a book up to minutes old, and the two could disagree on
+    screen. The card now lists both walls and the most-contracts strike ORDERED
+    BY PRICE, which says where each one sits without a word that can go stale.
 
-    2026-09-10: this used to end `assert "'g-k ' + w.side" in PAGE` with the
-    note "...but the HUE stays the side of the BOOK". That was a deliberate
-    choice, and the reasoning behind it is sound — the hue describes what the
-    cluster IS (call-signed), the word describes where it SITS (below you), and
-    two statements about different things cannot contradict each other.
-
-    It is overturned because the reader cannot see that distinction. This
-    screen's stated law is one hue, one meaning, and it teaches green as the
-    call side — so a green strike under the words "NEXT BELOW" reads as an
-    error, whatever it technically asserts. When the two frames disagree the
-    strike now goes neutral: the cluster is positive-gamma sitting below price,
-    which qualifies as neither side and will be re-filed or dropped at the next
-    scan. Saying nothing for two minutes beats saying something the line above
-    contradicts."""
-    assert "w.strike > ref ? '▲ NEXT ABOVE' : '▼ NEXT BELOW'" in PAGE
-    assert "'g-k ' + w.side" not in PAGE, "the hue is asserted without checking the frame"
+    By price and never by kind: the most-contracts strike sat above the call
+    wall on 10.9% of replayed scans and below the put wall on 1.4%, so a fixed
+    call / most / put order would have drawn those upside down."""
+    code = _code_only(PAGE) + _code_only(GLANCE)
+    assert "NEXT ABOVE" not in code and "NEXT BELOW" not in code
+    lr = GLANCE.split("function levelRows")[1].split("function lightNote")[0]
+    assert "rows.sort((a,b)=>key(b)-key(a))" in lr
+    assert "r.strike!=null ? r.strike" in lr
 
 
 def test_the_clear_side_bracket_is_qualified_and_conditional():
@@ -423,12 +460,17 @@ def test_the_clear_side_bracket_is_qualified_and_conditional():
     assert "_side_has_no_wall'] !== true" in PAGE  # === true stays necessary
 
 
-def test_the_footer_speaks_only_when_the_label_did_not():
-    """Gating on the bracket PATH said the note twice in the withdrawn state and
-    lost it entirely at 320px, where the bracket is under 34px tall."""
-    assert "CLEAR_SAID" in PAGE
-    assert "CLEAR_SAID[_far]" in PAGE
-    assert "CLEAR_SAID = {call:false, put:false};   // reset" in PAGE
+def test_an_absent_level_is_a_row_never_a_gap():
+    """Law 1 on this card. A side flagged empty is a measured finding (no put
+    wall on 32.2% of recent scans, every scan of 09-04 and 09-08), and it gets
+    its own row saying so. No flag and no entry is no measurement, and says
+    THAT — never a zero bar, never a missing row."""
+    lr = GLANCE.split("function levelRows")[1].split("function lightNote")[0]
+    assert "walls[side+'_side_has_no_wall']===true" in lr     # === true stays necessary
+    assert "'None above price'" in lr and "'None below price'" in lr
+    assert lr.count("'Not measured'") == 2                     # a wall side, and the count
+    # the footer that used to carry the note is gone, and its bookkeeping with it
+    assert "CLEAR_SAID" not in PAGE and "farSideNote" not in PAGE + GLANCE
 
 
 def test_the_tag_cap_respects_the_never_drop_tiers():
@@ -445,26 +487,24 @@ def test_a_dropped_request_does_not_blank_the_board():
     assert "if(PAY && PAY.scene){ paintAll(); return; }" in PAGE
 
 
-def test_the_gate_sentence_cannot_be_smeared_by_a_deficit():
-    """The finding this test was written for, carried forward.
+def test_the_card_text_cannot_be_smeared_by_a_deficit():
+    """The finding this test was written for, carried forward to the card that
+    replaced the gate.
 
     .g-foot was the only gate child whose overflow:hidden zeroed its automatic
     minimum, so a 7px deficit in the old fixed-height column landed entirely on
-    it and a sanctioned sentence rendered as an 11px slice of an 18px line.
-
-    The deficit itself is gone — the page scrolls and the gate is a card that
-    sizes to its content — so the guard moves to the property that CAUSED the
-    smear rather than to the heights that delivered it. A zero automatic
-    minimum is what let one child absorb everything; without it the card grows
-    instead."""
-    foot = _block(".g-foot{")
-    assert foot is not None, ".g-foot has no rule"
-    assert "overflow:hidden" not in foot.replace(" ", ""), \
-        ".g-foot can be squeezed to nothing again"
-    assert "white-space:nowrap" not in foot.replace(" ", ""), \
-        "a nowrap sentence in a card that can shrink is the same failure"
-    gate = _block(".gate{") or ""
-    assert "height" not in gate, "the gate is a card now; a fixed height brings the deficit back"
+    it and a sanctioned sentence rendered as an 11px slice of an 18px line. The
+    guard stays on the property that CAUSED the smear rather than on the
+    heights that delivered it: no zero automatic minimum, no nowrap sentence,
+    no fixed height on the card."""
+    for sel in (".lv-cap{", ".lv-none{", ".lv-n{"):
+        b = _block(sel)
+        assert b is not None, f"{sel} has no rule"
+        flat = b.replace(" ", "")
+        assert "overflow:hidden" not in flat, f"{sel} can be squeezed to nothing again"
+        assert "white-space:nowrap" not in flat, f"{sel} is a nowrap sentence in a card that can shrink"
+    card = _block(".levels{") or ""
+    assert "height" not in card, "the card has a fixed height; the deficit comes back"
 
 
 def test_the_height_budget_is_gone_rather_than_merely_unused():
@@ -482,18 +522,16 @@ def test_the_height_budget_is_gone_rather_than_merely_unused():
     assert "FIXED" not in PAGE, "sizeLadder is deriving a height again"
 
 
-def test_the_measure_is_inviolable_and_the_label_gives_way():
-    """Both were nowrap with no min-width, so margin-left:auto collapsed under
-    overflow and the measure ran off the edge last-character-first. On the
-    censored path the first casualty is the '+', which turns 'held at least'
-    into 'held exactly'."""
-    # read to the closing brace, not a fixed slice: the explanatory comment
-    # inside the block pushes the declaration past any character count, and a
-    # test that cannot see past prose teaches you to delete the prose.
-    def block(sel):
-        return PHONE.split(sel)[1].split("}")[0]
-    assert "min-width:0" in block(".g-dir{") and "text-overflow:ellipsis" in block(".g-dir{")
-    assert "flex:none" in block(".g-meas{")
+def test_the_row_label_wraps_rather_than_losing_its_last_tag():
+    """A row label is a list of tags — "Put wall · Most contracts · Heaviest ·
+    Price passed it" — and the LAST tag is the one that changes minute to
+    minute. An ellipsis eats the end first, so a truncating label would drop
+    "Price passed it" and leave a greyed strike with no word for why. It wraps."""
+    side = _block(".lv-side{")
+    assert side is not None
+    flat = side.replace(" ", "")
+    assert "text-overflow:ellipsis" not in flat and "white-space:nowrap" not in flat
+    assert "min-width:0" in flat
 
 
 def test_gminutes_cannot_print_sixty():
@@ -599,20 +637,17 @@ def test_the_two_phone_pages_share_one_palette():
     assert not drift, f"the two phone pages disagree about {drift}"
 
 
-def test_the_strike_colour_never_contradicts_the_direction_beside_it():
-    """The card names a direction from the LIVE price and takes the wall's side
-    from the scene, which was filed against the book's spot up to two minutes
-    earlier. Price crossing the nearest wall between scans put those two out of
-    step, and the card rendered "NEXT BELOW" in call-green.
+def test_a_passed_wall_drops_its_side_colour():
+    """One hue, one meaning: green is the call side. A call wall price has
+    already passed sits BELOW price, which is not the call side any more, and
+    it stays green until the next scan relabels it. So from the moment the
+    price on screen passes it, its strike, bar and chart line go neutral and
+    its label says why — the weight is still true, the side is not."""
+    row = PAGE.split("function lvRow")[1].split("\nfunction ")[0]
+    assert "(r.passed ? 'passed'" in row, "a passed wall keeps its side's class"
+    assert "tags.push('Price passed it')" in row
+    assert ".lv.passed .lv-k{color:var(--i-mute)}" in PHONE
+    assert ".p-wall.passed{stroke:var(--rule-soft)}" in PHONE
+    assert ".p-tag.passed{fill:var(--i-mute)}" in PHONE
 
-    Neither frame can just win: colouring by the live side would paint a
-    positive-gamma cluster coral, and coral means the put side and nothing else
-    on this screen. So a disagreement drops the strike to neutral ink and lets
-    the word carry it."""
-    src = PAGE.split("function paintGate")[1].split("\nfunction ")[0]
-    assert "const liveSide = w.strike > ref ? 'call' : 'put';" in src, \
-        "the live side is not computed; the colour cannot be checked against the word"
-    assert "liveSide === w.side ? ' ' + w.side : ''" in src, \
-        "the strike is coloured without comparing the two frames"
-    # the direction word and the colour must be derived from the SAME price
-    assert "w.strike > ref ? '\u25b2 NEXT ABOVE' : '\u25bc NEXT BELOW'" in src
+

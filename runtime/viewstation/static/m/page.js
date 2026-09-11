@@ -10,9 +10,6 @@ const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
 
 let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], WIN = null, LADDER_H = 196;
-// whether the plot's bracket LABEL said a side was empty this repaint. The
-// gate footer speaks only when it did not.
-let CLEAR_SAID = {call:false, put:false};
 let T_PAY = null, T_SPOT = null;
 
 /* ---- layout ------------------------------------------------------------ */
@@ -213,7 +210,7 @@ function paintAll(){
   paintMast(st);
   paintRegime(st);
   paintLadder(st);
-  paintGate(st);
+  paintLevels(st);
   paintRead();
   paintFoot(st);
   clearLoading();
@@ -292,19 +289,14 @@ function paintMast(st){
 /* ---- B. regime --------------------------------------------------------- */
 
 function paintRegime(st){
-  const r = st.scene.regime || {};
-  const g = gammaIsLong(r);
-  // From envParts, not written out again here. The phone and the desktop must
-  // never describe one board in two voices, and the previous version asked a
-  // comment to guarantee that.
-  const parts = envParts(r);
-  const gloss = parts.lean == null ? parts.unmeasured : parts.lean;
-  const word = parts.word;
+  // The word alone. Its gloss said "walls hold" or "walls give way" off the
+  // gamma sign until 2026-09-10 — a claim about what hedging does to price,
+  // which the model is forbidden to make and SNDK's record does not support.
+  // See law 2 at the top of glance.js.
+  const word = envParts(st.scene.regime).word;
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-
-  if(word){ $('regWord').textContent = cap(word); $('regGloss').textContent = gloss; }
-  else if(r.gamma_sign != null || g != null){ $('regWord').textContent = cap(gloss); $('regGloss').textContent = ''; }
-  else { $('regWord').textContent = ''; $('regGloss').textContent = 'Regime not measured'; }
+  $('regWord').textContent = word ? cap(word) : '';
+  $('regGloss').textContent = word ? '' : 'Regime not measured';
 
   const sig = st.sigma;
   $('ruler').textContent = (sig != null && isFinite(sig)) ? 'TYPICAL MOVE $' + Math.round(sig) : '';
@@ -312,11 +304,11 @@ function paintRegime(st){
 
 /* ---- F. foot ----------------------------------------------------------- */
 
-function paintFoot(st){
-  const g = gammaIsLong(st.scene.regime);
-  $('foot').textContent = g == null
-    ? 'Gamma sign not measured — no dealer behaviour claimed.'
-    : "Hedge direction assumed from the board's gamma sign.";
+function paintFoot(){
+  // One standing line, the same on every scan. It used to name the gamma sign
+  // the dealer sentences were keyed on; with those gone there is no claim left
+  // to caveat, only the thing every mark here is.
+  $('foot').textContent = 'Where the option positions sit — not a forecast of where price goes.';
 }
 
 /* ---- C. the ladder ----------------------------------------------------- */
@@ -325,7 +317,6 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 
 function paintLadder(st){
-  CLEAR_SAID = {call:false, put:false};   // reset above every early return
   const svg = $('svg');
   // Measure RAW, then decide, then clamp. The old line did Math.max(240, ...)
   // inline, which meant a collapsed container silently became a 240px chart —
@@ -558,7 +549,6 @@ function paintLadder(st){
       o += '<text class="p-word dim" x="12" y="' + n1(by) + '">'
          + (side === 'call' ? 'NO CALL WALL ABOVE' : 'NO PUT WALL BELOW') + '</text>';
       wordRows.push(by);
-      CLEAR_SAID[side] = true;
     }
   }
 
@@ -585,8 +575,11 @@ function paintLadder(st){
          + '" x2="' + PLOT_R + '" y2="' + y + '"'
          + (l.lead ? '' : ' style="stroke-opacity:' + (l.weight||0.5).toFixed(2) + '"') + '/>';
     } else if(l.kind === 'wall'){
-      o += '<line class="p-wall ' + l.side + '" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y
-         + '" style="stroke-width:' + wallTier(l.gex) + ';stroke-opacity:' + (l.nearest ? '1' : '.62') + '"/>';
+      // thickness IS the weight, on the card's own scale; a wall price has
+      // already passed keeps its weight and loses its side's colour
+      o += '<line class="p-wall ' + (wallPassed(l.side, l.y, ref) ? 'passed' : l.side)
+         + '" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y
+         + '" style="stroke-width:' + wallStroke(l.gex) + ';stroke-opacity:' + (l.nearest ? '1' : '.62') + '"/>';
     }
   }
   if(inWin(st.vwap))
@@ -600,11 +593,14 @@ function paintLadder(st){
     o += '<circle class="p-dot"  cx="' + n1(dotX) + '" cy="' + n1(priceY) + '" r="3.6"/>';
   }
 
-  // ---- the bug: this one, the one the card is about ----------------------
-  const near = nearestWall(sc.walls, ref);
-  if(near && inWin(near.strike)){
-    const y = yFor(near.strike);
-    o += '<path class="p-bar ' + near.side + '" d="M' + PLOT_R + ',' + n1(y)
+  // ---- the bugs: the two walls the card below names ----------------------
+  // It named ONE wall until 2026-09-10, the nearer of the two, under a
+  // direction word; the card now lists both, so both are marked.
+  for(const side of ['call', 'put']){
+    const e = ((sc.walls||{})[side] || [])[0];
+    if(!e || e.strike == null || !inWin(Number(e.strike))) continue;
+    const k = Number(e.strike), y = yFor(k);
+    o += '<path class="p-bar ' + (wallPassed(side, k, ref) ? 'passed' : side) + '" d="M' + PLOT_R + ',' + n1(y)
        + ' L' + (PLOT_R+5) + ',' + n1(y-5) + ' L' + (PLOT_R+5) + ',' + n1(y+5) + ' Z" style="fill-opacity:1"/>';
   }
 
@@ -617,7 +613,8 @@ function paintLadder(st){
     // Without the tier, a cap overflow could drop a heaviest_behind and leave
     // the thickest stroke on the plot with its price nowhere on screen.
     if(l.kind === 'wall')
-      members.push({y:l.y, cls:'p-tag ' + l.side, lvl:l, keep:(l.nearest || l.behind) ? 2 : 1});
+      members.push({y:l.y, cls:'p-tag ' + (wallPassed(l.side, l.y, ref) ? 'passed' : l.side),
+                    lvl:l, keep:(l.nearest || l.behind) ? 2 : 1});
     else if(l.kind === 'magnet' && l.lead) members.push({y:l.y, cls:'p-tag mag', lvl:l, keep:2});
   }
   if(inWin(st.vwap)) members.push({y:st.vwap, cls:'p-tag vwap', vwap:true, keep:0});
@@ -641,7 +638,8 @@ function paintLadder(st){
     if(l && l.kind === 'wall'){
       const bar = railWidth(l.gex, 20);          // null gex -> no bar AND no track
       if(bar){
-        o += '<rect class="p-bar ' + l.side + '" x="' + MARK_L + '" y="' + n1(rowY-1.5)
+        o += '<rect class="p-bar ' + (wallPassed(l.side, l.y, ref) ? 'passed' : l.side)
+           + '" x="' + MARK_L + '" y="' + n1(rowY-1.5)
            + '" width="' + n1(bar.w) + '" height="3"/>';
         if(bar.clipped) o += '<rect class="p-clip" x="' + (MARK_L+20) + '" y="' + n1(rowY-3.5) + '" width="2" height="7"/>';
       }
@@ -649,18 +647,18 @@ function paintLadder(st){
     if(l && (l.magnet || l.kind === 'magnet'))
       o += '<rect class="p-diamond" x="' + (MARK_L+24.5) + '" y="' + n1(rowY-2.5)
          + '" width="5" height="5" transform="rotate(45 ' + (MARK_L+27) + ' ' + n1(rowY) + ')"/>';
-    const lead = (near && l && l.kind === 'wall' && l.y === near.strike) ? ' lead' : '';
+    const lead = (l && l.kind === 'wall' && l.nearest) ? ' lead' : '';
     o += '<text class="' + m.cls + lead + '" x="' + TAG_R + '" y="' + n1(rowY+4.5) + '">'
        + gUsd(m.y, 0).replace('$','') + '</text>';
   });
 
   // ---- refused levels are NAMED, never silently dropped -------------------
-  // When the nearest wall is itself off-window the bug triangle cannot point at
-  // it, so its marker carries the weight instead. Matched on kind AND side AND
-  // strike, so an exiled magnet on the same strike cannot steal the emphasis.
-  const namedEdge = (near && !inWin(near.strike)) ? Number(near.strike) : null;
-  const edgeCls = l => 'p-edge' + ((namedEdge != null && l.kind === 'wall'
-                     && l.side === near.side && +l.y === namedEdge) ? ' lead' : '');
+  // When a wall the card names is itself off-window the bug triangle cannot
+  // point at it, so its marker carries the weight instead. Matched on kind as
+  // well as the nearest flag, so an exiled magnet on the same strike cannot
+  // steal the emphasis.
+  const namedEdge = l => l.kind === 'wall' && !!l.nearest;
+  const edgeCls = l => 'p-edge' + (namedEdge(l) ? ' lead' : '');
   above.forEach((l, i) => {
     o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + (10 + 13*i) + '">▲ '
        + gUsd(l.y,0).replace('$','') + (l.behind ? ' HEAVIEST' : '') + '</text>';
@@ -701,115 +699,298 @@ function _lvlWall(e, side, nearest){
           heldExact:e.unchanged_for_min != null};
 }
 
-/* ---- D. gate — the amplification of the nearest level. Never hides. ----- */
+/* ---- D. the three levels — where the weight sits, never what price does -- */
+//
+// REPLACED 2026-09-10. The card used to name ONE wall under "▲ NEXT ABOVE" or
+// "▼ NEXT BELOW" with a dealer sentence beside it. Three things were wrong with
+// it, all measured:
+//   - the direction came from the live price and the wall from a book up to
+//     minutes old, so the two could disagree on screen;
+//   - the sentence ("Dealers sell the rallies here — it caps the move") is the
+//     claim the model is forbidden to make and SNDK's record does not support;
+//   - it could only ever show one of the two walls.
+// Now: both nearest walls with their weight, the strike with the most
+// contracts as a COUNT, ordered by price, and no direction word anywhere.
+//
+// Every number here is set with textContent. None of it is model output, but
+// the card is built from payload strings and there is no reason to let any of
+// them near innerHTML.
 
-function paintGate(st){
-  const sc = st.scene, walls = sc.walls || {}, FULL = 20;
-  const gate = $('gate');
-  const set = (id, t) => { $(id).textContent = t || ''; };
-  const hideRows = () => { $('gRowA').hidden = true; $('gRowB').hidden = true; };
+function lvRow(r){
+  const row = document.createElement('div');
+  const side = r.kind === 'absent' ? r.side : (r.passed ? 'passed' : r.side === 'most' ? 'mag' : r.side);
+  row.className = 'lv ' + side + (r.kind === 'absent' ? ' absent' : '');
 
-  if(bothSidesClear(walls)){
-    gate.classList.add('empty');   // NOT className=: it would drop `card`
-    set('gDir','NO WALL EITHER WAY'); set('gMeas',''); set('gStrike','');
-    set('gMech','The board was read and holds nothing above or below price.');
-    hideRows(); set('gFoot',''); $('gStrike').className = 'g-k';
-    return;
+  const tags = [];
+  if(r.side === 'call') tags.push('Call wall');
+  else if(r.side === 'put') tags.push('Put wall');
+  if(r.side === 'most' || r.most) tags.push('Most contracts');
+  if(r.heaviest) tags.push('Heaviest');
+  if(r.passed) tags.push('Price passed it');
+  const lab = document.createElement('span');
+  lab.className = 'lv-side';
+  lab.textContent = tags.join(' · ');
+  row.appendChild(lab);
+
+  if(r.kind === 'absent'){
+    // a measured emptiness is a finding and is DRAWN, never left blank
+    const t = document.createElement('span');
+    t.className = 'lv-none';
+    t.textContent = r.text;
+    row.appendChild(t);
+    return row;
   }
-  const ref = st.ref ? st.ref.v : null;
-  const w = nearestWall(walls, ref);
-  if(!w){
-    gate.classList.add('empty');   // NOT className=: it would drop `card`
-    set('gDir','NO WALL MEASURED'); set('gMeas',''); set('gStrike',''); set('gMech','');
-    hideRows(); set('gFoot',''); $('gStrike').className = 'g-k';
-    return;
-  }
-  gate.classList.remove('empty');
 
-  // Against the price ON SCREEN, like the distance and the sentence beside it.
-  // walls_ladder buckets a cluster by the SCAN spot, so a live tick through the
-  // nearest wall makes the payload's side label name a direction the plot
-  // directly above this card contradicts.
-  let dir = (w.strike > ref ? '▲ NEXT ABOVE' : '▼ NEXT BELOW');
-  if(st.withdrawn){
-    const t = Date.parse(PAY.row_ts);
-    const et = etTime(t);
-    if(et) dir += ' · AT THE ' + et + ' SCAN';
-  }
-  set('gDir', dir);
+  const k = document.createElement('span');
+  k.className = 'lv-k';
+  k.textContent = gUsd(r.strike, 0).replace('$', '');
+  row.appendChild(k);
 
-  // measured against the price ON SCREEN, never walls[].sigma — that was taken
-  // against a spot the reader can no longer see
-  const d = wallDistance(w.strike, ref);
-  // sr-7 rename: unchanged_for_min / unchanged_for_at_least_min
-  const held = (w.unchanged_for_min != null) ? w.unchanged_for_min : w.unchanged_for_at_least_min;
-  const exact = w.unchanged_for_min != null;
-  const bits = [];
-  if(d) bits.push('$' + Math.round(d.dollars));
-  if(held != null) bits.push(('held ' + gMinutes(held) + (exact ? '' : '+')).toUpperCase());
-  set('gMeas', bits.join(' · '));
-
-  $('gStrike').textContent = gUsd(w.strike, 0).replace('$','');
-  // THE TWO FRAMES MUST AGREE OR THE COLOUR SAYS NOTHING.
-  //
-  // `w.side` was filed by walls_ladder against the BOOK's spot, up to two
-  // minutes ago. The direction word above is measured against the price on
-  // screen, which repaints every five seconds. They normally agree; when price
-  // crosses the nearest wall between scans they do not, and the card rendered
-  // "▼ NEXT BELOW" in call-green — a colour asserting a side the word directly
-  // above it contradicts.
-  //
-  // Neither frame can simply win. Colouring by the live side would paint a
-  // positive-gamma cluster coral, and on this screen coral means the put side
-  // and nothing else. Keeping the filed colour leaves the contradiction on
-  // screen. So when they disagree the strike drops to neutral ink: the
-  // cluster is a positive-gamma pile now sitting BELOW price, which qualifies
-  // as neither side and will be re-filed or dropped on the next scan. Until
-  // then the honest statement is that we do not know which side it is, and
-  // the direction word carries it alone.
-  const liveSide = w.strike > ref ? 'call' : 'put';
-  $('gStrike').className = 'g-k' + (liveSide === w.side ? ' ' + w.side : '');
-
-  // gamma_sign is the literal string "unknown" on 7.1% of rows. No sign, no
-  // sentence — the strike, direction, distance and gauge all still stand.
-  const b = wallBehaviour(sc.regime, w.strike, ref);
-  set('gMech', b ? b.english : '');
-
-  const beyond = beyondWall(walls, w.side);
-  let foot = '';
-
-  // w is the raw scene entry (nearestWall passes it through), so the share
-  // wears its obs-2 scene name here rather than the internal `gex`
-  const share = w.cluster_share_of_book_gamma_pp;
-  if(share != null && isFinite(share)){
-    $('gRowA').hidden = false;
-    $('gBarA').style.width = Math.max(2, Math.min(100, share / FULL * 100)).toFixed(1) + '%';
-    $('gValA').innerHTML = '<b>' + esc(share) + '%</b> of book gamma';
-  } else { $('gRowA').hidden = true; foot = 'Weight not measured.'; }
-
-  if(beyond && beyond.gex != null && isFinite(beyond.gex)){
-    $('gRowB').hidden = false;
-    $('gBarB').style.width = Math.max(2, Math.min(100, beyond.gex / FULL * 100)).toFixed(1) + '%';
-    $('gValB').innerHTML = '<b>' + esc(beyond.gex) + '%</b> at '
-                         + esc(gUsd(beyond.strike,0).replace('$','')) + ' · '
-                         + (beyond.heaviest ? 'heaviest' : 'next out');
-  } else {
-    $('gRowB').hidden = true;
-    if(!foot){
-      if(beyond && beyond.alone) foot = 'Nothing else on this side of the board.';
-      else if(beyond && beyond.strike != null) foot = 'Next wall at ' + gUsd(beyond.strike,0) + '.';
+  if(r.kind === 'wall'){
+    const pct = shareBarPct(r.share);
+    const bar = document.createElement('span');
+    const v = document.createElement('span');
+    v.className = 'lv-v';
+    if(pct != null){
+      bar.className = 'lv-bar';
+      const fill = document.createElement('i');
+      fill.style.width = pct.toFixed(1) + '%';
+      bar.appendChild(fill);
+      v.textContent = r.share.toFixed(1) + '%';
+    } else {
+      // no share: no bar AND no track — an empty track reads as zero
+      bar.className = 'lv-bar none';
+      v.textContent = '';
     }
+    row.appendChild(bar);
+    row.appendChild(v);
   }
-  // The measured-empty side appears exactly once. It is normally said by the
-  // bracket's LABEL in the plot, which also shows its extent; the footer speaks
-  // only when that label did not draw — a bracket under 34px, a bracket
-  // suppressed because price crossed a wall of the other pool, or a ladder that
-  // took an early return. Gating on the path instead said it twice in the
-  // withdrawn state and lost it entirely at 320px.
-  const _far = w.side === 'call' ? 'put' : 'call';
-  if(!foot && !CLEAR_SAID[_far]) foot = farSideNote(walls, w.side) || '';
-  set('gFoot', foot);
+  // A COUNT, never a bar. The most-contracts strike is chosen by contracts,
+  // and a gamma bar beside it measured something that did not choose it: on
+  // 66.9% of replayed scans it was not even the heaviest gamma strike nearby.
+  if(r.most){
+    const n = document.createElement('span');
+    n.className = 'lv-n';
+    n.textContent = r.most.count != null
+      ? r.most.count.toLocaleString('en-US') + ' contracts'
+      : 'Count not measured';
+    row.appendChild(n);
+  }
+  return row;
 }
+
+function paintLevels(st){
+  const sc = st.scene, walls = sc.walls || null;
+  const ref = st.ref ? st.ref.v : null;
+  const lv = PAY.levels || {};
+  // the count rides the display wrapper; the strike itself is the scene's own
+  // magnet, so the card and the chart can never name two different strikes
+  const top = ((sc.magnet || {}).top_strikes || [])[0];
+  let most = lv.most_contracts || null;
+  if(!most && top && top.strike != null) most = {strike: top.strike};
+  const rows = levelRows(walls, most, lv.heaviest || null, ref);
+
+  const box = $('lvRows');
+  box.replaceChildren(...rows.map(lvRow));
+
+  // The levels are the BOOK's, whatever the quote is doing, so a stale book
+  // says which scan it came from rather than letting a fresh price vouch for it.
+  let when = '';
+  if(st.stale){
+    const et = etTime(Date.parse(PAY.row_ts));
+    if(et) when = 'At the ' + et + ' scan';
+  }
+  $('lvWhen').textContent = when;
+  paintSheet(rows, most, lv);
+}
+
+/* ---- G. the explainer sheet --------------------------------------------- */
+//
+// What each level IS, in plain words — and, as carefully, what it is not. The
+// first draft of this text was the textbook: dealers buy dips and sell rallies
+// near the strike, price gets pinned late in the day, a wall is where price
+// bounces or breaks. A fact-check against the station's own findings found
+// every one of those measured false on SNDK (docs/sndk-plan.md, "Closed by
+// measurement"), so the sheet says where the weight is and stops there.
+
+function paintSheet(rows, most, lv){
+  const set = (id, t) => { $(id).textContent = t || ''; };
+  const k = side => { const r = rows.find(x => x.side === side || (side === 'most' && x.most));
+                      return r && r.strike != null ? gUsd(r.strike, 0).replace('$', '') : ''; };
+  set('shCall', k('call')); set('shPut', k('put')); set('shMost', k('most'));
+
+  const win = most && most.window_dollars != null ? Math.round(most.window_dollars) : null;
+  set('shWindow', win != null ? ', about $' + win + ' either side right now' : '');
+
+  const note = lightNote(lv);
+  $('shLight').hidden = !note;
+  if(note){
+    const f = v => gUsd(v, 0).replace('$', '');
+    // "the put wall at 1,650 carries" / "a put wall further out, at 1,600, carries"
+    const who = note.further ? 'a ' + note.side + ' wall further out, at ' + f(note.heavy) + ','
+                             : 'the ' + note.side + ' wall at ' + f(note.heavy);
+    let s = 'Right now ' + who + ' carries the most gamma, '
+          + note.share.toFixed(1) + '% of the board. ' + f(note.strike) + ' has the most contracts';
+    if(note.count != null){
+      s += ', ' + note.count.toLocaleString('en-US');
+      if(note.traded != null) s += ', and ' + note.traded.toLocaleString('en-US') + ' of them traded today';
+    }
+    set('shLightNow', s + '.');
+  }
+}
+
+// PRESS, HOLD, LET GO. The one gesture on this card, and the one exception to
+// "the glance is not a control" (see test_the_glance_itself_is_not_a_control).
+// It opens an explanation of the card; nothing on the card changes by touching
+// it.
+//
+// THE SHEET OPENS WHEN THE FINGER LIFTS, never while it is down (2026-09-10).
+// The first build opened on the 450ms timer, under a finger still on the glass,
+// and the rest of that one touch then belonged to a sheet that had not existed
+// when it began:
+//   - ~50ms later Android's own long-press fired on the SHEET's text and began
+//     a text selection, so the drag that followed extended a selection instead
+//     of scrolling — the card read as a dead zone, and the only place a swipe
+//     still scrolled was the sliver of screen above it;
+//   - any slow start to a scroll (under 10px in the first 450ms) fell into it;
+//   - a lift before the platform's long-press timeout counted as a TAP, which
+//     Chrome hit-tests after the handlers have run — on the backdrop now under
+//     the finger, which closed the sheet the instant it opened;
+//   - and the Back entry was pushed from a timer rather than a gesture, which
+//     Chrome may skip, so Back could leave the page instead of the sheet.
+// Now the 450ms only ARMS it: the bar along the card's foot completes and the
+// phone ticks. Moving at any point cancels it and the gesture stays a scroll.
+// Lifting an armed hold opens the sheet, from the touchend itself, with that
+// touchend's tap cancelled.
+//
+// It opens a SHEET, not a tooltip: the text runs to several paragraphs, and a
+// tooltip that lives only while a finger is down asks you to read with your
+// thumb over the screen. The sheet pushes a history entry, so the phone's back
+// gesture closes it rather than leaving the page — the shell's back handler
+// walks the WebView's history first.
+//
+// PULL-TO-REFRESH. The shell arms its refresh gesture from the WebView's own
+// "can the page scroll up?" unless the page has said otherwise through
+// MiraiShell.atTop(). This page scrolls the document, so it never needed to
+// speak — until the sheet: opened with the page at the top, a downward drag
+// inside it read as a pull and reloaded the page out from under the reader. So
+// the page speaks while the sheet is open, and once it has spoken it keeps the
+// answer true on every scroll, because the shell has no way back to "silent".
+(function(){
+  const HOLD_MS = 450, SLOP = 10;
+  // Clicks on the backdrop or the button this soon after opening are the
+  // gesture that opened it arriving late, not a request to close.
+  const GHOST_MS = 500;
+  let t = 0, x0 = 0, y0 = 0, card = null, armed = false, spoke = false;
+  let openedAt = 0, closing = false;
+
+  function tellShell(){
+    try {
+      if(!window.MiraiShell || typeof MiraiShell.atTop !== 'function') return;
+      MiraiShell.atTop(!isOpen() && window.scrollY <= 0);
+      spoke = true;
+    } catch(e){ /* a shell without the bridge falls back to its own answer */ }
+  }
+  window.addEventListener('scroll', () => { if(spoke) tellShell(); }, {passive: true});
+
+  function tick(){
+    try {
+      if(window.MiraiShell && typeof MiraiShell.tick === 'function') MiraiShell.tick();
+      else if(navigator.vibrate) navigator.vibrate(12);
+    } catch(e){ /* a phone that will not buzz must not stop the sheet */ }
+  }
+
+  function isOpen(){ return document.body.classList.contains('sheet-open'); }
+  function open(){
+    if(isOpen()) return;
+    document.body.classList.add('sheet-open');
+    openedAt = Date.now(); closing = false;
+    tellShell();
+    $('sheet').setAttribute('aria-hidden', 'false');
+    try { history.pushState({sheet: 1}, ''); } catch(e){}
+    $('shClose').focus({preventScroll: true});
+  }
+  function shut(){
+    closing = false;
+    if(!isOpen()) return;
+    document.body.classList.remove('sheet-open');
+    tellShell();
+    $('sheet').setAttribute('aria-hidden', 'true');
+    $('levels').focus({preventScroll: true});
+  }
+  // Closing by the button, the backdrop or Escape unwinds the entry open()
+  // pushed, and the popstate that follows does the closing — one path, whatever
+  // closed it. ONCE: the sheet still reads as open between history.back() and
+  // its popstate, and a second close in that gap (a double tap on "Got it", a
+  // held Escape) went back twice and left the page.
+  function dismiss(){
+    if(closing || !isOpen()) return;
+    if(history.state && history.state.sheet){ closing = true; history.back(); }
+    else shut();
+  }
+  window.addEventListener('popstate', shut);
+
+  function cancel(){
+    if(t){ clearTimeout(t); t = 0; }
+    if(card){ card.classList.remove('holding', 'armed'); card = null; }
+    armed = false;
+  }
+  function release(e){
+    const go = !!card && armed;
+    cancel();
+    if(!go) return;
+    // an uncancelled touchend becomes the tap described above
+    if(e.type === 'touchend' && e.cancelable) e.preventDefault();
+    open();
+  }
+  document.addEventListener('pointerdown', e => {
+    const c = e.target.closest && e.target.closest('[data-hold]');
+    if(!c || !e.isPrimary || isOpen()) return;
+    cancel();
+    card = c; x0 = e.clientX; y0 = e.clientY;
+    c.classList.add('holding');
+    t = setTimeout(() => { t = 0; armed = true; if(card){ card.classList.add('armed'); tick(); } }, HOLD_MS);
+  });
+  const drifted = (x, y) => Math.abs(x - x0) > SLOP || Math.abs(y - y0) > SLOP;
+  document.addEventListener('pointermove', e => { if(card && drifted(e.clientX, e.clientY)) cancel(); });
+  // Touch events keep flowing after the browser has claimed a gesture and sent
+  // pointercancel, so a thumb that moved is caught here whatever the browser
+  // decided — including at the very bottom of the page, where a drag scrolls
+  // nothing and whether a pointercancel arrives at all is a browser detail.
+  document.addEventListener('touchmove', e => {
+    const p = e.touches && e.touches[0];
+    if(card && p && drifted(p.clientX, p.clientY)) cancel();
+  }, {passive: true});
+  // A finger lets go with touchend, which arrives even when a long-press has
+  // made the browser send pointercancel first; a mouse or pen with pointerup.
+  // Non-passive so the tap can be cancelled — a touchend listener never delays
+  // scrolling, only touchstart and touchmove can.
+  document.addEventListener('touchend', release, {passive: false});
+  document.addEventListener('pointerup', e => { if(e.pointerType !== 'touch') release(e); });
+  document.addEventListener('touchcancel', cancel);
+  // before the hold arms, a pointercancel means the browser took it for a pan
+  document.addEventListener('pointercancel', () => { if(!armed) cancel(); });
+  window.addEventListener('scroll', cancel, {passive: true});
+  // or a real phone opens its own long-press menu — on the card, or on the
+  // sheet's text, where a text selection would take over the next drag
+  document.addEventListener('contextmenu', e => {
+    if(e.target.closest && e.target.closest('[data-hold], #sheet')) e.preventDefault();
+  });
+  // a hold is not something a keyboard can do
+  document.addEventListener('keydown', e => {
+    const c = document.activeElement;
+    if((e.key === 'Enter' || e.key === ' ') && c && c.hasAttribute && c.hasAttribute('data-hold')){
+      e.preventDefault(); open();
+    }
+    if(e.key === 'Escape' && isOpen()) dismiss();
+  });
+  // the ONLY click handler on this page, and it closes the explanation
+  document.addEventListener('click', e => {
+    if(!(e.target.closest && e.target.closest('[data-sheet-close]'))) return;
+    if(Date.now() - openedAt < GHOST_MS) return;
+    dismiss();
+  });
+})();
 
 /* ---- E. read — an opinion, not a measurement ---------------------------- */
 
