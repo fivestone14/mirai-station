@@ -107,10 +107,43 @@ def test_an_empty_side_is_stated_not_silent():
     assert "nearest_above" not in v2["strikes"] and v2["strikes"]["nearest_below"] == 1250.0
 
 
-def test_distances_divide_the_books_spot_not_the_live_one():
+def test_distances_and_sides_are_measured_from_the_live_price():
+    """Review item #9. Every above and below on the table is the live price's:
+    the book was measured at 1280, price is at 1290, so 1300 sits a tenth of a
+    sigma above — not the fifth it would be from the book's price."""
     rows = mkrows(spot=1290.0, chain_spot=1280.0)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
-    assert recs(v2)[1300.0]["dist_sigma"] == 0.2 and recs(v2)[1300.0]["side"] == "above"
+    assert recs(v2)[1300.0]["dist_sigma"] == 0.1 and recs(v2)[1300.0]["side"] == "above"
+
+
+def test_a_cached_book_no_longer_puts_a_strike_on_the_wrong_side():
+    """09-08 12:46: the book was measured at 1789.95 and price was at 1784.22,
+    so 1785 was labelled below and 1790 was the "nearest above" while 1785 sat
+    above the live price — and a sentence saying so contradicted the table. Here
+    the book is at 1302 and price at 1294: 1300 is above price, the nearest
+    strike above is 1300, and the checker and the table agree."""
+    rows = mkrows(spot=1294.0, chain_spot=1302.0)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    s = v2["strikes"]
+    assert recs(v2)[1300.0]["side"] == "above"
+    assert (s["nearest_above"], s["nearest_below"]) == (1300.0, 1250.0)
+    reply = {"quiet": False, "read": "1300 sits just above price with the most contracts.",
+             "sides": {"above": {"heavy": 1300.0, "leads_on": ["contracts"]},
+                       "below": {"heavy": None, "leads_on": []}},
+             "clusters": [], "resolved": [], "points": [], "absent": []}
+    out = B.check_reading_v2(reply, v2)
+    assert out.get("read"), out.get("dropped_observations")
+    assert out["sides"]["above"]["heavy"] == 1300.0
+
+
+def test_a_strike_at_the_price_is_on_neither_side_and_is_not_the_nearest():
+    """Within a twentieth of a sigma of the live price a strike is "at": the
+    nearest strikes each side skip it, exactly as the checker reads sides."""
+    rows = mkrows(spot=1298.0, chain_spot=1298.0)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    s = v2["strikes"]
+    assert recs(v2)[1300.0]["side"] == "at"
+    assert (s["nearest_above"], s["nearest_below"]) == (1350.0, 1250.0)
 
 
 def test_a_missing_surface_drops_its_columns_and_is_named():

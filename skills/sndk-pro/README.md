@@ -266,6 +266,18 @@ no volume rank (a zero-volume open used to rank the lowest strike first), and
 the added-volume columns go when there is only one book instead of shipping
 empty.
 
+**One price for above and below (review item #9).** The table's `side` and
+`dist_sigma`, `nearest_above`/`nearest_below`, the two above-price shares and
+the nearest-each-side picks were measured from the price the book was taken
+at, while the answer checker and the model's sentences use the live price.
+Over every scan of 09-08, 09-10 and 09-11, 92 of 474 carried a nearest strike
+on the wrong side of the live price and 19 rows were labelled on the wrong
+side. All of them now use `price.live_spot` (zero and zero on the same
+scans); a strike within a twentieth of a sigma is `at` and on neither side,
+so the nearest strikes each side skip it, exactly as the checker reads
+sides. The book's price still draws the window, and the regions rule still
+measures each book from its own price.
+
 ### strikes-2 (2026-09-10) — volatility in percent
 
 Both implied-vol figures in the Strikes Payload (`scale.implied_vol_atm`,

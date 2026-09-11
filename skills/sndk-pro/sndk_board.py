@@ -255,8 +255,10 @@ def select_strikes(surf: dict, window: list, ruler_spot: float,
                    mode: str = STRIKE_LIST_MODE, top_n: int = TOP_N) -> list:
     """The union the design names: top N by contracts, top N by today's
     volume, top N by |dealer gamma|, the nearest NEAREST_EACH_SIDE strikes
-    either side of spot, and anything crossed since the last read. A measure
-    that was not recorded nominates nobody."""
+    either side of `ruler_spot`, and anything crossed since the last read. A
+    measure that was not recorded nominates nobody. The table passes the LIVE
+    price here (item #9), so the strikes nearest where price is now are the
+    ones listed; the regions rule passes each book's own price."""
     if mode == "window":
         return list(window)
     keep = set()
@@ -359,10 +361,10 @@ def _on_list_minutes(rows: list, now: datetime, k: float, crossed: Optional[list
     distinct books up to LIST_AGE_LOOKBACK_ROWS. None when never on it before."""
     since = None
     for r in reversed(rows[-LIST_AGE_LOOKBACK_ROWS:]):
-        rs, sg, _, _ = _ruler(r)
+        rs, sg, lv, _ = _ruler(r)
         surf = surfaces(r)
         win = _window(surf, rs, sg)
-        if not win or k not in select_strikes(surf, win, rs, crossed):
+        if not win or k not in select_strikes(surf, win, lv if lv is not None else rs, crossed):
             break
         since = _asof(r)
     if since is None:
@@ -631,13 +633,22 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     need from it. `sent_before` is the strike list the model was shown at its
     last read (the read row's `strikes_sent`), or None when none was kept."""
     ruler_spot, sig, spot, ruler_name = _ruler(row)
+    # 2026-09-11, review item #9: ONE PRICE FOR EVERY ABOVE AND BELOW, and it is
+    # the live one. The row's side and distance, the nearest strikes each side
+    # and the two above-price shares were measured from the price the book was
+    # measured at, while the answer checker and the model's own sentences read
+    # the live price — four definitions, and on about one scan in four a
+    # "nearest strike above" that was really below where price stood. The
+    # book's price still draws the window (which strikes the book covers);
+    # every above, below and at is now the live price's.
+    live = spot if spot is not None else ruler_spot
     surf = surfaces(row)
     window = _window(surf, ruler_spot, sig)
     if not window:
         return None, [], None, []
     shares = _shares(surf, window)
     ranks = _ranks(surf, window)
-    listed = select_strikes(surf, window, ruler_spot, crossed)
+    listed = select_strikes(surf, window, live, crossed)
     ref_row, ref_meta = _reference(rows, last_read_ts)
     ref = None
     if ref_row is not None:
@@ -687,14 +698,14 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         cols += COLUMNS_NEXT
 
     rows_out = []
-    listed_by_weight = set(select_strikes(surf, window, ruler_spot))   # without the crossed set
+    listed_by_weight = set(select_strikes(surf, window, live))   # without the crossed set
     for k in listed:
-        d = (k - ruler_spot) / sig if sig else None
+        d = (k - live) / sig if sig else None
         oc, op = surf["oi_side"].get(k, (None, None))
         vc, vp = surf["vol_side"].get(k, (None, None))
         net = surf["net"].get(k)
         rec = {"strike": k,
-               "side": ("at" if d is not None and abs(d) < AT_SIGMA else "above" if k > ruler_spot else "below"),
+               "side": ("at" if d is not None and abs(d) < AT_SIGMA else "above" if k > live else "below"),
                "dist_sigma": round(d, 2) if d is not None else None,
                "oi_calls": int(oc) if oc is not None else None,
                "oi_puts": int(op) if op is not None else None,
@@ -740,12 +751,15 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         rows_out.append(rec)
     rows_out.sort(key=lambda r: (-(r.get("contracts_share_pp") or 0), r["strike"]))
 
-    above = [k for k in window if k > ruler_spot]
-    below = [k for k in window if k < ruler_spot]
+    above = [k for k in window if k > live]
+    below = [k for k in window if k < live]
     ctot = sum(surf["contracts"].get(k, 0.0) for k in window)
     gtot = sum(abs(surf["net"].get(k, 0.0)) for k in window)
-    la = [k for k in listed if k > ruler_spot]
-    lb = [k for k in listed if k < ruler_spot]
+    # the nearest strikes each side are the nearest the TABLE marks above and
+    # below: a strike marked "at" is on neither side, as the checker reads it
+    side_of = {r["strike"]: r["side"] for r in rows_out}
+    la = sorted(k for k in listed if side_of.get(k) == "above")
+    lb = sorted(k for k in listed if side_of.get(k) == "below")
     head = {
         "strikes_in_window": len(window),
         "sigma_measured_from": ruler_name,
@@ -1260,7 +1274,7 @@ THE BOARD IS AN AUCTION HOUSE, AND A SHARED DOCUMENT. Read it that way:
 - A HEAVIER SIDE, NEVER A STRONGER ONE. Forces sit on both sides of price. Which side is heavier is a share you can read (`contracts_above_spot_pp`, `dealer_gamma_above_spot_pp`, the strikes themselves). Say heavier and lighter, by measure. Strong and weak are promises about what price will do, and they delete your sentence.
 
 THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contracts share, heaviest first, and `strikes.columns` names every field a record can carry. A field missing from a record was not measured for that strike; a field missing from `columns` was not measured for any strike this scan, and `strikes.absent` says why. The fields:
-- `strike`, `side`, `dist_sigma`: where the STRIKE sits relative to the price the book was measured at, in sigma (a normal day's move). "above" means the strike is above price; `at` is within a twentieth of a sigma. To place a strike against the live price use `price.live_spot`; on a cached book the two prices differ, and `price.live_minus_book_spot_sigma` is the difference.
+- `strike`, `side`, `dist_sigma`: where the STRIKE sits relative to the live price, `price.live_spot`, in sigma (a normal day's move). "above" means the strike is above the live price; `at` is within a twentieth of a sigma of it and is on neither side. Every above and below in the table and its header is measured from that one price, so `side`, `dist_sigma`, `nearest_above`, `nearest_below` and the above-price shares always agree with each other and with `price.live_spot`.
 - `touched_today`, `first_touch`, `last_touch`, `bars_touched_today`: whether a completed minute bar's wick held that strike today, the first and last minute that did, and how many bars did. A strike price sat on for forty bars, a strike it brushed once, and a strike it has not reached are three different things; say which.
 - `shares_traded_at_strike_pp`: the share of the day's stock volume that printed in bars whose range held the strike. NOT where the shares traded. A minute's whole volume is credited to every strike its high-low range covered, so one bar counts several times and these sum past 100 across the listed strikes — median 104, once 400. Read it as "the stock was trading across this strike in minutes carrying this much of the day's volume", and never as a share of anything.
 - `oi_calls`, `oi_puts`: open interest as of last night's close. "1700 holds the most open interest as of last night's close" is a correct sentence; "open interest is building at 1700" is false by construction.
@@ -1273,7 +1287,7 @@ THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contract
 - `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book or books were left out because they still carried the prior session's volume.
 - `touched_in_books`: which of those intervals had a wick at the strike, by index; absent when none did.
 - `next_week`: the next weekly expiry's open interest and volume at the same strike, in the order `strikes.next_week_columns` gives. Open interest in either book is last night's; volume in either is today's. On expiry day the front list dies at the close and the next week's book is Monday's list. `not_recorded` on the header means the diary had not yet kept the next book that day.
-The header also carries `strikes_in_window` (how many were in reach), `contracts_above_spot_pp` and `dealer_gamma_above_spot_pp`, `nearest_above` and `nearest_below` (the nearest listed strike each side of the book's price, or absent when the side is empty; `no_strikes_above` and `no_strikes_below` say so outright), and `entered_since_reference` and `left_since_reference` (strikes that joined or left the list since your last read, measured against the list you were shown then; both are absent when there is no earlier list).
+The header also carries `strikes_in_window` (how many were in reach), `contracts_above_spot_pp` and `dealer_gamma_above_spot_pp`, `nearest_above` and `nearest_below` (the nearest listed strike marked above and marked below the live price, or absent when there is none; `no_strikes_above` and `no_strikes_below` say a side of the window is empty outright), and `entered_since_reference` and `left_since_reference` (strikes that joined or left the list since your last read, measured against the list you were shown then; both are absent when there is no earlier list).
 
 THE FRAMES. `frames` is the shared time axis behind every series: `book_times` once, `interval_min` between them, `gaps` naming any long interval, `reaches_last_read` and `books_since_last_read` saying whether the series covers the stretch since you last spoke, and `price_path_sigma_from_now`: where price sat at each book, in today's sigma, zero at the price the book was measured at. It lets you say when volume arrived relative to where price was: "most of 1750's volume arrived while price sat below 1720". It does not let you say what price did about it. An entry over a long interval is one lump for the whole stretch: name the minutes and call its shape unknown. With fewer than six books in the series, say nothing about the shape of any series.
 
@@ -1691,6 +1705,8 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
     # band, so a strike the table called "at" was counted below and true
     # leadership claims were deleted (6 in 23 replies). A strike marked "at"
     # is on neither side. Rows without a side fall back to the live price.
+    # item #9: the table's side is now measured from the live price too, so
+    # the two splits differ only by the "at" band.
     pr = scene.get("price") or {}
     spot = SR._fin(pr.get("live_spot"))
     if spot is None:
