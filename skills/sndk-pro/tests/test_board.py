@@ -287,7 +287,7 @@ def test_no_verdict_reaches_the_model_including_inside_the_frame():
     for k in ("data_sources", "clock", "price"):
         assert k in v2
     assert v2["clock"] == v1["clock"] and v2["price"] == v1["price"]
-    assert v2["scale"]["implied_vol_atm"] == 0.5
+    assert v2["scale"]["implied_vol_atm"] == 50.0   # in percent since 2026-09-10
 
 
 def test_data_sources_keeps_the_clocks_and_drops_the_derived_counts():
@@ -378,7 +378,17 @@ def test_between_frames_carries_the_earlier_vol_only():
     rows = mkrows(n=8)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
     bf = v2["between_frames"]
-    assert bf["implied_vol_at_last_read"] == 0.5 and "implied_vol" not in bf
+    assert bf["implied_vol_at_last_read"] == 50.0 and "implied_vol" not in bf   # percent
+
+
+def test_vol_ships_in_percent_and_the_doctrine_says_so():
+    """2026-09-10: implied vol ships as 50.0, not 0.5, so the "about 50" a
+    person would say is a number the gate can find on the board. The doctrine
+    names the unit, pinned here, so the two cannot drift apart."""
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    assert v2["scale"]["implied_vol_atm"] == 50.0
+    assert "`scale.implied_vol_atm` is the at-the-money implied vol now, in percent" in B.DOCTRINE_V2
 
 
 def test_guard_needs_a_price_for_sides_and_renumbers_ranks():

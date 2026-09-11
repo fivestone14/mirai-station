@@ -673,7 +673,8 @@ def between_frames_block(rows: list, bars_now: list, now: datetime,
         out["price"] = {k: v for k, v in price.items() if v is not None}
     iv_then = SR._fin(ref.get("atm_iv")) if ref is not None else None
     if iv_then is not None:
-        out["implied_vol_at_last_read"] = round(iv_then, 4)   # now is scale.implied_vol_atm
+        # in percent, like scale.implied_vol_atm (see there for why)
+        out["implied_vol_at_last_read"] = round(iv_then * 100, 2)
     return out or None
 
 
@@ -844,7 +845,13 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
             sc["expected_move_today_asym"].pop("skewed_toward", None)
         iv = SR._fin(row.get("atm_iv"))
         if iv is not None and not book_too_old:
-            sc["implied_vol_atm"] = round(iv, 4)
+            # 2026-09-10: IN PERCENT, not as a fraction. The diary stores 0.6815;
+            # a person says "68". The number gate deletes any sentence carrying
+            # a number that is not on the board, and 68 is 0.68 away from 68.15
+            # but 67 away from 0.6815 — so every spoken vol level used to die
+            # unless it happened to sit near some unrelated number. Now it is
+            # sayable as written.
+            sc["implied_vol_atm"] = round(iv * 100, 2)
         v2["scale"] = sc
     hist = v2.get("history") or {}
     hist.pop("tape_abnormal_vs_own_history", None)
@@ -997,7 +1004,7 @@ BOTH SIDES, EVERY TIME. Price always has a side above it and a side below it, an
 
 INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up film is: NEW, INCREASED, DECREASED, STABLE, and UNKNOWN when the earlier book is missing; RESOLVED is for a pile that was there at your last read and is gone. On a cluster the word is checked by the code against a fixed rule over the last twelve books and rewritten when it disagrees, so write what the change cells and the series show. In prose the same words apply to the change cell and to the series, and two rules ride with them. First, THE WINDOW IS ALWAYS NAMED: "since your last read at 12:35", "over the last twelve books", "against the book five books back". A change with no window is a guess. Second, YOU CANNOT SEE GAMMA CHANGE ON THIS BOARD: the scene ships one gamma sign and one gamma share per strike and no earlier value, so never say a gamma share rose or fell. Change is contracts and volume: "1750 added 1,296 calls since your last read", "1700's share of contracts slipped a point".
 
-BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window (a gap in the data is a gap, never calm — and its absence means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and implied vol from and to. Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
+BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window (a gap in the data is a gap, never calm — and its absence means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and the implied vol at your last read (the value now is `scale.implied_vol_atm`). Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
 
 OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, anything crossed since (`crossed_since_then`, as a level and a direction), and `clusters_then`, the clusters you drew last time. Price now is `price.live_spot`. A change of 0.15 sigma or more is a move: say price then and price now. Under that it is a hold, and you say so in your own words with the two prices from `between_frames.price.low` and `high` and the clock — not in these words, which every reading for a month has copied. A crossing is named as the level and as a distance you can read off the scene, never with a word that grades it. Do not reach for "just through": measured over 294 crossings the median distance from the level to the live price at the moment of speaking is $6.52, the upper quartile $11.53, and 61 percent are more than $5 away — so "just" is wrong more often than right. Say the level and say where price is now. Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point and vol held.
 
@@ -1022,7 +1029,7 @@ THE INSTRUMENT. This is SNDK, a single stock, not an index. Do not carry a numbe
 
 FIELD NAMES SAY WHAT THEY ARE. `_pp` is percentage points, `_min` is minutes, `_sigma` is a distance in sigma. `price.vwap_minus_live_spot_sigma` is positive when the day's average price sits ABOVE the live price. `price.moved_last_30min_sigma` is positive when price ROSE.
 
-THE KEPT BLOCKS, in a clause each. `clock.minutes_to_close` is session left for a read to resolve in; `scale.one_sigma_dollars` is a normal day's move, the ruler every distance uses; `scale.implied_vol_atm` is the at-the-money implied vol now; `scale.expected_move_today_asym` is the up and down dollars the options price for the rest of the day; `price.vs_prior_close_pct` is today's change; `price.session_high` and `session_low` are the day's extremes from the bars. Whether price is somewhere it has not been today is not a field: `price.session_high`, `price.session_low` and `price.live_spot` all ship, and the comparison is yours to make. A flag for it used to ride here and was deleted after it fired 16 times across 8 replayed sessions and the payload's own extremes contradicted all 16 — it asked the 2-minute scans while the extremes answer from the 1-minute bars.
+THE KEPT BLOCKS, in a clause each. `clock.minutes_to_close` is session left for a read to resolve in; `scale.one_sigma_dollars` is a normal day's move, the ruler every distance uses; `scale.implied_vol_atm` is the at-the-money implied vol now, in percent (68.15 means 68.15 percent, and "about 68" is how to say it); `scale.expected_move_today_asym` is the up and down dollars the options price for the rest of the day; `price.vs_prior_close_pct` is today's change; `price.session_high` and `session_low` are the day's extremes from the bars. Whether price is somewhere it has not been today is not a field: `price.session_high`, `price.session_low` and `price.live_spot` all ship, and the comparison is yours to make. A flag for it used to ride here and was deleted after it fired 16 times across 8 replayed sessions and the payload's own extremes contradicted all 16 — it asked the 2-minute scans while the extremes answer from the 1-minute bars.
 
 WHERE EVERY NUMBER CAME FROM. `price` is the live tape. The table comes out of the options book, which is minutes old and often a cached repeat: `data_sources.options_book` carries its age and `is_repeat_of_previous_scan`. Open interest rests on last night's snapshot; `data_sources.open_interest` re-proves that it held still today. `freshness_rules.blocks_dropped_this_scan` names any block deleted for age, and the whole freshness_rules block is absent when nothing was dropped. Every `dist_sigma` divides the price the book was measured at (`price.spot_when_book_was_measured`); to move a distance to the live frame, SUBTRACT `price.live_minus_book_spot_sigma`.
 
@@ -1216,7 +1223,11 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             if isinstance(ch, list) and ch and isinstance(ch[0], (int, float)) and abs(ch[0]) >= 1.0:
                 moved = True
         iv = (scene.get("between_frames") or {}).get("implied_vol") or {}
-        if isinstance(iv.get("from"), (int, float)) and isinstance(iv.get("to"), (int, float)) and abs(iv["to"] - iv["from"]) >= 0.05:
+        # the scene carries implied vol in percent since 2026-09-10, so the
+        # bar is 5 points, not 0.05. (This branch reads a key the scene does
+        # not ship yet; it is kept in the new unit so wiring it later cannot
+        # silently shrink the bar a hundredfold.)
+        if isinstance(iv.get("from"), (int, float)) and isinstance(iv.get("to"), (int, float)) and abs(iv["to"] - iv["from"]) >= 5.0:
             moved = True
         if moved:
             out.append("unchanged_contradicted_by_change_block")

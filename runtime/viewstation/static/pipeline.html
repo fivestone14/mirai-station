@@ -495,7 +495,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
   S.board = {name:'Strikes Payload · v1', status:'live since 2026-09-05 (era strikes-1)', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · build_scene_v2',
     what:'What the model reads now. The Scene Payload with its verdicts stripped, plus the board itself as one record per strike, twelve books of history behind each and the gap since the last read. About 6 to 12 thousand characters; the model draws the clusters. Revert with "payload": "scene" in state/sndk_reads/control.json.',
     rows:[
-      [0,'data_sources · clock · scale · price · history · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm; context keeps only ranges and since_last_read (which gains clusters_then)'],
+      [0,'data_sources · clock · scale · price · history · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm, in percent (68.15, not 0.6815); context keeps only ranges and since_last_read (which gains clusters_then)'],
       [0,'strikes','object','the board as records'],
       [1,'strikes_in_window','int','how many strikes were in reach, 1.5 sigma either side of the book’s price'],
       [1,'contracts_above_spot_pp · dealer_gamma_above_spot_pp','number','share of each surface sitting above price'],
