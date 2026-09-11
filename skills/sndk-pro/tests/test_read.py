@@ -105,19 +105,31 @@ def _books(*rows):
     return out
 
 
+def _minutes(span, n=30, end=None):
+    """strikes-3: `n` completed minute bars ending at `end` (T0), each `span`
+    dollars from low to high — the minute record the move bar is counted in.
+    The gate's bar is MOVE_MINUTES of these, so a span of 5 makes it $10."""
+    end = end or T0
+    return [{"ts": (end - timedelta(minutes=n - i)).isoformat(), "open": 1200.0,
+             "high": 1200.0 + span, "low": 1200.0, "close": 1200.0, "volume": 10.0}
+            for i in range(n)]
+
+
 def test_first_scan_always_wakes():
     assert SR.should_wake(mkrow([[1300, 9]]), None, None, T0) == "first read"
 
 
 def test_min_gap_holds_the_ordinary_down():
-    """The floor still binds on drift. 0.25 sigma of travel is a real trigger
-    past the gap and nothing at all inside it — that is the spam wk-1 closed."""
+    """The floor still binds on drift. Travel past the move bar is a real
+    trigger past the gap and nothing at all inside it — that is the spam wk-1
+    closed."""
+    bars = _minutes(5)                                   # the bar is $10
     prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 1))
-    ordinary = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 + 5)
-    assert SR.should_wake(ordinary, None, prev, T0) is None
+    ordinary = mkrow([[1300, 9]], spot=1200 + 10 + 5)
+    assert SR.should_wake(ordinary, None, prev, T0, bars=bars) is None
     # ...and the same row past the floor is the ordinary trigger it always was
     old_prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN + 1))
-    assert SR.should_wake(ordinary, None, old_prev, T0) == "price ran"
+    assert SR.should_wake(ordinary, None, old_prev, T0, bars=bars) == "price ran"
 
 
 def _books_at(offsets, *rows):
@@ -146,13 +158,14 @@ def test_a_material_event_breaks_the_floor():
 
 
 def test_plain_travel_must_be_twice_as_far_to_break_the_floor():
-    """"price ran" is the most frequent wake there is; at 0.20 sigma it would
-    defeat the floor on any trending day. Inside it, the bar is 0.40."""
+    """"price ran" is the most frequent wake there is; at the move bar it would
+    defeat the floor on any trending day. Inside it, the bar is doubled."""
+    bars = _minutes(5)                          # the bar is $10, doubled $20
     prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), spot=1200.0)
-    near = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 + 5)
-    assert SR.should_wake(near, None, prev, T0) is None
-    far = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA_HARD * 100 + 5)
-    assert SR.should_wake(far, None, prev, T0) == "price ran"
+    near = mkrow([[1300, 9]], spot=1200 + 10 + 5)
+    assert SR.should_wake(near, None, prev, T0, bars=bars) is None
+    far = mkrow([[1300, 9]], spot=1200 + 20 + 5)
+    assert SR.should_wake(far, None, prev, T0, bars=bars) == "price ran"
 
 
 def test_nothing_at_all_fires_inside_the_hard_floor():
@@ -197,11 +210,45 @@ def test_drift_never_interrupts_however_large():
 
 
 def test_price_ran_wakes():
+    bars = _minutes(5)                                   # the bar is $10
     prev = _read(T0 - timedelta(minutes=20), spot=1200.0)
-    row = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 + 1)
-    assert SR.should_wake(row, None, prev, T0) == "price ran"
-    quiet = mkrow([[1300, 9]], spot=1200 + SR.WAKE_SPOT_SIGMA * 100 - 1)
-    assert SR.should_wake(quiet, None, prev, T0) is None
+    row = mkrow([[1300, 9]], spot=1200 + 10 + 1)
+    assert SR.should_wake(row, None, prev, T0, bars=bars) == "price ran"
+    quiet = mkrow([[1300, 9]], spot=1200 + 10 - 1)
+    assert SR.should_wake(quiet, None, prev, T0, bars=bars) is None
+
+
+def test_the_move_bar_is_sized_to_the_hour_not_the_day():
+    """Review item #6. The same $12 since the last read is nothing in a morning
+    of $8 minutes and a move in an afternoon of $2 minutes — a fixed slice of
+    the day's sigma called both the same, firing on 61% of opening stretches
+    and 6% of afternoon ones."""
+    prev = _read(T0 - timedelta(minutes=20), spot=1200.0)
+    row = mkrow([[1300, 9]], spot=1212.0)
+    assert SR.should_wake(row, None, prev, T0, bars=_minutes(8)) is None
+    assert SR.should_wake(row, None, prev, T0, bars=_minutes(2)) == "price ran"
+    assert SR.move_threshold(_minutes(2), T0) == pytest.approx(2 * SR.MOVE_MINUTES)
+
+
+def test_no_minute_record_means_travel_wakes_nothing():
+    """An absent measurement never decides: with no minute bars there is no bar,
+    so plain travel stays quiet however far it went — every other trigger and
+    the heartbeat still fire."""
+    prev = _read(T0 - timedelta(minutes=20), spot=1200.0)
+    far = mkrow([[1300, 9]], spot=1500.0)
+    assert SR.should_wake(far, None, prev, T0) is None
+    assert SR.should_wake(far, None, prev, T0, bars=[]) is None
+    # too few completed minutes in the window is no ruler either
+    assert SR.typical_minute(_minutes(5, n=SR.MINUTE_RULER_MIN_BARS - 1), T0) is None
+    # a minute still running is a partial and never counts
+    running = _minutes(5, n=SR.MINUTE_RULER_MIN_BARS - 1) + [
+        {"ts": (T0 - timedelta(seconds=30)).isoformat(), "open": 1200.0,
+         "high": 1205.0, "low": 1200.0, "close": 1200.0, "volume": 1.0}]
+    assert SR.typical_minute(running, T0) is None
+    # minutes older than the window do not count
+    assert SR.typical_minute(_minutes(5, end=T0 - timedelta(minutes=45)), T0) is None
+    old = _read(T0 - timedelta(minutes=SR.HEARTBEAT_MIN + 1), spot=1200.0)
+    assert SR.should_wake(far, None, old, T0) == "heartbeat"
 
 
 def test_a_discrete_flip_must_hold_for_two_books():
@@ -257,10 +304,11 @@ def test_the_gate_reads_a_snapshot_because_prev_is_not_a_diary_row():
     bare = {"ts": (T0 - timedelta(minutes=20)).isoformat(), "spot": 1200.0,
             "magnet_band": {"reported": 1300.0}}
     crossed = mkrow([[1300, 9]], spot=1450.0, call_wall=1400.0)
-    assert SR.should_wake(crossed, None, bare, T0) == "price ran"   # not the wall
+    bars = _minutes(5)
+    assert SR.should_wake(crossed, None, bare, T0, bars=bars) == "price ran"   # not the wall
     stamped = dict(bare, gate=SR.state_for_next_wake(mkrow([[1300, 9]], spot=1200.0,
                                                   call_wall=1400.0)))
-    assert SR.should_wake(crossed, None, stamped, T0) == "call wall crossed"
+    assert SR.should_wake(crossed, None, stamped, T0, bars=bars) == "call wall crossed"
     # and the snapshot must actually carry the structural fields
     g = SR.state_for_next_wake(mkrow([[1300, 9]], spot=1200.0, call_wall=1400.0,
                             gamma_sign="negative"))

@@ -7,9 +7,10 @@ while the walls block showed 1550, a put wall reported at 1500 beside "no put
 wall", "favoring" walking past a guard that banned "favors", and "still under
 the 1500 strike" at 1528.70 — plus the crossings study that found a crossing
 to be a two-dollar event at a two-dollar noise floor, which is why boxes
-break only past 0.05 sigma."""
+break only past a noise floor (0.05 sigma until strikes-3; now the move bar,
+two typical minutes as they stood at that minute)."""
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -30,6 +31,29 @@ def _tape(spots, step_min=2, sigma=100.0):
             for i, v in enumerate(spots)]
 
 
+def _minutes_under(rows, half=1.0):
+    """strikes-3: the minute bars under a scan tape — every completed minute a
+    wick `half` either side of the scan it sits in, so a typical minute is
+    2 * half and the move bar is MOVE_MINUTES of those ($4 at the default).
+    The box's edges come from these wicks, and a tape without them can break
+    nothing."""
+    pts = [(datetime.fromisoformat(r["ts"]), r["spot"]) for r in rows]
+    t, end, out = pts[0][0], pts[-1][0], []
+    while t + timedelta(minutes=1) <= end:
+        sp = [s for ts, s in pts if ts <= t][-1]
+        out.append({"ts": t.isoformat(), "open": sp, "high": sp + half,
+                    "low": sp - half, "close": sp, "volume": 100.0})
+        t += timedelta(minutes=1)
+    return out
+
+
+def _flat_minutes(span, n=30):
+    """n completed minutes ending at T0, each `span` wide: a bar of 2 * span."""
+    return [{"ts": (T0 - timedelta(minutes=n - i)).isoformat(), "open": 1500.0,
+             "high": 1500.0 + span, "low": 1500.0, "close": 1500.0, "volume": 1.0}
+            for i in range(n)]
+
+
 _CALLS_ONLY = ([[1240, 8.0], [1245, 7.0], [1300, 6.5]]
                + [[k, 0.1] for k in range(1105, 1300, 5) if k not in (1240, 1245)])
 
@@ -41,18 +65,49 @@ def test_the_since_window_starts_where_price_was():
     seeded with spot_then, and the frame says it is a move."""
     lc = _last_call(minutes_ago=10, spot=1557.53)
     rows = _rows([1546.08, 1522.0, 1518.45, 1523.0], [8, 6, 4, 0], sigma=58.78)
-    fr = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0)
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0,
+                                  bars=_flat_minutes(5))
     assert fr["held_between_since_last_read"] == {"low": 1518.45, "high": 1557.53}
     assert fr["spot_change_sigma"] == pytest.approx(-0.59, abs=0.01)
+    assert fr["move_threshold_dollars"] == 10.0
     assert fr["frame_is"] == "a move"
 
 
 def test_a_small_drift_is_a_hold():
     lc = _last_call(minutes_ago=10, spot=1543.2)
     rows = _rows([1541.7], [0], sigma=100.0)
-    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0,
+                                  bars=_flat_minutes(5))
     assert fr["frame_is"] == "a hold"
     assert fr["spot_change_sigma"] == pytest.approx(-0.015, abs=0.006)
+
+
+def test_the_frame_uses_the_same_bar_as_the_gate():
+    """strikes-3, review item #6: a move is judged against the minutes around it.
+    $12 is a hold among $8 minutes and a move among $2 minutes; the bar ships
+    in dollars beside spot_change_dollars so the model compares two numbers it
+    can see, and the word agrees with those two rounded numbers."""
+    lc = _last_call(minutes_ago=10, spot=1500.0)
+    rows = _rows([1512.0], [0])
+    busy = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0,
+                                    bars=_flat_minutes(8))
+    quiet = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0,
+                                     bars=_flat_minutes(2))
+    assert (busy["move_threshold_dollars"], busy["frame_is"]) == (16.0, "a hold")
+    assert (quiet["move_threshold_dollars"], quiet["frame_is"]) == (4.0, "a move")
+    edge = SR.frame_since_last_read(_rows([1504.0], [0])[-1], _rows([1504.0], [0]),
+                                    lc, "price ran", False, T0, bars=_flat_minutes(2))
+    assert edge["frame_is"] == "a move"                      # at the bar is a move
+
+
+def test_no_minute_record_no_bar_and_no_word():
+    """An absent measurement never decides: without minute bars the frame ships
+    neither the bar nor a move-or-hold word, and the rest of it is unchanged."""
+    lc = _last_call(minutes_ago=10, spot=1500.0)
+    rows = _rows([1540.0], [0])
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
+    assert "move_threshold_dollars" not in fr and "frame_is" not in fr
+    assert fr["spot_change_dollars"] == 40.0
 
 
 # --- bugs 2 and 3: like with like, and nothing invented ----------------------
@@ -105,7 +160,7 @@ def test_a_walls_block_the_freshness_gate_deleted_freezes_nothing():
 # --- the day's boxes ---------------------------------------------------------
 def test_the_opening_box_forms_over_thirty_minutes_then_freezes():
     rows = _tape([1500 + (i % 3) * 2 for i in range(16)])      # 30 min, 1500-1504
-    rb = SR.ranges_block(rows, T0, 100.0, "2026-07-31")
+    rb = SR.ranges_block(rows, T0, "2026-07-31")
     assert rb["opening"]["low"] == 1500.0 and rb["opening"]["high"] == 1504.0
     assert rb["opening"]["status"] == "held so far"
     assert rb["in_force"]["is_the_opening_box"] is True
@@ -114,7 +169,7 @@ def test_the_opening_box_forms_over_thirty_minutes_then_freezes():
 
 
 def test_the_opening_box_is_still_forming_for_the_first_half_hour():
-    rb = SR.ranges_block(_tape([1500, 1502, 1498]), T0, 100.0, "2026-07-31")
+    rb = SR.ranges_block(_tape([1500, 1502, 1498]), T0, "2026-07-31")
     assert rb["opening"]["still_forming"] is True
     assert rb["opening"]["low"] == 1498.0 and rb["opening"]["high"] == 1502.0
     assert rb["in_force"]["still_forming"] is True
@@ -124,25 +179,41 @@ def test_a_break_retires_the_opening_box_and_a_new_box_forms():
     """Range-bound inside a box price left is not a claim anyone should be
     handed: the break is recorded with its clock and direction, the opening
     box says it broke, and the box in force is the one forming since."""
-    rows = _tape([1500] * 16 + [1520, 1522, 1524])              # +$20 = 0.2 sigma
-    rb = SR.ranges_block(rows, T0, 100.0, "2026-07-31")
+    rows = _tape([1500] * 16 + [1520, 1522, 1524])              # +$20, five bars
+    rb = SR.ranges_block(rows, T0, "2026-07-31", bars=_minutes_under(rows))
     b = rb["breaks_today"]["breaks"][0]
     assert rb["breaks_today"]["count"] == 1 and b["went"] == "up"
-    assert b["box_low"] == 1500.0 and b["box_high"] == 1500.0
+    assert b["box_low"] == 1499.0 and b["box_high"] == 1501.0
     assert rb["opening"]["status"] == f"broke up at {b['at']}"
     assert rb["in_force"]["still_forming"] is True
-    assert (rb["in_force"]["low"], rb["in_force"]["high"]) == (1520.0, 1524.0)
+    assert (rb["in_force"]["low"], rb["in_force"]["high"]) == (1519.0, 1524.0)
     assert rb["in_force"]["replaced_a_box_broken_at"] == b["at"]
 
 
 def test_a_poke_inside_the_noise_floor_is_not_a_break():
-    """The median 2-minute wobble is $2.12; a $3 poke past a box is the tape
-    breathing, not a break. Past 0.05 sigma ($5 here) it is."""
-    quiet = SR.ranges_block(_tape([1500] * 16 + [1503]), T0, 100.0, "2026-07-31")
+    """A poke past a box by less than the move bar is the tape breathing, not a
+    break. Here minutes are $2 wide, so the bar is $4: 1504 sits $3 over the
+    1501 top and holds; 1506 sits $5 over it and breaks."""
+    poke = _tape([1500] * 16 + [1504])
+    quiet = SR.ranges_block(poke, T0, "2026-07-31", bars=_minutes_under(poke))
     assert "breaks_today" not in quiet
     assert quiet["in_force"]["live_spot_is"] == "just above"
-    broke = SR.ranges_block(_tape([1500] * 16 + [1506]), T0, 100.0, "2026-07-31")
+    far = _tape([1500] * 16 + [1506])
+    broke = SR.ranges_block(far, T0, "2026-07-31", bars=_minutes_under(far))
     assert broke["breaks_today"]["count"] == 1
+
+
+def test_the_box_break_is_sized_to_the_minutes_around_it():
+    """strikes-3, review item #6: the same $5 poke that breaks a box among $2
+    minutes is noise among $8 minutes (a bar of $16). And with no minute record
+    nothing breaks at all, and price outside the box is only "above" — "just"
+    needs a ruler to say how far is too far."""
+    far = _tape([1500] * 16 + [1506])
+    busy = SR.ranges_block(far, T0, "2026-07-31", bars=_minutes_under(far, half=4.0))
+    assert "breaks_today" not in busy
+    blind = SR.ranges_block(_tape([1500] * 16 + [1600]), T0, "2026-07-31")
+    assert "breaks_today" not in blind
+    assert blind["in_force"]["live_spot_is"] == "above"
 
 
 def test_the_prior_sessions_range_rides_its_own_clock():
@@ -154,29 +225,33 @@ def test_the_prior_sessions_range_rides_its_own_clock():
         (diary / f"{d}.jsonl").write_text("\n".join(
             json.dumps({"ts": f"{d}T10:00:00-04:00", "ticker": "SNDK", "spot": v})
             for v in (lo, hi)) + "\n")
-    rb = SR.ranges_block(_tape([1500] * 16 + [1560, 1562]), T0, 100.0, "2026-07-31")
+    tape = _tape([1500] * 16 + [1560, 1562])
+    rb = SR.ranges_block(tape, T0, "2026-07-31", bars=_minutes_under(tape))
     ps = rb["prior_sessions"]
     assert (ps["sessions"], ps["from"], ps["to"]) == (2, "2026-07-29", "2026-07-30")
     assert (ps["low"], ps["high"]) == (1400.0, 1530.0)
     assert ps["live_spot_is"] == "above" and ps["today_traded_beyond_it"] == "above"
     assert ps["todays_opening_box_is"] == "inside"
-    inside = SR.ranges_block(_tape([1500] * 16 + [1520, 1522]), T0, 100.0, "2026-07-31")
+    tape = _tape([1500] * 16 + [1520, 1522])
+    inside = SR.ranges_block(tape, T0, "2026-07-31", bars=_minutes_under(tape))
     ps2 = inside["prior_sessions"]
     assert ps2["live_spot_is"] == "inside" and "today_traded_beyond_it" not in ps2
     assert inside["breaks_today"]["count"] == 1          # today's box broke anyway
 
 
 def test_box_edges_ride_in_context_and_may_be_pointed_at():
+    import sndk_bars as SB
     rows = _tape([1500] * 16 + [1520, 1522])
+    SB.write_day(T0.date().isoformat(), _minutes_under(rows), T0)
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     rg = sc["context"]["ranges"]
     at = rg["breaks_today"]["breaks"][0]["at"]
     ok = SR.check_reading_against_scene(
         {"quiet": False,
          "read": f"Price moved up out of the opening box at {at} and is now near 1522.",
-         "points": [{"level": 1500.0, "note": "the opening box's edge"}]}, sc)
+         "points": [{"level": 1501.0, "note": "the opening box's edge"}]}, sc)
     assert ok["read"].startswith("Price moved")
-    assert ok["points"] == [{"level": 1500.0, "note": "the opening box's edge"}]
+    assert ok["points"] == [{"level": 1501.0, "note": "the opening box's edge"}]
 
 
 # --- the structure block: where the weight sits, and nothing more -------------
@@ -296,9 +371,12 @@ def test_the_memory_slice_remembers_the_frame_the_box_and_the_witness():
     """09-02: the slice carries frame_is, the opening box's status and which witness the
     extremes came from — the columns a later pattern search over boxes will need."""
     import sndk_rag
+    import sndk_bars as SB
     rows = _tape([1500] * 16 + [1520, 1522])
+    bars = _minutes_under(rows)
+    SB.write_day(T0.date().isoformat(), bars, T0)
     lc = _last_call(minutes_ago=10, spot=1500.0)
-    fr = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0)
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0, bars=bars)
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0, since_last_read=fr)
     out = {"wake": "price ran", "era": SR.ERA, "magnet_band": SR.magnet_band(rows[-1]),
            "reading": {"quiet": True, "read": "Price moved up out of the opening box.", "abstain": "chosen"}}
@@ -307,4 +385,6 @@ def test_the_memory_slice_remembers_the_frame_the_box_and_the_witness():
     m = rec["meta"]
     assert m["frame_is"] == "a move"
     assert m["opening_box"].startswith("broke up at ")
-    assert m["extremes_from"] == "scans_every_2_min"
+    # strikes-3: a break needs the minute record, and the witness is only named
+    # when it is NOT the minute bars (sr-9's alarm-only rule), so it is absent
+    assert m.get("extremes_from") is None

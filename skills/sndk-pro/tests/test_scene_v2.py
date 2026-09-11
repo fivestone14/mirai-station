@@ -838,11 +838,17 @@ def _scene_with_bars(tmp_path):
     rows = [rich_row(ts=T0 - timedelta(minutes=(40 - i) * 2), spot=1200.0 + (i % 4))
             for i in range(40)]
     t0 = T0 - timedelta(minutes=80)
+    # strikes-3: minute 60 wicks $27 over the box (minutes are $8, the bar $16),
+    # so this is also the scene that carries a box break and the frame's bar
     bars = [{"ts": (t0 + timedelta(minutes=i)).isoformat(), "open": 1200.0,
-             "high": 1206.0 if i == 50 else 1203.0, "low": 1195.0, "close": 1201.0,
-             "volume": 10.0} for i in range(80)]
+             "high": 1230.0 if i == 60 else 1206.0 if i == 50 else 1203.0,
+             "low": 1195.0, "close": 1201.0, "volume": 10.0} for i in range(80)]
     SB.write_day(T0.date().isoformat(), bars, T0)
-    return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+    lc = {"ts": (T0 - timedelta(minutes=12)).isoformat(), "spot": 1180.0,
+          "gate": {"spot": 1180.0}}
+    return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0,
+                          since_last_read=SR.frame_since_last_read(
+                              rows[-1], rows, lc, "price ran", False, T0, bars=bars))
 
 
 def _every_scene_shape(tmp_path):

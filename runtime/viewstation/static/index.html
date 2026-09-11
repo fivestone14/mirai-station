@@ -11652,7 +11652,7 @@ const _PL_NODES=[
    'The last option-chain pull, good for 240 seconds. Every second scan re-prices this cache against the live quote instead of pulling the chain again — which is why its arrow runs back up.'],
 
   ['r1',  'Reader','step',  '1 · Wake gate',         'should_wake()',
-   'Is this scan worth a model call? The day’s first look; price ran 0.20 of the day’s implied move; it crossed a wall or the flip as those stood at the last reading; the most-contracts strike or the flip’s sign changed and stayed changed across two book pulls; implied volatility moved 3 points against a five-book median; the flip itself moved half an implied move; or an hour passed. Ten minutes minimum between calls, 30 a day at most.'],
+   'Is this scan worth a model call? The day’s first look; price ran two typical minutes (the median one-minute high-to-low over the last half hour — the same bar calls a frame a move and breaks a box); it crossed a wall or the flip as those stood at the last reading; the most-contracts strike or the flip’s sign changed and stayed changed across two book pulls; implied volatility moved 3 points against a five-book median; the flip itself moved half an implied move; or an hour passed. Ten minutes minimum between calls, 30 a day at most.'],
   ['r2',  'Reader','step',  '2 · Strikes Payload',   'sndk_board.py · build_scene_v2()',
    'The packet the model reads: all facts, no verdicts. Price and clocks, the units everything is measured in, and the board itself as a table — every strike in reach with its open interest, today’s volume, contracts share, gamma sign and share, three separate ranks, what price did at it today, and twelve books of contracts added behind it; the rule’s regions (sndk_regions.py); what happened between frames; and what changed since the model’s own last look. No magnet, no wall, no regime word.'],
   ['r2l', 'Reader','step',  '2 · Scene Payload (legacy)', 'sndk_read.build_scene()',
@@ -14939,7 +14939,7 @@ const PAYLOAD = {
     const g=(PAYLOAD.data&&PAYLOAD.data.gates)||{};
     const n=(v,d)=>typeof v==='number'?v:d;
     const gap=n(g.min_gap_min,10), cap=n(g.daily_cap,30), stale=n(g.stale_book_min,6),
-          beat=n(g.heartbeat_min,60), px=n(g.spot_sigma,0.20), iv=n(g.iv_pp,3.0),
+          beat=n(g.heartbeat_min,60), mv=n(g.move_minutes,2), iv=n(g.iv_pp,3.0),
           fs=n(g.flip_sigma,0.50), cb=n(g.confirm_books,2), ivb=n(g.iv_median_books,5);
     const ul=a=>'<ul>'+a.map(x=>`<li>${x}</li>`).join('')+'</ul>';
     return `<div class="gate" role="tooltip">`
@@ -14951,7 +14951,7 @@ const PAYLOAD = {
            `The newest option BOOK is under ${stale} minutes old on its own clock; a frozen board is never narrated.`,
            'Reasoning is switched on.'])
       +`<i>…and at least one thing has genuinely changed:</i>`
-      +ul([`Price has run about ${px} of a typical day’s move since that last look.`,
+      +ul([`Price has gone ${mv} typical minutes since that last look — a typical minute is the median one-minute high-to-low over the last half hour, so the bar is wide at the open and narrow after lunch.`,
            `Price crossed the gamma flip (by a hair more than noise), or one of the walls, as they stood at that last look — a wall MOVING is not an event, because on this tape walls mostly shift to follow price.`,
            `The gamma sign or the strike pulling hardest changed, and stayed changed for ${cb} consecutive option books — one book on its own reverses about a third of the time.`,
            `Implied vol moved ${iv} points on a ${ivb}-book median — the raw print is mostly sensor noise.`,

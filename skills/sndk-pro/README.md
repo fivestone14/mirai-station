@@ -208,6 +208,24 @@ memory and the first read's volume). Bumped between sessions: nothing is
 read until the 2026-09-14 open, so every change made before then rides this
 one era. Each change adds its own paragraph below.
 
+**The "that's a move" bar is sized to the hour (review item #6).** Plain
+travel used to be a fixed slice of the day's implied move: 0.20 sigma woke the
+model, 0.15 called a frame a move, 0.05 broke a box. A minute at the open is
+about five times a minute at 2pm, so the fixed bar fired on most opening
+stretches and almost never after lunch. Now one bar does all three jobs:
+`MOVE_MINUTES` (2, the owner's starting point) typical minutes, where a typical
+minute is the median high-to-low of the minute bars completed in the last half
+hour (`typical_minute`, `move_threshold`). Inside the ten-minute floor plain
+travel needs twice that (`MOVE_MINUTES_HARD`). A box break is judged with the
+bar as it stood at that minute. The frame ships the bar as
+`move_threshold_dollars` and the doctrine compares it with
+`spot_change_dollars`. With no minute record there is no bar: travel wakes
+nothing, the frame names neither a move nor a hold, and no box breaks.
+Replayed over 11 recorded sessions (08-26 to 09-11) the gate spends 16.9 → 23.5
+calls a day (busiest 29, under the 30 cap), almost all of the extra after
+lunch; box breaks fall 32 → 28 and the ones back inside within five minutes
+12 → 4. If the model is called too often, raise `MOVE_MINUTES` and replay.
+
 ### strikes-2 (2026-09-10) — volatility in percent
 
 Both implied-vol figures in the Strikes Payload (`scale.implied_vol_atm`,

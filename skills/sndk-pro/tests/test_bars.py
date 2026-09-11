@@ -143,19 +143,19 @@ def test_a_short_bar_record_says_how_many_minutes_it_actually_holds():
 
 def test_a_break_the_scans_stepped_over_is_seen_by_the_wick():
     """One box break in three was missed or invented on scans alone. A wick
-    beyond the frozen box by more than 0.05 sigma breaks it even when every
+    beyond the frozen box by more than the move bar breaks it even when every
     2-minute spot stayed inside."""
     rows = _tape([1500] * 20)                                         # scans never leave 1500
     t0 = datetime.fromisoformat(rows[0]["ts"])
-    bars = [_bar(t0 + timedelta(minutes=i), 1500.0, 1500.0) for i in range(39)]
-    bars[35] = _bar(t0 + timedelta(minutes=35), 1500.0, 1509.0)      # +$9 wick, box is $0 wide
+    bars = [_bar(t0 + timedelta(minutes=i), 1499.5, 1500.5) for i in range(39)]
+    bars[35] = _bar(t0 + timedelta(minutes=35), 1499.5, 1509.0)      # $8.50 over a $1-minute box
     SB.write_day(DAY, bars, T0 + timedelta(minutes=5))
-    rb = SR.ranges_block(rows, T0, 100.0, DAY, bars=SB.read_bars(DAY))
+    rb = SR.ranges_block(rows, T0, DAY, bars=SB.read_bars(DAY))
     assert rb["breaks_today"]["count"] == 1
     assert rb["breaks_today"]["breaks"][0]["went"] == "up"
     assert rb["opening"]["status"].startswith("broke up at ")
     # and the same tape on scans alone sees nothing — the difference the sidecar exists for
-    assert "breaks_today" not in SR.ranges_block(rows, T0, 100.0, DAY)
+    assert "breaks_today" not in SR.ranges_block(rows, T0, DAY)
 
 
 def test_the_live_spot_still_decides_where_price_sits():
@@ -165,7 +165,7 @@ def test_the_live_spot_still_decides_where_price_sits():
     t0 = datetime.fromisoformat(rows[0]["ts"])
     bars = [_bar(t0 + timedelta(minutes=i), 1499.0, 1501.0) for i in range(31)]
     SB.write_day(DAY, bars, T0)
-    rb = SR.ranges_block(rows, T0, 100.0, DAY, bars=SB.read_bars(DAY))
+    rb = SR.ranges_block(rows, T0, DAY, bars=SB.read_bars(DAY))
     assert rb["in_force"]["live_spot_is"] == "just above"           # 1503 vs box high 1501
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     assert sc["price"]["session_high"] == 1503.0                     # the live print counts

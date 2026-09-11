@@ -158,7 +158,8 @@ def build_voice_scene(now: datetime | None = None) -> dict | None:
                 if r.get("wall_s") is not None), None)
     scene = _sr.build_scene(row, band, frozen, rows, now,
                             since_last_read=_sr.frame_since_last_read(
-                                row, rows, _lc, None, False, now))
+                                row, rows, _lc, None, False, now,
+                                bars=_sr.minute_bars(day)))
     read = _latest_read(day)
     if read:
         r = read.get("reading") or {}

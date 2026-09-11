@@ -133,7 +133,7 @@ def test_payload_ships_the_wake_gate_the_reader_actually_uses(tmp_path, monkeypa
     import sndk_read as R      # on sys.path once the builder above has run
     assert gates == {"min_gap_min": R.MIN_GAP_MIN, "daily_cap": R.DAILY_CALL_CAP,
                      "stale_book_min": R.STALE_BOOK_MIN, "heartbeat_min": R.HEARTBEAT_MIN,
-                     "spot_sigma": R.WAKE_SPOT_SIGMA, "iv_pp": R.WAKE_IV_PP,
+                     "move_minutes": R.MOVE_MINUTES, "iv_pp": R.WAKE_IV_PP,
                      "flip_sigma": R.WAKE_FLIP_SIGMA,
                      "confirm_books": R.WAKE_CONFIRM_BOOKS,
                      # 09-02: the gate card's last two literals, now read off the reader

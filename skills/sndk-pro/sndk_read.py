@@ -58,6 +58,7 @@ import json
 import math
 import os
 import re
+import bisect
 import statistics
 import subprocess
 import sys
@@ -251,7 +252,31 @@ PINNED_MODEL = "claude-sonnet-5"       # exact id, never an alias (drift protect
 # misses at every point on the curve. These values are the knee: most of the
 # noise reduction, none of the deafness. Move them together, and re-measure —
 # do not tune one in isolation.
-WAKE_SPOT_SIGMA = 0.20      # spot travelled this far since it last SPOKE
+#
+# THE "THAT'S A MOVE" BAR (strikes-3, 2026-09-11, review item #6). Plain travel
+# used to be a fixed slice of the day's implied move: 0.20 sigma to wake the
+# model, 0.15 to call a frame a move, 0.05 to break a box. A fixed slice of the
+# DAY measures the clock, not the tape: a minute at the open is about five
+# times a minute at 2pm, so 0.15 sigma (about $12 on 09-08) fired on 61% of
+# 12-minute stretches at 09:xx and 6% at 13:xx-14:xx, and was bigger than any
+# single minute recorded after 11am. There is now ONE bar, counted in TYPICAL
+# MINUTES: the median high-to-low of the minute bars that completed in the
+# last MINUTE_RULER_WINDOW_MIN minutes (see typical_minute). It wakes the model,
+# it decides a move from a hold, and it breaks a box.
+#
+# MOVE_MINUTES = 2 is the owner's starting point, not a fitted value. The price
+# trigger alone (ten-minute floor, 10 sessions of bars) fired 10.7 times a day
+# at 0.20 sigma, 21.2 at 2 typical minutes and 10.4 at 3.5 (the budget-neutral
+# multiple). The whole gate replayed with `--replay` over 08-26..09-11 spends
+# 16.9 calls a day under the old bar and 23.5 under this one, busiest day 29,
+# nearly all of the extra after lunch. If the model is called too often, raise
+# it — and replay before and after, like every other gate number.
+MOVE_MINUTES = 2.0          # a move is price going this many typical minutes
+MINUTE_RULER_WINDOW_MIN = 30  # the typical minute is measured over this window
+MINUTE_RULER_MIN_BARS = 5   # fewer completed minutes than this in the window and
+                            # there is no ruler: price travel wakes nothing, the
+                            # frame names neither a move nor a hold, and no box
+                            # breaks. An absent measurement never decides.
 WAKE_IV_PP = 3.0            # implied vol moved this far on the SMOOTHED series.
                             # 3.0 and not 2.0: the p95 of a one-step change on
                             # the SMOOTHED series is 2.08pp, so a 2.0 threshold
@@ -316,9 +341,9 @@ MIN_GAP_MIN = 10            # spam guard: no two reads closer than this. Raised
 #      session that crosses everything in sight spends its interrupts early and
 #      still has the ordinary cadence left for the afternoon.
 #
-# Plain travel is the one judgement call. "price ran" at 0.20 sigma is the most
-# frequent wake there is and would defeat the whole floor on any trending day,
-# so under the floor it must clear WAKE_SPOT_SIGMA_HARD instead — double the
+# Plain travel is the one judgement call. "price ran" at the move bar is the
+# most frequent wake there is and would defeat the whole floor on any trending
+# day, so under the floor it must clear MOVE_MINUTES_HARD instead — double the
 # distance, which on the recorded tape is a move nobody would call ordinary.
 INTERRUPT_WAKES = frozenset({
     "gamma sign flipped",   # dealers switched from damping to amplifying
@@ -326,7 +351,7 @@ INTERRUPT_WAKES = frozenset({
     "crossed flip",         # price walked through the dealer-behaviour boundary
     "call wall crossed",
     "put wall crossed",
-    "price ran",            # only at WAKE_SPOT_SIGMA_HARD — see _interrupts()
+    "price ran",            # only at MOVE_MINUTES_HARD — see _interrupts()
 })
 INTERRUPT_MIN_GAP_MIN = 3.0   # the hard floor under the soft one. The scanner
                               # ticks every 120s and a new book lands about
@@ -336,9 +361,9 @@ INTERRUPT_DAILY_CAP = 8       # interrupts alone may spend this much of the day.
                               # The wk-1 gate wants a mean of 18.7 calls; 8 on
                               # top keeps the busiest recorded session (27)
                               # under DAILY_CALL_CAP with room to spare.
-WAKE_SPOT_SIGMA_HARD = 0.40   # travel that interrupts the floor. Double the
-                              # ordinary trigger: inside ten minutes that is a
-                              # move, not a drift.
+MOVE_MINUTES_HARD = 2 * MOVE_MINUTES  # travel that interrupts the floor, in
+                              # typical minutes. Double the ordinary trigger:
+                              # inside ten minutes that is a move, not a drift.
 DAILY_CALL_CAP = 30         # hard ceiling, and it must stay a BACKSTOP rather
                             # than a budget. Measured uncapped over 23 replayed
                             # sessions the wk-1 gate wants a mean of 18.7 a day,
@@ -386,9 +411,10 @@ _WALL_AGE_LOOKBACK = 120    # rows walked back when ageing a wall (~4h at 120s).
                             # A bound, not a judgement: past it the age reports
                             # absent rather than making the read quadratic.
 # obs-4: RANGES, told as boxes. The first OPENING_RANGE_MIN minutes of the tape
-# form the opening box; a frozen box is BROKEN when a scan sits beyond it by
-# more than RANGE_BREAK_SIGMA (about $3 on this name — the median 2-minute
-# wobble is $2.12, so a one-dollar poke is not a break); a break starts a new
+# form the opening box; a frozen box is BROKEN when a minute sits beyond it by
+# the move bar — MOVE_MINUTES typical minutes as they stood at that minute
+# (strikes-3; it was a fixed 0.05 sigma, about $4, which is less than one
+# ordinary opening minute); a break starts a new
 # box, which forms over BOX_FORM_MIN minutes and then freezes in its turn. The
 # broken box is history and the new one is the box in force — "range bound"
 # inside a box that was breached is not a claim anyone should be handed. The
@@ -396,14 +422,13 @@ _WALL_AGE_LOOKBACK = 120    # rows walked back when ageing a wall (~4h at 120s).
 # while today's box breaks, and the block says both.
 OPENING_RANGE_MIN = 30
 BOX_FORM_MIN = 30
-RANGE_BREAK_SIGMA = 0.05
 PRIOR_RANGE_SESSIONS = 5
 RANGE_BREAKS_MAX = 8
-# obs-4: the frame is A MOVE when spot travelled this far since the last
-# reading, and the doctrine tells the model to open with then->now rather than
-# with the "held between" sentence — the template the 09-02 10:01 read reached
-# for across a 0.6-sigma drop.
-FRAME_MOVE_SIGMA = 0.15
+# obs-4: the frame is A MOVE when spot travelled the move bar since the last
+# reading (MOVE_MINUTES, above — it was a fixed 0.15 sigma until strikes-3),
+# and the doctrine tells the model to open with then->now rather than with the
+# "held between" sentence — the template the 09-02 10:01 read reached for
+# across a 0.6-sigma drop.
 # obs-4: THE SEMANTIC GUARD. The word list catches the words it knows; a second
 # small model reads the surviving sentence for what a list cannot see — a
 # forecast, an expectation, a judgement about where price goes — and a hit
@@ -1060,7 +1085,8 @@ _WAKE_WORDS = {
 def frame_since_last_read(row: dict, rows: list[dict],
                           last_call: Optional[dict], wake: Optional[str],
                           force: bool, now: datetime,
-                          prior_rows_today: bool = False) -> dict:
+                          prior_rows_today: bool = False,
+                          bars: Optional[list] = None) -> dict:
     """The bridge from the model's last reading to this one — obs-3's one new
     block, and the reason the honest nothing-changed sentence is possible at
     all. Proven the hard way: "price has held between 1538.8 and 1546.1 since
@@ -1187,14 +1213,21 @@ def frame_since_last_read(row: dict, rows: list[dict],
     if lo is not None and hi is not None:
         out["held_between_since_last_read"] = {"low": round(lo, 2),
                                                "high": round(hi, 2)}
-    # obs-4: is this frame A MOVE or A HOLD, said outright with its rule, so
-    # the model does not reach for the "held between" template across a drop
-    # the block itself measured. The threshold is FRAME_MOVE_SIGMA.
     sig = _fin(row.get("sigma"))
     if spot_then is not None and spot_now is not None and sig:
-        chg = round((spot_now - spot_then) / sig, 2)
-        out["spot_change_sigma"] = chg
-        out["frame_is"] = "a move" if abs(chg) >= FRAME_MOVE_SIGMA else "a hold"
+        out["spot_change_sigma"] = round((spot_now - spot_then) / sig, 2)
+    # obs-4: is this frame A MOVE or A HOLD, said outright with its rule, so
+    # the model does not reach for the "held between" template across a drop
+    # the block itself measured. strikes-3: the rule is the move bar the wake
+    # gate uses, and the bar ships as dollars beside spot_change_dollars so the
+    # model compares two numbers it can see. The comparison is made on the two
+    # rounded figures the model is shown, so the word and the numbers agree.
+    # No minute ruler, no bar and no word — an absent measurement never decides.
+    bar = move_threshold(bars, now)
+    if spot_then is not None and spot_now is not None and bar:
+        out["move_threshold_dollars"] = round(bar, 2)
+        out["frame_is"] = ("a move" if abs(round(spot_now - spot_then, 2)) >= round(bar, 2)
+                           else "a hold")
     return out
 
 
@@ -1228,8 +1261,50 @@ def _held_for(books: list[dict], get, was, n: int) -> bool:
     return all(get(b) is not None and get(b) != was for b in tail)
 
 
+def _minute_spans(bars: Optional[list]) -> list[tuple]:
+    """(the moment a minute bar completed, its high-to-low), oldest first. A bar
+    is stamped with the minute it opened and completes a minute later."""
+    out = []
+    for b in bars or []:
+        t = _parse_ts(b.get("ts"))
+        hi, lo = _fin(b.get("high")), _fin(b.get("low"))
+        if t is not None and hi is not None and lo is not None:
+            out.append((t + timedelta(minutes=1), hi - lo))
+    out.sort(key=lambda x: x[0])
+    return out
+
+
+def _ruler_from_spans(spans: list[tuple], at: datetime) -> Optional[float]:
+    """The typical minute at `at` from pre-built spans — see typical_minute."""
+    done = [d for d, _ in spans]
+    i = bisect.bisect_right(done, at - timedelta(minutes=MINUTE_RULER_WINDOW_MIN))
+    j = bisect.bisect_right(done, at)
+    window = [s for _, s in spans[i:j]]
+    if len(window) < MINUTE_RULER_MIN_BARS:
+        return None
+    return statistics.median(window) or None      # a flat tape has no ruler
+
+
+def typical_minute(bars: Optional[list], at: datetime) -> Optional[float]:
+    """THE MINUTE RULER (strikes-3): the median high-to-low of the minute bars
+    that COMPLETED in the MINUTE_RULER_WINDOW_MIN minutes up to `at`, or None
+    under MINUTE_RULER_MIN_BARS of them. The running minute is a partial and
+    never counts, and a caller rebuilding a past moment gets that moment's
+    ruler, never a later one. The median, so one violent minute cannot move it."""
+    return _ruler_from_spans(_minute_spans(bars), at)
+
+
+def move_threshold(bars: Optional[list], at: datetime,
+                   minutes: float = MOVE_MINUTES) -> Optional[float]:
+    """How far price has to go, in dollars, to be a move at `at`: `minutes`
+    typical minutes. None when there is no ruler."""
+    tm = typical_minute(bars, at)
+    return None if tm is None else minutes * tm
+
+
 def _wake_trigger(row: dict, prev_row: Optional[dict], prev: Optional[dict],
-                  now: datetime, rows: Optional[list[dict]] = None) -> Optional[str]:
+                  now: datetime, rows: Optional[list[dict]] = None,
+                  bars: Optional[list] = None) -> Optional[str]:
     """WHAT happened, with no opinion about whether there is time to say it.
 
     Split out of should_wake on 2026-09-09 so the timing policy could stop being
@@ -1262,7 +1337,9 @@ def _wake_trigger(row: dict, prev_row: Optional[dict], prev: Optional[dict],
       change; this one wakes only on a crossing of the wall it last SPOKE about.
 
     `rows` is optional so existing callers and tests keep working; without it
-    the confirmation tests are skipped rather than guessed at."""
+    the confirmation tests are skipped rather than guessed at. So is `bars`,
+    the day's minute bars: without them there is no move bar and plain travel
+    wakes nothing (strikes-3)."""
     # should_wake answers "no previous read" before it ever calls this; kept as a
     # guard rather than an assert because every comparison below dereferences it.
     if prev is None or _ts(prev) is None:
@@ -1308,8 +1385,9 @@ def _wake_trigger(row: dict, prev_row: Optional[dict], prev: Optional[dict],
             w = value_at_last_read(prev, k)
             if w is not None and (spot - w) * (spoke_spot - w) < 0:
                 return f"{word} crossed"
-        # 5. plain travel
-        if sig and abs(spot - spoke_spot) / sig >= WAKE_SPOT_SIGMA:
+        # 5. plain travel, against the move bar as it stands now
+        bar = move_threshold(bars, now)
+        if bar and abs(spot - spoke_spot) >= bar:
             return "price ran"
 
     # 6. implied vol, on the SMOOTHED series — the raw one is mostly sensor
@@ -1339,30 +1417,33 @@ def _wake_trigger(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     return None
 
 
-def _travelled_sigma(row: dict, prev: Optional[dict]) -> Optional[float]:
-    """How far spot has moved since the last READ, in sigma. None when either
-    end or the ruler is missing — an absent measurement never interrupts."""
-    sig = _fin(row.get("sigma")) or 0
+def _travelled_dollars(row: dict, prev: Optional[dict]) -> Optional[float]:
+    """How far spot has moved since the last READ, in dollars. None when either
+    end is missing — an absent measurement never interrupts."""
     spot = _fin(row.get("spot"))
     spoke = value_at_last_read(prev, "spot") if prev else None
-    if spot is None or spoke is None or not sig:
+    if spot is None or spoke is None:
         return None
-    return abs(spot - spoke) / sig
+    return abs(spot - spoke)
 
 
-def _interrupts(reason: str, row: dict, prev: Optional[dict]) -> bool:
+def _interrupts(reason: str, row: dict, prev: Optional[dict],
+                now: Optional[datetime] = None,
+                bars: Optional[list] = None) -> bool:
     """May this reason break MIN_GAP_MIN? Plain travel has to earn it twice."""
     if reason not in INTERRUPT_WAKES:
         return False
     if reason == "price ran":
-        d = _travelled_sigma(row, prev)
-        return d is not None and d >= WAKE_SPOT_SIGMA_HARD
+        d = _travelled_dollars(row, prev)
+        hard = move_threshold(bars, now, MOVE_MINUTES_HARD) if now else None
+        return d is not None and bool(hard) and d >= hard
     return True
 
 
 def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
                 now: datetime, rows: Optional[list[dict]] = None,
-                interrupts_today: int = 0) -> Optional[str]:
+                interrupts_today: int = 0,
+                bars: Optional[list] = None) -> Optional[str]:
     """Why this scan is worth a model READ, or None to stay asleep.
 
     `prev` must be the last row that actually spent a call, NOT simply the last
@@ -1378,7 +1459,12 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     Passing 0 (the default, and what the tests and older callers pass) means
     "budget untouched" — a gate that fails OPEN on a missing count, because the
     failure it guards against is spending too much, and the failure it would
-    cause by defaulting closed is going deaf to a regime change."""
+    cause by defaulting closed is going deaf to a regime change.
+
+    `bars` is the day's minute bars, the move bar's witness (strikes-3). The
+    function never reads them off disk itself, so a caller that passes none
+    gets a gate on which plain travel wakes nothing — every other trigger,
+    and the heartbeat, still fires."""
     if prev is None:
         return "first read"
     last = _ts(prev)
@@ -1386,7 +1472,7 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
         return "first read"
     gap = (now - last).total_seconds() / 60.0
 
-    reason = _wake_trigger(row, prev_row, prev, now, rows)
+    reason = _wake_trigger(row, prev_row, prev, now, rows, bars)
     if gap >= MIN_GAP_MIN:
         return reason or ("heartbeat" if gap >= HEARTBEAT_MIN else None)
 
@@ -1395,7 +1481,7 @@ def should_wake(row: dict, prev_row: Optional[dict], prev: Optional[dict],
         return None
     if interrupts_today >= INTERRUPT_DAILY_CAP:
         return None
-    return reason if _interrupts(reason, row, prev) else None
+    return reason if _interrupts(reason, row, prev, now, bars) else None
 
 
 # --- obs-1: the observation contract ----------------------------------------
@@ -1619,9 +1705,9 @@ YOU READ THE WHOLE BOARD AND YOU DECIDE WHAT MATTERS. Nothing has been pre-selec
 
 ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snapshot, so you cannot know how today compares with other days, or what moved since the last option book. `context` supplies exactly that and nothing else — where today's numbers rank against this stock's own closed sessions, what changed since the last book, what changed since your OWN last reading (`since_last_read`), and the day's price boxes (`ranges`). It states facts, never conclusions. Whether any of it is worth saying is your call.
 
-OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. `frame_is` says which kind of frame this is, by rule: "a move" when `spot_change_sigma` is 0.15 or more in either direction, "a hold" otherwise. On a move, OPEN WITH PRICE THEN AND PRICE NOW — both are in the block — and only then say what is on the board; the "held between" sentence belongs to a hold and never to a move, because a range whose two ends are a move apart is not a range anyone held. `walls_absent_then_and_now` names a side the ladder found empty at both readings: say "no put wall then, none now", never a number. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since your last read" is a complete, correct read when `frame_is` says a hold — X and Y come from `held_between_since_last_read`, and the ONLY clock that range pairs with is `last_read_at`. Never anchor a range on any other time. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read (or the first under the current rules) there is no frame yet; describe the standing board instead.
+OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. `frame_is` says which kind of frame this is, by rule: "a move" when `spot_change_dollars` is at least `move_threshold_dollars` in either direction, "a hold" otherwise. `move_threshold_dollars` is twice the typical minute's high-to-low over the last half hour, so it is wide at the open and narrow after lunch; when the minute record is missing neither is there, and you call the frame neither. On a move, OPEN WITH PRICE THEN AND PRICE NOW — both are in the block — and only then say what is on the board; the "held between" sentence belongs to a hold and never to a move, because a range whose two ends are a move apart is not a range anyone held. `walls_absent_then_and_now` names a side the ladder found empty at both readings: say "no put wall then, none now", never a number. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since your last read" is a complete, correct read when `frame_is` says a hold — X and Y come from `held_between_since_last_read`, and the ONLY clock that range pairs with is `last_read_at`. Never anchor a range on any other time. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read (or the first under the current rules) there is no frame yet; describe the standing board instead.
 
-THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a scan beyond a frozen box by more than a twentieth of a sigma breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions with where the live price sits in it and whether today has traded beyond it. Every box and extreme rests on the minute-bar record, whose wicks see what a 2-minute scan steps over — and it says so by saying nothing. When the record was NOT used the block speaks up: `measured_from` and `price.extremes_from` appear carrying "scans_every_2_min", and the true extremes may then sit a few dollars beyond what is stated. Their absence is the ordinary case and means the bars were used. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
+THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a minute beyond a frozen box by more than twice the typical minute at that moment breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions with where the live price sits in it and whether today has traded beyond it. Every box and extreme rests on the minute-bar record, whose wicks see what a 2-minute scan steps over — and it says so by saying nothing. When the record was NOT used the block speaks up: `measured_from` and `price.extremes_from` appear carrying "scans_every_2_min", and the true extremes may then sit a few dollars beyond what is stated. Their absence is the ordinary case and means the bars were used. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
 
 KEEP IT SHORT AND PLAIN. TWO SENTENCES, forty words at the outside — the way you would say it to someone sitting beside you, not the way you would write it down. No jargon, no field names, no padding, no listing everything you looked at. Say the one or two things that matter and stop. The levels go in `points` with a few words each; do not repeat them in the prose. Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears. That includes numbers you work out yourself: do not convert a distance into sigma, do not turn a share into a percentage of something else, do not average two figures. A number you computed is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far away, say which level and let the reader see the two prices.
 
@@ -3115,16 +3201,20 @@ def _range_points(rows: list[dict], bars: Optional[list[dict]]) -> tuple:
     return pts, witness
 
 
-def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
+def ranges_block(rows: list[dict], now: datetime,
                  today: Optional[str] = None,
                  bars: Optional[list[dict]] = None) -> Optional[dict]:
     """obs-4: THE DAY'S BOXES — every number measured, no verdict anywhere.
 
     The opening box is the first OPENING_RANGE_MIN minutes of the tape, frozen
-    once formed. A frozen box BREAKS when a minute's wick — or a scan, when
-    there are no bars — sits beyond it by more than RANGE_BREAK_SIGMA (about
-    $3 here; the 2-minute wobble is $2), and the break is recorded with its
-    clock and direction. A break starts a new box, which
+    once formed. A frozen box BREAKS when a minute's wick — or a scan newer
+    than the last bar — sits beyond it by more than the move bar AS IT STOOD
+    AT THAT MOMENT (MOVE_MINUTES typical minutes; strikes-3, it was a fixed
+    0.05 sigma), and the break is recorded with its clock and direction. A
+    wick is judged by the minutes around it, so a box broken at 10:07 stays
+    broken however quiet the afternoon gets. With no minute ruler nothing
+    breaks, and price outside the box is "above" or "below", never "just". A
+    break starts a new box, which
     forms over BOX_FORM_MIN minutes and freezes in its turn: that is the box in
     force, and the broken one is history. The opening box stays in the block
     only so the day's start can be named. The prior sessions' range rides on
@@ -3141,7 +3231,10 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
     def hhmm(t):
         return t.astimezone(_ET).strftime("%H:%M")
 
-    depth = (RANGE_BREAK_SIGMA * sig) if sig else None
+    spans = _minute_spans(bars)
+    bar_starts = {t for t, _ in ((_parse_ts(b.get("ts")), 0) for b in bars or [])
+                  if t is not None}
+    judged = False       # did the newest point have a ruler to be judged by
     t_first = pts[0][0]
     form_start = t_first
     lo, hi = pts[0][1], pts[0][2]
@@ -3158,6 +3251,10 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
                 if opening is None:
                     opening = dict(frozen)
             continue
+        # a minute bar is judged at the moment it completed, a scan when it landed
+        tm = _ruler_from_spans(spans, t + timedelta(minutes=1) if t in bar_starts else t)
+        depth = MOVE_MINUTES * tm if tm else None
+        judged = depth is not None
         if depth is not None and (p_hi > frozen["high"] + depth
                                   or p_lo < frozen["low"] - depth):
             up = (p_hi - frozen["high"]) >= (frozen["low"] - p_lo)
@@ -3193,9 +3290,13 @@ def ranges_block(rows: list[dict], now: datetime, sig: Optional[float],
         inf = {"low": round(frozen["low"], 2), "high": round(frozen["high"], 2),
                "formed_over": frozen["formed_over"],
                "is_the_opening_box": not breaks}
+        # "just" only when a ruler says how far is too far: outside the box
+        # without a break is within the move bar, and with no bar it is only
+        # outside
+        near = "just " if judged else ""
         inf["live_spot_is"] = ("inside" if frozen["low"] <= spot_now <= frozen["high"]
-                               else "just above" if spot_now > frozen["high"]
-                               else "just below")
+                               else f"{near}above" if spot_now > frozen["high"]
+                               else f"{near}below")
         out["in_force"] = inf
     else:
         inf = {"still_forming": True, "since": hhmm(form_start),
@@ -3660,7 +3761,7 @@ def build_scene(row: dict, band: dict, frozen: list,
     # what the last three bugs all said about themselves.
     ctx = session_context(scene, rows, now) or {}
     # obs-4: the day's boxes — a fact about time, so it rides in `context`
-    rb = ranges_block(rows, now, sig, now.strftime("%Y-%m-%d"), bars=bars_now)
+    rb = ranges_block(rows, now, now.strftime("%Y-%m-%d"), bars=bars_now)
     if rb:
         ctx["ranges"] = rb
     if since_last_read:
@@ -3801,12 +3902,14 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # of a fresh allowance — the same reason the gate snapshot is written on
     # every row rather than only on the ones that call.
     interrupts_today = sum(1 for r in calls if r.get("wake_interrupt"))
+    # the day's minute bars: the move bar's witness for the gate and the frame
+    day_bars = minute_bars(day)
     wake = should_wake(row, prev_row, last_call, now, rows,
-                       interrupts_today=interrupts_today)
+                       interrupts_today=interrupts_today, bars=day_bars)
     # Whether THIS wake broke the floor, measured rather than inferred from the
-    # reason: "price ran" is an interrupt at 0.40 sigma and an ordinary trigger
-    # at 0.20, so counting by name alone would over-spend the budget every time
-    # the gate fired normally.
+    # reason: "price ran" is an interrupt at twice the move bar and an ordinary
+    # trigger at the bar, so counting by name alone would over-spend the budget
+    # every time the gate fired normally.
     _last_ts = _ts(last_call) if last_call else None
     broke_floor = bool(
         wake and _last_ts is not None
@@ -3849,7 +3952,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                         if scene_now is not now else frozen, rows, scene_now,
                         since_last_read=frame_since_last_read(
                             row, rows, last_call, wake, force, scene_now,
-                            prior_rows_today=bool(reads_all)))
+                            prior_rows_today=bool(reads_all), bars=day_bars))
     # strikes-1: THE STRIKES PAYLOAD RIDES BESIDE THE SCENE PAYLOAD. The scene
     # (v1) still feeds the gate, the frame, the memory slice and the record;
     # only what the model reads changes. Built from the v1 just made, so the
@@ -4063,6 +4166,7 @@ def replay(day: str) -> int:
     last_call = None
     wakes = 0
     interrupts = 0
+    bars = minute_bars(day)
     from collections import Counter
     why = Counter()
     for i, row in enumerate(rows):
@@ -4071,7 +4175,7 @@ def replay(day: str) -> int:
             continue
         row = with_path(row, rows[:i + 1])
         w = should_wake(row, rows[i - 1] if i else None, last_call, now,
-                        rows[:i + 1], interrupts_today=interrupts)
+                        rows[:i + 1], interrupts_today=interrupts, bars=bars)
         if not w:
             continue
         _lt = _ts(last_call) if last_call else None

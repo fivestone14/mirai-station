@@ -751,7 +751,8 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
                  if (r.get("reading") or {}).get("read")), None)
     scene_v1 = R.build_scene(rw, band, frozen, rows, build_now,
                              since_last_read=R.frame_since_last_read(
-                                 rw, rows, last_call, None, False, build_now))
+                                 rw, rows, last_call, None, False, build_now,
+                                 bars=R.minute_bars(day)))
     # strikes-1 (2026-09-05): the tab shows what the reader hands the model,
     # and that is now the Strikes Payload, built from the same v1 the reader
     # builds it from. The Scene Payload rides beside it as LEGACY, still built
@@ -829,7 +830,9 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
             # travel against the state at the last SPEECH, reads implied vol off
             # a 5-book median rather than the raw print, and needs a discrete
             # flip to hold for two consecutive books before it counts.
-            "spot_sigma": R.WAKE_SPOT_SIGMA,
+            # strikes-3: plain travel is counted in typical minutes (the median
+            # one-minute high-to-low over the last half hour), not in sigma
+            "move_minutes": R.MOVE_MINUTES,
             "iv_pp": R.WAKE_IV_PP,
             "flip_sigma": R.WAKE_FLIP_SIGMA,
             "confirm_books": R.WAKE_CONFIRM_BOOKS,
