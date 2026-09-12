@@ -193,6 +193,42 @@ def _read_about(text, recs_over):
     return B.check_reading_v2(reply, v2)
 
 
+def test_a_box_edge_is_a_price_the_model_may_point_at():
+    """2026-09-12, from a live A/B: a point naming 1691.80 — the top of the box
+    that had just broken — was deleted as "a level not on the board", in both
+    arms, while the instructions were telling the model to say what boxes did.
+    Box edges are prices the payload states; an invented level still is not."""
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    v2["context"] = {"ranges": {
+        "in_force": {"low": 1284.0, "high": 1296.0, "froze_at": "09:58", "standing_for_min": 2},
+        "breaks_today": {"count": 1, "breaks": [
+            {"at": "09:55", "went": "up", "box_low": 1274.0, "box_high": 1291.8}]}}}
+    def pointed(level):
+        reply = {"quiet": False, "read": "The board is quiet.",
+                 "sides": {"above": {"heavy": None, "leads_on": []},
+                           "below": {"heavy": None, "leads_on": []}},
+                 "clusters": [], "resolved": [], "absent": [],
+                 "points": [{"level": level, "note": "the box it broke"}]}
+        return B.check_reading_v2(reply, v2)
+    kept = pointed(1291.8)
+    assert [p["level"] for p in kept["points"]] == [1291.8], kept.get("dropped_observations")
+    assert pointed(1296.0)["points"]                      # the standing box's top
+    invented = pointed(1234.5)
+    assert not invented["points"]
+    assert any("1234.5" in d for d in invented["dropped_observations"])
+
+
+def test_the_doctrine_forbids_converting_the_bands_age_itself():
+    """The narrowed line from the 2026-09-12 A/B: saying the age tripled how
+    often the band's age reached a reading, but one reading converted 223
+    minutes into "3h40m" (three minutes wrong, invisible to every gate), so the
+    instruction now asks for the minutes as printed."""
+    assert "`standing_for_min`" in B.DOCTRINE_V2
+    assert "3h40m" in B.DOCTRINE_V2 and "223 minutes" in B.DOCTRINE_V2
+    assert "sixty minutes or more" in B.DOCTRINE_V2
+
+
 def test_a_count_of_times_must_be_the_visits_and_a_stay_must_be_one_visit():
     """The guard behind the doctrine: "touched twice" is checked against
     visits_today, never against the minutes, and "sat at 1300 for 43 minutes"

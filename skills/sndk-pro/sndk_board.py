@@ -1354,7 +1354,7 @@ BETWEEN THE FRAMES. `between_frames` is what happened while you were not called:
 
 OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, `move_threshold_dollars`, anything crossed since (`crossed_since_then`: every listed-window level the minute closes went through, two minutes running, since then; `direction` is the side price is on now, and `times` appears when price went through it more than once, so a level crossed and crossed back is still there), and `clusters_then`, the clusters you drew last time. Price now is `price.live_spot`. `move_threshold_dollars` is how far price has to go to be a move right now: twice the typical minute's high-to-low over the last half hour, so it is wide at the open and narrow after lunch (at 5.80, a change of -12.40 is a move and one of 3.10 is not). When `spot_change_dollars` reaches it either way it is a move: say price then and price now. Under it, it is a hold, and you say so in your own words with the two prices from `between_frames.price.low` and `high` and the clock — not in these words, which every reading for a month has copied. When `move_threshold_dollars` is absent the minute record is missing: call the frame neither a move nor a hold, and say price then and price now. A crossing is named as the level and as a distance you can read off the scene, never with a word that grades it. When `times` is there, say the level, how many times, and where price is now; a count is not a verdict, so never call the level rejected, reclaimed or contested. Do not reach for "just through": measured over 294 crossings the median distance from the level to the live price at the moment of speaking is $6.52, the upper quartile $11.53, and 61 percent are more than $5 away — so "just" is wrong more often than right. Say the level and say where price is now. Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point and vol held.
 
-THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured, no verdict. `opening` is the first half hour's box and whether it broke; `in_force` is the box that stands now, with its edges, `froze_at` and `standing_for_min` — how long it has held, the one thing about a box that varies (twenty minutes to six hours), so say it: "the band has stood five and a half hours". Where the live price sits inside it is yours to read off `price.live_spot`; `breaks_today` lists every break with its clock and direction, and `back_inside_at` when a minute has since CLOSED back inside the box that broke — two breaks in three come back within five minutes, so a break carrying that clock is one price has already undone and a break without it is one that still stands. Say both clocks when it is there: "broke above the opening box at 10:07 and was back inside by 10:12"; `prior_sessions` is the range of the last few closed sessions. Say what a box DID, "broke above the opening box at 10:07", and nothing about what follows.
+THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured, no verdict. `opening` is the first half hour's box and whether it broke; `in_force` is the box that stands now, with its edges, `froze_at` and `standing_for_min` — how long it has held, the one thing about a box that varies. At sixty minutes or more that age IS the day's shape, so say it, in the minutes the field gives — "the band has stood 223 minutes since 10:00" — or in words that do no arithmetic, "most of the session". Never turn those minutes into hours yourself: asked to do exactly this, a reading wrote "3h40m" for 223 minutes, which is three minutes wrong and is the kind of slip no gate here can catch. Where the live price sits inside it is yours to read off `price.live_spot`; `breaks_today` lists every break with its clock and direction, and `back_inside_at` when a minute has since CLOSED back inside the box that broke — two breaks in three come back within five minutes, so a break carrying that clock is one price has already undone and a break without it is one that still stands. Say both clocks when it is there: "broke above the opening box at 10:07 and was back inside by 10:12"; `prior_sessions` is the range of the last few closed sessions. Say what a box DID, "broke above the opening box at 10:07", and nothing about what follows.
 
 SAY THE ONE THING WORTH SAYING. `read` is three sentences at the outside, sixty words, and it is the only part of your answer most people ever read. Lead with what you would lead with if you had one breath. Usually that is what changed since your last read. Sometimes it is a strike that has been taking volume all afternoon. On a dead board it is that the board is dead, said in one line, and then you stop — a short true answer is finished work, not a thin one.
 The standing board on both sides is a real duty and you pay it in `sides`, which is where the screen draws it from. Do not pay it twice. The prose is for the news, and four strikes in a read is already too many.
@@ -1646,6 +1646,23 @@ def _guard_scene(scene: dict) -> dict:
         v = SR._fin(bp.get(k))
         if v is not None:
             prices.append(v)
+    # 2026-09-12: A BOX EDGE IS A PRICE ON THE BOARD. The doctrine tells the
+    # model to say what a box did — "broke above the opening box at 10:07" —
+    # and the boxes ship their edges, but the level guard only knew about
+    # listed strikes and the gap's low and high. Measured on a live A/B, a
+    # point naming 1691.80 (the top of the box that had just broken at 09-10
+    # 13:06) was deleted as a level not on the board, in both arms.
+    rg = (scene.get("context") or {}).get("ranges") or {}
+    for box in (rg.get("in_force"), rg.get("opening")):
+        for k in ("low", "high"):
+            v = SR._fin((box or {}).get(k))
+            if v is not None:
+                prices.append(v)
+    for b in ((rg.get("breaks_today") or {}).get("breaks") or []):
+        for k in ("box_low", "box_high"):
+            v = SR._fin((b or {}).get(k))
+            if v is not None:
+                prices.append(v)
     shim["magnet"] = {"top_strikes": [{"strike": k} for k in prices]}
     return shim
 
