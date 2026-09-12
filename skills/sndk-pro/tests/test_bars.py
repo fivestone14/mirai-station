@@ -121,7 +121,10 @@ def test_the_wicks_win_for_the_extremes_and_the_opening_box():
     # replayed scans — two leaves, one fact — so it now ships only when the
     # record is SHORT, and then says how many minutes are actually held.
     assert "bars_so_far_today" not in mb
-    assert mb["last_bar_at"] == bars[30]["ts"]
+    # the minute that STARTS at the scene's clock has not elapsed yet, so the
+    # newest bar a scene may see is the one before it (the 2026-09-11 audit:
+    # rebuilt moments were reading a minute that had not happened)
+    assert mb["last_bar_at"] == bars[29]["ts"]
 
 
 def test_a_short_bar_record_says_how_many_minutes_it_actually_holds():
@@ -139,6 +142,25 @@ def test_a_short_bar_record_says_how_many_minutes_it_actually_holds():
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     mb = sc["data_sources"]["minute_bars"]
     assert mb["bars_so_far_today"] == len(kept) == 17
+
+
+def test_the_minute_still_running_never_reaches_the_scene():
+    """A bar is written once its minute has elapsed, so live never sees the
+    running minute — but every REBUILD of a past moment reads the finished file
+    and did. Measured over 2,971 rebuilt moments, 118 shipped a minute that had
+    not happened: a session low stamped as seconds old that was hours old, and
+    a box break invented out of unelapsed seconds."""
+    rows = _tape([1500] * 6)
+    t0 = datetime.fromisoformat(rows[0]["ts"])
+    bars = [_bar(t0 + timedelta(minutes=i), 1499.0, 1501.0) for i in range(11)]
+    bars[10] = _bar(t0 + timedelta(minutes=10), 1400.0, 1600.0)   # the minute T0 sits in
+    SB.write_day(DAY, bars, T0 + timedelta(minutes=11))
+    p = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)["price"]
+    assert (p["session_low"], p["session_high"]) == (1499.0, 1501.0)
+    # ...and a minute later, once it has elapsed, it counts
+    later = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows,
+                           T0 + timedelta(minutes=1))["price"]
+    assert (later["session_low"], later["session_high"]) == (1400.0, 1600.0)
 
 
 def test_the_days_extremes_carry_the_minute_they_were_set_and_their_age():

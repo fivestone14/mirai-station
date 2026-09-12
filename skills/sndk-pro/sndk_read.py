@@ -3499,7 +3499,18 @@ def build_scene(row: dict, band: dict, frozen: list,
     # session's true extremes; the 2-minute spots are the fallback and the
     # block says which it used.
     bars = minute_bars(now.strftime("%Y-%m-%d"))
-    bars_now = [b for b in bars if (bt := _parse_ts(b.get("ts"))) is not None and bt <= now]
+    # COMPLETED minutes only, the same rule sndk_bars.completed uses. `bt <= now`
+    # kept the bar of the minute still RUNNING, which live never sees (the
+    # sidecar writes a minute only once it has elapsed) but every rebuild of a
+    # PAST moment does: the payload tab, the eval and the replays all read the
+    # finished file. Measured over 2,971 rebuilt moments, 118 of them shipped a
+    # minute that had not happened yet — a session low stamped "12:18, 0 minutes
+    # old" that was really 09:53 and 145 minutes old, a box break invented from
+    # 51 unelapsed seconds, and a walk back inside taken from a bar that had not
+    # printed. Every extreme, box and touch in this scene rides on this list.
+    bars_now = [b for b in bars
+                if (bt := _parse_ts(b.get("ts"))) is not None
+                and bt + timedelta(minutes=1) <= now]
     # gwc/gwp migrated to walls.call[0]/put[0] — same clustering rule, told
     # as a ladder with the second wall behind the first. named_levels went the
     # same way in sr-3: measured over all 923 recorded rows carrying the family,
