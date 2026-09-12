@@ -190,6 +190,23 @@ def test_a_break_retires_the_opening_box_and_a_new_box_forms():
     assert rb["in_force"]["replaced_a_box_broken_at"] == b["at"]
 
 
+def test_a_break_price_has_walked_back_into_says_when():
+    """Review item #12. Two breaks in three are back inside within five minutes,
+    and a third of the readings written with a break on the board described it
+    as standing while price had already returned. A break carries the first
+    minute that CLOSED back inside the box it broke; one price never came back
+    to carries nothing."""
+    # $2 minutes, so the bar is $4: 1509 breaks the 1499-1501 box, then price
+    # closes back inside at 1500
+    came_back = _tape([1500] * 16 + [1509, 1500, 1500])
+    rb = SR.ranges_block(came_back, T0, "2026-07-31", bars=_minutes_under(came_back))
+    b = rb["breaks_today"]["breaks"][0]
+    assert b["went"] == "up" and b["at"] < b["back_inside_at"]
+    gone = _tape([1500] * 16 + [1509, 1515, 1520])
+    rb2 = SR.ranges_block(gone, T0, "2026-07-31", bars=_minutes_under(gone))
+    assert "back_inside_at" not in rb2["breaks_today"]["breaks"][0]
+
+
 def test_a_poke_inside_the_noise_floor_is_not_a_break():
     """A poke past a box by less than the move bar is the tape breathing, not a
     break. Here minutes are $2 wide, so the bar is $4: 1504 sits $3 over the

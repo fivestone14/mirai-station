@@ -3275,6 +3275,18 @@ def ranges_block(rows: list[dict], now: datetime,
     spans = _minute_spans(bars)
     bar_starts = {t for t, _ in ((_parse_ts(b.get("ts")), 0) for b in bars or [])
                   if t is not None}
+    # review item #12: the CLOSES, for the walk back in. A box is broken by a
+    # wick (above) but it is undone by a close: price has to finish a minute
+    # back inside. Diary spots newer than the last completed bar ride along, the
+    # same rule the break points use, so a return in the last two minutes counts.
+    closes = [(t, c) for b in (bars or [])
+              if (t := _parse_ts(b.get("ts"))) is not None and (c := _fin(b.get("close"))) is not None]
+    _last_bar = max((t for t, _ in closes), default=None)
+    closes += [(t, sp) for r in rows
+               if (t := _ts(r)) is not None and (sp := _fin(r.get("spot"))) is not None
+               and (_last_bar is None or t > _last_bar)]
+    closes.sort(key=lambda x: x[0])
+    break_times: list = []
     judged = False       # did the newest point have a ruler to be judged by
     t_first = pts[0][0]
     form_start = t_first
@@ -3302,9 +3314,23 @@ def ranges_block(rows: list[dict], now: datetime,
             breaks.append({"at": hhmm(t), "went": "up" if up else "down",
                            "box_low": round(frozen["low"], 2),
                            "box_high": round(frozen["high"], 2)})
+            break_times.append(t)
             frozen = None
             form_start = t
             lo, hi = p_lo, p_hi
+
+    # review item #12: WHEN PRICE WENT BACK IN. Two breaks in three are back
+    # inside the box within five minutes (median 2.5), and nothing said so: a
+    # third of the readings written with a break on the board described it as
+    # standing while price had already returned. The first minute to CLOSE back
+    # inside the broken box is stamped on the break, the breaking minute
+    # included — a wick that closed straight back in is a break price undid at
+    # once. No field means price has not been back.
+    for b, t_b in zip(breaks, break_times):
+        back = next((t for t, c in closes
+                     if t >= t_b and b["box_low"] <= c <= b["box_high"]), None)
+        if back is not None:
+            b["back_inside_at"] = hhmm(back)
 
     # the live price is the newest diary spot — never a wick pretending to be
     # where price sits
