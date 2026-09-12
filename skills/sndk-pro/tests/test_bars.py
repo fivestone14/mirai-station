@@ -191,7 +191,7 @@ def test_the_live_spot_still_decides_where_price_sits():
     bars = [_bar(t0 + timedelta(minutes=i), 1499.0, 1501.0) for i in range(31)]
     SB.write_day(DAY, bars, T0)
     rb = SR.ranges_block(rows, T0, DAY, bars=SB.read_bars(DAY))
-    assert rb["in_force"]["live_spot_is"] == "just above"           # 1503 vs box high 1501
+    assert (rb["in_force"]["low"], rb["in_force"]["high"]) == (1499.0, 1501.0)   # 1503 is over it
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     assert sc["price"]["session_high"] == 1503.0                     # the live print counts
 

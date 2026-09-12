@@ -164,7 +164,12 @@ def test_the_opening_box_forms_over_thirty_minutes_then_freezes():
     assert rb["opening"]["low"] == 1500.0 and rb["opening"]["high"] == 1504.0
     assert rb["opening"]["status"] == "held so far"
     assert rb["in_force"]["is_the_opening_box"] is True
-    assert rb["in_force"]["live_spot_is"] == "inside"
+    # item #13: the box in force says when it froze and how long it has held,
+    # not the half hour it formed over (always a half hour) nor where price
+    # sits (inside on 92% of scans by construction)
+    assert rb["in_force"]["froze_at"] == rb["opening"]["formed_over"].split("-")[1]
+    assert rb["in_force"]["standing_for_min"] == 0
+    assert "live_spot_is" not in rb["in_force"] and "formed_over" not in rb["in_force"]
     assert "breaks_today" not in rb
 
 
@@ -188,6 +193,20 @@ def test_a_break_retires_the_opening_box_and_a_new_box_forms():
     assert rb["in_force"]["still_forming"] is True
     assert (rb["in_force"]["low"], rb["in_force"]["high"]) == (1519.0, 1524.0)
     assert rb["in_force"]["replaced_a_box_broken_at"] == b["at"]
+
+
+def test_the_box_in_force_says_how_long_it_has_stood():
+    """Review item #13. The block read identically at 10:17 and at 15:40 on
+    09-11 — same edges, same "formed over 09:30-10:00", same "inside". The one
+    thing that changes is the age, so that is what ships."""
+    rows = _tape([1500] * 16)                      # a box that froze at the tape's end
+    bars = _minutes_under(rows)
+    now = SR._ts(rows[-1])
+    fresh = SR.ranges_block(rows, now, "2026-07-31", bars=bars)["in_force"]
+    later = SR.ranges_block(rows, now + timedelta(minutes=75), "2026-07-31", bars=bars)["in_force"]
+    assert fresh["froze_at"] == later["froze_at"]
+    assert (fresh["standing_for_min"], later["standing_for_min"]) == (0, 75)
+    assert (fresh["low"], fresh["high"]) == (1499.0, 1501.0)
 
 
 def test_a_break_price_has_walked_back_into_says_when():
@@ -214,7 +233,7 @@ def test_a_poke_inside_the_noise_floor_is_not_a_break():
     poke = _tape([1500] * 16 + [1504])
     quiet = SR.ranges_block(poke, T0, "2026-07-31", bars=_minutes_under(poke))
     assert "breaks_today" not in quiet
-    assert quiet["in_force"]["live_spot_is"] == "just above"
+    assert quiet["in_force"]["high"] == 1501.0        # price is over it and the box stands
     far = _tape([1500] * 16 + [1506])
     broke = SR.ranges_block(far, T0, "2026-07-31", bars=_minutes_under(far))
     assert broke["breaks_today"]["count"] == 1
@@ -230,7 +249,7 @@ def test_the_box_break_is_sized_to_the_minutes_around_it():
     assert "breaks_today" not in busy
     blind = SR.ranges_block(_tape([1500] * 16 + [1600]), T0, "2026-07-31")
     assert "breaks_today" not in blind
-    assert blind["in_force"]["live_spot_is"] == "above"
+    assert "live_spot_is" not in blind["in_force"]
 
 
 def test_the_prior_sessions_range_rides_its_own_clock():

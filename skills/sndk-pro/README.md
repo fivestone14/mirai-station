@@ -278,6 +278,19 @@ so the nearest strikes each side skip it, exactly as the checker reads
 sides. The book's price still draws the window, and the regions rule still
 measures each book from its own price.
 
+**Three clocks the boxes and the extremes never carried (review items #11,
+#12, #13).** The day's high and low shipped as bare numbers: each now
+carries `_at`, the minute it was set, and `_min_ago`, its age (on 09-11 the
+high was set at 09:31 and was 369 minutes old by 15:40). A price-box break
+carries `back_inside_at`, the first minute that CLOSED back inside the box it
+broke — 21 of 28 breaks over 11 sessions came back, and a break without that
+clock is one price has not undone. And `in_force` drops `formed_over` (always
+half an hour) and `live_spot_is` ("inside" on 92% of scans by construction)
+for `froze_at` and `standing_for_min`: on 09-11 the same block read 17
+minutes at 10:17 and 340 at 15:40, where before it was byte-identical. Every
+age ships as a number because the model may not do arithmetic and the number
+gate deletes a figure that is not on the board.
+
 **Minutes, visits and passes are three counts (review item #10).** The table
 counted the minutes whose range held a strike (`bars_touched_today`), and a
 minute count cannot tell a stay from ten quick passes: 1775 on 09-08 was 43

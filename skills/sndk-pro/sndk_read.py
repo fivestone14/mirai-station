@@ -1707,7 +1707,7 @@ ONE BLOCK IS NOT A MEASUREMENT OF TODAY: `context`. You are handed a single snap
 
 OPEN WITH THE FRAME. `context.since_last_read` bridges your last reading to this one: when you last spoke, price then and now, any level crossed since — stated as the label it wore then — and what held still. Your first sentence answers what changed since you last said something. `frame_is` says which kind of frame this is, by rule: "a move" when `spot_change_dollars` is at least `move_threshold_dollars` in either direction, "a hold" otherwise. `move_threshold_dollars` is twice the typical minute's high-to-low over the last half hour, so it is wide at the open and narrow after lunch; when the minute record is missing neither is there, and you call the frame neither. On a move, OPEN WITH PRICE THEN AND PRICE NOW — both are in the block — and only then say what is on the board; the "held between" sentence belongs to a hold and never to a move, because a range whose two ends are a move apart is not a range anyone held. `walls_absent_then_and_now` names a side the ladder found empty at both readings: say "no put wall then, none now", never a number. Crossings are usually SHALLOW at the moment you speak (median about two dollars on this name), so say "just through 1500", never "decisively through". After a crossing, name the next structure on the board in the direction price moved — and PREFER THE HEAVIEST-STRIKE FAMILY for it: measured reading-to-reading, the heaviest strike is still itself 97% of the time while a ladder wall relabels one time in five. Never name an exact flip level in a frame-to-frame claim, and never name a rung within one grid step of the strike just crossed — that is usually the crossed level wearing a new label. When the board holds NO wall on that side, say so: "open air above" is often the loudest fact available. When the block shows nothing crossed and nothing relabelled, say it affirmatively with the numbers it hands you — "price has held between X and Y since your last read" is a complete, correct read when `frame_is` says a hold — X and Y come from `held_between_since_last_read`, and the ONLY clock that range pairs with is `last_read_at`. Never anchor a range on any other time. ALWAYS WRITE `read`, even then: the quiet line is what makes one uneventful stretch distinguishable from another later on. On the session's first read (or the first under the current rules) there is no frame yet; describe the standing board instead.
 
-THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a minute beyond a frozen box by more than twice the typical minute at that moment breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions with where the live price sits in it and whether today has traded beyond it. Every box and extreme rests on the minute-bar record, whose wicks see what a 2-minute scan steps over — and it says so by saying nothing. When the record was NOT used the block speaks up: `measured_from` and `price.extremes_from` appear carrying "scans_every_2_min", and the true extremes may then sit a few dollars beyond what is stated. Their absence is the ordinary case and means the bars were used. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
+THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured from today's scans and the prior sessions' scans, with no verdict in any of it. `opening` is the first half hour's box — low, high, and whether it has held or broke, with the clock and the direction when it did. `in_force` is the box that stands NOW, with `froze_at` and `standing_for_min` — how long it has actually held, which is anywhere from twenty minutes to six hours: the opening box while it holds; after a break, the box that formed since the break (a box forms over half an hour and then freezes; a minute beyond a frozen box by more than twice the typical minute at that moment breaks it). A broken box is over — never describe price as inside a box that `breaks_today` says it left; the new box replaced it, and the opening box stays in the block only so the day's start can be named. `prior_sessions` is the range of the last few closed sessions with where the live price sits in it and whether today has traded beyond it. Every box and extreme rests on the minute-bar record, whose wicks see what a 2-minute scan steps over — and it says so by saying nothing. When the record was NOT used the block speaks up: `measured_from` and `price.extremes_from` appear carrying "scans_every_2_min", and the true extremes may then sit a few dollars beyond what is stated. Their absence is the ordinary case and means the bars were used. That range can hold while today's box breaks, and the two facts are stated separately for exactly that reason. Say what a box DID — "broke above the opening box at 10:07", "still inside the prior sessions' range" — and nothing about what follows.
 
 KEEP IT SHORT AND PLAIN. TWO SENTENCES, forty words at the outside — the way you would say it to someone sitting beside you, not the way you would write it down. No jargon, no field names, no padding, no listing everything you looked at. Say the one or two things that matter and stop. The levels go in `points` with a few words each; do not repeat them in the prose. Every number you say has to be one that APPEARS IN THE SCENE, exactly as it appears. That includes numbers you work out yourself: do not convert a distance into sigma, do not turn a share into a percentage of something else, do not average two figures. A number you computed is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far away, say which level and let the reader see the two prices.
 
@@ -3287,7 +3287,6 @@ def ranges_block(rows: list[dict], now: datetime,
                and (_last_bar is None or t > _last_bar)]
     closes.sort(key=lambda x: x[0])
     break_times: list = []
-    judged = False       # did the newest point have a ruler to be judged by
     t_first = pts[0][0]
     form_start = t_first
     lo, hi = pts[0][1], pts[0][2]
@@ -3299,7 +3298,7 @@ def ranges_block(rows: list[dict], now: datetime,
             lo, hi = min(lo, p_lo), max(hi, p_hi)
             span = OPENING_RANGE_MIN if opening is None else BOX_FORM_MIN
             if (t - form_start) >= timedelta(minutes=span):
-                frozen = {"low": lo, "high": hi,
+                frozen = {"low": lo, "high": hi, "froze_at": t,
                           "formed_over": f"{hhmm(form_start)}-{hhmm(t)}"}
                 if opening is None:
                     opening = dict(frozen)
@@ -3307,7 +3306,6 @@ def ranges_block(rows: list[dict], now: datetime,
         # a minute bar is judged at the moment it completed, a scan when it landed
         tm = _ruler_from_spans(spans, t + timedelta(minutes=1) if t in bar_starts else t)
         depth = MOVE_MINUTES * tm if tm else None
-        judged = depth is not None
         if depth is not None and (p_hi > frozen["high"] + depth
                                   or p_lo < frozen["low"] - depth):
             up = (p_hi - frozen["high"]) >= (frozen["low"] - p_lo)
@@ -3354,16 +3352,18 @@ def ranges_block(rows: list[dict], now: datetime,
         out["opening"] = {"still_forming": True, "since": hhmm(t_first),
                           "low": round(lo, 2), "high": round(hi, 2)}
     if frozen is not None:
+        # review item #13: HOW LONG THIS BOX HAS STOOD, which is the one thing
+        # about it that can vary. `formed_over` was always half an hour — that
+        # is how a box is built — and `live_spot_is` read "inside" on 92% of
+        # scans by construction; neither could tell a band 20 minutes old from
+        # one six hours old. The age ships as a number because the model may
+        # not do arithmetic and the number gate deletes a figure that is not on
+        # the board. Where the live price sits against the edges is a
+        # comparison the model makes for itself off `price.live_spot`.
         inf = {"low": round(frozen["low"], 2), "high": round(frozen["high"], 2),
-               "formed_over": frozen["formed_over"],
+               "froze_at": hhmm(frozen["froze_at"]),
+               "standing_for_min": max(0, int((now - frozen["froze_at"]).total_seconds() // 60)),
                "is_the_opening_box": not breaks}
-        # "just" only when a ruler says how far is too far: outside the box
-        # without a break is within the move bar, and with no bar it is only
-        # outside
-        near = "just " if judged else ""
-        inf["live_spot_is"] = ("inside" if frozen["low"] <= spot_now <= frozen["high"]
-                               else f"{near}above" if spot_now > frozen["high"]
-                               else f"{near}below")
         out["in_force"] = inf
     else:
         inf = {"still_forming": True, "since": hhmm(form_start),
