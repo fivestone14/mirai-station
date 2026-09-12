@@ -3180,6 +3180,47 @@ def _prior_sessions_range(today: str) -> Optional[dict]:
             "measured_from": "mixed" if len(srcs) > 1 else srcs.pop()}
 
 
+def session_extremes(bars_now: list, rows: list, now: datetime) -> dict:
+    """The day's high and low, each with the minute it was SET and how long ago.
+
+    review item #11: they shipped as bare numbers, so a high a median 88
+    minutes old and a low a median 183 minutes old read exactly like one set
+    seconds ago. The clock and the age both ship because the model may not do
+    arithmetic and the number gate deletes a figure that is not on the board —
+    without the age, "the low is three hours old" is unsayable.
+
+    The EARLIEST minute at the extreme wins: it is when the day first got
+    there. Recomputed per scene rather than cached: the payload tab, the eval
+    and the voice all rebuild PAST moments, and a remembered extreme would hand
+    them a high the moment they describe had not reached yet."""
+    hi = lo = None                       # (value, when)
+    for b in bars_now or []:
+        t = _parse_ts(b.get("ts"))
+        h, l = _fin(b.get("high")), _fin(b.get("low"))
+        if t is None:
+            continue
+        if h is not None and (hi is None or h > hi[0]):
+            hi = (h, t)
+        if l is not None and (l < lo[0] if lo else True):
+            lo = (l, t)
+    for r in rows or []:
+        t, sp = _ts(r), _fin(r.get("spot"))
+        if t is None or sp is None or t > now:
+            continue
+        if hi is None or sp > hi[0]:
+            hi = (sp, t)
+        if lo is None or sp < lo[0]:
+            lo = (sp, t)
+    out: dict = {}
+    for name, x in (("high", hi), ("low", lo)):
+        if x is None:
+            continue
+        out[f"session_{name}"] = x[0]
+        out[f"session_{name}_at"] = x[1].astimezone(_ET).strftime("%H:%M")
+        out[f"session_{name}_min_ago"] = max(0, int((now - x[1]).total_seconds() // 60))
+    return out
+
+
 def _range_points(rows: list[dict], bars: Optional[list[dict]]) -> tuple:
     """(time, low, high) triples in time order, and which witness made them.
     From the sidecar a point is a minute's wick; from the diary it is one spot
@@ -3662,11 +3703,11 @@ def build_scene(row: dict, band: dict, frozen: list,
                                             else None),
              "vs_prior_close_pct": vs_prior,
              # obs-5: the wicks win when the sidecar has them; the live spot is
-             # folded in so a print newer than the last completed bar counts
-             "session_low": (min([b["low"] for b in bars_now] + path) if bars_now
-                             else (min(path) if path else None)),
-             "session_high": (max([b["high"] for b in bars_now] + path) if bars_now
-                              else (max(path) if path else None)),
+             # folded in so a print newer than the last completed bar counts.
+             # item #11: each extreme ships with the minute it was set and its
+             # age — see session_extremes, which decides both from the same
+             # bars and rows this block does.
+             **session_extremes(bars_now, rows, now),
              # sr-9: SILENT when the minute-bar record was used, which it was
              # on 138 of 138 replayed scans across 8 sessions. The field only
              # ever earned its bytes as an alarm, so it now fires only when the

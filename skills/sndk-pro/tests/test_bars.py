@@ -141,6 +141,31 @@ def test_a_short_bar_record_says_how_many_minutes_it_actually_holds():
     assert mb["bars_so_far_today"] == len(kept) == 17
 
 
+def test_the_days_extremes_carry_the_minute_they_were_set_and_their_age():
+    """Review item #11. A high a median 88 minutes old and a low a median 183
+    read exactly like fresh ones when they ship as bare numbers. Each extreme
+    now carries the minute it was SET — the first minute that reached it — and
+    how long ago that was, because the model may not do arithmetic and the
+    number gate deletes any figure that is not on the board."""
+    rows = _tape([1500] * 6)                                   # scans, 10 minutes
+    t0 = datetime.fromisoformat(rows[0]["ts"])
+    bars = [_bar(t0 + timedelta(minutes=i), 1499.0, 1501.0) for i in range(10)]
+    bars[2] = _bar(t0 + timedelta(minutes=2), 1499.0, 1512.0)  # the high, early
+    bars[6] = _bar(t0 + timedelta(minutes=6), 1488.0, 1501.0)  # the low, later
+    SB.write_day(DAY, bars, T0)
+    p = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)["price"]
+    assert p["session_high"] == 1512.0
+    assert p["session_high_at"] == (t0 + timedelta(minutes=2)).strftime("%H:%M")
+    assert p["session_high_min_ago"] == 8            # T0 is t0 + 10 minutes
+    assert p["session_low"] == 1488.0
+    assert p["session_low_at"] == (t0 + timedelta(minutes=6)).strftime("%H:%M")
+    assert p["session_low_min_ago"] == 4
+    # a live print past the wicks sets the extreme itself, at its own clock
+    up = _tape([1500] * 5 + [1520.0])
+    p2 = SR.build_scene(up[-1], SR.magnet_band(up[-1]), [], up, T0)["price"]
+    assert p2["session_high"] == 1520.0 and p2["session_high_min_ago"] == 0
+
+
 def test_a_break_the_scans_stepped_over_is_seen_by_the_wick():
     """One box break in three was missed or invented on scans alone. A wick
     beyond the frozen box by more than the move bar breaks it even when every

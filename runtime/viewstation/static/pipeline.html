@@ -498,6 +498,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'data_sources · clock · scale · price · history · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm, in percent (68.15, not 0.6815); context keeps only ranges and since_last_read (which gains clusters_then, and move_threshold_dollars: the move bar in dollars, two typical minutes)'],
       [0,'strikes','object','the board as records'],
       [1,'strikes_in_window','int','how many strikes were in reach, 1.5 sigma either side of the book’s price'],
+      [1,'price.session_high · session_low (+_at, +_min_ago)','number, time, int','the day’s extremes with the minute each was set and how old it is (since 2026-09-11): on 09-11 the high was 369 minutes old by 15:40'],
       [1,'contracts_above_spot_pp · dealer_gamma_above_spot_pp','number','share of each surface sitting above price'],
       [1,'nearest_above · nearest_below','number','nearest listed strike marked above and below the live price (an at strike is on neither side); no_strikes_above / no_strikes_below when a side is empty'],
       [1,'change_basis · change_books_compared · change_columns','mixed','which earlier book the change cells compare against, said once; change_unavailable when there is none, or when either book still carries the prior session’s volume'],
