@@ -553,8 +553,13 @@ def test_a_book_that_did_not_refresh_since_the_last_read_has_no_change():
 def test_a_book_too_old_drops_the_board_and_says_so():
     rows = mkrows(n=8, start=T0 - timedelta(minutes=30))     # newest book 16 minutes old
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
-    assert v2["strikes"]["unavailable"] == "book_too_old" and v2["strikes"]["age_min"] > SR.MAX_BOOK_AGE_MIN
+    assert v2["strikes"] == {"unavailable": "book_too_old"}
     assert "frames" not in v2 and "implied_vol_atm" not in v2.get("scale", {})
+    # review item #38: the age and the ceiling used to ride here too. Both were
+    # restatements — age_min was always data_sources.options_book.age_min and
+    # ceiling_min always the same constant, equal on 57 of 57 stale boards —
+    # and data_sources still carries the age beside this flag
+    assert v2["data_sources"]["options_book"]["age_min"] > SR.MAX_BOOK_AGE_MIN
 
 
 def test_the_days_first_book_with_the_prior_sessions_volume_is_left_out():

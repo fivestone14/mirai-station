@@ -1289,7 +1289,11 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
 
     if book_too_old:
         strikes, listed, ref_row, books = None, [], None, []
-        v2["strikes"] = {"unavailable": "book_too_old", "age_min": book_age, "ceiling_min": SR.MAX_BOOK_AGE_MIN}
+        # review item #38 (2026-09-13): the flag stays, the two numbers go.
+        # `age_min` here was always `data_sources.options_book.age_min` and
+        # `ceiling_min` always the same constant — measured equal on 57 of 57
+        # stale boards, and both ride beside this block whenever it appears.
+        v2["strikes"] = {"unavailable": "book_too_old"}
     else:
         strikes, listed, ref_row, books = strikes_block(row, rows, now, bars_now, last_read_ts, crossed,
                                                         sent_before=strikes_sent_before)
@@ -1445,7 +1449,7 @@ FIELD NAMES SAY WHAT THEY ARE. `_pp` is percentage points, `_min` is minutes, `_
 
 THE KEPT BLOCKS, in a clause each. `clock.minutes_to_close` is session left for a read to resolve in; `scale.one_sigma_dollars` is a normal day's move, the ruler every distance uses; `scale.implied_vol_atm` is the at-the-money implied vol now, in percent (68.15 means 68.15 percent, and "about 68" is how to say it); `scale.expected_move_today_asym` is the up and down dollars the options price for the rest of the day; `price.vs_prior_close_pct` is today's change; `price.session_high` and `session_low` are the day's extremes from the bars, each with `_at`, the minute it was set, and `_min_ago`, how old it is — a high 88 minutes old and one set in the last minute are different facts, so say which: "the low is 1741, set at 09:44 and three hours old". Whether price is somewhere it has not been today is not a field: `price.session_high`, `price.session_low` and `price.live_spot` all ship, and the comparison is yours to make. A flag for it used to ride here and was deleted after it fired 16 times across 8 replayed sessions and the payload's own extremes contradicted all 16 — it asked the 2-minute scans while the extremes answer from the 1-minute bars.
 
-WHERE EVERY NUMBER CAME FROM. `price` is the live tape. The table comes out of the options book, which is minutes old and often a cached repeat: `data_sources.options_book` carries its age and `is_repeat_of_previous_scan`. Open interest rests on last night's snapshot; `data_sources.open_interest` re-proves that it held still today. `freshness_rules.blocks_dropped_this_scan` names any block deleted for age, and the whole freshness_rules block is absent when nothing was dropped. Every `dist_sigma` divides the price the book was measured at (`price.spot_when_book_was_measured`); to move a distance to the live frame, SUBTRACT `price.live_minus_book_spot_sigma`.
+WHERE EVERY NUMBER CAME FROM. `price` is the live tape. The table comes out of the options book, which is minutes old and often a cached repeat: `data_sources.options_book` carries its age and `is_repeat_of_previous_scan`. Open interest rests on last night's snapshot; `data_sources.open_interest` re-proves that it held still today. Every `dist_sigma` divides the price the book was measured at (`price.spot_when_book_was_measured`); to move a distance to the live frame, SUBTRACT `price.live_minus_book_spot_sigma`.
 
 HONESTY RULES, all of them load-bearing:
 - Never cite an entry in `frozen_do_not_cite` as the reason for anything new.
