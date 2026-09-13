@@ -932,6 +932,46 @@ def rows_as_records(strikes: Optional[dict]) -> list:
 # ---------------------------------------------------------------------------
 # between the frames — what happened while the model slept
 # ---------------------------------------------------------------------------
+SAME_CLOCK_SESSIONS = 5     # prior sessions the busy-or-quiet baseline reads
+SAME_CLOCK_MIN_SESSIONS = 3  # fewer than this and the ratio is left out
+_CLOCK_BASE: dict = {}
+
+
+def _same_clock_median(day: str) -> dict:
+    """{"HH:MM": the median volume that minute traded in prior sessions}.
+
+    review item #23 (2026-09-13). The baseline used to be the median minute of
+    TODAY, which the opening minutes inflate for the rest of the session, so the
+    ratio mostly reported the time of day: its median read 0.67 and it called
+    the gap quiet on two reads in three, 84 percent of them between noon and
+    two. Measured against the same clock minutes on other sessions the median
+    is 1.00 at every hour, and on about one gap in nine the old number said
+    quiet while the tape was genuinely busy for that time of day.
+
+    Only closed sessions are read, so the memo is safe: a past day's bar file
+    does not change. With fewer than SAME_CLOCK_MIN_SESSIONS of history the
+    ratio is left out rather than shipped noisy."""
+    if day in _CLOCK_BASE:
+        return _CLOCK_BASE[day]
+    out: dict = {}
+    try:
+        folder = SR.sndk_bars.bars_path(day).parent
+        days = sorted(p.name[:-6] for p in folder.glob("*.jsonl") if p.name[:-6] < day)
+    except Exception:
+        days = []
+    per: dict = {}
+    for d in days[-SAME_CLOCK_SESSIONS:]:
+        for bar in SR.minute_bars(d):
+            t = _bar_ts(bar)
+            v = SR._fin(bar.get("volume"))
+            if t is not None and v is not None:
+                per.setdefault(_hhmm(t), []).append(v)
+    if len(days[-SAME_CLOCK_SESSIONS:]) >= SAME_CLOCK_MIN_SESSIONS:
+        out = {k: statistics.median(v) for k, v in per.items() if v}
+    _CLOCK_BASE[day] = out
+    return out
+
+
 def between_frames_block(rows: list, bars_now: list, now: datetime,
                          last_read_ts: Optional[datetime], sig: float) -> Optional[dict]:
     """The gap's tape. Its clock (from, to, minutes) and its net change live in
@@ -966,11 +1006,14 @@ def between_frames_block(rows: list, bars_now: list, now: datetime,
         if len(closes) >= 2 and sig:
             price["path_travelled_sigma"] = round(sum(abs(b - a) for a, b in zip(closes, closes[1:])) / sig, 2)
         vols = [SR._fin(b.get("volume")) or 0.0 for b in bars]
-        day_vols = [SR._fin(b.get("volume")) or 0.0 for b in bars_now]
-        med = statistics.median(day_vols) if day_vols else 0.0
-        if med > 0 and vols:
-            out["shares_traded"] = {"in_gap": int(sum(vols)),
-                                    "per_minute_vs_day_median": round((sum(vols) / len(vols)) / med, 2)}
+        if vols:
+            shares = {"in_gap": int(sum(vols))}
+            base = _same_clock_median(now.astimezone(_ET).strftime("%Y-%m-%d"))
+            same = [base[m] for b in bars if (m := _hhmm(_bar_ts(b))) in base]
+            usual = statistics.median(same) if same else 0.0
+            if usual > 0:
+                shares["per_minute_vs_same_minutes_prior_sessions"] = round((sum(vols) / len(vols)) / usual, 2)
+            out["shares_traded"] = shares
     elif span:
         lo_r = min(span, key=lambda r: SR._fin(r.get("spot")) or float("inf"))
         hi_r = max(span, key=lambda r: SR._fin(r.get("spot")) or float("-inf"))
@@ -1410,7 +1453,7 @@ BOTH SIDES, EVERY TIME. Price always has a side above it and a side below it, an
 
 INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up film is: NEW, INCREASED, DECREASED, STABLE, and UNKNOWN when the earlier book is missing; RESOLVED is for a pile that was there at your last read and is gone. On a cluster the word is checked against the change cells of its strikes and rewritten when it disagrees: added together, a point or more of contracts share up is increased, a point or more down is decreased, less than a point is stable, and a pile whose strikes all joined the list since your last read is new. In prose the same words apply to the change cell and to the series, and two rules ride with them. First, THE WINDOW IS ALWAYS NAMED: "since your last read at 12:35", "over the last twelve books", "against the book five books back". A change with no window is a guess. Second, YOU CANNOT SEE GAMMA CHANGE ON THIS BOARD: the scene ships one gamma sign and one gamma share per strike and no earlier value, so never say a gamma share rose or fell. Change is contracts and volume: "1750 added 1,296 calls since your last read", "1700's share of contracts slipped a point".
 
-BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window, or `minute_bars_unavailable` when there were none at all (a gap in the data is a gap, never calm — and the absence of both means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap against the day's median minute, and the implied vol at your last read (the value now is `scale.implied_vol_atm`). Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
+BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window, or `minute_bars_unavailable` when there were none at all (a gap in the data is a gap, never calm — and the absence of both means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap, with `per_minute_vs_same_minutes_prior_sessions` comparing it against the SAME clock minutes on the last five sessions, so 1.0 is an ordinary amount of trading for that time of day and the number is not just telling you the hour, and the implied vol at your last read (the value now is `scale.implied_vol_atm`). Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
 
 OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, `move_threshold_dollars`, anything crossed since (`crossed_since_then`: every listed-window level the minute closes went through, two minutes running, since then; `direction` is the side price is on now, and `times` appears when price went through it more than once, so a level crossed and crossed back is still there), and `clusters_then`, the clusters you drew last time. Price now is `price.live_spot`. `move_threshold_dollars` is how far price has to go to be a move right now: twice the typical minute's high-to-low over the last half hour, so it is wide at the open and narrow after lunch (at 5.80, a change of -12.40 is a move and one of 3.10 is not). When `spot_change_dollars` reaches it either way it is a move: say price then and price now. Under it, it is a hold, and you say so in your own words with the two prices from `between_frames.price.low` and `high` and the clock — not in these words, which every reading for a month has copied. When `move_threshold_dollars` is absent the minute record is missing: call the frame neither a move nor a hold, and say price then and price now. A crossing is named as the level and as a distance you can read off the scene, never with a word that grades it. When `times` is there, say the level, how many times, and where price is now; a count is not a verdict, so never call the level rejected, reclaimed or contested. Do not reach for "just through" without looking: measured over 431 crossings at the moments a read was actually made, the median distance from the level to the live price is $6.22 and 55 percent are more than $5 away — but it swings with the hour, from a $12.47 median in the 09:00 hour (77 percent beyond $5) to $2.19 at 13:00 (18 percent beyond). Read the two prices off the scene and let them decide the word. Say the level and say where price is now. Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point. Vol is not part of that test: the at-the-money figure is re-solved on every scan, so it moves without the book moving.
 
