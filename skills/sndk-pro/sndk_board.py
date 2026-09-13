@@ -1457,6 +1457,10 @@ _SIDE_REV_RE = __import__("re").compile(
     r"(?!\s+(?:" + _SIDE_FILL + r"\s+){0,4}(?:above|below)\b)",
     __import__("re").I)
 _UNCHANGED_RE = __import__("re").compile(r"\b(unchanged|nothing (?:has )?changed|no change|the board is the same)\b", __import__("re").I)
+# review item #14: the bar the vol half of the unchanged check uses, in percent
+# points. The scene has carried implied vol in percent since #2 (68.15, not
+# 0.6815), so 5 here is five points of vol, not five hundred.
+UNCHANGED_VOL_POINTS = 5.0
 # review item #10: the table counts touched MINUTES, separate VISITS and visits
 # that PASSED THROUGH. On 09-09 09:32 the model read two touched minutes (one
 # visit, 09:30-09:31) as "touched twice". Two readings are now checked against
@@ -1622,12 +1626,19 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             ch = r.get("change")
             if isinstance(ch, list) and ch and isinstance(ch[0], (int, float)) and abs(ch[0]) >= 1.0:
                 moved = True
-        iv = (scene.get("between_frames") or {}).get("implied_vol") or {}
-        # the scene carries implied vol in percent since 2026-09-10, so the
-        # bar is 5 points, not 0.05. (This branch reads a key the scene does
-        # not ship yet; it is kept in the new unit so wiring it later cannot
-        # silently shrink the bar a hundredfold.)
-        if isinstance(iv.get("from"), (int, float)) and isinstance(iv.get("to"), (int, float)) and abs(iv["to"] - iv["from"]) >= 5.0:
+        # review item #14 (strikes-3): THE VOL HALF NOW READS THE FIELDS THE
+        # BOARD ACTUALLY SENDS. It was written against
+        # `between_frames.implied_vol` with a "from" and a "to". That key
+        # shipped with the first Strikes Payload (eb2eb75) and was deleted in
+        # a09eae2, which moved the value NOW to `scale.implied_vol_atm` and
+        # kept only the earlier one in between_frames, as
+        # `implied_vol_at_last_read` — nothing is sent twice. The branch was
+        # never repointed, so from a09eae2 until here it read {} on every call
+        # and answered "vol did not move", every time. Measured over the 1,481
+        # recorded readings, 118 say the board is unchanged.
+        iv_now = SR._fin((scene.get("scale") or {}).get("implied_vol_atm"))
+        iv_then = SR._fin((scene.get("between_frames") or {}).get("implied_vol_at_last_read"))
+        if iv_now is not None and iv_then is not None and abs(iv_now - iv_then) >= UNCHANGED_VOL_POINTS:
             moved = True
         if moved:
             out.append("unchanged_contradicted_by_change_block")

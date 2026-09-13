@@ -619,6 +619,49 @@ def test_vol_ships_in_percent_and_the_doctrine_says_so():
     assert "`scale.implied_vol_atm` is the at-the-money implied vol now, in percent" in B.DOCTRINE_V2
 
 
+def test_unchanged_is_contradicted_by_a_vol_move_the_board_can_show():
+    """review item #14: the vol half of the unchanged check read
+    `between_frames.implied_vol` with a "from" and a "to". That key shipped
+    with the first payload and was deleted in a09eae2 — the value now lives at
+    `scale.implied_vol_atm`, only the earlier one stays in between_frames — so
+    the branch read {} on every call since and answered "vol did not move".
+    Measured over the 118 recorded readings that call the board unchanged, the
+    repointed check contradicts 21 the change cells alone let through."""
+    sc = _scene()
+    assert sc["scale"]["implied_vol_atm"] == 50.0
+    assert sc["between_frames"]["implied_vol_at_last_read"] == 50.0
+
+    quiet = "Nothing changed on the board since your last read."
+    assert [x for x in B._prose_slips_v2(quiet, sc) if "unchanged" in x] == []
+
+    moved = json.loads(json.dumps(sc))
+    moved["scale"]["implied_vol_atm"] = 50.0 + B.UNCHANGED_VOL_POINTS
+    assert B._prose_slips_v2(quiet, moved) == ["unchanged_contradicted_by_change_block"]
+
+    # and the other way round: the earlier read was the high one
+    moved2 = json.loads(json.dumps(sc))
+    moved2["between_frames"]["implied_vol_at_last_read"] = 50.0 + B.UNCHANGED_VOL_POINTS
+    assert B._prose_slips_v2(quiet, moved2) == ["unchanged_contradicted_by_change_block"]
+
+    # just under the bar is still a quiet board
+    near = json.loads(json.dumps(sc))
+    near["scale"]["implied_vol_atm"] = 50.0 + B.UNCHANGED_VOL_POINTS - 0.01
+    assert [x for x in B._prose_slips_v2(quiet, near) if "unchanged" in x] == []
+
+    # the bar is in percent points, matching the unit the scene ships since #2
+    assert B.UNCHANGED_VOL_POINTS == 5.0
+
+
+def test_the_unchanged_check_no_longer_reads_the_deleted_vol_key():
+    """The dead key put back by hand must change nothing — if this fails the
+    check has been pointed at `between_frames.implied_vol` again."""
+    sc = _scene()
+    sc["scale"].pop("implied_vol_atm")
+    sc["between_frames"].pop("implied_vol_at_last_read")
+    sc["between_frames"]["implied_vol"] = {"from": 50.0, "to": 80.0}
+    assert [x for x in B._prose_slips_v2("No change on the board.", sc) if "unchanged" in x] == []
+
+
 def test_guard_needs_a_price_for_sides_and_renumbers_ranks():
     sc = _scene()
     sc2 = json.loads(json.dumps(sc)); sc2["price"].pop("live_spot"); sc2["price"].pop("spot_when_book_was_measured")

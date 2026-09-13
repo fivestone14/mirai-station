@@ -1813,6 +1813,44 @@ def present_tense_slips(reading: dict) -> list[str]:
 # so the most natural sentence the doctrine asks for deleted itself.
 _NUM_RE = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
 
+# review item #15 (strikes-3): A ROUNDED NUMBER IS THE BOARD'S NUMBER, SAID THE
+# WAY A PERSON SAYS IT. The gate below allows a fixed slack — a dollar on a
+# whole number, half a last digit on a decimal — and that slack does not scale.
+# On a live read "1800 adding over 11,000 contracts" against a board holding
+# 11,006 was six away, so it was logged as a number not on the board, and an
+# invented number deletes the WHOLE reading: four true sentences went with it.
+# A spoken integer carries its own precision in its trailing zeros, so the
+# honest test is whether the board's figure, rounded the way the sentence
+# rounds, IS the number said.
+_ROUNDED_REL_TOL = 0.001
+# A tenth of a percent, which is what keeps the rounding honest at every size:
+# 11 contracts at 11,006, but only $1.60 at 1600 — so "1600" for a board
+# carrying 1595 stays an invention, as it should.
+
+
+def _spoken_step(tok: str):
+    """The rounding a spoken integer claims, read off its trailing zeros.
+
+    "11,000" claims the nearest thousand and gets 1000; "1,750" the nearest
+    ten. A decimal, or an integer ending in a non-zero digit, claims no
+    rounding at all and gets None — for those the fixed slack stays the only
+    test."""
+    s = tok.replace(",", "").lstrip("-")
+    if "." in s:
+        return None
+    z = len(s) - len(s.rstrip("0"))
+    return 10 ** z if z else None
+
+
+def spoken_as_rounded(n: float, tok: str, nums) -> bool:
+    """True when some board figure, rounded as `tok` rounds, is exactly `tok`."""
+    step = _spoken_step(tok)
+    if not step:
+        return False
+    return any(round(abs(v) / step) * step == abs(n)
+               and abs(abs(v) - abs(n)) <= _ROUNDED_REL_TOL * abs(v)
+               for v in nums if v)
+
 
 def _clip(text: str, n: int) -> str:
     """Trim to a WORD boundary. The first draft cut at a fixed character count
@@ -2039,7 +2077,8 @@ def check_reading_against_scene(obj: dict, scene: dict, judge=None) -> dict:
             # sentence, because the gate looked for +1.7. "Down about X" is how
             # people say a negative number out loud, and the direction is
             # already carried by the word next to it.
-            if not any(abs(abs(n) - abs(v)) <= tol for v in nums):
+            if (not any(abs(abs(n) - abs(v)) <= tol for v in nums)
+                    and not spoken_as_rounded(n, m.group(0), nums)):
                 dropped.append(f"{tag}_number_not_on_the_board:{m.group(0)}")
                 return False
         return True
