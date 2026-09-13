@@ -95,16 +95,21 @@ def test_both_sides_listed_and_nearest_strikes_on_the_header():
     r = recs(v2)
     assert 1300.0 in r and 1250.0 in r
     assert v2["strikes"]["nearest_above"] == 1300.0 and v2["strikes"]["nearest_below"] == 1250.0
-    assert "no_strikes_above" not in v2["strikes"]
 
 
-def test_an_empty_side_is_stated_not_silent():
+def test_an_empty_side_is_said_by_leaving_the_nearest_strike_out():
+    """review item #19: an empty side used to carry `no_strikes_above` /
+    `no_strikes_below` as well. Those flags shipped on 0 of 831 rebuilt boards
+    — they need the live price to run more than 1.5 sigma past the middle of
+    the window, and the furthest ever observed still sat about a sigma inside
+    both edges — while the doctrine promised them to the model on every call.
+    Absence already says it, which is what the doctrine's own words claim."""
     oi = {1150.0: (30, 15), 1200.0: (240, 120), 1250.0: (180, 90)}
     net = {1150.0: -0.2, 1200.0: -2.0, 1250.0: 1.0}
     rows = mkrows(spot=1290.0, oi=oi, net=net)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
-    assert v2["strikes"]["no_strikes_above"] is True
     assert "nearest_above" not in v2["strikes"] and v2["strikes"]["nearest_below"] == 1250.0
+    assert not [k for k in v2["strikes"] if k.startswith("no_strikes")]
 
 
 def test_distances_and_sides_are_measured_from_the_live_price():
