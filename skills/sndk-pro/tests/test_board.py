@@ -176,10 +176,10 @@ def test_minutes_visits_and_passes_are_three_different_counts():
              + [at, at, at] + [below]                     # down through it: a pass
              + [at])                                      # at it now: still visiting
     bars = [bar(i, lo, hi) for i, (lo, hi) in enumerate(shape)]
-    r = B.touch_facts(bars, 1300.0, 0.0)
+    r = B.touch_facts(bars, 1300.0)
     assert r["minutes_touched_today"] == 7
     assert (r["visits_today"], r["passed_through_today"]) == (4, 2)
-    assert B.touch_facts([bar(i, *below) for i in range(5)], 1300.0, 0.0)["visits_today"] == 0
+    assert B.touch_facts([bar(i, *below) for i in range(5)], 1300.0)["visits_today"] == 0
 
 
 def _read_about(text, recs_over):
@@ -264,7 +264,10 @@ def test_touch_facts_come_off_the_wicks_and_their_times_off_the_bars():
     assert (r["visits_today"], r["passed_through_today"]) == (1, 0)
     assert r["first_touch"] == (OPEN_AT + timedelta(minutes=20)).strftime("%H:%M")
     assert r["last_touch"] == (OPEN_AT + timedelta(minutes=21)).strftime("%H:%M")
-    assert r["shares_traded_at_strike_pp"] == round(10000 / (27 * 1000 + 10000) * 100, 1)
+    # review item #28: the day-volume share that used to ride here was cut —
+    # a minute's whole volume was credited to every strike its range covered,
+    # so the listed values summed past 100 on 58 percent of boards
+    assert "shares_traded_at_strike_pp" not in r
     other = recs(v2)[1350.0]
     assert other["touched_today"] is False and other["first_touch"] is None
 

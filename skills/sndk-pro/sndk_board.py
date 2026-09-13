@@ -104,7 +104,7 @@ _ET = SR._ET
 
 COLUMNS_BASE = ["strike", "side", "dist_sigma"]
 COLUMNS_TOUCH = ["touched_today", "first_touch", "last_touch", "minutes_touched_today",
-                 "visits_today", "passed_through_today", "shares_traded_at_strike_pp"]
+                 "visits_today", "passed_through_today"]
 COLUMNS_BOOK = ["oi_calls", "oi_puts", "vol_calls", "vol_puts", "contracts_share_pp"]
 COLUMNS_GAMMA = ["dealer_gamma_sign", "dealer_gamma_share_pp"]
 COLUMNS_RANK_C = ["rank_by_contracts"]
@@ -341,24 +341,29 @@ def _visits(bars_now: list, k: float) -> tuple:
     return visits, through
 
 
-def touch_facts(bars_now: list, k: float, day_volume: float) -> dict:
+def touch_facts(bars_now: list, k: float) -> dict:
     """What price did at the strike today, from the completed minute bars:
     whether a minute's range held it, the first and last minute that did, how
-    many minutes did, in how many separate visits, how many of those went
-    through it, and the share of the day's traded shares that printed in those
-    minutes. Every time is the bar's own timestamp. The minutes are minutes and
-    not times: 43 of them were 10 separate visits on 09-08 (item #10)."""
+    many minutes did, in how many separate visits, and how many of those went
+    through it. Every time is the bar's own timestamp. The minutes are minutes
+    and not times: 43 of them were 10 separate visits on 09-08 (item #10).
+
+    review item #28 (2026-09-13): `shares_traded_at_strike_pp` used to ride
+    here — the share of the day's stock volume printed in minutes whose range
+    held the strike. A minute's whole volume was credited to every strike its
+    range covered, so the listed values summed past 100 on 58 percent of
+    boards, median 108 and once 400. It was cut rather than repaired: any
+    repair would have had to invent a split of a minute's volume across the
+    strikes its range covered, and the number nothing else on the board could
+    check."""
     hits = [b for b in bars_now if _wick_includes(b, k)]
-    vol = sum(SR._fin(b.get("volume")) or 0.0 for b in hits)
     visits, through = _visits(bars_now, k)
     return {"touched_today": bool(hits),
             "first_touch": _hhmm(_bar_ts(hits[0])) if hits else None,
             "last_touch": _hhmm(_bar_ts(hits[-1])) if hits else None,
             "minutes_touched_today": len(hits),
             "visits_today": visits,
-            "passed_through_today": through,
-            "shares_traded_at_strike_pp": (round(vol / day_volume * 100, 1)
-                                           if day_volume > 0 else None)}
+            "passed_through_today": through}
 
 
 # ---------------------------------------------------------------------------
@@ -767,7 +772,6 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         ref = {"surf": rsurf, "win": rwin, "ruler": rrs,
                "shares_now": _shares(surf, common), "shares_then": _shares(rsurf, common)}
     books, first_book_dropped = series_books(rows)
-    day_volume = sum(SR._fin(b.get("volume")) or 0.0 for b in bars_now)
 
     # the columns present on THIS row: a surface that was not measured drops
     # its columns rather than shipping ranks built from zeros
@@ -815,7 +819,7 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
                # read has no listed age: "never listed before" is the honest answer
                "on_list_for_min": (_on_list_minutes(rows, now, k, None) if k in listed_by_weight else None)}
         if bars_now:
-            rec.update(touch_facts(bars_now, k, day_volume))
+            rec.update(touch_facts(bars_now, k))
             rec["touched_in_books"] = _touched_in_books(books, k, bars_now) or None   # empty ships as absent
         # the change cell: differences against the reference book, or why not
         if ref is None:
@@ -1377,7 +1381,6 @@ THE BOARD IS AN AUCTION HOUSE, AND A SHARED DOCUMENT. Read it that way:
 THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contracts share, heaviest first, and `strikes.columns` names every field a record can carry. A field missing from a record was not measured for that strike; a field missing from `columns` was not measured for any strike this scan, and `strikes.absent` says why. The fields:
 - `strike`, `side`, `dist_sigma`: where the STRIKE sits relative to the live price, `price.live_spot`, in sigma (a normal day's move). "above" means the strike is above the live price; `at` is within a twentieth of a sigma of it and is on neither side. Every above and below in the table and its header is measured from that one price, so `side`, `dist_sigma`, `nearest_above`, `nearest_below` and the above-price shares always agree with each other and with `price.live_spot`.
 - `touched_today`, `first_touch`, `last_touch`, `minutes_touched_today`, `visits_today`, `passed_through_today`: from the completed minute bars. A minute TOUCHED a strike when its low-to-high range included it. `minutes_touched_today` counts those minutes: minutes, not times, and not one stay. `visits_today` counts separate visits; a visit is a run of touching minutes and ends when a whole minute passes without touching the strike. `passed_through_today` is how many of those visits came in from one side and left on the other; the rest turned back the way they came, and a visit still going on is in neither count. Read the three together. 43 minutes in 10 visits, 9 passed through, is price coming back to the strike again and again and going through it: say "price has come back to 1775 ten times today and gone through it nine", never "sat at 1775 for 43 minutes" and never "touched it 43 times". A stay is one visit: 12 minutes in 1 visit is "price sat at 1775 for twelve minutes". When you give a number of times, it is `visits_today`.
-- `shares_traded_at_strike_pp`: the share of the day's stock volume that printed in bars whose range held the strike. NOT where the shares traded. A minute's whole volume is credited to every strike its high-low range covered, so one bar counts several times and these sum past 100 across the listed strikes — median 104, once 400. Read it as "the stock was trading across this strike in minutes carrying this much of the day's volume", and never as a share of anything.
 - `oi_calls`, `oi_puts`: open interest as of last night's close. "1700 holds the most open interest as of last night's close" is a correct sentence; "open interest is building at 1700" is false by construction.
 - `vol_calls`, `vol_puts`: contracts traded today so far, cumulative.
 - `contracts_share_pp`: this strike's share of all contracts in reach (open interest plus today's volume, both rights). Where the crowd is, counting today's arrivals.

@@ -8,8 +8,9 @@
 > `oi_calls`, `oi_puts`, `vol_calls`, `vol_puts`, `contracts_share_pp`,
 > `dealer_gamma_sign`, `dealer_gamma_share_pp`, three rank columns,
 > `touched_today` / `first_touch` / `last_touch` / `minutes_touched_today` (was
-> `bars_touched_today`) / `visits_today` / `passed_through_today` /
-> `shares_traded_at_strike_pp`, `on_list_for_min`, `change`,
+> `bars_touched_today`) / `visits_today` / `passed_through_today`
+> (`shares_traded_at_strike_pp` was cut 2026-09-13, review item #28),
+> `on_list_for_min`, `change`,
 > `vol_added_per_book`, `vol_added_in_series`, `touched_in_books`, `next_week`;
 > plus `frames`, `regions` and `between_frames`. Everything marked "in payload"
 > below now means "in the legacy scene". `skills/sndk-pro/README.md`
