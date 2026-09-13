@@ -179,6 +179,10 @@ def surfaces(row: dict) -> dict:
         absent.append("signed dealer gamma per strike")
     oi_next = _triples(gv.get("oi_side_by_strike_next"))
     vol_next = _triples(gv.get("vol_side_by_strike_next"))
+    # review item #8, second pass: next week's volume withheld on its own
+    # evidence says so, the same way the front book's does
+    if not vol_next and (nw := (row.get("meta") or {}).get("volume_next_withheld")):
+        absent.append(nw)
     return {"contracts": contracts, "net": net, "oi_side": oi_side, "vol_side": vol_side,
             "oi_next": oi_next, "vol_next": vol_next,
             "next_dte": (int(gv["next_dte"]) if SR._fin(gv.get("next_dte")) is not None else None),
@@ -451,6 +455,25 @@ WITHHELD_PREOPEN = ("volume: this book was measured before the open and carries 
 WITHHELD_UNPROVABLE = ("volume: this early in the session the prior session's counts "
                        "cannot be told apart from today's; left out, contracts count "
                        "open interest only")
+# strikes-3 (2026-09-13), the same item audited a second time: the test above
+# reads the FRONT expiry's array only, and the next weekly book's volume was
+# withheld or kept on the front book's evidence rather than its own. Measured
+# over the whole diary, 4 books carried next week's prior-session counts while
+# their front book was correctly kept — 09-10 09:35 and 09:39, 09-11 09:36 and
+# 09:40, the worst of them (09-11 09:36) with 32 percent of 1,219 in-reach
+# next-week contracts still reading the prior close. The doctrine tells the
+# model "volume in either is today's", so on those reads it was false and
+# nothing said so. Each book is now judged on its own counts.
+WITHHELD_NEXT = {
+    WITHHELD_CARRIED: ("volume in next week's book: it still carries the prior session's "
+                       "counts; today's is left out of the next_week cells"),
+    WITHHELD_PREOPEN: ("volume in next week's book: it was measured before the open and "
+                       "carries the prior session's counts; today's is left out of the "
+                       "next_week cells"),
+    WITHHELD_UNPROVABLE: ("volume in next week's book: this early in the session the prior "
+                          "session's counts cannot be told apart from today's; left out of "
+                          "the next_week cells"),
+}
 
 
 def _front(row: dict) -> Optional[str]:
@@ -531,14 +554,28 @@ def _prior_counts(day: str, front: Optional[str]) -> Optional[dict]:
 
 def carried_books(rows: list, now: datetime) -> dict:
     """{book_asof: the absent sentence} for every distinct book of the day whose
-    volume is — or cannot yet be told from — the prior session's count. A later
-    book's counts are only ever used to judge an EARLIER one, so nothing here
-    looks past `rows`."""
+    FRONT-expiry volume is — or cannot yet be told from — the prior session's
+    count. A later book's counts are only ever used to judge an EARLIER one, so
+    nothing here looks past `rows`."""
+    return _carried(rows, now, "vol_side_by_strike", _front)
+
+
+def carried_next_books(rows: list, now: datetime) -> dict:
+    """The same question asked of the NEXT weekly book, on its own counts.
+
+    Judged separately because the two books turn over independently: 4 books in
+    the diary carry next week's prior-session volume while their front book is
+    honestly today's."""
+    return {k: WITHHELD_NEXT[v] for k, v in
+            _carried(rows, now, "vol_side_by_strike_next", _next_expiry).items()}
+
+
+def _carried(rows: list, now: datetime, key: str, expiry_of) -> dict:
     books = [b for b in SR._distinct_books_rows(rows) if (b.get("meta") or {}).get("book_asof")]
     if not books:
         return {}
-    prior = _prior_counts(now.astimezone(_ET).strftime("%Y-%m-%d"), _front(books[-1]))
-    counts = [_counts((b.get("gex_views") or {}).get("vol_side_by_strike")) for b in books]
+    prior = _prior_counts(now.astimezone(_ET).strftime("%Y-%m-%d"), expiry_of(books[-1]))
+    counts = [_counts((b.get("gex_views") or {}).get(key)) for b in books]
     out, later_min = {}, {}
     for i in range(len(books) - 1, -1, -1):
         b = books[i]
@@ -567,13 +604,27 @@ def carried_books(rows: list, now: datetime) -> dict:
 
 
 def _withhold(row: dict, reason: str) -> dict:
-    """The row with its volume arrays gone and the reason stamped on it."""
+    """The row with its volume arrays gone and the reason stamped on it.
+
+    A front book carrying the prior session's counts takes next week's array
+    with it: the two are measured together, so one being yesterday's is reason
+    enough to doubt the other."""
     r = dict(row)
     gv = dict(r.get("gex_views") or {})
     gv.pop("vol_side_by_strike", None)
     gv.pop("vol_side_by_strike_next", None)
     r["gex_views"] = gv
     r["meta"] = {**(r.get("meta") or {}), "volume_withheld": reason}
+    return r
+
+
+def _withhold_next(row: dict, reason: str) -> dict:
+    """The row with only NEXT week's volume gone; the front book is untouched."""
+    r = dict(row)
+    gv = dict(r.get("gex_views") or {})
+    gv.pop("vol_side_by_strike_next", None)
+    r["gex_views"] = gv
+    r["meta"] = {**(r.get("meta") or {}), "volume_next_withheld": reason}
     return r
 
 
@@ -1149,6 +1200,14 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         k0 = (row.get("meta") or {}).get("book_asof")
         if k0 in carried:
             row = _withhold(row, carried[k0])
+    # and next week's book on its own evidence, for the books the front test kept
+    carried_next = {k: v for k, v in carried_next_books(rows, now).items() if k not in carried}
+    if carried_next:
+        rows = [_withhold_next(r, carried_next[k]) if (k := (r.get("meta") or {}).get("book_asof")) in carried_next else r
+                for r in rows]
+        k0 = (row.get("meta") or {}).get("book_asof")
+        if k0 in carried_next:
+            row = _withhold_next(row, carried_next[k0])
     # a list drawn with volume and one drawn without it are picked by different
     # measures: comparing them would report the switch as strikes joining and
     # leaving, so across that switch nothing joined or left is claimed

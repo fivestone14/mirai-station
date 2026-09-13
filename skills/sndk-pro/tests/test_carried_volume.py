@@ -185,3 +185,62 @@ def test_the_checker_reads_a_board_with_no_volume_on_it(tmp_path):
     vol = B.check_reading_v2(_reply("1400 took the most volume today."), v2, v1.get("regions_rule"))
     assert not vol.get("read")
     assert any("most_volume_unsupported" in d for d in vol.get("dropped_observations") or [])
+
+
+def write_prior_with_next(tmp_path, front_vol, next_vol, day=PRIOR):
+    """The prior session's last row, carrying BOTH books' counts, with today's
+    next weekly expiry (2026-09-25) sitting in its next slot."""
+    d = tmp_path / "sndk_reversion"
+    d.mkdir(parents=True, exist_ok=True)
+    r = mkrow(at(day, 15, 58), vol=front_vol, next_arrays=True)
+    r["meta"]["expiries"] = [{"date": "2026-09-18", "dte": 1}, {"date": "2026-09-25", "dte": 8}]
+    r["gex_views"]["next_dte"] = 8
+    r["gex_views"]["vol_side_by_strike_next"] = [[k, c, p] for k, (c, p) in sorted(next_vol.items())]
+    (d / f"{day.strftime('%Y-%m-%d')}.jsonl").write_text(json.dumps(r) + "\n")
+
+
+def _today_with_next(next_vol, front_vol, hh=9, mm=31):
+    r = mkrow(at(DAY, hh, mm), vol=front_vol, next_arrays=True)
+    r["gex_views"]["next_dte"] = 10          # the dte `fronted` gives next week
+    r["gex_views"]["vol_side_by_strike_next"] = [[k, c, p] for k, (c, p) in sorted(next_vol.items())]
+    return r
+
+
+def test_next_weeks_book_is_judged_on_its_own_counts(tmp_path):
+    """Review item #8, audited a second time. The detector read the FRONT
+    expiry's array only, so next week's volume was withheld or kept on the front
+    book's evidence. Measured over the whole diary, 4 books carried next week's
+    prior-session counts while their front book was honestly today's — the worst
+    (09-11 09:36) with 32 percent of 1,219 in-reach next-week contracts still
+    reading the prior close, while the doctrine tells the model "volume in
+    either is today's"."""
+    NEXT_YEST = {k: (c * 2, p * 2) for k, (c, p) in YEST.items()}
+    grown_front = {k: (c + 40, p + 25) for k, (c, p) in YEST.items()}
+    write_prior_with_next(tmp_path, front_vol=YEST, next_vol=NEXT_YEST)
+
+    # the front book has moved on; next week's has not
+    v2, _ = build([_today_with_next(NEXT_YEST, grown_front)], at(DAY, 9, 33))
+    s = v2["strikes"]
+    assert "vol_calls" in s["columns"] and not withheld(v2)          # front kept
+    assert s["next_week_columns"] == ["oi_calls", "oi_puts"]          # next week's volume gone
+    assert any("volume in next week's book" in a for a in s["absent"])
+    assert all(not isinstance(r.get("next_week"), list) or len(r["next_week"]) == 2
+               for r in s["rows"])
+
+    # and when next week's counts have moved too, nothing is withheld
+    grown_next = {k: (c + 11, p + 13) for k, (c, p) in NEXT_YEST.items()}
+    v2b, _ = build([_today_with_next(grown_next, grown_front)], at(DAY, 9, 33))
+    sb = v2b["strikes"]
+    assert sb["next_week_columns"] == ["oi_calls", "oi_puts", "vol_calls", "vol_puts"]
+    assert not any("next week's book" in a for a in sb.get("absent", []))
+
+
+def test_a_withheld_front_book_still_takes_next_weeks_volume_with_it(tmp_path):
+    """The two books are measured together, so a front book reading yesterday's
+    counts is reason enough to doubt next week's — unchanged behaviour, pinned
+    here because the next-week test now runs separately."""
+    write_prior_with_next(tmp_path, front_vol=YEST, next_vol={k: (9, 9) for k in YEST})
+    v2, _ = build([_today_with_next({k: (9, 9) for k in YEST}, YEST)], at(DAY, 9, 33))
+    s = v2["strikes"]
+    assert "vol_calls" not in s["columns"] and "still carries" in withheld(v2)[0]
+    assert s["next_week_columns"] == ["oi_calls", "oi_puts"]
