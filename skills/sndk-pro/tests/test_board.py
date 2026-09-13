@@ -619,37 +619,30 @@ def test_vol_ships_in_percent_and_the_doctrine_says_so():
     assert "`scale.implied_vol_atm` is the at-the-money implied vol now, in percent" in B.DOCTRINE_V2
 
 
-def test_unchanged_is_contradicted_by_a_vol_move_the_board_can_show():
-    """review item #14: the vol half of the unchanged check read
-    `between_frames.implied_vol` with a "from" and a "to". That key shipped
-    with the first payload and was deleted in a09eae2 — the value now lives at
-    `scale.implied_vol_atm`, only the earlier one stays in between_frames — so
-    the branch read {} on every call since and answered "vol did not move".
-    Measured over the 118 recorded readings that call the board unchanged, the
-    repointed check contradicts 21 the change cells alone let through."""
+def test_the_unchanged_check_does_not_fire_on_a_vol_number_that_is_noise():
+    """review item #14. The vol half of this check read a key deleted in
+    a09eae2, so it never ran. Repointing it at the two fields that do ship was
+    tried and reverted: `atm_iv` is re-solved every scan, so an IDENTICAL
+    options book re-served gives a different number every time — over 636
+    consecutive same-book scan pairs not one repeated, the median move was 2.23
+    points and 17.3 percent cleared 5. A prose slip nulls the whole reading, so
+    a bar on that quantity deletes true sentences on noise."""
     sc = _scene()
+    # both fields ship, in percent, and the check is welcome to read them again
+    # the day there is a windowed, regime-guarded measure to read
     assert sc["scale"]["implied_vol_atm"] == 50.0
     assert sc["between_frames"]["implied_vol_at_last_read"] == 50.0
 
     quiet = "Nothing changed on the board since your last read."
-    assert [x for x in B._prose_slips_v2(quiet, sc) if "unchanged" in x] == []
+    for gap in (5.0, 20.0, 111.51):
+        moved = json.loads(json.dumps(sc))
+        moved["scale"]["implied_vol_atm"] = 50.0 + gap
+        assert [x for x in B._prose_slips_v2(quiet, moved) if "unchanged" in x] == [], gap
 
-    moved = json.loads(json.dumps(sc))
-    moved["scale"]["implied_vol_atm"] = 50.0 + B.UNCHANGED_VOL_POINTS
-    assert B._prose_slips_v2(quiet, moved) == ["unchanged_contradicted_by_change_block"]
-
-    # and the other way round: the earlier read was the high one
-    moved2 = json.loads(json.dumps(sc))
-    moved2["between_frames"]["implied_vol_at_last_read"] = 50.0 + B.UNCHANGED_VOL_POINTS
-    assert B._prose_slips_v2(quiet, moved2) == ["unchanged_contradicted_by_change_block"]
-
-    # just under the bar is still a quiet board
-    near = json.loads(json.dumps(sc))
-    near["scale"]["implied_vol_atm"] = 50.0 + B.UNCHANGED_VOL_POINTS - 0.01
-    assert [x for x in B._prose_slips_v2(quiet, near) if "unchanged" in x] == []
-
-    # the bar is in percent points, matching the unit the scene ships since #2
-    assert B.UNCHANGED_VOL_POINTS == 5.0
+    # the change cells still carry the check on their own
+    with_change = json.loads(json.dumps(sc))
+    with_change["strikes"]["rows"][0]["change"] = [2.5, 100, 50]
+    assert B._prose_slips_v2(quiet, with_change) == ["unchanged_contradicted_by_change_block"]
 
 
 def test_the_unchanged_check_no_longer_reads_the_deleted_vol_key():

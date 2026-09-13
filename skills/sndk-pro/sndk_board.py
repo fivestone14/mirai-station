@@ -1516,10 +1516,6 @@ _SIDE_REV_RE = __import__("re").compile(
     r"(?!\s+(?:" + _SIDE_FILL + r"\s+){0,4}(?:above|below)\b)",
     __import__("re").I)
 _UNCHANGED_RE = __import__("re").compile(r"\b(unchanged|nothing (?:has )?changed|no change|the board is the same)\b", __import__("re").I)
-# review item #14: the bar the vol half of the unchanged check uses, in percent
-# points. The scene has carried implied vol in percent since #2 (68.15, not
-# 0.6815), so 5 here is five points of vol, not five hundred.
-UNCHANGED_VOL_POINTS = 5.0
 # review item #10: the table counts touched MINUTES, separate VISITS and visits
 # that PASSED THROUGH. On 09-09 09:32 the model read two touched minutes (one
 # visit, 09:30-09:31) as "touched twice". Two readings are now checked against
@@ -1685,20 +1681,33 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             ch = r.get("change")
             if isinstance(ch, list) and ch and isinstance(ch[0], (int, float)) and abs(ch[0]) >= 1.0:
                 moved = True
-        # review item #14 (strikes-3): THE VOL HALF NOW READS THE FIELDS THE
-        # BOARD ACTUALLY SENDS. It was written against
-        # `between_frames.implied_vol` with a "from" and a "to". That key
-        # shipped with the first Strikes Payload (eb2eb75) and was deleted in
-        # a09eae2, which moved the value NOW to `scale.implied_vol_atm` and
-        # kept only the earlier one in between_frames, as
-        # `implied_vol_at_last_read` — nothing is sent twice. The branch was
-        # never repointed, so from a09eae2 until here it read {} on every call
-        # and answered "vol did not move", every time. Measured over the 1,481
-        # recorded readings, 118 say the board is unchanged.
-        iv_now = SR._fin((scene.get("scale") or {}).get("implied_vol_atm"))
-        iv_then = SR._fin((scene.get("between_frames") or {}).get("implied_vol_at_last_read"))
-        if iv_now is not None and iv_then is not None and abs(iv_now - iv_then) >= UNCHANGED_VOL_POINTS:
-            moved = True
+        # review item #14 (strikes-3): THE VOL HALF IS GONE, NOT REPOINTED.
+        # It was written against `between_frames.implied_vol` with a "from" and
+        # a "to" — a key that shipped with the first Strikes Payload (eb2eb75),
+        # was deleted in a09eae2, and has never existed in the era where this
+        # function runs. So it read {} and answered "vol did not move" on every
+        # call. Repointing it at the two fields that DO ship
+        # (`scale.implied_vol_atm` and `between_frames.implied_vol_at_last_read`)
+        # was tried in fadbcaa and is reverted here, because the quantity
+        # cannot carry the claim: `atm_iv` is re-solved from the nearest
+        # contract on EVERY scan, so the same options book re-served gives a
+        # different answer every time. Measured over 636 consecutive scan pairs
+        # that re-serve an identical `book_asof`: not one repeated its value,
+        # the median move was 2.23 points, the 90th percentile 6.53 and the
+        # largest 111.51 — 17.3 percent clear any 5-point bar with no new
+        # market data at all. A prose slip nulls the WHOLE reading, so at that
+        # bar roughly one reading in four using the word would have been
+        # deleted on noise; both firings under the live last-read rule were
+        # true sentences ("the heaviest strike is still 1500 and the call wall
+        # is still 1550, both unchanged").
+        # The codebase already knows this: `vol_trend` (sndk_read.py) reads a
+        # 28-minute window, keeps a 2.5-point flat band, and REFUSES to read at
+        # all on the weekly's expiry day, where a tau-to-zero reprice moved 59
+        # points in half an hour. Any future vol half needs that shape — a
+        # window, a regime guard, and a bar the doctrine states — not a
+        # point-to-point difference. Until then the change cells carry this
+        # check alone, and the doctrine's "and vol held" clause is a promise
+        # nothing enforces (see review item #47).
         if moved:
             out.append("unchanged_contradicted_by_change_block")
     return out
