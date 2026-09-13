@@ -809,7 +809,7 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         oc, op = surf["oi_side"].get(k, (None, None))
         vc, vp = surf["vol_side"].get(k, (None, None))
         net = surf["net"].get(k)
-        rec = {"strike": k,
+        rec = {"strike": _k(k),
                "side": ("at" if d is not None and abs(d) < AT_SIGMA else "above" if k > live else "below"),
                "dist_sigma": round(d, 2) if d is not None else None,
                "oi_calls": int(oc) if oc is not None else None,
@@ -870,8 +870,8 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         "sigma_measured_from": ruler_name,
         "contracts_above_spot_pp": (round(sum(surf["contracts"].get(k, 0.0) for k in above) / ctot * 100, 1) if ctot > 0 else None),
         "dealer_gamma_above_spot_pp": (round(sum(abs(surf["net"].get(k, 0.0)) for k in above) / gtot * 100, 1) if gtot > 0 else None),
-        "nearest_above": (la[0] if la else None),
-        "nearest_below": (lb[-1] if lb else None),
+        "nearest_above": (_k(la[0]) if la else None),
+        "nearest_below": (_k(lb[-1]) if lb else None),
         "change_basis": (ref_meta.get("basis") if ref_meta else None),
         "change_books_compared": (ref_meta.get("books_compared") if ref_meta else None),
         "change_unavailable": ((ref_meta or {}).get("unavailable") if ref_meta else "no_earlier_book"),
@@ -1301,13 +1301,13 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         _strip_frame(slr, bf)
         if crossed:
             # `direction` is the side price is on now; `times` only when more than once
-            slr["crossed_since_then"] = [{"level": k, "direction": ("up" if spot > k else "down"),
+            slr["crossed_since_then"] = [{"level": _k(k), "direction": ("up" if spot > k else "down"),
                                           **({"times": times[k]} if times[k] > 1 else {})}
                                          for k in sorted(crossed)]
         else:
             slr.pop("crossed_since_then", None)
         if clusters_then:
-            slr["clusters_then"] = [{"center": SR._fin(c.get("center")), "strikes": [SR._fin(k) for k in (c.get("strikes") or [])]}
+            slr["clusters_then"] = [{"center": _k(c.get("center")), "strikes": [_k(k) for k in (c.get("strikes") or [])]}
                                     for c in clusters_then if isinstance(c, dict) and SR._fin(c.get("center")) is not None]
     if strikes:
         v2["strikes"] = strikes
@@ -1590,6 +1590,21 @@ def _leads_its_side(rec: dict, recs: dict, col: str) -> bool:
     own = [r.get(col) for r in recs.values()
            if r.get("side") == side and isinstance(r.get(col), int)]
     return side in ("above", "below") and bool(own) and rec.get(col) == min(own)
+
+
+def _k(x):
+    """A strike as the shortest honest number: 1700 rather than 1700.0.
+
+    review item #45 (2026-09-13). Every strike on this board is a price, and
+    all but 46 of 4,144 sampled rows sit on a whole dollar, so ".0" rode on
+    nearly every one. It is cheap in characters (26 a call) and dearer in
+    tokens — a dot and a zero are two of them — and it says nothing: the half
+    dollars that need a decimal keep it. Lookups are unaffected because
+    hash(1700) == hash(1700.0)."""
+    v = SR._fin(x)
+    if v is None:
+        return x
+    return int(v) if float(v).is_integer() else v
 
 
 def _rank_by_open_interest(recs: dict) -> dict:
