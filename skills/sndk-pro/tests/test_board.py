@@ -1002,3 +1002,60 @@ def test_the_most_open_interest_is_graded_on_open_interest_alone():
     # no new column rides on the board for this
     assert "rank_by_open_interest" not in sc["strikes"]["columns"]
     assert all("rank_by_open_interest" not in r for r in sc["strikes"]["rows"])
+
+
+# ------------------------------------------------- the payload's own rules
+def test_the_payloads_own_rules_are_pinned_not_merely_intended():
+    """Review item #48. The review found that someone could empty the banned-word
+    list, add a field for predicting the future, or leave every row blank, and
+    every test would still pass. These four assertions are what stops that,
+    and each one is a house rule this payload lives by."""
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    s = v2["strikes"]
+
+    # 1. OMIT, NEVER NULL. A null tells the model a field was measured as
+    #    nothing; absence tells it the field was not measured. The two are
+    #    different facts and the doctrine promises the difference.
+    for path, val in sorted((p, v) for p, v in _leaves(v2)):
+        assert val is not None, f"{path} shipped as null"
+
+    # 2. NO FORECAST-SHAPED FIELD. The payload states what happened; a key
+    #    whose name promises what happens next is the one thing it may not
+    #    carry, whatever value sits in it.
+    forbidden = ("expected", "forecast", "predict", "target", "will_", "_will",
+                 "probability", "odds", "likely", "outlook", "signal", "score")
+    for path, _ in _leaves(v2):
+        leaf = path.rstrip("[]").split(".")[-1].lower()
+        assert not any(w in leaf for w in forbidden), f"{path} reads as a forecast"
+
+    # 3. THE COLUMN LIST AND THE ROWS AGREE. `columns` names every field a
+    #    record can carry; a row carrying a field the columns do not name makes
+    #    the list a lie, and the guards read the table through that list.
+    named = set(s["columns"])
+    for r in s["rows"]:
+        assert set(r) <= named, f"row carries {set(r) - named}"
+    assert any(set(r) == named or set(r) <= named for r in s["rows"])
+
+    # 4. THE BANNED LISTS ARE NOT EMPTY, and the guard still deletes what they
+    #    name. Emptying the tuple was the review's own example of a change no
+    #    test would catch.
+    assert len(B.BANNED_V2) >= 10 and "magnet" in B.BANNED_V2
+    assert B._prose_slips_v2("1300 is a magnet for price", v2) == ["banned_v2:magnet"]
+    assert SR.banned_words("price should hold 1300") == ["should"]
+
+
+def _leaves(x, prefix=""):
+    """(path, value) for every leaf, lists flattened, empty containers included."""
+    if isinstance(x, dict):
+        if not x:
+            yield prefix + "{}", x
+        for k, v in x.items():
+            yield from _leaves(v, f"{prefix}.{k}" if prefix else str(k))
+    elif isinstance(x, list):
+        if not x:
+            yield prefix + "[]", x
+        for v in x:
+            yield from _leaves(v, prefix + "[]")
+    else:
+        yield prefix, x
