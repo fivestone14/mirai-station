@@ -257,7 +257,8 @@ def test_touch_facts_come_off_the_wicks_and_their_times_off_the_bars():
     bars = flat_bars(20) + [bar(20, 1296.0, 1302.0, vol=5000.0), bar(21, 1297.0, 1301.0, vol=5000.0)] + [bar(i, 1285.0, 1295.0) for i in range(22, 29)]
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, bars)
     r = recs(v2)[1300.0]
-    assert r["touched_today"] is True and r["minutes_touched_today"] == 2
+    # review item #42: touched_today was cut — it was minutes > 0 by construction
+    assert "touched_today" not in r and r["minutes_touched_today"] == 2
     # two minutes back to back are ONE visit, and it came up from below and
     # went back below: it turned back, it did not pass through
     assert (r["visits_today"], r["passed_through_today"]) == (1, 0)
@@ -268,14 +269,14 @@ def test_touch_facts_come_off_the_wicks_and_their_times_off_the_bars():
     # so the listed values summed past 100 on 58 percent of boards
     assert "shares_traded_at_strike_pp" not in r
     other = recs(v2)[1350.0]
-    assert other["touched_today"] is False and other["first_touch"] is None
+    assert other["minutes_touched_today"] == 0 and other["first_touch"] is None
 
 
 def test_no_bars_means_touch_columns_are_absent_and_the_header_says_so():
     rows = mkrows()
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, [])
     s = v2["strikes"]
-    assert "touched_today" not in s["columns"]
+    assert "minutes_touched_today" not in s["columns"]
     # review item #44: touched_in_books was cut on 2026-09-13, so it is on no board
     assert "touched_in_books" not in s["columns"]
     assert s["touches_unavailable"] == "no_minute_bars"

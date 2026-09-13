@@ -109,7 +109,7 @@ BANNED_V2 = ("magnet", "magnets", "magnetic", "momentum", "building toward", "bu
 _ET = SR._ET
 
 COLUMNS_BASE = ["strike", "side", "dist_sigma"]
-COLUMNS_TOUCH = ["touched_today", "first_touch", "last_touch", "minutes_touched_today",
+COLUMNS_TOUCH = ["first_touch", "last_touch", "minutes_touched_today",
                  "visits_today", "passed_through_today"]
 COLUMNS_BOOK = ["oi_calls", "oi_puts", "vol_calls", "vol_puts", "contracts_share_pp"]
 COLUMNS_GAMMA = ["dealer_gamma_sign", "dealer_gamma_share_pp"]
@@ -363,8 +363,7 @@ def touch_facts(bars_now: list, k: float) -> dict:
     check."""
     hits = [b for b in bars_now if _wick_includes(b, k)]
     visits, through = _visits(bars_now, k)
-    return {"touched_today": bool(hits),
-            "first_touch": _hhmm(_bar_ts(hits[0])) if hits else None,
+    return {"first_touch": _hhmm(_bar_ts(hits[0])) if hits else None,
             "last_touch": _hhmm(_bar_ts(hits[-1])) if hits else None,
             "minutes_touched_today": len(hits),
             "visits_today": visits,
@@ -1382,7 +1381,7 @@ THE BOARD IS AN AUCTION HOUSE, AND A SHARED DOCUMENT. Read it that way:
 
 THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contracts share, heaviest first, and `strikes.columns` names every field a record can carry. A field missing from a record was not measured for that strike; a field missing from `columns` was not measured for any strike this scan, and `strikes.absent` says why. The fields:
 - `strike`, `side`, `dist_sigma`: where the STRIKE sits relative to the live price, `price.live_spot`, in sigma (a normal day's move). "above" means the strike is above the live price; `at` is within a twentieth of a sigma of it and is on neither side. Every above and below in the table and its header is measured from that one price, so `side`, `dist_sigma`, `nearest_above`, `nearest_below` and the above-price shares always agree with each other and with `price.live_spot`.
-- `touched_today`, `first_touch`, `last_touch`, `minutes_touched_today`, `visits_today`, `passed_through_today`: from the completed minute bars. A minute TOUCHED a strike when its low-to-high range included it. `minutes_touched_today` counts those minutes: minutes, not times, and not one stay. `visits_today` counts separate visits; a visit is a run of touching minutes and ends when a whole minute passes without touching the strike. `passed_through_today` is how many of those visits came in from one side and left on the other; the rest turned back the way they came, and a visit still going on is in neither count. Read the three together. 43 minutes in 10 visits, 9 passed through, is price coming back to the strike again and again and going through it: say "price has come back to 1775 ten times today and gone through it nine", never "sat at 1775 for 43 minutes" and never "touched it 43 times". A stay is one visit: 12 minutes in 1 visit is "price sat at 1775 for twelve minutes". When you give a number of times, it is `visits_today`.
+- `first_touch`, `last_touch`, `minutes_touched_today`, `visits_today`, `passed_through_today`: from the completed minute bars. A minute TOUCHED a strike when its low-to-high range included it. `minutes_touched_today` counts those minutes: minutes, not times, and not one stay. `visits_today` counts separate visits; a visit is a run of touching minutes and ends when a whole minute passes without touching the strike. `passed_through_today` is how many of those visits came in from one side and left on the other; the rest turned back the way they came, and a visit still going on is in neither count. Read the three together. 43 minutes in 10 visits, 9 passed through, is price coming back to the strike again and again and going through it: say "price has come back to 1775 ten times today and gone through it nine", never "sat at 1775 for 43 minutes" and never "touched it 43 times". A stay is one visit: 12 minutes in 1 visit is "price sat at 1775 for twelve minutes". When you give a number of times, it is `visits_today`.
 - `oi_calls`, `oi_puts`: open interest as of last night's close. "1700 holds the most open interest as of last night's close" is a correct sentence; "open interest is building at 1700" is false by construction.
 - `vol_calls`, `vol_puts`: contracts traded today so far, cumulative.
 - `contracts_share_pp`: this strike's share of all contracts in reach (open interest plus today's volume, both rights). Where the crowd is, counting today's arrivals.
@@ -1595,6 +1594,20 @@ def _k(x):
     if v is None:
         return x
     return int(v) if float(v).is_integer() else v
+
+
+def _touched(rec: dict):
+    """Whether price touched this strike today, from the minute count.
+
+    review item #42 (2026-09-13): `touched_today` used to ride on the row as
+    well. It was `minutes_touched_today > 0` by construction — the builder took
+    both from the same list of matching minutes, and they agreed on 4,144 of
+    4,144 sampled rows — so the boolean cost about 3 percent of the message to
+    restate a number sitting beside it. The guards and the desk read it here
+    instead, which is why the dashboard still shows "touched" and "not reached"
+    exactly as before."""
+    n = rec.get("minutes_touched_today")
+    return (n > 0) if isinstance(n, int) else None
 
 
 def _rank_by_open_interest(recs: dict) -> dict:
@@ -1906,7 +1919,7 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
         rec = recs[center]
         out = {"strikes": sorted(ks), "center": center, "rank": rank, "change": word,
                "side": rec.get("side"), "dist_sigma": rec.get("dist_sigma"),
-               "touched_today": rec.get("touched_today"),
+               "touched_today": _touched(rec),
                "on_rule_region": on_region is not None}
         if model_word != word:
             out["change_model"] = model_word
@@ -1972,7 +1985,7 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
                 for m in leads:
                     if m not in entry["heavy_leads_on"]:
                         dropped.append(f"side_leads_on_unsupported:{name}:{m}")
-                entry["heavy_touched_today"] = recs[heavy].get("touched_today")
+                entry["heavy_touched_today"] = _touched(recs[heavy])
                 entry["heavy_last_touch"] = recs[heavy].get("last_touch")
             else:
                 dropped.append(f"side_heavy_not_heavy:{name}:{heavy:g}")
