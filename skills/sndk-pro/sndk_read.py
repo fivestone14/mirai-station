@@ -1825,9 +1825,31 @@ def _clip(text: str, n: int) -> str:
     return (cut[:sp] if sp > n * 0.6 else cut).rstrip(" ,;:") + "…"
 
 
+# strikes-3 (2026-09-13): A BOX EDGE HAS A NAME, AND THE NAME IS NOT A CLAIM.
+# The same rule that took "magnet", "call wall" and "put wall" off the list:
+# naming a level is description, asserting what price DOES at it is the
+# forecast, and the verb lists catch that. `context.ranges` now ships boxes
+# that carry a low and a high, and the English for those two edges is floor
+# and ceiling. On 09-11 at 10:04 a live read wrote "the session low just
+# printed at 1624 four minutes ago — right at the opening box's floor", every
+# number on the board and nothing claimed, and lost the WHOLE reading to that
+# one word. Bound to a box, the word is the edge's name and is allowed here;
+# loose — "the 1700 floor", "a ceiling at 1750" — it still asserts that price
+# will hold there, which is the claim itself, and it still deletes the text.
+_BOX = r"(?:opening\s+|in[-\s]force\s+|current\s+|day'?s\s+)?(?:box|band|range)"
+_EDGE_NOUN_OK = re.compile(
+    r"\b(?:"
+    r"(?:the\s+|that\s+|this\s+|its\s+)?" + _BOX + r"(?:'s|s')\s+(?:floor|ceiling)"
+    r"|(?:floor|ceiling)\s+of\s+(?:the\s+|that\s+|this\s+)?" + _BOX +
+    r")\b", re.I)
+
+
 def banned_words(text: str) -> list[str]:
-    """Every banned term in a piece of prose, lowercased and deduplicated."""
-    return sorted({m.group(0).lower() for m in _BANNED_RE.finditer(text or "")})
+    """Every banned term in a piece of prose, lowercased and deduplicated.
+
+    A box's own floor or ceiling is masked out first — see `_EDGE_NOUN_OK`."""
+    masked = _EDGE_NOUN_OK.sub(lambda m: "_" * len(m.group(0)), text or "")
+    return sorted({m.group(0).lower() for m in _BANNED_RE.finditer(masked)})
 
 
 def prices_on_the_board(scene) -> set:

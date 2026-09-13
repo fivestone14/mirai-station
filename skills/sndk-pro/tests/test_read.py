@@ -557,6 +557,39 @@ def test_every_wake_reason_translates_and_every_translation_is_speakable():
         assert SR.banned_words(phrase) == [], phrase
 
 
+def test_a_box_may_be_given_a_floor_but_a_strike_may_not():
+    """strikes-3: the boxes ship a low and a high, and the English for those two
+    edges is floor and ceiling. The live 09-11 10:04 reading lost every one of
+    its sentences to "the opening box's floor" — a name for an edge that was on
+    the board, claiming nothing. Bound to a box the word is a name; loose it is
+    still the assertion that price will hold there."""
+    allowed = (
+        "the session low printed at 1624, right at the opening box's floor",
+        "price came back to the box's ceiling and went through it",
+        "1624 is the floor of the opening box",
+        "it closed under the ceiling of that range at 15:12",
+        "the in-force band's floor is 1697.01",
+        "the day's range's ceiling gave way at 13:58",
+    )
+    for phrase in allowed:
+        assert SR.banned_words(phrase) == [], phrase
+
+    still_banned = (
+        "1700 is the floor here",
+        "the 1750 ceiling",
+        "a floor at 1624",
+        "price found its floor",
+        "the strike's floor held",
+        "a ceiling on the move",
+    )
+    for phrase in still_banned:
+        assert SR.banned_words(phrase), phrase
+
+    # the mask covers the edge's name and NOTHING else in the sentence
+    assert SR.banned_words(
+        "the opening box's floor is 1624 and price should hold it") == ["should"]
+
+
 def test_the_iv_trigger_needs_a_full_window_before_it_may_fire():
     """It compared a MEDIAN against a single raw reading, and did not require
     the median to have anything in it. Measured over the recorded sessions, the
