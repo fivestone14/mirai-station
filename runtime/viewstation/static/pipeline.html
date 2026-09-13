@@ -480,7 +480,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'regime','object','one gamma sign and one label for the whole book, the flip band, charm; dropped from the model'],
       [0,'magnet','object','the heaviest strikes by contracts, mislabelled as gamma share; dropped, it became the model’s own cluster call'],
       [0,'breadth · momentum · dealer_positioning · walls · structure','object','verdict blocks the model stopped seeing; the Gate Payload keeps the walls and the magnet for the wake gate'],
-      [0,'history · frozen_do_not_cite · freshness_rules · context','object','the flags, the do-not-cite list, the boxes and the since-last-read frame; kept in the Strikes Payload with the label words stripped'],
+      [0,'frozen_do_not_cite · freshness_rules · context','object','the do-not-cite list, the boxes and the since-last-read frame; kept in the Strikes Payload with the label words stripped. history went empty at 25d1bc6, when the four cached facts it carried were deleted as false'],
     ]};
 
   S.side = {name:'Screen Payload · v1', status:'live, screen only', pill:'live', dest:'screen', file:'skills/sndk-pro/sndk_side.py · build_side',
@@ -495,7 +495,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
   S.board = {name:'Strikes Payload · v1', status:'live since 2026-09-05 (era strikes-3 since 2026-09-11)', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · build_scene_v2',
     what:'What the model reads now. The Scene Payload with its verdicts stripped, plus the board itself as one record per strike, twelve books of history behind each and the gap since the last read. About 6 to 12 thousand characters; the model draws the clusters. Revert with "payload": "scene" in state/sndk_reads/control.json.',
     rows:[
-      [0,'data_sources · clock · scale · price · history · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm, in percent (68.15, not 0.6815); context keeps only ranges and since_last_read (which gains clusters_then, and move_threshold_dollars: the move bar in dollars, two typical minutes)'],
+      [0,'data_sources · clock · scale · price · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm, in percent (68.15, not 0.6815); context keeps only ranges and since_last_read (which gains clusters_then, and move_threshold_dollars: the move bar in dollars, two typical minutes)'],
       [0,'strikes','object','the board as records'],
       [1,'strikes_in_window','int','how many strikes were in reach, 1.5 sigma either side of the book’s price'],
       [1,'price.session_high · session_low (+_at, +_min_ago)','number, time, int','the day’s extremes with the minute each was set and how old it is (since 2026-09-11): on 09-11 the high was 369 minutes old by 15:40'],
@@ -522,7 +522,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [2,'next_week','list','the next weekly expiry’s open interest and volume at the strike, once the diary keeps it'],
       [0,'frames','object','the History block’s time axis: books_in_series, book_times, interval_min, gaps, reaches_last_read, books_since_last_read, price_path_sigma_from_now'],
       [0,'regions','object','partial since 2026-09-07: only `resolved` (piles that have gone) reaches the model. The live region list has not shipped since 2026-09-05 — it anchored the model, which drew 34 of 34 clusters on it. The whole answer is kept in the Gate Payload and checks the change words'],
-      [0,'between_frames','object','the gap’s tape: missing_minutes, low and high with their bars, path travelled, shares traded, implied vol from and to; or first_read_of_session'],
+      [0,'between_frames','object','the gap’s tape: low and high with their bars, path travelled, shares traded, and implied_vol_at_last_read — the value NOW is scale.implied_vol_atm, so nothing is sent twice; or first_read_of_session'],
       [0,'frozen_do_not_cite','list','top of list for N minutes, list membership unchanged N minutes'],
       [0,'— the model’s reply —','',''],
       [0,'quiet · read','bool, string','three sentences, sixty words'],
