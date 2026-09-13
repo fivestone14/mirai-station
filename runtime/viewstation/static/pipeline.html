@@ -499,6 +499,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'strikes','object','the board as records'],
       [1,'strikes_in_window','int','how many strikes were in reach, 1.5 sigma either side of the book’s price'],
       [1,'price.session_high · session_low (+_at, +_min_ago)','number, time, int','the day’s extremes with the minute each was set and how old it is (since 2026-09-11): on 09-11 the high was 369 minutes old by 15:40'],
+      [1,'price.vwap','number','the day’s average traded price, added 2026-09-13 (item #22): it shipped only as a distance in sigma, which cannot be named or pointed at — the model never once said it in 538 recorded readings'],
       [1,'context.ranges.breaks_today[].back_inside_at','time','the first minute that CLOSED back inside a box that broke (since 2026-09-11) — 21 of 28 breaks over 11 sessions came back, and a break without it is one price has not undone'],
       [1,'context.ranges.in_force.froze_at · standing_for_min','time, int','when the box in force froze and how long it has held (since 2026-09-11, replacing formed_over and live_spot_is): 17 minutes at 10:17 on 09-11, 340 by 15:40'],
       [1,'contracts_above_spot_pp · dealer_gamma_above_spot_pp','number','share of each surface sitting above price'],

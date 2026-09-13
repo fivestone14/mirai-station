@@ -1930,7 +1930,7 @@ def prices_on_the_board(scene) -> set:
             out.add(round(v, 2))
     pr = scene.get("price") or {}
     for k in ("live_spot", "spot_when_book_was_measured",
-              "session_high", "session_low"):
+              "session_high", "session_low", "vwap"):
         v = _fin(pr.get(k))
         if v is not None:
             out.add(round(v, 2))
@@ -3831,6 +3831,17 @@ def build_scene(row: dict, band: dict, frozen: list,
         # differences, one of which spells out its direction and one of which
         # does not. sr-7's own rule: a leaf must survive being read alone.
         price["vwap_minus_live_spot_sigma"] = vw
+        # review item #22 (2026-09-13): THE PRICE ITSELF, beside the distance.
+        # A distance cannot be named, and in 538 recorded readings across every
+        # era the model named the day's average price exactly zero times. Worked
+        # out from the sigma it could not be spoken either: the figure the model
+        # would have to compute passes the number gate on 3 percent of boards,
+        # and a point built on it is deleted as a level not on the board two
+        # times in three. The price ships, so it can be said, and it is admitted
+        # as a level in prices_on_the_board so it can be pointed at.
+        vwp = _fin(row.get("vwap"))
+        if vwp is not None:
+            price["vwap"] = round(vwp, 2)
 
     scene = {
         # sr-8: `instrument` was the string "SNDK" on every scan of a reader
