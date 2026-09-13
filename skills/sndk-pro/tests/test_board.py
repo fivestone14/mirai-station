@@ -81,10 +81,9 @@ def test_table_has_columns_once_and_one_row_per_strike_with_no_score():
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     s = v2["strikes"]
     assert len(s["rows"]) >= 4
-    if B.STRIKE_LAYOUT == "table":
-        assert all(len(r) == len(s["columns"]) for r in s["rows"])
-    else:
-        assert all(set(r) <= set(s["columns"]) for r in s["rows"])   # a record never carries a field the columns do not name
+    # a record never carries a field the columns do not name
+    assert all(set(r) <= set(s["columns"]) for r in s["rows"])
+    assert all(isinstance(r, dict) for r in s["rows"])
     assert {"rank_by_contracts", "rank_by_volume_today", "rank_by_dealer_gamma"} <= set(s["columns"])
     assert not any("score" in c or "strength" in c for c in s["columns"])
 

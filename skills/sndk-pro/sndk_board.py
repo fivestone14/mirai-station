@@ -59,10 +59,12 @@ AT_SIGMA = 0.05                 # |dist| under this reads "at"
 CHANGE_BOOKS_FALLBACK = 5       # first read of a session: change over this many distinct books
 LIST_AGE_LOOKBACK_ROWS = 120    # ~4h at 2-min scans, same as the wall ager
 SERIES_BOOKS = 12               # the history behind each strike, in distinct books
-STRIKE_LAYOUT = "records"       # "records": one object per strike, keys on every row;
-                                # "table": columns once and one array per strike (half the
-                                # characters, measured 3x the model's wall time: 48 s vs 15 s
-                                # median on the 2026-09-05 eval, so records is the default)
+# The table ships as one object per strike, keys on every row. A columns-once
+# layout with one array per strike was written beside it and never used: it
+# halves the characters and measured THREE TIMES the model's wall time — 48 s
+# against 15 s median on the 2026-09-05 eval. The constant that chose between
+# them was removed on 2026-09-13, having only ever held one value; this comment
+# is what is worth keeping from it.
 SHIP_REGIONS = False            # the rule's LIVE regions in the scene. Off: in the first
                                 # eval the model drew 34 of 34 clusters on the rule's regions,
                                 # the anchoring the regions review said to stop on. The rule
@@ -89,9 +91,13 @@ READ_WORDS_BUDGET = 60
 GAP_FACTOR = 2.0                # an interval longer than this times the day's median cadence is a gap
 MAX_CLUSTERS = 4
 CHANGE_WORDS = sndk_regions.CHANGE_WORDS
-KEPT_BLOCKS = ("data_sources", "clock", "scale", "price", "history",
+# `history` came off this list on 2026-09-13: the only flag it could still
+# carry is `tape_abnormal_vs_own_history`, which this builder popped anyway, so
+# the block reached the reading model empty on 880 of 880 rebuilt boards and
+# then got dropped. It is NOT dead in the legacy scene the voice reads — that
+# one carries it on 264 of 2,029 scans — so only the board loses it.
+KEPT_BLOCKS = ("data_sources", "clock", "scale", "price",
                "freshness_rules", "context")
-NULL_MEANS = "not measured for that strike"
 # verdict words the live lists let through and this scene forbids; the live
 # reader keeps "magnet" because its scene has a block by that name
 BANNED_V2 = ("magnet", "magnets", "magnetic", "momentum", "building toward", "building towards",
@@ -906,10 +912,7 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     if absent:
         head["absent"] = absent
     head["columns"] = cols
-    if STRIKE_LAYOUT == "table":
-        head["rows"] = [[r.get(c) for c in cols] for r in rows_out]
-    else:
-        head["rows"] = [{c: r.get(c) for c in cols if r.get(c) is not None} for r in rows_out]
+    head["rows"] = [{c: r.get(c) for c in cols if r.get(c) is not None} for r in rows_out]
     head = {k: v for k, v in head.items() if v is not None}
     return head, listed, ref_row, books
 
@@ -922,8 +925,10 @@ def listed_strikes(strikes: Optional[dict]) -> list:
 
 
 def rows_as_records(strikes: Optional[dict]) -> list:
-    """The strikes as one dict per strike whichever layout shipped, for guards
-    and evals."""
+    """The strikes as one dict per strike, for guards and evals.
+
+    Rows ship as records and always have; the array layout this used to also
+    decode was never enabled and came out on 2026-09-13."""
     if not strikes or not strikes.get("rows"):
         return []
     cols = strikes["columns"]
@@ -931,8 +936,6 @@ def rows_as_records(strikes: Optional[dict]) -> list:
     for r in strikes["rows"]:
         if isinstance(r, dict):
             out.append({c: r.get(c) for c in cols})
-        else:
-            out.append(dict(zip(cols, r)))
     return out
 
 
@@ -1242,10 +1245,6 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
             # sayable as written.
             sc["implied_vol_atm"] = round(iv * 100, 2)
         v2["scale"] = sc
-    hist = v2.get("history") or {}
-    hist.pop("tape_abnormal_vs_own_history", None)
-    if not hist:
-        v2.pop("history", None)
     ctx = v2.get("context") or {}
     # only the boxes and the frame survive from the live context: the ranks
     # against prior sessions describe removed blocks, and changed_since_last_book
