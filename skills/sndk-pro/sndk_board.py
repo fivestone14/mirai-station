@@ -1580,6 +1580,20 @@ def _leads_its_side(rec: dict, recs: dict, col: str) -> bool:
     return side in ("above", "below") and bool(own) and rec.get(col) == min(own)
 
 
+def _rank_by_open_interest(recs: dict) -> dict:
+    """{strike: rank} over LAST NIGHT'S positions alone, 1 heaviest.
+
+    Counted from the `oi_calls` and `oi_puts` the table already carries, so
+    nothing new ships. A strike with neither is left unranked rather than
+    ranked at zero."""
+    have = {k: (r.get("oi_calls") or 0) + (r.get("oi_puts") or 0) for k, r in recs.items()
+            if r.get("oi_calls") is not None or r.get("oi_puts") is not None}
+    out, seen = {}, sorted(have.items(), key=lambda kv: (-kv[1], kv[0]))
+    for i, (k, _) in enumerate(seen, 1):
+        out[k] = i
+    return out
+
+
 def _prose_slips_v2(text: str, scene: dict) -> list:
     """The v2-only checks on a sentence: a verdict word the live lists let
     through, a strike placed on the wrong side of the live price, and the
@@ -1657,16 +1671,26 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
         if k not in recs:
             continue
         col = {"volume": "rank_by_volume_today", "contracts": "rank_by_contracts",
-               "open interest": "rank_by_contracts", "gamma": "rank_by_dealer_gamma"}[what]
-        leads_today = recs[k].get(col) == 1
+               "open interest": None, "gamma": "rank_by_dealer_gamma"}[what]
+        # review item #17: "the most open interest" was graded against
+        # `rank_by_contracts`, which is open interest PLUS today's volume — a
+        # mostly-volume number by lunchtime. Measured over 281 rebuilt boards
+        # the two name different strikes on 104 (37 percent), on five of the
+        # twelve recorded days: on 08-31 the guard would certify 1500 holding
+        # "the most open interest" with 1,785 while 1440 held 1,987. Open
+        # interest rides on every row, so the ranking is counted here instead
+        # of shipped — no new column and no characters on the message.
+        rank = ({kk: r.get(col) for kk, r in recs.items()} if col
+                else _rank_by_open_interest(recs))
+        leads_today = rank.get(k) == 1
         if not leads_today:
             # the doctrine names a heavy strike per side, so "above, 1600 holds
             # the most contracts" is a claim about the above side and is true
             # when 1600 out-ranks every other strike on that side
             side = recs[k].get("side")
-            own = [r.get(col) for r in recs.values()
-                   if r.get("side") == side and isinstance(r.get(col), int)]
-            leads_today = side in ("above", "below") and bool(own) and recs[k].get(col) == min(own)
+            own = [rank.get(kk) for kk, r in recs.items()
+                   if r.get("side") == side and isinstance(rank.get(kk), int)]
+            leads_today = side in ("above", "below") and bool(own) and rank.get(k) == min(own)
         # a lead is a lead of something: with no volume on the board every
         # strike ties at zero, and the highest strike must not win that tie
         added = [(r.get("vol_added_in_series") or 0, kk) for kk, r in recs.items()]

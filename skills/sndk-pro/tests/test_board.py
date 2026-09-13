@@ -957,3 +957,33 @@ def test_a_crossed_strike_has_no_listed_age():
     weight = set(B.select_strikes(B.surfaces(rows[-1]), B._window(B.surfaces(rows[-1]), *B._ruler(rows[-1])[:2]), B._ruler(rows[-1])[0]))
     if 1150.0 not in weight:
         assert r[1150.0].get("on_list_for_min") is None
+
+
+def test_the_most_open_interest_is_graded_on_open_interest_alone():
+    """review item #17: "the most open interest" was checked against
+    `rank_by_contracts`, which is last night's positions PLUS today's volume —
+    by lunchtime a mostly-volume number. Over 281 rebuilt boards the two name
+    different strikes on 104 (37 percent), across five of the twelve recorded
+    days, so the guard deleted true claims and certified false ones. Open
+    interest is on every row, so the ranking is counted in the checker and
+    nothing new ships."""
+    sc = _scene()
+    recs_by = recs(sc)
+    # a board where the blended leader is NOT the open-interest leader
+    top_c = [k for k, r in recs_by.items() if r.get("rank_by_contracts") == 1][0]
+    other = [k for k in recs_by if k != top_c][0]
+    for r in sc["strikes"]["rows"]:
+        if r["strike"] == other:
+            r["oi_calls"], r["oi_puts"] = 9000, 9000
+        elif r["strike"] == top_c:
+            r["oi_calls"], r["oi_puts"] = 10, 10
+
+    assert B._prose_slips_v2(f"{other:g} holds the most open interest", sc) == []
+    assert B._prose_slips_v2(f"{top_c:g} holds the most open interest", sc) == [
+        f"most_open_interest_unsupported:{top_c:g}"]
+    # the blended claim is still graded on the blended rank, unchanged
+    assert B._prose_slips_v2(f"{top_c:g} holds the most contracts", sc) == []
+
+    # no new column rides on the board for this
+    assert "rank_by_open_interest" not in sc["strikes"]["columns"]
+    assert all("rank_by_open_interest" not in r for r in sc["strikes"]["rows"])
