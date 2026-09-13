@@ -523,6 +523,38 @@ def test_context_states_facts_and_never_verdicts():
             assert "of the" in v and "sessions" in v   # a rank states its n
 
 
+def test_a_rounded_number_is_the_boards_number_said_out_loud():
+    """review item #15: "1800 adding over 11,000 contracts" against a board
+    holding 11,006 was six away from the only slack the gate had, so it was
+    logged as an invented number — and an invented number deletes the WHOLE
+    reading, not the sentence. A spoken integer carries its precision in its
+    trailing zeros, so the board's figure is rounded the way the sentence
+    rounds; a tenth of a percent keeps that honest at every size."""
+    board = {11006.0, 1595.0, 4496965.0, 63.52, 1700.0}
+
+    # said the way a person says it
+    for tok in ("11,000", "11000", "11,010", "4,500,000", "1700"):
+        assert SR.spoken_as_rounded(float(tok.replace(",", "")), tok, board), tok
+
+    # still inventions: too far for the rounding claimed, or no board figure
+    for tok in ("12,500", "1600", "10,000", "2,000"):
+        assert not SR.spoken_as_rounded(float(tok.replace(",", "")), tok, board), tok
+
+    # a number that claims no rounding gets none of this
+    assert SR._spoken_step("63.5") is None and SR._spoken_step("1595") is None
+    assert SR._spoken_step("11,000") == 1000 and SR._spoken_step("1,750") == 10
+
+    # and end to end, through the checker the model's answer meets
+    scene = {"price": {"live_spot": 1700.0}, "strikes": {"rows": [{"strike": 1700.0, "vol_added_in_series": 11006}]}}
+    ok = SR.check_reading_against_scene(
+        {"read": "1700 added over 11,000 contracts in the series.", "points": []}, scene)
+    assert ok.get("read") and not [d for d in ok.get("dropped_observations") or [] if "number" in d]
+    bad = SR.check_reading_against_scene(
+        {"read": "1700 added over 12,500 contracts in the series.", "points": []}, scene)
+    assert not bad.get("read") and any("number_not_on_the_board:12,500" in d
+                                       for d in bad.get("dropped_observations") or [])
+
+
 def test_a_transition_out_of_not_measured_is_not_a_change():
     """The first live obs-2 scene reported `gamma_sign: unknown -> positive`.
     A book that had not been read yet is not a flip, and telling the model it is
