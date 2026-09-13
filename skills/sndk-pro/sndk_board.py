@@ -117,7 +117,6 @@ COLUMNS_RANK_C = ["rank_by_contracts"]
 COLUMNS_RANK_V = ["rank_by_volume_today"]
 COLUMNS_RANK_G = ["rank_by_dealer_gamma"]
 COLUMNS_TAIL = ["on_list_for_min", "change", "vol_added_per_book", "vol_added_in_series"]
-COLUMNS_TOUCH_SERIES = ["touched_in_books"]
 COLUMNS_NEXT = ["next_week"]
 
 
@@ -702,17 +701,6 @@ def _vol_added(books: list, k: float) -> tuple:
     return per, (int(sum(known)) if known else None)
 
 
-def _touched_in_books(books: list, k: float, bars_now: list) -> list:
-    """Interval indexes (0-based, aligned to frames.interval_min) whose
-    minute-bar wicks held the strike."""
-    out = []
-    for i, (a, b) in enumerate(zip(books, books[1:])):
-        if any(a["asof"] < (t := _bar_ts(bar)) <= b["asof"] and _wick_includes(bar, k)
-               for bar in bars_now if _bar_ts(bar) is not None):
-            out.append(i)
-    return out
-
-
 # ---------------------------------------------------------------------------
 # the strike table
 # ---------------------------------------------------------------------------
@@ -797,8 +785,12 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     # withheld one (item #8): with one book the columns go instead of shipping []
     series_ok = len(books) >= 2
     cols += [c for c in COLUMNS_TAIL if series_ok or c not in ("vol_added_per_book", "vol_added_in_series")]
-    if bars_now:
-        cols += COLUMNS_TOUCH_SERIES
+    # review item #44 (2026-09-13): `touched_in_books` — which of the twelve
+    # book intervals had a wick at the strike — came off the table. It rode on
+    # 1,128 of 4,144 rows at 136 characters a board, and nothing read it: not
+    # the answer checker, not the desktop dashboard, not the phone, not the
+    # voice desk. What price did at a strike today is already said three ways
+    # beside it, in minutes, visits and pass-throughs.
     if surf["next_recorded"] and (surf["oi_next"] or surf["vol_next"]):
         cols += COLUMNS_NEXT
 
@@ -826,7 +818,6 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
                "on_list_for_min": (_on_list_minutes(rows, now, k, None) if k in listed_by_weight else None)}
         if bars_now:
             rec.update(touch_facts(bars_now, k))
-            rec["touched_in_books"] = _touched_in_books(books, k, bars_now) or None   # empty ships as absent
         # the change cell: differences against the reference book, or why not
         if ref is None:
             rec["change"] = None
@@ -1400,7 +1391,6 @@ THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contract
 - `on_list_for_min`: how long the strike has been on this list. Hours means standing structure, not news.
 - `change`: this book against an earlier one, three differences in the order `strikes.change_columns` gives: contracts share (measured over the strikes both books carry, so the window sliding as price moves does not read as trading), calls traded, puts traded. The header says once which earlier book (`change_basis`: the book at your last read, or five books back on the session's first read) and how many books lie between (`change_books_compared`); `change_unavailable` says why there is none, including `no_new_book_since_last_read`, which means the book has not refreshed since you last spoke and nothing on it can have changed. The string `strike_not_in_earlier_book` means the strike was outside the earlier window, a fact about the window.
 - `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum; it is the only sum you may quote. Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book or books were left out because they still carried the prior session's volume.
-- `touched_in_books`: which of those intervals had a wick at the strike, by index; absent when none did.
 - `next_week`: the next weekly expiry's open interest and volume at the same strike, in the order `strikes.next_week_columns` gives. Open interest in either book is last night's; volume in either is today's. On expiry day the front list dies at the close and the next week's book is Monday's list. `not_recorded` on the header means the diary had not yet kept the next book that day.
 The header also carries `strikes_in_window` (how many were in reach), `contracts_above_spot_pp` and `dealer_gamma_above_spot_pp`, `nearest_above` and `nearest_below` (the nearest listed strike marked above and marked below the live price, or absent when there is none), and `entered_since_reference` and `left_since_reference` (strikes that joined or left the list since your last read, measured against the list you were shown then; both are absent when there is no earlier list).
 

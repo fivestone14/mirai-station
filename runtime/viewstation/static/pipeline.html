@@ -518,7 +518,6 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [2,'on_list_for_min','int','how long the strike has been listed'],
       [2,'change','list','contracts share, calls and puts traded since the reference book, or strike_not_in_earlier_book'],
       [2,'vol_added_per_book · vol_added_in_series','list, int','contracts traded between consecutive books over the last twelve, and their sum'],
-      [2,'touched_in_books','list','which of those intervals had a wick at the strike'],
       [2,'next_week','list','the next weekly expiry’s open interest and volume at the strike, once the diary keeps it'],
       [0,'frames','object','the History block’s time axis: books_in_series, book_times, interval_min, gaps, reaches_last_read, books_since_last_read, price_path_sigma_from_now'],
       [0,'regions','object','partial since 2026-09-07: only `resolved` (piles that have gone) reaches the model. The live region list has not shipped since 2026-09-05 — it anchored the model, which drew 34 of 34 clusters on it. The whole answer is kept in the Gate Payload and checks the change words'],
@@ -531,7 +530,7 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'resolved[] · points[] · absent[]','list','piles it says have gone (a resolved region, or a strike the message listed as having left), levels to watch, what it looked for and did not find'],
     ]};
 
-  S.volume = {name:'History block', status:'live, inside the Strikes Payload', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · frames_block, _vol_added, _touched_in_books',
+  S.volume = {name:'History block', status:'live, inside the Strikes Payload', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · frames_block, _vol_added',
     what:'The board read as a study rather than a slice: the last twelve distinct books behind every listed strike, on one shared time axis, plus the next weekly expiry’s book beside the front one. It rides inside the Strikes Payload as the frames block and four per-strike fields.',
     rows:[
       [0,'frames.books_in_series · book_times[] · interval_min[]','mixed','the twelve book times listed once and the minutes between them'],
@@ -540,7 +539,6 @@ input[type=range]{width:100%;accent-color:var(--pulse);margin:0}
       [0,'frames.price_path_sigma_from_now[]','list','where price sat at each book, in today’s sigma, zero at the price the book was measured at'],
       [0,'strikes.rows[].vol_added_per_book[]','list','contracts traded at the strike between consecutive books; null where the strike was outside the window; negative is a vendor correction'],
       [0,'strikes.rows[].vol_added_in_series','int','the sum, the only sum the model may quote'],
-      [0,'strikes.rows[].touched_in_books[]','list','which intervals had a wick at the strike'],
       [0,'strikes.rows[].next_week','list','open interest and volume in the next weekly expiry at the same strike'],
       [0,'— dropped from the design —','',''],
       [0,'contracts share series · touches series · lead view','measured','a share moves a median 0.04 points a book, the touch series was 97% zeros, and the front book leads every day'],

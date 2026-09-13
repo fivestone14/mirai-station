@@ -275,7 +275,9 @@ def test_no_bars_means_touch_columns_are_absent_and_the_header_says_so():
     rows = mkrows()
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, [])
     s = v2["strikes"]
-    assert "touched_today" not in s["columns"] and "touched_in_books" not in s["columns"]
+    assert "touched_today" not in s["columns"]
+    # review item #44: touched_in_books was cut on 2026-09-13, so it is on no board
+    assert "touched_in_books" not in s["columns"]
     assert s["touches_unavailable"] == "no_minute_bars"
     assert v2["frames"]["touches_unavailable"] == "no_minute_bars"
 

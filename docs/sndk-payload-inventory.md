@@ -11,7 +11,8 @@
 > `bars_touched_today`) / `visits_today` / `passed_through_today`
 > (`shares_traded_at_strike_pp` was cut 2026-09-13, review item #28),
 > `on_list_for_min`, `change`,
-> `vol_added_per_book`, `vol_added_in_series`, `touched_in_books`, `next_week`;
+> `vol_added_per_book`, `vol_added_in_series`, `next_week`
+> (`touched_in_books` was cut 2026-09-13, review item #44);
 > plus `frames`, `regions` and `between_frames`. Everything marked "in payload"
 > below now means "in the legacy scene". `skills/sndk-pro/README.md`
 > (strikes-1) is the current map.
