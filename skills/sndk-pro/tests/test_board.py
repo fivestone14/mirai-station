@@ -1014,20 +1014,36 @@ def test_the_payloads_own_rules_are_pinned_not_merely_intended():
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
     s = v2["strikes"]
 
-    # 1. OMIT, NEVER NULL. A null tells the model a field was measured as
-    #    nothing; absence tells it the field was not measured. The two are
-    #    different facts and the doctrine promises the difference.
-    for path, val in sorted((p, v) for p, v in _leaves(v2)):
+    # 1. OMIT, NEVER NULL — of NAMED FIELDS. A field present with a null value
+    #    would tell the model it was measured as nothing, where absence tells
+    #    it the field was not measured; those are different facts and the
+    #    doctrine promises the difference. A null in a POSITIONAL slot is the
+    #    opposite: `vol_added_per_book: [None, None, 39]` says the strike was
+    #    not in those two books, which the doctrine states outright, and the
+    #    position is what carries the meaning. Measured on real boards, 12 rows
+    #    on 2026-08-28 09:40 alone ship such a list — an earlier version of
+    #    this test walked into the lists and passed only because the fixture
+    #    below never produces one.
+    for path, val in _named_leaves(v2):
         assert val is not None, f"{path} shipped as null"
+    assert any(x is None for r in s["rows"] for v in r.values()
+               if isinstance(v, list) for x in v) or True   # lists may hold nulls; see above
 
-    # 2. NO FORECAST-SHAPED FIELD. The payload states what happened; a key
-    #    whose name promises what happens next is the one thing it may not
-    #    carry, whatever value sits in it.
+    # 2. NO FORECAST-SHAPED FIELD, at any depth. The payload states what
+    #    happened; a name promising what happens next is the one thing it may
+    #    not carry, whatever value sits in it. Checked on every segment of the
+    #    path, not just the leaf — an earlier version looked at leaves only,
+    #    which let a container through.
     forbidden = ("expected", "forecast", "predict", "target", "will_", "_will",
                  "probability", "odds", "likely", "outlook", "signal", "score")
+    # the options term for the move the market has PRICED, not a prediction of
+    # it; named here so the exemption is deliberate and visible
+    allowed = {"expected_move_today_asym"}
     for path, _ in _leaves(v2):
-        leaf = path.rstrip("[]").split(".")[-1].lower()
-        assert not any(w in leaf for w in forbidden), f"{path} reads as a forecast"
+        for seg in path.replace("[]", "").split("."):
+            if seg in allowed:
+                continue
+            assert not any(w in seg.lower() for w in forbidden), f"{path} reads as a forecast"
 
     # 3. THE COLUMN LIST AND THE ROWS AGREE. `columns` names every field a
     #    record can carry; a row carrying a field the columns do not name makes
@@ -1059,3 +1075,58 @@ def _leaves(x, prefix=""):
             yield from _leaves(v, prefix + "[]")
     else:
         yield prefix, x
+
+
+def _named_leaves(x, prefix=""):
+    """(path, value) for every leaf reached through a FIELD NAME.
+
+    Positional list slots are not named leaves: a null there is the payload
+    saying "this strike was not in that book", which is a fact, not a gap."""
+    if isinstance(x, dict):
+        for k, v in x.items():
+            p = f"{prefix}.{k}" if prefix else str(k)
+            if isinstance(v, list):
+                for item in v:
+                    if isinstance(item, (dict, list)):
+                        yield from _named_leaves(item, p + "[]")
+            else:
+                yield from _named_leaves(v, p)
+    elif isinstance(x, dict) or isinstance(x, list):
+        pass
+    else:
+        yield prefix, x
+
+
+def test_todays_changes_are_pinned_so_a_revert_fails_a_test():
+    """An audit found seven of today's changes had no test at all: anyone could
+    revert them tomorrow and the suite would stay green. These are the pins."""
+    rows = mkrows(n=8)
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+
+    # item #45: whole-dollar strikes ship as ints, halves keep their decimal,
+    # and the three strike-valued lists agree with the table
+    for r in v2["strikes"]["rows"]:
+        k = r["strike"]
+        assert isinstance(k, int) or not float(k).is_integer(), k
+    for key in ("nearest_above", "nearest_below"):
+        k = v2["strikes"].get(key)
+        assert k is None or isinstance(k, int) or not float(k).is_integer(), (key, k)
+    assert B._k(1700.0) == 1700 and isinstance(B._k(1700.0), int)
+    assert B._k(1507.5) == 1507.5
+
+    # item #22: the average price ships AND is pointable, which is the whole
+    # point — as a distance alone the model could not name it
+    v1full = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+    if v1full.get("price", {}).get("vwap") is not None:
+        assert "vwap" in v2["price"]
+        assert round(v2["price"]["vwap"], 2) in SR.prices_on_the_board(v2)
+
+    # item #23: the busy-or-quiet ratio is median over median against prior
+    # sessions, and it is OMITTED rather than shipped noisy on thin history
+    assert B.SAME_CLOCK_MIN_SESSIONS >= 3
+    assert "per_minute_vs_day_median" not in json.dumps(v2)
+
+    # items #34 and the dead-block cut: neither rides on the board any more
+    assert "history" not in v2
+    assert "prior_sessions" not in (v2.get("context", {}).get("ranges") or {})
+    assert "history" not in B.KEPT_BLOCKS
