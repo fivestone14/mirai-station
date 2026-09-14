@@ -245,3 +245,33 @@ def test_the_doctrine_names_the_witness_and_the_era_moved():
     # strikes-2 (2026-09-10): implied vol moved to percent in the payload.
     # strikes-3 (2026-09-11): the review items built after the 09-11 close.
     assert SR.ERA == "strikes-3" and SR.LEGACY_ERA == "obs-5"
+
+
+def test_a_stalled_bar_record_says_so_instead_of_answering_from_it(monkeypatch):
+    """The witness test was "are there any bars at all", which one stale bar
+    from 09:31 satisfies for the rest of the session. A sidecar that stalls
+    then has the board reporting the day's low, the box edges and the touch
+    counts off a record that ends hours earlier, with every flag silent.
+    Simulated on the real 2026-09-11 tape: stalling at 10:00 moves the day's
+    low from 1616.80 at 10:06 to 1619.99 at 10:07 — a wrong low, silently."""
+    import sndk_read as SR
+    from datetime import datetime
+    day = "2026-09-11"
+    rows = [r for r in SR._read_jsonl(SR._diary_dir() / f"{day}.jsonl")
+            if r.get("ticker") == "SNDK"]
+    if not rows:
+        return                      # the recorded tape is not on this machine
+    now = datetime.fromisoformat(f"{day}T13:43:00-04:00")
+    rs = [r for r in rows if SR._ts(r) <= now]
+    real = SR.minute_bars
+
+    monkeypatch.setattr(SR, "minute_bars", real)
+    healthy = SR.build_scene(rs[-1], SR.magnet_band(rs[-1]), SR.frozen_fields(rs, now), rs, now)
+    assert healthy["price"].get("extremes_from") is None
+
+    monkeypatch.setattr(SR, "minute_bars",
+                        lambda d: [b for b in real(d) if (b.get("ts") or "")[11:16] <= "10:00"])
+    stalled = SR.build_scene(rs[-1], SR.magnet_band(rs[-1]), SR.frozen_fields(rs, now), rs, now)
+    witness = stalled["price"].get("extremes_from")
+    assert witness and witness.startswith("1_minute_bars_to_10:00")
+    assert stalled["price"]["session_low"] != healthy["price"]["session_low"]

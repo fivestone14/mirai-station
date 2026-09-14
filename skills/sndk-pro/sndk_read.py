@@ -3241,6 +3241,32 @@ def _prior_sessions_range(today: str) -> Optional[dict]:
             "measured_from": "mixed" if len(srcs) > 1 else srcs.pop()}
 
 
+BAR_RECORD_LAG_MIN = 3          # a bar record further behind than this is not "now"
+
+
+def _extremes_witness(bars_now, path, now):
+    """None when the minute record reaches the moment being described, else the
+    witness that actually answered — and how far back it stops.
+
+    The old test was "are there any bars at all", which a single stale bar
+    satisfies for the rest of the session. A sidecar that stalls at 09:31 then
+    has the board reporting the day's low, the box edges and the touch counts
+    off a record that ends hours earlier, with every flag silent."""
+    if not bars_now:
+        return "scans_every_2_min" if path else None
+    last = None
+    for b in bars_now:
+        t = _parse_ts(b.get("ts")) if hasattr(b, "get") else None
+        if t is not None and (last is None or t > last):
+            last = t
+    if last is None:
+        return "scans_every_2_min" if path else None
+    behind = (now - last).total_seconds() / 60.0
+    if behind <= BAR_RECORD_LAG_MIN + 1:
+        return None
+    return f"1_minute_bars_to_{last.astimezone(_ET).strftime('%H:%M')}_then_nothing"
+
+
 def session_extremes(bars_now: list, rows: list, now: datetime) -> dict:
     """The day's high and low, each with the minute it was SET and how long ago.
 
@@ -3811,8 +3837,13 @@ def build_scene(row: dict, band: dict, frozen: list,
              # ever earned its bytes as an alarm, so it now fires only when the
              # alarm is real: present means the extremes came from 2-minute
              # scans and the true high or low may sit a few dollars beyond.
-             "extremes_from": (None if bars_now else
-                               ("scans_every_2_min" if path else None)),
+             # …and PARTIAL is its own alarm. The test was "are there any
+             # bars at all", so one stale bar from 09:31 silenced it for the
+             # rest of the session: if the sidecar stalls, the board states a
+             # day low, a box edge and a touch count from a record that stops
+             # hours back, and says nothing. Now the record has to reach the
+             # minute being described.
+             "extremes_from": _extremes_witness(bars_now, path, now),
              "moved_last_30min_sigma": moved_30m}
     vw = sd_live(row.get("vwap"))
     if vw is not None:
