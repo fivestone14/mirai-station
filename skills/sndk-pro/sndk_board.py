@@ -195,12 +195,38 @@ def surfaces(row: dict) -> dict:
             "absent": absent}
 
 
+def _tau_to_zero(row: dict) -> bool:
+    """True when the front book is expiring TODAY and the session is in the
+    window where its solve reprices on the clock rather than on the market.
+
+    On the weekly's own expiry day the at-the-money solve balloons into the
+    bell on pure time-to-expiry mechanics. Measured on the three recorded
+    expiry Fridays, every scan whose ruler ran past 1.5x the day's own value
+    sits in this window and nowhere else: 08-28 from 15:46 (seven scans, up to
+    102.9 against a 46.6 anchor), 09-04 at 15:56 (201.9 against 55.3, a factor
+    of 3.65) and 09-11 at 15:54 (95.8 against 54.1). `vol_trend` already
+    refuses to read a vol move under exactly this condition; the payload was
+    still shipping the ballooned numbers as the day's ruler and as the vol
+    "now"."""
+    rr = row.get("range_ruler") if isinstance(row.get("range_ruler"), dict) else {}
+    gv = row.get("gex_views") if isinstance(row.get("gex_views"), dict) else {}
+    return gv.get("front_dte") == 0 and rr.get("quality") == "late_day"
+
+
 def _ruler(row: dict) -> tuple:
     """(ruler_spot, sigma, live_spot, ruler_name) — the same rule build_scene
     uses: divide the BOOK's spot when the chain saw one within sanity, else
     the live spot and say so."""
     spot = SR._fin(row.get("spot"))
     sig = SR._fin(row.get("sigma")) or 0.0
+    # into the bell on expiry day the ruler's live leg is a clock artifact, so
+    # the day's own anchor is the honest day-scale number — and every distance
+    # on the table divides by this, so a ballooned ruler makes the whole board
+    # read close to price when it is not.
+    if _tau_to_zero(row):
+        anchor = SR._fin(row.get("sigma_anchor"))
+        if anchor and anchor < sig:
+            sig = anchor
     meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
     book_spot = SR._fin(meta.get("chain_spot"))
     if book_spot is not None and spot is not None and (
@@ -1046,7 +1072,7 @@ def between_frames_block(rows: list, bars_now: list, now: datetime,
     if price:
         out["price"] = {k: v for k, v in price.items() if v is not None}
     iv_then = SR._fin(ref.get("atm_iv")) if ref is not None else None
-    if iv_then is not None:
+    if iv_then is not None and not (ref is not None and _tau_to_zero(ref)):
         # in percent, like scale.implied_vol_atm (see there for why)
         out["implied_vol_at_last_read"] = round(iv_then * 100, 2)
     return out or None
@@ -1286,10 +1312,24 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         _trim_data_sources(v2["data_sources"])
     if "scale" in v1:   # never rebuilt after the freshness gate dropped it
         sc = v2.get("scale") or {}
+        # the SHIPPED ruler and the one every dist_sigma divides by must be the
+        # same number, so the expiry-afternoon clamp applied in _ruler is
+        # applied here too. Without this the table's distances would be measured
+        # against the day's anchor while the header still called the ballooned
+        # figure "a normal day's move".
+        if _tau_to_zero(row):
+            anchor = SR._fin(row.get("sigma_anchor"))
+            if anchor and sc.get("one_sigma_dollars") and anchor < sc["one_sigma_dollars"]:
+                sc["one_sigma_dollars"] = round(anchor, 2)
         if isinstance(sc.get("expected_move_today_asym"), dict):
             sc["expected_move_today_asym"].pop("skewed_toward", None)
         iv = SR._fin(row.get("atm_iv"))
-        if iv is not None and not book_too_old:
+        # and not into the bell on expiry day: there the solve reprices on the
+        # clock, so what ships as "the at-the-money implied vol now" is a
+        # time-to-expiry artifact — 22.8 points to 184.7 across one afternoon on
+        # 09-04. Omitted rather than shipped, which the doctrine reads as "not
+        # measured"; `vol_trend` already refuses the same window.
+        if iv is not None and not book_too_old and not _tau_to_zero(row):
             # 2026-09-10: IN PERCENT, not as a fraction. The diary stores 0.6815;
             # a person says "68". The number gate deletes any sentence carrying
             # a number that is not on the board, and 68 is 0.68 away from 68.15

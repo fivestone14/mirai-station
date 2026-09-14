@@ -1158,3 +1158,32 @@ def test_a_points_note_is_checked_against_its_own_level():
     # the borrowed level may only raise a TOUCH verdict: a side claim in the
     # note is still judged on the note as the model wrote it
     assert len(read("the heavier side above").get("points") or []) == 1
+
+
+def test_the_expiry_afternoon_solve_never_reaches_the_board():
+    """On the weekly's own expiry day the at-the-money solve reprices on the
+    clock, not the market: measured on the three recorded expiry Fridays, every
+    scan whose ruler ran past 1.5x the day's own value sits in the last twenty
+    minutes and nowhere else — 09-04 at 15:56 shipped 201.9 against a 55.3
+    anchor, a factor of 3.65, and every distance on the table divides by it."""
+    rows = mkrows(n=8)
+    for r in rows:
+        r["gex_views"]["front_dte"] = 0
+        r["range_ruler"] = {"quality": "late_day"}
+        r["sigma_anchor"] = 50.0
+        r["sigma"] = 180.0            # the ballooned live leg
+        r["atm_iv"] = 1.84            # the tau->0 solve
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+
+    # the ruler falls back to the day's anchor, and the table's distances
+    # divide by that same number
+    assert v2["scale"]["one_sigma_dollars"] == 50.0
+    assert "implied_vol_atm" not in v2["scale"]
+    r = recs(v2)[1300.0]
+    assert abs(r["dist_sigma"] - (1300.0 - v2["price"]["live_spot"]) / 50.0) < 0.02
+
+    # an ordinary day is untouched
+    plain = mkrows(n=8)
+    v2b, _ = B.build_scene_v2(plain[-1], plain, T0, None, None, flat_bars(30))
+    assert v2b["scale"]["implied_vol_atm"] == 50.0
+    assert v2b["scale"]["one_sigma_dollars"] == 100.0
