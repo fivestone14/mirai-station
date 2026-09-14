@@ -160,9 +160,20 @@ def test_a_walls_block_the_freshness_gate_deleted_freezes_nothing():
 # --- the day's boxes ---------------------------------------------------------
 def test_the_opening_box_forms_over_thirty_minutes_then_freezes():
     rows = _tape([1500 + (i % 3) * 2 for i in range(16)])      # 30 min, 1500-1504
-    rb = SR.ranges_block(rows, T0, "2026-07-31")
-    assert rb["opening"]["low"] == 1500.0 and rb["opening"]["high"] == 1504.0
+    rb = SR.ranges_block(rows, T0, "2026-07-31", bars=_minutes_under(rows))
+    # the edges come from the minute WICKS when the record is there, so the box
+    # is a dollar wider each side than the scan prices that drew it
+    assert rb["opening"]["low"] == 1499.0 and rb["opening"]["high"] == 1505.0
     assert rb["opening"]["status"] == "held so far"
+
+    # …and WITHOUT the minute record there is nothing to detect a break with,
+    # so an empty break list means "not looked for", not "did not happen". It
+    # said "held so far" either way, which is the board asserting something it
+    # never measured.
+    no_bars = SR.ranges_block(rows, T0, "2026-07-31")
+    assert no_bars["opening"]["low"] == 1500.0 and no_bars["opening"]["high"] == 1504.0
+    assert "status" not in no_bars["opening"]
+    assert no_bars["opening"]["breaks_unavailable"] == "no_minute_record"
     assert rb["in_force"]["is_the_opening_box"] is True
     # item #13: the box in force says when it froze and how long it has held,
     # not the half hour it formed over (always a half hour) nor where price

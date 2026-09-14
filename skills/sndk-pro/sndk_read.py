@@ -3432,8 +3432,15 @@ def ranges_block(rows: list[dict], now: datetime,
               "formed_over": opening["formed_over"]}
         if breaks:
             op["status"] = f"broke {breaks[0]['went']} at {breaks[0]['at']}"
-        else:
+        elif measured_from == "1_minute_bars":
             op["status"] = "held so far"
+        else:
+            # A break is detected by minute CLOSES. Without the minute record
+            # there is nothing to detect one with, so an empty break list means
+            # "not looked for", not "did not happen" — and this said "held so
+            # far" either way, which is the board asserting something it never
+            # measured. The witness beside it says which record answered.
+            op["breaks_unavailable"] = "no_minute_record"
         out["opening"] = op
     else:
         out["opening"] = {"still_forming": True, "since": hhmm(t_first),
