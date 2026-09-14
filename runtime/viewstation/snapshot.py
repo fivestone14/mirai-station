@@ -845,6 +845,10 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
             # the same reason as every gate above: the tab must not be able to
             # quote a ceiling the reader has stopped enforcing.
             "max_book_age_min": R.MAX_BOOK_AGE_MIN,
+            # how far the minute price log may trail the clock before the board
+            # warns the model — and before the SNDK tab warns a person. Read off
+            # the reader so the two alarms cannot drift apart.
+            "bars_stale_min": R.BAR_RECORD_STALE_MIN,
         },
     }
 

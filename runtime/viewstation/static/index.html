@@ -12303,7 +12303,7 @@ const SNDK = {
   // spot at 5s (not 2.5s): the server's spot cache is a single 2s slot shared with the
   // always-on SPX poller, so 2.5s here alternated tickers through it — near-zero cache
   // hits, ~2× upstream quote rate. The CSS-eased spot line stays smooth at 5s.
-  pollMs:8000, spotMs:5000, spotStaleMs:15000, pathMs:75000, tapeMs:60000,
+  pollMs:8000, spotMs:5000, spotStaleMs:15000, pathMs:75000, tapeMs:60000, barsMs:30000,
   booted:false, on:false, fails:0,
   file:null, rows:[], model:null, prevModel:null, lastTs:null,
   clusters:null, step:5, band:null, geo:null, grid:[], fold:null,
@@ -12321,9 +12321,13 @@ const SNDK = {
   // list and the model's observation. Its own file, its own producer, its own poll; null
   // until one lands and every new surface hides while it is.
   readFile:null, read:null, readTs:null, readFails:0,
+  // THE MINUTE PRICE LOG (09-14) — state/sndk_bars: {day, lastTs, health}. The board's day
+  // high and low, its price ranges and every breakout are read off this log, and a stalled
+  // log used to be silent everywhere. barsInfo() turns it into the MINUTE LOG STALE pill.
+  bars:null, barsFails:0,
   reasoning:true,          // the pause switch; refreshed on resume, set by the toggle
   spot:{ px:null, prev:null, at:0, src:null, live:false, fails:0 },
-  timers:{ diary:null, spot:null, path:null, read:null, tape:null, fresh:null }, _ro:null, _empty:null,
+  timers:{ diary:null, spot:null, path:null, read:null, tape:null, bars:null, fresh:null }, _ro:null, _empty:null,
   pathAt:null, tapeAt:null,        // when the slow fetches last landed — the freshness box reads them
   _freshEl:null,                   // the freshness chip's node — kept across the tenors strip's rewrites
 
@@ -12344,13 +12348,13 @@ const SNDK = {
   },
   hide(){
     SNDK.on=false;
-    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read); clearTimeout(SNDK.timers.tape);
+    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read); clearTimeout(SNDK.timers.tape); clearTimeout(SNDK.timers.bars);
     clearInterval(SNDK.timers.fresh);
-    SNDK.timers.diary=SNDK.timers.spot=SNDK.timers.path=SNDK.timers.read=SNDK.timers.tape=SNDK.timers.fresh=null;
+    SNDK.timers.diary=SNDK.timers.spot=SNDK.timers.path=SNDK.timers.read=SNDK.timers.tape=SNDK.timers.bars=SNDK.timers.fresh=null;
   },
   resume(){   // (re)start every poller exactly once each
-    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read); clearTimeout(SNDK.timers.tape);
-    SNDK.pollDiary(); SNDK.pollSpot(); SNDK.pollPath(); SNDK.pollRead(); SNDK.pollTape();
+    clearTimeout(SNDK.timers.diary); clearTimeout(SNDK.timers.spot); clearTimeout(SNDK.timers.path); clearTimeout(SNDK.timers.read); clearTimeout(SNDK.timers.tape); clearTimeout(SNDK.timers.bars);
+    SNDK.pollDiary(); SNDK.pollSpot(); SNDK.pollPath(); SNDK.pollRead(); SNDK.pollTape(); SNDK.pollBars();
     // the freshness box's counters tick once a second — a clock, not a poll: it reads the
     // stamps the pollers already hold and fetches nothing (08-26)
     clearInterval(SNDK.timers.fresh);
@@ -12501,6 +12505,28 @@ const SNDK = {
       }
     }catch(e){ SNDK.fails++; SNDK.paintStrip(); }
     SNDK.timers.diary=setTimeout(()=>SNDK.pollDiary(), SNDK.pollMs);
+  },
+  // THE MINUTE PRICE LOG (09-14) — its own loop, like every SNDK file with its own producer:
+  // the log is written by its own launchd job, so a stalled log must never hold up the map.
+  // Two reads through the generic raw explorer: today's log, asking for its LAST row only
+  // (that row is what the board reads, so the alarm judges the same record the model does),
+  // and health.json, which the log job writes on every run and which carries the error text
+  // when a run fails — a lapsed broker login reads there as it happens. Every 30 s: the log
+  // itself only moves once a minute.
+  async pollBars(){
+    SNDK.timers.bars=null;
+    if(!SNDK.on||document.hidden) return;    // visibilitychange/show() restarts us
+    try{
+      const day=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+      const [fr,hr]=await Promise.all([
+        fetch(`/api/raw/file?root=state&path=sndk_bars/${day}.jsonl&limit=1`,{cache:'no-store'}).then(r=>r.json()),
+        fetch('/api/raw/file?root=state&path=sndk_bars/health.json',{cache:'no-store'}).then(r=>r.json())]);
+      const last=(fr&&fr.kind==='jsonl'&&Array.isArray(fr.rows)&&fr.rows.length)?fr.rows[fr.rows.length-1]:null;
+      SNDK.bars={day, lastTs:(last&&last.ts)||null, health:(hr&&hr.kind==='json')?hr.data:null};
+      SNDK.barsFails=0;
+    }catch(e){ SNDK.barsFails++; }
+    SNDK.paintStrip();
+    SNDK.timers.bars=setTimeout(()=>SNDK.pollBars(), SNDK.barsMs);
   },
   // THE LIVE READ (sr-1) — state/sndk_reads/*.jsonl through the same generic raw explorer,
   // on the SAME 8s clock as the diary poll. A SEPARATE loop, not a second fetch inside
@@ -12734,6 +12760,34 @@ const SNDK = {
     return { age, stale:age>Math.max(3*med, floor), txt:`as-of ${clockIn(m.ts,ET).slice(0,5)} ET` };
   },
 
+  // null when the minute price log is keeping up, or when it is not meant to be: outside
+  // weekday market hours, and for the first five minutes, since a minute is only logged once
+  // it has ended. Otherwise {txt, err}. The limit is the READER's own number (gates.bars_stale_min,
+  // the same test the board applies before it tells the model its extremes are rough), so the
+  // pill and the model's warning cannot disagree. A weekday market holiday reads "no minute
+  // prices logged today" — true, if blunt, the same trade gxFreshInfo makes.
+  barsInfo(){
+    const etNow=new Date().toLocaleString('en-CA',{timeZone:'America/New_York',hour12:false});
+    const et=new Date(etNow.replace(',',''));
+    const mins=et.getHours()*60+et.getMinutes(), wk=et.getDay();
+    if(!(wk>=1&&wk<=5&&mins>=575&&mins<960)) return null;
+    const limit=window.SNDK_BARS_STALE_MIN||4;
+    const b=SNDK.bars, err=(b&&b.health&&b.health.error)?String(b.health.error):null;
+    if(SNDK.barsFails>=3) return {txt:'the minute price log cannot be read', err};
+    if(!b) return null;                                   // first poll not back yet
+    if(!b.lastTs) return {txt:'no minute prices have been logged today', err};
+    const behind=(Date.now()-new Date(b.lastTs).getTime())/60000;
+    if(!(behind>limit)) return null;
+    const ago=behind>=60?`${Math.floor(behind/60)}h ${Math.round(behind%60)}m`:`${Math.round(behind)} min`;
+    return {txt:`minute prices stop at ${clockIn(b.lastTs,ET).slice(0,5)} ET, ${ago} ago`, err};
+  },
+  barsPill(){
+    const bi=SNDK.barsInfo(); if(!bi) return '';
+    const tip=`${bi.txt}. The day's high and low, the price ranges and every breakout on the board are read off this log, so they are rough until it catches up; it refills every missing minute on the next run that reaches the broker.${bi.err?' Last error: '+bi.err:''}`;
+    const q=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    return `<span class="pill coral" title="${q(tip)}">MINUTE LOG STALE</span>`;
+  },
+
   render(){
     const host=document.getElementById('p-sndk'); if(!host) return;
     if(!host.querySelector('.snk-mid')) SNDK.mount();
@@ -12753,7 +12807,7 @@ const SNDK = {
     const m=SNDK.model, sp=SNDK.liveSpot();
     if(!m){
       put(`<span class="snk-lead"><b>SNDK ${sp!=null?snkUsd(sp,2):'—'}</b><i>${sp!=null?'live quote · awaiting first scan':'awaiting first scan'}</i></span>`,
-          (SNDK.spot.live?`<span class="pill jade" title="live quote from /api/spot — the diary map is not up yet">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
+          SNDK.barsPill()+(SNDK.spot.live?`<span class="pill jade" title="live quote from /api/spot — the diary map is not up yet">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
                          :`<span class="pill grey">no live quote</span>`));
       return;
     }
@@ -12793,7 +12847,7 @@ const SNDK = {
       ?`<span class="pill jade" title="price streams from /api/spot (${SNDK.spot.src||'live quote'}); gravity comes from the diary scan">SNDK · ${(SNDK.spot.src||'quote')} live</span>`
       :`<span class="pill grey" title="no live quote — showing the scan price${m.spotSource?` (scan source: ${m.spotSource})`:''}">scan price${m.spotSource?` · ${m.spotSource}`:''}</span>`;
     put(`<span class="snk-lead ${up==null?'':up?'up':'dn'}"><b>SNDK <span class="mono" id="snk-px">${snkUsd(sp,2)}</span></b><i>${bits.join(' · ')}</i></span>`,
-        feedPill+srcPill);
+        feedPill+SNDK.barsPill()+srcPill);
   },
   paintTenors(){
     const el=document.getElementById('snk-tenors'); if(!el) return;
@@ -14805,6 +14859,7 @@ const PAYLOAD = {
     // sndk_read's own constants — so the chip on the chart and the floor in
     // staleInfo() can never quote a number the reader has stopped enforcing.
     if(d.gates&&d.gates.stale_book_min!=null) window.SNDK_STALE_BOOK_MIN=d.gates.stale_book_min;
+    if(d.gates&&d.gates.bars_stale_min!=null) window.SNDK_BARS_STALE_MIN=d.gates.bars_stale_min;
     const hdr=`<span class="p">// ${tag==='LIVE payload'?(d.as_of==='live'?'LIVE payload':'last scan (market closed or scanner idle)'):tag} · ${label} · session ${d.session} · scan ${when} ET · ${d.scans_today} scans · era ${which==='scene'&&d.legacy?d.legacy.era:d.era} · ${d.model} · ${chars} chars ≈ ${Math.round(chars/3.6)} tokens</span>\n`
       +(which==='gate'?'':which==='scene'?PAYLOAD.provLines(doc):''+PAYLOAD.provLines(d.scene))
       +(doc===d.scene?`<span class="p">// user message = "Read this scene cold and reply with the JSON object only.\\n\\nSCENE:\\n" + this JSON · ${d.payload==='strikes'?'DOCTRINE_V2':'the doctrine'} rides the cached system prompt</span>\n\n`

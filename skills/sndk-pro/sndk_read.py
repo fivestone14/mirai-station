@@ -3241,7 +3241,9 @@ def _prior_sessions_range(today: str) -> Optional[dict]:
             "measured_from": "mixed" if len(srcs) > 1 else srcs.pop()}
 
 
-BAR_RECORD_LAG_MIN = 3          # a bar record further behind than this is not "now"
+BAR_RECORD_STALE_MIN = 4        # minutes the bar record may trail "now" and still count as now.
+                                # ONE number, read in two places: the witness below that warns the
+                                # model, and the View Station's MINUTE LOG STALE pill that warns you.
 
 
 def _extremes_witness(bars_now, path, now):
@@ -3262,7 +3264,7 @@ def _extremes_witness(bars_now, path, now):
     if last is None:
         return "scans_every_2_min" if path else None
     behind = (now - last).total_seconds() / 60.0
-    if behind <= BAR_RECORD_LAG_MIN + 1:
+    if behind <= BAR_RECORD_STALE_MIN:
         return None
     return f"1_minute_bars_to_{last.astimezone(_ET).strftime('%H:%M')}_then_nothing"
 

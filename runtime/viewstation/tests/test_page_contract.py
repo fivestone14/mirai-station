@@ -528,3 +528,19 @@ def test_the_sndk_chart_says_where_the_weight_is_not_what_price_does():
     # and what replaced the two most-read pieces is there
     assert "txt:'call side ↑'" in code and "txt:'put side ↓'" in code
     assert "'Gamma here'" in code
+
+
+def test_the_minute_price_log_has_a_stale_alarm_and_its_poller():
+    """09-14: the minute price log feeds the board's day high and low, its price
+    ranges and every breakout, and a stalled log was silent everywhere — its job
+    writes health.json "so a watcher can see it breathing" and nothing watched.
+    Pinned as strings, like every contract in this file."""
+    assert "async pollBars(){" in PAGE
+    assert "path=sndk_bars/health.json" in PAGE                 # the error text
+    assert "path=sndk_bars/${day}.jsonl&limit=1" in PAGE        # the record the board reads
+    assert "SNDK.pollRead(); SNDK.pollTape(); SNDK.pollBars();" in PAGE   # resume starts it
+    assert "clearTimeout(SNDK.timers.bars);" in PAGE            # hide stops it
+    assert "MINUTE LOG STALE" in PAGE
+    assert "feedPill+SNDK.barsPill()+srcPill" in PAGE           # on the strip beside FEED LOST
+    assert "window.SNDK_BARS_STALE_MIN=d.gates.bars_stale_min" in PAGE   # the reader's number
+
