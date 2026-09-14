@@ -1613,6 +1613,9 @@ def _count_of(word: str) -> Optional[int]:
 
 
 _TOUCH_CLOCK_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,60}?\b(?:touch|touched|touching|wick|wicks|tagged|brushed)\b[^.;]{0,40}?\b(\d\d:\d\d)\b", __import__("re").I)
+_VOLUME_WORD_RE = __import__("re").compile(
+    r"\b(?:volume|traded|trading|contracts\s+traded|turnover|"
+    r"took\s+the\s+most|busiest|most\s+active)\b", __import__("re").I)
 _MOST_RE = __import__("re").compile(r"(\d{3,4}(?:\.\d+)?)[^.;]{0,50}?\b(?:took|added|holds|has|had|leads on|leads|with)\b[^.;]{0,30}?\bthe most (?:added |new )?(volume|contracts|open interest|gamma)\b", __import__("re").I)
 POINTS_MAX_V2 = 4
 NOTE_CHARS_V2 = 70
@@ -1757,6 +1760,17 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
         if short:
             out.append("leads_all_unsupported:%g:%s" % (k, ",".join(
                 c.replace("rank_by_", "").replace("_today", "") for c in short)))
+    # review item #8, the last gap in it: on the session's first read the board
+    # often carries NO volume at all — the morning's first book still holds the
+    # prior session's counts, so the columns, the ranks and the series are all
+    # withheld and `strikes.absent` says why. Nothing stopped the model saying
+    # "1700 has taken the most volume today" on that board, because every guard
+    # that grades a volume claim looks up a rank that is not there and finds
+    # nothing to contradict. A volume word on a board with no volume is a claim
+    # about a number the model was never shown.
+    if _VOLUME_WORD_RE.search(text) and not {"vol_calls", "vol_puts", "rank_by_volume_today"} & set(
+            (scene.get("strikes") or {}).get("columns") or ()):
+        out.append("volume_claimed_on_a_board_with_none")
     for m in _MOST_RE.finditer(text):
         try:
             k = float(m.group(1))

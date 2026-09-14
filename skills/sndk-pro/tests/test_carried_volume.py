@@ -244,3 +244,30 @@ def test_a_withheld_front_book_still_takes_next_weeks_volume_with_it(tmp_path):
     s = v2["strikes"]
     assert "vol_calls" not in s["columns"] and "still carries" in withheld(v2)[0]
     assert s["next_week_columns"] == ["oi_calls", "oi_puts"]
+
+
+def test_no_volume_on_the_board_means_no_volume_in_the_prose(tmp_path):
+    """Review item #8's last gap. On the session's first read the board often
+    carries no volume at all — the morning's first book still holds the prior
+    session's counts — and nothing stopped the model saying a strike had taken
+    the most volume today. Every guard that grades a volume claim looks up a
+    rank that is not there and finds nothing to contradict."""
+    write_prior(tmp_path, vol=YEST)
+    v2, _ = build([mkrow(at(DAY, 9, 31), vol=YEST)], at(DAY, 9, 33))
+    assert not {"vol_calls", "rank_by_volume_today"} & set(v2["strikes"]["columns"])
+
+    for claim in ("1300 has taken the most volume today",
+                  "1300 is the busiest strike",
+                  "volume is heaviest at 1300"):
+        assert "volume_claimed_on_a_board_with_none" in B._prose_slips_v2(claim, v2), claim
+
+    # and a sentence about what the board DOES carry still stands
+    assert B._prose_slips_v2("1300 holds the most contracts", v2) == []
+    assert B._prose_slips_v2("price is holding between 1290 and 1310", v2) == []
+
+    # once volume is on the board again the guard is silent
+    grown = {k: (c + 7, p + 9) for k, (c, p) in YEST.items()}
+    v2b, _ = build([mkrow(at(DAY, 12, 0), vol=grown)], at(DAY, 12, 2))
+    assert "rank_by_volume_today" in v2b["strikes"]["columns"]
+    assert "volume_claimed_on_a_board_with_none" not in B._prose_slips_v2(
+        "1300 has taken the most volume today", v2b)
