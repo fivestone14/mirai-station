@@ -846,8 +846,18 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
         rows_out.append(rec)
     rows_out.sort(key=lambda r: (-(r.get("contracts_share_pp") or 0), r["strike"]))
 
-    above = [k for k in window if k > live]
-    below = [k for k in window if k < live]
+    # the header's two sides use the table's own rule, at-band included: a
+    # strike within AT_SIGMA of the live price is on NEITHER side. Splitting the
+    # window at the bare price instead counted that strike as above, so the
+    # header could name one side heavier while the table put its heaviest
+    # strike on neither — the doctrine promises these always agree.
+    def _side_in_window(k):
+        d = (k - live) / sig if sig else None
+        if d is not None and abs(d) < AT_SIGMA:
+            return "at"
+        return "above" if k > live else "below"
+    above = [k for k in window if _side_in_window(k) == "above"]
+    below = [k for k in window if _side_in_window(k) == "below"]
     ctot = sum(surf["contracts"].get(k, 0.0) for k in window)
     gtot = sum(abs(surf["net"].get(k, 0.0)) for k in window)
     # the nearest strikes each side are the nearest the TABLE marks above and
