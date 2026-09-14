@@ -1130,3 +1130,31 @@ def test_todays_changes_are_pinned_so_a_revert_fails_a_test():
     assert "history" not in v2
     assert "prior_sessions" not in (v2.get("context", {}).get("ranges") or {})
     assert "history" not in B.KEPT_BLOCKS
+
+
+def test_a_points_note_is_checked_against_its_own_level():
+    """The touch guards bind to a strike named IN the sentence, and a point's
+    note almost never repeats its own level — it says "touched twice today"
+    beside level 1775. So every touch check was dead exactly where the model
+    states touch facts. The note is now checked again with its level in front."""
+    rows = mkrows(n=8)
+    bars = flat_bars(20) + [bar(20, 1296.0, 1302.0), bar(21, 1297.0, 1301.0)] + \
+        [bar(i, 1285.0, 1295.0) for i in range(22, 29)]
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, bars)
+    r = recs(v2)[1300.0]
+    assert (r["visits_today"], r["minutes_touched_today"]) == (1, 2)
+
+    def read(note):
+        return B.check_reading_v2(
+            {"quiet": False, "read": "Price is holding.", "sides": {}, "clusters": [],
+             "resolved": [], "absent": [], "points": [{"level": 1300.0, "note": note}]}, v2)
+
+    bad = read("touched five times today")
+    assert not bad.get("points")
+    assert any("touch_count_not_visits" in x for x in bad.get("dropped_observations") or [])
+
+    assert len(read("touched once today").get("points") or []) == 1
+
+    # the borrowed level may only raise a TOUCH verdict: a side claim in the
+    # note is still judged on the note as the model wrote it
+    assert len(read("the heavier side above").get("points") or []) == 1

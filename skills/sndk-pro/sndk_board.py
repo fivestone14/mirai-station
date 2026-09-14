@@ -1901,7 +1901,21 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
             reading["abstain"] = "forced"
     kept_points = []
     for p in (reading.get("points") or []):
-        slips = _prose_slips_v2(str(p.get("note") or ""), scene)
+        note = str(p.get("note") or "")
+        # The touch guards key off a strike named IN the sentence, and a point's
+        # note almost never repeats its own level — it says "touched twice
+        # today" beside level 1775. So every touch check was dead exactly where
+        # the model states touch facts. The note is checked twice: once as
+        # written, and once with its own level in front so the touch and stay
+        # rules have a strike to bind to. Only the touch verdicts are taken from
+        # the second pass, so the borrowed number cannot invent a side slip or a
+        # leadership claim the model never made.
+        slips = _prose_slips_v2(note, scene)
+        lvl = SR._fin(p.get("level"))
+        if lvl is not None:
+            for x in _prose_slips_v2(f"{_k(lvl)} {note}", scene):
+                if ("touch" in x or "stay" in x or "visits" in x) and x not in slips:
+                    slips.append(x)
         if slips:
             reading.setdefault("dropped_observations", [])
             reading["dropped_observations"] = list(reading["dropped_observations"]) + [f"point_{x}" for x in slips]
