@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(_SKILLS, "mirai-left-eye"))
 
 import lefteye_fill_ledger  # noqa: E402
 import sndk_feed  # noqa: E402
+import sndk_board  # noqa: E402
 import sndk_read  # noqa: E402
 
 
@@ -49,6 +50,20 @@ def _no_network(monkeypatch):
     monkeypatch.setattr(sndk_feed._nf, "_run",
                         lambda code: (_ for _ in ()).throw(
                             AssertionError("network call during test")))
+
+
+@pytest.fixture(autouse=True)
+def _no_model_call(monkeypatch):
+    """No test may spend a real model call. Three did — two in test_side that
+    only wanted the side packet, and the cost test, which stubs the subprocess
+    but not the call above it — so every run of this suite was billed three
+    times while the promise above said no network. A test that needs a reply
+    monkeypatches call_the_model itself; anything else fails loudly here."""
+    def spent(*a, **k):
+        raise AssertionError("a test spent a real model call — stub "
+                             "sndk_read.call_the_model in the test itself")
+    monkeypatch.setattr(sndk_read, "call_the_model", spent)
+    monkeypatch.setattr(sndk_board, "call_the_model_v2", spent)
 
 
 @pytest.fixture(autouse=True)

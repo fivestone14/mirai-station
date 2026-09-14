@@ -342,11 +342,18 @@ def test_an_envelope_without_a_bill_gives_nothing_not_an_empty_record():
     assert SR.cost_of({"usage": {"output_tokens": 7}}) == {"output_tokens": 7}
 
 
+_REAL_CALL_THE_MODEL = SR.call_the_model
+
+
 def test_call_the_model_keeps_the_bill(monkeypatch):
     class _Done:
         returncode, stderr = 0, ""
         stdout = json.dumps(_ENVELOPE)
     monkeypatch.setattr(SR.subprocess, "run", lambda *a, **k: _Done())
+    # this test exercises call_the_model itself, so it takes the real function
+    # back from the suite-wide guard — with the subprocess above stubbed, so
+    # nothing is spent
+    monkeypatch.setattr(SR, "call_the_model", _REAL_CALL_THE_MODEL)
     obj, err, _wall, _raw = SR.call_the_model("prompt", "model")
     assert obj == {"quiet": True} and err is None
     assert SR.LAST_COST["cache_read_tokens"] == 28129

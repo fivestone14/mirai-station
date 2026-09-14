@@ -403,6 +403,11 @@ def test_the_packet_lands_in_its_own_file_and_the_row_only_points_at_it(
                         "open": 1200.0, "high": 1201.0, "low": 1199.0,
                         "close": 1200.0, "volume": 1000.0} for i in range(120)], NOW)
 
+    # the reading model is not what this test is about; the suite-wide guard
+    # in conftest makes a real call fail, so stub it here
+    from test_read_once import _v2_reply
+    monkeypatch.setattr(SR, "call_the_model",
+                        lambda *a, **k: (_v2_reply(), None, 1.0, None))
     SR.read_once(now=NOW)
     rows = [json.loads(l) for l in
             (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
@@ -441,6 +446,11 @@ def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
         raise RuntimeError("side payload exploded")
     monkeypatch.setattr(SR.sndk_side, "build_side", boom)
 
+    # the reading model is not what this test is about; the suite-wide guard
+    # in conftest makes a real call fail, so stub it here
+    from test_read_once import _v2_reply
+    monkeypatch.setattr(SR, "call_the_model",
+                        lambda *a, **k: (_v2_reply(), None, 1.0, None))
     SR.read_once(now=NOW)
     rows = [json.loads(l) for l in
             (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
