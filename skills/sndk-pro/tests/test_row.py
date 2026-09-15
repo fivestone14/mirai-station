@@ -1,4 +1,4 @@
-"""Row schema (the pinned viewstation contract) + hunter end-to-end."""
+"""Row schema (the pinned viewstation contract) + the scanner's kill switch."""
 import json
 import math
 from datetime import datetime
@@ -40,12 +40,23 @@ GEX_VIEWS_KEYS = {"magnet", "flip", "regime", "net_by_strike", "oi_by_strike",
 META_KEYS = {"expiries", "spot_source", "coverage"}
 
 
-def _row(**kw):
+def _row(book=None, **kw):
     return sndk_views.build_row(
-        synth.prepared_book(), synth.SPOT, NOW,
+        book or synth.prepared_book(), synth.SPOT, NOW,
         spot_source="schwab_quote", chain_meta=CHAIN_META, chain_spot=1088.5,
         prior_close=1240.0, day_open=1245.0, day_high=1260.0, day_low=1235.0,
         **kw)
+
+
+def _leaning_book():
+    """The stub book with its open interest leaning: calls above spot, puts
+    below. The even book nets dealer gamma to nothing and draws no flip; this
+    one changes sign at spot, so the flip and the ladder hung off it exist."""
+    book = synth.prepared_book()
+    for c in book:
+        above = c["strike"] > synth.SPOT
+        c["open_interest"] = 400 if above == (c["right"] == "call") else 100
+    return book
 
 
 def test_row_schema_golden():
@@ -79,7 +90,6 @@ def test_off_expiry_map_is_populated():
     assert row["put_wall"] is not None and row["put_wall"] <= synth.SPOT + 5
     # σ derived from the rebuilt ATM IV: spot·iv/√252 ≈ 1250·0.5/15.87 ≈ 39
     assert row["sigma"] and 20 < row["sigma"] < 80
-    assert row["gamma_flip"] is None or 1000 < row["gamma_flip"] < 1500
 
 
 def test_thursday_open_em_scaled_down():
@@ -121,9 +131,12 @@ def test_expiry_day_em_unscaled():
 
 def test_dex_ladder_em_ride_the_row():
     from lefteye_range_ruler import DEBIAS, _atm_strike, _leg_price
-    row = _row()
+    row = _row(book=_leaning_book())
     assert row["dex_views"] and row["dex_views"]["net_dex_by_strike"]
-    assert row["profile_ladder"] is None or row["profile_ladder"].get("ladder_v") == 1
+    # the ladder hangs off the row's own flip, drawn in SNDK price space
+    assert abs(row["gamma_flip"] - synth.SPOT) < 0.10 * synth.SPOT
+    assert row["profile_ladder"]["ladder_v"] == 1
+    assert row["profile_ladder"]["hvl"] == row["gamma_flip"]
     rr = row["range_ruler"]
     assert rr["em_points"] and rr["em_points"] > 0
     # √time scaling: the 4-DTE straddle must be scaled DOWN to today's move.
@@ -164,90 +177,20 @@ def test_expiry_day_collapses_to_zero_dte():
     assert gv["net_by_strike"]
 
 
-# --- hunter end-to-end (stubbed feed + quote, tmp state) ---------------------
-
-def _stub_chain():
-    return {"spot": 1088.5, "anchor_spot": 1250.0,
-            "contracts": synth.prepared_book(), "meta": CHAIN_META}
-
-
-def test_hunter_appends_row(monkeypatch, tmp_path):
-    monkeypatch.setattr(sndk_feed, "sndk_chain", lambda now, live_spot=None: _stub_chain())
-    monkeypatch.setattr(sndk_hunter, "_quote", lambda: {
+# --- the scanner's kill switch (its live edges are in test_live_edges.py) ------
+def test_hunter_kill_switch(monkeypatch):
+    """SNDK_PRO_DISABLE=1 stops the scanner in Python too: even forced, with a
+    live quote to hand, a tick asks for no quote, pulls no book and writes no row."""
+    monkeypatch.setenv("SNDK_PRO_DISABLE", "1")
+    asked = []
+    monkeypatch.setattr(sndk_hunter, "_quote", lambda: asked.append("quote") or {
         "spot": 1250.0, "open": 1245.0, "high": 1260.0, "low": 1235.0,
         "prior_close": 1240.0})
-    monkeypatch.setattr(sndk_hunter, "_market_live", lambda: True)
-    import lefteye_fetcher
-    monkeypatch.setattr(lefteye_fetcher, "intraday_bars", lambda t: [])
-    assert sndk_hunter.tick(NOW) == 0
-    path = sndk_hunter._diary_dir() / f"{NOW.date().isoformat()}.jsonl"
-    rows = [json.loads(l) for l in path.read_text().splitlines()]
-    assert len(rows) == 1
-    assert rows[0]["ticker"] == "SNDK"
-    assert rows[0]["meta"]["spot_source"] == "schwab_quote"
-    assert rows[0]["meta"]["forced"] is False            # live tick: not forced (m9)
-    assert rows[0]["spot"] == 1250.0
-    # second tick appends (and reads the first row as day-memory)
-    assert sndk_hunter.tick(NOW) == 0
-    rows = [json.loads(l) for l in path.read_text().splitlines()]
-    assert len(rows) == 2
-    assert rows[1]["sigma_anchor"] == rows[0]["sigma_anchor"]
-
-
-def test_hunter_no_quote_no_row(monkeypatch):
-    # M3: Schwab down → fail closed. No chain fetch, no row — never a diary
-    # entry anchored on (or carrying) the known-stale chain spot.
-    called = []
     monkeypatch.setattr(sndk_feed, "sndk_chain",
-                        lambda now, live_spot=None: called.append(1) or _stub_chain())
-    monkeypatch.setattr(sndk_hunter, "_quote", lambda: {})   # Schwab down
-    monkeypatch.setattr(sndk_hunter, "_market_live", lambda: True)
-    assert sndk_hunter.tick(NOW) == 0
-    assert not called                        # skipped before any chain work
+                        lambda now, live_spot=None: asked.append("chain"))
+    assert sndk_hunter.tick(NOW, force=True) == 0
+    assert asked == []
     assert not (sndk_hunter._diary_dir() / f"{NOW.date().isoformat()}.jsonl").exists()
-
-
-def test_forced_after_hours_row_marked(monkeypatch):
-    # m9: a --force run outside RTH must say so — meta.forced separates it
-    # from the live pool the viewstation and any grader read
-    monkeypatch.setattr(sndk_feed, "sndk_chain", lambda now, live_spot=None: _stub_chain())
-    monkeypatch.setattr(sndk_hunter, "_quote", lambda: {
-        "spot": 1250.0, "open": None, "high": None, "low": None,
-        "prior_close": 1240.0})
-    monkeypatch.setattr(sndk_hunter, "_market_live", lambda: False)
-    import lefteye_fetcher
-    monkeypatch.setattr(lefteye_fetcher, "intraday_bars", lambda t: [])
-    assert sndk_hunter.tick(NOW, force=True) == 0
-    path = sndk_hunter._diary_dir() / f"{NOW.date().isoformat()}.jsonl"
-    row = json.loads(path.read_text().splitlines()[-1])
-    assert row["meta"]["forced"] is True
-
-
-def test_hunter_kill_switch(monkeypatch):
-    monkeypatch.setenv("SNDK_PRO_DISABLE", "1")
-    called = []
-    monkeypatch.setattr(sndk_feed, "sndk_chain",
-                        lambda now, live_spot=None: called.append(1))
-    assert sndk_hunter.tick(NOW, force=True) == 0
-    assert not called
-
-
-def test_hunter_rth_gate(monkeypatch):
-    monkeypatch.setattr(sndk_hunter, "_market_live", lambda: False)
-    called = []
-    monkeypatch.setattr(sndk_feed, "sndk_chain",
-                        lambda now, live_spot=None: called.append(1))
-    assert sndk_hunter.tick(NOW) == 0
-    assert not called                        # closed → no fetch, no row
-    # --force bypasses (the manual proof-run path)
-    monkeypatch.setattr(sndk_hunter, "_quote", lambda: {
-        "spot": 1250.0, "open": None, "high": None, "low": None,
-        "prior_close": 1240.0})
-    monkeypatch.setattr(sndk_feed, "sndk_chain", lambda now, live_spot=None: _stub_chain())
-    import lefteye_fetcher
-    monkeypatch.setattr(lefteye_fetcher, "intraday_bars", lambda t: [])
-    assert sndk_hunter.tick(NOW, force=True) == 0
-    assert (sndk_hunter._diary_dir() / f"{NOW.date().isoformat()}.jsonl").exists()
 
 
 # --- ROW_V 3 payload-v2 sources (2026-08-02) --------------------------------
@@ -314,12 +257,13 @@ def test_flows_front_charm_vanna_on_the_front_book():
 
 
 def test_atm_iv_recorded_beside_sigma():
+    """Every quote is priced at synth.TRUE_IV, so the recorded ATM IV is that
+    rebuilt vol and never the provider's (0.52 and 0.55 at the money here).
+    sigma_live = spot·iv/√252 off it: both are kept to 4 places, which on a
+    1250 stock moves the product by under 0.004."""
     row = _row()
-    assert row["atm_iv"] is not None
-    # sigma_live = spot·iv/√252 — the recorded pair must agree
-    assert row["sigma_live"] == round(
-        row["spot"] * row["atm_iv"] / math.sqrt(252.0), 4) or \
-        abs(row["sigma_live"] - row["spot"] * row["atm_iv"] / math.sqrt(252.0)) < 0.51
+    assert abs(row["atm_iv"] - synth.TRUE_IV) < 0.01
+    assert abs(row["sigma_live"] - row["spot"] * row["atm_iv"] / math.sqrt(252.0)) < 0.005
 
 
 # --- range_em: the regime stack's tape voter (ROW_V 4) ----------------------

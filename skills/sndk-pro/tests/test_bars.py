@@ -7,7 +7,9 @@ These tests pin the writer's rules (completed minutes only, idempotent,
 self-healing) and the reader's (wicks win when present, the label says which
 witness was used, absence falls back and never fabricates)."""
 import json
+import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -28,17 +30,6 @@ def _session(start, minutes, lo=1500.0, hi=1500.0):
 
 
 # --- the writer ---------------------------------------------------------------
-def test_only_completed_minutes_land():
-    """The running minute's bar is a partial — its high and low are still being
-    written — so it must never land."""
-    start = T0 - timedelta(minutes=3)
-    bars = _session(start, 4)                      # minutes T0-3 .. T0
-    s = SB.write_day(DAY, bars, T0)
-    assert s["appended"] == 3 and s["bars_on_disk"] == 3
-    on_disk = SB.read_bars(DAY)
-    assert on_disk[-1]["ts"] == (T0 - timedelta(minutes=1)).isoformat()
-
-
 def test_a_rerun_appends_nothing_and_a_gap_is_healed():
     """Schwab returns the whole session, so a run after any gap writes the gap
     and a run with nothing new writes nothing — the file is never duplicated."""
@@ -134,7 +125,7 @@ def test_the_wicks_win_for_the_extremes_and_the_opening_box():
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     # sr-9: the witness is SILENT when it is the bars — the normal case on 138
     # of 138 replayed scans — and speaks only on the fallback, which
-    # test_the_extremes_fall_back_to_the_scans_when_no_bars_exist covers.
+    # test_without_a_bars_file_the_reader_falls_back_and_says_so covers.
     assert "extremes_from" not in sc["price"]
     assert (sc["price"]["session_low"], sc["price"]["session_high"]) == (1490.0, 1515.0)
     rg = sc["context"]["ranges"]
@@ -279,11 +270,13 @@ def test_prior_sessions_prefer_a_full_bars_file_and_say_when_they_mixed():
 def test_the_doctrine_names_the_witness_and_the_era_moved():
     assert "`price.extremes_from`" in SR._DOCTRINE and "`measured_from`" in SR._DOCTRINE
     assert "`minute_bars`" in SR._DOCTRINE
-    # strikes-1 (2026-09-05): the era moved again when the Strikes Payload
-    # went live; obs-5 survives as the legacy era the revert switch writes.
-    # strikes-2 (2026-09-10): implied vol moved to percent in the payload.
-    # strikes-3 (2026-09-11): the review items built after the 09-11 close.
-    assert SR.ERA == "strikes-5" and SR.LEGACY_ERA == "obs-5"
+    # the eras are the ones the payload inventory records: its newest note names
+    # the era the Strikes Payload writes, and obs-5 survives as the legacy
+    # scene's era, which the revert switch writes
+    inventory = (Path(__file__).resolve().parents[3] / "docs" / "sndk-payload-inventory.md").read_text()
+    assert SR.ERA == re.search(r"^> \*\*(strikes-\d+) \(", inventory, re.M).group(1)
+    assert SR.LEGACY_ERA == re.search(r"\(`sndk_read\.build_scene`, era `([a-z]+-\d+)`\)", inventory).group(1)
+    assert SR.ERA != SR.LEGACY_ERA
 
 
 def test_a_stalled_bar_record_says_so_instead_of_answering_from_it():

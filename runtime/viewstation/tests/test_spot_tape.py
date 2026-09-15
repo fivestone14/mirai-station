@@ -6,6 +6,8 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 import snapshot
 
 ET = ZoneInfo("America/New_York")
@@ -46,11 +48,16 @@ def test_min_gap_floors_burst_to_one_row(tmp_path, monkeypatch):
     assert len(_rows(tmp_path, MONDAY_RTH)) == 2
 
 
-def test_weekend_and_after_hours_stay_silent(tmp_path, monkeypatch):
-    for when in (SATURDAY, AFTER_HOURS):
-        _wire(monkeypatch, tmp_path, when)
-        snapshot._tape_append("SNDK", 1248.0, 100.0)
-        assert _rows(tmp_path, when) == []
+@pytest.mark.parametrize("when,writes", [
+    (SATURDAY, False),
+    (datetime(2026, 8, 10, 9, 29, tzinfo=ET), False),      # the minute before the bell
+    (datetime(2026, 8, 10, 9, 30, tzinfo=ET), True),       # the bell
+    (AFTER_HOURS, False),
+], ids=["weekend", "before-open", "open", "after-close"])
+def test_the_tape_writes_only_inside_the_session(tmp_path, monkeypatch, when, writes):
+    _wire(monkeypatch, tmp_path, when)
+    snapshot._tape_append("SNDK", 1248.0, 100.0)
+    assert len(_rows(tmp_path, when)) == (1 if writes else 0)
 
 
 def test_non_tape_ticker_never_writes(tmp_path, monkeypatch):

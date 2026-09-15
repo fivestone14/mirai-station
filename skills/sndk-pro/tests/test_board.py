@@ -31,20 +31,18 @@ def test_table_has_columns_once_and_one_row_per_strike_with_no_score():
     rows = mkrows()
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     s = v2["strikes"]
-    assert len(s["rows"]) >= 4
-    # a record never carries a field the columns do not name
-    assert all(set(r) <= set(s["columns"]) for r in s["rows"])
-    assert all(isinstance(r, dict) for r in s["rows"])
-    assert {"rank_by_contracts", "rank_by_volume_today", "rank_by_dealer_gamma"} <= set(s["columns"])
-    assert not any("score" in c or "strength" in c for c in s["columns"])
-
-
-def test_both_sides_listed_and_nearest_strikes_on_the_header():
-    rows = mkrows(spot=1290.0)
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
-    r = recs(v2)
-    assert 1300.0 in r and 1250.0 in r
-    assert v2["strikes"]["nearest_above"] == 1300.0 and v2["strikes"]["nearest_below"] == 1250.0
+    cols = s["columns"]
+    assert len(cols) == len(set(cols)), cols
+    strikes = [r["strike"] for r in s["rows"]]
+    assert len(strikes) == len(set(strikes)) >= 4, strikes
+    # `columns` names every field a record can carry, and the guards read the
+    # table through that list: a row carrying a field it does not name, or a
+    # blank row, makes the list a lie
+    for r in s["rows"]:
+        assert isinstance(r, dict) and set(r) <= set(cols), set(r) - set(cols)
+        assert {"strike", "side", "dist_sigma"} <= set(r), r
+    assert {"rank_by_contracts", "rank_by_volume_today", "rank_by_dealer_gamma"} <= set(cols)
+    assert not any("score" in c or "strength" in c for c in cols)
 
 
 def test_an_empty_side_is_said_by_leaving_the_nearest_strike_out():
@@ -273,10 +271,15 @@ def test_a_heavy_strike_entering_the_window_does_not_fake_a_fall_elsewhere():
     rows = (mkrows(n=4, start=T0 - timedelta(minutes=14), spot=1240.0, oi=oi) +
             mkrows(n=4, start=T0 - timedelta(minutes=6), spot=1290.0, oi=oi))
     shown = _shown_at(rows, 3)
+    assert 1400.0 not in shown
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30),
                              strikes_sent_before=shown)
-    assert 1400.0 in v2["strikes"]["entered_since_reference"] or 1400.0 in recs(v2)
-    assert recs(v2)[1300.0]["change"][0] == 0.0
+    assert v2["strikes"]["entered_since_reference"] == [1400]
+    r = recs(v2)
+    # every strike both windows cover reads no change in share; 1400 has no
+    # earlier share to be measured against, so its share cell is empty
+    assert {k: x["change"][0] for k, x in r.items() if k != 1400} == {k: 0.0 for k in r if k != 1400}
+    assert r[1400]["change"][0] is None
 
 
 def _shown_at(rows, i):
@@ -322,12 +325,15 @@ def test_with_no_kept_list_nothing_joined_or_left_is_claimed():
 def test_the_list_is_compared_even_when_no_new_book_arrived():
     """The book can be the same cached print while the list the model sees
     changes around it (the table is re-priced at the live spot). The change
-    cells say no new book; the arrivals and departures still say what moved."""
+    cells say no new book — comparing the book with itself would read as calm —
+    and the arrivals and departures still say what moved."""
     rows = mkrows(n=8)
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[-1]), flat_bars(30),
-                             strikes_sent_before=[1450.0])
-    assert v2["strikes"]["change_unavailable"] == "no_new_book_since_last_read"
-    assert v2["strikes"]["left_since_reference"] == [1450.0]
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[-1]) + timedelta(seconds=10),
+                             flat_bars(30), strikes_sent_before=[1450.0])
+    s = v2["strikes"]
+    assert s["change_unavailable"] == "no_new_book_since_last_read" and "change_basis" not in s
+    assert all(r.get("change") is None for r in B.rows_as_records(s))
+    assert s["left_since_reference"] == [1450.0]
 
 
 def test_first_read_falls_back_to_five_books_and_no_earlier_book_is_stated():
@@ -546,14 +552,6 @@ def test_regions_ride_on_the_legacy_scene_not_the_prompt():
     assert "regions_rule" in B.legacy(rows[-1], rows, T0, v1=v1)
 
 
-def test_a_book_that_did_not_refresh_since_the_last_read_has_no_change():
-    rows = mkrows(n=8)
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[-1]) + timedelta(seconds=10), flat_bars(30))
-    s = v2["strikes"]
-    assert s["change_unavailable"] == "no_new_book_since_last_read" and "change_basis" not in s
-    assert all(r.get("change") is None for r in B.rows_as_records(s))
-
-
 def test_a_book_too_old_drops_the_board_and_says_so():
     rows = mkrows(n=8, start=T0 - timedelta(minutes=30))     # newest book 16 minutes old
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
@@ -619,20 +617,18 @@ def test_a_one_minute_poke_or_a_close_inside_the_at_band_is_not_a_crossing():
     assert "crossed_since_then" not in v2["context"]["since_last_read"]
 
 
-def test_between_frames_carries_the_earlier_vol_only():
-    rows = mkrows(n=8)
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
-    bf = v2["between_frames"]
-    assert bf["implied_vol_at_last_read"] == 50.0 and "implied_vol" not in bf   # percent
-
-
 def test_vol_ships_in_percent_and_the_doctrine_says_so():
     """2026-09-10: implied vol ships as 50.0, not 0.5, so the "about 50" a
     person would say is a number the gate can find on the board. The doctrine
-    names the unit, pinned here, so the two cannot drift apart."""
+    names the unit, pinned here, so the two cannot drift apart. The vol at the
+    last read rides beside it in the same unit, off the book that read saw."""
     rows = mkrows(n=8)
+    for r in rows[:4]:
+        r["atm_iv"] = 0.42
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
     assert v2["scale"]["implied_vol_atm"] == 50.0
+    bf = v2["between_frames"]
+    assert bf["implied_vol_at_last_read"] == 42.0 and "implied_vol" not in bf
     assert "`scale.implied_vol_atm` is the at-the-money implied vol now, in percent" in B.DOCTRINE_V2
 
 
@@ -650,26 +646,21 @@ def test_the_unchanged_check_does_not_fire_on_a_vol_number_that_is_noise():
     assert sc["scale"]["implied_vol_atm"] == 50.0
     assert sc["between_frames"]["implied_vol_at_last_read"] == 50.0
 
-    quiet = "Nothing changed on the board since your last read."
-    for gap in (5.0, 20.0, 111.51):
-        moved = json.loads(json.dumps(sc))
-        moved["scale"]["implied_vol_atm"] = 50.0 + gap
-        assert [x for x in B._prose_slips_v2(quiet, moved) if "unchanged" in x] == [], gap
+    # vol moved between then and now under every name it has shipped: the two
+    # live fields, and the deleted `between_frames.implied_vol` pair put back
+    for quiet in ("Nothing changed on the board since your last read.", "No change on the board."):
+        for gap in (5.0, 20.0, 111.51):
+            moved = json.loads(json.dumps(sc))
+            moved["scale"]["implied_vol_atm"] = 50.0 + gap
+            moved["between_frames"]["implied_vol_at_last_read"] = 50.0
+            moved["between_frames"]["implied_vol"] = {"from": 50.0, "to": 50.0 + gap}
+            assert [x for x in B._prose_slips_v2(quiet, moved) if "unchanged" in x] == [], (quiet, gap)
 
     # the change cells still carry the check on their own
     with_change = json.loads(json.dumps(sc))
     with_change["strikes"]["rows"][0]["change"] = [2.5, 100, 50]
-    assert B._prose_slips_v2(quiet, with_change) == ["unchanged_contradicted_by_change_block"]
-
-
-def test_the_unchanged_check_no_longer_reads_the_deleted_vol_key():
-    """The dead key put back by hand must change nothing — if this fails the
-    check has been pointed at `between_frames.implied_vol` again."""
-    sc = _scene()
-    sc["scale"].pop("implied_vol_atm")
-    sc["between_frames"].pop("implied_vol_at_last_read")
-    sc["between_frames"]["implied_vol"] = {"from": 50.0, "to": 80.0}
-    assert [x for x in B._prose_slips_v2("No change on the board.", sc) if "unchanged" in x] == []
+    assert B._prose_slips_v2("Nothing changed on the board since your last read.", with_change) == [
+        "unchanged_contradicted_by_change_block"]
 
 
 def test_guard_needs_a_price_for_sides_and_renumbers_ranks():
@@ -1031,26 +1022,15 @@ def test_the_most_open_interest_is_graded_on_open_interest_alone():
 def test_the_payloads_own_rules_are_pinned_not_merely_intended():
     """Review item #48. The review found that someone could empty the banned-word
     list, add a field for predicting the future, or leave every row blank, and
-    every test would still pass. These four assertions are what stops that,
-    and each one is a house rule this payload lives by."""
+    every test would still pass. Omit-never-null is held over every payload
+    state by test_no_named_field_ships_as_null_on_any_strikes_payload, and the
+    columns agreeing with the rows by
+    test_table_has_columns_once_and_one_row_per_strike_with_no_score; these
+    two are the rest of what stops that."""
     rows = mkrows(n=8)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
-    s = v2["strikes"]
 
-    # 1. OMIT, NEVER NULL — of NAMED FIELDS. A field present with a null value
-    #    would tell the model it was measured as nothing, where absence tells
-    #    it the field was not measured; those are different facts and the
-    #    doctrine promises the difference. A null in a POSITIONAL slot is the
-    #    opposite: `vol_added_per_book: [None, None, 39]` says the strike was
-    #    not in those two books, which the doctrine states outright, and the
-    #    position is what carries the meaning. Measured on real boards, 12 rows
-    #    on 2026-08-28 09:40 alone ship such a list — an earlier version of
-    #    this test walked into the lists and passed only because the fixture
-    #    below never produces one.
-    for path, val in _named_leaves(v2):
-        assert val is not None, f"{path} shipped as null"
-
-    # 2. NO FORECAST-SHAPED FIELD, at any depth. The payload states what
+    # 1. NO FORECAST-SHAPED FIELD, at any depth. The payload states what
     #    happened; a name promising what happens next is the one thing it may
     #    not carry, whatever value sits in it. Checked on every segment of the
     #    path, not just the leaf — an earlier version looked at leaves only,
@@ -1066,15 +1046,7 @@ def test_the_payloads_own_rules_are_pinned_not_merely_intended():
                 continue
             assert not any(w in seg.lower() for w in forbidden), f"{path} reads as a forecast"
 
-    # 3. THE COLUMN LIST AND THE ROWS AGREE. `columns` names every field a
-    #    record can carry; a row carrying a field the columns do not name makes
-    #    the list a lie, and the guards read the table through that list.
-    named = set(s["columns"])
-    for r in s["rows"]:
-        assert set(r) <= named, f"row carries {set(r) - named}"
-    assert s["rows"] and all({"strike", "side", "dist_sigma"} <= set(r) for r in s["rows"]), "blank rows"
-
-    # 4. THE BANNED LISTS ARE NOT EMPTY, and the guard still deletes what they
+    # 2. THE BANNED LISTS ARE NOT EMPTY, and the guard still deletes what they
     #    name. Emptying the tuple was the review's own example of a change no
     #    test would catch.
     assert len(B.BANNED_V2) >= 10 and "magnet" in B.BANNED_V2
@@ -1094,26 +1066,6 @@ def _leaves(x, prefix=""):
             yield prefix + "[]", x
         for v in x:
             yield from _leaves(v, prefix + "[]")
-    else:
-        yield prefix, x
-
-
-def _named_leaves(x, prefix=""):
-    """(path, value) for every leaf reached through a FIELD NAME.
-
-    Positional list slots are not named leaves: a null there is the payload
-    saying "this strike was not in that book", which is a fact, not a gap."""
-    if isinstance(x, dict):
-        for k, v in x.items():
-            p = f"{prefix}.{k}" if prefix else str(k)
-            if isinstance(v, list):
-                for item in v:
-                    if isinstance(item, (dict, list)):
-                        yield from _named_leaves(item, p + "[]")
-            else:
-                yield from _named_leaves(v, p)
-    elif isinstance(x, dict) or isinstance(x, list):
-        pass
     else:
         yield prefix, x
 

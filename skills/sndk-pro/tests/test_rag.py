@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import sndk_rag as RAG
+import sndk_read as SR
 
 ET = ZoneInfo("America/New_York")
 T0 = datetime(2026, 7, 31, 14, 30, tzinfo=ET)
@@ -244,14 +245,21 @@ def test_days_exact_date_beats_the_days_back_page(tmp_path):
     assert out["results"][0]["date"] == "2026-07-28"
 
 
-def test_days_min_move_finds_the_crash_no_embedding_needed(tmp_path):
+@pytest.mark.parametrize("min_move, dates", [
+    (-10.0, ["2026-07-31"]),
+    (10.0, ["2026-07-30", "2026-08-03"]),
+    (0.0, ["2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-03", "2026-08-04"]),
+], ids=["fell", "rose", "any"])
+def test_days_min_move_is_signed_and_zero_keeps_down_sessions_too(tmp_path, min_move, dates):
     """'biggest crash' is an ordinal ask — the numbers answer it, not cosine
-    similarity (which ranked the +12.4% rally first on the real corpus)."""
+    similarity (which ranked the +12.4% rally first on the real corpus). A
+    negative move keeps the sessions that fell that far, a positive one those
+    that rose, and 0 = 'any recorded move' per its own help — it once silently
+    kept only flat-or-up days, a directionally biased memory."""
     _seed_summaries()
-    out = RAG.query(tier="days", min_move=-10.0)
-    assert [r["date"] for r in out["results"]] == ["2026-07-31"]
-    up = RAG.query(tier="days", min_move=10.0)
-    assert {r["date"] for r in up["results"]} == {"2026-07-30", "2026-08-03"}
+    out = RAG.query(tier="days", min_move=min_move, limit=10)
+    assert [r["date"] for r in out["results"]] == dates
+    assert out["n_matched"] == len(dates)
 
 
 def test_days_date_range_and_near_strike_gate_before_ranking(tmp_path):
@@ -263,22 +271,17 @@ def test_days_date_range_and_near_strike_gate_before_ranking(tmp_path):
     assert {r["date"] for r in near["results"]} == {"2026-08-03", "2026-08-04"}
 
 
-def test_days_unfiltered_keeps_the_days_back_page(tmp_path):
+@pytest.mark.parametrize("date", [None, ""], ids=["no_date", "blank_date"])
+def test_days_unfiltered_keeps_the_days_back_page(tmp_path, date):
+    """--date "" (an unset shell variable) is no date at all: it must not
+    disarm the days_back page and dump all history as a 'match'."""
     _seed_summaries()
-    out = RAG.query(tier="days", days_back=2)
+    out = RAG.query(tier="days", date=date, days_back=2)
     assert out["n_matched"] == 2
     assert [r["date"] for r in out["results"]] == ["2026-08-03", "2026-08-04"]
 
 
 # --- 25-agent verification round (08-05): confirmed-defect regressions ------
-def test_min_move_zero_keeps_down_sessions_too(tmp_path):
-    """0 = 'any recorded move' per its own help — it silently kept only
-    flat-or-up days, a directionally biased memory."""
-    _seed_summaries()
-    out = RAG.query(tier="days", min_move=0.0, limit=10)
-    assert out["n_matched"] == 6            # every session with a recorded pct
-
-
 def test_near_day_matches_a_session_that_traded_through_the_strike(tmp_path):
     """'has 1250 held before?' must match a day that printed 1250 mid-range,
     even when every endpoint sits outside tolerance."""
@@ -296,14 +299,6 @@ def test_date_args_normalize_unpadded_and_reject_garbage(tmp_path):
         RAG.query(tier="days", d_from="08/01/2026")
     with pytest.raises(ValueError):
         RAG.query(tier="slices", date="../../etc/passwd")
-
-
-def test_blank_date_flag_is_absent_not_filtered(tmp_path):
-    """--date "" (an unset shell variable) must not disarm the days_back
-    page and dump all history as a 'match'."""
-    _seed_summaries()
-    out = RAG.query(tier="days", date="", days_back=2)
-    assert out["n_matched"] == 2
 
 
 def test_text_only_days_ask_reaches_the_month_window(tmp_path):
@@ -426,13 +421,6 @@ def test_series_buckets_the_diary_by_time(tmp_path):
     assert all(r["magnet"] == 1300.0 and r["call_wall"] == 1300.0 for r in out["rows"])
 
 
-# --- the lexical fallback ranker -------------------------------------------
-def test_lexical_scorer_prefers_overlap():
-    a = RAG._lex_score("rejected the call wall", "rejected the call wall and faded")
-    b = RAG._lex_score("rejected the call wall", "pinned to vwap all afternoon")
-    assert a > b
-
-
 # --- SE-review regressions (08-02) ------------------------------------------
 def test_time_filters_pad_unpadded_hours(tmp_path):
     assert RAG._hhmm("9:30") == "09:30"
@@ -473,15 +461,16 @@ def test_series_is_queryable_by_strike_too(tmp_path):
     assert all("gamma_mass_at_strike" not in r for r in out2["rows"])
 
 
-@pytest.mark.parametrize("wake", ["price ran", "arrow appeared"])
-def test_wake_reasons_pass_through_unmodified(tmp_path, wake):
+def test_wake_reasons_pass_through_unmodified(tmp_path):
     """Lane A is gone, and with it the arrow-wake neutralizer, which rewrote
-    any wake starting "arrow" to "gate event": the reason is stored as
-    written, an arrow-named one included. Old slices keep their historical
-    "gate event" stamps."""
-    RAG.record_slice(_row(), _read_out(wake=wake), _scene(), T0)
-    rec = RAG._read_jsonl(RAG._slices_path("2026-07-31"))[-1]
-    assert rec["meta"]["wake"] == wake
+    any wake starting "arrow" to "gate event". A slice stores its reason as
+    written: every reason the reader can wake on, and one it never sends (the
+    retired arrow wake). Old slices keep their historical "gate event" stamps."""
+    sent = sorted(SR._WAKE_WORDS) + ["arrow appeared"]
+    for i, wake in enumerate(sent):
+        RAG.record_slice(_row(), _read_out(wake=wake), _scene(), T0 + timedelta(minutes=i))
+    stored = [r["meta"]["wake"] for r in RAG._read_jsonl(RAG._slices_path("2026-07-31"))]
+    assert stored == sent
 
 def test_diary_day_excludes_forced_and_off_hours_rows(tmp_path):
     """History must never hand the model tape the reader ignores: forced

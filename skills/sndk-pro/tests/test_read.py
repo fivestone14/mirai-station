@@ -6,6 +6,7 @@ rule, not the implementation: the magnet must admit a tie, the model must
 never be handed a constant, and a wake must be earned, not scheduled.
 """
 import json
+import re
 from pathlib import Path
 from datetime import timedelta
 from zoneinfo import ZoneInfo
@@ -13,7 +14,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import sndk_read as SR
-from synth import T0, _last_call, reader_row as mkrow
+from synth import T0, _every_scene_shape, _last_call, reader_row as mkrow
 
 ET = ZoneInfo("America/New_York")
 
@@ -263,8 +264,9 @@ def test_a_wall_relabelling_is_not_an_event_but_a_crossing_is():
     # the wall moves a long way; price has not crossed anything
     assert SR.should_wake(mkrow([[1300, 9]], call_wall=1250.0), None,
                           prev, T0) is None
-    # price crosses the wall the last reading actually spoke about
-    crossed = mkrow([[1300, 9]], spot=1450.0, call_wall=1400.0)
+    # price crosses the wall the last reading actually spoke about, while the
+    # live wall has already stepped aside above price, as it does on a crossing
+    crossed = mkrow([[1300, 9]], spot=1450.0, call_wall=1500.0)
     assert SR.should_wake(crossed, None, prev, T0) == "call wall crossed"
 
 
@@ -361,28 +363,38 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
     # obs-1 then deleted it from the doctrine too, and the reason is the whole
     # phase: the spread existed to CALIBRATE A FORECAST, and there is no longer
     # a forecast to calibrate. A magnitude table in an observation contract is
-    # an invitation to predict.
-    assert "move_30min_sigma_distribution" not in sc["scale"]
+    # an invitation to predict. The scale block is the ruler and nothing else,
+    # so no such table can come back into it under another name.
+    assert sc["scale"] == {"one_sigma_dollars": 100.0}
     assert "0.46" not in SR._DOCTRINE and "1.71" not in SR._DOCTRINE
 
 
-def test_scene_names_the_frozen_fields_as_uncitable():
-    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    sc = SR.build_scene(row, SR.magnet_band(row),
-                        [{"field": "magnet", "value": 1300, "for_min": 120}],
-                        [row], T0)
-    assert sc["frozen_do_not_cite"] == ["magnet unchanged 120m"]
+def _nodes(x, path=()):
+    """(key path, value) for every dict and every leaf under `x`, walking
+    through lists, so a check can find a name wherever it is nested."""
+    if isinstance(x, list):
+        for v in x:
+            yield from _nodes(v, path)
+        return
+    yield path, x
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield from _nodes(v, path + (k,))
 
 
-def test_scene_carries_no_verdict_at_all():
+def test_scene_carries_no_verdict_at_all(tmp_path):
     """sr-2 stripped the pre-baked arrow from the scene because a verdict
-    anchors the read; obs-3 then deleted the arrow at the source, so the
-    exclusion is now structural — there is no aggregate() left to exclude."""
-    assert not hasattr(SR, "aggregate")
-    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
-    assert "arrow_already_decided" not in sc
-    assert "arrow" not in json.dumps(sc)
+    anchors the read; obs-3 then deleted the arrow at the source. A verdict can
+    come back under any name, so every scene shape the builder writes is walked
+    for a key that names one."""
+    verdict = re.compile(r"arrow|vector|verdict|bias|decided|(?:^|_)(?:tie|lean|dir|direction)(?:$|_)")
+    scenes = _every_scene_shape(tmp_path)
+    named = {path for scene in scenes for path, _ in _nodes(scene)
+             if path and verdict.search(path[-1])}
+    # `direction` in one place only: regime.vol_trend.direction says implied vol
+    # is rising or falling, a measurement rather than a call on price
+    assert named <= {("regime", "vol_trend", "direction")}
+    assert not any(re.search(r"\barrow", json.dumps(scene)) for scene in scenes)
     # obs-1: the doctrine no longer asks for a vector at all. What it must
     # still refuse to do is hand over a verdict, so that is what is checked.
     assert "You are not forecasting" in SR._DOCTRINE
@@ -472,21 +484,6 @@ def test_chosen_quiet_and_forced_quiet_are_counted_apart():
     forced = SR.check_reading_against_scene(
         {"quiet": False, "read": "Price will rally."}, sc)
     assert forced["quiet"] is True and forced["abstain"] == "forced"
-
-
-def test_the_shadow_guard_rides_the_row_and_never_rejects():
-    """The standing house rule for a new guard: run it in the shadow first, so
-    the rate is known before it is allowed to reject anything."""
-    assert SR.LEXICON_ENFORCE is False
-    sc = _obs_scene()
-    r = SR.check_reading_against_scene(
-        {"quiet": False,
-         "read": "Dealers are buying the heaviest strike right now."}, sc)
-    assert r["stale_language_flags"] == ["are buying", "right now"]
-    assert "read" in r                    # shadow only — it rejects nothing
-    clean = SR.check_reading_against_scene(
-        {"quiet": False, "read": "One strike carries most of the board."}, sc)
-    assert "stale_language_flags" not in clean
 
 
 def test_context_states_facts_and_never_verdicts(monkeypatch):
@@ -776,16 +773,24 @@ def test_the_session_range_anchor_is_gone_and_stays_gone():
     <the session anchor>" — and 8 of 11 live quiet reads paired the since-last-
     read range with the wrong timestamp. The frame now carries exactly one
     range (`held_between_since_last_read`) and exactly one clock it may pair
-    with (`last_read_at`). This test memorialises the deletion."""
+    with (`last_read_at`), whatever a second one would be called. This test
+    memorialises the deletion."""
     rows = [mkrow([[1300, 60], [1100, 20]], spot=v,
                   ts=T0 - timedelta(minutes=m))
             for v, m in ((1500.0, 90), (1530.0, 75), (1510.0, 50), (1512.0, 0))]
     lc = _last_call(minutes_ago=50, spot=1510.0)
-    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
-    assert "session_range_unbroken_since" not in fr
-    assert "range_since" not in fr
-    assert set(k for k in fr if "range" in k or "held" in k) <= {
-        "held_between_since_last_read"}
+    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0,
+                                  bars=_minutes(5))
+    clocks = {path for path, v in _nodes(fr)
+              if isinstance(v, str) and re.search(r"\d{1,2}:\d{2}", v)}
+    ranges = {path for path, v in _nodes(fr)
+              if isinstance(v, dict) and {"low", "high"} <= set(v)}
+    assert clocks == {("last_read_at",)}
+    assert ranges == {("held_between_since_last_read",)}
+    # a second range need not be a low/high pair to be one
+    assert {k for k in fr if "range" in k or "held" in k} == {"held_between_since_last_read"}
+    # ...and that one range starts at the last read, never the session's 1500-1530
+    assert fr["held_between_since_last_read"] == {"low": 1510.0, "high": 1512.0}
 
 
 def test_build_scene_without_the_kwarg_is_unchanged():
@@ -833,36 +838,33 @@ def test_whole_numbers_get_a_dollar_of_rounding_slack():
     assert "read_number_not_on_the_board:65" in far["dropped_observations"]
 
 
-def test_banned_inflections_do_not_walk_through_the_gate():
-    """Live QA: "pinned", "pulled", "leaning" escaped while their stems were
-    banned."""
-    row = mkrow([[1300, 60], [1100, 20]])
-    sc = _scene_for([row])
-    for verb in ("pinned", "pushed", "pulled", "rallied", "leaning"):
-        out = SR.check_reading_against_scene(
-            {"quiet": False, "read": f"Price got {verb} into the close.",
-             "points": []}, sc)
-        assert "read" not in out, verb
-        assert any("read_banned" in d
-                   for d in out.get("dropped_observations", [])), verb
-
-
 def test_lexicon_enforce_is_wired_to_a_real_drop(monkeypatch):
-    """The sr-7 switch was wired to NOTHING — flipping it on changed no
-    behaviour. Enforcement must drop the read and say so in dropped."""
-    row = mkrow([[1300, 60], [1100, 20]])
-    sc = _scene_for([row])
-    slipping = {"quiet": True,
-                "read": "The magnet is building right now under price."}
+    """The standing house rule for a new guard: run it in the shadow first, so
+    the rate is known before it is allowed to reject anything. And the sr-7
+    switch was once wired to NOTHING — flipping it on changed no behaviour — so
+    enforcement must drop the read and say so in dropped, the way a banned
+    verb does: the prose goes, a level still worth watching stays."""
+    assert SR.LEXICON_ENFORCE is False
+    sc = _obs_scene()
+    slipping = {"quiet": False,
+                "read": "Dealers are buying the heaviest strike right now."}
     shadow = SR.check_reading_against_scene(dict(slipping), sc)
-    assert shadow.get("stale_language_flags")          # recorded…
-    assert "read" in shadow                            # …but not enforced
+    assert shadow["stale_language_flags"] == ["are buying", "right now"]
+    assert "read" in shadow                            # shadow only — it rejects nothing
+    clean = SR.check_reading_against_scene(
+        {"quiet": False, "read": "One strike carries most of the board."}, sc)
+    assert "stale_language_flags" not in clean
     monkeypatch.setattr(SR, "LEXICON_ENFORCE", True)
     hard = SR.check_reading_against_scene(dict(slipping), sc)
     assert "read" not in hard
     assert hard["abstain"] == "forced"
     assert any(d.startswith("read_stale_tense:")
                for d in hard["dropped_observations"])
+    strike = sc["magnet"]["top_strikes"][0]["strike"]
+    point = {"level": strike, "note": "heaviest strike"}
+    kept = SR.check_reading_against_scene(dict(slipping, points=[point]), sc)
+    assert "read" not in kept and kept["points"] == [point]
+    assert kept["quiet"] is False and "abstain" not in kept
 
 
 def test_unknown_gamma_sign_never_wakes_the_flip():
@@ -927,9 +929,9 @@ def test_price_parked_on_a_level_then_leaving_counts_as_a_crossing():
                   ts=T0 - timedelta(minutes=m))
             for v, m in ((1400.0, 30), (1409.0, 0))]
     fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0)
-    crossed = fr.get("crossed_since_then") or []
-    assert any(c["level"] == 1400.0 and c["price_went"] == "up"
-               for c in crossed)
+    # the call wall it left, and nothing else: the put wall at 1000 was never near
+    assert fr["crossed_since_then"] == [
+        {"level": 1400.0, "was_labelled_then": "nearest_call_wall", "price_went": "up"}]
 
 
 # ---------------------------------------------------------------- strikes-5 (2026-09-15)

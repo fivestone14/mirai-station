@@ -34,7 +34,9 @@ DAY = "2026-08-19"
 UNLOCK = "user=will"
 _ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
-PAGES = ["/", "/index.html", "/m", "/m/", "/m/index.html"]
+# address -> the file under static/ it must serve
+PAGES = {"/": "index.html", "/index.html": "index.html",
+         "/m": "m/index.html", "/m/": "m/index.html", "/m/index.html": "m/index.html"}
 
 # route -> the query string it is called with
 OPEN_JSON = {
@@ -62,7 +64,7 @@ LOCKED_JSON = {
     "/api/sndk/payload": "",
 }
 QUERIES = {**OPEN_JSON, **LOCKED_JSON}
-EVERY_ROUTE = PAGES + list(QUERIES)
+EVERY_ROUTE = list(PAGES) + list(QUERIES)
 
 
 @pytest.fixture(scope="module")
@@ -231,10 +233,12 @@ def test_every_route_do_get_answers_is_covered_here():
     assert covered - found == set(), f"this table fetches routes do_GET no longer answers: {sorted(covered - found)}"
 
 
-@pytest.mark.parametrize("route", PAGES)
+@pytest.mark.parametrize("route", list(PAGES))
 def test_every_page_address_serves_html(station, route):
-    """Every address the desktop page and the phone shell are opened at serves the page itself."""
-    _page(*_get(station, route), route)
+    """Every address the desktop page and the phone shell are opened at serves its own page: the desktop at "/", the phone view at every spelling of "/m", never the other."""
+    status, ctype, body = _get(station, route)
+    _page(status, ctype, body, route)
+    assert body == (server.STATIC / PAGES[route]).read_bytes(), f"{route} does not serve static/{PAGES[route]}"
 
 
 @pytest.mark.parametrize("route", list(OPEN_JSON))

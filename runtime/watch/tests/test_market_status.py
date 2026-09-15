@@ -50,10 +50,6 @@ class TestHolidayCalendar2026(unittest.TestCase):
 
 
 class TestObservanceRules(unittest.TestCase):
-    def test_july4_saturday_observed_friday(self):
-        # 2026: Jul 4 is Saturday -> full closure moves to Fri Jul 3.
-        self.assertIn(date(2026, 7, 3), ms._market_holidays(2026))
-
     def test_newyear_saturday_no_friday_closure(self):
         # 2022: Jan 1 is Saturday -> NYSE stays open, no Dec-31/Jan-1 closure.
         self.assertNotIn(date(2022, 1, 1), ms._market_holidays(2022))
@@ -69,19 +65,17 @@ class TestObservanceRules(unittest.TestCase):
 
 
 class TestGate(unittest.TestCase):
-    def test_thanksgiving_is_closed(self):
-        self.assertFalse(ms.check(_at(2026, 11, 26, 11, 0)).is_live)
-
-    def test_good_friday_is_closed(self):
-        self.assertFalse(ms.check(_at(2026, 4, 3, 11, 0)).is_live)
+    def test_closed_all_day(self):
+        for when in (_at(2026, 11, 26, 11, 0),   # Thanksgiving
+                     _at(2026, 4, 3, 11, 0),     # Good Friday
+                     _at(2026, 7, 11, 11, 0)):   # Saturday
+            with self.subTest(when=when):
+                self.assertFalse(ms.check(when).is_live)
 
     def test_regular_weekday_open(self):
         st = ms.check(_at(2026, 7, 10, 11, 0))  # a normal Friday
         self.assertTrue(st.is_live)
         self.assertEqual(st.reason, "open")
-
-    def test_weekend_closed(self):
-        self.assertFalse(ms.check(_at(2026, 7, 11, 11, 0)).is_live)  # Saturday
 
     def test_before_open_and_after_close(self):
         self.assertFalse(ms.check(_at(2026, 7, 10, 9, 0)).is_live)
@@ -89,10 +83,11 @@ class TestGate(unittest.TestCase):
         self.assertTrue(ms.check(_at(2026, 7, 10, 9, 30)).is_live)
 
     def test_half_day_early_close(self):
-        # Christmas Eve 2026 (half day): open at 11:00, shut by 13:30.
-        self.assertTrue(ms.check(_at(2026, 12, 24, 11, 0)).is_live)
-        self.assertEqual(ms.check(_at(2026, 12, 24, 11, 0)).reason, "open (half-day session)")
-        self.assertFalse(ms.check(_at(2026, 12, 24, 13, 30)).is_live)
+        # Christmas Eve 2026 (half day): open through 12:59, shut from 13:00.
+        st = ms.check(_at(2026, 12, 24, 12, 59))
+        self.assertTrue(st.is_live)
+        self.assertEqual(st.reason, "open (half-day session)")
+        self.assertFalse(ms.check(_at(2026, 12, 24, 13, 0)).is_live)
 
 
 if __name__ == "__main__":

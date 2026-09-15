@@ -23,30 +23,22 @@ import snapshot
 ET = ZoneInfo("America/New_York")
 
 
-@pytest.mark.parametrize("qs,ok", [
-    ({"user": ["will"]}, True),
-    ({"user": [" Will "]}, True),
-    ({"user": ["WILL"]}, True),
-    ({"user": ["bob"]}, False),
-    ({"user": ["will2"]}, False),
-    ({"user": [""]}, False),
-    ({}, False),
+@pytest.mark.parametrize("permitted,qs,ok", [
+    ("will", {"user": ["will"]}, True),
+    ("will", {"user": [" Will "]}, True),
+    ("will", {"user": ["WILL"]}, True),
+    ("will", {"user": ["bob"]}, False),
+    ("will", {"user": ["will2"]}, False),
+    ("will", {"user": [""]}, False),
+    ("will", {}, False),
+    ("ada", {"user": ["ada"]}, True),       # the name is the configured one, not a literal
+    ("ada", {"user": ["will"]}, False),
+    ("", {"user": [""]}, False),            # no configured name locks everyone
+    ("", {"user": ["will"]}, False),
 ])
-def test_payload_lock_is_exactly_one_name(qs, ok, monkeypatch):
-    monkeypatch.setattr(server, "_PAYLOAD_USER", "will")
+def test_payload_lock_is_exactly_one_name(permitted, qs, ok, monkeypatch):
+    monkeypatch.setattr(server, "_PAYLOAD_USER", permitted)
     assert server._payload_unlocked(qs) is ok
-
-
-def test_payload_lock_name_is_configurable(monkeypatch):
-    monkeypatch.setattr(server, "_PAYLOAD_USER", "ada")
-    assert server._payload_unlocked({"user": ["ada"]})
-    assert not server._payload_unlocked({"user": ["will"]})
-
-
-def test_payload_lock_empty_name_locks_everyone(monkeypatch):
-    monkeypatch.setattr(server, "_PAYLOAD_USER", "")
-    assert not server._payload_unlocked({"user": [""]})
-    assert not server._payload_unlocked({"user": ["will"]})
 
 
 def _row(ts, spot, sigma=80.0, forced=False):
@@ -153,6 +145,11 @@ def test_payload_ships_the_wake_gate_the_reader_actually_uses(tmp_path, monkeypa
 
 
 def test_builder_falls_back_to_the_last_scan_after_hours(tmp_path, monkeypatch):
+    """The cutover is the book's own ceiling, not a round number: a book the
+    reader would still read is built against the wall clock, and one a tenth of
+    a minute past it is built as of its scan, whole, rather than gutted by the
+    freshness gate."""
+    from datetime import timedelta
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     t = datetime(2026, 8, 19, 15, 58, tzinfo=ET)
     _write_day(tmp_path, "2026-08-19", [_row(t, 1590.0)])
@@ -160,6 +157,12 @@ def test_builder_falls_back_to_the_last_scan_after_hours(tmp_path, monkeypatch):
     assert d["as_of"] == "last scan"
     assert d["built_at"].startswith("2026-08-19T15:58")
     assert d["scene"]["clock"]["minutes_to_close"] == 2       # built as of the scan, not a dead 0
+
+    import sndk_read as R      # on sys.path once the builder above has run
+    ceiling = t + timedelta(minutes=R.MAX_BOOK_AGE_MIN)
+    assert snapshot.sndk_payload(ceiling)["as_of"] == "live"
+    past = snapshot.sndk_payload(ceiling + timedelta(seconds=6))
+    assert past["as_of"] == "last scan" and past["built_at"] == t.isoformat()
 
 
 def test_builder_says_so_when_there_is_no_tape(tmp_path, monkeypatch):

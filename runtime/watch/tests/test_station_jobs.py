@@ -393,15 +393,27 @@ def test_a_closed_market_skips_the_job_quietly(tmp_path, script):
 @pytest.mark.parametrize("python", [True, False], ids=["import-fails", "no-venv-python"])
 @pytest.mark.parametrize("script", sorted(GATED))
 def test_a_gate_that_cannot_answer_fails_the_job_out_loud(tmp_path, script, python):
-    """A market-hours check that cannot run exits non-zero with one line on stderr saying so, and never starts the job."""
+    """A market-hours check that cannot run exits 1 with one line on stderr saying so, and never starts the job."""
     done, launched = _run_gated(tmp_path, script, "broken", python=python)
-    assert done.returncode != 0, done.stdout
+    assert done.returncode == 1, (done.returncode, done.stdout)
     assert GATED[script] not in launched
     assert sum("FAILED" in line for line in done.stderr.splitlines()) == 1, done.stderr
 
 
 _YEAR_IN_PATTERN = re.compile(r"(?<!\d)(19|20)\d\d(?!\d)")
 _PATTERN_CALLS = {"glob", "rglob", "fnmatch", "iglob"}
+
+
+def _spelled(node, constants):
+    """The text an argument spells: a string literal, a module-level string
+    constant it names, or the fixed parts of an f-string."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    if isinstance(node, ast.JoinedStr):
+        return "".join(part.value for part in node.values if isinstance(part, ast.Constant))
+    return None
 
 
 def _year_pinned_patterns():
@@ -412,14 +424,22 @@ def _year_pinned_patterns():
             tree = ast.parse(path.read_text(), filename=str(path))
         except (SyntaxError, UnicodeDecodeError):
             continue
+        # a pattern kept in a constant (sndk_read._DAY_FILE_GLOB) is still a pattern
+        constants = {node.targets[0].id: node.value.value for node in tree.body
+                     if isinstance(node, ast.Assign) and len(node.targets) == 1
+                     and isinstance(node.targets[0], ast.Name)
+                     and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)}
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or not node.args:
+            if not isinstance(node, ast.Call):
                 continue
             name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
-            first = node.args[0] if name in _PATTERN_CALLS else None
-            if isinstance(first, ast.Constant) and isinstance(first.value, str) \
-                    and _YEAR_IN_PATTERN.search(first.value):
-                yield f"{path.relative_to(REPO)}:{node.lineno} {name}({first.value!r})"
+            if name not in _PATTERN_CALLS:
+                continue
+            # fnmatch takes the pattern second, glob first
+            for arg in node.args:
+                text = _spelled(arg, constants)
+                if text and _YEAR_IN_PATTERN.search(text):
+                    yield f"{path.relative_to(REPO)}:{node.lineno} {name}({text!r})"
 
 
 def test_no_file_pattern_stops_at_a_calendar_year():

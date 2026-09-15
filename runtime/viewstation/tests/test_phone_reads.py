@@ -8,11 +8,13 @@ retired-contract banner lands, and what "hold the reader's place" means. An
 audit of that commit found three defects in this file and none of them could
 have been caught, because the whole page had two incidental greps of coverage.
 
-These are source invariants rather than a rendered DOM, in the same style as the
-rest of this suite: the page's logic is inline in the HTML, and the alternative
-is a browser in CI. They pin the properties whose violation is silent — an order
-that reverses, a gap attributed to the wrong pair, a banner that outlives the
-outage it describes.
+The page's logic is inline in the HTML, and the alternative to a browser in CI
+is to run that script in node against a stand-in DOM, a fake clock and a
+stand-in station — so the list, the poll and the overlay are judged on what
+they do. They pin the properties whose violation is silent — an order that
+reverses, a gap attributed to the wrong pair, a banner that outlives the outage
+it describes. The stylesheet needs a browser to run, so its rules are read as
+source.
 """
 import json
 import re
@@ -22,7 +24,8 @@ from pathlib import Path
 
 import pytest
 
-THREAD = (Path(__file__).resolve().parents[1] / "static" / "m" / "thread.html").read_text()
+_PATH = Path(__file__).resolve().parents[1] / "static" / "m" / "thread.html"
+THREAD = _PATH.read_text()
 _NODE = shutil.which("node")
 
 
@@ -32,49 +35,143 @@ def _fn(name):
     return m.group(1) if m else None
 
 
+_THREAD_HARNESS = r"""
+const fs = require('fs'), vm = require('vm');
+const NET = JSON.parse(fs.readFileSync(0, 'utf8'));
+let clock = 1e6, timers = [], nextId = 1;
+const RealDate = Date;
+function FakeDate(...a){ return a.length ? new RealDate(...a) : new RealDate(clock); }
+FakeDate.now = () => clock;
+FakeDate.parse = RealDate.parse;
+FakeDate.prototype = RealDate.prototype;
+function setTimeout_(fn, ms){ timers.push({id: nextId, at: clock + (ms || 0), fn}); return nextId++; }
+function advance(ms){
+  const end = clock + ms;
+  for(;;){
+    timers.sort((a, b) => a.at - b.at);
+    const t = timers[0];
+    if(!t || t.at > end) break;
+    timers.shift(); clock = t.at; t.fn();
+  }
+  clock = end;
+}
+
+function node(text){
+  const cl = new Set(), heard = {};
+  return {
+    children: [], hidden: false, innerHTML: '', dataset: {}, value: '', _text: text || '',
+    classList: {add: (...c) => c.forEach(x => cl.add(x)), remove: (...c) => c.forEach(x => cl.delete(x))},
+    get className(){ return [...cl].join(' '); },
+    set className(v){ cl.clear(); String(v).split(/\s+/).filter(Boolean).forEach(x => cl.add(x)); },
+    get textContent(){ return this._text + this.children.map(c => c.textContent).join(''); },
+    set textContent(v){ this._text = String(v); this.children = []; },
+    get childElementCount(){ return this.children.length; },
+    append(...c){ this.children.push(...c); },
+    addEventListener(type, fn){ (heard[type] = heard[type] || []).push(fn); },
+    fire(type){ (heard[type] || []).forEach(f => f({})); },
+  };
+}
+const els = {wrap: node(), sub: node(), day: node(), load: node()};
+const document = {
+  getElementById: id => els[id], createElement: () => node(), createTextNode: node,
+  addEventListener(){}, visibilityState: 'visible',
+  documentElement: {get scrollHeight(){ return 100 * els.wrap.children.length; }},
+};
+const requests = [], pending = [];
+function fetch(url){
+  const u = String(url);
+  requests.push(u);
+  const answer = () => {
+    if(NET.down || (NET.downOn && u.includes(NET.downOn))) throw new TypeError('Failed to fetch');
+    const body = u.startsWith('/api/sndk/thread/days') ? {days: NET.days}
+               : {day: NET.days[0], messages: NET.messages, count: NET.messages.length,
+                  with_something: NET.messages.length};
+    return {status: 200, text: async () => JSON.stringify(body)};
+  };
+  if(!NET.hold) return Promise.resolve().then(answer);
+  return new Promise((ok, no) => pending.push(() => { try { ok(answer()); } catch(e){ no(e); } }));
+}
+const ctx = {document, fetch, Date: FakeDate, setTimeout: setTimeout_, clearTimeout(){}, setInterval: () => 0,
+             scrollY: 0, scrollTo(x, y){ ctx.scrollY = y; }};
+ctx.window = ctx;
+vm.createContext(ctx);
+const run = code => vm.runInContext(code, ctx);
+const html = fs.readFileSync(__THREAD__, 'utf8');
+run([...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).find(s => s.includes('function render')));
+
+const settle = async () => { for(let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
+const release = () => pending.splice(0).forEach(f => f());
+const list = () => els.wrap.children.map(n => [n.className, n.textContent]);
+(async () => {
+  await settle();
+  console.log(JSON.stringify(await (async () => { __STEPS__ })()));
+})().catch(e => { console.error(e && e.stack || e); process.exit(1); });
+"""
+
+
+def _thread(net, steps):
+    """Run the page's own script in node against a stand-in DOM, a fake clock
+    and a station answering from `net` — {"days", "messages"}, and optionally
+    "down" (nothing answers), "downOn" (URLs containing it fail) and "hold"
+    (answers wait for release()) — and return what `steps` returns. The
+    station answers with the whole day whatever `since` asks for, which is the
+    case the page's own timestamp filter exists for.
+
+    `steps` is the body of an async JS function run once boot() has settled.
+    In scope: NET, run(code) (evaluated inside the page: poll, render, S),
+    settle(), advance(ms) on the fake clock, release(), requests (every URL
+    fetched), list() (the list as [class, text], top first), els, and ctx (the
+    window, whose scrollY a step may set). Every child of the list draws 100px
+    tall. Skips when node is not installed."""
+    if not _NODE:
+        pytest.skip("node is not installed")
+    script = _THREAD_HARNESS.replace("__THREAD__", json.dumps(str(_PATH))).replace("__STEPS__", steps)
+    out = subprocess.run([_NODE, "-e", script], input=json.dumps(net),
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+_DAY = ["2026-09-10"]
+
+
+def _said(hm, **extra):
+    """One message as /api/sndk/thread sends it, spoken at `hm` New York time."""
+    return {"ts": f"2026-09-10T{hm}:00-04:00", "at": hm, "spot": 1700, "wake": "scheduled",
+            "read": f"Said at {hm}.", **extra}
+
+
 def test_the_list_runs_newest_first():
     """You open this to see what the model just said. The old page appended
     oldest-to-newest and auto-scrolled to the bottom, so on a 33-message session
-    the newest reading was 33 cards down."""
-    r = _fn("render")
-    assert r is not None
-    assert re.search(r"for\s*\(\s*let i\s*=\s*msgs\.length\s*-\s*1;\s*i\s*>=\s*0;\s*i--\s*\)", r), \
-        "render no longer walks the messages backwards"
-    # and the auto-scroll-to-bottom that made the old order bearable must be gone
-    assert "scrollHeight" not in r, "render is scrolling; the newest reading is already on top"
+    the newest reading was 33 cards down.
 
-
-def test_a_silence_is_attributed_to_the_older_of_the_pair():
-    """The one piece of arithmetic the reversal could have broken silently.
-
-    `i` counts DOWN, so `msgs[i-1]` is the OLDER message and the gap is
-    newer-minus-older. Reverse those two operands and every gap goes negative,
-    `minutesBetween` returns null for anything <= 0, and every silence on the
-    page quietly stops being drawn."""
-    r = _fn("render")
-    assert "const prev = msgs[i - 1];" in r, "the older neighbour is no longer msgs[i-1]"
-    assert "minutesBetween(prev.ts, m.ts)" in r, \
-        "the gap operands are reversed: every silence would compute negative and vanish"
-    assert "gap >= GAP_MIN" in r
-
-
-def test_the_oldest_reading_gets_no_divider_below_it():
-    """`msgs[-1]` is undefined in JS, not the last element — so the loop's final
-    iteration must guard on it rather than wrapping around to the newest."""
-    r = _fn("render")
-    assert re.search(r"if\s*\(\s*prev\s*\)", r), \
-        "nothing guards the oldest message; a wrap-around would draw a bogus gap"
+    A silence is drawn between the two readings it separates — in a descending
+    list, under the newer one — and measured newer-minus-older: reverse the
+    operands and every gap goes negative, minutesBetween returns null for
+    anything <= 0, and every silence on the page quietly stops being drawn. The
+    oldest reading has nothing older below it (`msgs[-1]` is undefined in JS,
+    not the last element), so it gets no divider."""
+    got = _thread({"days": _DAY, "messages": [_said("09:35"), _said("09:59"), _said("10:24"), _said("11:30")]}, """
+      const rows = els.wrap.children.filter(n => n.className === 'row');
+      return {list: list().map(([cls, text]) => [cls, cls === 'row' ? text.slice(0, 5) : text]),
+              cards: rows.map(n => n.children[1].className)};""")
+    assert got["list"] == [["row", "11:30"], ["quiet-gap", "1H 6M QUIET"],
+                           ["row", "10:24"], ["quiet-gap", "25 MIN QUIET"],     # 25 minutes is a silence...
+                           ["row", "09:59"], ["row", "09:35"],                  # ...24 is not
+                           ["endcap", "first read of the session"]]
+    assert got["cards"] == ["rc now", "rc", "rc", "rc"], "the filled card is not the newest reading"
 
 
 def test_the_retired_contract_banner_is_drawn_before_the_list():
     """It explains a whole session. The old page appended it at the top and then
     scrolled to the bottom, so it was never once seen."""
-    r = _fn("render")
-    i_banner = r.index("oldcontract")
-    m = re.search(r"for\s*\(\s*let i\s*=\s*msgs\.length", r)
-    assert m, "the descending loop is not where it was"
-    i_loop = m.start()
-    assert i_banner < i_loop, "the banner is drawn after the list and will be scrolled past"
+    retired = [_said("09:35", contract="direction_call"), _said("09:50", contract="direction_call")]
+    first = "return list()[0][0];"
+    assert _thread({"days": _DAY, "messages": retired}, first) == "oldcontract", \
+        "the banner is drawn after the list and will be scrolled past"
+    # a session that is not wholly the retired design gets no banner
+    assert _thread({"days": _DAY, "messages": retired[:1] + [_said("09:50")]}, first) == "row"
 
 
 def test_the_poll_cannot_duplicate_the_tail():
@@ -84,14 +181,27 @@ def test_the_poll_cannot_duplicate_the_tail():
     minutesBetween returns null for equal timestamps.
 
     Both guards are required: the in-flight flag stops the common case, the
-    filter stops the rest, and the symptom of missing either is silent."""
-    p = _fn("poll")
-    assert p is not None
-    assert "S.polling" in p, "there is no in-flight guard"
-    assert re.search(r"filter\(\s*m\s*=>\s*m\s*&&\s*m\.ts\s*>\s*seen\s*\)", p), \
-        "the tail is concatenated without a timestamp filter"
-    assert "S.polling = false" in THREAD and "finally" in p, \
-        "the in-flight flag is not released on a throw and would wedge the poll forever"
+    filter stops the rest, and the symptom of missing either is silent. And a
+    request that fails must not wedge the poll behind a flag left up."""
+    got = _thread({"days": _DAY, "messages": [_said("09:35")]}, """
+      const ats = () => run('S.msgs').map(m => m.at);
+      const sent = requests.length;
+      NET.messages = NET.messages.concat([{ts: '2026-09-10T10:40:00-04:00', at: '10:40', read: 'New.'}]);
+      NET.hold = true;
+      const one = run('poll()'), two = run('poll()');
+      release(); await one; await two;
+      NET.hold = false;
+      const airborne = {sent: requests.length - sent, ats: ats()};
+      NET.messages = NET.messages.concat([{ts: '2026-09-10T10:50:00-04:00', at: '10:50', read: 'Newer.'}]);
+      await run('poll()');
+      const whole = ats();
+      NET.down = true; await run('poll()'); NET.down = false;
+      const before = requests.length;
+      await run('poll()');
+      return {airborne, whole, retried: requests.length - before};""")
+    assert got["airborne"] == {"sent": 1, "ats": ["09:35", "10:40"]}, "two polls were in the air at once"
+    assert got["whole"] == ["09:35", "10:40", "10:50"], "the tail was concatenated without a timestamp filter"
+    assert got["retried"] == 1, "a failed poll wedged the next one"
 
 
 def test_a_recovered_station_stops_saying_it_is_unreachable():
@@ -99,13 +209,16 @@ def test_a_recovered_station_stops_saying_it_is_unreachable():
     day with no readings yet kept the banner up permanently while every poll
     behind it succeeded. And the subheader — the element actually asserting
     'station unreachable' — was written only by loadDay, so it never recanted."""
-    p = _fn("poll")
-    i_clear = p.index("S.stalled = false")
-    i_empty = p.index("if(!docJson.messages.length)")
-    assert i_clear < i_empty, \
-        "the stalled flag is cleared after the empty-answer return; the banner would stick"
-    assert "paintSub" in p, "poll cannot repaint the subheader that says 'station unreachable'"
-    assert _fn("paintSub") is not None, "paintSub was not extracted from loadDay"
+    got = _thread({"days": _DAY, "messages": [], "downOn": "/api/sndk/thread?day"}, """
+      const down = {list: list(), sub: els.sub.textContent};
+      NET.downOn = null;
+      await run('poll()');
+      return {down, back: {list: list(), sub: els.sub.textContent}};""")
+    assert got["down"] == {"list": [["state", "Could not reach the station. Retrying…"]],
+                           "sub": "station unreachable"}
+    assert got["back"]["list"] == [["state", "Nothing said this session yet."]], \
+        "the stalled banner stuck on a day with no readings yet"
+    assert got["back"]["sub"] != "station unreachable", "poll cannot repaint the subheader"
 
 
 def test_the_poll_holds_the_readers_place():
@@ -113,10 +226,17 @@ def test_the_poll_holds_the_readers_place():
     survives nothing and browser scroll anchoring has no anchor left. A reading
     arrives ABOVE everything, so a reader parked mid-list shifts by its height
     — onto a different card, mid-sentence."""
-    p = _fn("poll")
-    assert "scrollHeight" in p and "scrollTop" in p, "nothing compensates for the inserted height"
-    assert re.search(r"atTop\s*\?\s*0\s*:", p), \
-        "arriving at the top must still land at the top; that is the point of descending"
+    got = _thread({"days": _DAY, "messages": [_said("09:35")]}, """
+      const arrive = hm => {
+        NET.messages = NET.messages.concat([{ts: '2026-09-10T' + hm + ':00-04:00', at: hm, read: 'New.'}]);
+      };
+      ctx.scrollY = 400; arrive('09:50'); await run('poll()');
+      const parked = ctx.scrollY;
+      ctx.scrollY = 5; arrive('09:55'); await run('poll()');
+      return {parked, top: ctx.scrollY};""")
+    # one 100px card arrives above a reader parked at 400
+    assert got["parked"] == 500, "nothing compensates for the inserted height"
+    assert got["top"] == 0, "arriving at the top must still land at the top; that is the point of descending"
 
 
 def test_the_document_is_the_scroller():
@@ -175,21 +295,26 @@ def test_the_overlay_covers_the_blank_page_from_the_first_frame():
     assert "position:fixed" in flat and "inset:0" in flat, "it does not cover the page"
     assert "background:var(--g)" in flat, "a transparent overlay does not hide anything"
 
-    assert "LOAD_MIN_MS" in THREAD, "nothing stops a 40ms answer flashing the overlay"
-    m = re.search(r"LOAD_MIN_MS\s*=\s*(\d+)", THREAD)
-    assert m and int(m.group(1)) >= 200, "the floor is too short to read as anything but a stutter"
-
-    # every path that ends a load must clear it — the day that loaded, and the
-    # empty or unreachable archive, which never reaches loadDay at all. Counted
-    # at the call sites: the definitions spell the same name.
-    assert "hideLoading()" in _fn("loadDay"), "a loaded day leaves the spinner up"
-    boot = _fn("boot")
-    empty = boot.split("if(!days.length){")[1].split("\n  }\n")[0]
-    assert "hideLoading()" in empty, "an empty or unreachable archive leaves the spinner up"
-    # ...and switching sessions is a real fetch, so it must put the overlay back
-    change = boot.split("addEventListener('change'")[1].split("});")[0]
-    assert "showLoading()" in change, \
-        "a day switch leaves the previous session on screen pretending to be the new one"
+    # every path that ends a load clears it, and not before the floor — the day
+    # that loaded, and the empty or unreachable archive, which never reaches
+    # loadDay at all — and switching sessions is a real fetch, so it puts the
+    # overlay back
+    got = _thread({"days": _DAY, "messages": [_said("09:35")]}, """
+      advance(199);
+      const early = {hidden: els.load.hidden, cls: els.load.className};
+      advance(1000);
+      const loaded = els.load.hidden;
+      els.day.fire('change');
+      const switched = els.load.hidden;
+      await settle(); advance(1000);
+      return {early, loaded, switched, reloaded: els.load.hidden};""")
+    assert got["early"] == {"hidden": False, "cls": ""}, \
+        "the floor is too short to read as anything but a stutter"
+    assert got["loaded"] is True, "a loaded day leaves the spinner up"
+    assert got["switched"] is False, "a day switch leaves the previous session on screen pretending to be the new one"
+    assert got["reloaded"] is True
+    assert _thread({"days": [], "messages": []}, "advance(1000); return els.load.hidden;") is True, \
+        "an empty or unreachable archive leaves the spinner up"
 
 
 def test_the_struck_chip_stays_legible_on_the_filled_card():

@@ -687,9 +687,17 @@ def test_code_limit_resolves_numbers_names_and_arithmetic(tmp_path):
         code_limit(src, "LATER")
 
 
-def test_every_limit_the_live_checks_hold_still_exists_in_this_repo():
-    limits = station_limits(_RUNTIME.parent)
-    assert all(isinstance(v, (int, float)) and v > 0 for v in limits.values()), limits
+def test_every_limit_the_live_checks_hold_is_the_value_the_code_runs_on(monkeypatch):
+    """Parsing a limit out of source must give the number the module has once imported."""
+    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "sndk-pro"))
+    import sndk_read
+    from watch.intraday import sndk_deadman
+    assert station_limits(_RUNTIME.parent) == {
+        "silent_min": sndk_deadman.SNDK_SILENT_MIN,
+        "first_row_by_min": sndk_deadman.FIRST_ROW_BY_MIN,
+        "reader_silent_min": sndk_deadman.READER_SILENT_MIN,
+        "book_age_min": sndk_read.MAX_BOOK_AGE_MIN,
+        "bar_record_min": sndk_read.BAR_RECORD_STALE_MIN}
 
 
 # --- live tests against the running station (read-only) ---------------------------

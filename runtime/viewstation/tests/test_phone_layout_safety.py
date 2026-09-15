@@ -26,7 +26,9 @@ what this file guards:
      happened.
   3. A container too NARROW to draw into says so instead of drawing garbage.
      Width is the dimension that can still be zero — a card that has not laid
-     out yet, or a hidden parent.
+     out yet, or a hidden parent. That is behaviour of page.js, so it is run
+     against the real page in test_phone_route.py; this file keeps to what
+     the stylesheet and the shell decide.
 """
 import re
 from pathlib import Path
@@ -105,31 +107,17 @@ def test_the_reading_is_never_clamped():
     assert said is not None and "line-clamp" not in said
 
 
-def test_a_container_too_narrow_to_draw_into_says_so():
-    """Width is the dimension that can still be zero. The old guard measured
-    HEIGHT, which is now a constant, so it could never have fired again."""
-    src = PAGE.split("function paintLadder")[1].split("\nfunction ")[0]
-    assert "CHART TOO NARROW" in src
-    # measured RAW, then judged, then clamped. The old line clamped inline with
-    # Math.max(240, ...), which erased the very condition worth reporting.
-    assert "rawW" in src
-    i_raw = src.index("rawW =")
-    i_guard = src.index("rawW < 240")
-    i_use = src.index("const CW = rawW")
-    assert i_raw < i_guard < i_use, "the width is clamped before it is judged"
-
-
 def test_the_svg_is_sized_by_attribute_not_by_percentage():
     """svg{height:100%} against a parent with no definite height resolves to
     nothing — the 08-24 failure in one line. Width and height are ATTRIBUTES,
-    set from the same number the viewBox carries."""
+    set from the same number the viewBox carries; the page setting them is run
+    in test_phone_route's test_a_chart_it_cannot_draw_says_so_and_never_draws_nan,
+    so this holds the stylesheet to not overriding them."""
     svg = _rule("#svg")
     assert svg is not None
     flat = svg.replace(" ", "")
     assert "height:100%" not in flat
     assert "height:auto" in flat
-    assert "setAttribute('height', SVGH)" in PAGE
-    assert "setAttribute('viewBox'" in PAGE
 
 
 def test_the_tab_bar_is_measured_rather_than_asserted():
@@ -145,12 +133,16 @@ def test_the_tab_bar_is_measured_rather_than_asserted():
     that must be at least as large as the bar can be."""
     assert "function fitTabs" in PAGE
     src = PAGE.split("function fitTabs")[1].split("\nfunction ")[0]
-    assert "getBoundingClientRect" in src, "fitTabs is not measuring anything"
-    assert "setProperty('--tab-h'" in src
+    # Strip the comments first, as the chart-height test above does: fitTabs
+    # explains at length WHY it measures and names the call while doing it, so
+    # an unstripped grep is satisfied by the prose of a body that has replaced
+    # the measurement with a constant — the very regression this test names.
+    code = re.sub(r"//[^\n]*", "", src)
+    assert "getBoundingClientRect" in code, "fitTabs is not measuring anything"
+    assert "setProperty('--tab-h'" in code
 
     # measured on load AND on resize: a rotation changes the safe-area inset the
     # bar pads itself with, and a stale reserve then clips the footer again
-    tail = PAGE.split("function fitTabs")[0] + PAGE.split("\nfunction ")[-1]
     assert PAGE.count("fitTabs()") >= 2, "fitTabs runs once; a resize would leave it stale"
     assert "resize" in PAGE and "fitTabs(); sizeLadder()" in PAGE
 

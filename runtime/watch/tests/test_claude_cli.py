@@ -59,6 +59,8 @@ class TestCommandFlags(unittest.TestCase):
         finally:
             subprocess.run = real
         cmd = captured["cmd"]
+        # --allowedTools is variadic: a prompt placed after it is read as a tool name
+        self.assertEqual(cmd[:3], ["claude", "-p", "hi"])
         self.assertEqual(cmd[cmd.index("--allowedTools") + 1], "mcp__market-research,WebSearch")
         self.assertEqual(cmd[cmd.index("--disallowedTools") + 1], "Bash,Write")
         self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "bypassPermissions")
@@ -77,6 +79,7 @@ class TestCommandFlags(unittest.TestCase):
         finally:
             subprocess.run = real
         cmd = captured["cmd"]
+        self.assertNotIn("--allowedTools", cmd)
         self.assertNotIn("--disallowedTools", cmd)
         self.assertNotIn("--permission-mode", cmd)
 

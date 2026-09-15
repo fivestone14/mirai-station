@@ -244,7 +244,8 @@ def test_board_failure_falls_back_to_the_scene_payload(board_state, monkeypatch,
     monkeypatch.setattr(SR, "call_the_model", fake)
     assert SR.read_once(now=NOW) == 0
     row = _rows(reads)[-1]
-    assert row["payload"] == "scene" and "legacy_kept" not in row
+    # the row says what was built, so a replay never pools this read with the strikes era
+    assert row["payload"] == "scene" and row["era"] == SR.LEGACY_ERA and "legacy_kept" not in row
     assert seen["doctrine"] is None                        # the live doctrine, by default
     assert "strikes payload failed" in capsys.readouterr().out
     assert not (tmp / "sndk_legacy").exists()
@@ -325,6 +326,10 @@ def test_the_bill_is_read_off_the_envelope_in_plain_names():
 def test_an_envelope_without_a_bill_gives_nothing_not_an_empty_record():
     assert SR.cost_of({"result": "x"}) is None
     assert SR.cost_of(None) is None
+    # a usage block that holds no count at all is still no bill
+    assert SR.cost_of({"usage": {}}) is None
+    assert SR.cost_of({"usage": {"input_tokens": None, "output_tokens": True},
+                       "total_cost_usd": "0.07"}) is None
     assert SR.cost_of({"usage": {"output_tokens": 7}}) == {"output_tokens": 7}
 
 

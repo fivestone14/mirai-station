@@ -59,11 +59,15 @@ def heavy(i):
 
 def test_times_come_off_the_books_and_strikes_are_listed():
     rows = day(8, oi_fn=heavy)
+    for r in rows:      # each book measured three minutes before the scan that carried it
+        r["meta"]["book_asof"] = (SR._ts(r) - timedelta(minutes=3)).isoformat()
     b = block(rows, ref_index=3)
-    times = {SR._book_asof(r).astimezone(ET).strftime("%H:%M") for r in rows}
-    assert b["first_book"] in times
+    books = [SR._book_asof(r).astimezone(ET).strftime("%H:%M") for r in rows]
+    scans = {SR._ts(r).astimezone(ET).strftime("%H:%M") for r in rows}
+    assert b["first_book"] == books[0]
+    assert b["regions"]
     for g in b["regions"]:
-        assert g["first_seen"] in times
+        assert g["first_seen"] in books and g["first_seen"] not in scans
     _, listed, _, _ = B.strikes_block(rows[-1], rows, SR._ts(rows[-1]) + timedelta(seconds=30), [], SR._ts(rows[3]))
     for g in b["regions"]:
         assert set(g["strikes"]) <= set(listed)
@@ -92,7 +96,7 @@ def test_members_are_adjacent_on_the_grid():
         return {k: ((600, 300) if k in (1250.0, 1350.0) else (20, 10)) for k in GRID}
     rows = day(8, oi_fn=split)
     b = block(rows, ref_index=3)
-    assert all(len(g["strikes"]) == 1 for g in b["regions"])
+    assert [g["strikes"] for g in b["regions"]] == [[1250.0], [1350.0]]
 
 
 def test_hysteresis_enter_at_eight_stay_to_six():
@@ -104,19 +108,18 @@ def test_hysteresis_enter_at_eight_stay_to_six():
         d[1150.0] = (1000 - pct * 10 - 4, 0)
         return d
     novol = lambda i: {k: (0, 0) for k in GRID}
-    # at exactly 7% throughout: never enters
-    rows = day(8, oi_fn=lambda i: path(7), vol_fn=novol)
-    b = block(rows, ref_index=3)
-    assert all(1300.0 not in g["strikes"] for g in b["regions"])
-    # enters at 10%, then sinks to 7%: stays, marked held
-    rows = day(8, oi_fn=lambda i: path(10) if i < 4 else path(7), vol_fn=novol)
-    b = block(rows, ref_index=3)
-    g = next(g for g in b["regions"] if 1300.0 in g["strikes"])
+
+    def region_at_1300(oi_fn):
+        b = block(day(8, oi_fn=oi_fn, vol_fn=novol), ref_index=3)
+        return next((g for g in b["regions"] if 1300.0 in g["strikes"]), None)
+    # just under 8% throughout: never enters; at 8% it does
+    assert region_at_1300(lambda i: path(7.9)) is None
+    assert region_at_1300(lambda i: path(8)) is not None
+    # enters at 10%, then sinks to exactly 6%: stays, marked held
+    g = region_at_1300(lambda i: path(10) if i < 4 else path(6))
     assert g["strikes"] == [1300.0] and g["by"] == "held"
-    # sinks to 5%: leaves
-    rows = day(8, oi_fn=lambda i: path(10) if i < 4 else path(5), vol_fn=novol)
-    b = block(rows, ref_index=3)
-    assert all(1300.0 not in g["strikes"] for g in b["regions"])
+    # just under 6%: leaves
+    assert region_at_1300(lambda i: path(10) if i < 4 else path(5.9)) is None
 
 
 def test_new_and_resolved_use_the_reference_book():

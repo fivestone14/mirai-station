@@ -53,19 +53,27 @@ def test_a_noon_restart_keeps_fresh_volume(tmp_path):
 
 
 def test_with_no_prior_record_the_clock_only_withholds_and_only_early(tmp_path):
-    v2, _ = build([mkrow(at(DAY, 9, 31), vol=YEST)], at(DAY, 9, 33))
+    """The README's first 15 minutes: a book measured at 09:44 is withheld, one
+    measured at 09:45 is not."""
+    v2, _ = build([mkrow(at(DAY, 9, 44), vol=YEST)], at(DAY, 9, 46))
     assert "vol_calls" not in v2["strikes"]["columns"]
     assert "cannot be told apart" in withheld(v2)[0]
-    later, _ = build([mkrow(at(DAY, 9, 50), vol=YEST)], at(DAY, 9, 52))
-    assert "vol_calls" in later["strikes"]["columns"]
+    later, _ = build([mkrow(at(DAY, 9, 45), vol=YEST)], at(DAY, 9, 47))
+    assert "vol_calls" in later["strikes"]["columns"] and not withheld(later)
     noon, _ = build([mkrow(at(DAY, 12, 0), vol=YEST)], at(DAY, 12, 2))
     assert "vol_calls" in noon["strikes"]["columns"]
 
 
 def test_a_prior_record_that_stops_before_the_close_is_not_trusted(tmp_path):
-    write_prior(tmp_path, last_hhmm=(12, 12), vol={k: (c // 2, p // 2) for k, (c, p) in YEST.items()})
+    """The prior record must reach ten minutes before the close: a last book at
+    15:49 cannot say what the session closed on, one at 15:50 can."""
+    half = {k: (c // 2, p // 2) for k, (c, p) in YEST.items()}
+    write_prior(tmp_path, last_hhmm=(15, 49), vol=half)
     v2, _ = build([mkrow(at(DAY, 9, 31), vol=YEST)], at(DAY, 9, 33))
     assert "cannot be told apart" in withheld(v2)[0]
+    write_prior(tmp_path, last_hhmm=(15, 50), vol=half)
+    trusted, _ = build([mkrow(at(DAY, 9, 31), vol=YEST)], at(DAY, 9, 33))
+    assert "vol_calls" in trusted["strikes"]["columns"] and not withheld(trusted)
 
 
 def test_a_dark_session_between_makes_the_prior_record_the_wrong_day(tmp_path):

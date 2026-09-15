@@ -4,6 +4,8 @@ flags (user input reaching a subprocess — every value is checked, unknown
 commands such as `rollup --force` are refused)."""
 import json
 
+import pytest
+
 import server
 import snapshot
 
@@ -47,15 +49,39 @@ def test_memory_overview_survives_an_empty_store(tmp_path, monkeypatch):
     assert ov["days"] == [] and ov["slices_total"] == 0 and ov["terrain"] is None
 
 
-def test_memory_args_build_only_documented_flags():
-    assert server._memory_args({"tier": ["slices"], "date": ["2026-08-21"], "limit": ["5"]}) == \
-        ["query", "--tier", "slices", "--date", "2026-08-21", "--limit", "5"]
-    assert server._memory_args({"tier": ["days"], "text": ["rejected the call wall"], "near": ["1600"], "min_move": ["-5"]}) == \
-        ["query", "--tier", "days", "--near-strike", "1600", "--min-move", "-5", "--text", "rejected the call wall"]
-    assert server._memory_args({"tier": ["month"]}) == ["query", "--tier", "month"]
-    assert server._memory_args({"kind": ["series"], "date": ["2026-08-21"], "step": ["10"], "strike": ["1600"]}) == \
-        ["series", "--date", "2026-08-21", "--step", "10", "--strike", "1600"]
-    assert server._memory_args({}) == ["query", "--tier", "slices"]          # defaults to today's moments
+def _cli_call(argv, monkeypatch):
+    """(reader, keyword arguments) the history CLI hands `argv` to: sndk_rag's own
+    parser and dispatch, with the two readers it calls stubbed. The parser exits
+    on a flag the CLI does not define."""
+    monkeypatch.syspath_prepend(str(snapshot._SNDK_PRO_DIR))
+    import sndk_rag
+    calls = []
+    monkeypatch.setattr(sndk_rag, "query", lambda **kw: calls.append(("query", kw)) or {})
+    monkeypatch.setattr(sndk_rag, "series", lambda **kw: calls.append(("series", kw)) or {})
+    assert sndk_rag.main(argv) == 0
+    assert len(calls) == 1, calls
+    return calls[0]
+
+
+@pytest.mark.parametrize("qs,reader,asked", [
+    ({"tier": ["slices"], "date": ["2026-08-21"], "limit": ["5"]}, "query", {"date": "2026-08-21", "limit": 5}),
+    ({"tier": ["days"], "text": ["rejected the call wall"], "near": ["1600"], "min_move": ["-5"]}, "query",
+     {"tier": "days", "text": "rejected the call wall", "near_strike": 1600.0, "min_move": -5.0}),
+    ({"tier": ["month"]}, "query", {"tier": "month"}),
+    ({"from_date": ["2026-08-01"], "to_date": ["2026-08-20"], "from": ["10:00"], "to": ["11:00"],
+      "tol": ["5"], "days_back": ["7"]}, "query",
+     {"d_from": "2026-08-01", "d_to": "2026-08-20", "t_from": "10:00", "t_to": "11:00",
+      "tolerance": 5.0, "days_back": 7}),
+    ({"kind": ["series"], "date": ["2026-08-21"], "from": ["10:00"], "to": ["11:00"], "step": ["15"],
+      "strike": ["1600"]}, "series",
+     {"date": "2026-08-21", "t_from": "10:00", "t_to": "11:00", "step_min": 15, "strike": 1600.0}),
+    ({}, "query", {}),                          # defaults to today's moments
+], ids=["slices-day", "days-filtered", "month", "every-query-flag", "series", "bare"])
+def test_memory_args_build_only_documented_flags(qs, reader, asked, monkeypatch):
+    """Every flag the route builds is one the history CLI defines, and the CLI
+    receives exactly what was asked, over its own defaults and nothing else."""
+    default = _cli_call([reader], monkeypatch)[1]
+    assert _cli_call(server._memory_args(qs), monkeypatch) == (reader, {**default, **asked})
 
 
 def test_memory_args_refuse_bad_input():

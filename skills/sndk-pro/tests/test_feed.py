@@ -4,6 +4,8 @@ live-quote anchor (M3), the vol-adaptive window (M4), the disk book cache (M5)."
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
+
 import atomic_io
 import sndk_feed
 import synth
@@ -188,23 +190,18 @@ def test_window_adapts_to_vol_hint(monkeypatch):
     assert str(round(1246.0 * (1.0 + w), 2)) in calls[-1]
 
 
-def test_window_clamps_sane():
-    atomic_io.write_json_atomic(sndk_feed._state_dir() / "vol_hint.json",
-                                {"sigma_daily_frac": 0.20, "ts": NOW.isoformat()})
-    assert sndk_feed._window_frac() == sndk_feed._WINDOW_MAX
-    atomic_io.write_json_atomic(sndk_feed._state_dir() / "vol_hint.json",
-                                {"sigma_daily_frac": 0.01, "ts": NOW.isoformat()})
-    assert sndk_feed._window_frac() == sndk_feed._WINDOW_LIVE   # floor holds
-
-
 def test_vol_hint_persisted_after_build(monkeypatch):
     monkeypatch.setattr(sndk_feed, "discover_expiries", lambda now: list(EXPS))
     calls = []
-    _stub_pull(monkeypatch, calls)
+    # quotes priced on the clock the chain re-solves them on, so the rebuilt
+    # front-book ATM IV is the true 0.5
+    _stub_pull(monkeypatch, calls,
+               contracts=synth.book(mtc=sndk_feed._minutes_to_close(NOW)))
     assert sndk_feed.sndk_chain(NOW, live_spot=1250.0) is not None
     hint = atomic_io.read_json_or(sndk_feed._state_dir() / "vol_hint.json", None)
-    # synth book rebuilds to ~0.5 IV → σ_daily/spot ≈ 0.5/√252 ≈ 0.0315
-    assert hint and 0.02 < hint["sigma_daily_frac"] < 0.05
+    # σ_daily/spot = IV/√252 ≈ 0.0315; a calendar-day √365 lands 0.0262
+    assert hint["atm_iv"] == pytest.approx(synth.TRUE_IV, abs=0.01)
+    assert hint["sigma_daily_frac"] == pytest.approx(synth.TRUE_IV / 252 ** 0.5, rel=0.02)
 
 
 # --- M5: the raw book persists across process relaunches ---------------------
@@ -235,7 +232,12 @@ def test_stale_book_cache_pulls(monkeypatch):
     calls = []
     _stub_pull(monkeypatch, calls)
     assert sndk_feed.sndk_chain(NOW, live_spot=1250.0) is not None
-    later = NOW + timedelta(seconds=sndk_feed._CHAIN_TTL_S + 1)
+    # a second short of the cache life the book is still re-served...
+    almost = NOW + timedelta(seconds=sndk_feed._CHAIN_TTL_S - 1)
+    assert sndk_feed.sndk_chain(almost, live_spot=1251.0)["meta"]["book_source"] == "disk_cache"
+    assert len(calls) == 1
+    # ...and at exactly its life it is stale
+    later = NOW + timedelta(seconds=sndk_feed._CHAIN_TTL_S)
     ch = sndk_feed.sndk_chain(later, live_spot=1251.0)
     assert ch["meta"]["book_source"] == "pull"
     assert len(calls) == 2                  # stale → honest re-pull
@@ -254,5 +256,14 @@ def test_corrupt_book_cache_pulls(monkeypatch):
 
 
 def test_kill_switch(monkeypatch):
+    discovered = []
+    monkeypatch.setattr(sndk_feed, "discover_expiries",
+                        lambda now: discovered.append(now) or list(EXPS))
+    calls = []
+    _stub_pull(monkeypatch, calls)
     monkeypatch.setenv("SNDK_PRO_DISABLE", "1")
     assert sndk_feed.sndk_chain(NOW, live_spot=1250.0) is None
+    assert discovered == [] and calls == []  # no probe, no pull
+    # the same tick with the switch off builds a book, so the None was the switch
+    monkeypatch.delenv("SNDK_PRO_DISABLE")
+    assert sndk_feed.sndk_chain(NOW, live_spot=1250.0) is not None

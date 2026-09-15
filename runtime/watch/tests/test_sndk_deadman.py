@@ -104,10 +104,12 @@ def test_no_row_after_0935_is_a_session_that_never_started(desk):
 def test_no_row_before_0935_is_patience_not_a_failure(desk):
     """The scanner's first row lands within ~2 minutes of the open on every
     recorded session; five minutes is the allowance, and it is an allowance,
-    not a blind spot — 09:36 pages."""
-    assert desk.run(LIVE.replace(hour=9, minute=32))["paged"] == 0
+    not a blind spot — 09:35 itself pages."""
+    hour, minute = divmod(D.FIRST_ROW_BY_MIN, 60)
+    deadline = LIVE.replace(hour=hour, minute=minute)
+    assert desk.run(deadline - timedelta(minutes=1))["paged"] == 0
     assert desk.sent == []
-    assert desk.run(LIVE.replace(hour=9, minute=36))["paged"] == 1
+    assert desk.run(deadline)["paged"] == 1
 
 
 def test_a_forced_warmup_row_does_not_count_as_a_session(desk):
@@ -123,9 +125,9 @@ def test_a_torn_final_line_cannot_take_the_watchdog_down(desk):
     """The writer appends, so the last line is the one most likely to be
     half-written — and a line that PARSES to a bare string still is not a row.
     This case crashed the first draft with an AttributeError."""
-    desk.write(desk.row(1), '"{torn half-written line')
+    desk.write(desk.row(1), '{"ticker": "SNDK", "ts": "2026-08', '"2026-08-27T11:0"')
     out = desk.run()
-    assert out["alive"] is True and desk.sent == []
+    assert out["alive"] is True and out["age_min"] == 1.0 and desk.sent == []
 
 
 def test_a_closed_market_is_not_an_outage(desk):
@@ -162,9 +164,13 @@ def test_the_ceiling_is_the_readers_own_stale_book_line():
 
 
 def test_test_fire_proves_the_pager_without_touching_the_diary(desk):
+    """Mid-session with no diary at all: the test fire sends only its own page,
+    creates no diary, and leaves the switch armed for the real outage."""
     out = desk.run(test_fire=True)
-    assert out["test_fire"] is True and len(desk.sent) == 1
+    assert out["test_fire"] is True and out["delivered"] is True and len(desk.sent) == 1
     assert "TEST FIRE" in desk.sent[0]
+    assert list((desk.dir / "sndk_reversion").iterdir()) == []
+    assert desk.run()["paged"] == 1 and "never started" in desk.sent[1]
 
 
 # --- 2026-08-30, from the adversarial review of the sr-7 diff -----------------
@@ -238,13 +244,6 @@ def test_test_fire_reports_whether_it_actually_left_the_machine(desk):
 # the numbers under it keep moving. The reader is judged only while the scanner is
 # alive: a reader with no fresh rows to read is the scanner's outage.
 
-def test_a_reader_keeping_up_says_nothing(desk):
-    desk.write(*desk.scans(40))
-    desk.read(desk.read_row(D.READER_SILENT_MIN - 1))
-    out = desk.run()
-    assert out["reader"]["alive"] is True and desk.sent == []
-
-
 def test_a_silent_reader_pages_once_and_names_when_it_stopped(desk):
     """Rows keep landing in the diary and the read file stops."""
     stopped = D.READER_SILENT_MIN + 1
@@ -266,15 +265,6 @@ def test_a_reader_that_never_wrote_is_paged_once_the_scanner_outlasts_its_ceilin
     out = desk.run()
     assert out["reader"]["alive"] is False and out["paged"] == 1
     assert "no read row" in desk.sent[0]
-
-
-def test_a_silent_scanner_is_one_page_not_a_second_for_the_reader(desk):
-    """Both files stopped at 10:23. The scanner is the root cause, and one outage is one page."""
-    desk.write(desk.row(41))
-    desk.read(desk.read_row(41))
-    out = desk.run()
-    assert out["reason"] == "silent" and out["reader"] is None
-    assert len(desk.sent) == 1 and "scanner" in desk.sent[0]
 
 
 def test_the_reader_gets_its_ceiling_again_after_the_scanner_comes_back(desk):

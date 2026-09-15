@@ -187,12 +187,28 @@ def test_a_visit_is_a_run_of_bars_counted_once():
     assert wall["last_visit"] == [10, 19]
 
 
-def test_both_counts_name_their_rail_and_the_rails_are_different():
-    p = SS.build_side(_flat(40), DAY, _now(39),
-                      levels=[{"price": 1500.0, "role": "flip"}], levels_as_of_bar=39)
-    lvl = next(L for L in p["levels"] if L["role"] == "flip")
+def test_both_counts_name_their_rail_and_count_on_it():
+    """Each count names its rail, and each rail is the distance it counted on:
+    a visit reaches half a bar-range-median past a bar, a cross needs a close a
+    whole one past the line. Every bar here spans 2 points; ten close at 1490,
+    then ten at 1510."""
+    bars = [_bar(i, 1489.0, 1491.0, 1490.0) for i in range(10)]
+    bars += [_bar(10 + i, 1509.0, 1511.0, 1510.0) for i in range(10)]
+
+    def flip_at(price):
+        p = SS.build_side(bars, DAY, _now(19),
+                          levels=[{"price": price, "role": "flip"}], levels_as_of_bar=19)
+        return p, next(L for L in p["levels"] if L["role"] == "flip")
+
+    p, lvl = flip_at(1500.0)
     assert lvl["visits_rail"] == "touch_abs" and lvl["crosses_rail"] == "cross_abs"
-    assert p["level_rails"]["touch_abs"] < p["level_rails"]["cross_abs"]
+    nf = next(b["value"] for b in p["baselines"] if b["id"] == "bl.bar_range_median")
+    assert nf == 2.0
+    assert (p["level_rails"]["touch_abs"], p["level_rails"]["cross_abs"]) == (nf / 2, nf)
+    # the top bars reach 1511, so a line at 1512 is visited and a cent past it is not
+    assert flip_at(1512.0)[1]["visits"] == 1 and flip_at(1512.01)[1]["visits"] == 0
+    # the climb closes at 1510, so a line at 1508 is crossed and a cent over it is not
+    assert flip_at(1508.0)[1]["crosses"] == 1 and flip_at(1508.01)[1]["crosses"] == 0
 
 
 def test_a_close_that_creeps_over_the_line_does_not_swallow_the_next_crossing():
@@ -321,12 +337,18 @@ def test_the_reading_says_warmup_before_it_can_exist():
 
 
 def test_a_thin_tape_ships_no_percentile_and_says_why():
-    """With a handful of bars a percentile is arithmetic, not evidence."""
-    p = SS.build_side(_flat(5), DAY, _now(4))
-    vol = next(i for i in p["indicators"] if i["id"] == "ind.vol")
-    assert vol["percentile_of_session"] is None and vol["x"] is None
-    assert any(a["path"] == "baselines[]" and a["why"] == "in_progress"
-               for a in p["absent"])
+    """Under MIN_BARS bars a percentile is arithmetic, not evidence: both sides
+    of the boundary."""
+    for n, thin in ((5, True), (SS.MIN_BARS - 1, True), (SS.MIN_BARS, False)):
+        p = SS.build_side(_flat(n), DAY, _now(n - 1))
+        vol = next(i for i in p["indicators"] if i["id"] == "ind.vol")
+        said = any(a["path"] == "baselines[]" and a["why"] == "in_progress"
+                   for a in p["absent"])
+        if thin:
+            assert vol["percentile_of_session"] is None and vol["x"] is None and said, n
+        else:
+            assert vol["percentile_of_session"] is not None and vol["x"] is not None, n
+            assert not said, n
 
 
 def test_no_bars_at_all_is_declared_not_guessed():
@@ -472,7 +494,8 @@ def test_the_packet_builds_on_a_recorded_session(tmp_path, monkeypatch):
     p = SS.side_for_day(DAY, _now(199))
     assert p["bars"]["count"] == 200
     assert p["as_of"]["bar_index"] == 199
-    assert all(c["status"] in ("pass", "warn") for c in p["integrity"])
+    assert all(c["status"] == "pass" for c in p["integrity"]), \
+        [c for c in p["integrity"] if c["status"] != "pass"]
 
 
 # --- the read row -------------------------------------------------------------

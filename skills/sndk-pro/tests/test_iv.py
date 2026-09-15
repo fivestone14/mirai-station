@@ -5,13 +5,17 @@ import synth
 
 
 def test_rebuild_recovers_true_iv_from_quotes():
+    # the live pathology verbatim: every ITM call arrives at 4.9 (stale-spot
+    # artifact) and every ITM put at 0.0 (unsolvable). After the rebuild EVERY
+    # leg within 8% of spot carries the IV its quotes solve to — none keeps
+    # the provider's number, on either side
     b = synth.book()
+    near = [c for c in b if abs(c["strike"] - synth.SPOT) <= 0.08 * synth.SPOT]
+    assert {c["iv"] for c in near} >= {4.9, 0.0}
     meta = sndk_feed.rebuild_iv(b, synth.SPOT, None)
-    assert meta["iv_rebuilt"] > 0
-    near = [c for c in b if abs(c["strike"] - synth.SPOT) <= 25
-            and c.get("iv_src") == "bs_mid"]
-    assert near, "near-the-money strikes must solve from quotes"
+    assert meta["iv_rebuilt"] >= len(near)
     for c in near:
+        assert c.get("iv_src") == "bs_mid", (c["strike"], c["right"], c["iv"])
         # true IV 0.5; the ±3% quote spread bounds the solve error
         assert 0.40 <= c["iv"] <= 0.60, (c["strike"], c["right"], c["iv"])
 
@@ -30,17 +34,6 @@ def test_rebuilt_iv_shared_across_rights():
     for ks, ivs in by_ks.items():
         assert set(ivs) == {"call", "put"}, ks
         assert ivs["call"] == ivs["put"], ks   # parity: one strike, one IV
-
-
-def test_garbage_itm_call_iv_never_survives():
-    # the live pathology verbatim: ITM call 4.9 (stale-spot artifact) with a
-    # sane put twin — after the rebuild NO strike near the money carries it
-    b = synth.book()
-    sndk_feed.rebuild_iv(b, synth.SPOT, None)
-    for c in b:
-        if abs(c["strike"] - synth.SPOT) <= 0.08 * synth.SPOT and c.get("iv"):
-            assert c["iv"] <= sndk_feed._IV_MAX
-            assert c["iv"] < 3.0, (c["strike"], c["right"], c["iv"])
 
 
 def test_parity_clamp_on_provider_fallback():

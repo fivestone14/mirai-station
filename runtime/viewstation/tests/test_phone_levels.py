@@ -154,46 +154,34 @@ def test_the_levels_ride_the_wrapper_and_reach_no_model(tmp_path, monkeypatch):
 
 # --- the phone's half --------------------------------------------------------
 
-def test_the_most_contracts_row_is_a_count_never_a_bar():
-    """A bar beside it measured something that did not choose it: on 66.9% of
-    replayed scans the most-contracts strike was not the heaviest gamma strike
-    in its own window, and on 09-02 its share sat under 1% on 100 of 186 scans
-    because its calls and puts cancel in the netted surface."""
-    row = PAGE.split("function lvRow")[1].split("\nfunction ")[0]
-    bar_block = row.split("if(r.kind === 'wall'){")[1].split("\n  }\n")[0]
-    assert "shareBarPct(r.share)" in bar_block, "the bar is built outside the wall branch"
-    assert row.count("shareBarPct(") == 1
-    assert "' contracts'" in row
-
-
 def test_the_light_note_is_hidden_without_a_referent():
-    """"Why it can look light" names the heaviest pile. The pile peaks AT the
+    """"Why it can look light" names the heaviest pile: which wall it is, how
+    heavy, and what the most-contracts strike holds — the 09-10 case, a put
+    pile further out carrying the most gamma. The pile peaks AT the
     most-contracts strike on 35.0% of scans and contains it on 40.6%, and then
     the strike does not look light at all; and a pile that is no wall is drawn
     nowhere. Distance is not the reason, and the note never says it is: the
-    first draft's "too far from price to count" was true on 3.4% of scans.
-
-    (Those three hiding cases are run in
-    test_heavier_draws_thicker_and_the_note_names_the_0910_case; this runs the
-    rest of what lightNote refuses to point at, and the page wiring.)"""
+    first draft's "too far from price to count" was true on 3.4% of scans."""
     assert "too far" not in PHONE and "too far" not in _code(PAGE)
     assert 'id="shLight" hidden' in PHONE, "the note must start hidden, not flash"
     assert "$('shLight').hidden = !note;" in PAGE, "the page no longer hides the note when it has no referent"
     if not _NODE:
         pytest.skip("node is not installed")
     got = _run("""
-      const lv = {most_contracts:{strike:1700, contracts:16419},
+      const lv = {most_contracts:{strike:1700, contracts:16419, traded_today:14066},
                   heaviest:{strike:1600, share_pct:15, role:'put_further', holds_most_contracts:false}};
-      console.log(JSON.stringify([
-        g.lightNote(lv) !== null,
-        g.lightNote({...lv, heaviest:{...lv.heaviest, role:'magnet'}}),
-        g.lightNote({...lv, heaviest:{...lv.heaviest, share_pct:null}}),
+      const pile = (k, v) => g.lightNote({...lv, heaviest:{...lv.heaviest, [k]:v}});
+      console.log(JSON.stringify({note: g.lightNote(lv), hidden: [
+        pile('role', null), pile('holds_most_contracts', true), pile('strike', 1700),
+        pile('role', 'magnet'), pile('share_pct', null),
         g.lightNote({...lv, most_contracts:{contracts:16419}}),
         g.lightNote({most_contracts:lv.most_contracts}),
-        g.lightNote(null)]));""")
-    # the control names its pile; an unknown role, a pile with no share, a
-    # strike with no price or no pile at all leaves nothing to point at
-    assert got == [True, None, None, None, None, None]
+        g.lightNote(null)]}));""")
+    assert got["note"] == {"side": "put", "further": True, "heavy": 1600, "share": 15,
+                           "strike": 1700, "count": 16419, "traded": 14066}
+    # a pile that is no wall, holds the strike or peaks at it; an unknown role, a
+    # pile with no share, a strike with no price or no pile at all: nothing to point at
+    assert got["hidden"] == [None] * 8
 
 
 def test_the_sheet_says_where_the_weight_is_and_stops():
@@ -307,22 +295,3 @@ def test_rows_order_by_price_merge_and_grey_out():
     assert b[1] == {"kind": "absent", "side": "put", "text": "None below price"}
     # nothing measured is three rows saying so, never zeros
     assert [r["text"] for r in rows["c"]] == ["Not measured"] * 3
-
-
-@pytest.mark.skipif(not _NODE, reason="node is not installed")
-def test_heavier_draws_thicker_and_the_note_names_the_0910_case():
-    got = _run("""
-      const lv={most_contracts:{strike:1700,contracts:16419,traded_today:14066},
-                heaviest:{strike:1600,share_pct:15,role:'put_further',holds_most_contracts:false}};
-      console.log(JSON.stringify({
-        w:[3.8,6.3,10.4,25.6,30,45].map(g.wallStroke), none:g.wallStroke(null),
-        note:g.lightNote(lv),
-        hid:[g.lightNote({most_contracts:lv.most_contracts, heaviest:{...lv.heaviest, role:null}}),
-             g.lightNote({most_contracts:lv.most_contracts, heaviest:{...lv.heaviest, holds_most_contracts:true}}),
-             g.lightNote({most_contracts:lv.most_contracts, heaviest:{...lv.heaviest, strike:1700}})]}));""")
-    w = got["w"]
-    assert w == sorted(w) and w[0] > 1.2 and w[-1] == w[-2] == 7.6    # monotone, capped at 30%
-    assert got["none"] == 1.8                                           # a default, never a claim
-    assert got["note"] == {"side": "put", "further": True, "heavy": 1600, "share": 15,
-                           "strike": 1700, "count": 16419, "traded": 14066}
-    assert got["hid"] == [None, None, None]

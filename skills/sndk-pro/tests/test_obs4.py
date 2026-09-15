@@ -12,8 +12,6 @@ two typical minutes as they stood at that minute)."""
 import json
 from datetime import datetime, timedelta
 
-import pytest
-
 import sndk_read as SR
 from synth import reader_row as mkrow, _last_call, T0, rich_row, scene_of
 
@@ -67,7 +65,7 @@ def test_the_since_window_starts_where_price_was():
     fr = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0,
                                   bars=_flat_minutes(5))
     assert fr["held_between_since_last_read"] == {"low": 1518.45, "high": 1557.53}
-    assert fr["spot_change_sigma"] == pytest.approx(-0.59, abs=0.01)
+    assert (fr["spot_change_dollars"], fr["spot_change_sigma"]) == (-34.53, -0.59)
     assert fr["move_threshold_dollars"] == 10.0
     assert fr["frame_is"] == "a move"
 
@@ -170,7 +168,7 @@ def test_the_opening_box_forms_over_thirty_minutes_then_freezes():
     # sits (inside on 92% of scans by construction)
     assert rb["in_force"]["froze_at"] == rb["opening"]["formed_over"].split("-")[1]
     assert rb["in_force"]["standing_for_min"] == 0
-    assert "live_spot_is" not in rb["in_force"] and "formed_over" not in rb["in_force"]
+    assert set(rb["in_force"]) == {"low", "high", "froze_at", "standing_for_min", "is_the_opening_box"}
     assert "breaks_today" not in rb
 
 
@@ -232,13 +230,15 @@ def test_a_break_price_has_walked_back_into_says_when():
 
 
 def test_a_poke_inside_the_noise_floor_is_not_a_break():
-    """A poke past a box by less than the move bar is the tape breathing, not a
-    break. Here minutes are $2 wide, so the bar is $4: 1504 sits $3 over the
-    1501 top and holds; 1506 sits $5 over it and breaks."""
-    poke = _tape([1500] * 16 + [1504])
-    quiet = SR.ranges_block(poke, T0, "2026-07-31", bars=_minutes_under(poke))
-    assert "breaks_today" not in quiet
-    assert quiet["in_force"]["high"] == 1501.0        # price is over it and the box stands
+    """A poke past a box by no more than the move bar is the tape breathing, not
+    a break — the rulebook says a box breaks by MORE than the bar. Here minutes
+    are $2 wide, so the bar is $4: 1504 sits $3 over the 1501 top and 1505
+    exactly the bar, and both hold; 1506 sits $5 over it and breaks."""
+    for held in (1504, 1505):
+        poke = _tape([1500] * 16 + [held])
+        quiet = SR.ranges_block(poke, T0, "2026-07-31", bars=_minutes_under(poke))
+        assert "breaks_today" not in quiet, held
+        assert quiet["in_force"]["high"] == 1501.0    # price is over it and the box stands
     far = _tape([1500] * 16 + [1506])
     broke = SR.ranges_block(far, T0, "2026-07-31", bars=_minutes_under(far))
     assert broke["breaks_today"]["count"] == 1
@@ -301,6 +301,9 @@ def test_structure_says_where_the_weight_sits_and_nothing_else():
     sc = scene_of(row)
     st = sc["structure"]
     band = st["bands"][0]
+    # nothing else: no key beside where the weight sits, whatever it might be called
+    assert set(st) == {"bands", "air", "weight_above_spot_pp"}
+    assert set(band) == {"low", "high", "share_of_book_gamma_pp", "side"}
     assert (band["low"], band["high"], band["side"]) == (1240.0, 1245.0, "above")
     # shares are of the whole surface's absolute gamma: the band is its two
     # rungs (8 + 7), and "above" is every strike over the 1200 spot — a swapped
@@ -327,9 +330,13 @@ def test_structure_is_absent_not_empty_without_a_surface():
 
 # --- bug 4: the three-layer guard -------------------------------------------
 def test_inflections_of_a_banned_stem_are_banned():
+    """09-02 and the obs-3 live QA: "favoring", "pinned", "pulled" and "leaning"
+    each walked through while their stems were banned."""
     for text in ("favoring the upside", "targeting 1500", "expected to hold",
                  "the board is pinning", "leaning higher", "squeezing higher",
-                 "rallying into the close", "biased up", "supported at 1465"):
+                 "rallying into the close", "biased up", "supported at 1465",
+                 "price got pinned into the close", "price got pushed into the close",
+                 "price got pulled into the close", "price rallied into the close"):
         assert SR.banned_words(text), text
     for text in ("the heaviest strike on the board", "price sits just under 1500",
                  "nothing crossed since the last read", "open air above 1600",
@@ -406,13 +413,18 @@ def test_the_reviewer_parses_the_cli_envelope_and_fails_open(monkeypatch):
     assert SR.semantic_review([]) == []
 
 
-def test_the_doctrine_publishes_the_judgement_list_and_the_two_checks():
-    for w in sorted(SR._BANNED_JUDGEMENT):
-        assert w in SR._DOCTRINE
+def test_the_doctrine_publishes_every_banned_word_and_the_two_checks():
+    """The rulebook says the words that delete a sentence are "listed in full so
+    there is no guessing", so the list it prints is exactly the list the gate
+    enforces: not a word short, not a word over."""
+    listed = SR._DOCTRINE.split("WORDS THAT DELETE YOUR SENTENCE", 1)[1].split("The first group", 1)[0]
+    published = {w for line in listed.splitlines() if line.startswith("  ")
+                 for w in line.strip().split(", ")}
+    assert published == set(SR._BANNED_FORECAST + SR._BANNED_CAUSAL
+                            + SR._BANNED_LEVELS + SR._BANNED_JUDGEMENT)
     assert "Every inflection counts" in SR._DOCTRINE
     assert "second reviewer" in SR._DOCTRINE
     assert "`frame_is`" in SR._DOCTRINE and "`context.ranges`" in SR._DOCTRINE
-    assert SR.ERA >= "obs-4"          # obs-5 (the bar sidecar) rides on top of these rules
 
 
 def test_the_memory_slice_remembers_the_frame_the_box_and_the_witness():
@@ -421,15 +433,21 @@ def test_the_memory_slice_remembers_the_frame_the_box_and_the_witness():
     import sndk_rag
     import sndk_bars as SB
     rows = _tape([1500] * 16 + [1520, 1522])
+    out = {"wake": "price ran", "era": SR.ERA, "magnet_band": SR.magnet_band(rows[-1]),
+           "reading": {"quiet": True, "read": "Price moved up out of the opening box.", "abstain": "chosen"}}
+    slices = sndk_rag._slices_path(T0.date().isoformat())
+    # with no minute record on disk the extremes came from the scans, and the
+    # slice names that witness
+    scans_only = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+    sndk_rag.record_slice(rows[-1], out, scans_only, T0)
+    assert json.loads(slices.read_text().splitlines()[-1])["meta"]["extremes_from"] == "scans_every_2_min"
     bars = _minutes_under(rows)
     SB.write_day(T0.date().isoformat(), bars, T0)
     lc = _last_call(minutes_ago=10, spot=1500.0)
     fr = SR.frame_since_last_read(rows[-1], rows, lc, "price ran", False, T0, bars=bars)
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0, since_last_read=fr)
-    out = {"wake": "price ran", "era": SR.ERA, "magnet_band": SR.magnet_band(rows[-1]),
-           "reading": {"quiet": True, "read": "Price moved up out of the opening box.", "abstain": "chosen"}}
     sndk_rag.record_slice(rows[-1], out, sc, T0)
-    rec = json.loads(sndk_rag._slices_path(T0.date().isoformat()).read_text().splitlines()[-1])
+    rec = json.loads(slices.read_text().splitlines()[-1])
     m = rec["meta"]
     assert m["frame_is"] == "a move"
     assert m["opening_box"].startswith("broke up at ")

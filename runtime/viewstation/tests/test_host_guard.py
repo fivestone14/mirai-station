@@ -36,6 +36,7 @@ def _ok(host, version="HTTP/1.1"):
     "192.168.1.40:8787",      # LAN
     "10.0.0.7:8787",          # LAN, other RFC1918 block
     "172.16.4.9:8787",        # LAN, the 172.16/12 block
+    "[::ffff:192.168.1.40]:8787",   # a LAN address wearing a v6 prefix
     "mirai-station.local:8787",
     "box.tailnet-name.ts.net",
     "100.101.102.103",        # Tailscale CGNAT — NOT is_private in py3.12
@@ -48,6 +49,9 @@ def test_local_and_lan_names_are_allowed(host):
     "evil.com",
     "evil.com:8787",          # matching port earns nothing
     "8.8.8.8",                # public IP
+    # a public address wearing a v6 prefix: some Python versions call the
+    # mapped form private on the strength of the prefix
+    "[::ffff:8.8.8.8]:8787",
     "localhost.evil.com",     # suffix spoof
     "sub.ts.net.evil.com",    # ts.net suffix spoof
     "mirai-station.local.evil.com",
@@ -56,17 +60,14 @@ def test_attacker_controlled_names_are_refused(host):
     assert _ok(host) is False
 
 
-def test_absent_host_is_refused_on_http_1_1():
+@pytest.mark.parametrize("version,ok", [("HTTP/1.1", False), ("HTTP/1.0", True)])
+def test_an_absent_host_is_refused_unless_the_client_predates_http_1_1(version, ok):
     """HTTP/1.1 makes Host mandatory, so an absent one is a raw-socket caller.
     Refusing it also closes the absolute-form request line
     (GET http://evil.com/... HTTP/1.1), which carries no Host at all and would
-    otherwise skip this check entirely."""
-    assert _ok(None, "HTTP/1.1") is False
-
-
-def test_absent_host_still_allowed_for_http_1_0():
-    """Pre-1.1 clients legitimately omit Host, and no browser speaks 1.0."""
-    assert _ok(None, "HTTP/1.0") is True
+    otherwise skip this check entirely. Pre-1.1 clients legitimately omit Host,
+    and no browser speaks 1.0."""
+    assert _ok(None, version) is ok
 
 
 def test_extra_hosts_env_is_honored(monkeypatch):
@@ -88,18 +89,12 @@ def test_the_server_has_no_write_path_at_all():
     """08-23: the station went public and the reasoning switch — its one write — went with
     it. A visitor must not be able to silence the model. The guard that protected that POST
     (Origin / Sec-Fetch-Site) went too, because a read-only server does not need one; if a
-    write ever returns here, BOTH have to come back with it, which is what this pins."""
-    assert not hasattr(server.Handler, "do_POST")
-    assert not hasattr(server.Handler, "_same_site_ok")
-    assert not hasattr(server, "_CONTROL_PATH")
-
-
-def test_ipv4_mapped_ipv6_is_judged_by_the_embedded_address():
-    """[::ffff:8.8.8.8] is a public address wearing a v6 prefix; some Python
-    versions call the mapped form private on the strength of the prefix."""
-    assert _ok("[::ffff:8.8.8.8]:8787") is False
-    assert _ok("[::ffff:192.168.1.40]:8787") is True
-    assert _ok("[::1]:8787") is True
+    write ever returns here, BOTH have to come back with it, which is what this pins. Held on
+    the methods the handler answers, so a write cannot return as PUT, PATCH or DELETE either."""
+    answered = {m for m in dir(server.Handler) if m.startswith("do_")}
+    assert "do_GET" in answered
+    assert answered <= {"do_GET", "do_HEAD", "do_OPTIONS"}, \
+        f"the handler answers a method that writes: {sorted(answered)}"
 
 
 # ---------------------------------------------------------------------------
@@ -137,13 +132,3 @@ def test_voice_transcripts_are_never_served(tmp_path, monkeypatch):
     listed = [i["rel"] for i in server._raw_index()["state"]]
     assert not any(r.startswith("voice") for r in listed)
     assert "reversion/2026-08-06.jsonl" in listed
-
-def test_the_handler_keeps_every_method_do_get_needs():
-    """08-23, and the reason this test exists: a cut aimed at _same_site_ok took _send_json
-    with it, because the two were adjacent. Every /api route then raised AttributeError, and
-    do_GET's own error path called that same missing method — so the connection HUNG instead
-    of answering 500, and `/` kept working because static files go through _send_file. It
-    looked healthy from the browser. Pin the handler's surface so a removal cannot quietly
-    take a neighbour."""
-    for m in ("do_GET", "_send_json", "_send_file", "_deny", "_host_ok"):
-        assert callable(getattr(server.Handler, m, None)), f"Handler.{m} is gone"

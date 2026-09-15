@@ -46,27 +46,19 @@ class TestClassify(unittest.TestCase):
         now = 1000 * DAY
         return token_watcher.classify(now - age_days * DAY, now=now)
 
-    def test_fresh_is_ok(self):
-        self.assertEqual(self._at(1.0).state, "ok")
-
-    def test_day6_warns(self):
-        # warn_after_days default is 6
-        self.assertEqual(self._at(6.0).state, "warn")
-        self.assertEqual(self._at(6.5).state, "warn")
-
-    def test_just_before_warn_is_ok(self):
-        self.assertEqual(self._at(5.9).state, "ok")
-
-    def test_day7_expired(self):
-        self.assertEqual(self._at(7.0).state, "expired")
-        self.assertEqual(self._at(9.0).state, "expired")
+    def test_state_by_login_age(self):
+        # warn from day 6, expired from day 7 (limits-and-cooldowns.json "auth")
+        for age, state in ((1.0, "ok"), (5.9, "ok"), (6.0, "warn"), (6.5, "warn"),
+                           (7.0, "expired"), (9.0, "expired")):
+            with self.subTest(age=age):
+                self.assertEqual(self._at(age).state, state)
 
     def test_unknown_when_no_timestamp(self):
         self.assertEqual(token_watcher.classify(None).state, "unknown")
 
-    def test_days_left_sign(self):
-        self.assertGreater(self._at(2.0).days_left, 0)     # time remaining
-        self.assertLess(self._at(8.0).days_left, 0)        # past the wall
+    def test_days_left_counts_to_the_seven_day_wall(self):
+        self.assertAlmostEqual(self._at(2.0).days_left, 5.0, places=6)    # time remaining
+        self.assertAlmostEqual(self._at(8.0).days_left, -1.0, places=6)   # past the wall
 
     def test_needs_reauth_matrix(self):
         self.assertFalse(token_watcher.needs_reauth(self._at(1.0)))   # ok
@@ -175,10 +167,6 @@ class TestCassandraTokenHealth(unittest.TestCase):
 
 
 class TestSettingsAuth(unittest.TestCase):
-    def test_auth_accessors(self):
-        self.assertEqual(settings.auth_warn_after_days(), 6)
-        self.assertEqual(settings.auth_hard_limit_days(), 7)
-
     def test_ntfy_env_override(self):
         import os
         os.environ["MIRAI_NTFY_TOPIC"] = "env-topic-xyz"

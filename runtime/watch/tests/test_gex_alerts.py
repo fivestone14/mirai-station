@@ -75,14 +75,19 @@ class TestGexAlerts(unittest.TestCase):
     def test_breach_fires_redive_and_cooldown_suppresses(self):
         with TemporaryDirectory() as td:
             _write_expectation(Path(td))
-            # spot 7580 > call wall 7520 + buffer → concrete breach
-            _write_lens_rows(Path(td), [_row(spot=7580.0)])
+            # The engine records the crossing on the row and has already re-placed
+            # the call wall outward past spot, so the event is the only breach.
+            r = _row(spot=7580.0, cw=7620.0)
+            r["wall_breach"] = {"side": "call", "wall": 7520.0, "spot": 7580.0,
+                                "overshoot_sigma": 1.2}
+            _write_lens_rows(Path(td), [r])
             out1, sent1, dives1 = self._run(td)
             self.assertEqual(out1["breaches"], 1)
-            self.assertEqual(len(dives1), 1)             # re-dive fired
-            self.assertTrue(any("wall" in s for s in sent1))
-            out2, _, dives2 = self._run(td)              # same tick minutes → cooldown
+            self.assertEqual([(d["wall"], d["direction"]) for d in dives1], [(7520, 1)])
+            self.assertTrue(any("SPX broke its 7520 wall" in s for s in sent1))
+            out2, sent2, dives2 = self._run(td)          # same tick minutes → cooldown
             self.assertEqual(len(dives2), 0)
+            self.assertFalse(any("wall" in s for s in sent2))
 
     def test_no_breach_inside_walls(self):
         with TemporaryDirectory() as td:
@@ -100,7 +105,7 @@ class TestGexAlerts(unittest.TestCase):
             out1, _, _ = self._run(td, now=NOW_EOD)
             self.assertTrue(out1["eod_scored"])
             p = macro_mood.read_reliability(Path(td))
-            self.assertGreater(p.hits + p.misses, 0)      # posterior updated
+            self.assertEqual((p.hits, p.misses), (1.0, 0.0))   # bullish call, up day: a hit
             out2, _, _ = self._run(td, now=NOW_EOD)
             self.assertFalse(out2["eod_scored"])          # idempotent per day
 
@@ -195,21 +200,22 @@ class TestFeedHealthSiren(unittest.TestCase):
     # deaf to a second outage the same day.
 
     def test_proxy_recovery_pages_the_all_clear_and_says_when_it_broke(self):
+        broke, healed = NOW.replace(hour=9, minute=37), NOW.replace(hour=15, minute=51)
         with TemporaryDirectory() as td:
-            r = self._fresh_row()
-            r["gex_source"] = "spy_proxy\u00d710.0348"
+            r = _row()
+            r["ts"], r["gex_source"] = broke.isoformat(), "spy_proxy\u00d710.0348"
             _write_lens_rows(Path(td), [r])
-            out1, sent1 = self._run(td)
+            out1, _ = self._run(td, now=broke)
             self.assertEqual(out1["feed_sirens"], 1)
 
-            r["gex_source"] = "native"            # the chain came back
+            r["ts"], r["gex_source"] = healed.isoformat(), "native"   # the chain came back
             _write_lens_rows(Path(td), [r])
-            out2, sent2 = self._run(td)
+            out2, sent2 = self._run(td, now=healed)
             self.assertEqual(out2["feed_recoveries"], 1)
             self.assertTrue(any("off the proxy" in s for s in sent2))
             # the all-clear carries the time it broke, so a phone read at 16:00
             # can tell a five-minute blip from a lost session
-            self.assertTrue(any("degraded since" in s for s in sent2))
+            self.assertTrue(any("degraded since 09:37 ET" in s for s in sent2))
 
     def test_the_all_clear_is_sent_once_not_every_healthy_tick(self):
         with TemporaryDirectory() as td:

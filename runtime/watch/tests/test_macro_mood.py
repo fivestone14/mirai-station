@@ -4,19 +4,16 @@ tests were retired with the graph; breach/EOD wiring is covered by
 test_gex_alerts.py.)"""
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from watch.intraday import bayes, macro_mood, settings
+from watch.intraday import bayes, macro_mood
 
 ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 6, 11, 13, 0, tzinfo=ET)
-NOW_EOD = datetime(2026, 6, 11, 15, 56, tzinfo=ET)  # inside the EOD close window
 
 
 def _exp(direction=0.5, confidence=0.6, embedding=None):
@@ -108,26 +105,4 @@ class TestBuildExpectation(unittest.TestCase):
     def test_build_returns_none_on_analyzer_failure(self):
         self.assertIsNone(macro_mood.build_expectation(NOW, lambda: None, None))
         self.assertIsNone(macro_mood.build_expectation(NOW, lambda: (_ for _ in ()).throw(RuntimeError()), None))
-
-
-def _qqq_bet():
-    return {"ticker": "QQQ", "strike": 500.0, "option_type": "CALL",
-            "entry_price": 1.0, "entry_ts": "2026-06-11T10:00:00-04:00",
-            "dte": 0, "expiry": "2026-06-11", "potential": 0.6,
-            "histories": {}, "peak_snapshots": [], "recent_fires": []}
-
-
-def _providers(td, *, now=NOW, macro_redive=None, spot=5030.0):
-    feats = {"spot": spot, "call_wall": 5000.0, "put_wall": 4950.0, "implied_move": 40.0}
-    return Providers(
-        now=lambda: now,
-        market_check=lambda: SimpleNamespace(is_live=True, reason="t"),
-        pending_picks=lambda d: [],
-        fetch=lambda bets: {"features": {t: dict(feats) for t in bets},
-                            "prices": {t: 1.2 for t in bets},
-                            "mood": {"regime_label": "calm"}},
-        macro_redive=macro_redive,
-        state_dir=td, memory_dir=td / "memory",
-    )
-
 

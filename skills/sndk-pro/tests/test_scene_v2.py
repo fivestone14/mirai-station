@@ -6,18 +6,14 @@ them. That is the omit-never-null directive as executable rule.
 """
 import json
 from datetime import timedelta
-from zoneinfo import ZoneInfo
 
 import re
-from pathlib import Path
 
 import pytest
 
 import sndk_read as SR
 from synth import (NOW as T0, _book_rows, _every_scene_shape, _iv_rows, _oi_rows,
                    _oi_surface, rich_row, scene_of)
-
-ET = ZoneInfo("America/New_York")
 
 
 # --- scale.expected_move_today_asym -----------------------------------------
@@ -51,20 +47,6 @@ def test_asym_expected_move_names_the_side_the_budget_leans(down_share, word):
 
 
 # --- price.vwap_minus_live_spot_sigma ---------------------------------------
-def test_vwap_ships_as_sigma_distance():
-    """sr-7: vwap is a live-tape level, so it is the one distance still measured
-    from the LIVE spot while the book-derived blocks moved to the book's own
-    spot. sr-8: the name now carries the SUBTRACTION as well as the ruler —
-    vwap 1212 over spot 1200 on a 100 sigma is +0.12, positive because vwap is
-    ABOVE price."""
-    sc = scene_of(rich_row(vwap=1212.0))
-    assert sc["price"]["vwap_minus_live_spot_sigma"] == pytest.approx(0.12)
-    # ...and the sign is the opposite sense to a 30-min move, which is what
-    # 13 of 15 reviewers got backwards under the old name
-    below = scene_of(rich_row(vwap=1188.0))
-    assert below["price"]["vwap_minus_live_spot_sigma"] == pytest.approx(-0.12)
-
-
 def test_vwap_absent_when_unmeasured():
     sc = scene_of(rich_row(vwap=None))
     assert "vwap_minus_live_spot_sigma" not in sc["price"]
@@ -80,8 +62,11 @@ def test_vol_trend_reads_rising_and_falling():
 
 
 def test_vol_trend_flat_band_and_missing_history():
-    rows = _iv_rows(1.50, 1.51)                     # +1 pt < flat band 2.5
-    assert SR.vol_trend(rows, T0)["direction"] == "flat"
+    # the flat band is 2.5 vol pts either way: 2 pts reads flat, 3 does not
+    assert SR.vol_trend(_iv_rows(1.50, 1.52), T0)["direction"] == "flat"
+    assert SR.vol_trend(_iv_rows(1.50, 1.48), T0)["direction"] == "flat"
+    assert SR.vol_trend(_iv_rows(1.50, 1.53), T0)["direction"] == "rising"
+    assert SR.vol_trend(_iv_rows(1.50, 1.47), T0)["direction"] == "falling"
     assert SR.vol_trend([rich_row(ts=T0)], T0) is None    # no 30-min history
 
 
@@ -317,18 +302,35 @@ def test_walls_two_per_side_nearest_first():
     assert w["call"][0]["sigma"] == pytest.approx(0.4)
 
 
-def test_flip_band_is_told_once(monkeypatch):
+def test_flip_band_is_told_once():
     """sr-3: the flip family speaks through flip_block alone. hvl IS the flip
     and ct/pt are that centre ±0.25σ (923/923 recorded rows), so shipping them
     a second time as named levels dressed one measurement as three witnesses."""
     sc = scene_of(rich_row())
-    assert "named_levels_sigma_from_spot" not in sc
-    assert "lowest_named_level" not in sc
     assert set(sc["regime"]["flip"]) <= {"band_upper_edge_ct_sigma",
                                          "band_lower_edge_pt_sigma",
                                          "band_center_is_gamma_flip_sigma",
                                          "edges_are_center_plus_minus_sigma",
                                          "live_price_vs_band"}
+    # hvl/flip 1206, ct 1231 and pt 1181, as prices or as sigmas off 1200,
+    # appear nowhere outside regime.flip under any name
+    rest = json.loads(json.dumps(sc))
+    del rest["regime"]["flip"]
+    family = {1206.0, 1231.0, 1181.0, 0.06, 0.31, -0.19}
+    assert family.isdisjoint(_numbers_in(rest))
+
+
+def _numbers_in(x):
+    """Every number anywhere under `x`, whatever key or list it rides in."""
+    if isinstance(x, bool):
+        return set()
+    if isinstance(x, (int, float)):
+        return {x}
+    if isinstance(x, dict):
+        x = list(x.values())
+    if isinstance(x, list):
+        return set().union(*(_numbers_in(v) for v in x))
+    return set()
 
 
 # --- history flags (the under-pull guard) -----------------------------------
@@ -344,9 +346,24 @@ def test_the_unseen_level_flag_is_gone_and_stays_gone():
             for i in range(35)]
     row = rich_row(ts=T0, spot=1260.0)            # above everything prior
     sc = SR.build_scene(row, SR.magnet_band(row), [], rows + [row], T0)
-    assert "price_at_level_unseen_earlier_today" not in (sc.get("history") or {})
-    for k in ("session_high", "session_low", "live_spot"):
-        assert k in sc["price"], k
+    # on an otherwise ordinary tape nothing flags the new ground, under any name
+    assert "history" not in sc
+    assert _flags_in(sc["price"]) == []
+    # ...because the numbers it stood on already say it
+    assert sc["price"]["session_high"] == sc["price"]["live_spot"] == 1260.0
+    assert sc["price"]["session_low"] == 1200.0
+
+
+def _flags_in(x, path=""):
+    """Every true/false leaf under `x`, by path — the shape a finished verdict
+    takes whatever it is named."""
+    if isinstance(x, bool):
+        return [path]
+    if isinstance(x, dict):
+        return [p for k, v in x.items() for p in _flags_in(v, f"{path}.{k}")]
+    if isinstance(x, list):
+        return [p for i, v in enumerate(x) for p in _flags_in(v, f"{path}[{i}]")]
+    return []
 
 
 def test_tape_abnormal_flag_is_sigma_relative_not_a_fixed_pct():
@@ -371,22 +388,11 @@ def test_the_read_has_no_tools_and_the_doctrine_does_not_offer_any():
     contract. Every claim must resolve to a pointer INTO the scene, so anything
     fetched from outside could not be pointed at and could not survive the
     gate — the grant buys latency and licence with no reachable upside."""
-    # `--allowedTools` was never the gate. Probed directly, `claude -p` executed
-    # a Bash command under BOTH the old allow-listed argv and the new one — so
-    # removing the flag was a no-op and the doctrine's "no tools" claim was
-    # false until Bash and WebSearch were added to the DISALLOW list, which is
-    # the only thing that actually gates.
-    assert not hasattr(SR, "_ALLOWED_TOOLS")   # the empty grant itself is gone
-    src = Path(SR.__file__).read_text()
-    # the FLAG, not the word: it is discussed at length in the comments that
-    # explain why it was never doing anything
-    assert '"--allowedTools"' not in src
-    assert "Bash" in SR._NO_TOOLS and "WebSearch" in SR._NO_TOOLS
-    for gone in ("sndk_rag.py query", "WebSearch", "Outside world"):
+    # the command line that denies the tools is run in test_live_edges; this
+    # is the doctrine's half: the history CLI is a Bash command
+    for gone in ("sndk_rag.py query", "Bash", "WebSearch", "Outside world"):
         assert gone not in SR._DOCTRINE, gone
     assert "YOU HAVE NO TOOLS" in SR._DOCTRINE
-    # ...and the write side is untouched: a slice is still filed per read
-    assert "sndk_rag" in Path(SR.__file__).read_text()
 
 
 # --- SE-review regressions (08-02) ------------------------------------------
@@ -404,10 +410,16 @@ def test_wall_gamma_share_is_of_the_full_surface():
 
 def test_vol_trend_refuses_an_outage_shaped_window():
     """After a scan gap the nearest ≥28-min reference can be hours old — a Δ
-    shipped under a 30-min name would lie about its window."""
-    rows = [rich_row(ts=T0 - timedelta(hours=3), atm_iv=1.50),
-            rich_row(ts=T0, atm_iv=1.60)]
-    assert SR.vol_trend(rows, T0) is None
+    shipped under a 30-min name would lie about its window. The reference must
+    sit 28 to 45 minutes back, both ends included."""
+    def reference_back(minutes):
+        return SR.vol_trend([rich_row(ts=T0 - timedelta(minutes=minutes), atm_iv=1.50),
+                             rich_row(ts=T0, atm_iv=1.60)], T0)
+    assert reference_back(27) is None
+    assert reference_back(28) == reference_back(45) == {
+        "direction": "rising", "iv_change_last_30min": 10.0}
+    assert reference_back(46) is None
+    assert reference_back(180) is None
 
 
 def test_momentum_shares_use_the_window_intersection():
@@ -464,7 +476,8 @@ def test_single_strike_book_makes_no_tie_claim():
     m = sc["magnet"]
     assert m["top_strikes"] == [{"strike": 1300.0,
                                  "share_of_book_gamma_pp": 100.0}]
-    assert "is_a_tie" not in m and "top_strike_lead_pp" not in m
+    assert "top_strike_lead_pp" not in m
+    assert _flags_in(m) == [] and "tie" not in json.dumps(m)
 
 
 def test_nan_masses_cannot_fabricate_confidence():
@@ -559,7 +572,8 @@ def test_magnet_ships_the_lead_not_a_tie_verdict():
     finished verdict, and true on ~95% of August scans. The top strike's lead
     over the runner-up is the evidence; a threshold is not."""
     m = scene_of(rich_row())["magnet"]
-    assert "is_a_tie" not in m
+    # no verdict under any name: no true/false leaf, no tie word
+    assert _flags_in(m) == [] and "tie" not in json.dumps(m)
     assert m["top_strike_lead_pp"] == pytest.approx(30.0)   # 60% − 30%
 
 
@@ -651,18 +665,14 @@ def test_clock_carries_the_calendar():
     block to the SESSION calendar alone: book_age_min left for data_sources,
     where how old a measurement is sits beside the measurement."""
     ck = scene_of(rich_row())["clock"]
-    assert ck["session_date"] == "2026-07-31"
-    # sr-8: `minutes_since_open` went — the two summed to 389 on 4,148 of 4,149
-    # recorded scans, and the question actually asked of this block is whether
-    # a 30-minute call has 30 minutes of tape left to resolve in.
-    assert ck["minutes_to_close"] == 240
-    assert "minutes_since_open" not in ck
-    # rich_row carries no expiries
-    assert ck["front_expiry"] == {"days_to_expiry": 3}
-    assert "weekday" not in ck                    # == dte on every session; one
-                                                  # fact must not wear two names
-    assert "book_age_min" not in ck               # a measurement's age is not
-                                                  # the session calendar
+    # the whole block, so nothing else rides in it under any name: sr-8 cut
+    # `minutes_since_open` (it summed with minutes_to_close to 389 on 4,148 of
+    # 4,149 recorded scans, and the question asked here is whether a 30-minute
+    # call has 30 minutes of tape left); a weekday equals dte on every session
+    # and one fact must not wear two names; a measurement's age is not the
+    # session calendar. rich_row carries no expiries, so no expiry_date.
+    assert ck == {"session_date": "2026-07-31", "minutes_to_close": 240,
+                  "front_expiry": {"days_to_expiry": 3}}
 
 
 def test_front_expiry_date_rides_when_the_row_carries_it():
@@ -725,10 +735,13 @@ def _scene_at(rows, now, frozen=None):
 def test_a_fresh_book_drops_nothing():
     """sr-9: and says so by SAYING NOTHING. An empty drop list on every scan of
     every session is the doctrine repeating itself in the scene's own bytes; the
-    block now appears only when something actually went."""
-    sc = _scene_at(_book_rows(), T0)
-    assert "freshness_rules" not in sc
-    assert all(b in sc for b in _BOOK_BLOCKS)
+    block now appears only when something actually went. A book exactly at the
+    ceiling is still inside it — the same rule the reader's wake gate uses."""
+    rows = _book_rows()
+    for now in (T0, T0 + timedelta(minutes=SR.MAX_BOOK_AGE_MIN)):
+        sc = _scene_at(rows, now)
+        assert "freshness_rules" not in sc, now
+        assert all(b in sc for b in _BOOK_BLOCKS), now
 
 
 def test_a_book_past_its_ceiling_takes_every_block_built_on_it():
@@ -979,13 +992,19 @@ def test_vwap_is_the_one_distance_that_stays_on_the_live_spot():
     because vwap is a LIVE-TAPE level and measuring it against a spot the chain
     saw four minutes ago would put a live number in a stale frame. The leaf
     name is the guard: it says which ruler it used, and since sr-8 which way it
-    points."""
-    live = scene_of(rich_row())["price"]["vwap_minus_live_spot_sigma"]
+    points — vwap 1212 over spot 1200 on a 100 sigma is +0.12, positive because
+    vwap is ABOVE price."""
+    above = scene_of(rich_row(vwap=1212.0))["price"]
+    below = scene_of(rich_row(vwap=1188.0))["price"]
     book = scene_of(rich_row(meta={"chain_spot": 1190.0}))["price"]
-    assert live == pytest.approx(0.12)                 # (1212 − 1200) / 100
+    assert above["vwap_minus_live_spot_sigma"] == pytest.approx(0.12)
+    # the opposite sense to a 30-min move, which 13 of 15 reviewers got
+    # backwards under the old name
+    assert below["vwap_minus_live_spot_sigma"] == pytest.approx(-0.12)
+    # a book measured $10 away moves every book-derived sigma, and not this one
     assert book["vwap_minus_live_spot_sigma"] == pytest.approx(0.12)
-    assert "vwap_dist_sigma" not in book               # never the bare name
-    assert "vwap_dist_sigma_from_live_spot" not in book       # nor the old one
+    # one vwap distance, under one name, beside the level itself
+    assert {k for k in book if "vwap" in k} == {"vwap", "vwap_minus_live_spot_sigma"}
 
 
 def test_the_offset_converts_a_book_sigma_the_way_the_doctrine_says_it_does():

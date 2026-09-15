@@ -5,7 +5,7 @@ serves it only when it is a FILE. "/m" is a directory, so before this route
 existed the address a phone would actually be given 404'd while
 "/m/index.html" worked — the classic case of the documented URL and the working
 URL being different strings. The Android shell is configured with "/m", so
-these pin all three spellings onto the same file.
+test_every_route_answers pins all three spellings onto the same file, over HTTP.
 
 Driving do_GET needs no socket: the handler's only I/O goes through _send_file
 and _send_json, and a subclass that captures both exercises the route table
@@ -17,7 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -84,21 +84,6 @@ class _Wire(server.Handler):
         pass
 
 
-@pytest.mark.parametrize("route", ["/m", "/m/", "/m/index.html"])
-def test_every_spelling_of_the_phone_view_serves_one_file(route):
-    h = _Stub(route)
-    h.do_GET()
-    assert h.sent_json is None                      # not a 404
-    assert h.sent_file == server.STATIC / "m" / "index.html"
-
-
-def test_the_desktop_page_is_untouched_by_the_phone_route():
-    """/m must not shadow "/" — the viewstation is still the default view."""
-    h = _Stub("/")
-    h.do_GET()
-    assert h.sent_file == server.STATIC / "index.html"
-
-
 def test_the_phone_page_exists_on_disk():
     """Every file the two phone pages load — scripts, the typeface, the link
     between them — is served by the real route table as a file that exists. A
@@ -147,6 +132,8 @@ PAGE = (M / "page.js").read_text()
 THREAD = (M / "thread.html").read_text()
 ET = ZoneInfo("America/New_York")
 _NODE = shutil.which("node")
+_BUILT_AT = "2026-08-19T13:02:00-04:00"
+_NOW = "2026-09-10T11:00:00-04:00"
 
 
 def _glance(js, data=None, tz=None):
@@ -165,6 +152,123 @@ def _glance(js, data=None, tz=None):
     return json.loads(out.stdout)
 
 
+_PAGE_HARNESS = r"""
+const fs = require('fs'), vm = require('vm'), path = require('path');
+const M = __M__;
+const NET = JSON.parse(fs.readFileSync(0, 'utf8'));
+const RealDate = Date, NOW = RealDate.parse(NET.now);
+function FakeDate(...a){ return a.length ? new RealDate(...a) : new RealDate(NOW); }
+FakeDate.now = () => NOW;
+FakeDate.parse = RealDate.parse;
+FakeDate.prototype = RealDate.prototype;
+
+function node(){
+  const cl = new Set();
+  return {
+    attrs: {}, style: {}, dataset: {}, children: [], hidden: false, innerHTML: '', _text: '',
+    classList: {add: (...c) => c.forEach(x => cl.add(x)), remove: (...c) => c.forEach(x => cl.delete(x)),
+                contains: c => cl.has(c),
+                toggle: (c, on) => ((on === undefined ? !cl.has(c) : on) ? cl.add(c) : cl.delete(c))},
+    get className(){ return [...cl].join(' '); },
+    set className(v){ cl.clear(); String(v).split(/\s+/).filter(Boolean).forEach(x => cl.add(x)); },
+    get textContent(){ return this._text + this.children.map(c => c.textContent).join(''); },
+    set textContent(v){ this._text = String(v); this.children = []; },
+    setAttribute(k, v){ this.attrs[k] = String(v); },
+    appendChild(c){ this.children.push(c); return c; },
+    replaceChildren(...c){ this._text = ''; this.children = c; },
+    focus(){},
+    getBoundingClientRect: () => ({width: NET.width == null ? 380 : NET.width, height: 0}),
+  };
+}
+const els = {}, listeners = {document: {}, window: {}};
+const on = bag => (type, fn) => { (bag[type] = bag[type] || []).push(fn); };
+const document = {
+  body: node(), hidden: false, documentElement: {style: {setProperty(){}}},
+  getElementById: id => els[id] || (els[id] = node()),
+  querySelector: () => null, createElement: () => node(), addEventListener: on(listeners.document),
+};
+async function fetch(url){
+  if(NET.down) throw new TypeError('Failed to fetch');
+  const u = String(url), rows = key => ({rows: NET[key] || []});
+  const body = u.startsWith('/api/sndk/payload') ? NET.payload
+             : u.startsWith('/api/spot') ? (NET.live || {ticker: 'SNDK', spot: null})
+             : u.includes('path=sndk_reversion/') ? rows('diary')
+             : u.includes('path=sndk_reads/') ? rows('reads')
+             : u.includes('path=sndk_bars/') ? rows('bars') : {error: 'not found'};
+  return {status: 200, text: async () => JSON.stringify(body)};
+}
+const ctx = {document, fetch, Date: FakeDate, URLSearchParams, location: {search: ''},
+             setTimeout: () => 0, clearTimeout(){}, setInterval: () => 0, clearInterval(){}};
+ctx.window = ctx;
+ctx.addEventListener = on(listeners.window);
+vm.createContext(ctx);
+const run = code => vm.runInContext(code, ctx);
+run(fs.readFileSync(path.join(M, 'glance.js'), 'utf8'));
+run(fs.readFileSync(path.join(M, 'page.js'), 'utf8'));
+
+const settle = async () => { for(let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
+const view = n => ({text: n.textContent, cls: n.className, hidden: n.hidden, html: n.innerHTML,
+                    attrs: n.attrs, style: n.style, kids: n.children.map(view)});
+const dump = () => Object.assign({body: document.body.className},
+                                 ...Object.keys(els).sort().map(id => ({[id]: view(els[id])})));
+(async () => {
+  await settle();
+  console.log(JSON.stringify(await (async () => { __STEPS__ })()));
+})().catch(e => { console.error(e && e.stack || e); process.exit(1); });
+"""
+
+
+def _page(net, steps="return dump();", tz=None):
+    """Run the REAL page.js, over the real glance.js, in node against a
+    stand-in DOM and a station that answers from `net` — {"payload", "now"},
+    and optionally "live" (/api/spot), "reads", "diary", "bars" (the raw file
+    rows), "width" (the ladder's measured width) and "down" (nothing answers) —
+    and return what `steps` returns.
+
+    `steps` is the body of an async JS function run once the first load has
+    painted. In scope: NET (what the station answers next), run(code)
+    (evaluated inside the page, so loadPayload, loadSpot and WIN are
+    reachable), settle(), dump() (every element the page touched: text, class,
+    hidden, innerHTML, attributes, style, children), els and listeners. The
+    wall clock stands still at `now`. Skips when node is not installed."""
+    if not _NODE:
+        pytest.skip("node is not installed")
+    script = _PAGE_HARNESS.replace("__M__", json.dumps(str(M))).replace("__STEPS__", steps)
+    env = dict(os.environ, TZ=tz) if tz else None
+    out = subprocess.run([_NODE, "-e", script], input=json.dumps(net, default=str),
+                         capture_output=True, text=True, timeout=60, env=env)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def _board(scene, now=_NOW, payload=None, **net):
+    """A station holding one scan of `scene` taken at `now`, in the wrapper
+    /api/sndk/payload sends, with the reader's own gates. `payload` overrides
+    wrapper keys (row_ts, gates, levels); anything else is passed to _page."""
+    R = _reader()
+    wrapper = {"scene": scene, "row_ts": now, "session": now[:10],
+               "gates": {"stale_book_min": R.STALE_BOOK_MIN, "heartbeat_min": R.HEARTBEAT_MIN}}
+    wrapper.update(payload or {})
+    return {"payload": wrapper, "now": now, **net}
+
+
+def _card(got):
+    """The levels card as painted, top row first: (row class, label,
+    {child class: (text, the bar fill's style)})."""
+    return [(row["cls"], row["kids"][0]["text"],
+             {k["cls"]: (k["text"], k["kids"][0]["style"] if k["kids"] else None) for k in row["kids"][1:]})
+            for row in got["lvRows"]["kids"]]
+
+
+def _svg_texts(got, cls):
+    """[(class, text)] for every <text> the ladder drew whose class starts with `cls`."""
+    return re.findall(r'<text class="(%s[^"]*)"[^>]*>([^<]*)</text>' % re.escape(cls), got["svg"]["html"])
+
+
+def _right_foot(got):
+    return re.findall(r'<text class="p-axis"[^>]*text-anchor="end">([^<]*)</text>', got["svg"]["html"])
+
+
 def _built_payload(tmp_path, monkeypatch):
     """The payload the phone fetches, built by the real builder from one diary
     row in a throwaway state dir. No model call: sndk_payload only builds."""
@@ -180,7 +284,7 @@ def _built_payload(tmp_path, monkeypatch):
     d = tmp_path / "sndk_reversion"
     d.mkdir(parents=True)
     (d / "2026-08-19.jsonl").write_text(json.dumps(row) + "\n")
-    return snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    return snapshot.sndk_payload(datetime.fromisoformat(_BUILT_AT))
 
 
 def _phone_scene(payload):
@@ -196,7 +300,7 @@ def _reader():
     return sndk_read
 
 
-def test_the_regime_word_carries_no_claim_about_what_price_will_do():
+def test_the_regime_word_carries_no_claim_about_what_price_will_do(tmp_path, monkeypatch):
     """The gloss under the regime word said "walls hold" or "walls give way",
     read off the gamma sign. That is a claim that hedging damps or speeds a
     move — the sentence the model is forbidden to write (sndk_read.py's
@@ -207,18 +311,34 @@ def test_the_regime_word_carries_no_claim_about_what_price_will_do():
     So the gamma sign reaches no pixel at all now: not the gloss, not the card,
     not the footer, not a colour. The regime word stands alone. Its whole blast
     radius, if it ever came back, should be one sentence and not the
-    instrument."""
+    instrument. The builder still ships the sign, so the real page is painted
+    from the real builder's scene under every sign, and all of them paint
+    alike."""
     code = _code_only(GLANCE) + _code_only(PAGE)
-    assert "gamma_sign" not in code, "the phone reads the gamma sign again"
-    assert "gammaIsLong" not in code
     for gone in ("walls hold", "walls give way"):
         assert gone not in code, gone
-    # nor a wash or class keyed on the sign
-    for cls in ("regime-wash", "r-long", "r-short", ".wash"):
-        assert cls not in PHONE, cls
-    assert "Regime not measured" in PAGE
+    payload = _built_payload(tmp_path, monkeypatch)
+    assert _phone_scene(payload)["regime"]["gamma_sign"] == "negative", \
+        "the builder no longer ships the sign this test varies"
+    painted = {}
+    for sign in ("negative", "positive", "unknown", None):
+        p = json.loads(json.dumps(payload, default=str))
+        regime = _phone_scene(p)["regime"]
+        if sign is None:
+            regime.pop("gamma_sign")
+        else:
+            regime["gamma_sign"] = sign
+        painted[sign] = _page({"payload": p, "now": _BUILT_AT})
+    assert painted["negative"]["regWord"]["text"] == "Trending"
+    for sign, got in painted.items():
+        assert got == painted["negative"], f"the page paints gamma_sign={sign!r} differently"
+    # no word measured: it says so rather than falling silent
+    p = json.loads(json.dumps(payload, default=str))
+    _phone_scene(p)["regime"].pop("regime_label")
+    got = _page({"payload": p, "now": _BUILT_AT})
+    assert got["regWord"]["text"] == "" and got["regGloss"]["text"] == "Regime not measured"
     # the footer names what every mark is, rather than caveating a claim
-    assert "not a forecast of where price goes" in PAGE
+    assert "not a forecast of where price goes" in got["foot"]["text"]
 
 
 def test_vwap_is_a_price_at_a_position():
@@ -226,8 +346,6 @@ def test_vwap_is_a_price_at_a_position():
     unchanged) is (vwap - live spot)/sigma, so a NEGATIVE value means price is
     ABOVE its average. 13 of 15 reviewers read it backwards. A price cannot be
     read backwards."""
-    assert "vwap_minus_live_spot_sigma" not in PAGE                 # the ratio never printed
-    assert "vwapPrice(scene, diaryLast)" in PAGE
     got = _glance("""
       const sc = {price:{live_spot:1700, vwap_minus_live_spot_sigma:-0.5}, scale:{one_sigma_dollars:40}};
       console.log(JSON.stringify([
@@ -241,6 +359,13 @@ def test_vwap_is_a_price_at_a_position():
     assert got[1] == 1688.25
     # no sigma or no ratio: no price, never a guess
     assert got[2] is None and got[3] is None
+    # and the chart tags the VWAP rule with that price, on both paths
+    scene = {"price": {"live_spot": 1700, "vwap_minus_live_spot_sigma": -0.5}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}],
+                       "put": [{"strike": 1660, "cluster_share_of_book_gamma_pp": 10}]}}
+    diary = [{"ticker": "SNDK", "ts": _NOW, "spot": 1700, "vwap": 1688.25}]
+    assert _svg_texts(_page(_board(scene)), "p-tag vwap") == [("p-tag vwap", "1,680")]
+    assert _svg_texts(_page(_board(scene, diary=diary)), "p-tag vwap") == [("p-tag vwap", "1,688")]
 
 
 def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
@@ -253,19 +378,19 @@ def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
     levels drew identically at the cap. At 30 the cap takes 6.4%. A per-scan
     maximum is still wrong: it makes the biggest wall full every scan and
     destroys comparison between days. gex null draws no bar AND no track: an
-    empty track reads as zero."""
-    # no second scale hiding in the page, and the page draws through the shared rules
-    assert "FULL = 20" not in PAGE
-    assert "wallStroke(l.gex)" in PAGE and "railWidth(l.gex" in PAGE and "shareBarPct(r.share)" in PAGE
-    assert "wallTier" not in PAGE + GLANCE
-    # `gex` is the INTERNAL name only; the scene entry ships the share as
-    # cluster_share_of_book_gamma_pp (sr-7/obs-2) and both files must read that
-    assert "cluster_share_of_book_gamma_pp" in GLANCE
-    assert "cluster_share_of_book_gamma_pp" in PAGE
+    empty track reads as zero.
+
+    The most-contracts row is a COUNT, never a bar. A bar beside it measured
+    something that did not choose it: on 66.9% of replayed scans the
+    most-contracts strike was not the heaviest gamma strike in its own window,
+    and on 09-02 its share sat under 1% on 100 of 186 scans because its calls
+    and puts cancel in the netted surface."""
     got = _glance("""
       const at = s => ({bar: g.shareBarPct(s), rail: g.railWidth(s, 20), stroke: g.wallStroke(s)});
       console.log(JSON.stringify({full: g.FULL_SHARE, zero: at(0), half: at(15), cap: at(30),
-                                  over: at(45), none: [g.shareBarPct(null), g.railWidth(null, 20)]}));""")
+                                  over: at(45), none: [g.shareBarPct(null), g.railWidth(null, 20)],
+                                  strokes: [3.8, 6.3, 10.4, 25.6, 30, 45].map(g.wallStroke),
+                                  noStroke: g.wallStroke(null)}));""")
     assert got["full"] == 30
     # all three are full at the same share...
     assert got["cap"]["bar"] == 100 and got["cap"]["rail"] == {"w": 20, "clipped": False}
@@ -275,17 +400,40 @@ def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
     # ...and past it nothing grows further, with the clip marked on the rail
     assert got["over"]["bar"] == 100 and got["over"]["stroke"] == got["cap"]["stroke"]
     assert got["over"]["rail"] == {"w": 20, "clipped": True}
-    # no share: no bar and no track, never a zero-width one
+    # heavier draws thicker, from 1.2px to 7.6px at the cap
+    strokes = got["strokes"]
+    assert strokes == sorted(strokes) and got["zero"]["stroke"] == 1.2 and strokes[-2:] == [7.6, 7.6]
+    # no share: no bar and no track, never a zero-width one, and a default stroke that claims nothing
     assert got["none"] == [None, None]
+    assert got["noStroke"] == 1.8
+    # the page draws through those rules, on the card and the chart at once
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
+             "magnet": {"top_strikes": [{"strike": 1700, "share_of_book_gamma_pp": 30}]},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 15}], "put": [{"strike": 1680}]}}
+    page = _page(_board(scene, payload={"levels": {"most_contracts": {"strike": 1700, "contracts": 9000}}}))
+    call, most, put = _card(page)
+    assert call[:2] == ("lv call", "Call wall")
+    assert call[2]["lv-bar"] == ("", {"width": "50.0%"}) and call[2]["lv-v"][0] == "15.0%"
+    assert put[:2] == ("lv put", "Put wall") and put[2]["lv-bar none"] == ("", None)
+    assert most[:2] == ("lv mag", "Most contracts")
+    assert most[2] == {"lv-k": ("1,700", None), "lv-n": ("9,000 contracts", None)}, "the most-contracts row grew a bar"
+    svg = page["svg"]["html"]
+    assert sorted(re.findall(r'<line class="p-wall (\w+)"[^>]*stroke-width:([\d.]+)', svg)) == \
+        [("call", str(got["half"]["stroke"])), ("put", str(got["noStroke"]))]
+    assert re.findall(r'<rect class="p-bar (\w+)"[^>]*width="([\d.]+)"', svg) == [("call", "10.0")]
 
 
 def test_a_refused_level_is_always_named():
-    """Exiled or refused by the legibility test, it becomes an edge marker
-    carrying its strike. That is the 2026-08-24 bug, where the heaviest wall on
-    the board reached no pixel at all."""
-    # the page names both kinds at the plot's edge rather than dropping them
-    assert "WIN.refused.concat(WIN.exiled)" in PAGE
-    assert "p-edge" in PAGE and "HEAVIEST" in PAGE
+    """Exiled or refused by the legibility test, a BOOK level becomes an edge
+    marker carrying its strike. That is the 2026-08-24 bug, where the heaviest
+    wall on the board reached no pixel at all.
+
+    A tape point has no strike, and ~70 exiled ones could take both slots while
+    the wall the gate names in 30px type reached no pixel — the very bug the
+    edge marker exists to prevent, coming back through the queue. So only walls
+    and magnets are named, walls before magnets (two denominators), split on
+    the price rather than the padded window, and never a level that already
+    has a rule."""
     got = _glance("""
       const w = g.solveWindow(
         [{y:1700, kind:'price'}, {y:1720, kind:'wall', side:'call'}, {y:1900, kind:'wall', side:'call'}],
@@ -295,15 +443,38 @@ def test_a_refused_level_is_always_named():
     assert got["exiled"] == [1900]      # past the 1.75-sigma radius
     assert got["refused"] == [1640]     # would flatten a $5 day into a line
     assert got["admitted"] == []
+    # price 1700 on a $2 day: every level past the nearest walls is exiled or refused
+    day = {"price": {"live_spot": 1700, "session_high": 1701, "session_low": 1699},
+           "scale": {"one_sigma_dollars": 40},
+           "magnet": {"top_strikes": [{"strike": 1800, "share_of_book_gamma_pp": 30}]},
+           "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}, {"strike": 1850}],
+                     "put": [{"strike": 1680, "cluster_share_of_book_gamma_pp": 10}],
+                     "call_heaviest_wall_behind_the_ladder": {"strike": 1900, "cluster_share_of_book_gamma_pp": 40},
+                     "put_heaviest_wall_behind_the_ladder": {"strike": 1690, "cluster_share_of_book_gamma_pp": 20}}}
+    # twenty minute bars far below the book: exiled tape, with no strike to name
+    bars = [{"ts": f"2026-09-10T09:{30 + i}:00-04:00", "close": 1500 + i} for i in range(20)]
+    edges = [text for _, text in _svg_texts(_page(_board(day, bars=bars)), "p-edge")]
+    # the second call wall has no share at all and still outranks the magnet; the
+    # refused put pile inside the window is named on its own side of price
+    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▼ 1,690 HEAVIEST"]
+    # a refused level on the strike of a wall already ruled is not named twice
+    day["walls"]["put"].append({"strike": 1690, "cluster_share_of_book_gamma_pp": 5})
+    day["walls"]["put_heaviest_wall_behind_the_ladder"] = {"strike": 1680, "cluster_share_of_book_gamma_pp": 20}
+    edges = [text for _, text in _svg_texts(_page(_board(day)), "p-edge")]
+    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▼ 1,690"]
 
 
 def test_the_magnet_never_shares_the_gex_gauge():
     """top_strikes shares are a fraction of mass_by_strike; wall gex is a
     fraction of net_by_strike. Two denominators must never share one gauge."""
-    assert "p-diamond" in PAGE
-    assert "railWidth(l.gex" in PAGE
-    tag = PAGE.split("if(l && l.kind === 'wall'){")[1].split("}")[0]
-    assert "railWidth" in tag                      # bars are drawn for walls only
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
+             "magnet": {"top_strikes": [{"strike": 1712, "share_of_book_gamma_pp": 30}]},
+             "walls": {"call": [{"strike": 1740, "cluster_share_of_book_gamma_pp": 12}],
+                       "put": [{"strike": 1660, "cluster_share_of_book_gamma_pp": 10}]}}
+    svg = _page(_board(scene))["svg"]["html"]
+    # a rail bar for each wall, and a diamond, never a bar, for the magnet's larger share
+    assert sorted(re.findall(r'<rect class="p-bar (\w+)"', svg)) == ["call", "put"]
+    assert len(re.findall(r'<rect class="p-diamond"', svg)) == 1
 
 
 def test_the_magnet_list_is_read_as_dicts(tmp_path, monkeypatch):
@@ -312,11 +483,11 @@ def test_the_magnet_list_is_read_as_dicts(tmp_path, monkeypatch):
     Array.isArray(mag[0]) went false on every scan, and the magnet never drew
     again — while nothing here noticed.
 
-    So the scene the real builder hands back is fed to the real glance.js: if
-    either end reshapes the list, the magnet stops drawing here too."""
-    assert "mag[0].strike" in PAGE                 # the page reads the lead for its rules
-    assert "mag[0][0]" not in PAGE
-    scene = _phone_scene(_built_payload(tmp_path, monkeypatch))
+    So the scene the real builder hands back is fed to the real glance.js and
+    the real page: if either end reshapes the list, the magnet stops drawing
+    here too."""
+    payload = _built_payload(tmp_path, monkeypatch)
+    scene = _phone_scene(payload)
     top = scene["magnet"]["top_strikes"]
     assert len(top) >= 2, "the fixture no longer builds runners to draw"
     got = _glance("""
@@ -327,6 +498,9 @@ def test_the_magnet_list_is_read_as_dicts(tmp_path, monkeypatch):
         [(top[0]["strike"], True, top[0]["share_of_book_gamma_pp"])]
     assert [(r["y"], r["share"]) for r in got["runners"]] == \
         [(t["strike"], t["share_of_book_gamma_pp"]) for t in top[1:]]
+    page = _page({"payload": payload, "now": _BUILT_AT})
+    assert len(re.findall(r'<line class="p-mag"', page["svg"]["html"])) == 1
+    assert _svg_texts(page, "p-tag mag") == [("p-tag mag", f"{top[0]['strike']:,.0f}")]
 
 
 def test_no_magnet_tie_threshold():
@@ -352,8 +526,6 @@ def test_book_age_min_is_never_read():
     """Off-live, build_scene stamps clock.book_age_min from the row's own
     timestamp, so it reads ~0 however old the scan is. That is the failure that
     let a dead Schwab login look healthy for 3.1 days."""
-    assert "book_age_min" not in PAGE
-    assert "bookAge(PAY)" in PAGE
     got = _glance("""
       const now = Date.parse('2026-08-19T16:01:00-04:00');
       const fresh = {clock:{book_age_min:0}};
@@ -364,22 +536,43 @@ def test_book_age_min_is_never_read():
     assert got[0] == {"min": 180, "unknown": False}
     # no row_ts: unknown, never the scene's self-measured zero
     assert got[1] == {"min": None, "unknown": True}
+    # the masthead reads that age, not either of the scene's own clocks
+    scene = {"clock": {"book_age_min": 0}, "data_sources": {"options_book": {"age_min": 0}},
+             "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}
+    old = _page(_board(scene, payload={"row_ts": "2026-09-10T08:00:00-04:00"}))
+    assert (old["fresh"]["text"], old["fresh"]["cls"]) == ("LAST SCAN 3H", "fresh bad")
+    unstamped = _page(_board(scene, payload={"row_ts": None}))
+    assert (unstamped["fresh"]["text"], unstamped["fresh"]["cls"]) == ("LAST SCAN · AGE UNKNOWN", "fresh bad")
 
 
 def test_staleness_thresholds_come_from_the_payload():
-    assert "gates.stale_book_min" in PAGE and "gates.heartbeat_min" in PAGE
+    """stale_book_min and heartbeat_min ride payload.gates, so the reader's own
+    numbers decide when the masthead warns, when it calls the book dead and
+    when the price is withdrawn — never a copy in the page. Judged on gates the
+    page's fallbacks (6 and 60) would call differently, at each boundary."""
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}
+    gates = {"stale_book_min": 20, "heartbeat_min": 90}
+
+    def aged(minutes, **net):
+        row_ts = (datetime.fromisoformat(_NOW) - timedelta(minutes=minutes)).isoformat()
+        return _page(_board(scene, payload={"row_ts": row_ts, "gates": gates}, **net))
+
+    live = {"ticker": "SNDK", "spot": 1701}
+    assert [aged(m, live=live)["fresh"]["cls"] for m in (20, 21, 90, 91)] == \
+        ["fresh", "fresh warn", "fresh warn", "fresh bad"]
+    # with no live quote, the price stands until the payload's heartbeat, not the page's
+    assert aged(90)["px"]["text"] == "1,700.00"
+    assert aged(91)["px"]["text"] == "—"
 
 
 def test_the_countdown_does_not_age_silently():
     """minutes_to_close is computed at scan time. A countdown read hours later
     is a lie, and it is the one label on the plot that ages without saying so."""
-    ladder = PAGE.split("function paintLadder")[1].split("\nfunction ")[0]
-    foot = ladder.split("let rightFoot")[1].split("if(rightFoot)")[0]
-    assert "if(st.stale)" in foot and "minutes_to_close" in foot
-    assert foot.index("if(st.stale)") < foot.index("minutes_to_close"), \
-        "the countdown is chosen before the staleness of the scan is asked"
-    stale = foot.split("if(st.stale)")[1].split("} else")[0]
-    assert "'SCAN '" in stale, "a stale scan no longer says which scan it is"
+    scene = {"clock": {"minutes_to_close": 178}, "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+    assert _right_foot(_page(_board(scene, payload={"row_ts": "2026-09-10T10:59:00-04:00"}))) == ["2H 58M LEFT"]
+    # two hours stale: the foot says which scan it is instead
+    assert _right_foot(_page(_board(scene, payload={"row_ts": "2026-09-10T09:00:00-04:00"}))) == ["SCAN 09:00"]
 
 
 def test_the_reading_is_sourced_by_reading_ts_and_never_shown_without_its_age():
@@ -397,14 +590,6 @@ def test_the_reading_is_sourced_by_reading_ts_and_never_shown_without_its_age():
     assert m, "the phone's book ceiling is no longer a literal"
     ceiling = float(m.group(1))
     assert ceiling == _reader().STALE_BOOK_MIN, "the phone and the reader disagree on when a book is stale"
-    # obs-1 removed the LAST READING blanking branch with the expired tier. The
-    # invariant this test is named for survives and is now unconditional: the
-    # age is written on every painted reading, so a reading can never appear
-    # without one. Genuine ABSENCE is still its own message.
-    assert "NO READING TODAY" in PAGE
-    assert "LAST READING" not in PAGE
-    body = PAGE.split("function paintRead")[1].split("function ")[0]
-    assert body.count("age.textContent") == 2      # the absent case, then always
     got = _glance("""
       const at = s => '2026-09-10T' + s + ':00-04:00';
       const now = Date.parse(at('15:58'));
@@ -424,16 +609,30 @@ def test_the_reading_is_sourced_by_reading_ts_and_never_shown_without_its_age():
     assert got["pick"] == "The newer sentence."
     assert got["edge"] == ["fresh", "aged"]
     assert got["unstamped"] is None
+    # obs-1 removed the LAST READING blanking branch with the expired tier: the
+    # page paints a 251-minute reading, with its age and its clock, and genuine
+    # ABSENCE is still its own message
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}
+    old = _page(_board(scene, reads=[{"ts": _NOW, "reading_ts": "2026-09-10T06:49:00-04:00",
+                                      "reading": {"read": "The old sentence."}}]))
+    assert old["rdAge"]["text"] == "4H 11M"
+    assert old["rdLine"]["text"] == "06:49 · The old sentence."
+    none = _page(_board(scene))
+    assert none["rdLine"]["text"] == "NO READING TODAY" and none["rdAge"]["text"] == ""
 
 
 def test_model_output_never_touches_innerhtml():
     """It is model output. It never enters the SVG string either."""
-    assert "rdLine').innerHTML" not in PAGE
-    body = PAGE.split("function paintRead")[1].split("\nfunction ")[0]
-    assert "line.textContent =" in body
-    assert "innerHTML" not in _code_only(body), "paintRead writes markup"
-    ladder = PAGE.split("function paintLadder")[1].split("\nfunction ")[0]
-    assert "READS" not in ladder and "modelRead" not in ladder, "the reading reaches the SVG string"
+    said = '<img src=x onerror="alert(1)"> 1,750 holds the most contracts.'
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1750, "cluster_share_of_book_gamma_pp": 12}]}}
+    got = _page(_board(scene, reads=[{"ts": _NOW, "reading_ts": _NOW, "reading": {"read": said}}]))
+    assert got["rdLine"]["text"] == said
+    assert got["rdLine"]["html"] == "", "paintRead writes markup"
+    for region, el in got.items():
+        if isinstance(el, dict):
+            assert "onerror" not in el["html"] and "holds the most" not in el["html"], \
+                f"the reading reaches {region}'s markup"
 
 
 def test_no_dealer_behaviour_is_claimed_anywhere_on_the_phone():
@@ -456,11 +655,13 @@ def test_a_passed_wall_is_judged_against_the_price_on_screen():
     SEE — the 5-second quote — never of the book's spot or the shipped sigma,
     which were measured against a price that has since moved. Replayed over 8
     sessions, price stood beyond a wall the card still showed on 2.7% of
-    minutes, 5.8% on 09-10."""
-    assert "ref: q," in PAGE                                   # ref is the shown price
-    assert "levelRows(walls, most, lv.heaviest || null, ref)" in PAGE
-    assert PAGE.count("wallPassed(l.side, l.y, ref)") >= 3     # line, tag, rail bar
-    assert "wallPassed(side, k, ref)" in PAGE                  # the bug triangles
+    minutes, 5.8% on 09-10.
+
+    One hue, one meaning: green is the call side. A call wall price has already
+    passed sits BELOW price, which is not the call side any more, and it stays
+    green until the next scan relabels it. So from the moment the price on
+    screen passes it, its strike, bar and chart line go neutral and its label
+    says why — the weight is still true, the side is not."""
     # a missing price or strike is checked on BOTH sides: in JS null compares as
     # 0, so without the guard a put wall with no price reads as passed
     cases = [["call", 1700, 1700.01], ["call", 1700, 1700], ["call", 1700, 1699.99],
@@ -475,13 +676,47 @@ def test_a_passed_wall_is_judged_against_the_price_on_screen():
     # the price on screen is the live quote whenever there is one
     assert got["shown"] == {"v": 1705, "live": True}
     assert got["book"] == {"v": 1690, "live": False}
+    # the book saw 1690, under the call wall; the quote on screen is 1705, over it
+    scene = {"price": {"live_spot": 1690}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1700, "cluster_share_of_book_gamma_pp": 12}],
+                       "put": [{"strike": 1650, "cluster_share_of_book_gamma_pp": 9}]}}
+
+    def call_side(page):
+        rows = [row[:2] for row in _card(page) if row[1].startswith("Call wall")]
+        return rows, re.findall(r'class="p-(?:wall|tag|bar) (call|passed)\b', page["svg"]["html"])
+
+    rows, marks = call_side(_page(_board(scene, live={"ticker": "SNDK", "spot": 1705})))
+    assert rows == [("lv passed", "Call wall · Price passed it")]
+    assert marks == ["passed"] * 4, "the rule, tag, rail bar and bug do not all go neutral"
+    rows, marks = call_side(_page(_board(scene)))
+    assert rows == [("lv call", "Call wall")] and marks == ["call"] * 4
+    # and passed is neutral wherever it is drawn
+    assert ".lv.passed .lv-k{color:var(--i-mute)}" in PHONE
+    assert ".p-wall.passed{stroke:var(--rule-soft)}" in PHONE
+    assert ".p-tag.passed{fill:var(--i-mute)}" in PHONE
+    assert ".p-bar.passed{fill:var(--rule-soft)}" in PHONE
 
 
-def test_the_banned_fields_reach_no_pixel():
-    for f in ("magnitude_sigma", "dealer_flow", "breadth", "momentum",
-              "drift_toward", "gap_vs_own_history", "frozen_do_not_cite"):
-        assert f not in PAGE, f
-        assert f not in GLANCE, f
+def test_the_banned_fields_reach_no_pixel(tmp_path, monkeypatch):
+    """§14.17-18 of docs/phone-glance-spec.md: dealer_positioning (the rename
+    of dealer_flow), breadth, momentum, regime.charm with its
+    drifts_toward_strike, reading.magnitude_sigma — and the prose the page must
+    never parse, frozen_do_not_cite and the magnet lead's vs_own_history word.
+    Judged on what is painted rather than on which names the code spells: the
+    real builder's scene is painted without them and again with each one
+    planted where build_scene writes it, and the two paint alike."""
+    payload = _built_payload(tmp_path, monkeypatch)
+    said = {"ts": _BUILT_AT, "reading_ts": _BUILT_AT, "reading": {"read": "1600 holds the most contracts."}}
+    clean = _page({"payload": payload, "now": _BUILT_AT, "reads": [said]})
+    scene = _phone_scene(payload)
+    scene["breadth"] = {"lopsidedness_0_is_even": 0.31, "vs_own_history": "widest this month"}
+    scene["momentum"] = {"toward": 1750, "note": "building toward 1750"}
+    scene["dealer_positioning"] = {"net_delta_bn": 4.2, "net_delta_change_30min_bn": -0.3}
+    scene["regime"]["charm"] = {"drifts_toward_strike": 1750}
+    scene["frozen_do_not_cite"] = ["magnet unchanged 120m"]
+    scene["magnet"]["top_strike_lead_vs_own_history"] = "unusually wide"
+    said["reading"]["magnitude_sigma"] = 1.7
+    assert _page({"payload": payload, "now": _BUILT_AT, "reads": [said]}) == clean
 
 
 def _code_only(js):
@@ -497,55 +732,58 @@ def test_the_scene_is_read_by_its_current_names(tmp_path, monkeypatch):
     list; the phone was built against the old names and painted nothing while
     this file stayed green, because every pin here spelt the OLD names. The
     source of truth is build_scene (docs/sndk-payload-inventory.md). If a
-    rename lands upstream, this is the test that must go red — so each name is
-    checked at BOTH ends: the phone's code reads it, and the builder still
-    ships it (in the scene it actually builds, or, for the keys only some scans
-    carry, in the builder's own source)."""
-    code = _code_only(GLANCE) + _code_only(PAGE)
-    built = _phone_scene(_built_payload(tmp_path, monkeypatch))
+    rename lands upstream, this is the test that must go red — so the names
+    are checked at BOTH ends: the builder still ships each one (in the scene it
+    actually builds, or, for the keys only some scans carry, in the builder's
+    own source), and the real page paints every region of the real payload."""
+    payload = _built_payload(tmp_path, monkeypatch)
+    built = _phone_scene(payload)
     reader = Path(_reader().__file__).read_text()
     # checked WHERE the phone reads each one, not anywhere in the scene: the
     # builder also ships share_of_book_gamma_pp on structure.bands, so a rename
     # of the magnet's own key would still find the word somewhere
     where = {"regime_label": ("regime",), "session_date": ("clock",), "live_spot": ("price",),
+             "vs_prior_close_pct": ("price",),
              "days_to_expiry": ("clock", "front_expiry"), "expiry_date": ("clock", "front_expiry"),
              "cluster_share_of_book_gamma_pp": ("walls", "call", 0),
              "share_of_book_gamma_pp": ("magnet", "top_strikes", 0)}
     for current, path in where.items():
-        assert current in code, f"the phone no longer reads {current}"
         node = built
         for step in path:
             node = node[step] if isinstance(node, list) else (node or {}).get(step)
         assert isinstance(node, dict) and current in node, \
             f"the builder no longer ships {current} at {'.'.join(map(str, path))}"
-    # a vwap, a wall's age, an empty side, a heavier wall further out: not on
-    # every scan, so the builder's source must still write the key
-    for current in ("vwap_minus_live_spot_sigma", "unchanged_for_min", "unchanged_for_at_least_min",
-                    "_side_has_no_wall", "_heaviest_wall_behind_the_ladder"):
-        assert current in code, f"the phone no longer reads {current}"
+    # a vwap, an empty side, a heavier wall further out: not on every scan, so
+    # the builder's source must still write the key the tests above paint from
+    for current in ("vwap_minus_live_spot_sigma", "_side_has_no_wall", "_heaviest_wall_behind_the_ladder"):
         assert f'"{current}"' in reader, f"sndk_read.py no longer writes {current}"
-    # sr-8 moved `instrument` to the wrapper; reading it off the scene — or off
-    # `d`, the stash-transplant typo that threw on every paint — must not return
-    assert "PAY.instrument" in code
-    assert "d.instrument" not in code
-    # strikes-1 (09-05): the walls and the magnet live on the legacy Scene
-    # Payload now; the ladder must read them there or paint nothing
-    assert "PAY.legacy" in code
-    for stale in ("vwap_dist_sigma", "_side_clear", "unchanged_min",
-                  "heaviest_behind", "fe.dte", "fe.date", "regime.word"):
-        assert stale not in code, stale
+    # sr-8 moved `instrument` to the wrapper, and strikes-1 (09-05) moved the
+    # walls and the magnet to the legacy Scene Payload: the page must read both
+    # there or paint nothing
+    got = _page({"payload": payload, "now": _BUILT_AT})
+    assert got["ticker"]["text"] == payload["instrument"]
+    assert got["expiry"]["text"] == "EXP FRI"                            # 2026-08-21
+    assert got["regWord"]["text"] == built["regime"]["regime_label"].capitalize()
+    assert got["px"]["text"] == f"{built['price']['live_spot']:,.2f}"
+    assert got["chg"]["text"] == f"▲ {built['price']['vs_prior_close_pct']:.2f}%"
+    for side in ("call", "put"):
+        wall = built["walls"][side][0]
+        row = next(r for r in _card(got) if r[1].startswith(side.capitalize() + " wall"))
+        assert row[2]["lv-k"][0] == f"{wall['strike']:,.0f}"
+        assert row[2]["lv-v"][0] == f"{wall['cluster_share_of_book_gamma_pp']:.1f}%"
 
 
 def test_no_emoji_no_legend_no_greek():
     """Emoji are colour bitmaps: no theme token, cannot be tinted to mean a
     side, do not dim with the page. A legend is a confession that the marks do
     not read. And no Greek: the ruler is stated once, in English."""
-    import re as _re
     for blob in (PHONE, PAGE, GLANCE):
-        assert not _re.search(r"[\U0001F300-\U0001FAFF]", blob)
-    assert "σ" not in PHONE and "σ" not in PAGE
-    assert "TYPICAL MOVE $" in PAGE
+        assert not re.search(r"[\U0001F300-\U0001FAFF]", blob)
+        assert not re.search(r"[Ͱ-Ͽ]", blob), "a Greek letter is in the phone's source"
     assert "class=\"key\"" not in PHONE
+    got = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 80.4}}))
+    assert got["ruler"]["text"] == "TYPICAL MOVE $80"
+    assert not re.search(r"[Ͱ-Ͽ\U0001F300-\U0001FAFF]", json.dumps(got, ensure_ascii=False))
 
 
 def test_the_glance_itself_is_not_a_control():
@@ -583,18 +821,18 @@ def test_the_glance_itself_is_not_a_control():
     sheet = PHONE.split('id="sheet"')[1]
     assert "<button" in sheet, "the button lives outside the sheet"
 
-    assert PAGE.count("addEventListener('click'") == 1
-    click = PAGE.split("addEventListener('click'")[1].split("});")[0]
-    assert "data-sheet-close" in click and "dismiss()" in click
+    got = _page(_board({"price": {"live_spot": 1700}}), """
+      const clicks = (listeners.document.click || []).concat(listeners.window.click || []);
+      const before = JSON.stringify(dump());
+      clicks.forEach(f => f({target: {closest: () => null}}));
+      return {clicks: clicks.length, inert: JSON.stringify(dump()) === before};""")
+    assert got == {"clicks": 1, "inert": True}, "a second click handler, or one that acts on the page"
 
 
 def test_market_time_not_viewer_time():
     """The session is 09:30-16:00 in New York and the scene is stamped that
     way. Rendered locally on a Pacific machine the 12:12 scan reads 09:12 and
     the open reads 06:31."""
-    assert "toLocaleTimeString" not in PAGE      # every clock face goes through etTime
-    assert "etTime(" in PAGE
-    assert "etToday()" in GLANCE
     got = _glance("""
       const scan = Date.parse('2026-08-19T16:12:00Z');
       console.log(JSON.stringify({viewer: new Date(scan).getHours(), scan: g.etTime(scan),
@@ -609,21 +847,25 @@ def test_market_time_not_viewer_time():
     # 01:30 in New York is the 10th while the Pacific viewer is still on the 9th:
     # the one hour of the evening where a date that lost its zone reads wrong
     assert got["late"] == "2026-09-10", "the session date follows the viewer's clock"
+    # the page puts those clocks on screen for the same Pacific viewer
+    scene = {"clock": {"session_date": "2026-08-19"}, "price": {"live_spot": 1700, "vs_prior_close_pct": 2.0},
+             "scale": {"one_sigma_dollars": 40}, "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+    scan = "2026-08-19T12:12:00-04:00"
+    stale = _page(_board(scene, now="2026-08-19T13:00:00-04:00", payload={"row_ts": scan},
+                         reads=[{"ts": scan, "reading_ts": scan, "reading": {"read": "Said at the scan."}}]),
+                  tz="America/Los_Angeles")
+    assert _right_foot(stale) == ["SCAN 12:12"]
+    assert stale["lvWhen"]["text"] == "At the 12:12 scan"
+    assert stale["rdLine"]["text"] == "12:12 · Said at the scan."
+    # 22:30 on the 9th in Los Angeles is the 10th's session in New York: its change shows
+    late = _page(_board(dict(scene, clock={"session_date": "2026-09-10"}), now="2026-09-10T01:30:00-04:00",
+                        live={"ticker": "SNDK", "spot": 1734}), tz="America/Los_Angeles")
+    assert late["chg"]["hidden"] is False, "the change % was gated on the viewer's date"
 
 
 # --- amendments after the 2026-08-24 adversarial review --------------------
 # 38 findings raised, 23 survived refutation, 14 work items. These pin the ones
 # that changed behaviour, so a later "tidy" cannot walk them back.
-
-def test_only_book_levels_are_named_at_an_edge():
-    """A tape point has no strike, and ~70 exiled ones could take both slots
-    while the wall the gate names in 30px type reached no pixel — the very bug
-    the edge marker exists to prevent, coming back through the queue."""
-    assert "l.kind === 'wall' || l.kind === 'magnet'" in PAGE
-    assert "!drawnY.has(+l.y)" in PAGE            # a level with a rule is not named twice
-    assert "rank(b) - rank(a)" in PAGE            # kind before weight: two denominators
-    assert "leftover.filter(l => l.y > ref)" in PAGE   # split on price, not padded bounds
-
 
 def test_the_frozen_window_is_actually_frozen():
     """At every 5-second repaint the geometry is bit-identical and exactly one
@@ -632,32 +874,69 @@ def test_the_frozen_window_is_actually_frozen():
 
     A fresh window seats price 5.36% inside its own edge, already within the
     12% re-anchor band, so without a travel gate the board re-solved on every
-    quote — 296 of 300 ticks moved a rule. The gate has to sit under that
-    inset, which is derived here from glance.js's own padding rather than
-    retyped, so a change to either side is judged against the other."""
-    load = PAGE.split("async function loadPayload")[1].split("\nasync function ")[0]
-    assert "WIN = null;" in load                  # only a new payload earns a new window
-    assert "if(!WIN){" in PAGE
-    assert "WIN.anchor" in PAGE
-    assert "if(w2){ WIN = w2;" in PAGE            # a null re-solve must not blank WIN
-    pad = re.search(r"\(s\.hi-s\.lo\)\*([\d.]+)", GLANCE)
-    travel = re.search(r"Math\.abs\(ref - WIN\.anchor\) >= ([\d.]+)\*span0", PAGE)
-    assert pad and travel, "the window padding or the travel gate is no longer a literal"
-    p = float(pad.group(1))
-    inset = p / (1 + 2 * p)                       # where a fresh window seats price from its edge
-    assert float(travel.group(1)) < inset, "price can leave its window before it earns a new one"
-    # ...and a band to re-anchor in, at BOTH edges and the same width: a zero
-    # band only re-anchors once price has already left the window
-    band = re.search(r"ref < WIN\.lo \+ ([\d.]+)\*span0 \|\| ref > WIN\.hi - ([\d.]+)\*span0", PAGE)
-    assert band, "the re-anchor band is gone from one edge or both"
-    assert float(band.group(1)) == float(band.group(2)) > 0, "the re-anchor band is empty or lopsided"
+    quote — 296 of 300 ticks moved a rule. So the live quote is walked a
+    quarter of a percent of the window at a time, one and a half windows up
+    and back down: price is never painted outside its window, re-anchoring
+    stays rare, a ten-cent wobble inside the band moves nothing, and a new
+    payload still earns a new window."""
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}],
+                       "put": [{"strike": 1680, "cluster_share_of_book_gamma_pp": 10}]}}
+    got = _page(_board(scene, live={"ticker": "SNDK", "spot": 1700}), """
+      const quote = async v => { NET.live = {ticker: 'SNDK', spot: v}; await run('loadSpot()'); return run('WIN'); };
+      const start = run('WIN'), span = start.hi - start.lo;
+      let win = start, anchors = 0, outside = 0, ticks = 0;
+      for(const dir of [1, -1]){
+        for(let i = 1; i <= 600; i++){
+          const v = 1700 + dir * i * span * 0.0025, w = await quote(v);
+          if(w !== win){ anchors++; win = w; }
+          ticks++;
+          if(v < w.lo || v > w.hi) outside++;
+        }
+        await quote(1700); await run('loadPayload()'); win = run('WIN');
+      }
+      const wallY = () => els.svg.innerHTML.match(/class="p-wall call"[^>]*y1="([\\d.]+)"/)[1];
+      const inBand = await quote(start.hi - 0.08 * span), ys = new Set();
+      let moved = 0;
+      for(let i = 0; i < 50; i++){
+        if(await quote(start.hi - 0.08 * span + (i % 2 ? 0.1 : -0.1)) !== inBand) moved++;
+        ys.add(wallY());
+      }
+      NET.payload.scene.walls.call[0].strike = 1760;
+      await run('loadPayload()');
+      return {anchors, outside, ticks, wobble: {anchors: moved, wallYs: ys.size},
+              followsPayload: run('WIN').hi >= 1760};""")
+    assert got["outside"] == 0, "price was painted outside the window it is anchored in"
+    assert got["anchors"] * 10 < got["ticks"], f"re-anchored on {got['anchors']} of {got['ticks']} ticks"
+    assert got["wobble"] == {"anchors": 0, "wallYs": 1}, "a quote wobble in the band moved the board"
+    assert got["followsPayload"], "a new payload kept the old window"
 
 
-def test_no_nan_reaches_an_svg_attribute():
-    """With one_sigma_dollars absent the degenerate floor cannot fire, and one
-    distinct core level gives a zero span. A browser silently falls back to 0
-    for each invalid length and renders garbage pinned to the top edge."""
-    assert "if(!(span > 0))" in PAGE
+_PRICED = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+           "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+
+
+@pytest.mark.parametrize("width,scene,says", [
+    (380, {"price": {"live_spot": 1700}}, "NO PRICE MEASURED"),
+    (0, _PRICED, "CHART TOO NARROW"),
+    (239, _PRICED, "CHART TOO NARROW"),
+    (240, _PRICED, None),
+], ids=["zero-span", "not-laid-out", "one-pixel-short", "wide-enough"])
+def test_a_chart_it_cannot_draw_says_so_and_never_draws_nan(width, scene, says):
+    """A zero span: with one_sigma_dollars absent the degenerate floor cannot
+    fire, and one distinct core level gives a zero span. A browser silently
+    falls back to 0 for each invalid length and renders garbage pinned to the
+    top edge.
+
+    A container too NARROW: width is the dimension that can still be zero — a
+    card that has not laid out yet, or a hidden parent. The old guard measured
+    HEIGHT, which is now a constant, and the old line clamped inline with
+    Math.max(240, ...), which erased the very condition worth reporting."""
+    svg = _page(_board(scene, width=width))["svg"]
+    assert "NaN" not in json.dumps(svg)
+    assert re.findall(r">(CHART TOO NARROW|NO PRICE MEASURED)<", svg["html"]) == ([says] if says else [])
+    # sized by attribute, from the same numbers the viewBox carries
+    assert svg["attrs"]["viewBox"] == f"0 0 {svg['attrs']['width']} {svg['attrs']['height']}"
 
 
 def test_the_levels_card_asserts_no_direction():
@@ -687,10 +966,20 @@ def test_the_clear_side_bracket_is_qualified_and_conditional():
     """call_side_has_no_wall means no CALL-SIGNED cluster above spot; a wrongly-signed
     pile there is dropped from both pools and the flag still fires — true on 79
     of 79 rows of the reference diary, over a cluster carrying 34.6% of book
-    gamma. And a live tick can cross a wall of the other pool."""
-    assert "NO CALL WALL ABOVE" in PAGE and "NO PUT WALL BELOW" in PAGE
-    assert "if(cross) continue;" in PAGE
-    assert "_side_has_no_wall'] !== true" in PAGE  # === true stays necessary
+    gamma. And a live tick can cross a wall of the other pool. Only === true
+    draws it: a flag that is merely truthy is not a measurement."""
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 60},
+             "magnet": {"top_strikes": [{"strike": 1780, "share_of_book_gamma_pp": 30}]},
+             "walls": {"call_side_has_no_wall": True, "put": [{"strike": 1650, "cluster_share_of_book_gamma_pp": 9}]}}
+
+    def words(**net):
+        return re.findall(r">(NO (?:CALL|PUT) WALL (?:ABOVE|BELOW))<", _page(_board(scene, **net))["svg"]["html"])
+
+    assert words() == ["NO CALL WALL ABOVE"]
+    # a live tick under the put wall leaves a wall above price: the side is not empty as drawn
+    assert words(live={"ticker": "SNDK", "spot": 1640}) == []
+    scene["walls"]["call_side_has_no_wall"] = "true"
+    assert words() == []
 
 
 def test_an_absent_level_is_a_row_never_a_gap():
@@ -715,16 +1004,40 @@ def test_an_absent_level_is_a_row_never_a_gap():
 
 def test_the_tag_cap_respects_the_never_drop_tiers():
     """Without the tier a cap overflow could drop a heaviest_wall_behind_the_ladder, leaving the
-    thickest stroke on the plot with its price nowhere on screen."""
-    assert "(l.nearest || l.behind) ? 2 : 1" in PAGE
+    thickest stroke on the plot with its price nowhere on screen. Nine marks want a tag here —
+    the price chip, both nearest walls, both heaviest walls behind them, both second walls, the
+    lead magnet and VWAP — against a cap of seven."""
+    scene = {"price": {"live_spot": 1700, "vwap_minus_live_spot_sigma": 0.3}, "scale": {"one_sigma_dollars": 100},
+             "magnet": {"top_strikes": [{"strike": 1712, "share_of_book_gamma_pp": 30}]},
+             "walls": {"call": [{"strike": 1740, "cluster_share_of_book_gamma_pp": 12},
+                                {"strike": 1760, "cluster_share_of_book_gamma_pp": 5}],
+                       "put": [{"strike": 1660, "cluster_share_of_book_gamma_pp": 10},
+                               {"strike": 1640, "cluster_share_of_book_gamma_pp": 4}],
+                       "call_heaviest_wall_behind_the_ladder": {"strike": 1780, "cluster_share_of_book_gamma_pp": 40},
+                       "put_heaviest_wall_behind_the_ladder": {"strike": 1620, "cluster_share_of_book_gamma_pp": 30}}}
+    page = _page(_board(scene))
+    tags = [text for _, text in _svg_texts(page, "p-tag")]
+    assert "1,780" in tags and "1,620" in tags, f"a heaviest wall behind the ladder lost its tag: {tags}"
+    assert len(tags) + len(_svg_texts(page, "p-chiptx")) == 7
 
 
 def test_a_dropped_request_does_not_blank_the_board():
     """visibilitychange fires loadPayload on wake — exactly when the radio has
     just reassociated — and a transport failure was byte-identical to an empty
     station."""
-    assert "reached:false" in PAGE
-    assert "if(PAY && PAY.scene){ paintAll(); return; }" in PAGE
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+    got = _page(_board(scene), """
+      const before = JSON.stringify(dump());
+      NET.down = true; await run('loadPayload()');
+      const dropped = JSON.stringify(dump()) === before;
+      NET.down = false; NET.payload = {error: 'the station returned nothing'}; await run('loadPayload()');
+      return {dropped, empty: JSON.stringify(dump()) === before};""")
+    assert got == {"dropped": True, "empty": True}, "a failed request blanked a board holding a good payload"
+    # with nothing to fall back on, the failure is said out loud
+    cold = _page(_board(scene, down=True))
+    assert cold["body"] == "failed" and cold["fail"]["hidden"] is False
+    assert cold["fail1"]["text"] == "No SNDK scene yet."
 
 
 def test_the_card_text_cannot_be_smeared_by_a_deficit():
@@ -794,7 +1107,12 @@ def test_the_named_edge_carries_the_weight_the_bug_cannot():
     600: Roboto — the fallback whenever the webfont has not landed — ships no
     600 at all, so a requested 600 resolves upward to 700 and the emphasis
     silently collapses into the plain weight beside it."""
-    assert "namedEdge" in PAGE and "edgeCls" in PAGE
+    # the nearest call wall pushed off the plot is the one named; the heavier pile behind it is not
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1800, "cluster_share_of_book_gamma_pp": 12}],
+                       "put": [{"strike": 1680, "cluster_share_of_book_gamma_pp": 10}],
+                       "call_heaviest_wall_behind_the_ladder": {"strike": 1900, "cluster_share_of_book_gamma_pp": 40}}}
+    assert _svg_texts(_page(_board(scene)), "p-edge") == [("p-edge", "▲ 1,900 HEAVIEST"), ("p-edge lead", "▲ 1,800")]
     lead = _block(".p-edge.lead{")
     base = _block(".p-edge{")
     assert base is not None, ".p-edge has no rule"
@@ -823,7 +1141,7 @@ def test_only_a_content_hashed_name_earns_an_immutable_cache():
     assert server._looks_hashed("pjs-153fc85b7029")          # 12 hex, the real one
     assert server._looks_hashed("x-0123456789abcdef")        # longer is fine
     assert not server._looks_hashed("pjs")                   # no hash at all
-    assert not server._looks_hashed("pjs-153fc85b70")        # 10 hex, too short
+    assert not server._looks_hashed("pjs-153fc85b702")       # 11 hex, one short
     assert not server._looks_hashed("pjs-153fc85b7029g")     # g is not hex
     assert not server._looks_hashed("PlusJakartaSans-OFL")   # words, not a hash
 
@@ -900,17 +1218,3 @@ def test_the_two_phone_pages_share_one_palette():
     assert len(shared) >= 20, f"the pages have stopped sharing a palette ({len(shared)} tokens)"
     drift = {k: (a[k].strip(), b[k].strip()) for k in shared if a[k].strip() != b[k].strip()}
     assert not drift, f"the two phone pages disagree about {drift}"
-
-
-def test_a_passed_wall_drops_its_side_colour():
-    """One hue, one meaning: green is the call side. A call wall price has
-    already passed sits BELOW price, which is not the call side any more, and
-    it stays green until the next scan relabels it. So from the moment the
-    price on screen passes it, its strike, bar and chart line go neutral and
-    its label says why — the weight is still true, the side is not."""
-    row = PAGE.split("function lvRow")[1].split("\nfunction ")[0]
-    assert "(r.passed ? 'passed'" in row, "a passed wall keeps its side's class"
-    assert "tags.push('Price passed it')" in row
-    assert ".lv.passed .lv-k{color:var(--i-mute)}" in PHONE
-    assert ".p-wall.passed{stroke:var(--rule-soft)}" in PHONE
-    assert ".p-tag.passed{fill:var(--i-mute)}" in PHONE

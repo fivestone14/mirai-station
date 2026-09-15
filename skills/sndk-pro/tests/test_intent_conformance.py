@@ -834,8 +834,9 @@ def _one_scan_diary(state, book_age_min, forced=False):
 
 def test_a_stale_book_never_wakes_the_model(tmp_path, monkeypatch):
     """README, sr-6: a stale book (newest row older than the stated minutes)
-    never wakes the model and the row says `stale_book`. Measured both sides
-    of the README's own number."""
+    never wakes the model and the row says `stale_book`. Measured at the
+    README's own number: a book exactly that old is still read, and a tenth of
+    a minute older is stale."""
     limit = float(re.search(r"a stale book \(newest row > ([\d.]+) min old\)", README).group(1))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
     calls = []
@@ -844,11 +845,11 @@ def test_a_stale_book_never_wakes_the_model(tmp_path, monkeypatch):
         calls.append(1)
         return json.loads(json.dumps(_REPLY)), None, 1.0, None
     monkeypatch.setattr(SR, "call_the_model", model)
-    now, reads = _one_scan_diary(tmp_path, limit + 1)
+    now, reads = _one_scan_diary(tmp_path, limit + 0.1)
     SR.read_once(now=now)
     assert json.loads(reads.read_text().splitlines()[-1])["wake"] == "stale_book" and calls == []
     reads.unlink()
-    now, reads = _one_scan_diary(tmp_path, limit - 1)
+    now, reads = _one_scan_diary(tmp_path, limit)
     SR.read_once(now=now)
     assert json.loads(reads.read_text().splitlines()[-1])["wake"] != "stale_book" and calls == [1]
 

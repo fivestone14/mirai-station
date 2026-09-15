@@ -220,7 +220,9 @@ def test_the_market_gate_is_open_only_inside_a_regular_session(monkeypatch, gate
 @pytest.mark.parametrize("quote", [QUOTE, {**QUOTE, "lastPrice": None}], ids=["last", "mark"])
 def test_each_live_tick_appends_one_row_anchored_on_the_live_quote(broker, chain, market, quote):
     """Inside a session every tick appends exactly one row for today, its spot
-    the live Schwab quote and never the stale chain spot."""
+    the live Schwab quote and never the stale chain spot. A later tick reads
+    today's earlier rows as the day's memory: after the quote moves, its sigma
+    anchor is still the first row's."""
     now = market.at(_at(market.session_day(), time(11, 0)))
     broker.quote = quote
     broker.tape = _tape(_at(now.date(), SB.SESSION_OPEN), now)
@@ -232,10 +234,16 @@ def test_each_live_tick_appends_one_row_anchored_on_the_live_quote(broker, chain
     assert rows[0]["spot"] == live != STALE_CHAIN_SPOT
     assert rows[0]["prior_close"] == quote["closePrice"]
     assert rows[0]["meta"]["forced"] is False
+    assert rows[0]["meta"]["spot_source"] == "schwab_quote"
     assert chain == [live]
 
+    broker.quote = {k: v + 25.0 if k in ("lastPrice", "mark") and v is not None else v
+                    for k, v in quote.items()}
     assert sndk_hunter.tick(now + timedelta(minutes=2)) == 0
-    assert len(_diary(now)) == 2
+    rows = _diary(now)
+    assert len(rows) == 2 and rows[1]["spot"] == live + 25.0
+    assert rows[1]["sigma_anchor"] == rows[0]["sigma_anchor"] != rows[1]["sigma_live"]
+    assert chain == [live, live + 25.0]
 
 
 @pytest.mark.parametrize("failure", ["http", "raise", "no_client", "only_prior_close"])
@@ -395,10 +403,11 @@ def _raise(exc):
 
 FAILURES = {
     "timeout": _raise(subprocess.TimeoutExpired("claude", SR.CALL_TIMEOUT_S)),
-    "no_binary": _raise(FileNotFoundError("claude")),
+    "no_binary": _raise(FileNotFoundError("claude: command not found")),
     "non_zero_exit": lambda cmd, kw: _Done(1, "", "not logged in"),
     "unparseable": lambda cmd, kw: _Done(0, "a reply with no JSON object in it"),
 }
+FAILED_BECAUSE = {"timeout": "timeout", "no_binary": "command not found", "non_zero_exit": "not logged in"}
 CALLS = {"v1": lambda prompt: SR.call_the_model(prompt, SR.PINNED_MODEL),
          "v2": lambda prompt: B.call_the_model_v2(prompt)}
 
@@ -434,11 +443,15 @@ def test_the_reader_grants_the_model_no_tools(claude):
 @pytest.mark.parametrize("failure", sorted(FAILURES))
 def test_a_failed_model_call_comes_back_as_a_result_not_an_exception(claude, call, failure):
     """A model call that times out, cannot start, exits non-zero or replies
-    without JSON returns no reading and says why; it never raises."""
+    without JSON returns no reading and says why — an error naming the failure,
+    or, for a reply that will not parse, the reply itself; it never raises."""
     claude.answer = FAILURES[failure]
     obj, err, wall, raw = CALLS[call]("scene")
     assert obj is None
-    assert err or raw
+    if failure == "unparseable":
+        assert raw == "a reply with no JSON object in it"
+    else:
+        assert err and FAILED_BECAUSE[failure] in err
     assert isinstance(wall, (int, float))
     assert len(claude.commands) == 1
 
