@@ -550,7 +550,11 @@ def test_frozen_list_agrees_with_the_table_it_was_built_from():
     fz = v2.get("frozen_do_not_cite") or []
     assert any(f.startswith(f"{top['strike']:g} top of list for") for f in fz), fz
     mins = int([f for f in fz if "top of list" in f][0].split("for ")[1].rstrip("m"))
-    assert top["on_list_for_min"] >= mins >= SR.FROZEN_MIN
+    assert mins >= SR.FROZEN_MIN
+    # strikes-5: the frozen line and the table's own since-clock are one walk
+    since = datetime.strptime(top["leads_since"]["contracts"], "%H:%M").replace(
+        year=T0.year, month=T0.month, day=T0.day, tzinfo=ET)
+    assert mins == int((T0 - since).total_seconds() // 60)
 
 
 def test_regions_ride_on_the_legacy_scene_not_the_prompt():
@@ -1236,3 +1240,57 @@ def test_replay_carries_the_sentence_still_on_screen_across_a_failed_call(monkey
     monkeypatch.setattr(B, "build_scene_v2", spy)
     B.replay_day(T0.date().isoformat(), call_model=True)
     assert seen == [None] + ["1300 holds the most contracts."] * 3
+
+
+# ---------------------------------------------------------------- strikes-5 (2026-09-15)
+def _lead_rows(n=8, switch_at=5, drop_vol_at=None):
+    """Eight distinct books two minutes apart; 1300 leads contracts and volume
+    until book `switch_at`, then 1250 does; gamma stays with 1300 throughout."""
+    oi_a = {1200.0: (240, 120), 1250.0: (180, 90), 1300.0: (540, 270), 1350.0: (120, 60),
+            1400.0: (60, 30), 1150.0: (30, 15)}
+    oi_b = {**oi_a, 1250.0: (900, 400)}
+    start = T0 - timedelta(minutes=2 * (n - 1))
+    return [mkrow(start + timedelta(minutes=2 * i), oi=(oi_a if i < switch_at else oi_b),
+                  drop_vol=(i == drop_vol_at)) for i in range(n)]
+
+
+def test_leads_since_is_stated_after_two_books_and_names_who_led_before():
+    rows = _lead_rows()
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    st = v2["strikes"]
+    assert "leads_since" in st["columns"] and "led_before" in st["columns"]
+    r = recs(v2)
+    hhmm = lambda i: SR._ts(rows[i]).strftime("%H:%M")
+    # 1250 took contracts and volume at book 5 and has held three books
+    assert r[1250.0]["leads_since"] == {"contracts": hhmm(5), "volume": hhmm(5)}
+    assert r[1250.0]["led_before"] == {"contracts": {"strike": 1300, "until": hhmm(4)},
+                                       "volume": {"strike": 1300, "until": hhmm(4)}}
+    # 1300 has led gamma since the first book, with nobody before it
+    # rows_as_records carries every column as a key, so absence reads as None
+    assert r[1300.0]["leads_since"] == {"gamma": hhmm(0)} and r[1300.0]["led_before"] is None
+    for k, rec in r.items():
+        if k not in (1250.0, 1300.0):
+            assert rec["leads_since"] is None and rec["led_before"] is None
+    # one book into the new lead nothing is dated: the table says who ranks 1, not since when
+    v2b, _ = B.build_scene_v2(rows[5], rows[:6], SR._ts(rows[5]), None, None, flat_bars(30))
+    rb = recs(v2b)
+    assert rb[1250.0]["leads_since"] is None and rb[1250.0]["rank_by_contracts"] == 1
+    assert rb[1300.0]["leads_since"] == {"gamma": hhmm(0)}
+
+
+def test_a_book_that_measured_no_volume_breaks_the_volume_lead():
+    rows = _lead_rows(switch_at=99, drop_vol_at=3)          # 1300 leads everything all day
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    lead = recs(v2)[1300.0]
+    hhmm = lambda i: SR._ts(rows[i]).strftime("%H:%M")
+    # contracts and gamma reach back to the first book; volume restarts after the book that ranked nobody
+    assert lead["leads_since"] == {"contracts": hhmm(0), "volume": hhmm(4), "gamma": hhmm(0)}
+    assert lead["led_before"] is None
+    # a single book, or a table with a lead one book old, ships no lead columns at all
+    v2one, _ = B.build_scene_v2(rows[0], rows[:1], SR._ts(rows[0]), None, None, flat_bars(30))
+    assert "leads_since" not in v2one["strikes"]["columns"]
+
+
+def test_the_doctrine_names_the_lead_clocks():
+    for name in ("`leads_since`", "`led_before`", "`leads_since.contracts`", "two consecutive books"):
+        assert name in B.DOCTRINE_V2, name

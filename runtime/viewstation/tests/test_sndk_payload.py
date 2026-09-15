@@ -101,7 +101,7 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     assert "magnet" not in sc and "walls" not in sc
     assert d["legacy"]["status"] == "deprecated" and d["legacy"]["sent_to_model"] is False
     assert d["legacy"]["scene"]["magnet"]["top_strikes"][0]["strike"] == 1600.0
-    assert d["legacy"]["era"] == "obs-5" and d["era"] == "strikes-4"
+    assert d["legacy"]["era"] == "obs-5" and d["era"] == "strikes-5"
     assert d["gate_payload"]["magnet"] == 1600.0
     # the wrapper is the reader's own, byte for byte, with the same compact JSON inside
     assert d["user_prompt"].startswith("Read this scene cold and reply with the JSON object only.\n\nSCENE:\n")

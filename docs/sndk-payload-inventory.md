@@ -1,5 +1,14 @@
 # SNDK property inventory — in the scene payload vs not (living list)
 
+> **strikes-5 (2026-09-15).** The strike table says who has led each measure
+> since when: on the strike ranking 1 on contracts, volume today or dealer
+> gamma, `leads_since` carries the book time the lead began (stated once it
+> has held two consecutive distinct books) and `led_before` the strike that
+> led before it with `until`, its last book. A book that measured no volume
+> (the morning's carried books) ranks nobody and breaks the chain. The
+> `frozen_do_not_cite` "top of list for Nm" line is now the same walk over
+> the whole day, not a four-hour lookback.
+>
 > **strikes-4 (2026-09-14).** Two additions. `context.since_last_read.said_then`
 > is the sentence still on screen from the model's last reading, word for word, with `said_at`,
 > when it was written; the number gate's harvest skips it, so a figure the model

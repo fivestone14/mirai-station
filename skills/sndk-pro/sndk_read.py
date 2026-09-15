@@ -90,7 +90,13 @@ PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "strikes-4"           # bump on ANY change to the gates or the prompt.
+ERA = "strikes-5"           # bump on ANY change to the gates or the prompt.
+                            # strikes-5 (2026-09-15): the strike table says
+                            # who has led each measure since when and who led
+                            # before (leads_since, led_before), and the doctrine
+                            # names them. Bumped after the 09-15 close, so every
+                            # gate or payload change made before the 2026-09-16
+                            # open rides this one era.
                             # strikes-4 (2026-09-14): the model is shown the
                             # sentence still on screen from its last reading
                             # (context.since_last_read.said_then), so it can

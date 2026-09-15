@@ -180,7 +180,7 @@ def test_strikes_mode_end_to_end(board_state, monkeypatch):
     import sndk_board
     assert SR.read_once(now=NOW) == 0
     row = _rows(reads)[-1]
-    assert row["era"] == "strikes-4" and row["payload"] == "strikes" and row["legacy_kept"] is True
+    assert row["era"] == "strikes-5" and row["payload"] == "strikes" and row["legacy_kept"] is True
     assert seen["doctrine"] is sndk_board.DOCTRINE_V2
     scene = json.loads(seen["prompt"].split("SCENE:\n", 1)[1])
     assert "strikes" in scene and "magnet" not in scene and "walls" not in scene
@@ -188,7 +188,7 @@ def test_strikes_mode_end_to_end(board_state, monkeypatch):
     assert row["reading"]["sides"]["above"]["heavy"] == 1300.0
     assert row["gate"]["magnet"] == 1300.0                 # the gate still reads the legacy scene
     lg = [json.loads(l) for l in (tmp / "sndk_legacy" / f"{day}.jsonl").read_text().splitlines()]
-    assert len(lg) == 1 and lg[0]["era"] == "strikes-4" and lg[0]["magnet"] == 1300.0
+    assert len(lg) == 1 and lg[0]["era"] == "strikes-5" and lg[0]["magnet"] == 1300.0
 
 
 def test_a_call_keeps_the_list_it_showed_and_the_next_read_uses_it(board_state, monkeypatch):
