@@ -292,6 +292,7 @@ def test_a_dry_run_in_strikes_mode_writes_nothing(board_state, monkeypatch, caps
     assert SR.read_once(now=NOW, force=True, dry=True) == 0
     assert not reads.exists() and not (tmp / "sndk_legacy").exists()
     assert not (tmp / "sndk_side").exists()          # the side payload is not kept either
+    assert not (tmp / "sndk_payloads").exists()      # nor the message it would have sent
     out = capsys.readouterr().out
     assert '"payload": "strikes"' in out and '"strikes"' in out.split("--- scene handed to the model ---")[1]
 
@@ -380,3 +381,153 @@ def test_a_call_with_no_bill_leaves_no_cost_key(state, monkeypatch):
                         lambda *a, **k: (None, "timed out after 100s", 100.0, None))
     SR.read_once(now=NOW)
     assert "cost" not in _rows(reads_path)[-1]
+
+
+# ---------------------------------------------------------------- strikes-4 (2026-09-14)
+def test_a_spent_call_keeps_the_exact_message_it_sent(board_state, monkeypatch):
+    """The payload a call sends is filed before it leaves, in its own file: the
+    scene as an object, the rulebook once by hash, and a checksum proving the
+    pair rebuilds the sent prompt byte for byte."""
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    seen = {}
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        seen["prompt"], seen["doctrine"] = prompt, doctrine
+        seen["kept_before_the_answer"] = (tmp / "sndk_payloads" / f"{day}.jsonl").exists()
+        return _v2_reply(), None, 1.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    import sndk_board
+    assert SR.read_once(now=NOW) == 0
+    row = _rows(reads)[-1]
+    kept = SR.read_payloads(day)
+    assert seen["kept_before_the_answer"] and len(kept) == 1 and row["payload_kept"] is True
+    rec = kept[0]
+    assert rec["ts"] == row["ts"] and rec["era"] == row["era"] == SR.ERA and rec["wake"] == row["wake"]
+    assert rec["payload"] == "strikes" and rec["model"] == SR.PINNED_MODEL
+    assert SR.sent_prompt(rec) == seen["prompt"]
+    assert rec["scene"] == json.loads(seen["prompt"].split("SCENE:\n", 1)[1])
+    rules = tmp / "sndk_payloads" / "rules" / f"{rec['rules_sha']}.txt"
+    assert rules.read_text(encoding="utf-8") == seen["doctrine"] == sndk_board.DOCTRINE_V2
+    assert rec["builder_sha"]
+    # a line edited after the fact no longer proves itself
+    assert SR.sent_prompt({**rec, "scene": {**rec["scene"], "price": {}}}) is None
+
+
+def test_a_quiet_read_keeps_no_payload(state):
+    tmp, reads_path = state
+    reads_path.write_text(json.dumps(_call_row(NOW - timedelta(minutes=10))) + "\n")
+    SR.read_once(now=NOW)
+    assert _rows(reads_path)[-1]["wake"] == "quiet"
+    assert not (tmp / "sndk_payloads").exists()
+
+
+def test_a_payload_that_cannot_be_kept_never_stops_the_call(board_state, monkeypatch, capsys):
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    (tmp / "blocked").write_text("a file where the folder should be")
+    monkeypatch.setattr(SR, "_payloads_dir", lambda: tmp / "blocked")
+    called = []
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        called.append(prompt)
+        return _v2_reply(), None, 1.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    assert SR.read_once(now=NOW) == 0
+    row = _rows(reads)[-1]
+    assert called and row["wall_s"] == 1.0 and "payload_kept" not in row
+    assert "payload record skipped" in capsys.readouterr().out
+
+
+def test_a_paused_wake_keeps_nothing_and_a_timed_out_call_keeps_what_it_sent(board_state, monkeypatch):
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    control = tmp / "sndk_reads" / "control.json"
+    control.write_text(json.dumps({"reasoning": False}))
+    reads.write_text(json.dumps(_call_row(NOW - timedelta(minutes=70))) + "\n")
+
+    def refuse(*a, **k):
+        raise AssertionError("a paused wake must not call the model")
+    monkeypatch.setattr(SR, "call_the_model", refuse)
+    assert SR.read_once(now=NOW) == 0
+    assert _rows(reads)[-1].get("paused") is True
+    assert not (tmp / "sndk_payloads").exists()
+
+    control.write_text(json.dumps({"reasoning": True}))
+    seen = {}
+
+    def timed_out(prompt, model, timeout=None, doctrine=None):
+        seen["prompt"] = prompt
+        return None, "timeout", 180.0, None
+    monkeypatch.setattr(SR, "call_the_model", timed_out)
+    assert SR.read_once(now=NOW) == 0
+    row = _rows(reads)[-1]
+    assert row["error"] == "timeout" and row["payload_kept"] is True
+    kept = SR.read_payloads(day)
+    assert len(kept) == 1 and SR.sent_prompt(kept[0]) == seen["prompt"]
+
+
+def test_the_scene_payload_keeps_its_own_rulebook(state, monkeypatch):
+    tmp, reads_path = state
+    monkeypatch.setenv("SNDK_PAYLOAD", "scene")
+    reads_path.write_text(json.dumps(_call_row(NOW - timedelta(minutes=70))) + "\n")
+    seen = {}
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        seen["prompt"], seen["doctrine"] = prompt, doctrine
+        return None, "timeout", 100.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    SR.read_once(now=NOW)
+    rec = SR.read_payloads(NOW.date().isoformat())[-1]
+    assert seen["doctrine"] is None and rec["payload"] == "scene"
+    assert SR.sent_prompt(rec) == seen["prompt"]
+    rules = tmp / "sndk_payloads" / "rules" / f"{rec['rules_sha']}.txt"
+    assert rules.read_text(encoding="utf-8") == SR._DOCTRINE
+
+
+def test_code_version_reads_a_clone_packed_refs_and_a_worktree(tmp_path, monkeypatch):
+    import shutil
+    root = tmp_path / "plugin"
+    skill = root / "skills" / "sndk-pro"
+    skill.mkdir(parents=True)
+    for name in SR._BUILDER_SOURCES:
+        (skill / name).write_text(f"# {name}\n")
+    monkeypatch.setattr(SR, "_SKILL_DIR", skill)
+    git = root / ".git"
+    (git / "refs" / "heads" / "feat").mkdir(parents=True)
+    (git / "HEAD").write_text("ref: refs/heads/feat/x\n")
+    (git / "refs" / "heads" / "feat" / "x").write_text("ab" * 20 + "\n")
+    v = SR._code_version()
+    assert v["commit"] == "ab" * 6 and v["branch"] == "feat/x" and len(v["builder_sha"]) == 12
+
+    (git / "refs" / "heads" / "feat" / "x").unlink()
+    (git / "packed-refs").write_text("# pack-refs with: peeled\n" + "cd" * 20 + " refs/heads/feat/x\n")
+    assert SR._code_version()["commit"] == "cd" * 6
+
+    # a worktree: .git is a file naming its gitdir relatively; HEAD there is detached
+    shutil.move(str(git), str(tmp_path / "main.git"))
+    wt = tmp_path / "main.git" / "worktrees" / "wt"
+    wt.mkdir(parents=True)
+    (wt / "HEAD").write_text("ef" * 20 + "\n")
+    (wt / "commondir").write_text("../..\n")
+    (root / ".git").write_text("gitdir: ../main.git/worktrees/wt\n")
+    v = SR._code_version()
+    assert v["commit"] == "ef" * 6 and "branch" not in v
+
+    before = v["builder_sha"]
+    (skill / "sndk_board.py").write_text("# edited and not committed\n")
+    assert SR._code_version()["builder_sha"] != before
+
+
+def test_a_prompt_without_a_scene_rides_as_text_and_a_short_rulebook_is_rewritten(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    day = NOW.date().isoformat()
+    SR.keep_payload(day, NOW, "no scene marker in this prompt", "the rulebook", era="x")
+    rec = SR.read_payloads(day)[-1]
+    assert rec["prompt"] == "no scene marker in this prompt" and "scene" not in rec
+    assert SR.sent_prompt(rec) == "no scene marker in this prompt"
+    rules = tmp_path / "sndk_payloads" / "rules" / f"{rec['rules_sha']}.txt"
+    rules.write_text("")                                  # what a crash mid-write could leave
+    SR.keep_payload(day, NOW, "again", "the rulebook", era="x")
+    assert rules.read_text(encoding="utf-8") == "the rulebook"
+    assert not list(rules.parent.glob("*.tmp"))

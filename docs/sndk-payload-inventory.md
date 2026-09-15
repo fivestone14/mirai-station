@@ -1,5 +1,10 @@
 # SNDK property inventory — in the scene payload vs not (living list)
 
+> **2026-09-14.** Every call's exact message is now kept, before it is sent, in
+> `state/sndk_payloads/<day>.jsonl`: the scene as an object, the rulebook once per
+> distinct text under `rules/<sha>.txt`, and `prompt_sha256`, which
+> `sndk_read.sent_prompt` checks when it rebuilds the prompt.
+
 > **strikes-1 (2026-09-05).** The model now reads the **Strikes Payload**
 > (`sndk_board.build_scene_v2`), not the scene this inventory maps. The scene
 > (`sndk_read.build_scene`, era `obs-5`) is still built every scan for the wake

@@ -54,6 +54,7 @@ CLI:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -681,6 +682,125 @@ def active_era(built: Optional[bool] = None) -> str:
 
 def _legacy_dir() -> Path:
     return _state_dir() / "sndk_legacy"
+
+
+def _payloads_dir() -> Path:
+    return _state_dir() / "sndk_payloads"
+
+
+# THE MESSAGE EACH CALL ACTUALLY SENT (2026-09-14). The read row keeps the reply
+# and the strike list, never the payload, so grading a reading against what the
+# model was shown meant rebuilding the payload through today's code — and the
+# builder changes most days: the 09-11 11:01:41 call rebuilt through that day's
+# commit and through the 09-14 tree differed in 175 places. A rebuild answers
+# "what would it be shown now"; only a kept copy answers "what was it shown".
+# One line per spent call, in its own file like the Gate Payload and the side
+# packet, so the read row the phone polls stays small. The rulebook is ~31 KB
+# and byte-identical all day, so it is kept once per distinct text under
+# rules/<sha>.txt and each line carries only its hash.
+_BUILDER_SOURCES = ("sndk_read.py", "sndk_board.py", "sndk_regions.py", "sndk_bars.py")
+
+
+def _code_version() -> dict:
+    """What built the payload: the commit the tree is on, read from .git with no
+    subprocess, and a hash of the builder's own source, which also catches an
+    edit nobody has committed yet — this tree is edited live. A part that cannot
+    be read is left out, never guessed."""
+    out = {}
+    root = _SKILL_DIR.parent.parent
+    try:
+        git = root / ".git"
+        if git.is_file():                                   # a worktree
+            git = Path(git.read_text().split(":", 1)[1].strip())
+            if not git.is_absolute():
+                git = root / git
+        common = git
+        if (git / "commondir").exists():
+            common = (git / (git / "commondir").read_text().strip()).resolve()
+        sha = (git / "HEAD").read_text().strip()
+        if sha.startswith("ref:"):
+            ref = sha.split(":", 1)[1].strip()
+            out["branch"] = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
+            loose = common / ref
+            if loose.exists():
+                sha = loose.read_text().strip()
+            else:
+                sha = next((ln.split()[0] for ln in (common / "packed-refs").read_text().splitlines()
+                            if ln.endswith(" " + ref)), "")
+        if re.fullmatch(r"[0-9a-f]{40}", sha):
+            out["commit"] = sha[:12]
+    except (OSError, IndexError, ValueError):
+        pass
+    h = hashlib.sha256()
+    try:
+        for name in _BUILDER_SOURCES:
+            h.update(name.encode())
+            h.update((_SKILL_DIR / name).read_bytes())
+        out["builder_sha"] = h.hexdigest()[:12]
+    except OSError:
+        pass
+    return out
+
+
+def keep_payload(day: str, now: datetime, prompt: str, doctrine: str, **stamp) -> bool:
+    """File the exact message a call is about to send, BEFORE it is sent, so a
+    call that times out or errors still leaves what it was shown. The scene
+    rides as an object, because that is what anyone grading a reading wants to
+    read, with the text in front of it; `prompt_sha256` proves the pair
+    rebuilds the sent bytes exactly (see `sent_prompt`). Raises on a disk
+    failure: the caller decides a kept copy is never worth failing a read for."""
+    text = doctrine.encode("utf-8")
+    rules_sha = hashlib.sha256(text).hexdigest()[:16]
+    rules = _payloads_dir() / "rules" / f"{rules_sha}.txt"
+    # written whole or not at all, and rewritten if a crash ever left it short: a
+    # rules file that exists but is empty would otherwise stand, unnoticed, for
+    # every call that points at it
+    if not rules.exists() or rules.stat().st_size != len(text):
+        rules.parent.mkdir(parents=True, exist_ok=True)
+        tmp = rules.with_name(f"{rules.name}.{os.getpid()}.tmp")
+        try:
+            with open(tmp, "wb") as f:
+                f.write(text)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, rules)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+    rec = {"ts": now.isoformat(), **stamp, "rules_sha": rules_sha, **_code_version(),
+           "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+           "prompt_chars": len(prompt)}
+    head, sep, body = prompt.partition("SCENE:\n")
+    try:
+        scene = json.loads(body) if sep else None
+    except ValueError:
+        scene = None
+    if isinstance(scene, dict) and json.dumps(scene) == body:
+        rec["prompt_head"] = head + sep
+        rec["scene"] = scene
+    else:                       # anything that will not round-trip rides as text
+        rec["prompt"] = prompt
+    atomic_io.append_jsonl(_payloads_dir() / f"{day}.jsonl", rec)
+    return True
+
+
+def read_payloads(day: str) -> list:
+    """Every payload kept for `day`, oldest first; a torn line is skipped."""
+    return _read_jsonl(_payloads_dir() / f"{day}.jsonl")
+
+
+def sent_prompt(rec: dict) -> Optional[str]:
+    """The exact prompt a kept line was sent with, or None when the line is
+    malformed or no longer rebuilds to the hash it was filed with."""
+    if isinstance(rec.get("prompt"), str):
+        text = rec["prompt"]
+    elif isinstance(rec.get("prompt_head"), str) and isinstance(rec.get("scene"), dict):
+        text = rec["prompt_head"] + json.dumps(rec["scene"])
+    else:
+        return None
+    return text if hashlib.sha256(text.encode("utf-8")).hexdigest() == rec.get("prompt_sha256") else None
 
 
 def _market_live() -> bool:
@@ -4263,7 +4383,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         # the Gate Payload: the old magnet, walls and the blocks the model
         # stopped seeing, kept beside every read that spends a call, in its
         # own file so the read row stays small. The row carries a flag, the
-        # eval and the dashboard read the file.
+        # file itself is not read back yet; replay rebuilds it.
         try:
             atomic_io.append_jsonl(_legacy_dir() / f"{day}.jsonl",
                                    {"ts": now.isoformat(), "era": active_era(), **legacy_doc})
@@ -4279,14 +4399,27 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         print(json.dumps(scene_v2 or scene, indent=1, default=str))
         return 0
 
-    _clear_costs()
     if scene_v2 is not None:
-        prompt = board.prompt_v2(scene_v2)
-        obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL, timeout=CALL_TIMEOUT_STRIKES_S,
-                                             doctrine=board.DOCTRINE_V2)
+        prompt, doctrine = board.prompt_v2(scene_v2), board.DOCTRINE_V2
     else:
         prompt = ("Read this scene cold and reply with the JSON object only.\n\n"
                   "SCENE:\n" + json.dumps(scene, default=str))
+        doctrine = None
+    # THE MESSAGE, KEPT BEFORE IT LEAVES (see keep_payload): here rather than
+    # after the answer so a timeout still leaves what it was shown, and after
+    # the dry-run return so a dry run keeps nothing
+    try:
+        keep_payload(day, now, prompt, doctrine if doctrine is not None else _DOCTRINE,
+                     era=out["era"], payload=out["payload"], wake=out["wake"],
+                     model=PINNED_MODEL, effort=CALL_EFFORT)
+        out["payload_kept"] = True
+    except Exception as exc:
+        print(f"sndk-read :: payload record skipped: {exc!r}")
+    _clear_costs()
+    if doctrine is not None:
+        obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL, timeout=CALL_TIMEOUT_STRIKES_S,
+                                             doctrine=doctrine)
+    else:
         obj, err, wall, raw = call_the_model(prompt, PINNED_MODEL)
     out["wall_s"], out["model"] = wall, PINNED_MODEL
     # review item #7: THE STRIKE LIST THE MODEL WAS JUST SHOWN, so the next read
