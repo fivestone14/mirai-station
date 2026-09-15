@@ -773,8 +773,11 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
                 strikes_sent_before=(last_call or {}).get("strikes_sent"),
                 sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")),
                 said_row=said,
-                # strikes-6: the same day's readings the reader grades in `day`
-                calls_today=[r for r in reads if r.get("wall_s") is not None])
+                # strikes-6: the readings `day` grades, filtered by era the way
+                # read_once filters them — not the whole-day fallback above, or on an
+                # era-flip day the tab would show claims the reader never sends
+                calls_today=[r for r in all_reads
+                             if r.get("era") == R.active_era() and r.get("wall_s") is not None])
             gate_payload = board.legacy(rw, rows, build_now, v1=scene_v1)
             payload_label = "Strikes Payload v1"
             v1_text = json.dumps(scene_v1, default=str)

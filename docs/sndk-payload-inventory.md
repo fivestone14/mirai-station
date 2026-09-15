@@ -12,7 +12,10 @@
 > Each strike row gains `oi_change`, open interest against the previous
 > session's book for the same expiry. `context.since_last_read.clusters_then`
 > and the rows' `leads_since` / `led_before` are gone; their facts live in
-> `day`. The number gate does not harvest `day.earlier_claims`. New store:
+> `day`. The number gate does not harvest `day.earlier_claims`, and the checker
+> holds a strike `day` names off the table to the board like a listed one.
+> The `frozen_do_not_cite` "top of list" line is gone (`day.leaders` carries that
+> clock), and `on_list_for_min` never counts from before `day.lists_from`. New store:
 > `state/sndk_reads/prior_volume.json`, the volume baseline.
 >
 > **strikes-5 (2026-09-15).** The strike table says who has led each measure

@@ -545,18 +545,14 @@ def test_the_gate_payload_keeps_the_old_verdicts_beside_and_takes_v1_when_given(
 
 
 def test_frozen_list_agrees_with_the_table_it_was_built_from():
+    """strikes-6: the do-not-cite list no longer carries "top of list": the
+    lead's clock lives in `day.leaders`, which names the table's top strike."""
     rows = mkrows(n=40, start=T0 - timedelta(minutes=78))
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     top = B.rows_as_records(v2["strikes"])[0]
-    fz = v2.get("frozen_do_not_cite") or []
-    assert any(f.startswith(f"{top['strike']:g} top of list for") for f in fz), fz
-    mins = int([f for f in fz if "top of list" in f][0].split("for ")[1].rstrip("m"))
-    assert mins >= SR.FROZEN_MIN
-    # strikes-6: the frozen line and `day.leaders` are one walk over the day's books
+    assert not any("top of list" in f for f in (v2.get("frozen_do_not_cite") or []))
     strike, since, until = v2["day"]["leaders"]["contracts"][-1]
     assert strike == top["strike"] and until is None
-    since = datetime.strptime(since, "%H:%M").replace(year=T0.year, month=T0.month, day=T0.day, tzinfo=ET)
-    assert mins == int((T0 - since).total_seconds() // 60)
 
 
 def test_regions_ride_on_the_legacy_scene_not_the_prompt():
@@ -1255,7 +1251,8 @@ _OI_A = {1200.0: (240, 120), 1250.0: (180, 90), 1300.0: (540, 270), 1350.0: (120
 _OI_B = {**_OI_A, 1250.0: (900, 400)}      # 1250 takes contracts and volume, below price
 
 
-def _lead_rows(n=8, switch_at=5, drop_vol_at=None, flicker_at=None, start=None, gap_after=None, gap_min=60):
+def _lead_rows(n=8, switch_at=5, drop_vol_at=None, flicker_at=None, start=None, gap_after=None, gap_min=60,
+               oi_after=None):
     """Distinct books two minutes apart. 1300 leads contracts and volume until
     book `switch_at`, then 1250 does (or only at `flicker_at`); gamma stays with
     1300. `gap_after` puts a hole of `gap_min` minutes after that book."""
@@ -1264,7 +1261,7 @@ def _lead_rows(n=8, switch_at=5, drop_vol_at=None, flicker_at=None, start=None, 
     for i in range(n):
         if gap_after is not None and i == gap_after + 1:
             t += timedelta(minutes=gap_min)
-        oi = _OI_B if (i >= switch_at or i == flicker_at) else _OI_A
+        oi = (oi_after or _OI_B) if (i >= switch_at or i == flicker_at) else _OI_A
         rows.append(mkrow(t, oi=oi, drop_vol=(i == drop_vol_at)))
         t += timedelta(minutes=2)
     return rows
@@ -1325,9 +1322,9 @@ def test_a_hole_in_the_books_breaks_every_lead_and_is_named():
     assert day["no_books"] == [[_hh(rows, 4), _hh(rows, 5)]]
     assert day["leaders"]["contracts"] == [[1300, _hh(rows, 0), _hh(rows, 4)], [1300, _hh(rows, 5), None]]
     assert day["lists_from"] == _hh(rows, 5)
-    for f in (v2.get("frozen_do_not_cite") or []):
-        if "top of list" in f:
-            assert int(f.split("for ")[1].rstrip("m")) <= int((now - SR._ts(rows[5])).total_seconds() // 60)
+    # a strike's time on the list counts from the far side of the hole too
+    since_hole = int((now - SR._ts(rows[5])).total_seconds() // 60)
+    assert all((r.get("on_list_for_min") or 0) <= since_hole for r in B.rows_as_records(v2["strikes"]))
 
 
 def test_the_lists_say_what_stood_joined_and_left_against_the_table_now():
@@ -1340,7 +1337,7 @@ def test_the_lists_say_what_stood_joined_and_left_against_the_table_now():
     listed = sorted(B.listed_strikes(v2["strikes"]))
     assert day["lists_from"] == _hh(rows, 0)
     assert set(day["stood"]) <= set(listed)
-    assert {k for k, _ in day.get("joined", [])} == set(listed) - set(day["stood"])
+    assert set(day.get("joined", [])) == set(listed) - set(day["stood"])
     assert all(k not in listed for k, _ in day.get("left", []))
 
 
@@ -1443,14 +1440,18 @@ def test_volume_in_reach_is_compared_with_the_same_minute_on_recent_ordinary_ses
     clock minute over recent sessions that were not expiry days; absent on
     expiry day and with fewer than three sessions to compare."""
     def prior_day(day, mult, dte):
-        r = mkrow(datetime.fromisoformat(f"{day}T09:58:00-04:00"),
-                  vol={k: (c * mult // 10, p * mult // 10) for k, (c, p) in _OI_A.items()})
-        r["gex_views"]["front_dte"] = dte
-        return r
-    _write_diary("2026-07-27", [prior_day("2026-07-27", 2, 4)])
-    _write_diary("2026-07-28", [prior_day("2026-07-28", 2, 3)])
-    _write_diary("2026-07-29", [prior_day("2026-07-29", 20, 0)])     # an expiry day: left out
-    _write_diary("2026-07-30", [prior_day("2026-07-30", 2, 1)])
+        """The book at 09:58, and a far busier one at 11:30 that the 10:00 comparison must not read."""
+        out = []
+        for hhmm, m in (("09:58", mult), ("11:30", mult * 25)):
+            r = mkrow(datetime.fromisoformat(f"{day}T{hhmm}:00-04:00"),
+                      vol={k: (c * m // 10, p * m // 10) for k, (c, p) in _OI_A.items()})
+            r["gex_views"]["front_dte"] = dte
+            out.append(r)
+        return out
+    _write_diary("2026-07-27", prior_day("2026-07-27", 2, 4))
+    _write_diary("2026-07-28", prior_day("2026-07-28", 2, 3))
+    _write_diary("2026-07-29", prior_day("2026-07-29", 20, 0))     # an expiry day: left out
+    _write_diary("2026-07-30", prior_day("2026-07-30", 2, 1))
     rows = mkrows(n=8)
     for r in rows:
         r["gex_views"]["front_dte"] = 2
@@ -1459,7 +1460,15 @@ def test_volume_in_reach_is_compared_with_the_same_minute_on_recent_ordinary_ses
     day = v2["day"]
     assert day["prior_sessions_compared"] == 3
     assert day["volume_in_reach_vs_same_time_prior_sessions"] == round(today / 351, 2)
-    assert (SR._reads_dir() / "prior_volume.json").exists()
+    cache = SR._reads_dir() / "prior_volume.json"
+    assert cache.exists()
+    # the next build reads the baseline from the cache, not the diaries
+    blob = json.loads(cache.read_text())
+    for d in blob["days"].values():
+        d["series"] = [[m, 700] for m, _ in d["series"]]
+    cache.write_text(json.dumps(blob))
+    v2c, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    assert v2c["day"]["volume_in_reach_vs_same_time_prior_sessions"] == round(today / 700, 2)
     # on an expiry day there is no ordinary baseline to read against
     for r in rows:
         r["gex_views"]["front_dte"] = 0
@@ -1471,3 +1480,65 @@ def test_volume_in_reach_is_compared_with_the_same_minute_on_recent_ordinary_ses
     (SR._diary_dir() / "2026-07-27.jsonl").unlink()
     v2s, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     assert "volume_in_reach_vs_same_time_prior_sessions" not in v2s["day"]
+
+
+def test_the_checker_holds_strikes_off_the_table_to_what_the_board_says():
+    """strikes-6 (review D1): a strike `day` names off the table is sayable, so a
+    claim that it leads a measure today, a visit count for it, or a wrong side
+    for it is caught like a listed strike's; a true side sentence survives."""
+    rows = _lead_rows()
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    v2["day"]["left"] = [[1500, "09:50"]]
+    slips = lambda text: B._prose_slips_v2(text, v2)
+    assert any(x.startswith("most_contracts_unsupported:1500") for x in slips("1500 holds the most contracts"))
+    assert any(x.startswith("strike_side_contradicts_spot:1500") for x in slips("1500 sits below price"))
+    assert not any("1500" in x for x in slips("1500 sits above price"))
+    assert any(x.startswith("touch_count_off_the_table:1500") for x in slips('price touched 1500 four times'))
+
+
+def test_a_lead_said_in_the_past_tense_is_checked_against_the_day_not_the_table():
+    """strikes-6 (review D2): "1300 had the most volume until 09:54" is true when
+    `day.leaders` says so, even though 1300 does not lead now; the present tense
+    is still held to the table. 1350 overtakes 1300 on the same side, so 1300
+    leads neither the board nor its side now."""
+    rows = _lead_rows(oi_after={**_OI_A, 1350.0: (900, 400)})
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    strike, _since, until = v2["day"]["leaders"]["volume"][0]
+    assert strike == 1300 and until
+    assert not any("1300" in x for x in B._prose_slips_v2(f"1300 had the most volume until {until}", v2))
+    assert any("1300" in x for x in B._prose_slips_v2("1300 has the most volume today", v2))
+
+
+def test_an_older_changed_claim_is_not_hidden_by_a_newer_one_that_says_nothing():
+    """strikes-6 (review D3): a newer point on the same strike that still holds
+    is left out, so it must not hide the older claim that changed; and a failed
+    call's row, carrying the older reading forward, is not graded as a reading."""
+    rows = _lead_rows()
+    t = lambda m: T0 - timedelta(minutes=m)
+    calls = [
+        _call(t(20), 1290.0, {"read": "b", "sides": {"below": {"heavy": 1200.0, "heavy_leads_on": ["contracts"]}}}),
+        _call(t(10), 1290.0, {"read": "d", "points": [{"level": 1200.0, "note": "x"}]}),
+        {**_call(t(5), 1290.0, {"read": "carried", "sides": {"above": {"heavy": 1400.0}}}), "reading_ts": t(20).isoformat()},
+    ]
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30), calls_today=calls)
+    assert v2["day"]["earlier_claims"] == [{"said_at": t(20).strftime("%H:%M"), "claims": [
+        {"strike": 1200, "said": "heaviest below on contracts", "now": "changed", "what": "no longer first below on contracts"}]}]
+
+
+def test_a_malformed_volume_cache_costs_nothing_and_is_rebuilt():
+    """strikes-6 (review D4): a cached day whose series is not [minute, volume]
+    pairs is rebuilt from its diary, and the payload is built either way."""
+    for day, dte in (("2026-07-28", 3), ("2026-07-29", 2), ("2026-07-30", 1)):
+        r = mkrow(datetime.fromisoformat(f"{day}T09:58:00-04:00"),
+                  vol={k: (c * 2 // 10, p * 2 // 10) for k, (c, p) in _OI_A.items()})
+        r["gex_views"]["front_dte"] = dte
+        _write_diary(day, [r])
+    cache = SR._reads_dir() / "prior_volume.json"
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({"v": B.PRIOR_VOLUME_CACHE_V, "days": {"2026-07-30": {"expiry": False, "series": "x"}}}))
+    rows = mkrows(n=8)
+    for r in rows:
+        r["gex_views"]["front_dte"] = 2
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    assert v2["day"]["prior_sessions_compared"] == 3
+    assert isinstance(json.loads(cache.read_text())["days"]["2026-07-30"]["series"], list)
