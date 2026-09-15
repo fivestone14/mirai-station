@@ -476,7 +476,7 @@ def test_the_payload_tab_carries_the_payload_dropdown_and_the_replay():
     # Gate Payload, never to the observer or the Strikes Payload, and says so
     P = pipe.read_text()
     assert "e_memo_shadow" in P and "e_memo_obs" not in P
-    assert "not shipped since 2026-09-05" in P and "S.memo.dest = 'store'" in P
+    assert "not shipped since 2026-09-05" in P and "S.memo.dest = 'model'" in P
     assert "regions rule behind the scene, kept in the Gate Payload" in PAGE
 
 

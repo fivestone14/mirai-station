@@ -11647,14 +11647,18 @@ const _PL_NODES=[
   ['sd',  'Records','store','Diary',                 'state/sndk_reversion/<day>.jsonl',
    'One row per scan, about 190 a day: price, the day’s implied move, the walls and the flip, eight numbers for every strike, and the timestamp the option book itself carried.'],
   ['sb',  'Records','store','Bars',                  'state/sndk_bars/<day>.jsonl',
-   'One line per completed minute, 390 a day. The witness for highs, lows and range breaks: sampling every 2 minutes instead misses one break in three.'],
+   'One line per completed minute, 390 a day, and health.json, the last run’s summary. The witness for highs, lows and range breaks: sampling every 2 minutes instead misses one break in three.'],
   ['sc',  'Records','store','Book cache',            'state/sndk_gex/chain_cache.json',
-   'The last option-chain pull, good for 240 seconds. Every second scan re-prices this cache against the live quote instead of pulling the chain again — which is why its arrow runs back up.'],
+   'The last option-chain pull, good for 240 seconds. Every second scan re-prices this cache against the live quote instead of pulling the chain again — which is why its arrow runs back up. Beside it, overwritten the same way: vol_hint.json, discovery.json (the day’s expiries), and fetch_log.jsonl, which only grows.'],
+  ['ctl', 'Records','store','Reader switch',         'state/sndk_reads/control.json',
+   'Hand-edited, never written by code: the pause switch that stops the model call while every row still lands, and which payload the reader builds. Missing or unreadable means reasoning on and the Strikes Payload.'],
+  ['pp',  'Records','store','Percentile history',    'state/sndk_reads/pctl_prior.json',
+   'The prior sessions’ figures behind the legacy scene’s percentile words, rewritten when the list of prior sessions changes, by whichever process builds that scene first. Never reaches the Strikes Payload.'],
 
   ['r1',  'Reader','step',  '1 · Wake gate',         'should_wake()',
-   'Is this scan worth a model call? The day’s first look; price ran two typical minutes (the median one-minute high-to-low over the last half hour — the same bar calls a frame a move and breaks a box); it crossed a wall or the flip as those stood at the last reading; the most-contracts strike or the flip’s sign changed and stayed changed across two book pulls; implied volatility moved 3 points against a five-book median; the flip itself moved half an implied move; or an hour passed. Ten minutes minimum between calls, 30 a day at most.'],
+   'Is this scan worth a model call? The day’s first look; price ran two typical minutes (the median one-minute high-to-low over the last half hour — the same bar calls a frame a move and breaks a box); it crossed a wall or the flip as those stood at the last reading; the most-contracts strike or the flip’s sign changed and stayed changed across two book pulls; implied volatility moved 3 points against a five-book median; the flip itself moved half an implied move; or an hour passed. Ten minutes between calls, except that up to eight interrupt wakes a day may come three minutes apart; 30 calls a day at most.'],
   ['r2',  'Reader','step',  '2 · Strikes Payload',   'sndk_board.py · build_scene_v2()',
-   'The packet the model reads: all facts, no verdicts. Price and clocks (the day’s high and low each carry the minute they were set and how old they are; the day’s average traded price joined them on 2026-09-13, as a price you can name and not only as a distance), the units everything is measured in, and the board itself as a table — the heaviest strikes in reach rather than all of them (the top eight on each of the three measures, the nearest two either side, and anything crossed since the last read: 10 to 23 rows against the 27 to 68 in reach), each placed above, below or at the live price, with its open interest, today’s volume (withheld, with the reason, while the morning’s first book still carries yesterday’s counts), contracts share, gamma sign and share, three separate ranks, what price did at it today (minutes touched, separate visits, and visits that went through), and twelve books of contracts added behind it; only what the rule (sndk_regions.py) says has GONE — its live region list has not shipped since 2026-09-05, because the model drew every cluster on it; the day’s price boxes, each break carrying the minute price closed back inside it and the standing box saying how long it has held; what happened between frames; and what changed since the model’s own last look. No magnet, no wall, no regime word.'],
+   'The packet the model reads: all facts, no verdicts. Price and clocks (the day’s high and low each carry the minute they were set and how old they are; the day’s average traded price joined them on 2026-09-13, as a price you can name and not only as a distance), the units everything is measured in, and the board itself as a table — the heaviest strikes in reach rather than all of them (the top eight on each of the three measures, the nearest two either side, and anything crossed since the last read: 10 to 23 rows against the 27 to 68 in reach), each placed above, below or at the live price, with its open interest, today’s volume (withheld, with the reason, while the morning’s first book still carries yesterday’s counts), contracts share, gamma sign and share, three separate ranks, what price did at it today (minutes touched, separate visits, and visits that went through), and twelve books of contracts added behind it; only what the rule (sndk_regions.py) says has GONE — its live region list has not shipped since 2026-09-05, because the model drew every cluster on it; the day’s price boxes, each break carrying the minute price closed back inside it and the standing box saying how long it has held; what happened between frames; and what changed since the model’s own last look, including the sentence still on screen from its last reading and when it was written (said_then, from strikes-4), so it can take back what no longer holds. No magnet, no wall, no regime word.'],
   ['r2l', 'Reader','step',  '2 · Scene Payload (legacy)', 'sndk_read.build_scene()',
    'The packet the model read until 2026-09-05, still built every scan: the wake gate freezes its walls, the frame reads them, the memory slice keeps them, and the Strikes Payload takes its clocks, price and boxes from it. The model no longer sees it.'],
   ['r3',  'Reader','step',  '3 · Rulebook + model',  'DOCTRINE_V2 · claude-sonnet-5',
@@ -11665,17 +11669,21 @@ const _PL_NODES=[
    'A second document, anchored to the minute bars rather than the option book, built beside the scene and never sent to a model. It takes its price lines from the same diary row the scene uses. Every time in it is derived from a bar index, so every value can be checked against the bar it came from.'],
 
   ['od',  'Delivery','sink','Read row',              'state/sndk_reads/<day>.jsonl',
-   'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, what the guards dropped, what each spent call was billed, and the strike list it showed the model, so the next read can say exactly what joined and what left.'],
+   'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, what the guards dropped, what each spent call was billed, the strike list it showed the model, so the next read can say exactly what joined and what left, and whether the Gate Payload and the exact message were kept (legacy_kept, payload_kept). About 180 rows a day. The next read takes its gate snapshot, strike list and clusters from the last row that spent a call, and the sentence still on screen from the last row that has one.'],
   ['og',  'Delivery','sink','Gate Payload',          'state/sndk_legacy/<day>.jsonl',
-   'One line for each read that spends a call, from the first strikes-1 read onward — no session has run under it yet, so this file does not exist. The old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene. The wake gate reads them and the eval lines them up against the model’s clusters. Never sent to the model.'],
+   'One line for each read that spends a call, 3 to 21 a day since 09-08. The old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene. Nothing reads the file back: the wake gate works from the legacy scene and the last call’s row, and replay rebuilds these numbers. Never sent to the model.'],
+  ['ok',  'Delivery','sink','Sent messages',         'state/sndk_payloads/<day>.jsonl',
+   'The exact message each call sends, kept just before it leaves, so a call that times out still leaves what it was shown: the Strikes Payload as sent, the model and effort, the commit and a hash of the builder’s source, and a checksum proving the copy rebuilds the sent text. The rulebook is kept once per version under rules/. About 12 KB a call, from the 2026-09-15 open; nothing reads it yet but sndk_read.read_payloads.'],
   ['os',  'Delivery','sink','Side packets',          'state/sndk_side/<day>.jsonl',
-   'One line for each scan judged worth a model call. Written when the wake fires rather than when the model answers, so it also lands on a call that was capped, failed, or emptied by the guards. Quiet scans keep nothing and rebuild from the bars and the diary row.'],
+   'One line for each scan judged worth a model call, including one the pause switch held back. Written when the wake fires rather than when the model answers, so it also lands on a call that failed or was emptied by the guards; a capped scan keeps nothing, because the cap clears the wake. The dashboard’s chart reads the newest one back for the day’s open, high and low; the Side view rebuilds its own. Quiet scans keep nothing and rebuild from the bars and the diary row.'],
   ['om',  'Delivery','sink','Memory',                'sndk_rag.py → state/sndk_rag/',
-   'One slice per completed reading: the sentence plus the numbers true that minute. Searchable by the voice desk and the Memory view; the reading model has no tools and cannot reach it, and nothing is ever injected into a reading.'],
+   'One slice per completed reading: the sentence plus the numbers true that minute. Searchable by the voice desk and the Memory view, which also rebuild the day summaries and standing terrain beside it when asked; the reading model has no tools and cannot reach it, and nothing is ever injected into a reading.'],
   ['ow',  'Delivery','sink','Dashboard',             'runtime/viewstation/',
-   'Chart, drawers, the reading card, the Payload tab and its Side view. It REBUILDS both packets through the reader’s own code rather than reading a saved copy — which is why its arrows come off the records as well as the read row.'],
+   'Chart, drawers, the reading card, the Payload tab and its Side view. The Payload tab REBUILDS the packet through the reader’s own code rather than reading Sent messages, so it shows what would be sent now — which is why its arrows come off the records as well as the read row. The Side view rebuilds the side packet too, and the chart takes the day’s open, high and low from the newest saved one; the Memory view reads memory, and the chart’s fine line is the price tape.'],
+  ['ot',  'Delivery','sink','Price tape',            'state/sndk_tape/<day>.jsonl',
+   'A price at most every 4 seconds, written by the dashboard server itself whenever a page asks for the live price, so a day nobody watched has no tape. Only the chart reads it.'],
   ['op',  'Delivery','sink','Phone · voice · pager','static/m/ · mirai-voice · sndk_deadman.py',
-   'The glance page shows the latest reading and a chart drawn from the minute bars, and under it the three levels — the nearest call and put walls with their share of the board’s gamma, and the strike with the most contracts as a count. Those come from the diary row through the payload route (snapshot.py adds the count, which the scene does not carry, and never sends it to a model); the live quote every 5 seconds greys out any wall price has already passed. The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet (a silent reader is not yet watched).',
+   'The glance page shows the latest reading and a chart drawn from the minute bars, and under it the three levels — the nearest call and put walls with their share of the board’s gamma, and the strike with the most contracts as a count. Those come from the diary row through the payload route (snapshot.py adds the count, which the scene does not carry, and never sends it to a model); the live quote every 5 seconds greys out any wall price has already passed. The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet (a silent reader is not yet watched), keeping what it has paged in state/sndk_reads/deadman_state.json.',
    'launchd com.mirai-station.sndk-deadman · every 5 min'],
 ];
 // from, to, and 'back' for a return path. Checked against the code 09-04, and
@@ -11690,15 +11698,20 @@ const _PL_EDGES=[
   ['r4','od'],['r4','om'],['r2l','om'],['r2l','og'],['r2b','os'],
   ['sd','ow'],['sb','ow'],['od','ow'],
   ['od','op'],['sd','op'],['sb','op'],['q','op'],
+  ['od','r1'],['od','r2'],['ctl','r2'],['ctl','r3'],['sd','pp'],['pp','r2l'],
+  ['r3','ok'],['os','ow'],['om','ow'],['om','op'],['q','ot'],['ot','ow'],
+  ['sb','r1'],['od','r2l'],['pp','ow'],
 ];
 const _PL_STAGE_DOC={
   'Sources':"Feeds — what arrives from outside, and the only things here that can fail slowly.",
-  'Jobs':"Clocks — each wakes, does one thing and exits. The two never wait on each other.",
-  'Records':"Stores — append-only files, one per day. Everything below this line reads files, never the network.",
+  'Jobs':"Clocks — each wakes, does one thing and exits. The two never wait on each other. What they print goes to /tmp/mirai-station.<job>.out, which is never rotated.",
+  'Records':"Stores — files on disk, most of them append-only and one per day; the book cache, the switch and the percentile history are overwritten. The reader below takes its inputs from these files, never from the feeds; its only network calls are the model and its reviewer.",
   'Reader':"Steps, in order, inside sndk_read.py — its own clock, every 2 minutes (launchd com.mirai-station.sndk-read).",
-  'Delivery':"Where a reading lands.",
+  'Delivery':"Where a reading and its evidence land. Nothing here is pruned or rotated.",
 };
 const _PL_LEFTOUT=[
+  ['Day grades','written until 08-27, nothing writes them now',
+   'state/sndk_grade still holds 20 days of grades from eras sr-1 to sr-6. No code in the repo writes or reads it.'],
   ['The direction call','removed obs-1 · arrow removed obs-3',
    '391 forecasts scored no better than chance at saying where price went next; the deterministic arrow pointed at the nearest round hundred on 94% of 51 episodes.'],
   ['Crossings and approaches','studied 09-02, not built',
@@ -11708,7 +11721,7 @@ const _PL_LEFTOUT=[
   ['A combination rule','measured 09-03, in the shadow log',
    'A strict three-condition rule fires too rarely to score on the sessions available, and no combination beat its own best single leg. The side packet ships the parts and joins none of them.'],
   ['The magnet as an input','replaced 2026-09-05',
-   'A passed strike was returned to less often than a plain strike at the same distance, so a field asserting pull was measured false. The strike table carries three unblended ranks and the cluster is the model’s answer; the old magnet lives on in the Gate Payload for the wake gate only.'],
+   'A passed strike was returned to less often than a plain strike at the same distance, so a field asserting pull was measured false. The strike table carries three unblended ranks and the cluster is the model’s answer; the old magnet lives on in the legacy scene, which the wake gate reads; a copy is filed in the Gate Payload, which nothing reads.'],
 ];
 
 const _PL_LINES_MIN_WIDTH=1000;   // below this the grid collapses and every edge shares an x
@@ -14841,7 +14854,7 @@ const PAYLOAD = {
     if(d.error||!d.scene){ say(d.error||'no scene yet — the scanner has not written a row'); PAYLOAD.paintPipe(); return; }
     // strikes-1: the dropdown picks the document. `scene` is what the reader hands the model
     // (the Strikes Payload when the reader runs it, the Scene Payload when reverted); `legacy`
-    // is the Scene Payload kept beside it; `gate_payload` is the old magnet and walls the gate reads.
+    // is the Scene Payload kept beside it; `gate_payload` is the old magnet and walls, filed on each call and never read back.
     const which=PAYLOAD.which;
     let doc=d.scene, label=d.payload_label||'Scene Payload v5', tag='LIVE payload';
     if(which==='scene'){
@@ -14849,8 +14862,8 @@ const PAYLOAD = {
       else if(d.payload==='scene'){ label='Scene Payload v5 · the reader is running this one'; }
       else { say('no legacy document: the reader is not building the Scene Payload beside the Strikes Payload'); PAYLOAD.paintPipe(); return; }
     } else if(which==='gate'){
-      if(d.gate_payload){ doc=d.gate_payload; label='Gate Payload'; tag='STORE · the old magnet, walls and the blocks the model stopped seeing · read by the wake gate and the eval · written to state/sndk_legacy on each call from the first strikes-1 read — no session has run under it yet, so the directory does not exist · never sent'; }
-      else { say('no Gate Payload: the reader is running the Scene Payload, so the gate reads that directly'); PAYLOAD.paintPipe(); return; }
+      if(d.gate_payload){ doc=d.gate_payload; label='Gate Payload'; tag='STORE · the old magnet, walls and the blocks the model stopped seeing · written to state/sndk_legacy on each call · nothing reads it back · never sent'; }
+      else { say('no Gate Payload: the reader is running the Scene Payload, so none is built'); PAYLOAD.paintPipe(); return; }
     } else if(d.payload!=='strikes'){ label='Scene Payload v5 · the reader is running the Scene Payload (the Strikes Payload is switched off)'; }
     empty.hidden=true; pre.hidden=false;
     const when=String(d.row_ts||'').slice(11,19);
