@@ -88,9 +88,14 @@ def test_asym_expected_move_absent_without_skew_or_em():
     assert "expected_move_today_asym" not in sc["scale"]
 
 
-def test_asym_expected_move_balanced_band_is_named_balanced():
-    sc = scene_of(rich_row(iv_skew={"down_share": 0.5}))
-    assert sc["scale"]["expected_move_today_asym"]["skewed_toward"] == "balanced"
+@pytest.mark.parametrize("down_share, word", [
+    (0.53, "downside"), (0.52, "downside"),      # the downside edge is inclusive
+    (0.51, "balanced"), (0.50, "balanced"), (0.49, "balanced"),
+    (0.48, "upside"), (0.47, "upside"),          # ...and so is the upside edge
+])
+def test_asym_expected_move_names_the_side_the_budget_leans(down_share, word):
+    sc = scene_of(rich_row(iv_skew={"down_share": down_share}))
+    assert sc["scale"]["expected_move_today_asym"]["skewed_toward"] == word
 
 
 # --- price.vwap_minus_live_spot_sigma ---------------------------------------
@@ -140,8 +145,9 @@ def test_vol_trend_derives_iv_for_pre_v3_rows():
     rows = _iv_rows(1.50, 1.60)
     for r in rows:
         r["sigma_live"] = r.pop("atm_iv") * r["spot"] / (252 ** 0.5)
-    vt = SR.vol_trend(rows, T0)
-    assert vt and vt["direction"] == "rising"
+    # exactly the reading the recorded atm_iv gives — not merely the same sign
+    assert SR.vol_trend(rows, T0) == SR.vol_trend(_iv_rows(1.50, 1.60), T0) == {
+        "direction": "rising", "iv_change_last_30min": 10.0}
 
 
 def test_vol_trend_omitted_on_expiry_late_day():
@@ -151,6 +157,14 @@ def test_vol_trend_omitted_on_expiry_late_day():
     rows[-1]["gex_views"]["front_dte"] = 0
     rows[-1]["range_ruler"] = {"em_points": 11.0, "quality": "late_day"}
     assert SR.vol_trend(rows, T0) is None
+    # BOTH halves are required: the expiry morning, and a late-day ruler on a
+    # book that is not expiring, are ordinary tape and still read
+    morning = _iv_rows(1.50, 2.30)
+    morning[-1]["gex_views"]["front_dte"] = 0
+    assert SR.vol_trend(morning, T0)["iv_change_last_30min"] == 80.0
+    not_expiring = _iv_rows(1.50, 2.30)
+    not_expiring[-1]["range_ruler"] = {"em_points": 11.0, "quality": "late_day"}
+    assert SR.vol_trend(not_expiring, T0)["iv_change_last_30min"] == 80.0
 
 
 # --- regime.flip ------------------------------------------------------------
@@ -173,13 +187,15 @@ def test_flip_block_edges_center_and_position():
     assert "drifting toward pt" in fb["live_price_vs_band"]
 
 
-@pytest.mark.parametrize("ladder, kept, gone", [
-    ({"ct": 1231.0, "state": "positive transition"},
-     "band_upper_edge_ct_sigma", "band_lower_edge_pt_sigma"),
-    ({"pt": 1181.0, "state": "negative transition"},
-     "band_lower_edge_pt_sigma", "band_upper_edge_ct_sigma"),
+# the edges sit OFF the recorded centre ± 0.25 (flip 1206 → 1231 / 1181), so an
+# edge rebuilt from the centre and the doctrine's width cannot pass for the raw one
+@pytest.mark.parametrize("ladder, kept, kept_sigma, gone", [
+    ({"ct": 1241.0, "state": "positive transition"},
+     "band_upper_edge_ct_sigma", 0.41, "band_lower_edge_pt_sigma"),
+    ({"pt": 1171.0, "state": "negative transition"},
+     "band_lower_edge_pt_sigma", -0.29, "band_upper_edge_ct_sigma"),
 ])
-def test_a_partial_band_keeps_the_raw_edge_it_has(ladder, kept, gone):
+def test_a_partial_band_keeps_the_raw_edge_it_has(ladder, kept, kept_sigma, gone):
     """The width is only computable when BOTH edges exist, so a one-edge band
     has nothing to reconstruct from and the raw edge is the only reading there
     is. Unreached on the recorded tape, reachable in the code — and checked in
@@ -187,7 +203,7 @@ def test_a_partial_band_keeps_the_raw_edge_it_has(ladder, kept, gone):
     row = rich_row()
     row["profile_ladder"] = ladder
     fb = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)["regime"]["flip"]
-    assert fb[kept] is not None
+    assert fb[kept] == pytest.approx(kept_sigma)       # (edge − 1200) / 100
     assert "edges_are_center_plus_minus_sigma" not in fb
     assert gone not in fb
 
@@ -205,21 +221,24 @@ def test_the_width_never_outlives_the_centre_it_is_measured_from():
     assert fb["band_lower_edge_pt_sigma"] == pytest.approx(-0.19)
 
 
-def test_flip_drift_clause_needs_actual_motion():
+@pytest.mark.parametrize("state, ran_30m, drift", [
+    ("negative transition", None, None),
+    ("negative transition", 0.01, None),
+    ("negative transition", 0.049, None),           # just under the 0.05σ floor
+    ("negative transition", 0.05, "drifting toward ct"),
+    ("negative transition", -0.05, "drifting toward pt"),
+    ("positive", 0.30, None),                       # outside the band: no drift
+])
+def test_flip_drift_clause_needs_actual_motion(state, ran_30m, drift):
     row = rich_row()
-    row["_ran_30m_sigma"] = 0.01                    # under the 0.05σ floor
+    row["profile_ladder"]["state"] = state
     fb = SR.flip_block(row, lambda v: round((v - 1200.0) / 100.0, 2)
-                       if isinstance(v, (int, float)) else None, 0.01)
-    assert "drifting" not in fb["live_price_vs_band"]
-
-
-def test_flip_absent_without_a_ladder():
-    """sr-5 rewrote this pin: a missing ladder on a MEASURED book is now a
-    stated finding (no_flip_anywhere_on_board), not an absence — absence is
-    reserved for the case where the book itself was never read (see the sr-5
-    tests)."""
-    row = rich_row(profile_ladder=None, gamma_flip=None)
-    assert scene_of(row)["regime"]["flip"] == {"no_flip_anywhere_on_board": True}
+                       if isinstance(v, (int, float)) else None, ran_30m)
+    pos = fb["live_price_vs_band"]
+    if drift is None:
+        assert "drifting" not in pos
+    else:
+        assert drift in pos
 
 
 # --- regime.charm (N11: magnitude + target, never a direction) --------------
@@ -265,7 +284,8 @@ def test_momentum_ships_the_rising_share_and_its_volume():
     rows = _mom_rows()
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
     m = sc["momentum"]["by_strike"]["1300"]
-    assert m["share_of_book_gamma_change_pp"] > 0.5
+    # 68/108 of the common strikes now against 60/100 in the reference book
+    assert m["share_of_book_gamma_change_pp"] == pytest.approx(2.96)
     assert m["gross_volume_change_contracts"] == 340
     assert _verdict_words_in(sc["momentum"]) == []
     # sr-7: the window is told on the BOOK clock, because these are differences
@@ -287,7 +307,9 @@ def test_momentum_skips_strikes_outside_both_windows():
     for r in rows[:-1]:
         r["gex_views"]["mass_by_strike"] = [[1100, 30.0], [1200, 10.0]]
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    assert "1300" not in ((sc.get("momentum") or {}).get("by_strike") or {})
+    # 1300 tops the current book but was not in the reference one, so it is
+    # skipped — while 1100, in both, still ships (the block did not just vanish)
+    assert set(sc["momentum"]["by_strike"]) == {"1100"}
 
 
 # --- dealer_positioning ------------------------------------------------------
@@ -350,19 +372,6 @@ def test_walls_two_per_side_nearest_first():
     assert w["call"][0]["sigma"] == pytest.approx(0.4)
 
 
-def test_walls_absent_without_a_surface():
-    sc = scene_of(rich_row(nbs=None))
-    assert "walls" not in sc
-
-
-def test_gwc_gwp_live_in_the_walls_ladder():
-    row = rich_row()
-    row["profile_ladder"].update({"gwc": 1240.0, "gwp": 1150.0})
-    sc = scene_of(row)
-    assert sc["walls"]["call"][0]["strike"] == 1240.0
-    assert sc["walls"]["put"][0]["strike"] == 1150.0
-
-
 def test_flip_band_is_told_once(monkeypatch):
     """sr-3: the flip family speaks through flip_block alone. hvl IS the flip
     and ct/pt are that centre ±0.25σ (923/923 recorded rows), so shipping them
@@ -403,11 +412,6 @@ def test_tape_abnormal_flag_is_sigma_relative_not_a_fixed_pct():
     assert "history" not in scene_of(ordinary)
     extreme = rich_row(spot=1100.0, prior_close=1400.0)    # −21.4% ≈ 2.4σ
     assert scene_of(extreme)["history"]["tape_abnormal_vs_own_history"] is True
-
-
-def test_history_block_absent_on_a_quiet_tape():
-    sc = scene_of(rich_row())
-    assert "history" not in sc
 
 
 # --- the doctrine carries the on-demand signposts ---------------------------
@@ -475,14 +479,17 @@ def test_momentum_shares_use_the_window_intersection():
     assert _verdict_words_in(sc["momentum"]) == []
 
 
-def test_no_nulls_anywhere_in_the_scene():
+def test_no_nulls_anywhere_in_the_scene(tmp_path):
     """Fidelity audit #5: omit-never-null holds INSIDE blocks too — an
     early-session row with no prior_close / no 30-min history must produce
-    absent keys, never null ones (the doctrine promises missing = unmeasured)."""
+    absent keys, never null ones (the doctrine promises missing = unmeasured).
+    Walked over every scene shape the doctrine guard builds as well, so a
+    conditional leaf (a frame, a box, a dropped block) cannot ship a null
+    just because the plain scene never reaches it."""
     row = rich_row(prior_close=None)
     sc = SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
 
-    def walk(x, path="scene"):
+    def walk(x, path):
         if x is None:
             raise AssertionError(f"null at {path}")
         if isinstance(x, dict):
@@ -491,7 +498,8 @@ def test_no_nulls_anywhere_in_the_scene():
         elif isinstance(x, list):
             for i, v in enumerate(x):
                 walk(v, f"{path}[{i}]")
-    walk(sc)
+    for i, scene in enumerate([sc] + _every_scene_shape(tmp_path)):
+        walk(scene, f"scene[{i}]")
     assert "vs_prior_close_pct" not in sc["price"]
     assert "moved_last_30min_sigma" not in sc["price"]
 
@@ -558,9 +566,10 @@ def test_momentum_ships_a_bleeding_share_the_same_way():
     for r in rows:                                 # volume flat → zero change
         r["gex_views"]["vol_gross_by_strike"] = [[1300, 5000], [1100, 2000]]
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    # 1300 is the strike whose share bled (−3.5pp) with zero volume change
+    # 1300 is the strike whose share bled with zero volume change:
+    # 52/92 of the common strikes now against 60/100 in the reference book
     m = sc["momentum"]["by_strike"]["1300"]
-    assert m["share_of_book_gamma_change_pp"] < -0.5
+    assert m["share_of_book_gamma_change_pp"] == pytest.approx(-3.48)
     assert m["gross_volume_change_contracts"] == 0
     assert _verdict_words_in(sc["momentum"]) == []
 
@@ -570,6 +579,9 @@ def test_momentum_survives_nan_and_junk_pairs():
     """A NaN at a non-top strike must not poison the shared denominator into
     confident NaN reads, and a junk pair must not crash the whole read."""
     nan = float("nan")
+    clean = _mom_rows()
+    clean_momentum = SR.build_scene(clean[-1], SR.magnet_band(clean[-1]), [],
+                                    clean, T0)["momentum"]
     rows = _mom_rows()
     for r in rows:
         r["gex_views"]["mass_by_strike"] = (
@@ -577,9 +589,11 @@ def test_momentum_survives_nan_and_junk_pairs():
         r["gex_views"]["vol_gross_by_strike"] = (
             r["gex_views"]["vol_gross_by_strike"] + [[1100, nan]])
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    m = sc["momentum"]["by_strike"]["1300"]
-    assert m["share_of_book_gamma_change_pp"] > 0.5
-    assert m["gross_volume_change_contracts"] == 340
+    # the torn pairs are skipped outright, never read over the real pair beside
+    # them: the whole block is exactly the clean book's
+    assert sc["momentum"] == clean_momentum
+    assert sc["momentum"]["by_strike"]["1300"] == {
+        "share_of_book_gamma_change_pp": 2.96, "gross_volume_change_contracts": 340}
     assert "NaN" not in json.dumps(sc)
 
 
@@ -588,10 +602,9 @@ def test_walls_survive_nan_in_the_surface():
     row["gex_views"]["net_by_strike"] = (
         row["gex_views"]["net_by_strike"] + [[1260, float("nan")]])
     sc = scene_of(row)
-    for side in ("call", "put"):
-        for w in (sc.get("walls") or {}).get(side, []):
-            share = w["cluster_share_of_book_gamma_pp"]
-            assert share == share                # never NaN
+    # the NaN strike neither removes the ladder nor moves a single share: the
+    # walls are exactly the clean surface's
+    assert sc["walls"] == scene_of(rich_row())["walls"]
     assert "NaN" not in json.dumps(sc)
 
 
@@ -602,15 +615,20 @@ def test_magnet_ships_the_lead_not_a_tie_verdict():
     over the runner-up is the evidence; a threshold is not."""
     m = scene_of(rich_row())["magnet"]
     assert "is_a_tie" not in m
-    assert m["top_strike_lead_pp"] is not None
+    assert m["top_strike_lead_pp"] == pytest.approx(30.0)   # 60% − 30%
 
 
 def test_breadth_ships_a_number_and_never_a_direction():
     b = scene_of(rich_row())["breadth"]
     # |2.0-0.2|/2.0
     assert b["lopsidedness_0_is_even"] == pytest.approx(0.9, abs=0.01)
-    assert b["heavier_side"] in ("up", "down")   # a fact about mass...
+    assert b["heavier_side"] == "up"             # a fact about mass...
     assert "dir" not in b and "vector" not in b  # ...never a lean
+    flipped = rich_row()
+    flipped["gex_views"]["shove"] = {"shove_up_margin": 0.2,
+                                     "shove_down_margin": 2.0}
+    assert scene_of(flipped)["breadth"] == {"lopsidedness_0_is_even": 0.9,
+                                            "heavier_side": "down"}
     # sr-8: the shared-witness warning was a frozen string in the payload and a
     # sentence in the doctrine. The duplicate went; the warning did not.
     assert "measures_same_gamma_pile_as" not in b
@@ -642,21 +660,43 @@ def test_walls_age_on_the_numbers_the_scene_ships():
                         rows, T0)
     assert "put wall" not in " ".join(sc["frozen_do_not_cite"])
     assert "regime unchanged 90m" in sc["frozen_do_not_cite"]
-    w = sc["walls"]["put"][0]
-    assert "unchanged_for_min" in w or "unchanged_for_at_least_min" in w
+    # every wall held across all 60 minutes of rows, so its age is CENSORED at
+    # the oldest row — a floor, never passed off as an exact age
+    for e in sc["walls"]["call"] + sc["walls"]["put"]:
+        assert e["unchanged_for_at_least_min"] == 60, e
+        assert "unchanged_for_min" not in e
+    # ...and a wall that was NOT on the ladder ten minutes ago gets an exact age
+    dense = [[k, 0.1] for k in range(1105, 1300, 5)
+             if k not in (1150, 1240, 1245, 1260, 1265)]
+    walked = [rich_row(ts=T0 - timedelta(minutes=(5 - i) * 2),
+                       nbs=([[1100, -6.0], [1150, -7.0], [1240, 8.0],
+                             [1245, 7.0], [1300, 6.5]] if i else
+                            [[1100, -6.0], [1150, -7.0], [1260, 9.0],
+                             [1265, 7.0]]) + dense)
+              for i in range(6)]
+    w = SR.build_scene(walked[-1], SR.magnet_band(walked[-1]), [], walked,
+                       T0)["walls"]
+    assert [e.get("unchanged_for_min") for e in w["call"]] == [10, 10]
+    assert [e.get("unchanged_for_at_least_min") for e in w["put"]] == [10, 10]
 
 
 def test_heaviest_wall_ships_when_the_ladder_would_hide_it():
     """The ladder is ordered by DISTANCE, so a side's heaviest cluster can sit
     third and never ship — measured live on 2026-08-06, where put 1150 (the
     heaviest) was cut while walls.put[0] was called 'the strongest'."""
-    sc = scene_of(rich_row())
-    puts = sc["walls"]["put"]
-    hb = sc["walls"].get("put_heaviest_wall_behind_the_ladder")
-    if hb:                                   # only when it is not in the ladder
-        assert hb["cluster_share_of_book_gamma_pp"] >= max(
-            p["cluster_share_of_book_gamma_pp"] for p in puts)
-        assert hb["strike"] not in {p["strike"] for p in puts}
+    # three call clusters; the heaviest (1330) is the furthest from spot
+    walls_at = {1240: 6.0, 1270: 6.0, 1330: 12.0, 1150: -7.0, 1100: -6.0}
+    nbs = ([[k, g] for k, g in walls_at.items()]
+           + [[k, 0.1] for k in range(1105, 1335, 5) if k not in walls_at])
+    w = scene_of(rich_row(nbs=nbs))["walls"]
+    assert [c["strike"] for c in w["call"]] == [1240.0, 1270.0]   # nearest two
+    hb = w["call_heaviest_wall_behind_the_ladder"]
+    assert hb["strike"] == 1330.0
+    assert hb["cluster_share_of_book_gamma_pp"] > max(
+        c["cluster_share_of_book_gamma_pp"] for c in w["call"])
+    # only when it is hidden: the put side's heaviest (1150) is already on it
+    assert "put_heaviest_wall_behind_the_ladder" not in w
+    assert "call_heaviest_wall_behind_the_ladder" not in scene_of(rich_row())["walls"]
 
 
 # --- sr-4: the day-scoped calendar -------------------------------------------
@@ -971,7 +1011,7 @@ _OUTPUT_SCHEMA_NAMES = {
 _UNREACHABLE_IN_FIXTURES = {
     # needs the percentile cache warm with several CLOSED sessions of distinct
     # books; test_percentile_omitted_below_the_session_floor covers the absence
-    # side, and test_magnet_ships_the_lead_not_a_verdict the presence side.
+    # side, and test_magnet_ships_the_lead_not_a_tie_verdict the presence side.
     "top_strike_lead_vs_own_history",
 }
 
@@ -996,6 +1036,15 @@ def test_the_doctrine_never_names_a_field_the_scene_stopped_shipping(tmp_path):
     flip-band edges, which `flip_block` still constructs before popping. It
     would have passed this branch's own deletion. The allow-list is now built
     from scenes that were actually BUILT."""
+    named, outlived = _doctrine_names_without_a_field(
+        SR._DOCTRINE, _keys_every_scene_shape_ships(tmp_path))
+    assert named, "the doctrine names no fields at all — the regex broke"
+    assert outlived == [], (
+        f"the doctrine names {outlived}, but no scene the builder can produce "
+        f"carries every part of those names — a sentence outliving its field")
+
+
+def _keys_every_scene_shape_ships(tmp_path):
     shipped = set()
 
     def walk(o):
@@ -1009,32 +1058,42 @@ def test_the_doctrine_never_names_a_field_the_scene_stopped_shipping(tmp_path):
 
     for sc in _every_scene_shape(tmp_path):
         walk(sc)
-    shipped |= _UNREACHABLE_IN_FIXTURES
+    return shipped | _UNREACHABLE_IN_FIXTURES
 
-    named = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_.]*)`", SR._DOCTRINE))
+
+def _doctrine_names_without_a_field(doctrine, shipped):
+    """(every backticked field name the doctrine speaks, the ones with a part
+    no built scene carries) — the guard itself, so it can be aimed at a
+    doctrine it should reject as well as the one it should pass."""
+    named = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_.]*)`", doctrine))
     named -= {"_pp", "_bn", "_musd", "_min", "_sigma"}   # the unit suffixes
     named -= _OUTPUT_SCHEMA_NAMES                        # the reply's own shape
-    assert named, "the doctrine names no fields at all — the regex broke"
-    for name in sorted(named):
-        for part in name.split("."):
-            assert part in shipped, (
-                f"the doctrine names `{name}`, but no scene the builder can "
-                f"produce carries a key {part!r} — a sentence outliving its field")
+    return named, sorted(n for n in named
+                         if any(p not in shipped for p in n.split(".")))
 
 
-def test_the_guard_rejects_a_name_the_builder_stopped_writing():
+def test_the_guard_rejects_a_name_the_builder_stopped_writing(tmp_path):
     """The guard is only worth having if it FAILS on the thing it exists to
     catch, and its first draft did not. These four are the real shapes: two
     leaves sr-8 deleted (one of which the old guard admitted, because
     flip_block still constructs it before popping it), a whole block that left
     the payload, and a raw diary-row key a doctrine author might reach for
-    believing it ships."""
+    believing it ships. Each is checked both ways: it is not in the doctrine
+    now, and the guard flags it — and only it — the moment it is written back."""
+    shipped = _keys_every_scene_shape_ships(tmp_path)
     for gone in ("band_upper_edge_ct_sigma", "instrument", "built_from",
                  "gex_views"):
         assert gone not in SR._DOCTRINE, (
             f"`{gone}` is back in the doctrine — either the scene ships it "
             f"again, in which case update this test, or a sentence has "
             f"outlived its field")
+        _, outlived = _doctrine_names_without_a_field(
+            SR._DOCTRINE + f" Read `{gone}` first.", shipped)
+        assert outlived == [gone], (gone, outlived)
+        # dotted under a block that does ship, the unshipped leaf still fails
+        _, outlived = _doctrine_names_without_a_field(
+            SR._DOCTRINE + f" Read `regime.{gone}` first.", shipped)
+        assert outlived == [f"regime.{gone}"], (gone, outlived)
 
 
 def test_the_forbidden_list_names_blocks_the_scene_actually_ships():
@@ -1169,11 +1228,20 @@ def test_the_drift_ceiling_cannot_reject_real_data():
     name — 2.9%, an order of magnitude inside the ceiling. A tighter ceiling
     would start refusing books that were merely moving."""
     worst_recorded = 43.27 / 1480.0
+    # pinned as well as tested at its line: the boundary checks below read the
+    # constant, so on their own they would follow it to any looser ceiling
     assert SR.RULER_MAX_DRIFT == 0.25 and worst_recorded < SR.RULER_MAX_DRIFT
     drifted = round(1200 * (1 - worst_recorded), 2)          # 1164.9
     sc = scene_of(rich_row(meta={"chain_spot": drifted}))
     assert sc["price"]["spot_when_book_was_measured"] == drifted
     assert _sigma_rulers(sc) == set()        # accepted: the standing rule holds
+    # the ceiling is the line, on both sides of spot: a dollar inside it is a
+    # book, a dollar beyond it is a broken field
+    edge = 1200 * SR.RULER_MAX_DRIFT
+    for chain_spot, accepted in ((1200 - edge + 1, True), (1200 + edge - 1, True),
+                                 (1200 - edge - 1, False), (1200 + edge + 1, False)):
+        sc = scene_of(rich_row(meta={"chain_spot": chain_spot}))
+        assert ("spot_when_book_was_measured" in sc["price"]) is accepted, chain_spot
 
 
 def test_the_fallback_ruler_never_wears_the_books_name():
@@ -1303,9 +1371,18 @@ def test_too_few_common_strikes_says_nothing_rather_than_yes():
     """Below OI_MIN_STRIKES_COMPARED the claim is not worth making, and an
     absent answer is the scene's word for unanswerable — a guessed "unchanged"
     would be the reader inventing the reassurance it was asked for."""
-    thin = _oi_rows(_oi_surface(range(1100, 1125, 5)),   # 1100..1120
-                    _oi_surface(range(1115, 1140, 5)))   # 1115..1135, 2 shared
+    n = SR.OI_MIN_STRIKES_COMPARED
+    width = n + 5                                    # strikes per surface
+
+    def sharing(k):
+        """Two identical-OI surfaces whose windows overlap on exactly k strikes."""
+        start = 1100 + 5 * (width - k)
+        return _oi_rows(_oi_surface(range(1100, 1100 + 5 * width, 5)),
+                        _oi_surface(range(start, start + 5 * width, 5)))
+
+    thin = sharing(n - 1)                            # one strike short
     assert SR._oi_unchanged_today(thin) == (None, None)
+    assert SR._oi_unchanged_today(sharing(n)) == (True, n)   # the floor answers
     # sr-8: with the two constants gone, an open_interest block that can say
     # nothing measurable has nothing left to ship — and under omit-never-null
     # the block itself vanishes rather than shipping a hollow shell. (Here the

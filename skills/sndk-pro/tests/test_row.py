@@ -73,8 +73,10 @@ def test_off_expiry_map_is_populated():
             assert 1000.0 < entry[0] < 1500.0    # SNDK price space, never SPX
     assert gv["magnet"] is not None
     assert abs(gv["magnet"] - synth.SPOT) < 0.10 * synth.SPOT
-    assert row["call_wall"] is None or row["call_wall"] >= synth.SPOT - 5
-    assert row["put_wall"] is None or row["put_wall"] <= synth.SPOT + 5
+    # walls are part of "a full map": a Monday row that lost them would still
+    # pass an `is None or` check, so both must be there and on their own side
+    assert row["call_wall"] is not None and row["call_wall"] >= synth.SPOT - 5
+    assert row["put_wall"] is not None and row["put_wall"] <= synth.SPOT + 5
     # σ derived from the rebuilt ATM IV: spot·iv/√252 ≈ 1250·0.5/15.87 ≈ 39
     assert row["sigma"] and 20 < row["sigma"] < 80
     assert row["gamma_flip"] is None or 1000 < row["gamma_flip"] < 1500
@@ -118,15 +120,25 @@ def test_expiry_day_em_unscaled():
 
 
 def test_dex_ladder_em_ride_the_row():
+    from lefteye_range_ruler import DEBIAS, _atm_strike, _leg_price
     row = _row()
     assert row["dex_views"] and row["dex_views"]["net_dex_by_strike"]
     assert row["profile_ladder"] is None or row["profile_ladder"].get("ladder_v") == 1
     rr = row["range_ruler"]
     assert rr["em_points"] and rr["em_points"] > 0
-    # √time scaling: the 4-DTE straddle must be scaled DOWN to a 1-day move
+    # √time scaling: the 4-DTE straddle must be scaled DOWN to today's move.
+    # (The exact factor rests on the holiday calendar at run time; the Thursday
+    # and expiry-day tests pin it where the calendar cannot move it.)
     assert rr["anchor"].endswith("_scaled")
-    assert rr["em_points"] < 0.6 * synth.SPOT * 0.5 / math.sqrt(252) * 2 * 3
-    assert rr["em_consumed"] is not None     # day OHL provided → consumption reads
+    front = [c for c in synth.prepared_book() if c["dte"] == 4]
+    _k, call, put = _atm_strike(front, synth.SPOT)
+    assert rr["em_points"] < DEBIAS * (_leg_price(call)[0] + _leg_price(put)[0])
+    # day OHL provided → consumption reads: the larger leg off the 1245 open
+    # (1260 - 1245 = 15) over the morning's anchor, which on the first row of
+    # the day is this row's own expected move
+    assert rr["spent_pts"] == 15.0
+    assert rr["em_open"] == rr["em_points"]
+    assert rr["em_consumed"] == round(15.0 / rr["em_open"], 4)
 
 
 def test_adaptive_em_from_intraday_bars():
@@ -240,10 +252,16 @@ def test_hunter_rth_gate(monkeypatch):
 
 # --- ROW_V 3 payload-v2 sources (2026-08-02) --------------------------------
 def test_vwap_rides_the_row_when_bars_carry_volume():
-    bars = [{"high": 1252.0, "low": 1248.0, "close": 1250.0, "volume": 100},
-            {"high": 1262.0, "low": 1258.0, "close": 1260.0, "volume": 300}]
+    # lopsided wicks, so the typical price (H+L+C)/3 is not the close: a VWAP
+    # weighted on closes would read 1257.5 here
+    bars = [{"high": 1256.0, "low": 1248.0, "close": 1250.0, "volume": 100},
+            {"high": 1262.0, "low": 1255.0, "close": 1260.0, "volume": 300}]
     row = _row(intraday_bars=bars)
-    assert row["vwap"] == 1257.5                 # (1250·100 + 1260·300)/400
+    typical = ((1256 + 1248 + 1250) / 3 * 100 + (1262 + 1255 + 1260) / 3 * 300) / 400
+    assert row["vwap"] == round(typical, 4)      # 1257.0833
+    # a bar with no volume carries no weight rather than dragging the average
+    mixed = bars + [{"high": 1300.0, "low": 1290.0, "close": 1295.0, "volume": 0}]
+    assert _row(intraday_bars=mixed)["vwap"] == round(typical, 4)
     assert _row(intraday_bars=None)["vwap"] is None
     unvolumed = [{"high": 1252.0, "low": 1248.0, "close": 1250.0, "volume": 0}]
     assert _row(intraday_bars=unvolumed)["vwap"] is None
@@ -270,14 +288,29 @@ def test_iv_skew_absent_without_clean_solves():
 
 
 def test_flows_front_charm_vanna_on_the_front_book():
-    row = _row()
-    fl = row["flows_front"]
-    assert fl is not None and fl["clock"] == "front_book"
-    assert fl["flows_v"] == 1 and fl["basis"] in ("open_interest", "volume")
-    assert isinstance(fl["cex"], float) and isinstance(fl["vex"], float)
-    assert fl["charm_wall"] is not None and fl["n"] > 0
-    # magnitudes are uncalibrated but must be finite and serialize
-    json.dumps(fl)
+    """A call and a put at one strike carry the same charm and vanna (r = 0),
+    so the stub book's equal open interest on both rights nets both totals to
+    exactly zero — which any float passes. Put all the open interest on one
+    right and the dealer sign convention (calls +, puts -) must flip both
+    totals, and only the front weekly's contracts may be counted."""
+    def flows(empty_right):
+        book = synth.prepared_book()
+        for c in book:
+            if c["right"] == empty_right:
+                c["open_interest"] = 0
+        return sndk_views.build_row(book, synth.SPOT, NOW, spot_source="schwab_quote",
+                                    chain_meta=CHAIN_META)["flows_front"]
+    calls, puts = flows("put"), flows("call")
+    n_front_strikes = len({c["strike"] for c in synth.prepared_book() if c["dte"] == 4})
+    for fl in (calls, puts):
+        assert fl["clock"] == "front_book" and fl["flows_v"] == 1
+        assert fl["basis"] == "open_interest"
+        assert fl["n"] == n_front_strikes        # one right per strike, next week never
+        assert fl["charm_wall"] is not None
+        json.dumps(fl)                           # uncalibrated, but it must serialize
+    assert calls["cex"] != 0.0 and calls["vex"] != 0.0
+    assert abs(calls["cex"] + puts["cex"]) < 0.05
+    assert abs(calls["vex"] + puts["vex"]) < 0.05
 
 
 def test_atm_iv_recorded_beside_sigma():
@@ -348,13 +381,24 @@ def test_range_em_votes_pin_on_a_compressed_tape():
 
 # ---------------------------------------------------------------- history-1 (2026-09-05): the next book
 def test_the_next_books_panes_ride_the_row():
-    row = _row()
+    """The stub prices every contract with the same counts, so next week's are
+    marked here: a pane read off the wrong expiry cannot pass."""
+    book = synth.prepared_book()
+    for c in book:
+        if c["dte"] == 11:
+            c["open_interest"], c["volume"] = 777, 333
+    row = sndk_views.build_row(book, synth.SPOT, NOW, spot_source="schwab_quote",
+                               chain_meta=CHAIN_META)
     gv = row["gex_views"]
     assert gv["next_dte"] == 11
-    nxt = {k for k, _, _ in gv["oi_side_by_strike_next"]}
-    front = {k for k, _, _ in gv["oi_side_by_strike"]}
-    assert nxt and nxt <= front | nxt              # the same grid, windowed the same way
-    assert all(len(x) == 3 for x in gv["vol_side_by_strike_next"])
+    assert gv["oi_side_by_strike_next"] and gv["vol_side_by_strike_next"]
+    # [strike, calls, puts]: next week's own counts, and the front book's untouched
+    assert {(c, p) for _, c, p in gv["oi_side_by_strike_next"]} == {(777, 777)}
+    assert {(c, p) for _, c, p in gv["vol_side_by_strike_next"]} == {(333, 333)}
+    assert {(c, p) for _, c, p in gv["oi_side_by_strike"]} == {(200, 200)}
+    # the same grid, windowed the same way
+    assert ({k for k, _, _ in gv["oi_side_by_strike_next"]}
+            == {k for k, _, _ in gv["oi_side_by_strike"]})
 
 
 def test_a_one_expiry_chain_has_no_next_book():

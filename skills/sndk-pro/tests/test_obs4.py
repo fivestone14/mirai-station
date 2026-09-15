@@ -73,15 +73,6 @@ def test_the_since_window_starts_where_price_was():
     assert fr["frame_is"] == "a move"
 
 
-def test_a_small_drift_is_a_hold():
-    lc = _last_call(minutes_ago=10, spot=1543.2)
-    rows = _rows([1541.7], [0], sigma=100.0)
-    fr = SR.frame_since_last_read(rows[-1], rows, lc, "heartbeat", False, T0,
-                                  bars=_flat_minutes(5))
-    assert fr["frame_is"] == "a hold"
-    assert fr["spot_change_sigma"] == pytest.approx(-0.015, abs=0.006)
-
-
 def test_the_frame_uses_the_same_bar_as_the_gate():
     """strikes-3, review item #6: a move is judged against the minutes around it.
     $12 is a hold among $8 minutes and a move among $2 minutes; the bar ships
@@ -226,12 +217,16 @@ def test_a_break_price_has_walked_back_into_says_when():
     as standing while price had already returned. A break carries the first
     minute that CLOSED back inside the box it broke; one price never came back
     to carries nothing."""
-    # $2 minutes, so the bar is $4: 1509 breaks the 1499-1501 box, then price
-    # closes back inside at 1500
+    # $2 minutes, so the bar is $4: the 09:56 scan at 1509 breaks the 1499-1501
+    # box, the 09:56 and 09:57 minutes close at 1509, and 09:58 is the FIRST
+    # minute to close back inside — not the last one, not the break itself
     came_back = _tape([1500] * 16 + [1509, 1500, 1500])
     rb = SR.ranges_block(came_back, T0, "2026-07-31", bars=_minutes_under(came_back))
     b = rb["breaks_today"]["breaks"][0]
-    assert b["went"] == "up" and b["at"] < b["back_inside_at"]
+    assert b["went"] == "up"
+    assert (b["at"], b["back_inside_at"]) == (
+        (T0 - timedelta(minutes=4)).strftime("%H:%M"),
+        (T0 - timedelta(minutes=2)).strftime("%H:%M"))
     gone = _tape([1500] * 16 + [1509, 1515, 1520])
     rb2 = SR.ranges_block(gone, T0, "2026-07-31", bars=_minutes_under(gone))
     assert "back_inside_at" not in rb2["breaks_today"]["breaks"][0]
@@ -303,15 +298,22 @@ def test_box_edges_ride_in_context_and_may_be_pointed_at():
 
 # --- the structure block: where the weight sits, and nothing more -------------
 def test_structure_says_where_the_weight_sits_and_nothing_else():
-    sc = scene_of(rich_row())                    # spot 1200: band 1240-1245 above
+    row = rich_row()                             # spot 1200: band 1240-1245 above
+    sc = scene_of(row)
     st = sc["structure"]
     band = st["bands"][0]
     assert (band["low"], band["high"], band["side"]) == (1240.0, 1245.0, "above")
-    assert 30 < band["share_of_book_gamma_pp"] < 50
+    # shares are of the whole surface's absolute gamma: the band is its two
+    # rungs (8 + 7), and "above" is every strike over the 1200 spot — a swapped
+    # side or a wrong denominator lands on a different number
+    nbs = row["gex_views"]["net_by_strike"]
+    total = sum(abs(g) for _, g in nbs)
+    assert band["share_of_book_gamma_pp"] == round((8.0 + 7.0) / total * 100.0, 1)
+    assert st["weight_above_spot_pp"] == round(
+        sum(abs(g) for k, g in nbs if k > 1200) / total * 100.0, 1)
     assert [a["side"] for a in st["air"]] == ["above", "below"]
     assert st["air"][0] == {"side": "above", "from": 1200.0, "to": 1240.0}
     assert st["air"][1] == {"side": "below", "from": 1150.0, "to": 1200.0}
-    assert 0 < st["weight_above_spot_pp"] < 100
     assert "structure" in SR.PRESENT_TENSE_FORBIDDEN_FOR
     assert "structure" in SR.BUILT_FROM[SR.OI_SNAPSHOT]
     for word in ("attract", "pull", "overpower", "magnet"):

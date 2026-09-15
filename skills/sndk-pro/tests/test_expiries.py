@@ -28,10 +28,11 @@ def test_holiday_friday_shifts_to_thursday():
     # to Thursday 12-24 (the holiday-Friday → Thursday rule)
     hol = sndk_feed._holidays(2026)
     assert date(2026, 12, 25) in hol, "calendar sanity: Christmas must be a closure"
+    assert date(2027, 1, 1) in sndk_feed._holidays(2027), "calendar sanity: New Year's Day must be a closure"
     exps = sndk_feed.weekly_expiries(_dt(2026, 12, 21), n=2)
-    assert exps[0] == date(2026, 12, 24)
-    assert exps[0].weekday() == 3          # Thursday
-    assert exps[1] == date(2027, 1, 1) or exps[1].weekday() < 5
+    # New Year's Day 2027 is a Friday closure too, looked up in 2027's
+    # calendar, so the next weekly also steps back to Thursday 12-31
+    assert exps == [date(2026, 12, 24), date(2026, 12, 31)]
 
 
 def test_july_4_observed_friday_shifts():
@@ -50,3 +51,6 @@ def test_probe_days_skip_weekends_and_cover_two_weeks():
     # every calendar-computable weekly in the window is a probed day
     for e in sndk_feed.weekly_expiries(_dt(2026, 7, 27), n=2):
         assert e in days
+    # a holiday is still probed: a wrong local calendar must fail toward a
+    # probe, never toward blindness (2026-07-03 is the observed July 4th closure)
+    assert date(2026, 7, 3) in sndk_feed.probe_days(date(2026, 6, 29))

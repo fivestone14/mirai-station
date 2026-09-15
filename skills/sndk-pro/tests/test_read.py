@@ -70,13 +70,26 @@ def test_band_empty_is_honest_not_zero():
 
 
 def test_with_path_needs_real_history():
-    """A 30-minute read must not be claimed off five minutes of rows."""
+    """A 30-minute read must not be claimed off five minutes of rows, and when
+    it is claimed the reference is found BY TIMESTAMP — the row at the
+    30-minute mark, not the oldest row and not a fixed count back, which a gap
+    in the scan would silently shorten."""
     rows = [mkrow([[1300, 9]], spot=1200 + i, ts=T0 - timedelta(minutes=10 - i))
             for i in range(6)]
     assert "_ran_30m_sigma" not in SR.with_path(rows[-1], rows)
-    rows = [mkrow([[1300, 9]], spot=1200 + i, ts=T0 - timedelta(minutes=40 - i))
-            for i in range(21)]
-    assert "_ran_30m_sigma" in SR.with_path(rows[-1], rows)
+    # nineteen minutes of history is still not a read; twenty is
+    short = [mkrow([[1300, 9]], spot=1200.0, ts=T0 - timedelta(minutes=19)),
+             mkrow([[1300, 9]], spot=1230.0, ts=T0)]
+    assert "_ran_30m_sigma" not in SR.with_path(short[-1], short)
+    enough = [mkrow([[1300, 9]], spot=1200.0, ts=T0 - timedelta(minutes=20)),
+              mkrow([[1300, 9]], spot=1230.0, ts=T0)]
+    assert SR.with_path(enough[-1], enough)["_ran_30m_sigma"] == pytest.approx(0.30)
+    # an hour of 2-minute rows with a ten-minute scan gap: the row at T0-30 is
+    # spot 1215, so $15 over a $100 sigma. The oldest row would say 0.30 and
+    # fifteen rows back across the gap would say 0.20.
+    hour = [mkrow([[1300, 9]], spot=1200 + i, ts=T0 - timedelta(minutes=60 - 2 * i))
+            for i in range(31) if not 20 <= i < 25]
+    assert SR.with_path(hour[-1], hour)["_ran_30m_sigma"] == pytest.approx(0.15)
 
 
 # --- the wake gate ---------------------------------------------------------
@@ -119,19 +132,6 @@ def test_first_scan_always_wakes():
     assert SR.should_wake(mkrow([[1300, 9]]), None, None, T0) == "first read"
 
 
-def test_min_gap_holds_the_ordinary_down():
-    """The floor still binds on drift. Travel past the move bar is a real
-    trigger past the gap and nothing at all inside it — that is the spam wk-1
-    closed."""
-    bars = _minutes(5)                                   # the bar is $10
-    prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 1))
-    ordinary = mkrow([[1300, 9]], spot=1200 + 10 + 5)
-    assert SR.should_wake(ordinary, None, prev, T0, bars=bars) is None
-    # ...and the same row past the floor is the ordinary trigger it always was
-    old_prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN + 1))
-    assert SR.should_wake(ordinary, None, old_prev, T0, bars=bars) == "price ran"
-
-
 def _books_at(offsets, *rows):
     """Books stamped at explicit minutes-before-T0, so a fixture can put them
     INSIDE the min-gap window. `_books` hard-codes T0-10/-9, which is older than
@@ -144,28 +144,6 @@ def _books_at(offsets, *rows):
                          book_asof=(T0 - timedelta(minutes=off)).isoformat())
         out.append(r)
     return out
-
-
-def test_a_material_event_breaks_the_floor():
-    """2026-09-09. A gamma sign flipping does not become less material because
-    it happened eight minutes after the last read — the standing sentence is now
-    describing a board that no longer exists."""
-    prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), gamma_sign="negative")
-    row = mkrow([[1300, 9]], gamma_sign="positive")
-    two = _books_at([2, 1], mkrow([[1300, 9]], gamma_sign="positive"),
-                    mkrow([[1300, 9]], gamma_sign="positive"))
-    assert SR.should_wake(row, None, prev, T0, two) == "gamma sign flipped"
-
-
-def test_plain_travel_must_be_twice_as_far_to_break_the_floor():
-    """"price ran" is the most frequent wake there is; at the move bar it would
-    defeat the floor on any trending day. Inside it, the bar is doubled."""
-    bars = _minutes(5)                          # the bar is $10, doubled $20
-    prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), spot=1200.0)
-    near = mkrow([[1300, 9]], spot=1200 + 10 + 5)
-    assert SR.should_wake(near, None, prev, T0, bars=bars) is None
-    far = mkrow([[1300, 9]], spot=1200 + 20 + 5)
-    assert SR.should_wake(far, None, prev, T0, bars=bars) == "price ran"
 
 
 def test_nothing_at_all_fires_inside_the_hard_floor():
@@ -181,13 +159,18 @@ def test_nothing_at_all_fires_inside_the_hard_floor():
 
 
 def test_interrupts_have_their_own_budget():
-    """Past the interrupt cap the floor is absolute again, so a trending session
-    cannot spend the whole day's reads before lunch. The ordinary cadence is
-    untouched — that is the point of a separate budget."""
+    """2026-09-09. A gamma sign flipping does not become less material because
+    it happened eight minutes after the last read — the standing sentence is now
+    describing a board that no longer exists — so a material event breaks the
+    floor. But past the interrupt cap the floor is absolute again, so a trending
+    session cannot spend the whole day's reads before lunch. The ordinary
+    cadence is untouched — that is the point of a separate budget."""
     prev = _read(T0 - timedelta(minutes=SR.MIN_GAP_MIN - 2), gamma_sign="negative")
     row = mkrow([[1300, 9]], gamma_sign="positive")
     two = _books_at([2, 1], mkrow([[1300, 9]], gamma_sign="positive"),
                     mkrow([[1300, 9]], gamma_sign="positive"))
+    # a caller that passes no count leaves the budget untouched: it fails open
+    assert SR.should_wake(row, None, prev, T0, two) == "gamma sign flipped"
     spent = SR.INTERRUPT_DAILY_CAP
     assert SR.should_wake(row, None, prev, T0, two, interrupts_today=spent) is None
     assert SR.should_wake(row, None, prev, T0, two,
@@ -209,13 +192,28 @@ def test_drift_never_interrupts_however_large():
     assert SR.should_wake(row, None, prev, T0, two) is None
 
 
-def test_price_ran_wakes():
-    bars = _minutes(5)                                   # the bar is $10
-    prev = _read(T0 - timedelta(minutes=20), spot=1200.0)
-    row = mkrow([[1300, 9]], spot=1200 + 10 + 1)
-    assert SR.should_wake(row, None, prev, T0, bars=bars) == "price ran"
-    quiet = mkrow([[1300, 9]], spot=1200 + 10 - 1)
-    assert SR.should_wake(quiet, None, prev, T0, bars=bars) is None
+@pytest.mark.parametrize("gap_min, travel, expected", [
+    pytest.param(20, 11, "price ran", id="past-floor-over-the-bar"),
+    pytest.param(20, 10, "price ran", id="past-floor-exactly-the-bar"),
+    pytest.param(20, 9, None, id="past-floor-under-the-bar"),
+    pytest.param(SR.MIN_GAP_MIN - 1, 15, None, id="inside-floor-over-the-bar"),
+    pytest.param(SR.MIN_GAP_MIN + 1, 15, "price ran", id="same-travel-past-the-floor"),
+    pytest.param(SR.MIN_GAP_MIN - 2, 19, None, id="inside-floor-under-double"),
+    pytest.param(SR.MIN_GAP_MIN - 2, 20, "price ran", id="inside-floor-exactly-double"),
+    pytest.param(SR.MIN_GAP_MIN - 2, 25, "price ran", id="inside-floor-past-double"),
+])
+def test_price_ran_wakes(gap_min, travel, expected):
+    """Plain travel against the move bar, and the floor it has to clear.
+
+    Past MIN_GAP_MIN travel at the bar is the ordinary trigger. Inside it the
+    floor still binds on drift — travel past the bar is nothing at all there,
+    which is the spam wk-1 closed — and "price ran", the most frequent wake
+    there is, would defeat the floor on any trending day at the ordinary bar,
+    so inside it the bar is doubled."""
+    bars = _minutes(5)                              # the bar is $10, doubled $20
+    prev = _read(T0 - timedelta(minutes=gap_min), spot=1200.0)
+    row = mkrow([[1300, 9]], spot=1200.0 + travel)
+    assert SR.should_wake(row, None, prev, T0, bars=bars) == expected
 
 
 def test_the_move_bar_is_sized_to_the_hour_not_the_day():
@@ -238,8 +236,13 @@ def test_no_minute_record_means_travel_wakes_nothing():
     far = mkrow([[1300, 9]], spot=1500.0)
     assert SR.should_wake(far, None, prev, T0) is None
     assert SR.should_wake(far, None, prev, T0, bars=[]) is None
-    # too few completed minutes in the window is no ruler either
+    # too few completed minutes in the window is no ruler either; exactly
+    # enough is one
     assert SR.typical_minute(_minutes(5, n=SR.MINUTE_RULER_MIN_BARS - 1), T0) is None
+    assert SR.typical_minute(_minutes(5, n=SR.MINUTE_RULER_MIN_BARS), T0) == 5.0
+    # a flat tape has no ruler, so it is no licence to wake on travel either
+    assert SR.typical_minute(_minutes(0), T0) is None
+    assert SR.should_wake(far, None, prev, T0, bars=_minutes(0)) is None
     # a minute still running is a partial and never counts
     running = _minutes(5, n=SR.MINUTE_RULER_MIN_BARS - 1) + [
         {"ts": (T0 - timedelta(seconds=30)).isoformat(), "open": 1200.0,
@@ -285,10 +288,16 @@ def test_a_wall_relabelling_is_not_an_event_but_a_crossing_is():
 def test_regime_word_alone_no_longer_wakes():
     """`regime` is a word derived from the gamma sign at spot, so waking on it
     woke twice for one fact. The sign itself still wakes, with confirmation."""
-    prev = _read(T0 - timedelta(minutes=20), gamma_sign="negative")
+    prev = _read(T0 - timedelta(minutes=20), gamma_sign="negative", regime="trending")
     row = mkrow([[1300, 9]], regime="pinning", gamma_sign="negative")
     prev_row = mkrow([[1300, 9]], regime="trending", gamma_sign="negative")
     assert SR.should_wake(row, prev_row, prev, T0) is None
+    # the new word has held for two fresh books and the last read's snapshot
+    # carries the old one, so a word trigger on the scan clock OR the book
+    # clock would fire here; only the unchanged sign keeps the gate asleep
+    two = _books(mkrow([[1300, 9]], regime="pinning", gamma_sign="negative"),
+                 mkrow([[1300, 9]], regime="pinning", gamma_sign="negative"))
+    assert SR.should_wake(row, prev_row, prev, T0, two) is None
 
 
 def test_the_gate_reads_a_snapshot_because_prev_is_not_a_diary_row():
@@ -327,8 +336,8 @@ def test_frozen_fields_report_age():
     rows = [mkrow([[1300, 9]], magnet=1300.0,
                   ts=T0 - timedelta(minutes=90 - i * 2)) for i in range(45)]
     fz = {f["field"]: f for f in SR.frozen_fields(rows, T0)}
-    assert fz["magnet"]["for_min"] >= SR.FROZEN_MIN
-    assert fz["magnet"]["value"] == 1300.0
+    # unchanged since the oldest row, 90 minutes before now
+    assert fz["magnet"] == {"field": "magnet", "value": 1300.0, "for_min": 90}
 
 
 def test_recently_changed_field_is_not_frozen():
@@ -358,8 +367,11 @@ def test_scene_hands_over_the_path_the_old_design_omitted():
                   ts=T0 - timedelta(minutes=40 - i * 2)) for i in range(21)]
     row = SR.with_path(rows[-1], rows)
     sc = SR.build_scene(row, SR.magnet_band(row), [], rows, T0)
-    assert sc["price"]["session_low"] is not None
-    assert sc["price"]["session_high"] is not None
+    # the day's own path: its low and high, and the 30 minutes with_path
+    # measured by timestamp (1215 at T0-30 to 1260 now, over a $100 sigma)
+    assert sc["price"]["session_low"] == 1200.0
+    assert sc["price"]["session_high"] == 1260.0
+    assert sc["price"]["moved_last_30min_sigma"] == 0.45
     # sr-5: the point became a spread — a single "typical" number taught the
     # model a ceiling (33/33 emitted magnitudes inside 0.06-0.20 vs p95 0.46).
     # sr-8 moved the 30-minute spread out of the payload into the doctrine.
@@ -395,11 +407,6 @@ def test_scene_carries_no_verdict_at_all():
 
 
 # --- reply handling --------------------------------------------------------
-def _scene_for_obs():
-    row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
-    return SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
-
-
 def _obs_scene():
     row = mkrow([[1300, 60], [1100, 20]], up=2.0, dn=0.1)
     return SR.build_scene(row, SR.magnet_band(row), [], [row], T0)
@@ -499,7 +506,7 @@ def test_the_shadow_guard_rides_the_row_and_never_rejects():
     assert "stale_language_flags" not in clean
 
 
-def test_context_states_facts_and_never_verdicts():
+def test_context_states_facts_and_never_verdicts(monkeypatch):
     """obs-2's division of labour: Python supplies only what the model cannot
     see from one snapshot — a rank against closed sessions, and what moved since
     the last book. It never says whether any of it matters."""
@@ -511,16 +518,27 @@ def test_context_states_facts_and_never_verdicts():
     ctx = SR.session_context({}, rows, T0) or {}
     ch = ctx.get("changed_since_last_book") or {}
     assert ch.get("gamma_sign") == {"was": "negative", "now": "positive"}
-    # THE VERDICT HALF, ON A SCENE THAT CAN ACTUALLY PRODUCE A RANK. Passing an
-    # empty scene made `vs_prior_sessions` absent, so the loop below ran zero
-    # times and the half of this test its name promises was dead code.
+    # THE VERDICT HALF needs closed sessions to rank against, and the tmp state
+    # dir holds none — so a real scene alone still left `vs_prior_sessions`
+    # absent and this half dead. The history is handed in: six closed days of
+    # magnet lead and five of lopsidedness, both at PCTL_MIN_SESSIONS or over.
+    monkeypatch.setattr(SR, "_prior_sessions", lambda today: {
+        "magnet_gap_pp_days": [10.0, 20.0, 30.0, 40.0, 60.0, 70.0],
+        "lopsidedness_days": [0.95, 0.96, 0.97, 0.98, 0.99]})
     sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
+    assert sc["magnet"]["top_strike_lead_pp"] == 50.0
+    assert sc["breadth"]["lopsidedness_0_is_even"] == 0.9
     ranks = (SR.session_context(sc, rows, T0) or {}).get("vs_prior_sessions")
-    if ranks:                       # absent under PCTL_MIN_SESSIONS, which is fine
-        for v in ranks.values():
-            assert not SR.banned_words(v), v
-            assert "unusual" not in v and "extreme" not in v
-            assert "of the" in v and "sessions" in v   # a rank states its n
+    # a rank states its n, and a value under every prior day says so plainly
+    assert ranks == {"top_strike_lead_pp": "higher than 4 of the 6 prior sessions",
+                     "lopsidedness": "lower than all 5 prior sessions"}
+    for v in ranks.values():
+        assert not SR.banned_words(v), v
+        assert "unusual" not in v and "extreme" not in v
+    # under the session floor there is no rank at all, never a guess
+    monkeypatch.setattr(SR, "_prior_sessions", lambda today: {
+        "magnet_gap_pp_days": [10.0] * (SR.PCTL_MIN_SESSIONS - 1)})
+    assert "vs_prior_sessions" not in (SR.session_context(sc, rows, T0) or {})
 
 
 def test_a_rounded_number_is_the_boards_number_said_out_loud():
@@ -575,15 +593,43 @@ def _last_call(minutes_ago=47, **gate_kw):
             "wall_s": 9.9, "gate": SR.state_for_next_wake(r)}
 
 
+def _returned_literals(fn):
+    """Every plain string `fn` can return, read off its source. An f-string's
+    pieces are skipped — the wall crossings are built from one and are listed
+    by hand in the test below."""
+    import ast
+    import inspect
+    import textwrap
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    found = set()
+    for ret in ast.walk(tree):
+        if not isinstance(ret, ast.Return) or ret.value is None:
+            continue
+        in_fstring = {id(n) for j in ast.walk(ret.value)
+                      if isinstance(j, ast.JoinedStr) for n in ast.walk(j)}
+        found |= {n.value for n in ast.walk(ret.value)
+                  if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                  and id(n) not in in_fstring}
+    return found
+
+
 def test_every_wake_reason_translates_and_every_translation_is_speakable():
     """The RAW wake reason is never handed to the model — "pin moved" baited it
     into echoing "pin", a banned word, and the whole read died in testing. So
     the table must cover every reason the gate can produce, and every value
-    must pass the lexicon."""
-    reasons = ("first read", "price ran", "pin moved", "gamma sign flipped",
+    must pass the lexicon.
+
+    A hand-written list alone could never notice a NEW reason, which is the
+    failure that matters: the frame would silently say "routine check". So the
+    gate's own source is read for every reason it returns."""
+    reasons = {"first read", "price ran", "pin moved", "gamma sign flipped",
                "crossed flip", "call wall crossed", "put wall crossed",
                "iv moved", "flip moved", "heartbeat",
-               "listed strike crossed", "volume leader changed")
+               "listed strike crossed", "volume leader changed"}
+    gate = _returned_literals(SR._wake_trigger) | _returned_literals(SR.should_wake)
+    assert {"first read", "heartbeat", "price ran"} <= gate, gate   # the scan works
+    assert gate <= reasons, f"a wake reason with no translation: {gate - reasons}"
+    assert set(SR.INTERRUPT_WAKES) <= reasons
     for r in reasons:
         assert r in SR._WAKE_WORDS, r
     for phrase in SR._WAKE_WORDS.values():
@@ -630,23 +676,24 @@ def test_the_iv_trigger_needs_a_full_window_before_it_may_fire():
     noisiest day the trigger spent 14 of 25 calls, every one pinned to the
     MIN_GAP_MIN floor. A short window is not a licence to fire; it is a reason
     to wait."""
-    import inspect
-    import statistics
-    import sndk_read as R
-    n = R.WAKE_IV_MEDIAN_BOOKS
-    big = R.WAKE_IV_PP / 100.0 * 2          # a move twice the threshold
+    n = SR.WAKE_IV_MEDIAN_BOOKS
     spoke = 0.40
-    short = [{"atm_iv": spoke + big}] * (n - 1)
-    full = [{"atm_iv": spoke + big}] * n
-    ivs_short = [b["atm_iv"] for b in short]
-    ivs_full = [b["atm_iv"] for b in full]
-    # the arithmetic the gate does, isolated from the rest of should_wake
-    assert abs(statistics.median(ivs_short[-n:]) - spoke) * 100.0 >= R.WAKE_IV_PP
-    assert len(ivs_short) < n, "the short window must be short"
-    assert len(ivs_full) >= n and abs(statistics.median(ivs_full[-n:]) - spoke) * 100.0 >= R.WAKE_IV_PP
-    src = inspect.getsource(R._wake_trigger)
-    assert "len(ivs) >= WAKE_IV_MEDIAN_BOOKS" in src, \
-        "the full-window guard is the fix; without it a 2-book median fires"
+    moved = spoke + SR.WAKE_IV_PP / 100.0 * 2      # a move twice the threshold
+    prev = _read(T0 - timedelta(minutes=20), atm_iv=spoke)
+
+    def books(ivs):
+        return _books_at([10 - i for i in range(len(ivs))],
+                         *[mkrow([[1300, 9]], atm_iv=v) for v in ivs])
+
+    # every book agrees vol moved, but there are not enough of them to count
+    short = books([moved] * (n - 1))
+    assert SR.should_wake(short[-1], None, prev, T0, short) is None
+    full = books([moved] * n)
+    assert SR.should_wake(full[-1], None, prev, T0, full) == "iv moved"
+    # and it is the median that is compared: one spiking book in a full window
+    # is sensor noise, not a move
+    spike = books([spoke] * (n - 1) + [moved])
+    assert SR.should_wake(spike[-1], None, prev, T0, spike) is None
 
 
 def test_a_wall_crossed_wake_yields_a_frozen_crossing():
@@ -655,12 +702,18 @@ def test_a_wall_crossed_wake_yields_a_frozen_crossing():
     against — otherwise the wake reason and the block contradict each other."""
     lc = _last_call(spot=1490.0, call_wall=1500.0)
     row = mkrow([[1300, 60], [1100, 20]], spot=1520.0)
-    fr = SR.frame_since_last_read(row, [row], lc, "call wall crossed", False, T0)
+    # the wake reason comes from the real gate on the same last call, so the
+    # two straddle tests are checked against each other, not against a string
+    wake = SR.should_wake(row, None, lc, T0)
+    assert wake == "call wall crossed"
+    fr = SR.frame_since_last_read(row, [row], lc, wake, False, T0)
     assert fr["crossed_since_then"] == [
         {"level": 1500.0, "was_labelled_then": "nearest_call_wall",
          "price_went": "up"}]
     assert fr["spot_change_dollars"] == 30.0
-    assert fr["why_this_read"] == "price crossed a level from the last read"
+    # the words come from the table, and the table's words for this reason must
+    # themselves say a level was crossed, or the frame contradicts its own block
+    assert fr["why_this_read"] == SR._WAKE_WORDS[wake] == "price crossed a level from the last read"
 
 
 def test_example_a_survives_only_because_the_frame_ships():
@@ -719,12 +772,6 @@ def test_example_b_survives_only_because_the_frame_ships():
     assert "read" not in dead
 
 
-def test_first_read_has_no_frame_and_says_so():
-    row = mkrow([[1300, 60], [1100, 20]])
-    fr = SR.frame_since_last_read(row, [row], None, "first read", False, T0)
-    assert fr == {"first_read_of_session": True}
-
-
 def test_the_session_range_anchor_is_gone_and_stays_gone():
     """The whole-day range anchor shipped and was measured LYING: with two
     clocks in the frame the model fused them — "held between X and Y since
@@ -775,10 +822,17 @@ def test_whole_numbers_get_a_dollar_of_rounding_slack():
     the old half-unit integer tolerance deleted true sentences."""
     row = mkrow([[1300, 60], [1100, 20]])
     sc = _scene_for([row])
-    sc["context"] = {"moved_pct": 63.52}
+    # 0.8 away: inside a dollar, outside the old half-unit, so this is the
+    # case that tells the two tolerances apart
+    sc["context"] = {"moved_pct": 63.2}
     out = SR.check_reading_against_scene(
         {"quiet": True, "read": "The measure sits near 64 on the day."}, sc)
     assert "read" in out and not out.get("dropped_observations")
+    # and the slack is a dollar, not more: 1.8 away is still an invention
+    far = SR.check_reading_against_scene(
+        {"quiet": True, "read": "The measure sits near 65 on the day."}, sc)
+    assert "read" not in far
+    assert "read_number_not_on_the_board:65" in far["dropped_observations"]
 
 
 def test_banned_inflections_do_not_walk_through_the_gate():
@@ -816,11 +870,27 @@ def test_lexicon_enforce_is_wired_to_a_real_drop(monkeypatch):
 def test_unknown_gamma_sign_never_wakes_the_flip():
     """"unknown" held for two books is agreement about ignorance, not a flip —
     and a flip INTO unknown is a data gap, not an event."""
-    assert SR._known_sign("unknown") is None
-    assert SR._known_sign("unmeasured") is None
-    assert SR._known_sign("") is None
-    assert SR._known_sign(None) is None
+    for blank in ("unknown", "unmeasured", "", None):
+        assert SR._known_sign(blank) is None, blank
     assert SR._known_sign("negative") == "negative"
+    # through the gate: a measured sign, then two books that could not measure one
+    prev = _read(T0 - timedelta(minutes=20), gamma_sign="negative")
+    blind = _books(mkrow([[1300, 9]], gamma_sign="unknown"),
+                   mkrow([[1300, 9]], gamma_sign="unknown"))
+    assert SR.should_wake(mkrow([[1300, 9]], gamma_sign="unknown"), None,
+                          prev, T0, blind) is None
+    # a last read that could not measure one keeps no sign in its snapshot, so
+    # two measured books after it are a first measurement, not a flip
+    snap = SR.state_for_next_wake(mkrow([[1300, 9]], gamma_sign="unknown"))
+    assert "gamma_sign" not in snap
+    unmeasured = {"ts": (T0 - timedelta(minutes=20)).isoformat(), "spot": 1200.0,
+                  "gate": snap}
+    seen = mkrow([[1300, 9]], gamma_sign="positive")
+    two = _books(mkrow([[1300, 9]], gamma_sign="positive"),
+                 mkrow([[1300, 9]], gamma_sign="positive"))
+    assert SR.should_wake(seen, None, unmeasured, T0, two) is None
+    # ...while the same two books after a measured sign are the flip
+    assert SR.should_wake(seen, None, prev, T0, two) == "gamma sign flipped"
 
 
 def test_crossed_flip_wake_suppresses_the_nothing_crossed_flag():

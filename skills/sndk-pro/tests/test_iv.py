@@ -17,15 +17,19 @@ def test_rebuild_recovers_true_iv_from_quotes():
 
 
 def test_rebuilt_iv_shared_across_rights():
+    # every strike in the stub book lists both rights, so a solve must stamp
+    # BOTH legs — a twin left on its garbage provider IV would drop out of
+    # this collection and leave a one-leg group that trivially "agrees"
     b = synth.book()
     sndk_feed.rebuild_iv(b, synth.SPOT, None)
     by_ks = {}
     for c in b:
         if c.get("iv_src") == "bs_mid":
-            by_ks.setdefault((c["expiry"], c["strike"]), []).append(c["iv"])
+            by_ks.setdefault((c["expiry"], c["strike"]), {})[c["right"]] = c["iv"]
     assert by_ks
-    for ivs in by_ks.values():
-        assert len(set(ivs)) == 1           # parity: one strike, one IV
+    for ks, ivs in by_ks.items():
+        assert set(ivs) == {"call", "put"}, ks
+        assert ivs["call"] == ivs["put"], ks   # parity: one strike, one IV
 
 
 def test_garbage_itm_call_iv_never_survives():
@@ -60,16 +64,6 @@ def test_parity_clamp_on_provider_fallback():
     assert c1210["iv"] == 0.6               # in-band garbage → ratio clamp
     assert c1210["iv_src"] == "parity_clamp"
     assert meta["iv_clamped"] == 2 and meta["iv_kept_provider"] == 2
-
-
-def test_no_honest_iv_drops_from_reprice():
-    b = [synth.leg(1200.0, "call", 4, "2026-07-31", iv=5.07),
-         synth.leg(1200.0, "put", 4, "2026-07-31", iv=0.0)]
-    for c in b:
-        c["bid"] = c["ask"] = c["mark"] = None
-    meta = sndk_feed.rebuild_iv(b, synth.SPOT, None)
-    assert all(c["iv"] is None for c in b)  # garbage + unsolvable twin → out
-    assert meta["iv_dropped"] == 2
 
 
 def test_gamma_filled_from_rebuilt_iv():

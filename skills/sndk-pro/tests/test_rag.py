@@ -1,11 +1,13 @@
 """sndk_rag — the on-demand memory: two-face records, tiers, hybrid retrieval.
 
 State rides MIRAI_STATE_DIR (conftest → tmp), so every test builds its own
-little history and queries it. The ranker tests pin the LEXICAL path (the
-embedder is an optional upgrade the suite must not depend on — forced off via
-a broken import path is not needed: _rank falls back on any failure, and
-these tests assert on content the lexical scorer must find)."""
+little history and queries it. The embedder is an optional upgrade the suite
+must not depend on: _rank falls back to lexical overlap on any failure, so the
+ranking test forces that fallback (a failing `embed` import) and asserts on
+content the lexical scorer must find, as well as running whichever ranker the
+machine has."""
 import json
+import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -99,12 +101,20 @@ def test_a_quiet_read_is_stored_too(tmp_path):
     assert rows[0]["meta"]["notable_count"] == 0
     assert rows[0]["meta"]["levels"] == []
     assert rows[0]["meta"]["abstain"] == "chosen"
+    # a read with no sentence still files a searchable face, and one the gates
+    # emptied (abstain forced) must not pass itself off as a quiet market
+    for abstain in ("chosen", "forced"):
+        RAG.record_slice(_row(), {"era": "obs-1", "wake": "heartbeat",
+                                  "reading": {"quiet": True, "abstain": abstain, "read": ""}},
+                         _scene(), T0 + timedelta(minutes=2))
+    chosen, forced = RAG._read_jsonl(RAG._slices_path("2026-07-31"))[1:]
+    assert chosen["narrative"] and "withheld" not in chosen["narrative"]
+    assert "withheld" in forced["narrative"]
 
 
 # --- retrieval: metadata gates FIRST, then narrative ranks ------------------
-def _seed_slices():
-    RAG.record_slice(_row(1213.7), _read_out("rejected the call wall and faded",
-                                             wake="price ran"),
+def _seed_slices(first="rejected the call wall and faded"):
+    RAG.record_slice(_row(1213.7), _read_out(first, wake="price ran"),
                      _scene(), T0)
     RAG.record_slice(_row(1195.0), _read_out("pinned to vwap all afternoon",
                                              quiet=True),
@@ -117,28 +127,45 @@ def _seed_slices():
 
 def test_near_strike_filter_gates_before_ranking(tmp_path):
     _seed_slices()
-    out = RAG.query(tier="slices", date="2026-07-31", near_strike=1100.0,
-                    tolerance=15.0)
-    # only slices TOUCHING 1100 (magnet_top carries 1100 on all three;
-    # tighten to the wall) — the 1130-spot slice matches on walls_put + spot
-    assert out["n_matched"] >= 1
-    assert any("broke the floor" in r["narrative"] for r in out["results"])
+    # 1130 is touched only by the third slice's spot: 1100 sits 30 away and
+    # every other level further, so a 5-point tolerance keeps exactly that one
+    out = RAG.query(tier="slices", date="2026-07-31", near_strike=1130.0,
+                    tolerance=5.0)
+    assert out["n_matched"] == 1
+    assert [r["narrative"] for r in out["results"]] == ["broke the floor and kept going"]
+    # a level no slice touches matches nothing, rather than falling back to all
+    assert RAG.query(tier="slices", date="2026-07-31", near_strike=1700.0,
+                     tolerance=5.0)["n_matched"] == 0
+    # every slice carries 1100 as its second magnet, so 1100 admits all three
+    assert RAG.query(tier="slices", date="2026-07-31", near_strike=1100.0,
+                     tolerance=15.0)["n_matched"] == 3
 
 
 def test_time_window_filter(tmp_path):
     _seed_slices()
+    # the slices sit at 14:30, 15:10 and 15:50
     out = RAG.query(tier="slices", date="2026-07-31",
                     t_from="15:00", t_to="16:00")
-    times = [r["time"] for r in out["results"]]
-    assert times and all("15:00" <= t <= "16:00" for t in times)
+    assert [r["time"] for r in out["results"]] == ["15:10", "15:50"]
+    assert out["n_matched"] == 2
+    edge = RAG.query(tier="slices", date="2026-07-31",
+                     t_from="14:30", t_to="15:10")
+    assert [r["time"] for r in edge["results"]] == ["14:30", "15:10"]   # both ends inclusive
 
 
-def test_text_ranking_surfaces_the_meaningful_match(tmp_path):
+@pytest.mark.parametrize("force_lexical", [True, False])
+def test_text_ranking_surfaces_the_meaningful_match(tmp_path, monkeypatch, force_lexical):
+    """limit=1 is what makes this a ranking test: un-ranked, the page is the
+    newest slice ("broke the floor"). The embedder is installed on this
+    machine, so the lexical fallback is forced once — the path a box without
+    it takes is pinned, not assumed."""
+    if force_lexical:
+        monkeypatch.setitem(sys.modules, "embed", None)   # _rank's import now fails
     _seed_slices()
     out = RAG.query(tier="slices", date="2026-07-31",
                     text="price stuck to vwap", limit=1)
-    assert out["rank"] in ("semantic", "lexical")
-    assert "vwap" in out["results"][0]["narrative"]
+    assert out["rank"] == "lexical" if force_lexical else out["rank"] in ("semantic", "lexical")
+    assert [r["narrative"] for r in out["results"]] == ["pinned to vwap all afternoon"]
 
 
 # --- day summaries + sentiment ---------------------------------------------
@@ -155,10 +182,19 @@ def test_rollup_builds_a_sentiment_summary(tmp_path):
     assert len([x for x in RAG._summaries() if x["date"] == "2026-07-30"]) == 1
 
 
-def test_rollup_never_summarizes_a_live_day(tmp_path):
+@pytest.mark.parametrize("explicit", [False, True])
+def test_rollup_never_summarizes_a_live_day(tmp_path, explicit):
+    """A live day is never frozen as 'the day' — not by the sweep over every
+    diary, and not by an explicit --date for today (the CLI is callable from
+    outside the reader; SE review 08-02). Idempotency would keep the
+    half-session forever. A finished day beside it still rolls up on the
+    sweep, so a rollup that did nothing at all cannot pass."""
     today = datetime.now(ET).date().isoformat()
+    _diary_day(tmp_path, "2026-07-30", [1200.0, 1150.0])
     _diary_day(tmp_path, today, [1200.0, 1210.0])
-    assert today not in RAG.rollup()
+    done = RAG.rollup(today) if explicit else RAG.rollup()
+    assert done == ([] if explicit else ["2026-07-30"])
+    assert all(s["date"] != today for s in RAG._summaries())
 
 
 # --- v2: the stitched day narrative -----------------------------------------
@@ -166,14 +202,15 @@ def test_summary_narrative_is_dated_and_stitched_from_slices(tmp_path):
     """v2: date prefix + numeric spine + the model's OWN sentences (first,
     biggest-move, last), 'Changes if' clauses stripped — uniqueness for free,
     no model call (narrative-uniqueness pressure test 08-05)."""
-    _seed_slices()
+    # a pre-obs-1 slice still on disk carries its "Changes if" clause
+    _seed_slices(first="rejected the call wall and faded. Changes if price reclaims 1250")
     _diary_day(tmp_path, "2026-07-31", [1213.7, 1195.0, 1130.0])
     s = RAG.build_summary("2026-07-31")
     n = s["narrative"]
     assert n.startswith("2026-07-31: SNDK closed")          # spine, dated
     assert "rejected the call wall and faded." in n         # first read
     assert "broke the floor and kept going." in n           # last read
-    assert "Changes if" not in n                            # stale live-read bit
+    assert "Changes if" not in n and "reclaims 1250" not in n   # stale live-read bit stripped
     assert s["source"] == "slices+diary"
 
 
@@ -371,11 +408,22 @@ def test_terrain_recent_outranks_stale_alltime_levels(tmp_path):
 
 # --- the numeric series (the diary IS the plain store) ----------------------
 def test_series_buckets_the_diary_by_time(tmp_path):
-    _diary_day(tmp_path, "2026-07-30", [1200.0, 1150.0, 1120.0])
-    out = RAG.series(date="2026-07-30", t_from="09:00", t_to="12:00",
+    """One row per step bucket — the first scan in it — inside the window."""
+    p = tmp_path / "sndk_reversion"
+    p.mkdir(parents=True, exist_ok=True)
+    stamps = [("09:26", 1250.0),                    # live tape, but before --from
+              ("09:31", 1200.0), ("09:38", 1201.0),  # one 10-minute bucket: the first wins
+              ("09:41", 1150.0), ("10:05", 1120.0),
+              ("11:30", 1100.0)]                    # after --to
+    (p / "2026-07-30.jsonl").write_text("\n".join(json.dumps(
+        {"ts": f"2026-07-30T{t}:00-04:00", "ticker": "SNDK", "spot": s,
+         "call_wall": 1300.0, "put_wall": 1100.0, "gex_views": {"magnet": 1300.0}})
+        for t, s in stamps) + "\n")
+    out = RAG.series(date="2026-07-30", t_from="09:30", t_to="11:00",
                      step_min=10)
-    assert [r["spot"] for r in out["rows"]] == [1200.0, 1150.0, 1120.0]
-    assert all(r["magnet"] == 1300.0 for r in out["rows"])
+    assert [(r["time"], r["spot"]) for r in out["rows"]] == [
+        ("09:31", 1200.0), ("09:41", 1150.0), ("10:05", 1120.0)]
+    assert all(r["magnet"] == 1300.0 and r["call_wall"] == 1300.0 for r in out["rows"])
 
 
 # --- the lexical fallback ranker -------------------------------------------
@@ -386,15 +434,6 @@ def test_lexical_scorer_prefers_overlap():
 
 
 # --- SE-review regressions (08-02) ------------------------------------------
-def test_rollup_refuses_an_explicit_live_day(tmp_path):
-    """The rollup CLI sits inside the model's Bash grant — an explicit --date
-    for today must not freeze half a session as 'the day'."""
-    today = datetime.now(ET).date().isoformat()
-    _diary_day(tmp_path, today, [1200.0, 1210.0])
-    assert RAG.rollup(today) == []
-    assert all(s["date"] != today for s in RAG._summaries())
-
-
 def test_time_filters_pad_unpadded_hours(tmp_path):
     assert RAG._hhmm("9:30") == "09:30"
     assert RAG._hhmm("15:00") == "15:00"
@@ -434,13 +473,15 @@ def test_series_is_queryable_by_strike_too(tmp_path):
     assert all("gamma_mass_at_strike" not in r for r in out2["rows"])
 
 
-def test_wake_reasons_pass_through_unmodified(tmp_path):
-    """Lane A is gone, and with it the arrow-wake neutralizer: there is no
-    arrow-named wake left to launder, so the reason is stored as written. Old
-    slices keep their historical "gate event" stamps."""
-    RAG.record_slice(_row(), _read_out(wake="price ran"), _scene(), T0)
+@pytest.mark.parametrize("wake", ["price ran", "arrow appeared"])
+def test_wake_reasons_pass_through_unmodified(tmp_path, wake):
+    """Lane A is gone, and with it the arrow-wake neutralizer, which rewrote
+    any wake starting "arrow" to "gate event": the reason is stored as
+    written, an arrow-named one included. Old slices keep their historical
+    "gate event" stamps."""
+    RAG.record_slice(_row(), _read_out(wake=wake), _scene(), T0)
     rec = RAG._read_jsonl(RAG._slices_path("2026-07-31"))[-1]
-    assert rec["meta"]["wake"] == "price ran"
+    assert rec["meta"]["wake"] == wake
 
 def test_diary_day_excludes_forced_and_off_hours_rows(tmp_path):
     """History must never hand the model tape the reader ignores: forced

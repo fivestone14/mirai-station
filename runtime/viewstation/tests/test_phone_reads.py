@@ -14,10 +14,16 @@ is a browser in CI. They pin the properties whose violation is silent — an ord
 that reverses, a gap attributed to the wrong pair, a banner that outlives the
 outage it describes.
 """
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
+
 THREAD = (Path(__file__).resolve().parents[1] / "static" / "m" / "thread.html").read_text()
+_NODE = shutil.which("node")
 
 
 def _fn(name):
@@ -145,9 +151,11 @@ def test_the_document_is_the_scroller():
     assert hd and "position:sticky" in hd.group(1).replace(" ", ""), \
         "the header must stick, or it scrolls away with the list"
 
-    # the bridge is not merely unused — it is gone, and the comment says why
-    assert "MiraiShell" in THREAD, "the note explaining why the bridge went is missing too"
-    assert "bridge.atTop" not in THREAD, "the page still reports a scroll position it no longer owns"
+    # the bridge is not merely unused — it is gone from the page's code, under
+    # any spelling. (The note explaining why it went is prose and may name it.)
+    script = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", THREAD))
+    code = "\n".join(l.split("//")[0] for l in re.sub(r"(?s)/\*.*?\*/", "", script).splitlines())
+    assert "MiraiShell" not in code, "the page still reports a scroll position it no longer owns"
 
 
 def test_the_overlay_covers_the_blank_page_from_the_first_frame():
@@ -171,12 +179,16 @@ def test_the_overlay_covers_the_blank_page_from_the_first_frame():
     m = re.search(r"LOAD_MIN_MS\s*=\s*(\d+)", THREAD)
     assert m and int(m.group(1)) >= 200, "the floor is too short to read as anything but a stutter"
 
-    # every path that ends a load must clear it — including the empty archive,
-    # which never reaches loadDay at all
-    assert THREAD.count("hideLoading()") >= 2, \
-        "a path that finishes loading leaves the spinner up"
+    # every path that ends a load must clear it — the day that loaded, and the
+    # empty or unreachable archive, which never reaches loadDay at all. Counted
+    # at the call sites: the definitions spell the same name.
+    assert "hideLoading()" in _fn("loadDay"), "a loaded day leaves the spinner up"
+    boot = _fn("boot")
+    empty = boot.split("if(!days.length){")[1].split("\n  }\n")[0]
+    assert "hideLoading()" in empty, "an empty or unreachable archive leaves the spinner up"
     # ...and switching sessions is a real fetch, so it must put the overlay back
-    assert "showLoading()" in THREAD, \
+    change = boot.split("addEventListener('change'")[1].split("});")[0]
+    assert "showLoading()" in change, \
         "a day switch leaves the previous session on screen pretending to be the new one"
 
 
@@ -193,7 +205,20 @@ def test_model_text_cannot_carry_markup():
     the only markup that may ever enter that string."""
     f = _fn("setSaid")
     assert f is not None
-    assert 'replace(/[<>"¦]/g' in f and "replace(/&/g, '&amp;')" in f
-    i_strip = f.index('replace(/[<>"¦]/g')
-    i_html = f.index("innerHTML")
-    assert i_strip < i_html, "the string reaches innerHTML before it is stripped"
+    if not _NODE:
+        pytest.skip("node is not installed")
+    # the page's own function, run on hostile prose
+    js = ("function setSaid(node, text){%s}\n"
+          "const n = {innerHTML: ''};\n"
+          "setSaid(n, require('fs').readFileSync(0, 'utf8'));\n"
+          "console.log(JSON.stringify(n.innerHTML));") % f
+    said = 'Held 1,750 <img src=x onerror="alert(1)"> & <b>1700</b>, then "quoted" ¦ 1650.'
+    out = subprocess.run([_NODE, "-e", js], input=said, capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    html = json.loads(out.stdout)
+    chips = re.findall(r'<b class="n">([^<]*)</b>', html)
+    assert chips == ["1,750", "1700", "1650"], html          # the chips survive, around prices only
+    rest = re.sub(r'<b class="n">[^<]*</b>', "", html)
+    for ch in '<>"¦':
+        assert ch not in rest, f"{ch!r} from the model reached innerHTML: {html}"
+    assert "&amp;" in rest and not re.search(r"&(?!amp;)", rest), f"a bare & reached innerHTML: {html}"

@@ -13,6 +13,11 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
     (rag / "slices").mkdir(parents=True)
     rows = [
         {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "10:12", "quiet": True, "notable_count": 0, "abstain": "chosen"}, "narrative": "first"},
+        # a forecast-era slice: it carries `vector` and never `quiet`, so it is
+        # counted apart even when it also carries a notable count
+        {"kind": "slice", "rag_v": 1, "meta": {"date": "2026-08-19", "time": "11:30", "vector": "up", "notable_count": 3}, "narrative": "forecast"},
+        # a read whose sentence the checks deleted is dropped, not quiet
+        {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "12:05", "quiet": True, "notable_count": 0, "abstain": "forced"}, "narrative": "emptied"},
         {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "14:21", "quiet": False, "notable_count": 2}, "narrative": "last line"},
         {"kind": "not-a-slice"},
     ]
@@ -21,13 +26,15 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
     (rag / "terrain.json").write_text(json.dumps({"built": "2026-08-03", "sessions": 4, "rag_v": 1, "narrative": "1100 magnet"}))
     monkeypatch.setattr(snapshot, "_RAG_DIR", rag)
     ov = snapshot.sndk_memory_overview()
-    assert ov["slices_total"] == 2 and len(ov["days"]) == 1
+    assert ov["slices_total"] == 4 and len(ov["days"]) == 1
     d = ov["days"][0]
-    assert d["date"] == "2026-08-19" and d["first"] == "10:12" and d["last"] == "14:21"
+    assert d["date"] == "2026-08-19" and d["n"] == 4 and d["first"] == "10:12" and d["last"] == "14:21"
     # obs-1: the histogram counts what each read FOUND. Reading meta.vector — a
     # field obs-1 stopped writing — gave three zeros on every day, a bar chart
     # of nothing that no test would have noticed because zero is a valid count.
-    assert d["vectors"] == {"unusual": 1, "quiet": 1, "dropped": 0, "legacy": 0}
+    # 09-02: a forecast-era slice is counted apart, never filed as quiet or
+    # unusual, and a forced abstain is dropped — one of each bucket here.
+    assert d["vectors"] == {"unusual": 1, "quiet": 1, "dropped": 1, "legacy": 1}
     assert d["last_line"] == "last line"
     assert ov["summaries"] == {"n": 1, "first": "2026-08-05", "last": "2026-08-05", "rag_v": [2]}
     assert ov["terrain"]["built"] == "2026-08-03" and ov["terrain"]["sessions"] == 4

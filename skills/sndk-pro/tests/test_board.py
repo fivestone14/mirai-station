@@ -148,18 +148,26 @@ def test_a_strike_at_the_price_is_on_neither_side_and_is_not_the_nearest():
     s = v2["strikes"]
     assert recs(v2)[1300.0]["side"] == "at"
     assert (s["nearest_above"], s["nearest_below"]) == (1350.0, 1250.0)
+    # the header's above-price share uses the same band: 1300 counts on neither
+    # side, so the share above is 1350's and 1400's contracts over the window's
+    r = recs(v2)
+    assert s["strikes_in_window"] == len(r)
+    held = {k: x["oi_calls"] + x["oi_puts"] + x["vol_calls"] + x["vol_puts"] for k, x in r.items()}
+    above = sum(n for k, n in held.items() if r[k]["side"] == "above")
+    assert s["contracts_above_spot_pp"] == round(above / sum(held.values()) * 100, 1)
 
 
 def test_a_missing_surface_drops_its_columns_and_is_named():
     rows = mkrows(drop_vol=True)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     s = v2["strikes"]
-    assert "rank_by_volume_today" not in s["columns"]
+    assert not {"rank_by_volume_today", "vol_calls", "vol_puts"} & set(s["columns"])
     assert any("volume by side" in a for a in s["absent"])
     rows = mkrows(drop_net=True)
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     s = v2["strikes"]
-    assert "rank_by_dealer_gamma" not in s["columns"] and "dealer_gamma_sign" not in s["columns"]
+    assert not {"rank_by_dealer_gamma", "dealer_gamma_sign", "dealer_gamma_share_pp"} & set(s["columns"])
+    assert "signed dealer gamma per strike" in s["absent"]
 
 
 def test_minutes_visits_and_passes_are_three_different_counts():
@@ -179,6 +187,11 @@ def test_minutes_visits_and_passes_are_three_different_counts():
     assert r["minutes_touched_today"] == 7
     assert (r["visits_today"], r["passed_through_today"]) == (4, 2)
     assert B.touch_facts([bar(i, *below) for i in range(5)], 1300.0)["visits_today"] == 0
+    # the day's first visit came in from the side the session opened on
+    opened_below = [bar(0, *at), bar(1, *above)]                      # opens at 1296
+    opened_above = [dict(bar(0, *at), open=1304.0), bar(1, *above)]
+    assert B.touch_facts(opened_below, 1300.0)["passed_through_today"] == 1
+    assert B.touch_facts(opened_above, 1300.0)["passed_through_today"] == 0
 
 
 def _read_about(text, recs_over):
@@ -281,6 +294,8 @@ def test_no_bars_means_touch_columns_are_absent_and_the_header_says_so():
     assert "touched_in_books" not in s["columns"]
     assert s["touches_unavailable"] == "no_minute_bars"
     assert v2["frames"]["touches_unavailable"] == "no_minute_bars"
+    # ...and `absent`, where the doctrine sends a reader for a missing column, says it too
+    assert any("minute-bar record" in a for a in s["absent"])
 
 
 # ---------------------------------------------------------------- change and series
@@ -450,6 +465,13 @@ def test_a_missing_minute_is_counted_never_read_as_calm():
     bars = [b for b in flat_bars(30) if b["ts"][11:16] not in ("09:55", "09:56")]
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), bars)
     assert v2["between_frames"]["missing_minutes"] == 2
+    # a full record ships no count (no gap is the standing case, never a zero),
+    # and no record at all is named as such rather than counted as missing
+    full, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    assert "missing_minutes" not in full["between_frames"]
+    none, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), [])
+    assert none["between_frames"]["minute_bars_unavailable"] == "no_minute_bars_on_disk"
+    assert "missing_minutes" not in none["between_frames"]
 
 
 # ---------------------------------------------------------------- what leaves, what stays
@@ -539,7 +561,11 @@ def test_the_gate_payload_keeps_the_old_verdicts_beside_and_takes_v1_when_given(
     v2, v1 = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
     lg = B.legacy(rows[-1], rows, T0, v1=v1)
     assert lg["magnet"] == 1300.0 and lg["gamma_sign"] == "positive"
-    assert "walls" in lg or "walls" not in v1
+    # handed the live scene, the gate record carries its verdict blocks as built;
+    # the two whose names the record already uses for a scalar ride under `_block`
+    for k in ("walls", "structure", "momentum", "regions_rule"):
+        assert lg[k] == v1[k], k
+    assert lg["regime_block"] == v1["regime"] and lg["magnet_block"] == v1["magnet"]
     assert "legacy" not in v2 and "magnet" not in v2
 
 
@@ -763,11 +789,17 @@ def _scene():
 def test_guard_keeps_a_good_cluster_adds_the_codes_facts_and_sets_the_change_word():
     sc = _scene()
     obj = {"quiet": False, "read": "Most contracts sit at 1300 and price is just under it.",
-           "clusters": [{"strikes": [1300.0], "center": 1300.0, "rank": 1, "change": "increased"}],
+           "clusters": [{"strikes": [1250.0, 1300.0], "center": 1300.0, "rank": 1, "change": "increased"}],
            "resolved": [], "points": [], "absent": []}
     r = B.check_reading_v2(obj, sc)
     c = r["clusters"][0]
-    assert c["center"] == 1300.0 and c["side"] == "above" and c["contracts_share_pp_sum"] > 0
+    row = recs(sc)
+    assert c["center"] == 1300.0 and c["side"] == "above" and c["dist_sigma"] == row[1300.0]["dist_sigma"]
+    assert c["touched_today"] is False                     # price never reached 1300 on these bars
+    # the pile's weight is the code's sum over its strikes, never the model's
+    for key, col in (("contracts_share_pp_sum", "contracts_share_pp"),
+                     ("dealer_gamma_share_pp_sum", "dealer_gamma_share_pp")):
+        assert c[key] == round(row[1250.0][col] + row[1300.0][col], 2), key
     # item #5: the word comes from the change cells the model was shown. Nothing
     # traded between these identical books, so "increased" is rewritten.
     assert c["change"] == "stable" and c["change_model"] == "increased"
@@ -787,8 +819,16 @@ def test_a_strike_that_left_the_board_may_still_be_named():
     allowed = SR.prices_on_the_board(sc)
     assert 1660.0 in allowed, "a departed strike is still a price the board names"
     assert 1665.0 in allowed, "and so is one that just joined"
-    # ...and a number that is not a price on this board is still refused
-    assert 4.1 not in allowed and 246 not in allowed
+    # ...and a number this board carries that is not a price is still refused
+    counts = {float(sc["strikes"]["change_books_compared"]),
+              float(sc["between_frames"]["shares_traded"]["in_gap"])}
+    assert counts <= SR.numbers_on_the_board(sc) and not counts & allowed
+    # and through the board's own gate, a point at the departed strike survives
+    reply = {"quiet": False, "read": "The pile named last time has left the list.", "sides": {},
+             "clusters": [], "resolved": [], "absent": [],
+             "points": [{"level": 1660.0, "note": "no longer listed"}]}
+    kept = B.check_reading_v2(reply, sc)
+    assert [p["level"] for p in kept["points"]] == [1660.0], kept.get("dropped_observations")
 
 
 def test_a_leadership_claim_in_other_words_is_still_checked():
@@ -890,6 +930,10 @@ def test_the_change_word_follows_the_change_cells_the_model_was_shown():
     assert _one_cluster(sc, [1300.0]) == "increased"           # +1.5 points
     assert _one_cluster(sc, [1250.0]) == "stable"              # -0.4, inside the rail
     assert _one_cluster(sc, [1250.0, 1300.0]) == "increased"   # summed: 1.5 - 0.4 = +1.1
+    rows[1350.0]["change"] = [-1.2, -30, 0]
+    assert _one_cluster(sc, [1350.0]) == "decreased"           # -1.2 points
+    rows[1200.0].pop("change")
+    assert _one_cluster(sc, [1200.0]) == "unknown"             # no cell to read
     sc["strikes"]["entered_since_reference"] = [1400.0]
     rows[1400.0]["change"] = "strike_not_in_earlier_book"
     assert _one_cluster(sc, [1400.0]) == "new"
@@ -983,20 +1027,23 @@ def test_side_slip_reads_both_word_orders_and_more_than_one_filler():
 
 
 def test_a_crossed_strike_has_no_listed_age():
-    rows = mkrows(n=20, start=T0 - timedelta(minutes=38))
-    # 1150 is light and only ever on the list through the nearest-two rule; make it far enough away
-    # to leave the list by weight, then bring it back as a crossing
-    for r in rows:
-        r["gex_views"]["oi_side_by_strike"] = [[k, (1 if k == 1150.0 else c), (0 if k == 1150.0 else p)]
-                                               for k, c, p in r["gex_views"]["oi_side_by_strike"]]
-    frame = {"last_read_at": "09:40", "minutes_since": 20, "spot_then": 1290.0, "spot_change_sigma": 0.0,
-             "crossed_since_then": [{"level": 1150.0, "direction": "down"}]}
+    """A strike on the list only because price crossed it since the last read
+    was never listed on weight, so "never listed before" is its honest age."""
+    ks = [1150.0 + 25 * i for i in range(12)]              # 1150 to 1425, all in reach
+    oi = {k: ((1, 0) if k == 1150.0 else (100 + 10 * i, 50)) for i, k in enumerate(ks)}
+    net = {k: (0.01 if k == 1150.0 else 1.0 + 0.1 * i) for i, k in enumerate(ks)}
+    rows = mkrows(n=20, start=T0 - timedelta(minutes=38), oi=oi, net=net)
+    # 1150 is the lightest strike on every measure and not one of the nearest
+    # two below price, so the weight rule alone leaves it off
+    surf = B.surfaces(rows[-1])
+    ruler_spot, sig, live, _ = B._ruler(rows[-1])
+    assert 1150.0 not in B.select_strikes(surf, B._window(surf, ruler_spot, sig), live)
+    frame = {"last_read_at": "09:32", "minutes_since": 28, "spot_then": 1140.0, "spot_change_sigma": 1.5}
     v2, _ = B.build_scene_v2(rows[-1], rows, T0, frame, SR._ts(rows[5]), flat_bars(30))
+    assert {"level": 1150, "direction": "up"} in v2["context"]["since_last_read"]["crossed_since_then"]
     r = recs(v2)
-    assert 1150.0 in r                              # listed because it was crossed
-    weight = set(B.select_strikes(B.surfaces(rows[-1]), B._window(B.surfaces(rows[-1]), *B._ruler(rows[-1])[:2]), B._ruler(rows[-1])[0]))
-    if 1150.0 not in weight:
-        assert r[1150.0].get("on_list_for_min") is None
+    assert 1150.0 in r and r[1150.0]["on_list_for_min"] is None   # listed because it was crossed
+    assert isinstance(r[1400.0]["on_list_for_min"], int)            # a strike listed on weight has an age
 
 
 def test_the_most_open_interest_is_graded_on_open_interest_alone():
@@ -1051,8 +1098,6 @@ def test_the_payloads_own_rules_are_pinned_not_merely_intended():
     #    below never produces one.
     for path, val in _named_leaves(v2):
         assert val is not None, f"{path} shipped as null"
-    assert any(x is None for r in s["rows"] for v in r.values()
-               if isinstance(v, list) for x in v) or True   # lists may hold nulls; see above
 
     # 2. NO FORECAST-SHAPED FIELD, at any depth. The payload states what
     #    happened; a name promising what happens next is the one thing it may
@@ -1076,7 +1121,7 @@ def test_the_payloads_own_rules_are_pinned_not_merely_intended():
     named = set(s["columns"])
     for r in s["rows"]:
         assert set(r) <= named, f"row carries {set(r) - named}"
-    assert any(set(r) == named or set(r) <= named for r in s["rows"])
+    assert s["rows"] and all({"strike", "side", "dist_sigma"} <= set(r) for r in s["rows"]), "blank rows"
 
     # 4. THE BANNED LISTS ARE NOT EMPTY, and the guard still deletes what they
     #    name. Emptying the tuple was the review's own example of a change no
@@ -1122,11 +1167,12 @@ def _named_leaves(x, prefix=""):
         yield prefix, x
 
 
-def test_todays_changes_are_pinned_so_a_revert_fails_a_test():
+def test_todays_changes_are_pinned_so_a_revert_fails_a_test(monkeypatch):
     """An audit found seven of today's changes had no test at all: anyone could
     revert them tomorrow and the suite would stay green. These are the pins."""
     rows = mkrows(n=8)
-    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    rows[-1]["vwap"] = 1287.35
+    v2, v1 = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
 
     # item #45: whole-dollar strikes ship as ints, halves keep their decimal,
     # and the three strike-valued lists agree with the table
@@ -1141,20 +1187,43 @@ def test_todays_changes_are_pinned_so_a_revert_fails_a_test():
 
     # item #22: the average price ships AND is pointable, which is the whole
     # point — as a distance alone the model could not name it
-    v1full = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    if v1full.get("price", {}).get("vwap") is not None:
-        assert "vwap" in v2["price"]
-        assert round(v2["price"]["vwap"], 2) in SR.prices_on_the_board(v2)
+    assert v2["price"]["vwap"] == 1287.35
+    assert 1287.35 in SR.prices_on_the_board(v2)
 
-    # item #23: the busy-or-quiet ratio is median over median against prior
-    # sessions, and it is OMITTED rather than shipped noisy on thin history
-    assert B.SAME_CLOCK_MIN_SESSIONS >= 3
+    # items #34 and the dead-block cut: handed a live scene that still carries
+    # the prior sessions' range and a history block, the board ships neither
+    v1["history"] = {"tape_abnormal_vs_own_history": True}
+    v1["context"]["ranges"]["prior_sessions"] = {"low": 1200.0, "high": 1320.0}
+    again, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30), v1=v1)
+    assert "history" not in again
+    assert "prior_sessions" not in again["context"]["ranges"]
+
+    # item #23: the busy-or-quiet ratio is the gap's median minute over the
+    # median of the same clock minutes on prior sessions, and it is OMITTED
+    # rather than shipped noisy on thin history
     assert "per_minute_vs_day_median" not in json.dumps(v2)
 
-    # items #34 and the dead-block cut: neither rides on the board any more
-    assert "history" not in v2
-    assert "prior_sessions" not in (v2.get("context", {}).get("ranges") or {})
-    assert "history" not in B.KEPT_BLOCKS
+    def prior_session(day, vol):
+        opened = OPEN_AT.replace(day=day)
+        path = B.sndk_bars.bars_path(opened.date().isoformat())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(json.dumps({"ts": (opened + timedelta(minutes=i)).isoformat(),
+                                            "open": 1285.0, "high": 1295.0, "low": 1285.0,
+                                            "close": 1295.0, "volume": vol}) + "\n" for i in range(30)))
+
+    ratio = "per_minute_vs_same_minutes_prior_sessions"
+    gap = flat_bars(30)
+    gap[29] = bar(29, 1285.0, 1295.0, vol=8000.0)   # one busy minute moves the mean, not the median
+    monkeypatch.setattr(B, "_CLOCK_BASE", {})
+    prior_session(29, 400.0)
+    prior_session(30, 1500.0)
+    thin, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), gap)
+    assert ratio not in thin["between_frames"]["shares_traded"]     # two sessions: too thin
+    monkeypatch.setattr(B, "_CLOCK_BASE", {})
+    prior_session(28, 500.0)
+    deep, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), gap)
+    # the gap's minutes: median 1000; each clock minute on 400, 500, 1500: median 500
+    assert deep["between_frames"]["shares_traded"][ratio] == 2.0
 
 
 def test_a_points_note_is_checked_against_its_own_level():
@@ -1206,6 +1275,11 @@ def test_the_expiry_afternoon_solve_never_reaches_the_board():
     assert "implied_vol_atm" not in v2["scale"]
     r = recs(v2)[1300.0]
     assert abs(r["dist_sigma"] - (1300.0 - v2["price"]["live_spot"]) / 50.0) < 0.02
+
+    # the vol at the last read comes off a book in the same window, so it is
+    # left out the same way rather than shipped as 184
+    later, _ = B.build_scene_v2(rows[-1], rows, T0, None, SR._ts(rows[3]), flat_bars(30))
+    assert "implied_vol_at_last_read" not in later["between_frames"]
 
     # an ordinary day is untouched
     plain = mkrows(n=8)

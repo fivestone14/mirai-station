@@ -208,14 +208,29 @@ def test_a_break_the_scans_stepped_over_is_seen_by_the_wick():
 def test_the_live_spot_still_decides_where_price_sits():
     """The newest diary spot is folded in after the last completed bar, so the
     live position is never older than the bars and never a wick."""
-    rows = _tape([1500] * 16 + [1503])
+    diary = SR._diary_dir()
+    diary.mkdir(parents=True, exist_ok=True)
+    for d, lo, hi in (("2026-07-29", 1400.0, 1480.0), ("2026-07-30", 1450.0, 1530.0)):
+        (diary / f"{d}.jsonl").write_text("\n".join(
+            json.dumps({"ts": f"{d}T10:00:00-04:00", "ticker": "SNDK", "spot": v})
+            for v in (lo, hi)) + "\n")
+    # a scan newer than the last completed bar still counts: the bars stop two
+    # minutes short of T0 and never leave the $2-wide box, so only the T0 scan
+    # at 1510 — $9 over the top, past the $4 move bar — can break it
+    rows = _tape([1500] * 16 + [1510])
     t0 = datetime.fromisoformat(rows[0]["ts"])
     bars = [_bar(t0 + timedelta(minutes=i), 1499.0, 1501.0) for i in range(31)]
-    SB.write_day(DAY, bars, T0)
-    rb = SR.ranges_block(rows, T0, DAY, bars=SB.read_bars(DAY))
-    assert (rb["in_force"]["low"], rb["in_force"]["high"]) == (1499.0, 1501.0)   # 1503 is over it
-    sc = SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)
-    assert sc["price"]["session_high"] == 1503.0                     # the live print counts
+    rb = SR.ranges_block(rows, T0, DAY, bars=bars)
+    assert rb["breaks_today"]["count"] == 1
+    assert rb["breaks_today"]["breaks"][0]["at"] == T0.strftime("%H:%M")
+    # …and where price sits is the newest scan, never a wick: the newest minute
+    # wicks to 1540, past the prior sessions' 1530 high, while every scan is 1500
+    rows = _tape([1500] * 17)
+    wick = [_bar(t0 + timedelta(minutes=i), 1499.0, 1501.0) for i in range(33)]
+    wick[-1] = _bar(t0 + timedelta(minutes=32), 1499.0, 1540.0, c=1501.0)
+    ps = SR.ranges_block(rows, T0 + timedelta(minutes=1), DAY, bars=wick)["prior_sessions"]
+    assert ps["live_spot_is"] == "inside"
+    assert ps["today_traded_beyond_it"] == "above"                  # the wick still traded there
 
 
 def test_prior_sessions_prefer_a_full_bars_file_and_say_when_they_mixed():
@@ -247,31 +262,33 @@ def test_the_doctrine_names_the_witness_and_the_era_moved():
     assert SR.ERA == "strikes-5" and SR.LEGACY_ERA == "obs-5"
 
 
-def test_a_stalled_bar_record_says_so_instead_of_answering_from_it(monkeypatch):
+def test_a_stalled_bar_record_says_so_instead_of_answering_from_it():
     """The witness test was "are there any bars at all", which one stale bar
     from 09:31 satisfies for the rest of the session. A sidecar that stalls
     then has the board reporting the day's low, the box edges and the touch
     counts off a record that ends hours earlier, with every flag silent.
-    Simulated on the real 2026-09-11 tape: stalling at 10:00 moves the day's
-    low from 1616.80 at 10:06 to 1619.99 at 10:07 — a wrong low, silently."""
-    import sndk_read as SR
-    from datetime import datetime
-    day = "2026-09-11"
-    rows = [r for r in SR._read_jsonl(SR._diary_dir() / f"{day}.jsonl")
-            if r.get("ticker") == "SNDK"]
-    if not rows:
-        return                      # the recorded tape is not on this machine
-    now = datetime.fromisoformat(f"{day}T13:43:00-04:00")
-    rs = [r for r in rows if SR._ts(r) <= now]
-    real = SR.minute_bars
+    Seen on the real 2026-09-11 tape: stalling at 10:00 moved the day's low
+    from 1616.80 at 10:06 to 1619.99 at 10:07 — a wrong low, silently."""
+    rows = _tape([1500.0] * 16)                                    # scans, 30 minutes to T0
+    t0 = datetime.fromisoformat(rows[0]["ts"])
+    bars = [_bar(t0 + timedelta(minutes=i), 1499.0, 1501.0) for i in range(30)]
+    bars[25] = _bar(t0 + timedelta(minutes=25), 1480.0, 1501.0)    # the day's low, late
 
-    monkeypatch.setattr(SR, "minute_bars", real)
-    healthy = SR.build_scene(rs[-1], SR.magnet_band(rs[-1]), SR.frozen_fields(rs, now), rs, now)
-    assert healthy["price"].get("extremes_from") is None
+    def price():
+        return SR.build_scene(rows[-1], SR.magnet_band(rows[-1]), [], rows, T0)["price"]
 
-    monkeypatch.setattr(SR, "minute_bars",
-                        lambda d: [b for b in real(d) if (b.get("ts") or "")[11:16] <= "10:00"])
-    stalled = SR.build_scene(rs[-1], SR.magnet_band(rs[-1]), SR.frozen_fields(rs, now), rs, now)
-    witness = stalled["price"].get("extremes_from")
-    assert witness and witness.startswith("1_minute_bars_to_10:00")
-    assert stalled["price"]["session_low"] != healthy["price"]["session_low"]
+    SB.write_day(DAY, bars[:25], T0)                               # the sidecar stalls first
+    stalled = price()
+    last = (t0 + timedelta(minutes=24)).strftime("%H:%M")
+    assert stalled["extremes_from"] == f"1_minute_bars_to_{last}_then_nothing"
+    assert stalled["session_low"] == 1499.0                        # the low it never saw
+    # a record whose newest bar opened BAR_RECORD_STALE_MIN minutes before the
+    # scene still counts as reaching it, and one minute further back does not
+    edge = 30 - SR.BAR_RECORD_STALE_MIN
+    SB.write_day(DAY, bars[:edge], T0)
+    assert price()["extremes_from"].startswith("1_minute_bars_to_")
+    SB.write_day(DAY, bars[:edge + 1], T0)
+    assert "extremes_from" not in price()
+    SB.write_day(DAY, bars, T0)
+    healthy = price()
+    assert "extremes_from" not in healthy and healthy["session_low"] == 1480.0

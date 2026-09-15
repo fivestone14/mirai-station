@@ -150,23 +150,18 @@ def test_no_reference_gives_resolved_null_and_no_change_word():
 
 
 def test_nothing_at_threshold_is_stated():
-    rows = day(8)   # every strike equal: no strike reaches 8% of six? 1/6 = 16.7% each: all qualify
-    # make them all light against a heavy strike OUTSIDE the listed set: impossible by rule, so use uneven small shares
-    def flat(i):
-        return {k: (100, 0) for k in GRID}
-    rows = day(8, oi_fn=flat)
-    b = block(rows, ref_index=3)
-    # six equal strikes each hold 16.7%, all qualify; so test the empty case with gamma and contracts both spread over many strikes
+    # thirty strikes with equal contracts and equal gamma each hold about 3%,
+    # under the bar on both measures, so no strike is a member
     grid = [1100.0 + 10 * j for j in range(30)]
-    def many(i):
-        return {k: (100, 0) for k in grid}
-    rows = []
-    for i in range(8):
-        ts = T0 - timedelta(minutes=60) + timedelta(minutes=4 * i)
-        r = row_at(ts, spot=1250.0, oi=many(i), vol={k: (1, 1) for k in grid}, net={k: 1.0 for k in grid})
-        rows.append(r)
+    rows = [row_at(T0 - timedelta(minutes=60) + timedelta(minutes=4 * i), spot=1250.0,
+                   oi={k: (100, 0) for k in grid}, vol={k: (1, 1) for k in grid},
+                   net={k: 1.0 for k in grid})
+            for i in range(8)]
     b = block(rows, ref_index=3)
     assert b["regions"] == [] and b["none_at_threshold"] is True
+    # and the flag is only ever said when it is true: a block with a region omits it
+    b = block(day(8, oi_fn=heavy), ref_index=3)
+    assert b["regions"] and "none_at_threshold" not in b
 
 
 def test_same_rows_same_block_and_first_seen_does_not_move():

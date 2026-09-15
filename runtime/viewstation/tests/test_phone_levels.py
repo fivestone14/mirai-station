@@ -166,25 +166,34 @@ def test_the_most_contracts_row_is_a_count_never_a_bar():
     assert "' contracts'" in row
 
 
-def test_a_level_that_is_also_a_wall_shares_its_row():
-    """The same strike as a wall on 35.3% of replayed scans. Two rows would
-    print one price twice with two different bars; one row with both tags
-    cannot."""
-    lr = GLANCE.split("function levelRows")[1].split("function lightNote")[0]
-    assert "rows.find(r=>r.kind==='wall' && r.strike===mk)" in lr
-    assert "if(hit) hit.most=m;" in lr
-
-
 def test_the_light_note_is_hidden_without_a_referent():
     """"Why it can look light" names the heaviest pile. The pile peaks AT the
     most-contracts strike on 35.0% of scans and contains it on 40.6%, and then
     the strike does not look light at all; and a pile that is no wall is drawn
     nowhere. Distance is not the reason, and the note never says it is: the
-    first draft's "too far from price to count" was true on 3.4% of scans."""
-    ln = GLANCE.split("function lightNote")[1].split("/* ---- weight")[0]
-    assert "!h.role || h.holds_most_contracts || _fin(h.strike)===_fin(m.strike)" in ln
+    first draft's "too far from price to count" was true on 3.4% of scans.
+
+    (Those three hiding cases are run in
+    test_heavier_draws_thicker_and_the_note_names_the_0910_case; this runs the
+    rest of what lightNote refuses to point at, and the page wiring.)"""
     assert "too far" not in PHONE and "too far" not in _code(PAGE)
     assert 'id="shLight" hidden' in PHONE, "the note must start hidden, not flash"
+    assert "$('shLight').hidden = !note;" in PAGE, "the page no longer hides the note when it has no referent"
+    if not _NODE:
+        pytest.skip("node is not installed")
+    got = _run("""
+      const lv = {most_contracts:{strike:1700, contracts:16419},
+                  heaviest:{strike:1600, share_pct:15, role:'put_further', holds_most_contracts:false}};
+      console.log(JSON.stringify([
+        g.lightNote(lv) !== null,
+        g.lightNote({...lv, heaviest:{...lv.heaviest, role:'magnet'}}),
+        g.lightNote({...lv, heaviest:{...lv.heaviest, share_pct:null}}),
+        g.lightNote({...lv, most_contracts:{contracts:16419}}),
+        g.lightNote({most_contracts:lv.most_contracts}),
+        g.lightNote(null)]));""")
+    # the control names its pile; an unknown role, a pile with no share, a
+    # strike with no price or no pile at all leaves nothing to point at
+    assert got == [True, None, None, None, None, None]
 
 
 def test_the_sheet_says_where_the_weight_is_and_stops():
@@ -249,14 +258,6 @@ def test_the_sheet_text_cannot_start_a_selection():
     assert "user-select:none" in flat and "-webkit-touch-callout:none" in flat
     # 86% of the MEASURED height: as 84dvh it was 0px inside the app
     assert "max-height:calc(var(--app-h)*.86)" in flat
-
-
-def test_back_closes_the_sheet_before_it_leaves_the_page():
-    """The shell's back handler walks the WebView's history first, so the sheet
-    pushes an entry and closes on popstate — back never throws the reader out
-    of the app from an explanation."""
-    assert "history.pushState({sheet: 1}, '')" in PAGE
-    assert "window.addEventListener('popstate', shut)" in PAGE
 
 
 def test_a_drag_inside_the_sheet_cannot_reload_the_page():

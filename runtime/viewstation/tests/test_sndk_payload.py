@@ -101,10 +101,16 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     assert "magnet" not in sc and "walls" not in sc
     assert d["legacy"]["status"] == "deprecated" and d["legacy"]["sent_to_model"] is False
     assert d["legacy"]["scene"]["magnet"]["top_strikes"][0]["strike"] == 1600.0
-    assert d["legacy"]["era"] == "obs-5" and d["era"] == "strikes-5"
+    import sndk_board as board
+    import sndk_read as R      # on sys.path once the builder above has run
+    # the era follows the document sent: the reader's current era on the Strikes
+    # Payload, the legacy era on the scene kept beside it. Read off the reader so
+    # an ordinary era bump does not break this test, but the two must differ.
+    assert d["era"] == R.ERA and d["legacy"]["era"] == R.LEGACY_ERA and R.ERA != R.LEGACY_ERA
     assert d["gate_payload"]["magnet"] == 1600.0
-    # the wrapper is the reader's own, byte for byte, with the same compact JSON inside
-    assert d["user_prompt"].startswith("Read this scene cold and reply with the JSON object only.\n\nSCENE:\n")
+    # the wrapper is the reader's own, byte for byte: read_once sends
+    # board.prompt_v2(scene), so the tab must show exactly that string
+    assert d["user_prompt"] == board.prompt_v2(sc)
     assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == sc
     assert d["scene_chars"] == len(json.dumps(sc, default=str))
 
@@ -224,7 +230,12 @@ def test_the_side_packet_costs_the_model_nothing_and_stays_inside_its_ceiling(
     d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
     # the model's half of the call is untouched by the packet's existence
     assert json.loads(d["user_prompt"].split("SCENE:\n", 1)[1]) == d["scene"]
-    assert len(json.dumps(d["side"], separators=(",", ":"), default=str)) < 8192
+    # _side_packet swallows every error and returns None, and None serialises
+    # to four bytes — so the ceiling means nothing unless a full packet was
+    # built: every completed minute from 09:30 through 13:01 is 212 bars
+    side = d["side"]
+    assert side is not None and side["bars"]["count"] == 212
+    assert len(json.dumps(side, separators=(",", ":"), default=str)) < 8192
 
 
 def test_a_missing_bar_file_leaves_the_scene_untouched(tmp_path, monkeypatch):

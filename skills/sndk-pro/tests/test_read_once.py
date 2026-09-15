@@ -111,18 +111,31 @@ def test_a_failed_call_files_no_memory_and_keeps_the_raw_reply(state,
     assert filed == []
 
 
-def test_first_read_after_an_era_change_says_so(state):
+def test_first_read_after_an_era_change_says_so(state, monkeypatch):
     """Rows from an older era exist for the day: the frame must say "first
     under the current rules", not "first read of the session" — the session
-    plainly had reads."""
+    plainly had reads. Run through read_once, because the fact that decides it
+    is which rows read_once counts as "today had reads"."""
+    tmp, reads_path = state
+    monkeypatch.setenv("SNDK_PAYLOAD", "scene")
+    reads_path.write_text(
+        json.dumps(dict(_call_row(NOW - timedelta(minutes=30)), era="obs-2")) + "\n")
+    seen = {}
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        seen["prompt"] = prompt
+        return {"quiet": True, "read": "Quiet.", "points": []}, None, 1.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    assert SR.read_once(now=NOW) == 0
+    assert _rows(reads_path)[-1]["wake"] == "first read"
+    scene = json.loads(seen["prompt"].split("SCENE:\n", 1)[1])
+    assert scene["context"]["since_last_read"] == {"first_read_under_current_rules": True}
+    # with nothing on record today — the default — it is the session's first read
     row = _diary_row(NOW)
-    old_era = dict(_call_row(NOW - timedelta(minutes=30)), era="obs-2")
-    fr = SR.frame_since_last_read(row, [row], None, "first read", False, NOW,
-                                  prior_rows_today=True)
-    assert fr == {"first_read_under_current_rules": True}
-    fr0 = SR.frame_since_last_read(row, [row], None, "first read", False, NOW,
-                                   prior_rows_today=False)
-    assert fr0 == {"first_read_of_session": True}
+    assert SR.frame_since_last_read(row, [row], None, "first read", False, NOW) == {
+        "first_read_of_session": True}
+    assert SR.frame_since_last_read(row, [row], None, "first read", False, NOW,
+                                    prior_rows_today=False) == {"first_read_of_session": True}
 
 
 # ---------------------------------------------------------------- strikes-1 (2026-09-05)
@@ -180,7 +193,9 @@ def test_strikes_mode_end_to_end(board_state, monkeypatch):
     import sndk_board
     assert SR.read_once(now=NOW) == 0
     row = _rows(reads)[-1]
-    assert row["era"] == "strikes-5" and row["payload"] == "strikes" and row["legacy_kept"] is True
+    # the era's own value is pinned in test_bars; here it is the builder's era
+    assert SR.ERA != SR.LEGACY_ERA
+    assert row["era"] == SR.ERA and row["payload"] == "strikes" and row["legacy_kept"] is True
     assert seen["doctrine"] is sndk_board.DOCTRINE_V2
     scene = json.loads(seen["prompt"].split("SCENE:\n", 1)[1])
     assert "strikes" in scene and "magnet" not in scene and "walls" not in scene
@@ -188,7 +203,7 @@ def test_strikes_mode_end_to_end(board_state, monkeypatch):
     assert row["reading"]["sides"]["above"]["heavy"] == 1300.0
     assert row["gate"]["magnet"] == 1300.0                 # the gate still reads the legacy scene
     lg = [json.loads(l) for l in (tmp / "sndk_legacy" / f"{day}.jsonl").read_text().splitlines()]
-    assert len(lg) == 1 and lg[0]["era"] == "strikes-5" and lg[0]["magnet"] == 1300.0
+    assert len(lg) == 1 and lg[0]["era"] == SR.ERA and lg[0]["magnet"] == 1300.0
 
 
 def test_a_call_keeps_the_list_it_showed_and_the_next_read_uses_it(board_state, monkeypatch):
@@ -231,20 +246,26 @@ def test_a_call_keeps_the_list_it_showed_and_the_next_read_uses_it(board_state, 
     assert errored["error"] == "timeout" and errored["strikes_sent"]
 
 
-def test_a_list_shown_with_volume_withheld_is_marked_on_the_row(board_state, monkeypatch):
+@pytest.mark.parametrize("carried", [True, False], ids=["volume-withheld", "volume-shown"])
+def test_a_list_shown_with_volume_withheld_is_marked_on_the_row(board_state, monkeypatch, carried):
     """Review item #8: a list drawn while the book still carried yesterday's
     volume was picked on open interest alone, so the row says so and the next
-    read does not diff a volume-drawn list against it."""
+    read does not diff a volume-drawn list against it. A list drawn with the
+    volume in it carries no mark, or the next read would never diff at all."""
     tmp, reads, day = board_state
     monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
     monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (_v2_reply(), None, 1.0, None))
     import sndk_board
     asof = _diary_row_with_board(NOW - timedelta(minutes=2))["meta"]["book_asof"]
     monkeypatch.setattr(sndk_board, "carried_books",
-                        lambda rows, now: {asof: sndk_board.WITHHELD_CARRIED})
+                        lambda rows, now: {asof: sndk_board.WITHHELD_CARRIED} if carried else {})
     assert SR.read_once(now=NOW) == 0
     row = _rows(reads)[-1]
-    assert row["strikes_sent"] and row["strikes_sent_without_volume"] is True
+    assert row["strikes_sent"]
+    if carried:
+        assert row["strikes_sent_without_volume"] is True
+    else:
+        assert "strikes_sent_without_volume" not in row
 
 
 def test_board_failure_falls_back_to_the_scene_payload(board_state, monkeypatch, capsys):
@@ -271,7 +292,7 @@ def test_the_control_file_switch_and_its_malformed_shapes(board_state, monkeypat
     monkeypatch.delenv("SNDK_PAYLOAD", raising=False)
     ctl = tmp / "sndk_reads" / "control.json"
     ctl.write_text(json.dumps({"reasoning": True, "payload": "scene"}))
-    assert SR.payload_mode() == "scene" and SR.active_era() == "obs-5"
+    assert SR.payload_mode() == "scene" and SR.active_era() == SR.LEGACY_ERA != SR.ERA
     for bad in ('', 'null', '[]', '"scene"', '{"payload": 7}', '{"payload": "Scene"}', '{"payload": null}', '{', '{"reasoning": true}'):
         ctl.write_text(bad)
         assert SR.payload_mode() == SR.PAYLOAD_DEFAULT, bad
@@ -282,7 +303,7 @@ def test_the_control_file_switch_and_its_malformed_shapes(board_state, monkeypat
     monkeypatch.setattr(SR, "call_the_model",
                         lambda prompt, model, timeout=None, doctrine=None: ({"quiet": True, "read": "Quiet.", "points": []}, None, 1.0, None))
     assert SR.read_once(now=NOW) == 0
-    assert _rows(reads)[-1]["era"] == "obs-5"
+    assert _rows(reads)[-1]["era"] == SR.LEGACY_ERA
 
 
 def test_a_dry_run_in_strikes_mode_writes_nothing(board_state, monkeypatch, capsys):
@@ -297,20 +318,21 @@ def test_a_dry_run_in_strikes_mode_writes_nothing(board_state, monkeypatch, caps
     assert '"payload": "strikes"' in out and '"strikes"' in out.split("--- scene handed to the model ---")[1]
 
 
-def test_the_call_cap_and_gap_span_both_eras(board_state, monkeypatch):
+@pytest.mark.parametrize("spent", ["cap", "gap"])
+def test_the_call_cap_and_gap_span_both_eras(board_state, monkeypatch, spent):
     """Flipping the switch mid-day must not restart the budget: 30 legacy-era
-    calls already today mean the strikes-era tick records, and does not call."""
+    calls already today mean the strikes-era tick records, and does not call.
+    Nor may it reopen the floor: a legacy-era call five minutes ago is the last
+    look, not "no read yet today"."""
     tmp, reads, day = board_state
     monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
-    rows = []
-    for i in range(SR.DAILY_CALL_CAP):
-        r = _call_row(NOW - timedelta(minutes=300 - i * 9))
-        r["era"] = SR.LEGACY_ERA
-        rows.append(json.dumps(r))
-    reads.write_text("\n".join(rows) + "\n")
-    monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (_ for _ in ()).throw(AssertionError("capped")))
+    stamps = ([NOW - timedelta(minutes=300 - i * 9) for i in range(SR.DAILY_CALL_CAP)]
+              if spent == "cap" else [NOW - timedelta(minutes=SR.MIN_GAP_MIN - 5)])
+    reads.write_text("\n".join(json.dumps(dict(_call_row(t), era=SR.LEGACY_ERA))
+                               for t in stamps) + "\n")
+    monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (_ for _ in ()).throw(AssertionError(spent)))
     assert SR.read_once(now=NOW) == 0
-    assert _rows(reads)[-1]["wake"] == "capped"
+    assert _rows(reads)[-1]["wake"] == ("capped" if spent == "cap" else "quiet")
 
 
 # ------------------------------------------------------------- the bill (2026-09-10)

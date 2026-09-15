@@ -94,10 +94,11 @@ def test_the_open_carries_the_bar_it_was_read_from():
     the watcher missed the bell it is the first minute seen, and the bar is the
     only thing that tells the two apart."""
     bars = _flat(40)
-    bars[0] = _bar(0, 1586.0, 1607.0, 1594.9)
+    # open, low, high and close all differ, so only the bar's own open can pass
+    bars[0] = _bar(0, 1586.0, 1607.0, 1594.9, open_=1591.0)
     p = SS.build_side(bars, DAY, _now(39))
     op = next(r for r in p["readings"] if r["id"] == "px.session_open")
-    assert (op["value"], op["at_bar"]) == (1586.0, 0)
+    assert (op["value"], op["at_bar"]) == (1591.0, 0)
 
 
 def test_an_open_read_after_a_late_start_names_the_bar_it_really_had():
@@ -109,31 +110,67 @@ def test_an_open_read_after_a_late_start_names_the_bar_it_really_had():
     assert op["at_bar"] == 27
 
 
-def test_the_recompute_check_fails_when_the_open_does_not_match_its_bar():
-    bars = _flat(40)
-    ix = SS.indexed(bars, DAY)
-    p = SS.build_side(bars, DAY, _now(39))
-    for r in p["readings"]:
-        if r["id"] == "px.session_open":
-            r["value"] = r["value"] + 5.0          # a value bar 0 does not hold
-    rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
-    assert next(c for c in rebuilt
-                if c["check"] == "values_recomputed_from_bars")["status"] == "fail"
-
-
 def test_every_bar_the_packet_names_is_on_the_wire():
-    """A value verified against a bar nobody can see is not verified."""
-    bars = _flat(40)
-    bars[7] = _bar(7, 1499.0, 1520.0, 1519.0)
-    p = SS.build_side(bars, DAY, _now(39))
-    on_wire = {r["bar_index"] for r in p["bars"]["records"]}
-    cited = {r["at_bar"] for r in p["readings"] if r.get("at_bar") is not None}
-    cited |= {r["from_bar"] for r in p["readings"] if r.get("from_bar") is not None}
-    cited |= {e["extreme_at_bar"] for e in p.get("episodes", [])}
-    for L in p.get("levels", []):
-        if L.get("last_visit"):
-            cited |= set(L["last_visit"])
-    assert cited <= on_wire
+    """A value verified against a bar nobody can see is not verified. Every
+    `at_bar` or `*_at_bar` anywhere in the packet is found by walking it, so a
+    field added later is held to the rule without this test knowing its name;
+    a change window's start, a visit's ends and a level's vintage are cited
+    bars too (the vintage is the hole the 09-04 live run found).
+
+    A kind of citation is only tested where its bar is named by nothing else:
+    if the crossing bar is also the high, the packet carries it either way and
+    forgetting the crossing still passes. No one packet can do that for every
+    kind (the day's RSI peak IS its spell's extreme unless that spell was
+    pruned), so there are three shapes, each pinned to the bars that make it bite."""
+    def cited_bars(p):
+        cited = set()
+
+        def walk(o):
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    if (k == "at_bar" or k.endswith("_at_bar")) and v is not None:
+                        cited.add(v)
+                    walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+        walk({k: v for k, v in p.items() if k != "bars"})
+        cited |= {r["from_bar"] for r in p["readings"] if r.get("from_bar") is not None}
+        for L in p.get("levels", []):
+            if L["price_as_of_bar"] is not None:
+                cited.add(L["price_as_of_bar"])
+            cited |= set(L["last_visit"] or [])
+        return cited
+
+    # 1. under a flip line with one visit from below, then a climb over it: the
+    #    vintage (12), the visit (7), the crossing (20), the change windows'
+    #    starts and the day's RSI low (14) are each a bar nothing else names
+    one = [_bar(i, 1489.0, 1491.0, 1490.0) for i in range(20)]
+    one += [_bar(20 + j, 1509.0 + j, 1511.0 + j, 1510.0 + j) for j in range(20)]
+    one[7] = _bar(7, 1489.0, 1499.0, 1498.0)
+    p1 = SS.build_side(one, DAY, _now(39),
+                       levels=[{"price": 1500.0, "role": "flip"}], levels_as_of_bar=12)
+    flip = next(L for L in p1["levels"] if L["role"] == "flip")
+    assert (flip["price_as_of_bar"], flip["last_visit"], flip["last_cross"]["at_bar"]) == (12, [7, 7], 20)
+    assert next(r for r in p1["readings"] if r["id"] == "px.session_high")["at_bar"] == 39
+    assert next(i for i in p1["indicators"] if i["id"] == "ind.rsi14")["day_min_at_bar"] == 14
+
+    # 2. a second overbought spell that peaks on a jump and then saws: its
+    #    extreme (44) is not the day's RSI high, which is the first spell's
+    p2 = SS.build_side(_dip_then([5.0, 5.0, 15.0] + [2.0, -1.0] * 4), DAY, _now(51))
+    assert [e["extreme_at_bar"] for e in p2["episodes"]] == [14, 44]
+
+    # 3. the day's RSI high (14) sits in a spell pruned from the list, and the
+    #    open (bar 0) is not the low (60): only day_max_at_bar and the open name them
+    p3 = SS.build_side(_up_down_up(climb_bars=70), DAY, _now(129))
+    assert next(i for i in p3["indicators"] if i["id"] == "ind.rsi14")["day_max_at_bar"] == 14
+    assert [e["from_bar"] for e in p3["episodes"]] == [74]
+    assert next(r for r in p3["readings"] if r["id"] == "px.session_low")["at_bar"] == 60
+
+    for p in (p1, p2, p3):
+        on_wire = {r["bar_index"] for r in p["bars"]["records"]}
+        cited = cited_bars(p)
+        assert cited <= on_wire, sorted(cited - on_wire)
 
 
 # --- the rails ----------------------------------------------------------------
@@ -178,13 +215,15 @@ def test_a_close_that_creeps_over_the_line_does_not_swallow_the_next_crossing():
 
 
 def test_a_tape_level_counts_no_interaction_before_it_existed():
-    """A high set at bar 20 was not visited at bar 5."""
+    """A high set at bar 20 was not visited at bar 5 — even though bar 5 came
+    within touching distance of the price bar 20 would later set."""
     bars = _flat(40, 1500.0)
+    bars[5] = _bar(5, 1499.0, 1520.5, 1500.0)      # inside the touch rail of 1521
     bars[20] = _bar(20, 1519.0, 1521.0, 1520.5)
     p = SS.build_side(bars, DAY, _now(39))
     hi = next(L for L in p["levels"] if L["role"] == "session_high")
-    assert hi["active_from_bar"] == 20
-    assert hi["last_visit"][0] >= 20
+    assert hi["price"] == 1521.0 and hi["active_from_bar"] == 20
+    assert hi["visits"] == 1 and hi["last_visit"] == [20, 20]
 
 
 def test_every_level_says_where_its_price_came_from_and_how_old_it_is():
@@ -209,44 +248,76 @@ def _ramp(n, lo, hi):
     return out
 
 
+def _dip_then(tail):
+    """Forty bars up (RSI overbought from bar 14), one 15-point drop that
+    releases the band at bar 40, then a close-to-close step for each entry of
+    `tail`. With +5 steps RSI is back over 70 by bar 42, so the break is two
+    bars — short enough for MERGE_GAP_BARS to merge a closed spell."""
+    closes = [1400.0 + 2 * i for i in range(40)]
+    closes.append(closes[-1] - 15)
+    for step in tail:
+        closes.append(closes[-1] + step)
+    return [_bar(i, c - 0.5, c + 0.5, c) for i, c in enumerate(closes)]
+
+
+def _up_down_up(climb_bars=40):
+    """Up, a real break down, then up again: a closed overbought spell ending
+    bar 42, a closed oversold one ending bar 63, and an open overbought spell
+    from bar 74 that lasts as long as the climb."""
+    up1 = _ramp(40, 1400.0, 1460.0)
+    down = [_bar(40 + i, 1459.0 - 3 * i, 1461.0 - 3 * i, 1460.0 - 3 * i) for i in range(20)]
+    up2 = [_bar(60 + i, 1399.0 + 3 * i, 1401.0 + 3 * i, 1400.0 + 3 * i)
+           for i in range(climb_bars)]
+    return up1 + down + up2
+
+
 def test_an_open_spell_is_never_merged_across_a_break():
-    """It reported a 12-bar run that was 2. bars_in_state is the current
-    unbroken run, and merge_gap_bars is null to say the rule was not applied."""
-    bars = _ramp(60, 1400.0, 1500.0)               # straight up: overbought, open
-    p = SS.build_side(bars, DAY, _now(59))
-    open_eps = [e for e in p.get("episodes", []) if e["open"]]
-    assert open_eps, "a straight ramp up should leave an open overbought spell"
-    for e in open_eps:
-        assert e["merge_gap_bars"] is None
-        assert e["bars_in_state"] == e["span_bars"]
+    """It reported a 12-bar run that was 2. The break here is short enough to
+    merge two CLOSED spells, so only the open-spell rule keeps these apart:
+    bars_in_state is the current unbroken run, and merge_gap_bars is null to
+    say the rule was not applied."""
+    bars = _dip_then([5.0] * 20)                    # back in the band, and still in it at the end
+    p = SS.build_side(bars, DAY, _now(len(bars) - 1))
+    ob = [e for e in p["episodes"] if e["state"] == "overbought"]
+    assert [(e["from_bar"], e["to_bar"], e["open"]) for e in ob] == [(14, 39, False), (42, None, True)]
+    now_ep = ob[-1]
+    assert now_ep["merge_gap_bars"] is None
+    assert now_ep["bars_in_state"] == now_ep["span_bars"] == len(bars) - 42
 
 
 def test_a_merged_spell_does_not_count_the_gap_it_spans():
     """bars_in_state counts bars in the band; span_bars is the distance from
-    end to end. Where they differ, a gap was merged, and the difference is it."""
-    p = SS.build_side(_ramp(120, 1400.0, 1500.0), DAY, _now(119))
-    for e in p.get("episodes", []):
-        assert e["bars_in_state"] <= e["span_bars"]
-        if e["merge_gap_bars"] is not None:
-            assert e["bars_in_state"] == e["span_bars"] or e["bars_in_state"] < e["span_bars"]
+    end to end. Where they differ, a gap was merged, and the difference is it:
+    here bars 40 and 41, out of the band between two runs that both closed."""
+    bars = _dip_then([5.0] * 8 + [-3.0] * 40)       # back in the band, then a real exit
+    p = SS.build_side(bars, DAY, _now(len(bars) - 1))
+    merged = next(e for e in p["episodes"] if e["merge_gap_bars"] is not None)
+    assert (merged["from_bar"], merged["to_bar"], merged["open"]) == (14, 51, False)
+    assert merged["span_bars"] == 38
+    assert merged["bars_in_state"] == merged["span_bars"] - 2 == 36
 
 
 def test_the_list_says_so_when_older_spells_were_dropped():
-    """A list that prunes without saying so implies a completeness it lacks."""
-    up = _ramp(30, 1400.0, 1460.0)
-    flat = [_bar(30 + i, 1459.5, 1460.5, 1460.0) for i in range(120)]
-    down = [_bar(150 + i, 1400.0 - i, 1401.0 - i, 1400.5 - i) for i in range(30)]
-    p = SS.build_side(up + flat + down, DAY, _now(179))
-    eps = p.get("episodes", [])
-    if eps and any("_pruned" in e for e in eps):
-        assert "not listed" in next(e["_pruned"] for e in eps if "_pruned" in e)
+    """A list that prunes without saying so implies a completeness it lacks.
+    Climbing to bar 129 leaves both closed spells more than 60 bars behind."""
+    p = SS.build_side(_up_down_up(climb_bars=70), DAY, _now(129))
+    eps = p["episodes"]
+    assert [(e["state"], e["open"]) for e in eps] == [("overbought", True)]
+    notes = [e["_pruned"] for e in eps if "_pruned" in e]
+    assert len(notes) == 1
+    assert notes[0].startswith("2 earlier spell") and "not listed" in notes[0]
 
 
 # --- warmup and thin tape -----------------------------------------------------
 def test_the_reading_says_warmup_before_it_can_exist():
-    p = SS.build_side(_flat(5), DAY, _now(4))
-    rsi = next(i for i in p["indicators"] if i["id"] == "ind.rsi14")
-    assert rsi["value"] is None and rsi["label"] == "warmup"
+    """Undefined until RSI_LEN + 1 bars have closed: both sides of the boundary."""
+    for n, warm in ((5, True), (SS.RSI_LEN, True), (SS.RSI_LEN + 1, False)):
+        p = SS.build_side(_flat(n), DAY, _now(n - 1))
+        rsi = next(i for i in p["indicators"] if i["id"] == "ind.rsi14")
+        if warm:
+            assert rsi["value"] is None and rsi["label"] == "warmup", n
+        else:
+            assert rsi["value"] is not None and rsi["label"] != "warmup", n
 
 
 def test_a_thin_tape_ships_no_percentile_and_says_why():
@@ -268,22 +339,42 @@ def test_no_bars_at_all_is_declared_not_guessed():
 def test_a_halted_minute_does_not_drag_the_divisor():
     """A halt prints bars with no volume; their zero range would pull the
     median down and inflate every distance measured against it."""
-    live = _flat(40, 1500.0)
-    halted = [_bar(40 + i, 1500.0, 1500.0, 1500.0, vol=0.0) for i in range(20)]
+    # more halted minutes than live ones, so counting them WOULD drag the median
+    # to zero; with fewer, the median of the mix does not move and nothing is tested
+    live = _flat(20, 1500.0)
+    halted = [_bar(20 + i, 1500.0, 1500.0, 1500.0, vol=0.0) for i in range(40)]
     with_halt = SS.build_side(live + halted, DAY, _now(59))
-    without = SS.build_side(live, DAY, _now(39))
+    without = SS.build_side(live, DAY, _now(19))
     nf_a = next(b for b in with_halt["baselines"] if b["id"] == "bl.bar_range_median")
     nf_b = next(b for b in without["baselines"] if b["id"] == "bl.bar_range_median")
-    assert nf_a["value"] == nf_b["value"]
+    assert nf_a["value"] == nf_b["value"] == 2.0
 
 
 # --- the session segments -----------------------------------------------------
+def _session(totals):
+    """A full session whose four segments carry the given volume totals."""
+    out = []
+    for (_, a, b_), total in zip(SS.SEGMENTS, totals):
+        out += [_bar(i, 1499.0, 1501.0, 1500.0, vol=total / (b_ - a + 1))
+                for i in range(a, b_ + 1)]
+    return out
+
+
 def test_the_expected_shares_are_measured_and_sum_to_one():
-    """Hardcoding them is what made an earlier draft's four shares sum to 0.93."""
-    prior = [_flat(390, 1500.0, vol=1000.0) for _ in range(3)]
+    """Hardcoding them is what made an earlier draft's four shares sum to 0.93.
+    Taken per segment, the medians of these three sessions are .2/.3/.1/.2 —
+    0.8, not a session — so only normalising makes them .25/.375/.125/.25."""
+    prior = [_session((400, 300, 100, 200)),
+             _session((100, 600, 100, 200)),
+             _session((200, 300, 300, 200)),
+             _flat(200, 1500.0)]                    # a thin day: skipped, not counted
     prof = SS.segment_profile([SS.indexed(s, DAY) for s in prior])
     assert prof["n_sessions"] == 3 and prof["normalised"] is True
+    assert prof["fractions"] == {"open_drive": 0.25, "lull": 0.375,
+                                 "afternoon": 0.125, "power_hour": 0.25}
     assert abs(sum(prof["fractions"].values()) - 1.0) < 0.002
+    # one usable session is not a profile
+    assert SS.segment_profile([SS.indexed(prior[0], DAY)]) is None
 
 
 def test_a_segment_says_whether_it_is_done_or_still_running():
@@ -317,13 +408,16 @@ def test_the_cited_bars_check_fails_when_a_named_bar_is_missing(monkeypatch):
     assert next(c for c in rebuilt if c["check"] == "cited_bars_on_wire")["status"] == "fail"
 
 
-def test_the_recompute_check_fails_when_a_value_does_not_match_its_bar():
+@pytest.mark.parametrize("reading", ["px.session_open", "px.session_high", "px.session_low"])
+def test_the_recompute_check_fails_when_a_value_does_not_match_its_bar(reading):
+    """Each value the check recomputes is corrupted in turn — the low had no
+    test at all, so a check that skipped it would have passed clean."""
     bars = _flat(40)
     bars[7] = _bar(7, 1499.0, 1520.0, 1519.0)
     ix = SS.indexed(bars, DAY)
     p = SS.build_side(bars, DAY, _now(39))
     for r in p["readings"]:
-        if r["id"] == "px.session_high":
+        if r["id"] == reading:
             r["value"] = r["value"] + 5.0          # a value its bar does not hold
     rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
     assert next(c for c in rebuilt
@@ -332,13 +426,15 @@ def test_the_recompute_check_fails_when_a_value_does_not_match_its_bar():
 
 def test_the_episode_count_check_fails_when_a_gap_is_counted():
     """The upper rail: a merged spell that counts the gap it spans claims more
-    bars in state than there are bars on the state's side of the exit rail."""
-    bars = _ramp(120, 1400.0, 1500.0)
+    bars in state than there are bars on the state's side of the exit rail.
+    The corruption is that bug exactly — the span written as the count — not an
+    arbitrary overshoot, so a check loose by a bar or two cannot pass it."""
+    bars = _dip_then([5.0] * 8 + [-3.0] * 40)
     ix = SS.indexed(bars, DAY)
-    p = SS.build_side(bars, DAY, _now(119))
-    if not p.get("episodes"):
-        pytest.skip("this ramp produced no spell to corrupt")
-    p["episodes"][0]["bars_in_state"] += 50        # more than the span can hold
+    p = SS.build_side(bars, DAY, _now(len(bars) - 1))
+    assert _status(p, "bars_in_state_within_its_rails") == "pass"
+    merged = next(e for e in p["episodes"] if e["merge_gap_bars"] is not None)
+    merged["bars_in_state"] = merged["span_bars"]  # the gap counted
     rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
     assert next(c for c in rebuilt
                 if c["check"] == "bars_in_state_within_its_rails")["status"] == "fail"
@@ -497,16 +593,13 @@ def test_the_open_episode_check_fails_when_a_break_is_swallowed():
     """The claim on the tab is that EVERY check is forced to fail once here.
     This is one of the three that made that claim untrue until 09-03."""
     # up, then a real break down, then up again — so there is a gap to swallow
-    up1 = _ramp(40, 1400.0, 1460.0)
-    down = [_bar(40 + i, 1459.0 - 3 * i, 1461.0 - 3 * i, 1460.0 - 3 * i) for i in range(20)]
-    up2 = [_bar(60 + i, 1399.0 + 3 * i, 1401.0 + 3 * i, 1400.0 + 3 * i) for i in range(40)]
-    bars = up1 + down + up2
+    bars = _up_down_up()
     ix = SS.indexed(bars, DAY)
     rsi = SS.rsi_wilders(ix)
     p = SS.build_side(bars, DAY, _now(99))
-    open_eps = [e for e in p.get("episodes", []) if e["open"]]
-    if not open_eps:
-        pytest.skip("this shape produced no open spell to corrupt")
+    assert _status(p, "open_episode_not_merged") == "pass"
+    open_eps = [e for e in p["episodes"] if e["open"]]
+    assert [e["from_bar"] for e in open_eps] == [74]
     open_eps[0]["from_bar"] = min(rsi)          # back across the break
     rebuilt = SS._integrity(p, ix, rsi)
     assert next(c for c in rebuilt
@@ -637,14 +730,3 @@ def test_the_vintage_check_fails_when_a_level_cites_an_unclosed_bar():
     rebuilt = SS._integrity(p, ix, SS.rsi_wilders(ix))
     assert next(c for c in rebuilt
                 if c["check"] == "no_vintage_ahead_of_as_of")["status"] == "fail"
-
-
-def test_a_levels_vintage_bar_is_carried_on_the_wire():
-    """It is a cited bar like any other — a value checked against a bar nobody
-    carries is not checked. This is the hole the live run found."""
-    p = SS.build_side(_flat(60), DAY, _now(59),
-                      levels=[{"price": 1500.0, "role": "flip"}], levels_as_of_bar=42)
-    on_wire = {r["bar_index"] for r in p["bars"]["records"]}
-    for L in p["levels"]:
-        if L.get("price_as_of_bar") is not None:
-            assert L["price_as_of_bar"] in on_wire, L["id"]
