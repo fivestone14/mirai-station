@@ -385,8 +385,8 @@ momentum, stronger), a strike placed on the wrong side of the live price, and
 
 **The switch.** `payload_mode()` reads `SNDK_PAYLOAD` (env), then
 `state/sndk_reads/control.json` (`"payload": "scene" | "strikes"`), then
-`PAYLOAD_DEFAULT`. The era follows it (`strikes-3` / `obs-5`), so rows written
-after a revert never pool. The live scene is still built every scan: the wake
+`PAYLOAD_DEFAULT`. The era follows it (`sndk_read.ERA` / `LEGACY_ERA`, bumped whenever what the
+model is shown changes), so rows written after a revert never pool. The live scene is still built every scan: the wake
 gate, the frame, the memory slice and the row's `gate` state read it, and its
 old magnet and walls are written as the **Gate Payload** to
 `state/sndk_legacy/<day>.jsonl` on every read that spends a call
