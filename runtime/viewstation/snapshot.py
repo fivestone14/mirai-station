@@ -766,17 +766,15 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         try:
             import sndk_board as board
             frame = (scene_v1.get("context") or {}).get("since_last_read")
-            # the reader takes the clusters from the last CALL and the sentence from
-            # the last row that has one; after a call whose sentence was deleted the
-            # two differ, and the tab must match what the reader would send
-            clusters_then = ((last_call or {}).get("reading") or {}).get("clusters") or None
             scene, _ = board.build_scene_v2(
                 rw, rows, build_now, since_last_read=frame,
                 last_read_ts=(R._ts(last_call) if last_call else None),
-                bars=R.minute_bars(day), v1=scene_v1, clusters_then=clusters_then,
+                bars=R.minute_bars(day), v1=scene_v1,
                 strikes_sent_before=(last_call or {}).get("strikes_sent"),
                 sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")),
-                said_row=said)
+                said_row=said,
+                # strikes-6: the same day's readings the reader grades in `day`
+                calls_today=[r for r in reads if r.get("wall_s") is not None])
             gate_payload = board.legacy(rw, rows, build_now, v1=scene_v1)
             payload_label = "Strikes Payload v1"
             v1_text = json.dumps(scene_v1, default=str)

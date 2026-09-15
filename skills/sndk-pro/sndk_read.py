@@ -90,7 +90,16 @@ PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "strikes-5"           # bump on ANY change to the gates or the prompt.
+ERA = "strikes-6"           # bump on ANY change to the gates or the prompt.
+                            # strikes-6 (2026-09-15): the `day` block — every
+                            # lead of the day, what stood, joined and left the
+                            # list, the last three readings' claims graded
+                            # against the board, the strikes named today and off
+                            # the table, and how today compares with past
+                            # sessions — replaces clusters_then and the table's
+                            # lead clocks. Bumped after the 09-15 close, so every
+                            # gate or payload change made before the 2026-09-16
+                            # open rides this one era.
                             # strikes-5 (2026-09-15): the strike table says
                             # who has led each measure since when and who led
                             # before (leads_since, led_before), and the doctrine
@@ -4369,18 +4378,18 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
             sys.modules.setdefault("sndk_read", sys.modules[__name__])
             import sndk_board as board
             _frame = (scene.get("context") or {}).get("since_last_read")
-            # the clusters the model drew at the read the frame is anchored on
-            _clusters_then = ((last_call or {}).get("reading") or {}).get("clusters") or None
             scene_v2, _ = board.build_scene_v2(
                 row, rows, scene_now, since_last_read=_frame,
                 last_read_ts=(_ts(last_call) if last_call else None),
-                bars=minute_bars(day), v1=scene, clusters_then=_clusters_then,
+                bars=minute_bars(day), v1=scene,
                 # the strike list the model was shown at that read (item #7)
                 strikes_sent_before=(last_call or {}).get("strikes_sent"),
                 sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")),
                 # strikes-4: the sentence a reader is looking at, from the last
                 # row that still has one (after a failed or emptied call, an older one)
-                said_row=said)
+                said_row=said,
+                # strikes-6: the day's readings, whose claims `day` grades
+                calls_today=[r for r in reads if r.get("wall_s") is not None])
             legacy_doc = board.legacy(row, rows, scene_now, v1=scene)
         except Exception as exc:
             print(f"sndk-read :: strikes payload failed, scene payload used: {exc!r}")
