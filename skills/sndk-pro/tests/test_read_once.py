@@ -180,7 +180,7 @@ def test_strikes_mode_end_to_end(board_state, monkeypatch):
     import sndk_board
     assert SR.read_once(now=NOW) == 0
     row = _rows(reads)[-1]
-    assert row["era"] == "strikes-3" and row["payload"] == "strikes" and row["legacy_kept"] is True
+    assert row["era"] == "strikes-4" and row["payload"] == "strikes" and row["legacy_kept"] is True
     assert seen["doctrine"] is sndk_board.DOCTRINE_V2
     scene = json.loads(seen["prompt"].split("SCENE:\n", 1)[1])
     assert "strikes" in scene and "magnet" not in scene and "walls" not in scene
@@ -188,7 +188,7 @@ def test_strikes_mode_end_to_end(board_state, monkeypatch):
     assert row["reading"]["sides"]["above"]["heavy"] == 1300.0
     assert row["gate"]["magnet"] == 1300.0                 # the gate still reads the legacy scene
     lg = [json.loads(l) for l in (tmp / "sndk_legacy" / f"{day}.jsonl").read_text().splitlines()]
-    assert len(lg) == 1 and lg[0]["era"] == "strikes-3" and lg[0]["magnet"] == 1300.0
+    assert len(lg) == 1 and lg[0]["era"] == "strikes-4" and lg[0]["magnet"] == 1300.0
 
 
 def test_a_call_keeps_the_list_it_showed_and_the_next_read_uses_it(board_state, monkeypatch):
@@ -437,6 +437,60 @@ def test_a_payload_that_cannot_be_kept_never_stops_the_call(board_state, monkeyp
     row = _rows(reads)[-1]
     assert called and row["wall_s"] == 1.0 and "payload_kept" not in row
     assert "payload record skipped" in capsys.readouterr().out
+
+
+def test_the_next_call_is_shown_the_sentence_the_last_one_left(board_state, monkeypatch):
+    """#3: the model is handed what a reader last saw from it, with the clock
+    it was written at, and the rulebook it came with is kept only once."""
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    prompts = []
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        prompts.append(prompt)
+        return _v2_reply(), None, 1.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    assert SR.read_once(now=NOW) == 0
+    assert "said_then" not in prompts[0]                  # nothing said yet today
+    rs = _rows(reads)
+    rs[-1]["reading"]["read"] = "1300 holds the most contracts above and 1150 leads below."
+    reads.write_text("\n".join(json.dumps(r) for r in rs) + "\n")
+
+    later = NOW + timedelta(minutes=SR.HEARTBEAT_MIN + 1)
+    dp = tmp / "sndk_reversion" / f"{day}.jsonl"
+    dp.write_text(dp.read_text() + json.dumps(_diary_row_with_board(later, spot=1204.0)) + "\n")
+    assert SR.read_once(now=later) == 0
+    slr = json.loads(prompts[1].split("SCENE:\n", 1)[1])["context"]["since_last_read"]
+    assert slr["said_then"] == "1300 holds the most contracts above and 1150 leads below."
+    assert slr["said_at"] == NOW.strftime("%H:%M")
+    assert len(SR.read_payloads(day)) == 2
+    assert len(list((tmp / "sndk_payloads" / "rules").iterdir())) == 1
+
+
+def test_a_sentence_the_guards_deleted_leaves_the_older_one_in_front_of_the_model(board_state, monkeypatch):
+    """Review 2026-09-14, defect #1. The card keeps showing the last sentence that
+    survived; a later call whose prose the guards emptied must not hide it from
+    the model, and its clock is that sentence's, not the frame's."""
+    tmp, reads, day = board_state
+    monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
+    carried = dict(_call_row(NOW - timedelta(minutes=80), read="1300 holds the most contracts."),
+                   ts=(NOW - timedelta(minutes=70)).isoformat(), wall_s=None, wake="quiet")
+    reads.write_text(
+        json.dumps(_call_row(NOW - timedelta(minutes=80), read="1300 holds the most contracts.")) + "\n" +
+        # a quiet scan carrying it forward: its own clock is not the sentence's
+        json.dumps(carried) + "\n" +
+        json.dumps(_call_row(NOW - timedelta(minutes=65), read=None)) + "\n")
+    prompts = []
+
+    def fake(prompt, model, timeout=None, doctrine=None):
+        prompts.append(prompt)
+        return _v2_reply(), None, 1.0, None
+    monkeypatch.setattr(SR, "call_the_model", fake)
+    assert SR.read_once(now=NOW) == 0
+    slr = json.loads(prompts[0].split("SCENE:\n", 1)[1])["context"]["since_last_read"]
+    assert slr["said_then"] == "1300 holds the most contracts."
+    assert slr["said_at"] == (NOW - timedelta(minutes=80)).strftime("%H:%M")
+    assert slr["last_read_at"] == (NOW - timedelta(minutes=65)).strftime("%H:%M")
 
 
 def test_a_paused_wake_keeps_nothing_and_a_timed_out_call_keeps_what_it_sent(board_state, monkeypatch):

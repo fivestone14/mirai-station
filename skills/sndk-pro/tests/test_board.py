@@ -513,6 +513,27 @@ def test_clusters_then_ride_in_the_frame():
     assert v2["context"]["since_last_read"]["clusters_then"] == [{"center": 1300.0, "strikes": [1300.0]}]
 
 
+def test_the_last_sentence_rides_in_the_frame_and_lends_the_gate_no_numbers():
+    """strikes-4: `said_then` is the sentence the last call left on screen, with
+    `said_at`; a figure found only in it is not on the board."""
+    rows = mkrows(n=8)
+    frame = {"last_read_at": "09:52", "minutes_since": 8, "spot_then": 1290.0, "spot_change_sigma": 0.0}
+    written = T0 - timedelta(minutes=8)
+    said = {"reading": {"read": "Price held near 1777.25 all morning."}, "reading_ts": written.isoformat()}
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, dict(frame), SR._ts(rows[3]), flat_bars(30), said_row=said)
+    slr = v2["context"]["since_last_read"]
+    assert slr["said_then"] == "Price held near 1777.25 all morning."
+    assert slr["said_at"] == written.astimezone(SR._ET).strftime("%H:%M")
+    assert 1777.25 in SR.numbers_on_the_board(v2)             # it is in the message...
+    assert 1777.25 not in SR.numbers_on_the_board(B._guard_scene(v2))   # ...and the gate never sees it
+    assert "said_then" in slr and "said_then" in v2["context"]["since_last_read"]   # the shim copied, never cut
+    # nothing said, or a sentence the guards emptied, ships nothing
+    for row in (None, {"reading": {"quiet": True, "abstain": "forced"}}, {"reading": None}):
+        v, _ = B.build_scene_v2(rows[-1], rows, T0, dict(frame), SR._ts(rows[3]), flat_bars(30), said_row=row)
+        assert "said_then" not in v["context"]["since_last_read"] and "said_at" not in v["context"]["since_last_read"]
+    assert "`context.since_last_read.said_then`" in B.DOCTRINE_V2 and "`said_at`" in B.DOCTRINE_V2
+
+
 def test_the_gate_payload_keeps_the_old_verdicts_beside_and_takes_v1_when_given():
     rows = mkrows(n=8)
     v2, v1 = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
@@ -1187,3 +1208,31 @@ def test_the_expiry_afternoon_solve_never_reaches_the_board():
     v2b, _ = B.build_scene_v2(plain[-1], plain, T0, None, None, flat_bars(30))
     assert v2b["scale"]["implied_vol_atm"] == 50.0
     assert v2b["scale"]["one_sigma_dollars"] == 100.0
+
+
+def test_replay_carries_the_sentence_still_on_screen_across_a_failed_call(monkeypatch):
+    """Review 2026-09-14, defect #3: replay keeps the last sentence that
+    survived, the way the live card does, instead of dropping it when a
+    replayed call errors."""
+    rows = mkrows(n=4, step=15)
+    monkeypatch.setattr(B, "_day_rows", lambda day: rows)
+    monkeypatch.setattr(SR, "minute_bars", lambda day: flat_bars(30))
+    monkeypatch.setattr(SR, "should_wake", lambda *a, **k: "heartbeat")
+    # a sentence, a timeout, then a reply whose sentence the guards emptied
+    replies = iter([("1300 holds the most contracts.", None), (None, "timeout"),
+                    ("", None), ("nothing new.", None)])
+
+    def v2_call(prompt, model=None, timeout=None):
+        text, err = next(replies)
+        return ({"quiet": False, "read": text, "points": []} if text is not None else None), err, 1.0, None
+    monkeypatch.setattr(B, "call_the_model_v2", v2_call)
+    monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (None, "not in this test", 0.1, None))
+    monkeypatch.setattr(B, "check_reading_v2", lambda obj, scene, regions=None: {"read": obj.get("read"), "clusters": []})
+    seen, real = [], B.build_scene_v2
+
+    def spy(*a, **k):
+        seen.append(((k.get("said_row") or {}).get("reading") or {}).get("read"))
+        return real(*a, **k)
+    monkeypatch.setattr(B, "build_scene_v2", spy)
+    B.replay_day(T0.date().isoformat(), call_model=True)
+    assert seen == [None] + ["1300 holds the most contracts."] * 3

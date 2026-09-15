@@ -1,6 +1,10 @@
 # SNDK property inventory — in the scene payload vs not (living list)
 
-> **2026-09-14.** Every call's exact message is now kept, before it is sent, in
+> **strikes-4 (2026-09-14).** Two additions. `context.since_last_read.said_then`
+> is the sentence still on screen from the model's last reading, word for word, with `said_at`,
+> when it was written; the number gate's harvest skips it, so a figure the model
+> once said is sayable again only while the board still carries it. And every
+> call's exact message is now kept, before it is sent, in
 > `state/sndk_payloads/<day>.jsonl`: the scene as an object, the rulebook once per
 > distinct text under `rules/<sha>.txt`, and `prompt_sha256`, which
 > `sndk_read.sent_prompt` checks when it rebuilds the prompt.

@@ -90,7 +90,13 @@ PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "strikes-3"           # bump on ANY change to the gates or the prompt.
+ERA = "strikes-4"           # bump on ANY change to the gates or the prompt.
+                            # strikes-4 (2026-09-14): the model is shown the
+                            # sentence still on screen from its last reading
+                            # (context.since_last_read.said_then), so it can
+                            # take back what it said. Bumped after the 09-14
+                            # close, so every gate or payload change made
+                            # before the 2026-09-15 open rides this one era.
                             # strikes-3 (2026-09-11): the review items built
                             # after the 09-11 close. Bumped between sessions,
                             # so every gate or payload change made before the
@@ -4288,7 +4294,10 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
                 bars=minute_bars(day), v1=scene, clusters_then=_clusters_then,
                 # the strike list the model was shown at that read (item #7)
                 strikes_sent_before=(last_call or {}).get("strikes_sent"),
-                sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")))
+                sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")),
+                # strikes-4: the sentence a reader is looking at, from the last
+                # row that still has one (after a failed or emptied call, an older one)
+                said_row=said)
             legacy_doc = board.legacy(row, rows, scene_now, v1=scene)
         except Exception as exc:
             print(f"sndk-read :: strikes payload failed, scene payload used: {exc!r}")

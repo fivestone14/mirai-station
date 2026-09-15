@@ -101,7 +101,7 @@ def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
     assert "magnet" not in sc and "walls" not in sc
     assert d["legacy"]["status"] == "deprecated" and d["legacy"]["sent_to_model"] is False
     assert d["legacy"]["scene"]["magnet"]["top_strikes"][0]["strike"] == 1600.0
-    assert d["legacy"]["era"] == "obs-5" and d["era"] == "strikes-3"
+    assert d["legacy"]["era"] == "obs-5" and d["era"] == "strikes-4"
     assert d["gate_payload"]["magnet"] == 1600.0
     # the wrapper is the reader's own, byte for byte, with the same compact JSON inside
     assert d["user_prompt"].startswith("Read this scene cold and reply with the JSON object only.\n\nSCENE:\n")
@@ -274,3 +274,24 @@ def test_pipeline_events_and_days_read_the_rows_own_clocks(tmp_path, monkeypatch
     assert ev["reads"][0] == {"m": 2.5, "wake": "first read", "spoke": True, "wall": 4.5, "quiet": False, "err": False, "era": "strikes-1", "payload": "strikes"}
     assert snapshot.pipeline_days() == [day]
     assert snapshot.pipeline_events("2026-01-01")["absent"] == ["no diary rows for the day", "no minute bars on disk for the day", "no read rows for the day"]
+
+
+def test_the_payload_tab_shows_the_sentence_still_on_screen(tmp_path, monkeypatch):
+    """strikes-4: the tab rebuilds what the reader would send, so it carries
+    said_then from the last row that still has a sentence, even when a later
+    call's sentence was withheld."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0), _row(t.replace(minute=57), 1583.0),
+                                        _row(t.replace(hour=13, minute=1), 1586.2)])
+    said, emptied = t.replace(minute=57), t.replace(minute=59)
+    (tmp_path / "sndk_reads").mkdir()
+    (tmp_path / "sndk_reads" / "2026-08-19.jsonl").write_text("\n".join(json.dumps(r) for r in [
+        {"ts": said.isoformat(), "wall_s": 5.0, "spot": 1583.0, "gate": {"spot": 1583.0},
+         "reading": {"read": "1600 holds the most contracts."}, "reading_ts": said.isoformat()},
+        {"ts": emptied.isoformat(), "wall_s": 6.0, "spot": 1584.0, "gate": {"spot": 1584.0},
+         "reading": {"quiet": True, "abstain": "forced"}, "reading_ts": emptied.isoformat()},
+    ]) + "\n")
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    slr = d["scene"]["context"]["since_last_read"]
+    assert slr["said_then"] == "1600 holds the most contracts." and slr["said_at"] == "12:57"

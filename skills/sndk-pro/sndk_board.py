@@ -1173,6 +1173,17 @@ def _crossed_from_frame(frame: Optional[dict]) -> list:
     return out
 
 
+def _said_then(call_row: Optional[dict]) -> tuple:
+    """(the sentence a call row left on screen, "HH:MM" it was written), or
+    (None, None) when the row is missing or its reading has no prose."""
+    reading = call_row.get("reading") if isinstance(call_row, dict) else None
+    text = str(reading.get("read") or "").strip() if isinstance(reading, dict) else ""
+    if not text:
+        return None, None
+    t = SR._parse_ts(call_row.get("reading_ts"))
+    return text, (t.astimezone(SR._ET).strftime("%H:%M") if t else None)
+
+
 def _strip_frame(slr: dict, bf: Optional[dict]) -> None:
     """The since-last-read frame minus every old label: the wake reason (it
     named a hedging flip on 8 of 22 scenes that had none), the wall labels on
@@ -1259,7 +1270,8 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
                    v1: Optional[dict] = None,
                    clusters_then: Optional[list] = None,
                    strikes_sent_before: Optional[list] = None,
-                   sent_before_without_volume: bool = False) -> tuple:
+                   sent_before_without_volume: bool = False,
+                   said_row: Optional[dict] = None) -> tuple:
     """(scene_v2, scene_v1). The kept blocks are the live builder's output with
     the labels stripped; the verdict blocks are dropped; `strikes`, `frames`,
     `between_frames` and `regions` are added. `bars` is the day's minute bars
@@ -1269,7 +1281,10 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
     is the strike list that read showed it, so arrivals and departures are
     measured against what it saw (None when no list was kept);
     `sent_before_without_volume` says that list was drawn with volume
-    withheld (item #8)."""
+    withheld (item #8). `said_row` is the last read row whose reading still has
+    prose: the sentence a reader is looking at, which after a failed or emptied
+    call is older than the frame's. It rides as `said_then`, with `said_at`
+    (strikes-4)."""
     if v1 is None:
         band = SR.magnet_band(row)
         frozen = SR.frozen_fields(rows, now)
@@ -1402,6 +1417,20 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         if clusters_then:
             slr["clusters_then"] = [{"center": _k(c.get("center")), "strikes": [_k(k) for k in (c.get("strikes") or [])]}
                                     for c in clusters_then if isinstance(c, dict) and SR._fin(c.get("center")) is not None]
+        # strikes-4 (2026-09-14): WHAT THE LAST CALL SAID, WORD FOR WORD. The
+        # doctrine tells the model to un-say what it said an hour ago, and it was
+        # shown only the piles it drew, never the sentence a reader saw — so it
+        # could not know it had called 1630 a hold, and the next reading could
+        # contradict that without a word, or repeat it after it stopped being
+        # true. It comes from the last row that still HAS a sentence, not the
+        # last call: after a call that failed, or whose sentence the guards
+        # deleted, the card keeps showing the older one, and that is what the
+        # model must be able to take back. Its clock is that sentence's.
+        said, said_at = _said_then(said_row)
+        if said:
+            slr["said_then"] = said
+            if said_at:
+                slr["said_at"] = said_at
     if strikes:
         v2["strikes"] = strikes
         fr = frames_block(books, now, last_read_ts, sig, ruler_spot, bars_now)
@@ -1475,7 +1504,7 @@ def compare_scenes(v1: dict, v2: dict) -> dict:
 # ---------------------------------------------------------------------------
 DOCTRINE_V2 = f"""You are watching one stock's option board and saying what you NOTICE. You are not forecasting. Nobody wants to know where you think price is going: that question was asked of you for a year, measured, and found to carry no information at all. What is wanted is what you would actually say to someone who just walked up and asked "anything going on?" — what is there, what changed since you last spoke, and nothing about what happens next.
 
-TALK LIKE A PERSON. Someone is sitting next to you who knows markets but not options jargon, and you are pointing at the screen. "1750 has been eating calls all afternoon — a couple of thousand since we last spoke, and it now leads the board on every measure" is what a human says. "contracts_share_pp = 16.3" is not, and neither is a sentence built from these instructions rather than from today's board: THE EXAMPLES HERE ARE SHAPES, NOT SENTENCES TO RETURN. If your answer could have been written before the market opened, it is not a reading. Full sentences, plain words, no field names in the prose. Every number is checked against the scene before anyone reads your answer. The numbers inside these instructions are teaching aids, never board values.
+TALK LIKE A PERSON. Someone is sitting next to you who knows markets but not options jargon, and you are pointing at the screen. "1750 has been eating calls all afternoon — a couple of thousand since we last spoke, and it now leads the board on every measure" is what a human says. "contracts_share_pp = 16.3" is not, and neither is a sentence built from these instructions rather than from today's board: THE EXAMPLES HERE ARE SHAPES, NOT SENTENCES TO RETURN. If your answer could have been written before the market opened, it is not a reading. Full sentences, plain words, no field names in the prose. Every number is checked against the board — everything in the scene except `said_then` — before anyone reads your answer. The numbers inside these instructions are teaching aids, never board values.
 
 THE BOARD IS AN AUCTION HOUSE, AND A SHARED DOCUMENT. Read it that way:
 - CONTRACTS ARE WHERE THE CROWD SITS. Open interest is the prior session's crowd: positions that exist, struck at that session's close (`data_sources.open_interest.prior_session_date`) and constant all day. It still matters because everyone else is reading the same document and reacting to it. Round strikes gather the crowd; say that by the share, never by the roundness.
@@ -1523,17 +1552,17 @@ THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every nu
 
 SAY THE ONE THING WORTH SAYING. `read` is three sentences at the outside, sixty words, and it is the only part of your answer most people ever read. Lead with what you would lead with if you had one breath. Usually that is what changed since your last read. Sometimes it is a strike that has been taking volume all afternoon. On a dead board it is that the board is dead, said in one line, and then you stop — a short true answer is finished work, not a thin one.
 The standing board on both sides is a real duty and you pay it in `sides`, which is where the screen draws it from. Do not pay it twice. The prose is for the news, and four strikes in a read is already too many.
-Every number you say has to be one that APPEARS IN THE SCENE. You may round it the way a person says it out loud — "about 68" for 68.15, "over 11,000" for 11,006 — but a number you worked out yourself is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far, name the two prices and let the reader see it.
+Every number you say has to be one that APPEARS IN THE SCENE, and `said_then` is your own earlier sentence, not the scene. You may round it the way a person says it out loud — "about 68" for 68.15, "over 11,000" for 11,006 — but a number you worked out yourself is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far, name the two prices and let the reader see it.
 
 YOU ARE LOOKING DOWN AT THE WHOLE DAY, NOT THROUGH A TWENTY-MINUTE WINDOW. The scene carries the session and not merely the gap since you last spoke: `price.session_high` and `session_low`, `price.vs_prior_close_pct`, `context.ranges.opening.status` (whether the first half hour's box held, and the clock when it broke), `context.ranges.breaks_today.count`, `context.ranges.in_force.standing_for_min` (how long the box that stands now has stood), and per strike `on_list_for_min`, `first_touch`, `last_touch`, `visits_today` and `vol_added_in_series`. Every one of those is a fact about the DAY. Measured over the last 71 readings, 77 percent framed everything against the previous read and 8 percent against the session — someone watching all day was handed twenty-minute weather reports and never once the day.
 
 SO SAY WHAT THE DAY HAS BEEN DOING, AND JOIN THE FACTS RATHER THAN LISTING THEM. A strike that has been on the list 214 minutes and led volume for most of them is a different thing from one that arrived at 15:40, and the scene tells you which. Three box breaks before noon is a day with a shape. Price above the whole of the last five sessions is where today sits, not a footnote. Two facts joined by what they have in common are worth more than four facts in a row, and the join is the part only something watching the whole day can supply.
 
-AND SAY WHAT HAS STOOD. You have been speaking all day and some of what you said has survived and some has not. `context.since_last_read.clusters_then` and `strikes.left_since_reference` are the record of it. What HELD is as worth saying as what went: "1700 has been the heaviest strike since 09:40 and still is" is a fact about six hours, and it is the sentence a twenty-minute window can never write.
+AND SAY WHAT HAS STOOD. You have been speaking all day and some of what you said has survived and some has not. `context.since_last_read.said_then` (the sentence still on screen from your last reading), `clusters_then` and `strikes.left_since_reference` are the record of it. What HELD is as worth saying as what went: "1700 has been the heaviest strike since 09:40 and still is" is a fact about six hours, and it is the sentence a twenty-minute window can never write.
 
 NONE OF THIS IS A FORECAST, AND THE LINE IS EXACT. Everything above is the shape of what HAS happened, which is description. The moment a sentence reaches past now — what a level will do, where price is headed, what a pattern means next — it is deleted, and you will have said nothing. The eagle sees the whole field. It does not see the future.
 
-CHECK WHAT YOU SAID LAST TIME, BEFORE YOU SAY ANYTHING NEW. `context.since_last_read.clusters_then` holds the piles you drew last time and `strikes.left_since_reference` names strikes that have dropped off THE LIST — measured, 78 percent of them are still inside the price window and merely fell out of the top few on every measure, so "gone from the board" is too strong for most of them. "No longer among the heaviest" is the honest phrase. Look each one up in the table. If a pile has stopped adding, or has gone, SAY SO, and say it first: "the crowd I pointed at around 1650 has left the board", "1750 has taken nothing since 12:31". Un-saying something you said an hour ago is the most useful sentence available to you and it costs you nothing. A reader who watched you name a level and then never heard of it again learns not to trust the next one.
+CHECK WHAT YOU SAID LAST TIME, BEFORE YOU SAY ANYTHING NEW. `context.since_last_read.said_then` is what a reader last saw from you, word for word, and `said_at` is when you wrote it — earlier than `last_read_at` when the last call failed, or its sentence was withheld, and your older one stayed up. It is a claim on the record, not a fact about now: test every part of it against this board, and where the board no longer bears it out, say what changed. Do not reuse its wording. A level or a number it named may be named again only while this board still carries it: a figure that appears only in `said_then` is deleted like any invented one, so when a level it named has left the board, say that it has gone without its number. `context.since_last_read.clusters_then` holds the piles you drew last time and `strikes.left_since_reference` names strikes that have dropped off THE LIST — measured, 78 percent of them are still inside the price window and merely fell out of the top few on every measure, so "gone from the board" is too strong for most of them. "No longer among the heaviest" is the honest phrase. Look each one up in the table. If a pile has stopped adding, or has gone, SAY SO, and say it first: "the crowd I pointed at around 1650 has left the board", "1750 has taken nothing since 12:31". Un-saying something you said an hour ago is the most useful sentence available to you and it costs you nothing. A reader who watched you name a level and then never heard of it again learns not to trust the next one.
 Say what the board DID; never grade your earlier self. "That pile has gone" and "nothing has traded there since 13:26" are observations and they survive. "That pile was never real", "so it was noise", "that was fake" are verdicts about your own reading, and a verdict is deleted before anyone sees it — you will have said nothing at all. The fact is the retraction. It does not need a ruling on top of it.
 
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Do not carry a number for its sigma in your head — `scale.one_sigma_dollars` is in every scene and it MOVES: it ran 8 to 10 percent of the share price until the 2026-08-05 earnings and 3 to 5 percent every session since, so any figure written here would be wrong within a month. Read the ruler, never remember it. It has weekly expiries, so most days have no expiry at all; the table is built from the nearest one and `clock.front_expiry` says where in the week you are. On expiry day the whole table dies at the close, and gamma shares near price swing with every dollar; say so rather than reading the swing as a crowd.
@@ -1892,6 +1921,14 @@ def _guard_scene(scene: dict) -> dict:
     gap's low and high. The shim is for the guard only and never reaches the
     model."""
     shim = dict(scene)
+    # strikes-4: the last call's sentence is quoted back to the model, and a
+    # number in it is the model's own earlier word, not the board's. Walking it
+    # would make every figure it once said sayable again after the board moved
+    # on, so the gate is handed the frame without it.
+    ctx = scene.get("context")
+    slr = ctx.get("since_last_read") if isinstance(ctx, dict) else None
+    if isinstance(slr, dict) and "said_then" in slr:
+        shim["context"] = {**ctx, "since_last_read": {k: v for k, v in slr.items() if k != "said_then"}}
     prices = [r["strike"] for r in rows_as_records(scene.get("strikes"))]
     bp = (scene.get("between_frames") or {}).get("price") or {}
     for k in ("low", "high"):
@@ -2172,6 +2209,7 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
     last_call = None
     last_read_ts = None
     clusters_then = None
+    said_row = None
     pending = set(at or [])
     call_every_wake = call_model and not pending
     interrupts = 0
@@ -2194,7 +2232,8 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
                                          prior_rows_today=i > 0, bars=bars)
         v2, v1 = build_scene_v2(row, rows_i, now, frame, last_read_ts, bars, clusters_then=clusters_then,
                                 strikes_sent_before=(last_call or {}).get("strikes_sent"),
-                                sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")))
+                                sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")),
+                                said_row=said_row)
         cmp_ = compare_scenes(v1, v2)
         lg = legacy(row, rows_i, now, v1=v1)
         hhmm = now.strftime("%H:%M")
@@ -2233,6 +2272,10 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
             rec["scene_v2"] = v2
             if rec["v2_reply"]:
                 clusters_then = rec["v2_reply"].get("clusters") or None
+                # strikes-4: live shows the last sentence that survived, so replay
+                # keeps it across a failed or emptied call the same way
+                if rec["v2_reply"].get("read"):
+                    said_row = {"reading": {"read": rec["v2_reply"]["read"]}, "reading_ts": now.isoformat()}
         out.append(rec)
         last_call = {"ts": row["ts"], "spot": row.get("spot"),
                      "magnet_band": SR.magnet_band(row),
