@@ -309,3 +309,28 @@ def test_the_payload_tab_shows_the_sentence_still_on_screen(tmp_path, monkeypatc
     d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
     slr = d["scene"]["context"]["since_last_read"]
     assert slr["said_then"] == "1600 holds the most contracts." and slr["said_at"] == "12:57"
+
+
+def test_the_payload_tab_carries_the_day_summary_the_reader_would_send(tmp_path, monkeypatch):
+    """strikes-6: the tab's Strikes Payload carries the `day` block, and grades
+    only the readings the reader itself would grade — this era's calls."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0), _row(t.replace(minute=57), 1583.0),
+                                        _row(t.replace(hour=13, minute=1), 1586.2)])
+    now = datetime(2026, 8, 19, 13, 2, tzinfo=ET)
+    era = snapshot.sndk_payload(now)["era"]
+    said = t.replace(minute=57)
+    (tmp_path / "sndk_reads").mkdir(exist_ok=True)     # the first build already wrote its volume cache there
+
+    def write(era_of_call):
+        (tmp_path / "sndk_reads" / "2026-08-19.jsonl").write_text(json.dumps(
+            {"ts": said.isoformat(), "era": era_of_call, "wall_s": 5.0, "spot": 1583.0, "gate": {"spot": 1583.0},
+             "reading": {"read": "1600 holds the most contracts.",
+                         "sides": {"above": {"heavy": 1600.0, "heavy_leads_on": ["contracts"]}}},
+             "reading_ts": said.isoformat()}) + "\n")
+    write(era)
+    day = snapshot.sndk_payload(now)["scene"]["day"]
+    assert any(c.get("strike") == 1600 for g in day["earlier_claims"] for c in g["claims"])
+    write("an-older-era")
+    assert "earlier_claims" not in (snapshot.sndk_payload(now)["scene"].get("day") or {})

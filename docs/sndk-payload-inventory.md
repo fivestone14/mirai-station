@@ -1,5 +1,23 @@
 # SNDK property inventory — in the scene payload vs not (living list)
 
+> **strikes-6 (2026-09-15).** The Strikes Payload gains a top-level `day` block,
+> after `context`, written from the whole session and graded against the table:
+> `earlier_claims` (the last three readings' side, pile and point claims, each
+> `holds`, `changed` with `what`, or `off_list`), `no_books` (holes in the
+> books), `leaders` (every lead of the day that held two books, as
+> [strike, from, until]), `lists_from` / `stood` / `joined` / `left`,
+> `named_off_list` (strikes a reading named that are off the table now, with
+> what the book still holds or `in_book: false`), and
+> `volume_in_reach_vs_same_time_prior_sessions` with `prior_sessions_compared`.
+> Each strike row gains `oi_change`, open interest against the previous
+> session's book for the same expiry. `context.since_last_read.clusters_then`
+> and the rows' `leads_since` / `led_before` are gone; their facts live in
+> `day`. The number gate does not harvest `day.earlier_claims`, and the checker
+> holds a strike `day` names off the table to the board like a listed one.
+> The `frozen_do_not_cite` "top of list" line is gone (`day.leaders` carries that
+> clock), and `on_list_for_min` never counts from before `day.lists_from`. New store:
+> `state/sndk_reads/prior_volume.json`, the volume baseline.
+>
 > **strikes-5 (2026-09-15).** The strike table says who has led each measure
 > since when: on the strike ranking 1 on contracts, volume today or dealer
 > gamma, `leads_since` carries the book time the lead began (stated once it

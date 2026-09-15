@@ -223,6 +223,13 @@ def _session(state, monkeypatch):
     prior_open = _OPEN - timedelta(days=1)
     (diary / f"{prior_open.date()}.jsonl").write_text(
         "".join(json.dumps(_scan(m, prior_open)) + "\n" for m in range(380, 390, 2)))
+    # volume_vs_prior_sessions needs PRIOR_VOLUME_MIN_SESSIONS closed sessions with
+    # a book inside PRIOR_VOLUME_MAX_AGE_MIN of the read's clock minute: weekdays
+    # back, each spanning both reads (minute 40 and minute 80)
+    for back in (4, 5, 6, 7):
+        past = _OPEN - timedelta(days=back)
+        (diary / f"{past.date()}.jsonl").write_text(
+            "".join(json.dumps(_scan(m, past)) + "\n" for m in range(30, 84, 2)))
     for back in (5, 4, 1):
         d = _OPEN - timedelta(days=back)
         sndk_bars.write_day(d.date().isoformat(), _bars(d, range(100), volume=800.0), d.replace(hour=16))
@@ -292,6 +299,27 @@ def _edge_payloads(tmp_path, monkeypatch):
     out["price_walked_away"], _ = B.build_scene_v2(
         walked[-1], walked, SR._ts(walked[-1]) + timedelta(seconds=30), None, SR._ts(walked[3]),
         flat_bars(62), strikes_sent_before=[1100.0, 1150.0, 1200.0, 1250.0])
+    # the same walk, with the reading that named the 1200 pile before price left it:
+    # the day block grades each claim (off_list for the pile it walked away from,
+    # holds for the one still on the table) and lists what is named but off it
+    said = {"quiet": False, "read": "The pile at 1200 is carrying the morning.",
+            # claimed from BELOW 1250: a point level equal to the spot then has
+            # no side, and _grade_claim cannot measure it
+            "points": [{"level": 1300.0, "note": "the board stops here"}],
+            "sides": {"above": {"heavy": None, "leads_on": []},
+                      "below": {"heavy": None, "leads_on": []}},
+            "clusters": [{"strikes": [1200.0], "center": 1200.0, "rank": 1, "change": "stable"},
+                         {"strikes": [1500.0], "center": 1500.0, "rank": 2, "change": "stable"}],
+            "resolved": [], "absent": []}
+    # _fresh_calls keeps a row only when its ts equals its reading_ts: a failed
+    # call carries the older sentence forward and must not be graded as new
+    early_ts = SR._ts(walked[1]).isoformat()
+    early = {"ts": early_ts, "reading_ts": early_ts, "spot": 1250.0, "wall_s": 1.0,
+             "reading": said, "era": SR.ERA}
+    out["a_reading_named_a_strike_price_left"], _ = B.build_scene_v2(
+        walked[-1], walked, SR._ts(walked[-1]) + timedelta(seconds=30), None, SR._ts(walked[3]),
+        flat_bars(62), strikes_sent_before=[1100.0, 1150.0, 1200.0, 1250.0],
+        calls_today=[early])
     return out
 
 
@@ -592,9 +620,23 @@ def _run_every_writer(state, monkeypatch):
     monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
     expiries = [("2026-07-31", 4), ("2026-08-07", 11)]
     sides = [{"exp": e, "side": s, "rows": 30, "dte": d} for e, d in expiries for s in ("call", "put")]
-    monkeypatch.setattr(sndk_feed._nf, "_run", lambda code: {
-        "spot": 1088.5, "found": [e for e, _ in expiries], "errors": [],
-        "chunks": 4, "sides": sides, "contracts": synth.book()})
+    # the book is priced around the LIVE quote, as the feed's rebuilt book is:
+    # with the chain's own stale spot the strike window lands nowhere near the
+    # grid, no strike is in reach, and the read never reaches the volume work
+    # (and so never writes the prior-volume cache the store table names)
+    # every tick must not hand back the SAME volume: a book whose counts equal the
+    # prior session's is withheld by the carried-volume rule, and then the read
+    # never reaches the volume baseline (and never writes prior_volume.json)
+    pulls = {"n": 0}
+
+    def _chain(code):
+        pulls["n"] += 1
+        legs = synth.book(spot=1250.0, lo=1150.0, hi=1350.0)
+        for leg in legs:
+            leg["volume"] = 100 * pulls["n"]
+        return {"spot": 1250.0, "found": [e for e, _ in expiries], "errors": [],
+                "chunks": 4, "sides": sides, "contracts": legs}
+    monkeypatch.setattr(sndk_feed._nf, "_run", _chain)
     monkeypatch.setattr(sndk_hunter, "_quote", lambda: {
         "spot": 1250.0, "open": 1245.0, "high": 1260.0, "low": 1235.0, "prior_close": 1240.0})
     monkeypatch.setattr(sndk_hunter, "_market_live", lambda: True)
@@ -605,6 +647,17 @@ def _run_every_writer(state, monkeypatch):
     prior = datetime(2026, 7, 24, 15, 58, tzinfo=ET)
     now = datetime(2026, 7, 27, 10, 30, tzinfo=ET)
     open_at = now.replace(hour=9, minute=30)
+    # seeded OUTSIDE the recorded block (the test writes these, not the station):
+    # without closed sessions to compare, the read never reaches
+    # sndk_board.volume_vs_prior_sessions and prior_volume.json is never written,
+    # so the store table's writer column would go unproven
+    diary = state / "sndk_reversion"
+    diary.mkdir(parents=True, exist_ok=True)
+    for back in (3, 4, 5, 6):
+        past = now - timedelta(days=back)
+        past_open = past.replace(hour=9, minute=30)
+        (diary / f"{past.date()}.jsonl").write_text(
+            "".join(json.dumps(_scan(m, past_open)) + "\n" for m in range(30, 84, 2)))
     with _writes_recorded() as events:
         assert sndk_hunter.tick(prior) == 0
         assert sndk_hunter.tick(now) == 0

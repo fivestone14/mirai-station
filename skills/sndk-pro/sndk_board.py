@@ -117,9 +117,8 @@ COLUMNS_RANK_C = ["rank_by_contracts"]
 COLUMNS_RANK_V = ["rank_by_volume_today"]
 COLUMNS_RANK_G = ["rank_by_dealer_gamma"]
 COLUMNS_TAIL = ["on_list_for_min", "change", "vol_added_per_book", "vol_added_in_series"]
-COLUMNS_LEAD = ["leads_since", "led_before"]   # strikes-5: on the strike ranking 1 on a measure
 LEAD_MEASURES = ("contracts", "volume", "gamma")   # the three ranks, in the reply's own words
-LEAD_HOLD_BOOKS = 2             # a lead is stated once it has held this many
+LEAD_HOLD_BOOKS = 2             # a lead is stated in `day.leaders` once it has held this many
                                 # consecutive distinct books. Measured over 13
                                 # sessions on 2026-09-15: a new volume or gamma
                                 # leader is gone again one book later about one
@@ -448,43 +447,6 @@ def _reference(rows: list, last_read_ts: Optional[datetime]) -> tuple:
     return None, None
 
 
-def leader_runs(rows: list) -> dict:
-    """The strike ranking 1 on each measure and since when, over the day's
-    distinct books: {measure: {"strike", "since", "books", "before"}}. `since`
-    is the book time the current run began, `books` how many consecutive
-    distinct books it spans, and `before` is (strike, book time) for the strike
-    that led before it, or None when the run reaches back to the first book
-    that measured the surface. A book that did not measure a surface (volume
-    withheld as the prior session's, item #8; a surface not recorded) ranks
-    nobody and breaks the chain, so a lead never spans a book that could not
-    have shown it. The WHOLE day is walked, not the four-hour lookback the list
-    age uses: at 15:37 on 09-08 that lookback read the contracts lead as 248
-    minutes when it was 367, and at 14 of 68 recorded calls it was short."""
-    timeline = []
-    for r in SR._distinct_books_rows(rows):
-        asof = _asof(r)
-        if asof is None:
-            continue
-        surf = surfaces(r)
-        rs, sg, _, _ = _ruler(r)
-        win = _window(surf, rs, sg)
-        ranks = _ranks(surf, win) if win else {}
-        timeline.append((asof, tuple(next((k for k, v in ranks.items() if v[i] == 1), None)
-                                      for i in range(len(LEAD_MEASURES)))))
-    out = {}
-    for i, name in enumerate(LEAD_MEASURES):
-        if not timeline or timeline[-1][1][i] is None:
-            continue
-        k = timeline[-1][1][i]
-        j = len(timeline) - 1
-        while j > 0 and timeline[j - 1][1][i] == k:
-            j -= 1
-        prev = timeline[j - 1][1][i] if j > 0 else None
-        out[name] = {"strike": k, "since": timeline[j][0], "books": len(timeline) - j,
-                     "before": ((prev, timeline[j - 1][0]) if prev is not None else None)}
-    return out
-
-
 def volume_leader(row: dict, carried: Optional[dict] = None) -> Optional[float]:
     """The strike ranking 1 on today's volume in this row's window, ranked the
     way the table ranks it (strikes-5, for the wake gate). None when the row
@@ -503,7 +465,523 @@ def volume_leader(row: dict, carried: Optional[dict] = None) -> Optional[float]:
     return next((k for k, v in _ranks(surf, win).items() if v[1] == 1), None)
 
 
-def _on_list_minutes(rows: list, now: datetime, k: float, crossed: Optional[list]) -> Optional[int]:
+# ---------------------------------------------------------------------------
+# strikes-6 (2026-09-15): THE DAY BLOCK
+# ---------------------------------------------------------------------------
+# Everything else on the board is the book now and the gap since the last read.
+# A review of the recorded readings found the model framing 77 percent of them
+# against its previous read and never once against the session, and three
+# holes behind that: nothing said who had led each measure through the day
+# (`leads_since` gave only the lead standing now and the one before), nothing
+# told it whether what it said an hour ago still held (on 09-11 at 13:56 1650
+# overtook 1700 on contracts, and at 14:00 the reading said "1650 still" and
+# dropped its 13:11 claim about 1700 without a word), and a strike it had named
+# vanished from the table when the price window slid past it — three in four of
+# them are gone from the stored book too, so "tracked all day" can only ever be
+# honest about the ones it still holds. `day` is one block written by code from
+# every distinct book and every reading of the session.
+CLAIM_CALLS = 3               # the readings whose claims are graded. Measured over
+                              # 84 recorded calls: 7 graded claims a call at the
+                              # median (548 characters), 9 and 716 at five
+CLAIM_SHARE_PP = 1.0          # a pile's summed contracts share moving this far is a change
+NAMED_OFF_LIST_MAX = 6        # strikes named today and off the table now, nearest first
+LEAD_RANK_COL = {"contracts": "rank_by_contracts", "volume": "rank_by_volume_today",
+                 "gamma": "rank_by_dealer_gamma"}
+
+
+def day_timeline(rows: list) -> list:
+    """One entry per distinct book of the day, oldest first: its time, the
+    strike ranking 1 on each measure (None where the book measured nothing on
+    it: volume withheld as the prior session's, item #8, or a surface not
+    recorded), the strikes the table's own rule would list at that book, and
+    whether its volume was withheld. `rows` must already carry the builder's
+    withholding, so every entry ranks the board the table ranks."""
+    tl = []
+    for r in SR._distinct_books_rows(rows):
+        asof = _asof(r)
+        if asof is None:
+            continue
+        surf = surfaces(r)
+        rs, sg, lv, _ = _ruler(r)
+        win = _window(surf, rs, sg)
+        ranks = _ranks(surf, win) if win else {}
+        tl.append({"t": asof,
+                   "lead": tuple(next((k for k, v in ranks.items() if v[i] == 1), None)
+                                 for i in range(len(LEAD_MEASURES))),
+                   "listed": (set(select_strikes(surf, win, lv if lv is not None else rs)) if win else set()),
+                   "withheld": _withheld(r)})
+    return tl
+
+
+def book_gaps(tl: list) -> set:
+    """Indices of the books that came after a hole: the interval before them ran
+    longer than GAP_FACTOR times the day's median book interval and more than
+    eight minutes — the rule `frames_block` applies to its series. On 09-09 the
+    books stop at 09:43 and resume at 15:48; on 09-08 there is none from 10:20
+    to 11:25, and on 09-15 none from 11:35 to 13:23."""
+    ts = [x["t"] for x in tl]
+    iv = [(b - a).total_seconds() / 60.0 for a, b in zip(ts, ts[1:])]
+    if not iv:
+        return set()
+    med = statistics.median(iv)
+    return {j + 1 for j, m in enumerate(iv) if m > GAP_FACTOR * med and m > 8}
+
+
+def leader_runs(tl: list, gaps: set) -> dict:
+    """{measure: [run, ...]}, oldest first; a run is {strike, from, until,
+    books, j0}. A run breaks when the leader changes, at a book that ranks
+    nobody on that measure, and at a hole in the books, so a lead is never
+    carried across time nobody measured. strikes-5 did not break at holes and
+    on 19 of 84 recorded calls dated a lead across one ("1800 since 09:30" on
+    09-09, with no book between 09:43 and 15:48)."""
+    out = {}
+    for i, name in enumerate(LEAD_MEASURES):
+        runs, cur = [], None
+        for j, x in enumerate(tl):
+            k = x["lead"][i]
+            if cur is not None and (k != cur["strike"] or j in gaps):
+                runs.append(cur)
+                cur = None
+            if k is None:
+                continue
+            if cur is None:
+                cur = {"strike": k, "from": x["t"], "until": x["t"], "books": 1, "j0": j}
+            else:
+                cur["until"] = x["t"]
+                cur["books"] += 1
+        if cur is not None:
+            runs.append(cur)
+        out[name] = runs
+    return out
+
+
+def _leaders_block(tl: list, gaps: set) -> dict:
+    """Per measure, every lead that held LEAD_HOLD_BOOKS books or more, as
+    [strike, from, until]; `until` is None for the lead standing at the last
+    book. A lead broken only by one-book flickers of another strike is one lead
+    (a new volume or gamma leader is gone again a book later about one time in
+    five); a lead broken by a book that measured nothing on the measure, or by
+    a hole, stays two."""
+    runs = leader_runs(tl, gaps)
+    last_t = tl[-1]["t"] if tl else None
+    out = {}
+    for i, name in enumerate(LEAD_MEASURES):
+        merged = []
+        for r in (x for x in runs.get(name, []) if x["books"] >= LEAD_HOLD_BOOKS):
+            end = r["j0"] + r["books"] - 1
+            if (merged and merged[-1]["strike"] == r["strike"]
+                    and all(tl[x]["lead"][i] is not None for x in range(merged[-1]["j_end"] + 1, r["j0"]))
+                    and not any(merged[-1]["j_end"] < g <= r["j0"] for g in gaps)):
+                merged[-1]["until"], merged[-1]["j_end"] = r["until"], end
+            else:
+                merged.append({**r, "j_end": end})
+        if merged:
+            out[name] = [[_k(r["strike"]), _hhmm(r["from"]), (None if r["until"] == last_t else _hhmm(r["until"]))]
+                         for r in merged]
+    return out
+
+
+def _lists_block(tl: list, gaps: set, table_now: set) -> dict:
+    """What stood, what joined and what left, from the first book whose volume
+    is today's (or the first book after the last hole) to the table as it is
+    now. The table's own list is the one on the right-hand side: lists rebuilt
+    book by book differ from it on 27 of 84 recorded calls (the crossed-strike
+    rule, a re-priced window), and "now" must be what the model is looking at.
+    Nothing is said until the lists span more than LEAD_HOLD_BOOKS books: on
+    09-09 one book "stood" seventeen strikes."""
+    start = max([0] + list(gaps))
+    clean = [j for j in range(start, len(tl)) if not tl[j]["withheld"]]
+    if not clean:
+        return {}
+    seg = tl[clean[0]:]
+    out = {"lists_from": _hhmm(seg[0]["t"])}
+    if len(seg) <= LEAD_HOLD_BOOKS:
+        return out
+    past = seg[:-1]
+    stood = set.intersection(*[x["listed"] for x in past]) & table_now
+    joined = []
+    for k in sorted(table_now - stood):
+        j = len(seg) - 1
+        while j > 0 and k in seg[j - 1]["listed"]:
+            j -= 1
+        joined.append(_k(k))
+    ever = set().union(*[x["listed"] for x in past])
+    left = [[_k(k), _hhmm(max(x["t"] for x in past if k in x["listed"]))] for k in sorted(ever - table_now)]
+    out["stood"] = [_k(k) for k in sorted(stood)]
+    if joined:
+        out["joined"] = joined
+    if left:
+        out["left"] = left
+    return out
+
+
+def _fresh_calls(calls: Optional[list]) -> list:
+    """The day's readings a person was shown, oldest first: read rows that spent
+    a call, did not error, and wrote their own reading (a failed call's row
+    carries the older sentence forward under an older `reading_ts`)."""
+    out = []
+    for c in calls or []:
+        rd = c.get("reading") if isinstance(c, dict) else None
+        if not isinstance(rd, dict) or c.get("wall_s") is None or c.get("error"):
+            continue
+        t, tr = SR._parse_ts(c.get("ts")), SR._parse_ts(c.get("reading_ts"))
+        if t is None or tr is None or t != tr:
+            continue
+        out.append(c)
+    return out
+
+
+def _claims_of(call: dict) -> list:
+    """The structured claims a checked reading made: each side's heaviest
+    strike with the measures the checker let it lead on, each pile's centre and
+    strikes with the summed contracts share the checker appended, each point's
+    level with the price when it was said."""
+    rd, t = call["reading"], SR._parse_ts(call["ts"])
+    out = []
+    for side in ("above", "below"):
+        s = (rd.get("sides") or {}).get(side)
+        k = SR._fin(s.get("heavy")) if isinstance(s, dict) else None
+        if k is not None:
+            out.append({"type": "side", "key": k, "side": side, "t": t,
+                        "leads_on": [m for m in (s.get("heavy_leads_on") or []) if m in LEAD_MEASURES]})
+    for c in rd.get("clusters") or []:
+        k = SR._fin(c.get("center")) if isinstance(c, dict) else None
+        if k is not None:
+            out.append({"type": "cluster", "key": k, "t": t,
+                        "strikes": [v for v in (SR._fin(x) for x in (c.get("strikes") or [])) if v is not None],
+                        "share": SR._fin(c.get("contracts_share_pp_sum"))})
+    for p in rd.get("points") or []:
+        k = SR._fin(p.get("level")) if isinstance(p, dict) else None
+        if k is not None:
+            out.append({"type": "point", "key": k, "t": t, "spot_then": SR._fin(call.get("spot"))})
+    return out
+
+
+def _side_rank(recs: dict, k: float, col: str, side: str) -> Optional[int]:
+    """The strike's place among the table's strikes on that side by one rank
+    column — the checker's own ordering (check_reading_v2's side_rank)."""
+    order = sorted((r[col], j) for j, r in recs.items() if r.get("side") == side and r.get(col) is not None)
+    return next((i + 1 for i, (_, j) in enumerate(order) if j == k), None)
+
+
+def _grade_claim(cl: dict, recs: dict, prices: set, spot_now: Optional[float], bars_now: list) -> tuple:
+    """(now, what) for one claim against the table as it is now: `holds`,
+    `changed` with what changed, `off_list`, or (None, None) when this board
+    cannot measure it. Observational words only — the doctrine forbids a
+    verdict on its own earlier reading, and "reversed" and "faded" are a price
+    call and a strength grade."""
+    if cl["type"] == "side":
+        r = recs.get(cl["key"])
+        if r is None:
+            return "off_list", None
+        if r.get("side") != cl["side"]:
+            return "changed", ("now at price" if r.get("side") == "at" else f"now {r.get('side')} price")
+        have = [m for m in LEAD_MEASURES if any(x.get(LEAD_RANK_COL[m]) is not None for x in recs.values())]
+        if cl["leads_on"]:
+            meas = [m for m in cl["leads_on"] if m in have]
+            if not meas:
+                return None, None
+            lost = [m for m in meas if _side_rank(recs, cl["key"], LEAD_RANK_COL[m], cl["side"]) != 1]
+            return ("holds", None) if not lost else ("changed", f"no longer first {cl['side']} on {' and '.join(lost)}")
+        top3 = any((_side_rank(recs, cl["key"], LEAD_RANK_COL[m], cl["side"]) or 99) <= 3 for m in have)
+        return ("holds", None) if top3 else ("changed", f"no longer among the three heaviest {cl['side']}")
+    if cl["type"] == "cluster":
+        if cl["key"] not in recs:
+            return "off_list", None
+        if any(k not in recs for k in cl["strikes"]):
+            return "changed", "some of its strikes left the list"
+        if cl["share"] is None:
+            return "holds", None
+        d = sum(recs[k].get("contracts_share_pp") or 0 for k in cl["strikes"]) - cl["share"]
+        if abs(d) < CLAIM_SHARE_PP:
+            return "holds", None
+        return "changed", ("contracts share up" if d > 0 else "contracts share down")
+    level = cl["key"]
+    if round(level, 2) not in prices:
+        return "off_list", None
+    st = cl["spot_then"]
+    s0 = (1 if st > level else -1 if st < level else 0) if st is not None else 0
+    if not s0:
+        return None, None
+    for b in bars_now or []:
+        bt, cc = _bar_ts(b), SR._fin(b.get("close"))
+        if bt is None or cc is None or bt <= cl["t"]:
+            continue
+        if (1 if cc > level else -1 if cc < level else 0) == -s0:
+            return "changed", "price crossed it"
+    if spot_now is not None and spot_now != level and (spot_now > level) != (s0 > 0):
+        return "changed", "price crossed it"
+    return "holds", None
+
+
+def _earlier_claims(calls: list, recs: dict, prices: set, spot_now: Optional[float], bars_now: list) -> list:
+    """The last CLAIM_CALLS readings' claims, newest reading first, one entry per
+    strike or level (the newest claim on it), each graded against this board. A
+    point that still holds is left out: its note cannot be checked, and saying
+    "still a price on the board" is noise."""
+    seen, groups = set(), {}
+    for c in reversed(calls[-CLAIM_CALLS:]):
+        at = _hhmm(SR._parse_ts(c["ts"]))
+        for cl in _claims_of(c):
+            if cl["key"] in seen:
+                continue
+            now, what = _grade_claim(cl, recs, prices, spot_now, bars_now)
+            if now is None or (cl["type"] == "point" and now == "holds"):
+                continue
+            seen.add(cl["key"])
+            if cl["type"] == "side":
+                e = {"strike": _k(cl["key"]),
+                     "said": f"heaviest {cl['side']}" + (f" on {' and '.join(cl['leads_on'])}" if cl["leads_on"] else "")}
+            elif cl["type"] == "cluster":
+                e = {"strike": _k(cl["key"]), "said": "pile centre"}
+            else:
+                e = {"level": _k(cl["key"]), "said": "point"}
+            e["now"] = now
+            if what:
+                e["what"] = what
+            groups.setdefault(at, []).append(e)
+    return [{"said_at": t, "claims": v} for t, v in groups.items()]
+
+
+def _named_off_list(calls: list, recs: dict, surf: dict, live: Optional[float], sig: float,
+                    bars_now: list) -> list:
+    """Strikes a reading named today (a side's heaviest, a pile's strikes) that
+    are not on the table now, nearest first, each with the last time it was
+    named, where it sits, what the book still holds at it, and when price last
+    touched it. Measured over 81 calls, the engine keeps strikes to about 1.5
+    sigma of price (never past 1.87), so most strikes that slid out of the
+    window are gone from the book as well; those say `in_book: false` rather
+    than borrow a number from an earlier book."""
+    if live is None or not sig:
+        return []
+    named = {}
+    for c in calls:
+        at = _hhmm(SR._parse_ts(c["ts"]))
+        for cl in _claims_of(c):
+            for k in ([cl["key"]] if cl["type"] == "side" else cl.get("strikes") or [] if cl["type"] == "cluster" else []):
+                named[k] = at
+    out = []
+    for k, at in named.items():
+        if k in recs:
+            continue
+        d = (k - live) / sig
+        e = {"strike": _k(k), "named_at": at,
+             "side": ("at" if abs(d) < AT_SIGMA else "above" if k > live else "below"),
+             "dist_sigma": round(d, 2)}
+        if k in surf["oi_side"] or k in surf["vol_side"] or k in surf["contracts"]:
+            oc, op = surf["oi_side"].get(k, (None, None))
+            vc, vp = surf["vol_side"].get(k, (None, None))
+            for name, v in (("oi_calls", oc), ("oi_puts", op), ("vol_calls", vc), ("vol_puts", vp)):
+                if v is not None:
+                    e[name] = int(v)
+        else:
+            e["in_book"] = False
+        if bars_now:
+            lt = touch_facts(bars_now, k).get("last_touch")
+            if lt:
+                e["last_touch"] = lt
+        out.append(e)
+    out.sort(key=lambda e: (abs(e["dist_sigma"]), e["strike"]))
+    return out[:NAMED_OFF_LIST_MAX]
+
+
+# strikes-6 (#12): TODAY AGAINST PAST SESSIONS. The board judged today alone:
+# open interest as of the prior close with nothing to say what changed
+# overnight, and volume with nothing to say whether this is a busy hour. Measured
+# over 08-26..09-15: open interest never moved within a session (0 changes in
+# about 57,000 book-to-book checks) and was republished every night, and every
+# overnight change was smaller than that strike's own volume the day before
+# (198 of 199) — a real fact about the previous session's trading. Volume per
+# strike against past days was noise (a strike's own five past values vary about
+# six times and mostly track where price sits), so volume is compared only
+# across the whole window, and only against sessions that were not expiry days:
+# expiry Fridays ran at about 2.3 times an ordinary day and dragged every
+# baseline with them.
+PRIOR_VOLUME_SESSIONS = 5        # recent closed sessions that were not expiry days
+PRIOR_VOLUME_MIN_SESSIONS = 3    # fewer usable than this and nothing is said
+PRIOR_VOLUME_MAX_AGE_MIN = 15    # a prior book older than this at the clock minute is not that minute
+PRIOR_VOLUME_CACHE_V = 1
+_CLOSED_ROWS: dict = {}
+
+
+def _closed_day_rows(day: str) -> list:
+    """A closed session's diary rows, read once per process and per version of
+    the file on disk: the carried-volume check, the open-interest change and the
+    volume baseline all open the same files."""
+    p = SR._diary_dir() / f"{day}.jsonl"
+    try:
+        key = (str(p), p.stat().st_mtime_ns)
+    except OSError:
+        return []
+    if key not in _CLOSED_ROWS:
+        if len(_CLOSED_ROWS) > 12:
+            _CLOSED_ROWS.clear()
+        _CLOSED_ROWS[key] = _day_rows(day)
+    return _CLOSED_ROWS[key]
+
+
+def _prior_oi(day: str, row: dict) -> Optional[dict]:
+    """{strike: (calls, puts)} open interest in the previous session's book for
+    THIS row's front expiry, or None when the record cannot answer: no recorded
+    previous session, a dark weekday between, or a previous book that did not
+    carry this expiry (Monday's own next weekly never has one). The previous
+    session's last book stands for its whole day, because open interest does
+    not move within one."""
+    front = _front(row)
+    pd = SR._prior_session_date(day)
+    if front is None or pd is None or not _is_previous_session(pd, day):
+        return None
+    prior = _closed_day_rows(pd)
+    if not prior:
+        return None
+    last = prior[-1]
+    gv = last.get("gex_views") if isinstance(last.get("gex_views"), dict) else {}
+    if _front(last) == front:
+        oi = _triples(gv.get("oi_side_by_strike"))
+    elif _next_expiry(last) == front:
+        oi = _triples(gv.get("oi_side_by_strike_next"))
+    else:
+        return None
+    return oi or None
+
+
+def _oi_change(prior: dict, k: float, oc, op) -> Optional[list]:
+    """[calls, puts] open interest now minus the previous session's, or None when
+    either side is missing at either end."""
+    if k not in prior:
+        return None
+    pc, pp = prior[k]
+    if None in (oc, op, pc, pp):
+        return None
+    return [int(oc - pc), int(op - pp)]
+
+
+def _window_volume(row: dict) -> Optional[float]:
+    """Today's volume across the row's whole window, both rights, or None when
+    the row measured no volume."""
+    surf = surfaces(row)
+    if not surf["vol_side"]:
+        return None
+    rs, sg, _, _ = _ruler(row)
+    win = _window(surf, rs, sg)
+    if not win:
+        return None
+    return float(sum(_volume_today(surf, k) or 0.0 for k in win))
+
+
+def prior_volume_series(today: str) -> dict:
+    """{day: {"expiry": bool, "series": [[minute of day, volume in reach], ...]}}
+    for the recent closed sessions, back to PRIOR_VOLUME_SESSIONS that were not
+    expiry days. Kept in sndk_reads/prior_volume.json and rebuilt only for days
+    not already in it: the reader is a fresh process every tick, and those
+    diaries are about 9 MB of JSON. A book whose volume was the prior session's
+    is left out, judged with the whole closed day in hand."""
+    days = sorted(p.stem for p in SR._diary_dir().glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")
+                  if p.stem < today)
+    cache = SR._reads_dir() / "prior_volume.json"
+    try:
+        blob = json.loads(cache.read_text())
+        have = blob.get("days") if isinstance(blob, dict) and blob.get("v") == PRIOR_VOLUME_CACHE_V else {}
+    except (OSError, ValueError):
+        have = {}
+    have = have if isinstance(have, dict) else {}
+    out, built, taken = {}, False, 0
+    for d in reversed(days):
+        if taken >= PRIOR_VOLUME_SESSIONS:
+            break
+        e = have.get(d)
+        if not (isinstance(e, dict) and isinstance(e.get("series"), list)
+                and all(isinstance(x, list) and len(x) == 2 and all(isinstance(v, (int, float)) for v in x)
+                        for x in e["series"])):
+            rows = _closed_day_rows(d)
+            if not rows:
+                continue
+            dte = next((v for v in (SR._fin((r.get("gex_views") or {}).get("front_dte")) for r in rows)
+                        if v is not None), None)
+            end = SR._ts(rows[-1])
+            carried = carried_books(rows, end) if end is not None else {}
+            series = []
+            for r in SR._distinct_books_rows(rows):
+                t = _asof(r)
+                if t is None or (r.get("meta") or {}).get("book_asof") in carried:
+                    continue
+                v = _window_volume(r)
+                if v is None:
+                    continue
+                tt = t.astimezone(_ET)
+                series.append([tt.hour * 60 + tt.minute, int(round(v))])
+            e = {"expiry": dte == 0, "series": series}
+            built = True
+        out[d] = e
+        if not e.get("expiry"):
+            taken += 1
+    if built or set(out) != set(have):
+        try:
+            SR.atomic_io.write_json_atomic(cache, {"v": PRIOR_VOLUME_CACHE_V, "days": out})
+        except Exception:
+            pass          # a cache that cannot be written is rebuilt next tick, never fatal
+    return out
+
+
+def volume_vs_prior_sessions(row: dict, now: datetime) -> dict:
+    """Today's volume in reach against the median at the same clock minute over
+    the last PRIOR_VOLUME_SESSIONS sessions that were not expiry days: 0.63 to
+    1.40 on ordinary recorded days, steady within a day (the 11:00 figure ranks
+    the afternoon at 0.65). Absent on expiry day, on a book whose volume is
+    withheld, and with fewer than PRIOR_VOLUME_MIN_SESSIONS sessions to compare."""
+    if _withheld(row) or SR._fin((row.get("gex_views") or {}).get("front_dte")) == 0:
+        return {}
+    v = _window_volume(row)
+    if not v:
+        return {}
+    t = (_asof(row) or now).astimezone(_ET)
+    m = t.hour * 60 + t.minute
+    vals = []
+    for e in prior_volume_series(now.astimezone(_ET).strftime("%Y-%m-%d")).values():
+        if e.get("expiry"):
+            continue
+        pts = [x for x in (e.get("series") or []) if m - PRIOR_VOLUME_MAX_AGE_MIN <= x[0] <= m]
+        if pts and pts[-1][1] > 0:
+            vals.append(pts[-1][1])
+    if len(vals) < PRIOR_VOLUME_MIN_SESSIONS:
+        return {}
+    return {"volume_in_reach_vs_same_time_prior_sessions": round(v / statistics.median(vals), 2),
+            "prior_sessions_compared": len(vals)}
+
+
+def day_block(rows: list, tl: list, strikes: Optional[dict], calls: Optional[list],
+              prices: set, surf: dict, live: Optional[float], sig: float,
+              spot_now: Optional[float], bars_now: list) -> dict:
+    """The `day` block, keys in reading order: what the last readings claimed and
+    how it stands, any hole in the books, who led each measure, what stood,
+    joined and left the list, and the strikes named today that are off it.
+    Built only beside a table: every part of it is graded against the table."""
+    recs = {r["strike"]: r for r in rows_as_records(strikes)}
+    if not recs:
+        return {}
+    gaps = book_gaps(tl)
+    fresh = _fresh_calls(calls)
+    out = {}
+    ec = _earlier_claims(fresh, recs, prices, spot_now, bars_now)
+    if ec:
+        out["earlier_claims"] = ec
+    if gaps:
+        out["no_books"] = [[_hhmm(tl[j - 1]["t"]), _hhmm(tl[j]["t"])] for j in sorted(gaps)]
+    ld = _leaders_block(tl, gaps)
+    if ld:
+        out["leaders"] = ld
+    nol = _named_off_list(fresh, recs, surf, live, sig, bars_now)
+    lists = _lists_block(tl, gaps, set(recs))
+    if lists.get("left"):
+        lists["left"] = [x for x in lists["left"] if x[0] not in {e["strike"] for e in nol}]
+    out.update({k: v for k, v in lists.items() if v})
+    if nol:
+        out["named_off_list"] = nol
+    return out
+
+
+def _on_list_minutes(rows: list, now: datetime, k: float, crossed: Optional[list],
+                     floor: Optional[datetime] = None) -> Optional[int]:
     """How long the strike has been on the selected list, walking back the
     distinct books up to LIST_AGE_LOOKBACK_ROWS. None when never on it before."""
     since = None
@@ -512,6 +990,8 @@ def _on_list_minutes(rows: list, now: datetime, k: float, crossed: Optional[list
         surf = surfaces(r)
         win = _window(surf, rs, sg)
         if not win or k not in select_strikes(surf, win, lv if lv is not None else rs, crossed):
+            break
+        if floor is not None and (_asof(r) or now) < floor:
             break
         since = _asof(r)
     if since is None:
@@ -811,7 +1291,7 @@ def _next_book_header(row: dict, surf: dict, now: datetime) -> dict:
 
 def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
                   last_read_ts: Optional[datetime], crossed: Optional[list] = None,
-                  sent_before: Optional[list] = None) -> tuple:
+                  sent_before: Optional[list] = None, list_floor: Optional[datetime] = None) -> tuple:
     """(strikes, listed, ref_row, books). The table plus what the other blocks
     need from it. `sent_before` is the strike list the model was shown at its
     last read (the read row's `strikes_sent`), or None when none was kept."""
@@ -827,22 +1307,13 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     live = spot if spot is not None else ruler_spot
     surf = surfaces(row)
     window = _window(surf, ruler_spot, sig)
+    # strikes-6 (#12): open interest in the previous session's book for this expiry
+    prior_oi = _prior_oi(now.astimezone(_ET).strftime("%Y-%m-%d"), row) if surf["oi_side"] else None
     if not window:
         return None, [], None, []
     shares = _shares(surf, window)
     ranks = _ranks(surf, window)
     listed = select_strikes(surf, window, live, crossed)
-    # strikes-5: WHO HAS LED EACH MEASURE, SINCE WHEN, AND WHO LED BEFORE. The
-    # doctrine asks for "1700 has been the heaviest strike since 09:40 and
-    # still is" and "led volume for most of them", and nothing on the board
-    # carried the clock: on 09-08 at 15:37 the model said 1800 "has led volume
-    # all day" when 1750 had led it from 09:47 to 10:20. The run must end on
-    # THIS row's own ranking (the day's last distinct book is this row's book,
-    # and the two agree unless a re-priced window moved a strike in or out of
-    # reach), and it is stated only once it has held LEAD_HOLD_BOOKS books.
-    lead = {name: run for name, run in leader_runs(rows).items()
-            if run["books"] >= LEAD_HOLD_BOOKS
-            and (ranks.get(run["strike"]) or (None,) * len(LEAD_MEASURES))[LEAD_MEASURES.index(name)] == 1}
     ref_row, ref_meta = _reference(rows, last_read_ts)
     ref = None
     if ref_row is not None:
@@ -873,6 +1344,8 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     if bars_now:
         cols += COLUMNS_TOUCH
     cols += [c for c in COLUMNS_BOOK if surf["vol_side"] or c not in ("vol_calls", "vol_puts")]
+    if prior_oi:
+        cols.insert(cols.index("oi_puts") + 1, "oi_change")
     if surf["net"]:
         cols += COLUMNS_GAMMA
     if surf["contracts"]:
@@ -885,10 +1358,6 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     # withheld one (item #8): with one book the columns go instead of shipping []
     series_ok = len(books) >= 2
     cols += [c for c in COLUMNS_TAIL if series_ok or c not in ("vol_added_per_book", "vol_added_in_series")]
-    # the lead clocks need two books to say anything; with one they go rather
-    # than shipping a column no row can carry
-    if len(SR._distinct_books_rows(rows)) >= LEAD_HOLD_BOOKS and (surf["contracts"] or surf["vol_side"] or surf["net"]):
-        cols += COLUMNS_LEAD
     # review item #44 (2026-09-13): `touched_in_books` — which of the twelve
     # book intervals had a wick at the strike — came off the table. It rode on
     # 1,128 of 4,144 rows at 136 characters a board, and nothing read it: not
@@ -910,6 +1379,7 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
                "dist_sigma": round(d, 2) if d is not None else None,
                "oi_calls": int(oc) if oc is not None else None,
                "oi_puts": int(op) if op is not None else None,
+               "oi_change": (_oi_change(prior_oi, k, oc, op) if prior_oi else None),
                "vol_calls": int(vc) if vc is not None else None,
                "vol_puts": int(vp) if vp is not None else None,
                "contracts_share_pp": shares[k]["contracts_share_pp"],
@@ -919,16 +1389,9 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
                "rank_by_dealer_gamma": ranks[k][2],
                # a strike on the list only because it was crossed since the last
                # read has no listed age: "never listed before" is the honest answer
-               "on_list_for_min": (_on_list_minutes(rows, now, k, None) if k in listed_by_weight else None)}
+               "on_list_for_min": (_on_list_minutes(rows, now, k, None, list_floor) if k in listed_by_weight else None)}
         if bars_now:
             rec.update(touch_facts(bars_now, k))
-        led = {name: run for name, run in lead.items() if run["strike"] == k}
-        if led:
-            rec["leads_since"] = {name: _hhmm(run["since"]) for name, run in led.items()}
-            before = {name: {"strike": _k(run["before"][0]), "until": _hhmm(run["before"][1])}
-                      for name, run in led.items() if run["before"]}
-            if before:
-                rec["led_before"] = before
         # the change cell: differences against the reference book, or why not
         if ref is None:
             rec["change"] = None
@@ -1021,10 +1484,9 @@ def strikes_block(row: dict, rows: list, now: datetime, bars_now: list,
     # mattered. Both ship now: the flag for the consumers that already read it,
     # the sentence for the reader the doctrine addressed.
     absent = list(surf["absent"])
-    # the doctrine promises that a column missing from `columns` is explained here
-    if "leads_since" not in cols and (surf["contracts"] or surf["vol_side"] or surf["net"]):
-        absent.append("who has led each measure since when (leads_since, led_before): "
-                      "the day has one book so far, and a lead is stated once it has held two")
+    if surf["oi_side"] and not prior_oi:
+        absent.append("the overnight change in open interest: no book for this expiry was recorded "
+                      "on the previous session")
     if not bars_now:
         head["touches_unavailable"] = "no_minute_bars"
         absent.append("which strikes price touched today, and when; the minute-bar "
@@ -1331,15 +1793,10 @@ def frozen_v2(rows: list, now: datetime, strikes: Optional[dict]) -> list:
     if not recs:
         return []
     out = []
-    top = recs[0]
-    # strikes-5: the same walk the table's `leads_since` makes, so the two can
-    # never disagree about how long the top strike has led (the old four-hour
-    # lookback could read 248 minutes beside a since-clock saying 367)
-    run = leader_runs(rows).get("contracts")
-    if run and run["strike"] == top["strike"]:
-        mins = int((now - run["since"]).total_seconds() // 60)
-        if mins >= SR.FROZEN_MIN:
-            out.append(f"{top['strike']:g} top of list for {mins}m")
+    # strikes-6: the "top of list for Nm" line came off. `day.leaders` carries
+    # every lead of the session with its clock, and the doctrine asks for the
+    # sentence it supports ("1700 has led since 09:40 and still does"); a
+    # do-not-cite line for the same fact stood beside it on 56 of 84 recorded calls.
     ages = [r.get("on_list_for_min") for r in recs if r.get("on_list_for_min") is not None]
     if ages and len(ages) == len(recs) and min(ages) >= SR.FROZEN_MIN:
         out.append(f"list membership unchanged {min(ages)}m")
@@ -1351,23 +1808,23 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
                    last_read_ts: Optional[datetime] = None,
                    bars: Optional[list] = None,
                    v1: Optional[dict] = None,
-                   clusters_then: Optional[list] = None,
                    strikes_sent_before: Optional[list] = None,
                    sent_before_without_volume: bool = False,
-                   said_row: Optional[dict] = None) -> tuple:
+                   said_row: Optional[dict] = None,
+                   calls_today: Optional[list] = None) -> tuple:
     """(scene_v2, scene_v1). The kept blocks are the live builder's output with
     the labels stripped; the verdict blocks are dropped; `strikes`, `frames`,
     `between_frames` and `regions` are added. `bars` is the day's minute bars
     (clipped here), or None to read them off disk. `v1` is the live scene when
-    the caller already built it. `clusters_then` is what the model drew at its
-    last read, so `new` and `resolved` have a reference. `strikes_sent_before`
+    the caller already built it. `strikes_sent_before`
     is the strike list that read showed it, so arrivals and departures are
     measured against what it saw (None when no list was kept);
     `sent_before_without_volume` says that list was drawn with volume
     withheld (item #8). `said_row` is the last read row whose reading still has
     prose: the sentence a reader is looking at, which after a failed or emptied
     call is older than the frame's. It rides as `said_then`, with `said_at`
-    (strikes-4)."""
+    (strikes-4). `calls_today` is the day's read rows that spent a call, oldest
+    first: the `day` block grades their claims (strikes-6)."""
     if v1 is None:
         band = SR.magnet_band(row)
         frozen = SR.frozen_fields(rows, now)
@@ -1477,6 +1934,13 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
                 crossed.append(k)
                 times[k] = n
 
+    tl = day_timeline(rows)
+    _gaps = book_gaps(tl)
+    # on_list_for_min counts from the same book `day.lists_from` names — after
+    # the last hole, and past the morning's books whose volume was yesterday's
+    _start = max([0] + list(_gaps))
+    _clean = [j for j in range(_start, len(tl)) if not tl[j]["withheld"]]
+    list_floor = tl[_clean[0] if _clean else _start]["t"] if tl else None
     if book_too_old:
         strikes, listed, ref_row, books = None, [], None, []
         # review item #38 (2026-09-13): the flag stays, the two numbers go.
@@ -1486,7 +1950,7 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
         v2["strikes"] = {"unavailable": "book_too_old"}
     else:
         strikes, listed, ref_row, books = strikes_block(row, rows, now, bars_now, last_read_ts, crossed,
-                                                        sent_before=strikes_sent_before)
+                                                        sent_before=strikes_sent_before, list_floor=list_floor)
     bf = between_frames_block(rows, bars_now, now, last_read_ts, sig)
     if isinstance(slr, dict):
         _strip_frame(slr, bf)
@@ -1497,9 +1961,6 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
                                          for k in sorted(crossed)]
         else:
             slr.pop("crossed_since_then", None)
-        if clusters_then:
-            slr["clusters_then"] = [{"center": _k(c.get("center")), "strikes": [_k(k) for k in (c.get("strikes") or [])]}
-                                    for c in clusters_then if isinstance(c, dict) and SR._fin(c.get("center")) is not None]
         # strikes-4 (2026-09-14): WHAT THE LAST CALL SAID, WORD FOR WORD. The
         # doctrine tells the model to un-say what it said an hour ago, and it was
         # shown only the piles it drew, never the sentence a reader saw — so it
@@ -1553,6 +2014,21 @@ def build_scene_v2(row: dict, rows: list, now: datetime,
     fz = frozen_v2(rows, now, strikes)
     if fz:
         v2["frozen_do_not_cite"] = fz
+    # strikes-6: THE DAY BLOCK, graded against the board just built (the level
+    # guard's prices before `day` exists) and placed after `context`, where the
+    # frame since the last read ends and the session begins
+    if strikes:
+        live_now = spot if spot is not None else ruler_spot
+        day = day_block(rows, tl, strikes, calls_today, SR.prices_on_the_board(_guard_scene(v2)),
+                        surfaces(row), live_now, sig, spot, bars_now)
+        try:
+            day.update(volume_vs_prior_sessions(row, now))
+        except Exception as exc:
+            print(f"sndk-board :: volume baseline skipped: {exc!r}")
+        if day:
+            items = list(v2.items())
+            at = next((i + 1 for i, (k, _) in enumerate(items) if k == "context"), 0)
+            v2 = dict(items[:at] + [("day", day)] + items[at:])
     v2 = {k: v for k, v in v2.items() if v not in (None, {}, [])}
     return v2, v1
 
@@ -1600,12 +2076,12 @@ THE STRIKE TABLE. `strikes.rows` holds one record per strike, sorted by contract
 - `strike`, `side`, `dist_sigma`: where the STRIKE sits relative to the live price, `price.live_spot`, in sigma (a normal day's move). "above" means the strike is above the live price; `at` is within a twentieth of a sigma of it and is on neither side. Every above and below in the table and its header is measured from that one price, so `side`, `dist_sigma`, `nearest_above`, `nearest_below` and the above-price shares always agree with each other and with `price.live_spot`.
 - `first_touch`, `last_touch`, `minutes_touched_today`, `visits_today`, `passed_through_today`: from the completed minute bars. A minute TOUCHED a strike when its low-to-high range included it. `minutes_touched_today` counts those minutes: minutes, not times, and not one stay. `visits_today` counts separate visits; a visit is a run of touching minutes and ends when a whole minute passes without touching the strike. `passed_through_today` is how many of those visits came in from one side and left on the other; the rest turned back the way they came, and a visit still going on is in neither count. Read the three together. 43 minutes in 10 visits, 9 passed through, is price coming back to the strike again and again and going through it: say "price has come back to 1775 ten times today and gone through it nine", never "sat at 1775 for 43 minutes" and never "touched it 43 times". A stay is one visit: 12 minutes in 1 visit is "price sat at 1775 for twelve minutes". When you give a number of times, it is `visits_today`.
 - `oi_calls`, `oi_puts`: open interest as of the close of `data_sources.open_interest.prior_session_date`. Say that date, not "last night": one session in five follows a weekend or a holiday, and on 09-08 the positions were four days old. "1700 holds the most open interest as of the 09-04 close" is a correct sentence; "open interest is building at 1700" is false by construction.
+- `oi_change`: open interest now minus open interest in the previous session's book for the same expiry, calls then puts: contracts opened (positive) or closed (negative) during the session that ended at the close `data_sources.open_interest.prior_session_date` names. It is that session's trading, never today's, and it is absent for a strike that book did not carry; `strikes.absent` says so when no previous book for this expiry was recorded at all.
 - `vol_calls`, `vol_puts`: contracts traded today so far, cumulative.
 - `contracts_share_pp`: this strike's share of all contracts in reach (open interest plus today's volume, both rights). Where the crowd is, counting today's arrivals.
 - `dealer_gamma_sign`, `dealer_gamma_share_pp`: the sign at the strike and its share of the surface's absolute total. Report a sign as "positive under the assumed convention"; never as a behaviour. Bounce, break, punch through, how violent: all forecast, all deleted.
 - `rank_by_contracts`, `rank_by_volume_today`, `rank_by_dealer_gamma`: three separate rankings over every strike in reach, 1 is heaviest. A rank column that is missing was not measured this scan.
-- `on_list_for_min`: how long the strike has been on this list, counted over the last four hours at most. Hours means standing structure, not news.
-- `leads_since`: on the strike that ranks 1 on a measure, the book time since which it has led that measure without a break, under the keys `contracts`, `volume` and `gamma`, and stated only once the lead has held two consecutive books. `led_before`: for the same measures, the strike that led before it and `until`, the last book time it led — it may have left the list since, so name it in the read, never as a point; absent when the lead reaches back to the first book that measured that surface. A volume lead can never start before the morning's carried books end, because those books rank nobody. A strike without these fields does not lead, or has led for one book only.
+- `on_list_for_min`: how long the strike has been on this list, counted over the last four hours at most and never from before `day.lists_from`. Hours means standing structure, not news.
 - `change`: this book against an earlier one, three differences in the order `strikes.change_columns` gives: contracts share (measured over the strikes both books carry, so the window sliding as price moves does not read as trading), calls traded, puts traded. The header says once which earlier book (`change_basis`: the book at your last read) and how many books lie between (`change_books_compared`); `change_unavailable` says why there is none: `no_earlier_book` on the session's first read; `no_new_book_since_last_read`, which means the book has not refreshed since you last spoke and nothing on it can have changed; and `this_book_carries_prior_session_volume` or `earlier_book_carried_prior_session_volume` when a book still held the prior session's counts and was left out. The string `strike_not_in_earlier_book` means the strike was outside the earlier window, a fact about the window.
 - `vol_added_per_book`: contracts traded at the strike, both rights, between consecutive book times. The book times are listed once in `frames.book_times` and `frames.interval_min` says how many minutes each entry covers. `vol_added_in_series` is the sum, and it is the only sum you may quote. It is NOT a fact about the day: the twelve books span 45 minutes at the median and rarely more than an hour and a half, so say "in the last 45 minutes" or name the clock from `frames.book_times`, never "today". Describe the series by counting: "rose in 9 of the last 12 books", "800 of its 1,200 contracts came between 11:02 and 11:06", "added nothing since 12:31". A null entry means the strike was not in one of the two books. A negative entry is the vendor correcting its count, not selling. `strikes.first_book_dropped`, when present, says the day's first book or books were left out because they still carried the prior session's volume.
 - `next_week`: the next weekly expiry's open interest and volume at the same strike, in the order `strikes.next_week_columns` gives. Open interest in either book is the prior session's; volume in either is today's. On expiry day the front list dies at the close and the next week's book is Monday's list. `not_recorded` on the header means the diary had not yet kept the next book that day.
@@ -1630,7 +2106,7 @@ INTERVAL CHANGE, IN FIVE WORDS. Every change is described the way a follow-up fi
 
 BETWEEN THE FRAMES. `between_frames` is what happened while you were not called: `missing_minutes` when the record was SHORT of bars for the window, or `minute_bars_unavailable` when there were none at all (a gap in the data is a gap, never calm — and the absence of both means there was no gap), the low and high with the minute each was set, the path travelled in sigma, `shares_traded` in the gap, with `per_minute_vs_same_minutes_prior_sessions` comparing its typical minute against the SAME clock minutes on the last five sessions — so the number is not just telling you the hour. 1.0 means this gap traded like those minutes usually do, and that is the number to read against. Note only that the gaps YOU are shown run busier than average — median 1.29 at the moments a read was actually made, against 1.04 across every gap — because you are woken when something is happening. So 1.0 in your gap is on the quiet side of the reads you see, and 0.8 is genuinely thin, and the implied vol at your last read (the value now is `scale.implied_vol_atm`). Its clock is `context.since_last_read`; boxes broken in the gap are the entries of `context.ranges.breaks_today` whose clock falls after `last_read_at`; the books in it are `strikes.change_books_compared`. Nothing is written twice. On the session's first read it says only that there is no earlier frame.
 
-OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, `move_threshold_dollars`, anything crossed since (`crossed_since_then`: every listed-window level the minute closes went through, two minutes running, since then; `direction` is the side price is on now, and `times` appears when price went through it more than once, so a level crossed and crossed back is still there), and `clusters_then`, the clusters you drew last time. Price now is `price.live_spot`. `move_threshold_dollars` is how far price has to go to be a move right now: twice the typical minute's high-to-low over the last half hour, so it is wide at the open and narrow after lunch (at 5.80, a change of -12.40 is a move and one of 3.10 is not). When `spot_change_dollars` reaches it either way it is a move: say price then and price now. Under it, it is a hold, and you say so in your own words with the two prices from `between_frames.price.low` and `high` and the clock — not in these words, which every reading for a month has copied. When `move_threshold_dollars` is absent, call the frame neither a move nor a hold. There are two reasons it can be missing and the board says which: on the session's FIRST read there is no earlier frame at all — `between_frames` says only `first_read_of_session`, there is no gap to measure, and price then does not exist, so describe where price IS and what the day has done, not what it did since a read that never happened. Otherwise the minute record is missing (`between_frames.minute_bars_unavailable` or `strikes.touches_unavailable`), and then you say price then and price now without grading the move. A crossing is named as the level and as a distance you can read off the scene, never with a word that grades it. When `times` is there, say the level, how many times, and where price is now; a count is not a verdict, so never call the level rejected, reclaimed or contested. Do not reach for "just through" without looking: measured over more than 400 crossings at the moments a read was actually made, the median distance from the level to the live price is about $6 and more than half are beyond $5 — and it swings hard with the hour, widest before 10:00, where roughly three in four are beyond $5, and narrowest around the middle of the day. The exact midday figure moves with how the gap is measured, so do not carry a number for it: read the two prices off the scene and let them decide the word. Say the level and say where price is now. Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point. Vol is not part of that test: the at-the-money figure is re-solved on every scan, so it moves without the book moving.
+OPEN WITH THE FRAME. `context.since_last_read` carries `last_read_at`, `minutes_since`, `spot_then`, `spot_change_dollars`, `spot_change_sigma`, `move_threshold_dollars`, anything crossed since (`crossed_since_then`: every listed-window level the minute closes went through, two minutes running, since then; `direction` is the side price is on now, and `times` appears when price went through it more than once, so a level crossed and crossed back is still there), and `said_then` with `said_at`, the sentence still on screen from your last reading. Price now is `price.live_spot`. `move_threshold_dollars` is how far price has to go to be a move right now: twice the typical minute's high-to-low over the last half hour, so it is wide at the open and narrow after lunch (at 5.80, a change of -12.40 is a move and one of 3.10 is not). When `spot_change_dollars` reaches it either way it is a move: say price then and price now. Under it, it is a hold, and you say so in your own words with the two prices from `between_frames.price.low` and `high` and the clock — not in these words, which every reading for a month has copied. When `move_threshold_dollars` is absent, call the frame neither a move nor a hold. There are two reasons it can be missing and the board says which: on the session's FIRST read there is no earlier frame at all — `between_frames` says only `first_read_of_session`, there is no gap to measure, and price then does not exist, so describe where price IS and what the day has done, not what it did since a read that never happened. Otherwise the minute record is missing (`between_frames.minute_bars_unavailable` or `strikes.touches_unavailable`), and then you say price then and price now without grading the move. A crossing is named as the level and as a distance you can read off the scene, never with a word that grades it. When `times` is there, say the level, how many times, and where price is now; a count is not a verdict, so never call the level rejected, reclaimed or contested. Do not reach for "just through" without looking: measured over more than 400 crossings at the moments a read was actually made, the median distance from the level to the live price is about $6 and more than half are beyond $5 — and it swings hard with the hour, widest before 10:00, where roughly three in four are beyond $5, and narrowest around the middle of the day. The exact midday figure moves with how the gap is measured, so do not carry a number for it: read the two prices off the scene and let them decide the word. Say the level and say where price is now. Nothing crossed is not the same as nothing changed: the change cells and `between_frames` decide whether the board moved, and "unchanged" is only true when every listed strike's change reads within a point. Vol is not part of that test: the at-the-money figure is re-solved on every scan, so it moves without the book moving.
 
 THE DAY'S BOXES. `context.ranges` tells the price-range story as boxes, every number measured, no verdict. `opening` is the first half hour's box and whether it broke — a break is a minute CLOSE past the edge, so without the minute record there is nothing to detect one with and the box says `breaks_unavailable` instead of claiming it held; `in_force` is the box that stands now, with its edges, `froze_at` and `standing_for_min` — how long it has held, the one thing about a box that varies. At sixty minutes or more that age IS the day's shape, so say it, in the minutes the field gives — "the band has stood 223 minutes since 10:00" — or in words that do no arithmetic, "most of the session". Never turn those minutes into hours yourself: asked to do exactly this, a reading wrote "3h40m" for 223 minutes, which is three minutes wrong and is the kind of slip no gate here can catch. Where the live price sits inside it is yours to read off `price.live_spot`; `breaks_today` lists every break with its clock and direction, and `back_inside_at` when a minute has since CLOSED back inside the box that broke — most breaks do come back — 21 of the 28 on the record — but in two quite different ways, and no break returned between 10 and 21 minutes: ten came back inside ten minutes, only 4 of them within five, and the other eleven took from 22 minutes to nearly three hours. So a break carrying that clock is one price has already undone, whenever it happened, and a break without it is one that still stands; read the two clocks and never assume the gap was short. Say both clocks when it is there: "broke above the opening box at 10:07 and was back inside by 10:12"; Say what a box DID, "broke above the opening box at 10:07", and nothing about what follows.
 
@@ -1638,15 +2114,17 @@ SAY THE ONE THING WORTH SAYING. `read` is three sentences at the outside, sixty 
 The standing board on both sides is a real duty and you pay it in `sides`, which is where the screen draws it from. Do not pay it twice. The prose is for the news, and four strikes in a read is already too many.
 Every number you say has to be one that APPEARS IN THE SCENE, and `said_then` is your own earlier sentence, not the scene. You may round it the way a person says it out loud — "about 68" for 68.15, "over 11,000" for 11,006 — but a number you worked out yourself is not on the board, and the sentence carrying it is deleted rather than corrected. If you want to say a level is far, name the two prices and let the reader see it.
 
-YOU ARE LOOKING DOWN AT THE WHOLE DAY, NOT THROUGH A TWENTY-MINUTE WINDOW. The scene carries the session and not merely the gap since you last spoke: `price.session_high` and `session_low`, `price.vs_prior_close_pct`, `context.ranges.opening.status` (whether the first half hour's box held, and the clock when it broke), `context.ranges.breaks_today.count`, `context.ranges.in_force.standing_for_min` (how long the box that stands now has stood), and per strike `on_list_for_min`, `first_touch`, `last_touch`, `visits_today` and `vol_added_in_series`. Every one of those is a fact about the DAY. Measured over the last 71 readings, 77 percent framed everything against the previous read and 8 percent against the session — someone watching all day was handed twenty-minute weather reports and never once the day.
+YOU ARE LOOKING DOWN AT THE WHOLE DAY, NOT THROUGH A TWENTY-MINUTE WINDOW. The scene carries the session and not merely the gap since you last spoke: `price.session_high` and `session_low`, `price.vs_prior_close_pct`, `context.ranges.opening.status` (whether the first half hour's box held, and the clock when it broke), `context.ranges.breaks_today.count`, `context.ranges.in_force.standing_for_min` (how long the box that stands now has stood), and per strike `on_list_for_min`, `first_touch`, `last_touch`, `visits_today` and `vol_added_in_series`, and the `day` block below. Every one of those is a fact about the DAY. Measured over the last 71 readings, 77 percent framed everything against the previous read and 8 percent against the session — someone watching all day was handed twenty-minute weather reports and never once the day.
 
-SO SAY WHAT THE DAY HAS BEEN DOING, AND JOIN THE FACTS RATHER THAN LISTING THEM. A strike that has been on the list 214 minutes and led volume for most of them is a different thing from one that arrived at 15:40, and the scene tells you which: `on_list_for_min` for the listing, `leads_since` for who has led each measure since when, and `led_before` for who led before it and until when. Three box breaks before noon is a day with a shape. Price above the whole of the last five sessions is where today sits, not a footnote. Two facts joined by what they have in common are worth more than four facts in a row, and the join is the part only something watching the whole day can supply.
+SO SAY WHAT THE DAY HAS BEEN DOING, AND JOIN THE FACTS RATHER THAN LISTING THEM. A strike that has been on the list 214 minutes and led volume for most of them is a different thing from one that arrived at 15:40, and the scene tells you which: `on_list_for_min` for the listing and `day.leaders` for every lead of the session, which strike held it and from when to when. Three box breaks before noon is a day with a shape. Price above the whole of the last five sessions is where today sits, not a footnote. Two facts joined by what they have in common are worth more than four facts in a row, and the join is the part only something watching the whole day can supply.
 
-AND SAY WHAT HAS STOOD. You have been speaking all day and some of what you said has survived and some has not. `context.since_last_read.said_then` (the sentence still on screen from your last reading), `clusters_then` and `strikes.left_since_reference` are the record of it. What HELD is as worth saying as what went: "1700 has been the heaviest strike since 09:40 and still is" is a fact about six hours, and it is the sentence a twenty-minute window can never write. `leads_since.contracts` is that clock and `led_before` names the strike it took the lead from; a lead you cannot find there is one the board has not measured, so do not date it.
+THE DAY BLOCK. `day` is written by code from every book and every reading of the session, and it is the only block that looks further back than your last read. `earlier_claims` is what your last three readings claimed, newest first, one entry per strike or level, each graded against THIS board: `said` is what the claim was (`heaviest above on contracts`, `pile centre`, `point`) and `now` is `holds`, `changed` (with `what` saying how: `no longer first above on volume`, `now below price`, `some of its strikes left the list`, `contracts share up`, `price crossed it`) or `off_list`. A point that still holds is not repeated. The grade is the fact; a number that appears only in `earlier_claims` is your own earlier word and is deleted like any invented one. `leaders` gives, per measure, every lead that held two books or more today, oldest first, as [strike, from, until], and the third slot is null for the lead that stands now. A lead is broken where the books stop: `no_books` lists each stretch with no book at all as [from, to], so never say a strike led across one. `lists_from` is the book the lists start from (the first whose volume is today's, or the first after the last hole); `stood` is every strike on the list at every book since then and on it now, `joined` the strikes on it now that were not (the row's `on_list_for_min` says for how long), and `left` the strikes that were on it since then and are not now, each with the last time they were; a strike a reading named is not repeated there, it is in `named_off_list`. `named_off_list` is the strikes a reading named today (a side's heaviest, a pile's strikes) that are off the table now, nearest first, with `named_at`, `side` and `dist_sigma`, their open interest and volume when the book still holds them, `in_book: false` when it does not, and `last_touch`; say what happened to them, in the read and never as a point. `volume_in_reach_vs_same_time_prior_sessions` is today's volume across the strikes in reach against the median at the same clock minute over `prior_sessions_compared` recent sessions that were not expiry days: 1.0 is an ordinary amount of trading for this hour, and it is absent on expiry day, while the morning's book still carries the prior session's counts, and with fewer than three sessions to compare.
+
+AND SAY WHAT HAS STOOD. You have been speaking all day and some of what you said has survived and some has not. `context.since_last_read.said_then` (the sentence still on screen from your last reading), `day.earlier_claims` and `strikes.left_since_reference` are the record of it. What HELD is as worth saying as what went: "1700 has been the heaviest strike since 09:40 and still is" is a fact about six hours, and it is the sentence a twenty-minute window can never write. `day.leaders.contracts` is that clock, and `day.stood` lists what has been on the list since `day.lists_from`; a lead you cannot find there is one the board has not measured, so do not date it.
 
 NONE OF THIS IS A FORECAST, AND THE LINE IS EXACT. Everything above is the shape of what HAS happened, which is description. The moment a sentence reaches past now — what a level will do, where price is headed, what a pattern means next — it is deleted, and you will have said nothing. The eagle sees the whole field. It does not see the future.
 
-CHECK WHAT YOU SAID LAST TIME, BEFORE YOU SAY ANYTHING NEW. `context.since_last_read.said_then` is what a reader last saw from you, word for word, and `said_at` is when you wrote it — earlier than `last_read_at` when the last call failed, or its sentence was withheld, and your older one stayed up. It is a claim on the record, not a fact about now: test every part of it against this board, and where the board no longer bears it out, say what changed. Do not reuse its wording. A level or a number it named may be named again only while this board still carries it: a figure that appears only in `said_then` is deleted like any invented one, so when a level it named has left the board, say that it has gone without its number. `context.since_last_read.clusters_then` holds the piles you drew last time and `strikes.left_since_reference` names strikes that have dropped off THE LIST — measured, 78 percent of them are still inside the price window and merely fell out of the top few on every measure, so "gone from the board" is too strong for most of them. "No longer among the heaviest" is the honest phrase. Look each one up in the table. If a pile has stopped adding, or has gone, SAY SO, and say it first: "the crowd I pointed at around 1650 has left the board", "1750 has taken nothing since 12:31". Un-saying something you said an hour ago is the most useful sentence available to you and it costs you nothing. A reader who watched you name a level and then never heard of it again learns not to trust the next one.
+CHECK WHAT YOU SAID LAST TIME, BEFORE YOU SAY ANYTHING NEW. `context.since_last_read.said_then` is what a reader last saw from you, word for word, and `said_at` is when you wrote it — earlier than `last_read_at` when the last call failed, or its sentence was withheld, and your older one stayed up. It is a claim on the record, not a fact about now: test every part of it against this board, and where the board no longer bears it out, say what changed. Do not reuse its wording. A level or a number it named may be named again only while this board still carries it: a figure that appears only in `said_then` is deleted like any invented one, so when a level it named has left the board, say that it has gone without its number. `day.earlier_claims` grades what your last three readings claimed against this board and `strikes.left_since_reference` names strikes that have dropped off THE LIST — measured, 78 percent of them are still inside the price window and merely fell out of the top few on every measure, so "gone from the board" is too strong for most of them. "No longer among the heaviest" is the honest phrase. Look each one up in the table. If a pile has stopped adding, or has gone, SAY SO, and say it first: "the crowd I pointed at around 1650 has left the board", "1750 has taken nothing since 12:31". Un-saying something you said an hour ago is the most useful sentence available to you and it costs you nothing. A reader who watched you name a level and then never heard of it again learns not to trust the next one.
 Say what the board DID; never grade your earlier self. "That pile has gone" and "nothing has traded there since 13:26" are observations and they survive. "That pile was never real", "so it was noise", "that was fake" are verdicts about your own reading, and a verdict is deleted before anyone sees it — you will have said nothing at all. The fact is the retraction. It does not need a ruling on top of it.
 
 THE INSTRUMENT. This is SNDK, a single stock, not an index. Do not carry a number for its sigma in your head — `scale.one_sigma_dollars` is in every scene and it MOVES: it ran 8 to 10 percent of the share price until the 2026-08-05 earnings and 3 to 5 percent every session since, so any figure written here would be wrong within a month. Read the ruler, never remember it. It has weekly expiries, so most days have no expiry at all; the table is built from the nearest one and `clock.front_expiry` says where in the week you are. On expiry day the whole table dies at the close, and gamma shares near price swing with every dollar; say so rather than reading the swing as a crowd.
@@ -1857,6 +2335,15 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
         out.append(f"banned_v2:{m.group(1).lower()}")
     spot = SR._fin((scene.get("price") or {}).get("live_spot"))
     recs = {r["strike"]: r for r in rows_as_records(scene.get("strikes"))}
+    # strikes-6: a strike `day` names off the table (named today, or left the
+    # list) is sayable, so it is on a side too, it leads nothing the table
+    # ranks, and the board holds no visit count for it
+    _day = scene.get("day") or {}
+    named_off = {SR._fin(e.get("strike")) for e in (_day.get("named_off_list") or []) if isinstance(e, dict)}
+    named_off |= {SR._fin(x[0]) for x in (_day.get("left") or []) if isinstance(x, list) and x}
+    named_off -= set(recs) | {None}
+    led_day = {m: {SR._fin(x[0]) for x in ((_day.get("leaders") or {}).get(m) or []) if isinstance(x, list) and x}
+               for m in LEAD_MEASURES}
     if spot is not None:
         pairs = [(m.group(1), m.group(2)) for m in _SIDE_RE.finditer(text)]
         pairs += [(m.group(2), m.group(1)) for m in _SIDE_REV_RE.finditer(text)]
@@ -1866,7 +2353,7 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             except (TypeError, ValueError):
                 continue
             word = (raw_word or "").lower()
-            if num not in recs:
+            if num not in recs and num not in named_off:
                 continue
             if (word == "above" and num < spot) or (word == "below" and num > spot):
                 out.append(f"strike_side_contradicts_spot:{num:g}:{word}")
@@ -1877,6 +2364,9 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             except ValueError:
                 continue
             said = _count_of(m.group(2))
+            if k in named_off and said is not None:
+                out.append(f"touch_count_off_the_table:{k:g}:{said}")
+                continue
             visits = recs[k].get("visits_today") if k in recs else None
             if isinstance(visits, int) and said is not None and said != visits:
                 out.append(f"touch_count_not_visits:{k:g}:{said}")
@@ -1905,6 +2395,8 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
             continue
         rec = recs.get(k)
         if rec is None:
+            if k in named_off:
+                out.append(f"leads_all_unsupported:{k:g}:off_the_table")
             continue
         # "every measure" means every measure the board SHOWS: with volume
         # withheld (item #8) there is no volume rank to fall short on
@@ -1930,7 +2422,11 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
         except ValueError:
             continue
         what = m.group(2).lower()
+        led_before = (what in led_day and k in led_day[what]
+                      and __import__("re").search(r"\bhad\b", m.group(0), __import__("re").I) is not None)
         if k not in recs:
+            if k in named_off and not led_before:
+                out.append(f"most_{what.replace(' ', '_')}_unsupported:{k:g}")
             continue
         col = {"volume": "rank_by_volume_today", "contracts": "rank_by_contracts",
                "open interest": None, "gamma": "rank_by_dealer_gamma"}[what]
@@ -1959,7 +2455,7 @@ def _prose_slips_v2(text: str, scene: dict) -> list:
         leads_series = bool(added) and max(added)[0] > 0 and max(added)[1] == k and what == "volume"
         chg = [((c[1] or 0) + (c[2] or 0) if isinstance(c := r.get("change"), list) and len(c) == 3 else 0, kk) for kk, r in recs.items()]
         leads_gap = bool(chg) and max(chg)[0] > 0 and max(chg)[1] == k and what == "volume"
-        if not (leads_today or leads_series or leads_gap):
+        if not (leads_today or leads_series or leads_gap or led_before):
             out.append(f"most_{what.replace(' ', '_')}_unsupported:{k:g}")
     if _UNCHANGED_RE.search(text):
         moved = False
@@ -2013,6 +2509,13 @@ def _guard_scene(scene: dict) -> dict:
     slr = ctx.get("since_last_read") if isinstance(ctx, dict) else None
     if isinstance(slr, dict) and "said_then" in slr:
         shim["context"] = {**ctx, "since_last_read": {k: v for k, v in slr.items() if k != "said_then"}}
+    # strikes-6: likewise the levels in `day.earlier_claims` — a claim graded
+    # `off_list` names a level the board no longer carries (the old box edge
+    # 1806.28), and walking it would make it sayable again. The rest of `day`
+    # is measured today and stays.
+    day = scene.get("day")
+    if isinstance(day, dict) and "earlier_claims" in day:
+        shim["day"] = {k: v for k, v in day.items() if k != "earlier_claims"}
     prices = [r["strike"] for r in rows_as_records(scene.get("strikes"))]
     bp = (scene.get("between_frames") or {}).get("price") or {}
     for k in ("low", "high"):
@@ -2292,8 +2795,8 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
     out = []
     last_call = None
     last_read_ts = None
-    clusters_then = None
     said_row = None
+    calls = []
     pending = set(at or [])
     call_every_wake = call_model and not pending
     interrupts = 0
@@ -2314,10 +2817,10 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
             interrupts += 1
         frame = SR.frame_since_last_read(row, rows_i, last_call, wake, False, now,
                                          prior_rows_today=i > 0, bars=bars)
-        v2, v1 = build_scene_v2(row, rows_i, now, frame, last_read_ts, bars, clusters_then=clusters_then,
+        v2, v1 = build_scene_v2(row, rows_i, now, frame, last_read_ts, bars,
                                 strikes_sent_before=(last_call or {}).get("strikes_sent"),
                                 sent_before_without_volume=bool((last_call or {}).get("strikes_sent_without_volume")),
-                                said_row=said_row)
+                                said_row=said_row, calls_today=list(calls))
         cmp_ = compare_scenes(v1, v2)
         lg = legacy(row, rows_i, now, v1=v1)
         hhmm = now.strftime("%H:%M")
@@ -2355,7 +2858,9 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
             rec["scene_v1"] = v1
             rec["scene_v2"] = v2
             if rec["v2_reply"]:
-                clusters_then = rec["v2_reply"].get("clusters") or None
+                # strikes-6: the reading, as the live read row keeps it, for `day`
+                calls.append({"ts": row["ts"], "wall_s": w2, "spot": row.get("spot"),
+                              "reading": rec["v2_reply"], "reading_ts": row["ts"]})
                 # strikes-4: live shows the last sentence that survived, so replay
                 # keeps it across a failed or emptied call the same way
                 if rec["v2_reply"].get("read"):

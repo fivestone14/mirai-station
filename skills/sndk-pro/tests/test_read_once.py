@@ -450,6 +450,9 @@ def test_the_next_call_is_shown_the_sentence_the_last_one_left(board_state, monk
     slr = json.loads(prompts[1].split("SCENE:\n", 1)[1])["context"]["since_last_read"]
     assert slr["said_then"] == "1300 holds the most contracts above and 1150 leads below."
     assert slr["said_at"] == NOW.strftime("%H:%M")
+    # strikes-6: and its claims, graded against the new board
+    graded = json.loads(prompts[1].split("SCENE:\n", 1)[1])["day"]
+    assert any(c.get("strike") == 1300 for g in graded["earlier_claims"] for c in g["claims"])
     assert len(SR.read_payloads(day)) == 2
     assert len(list((tmp / "sndk_payloads" / "rules").iterdir())) == 1
 
