@@ -30,9 +30,19 @@ set -e
 [[ $(date +%u) -gt 5 ]] && exit 0
 
 cd "${MIRAI_STATION_ROOT}/runtime"
-if ! "${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 1)"; then
+# Only the gate's own "closed" (exit 3) skips quietly. Python exits 1 on any
+# uncaught exception, so with "closed" on 1 a broken venv or import read as a
+# closed market and launchd reported success for a read that never ran.
+set +e
+"${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 3)"
+GATE_RC=$?
+set -e
+if [[ $GATE_RC -eq 3 ]]; then
   echo "sndk-read :: market closed — no read"
   exit 0
+elif [[ $GATE_RC -ne 0 ]]; then
+  echo "sndk-read :: market-hours check FAILED (rc=${GATE_RC}) — check venv/imports; no read" >&2
+  exit 1
 fi
 
 cd "${MIRAI_STATION_ROOT}/skills/sndk-pro"

@@ -7,32 +7,15 @@ never be handed a constant, and a wake must be earned, not scheduled.
 """
 import json
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 import sndk_read as SR
+from synth import T0, _last_call, reader_row as mkrow
 
 ET = ZoneInfo("America/New_York")
-T0 = datetime(2026, 7, 31, 10, 0, tzinfo=ET)
-
-
-def mkrow(mass, up=2.0, dn=0.2, spot=1200.0, sigma=100.0, ts=None, **kw):
-    """A diary row carrying only what the reader touches."""
-    row = {
-        "ts": (ts or T0).isoformat(), "ticker": "SNDK", "spot": spot,
-        "sigma": sigma, "regime": kw.pop("regime", "trending"),
-        "gamma_sign": kw.pop("gamma_sign", "negative"),
-        "call_wall": kw.pop("call_wall", 1400.0),
-        "put_wall": kw.pop("put_wall", 1000.0),
-        "prior_close": kw.pop("prior_close", 1250.0),
-        "gex_views": {"mass_by_strike": mass, "magnet": kw.pop("magnet", None),
-                      "shove": {"shove_up_margin": up, "shove_down_margin": dn}},
-        "profile_ladder": kw.pop("profile_ladder", {}),
-    }
-    row.update(kw)
-    return row
 
 
 # --- magnet_band: the tie must be visible ----------------------------------
@@ -541,6 +524,27 @@ def test_context_states_facts_and_never_verdicts(monkeypatch):
     assert "vs_prior_sessions" not in (SR.session_context(sc, rows, T0) or {})
 
 
+def test_the_history_of_closed_sessions_carries_across_new_year():
+    """A session file is found by the shape of its name, never by its year. With
+    "2026-*.jsonl" every session from 2027-01-01 on dropped out of the ranks'
+    history and the open-interest date froze on the last day of 2026."""
+    diary = SR._diary_dir()
+    diary.mkdir(parents=True, exist_ok=True)
+    sessions = ["2026-12-30", "2026-12-31", "2027-01-04"]
+    for day in sessions:
+        (diary / f"{day}.jsonl").write_text(json.dumps(
+            mkrow([[1300, 60], [1100, 20]], ts=T0.replace(
+                year=int(day[:4]), month=int(day[5:7]), day=int(day[8:])))) + "\n")
+    # files that are not one session's diary, all sorting before the next session
+    for name in ("2026-12-31-copy.jsonl", "2027-01-04.jsonl.bak", "0-scratch.jsonl"):
+        (diary / name).write_text(json.dumps(mkrow([[1300, 60]])) + "\n")
+    today = "2027-01-05"
+    assert SR._prior_sessions(today)["sessions"] == sessions
+    assert SR._prior_session_date(today) == sessions[-1]
+    ranged = SR._prior_sessions_range(today)
+    assert (ranged["sessions"], ranged["from"], ranged["to"]) == (3, sessions[0], sessions[-1])
+
+
 def test_a_rounded_number_is_the_boards_number_said_out_loud():
     """review item #15: "1800 adding over 11,000 contracts" against a board
     holding 11,006 was six away from the only slack the gate had, so it was
@@ -587,12 +591,6 @@ def test_a_transition_out_of_not_measured_is_not_a_change():
 
 
 # --- obs-3: the since-last-read frame ---------------------------------------
-def _last_call(minutes_ago=47, **gate_kw):
-    r = mkrow([[1300, 60], [1100, 20]], **gate_kw)
-    return {"ts": (T0 - timedelta(minutes=minutes_ago)).isoformat(),
-            "wall_s": 9.9, "gate": SR.state_for_next_wake(r)}
-
-
 def _returned_literals(fn):
     """Every plain string `fn` can return, read off its source. An f-string's
     pieces are skipped — the wall crossings are built from one and are listed

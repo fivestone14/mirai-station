@@ -72,7 +72,8 @@ CALL_TIMEOUT_S = 150.0  # generous — a slow arm must not be scored as a timeou
 # ---------------------------------------------------------------- scenes -----
 def _diary_days(n: int) -> list[str]:
     """The n most recent recorded sessions that actually hold rows."""
-    days = sorted(p.stem for p in DIARY_DIR.glob("2026-*.jsonl"))
+    # by the shape of a date, not a year: "2026-*" stops finding sessions on Jan 1
+    days = sorted(p.stem for p in DIARY_DIR.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"))
     return days[-n:]
 
 

@@ -71,9 +71,17 @@ editing history.
 ## Market-data credential rotation
 
 ```bash
-# Schwab token is refreshed by the auth-watch agent; if the 7-day login lapses,
-# re-run the OAuth flow the iv-viability vault uses, then confirm:
-security find-generic-password -a "$USER" -s "mirai-station/schwab-token-path" -w
+# Schwab (the live quotes and minute bars, SPX and SNDK alike). The login lasts
+# 7 days; the auth-check job pings the phone as it nears the end. To sign in
+# again, at the mini:
+~/.local/share/mirai-station/venv/bin/python ~/.claude/plugins/mirai-station/skills/iv-viability/iv_fetcher.py --reauth
+# Press Enter to open the browser. Schwab redirects to https://127.0.0.1:8182,
+# which answers with a self-signed certificate: pass the browser's warning, sign
+# in and approve. "Re-auth complete. New 7-day refresh token stored." means it
+# took; nothing needs a restart. Confirm (prints the login's age and days left):
+~/.claude/plugins/mirai-station/runtime/scripts/run-auth-check.sh
+# (The check this replaced read a Keychain item, mirai-station/schwab-token-path,
+# that no code writes.)
 
 # ThetaData / Cassandra's Edge (the native SPX chain AND the SNDK chain).
 # There is nothing to paste: the endpoint moved to AuthKit OAuth on 2026-09-09
@@ -101,6 +109,8 @@ python3 skills/mirai-left-eye/native_gex_feed.py --status          # confirm
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `launchctl list` shows `Status: 78` for an agent | exit code != 0; check stderr | `tail /tmp/mirai-station.<label>.err` |
+| `/tmp/mirai-station.<label>.err` has a line ending its market check with `FAILED (rc=N)` and the job exits 1 | the market-hours gate itself failed (venv, import). The gate exits 0 when the market is open and 3 when it is closed, and only 3 skips quietly | re-run `venv-bootstrap.sh`. Gated this way: sndk, sndk-read, sndk-bars, lob-collector, book-collector, watch-left-eye (which still runs its alert pass before exiting 1) |
+| Phone: "SNDK reader silent" | the reader stopped writing read rows while the scanner still writes; a silent scanner is paged under its own name instead | `tail /tmp/mirai-station.sndk-read.err`; check `SNDK_READ_DISABLE`. "SNDK reader back" follows once a read row lands |
 | "schwab module not found" | venv not provisioned or wrong python | re-run `venv-bootstrap.sh`; confirm shebang resolves |
 | GEX read falls back to SPY-proxy every scan | expired Cassandra/ThetaData login | `native_gex_feed.py --login` (see above); auth-watch pings on this |
 | SNDK scanner silent + SPY-proxy at the same moment | one credential, both casualties — it is never two faults | `native_gex_feed.py --status`, then `--login` |

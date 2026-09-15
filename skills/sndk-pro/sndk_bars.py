@@ -173,16 +173,21 @@ def write_day(day: str, bars: list[dict], now: datetime) -> dict:
     fresh.sort(key=lambda b: b["ts"])
     for b in fresh:
         atomic_io.append_jsonl(bars_path(day), b)
-    on_disk = read_bars(day)
     summary = {"ts": now.isoformat(), "day": day, "appended": len(fresh),
-               "bars_on_disk": len(on_disk),
-               "last_bar_at": on_disk[-1]["ts"] if on_disk else None,
-               "source": "schwab_price_history_1min"}
+               **_on_disk(day), "source": "schwab_price_history_1min"}
     try:
         atomic_io.write_json_atomic(health_path(), summary)
     except OSError:
         pass
     return summary
+
+
+def _on_disk(day: str) -> dict:
+    """How far the day's file reaches, for health.json. A failed run writes it
+    too: health.json is overwritten every run, so without it the error record
+    could not say how long the log has been stale."""
+    bars = read_bars(day)
+    return {"bars_on_disk": len(bars), "last_bar_at": bars[-1]["ts"] if bars else None}
 
 
 def run(day: Optional[str] = None, now: Optional[datetime] = None,
@@ -199,6 +204,7 @@ def run(day: Optional[str] = None, now: Optional[datetime] = None,
         try:
             atomic_io.write_json_atomic(health_path(), {
                 "ts": now.isoformat(), "day": d.isoformat(), "appended": 0,
+                **_on_disk(d.isoformat()),
                 "error": repr(e)[:200], "source": "schwab_price_history_1min"})
         except OSError:
             pass

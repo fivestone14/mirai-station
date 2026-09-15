@@ -12,6 +12,7 @@ it. Pure stdlib, reads only.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -26,8 +27,17 @@ if str(SKILL_DIR) not in sys.path:
 
 
 # --- small file helpers -------------------------------------------------------
-def _latest_rel(glob: str, root: Path = STATE_DIR) -> Optional[str]:
-    """Newest file matching glob, as a path relative to `root` (for /api/raw/file)."""
+def _state_dir() -> Path:
+    """Resolved per call, as snapshot and the raw explorer resolve it, so every
+    `state` pointer on the map names a file in the folder the explorer opens."""
+    env = os.environ.get("MIRAI_STATE_DIR")
+    return Path(env) if env else STATE_DIR
+
+
+def _latest_rel(glob: str, root: Optional[Path] = None) -> Optional[str]:
+    """Newest file matching glob, as a path relative to `root` (for /api/raw/file);
+    the state folder when no root is named."""
+    root = _state_dir() if root is None else root
     try:
         files = sorted(root.glob(glob))
         return str(files[-1].relative_to(root)) if files else None

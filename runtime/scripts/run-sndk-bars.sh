@@ -21,7 +21,14 @@ set -e
 
 cd "${MIRAI_STATION_ROOT}/runtime"
 HHMM="$(TZ=America/New_York date +%H%M)"
-if ! "${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 1)"; then
+# Only the gate's own "closed" (exit 3) skips quietly. Python exits 1 on any
+# uncaught exception, so with "closed" on 1 a broken venv or import read as a
+# closed market and launchd reported success for bars that never landed.
+set +e
+"${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 3)"
+GATE_RC=$?
+set -e
+if [[ $GATE_RC -eq 3 ]]; then
   # 10# forces decimal: "0929" is not octal, and without it every 08xx/09xx
   # minute with an 8 or 9 in it errored and the gate fell open (722 lines in
   # the err log before this was found on Sep 5)
@@ -29,6 +36,9 @@ if ! "${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_st
     echo "sndk-bars :: market closed — skipping"
     exit 0
   fi
+elif [[ $GATE_RC -ne 0 ]]; then
+  echo "sndk-bars :: market-hours check FAILED (rc=${GATE_RC}) — check venv/imports; no bars" >&2
+  exit 1
 fi
 
 cd "${MIRAI_STATION_ROOT}/skills/sndk-pro"

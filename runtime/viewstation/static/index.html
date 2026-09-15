@@ -11647,9 +11647,9 @@ const _PL_NODES=[
   ['sd',  'Records','store','Diary',                 'state/sndk_reversion/<day>.jsonl',
    'One row per scan, about 190 a day: price, the day’s implied move, the walls and the flip, eight numbers for every strike, and the timestamp the option book itself carried.'],
   ['sb',  'Records','store','Bars',                  'state/sndk_bars/<day>.jsonl',
-   'One line per completed minute, 390 a day, and health.json, the last run’s summary. The witness for highs, lows and range breaks: sampling every 2 minutes instead misses one break in three.'],
+   'One line per completed minute, 390 a day, and health.json, the last run’s summary, which on a failed run still says how many minutes are on disk and when the last one was, beside the error. The witness for highs, lows and range breaks: sampling every 2 minutes instead misses one break in three.'],
   ['sc',  'Records','store','Book cache',            'state/sndk_gex/chain_cache.json',
-   'The last option-chain pull, good for 240 seconds. Every second scan re-prices this cache against the live quote instead of pulling the chain again — which is why its arrow runs back up. Beside it, overwritten the same way: vol_hint.json, discovery.json (the day’s expiries), and fetch_log.jsonl, which only grows.'],
+   'The last option-chain pull, good for 180 seconds, one and a half scans. The scan after a pull re-prices this cache against the live quote instead of pulling the chain again, so the chain is pulled every other scan — which is why its arrow runs back up. Beside it, overwritten the same way: vol_hint.json, discovery.json (the day’s expiries), and fetch_log.jsonl, which only grows.'],
   ['ctl', 'Records','store','Reader switch',         'state/sndk_reads/control.json',
    'Hand-edited, never written by code: the pause switch that stops the model call while every row still lands, and which payload the reader builds. Missing or unreadable means reasoning on and the Strikes Payload.'],
   ['pp',  'Records','store','Percentile history',    'state/sndk_reads/pctl_prior.json',
@@ -11683,7 +11683,7 @@ const _PL_NODES=[
   ['ot',  'Delivery','sink','Price tape',            'state/sndk_tape/<day>.jsonl',
    'A price at most every 4 seconds, written by the dashboard server itself whenever a page asks for the live price, so a day nobody watched has no tape. Only the chart reads it.'],
   ['op',  'Delivery','sink','Phone · voice · pager','static/m/ · mirai-voice · sndk_deadman.py',
-   'The glance page shows the latest reading and a chart drawn from the minute bars, and under it the three levels — the nearest call and put walls with their share of the board’s gamma, and the strike with the most contracts as a count. Those come from the diary row through the payload route (snapshot.py adds the count, which the scene does not carry, and never sends it to a model); the live quote every 5 seconds greys out any wall price has already passed. The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet (a silent reader is not yet watched), keeping what it has paged in state/sndk_reads/deadman_state.json.',
+   'The glance page shows the latest reading and a chart drawn from the minute bars, and under it the three levels — the nearest call and put walls with their share of the board’s gamma, and the strike with the most contracts as a count. Those come from the diary row through the payload route (snapshot.py adds the count, which the scene does not carry, and never sends it to a model); the live quote every 5 seconds greys out any wall price has already passed. The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet, or when the reader stops writing rows while the scanner still runs, keeping what it has paged in state/sndk_reads/deadman_state.json.',
    'launchd com.mirai-station.sndk-deadman · every 5 min'],
 ];
 // from, to, and 'back' for a return path. Checked against the code 09-04, and
@@ -14805,7 +14805,7 @@ const PAYLOAD = {
       +`<code>sndk_reads/${esc(day)}.jsonl</code> readings, ${age(sib.reads)} \u00b7 `
       +`<code>sndk_rag/slices/${esc(day)}.jsonl</code> memory, ${age(sib.rag)}</span>`;
     if(!row){ pre.innerHTML='<div class="ln">no row</div>'; sch.innerHTML=''; return; }
-    if(when) when.textContent=`\u00b7 ${esc(String(row.ts||'').slice(11,19))} ET \u00b7 book ${m.book_source==='disk_cache'?'from the 240 s cache':'pulled fresh'}${m.cache_age_s!=null?`, ${Math.round(m.cache_age_s)} s old`:''}`;
+    if(when) when.textContent=`\u00b7 ${esc(String(row.ts||'').slice(11,19))} ET \u00b7 book ${m.book_source==='disk_cache'?'from the 180 s cache':'pulled fresh'}${m.cache_age_s!=null?`, ${Math.round(m.cache_age_s)} s old`:''}`;
     const out=[]; plLines(row, 0, '', '', out); pre.innerHTML=plRows(out);
     // the schema, checked against the row
     const get=(o,path)=>path.split('.').reduce((a,k)=>(a&&typeof a==='object')?a[k]:undefined, o);
@@ -15034,7 +15034,7 @@ const PAYLOAD = {
     const live=PAYLOAD.data&&PAYLOAD.data.scene;
     const STAGES=[
       ['Live price',         'Schwab answers one quote request per scan \u2014 SanDisk\u2019s current price plus the day\u2019s open, high, low and prior close. No quote, no row.', 'Schwab quote'],
-      ['Option book',        'The market-data server supplies the front one or two weekly expiries \u2014 open interest, volume, bid and ask for strikes within a band around the live price. Pulled every other scan and cached on disk for 240 s; the off scan re-prices the cached book at the live quote.', 'sndk_feed \u00b7 market-data server'],
+      ['Option book',        'The market-data server supplies the front one or two weekly expiries \u2014 open interest, volume, bid and ask for strikes within a band around the live price. Pulled every other scan and cached on disk for 180 s; the off scan re-prices the cached book at the live quote.', 'sndk_feed \u00b7 market-data server'],
       ['Clean and price',    'Implied vol is re-solved per strike from the bid/ask mid against Schwab\u2019s live price; a strike that cannot be solved keeps or loses the provider\u2019s number, and gamma is filled in where the provider left it blank.', 'sndk_feed'],
       ['Build the map',      'The book becomes one snapshot: gamma by strike, the heaviest strike, the walls, the flip, the expected move, VWAP and the dealer-delta surface.', 'sndk_views'],
       ['Record',             'Every 120 seconds during market hours the snapshot is written to the diary; a sidecar job keeps the day\u2019s completed one-minute bars beside it, from Schwab, every 60 seconds.', 'state/sndk_reversion \u00b7 state/sndk_bars'],

@@ -15,8 +15,7 @@ from datetime import datetime, timedelta
 import pytest
 
 import sndk_read as SR
-from test_read import mkrow, _last_call, T0
-from test_scene_v2 import rich_row, scene_of
+from synth import reader_row as mkrow, _last_call, T0, rich_row, scene_of
 
 
 def _rows(spots, minutes_ago, **kw):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launchd-fired wrapper: the SNDK scanner's dead-man's switch.
+# launchd-fired wrapper: the dead-man's switch for the SNDK scanner and reader.
 #
 # Deliberately NOT gated on the market-status helper the way run-sndk-read.sh is.
 # That gate lives inside sndk_deadman.run() instead, because the wrapper's job

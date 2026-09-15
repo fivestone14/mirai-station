@@ -19,60 +19,11 @@ from zoneinfo import ZoneInfo
 
 import sndk_board as B
 import sndk_read as SR
+from synth import OPEN_AT, T0, bar, board_row as mkrow, flat_bars, mkrows, recs
 
 ET = ZoneInfo("America/New_York")
-T0 = datetime(2026, 7, 31, 10, 0, tzinfo=ET)
-OPEN_AT = datetime(2026, 7, 31, 9, 30, tzinfo=ET)
 
 STRIKES = [1150.0, 1200.0, 1250.0, 1300.0, 1350.0, 1400.0]
-
-
-def mkrow(ts, spot=1290.0, chain_spot=None, sigma=100.0, oi=None, vol=None, net=None,
-          atm_iv=0.5, book_asof=None, next_arrays=False, drop_vol=False, drop_net=False):
-    oi = oi or {1200.0: (240, 120), 1250.0: (180, 90), 1300.0: (540, 270), 1350.0: (120, 60),
-                1400.0: (60, 30), 1150.0: (30, 15)}
-    vol = vol or {k: (int(c * 0.1), int(p * 0.1)) for k, (c, p) in oi.items()}
-    net = net or {1200.0: -2.0, 1250.0: 1.0, 1300.0: 5.0, 1350.0: -3.0, 1400.0: 0.5, 1150.0: -0.2}
-    gv = {"magnet": 1300.0, "front_dte": 0,
-          "mass_by_strike": [[k, c + p + vol[k][0] + vol[k][1]] for k, (c, p) in sorted(oi.items())],
-          "net_by_strike": [[k, v] for k, v in sorted(net.items())],
-          "oi_side_by_strike": [[k, c, p] for k, (c, p) in sorted(oi.items())],
-          "vol_side_by_strike": [[k, c, p] for k, (c, p) in sorted(vol.items())]}
-    if drop_vol:
-        gv.pop("vol_side_by_strike")
-    if drop_net:
-        gv.pop("net_by_strike")
-    if next_arrays:
-        gv["next_dte"] = 7
-        gv["oi_side_by_strike_next"] = [[k, c * 2, p * 2] for k, (c, p) in sorted(oi.items()) if k != 1150.0]
-        gv["vol_side_by_strike_next"] = [[k, 3, 4] for k in sorted(oi) if k != 1150.0]
-    return {
-        "ts": ts.isoformat(), "ticker": "SNDK", "spot": spot, "sigma": sigma,
-        "atm_iv": atm_iv, "prior_close": 1250.0, "gamma_sign": "positive", "regime": "neutral",
-        "meta": {"chain_spot": chain_spot if chain_spot is not None else spot,
-                 "book_asof": (book_asof or ts).isoformat(), "book_source": "pull",
-                 "spot_source": "schwab_quote",
-                 "expiries": [{"date": "2026-07-31", "dte": 0}, {"date": "2026-08-07", "dte": 7}]},
-        "gex_views": gv,
-    }
-
-
-def mkrows(n=8, start=T0 - timedelta(minutes=14), step=2, **kw):
-    return [mkrow(start + timedelta(minutes=i * step), **kw) for i in range(n)]
-
-
-def bar(i, lo, hi, close=None, vol=1000.0):
-    ts = OPEN_AT + timedelta(minutes=i)
-    return {"ts": ts.isoformat(), "open": lo, "high": hi, "low": lo,
-            "close": hi if close is None else close, "volume": vol}
-
-
-def flat_bars(n, lo=1285.0, hi=1295.0):
-    return [bar(i, lo, hi) for i in range(n)]
-
-
-def recs(v2):
-    return {r["strike"]: r for r in B.rows_as_records(v2["strikes"])}
 
 
 # ---------------------------------------------------------------- the table

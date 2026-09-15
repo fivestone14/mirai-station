@@ -24,8 +24,9 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
     (rag / "slices" / "2026-08-19.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     (rag / "summaries.jsonl").write_text(json.dumps({"kind": "day_summary", "date": "2026-08-05", "rag_v": 2}) + "\n")
     (rag / "terrain.json").write_text(json.dumps({"built": "2026-08-03", "sessions": 4, "rag_v": 1, "narrative": "1100 magnet"}))
-    monkeypatch.setattr(snapshot, "_RAG_DIR", rag)
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))      # where the history CLI finds the store too
     ov = snapshot.sndk_memory_overview()
+    assert ov["store"] == str(rag)
     assert ov["slices_total"] == 4 and len(ov["days"]) == 1
     d = ov["days"][0]
     assert d["date"] == "2026-08-19" and d["n"] == 4 and d["first"] == "10:12" and d["last"] == "14:21"
@@ -41,7 +42,7 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
 
 
 def test_memory_overview_survives_an_empty_store(tmp_path, monkeypatch):
-    monkeypatch.setattr(snapshot, "_RAG_DIR", tmp_path / "nope")
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path / "nope"))
     ov = snapshot.sndk_memory_overview()
     assert ov["days"] == [] and ov["slices_total"] == 0 and ov["terrain"] is None
 

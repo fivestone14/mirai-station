@@ -13,8 +13,7 @@ import pytest
 
 import sndk_bars as SB
 import sndk_read as SR
-from test_read import mkrow, T0
-from test_scene_v2 import rich_row
+from synth import reader_row as mkrow, T0
 
 DAY = T0.date().isoformat()
 
@@ -69,14 +68,39 @@ def test_a_torn_line_is_skipped_and_a_later_duplicate_wins():
     assert SB.read_bars("1999-01-01") == []
 
 
-def test_the_run_survives_a_failed_fetch(monkeypatch):
-    def boom(day, ticker=SB.TICKER):
-        raise RuntimeError("schwab down")
-    monkeypatch.setattr(SB, "fetch_session", boom)
+def _broker_down(day, ticker=SB.TICKER):
+    raise RuntimeError("schwab down")
+
+
+def test_the_run_survives_a_failed_fetch_on_a_day_with_no_bars(monkeypatch):
+    """A failed run before any minute has landed records the error beside a log
+    that holds nothing, and creates no day file."""
+    monkeypatch.setattr(SB, "fetch_session", _broker_down)
     assert SB.run(DAY, now=T0) == 1
     h = json.loads(SB.health_path().read_text())
     assert h["appended"] == 0 and "schwab down" in h["error"]
+    assert h["bars_on_disk"] == 0 and h["last_bar_at"] is None
     assert not SB.bars_path(DAY).exists()
+
+
+def test_a_failed_run_still_says_how_far_the_log_reaches(monkeypatch):
+    """health.json is rewritten on every run. A failed run keeps every key a good
+    run writes, the count and the last bar read off the day file, and adds the
+    error, so the dashboard and the health check can still tell how stale the
+    log is."""
+    start = T0 - timedelta(minutes=30)
+    monkeypatch.setattr(SB, "fetch_session", lambda day, ticker=SB.TICKER: _session(start, 20))
+    assert SB.run(DAY, now=T0 - timedelta(minutes=5)) == 0
+    good = json.loads(SB.health_path().read_text())
+
+    monkeypatch.setattr(SB, "fetch_session", _broker_down)
+    assert SB.run(DAY, now=T0) == 1
+    failed = json.loads(SB.health_path().read_text())
+    on_disk = SB.read_bars(DAY)
+    assert set(good) < set(failed) and "schwab down" in failed["error"]
+    assert failed["ts"] == T0.isoformat() and failed["appended"] == 0
+    assert failed["bars_on_disk"] == good["bars_on_disk"] == len(on_disk) == 20
+    assert failed["last_bar_at"] == good["last_bar_at"] == on_disk[-1]["ts"]
 
 
 # --- the reader ----------------------------------------------------------------

@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 import pytest
 
 import sndk_side as SS
-from test_read import T0
+from synth import T0
 
 DAY = T0.date().isoformat()
 OPEN_AT = datetime.combine(T0.date(), SS.SESSION_OPEN, tzinfo=SS._ET)
@@ -484,7 +484,7 @@ def test_the_packet_lands_in_its_own_file_and_the_row_only_points_at_it(
     import json
     import sndk_bars as SB
     import sndk_read as SR
-    from test_read_once import NOW, _diary_row
+    from synth import NOW, _diary_row
 
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
@@ -501,7 +501,7 @@ def test_the_packet_lands_in_its_own_file_and_the_row_only_points_at_it(
 
     # the reading model is not what this test is about; the suite-wide guard
     # in conftest makes a real call fail, so stub it here
-    from test_read_once import _v2_reply
+    from synth import _v2_reply
     monkeypatch.setattr(SR, "call_the_model",
                         lambda *a, **k: (_v2_reply(), None, 1.0, None))
     SR.read_once(now=NOW)
@@ -528,7 +528,7 @@ def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
     has to land — a silent extra must never be able to take the record down."""
     import json
     import sndk_read as SR
-    from test_read_once import NOW, _diary_row
+    from synth import NOW, _diary_row
 
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
@@ -544,7 +544,7 @@ def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
 
     # the reading model is not what this test is about; the suite-wide guard
     # in conftest makes a real call fail, so stub it here
-    from test_read_once import _v2_reply
+    from synth import _v2_reply
     monkeypatch.setattr(SR, "call_the_model",
                         lambda *a, **k: (_v2_reply(), None, 1.0, None))
     SR.read_once(now=NOW)
@@ -564,7 +564,7 @@ def test_a_quiet_row_does_not_carry_the_packet(tmp_path, monkeypatch):
     import json
     import sndk_bars as SB
     import sndk_read as SR
-    from test_read_once import NOW, _diary_row
+    from synth import NOW, _diary_row
 
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)

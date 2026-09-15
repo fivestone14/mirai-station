@@ -15,16 +15,18 @@ set -e
 cd "${MIRAI_STATION_ROOT}/runtime"
 
 # Market-hours gate (same authoritative check the left-eye runner trusts).
-# Only a CLEAN "not live" (exit 1) skips quietly — a broken venv/import (any
+# Only a CLEAN "not live" (exit 3) skips quietly — a broken venv/import (any
 # other exit code) must scream in the launchd log, not read as "market closed".
+# Not exit 1: Python itself exits 1 on any uncaught exception, so a failed
+# import used to land on the quiet branch.
 set +e
-"${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 1)"
+"${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 3)"
 GATE_RC=$?
 set -e
-if [[ $GATE_RC -eq 1 ]]; then
+if [[ $GATE_RC -eq 3 ]]; then
   exit 0
 elif [[ $GATE_RC -ne 0 ]]; then
-  log "lob-collector: market gate FAILED (rc=${GATE_RC}) — check venv/imports"
+  log "lob-collector: market gate FAILED (rc=${GATE_RC}) — check venv/imports" >&2
   exit 1
 fi
 

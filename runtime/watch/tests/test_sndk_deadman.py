@@ -1,4 +1,4 @@
-"""The SNDK scanner's dead-man's switch.
+"""The dead-man's switch for the SNDK scanner and its reader.
 
 A watchdog nobody has watched fire is indistinguishable from one that cannot
 fire — that is the whole reason this module exists, and it applies to the module
@@ -22,25 +22,41 @@ LIVE = datetime(2026, 8, 27, 11, 4, tzinfo=ET)
 
 @pytest.fixture
 def desk(tmp_path):
-    """A state dir, a sent-message list, and a writer for today's diary."""
+    """A state dir, a sent-message list, and writers for today's diary and reads."""
     (tmp_path / "sndk_reversion").mkdir(parents=True)
     (tmp_path / "sndk_reads").mkdir(parents=True)
     sent: list = []
 
-    def write(*rows):
-        p = tmp_path / "sndk_reversion" / f"{LIVE.date().isoformat()}.jsonl"
+    def _lines(subdir, rows):
+        p = tmp_path / subdir / f"{LIVE.date().isoformat()}.jsonl"
         p.write_text("".join(
             (r if isinstance(r, str) else json.dumps(r)) + "\n" for r in rows))
+
+    def write(*rows):
+        _lines("sndk_reversion", rows)
+
+    def read(*rows):
+        _lines("sndk_reads", rows)
 
     def row(minutes_ago, **kw):
         return {"ticker": "SNDK", "spot": 1500.0,
                 "ts": (LIVE - timedelta(minutes=minutes_ago)).isoformat(), **kw}
 
+    def read_row(minutes_ago, **kw):
+        return {"ts": (LIVE - timedelta(minutes=minutes_ago)).isoformat(),
+                "wake": "quiet", "error": None, **kw}
+
+    def scans(oldest, newest=1.0):
+        """A healthy scanner: a row every two minutes from `oldest` minutes ago until `newest`."""
+        return [row(oldest - 2 * i) for i in range(int((oldest - newest) // 2) + 1)]
+
     def run(now=LIVE, **kw):
         return D.run(now, state_dir=tmp_path, channel=sent.append, **kw)
 
     return type("Desk", (), {"sent": sent, "write": staticmethod(write),
-                             "row": staticmethod(row), "run": staticmethod(run),
+                             "read": staticmethod(read), "row": staticmethod(row),
+                             "read_row": staticmethod(read_row),
+                             "scans": staticmethod(scans), "run": staticmethod(run),
                              "dir": tmp_path})
 
 
@@ -214,3 +230,110 @@ def test_test_fire_reports_whether_it_actually_left_the_machine(desk):
     out = D.run(LIVE, state_dir=desk.dir, channel=dead, test_fire=True)
     assert out["delivered"] is False and out["paged"] == 0 and out["error"]
     assert desk.run(test_fire=True)["delivered"] is True
+
+
+# --- the reader -------------------------------------------------------------------
+# The scanner can be alive while the reader writes nothing — a read that crashes, a
+# job that never loaded — and every screen then shows a reading that stopped while
+# the numbers under it keep moving. The reader is judged only while the scanner is
+# alive: a reader with no fresh rows to read is the scanner's outage.
+
+def test_a_reader_keeping_up_says_nothing(desk):
+    desk.write(*desk.scans(40))
+    desk.read(desk.read_row(D.READER_SILENT_MIN - 1))
+    out = desk.run()
+    assert out["reader"]["alive"] is True and desk.sent == []
+
+
+def test_a_silent_reader_pages_once_and_names_when_it_stopped(desk):
+    """Rows keep landing in the diary and the read file stops."""
+    stopped = D.READER_SILENT_MIN + 1
+    desk.write(*desk.scans(40))
+    desk.read(desk.read_row(stopped + 2), desk.read_row(stopped))
+    out = desk.run()
+    assert out["alive"] is True and out["reader"]["alive"] is False
+    assert out["paged"] == 1 and "reader" in desk.sent[0]
+    assert f"{LIVE - timedelta(minutes=stopped):%H:%M}" in desk.sent[0]
+    # a dead afternoon costs one notification, not one every five minutes
+    assert desk.run()["paged"] == 0 and len(desk.sent) == 1
+
+
+def test_a_reader_that_never_wrote_is_paged_once_the_scanner_outlasts_its_ceiling(desk):
+    """The reader writes nothing before the scanner's first row, so its ceiling runs from that row."""
+    desk.write(*desk.scans(D.READER_SILENT_MIN - 1))
+    assert desk.run()["paged"] == 0
+    desk.write(*desk.scans(D.READER_SILENT_MIN + 1))
+    out = desk.run()
+    assert out["reader"]["alive"] is False and out["paged"] == 1
+    assert "no read row" in desk.sent[0]
+
+
+def test_a_silent_scanner_is_one_page_not_a_second_for_the_reader(desk):
+    """Both files stopped at 10:23. The scanner is the root cause, and one outage is one page."""
+    desk.write(desk.row(41))
+    desk.read(desk.read_row(41))
+    out = desk.run()
+    assert out["reason"] == "silent" and out["reader"] is None
+    assert len(desk.sent) == 1 and "scanner" in desk.sent[0]
+
+
+def test_the_reader_gets_its_ceiling_again_after_the_scanner_comes_back(desk):
+    """Both went down at 10:23 and the scanner is back. Until the reader's ceiling has passed
+    since the scanner's return, the reader has missed nothing it could have read."""
+    desk.write(desk.row(41), *desk.scans(D.READER_SILENT_MIN - 1))
+    desk.read(desk.read_row(41))
+    out = desk.run()
+    assert out["alive"] is True and out["reader"]["alive"] is True and desk.sent == []
+    desk.write(desk.row(41), *desk.scans(D.READER_SILENT_MIN + 1))
+    out = desk.run()
+    assert out["reader"]["alive"] is False and out["paged"] == 1
+
+
+def test_reader_recovery_is_paged_once_and_re_arms_for_a_second_outage(desk):
+    stopped = D.READER_SILENT_MIN + 1
+    desk.write(*desk.scans(40))
+    desk.read(desk.read_row(stopped))
+    desk.run()                                        # outage → paged
+    desk.read(desk.read_row(stopped), desk.read_row(1))
+    out = desk.run()                                  # rows again → recovery
+    assert out["reader"]["alive"] is True and out["paged"] == 1
+    assert desk.sent[1].startswith("🟢") and "reader" in desk.sent[1]
+    assert desk.run()["paged"] == 0                   # recovers exactly once
+    desk.read(desk.read_row(stopped))
+    assert desk.run()["paged"] == 1 and desk.sent[2].startswith("🔴")
+
+
+def test_the_scanner_coming_back_is_not_the_reader_coming_back(desk):
+    """The reader was paged silent, then the scanner went down and returned. Its
+    return restarts the reader's allowance, but it is not a read row, so no
+    reader recovery is announced on it."""
+    stopped = D.READER_SILENT_MIN + 1
+    desk.write(*desk.scans(40))
+    desk.read(desk.read_row(stopped))
+    desk.run()
+    desk.write(desk.row(41), desk.row(2))
+    out = desk.run()
+    assert out["reader"]["alive"] is True and out["paged"] == 0
+    assert len(desk.sent) == 1
+
+
+def test_a_forced_read_is_not_the_reader(desk):
+    """A `--force` read is a human at the keyboard, not the reader's job running."""
+    desk.write(*desk.scans(40))
+    desk.read(desk.read_row(D.READER_SILENT_MIN + 1), desk.read_row(1, forced=True))
+    assert desk.run()["reader"]["alive"] is False
+
+
+def test_the_reader_ceiling_is_the_scanners_plus_the_longest_read():
+    """A read row is stamped when the read starts and lands when it ends, so the
+    reader's ceiling is the scanner's plus the longest one read may run: the
+    model call to its timeout, then the semantic guard to its own."""
+    import sys
+    from pathlib import Path
+    skill = Path(__file__).resolve().parents[3] / "skills" / "sndk-pro"
+    sys.path.insert(0, str(skill))
+    import sndk_read
+    longest_s = (max(sndk_read.CALL_TIMEOUT_S, sndk_read.CALL_TIMEOUT_STRIKES_S)
+                 + sndk_read.SEMANTIC_GUARD_TIMEOUT_S)
+    assert D.READ_MAX_RUN_S == longest_s
+    assert D.READER_SILENT_MIN == D.SNDK_SILENT_MIN + D.READ_MAX_RUN_S / 60

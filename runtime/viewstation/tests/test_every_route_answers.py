@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+import pipeline
 import server
 import snapshot
 import gex_polarity_ab      # on sys.path once snapshot is imported
@@ -31,6 +32,7 @@ import lefteye_fetcher
 
 DAY = "2026-08-19"
 UNLOCK = "user=will"
+_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 PAGES = ["/", "/index.html", "/m", "/m/", "/m/index.html"]
 
@@ -78,15 +80,13 @@ def state(tmp_path, monkeypatch):
     """An empty state dir, and every reader behind a route pointed at it."""
     root = tmp_path / "state"
     root.mkdir()
-    # The station has no single state root. The SNDK readers take
-    # MIRAI_STATE_DIR per call; snapshot's own SNDK readers, the SPX modules and
-    # book_flow derive theirs from where their file sits.
+    # The station has no single state root. Every SNDK reader (sndk_read,
+    # snapshot's own, the pipeline map and the raw explorer) takes
+    # MIRAI_STATE_DIR per call; snapshot's SPX session finder and spot tape, the
+    # SPX modules and book_flow derive theirs from where their file sits.
     monkeypatch.setenv("MIRAI_STATE_DIR", str(root))
-    monkeypatch.setattr(snapshot, "STATE_DIR", root)
     monkeypatch.setattr(snapshot, "REVERSION_DIR", root / "reversion")
-    monkeypatch.setattr(snapshot, "_RAG_DIR", root / "sndk_rag")
     monkeypatch.setattr(snapshot, "_TAPE_DIR", root / "sndk_tape")
-    monkeypatch.setitem(server.RAW_ROOTS, "state", root)
     skill_dir = tmp_path / "skills" / "mirai-left-eye"     # their state is SKILL_DIR.parent.parent / "state"
     monkeypatch.setattr(snapshot.rev, "SKILL_DIR", skill_dir)
     monkeypatch.setattr(gex_polarity_ab, "SKILL_DIR", skill_dir)
@@ -111,12 +111,11 @@ def _write_jsonl(path, rows):
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
 
-@pytest.fixture
-def session(state):
+def _record_session(state, day):
     """One ordinary recorded SNDK session: scans every two minutes, the minute
-    bars under them, one reading, and the equity book the LOB board replays —
-    each in the shape its writer puts on disk."""
-    opened = datetime.fromisoformat(f"{DAY}T09:30:00-04:00")
+    bars under them, one reading and its memory slice, and the equity book the
+    LOB board replays — each in the shape its writer puts on disk."""
+    opened = datetime.fromisoformat(f"{day}T09:30:00-04:00")
     expiry = (opened + timedelta(days=2)).date().isoformat()
     scans = []
     for i in range(6):
@@ -131,23 +130,43 @@ def session(state):
             },
             "meta": {"expiries": [{"date": expiry, "dte": 2}], "book_asof": t.isoformat()},
         })
-    _write_jsonl(state / "sndk_reversion" / f"{DAY}.jsonl", scans)
-    _write_jsonl(state / "sndk_bars" / f"{DAY}.jsonl", [
+    _write_jsonl(state / "sndk_reversion" / f"{day}.jsonl", scans)
+    _write_jsonl(state / "sndk_bars" / f"{day}.jsonl", [
         {"ts": (opened + timedelta(minutes=i)).isoformat(),
          "open": 1580.0, "high": 1581.0, "low": 1579.0, "close": 1580.0, "volume": 1000.0}
         for i in range(30)])
     read_at = (opened + timedelta(minutes=5)).isoformat()
-    _write_jsonl(state / "sndk_reads" / f"{DAY}.jsonl", [
+    _write_jsonl(state / "sndk_reads" / f"{day}.jsonl", [
         {"ts": read_at, "wake": "first read", "wall_s": 4.5, "quiet": False, "error": None,
          "spot": 1582.0, "reading": {"read": "1600 holds the most contracts.", "points": []},
          "reading_ts": read_at}])
+    _write_jsonl(state / "sndk_rag" / "slices" / f"{day}.jsonl", [
+        {"kind": "slice", "rag_v": 2, "narrative": "1600 holds the most contracts.",
+         "meta": {"date": day, "time": "09:35", "quiet": False, "notable_count": 1}}])
     book = []
     for k in range(5):
         ts_ms = int((opened + timedelta(minutes=k, seconds=5)).timestamp() * 1000)
         book += [{"ts_ms": ts_ms, "symbol": "SNDK", "side": "bid", "price": 1579.5, "size": 100 + k},
                  {"ts_ms": ts_ms, "symbol": "SNDK", "side": "ask", "price": 1580.5, "size": 90 + k}]
-    _write_jsonl(state / "flow" / "SNDK" / DAY / "book.jsonl", book)
+    _write_jsonl(state / "flow" / "SNDK" / day / "book.jsonl", book)
+
+
+@pytest.fixture
+def session(state):
+    """DAY, recorded in the state dir every route is pointed at."""
+    _record_session(state, DAY)
     return state
+
+
+def _map_files(state, day):
+    """A file named for `day` under each state folder the pipeline map searches."""
+    for rel in ("gex_fills/{day}.json", "reversion/polarity-{day}.json"):
+        path = state / rel.format(day=day)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}")
+    for rel in ("reversion/{day}.jsonl", "market_expectation/learning-{day}.jsonl",
+                "logs/watch-pushes-{day}.jsonl"):
+        _write_jsonl(state / rel.format(day=day), [{"ts": f"{day}T10:00:00-04:00"}])
 
 
 def _path(route, *queries):
@@ -271,11 +290,13 @@ def test_the_snapshot_is_really_built_not_its_fallbacks(station, session):
 
 
 def test_the_pipeline_map_is_really_built(station, session):
-    """/api/pipeline is build_pipeline's stage map: stages of modules, each pointing at data the raw explorer can open."""
+    """/api/pipeline is build_pipeline's stage map: stages of modules, each pointing at data the raw explorer opens from the same state folder."""
+    _map_files(session, DAY)
     stages = _clean_json(*_get(station, "/api/pipeline"), "/api/pipeline")["stages"]
     assert isinstance(stages, list) and stages
     ids = [s["id"] for s in stages]
     assert len(ids) == len(set(ids)), ids
+    found = []
     for stage in stages:
         assert {"id", "title", "what", "modules"} <= set(stage), stage.get("id")
         assert stage["modules"], stage["id"]
@@ -286,6 +307,66 @@ def test_the_pipeline_map_is_really_built(station, session):
                 assert ref["kind"] in ("file", "info"), ref
                 if ref["kind"] == "file":
                     assert ref["root"] in server.RAW_ROOTS and ref["path"], ref
+                    if ref["root"] == "state" and DAY in ref["path"]:
+                        found.append(ref["path"])
+    assert found, "the map points at none of the files in the state folder it was given"
+    for rel in found:
+        _clean_json(*_get(station, _path("/api/raw/file", f"root=state&path={rel}")), rel)
+
+
+def _sessions_shown(port, recorded):
+    """{route: which of the `recorded` days it offers or opens} for every
+    viewstation reader of SNDK state. The payload reads through sndk_read and is
+    checked on its own."""
+    def doc(route, query=""):
+        return _clean_json(*_get(port, _path(route, query)), route)
+
+    def opens(day):
+        body = _get(port, _path("/api/raw/file", f"root=state&path=sndk_reversion/{day}.jsonl"))[2]
+        return "error" not in json.loads(body)
+
+    refs = [r["path"] for s in doc("/api/pipeline")["stages"] for m in s["modules"]
+            for r in m["data"] if r["kind"] == "file" and r["root"] == "state"]
+    return {
+        "/api/sndk/thread/days": doc("/api/sndk/thread/days")["days"],
+        "/api/sndk/thread": [doc("/api/sndk/thread")["day"]],
+        "/api/sndk/pipeline/days": doc("/api/sndk/pipeline/days", UNLOCK)["days"],
+        "/api/sndk/pipeline": [doc("/api/sndk/pipeline", UNLOCK)["day"]],
+        "/api/sndk/memory": [d["date"] for d in doc("/api/sndk/memory", f"kind=overview&{UNLOCK}")["days"]],
+        "/api/raw/index": sorted({i["rel"].split("/")[1].split(".")[0] for i in doc("/api/raw/index")["state"]
+                                  if i["rel"].startswith("sndk_reversion/")}),
+        "/api/raw/file": [day for day in sorted(recorded) if opens(day)],
+        "/api/pipeline": sorted({m.group() for p in refs if (m := _ISO_DAY.search(p))}),
+    }
+
+
+def test_with_mirai_state_dir_set_every_sndk_reader_reads_only_that_folder(station, session, tmp_path, monkeypatch):
+    """MIRAI_STATE_DIR names the one state folder: every SNDK route, the pipeline map and the raw explorer read it, and a newer session in the install's own folder reaches none of them, so one page never shows two folders."""
+    newer = (datetime.fromisoformat(DAY) + timedelta(days=7)).date().isoformat()
+    install = tmp_path / "install-state"
+    _record_session(install, newer)
+    _map_files(install, newer)
+    _map_files(session, DAY)
+    monkeypatch.setattr(snapshot, "STATE_DIR", install)
+    monkeypatch.setattr(pipeline, "STATE_DIR", install)
+    monkeypatch.setitem(server.RAW_ROOTS, "state", install)
+
+    shown = _sessions_shown(station, recorded=(DAY, newer))
+    assert shown == dict.fromkeys(shown, [DAY])
+    payload = _clean_json(*_get(station, _path("/api/sndk/payload", UNLOCK)), "/api/sndk/payload")
+    assert payload["session"] == DAY
+
+
+def test_without_mirai_state_dir_the_viewstation_reads_the_install_state_folder(station, session, monkeypatch):
+    """Unset, as the live station runs, the viewstation's SNDK readers, the pipeline map and the raw explorer all read the install's own state folder."""
+    monkeypatch.delenv("MIRAI_STATE_DIR")
+    _map_files(session, DAY)
+    monkeypatch.setattr(snapshot, "STATE_DIR", session)
+    monkeypatch.setattr(pipeline, "STATE_DIR", session)
+    monkeypatch.setitem(server.RAW_ROOTS, "state", session)
+
+    shown = _sessions_shown(station, recorded=(DAY,))
+    assert shown == dict.fromkeys(shown, [DAY])
 
 
 @pytest.mark.parametrize("route", EVERY_ROUTE)

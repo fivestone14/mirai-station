@@ -1,8 +1,8 @@
 """Live health check for the running SNDK Pro station: the morning health review, automated.
 
 Every check below holds the station to a limit its own code states (the dead-man's
-silence ceiling and first-row deadline, the reader's stale-book and minute-log
-limits, each job's plist schedule, and "the dashboard serves the code on disk").
+silence ceiling, first-row deadline and reader ceiling, the reader's stale-book and
+minute-log limits, each job's plist schedule, and "the dashboard serves the code on disk").
 The check functions and their unit tests always run. The live tests only read the
 real station (launchd, its state/ directory, GET on 127.0.0.1:8787) and skip unless
 MIRAI_LIVE=1:
@@ -82,6 +82,7 @@ def station_limits(root: Path) -> dict:
     reader = Path(root) / "skills" / "sndk-pro" / "sndk_read.py"
     return {"silent_min": code_limit(deadman, "SNDK_SILENT_MIN"),
             "first_row_by_min": code_limit(deadman, "FIRST_ROW_BY_MIN"),
+            "reader_silent_min": code_limit(deadman, "READER_SILENT_MIN"),
             "book_age_min": code_limit(reader, "MAX_BOOK_AGE_MIN"),
             "bar_record_min": code_limit(reader, "BAR_RECORD_STALE_MIN")}
 
@@ -223,18 +224,66 @@ def reader_clean(reads_path: Path) -> tuple[bool | None, str]:
     return True, f"all {len(rows)} reader rows today have no error"
 
 
+def _newest_read(reads_path: Path) -> datetime | None:
+    """The newest scheduled reader row's time; a --force read is a human's, not the reader's."""
+    for row in reversed(_rows(reads_path)):
+        ts = _parse_ts(row.get("ts"))
+        if ts is not None and not row.get("forced"):
+            return ts
+    return None
+
+
+def _scanner_run_began(diary_path: Path, ceiling_min: float) -> datetime | None:
+    """When the scanner's current run of rows began: its oldest row with no gap past the silence ceiling since."""
+    began = None
+    for row in reversed(_rows(diary_path)):
+        ts = _parse_ts(row.get("ts"))
+        if ts is None or row.get("ticker") != "SNDK" or (row.get("meta") or {}).get("forced"):
+            continue
+        if began is not None and (began - ts).total_seconds() / 60.0 > ceiling_min:
+            break
+        began = ts
+    return began
+
+
+def reader_fresh(reads_path: Path, diary_path: Path, now: datetime, ceiling_min: float,
+                 scanner_ceiling_min: float) -> tuple[bool | None, str]:
+    """While the scanner writes, the reader's newest row is no older than the dead-man's reader ceiling, counted from when the scanner's current run of rows began if that is later."""
+    closed = _closed(now)
+    if closed:
+        return None, closed
+    now = now.astimezone(ET)
+    _, newest = _newest_scan(diary_path)
+    if newest is None or newest < _open_at(now) or (now - newest).total_seconds() / 60.0 > scanner_ceiling_min:
+        return None, "skipped, the scanner is not writing rows, so the reader has nothing new to read"
+    # the dead-man's own rule (sndk_deadman._run_began): a reader is not late for
+    # rows the scanner never wrote
+    began = _scanner_run_began(diary_path, scanner_ceiling_min)
+    read = _newest_read(reads_path)
+    since = max(read, began) if read else began
+    age = (now - since).total_seconds() / 60.0
+    if age > ceiling_min:
+        last = f"its newest row is from {_hhmm(read)}" if read else "it has written no row today"
+        return False, (f"the reader is {age:.1f} min behind: {last}, while the scanner has written rows "
+                       f"since {_hhmm(began)}; the dead-man's reader ceiling is {ceiling_min:.1f} min")
+    return True, f"the reader is {age:.1f} min behind the scanner (ceiling {ceiling_min:.1f} min)"
+
+
 def deadman_quiet(state_path: Path, today: str) -> tuple[bool | None, str]:
-    """The dead-man's switch holds no open outage for today: down_since is empty."""
+    """The dead-man's switch holds no open outage for today: down_since and reader_down_since are empty."""
     try:
         state = json.loads(Path(state_path).read_text())
     except (OSError, ValueError):
         state = None
     if not isinstance(state, dict) or state.get("date") != today:
         return None, f"skipped, the dead-man has written no state for {today} yet"
-    if state.get("down_since"):
+    outages = [f"the {who} down since {_hhmm(state[key])}"
+               for who, key in (("scanner", "down_since"), ("reader", "reader_down_since"))
+               if state.get(key)]
+    if outages:
         paged = ", ".join(state.get("paged") or []) or "nothing"
-        return False, (f"the dead-man's switch has had the scanner down since "
-                       f"{_hhmm(state['down_since'])} and has paged: {paged}")
+        return False, (f"the dead-man's switch has had {' and '.join(outages)} "
+                       f"and has paged: {paged}")
     return True, "the dead-man's switch holds no open outage today"
 
 
@@ -330,6 +379,7 @@ LIVE = datetime(2026, 8, 27, 11, 4, tzinfo=ET)          # a Thursday, mid-sessio
 WEEKEND = datetime(2026, 8, 29, 11, 4, tzinfo=ET)
 AFTER_CLOSE = datetime(2026, 8, 27, 17, 30, tzinfo=ET)
 SILENT_MIN, FIRST_ROW_BY_MIN, BOOK_MIN, BARS_MIN = 6.0, 9 * 60 + 35, 6.0, 4
+READER_MIN = 9.5
 
 
 def _write(path: Path, *rows) -> Path:
@@ -438,6 +488,7 @@ def test_freshness_checks_skip_when_the_market_is_closed(tmp_path, now):
     _write(tmp_path / "health.json", {"error": "boom"})
     for ok, why in (scanner_fresh(diary, now, SILENT_MIN, FIRST_ROW_BY_MIN),
                     book_fresh(diary, now, BOOK_MIN),
+                    reader_fresh(tmp_path / "missing.jsonl", diary, now, READER_MIN, SILENT_MIN),
                     bars_fresh(tmp_path, now, BARS_MIN)):
         assert ok is None and why.startswith("skipped, market closed")
 
@@ -470,6 +521,59 @@ def test_deadman_quiet_fails_when_down_since_is_set(tmp_path):
                                          "down_since": "2026-08-27T11:37:18-04:00"})
     ok, why = deadman_quiet(state, "2026-08-27")
     assert ok is False and "since 11:37 ET" in why and "silent" in why
+
+
+def test_deadman_quiet_fails_when_the_reader_is_down(tmp_path):
+    state = _write(tmp_path / "s.json", {"date": "2026-08-27", "paged": ["reader_silent"],
+                                         "down_since": None,
+                                         "reader_down_since": "2026-08-27T10:50:00-04:00"})
+    ok, why = deadman_quiet(state, "2026-08-27")
+    assert ok is False and "reader down since 10:50 ET" in why and "reader_silent" in why
+
+
+def _read(now: datetime, minutes_ago: float, **kw) -> dict:
+    return {"ts": (now - timedelta(minutes=minutes_ago)).isoformat(), "error": None, **kw}
+
+
+def _scans(now: datetime, oldest: float, newest: float = 1.0) -> list:
+    return [_scan(now, oldest - 2 * i) for i in range(int((oldest - newest) // 2) + 1)]
+
+
+def test_reader_fresh_passes_a_reader_inside_the_ceiling(tmp_path):
+    diary = _write(tmp_path / "d.jsonl", *_scans(LIVE, 40))
+    reads = _write(tmp_path / "r.jsonl", _read(LIVE, READER_MIN - 1), '{"ts": "2026-08')
+    ok, why = reader_fresh(reads, diary, LIVE, READER_MIN, SILENT_MIN)
+    assert ok is True and f"{READER_MIN - 1:.1f} min behind" in why
+
+
+def test_reader_fresh_fails_a_reader_that_stopped_while_the_scanner_writes(tmp_path):
+    diary = _write(tmp_path / "d.jsonl", *_scans(LIVE, 40))
+    reads = _write(tmp_path / "r.jsonl", _read(LIVE, 30), _read(LIVE, 20), _read(LIVE, 1, forced=True))
+    ok, why = reader_fresh(reads, diary, LIVE, READER_MIN, SILENT_MIN)
+    assert ok is False and "20.0 min behind" in why and "10:44 ET" in why
+
+
+def test_reader_fresh_fails_a_reader_that_never_wrote_once_the_scanner_outlasts_the_ceiling(tmp_path):
+    missing = tmp_path / "missing.jsonl"
+    young = _write(tmp_path / "young.jsonl", *_scans(LIVE, READER_MIN - 1))
+    assert reader_fresh(missing, young, LIVE, READER_MIN, SILENT_MIN)[0] is True
+    old = _write(tmp_path / "old.jsonl", *_scans(LIVE, READER_MIN + 1))
+    ok, why = reader_fresh(missing, old, LIVE, READER_MIN, SILENT_MIN)
+    assert ok is False and "no row today" in why
+
+
+def test_reader_fresh_counts_from_the_scanners_return_after_an_outage(tmp_path):
+    reads = _write(tmp_path / "r.jsonl", _read(LIVE, 41))
+    back = _write(tmp_path / "back.jsonl", _scan(LIVE, 41), *_scans(LIVE, READER_MIN - 1))
+    assert reader_fresh(reads, back, LIVE, READER_MIN, SILENT_MIN)[0] is True
+    long_back = _write(tmp_path / "long.jsonl", _scan(LIVE, 41), *_scans(LIVE, READER_MIN + 1))
+    assert reader_fresh(reads, long_back, LIVE, READER_MIN, SILENT_MIN)[0] is False
+
+
+def test_reader_fresh_leaves_a_silent_scanner_to_the_scanner_check(tmp_path):
+    diary = _write(tmp_path / "d.jsonl", _scan(LIVE, 41))
+    ok, why = reader_fresh(tmp_path / "missing.jsonl", diary, LIVE, READER_MIN, SILENT_MIN)
+    assert ok is None and why.startswith("skipped")
 
 
 def test_deadman_quiet_skips_an_outage_left_over_from_another_day(tmp_path):
@@ -699,6 +803,14 @@ def test_live_minute_bars_are_fresh_with_no_error(station, limits):
     _hold(bars_fresh(bars, station.now, limits["bar_record_min"]),
           f"cat {bars}/health.json; tail -n 1 {bars}/{station.day}.jsonl; "
           f"tail -n 5 {_log(station, 'com.mirai-station.sndk-bars', 'stdout')}")
+
+
+@live
+def test_live_reader_keeps_up_with_the_scanner(station, limits):
+    reads = station.state / "sndk_reads" / f"{station.day}.jsonl"
+    diary = station.state / "sndk_reversion" / f"{station.day}.jsonl"
+    _hold(reader_fresh(reads, diary, station.now, limits["reader_silent_min"], limits["silent_min"]),
+          f"tail -n 1 {reads} | cut -c1-60; tail -n 5 {_log(station, 'com.mirai-station.sndk-read', 'stdout')}")
 
 
 @live

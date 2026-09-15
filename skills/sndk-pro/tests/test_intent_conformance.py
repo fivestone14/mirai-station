@@ -27,9 +27,11 @@ import sndk_board as B
 import sndk_feed
 import sndk_read as SR
 import synth
-from test_board import mkrow, mkrows, flat_bars, T0
-from test_carried_volume import write_prior, at, fronted, DAY as CARRIED_DAY, YEST
-from test_scene_v2 import _every_scene_shape
+from synth import board_row as mkrow, mkrows, flat_bars, T0
+from synth import write_prior, at, fronted, DAY as CARRIED_DAY, YEST
+from synth import _every_scene_shape
+# the real model calls, for the no-tools test that stubs the subprocess under them
+from synth import _REAL_CALL_THE_MODEL, _REAL_CALL_THE_MODEL_V2
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[3]
@@ -37,11 +39,6 @@ README = (ROOT / "skills" / "sndk-pro" / "README.md").read_text()
 INVENTORY = (ROOT / "docs" / "sndk-payload-inventory.md").read_text()
 PIPELINE = (ROOT / "runtime" / "viewstation" / "static" / "pipeline.html").read_text()
 STATION = (ROOT / "runtime" / "viewstation" / "static" / "index.html").read_text()
-
-# conftest swaps both model calls for a guard; the no-tools test needs the real
-# argv builders, with the subprocess under them stubbed
-_REAL_CALL_THE_MODEL = SR.call_the_model
-_REAL_CALL_THE_MODEL_V2 = B.call_the_model_v2
 
 
 # ---------------------------------------------------------------- the documents
@@ -54,8 +51,9 @@ def _schema_rows(name):
     return [(int(d), p, t, w) for d, p, t, w in re.findall(r"\[(\d),%s,%s,%s\]" % ((_JS_STR,) * 3), body)]
 
 
-def _names(prop):
-    """The field names one schema cell lists: 'a.b · c (+_at)' is a.b and a.c."""
+def _names(prop, suffixed=True):
+    """The field names one schema cell lists: 'a.b · c (+_at)' is a.b, a.c,
+    a.b_at and a.c_at. A suffix counts only where the cell spells it out."""
     out, parent = [], None
     for part in prop.split(" · "):
         part = re.sub(r"\(.*?\)", "", part).replace("[]", "").strip()
@@ -66,12 +64,15 @@ def _names(prop):
         elif parent:
             part = f"{parent}.{part}"
         out.append(part)
-    return out
+    suffixes = re.findall(r"\+(_[a-z_]+)", prop) if suffixed else []
+    return out + [n + s for n in out for s in suffixes]
 
 
 def _board_schema():
     """What the pipeline map says the Strikes Payload holds, as dotted paths,
-    and what it says the model replies with."""
+    and what it says the model replies with. A depth-0 name is a path from the
+    top of the payload; a deeper row hangs under the row above it, dotted or
+    not, so a field drawn under the wrong block names a path that is not there."""
     paths, reply, parents, in_reply = set(), set(), {}, False
     for depth, prop, _type, _what in _schema_rows("board"):
         if prop.startswith("—"):
@@ -82,18 +83,20 @@ def _board_schema():
             reply.update(names)
             continue
         for n in names:
-            paths.add(n if "." in n or depth == 0 else f"{parents[depth - 1]}.{n}")
+            paths.add(n if depth == 0 else f"{parents[depth - 1]}.{n}")
         if names:
-            parents[depth] = (names[-1] if depth == 0 or "." in names[-1]
-                              else f"{parents[depth - 1]}.{names[-1]}")
+            last = _names(prop, suffixed=False)[-1]
+            parents[depth] = last if depth == 0 else f"{parents[depth - 1]}.{last}"
     return paths, reply
 
 
 def _documented_words():
     """Every identifier the intent sources use for the payload: the README, the
-    inventory, every schema card on the pipeline map, and the rulebook. The
-    inventory's shorthand `up/down_dollars` names both fields."""
-    cards = " ".join(f"{p} {w}" for name in re.findall(r"\bS\.([a-z]+) = \{", PIPELINE)
+    inventory, every schema card on the pipeline map (with the suffixes a cell
+    spells out), and the rulebook. The inventory's shorthand `up/down_dollars`
+    names both fields."""
+    cards = " ".join(f"{p} {w} {' '.join(_names(p))}"
+                     for name in re.findall(r"\bS\.([a-z]+) = \{", PIPELINE)
                      for _, p, _, w in _schema_rows(name))
     text = " ".join((README, INVENTORY, cards, B.DOCTRINE_V2))
     text = re.sub(r"\b([a-z]+)/([a-z]+)(_[a-z_]+)", r"\1\3 \2\3", text)
@@ -120,7 +123,7 @@ def _stores():
         if len(cells) < 7:
             continue
         writer = re.search(r"\b(sndk_[a-z]+|snapshot)(?:\.([a-z_]+))?\b", cells[1])
-        out.append({"file": cells[0], "writer": cells[1],
+        out.append({"file": cells[0], "writer": cells[1], "holds": cells[3], "readers": cells[5],
                     "module": writer.group(1) if writer else None,
                     "function": writer.group(2) if writer else None,
                     "dead": "dead" in cls.split(),
@@ -131,7 +134,8 @@ def _stores():
 
 def _store_pattern(spec):
     """'sndk_rag/slices/<day>.jsonl · summaries.jsonl' — the later names sit in
-    the first name's top folder, and a name without an extension is a stem."""
+    the first name's top folder, every file is named in full, and a name ending
+    in / is the whole folder."""
     pieces = spec.split(" · ")
     top = pieces[0].split("/")[0] + "/" if "/" in pieces[0].strip("/") else ""
     alts = []
@@ -141,8 +145,6 @@ def _store_pattern(spec):
         rx = rx.replace(re.escape("<sha>"), "[0-9a-f]+").replace(r"\*", "[^/]*")
         if rel.endswith("/"):
             rx += ".+"
-        elif "." not in rel.rsplit("/", 1)[-1]:
-            rx += r"(?:\.[a-z]+)?"
         alts.append(rx)
     return re.compile("^(?:%s)$" % "|".join(alts))
 
@@ -258,6 +260,12 @@ def _edge_payloads(tmp_path, monkeypatch):
     morning = mkrows(n=21, start=T0 - timedelta(minutes=30))
     out["no_minute_bars"], _ = B.build_scene_v2(
         morning[-1], morning, SR._ts(morning[-1]) + timedelta(minutes=1), None, SR._ts(morning[10]), [])
+    # the diary records the next weekly, and the chain carried none of it
+    unlisted = mkrows(n=8)
+    for row in unlisted:
+        row["gex_views"].update({"oi_side_by_strike_next": [], "vol_side_by_strike_next": []})
+    out["next_weekly_not_in_chain"], _ = B.build_scene_v2(
+        unlisted[-1], unlisted, SR._ts(unlisted[-1]) + timedelta(minutes=1), None, None, flat_bars(16))
 
     carried = tmp_path / "carried"
     monkeypatch.setenv("MIRAI_STATE_DIR", str(carried))
@@ -307,20 +315,14 @@ def _keys_and_strings(node, keys=None, strings=None):
     return keys, strings
 
 
-def _resolves(node, parts, skips=1):
-    """Whether a dotted path a document names is in `node`. Lists are walked
-    through, and the document may leave out one container on the way: the map
-    writes `breaks_today[].back_inside_at` for `breaks_today.breaks[]...`."""
+def _resolves(node, parts):
+    """Whether a dotted path a document names is in `node`, every container on
+    the way named. Lists are walked through."""
     if not parts:
         return True
     if isinstance(node, list):
-        return any(_resolves(x, parts, skips) for x in node)
-    if not isinstance(node, dict):
-        return False
-    if parts[0] in node and _resolves(node[parts[0]], parts[1:], skips):
-        return True
-    return skips > 0 and any(_resolves(v, parts, skips - 1) for v in node.values()
-                             if isinstance(v, (dict, list)))
+        return any(_resolves(x, parts) for x in node)
+    return isinstance(node, dict) and parts[0] in node and _resolves(node[parts[0]], parts[1:])
 
 
 def _named_nulls(node, prefix=""):
@@ -365,31 +367,16 @@ def test_every_field_the_pipeline_map_places_in_the_payload_is_really_there(tmp_
     assert missing == [], f"the map names fields no payload carries: {missing}"
 
 
-# Fields the Strikes Payload ships that no document names. Each is a gap in the
-# documents, not an exemption: the test below fails as soon as one is
-# documented or stops shipping, so an entry cannot outlive its gap.
-_UNDOCUMENTED_TODAY = {
-    "in_gap",                  # between_frames.shares_traded; the map says "shares traded" in words
-    "path_travelled_sigma",    # between_frames.price; the map says "path travelled" in words
-    "max_age_min",             # freshness_rules.blocks_dropped_this_scan[] on a stale book
-    "unavailable",             # strikes: {"unavailable": "book_too_old"}, named nowhere
-}
-
-
 def test_every_field_the_strikes_payload_ships_is_documented(tmp_path, monkeypatch):
     """The other direction, at every depth: a field name the builder writes
-    must appear in the README, the inventory, a pipeline card or the rulebook.
-    A documented name with a documented unit suffix (`_at`, `_min_ago`) is
-    documented."""
+    must appear, whole, in the README, the inventory, a pipeline card or the
+    rulebook. A unit suffix counts only where a card spells it out for that
+    name, as `(+_at, +_min_ago)`; nothing is excused."""
     words = _documented_words()
-    suffixes = {w for w in words if w.startswith("_")}
     keys = set()
     for payload in _strikes_payloads(tmp_path, monkeypatch).values():
         _keys_and_strings(payload, keys)
-    undocumented = {k for k in keys if k not in words
-                    and not any(k.endswith(s) and k[:-len(s)] in words for s in suffixes)}
-    assert undocumented - _UNDOCUMENTED_TODAY == set(), "fields shipped to the model that no document names"
-    assert _UNDOCUMENTED_TODAY - undocumented == set(), "documented or no longer shipped: take it off the list"
+    assert sorted(keys - words) == [], "fields shipped to the model that no document names"
 
 
 # --------------------------------------------------- the rulebook vs the payload
@@ -436,11 +423,21 @@ def test_the_inventory_names_what_reaches_the_model_and_nothing_it_cut(tmp_path,
     assert cut & keys == set(), "fields the inventory records as cut are shipping again"
 
 
+def _table_field_names(field):
+    """The field names one row of the scene table says ship: everything outside
+    strike-through, parentheses and a trailing ' — ' remark, with the table's
+    shorthands `{call,put}_x` and `a/b_x` read as both names."""
+    text = re.sub(r"\([^()]*\)", "", re.sub(r"~~.*?~~", "", field)).split(" — ")[0].replace("`", "")
+    text = re.sub(r"\{([a-z]+),([a-z]+)\}(_[a-z_]+)", r"\1\3 \2\3", text)
+    text = re.sub(r"\b([a-z]+)/([a-z]+)(_[a-z_]+)", r"\1\3 \2\3", text)
+    return {part for name in re.findall(r"[a-z_][a-z0-9_.]*", text) for part in name.split(".") if part}
+
+
 def _inventory_scene_table():
     """(blocks the legacy scene table lists, names it strikes through or
-    records as removed)."""
+    records as removed, every name it says ships)."""
     table = INVENTORY[INVENTORY.index("## In the scene payload"):INVENTORY.index("**Removed from the payload:**")]
-    blocks, struck = set(), set()
+    blocks, struck, named = set(), set(), set()
     for line in table.splitlines():
         if not line.startswith("| ") or line.startswith(("| Scene field", "|---")):
             continue
@@ -452,24 +449,56 @@ def _inventory_scene_table():
         head = re.search(r"[a-z_]+", re.sub(r"~~.*?~~", "", field))
         if head:
             blocks.add(head.group(0))
+        named |= _table_field_names(field)
     removed = INVENTORY[INVENTORY.index("**Removed from the payload:**"):]
     struck.update(re.findall(r"`([a-z_]+)`", removed[:removed.index("\n\n")]))
-    return blocks, struck
+    return blocks, struck, named
 
 
-def test_the_inventory_and_the_scene_builder_agree_on_the_legacy_scene(tmp_path):
+def _legacy_scene_with_history(state, monkeypatch):
+    """The legacy scene in the states the shared shapes leave out: enough closed
+    sessions on disk for the ranks and the history words, a book re-served from
+    the cache, a heavier wall behind each side's ladder, walls that moved
+    between two books, and the day's first read."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(state))
+    now, rich_row = synth.NOW, synth.rich_row
+    (state / "sndk_reversion").mkdir(parents=True)
+    for back in range(1, SR.PCTL_MIN_SESSIONS + 1):
+        day = now - timedelta(days=back)
+        rows = [rich_row(ts=day - timedelta(minutes=2 * i),
+                         mass=[[1300, 50.0 + back + i], [1100, 30.0], [1200, 10.0]],
+                         meta={"book_asof": (day - timedelta(minutes=4 * (i // 2))).isoformat()})
+                for i in range(8)]
+        (state / "sndk_reversion" / f"{day.date()}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    # three clusters a side over a sub-floor field, the heaviest furthest out
+    net = {k: 0.1 for k in range(1050, 1350, 5)}
+    net.update({1240: 8.0, 1260: 8.0, 1300: 30.0, 1180: -8.0, 1160: -8.0, 1100: -30.0})
+    then = rich_row(ts=now - timedelta(minutes=2), call_wall=1290.0, put_wall=1110.0,
+                    meta={"book_asof": (now - timedelta(minutes=5)).isoformat(),
+                          "book_source": "pull", "chain_spot": 1200.0})
+    row = rich_row(ts=now, call_wall=1310.0, put_wall=1090.0, nbs=sorted([k, v] for k, v in net.items()),
+                   meta={"book_asof": (now - timedelta(minutes=1)).isoformat(), "book_source": "disk_cache",
+                         "cache_age_s": 120.0, "chain_spot": 1200.0,
+                         "expiries": [{"date": (now + timedelta(days=5)).date().isoformat(), "dte": 3}]})
+    rows = [then, row]
+    return SR.build_scene(row, SR.magnet_band(row), [], rows, now,
+                          since_last_read=SR.frame_since_last_read(row, rows, None, "first read", False, now))
+
+
+def test_the_inventory_and_the_scene_builder_agree_on_the_legacy_scene(tmp_path, monkeypatch):
     """The inventory's main table maps the Scene Payload that still feeds the
     wake gate, the frame, the memory slice and the voice desk. Its blocks and
-    the builder's must be the same set, and a name it strikes through must
-    never ship again."""
-    blocks, struck = _inventory_scene_table()
-    scenes = _every_scene_shape(tmp_path)
+    the builder's must be the same set, a name it lists without striking it
+    through must ship, and a name it strikes through must never ship again."""
+    blocks, struck, named = _inventory_scene_table()
+    scenes = _every_scene_shape(tmp_path) + [_legacy_scene_with_history(tmp_path / "history", monkeypatch)]
     shipped = set().union(*(set(s) for s in scenes))
     keys = set()
     for s in scenes:
         _keys_and_strings(s, keys)
     assert shipped - blocks == set(), "blocks the scene ships that the inventory does not list"
     assert blocks - shipped == set(), "blocks the inventory lists that no scene carries"
+    assert sorted(named - keys) == [], "names the inventory lists that no scene carries: cut or strike them"
     assert struck and struck & keys == set(), "names the inventory strikes through are shipping"
 
 
@@ -496,8 +525,7 @@ def _on_audit_event(event, args):
             return
         writing = (set(mode) & set("wax+")) if isinstance(mode, str) else (
             mode is None and isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR))
-        if writing:
-            events.append(("open", os.fsdecode(path), _stack_names()))
+        events.append(("open" if writing else "read", os.fsdecode(path), _stack_names()))
     elif event == "os.rename" and isinstance(args[1], (str, bytes, os.PathLike)):
         events.append(("rename", (os.fsdecode(args[0]), os.fsdecode(args[1])), _stack_names()))
 
@@ -512,9 +540,9 @@ def _stack_names():
 
 @contextmanager
 def _writes_recorded():
-    """Every file opened for writing or renamed into place inside the block,
-    with the functions on the stack at that moment. An audit hook cannot be
-    removed once added, so one is added once and records only in here."""
+    """Every file opened, for writing or reading, or renamed into place inside
+    the block, with the functions on the stack at that moment. An audit hook
+    cannot be removed once added, so one is added once and records only in here."""
     if not _WRITE_LOG["hooked"]:
         sys.addaudithook(_on_audit_event)
         _WRITE_LOG["hooked"] = True
@@ -532,10 +560,20 @@ def _files_written(events, root):
     out = {}
     for kind, paths, stack in events:
         path = paths[1] if kind == "rename" else paths
-        if kind == "open" and path in renamed_away:
+        if kind == "read" or (kind == "open" and path in renamed_away):
             continue
         resolved = Path(path).resolve()
         if root in resolved.parents:
+            out.setdefault(resolved.relative_to(root).as_posix(), set()).update(stack)
+    return out
+
+
+def _files_read(events, root):
+    """{path under root: the function names that opened it for reading}."""
+    out = {}
+    for kind, path, stack in events:
+        resolved = Path(path).resolve()
+        if kind == "read" and root in resolved.parents:
             out.setdefault(resolved.relative_to(root).as_posix(), set()).update(stack)
     return out
 
@@ -622,11 +660,12 @@ def test_every_file_sndk_pro_writes_is_in_the_where_it_is_saved_table(tmp_path, 
             assert s["file"].split("/")[0] in text, f"{source} never names {s['file']}"
 
 
-def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams():
+def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams_and_in_the_readme():
     """The store table and the station's Pipeline Architecture card are two
-    drawings of one system and must name the same SNDK folders; any folder the
-    SNDK Pro code, the viewstation or the dead-man joins onto the state
-    directory must be on both, including code no test pass reaches."""
+    drawings of one system and must name the same SNDK folders, and the
+    README's Store list names them too; any folder the SNDK Pro code, the
+    viewstation or the dead-man joins onto the state directory must be on all
+    three, including code no test pass reaches."""
     sources = [*(ROOT / "skills" / "sndk-pro").glob("sndk_*.py"),
                *(ROOT / "runtime" / "viewstation").glob("*.py"),
                *(ROOT / "runtime" / "watch" / "intraday").glob("sndk_*.py")]
@@ -634,10 +673,134 @@ def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams():
     stores = _stores()
     table = {s["file"].split("/")[0] for s in stores if s["file"].startswith("sndk_") and not s["dead"]}
     dead = {s["file"].split("/")[0] for s in stores if s["dead"]}
+    readme = README[README.index("* Store:"):]
+    readme = set(re.findall(r"`state/(sndk_[a-z_]+)/", readme[:readme.index("\n* ")]))
     assert joined, "no state folder found in the code — the pattern broke"
     assert joined - table == set(), "folders the code uses that the store table does not list"
     assert joined & dead == set(), "a store the table calls dead is still used by the code"
     assert table == _station_store_folders(), "the two pipeline diagrams list different stores"
+    assert readme == table, "the README's Store list and the store table name different stores"
+
+
+# ------------------------------------------------------------------ the dead-man
+_WATCHED = datetime(2026, 8, 27, 11, 4, tzinfo=ET)     # a Thursday session; the real market clock agrees
+
+
+def _dead_man(monkeypatch, logs):
+    """sndk_deadman, with its pager's log and channel kept off the station."""
+    monkeypatch.syspath_prepend(str(ROOT / "runtime"))
+    from watch import push
+    from watch.intraday import sndk_deadman
+    monkeypatch.setattr(push, "_LOG_DIR", str(logs))
+    monkeypatch.setattr(push, "_channel", None)
+    return sndk_deadman
+
+
+def _watched_day(state, scanner_quiet_min=None, read_min_ago=None):
+    """Today's files as the dead-man finds them: a scan every two minutes from
+    the open until `scanner_quiet_min` ago (none at all when None), and one read
+    row `read_min_ago` minutes old (none when None)."""
+    day = _WATCHED.date().isoformat()
+    (state / "sndk_reversion").mkdir(parents=True)
+    (state / "sndk_reads").mkdir(parents=True)
+    scans, t = [], _WATCHED.replace(hour=9, minute=30)
+    while scanner_quiet_min is not None and t <= _WATCHED - timedelta(minutes=scanner_quiet_min):
+        scans.append({"ticker": "SNDK", "ts": t.isoformat()})
+        t += timedelta(minutes=2)
+    (state / "sndk_reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in scans))
+    if read_min_ago is not None:
+        (state / "sndk_reads" / f"{day}.jsonl").write_text(
+            json.dumps({"ts": (_WATCHED - timedelta(minutes=read_min_ago)).isoformat()}) + "\n")
+
+
+def _run_dead_man(deadman, state):
+    """One dead-man run: (its ledger afterwards, the state files it read)."""
+    with _writes_recorded() as events:
+        deadman.run(_WATCHED, state_dir=state, channel=[].append)
+    read = {path for path, stack in _files_read(events, state.resolve()).items()
+            if _written_by(stack, "sndk_deadman", "run")}
+    return json.loads((state / "sndk_reads" / "deadman_state.json").read_text()), read
+
+
+def test_the_dead_man_watches_the_reader_on_the_readme_ceilings(tmp_path, monkeypatch):
+    """README: the dead-man pages when the diary has no row by the stated time
+    or its newest row passes the stated minutes, and, with the scanner alive,
+    when the newest read row passes the scanner's minutes plus the longest one
+    read may run. Every number is read from the README and held against the
+    job's plist, the dead-man's constants and the reader's own timeouts; the
+    reader's ceiling is then measured both sides, and a silent scanner is paged
+    once, under its own name."""
+    deadman = _dead_man(monkeypatch, tmp_path / "pushes")
+    bullet = README[README.index("`com.mirai-station.sndk-deadman`"):]
+    bullet = re.sub(r"\s+", " ", bullet[:bullet.index("\n* ")])
+    every = int(re.search(r"every (\d+) min", bullet).group(1))
+    first = re.search(r"no row by (\d\d):(\d\d) ET", bullet)
+    silent = float(re.search(r"newest row is more than ([\d.]+) min old", bullet).group(1))
+    reader, base, run_s = map(float, re.search(
+        r"read row is more than ([\d.]+) min old: ([\d.]+) min plus (\d+) s", bullet).groups())
+    call_s, guard_s = map(float, re.search(
+        r"model call to the (\d+) s timeout and then the reviewer to its (\d+) s",
+        re.sub(r"\s+", " ", README)).groups())
+    plist = (ROOT / "runtime" / "launchd" / "com.mirai-station.sndk-deadman.plist").read_text()
+    assert int(re.search(r"<key>StartInterval</key>\s*<integer>(\d+)</integer>", plist).group(1)) == every * 60
+    assert int(first.group(1)) * 60 + int(first.group(2)) == deadman.FIRST_ROW_BY_MIN
+    assert silent == base == deadman.SNDK_SILENT_MIN
+    assert call_s == max(SR.CALL_TIMEOUT_S, SR.CALL_TIMEOUT_STRIKES_S)
+    assert guard_s == SR.SEMANTIC_GUARD_TIMEOUT_S
+    assert run_s == call_s + guard_s == deadman.READ_MAX_RUN_S
+    assert reader == round(deadman.READER_SILENT_MIN, 1)
+
+    def paged(name, **day):
+        _watched_day(tmp_path / name, **day)
+        return _run_dead_man(deadman, tmp_path / name)[0]["paged"]
+    assert paged("reader_late", scanner_quiet_min=1, read_min_ago=reader + 0.5) == ["reader_silent"]
+    assert paged("reader_on_time", scanner_quiet_min=1, read_min_ago=reader - 0.5) == []
+    assert paged("scanner_silent", scanner_quiet_min=silent + 5, read_min_ago=reader + 5) == ["silent"]
+
+
+def test_the_store_table_says_what_the_status_files_hold_and_who_reads_them(tmp_path, monkeypatch):
+    """The two files a person opens to see a job breathing, the bar job's
+    health.json and the dead-man's ledger, hold only keys their row in the
+    store table names, after a good run and after each way a run goes wrong;
+    and every state file the dead-man reads names it among its readers."""
+    stores = [s for s in _stores() if not s["dead"]]
+
+    def row_for(path):
+        row = next((s for s in stores if s["pattern"].match(path)), None)
+        assert row, f"{path} is on no row of the store table"
+        return row
+
+    def named(path):
+        return set(re.findall(r"[a-z_][a-z0-9_]*", row_for(path)["holds"]))
+
+    day = _WATCHED.date().isoformat()
+    sndk_bars.write_day(day, _bars(_WATCHED.replace(hour=9, minute=30), range(30)), _WATCHED)
+    health = sndk_bars.health_path()
+    kept = set(json.loads(health.read_text()))
+
+    def schwab_down(*a, **k):
+        raise ConnectionError("price history unreachable")
+    monkeypatch.setattr(sndk_bars, "fetch_session", schwab_down)
+    assert sndk_bars.run(day, _WATCHED) == 1
+    failed = json.loads(health.read_text())
+    assert "error" in failed and failed["bars_on_disk"] == 30, failed
+    kept |= set(failed)
+    rel = health.relative_to(tmp_path).as_posix()
+    assert kept - named(rel) == set(), f"{rel} holds keys its store row does not name"
+
+    deadman = _dead_man(monkeypatch, tmp_path / "pushes")
+    ledger, read = set(), set()
+    for outage, files in (("no_first_row", {}), ("silent", {"scanner_quiet_min": 15}),
+                          ("reader_silent", {"scanner_quiet_min": 1, "read_min_ago": 30})):
+        _watched_day(tmp_path / outage, **files)
+        blob, seen = _run_dead_man(deadman, tmp_path / outage)
+        assert outage in blob["paged"], blob
+        ledger |= set(blob) | set(blob["paged"])
+        read |= seen
+    assert ledger - named("sndk_reads/deadman_state.json") == set(), "the ledger holds keys its store row does not name"
+    assert read, "the dead-man read nothing — the recorder broke"
+    for path in sorted(read):
+        assert "dead-man" in row_for(path)["readers"], f"the dead-man reads {path} and its store row does not say so"
 
 
 # ------------------------------------------------------------ the README's rules
@@ -775,3 +938,44 @@ def test_the_pipeline_map_states_the_numbers_the_reader_runs_on():
     assert reviewer["model"] == SR.SEMANTIC_GUARD_MODEL
     assert _numbers(reviewer["timeout"])[0] == SR.SEMANTIC_GUARD_TIMEOUT_S
     assert re.search(r"'DOCTRINE_V2 · ([a-z0-9.-]+)'", STATION).group(1) == SR.PINNED_MODEL
+
+
+def test_every_document_states_the_book_cache_life_the_feed_keeps():
+    """The feed re-serves a pulled book for _CHAIN_TTL_S. The README, the map's
+    store table, its chain box and card, and the station's pipeline card,
+    Payload tab and Diary view each state that life, so a change to the cache
+    made on one side alone fails here."""
+    stated = {
+        "README": re.search(r"re-served for (\d+) s", README).group(1),
+        "store table": re.search(r"each fresh pull \((\d+) s life\)", PIPELINE).group(1),
+        "chain card": _numbers(_pipeline_note("chain")["cache"])[0],
+        "chain box": 60 * float(re.search(r"front weekly \+2 · cache (\d+) min", PIPELINE).group(1)),
+        "pipeline card": re.search(r"good for (\d+) seconds", STATION).group(1),
+        "payload tab": re.search(r"cached on disk for (\d+) s", STATION).group(1),
+        "diary view": re.search(r"from the (\d+) s cache", STATION).group(1),
+    }
+    assert {k: float(v) for k, v in stated.items()} == dict.fromkeys(stated, sndk_feed._CHAIN_TTL_S)
+
+
+# ------------------------------------------------------------------- the runbook
+def test_the_runbook_names_the_schwab_login_and_the_gate_codes_the_code_has():
+    """docs/OPERATIONS.md is what a person follows with a job down. The Schwab
+    re-login it gives must be a real flag on a real script, pointing at the
+    callback address that script uses; and the market gate's codes must be the
+    ones every gated launch script acts on, with every gated script listed."""
+    ops = (ROOT / "docs" / "OPERATIONS.md").read_text()
+    schwab = ops[ops.index("# Schwab"):]
+    script, flag = re.search(r"(skills/[a-z_-]+/[a-z_]+\.py) (--[a-z-]+)", schwab).groups()
+    source = (ROOT / script).read_text()
+    assert f'add_argument("{flag}"' in source, f"{script} has no {flag}"
+    assert re.search(r'DEFAULT_CALLBACK_URL = "([^"]+)"', source).group(1) in schwab
+    live, closed = re.search(r"The gate exits (\d) when the market is open and (\d) when it is closed", ops).groups()
+    row = next(line for line in ops.splitlines() if "FAILED (rc=N)" in line)
+    gated = [p for p in sorted((ROOT / "runtime" / "scripts").glob("run-*.sh")) if "GATE_RC" in p.read_text()]
+    assert gated, "no launch script gates on the market clock — the pattern broke"
+    for p in gated:
+        text, job = p.read_text(), p.stem.removeprefix("run-")
+        assert re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(job), row), f"{p.name} is gated and the runbook does not list it"
+        assert f"sys.exit({live} if m.check().is_live else {closed})" in text, p.name
+        assert f"GATE_RC -eq {closed} ]]" in text, p.name
+        assert re.search(r"FAILED \(rc=\$\{GATE_RC\}\).*>&2", text), p.name

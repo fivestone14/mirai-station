@@ -3,26 +3,15 @@ regressions that only show up at the row-writing layer (obs-3 QA, 2026-09-01).
 """
 import json
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 import sndk_read as SR
+from synth import NOW, _REAL_CALL_THE_MODEL, _diary_row, _diary_row_with_board, _v2_reply
 
 ET = ZoneInfo("America/New_York")
-NOW = datetime(2026, 7, 31, 12, 0, tzinfo=ET)   # a Friday, mid-session
-
-
-def _diary_row(ts, spot=1200.0):
-    return {"ts": ts.isoformat(), "ticker": "SNDK", "spot": spot,
-            "sigma": 100.0, "regime": "trending", "gamma_sign": "negative",
-            "call_wall": 1400.0, "put_wall": 1000.0, "prior_close": 1250.0,
-            "gex_views": {"mass_by_strike": [[1300, 60], [1100, 20]],
-                          "shove": {"shove_up_margin": 2.0,
-                                    "shove_down_margin": 0.2}},
-            "profile_ladder": {},
-            "meta": {"book_asof": ts.isoformat()}}
 
 
 def _call_row(ts, read="the heaviest strike sat at 1300 all morning"):
@@ -139,22 +128,6 @@ def test_first_read_after_an_era_change_says_so(state, monkeypatch):
 
 
 # ---------------------------------------------------------------- strikes-1 (2026-09-05)
-def _diary_row_with_board(ts, spot=1200.0):
-    """A diary row carrying the per-strike surfaces the Strikes Payload reads."""
-    row = _diary_row(ts, spot)
-    grid = [1100.0, 1150.0, 1200.0, 1250.0, 1300.0]
-    oi = {1100.0: (20, 10), 1150.0: (30, 15), 1200.0: (40, 20), 1250.0: (60, 30), 1300.0: (600, 300)}
-    row["gex_views"].update({
-        "magnet": 1300.0,
-        "oi_side_by_strike": [[k, c, p] for k, (c, p) in oi.items()],
-        "vol_side_by_strike": [[k, c // 10, p // 10] for k, (c, p) in oi.items()],
-        "net_by_strike": [[k, float(c + p)] for k, (c, p) in oi.items()],
-        "mass_by_strike": [[k, c + p + c // 10 + p // 10] for k, (c, p) in oi.items()],
-    })
-    row["meta"]["chain_spot"] = spot
-    return row
-
-
 @pytest.fixture
 def board_state(tmp_path, monkeypatch):
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
@@ -166,16 +139,6 @@ def board_state(tmp_path, monkeypatch):
         json.dumps(_diary_row_with_board(NOW - timedelta(minutes=m), spot=1200.0 + m))
         for m in (8, 6, 4, 2)) + "\n")
     return tmp_path, tmp_path / "sndk_reads" / f"{day}.jsonl", day
-
-
-def _v2_reply(**over):
-    obj = {"quiet": False,
-           "read": "Price has held between 1200 and 1208 since your last read. 1300 holds the most contracts above and 1150 leads below.",
-           "sides": {"above": {"heavy": 1300.0, "leads_on": ["contracts"]}, "below": {"heavy": 1150.0, "leads_on": []}},
-           "clusters": [{"strikes": [1300.0], "center": 1300.0, "rank": 1, "change": "stable"}],
-           "resolved": [], "points": [{"level": 1300.0, "note": "most contracts"}], "absent": []}
-    obj.update(over)
-    return obj
 
 
 def test_strikes_mode_end_to_end(board_state, monkeypatch):
@@ -363,9 +326,6 @@ def test_an_envelope_without_a_bill_gives_nothing_not_an_empty_record():
     assert SR.cost_of({"result": "x"}) is None
     assert SR.cost_of(None) is None
     assert SR.cost_of({"usage": {"output_tokens": 7}}) == {"output_tokens": 7}
-
-
-_REAL_CALL_THE_MODEL = SR.call_the_model
 
 
 def test_call_the_model_keeps_the_bill(monkeypatch):

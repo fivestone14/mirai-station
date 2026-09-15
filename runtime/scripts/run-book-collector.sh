@@ -12,13 +12,15 @@ source "${SCRIPT_DIR}/env.sh"
 set -e
 
 cd "${MIRAI_STATION_ROOT}/runtime"
+# "closed" is exit 3, never 1: Python exits 1 on any uncaught exception, so a
+# failed import would otherwise skip as quietly as a closed market.
 set +e
-"${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 1)"
+"${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 3)"
 GATE_RC=$?
 set -e
-if [[ $GATE_RC -eq 1 ]]; then exit 0
+if [[ $GATE_RC -eq 3 ]]; then exit 0
 elif [[ $GATE_RC -ne 0 ]]; then
-  log "book-collector: market gate FAILED (rc=${GATE_RC}) — check venv/imports"; exit 1
+  log "book-collector: market gate FAILED (rc=${GATE_RC}) — check venv/imports" >&2; exit 1
 fi
 
 cd "${MIRAI_STATION_ROOT}/skills/book-flow"

@@ -10,6 +10,7 @@ real command line of the model call, and `sndk_board._main`. Every day is found
 by walking the market's own calendar from today, so nothing here pins a date."""
 import json
 import os
+import runpy
 import subprocess
 import sys
 from datetime import date, datetime, time, timedelta
@@ -24,8 +25,7 @@ import sndk_feed
 import sndk_hunter
 import sndk_read as SR
 import synth
-from test_board import mkrows
-from test_read_once import _diary_row_with_board
+from synth import _REAL_CALL_THE_MODEL, _REAL_CALL_THE_MODEL_V2, _diary_row_with_board, mkrows
 
 ET = ZoneInfo("America/New_York")
 STALE_CHAIN_SPOT = round(synth.SPOT * 0.85, 2)     # the chain's own spot runs ~15% stale
@@ -33,9 +33,6 @@ QUOTE = {"lastPrice": synth.SPOT + 11.4, "mark": synth.SPOT + 11.3,
          "openPrice": synth.SPOT - 5.0, "highPrice": synth.SPOT + 20.0,
          "lowPrice": synth.SPOT - 12.0, "closePrice": synth.SPOT - 10.0}
 OUTSIDE_WORLD_TOOLS = {"Bash", "Read", "Write", "Edit", "WebFetch", "WebSearch"}
-
-_REAL_CALL_THE_MODEL = SR.call_the_model
-_REAL_CALL_THE_MODEL_V2 = B.call_the_model_v2
 
 
 # --- the market clock -----------------------------------------------------------
@@ -286,12 +283,35 @@ def test_outside_a_session_the_scanner_does_no_work_unless_forced(broker, chain,
     assert len(rows) == 1 and rows[0]["meta"]["forced"] is True
 
 
+@pytest.mark.parametrize("argv, past_the_gate", [([], False), (["--once"], False), (["--force"], True)],
+                         ids=["bare", "once", "force"])
+def test_only_force_takes_a_command_line_run_past_the_market_gate(broker, market, monkeypatch,
+                                                                  argv, past_the_gate):
+    """--force is the documented way past the gate, for manual proof runs. Every
+    run is already a single tick, so --once asks for nothing more: outside a
+    session it asks the broker nothing and pulls no book, like a bare run."""
+    market.at(_closed_moments(market.session_day())["before_open"])
+    broker.quote = dict(QUOTE)
+    pulled = []
+    # the book comes back empty, so a run past the gate stops before it builds
+    # a row off the wall clock the command line cannot be handed
+    monkeypatch.setattr(sndk_feed, "sndk_chain", lambda now, live_spot=None: pulled.append(live_spot))
+    monkeypatch.setattr(sys, "argv", [sndk_hunter.__file__, *argv])
+
+    with pytest.raises(SystemExit) as run:
+        runpy.run_path(sndk_hunter.__file__, run_name="__main__")
+
+    assert run.value.code == 0
+    assert pulled == ([QUOTE["lastPrice"]] if past_the_gate else [])
+    assert (broker.calls == []) is not past_the_gate
+
+
 # --- the minute-bar sidecar -----------------------------------------------------
 @pytest.mark.parametrize("failure", ["http", "raise", "no_client"])
 def test_a_lapsed_broker_login_is_recorded_and_the_next_good_run_heals_the_gap(broker, market, failure):
-    """A failed minute-bar fetch is recorded in health.json as an error and adds
-    no bars; the next good run fills every missed completed minute, in time
-    order, with no minute written twice."""
+    """A failed minute-bar fetch is recorded in health.json as an error, beside
+    the last minute the log holds, and adds no bars; the next good run fills
+    every missed completed minute, in time order, with no minute written twice."""
     day = market.session_day()
     opened = _at(day, SB.SESSION_OPEN)
     first, lapsed, back = (opened + timedelta(minutes=m) for m in (30, 45, 60))
@@ -304,7 +324,10 @@ def test_a_lapsed_broker_login_is_recorded_and_the_next_good_run_heals_the_gap(b
 
     broker.tape, broker.fail = _tape(pre_market, lapsed), failure
     assert SB.run(now=lapsed) != 0
-    assert json.loads(SB.health_path().read_text()).get("error")
+    health = json.loads(SB.health_path().read_text())
+    assert health.get("error")
+    assert health["last_bar_at"] == (first - timedelta(minutes=1)).isoformat()
+    assert health["bars_on_disk"] == 30
     assert SB.bars_path(day.isoformat()).read_text() == before
 
     broker.tape, broker.fail = _tape(pre_market, back), None

@@ -84,9 +84,17 @@ _PARITY_SOFT = 1.5            # ITM side vs its OTM twin: the OTM right is extri
 _MIN_SIDE_ROWS = 5            # coverage teeth (same values as native_gex_feed)
 _THIN_TWIN_RATIO = 5
 
-_CHAIN_TTL_S = 240.0          # persisted-book freshness (state/sndk_gex/chain_cache.json):
-                              # launchd relaunches the process every 120s tick, so the
-                              # cache lives on DISK — an in-process TTL could never hit
+_SCAN_INTERVAL_S = 120.0      # the scanner's launchd StartInterval (com.mirai-station.sndk)
+_CHAIN_TTL_S = 1.5 * _SCAN_INTERVAL_S
+                              # persisted-book freshness (state/sndk_gex/chain_cache.json):
+                              # launchd relaunches the process every tick, so the cache
+                              # lives on DISK — an in-process TTL could never hit.
+                              # Half a tick either side: the tick after a pull re-serves
+                              # the book even half a tick late, and that book plus the
+                              # tick that replaces it stays half a tick inside the
+                              # reader's STALE_BOOK_MIN. At 240s (two ticks) it sat
+                              # exactly on it, 240 + 120 = 360s, so one late scan turned
+                              # a healthy book stale and suppressed its wakes.
 _CHAIN_LOCK = threading.Lock()
 
 LAST_REJECT: Optional[dict] = None
@@ -576,7 +584,7 @@ def sndk_chain(now: Optional[datetime] = None,
                live_spot: Optional[float] = None) -> Optional[dict]:
     """ONE SNDK book: discovered weeklies, chunk-fetched around the live-quote
     anchor, IV rebuilt from quotes, gamma filled. The raw book persists to
-    state/sndk_gex/chain_cache.json for 240s; a fresh cache is RE-PRICED at the
+    state/sndk_gex/chain_cache.json for _CHAIN_TTL_S; a fresh cache is RE-PRICED at the
     live quote instead of re-pulled (meta.book_source / cache_age_s say which).
     None on kill switch, missing live quote (M3: the chain's own spot is ~15%
     stale — no quote, no book), discovery failure, or a dead front book
@@ -632,7 +640,7 @@ def sndk_chain(now: Optional[datetime] = None,
             return None
         if book_source == "pull":
             # persist the RAW book (pre-rebuild, post-coverage — a dead book
-            # must not be served for the next 240s) for the off-tick reprice
+            # must not be served for the next _CHAIN_TTL_S) for the off-tick reprice
             try:
                 atomic_io.write_json_atomic(_state_dir() / "chain_cache.json", {
                     "ts": now.isoformat(), "date": today.isoformat(),

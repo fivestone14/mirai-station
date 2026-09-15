@@ -346,8 +346,8 @@ def test_the_payload_tab_carries_the_schema_card():
     # scan, the guards are named
     assert "Every scan: the newest snapshot" in PAGE
     assert "forecast language is deleted before anyone sees it" in PAGE
-    # ...the pager watches the scanner only, memory is not the reading model's to search
-    assert "the scanner goes quiet (a silent reader is not yet watched)" in PAGE
+    # ...the pager watches the scanner and the reader, memory is not the reading model's to search
+    assert "the scanner goes quiet, or when the reader stops writing rows while the scanner still runs" in PAGE
     assert "the reading model has no tools and cannot reach it" in PAGE
     # 09-04: said in plain English now — the assertion is that the Diary card
     # states what a row actually holds, not that it uses the word "arrays"

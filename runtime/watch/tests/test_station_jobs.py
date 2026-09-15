@@ -6,14 +6,18 @@ passes every other test and is noticed only when the data stops. Each test here
 holds one rule the job definitions are meant to keep, and every number it
 compares comes from a plist or from a module's own constant.
 
-Nothing is loaded into launchd and nothing is run: the plists and run scripts
-are only parsed.
+Nothing is loaded into launchd and the plists are only parsed. A run script is
+executed only as a copy inside a throwaway stand-in station (no env.sh, no
+Keychain, no network, no real state), to see what its market-hours gate does.
 """
 import ast
+import math
 import os
 import plistlib
 import re
 import shlex
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -268,16 +272,156 @@ def test_a_healthy_open_writes_its_first_row_before_the_never_started_page():
     assert 2 * _interval(SCANNER) < allowance_s
 
 
+def test_the_feed_counts_ticks_in_the_scanners_real_interval():
+    """The chain cache is sized in scanner ticks, so the feed's tick is the one launchd runs."""
+    assert _sndk_pro("sndk_feed")._SCAN_INTERVAL_S == _interval(SCANNER)
+
+
+def test_the_tick_after_a_pull_reprices_the_cached_book():
+    """The scan one tick after a pull re-serves that book, so the chain is pulled every other tick, not every tick."""
+    assert _interval(SCANNER) < _sndk_pro("sndk_feed")._CHAIN_TTL_S
+
+
 def test_the_reader_never_calls_a_healthy_book_stale():
-    """The oldest book a healthy scanner serves is still inside the reader's stale-book ceiling when read."""
+    """A book the scanner still re-serves is inside the reader's stale-book ceiling until a tick replaces it, even a tick as late as the cache forgives."""
     feed, reader = _sndk_pro("sndk_feed"), _sndk_pro("sndk_read")
-    # The scanner re-serves its disk-cached chain until it is _CHAIN_TTL_S old,
-    # and that row can wait one more tick to be superseded. The reader calls a
-    # book stale only once it is past MAX_BOOK_AGE_MIN.
-    oldest_healthy_s = feed._CHAIN_TTL_S + _interval(SCANNER)
-    assert oldest_healthy_s <= reader.MAX_BOOK_AGE_MIN * 60
+    scan_s, ttl_s = _interval(SCANNER), feed._CHAIN_TTL_S
+    # The scanner re-serves its disk-cached chain until it is ttl_s old, so it
+    # forgives the tick after a pull for running up to ttl_s - scan_s late. The
+    # row carrying the oldest book it re-serves waits one more tick to be
+    # replaced, and that tick is owed the same lateness before the reader may
+    # call the book stale. Without it the ceiling is a tie, and one late scan
+    # suppresses a healthy book's wakes.
+    late_s = ttl_s - scan_s
+    assert ttl_s + scan_s + late_s <= reader.MAX_BOOK_AGE_MIN * 60
 
 
 def test_the_reader_keeps_step_with_the_scanner():
     """The reader fires at least as often as the scanner, so it always sees the newest diary row."""
     assert _interval(READER) <= _interval(SCANNER)
+
+
+def test_a_slow_read_never_pages_the_phone():
+    """The dead-man's reader ceiling outlasts a read that runs to its timeouts, the fires launchd drops meanwhile, and a next read as slow."""
+    every_s, read_s = _interval(READER), sndk_deadman.READ_MAX_RUN_S
+    # a read row is stamped when its read starts and lands when it ends, and
+    # launchd drops every fire that comes while a read is still running
+    next_start_s = math.ceil(read_s / every_s) * every_s
+    assert next_start_s + read_s < sndk_deadman.READER_SILENT_MIN * 60
+
+
+# --- market-hours gates -------------------------------------------------------------
+# A gated run script asks market_status whether the market is live before it starts
+# its job. The gate's own "closed" is the only answer that may skip quietly: a gate
+# that cannot answer (a broken venv, an import that fails) must fail the job, so
+# launchd shows a failure status instead of what looks like a closed market.
+
+# run script -> what it starts only while the market is live
+GATED = {"run-sndk.sh": "sndk_hunter.py", "run-sndk-read.sh": "sndk_read.py",
+         "run-sndk-bars.sh": "sndk_bars.py", "run-lob-collector.sh": "lob_bridge.py",
+         "run-book-collector.sh": "book_flow", "run-watch-left-eye.sh": "hunter.py"}
+MARKET_STATUS = {
+    "open": "def check(now=None):\n    return type('Status', (), {'is_live': True})()\n",
+    "closed": "def check(now=None):\n    return type('Status', (), {'is_live': False})()\n",
+    "broken": "import a_module_this_station_never_installed\n",
+}
+
+
+def _file(path, text, mode=0o644):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(mode)
+
+
+def _run_gated(tmp_path, script, market, python=True):
+    """Run a copy of `script` in a stand-in station whose market_status is `market`.
+
+    The stand-in env.sh sets only what the run scripts take from the real one,
+    which reads Keychain. Its venv python runs the gate for real and only records
+    any other launch, so nothing the gate lets through ever starts; with
+    `python=False` the venv has no python at all. A stub `date` makes every run a
+    weekday mid-morning, so the weekend skip never answers before the gate does.
+    Returns the finished process and the recorded launches."""
+    root, venv, launched = tmp_path / "station", tmp_path / "venv", tmp_path / "launched"
+    scripts, intraday = root / "runtime" / "scripts", root / "runtime" / "watch" / "intraday"
+    for skill in ("sndk-pro", "mirai-left-eye", "book-flow"):
+        (root / "skills" / skill).mkdir(parents=True)
+    _file(intraday.parent / "__init__.py", "")
+    _file(intraday / "__init__.py", "")
+    _file(intraday / "market_status.py", MARKET_STATUS[market])
+    _file(scripts / "env.sh",
+          'export MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"\n'
+          f'export MIRAI_STATION_VENV="{venv}"\n'
+          'log() { echo "$*"; }\n')
+    shutil.copy2(SCRIPTS / script, scripts / script)
+    _file(tmp_path / "bin" / "date",
+          '#!/bin/sh\ncase "$*" in\n  +%u) echo 3 ;;\n  +%H%M) echo 1030 ;;\n'
+          '  *) exec /bin/date "$@" ;;\nesac\n', 0o755)
+    if python:
+        _file(venv / "bin" / "python",
+              '#!/bin/sh\ncase "$1 $2" in\n'
+              f'  "-c "*market_status*) exec "{sys.executable}" "$@" ;;\nesac\n'
+              f'echo "$*" >> "{launched}"\n', 0o755)
+    done = subprocess.run(["/bin/bash", str(scripts / script)], capture_output=True, text=True,
+                          env={"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path)},
+                          timeout=60)
+    return done, launched.read_text() if launched.exists() else ""
+
+
+def test_every_market_hours_gate_is_run_below():
+    """Every run script that asks market_status is one the gate tests below execute."""
+    asking = sorted(p.name for p in SCRIPTS.glob("run-*.sh") if "market_status" in p.read_text())
+    assert asking == sorted(GATED)
+
+
+@pytest.mark.parametrize("script", sorted(GATED))
+def test_an_open_market_starts_the_job(tmp_path, script):
+    """The gate lets an open market through to the job it guards."""
+    done, launched = _run_gated(tmp_path, script, "open")
+    assert done.returncode == 0, done.stderr
+    assert GATED[script] in launched
+
+
+@pytest.mark.parametrize("script", sorted(GATED))
+def test_a_closed_market_skips_the_job_quietly(tmp_path, script):
+    """A closed market exits 0 with nothing on stderr and never starts the job."""
+    done, launched = _run_gated(tmp_path, script, "closed")
+    assert (done.returncode, done.stderr) == (0, "")
+    assert GATED[script] not in launched
+
+
+@pytest.mark.parametrize("python", [True, False], ids=["import-fails", "no-venv-python"])
+@pytest.mark.parametrize("script", sorted(GATED))
+def test_a_gate_that_cannot_answer_fails_the_job_out_loud(tmp_path, script, python):
+    """A market-hours check that cannot run exits non-zero with one line on stderr saying so, and never starts the job."""
+    done, launched = _run_gated(tmp_path, script, "broken", python=python)
+    assert done.returncode != 0, done.stdout
+    assert GATED[script] not in launched
+    assert sum("FAILED" in line for line in done.stderr.splitlines()) == 1, done.stderr
+
+
+_YEAR_IN_PATTERN = re.compile(r"(?<!\d)(19|20)\d\d(?!\d)")
+_PATTERN_CALLS = {"glob", "rglob", "fnmatch", "iglob"}
+
+
+def _year_pinned_patterns():
+    for path in sorted([*(REPO / "skills").rglob("*.py"), *(REPO / "runtime").rglob("*.py")]):
+        if any(part in {"tests", "node_modules", "__pycache__", ".venv", "venv"} for part in path.parts):
+            continue
+        try:
+            tree = ast.parse(path.read_text(), filename=str(path))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+            first = node.args[0] if name in _PATTERN_CALLS else None
+            if isinstance(first, ast.Constant) and isinstance(first.value, str) \
+                    and _YEAR_IN_PATTERN.search(first.value):
+                yield f"{path.relative_to(REPO)}:{node.lineno} {name}({first.value!r})"
+
+
+def test_no_file_pattern_stops_at_a_calendar_year():
+    """A daily record is found by the shape of a date, never a fixed year — a glob of "2026-*" silently stops taking in new sessions on January 1."""
+    assert list(_year_pinned_patterns()) == []

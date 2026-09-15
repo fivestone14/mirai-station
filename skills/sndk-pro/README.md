@@ -53,7 +53,7 @@ clock, verbatim.
 
 | File | Plain name | What it does |
 |---|---|---|
-| `sndk_feed.py` | The Chain Runner | Per-day probe discovery (day-cached; probe ERRORS on a candidate front day → degraded, never cached), one batched `cass_market_run` pull per 240s (raw book persisted to `state/sndk_gex/chain_cache.json` — each tick is a fresh process, so the off tick re-prices the cached book at the fresh quote instead of re-pulling), chunked + clip-detected, IV rebuild + gamma fill on the front-book clock, front-expiry coverage teeth |
+| `sndk_feed.py` | The Chain Runner | Per-day probe discovery (day-cached; probe ERRORS on a candidate front day → degraded, never cached), one batched `cass_market_run` pull every other tick (the raw book is persisted to `state/sndk_gex/chain_cache.json` and re-served for 180 s, one and a half ticks — each tick is a fresh process, so the off tick re-prices the cached book at the fresh quote instead of re-pulling, and the oldest book re-served plus the tick that replaces it still lands inside the reader's stale-book limit), chunked + clip-detected, IV rebuild + gamma fill on the front-book clock, front-expiry coverage teeth |
 | `sndk_views.py` | The Map Maker | Pure: chain + live spot → one diary row via the left-eye engines (gex/dex/ladder/EM/net-exposure) |
 | `sndk_hunter.py` | The Shift Worker | One tick per invocation: quote → chain → row → append `state/sndk_reversion/{date}.jsonl`. `--force` bypasses the RTH gate (manual proof runs) |
 | `sndk_read.py` | The Reader | The chart's live reading. Spends one `claude -p` call — the model says what stands out on an unbiased scene, every number checked against the board, never a direction — only when the wake gate fires → `state/sndk_reads/{date}.jsonl` |
@@ -433,15 +433,32 @@ sidecar's own clock. Absence falls back to the scans and never fabricates.
   120s (half the SPX rate — conservative with the shared server); the wrapper
   gates on `watch.intraday.market_status` RTH.
 * launchd: `com.mirai-station.sndk-read` fires `runtime/scripts/run-sndk-read.sh`
-  every 120s. **Its own job on purpose** — a model call can hang to its 100s
-  timeout, and it must never be able to eat the scanner's tick and cost a diary
-  row.
+  every 120s. **Its own job on purpose** — a read can run its model call to the
+  180 s timeout and then the reviewer to its 40 s, and it must never be able to
+  eat the scanner's tick and cost a diary row.
+* launchd: `com.mirai-station.sndk-deadman` fires `runtime/scripts/run-sndk-deadman.sh`
+  every 5 min (`runtime/watch/intraday/sndk_deadman.py`, its own process, reading
+  files only). In market hours it pages the phone when the diary has no row by
+  09:35 ET, when the diary's newest row is more than 6 min old, and when, with
+  the scanner alive, the newest read row is more than 9.7 min old: 6 min plus
+  220 s, the longest one read may run. That age counts from when the scanner's
+  current run of rows began if that is later, and the reader is not judged while
+  the scanner is silent, so one outage is one page. Each outage gets one
+  recovery page, the reader's only once a new read row lands; what it has paged
+  is kept in `state/sndk_reads/deadman_state.json`.
 * Store: `state/sndk_reversion/` (diary rows — the viewstation reads them via
   the generic `/api/raw` endpoints; **pinned UI contract**),
-  `state/sndk_reads/` (the read rows, same pinned contract),
+  `state/sndk_reads/` (the read rows, same pinned contract; beside them the
+  hand-edited `control.json`, `pctl_prior.json` and the dead-man's
+  `deadman_state.json`), `state/sndk_bars/` (the minute bars + `health.json`),
   `state/sndk_gex/` (discovery cache + raw-book cache + vol hint + fetch log),
-  and `state/sndk_rag/` (slice records + day summaries + terrain — the
-  on-demand memory).
+  `state/sndk_payloads/` (each call's exact message, kept before it is sent),
+  `state/sndk_legacy/` (the Gate Payload, one line per spent call),
+  `state/sndk_side/` (the side packet, one line per wake),
+  `state/sndk_rag/` (slice records + day summaries + terrain — the
+  on-demand memory), and `state/sndk_tape/` (the live price the viewstation
+  keeps while a page asks for it). Every file, with its writer, size and
+  readers, is in the pipeline map's "Where it is saved" table.
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
   silently with live rows. Read rows are stamped `era` (`obs-3` since
   2026-09-01 — the current contract: every reading opens with the

@@ -10,7 +10,7 @@ Per tick (launchd fires every 120s; the run wrapper gates RTH):
        plus day open/high/low + prior close for the range ruler. NO quote →
        NO row (the stale chain spot is never an anchor — M3).
     2. sndk_feed.sndk_chain() — the discovered-weekly book, disk-cached raw
-       for 240s (the off tick re-prices it at the fresh quote instead of
+       for sndk_feed._CHAIN_TTL_S (the off tick re-prices it at the fresh quote instead of
        re-pulling), IV rebuilt from quotes, gamma filled.
     3. sndk_views.build_row() — the pure engines (build_views / slide_0dte on
        the front book / dex / ladder / EM) → one row.
@@ -184,4 +184,6 @@ def tick(now: Optional[datetime] = None, force: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(tick(force="--force" in sys.argv or "--once" in sys.argv))
+    # --force is the one way past the gate. Every run is already a single tick,
+    # so --once asks for nothing more and must not skip the market clock.
+    sys.exit(tick(force="--force" in sys.argv))

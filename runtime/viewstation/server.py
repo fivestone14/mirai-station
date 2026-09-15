@@ -227,6 +227,15 @@ RAW_ROOTS = {
     "skill_logs": PLUGIN_ROOT / "skills" / "mirai-left-eye" / "logs",
 }
 
+
+def _raw_roots() -> dict:
+    """RAW_ROOTS with `state` resolved per request, as snapshot and sndk_read
+    resolve theirs. The SNDK tab reads its scans and minute log here and its
+    payload through sndk_read; the two must open the same folder."""
+    env = os.environ.get("MIRAI_STATE_DIR")
+    return {**RAW_ROOTS, "state": Path(env)} if env else RAW_ROOTS
+
+
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
@@ -330,7 +339,7 @@ def _raw_denied(root: Path, path: Path) -> bool:
 
 def _raw_index() -> dict:
     out = {}
-    for label, root in RAW_ROOTS.items():
+    for label, root in _raw_roots().items():
         items = []
         if root.exists():
             for p in sorted(root.rglob("*")):
@@ -353,7 +362,7 @@ _RAW_FILE_GATE = threading.BoundedSemaphore(2)
 
 
 def _raw_file(root_label: str, rel: str, limit: int) -> dict:
-    root = RAW_ROOTS.get(root_label)
+    root = _raw_roots().get(root_label)
     if root is None:
         return {"error": "unknown root"}
     path = _safe_join(root, rel)
@@ -768,7 +777,7 @@ class _Station(ThreadingHTTPServer):
 
 def main():
     httpd = _Station(("0.0.0.0", PORT), Handler)
-    print(f"Mirai Viewstation serving on http://0.0.0.0:{PORT}  (state: {STATE_DIR})",
+    print(f"Mirai Viewstation serving on http://0.0.0.0:{PORT}  (state: {_raw_roots()['state']})",
           flush=True)
     try:
         httpd.serve_forever()

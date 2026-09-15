@@ -649,6 +649,11 @@ def _state_dir() -> Path:
     return Path(env) if env else (_SKILL_DIR.parent.parent / "state")
 
 
+# One session's file, found by the shape of its name. Never "2026-*": a year in
+# the pattern stops every later session from entering the history on January 1.
+_DAY_FILE_GLOB = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"
+
+
 def _diary_dir() -> Path:
     return _state_dir() / "sndk_reversion"
 
@@ -2781,7 +2786,7 @@ def _prior_sessions(today: str) -> dict:
 
     Forced/off-hours rows are excluded on the same rule the reader uses
     everywhere else: a midnight row is not a scan of the tape."""
-    days = sorted(p for p in _diary_dir().glob("2026-*.jsonl")
+    days = sorted(p for p in _diary_dir().glob(_DAY_FILE_GLOB)
                   if p.stem < today)[-PCTL_MAX_SESSIONS:]
     key = [p.stem for p in days]
     cache = _reads_dir() / "pctl_prior.json"
@@ -3367,7 +3372,7 @@ def _prior_session_date(today: str) -> Optional[str]:
     the session whose close the standing open interest was struck at. Read off
     the diary rather than off a weekday calendar, so a holiday or a dark day
     can never be handed over as a date that was never traded."""
-    days = sorted(pp.stem for pp in _diary_dir().glob("2026-*.jsonl")
+    days = sorted(pp.stem for pp in _diary_dir().glob(_DAY_FILE_GLOB)
                   if pp.stem < today)
     return days[-1] if days else None
 
@@ -3437,9 +3442,8 @@ def _prior_sessions_range(today: str) -> Optional[dict]:
     from its minute bars when the file is full, else from its scans, with
     `measured_from` saying which ("mixed" when the days differ). Today's own
     file is never opened."""
-    days = sorted(p for p in _diary_dir().glob(
-        "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")
-        if p.stem < today)[-PRIOR_RANGE_SESSIONS:]
+    days = sorted(p for p in _diary_dir().glob(_DAY_FILE_GLOB)
+                  if p.stem < today)[-PRIOR_RANGE_SESSIONS:]
     found = [(p.stem, ex) for p in days if (ex := _day_extremes(p.stem, p))]
     if not found:
         return None

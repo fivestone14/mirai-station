@@ -16,35 +16,9 @@ from zoneinfo import ZoneInfo
 
 import sndk_board as B
 import sndk_read as SR
-from test_board import mkrow, flat_bars, recs
+from synth import DAY, PRIOR, YEST, at, board_row as mkrow, flat_bars, fronted, recs, write_prior
 
 ET = ZoneInfo("America/New_York")
-DAY = datetime(2026, 9, 15, tzinfo=ET)          # a Tuesday
-PRIOR = datetime(2026, 9, 14, tzinfo=ET)        # the Monday before it
-
-YEST = {1150.0: (300, 150), 1200.0: (2400, 1200), 1250.0: (1800, 900), 1300.0: (5400, 2700),
-        1350.0: (1200, 600), 1400.0: (600, 300)}
-
-
-def at(d, h, m):
-    return d.replace(hour=h, minute=m)
-
-
-def fronted(r, front="2026-09-18"):
-    r["meta"]["expiries"] = [{"date": front, "dte": 3}, {"date": "2026-09-25", "dte": 10}]
-    return r
-
-
-def write_prior(tmp_path, last_hhmm=(15, 58), vol=None, front="2026-09-18", day=PRIOR, next_vol=None):
-    """The prior session's last diary row, with its volume counts."""
-    d = tmp_path / "sndk_reversion"
-    d.mkdir(parents=True, exist_ok=True)
-    r = fronted(mkrow(at(day, *last_hhmm), vol=vol), front)
-    if next_vol is not None:
-        r["meta"]["expiries"] = [{"date": front, "dte": 0}, {"date": "2026-09-18", "dte": 7}]
-        r["gex_views"]["next_dte"] = 7
-        r["gex_views"]["vol_side_by_strike_next"] = [[k, c, p] for k, (c, p) in sorted(next_vol.items())]
-    (d / f"{day.strftime('%Y-%m-%d')}.jsonl").write_text(json.dumps(r) + "\n")
 
 
 def build(rows, now, last_read_ts=None, **kw):
