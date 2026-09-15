@@ -485,6 +485,24 @@ def leader_runs(rows: list) -> dict:
     return out
 
 
+def volume_leader(row: dict, carried: Optional[dict] = None) -> Optional[float]:
+    """The strike ranking 1 on today's volume in this row's window, ranked the
+    way the table ranks it (strikes-5, for the wake gate). None when the row
+    measured no volume, ranks nobody (a zero-volume open), or is one of the
+    books `carried_books` withholds because its volume is the prior session's;
+    `carried` is that dict, computed once by the caller."""
+    if carried and (row.get("meta") or {}).get("book_asof") in carried:
+        return None
+    surf = surfaces(row)
+    if not surf["vol_side"]:
+        return None
+    rs, sg, _, _ = _ruler(row)
+    win = _window(surf, rs, sg)
+    if not win:
+        return None
+    return next((k for k, v in _ranks(surf, win).items() if v[1] == 1), None)
+
+
 def _on_list_minutes(rows: list, now: datetime, k: float, crossed: Optional[list]) -> Optional[int]:
     """How long the strike has been on the selected list, walking back the
     distinct books up to LIST_AGE_LOOKBACK_ROWS. None when never on it before."""
@@ -2345,7 +2363,7 @@ def replay_day(day: str, at: Optional[set] = None, call_model: bool = False,
         out.append(rec)
         last_call = {"ts": row["ts"], "spot": row.get("spot"),
                      "magnet_band": SR.magnet_band(row),
-                     "gate": SR.state_for_next_wake(row, v1),
+                     "gate": SR.state_for_next_wake(row, v1, rows_i, now),
                      **({"strikes_sent": s} if (s := listed_strikes(v2.get("strikes"))) else {}),
                      **({"strikes_sent_without_volume": True}
                         if (row.get("meta") or {}).get("book_asof") in carried_books(rows_i, now) else {})}

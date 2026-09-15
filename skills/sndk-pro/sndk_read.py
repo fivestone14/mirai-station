@@ -374,6 +374,30 @@ INTERRUPT_DAILY_CAP = 8       # interrupts alone may spend this much of the day.
                               # The wk-1 gate wants a mean of 18.7 calls; 8 on
                               # top keeps the busiest recorded session (27)
                               # under DAILY_CALL_CAP with room to spare.
+# --- TWO WAKES ON WHAT THE MODEL CAN SEE (strikes-5, 2026-09-15) ------------
+# Replayed over 13 recorded sessions, 56 of the gate's 283 calls fired on the
+# flip, the walls or the board-wide gamma sign — none of which reach the Strikes
+# Payload — while a strike taking the lead on today's volume, or price walking
+# through a strike the model was shown, woke nothing until the next price or
+# vol trigger (09-11 14:33: 1700 took the lead on volume and contracts and the
+# gate slept 15 more minutes; 09-04 10:09: 1600 took the volume lead on 1,400
+# new puts in 8 minutes, 21 minutes of silence). Both checks sit AFTER every
+# existing one, so nothing that fired before fires differently, and neither
+# interrupts the floor. Measured cost: about 0.5 and 1.2 calls a day.
+#   "volume leader changed": the strike ranking 1 on today's volume, ranked by
+#     the table's own code with the morning's carried books withheld, differs
+#     from the one at the last call and has held WAKE_CONFIRM_BOOKS books (a
+#     new volume leader is gone again one book later about one time in five).
+#   "listed strike crossed": a strike in the list the last call was shown
+#     (`strikes_sent`) that the table marked above or below then is marked the
+#     other side now — the table's own side rule, at-band and all, applied then
+#     and now. A bare sign test fires on every wobble across the two nearest
+#     strikes (replayed: 196 fires, 31 calls a day, the cap every day); the
+#     table's rule fires about 2.7 a day and adds about 1.2, the rest
+#     pre-empting a price or vol wake. Every wall crossing recorded so far
+#     crossed a listed strike, so this is the visible twin of those wakes.
+VISIBLE_WAKES = frozenset({"volume leader changed", "listed strike crossed"})
+
 MOVE_MINUTES_HARD = 2 * MOVE_MINUTES  # travel that interrupts the floor, in
                               # typical minutes. Double the ordinary trigger:
                               # inside ten minutes that is a move, not a drift.
@@ -1128,7 +1152,36 @@ def ladder_nearest(row: dict) -> dict:
     return out
 
 
-def state_for_next_wake(row: dict, scene: Optional[dict] = None) -> dict:
+def _table_side(k: float, spot: float, sig: float) -> str:
+    """The side the Strikes Payload's table marks a strike on: `at` inside the
+    board's at-band, else above or below the price (sndk_board.AT_SIGMA)."""
+    try:
+        sys.modules.setdefault("sndk_read", sys.modules[__name__])
+        import sndk_board as board
+        at = board.AT_SIGMA
+    except Exception:
+        at = 0.05
+    d = (k - spot) / sig
+    return "at" if abs(d) < at else ("above" if k > spot else "below")
+
+
+def _volume_leaders(targets: list, rows: Optional[list], now: Optional[datetime]) -> list:
+    """The strike leading today's volume on each of `targets`, ranked the way the
+    Strikes Payload ranks it, with the morning's carried books withheld (item
+    #8) when `rows` and `now` are given. None where it cannot be measured: an
+    absent measurement never wakes anything, and a board module that cannot be
+    imported reads as unmeasured rather than as an error in the gate."""
+    try:
+        sys.modules.setdefault("sndk_read", sys.modules[__name__])
+        import sndk_board as board
+        carried = board.carried_books(rows, now) if rows and now is not None else None
+        return [board.volume_leader(t, carried) for t in targets]
+    except Exception:
+        return [None] * len(targets)
+
+
+def state_for_next_wake(row: dict, scene: Optional[dict] = None,
+                        rows: Optional[list] = None, now: Optional[datetime] = None) -> dict:
     """The structural state the wake gate compares against, snapshotted.
 
     THIS EXISTS BECAUSE `prev` IS NOT A DIARY ROW. `read_once` passes the last
@@ -1155,7 +1208,10 @@ def state_for_next_wake(row: dict, scene: Optional[dict] = None) -> dict:
            "gamma_flip": _fin(row.get("gamma_flip")),
            "call_wall": lw["call_wall"],
            "put_wall": lw["put_wall"],
-           "atm_iv": _fin(row.get("atm_iv"))}
+           "atm_iv": _fin(row.get("atm_iv")),
+           # strikes-5: the reference for "volume leader changed"; `rows` and
+           # `now` let the morning's carried books be withheld as the table does
+           "volume_leader": _volume_leaders([row], rows, now)[0]}
     if scene is not None and lw["surface"]:
         # obs-4: and ONLY the ladder's. The old branch kept the diary scalar
         # whenever the ladder had no rung on a side, which is how a read was
@@ -1211,6 +1267,8 @@ _WAKE_WORDS = {
     "iv moved": "implied vol moved since the last read",
     "flip moved": "the hedging-flip level relocated",
     "heartbeat": "timed check-in; nothing crossed a wake threshold",
+    "listed strike crossed": "price crossed a strike on the table from the last read",
+    "volume leader changed": "a different strike ranks first on today's volume than at the last read, and held two fresh books",
 }
 
 
@@ -1545,6 +1603,25 @@ def _wake_trigger(row: dict, prev_row: Optional[dict], prev: Optional[dict],
     if new_book and sig and fl is not None and spoke_fl is not None:
         if abs(fl - spoke_fl) / sig >= WAKE_FLIP_SIGMA:
             return "flip moved"
+
+    # 8-9. strikes-5: WHAT THE MODEL CAN SEE, checked last so every wake above
+    # keeps its reason and its interrupt standing (see VISIBLE_WAKES)
+    if spot is not None and spoke_spot is not None and sig and prev.get("strikes_sent"):
+        spoke_sig = value_at_last_read(prev, "sigma") or sig
+        for k in prev["strikes_sent"]:
+            k = _fin(k)
+            if k is None:
+                continue
+            s0, s1 = _table_side(k, spoke_spot, spoke_sig), _table_side(k, spot, sig)
+            if s0 != "at" and s1 != "at" and s0 != s1:
+                return "listed strike crossed"
+    if books and new_book:
+        spoke_vol = value_at_last_read(prev, "volume_leader")
+        if spoke_vol is not None:
+            tail = books[-WAKE_CONFIRM_BOOKS:]
+            got = dict(zip(map(id, tail), _volume_leaders(tail, rows, now)))
+            if _held_for(books, lambda b: got.get(id(b)), spoke_vol, WAKE_CONFIRM_BOOKS):
+                return "volume leader changed"
 
     return None
 
@@ -4360,7 +4437,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         # wk-1: the state the NEXT gate compares against. Written on every read
         # row, not only on the ones that spend a call, so a restart mid-session
         # cannot leave the gate with nothing to measure from.
-        "gate": state_for_next_wake(row, scene),
+        "gate": state_for_next_wake(row, scene, rows, scene_now),
         # a pointer, not the packet: state/sndk_side/<day>.jsonl holds it
         **({"side_bar": (side.get("as_of") or {}).get("bar_index")} if side else {}),
         "reading": None, "model": None, "wall_s": None, "error": None,
@@ -4541,7 +4618,15 @@ def replay(day: str) -> int:
         # shipped one.
         last_call = {"ts": row["ts"], "spot": row.get("spot"),
                      "magnet_band": magnet_band(row),
-                     "gate": state_for_next_wake(row)}
+                     "gate": state_for_next_wake(row, None, rows[:i + 1], now)}
+        try:      # strikes-5: the list the model would have been shown, for "listed strike crossed"
+            sys.modules.setdefault("sndk_read", sys.modules[__name__])
+            import sndk_board as board
+            v2, _ = board.build_scene_v2(row, rows[:i + 1], now, None, _lt, bars)
+            if (sent := board.listed_strikes(v2.get("strikes"))):
+                last_call["strikes_sent"] = sent
+        except Exception as exc:
+            print(f"  (no strike list at {row['ts'][11:16]}: {exc!r})")
         wakes += 1
         why[w] += 1
         print(f"  {row['ts'][11:16]}  {w:18s} spot={row.get('spot'):>9}")

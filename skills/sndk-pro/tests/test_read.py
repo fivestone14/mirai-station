@@ -582,7 +582,8 @@ def test_every_wake_reason_translates_and_every_translation_is_speakable():
     must pass the lexicon."""
     reasons = ("first read", "price ran", "pin moved", "gamma sign flipped",
                "crossed flip", "call wall crossed", "put wall crossed",
-               "iv moved", "flip moved", "heartbeat")
+               "iv moved", "flip moved", "heartbeat",
+               "listed strike crossed", "volume leader changed")
     for r in reasons:
         assert r in SR._WAKE_WORDS, r
     for phrase in SR._WAKE_WORDS.values():
@@ -861,3 +862,88 @@ def test_price_parked_on_a_level_then_leaving_counts_as_a_crossing():
     crossed = fr.get("crossed_since_then") or []
     assert any(c["level"] == 1400.0 and c["price_went"] == "up"
                for c in crossed)
+
+
+# ---------------------------------------------------------------- strikes-5 (2026-09-15)
+def _volrow(leader, spot=1200.0, ts=None):
+    """A row whose volume-today leader is `leader` (1200 or 1300), with a full
+    board so the table's own ranking can run over it."""
+    oi = {1200.0: (300, 150), 1300.0: (900, 450), 1250.0: (50, 25)}   # 1300 leads contracts whoever leads volume
+    vol = {1200.0: (90, 40), 1300.0: (10, 5), 1250.0: (1, 1)} if leader == 1200.0 else \
+          {1200.0: (10, 5), 1300.0: (90, 40), 1250.0: (1, 1)}
+    gv = {"magnet": 1300.0, "mass_by_strike": [[k, c + p] for k, (c, p) in sorted(oi.items())],
+          "oi_side_by_strike": [[k, c, p] for k, (c, p) in sorted(oi.items())],
+          "vol_side_by_strike": [[k, c, p] for k, (c, p) in sorted(vol.items())],
+          "net_by_strike": [[1200.0, -2.0], [1250.0, 1.0], [1300.0, 5.0]],
+          "shove": {"shove_up_margin": 2.0, "shove_down_margin": 0.2}}
+    return mkrow([[1300, 9]], spot=spot, ts=ts, gex_views=gv,
+                 meta={"chain_spot": spot, "book_source": "pull", "spot_source": "schwab_quote"})
+
+
+def test_a_volume_leader_change_wakes_after_two_books_and_needs_a_reference():
+    """strikes-5. The strike leading today's volume changed since the last call
+    and held two books; one book is flicker, and a last call that measured no
+    leader (a withheld morning book) is not a reference to change from."""
+    prev = _read(T0 - timedelta(minutes=20), volume_leader=1300.0)
+    row = _volrow(1200.0)
+    two = _books(_volrow(1200.0), _volrow(1200.0))
+    assert SR.should_wake(row, None, prev, T0, two) == "volume leader changed"
+    assert SR.should_wake(row, None, prev, T0, _books(_volrow(1200.0))) is None
+    assert SR.should_wake(row, None, prev, T0, _books(_volrow(1200.0), _volrow(1300.0))) is None
+    assert SR.should_wake(row, None, _read(T0 - timedelta(minutes=20)), T0, two) is None
+    # never inside the floor: it is not an interrupt
+    assert SR.should_wake(row, None, _read(T0 - timedelta(minutes=5), volume_leader=1300.0),
+                          T0, _books_at([4, 1], _volrow(1200.0), _volrow(1200.0))) is None
+    # ...and the snapshot the next gate reads carries the leader
+    assert SR.state_for_next_wake(row)["volume_leader"] == 1200.0
+    assert "volume_leader" not in SR.state_for_next_wake(mkrow([[1300, 9]]))   # no volume measured
+
+
+def test_a_carried_book_ranks_no_volume_leader(monkeypatch):
+    """strikes-5: a book whose volume is the prior session's (item #8) confirms
+    nothing and records no reference — the morning's first books say who led
+    YESTERDAY, and a wake on that would be a wake on a stale count."""
+    import sndk_board
+    prev = _read(T0 - timedelta(minutes=20), volume_leader=1300.0)
+    row = _volrow(1200.0)
+    two = _books(_volrow(1200.0), _volrow(1200.0))
+    newest = two[-1]["meta"]["book_asof"]
+    monkeypatch.setattr(sndk_board, "carried_books", lambda rows, now: {newest: "prior session's count"})
+    assert SR.should_wake(row, None, prev, T0, two) is None
+    monkeypatch.setattr(sndk_board, "carried_books", lambda rows, now: {row.get("meta", {}).get("book_asof"): "x"})
+    row_c = dict(row, meta={**row["meta"], "book_asof": T0.isoformat()})
+    monkeypatch.setattr(sndk_board, "carried_books", lambda rows, now: {T0.isoformat(): "prior session's count"})
+    assert "volume_leader" not in SR.state_for_next_wake(row_c, None, [row_c], T0)
+
+
+def test_a_listed_crossing_is_judged_in_the_sigma_of_the_call_it_was_shown_at():
+    """strikes-5: the side a strike was on at the last call is read with THAT
+    call's sigma, so a strike inside the at-band then is on no side, and a
+    wide ruler then cannot be re-read with today's narrow one."""
+    prev = _read(T0 - timedelta(minutes=20), spot=1240.0, sigma=400.0)
+    prev["strikes_sent"] = [1250.0]
+    assert SR.should_wake(mkrow([[1300, 9]], spot=1300.0), None, prev, T0) is None
+
+
+def test_a_listed_strike_crossing_wakes_only_when_nothing_else_would():
+    """strikes-5. Price on the other side of a strike the last call was shown
+    (`strikes_sent`) wakes the model; a wall crossing or plain travel keeps its
+    own reason, and a call that kept no list wakes nothing this way."""
+    prev = _read(T0 - timedelta(minutes=20), spot=1200.0, call_wall=1400.0)
+    prev["strikes_sent"] = [1150.0, 1250.0]
+    crossed = mkrow([[1300, 9]], spot=1260.0)
+    assert SR.should_wake(crossed, None, prev, T0) == "listed strike crossed"
+    assert SR.should_wake(mkrow([[1300, 9]], spot=1240.0), None, prev, T0) is None
+    # the table's own side rule: a strike inside the at-band on either end is on no side yet
+    assert SR.should_wake(mkrow([[1300, 9]], spot=1252.0), None, prev, T0) is None
+    assert SR.should_wake(crossed, None, _read(T0 - timedelta(minutes=20), spot=1248.0, strikes_sent=None) | {"strikes_sent": [1250.0]}, T0) is None
+    bare = _read(T0 - timedelta(minutes=20), spot=1200.0, call_wall=1400.0)
+    assert SR.should_wake(crossed, None, bare, T0) is None
+    # every wake that fired before still fires first, under its own name
+    assert SR.should_wake(crossed, None, prev, T0, bars=_minutes(5)) == "price ran"
+    wall = mkrow([[1300, 9]], spot=1450.0, call_wall=1400.0)
+    assert SR.should_wake(wall, None, prev, T0) == "call wall crossed"
+    # and not inside the floor
+    recent = _read(T0 - timedelta(minutes=5), spot=1200.0)
+    recent["strikes_sent"] = [1250.0]
+    assert SR.should_wake(crossed, None, recent, T0) is None
