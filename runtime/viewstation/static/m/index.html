@@ -261,6 +261,15 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-axis    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-faint)}
 
 /* ============ E. THE READING — the one filled card ============ */
+.today{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
+.today .lab{color:var(--i-faint)}
+.td-line{margin-top:12px;font:400 16px/1.5 var(--sans);color:var(--i-body)}
+.td-line:empty{display:none}
+.td-rows{margin-top:12px;display:grid;grid-template-columns:auto 1fr;gap:7px 14px;
+         font:400 14px/1.35 var(--sans)}
+.td-rows:empty{display:none}
+.td-k{color:var(--i-mute);white-space:nowrap}
+.td-v{color:var(--i);font-weight:500}
 .read{background:var(--fill);border-radius:18px;padding:20px;box-shadow:var(--sh2)}
 .read .lab{color:var(--on-faint)}
 .read .lab .r{color:var(--on-mute)}
@@ -505,8 +514,14 @@ body.sheet-open .sheet{transform:none;visibility:visible;
   <div class="ladder" id="ladder"><svg id="svg"></svg></div>
 </section>
 
+<section class="today" id="today">
+  <div class="lab">Where the activity is<span class="r" id="tdWhen"></span></div>
+  <div class="td-line" id="tdLine"></div>
+  <div class="td-rows" id="tdRows"></div>
+</section>
+
 <section class="read">
-  <div class="lab">Model read<span class="r" id="rdAge"></span></div>
+  <div class="lab">What it means<span class="r" id="rdAge"></span></div>
   <div class="rd-body">
     <span class="rd-mark" id="rdMark"></span>
     <span class="rd-line" id="rdLine"></span>

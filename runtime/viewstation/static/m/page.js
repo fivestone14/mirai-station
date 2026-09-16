@@ -211,6 +211,7 @@ function paintAll(){
   paintRegime(st);
   paintLadder(st);
   paintLevels(st);
+  paintToday();
   paintRead();
   paintFoot(st);
   clearLoading();
@@ -994,6 +995,71 @@ function paintSheet(rows, most, lv){
 
 /* ---- E. read — an opinion, not a measurement ---------------------------- */
 
+/* ---- D2. today — where the activity is, and what changed ----------------
+
+   EVERY LINE IS A FACT THE BUILDER ALREADY WROTE. The `day` block is computed
+   on the mini from the whole session and graded against the same board the
+   sentence below it was written from, so nothing is derived here: the panel
+   cannot drift from the words underneath. When the block is absent — an older
+   payload, or the session's first look — the panel says so rather than
+   printing a shape with nothing in it (law 1, honest-absent). */
+
+function tdRow(k, v){
+  const a = document.createElement('div'); a.className = 'td-k'; a.textContent = k;
+  const b = document.createElement('div'); b.className = 'td-v'; b.textContent = v;
+  return [a, b];
+}
+
+function todayLines(day){
+  // -> [headline, [[label, value], ...]]
+  if(!day || !Object.keys(day).length) return ['Not measured yet this session.', []];
+  const rows = [];
+  const runs = (day.leaders || {}).contracts || [];
+  const now = runs.length ? runs[runs.length - 1] : null;
+  let head = '';
+  if(now){
+    const changed = runs.length > 1;
+    head = changed
+      ? 'The busiest strike changed hands today. ' + now[0] + ' has held it since ' + now[1] + '.'
+      : now[0] + ' has been the busiest strike since ' + now[1] + '.';
+    rows.push(['Most contracts', now[0] + ' since ' + now[1]]);
+  }
+  const vol = (day.leaders || {}).volume || [];
+  if(vol.length){
+    const v = vol[vol.length - 1];
+    if(!now || v[0] !== now[0]) rows.push(['Most traded today', v[0] + ' since ' + v[1]]);
+  }
+  const joined = (day.joined || []).length, left = (day.left || []).length;
+  if(joined) rows.push(['Newly busy', String(joined) + (joined === 1 ? ' strike' : ' strikes')]);
+  if(left)   rows.push(['Gone quiet', String(left) + (left === 1 ? ' strike' : ' strikes')]);
+  const pace = day.volume_in_reach_vs_same_time_prior_sessions;
+  if(typeof pace === 'number' && isFinite(pace)){
+    const word = pace >= 1.25 ? 'busier than usual' : (pace <= 0.8 ? 'quieter than usual' : 'about usual');
+    rows.push(['Trading pace', word + ' for this hour']);
+  }
+  let moved = 0;
+  for(const g of (day.earlier_claims || [])) for(const c of (g.claims || []))
+    if(c.now === 'changed' || c.now === 'off_list') moved++;
+  if(moved) rows.push(['Since earlier', String(moved) + (moved === 1 ? ' call no longer holds' : ' calls no longer hold')]);
+  if(!head) head = 'The session has not settled on a busiest strike yet.';
+  return [head, rows];
+}
+
+function paintToday(){
+  const day = ((PAY || {}).scene || {}).day;
+  const [head, rows] = todayLines(day);
+  $('tdLine').textContent = head;
+  const from = (day || {}).lists_from;
+  $('tdWhen').textContent = from ? ('SINCE ' + from) : '';
+  // replaceChildren, the same idiom paintLevels uses. A clear loop written
+  // against firstChild/removeChild is a silent no-op in the stand-in DOM the
+  // phone tests run in, and the rows double on the second paint — which is
+  // every poll.
+  const kids = [];
+  for(const [k, v] of rows) kids.push(...tdRow(k, v));
+  $('tdRows').replaceChildren(...kids);
+}
+
 function paintRead(){
   const m = modelRead(READS);
   const mark = $('rdMark'), line = $('rdLine'), age = $('rdAge');
@@ -1029,7 +1095,7 @@ function paintRead(){
   // surface is never caught putting words in the model's mouth.
   const lead = m.tier === 'aged' ? at + ' · ' : '';
   line.textContent = m.wordless
-    ? lead + 'No sentence this scan — ' + m.line
+    ? lead + 'No note written yet — ' + m.line
     : lead + m.line;
   line.className = 'rd-line' + (m.tier === 'aged' ? ' aged' : '')
                              + (m.wordless ? ' wordless' : '');

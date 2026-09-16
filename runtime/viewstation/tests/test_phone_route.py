@@ -635,6 +635,78 @@ def test_model_output_never_touches_innerhtml():
                 f"the reading reaches {region}'s markup"
 
 
+def _day_block():
+    """A session with a lead that changed hands, strikes in and out, and a
+    graded claim — the 2026-09-11 shape, which is what the builder writes."""
+    return {"lists_from": "09:36",
+            "leaders": {"contracts": [[1600, "09:36", "10:58"], [1700, "11:02", "13:52"],
+                                      [1650, "13:56", None]],
+                        "volume": [[1700, "09:40", "13:06"], [1650, "13:10", None]]},
+            "joined": [1605, 1630], "left": [[1550, "11:15"], [1575, "10:09"]],
+            "volume_in_reach_vs_same_time_prior_sessions": 1.37, "prior_sessions_compared": 5,
+            "earlier_claims": [{"said_at": "13:11", "claims": [{"strike": 1700, "now": "changed"},
+                                                               {"strike": 1600, "now": "holds"}]}]}
+
+
+def _overview(got):
+    """The overview panel as painted: (clock, headline, [(label, value), ...])."""
+    kids = got["tdRows"]["kids"]
+    return (got["tdWhen"]["text"], got["tdLine"]["text"],
+            [(kids[i]["text"], kids[i + 1]["text"]) for i in range(0, len(kids), 2)])
+
+
+def test_the_overview_says_where_the_activity_is_from_the_days_own_facts():
+    """The panel answers the question the phone exists for — where is the
+    activity, and what has changed — and every line of it is a fact the builder
+    already wrote into `day`, graded against the same board the sentence below
+    it was written from. Nothing is derived here, so the two cannot disagree."""
+    scene = {"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40}, "day": _day_block()}
+    when, head, rows = _overview(_page(_board(scene)))
+    assert when == "SINCE 09:36"
+    assert head == "The busiest strike changed hands today. 1650 has held it since 13:56."
+    assert rows == [("Most contracts", "1650 since 13:56"),
+                    ("Newly busy", "2 strikes"),
+                    ("Gone quiet", "2 strikes"),
+                    ("Trading pace", "busier than usual for this hour"),
+                    ("Since earlier", "1 call no longer holds")]
+    # a lead that never changed hands is stated as standing, not as news
+    steady = {"price": {"live_spot": 1500.0}, "scale": {"one_sigma_dollars": 40},
+              "day": {"lists_from": "13:23", "leaders": {"contracts": [[1500, "13:23", None]]},
+                      "volume_in_reach_vs_same_time_prior_sessions": 0.67}}
+    _, head2, rows2 = _overview(_page(_board(steady)))
+    assert head2 == "1500 has been the busiest strike since 13:23."
+    assert ("Trading pace", "quieter than usual for this hour") in rows2
+
+
+def test_the_overview_is_honestly_absent_before_the_day_has_facts():
+    """Law 1. The session's first look, and any payload older than the day
+    block, have nothing to say here — and a panel printed with nothing in it
+    reads as broken rather than as empty."""
+    when, head, rows = _overview(_page(_board({"price": {"live_spot": 1634.16},
+                                               "scale": {"one_sigma_dollars": 40}})))
+    assert head == "Not measured yet this session." and rows == [] and when == ""
+
+
+def test_the_overview_never_writes_markup_and_never_doubles():
+    """Two rules at once. The panel is written with textContent like the reading
+    is; and it is refilled with replaceChildren, because a clear loop written
+    against firstChild is a no-op in this DOM and the rows doubled on the second
+    paint — which is every poll."""
+    day = dict(_day_block(), lists_from='<img src=x onerror="alert(1)">')
+    got = _page(_board({"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40}, "day": day}))
+    # the hostile string is allowed to be TEXT — that is what textContent is
+    # for; what it may never be is markup, in this element or any other
+    assert got["tdWhen"]["text"].endswith('alert(1)">')
+    for region, el in got.items():
+        if isinstance(el, dict):
+            assert "onerror" not in el["html"], f"the day block reached {region}'s markup"
+    first = len(got["tdRows"]["kids"])
+    again = _page(_board({"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40},
+                          "day": _day_block()}),
+                  steps="await run('paintToday(); paintToday();'); await settle(); return dump();")
+    assert len(again["tdRows"]["kids"]) == first, "the panel doubled its rows on a repaint"
+
+
 def test_no_dealer_behaviour_is_claimed_anywhere_on_the_phone():
     """The four sentences were copied byte-for-byte from the desktop's snkArrows,
     and the copying was never the problem — the sentences were. (The desktop's

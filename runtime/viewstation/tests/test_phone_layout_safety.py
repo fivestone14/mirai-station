@@ -74,7 +74,7 @@ def test_nothing_in_the_column_is_flexible():
     now, so nothing needs to flex — and nothing may."""
     body = _rule("body")
     assert body and "flex-direction:column" in body
-    for sel in (".mast", ".regime", ".card", ".read", ".foot"):
+    for sel in (".mast", ".regime", ".card", ".today", ".read", ".foot"):
         r = _rule(sel)
         assert r is not None, f"{sel} has no rule"
         assert "flex:1" not in r.replace(" ", ""), f"{sel} can absorb an overflow"
