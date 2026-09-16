@@ -218,7 +218,15 @@ def test_job_starts_a_program_that_exists_and_can_run(path):
     script = _run_script(job)
     if script is None:
         program = _program(job)
-        assert os.path.isabs(program) and os.access(program, os.X_OK), \
+        assert os.path.isabs(program), \
+            f"{path.stem} starts {program!r}: not a run script and not an absolute path"
+        # Whether the tool is INSTALLED can only be asked on the machine that runs
+        # the job, and these are launchd's jobs, so that machine is a Mac:
+        # /usr/bin/caffeinate is not on a Linux CI box. Asking there fails a job
+        # that is fine instead of finding one that is broken.
+        if sys.platform != "darwin":
+            pytest.skip(f"{program} is a macOS tool; only a Mac can say whether it is installed")
+        assert os.access(program, os.X_OK), \
             f"{path.stem} starts {program!r}: not a run script and not an executable here"
         return
     assert script.is_file(), f"{path.stem} starts {script.relative_to(REPO)}, which is not in the repo"

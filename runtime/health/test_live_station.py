@@ -23,6 +23,7 @@ import sys
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
+from xml.parsers.expat import ExpatError
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -302,11 +303,31 @@ def _print_field(launchctl_print_text: str, field: str) -> str | None:
     return found.group(1) if found else None
 
 
+def _plistlib_plist(path) -> dict:
+    """The same plist through the standard library, XML comments dropped first so expat
+    accepts what launchd accepts — the trick runtime/watch/tests/test_station_jobs.py has
+    always used on the same file. Every failure leaves here as a ValueError, because that
+    is what the schedule check below reports as a plist it cannot read."""
+    try:
+        return plistlib.loads(re.sub(rb"<!--.*?-->", b"", Path(path).read_bytes(), flags=re.S))
+    except (ExpatError, OSError, ValueError) as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _launchd_plist(path) -> dict:
-    """A plist as launchd reads it. Apple's parser, not plistlib: com.mirai-station.sndk-bars.plist
-    carries `--day` inside an XML comment, which launchd and plutil accept and expat rejects."""
-    shown = subprocess.run(["plutil", "-convert", "json", "-o", "-", str(path)],
-                           capture_output=True, text=True)
+    """A plist as launchd reads it. Apple's parser where there is one: com.mirai-station.sndk-bars.plist
+    carries `--day` inside an XML comment, which launchd and plutil accept and expat rejects.
+
+    plutil ships with macOS and nowhere else, and so does launchd — so off a Mac there is no
+    station to check and the only caller left is this module's own unit tests of the schedule
+    logic. The missing binary used to raise FileNotFoundError straight past the ValueError
+    handler in `jobs_on_schedule`, which is what reddened the Linux CI box; the standard
+    library answers the same question there."""
+    try:
+        shown = subprocess.run(["plutil", "-convert", "json", "-o", "-", str(path)],
+                               capture_output=True, text=True)
+    except FileNotFoundError:
+        return _plistlib_plist(path)
     if shown.returncode != 0:
         raise ValueError((shown.stderr or shown.stdout).strip())
     return json.loads(shown.stdout)
@@ -634,6 +655,26 @@ def test_jobs_on_schedule_fails_a_keepalive_job_that_is_not_running(tmp_path):
     texts = {"v": _launchd_job(tmp_path, "v", {"KeepAlive": True}, state="not running", interval=None)}
     ok, why = jobs_on_schedule(texts)
     assert ok is False and "keep it alive" in why and "not running" in why
+
+
+def test_jobs_on_schedule_reads_plists_on_a_box_that_has_no_plutil(tmp_path, monkeypatch):
+    """Off a Mac there is no plutil, and the schedule logic still has to be testable:
+    the comment-carrying plist reads the same, and an unreadable one is still reported
+    rather than thrown. Without this the fallback is only ever exercised on the CI box,
+    where nobody sees it until it breaks — which is how this went red in the first place."""
+    def no_plutil(argv, *args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory: 'plutil'")
+    monkeypatch.setattr(subprocess, "run", no_plutil)
+
+    text = _launchd_job(tmp_path, "b", {"StartInterval": 60}, state="not running", interval=60)
+    plist = tmp_path / "b.plist"
+    plist.write_text(plist.read_text().replace(
+        "<dict>", "<dict>\n\t<!-- backfill by hand with `sndk_bars.py --day` -->", 1))
+    assert jobs_on_schedule({"b": text})[0] is True
+
+    plist.write_text("this is not a plist")
+    ok, why = jobs_on_schedule({"b": text})
+    assert ok is False and "cannot be read now" in why
 
 
 def _aged(path: Path, when: datetime) -> Path:
