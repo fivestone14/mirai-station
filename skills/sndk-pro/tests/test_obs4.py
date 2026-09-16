@@ -371,6 +371,53 @@ def test_the_position_check_runs_inside_the_gate():
     assert r2["read"].startswith("Price is now above")
 
 
+def test_one_bad_sentence_goes_and_the_rest_of_the_reading_stays():
+    """eagle-view #11. Every gate here used to empty the whole `read` on its
+    first hit, so one strike named on the wrong side deleted the true sentences
+    beside it — 4 readings in 43 lost everything they said. The tags are
+    unchanged; `read_sentences_dropped` says how much went."""
+    sc = scene_of(rich_row(spot=1250.0))              # 1200 is a magnet strike
+    r = SR.check_reading_against_scene(
+        {"quiet": False,
+         "read": "The 1200 strike holds the most contracts. Price is still under the 1200 strike."}, sc)
+    assert r["read"] == "The 1200 strike holds the most contracts."
+    assert "read_position_contradicts_spot:under 1200" in r["dropped_observations"]
+    assert "read_sentences_dropped:1_of_2" in r["dropped_observations"]
+
+    # an invented number takes its own sentence and no other
+    r2 = SR.check_reading_against_scene(
+        {"quiet": False,
+         "read": "The 1200 strike holds the most contracts. It traded 987654 lots today."}, sc)
+    assert r2["read"] == "The 1200 strike holds the most contracts."
+    assert "read_number_not_on_the_board:987654" in r2["dropped_observations"]
+
+    # a reading that is one bad sentence still leaves nothing, as it always did
+    r3 = SR.check_reading_against_scene(
+        {"quiet": False, "read": "Price is still under the 1200 strike."}, sc)
+    assert "read" not in r3 and r3["abstain"] == "forced"
+
+    # and the reviewer drops only the sentence it judged
+    judge = lambda texts: ["looks ready to run" if "ready" in t else None for t in texts]
+    r4 = SR.check_reading_against_scene(
+        {"quiet": False,
+         "read": "The 1200 strike holds the most contracts. Price looks ready to run at it."}, sc, judge=judge)
+    assert r4["read"] == "The 1200 strike holds the most contracts."
+    assert "read_semantic_forecast:looks ready to run" in r4["dropped_observations"]
+
+
+def test_a_price_is_not_two_sentences():
+    """The splitter that #11 rides on ends a sentence only where whitespace or
+    the end follows the stop. Every price on this board carries a decimal
+    point, and splitting on every dot tore "held between 1538.8 and 1546.1"
+    into three pieces, leaving "8 and 1546." to be hunted for on the board."""
+    assert SR._sentences("Price held between 1538.8 and 1546.1 since 09:57; nothing moved.") == \
+        ["Price held between 1538.8 and 1546.1 since 09:57; nothing moved."]
+    assert SR._sentences("1650 took the lead. Price crossed 1635.") == \
+        ["1650 took the lead. ", "Price crossed 1635."]
+    assert SR._sentences("One line, no full stop") == ["One line, no full stop"]
+    assert SR._sentences("") == [] and SR._sentences(None) == []
+
+
 def test_the_semantic_reviewer_deletes_a_forecast_in_plain_words():
     """The word list cannot see "looks ready to run"; the reviewer can, and a
     hit deletes the text the way a banned word does — recorded, never silent."""

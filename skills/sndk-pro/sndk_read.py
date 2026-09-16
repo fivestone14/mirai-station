@@ -2274,6 +2274,29 @@ def numbers_on_the_board(scene) -> set:
     return out
 
 
+def _sentences(text: str) -> list:
+    """The prose split into sentences, each keeping the space that followed it,
+    so joining the survivors reproduces the original spacing. A reading with no
+    full stop is one sentence, which is how a one-line quiet read arrives.
+
+    A FULL STOP ENDS A SENTENCE ONLY WHEN WHITESPACE OR THE END FOLLOWS IT.
+    Every price here carries a decimal point — "Price has held between 1538.8
+    and 1546.1" is one sentence and splitting on every dot tore it into three,
+    leaving "8 and 1546." to be judged as prose and its stray digits hunted for
+    on the board. Measured on the recorded readings, 9 in 10 carry a decimal."""
+    text = text or ""
+    out, start = [], 0
+    for m in re.finditer(r"[.!?]+(?=\s|$)", text):
+        end = m.end()
+        while end < len(text) and text[end].isspace():
+            end += 1
+        out.append(text[start:end])
+        start = end
+    if start < len(text):
+        out.append(text[start:])
+    return [s for s in out if s.strip()]
+
+
 def check_reading_against_scene(obj: dict, scene: dict, judge=None) -> dict:
     """Check the model's reading against the scene it was handed.
 
@@ -2321,17 +2344,39 @@ def check_reading_against_scene(obj: dict, scene: dict, judge=None) -> dict:
 
     spot_now = _fin((scene.get("price") or {}).get("live_spot"))
     read = _clip(str(obj.get("read") or "").strip(), 700)
-    hits = banned_words(read)
-    if hits:
-        dropped.append("read_banned:" + ",".join(hits))
-        read = ""
-    elif read and not _numbers_check(read, "read"):
-        read = ""
-    elif read and (ps := position_slips(read, spot_now)):
+    # 2026-09-15 (eagle-view #11): DROP THE BAD SENTENCE, NOT THE READING. Every
+    # check below used to empty the whole `read` on its first hit, so one strike
+    # named on the wrong side deleted the true sentences beside it: 4 readings in
+    # 43 lost everything they said. Each sentence is now judged on its own and
+    # only the failures go; when none survives the result is what it always was,
+    # an absent read. The tags are unchanged, so what the audit greps for still
+    # matches — `read_sentences_dropped` says how many of how many went.
+    def _read_slip(sentence):
+        hits = banned_words(sentence)
+        if hits:
+            return "read_banned:" + ",".join(hits)
+        if not _numbers_check(sentence, "read"):
+            return None          # _numbers_check has already recorded its own tag
         # obs-4: "still under the 1500 strike" at 1528.70 — every number on the
         # board, no banned word, and backwards
-        dropped.append("read_position_contradicts_spot:" + ",".join(ps))
-        read = ""
+        ps = position_slips(sentence, spot_now)
+        if ps:
+            return "read_position_contradicts_spot:" + ",".join(ps)
+        return ""
+
+    if read:
+        sentences = _sentences(read)
+        kept = []
+        for s in sentences:
+            before = len(dropped)
+            tag = _read_slip(s)
+            if tag:
+                dropped.append(tag)
+            elif tag == "" and len(dropped) == before:
+                kept.append(s)
+        if len(kept) != len(sentences):
+            dropped.append(f"read_sentences_dropped:{len(sentences) - len(kept)}_of_{len(sentences)}")
+        read = "".join(kept).strip()
 
     points = []
     for pt in (obj.get("points") or [])[:_OBS_MAX * 2]:
@@ -2372,18 +2417,26 @@ def check_reading_against_scene(obj: dict, scene: dict, judge=None) -> dict:
     if judge is None and SEMANTIC_GUARD:
         judge = semantic_review
     if judge is not None:
-        texts = ([read] if read else []) + [p["note"] for p in points]
+        # #11 again: the reviewer judges each SENTENCE, so a forecast in the
+        # second one no longer takes the observation in the first with it.
+        read_parts = _sentences(read) if read else []
+        texts = read_parts + [p["note"] for p in points]
         if texts:
             verdicts = judge(texts)
             if verdicts is None:
                 dropped.append("semantic_guard_skipped")
             else:
                 k = 0
-                if read:
-                    if verdicts[0]:
-                        dropped.append("read_semantic_forecast:" + verdicts[0])
-                        read = ""
-                    k = 1
+                if read_parts:
+                    survivors = []
+                    for j, part in enumerate(read_parts):
+                        v = verdicts[j] if j < len(verdicts) else None
+                        if v:
+                            dropped.append("read_semantic_forecast:" + v)
+                        else:
+                            survivors.append(part)
+                    read = "".join(survivors).strip()
+                    k = len(read_parts)
                 kept = []
                 for j, p in enumerate(points):
                     v = verdicts[k + j] if k + j < len(verdicts) else None

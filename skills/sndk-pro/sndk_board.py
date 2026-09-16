@@ -86,7 +86,7 @@ SHIP_RESOLVED = True            # ...but `resolved` ships regardless, and the di
 # breached by 34% of readings with no consequence, which teaches a model that
 # the number is decoration. A cap nobody enforces still costs the prose, because
 # the model clips its last thought to fit a line it is about to break anyway.
-READ_WORDS_BUDGET = 60
+READ_WORDS_BUDGET = 40      # strikes-7 asks for forty; measured, never a drop
                                 # (forty was a dead letter: 47 to 62 words on every eval read)
 GAP_FACTOR = 2.0                # an interval longer than this times the day's median cadence is a gap
 MAX_CLUSTERS = 4
@@ -2550,6 +2550,31 @@ def _adjacent_on_list(ks: list, listed: list) -> bool:
     return all(b - a == 1 for a, b in zip(order, order[1:]))
 
 
+def board_moved(scene: dict) -> list:
+    """Why this board is NOT quiet, in the rulebook's own four terms, or [] when
+    nothing moved: a change cell of a point or more, a level crossed since the
+    last read, a lead that changed hands today, and an earlier claim the day
+    block has graded as no longer holding. Read-only, and every term comes off
+    the scene the model was handed, so the answer is the one it could have
+    reached itself."""
+    why = []
+    recs = rows_as_records(scene.get("strikes"))
+    if any(isinstance(r.get("change"), list) and r["change"]
+           and isinstance(r["change"][0], (int, float)) and abs(r["change"][0]) >= 1.0
+           for r in recs):
+        why.append("a change cell moved a point or more")
+    slr = (scene.get("context") or {}).get("since_last_read") or {}
+    if slr.get("crossed_since_then"):
+        why.append("a level was crossed since the last read")
+    day = scene.get("day") or {}
+    if any(len(runs) > 1 for runs in (day.get("leaders") or {}).values()):
+        why.append("a lead changed hands today")
+    if any(c.get("now") in ("changed", "off_list")
+           for g in (day.get("earlier_claims") or []) for c in (g.get("claims") or [])):
+        why.append("an earlier claim no longer holds")
+    return why
+
+
 def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> dict:
     """The live word / number / position gates on `read` and `points`, plus
     the cluster gate: strikes must be listed and adjacent on the list, the
@@ -2570,14 +2595,37 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
     words = len((reading.get("read") or "").split())
     if words > READ_WORDS_BUDGET:
         reading["notes"] = [f"read_over_budget:{words}_words"]   # measured, never a drop
-    v2_slips = _prose_slips_v2(reading.get("read") or "", scene)
+    # eagle-view #11: the v2 prose rules are applied a sentence at a time too,
+    # so a strike named on the wrong side no longer deletes the reading around it.
+    parts = SR._sentences(reading.get("read") or "")
+    v2_slips, survivors = [], []
+    for part in parts:
+        slips = _prose_slips_v2(part, scene)
+        if slips:
+            v2_slips += slips
+        else:
+            survivors.append(part)
     if v2_slips:
-        reading["read"] = None
+        kept_text = "".join(survivors).strip()
+        reading["read"] = kept_text or None
         reading.setdefault("dropped_observations", [])
         reading["dropped_observations"] = list(reading["dropped_observations"]) + [f"read_{x}" for x in v2_slips]
-        if not reading.get("points"):
+        if len(survivors) != len(parts):
+            reading["dropped_observations"].append(
+                f"read_sentences_dropped:{len(parts) - len(survivors)}_of_{len(parts)}")
+        if not kept_text and not reading.get("points"):
             reading["quiet"] = True
             reading["abstain"] = "forced"
+    # strikes-7 (#9): THE QUIET CLAIM, CHECKED AGAINST THE BOARD. The rulebook
+    # says a quiet board is one where the change cells are within a point,
+    # nothing crossed since the last read, no lead changed and none of the
+    # earlier claims stopped holding — and until now the model set `quiet`
+    # itself with nothing testing it. A wrong claim is recorded, never deleted:
+    # the sentence may still be true, and silently flipping the flag would
+    # corrupt the one distinction the nightly audit is built on.
+    moved = board_moved(scene)
+    if reading.get("quiet") and moved:
+        reading["notes"] = list(reading.get("notes") or []) + ["quiet_but_board_moved:" + ",".join(moved)]
     kept_points = []
     for p in (reading.get("points") or []):
         note = str(p.get("note") or "")

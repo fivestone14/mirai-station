@@ -1395,6 +1395,48 @@ def test_the_doctrine_leads_with_what_changed_not_the_price_recap():
         assert name in B.DOCTRINE_V2, name
 
 
+def test_the_v2_prose_rules_take_the_sentence_and_not_the_reading():
+    """eagle-view #11 on the board's own rules: a strike named on the wrong
+    side loses its sentence, and the observation beside it survives."""
+    rows = _lead_rows()
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    spot = (v2.get("price") or {}).get("live_spot")
+    listed = sorted(B.listed_strikes(v2["strikes"]))
+    above = next(k for k in listed if k > spot)
+    good = "1300 holds the most contracts. "
+    bad = f"{above:g} sits below price."
+    r = B.check_reading_v2({"quiet": False, "read": good + bad}, v2)
+    assert r["read"] == good.strip()
+    assert any(x.startswith("read_strike_side_contradicts_spot") for x in r["dropped_observations"])
+    assert "read_sentences_dropped:1_of_2" in r["dropped_observations"]
+
+
+def test_a_quiet_claim_is_checked_against_the_board():
+    """strikes-7 (#9): the rulebook says a quiet board is one where the change
+    cells are within a point, nothing crossed, no lead changed and no earlier
+    claim stopped holding. The model set `quiet` and nothing tested it. A wrong
+    claim is recorded, never deleted — the sentence may still be true."""
+    assert B.board_moved({"strikes": {"columns": ["strike"], "rows": []}}) == []
+    # rows ship as RECORDS; the array layout came out on 2026-09-13 and
+    # rows_as_records decodes nothing else, so a list row reads as an empty board
+    moved = {"strikes": {"columns": ["strike", "change"],
+                         "rows": [{"strike": 1200, "change": [-2.4, 10, 5]}],
+                         "change_columns": ["contracts_share_pp", "vol_calls", "vol_puts"]},
+             "context": {"since_last_read": {"crossed_since_then": [{"level": 1230, "direction": "up"}]}},
+             "day": {"leaders": {"contracts": [[1200, "09:40", "11:02"], [1250, "11:06", None]]},
+                     "earlier_claims": [{"said_at": "11:00", "claims": [{"strike": 1200, "now": "changed"}]}]}}
+    why = B.board_moved(moved)
+    assert why == ["a change cell moved a point or more",
+                   "a level was crossed since the last read",
+                   "a lead changed hands today",
+                   "an earlier claim no longer holds"]
+    rows = _lead_rows()
+    v2, _ = B.build_scene_v2(rows[-1], rows, T0, None, None, flat_bars(30))
+    v2["context"] = {"since_last_read": {"crossed_since_then": [{"level": 1250, "direction": "up"}]}}
+    r = B.check_reading_v2({"quiet": True, "read": "Nothing new since 11:40."}, v2)
+    assert any(n.startswith("quiet_but_board_moved:") for n in (r.get("notes") or [])), r.get("notes")
+
+
 def _write_diary(day, rows):
     d = SR._diary_dir()
     d.mkdir(parents=True, exist_ok=True)
