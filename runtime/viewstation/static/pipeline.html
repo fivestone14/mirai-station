@@ -198,7 +198,7 @@ html.embedded .stores{order:3}
   <p class="sub">From Schwab to the observer model, replayed on a recorded session's clock. Press play and watch each scan, book and minute bar fire through the pipeline, and the payload leave for the model at the moment it actually did. One payload is headed to the model: the Strikes Payload, with the History block inside it. Four never are: the Scene Payload is no longer sent whole (its clocks, price and boxes ride inside the Strikes Payload, and its walls are frozen for the next wake check), the Screen Payload feeds the dashboard, the Gate Payload is kept on disk and read by nothing, and the Regions block is computed behind the scene, checks the model’s change words and is kept in the Gate Payload — all but its `resolved` list, which since 2026-09-07 DOES ship, because it is the only evidence in the scene that a pile the model named an hour ago has since left the board. Every call’s exact message is kept too, just before it leaves. Click a box to read what it is; the payload boxes open their schema. The table under the timeline lists every file the system writes.</p>
   <div class="legend">
     <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="currentColor" stroke-width="1.4"/></svg>live now</span>
-    <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="var(--accent)" stroke-width="1.4"/></svg>the strikes path, live since 2026-09-05 (era strikes-6 from the 2026-09-16 open)</span>
+    <span><svg viewBox="0 0 34 12"><line x1="0" y1="6" x2="34" y2="6" stroke="var(--accent)" stroke-width="1.4"/></svg>the strikes path, live since 2026-09-05 (era strikes-7 from the 2026-09-16 open)</span>
     <span><svg viewBox="0 0 34 12"><circle cx="17" cy="6" r="4" fill="var(--pulse)"/></svg>a firing: data or a payload on the move</span>
     <span><b style="font-family:var(--cond);color:var(--pulse)">→ model</b> sent to the observer</span>
     <span><b style="font-family:var(--cond);color:var(--ink-3)">→ screen</b> shown, never sent</span>
@@ -354,7 +354,7 @@ html.embedded .stores{order:3}
       </g>
       <g class="node payload live" tabindex="0" role="button" data-id="board" transform="translate(520,126)">
         <rect class="box" width="200" height="66" rx="3"/>
-        <text class="tag" x="188" y="59" text-anchor="end">live · strikes-6</text>
+        <text class="tag" x="188" y="59" text-anchor="end">live · strikes-7</text>
         <text class="name" x="12" y="24">Strikes Payload · v1</text><text class="dest model" x="188" y="24" text-anchor="end">→ model</text>
         <text class="meta" x="12" y="42">build_scene_v2 · about 14k chars</text>
         <text class="click" x="12" y="57">schema ›</text>
@@ -559,11 +559,11 @@ html.embedded .stores{order:3}
       [0,'session_segments[] · absent[] · integrity[]','list','volume by session hour, what it cannot see, and eight checks each forced to fail once in the tests'],
     ]};
 
-  S.board = {name:'Strikes Payload · v1', status:'live since 2026-09-05 (era strikes-6 from the 2026-09-16 open)', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · build_scene_v2',
+  S.board = {name:'Strikes Payload · v1', status:'live since 2026-09-05 (era strikes-7 from the 2026-09-16 open)', pill:'live', dest:'model', file:'skills/sndk-pro/sndk_board.py · build_scene_v2',
     what:'What the model reads now. The Scene Payload with its verdicts stripped, plus the board itself as one record per strike, twelve books of history behind each and the gap since the last read. About 14 thousand characters, 18 thousand at most; the model draws the clusters. Revert with "payload": "scene" in state/sndk_reads/control.json.',
     rows:[
       [0,'data_sources · clock · scale · price · freshness_rules · context','kept','the Scene Payload’s blocks with the label words removed: no move-or-hold word, no wake reason, no wall label on a crossing, no ranks of removed blocks; scale gains implied_vol_atm, in percent (68.15, not 0.6815); context keeps only ranges and since_last_read (which gains clusters_then; move_threshold_dollars, the move bar in dollars, two typical minutes; and from strikes-4 said_then, the sentence still on screen from the model’s last reading, with said_at, when it was written — the number gate never takes a figure from it)'],
-      [0,'day','object','since strikes-6 (2026-09-16): the one block written from the whole session rather than the last book, lit in the dashboard’s Payload tab, and every part of it graded against the table the model is shown'],
+      [0,'day','object','from the 2026-09-16 open: the one block written from the whole session rather than the last book, lit in the dashboard’s Payload tab, and every part of it graded against the table the model is shown'],
       [1,'earlier_claims[]','list','the last three readings’ claims, newest first, one per strike or level: said (heaviest above on contracts, pile centre, point) and now — holds, changed with what changed, or off_list. On 09-11 1650 overtook 1700 at 13:56 and the 14:00 reading said “still”; here the 13:11 claim about 1700 reads changed. Replaces the ungraded clusters_then'],
       [1,'no_books[]','list','each stretch with no book at all, as [from, to]; no lead is carried across one (strikes-5 dated “1800 since 09:30” across the six-hour outage on 09-09)'],
       [1,'leaders','object','per measure, every lead of the day that held two books, as [strike, from, until], until null for the lead standing now; a one-book flicker of another strike does not split a lead, a book that measured nothing does. Replaces the table’s leads_since and led_before'],
@@ -589,7 +589,7 @@ html.embedded .stores{order:3}
       [2,'strike · side · dist_sigma','number, string','above, below or at, measured from the live price since 2026-09-11 (the book’s price still draws the window); every above and below in the table uses that one price. A whole-dollar strike ships as 1700, not 1700.0, since 2026-09-13 — the halves this name really trades are the only strikes that carry a decimal'],
       [2,'first_touch · last_touch · minutes_touched_today · visits_today · passed_through_today','mixed','what price did at the strike today, from the minute bars’ wicks: minutes touched, in how many separate visits, and how many of those went through it (since 2026-09-11; the minute count was bars_touched_today). touched_today and shares_traded_at_strike_pp were cut 2026-09-13 — the first was minutes-touched-above-zero restated, the second: a minute’s whole volume was credited to every strike its range covered, so the listed values summed past 100 on 58% of boards'],
       [2,'oi_calls · oi_puts','int','last night’s open interest'],
-      [2,'oi_change','list','since strikes-6: open interest now minus the previous session’s book for the same expiry, [calls, puts] — the positions opened or closed in that session; it never moves within a day, and it is absent for a strike that book did not carry'],
+      [2,'oi_change','list','from the 2026-09-16 open: open interest now minus the previous session’s book for the same expiry, [calls, puts] — the positions opened or closed in that session; it never moves within a day, and it is absent for a strike that book did not carry'],
       [2,'vol_calls · vol_puts','int','contracts traded today so far'],
       [2,'contracts_share_pp','number','open interest plus volume, both rights, over the window; the old magnet mass, correctly named'],
       [2,'dealer_gamma_sign · dealer_gamma_share_pp','string, number','the sign and share of the assumed hedging surface; its change is never shipped, it moves with price'],
@@ -608,7 +608,7 @@ html.embedded .stores{order:3}
       [1,'implied_vol_at_last_read','number','implied vol when the model last spoke; the value NOW is scale.implied_vol_atm, so nothing is sent twice'],
       [0,'frozen_do_not_cite','list','list membership unchanged N minutes; the top-of-list line came off in strikes-6, because day.leaders carries that clock and the doctrine asks for the sentence'],
       [0,'— the model’s reply —','',''],
-      [0,'quiet · read','bool, string','three sentences, sixty words'],
+      [0,'quiet · read','bool, string','since strikes-7: two sentences, forty words, leading with what CHANGED on the board rather than the price recap the card already shows; the standing board is paid in sides and never re-listed in prose; a quiet board is one line, with quiet true'],
       [0,'sides','object','the heavy strike above and below and what it leads on; the code checks it is listed, on that side of the table’s own side column, and top three there'],
       [0,'clusters[]','list','the model’s magnet call: adjacent listed strikes, a center, a rank and a change word the code sets from the change cells the model was shown (the regions rule’s word is kept beside it when they differ); the code appends side, distance, touch and summed shares'],
       [0,'resolved[] · points[] · absent[]','list','piles it says have gone (a resolved region, or a strike the message listed as having left), levels to watch, what it looked for and did not find'],

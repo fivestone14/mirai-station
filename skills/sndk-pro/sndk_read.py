@@ -90,7 +90,20 @@ PRIOR_BARS_MIN = getattr(sndk_bars, "COMPLETE_SESSION_MIN_BARS", 300)
 _ET = ZoneInfo("America/New_York")
 _SQRT_TDAYS = math.sqrt(252.0)         # engine trading-days constant (√252)
 
-ERA = "strikes-6"           # bump on ANY change to the gates or the prompt.
+ERA = "strikes-7"           # bump on ANY change to the gates or the prompt.
+                            # strikes-7 (2026-09-15): HOW THE READING IS WRITTEN.
+                            # The OUTPUT block dictated "sentence one: what changed
+                            # since the last read, with its window. Sentence two: the
+                            # standing board on both sides", and every reading obeyed
+                            # it: 10 of 10 replayed moments opened by reciting price,
+                            # at 59 words and 15 numbers a reading. The reading now
+                            # leads with what CHANGED on the board (`day` says what
+                            # did), pays the standing board in `sides` alone, aims at
+                            # four numbers, drops the price recap the card already
+                            # shows, and answers a quiet board in one line. Replayed
+                            # A/B over the same ten moments: 34 words, 8.5 numbers,
+                            # jargon 14 -> 5, one guard deletion -> none. Bumped after
+                            # the 09-15 close, before the 2026-09-16 open.
                             # strikes-6 (2026-09-15): the `day` block — every
                             # lead of the day, what stood, joined and left the
                             # list, the last three readings' claims graded

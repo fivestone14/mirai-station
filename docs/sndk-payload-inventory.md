@@ -1,5 +1,13 @@
 # SNDK property inventory — in the scene payload vs not (living list)
 
+> **strikes-7 (2026-09-15).** No field changes; the rulebook's OUTPUT block no
+> longer dictates "sentence one ... sentence two: the standing board on both
+> sides". The reading leads with what CHANGED on the board (`day` says what did),
+> pays the standing board in `sides` alone, aims at four numbers, drops the price
+> recap the card shows, and answers a quiet board in one line with `quiet` true.
+> Replayed over ten recorded moments: 59 -> 34 words, 15 -> 8.5 numbers, jargon
+> 14 -> 5, one guard deletion -> none.
+>
 > **strikes-6 (2026-09-15).** The Strikes Payload gains a top-level `day` block,
 > after `context`, written from the whole session and graded against the table:
 > `earlier_claims` (the last three readings' side, pile and point claims, each

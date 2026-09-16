@@ -1378,6 +1378,23 @@ def test_the_doctrine_names_the_day_block():
         assert gone not in B.DOCTRINE_V2, gone
 
 
+def test_the_doctrine_leads_with_what_changed_not_the_price_recap():
+    """strikes-7: the OUTPUT block used to dictate the shape — "sentence one: what
+    changed since the last read, with its window. Sentence two: the standing board
+    on both sides" — and every reading obeyed it: 10 of 10 replayed moments opened
+    by reciting price, at 59 words and 15 numbers. The lead now comes from the day
+    block, the standing board is paid in `sides` alone, and a quiet board is one line."""
+    for gone in ("Sentence two: the standing board on both sides",
+                 "sentence one: what changed since the last read, with its window",
+                 "OPEN WITH THE FRAME"):
+        assert gone not in B.DOCTRINE_V2, gone
+    for name in ("LEAD WITH WHAT CHANGED ON THE BOARD", "THE BOARD IS NOT NEWS",
+                 "WHEN NOTHING MOVED, SAY SO AND STOP", "FOUR NUMBERS IS THE AIM",
+                 "THE FRAME IS ON THE CARD, NOT IN YOUR SENTENCE",
+                 "`day.leaders`", "`day.earlier_claims`", "forty words"):
+        assert name in B.DOCTRINE_V2, name
+
+
 def _write_diary(day, rows):
     d = SR._diary_dir()
     d.mkdir(parents=True, exist_ok=True)
