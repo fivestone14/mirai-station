@@ -154,8 +154,13 @@ function state(){
     // the diary's straight line across a six-hour hole was wrong by $66.40,
     // and it looked exactly like a real price path.
     points: pathPoints(),
-    vwap: vwapPrice(scene, diaryLast),
     sigma: ((scene.scale || {}).one_sigma_dollars),
+    // The strikes payload, not the ladder's legacy scene: the per-strike rows
+    // live there and nowhere else. An era that ships no rows yields no shade.
+    bands: weightBands(((PAY.scene || {}).strikes) || null),
+    reads: readPoints(PAY.reads_today),
+    vol: volumeBlocks(BARS, 5),
+    openRange: ((((PAY.scene || {}).context || {}).ranges || {}).opening) || null,
   };
 }
 
@@ -347,8 +352,8 @@ function paintLadder(st){
   svg.setAttribute('viewBox', '0 0 ' + CW + ' ' + SVGH);
 
   const sc = st.scene;
-  const PLOT_R = CW - 86, PLOT_L = 8, PLOT_W = PLOT_R - PLOT_L;
-  const MARK_L = PLOT_R + 6, MARK_R = MARK_L + 30, TAG_R = CW;
+  const PLOT_R = CW - 56, PLOT_L = 8, PLOT_W = PLOT_R - PLOT_L;
+  const MARK_L = PLOT_R + 6, TAG_R = CW - 4;
   // The live quote is a continuation of the tape only inside this gap; past it
   // it is a separate observation. One constant, used by BOTH the reach/break
   // rule and the x-domain, because they are the same judgement.
@@ -370,8 +375,8 @@ function paintLadder(st){
                      ? Math.max.apply(null, st.points.map(x=>x.s)) - Math.min.apply(null, st.points.map(x=>x.s))
                      : null);
   if(!WIN){
-    const core = coreLevels(sc, ref, st.vwap, st.points);
-    WIN = solveWindow(core, optionalLevels(sc), ref, st.sigma, sessRange);
+    const core = coreLevels(sc, ref, null, st.points);
+    WIN = solveWindow(core, optionalLevels(sc, ref), ref, st.sigma, sessRange);
     if(WIN) WIN.anchor = ref;
   }
   if(!WIN){ svg.innerHTML = '<text class="p-word" x="11" y="34">NO PRICE MEASURED</text>'; return; }
@@ -391,8 +396,8 @@ function paintLadder(st){
   const nearEdge = (ref < WIN.lo + 0.12*span0 || ref > WIN.hi - 0.12*span0);
   const moved = (WIN.anchor == null) || Math.abs(ref - WIN.anchor) >= 0.05*span0;
   if(nearEdge && moved){
-    const core = coreLevels(sc, ref, st.vwap, st.points);
-    const w2 = solveWindow(core, optionalLevels(sc), ref, st.sigma, sessRange);
+    const core = coreLevels(sc, ref, null, st.points);
+    const w2 = solveWindow(core, optionalLevels(sc, ref), ref, st.sigma, sessRange);
     if(w2){ WIN = w2; WIN.anchor = ref; }        // a null re-solve must not blank WIN
   }
 
@@ -436,9 +441,16 @@ function paintLadder(st){
   // grammar is vertical = price. Descending on BOTH stacks: the top stack's row
   // 0 is the row farthest from the plot, the bottom stack's row 0 the nearest.
   const byPrice = a => a.sort((x, y) => y.y - x.y);
-  const above = byPrice(leftover.filter(l => l.y > ref).slice(0, 2));
-  const below = byPrice(leftover.filter(l => l.y < ref).slice(0, 2));
-  const PAD_T = 12 + 13*above.length, PAD_B = 18 + 13*below.length;
+  // THREE, not two. The cap has to be at least the size of the optional set or a
+  // refused level reaches no pixel and no name — the 2026-08-24 bug. That set
+  // was four (a behind wall and a second wall each side) and the cap matched it
+  // exactly; it is six now that a nearest wall the day cannot reach is tried
+  // here rather than anchored. The pad is computed from these lengths, so the
+  // third row costs its 13px only on a day that has a third thing to say.
+  const above = byPrice(leftover.filter(l => l.y > ref).slice(0, 3));
+  const below = byPrice(leftover.filter(l => l.y < ref).slice(0, 3));
+  const PAD_T = 9 + 13*above.length, PAD_B = 29 + 13*below.length;
+  const RIB_B = SVGH - 19, RIB_T = RIB_B - 10;   // the volume ribbon's own band
   const plotTop = PAD_T, plotBottom = SVGH - PAD_B, plotH = plotBottom - plotTop;
   const k = plotH / span;
   const yFor = v => plotTop + (WIN.hi - v) * k;
@@ -461,10 +473,16 @@ function paintLadder(st){
 
   // ---- clipped plot content ---------------------------------------------
   let g = '';
-  if(p.session_high != null && p.session_low != null){
-    const yh = yFor(p.session_high), yl = yFor(p.session_low);
-    g += '<rect class="p-band" x="' + PLOT_L + '" y="' + n1(yh) + '" width="' + PLOT_W
-       + '" height="' + n1(Math.max(0, yl - yh)) + '"/>';
+  // WHERE THE CONTRACTS REST, as shade. Drawn first so everything else sits on
+  // top of it, and clipped with the rest of the plot content so a band whose
+  // strike is half outside the window is cut rather than dropped.
+  for(const b of st.bands){
+    const hi = Math.min(b.hi, WIN.hi), lo = Math.max(b.lo, WIN.lo);
+    if(!(hi > lo)) continue;
+    const yh = yFor(hi), yl = yFor(lo);
+    g += '<rect class="p-shade" x="' + PLOT_L + '" y="' + n1(yh) + '" width="' + PLOT_W
+       + '" height="' + n1(Math.max(0, yl - yh)) + '" style="opacity:'
+       + (b.weight * 0.30).toFixed(3) + '"/>';
   }
   const lp = livePoint(LIVE);
   const pts = st.points;
@@ -495,6 +513,13 @@ function paintLadder(st){
   const xFor = t => PLOT_L + ((t - t0) / ((t1 > t0) ? (t1 - t0) : 1)) * (PATH_R - PLOT_L);
   if(pts.length >= 2)
     g += '<polyline class="p-path" points="' + pts.map(q => n1(xFor(q.t)) + ',' + n1(yFor(q.s))).join(' ') + '"/>';
+  // Each read the day paid for, at the price it was reading. Placed from the
+  // payload's own list rather than from the journal tail, which reaches six of
+  // the twenty-odd — see snapshot._reads_today.
+  for(const r of st.reads){
+    if(tapeEnd != null && r.t > tapeEnd) continue;   // past the record, nothing to sit on
+    g += '<circle class="p-read" cx="' + n1(xFor(r.t)) + '" cy="' + n1(yFor(r.s)) + '" r="1.7"/>';
+  }
 
   // Detached, the dot is centred in its own gutter, clear of the break rule on
   // one side and the plot's right edge on the other. Clamped to PLOT_R-8 it sat
@@ -510,6 +535,12 @@ function paintLadder(st){
       // a dash across six hours implies a continuity that does not exist
       g += '<line class="p-break" x1="' + n1(lx) + '" y1="' + plotTop + '" x2="' + n1(lx) + '" y2="' + n1(plotBottom) + '"/>';
   }
+  const orng = st.openRange;
+  if(orng && inWin(orng.high) && inWin(orng.low)){
+    for(const v of [orng.high, orng.low])
+      g += '<line class="p-orb" x1="' + PLOT_L + '" y1="' + n1(yFor(v)) + '" x2="' + PLOT_R
+         + '" y2="' + n1(yFor(v)) + '"/>';
+  }
   o += '<g clip-path="url(#pc)">' + g + '</g>';
 
   // ---- the clear side, drawn with its extent -----------------------------
@@ -523,7 +554,6 @@ function paintLadder(st){
   // dashes ran through the word's three spaces and on into "VWAP 1,684" in the
   // lanes, so the whole row read as one sentence.
   const ruleYs = levels.map(l => yFor(l.y));
-  if(inWin(st.vwap)) ruleYs.push(yFor(st.vwap));
   if(!st.withdrawn && inWin(ref)) ruleYs.push(priceY);
   for(const side of ['call','put']){
     if((sc.walls||{})[side + '_side_has_no_wall'] !== true) continue;   // sr-7 rename
@@ -553,21 +583,6 @@ function paintLadder(st){
     }
   }
 
-  if(p.session_high != null && p.session_low != null){
-    const yh = yFor(p.session_high), yl = yFor(p.session_low), by = yh - 4;
-    // The bracket label wins a collision: it reports a measured emptiness, a
-    // finding, while this names something the band's own shading already shows.
-    // A RULE wins for the same reason, and this label cannot be moved the way
-    // the bracket's can — it means "the top of the band" and nowhere else. At
-    // 320x568 its baseline lands 10px under the 1,750 wall and its --ground
-    // halo takes a bite out of a 2.8px jade rule; the band's own shading still
-    // states the range, so the words go and the mark stays.
-    const clash = wordRows.some(r => Math.abs(r - by) < 12)
-               || ruleYs.some(r => Math.abs(r - by) < 12);
-    if((yl - yh) >= 24 && by >= plotTop + 9 && !clash)
-      o += '<text class="p-word" x="11" y="' + n1(by) + '">TODAY&#39;S RANGE</text>';
-  }
-
   // ---- rules -------------------------------------------------------------
   for(const l of levels){
     const y = n1(yFor(l.y));
@@ -578,14 +593,15 @@ function paintLadder(st){
     } else if(l.kind === 'wall'){
       // thickness IS the weight, on the card's own scale; a wall price has
       // already passed keeps its weight and loses its side's colour
+      // WHERE, not how much. The stroke was wallStroke(l.gex) until 2026-09-16:
+      // thickness on the book-gamma denominator, which is the one number this
+      // screen may not name in English. The shade behind it now carries weight,
+      // on contracts, which it can.
       o += '<line class="p-wall ' + (wallPassed(l.side, l.y, ref) ? 'passed' : l.side)
          + '" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y
-         + '" style="stroke-width:' + wallStroke(l.gex) + ';stroke-opacity:' + (l.nearest ? '1' : '.62') + '"/>';
+         + '" style="stroke-width:1.6;stroke-opacity:' + (l.nearest ? '.85' : '.55') + '"/>';
     }
   }
-  if(inWin(st.vwap))
-    o += '<line class="p-vwap" x1="' + PLOT_L + '" y1="' + n1(yFor(st.vwap)) + '" x2="' + PLOT_R
-       + '" y2="' + n1(yFor(st.vwap)) + '"/>';
 
   // ---- price -------------------------------------------------------------
   if(!st.withdrawn && inWin(ref)){
@@ -618,7 +634,6 @@ function paintLadder(st){
                     lvl:l, keep:(l.nearest || l.behind) ? 2 : 1});
     else if(l.kind === 'magnet' && l.lead) members.push({y:l.y, cls:'p-tag mag', lvl:l, keep:2});
   }
-  if(inWin(st.vwap)) members.push({y:st.vwap, cls:'p-tag vwap', vwap:true, keep:0});
   if(!st.withdrawn && inWin(ref)) members.push({y:ref, chip:true, keep:3});
   members.sort((a,b) => (b.keep - a.keep) || (a.y - b.y));
   const kept = members.slice(0, 7).sort((a,b) => a.y - b.y);
@@ -629,25 +644,16 @@ function paintLadder(st){
     if(Math.abs(rowY - trueY) > 2)
       o += '<path class="p-tie" d="M' + (PLOT_R+1) + ',' + n1(trueY) + ' L' + (MARK_L-1) + ',' + n1(rowY) + '"/>';
     if(m.chip){
-      o += '<rect class="p-chip" x="' + (CW-46) + '" y="' + n1(rowY-9) + '" width="46" height="18" rx="2"/>';
-      o += '<text class="p-chiptx" x="' + (CW-5) + '" y="' + n1(rowY+4.5) + '">'
+      // right edge shared with the tags, which moved in with the gutter
+      o += '<rect class="p-chip" x="' + (TAG_R-46) + '" y="' + n1(rowY-9) + '" width="46" height="18" rx="2"/>';
+      o += '<text class="p-chiptx" x="' + (TAG_R-5) + '" y="' + n1(rowY+4.5) + '">'
          + gUsd(m.y, 0).replace('$','') + '</text>';
       return;
     }
-    if(m.vwap) o += '<text class="p-lane" x="' + MARK_R + '" y="' + n1(rowY+3.5) + '">VWAP</text>';
     const l = m.lvl;
-    if(l && l.kind === 'wall'){
-      const bar = railWidth(l.gex, 20);          // null gex -> no bar AND no track
-      if(bar){
-        o += '<rect class="p-bar ' + (wallPassed(l.side, l.y, ref) ? 'passed' : l.side)
-           + '" x="' + MARK_L + '" y="' + n1(rowY-1.5)
-           + '" width="' + n1(bar.w) + '" height="3"/>';
-        if(bar.clipped) o += '<rect class="p-clip" x="' + (MARK_L+20) + '" y="' + n1(rowY-3.5) + '" width="2" height="7"/>';
-      }
-    }
     if(l && (l.magnet || l.kind === 'magnet'))
-      o += '<rect class="p-diamond" x="' + (MARK_L+24.5) + '" y="' + n1(rowY-2.5)
-         + '" width="5" height="5" transform="rotate(45 ' + (MARK_L+27) + ' ' + n1(rowY) + ')"/>';
+      o += '<rect class="p-diamond" x="' + MARK_L + '" y="' + n1(rowY-2.5)
+         + '" width="5" height="5" transform="rotate(45 ' + (MARK_L+2.5) + ' ' + n1(rowY) + ')"/>';
     const lead = (l && l.kind === 'wall' && l.nearest) ? ' lead' : '';
     o += '<text class="' + m.cls + lead + '" x="' + TAG_R + '" y="' + n1(rowY+4.5) + '">'
        + gUsd(m.y, 0).replace('$','') + '</text>';
@@ -668,6 +674,21 @@ function paintLadder(st){
     o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + n1(plotBottom + 12 + 13*i) + '">▼ '
        + gUsd(l.y,0).replace('$','') + (l.behind ? ' HEAVIEST' : '') + '</text>';
   });
+
+  // ---- how busy each stretch was -----------------------------------------
+  // Whole five-minute blocks on a scale fixed across sessions, so one height is
+  // one fact on every day. The x-domain is the path's own, or a block would sit
+  // over a minute it does not describe.
+  for(const b of st.vol){
+    const x0 = xFor(b.t0), x1 = xFor(b.t1);
+    if(!(x1 > x0) || x1 < PLOT_L || x0 > PATH_R) continue;
+    const h = b.weight * 10;
+    o += '<rect class="p-vol" x="' + n1(x0) + '" y="' + n1(RIB_B - h)
+       + '" width="' + n1(Math.max(1, x1 - x0 - 1)) + '" height="' + n1(h) + '"/>';
+    if(b.capped)
+      o += '<rect class="p-clip" x="' + n1(x0) + '" y="' + RIB_T + '" width="'
+         + n1(Math.max(1, x1 - x0 - 1)) + '" height="1.4"/>';
+  }
 
   // ---- axis feet ---------------------------------------------------------
   const c = sc.clock || {};

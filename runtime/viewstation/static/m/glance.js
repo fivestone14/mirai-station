@@ -80,15 +80,6 @@ function shareBarPct(share){
   return Math.max(2, Math.min(100, share/FULL_SHARE*100));
 }
 
-function wallStroke(share){
-  // Heavier draws thicker, continuously: 1.2px for a wall that barely clears
-  // the cluster floor, 7.6px at FULL_SHARE and above. Linear on purpose — the
-  // card prints the exact number, so the line only has to rank, and a curve
-  // that exaggerated small differences would rank things that are level. Two
-  // walls a point apart draw alike, which is true: they weigh alike.
-  if(share==null||!isFinite(share)) return 1.8;   // a default, never a claim
-  return Math.round((1.2 + Math.min(share, FULL_SHARE)/FULL_SHARE*6.4)*100)/100;
-}
 
 function wallPassed(side, strike, price){
   // Has price, AS SHOWN, gone past this wall since the book was read?
@@ -218,31 +209,45 @@ function dayChange(scene, live, diaryLast, todayStr){
   return (pc&&isFinite(pc)) ? (q/pc-1)*100 : null;
 }
 
-function vwapPrice(scene, diaryLast){
-  // A PRICE at a position. vwap_minus_live_spot_sigma (sr-8 rename of
-  // vwap_dist_sigma — the VALUE never changed, only the name now spells its
-  // subtraction) is (vwap - live spot)/sigma, so a NEGATIVE value means price
-  // is ABOVE its average — 13 of 15 reviewers read it backwards. Rendering the
-  // level instead of the ratio makes the sign trap structurally impossible: a
-  // price cannot be read backwards. Recovering the level is still an ADD.
-  const exact=_fin(diaryLast&&diaryLast.vwap);
-  if(exact!=null) return exact;
-  const p=((scene||{}).price)||{}, sig=_fin(((scene||{}).scale||{}).one_sigma_dollars);
-  if(p.live_spot==null||p.vwap_minus_live_spot_sigma==null||sig==null) return null;
-  return p.live_spot + p.vwap_minus_live_spot_sigma * sig;
-}
 
 /* ---- weight ------------------------------------------------------------ */
 
-function railWidth(gex, full){
-  // The chart's small rail bar beside a wall tag, on the same FULL_SHARE as the
-  // card and the line thickness, so the three can never rank a wall
-  // differently. The clip is marked where it happens.
-  if(gex==null||!isFinite(gex)) return null;     // no datum: no bar AND no track
-  return {w:Math.max(2, Math.min(full, gex/FULL_SHARE*full)), clipped: gex>FULL_SHARE};
-}
 
 /* ---- level assembly ---------------------------------------------------- */
+
+function _expectedMove(scene, side){
+  // How far the day is expected to carry from here, on the side the level sits.
+  // Asymmetric because the scene measures it that way, and it DECAYS through
+  // the session: at 09:30 it is the whole day's room, at 15:59 it is a minute's.
+  // Absent means absent — the caller keeps its old behaviour rather than
+  // inventing a distance.
+  const e=(((scene||{}).scale||{}).expected_move_today_asym)||null;
+  if(!e) return null;
+  return _fin(side==='call'?e.up_dollars:e.down_dollars);
+}
+
+function _wallAnchors(scene, price, side){
+  // Is this wall one price could actually meet today?
+  //
+  // The window used to make room for the nearest wall on each side whatever the
+  // distance, subject only to the 1.75-sigma exile radius — $115 on 2026-09-16,
+  // which let the call wall 83 dollars above price anchor the chart and left the
+  // day's own $47.33 of movement drawing inside 42% of the plot. The intent was
+  // right (the level price meets next must not vanish) and the reach was not:
+  // a wall five expected moves away is not a level price meets next.
+  //
+  // So the test is the day's own room rather than a multiple of a typical day's.
+  // A wall inside it is anchored as before. A wall outside it is not dropped —
+  // it goes to the optional set, faces the legibility test with everything else,
+  // and is NAMED at the edge when it does not fit. Nothing is silently dropped;
+  // that is the 2026-08-24 bug and it stays fixed.
+  const w=(((scene||{}).walls||{})[side]||[])[0];
+  if(!w||w.strike==null) return false;
+  const move=_expectedMove(scene, side);
+  if(move==null||!(move>0)) return true;      // no datum: the old behaviour
+  if(price==null||!isFinite(price)) return true;
+  return Math.abs(Number(w.strike)-price)<=move;
+}
 
 function coreLevels(scene, price, vwap, points){
   // Always admitted, each still subject to the exile radius.
@@ -251,9 +256,11 @@ function coreLevels(scene, price, vwap, points){
   if(_fin(p.session_low)!=null)  out.push({y:p.session_low,  kind:'session'});
   if(_fin(p.session_high)!=null) out.push({y:p.session_high, kind:'session'});
   for(const pt of (points||[])) out.push({y:pt.s, kind:'path'});
+  // Anchored only while price could actually reach it today; otherwise the wall
+  // is handed to optionalLevels() below, which is where it earns its place.
   const c=(w.call||[])[0], u=(w.put||[])[0];
-  if(c&&c.strike!=null) out.push(_wall(c,'call',true));
-  if(u&&u.strike!=null) out.push(_wall(u,'put',true));
+  if(c&&c.strike!=null&&_wallAnchors(scene,price,'call')) out.push(_wall(c,'call',true));
+  if(u&&u.strike!=null&&_wallAnchors(scene,price,'put'))  out.push(_wall(u,'put',true));
   // sr-7 reshape: top_strikes entries are {strike, share_of_book_gamma_pp}
   // dicts now, not [strike, share] pairs
   const mag=((scene||{}).magnet||{}).top_strikes;
@@ -264,10 +271,15 @@ function coreLevels(scene, price, vwap, points){
   return out;
 }
 
-function optionalLevels(scene){
+function optionalLevels(scene, price){
   // Tried one at a time, HEAVIEST FIRST, each subject to the admission test.
   const out=[], w=(scene||{}).walls||{};
   for(const side of ['call','put']){
+    // the nearest wall, when it is too far for the day to reach and so was not
+    // anchored by coreLevels(). It arrives here rather than nowhere: refused, it
+    // still becomes a named edge marker.
+    const n=(w[side]||[])[0];
+    if(n&&n.strike!=null&&!_wallAnchors(scene,price,side)) out.push(_wall(n,side,true));
     const b=w[side+'_heaviest_wall_behind_the_ladder'];   // sr-7 rename
     if(b&&b.strike!=null) out.push(Object.assign(_wall(b,side,false),{behind:true}));
     const l=w[side];
@@ -540,11 +552,120 @@ function _wall(e, side, nearest){
           heldExact:e.unchanged_for_min!=null};
 }
 
+/* ---- weight, as shade -------------------------------------------------- */
+
+// A FIXED scale, never the day's own heaviest. Shade that renormalises each
+// scan means one darkness is a different fact on a different day — the trap the
+// volume ribbon fell into, where the opening block runs many times the day's
+// median and scaling to the maximum leaves most of the board at nothing.
+// 13.0 is the 95th percentile of 604 strike-observations across the sessions of
+// payloads on disk (p50 3.76, p90 11.58, max 18.07). TWO SESSIONS IS A THIN
+// BASIS: re-measure once there are ten.
+const FULL_CONTRACTS_PP=13.0;
+
+function weightBands(strikes){
+  // Where the contracts rest, as shade rather than as a line whose thickness
+  // carries the number.
+  //
+  // Thickness could only ever be spent on the two or three levels that earn a
+  // rule, so every other pile on the board reached no pixel at all: on
+  // 2026-09-16 seven strikes in the window carried contracts and the chart drew
+  // two of them, hiding a shelf from 1540 to 1550. Shade costs no rule, so
+  // every strike the scan measured can show what is sitting on it.
+  //
+  // CONTRACTS, not the share the wall rail is gauged on: a count of open
+  // positions is sayable in English, and law 3 at the top of this file forbids
+  // the other one reaching the surface at all.
+  const rows=((strikes||{}).rows)||[];
+  const ks=[];
+  for(const r of rows){
+    const y=_fin(r&&r.strike), share=_fin(r&&r.contracts_share_pp);
+    if(y==null||share==null||share<=0) continue;   // no datum, no band
+    ks.push({y, share});
+  }
+  // One strike is a grid of one: there is no neighbour to measure an extent
+  // against, and inventing one would be a guess about a board we cannot see.
+  if(ks.length<2) return [];
+  ks.sort((a,b)=>a.y-b.y);
+  // The TYPICAL step of this board, which is what a strike's shade may cover.
+  // Half the gap to the neighbour is the natural extent and it is wrong wherever
+  // the grid has a hole: on 2026-09-16 the list ran ..1545, 1550, 1600.., so a
+  // half-gap extent smeared 1550 twenty-five dollars upward and painted shade
+  // across 1555-1575, where the scan measured no contracts at all. A hole in the
+  // grid must read as a hole.
+  const gaps=[];
+  for(let i=1;i<ks.length;i++) gaps.push(ks[i].y-ks[i-1].y);
+  gaps.sort((a,b)=>a-b);
+  const step=gaps[Math.floor(gaps.length/2)];        // median gap
+  const cap=step>0?step/2:null;
+  if(cap==null) return [];
+  const out=[];
+  for(let i=0;i<ks.length;i++){
+    // half the distance to each neighbour, so two strikes a typical step apart
+    // meet exactly and the field reads as one surface — but never wider than
+    // half a typical step, so a gap in the grid stays a gap on the screen
+    const dLo=i>0?Math.min(cap,(ks[i].y-ks[i-1].y)/2):cap;
+    const dHi=i<ks.length-1?Math.min(cap,(ks[i+1].y-ks[i].y)/2):cap;
+    out.push({y:ks[i].y, share:ks[i].share,
+              lo:ks[i].y-dLo, hi:ks[i].y+dHi,
+              weight:Math.min(1, ks[i].share/FULL_CONTRACTS_PP),
+              capped:ks[i].share>FULL_CONTRACTS_PP});
+  }
+  return out;
+}
+
+/* ---- when the model looked, and what price crossed --------------------- */
+
+function readPoints(reads){
+  // `reads_today` off the payload wrapper: when the model spoke and the price
+  // it was looking at. Absent — an older payload, or a day it never spoke —
+  // yields no marks, never a reconstruction from the journal.
+  if(!Array.isArray(reads)) return [];
+  const out=[];
+  for(const r of reads){
+    const t=Date.parse(r&&r.ts), s=_fin(r&&r.spot);
+    if(!isFinite(t)||s==null) continue;
+    out.push({t, s});
+  }
+  return out.sort((a,b)=>a.t-b.t);
+}
+
+/* ---- how busy each stretch was ----------------------------------------- */
+
+// A FIXED scale again, and for the same reason as the shade: scaled to the
+// day's own maximum, the opening block alone runs many times the median and
+// most of the session draws at under a pixel — 27 of 69 blocks on 2026-09-16.
+// 29,000 shares a minute is the 90th percentile of the 1,170 five-minute blocks
+// in the sessions of one-minute bars on disk (p50 10,153, p95 42,812). A busier
+// block is CLIPPED and the clip is marked, never quietly flattened.
+const FULL_VOL_PER_MIN=29000.0;
+
+function volumeBlocks(bars, minutes){
+  // Whole blocks only. A part-block at the live edge is a smaller sample drawn
+  // on the same gauge as a full one, which reads as a lull that is really just
+  // a minute that has not finished yet.
+  if(!Array.isArray(bars)||!bars.length) return [];
+  const n=(minutes>0?minutes:5), out=[];
+  let cur=null;
+  for(const b of bars){
+    const t=Date.parse(b&&b.ts), v=_fin(b&&b.volume);
+    if(!isFinite(t)||v==null) continue;          // no datum, no block
+    if(!cur||cur.rows>=n){ cur={t0:t, t1:t, sum:0, rows:0}; out.push(cur); }
+    cur.t1=t; cur.sum+=v; cur.rows++;
+  }
+  while(out.length&&out[out.length-1].rows<n) out.pop();
+  return out.map(b=>({t0:b.t0, t1:b.t1,
+                      weight:Math.min(1, (b.sum/b.rows)/FULL_VOL_PER_MIN),
+                      capped:(b.sum/b.rows)>FULL_VOL_PER_MIN}));
+}
+
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={gUsd, gMinutes, envParts, FULL_SHARE, shareBarPct, wallStroke, wallPassed,
+  module.exports={gUsd, gMinutes, envParts, FULL_SHARE, shareBarPct, wallPassed,
                   levelRows, lightNote, priorClose,
-                  bookAge, shownPrice, dayChange, vwapPrice, railWidth,
+                  bookAge, shownPrice, dayChange,
                   etTime, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
-                  layoutLabels, barPoints, tapePoints, livePoint, modelRead};
+                  layoutLabels, barPoints, tapePoints, livePoint, modelRead,
+                  FULL_CONTRACTS_PP, weightBands, readPoints,
+                  FULL_VOL_PER_MIN, volumeBlocks};
 }

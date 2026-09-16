@@ -341,32 +341,28 @@ def test_the_regime_word_carries_no_claim_about_what_price_will_do(tmp_path, mon
     assert "not a forecast of where price goes" in got["foot"]["text"]
 
 
-def test_vwap_is_a_price_at_a_position():
-    """vwap_minus_live_spot_sigma (sr-8 rename of vwap_dist_sigma, the value
-    unchanged) is (vwap - live spot)/sigma, so a NEGATIVE value means price is
-    ABOVE its average. 13 of 15 reviewers read it backwards. A price cannot be
-    read backwards."""
-    got = _glance("""
-      const sc = {price:{live_spot:1700, vwap_minus_live_spot_sigma:-0.5}, scale:{one_sigma_dollars:40}};
-      console.log(JSON.stringify([
-        g.vwapPrice(sc, null),
-        g.vwapPrice(sc, {vwap:1688.25}),
-        g.vwapPrice({price:sc.price, scale:{}}, null),
-        g.vwapPrice({price:{live_spot:1700}, scale:sc.scale}, null)]));""")
-    # negative ratio: the average sits BELOW price, recovered by adding it back
-    assert got[0] == 1680
-    # the diary's exact vwap is preferred over the rounded recovery
-    assert got[1] == 1688.25
-    # no sigma or no ratio: no price, never a guess
-    assert got[2] is None and got[3] is None
-    # and the chart tags the VWAP rule with that price, on both paths
-    scene = {"price": {"live_spot": 1700, "vwap_minus_live_spot_sigma": -0.5}, "scale": {"one_sigma_dollars": 40},
-             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}],
-                       "put": [{"strike": 1660, "cluster_share_of_book_gamma_pp": 10}]}}
-    diary = [{"ticker": "SNDK", "ts": _NOW, "spot": 1700, "vwap": 1688.25}]
-    assert _svg_texts(_page(_board(scene)), "p-tag vwap") == [("p-tag vwap", "1,680")]
-    assert _svg_texts(_page(_board(scene, diary=diary)), "p-tag vwap") == [("p-tag vwap", "1,688")]
+def test_the_average_price_is_off_the_chart_entirely():
+    """The volume-weighted average had a dashed rule, a lane word, a gutter tag
+    and a place in the window solve. All four are gone (2026-09-16), at the
+    reader's word: the reading names it in prose beside the chart, and a mark
+    that repeats the prose costs a gutter row and a level's worth of window.
 
+    Off the chart has to mean off the WINDOW too. A level nobody can see must
+    not decide what everyone else is drawn against, which is the quiet half of
+    a removal and the half that survives a careless one."""
+    scene = {"price": {"live_spot": 1700, "vwap_minus_live_spot_sigma": -3.0},
+             "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}],
+                       "put": [{"strike": 1690, "cluster_share_of_book_gamma_pp": 10}]}}
+    diary = [{"ticker": "SNDK", "ts": _NOW, "spot": 1700, "vwap": 1580.0}]
+    page = _page(_board(scene, diary=diary))
+    svg = page["svg"]["html"]
+    assert "p-vwap" not in svg and "p-lane" not in svg and "vwap" not in svg.lower()
+    # the average sits $120 below price, three sigma away. Were it still a level
+    # the window would have to stretch to it or name it at the edge; it does
+    # neither, because it is not one.
+    assert "1,580" not in svg
+    assert PHONE.count("p-vwap") == 0 and PHONE.count("p-lane") == 0
 
 def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
     """ONE full scale for the card's bars, the chart's rail bars and the chart's
@@ -385,27 +381,19 @@ def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
     most-contracts strike was not the heaviest gamma strike in its own window,
     and on 09-02 its share sat under 1% on 100 of 186 scans because its calls
     and puts cancel in the netted surface."""
-    got = _glance("""
-      const at = s => ({bar: g.shareBarPct(s), rail: g.railWidth(s, 20), stroke: g.wallStroke(s)});
-      console.log(JSON.stringify({full: g.FULL_SHARE, zero: at(0), half: at(15), cap: at(30),
-                                  over: at(45), none: [g.shareBarPct(null), g.railWidth(null, 20)],
-                                  strokes: [3.8, 6.3, 10.4, 25.6, 30, 45].map(g.wallStroke),
-                                  noStroke: g.wallStroke(null)}));""")
+    # THE CHART'S HALF OF THIS IS GONE (2026-09-16). wallStroke and railWidth
+    # drew this same share as a rule's thickness and a gutter bar's length;
+    # weight on the chart is shade now, on the contracts denominator, and both
+    # helpers were deleted rather than left unused. What the card does with the
+    # share is unchanged, and that is what is measured below.
+    got = _glance("""console.log(JSON.stringify({full: g.FULL_SHARE,
+      bars: [0, 15, 30, 45].map(g.shareBarPct), none: g.shareBarPct(null)}));""")
     assert got["full"] == 30
-    # all three are full at the same share...
-    assert got["cap"]["bar"] == 100 and got["cap"]["rail"] == {"w": 20, "clipped": False}
-    # ...all three stand at half their range at half of it...
-    assert got["half"]["bar"] == 50 and got["half"]["rail"]["w"] == 10
-    assert got["half"]["stroke"] == pytest.approx((got["zero"]["stroke"] + got["cap"]["stroke"]) / 2)
-    # ...and past it nothing grows further, with the clip marked on the rail
-    assert got["over"]["bar"] == 100 and got["over"]["stroke"] == got["cap"]["stroke"]
-    assert got["over"]["rail"] == {"w": 20, "clipped": True}
-    # heavier draws thicker, from 1.2px to 7.6px at the cap
-    strokes = got["strokes"]
-    assert strokes == sorted(strokes) and got["zero"]["stroke"] == 1.2 and strokes[-2:] == [7.6, 7.6]
-    # no share: no bar and no track, never a zero-width one, and a default stroke that claims nothing
-    assert got["none"] == [None, None]
-    assert got["noStroke"] == 1.8
+    # full at the cap, half at half of it, and no further past it. A measured
+    # zero keeps a 2% sliver: it is a datum, and it must not read as absence.
+    assert got["bars"] == [2, 50, 100, 100]
+    # no share: no bar at all, never a zero-width one — an empty track reads as zero
+    assert got["none"] is None
     # the page draws through those rules, on the card and the chart at once
     scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
              "magnet": {"top_strikes": [{"strike": 1700, "share_of_book_gamma_pp": 30}]},
@@ -418,9 +406,11 @@ def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
     assert most[:2] == ("lv mag", "Most contracts")
     assert most[2] == {"lv-k": ("1,700", None), "lv-n": ("9,000 contracts", None)}, "the most-contracts row grew a bar"
     svg = page["svg"]["html"]
+    # on the chart both walls draw the same hairline whatever their share — the
+    # one with 15% and the one with none at all
     assert sorted(re.findall(r'<line class="p-wall (\w+)"[^>]*stroke-width:([\d.]+)', svg)) == \
-        [("call", str(got["half"]["stroke"])), ("put", str(got["noStroke"]))]
-    assert re.findall(r'<rect class="p-bar (\w+)"[^>]*width="([\d.]+)"', svg) == [("call", "10.0")]
+        [("call", "1.6"), ("put", "1.6")]
+    assert re.findall(r'<rect class="p-bar (\w+)"', svg) == []
 
 
 def test_a_refused_level_is_always_named():
@@ -456,26 +446,47 @@ def test_a_refused_level_is_always_named():
     edges = [text for _, text in _svg_texts(_page(_board(day, bars=bars)), "p-edge")]
     # the second call wall has no share at all and still outranks the magnet; the
     # refused put pile inside the window is named on its own side of price
-    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▼ 1,690 HEAVIEST"]
+    #
+    # THREE ABOVE, not two (2026-09-16). This list used to stop at 1,850 and the
+    # exiled magnet at 1,800 reached no pixel and no name — the very drop the
+    # docstring above says cannot happen, sitting inside the test written to
+    # prevent it, because the cap of two was set to the size of the OPTIONAL set
+    # and an exiled magnet does not come from there. The cap is three now:
+    # enough for the three walls a side can offer (nearest, second, behind) once
+    # a nearest wall too far for the day to reach is tried as optional rather
+    # than anchored. The pad is computed from the row count, so the third row
+    # costs its 13px only on a day that has a third thing to say.
+    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▲ 1,800", "▼ 1,690 HEAVIEST"]
     # a refused level on the strike of a wall already ruled is not named twice
     day["walls"]["put"].append({"strike": 1690, "cluster_share_of_book_gamma_pp": 5})
     day["walls"]["put_heaviest_wall_behind_the_ladder"] = {"strike": 1680, "cluster_share_of_book_gamma_pp": 20}
     edges = [text for _, text in _svg_texts(_page(_board(day)), "p-edge")]
-    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▼ 1,690"]
+    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▲ 1,800", "▼ 1,690"]
 
 
-def test_the_magnet_never_shares_the_gex_gauge():
-    """top_strikes shares are a fraction of mass_by_strike; wall gex is a
-    fraction of net_by_strike. Two denominators must never share one gauge."""
+def test_the_magnet_never_shares_a_gauge_with_anything_else():
+    """top_strikes shares are a fraction of mass_by_strike; a wall's share is a
+    fraction of net_by_strike; the shade behind both is a fraction of the
+    contracts on the board. Three denominators, and no two may share a gauge.
+
+    The wall's rail bar used to carry the second of those as a LENGTH beside a
+    rule carrying it as a THICKNESS. Both went on 2026-09-16 when weight became
+    shade, so the gutter now holds marks that say WHICH level a row is — a
+    diamond for the magnet — and never how much."""
     scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
              "magnet": {"top_strikes": [{"strike": 1712, "share_of_book_gamma_pp": 30}]},
              "walls": {"call": [{"strike": 1740, "cluster_share_of_book_gamma_pp": 12}],
                        "put": [{"strike": 1660, "cluster_share_of_book_gamma_pp": 10}]}}
     svg = _page(_board(scene))["svg"]["html"]
-    # a rail bar for each wall, and a diamond, never a bar, for the magnet's larger share
-    assert sorted(re.findall(r'<rect class="p-bar (\w+)"', svg)) == ["call", "put"]
+    # no length-gauge anywhere in the gutter, and exactly one diamond
+    assert re.findall(r'<rect class="p-bar \w+"', svg) == []
     assert len(re.findall(r'<rect class="p-diamond"', svg)) == 1
-
+    # the two walls keep the plot-edge arrow that points at them, which names a
+    # side and a position and carries no quantity at all
+    assert sorted(re.findall(r'<path class="p-bar (\w+)"', svg)) == ["call", "put"]
+    # and every wall rule is the same weight, whatever its share
+    widths = set(re.findall(r'<line class="p-wall \w+"[^>]*stroke-width:([\d.]+)', svg))
+    assert widths == {"1.6"}, "a wall rule is drawing its share as thickness again"
 
 def test_the_magnet_list_is_read_as_dicts(tmp_path, monkeypatch):
     """sr-7 reshaped magnet.top_strikes from [strike, share] pairs into
@@ -759,9 +770,12 @@ def test_a_passed_wall_is_judged_against_the_price_on_screen():
 
     rows, marks = call_side(_page(_board(scene, live={"ticker": "SNDK", "spot": 1705})))
     assert rows == [("lv passed", "Call wall · Price passed it")]
-    assert marks == ["passed"] * 4, "the rule, tag, rail bar and bug do not all go neutral"
+    # THREE, not four: the gutter's rail bar went with the thickness gauge on
+    # 2026-09-16, so what must go neutral together is the rule, the tag and
+    # the plot-edge arrow.
+    assert marks == ["passed"] * 3, "the rule, tag and arrow do not all go neutral"
     rows, marks = call_side(_page(_board(scene)))
-    assert rows == [("lv call", "Call wall")] and marks == ["call"] * 4
+    assert rows == [("lv call", "Call wall")] and marks == ["call"] * 3
     # and passed is neutral wherever it is drawn
     assert ".lv.passed .lv-k{color:var(--i-mute)}" in PHONE
     assert ".p-wall.passed{stroke:var(--rule-soft)}" in PHONE
@@ -1290,3 +1304,213 @@ def test_the_two_phone_pages_share_one_palette():
     assert len(shared) >= 20, f"the pages have stopped sharing a palette ({len(shared)} tokens)"
     drift = {k: (a[k].strip(), b[k].strip()) for k in shared if a[k].strip() != b[k].strip()}
     assert not drift, f"the two phone pages disagree about {drift}"
+
+
+# --- weight as shade, and the marks that came with it ----------------------
+
+def test_shade_is_on_a_fixed_scale_not_the_days_own_heaviest():
+    """One darkness must mean one fact on every day.
+
+    The volume ribbon was scaled to the day's own maximum and the opening block
+    alone runs many times the day's median, so most of the board drew at
+    nothing. Shade renormalised per scan has the same fault with a worse
+    consequence: the pile at 1500 would look heavier on a quiet day than on a
+    busy one while holding the identical share."""
+    quiet = {"rows": [{"strike": 1500, "contracts_share_pp": 10},
+                      {"strike": 1510, "contracts_share_pp": 5}]}
+    busy = {"rows": [{"strike": 1500, "contracts_share_pp": 10},
+                     {"strike": 1510, "contracts_share_pp": 5},
+                     {"strike": 1520, "contracts_share_pp": 18}]}
+    got = _glance("""console.log(JSON.stringify({
+        quiet: g.weightBands(D.quiet).map(b => [b.y, b.weight]),
+        busy:  g.weightBands(D.busy).map(b => [b.y, b.weight, b.capped]),
+        full:  g.FULL_CONTRACTS_PP}));""", {"quiet": quiet, "busy": busy})
+    assert dict((y, w) for y, w in got["quiet"]) == \
+           dict((y, w) for y, w, _ in got["busy"] if y in (1500, 1510))
+    assert got["quiet"][0][1] == pytest.approx(10 / got["full"])
+    # past the scale the shade stops darkening and says so, rather than
+    # re-scaling everything else to make room for one pile
+    assert [b for b in got["busy"] if b[0] == 1520] == [[1520, 1, True]]
+
+
+def test_a_hole_in_the_strike_grid_stays_a_hole():
+    """A strike's shade covers half a TYPICAL step, never half the gap to a
+    distant neighbour.
+
+    On 2026-09-16 the measured list ran 1545, 1550, then 1600. Extending each
+    band to the midpoint smeared 1550 twenty-five dollars upward and painted
+    shade over 1555-1575, where the scan measured no contracts at all — the
+    chart inventing a pile out of the spacing between two real ones."""
+    board = {"rows": [{"strike": 1540, "contracts_share_pp": 5},
+                      {"strike": 1545, "contracts_share_pp": 5},
+                      {"strike": 1550, "contracts_share_pp": 7},
+                      {"strike": 1600, "contracts_share_pp": 11}]}
+    bands = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.lo, b.hi])));",
+                    board)
+    top = dict((y, (lo, hi)) for y, lo, hi in bands)
+    assert top[1550][1] == 1552.5 and top[1600][0] == 1597.5
+    # nothing at all is painted across the empty middle of the gap
+    assert not [1 for _, lo, hi in bands if lo < 1590 and hi > 1560]
+
+
+def test_a_strike_the_scan_did_not_measure_gets_no_shade():
+    """Honest-absent, on the mark that would be easiest to fake. A missing
+    share is not a light band, and a zero is not a faint one."""
+    board = {"rows": [{"strike": 1500, "contracts_share_pp": 10},
+                      {"strike": 1510},
+                      {"strike": 1520, "contracts_share_pp": None},
+                      {"strike": 1530, "contracts_share_pp": 0},
+                      {"strike": 1540, "contracts_share_pp": 4}]}
+    got = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => b.y)));", board)
+    assert got == [1500, 1540]
+
+
+def test_the_read_marks_come_from_the_payload_and_never_from_a_guess():
+    """`reads_today` is a wrapper field, so a payload built before it existed
+    draws no marks rather than marks reconstructed from whatever rows the
+    journal tail happened to carry."""
+    got = _glance("""console.log(JSON.stringify({
+        good: g.readPoints(D.reads).map(p => p.s),
+        none: g.readPoints(undefined),
+        junk: g.readPoints([{ts: 'not a time', spot: 5}, {ts: D.reads[0].ts}])}));""",
+                  {"reads": [{"ts": "2026-09-16T15:11:19-04:00", "spot": 1513.45},
+                             {"ts": "2026-09-16T09:31:31-04:00", "spot": 1554.65}]})
+    assert got["good"] == [1554.65, 1513.45]      # oldest first, whatever order it arrived in
+    assert got["none"] == [] and got["junk"] == []
+
+
+def test_a_wall_the_day_cannot_reach_does_not_anchor_the_window():
+    """The window made room for the nearest wall on each side whatever the
+    distance, subject only to the 1.75-sigma exile radius. On 2026-09-16 that
+    radius was $115, the call wall sat 83 dollars above price, and the day's own
+    $47.33 of movement drew inside 42.3% of the plot — 61 pixels of the 144 the
+    price line has, with the rest held open for a level price never came near.
+
+    The intent was right and the reach was not, so the test is the day's own
+    room rather than a multiple of a typical day's. The wall is not dropped: it
+    goes to the optional set, and the same board admits the put wall 17 dollars
+    away (it fits) while refusing the call wall 83 away — which then becomes a
+    named edge marker, so nothing reaches no pixel and no name."""
+    scene = {"price": {"live_spot": 1517.0001, "session_high": 1560.5799,
+                       "session_low": 1513.25, "vwap": 1534.58},
+             "scale": {"one_sigma_dollars": 65.82,
+                       "expected_move_today_asym": {"up_dollars": 15.43, "down_dollars": 13.99}},
+             "walls": {"call": [{"strike": 1600, "cluster_share_of_book_gamma_pp": 1.67}],
+                       "put": [{"strike": 1500, "cluster_share_of_book_gamma_pp": 20.44}]}}
+    js = """
+      const p = D.price, range = p.session_high - p.session_low;
+      const w = g.solveWindow(g.coreLevels(D, p.live_spot, p.vwap, []),
+                              g.optionalLevels(D, p.live_spot),
+                              p.live_spot, D.scale.one_sigma_dollars, range);
+      console.log(JSON.stringify({span: +(w.hi - w.lo).toFixed(2),
+                                  share: +(range / (w.hi - w.lo) * 100).toFixed(1),
+                                  admitted: w.admitted.map(l => l.y),
+                                  refused: w.refused.map(l => l.y)}));"""
+    got = _glance(js, scene)
+    assert got["admitted"] == [1500] and got["refused"] == [1600]
+    assert got["span"] == 67.85                 # was 112.00, anchored on 1600
+    assert got["share"] == 69.8                 # was 42.3
+
+    # NO DATUM, NO CHANGE. A scene that never measured the day's room keeps the
+    # behaviour it had rather than having a distance invented for it.
+    bare = dict(scene, scale={"one_sigma_dollars": 65.82})
+    got = _glance(js, bare)
+    assert got["admitted"] == [] and got["refused"] == []
+    assert got["span"] == 112.0
+
+    # and the rule is the DAY's room, not a fixed number of dollars: the same
+    # board an hour before the close, when there is far less of it left, stops
+    # anchoring the put wall it anchored at noon
+    close = dict(scene, scale={"one_sigma_dollars": 65.82,
+                               "expected_move_today_asym": {"up_dollars": 4.66, "down_dollars": 4.86}})
+    got = _glance(js, close)
+    assert got["admitted"] == [1500] and got["refused"] == [1600]
+
+
+# --- the marks the respacing bought ----------------------------------------
+
+_SHADE_SCENE = {
+    "price": {"live_spot": 1517, "session_high": 1560.58, "session_low": 1513.25},
+    "scale": {"one_sigma_dollars": 65.82,
+              "expected_move_today_asym": {"up_dollars": 15.43, "down_dollars": 13.99}},
+    "walls": {"call": [{"strike": 1600, "cluster_share_of_book_gamma_pp": 1.67}],
+              "put": [{"strike": 1500, "cluster_share_of_book_gamma_pp": 20.44}]},
+    "context": {"ranges": {"opening": {"high": 1560.58, "low": 1519.54}}},
+    "strikes": {"rows": [{"strike": 1500, "contracts_share_pp": 12.17},
+                         {"strike": 1510, "contracts_share_pp": 2.35},
+                         {"strike": 1520, "contracts_share_pp": 4.74},
+                         {"strike": 1530, "contracts_share_pp": 10.34},
+                         {"strike": 1540, "contracts_share_pp": 7.07},
+                         {"strike": 1550, "contracts_share_pp": 7.49},
+                         {"strike": 1600, "contracts_share_pp": 11.39}]}}
+
+
+def _shades(svg):
+    return [float(o) for o in re.findall(r'<rect class="p-shade"[^>]*style="opacity:([\d.]+)', svg)]
+
+
+def test_every_strike_the_scan_measured_shows_its_weight():
+    """Weight was a rule's THICKNESS, so it could only be spent on the two or
+    three levels that earn a rule. On the 2026-09-16 board seven strikes inside
+    the window carried contracts and the chart drew two of them — the shelf from
+    1,540 to 1,550 reached no pixel at all. Shade costs no rule."""
+    svg = _page(_board(_SHADE_SCENE))["svg"]["html"]
+    shades = _shades(svg)
+    # 1,600 is outside the window, the other six are in it
+    assert len(shades) == 6
+    # heaviest draws darkest, and nothing reaches full ink
+    assert max(shades) == pytest.approx(12.17 / 13.0 * 0.30, abs=1e-3)
+    assert max(shades) < 0.30
+    # a strike the scan did not measure gets nothing, not a faint band
+    bare = json.loads(json.dumps(_SHADE_SCENE))
+    bare["strikes"]["rows"][3].pop("contracts_share_pp")
+    assert len(_shades(_page(_board(bare))["svg"]["html"])) == 5
+    # and an era that ships no rows draws no shade rather than an empty field
+    none = json.loads(json.dumps(_SHADE_SCENE)); none.pop("strikes")
+    assert _shades(_page(_board(none))["svg"]["html"]) == []
+
+
+def test_the_opening_half_hour_draws_both_its_own_edges():
+    """It had no mark at all: the reading named it in prose and the chart never
+    showed where it was. Both edges or neither — one line is a level, and a
+    level is not what this is."""
+    svg = _page(_board(_SHADE_SCENE))["svg"]["html"]
+    assert len(re.findall(r'<line class="p-orb"', svg)) == 2
+    half = json.loads(json.dumps(_SHADE_SCENE))
+    half["context"]["ranges"]["opening"]["low"] = None
+    assert re.findall(r'<line class="p-orb"', _page(_board(half))["svg"]["html"]) == []
+
+
+def test_the_read_marks_stop_where_the_record_does():
+    """A read is drawn ON the price line, so it needs a line under it. The
+    newest read can be newer than the last bar the sidecar wrote — 24 reads
+    against 23 placeable ones on the live 2026-09-16 board — and a mark past
+    the end of the record would sit on nothing and read as a price."""
+    bars = [{"ts": "2026-09-10T09:%02d:00-04:00" % (30 + i), "close": 1520 + i, "volume": 100000}
+            for i in range(10)]
+    reads = [{"ts": "2026-09-10T09:31:00-04:00", "spot": 1521},
+             {"ts": "2026-09-10T09:36:00-04:00", "spot": 1526},
+             {"ts": "2026-09-10T11:00:00-04:00", "spot": 1540}]      # past the tape
+    svg = _page(_board(_SHADE_SCENE, now="2026-09-10T09:39:00-04:00",
+                       payload={"reads_today": reads}, bars=bars))["svg"]["html"]
+    assert len(re.findall(r'<circle class="p-read"', svg)) == 2
+    # no field at all: no marks, never marks rebuilt from the journal tail
+    svg = _page(_board(_SHADE_SCENE, now="2026-09-10T09:39:00-04:00", bars=bars))["svg"]["html"]
+    assert "p-read" not in svg
+
+
+def test_the_volume_ribbon_is_whole_blocks_on_one_scale():
+    """A part-block at the live edge is a smaller sample on the same gauge as a
+    full one, which reads as a lull that is really an unfinished minute. And the
+    scale is fixed across sessions: scaled to the day's own maximum, the opening
+    block runs many times the median and most of the session draws under a
+    pixel — 27 of 69 blocks on 2026-09-16, against 5 on the fixed scale."""
+    bars = [{"ts": "2026-09-10T09:%02d:00-04:00" % (30 + i), "close": 1520,
+             "volume": 200000 if i < 5 else 10000} for i in range(12)]
+    svg = _page(_board(_SHADE_SCENE, now="2026-09-10T09:41:00-04:00", bars=bars))["svg"]["html"]
+    # twelve bars, five to a block: two whole blocks and a part-block dropped
+    blocks = re.findall(r'<rect class="p-vol"[^>]*height="([\d.]+)"', svg)
+    assert len(blocks) == 2
+    # the busy block is past the scale, capped, and the cap is marked
+    assert blocks[0] == "10.0" and float(blocks[1]) < 10.0
+    assert len(re.findall(r'<rect class="p-clip"', svg)) == 1
