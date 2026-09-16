@@ -128,7 +128,7 @@ mirai-station/
 └── state/                               ← runtime state — DO NOT copy across machines
     ├── reversion/                       ← the SPX diary + nightly grades
     ├── sndk_reversion/ · sndk_reads/ · sndk_gex/ · sndk_rag/   ← the SNDK station
-    ├── gex_fills/ · dated_gex/ · gex_learn/ · gex_uw/
+    ├── gex_fills/ · dated_gex/ · gex_uw/
     ├── siege/ · lob_flow/ · market_expectation/ · tape_prev/
     └── voice/ · logs/
 ```

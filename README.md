@@ -344,7 +344,7 @@ mirai-station/
 │   ├── reversion/              the SPX diary + nightly grades
 │   ├── spx_rag/                the Watchtower's memory (slices · summaries · terrain)
 │   ├── sndk_reversion/ sndk_reads/ sndk_gex/ sndk_rag/   the SNDK station
-│   ├── gex_fills/ dated_gex/ gex_learn/ gex_uw/          the book + learned baselines
+│   ├── gex_fills/ dated_gex/ gex_uw/                     the book and its baselines
 │   ├── siege/ lob_flow/ market_expectation/ tape_prev/   the shadow sensors
 │   └── voice/ logs/            conversation log + session continuity
 └── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
