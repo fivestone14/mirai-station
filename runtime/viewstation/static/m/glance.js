@@ -554,14 +554,26 @@ function _wall(e, side, nearest){
 
 /* ---- weight, as shade -------------------------------------------------- */
 
-// A FIXED scale, never the day's own heaviest. Shade that renormalises each
-// scan means one darkness is a different fact on a different day — the trap the
-// volume ribbon fell into, where the opening block runs many times the day's
-// median and scaling to the maximum leaves most of the board at nothing.
-// 13.0 is the 95th percentile of 604 strike-observations across the sessions of
-// payloads on disk (p50 3.76, p90 11.58, max 18.07). TWO SESSIONS IS A THIN
-// BASIS: re-measure once there are ten.
-const FULL_CONTRACTS_PP=13.0;
+// The shade is a SPREAD ACROSS THE BOARD IN HAND, not a value divided by a
+// number. Two scales were tried and both failed at an end:
+//
+//   a fixed cross-session full point (13.0pp) left the lightest measured
+//   strikes at 0.054 opacity — a band nobody can see, which is a measurement
+//   drawn as an absence — and flattened everything above it early in the day,
+//   when the heaviest share runs 18pp;
+//
+//   dividing by the day's own heaviest fixed the top and not the bottom, and
+//   the divisor itself dilutes 35% between the open and the close (18.07pp to
+//   11.80pp on 2026-09-16, the same pile all day), so a strike that never
+//   changed would appear to darken by half through the session.
+//
+// Pinning BOTH ends removes both faults at once. The lightest strike the scan
+// measured sits at the floor and the heaviest at the ceiling, whatever the
+// numbers are, so every band is legible, none can creep past the ceiling, and
+// what the reader gets is where the weight sits RELATIVE TO THE REST — which is
+// the question this mark exists to answer. `weight` is that position, 0 at the
+// lightest and 1 at the heaviest; the floor and the ceiling are the page's,
+// because how dark is a property of the screen and not of the board.
 
 function weightBands(strikes){
   // Where the contracts rest, as shade rather than as a line whose thickness
@@ -606,11 +618,16 @@ function weightBands(strikes){
     // half a typical step, so a gap in the grid stays a gap on the screen
     const dLo=i>0?Math.min(cap,(ks[i].y-ks[i-1].y)/2):cap;
     const dHi=i<ks.length-1?Math.min(cap,(ks[i+1].y-ks[i].y)/2):cap;
-    out.push({y:ks[i].y, share:ks[i].share,
-              lo:ks[i].y-dLo, hi:ks[i].y+dHi,
-              weight:Math.min(1, ks[i].share/FULL_CONTRACTS_PP),
-              capped:ks[i].share>FULL_CONTRACTS_PP});
+    out.push({y:ks[i].y, share:ks[i].share, lo:ks[i].y-dLo, hi:ks[i].y+dHi});
   }
+  // the spread, taken over the strikes actually drawn. A board where every
+  // strike carries the same share has no spread to show: they sit together at
+  // the middle of the range rather than all at one end, which would say either
+  // "all of them are the heaviest" or "all of them are the lightest".
+  let lo1=Infinity, hi1=-Infinity;
+  for(const b of out){ if(b.share<lo1) lo1=b.share; if(b.share>hi1) hi1=b.share; }
+  const span=hi1-lo1;
+  for(const b of out) b.weight = span>0 ? (b.share-lo1)/span : 0.5;
   return out;
 }
 
@@ -666,6 +683,6 @@ if(typeof module!=='undefined'&&module.exports){
                   etTime, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, barPoints, tapePoints, livePoint, modelRead,
-                  FULL_CONTRACTS_PP, weightBands, readPoints,
+                  weightBands, readPoints,
                   FULL_VOL_PER_MIN, volumeBlocks};
 }

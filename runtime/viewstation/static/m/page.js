@@ -322,6 +322,13 @@ function paintFoot(){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 
+// How dark a band may be, which is a property of the screen rather than of the
+// board. The FLOOR is what makes a measured strike visible at all: under it a
+// band on this ground is not legible, and a measurement drawn as nothing is the
+// one thing this chart may not do. The CEILING is what stops the field reading
+// as a wall of ink behind the price line it exists to sit under.
+const SHADE_FLOOR = 0.08, SHADE_CEIL = 0.30;
+
 function paintLadder(st){
   const svg = $('svg');
   // Measure RAW, then decide, then clamp. The old line did Math.max(240, ...)
@@ -482,7 +489,7 @@ function paintLadder(st){
     const yh = yFor(hi), yl = yFor(lo);
     g += '<rect class="p-shade" x="' + PLOT_L + '" y="' + n1(yh) + '" width="' + PLOT_W
        + '" height="' + n1(Math.max(0, yl - yh)) + '" style="opacity:'
-       + (b.weight * 0.30).toFixed(3) + '"/>';
+       + (SHADE_FLOOR + b.weight * (SHADE_CEIL - SHADE_FLOOR)).toFixed(3) + '"/>';
   }
   const lp = livePoint(LIVE);
   const pts = st.points;

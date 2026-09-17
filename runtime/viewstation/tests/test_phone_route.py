@@ -1308,30 +1308,41 @@ def test_the_two_phone_pages_share_one_palette():
 
 # --- weight as shade, and the marks that came with it ----------------------
 
-def test_shade_is_on_a_fixed_scale_not_the_days_own_heaviest():
-    """One darkness must mean one fact on every day.
+def test_the_shade_is_a_spread_across_the_board_not_a_division():
+    """REVERSED 2026-09-17, from "one darkness means one fact on every day".
 
-    The volume ribbon was scaled to the day's own maximum and the opening block
-    alone runs many times the day's median, so most of the board drew at
-    nothing. Shade renormalised per scan has the same fault with a worse
-    consequence: the pile at 1500 would look heavier on a quiet day than on a
-    busy one while holding the identical share."""
-    quiet = {"rows": [{"strike": 1500, "contracts_share_pp": 10},
-                      {"strike": 1510, "contracts_share_pp": 5}]}
-    busy = {"rows": [{"strike": 1500, "contracts_share_pp": 10},
-                     {"strike": 1510, "contracts_share_pp": 5},
-                     {"strike": 1520, "contracts_share_pp": 18}]}
-    got = _glance("""console.log(JSON.stringify({
-        quiet: g.weightBands(D.quiet).map(b => [b.y, b.weight]),
-        busy:  g.weightBands(D.busy).map(b => [b.y, b.weight, b.capped]),
-        full:  g.FULL_CONTRACTS_PP}));""", {"quiet": quiet, "busy": busy})
-    assert dict((y, w) for y, w in got["quiet"]) == \
-           dict((y, w) for y, w, _ in got["busy"] if y in (1500, 1510))
-    assert got["quiet"][0][1] == pytest.approx(10 / got["full"])
-    # past the scale the shade stops darkening and says so, rather than
-    # re-scaling everything else to make room for one pile
-    assert [b for b in got["busy"] if b[0] == 1520] == [[1520, 1, True]]
+    That scale divided each share by a fixed 13.0pp and it failed at both ends:
+    the lightest strikes the scan measured came out at 0.054 opacity, which is a
+    measurement drawn as an absence, and early in the session — when the
+    heaviest share runs 18pp — everything above 13 flattened into one black.
+    Dividing by the day's own heaviest fixes the top and not the bottom, and
+    the divisor dilutes 35% between the open and the close, so a pile that never
+    changed would appear to darken by half.
 
+    Pinning BOTH ends answers both. The lightest measured strike takes the
+    floor, the heaviest the ceiling, and the rest spread between by value — so
+    what the band says is where the weight sits relative to the rest of the
+    board, which is the question it exists to answer."""
+    board = {"rows": [{"strike": 1500, "contracts_share_pp": 12.17},
+                      {"strike": 1510, "contracts_share_pp": 2.32},
+                      {"strike": 1520, "contracts_share_pp": 7.245}]}
+    got = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.weight])));", board)
+    assert dict(got) == {1500: 1, 1510: 0, 1520: pytest.approx(0.5)}
+    # the same SHAPE on a board an order of magnitude lighter draws identically:
+    # the mark reports rank and spread, and says nothing about absolute size
+    light = {"rows": [{"strike": 1500, "contracts_share_pp": 1.217},
+                      {"strike": 1510, "contracts_share_pp": 0.232},
+                      {"strike": 1520, "contracts_share_pp": 0.7245}]}
+    lit = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.weight])));", light)
+    assert [k for k, _ in lit] == [k for k, _ in got]
+    assert [w for _, w in lit] == pytest.approx([w for _, w in got])
+    # nothing caps any more, because the heaviest IS the top of the scale
+    assert "capped" not in json.dumps(got)
+    # a board with no spread at all sits in the middle: neither "all heaviest"
+    # nor "all lightest" is true of it
+    flat = {"rows": [{"strike": k, "contracts_share_pp": 5} for k in (1500, 1510, 1520)]}
+    assert [w for _, w in _glance(
+        "console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.weight])));", flat)] == [0.5, 0.5, 0.5]
 
 def test_a_hole_in_the_strike_grid_stays_a_hole():
     """A strike's shade covers half a TYPICAL step, never half the gap to a
@@ -1458,9 +1469,11 @@ def test_every_strike_the_scan_measured_shows_its_weight():
     shades = _shades(svg)
     # 1,600 is outside the window, the other six are in it
     assert len(shades) == 6
-    # heaviest draws darkest, and nothing reaches full ink
-    assert max(shades) == pytest.approx(12.17 / 13.0 * 0.30, abs=1e-3)
-    assert max(shades) < 0.30
+    # the ends are pinned: the heaviest strike on the board takes the ceiling and
+    # the lightest takes the floor, which is what keeps a measured strike visible
+    assert max(shades) == pytest.approx(0.30) and min(shades) == pytest.approx(0.08)
+    # and nothing is drawn so faint that a measurement reads as an absence
+    assert all(v >= 0.08 for v in shades)
     # a strike the scan did not measure gets nothing, not a faint band
     bare = json.loads(json.dumps(_SHADE_SCENE))
     bare["strikes"]["rows"][3].pop("contracts_share_pp")
