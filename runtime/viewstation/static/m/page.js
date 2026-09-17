@@ -1032,60 +1032,118 @@ function paintSheet(rows, most, lv){
    payload, or the session's first look — the panel says so rather than
    printing a shape with nothing in it (law 1, honest-absent). */
 
-function tdRow(k, v){
-  const a = document.createElement('div'); a.className = 'td-k'; a.textContent = k;
-  const b = document.createElement('div'); b.className = 'td-v'; b.textContent = v;
-  return [a, b];
+function acEl(cls, text){
+  const e = document.createElement('div');
+  e.className = cls;
+  if(text != null) e.textContent = text;      // textContent only: nothing here writes markup
+  return e;
 }
 
-function todayLines(day){
-  // -> [headline, [[label, value], ...]]
-  if(!day || !Object.keys(day).length) return ['Not measured yet this session.', []];
-  const rows = [];
+function todayHeadline(day){
+  // The one sentence, unchanged. Every word of it is a fact the builder wrote.
+  if(!day || !Object.keys(day).length) return 'Not measured yet this session.';
   const runs = (day.leaders || {}).contracts || [];
   const now = runs.length ? runs[runs.length - 1] : null;
-  let head = '';
-  if(now){
-    const changed = runs.length > 1;
-    head = changed
-      ? 'The busiest strike changed hands today. ' + now[0] + ' has held it since ' + now[1] + '.'
-      : now[0] + ' has been the busiest strike since ' + now[1] + '.';
-    rows.push(['Most contracts', now[0] + ' since ' + now[1]]);
+  if(!now) return 'The session has not settled on a busiest strike yet.';
+  const k = gUsd(now[0], 0).replace('$','');
+  return runs.length > 1
+    ? 'The busiest strike keeps changing hands. ' + k + ' has held it since ' + now[1] + '.'
+    : k + ' has been the busiest strike since ' + now[1] + '.';
+}
+
+const AC_WORD = {new: 'got busy', held: 'busy all day', gone: 'went quiet'};
+
+function acRow(r){
+  // <div class="ac-row new"><div class="ac-k">1,630</div><div class="ac-dot"></div>
+  //  <div class="ac-word">got busy</div><div class="ac-time">10:36</div></div>
+  // Honest-absent holds on the row too: no word on a continuation, no time
+  // element at all where the builder recorded none.
+  const row = acEl('ac-row ' + r.state);
+  row.appendChild(acEl('ac-k', gUsd(r.y, 0).replace('$','')));
+  row.appendChild(acEl('ac-dot'));
+  if(r.first) row.appendChild(acEl('ac-word', AC_WORD[r.state]));
+  if(r.at) row.appendChild(acEl('ac-time', r.at));
+  return row;
+}
+
+function acMore(n, word){
+  const row = acEl('ac-row more');
+  row.appendChild(acEl('ac-more', '+' + n));
+  row.appendChild(acEl('ac-word', word));
+  return row;
+}
+
+function todayNotes(day, map){
+  // Everything the old label/value rows carried that the ladder does not, kept
+  // as notes rather than dropped. A note with no datum behind it is not written.
+  const out = [];
+  // GROUPED BY WHAT HAPPENED, not one line each. The list grows through the
+  // session — five by midday on 2026-09-17 — and a line apiece would push the
+  // notes past the ladder they are a footnote to. Grouping keeps every strike
+  // named and bounds the block at two lines; the time goes when there is more
+  // than one, because the strike is the fact and the clock is the detail.
+  const gone = namedGone(day), fmt = y => gUsd(y, 0).replace('$','');
+  const list = ys => ys.length > 1
+    ? ys.slice(0, -1).map(fmt).join(', ') + ' and ' + fmt(ys[ys.length-1])
+    : fmt(ys[0]);
+  for(const [inBook, tail] of [[true, 'dropped off the list.'], [false, 'left the book.']]){
+    const g = gone.filter(n => n.inBook === inBook);
+    if(!g.length) continue;
+    out.push(g.length === 1 && g[0].at
+      ? list(g.map(n => n.y)) + ' was named at ' + g[0].at + ' and has ' + tail
+      : list(g.map(n => n.y)) + (g.length === 1 ? ' was' : ' were') + ' named earlier and ' +
+        (g.length === 1 ? 'has ' : 'have ') + tail);
   }
-  const vol = (day.leaders || {}).volume || [];
-  if(vol.length){
-    const v = vol[vol.length - 1];
-    if(!now || v[0] !== now[0]) rows.push(['Most traded today', v[0] + ' since ' + v[1]]);
-  }
-  const joined = (day.joined || []).length, left = (day.left || []).length;
-  if(joined) rows.push(['Newly busy', String(joined) + (joined === 1 ? ' strike' : ' strikes')]);
-  if(left)   rows.push(['Gone quiet', String(left) + (left === 1 ? ' strike' : ' strikes')]);
-  const pace = day.volume_in_reach_vs_same_time_prior_sessions;
+  const vol = ((day || {}).leaders || {}).volume || [];
+  const con = ((day || {}).leaders || {}).contracts || [];
+  const v = vol.length ? vol[vol.length - 1] : null, c = con.length ? con[con.length - 1] : null;
+  if(v && (!c || v[0] !== c[0]))
+    out.push(gUsd(v[0], 0).replace('$','') + ' has traded the most since ' + v[1] + '.');
+  const pace = (day || {}).volume_in_reach_vs_same_time_prior_sessions;
   if(typeof pace === 'number' && isFinite(pace)){
     const word = pace >= 1.25 ? 'busier than usual' : (pace <= 0.8 ? 'quieter than usual' : 'about usual');
-    rows.push(['Trading pace', word + ' for this hour']);
+    out.push('Trading ' + word + ' for this hour.');
   }
   let moved = 0;
-  for(const g of (day.earlier_claims || [])) for(const c of (g.claims || []))
-    if(c.now === 'changed' || c.now === 'off_list') moved++;
-  if(moved) rows.push(['Since earlier', String(moved) + (moved === 1 ? ' call no longer holds' : ' calls no longer hold')]);
-  if(!head) head = 'The session has not settled on a busiest strike yet.';
-  return [head, rows];
+  for(const g of ((day || {}).earlier_claims || [])) for(const cl of (g.claims || []))
+    if(cl.now === 'changed' || cl.now === 'off_list') moved++;
+  if(moved) out.push(moved === 1 ? 'One call it made earlier no longer holds.'
+                                 : String(moved) + ' calls it made earlier no longer hold.');
+  return out;
 }
 
 function paintToday(){
-  const day = ((PAY || {}).scene || {}).day;
-  const [head, rows] = todayLines(day);
-  $('tdLine').textContent = head;
+  const sc = ((PAY || {}).scene) || {};
+  const day = sc.day;
+  $('tdLine').textContent = todayHeadline(day);
   const from = (day || {}).lists_from;
   $('tdWhen').textContent = from ? ('SINCE ' + from) : '';
+
   // replaceChildren, the same idiom paintLevels uses. A clear loop written
   // against firstChild/removeChild is a silent no-op in the stand-in DOM the
   // phone tests run in, and the rows double on the second paint — which is
   // every poll.
-  const kids = [];
-  for(const [k, v] of rows) kids.push(...tdRow(k, v));
-  $('tdRows').replaceChildren(...kids);
+  const map = activityRows(day, (sc.price || {}).live_spot, 5);
+  const above = [], below = [], px = [];
+  if(map){
+    if(map.moreAbove) above.push(acMore(map.moreAbove, 'further above'));
+    for(const r of map.above) above.push(acRow(r));
+    for(const r of map.below) below.push(acRow(r));
+    if(map.moreBelow) below.push(acMore(map.moreBelow, 'further below'));
+    const v = shownPrice(sc, LIVE);
+    if(v){
+      const chip = acEl('ac-chip');
+      const s = gUsd(v.v).replace('$','');          // "1,608.20"
+      const dot = s.lastIndexOf('.');
+      chip.appendChild(acEl('int', dot > 0 ? s.slice(0, dot) : s));
+      if(dot > 0) chip.appendChild(acEl('', s.slice(dot)));
+      px.push(chip, acEl('ac-now', 'Price now'));
+    }
+  }
+  $('acAbove').replaceChildren(...above);
+  $('acPx').replaceChildren(...px);
+  $('acBelow').replaceChildren(...below);
+  $('acNote').replaceChildren(...todayNotes(day, map).map(t => acEl('', t)));
 }
 
 function paintRead(){

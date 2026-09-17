@@ -659,64 +659,95 @@ def _day_block():
                                                                {"strike": 1600, "now": "holds"}]}]}
 
 
+def _ac_rows(el):
+    """[(state, figure, word, time)] for one side of the ladder, as painted."""
+    out = []
+    for row in el["kids"]:
+        by = {k["cls"]: k["text"] for k in row["kids"]}
+        out.append((row["cls"].replace("ac-row ", ""),
+                    by.get("ac-k") or by.get("ac-more"),
+                    by.get("ac-word"), by.get("ac-time")))
+    return out
+
+
 def _overview(got):
-    """The overview panel as painted: (clock, headline, [(label, value), ...])."""
-    kids = got["tdRows"]["kids"]
+    """The panel as painted: (clock, headline, above, price, below, notes)."""
+    px = {k["cls"]: k["text"] for k in got["acPx"]["kids"]}
     return (got["tdWhen"]["text"], got["tdLine"]["text"],
-            [(kids[i]["text"], kids[i + 1]["text"]) for i in range(0, len(kids), 2)])
+            _ac_rows(got["acAbove"]), px.get("ac-chip"), _ac_rows(got["acBelow"]),
+            [n["text"] for n in got["acNote"]["kids"]])
 
 
-def test_the_overview_says_where_the_activity_is_from_the_days_own_facts():
-    """The panel answers the question the phone exists for — where is the
-    activity, and what has changed — and every line of it is a fact the builder
-    already wrote into `day`, graded against the same board the sentence below
-    it was written from. Nothing is derived here, so the two cannot disagree."""
-    scene = {"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40}, "day": _day_block()}
-    when, head, rows = _overview(_page(_board(scene)))
+def test_the_overview_maps_the_strikes_instead_of_counting_them():
+    """It printed "Newly busy: 2 strikes / Gone quiet: 2 strikes" and threw away
+    which ones. The panel now lays the strikes out in price order around a price
+    row, nearest first, so the SHAPE of the day is the thing you see: on the live
+    2026-09-17 board everything newly busy sat just above price and everything
+    that went quiet just below, which the counts could never show.
+
+    Every line is still a fact the builder wrote into `day` and nothing is
+    derived here, so the ladder and the sentence over it cannot disagree."""
+    day = dict(_day_block(),
+               joined=[1610, 1615, 1620, 1630, 1640], left=[[1625, "09:59"], [1595, "10:36"]],
+               stood=[1600, 1605],
+               named_off_list=[{"strike": 1500, "named_at": "09:31", "in_book": False}])
+    scene = {"price": {"live_spot": 1608.20}, "scale": {"one_sigma_dollars": 40}, "day": day}
+    when, head, above, chip, below, notes = _overview(_page(_board(scene)))
     assert when == "SINCE 09:36"
-    assert head == "The busiest strike changed hands today. 1650 has held it since 13:56."
-    assert rows == [("Most contracts", "1650 since 13:56"),
-                    ("Newly busy", "2 strikes"),
-                    ("Gone quiet", "2 strikes"),
-                    ("Trading pace", "busier than usual for this hour"),
-                    ("Since earlier", "1 call no longer holds")]
-    # a lead that never changed hands is stated as standing, not as news
-    steady = {"price": {"live_spot": 1500.0}, "scale": {"one_sigma_dollars": 40},
-              "day": {"lists_from": "13:23", "leaders": {"contracts": [[1500, "13:23", None]]},
-                      "volume_in_reach_vs_same_time_prior_sessions": 0.67}}
-    _, head2, rows2 = _overview(_page(_board(steady)))
-    assert head2 == "1500 has been the busiest strike since 13:23."
-    assert ("Trading pace", "quieter than usual for this hour") in rows2
-
+    # the figure column groups its thousands, so the sentence must too
+    assert head.endswith("1,650 has held it since 13:56.")
+    # nearest to price first, both sides running high to low, the word once a run
+    assert above == [("more", "+1", "further above", None),
+                     ("new", "1,630", "got busy", None),
+                     ("gone", "1,625", "went quiet", "09:59"),
+                     ("new", "1,620", "got busy", None),
+                     ("new", "1,615", None, None),
+                     ("new", "1,610", None, None)]
+    assert below == [("held", "1,605", "busy all day", None),
+                     ("held", "1,600", None, None),
+                     ("gone", "1,595", "went quiet", "10:36")]
+    assert chip == "1,608.20"
+    # what the label rows carried and the ladder does not is kept as a note
+    assert notes[0] == "1,500 was named at 09:31 and has left the book."
+    assert any(n.startswith("Trading ") for n in notes)
 
 def test_the_overview_is_honestly_absent_before_the_day_has_facts():
     """Law 1. The session's first look, and any payload older than the day
-    block, have nothing to say here — and a panel printed with nothing in it
-    reads as broken rather than as empty."""
-    when, head, rows = _overview(_page(_board({"price": {"live_spot": 1634.16},
-                                               "scale": {"one_sigma_dollars": 40}})))
-    assert head == "Not measured yet this session." and rows == [] and when == ""
-
+    block, have nothing to say here — and a ladder printed with nothing in it
+    reads as "measured, and nothing moved", which is a different claim."""
+    when, head, above, chip, below, notes = _overview(_page(_board(
+        {"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40}})))
+    assert head == "Not measured yet this session."
+    assert above == [] and below == [] and notes == [] and chip is None and when == ""
+    # a day block that never named a strike still draws no ladder and no price row
+    _, head2, above2, chip2, below2, _ = _overview(_page(_board(
+        {"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40},
+         "day": {"lists_from": "09:36", "joined": [], "left": [], "stood": []}})))
+    assert head2 == "The session has not settled on a busiest strike yet."
+    assert above2 == [] and below2 == [] and chip2 is None
 
 def test_the_overview_never_writes_markup_and_never_doubles():
     """Two rules at once. The panel is written with textContent like the reading
     is; and it is refilled with replaceChildren, because a clear loop written
     against firstChild is a no-op in this DOM and the rows doubled on the second
-    paint — which is every poll."""
-    day = dict(_day_block(), lists_from='<img src=x onerror="alert(1)">')
-    got = _page(_board({"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40}, "day": day}))
+    paint — which is every poll. The ladder made that second rule matter more:
+    it is four elements a row now, not two."""
+    day = dict(_day_block(), lists_from='<img src=x onerror="alert(1)">',
+               joined=[1610, 1615], left=[[1595, "10:36"]], stood=[1600])
+    scene = {"price": {"live_spot": 1608.20}, "scale": {"one_sigma_dollars": 40}, "day": day}
+    got = _page(_board(scene))
     # the hostile string is allowed to be TEXT — that is what textContent is
     # for; what it may never be is markup, in this element or any other
     assert got["tdWhen"]["text"].endswith('alert(1)">')
     for region, el in got.items():
         if isinstance(el, dict):
             assert "onerror" not in el["html"], f"the day block reached {region}'s markup"
-    first = len(got["tdRows"]["kids"])
-    again = _page(_board({"price": {"live_spot": 1634.16}, "scale": {"one_sigma_dollars": 40},
-                          "day": _day_block()}),
+    first = [len(got[k]["kids"]) for k in ("acAbove", "acPx", "acBelow", "acNote")]
+    assert first[0] and first[1] and first[2], "the fixture no longer paints a ladder"
+    again = _page(_board(dict(scene, day=dict(day, lists_from="09:36"))),
                   steps="await run('paintToday(); paintToday();'); await settle(); return dump();")
-    assert len(again["tdRows"]["kids"]) == first, "the panel doubled its rows on a repaint"
-
+    assert [len(again[k]["kids"]) for k in ("acAbove", "acPx", "acBelow", "acNote")] == first, \
+        "the panel doubled on a repaint"
 
 def test_no_dealer_behaviour_is_claimed_anywhere_on_the_phone():
     """The four sentences were copied byte-for-byte from the desktop's snkArrows,
@@ -1527,3 +1558,100 @@ def test_the_volume_ribbon_is_whole_blocks_on_one_scale():
     # the busy block is past the scale, capped, and the cap is marked
     assert blocks[0] == "10.0" and float(blocks[1]) < 10.0
     assert len(re.findall(r'<rect class="p-clip"', svg)) == 1
+
+
+# --- where the activity is, as a map around price --------------------------
+
+def test_the_activity_panel_names_the_strikes_it_counts():
+    """It printed "Newly busy: 7 strikes / Gone quiet: 10 strikes" and threw away
+    every strike and every time the builder had already written down. On the live
+    2026-09-17 board at 10:45 that count hid the story it existed to tell:
+    everything newly busy sat within $22 ABOVE price and everything that went
+    quiet sat just below it.
+
+    Nearest to price first, because distance is what decides whether a change
+    matters — a strike that went quiet two hundred dollars away is not news —
+    and both sides run high price to low, which is the order they are drawn in."""
+    day = {"joined": [1530, 1610, 1615, 1620, 1630, 1640, 1700],
+           "left": [[1450, "10:07"], [1520, "10:32"], [1595, "10:36"], [1625, "09:59"]],
+           "stood": [1600, 1605, 1650]}
+    got = _glance("console.log(JSON.stringify(g.activityRows(D.day, D.price, 5)));",
+                  {"day": day, "price": 1608.2022})
+    assert [r["y"] for r in got["above"]] == [1630, 1625, 1620, 1615, 1610]
+    assert [r["y"] for r in got["below"]] == [1605, 1600, 1595, 1530, 1520]
+    assert got["moreAbove"] == 3 and got["moreBelow"] == 1
+    # every strike lands in a lane or a count — nothing is dropped in silence
+    assert got["counts"] == {"new": 7, "gone": 4, "held": 3}
+    assert len(got["above"]) + got["moreAbove"] + len(got["below"]) + got["moreBelow"] == 14
+    # the time it went quiet rides with the row, not a separate lookup
+    assert [r["at"] for r in got["below"] if r["state"] == "gone"] == ["10:36", "10:32"]
+
+
+def test_a_strike_that_arrived_and_then_went_quiet_reads_as_gone():
+    """It is in BOTH lists the builder writes, and the reader is standing in the
+    present: it is gone now. Taking the joined list last would draw a strike that
+    is off the board as the newest thing on it."""
+    day = {"joined": [1610], "left": [[1610, "10:32"]], "stood": []}
+    got = _glance("console.log(JSON.stringify(g.activityRows(D.day, D.price, 5)));",
+                  {"day": day, "price": 1600})
+    assert [[r["y"], r["state"], r["at"]] for r in got["above"]] == [[1610, "gone", "10:32"]]
+
+
+def test_the_state_word_is_printed_once_per_run():
+    """Five rows reading "got busy" down a column is the same word five times.
+    The word marks where the kind CHANGES, so a block of one kind reads as one
+    thing — which is what makes the shape visible at a glance."""
+    day = {"joined": [1610, 1615, 1620], "left": [[1625, "09:59"]], "stood": [1605, 1600]}
+    got = _glance("console.log(JSON.stringify(g.activityRows(D.day, D.price, 5)));",
+                  {"day": day, "price": 1608})
+    assert [[r["y"], r["first"]] for r in got["above"]] == \
+        [[1625, True], [1620, True], [1615, False], [1610, False]]
+    assert [[r["y"], r["first"]] for r in got["below"]] == [[1605, True], [1600, False]]
+
+
+def test_the_activity_map_is_absent_rather_than_empty():
+    """No day block — an older payload, or the session's first look — and no
+    price to sort around are both absences, not empty maps. A shape with nothing
+    in it reads as "measured, and nothing happened"."""
+    got = _glance("""console.log(JSON.stringify({
+        noDay: g.activityRows(null, 1600, 5),
+        noPrice: g.activityRows({joined: [1610]}, null, 5),
+        noStrikes: g.activityRows({joined: [], left: [], stood: []}, 1600, 5)}));""")
+    assert got == {"noDay": None, "noPrice": None, "noStrikes": None}
+
+
+def test_the_strikes_the_model_named_that_have_since_gone():
+    """The one line on this card that says "what I told you earlier is gone".
+    On 2026-09-17 the model named 1,500 at 09:31 and that strike is no longer in
+    the book at all; nothing on the phone showed it."""
+    got = _glance("console.log(JSON.stringify(g.namedGone(D)));",
+                  {"named_off_list": [{"strike": 1500, "named_at": "09:31", "in_book": False},
+                                      {"strike": 1700, "named_at": "09:41"},
+                                      {"named_at": "10:00"}]})
+    assert got == [{"y": 1500, "at": "09:31", "inBook": False},
+                   {"y": 1700, "at": "09:41", "inBook": True}]
+
+
+def test_the_notes_group_the_strikes_that_have_gone_rather_than_listing_them():
+    """The named-and-gone list grows through the session — five by midday on
+    2026-09-17 — and a line apiece would push the footnotes past the ladder they
+    are a footnote to. Grouped by what happened, every strike is still named and
+    the block cannot exceed two lines. The clock survives only when there is one
+    of them, because the strike is the fact and the time is the detail."""
+    def notes(named):
+        day = dict(_day_block(), joined=[1610], left=[], stood=[], named_off_list=named)
+        return _overview(_page(_board({"price": {"live_spot": 1608.20},
+                                       "scale": {"one_sigma_dollars": 40}, "day": day})))[5]
+    got = notes([{"strike": 1615, "named_at": "10:24"},
+                 {"strike": 1700, "named_at": "09:41"},
+                 {"strike": 1500, "named_at": "09:31", "in_book": False}])
+    assert got[:2] == ["1,615 and 1,700 were named earlier and have dropped off the list.",
+                       "1,500 was named at 09:31 and has left the book."]
+    # one of a kind keeps its clock
+    assert notes([{"strike": 1615, "named_at": "10:24"}])[0] == \
+        "1,615 was named at 10:24 and has dropped off the list."
+    # three or more still read as a sentence, and none is dropped
+    got = notes([{"strike": k, "named_at": "10:00"} for k in (1615, 1700, 1720)])
+    assert got[0] == "1,615, 1,700 and 1,720 were named earlier and have dropped off the list."
+    # nothing named and gone: no line at all, not an empty one
+    assert not [n for n in notes([]) if "named" in n or "book" in n]

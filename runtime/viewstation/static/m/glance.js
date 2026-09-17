@@ -676,6 +676,63 @@ function volumeBlocks(bars, minutes){
                       capped:(b.sum/b.rows)>FULL_VOL_PER_MIN}));
 }
 
+/* ---- where the activity is, as a map around price ---------------------- */
+
+function activityRows(day, price, show){
+  // The panel printed "Newly busy: 7 strikes / Gone quiet: 10 strikes" and threw
+  // away every strike and every time the builder had already written down. On
+  // 2026-09-17 at 10:45 that count hid the whole story: everything newly busy
+  // sat within $22 ABOVE price and everything that went quiet sat just BELOW it.
+  //
+  // So the rows are the strikes themselves, in price order around price, nearest
+  // first, and each carries which of three things happened to it. Nearest first
+  // because distance from price is what decides whether a change matters at all:
+  // a strike that went quiet two hundred dollars away is not news.
+  if(!day) return null;
+  const st={};
+  for(const k of (day.stood||[]))  { const y=_fin(k); if(y!=null) st[y]={y, state:'held', at:null}; }
+  for(const k of (day.joined||[])) { const y=_fin(k); if(y!=null) st[y]={y, state:'new',  at:null}; }
+  // LAST, so it wins: a strike that arrived and then went quiet is gone now, and
+  // "gone now" is the fact the reader is standing in.
+  for(const e of (day.left||[])){
+    const y=_fin(Array.isArray(e)?e[0]:(e&&e.strike));
+    if(y==null) continue;
+    const t=Array.isArray(e)?e[1]:(e&&e.at);
+    st[y]={y, state:'gone', at:t?String(t):null};
+  }
+  const all=Object.keys(st).map(k=>st[k]);
+  if(!all.length||price==null||!isFinite(price)) return null;
+  const n=(show>0?show:5);
+  // drawn top to bottom, so both sides run high price to low
+  const up=all.filter(r=>r.y>price).sort((a,b)=>a.y-b.y);
+  const dn=all.filter(r=>r.y<price).sort((a,b)=>b.y-a.y);
+  const above=up.slice(0,n).reverse(), below=dn.slice(0,n);
+  // the state word is printed once per RUN, so a block of one kind reads as one
+  // thing instead of repeating itself down the column
+  for(const side of [above, below]){
+    let last=null;
+    for(const r of side){ r.first = r.state!==last; last=r.state; }
+  }
+  return {above, below, moreAbove:Math.max(0, up.length-above.length),
+          moreBelow:Math.max(0, dn.length-below.length),
+          counts:{new:all.filter(r=>r.state==='new').length,
+                  gone:all.filter(r=>r.state==='gone').length,
+                  held:all.filter(r=>r.state==='held').length}};
+}
+
+function namedGone(day){
+  // Strikes the model named that have since dropped off the list, and which of
+  // them left the book altogether. It is the one line on this card that says
+  // "what I told you earlier is gone", and nothing showed it before.
+  const out=[];
+  for(const e of ((day||{}).named_off_list||[])){
+    const y=_fin(e&&e.strike);
+    if(y==null) continue;
+    out.push({y, at:(e.named_at?String(e.named_at):null), inBook:e.in_book!==false});
+  }
+  return out;
+}
+
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gMinutes, envParts, FULL_SHARE, shareBarPct, wallPassed,
                   levelRows, lightNote, priorClose,
@@ -683,6 +740,6 @@ if(typeof module!=='undefined'&&module.exports){
                   etTime, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, barPoints, tapePoints, livePoint, modelRead,
-                  weightBands, readPoints,
+                  weightBands, readPoints, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks};
 }
