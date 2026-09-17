@@ -675,7 +675,7 @@ def _overview(got):
     px = {k["cls"]: k["text"] for k in got["acPx"]["kids"]}
     return (got["tdWhen"]["text"], got["tdLine"]["text"],
             _ac_rows(got["acAbove"]), px.get("ac-chip"), _ac_rows(got["acBelow"]),
-            [n["text"] for n in got["acNote"]["kids"]])
+            [(n["cls"].replace("ac-n ", ""), n["text"]) for n in got["acNote"]["kids"]])
 
 
 def test_the_overview_maps_the_strikes_instead_of_counting_them():
@@ -708,8 +708,11 @@ def test_the_overview_maps_the_strikes_instead_of_counting_them():
                      ("gone", "1,595", "went quiet", "10:36")]
     assert chip == "1,608.20"
     # what the label rows carried and the ladder does not is kept as a note
-    assert notes[0] == "1,500 was named at 09:31 and has left the book."
-    assert any(n.startswith("Trading ") for n in notes)
+    assert notes[0] == ("said", "1,500 was named at 09:31 and is now out of the book.")
+    # what the MODEL said and what the BOARD did are marked apart, and each kind
+    # is emitted in one run so its mark reads as one group rather than alternating
+    assert [k for k, _ in notes] == sorted([k for k, _ in notes], reverse=True)
+    assert any(k == "board" and t.startswith("Trading ") for k, t in notes)
 
 def test_the_overview_is_honestly_absent_before_the_day_has_facts():
     """Law 1. The session's first look, and any payload older than the day
@@ -1636,7 +1639,7 @@ def test_the_notes_group_the_strikes_that_have_gone_rather_than_listing_them():
     """The named-and-gone list grows through the session — five by midday on
     2026-09-17 — and a line apiece would push the footnotes past the ladder they
     are a footnote to. Grouped by what happened, every strike is still named and
-    the block cannot exceed two lines. The clock survives only when there is one
+    the block cannot exceed two lines. The clock survives only where there is one
     of them, because the strike is the fact and the time is the detail."""
     def notes(named):
         day = dict(_day_block(), joined=[1610], left=[], stood=[], named_off_list=named)
@@ -1645,13 +1648,13 @@ def test_the_notes_group_the_strikes_that_have_gone_rather_than_listing_them():
     got = notes([{"strike": 1615, "named_at": "10:24"},
                  {"strike": 1700, "named_at": "09:41"},
                  {"strike": 1500, "named_at": "09:31", "in_book": False}])
-    assert got[:2] == ["1,615 and 1,700 were named earlier and have dropped off the list.",
-                       "1,500 was named at 09:31 and has left the book."]
+    assert got[:2] == [("said", "1,615 and 1,700 were named earlier and are now off the list."),
+                       ("said", "1,500 was named at 09:31 and is now out of the book.")]
     # one of a kind keeps its clock
     assert notes([{"strike": 1615, "named_at": "10:24"}])[0] == \
-        "1,615 was named at 10:24 and has dropped off the list."
+        ("said", "1,615 was named at 10:24 and is now off the list.")
     # three or more still read as a sentence, and none is dropped
     got = notes([{"strike": k, "named_at": "10:00"} for k in (1615, 1700, 1720)])
-    assert got[0] == "1,615, 1,700 and 1,720 were named earlier and have dropped off the list."
+    assert got[0][1] == "1,615, 1,700 and 1,720 were named earlier and are now off the list."
     # nothing named and gone: no line at all, not an empty one
-    assert not [n for n in notes([]) if "named" in n or "book" in n]
+    assert not [t for _, t in notes([]) if "named" in t or "book" in t]

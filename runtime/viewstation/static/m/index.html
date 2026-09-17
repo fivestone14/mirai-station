@@ -334,6 +334,34 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .ac-note{margin-top:13px;padding-top:12px;border-top:1px solid var(--s2);
          font:400 12px/18px var(--sans);color:var(--i-mute)}
 .ac-note:empty{display:none}
+
+/* One note, one item. The wrap was the reading failure this fixes: a note that
+   ran to a second line put a short fragment at the same x, the same grey and
+   the same pitch as a whole note, and the ink air between two notes and between
+   two lines of one note was the identical 2.86px. The 12px gutter is two grid
+   units; the prose runs 12 to 311, a 299 measure, and a continuation line
+   starts at 12 with its own first line — so the gutter is EMPTY on it and a
+   wrapped note cannot read as two. */
+.ac-n{position:relative;padding-left:12px}
+/* the only space in the block is BETWEEN notes: 8.86px of ink air against the
+   2.86px inside a note, so space-between beats space-within 3.1 to 1 */
+.ac-n + .ac-n{margin-top:6px}
+
+/* Two marks, one primitive: a 1px --rule-soft stroke, the grey the ladder's own
+   dots carry. The AXIS is the difference, because at 1px the axis is the only
+   difference that still reads. Nothing else about a note changes with its kind —
+   same size, same weight, same grey — so the block cannot out-rank the ladder
+   it is a footnote to. */
+
+/* what the model named earlier. The rail spans the note's em boxes, so a
+   two-line note takes ONE mark and its wrap is bracketed by it. Do not set a
+   height: `bottom` is what makes the rail grow with the note. */
+.ac-n.said::before{content:"";position:absolute;left:0;top:1.43px;bottom:1.43px;
+                   width:1px;background:var(--rule-soft)}
+/* what the board itself did. On the figure band's optical centre, which is the
+   ladder's own rule for where a mark sits, not the line box's centre. */
+.ac-n.board::before{content:"";position:absolute;left:0;top:8.86px;
+                    width:8px;height:1px;background:var(--rule-soft)}
 .read{background:var(--fill);border-radius:18px;padding:20px;box-shadow:var(--sh2)}
 .read .lab{color:var(--on-faint)}
 .read .lab .r{color:var(--on-mute)}

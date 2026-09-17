@@ -1074,42 +1074,50 @@ function acMore(n, word){
 }
 
 function todayNotes(day, map){
-  // Everything the old label/value rows carried that the ladder does not, kept
-  // as notes rather than dropped. A note with no datum behind it is not written.
-  const out = [];
+  // -> [[kind, text], ...]. `said` is the model's own track record — what it
+  // named that has since gone, and what it claimed that no longer holds. `board`
+  // is what the market did. The two are marked differently because one is the
+  // instrument reporting on itself and the other is the instrument reporting on
+  // the world, and a reader owes them different weight.
+  //
+  // Everything the old label/value rows carried that the ladder does not is
+  // kept here rather than dropped. A note with no datum behind it is not
+  // written at all.
+  const said = [], board = [];
+
   // GROUPED BY WHAT HAPPENED, not one line each. The list grows through the
   // session — five by midday on 2026-09-17 — and a line apiece would push the
   // notes past the ladder they are a footnote to. Grouping keeps every strike
-  // named and bounds the block at two lines; the time goes when there is more
-  // than one, because the strike is the fact and the clock is the detail.
+  // named and bounds the block at two lines; the clock survives only where
+  // there is one of them, because the strike is the fact and the time the detail.
   const gone = namedGone(day), fmt = y => gUsd(y, 0).replace('$','');
   const list = ys => ys.length > 1
     ? ys.slice(0, -1).map(fmt).join(', ') + ' and ' + fmt(ys[ys.length-1])
     : fmt(ys[0]);
-  for(const [inBook, tail] of [[true, 'dropped off the list.'], [false, 'left the book.']]){
+  for(const [inBook, tail] of [[true, 'off the list.'], [false, 'out of the book.']]){
     const g = gone.filter(n => n.inBook === inBook);
     if(!g.length) continue;
-    out.push(g.length === 1 && g[0].at
-      ? list(g.map(n => n.y)) + ' was named at ' + g[0].at + ' and has ' + tail
-      : list(g.map(n => n.y)) + (g.length === 1 ? ' was' : ' were') + ' named earlier and ' +
-        (g.length === 1 ? 'has ' : 'have ') + tail);
-  }
-  const vol = ((day || {}).leaders || {}).volume || [];
-  const con = ((day || {}).leaders || {}).contracts || [];
-  const v = vol.length ? vol[vol.length - 1] : null, c = con.length ? con[con.length - 1] : null;
-  if(v && (!c || v[0] !== c[0]))
-    out.push(gUsd(v[0], 0).replace('$','') + ' has traded the most since ' + v[1] + '.');
-  const pace = (day || {}).volume_in_reach_vs_same_time_prior_sessions;
-  if(typeof pace === 'number' && isFinite(pace)){
-    const word = pace >= 1.25 ? 'busier than usual' : (pace <= 0.8 ? 'quieter than usual' : 'about usual');
-    out.push('Trading ' + word + ' for this hour.');
+    said.push(g.length === 1 && g[0].at
+      ? list(g.map(n => n.y)) + ' was named at ' + g[0].at + ' and is now ' + tail
+      : list(g.map(n => n.y)) + ' were named earlier and are now ' + tail);
   }
   let moved = 0;
   for(const g of ((day || {}).earlier_claims || [])) for(const cl of (g.claims || []))
     if(cl.now === 'changed' || cl.now === 'off_list') moved++;
-  if(moved) out.push(moved === 1 ? 'One call it made earlier no longer holds.'
-                                 : String(moved) + ' calls it made earlier no longer hold.');
-  return out;
+  if(moved) said.push(moved === 1 ? 'One call it made earlier no longer holds.'
+                                  : String(moved) + ' calls it made earlier no longer hold.');
+
+  const vol = ((day || {}).leaders || {}).volume || [];
+  const con = ((day || {}).leaders || {}).contracts || [];
+  const v = vol.length ? vol[vol.length - 1] : null, c = con.length ? con[con.length - 1] : null;
+  if(v && (!c || v[0] !== c[0]))
+    board.push(gUsd(v[0], 0).replace('$','') + ' has traded the most since ' + v[1] + '.');
+  const pace = (day || {}).volume_in_reach_vs_same_time_prior_sessions;
+  if(typeof pace === 'number' && isFinite(pace)){
+    const word = pace >= 1.25 ? 'busier than usual' : (pace <= 0.8 ? 'quieter than usual' : 'about usual');
+    board.push('Trading ' + word + ' for this hour.');
+  }
+  return said.map(t => ['said', t]).concat(board.map(t => ['board', t]));
 }
 
 function paintToday(){
@@ -1143,7 +1151,7 @@ function paintToday(){
   $('acAbove').replaceChildren(...above);
   $('acPx').replaceChildren(...px);
   $('acBelow').replaceChildren(...below);
-  $('acNote').replaceChildren(...todayNotes(day, map).map(t => acEl('', t)));
+  $('acNote').replaceChildren(...todayNotes(day, map).map(([k, t]) => acEl('ac-n ' + k, t)));
 }
 
 function paintRead(){
