@@ -162,7 +162,11 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 /* ============ A. MASTHEAD — on the ground, uncarded ============ */
 .mast{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:0 4px}
 .mast-l{min-width:0}
-.mast-row{display:flex;align-items:center;gap:7px}
+/* The first row wraps between whole items before it wraps inside one: a row
+   too long for the phone drops the expiry under the ticker rather than
+   breaking "OPTIONS END" from its day. paintMast takes the pill's subject away
+   before it comes to that. */
+.mast-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .ticker{font:700 11px/1 var(--sans);letter-spacing:.16em;color:var(--i-faint)}
 .livedot{width:6px;height:6px;border-radius:50%;background:var(--call-mark);flex:none;
          box-shadow:0 0 0 0 rgba(42,144,112,.5);animation:pulse 2.4s ease-out infinite}

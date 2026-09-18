@@ -555,9 +555,9 @@ def test_book_age_min_is_never_read():
     scene = {"clock": {"book_age_min": 0}, "data_sources": {"options_book": {"age_min": 0}},
              "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}
     old = _page(_board(scene, payload={"row_ts": "2026-09-10T08:00:00-04:00"}))
-    assert (old["fresh"]["text"], old["fresh"]["cls"]) == ("LAST SCAN 3H", "fresh bad")
+    assert (old["fresh"]["text"], old["fresh"]["cls"]) == ("SCAN 3 HR OLD", "fresh bad")
     unstamped = _page(_board(scene, payload={"row_ts": None}))
-    assert (unstamped["fresh"]["text"], unstamped["fresh"]["cls"]) == ("LAST SCAN · AGE UNKNOWN", "fresh bad")
+    assert (unstamped["fresh"]["text"], unstamped["fresh"]["cls"]) == ("SCAN AGE UNKNOWN", "fresh bad")
 
 
 def test_staleness_thresholds_come_from_the_payload():
@@ -585,7 +585,7 @@ def test_the_countdown_does_not_age_silently():
     is a lie, and it is the one label on the plot that ages without saying so."""
     scene = {"clock": {"minutes_to_close": 178}, "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
              "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
-    assert _right_foot(_page(_board(scene, payload={"row_ts": "2026-09-10T10:59:00-04:00"}))) == ["2H 58M LEFT"]
+    assert _right_foot(_page(_board(scene, payload={"row_ts": "2026-09-10T10:59:00-04:00"}))) == ["2 HR 58 MIN LEFT"]
     # two hours stale: the foot says which scan it is instead
     assert _right_foot(_page(_board(scene, payload={"row_ts": "2026-09-10T09:00:00-04:00"}))) == ["SCAN 09:00"]
 
@@ -630,10 +630,10 @@ def test_the_reading_is_sourced_by_reading_ts_and_never_shown_without_its_age():
     scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}
     old = _page(_board(scene, reads=[{"ts": _NOW, "reading_ts": "2026-09-10T06:49:00-04:00",
                                       "reading": {"read": "The old sentence."}}]))
-    assert old["rdAge"]["text"] == "4H 11M"
+    assert old["rdAge"]["text"] == "4 HR 11 MIN AGO"
     assert old["rdLine"]["text"] == "06:49 · The old sentence."
     none = _page(_board(scene))
-    assert none["rdLine"]["text"] == "NO READING TODAY" and none["rdAge"]["text"] == ""
+    assert none["rdLine"]["text"] == "No reading yet today." and none["rdAge"]["text"] == ""
 
 
 def test_model_output_never_touches_innerhtml():
@@ -888,7 +888,7 @@ def test_the_scene_is_read_by_its_current_names(tmp_path, monkeypatch):
     # there or paint nothing
     got = _page({"payload": payload, "now": _BUILT_AT})
     assert got["ticker"]["text"] == payload["instrument"]
-    assert got["expiry"]["text"] == "EXP FRI"                            # 2026-08-21
+    assert got["expiry"]["text"] == "OPTIONS END FRI"                    # 2026-08-21
     assert got["regWord"]["text"] == built["regime"]["regime_label"].capitalize()
     assert got["px"]["text"] == f"{built['price']['live_spot']:,.2f}"
     assert got["chg"]["text"] == f"▲ {built['price']['vs_prior_close_pct']:.2f}%"
@@ -908,7 +908,7 @@ def test_no_emoji_no_legend_no_greek():
         assert not re.search(r"[Ͱ-Ͽ]", blob), "a Greek letter is in the phone's source"
     assert "class=\"key\"" not in PHONE
     got = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 80.4}}))
-    assert got["ruler"]["text"] == "TYPICAL MOVE $80"
+    assert got["ruler"]["text"] == "USUAL DAY MOVE $80"
     assert not re.search(r"[Ͱ-Ͽ\U0001F300-\U0001FAFF]", json.dumps(got, ensure_ascii=False))
 
 
@@ -1215,17 +1215,140 @@ def test_the_row_label_wraps_rather_than_losing_its_last_tag():
 
 def test_gminutes_cannot_print_sixty():
     """Math.round(m % 60) returns 60 for the last thirty seconds of every hour,
-    and the chip repaints every 5s."""
+    and the chip repaints every 5s. Every form spells its unit (WORDS-SPEC #5):
+    "1m" read as a month as easily as a minute."""
     got = _glance("""
       const bad = [];
       for(let i = 0; i <= 60*24*20; i++){
         const m = i / 20, s = g.gMinutes(m);
-        const hm = /^(\\d+)h(?: (\\d+)m)?$/.exec(s), mm = /^(\\d+)m$/.exec(s);
+        const hm = /^(\\d+) hr(?: (\\d+) min)?$/.exec(s), mm = /^(\\d+) min$/.exec(s);
         if(s === 'just now' ? m >= 1 : hm ? +(hm[2] || 0) >= 60 : mm ? +mm[1] >= 60 : true) bad.push([m, s]);
       }
       console.log(JSON.stringify({bad: bad.slice(0, 5), edge: [59.49, 59.5, 119.5, 89.5].map(g.gMinutes)}));""")
     assert got["bad"] == [], got["bad"]
-    assert got["edge"] == ["59m", "1h", "2h", "1h 30m"]
+    assert got["edge"] == ["59 min", "1 hr", "2 hr", "1 hr 30 min"]
+
+
+def test_every_age_on_the_screen_says_what_it_is_the_age_of():
+    """gMinutes feeds four places, and "LAST SCAN 1M" and the reading card's
+    "14M" read as months as easily as minutes (WORDS-SPEC #5, #31). Each caller
+    now spells the unit and says what the age is of: the masthead's pill is the
+    scan's age, or the book's while the payload is live; the reading card says
+    how long ago; the chart's foot counts down what is left of the session; the
+    line under a withdrawn price says how long ago that price was."""
+    scene = {"clock": {"minutes_to_close": 135}, "price": {"live_spot": 1700},
+             "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+    ago = lambda m: None if m is None else (datetime.fromisoformat(_NOW) - timedelta(minutes=m)).isoformat()
+
+    def paint(minutes, read_min=14, board=scene, **payload):
+        said = [{"ts": _NOW, "reading_ts": ago(read_min), "reading": {"read": "Said."}}]
+        return _page(_board(board, payload={"row_ts": ago(minutes), **payload}, reads=said))
+
+    live = paint(1, as_of="live")
+    assert (live["fresh"]["text"], live["fresh"]["cls"]) == ("BOOK 1 MIN OLD", "fresh")
+    assert live["rdAge"]["text"] == "14 MIN AGO"
+    assert _right_foot(live) == ["2 HR 15 MIN LEFT"]
+    scan = paint(14, read_min=0.2)
+    assert (scan["fresh"]["text"], scan["fresh"]["cls"]) == ("SCAN 14 MIN OLD", "fresh warn")
+    assert scan["rdAge"]["text"] == "JUST NOW"
+    assert paint(0.5, as_of="live")["fresh"]["text"] == "JUST SCANNED"
+    assert paint(None)["fresh"]["text"] == "SCAN AGE UNKNOWN"
+    # no quote and past the heartbeat: the price is withdrawn and its line says when it was
+    gone = paint(180)
+    assert gone["px"]["text"] == "—" and gone["lastscan"]["text"] == "LAST SCAN 1,700.00 · 3 HR AGO"
+    assert _right_foot(paint(1, board=dict(scene, clock={"minutes_to_close": 48}), as_of="live")) == ["48 MIN LEFT"]
+    for got in (live, scan, gone):
+        for region in ("fresh", "rdAge", "lastscan"):
+            assert not re.search(r"\d[MH]\b", got[region]["text"]), got[region]["text"]
+
+
+def test_the_pill_gives_up_its_subject_before_the_expiry_leaves_the_row():
+    """The masthead's first row holds the ticker, the expiry and the pill, and
+    a narrow phone cannot hold all three whole: the spec's pair runs 13px past
+    a 320px phone, and on an expiry day "OPTIONS END TODAY" beside the live dot
+    leaves the owner's 360px phone 2.93px short of "BOOK 1 MIN OLD". The
+    fallback is the one WORDS-SPEC 9.1 measured, the age without its subject.
+    It is chosen on the row as laid out, because the widths turn on the
+    weekday, the dot and the age, whose figures are proportional in the pill:
+    a rule on the phone's width alone would strip the subject from every
+    expiry day at 375 or overrun on the day it misjudged. Only when the bare
+    age still does not fit does the expiry leave the row, whole, for a line
+    under the ticker; that is the stylesheet's wrap, pinned in
+    test_phone_layout_safety.
+
+    The row is laid out by hand here: the expiry drops under the ticker
+    whenever the pill is longer than a limit, which is what a narrower phone
+    does. A layout that measured nothing keeps the words whole."""
+    scene = {"clock": {"front_expiry": {"days_to_expiry": 0, "expiry_date": "2026-09-10"}},
+             "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}
+    steps = """
+      const first = els.fresh.textContent;
+      const lay = (limit, empty) => {
+        els.ticker.getBoundingClientRect = () => ({top: 0, bottom: 11, height: 11});
+        els.expiry.getBoundingClientRect = () => els.fresh.textContent.length <= limit ? {top: 0, bottom: 11, height: 11}
+                                               : empty ? {top: 18, bottom: 18, height: 0} : {top: 18, bottom: 29, height: 11};
+        run('paintMast(state())');
+        return els.fresh.textContent;
+      };
+      return {first, expiry: els.expiry.textContent, whole: lay(99), bare: lay(11), neither: lay(0),
+              empty: lay(0, true)};"""
+    ago = lambda m: (datetime.fromisoformat(_NOW) - timedelta(minutes=m)).isoformat()
+    for row_ts, as_of, said, bare in ((ago(1), "live", "BOOK 1 MIN OLD", "1 MIN AGO"),
+                                      (ago(9), "last scan", "SCAN 9 MIN OLD", "9 MIN AGO"),
+                                      (ago(0.5), "live", "JUST SCANNED", "JUST NOW"),
+                                      (None, "last scan", "SCAN AGE UNKNOWN", "AGE UNKNOWN")):
+        got = _page(_board(scene, payload={"row_ts": row_ts, "as_of": as_of}), steps)
+        assert got["expiry"] == "OPTIONS END TODAY"
+        assert got["first"] == got["whole"] == said
+        assert got["bare"] == got["neither"] == bare, "the pill kept its subject in a row too narrow for it"
+        # an expiry with nothing in it has no line to leave
+        assert got["empty"] == said
+
+
+def _plain_words():
+    """Every string the plain-words pass (WORDS-SPEC.md) put on the main
+    screen, read off what the page paints across the states that print them:
+    live and last-scan, just scanned, age unknown, withdrawn, an expiry day, a
+    week with no expiry date, and a day with no reading."""
+    ago = lambda m: None if m is None else (datetime.fromisoformat(_NOW) - timedelta(minutes=m)).isoformat()
+    said = [{"ts": _NOW, "reading_ts": ago(14), "reading": {"read": "Said."}}]
+    words = set()
+    for fe, minutes, as_of, reads in (({"days_to_expiry": 0, "expiry_date": "2026-09-10"}, 1, "live", said),
+                                      ({"days_to_expiry": 1, "expiry_date": "2026-09-11"}, 14, "last scan", []),
+                                      ({"days_to_expiry": 3}, 0.5, "live", said),
+                                      ({"days_to_expiry": 1}, None, "last scan", said),
+                                      ({"days_to_expiry": 1, "expiry_date": "2026-09-11"}, 180, "last scan", said)):
+        scene = {"clock": {"minutes_to_close": 135, "front_expiry": fe}, "price": {"live_spot": 1700},
+                 "scale": {"one_sigma_dollars": 40},
+                 "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+        got = _page(_board(scene, payload={"row_ts": ago(minutes), "as_of": as_of}, reads=reads))
+        words |= {got[k]["text"] for k in ("expiry", "fresh", "ruler", "rdAge", "lastscan")}
+        words |= set(_right_foot(got)) | ({got["rdLine"]["text"]} if not reads else set())
+    return words - {""}
+
+
+def test_the_plain_words_pass_the_laws():
+    """The words this pass changed go through the same gates as every other
+    word on the phone: the reader's own _BANNED_RE (its forecast, causal and
+    judgement lists, _BANNED_FORECAST and _BANNED_JUDGEMENT among them, with
+    their inflections), its position gate, no dealer and nothing a dealer does,
+    and no Greek letter or emoji. Not the half-hour card's options-vocabulary
+    gate: that one is scoped to a card about price alone, and the masthead's
+    expiry is a fact about the options that cannot be said without the noun
+    (WORDS-SPEC 9.3, the owner's call)."""
+    R = _reader()
+    dealer = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\bpull|absorb")
+    words = _plain_words()
+    for need in ("OPTIONS END TODAY", "OPTIONS END FRI", "OPTIONS END IN 3 DAYS", "BOOK 1 MIN OLD",
+                 "SCAN 14 MIN OLD", "JUST SCANNED", "SCAN AGE UNKNOWN", "USUAL DAY MOVE $40", "14 MIN AGO",
+                 "No reading yet today.", "2 HR 15 MIN LEFT", "LAST SCAN 1,700.00 · 3 HR AGO"):
+        assert need in words, f"the gates never saw {need!r}"
+    for s in sorted(words):
+        assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
+        assert not R._POS_RE.search(s), f"{s!r} places price against a number"
+        assert not dealer.search(s), f"{s!r} speaks of dealers"
+        assert not re.search(r"[\U0001F300-\U0001FAFF]|[Ͱ-Ͽ]", s), s
 
 
 def test_the_named_edge_carries_the_weight_the_bug_cannot():
@@ -2789,4 +2912,4 @@ def test_the_move_goes_back_into_dollars_on_the_ruler_it_was_measured_on():
     strikes = dict(scene, scale={"one_sigma_dollars": 60.0})
     got = _page(_board(strikes, payload={"legacy": {"scene": scene}, "earlier_half_hours": rec}))
     assert _hh_card(got)["say"][0] == "Down $19 in the last half hour."
-    assert got["ruler"]["text"] == "TYPICAL MOVE $66"
+    assert got["ruler"]["text"] == "USUAL DAY MOVE $66"

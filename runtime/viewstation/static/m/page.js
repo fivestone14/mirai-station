@@ -247,6 +247,14 @@ function clearRow(want, top, bottom, ruleYs){
 
 /* ---- A. masthead ------------------------------------------------------- */
 
+function expiryDropped(){
+  // The masthead's first row wraps between whole items, so a row too long for
+  // the phone puts the expiry on a line of its own under the ticker. An empty
+  // or unmeasured box has no height and never counts as dropped.
+  const t = $('ticker').getBoundingClientRect(), e = $('expiry').getBoundingClientRect();
+  return e.height > 0 && e.top >= t.bottom;
+}
+
 function paintMast(st){
   const sc = st.scene, c = sc.clock || {};
   // PAY, not the scene: sr-8 moved `instrument` out to the wrapper. (A stash
@@ -256,21 +264,35 @@ function paintMast(st){
 
   let exp = '';
   const fe = c.front_expiry || {};
-  // sr-7 renames: dte -> days_to_expiry, date -> expiry_date
-  if(fe.days_to_expiry === 0) exp = 'EXPIRES TODAY';
-  else if(fe.expiry_date) exp = 'EXP ' + new Date(fe.expiry_date + 'T00:00:00')
+  // sr-7 renames: dte -> days_to_expiry, date -> expiry_date. What ends is
+  // said, not abbreviated: "EXP FRI" taught nothing to a reader who does not
+  // already know what expires.
+  if(fe.days_to_expiry === 0) exp = 'OPTIONS END TODAY';
+  else if(fe.expiry_date) exp = 'OPTIONS END ' + new Date(fe.expiry_date + 'T00:00:00')
                               .toLocaleDateString('en-US', {weekday:'short'}).toUpperCase();
   else if(fe.days_to_expiry != null)
-    exp = 'EXP IN ' + fe.days_to_expiry + (fe.days_to_expiry === 1 ? ' DAY' : ' DAYS');
+    exp = 'OPTIONS END IN ' + fe.days_to_expiry + (fe.days_to_expiry === 1 ? ' DAY' : ' DAYS');
   $('expiry').textContent = exp;
 
+  // The pill with its subject, then without it. It shares the first row with
+  // the ticker and the expiry, and their widths turn on the weekday, the live
+  // dot and the age, whose figures are proportional here, so the choice is
+  // made on the row as laid out, not on the phone's width alone. The subject
+  // goes first; the expiry leaves the row only if the bare age still does not
+  // fit beside it.
   const f = $('fresh');
-  if(st.age.unknown){ f.textContent = 'LAST SCAN · AGE UNKNOWN'; f.className = 'fresh bad'; }
-  else {
-    const lead = PAY.as_of === 'live' ? 'BOOK ' : 'LAST SCAN ';
-    f.textContent = (lead + gMinutes(st.age.min)).toUpperCase();
+  let words;
+  if(st.age.unknown){
+    words = ['SCAN AGE UNKNOWN', 'AGE UNKNOWN'];
+    f.className = 'fresh bad';
+  } else {
+    const g = gMinutes(st.age.min).toUpperCase();
+    const lead = PAY.as_of === 'live' ? 'BOOK ' : 'SCAN ';
+    words = g === 'JUST NOW' ? ['JUST SCANNED', g] : [lead + g + ' OLD', g + ' AGO'];
     f.className = 'fresh' + (st.age.min > st.H ? ' bad' : st.age.min > st.S ? ' warn' : '');
   }
+  f.textContent = words[0];
+  if(expiryDropped()) f.textContent = words[1];
 
   const px = $('px');
   if(st.withdrawn || !st.price){
@@ -309,7 +331,9 @@ function paintRegime(st){
   $('regGloss').textContent = word ? '' : 'Regime not measured';
 
   const sig = st.sigma;
-  $('ruler').textContent = (sig != null && isFinite(sig)) ? 'TYPICAL MOVE $' + Math.round(sig) : '';
+  // A day's move, and it says so. "Typical move" did not say over what, and
+  // the half-hour card puts a usual half hour of $6 on the same stock.
+  $('ruler').textContent = (sig != null && isFinite(sig)) ? 'USUAL DAY MOVE $' + Math.round(sig) : '';
 }
 
 /* ---- F. foot ----------------------------------------------------------- */
@@ -1219,16 +1243,16 @@ function paintRead(){
     mark.textContent = ''; age.textContent = ''; age.classList.remove('old');
     // `expired` was a tier obs-1 deleted (see below) and no rule has existed
     // for it since. Absence is not age, and it is styled as itself.
-    line.textContent = 'NO READING TODAY';
+    line.textContent = 'No reading yet today.';
     line.className = 'rd-line wordless';
     return;
   }
   // obs-1 removed the 'expired' tier. It hid a reading past 120 minutes, which
   // was four times a 30-minute forecast horizon; an observation has no horizon,
-  // so age is shown rather than used to blank the text. NO READING TODAY above
-  // is a different thing and stays: that is absence, not age.
+  // so age is shown rather than used to blank the text. "No reading yet
+  // today." above is a different thing and stays: that is absence, not age.
   const a = gMinutes(m.ageMin);
-  age.textContent = a.toUpperCase();
+  age.textContent = a === 'just now' ? 'JUST NOW' : (a + ' ago').toUpperCase();
   age.classList.toggle('old', m.tier === 'aged');
   // obs-1: a count of what is unusual, not a direction. Empty when quiet,
   // because the common answer must not look like an alarm.

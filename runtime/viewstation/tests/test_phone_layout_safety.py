@@ -623,3 +623,67 @@ def test_a_narrower_phone_gives_the_explainer_label_two_even_lines():
     assert _WHY_W["balanced"] <= _why_room(320)
     line = float(re.search(r"line-height:([\d.]+)", lab).group(1)) * 13
     assert 2 * line <= 48
+
+
+# --- the masthead's first row (2026-09-18) -----------------------------------
+# Measured in WebKit off the shipped face on the real stylesheet: each box as
+# the browser lays it out, the ticker and the expiry with their trailing
+# tracking, the pill with its 20px of padding. The pill's figures are
+# proportional (its font shorthand resets them), so each form is the widest of
+# the minutes it can show: 1 to 6 while the payload is live.
+_MAST_W = {"SNDK": 37.91,
+           "OPTIONS END MON": 125.64,          # the widest weekday
+           "OPTIONS END TODAY": 137.83,
+           "BOOK 4 MIN OLD": 119.95,           # the widest of 1 to 6
+           "4 MIN AGO": 83.14}
+
+
+def _mast_need(expiry, pill):
+    """The first row with the live dot on: the ticker, the dot and the expiry
+    at the row's own gap, then the gap the masthead keeps before the pill."""
+    row, dot = _px(".mast-row", "gap"), _px(".livedot", "width")
+    return _MAST_W["SNDK"] + row + dot + row + _MAST_W[expiry] + _px(".mast", "gap") + _MAST_W[pill]
+
+
+def _mast_room(phone):
+    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
+    pad = re.search(r"padding:0 (\d+)px", _rule(".mast"))
+    return phone - 2 * side - 2 * int(pad.group(1))
+
+
+@pytest.mark.parametrize("phone", [320, 360, 375, 390, 412])
+def test_the_masthead_keeps_the_pills_subject_on_the_owners_phone(phone):
+    """The row a reader sees in market hours is the ticker, the live dot, the
+    expiry and "BOOK 1 MIN OLD" to "BOOK 6 MIN OLD" (WORDS-SPEC #2, #5). From
+    the owner's 360px Galaxy up it keeps the pill's subject whatever weekday
+    the options end on: 313.50 of 320 at 360 on a Monday, 302.75 on a Friday.
+    On expiry day it keeps it from 375 up; at 360 "OPTIONS END TODAY" leaves
+    "BOOK 1 MIN OLD" 2.93px short, and the pill says only the age, which the
+    row holds on every phone from 320. paintMast chooses on the row as laid out
+    (test_the_pill_gives_up_its_subject_before_the_expiry_leaves_the_row), so
+    these are the widths it is choosing between."""
+    for sel, font in ((".ticker", "font:700 11px/1"), (".expiry", "font:500 11px/1"), (".fresh", "font:700 11px/1")):
+        assert font in _rule(sel), f"{sel} is no longer set at {font}"
+    assert "padding:5px 10px" in _rule(".fresh") and "white-space:nowrap" in _rule(".fresh")
+    room = _mast_room(phone)
+    if phone >= 360:
+        assert _mast_need("OPTIONS END MON", "BOOK 4 MIN OLD") <= room
+        assert _mast_need("OPTIONS END TODAY", "4 MIN AGO") <= room
+    if phone >= 375:
+        assert _mast_need("OPTIONS END TODAY", "BOOK 4 MIN OLD") <= room
+    assert _mast_need("OPTIONS END MON", "4 MIN AGO") <= room
+
+
+def test_a_row_too_long_for_the_phone_drops_the_expiry_whole():
+    """When even the bare age will not fit, as on an expiry day at 320 or a
+    Saturday whose last scan was Friday's, the expiry leaves the row for a
+    line under the ticker. It goes whole: the row wraps between items, so
+    "OPTIONS END" never parts from its day while the line has room for both,
+    and nothing runs into the pill. The expiry itself may still wrap, as a
+    last resort, where a line of its own is narrower than it. Measured in
+    WebKit over 336 states (seven expiry forms, the dot on and off, live and
+    last-scan, twelve ages) at 320, 360, 375 and 412: nothing past the page and
+    nothing within the masthead's 10px of the pill."""
+    assert "flex-wrap:wrap" in _rule(".mast-row").replace(" ", "")
+    assert "white-space" not in _rule(".expiry"), "an expiry held to one line runs into the pill"
+    assert "min-width:0" in _rule(".mast-l") and "flex:none" in _rule(".fresh")

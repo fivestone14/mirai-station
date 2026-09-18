@@ -34,15 +34,16 @@ function gUsd(v, dp){
 }
 
 function gMinutes(m){
+  // The unit is spelt, once: "1m" read as a month as easily as a minute.
   if(m==null||!isFinite(m)) return null;
   if(m<1) return 'just now';
   // Round ONCE, then split. Rounding the remainder separately returns 60 for
   // the last thirty seconds of every hour, so the freshness chip printed
   // "1H 60M" — repainted every 5s, so reliably visible.
   const t=Math.round(m);
-  if(t<60) return t+'m';
+  if(t<60) return t+' min';
   const h=Math.floor(t/60), r=t%60;
-  return r? h+'h '+r+'m' : h+'h';
+  return r? h+' hr '+r+' min' : h+' hr';
 }
 
 function gTimes(m){
