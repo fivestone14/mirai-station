@@ -1330,7 +1330,8 @@ def _plain_words():
     """Every string the plain-words pass (WORDS-SPEC.md) put on the main
     screen, read off what the page paints across the states that print them:
     live and last-scan, just scanned, age unknown, withdrawn, an expiry day, a
-    week with no expiry date, and a day with no reading."""
+    week with no expiry date, a day with no reading, a wall named past the
+    edge, and the activity card's notes on one claim and on several."""
     ago = lambda m: None if m is None else (datetime.fromisoformat(_NOW) - timedelta(minutes=m)).isoformat()
     said = [{"ts": _NOW, "reading_ts": ago(14), "reading": {"read": "Said."}}]
     words = set()
@@ -1350,6 +1351,13 @@ def _plain_words():
         words |= {t for _, t in _svg_texts(got, "p-edge")}
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card) if t.strip()}
+    for claims, pace in (([{"strike": 1700, "now": "changed"}], 1.37),
+                         ([{"strike": 1700, "now": "changed"}, {"strike": 1600, "now": "off_list"}], 0.8),
+                         ([], 1.0)):
+        day = dict(_day_block(), earlier_claims=[{"said_at": "13:11", "claims": claims}],
+                   volume_in_reach_vs_same_time_prior_sessions=pace)
+        got = _page(_board({"price": {"live_spot": 1608.20}, "scale": {"one_sigma_dollars": 40}, "day": day}))
+        words |= {t for _, t in _overview(got)[5]}
     return words - {""}
 
 
@@ -1368,7 +1376,11 @@ def test_the_plain_words_pass_the_laws():
     for need in ("OPTIONS END TODAY", "OPTIONS END FRI", "OPTIONS END IN 3 DAYS", "BOOK 1 MIN OLD",
                  "SCAN 14 MIN OLD", "JUST SCANNED", "SCAN AGE UNKNOWN", "USUAL DAY MOVE $40", "14 MIN AGO",
                  "No reading yet today.", "2 HR 15 MIN LEFT", "LAST SCAN 1,700.00 · 3 HR AGO",
-                 "Price today", "AS OF 10:59", "10:46", "▲ 1,900 BIGGEST PILE"):
+                 "Price today", "AS OF 10:59", "10:46", "▲ 1,900 BIGGEST PILE",
+                 "One thing it said earlier no longer applies.", "2 things it said earlier no longer apply.",
+                 "Trading is busier than usual for this time of day.",
+                 "Trading is quieter than usual for this time of day.",
+                 "Trading is about usual for this time of day."):
         assert need in words, f"the gates never saw {need!r}"
     for s in sorted(words):
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
@@ -2072,6 +2084,33 @@ def test_the_notes_group_the_strikes_that_have_gone_rather_than_listing_them():
     assert got[0][1] == "1,615, 1,700 and 1,720 were named earlier and are now off the list."
     # nothing named and gone: no line at all, not an empty one
     assert not [t for _, t in notes([]) if "named" in t or "book" in t]
+
+
+def test_the_notes_say_what_happened_in_words_a_reader_owns():
+    """WORDS-SPEC #28, #29. "One call it made earlier no longer holds." carried
+    two misreads in one line: a call is a contract before it is a claim, and
+    holds is a position before it is a fact. "Trading quieter than usual for
+    this hour." hid the comparison, which is today against the same clock
+    minute of recent sessions. A claim that changed or went off the list is
+    counted; one that holds is not, and no count is no line."""
+    def notes(claims, pace):
+        day = dict(_day_block(), earlier_claims=[{"said_at": "13:11", "claims": claims}],
+                   volume_in_reach_vs_same_time_prior_sessions=pace)
+        if pace is None:
+            del day["volume_in_reach_vs_same_time_prior_sessions"]
+        return _overview(_page(_board({"price": {"live_spot": 1608.20},
+                                       "scale": {"one_sigma_dollars": 40}, "day": day})))[5]
+    got = notes([{"strike": 1700, "now": "changed"}, {"strike": 1600, "now": "holds"}], 1.37)
+    assert got == [("said", "One thing it said earlier no longer applies."),
+                   ("board", "Trading is busier than usual for this time of day.")]
+    got = notes([{"strike": 1700, "now": "changed"}, {"strike": 1650, "now": "off_list"},
+                 {"strike": 1600, "now": "changed"}, {"strike": 1550, "now": "holds"}], 0.8)
+    assert got[0] == ("said", "3 things it said earlier no longer apply.")
+    assert got[-1] == ("board", "Trading is quieter than usual for this time of day.")
+    assert notes([], 1.0)[-1] == ("board", "Trading is about usual for this time of day.")
+    assert notes([], 1.25)[-1] == ("board", "Trading is busier than usual for this time of day.")
+    quiet = notes([{"strike": 1600, "now": "holds"}], None)
+    assert not [t for _, t in quiet if "said earlier" in t or t.startswith("Trading")]
 
 
 def test_the_price_chip_ends_on_the_strikes_figure_column():

@@ -1163,8 +1163,10 @@ function todayNotes(day, map){
   let moved = 0;
   for(const g of ((day || {}).earlier_claims || [])) for(const cl of (g.claims || []))
     if(cl.now === 'changed' || cl.now === 'off_list') moved++;
-  if(moved) said.push(moved === 1 ? 'One call it made earlier no longer holds.'
-                                  : String(moved) + ' calls it made earlier no longer hold.');
+  // Not "call" and "holds": a reader takes the one for a contract and the
+  // other for a position before either reads as a claim that stopped being true.
+  if(moved) said.push(moved === 1 ? 'One thing it said earlier no longer applies.'
+                                  : String(moved) + ' things it said earlier no longer apply.');
 
   const vol = ((day || {}).leaders || {}).volume || [];
   const con = ((day || {}).leaders || {}).contracts || [];
@@ -1174,7 +1176,9 @@ function todayNotes(day, map){
   const pace = (day || {}).volume_in_reach_vs_same_time_prior_sessions;
   if(typeof pace === 'number' && isFinite(pace)){
     const word = pace >= 1.25 ? 'busier than usual' : (pace <= 0.8 ? 'quieter than usual' : 'about usual');
-    board.push('Trading ' + word + ' for this hour.');
+    // Today against the same clock minute of recent sessions, which "for this
+    // hour" did not say.
+    board.push('Trading is ' + word + ' for this time of day.');
   }
   return said.map(t => ['said', t]).concat(board.map(t => ['board', t]));
 }
