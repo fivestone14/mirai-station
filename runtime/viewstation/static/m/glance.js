@@ -402,12 +402,15 @@ function figW(s, px, weight){
   return em*px;
 }
 
-// The finest ROUND step whose pitch two 10px numbers can sit at, so the ruler
+// The finest ROUND step whose pitch two 11px numbers can sit at, so the ruler
 // counts in steps a reader already counts in, and a $10 board and a $7,000
 // board run the same arithmetic. 1, 2 and 5 only: a 2.5 step at whole dollars
 // prints 1,502.5 as "1,503", and on a $5 strike grid it never lands on a
-// strike anyway.
-const AXIS_NICE=[1, 2, 5, 10], AXIS_MIN_PX=18;
+// strike anyway. 20, not 18, since the chart's type went to 11px (2026-09-18).
+// It costs rungs where a span falls between the two floors: a $10 step fits
+// $72.78 on a 131px plot at 18 and $65.50 at 20, and the $67.85 board of
+// 2026-09-16 goes to $20 there (SIDE-SPEC.md 6a).
+const AXIS_NICE=[1, 2, 5, 10], AXIS_MIN_PX=20;
 // A rung this near a tag ROW is dropped. The chip is 18px tall, so 17 leaves
 // 4px of white between it and a grey number; and tag rows in a run sit 20px
 // apart, so a rung between two of them is at most 10px from one — the ruler
@@ -610,106 +613,11 @@ function _wall(e, side, nearest){
           heldExact:e.unchanged_for_min!=null};
 }
 
-/* ---- weight, as shade -------------------------------------------------- */
-
-// The shade is a SPREAD ACROSS THE BOARD IN HAND, not a value divided by a
-// number. Two scales were tried and both failed at an end:
-//
-//   a fixed cross-session full point (13.0pp) left the lightest measured
-//   strikes at 0.054 opacity — a band nobody can see, which is a measurement
-//   drawn as an absence — and flattened everything above it early in the day,
-//   when the heaviest share runs 18pp;
-//
-//   dividing by the day's own heaviest fixed the top and not the bottom, and
-//   the divisor itself dilutes 35% between the open and the close (18.07pp to
-//   11.80pp on 2026-09-16, the same pile all day), so a strike that never
-//   changed would appear to darken by half through the session.
-//
-// Pinning BOTH ends removes both faults at once. The lightest strike the scan
-// measured sits at the floor and the heaviest at the ceiling, whatever the
-// numbers are, so every band is legible, none can creep past the ceiling, and
-// what the reader gets is where the weight sits RELATIVE TO THE REST — which is
-// the question this mark exists to answer. `weight` is that position, 0 at the
-// lightest and 1 at the heaviest; the floor and the ceiling are the page's,
-// because how dark is a property of the screen and not of the board.
-
-function weightBands(strikes){
-  // Where the contracts rest, as shade rather than as a line whose thickness
-  // carries the number.
-  //
-  // Thickness could only ever be spent on the two or three levels that earn a
-  // rule, so every other pile on the board reached no pixel at all: on
-  // 2026-09-16 seven strikes in the window carried contracts and the chart drew
-  // two of them, hiding a shelf from 1540 to 1550. Shade costs no rule, so
-  // every strike the scan measured can show what is sitting on it.
-  //
-  // CONTRACTS, not the share the wall rail is gauged on: a count of open
-  // positions is sayable in English, and law 3 at the top of this file forbids
-  // the other one reaching the surface at all.
-  const rows=((strikes||{}).rows)||[];
-  const ks=[];
-  for(const r of rows){
-    const y=_fin(r&&r.strike), share=_fin(r&&r.contracts_share_pp);
-    if(y==null||share==null||share<=0) continue;   // no datum, no band
-    ks.push({y, share});
-  }
-  // One strike is a grid of one: there is no neighbour to measure an extent
-  // against, and inventing one would be a guess about a board we cannot see.
-  if(ks.length<2) return [];
-  ks.sort((a,b)=>a.y-b.y);
-  // The TYPICAL step of this board, which is what a strike's shade may cover.
-  // Half the gap to the neighbour is the natural extent and it is wrong wherever
-  // the grid has a hole: on 2026-09-16 the list ran ..1545, 1550, 1600.., so a
-  // half-gap extent smeared 1550 twenty-five dollars upward and painted shade
-  // across 1555-1575, where the scan measured no contracts at all. A hole in the
-  // grid must read as a hole.
-  const gaps=[];
-  for(let i=1;i<ks.length;i++) gaps.push(ks[i].y-ks[i-1].y);
-  gaps.sort((a,b)=>a-b);
-  const step=gaps[Math.floor(gaps.length/2)];        // median gap
-  const cap=step>0?step/2:null;
-  if(cap==null) return [];
-  const out=[];
-  for(let i=0;i<ks.length;i++){
-    // half the distance to each neighbour, so two strikes a typical step apart
-    // meet exactly and the field reads as one surface — but never wider than
-    // half a typical step, so a gap in the grid stays a gap on the screen
-    const dLo=i>0?Math.min(cap,(ks[i].y-ks[i-1].y)/2):cap;
-    const dHi=i<ks.length-1?Math.min(cap,(ks[i+1].y-ks[i].y)/2):cap;
-    out.push({y:ks[i].y, share:ks[i].share, lo:ks[i].y-dLo, hi:ks[i].y+dHi});
-  }
-  // the spread, taken over the strikes actually drawn. A board where every
-  // strike carries the same share has no spread to show: they sit together at
-  // the middle of the range rather than all at one end, which would say either
-  // "all of them are the heaviest" or "all of them are the lightest".
-  let lo1=Infinity, hi1=-Infinity;
-  for(const b of out){ if(b.share<lo1) lo1=b.share; if(b.share>hi1) hi1=b.share; }
-  const span=hi1-lo1;
-  for(const b of out) b.weight = span>0 ? (b.share-lo1)/span : 0.5;
-  return out;
-}
-
-/* ---- when the model looked, and what price crossed --------------------- */
-
-function readPoints(reads){
-  // `reads_today` off the payload wrapper: when the model spoke and the price
-  // it was looking at. Absent — an older payload, or a day it never spoke —
-  // yields no marks, never a reconstruction from the journal.
-  if(!Array.isArray(reads)) return [];
-  const out=[];
-  for(const r of reads){
-    const t=Date.parse(r&&r.ts), s=_fin(r&&r.spot);
-    if(!isFinite(t)||s==null) continue;
-    out.push({t, s});
-  }
-  return out.sort((a,b)=>a.t-b.t);
-}
-
 /* ---- how busy each stretch was ----------------------------------------- */
 
-// A FIXED scale again, and for the same reason as the shade: scaled to the
-// day's own maximum, the opening block alone runs many times the median and
-// most of the session draws at under a pixel — 27 of 69 blocks on 2026-09-16.
+// A FIXED scale. Scaled to the day's own maximum, the opening block alone runs
+// many times the median and most of the session draws at under a pixel — 27 of
+// 69 blocks on 2026-09-16.
 // 29,000 shares a minute is the 90th percentile of the 1,170 five-minute blocks
 // in the sessions of one-minute bars on disk (p50 10,153, p95 42,812). A busier
 // block is CLIPPED and the clip is marked, never quietly flattened.
@@ -1041,7 +949,7 @@ if(typeof module!=='undefined'&&module.exports){
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
-                  weightBands, readPoints, activityRows, namedGone,
+                  activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};

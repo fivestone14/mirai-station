@@ -548,6 +548,40 @@ def test_the_magnet_list_is_read_as_dicts(tmp_path, monkeypatch):
     assert _svg_texts(page, "p-tag mag") == [("p-tag mag", f"{top[0]['strike']:,.0f}")]
 
 
+def test_a_magnet_on_a_walls_strike_is_one_rule_that_says_both():
+    """A magnet on a wall's strike is ONE rule. They share a strike on 49 of 66
+    scans over 2026-09-15..17 (74%, INK-SPEC.md 1.4), and two rules on one row
+    is one the reader cannot see: a 2.0px wall over a 2.2px magnet leaves a
+    0.10px sliver of amber. mergeLevels already folded the magnet into the wall,
+    and the one rule it left said nothing of the magnet: it drew the wall solid,
+    and the long dash, the thing that says "busiest strike", was gone.
+
+    The rule keeps the wall's colour for the side and takes the magnet's 6 3
+    dash (SIDE-SPEC.md 3, ruling 5). Where the two sit at different prices,
+    as on 17 of 26 scans of 09-17, each keeps a rule of its own."""
+    scene = {"price": {"live_spot": 1517}, "scale": {"one_sigma_dollars": 65.82},
+             "magnet": {"top_strikes": [{"strike": 1500, "share_of_book_gamma_pp": 11.5},
+                                        {"strike": 1530, "share_of_book_gamma_pp": 9.78}]},
+             "walls": {"call": [{"strike": 1560, "cluster_share_of_book_gamma_pp": 4}],
+                       "put": [{"strike": 1500, "cluster_share_of_book_gamma_pp": 20.44}]}}
+
+    def rules(sc):
+        svg = _page(_board(sc))["svg"]["html"]
+        return sorted((c, float(y)) for c, y in re.findall(r'<line class="(p-(?:wall|mag|magrun)[^"]*)"[^>]*y1="([\d.]+)"', svg))
+
+    shared = rules(scene)
+    # 1,500: the put wall and the lead magnet, one rule, dashed; 1,530 the runner; 1,560 the call wall
+    assert [c for c, _ in shared] == ["p-magrun", "p-wall call", "p-wall put mag"]
+    assert len({y for _, y in shared}) == 3, "two rules share a row"
+    # the magnet's own dash, and nothing else: the colour and the width stay the wall's
+    mag_dash = re.search(r"stroke-dasharray:[^;]+", _css_rule(".p-mag")).group(0)
+    assert _css_rule(".p-wall.mag").rstrip(";") == mag_dash
+    # a magnet a strike away from the wall keeps an amber rule of its own, and the wall stays solid
+    apart = json.loads(json.dumps(scene))
+    apart["magnet"]["top_strikes"][0]["strike"] = 1505
+    assert [c for c, _ in rules(apart)] == ["p-mag", "p-magrun", "p-wall call", "p-wall put"]
+
+
 def test_no_magnet_tie_threshold():
     """sr-3 deleted a hardcoded 5.0pp constant for shipping a near-constant as
     a finding. A near-tie must look like a tie without anyone deciding where a
@@ -1137,24 +1171,30 @@ def test_the_levels_card_asserts_no_direction():
     assert rows["between"] == [["wall", 1720], ["most", 1700], ["wall", 1680]]
 
 
-def test_the_clear_side_bracket_is_qualified_and_conditional():
-    """call_side_has_no_wall means no CALL-SIGNED cluster above spot; a wrongly-signed
-    pile there is dropped from both pools and the flag still fires — true on 79
-    of 79 rows of the reference diary, over a cluster carrying 34.6% of book
-    gamma. And a live tick can cross a wall of the other pool. Only === true
-    draws it: a flag that is merely truthy is not a measurement."""
+def test_a_side_measured_empty_is_said_on_the_card_and_not_in_the_plot():
+    """NO CALL WALL ABOVE / NO PUT WALL BELOW came off the chart on 2026-09-18,
+    by the owner's choice: the text stacked in the plot's upper left goes. The
+    thin bracket down the plot's left edge that scoped the word goes with it,
+    because without its word it is an unexplained mark.
+
+    The finding stays on the screen. A side measured empty keeps its own row
+    on the levels card, "None above price", which
+    test_an_absent_level_is_a_row_never_a_gap holds for the qualified flag.
+    This is the board that used to draw the word: the flag is set and nothing
+    of the other pool sits above price."""
     scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 60},
              "magnet": {"top_strikes": [{"strike": 1780, "share_of_book_gamma_pp": 30}]},
-             "walls": {"call_side_has_no_wall": True, "put": [{"strike": 1650, "cluster_share_of_book_gamma_pp": 9}]}}
-
-    def words(**net):
-        return re.findall(r">(NO (?:CALL|PUT) WALL (?:ABOVE|BELOW))<", _page(_board(scene, **net))["svg"]["html"])
-
-    assert words() == ["NO CALL WALL ABOVE"]
-    # a live tick under the put wall leaves a wall above price: the side is not empty as drawn
-    assert words(live={"ticker": "SNDK", "spot": 1640}) == []
-    scene["walls"]["call_side_has_no_wall"] = "true"
-    assert words() == []
+             "walls": {"call_side_has_no_wall": True, "put_side_has_no_wall": True}}
+    page = _page(_board(scene))
+    svg = page["svg"]["html"]
+    assert "p-brk" not in svg and "p-word" not in svg
+    assert not re.search(r"(?i)\bno (?:call|put|big)\b", svg), "a clear-side word is back in the plot"
+    rows = {label: kids for _, label, kids in _card(page)}
+    assert rows["Call wall"] == {"lv-none": ("None above price", None)}
+    assert rows["Put wall"] == {"lv-none": ("None below price", None)}
+    # gone, not switched off: the chart no longer reads the flag at all
+    assert "_side_has_no_wall" not in _code_only(PAGE)
+    assert "clearRow" not in PAGE and ".p-brk" not in PHONE
 
 
 def test_an_absent_level_is_a_row_never_a_gap():
@@ -1568,88 +1608,6 @@ def test_the_two_phone_pages_draw_one_sheet():
     assert "user-select:none" in b[".sheet"]
 
 
-# --- weight as shade, and the marks that came with it ----------------------
-
-def test_the_shade_is_a_spread_across_the_board_not_a_division():
-    """REVERSED 2026-09-17, from "one darkness means one fact on every day".
-
-    That scale divided each share by a fixed 13.0pp and it failed at both ends:
-    the lightest strikes the scan measured came out at 0.054 opacity, which is a
-    measurement drawn as an absence, and early in the session — when the
-    heaviest share runs 18pp — everything above 13 flattened into one black.
-    Dividing by the day's own heaviest fixes the top and not the bottom, and
-    the divisor dilutes 35% between the open and the close, so a pile that never
-    changed would appear to darken by half.
-
-    Pinning BOTH ends answers both. The lightest measured strike takes the
-    floor, the heaviest the ceiling, and the rest spread between by value — so
-    what the band says is where the weight sits relative to the rest of the
-    board, which is the question it exists to answer."""
-    board = {"rows": [{"strike": 1500, "contracts_share_pp": 12.17},
-                      {"strike": 1510, "contracts_share_pp": 2.32},
-                      {"strike": 1520, "contracts_share_pp": 7.245}]}
-    got = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.weight])));", board)
-    assert dict(got) == {1500: 1, 1510: 0, 1520: pytest.approx(0.5)}
-    # the same SHAPE on a board an order of magnitude lighter draws identically:
-    # the mark reports rank and spread, and says nothing about absolute size
-    light = {"rows": [{"strike": 1500, "contracts_share_pp": 1.217},
-                      {"strike": 1510, "contracts_share_pp": 0.232},
-                      {"strike": 1520, "contracts_share_pp": 0.7245}]}
-    lit = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.weight])));", light)
-    assert [k for k, _ in lit] == [k for k, _ in got]
-    assert [w for _, w in lit] == pytest.approx([w for _, w in got])
-    # nothing caps any more, because the heaviest IS the top of the scale
-    assert "capped" not in json.dumps(got)
-    # a board with no spread at all sits in the middle: neither "all heaviest"
-    # nor "all lightest" is true of it
-    flat = {"rows": [{"strike": k, "contracts_share_pp": 5} for k in (1500, 1510, 1520)]}
-    assert [w for _, w in _glance(
-        "console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.weight])));", flat)] == [0.5, 0.5, 0.5]
-
-def test_a_hole_in_the_strike_grid_stays_a_hole():
-    """A strike's shade covers half a TYPICAL step, never half the gap to a
-    distant neighbour.
-
-    On 2026-09-16 the measured list ran 1545, 1550, then 1600. Extending each
-    band to the midpoint smeared 1550 twenty-five dollars upward and painted
-    shade over 1555-1575, where the scan measured no contracts at all — the
-    chart inventing a pile out of the spacing between two real ones."""
-    board = {"rows": [{"strike": 1540, "contracts_share_pp": 5},
-                      {"strike": 1545, "contracts_share_pp": 5},
-                      {"strike": 1550, "contracts_share_pp": 7},
-                      {"strike": 1600, "contracts_share_pp": 11}]}
-    bands = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => [b.y, b.lo, b.hi])));",
-                    board)
-    top = dict((y, (lo, hi)) for y, lo, hi in bands)
-    assert top[1550][1] == 1552.5 and top[1600][0] == 1597.5
-    # nothing at all is painted across the empty middle of the gap
-    assert not [1 for _, lo, hi in bands if lo < 1590 and hi > 1560]
-
-
-def test_a_strike_the_scan_did_not_measure_gets_no_shade():
-    """Honest-absent, on the mark that would be easiest to fake. A missing
-    share is not a light band, and a zero is not a faint one."""
-    board = {"rows": [{"strike": 1500, "contracts_share_pp": 10},
-                      {"strike": 1510},
-                      {"strike": 1520, "contracts_share_pp": None},
-                      {"strike": 1530, "contracts_share_pp": 0},
-                      {"strike": 1540, "contracts_share_pp": 4}]}
-    got = _glance("console.log(JSON.stringify(g.weightBands(D).map(b => b.y)));", board)
-    assert got == [1500, 1540]
-
-
-def test_the_read_marks_come_from_the_payload_and_never_from_a_guess():
-    """`reads_today` is a wrapper field, so a payload built before it existed
-    draws no marks rather than marks reconstructed from whatever rows the
-    journal tail happened to carry."""
-    got = _glance("""console.log(JSON.stringify({
-        good: g.readPoints(D.reads).map(p => p.s),
-        none: g.readPoints(undefined),
-        junk: g.readPoints([{ts: 'not a time', spot: 5}, {ts: D.reads[0].ts}])}));""",
-                  {"reads": [{"ts": "2026-09-16T15:11:19-04:00", "spot": 1513.45},
-                             {"ts": "2026-09-16T09:31:31-04:00", "spot": 1554.65}]})
-    assert got["good"] == [1554.65, 1513.45]      # oldest first, whatever order it arrived in
-    assert got["none"] == [] and got["junk"] == []
 
 
 def test_a_wall_the_day_cannot_reach_does_not_anchor_the_window():
@@ -1702,7 +1660,9 @@ def test_a_wall_the_day_cannot_reach_does_not_anchor_the_window():
 
 # --- the marks the respacing bought ----------------------------------------
 
-_SHADE_SCENE = {
+# The 2026-09-16 15:10 board's levels, and the contracts share its strikes
+# carried, which the shade drew until 2026-09-18.
+_SCENE_0916 = {
     "price": {"live_spot": 1517, "session_high": 1560.58, "session_low": 1513.25},
     "scale": {"one_sigma_dollars": 65.82,
               "expected_move_today_asym": {"up_dollars": 15.43, "down_dollars": 13.99}},
@@ -1718,63 +1678,55 @@ _SHADE_SCENE = {
                          {"strike": 1600, "contracts_share_pp": 11.39}]}}
 
 
-def _shades(svg):
-    return [float(o) for o in re.findall(r'<rect class="p-shade"[^>]*style="opacity:([\d.]+)', svg)]
+def test_the_plot_draws_no_shade_behind_the_line():
+    """REMOVED 2026-09-18 (INK-SPEC.md 1.2). Eight bands shaded the strikes'
+    share of contracts, 0.08 to 0.22 opacity. They spanned 0.127 of opacity, so
+    at a 0.020 step a reader can tell apart they drew five levels, not eight:
+    1,510 and 1,545 differed by 0.0004. The one band that did read, the
+    darkest, sat on the put wall's strike, which the chart already ruled and
+    tagged, on 24 of 24 scans of 2026-09-16. The plot's background goes back
+    to the card, and every mark over it clears its floor on the card.
+
+    Pinned on the board that drew six bands, with the share still on every
+    row, so the field is there to draw from and nothing draws it."""
+    assert all(r.get("contracts_share_pp") for r in _SCENE_0916["strikes"]["rows"])
+    svg = _page(_board(_SCENE_0916))["svg"]["html"]
+    assert "p-shade" not in svg and 'style="opacity:' not in svg
+    assert "weightBands" not in GLANCE + PAGE and "SHADE_" not in PAGE
+    assert ".p-shade" not in PHONE
 
 
-def test_every_strike_the_scan_measured_shows_its_weight():
-    """Weight was a rule's THICKNESS, so it could only be spent on the two or
-    three levels that earn a rule. On the 2026-09-16 board seven strikes inside
-    the window carried contracts and the chart drew two of them — the shelf from
-    1,540 to 1,550 reached no pixel at all. Shade costs no rule."""
-    svg = _page(_board(_SHADE_SCENE))["svg"]["html"]
-    shades = _shades(svg)
-    # 1,600 is outside the window, the other six are in it
-    assert len(shades) == 6
-    # the ends are pinned: the heaviest strike on the board takes the ceiling and
-    # the lightest takes the floor, which is what keeps a measured strike visible.
-    # The ceiling is 0.22, not 0.30, since 2026-09-18: the darkest band the price
-    # path still clears 3:1 over, which
-    # test_no_mark_on_the_plot_is_eaten_by_the_shade_behind_it holds
-    assert max(shades) == pytest.approx(0.22) and min(shades) == pytest.approx(0.08)
-    # and nothing is drawn so faint that a measurement reads as an absence
-    assert all(v >= 0.08 for v in shades)
-    # a strike the scan did not measure gets nothing, not a faint band
-    bare = json.loads(json.dumps(_SHADE_SCENE))
-    bare["strikes"]["rows"][3].pop("contracts_share_pp")
-    assert len(_shades(_page(_board(bare))["svg"]["html"])) == 5
-    # and an era that ships no rows draws no shade rather than an empty field
-    none = json.loads(json.dumps(_SHADE_SCENE)); none.pop("strikes")
-    assert _shades(_page(_board(none))["svg"]["html"]) == []
+def test_no_dot_rides_on_the_price_line():
+    """REMOVED 2026-09-18 (INK-SPEC.md 1.1). A dot sat on the line at every
+    model call, placed from the payload's `reads_today`. On the 15:11 board of
+    2026-09-16 that was 22 of the plot's 39 marks, and 19 of the 22 carried the
+    wake reason "price ran": the line they sat on. They were the one mark that
+    grew through the day (1 at the open, 24 at the close) and the darkest thing
+    on the line, so they read as lumps in it. The reading under the chart says
+    when the model looked and why, in words.
+
+    Pinned with the field present and every read inside the tape."""
+    bars = [{"ts": "2026-09-10T09:%02d:00-04:00" % (30 + i), "close": 1520 + i, "volume": 100000}
+            for i in range(10)]
+    reads = [{"ts": "2026-09-10T09:31:00-04:00", "spot": 1521},
+             {"ts": "2026-09-10T09:36:00-04:00", "spot": 1526}]
+    svg = _page(_board(_SCENE_0916, now="2026-09-10T09:39:00-04:00",
+                       payload={"reads_today": reads}, bars=bars))["svg"]["html"]
+    assert "p-path" in svg and "<circle" in svg                 # the line, and the live dot on it
+    assert re.findall(r'<circle class="([^"]+)"', svg) == ["p-halo", "p-dot"]
+    assert "p-read" not in svg and "readPoints" not in GLANCE + PAGE
+    assert ".p-read" not in PHONE
 
 
 def test_the_opening_half_hour_draws_both_its_own_edges():
     """It had no mark at all: the reading named it in prose and the chart never
     showed where it was. Both edges or neither — one line is a level, and a
     level is not what this is."""
-    svg = _page(_board(_SHADE_SCENE))["svg"]["html"]
+    svg = _page(_board(_SCENE_0916))["svg"]["html"]
     assert len(re.findall(r'<line class="p-orb"', svg)) == 2
-    half = json.loads(json.dumps(_SHADE_SCENE))
+    half = json.loads(json.dumps(_SCENE_0916))
     half["context"]["ranges"]["opening"]["low"] = None
     assert re.findall(r'<line class="p-orb"', _page(_board(half))["svg"]["html"]) == []
-
-
-def test_the_read_marks_stop_where_the_record_does():
-    """A read is drawn ON the price line, so it needs a line under it. The
-    newest read can be newer than the last bar the sidecar wrote — 24 reads
-    against 23 placeable ones on the live 2026-09-16 board — and a mark past
-    the end of the record would sit on nothing and read as a price."""
-    bars = [{"ts": "2026-09-10T09:%02d:00-04:00" % (30 + i), "close": 1520 + i, "volume": 100000}
-            for i in range(10)]
-    reads = [{"ts": "2026-09-10T09:31:00-04:00", "spot": 1521},
-             {"ts": "2026-09-10T09:36:00-04:00", "spot": 1526},
-             {"ts": "2026-09-10T11:00:00-04:00", "spot": 1540}]      # past the tape
-    svg = _page(_board(_SHADE_SCENE, now="2026-09-10T09:39:00-04:00",
-                       payload={"reads_today": reads}, bars=bars))["svg"]["html"]
-    assert len(re.findall(r'<circle class="p-read"', svg)) == 2
-    # no field at all: no marks, never marks rebuilt from the journal tail
-    svg = _page(_board(_SHADE_SCENE, now="2026-09-10T09:39:00-04:00", bars=bars))["svg"]["html"]
-    assert "p-read" not in svg
 
 
 def test_the_volume_ribbon_is_whole_blocks_on_one_scale():
@@ -1785,7 +1737,7 @@ def test_the_volume_ribbon_is_whole_blocks_on_one_scale():
     pixel — 27 of 69 blocks on 2026-09-16, against 5 on the fixed scale."""
     bars = [{"ts": "2026-09-10T09:%02d:00-04:00" % (30 + i), "close": 1520,
              "volume": 200000 if i < 5 else 10000} for i in range(12)]
-    svg = _page(_board(_SHADE_SCENE, now="2026-09-10T09:41:00-04:00", bars=bars))["svg"]["html"]
+    svg = _page(_board(_SCENE_0916, now="2026-09-10T09:41:00-04:00", bars=bars))["svg"]["html"]
     # twelve bars, five to a block: two whole blocks and a part-block dropped
     blocks = re.findall(r'<rect class="p-vol"[^>]*height="([\d.]+)"', svg)
     assert len(blocks) == 2
@@ -1838,7 +1790,7 @@ def test_the_plot_takes_the_width_the_margins_were_spending():
     a $1,500 board's figures, and a $12,345 board gets the room its extra digit
     needs rather than printing into the plot."""
     for cw, plot in ((343, 286), (288, 231)):          # the ladder on a 375 and a 320 phone
-        b = _chart_box(_page(_board(_SHADE_SCENE, width=cw))["svg"]["html"])
+        b = _chart_box(_page(_board(_SCENE_0916, width=cw))["svg"]["html"])
         assert b["plot_l"] == 4 and b["plot_w"] == plot
         # the chip spans the gutter, from the mark column to the tags' edge,
         # and every tag, rung and edge name ends on that edge
@@ -1872,14 +1824,14 @@ def test_the_price_ruler_names_the_silence_between_the_tags():
         return (svg, re.findall(r'<text class="p-scale" x="([\d.]+)" y="([\d.]+)">([^<]*)</text>', svg),
                 re.findall(r'<line class="p-stick" x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)"', svg))
 
-    svg, labels, ticks = ruler(_SHADE_SCENE)
+    svg, labels, ticks = ruler(_SCENE_0916)
     # 1,500 is the wall's own tag, 1,520 the chip's rung, 1,510 crowds the chip
     assert [t for _, _, t in labels] == ["1,530", "1,540", "1,550", "1,560"]
     # each carries a tick in the mark column, at its own height
     assert {(x1, x2) for x1, _, x2 in ticks} == {("296", "300")}
     assert [float(y) for _, y, _ in ticks] == [pytest.approx(float(y) - 3.5, abs=0.11) for _, y, _ in labels]
     # the scale is the board's, not the phone's: the same rungs at the same heights at 320
-    assert [(y, t) for _, y, t in ruler(_SHADE_SCENE, 288)[1]] == [(y, t) for _, y, t in labels]
+    assert [(y, t) for _, y, t in ruler(_SCENE_0916, 288)[1]] == [(y, t) for _, y, t in labels]
 
     # seven tags, the most the solver keeps: no rung lands inside the stack
     crowded = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
@@ -1890,7 +1842,7 @@ def test_the_price_ruler_names_the_silence_between_the_tags():
                                  {"strike": 1640, "cluster_share_of_book_gamma_pp": 4}],
                          "call_heaviest_wall_behind_the_ladder": {"strike": 1780, "cluster_share_of_book_gamma_pp": 40},
                          "put_heaviest_wall_behind_the_ladder": {"strike": 1620, "cluster_share_of_book_gamma_pp": 30}}}
-    for scene in (_SHADE_SCENE, crowded):
+    for scene in (_SCENE_0916, crowded):
         svg, labels, _ = ruler(scene)
         rows = [float(y) - 4.5 for y in re.findall(r'<text class="p-(?:tag|chiptx)[^"]*" x="[\d.]+" y="([\d.]+)"', svg)]
         assert len(rows) >= 2
@@ -1903,7 +1855,7 @@ def test_the_price_ruler_names_the_silence_between_the_tags():
 
 def test_the_ruler_counts_in_round_steps_and_prints_them_exactly():
     """The finest round step — 1, 2 or 5 times a power of ten — whose pitch two
-    10px numbers can sit at, so the reader counts in something they already
+    11px numbers can sit at, so the reader counts in something they already
     count in, on any board. The step decides the decimals, so every label is the
     exact price of its rung and no two repeat. The spans are real: SNDK's
     2026-09-16 board, its $37.9 and $16.2 boards of 09-15, SPX on 2026-06-25 at
@@ -1916,20 +1868,23 @@ def test_the_ruler_counts_in_round_steps_and_prints_them_exactly():
     got = _glance("""console.log(JSON.stringify({
         runs: D.map(([span, h, lo]) => [g.axisStep(span, h), g.priceTicks(lo, lo + span, 0, h, [])]),
         none: [g.axisStep(0, 144), g.priceTicks(5, 5, 0, 144, [])]}));""", cases)
+    # 20px between rungs since the ruler went to 11px (2026-09-18), where 18
+    # held two 10px numbers. The $37.9 board of 09-15 pays for it: $10 where it
+    # took $5, three rungs where it drew seven (SIDE-SPEC.md 6a).
     assert [(a["step"], a["dp"]) for a, _ in got["runs"]] == \
-        [(10, 0), (5, 0), (5, 0), (10, 0), (0.2, 1), (0.05, 2)]
+        [(10, 0), (10, 0), (5, 0), (10, 0), (0.2, 1), (0.05, 2)]
     for _, ticks in got["runs"]:
         labels = [t["label"] for t in ticks]
         assert len(labels) >= 3 and len(set(labels)) == len(labels), labels
         for t in ticks:
             assert float(t["label"].replace(",", "")) == pytest.approx(t["v"], abs=1e-9), t
         ys = [t["y"] for t in ticks]
-        assert all(abs(b - a) >= 18 for a, b in zip(ys, ys[1:])), labels
+        assert all(abs(b - a) >= 20 for a, b in zip(ys, ys[1:])), labels
     # no span is no step and no rungs, never a guess at one
     assert got["none"] == [None, []]
 
 
-def test_no_mark_on_the_plot_is_eaten_by_the_shade_behind_it():
+def test_no_mark_on_the_plot_is_eaten_by_what_is_behind_it():
     """The palette passed and the marks did not. Every stroke over the plot was
     drawn in a token that clears its floor on the card and was then knocked down,
     by stroke-opacity or by the 0.30 wash of the heaviest shade band beneath it,
@@ -1937,23 +1892,23 @@ def test_no_mark_on_the_plot_is_eaten_by_the_shade_behind_it():
     second wall 1.49, the lightest magnet runner 1.18. The plot's own backdrop
     was eating the marks it exists to sit under.
 
-    So the shade's ceiling is SOLVED against the lightest line that has to cross
-    it, the price path; every rule over the shade is drawn in its hue's -ink
-    step at full strength; and what opacity carried moves to width, the one
-    channel with no contrast cost — nearest or not for a wall, a runner's weight
-    for the magnet — and never the share, which is not this rule's to say."""
+    So every rule over the plot is drawn in its hue's -ink step at full
+    strength, and what opacity carried moves to width, the one channel with no
+    contrast cost — nearest or not for a wall, a runner's weight for the magnet
+    — and never the share, which is not this rule's to say. The shade itself
+    went on 2026-09-18 (test_the_plot_draws_no_shade_behind_the_line), so what
+    is behind every mark is the card, and each one is measured on it."""
     root = re.search(r"(?ms)^:root\{(.*?)^\}", PHONE).group(1)
     tok = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
            for k, v in re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", root)}
-    ceil = float(re.search(r"SHADE_CEIL\s*=\s*([\d.]+)", PAGE).group(1))
-    wash = tuple(i * ceil + s * (1 - ceil) for i, s in zip(tok["--i"], tok["--s"]))
+    behind = tok["--s"]
     for sel in (".p-path", ".p-orb", ".p-wall.call", ".p-wall.put", ".p-wall.passed",
-                ".p-mag", ".p-magrun", ".p-prule", ".p-halo", ".p-brk"):
+                ".p-mag", ".p-magrun", ".p-prule", ".p-halo"):
         rule = _css_rule(sel)
         assert rule is not None, f"{sel} has no rule"
         assert "opacity" not in rule, f"{sel} is knocked down by opacity"
-        ratio = _contrast(tok[re.search(r"stroke:var\((--[a-z-]+)\)", rule).group(1)], wash)
-        assert ratio >= 3.0, f"{sel} measures {ratio:.2f}:1 over the darkest shade"
+        ratio = _contrast(tok[re.search(r"stroke:var\((--[a-z-]+)\)", rule).group(1)], behind)
+        assert ratio >= 3.0, f"{sel} measures {ratio:.2f}:1 over what is behind it"
     # the chart's most-read number is text on its own chip, and text needs 4.5
     fill = lambda sel: tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
     assert _contrast(fill(".p-chiptx"), fill(".p-chip")) >= 4.5
@@ -1992,8 +1947,10 @@ def test_the_bled_chart_keeps_its_ink_off_the_cards_corners():
     pad = int(re.search(r"padding:(\d+)px", card).group(1))
     radius = int(re.search(r"border-radius:(\d+)px", card).group(1))
     # the 2026-09-16 board: a refused wall named under the plot, the call side
-    # measured empty, a tape for the feet to name, and a scan old enough to say so
-    scene = dict(_SHADE_SCENE, walls={"call_side_has_no_wall": True,
+    # measured empty, a tape for the feet to name, and a scan old enough to say
+    # so. The empty side put a word in the plot until 2026-09-18; it is pinned
+    # absent in test_a_side_measured_empty_is_said_on_the_card_and_not_in_the_plot
+    scene = dict(_SCENE_0916, walls={"call_side_has_no_wall": True,
                                       "put": [{"strike": 1500, "cluster_share_of_book_gamma_pp": 20.44},
                                               {"strike": 1450, "cluster_share_of_book_gamma_pp": 22.3}]})
     bars = [{"ts": "2026-09-10T%02d:%02d:00-04:00" % divmod(570 + i, 60), "close": 1560 - i * 0.6,
@@ -2004,7 +1961,7 @@ def test_the_bled_chart_keeps_its_ink_off_the_cards_corners():
         html, h = svg["html"], float(svg["attrs"]["height"])
         texts = re.findall(r'<text class="([^"]*)" x="[\d.]+" y="([\d.]+)"[^>]*>([^<]*)<', html)
         assert {t for c, _, t in texts if c == "p-axis"} == {"09:30", "10:40"}
-        assert "NO CALL WALL ABOVE" in html and "▼ 1,450" in html
+        assert "▼ 1,450" in html
         # a comma descends a fifth of an em below the baseline; nothing else here does
         lowest = max(float(y) + (0.2 * 12 if "," in t else 0) for _, y, t in texts)
         assert (h - lowest) + pad > radius, f"the lowest ink enters the card's corner at {cw}"

@@ -174,6 +174,29 @@ def test_the_chart_keeps_its_tabular_figures():
         assert need in checked, f"{need} no longer sets its own font; this proves nothing"
 
 
+def test_no_chart_text_is_under_11px():
+    """The chart's words, its time feet and its price ruler were 10px, and each
+    of them sat over other ink: the word over the shade, the feet under the
+    volume ribbon, the ruler beside the wall bugs. They went to 11px on
+    2026-09-18 (INK-SPEC.md 3, SIDE-SPEC.md ruling 6); the ruler's rungs went
+    to 20px apart with them, which test_phone_route's
+    test_the_ruler_counts_in_round_steps_and_prints_them_exactly holds. Held
+    on every chart rule that sets a size, so the next one cannot come in under
+    it."""
+    sized = {}
+    for sel, decls in _flat_rules(_css_code(PHONE)):
+        if not sel.startswith(".p-"):
+            continue
+        for d in decls:
+            m = re.match(r"(?:font:(?:[^;]*?\s)?|font-size:)([\d.]+)px", d)
+            if m:
+                sized[sel] = float(m.group(1))
+    for need in (".p-word", ".p-axis", ".p-scale", ".p-edge", ".p-tag", ".p-chiptx"):
+        assert need in sized, f"{need} no longer sets its own size; this proves nothing"
+    small = {sel: px for sel, px in sized.items() if px < 11}
+    assert not small, f"chart text under 11px: {small}"
+
+
 def test_the_activity_panel_keeps_its_tabular_figures():
     """The same fault, on the card under the chart. Every rule in WHERE THE
     ACTIVITY IS set the font shorthand, so the strike column was proportional

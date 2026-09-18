@@ -230,24 +230,24 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    never reached the chart. Proportional, the chip's "1,517" drew 28.04px wide
    and "4,000" 37.62px; tabular, every four-digit price is 33.08px, and figW
    in glance.js, which sizes the gutter, charges exactly that. */
-.p-shade  {fill:var(--i)}
 .p-path   {fill:none;stroke:var(--path);stroke-width:1.8;
            stroke-linejoin:round;stroke-linecap:round}
 .p-reach  {fill:none;stroke:var(--path);stroke-opacity:.5;stroke-width:1.2;stroke-dasharray:2 4}
 .p-break  {stroke:var(--band-edge);stroke-width:1}
 .p-orb    {stroke:var(--i-faint);stroke-width:1;stroke-dasharray:3 3;fill:none}
-.p-read   {fill:var(--i-body)}
 .p-vol    {fill:var(--rule-soft)}
-/* Every rule that crosses the shade is drawn at full strength, in its hue's
-   -ink step: the -mark steps fail 3:1 over bands from 0.05 to 0.12, and the
-   lightest band drawn is 0.08. An opacity knock-down is the same failure by
-   another route, so what opacity carried — nearest or not, a runner's weight,
-   the lead tag — is carried by width and weight. See SHADE_CEIL in page.js. */
+/* Every rule over the plot is drawn at full strength, in its hue's -ink step:
+   the -mark steps failed 3:1 over the shade that used to sit behind them. An
+   opacity knock-down is the same failure by another route, so what opacity
+   carried — nearest or not, a runner's weight, the lead tag — is carried by
+   width and weight. */
 .p-wall   {stroke-linecap:butt}
 .p-wall.call{stroke:var(--call-ink)} .p-wall.put{stroke:var(--put-ink)}
 /* a wall price has already passed since the book was read: its width stays,
    its side's hue goes — see wallPassed in glance.js */
 .p-wall.passed{stroke:var(--i-mute)}
+/* a wall on the magnet's strike is ONE rule: its side's colour, the magnet's dash */
+.p-wall.mag{stroke-dasharray:6 3}
 /* the magnet is a LONG DASH as well as amber. On a light ground hue alone is
    not enough to separate five 1-3px lines, and it is the worst channel for a
    red-green deficient reader. Position, dash and weight carry it redundantly. */
@@ -256,7 +256,6 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-prule  {stroke:var(--px-ink);stroke-width:1;stroke-dasharray:2 3}
 .p-dot    {fill:var(--px-mark);stroke:var(--s);stroke-width:2}
 .p-halo   {fill:none;stroke:var(--px-ink);stroke-width:1}
-.p-brk    {fill:none;stroke:var(--path);stroke-width:1.5;stroke-linecap:butt}
 /* --px-ink: the fill is the ground for the chart's most-read number, and
    --px-mark under it measured 3.87:1 */
 .p-chip   {fill:var(--px-ink)}
@@ -271,21 +270,21 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-tag.lead{font-weight:800}
 .p-tag.call{fill:var(--call-ink)} .p-tag.put{fill:var(--put-ink)}
 .p-tag.mag {fill:var(--mag-ink)}  .p-tag.passed{fill:var(--i-mute)}
-/* the halo punches the word through whatever it crosses; it strokes the CARD
-   colour now, not the old dark ground */
-.p-word    {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;
+/* No chart text is under 11px (2026-09-18): the words, the feet and the ruler
+   were 10px over other ink. The halo punches the word through whatever it
+   crosses; it strokes the CARD colour now, not the old dark ground */
+.p-word    {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;
             fill:var(--i-mute);paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
-.p-word.dim{fill:var(--i-mute)}
 /* The markers the card NAMES are heavier as well as darker. Both were 700 and the
    only difference was fill — which makes the distinction contrast-only, and
    this file's own law (see the ink ramp) is that subordination is by SIZE or
    weight, never by contrast, because a low-contrast grey outdoors means gone. */
 .p-edge    {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute)}
 .p-edge.lead{font-weight:800;fill:var(--i)}
-.p-axis    {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;fill:var(--i-mute)}
+.p-axis    {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;fill:var(--i-mute)}
 /* the price ruler: the size and weight of .p-axis, the time ruler it is the
    other half of, and no tracking, because it is only figures */
-.p-scale   {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute)}
+.p-scale   {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute)}
 .p-stick   {stroke:var(--rule-soft);stroke-width:1}
 
 /* ============ E. THE READING — the one filled card ============ */

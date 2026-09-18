@@ -158,10 +158,6 @@ function state(){
     // and it looked exactly like a real price path.
     points: pathPoints(),
     sigma: ((scene.scale || {}).one_sigma_dollars),
-    // The strikes payload, not the ladder's legacy scene: the per-strike rows
-    // live there and nowhere else. An era that ships no rows yields no shade.
-    bands: weightBands(((PAY.scene || {}).strikes) || null),
-    reads: readPoints(PAY.reads_today),
     vol: volumeBlocks(BARS, 5),
     openRange: ((((PAY.scene || {}).context || {}).ranges || {}).opening) || null,
   };
@@ -224,25 +220,6 @@ function paintAll(){
   paintHalf(st);
   paintFoot(st);
   clearLoading();
-}
-
-/* ---- in-plot word placement -------------------------------------------- */
-
-function clearRow(want, top, bottom, ruleYs){
-  // A 10px word occupies roughly baseline-8 .. baseline+2. CLEAR keeps the
-  // glyphs off the rule; STEP is the tag solver's own row pitch, so a displaced
-  // word lands on a row of the plot rather than between two of them — at 13 it
-  // cleared the VWAP rule but still sat 2px under the VWAP lane word and the
-  // two read as one row.
-  const CLEAR = 13, STEP = 20;
-  const ok = y => (y - 9) >= top && (y + 3) <= bottom
-                && !ruleYs.some(r => Math.abs(r - y) < CLEAR);
-  if(ok(want)) return want;
-  for(let i = 1; i <= 10; i++){
-    if(ok(want + i * STEP)) return want + i * STEP;
-    if(ok(want - i * STEP)) return want - i * STEP;
-  }
-  return null;
 }
 
 /* ---- A. masthead ------------------------------------------------------- */
@@ -350,17 +327,6 @@ function paintFoot(){
 
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
-
-// How dark a band may be, which is a property of the screen rather than of the
-// board. The FLOOR is what makes a measured strike visible at all: under it a
-// band on this ground is not legible, and a measurement drawn as nothing is the
-// one thing this chart may not do. The CEILING is what stops the field reading
-// as a wall of ink behind the price line it exists to sit under, and it is
-// solved rather than chosen: 0.22 is the darkest band over which the lightest
-// line that has to cross it — the price path, in --path — still clears 3:1
-// (3.15). At 0.30 the path measured 2.61, the nearest wall 1.78 and the price
-// rule 1.24.
-const SHADE_FLOOR = 0.08, SHADE_CEIL = 0.22;
 
 function paintLadder(st){
   const svg = $('svg');
@@ -532,18 +498,11 @@ function paintLadder(st){
      + '" width="' + PLOT_W + '" height="' + n1(plotH) + '"/></clipPath></defs>';
 
   // ---- clipped plot content ---------------------------------------------
+  // No shade behind it since 2026-09-18. Eight bands of contracts share
+  // resolved to five greys a reader could tell apart, and the one band that
+  // read was on the put wall's strike, already ruled and tagged, on 24 of 24
+  // scans of 2026-09-16 (INK-SPEC.md 1.2).
   let g = '';
-  // WHERE THE CONTRACTS REST, as shade. Drawn first so everything else sits on
-  // top of it, and clipped with the rest of the plot content so a band whose
-  // strike is half outside the window is cut rather than dropped.
-  for(const b of st.bands){
-    const hi = Math.min(b.hi, WIN.hi), lo = Math.max(b.lo, WIN.lo);
-    if(!(hi > lo)) continue;
-    const yh = yFor(hi), yl = yFor(lo);
-    g += '<rect class="p-shade" x="' + PLOT_L + '" y="' + n1(yh) + '" width="' + PLOT_W
-       + '" height="' + n1(Math.max(0, yl - yh)) + '" style="opacity:'
-       + (SHADE_FLOOR + b.weight * (SHADE_CEIL - SHADE_FLOOR)).toFixed(3) + '"/>';
-  }
   const lp = livePoint(LIVE);
   const pts = st.points;
   const tapeEnd = pts.length ? pts[pts.length-1].t : null;
@@ -571,15 +530,11 @@ function paintLadder(st){
   const t1 = detached ? tapeEnd
            : Math.max(tapeEnd != null ? tapeEnd : 1, lp ? lp.t : -Infinity);
   const xFor = t => PLOT_L + ((t - t0) / ((t1 > t0) ? (t1 - t0) : 1)) * (PATH_R - PLOT_L);
+  // Nothing rides on the line. A dot for each model call sat on it until
+  // 2026-09-18, and 19 of the 22 on the 15:11 board of 09-16 were woken by
+  // "price ran": the line itself. The reading below says when and why in words.
   if(pts.length >= 2)
     g += '<polyline class="p-path" points="' + pts.map(q => n1(xFor(q.t)) + ',' + n1(yFor(q.s))).join(' ') + '"/>';
-  // Each read the day paid for, at the price it was reading. Placed from the
-  // payload's own list rather than from the journal tail, which reaches six of
-  // the twenty-odd — see snapshot._reads_today.
-  for(const r of st.reads){
-    if(tapeEnd != null && r.t > tapeEnd) continue;   // past the record, nothing to sit on
-    g += '<circle class="p-read" cx="' + n1(xFor(r.t)) + '" cy="' + n1(yFor(r.s)) + '" r="1.7"/>';
-  }
 
   // Detached, the dot is centred in its own gutter, clear of the break rule on
   // one side and the plot's right edge on the other. Clamped to PLOT_R-8 it sat
@@ -603,47 +558,10 @@ function paintLadder(st){
   }
   o += '<g clip-path="url(#pc)">' + g + '</g>';
 
-  // ---- the clear side, drawn with its extent -----------------------------
-  // Drawn BEFORE the range label so its baselines are known: both are in-plot
-  // words at the left edge, and on a 280px ladder they landed 8px apart.
-  const wordRows = [];
-  // Every horizontal rule this plot will draw. An in-plot word that lands on
-  // one is unreadable: the --ground halo strokes GLYPHS, and the widest gaps in
-  // a word are its spaces, which have no glyph to stroke. Measured 2026-09-07,
-  // "NO PUT WALL BELOW" sat at baseline 244.5 with the VWAP rule at 240.7 — the
-  // dashes ran through the word's three spaces and on into "VWAP 1,684" in the
-  // lanes, so the whole row read as one sentence.
-  const ruleYs = levels.map(l => yFor(l.y));
-  if(!st.withdrawn && inWin(ref)) ruleYs.push(priceY);
-  for(const side of ['call','put']){
-    if((sc.walls||{})[side + '_side_has_no_wall'] !== true) continue;   // sr-7 rename
-    // The flag was measured against the SCAN spot. If a wall of the other pool
-    // now sits on this side of the price on screen, the side is not empty as
-    // drawn — say nothing here and let the gate footer carry the qualified note.
-    const other = side === 'call' ? 'put' : 'call';
-    const cross = ((sc.walls||{})[other] || [])
-      .concat([(sc.walls||{})[other + '_heaviest_wall_behind_the_ladder']])
-      .some(e => e && e.strike != null &&
-                 (side === 'call' ? Number(e.strike) > ref : Number(e.strike) < ref));
-    if(cross) continue;
-    const a = side === 'call' ? plotTop : priceY, b = side === 'call' ? priceY : plotBottom;
-    if(!(b > a)) continue;
-    const spine = PLOT_L - 2, tip = PLOT_L + 2;   // straddling the plot's left edge
-    o += '<path class="p-brk" d="M' + tip + ',' + n1(a) + ' L' + spine + ',' + n1(a)
-       + ' L' + spine + ',' + n1(b) + ' L' + tip + ',' + n1(b) + '"/>';
-    if((b - a) >= 34){
-      const by = clearRow((a + b) / 2, a, b, ruleYs);
-      if(by == null) continue;   // nowhere clear: the bracket alone states the
-                                 // extent and the gate footer takes the words
-      // qualified, because the flag is qualified: call_side_has_no_wall means no
-      // CALL-SIGNED cluster above spot. A wrongly-signed pile there is dropped
-      // from both pools and the flag still fires — true on 79 of 79 rows of the
-      // reference diary, over a cluster carrying 34.6% of book gamma.
-      o += '<text class="p-word dim" x="' + (PLOT_L + 5) + '" y="' + n1(by) + '">'
-         + (side === 'call' ? 'NO CALL WALL ABOVE' : 'NO PUT WALL BELOW') + '</text>';
-      wordRows.push(by);
-    }
-  }
+  // ---- no words in the plot ----------------------------------------------
+  // NO CALL WALL ABOVE / NO PUT WALL BELOW and the bracket down the plot's left
+  // edge that scoped it came off on 2026-09-18, by the owner's choice. The
+  // levels card below still gives a side measured empty its own row.
 
   // ---- rules -------------------------------------------------------------
   for(const l of levels){
@@ -651,18 +569,26 @@ function paintLadder(st){
     if(l.kind === 'magnet'){
       // A runner's weight is its WIDTH, 1.0-1.9px, under the lead's 2.2. It
       // was its opacity, down to .28, which measured 1.18:1 over the darkest
-      // shade, and the opacities that clear 3:1 there span too little to see.
+      // band of the old shade, and the opacities that clear 3:1 span too little
+      // to see.
       o += '<line class="' + (l.lead ? 'p-mag' : 'p-magrun') + '" x1="' + PLOT_L + '" y1="' + y
          + '" x2="' + PLOT_R + '" y2="' + y + '"'
          + (l.lead ? '' : ' style="stroke-width:' + (1 + 0.9*(l.weight||0.5)).toFixed(2) + '"') + '/>';
     } else if(l.kind === 'wall'){
       // WHERE, not how much. The stroke was wallStroke(l.gex) until 2026-09-16:
       // thickness on the book-gamma denominator, which is the one number this
-      // screen may not name in English. The shade behind it now carries weight,
-      // on contracts, which it can. The width says only nearest or not, at full
-      // opacity — the second wall at .55 measured 1.49:1 over the darkest
-      // shade. A wall price has already passed keeps its width, not its hue.
+      // screen may not name in English. The width says only nearest or not, at
+      // full opacity — the second wall at .55 measured 1.49:1 over the darkest
+      // band of the old shade. A wall price has already passed keeps its width,
+      // not its hue.
+      //
+      // A magnet on the wall's strike was folded into it by mergeLevels, and the
+      // one rule then said nothing of it: it takes the magnet's long dash, so the
+      // colour says which side and the dash says the busiest strike, on the one
+      // row. They share a strike on 74% of 66 scans over 09-15..09-17
+      // (INK-SPEC.md 1.4); on the rest each keeps a rule of its own.
       o += '<line class="p-wall ' + (wallPassed(l.side, l.y, ref) ? 'passed' : l.side)
+         + (l.magnet ? ' mag' : '')
          + '" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y
          + '" style="stroke-width:' + (l.nearest ? '2.0' : '1.2') + '"/>';
     }
