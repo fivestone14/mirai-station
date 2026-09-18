@@ -550,6 +550,28 @@ def test_the_record_is_kept_for_the_day_and_rebuilt_when_the_files_change(tmp_pa
     assert got == snapshot._earlier_half_hours("2026-09-17")
 
 
+def test_a_bad_line_in_an_earlier_diary_costs_that_line_alone(tmp_path, monkeypatch):
+    """The record reads every earlier session's diary on the payload's own
+    path, so one bad line in any of them is the whole payload's problem. A
+    torn line was always skipped. A line that is JSON but not a row — null, a
+    list, a string, a number — reached r.get and raised, and the route then
+    answered with an error in place of the payload, the phone's and the
+    desktop tab's, on every poll until the file was mended. It is skipped
+    now, as sndk_read's own reader skips it, and the record is the one the
+    clean rows give."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    _write_day(tmp_path, "2026-08-17", _hh_rows("2026-08-17", _SEESAW))
+    _write_day(tmp_path, "2026-08-18", _hh_rows("2026-08-18", _CLIMB, sigma=400.0))
+    clean = snapshot._earlier_half_hours("2026-08-19")
+    with open(tmp_path / "sndk_reversion" / "2026-08-17.jsonl", "a") as f:
+        f.write('null\n[1, 2]\n"a row"\n42\n{"ticker": "SNDK", "ts": \n')
+    assert snapshot._earlier_half_hours("2026-08-19") == clean
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0), _row(t.replace(hour=13, minute=1), 1586.2)])
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    assert d["session"] == "2026-08-19" and d["earlier_half_hours"] == clean
+
+
 def test_the_payload_carries_the_record_on_the_display_side(tmp_path, monkeypatch):
     """The phone reads the record off the payload wrapper, beside `reads_today`
     and `levels`. It is the record for the session the payload shows, and like

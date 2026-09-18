@@ -896,9 +896,13 @@ def _jsonl_rows(path: Path) -> list:
     with open(path) as f:
         for line in f:
             try:
-                out.append(json.loads(line))
+                r = json.loads(line)
             except Exception:
                 continue   # a torn line is skipped, never fabricated
+            # and so is a line that parses to anything but a row, as
+            # sndk_read._read_jsonl skips it: every caller reads rows with .get
+            if isinstance(r, dict):
+                out.append(r)
     return out
 
 
