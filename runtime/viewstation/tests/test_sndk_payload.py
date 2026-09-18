@@ -386,60 +386,6 @@ def test_the_phone_is_sent_what_each_strike_traded_today(tmp_path, monkeypatch):
     assert any(a.startswith("volume:") for a in strikes["absent"])
 
 
-# --- reads_today: when the model spoke, on the display side of the fence ----
-
-def _write_reads(root, day, rows):
-    d = root / "sndk_reads"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
-
-
-def test_reads_today_counts_what_the_model_said_not_what_the_scanner_wrote(tmp_path, monkeypatch):
-    """A session writes ~190 rows carrying ~22 distinct readings forward, so a
-    row-per-mark would draw the same reading nine times over. The distinct
-    `reading_ts` is the utterance, and it is the key sndk_thread() already uses
-    — a second key here is how two counts of "how many times it spoke" start
-    disagreeing on the same screen."""
-    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
-    _write_reads(tmp_path, "2026-09-16", [
-        {"reading_ts": "2026-09-16T09:31:31-04:00", "spot": 1554.65},
-        {"reading_ts": "2026-09-16T09:31:31-04:00", "spot": 1550.00},   # carried forward
-        {"reading_ts": "2026-09-16T09:31:31-04:00", "spot": 1548.10},   # carried forward
-        {"reading_ts": "2026-09-16T15:11:19-04:00", "spot": 1513.45},
-    ])
-    got = snapshot._reads_today("2026-09-16")
-    assert [r["ts"] for r in got] == ["2026-09-16T09:31:31-04:00", "2026-09-16T15:11:19-04:00"]
-    assert [r["spot"] for r in got] == [1554.65, 1513.45]
-    assert len(json.dumps(got)) < 400, "the whole point is that this is small"
-
-
-def test_reads_today_is_absent_rather_than_empty_when_the_model_never_spoke(tmp_path, monkeypatch):
-    """Honest-absent. An empty list on the wire reads as "it looked and found
-    nothing to say", which is a different fact from "it has not spoken yet" and
-    from "this payload predates the field". All three must draw no marks, and
-    none of them may draw a zero."""
-    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
-    assert snapshot._reads_today("2026-09-16") is None          # no file at all
-    _write_reads(tmp_path, "2026-09-16", [{"ts": "2026-09-16T09:31:31-04:00", "spot": 1554.65}])
-    assert snapshot._reads_today("2026-09-16") is None          # scanned, never spoke
-
-
-def test_a_reading_with_no_price_beside_it_is_left_off_the_line(tmp_path, monkeypatch):
-    """The mark's whole content is WHERE on the price line the model was
-    looking. A reading whose row carries no spot cannot be placed, and placing
-    it at a neighbour's price would be the chart inventing the one thing the
-    mark exists to say."""
-    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
-    _write_reads(tmp_path, "2026-09-16", [
-        {"reading_ts": "2026-09-16T09:31:31-04:00", "spot": 1554.65},
-        {"reading_ts": "2026-09-16T11:02:00-04:00"},
-        {"reading_ts": "2026-09-16T12:02:00-04:00", "spot": None},
-        {"reading_ts": "2026-09-16T13:02:00-04:00", "spot": True},      # a bool is not a price
-        {"reading_ts": "2026-09-16T15:11:19-04:00", "spot": 1513.45},
-    ])
-    assert [r["spot"] for r in snapshot._reads_today("2026-09-16")] == [1554.65, 1513.45]
-
-
 # --- the record under the phone's last-half-hour card ------------------------
 
 def _hh_rows(day, moves, sigma=100.0, keep=lambda minute: True):
@@ -623,9 +569,9 @@ def test_a_bad_line_in_an_earlier_diary_costs_that_line_alone(tmp_path, monkeypa
 
 
 def test_the_payload_carries_the_record_on_the_display_side(tmp_path, monkeypatch):
-    """The phone reads the record off the payload wrapper, beside `reads_today`
-    and `levels`. It is the record for the session the payload shows, and like
-    them it is display only: it never reaches the model's message."""
+    """The phone reads the record off the payload wrapper, beside `levels`. It
+    is the record for the session the payload shows, and like `levels` it is
+    display only: it never reaches the model's message."""
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     _write_day(tmp_path, "2026-08-17", _hh_rows("2026-08-17", _SEESAW))
     _write_day(tmp_path, "2026-08-18", _hh_rows("2026-08-18", _CLIMB, sigma=400.0))

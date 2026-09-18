@@ -1711,7 +1711,9 @@ def test_no_dot_rides_on_the_price_line():
     on the line, so they read as lumps in it. The reading under the chart says
     when the model looked and why, in words.
 
-    Pinned with the field present and every read inside the tape."""
+    The payload stopped sending `reads_today` too, since nothing read it. It is
+    pinned here with the field present anyway, and every read inside the tape:
+    a station not restarted since still sends it."""
     bars = [{"ts": "2026-09-10T09:%02d:00-04:00" % (30 + i), "close": 1520 + i, "volume": 100000}
             for i in range(10)]
     reads = [{"ts": "2026-09-10T09:31:00-04:00", "spot": 1521},

@@ -833,13 +833,9 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         # scene does not carry. On the display side of the fence, like
         # `instrument` above — it costs the model nothing and it reaches no model.
         "levels": _levels_display(R, rw, scene_v1),
-        # when the model spoke today, so the phone can mark those moments on its
-        # price line without re-fetching the journal for them. Display side of
-        # the fence, like `instrument` and `levels`: it reaches no model.
-        "reads_today": _reads_today(day),
         # the phone's last-half-hour card: what the half hour after each earlier
         # half hour did, counted over every session before this one. Display
-        # side, like `reads_today`: it reaches no model.
+        # side, like `levels`: it reaches no model.
         "earlier_half_hours": _earlier_half_hours(day),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
         # what must be true before this scene is worth a model call. Read off the
@@ -925,36 +921,6 @@ def _jsonl_rows(path: Path) -> list:
 _DAY_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _reads_today(day: str) -> Optional[list]:
-    """When the model spoke today, and the price it was looking at when it did.
-
-    The phone marks each reading on its own price line. It cannot get this from
-    the journal the way it fetches everything else: /api/raw/file serves a TAIL,
-    a session writes ~190 rows carrying ~22 distinct readings forward, and the
-    phone asks for 40 rows — which reaches six of them. Raising the tail to 200
-    would move a quarter-megabyte on every refresh to place 22 points, which is
-    the cost the thread endpoint above exists to not pay.
-
-    Distinct `reading_ts`, the same key sndk_thread() keys on, so the two can
-    never disagree about how many times the model spoke. Honest-absent twice
-    over: a row with no spot is left out rather than placed at a guessed price,
-    and a day with no readings returns None rather than an empty list that
-    would read as "it looked and said nothing".
-    """
-    out: list = []
-    seen: set = set()
-    for r in _jsonl_rows(_state_dir() / "sndk_reads" / f"{day}.jsonl"):
-        rts = r.get("reading_ts")
-        if not rts or rts in seen:
-            continue                      # a carried-forward row, not a new one
-        seen.add(rts)
-        spot = r.get("spot")
-        if not isinstance(spot, (int, float)) or isinstance(spot, bool):
-            continue
-        out.append({"ts": rts, "spot": float(spot)})
-    return out or None
-
-
 # ---------------------------------------------------------------------------
 # The record under the phone's LAST HALF HOUR card.
 #
@@ -964,7 +930,7 @@ def _reads_today(day: str) -> Optional[list]:
 # the close on 2026-09-17 — which the phone cannot fetch and has no business
 # re-reading on every poll.
 # So the counts are made here, from the stored files alone, and ride the
-# payload on the display side of the fence beside `reads_today`.
+# payload on the display side of the fence beside `levels`.
 #
 # Non-overlapping half hours on the :00/:30 clock grid, 09:30 to 16:00: twelve
 # back-to-back pairs a session at most. A sliding 30-minute window would give
