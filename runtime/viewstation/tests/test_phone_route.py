@@ -2311,3 +2311,302 @@ def test_the_ladder_is_laid_out_on_the_cards_own_width():
     assert len(rows) == len(_page(_board(_BOARD_1511, width=311))["acAbove"]["kids"]) + 1
     assert _css_rule(".ac-rows.top") == "margin-top:18px"
     assert _css_rule(".ac-rows.top.lift") == "margin-top:0"
+
+
+# --- THE LAST HALF HOUR, and apart from it the record ------------------------
+
+def _hh_scene(moved, ruler, scan):
+    return {"price": {"live_spot": 1517.0, "moved_last_30min_sigma": moved},
+            "scale": {"one_sigma_dollars": ruler}, "data_sources": {"scan_taken_at": scan}}
+
+
+# SPLIT-SPEC.md's four boards as the phone receives them: the three scene
+# fields the card reads, off state/sndk_payloads, and the record
+# snapshot._earlier_half_hours builds from the store for that session.
+_HH_REC_0916 = {"sessions": 33, "first": "2026-07-28", "last": "2026-09-15",
+                "half_hours": 403, "pairs": 368, "usual_sigma": 0.09299722333520812,
+                "bigger": {"n": 179, "other_way": 109, "same_way": 70},
+                "no_bigger": {"n": 189, "other_way": 90, "same_way": 99}}
+_HH_REC_0917 = {"sessions": 34, "first": "2026-07-28", "last": "2026-09-16",
+                "half_hours": 416, "pairs": 380, "usual_sigma": 0.09320564582004712,
+                "bigger": {"n": 185, "other_way": 114, "same_way": 71},
+                "no_bigger": {"n": 195, "other_way": 95, "same_way": 100}}
+_HH_BOARDS = {
+    "A": [_hh_scene(-0.29, 65.82, "2026-09-16T15:10:21.661774-04:00"), _HH_REC_0916],
+    "B": [_hh_scene(-0.09, 53.71, "2026-09-17T11:36:35.011383-04:00"), _HH_REC_0917],
+    "C": [_hh_scene(0.35, 60.74, "2026-09-17T10:38:57.466814-04:00"), _HH_REC_0917],
+    "D": [_hh_scene(0.0, 53.71, "2026-09-17T11:09:47.587370-04:00"), _HH_REC_0917],
+}
+_HH_NEXT = "half hours. Here is what came next each time:"
+
+
+def _half_hours(cases, tz="America/Los_Angeles"):
+    """{name: halfHour(scene, record)} off the real glance.js, for {name:
+    [scene, record]}. On a Pacific clock by default, the station's own."""
+    return _glance("const o={};for(const k in D) o[k]=g.halfHour(D[k][0], D[k][1]);"
+                   "console.log(JSON.stringify(o));", cases, tz=tz)
+
+
+def _hh_card(got):
+    """The card as page.js painted it, or None when it is hidden."""
+    if got["hh"]["hidden"]:
+        return None
+    return {"since": got["hhSince"]["text"], "say": [k["text"] for k in got["hhSay"]["kids"]],
+            "span": got["hhSpan"]["text"], "set": [k["text"] for k in got["hhSet"]["kids"]],
+            "bar": [(k["cls"], k["style"]) for k in got["hhBar"]["kids"]],
+            "out": [k["text"] for k in got["hhOut"]["kids"]]}
+
+
+def test_the_last_half_hour_is_the_boards_own_move_set_apart_from_the_record():
+    """SPLIT-SPEC.md's board A, 2026-09-16 at 15:11, painted whole: the half hour
+    on screen under THE LAST HALF HOUR and its clock, the record under EARLIER
+    HALF HOURS and its span, the bar split 109 to 70, the captions naming the
+    direction.
+
+    The move is the scene's own, -0.29 of a $65.82 day, $19.09 — not the minute
+    bars', whose 14:40 and 15:10 closes, on the station beside it, are $26.74
+    apart. The two are different clocks and neither is wrong; the spec put the
+    card on the scene's (GAMMA-CARD-SPEC.md 10.1), and a change of clock has to
+    be a decision here rather than a drift. The clock is market time on a
+    Pacific phone."""
+    scene, rec = _HH_BOARDS["A"]
+    bars = [{"ts": "2026-09-16T14:40:00-04:00", "open": 1535.36, "high": 1540.9, "low": 1535.0,
+             "close": 1540.1, "volume": 17340.0},
+            {"ts": "2026-09-16T15:10:00-04:00", "open": 1518.195, "high": 1519.1329, "low": 1513.25,
+             "close": 1513.36, "volume": 22176.0}]
+    got = _page(_board(scene, now="2026-09-16T15:11:19-04:00",
+                       payload={"earlier_half_hours": rec}, bars=bars), tz="America/Los_Angeles")
+    assert _hh_card(got) == {
+        "since": "Since 14:40",
+        "say": ["Down $19 in the last half hour.", "A usual half hour on this stock is $6."],
+        "span": "33 trading days",
+        "set": ["That was bigger than usual. So were 179 earlier", _HH_NEXT],
+        "bar": [("", {"flexGrow": "109"}), ("", {"flexGrow": "70"})],
+        "out": ["109 went back up", "70 kept going down"]}
+
+
+def test_the_captions_name_the_direction_the_sentence_printed():
+    """The captions used to say "went the other way" and "went the same way",
+    which name no subject. They now name the direction the sentence two lines up
+    printed, decided by the same field's sign: down, so the other way is back
+    up; up, so it is back down. Exactly flat has no direction, and the abstract
+    words come back. It is a renaming of the record's buckets, not a recount:
+    the counts are the same whichever words they carry.
+
+    Every line of SPLIT-SPEC.md 2's table, on all four of its real boards,
+    and -0.0, which is flat too."""
+    got = _half_hours(dict(_HH_BOARDS, E=[_hh_scene(-0.0, 53.71, "2026-09-17T11:09:47-04:00"),
+                                          _HH_REC_0917]))
+    say = {k: v["say"] for k, v in got.items()}
+    assert say == {"A": ["Down $19 in the last half hour.", "A usual half hour on this stock is $6."],
+                   "B": ["Down $5 in the last half hour.", "A usual half hour on this stock is $5."],
+                   "C": ["Up $21 in the last half hour.", "A usual half hour on this stock is $6."],
+                   "D": ["Flat $0 in the last half hour.", "A usual half hour on this stock is $5."],
+                   "E": ["Flat $0 in the last half hour.", "A usual half hour on this stock is $5."]}
+    assert {k: (v["since"], v["span"]) for k, v in got.items()} == {
+        "A": ("14:40", "33 trading days"), "B": ("11:06", "34 trading days"),
+        "C": ("10:08", "34 trading days"), "D": ("10:39", "34 trading days"),
+        "E": ("10:39", "34 trading days")}
+    assert {k: v["set"][0] for k, v in got.items()} == {
+        "A": "That was bigger than usual. So were 179 earlier",
+        "B": "That was no bigger than usual. So were 195 earlier",
+        "C": "That was bigger than usual. So were 185 earlier",
+        "D": "That was no bigger than usual. So were 195 earlier",
+        "E": "That was no bigger than usual. So were 195 earlier"}
+    assert {v["set"][1] for v in got.values()} == {_HH_NEXT}
+    assert {k: [(o["n"], o["words"]) for o in v["out"]] for k, v in got.items()} == {
+        "A": [(109, "went back up"), (70, "kept going down")],
+        "B": [(95, "went back up"), (100, "kept going down")],
+        "C": [(114, "went back down"), (71, "kept going up")],
+        "D": [(95, "went the other way"), (100, "went the same way")],
+        "E": [(95, "went the other way"), (100, "went the same way")]}
+
+
+def test_bigger_than_usual_is_the_cut_the_record_was_split_on():
+    """"That was bigger than usual" is the record's own cut said in words: a half
+    hour at least as big as the median is bigger, and its counts are the pairs
+    that opened at least that big. So the sentence cannot disagree with the
+    counts under it. A move exactly at the median is bigger; a cent of a sigma
+    under it is not, whichever way it went."""
+    rec = dict(_HH_REC_0917, usual_sigma=0.09)
+    scan = "2026-09-17T11:36:35-04:00"
+    got = _half_hours({"at": [_hh_scene(-0.09, 53.71, scan), rec],
+                       "up_at": [_hh_scene(0.09, 53.71, scan), rec],
+                       "under": [_hh_scene(-0.08, 53.71, scan), rec],
+                       "up_under": [_hh_scene(0.08, 53.71, scan), rec]})
+    assert {k: (v["set"][0], [o["n"] for o in v["out"]]) for k, v in got.items()} == {
+        "at": ("That was bigger than usual. So were 185 earlier", [114, 71]),
+        "up_at": ("That was bigger than usual. So were 185 earlier", [114, 71]),
+        "under": ("That was no bigger than usual. So were 195 earlier", [95, 100]),
+        "up_under": ("That was no bigger than usual. So were 195 earlier", [95, 100])}
+
+
+def test_the_card_is_absent_rather_than_half_drawn():
+    """Every line hangs on the move, its clock, the ruler and the record, so the
+    card is whole or not there. Not there when the diary has no half-hour move;
+    when the scan has no clock; when there is no ruler; when the payload
+    carries no record, because it predates the field or there was nothing to
+    count; with fewer than two earlier sessions or two half hours on this side
+    of usual, because every sentence on the card is plural; when the two counts
+    do not add up to the half hours they split.
+
+    And not before the session has had a half hour. The reader measures its
+    "30-minute" move off the session's first scan from 20 minutes in: at 09:51
+    on 2026-09-16 the scene read -0.39 across 20.7 minutes, and the card would
+    have said SINCE 09:21, a time before the open. From a 10:00 scan it is
+    SINCE 09:30 and the card is drawn."""
+    scene, rec = _HH_BOARDS["A"]
+    at = lambda t: dict(scene, data_sources={"scan_taken_at": t})
+    cases = {
+        "the whole card": [scene, rec],
+        "no move": [dict(scene, price={"live_spot": 1517.0, "moved_last_30min_sigma": None}), rec],
+        "no move field": [dict(scene, price={"live_spot": 1517.0}), rec],
+        "no clock": [dict(scene, data_sources={}), rec],
+        "a clock that is no time": [at("15:10"), rec],
+        "twenty minutes in": [dict(at("2026-09-16T09:51:14-04:00"),
+                                   price={"moved_last_30min_sigma": -0.39}), rec],
+        "a second short": [at("2026-09-16T09:59:59-04:00"), rec],
+        "half an hour in": [at("2026-09-16T10:00:00-04:00"), rec],
+        "no ruler": [dict(scene, scale={"one_sigma_dollars": None}), rec],
+        "a zero ruler": [dict(scene, scale={"one_sigma_dollars": 0}), rec],
+        "no record": [scene, None],
+        "an empty record": [scene, {}],
+        "no usual half hour": [scene, dict(rec, usual_sigma=0)],
+        "one earlier session": [scene, dict(rec, sessions=1)],
+        "one half hour to count": [scene, dict(rec, bigger={"n": 1, "other_way": 1, "same_way": 0})],
+        "no count on this side": [scene, {k: v for k, v in rec.items() if k != "bigger"}],
+        "counts that do not add up": [scene, dict(rec, bigger={"n": 179, "other_way": 109, "same_way": 69})],
+    }
+    got = _half_hours(cases)
+    drawn = {k for k, v in got.items() if v is not None}
+    assert drawn == {"the whole card", "half an hour in"}
+    assert got["half an hour in"]["since"] == "09:30"
+
+    # painted: a payload without the field draws no card, and a card that was
+    # drawn goes when the next payload has no move — a repaint takes it away
+    assert _hh_card(_page(_board(scene))) is None
+    got = _page(_board(scene, payload={"earlier_half_hours": rec}), """
+      const before = dump();
+      NET.payload = JSON.parse(JSON.stringify(NET.payload));
+      NET.payload.scene.price.moved_last_30min_sigma = null;
+      await run('loadPayload()'); await settle();
+      return {before, after: dump()};""")
+    assert _hh_card(got["before"]) is not None and _hh_card(got["after"]) is None
+
+
+def test_the_two_outcomes_differ_in_length_and_nothing_else():
+    """The one rule the card will not trade away. The two segments are the same
+    element with the same class, the same height, fill and radius, and differ
+    only in how far they grow, which is the count; the two counts are the same
+    element in the same type. The order is fixed, other way then same way, even
+    where the second is the larger (board B, 95 then 100): sorted, the larger
+    count would lead on every board. No rule in the stylesheet reaches one
+    segment or one caption and not the other.
+
+    A count of zero is a finding and its caption prints, but it draws no
+    segment: the stylesheet's 8px floor would give it a bar for nothing."""
+    scene, rec = _HH_BOARDS["B"]
+    got = _page(_board(scene, payload={"earlier_half_hours": rec}))
+    card = _hh_card(got)
+    assert card["bar"] == [("", {"flexGrow": "95"}), ("", {"flexGrow": "100"})]
+    assert card["out"] == ["95 went back up", "100 kept going down"]
+    counts = [cap["kids"][0] for cap in got["hhOut"]["kids"]]
+    assert [c["cls"] for c in counts] == ["", ""] and [c["style"] for c in counts] == [{}, {}]
+
+    zero = dict(rec, no_bigger={"n": 195, "other_way": 0, "same_way": 195})
+    card = _hh_card(_page(_board(scene, payload={"earlier_half_hours": zero})))
+    assert card["bar"] == [("", {"flexGrow": "195"})]
+    assert card["out"] == ["0 went back up", "195 kept going down"]
+
+    css = re.sub(r"(?s)/\*.*?\*/", "", PHONE)
+    sels = {s.strip() for block in re.findall(r"([^{}]+)\{[^{}]*\}", css)
+            for s in block.split(",") if re.search(r"\.hh-(?:bar|out)\b", s)}
+    assert sels == {".hh-bar", ".hh-bar i", ".hh-out", ".hh-out b"}, \
+        f"a rule can style one outcome apart from the other: {sorted(sels)}"
+    assert "background:var(--i-body)" in _css_rule(".hh-bar i")
+    assert "flex:1 1 0" in _block(".hh-bar i{"), "the segments no longer grow from a basis of 0"
+
+
+def test_every_word_on_the_half_hour_card_passes_the_stations_gates():
+    """This card sits beside a price and its history, which is exactly where a
+    reader takes a record for a forecast. So every string it can print — the
+    markup's fixed words and every line halfHour returns, on the four real
+    boards and on a move each way either side of usual — goes through the gates
+    SPLIT-SPEC.md 5 ran by hand (the mockup's filters.py), read off what the
+    card draws rather than a list that can drift from it:
+
+      1. the reader's own _BANNED_RE: forecast, causal and judgement words with
+         their inflections — rebound, reversal, lean, forecast among them;
+      2. its position gate, _POS_RE: no sentence placing price above or under a
+         number;
+      3. the explainer sheet's denylist;
+      4. the regime words;
+      5. no dealer and nothing a dealer does, in any wording;
+      6. no options vocabulary: nothing here needs a strike or a contract;
+      7. no emoji, no Greek;
+      8. no rate: no percentage, decimal, "out of" or "1 in 3";
+      9. nothing that grades the split or reaches forward: no "usually", "more
+         often", "most", "likely", "will", "would". The reader may draw that
+         inference; the card may not hand it to him."""
+    R = _reader()
+    section = re.search(r'(?s)<section class="card hh".*?</section>', PHONE).group(0)
+    words = {t.strip() for t in re.split(r"<[^>]+>", section) if t.strip()}
+    assert words == {"The last half hour", "Earlier half hours",
+                     "Nothing past that next half hour was measured."}
+    scan = "2026-09-16T15:10:21-04:00"
+    cases = dict(_HH_BOARDS, **{f"{d} {s}": [_hh_scene(m, 65.82, scan), _HH_REC_0916]
+                                for d, s, m in (("up", "bigger", 0.35), ("up", "no bigger", 0.05),
+                                                ("down", "bigger", -0.29), ("down", "no bigger", -0.05))})
+    for card in _half_hours(cases).values():
+        words |= {"Since " + card["since"], card["span"], *card["say"], *card["set"]}
+        words |= {o["words"] for o in card["out"]} | {f'{o["n"]} {o["words"]}' for o in card["out"]}
+    for need in ("went back up", "went back down", "kept going up", "kept going down",
+                 "went the other way", "went the same way",
+                 "That was bigger than usual. So were 179 earlier",
+                 "That was no bigger than usual. So were 189 earlier"):
+        assert need in words, f"the gates never saw {need!r}"
+
+    sheet = ("buy dips", "sell rallies", "pinned", "settle at", "settles at", "bounce",
+             "break through", "a third of the time", "coin flip", "caps the", "holds price up",
+             "speed up")
+    dealer = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\bpull|absorb")
+    options = re.compile(r"(?i)strike|gamma|open interest|expir|premium|delta|implied|option|"
+                         r"contract|vega|theta")
+    rate = re.compile(r"(?i)%|\bout of\b|\bper ?cent\b|\d\.\d|\b\d+ in \d+\b")
+    ahead = re.compile(r"(?i)\b(?:will|would|could|might|may|shall|going to|tends?|usually|"
+                       r"often|mostly|most|majority|likely|chance|odds|expect\w*)\b")
+    for s in sorted(words):
+        assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
+        assert not R._POS_RE.search(s), f"{s!r} places price against a number"
+        assert not any(w in s.lower() for w in sheet), f"{s!r} makes a claim the sheet may not"
+        assert not any(w in s.lower() for w in ("walls hold", "walls give way")), s
+        assert not dealer.search(s), f"{s!r} speaks of dealers"
+        assert not options.search(s), f"{s!r} needs options vocabulary"
+        assert not re.search(r"[\U0001F300-\U0001FAFF]|[Ͱ-Ͽ]", s), s
+        assert not rate.search(s), f"{s!r} states a rate"
+        assert not ahead.search(s), f"{s!r} grades the split or reaches forward"
+
+
+def test_the_card_sits_between_the_reading_and_the_three_levels():
+    """Its place on the screen, per SPLIT-SPEC.md and the whole-screen sheet:
+    after What it means, before The three levels, moving neither. It is on the
+    card shell every other card uses, and hidden in the markup, so the first
+    frame draws no card until a payload says there is one to draw."""
+    at = {k: PHONE.index(k) for k in ('<section class="read">', '<section class="card hh" id="hh" hidden>',
+                                      '<section class="card levels" id="levels"')}
+    assert list(at) == sorted(at, key=at.get)
+    paint = PAGE.split("function paintAll(){")[1].split("\n}")[0]
+    assert paint.index("paintRead();") < paint.index("paintHalf(st);") < paint.index("paintFoot(st);")
+
+
+def test_the_move_goes_back_into_dollars_on_the_ruler_it_was_measured_on():
+    """with_path divides the half hour's travel by the diary row's own sigma,
+    which is the glance's scene's one_sigma_dollars — the ruler the regime row
+    already prints. The Strikes Payload clamps its ruler to the day's anchor on
+    an expiry afternoon, and times that ruler the move would come back short:
+    here $17 for a $19 half hour."""
+    scene, rec = _HH_BOARDS["A"]
+    strikes = dict(scene, scale={"one_sigma_dollars": 60.0})
+    got = _page(_board(strikes, payload={"legacy": {"scene": scene}, "earlier_half_hours": rec}))
+    assert _hh_card(got)["say"][0] == "Down $19 in the last half hour."
+    assert got["ruler"]["text"] == "TYPICAL MOVE $66"

@@ -221,6 +221,7 @@ function paintAll(){
   paintLevels(st);
   paintToday();
   paintRead();
+  paintHalf(st);
   paintFoot(st);
   clearLoading();
 }
@@ -1303,6 +1304,45 @@ function paintRead(){
     : lead + m.line;
   line.className = 'rd-line' + (m.tier === 'aged' ? ' aged' : '')
                              + (m.wordless ? ' wordless' : '');
+}
+
+/* ---- E2. the last half hour, and apart from it the record ---------------
+
+   Two stanzas of one shape, each a head with its scope on the right and then
+   what it says, so the division needs no sentence: SINCE 14:40 is a moment and
+   33 TRADING DAYS is a span. The words and counts are halfHour's (glance.js);
+   this only places them, with textContent. */
+
+function paintHalf(st){
+  // st.scene, the scene the regime row's ruler comes from, not the Strikes
+  // Payload: the move was divided by the diary row's sigma, which is this
+  // scene's one_sigma_dollars, so the same number turns it back into dollars.
+  // The Strikes Payload clamps its ruler to the day's anchor on an expiry
+  // afternoon, and there it would not.
+  const c = halfHour(st.scene, PAY.earlier_half_hours);
+  $('hh').hidden = !c;
+  if(!c) return;
+  const el = (tag, text) => { const e = document.createElement(tag); e.textContent = text; return e; };
+  $('hhSince').textContent = 'Since ' + c.since;
+  $('hhSay').replaceChildren(...c.say.map(t => el('span', t)));
+  $('hhSpan').textContent = c.span;
+  $('hhSet').replaceChildren(...c.set.map(t => el('span', t)));
+  // The whole bar is the n in the sentence above it and each segment one count,
+  // so the two differ in length and nothing else. A count of zero draws no
+  // segment: the floor in the stylesheet would give it 8px of bar for nothing.
+  $('hhBar').replaceChildren(...c.out.filter(o => o.n > 0).map(o => {
+    const seg = document.createElement('i');
+    seg.style.flexGrow = String(o.n);
+    return seg;
+  }));
+  // the space before the words is part of the text: without it the count
+  // closes up on its first word and reads as part of it
+  $('hhOut').replaceChildren(...c.out.map(o => {
+    const cap = document.createElement('span');
+    cap.appendChild(el('b', o.n.toLocaleString('en-US')));
+    cap.appendChild(el('span', ' ' + o.words));
+    return cap;
+  }));
 }
 
 /* ---- run --------------------------------------------------------------- */

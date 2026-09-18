@@ -487,6 +487,66 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 /* a level's annotation shown where a sentence would be: not the model's voice */
 .rd-line.wordless{color:var(--on-mute)}
 
+/* ============ E2. THE LAST HALF HOUR ============ */
+/* Two things on one card, and the card's first job is to keep them apart: the
+   half hour on screen, and the earlier trading days with today left out. In
+   the mockup, with 24.50px of air and nothing else between them, the owner
+   read the record as a description of the move above it. So each is a stanza
+   of the same shape — a .lab head with its scope on the right, then the
+   content — and the right-hand slot says what kind of thing each is: SINCE
+   14:40 is a moment, 33 TRADING DAYS a span. SPLIT-SPEC.md. No colour, size or
+   weight here that the screen does not already use, and no hue at all: a hue
+   on one outcome would turn a record into a recommendation. */
+
+/* The two sentences, one line box each. Left to wrap together the pair breaks
+   at "A usual / half hour", which reads as a mistake, and a narrower phone
+   would re-break the whole paragraph instead of growing one sentence 24px.
+   15px, not 16, for the reason .td-line carries. */
+.hh-say{margin-top:12px;font:400 15px/24px var(--sans);color:var(--i-body)}
+.hh-say span{display:block}
+
+/* THE SEPARATION, and the whole of it: .lab a second time. The margin is the
+   18px that sat between the sentences and the record already, so the head is
+   set in air the card had. A head and not a ground: --s2 on --s is a 1.272:1
+   step, and a head changes size, weight, case, tracking and colour at once.
+   flex-wrap is for a 320px phone, where the content box is 256 and this pair
+   needs 261.2 on 33 trading days: the span drops to its own line, right-
+   aligned by .lab .r's margin, and the label stays whole instead of breaking
+   "EARLIER HALF / HOURS". From a 340px phone up the pair keeps one line. */
+.hh-rec{margin-top:18px;flex-wrap:wrap}
+
+/* What the counts below are counts OF. The denominator is a sentence, and the
+   second line gives the captions a subject and a tense. 12 above, not 18: the
+   head owns the 18, and 12 binds a head to its own content, as at the top of
+   the card. --i-body, not --i-mute: subordination here is by size, and nothing
+   a reader must read to understand the card may be faint. */
+.hh-set{margin-top:12px;font:400 12px/18px var(--sans);color:var(--i-body)}
+.hh-set span{display:block}
+
+/* THE SPLIT. The whole bar is n and each segment one count; page.js sets each
+   one's flex-grow to its count, on a basis of 0, so length is the count and
+   the 6px gap comes evenly off both, which keeps the difference between the
+   segments in proportion to the difference between the counts. Identical
+   height, fill and radius on both, and the order is fixed: no colour, no
+   class on the larger one, no sorting by size. */
+.hh-bar{display:flex;gap:6px;height:8px;margin-top:12px}
+.hh-bar i{display:block;flex:1 1 0;height:8px;min-width:8px;
+          border-radius:4px;background:var(--i-body)}
+
+/* One caption per segment, each sharing an outer edge with the one it names:
+   the first starts where the bar does, the second ends where it ends. No
+   margin above: 4.07px of ink air is what makes them labels of the bar.
+   line-height:1 on the count, because 13px/18px makes the row 18.41px tall and
+   drifts the grid, and forcing 18px would stop it wrapping on a narrow phone. */
+.hh-out{display:flex;justify-content:space-between;gap:16px;
+        font:400 12px/18px var(--sans);color:var(--i-body)}
+.hh-out b{font-size:13px;font-weight:500;line-height:1;margin-right:3px}
+
+/* the horizon: the one sentence a forecast would never carry. 13 and 12
+   around the rule, as .ac-note has them. */
+.hh-note{margin-top:13px;padding-top:12px;border-top:1px solid var(--s2);
+         font:400 12px/18px var(--sans);color:var(--i-mute)}
+
 /* ============ F. THE THREE LEVELS ============ */
 /* Both nearest walls and the strike with the most contracts, ordered by PRICE,
    top first, with no direction word anywhere. Every number on it comes from one
@@ -730,6 +790,16 @@ body.sheet-open .sheet{transform:none;visibility:visible;
     <span class="rd-mark" id="rdMark"></span>
     <span class="rd-line" id="rdLine"></span>
   </div>
+</section>
+
+<section class="card hh" id="hh" hidden>
+  <div class="lab">The last half hour<span class="r" id="hhSince"></span></div>
+  <p class="hh-say" id="hhSay"></p>
+  <div class="lab hh-rec">Earlier half hours<span class="r" id="hhSpan"></span></div>
+  <p class="hh-set" id="hhSet"></p>
+  <div class="hh-bar" id="hhBar"></div>
+  <p class="hh-out" id="hhOut"></p>
+  <div class="hh-note">Nothing past that next half hour was measured.</div>
 </section>
 
 <section class="card levels" id="levels" data-hold tabindex="0" role="button"

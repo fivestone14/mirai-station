@@ -371,6 +371,91 @@ def test_the_ladder_fits_the_phone(phone):
                 f"{a[0]!r} and {b[0]!r} are {b[1] - a[2]:.2f}px apart at {phone} ({name})"
 
 
+# THE LAST HALF HOUR, measured the same way, each variable line at the widest
+# form it can take: the clock from 09:30 to 15:30, a move under $1,000, a usual
+# half hour under $100, and every count and span under 1,000. The larger bucket
+# held 195 after 34 sessions, so 1,000 is some 140 sessions off. Tracked labels
+# are ink: the 11px/700 box less its trailing .12em (1.32).
+_HALF_W = {"THE LAST HALF HOUR": 136.83, "SINCE 09:40": 82.09,
+           "EARLIER HALF HOURS": 139.14, "400 TRADING DAYS": 124.69,
+           "Down $400 in the last half hour.": 221.18,                 # 15px
+           "A usual half hour on this stock is $40.": 255.20,          # 15px
+           "That was no bigger than usual. So were 400 earlier": 280.18,
+           "half hours. Here is what came next each time:": 251.24,
+           "Nothing past that next half hour was measured.": 263.20,
+           "400": 27.12,                                               # 13px/500, a count
+           " ": 2.05,
+           "went back up": 75.96, "went back down": 93.26, "kept going up": 78.71,
+           "kept going down": 96.01, "went the other way": 106.72, "went the same way": 107.26}
+
+
+def _half_rows(phone):
+    """-> ({row: [width of each thing on it]}, {row: the gap its box keeps},
+    content width) for THE LAST HALF HOUR on a phone `phone` px wide. Every
+    caption vocabulary glance.js can print, each count at its widest."""
+    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
+    content = phone - 2 * side - 2 * _px(".card", "padding")
+    code = GLANCE.split("function halfHour(")[1].split("\n}")[0]
+    pairs = re.findall(r"dir==='Up' \? '([a-z ]+)' : dir==='Down' \? '([a-z ]+)' : '([a-z ]+)'", code)
+    assert len(pairs) == 2, "the captions are no longer where this test reads them"
+    cap = lambda words: _HALF_W["400"] + _HALF_W[" "] + _px(".hh-out b", "margin-right") + _HALF_W[words]
+    rows = {"the card's head": [_HALF_W["THE LAST HALF HOUR"], _HALF_W["SINCE 09:40"]],
+            "the record's head": [_HALF_W["EARLIER HALF HOURS"], _HALF_W["400 TRADING DAYS"]]}
+    gaps = dict.fromkeys(rows, _px(".lab", "gap"))
+    for other, same in zip(*pairs):
+        rows[f"{other} / {same}"] = [cap(other), cap(same)]
+        gaps[f"{other} / {same}"] = _px(".hh-out", "gap")
+    for line in ("Down $400 in the last half hour.", "A usual half hour on this stock is $40.",
+                 "That was no bigger than usual. So were 400 earlier",
+                 "half hours. Here is what came next each time:",
+                 "Nothing past that next half hour was measured."):
+        rows[line], gaps[line] = [_HALF_W[line]], 0
+    return rows, gaps, content
+
+
+@pytest.mark.parametrize("phone", [360, 375, 390, 412])
+def test_the_half_hour_card_keeps_every_line_whole_on_the_phone(phone):
+    """From the owner's 360px Galaxy up, every line of THE LAST HALF HOUR stays
+    on one line at its widest, and the two pairs that share a line — each head
+    and its scope, the two captions — keep the gap their row sets. The captions
+    are the tight one: at 360 the two flat-board captions with two counts of
+    400 need 294.32 of 296. Measured in WebKit off the shipped face on the real
+    page, the card is 266px tall at 360, 375, 390 and 412 on the four real
+    boards and on two built wide: a $119 move over counts of 408, 208 and 200,
+    and the same counts on a flat board."""
+    # the sizes _HALF_W was measured at; a change of size has to re-measure
+    for sel, font in ((".lab", "font:700 11px/1.2"), (".hh-say", "font:400 15px/24px"),
+                      (".hh-set", "font:400 12px/18px"), (".hh-out", "font:400 12px/18px"),
+                      (".hh-note", "font:400 12px/18px")):
+        assert font in _rule(sel), f"{sel} is no longer set at {font}"
+    assert "letter-spacing:.12em" in _rule(".lab").replace(" ", "")
+    assert "font-size:13px;font-weight:500" in _rule(".hh-out b").replace(" ", "")
+    rows, gaps, content = _half_rows(phone)
+    for name, row in rows.items():
+        need = sum(row) + gaps[name] * (len(row) - 1)
+        assert need <= content, f"{name!r} needs {need:.2f} of {content} at {phone}"
+
+
+def test_a_narrower_phone_wraps_the_half_hour_card_and_never_runs_it_off():
+    """Under 340 the card grows rather than overflowing, in the order SPLIT-SPEC
+    drew: the 12px framing line wraps first, then the record's scope drops to a
+    line of its own, right-aligned, with the label left whole, and the captions
+    each wrap in their own box. So nothing here may be held to one line or a
+    fixed width. The card's own head still fits at 320, where the record's does
+    not. Measured at 320 on the four real boards: nothing past the card, no two
+    texts touching, the card 323px tall, 341 on a flat board."""
+    rows, gaps, content = _half_rows(320)
+    head, rec = rows["the card's head"], rows["the record's head"]
+    assert sum(head) + gaps["the card's head"] <= content
+    assert sum(rec) + gaps["the record's head"] > content
+    assert "flex-wrap:wrap" in _rule(".hh-rec").replace(" ", "")
+    assert "white-space:nowrap" in _rule(".lab .r").replace(" ", "")
+    for sel, decls in _flat_rules(_css_code(PHONE)):
+        if ".hh" in sel:
+            assert not any(d.startswith(("white-space:nowrap", "width:", "flex:none")) for d in decls), sel
+    assert "display:flex" in _rule(".hh-out").replace(" ", "") and _px(".hh-out", "gap") >= 12
+
+
 def test_the_chart_bleeds_to_the_cards_edge_and_no_further():
     """The ladder takes back the card's side padding (2026-09-18), which is 32
     of the 39px the plot gained. By exactly the padding: any more and the chart

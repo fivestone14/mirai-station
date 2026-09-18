@@ -982,6 +982,69 @@ function namedGone(day){
   return out;
 }
 
+/* ---- the last half hour, and apart from it the record ------------------ */
+
+function halfHour(scene, rec){
+  // -> every word and count THE LAST HALF HOUR card prints, or null for no card.
+  //
+  // Two things, which the card keeps apart. THIS HALF HOUR comes off the scene
+  // the phone already holds:
+  //   the move     price.moved_last_30min_sigma: the board's own path, the
+  //                live spot against the first diary scan at least 30 minutes
+  //                back (sndk_read.with_path), in that row's sigma. Not the
+  //                minute bars, which run on another clock: at 15:10 on
+  //                2026-09-16 their 14:40 and 15:10 closes are $26.74 apart
+  //                where the path says $19.09, because price ran $5 in the
+  //                14:39 minute. The card says what the scene says.
+  //   in dollars   times scale.one_sigma_dollars, the sigma it was divided by
+  //   the clock    data_sources.scan_taken_at less 30 minutes
+  // THE RECORD is `earlier_half_hours` off the payload wrapper, counted by
+  // snapshot._earlier_half_hours over every session before today's:
+  //   usual        its median half hour, put on today's ruler
+  //   the counts   the pairs on the same side of usual as this half hour. The
+  //                side is the record's own cut, so "That was bigger than
+  //                usual" can never disagree with the counts under it.
+  //
+  // Honest-absent at card level: every line hangs on the move, its clock, the
+  // ruler and the record, and there is no true half of the card. No move (a gap
+  // in the diary), no clock, no ruler or no record, and there is no card.
+  // Nor before the session has had a whole half hour: with_path measures its
+  // "30-minute" move off the first scan from 20 minutes in — at 09:51 on
+  // 2026-09-16 it read -0.39 across 20.7 minutes — and SINCE 09:21 would name a
+  // time before the open. Nor with fewer than two earlier sessions or two half
+  // hours to count: every sentence here is plural, and "So were 1 earlier half
+  // hours" is worse than no card. Nor when the two counts do not add up to the
+  // half hours they split, the one sum a reader can check.
+  const pr=(scene&&scene.price)||{}, ds=(scene&&scene.data_sources)||{};
+  const mv=_fin(pr.moved_last_30min_sigma), sig=_fin(((scene&&scene.scale)||{}).one_sigma_dollars);
+  const usual=_fin(rec&&rec.usual_sigma), days=_fin(rec&&rec.sessions);
+  const t=Date.parse(ds.scan_taken_at), since=isFinite(t) ? etTime(t-30*60000) : null;
+  const from=_clockMin(since);
+  if(mv==null||from==null||from<9*60+30||!(sig>0)||!(usual>0)||!(days>=2)) return null;
+  const bigger=Math.abs(mv)>=usual;
+  const b=rec[bigger ? 'bigger' : 'no_bigger']||{};
+  const n=_fin(b.n), other=_fin(b.other_way), same=_fin(b.same_way);
+  if(!(n>=2)||other==null||same==null||other<0||same<0||other+same!==n) return null;
+  // The captions name the direction the sentence above them printed, off the
+  // same sign: down, and the other way is back up. It is a renaming of the
+  // record's buckets, not a recount — a pair is "other way" when its two half
+  // hours have opposite signs. Exactly flat has no direction, so none is named.
+  const dir=mv>0 ? 'Up' : mv<0 ? 'Down' : 'Flat';
+  return {
+    since,
+    say: [dir+' '+gUsd(Math.abs(mv*sig), 0)+' in the last half hour.',
+          'A usual half hour on this stock is '+gUsd(usual*sig, 0)+'.'],
+    span: days+' trading days',
+    set: ['That was '+(bigger ? 'bigger' : 'no bigger')+' than usual. So were '
+          +n.toLocaleString('en-US')+' earlier',
+          'half hours. Here is what came next each time:'],
+    // other way first, always: sorted by size, the larger count would lead on
+    // every board, and that is emphasis
+    out: [{n:other, words:dir==='Up' ? 'went back down' : dir==='Down' ? 'went back up' : 'went the other way'},
+          {n:same,  words:dir==='Up' ? 'kept going up' : dir==='Down' ? 'kept going down' : 'went the same way'}],
+  };
+}
+
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gMinutes, gTimes, envParts, FULL_SHARE, shareBarPct, wallPassed,
                   levelRows, lightNote, priorClose,
@@ -993,5 +1056,5 @@ if(typeof module!=='undefined'&&module.exports){
                   weightBands, readPoints, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
-                  GRID_TRACK_MIN, activityGrid};
+                  GRID_TRACK_MIN, activityGrid, halfHour};
 }
