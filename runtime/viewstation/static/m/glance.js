@@ -789,9 +789,62 @@ function turnoverBar(mult){
           over:mult>FULL_TURNOVER};
 }
 
+/* ---- how fast each strike is trading now ------------------------------- */
+
+// The last 4 stretches between the scanner's tallies against every stretch
+// before them — 4 against 7 on a full series — in CONTRACTS A MINUTE. Not the
+// last few prints: one stretch swings hard (on 2026-09-16 1,490 traded 206 from
+// 14:51 to 14:55 and 8 in the five minutes after) and three cannot tell a turn
+// from a tick. At least 3 stretches each side, so the first word of a session
+// comes at its 8th tally. Under 150 contracts across the whole series a 25%
+// swing is inside the counting noise, so nothing is said. 1.25 and 0.80 are one
+// step either way.
+const PACE_RECENT=4, PACE_MIN=3, PACE_FLOOR=150, PACE_FAST=1.25, PACE_SLOW=0.80;
+
+function _clockMin(s){
+  const m=/^(\d{1,2}):(\d{2})$/.exec(String(s));
+  return m ? Number(m[1])*60+Number(m[2]) : null;
+}
+
+function pace(series, bookTimes){
+  // -> {before, now, word} in contracts a minute, or null when the series
+  // cannot carry a word. `series` is vol_added_per_book: contracts traded at the
+  // strike between consecutive tallies, one entry per gap in frames.book_times.
+  //
+  // PER MINUTE, NOT PER TALLY. The tallies are four minutes apart until the
+  // scanner stalls, and then one entry holds everything since the stall: on
+  // 2026-09-15 at 13:24 the last gap was 108 minutes and 1,500's 974 contracts
+  // in it read, per tally, as four times the earlier pace — per minute it was
+  // half. A mean per tally gives a different word on 84 of the 491 worded
+  // strike rows of 09-15/16/17: 73 in the nine scans with a stall in them, and
+  // 11 single rows within 7% of a threshold. A null entry is a stretch the
+  // strike was not measured across, so its minutes go with it.
+  if(!Array.isArray(series)||!Array.isArray(bookTimes)||bookTimes.length!==series.length+1) return null;
+  const t=bookTimes.map(_clockMin);
+  const stretch=(from, to)=>{
+    let n=0, v=0, min=0;
+    for(let i=from;i<to;i++){
+      const x=_fin(series[i]);
+      if(x==null) continue;
+      const gap=(t[i]!=null&&t[i+1]!=null) ? t[i+1]-t[i] : null;
+      if(!(gap>0)) return null;          // a gap that cannot be timed cannot be a rate
+      n++; v+=x; min+=gap;
+    }
+    return {n, v, min};
+  };
+  const cut=Math.max(0, series.length-PACE_RECENT);
+  const now=stretch(cut, series.length), before=stretch(0, cut);
+  if(!now||!before||now.n<PACE_MIN||before.n<PACE_MIN) return null;
+  if(now.v+before.v<PACE_FLOOR) return null;
+  const b=before.v/before.min, a=now.v/now.min;
+  if(!(b>0)) return null;
+  return {before:b, now:a,
+          word:a/b>=PACE_FAST ? 'faster' : a/b<=PACE_SLOW ? 'slower' : 'steady'};
+}
+
 /* ---- where the activity is, as a map around price ---------------------- */
 
-function activityRows(day, price, show, strikes){
+function activityRows(day, price, show, strikes, bookTimes){
   // The panel printed "Newly busy: 7 strikes / Gone quiet: 10 strikes" and threw
   // away every strike and every time the builder had already written down. On
   // 2026-09-17 at 10:45 that count hid the whole story: everything newly busy
@@ -837,6 +890,8 @@ function activityRows(day, price, show, strikes){
     const t=r.state!=='gone' ? turnover(table[r.y]) : null;
     if(!t) continue;
     r.mult=t.mult; r.thin=t.pile<THIN_PILE;
+    const p=pace(table[r.y].vol_added_per_book, bookTimes);
+    if(p) r.pace=p.word;
   }
   return {above, below, moreAbove:Math.max(0, up.length-above.length),
           moreBelow:Math.max(0, dn.length-below.length),
@@ -868,5 +923,5 @@ if(typeof module!=='undefined'&&module.exports){
                   barPoints, tapePoints, livePoint, modelRead,
                   weightBands, readPoints, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
-                  FULL_TURNOVER, THIN_PILE, turnover, turnoverBar};
+                  FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace};
 }

@@ -352,11 +352,14 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    turned ninety degrees, 2px above the track's end */
 .ac-gauge.over::before{content:"";position:absolute;right:0;top:-3.4px;width:4px;
                        height:1.4px;background:var(--i-mute)}
-/* one word in the last cell. One cell, one thing */
+/* one word in the last cell: faster, steady or slower, or the thin-pile
+   warning, which outranks them. One cell, one thing; with nothing to say, no
+   element at all */
 .ac-tr{grid-column:6;white-space:nowrap}
-/* the unit, said once over the column instead of on every row, in the count
-   row's own size and ink. Right-aligned, because left-aligned at 148 it would
-   leave 'further above' 1.27px. */
+/* the fourth column's head, said once over it instead of on every row, in the
+   count row's own size and ink (page.js, AC_HEAD). Right-aligned, so its right
+   edge is the last cell's; left-aligned at 148 it would sit 1.27px after
+   'further above'. */
 .ac-head{grid-column:4 / -1;justify-self:end;color:var(--i-faint);white-space:nowrap}
 /* the gauge's scale, in the other count row: each label centred on the mark it
    names — 1× on the tick, 45 + 8.7 + .5 in; 5× on the track's end, 45 + 46 in

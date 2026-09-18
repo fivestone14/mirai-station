@@ -191,7 +191,8 @@ def test_the_activity_panel_keeps_its_tabular_figures():
 # A string the ladder prints that is missing here fails the test that needs it,
 # rather than passing unmeasured.
 _LADDER_W = {"further above": 76.73, "busy all day": 65.04, "small pile": 52.28,
-             "× what was already there": 138.14,
+             "faster": 33.18, "steady": 39.08, "slower": 37.48,
+             "× what was already there": 138.14, "trading now against earlier": 148.62,
              "0.06×": 32.89,                       # 12px/500 tabular, the widest multiple
              "1×": 13.46, "5×": 13.46}             # 11px/500 tabular, the gauge's scale
 GLANCE = (M / "glance.js").read_text()
@@ -217,8 +218,10 @@ def _ladder_fits(phone):
     """Every cell of the fourth column, at its widest, inside the card's content
     box, and the column's head clear of 'further above' by the card's 12."""
     cols, content, last = _ladder(phone)
-    words = re.findall(r"acEl\('ac-tr', '([^']+)'\)", PAGE)
-    assert words, "the last cell's words are no longer where this test reads them"
+    # the warning, and the three words pace() in glance.js can return
+    words = re.findall(r"const last = r\.thin \? '([^']+)'", PAGE)
+    words += re.findall(r"'([a-z]+)'", GLANCE.split("function pace(")[1].split("\nfunction ")[0])
+    assert len(words) == 4, f"the last cell's words are no longer where this test reads them: {words}"
     for word in words:
         assert _LADDER_W[word] <= last, f"{word!r} runs {_LADDER_W[word] - last:.2f}px past the card at {phone}"
     head = re.search(r"const AC_HEAD = \{text: '([^']*)'", PAGE).group(1)
@@ -260,15 +263,23 @@ def test_the_ladder_fits_a_375px_phone():
     _ladder_fits(375)
 
 
-@pytest.mark.xfail(strict=True, reason="the fourth column is fixed pixels sized for 375: at 320 'small "
-                   "pile' runs 47.28px past the content box and 15.28px off the screen (WebKit, "
-                   "2026-09-18). Reflowing it is the owner's decision; this passes when it is made.")
-def test_the_ladder_fits_a_320px_phone():
-    """The smallest phone the page is built for. The six tracks sum to 251 of a
-    256px content box, so the last cell has 5px for a 52.28px word. Kept as a
-    strict expected failure so the overflow is on the record, not hidden, and
-    so this marker has to come off the day it is fixed."""
-    _ladder_fits(320)
+@pytest.mark.parametrize("phone", [
+    pytest.param(360, marks=pytest.mark.xfail(strict=True, reason=(
+        "the fourth column is fixed pixels sized for 375. At 360 'small pile' runs 7.28px into the "
+        "card's padding, and the pace column's head starts at 148, 1.27px after 'further above', "
+        "so the row reads as one run of words (WebKit, 2026-09-18). The owner's decision."))),
+    pytest.param(320, marks=pytest.mark.xfail(strict=True, reason=(
+        "at 320 'small pile' runs 47.28px past the content box and 15.28px off the screen, the "
+        "pace words up to 2.08px off it, and the head 8.62px off it (WebKit, 2026-09-18). "
+        "The owner's decision.")))])
+def test_the_ladder_fits_a_narrower_phone(phone):
+    """360 is a common Android width and 320 the smallest phone the page is
+    built for. The six tracks sum to 251, so the last cell has 45px at 360 and
+    5px at 320 for a 52.28px word, and the head needs a 372px phone to keep the
+    card's 12 from 'further above'. Kept as strict expected failures so the
+    overflow is on the record, not hidden, and so each marker has to come off
+    the day it is fixed."""
+    _ladder_fits(phone)
 
 
 def test_the_chart_bleeds_to_the_cards_edge_and_no_further():

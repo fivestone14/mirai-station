@@ -2008,24 +2008,25 @@ def test_the_gauge_rides_one_fixed_scale_and_marks_its_clip():
 
 def test_the_ladder_carries_the_multiple_and_its_gauge():
     """The 2026-09-16 15:11 board, painted. Every row with a pile measured
-    carries its multiple and its gauge, in the row's own state; the count row
-    above the ladder carries the multiple's unit once, and the one below it the
-    gauge's scale. 1,495 is both guards at once — its bar is at the cap and its
-    last cell says why the number is easy. 1,485 went quiet at 09:38, is not in
-    the strike table, and its row is its time and nothing else."""
+    carries its multiple and its gauge, in the row's own state, and its last
+    cell; the count row below the ladder carries the gauge's scale. 1,495 is
+    both guards at once — its bar is at the cap and its last cell says why the
+    number is easy. 1,485 went quiet at 09:38, is not in the strike table, and
+    its row is its time and nothing else. (Which head the row above carries is
+    test_the_pace_column_takes_the_head_row's.)"""
     got = _page(_board(_BOARD_1511))
-    assert _ac_cells(got["acAbove"]) == [
-        ("+9", "× what was already there"),
-        ("1,550", "1.6×", "32.2%", False, None, None),
-        ("1,545", "2.4×", "48.3%", False, None, None),
-        ("1,540", "4.4×", "88.3%", False, None, None),
-        ("1,530", "4.8×", "96.6%", False, None, None),
-        ("1,520", "2.3×", "46.0%", False, None, None)]
+    above = _ac_cells(got["acAbove"])
+    assert above[0][0] == "+9" and above[1:] == [
+        ("1,550", "1.6×", "32.2%", False, "slower", None),
+        ("1,545", "2.4×", "48.3%", False, "slower", None),
+        ("1,540", "4.4×", "88.3%", False, "steady", None),
+        ("1,530", "4.8×", "96.6%", False, "faster", None),
+        ("1,520", "2.3×", "46.0%", False, "slower", None)]
     assert _ac_cells(got["acBelow"]) == [
-        ("1,510", "0.7×", "13.3%", False, None, None),
-        ("1,500", "0.9×", "17.8%", False, None, None),
+        ("1,510", "0.7×", "13.3%", False, "steady", None),
+        ("1,500", "0.9×", "17.8%", False, "steady", None),
         ("1,495", "6.9×", "100.0%", True, "small pile", None),
-        ("1,490", "1.3×", "26.9%", False, None, None),
+        ("1,490", "1.3×", "26.9%", False, "faster", None),
         ("1,485", None, None, None, None, "09:38"),
         ("+6", "1×5×")]
     # the rows are unchanged in every other way
@@ -2058,3 +2059,143 @@ def test_a_strike_with_nothing_measured_carries_no_multiple_and_no_track():
         assert kinds == {"ac-more", "ac-k", "ac-dot", "ac-word", "ac-time"}, kinds
     # and with one measured row, the column is labelled
     assert {"ac-head", "ac-scale", "ac-m", "ac-gauge"} <= cells
+
+
+# --- how fast each strike is trading now ------------------------------------
+
+def _per_tally(ser):
+    """The mean-per-tally ratio the design's trend() computed, kept here only
+    to show a case where it and the per-minute pace part company."""
+    rec, ear = [v for v in ser[-4:] if v is not None], [v for v in ser[:-4] if v is not None]
+    return (sum(rec) / len(rec)) / (sum(ear) / len(ear))
+
+
+def test_the_pace_is_contracts_a_minute_now_against_earlier():
+    """What faster, steady and slower mean, exactly as the explainer sheet says
+    it: contracts a minute over the last 4 stretches between tallies against
+    the stretches before them — 4 against 7 on a full series. 1,530 at 15:11
+    traded 746 contracts in the 29 minutes from 14:22 to 14:51 and 609 in the
+    17 to 15:08: 25.7 a minute, then 35.8, 1.39 times as fast, so faster.
+    1.25 and 0.80 are one step either way, and a ratio on the line takes it."""
+    rows = {r["strike"]: r for r in _BOARD_1511["strikes"]["rows"]}
+    bt = _BOARD_1511["frames"]["book_times"]
+    got = _glance("console.log(JSON.stringify(D.map(([s, t]) => g.pace(s, t))));",
+                  [[rows[1530]["vol_added_per_book"], bt], [rows[1540]["vol_added_per_book"], bt],
+                   [rows[1550]["vol_added_per_book"], bt],
+                   # 30 a minute for 28 minutes, then exactly 1.25 and exactly 0.80 of it
+                   [[120] * 7 + [150] * 4, ["10:%02d" % (i * 4) for i in range(12)]],
+                   [[120] * 7 + [96] * 4, ["10:%02d" % (i * 4) for i in range(12)]]])
+    assert got[0] == {"before": pytest.approx(746 / 29), "now": pytest.approx(609 / 17), "word": "faster"}
+    assert (round(got[0]["before"]), round(got[0]["now"])) == (26, 36)       # the sheet's figures
+    assert got[1]["word"] == "steady" and got[2]["word"] == "slower"
+    assert [p["word"] for p in got[3:]] == ["faster", "slower"]
+
+
+def test_a_stalled_scanner_is_read_per_minute_not_per_tally():
+    """The departure from the design's trend(), and the case it exists for.
+    The tallies are four minutes apart until the scanner stalls; then one entry
+    holds everything since the stall. On 2026-09-15 at 13:24 the last gap ran
+    108 minutes, and 1,500's 974 contracts in it made the last four tallies
+    average four times the seven before — per tally, faster. Per minute it was
+    trading at half its earlier pace, which is what the sheet teaches the
+    reader the word means. The word is the per-minute one."""
+    ser = [80, 26, 57, 74, 158, 25, 22, 8, 65, 10, 974]
+    bt = ["10:54", "10:58", "11:02", "11:06", "11:10", "11:14", "11:18", "11:22",
+          "11:27", "11:31", "11:35", "13:23"]
+    assert _per_tally(ser) >= 1.25                      # what counting tallies would say
+    got = _glance("console.log(JSON.stringify(g.pace(D[0], D[1])));", [ser, bt])
+    assert got["word"] == "slower"
+    assert got["before"] == pytest.approx(442 / 28) and got["now"] == pytest.approx(1057 / 121)
+    # and the same row on the painted ladder
+    day = {"stood": [1500], "joined": [], "left": []}
+    scene = {"price": {"live_spot": 1512.0}, "scale": {"one_sigma_dollars": 60}, "day": day,
+             "frames": {"book_times": bt},
+             "strikes": {"rows": [{"strike": 1500, "oi_calls": 1700, "oi_puts": 3391,
+                                   "vol_calls": 1200, "vol_puts": 2232, "vol_added_per_book": ser}]}}
+    assert _ac_cells(_page(_board(scene))["acBelow"]) == \
+        [("1,500", "0.7×", "13.5%", False, "slower", None)]
+
+
+def test_the_pace_is_absent_when_the_series_cannot_carry_it():
+    """Two causes, one form: nothing in the cell, not an empty element. Early in
+    a session there are not 3 stretches either side of the cut yet — the first
+    word can come at the 8th tally of the day, 7 stretches — and a strike that
+    traded under 150 contracts across the series is inside the counting noise.
+    A stretch the strike was not measured across drops out with its minutes; a
+    stretch that cannot be timed, a series that does not match its tally times,
+    and an earlier pace of nothing are no answer."""
+    t = ["10:%02d" % (i * 4) for i in range(12)]
+    cases = [
+        ([30] * 7, t[:8]),                                     # 8th tally: the first word
+        ([30] * 6, t[:7]),                                     # 7th: not yet
+        ([10] * 7 + [11, 11, 10, 11], t),                      # 113 contracts: under the floor
+        ([14] * 7 + [13, 13, 13, 13], t),                      # 150 exactly: said
+        ([30, None, None, None, None, None, 30, 30, 30, 30, 30], t),   # 2 measured before the cut
+        ([30, None, None, None, 30, 30, 30, 90, None, 90, 90], t),   # 3 each side: said
+        ([30] * 11, t[:11]),                                   # series and times disagree
+        ([30] * 11, t[:5] + ["late"] + t[6:]),                 # a time that cannot be read
+        ([30] * 11, t[:5] + [t[4]] + t[6:]),                   # a stretch of no minutes
+        ([0] * 7 + [60] * 4, t),                               # nothing traded earlier
+        (None, t), ([30] * 11, None)]
+    got = _glance("console.log(JSON.stringify(D.map(([s, b]) => { const p = g.pace(s, b); return p && p.word; })));",
+                  cases)
+    assert got == ["steady", None, None, "steady", None, "faster", None, None, None, None, None, None]
+    # an unmeasured stretch drops out with its minutes: the last four hold 270
+    # contracts over the three measured 4-minute stretches, 22.5 a minute, not
+    # 270 over 16
+    p = _glance("console.log(JSON.stringify(g.pace(D[0], D[1])));", list(cases[5]))
+    assert p["before"] == pytest.approx(120 / 16) and p["now"] == pytest.approx(270 / 12)
+
+
+def test_each_row_says_faster_steady_or_slower_and_nothing_it_cannot():
+    """The three forms of the last cell on a painted ladder. A thin pile says
+    so and outranks its own pace (1,495 traded 331 over and was slowing: the
+    card says small pile). A pile of 500 or more with too little traded to call
+    gets no last cell at all — the gauge still ends where it always ends, so
+    the row does not look cut off. And nothing in the cell names price."""
+    rows = [dict(r) for r in _BOARD_1511["strikes"]["rows"]]
+    quiet = next(r for r in rows if r["strike"] == 1510)
+    quiet["vol_added_per_book"] = [7, 16, 28, 1, 6, 7, 7, 13, 7, 12, 3]       # 107 contracts
+    got = _page(_board(dict(_BOARD_1511, strikes={"rows": rows})))
+    below = _ac_cells(got["acBelow"])
+    assert below[0] == ("1,510", "0.7×", "13.3%", False, None, None)
+    assert below[2][4] == "small pile"
+    lasts = {k["text"] for row in got["acAbove"]["kids"] + got["acBelow"]["kids"]
+             for k in row["kids"] if k["cls"] == "ac-tr"}
+    assert lasts == {"faster", "steady", "slower", "small pile"}
+    assert "" not in lasts
+    for word in ("price", "up", "down", "rise", "fall", "higher", "lower"):
+        assert not any(word in t.split() for t in lasts)
+
+
+def test_the_pace_column_takes_the_head_row():
+    """The head row holds one head: "trading now against earlier" (148.62px) and
+    "× what was already there" (138.14) are 298.78 side by side in a row with
+    152.03 free. It goes to the pace column, because its subject is what stops
+    "slower" beside a strike price reading as the price — so the multiple's unit
+    is no longer on the card. That is an OPEN DECISION FOR THE OWNER
+    (RATE-SPEC 11.3); this test and AC_HEAD in page.js are the whole of it.
+
+    The head labels the words under it, so with no word on the ladder — before
+    the 8th tally of the day — there is no head, while the multiples, gauges
+    and scale are drawn as before."""
+    got = _page(_board(_BOARD_1511))
+    assert _ac_cells(got["acAbove"])[0] == ("+9", "trading now against earlier")
+    assert "what was already there" not in json.dumps(got)
+    early = dict(_BOARD_1511, frames={"book_times": _BOARD_1511["frames"]["book_times"][:7]},
+                 strikes={"rows": [dict(r, vol_added_per_book=r["vol_added_per_book"][:6])
+                                   for r in _BOARD_1511["strikes"]["rows"]]})
+    got = _page(_board(early))
+    above, below = _ac_cells(got["acAbove"]), _ac_cells(got["acBelow"])
+    assert above[0] == ("+9", None) and below[-1] == ("+6", "1×5×")
+    assert [r[4] for r in above[1:] + below[:-1]] == [None] * 7 + ["small pile", None, None]
+    assert all(r[1] for r in above[1:] + below[:4])
+
+    # with no strike further above there is no count row, and a word with no
+    # head over it would read as the price: the head keeps a row of its own
+    near = dict(_BOARD_1511, day=dict(_BOARD_1511["day"], stood=[1490, 1500, 1510, 1520, 1530],
+                                      left=[[1485, "09:38"]]))
+    top = _page(_board(near))["acAbove"]["kids"]
+    assert [k["cls"] for k in top[0]["kids"]] == ["ac-head"]
+    assert top[0]["kids"][0]["text"] == "trading now against earlier"
+    assert [row["kids"][0]["text"] for row in top[1:]] == ["1,545", "1,530", "1,520"]

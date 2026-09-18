@@ -1093,10 +1093,14 @@ function todayHeadline(day){
 
 const AC_WORD = {new: 'got busy', held: 'busy all day', gone: 'went quiet'};
 
-// The unit of the multiple, said once over its column rather than on every row:
-// "what was already there" is 128.84px, and the multiple, its gauge and one word
-// share the row's 163. `heads` says which rows have something under it.
-const AC_HEAD = {text: '× what was already there', heads: r => r.mult != null};
+// The head row holds ONE head. The pace column's and the multiple's side by side
+// are 298.78px of the 152.03 the row has, and the pace word needs its subject
+// over it more — without "trading", "slower" beside a strike price reads as the
+// price. So the multiple's unit, "× what was already there", is not on the card.
+// OPEN FOR THE OWNER (RATE-SPEC 11.3): this line is the whole of that choice, and
+// {text: '× what was already there', heads: r => r.mult != null} puts it back.
+// `heads` says which rows have something under the head.
+const AC_HEAD = {text: 'trading now against earlier', heads: r => !!r.pace && !r.thin};
 
 function acRow(r){
   // <div class="ac-row new"><div class="ac-k">1,630</div><div class="ac-dot"></div>
@@ -1118,9 +1122,12 @@ function acRow(r){
     fill.style.width = bar.pct.toFixed(1) + '%';
     g.appendChild(fill);
     row.appendChild(g);
-    // the warning goes where the number is: under 500 contracts standing, the
-    // multiple is mostly the smallness of the pile
-    if(r.thin) row.appendChild(acEl('ac-tr', 'small pile'));
+    // One cell, one thing, and a warning outranks a rate: under 500 contracts
+    // standing the multiple is mostly the smallness of the pile, and that is
+    // the headline. Otherwise faster / steady / slower, or nothing at all when
+    // the series cannot carry a word — no element, not an empty one.
+    const last = r.thin ? 'small pile' : r.pace;
+    if(last) row.appendChild(acEl('ac-tr', last));
   }
   return row;
 }
@@ -1129,8 +1136,10 @@ function acMore(n, word, extra){
   // the two count rows carry nothing in the fourth column, so the column's head
   // rides in the top one and the gauge's scale in the bottom one, at no height
   const row = acEl('ac-row more');
-  row.appendChild(acEl('ac-more', '+' + n));
-  row.appendChild(acEl('ac-word', word));
+  if(n){
+    row.appendChild(acEl('ac-more', '+' + n));
+    row.appendChild(acEl('ac-word', word));
+  }
   if(extra) row.appendChild(extra);
   return row;
 }
@@ -1203,13 +1212,17 @@ function paintToday(){
   // against firstChild/removeChild is a silent no-op in the stand-in DOM the
   // phone tests run in, and the rows double on the second paint — which is
   // every poll.
-  const map = activityRows(day, (sc.price || {}).live_spot, 5, sc.strikes);
+  const map = activityRows(day, (sc.price || {}).live_spot, 5, sc.strikes,
+                           (sc.frames || {}).book_times);
   const above = [], below = [], px = [];
   if(map){
-    // a head or a scale over a column with nothing in it would label an absence
+    // a head or a scale over a column with nothing in it would label an absence.
+    // A word under no head is worse: "faster" beside a strike price, with no
+    // "trading" over it, reads as the price. So the head keeps a row of its own
+    // on a ladder with no count above price, and costs 18px there.
     const rows = map.above.concat(map.below);
-    if(map.moreAbove) above.push(acMore(map.moreAbove, 'further above',
-                                        rows.some(AC_HEAD.heads) ? acEl('ac-head', AC_HEAD.text) : null));
+    const head = rows.some(AC_HEAD.heads) ? acEl('ac-head', AC_HEAD.text) : null;
+    if(map.moreAbove || head) above.push(acMore(map.moreAbove, 'further above', head));
     for(const r of map.above) above.push(acRow(r));
     for(const r of map.below) below.push(acRow(r));
     if(map.moreBelow) below.push(acMore(map.moreBelow, 'further below',
