@@ -205,6 +205,11 @@ GLANCE = (M / "glance.js").read_text()
 _NODE = shutil.which("node")
 
 
+def _side():
+    """The glance's own side padding, the body's, past the safe-area inset."""
+    return int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
+
+
 def _px(sel, prop, css=None):
     m = re.search(r"(?:^|;)" + prop + r":(-?[\d.]+)px", (_rule(sel, css) or "").replace(" ", ""))
     return float(m.group(1)) if m else None
@@ -232,8 +237,7 @@ def _ladder(phone):
     installed."""
     if not _NODE:
         pytest.skip("node is not installed")
-    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
-    content = phone - 2 * side - 2 * _px(".today", "padding")
+    content = phone - 2 * _side() - 2 * _px(".today", "padding")
     js = "const g=require(%s);console.log(JSON.stringify(g.activityGrid(%s, %s)));" % (
         json.dumps(str(M / "glance.js")), content, _head()[1])
     out = subprocess.run([_NODE, "-e", js], capture_output=True, text=True, timeout=20)
@@ -393,8 +397,7 @@ def _half_rows(phone):
     """-> ({row: [width of each thing on it]}, {row: the gap its box keeps},
     content width) for THE LAST HALF HOUR on a phone `phone` px wide. Every
     caption vocabulary glance.js can print, each count at its widest."""
-    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
-    content = phone - 2 * side - 2 * _px(".card", "padding")
+    content = phone - 2 * _side() - 2 * _px(".card", "padding")
     code = GLANCE.split("function halfHour(")[1].split("\n}")[0]
     pairs = re.findall(r"dir==='Up' \? '([a-z ]+)' : dir==='Down' \? '([a-z ]+)' : '([a-z ]+)'", code)
     assert len(pairs) == 2, "the captions are no longer where this test reads them"
@@ -473,9 +476,8 @@ def test_the_chart_bleeds_to_the_cards_edge_and_no_further():
     m = re.search(r"margin:(\d+)px -(\d+)px 0\b", ladder)
     assert m, "the ladder no longer bleeds out of the card"
     assert int(m.group(2)) == pad, "the ladder's bleed and the card's padding disagree"
-    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", body).group(1))
     floor = int(re.search(r"rawW\s*<\s*(\d+)", PAGE).group(1))
-    assert 320 - 2 * side - 2 * pad + 2 * int(m.group(2)) >= floor, \
+    assert 320 - 2 * _side() - 2 * pad + 2 * int(m.group(2)) >= floor, \
         "a 320px phone would say CHART TOO NARROW"
 
 
@@ -646,9 +648,8 @@ def _mast_need(expiry, pill):
 
 
 def _mast_room(phone):
-    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
     pad = re.search(r"padding:0 (\d+)px", _rule(".mast"))
-    return phone - 2 * side - 2 * int(pad.group(1))
+    return phone - 2 * _side() - 2 * int(pad.group(1))
 
 
 @pytest.mark.parametrize("phone", [320, 360, 375, 390, 412])

@@ -136,6 +136,11 @@ _BUILT_AT = "2026-08-19T13:02:00-04:00"
 _NOW = "2026-09-10T11:00:00-04:00"
 
 
+def _ago(minutes):
+    """The stamp `minutes` before _NOW, or None for no stamp at all."""
+    return None if minutes is None else (datetime.fromisoformat(_NOW) - timedelta(minutes=minutes)).isoformat()
+
+
 def _glance(js, data=None, tz=None):
     """Run `js` against the REAL glance.js in node — `g` is its exports, `D` is
     `data` — and return the one JSON value the script prints. glance.js is pure
@@ -299,6 +304,21 @@ def _reader():
         sys.path.insert(0, str(snapshot._SNDK_PRO_DIR))
     import sndk_read
     return sndk_read
+
+
+# The gates the phone's word tests add to the reader's own _BANNED_RE and
+# _POS_RE, one copy of each, so a word added to a gate reaches every card the
+# gate guards.
+# No dealer and nothing a dealer does, in any wording:
+_DEALER = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\bpull|absorb")
+# nothing that reaches forward or grades how often:
+_AHEAD = re.compile(r"(?i)\b(?:will|would|could|might|may|shall|going to|tends?|usually|"
+                    r"often|mostly|most|majority|likely|chance|odds|expect\w*)\b")
+# the levels sheet's denylist, the textbook claims measured false on SNDK:
+_SHEET_CLAIMS = ("buy dips", "sell rallies", "pinned", "settle at", "settles at", "bounce",
+                 "break through", "a third of the time", "coin flip", "caps the", "holds price up",
+                 "speed up")
+_EMOJI_OR_GREEK = re.compile(r"[\U0001F300-\U0001FAFF]|[Ͱ-Ͽ]")
 
 
 def test_the_regime_word_carries_no_claim_about_what_price_will_do(tmp_path, monkeypatch):
@@ -1259,11 +1279,9 @@ def test_every_age_on_the_screen_says_what_it_is_the_age_of():
     scene = {"clock": {"minutes_to_close": 135}, "price": {"live_spot": 1700},
              "scale": {"one_sigma_dollars": 40},
              "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
-    ago = lambda m: None if m is None else (datetime.fromisoformat(_NOW) - timedelta(minutes=m)).isoformat()
-
     def paint(minutes, read_min=14, board=scene, **payload):
-        said = [{"ts": _NOW, "reading_ts": ago(read_min), "reading": {"read": "Said."}}]
-        return _page(_board(board, payload={"row_ts": ago(minutes), **payload}, reads=said))
+        said = [{"ts": _NOW, "reading_ts": _ago(read_min), "reading": {"read": "Said."}}]
+        return _page(_board(board, payload={"row_ts": _ago(minutes), **payload}, reads=said))
 
     live = paint(1, as_of="live")
     assert (live["fresh"]["text"], live["fresh"]["cls"]) == ("BOOK 1 MIN OLD", "fresh")
@@ -1313,10 +1331,9 @@ def test_the_pill_gives_up_its_subject_before_the_expiry_leaves_the_row():
       };
       return {first, expiry: els.expiry.textContent, whole: lay(99), bare: lay(11), neither: lay(0),
               empty: lay(0, true)};"""
-    ago = lambda m: (datetime.fromisoformat(_NOW) - timedelta(minutes=m)).isoformat()
-    for row_ts, as_of, said, bare in ((ago(1), "live", "BOOK 1 MIN OLD", "1 MIN AGO"),
-                                      (ago(9), "last scan", "SCAN 9 MIN OLD", "9 MIN AGO"),
-                                      (ago(0.5), "live", "JUST SCANNED", "JUST NOW"),
+    for row_ts, as_of, said, bare in ((_ago(1), "live", "BOOK 1 MIN OLD", "1 MIN AGO"),
+                                      (_ago(9), "last scan", "SCAN 9 MIN OLD", "9 MIN AGO"),
+                                      (_ago(0.5), "live", "JUST SCANNED", "JUST NOW"),
                                       (None, "last scan", "SCAN AGE UNKNOWN", "AGE UNKNOWN")):
         got = _page(_board(scene, payload={"row_ts": row_ts, "as_of": as_of}), steps)
         assert got["expiry"] == "OPTIONS END TODAY"
@@ -1332,8 +1349,7 @@ def _plain_words():
     live and last-scan, just scanned, age unknown, withdrawn, an expiry day, a
     week with no expiry date, a day with no reading, a wall named past the
     edge, and the activity card's notes on one claim and on several."""
-    ago = lambda m: None if m is None else (datetime.fromisoformat(_NOW) - timedelta(minutes=m)).isoformat()
-    said = [{"ts": _NOW, "reading_ts": ago(14), "reading": {"read": "Said."}}]
+    said = [{"ts": _NOW, "reading_ts": _ago(14), "reading": {"read": "Said."}}]
     words = set()
     for fe, minutes, as_of, reads in (({"days_to_expiry": 0, "expiry_date": "2026-09-10"}, 1, "live", said),
                                       ({"days_to_expiry": 1, "expiry_date": "2026-09-11"}, 14, "last scan", []),
@@ -1345,7 +1361,7 @@ def _plain_words():
                  "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}],
                            "call_heaviest_wall_behind_the_ladder": {"strike": 1900,
                                                                     "cluster_share_of_book_gamma_pp": 40}}}
-        got = _page(_board(scene, payload={"row_ts": ago(minutes), "as_of": as_of}, reads=reads))
+        got = _page(_board(scene, payload={"row_ts": _ago(minutes), "as_of": as_of}, reads=reads))
         words |= {got[k]["text"] for k in ("expiry", "fresh", "ruler", "rdAge", "lastscan", "ldWhen")}
         words |= set(_right_foot(got)) | ({got["rdLine"]["text"]} if not reads else set())
         words |= {t for _, t in _svg_texts(got, "p-edge")}
@@ -1371,7 +1387,6 @@ def test_the_plain_words_pass_the_laws():
     expiry is a fact about the options that cannot be said without the noun
     (WORDS-SPEC 9.3, the owner's call)."""
     R = _reader()
-    dealer = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\bpull|absorb")
     words = _plain_words()
     for need in ("OPTIONS END TODAY", "OPTIONS END FRI", "OPTIONS END IN 3 DAYS", "BOOK 1 MIN OLD",
                  "SCAN 14 MIN OLD", "JUST SCANNED", "SCAN AGE UNKNOWN", "USUAL DAY MOVE $40", "14 MIN AGO",
@@ -1385,8 +1400,8 @@ def test_the_plain_words_pass_the_laws():
     for s in sorted(words):
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
         assert not R._POS_RE.search(s), f"{s!r} places price against a number"
-        assert not dealer.search(s), f"{s!r} speaks of dealers"
-        assert not re.search(r"[\U0001F300-\U0001FAFF]|[Ͱ-Ͽ]", s), s
+        assert not _DEALER.search(s), f"{s!r} speaks of dealers"
+        assert not _EMOJI_OR_GREEK.search(s), s
 
 
 def test_the_named_edge_carries_the_weight_the_bug_cannot():
@@ -1509,10 +1524,13 @@ def test_the_two_phone_pages_share_one_palette():
 
 def _css_rules(html):
     """{selector: declarations} for every rule in the page's stylesheet, media
-    blocks included, with comments and whitespace out."""
+    blocks included, with comments and whitespace out. A selector written twice
+    keeps its first rule: the second is a @media block's override of it."""
     css = re.sub(r"(?s)/\*.*?\*/", "", "\n".join(re.findall(r"(?s)<style>(.*?)</style>", html)))
-    return {re.sub(r"\s+", " ", sel).strip(): re.sub(r"\s+", "", body)
-            for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css)}
+    out = {}
+    for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        out.setdefault(re.sub(r"\s+", " ", sel).strip(), re.sub(r"\s+", "", body))
+    return out
 
 
 def test_the_two_phone_pages_draw_one_sheet():
@@ -1774,11 +1792,9 @@ def test_the_volume_ribbon_is_whole_blocks_on_one_scale():
 # named two prices on a board with seven round ones in view.
 
 def _css_rule(sel):
-    """The declaration block for exactly `sel`, wherever on its line the rule
-    sits — several chart rules share a line — with comments and spaces out."""
-    css = re.sub(r"(?s)/\*.*?\*/", "", PHONE)
-    m = re.search(r"(?<![\w.-])" + re.escape(sel) + r"\s*\{([^}]*)\}", css)
-    return re.sub(r"\s+", "", m.group(1)) if m else None
+    """The glance's declaration block for exactly `sel`, wherever on its line
+    the rule sits — several chart rules share a line — or None."""
+    return _css_rules(PHONE).get(sel)
 
 
 def _contrast(a, b):
@@ -2646,21 +2662,16 @@ def test_every_word_on_the_reads_page_sheet_passes_the_laws():
     for term, item in s["items"].items():
         words += [term, *item["paras"]] + ([item["value"]] if item["value"] else [])
     assert len(s["items"]) == 5 and s["caveat"].startswith("Busier, not going anywhere.")
-    denylist = ("buy dips", "sell rallies", "pinned", "settle at", "settles at", "bounce", "break through",
-                "a third of the time", "coin flip", "caps the", "holds price up", "speed up")
-    dealer = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\bpull|absorb")
-    greek = re.compile(r"(?i)\b(?:gamma|gex|delta|vanna|charm|vega|theta)\b|[Ͱ-Ͽ]|[\U0001F300-\U0001FAFF]")
-    ahead = re.compile(r"(?i)\b(?:will|would|could|might|may|shall|going to|tends?|usually|"
-                       r"often|mostly|most|majority|likely|chance|odds|expect\w*)\b")
+    greek = re.compile(r"(?i)\b(?:gamma|gex|delta|vanna|charm|vega|theta)\b")
     often = re.compile(r"(?i)\b(?:one|two|three|four|\d+) (?:\w+ )?in (?:two|three|four|five|ten|\d+)\b"
                        r"|%|\bout of\b|\bper ?cent\b")
     for w in words:
         assert not R._BANNED_RE.search(w), f"{w!r} trips the reader's word gate"
         assert not R._POS_RE.search(w), f"{w!r} places price against a number"
-        assert not any(d in w.lower() for d in denylist), f"{w!r} makes a claim the sheet may not"
-        assert not dealer.search(w), f"{w!r} speaks of dealers"
-        assert not greek.search(w), f"{w!r} puts Greek on the surface"
-        assert not ahead.search(w), f"{w!r} reaches forward"
+        assert not any(d in w.lower() for d in _SHEET_CLAIMS), f"{w!r} makes a claim the sheet may not"
+        assert not _DEALER.search(w), f"{w!r} speaks of dealers"
+        assert not greek.search(w) and not _EMOJI_OR_GREEK.search(w), f"{w!r} puts Greek on the surface"
+        assert not _AHEAD.search(w), f"{w!r} reaches forward"
         assert not often.search(w), f"{w!r} claims how often"
 
 
@@ -2934,25 +2945,19 @@ def test_every_word_on_the_half_hour_card_passes_the_stations_gates():
                  "That was no bigger than usual. So were 189 earlier"):
         assert need in words, f"the gates never saw {need!r}"
 
-    sheet = ("buy dips", "sell rallies", "pinned", "settle at", "settles at", "bounce",
-             "break through", "a third of the time", "coin flip", "caps the", "holds price up",
-             "speed up")
-    dealer = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\bpull|absorb")
     options = re.compile(r"(?i)strike|gamma|open interest|expir|premium|delta|implied|option|"
                          r"contract|vega|theta")
     rate = re.compile(r"(?i)%|\bout of\b|\bper ?cent\b|\d\.\d|\b\d+ in \d+\b")
-    ahead = re.compile(r"(?i)\b(?:will|would|could|might|may|shall|going to|tends?|usually|"
-                       r"often|mostly|most|majority|likely|chance|odds|expect\w*)\b")
     for s in sorted(words):
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
         assert not R._POS_RE.search(s), f"{s!r} places price against a number"
-        assert not any(w in s.lower() for w in sheet), f"{s!r} makes a claim the sheet may not"
+        assert not any(w in s.lower() for w in _SHEET_CLAIMS), f"{s!r} makes a claim the sheet may not"
         assert not any(w in s.lower() for w in ("walls hold", "walls give way")), s
-        assert not dealer.search(s), f"{s!r} speaks of dealers"
+        assert not _DEALER.search(s), f"{s!r} speaks of dealers"
         assert not options.search(s), f"{s!r} needs options vocabulary"
-        assert not re.search(r"[\U0001F300-\U0001FAFF]|[Ͱ-Ͽ]", s), s
+        assert not _EMOJI_OR_GREEK.search(s), s
         assert not rate.search(s), f"{s!r} states a rate"
-        assert not ahead.search(s), f"{s!r} grades the split or reaches forward"
+        assert not _AHEAD.search(s), f"{s!r} grades the split or reaches forward"
 
 
 def test_the_card_sits_between_the_reading_and_the_three_levels():
