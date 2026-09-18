@@ -295,7 +295,14 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 /* ---- the strike ladder ----
    Two grids, one either side of the price row, so the price row can be a 30px
    slot without a grid-auto-rows exception. They share a column template, so the
-   four columns run straight through the break.
+   columns run straight through the break.
+   Six columns: the figure, the dot, the state word, then the fourth column split
+   three ways — the multiple, its gauge, one word — with the card's 12px
+   clearance baked into the tracks as the first three bake theirs: 45 = 33 + 12,
+   58 = 46 + 12, and the last cell takes the rest, 60 on a 375px phone. 78 for
+   the word is 'busy all day' (65.04) plus 12, rounded up; at 72 the multiple
+   would sit 6.96px after it and read as the same run of words, and 'further
+   above' (76.73) overhung the cell by 4.73.
    grid-auto-rows is EXPLICIT: with align-items:baseline a row holding both 13px
    and 12px text takes the union of the two line boxes, 18.41px, and the ladder
    drifts 0.41px on every mixed row.
@@ -304,7 +311,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    drew proportional figures under a column sized for aligned ones. Measured off
    the shipped face at 13px/500, "1,510" set 32.05px and "1,495" 34.56; tabular,
    every strike is 35.09 and the column's left edge stops wandering. */
-.ac-rows{display:grid;grid-template-columns:46px 24px 72px auto;grid-auto-rows:18px;
+.ac-rows{display:grid;grid-template-columns:46px 24px 78px 45px 58px auto;grid-auto-rows:18px;
          align-items:baseline;font:400 12px/18px var(--sans);font-variant-numeric:tabular-nums}
 .ac-rows:empty{display:none}
 .ac-rows.top{margin-top:18px}
@@ -312,7 +319,55 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .ac-k{grid-column:1;text-align:right;font:500 13px/18px var(--sans);font-variant-numeric:tabular-nums;
       white-space:nowrap}
 .ac-word{grid-column:3;white-space:nowrap}
-.ac-time{grid-column:4;white-space:nowrap}
+/* the time is the one thing in the fourth column on the rows that have it, so
+   it spans all three of its cells. A strike that has gone quiet is not in the
+   scan's strike table, so a time and a measure never share a row; if they ever
+   did, activityRows gives the row the time. */
+.ac-time{grid-column:4 / -1;white-space:nowrap}
+
+/* How many times over the contracts already standing at the strike have
+   changed hands today. A FIGURE, so .ac-k's weight, and left-aligned so every
+   leading digit sits on one pixel; the tabular figures .ac-rows restates make
+   that literally so (proportional, "1.6×" and "0.9×" end 4.1px apart). */
+.ac-m{grid-column:4;font-weight:500;white-space:nowrap}
+/* The gauge: the multiple on a FIXED scale, full at 5× (glance.js,
+   FULL_TURNOVER), 46px of track, 9.2px a turn. It centres on the figure like
+   the dot, for the same 0.4px. Square ends: at 9.2px a turn a rounded cap is a
+   third of a turn of slop at the end, which is where the bar is read. No
+   measure, no .ac-gauge at all — an empty track reads as zero. The track's
+   inset shadow is left off; a 2px blur on a 6px bar eats a third of it. */
+.ac-gauge{grid-column:5;justify-self:start;align-self:center;position:relative;top:.4px;
+          width:46px;height:6px;background:var(--s2)}
+/* currentColor, so the bar is the row's own ink and a row is one value */
+.ac-gauge>i{position:absolute;inset:0 auto 0 0;background:currentColor}
+/* 1× — the strike has traded its whole standing pile once over. BELOW the
+   track, not across it: --rule-soft measures 2.62:1 on the track and --i-mute
+   1.62:1 on a --i-body fill, so no token clears 3:1 against both, and a mark
+   that vanishes exactly where the bar reaches it is the one that was needed.
+   Here it is --i-mute on the card, 6.24:1 on every row. 4.5px is the tallest
+   mark that still ends inside the row box, 4.59px clear of the row below. */
+.ac-gauge::after{content:"";position:absolute;left:8.7px;top:7px;width:1px;height:4.5px;
+                 background:var(--i-mute)}
+/* past 5× the bar is CLIPPED and the clip is marked: the chart's .p-clip,
+   turned ninety degrees, 2px above the track's end */
+.ac-gauge.over::before{content:"";position:absolute;right:0;top:-3.4px;width:4px;
+                       height:1.4px;background:var(--i-mute)}
+/* one word in the last cell. One cell, one thing */
+.ac-tr{grid-column:6;white-space:nowrap}
+/* the unit, said once over the column instead of on every row, in the count
+   row's own size and ink. Right-aligned, because left-aligned at 148 it would
+   leave 'further above' 1.27px. */
+.ac-head{grid-column:4 / -1;justify-self:end;color:var(--i-faint);white-space:nowrap}
+/* the gauge's scale, in the other count row: each label centred on the mark it
+   names — 1× on the tick, 45 + 8.7 + .5 in; 5× on the track's end, 45 + 46 in
+   — and joined to it by alignment alone; a tick above a label reads as a prime
+   at 11px. align-self:start, because a box whose children are all absolute has
+   no baseline; top:.82px lands the 11px line's baseline on the row's own. */
+.ac-scale{grid-column:4 / -1;align-self:start;position:relative;height:18px;color:var(--i-faint)}
+.ac-scale div{position:absolute;top:.82px;transform:translateX(-50%);
+              font:500 11px/18px var(--sans);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ac-scale .one{left:54.2px}
+.ac-scale .full{left:91px}
 
 /* the dot centres on the FIGURE, not on the row box: the lining figure's optical
    centre sits 0.4px below the box's, and 0.4px is the whole correction. Do not
@@ -326,8 +381,12 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    states so the dot column's edge never moves. */
 .ac-row.gone .ac-dot{background:none;border:1.5px solid var(--rule-soft)}
 
-.ac-row.new  .ac-k,.ac-row.new  .ac-word{color:var(--i)}
-.ac-row.held .ac-k,.ac-row.held .ac-word{color:var(--i-body)}
+/* a row is one value: its figure, word, multiple, gauge and last word share
+   its ink. A gone row never carries a measure, so .gone gains nothing. */
+.ac-row.new  .ac-k,.ac-row.new  .ac-word,.ac-row.new  .ac-m,.ac-row.new  .ac-gauge,
+.ac-row.new  .ac-tr{color:var(--i)}
+.ac-row.held .ac-k,.ac-row.held .ac-word,.ac-row.held .ac-m,.ac-row.held .ac-gauge,
+.ac-row.held .ac-tr{color:var(--i-body)}
 .ac-row.gone .ac-k,.ac-row.gone .ac-word,.ac-row.gone .ac-time{color:var(--i-mute)}
 
 /* the counts sit in the figure column at the FIGURE's size, or the column edge

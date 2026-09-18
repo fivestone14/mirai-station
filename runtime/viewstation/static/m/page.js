@@ -1093,24 +1093,56 @@ function todayHeadline(day){
 
 const AC_WORD = {new: 'got busy', held: 'busy all day', gone: 'went quiet'};
 
+// The unit of the multiple, said once over its column rather than on every row:
+// "what was already there" is 128.84px, and the multiple, its gauge and one word
+// share the row's 163. `heads` says which rows have something under it.
+const AC_HEAD = {text: '× what was already there', heads: r => r.mult != null};
+
 function acRow(r){
   // <div class="ac-row new"><div class="ac-k">1,630</div><div class="ac-dot"></div>
-  //  <div class="ac-word">got busy</div><div class="ac-time">10:36</div></div>
+  //  <div class="ac-word">got busy</div><div class="ac-m">4.8×</div>
+  //  <div class="ac-gauge"><i style="width:96.6%"></i></div></div>
   // Honest-absent holds on the row too: no word on a continuation, no time
-  // element at all where the builder recorded none.
+  // element at all where the builder recorded none, and no multiple, gauge or
+  // track where the scan measured nothing — an empty track reads as zero.
   const row = acEl('ac-row ' + r.state);
   row.appendChild(acEl('ac-k', gUsd(r.y, 0).replace('$','')));
   row.appendChild(acEl('ac-dot'));
   if(r.first) row.appendChild(acEl('ac-word', AC_WORD[r.state]));
   if(r.at) row.appendChild(acEl('ac-time', r.at));
+  else if(r.mult != null){
+    row.appendChild(acEl('ac-m', gTimes(r.mult)));
+    const bar = turnoverBar(r.mult);
+    const g = acEl('ac-gauge' + (bar.over ? ' over' : ''));
+    const fill = document.createElement('i');
+    fill.style.width = bar.pct.toFixed(1) + '%';
+    g.appendChild(fill);
+    row.appendChild(g);
+    // the warning goes where the number is: under 500 contracts standing, the
+    // multiple is mostly the smallness of the pile
+    if(r.thin) row.appendChild(acEl('ac-tr', 'small pile'));
+  }
   return row;
 }
 
-function acMore(n, word){
+function acMore(n, word, extra){
+  // the two count rows carry nothing in the fourth column, so the column's head
+  // rides in the top one and the gauge's scale in the bottom one, at no height
   const row = acEl('ac-row more');
   row.appendChild(acEl('ac-more', '+' + n));
   row.appendChild(acEl('ac-word', word));
+  if(extra) row.appendChild(extra);
   return row;
+}
+
+function acScale(){
+  // 1× under the tick every bar is read against, the full scale under the
+  // track's end. The zero is the track's own left end, on every row, and is not
+  // numbered: at 11px a "0" centred on it overlaps the "1×".
+  const s = acEl('ac-scale');
+  s.appendChild(acEl('one', '1×'));
+  s.appendChild(acEl('full', FULL_TURNOVER + '×'));
+  return s;
 }
 
 function todayNotes(day, map){
@@ -1171,13 +1203,17 @@ function paintToday(){
   // against firstChild/removeChild is a silent no-op in the stand-in DOM the
   // phone tests run in, and the rows double on the second paint — which is
   // every poll.
-  const map = activityRows(day, (sc.price || {}).live_spot, 5);
+  const map = activityRows(day, (sc.price || {}).live_spot, 5, sc.strikes);
   const above = [], below = [], px = [];
   if(map){
-    if(map.moreAbove) above.push(acMore(map.moreAbove, 'further above'));
+    // a head or a scale over a column with nothing in it would label an absence
+    const rows = map.above.concat(map.below);
+    if(map.moreAbove) above.push(acMore(map.moreAbove, 'further above',
+                                        rows.some(AC_HEAD.heads) ? acEl('ac-head', AC_HEAD.text) : null));
     for(const r of map.above) above.push(acRow(r));
     for(const r of map.below) below.push(acRow(r));
-    if(map.moreBelow) below.push(acMore(map.moreBelow, 'further below'));
+    if(map.moreBelow) below.push(acMore(map.moreBelow, 'further below',
+                                        rows.some(r => r.mult != null) ? acScale() : null));
     const v = shownPrice(sc, LIVE);
     if(v){
       const chip = acEl('ac-chip');

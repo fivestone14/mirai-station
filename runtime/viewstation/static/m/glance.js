@@ -45,6 +45,15 @@ function gMinutes(m){
   return r? h+'h '+r+'m' : h+'h';
 }
 
+function gTimes(m){
+  // A multiple. Two places under a tenth, because 0.06 at one would read 0.1
+  // and overstate it by two thirds; one place through single figures, so the
+  // column is one shape; none from ten up, where the decimal is noise. Every
+  // form starts with a digit, which is the edge the column is read down.
+  if(m==null||!isFinite(m)||m<0) return null;
+  return m.toFixed(m<0.1 ? 2 : m<9.95 ? 1 : 0)+'×';
+}
+
 /* ---- the environment, in a word --------------------------------------- */
 
 function envParts(regime){
@@ -737,9 +746,52 @@ function volumeBlocks(bars, minutes){
                       capped:(b.sum/b.rows)>FULL_VOL_PER_MIN}));
 }
 
+/* ---- how busy each strike has been ------------------------------------- */
+
+// The ladder's gauge is on a FIXED scale, for the reason the levels card's is:
+// a per-scan maximum would fill the busiest row on every scan and destroy the
+// comparison between scans and between days. Full is five turns of the pile.
+// Over the 288 ladder rows of 09-15, 09-16 and 09-17 the multiple ran p50 1.44,
+// p90 4.66, p95 5.51, max 8.17: at 5 the cap takes 7.6% of rows, the share
+// FULL_SHARE was tuned to, and 1x sits a fifth of the way along, where 34% of
+// rows end short of it. At 4 the cap took one row in eight.
+const FULL_TURNOVER=5;
+
+// Under 500 contracts standing, the multiple reports the smallness of the pile
+// faster than the size of the day. The busiest single four-minute stretch on
+// the 2026-09-16 board added 326 contracts, two thirds of a whole turn of a
+// 500-lot pile. 12 of 174 ladder rows that day fell under it, all at 1,495.
+const THIN_PILE=500;
+
+function turnover(row){
+  // How many times over the contracts already standing at a strike have
+  // changed hands today: everything traded against the open positions at last
+  // night's close. Calls and puts are summed on both sides, the way the scan's
+  // own contracts_share_pp counts a strike. The pile is last night's and does
+  // not move during the day, so the number cannot drift on its denominator.
+  //
+  // No pile, or no volume measured at all: no multiple, never a zero. The day's
+  // first scan carries open interest and no volume columns.
+  if(!row) return null;
+  const vc=_fin(row.vol_calls), vp=_fin(row.vol_puts);
+  const pile=(_fin(row.oi_calls)||0)+(_fin(row.oi_puts)||0);
+  if(!(pile>0)||(vc==null&&vp==null)) return null;
+  return {mult:((vc||0)+(vp||0))/pile, pile};
+}
+
+function turnoverBar(mult){
+  // The gauge, in percent of its track: shareBarPct on the ladder's own scale.
+  // Anything above zero draws at least 2%, so a datum that exists gets ink; past
+  // full the bar fills the track and says it was clipped rather than being
+  // quietly flattened. Nothing traded is a measured zero and draws no fill.
+  if(mult==null||!isFinite(mult)||mult<0) return null;
+  return {pct:mult>0 ? Math.max(2, Math.min(100, mult/FULL_TURNOVER*100)) : 0,
+          over:mult>FULL_TURNOVER};
+}
+
 /* ---- where the activity is, as a map around price ---------------------- */
 
-function activityRows(day, price, show){
+function activityRows(day, price, show, strikes){
   // The panel printed "Newly busy: 7 strikes / Gone quiet: 10 strikes" and threw
   // away every strike and every time the builder had already written down. On
   // 2026-09-17 at 10:45 that count hid the whole story: everything newly busy
@@ -774,6 +826,18 @@ function activityRows(day, price, show){
     let last=null;
     for(const r of side){ r.first = r.state!==last; last=r.state; }
   }
+  // How busy each strike has been rides with its row, off the scan's strike
+  // table. A strike that has gone quiet has left the list that table is drawn
+  // from — 74 gone rows on the ladders of 09-15, 09-16 and 09-17, none of them in
+  // it — and its row carries its time instead. If the two ever meet, the time
+  // wins, as `gone` wins the row's state above.
+  const table={};
+  for(const s of (((strikes||{}).rows)||[])){ const y=_fin(s&&s.strike); if(y!=null) table[y]=s; }
+  for(const r of above.concat(below)){
+    const t=r.state!=='gone' ? turnover(table[r.y]) : null;
+    if(!t) continue;
+    r.mult=t.mult; r.thin=t.pile<THIN_PILE;
+  }
   return {above, below, moreAbove:Math.max(0, up.length-above.length),
           moreBelow:Math.max(0, dn.length-below.length),
           counts:{new:all.filter(r=>r.state==='new').length,
@@ -795,7 +859,7 @@ function namedGone(day){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={gUsd, gMinutes, envParts, FULL_SHARE, shareBarPct, wallPassed,
+  module.exports={gUsd, gMinutes, gTimes, envParts, FULL_SHARE, shareBarPct, wallPassed,
                   levelRows, lightNote, priorClose,
                   bookAge, shownPrice, dayChange,
                   etTime, etToday,
@@ -803,5 +867,6 @@ if(typeof module!=='undefined'&&module.exports){
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
                   weightBands, readPoints, activityRows, namedGone,
-                  FULL_VOL_PER_MIN, volumeBlocks};
+                  FULL_VOL_PER_MIN, volumeBlocks,
+                  FULL_TURNOVER, THIN_PILE, turnover, turnoverBar};
 }

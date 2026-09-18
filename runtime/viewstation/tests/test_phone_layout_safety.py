@@ -33,6 +33,8 @@ what this file guards:
 import re
 from pathlib import Path
 
+import pytest
+
 M = Path(__file__).resolve().parents[1] / "static" / "m"
 PHONE = (M / "index.html").read_text()
 THREAD = (M / "thread.html").read_text()
@@ -181,6 +183,92 @@ def test_the_activity_panel_keeps_its_tabular_figures():
     # the classes that print a strike, a count, the price, a clock or a note
     for need in (".ac-rows", ".ac-k", ".ac-more", ".ac-chip", ".ac-note"):
         assert need in checked, f"{need} no longer sets its own font; this proves nothing"
+
+
+# Advances of the shipped face, pjs-153fc85b7029.woff2, measured in WebKit after
+# document.fonts.ready: 12px/400 unless noted. The ladder's fourth column is
+# fixed pixels, so whether it fits is decided at the second decimal of these.
+# A string the ladder prints that is missing here fails the test that needs it,
+# rather than passing unmeasured.
+_LADDER_W = {"further above": 76.73, "busy all day": 65.04, "small pile": 52.28,
+             "× what was already there": 138.14,
+             "0.06×": 32.89,                       # 12px/500 tabular, the widest multiple
+             "1×": 13.46, "5×": 13.46}             # 11px/500 tabular, the gauge's scale
+GLANCE = (M / "glance.js").read_text()
+
+
+def _px(sel, prop, css=None):
+    m = re.search(r"(?:^|;)" + prop + r":(-?[\d.]+)px", (_rule(sel, css) or "").replace(" ", ""))
+    return float(m.group(1)) if m else None
+
+
+def _ladder(phone):
+    """-> (columns, content width, last cell width) for the activity card's grid
+    on a phone `phone` px wide: the body's side padding and the card's."""
+    tpl = re.search(r"grid-template-columns:([^;]+)", _rule(".ac-rows")).group(1).split()
+    assert tpl[-1] == "auto", "the ladder's last cell is no longer the one that takes the rest"
+    cols = [float(c[:-2]) for c in tpl[:-1]]
+    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
+    content = phone - 2 * side - 2 * _px(".today", "padding")
+    return cols, content, content - sum(cols)
+
+
+def _ladder_fits(phone):
+    """Every cell of the fourth column, at its widest, inside the card's content
+    box, and the column's head clear of 'further above' by the card's 12."""
+    cols, content, last = _ladder(phone)
+    words = re.findall(r"acEl\('ac-tr', '([^']+)'\)", PAGE)
+    assert words, "the last cell's words are no longer where this test reads them"
+    for word in words:
+        assert _LADDER_W[word] <= last, f"{word!r} runs {_LADDER_W[word] - last:.2f}px past the card at {phone}"
+    head = re.search(r"const AC_HEAD = \{text: '([^']*)'", PAGE).group(1)
+    clear = content - _LADDER_W[head] - (cols[0] + cols[1] + _LADDER_W["further above"])
+    assert clear >= 12, f"the head is {clear:.2f}px from 'further above' at {phone}"
+
+
+def test_the_ladders_fourth_column_is_built_on_its_widest_contents():
+    """The fourth column is three fixed cells — the multiple, its gauge, one
+    word — with the card's 12px clearance baked into each track the way the
+    first three columns bake theirs. Each is sized on the widest thing it can
+    hold, not on today's board: the multiple on "0.06×", the word column on
+    "busy all day" (the widest word with anything to its right) and on "further
+    above", which overhung the old 72px cell by 4.73.
+
+    The gauge's 1× tick is where one turn of the pile lands on its FIXED scale,
+    and each label under the column is centred on the mark it names, so moving
+    the scale in glance.js without moving the marks fails here."""
+    cols, _, _ = _ladder(375)
+    track = _px(".ac-gauge", "width")
+    assert cols[2] >= _LADDER_W["busy all day"] + 12 and cols[2] >= _LADDER_W["further above"]
+    assert cols[3] >= _LADDER_W["0.06×"] + 12
+    assert cols[4] == track + 12
+    full = int(re.search(r"const FULL_TURNOVER=(\d+);", GLANCE).group(1))
+    tick = _px(".ac-gauge::after", "left") + _px(".ac-gauge::after", "width") / 2
+    assert tick == pytest.approx(track / full), "the 1× tick is not where one turn lands"
+    assert _px(".ac-scale .one", "left") == pytest.approx(cols[3] + tick)
+    assert _px(".ac-scale .full", "left") == pytest.approx(cols[3] + track)
+    gap = (_px(".ac-scale .full", "left") - _LADDER_W["5×"] / 2) - (_px(".ac-scale .one", "left") + _LADDER_W["1×"] / 2)
+    assert gap >= 12
+    # nothing added to the ladder is set under 11px
+    assert re.search(r"font:500 11px/", _rule(".ac-scale div"))
+
+
+def test_the_ladder_fits_a_375px_phone():
+    """On the phone the card was designed at, the last cell's widest word and
+    the column's head both fit inside the content box, with the card's 12px
+    between the head and the count's label."""
+    _ladder_fits(375)
+
+
+@pytest.mark.xfail(strict=True, reason="the fourth column is fixed pixels sized for 375: at 320 'small "
+                   "pile' runs 47.28px past the content box and 15.28px off the screen (WebKit, "
+                   "2026-09-18). Reflowing it is the owner's decision; this passes when it is made.")
+def test_the_ladder_fits_a_320px_phone():
+    """The smallest phone the page is built for. The six tracks sum to 251 of a
+    256px content box, so the last cell has 5px for a 52.28px word. Kept as a
+    strict expected failure so the overflow is on the record, not hidden, and
+    so this marker has to come off the day it is fixed."""
+    _ladder_fits(320)
 
 
 def test_the_chart_bleeds_to_the_cards_edge_and_no_further():

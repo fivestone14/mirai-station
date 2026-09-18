@@ -1910,3 +1910,151 @@ def test_the_price_chip_ends_on_the_strikes_figure_column():
     assert pad_l + floor == col, "the chip's integer does not end on the figure column"
     assert w[0] <= floor, "a four-digit price overruns the floor that holds it to the column"
     assert rule_l - (pad_l + floor + w[2] + pad_r) == pytest.approx(10, abs=0.05)
+
+
+# --- how busy each strike has been -----------------------------------------
+# The 2026-09-16 15:11 board as the scan carried it: the ladder's day block and,
+# for every strike the ladder shows, the strike table's open interest, volume
+# and per-tally series, with the tally times they run between.
+_BOARD_1511 = {
+    "price": {"live_spot": 1517.0001}, "scale": {"one_sigma_dollars": 65.82},
+    "day": {"lists_from": "09:34",
+            "stood": [1470, 1480, 1490, 1500, 1510, 1520, 1530, 1540, 1550, 1600, 1605],
+            "joined": [1430, 1450, 1495, 1545],
+            "left": [[1460, "15:00"], [1475, "14:39"], [1485, "09:38"], [1555, "14:47"],
+                     [1560, "14:47"], [1565, "09:38"], [1570, "14:47"], [1580, "12:19"],
+                     [1610, "15:04"], [1640, "14:43"]]},
+    "frames": {"book_times": ["14:22", "14:27", "14:31", "14:35", "14:39", "14:43", "14:47",
+                              "14:51", "14:55", "15:00", "15:04", "15:08"]},
+    "strikes": {"rows": [
+        {"strike": s, "oi_calls": oc, "oi_puts": op, "vol_calls": vc, "vol_puts": vp,
+         "vol_added_per_book": ser}
+        for s, oc, op, vc, vp, ser in (
+            (1550, 1427, 1071, 2535, 1481, [16, 85, 45, 45, 86, 120, 54, 81, 43, 30, 28]),
+            (1545, 195, 396, 978, 450, [2, 63, 5, 20, 58, 89, 30, 14, 22, 6, 7]),
+            (1540, 565, 571, 2743, 2270, [53, 71, 61, 84, 173, 60, 81, 59, 94, 113, 71]),
+            (1530, 654, 889, 3824, 3632, [74, 139, 117, 97, 112, 105, 102, 129, 166, 134, 180]),
+            (1520, 500, 750, 1282, 1596, [138, 104, 58, 181, 27, 19, 14, 26, 83, 82, 48]),
+            (1510, 407, 821, 199, 615, [7, 16, 28, 31, 66, 7, 7, 13, 47, 12, 31]),
+            (1500, 1699, 3911, 1118, 3861, [13, 68, 51, 52, 183, 64, 143, 60, 99, 84, 52]),
+            (1495, 133, 198, 125, 2161, [100, 111, 2, 1, 3, 5, 5, 49, 6, 2, 0]),
+            (1490, 295, 693, 14, 1316, [1, 5, 3, 201, 8, 105, 105, 206, 8, 116, 113]))]}}
+
+
+def _ac_cells(el):
+    """[(figure, multiple, gauge fill width, clipped, last cell, time)] for each
+    strike row on one side of the ladder, and (count, head or scale) for a
+    count row, as painted."""
+    out = []
+    for row in el["kids"]:
+        by = {k["cls"].split()[0]: k for k in row["kids"]}
+        if "ac-more" in by:
+            extra = by.get("ac-head") or by.get("ac-scale")
+            out.append((by["ac-more"]["text"], extra and extra["text"]))
+            continue
+        g = by.get("ac-gauge")
+        out.append((by["ac-k"]["text"], by.get("ac-m", {}).get("text"),
+                    g and g["kids"][0]["style"].get("width"), g and "over" in g["cls"].split(),
+                    by.get("ac-tr", {}).get("text"), by.get("ac-time", {}).get("text")))
+    return out
+
+
+def test_each_strike_says_how_many_times_over_its_pile_has_traded():
+    """The ladder named ten strikes and said which of three things happened to
+    each, and never how much. The multiple is everything traded at the strike
+    today against the contracts already standing there at last night's close,
+    calls and puts summed on both sides: 1,530 traded 7,456 against 1,543, 4.8
+    times over. The pile does not move during the day, so the number cannot
+    drift on its own denominator.
+
+    Under 500 standing the multiple mostly measures the smallness of the pile
+    (1,495: 2,286 against 331, 6.9 times), and the row says so. No pile, or no
+    volume measured — the day's first scan has open interest and no volume
+    columns — is no multiple, never a zero."""
+    rows = {r["strike"]: r for r in _BOARD_1511["strikes"]["rows"]}
+    got = _glance("""console.log(JSON.stringify({
+        t: D.rows.map(g.turnover), thin: g.THIN_PILE,
+        fmt: [0.0634, 0.0999, 0.66, 4.8321, 9.949, 9.95, 12.4, 0, null, -1].map(g.gTimes)}));""",
+                  {"rows": [rows[1530], rows[1495], {"strike": 1700, "oi_calls": 0, "oi_puts": 0,
+                                                     "vol_calls": 40, "vol_puts": 2},
+                            {"strike": 1700, "oi_calls": 900, "oi_puts": 200},
+                            {"strike": 1700, "oi_calls": 900, "vol_calls": 45},
+                            None]})
+    assert got["t"][0] == {"mult": pytest.approx(7456 / 1543), "pile": 1543}
+    assert got["t"][1] == {"mult": pytest.approx(2286 / 331), "pile": 331}
+    assert got["t"][1]["pile"] < got["thin"] <= got["t"][0]["pile"]
+    assert got["t"][2] is None and got["t"][3] is None and got["t"][5] is None
+    # a side with no volume is a side that traded nothing, when the other side did
+    assert got["t"][4] == {"mult": pytest.approx(0.05), "pile": 900}
+    # two places under a tenth, one through single figures, none from ten up
+    assert got["fmt"] == ["0.06×", "0.10×", "0.7×", "4.8×", "9.9×", "10×", "12×", "0.00×", None, None]
+
+
+def test_the_gauge_rides_one_fixed_scale_and_marks_its_clip():
+    """Full is five turns of the pile on every scan and every day, because a
+    per-scan maximum fills the busiest row every time and destroys the
+    comparison: at 5 the cap takes 7.6% of the 288 ladder rows on disk and one
+    turn sits a fifth of the way along. Past full the bar fills its track and
+    says it was clipped. Anything traded draws at least a sliver; nothing
+    traded is a measured zero and draws no fill."""
+    got = _glance("console.log(JSON.stringify({full: g.FULL_TURNOVER, bars: D.map(g.turnoverBar)}));",
+                  [1, 2.5, 5, 5.0001, 6.906, 0.0634, 0, None, -1])
+    assert got["full"] == 5
+    assert got["bars"] == [{"pct": 20, "over": False}, {"pct": 50, "over": False},
+                           {"pct": 100, "over": False}, {"pct": 100, "over": True},
+                           {"pct": 100, "over": True}, {"pct": 2, "over": False},
+                           {"pct": 0, "over": False}, None, None]
+
+
+def test_the_ladder_carries_the_multiple_and_its_gauge():
+    """The 2026-09-16 15:11 board, painted. Every row with a pile measured
+    carries its multiple and its gauge, in the row's own state; the count row
+    above the ladder carries the multiple's unit once, and the one below it the
+    gauge's scale. 1,495 is both guards at once — its bar is at the cap and its
+    last cell says why the number is easy. 1,485 went quiet at 09:38, is not in
+    the strike table, and its row is its time and nothing else."""
+    got = _page(_board(_BOARD_1511))
+    assert _ac_cells(got["acAbove"]) == [
+        ("+9", "× what was already there"),
+        ("1,550", "1.6×", "32.2%", False, None, None),
+        ("1,545", "2.4×", "48.3%", False, None, None),
+        ("1,540", "4.4×", "88.3%", False, None, None),
+        ("1,530", "4.8×", "96.6%", False, None, None),
+        ("1,520", "2.3×", "46.0%", False, None, None)]
+    assert _ac_cells(got["acBelow"]) == [
+        ("1,510", "0.7×", "13.3%", False, None, None),
+        ("1,500", "0.9×", "17.8%", False, None, None),
+        ("1,495", "6.9×", "100.0%", True, "small pile", None),
+        ("1,490", "1.3×", "26.9%", False, None, None),
+        ("1,485", None, None, None, None, "09:38"),
+        ("+6", "1×5×")]
+    # the rows are unchanged in every other way
+    assert [r[:3] for r in _ac_rows(got["acBelow"])][:3] == \
+        [("held", "1,510", "busy all day"), ("held", "1,500", None), ("new", "1,495", "got busy")]
+
+
+def test_a_strike_with_nothing_measured_carries_no_multiple_and_no_track():
+    """Honest-absent, three ways. A strike that has gone quiet keeps its time
+    and takes no measure even if the strike table somehow carries it — the time
+    wins the cell, as `gone` wins the row. A strike the table does not carry
+    gets no multiple, no gauge and no track, because an empty track reads as
+    zero. And a ladder with nothing measured on it gets no head and no scale:
+    a label over an empty column labels an absence."""
+    rows = [dict(r) for r in _BOARD_1511["strikes"]["rows"] if r["strike"] != 1540]
+    rows.append({"strike": 1485, "oi_calls": 900, "oi_puts": 900, "vol_calls": 90, "vol_puts": 9})
+    got = _page(_board(dict(_BOARD_1511, strikes={"rows": rows})))
+    above, below = _ac_cells(got["acAbove"]), _ac_cells(got["acBelow"])
+    assert above[3] == ("1,540", None, None, None, None, None)
+    assert below[4] == ("1,485", None, None, None, None, "09:38")
+    cells = {k["cls"].split()[0] for row in got["acAbove"]["kids"] + got["acBelow"]["kids"]
+             for k in row["kids"]}
+    for bare in (dict(_BOARD_1511, strikes=None),
+                 dict(_BOARD_1511, strikes={"rows": [{"strike": r["strike"], "oi_calls": r["oi_calls"],
+                                                      "oi_puts": r["oi_puts"]}
+                                                     for r in _BOARD_1511["strikes"]["rows"]]})):
+        got = _page(_board(bare))
+        kinds = {k["cls"].split()[0] for row in got["acAbove"]["kids"] + got["acBelow"]["kids"]
+                 for k in row["kids"]}
+        assert kinds == {"ac-more", "ac-k", "ac-dot", "ac-word", "ac-time"}, kinds
+    # and with one measured row, the column is labelled
+    assert {"ac-head", "ac-scale", "ac-m", "ac-gauge"} <= cells
