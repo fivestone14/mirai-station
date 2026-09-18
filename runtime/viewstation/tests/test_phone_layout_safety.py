@@ -687,3 +687,43 @@ def test_a_row_too_long_for_the_phone_drops_the_expiry_whole():
     assert "flex-wrap:wrap" in _rule(".mast-row").replace(" ", "")
     assert "white-space" not in _rule(".expiry"), "an expiry held to one line runs into the pill"
     assert "min-width:0" in _rule(".mast-l") and "flex:none" in _rule(".fresh")
+
+
+def _hidden_by_script(html, js):
+    """{id: [class, ...]} for every element the page's script shows and hides
+    with the hidden attribute, directly or through a const it holds it in."""
+    held = dict(re.findall(r"const (\w+) = \$\('(\w+)'\)", js))
+    ids = set(re.findall(r"\$\('(\w+)'\)\.hidden\s*=", js))
+    ids |= {held[v] for v in re.findall(r"\b(\w+)\.hidden\s*=", js) if v in held}
+    out = {}
+    for el in ids:
+        tag = re.search(r'<[a-z]+\b[^>]*\bid="%s"[^>]*>' % el, html)
+        assert tag, f"#{el} is hidden by the script and not in the markup"
+        cls = re.search(r'\bclass="([^"]*)"', tag.group(0))
+        out[el] = cls.group(1).split() if cls else []
+    return out
+
+
+def test_what_the_script_hides_stays_hidden():
+    """The pages show and hide parts of themselves with the hidden attribute,
+    and it hides only through the browser's own [hidden]{display:none}, which
+    any author rule that sets a display beats. .chg (inline-flex) and .lastscan
+    (block) did, measured in WebKit: once shown, the change pill kept its last
+    figure on screen after paintMast hid it, and a withdrawn price's "LAST SCAN
+    … AGO" line stayed under the price after the price came back. So every
+    element a page's script hides, whose own rule sets a display, carries a
+    [hidden] rule that takes it back to none."""
+    thread_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", THREAD))
+    for name, html, js, need in (("index.html", PHONE, PAGE, {"chg", "lastscan", "load", "hh"}),
+                                 ("thread.html", THREAD, thread_js, {"load"})):
+        hidden = _hidden_by_script(html, js)
+        assert need <= set(hidden), f"{name}: the hides are no longer where this test reads them"
+        rules = [(part.strip(), decls) for sel, decls in _flat_rules(_css_code(html))
+                 for part in sel.split(",")]
+        for el, classes in sorted(hidden.items()):
+            for c in classes:
+                shown = [d for s, decls in rules if s == "." + c
+                         for d in decls if d.startswith("display:") and d != "display:none"]
+                if shown:
+                    assert any(s == f".{c}[hidden]" and "display:none" in decls for s, decls in rules), \
+                        f"{name}: #{el} sets {shown[0]} on .{c}, which beats hidden"

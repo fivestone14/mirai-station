@@ -184,6 +184,11 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .chg.flat{color:var(--i-mute);background:var(--s2)}
 .lastscan{display:block;margin-top:7px;font:500 11px/1.3 var(--sans);letter-spacing:.04em;
           text-transform:uppercase;color:var(--i-faint)}
+/* paintMast hides these two with the hidden attribute, which hides only through
+   the browser's own [hidden]{display:none}, and the display each sets above
+   beats it: the pill kept its last change on screen after it was hidden, and a
+   withdrawn price's line stayed under the price once it came back */
+.chg[hidden],.lastscan[hidden]{display:none}
 /* aging is an OUTLINE, not a colour — see the staleness note in :root */
 .fresh{flex:none;font:700 11px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;
        color:var(--i-mute);padding:5px 10px;border-radius:999px;white-space:nowrap}
