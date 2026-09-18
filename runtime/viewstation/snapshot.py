@@ -16,6 +16,7 @@ import json
 import math
 import os
 import re
+import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -836,6 +837,10 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         # price line without re-fetching the journal for them. Display side of
         # the fence, like `instrument` and `levels`: it reaches no model.
         "reads_today": _reads_today(day),
+        # the phone's last-half-hour card: what the half hour after each earlier
+        # half hour did, counted over every session before this one. Display
+        # side, like `reads_today`: it reaches no model.
+        "earlier_half_hours": _earlier_half_hours(day),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
         # what must be true before this scene is worth a model call. Read off the
         # reader's OWN constants rather than retyped into the page: a tab that
@@ -944,6 +949,132 @@ def _reads_today(day: str) -> Optional[list]:
             continue
         out.append({"ts": rts, "spot": float(spot)})
     return out or None
+
+
+# ---------------------------------------------------------------------------
+# The record under the phone's LAST HALF HOUR card.
+#
+# The card sets the half hour on screen against this stock's own earlier half
+# hours: how many were as big, and what the half hour after each of them did.
+# That is every earlier session's diary — the store held 6,315 rows, 66 MB, at
+# the close on 2026-09-17 — which the phone cannot fetch and has no business
+# re-reading on every poll.
+# So the counts are made here, from the stored files alone, and ride the
+# payload on the display side of the fence beside `reads_today`.
+#
+# Non-overlapping half hours on the :00/:30 clock grid, 09:30 to 16:00: twelve
+# back-to-back pairs a session at most. A sliding 30-minute window would give
+# 5,606 over the same sessions, each sharing fourteen fifteenths of its scans
+# with the next — a sample inflated fifteenfold.
+_HH_EDGES_MIN = tuple(range(9 * 60 + 30, 16 * 60 + 1, 30))
+_HH_SNAP_S = 150          # an edge takes the nearest scan within this, or no price
+_HH_MIN_SCANS = 60        # fewer usable scans than this and a session is left out
+_HH_CACHE: dict = {"key": None, "val": None}
+
+
+def _usable_scans(path: Path) -> list:
+    """[(time in New York, spot, sigma)] for one session's diary, oldest first:
+    the rows sndk_payload itself reads (SNDK, not an off-hours forced scan)
+    that carry a clock, a price and a ruler."""
+    out = []
+    for r in _jsonl_rows(path):
+        if r.get("ticker") != "SNDK" or (r.get("meta") or {}).get("forced"):
+            continue
+        try:
+            t = datetime.fromisoformat(r["ts"]).astimezone(ET)
+        except (KeyError, TypeError, ValueError):
+            continue
+        spot, sig = r.get("spot"), r.get("sigma")
+        if (isinstance(spot, (int, float)) and not isinstance(spot, bool)
+                and isinstance(sig, (int, float)) and not isinstance(sig, bool)
+                and math.isfinite(spot) and math.isfinite(sig) and sig > 0):
+            out.append((t, float(spot), float(sig)))
+    return sorted(out, key=lambda s: s[0])
+
+
+def _session_half_hours(scans: list) -> tuple:
+    """(moves, pairs) for one session: each grid half hour's move in the
+    session's median sigma, and each back-to-back pair of those moves. An edge
+    with no scan inside _HH_SNAP_S has no price, so the half hours either side
+    of it are not measured — never interpolated."""
+    sig = statistics.median(s for _, _, s in scans)
+    pts = []
+    for m in _HH_EDGES_MIN:
+        edge = scans[0][0].replace(hour=m // 60, minute=m % 60, second=0, microsecond=0)
+        near = [(abs((t - edge).total_seconds()), p) for t, p, _ in scans]
+        near = [n for n in near if n[0] <= _HH_SNAP_S]
+        pts.append(min(near, key=lambda n: n[0])[1] if near else None)
+    moves = [(b - a) / sig if a is not None and b is not None else None
+             for a, b in zip(pts, pts[1:])]
+    pairs = [(a, b) for a, b in zip(moves, moves[1:]) if a is not None and b is not None]
+    return [m for m in moves if m is not None], pairs
+
+
+def _earlier_half_hours(day: str) -> Optional[dict]:
+    """The record, over every session with at least _HH_MIN_SCANS usable scans
+    that closed BEFORE `day`, the session on screen. The card must never score
+    today's half hour against a record that contains it.
+
+      usual_sigma   the median |half-hour move|, in each session's median
+                    sigma. The phone puts it on today's ruler for "A usual half
+                    hour on this stock is $6", and splits the live move on it —
+                    so it ships unrounded: a rounded cut could put a half hour
+                    on the other side of the one the counts were split on.
+      bigger        the pairs whose first half hour was at least usual,
+      no_bigger     and the rest: `n`, and of those how many were followed by a
+                    half hour of the opposite sign (other_way) or the same sign
+                    (same_way). Counts only. A rate is what a reader carries
+                    into the next half hour as a probability, and this one
+                    fails the station's own day-counted gate.
+
+    None, not an empty record, when no earlier session qualifies or none holds
+    a back-to-back pair: there is nothing to count.
+
+    It changes at most once a day, so it is kept against the session on screen
+    and the size and clock of every earlier file. A 60-second poll re-reads
+    nothing; the morning a new session is on screen, yesterday's file is in the
+    list and the record is rebuilt; and a late write to an earlier file rebuilds
+    it too, rather than serving the counts from before it."""
+    d = _state_dir() / "sndk_reversion"
+    files = []
+    for p in (sorted(d.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"))
+              if d.is_dir() else []):
+        if p.stem >= day:
+            continue
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        files.append((p, st.st_size, st.st_mtime_ns))
+    key = (str(d), day, tuple((p.name, size, mtime) for p, size, mtime in files))
+    if _HH_CACHE["key"] == key:
+        return _HH_CACHE["val"]
+
+    sessions, moves, pairs = [], [], []
+    for p, _, _ in files:
+        scans = _usable_scans(p)
+        if len(scans) < _HH_MIN_SCANS:
+            continue
+        mv, pr = _session_half_hours(scans)
+        sessions.append(p.stem)
+        moves += mv
+        pairs += pr
+    val = None
+    if pairs:
+        usual = statistics.median(abs(m) for m in moves)
+
+        def split(sel):
+            # a next half hour of exactly zero would file as same_way; none of
+            # the 380 pairs on disk on 2026-09-17 has one
+            other = sum(1 for a, b in sel if a * b < 0)
+            return {"n": len(sel), "other_way": other, "same_way": len(sel) - other}
+
+        val = {"sessions": len(sessions), "first": sessions[0], "last": sessions[-1],
+               "half_hours": len(moves), "pairs": len(pairs), "usual_sigma": usual,
+               "bigger": split([pr for pr in pairs if abs(pr[0]) >= usual]),
+               "no_bigger": split([pr for pr in pairs if abs(pr[0]) < usual])}
+    _HH_CACHE.update(key=key, val=val)
+    return val
 
 
 def sndk_thread_days(limit: int = 60) -> list:

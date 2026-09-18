@@ -12,7 +12,7 @@
    sr-7's freshness ceilings included, since they gate the payload the same way.
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -388,3 +388,179 @@ def test_a_reading_with_no_price_beside_it_is_left_off_the_line(tmp_path, monkey
         {"reading_ts": "2026-09-16T15:11:19-04:00", "spot": 1513.45},
     ])
     assert [r["spot"] for r in snapshot._reads_today("2026-09-16")] == [1554.65, 1513.45]
+
+
+# --- the record under the phone's last-half-hour card ------------------------
+
+def _hh_rows(day, moves, sigma=100.0, keep=lambda minute: True):
+    """One session's diary: a scan every 2 minutes from 09:30 to 16:00, the
+    price stepping by moves[i] dollars at each :00/:30 edge and flat between.
+    Every edge has a scan on it, so grid half hour i moves by exactly moves[i].
+    `keep` takes minutes since the open and drops the scans it refuses."""
+    open_at = datetime.fromisoformat(f"{day}T09:30:00-04:00")
+    px, rows = 1500.0, []
+    for m in range(0, 391, 2):
+        if m and m % 30 == 0:
+            px += moves[m // 30 - 1]
+        if keep(m):
+            rows.append({"ticker": "SNDK", "ts": (open_at + timedelta(minutes=m)).isoformat(),
+                         "spot": px, "sigma": sigma})
+    return rows
+
+
+_SEESAW = [20.0, -20.0] * 6 + [20.0]      # 13 half hours, each the other way from the last
+_CLIMB = [40.0] * 13                      # 13 half hours, each the same way as the last
+
+
+def test_the_record_counts_back_to_back_half_hours_in_each_sessions_own_sigma(tmp_path, monkeypatch):
+    """Three sessions. 09-11 seesaws $20 a half hour on a $100 ruler, 0.20 of
+    a day's move each; 09-14 steps $15 a half hour the same way on $100, 0.15;
+    09-15 climbs $40 a half hour on an $800 ruler, 0.05. In DOLLARS the climbing
+    day holds the biggest half hours; in each session's own sigma it holds the
+    smallest, and the counts say which ruler was used.
+
+    Usual is the median, 0.15, and a half hour exactly at it counts as bigger:
+    that is the cut the card's "That was bigger than usual" is made on, so the
+    sentence and the counts under it cannot disagree. Bigger is then 09-11's
+    twelve pairs, every one of them the other way, and 09-14's twelve, every
+    one the same way; no bigger is 09-15's twelve, the same way.
+
+    The ruler is each session's MEDIAN sigma. 09-14's opens at $200 and $180
+    before it settles at $100, and its half hours are still 0.15 of a day.
+
+    Twelve pairs a session, not the ~180 a sliding window over the same scans
+    would give: non-overlapping half hours on the :00/:30 grid, 09:30 to 16:00."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    _write_day(tmp_path, "2026-09-11", _hh_rows("2026-09-11", _SEESAW, sigma=100.0))
+    steps = _hh_rows("2026-09-14", [15.0] * 13, sigma=100.0)
+    steps[0]["sigma"], steps[1]["sigma"] = 200.0, 180.0
+    _write_day(tmp_path, "2026-09-14", steps)
+    _write_day(tmp_path, "2026-09-15", _hh_rows("2026-09-15", _CLIMB, sigma=800.0))
+    got = snapshot._earlier_half_hours("2026-09-16")
+    assert got["usual_sigma"] == 0.15
+    assert {k: got[k] for k in ("sessions", "first", "last", "half_hours", "pairs")} == \
+        {"sessions": 3, "first": "2026-09-11", "last": "2026-09-15", "half_hours": 39, "pairs": 36}
+    assert got["bigger"] == {"n": 24, "other_way": 12, "same_way": 12}
+    assert got["no_bigger"] == {"n": 12, "other_way": 0, "same_way": 12}
+    for side in ("bigger", "no_bigger"):
+        assert got[side]["other_way"] + got[side]["same_way"] == got[side]["n"]
+    assert got["bigger"]["n"] + got["no_bigger"]["n"] == got["pairs"]
+
+
+def test_the_record_never_holds_the_session_on_screen(tmp_path, monkeypatch):
+    """The card scores today's half hour against the record, so today cannot be
+    in it — nor anything after it. The session on screen's own file, and a later
+    one, are written with half hours that would move every count, and none do."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    _write_day(tmp_path, "2026-09-14", _hh_rows("2026-09-14", _SEESAW))
+    _write_day(tmp_path, "2026-09-15", _hh_rows("2026-09-15", _CLIMB, sigma=400.0))
+    before = snapshot._earlier_half_hours("2026-09-16")
+    monkeypatch.setattr(snapshot, "_HH_CACHE", {"key": None, "val": None})
+    for day in ("2026-09-16", "2026-09-17"):
+        _write_day(tmp_path, day, _hh_rows(day, [300.0] * 13))
+    got = snapshot._earlier_half_hours("2026-09-16")
+    assert got == before and got["last"] == "2026-09-15"
+    # the next session on screen takes 09-16 in, and still not itself
+    assert snapshot._earlier_half_hours("2026-09-17")["last"] == "2026-09-16"
+
+
+@pytest.mark.parametrize("usable,counted", [(59, False), (60, True)])
+def test_a_session_needs_sixty_usable_scans_to_be_in_the_record(tmp_path, monkeypatch, usable, counted):
+    """Sessions with fewer than 60 usable scans are left out: 09-09 kept 14 and
+    08-14 kept 25. Usable is what sndk_payload itself would read — SNDK, not a
+    forced off-hours scan — with a time, a price and a ruler. 09-15 has all 196
+    rows on disk, but only `usable` of them pass; the rest fail five different
+    ways, and none of those five counts toward the sixty."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    _write_day(tmp_path, "2026-09-14", _hh_rows("2026-09-14", _SEESAW))
+    rows = _hh_rows("2026-09-15", _CLIMB, sigma=400.0)
+    spoil = (lambda r: r.update(spot=None), lambda r: r.update(sigma=0),
+             lambda r: r.update(ticker="SPX"), lambda r: r.update(meta={"forced": True}),
+             lambda r: r.update(ts="not a time"))
+    for i, r in enumerate(rows[usable:]):
+        spoil[i % len(spoil)](r)
+    _write_day(tmp_path, "2026-09-15", rows)
+    got = snapshot._earlier_half_hours("2026-09-16")
+    assert got["sessions"] == (2 if counted else 1)
+    assert got["last"] == ("2026-09-15" if counted else "2026-09-14")
+
+
+def test_an_edge_with_no_scan_near_it_leaves_its_half_hours_unmeasured(tmp_path, monkeypatch):
+    """Each :00/:30 edge takes the nearest scan within 150 seconds. With the
+    scans at 11:58, 12:00 and 12:02 gone, the nearest to noon is four minutes
+    off, so noon has no price: the half hours either side of it are not
+    measured and the three pairs that hold them are not counted. Nothing is
+    interpolated across the hole."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    _write_day(tmp_path, "2026-09-15",
+               _hh_rows("2026-09-15", _SEESAW, keep=lambda m: abs(m - 150) > 2))
+    got = snapshot._earlier_half_hours("2026-09-16")
+    assert (got["half_hours"], got["pairs"]) == (11, 9)
+    # and a scan inside the 150 seconds still prices the edge
+    _write_day(tmp_path, "2026-09-15",
+               _hh_rows("2026-09-15", _SEESAW, keep=lambda m: abs(m - 150) != 0))
+    assert (snapshot._earlier_half_hours("2026-09-16")["half_hours"]) == 13
+
+
+def test_the_record_is_absent_when_there_is_nothing_to_count(tmp_path, monkeypatch):
+    """Honest-absent: None, never a record of zeros that the card would print as
+    "So were 0 earlier half hours". No diary at all; only the session on
+    screen; only a session short of sixty usable scans; and sixty scans that
+    never span two back-to-back half hours, which is no pair to count."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    assert snapshot._earlier_half_hours("2026-09-16") is None
+    _write_day(tmp_path, "2026-09-16", _hh_rows("2026-09-16", _SEESAW))
+    assert snapshot._earlier_half_hours("2026-09-16") is None
+    _write_day(tmp_path, "2026-09-15", _hh_rows("2026-09-15", _SEESAW)[:59])
+    assert snapshot._earlier_half_hours("2026-09-16") is None
+    open_at = datetime.fromisoformat("2026-09-15T09:30:00-04:00")
+    _write_day(tmp_path, "2026-09-15", [
+        {"ticker": "SNDK", "ts": (open_at + timedelta(seconds=30 * i)).isoformat(),
+         "spot": 1500.0 + i, "sigma": 100.0} for i in range(61)])       # 09:30 to 10:00 only
+    assert snapshot._earlier_half_hours("2026-09-16") is None
+
+
+def test_the_record_is_kept_for_the_day_and_rebuilt_when_the_files_change(tmp_path, monkeypatch):
+    """The record changes at most once a day, and the phone asks every minute.
+    A second ask for the same session reads no file. The morning the next
+    session is on screen, the one that closed yesterday is in the record. And a
+    late write to an earlier file is not served from before it."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    reads = []
+    real = snapshot._jsonl_rows
+    monkeypatch.setattr(snapshot, "_jsonl_rows", lambda p: reads.append(p.name) or real(p))
+    _write_day(tmp_path, "2026-09-14", _hh_rows("2026-09-14", _SEESAW))
+    _write_day(tmp_path, "2026-09-15", _hh_rows("2026-09-15", _CLIMB, sigma=400.0))
+    first = snapshot._earlier_half_hours("2026-09-16")
+    assert sorted(reads) == ["2026-09-14.jsonl", "2026-09-15.jsonl"]
+    reads.clear()
+    assert snapshot._earlier_half_hours("2026-09-16") == first and reads == []
+
+    # 09-16 closes; the next morning it is in the record
+    _write_day(tmp_path, "2026-09-16", _hh_rows("2026-09-16", _SEESAW))
+    kept = snapshot._earlier_half_hours("2026-09-17")
+    assert (kept["sessions"], kept["last"]) == (3, "2026-09-16")
+
+    # an earlier session rewritten: the answer is the one a cold start gives
+    _write_day(tmp_path, "2026-09-14", _hh_rows("2026-09-14", _CLIMB, sigma=400.0))
+    reads.clear()
+    got = snapshot._earlier_half_hours("2026-09-17")
+    assert "2026-09-14.jsonl" in reads and got != kept
+    monkeypatch.setattr(snapshot, "_HH_CACHE", {"key": None, "val": None})
+    assert got == snapshot._earlier_half_hours("2026-09-17")
+
+
+def test_the_payload_carries_the_record_on_the_display_side(tmp_path, monkeypatch):
+    """The phone reads the record off the payload wrapper, beside `reads_today`
+    and `levels`. It is the record for the session the payload shows, and like
+    them it is display only: it never reaches the model's message."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    _write_day(tmp_path, "2026-08-17", _hh_rows("2026-08-17", _SEESAW))
+    _write_day(tmp_path, "2026-08-18", _hh_rows("2026-08-18", _CLIMB, sigma=400.0))
+    t = datetime(2026, 8, 19, 12, 55, tzinfo=ET)
+    _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0), _row(t.replace(hour=13, minute=1), 1586.2)])
+    d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
+    assert d["session"] == "2026-08-19"
+    rec = d["earlier_half_hours"]
+    assert (rec["sessions"], rec["first"], rec["last"]) == (2, "2026-08-17", "2026-08-18")
+    assert "earlier_half_hours" not in d["scene"] and "usual_sigma" not in d["user_prompt"]
