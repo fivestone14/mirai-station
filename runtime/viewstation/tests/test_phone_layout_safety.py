@@ -134,6 +134,24 @@ def _flat_rules(css):
     return out
 
 
+def _tabular_after_every_font(prefix):
+    """Every rule whose selector starts with `prefix` and sets the font
+    shorthand must restate tabular-nums after it. -> the selectors checked."""
+    body = _rule("body")
+    assert body is not None and "font-variant-numeric:tabular-nums" in body.replace(" ", "")
+    checked = []
+    for sel, decls in _flat_rules(_css_code(PHONE)):
+        if not any(part.strip().startswith(prefix) for part in sel.split(",")):
+            continue
+        fonts = [i for i, d in enumerate(decls) if d.startswith("font:")]
+        if not fonts:
+            continue
+        checked.append(sel)
+        assert "font-variant-numeric:tabular-nums" in decls[fonts[-1] + 1:], \
+            f"{sel} sets the font shorthand and draws its figures proportional"
+    return checked
+
+
 def test_the_chart_keeps_its_tabular_figures():
     """<body> sets tabular-nums and every chart label then set the font
     shorthand, which resets font-variant-numeric — so the chart drew its prices
@@ -145,20 +163,23 @@ def test_the_chart_keeps_its_tabular_figures():
     chart rule someone writes with a font shorthand and no restatement. The
     render harness cannot see it — it has no fonts — so the rule is held here,
     on every chart rule rather than on the five that exist today."""
-    body = _rule("body")
-    assert body is not None and "font-variant-numeric:tabular-nums" in body.replace(" ", "")
-    checked = []
-    for sel, decls in _flat_rules(_css_code(PHONE)):
-        if not any(part.strip().startswith(".p-") for part in sel.split(",")):
-            continue
-        fonts = [i for i, d in enumerate(decls) if d.startswith("font:")]
-        if not fonts:
-            continue
-        checked.append(sel)
-        assert "font-variant-numeric:tabular-nums" in decls[fonts[-1] + 1:], \
-            f"{sel} sets the font shorthand and draws its figures proportional"
+    checked = _tabular_after_every_font(".p-")
     # every class the ladder writes a price or a clock in is among those checked
     for need in (".p-chiptx", ".p-tag", ".p-edge", ".p-axis", ".p-word"):
+        assert need in checked, f"{need} no longer sets its own font; this proves nothing"
+
+
+def test_the_activity_panel_keeps_its_tabular_figures():
+    """The same fault, on the card under the chart. Every rule in WHERE THE
+    ACTIVITY IS set the font shorthand, so the strike column was proportional
+    under a layout sized for aligned figures: at 13px/500 "1,510" set 32.05px
+    and "1,495" 34.56, so the column's left edge wandered 2.5px down ten rows
+    whose right edge is the whole point, and the price chip's 35px floor was
+    holding a proportional integer to a column no tabular one fits. Held on
+    every .ac- rule, so the next one written with a shorthand cannot drop them."""
+    checked = _tabular_after_every_font(".ac-")
+    # the classes that print a strike, a count, the price, a clock or a note
+    for need in (".ac-rows", ".ac-k", ".ac-more", ".ac-chip", ".ac-note"):
         assert need in checked, f"{need} no longer sets its own font; this proves nothing"
 
 

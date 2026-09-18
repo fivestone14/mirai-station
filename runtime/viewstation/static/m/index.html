@@ -298,13 +298,19 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    four columns run straight through the break.
    grid-auto-rows is EXPLICIT: with align-items:baseline a row holding both 13px
    and 12px text takes the union of the two line boxes, 18.41px, and the ladder
-   drifts 0.41px on every mixed row. */
+   drifts 0.41px on every mixed row.
+   Every rule in this panel restates tabular figures AFTER its font shorthand,
+   as the chart's do: the shorthand resets font-variant-numeric, so the panel
+   drew proportional figures under a column sized for aligned ones. Measured off
+   the shipped face at 13px/500, "1,510" set 32.05px and "1,495" 34.56; tabular,
+   every strike is 35.09 and the column's left edge stops wandering. */
 .ac-rows{display:grid;grid-template-columns:46px 24px 72px auto;grid-auto-rows:18px;
-         align-items:baseline;font:400 12px/18px var(--sans)}
+         align-items:baseline;font:400 12px/18px var(--sans);font-variant-numeric:tabular-nums}
 .ac-rows:empty{display:none}
 .ac-rows.top{margin-top:18px}
 .ac-row{display:contents}
-.ac-k{grid-column:1;text-align:right;font:500 13px/18px var(--sans);white-space:nowrap}
+.ac-k{grid-column:1;text-align:right;font:500 13px/18px var(--sans);font-variant-numeric:tabular-nums;
+      white-space:nowrap}
 .ac-word{grid-column:3;white-space:nowrap}
 .ac-time{grid-column:4;white-space:nowrap}
 
@@ -327,34 +333,39 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 /* the counts sit in the figure column at the FIGURE's size, or the column edge
    wobbles at the two places a reader judges it — the top and the bottom. Weight
    and colour subordinate them; they carry no dot, because they are counts. */
-.ac-more{grid-column:1;text-align:right;font:400 13px/18px var(--sans);color:var(--i-faint)}
+.ac-more{grid-column:1;text-align:right;font:400 13px/18px var(--sans);font-variant-numeric:tabular-nums;
+         color:var(--i-faint)}
 .ac-more + .ac-word{color:var(--i-faint)}
 
 /* ---- the price row ---- */
 .ac-px{position:relative;height:30px}
 .ac-px:empty{display:none}
-/* the rule breaks for the label rather than striking through it */
-.ac-px::before{content:"";position:absolute;left:88.9px;right:84.1px;top:14.5px;
+/* the rule breaks for the label rather than striking through it, and starts
+   10px after the chip: 10 + 36 + ".00" (20.51, tabular at 13px/700) + 11 */
+.ac-px::before{content:"";position:absolute;left:87.5px;right:84.1px;top:14.5px;
                height:1px;background:var(--px-mark)}
 /* --px-ink, not --px-mark: this fill is the background for reversed 13px/700
    text, which needs 4.5:1, and --px-mark measures 3.87:1 on this card. The
    chart's .p-chip is filled the same way for the same reason; both follow the
    token contract :root already states — "-ink is text, -mark is a stroke". */
-.ac-chip{position:absolute;left:0;top:5px;height:20px;box-sizing:border-box;padding:0 11px;
+.ac-chip{position:absolute;left:0;top:5px;height:20px;box-sizing:border-box;padding:0 11px 0 10px;
          display:flex;align-items:center;border-radius:4px;background:var(--px-ink);
-         color:var(--s);font:700 13px/20px var(--sans)}
-/* holds the figure column when the price has fewer digits than the strikes */
-.ac-chip .int{min-width:35px;text-align:right}
+         color:var(--s);font:700 13px/20px var(--sans);font-variant-numeric:tabular-nums}
+/* holds the figure column: 10 + 36 = 46, where the strikes end. Tabular, every
+   four-digit price's integer is 35.84px at 13px/700 whatever its digits, so a
+   35px floor behind 11px of padding put its last figure 0.84px past the
+   strikes'; a shorter price is held to the column by the same floor. */
+.ac-chip .int{min-width:36px;text-align:right}
 .ac-now{position:absolute;right:0;top:0;height:30px;display:flex;align-items:center;
-        font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;
-        color:var(--px-ink)}
+        font:700 11px/1.2 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;
+        text-transform:uppercase;color:var(--px-ink)}
 
 /* ---- the footnotes ----
    13/12 rather than 12/12: half-leading eats 1.1px below the rule and the grid
    is on ink, so this puts 16.7px of air above the rule and 16.8px below — the
    card's own padding, which is what a section break should read as. */
 .ac-note{margin-top:13px;padding-top:12px;border-top:1px solid var(--s2);
-         font:400 12px/18px var(--sans);color:var(--i-mute)}
+         font:400 12px/18px var(--sans);font-variant-numeric:tabular-nums;color:var(--i-mute)}
 .ac-note:empty{display:none}
 
 /* One note, one item. The wrap was the reading failure this fixes: a note that

@@ -1888,3 +1888,25 @@ def test_the_notes_group_the_strikes_that_have_gone_rather_than_listing_them():
     assert got[0][1] == "1,615, 1,700 and 1,720 were named earlier and are now off the list."
     # nothing named and gone: no line at all, not an empty one
     assert not [t for _, t in notes([]) if "named" in t or "book" in t]
+
+
+def test_the_price_chip_ends_on_the_strikes_figure_column():
+    """The chip's integer ends where every strike above and below it ends, at
+    the figure column's right edge: that shared edge is what makes the price
+    read as a rung of the ladder. Tabular, a four-digit price's integer is
+    35.84px at 13px/700 whatever its digits, and the chip held it behind 11px
+    of padding with a 35px floor, so on every four-digit price it ended 0.84px
+    past the strikes. The widths are the shipped face's, from figW.
+
+    With tabular figures the chip is one width for every price the instrument
+    trades at, so the price rule can start exactly 10px after it."""
+    col = int(re.search(r"grid-template-columns:(\d+)px", _css_rule(".ac-rows")).group(1))
+    pad_l, pad_r = (int(v) for v in re.search(r"padding:0 (\d+)px 0 (\d+)px", _block(".ac-chip{")).groups()[::-1])
+    floor = float(re.search(r"min-width:([\d.]+)px", _css_rule(".ac-chip .int")).group(1))
+    rule_l = float(re.search(r"left:([\d.]+)px", _css_rule(".ac-px::before")).group(1))
+    w = _glance("console.log(JSON.stringify(D.map(a => g.figW(...a))));",
+                [["1,517", 13, 700], ["9,999", 13, 700], [".00", 13, 700]])
+    assert w[0] == w[1], "the price's width depends on its digits again"
+    assert pad_l + floor == col, "the chip's integer does not end on the figure column"
+    assert w[0] <= floor, "a four-digit price overruns the floor that holds it to the column"
+    assert rule_l - (pad_l + floor + w[2] + pad_r) == pytest.approx(10, abs=0.05)
