@@ -935,33 +935,12 @@ function paintSheet(rows, most, lv){
 //
 // It opens a SHEET, not a tooltip: the text runs to several paragraphs, and a
 // tooltip that lives only while a finger is down asks you to read with your
-// thumb over the screen. The sheet pushes a history entry, so the phone's back
-// gesture closes it rather than leaving the page — the shell's back handler
-// walks the WebView's history first.
-//
-// PULL-TO-REFRESH. The shell arms its refresh gesture from the WebView's own
-// "can the page scroll up?" unless the page has said otherwise through
-// MiraiShell.atTop(). This page scrolls the document, so it never needed to
-// speak — until the sheet: opened with the page at the top, a downward drag
-// inside it read as a pull and reloaded the page out from under the reader. So
-// the page speaks while the sheet is open, and once it has spoken it keeps the
-// answer true on every scroll, because the shell has no way back to "silent".
+// thumb over the screen. What the sheet does once it is open — its history
+// entry, the shell bridge, the one way it closes — is sheet.js's, shared with
+// the reads page's sheet. Only the gesture that opens this one is here.
 (function(){
   const HOLD_MS = 450, SLOP = 10;
-  // Clicks on the backdrop or the button this soon after opening are the
-  // gesture that opened it arriving late, not a request to close.
-  const GHOST_MS = 500;
-  let t = 0, x0 = 0, y0 = 0, card = null, armed = false, spoke = false;
-  let openedAt = 0, closing = false;
-
-  function tellShell(){
-    try {
-      if(!window.MiraiShell || typeof MiraiShell.atTop !== 'function') return;
-      MiraiShell.atTop(!isOpen() && window.scrollY <= 0);
-      spoke = true;
-    } catch(e){ /* a shell without the bridge falls back to its own answer */ }
-  }
-  window.addEventListener('scroll', () => { if(spoke) tellShell(); }, {passive: true});
+  let t = 0, x0 = 0, y0 = 0, card = null, armed = false;
 
   function tick(){
     try {
@@ -970,52 +949,22 @@ function paintSheet(rows, most, lv){
     } catch(e){ /* a phone that will not buzz must not stop the sheet */ }
   }
 
-  function isOpen(){ return document.body.classList.contains('sheet-open'); }
-  function open(){
-    if(isOpen()) return;
-    document.body.classList.add('sheet-open');
-    openedAt = Date.now(); closing = false;
-    tellShell();
-    $('sheet').setAttribute('aria-hidden', 'false');
-    try { history.pushState({sheet: 1}, ''); } catch(e){}
-    $('shClose').focus({preventScroll: true});
-  }
-  function shut(){
-    closing = false;
-    if(!isOpen()) return;
-    document.body.classList.remove('sheet-open');
-    tellShell();
-    $('sheet').setAttribute('aria-hidden', 'true');
-    $('levels').focus({preventScroll: true});
-  }
-  // Closing by the button, the backdrop or Escape unwinds the entry open()
-  // pushed, and the popstate that follows does the closing — one path, whatever
-  // closed it. ONCE: the sheet still reads as open between history.back() and
-  // its popstate, and a second close in that gap (a double tap on "Got it", a
-  // held Escape) went back twice and left the page.
-  function dismiss(){
-    if(closing || !isOpen()) return;
-    if(history.state && history.state.sheet){ closing = true; history.back(); }
-    else shut();
-  }
-  window.addEventListener('popstate', shut);
-
   function cancel(){
     if(t){ clearTimeout(t); t = 0; }
     if(card){ card.classList.remove('holding', 'armed'); card = null; }
     armed = false;
   }
   function release(e){
-    const go = !!card && armed;
+    const held = card && armed ? card : null;
     cancel();
-    if(!go) return;
+    if(!held) return;
     // an uncancelled touchend becomes the tap described above
     if(e.type === 'touchend' && e.cancelable) e.preventDefault();
-    open();
+    MiraiSheet.open(held);
   }
   document.addEventListener('pointerdown', e => {
     const c = e.target.closest && e.target.closest('[data-hold]');
-    if(!c || !e.isPrimary || isOpen()) return;
+    if(!c || !e.isPrimary || MiraiSheet.isOpen()) return;
     cancel();
     card = c; x0 = e.clientX; y0 = e.clientY;
     c.classList.add('holding');
@@ -1041,24 +990,17 @@ function paintSheet(rows, most, lv){
   // before the hold arms, a pointercancel means the browser took it for a pan
   document.addEventListener('pointercancel', () => { if(!armed) cancel(); });
   window.addEventListener('scroll', cancel, {passive: true});
-  // or a real phone opens its own long-press menu — on the card, or on the
-  // sheet's text, where a text selection would take over the next drag
+  // or a real phone opens its own long-press menu on the card (sheet.js refuses
+  // it on the sheet's text)
   document.addEventListener('contextmenu', e => {
-    if(e.target.closest && e.target.closest('[data-hold], #sheet')) e.preventDefault();
+    if(e.target.closest && e.target.closest('[data-hold]')) e.preventDefault();
   });
   // a hold is not something a keyboard can do
   document.addEventListener('keydown', e => {
     const c = document.activeElement;
     if((e.key === 'Enter' || e.key === ' ') && c && c.hasAttribute && c.hasAttribute('data-hold')){
-      e.preventDefault(); open();
+      e.preventDefault(); MiraiSheet.open(c);
     }
-    if(e.key === 'Escape' && isOpen()) dismiss();
-  });
-  // the ONLY click handler on this page, and it closes the explanation
-  document.addEventListener('click', e => {
-    if(!(e.target.closest && e.target.closest('[data-sheet-close]'))) return;
-    if(Date.now() - openedAt < GHOST_MS) return;
-    dismiss();
   });
 })();
 

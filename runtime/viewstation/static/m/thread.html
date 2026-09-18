@@ -214,6 +214,122 @@ body{
         font:700 10px/1 var(--sans);letter-spacing:.13em;text-transform:uppercase;
         color:var(--i-faint)}
 
+/* ============ THE EXPLAINER ============ */
+/* What faster, steady and slower mean — the words on the glance's strike rows —
+   behind one button under the header. Not IN the header: beside the eyebrow
+   the header has 31.5px to spare on a 360px phone, and a fourth control costs
+   44 with its gap. Not inside .wrap: render() empties .wrap on every load and
+   every poll, and would take the button with it. A plain tap opens the sheet,
+   because this is a control and looks like one; the glance asks for a hold
+   only because the card it explains is not. A <button> shrinks to its content
+   whatever its display, hence the width. */
+.why{
+  position:relative;isolation:isolate;
+  display:flex;align-items:center;gap:11px;
+  width:calc(100% - 32px);margin:4px 16px 12px;padding:0 16px 0 15px;
+  height:var(--tap-min);            /* 48 exactly: the target is the paint */
+  border:0;border-radius:14px;background:var(--s);box-shadow:var(--sh1);
+  color:var(--i);font:700 13px/1 var(--sans);text-align:left;
+  touch-action:manipulation;-webkit-user-select:none;user-select:none;
+  transition:transform var(--press-out) var(--ease-out);
+}
+.why i{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--i-mute);
+       display:flex;align-items:center;justify-content:center;
+       color:var(--i-mute);font:700 11px/1 var(--sans)}
+/* one line from a 343px phone up (232.32 of text, WebKit, the shipped face).
+   Narrower, it takes two even lines inside the same 48, 1.25 apart, rather
+   than leave "mean" alone on the second */
+.why s{flex:1;min-width:0;line-height:1.25;text-decoration:none;text-wrap:balance}
+.why span{flex:none;color:var(--i-mute);font:400 17px/1 var(--sans)}
+.why::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;
+             background:var(--i);opacity:0;
+             transition:opacity var(--press-out) var(--ease-out)}
+.why.is-pressed{transform:scale(var(--press-scale));transition-duration:var(--press-in);
+                transition-timing-function:var(--ease-in)}
+.why.is-pressed::before{opacity:var(--state-press);transition-duration:var(--press-in);
+                        transition-timing-function:var(--ease-in)}
+@media (hover:hover){.why:hover::before{opacity:var(--state-hover)}}
+.why:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+
+/* ---- the sheet ----
+   Every rule from here to .sh-close:focus-visible is the glance's, copied.
+   A shared stylesheet would be a render-blocking re-fetch on every open, for
+   the reason the palette is copied (test_the_two_phone_pages_share_one_palette),
+   so test_the_two_phone_pages_draw_one_sheet holds every rule the two pages
+   both carry to one text. The glance's side colours are left there: nothing
+   on this sheet has a side. */
+.scrim{position:fixed;inset:0;z-index:30;background:rgba(22,26,23,.40);
+       opacity:0;pointer-events:none;touch-action:none;transition:opacity .2s ease-out}
+/* Not selectable. A long press on the sheet's text started Android's text
+   selection, and while a selection is live a drag moves its handles instead of
+   scrolling — explanatory text has nothing worth copying at that price.
+   86% of the MEASURED height — see --app-h — on every phone and every turn of
+   the screen. As 84dvh it was 0px inside the app. */
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:calc(var(--app-h) * .86);overflow-y:auto;
+       overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+       background:var(--s);border-radius:24px 24px 0 0;
+       padding:10px 20px calc(env(safe-area-inset-bottom) + 22px);
+       box-shadow:0 -12px 40px -12px rgba(22,26,23,.35);
+       transform:translateY(102%);visibility:hidden;
+       transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s linear .28s}
+body.sheet-open .scrim{opacity:1;pointer-events:auto}
+body.sheet-open .sheet{transform:none;visibility:visible;
+                       transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s}
+.sh-grab{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:0 auto 16px}
+.sh-h{margin-bottom:14px;font:700 11px/1.2 var(--sans);letter-spacing:.14em;
+      text-transform:uppercase;color:var(--i-faint)}
+.sh-item{padding:13px 0;border-top:1px solid var(--s2)}
+.sh-item:first-of-type{border-top:0;padding-top:0}
+.sh-term{display:flex;align-items:baseline;gap:9px;margin-bottom:6px}
+.sh-term b{font:700 15px/1.2 var(--sans);color:var(--i)}
+/* the value beside a term: neutral, unless its side colours it */
+.sh-term span{font:700 13px/1 var(--sans);color:var(--i-mute)}
+.sh-item p{font:400 14px/1.55 var(--sans);color:var(--i-body)}
+.sh-item p + p{margin-top:8px}
+.sh-caveat{margin-top:6px;padding:13px 14px;border-radius:14px;background:var(--g);
+           font:400 14px/1.55 var(--sans);color:var(--i-body)}
+.sh-caveat b{font-weight:700;color:var(--i)}
+.sh-close{display:block;width:100%;margin-top:18px;height:var(--tap-min);border:0;border-radius:14px;
+          background:var(--fill);color:var(--on-body);font:700 14px/1 var(--sans)}
+.sh-close:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+
+/* The worked strike: two lengths from one zero, the later one cut where the
+   earlier one ends, so "1.4 times as much" is a length the eye measures. No
+   hue at all: blue is price on these screens and this is not a price, so the
+   earlier stretch is --rule-soft and the later --i, and the cut is the card
+   showing through, since no line would show on --i without a hue.
+   Laid out, not drawn: an SVG scaled to the sheet would set its 11px labels at
+   10.8px on a 360px phone and 9.2px at 320, so here the bars take the width and
+   the words keep their size. The value column is the later value's own width,
+   and the earlier value is the same width in tabular figures.
+   --was is the earlier pace as a share of the later: 746 contracts in 29
+   minutes against 609 in 17 is 25.72 a minute against 35.82, 71.81%.
+   test_the_reads_page_sheet_works_the_example_the_code_computes recomputes it. */
+.sh-fig{--was:71.81%;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;
+        align-items:center;margin-top:12px}
+.sh-fig s{grid-column:1 / -1;margin-bottom:6px;font:500 11px/1.2 var(--sans);
+          color:var(--i-mute);text-decoration:none}
+.sh-fig b{font:700 15px/16px var(--sans);font-variant-numeric:tabular-nums;white-space:nowrap;
+          color:var(--i)}
+.sh-fig i{display:block;position:relative;height:16px}
+.sh-fig .was{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.sh-fig .was i{flex:none;width:var(--was);border-radius:2px;background:var(--rule-soft)}
+.sh-fig .was b{color:var(--i-body)}
+/* where the earlier stretch ended, carried down through the cut: 16 + 14 +
+   13.2 + 6 + 16 is the earlier bar's top to the later bar's foot. It runs over
+   the card only, never over either bar. */
+.sh-fig .was i::after{content:"";position:absolute;left:100%;top:0;width:1px;height:65.2px;
+                      background:repeating-linear-gradient(var(--rule-soft) 0 3px,transparent 3px 6px)}
+.sh-fig .now::before,.sh-fig .now::after{content:"";position:absolute;top:0;bottom:0;
+                                         border-radius:2px;background:var(--i)}
+.sh-fig .now::before{left:0;width:calc(var(--was) - 1.5px)}
+.sh-fig .now::after{left:calc(var(--was) + 1.5px);right:0}
+
+/* where the numbers came from: the smallest type on the page and the last thing
+   on the sheet, for the reader who wants to check rather than the one who
+   wants to understand */
+.sh-src{margin-top:14px;font:400 11px/1.5 var(--sans);color:var(--i-faint)}
+
 /* ============ LOADING ============ */
 /* A glance that shows nothing while it fetches is indistinguishable from a
    glance that is broken — and on a light ground an empty screen reads as
@@ -258,12 +374,13 @@ body{
 @keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
 
 @media (prefers-reduced-motion:reduce){
-  .back.is-pressed{transform:none}
-  .back.is-pressed::before{opacity:.20}
+  .back.is-pressed,.why.is-pressed{transform:none}
+  .back.is-pressed::before,.why.is-pressed::before{opacity:.20}
+  .sheet,body.sheet-open .sheet{transition:none}
 }
 @media (forced-colors:active){
-  .back::before{display:none}
-  .back.is-pressed{border:1px solid Highlight;color:Highlight}
+  .back::before,.why::before{display:none}
+  .back.is-pressed,.why.is-pressed{border:1px solid Highlight;color:Highlight}
 }
 </style>
 </head>
@@ -292,11 +409,71 @@ body{
   <select class="day" id="day" aria-label="Session" data-press></select>
 </header>
 
+<button class="why" id="why" type="button"
+        aria-haspopup="dialog" aria-controls="sheet" data-press data-haptic>
+  <i aria-hidden="true">i</i>
+  <s>What faster, steady and slower mean</s>
+  <span aria-hidden="true">›</span>
+</button>
+
 <main class="wrap" id="wrap"></main>
 
 <div class="load" id="load"><i></i>Reading the archive</div>
 
+<!-- Every figure below is the 2026-09-16 15:11 board's, and fixed: the sheet
+     works one real strike, dated, so it never claims to be now and cannot go
+     missing. test_the_reads_page_sheet_works_the_example_the_code_computes
+     recomputes each one with the glance's own pace() and turnover(). -->
+<div class="scrim" data-sheet-close></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-hidden="true"
+     aria-labelledby="shTitle">
+  <div class="sh-grab"></div>
+  <div class="sh-h" id="shTitle">Faster, steady or slower</div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>What it means</b></div>
+    <p>Faster means options at that one strike are changing hands more quickly now than earlier today. Slower, less quickly. Steady, about the same.</p>
+    <p>A strike is one of the prices options trade at.</p>
+  </div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>What it measures</b></div>
+    <p>Contracts changing hands at that one strike. Not the price of the stock, not where the price is heading, and not the number beside it.</p>
+    <p>It sets the latest stretch of the session against the stretch before it. Both are from today.</p>
+  </div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>Strike 1,530, 16 September</b></div>
+    <p>Earlier that afternoon about 26 contracts a minute changed hands there. Over the last stretch, 36 — 1.4 times as much, so it read faster.</p>
+    <div class="sh-fig" role="img"
+         aria-label="Two bars from one zero. Earlier that afternoon, 26 contracts a minute. The last stretch, 36 a minute: the longer bar, cut where the first one ended.">
+      <s>earlier that afternoon</s>
+      <div class="was"><i></i><b>26 a minute</b></div>
+      <s>the last stretch</s>
+      <i class="now"></i><b>36 a minute</b>
+    </div>
+  </div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>When nothing is marked</b></div>
+    <p>Early in a session there is not enough of the day to compare yet, so no strike is marked. On 16 September the first marks appeared at 10:03.</p>
+    <p>A strike where very little traded is left unmarked too — too little changing hands to tell a real change from noise.</p>
+  </div>
+
+  <div class="sh-item">
+    <div class="sh-term"><b>The number beside it</b><span>4.8×</span></div>
+    <p>A different measure, and the only one here that reaches back a day: everything traded at the strike today against what was already sitting there at last night’s close.</p>
+  </div>
+
+  <div class="sh-caveat"><b>Busier, not going anywhere.</b> How fast a strike trades says nothing about which way the price moves.</div>
+
+  <p class="sh-src">From the scanner’s tally of the option list, taken about every 4 minutes: the last 4 tallies against the 7 before them, at least three each side. 1.25 times up reads faster, 0.80 and under slower. Figures above: strike 1,530 at 15:11 on 16 September 2026.</p>
+
+  <button class="sh-close" id="shClose" type="button" data-sheet-close>Got it</button>
+</div>
+
 <script src="/m/press.js"></script>
+<script src="/m/sheet.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const S = {day:'', last:'', stalled:false, polling:false, msgs:[]};
@@ -631,8 +808,16 @@ async function boot(){
      itself and correctly. The shell keeps its bridge and its callback — a page
      that never calls in falls back to the WebView's own answer, which is
      exactly right for this one. One fewer moving part between a finger and a
-     scroll. */
+     scroll.
+
+     The explainer sheet is the one exception. A downward drag inside it,
+     with the page at the top, would read as a pull, so from the first time it
+     opens sheet.js tells the shell the truth on every scroll, exactly as it
+     does for the glance's. Until then the page says nothing. */
 }
+
+// the explainer: opened by a tap, closed by sheet.js, focus back here after
+$('why').addEventListener('click', () => MiraiSheet.open($('why')));
 
 boot();
 </script>

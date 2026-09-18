@@ -1,5 +1,6 @@
-// gesture_harness.js — drives the REAL page.js hold gesture with a fake clock,
-// fake touch/pointer events and a fake history, and prints what happened.
+// gesture_harness.js — drives the REAL page.js hold gesture, and the sheet.js
+// sheet it opens, with a fake clock, fake touch/pointer events and a fake
+// history, and prints what happened.
 //
 // Why a harness and not a source grep: the first build of this gesture passed
 // every source-level test while opening the sheet under a finger still on the
@@ -82,7 +83,9 @@ const ctx = {
 ctx.window = ctx;
 ctx.addEventListener = on(winL);
 vm.createContext(ctx);
+// in index.html's order: the sheet itself is sheet.js's, the hold is page.js's
 vm.runInContext(fs.readFileSync(path.join(M, 'glance.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(M, 'sheet.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(M, 'page.js'), 'utf8'), ctx);
 
 function fire(bag, type, e){ (bag[type] || []).forEach(f => f(e)); return e; }

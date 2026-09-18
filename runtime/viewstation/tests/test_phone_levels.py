@@ -33,6 +33,7 @@ M = Path(__file__).resolve().parents[1] / "static" / "m"
 PHONE = (M / "index.html").read_text()
 GLANCE = (M / "glance.js").read_text()
 PAGE = (M / "page.js").read_text()
+SHEET = (M / "sheet.js").read_text()
 _NODE = shutil.which("node")
 
 
@@ -252,10 +253,13 @@ def test_a_drag_inside_the_sheet_cannot_reload_the_page():
     """Opened with the page scrolled to the top, a downward drag in the sheet
     read as the shell's pull-to-refresh and reloaded the page out from under
     the reader. The page tells the shell it is not at the top while the sheet
-    is open, and keeps the answer true afterwards on every scroll."""
-    ts = PAGE.split("function tellShell")[1].split("\n  }\n")[0]
+    is open, and keeps the answer true afterwards on every scroll. Since
+    2026-09-18 that is sheet.js's, the one copy both pages' sheets run on
+    (test_phone_reads drives it on the reads page)."""
+    ts = SHEET.split("function tellShell")[1].split("\n  }\n")[0]
     assert "MiraiShell.atTop(!isOpen() && window.scrollY <= 0)" in ts
-    assert "window.addEventListener('scroll', () => { if(spoke) tellShell(); }" in PAGE
+    assert "window.addEventListener('scroll', () => { if(spoke) tellShell(); }" in SHEET
+    assert "tellShell" not in PAGE, "page.js has a second copy of the shell bridge"
 
 
 def _code(js):

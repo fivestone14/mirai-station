@@ -625,7 +625,8 @@ body.sheet-open .sheet{transform:none;visibility:visible;
 .sh-item[hidden]{display:none}
 .sh-term{display:flex;align-items:baseline;gap:9px;margin-bottom:6px}
 .sh-term b{font:700 15px/1.2 var(--sans);color:var(--i)}
-.sh-term span{font:700 13px/1 var(--sans)}
+/* the value beside a term: neutral, unless its side colours it */
+.sh-term span{font:700 13px/1 var(--sans);color:var(--i-mute)}
 .sh-term .call{color:var(--call-ink)} .sh-term .mag{color:var(--mag-ink)} .sh-term .put{color:var(--put-ink)}
 .sh-item p{font:400 14px/1.55 var(--sans);color:var(--i-body)}
 .sh-item p + p{margin-top:8px}
@@ -868,6 +869,7 @@ body.sheet-open .sheet{transform:none;visibility:visible;
 
 <script src="/m/press.js"></script>
 <script src="/m/glance.js"></script>
+<script src="/m/sheet.js"></script>
 <script src="/m/page.js"></script>
 </body>
 </html>

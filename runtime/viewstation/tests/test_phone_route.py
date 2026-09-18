@@ -204,6 +204,7 @@ ctx.addEventListener = on(listeners.window);
 vm.createContext(ctx);
 const run = code => vm.runInContext(code, ctx);
 run(fs.readFileSync(path.join(M, 'glance.js'), 'utf8'));
+run(fs.readFileSync(path.join(M, 'sheet.js'), 'utf8'));
 run(fs.readFileSync(path.join(M, 'page.js'), 'utf8'));
 
 const settle = async () => { for(let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
@@ -219,11 +220,11 @@ const dump = () => Object.assign({body: document.body.className},
 
 
 def _page(net, steps="return dump();", tz=None):
-    """Run the REAL page.js, over the real glance.js, in node against a
-    stand-in DOM and a station that answers from `net` — {"payload", "now"},
-    and optionally "live" (/api/spot), "reads", "diary", "bars" (the raw file
-    rows), "width" (the ladder's measured width) and "down" (nothing answers) —
-    and return what `steps` returns.
+    """Run the REAL page.js, over the real glance.js and sheet.js, in node
+    against a stand-in DOM and a station that answers from `net` —
+    {"payload", "now"}, and optionally "live" (/api/spot), "reads", "diary",
+    "bars" (the raw file rows), "width" (the ladder's measured width) and
+    "down" (nothing answers) — and return what `steps` returns.
 
     `steps` is the body of an async JS function run once the first load has
     painted. In scope: NET (what the station answers next), run(code)
@@ -1345,6 +1346,40 @@ def test_the_two_phone_pages_share_one_palette():
     assert not drift, f"the two phone pages disagree about {drift}"
 
 
+def _css_rules(html):
+    """{selector: declarations} for every rule in the page's stylesheet, media
+    blocks included, with comments and whitespace out."""
+    css = re.sub(r"(?s)/\*.*?\*/", "", "\n".join(re.findall(r"(?s)<style>(.*?)</style>", html)))
+    return {re.sub(r"\s+", " ", sel).strip(): re.sub(r"\s+", "", body)
+            for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css)}
+
+
+def test_the_two_phone_pages_draw_one_sheet():
+    """Both pages open an explainer sheet: the glance's on the three levels,
+    the reads page's on faster, steady and slower (2026-09-18). What the sheet
+    does is one script, sheet.js. What it looks like is one set of rules held
+    in two stylesheets, for the palette's reason above: a shared stylesheet
+    would be a render-blocking re-fetch in full on every open of both pages.
+
+    So every sheet rule the two pages both carry must be the same rule, and
+    the core of it must be on both — the sheet capped at 86% of the measured
+    height and scrolling, not clipping, past it; not selectable; the one
+    close button. Each page keeps what only it needs: the glance its side
+    colours and its conditional item, the reads page its figure and its
+    sources line."""
+    a, b = _css_rules(PHONE), _css_rules(THREAD)
+    core = {".scrim", ".sheet", "body.sheet-open .scrim", "body.sheet-open .sheet", ".sh-grab",
+            ".sh-h", ".sh-item", ".sh-item:first-of-type", ".sh-term", ".sh-term b", ".sh-term span",
+            ".sh-item p", ".sh-item p + p", ".sh-caveat", ".sh-caveat b", ".sh-close",
+            ".sh-close:focus-visible", ".sheet,body.sheet-open .sheet"}
+    assert core <= set(a) and core <= set(b), core - (set(a) & set(b))
+    sheet = [s for s in set(a) & set(b) if s.startswith((".scrim", ".sheet", "body.sheet-open", ".sh-"))]
+    drift = {s: (a[s], b[s]) for s in sheet if a[s] != b[s]}
+    assert not drift, f"the two sheets are drawn differently: {drift}"
+    assert "max-height:calc(var(--app-h)*.86);overflow-y:auto" in b[".sheet"]
+    assert "user-select:none" in b[".sheet"]
+
+
 # --- weight as shade, and the marks that came with it ----------------------
 
 def test_the_shade_is_a_spread_across_the_board_not_a_division():
@@ -2311,6 +2346,151 @@ def test_the_ladder_is_laid_out_on_the_cards_own_width():
     assert len(rows) == len(_page(_board(_BOARD_1511, width=311))["acAbove"]["kids"]) + 1
     assert _css_rule(".ac-rows.top") == "margin-top:18px"
     assert _css_rule(".ac-rows.top.lift") == "margin-top:0"
+
+
+# --- the reads page's explainer: what faster, steady and slower mean ---------
+# Static markup on thread.html, working one real strike. Every figure in it is
+# typed, so each is recomputed here by the code that prints the words it
+# explains, and every word goes through the station's gates.
+
+def _reads_sheet():
+    """The reads page's sheet as a reader sees it: the title, each item's
+    paragraphs and the value beside its term, the figure's words and its
+    label, the caveat, the sources line, the close button, and the label of
+    the button that opens it."""
+    import html as _html
+
+    def txt(s):
+        return re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", s))).strip()
+    block = THREAD.split('<div class="sheet" id="sheet"')[1].split("\n</div>\n")[0]
+    items = {}
+    for item in re.findall(r'(?s)<div class="sh-item">(.*?)\n  </div>', block):
+        term = re.search(r"<b>(.*?)</b>(?:<span>(.*?)</span>)?", item)
+        items[term.group(1)] = {"value": term.group(2),
+                                "paras": [txt(p) for p in re.findall(r"(?s)<p>(.*?)</p>", item)]}
+    fig = re.search(r'(?s)<div class="sh-fig".*?\n    </div>', block).group(0)
+    return {"title": txt(re.search(r'id="shTitle">(.*?)</div>', block).group(1)),
+            "items": items,
+            "figure": [txt(t) for _, t in re.findall(r"<([sb])>(.*?)</\1>", fig)],
+            "figure_label": re.search(r'aria-label="([^"]*)"', fig).group(1),
+            "caveat": txt(re.search(r'(?s)<div class="sh-caveat">(.*?)</div>', block).group(1)),
+            "src": txt(re.search(r'(?s)<p class="sh-src">(.*?)</p>', block).group(1)),
+            "close": txt(re.search(r'(?s)<button class="sh-close"[^>]*>(.*?)</button>', block).group(1)),
+            "button": txt(re.search(r'(?s)<button class="why".*?<s>(.*?)</s>', THREAD).group(1))}
+
+
+# 1,530 on 2026-09-16 at the two scans either side of the day's first pace
+# word, as the station built them: at 10:01 the day had had 7 tallies, and its
+# 8th came at 10:03.
+_FIRST_WORD_0916 = {
+    "10:01": ([411, 453, 236, 221, 263, 157],
+              ["09:34", "09:38", "09:43", "09:47", "09:51", "09:55", "09:59"]),
+    "10:03": ([411, 453, 236, 221, 263, 157, 128],
+              ["09:34", "09:38", "09:43", "09:47", "09:51", "09:55", "09:59", "10:03"]),
+}
+
+
+def test_the_reads_page_sheet_works_the_example_the_code_computes():
+    """The sheet on the reads page answers "faster at what?" on one real
+    strike, and every figure in it is typed into static markup. So each is
+    recomputed here, off the 2026-09-16 15:11 board, by the functions that
+    print the words it explains, and the markup has to say what they return.
+
+    1,530 traded 746 contracts in the 29 minutes to 14:51 and 609 in the 17
+    after: 25.7 a minute, then 35.8, 1.39 times, faster. It had traded 7,456
+    against the 1,543 standing at the last close: 4.8×. The earlier bar is
+    71.81% of the later. The sources line names the split and the thresholds
+    pace() uses. And the first marks that day came with its 8th tally, at
+    10:03, not at 10:04, which was the model's reading of that scan: at 10:01
+    no series was long enough for a word, and at 10:03 1,530's was."""
+    sheet = _reads_sheet()
+    rows = {r["strike"]: r for r in _BOARD_1511["strikes"]["rows"]}
+    got = _glance("""const t = g.turnover(D.row);
+      console.log(JSON.stringify({p: g.pace(D.row.vol_added_per_book, D.bt), x: g.gTimes(t.mult),
+                                  first: D.first.map(([s, b]) => g.pace(s, b))}));""",
+                  {"row": rows[1530], "bt": _BOARD_1511["frames"]["book_times"],
+                   "first": list(_FIRST_WORD_0916.values())})
+    p, x = got["p"], got["x"]
+    before, now = round(p["before"]), round(p["now"])
+    assert (before, now, p["word"], x) == (26, 36, "faster", "4.8×")        # what the ladder printed
+    assert sheet["items"]["Strike 1,530, 16 September"]["paras"] == [
+        f"Earlier that afternoon about {before} contracts a minute changed hands there. Over the last "
+        f"stretch, {now} — {p['now'] / p['before']:.1f} times as much, so it read {p['word']}."]
+    assert sheet["figure"] == ["earlier that afternoon", f"{before} a minute", "the last stretch", f"{now} a minute"]
+    assert f"{before} contracts a minute" in sheet["figure_label"] and f"{now} a minute" in sheet["figure_label"]
+    was = re.search(r"--was:([\d.]+)%", _css_rules(THREAD)[".sh-fig"]).group(1)
+    assert float(was) == pytest.approx(p["before"] / p["now"] * 100, abs=0.005)
+    assert sheet["items"]["The number beside it"]["value"] == x
+
+    recent, least, fast, slow = re.search(
+        r"const PACE_RECENT=(\d+), PACE_MIN=(\d+), PACE_FLOOR=\d+, PACE_FAST=([\d.]+), PACE_SLOW=([\d.]+);",
+        GLANCE).groups()
+    recent, least = int(recent), int(least)
+    stretches = len(_BOARD_1511["frames"]["book_times"]) - 1
+    assert (f"the last {recent} tallies against the {stretches - recent} before them, at least "
+            f"{['one', 'two', 'three', 'four'][least - 1]} each side. {fast} times up reads faster, "
+            f"{slow} and under slower.") in sheet["src"]
+    assert "Figures above: strike 1,530 at 15:11 on 16 September 2026." in sheet["src"]
+
+    (early, times), (_, first_times) = _FIRST_WORD_0916.values()
+    assert len(times) - 1 < recent + least <= len(first_times) - 1      # stretches: too few, then enough
+    assert got["first"][0] is None and got["first"][1]["word"]
+    assert (f"On 16 September the first marks appeared at {first_times[-1]}."
+            in sheet["items"]["When nothing is marked"]["paras"][0])
+
+
+def test_every_word_on_the_reads_page_sheet_passes_the_laws():
+    """The sheet explains a word that sits beside a strike price, which is
+    exactly where a reader takes speed for a claim about price. So every
+    string on it, and on the button that opens it, goes through the station's
+    own gates: the reader's _BANNED_RE (forecast, causal and judgement words
+    and their inflections — "which way the price will move" failed it on
+    "will", and the sheet says "moves"), its position gate, the levels sheet's
+    denylist, no dealer and nothing a dealer does, no Greek letter or Greek
+    word, nothing that reaches forward, and no frequency: "About one strike in
+    three." was cut because three counts of it gave 19%, 31% and 41%.
+
+    Not the half-hour card's options or rate gates: this sheet exists to teach
+    what a strike is, and its figures are rates."""
+    R = _reader()
+    s = _reads_sheet()
+    words = [s["title"], s["figure_label"], s["caveat"], s["src"], s["close"], s["button"], *s["figure"]]
+    for term, item in s["items"].items():
+        words += [term, *item["paras"]] + ([item["value"]] if item["value"] else [])
+    assert len(s["items"]) == 5 and s["caveat"].startswith("Busier, not going anywhere.")
+    denylist = ("buy dips", "sell rallies", "pinned", "settle at", "settles at", "bounce", "break through",
+                "a third of the time", "coin flip", "caps the", "holds price up", "speed up")
+    dealer = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\bpull|absorb")
+    greek = re.compile(r"(?i)\b(?:gamma|gex|delta|vanna|charm|vega|theta)\b|[Ͱ-Ͽ]|[\U0001F300-\U0001FAFF]")
+    ahead = re.compile(r"(?i)\b(?:will|would|could|might|may|shall|going to|tends?|usually|"
+                       r"often|mostly|most|majority|likely|chance|odds|expect\w*)\b")
+    often = re.compile(r"(?i)\b(?:one|two|three|four|\d+) (?:\w+ )?in (?:two|three|four|five|ten|\d+)\b"
+                       r"|%|\bout of\b|\bper ?cent\b")
+    for w in words:
+        assert not R._BANNED_RE.search(w), f"{w!r} trips the reader's word gate"
+        assert not R._POS_RE.search(w), f"{w!r} places price against a number"
+        assert not any(d in w.lower() for d in denylist), f"{w!r} makes a claim the sheet may not"
+        assert not dealer.search(w), f"{w!r} speaks of dealers"
+        assert not greek.search(w), f"{w!r} puts Greek on the surface"
+        assert not ahead.search(w), f"{w!r} reaches forward"
+        assert not often.search(w), f"{w!r} claims how often"
+
+
+def test_nothing_on_the_reads_page_sheet_is_drawn_in_the_price_colour():
+    """Blue is price on these screens and nothing else, and a reader arrives
+    at this sheet from a page where it is. A pace is not a price, so the sheet
+    and its figure carry emphasis by value, weight and position: the earlier
+    stretch in --rule-soft, the later in --i, the cut in the card itself. The
+    only blue that can appear is the keyboard focus ring every control on both
+    pages draws, which a finger never brings up."""
+    price = re.compile(r"(?i)--px-|#2F44B8|#5470E4|#E2E4F5")
+    sheet = {s: d for s, d in _css_rules(THREAD).items() if re.search(r"\.sheet|\.sh-|\.scrim", s)}
+    painted = {s: d for s, d in sheet.items() if ":focus-visible" not in s and price.search(d)}
+    assert not painted, f"the sheet is drawn in the price colour: {painted}"
+    assert "background:var(--rule-soft)" in sheet[".sh-fig .was i"]
+    assert "background:var(--i)" in sheet[".sh-fig .now::before,.sh-fig .now::after"]
+    block = THREAD.split('<div class="sheet" id="sheet"')[1].split("\n</div>\n")[0]
+    assert not price.search(block) and "style=" not in block and 'class="n"' not in block
 
 
 # --- THE LAST HALF HOUR, and apart from it the record ------------------------

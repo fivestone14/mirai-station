@@ -582,3 +582,44 @@ def test_the_shell_gives_the_webview_a_real_height():
                      r"\s*ViewGroup\.LayoutParams\.MATCH_PARENT\)\)", code), \
         "the WebView is added without MATCH_PARENT params"
     assert "addView(web)" not in code
+
+
+# --- the reads page's explainer button (2026-09-18) --------------------------
+# Measured in WebKit off the shipped face on the real page: the label at
+# 13px/700 and the chevron at 17px/400. The balanced two-line label at 320 is
+# "What faster, steady" over "and slower mean", the longer 123.78.
+_WHY_W = {"What faster, steady and slower mean": 232.32, "›": 5.11, "balanced": 123.78}
+
+
+def _why_room(phone):
+    """The label's room on the button: the page less the margins, the padding,
+    the ring, the two gaps and the chevron."""
+    why = _rule(".why", THREAD).replace(" ", "")
+    assert "width:calc(100%-32px);margin:4px16px12px;padding:016px015px" in why, why
+    return (phone - 32 - 16 - 15 - _px(".why i", "width", THREAD) - 2 * _px(".why", "gap", THREAD)
+            - _WHY_W["›"])
+
+
+@pytest.mark.parametrize("phone", [343, 360, 375, 390, 412])
+def test_the_explainer_button_keeps_its_label_on_one_line(phone):
+    """The button under the reads page's header says what it opens on one
+    line from a 343px phone up, the owner's 360px Galaxy included: 232.32 of
+    text in 249.89 there, 264.89 at 375. A <button> shrinks to its content
+    whatever its display, so its width is set: the page less its 16px
+    margins. Measured in WebKit at 320, 360, 375 and 412: the button 48 tall,
+    nothing past the page's 16px gutter, nothing touching."""
+    assert "font:700 13px/1" in _rule(".why", THREAD) and "font:400 17px/1" in _rule(".why span", THREAD)
+    assert "height:var(--tap-min)" in _rule(".why", THREAD)
+    assert _WHY_W["What faster, steady and slower mean"] <= _why_room(phone)
+
+
+def test_a_narrower_phone_gives_the_explainer_label_two_even_lines():
+    """Under 343px the label wraps rather than running under the chevron, and
+    it wraps evenly: at 320 "What faster, steady" over "and slower mean", not
+    "mean" alone. Two lines at 1.25 are 32.5px, inside the button's 48."""
+    lab = _rule(".why s", THREAD).replace(" ", "")
+    assert _WHY_W["What faster, steady and slower mean"] > _why_room(342)
+    assert "min-width:0" in lab and "white-space" not in lab and "text-wrap:balance" in lab
+    assert _WHY_W["balanced"] <= _why_room(320)
+    line = float(re.search(r"line-height:([\d.]+)", lab).group(1)) * 13
+    assert 2 * line <= 48

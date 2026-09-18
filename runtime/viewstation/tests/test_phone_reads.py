@@ -20,6 +20,7 @@ import json
 import re
 import shutil
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -71,7 +72,7 @@ function node(text){
     fire(type){ (heard[type] || []).forEach(f => f({})); },
   };
 }
-const els = {wrap: node(), sub: node(), day: node(), load: node()};
+const els = {wrap: node(), sub: node(), day: node(), load: node(), why: node()};
 const document = {
   getElementById: id => els[id], createElement: () => node(), createTextNode: node,
   addEventListener(){}, visibilityState: 'visible',
@@ -253,7 +254,13 @@ def test_the_document_is_the_scroller():
     Nothing has a fixed height now, so there is nothing to resolve and the page
     scales to any screen. It also makes the shell's SwipeRefreshLayout question
     ("can the child scroll up?") answerable, which is why the JS bridge that
-    used to answer it for this page could be deleted."""
+    used to answer it for this page could be deleted.
+
+    AMENDED 2026-09-18: from the first time the explainer sheet opens,
+    sheet.js speaks to the shell, for the glance's reason — a drag inside it
+    with the page at the top read as a pull. The page's own code still never
+    does, and nothing speaks before the sheet first opens
+    (test_the_explainer_opens_on_a_tap_and_closes_the_one_way_the_glances_does)."""
     body = re.search(r"(?ms)^body\{(.*?)\}", THREAD)
     assert body is not None
     flat = body.group(1).replace(" ", "").replace("\n", "")
@@ -271,8 +278,9 @@ def test_the_document_is_the_scroller():
     assert hd and "position:sticky" in hd.group(1).replace(" ", ""), \
         "the header must stick, or it scrolls away with the list"
 
-    # the bridge is not merely unused — it is gone from the page's code, under
-    # any spelling. (The note explaining why it went is prose and may name it.)
+    # the bridge is not merely unused — it is gone from the page's own code,
+    # under any spelling. (The note explaining why it went is prose and may
+    # name it.)
     script = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", THREAD))
     code = "\n".join(l.split("//")[0] for l in re.sub(r"(?s)/\*.*?\*/", "", script).splitlines())
     assert "MiraiShell" not in code, "the page still reports a scroll position it no longer owns"
@@ -347,3 +355,246 @@ def test_model_text_cannot_carry_markup():
     for ch in '<>"¦':
         assert ch not in rest, f"{ch!r} from the model reached innerHTML: {html}"
     assert "&amp;" in rest and not re.search(r"&(?!amp;)", rest), f"a bare & reached innerHTML: {html}"
+
+
+# --- the explainer: what faster, steady and slower mean (2026-09-18) --------
+
+class _Body(HTMLParser):
+    """<body> as [tag, attrs, children], text as strings, scripts and styles
+    left out: the page's own elements, so a stand-in DOM can hold them where
+    the markup puts them."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.root = ["body", {}, []]
+        self.open, self.skip = [self.root], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style"):
+            self.skip += 1
+        elif not self.skip:
+            node = [tag, {k: v or "" for k, v in attrs}, []]
+            self.open[-1][2].append(node)
+            self.open.append(node)
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style"):
+            self.skip -= 1
+        elif not self.skip and len(self.open) > 1:
+            self.open.pop()
+
+    def handle_data(self, data):
+        if not self.skip and data.strip():
+            self.open[-1][2].append(data)
+
+
+def _body_tree():
+    p = _Body()
+    p.feed(re.split(r"(?m)^<body>$", THREAD, maxsplit=1)[1].rsplit("</body>", 1)[0])
+    return p.root
+
+
+_SHEET_HARNESS = r"""
+const fs = require('fs'), vm = require('vm');
+const IN = JSON.parse(fs.readFileSync(0, 'utf8')), NET = IN.net;
+let clock = 1e6, timers = [], nextId = 1;
+const RealDate = Date;
+function FakeDate(...a){ return a.length ? new RealDate(...a) : new RealDate(clock); }
+FakeDate.now = () => clock;
+FakeDate.parse = RealDate.parse;
+FakeDate.prototype = RealDate.prototype;
+function setTimeout_(fn, ms){ timers.push({id: nextId, at: clock + (ms || 0), fn}); return nextId++; }
+function advance(ms){
+  const end = clock + ms;
+  for(;;){
+    timers.sort((a, b) => a.at - b.at);
+    const t = timers[0];
+    if(!t || t.at > end) break;
+    timers.shift(); clock = t.at; t.fn();
+  }
+  clock = end;
+}
+
+// Each element knows its parent, and emptying one detaches its children, so a
+// node render() clears away is gone from the document, as in a browser.
+function mk(tag, attrs){
+  const cl = new Set(String(attrs.class || '').split(/\s+/).filter(Boolean)), heard = {};
+  return {
+    tag, attrs: Object.assign({}, attrs), parent: null, children: [], _text: '',
+    dataset: {}, value: '', innerHTML: '', hidden: 'hidden' in attrs,
+    classList: {add: (...c) => c.forEach(x => cl.add(x)), remove: (...c) => c.forEach(x => cl.delete(x)),
+                contains: c => cl.has(c)},
+    get className(){ return [...cl].join(' '); },
+    set className(v){ cl.clear(); String(v).split(/\s+/).filter(Boolean).forEach(x => cl.add(x)); },
+    get textContent(){ return this._text + this.children.map(c => c.textContent).join(''); },
+    set textContent(v){ this.children.forEach(c => { c.parent = null; }); this.children = []; this._text = String(v); },
+    get childElementCount(){ return this.children.length; },
+    append(...cs){
+      for(const c of cs){
+        if(c.parent) c.parent.children = c.parent.children.filter(x => x !== c);
+        c.parent = this; this.children.push(c);
+      }
+    },
+    setAttribute(k, v){ this.attrs[k] = String(v); },
+    getAttribute(k){ return k in this.attrs ? this.attrs[k] : null; },
+    hasAttribute(k){ return k in this.attrs; },
+    addEventListener(t, f){ (heard[t] = heard[t] || []).push(f); },
+    fire(t, e){ (heard[t] || []).forEach(f => f(e)); },
+    focus(){ document.activeElement = this; },
+    matches(sel){
+      return sel.split(',').map(s => s.trim()).some(s =>
+        s[0] === '#' ? this.attrs.id === s.slice(1) : s[0] === '.' ? cl.has(s.slice(1))
+        : s[0] === '[' ? s.slice(1, -1) in this.attrs : this.tag === s);
+    },
+    closest(sel){ for(let x = this; x && x.matches; x = x.parent) if(x.matches(sel)) return x; return null; },
+  };
+}
+const text = t => ({parent: null, children: [], _text: String(t), get textContent(){ return this._text; }});
+function build([tag, attrs, kids]){
+  const n = mk(tag, attrs);
+  n.append(...kids.map(k => typeof k === 'string' ? text(k) : build(k)));
+  return n;
+}
+const body = build(IN.tree);
+function find(n, id){
+  if(n.attrs && n.attrs.id === id) return n;
+  for(const c of n.children){ const f = find(c, id); if(f) return f; }
+  return null;
+}
+const docL = {}, winL = {};
+const on = bag => (t, f) => { (bag[t] = bag[t] || []).push(f); };
+const document = {
+  body, activeElement: null, visibilityState: 'visible', addEventListener: on(docL),
+  getElementById: id => find(body, id), createElement: tag => mk(tag, {}), createTextNode: text,
+  documentElement: {get scrollHeight(){ return 100 * find(body, 'wrap').children.length; }},
+};
+// a click as a browser delivers it: the target and its ancestors, then the document
+function click(n){
+  const e = {type: 'click', target: n};
+  for(let x = n; x; x = x.parent) if(x.fire) x.fire('click', e);
+  (docL.click || []).forEach(f => f(e));
+}
+const key = k => (docL.keydown || []).forEach(f => f({key: k, target: document.activeElement}));
+const scroll = y => { ctx.scrollY = y; (winL.scroll || []).forEach(f => f({})); };
+const shell = [];
+let pushes = 0, backs = 0;
+const history = {
+  state: null,
+  pushState(s){ this.state = s; pushes++; },
+  back(){ backs++; setTimeout_(() => { history.state = null; (winL.popstate || []).forEach(f => f({})); }, 10); },
+};
+function fetch(url){
+  const u = String(url);
+  const body = u.startsWith('/api/sndk/thread/days') ? {days: NET.days}
+             : {day: NET.days[0], messages: NET.messages, count: NET.messages.length,
+                with_something: NET.messages.length};
+  return Promise.resolve({status: 200, text: async () => JSON.stringify(body)});
+}
+const ctx = {document, fetch, history, Date: FakeDate, setTimeout: setTimeout_, clearTimeout(){},
+             setInterval: () => 0, navigator: {}, scrollY: 0, scrollTo(x, y){ ctx.scrollY = y; },
+             MiraiShell: {atTop: v => shell.push(v)}};
+ctx.window = ctx;
+ctx.addEventListener = on(winL);
+vm.createContext(ctx);
+const run = code => vm.runInContext(code, ctx);
+run(fs.readFileSync(__SHEET__, 'utf8'));
+const html = fs.readFileSync(__THREAD__, 'utf8');
+run([...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).find(s => s.includes('function render')));
+
+const settle = async () => { for(let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
+const isOpen = () => body.classList.contains('sheet-open');
+const focused = () => document.activeElement && document.activeElement.attrs.id;
+(async () => {
+  await settle();
+  console.log(JSON.stringify(await (async () => { __STEPS__ })()));
+})().catch(e => { console.error(e && e.stack || e); process.exit(1); });
+"""
+
+
+def _reads_page(net, steps):
+    """Run sheet.js and the page's own script in node against a DOM built from
+    the page's real markup, a fake clock, a fake history, a shell that records
+    what it is told, and a station answering from `net` ({"days",
+    "messages"}). In scope for `steps`: body, document, run(code), settle(),
+    advance(ms), click(node), key(name), scroll(y), isOpen(), focused(),
+    shell (every MiraiShell.atTop answer), pushes, backs and NET. Skips when
+    node is not installed."""
+    if not _NODE:
+        pytest.skip("node is not installed")
+    script = (_SHEET_HARNESS.replace("__SHEET__", json.dumps(str(_PATH.with_name("sheet.js"))))
+              .replace("__THREAD__", json.dumps(str(_PATH))).replace("__STEPS__", steps))
+    out = subprocess.run([_NODE, "-e", script], input=json.dumps({"tree": _body_tree(), "net": net}),
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def test_the_explainer_button_sits_outside_the_list_and_survives_every_render():
+    """render() opens with wrap.textContent = '' and runs on every load and
+    every 45-second poll, so a button inside the list would be gone 45 seconds
+    after the page opened. It sits between the header and the list, a sibling
+    of main.wrap. The last step puts it inside the list to show the render
+    really does take it: that is the failure the placement prevents."""
+    assert THREAD.index("</header>") < THREAD.index('id="why"') < THREAD.index('<main class="wrap"')
+    got = _reads_page({"days": _DAY, "messages": [_said("09:35")]}, """
+      const why = document.getElementById('why');
+      const label = why.children.find(c => c.tag === 's').textContent;
+      const inList = !!why.closest('#wrap');
+      NET.messages = NET.messages.concat([{ts: '2026-09-10T10:40:00-04:00', at: '10:40', read: 'New.'}]);
+      await run('poll()');
+      run('render()');
+      const kept = document.getElementById('why') === why && document.getElementById('wrap').children.length;
+      document.getElementById('wrap').append(why);
+      run('render()');
+      return {label, inList, kept, inside: document.getElementById('why') !== null};""")
+    assert got["label"] == "What faster, steady and slower mean"
+    assert got["inList"] is False, "the button is inside the list that render() empties"
+    assert got["kept"] == 4, "the button did not survive the poll's render"     # two readings, a gap, the endcap
+    assert got["inside"] is False, "the harness cannot see a render take the button"
+
+
+def test_the_explainer_opens_on_a_tap_and_closes_the_one_way_the_glances_does():
+    """A tap opens it, because the button is a control and looks like one; the
+    glance's one press-and-hold stays the only one on either page. Everything
+    after that is sheet.js, shared with the glance: a history entry, so the
+    phone's back gesture closes the sheet instead of leaving the page; one way
+    to close whatever closed it — the backdrop, Got it, Escape, Back — and a
+    double tap goes back once; the focus returns to the button.
+
+    And the shell. This page stopped speaking to it when it became the
+    document that scrolls, and it stays silent until the sheet first opens.
+    From then on it keeps the answer true on every scroll: not at the top while
+    the sheet is open, so a drag in the sheet is not a pull that reloads the
+    page, and the page's real position once it closes."""
+    assert "data-hold" not in THREAD, "a press-and-hold on the reads page"
+    button = re.search(r'<button class="why"[^>]*>', THREAD).group(0)
+    assert 'type="button"' in button and 'aria-controls="sheet"' in button and "data-press" in button
+    got = _reads_page({"days": _DAY, "messages": [_said("09:35")]}, """
+      const why = document.getElementById('why'), sheet = document.getElementById('sheet');
+      const scrim = body.children.find(c => c.attrs && c.attrs.class === 'scrim');
+      scroll(40); scroll(0);
+      const silent = shell.length;
+      click(why);
+      const opened = {open: isOpen(), hidden: sheet.getAttribute('aria-hidden'), focus: focused(),
+                      pushes, shell: shell.slice()};
+      advance(600);
+      click(scrim); click(scrim);
+      advance(50);
+      const closed = {open: isOpen(), hidden: sheet.getAttribute('aria-hidden'), focus: focused(),
+                      backs, shell: shell.slice()};
+      click(why); advance(600); key('Escape'); key('Escape'); advance(50);
+      const escaped = {open: isOpen(), backs};
+      click(why); advance(600); click(document.getElementById('shClose')); advance(50);
+      const gotIt = {open: isOpen(), backs};
+      click(why); history.back(); advance(50);
+      const back = isOpen();
+      scroll(120); scroll(0);
+      return {silent, opened, closed, escaped, gotIt, back, after: shell.slice(-2)};""")
+    assert got["silent"] == 0, "the page speaks to the shell before any sheet has opened"
+    assert got["opened"] == {"open": True, "hidden": "false", "focus": "shClose", "pushes": 1, "shell": [False]}
+    assert got["closed"] == {"open": False, "hidden": "true", "focus": "why", "backs": 1,
+                             "shell": [False, True]}, "a double tap went back twice, or the sheet stayed open"
+    assert got["escaped"] == {"open": False, "backs": 2}
+    assert got["gotIt"] == {"open": False, "backs": 3}
+    assert got["back"] is False, "the phone's back gesture left the sheet open"
+    assert got["after"] == [False, True], "the shell was told once and then left with a stale answer"
