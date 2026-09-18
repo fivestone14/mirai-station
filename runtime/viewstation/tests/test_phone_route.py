@@ -2354,6 +2354,61 @@ def test_the_word_never_sits_on_other_text_or_a_bar():
         (_, by, _), = _new_marks(svg)[2]
         runner = float(re.search(r'<line class="p-magrun"[^>]*y1="([\d.]+)"', svg).group(1))
         assert by - 8.4 > runner + 1 or by + 0.2 < runner - 1, "the word lies across the runner"
+    # And the live dot's ring. A quote older than the tape sits mid-plot: at
+    # 09:50 on 1,533, under the word's run and in its box, the word keeps 2px
+    # off the ring's 9 either way, here by leaving the box.
+    tape = [{"ts": "2026-09-16T%02d:%02d:00-04:00" % divmod(570 + i, 60), "close": 1545 - i % 7, "volume": 30000}
+            for i in range(92)]
+    for cw in (288, 343):
+        svg = _page(_board(_SCENE_1101, now="2026-09-16T11:02:00-04:00", bars=tape, width=cw,
+                           live={"ticker": "SNDK", "spot": 1533, "ts": "2026-09-16T09:50:00-04:00"}))["svg"]["html"]
+        cx, cy = (float(v) for v in re.search(r'<circle class="p-halo" cx="([\d.]+)" cy="([\d.]+)"', svg).groups())
+        corners, _, ((wx, by, _),), _ = _new_marks(svg)
+        t, b = min(c[1] for c in corners), max(c[1] for c in corners)
+        assert wx < cx - 9 < wx + 121.42 and t < cy < b, "the ring no longer sits in the word's way; this proves nothing"
+        assert by - 8.4 >= cy + 11 or by + 0.2 <= cy - 11, "the word sits on the ring"
+
+
+def test_the_arms_keep_off_the_rules_they_would_double():
+    """newBox, on its own. A one-strike area is a few pixels tall, so the box
+    grows about its middle to 13px, not the spec's 11: at 11 the word left its
+    box on 110 to 120 of the 335 boxed boards of 2026-09-15..17, and at 13 on
+    0 to 14. It stays inside the plot. An arm keeps 2.5px off every rule's ink,
+    since an arm on a rule reads as the rule doubled: it moves OUTWARD for it,
+    4px at most, and comes in over the area it marks only at twice the cost,
+    or where the plot's edge stops the outward move. Where no move of 4px
+    clears, it keeps the nearer rule as far off as it can: 72 of the 1,532
+    arms on those boards."""
+    got = _glance("""console.log(JSON.stringify(D.map(([t, b, inks, top, bottom]) =>
+        g.newBox(t, b, inks, top, bottom))));""", [
+        [100, 102, [], 20, 180],                    # a 2px area grows to 13 about its middle
+        [20, 24, [], 21, 180],                      # ...inside the plot
+        [10, 60, [], 21, 180],                      # an area past the plot's top is cut at it
+        [100, 140, [[101, 1]], 20, 180],            # a 2px wall 1px inside the top arm: out 3.25
+        [100, 140, [[99.75, 0.5]], 20, 180],        # clear 4 out or 3.5 in: in costs 7, so out
+        [23, 60, [[21.5, 0.5]], 21, 180],           # the edge stops the move out: in 2.25
+        [100, 140, [[98, 0.5], [105, 0.5]], 20, 180]])   # nothing clears: 2.25 off both
+    assert [(x["t"], x["b"]) for x in got] == [(94.5, 107.5), (21, 34), (21, 60), (96.75, 140),
+                                               (96, 140), (25.25, 60), (101.5, 140)]
+
+
+def test_the_word_takes_the_clearest_room_its_box_has():
+    """wordRow, on its own. First the tallest stretch of the box clear of the
+    rules and of what the word may never touch, the word centred in it and a
+    pixel of air off each rule's ink: a word beside a rule reads as the box's,
+    one across it as the rule's. With no such stretch, it lies across a rule,
+    in the stretch clear of text, bars and the ring nearest the box's middle.
+    With none of those, just outside the box, below and then above; and with
+    no room anywhere, nothing, rather than a word on other text."""
+    got = _glance("""console.log(JSON.stringify(D.map(([t, b, soft, hard, top, bottom]) =>
+        g.wordRow(t, b, soft, hard, top, bottom))));""", [
+        [100, 140, [[113.5, 114.5], [121.5, 122.5]], [], 20, 180],   # three stretches: the tallest
+        [100, 121, [[110.5, 111.5]], [], 20, 180],    # 8.75 above the ink, 7.75 with its pixel of air
+        [100, 140, [[100, 140]], [[115, 125]], 20, 180],   # rules everywhere, a bar mid-box
+        [100, 140, [], [[100, 140]], 20, 180],        # no room in the box
+        [100, 140, [], [[100, 160]], 80, 160],        # ...nor below it
+        [100, 140, [], [[80, 160]], 80, 160]])        # ...nor above
+    assert got == [134.975, 114.6, 114.8, 150.15, 98.05, None]
 
 
 def test_the_words_of_new_contracts_say_what_happened_and_nothing_ahead():

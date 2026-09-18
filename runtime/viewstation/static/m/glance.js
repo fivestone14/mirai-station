@@ -752,6 +752,90 @@ function newContracts(strikes, frames){
   return {areas:areas.slice(0, NEW_CAP), more:Math.max(0, areas.length-NEW_CAP)};
 }
 
+/* ---- where new contracts arrived, marked on the plot ------------------- */
+
+// CHANGE-SPEC.md 5.1: each corner a 16px arm and a 5.5px leg, 1.5px thick. A
+// box under 13px tall is grown about its middle, so a one-strike area can be
+// found and can hold its word: 8.6px of ink and a pixel of air inside each
+// arm. At the spec's 11 the word left its box on 110 to 120 of the 335 boxed
+// boards of 2026-09-15..17, by phone; at 13 on 0 to 14, each of them the
+// longer "· 1 MORE" form crossing a bar.
+const NEW_ARM=16, NEW_LEG=5.5, NEW_W=1.5, NEW_MIN_H=13;
+// The word, 11px/500 in the shipped face: "NEW CONTRACTS " and "%" are
+// 108.22, each figure 6.60, and " · 1 MORE" 48.65 — 121.42 in all for a share
+// of two figures. Its capitals, figures and % run 8.4px above the baseline and
+// 0.2 below it.
+const NEW_WORD=108.22, NEW_FIG=6.60, NEW_MORE=48.65, WORD_UP=8.4, WORD_DOWN=0.2;
+
+function newBox(t0, b0, inks, top, bottom){
+  // -> {t, b}, the rows of the corner arms round an area the plot draws from
+  // t0 down to b0, inside top..bottom. `inks` is every rule's [y, half its
+  // width].
+  //
+  // An arm on a rule reads as the rule doubled, so each arm keeps 2.5px off
+  // every rule's ink. It gets there moving OUTWARD, 4px at most; coming in over
+  // the area it marks is the worse misstatement and costs twice as much, and
+  // is taken only where the plot's edge or the 4px stops the outward move, so
+  // a box pinned to the edge or grown to its least height can shift clear.
+  // Where rules run closer together than any move of 4px can clear (72 of the
+  // 1,532 arms on 514 boards of 09-15..17), the arms take the moves that keep
+  // the nearer of them furthest off the ink: 0.65px at the least, never on it.
+  if(b0-t0<NEW_MIN_H){
+    t0=Math.min(Math.max((t0+b0-NEW_MIN_H)/2, top), bottom-NEW_MIN_H);
+    b0=t0+NEW_MIN_H;
+  }
+  t0=Math.max(t0, top); b0=Math.min(b0, bottom);
+  const offInk=y=>Math.min(2.5, ...inks.map(([ry, hw])=>Math.abs(y-ry)-hw-NEW_W/2));
+  const moves=[0];
+  for(let d=0.25;d<=4;d+=0.25) moves.push(-d, d);
+  let best={t:t0, b:b0, off:-Infinity, cost:Infinity};
+  for(const dt of moves) for(const db of moves){
+    const t=t0+dt, b=b0+db, cost=(dt<0 ? -dt : 2*dt)+(db>0 ? db : -2*db);
+    if(t<top||b>bottom||b-t<NEW_MIN_H) continue;
+    const off=Math.min(offInk(t), offInk(b));
+    if(off>best.off||(off===best.off&&cost<best.cost)) best={t, b, off, cost};
+  }
+  return {t:best.t, b:best.b};
+}
+
+function wordRow(t, b, soft, hard, top, bottom){
+  // The baseline for the word on the area boxed from t to b, or null. `soft`
+  // and `hard` are [top, bottom] spans across the word's width: the ink of
+  // rules, which its halo may cut, and what it may never touch (text, bars,
+  // the dot's ring), each with the air it must keep. First the tallest stretch
+  // of the box clear of both, the word centred in it: a word laid across a
+  // rule reads as that rule's label, one beside it as the box's (CHANGE-SPEC.md
+  // 5.5). Then the stretch clear of what it may not touch nearest the box's
+  // middle, over the rules. Then the nearest room just outside the box, below
+  // it and then above, inside top..bottom: a word out of its box is worse than
+  // one over a rule, and better than one over other text.
+  const need=WORD_UP+WORD_DOWN;
+  const free=(lo, hi, spans)=>{
+    const out=[];
+    let at=lo;
+    for(const [a, z] of spans.slice().sort((p, q)=>p[0]-q[0])){
+      if(a>at) out.push([at, Math.min(a, hi)]);
+      at=Math.max(at, z);
+      if(at>=hi) break;
+    }
+    if(at<hi) out.push([at, hi]);
+    return out.filter(([a, z])=>z-a>=need);
+  };
+  const lo=t+NEW_W/2+1, hi=b-NEW_W/2-1, mid=(t+b)/2;
+  const clear=free(lo, hi, soft.map(([a, z])=>[a-1, z+1]).concat(hard));
+  if(clear.length){
+    const [a, z]=clear.reduce((p, q)=>(q[1]-q[0]>p[1]-p[0] ? q : p));
+    return (a+z+WORD_UP-WORD_DOWN)/2;
+  }
+  const at=([a, z])=>Math.min(Math.max(mid+(WORD_UP-WORD_DOWN)/2, a+WORD_UP), z-WORD_DOWN);
+  const over=free(lo, hi, hard);
+  if(over.length) return over.map(at).reduce((p, q)=>(Math.abs(q-mid)<Math.abs(p-mid) ? q : p));
+  const below=free(b+NEW_W/2+1, bottom, hard), above=free(top, t-NEW_W/2-1, hard);
+  if(below.length) return below[0][0]+WORD_UP;
+  if(above.length) return above[above.length-1][1]-WORD_DOWN;
+  return null;
+}
+
 /* ---- how busy each stretch was ----------------------------------------- */
 
 // A FIXED scale. Scaled to the day's own maximum, the opening block alone runs
@@ -1088,7 +1172,7 @@ if(typeof module!=='undefined'&&module.exports){
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
-                  tradedBars, newContracts, activityRows, namedGone,
+                  tradedBars, newContracts, newBox, wordRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};

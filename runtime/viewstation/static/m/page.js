@@ -332,59 +332,6 @@ function paintFoot(){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 
-/* ---- where new contracts arrived: the marks and their word ------------- */
-
-// CHANGE-SPEC.md 5.1: each corner a 16px arm and a 5.5px leg, 1.5px thick. A
-// box under 13px tall is grown about its middle, so a one-strike area can be
-// found and can hold its word: 8.6px of ink and a pixel of air inside each
-// arm. At the spec's 11 the word left its box on 110 to 120 of the 335 boxed
-// boards of 2026-09-15..17, by phone; at 13 on 0 to 14, each of them the
-// longer "· 1 MORE" form crossing a bar.
-const NEW_ARM = 16, NEW_LEG = 5.5, NEW_W = 1.5, NEW_MIN_H = 13;
-// The word, 11px/500 in the shipped face: "NEW CONTRACTS " and "%" are
-// 108.22, each figure 6.60, and " · 1 MORE" 48.65 — 121.42 in all for a share
-// of two figures. Its capitals, figures and % run 8.4px above the baseline and
-// 0.2 below it.
-const NEW_WORD = 108.22, NEW_FIG = 6.60, NEW_MORE = 48.65, WORD_UP = 8.4, WORD_DOWN = 0.2;
-
-function wordRow(t, b, soft, hard, top, bottom){
-  // The baseline for the word on the area boxed from t to b, or null. `soft`
-  // and `hard` are [top, bottom] spans across the word's width: the ink of
-  // rules, which its halo may cut, and what it may never touch (text, bars,
-  // the dot's ring), each with the air it must keep. First the tallest stretch
-  // of the box clear of both, the word centred in it: a word laid across a
-  // rule reads as that rule's label, one beside it as the box's (CHANGE-SPEC.md
-  // 5.5). Then the stretch clear of what it may not touch nearest the box's
-  // middle, over the rules. Then the nearest room just outside the box, below
-  // it and then above, inside top..bottom: a word out of its box is worse than
-  // one over a rule, and better than one over other text.
-  const need = WORD_UP + WORD_DOWN;
-  const free = (lo, hi, spans) => {
-    const out = [];
-    let at = lo;
-    for(const [a, z] of spans.slice().sort((p, q) => p[0] - q[0])){
-      if(a > at) out.push([at, Math.min(a, hi)]);
-      at = Math.max(at, z);
-      if(at >= hi) break;
-    }
-    if(at < hi) out.push([at, hi]);
-    return out.filter(([a, z]) => z - a >= need);
-  };
-  const lo = t + NEW_W / 2 + 1, hi = b - NEW_W / 2 - 1, mid = (t + b) / 2;
-  const clear = free(lo, hi, soft.map(([a, z]) => [a - 1, z + 1]).concat(hard));
-  if(clear.length){
-    const [a, z] = clear.reduce((p, q) => (q[1] - q[0] > p[1] - p[0] ? q : p));
-    return (a + z + WORD_UP - WORD_DOWN) / 2;
-  }
-  const at = ([a, z]) => Math.min(Math.max(mid + (WORD_UP - WORD_DOWN) / 2, a + WORD_UP), z - WORD_DOWN);
-  const over = free(lo, hi, hard);
-  if(over.length) return over.map(at).reduce((p, q) => (Math.abs(q - mid) < Math.abs(p - mid) ? q : p));
-  const below = free(b + NEW_W / 2 + 1, bottom, hard), above = free(top, t - NEW_W / 2 - 1, hard);
-  if(below.length) return below[0][0] + WORD_UP;
-  if(above.length) return above[above.length - 1][1] - WORD_DOWN;
-  return null;
-}
-
 function paintLadder(st){
   const svg = $('svg');
   // The head says what the chart shows and which scan drew it. A stale axis
@@ -600,9 +547,10 @@ function paintLadder(st){
   // (103 of 314 ends there against 2 of 314 here, ALT-BEHIND-SPEC.md 3.2).
   // First in the clip, so every other mark is on top of them.
   const traded = tradedBars(st.strikes, WIN.lo, WIN.hi, plotTop, plotBottom);
+  const barX = b => PLOT_R - b.share * TRADED_FULL * PLOT_W;   // where a bar ends
   if(traded){
     for(const b of traded.bars){
-      const x = n1(PLOT_R - b.share * TRADED_FULL * PLOT_W), y = b.y - traded.h / 2;
+      const x = n1(barX(b)), y = b.y - traded.h / 2;
       g += '<rect class="p-traded" x="' + x + '" y="' + n1(y) + '" width="' + n1(PLOT_R - x)
          + '" height="' + n1(traded.h) + '"/>';
       // the end, where the length is read; kept inside the plot so a strike
@@ -741,35 +689,12 @@ function paintLadder(st){
                                             : l.lead ? 2.2 : 1 + 0.9 * (l.weight || 0.5)) / 2]);
   if(dot) inks.push([priceY, 0.5]);
   if(orng && inWin(orng.high) && inWin(orng.low)) inks.push([yFor(orng.high), 0.5], [yFor(orng.low), 0.5]);
-  // An arm on a rule reads as the rule doubled, so each arm keeps 2.5px off
-  // every rule's ink. It gets there moving OUTWARD, 4px at most; coming in over
-  // the area it marks is the worse misstatement and costs twice as much, and
-  // is taken only where the plot's edge or the 4px stops the outward move, so
-  // a box pinned to the edge or grown to its least height can shift clear.
-  // Where rules run closer together than any move of 4px can clear (72 of the
-  // 1,532 arms on 514 boards of 09-15..17), the arms take the moves that keep
-  // the nearer of them furthest off the ink: 0.65px at the least, never on it.
-  const offInk = y => Math.min(2.5, ...inks.map(([ry, hw]) => Math.abs(y - ry) - hw - NEW_W / 2));
-  const moves = [0];
-  for(let d = 0.25; d <= 4; d += 0.25) moves.push(-d, d);
+  // The arms keep off every rule's ink (newBox), on a plot taken 1px in from
+  // its edge, not the half-stroke, so the tenth the coordinates are rounded to
+  // cannot put the stroke past it.
   const boxes = lit.map(({a, lo, hi}) => {
-    // 1px inside the plot's edge, not the half-stroke, so the tenth the
-    // coordinates are rounded to cannot put the stroke past it
-    const top = plotTop + 1, bottom = plotBottom - 1;
-    let t0 = yFor(hi), b0 = yFor(lo);
-    if(b0 - t0 < NEW_MIN_H){
-      t0 = Math.min(Math.max((t0 + b0 - NEW_MIN_H) / 2, top), bottom - NEW_MIN_H);
-      b0 = t0 + NEW_MIN_H;
-    }
-    t0 = Math.max(t0, top); b0 = Math.min(b0, bottom);
-    let best = {t:t0, b:b0, off:-Infinity, cost:Infinity};
-    for(const dt of moves) for(const db of moves){
-      const t = t0 + dt, b = b0 + db, cost = (dt < 0 ? -dt : 2 * dt) + (db > 0 ? db : -2 * db);
-      if(t < top || b > bottom || b - t < NEW_MIN_H) continue;
-      const off = Math.min(offInk(t), offInk(b));
-      if(off > best.off || (off === best.off && cost < best.cost)) best = {t, b, off, cost};
-    }
-    return {a, t:best.t, b:best.b};
+    const {t, b} = newBox(yFor(hi), yFor(lo), inks, plotTop + 1, plotBottom - 1);
+    return {a, t, b};
   });
   for(const {t, b} of boxes){
     for(const [x0, dx] of [[PLOT_L + 4, 1], [PLOT_R - 4, -1]]) for(const [y, dy] of [[t, 1], [b, -1]]){
@@ -795,14 +720,15 @@ function paintLadder(st){
   let count = null;
   if(traded){
     const b = traded.bars.find(r => r.n === traded.most);
+    // Centred on its bar: the figures' ink runs 8px above the baseline and a
+    // comma 2.2 below it, so the baseline sits 0.36em under the bar's middle.
+    // The ring is 7 round the dot, and 2 more keeps them apart.
     const s = gUsd(b.n, 0).replace('$',''), w = figW(s, 11, 600), by = b.y + 0.36 * 11;
-    const tip = PLOT_R - b.share * TRADED_FULL * PLOT_W;
-    // the figures' ink runs 8px above the baseline and a comma 2.2 below it;
-    // the ring is 7 round the dot, and 2 more keeps them apart
+    const top = by - 8, bottom = by + 2.2, tip = barX(b);
     const clear = xe => xe - w >= PLOT_L + 2 && xe <= PLOT_R - 2
-      && !(dot && xe > dotX - 9 && xe - w < dotX + 9 && by - 8 < priceY + 9 && by + 2.2 > priceY - 9);
+      && !(dot && xe > dotX - 9 && xe - w < dotX + 9 && top < priceY + 9 && bottom > priceY - 9);
     const xe = [tip - 4, PLOT_R - 4].find(clear);
-    count = {s, w, by, tip, clear, x:xe != null ? xe : tip - 4};
+    count = {s, w, by, top, bottom, tip, clear, x:xe != null ? xe : tip - 4};
   }
 
   // ---- the word ------------------------------------------------------------
@@ -825,16 +751,16 @@ function paintLadder(st){
     // line or its next figure. Bars, the ring and another box keep 2.
     const row = () => {
       const hard = [];
-      if(count && across(count.x - count.w, count.x, 12)) hard.push([count.by - 8 - 5.5, count.by + 2.2 + 5.5]);
+      if(count && across(count.x - count.w, count.x, 12)) hard.push([count.top - 5.5, count.bottom + 5.5]);
       for(const b of (traded ? traded.bars : []))
-        if(across(PLOT_R - b.share * TRADED_FULL * PLOT_W, PLOT_R, 2)) hard.push([b.y - traded.h / 2 - 2, b.y + traded.h / 2 + 2]);
+        if(across(barX(b), PLOT_R, 2)) hard.push([b.y - traded.h / 2 - 2, b.y + traded.h / 2 + 2]);
       if(dot && across(dotX - 9, dotX + 9, 2)) hard.push([priceY - 11, priceY + 11]);
       for(const x of boxes.slice(1)) hard.push([x.t - NEW_W / 2 - 2, x.t + NEW_W / 2 + 2], [x.b - NEW_W / 2 - 2, x.b + NEW_W / 2 + 2]);
       return wordRow(box.t, box.b, inks.map(([y, hw]) => [y - hw, y + hw]), hard, plotTop + 1, plotBottom - 1);
     };
     const inBox = y => y != null && y - WORD_UP >= box.t && y + WORD_DOWN <= box.b;
     const stacked = y => y != null && across(count.x - count.w, count.x, 12)
-                      && y - WORD_UP < count.by + 2.2 + 12 && y + WORD_DOWN > count.by - 8 - 12;
+                      && y - WORD_UP < count.bottom + 12 && y + WORD_DOWN > count.top - 12;
     let by = row();
     const past = count ? count.tip + 4 + count.w : null;
     if(count && (!inBox(by) || stacked(by)) && count.x === count.tip - 4
