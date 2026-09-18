@@ -170,7 +170,7 @@ def test_the_chart_keeps_its_tabular_figures():
     on every chart rule rather than on the five that exist today."""
     checked = _tabular_after_every_font(".p-")
     # every class the ladder writes a price or a clock in is among those checked
-    for need in (".p-chiptx", ".p-tag", ".p-edge", ".p-axis", ".p-word"):
+    for need in (".p-chiptx", ".p-tag", ".p-edge", ".p-axis", ".p-word", ".p-tradednum"):
         assert need in checked, f"{need} no longer sets its own font; this proves nothing"
 
 
@@ -191,7 +191,7 @@ def test_no_chart_text_is_under_11px():
             m = re.match(r"(?:font:(?:[^;]*?\s)?|font-size:)([\d.]+)px", d)
             if m:
                 sized[sel] = float(m.group(1))
-    for need in (".p-word", ".p-axis", ".p-scale", ".p-edge", ".p-tag", ".p-chiptx"):
+    for need in (".p-word", ".p-axis", ".p-scale", ".p-edge", ".p-tag", ".p-chiptx", ".p-tradednum"):
         assert need in sized, f"{need} no longer sets its own size; this proves nothing"
     small = {sel: px for sel, px in sized.items() if px < 11}
     assert not small, f"chart text under 11px: {small}"

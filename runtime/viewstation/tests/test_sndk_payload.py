@@ -336,6 +336,56 @@ def test_the_payload_tab_carries_the_day_summary_the_reader_would_send(tmp_path,
     assert "earlier_claims" not in (snapshot.sndk_payload(now)["scene"].get("day") or {})
 
 
+# --- what each strike traded today, for the phone's bars ---------------------
+
+# The 2026-09-16 15:10:21 book at six strikes: open interest and today's volume,
+# calls then puts, as the scanner writes them into the diary.
+_OI = {1500.0: (1699, 3911), 1510.0: (407, 821), 1520.0: (500, 750),
+       1530.0: (654, 889), 1540.0: (565, 571), 1550.0: (1427, 1071)}
+_VOL = {1500.0: (1118, 3861), 1510.0: (199, 615), 1520.0: (1282, 1596),
+        1530.0: (3824, 3632), 1540.0: (2743, 2270), 1550.0: (2535, 1481)}
+
+
+def _book_row(ts, spot):
+    r = _row(ts, spot, sigma=65.82)
+    r["gex_views"].update({
+        "magnet": 1500.0, "mass_by_strike": [[k, c + p] for k, (c, p) in sorted(_OI.items())],
+        "oi_side_by_strike": [[k, c, p] for k, (c, p) in sorted(_OI.items())],
+        "vol_side_by_strike": [[k, c, p] for k, (c, p) in sorted(_VOL.items())]})
+    r["meta"].update({"chain_spot": spot, "book_asof": ts.isoformat(),
+                      "expiries": [{"date": "2026-09-18", "dte": 2}]})
+    return r
+
+
+def test_the_phone_is_sent_what_each_strike_traded_today(tmp_path, monkeypatch):
+    """The chart's bars (2026-09-18) are the contracts traded today at each
+    strike, vol_calls + vol_puts, read off the strike rows of the scene the
+    phone is sent: page.js state() takes PAY.scene.strikes. The mockups were
+    drawn off the model's payload store, not this, so this pins the payload the
+    phone actually receives. The ladder's legacy scene has no strike rows.
+
+    Absent the same way: before 09:45 a book's counts cannot be told from the
+    prior session's, and the builder withholds both columns on every row and
+    says so in strikes.absent (sndk_board's WITHHELD_UNPROVABLE). The phone
+    draws that as no bars, never as yesterday's."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    t = datetime(2026, 9, 16, 15, 10, tzinfo=ET)
+    _write_day(tmp_path, "2026-09-16", [_book_row(t - timedelta(minutes=2 * i), 1517.0 + i) for i in range(3, -1, -1)])
+    strikes = snapshot.sndk_payload(t + timedelta(seconds=40))["scene"]["strikes"]
+    traded = {r["strike"]: (r["vol_calls"], r["vol_puts"]) for r in strikes["rows"] if "vol_calls" in r}
+    assert traded == {int(k): v for k, v in _VOL.items()}
+    assert not any(a.startswith("volume") for a in strikes.get("absent") or [])
+    # a strike the book's volume does not cover (1,600, on the net surface
+    # only) rides with neither column, never a zero: the phone skips its bar
+    assert [r["strike"] for r in strikes["rows"] if "vol_calls" not in r and "vol_puts" not in r] == [1600]
+
+    early = datetime(2026, 9, 16, 9, 31, tzinfo=ET)
+    _write_day(tmp_path, "2026-09-16", [_book_row(early, 1517.0)])
+    strikes = snapshot.sndk_payload(early + timedelta(seconds=40))["scene"]["strikes"]
+    assert strikes["rows"] and not any("vol_calls" in r or "vol_puts" in r for r in strikes["rows"])
+    assert any(a.startswith("volume:") for a in strikes["absent"])
+
+
 # --- reads_today: when the model spoke, on the display side of the fence ----
 
 def _write_reads(root, day, rows):

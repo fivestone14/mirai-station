@@ -498,13 +498,15 @@ def test_a_refused_level_is_always_named():
 
 def test_the_magnet_never_shares_a_gauge_with_anything_else():
     """top_strikes shares are a fraction of mass_by_strike; a wall's share is a
-    fraction of net_by_strike; the shade behind both is a fraction of the
-    contracts on the board. Three denominators, and no two may share a gauge.
+    fraction of net_by_strike; the bars behind both count the contracts traded
+    today (the shade before them, until 2026-09-18, was a share of the
+    contracts on the board). Different quantities, and no two may share a gauge.
 
     The wall's rail bar used to carry the second of those as a LENGTH beside a
     rule carrying it as a THICKNESS. Both went on 2026-09-16 when weight became
     shade, so the gutter now holds marks that say WHICH level a row is — a
-    diamond for the magnet — and never how much."""
+    diamond for the magnet — and never how much. The traded bars are lengths,
+    and they live inside the plot, not in the gutter."""
     scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
              "magnet": {"top_strikes": [{"strike": 1712, "share_of_book_gamma_pp": 30}]},
              "walls": {"call": [{"strike": 1740, "cluster_share_of_book_gamma_pp": 12}],
@@ -1660,8 +1662,9 @@ def test_a_wall_the_day_cannot_reach_does_not_anchor_the_window():
 
 # --- the marks the respacing bought ----------------------------------------
 
-# The 2026-09-16 15:10 board's levels, and the contracts share its strikes
-# carried, which the shade drew until 2026-09-18.
+# The 2026-09-16 15:10:21 board's levels, and its fifteen strike rows as the
+# phone's payload carried them: the contracts share, which the shade drew until
+# 2026-09-18, and the calls and puts traded today, which the bars draw now.
 _SCENE_0916 = {
     "price": {"live_spot": 1517, "session_high": 1560.58, "session_low": 1513.25},
     "scale": {"one_sigma_dollars": 65.82,
@@ -1669,13 +1672,16 @@ _SCENE_0916 = {
     "walls": {"call": [{"strike": 1600, "cluster_share_of_book_gamma_pp": 1.67}],
               "put": [{"strike": 1500, "cluster_share_of_book_gamma_pp": 20.44}]},
     "context": {"ranges": {"opening": {"high": 1560.58, "low": 1519.54}}},
-    "strikes": {"rows": [{"strike": 1500, "contracts_share_pp": 12.17},
-                         {"strike": 1510, "contracts_share_pp": 2.35},
-                         {"strike": 1520, "contracts_share_pp": 4.74},
-                         {"strike": 1530, "contracts_share_pp": 10.34},
-                         {"strike": 1540, "contracts_share_pp": 7.07},
-                         {"strike": 1550, "contracts_share_pp": 7.49},
-                         {"strike": 1600, "contracts_share_pp": 11.39}]}}
+    "strikes": {"rows": [{"strike": k, "contracts_share_pp": sh, "vol_calls": vc, "vol_puts": vp}
+                         for k, sh, vc, vp in (
+                             (1500, 12.17, 1118, 3861), (1600, 11.39, 5053, 1203),
+                             (1530, 10.34, 3824, 3632), (1550, 7.49, 2535, 1481),
+                             (1540, 7.07, 2743, 2270), (1450, 6.81, 63, 1285),
+                             (1520, 4.74, 1282, 1596), (1430, 3.91, 6, 351),
+                             (1495, 3.01, 125, 2161), (1490, 2.66, 14, 1316),
+                             (1510, 2.35, 199, 615), (1545, 2.32, 978, 450),
+                             (1470, 1.93, 110, 510), (1480, 1.64, 74, 513),
+                             (1605, 1.34, 126, 16))]}}
 
 
 def test_the_plot_draws_no_shade_behind_the_line():
@@ -1716,6 +1722,218 @@ def test_no_dot_rides_on_the_price_line():
     assert re.findall(r'<circle class="([^"]+)"', svg) == ["p-halo", "p-dot"]
     assert "p-read" not in svg and "readPoints" not in GLANCE + PAGE
     assert ".p-read" not in PHONE
+
+
+# --- where contracts traded today, behind the price line (2026-09-18) -------
+# The owner's option B (ALT-BEHIND-SPEC.md): a bar per strike in the window,
+# grown from the plot's right edge under every other mark, its length the
+# contracts traded there today, and the busiest one's count printed at its end.
+
+def _traded(svg):
+    """The bars top first as (x, y, width, height), their end ticks' x, and the
+    count as (x, baseline, text)."""
+    bars = sorted((tuple(float(v) for v in m) for m in re.findall(
+        r'<rect class="p-traded" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)),
+        key=lambda b: b[1])
+    ends = [float(x) for x in re.findall(r'<line class="p-tradedend" x1="([\d.]+)"', svg)]
+    num = [(float(x), float(y), t) for x, y, t in
+           re.findall(r'<text class="p-tradednum" x="([\d.]+)" y="([\d.]+)">([^<]*)<', svg)]
+    return bars, ends, num
+
+
+def test_each_bar_is_as_long_as_its_strike_traded_today():
+    """One quantity, and one a reader can say out loud: the contracts that
+    changed hands at the strike today, calls and puts together — "1,530 traded
+    7,456 today". Its LENGTH says it, never its darkness: the shade's opacity
+    ran eight strikes into five greys. So every bar is one solid fill, the
+    busiest strike in view runs 40% of the plot's width and every other bar is
+    that fraction of it by count, and each one grows from the plot's right edge,
+    beside "now". Calls and puts are not split: their two fills measured 1.028:1
+    apart, and a red-tinted bar under the red put wall reads as the wall.
+
+    The 2026-09-16 15:10:21 board, bar for bar, as ALT-BEHIND-SPEC.md 3.1
+    tabled it at both phones: seven strikes in the window, 1,500 to 1,550."""
+    traded = {1550: 4016, 1545: 1428, 1540: 5013, 1530: 7456, 1520: 2878, 1510: 814, 1500: 4979}
+    table = {343: [61.6, 21.9, 76.9, 114.4, 44.2, 12.5, 76.4], 288: [49.8, 17.7, 62.1, 92.4, 35.7, 10.1, 61.7]}
+    for cw, want in table.items():
+        svg = _page(_board(_SCENE_0916, width=cw))["svg"]["html"]
+        box = _chart_box(svg)
+        plot_r = box["plot_l"] + box["plot_w"]
+        bars, ends, _ = _traded(svg)
+        assert [w for _, _, w, _ in bars] == pytest.approx(want, abs=0.1), cw
+        # from the right edge, the longest 40% of the plot, every other by count
+        assert all(x + w == pytest.approx(plot_r) for x, _, w, _ in bars)
+        assert max(w for _, _, w, _ in bars) == pytest.approx(0.40 * box["plot_w"], abs=0.1)
+        for (_, _, w, _), n in zip(bars, traded.values()):
+            assert w == pytest.approx(0.40 * box["plot_w"] * n / 7456, abs=0.1)
+        # the end is marked, where the length is read
+        assert ends == pytest.approx([x + 0.6 for x, _, _, _ in bars], abs=0.05)
+    # one fill, no opacity, nothing that splits a bar by side
+    assert _css_rule(".p-traded") == "fill:var(--band-edge)"
+    assert not re.search(r'<rect class="p-traded"[^>]*(?:style|opacity|fill)', svg)
+    # the scale is the board's own: double every count and nothing moves
+    doubled = json.loads(json.dumps(_SCENE_0916))
+    for r in doubled["strikes"]["rows"]:
+        r["vol_calls"] *= 2; r["vol_puts"] *= 2
+    assert _traded(_page(_board(doubled, width=288))["svg"]["html"])[0] == bars
+
+
+def test_a_bar_is_thick_by_the_strike_pitch_and_never_closes_the_gap():
+    """The lane's fixed 8px bar left 0.25px between 1,540, 1,545 and 1,550 on
+    a 112px plot and the three read as one block (SIDE-SPEC.md 4c). A bar is
+    70% of the tightest strike pitch in view, never more than 8px, so 30% of
+    the pitch stays white between two neighbours on any plot and any window.
+    ALT-BEHIND-SPEC.md floored it at 3px; that floor would close the gap to
+    nothing on a window wide enough to put $5 strikes 3px apart, so it is not
+    here. A bar that would cross the plot's edge is dropped, never clipped: a
+    clipped bar's middle is not its strike's price."""
+    rows = {"rows": [{"strike": k, "vol_calls": 100, "vol_puts": 100} for k in range(1500, 1555, 5)]}
+    got = _glance("""console.log(JSON.stringify(D.cases.map(([lo, hi, top, bottom]) => {
+        const t = g.tradedBars(D.rows, lo, hi, top, bottom);
+        return t && {h: t.h, ys: t.bars.map(b => b.y), vs: t.bars.map(b => b.v)}; })));""",
+                  {"rows": rows, "cases": [[1496.37, 1564.22, 22, 166],     # the 15:10 board, 144px
+                                           [1496.37, 1564.22, 22, 134],     # the same on 112px
+                                           [1400.0, 1640.0, 22, 166],       # a $240 window
+                                           [1540.0, 1550.0, 22, 166],       # a $10 window, a 72px pitch
+                                           [1499.0, 1551.0, 22, 166]]})     # 1,500 and 1,550 at the edges
+    for t in got[:3]:
+        pitch = min(b - a for a, b in zip(t["ys"], t["ys"][1:]))
+        assert t["h"] == pytest.approx(min(8, 0.7 * pitch))
+        assert pitch - t["h"] >= 0.3 * pitch - 1e-9, "two neighbouring bars read as one"
+    assert got[0]["h"] == pytest.approx(7.43, abs=0.01)           # 3.18px of white
+    assert got[1]["h"] == pytest.approx(5.78, abs=0.01)           # 2.48px, where the lane had 0.25
+    assert got[2]["h"] == pytest.approx(2.1, abs=0.01)            # 0.9px, a third of a 3px pitch
+    assert got[3]["h"] == 8
+    # 1,500 and 1,550 sit less than half a bar inside the plot: no bar, not half of one
+    assert got[4]["vs"] == [1545, 1540, 1535, 1530, 1525, 1520, 1515, 1510, 1505]
+
+
+def test_the_price_line_runs_on_a_channel_of_card():
+    """Over a bar the line measures 3.64:1 against the fill, and 3.27:1 at a 2x
+    screen's worst crossing, where antialiasing darkens the pixel beside it
+    (ALT-BEHIND-SPEC.md 4.2). So the line runs over an edge of the card 1px
+    wider on each side, drawn under it: invisible on the bare card, and over a
+    bar the line is read against the card, 5.00:1. The order is the spec's:
+    the bars and their ends, the opening range, the edge, the line — every mark
+    but the bars' own ends above the bars."""
+    tape = [{"ts": "2026-09-10T%02d:%02d:00-04:00" % divmod(570 + i, 60), "close": 1560 - i * 0.6,
+             "volume": 30000} for i in range(70)]
+    svg = _page(_board(_SCENE_0916, now="2026-09-10T10:40:00-04:00", bars=tape))["svg"]["html"]
+    clipped = re.search(r'<g clip-path="url\(#pc\)">(.*?)</g>', svg).group(1)
+    order = re.findall(r'<\w+ class="(p-[\w-]+)', clipped)
+    first = lambda c: order.index(c)
+    assert first("p-traded") == 0 and first("p-tradedend") < first("p-orb") < first("p-casing") < first("p-path")
+    edge = re.search(r'<polyline class="p-casing" points="([^"]*)"', svg).group(1)
+    assert edge == re.search(r'<polyline class="p-path" points="([^"]*)"', svg).group(1)
+    width = lambda sel: float(re.search(r"stroke-width:([\d.]+)", _css_rule(sel)).group(1))
+    assert width(".p-casing") == pytest.approx(width(".p-path") + 2)
+    case = _css_rule(".p-casing")
+    assert "stroke:var(--s)" in case and "stroke-linejoin:round" in case and "fill:none" in case
+    root = re.search(r"(?ms)^:root\{(.*?)^\}", PHONE).group(1)
+    tok = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
+           for k, v in re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", root)}
+    assert _contrast(tok["--path"], tok["--s"]) >= 4.5            # on the channel, 5.00
+    assert _contrast(tok["--path"], tok["--band-edge"]) >= 3.0    # on the fill, if the channel were gone
+    # no line, no edge: an empty tape draws neither
+    bare = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}))["svg"]["html"]
+    assert 'class="p-casing"' not in bare and 'class="p-path"' not in bare
+
+
+def test_the_longest_bar_carries_its_count():
+    """The bars' one number, kept by the owner's choice. Their scale is per
+    scan, so a full-length bar was 7,456 at 15:10 and 3,264 at 11:01, and only
+    this says which. 11px/600 in the darkest ink, 4px past the longest bar's
+    end on the card side, where a bar chart puts its value, with a card halo:
+    the busiest strike is usually one the chart already rules (a rule or dash
+    crosses the count on 38 of ALT-BEHIND-SPEC's 46 scan and phone pairs), and
+    the halo cuts that rule for the count's width rather than the rule cutting
+    the figures. Only if the end would put it on the live dot's ring does it
+    move inside the bar, at its root."""
+    for cw in (343, 288):
+        svg = _page(_board(_SCENE_0916, width=cw))["svg"]["html"]
+        bars, _, num = _traded(svg)
+        x, y, w, h = max(bars, key=lambda b: b[2])
+        assert num == [(pytest.approx(x - 4, abs=0.05), pytest.approx(y + h / 2 + 3.96, abs=0.1), "7,456")]
+    rule = _css_rule(".p-tradednum")
+    for need in ("font:60011px/1var(--sans)", "fill:var(--i)", "paint-order:stroke", "stroke:var(--s)", "text-anchor:end"):
+        assert need in rule, need
+    # the live quote sat on 1,530 at 12:20, mid-plot, where the count would go:
+    # it moves inside the bar at its root, off the ring
+    bars_ = [{"ts": "2026-09-10T%02d:%02d:00-04:00" % divmod(570 + i, 60), "close": 1530, "volume": 30000}
+             for i in range(0, 340, 5)]
+    got = _page(_board(_SCENE_0916, now="2026-09-10T15:10:00-04:00", bars=bars_,
+                       live={"ticker": "SNDK", "spot": 1530, "ts": "2026-09-10T12:20:00-04:00"}))
+    svg = got["svg"]["html"]
+    box = _chart_box(svg)
+    cx, cy = (float(v) for v in re.search(r'<circle class="p-halo" cx="([\d.]+)" cy="([\d.]+)"', svg).groups())
+    (nx, by, text), = _traded(svg)[2]
+    w = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+    tip = min(x for x, _, _, _ in _traded(svg)[0])
+    assert text == "7,456" and abs(cy - (by - 3.96)) < 3 and tip - 4 - w < cx + 9 and cx - 9 < tip - 4, \
+        "the ring no longer sits where the count would go; this proves nothing"
+    assert nx == pytest.approx(box["plot_l"] + box["plot_w"] - 4)
+    assert nx - w > cx + 9, "the count sits on the ring"
+
+
+@pytest.mark.parametrize("phone", [320, 360, 375, 412])
+def test_the_bars_and_their_count_stay_in_the_plot(phone):
+    """At every phone, 360 the owner's own: every bar inside the plot, and the
+    count inside it too, left of the gutter where every other number on the
+    chart is printed, and below the edge rows over the plot. Measured in WebKit
+    off the shipped face over every scan of 2026-09-15..17 at these widths: no
+    text touches another and nothing leaves the chart."""
+    cw = phone - 32                                  # the ladder bleeds into the card's padding
+    svg = _page(_board(_SCENE_0916, width=cw))["svg"]["html"]
+    box = _chart_box(svg)
+    top, height = (float(v) for v in re.search(r'<clipPath id="pc"><rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"', svg).groups())
+    plot_l, plot_r = box["plot_l"], box["plot_l"] + box["plot_w"]
+    bars, _, num = _traded(svg)
+    assert len(bars) == 7
+    for x, y, w, h in bars:
+        assert plot_l <= x and x + w <= plot_r + 0.05 and top <= y and y + h <= top + height + 0.05
+    (x, by, text), = num
+    w = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+    assert plot_l + 2 <= x - w and x <= plot_r - 2 < box["chip_x"]
+    edges = [float(y) for y in re.findall(r'<text class="p-edge[^"]*" x="[\d.]+" y="([\d.]+)"', svg)]
+    assert all(by - 0.72 * 11 > e + 0.2 * 11 for e in edges if e < top)
+
+
+def test_no_volume_for_today_draws_no_bars():
+    """Honest-absent, on the layer that would be easiest to fake. The day's
+    first book still carries the prior session's counts, and the builder then
+    withholds both volume columns on every row (09:30 and 09:32 on 2026-09-16
+    and 09-17, 09:32 to 09:42 on 09-15): no bar, no count, never a bar of
+    yesterday's. One row missing one column gets no bar, never a zero-length
+    stub. A strike that traded nothing is a measurement, and it keeps its end
+    at the plot's edge where a strike with no datum has nothing. The shade's
+    no-datum tests pinned the same law until it went."""
+    def drawn(scene):
+        return _traded(_page(_board(scene))["svg"]["html"])
+
+    carried = json.loads(json.dumps(_SCENE_0916))
+    for r in carried["strikes"]["rows"]:
+        del r["vol_calls"], r["vol_puts"]
+    assert drawn(carried) == ([], [], [])
+    none = json.loads(json.dumps(_SCENE_0916)); none.pop("strikes")
+    assert drawn(none) == ([], [], [])
+    # 1,530, the busiest, loses its puts: it has no bar, and 1,540 is the busiest drawn
+    one = json.loads(json.dumps(_SCENE_0916))
+    next(r for r in one["strikes"]["rows"] if r["strike"] == 1530)["vol_puts"] = None
+    bars, ends, num = drawn(one)
+    assert len(bars) == len(ends) == 6 and [t for _, _, t in num] == ["5,013"]
+    # 1,510 traded nothing: no fill, and its end still marks it
+    zero = json.loads(json.dumps(_SCENE_0916))
+    r1510 = next(r for r in zero["strikes"]["rows"] if r["strike"] == 1510)
+    r1510["vol_calls"] = r1510["vol_puts"] = 0
+    bars, ends, _ = drawn(zero)
+    svg = _page(_board(zero))["svg"]["html"]
+    plot_r = _chart_box(svg)["plot_l"] + _chart_box(svg)["plot_w"]
+    assert len(bars) == 7 and min(w for _, _, w, _ in bars) == 0
+    assert max(ends) == pytest.approx(plot_r - 0.6)
+    got = _glance("console.log(JSON.stringify([g.tradedBars(D, 1400, 1600, 20, 160), "
+                  "g.tradedBars({rows: []}, 1400, 1600, 20, 160), g.tradedBars(null, 1400, 1600, 20, 160)]));",
+                  carried["strikes"])
+    assert got == [None, None, None]
 
 
 def test_the_opening_half_hour_draws_both_its_own_edges():
@@ -1896,12 +2114,19 @@ def test_no_mark_on_the_plot_is_eaten_by_what_is_behind_it():
     strength, and what opacity carried moves to width, the one channel with no
     contrast cost — nearest or not for a wall, a runner's weight for the magnet
     — and never the share, which is not this rule's to say. The shade itself
-    went on 2026-09-18 (test_the_plot_draws_no_shade_behind_the_line), so what
-    is behind every mark is the card, and each one is measured on it."""
+    went on 2026-09-18 (test_the_plot_draws_no_shade_behind_the_line). What
+    sits behind the marks now is the card and, where contracts traded, a bar
+    of --band-edge, the darker of the two; every mark is measured on the bar.
+    The bars stay the quietest ink on the plot, and their ends, read against
+    the card beside them, clear a mark's 3:1."""
     root = re.search(r"(?ms)^:root\{(.*?)^\}", PHONE).group(1)
     tok = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
            for k, v in re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", root)}
-    behind = tok["--s"]
+    bar = tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(".p-traded")).group(1)]
+    assert _contrast(bar, tok["--s"]) < _contrast(tok["--path"], tok["--s"]), "a bar outranks the price line"
+    end = tok[re.search(r"stroke:var\((--[a-z-]+)\)", _css_rule(".p-tradedend")).group(1)]
+    assert _contrast(end, tok["--s"]) >= 3.0
+    behind = bar
     for sel in (".p-path", ".p-orb", ".p-wall.call", ".p-wall.put", ".p-wall.passed",
                 ".p-mag", ".p-magrun", ".p-prule", ".p-halo"):
         rule = _css_rule(sel)

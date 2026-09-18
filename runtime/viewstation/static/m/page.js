@@ -158,6 +158,9 @@ function state(){
     // and it looked exactly like a real price path.
     points: pathPoints(),
     sigma: ((scene.scale || {}).one_sigma_dollars),
+    // The strikes payload, not the ladder's legacy scene: the per-strike rows
+    // live there and nowhere else. An era that ships no rows draws no bars.
+    strikes: ((PAY.scene || {}).strikes) || null,
     vol: volumeBlocks(BARS, 5),
     openRange: ((((PAY.scene || {}).context || {}).ranges || {}).opening) || null,
   };
@@ -503,6 +506,30 @@ function paintLadder(st){
   // read was on the put wall's strike, already ruled and tagged, on 24 of 24
   // scans of 2026-09-16 (INK-SPEC.md 1.2).
   let g = '';
+  // WHERE CONTRACTS TRADED TODAY, as bars behind the price line, grown from the
+  // plot's right edge: they sit beside "now", which is what a count up to now
+  // is about, and the left edge is where a bar's end would hide under a word
+  // (103 of 314 ends there against 2 of 314 here, ALT-BEHIND-SPEC.md 3.2).
+  // First in the clip, so every other mark is on top of them.
+  const traded = tradedBars(st.strikes, WIN.lo, WIN.hi, plotTop, plotBottom);
+  if(traded){
+    for(const b of traded.bars){
+      const x = n1(PLOT_R - b.share * TRADED_FULL * PLOT_W), y = b.y - traded.h / 2;
+      g += '<rect class="p-traded" x="' + x + '" y="' + n1(y) + '" width="' + n1(PLOT_R - x)
+         + '" height="' + n1(traded.h) + '"/>';
+      // the end, where the length is read; kept inside the plot so a strike
+      // that traded nothing still shows a mark where an absent one shows none
+      const ex = n1(Math.min(+x + 0.6, PLOT_R - 0.6));
+      g += '<line class="p-tradedend" x1="' + ex + '" y1="' + n1(y) + '" x2="' + ex
+         + '" y2="' + n1(y + traded.h) + '"/>';
+    }
+  }
+  const orng = st.openRange;
+  if(orng && inWin(orng.high) && inWin(orng.low)){
+    for(const v of [orng.high, orng.low])
+      g += '<line class="p-orb" x1="' + PLOT_L + '" y1="' + n1(yFor(v)) + '" x2="' + PLOT_R
+         + '" y2="' + n1(yFor(v)) + '"/>';
+  }
   const lp = livePoint(LIVE);
   const pts = st.points;
   const tapeEnd = pts.length ? pts[pts.length-1].t : null;
@@ -533,8 +560,16 @@ function paintLadder(st){
   // Nothing rides on the line. A dot for each model call sat on it until
   // 2026-09-18, and 19 of the 22 on the 15:11 board of 09-16 were woken by
   // "price ran": the line itself. The reading below says when and why in words.
-  if(pts.length >= 2)
-    g += '<polyline class="p-path" points="' + pts.map(q => n1(xFor(q.t)) + ',' + n1(yFor(q.s))).join(' ') + '"/>';
+  //
+  // The line runs over a card-coloured edge 1px wider on each side. On the bare
+  // card it cannot be seen; where the line crosses a bar it cuts a channel, so
+  // the line is read against the card (5.00:1) and not the bar's fill (3.64:1,
+  // and 3.27:1 at a 2x screen's worst crossing, ALT-BEHIND-SPEC.md 4.2).
+  if(pts.length >= 2){
+    const line = pts.map(q => n1(xFor(q.t)) + ',' + n1(yFor(q.s))).join(' ');
+    g += '<polyline class="p-casing" points="' + line + '"/>';
+    g += '<polyline class="p-path" points="' + line + '"/>';
+  }
 
   // Detached, the dot is centred in its own gutter, clear of the break rule on
   // one side and the plot's right edge on the other. Clamped to PLOT_R-8 it sat
@@ -549,12 +584,6 @@ function paintLadder(st){
     else
       // a dash across six hours implies a continuity that does not exist
       g += '<line class="p-break" x1="' + n1(lx) + '" y1="' + plotTop + '" x2="' + n1(lx) + '" y2="' + n1(plotBottom) + '"/>';
-  }
-  const orng = st.openRange;
-  if(orng && inWin(orng.high) && inWin(orng.low)){
-    for(const v of [orng.high, orng.low])
-      g += '<line class="p-orb" x1="' + PLOT_L + '" y1="' + n1(yFor(v)) + '" x2="' + PLOT_R
-         + '" y2="' + n1(yFor(v)) + '"/>';
   }
   o += '<g clip-path="url(#pc)">' + g + '</g>';
 
@@ -610,6 +639,27 @@ function paintLadder(st){
     const k = Number(e.strike), y = yFor(k);
     o += '<path class="p-bar ' + (wallPassed(side, k, ref) ? 'passed' : side) + '" d="M' + PLOT_R + ',' + n1(y)
        + ' L' + (PLOT_R+5) + ',' + n1(y-5) + ' L' + (PLOT_R+5) + ',' + n1(y+5) + ' Z" style="fill-opacity:1"/>';
+  }
+
+  // ---- the count on the longest bar ---------------------------------------
+  // The bars' one number. Their scale is per scan, so a full-length bar was
+  // 7,456 contracts at 15:10 on 2026-09-16 and 3,264 at 11:01, and only this
+  // says which. It sits 4px past the bar's end on the card side, where a bar
+  // chart puts its value, and inside the bar at its root only if that would
+  // put it on the live dot's ring or off the plot. The busiest strike is
+  // usually one the chart already rules, so the count's card halo cuts that
+  // rule for its width: a rule or a dash on 167 of the 188 boards of 09-16.
+  if(traded){
+    const b = traded.bars.find(r => r.n === traded.most);
+    const s = gUsd(b.n, 0).replace('$',''), w = figW(s, 11, 600), by = b.y + 0.36 * 11;
+    const tip = PLOT_R - b.share * TRADED_FULL * PLOT_W;
+    const dot = !st.withdrawn && inWin(ref);
+    // the figures' ink runs 8px above the baseline and a comma 2.2 below it;
+    // the ring is 7 round the dot, and 2 more keeps them apart
+    const clear = xe => xe - w >= PLOT_L + 2 && xe <= PLOT_R - 2
+      && !(dot && xe > dotX - 9 && xe - w < dotX + 9 && by - 8 < priceY + 9 && by + 2.2 > priceY - 9);
+    const xe = [tip - 4, PLOT_R - 4].find(clear);
+    o += '<text class="p-tradednum" x="' + n1(xe != null ? xe : tip - 4) + '" y="' + n1(by) + '">' + s + '</text>';
   }
 
   // ---- tag rows, solved once for every member including the price chip ---

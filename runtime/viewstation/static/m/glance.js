@@ -613,6 +613,54 @@ function _wall(e, side, nearest){
           heldExact:e.unchanged_for_min!=null};
 }
 
+/* ---- where contracts traded today -------------------------------------- */
+
+// The busiest strike in view is this share of the plot's width and every other
+// bar is scaled to it, per scan, the way a volume profile scales to its busiest
+// row. Past 0.40 a bar buys little length for more of the day's price drawn
+// over it (the last hour on a bar 43.9% of the time at 0.40, 47.5% at 0.55),
+// and at the full width the bars stop being a background (ALT-BEHIND-SPEC.md
+// 3.3).
+const TRADED_FULL=0.40;
+// A bar is this share of the tightest strike pitch in view, never more than
+// 8px. The lane's fixed 8px left 0.25px between 1,540, 1,545 and 1,550 on a
+// 112px plot and the three read as one block; a share of the pitch keeps the
+// rest of it white whatever the plot's height or the window's span.
+const TRADED_PITCH=0.70, TRADED_H_MAX=8;
+
+function tradedBars(strikes, lo, hi, top, bottom){
+  // Contracts traded today at each strike in the window, calls and puts summed:
+  // one count a reader can say out loud, "1,530 traded 7,456 today". Not split
+  // by side: the two fills measured 1.028:1 apart, and a red-tinted bar under
+  // the red put wall reads as part of the wall.
+  //
+  // Honest-absent twice. A row missing either column gets no bar, never a
+  // zero-length stub. A book with neither column anywhere gets none at all:
+  // the builder withholds both while the day's first book still carries the
+  // prior session's counts (sndk_board's WITHHELD_* notes): the first two scans
+  // of 09-16 and 09-17, the first six (to 09:42) of 09-15.
+  const k=(bottom-top)/(hi-lo);
+  if(!(k>0)||!isFinite(k)) return null;
+  const seen=[];
+  for(const r of (((strikes||{}).rows)||[])){
+    const v=_fin(r&&r.strike), vc=_fin(r&&r.vol_calls), vp=_fin(r&&r.vol_puts);
+    if(v==null||vc==null||vp==null||v<lo||v>hi) continue;
+    seen.push({v, n:vc+vp, y:top+(hi-v)*k});
+  }
+  if(!seen.length) return null;
+  seen.sort((a,b)=>b.v-a.v);
+  let pitch=Infinity;
+  for(let i=1;i<seen.length;i++) pitch=Math.min(pitch, seen[i].y-seen[i-1].y);
+  const h=Math.min(TRADED_H_MAX, TRADED_PITCH*pitch);
+  // a bar that would cross the plot's edge is dropped, not clipped: a clipped
+  // bar's middle is no longer its strike's price
+  const bars=seen.filter(b=>b.y-h/2>=top&&b.y+h/2<=bottom);
+  if(!bars.length) return null;
+  const most=Math.max(...bars.map(b=>b.n));
+  for(const b of bars) b.share=most>0 ? b.n/most : 0;
+  return {h, most, bars};
+}
+
 /* ---- how busy each stretch was ----------------------------------------- */
 
 // A FIXED scale. Scaled to the day's own maximum, the opening block alone runs
@@ -949,7 +997,7 @@ if(typeof module!=='undefined'&&module.exports){
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
-                  activityRows, namedGone,
+                  tradedBars, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};

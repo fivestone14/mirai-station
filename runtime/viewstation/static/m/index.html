@@ -236,6 +236,17 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-break  {stroke:var(--band-edge);stroke-width:1}
 .p-orb    {stroke:var(--i-faint);stroke-width:1;stroke-dasharray:3 3;fill:none}
 .p-vol    {fill:var(--rule-soft)}
+/* Where contracts traded today, behind the price line. One solid fill for every
+   bar, so how much is the length and never the darkness: --band-edge is the
+   darkest surface every mark over it still clears 3:1 on (the path 3.64:1, the
+   walls 4.2). The end, where the length is read, is a --rule-soft tick, 3.31:1
+   on the card beside it. The casing is the card, 1px either side of the path's
+   1.8, drawn under it. */
+.p-traded {fill:var(--band-edge)}
+.p-tradedend{stroke:var(--rule-soft);stroke-width:1.2}
+.p-casing {fill:none;stroke:var(--s);stroke-width:3.8;stroke-linejoin:round;stroke-linecap:round}
+.p-tradednum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i);
+             paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
 /* Every rule over the plot is drawn at full strength, in its hue's -ink step:
    the -mark steps failed 3:1 over the shade that used to sit behind them. An
    opacity knock-down is the same failure by another route, so what opacity
