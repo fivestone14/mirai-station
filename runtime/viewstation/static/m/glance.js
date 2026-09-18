@@ -385,6 +385,67 @@ function layoutLabels(desired, gap, top, bottom){
   return out;
 }
 
+/* ---- the gutter's prices, and the ruler between them ------------------- */
+
+// Advances in the shipped face (pjs-153fc85b7029.woff2), in em, read off its
+// hmtx with the tnum substitution applied — which is what the chart draws,
+// since every chart label restates tabular-nums. A tabular figure is 0.600em
+// at every weight; the comma and the point are not tabular and grow with the
+// weight, so a price measured at one weight is wrong at another. Anything
+// else is charged a figure's width.
+const _FIG_EM=0.6;
+const _SEP_EM={500:{',':0.299, '.':0.317}, 600:{',':0.328, '.':0.347},
+               700:{',':0.357, '.':0.378}, 800:{',':0.386, '.':0.408}};
+
+function figW(s, px, weight){
+  // an unlisted weight is charged the heaviest, so a guess can only be wide
+  const sep=_SEP_EM[weight]||_SEP_EM[800];
+  let em=0;
+  for(const ch of String(s)) em+=(sep[ch]!=null)?sep[ch]:_FIG_EM;
+  return em*px;
+}
+
+// The finest ROUND step whose pitch two 10px numbers can sit at, so the ruler
+// counts in steps a reader already counts in, and a $10 board and a $7,000
+// board run the same arithmetic. 1, 2 and 5 only: a 2.5 step at whole dollars
+// prints 1,502.5 as "1,503", and on a $5 strike grid it never lands on a
+// strike anyway.
+const AXIS_NICE=[1, 2, 5, 10], AXIS_MIN_PX=18;
+// A rung this near a tag ROW is dropped. The chip is 18px tall, so 17 leaves
+// 4px of white between it and a grey number; and tag rows in a run sit 20px
+// apart, so a rung between two of them is at most 10px from one — the ruler
+// can never squeeze into a run of tags.
+const AXIS_CLEAR=17;
+
+function axisStep(span, plotH){
+  if(!(span>0)||!(plotH>0)) return null;
+  const want=AXIS_MIN_PX*span/plotH;
+  const dec=Math.pow(10, Math.floor(Math.log10(want)));
+  const step=AXIS_NICE.map(m=>m*dec).find(s=>s>=want*(1-1e-9));
+  // the step decides the decimals, so a 20-cent ruler cannot print 9 · 9 · 9
+  return {step, dp:Math.max(0, Math.ceil(-Math.log10(step)-1e-9))};
+}
+
+function priceTicks(lo, hi, top, bottom, tags){
+  // Every multiple of the step inside the window, on the plot's own y, minus
+  // any rung something better already names: a tag within half a step of it
+  // (the tag says it in its hue, at 12px, tied to its true height), a tag row
+  // closer than AXIS_CLEAR, or a glyph box that would leave the plot band. The
+  // ruler fills the silence between named prices and never adds to a crowd.
+  // `tags` is [{v, row}]: each tag's price and the row it was solved onto.
+  const a=axisStep(hi-lo, bottom-top);
+  if(!a) return [];
+  const k=(bottom-top)/(hi-lo), out=[];
+  const i1=Math.floor(hi/a.step+1e-9);
+  for(let i=Math.ceil(lo/a.step-1e-9); i<=i1; i++){
+    const v=i*a.step, y=top+(hi-v)*k;
+    if(y<top+4||y>bottom-4) continue;
+    if((tags||[]).some(t=>Math.abs(v-t.v)<a.step/2||Math.abs(y-t.row)<AXIS_CLEAR)) continue;
+    out.push({v, y, label:gUsd(v, a.dp).replace('$','')});
+  }
+  return out;
+}
+
 /* ---- the price line ---------------------------------------------------- */
 
 function barPoints(rows){
@@ -739,7 +800,8 @@ if(typeof module!=='undefined'&&module.exports){
                   bookAge, shownPrice, dayChange,
                   etTime, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
-                  layoutLabels, barPoints, tapePoints, livePoint, modelRead,
+                  layoutLabels, figW, axisStep, priceTicks,
+                  barPoints, tapePoints, livePoint, modelRead,
                   weightBands, readPoints, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks};
 }

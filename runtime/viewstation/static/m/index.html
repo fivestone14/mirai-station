@@ -205,7 +205,12 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .lab .r{margin-left:auto;color:var(--i-mute);white-space:nowrap}
 
 /* ============ D. LADDER ============ */
-.ladder{margin-top:10px}
+/* The ladder bleeds out of the card's padding on both sides: the card keeps
+   its width, every other card keeps its rail, and the plot gets the 32px it
+   was spending on margin. The -16px must equal .card's padding. Any more and
+   the chart leaves the card for the ground, where the --s halos and rings on
+   it would paint a colour no longer behind them. */
+.ladder{margin:10px -16px 0}
 /* Author CSS beats a presentational attribute, so width:100% here overrode the
    width JS sets — and the "CHART TOO NARROW" fallback then rendered at 100% of
    the container that was too narrow to begin with. At rawW 0, which is the
@@ -218,8 +223,8 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 /* Every chart label restates tabular figures AFTER its font shorthand, because
    the shorthand resets font-variant-numeric and the tabular-nums on <body>
    never reached the chart. Proportional, the chip's "1,517" drew 28.04px wide
-   and "4,000" 37.62px; tabular, every four-digit price is 33.08px, which is
-   what the 56px gutter and the 46px chip are sized for. */
+   and "4,000" 37.62px; tabular, every four-digit price is 33.08px, and figW
+   in glance.js, which sizes the gutter, charges exactly that. */
 .p-shade  {fill:var(--i)}
 .p-path   {fill:none;stroke:var(--path);stroke-width:1.8;
            stroke-linejoin:round;stroke-linecap:round}
@@ -227,44 +232,56 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-break  {stroke:var(--band-edge);stroke-width:1}
 .p-orb    {stroke:var(--i-faint);stroke-width:1;stroke-dasharray:3 3;fill:none}
 .p-read   {fill:var(--i-body)}
-.p-vol    {fill:var(--path);fill-opacity:.45}
+.p-vol    {fill:var(--rule-soft)}
+/* Every rule that crosses the shade is drawn at full strength, in its hue's
+   -ink step: the -mark steps fail 3:1 over bands from 0.05 to 0.12, and the
+   lightest band drawn is 0.08. An opacity knock-down is the same failure by
+   another route, so what opacity carried — nearest or not, a runner's weight,
+   the lead tag — is carried by width and weight. See SHADE_CEIL in page.js. */
 .p-wall   {stroke-linecap:butt}
-.p-wall.call{stroke:var(--call-mark)} .p-wall.put{stroke:var(--put-mark)}
-/* a wall price has already passed since the book was read: its weight stays,
+.p-wall.call{stroke:var(--call-ink)} .p-wall.put{stroke:var(--put-ink)}
+/* a wall price has already passed since the book was read: its width stays,
    its side's hue goes — see wallPassed in glance.js */
-.p-wall.passed{stroke:var(--rule-soft)}
+.p-wall.passed{stroke:var(--i-mute)}
 /* the magnet is a LONG DASH as well as amber. On a light ground hue alone is
    not enough to separate five 1-3px lines, and it is the worst channel for a
    red-green deficient reader. Position, dash and weight carry it redundantly. */
-.p-mag    {stroke:var(--mag-mark);stroke-width:1.8;stroke-dasharray:6 3}
-.p-magrun {stroke:var(--mag-mark);stroke-width:1.3;stroke-dasharray:4 3}
-.p-prule  {stroke:var(--px-mark);stroke-opacity:.30;stroke-width:1}
+.p-mag    {stroke:var(--mag-ink);stroke-width:2.2;stroke-dasharray:6 3}
+.p-magrun {stroke:var(--mag-ink);stroke-dasharray:4 3}
+.p-prule  {stroke:var(--px-ink);stroke-width:1;stroke-dasharray:2 3}
 .p-dot    {fill:var(--px-mark);stroke:var(--s);stroke-width:2}
-.p-halo   {fill:none;stroke:var(--px-mark);stroke-opacity:.30;stroke-width:1.2}
-.p-brk    {fill:none;stroke:var(--path);stroke-opacity:.55;stroke-width:1.5;stroke-linecap:butt}
-.p-chip   {fill:var(--px-mark)}
+.p-halo   {fill:none;stroke:var(--px-ink);stroke-width:1}
+.p-brk    {fill:none;stroke:var(--path);stroke-width:1.5;stroke-linecap:butt}
+/* --px-ink: the fill is the ground for the chart's most-read number, and
+   --px-mark under it measured 3.87:1 */
+.p-chip   {fill:var(--px-ink)}
 .p-chiptx {fill:var(--s);font:700 12px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end}
-.p-tie    {fill:none;stroke:var(--band-edge);stroke-width:.9}
+.p-tie    {fill:none;stroke:var(--rule-soft);stroke-width:1}
 .p-bar    {fill-opacity:.9}
 .p-bar.call{fill:var(--call-mark)} .p-bar.put{fill:var(--put-mark)} .p-bar.passed{fill:var(--rule-soft)}
 .p-clip   {fill:var(--i-mute)}
 .p-diamond{fill:var(--mag-mark)}
-.p-tag    {font:700 12px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill-opacity:.9}
-.p-tag.lead{fill-opacity:1}
+/* the nearest wall's tag is HEAVIER, not more opaque: see .p-edge below */
+.p-tag    {font:600 12px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end}
+.p-tag.lead{font-weight:800}
 .p-tag.call{fill:var(--call-ink)} .p-tag.put{fill:var(--put-ink)}
 .p-tag.mag {fill:var(--mag-ink)}  .p-tag.passed{fill:var(--i-mute)}
 /* the halo punches the word through whatever it crosses; it strokes the CARD
    colour now, not the old dark ground */
 .p-word    {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;
             fill:var(--i-mute);paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
-.p-word.dim{fill:var(--i-faint)}
+.p-word.dim{fill:var(--i-mute)}
 /* The markers the card NAMES are heavier as well as darker. Both were 700 and the
    only difference was fill — which makes the distinction contrast-only, and
    this file's own law (see the ink ramp) is that subordination is by SIZE or
    weight, never by contrast, because a low-contrast grey outdoors means gone. */
 .p-edge    {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute)}
 .p-edge.lead{font-weight:800;fill:var(--i)}
-.p-axis    {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;fill:var(--i-faint)}
+.p-axis    {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;fill:var(--i-mute)}
+/* the price ruler: the size and weight of .p-axis, the time ruler it is the
+   other half of, and no tracking, because it is only figures */
+.p-scale   {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute)}
+.p-stick   {stroke:var(--rule-soft);stroke-width:1}
 
 /* ============ E. THE READING — the one filled card ============ */
 .today{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
@@ -320,9 +337,9 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .ac-px::before{content:"";position:absolute;left:88.9px;right:84.1px;top:14.5px;
                height:1px;background:var(--px-mark)}
 /* --px-ink, not --px-mark: this fill is the background for reversed 13px/700
-   text, which needs 4.5:1, and --px-mark measures 3.87:1 on this card. A
-   deliberate divergence from .p-chip, and it follows the token contract :root
-   already states — "-ink is text, -mark is a stroke". */
+   text, which needs 4.5:1, and --px-mark measures 3.87:1 on this card. The
+   chart's .p-chip is filled the same way for the same reason; both follow the
+   token contract :root already states — "-ink is text, -mark is a stroke". */
 .ac-chip{position:absolute;left:0;top:5px;height:20px;box-sizing:border-box;padding:0 11px;
          display:flex;align-items:center;border-radius:4px;background:var(--px-ink);
          color:var(--s);font:700 13px/20px var(--sans)}

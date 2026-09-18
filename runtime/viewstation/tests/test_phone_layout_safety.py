@@ -162,6 +162,29 @@ def test_the_chart_keeps_its_tabular_figures():
         assert need in checked, f"{need} no longer sets its own font; this proves nothing"
 
 
+def test_the_chart_bleeds_to_the_cards_edge_and_no_further():
+    """The ladder takes back the card's side padding (2026-09-18), which is 32
+    of the 39px the plot gained. By exactly the padding: any more and the chart
+    leaves the card for the ground, where the card-coloured halo under an
+    in-plot word and the ring round the price dot would paint a colour that is
+    no longer behind them — and the card and the ground are 1.17:1 apart, so
+    nothing would show where the card had ended.
+
+    The harness supplies the ladder's width, so it cannot see what width a real
+    phone gives it. The smallest phone the page is built for is 320px, and there
+    the bled ladder has to clear the page's own too-narrow floor."""
+    card, ladder, body = _rule(".card"), _rule(".ladder"), _rule("body")
+    assert card and ladder and body
+    pad = int(re.search(r"padding:(\d+)px", card).group(1))
+    m = re.search(r"margin:(\d+)px -(\d+)px 0\b", ladder)
+    assert m, "the ladder no longer bleeds out of the card"
+    assert int(m.group(2)) == pad, "the ladder's bleed and the card's padding disagree"
+    side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", body).group(1))
+    floor = int(re.search(r"rawW\s*<\s*(\d+)", PAGE).group(1))
+    assert 320 - 2 * side - 2 * pad + 2 * int(m.group(2)) >= floor, \
+        "a 320px phone would say CHART TOO NARROW"
+
+
 def test_the_tab_bar_is_measured_rather_than_asserted():
     """--tab-h shipped at 64px against a bar that renders 74, so the body
     reserved ten pixels too few for a position:fixed bar and the footer drew

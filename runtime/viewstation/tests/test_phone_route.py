@@ -406,10 +406,11 @@ def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
     assert most[:2] == ("lv mag", "Most contracts")
     assert most[2] == {"lv-k": ("1,700", None), "lv-n": ("9,000 contracts", None)}, "the most-contracts row grew a bar"
     svg = page["svg"]["html"]
-    # on the chart both walls draw the same hairline whatever their share — the
-    # one with 15% and the one with none at all
+    # on the chart both walls draw the same rule whatever their share — the one
+    # with 15% and the one with none at all. 2.0, not 1.6, since 2026-09-18:
+    # both are NEAREST walls, which is all a wall rule's width may say
     assert sorted(re.findall(r'<line class="p-wall (\w+)"[^>]*stroke-width:([\d.]+)', svg)) == \
-        [("call", "1.6"), ("put", "1.6")]
+        [("call", "2.0"), ("put", "2.0")]
     assert re.findall(r'<rect class="p-bar (\w+)"', svg) == []
 
 
@@ -484,9 +485,11 @@ def test_the_magnet_never_shares_a_gauge_with_anything_else():
     # the two walls keep the plot-edge arrow that points at them, which names a
     # side and a position and carries no quantity at all
     assert sorted(re.findall(r'<path class="p-bar (\w+)"', svg)) == ["call", "put"]
-    # and every wall rule is the same weight, whatever its share
+    # and every wall rule is the same weight, whatever its share. Both are
+    # nearest here, so both 2.0; a second wall is run in
+    # test_no_mark_on_the_plot_is_eaten_by_the_shade_behind_it
     widths = set(re.findall(r'<line class="p-wall \w+"[^>]*stroke-width:([\d.]+)', svg))
-    assert widths == {"1.6"}, "a wall rule is drawing its share as thickness again"
+    assert widths == {"2.0"}, "a wall rule is drawing its share as thickness again"
 
 def test_the_magnet_list_is_read_as_dicts(tmp_path, monkeypatch):
     """sr-7 reshaped magnet.top_strikes from [strike, share] pairs into
@@ -812,7 +815,9 @@ def test_a_passed_wall_is_judged_against_the_price_on_screen():
     assert rows == [("lv call", "Call wall")] and marks == ["call"] * 3
     # and passed is neutral wherever it is drawn
     assert ".lv.passed .lv-k{color:var(--i-mute)}" in PHONE
-    assert ".p-wall.passed{stroke:var(--rule-soft)}" in PHONE
+    # --i-mute, not --rule-soft, since 2026-09-18: the rule crosses the shade,
+    # and --rule-soft fails 3:1 over any band darker than 0.05
+    assert ".p-wall.passed{stroke:var(--i-mute)}" in PHONE
     assert ".p-tag.passed{fill:var(--i-mute)}" in PHONE
     assert ".p-bar.passed{fill:var(--rule-soft)}" in PHONE
 
@@ -1504,8 +1509,11 @@ def test_every_strike_the_scan_measured_shows_its_weight():
     # 1,600 is outside the window, the other six are in it
     assert len(shades) == 6
     # the ends are pinned: the heaviest strike on the board takes the ceiling and
-    # the lightest takes the floor, which is what keeps a measured strike visible
-    assert max(shades) == pytest.approx(0.30) and min(shades) == pytest.approx(0.08)
+    # the lightest takes the floor, which is what keeps a measured strike visible.
+    # The ceiling is 0.22, not 0.30, since 2026-09-18: the darkest band the price
+    # path still clears 3:1 over, which
+    # test_no_mark_on_the_plot_is_eaten_by_the_shade_behind_it holds
+    assert max(shades) == pytest.approx(0.22) and min(shades) == pytest.approx(0.08)
     # and nothing is drawn so faint that a measurement reads as an absence
     assert all(v >= 0.08 for v in shades)
     # a strike the scan did not measure gets nothing, not a faint band
@@ -1561,6 +1569,228 @@ def test_the_volume_ribbon_is_whole_blocks_on_one_scale():
     # the busy block is past the scale, capped, and the cap is marked
     assert blocks[0] == "10.0" and float(blocks[1]) < 10.0
     assert len(re.findall(r'<rect class="p-clip"', svg)) == 1
+
+
+# --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------
+# On a 375px phone the chart was 311px wide and its plot 247: 64 pixels went on
+# padding before the chart began and 56 on a gutter sized for one board. Every
+# mark over the shade was knocked down until the shade ate it. And the gutter
+# named two prices on a board with seven round ones in view.
+
+def _css_rule(sel):
+    """The declaration block for exactly `sel`, wherever on its line the rule
+    sits — several chart rules share a line — with comments and spaces out."""
+    css = re.sub(r"(?s)/\*.*?\*/", "", PHONE)
+    m = re.search(r"(?<![\w.-])" + re.escape(sel) + r"\s*\{([^}]*)\}", css)
+    return re.sub(r"\s+", "", m.group(1)) if m else None
+
+
+def _contrast(a, b):
+    """WCAG contrast of two sRGB triples, 0-255."""
+    def lum(c):
+        c = [v / 255 for v in c]
+        c = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _chart_box(svg):
+    clip = re.search(r'<clipPath id="pc"><rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)"', svg)
+    chip = re.search(r'<rect class="p-chip" x="([\d.]+)"[^>]*width="([\d.]+)"', svg)
+    return {"plot_l": float(clip.group(1)), "plot_w": float(clip.group(2)),
+            "chip_x": float(chip.group(1)), "chip_w": float(chip.group(2)),
+            "num_x": float(re.search(r'<text class="p-chiptx" x="([\d.]+)"', svg).group(1)),
+            "num": re.search(r'<text class="p-chiptx"[^>]*>([^<]*)<', svg).group(1),
+            "right": {float(x) for x in re.findall(r'<text class="p-(?:tag|scale|edge)[^"]*" x="([\d.]+)"', svg)}}
+
+
+def test_the_plot_takes_the_width_the_margins_were_spending():
+    """Three changes, all margin and no proportion, so the gain is the same +39px
+    at every phone. The ladder bleeds out of the card's 16px padding (+32), the
+    dead margin left of the plot goes from 8 to 4, and the gutter is exactly as
+    wide as the widest number it holds — 53 on a $1,500 board, not a literal 56.
+    On the 2026-09-16 board the plot goes from 247 to 286px on a 375px phone and
+    from 192 to 231 on a 320px one.
+
+    The gutter follows the NUMBERS, not the phone: a $9 board stops paying for
+    a $1,500 board's figures, and a $12,345 board gets the room its extra digit
+    needs rather than printing into the plot."""
+    for cw, plot in ((343, 286), (288, 231)):          # the ladder on a 375 and a 320 phone
+        b = _chart_box(_page(_board(_SHADE_SCENE, width=cw))["svg"]["html"])
+        assert b["plot_l"] == 4 and b["plot_w"] == plot
+        # the chip spans the gutter, from the mark column to the tags' edge,
+        # and every tag, rung and edge name ends on that edge
+        assert b["chip_x"] == 4 + plot + 6 and b["chip_x"] + b["chip_w"] == cw - 3
+        assert b["right"] == {cw - 3} and b["num_x"] == cw - 3 - 5
+
+    def fits(b):
+        # the chip's number keeps 5px either side, measured off the shipped face
+        w = _glance("console.log(JSON.stringify(g.figW(D, 12, 700)));", b["num"])
+        return b["chip_w"] - 5 - w >= 5
+
+    assert fits(b)
+    for spot, sigma, walls, gutter in ((9.4, 0.4, (9.5, 9.0), 43), (12345, 200, (12400, 12300), 60)):
+        scene = {"price": {"live_spot": spot}, "scale": {"one_sigma_dollars": sigma},
+                 "walls": {"call": [{"strike": walls[0]}], "put": [{"strike": walls[1]}]}}
+        b = _chart_box(_page(_board(scene, width=343))["svg"]["html"])
+        assert b["plot_w"] == 343 - 4 - gutter, b
+        assert fits(b), b
+
+
+def test_the_price_ruler_names_the_silence_between_the_tags():
+    """The gutter named two prices on the 2026-09-16 board, the 1,517 chip and
+    the 1,500 wall, beside a price path drawn against a scale nobody could read.
+    The gutter is already a column of prices, so the round ones go into it in
+    small grey between the named ones — and never into a crowd: a rung is
+    dropped where a tag already names its height, or where it would sit within
+    17px of a tag's row. The magnet runner at 1,530 drew an amber rule nothing
+    on the chart named; the ruler names it without adding a row to the tags."""
+    def ruler(scene, cw=343):
+        svg = _page(_board(scene, width=cw))["svg"]["html"]
+        return (svg, re.findall(r'<text class="p-scale" x="([\d.]+)" y="([\d.]+)">([^<]*)</text>', svg),
+                re.findall(r'<line class="p-stick" x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)"', svg))
+
+    svg, labels, ticks = ruler(_SHADE_SCENE)
+    # 1,500 is the wall's own tag, 1,520 the chip's rung, 1,510 crowds the chip
+    assert [t for _, _, t in labels] == ["1,530", "1,540", "1,550", "1,560"]
+    # each carries a tick in the mark column, at its own height
+    assert {(x1, x2) for x1, _, x2 in ticks} == {("296", "300")}
+    assert [float(y) for _, y, _ in ticks] == [pytest.approx(float(y) - 3.5, abs=0.11) for _, y, _ in labels]
+    # the scale is the board's, not the phone's: the same rungs at the same heights at 320
+    assert [(y, t) for _, y, t in ruler(_SHADE_SCENE, 288)[1]] == [(y, t) for _, y, t in labels]
+
+    # seven tags, the most the solver keeps: no rung lands inside the stack
+    crowded = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
+               "magnet": {"top_strikes": [{"strike": 1712, "share_of_book_gamma_pp": 30}]},
+               "walls": {"call": [{"strike": 1740, "cluster_share_of_book_gamma_pp": 12},
+                                  {"strike": 1760, "cluster_share_of_book_gamma_pp": 5}],
+                         "put": [{"strike": 1660, "cluster_share_of_book_gamma_pp": 10},
+                                 {"strike": 1640, "cluster_share_of_book_gamma_pp": 4}],
+                         "call_heaviest_wall_behind_the_ladder": {"strike": 1780, "cluster_share_of_book_gamma_pp": 40},
+                         "put_heaviest_wall_behind_the_ladder": {"strike": 1620, "cluster_share_of_book_gamma_pp": 30}}}
+    for scene in (_SHADE_SCENE, crowded):
+        svg, labels, _ = ruler(scene)
+        rows = [float(y) - 4.5 for y in re.findall(r'<text class="p-(?:tag|chiptx)[^"]*" x="[\d.]+" y="([\d.]+)"', svg)]
+        assert len(rows) >= 2
+        for _, y, t in labels:
+            # 17, less the 0.1px both heights are rounded to on the way out
+            assert min(abs(float(y) - 3.5 - r) for r in rows) >= 16.9, f"{t} crowds a tag"
+    # no price, no window, no scale
+    assert "p-scale" not in _page(_board({"price": {"live_spot": 1700}}))["svg"]["html"]
+
+
+def test_the_ruler_counts_in_round_steps_and_prints_them_exactly():
+    """The finest round step — 1, 2 or 5 times a power of ten — whose pitch two
+    10px numbers can sit at, so the reader counts in something they already
+    count in, on any board. The step decides the decimals, so every label is the
+    exact price of its rung and no two repeat. The spans are real: SNDK's
+    2026-09-16 board, its $37.9 and $16.2 boards of 09-15, SPX on 2026-06-25 at
+    4.8 times the price, and the arithmetic of a $10 board.
+
+    2.5 is not a step. At whole dollars it prints 1,502.5 as "1,503", a label
+    fifty cents wrong, and on a $5 strike grid it never lands on a strike."""
+    cases = [[67.85, 144, 1496.37], [37.9, 144, 1600.1], [16.2, 144, 1510.3],
+             [39.70, 131, 7341.77], [1.20, 144, 9.03], [0.35, 144, 9.61]]
+    got = _glance("""console.log(JSON.stringify({
+        runs: D.map(([span, h, lo]) => [g.axisStep(span, h), g.priceTicks(lo, lo + span, 0, h, [])]),
+        none: [g.axisStep(0, 144), g.priceTicks(5, 5, 0, 144, [])]}));""", cases)
+    assert [(a["step"], a["dp"]) for a, _ in got["runs"]] == \
+        [(10, 0), (5, 0), (5, 0), (10, 0), (0.2, 1), (0.05, 2)]
+    for _, ticks in got["runs"]:
+        labels = [t["label"] for t in ticks]
+        assert len(labels) >= 3 and len(set(labels)) == len(labels), labels
+        for t in ticks:
+            assert float(t["label"].replace(",", "")) == pytest.approx(t["v"], abs=1e-9), t
+        ys = [t["y"] for t in ticks]
+        assert all(abs(b - a) >= 18 for a, b in zip(ys, ys[1:])), labels
+    # no span is no step and no rungs, never a guess at one
+    assert got["none"] == [None, []]
+
+
+def test_no_mark_on_the_plot_is_eaten_by_the_shade_behind_it():
+    """The palette passed and the marks did not. Every stroke over the plot was
+    drawn in a token that clears its floor on the card and was then knocked down,
+    by stroke-opacity or by the 0.30 wash of the heaviest shade band beneath it,
+    until it did not: the price rule measured 1.24:1 where a stroke needs 3, a
+    second wall 1.49, the lightest magnet runner 1.18. The plot's own backdrop
+    was eating the marks it exists to sit under.
+
+    So the shade's ceiling is SOLVED against the lightest line that has to cross
+    it, the price path; every rule over the shade is drawn in its hue's -ink
+    step at full strength; and what opacity carried moves to width, the one
+    channel with no contrast cost — nearest or not for a wall, a runner's weight
+    for the magnet — and never the share, which is not this rule's to say."""
+    root = re.search(r"(?ms)^:root\{(.*?)^\}", PHONE).group(1)
+    tok = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
+           for k, v in re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", root)}
+    ceil = float(re.search(r"SHADE_CEIL\s*=\s*([\d.]+)", PAGE).group(1))
+    wash = tuple(i * ceil + s * (1 - ceil) for i, s in zip(tok["--i"], tok["--s"]))
+    for sel in (".p-path", ".p-orb", ".p-wall.call", ".p-wall.put", ".p-wall.passed",
+                ".p-mag", ".p-magrun", ".p-prule", ".p-halo", ".p-brk"):
+        rule = _css_rule(sel)
+        assert rule is not None, f"{sel} has no rule"
+        assert "opacity" not in rule, f"{sel} is knocked down by opacity"
+        ratio = _contrast(tok[re.search(r"stroke:var\((--[a-z-]+)\)", rule).group(1)], wash)
+        assert ratio >= 3.0, f"{sel} measures {ratio:.2f}:1 over the darkest shade"
+    # the chart's most-read number is text on its own chip, and text needs 4.5
+    fill = lambda sel: tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
+    assert _contrast(fill(".p-chiptx"), fill(".p-chip")) >= 4.5
+
+    # the second call wall is the heaviest pile on the board and still draws
+    # thinner than the nearest one, and the heavier runner draws wider
+    scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
+             "magnet": {"top_strikes": [{"strike": 1712, "share_of_book_gamma_pp": 30},
+                                        {"strike": 1690, "share_of_book_gamma_pp": 24},
+                                        {"strike": 1672, "share_of_book_gamma_pp": 6}]},
+             "walls": {"call": [{"strike": 1740, "cluster_share_of_book_gamma_pp": 8},
+                                {"strike": 1760, "cluster_share_of_book_gamma_pp": 30}],
+                       "put": [{"strike": 1660, "cluster_share_of_book_gamma_pp": 10}]}}
+    svg = _page(_board(scene))["svg"]["html"]
+    assert "stroke-opacity" not in svg
+    walls = sorted((float(y), w) for y, w in
+                   re.findall(r'<line class="p-wall \w+"[^>]*y1="([\d.]+)"[^>]*stroke-width:([\d.]+)', svg))
+    assert [w for _, w in walls] == ["1.2", "2.0", "2.0"]          # 1,760 then 1,740 and 1,660
+    runners = sorted((float(y), float(w)) for y, w in
+                     re.findall(r'<line class="p-magrun"[^>]*y1="([\d.]+)"[^>]*stroke-width:([\d.]+)', svg))
+    assert len(runners) == 2 and runners[0][1] > runners[1][1]    # 1,690 above 1,672
+    assert all(1.0 <= w <= 1.9 for _, w in runners)
+    # and the lead is wider than any runner can be, from its own rule
+    assert "style" not in re.search(r'<line class="p-mag"[^>]*>', svg).group(0)
+    assert "stroke-width:2.2" in _css_rule(".p-mag")
+
+
+def test_the_bled_chart_keeps_its_ink_off_the_cards_corners():
+    """The ladder runs to within 2px of the card's edge now, so the card's
+    rounded corners are the ink's neighbours. The lowest ink on the chart is the
+    axis feet, and it must sit above where the bottom corners start to curve —
+    3px above on the shipped numbers — or a clock face paints across the
+    rounding and out onto the ground. Nothing is drawn outside the chart's own
+    box at either phone width."""
+    card = _block(".card{").replace(" ", "")
+    pad = int(re.search(r"padding:(\d+)px", card).group(1))
+    radius = int(re.search(r"border-radius:(\d+)px", card).group(1))
+    # the 2026-09-16 board: a refused wall named under the plot, the call side
+    # measured empty, a tape for the feet to name, and a scan old enough to say so
+    scene = dict(_SHADE_SCENE, walls={"call_side_has_no_wall": True,
+                                      "put": [{"strike": 1500, "cluster_share_of_book_gamma_pp": 20.44},
+                                              {"strike": 1450, "cluster_share_of_book_gamma_pp": 22.3}]})
+    bars = [{"ts": "2026-09-10T%02d:%02d:00-04:00" % divmod(570 + i, 60), "close": 1560 - i * 0.6,
+             "volume": 30000} for i in range(70)]
+    for cw in (343, 288):
+        svg = _page(_board(scene, payload={"row_ts": "2026-09-10T10:40:00-04:00"},
+                           bars=bars, width=cw))["svg"]
+        html, h = svg["html"], float(svg["attrs"]["height"])
+        texts = re.findall(r'<text class="([^"]*)" x="[\d.]+" y="([\d.]+)"[^>]*>([^<]*)<', html)
+        assert {t for c, _, t in texts if c == "p-axis"} == {"09:30", "SCAN 10:40"}
+        assert "NO CALL WALL ABOVE" in html and "▼ 1,450" in html
+        # a comma descends a fifth of an em below the baseline; nothing else here does
+        lowest = max(float(y) + (0.2 * 12 if "," in t else 0) for _, y, t in texts)
+        assert (h - lowest) + pad > radius, f"the lowest ink enters the card's corner at {cw}"
+        xs = [float(x) for x in re.findall(r'\b(?:x|x1|x2|cx)="(-?[\d.]+)"', html)]
+        for pts in re.findall(r'\b(?:d|points)="([^"]*)"', html):
+            xs += [float(x) for x in re.findall(r'(-?[\d.]+),-?[\d.]+', pts)]
+        assert min(xs) >= 0 and max(xs) <= cw, f"ink leaves the chart's box at {cw}"
 
 
 # --- where the activity is, as a map around price --------------------------

@@ -50,11 +50,14 @@ function sizeLadder(){
   // below it grows to whatever the model wrote. A paragraph that can be six
   // lines or thirteen could never have lived in that column.
   //
-  // 196. SVGH is LADDER_H-1, and PAD_T/PAD_B are 12 and 18 plus 13 per edge
-  // marker, so the plot is 165px with no edge markers, 152 with one, 139 with
-  // two on one side. That is the range in which the wall rules stay separable
-  // and the price path keeps its shape; below roughly 130 the label solver
-  // starts displacing a label further than the level it names.
+  // 196. SVGH is LADDER_H-1, and PAD_T/PAD_B are 9 and 29 plus 13 per edge
+  // marker (the 29 holds the volume ribbon and the axis feet), so the plot is
+  // 157px with no edge markers, 144 with one, 131 with two on one side. That
+  // is the range in which the wall rules stay separable and the price path
+  // keeps its shape; below roughly 130 the label solver starts displacing a
+  // label further than the level it names. The height was budgeted and the
+  // width was not, so when the chart needed room it came sideways — the bleed
+  // and the derived gutter in paintLadder — and this constant did not move.
   LADDER_H = 196;
 }
 
@@ -326,8 +329,12 @@ function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 // board. The FLOOR is what makes a measured strike visible at all: under it a
 // band on this ground is not legible, and a measurement drawn as nothing is the
 // one thing this chart may not do. The CEILING is what stops the field reading
-// as a wall of ink behind the price line it exists to sit under.
-const SHADE_FLOOR = 0.08, SHADE_CEIL = 0.30;
+// as a wall of ink behind the price line it exists to sit under, and it is
+// solved rather than chosen: 0.22 is the darkest band over which the lightest
+// line that has to cross it — the price path, in --path — still clears 3:1
+// (3.15). At 0.30 the path measured 2.61, the nearest wall 1.78 and the price
+// rule 1.24.
+const SHADE_FLOOR = 0.08, SHADE_CEIL = 0.22;
 
 function paintLadder(st){
   const svg = $('svg');
@@ -340,7 +347,9 @@ function paintLadder(st){
   // or a parent with display:none. The old guard measured HEIGHT and would not
   // have seen it. Under 240 there is no room for the plot plus the label
   // gutter, and drawing anyway produces a garbled chart rather than an empty
-  // one. rawW of 0 is the not-laid-out case and must not draw either.
+  // one. rawW of 0 is the not-laid-out case and must not draw either. rawW is
+  // the card's whole width since the ladder bled into its padding (.ladder),
+  // so this trips at a 272px phone, and at 240 the plot is still ~183px wide.
   const SVGH = LADDER_H - 1;
   if(!isFinite(rawW) || rawW < 240){
     svg.setAttribute('width', 240);
@@ -359,8 +368,6 @@ function paintLadder(st){
   svg.setAttribute('viewBox', '0 0 ' + CW + ' ' + SVGH);
 
   const sc = st.scene;
-  const PLOT_R = CW - 56, PLOT_L = 8, PLOT_W = PLOT_R - PLOT_L;
-  const MARK_L = PLOT_R + 6, TAG_R = CW - 4;
   // The live quote is a continuation of the tape only inside this gap; past it
   // it is a separate observation. One constant, used by BOTH the reach/break
   // rule and the x-domain, because they are the same judgement.
@@ -417,6 +424,21 @@ function paintLadder(st){
   const span = WIN.hi - WIN.lo;
   if(!(span > 0)){ svg.innerHTML = '<text class="p-word" x="11" y="34">NO PRICE MEASURED</text>'; return; }
   const inWin = v => v != null && isFinite(v) && v >= WIN.lo && v <= WIN.hi;
+
+  // ---- the gutter, as wide as the widest number it holds ----------------
+  // The chip and the level tags sit right-aligned at TAG_R, and every one of
+  // them is a price inside the window, so pricing the window's two ends prices
+  // them all — and the gutter moves only when the window does. The chip keeps
+  // 5px either side of its number; a tag at its heaviest weight clears the 5px
+  // diamond at MARK_L by 4. It was a literal 56: a $1,500 board's number, which
+  // a $9 board paid in full to print a 7px one.
+  const ends = [WIN.lo, WIN.hi].map(v => gUsd(v, 0).replace('$',''));
+  const widest = (px, weight) => Math.max(...ends.map(s => figW(s, px, weight)));
+  const CHIP_W = Math.max(34, Math.ceil(widest(12, 700)) + 10, 5 + 4 + Math.ceil(widest(12, 800)));
+  // PLOT_L 4 rather than 8 now the ladder bleeds to the card's edge: still an
+  // inset, not a clipped edge
+  const PLOT_L = 4, PLOT_R = CW - (6 + CHIP_W + 3), PLOT_W = PLOT_R - PLOT_L;
+  const MARK_L = PLOT_R + 6, TAG_R = CW - 3;
 
   const wc = (sc.walls||{}).call || [], wp = (sc.walls||{}).put || [];
   const mag = (sc.magnet||{}).top_strikes;
@@ -575,7 +597,9 @@ function paintLadder(st){
     if(cross) continue;
     const a = side === 'call' ? plotTop : priceY, b = side === 'call' ? priceY : plotBottom;
     if(!(b > a)) continue;
-    o += '<path class="p-brk" d="M9,' + n1(a) + ' L3,' + n1(a) + ' L3,' + n1(b) + ' L9,' + n1(b) + '"/>';
+    const spine = PLOT_L - 2, tip = PLOT_L + 2;   // straddling the plot's left edge
+    o += '<path class="p-brk" d="M' + tip + ',' + n1(a) + ' L' + spine + ',' + n1(a)
+       + ' L' + spine + ',' + n1(b) + ' L' + tip + ',' + n1(b) + '"/>';
     if((b - a) >= 34){
       const by = clearRow((a + b) / 2, a, b, ruleYs);
       if(by == null) continue;   // nowhere clear: the bracket alone states the
@@ -584,7 +608,7 @@ function paintLadder(st){
       // CALL-SIGNED cluster above spot. A wrongly-signed pile there is dropped
       // from both pools and the flag still fires — true on 79 of 79 rows of the
       // reference diary, over a cluster carrying 34.6% of book gamma.
-      o += '<text class="p-word dim" x="12" y="' + n1(by) + '">'
+      o += '<text class="p-word dim" x="' + (PLOT_L + 5) + '" y="' + n1(by) + '">'
          + (side === 'call' ? 'NO CALL WALL ABOVE' : 'NO PUT WALL BELOW') + '</text>';
       wordRows.push(by);
     }
@@ -594,19 +618,22 @@ function paintLadder(st){
   for(const l of levels){
     const y = n1(yFor(l.y));
     if(l.kind === 'magnet'){
+      // A runner's weight is its WIDTH, 1.0-1.9px, under the lead's 2.2. It
+      // was its opacity, down to .28, which measured 1.18:1 over the darkest
+      // shade, and the opacities that clear 3:1 there span too little to see.
       o += '<line class="' + (l.lead ? 'p-mag' : 'p-magrun') + '" x1="' + PLOT_L + '" y1="' + y
          + '" x2="' + PLOT_R + '" y2="' + y + '"'
-         + (l.lead ? '' : ' style="stroke-opacity:' + (l.weight||0.5).toFixed(2) + '"') + '/>';
+         + (l.lead ? '' : ' style="stroke-width:' + (1 + 0.9*(l.weight||0.5)).toFixed(2) + '"') + '/>';
     } else if(l.kind === 'wall'){
-      // thickness IS the weight, on the card's own scale; a wall price has
-      // already passed keeps its weight and loses its side's colour
       // WHERE, not how much. The stroke was wallStroke(l.gex) until 2026-09-16:
       // thickness on the book-gamma denominator, which is the one number this
       // screen may not name in English. The shade behind it now carries weight,
-      // on contracts, which it can.
+      // on contracts, which it can. The width says only nearest or not, at full
+      // opacity — the second wall at .55 measured 1.49:1 over the darkest
+      // shade. A wall price has already passed keeps its width, not its hue.
       o += '<line class="p-wall ' + (wallPassed(l.side, l.y, ref) ? 'passed' : l.side)
          + '" x1="' + PLOT_L + '" y1="' + y + '" x2="' + PLOT_R + '" y2="' + y
-         + '" style="stroke-width:1.6;stroke-opacity:' + (l.nearest ? '.85' : '.55') + '"/>';
+         + '" style="stroke-width:' + (l.nearest ? '2.0' : '1.2') + '"/>';
     }
   }
 
@@ -646,13 +673,26 @@ function paintLadder(st){
   const kept = members.slice(0, 7).sort((a,b) => a.y - b.y);
   const rows = layoutLabels(kept.map(m => yFor(m.y)), 20, plotTop + 10, plotBottom - 10);
 
+  // ---- the price ruler, in the gutter's silences -------------------------
+  // The gutter is already a column of prices, so the scale goes into it rather
+  // than down a second column on the left: the named levels in their hue at
+  // 12px, the round prices between them in small grey. Drawn before the tags
+  // so a tag paints over a rung if the clearance rule were ever wrong. The
+  // tick sits in the diamond's column; a label right-aligned at TAG_R starts
+  // some 23px from the plot, and the tick is what ties it to its height.
+  const tagRows = kept.map((m, i) => ({v:m.y, row:rows[i]}));
+  for(const t of priceTicks(WIN.lo, WIN.hi, plotTop, plotBottom, tagRows)){
+    o += '<line class="p-stick" x1="' + MARK_L + '" y1="' + n1(t.y) + '" x2="' + (MARK_L+4) + '" y2="' + n1(t.y) + '"/>';
+    o += '<text class="p-scale" x="' + TAG_R + '" y="' + n1(t.y+3.5) + '">' + t.label + '</text>';
+  }
+
   kept.forEach((m, i) => {
     const trueY = yFor(m.y), rowY = rows[i];
     if(Math.abs(rowY - trueY) > 2)
       o += '<path class="p-tie" d="M' + (PLOT_R+1) + ',' + n1(trueY) + ' L' + (MARK_L-1) + ',' + n1(rowY) + '"/>';
     if(m.chip){
-      // right edge shared with the tags, which moved in with the gutter
-      o += '<rect class="p-chip" x="' + (TAG_R-46) + '" y="' + n1(rowY-9) + '" width="46" height="18" rx="2"/>';
+      // the gutter's full width, right edge shared with the tags
+      o += '<rect class="p-chip" x="' + MARK_L + '" y="' + n1(rowY-9) + '" width="' + CHIP_W + '" height="18" rx="2"/>';
       o += '<text class="p-chiptx" x="' + (TAG_R-5) + '" y="' + n1(rowY+4.5) + '">'
          + gUsd(m.y, 0).replace('$','') + '</text>';
       return;
