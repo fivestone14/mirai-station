@@ -321,45 +321,55 @@ _SHEET_CLAIMS = ("buy dips", "sell rallies", "pinned", "settle at", "settles at"
 _EMOJI_OR_GREEK = re.compile(r"[\U0001F300-\U0001FAFF]|[Ͱ-Ͽ]")
 
 
-def test_the_regime_word_carries_no_claim_about_what_price_will_do(tmp_path, monkeypatch):
-    """The gloss under the regime word said "walls hold" or "walls give way",
-    read off the gamma sign. That is a claim that hedging damps or speeds a
-    move — the sentence the model is forbidden to write (sndk_read.py's
-    doctrine) and the effect docs/sndk-plan.md records as measured absent on
-    SNDK. The sign itself was the literal string "unknown" on 490 of 5,423
-    scans (9.0%), and on the rest it rests on an assumed dealer convention.
+def test_the_phone_draws_no_regime_word(tmp_path, monkeypatch):
+    """The row under the price led with the regime word until 2026-09-18. It
+    was classify_regime()'s vote of four reads (reversion_lens.py) — gamma
+    sign, range against the expected move, variance ratio, VIX term structure
+    — calling "pinning" or "trending" only when two agree. On SNDK the last two
+    are never fed (0 of 185 scans on 2026-09-17), so the word read "Neutral"
+    because too few reads voted, not because anything measured a neutral
+    market; and "Regime not measured" when the label was missing. The owner
+    removed it.
 
-    So the gamma sign reaches no pixel at all now: not the gloss, not the card,
-    not the footer, not a colour. The regime word stands alone. Its whole blast
-    radius, if it ever came back, should be one sentence and not the
-    instrument. The builder still ships the sign, so the real page is painted
-    from the real builder's scene under every sign, and all of them paint
-    alike."""
+    Before that its gloss read "walls hold" / "walls give way" off the gamma
+    sign: a claim that hedging damps or speeds a move, which the model is
+    forbidden to write (sndk_read.py's doctrine) and docs/sndk-plan.md records
+    as measured absent on SNDK. Neither the word nor the sign reaches a pixel
+    now. The builder still ships both, so the real page is painted from the
+    real builder's scene under every label and every sign, and all of them
+    paint alike. The row keeps its one figure, the usual day's move, and folds
+    away when there is none rather than leaving an empty band."""
     code = _code_only(GLANCE) + _code_only(PAGE)
-    for gone in ("walls hold", "walls give way"):
+    for gone in ("walls hold", "walls give way", "Regime not measured", "regime_label"):
         assert gone not in code, gone
+    for gone in ('id="regWord"', 'id="regGloss"'):
+        assert gone not in PHONE, gone
     payload = _built_payload(tmp_path, monkeypatch)
-    assert _phone_scene(payload)["regime"]["gamma_sign"] == "negative", \
-        "the builder no longer ships the sign this test varies"
-    painted = {}
-    for sign in ("negative", "positive", "unknown", None):
+    built = _phone_scene(payload)["regime"]
+    assert built["gamma_sign"] == "negative" and built["regime_label"] == "trending", \
+        "the builder no longer ships the label and the sign this test varies"
+    variants = [("regime_label", v) for v in ("pinning", "neutral", None)] \
+             + [("gamma_sign", v) for v in ("positive", "unknown", None)]
+    first = _page({"payload": payload, "now": _BUILT_AT})
+    for key, value in variants:
         p = json.loads(json.dumps(payload, default=str))
         regime = _phone_scene(p)["regime"]
-        if sign is None:
-            regime.pop("gamma_sign")
+        if value is None:
+            regime.pop(key)
         else:
-            regime["gamma_sign"] = sign
-        painted[sign] = _page({"payload": p, "now": _BUILT_AT})
-    assert painted["negative"]["regWord"]["text"] == "Trending"
-    for sign, got in painted.items():
-        assert got == painted["negative"], f"the page paints gamma_sign={sign!r} differently"
-    # no word measured: it says so rather than falling silent
-    p = json.loads(json.dumps(payload, default=str))
-    _phone_scene(p)["regime"].pop("regime_label")
-    got = _page({"payload": p, "now": _BUILT_AT})
-    assert got["regWord"]["text"] == "" and got["regGloss"]["text"] == "Regime not measured"
+            regime[key] = value
+        assert _page({"payload": p, "now": _BUILT_AT}) == first, \
+            f"the page paints {key}={value!r} differently"
+    painted = json.dumps(first).lower()
+    for word in ("trending", "pinning", "neutral", "regime"):
+        assert word not in painted, f"{word!r} reached the page"
+    assert first["ruler"]["text"].startswith("USUAL DAY MOVE $")
+    assert first["dayMove"]["hidden"] is False
+    # no day's move: the row folds away rather than holding an empty band
+    bare = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": None}}))
+    assert bare["ruler"]["text"] == "" and bare["dayMove"]["hidden"] is True
     # the footer names what every mark is, rather than caveating a claim
-    assert "not a forecast of where price goes" in got["foot"]["text"]
+    assert "not a forecast of where price goes" in first["foot"]["text"]
 
 
 def test_the_average_price_is_off_the_chart_entirely():
@@ -908,7 +918,7 @@ def test_the_scene_is_read_by_its_current_names(tmp_path, monkeypatch):
     # checked WHERE the phone reads each one, not anywhere in the scene: the
     # builder also ships share_of_book_gamma_pp on structure.bands, so a rename
     # of the magnet's own key would still find the word somewhere
-    where = {"regime_label": ("regime",), "session_date": ("clock",), "live_spot": ("price",),
+    where = {"session_date": ("clock",), "live_spot": ("price",),
              "vs_prior_close_pct": ("price",),
              "days_to_expiry": ("clock", "front_expiry"), "expiry_date": ("clock", "front_expiry"),
              "cluster_share_of_book_gamma_pp": ("walls", "call", 0),
@@ -929,7 +939,6 @@ def test_the_scene_is_read_by_its_current_names(tmp_path, monkeypatch):
     got = _page({"payload": payload, "now": _BUILT_AT})
     assert got["ticker"]["text"] == payload["instrument"]
     assert got["expiry"]["text"] == "OPTIONS END FRI"                    # 2026-08-21
-    assert got["regWord"]["text"] == built["regime"]["regime_label"].capitalize()
     assert got["px"]["text"] == f"{built['price']['live_spot']:,.2f}"
     assert got["chg"]["text"] == f"▲ {built['price']['vs_prior_close_pct']:.2f}%"
     for side in ("call", "put"):

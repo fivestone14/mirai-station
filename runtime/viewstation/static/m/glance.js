@@ -55,19 +55,6 @@ function gTimes(m){
   return m.toFixed(m<0.1 ? 2 : m<9.95 ? 1 : 0)+'×';
 }
 
-/* ---- the environment, in a word --------------------------------------- */
-
-function envParts(regime){
-  // The regime word only. The gloss under it used to read "walls hold" or
-  // "walls give way" off the gamma sign, which is a claim that hedging damps
-  // or speeds a move — the one sentence the model is forbidden to write, and
-  // measured absent on SNDK. The sign was also the literal string "unknown" on
-  // 490 of 5,423 scans (9.0%) and on every other scan it rested on an assumed
-  // dealer convention. Nothing on this screen reads it any more.
-  const word = regime ? regime.regime_label : null;   // sr-7: regime.word -> regime_label
-  return {word: word ? String(word) : ''};
-}
-
 /* ---- the three levels -------------------------------------------------- */
 
 // ONE full scale for every weight on the screen: the card's bars, the chart's
@@ -1047,7 +1034,7 @@ function halfHour(scene, rec){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={gUsd, gMinutes, gTimes, envParts, FULL_SHARE, shareBarPct, wallPassed,
+  module.exports={gUsd, gMinutes, gTimes, FULL_SHARE, shareBarPct, wallPassed,
                   levelRows, lightNote, priorClose,
                   bookAge, shownPrice, dayChange,
                   etTime, etToday,

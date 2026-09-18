@@ -28,7 +28,7 @@
        carried by fill, size and shadow. The one sanctioned exception is the
        day's-move chip, of which there is exactly one on screen.
     3. No Greek on the surface. Every distance is in dollars. The sigma ruler
-       is stated once, in English, in the regime row.
+       is stated once, in English, in the day's-move row.
     4. Market time everywhere. The station is on Pacific; every clock face
        here is Eastern.
 
@@ -195,16 +195,12 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .fresh.warn,.fresh.bad{border:1px solid var(--i-mute)}
 .fresh.bad{color:var(--i);border-color:var(--i);border-width:1.5px}
 
-/* ============ B. REGIME ============ */
-.regime{display:flex;align-items:baseline;gap:10px;padding:0 4px}
-.reg-left{min-width:0;flex:1 1 auto}
-.reg-word{font:700 17px/1.25 var(--sans);letter-spacing:-.01em;color:var(--i);
-          white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.reg-word:empty{display:none}
-.reg-gloss{font:400 13px/1.4 var(--sans);color:var(--i-mute);
-           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.reg-gloss:empty{display:none}
-.reg-ruler{flex:none;font:500 11px/1 var(--sans);letter-spacing:.05em;
+/* ============ B. THE DAY'S MOVE ============
+   One figure under the masthead's right-hand column. The regime word that
+   shared this row is gone (2026-09-18); see paintDayMove. */
+.daymove{display:flex;justify-content:flex-end;padding:0 4px}
+.daymove[hidden]{display:none}
+.dm-ruler{flex:none;font:500 11px/1 var(--sans);letter-spacing:.05em;
            text-transform:uppercase;color:var(--i-faint)}
 
 /* ============ C. THE CARD SYSTEM ============ */
@@ -772,12 +768,8 @@ body.sheet-open .sheet{transform:none;visibility:visible;
   <span class="fresh" id="fresh"></span>
 </section>
 
-<section class="regime">
-  <div class="reg-left">
-    <div class="reg-word"  id="regWord"></div>
-    <div class="reg-gloss" id="regGloss"></div>
-  </div>
-  <div class="reg-ruler" id="ruler"></div>
+<section class="daymove" id="dayMove">
+  <div class="dm-ruler" id="ruler"></div>
 </section>
 
 <section class="card">

@@ -216,7 +216,7 @@ function clearLoading(){
 function paintAll(){
   const st = state();
   paintMast(st);
-  paintRegime(st);
+  paintDayMove(st);
   paintLadder(st);
   paintLevels(st);
   paintToday();
@@ -318,22 +318,23 @@ function paintMast(st){
   chg.className = 'chg ' + (pct > 0 ? 'up' : pct < 0 ? 'dn' : 'flat');
 }
 
-/* ---- B. regime --------------------------------------------------------- */
+/* ---- B. the day's move ------------------------------------------------- */
 
-function paintRegime(st){
-  // The word alone. Its gloss said "walls hold" or "walls give way" off the
-  // gamma sign until 2026-09-10 — a claim about what hedging does to price,
-  // which the model is forbidden to make and SNDK's record does not support.
-  // See law 2 at the top of glance.js.
-  const word = envParts(st.scene.regime).word;
-  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-  $('regWord').textContent = word ? cap(word) : '';
-  $('regGloss').textContent = word ? '' : 'Regime not measured';
-
-  const sig = st.sigma;
+function paintDayMove(st){
   // A day's move, and it says so. "Typical move" did not say over what, and
   // the half-hour card puts a usual half hour of $6 on the same stock.
-  $('ruler').textContent = (sig != null && isFinite(sig)) ? 'USUAL DAY MOVE $' + Math.round(sig) : '';
+  //
+  // The regime word that shared this row is gone (2026-09-18). It was
+  // classify_regime()'s vote of four reads — gamma sign, range against the
+  // expected move, variance ratio, VIX term structure — needing two to agree.
+  // On SNDK the last two are never fed (0 of 185 scans on 09-17), so it read
+  // "Neutral" because too few reads voted, not because anything measured a
+  // neutral market. Its gloss, "walls hold" / "walls give way" off the gamma
+  // sign, had already gone on 2026-09-10 (law 2 in glance.js).
+  const sig = st.sigma;
+  const text = (sig != null && isFinite(sig)) ? 'USUAL DAY MOVE $' + Math.round(sig) : '';
+  $('ruler').textContent = text;
+  $('dayMove').hidden = !text;
 }
 
 /* ---- F. foot ----------------------------------------------------------- */
@@ -1287,7 +1288,7 @@ function paintRead(){
    this only places them, with textContent. */
 
 function paintHalf(st){
-  // st.scene, the scene the regime row's ruler comes from, not the Strikes
+  // st.scene, the scene the day's-move row comes from, not the Strikes
   // Payload: the move was divided by the diary row's sigma, which is this
   // scene's one_sigma_dollars, so the same number turns it back into dollars.
   // The Strikes Payload clamps its ruler to the day's anchor on an expiry
