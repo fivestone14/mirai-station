@@ -1743,6 +1743,16 @@ def _traded(svg):
     return bars, ends, num
 
 
+def _count_w(text):
+    """The width of the count on the longest bar, 11px/600, as figW prices it."""
+    return _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+
+
+def _ring(svg):
+    """The centre of the live dot's ring, (x, y)."""
+    return tuple(float(v) for v in re.search(r'<circle class="p-halo" cx="([\d.]+)" cy="([\d.]+)"', svg).groups())
+
+
 def test_each_bar_is_as_long_as_its_strike_traded_today():
     """One quantity, and one a reader can say out loud: the contracts that
     changed hands at the strike today, calls and puts together — "1,530 traded
@@ -1831,9 +1841,7 @@ def test_the_price_line_runs_on_a_channel_of_card():
     assert width(".p-casing") == pytest.approx(width(".p-path") + 2)
     case = _css_rule(".p-casing")
     assert "stroke:var(--s)" in case and "stroke-linejoin:round" in case and "fill:none" in case
-    root = re.search(r"(?ms)^:root\{(.*?)^\}", PHONE).group(1)
-    tok = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
-           for k, v in re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", root)}
+    tok = _tokens()
     assert _contrast(tok["--path"], tok["--s"]) >= 4.5            # on the channel, 5.00
     assert _contrast(tok["--path"], tok["--band-edge"]) >= 3.0    # on the fill, if the channel were gone
     # no line, no edge: an empty tape draws neither
@@ -1867,9 +1875,9 @@ def test_the_longest_bar_carries_its_count():
                        live={"ticker": "SNDK", "spot": 1530, "ts": "2026-09-10T12:20:00-04:00"}))
     svg = got["svg"]["html"]
     box = _chart_box(svg)
-    cx, cy = (float(v) for v in re.search(r'<circle class="p-halo" cx="([\d.]+)" cy="([\d.]+)"', svg).groups())
+    cx, cy = _ring(svg)
     (nx, by, text), = _traded(svg)[2]
-    w = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+    w = _count_w(text)
     tip = min(x for x, _, _, _ in _traded(svg)[0])
     assert text == "7,456" and abs(cy - (by - 3.96)) < 3 and tip - 4 - w < cx + 9 and cx - 9 < tip - 4, \
         "the ring no longer sits where the count would go; this proves nothing"
@@ -1887,14 +1895,14 @@ def test_the_bars_and_their_count_stay_in_the_plot(phone):
     cw = phone - 32                                  # the ladder bleeds into the card's padding
     svg = _page(_board(_SCENE_0916, width=cw))["svg"]["html"]
     box = _chart_box(svg)
-    top, height = (float(v) for v in re.search(r'<clipPath id="pc"><rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"', svg).groups())
+    top, height = box["plot_t"], box["plot_h"]
     plot_l, plot_r = box["plot_l"], box["plot_l"] + box["plot_w"]
     bars, _, num = _traded(svg)
     assert len(bars) == 7
     for x, y, w, h in bars:
         assert plot_l <= x and x + w <= plot_r + 0.05 and top <= y and y + h <= top + height + 0.05
     (x, by, text), = num
-    w = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+    w = _count_w(text)
     assert plot_l + 2 <= x - w and x <= plot_r - 2 < box["chip_x"]
     edges = [float(y) for y in re.findall(r'<text class="p-edge[^"]*" x="[\d.]+" y="([\d.]+)"', svg)]
     assert all(by - 0.72 * 11 > e + 0.2 * 11 for e in edges if e < top)
@@ -2215,14 +2223,14 @@ def test_an_area_the_plot_shows_gets_its_corners_its_tab_and_its_word():
         svg = _page(_board(_SCENE_1101, width=cw))["svg"]["html"]
         box = _chart_box(svg)
         plot_l, plot_r = box["plot_l"], box["plot_l"] + box["plot_w"]
-        top, height = (float(v) for v in re.search(r'<clipPath id="pc"><rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"', svg).groups())
+        top, height = box["plot_t"], box["plot_h"]
         corners, tabs, word, rows = _new_marks(svg)
         assert len(corners) == 4 and rows == []
         arms = sorted({arm for _, arm, _, _ in corners})
         t, b = arms
         # the plot's own scale, read off two marks at known prices: the live
         # dot at 1,541.75 and the put wall's rule at 1,500
-        cx, cy = (float(v) for v in re.search(r'<circle class="p-halo" cx="([\d.]+)" cy="([\d.]+)"', svg).groups())
+        cx, cy = _ring(svg)
         wall = float(re.search(r'<line class="p-wall put[^"]*"[^>]*y1="([\d.]+)"', svg).group(1))
         y = lambda v: cy + (1541.75 - v) * (wall - cy) / 41.75
         for x, arm, end, leg in corners:
@@ -2245,7 +2253,7 @@ def test_an_area_the_plot_shows_gets_its_corners_its_tab_and_its_word():
         (wx, by, text), = word
         assert text == "NEW CONTRACTS 63%" and wx == plot_l + 6 and t < by - 8.4 and by + 0.2 < b
         (nx, ny, _), = _traded(svg)[2]
-        nw = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", "3,264")
+        nw = _count_w("3,264")
         apart = max(nx - nw - (wx + 121.42), ny - 8 - (by + 0.2), by - 8.4 - (ny + 2.2))
         assert apart >= 5.4, "the count sits on the word"
         # the tab, in the chip's column, off the chip
@@ -2281,8 +2289,7 @@ def test_an_area_the_plot_cannot_show_is_named_at_its_edge():
         edges = [(float(yy), t) for yy, t in re.findall(r'<text class="p-edge[^"]*" x="[\d.]+" y="([\d.]+)">([^<]*)<', svg)]
         assert [t for _, t in edges] == ["▲ 1,600", "↑ 1,600 NEW CONTRACTS", "↓ 1,490 NEW CONTRACTS"]
         assert edges[1][0] - edges[0][0] == 16
-        clip = lambda s: float(re.search(r'<clipPath id="pc"><rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="([\d.]+)"', s).group(1))
-        assert clip(before) - clip(svg) == 16 + 13
+        assert _chart_box(before)["plot_h"] - _chart_box(svg)["plot_h"] == 16 + 13
         bars, _, _ = _traded(svg)
         pitch = min(b[1] - a[1] for a, b in zip(bars, bars[1:]))
         assert pitch - bars[0][3] >= 0.3 * pitch - 0.1
@@ -2335,7 +2342,7 @@ def test_the_word_never_sits_on_other_text_or_a_bar():
         corners, _, ((wx, by, word),), _ = _new_marks(svg)
         ww = 121.42 + (48.65 if word.endswith("MORE") else 0)
         tip = min(x for x, _, _, _ in bars)
-        nw = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+        nw = _count_w(text)
         assert (nx == pytest.approx(tip + 4 + nw, abs=0.05)) is moved, (cw, word)
         # 5.5, less the tenth both baselines are rounded to
         assert nx - nw >= wx + ww + 12 or ny - 8 >= by + 0.2 + 5.4 or by - 8.4 >= ny + 2.2 + 5.4, (cw, word)
@@ -2362,7 +2369,7 @@ def test_the_word_never_sits_on_other_text_or_a_bar():
     for cw in (288, 343):
         svg = _page(_board(_SCENE_1101, now="2026-09-16T11:02:00-04:00", bars=tape, width=cw,
                            live={"ticker": "SNDK", "spot": 1533, "ts": "2026-09-16T09:50:00-04:00"}))["svg"]["html"]
-        cx, cy = (float(v) for v in re.search(r'<circle class="p-halo" cx="([\d.]+)" cy="([\d.]+)"', svg).groups())
+        cx, cy = _ring(svg)
         corners, _, ((wx, by, _),), _ = _new_marks(svg)
         t, b = min(c[1] for c in corners), max(c[1] for c in corners)
         assert wx < cx - 9 < wx + 121.42 and t < cy < b, "the ring no longer sits in the word's way; this proves nothing"
@@ -2489,10 +2496,18 @@ def _contrast(a, b):
     return (hi + 0.05) / (lo + 0.05)
 
 
+def _tokens():
+    """The glance's colour tokens, off its :root block, as sRGB triples."""
+    root = re.search(r"(?ms)^:root\{(.*?)^\}", PHONE).group(1)
+    return {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
+            for k, v in re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", root)}
+
+
 def _chart_box(svg):
-    clip = re.search(r'<clipPath id="pc"><rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)"', svg)
+    clip = re.search(r'<clipPath id="pc"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)
     chip = re.search(r'<rect class="p-chip" x="([\d.]+)"[^>]*width="([\d.]+)"', svg)
-    return {"plot_l": float(clip.group(1)), "plot_w": float(clip.group(2)),
+    return {"plot_l": float(clip.group(1)), "plot_t": float(clip.group(2)),
+            "plot_w": float(clip.group(3)), "plot_h": float(clip.group(4)),
             "chip_x": float(chip.group(1)), "chip_w": float(chip.group(2)),
             "num_x": float(re.search(r'<text class="p-chiptx" x="([\d.]+)"', svg).group(1)),
             "num": re.search(r'<text class="p-chiptx"[^>]*>([^<]*)<', svg).group(1),
@@ -2622,9 +2637,7 @@ def test_no_mark_on_the_plot_is_eaten_by_what_is_behind_it():
     of --band-edge, the darker of the two; every mark is measured on the bar.
     The bars stay the quietest ink on the plot, and their ends, read against
     the card beside them, clear a mark's 3:1."""
-    root = re.search(r"(?ms)^:root\{(.*?)^\}", PHONE).group(1)
-    tok = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
-           for k, v in re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", root)}
+    tok = _tokens()
     bar = tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(".p-traded")).group(1)]
     assert _contrast(bar, tok["--s"]) < _contrast(tok["--path"], tok["--s"]), "a bar outranks the price line"
     end = tok[re.search(r"stroke:var\((--[a-z-]+)\)", _css_rule(".p-tradedend")).group(1)]
