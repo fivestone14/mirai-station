@@ -215,6 +215,11 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 #svg{display:block;max-width:100%;height:auto}
 #svg.too-narrow{min-width:240px}
 
+/* Every chart label restates tabular figures AFTER its font shorthand, because
+   the shorthand resets font-variant-numeric and the tabular-nums on <body>
+   never reached the chart. Proportional, the chip's "1,517" drew 28.04px wide
+   and "4,000" 37.62px; tabular, every four-digit price is 33.08px, which is
+   what the 56px gutter and the 46px chip are sized for. */
 .p-shade  {fill:var(--i)}
 .p-path   {fill:none;stroke:var(--path);stroke-width:1.8;
            stroke-linejoin:round;stroke-linecap:round}
@@ -238,28 +243,28 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-halo   {fill:none;stroke:var(--px-mark);stroke-opacity:.30;stroke-width:1.2}
 .p-brk    {fill:none;stroke:var(--path);stroke-opacity:.55;stroke-width:1.5;stroke-linecap:butt}
 .p-chip   {fill:var(--px-mark)}
-.p-chiptx {fill:var(--s);font:700 12px/1 var(--sans);text-anchor:end}
+.p-chiptx {fill:var(--s);font:700 12px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end}
 .p-tie    {fill:none;stroke:var(--band-edge);stroke-width:.9}
 .p-bar    {fill-opacity:.9}
 .p-bar.call{fill:var(--call-mark)} .p-bar.put{fill:var(--put-mark)} .p-bar.passed{fill:var(--rule-soft)}
 .p-clip   {fill:var(--i-mute)}
 .p-diamond{fill:var(--mag-mark)}
-.p-tag    {font:700 12px/1 var(--sans);text-anchor:end;fill-opacity:.9}
+.p-tag    {font:700 12px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill-opacity:.9}
 .p-tag.lead{fill-opacity:1}
 .p-tag.call{fill:var(--call-ink)} .p-tag.put{fill:var(--put-ink)}
 .p-tag.mag {fill:var(--mag-ink)}  .p-tag.passed{fill:var(--i-mute)}
 /* the halo punches the word through whatever it crosses; it strokes the CARD
    colour now, not the old dark ground */
-.p-word    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-mute);
-            paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
+.p-word    {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;
+            fill:var(--i-mute);paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
 .p-word.dim{fill:var(--i-faint)}
 /* The markers the card NAMES are heavier as well as darker. Both were 700 and the
    only difference was fill — which makes the distinction contrast-only, and
    this file's own law (see the ink ramp) is that subordination is by SIZE or
    weight, never by contrast, because a low-contrast grey outdoors means gone. */
-.p-edge    {font:500 11px/1 var(--sans);text-anchor:end;fill:var(--i-mute)}
+.p-edge    {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute)}
 .p-edge.lead{font-weight:800;fill:var(--i)}
-.p-axis    {font:500 10px/1 var(--sans);letter-spacing:.12em;fill:var(--i-faint)}
+.p-axis    {font:500 10px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;fill:var(--i-faint)}
 
 /* ============ E. THE READING — the one filled card ============ */
 .today{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}

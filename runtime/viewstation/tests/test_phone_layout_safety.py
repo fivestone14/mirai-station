@@ -120,6 +120,48 @@ def test_the_svg_is_sized_by_attribute_not_by_percentage():
     assert "height:auto" in flat
 
 
+def _flat_rules(css):
+    """(selector, [declaration, ...]) for every rule with no rule nested in it,
+    each declaration normalised to "property:value"."""
+    out = []
+    for sel, block in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        decls = []
+        for d in block.split(";"):
+            if ":" in d:
+                k, v = d.split(":", 1)
+                decls.append(k.strip() + ":" + " ".join(v.split()))
+        out.append((" ".join(sel.split()), decls))
+    return out
+
+
+def test_the_chart_keeps_its_tabular_figures():
+    """<body> sets tabular-nums and every chart label then set the font
+    shorthand, which resets font-variant-numeric — so the chart drew its prices
+    in proportional figures while its gutter was sized for tabular ones. The
+    chip's "1,517" drew 28.04px wide against 33.08 tabular, "4,000" 37.62, and
+    "09:30" went the other way; the width of a price depended on its digits.
+
+    The fix is a restatement after the shorthand, and the hazard is the next
+    chart rule someone writes with a font shorthand and no restatement. The
+    render harness cannot see it — it has no fonts — so the rule is held here,
+    on every chart rule rather than on the five that exist today."""
+    body = _rule("body")
+    assert body is not None and "font-variant-numeric:tabular-nums" in body.replace(" ", "")
+    checked = []
+    for sel, decls in _flat_rules(_css_code(PHONE)):
+        if not any(part.strip().startswith(".p-") for part in sel.split(",")):
+            continue
+        fonts = [i for i, d in enumerate(decls) if d.startswith("font:")]
+        if not fonts:
+            continue
+        checked.append(sel)
+        assert "font-variant-numeric:tabular-nums" in decls[fonts[-1] + 1:], \
+            f"{sel} sets the font shorthand and draws its figures proportional"
+    # every class the ladder writes a price or a clock in is among those checked
+    for need in (".p-chiptx", ".p-tag", ".p-edge", ".p-axis", ".p-word"):
+        assert need in checked, f"{need} no longer sets its own font; this proves nothing"
+
+
 def test_the_tab_bar_is_measured_rather_than_asserted():
     """--tab-h shipped at 64px against a bar that renders 74, so the body
     reserved ten pixels too few for a position:fixed bar and the footer drew
