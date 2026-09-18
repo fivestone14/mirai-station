@@ -19,6 +19,17 @@
 > * the magnet glow — deleted; the magnet is a long dash now.
 > * an export list without `barPoints` — the price path's current source.
 > * "dark only" and "nothing is tappable except one link" — both false now.
+> * the regime row (§10 B, and §1, §5, §11, §12): `regWord`, `regGloss` and
+>   the word under the price — removed 2026-09-18. The row, `.daymove`, holds
+>   only the day's move (`USUAL DAY MOVE $66` on 2026-09-16), and folds away
+>   when there is no figure.
+> * the clear-side bracket and its label (§9.3 k and l, and §8, §10 D, §11,
+>   §12, §14 rule 16, §15): `.p-brk`, `NO CALL WALL ABOVE` / `NO PUT WALL
+>   BELOW` and `.p-word.dim` — removed from the chart 2026-09-18. A side
+>   measured empty is said on the levels card only, as "None above price" /
+>   "None below price".
+> * the chart's 10px type (§6: `.p-word`, `.p-axis`) — every chart text is
+>   11px since 2026-09-18, and the price ruler's rungs are 20px apart.
 >
 > **The source of truth is the code**: `runtime/viewstation/static/m/`
 > (`index.html`, `thread.html`, `page.js`, `glance.js`, `press.js`), whose own

@@ -55,9 +55,12 @@ function sizeLadder(){
   // 157px with no edge markers, 144 with one, 131 with two on one side. That
   // is the range in which the wall rules stay separable and the price path
   // keeps its shape; below roughly 130 the label solver starts displacing a
-  // label further than the level it names. The height was budgeted and the
-  // width was not, so when the chart needed room it came sideways — the bleed
-  // and the derived gutter in paintLadder — and this constant did not move.
+  // label further than the level it names. A row of new contracts sits 16
+  // from its neighbour, not 13 (paintLadder), so on the 15:10 board of
+  // 2026-09-16 two of them take the plot from 144 to 115. The height was
+  // budgeted and the width was not, so when the chart needed room it came
+  // sideways — the bleed and the derived gutter in paintLadder — and this
+  // constant did not move.
   LADDER_H = 196;
 }
 
