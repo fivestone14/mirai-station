@@ -298,11 +298,12 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    columns run straight through the break.
    Six columns: the figure, the dot, the state word, then the fourth column split
    three ways — the multiple, its gauge, one word — with the card's 12px
-   clearance baked into the tracks as the first three bake theirs: 45 = 33 + 12,
-   58 = 46 + 12, and the last cell takes the rest, 60 on a 375px phone. 78 for
-   the word is 'busy all day' (65.04) plus 12, rounded up; at 72 the multiple
-   would sit 6.96px after it and read as the same run of words, and 'further
-   above' (76.73) overhung the cell by 4.73.
+   clearance baked into the tracks as the first three bake theirs. The template
+   is activityGrid's (glance.js), set by paintToday on the card's measured
+   width: on a 375px phone 46 24 78 45 58 and the rest, 45 = 33 + 12, 58 = 46 +
+   12, and 60 for the last cell. 78 for the word is 'busy all day' (65.04) plus
+   12, rounded up; at 72 the multiple would sit 6.96px after it and read as the
+   same run of words, and 'further above' (76.73) overhung the cell by 4.73.
    grid-auto-rows is EXPLICIT: with align-items:baseline a row holding both 13px
    and 12px text takes the union of the two line boxes, 18.41px, and the ladder
    drifts 0.41px on every mixed row.
@@ -311,10 +312,13 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    drew proportional figures under a column sized for aligned ones. Measured off
    the shipped face at 13px/500, "1,510" set 32.05px and "1,495" 34.56; tabular,
    every strike is 35.09 and the column's left edge stops wandering. */
-.ac-rows{display:grid;grid-template-columns:46px 24px 78px 45px 58px auto;grid-auto-rows:18px;
+.ac-rows{display:grid;grid-auto-rows:18px;
          align-items:baseline;font:400 12px/18px var(--sans);font-variant-numeric:tabular-nums}
 .ac-rows:empty{display:none}
 .ac-rows.top{margin-top:18px}
+/* a head too wide to sit beside 'further above' takes the 18px above the ladder
+   as a row of its own, so the card keeps its height */
+.ac-rows.top.lift{margin-top:0}
 .ac-row{display:contents}
 .ac-k{grid-column:1;text-align:right;font:500 13px/18px var(--sans);font-variant-numeric:tabular-nums;
       white-space:nowrap}
@@ -331,13 +335,14 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    that literally so (proportional, "1.6×" and "0.9×" end 4.1px apart). */
 .ac-m{grid-column:4;font-weight:500;white-space:nowrap}
 /* The gauge: the multiple on a FIXED scale, full at 5× (glance.js,
-   FULL_TURNOVER), 46px of track, 9.2px a turn. It centres on the figure like
-   the dot, for the same 0.4px. Square ends: at 9.2px a turn a rounded cap is a
-   third of a turn of slop at the end, which is where the bar is read. No
-   measure, no .ac-gauge at all — an empty track reads as zero. The track's
-   inset shadow is left off; a 2px blur on a 6px bar eats a third of it. */
+   FULL_TURNOVER), 46px of track on a 375px phone, 9.2px a turn; paintToday
+   sets the length activityGrid gives it, never under 34. It centres on the
+   figure like the dot, for the same 0.4px. Square ends: at 9.2px a turn a
+   rounded cap is a third of a turn of slop at the end, which is where the bar
+   is read. No measure, no .ac-gauge at all — an empty track reads as zero. The
+   track's inset shadow is left off; a 2px blur on a 6px bar eats a third of it. */
 .ac-gauge{grid-column:5;justify-self:start;align-self:center;position:relative;top:.4px;
-          width:46px;height:6px;background:var(--s2)}
+          height:6px;background:var(--s2)}
 /* currentColor, so the bar is the row's own ink and a row is one value */
 .ac-gauge>i{position:absolute;inset:0 auto 0 0;background:currentColor}
 /* 1× — the strike has traded its whole standing pile once over. BELOW the
@@ -345,8 +350,9 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    1.62:1 on a --i-body fill, so no token clears 3:1 against both, and a mark
    that vanishes exactly where the bar reaches it is the one that was needed.
    Here it is --i-mute on the card, 6.24:1 on every row. 4.5px is the tallest
-   mark that still ends inside the row box, 4.59px clear of the row below. */
-.ac-gauge::after{content:"";position:absolute;left:8.7px;top:7px;width:1px;height:4.5px;
+   mark that still ends inside the row box, 4.59px clear of the row below. A
+   fifth of the way along whatever the track's length: one turn of five. */
+.ac-gauge::after{content:"";position:absolute;left:calc(20% - .5px);top:7px;width:1px;height:4.5px;
                  background:var(--i-mute)}
 /* past 5× the bar is CLIPPED and the clip is marked: the chart's .p-clip,
    turned ninety degrees, 2px above the track's end */
@@ -361,16 +367,24 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    edge is the last cell's; left-aligned at 148 it would sit 1.27px after
    'further above'. */
 .ac-head{grid-column:4 / -1;justify-self:end;color:var(--i-faint);white-space:nowrap}
-/* the gauge's scale, in the other count row: each label centred on the mark it
-   names — 1× on the tick, 45 + 8.7 + .5 in; 5× on the track's end, 45 + 46 in
-   — and joined to it by alignment alone; a tick above a label reads as a prime
-   at 11px. align-self:start, because a box whose children are all absolute has
-   no baseline; top:.82px lands the 11px line's baseline on the row's own. */
-.ac-scale{grid-column:4 / -1;align-self:start;position:relative;height:18px;color:var(--i-faint)}
+/* narrower than 375 the head and 'further above' close by every pixel the card
+   loses (activityGrid): a pixel smaller keeps the card's 12 between them down
+   to a 359px phone, and under that the head is a row to itself, the whole
+   row's width to be right-aligned in */
+.ac-head.smaller{font-size:11px}
+.ac-head.alone{grid-column:1 / -1}
+/* the gauge's scale, in the other count row, the length of the track and
+   under it: each label centred on the mark it names — 1× on the tick, a fifth
+   of the way along; 5× on the track's end — and joined to it by alignment
+   alone; a tick above a label reads as a prime at 11px. align-self:start,
+   because a box whose children are all absolute has no baseline; top:.82px
+   lands the 11px line's baseline on the row's own. */
+.ac-scale{grid-column:5;justify-self:start;align-self:start;position:relative;height:18px;
+          color:var(--i-faint)}
 .ac-scale div{position:absolute;top:.82px;transform:translateX(-50%);
               font:500 11px/18px var(--sans);font-variant-numeric:tabular-nums;white-space:nowrap}
-.ac-scale .one{left:54.2px}
-.ac-scale .full{left:91px}
+.ac-scale .one{left:20%}
+.ac-scale .full{left:100%}
 
 /* the dot centres on the FIGURE, not on the row box: the lining figure's optical
    centre sits 0.4px below the box's, and 0.4px is the whole correction. Do not

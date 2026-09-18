@@ -30,7 +30,10 @@ what this file guards:
      against the real page in test_phone_route.py; this file keeps to what
      the stylesheet and the shell decide.
 """
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -186,16 +189,20 @@ def test_the_activity_panel_keeps_its_tabular_figures():
 
 
 # Advances of the shipped face, pjs-153fc85b7029.woff2, measured in WebKit after
-# document.fonts.ready: 12px/400 unless noted. The ladder's fourth column is
-# fixed pixels, so whether it fits is decided at the second decimal of these.
-# A string the ladder prints that is missing here fails the test that needs it,
-# rather than passing unmeasured.
-_LADDER_W = {"further above": 76.73, "busy all day": 65.04, "small pile": 52.28,
-             "faster": 33.18, "steady": 39.08, "slower": 37.48,
+# document.fonts.ready: 12px/400 unless noted. Whether the ladder fits is decided
+# at the second decimal of these. A string the ladder prints that is missing
+# here fails the test that needs it, rather than passing unmeasured.
+_LADDER_W = {"further above": 76.73, "further below": 76.09,
+             "got busy": 49.68, "busy all day": 65.04, "went quiet": 60.06,
+             "small pile": 52.28, "faster": 33.18, "steady": 39.08, "slower": 37.48,
              "× what was already there": 138.14, "trading now against earlier": 148.62,
+             "09:38": 32.23,                       # a gone row's time, tabular
              "0.06×": 32.89,                       # 12px/500 tabular, the widest multiple
              "1×": 13.46, "5×": 13.46}             # 11px/500 tabular, the gauge's scale
+# the head a pixel smaller, 11px/400, where the card is too narrow for it at 12
+_HEAD_11 = {"× what was already there": 126.63, "trading now against earlier": 136.24}
 GLANCE = (M / "glance.js").read_text()
+_NODE = shutil.which("node")
 
 
 def _px(sel, prop, css=None):
@@ -203,83 +210,165 @@ def _px(sel, prop, css=None):
     return float(m.group(1)) if m else None
 
 
+def _pct(sel, prop):
+    """A length set as a share of its box, "20%" or "calc(20% - .5px)", as
+    (percent, px taken off)."""
+    m = re.search(r"(?:^|;)" + prop + r":(?:calc\()?([\d.]+)%(?:-([\d.]+)px\))?", _rule(sel).replace(" ", ""))
+    return float(m.group(1)), float(m.group(2) or 0)
+
+
+def _head():
+    """The fourth column's head as page.js declares it: (text, width at 12px)."""
+    m = re.search(r"const AC_HEAD = \{text: '([^']*)', w: ([\d.]+)", PAGE)
+    assert m, "AC_HEAD no longer carries its text and its width where this test reads them"
+    return m.group(1), float(m.group(2))
+
+
 def _ladder(phone):
-    """-> (columns, content width, last cell width) for the activity card's grid
-    on a phone `phone` px wide: the body's side padding and the card's."""
-    tpl = re.search(r"grid-template-columns:([^;]+)", _rule(".ac-rows")).group(1).split()
-    assert tpl[-1] == "auto", "the ladder's last cell is no longer the one that takes the rest"
-    cols = [float(c[:-2]) for c in tpl[:-1]]
+    """-> (grid, content width) for the activity card on a phone `phone` px wide:
+    the content box the body's side padding and the card's leave, and the columns
+    activityGrid in the real glance.js gives it, run in node — the page sets them
+    from that one function, on the card's measured width. Skips when node is not
+    installed."""
+    if not _NODE:
+        pytest.skip("node is not installed")
     side = int(re.search(r"padding:calc\(env\([^)]*\)[^)]*\)\s+(\d+)px", _rule("body")).group(1))
     content = phone - 2 * side - 2 * _px(".today", "padding")
-    return cols, content, content - sum(cols)
+    js = "const g=require(%s);console.log(JSON.stringify(g.activityGrid(%s, %s)));" % (
+        json.dumps(str(M / "glance.js")), content, _head()[1])
+    out = subprocess.run([_NODE, "-e", js], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout), content
 
 
-def _ladder_fits(phone):
-    """Every cell of the fourth column, at its widest, inside the card's content
-    box, and the column's head clear of 'further above' by the card's 12."""
-    cols, content, last = _ladder(phone)
+def _ladder_rows(phone):
+    """-> ({row: [(what, left, right)]}, content width): every text and mark each
+    kind of ladder row can hold, each at its widest, where the grid puts it on a
+    phone `phone` px wide. The figure and the dot are left out: they never move."""
+    grid, content = _ladder(phone)
+    at = [sum(grid["cols"][:i]) for i in range(6)]         # each track's left edge
+    track = grid["track"]
+    head, head_w = _head()
+    if grid["head"] == "smaller":
+        head_w = _HEAD_11[head]
+    states = re.search(r"const AC_WORD = \{new: '([^']+)', held: '([^']+)', gone: '([^']+)'\}", PAGE).groups()
+    counts = dict(re.findall(r"acMore\(map\.more(Above|Below), '([^']+)'", PAGE))
     # the warning, and the three words pace() in glance.js can return
-    words = re.findall(r"const last = r\.thin \? '([^']+)'", PAGE)
-    words += re.findall(r"'([a-z]+)'", GLANCE.split("function pace(")[1].split("\nfunction ")[0])
-    assert len(words) == 4, f"the last cell's words are no longer where this test reads them: {words}"
-    for word in words:
-        assert _LADDER_W[word] <= last, f"{word!r} runs {_LADDER_W[word] - last:.2f}px past the card at {phone}"
-    head = re.search(r"const AC_HEAD = \{text: '([^']*)'", PAGE).group(1)
-    clear = content - _LADDER_W[head] - (cols[0] + cols[1] + _LADDER_W["further above"])
-    assert clear >= 12, f"the head is {clear:.2f}px from 'further above' at {phone}"
+    lasts = re.findall(r"const last = r\.thin \? '([^']+)'", PAGE)
+    lasts += re.findall(r"'([a-z]+)'", GLANCE.split("function pace(")[1].split("\nfunction ")[0])
+    assert len(states) == 3 and len(counts) == 2 and len(lasts) == 4, \
+        "the ladder's words are no longer where this test reads them"
+
+    def cell(text, x):
+        return (text, x, x + _LADDER_W[text])
+
+    rows = {}
+    top = [cell(counts["Above"], at[2])]
+    if grid["head"] == "alone":
+        rows["the head's own row"] = [(head, content - head_w, content)]
+    else:
+        top.append((head, content - head_w, content))
+    rows["+N further above"] = top
+    gauge = [("the gauge", at[4], at[4] + track)] if track else []
+    for state in states[:2]:
+        for last in lasts:
+            rows[f"{state} … {last}"] = [cell(state, at[2]), cell("0.06×", at[3])] + gauge + [cell(last, at[5])]
+    rows["gone"] = [cell(states[2], at[2]), cell("09:38", at[3])]
+    scale = []
+    if track:
+        for label, sel in (("1×", ".ac-scale .one"), ("5×", ".ac-scale .full")):
+            mid = at[4] + _pct(sel, "left")[0] / 100 * track
+            scale.append((label, mid - _LADDER_W[label] / 2, mid + _LADDER_W[label] / 2))
+    rows["+N further below"] = [cell(counts["Below"], at[2])] + scale
+    return rows, content
 
 
 def test_the_ladders_fourth_column_is_built_on_its_widest_contents():
-    """The fourth column is three fixed cells — the multiple, its gauge, one
-    word — with the card's 12px clearance baked into each track the way the
-    first three columns bake theirs. Each is sized on the widest thing it can
-    hold, not on today's board: the multiple on "0.06×", the word column on
-    "busy all day" (the widest word with anything to its right) and on "further
-    above", which overhung the old 72px cell by 4.73.
+    """The fourth column is three cells — the multiple, its gauge, one word —
+    with the card's 12px clearance baked into each track the way the first three
+    columns bake theirs. Each is sized on the widest thing it can hold, not on
+    today's board: the multiple on "0.06×", the word column on "busy all day"
+    (the widest word with anything to its right) and on "further above", which
+    overhung the old 72px cell by 4.73.
 
     The gauge's 1× tick is where one turn of the pile lands on its FIXED scale,
-    and each label under the column is centred on the mark it names, so moving
-    the scale in glance.js without moving the marks fails here."""
-    cols, _, _ = _ladder(375)
-    track = _px(".ac-gauge", "width")
+    at whatever length the card gives the track, and each label under the column
+    is centred on the mark it names, so moving the scale in glance.js without
+    moving the marks fails here. The track is never shorter than GRID_TRACK_MIN,
+    and that floor is where the gauge still reads as a ratio: one turn more than
+    the 6.6px GAUGE-SPEC found stops reading as a mark, "1×" starting inside the
+    track rather than off its zero, and the card's 12 between "1×" and "5×"."""
+    grid, _ = _ladder(375)
+    cols, track = grid["cols"], grid["track"]
     assert cols[2] >= _LADDER_W["busy all day"] + 12 and cols[2] >= _LADDER_W["further above"]
     assert cols[3] >= _LADDER_W["0.06×"] + 12
     assert cols[4] == track + 12
+    assert "width" not in (_rule(".ac-gauge") or ""), "the stylesheet fixes the track the card sizes"
+
     full = int(re.search(r"const FULL_TURNOVER=(\d+);", GLANCE).group(1))
-    tick = _px(".ac-gauge::after", "left") + _px(".ac-gauge::after", "width") / 2
-    assert tick == pytest.approx(track / full), "the 1× tick is not where one turn lands"
-    assert _px(".ac-scale .one", "left") == pytest.approx(cols[3] + tick)
-    assert _px(".ac-scale .full", "left") == pytest.approx(cols[3] + track)
-    gap = (_px(".ac-scale .full", "left") - _LADDER_W["5×"] / 2) - (_px(".ac-scale .one", "left") + _LADDER_W["1×"] / 2)
-    assert gap >= 12
+    pct, off = _pct(".ac-gauge::after", "left")
+    assert pct / 100 - off / track + _px(".ac-gauge::after", "width") / 2 / track == pytest.approx(1 / full), \
+        "the 1× tick is not where one turn lands"
+    assert _pct(".ac-scale .one", "left") == (100 / full, 0), "1× is not on its tick"
+    assert _pct(".ac-scale .full", "left") == (100, 0), "5× is not on the track's end"
+
+    floor = int(re.search(r"GRID_TRACK_MIN=(\d+);", GLANCE).group(1))
+    for t in (track, floor):
+        assert t / full > 6.6, f"one turn on a {t}px track is too near the zero to read as a mark"
+        assert t / full - _LADDER_W["1×"] / 2 >= 0, f"'1×' hangs off the zero of a {t}px track"
+        assert (t - _LADDER_W["5×"] / 2) - (t / full + _LADDER_W["1×"] / 2) >= 12, \
+            f"'1×' and '5×' run together on a {t}px track"
     # nothing added to the ladder is set under 11px
     assert re.search(r"font:500 11px/", _rule(".ac-scale div"))
+    assert _px(".ac-head.smaller", "font-size") == 11
 
 
-def test_the_ladder_fits_a_375px_phone():
-    """On the phone the card was designed at, the last cell's widest word and
-    the column's head both fit inside the content box, with the card's 12px
-    between the head and the count's label."""
-    _ladder_fits(375)
+def test_the_ladder_is_as_drawn_on_a_375px_phone():
+    """The reflow below 375 is a function of the card's width, and on the phone
+    the card was designed at it has to come out as drawn: every x GAUGE-SPEC and
+    RATE-SPEC placed and the previous commits measured in WebKit, to a quarter
+    of a pixel. The multiple at 148, the track 193 to 239 with its tick on 202.2,
+    the last cell from 251 with 60 to hold its word, the head right-aligned to
+    311 from 162.38, and the scale's 1× and 5× on their marks."""
+    grid, content = _ladder(375)
+    assert content == 311 and grid["head"] == "beside"
+    cols, track = grid["cols"], grid["track"]
+    x3, x4, x5 = sum(cols[:3]), sum(cols[:4]), sum(cols)
+    pct, off = _pct(".ac-gauge::after", "left")
+    tick = x4 + pct / 100 * track - off + _px(".ac-gauge::after", "width") / 2
+    drawn = {"the multiple": (x3, 148), "the track's start": (x4, 193), "its end": (x4 + track, 239),
+             "the 1× tick": (tick, 202.2), "the last cell": (x5, 251), "its width": (content - x5, 60),
+             "the head": (content - _LADDER_W[_head()[0]], 162.38),
+             "1×": (x4 + _pct(".ac-scale .one", "left")[0] / 100 * track, 202.2),
+             "5×": (x4 + _pct(".ac-scale .full", "left")[0] / 100 * track, 239)}
+    for what, (got, want) in drawn.items():
+        assert got == pytest.approx(want, abs=0.25), f"{what} moved at 375: {got:.2f}, drawn at {want}"
 
 
-@pytest.mark.parametrize("phone", [
-    pytest.param(360, marks=pytest.mark.xfail(strict=True, reason=(
-        "the fourth column is fixed pixels sized for 375. At 360 'small pile' runs 7.28px into the "
-        "card's padding, and the pace column's head starts at 148, 1.27px after 'further above', "
-        "so the row reads as one run of words (WebKit, 2026-09-18). The owner's decision."))),
-    pytest.param(320, marks=pytest.mark.xfail(strict=True, reason=(
-        "at 320 'small pile' runs 47.28px past the content box and 15.28px off the screen, the "
-        "pace words up to 2.08px off it, and the head 8.62px off it (WebKit, 2026-09-18). "
-        "The owner's decision.")))])
-def test_the_ladder_fits_a_narrower_phone(phone):
-    """360 is a common Android width and 320 the smallest phone the page is
-    built for. The six tracks sum to 251, so the last cell has 45px at 360 and
-    5px at 320 for a 52.28px word, and the head needs a 372px phone to keep the
-    card's 12 from 'further above'. Kept as strict expected failures so the
-    overflow is on the record, not hidden, and so each marker has to come off
-    the day it is fixed."""
-    _ladder_fits(phone)
+@pytest.mark.parametrize("phone", [320, 360, 375, 390, 412])
+def test_the_ladder_fits_the_phone(phone):
+    """No two things in a ladder row, the head included, closer than the card's
+    12px, and nothing past the card's content edge, on every phone width that
+    matters: 320, the smallest the page is built for; 360, the owner's own
+    Galaxy S20+; 375, where the card was drawn; and 390 and 412, today's
+    common widths.
+
+    These were strict expected failures until 2026-09-18. With six fixed tracks
+    summing to 251, "small pile" ran 7.28px into the card's padding at 360, and
+    the head started 1.27px after "further above", so the row read as one run
+    of words; at 320 the head ran 8.62px off the screen. activityGrid now gives
+    up width in order — the gauge's length, then the gaps beside it, then the
+    gauge — and moves the head, which no column can make room for, a pixel
+    smaller or onto a row of its own."""
+    rows, content = _ladder_rows(phone)
+    for name, row in rows.items():
+        row = sorted(row, key=lambda t: t[1])
+        assert row[0][1] >= 0, f"{row[0][0]!r} starts off the card's left edge at {phone}"
+        assert row[-1][2] <= content, \
+            f"{row[-1][0]!r} runs {row[-1][2] - content:.2f}px past the content edge at {phone} ({name})"
+        for a, b in zip(row, row[1:]):
+            assert b[1] - a[2] >= 12, \
+                f"{a[0]!r} and {b[0]!r} are {b[1] - a[2]:.2f}px apart at {phone} ({name})"
 
 
 def test_the_chart_bleeds_to_the_cards_edge_and_no_further():

@@ -900,6 +900,75 @@ function activityRows(day, price, show, strikes, bookTimes){
                   held:all.filter(r=>r.state==='held').length}};
 }
 
+/* ---- the ladder's columns, on the card's width ------------------------- */
+
+// Six columns, drawn for a 375px phone and its 311px content box: the figure,
+// the dot, the state word, then the fourth column split three ways — the
+// multiple, its gauge, one word — with the card's 12px clearance baked into
+// each track. The first three never move: the figure column ends where the
+// price chip's integer does (10 + 36), and the word column holds "busy all
+// day" (65.04) and its 12, and "further above" (76.73). Advances are the
+// shipped face's in WebKit at 12px/400: "small pile" (52.28) is the widest
+// word the last cell holds, and "0.06×" (32.89 at 12px/500) the widest
+// multiple.
+const GRID_COLS=[46, 24, 78], GRID_MULT=33, GRID_WORD=52.28, GRID_COUNT=76.73;
+const GRID_GAP=12, GRID_GAP_MIN=6;
+// The gauge is 46 where it was drawn and never shorter than 34, the shortest
+// track that still reads as a ratio. One turn is then 6.8px: GAUGE-SPEC judged
+// a 1× tick 6.6px from the zero no longer reads as a mark, and 34 is the first
+// whole length past that. It is also the shortest track on which "1×" (13.46
+// at 11px/500), centred on its tick, starts inside the track instead of
+// hanging off its zero; "1×" and "5×" keep 13.74 between them there. Over the
+// 366 ladder rows of 09-15/16/17, the bars ending within 1px of the tick, where
+// only the printed number can say short of one turn or past it, go from 7.1%
+// at 46 to 9.3% at 34.
+const GRID_TRACK=46, GRID_TRACK_MIN=34;
+
+function activityGrid(width, headW){
+  // -> {cols, track, head} for a card whose content box is `width` px wide: the
+  // five fixed tracks, in px, before the last cell, which takes the rest; the
+  // gauge's length, or null for no gauge and no scale; and where the fourth
+  // column's head goes — 'beside' "further above" at its own size, 'smaller',
+  // there at 11px, or 'alone' in a row of its own. `headW` is its width at 12px.
+  //
+  // From 311 up it is the drawn layout, and a wider card only gives the last
+  // cell more room. NARROWER IS AN INTERIM REFLOW: the owner has not decided
+  // how the grid should behave below 375, so it gives up width in the order
+  // that keeps every word legible, and stops as soon as the row fits. The gauge
+  // shortens first, by exactly what the row is short, down to GRID_TRACK_MIN,
+  // its tick and scale keeping their places on it; then the gaps either side of
+  // it close toward the card's 6px unit; and only then does it go, with its
+  // scale, leaving the multiple to say how many times over. At 360 (296 of
+  // content) the track is 38 and nothing else in the row moves; at 320 (256)
+  // the gauge goes.
+  //
+  // No column can make room for the head. It is right-aligned to the card's
+  // edge and "further above" starts at a fixed 70, so the two close by exactly
+  // what the card narrows; at 360 they were 1.27px apart. Under 307.35 of
+  // content it is set a pixel smaller, which keeps the card's 12 from "further
+  // above" down to 294.97, and under that it takes a row of its own.
+  const w=width>0 ? width : 0;
+  const room=w-GRID_COLS[0]-GRID_COLS[1]-GRID_COLS[2]-GRID_MULT-GRID_WORD;
+  let gap=GRID_GAP, track=Math.min(GRID_TRACK, Math.floor(room-2*gap));
+  if(track<GRID_TRACK_MIN){
+    track=GRID_TRACK_MIN;
+    gap=Math.floor((room-track)/2);
+  }
+  let cols;
+  if(gap>=GRID_GAP_MIN) cols=GRID_COLS.concat([GRID_MULT+gap, track+gap]);
+  else {
+    // The gauge's cell stays, empty, so the words keep their place at the
+    // card's edge, under the head's own right edge, rather than closing up on
+    // the number beside them.
+    track=null;
+    gap=Math.max(GRID_GAP_MIN, Math.min(GRID_GAP, Math.floor(room)));
+    cols=GRID_COLS.concat([GRID_MULT+gap, Math.max(0, Math.floor(room-gap))]);
+  }
+  const beside=w-GRID_COLS[0]-GRID_COLS[1]-GRID_COUNT-GRID_GAP;
+  const head=headW<=beside ? 'beside' : headW*11/12<=beside ? 'smaller' : 'alone';
+  return {cols, track, head};
+}
+
 function namedGone(day){
   // Strikes the model named that have since dropped off the list, and which of
   // them left the book altogether. It is the one line on this card that says
@@ -923,5 +992,6 @@ if(typeof module!=='undefined'&&module.exports){
                   barPoints, tapePoints, livePoint, modelRead,
                   weightBands, readPoints, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
-                  FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace};
+                  FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
+                  GRID_TRACK_MIN, activityGrid};
 }

@@ -1899,13 +1899,18 @@ def test_the_price_chip_ends_on_the_strikes_figure_column():
     past the strikes. The widths are the shipped face's, from figW.
 
     With tabular figures the chip is one width for every price the instrument
-    trades at, so the price rule can start exactly 10px after it."""
-    col = int(re.search(r"grid-template-columns:(\d+)px", _css_rule(".ac-rows")).group(1))
+    trades at, so the price rule can start exactly 10px after it. The figure
+    column is activityGrid's first, and it is one width on every card, because
+    the chip does not move with the card."""
     pad_l, pad_r = (int(v) for v in re.search(r"padding:0 (\d+)px 0 (\d+)px", _block(".ac-chip{")).groups()[::-1])
     floor = float(re.search(r"min-width:([\d.]+)px", _css_rule(".ac-chip .int")).group(1))
     rule_l = float(re.search(r"left:([\d.]+)px", _css_rule(".ac-px::before")).group(1))
     w = _glance("console.log(JSON.stringify(D.map(a => g.figW(...a))));",
                 [["1,517", 13, 700], ["9,999", 13, 700], [".00", 13, 700]])
+    cols = _glance("console.log(JSON.stringify(D.map(w => g.activityGrid(w, 148.62).cols[0])));",
+                   [256, 296, 311, 348])
+    col = cols[2]
+    assert set(cols) == {col}, "the figure column moves with the card, and the chip does not"
     assert w[0] == w[1], "the price's width depends on its digits again"
     assert pad_l + floor == col, "the chip's integer does not end on the figure column"
     assert w[0] <= floor, "a four-digit price overruns the floor that holds it to the column"
@@ -2196,6 +2201,113 @@ def test_the_pace_column_takes_the_head_row():
     near = dict(_BOARD_1511, day=dict(_BOARD_1511["day"], stood=[1490, 1500, 1510, 1520, 1530],
                                       left=[[1485, "09:38"]]))
     top = _page(_board(near))["acAbove"]["kids"]
-    assert [k["cls"] for k in top[0]["kids"]] == ["ac-head"]
+    assert [k["cls"] for k in top[0]["kids"]] == ["ac-head alone"]
     assert top[0]["kids"][0]["text"] == "trading now against earlier"
     assert [row["kids"][0]["text"] for row in top[1:]] == ["1,545", "1,530", "1,520"]
+
+
+# --- the ladder on a narrower card ------------------------------------------
+# The six columns were drawn for a 375px phone. Below it the reflow is interim —
+# the owner has not decided how the grid should behave there — and it is the
+# most conservative one that keeps every word legible (glance.js, activityGrid).
+
+def test_a_narrower_card_gives_up_width_in_order():
+    """Down from the 311px content box the card was drawn for, the ladder gives
+    up width in one order and stops as soon as the row fits: first the gauge's
+    length, by exactly what the row is short, to its floor; then the two gaps
+    beside it, toward the card's 6px unit; and only then the gauge itself, so
+    the multiple says how many times over on its own. Every width from 360 of
+    content down to 240 is walked, a quarter pixel at a time, so a change that
+    tightens the gaps while the gauge still has length to give, or drops the
+    gauge while the gaps still have room, fails here.
+
+    The head moves on its own rule, because no column can make room for it:
+    right-aligned to the card's edge, it closes on "further above" by every
+    pixel the card loses. It keeps the card's 12 from it at its own size, then
+    a pixel smaller, and under that it takes a row of its own."""
+    got = _glance("""const W = [];
+        for(let w = 360; w >= 240; w -= 0.25) W.push(w);
+        console.log(JSON.stringify({floor: g.GRID_TRACK_MIN,
+            at: W.map(w => [w, g.activityGrid(w, 148.62)]),
+            bad: [0, -5, null, NaN, undefined].map(w => g.activityGrid(w, 148.62))}));""")
+    floor, last = got["floor"], "small pile"
+    fits = lambda w, gap, track: w - 148 - 33 - gap - (track + gap if track else 0) - 52.28 >= 0
+    prev = None
+    for w, grid in got["at"]:
+        cols, track, head = grid["cols"], grid["track"], grid["head"]
+        gap = cols[3] - 33
+        assert cols[:3] == [46, 24, 78], f"the figure, the dot or the word column moved at {w}"
+        assert all(isinstance(c, int) and c >= 0 for c in cols), f"a track is not a whole length at {w}"
+        if w >= 303.28:                  # the drawn row already fits: nothing moves
+            assert (cols, track) == ([46, 24, 78, 45, 58], 46), f"{w}"
+        if w >= 245.28:                  # down to where the row can fit at all, it does
+            assert sum(cols) + 52.28 <= w, f"{last!r} runs past the card at {w}"
+        if track:
+            assert cols[4] == track + gap and floor <= track <= 46
+            assert gap == 12 or track == floor, f"the gaps closed while the gauge could give at {w}"
+            assert 6 <= gap <= 12
+        else:
+            assert not fits(w, 6, floor), f"the gauge went while the gaps could still give at {w}"
+        if prev:
+            assert (track or 0) <= (prev["track"] or 0), f"the gauge grew as the card narrowed at {w}"
+        beside = w - 70 - 76.73
+        assert head == ("beside" if beside - 148.62 >= 12 else
+                        "smaller" if beside - 148.62 * 11 / 12 >= 12 else "alone"), f"{w}"
+        prev = grid
+
+    at = dict((w, grid) for w, grid in got["at"])
+    # the owner's own phone: the gauge gives 8px and nothing else in the row moves
+    assert at[296] == {"cols": [46, 24, 78, 45, 50], "track": 38, "head": "smaller"}
+    # the smallest phone the page is built for: no gauge, and the words keep
+    # their place against the card's edge instead of closing on the number
+    assert at[256] == {"cols": [46, 24, 78, 45, 10], "track": None, "head": "alone"}
+    # a card that has not laid out yet still gets whole, finite tracks
+    for grid in got["bad"]:
+        assert grid["track"] is None and all(isinstance(c, int) for c in grid["cols"])
+
+
+def test_the_ladder_is_laid_out_on_the_cards_own_width():
+    """The page measures the card and hands the width to activityGrid; this is
+    that it uses the answer. Both halves of the ladder take one template, so the
+    columns run straight through the price row, and every gauge and the scale
+    under them take the same length. On the owner's 360px phone the track is 38
+    and the head a pixel smaller beside "further above". On a 320 the gauge and
+    its scale are gone and every row still carries its multiple and its word, and
+    the head takes the row above the count, out of the ladder's top margin, so
+    the card is no taller."""
+    def gauges(got):
+        return [k for side in ("acAbove", "acBelow") for row in got[side]["kids"]
+                for k in row["kids"] if k["cls"].split()[0] in ("ac-gauge", "ac-scale")]
+
+    got = _page(_board(_BOARD_1511, width=311))
+    for side in ("acAbove", "acBelow"):
+        assert got[side]["style"]["gridTemplateColumns"] == "46px 24px 78px 45px 58px auto"
+    assert {k["style"]["width"] for k in gauges(got)} == {"46px"} and len(gauges(got)) == 10
+    assert [k["cls"] for k in got["acAbove"]["kids"][0]["kids"]][-1] == "ac-head beside"
+    assert "lift" not in got["acAbove"]["cls"]
+
+    got = _page(_board(_BOARD_1511, width=296))
+    for side in ("acAbove", "acBelow"):
+        assert got[side]["style"]["gridTemplateColumns"] == "46px 24px 78px 45px 50px auto"
+    assert {k["style"]["width"] for k in gauges(got)} == {"38px"} and len(gauges(got)) == 10
+    top = got["acAbove"]["kids"][0]
+    assert [(k["cls"], k["text"]) for k in top["kids"]] == [
+        ("ac-more", "+9"), ("ac-word", "further above"), ("ac-head smaller", "trading now against earlier")]
+    assert "lift" not in got["acAbove"]["cls"]
+
+    got = _page(_board(_BOARD_1511, width=256))
+    for side in ("acAbove", "acBelow"):
+        assert got[side]["style"]["gridTemplateColumns"] == "46px 24px 78px 45px 10px auto"
+    assert gauges(got) == []
+    rows = got["acAbove"]["kids"]
+    assert [(k["cls"], k["text"]) for k in rows[0]["kids"]] == [("ac-head alone", "trading now against earlier")]
+    above, below = _ac_cells({"kids": rows[1:]}), _ac_cells(got["acBelow"])
+    assert above[0] == ("+9", None) and below[-1] == ("+6", None)
+    assert [(r[1], r[4]) for r in above[1:] + below[:4]] == [
+        ("1.6×", "slower"), ("2.4×", "slower"), ("4.4×", "steady"), ("4.8×", "faster"), ("2.3×", "slower"),
+        ("0.7×", "steady"), ("0.9×", "steady"), ("6.9×", "small pile"), ("1.3×", "faster")]
+    assert "lift" in got["acAbove"]["cls"].split()
+    # 18px of head row for the 18px of margin it takes: the card keeps its height
+    assert len(rows) == len(_page(_board(_BOARD_1511, width=311))["acAbove"]["kids"]) + 1
+    assert _css_rule(".ac-rows.top") == "margin-top:18px"
+    assert _css_rule(".ac-rows.top.lift") == "margin-top:0"

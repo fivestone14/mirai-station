@@ -1098,17 +1098,20 @@ const AC_WORD = {new: 'got busy', held: 'busy all day', gone: 'went quiet'};
 // over it more — without "trading", "slower" beside a strike price reads as the
 // price. So the multiple's unit, "× what was already there", is not on the card.
 // OPEN FOR THE OWNER (RATE-SPEC 11.3): this line is the whole of that choice, and
-// {text: '× what was already there', heads: r => r.mult != null} puts it back.
-// `heads` says which rows have something under the head.
-const AC_HEAD = {text: 'trading now against earlier', heads: r => !!r.pace && !r.thin};
+// {text: '× what was already there', w: 138.14, heads: r => r.mult != null} puts
+// it back. `w` is its width at 12px/400 in the shipped face, which decides where
+// activityGrid can put it; `heads` says which rows have something under it.
+const AC_HEAD = {text: 'trading now against earlier', w: 148.62, heads: r => !!r.pace && !r.thin};
 
-function acRow(r){
+function acRow(r, track){
   // <div class="ac-row new"><div class="ac-k">1,630</div><div class="ac-dot"></div>
   //  <div class="ac-word">got busy</div><div class="ac-m">4.8×</div>
-  //  <div class="ac-gauge"><i style="width:96.6%"></i></div></div>
+  //  <div class="ac-gauge" style="width:46px"><i style="width:96.6%"></i></div></div>
   // Honest-absent holds on the row too: no word on a continuation, no time
   // element at all where the builder recorded none, and no multiple, gauge or
-  // track where the scan measured nothing — an empty track reads as zero.
+  // track where the scan measured nothing — an empty track reads as zero. A
+  // `track` of null is a card too narrow for the gauge, and the multiple says
+  // it alone.
   const row = acEl('ac-row ' + r.state);
   row.appendChild(acEl('ac-k', gUsd(r.y, 0).replace('$','')));
   row.appendChild(acEl('ac-dot'));
@@ -1116,12 +1119,15 @@ function acRow(r){
   if(r.at) row.appendChild(acEl('ac-time', r.at));
   else if(r.mult != null){
     row.appendChild(acEl('ac-m', gTimes(r.mult)));
-    const bar = turnoverBar(r.mult);
-    const g = acEl('ac-gauge' + (bar.over ? ' over' : ''));
-    const fill = document.createElement('i');
-    fill.style.width = bar.pct.toFixed(1) + '%';
-    g.appendChild(fill);
-    row.appendChild(g);
+    if(track){
+      const bar = turnoverBar(r.mult);
+      const g = acEl('ac-gauge' + (bar.over ? ' over' : ''));
+      g.style.width = track + 'px';
+      const fill = document.createElement('i');
+      fill.style.width = bar.pct.toFixed(1) + '%';
+      g.appendChild(fill);
+      row.appendChild(g);
+    }
     // One cell, one thing, and a warning outranks a rate: under 500 contracts
     // standing the multiple is mostly the smallness of the pile, and that is
     // the headline. Otherwise faster / steady / slower, or nothing at all when
@@ -1144,11 +1150,13 @@ function acMore(n, word, extra){
   return row;
 }
 
-function acScale(){
+function acScale(track){
   // 1× under the tick every bar is read against, the full scale under the
   // track's end. The zero is the track's own left end, on every row, and is not
-  // numbered: at 11px a "0" centred on it overlaps the "1×".
+  // numbered: at 11px a "0" centred on it overlaps the "1×". The scale is the
+  // track's length, so each label stays on its mark however long that is.
   const s = acEl('ac-scale');
+  s.style.width = track + 'px';
   s.appendChild(acEl('one', '1×'));
   s.appendChild(acEl('full', FULL_TURNOVER + '×'));
   return s;
@@ -1214,19 +1222,27 @@ function paintToday(){
   // every poll.
   const map = activityRows(day, (sc.price || {}).live_spot, 5, sc.strikes,
                            (sc.frames || {}).book_times);
+  // the headline runs the card's whole measure, so its box is the ladder's width
+  const grid = activityGrid($('tdLine').getBoundingClientRect().width, AC_HEAD.w);
   const above = [], below = [], px = [];
+  let lift = false;
   if(map){
     // a head or a scale over a column with nothing in it would label an absence.
     // A word under no head is worse: "faster" beside a strike price, with no
     // "trading" over it, reads as the price. So the head keeps a row of its own
-    // on a ladder with no count above price, and costs 18px there.
+    // on a ladder with no count above price, and costs 18px there. On a card
+    // too narrow to hold it beside the count, it takes a row of its own out of
+    // the 18px above the ladder, and the card keeps its height.
     const rows = map.above.concat(map.below);
-    const head = rows.some(AC_HEAD.heads) ? acEl('ac-head', AC_HEAD.text) : null;
-    if(map.moreAbove || head) above.push(acMore(map.moreAbove, 'further above', head));
-    for(const r of map.above) above.push(acRow(r));
-    for(const r of map.below) below.push(acRow(r));
-    if(map.moreBelow) below.push(acMore(map.moreBelow, 'further below',
-                                        rows.some(r => r.mult != null) ? acScale() : null));
+    const where = map.moreAbove ? grid.head : 'alone';
+    const head = rows.some(AC_HEAD.heads) ? acEl('ac-head ' + where, AC_HEAD.text) : null;
+    lift = !!(head && map.moreAbove && where === 'alone');
+    if(lift) above.push(acMore(0, null, head));
+    if(map.moreAbove || head) above.push(acMore(map.moreAbove, 'further above', lift ? null : head));
+    for(const r of map.above) above.push(acRow(r, grid.track));
+    for(const r of map.below) below.push(acRow(r, grid.track));
+    const scale = grid.track && rows.some(r => r.mult != null) ? acScale(grid.track) : null;
+    if(map.moreBelow) below.push(acMore(map.moreBelow, 'further below', scale));
     const v = shownPrice(sc, LIVE);
     if(v){
       const chip = acEl('ac-chip');
@@ -1237,6 +1253,11 @@ function paintToday(){
       px.push(chip, acEl('ac-now', 'Price now'));
     }
   }
+  // both halves share one template, so the columns run straight through the price
+  const cols = grid.cols.map(c => c + 'px').join(' ') + ' auto';
+  $('acAbove').style.gridTemplateColumns = cols;
+  $('acBelow').style.gridTemplateColumns = cols;
+  $('acAbove').classList.toggle('lift', lift);
   $('acAbove').replaceChildren(...above);
   $('acPx').replaceChildren(...px);
   $('acBelow').replaceChildren(...below);
