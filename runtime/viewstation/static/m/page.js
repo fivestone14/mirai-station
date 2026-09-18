@@ -161,6 +161,7 @@ function state(){
     // The strikes payload, not the ladder's legacy scene: the per-strike rows
     // live there and nowhere else. An era that ships no rows draws no bars.
     strikes: ((PAY.scene || {}).strikes) || null,
+    frames: ((PAY.scene || {}).frames) || null,
     vol: volumeBlocks(BARS, 5),
     openRange: ((((PAY.scene || {}).context || {}).ranges || {}).opening) || null,
   };
@@ -331,6 +332,59 @@ function paintFoot(){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 
+/* ---- where new contracts arrived: the marks and their word ------------- */
+
+// CHANGE-SPEC.md 5.1: each corner a 16px arm and a 5.5px leg, 1.5px thick. A
+// box under 13px tall is grown about its middle, so a one-strike area can be
+// found and can hold its word: 8.6px of ink and a pixel of air inside each
+// arm. At the spec's 11 the word left its box on 110 to 120 of the 335 boxed
+// boards of 2026-09-15..17, by phone; at 13 on 0 to 14, each of them the
+// longer "· 1 MORE" form crossing a bar.
+const NEW_ARM = 16, NEW_LEG = 5.5, NEW_W = 1.5, NEW_MIN_H = 13;
+// The word, 11px/500 in the shipped face: "NEW CONTRACTS " and "%" are
+// 108.22, each figure 6.60, and " · 1 MORE" 48.65 — 121.42 in all for a share
+// of two figures. Its capitals, figures and % run 8.4px above the baseline and
+// 0.2 below it.
+const NEW_WORD = 108.22, NEW_FIG = 6.60, NEW_MORE = 48.65, WORD_UP = 8.4, WORD_DOWN = 0.2;
+
+function wordRow(t, b, soft, hard, top, bottom){
+  // The baseline for the word on the area boxed from t to b, or null. `soft`
+  // and `hard` are [top, bottom] spans across the word's width: the ink of
+  // rules, which its halo may cut, and what it may never touch (text, bars,
+  // the dot's ring), each with the air it must keep. First the tallest stretch
+  // of the box clear of both, the word centred in it: a word laid across a
+  // rule reads as that rule's label, one beside it as the box's (CHANGE-SPEC.md
+  // 5.5). Then the stretch clear of what it may not touch nearest the box's
+  // middle, over the rules. Then the nearest room just outside the box, below
+  // it and then above, inside top..bottom: a word out of its box is worse than
+  // one over a rule, and better than one over other text.
+  const need = WORD_UP + WORD_DOWN;
+  const free = (lo, hi, spans) => {
+    const out = [];
+    let at = lo;
+    for(const [a, z] of spans.slice().sort((p, q) => p[0] - q[0])){
+      if(a > at) out.push([at, Math.min(a, hi)]);
+      at = Math.max(at, z);
+      if(at >= hi) break;
+    }
+    if(at < hi) out.push([at, hi]);
+    return out.filter(([a, z]) => z - a >= need);
+  };
+  const lo = t + NEW_W / 2 + 1, hi = b - NEW_W / 2 - 1, mid = (t + b) / 2;
+  const clear = free(lo, hi, soft.map(([a, z]) => [a - 1, z + 1]).concat(hard));
+  if(clear.length){
+    const [a, z] = clear.reduce((p, q) => (q[1] - q[0] > p[1] - p[0] ? q : p));
+    return (a + z + WORD_UP - WORD_DOWN) / 2;
+  }
+  const at = ([a, z]) => Math.min(Math.max(mid + (WORD_UP - WORD_DOWN) / 2, a + WORD_UP), z - WORD_DOWN);
+  const over = free(lo, hi, hard);
+  if(over.length) return over.map(at).reduce((p, q) => (Math.abs(q - mid) < Math.abs(p - mid) ? q : p));
+  const below = free(b + NEW_W / 2 + 1, bottom, hard), above = free(top, t - NEW_W / 2 - 1, hard);
+  if(below.length) return below[0][0] + WORD_UP;
+  if(above.length) return above[above.length - 1][1] - WORD_DOWN;
+  return null;
+}
+
 function paintLadder(st){
   const svg = $('svg');
   // The head says what the chart shows and which scan drew it. A stale axis
@@ -476,9 +530,43 @@ function paintLadder(st){
   // exactly; it is six now that a nearest wall the day cannot reach is tried
   // here rather than anchored. The pad is computed from these lengths, so the
   // third row costs its 13px only on a day that has a third thing to say.
-  const above = byPrice(leftover.filter(l => l.y > ref).slice(0, 3));
-  const below = byPrice(leftover.filter(l => l.y < ref).slice(0, 3));
-  const PAD_T = 9 + 13*above.length, PAD_B = 29 + 13*below.length;
+  const above = leftover.filter(l => l.y > ref).slice(0, 3);
+  const below = leftover.filter(l => l.y < ref).slice(0, 3);
+
+  // ---- where new contracts arrived, and where the plot cannot show it ------
+  // newContracts (glance.js) finds the price areas the board's newest contracts
+  // moved to. The window is solved from price, the session and the walls, and
+  // the change is wherever contracts trade: on 2026-09-16, 6 of the day's 19
+  // areas lay outside it, and at 15:10 both did (CHANGE-SPEC.md 9). Widening
+  // the window to fetch one would flatten the tape, the trade MIN_RANGE_SHARE
+  // refuses a far wall, so an area the plot cannot show, or shows less than 15%
+  // of, is NAMED in the edge stack on its side, the way a refused wall is.
+  const fresh = newContracts(st.strikes, st.frames);
+  const lit = [];
+  let unshown = fresh ? fresh.more : 0;
+  for(const a of (fresh ? fresh.areas : [])){
+    const lo = Math.max(a.lo, WIN.lo), hi = Math.min(a.hi, WIN.hi);
+    if(hi - lo > 0 && hi - lo >= 0.15 * (a.hi - a.lo)){ lit.push({a, lo, hi}); continue; }
+    const mid = (a.lo + a.hi) / 2, stack = mid > ref ? above : below;
+    if(stack.some(l => l.kind === 'new')) unshown++;
+    else stack.push({y:mid, kind:'new', area:a});
+  }
+  // With no box in the plot there is no word to count what got no mark of its
+  // own, so the count rides the row of the biggest area off the plot instead.
+  const rowsNew = above.concat(below).filter(l => l.kind === 'new');
+  if(!lit.length && unshown && rowsNew.length)
+    rowsNew.reduce((p, q) => (q.area.lift > p.area.lift ? q : p)).more = unshown;
+  byPrice(above); byPrice(below);
+  // Rows are 13px apart, and 16 either side of a row of new contracts: at 13
+  // two 11px rows leave 2.88px of white where one row's comma meets the next
+  // row's capitals, and 16 leaves 5.88 (CHANGE-SPEC.md 9). The 3px is for the
+  // pair, so a row of new contracts alone on its side costs the plot 13, as a
+  // wall's does, and the row nearest the plot keeps a wall row's 12 from it.
+  const pitch = (a, b) => (a.kind === 'new' || b.kind === 'new') ? 16 : 13;
+  const offsets = rows => rows.reduce((at, l, i) => at.concat(i ? at[i-1] + pitch(rows[i-1], l) : 0), []);
+  const aboveAt = offsets(above), belowAt = offsets(below);
+  const stackH = at => at.length ? 13 + at[at.length - 1] : 0;
+  const PAD_T = 9 + stackH(aboveAt), PAD_B = 29 + stackH(belowAt);
   const RIB_B = SVGH - 19, RIB_T = RIB_B - 10;   // the volume ribbon's own band
   const plotTop = PAD_T, plotBottom = SVGH - PAD_B, plotH = plotBottom - plotTop;
   const k = plotH / span;
@@ -641,26 +729,127 @@ function paintLadder(st){
        + ' L' + (PLOT_R+5) + ',' + n1(y-5) + ' L' + (PLOT_R+5) + ',' + n1(y+5) + ' Z" style="fill-opacity:1"/>';
   }
 
+  // ---- where new contracts arrived, in the plot ---------------------------
+  // Four corners round the area, a tab beside it in the gutter, and on the
+  // biggest the word. Corners, not two lines across it: two full-width lines
+  // read as a channel, and a channel promises price does something between them
+  // (CHANGE-SPEC.md 5.2). The corners sit 4px inside the plot, off the wall
+  // bugs, and a right-hand one that would land on the live dot's ring stops
+  // short of it.
+  const dot = !st.withdrawn && inWin(ref);
+  const inks = levels.map(l => [yFor(l.y), (l.kind === 'wall' ? (l.nearest ? 2 : 1.2)
+                                            : l.lead ? 2.2 : 1 + 0.9 * (l.weight || 0.5)) / 2]);
+  if(dot) inks.push([priceY, 0.5]);
+  if(orng && inWin(orng.high) && inWin(orng.low)) inks.push([yFor(orng.high), 0.5], [yFor(orng.low), 0.5]);
+  // An arm on a rule reads as the rule doubled, so each arm keeps 2.5px off
+  // every rule's ink. It gets there moving OUTWARD, 4px at most; coming in over
+  // the area it marks is the worse misstatement and costs twice as much, and
+  // is taken only where the plot's edge or the 4px stops the outward move, so
+  // a box pinned to the edge or grown to its least height can shift clear.
+  // Where rules run closer together than any move of 4px can clear (72 of the
+  // 1,532 arms on 514 boards of 09-15..17), the arms take the moves that keep
+  // the nearer of them furthest off the ink: 0.65px at the least, never on it.
+  const offInk = y => Math.min(2.5, ...inks.map(([ry, hw]) => Math.abs(y - ry) - hw - NEW_W / 2));
+  const moves = [0];
+  for(let d = 0.25; d <= 4; d += 0.25) moves.push(-d, d);
+  const boxes = lit.map(({a, lo, hi}) => {
+    // 1px inside the plot's edge, not the half-stroke, so the tenth the
+    // coordinates are rounded to cannot put the stroke past it
+    const top = plotTop + 1, bottom = plotBottom - 1;
+    let t0 = yFor(hi), b0 = yFor(lo);
+    if(b0 - t0 < NEW_MIN_H){
+      t0 = Math.min(Math.max((t0 + b0 - NEW_MIN_H) / 2, top), bottom - NEW_MIN_H);
+      b0 = t0 + NEW_MIN_H;
+    }
+    t0 = Math.max(t0, top); b0 = Math.min(b0, bottom);
+    let best = {t:t0, b:b0, off:-Infinity, cost:Infinity};
+    for(const dt of moves) for(const db of moves){
+      const t = t0 + dt, b = b0 + db, cost = (dt < 0 ? -dt : 2 * dt) + (db > 0 ? db : -2 * db);
+      if(t < top || b > bottom || b - t < NEW_MIN_H) continue;
+      const off = Math.min(offInk(t), offInk(b));
+      if(off > best.off || (off === best.off && cost < best.cost)) best = {t, b, off, cost};
+    }
+    return {a, t:best.t, b:best.b};
+  });
+  for(const {t, b} of boxes){
+    for(const [x0, dx] of [[PLOT_L + 4, 1], [PLOT_R - 4, -1]]) for(const [y, dy] of [[t, 1], [b, -1]]){
+      // the ring's ink runs 7.5 from the dot's centre; the corner, arm or leg,
+      // keeps 2 more
+      const onRing = dot && x0 - NEW_ARM < dotX + 10 && Math.min(y, y + dy * NEW_LEG) < priceY + 10
+                   && Math.max(y, y + dy * NEW_LEG) > priceY - 10;
+      const x = (dx < 0 && onRing) ? dotX - 10 : x0;
+      o += '<path class="p-new" d="M' + n1(x) + ',' + n1(y + dy * NEW_LEG) + ' L' + n1(x) + ',' + n1(y)
+         + ' L' + n1(x + dx * NEW_ARM) + ',' + n1(y) + '"/>';
+    }
+  }
+
   // ---- the count on the longest bar ---------------------------------------
   // The bars' one number. Their scale is per scan, so a full-length bar was
   // 7,456 contracts at 15:10 on 2026-09-16 and 3,264 at 11:01, and only this
   // says which. It sits 4px past the bar's end on the card side, where a bar
   // chart puts its value, and inside the bar at its root only if that would
-  // put it on the live dot's ring or off the plot. The busiest strike is
+  // put it on the live dot's ring or off the plot; the word of new contracts
+  // below may move it inside, just past the end. The busiest strike is
   // usually one the chart already rules, so the count's card halo cuts that
   // rule for its width: a rule or a dash on 167 of the 188 boards of 09-16.
+  let count = null;
   if(traded){
     const b = traded.bars.find(r => r.n === traded.most);
     const s = gUsd(b.n, 0).replace('$',''), w = figW(s, 11, 600), by = b.y + 0.36 * 11;
     const tip = PLOT_R - b.share * TRADED_FULL * PLOT_W;
-    const dot = !st.withdrawn && inWin(ref);
     // the figures' ink runs 8px above the baseline and a comma 2.2 below it;
     // the ring is 7 round the dot, and 2 more keeps them apart
     const clear = xe => xe - w >= PLOT_L + 2 && xe <= PLOT_R - 2
       && !(dot && xe > dotX - 9 && xe - w < dotX + 9 && by - 8 < priceY + 9 && by + 2.2 > priceY - 9);
     const xe = [tip - 4, PLOT_R - 4].find(clear);
-    o += '<text class="p-tradednum" x="' + n1(xe != null ? xe : tip - 4) + '" y="' + n1(by) + '">' + s + '</text>';
+    count = {s, w, by, tip, clear, x:xe != null ? xe : tip - 4};
   }
+
+  // ---- the word ------------------------------------------------------------
+  // One, on the biggest area the plot shows, counting any area it could not:
+  // past the cap, or a second off the plot on a side whose edge row is taken.
+  // It says what happened, that this share of the contracts traded in the last
+  // two books went here, and nothing about what price does next. It never
+  // touches the count, a bar or the dot's ring (wordRow). Where the busiest
+  // strike is the one that changed, the count and the word want one row, and
+  // a count stacked under the word reads as the number of new contracts: the
+  // count then moves inside its bar, past the end, if that clears the word by
+  // 12px, and otherwise the word keeps its distance or leaves its box.
+  let word = null;
+  if(boxes.length){
+    const box = boxes[0], share = String(Math.round(box.a.share));
+    const wx = PLOT_L + 6, ww = NEW_WORD + NEW_FIG * share.length + (unshown ? NEW_MORE : 0);
+    const across = (x0, x1, air) => x0 < wx + ww + air && x1 > wx - air;
+    // The count keeps 5.5px above or below the word, what the chart's closest
+    // two labels keep, and 12 beside it, so it is not read as the word's next
+    // line or its next figure. Bars, the ring and another box keep 2.
+    const row = () => {
+      const hard = [];
+      if(count && across(count.x - count.w, count.x, 12)) hard.push([count.by - 8 - 5.5, count.by + 2.2 + 5.5]);
+      for(const b of (traded ? traded.bars : []))
+        if(across(PLOT_R - b.share * TRADED_FULL * PLOT_W, PLOT_R, 2)) hard.push([b.y - traded.h / 2 - 2, b.y + traded.h / 2 + 2]);
+      if(dot && across(dotX - 9, dotX + 9, 2)) hard.push([priceY - 11, priceY + 11]);
+      for(const x of boxes.slice(1)) hard.push([x.t - NEW_W / 2 - 2, x.t + NEW_W / 2 + 2], [x.b - NEW_W / 2 - 2, x.b + NEW_W / 2 + 2]);
+      return wordRow(box.t, box.b, inks.map(([y, hw]) => [y - hw, y + hw]), hard, plotTop + 1, plotBottom - 1);
+    };
+    const inBox = y => y != null && y - WORD_UP >= box.t && y + WORD_DOWN <= box.b;
+    const stacked = y => y != null && across(count.x - count.w, count.x, 12)
+                      && y - WORD_UP < count.by + 2.2 + 12 && y + WORD_DOWN > count.by - 8 - 12;
+    let by = row();
+    const past = count ? count.tip + 4 + count.w : null;
+    if(count && (!inBox(by) || stacked(by)) && count.x === count.tip - 4
+       && !across(past - count.w, past, 12) && count.clear(past)){
+      count.x = past;
+      const moved = row();
+      if(inBox(moved)) by = moved; else count.x = count.tip - 4;
+    }
+    if(by != null)
+      word = '<text class="p-newword" x="' + wx + '" y="' + n1(by) + '">NEW CONTRACTS ' + share + '%'
+           + (unshown ? ' · ' + unshown + ' MORE' : '') + '</text>';
+  }
+  if(count)
+    o += '<text class="p-tradednum" x="' + n1(count.x) + '" y="' + n1(count.by) + '">' + count.s + '</text>';
+  if(word) o += word;
 
   // ---- tag rows, solved once for every member including the price chip ---
   const members = [];
@@ -679,6 +868,20 @@ function paintLadder(st){
   members.sort((a,b) => (b.keep - a.keep) || (a.y - b.y));
   const kept = members.slice(0, 7).sort((a,b) => a.y - b.y);
   const rows = layoutLabels(kept.map(m => yFor(m.y)), 20, plotTop + 10, plotBottom - 10);
+
+  // The tab beside each area, in the mark column, first in the gutter so a
+  // diamond and a rung's tick draw whole over it. It stops 3px short of the
+  // price chip, which starts in the same column: run into the chip it read as
+  // the chip's stem. A piece shorter than it is wide is left out rather than
+  // drawn as a dot, so where the chip covers the whole area the corners carry
+  // it alone.
+  const chip = kept.findIndex(m => m.chip);
+  const tab = (y0, y1) => (y1 - y0 >= 4
+    ? '<rect class="p-newtab" x="' + MARK_L + '" y="' + n1(y0) + '" width="4" height="' + n1(y1 - y0) + '"/>' : '');
+  for(const {t, b} of boxes){
+    const a = chip < 0 ? b : Math.max(t, rows[chip] - 12), z = chip < 0 ? b : Math.min(b, rows[chip] + 12);
+    o += z > a ? tab(t, a) + tab(z, b) : tab(t, b);
+  }
 
   // ---- the price ruler, in the gutter's silences -------------------------
   // The gutter is already a column of prices, so the scale goes into it rather
@@ -717,16 +920,25 @@ function paintLadder(st){
   // When a wall the card names is itself off-window the bug triangle cannot
   // point at it, so its marker carries the weight instead. Matched on kind as
   // well as the nearest flag, so an exiled magnet on the same strike cannot
-  // steal the emphasis.
+  // steal the emphasis. A row of new contracts takes a plain arrow where a
+  // level takes a solid one, and names its strikes, never a midpoint between
+  // them.
   const namedEdge = l => l.kind === 'wall' && !!l.nearest;
   const edgeCls = l => 'p-edge' + (namedEdge(l) ? ' lead' : '');
+  const edgeText = (l, up) => {
+    if(l.kind !== 'new')
+      return (up ? '▲ ' : '▼ ') + gUsd(l.y,0).replace('$','') + (l.behind ? ' BIGGEST PILE' : '');
+    const k = l.area.strikes.map(v => gUsd(v,0).replace('$',''));
+    return (up ? '↑ ' : '↓ ') + k[0] + (k.length > 1 ? '–' + k[k.length-1] : '') + ' NEW CONTRACTS'
+         + (l.more ? ' · ' + l.more + ' MORE' : '');
+  };
   above.forEach((l, i) => {
-    o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + (10 + 13*i) + '">▲ '
-       + gUsd(l.y,0).replace('$','') + (l.behind ? ' BIGGEST PILE' : '') + '</text>';
+    o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + (10 + aboveAt[i]) + '">'
+       + edgeText(l, true) + '</text>';
   });
   below.forEach((l, i) => {
-    o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + n1(plotBottom + 12 + 13*i) + '">▼ '
-       + gUsd(l.y,0).replace('$','') + (l.behind ? ' BIGGEST PILE' : '') + '</text>';
+    o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + n1(plotBottom + 12 + belowAt[i]) + '">'
+       + edgeText(l, false) + '</text>';
   });
 
   // ---- how busy each stretch was -----------------------------------------

@@ -661,6 +661,97 @@ function tradedBars(strikes, lo, hi, top, bottom){
   return {h, most, bars};
 }
 
+/* ---- where new contracts arrived --------------------------------------- */
+
+// A price area's share of the contracts newly traded across the whole board in
+// the last NEW_TAIL books (about nine minutes), against its own median share of
+// each earlier book in the window. Both terms are contracts, and the
+// denominator is the whole board, so a market-wide lull or burst moves both
+// together and says nothing: what survives is the flow moving to one place.
+// Size is not change: the bars say how much traded all day, this says where the
+// last nine minutes went. CHANGE-SPEC.md 2 and 3, off 2026-09-16:
+//   NEW_LIFT     6 points of the board's new contracts. The median lift is
+//                +0.4 and the 90th percentile +7.2.
+//   NEW_SHARE    and a tenth of them now, so a strike cannot flag by climbing
+//                from nothing to next to nothing.
+//   NEW_FLOOR    60 contracts at the strike, and NEW_BOARD 250 on the whole
+//                board: a big share of nothing is not change. Four boards of
+//                09-16 were quiet by this alone; 12:44 would have lit 1,520
+//                for 56 contracts.
+//   NEW_BASE     4 earlier books of the strike's own, or there is no baseline
+//                to be lifted from. A window needs 7 books for that, so the
+//                spec's floor of 6 books in the window never decides anything
+//                and is not here.
+//   NEW_MERGE    flagged strikes 10 points apart or less are ONE area: 1,500,
+//                1,510 and 1,520 lighting together is one thing happening.
+//   NEW_CAP      2 areas, the biggest lift first, and the rest counted. The
+//                24 scans of 09-16 the model read never had a third after the
+//                merge; 18 of the phone's 514 boards of 09-15..17 did.
+const NEW_TAIL=2, NEW_BASE=4, NEW_LIFT=6.0, NEW_SHARE=10.0,
+      NEW_FLOOR=60, NEW_BOARD=250, NEW_MERGE=10, NEW_CAP=2;
+
+function newContracts(strikes, frames){
+  // -> {areas, more} or null. Each area: `strikes` flagged, low to high; `lo`
+  // and `hi`, the price it spans, half the way to the next listed strike either
+  // side (never more than half the board's usual step); `n` contracts in the
+  // last NEW_TAIL books and `share` of the board's, against `base` earlier, all
+  // summed over its strikes. `more` counts the areas past the cap.
+  //
+  // Honest-absent: a strike whose series is not the window's length is not
+  // measured, and a null inside one is a book the strike was not listed in,
+  // left out of its baseline, never counted as a book at 0%. Nothing
+  // qualifies, nothing is returned.
+  const nb=_fin(frames&&frames.books_in_series);
+  if(nb==null) return null;
+  const nd=nb-1, series=[], listed=[];
+  for(const r of (((strikes||{}).rows)||[])){
+    const k=_fin(r&&r.strike);
+    if(k==null) continue;
+    listed.push(k);
+    const s=r.vol_added_per_book;
+    if(Array.isArray(s)&&s.length===nd) series.push({k, s:s.map(_fin)});
+  }
+  if(!series.length) return null;
+  const tot=new Array(nd).fill(0);
+  for(const {s} of series) s.forEach((v, j)=>{ if(v!=null) tot[j]+=v; });
+  const board=tot.slice(-NEW_TAIL).reduce((a, b)=>a+b, 0);
+  if(board<NEW_BOARD) return null;
+  const flags=[];
+  for(const {k, s} of series){
+    const n=s.slice(-NEW_TAIL).reduce((a, v)=>a+(v||0), 0);
+    const was=[];
+    for(let j=0;j<nd-NEW_TAIL;j++) if(s[j]!=null&&tot[j]>0) was.push(100*s[j]/tot[j]);
+    if(was.length<NEW_BASE) continue;
+    was.sort((a, b)=>a-b);
+    const m=was.length>>1, base=was.length%2 ? was[m] : (was[m-1]+was[m])/2;
+    const share=100*n/board;
+    if(share-base>=NEW_LIFT&&share>=NEW_SHARE&&n>=NEW_FLOOR) flags.push({k, n, share, base});
+  }
+  if(!flags.length) return null;
+  flags.sort((a, b)=>a.k-b.k);
+  const groups=[];
+  for(const f of flags){
+    const g=groups[groups.length-1];
+    if(g&&f.k-g[g.length-1].k<=NEW_MERGE) g.push(f); else groups.push([f]);
+  }
+  // an area's edges, half the way to its listed neighbours
+  listed.sort((a, b)=>a-b);
+  const steps=listed.slice(1).map((k, i)=>k-listed[i]).filter(d=>d>0).sort((a, b)=>a-b);
+  const half=steps.length ? steps[steps.length>>1]/2 : null;
+  const edge=(k, dir)=>{
+    const next=dir>0 ? listed.find(x=>x>k) : [...listed].reverse().find(x=>x<k);
+    const d=[next!=null ? Math.abs(next-k)/2 : null, half].filter(v=>v!=null);
+    return k+dir*(d.length ? Math.min(...d) : 0);
+  };
+  const sum=(g, key)=>g.reduce((a, f)=>a+f[key], 0);
+  const areas=groups.map(g=>{
+    const share=sum(g, 'share'), base=sum(g, 'base');
+    return {strikes:g.map(f=>f.k), lo:edge(g[0].k, -1), hi:edge(g[g.length-1].k, 1),
+            n:sum(g, 'n'), share, base, lift:share-base, board};
+  }).sort((a, b)=>b.lift-a.lift);
+  return {areas:areas.slice(0, NEW_CAP), more:Math.max(0, areas.length-NEW_CAP)};
+}
+
 /* ---- how busy each stretch was ----------------------------------------- */
 
 // A FIXED scale. Scaled to the day's own maximum, the opening block alone runs
@@ -997,7 +1088,7 @@ if(typeof module!=='undefined'&&module.exports){
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
-                  tradedBars, activityRows, namedGone,
+                  tradedBars, newContracts, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};

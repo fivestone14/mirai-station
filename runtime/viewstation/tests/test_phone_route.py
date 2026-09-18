@@ -1936,6 +1936,452 @@ def test_no_volume_for_today_draws_no_bars():
     assert got == [None, None, None]
 
 
+# --- where new contracts arrived (2026-09-18) --------------------------------
+# CHANGE-SPEC.md, on the revamped chart: a price area's share of the contracts
+# newly traded across the whole board in the last two books, against its own
+# median share earlier in the window. Where the plot shows the area: four
+# corners, a tab in the gutter, the word. Where it cannot: a row at the edge.
+
+# The 15:10:21 board's own series, in _SCENE_0916's row order: 1,490 and 1,600
+# both took a lift there, and the window (1,496-1,564) holds neither.
+_FLOW_1510 = {1500: [13, 68, 51, 52, 183, 64, 143, 60, 99, 84, 52],
+              1600: [29, 326, 55, 66, 75, 170, 38, 53, 175, 189, 140],
+              1530: [74, 139, 117, 97, 112, 105, 102, 129, 166, 134, 180],
+              1550: [16, 85, 45, 45, 86, 120, 54, 81, 43, 30, 28],
+              1540: [53, 71, 61, 84, 173, 60, 81, 59, 94, 113, 71],
+              1450: [4, 30, 23, 23, None, None, None, 30, 114, 19, 58],
+              1520: [138, 104, 58, 181, 27, 19, 14, 26, 83, 82, 48],
+              1430: [None] * 11,
+              1495: [100, 111, 2, 1, 3, 5, 5, 49, 6, 2, 0],
+              1490: [1, 5, 3, 201, 8, 105, 105, 206, 8, 116, 113],
+              1510: [7, 16, 28, 31, 66, 7, 7, 13, 47, 12, 31],
+              1545: [2, 63, 5, 20, 58, 89, 30, 14, 22, 6, 7],
+              1470: [4, 27, 2, 1, 102, 5, 7, 1, 4, 0, 11],
+              1480: [7, 11, 8, 5, 36, 16, 25, 3, 59, 9, 118],
+              1605: [0, 1, 0, 5, 3, 1, 1, 4, 13, 1, 1]}
+_FRAMES_1510 = {"books_in_series": 12, "book_times": ["14:22", "14:27", "14:31", "14:35", "14:39", "14:43",
+                                                     "14:47", "14:51", "14:55", "15:00", "15:04", "15:08"]}
+
+
+def _flowing(scene, flow, frames):
+    """`scene` with each row's vol_added_per_book from `flow` and the window's frames."""
+    out = json.loads(json.dumps(scene))
+    for r in out["strikes"]["rows"]:
+        r["vol_added_per_book"] = flow[r["strike"]]
+    out["frames"] = frames
+    return out
+
+
+# 11:01:12 on 2026-09-16, the scan whose area the plot CAN show: 1,530 and
+# 1,540 took 63.0% of the board's 760 new contracts against 29.1% earlier.
+_SCENE_1101 = {
+    "price": {"live_spot": 1541.75, "session_high": 1560.58, "session_low": 1519.54},
+    "scale": {"one_sigma_dollars": 56.74,
+              "expected_move_today_asym": {"up_dollars": 33.58, "down_dollars": 33.52}},
+    "walls": {"call": [{"strike": 1605, "cluster_share_of_book_gamma_pp": 5.8}],
+              "put": [{"strike": 1500, "cluster_share_of_book_gamma_pp": 21.1},
+                      {"strike": 1450, "cluster_share_of_book_gamma_pp": 19.1}]},
+    "magnet": {"top_strikes": [{"strike": 1500, "share_of_book_gamma_pp": 14.09},
+                               {"strike": 1600, "share_of_book_gamma_pp": 12.95},
+                               {"strike": 1530, "share_of_book_gamma_pp": 8.97}]},
+    "context": {"ranges": {"opening": {"high": 1560.58, "low": 1519.54}}},
+    "frames": {"books_in_series": 12, "book_times": ["10:15", "10:20", "10:24", "10:28", "10:32", "10:36",
+                                                     "10:40", "10:44", "10:48", "10:52", "10:57", "11:01"]},
+    "strikes": {"rows": [{"strike": k, "vol_calls": vc, "vol_puts": vp, "vol_added_per_book": s}
+                         for k, vc, vp, s in (
+                             (1500, 536, 1409, [99, 141, 23, 27, 44, 34, 44, 41, 172, 20, 15]),
+                             (1600, 2369, 925, [185, 98, 20, 122, 17, 73, 39, 29, 18, 74, 4]),
+                             (1530, 1655, 1609, [101, 57, 17, 20, 3, 24, 89, 99, 77, 170, 33]),
+                             (1550, 1208, 970, [122, 131, 112, 77, 67, 38, 146, 29, 57, 29, 24]),
+                             (1540, 1385, 1459, [341, 157, 120, 52, 59, 60, 99, 49, 36, 170, 106]),
+                             (1520, 693, 668, [37, 38, 23, 2, 34, 3, 54, 101, 7, 10, 9]),
+                             (1570, 262, 34, [12, 15, 7, 7, 1, 15, 4, 6, 3, 1, 1]),
+                             (1580, 172, 63, [5, 12, 8, 3, 3, 1, 5, 2, 1, 5, 5]),
+                             (1510, 91, 225, [13, 14, 6, 2, 11, 0, 19, 6, 3, 3, 14]),
+                             (1475, 50, 1059, [5, 8, 0, 1, 0, 1, 2, 1, 2, 1, 0]),
+                             (1545, 504, 217, [78, 68, 43, 40, 19, 22, 15, 11, 2, 6, 8]),
+                             (1470, 103, 130, [4, 5, 4, 1, 0, 1, 8, 16, 15, 22, 1]),
+                             (1460, 17, 497, [101, 1, 11, 10, 2, 0, 101, 203, 2, 7, 0]),
+                             (1490, 8, 143, [4, 2, 3, 1, 3, 6, 7, 11, 7, 7, 4]),
+                             (1605, 71, 13, [0, 0, 10, 0, 0, 0, 3, 0, 0, 1, 0]),
+                             (1480, 21, 151, [1, 0, 1, 16, 0, 11, 7, 2, 0, 6, 4]))]}}
+
+
+def _new_marks(svg):
+    """The change marks as drawn: each corner as (x, y of its arm, the arm's
+    other end, the leg's end), the tabs as (x, y, width, height), the word as
+    (x, baseline, text), and the edge rows' texts that name new contracts."""
+    corners = [tuple(float(v) for v in m) for m in re.findall(
+        r'<path class="p-new" d="M([\d.]+),([\d.]+) L[\d.]+,([\d.]+) L([\d.]+),[\d.]+"/>', svg)]
+    corners = [(x, arm, end, leg) for x, leg, arm, end in corners]
+    tabs = [tuple(float(v) for v in m) for m in re.findall(
+        r'<rect class="p-newtab" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)]
+    word = [(float(x), float(y), t) for x, y, t in
+            re.findall(r'<text class="p-newword" x="([\d.]+)" y="([\d.]+)">([^<]*)<', svg)]
+    rows = [t for _, t in _svg_texts({"svg": {"html": svg}}, "p-edge") if "NEW CONTRACTS" in t]
+    return corners, tabs, word, rows
+
+
+def _new(strikes, frames):
+    return _glance("console.log(JSON.stringify(g.newContracts(D.strikes, D.frames)));",
+                   {"strikes": strikes, "frames": frames})
+
+
+def test_new_contracts_are_a_share_of_the_boards_newest_against_its_own_earlier():
+    """Size is not change: the bars already say how much traded all day, and
+    they say it whether the pile grew in the last nine minutes or at 09:34.
+    The measure is flow. A strike's share of the contracts newly traded across
+    the WHOLE board in the last two books, against its own median share of each
+    earlier book in the window; the lift is the difference, in points. Both are
+    contracts. The board is the denominator, so a burst or a lull across every
+    strike moves both terms alike and flags nothing: doubling every strike's
+    last two books leaves every share where it was.
+
+    CHANGE-SPEC.md 3.3's rows for two real boards of 2026-09-16: at 11:01:12
+    1,530 and 1,540 went from 29.1% to 63.0% of 760 new contracts, one area;
+    at 15:10:21 1,490 went from 0.9% to 13.8% and 1,600 from 8.1% to 19.9% of
+    1,655, the bigger lift first."""
+    r = lambda a: (a["strikes"], round(a["base"], 1), round(a["share"], 1), round(a["lift"], 1), a["n"], a["board"])
+    got = _new(_SCENE_1101["strikes"], _SCENE_1101["frames"])
+    assert [r(a) for a in got["areas"]] == [([1530, 1540], 29.1, 63.0, 34.0, 479, 760)] and got["more"] == 0
+    flow = _flowing(_SCENE_0916, _FLOW_1510, _FRAMES_1510)
+    got = _new(flow["strikes"], flow["frames"])
+    assert [r(a) for a in got["areas"]] == [([1490], 0.9, 13.8, 13.0, 229, 1655), ([1600], 8.1, 19.9, 11.8, 329, 1655)]
+    # an area spans half the way to its listed neighbours: 1,485 below 1,490 (1,480
+    # is listed), 1,492.5 above it (1,495 is)
+    assert (got["areas"][0]["lo"], got["areas"][0]["hi"]) == (1485, 1492.5)
+    burst = json.loads(json.dumps(flow))
+    for row in burst["strikes"]["rows"]:
+        row["vol_added_per_book"] = [v if v is None or i < 9 else 2 * v for i, v in enumerate(row["vol_added_per_book"])]
+    again = _new(burst["strikes"], burst["frames"])
+    assert [(a["strikes"], round(a["share"], 6), round(a["base"], 6)) for a in again["areas"]] == \
+        [(a["strikes"], round(a["share"], 6), round(a["base"], 6)) for a in got["areas"]]
+
+
+def _lift_board(tail, base=20, bg=(50, 50, 50, 50), books=12, series=None):
+    """A board of `books` books: four far strikes trading `bg` a book each, and
+    1,400 trading `base` a book, then `tail` a book in the last two."""
+    nd = books - 1
+    rows = [{"strike": k, "vol_added_per_book": [v] * nd} for k, v in zip((1300, 1320, 1340, 1360), bg)]
+    rows.append({"strike": 1400, "vol_added_per_book": series or [base] * (nd - 2) + [tail] * 2})
+    return {"strikes": {"rows": rows}, "frames": {"books_in_series": books}}
+
+
+def test_each_threshold_is_where_the_spec_put_it():
+    """CHANGE-SPEC.md 3, each floor proved on the two sides of its line, with
+    the others passed. LIFT: 6 points of the board's new contracts, near the
+    90th percentile of all lifts (the median is +0.4). SHARE: and a tenth of
+    them now. FLOOR: and 60 real contracts at the strike. BOARD: on a board
+    that added 250 in the two books, or a big share of nothing is not change
+    (12:44:07 would have lit 1,520 for 56 contracts). BASE: four earlier books
+    of the strike's own, or there is no baseline to be lifted from, so a
+    window of fewer than seven books measures nothing."""
+    def flagged(**kw):
+        got = _new(**_lift_board(**kw))
+        return bool(got) and [a["strikes"] for a in got["areas"]] == [[1400]]
+    # lift: 20/220 = 9.09% before; 36/236 = 15.25% (+6.16) flags, 35/235 = 14.89% (+5.80) does not
+    assert flagged(tail=36) and not flagged(tail=35)
+    # share: 3/303 = 0.99% before, on a 300-a-book board; 34/334 = 10.18% flags, 33/333 = 9.91% does not
+    assert flagged(tail=34, base=3, bg=(75,) * 4) and not flagged(tail=33, base=3, bg=(75,) * 4)
+    # floor: 5/205 = 2.44% before; 30 a book is 60 contracts and 13.04%, 29 is 58 and 12.66%
+    assert flagged(tail=30, base=5) and not flagged(tail=29, base=5)
+    # board: 2 x (30 + 95) = 250 flags, 2 x (30 + 94) = 248 does not, at 24% of it
+    assert flagged(tail=30, base=5, bg=(24, 24, 24, 23)) and not flagged(tail=30, base=5, bg=(24, 24, 23, 23))
+    # base: four earlier books of its own measure it, three do not, however big the move
+    missing = [None] * 5
+    assert flagged(tail=80, series=missing + [5] * 4 + [80, 80])
+    assert not flagged(tail=80, series=missing + [None] + [5] * 3 + [80, 80])
+    # a window of six books gives no strike four earlier ones; seven does
+    assert _new(**_lift_board(tail=80, books=6)) is None
+    assert _new(**_lift_board(tail=80, books=7))["areas"][0]["strikes"] == [1400]
+
+
+def test_a_strike_from_almost_nothing_is_measured_as_a_difference():
+    """The small-base trap, CHANGE-SPEC.md 4. The lift is a difference in
+    points, not a ratio: a ratio has no ceiling, so the day's biggest number
+    would belong to the strike with the smallest denominator. 1,490 at 15:10:21
+    took 0.86% of the board's new contracts and then 13.8%, 229 contracts: a
+    real arrival, flagged. A strike going from 1 a book to 25 is 25 times over
+    but 7.7% of a 300-a-book board: not flagged. And a book a strike was not
+    listed in is MISSING, not a book at 0%: a strike listed in four of the nine
+    earlier books at 20% has a baseline of 20%, where zeros would have made it
+    0% and its 20% now a lift of 20 points."""
+    flow = _flowing(_SCENE_0916, _FLOW_1510, _FRAMES_1510)
+    a = _new(flow["strikes"], flow["frames"])["areas"][0]
+    assert a["strikes"] == [1490] and a["base"] < 1 and a["n"] == 229 and a["lift"] > 6
+    # 1,605 went from about 1 a book to 14 in the last two: many times over, a sliver of the board
+    assert all(1605 not in x["strikes"] for x in _new(flow["strikes"], flow["frames"])["areas"])
+    assert _new(**_lift_board(tail=25, base=1, bg=(75,) * 4)) is None
+    # listed in 4 of 9 earlier books at 20% of the board (50 of 250), then 20% still
+    assert _new(**_lift_board(tail=50, series=[None] * 5 + [50] * 4 + [50, 50])) is None
+
+
+def test_neighbouring_strikes_are_one_area():
+    """1,500, 1,510 and 1,520 lighting together at 15:33:04 is one thing
+    happening, and 1,500 to 1,520 taking 54.7% against 24.5% is a truer
+    sentence than three claims. Flagged strikes ten points apart or less merge,
+    their contracts, shares and baselines summed; fifteen apart they are two
+    areas. The area runs half the way to the listed strikes beyond its ends."""
+    def board(ks):
+        rows = [{"strike": k, "vol_added_per_book": [50] * 11} for k in (1300, 1310, 1320, 1330)]
+        rows += [{"strike": k, "vol_added_per_book": [10] * 9 + [60, 60]} for k in ks]
+        rows += [{"strike": k, "vol_added_per_book": [10] * 11} for k in (1390, 1420)]
+        return {"strikes": {"rows": rows}, "frames": {"books_in_series": 12}}
+    got = _new(**board([1400, 1410]))
+    (a,) = got["areas"]
+    assert a["strikes"] == [1400, 1410] and a["n"] == 240 and (a["lo"], a["hi"]) == (1395, 1415)
+    assert a["share"] == pytest.approx(2 * 100 * 120 / (4 * 100 + 2 * 120 + 2 * 20))
+    got = _new(**board([1400, 1415]))
+    assert [x["strikes"] for x in got["areas"]] == [[1400], [1415]]
+
+
+def test_two_areas_at_most_and_the_rest_counted():
+    """Four highlights on a 144px plot would be no highlight at all. The two
+    biggest lifts are kept, the biggest first, and the rest are counted, never
+    dropped: the chart says how many more. On the 24 scans of 2026-09-16 the
+    model read, the merge kept every board to two; on the phone's 514 boards of
+    09-15..17, 18 had a third."""
+    rows = [{"strike": k, "vol_added_per_book": [50] * 11} for k in (1300, 1320, 1340, 1360)]
+    for k, now in ((1400, 60), (1450, 90), (1500, 75)):
+        rows.append({"strike": k, "vol_added_per_book": [10] * 9 + [now, now]})
+    got = _new({"rows": rows}, {"books_in_series": 12})
+    assert [a["strikes"] for a in got["areas"]] == [[1450], [1500]] and got["more"] == 1
+    assert got["areas"][0]["lift"] > got["areas"][1]["lift"]
+
+
+def test_nothing_is_marked_when_nothing_moved():
+    """Honest-absent. No window of books, no strike rows, no series, a series
+    that is not the window's length, a board too quiet to count or nothing
+    lifted far enough: nothing is returned, and the chart draws no corner, no
+    tab, no word and no row, and keeps the plot the height it had."""
+    flow = _flowing(_SCENE_0916, _FLOW_1510, _FRAMES_1510)
+    short = json.loads(json.dumps(flow))
+    for row in short["strikes"]["rows"]:
+        row["vol_added_per_book"] = row["vol_added_per_book"][1:]
+    for strikes, frames in ((flow["strikes"], None), (None, flow["frames"]), ({"rows": []}, flow["frames"]),
+                            (_SCENE_0916["strikes"], flow["frames"]), (short["strikes"], short["frames"]),
+                            (_lift_board(tail=30, base=5, bg=(24, 24, 23, 23))["strikes"], {"books_in_series": 12}),
+                            (_lift_board(tail=20)["strikes"], {"books_in_series": 12})):
+        assert _new(strikes, frames) is None
+    bare = _page(_board(_SCENE_0916))["svg"]["html"]
+    for scene in (short, dict(flow, frames=None)):
+        svg = _page(_board(scene))["svg"]["html"]
+        assert _new_marks(svg) == ([], [], [], [])
+        assert re.search(r'<clipPath id="pc">.*?</clipPath>', svg).group(0) == \
+            re.search(r'<clipPath id="pc">.*?</clipPath>', bare).group(0)
+
+
+def test_the_day_flags_what_the_spec_measured():
+    """The measure over the phone's own boards at the 24 scans of 2026-09-16
+    the model read (new_contracts_2026-09-16.json beside this file): nothing on
+    10 of them (42%), one area on 9 (38%), two on 5 (21%), never three, 19
+    areas in all, CHANGE-SPEC.md 3.1 and 3.3. The flag rate is the design: two
+    or three lit on every scan would claim that 13 to 20% of the board is
+    always changing (3.2). Over every scan the phone drew on 09-15..17 (514)
+    it came out 26% none, 45% one, 30% two, 18 with a third counted."""
+    day = json.loads((Path(__file__).parent / "new_contracts_2026-09-16.json").read_text())["boards"]
+    got = _glance("""console.log(JSON.stringify(D.map(([t, nb, rows]) => {
+        const r = g.newContracts({rows: rows.map(([strike, s]) => ({strike, vol_added_per_book: s}))},
+                                 {books_in_series: nb});
+        return [t, r ? r.areas.map(a => [a.strikes, Math.round(a.share * 10) / 10]) : [], r ? r.more : 0]; })));""", day)
+    counts = [len(a) for _, a, _ in got]
+    assert [counts.count(n) for n in (0, 1, 2)] == [10, 9, 5] and sum(counts) == 19
+    assert all(more == 0 for _, _, more in got)
+    by = {t: a for t, a, _ in got}
+    assert by["11:01:12"] == [[[1530, 1540], 63.0]]
+    assert by["15:33:04"] == [[[1500, 1510, 1520], 54.7], [[1470], 16.9]]
+    assert by["11:38:13"] == [[[1500], 27.5], [[1550], 18.9]]         # the thinnest: 64 contracts
+    assert by["12:44:07"] == [] and by["12:17:20"] == []              # boards of 196 and 219
+
+
+def test_an_area_the_plot_shows_gets_its_corners_its_tab_and_its_word():
+    """Four corners, not two lines across the area: two full-width lines read
+    as a channel, and a channel promises price does something between them
+    (CHANGE-SPEC.md 5.2). Each corner a 16px arm and a 5.5px leg, 4px inside
+    the plot, off the wall bugs; the right-hand arm beside the live dot's ring
+    stops 10px short of its centre. The arms are the area's own edges, half the
+    way to the next strike, moved outward only as far as keeps them 2.5px off
+    a rule's ink. The word is on the biggest area, from 6px inside the plot, in
+    the tallest stretch of its box clear of the rules; the tab stands in the
+    gutter's mark column and stops 3px short of the price chip, which it would
+    otherwise read as the stem of. All in --i, the one ink no hue has claimed,
+    and the word in 11px type with the card's halo.
+
+    11:01:12 on 2026-09-16, 1,525 to 1,542.5 in a window of $41: at every
+    phone."""
+    for cw in (288, 328, 343, 380):
+        svg = _page(_board(_SCENE_1101, width=cw))["svg"]["html"]
+        box = _chart_box(svg)
+        plot_l, plot_r = box["plot_l"], box["plot_l"] + box["plot_w"]
+        top, height = (float(v) for v in re.search(r'<clipPath id="pc"><rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"', svg).groups())
+        corners, tabs, word, rows = _new_marks(svg)
+        assert len(corners) == 4 and rows == []
+        arms = sorted({arm for _, arm, _, _ in corners})
+        t, b = arms
+        # the plot's own scale, read off two marks at known prices: the live
+        # dot at 1,541.75 and the put wall's rule at 1,500
+        cx, cy = (float(v) for v in re.search(r'<circle class="p-halo" cx="([\d.]+)" cy="([\d.]+)"', svg).groups())
+        wall = float(re.search(r'<line class="p-wall put[^"]*"[^>]*y1="([\d.]+)"', svg).group(1))
+        y = lambda v: cy + (1541.75 - v) * (wall - cy) / 41.75
+        for x, arm, end, leg in corners:
+            assert abs(end - x) == 16 and abs(leg - arm) == pytest.approx(5.5, abs=0.1)
+            assert plot_l <= min(x, end) and max(x, end) <= plot_r and top <= arm <= top + height
+            if x < end:
+                assert x == plot_l + 4
+            else:
+                assert x == plot_r - 4 or (x == pytest.approx(cx - 10) and abs(arm - cy) < 10 + 5.5)
+        assert len({x for x, _, _, _ in corners}) == 3, "the arm beside the ring did not stop short of it"
+        # each rule's ink: an inline width, or its class's own (the price rule and
+        # the opening range 1, the lead magnet 2.2)
+        rule_ys = [(float(v), float(w) if w else {"p-mag": 2.2}.get(c, 1.0)) for c, v, w in re.findall(
+            r'<line class="(p-(?:wall|mag|magrun|prule|orb))[^"]*"[^>]*y1="([\d.]+)"[^>]*?(?:stroke-width:([\d.]+))?"?/>', svg)]
+        for arm in arms:
+            assert min(abs(arm - v) - w / 2 - 0.75 for v, w in rule_ys) >= 2.45, "an arm doubles a rule"
+        # the area's own edges, each moved outward 4px at most
+        assert y(1542.5) - 4.1 <= t <= y(1542.5) + 0.1 and y(1525) - 0.1 <= b <= y(1525) + 4.1
+        # the word, inside its box, clear of the count
+        (wx, by, text), = word
+        assert text == "NEW CONTRACTS 63%" and wx == plot_l + 6 and t < by - 8.4 and by + 0.2 < b
+        (nx, ny, _), = _traded(svg)[2]
+        nw = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", "3,264")
+        apart = max(nx - nw - (wx + 121.42), ny - 8 - (by + 0.2), by - 8.4 - (ny + 2.2))
+        assert apart >= 5.4, "the count sits on the word"
+        # the tab, in the chip's column, off the chip
+        chip_y = float(re.search(r'<rect class="p-chip" x="[\d.]+" y="([\d.]+)"', svg).group(1))
+        for x, ty, w, h in tabs:
+            assert x == box["chip_x"] and w == 4 and t <= ty and ty + h <= b + 0.05
+            assert ty >= chip_y + 18 + 3 or ty + h <= chip_y - 3
+        assert tabs, "the area reaches below the chip; its tab should show there"
+    assert _css_rule(".p-new") == "fill:none;stroke:var(--i);stroke-width:1.5;stroke-linecap:butt;stroke-linejoin:miter"
+    assert _css_rule(".p-newtab") == "fill:var(--i)"
+    word = _css_rule(".p-newword")
+    for need in ("font:50011px/1var(--sans)", "fill:var(--i)", "paint-order:stroke", "stroke:var(--s)"):
+        assert need in word, need
+
+
+def test_an_area_the_plot_cannot_show_is_named_at_its_edge():
+    """The window is solved from price, the session and the walls, and the
+    change is wherever contracts trade. At 15:10:21 the two areas, 1,490 and
+    1,600, lie outside a window of 1,496 to 1,564, and widening it to fetch them
+    would flatten the tape to 55% of its height. So each is named in the edge
+    stack on its side, the way a refused wall is, with a plain arrow where a
+    level has a solid one, and nothing is drawn in the plot. A row of new
+    contracts sits 16px from its neighbour, not 13: two 11px rows at 13 leave
+    2.88px of white. The rows are in price order, and the plot gives up exactly
+    what the rows take; the bars on it still keep 30% of their pitch white."""
+    flow = _flowing(_SCENE_0916, _FLOW_1510, _FRAMES_1510)
+    for cw in (288, 343):
+        before = _page(_board(_SCENE_0916, width=cw))["svg"]["html"]
+        svg = _page(_board(flow, width=cw))["svg"]["html"]
+        corners, tabs, word, rows = _new_marks(svg)
+        assert (corners, tabs, word) == ([], [], [])
+        assert rows == ["↑ 1,600 NEW CONTRACTS", "↓ 1,490 NEW CONTRACTS"]
+        edges = [(float(yy), t) for yy, t in re.findall(r'<text class="p-edge[^"]*" x="[\d.]+" y="([\d.]+)">([^<]*)<', svg)]
+        assert [t for _, t in edges] == ["▲ 1,600", "↑ 1,600 NEW CONTRACTS", "↓ 1,490 NEW CONTRACTS"]
+        assert edges[1][0] - edges[0][0] == 16
+        clip = lambda s: float(re.search(r'<clipPath id="pc"><rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="([\d.]+)"', s).group(1))
+        assert clip(before) - clip(svg) == 16 + 13
+        bars, _, _ = _traded(svg)
+        pitch = min(b[1] - a[1] for a, b in zip(bars, bars[1:]))
+        assert pitch - bars[0][3] >= 0.3 * pitch - 0.1
+    # Three areas and none in the window: the third, past the cap, is counted on
+    # the biggest one's row, since no word is drawn to carry it; and below the
+    # window the rows stand in price order, 1,440 nearer the plot than the wall
+    # at 1,300 it was named after.
+    rows = [{"strike": k, "vol_added_per_book": [50] * 11} for k in (1300, 1320, 1340, 1360)]
+    for k, now in ((1400, 60), (1440, 90), (1700, 75)):
+        rows.append({"strike": k, "vol_added_per_book": [10] * 9 + [now, now]})
+    far = {"price": {"live_spot": 1560}, "scale": {"one_sigma_dollars": 40}, "strikes": {"rows": rows},
+           "walls": {"put": [{"strike": 1300, "cluster_share_of_book_gamma_pp": 10}]},
+           "frames": {"books_in_series": 12}}
+    assert _svg_texts(_page(_board(far)), "p-edge") == [
+        ("p-edge", "↑ 1,700 NEW CONTRACTS"), ("p-edge", "↓ 1,440 NEW CONTRACTS · 1 MORE"), ("p-edge lead", "▼ 1,300")]
+    # An area the window shows less than 15% of is a sliver at its edge, not a
+    # place: 1,585 runs 1,582.5 to 1,587.5, and the window ends at 1,582.93.
+    rows = [{"strike": k, "vol_added_per_book": [50] * 11} for k in (1300, 1320, 1340, 1360, 1580, 1590)]
+    rows.append({"strike": 1585, "vol_added_per_book": [10] * 9 + [90, 90]})
+    edge = {"price": {"live_spot": 1560, "session_high": 1580.5, "session_low": 1540}, "scale": {"one_sigma_dollars": 40},
+            "strikes": {"rows": rows}, "frames": {"books_in_series": 12}}
+    corners, _, _, named = _new_marks(_page(_board(edge))["svg"]["html"])
+    assert corners == [] and named == ["↑ 1,585 NEW CONTRACTS"]
+
+
+def test_the_word_never_sits_on_other_text_or_a_bar():
+    """Where the busiest strike is the one that changed, the word and the
+    longest bar's count want one row, and a count stacked under the word reads
+    as the number of new contracts. The count then moves inside its bar, past
+    the end, if that leaves 12px beside the word; otherwise the word keeps
+    5.5px above or below it, what the chart's two closest labels keep. The word
+    never crosses a bar or its end, and never the live dot's ring; with no room
+    left in its box it sits just outside it, below and then above.
+
+    11:01:12 again, with 1,530, the busiest strike, inside the box: at 320,
+    360 and 375 the count moves; at 412 it is already clear. Then the same
+    board with a third area counted, so the word runs to "· 1 MORE" (170px):
+    at 320 and 360 the count cannot move 12px clear of it and stays, and the
+    word, which would cross the longest bars, leaves its box."""
+    busy = json.loads(json.dumps(_SCENE_1101))
+    for r in busy["strikes"]["rows"]:
+        if r["strike"] in (1605, 1460):
+            r["vol_added_per_book"] = r["vol_added_per_book"][:9] + [60 if r["strike"] == 1605 else 55] * 2
+    for scene, cw, moved, inside in ((_SCENE_1101, 288, True, True), (_SCENE_1101, 328, True, True),
+                                     (_SCENE_1101, 343, True, True), (_SCENE_1101, 380, False, True),
+                                     (busy, 288, False, False), (busy, 328, False, False),
+                                     (busy, 343, False, True), (busy, 380, True, True)):
+        svg = _page(_board(scene, width=cw))["svg"]["html"]
+        bars, ends, ((nx, ny, text),) = _traded(svg)
+        corners, _, ((wx, by, word),), _ = _new_marks(svg)
+        ww = 121.42 + (48.65 if word.endswith("MORE") else 0)
+        tip = min(x for x, _, _, _ in bars)
+        nw = _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+        assert (nx == pytest.approx(tip + 4 + nw, abs=0.05)) is moved, (cw, word)
+        # 5.5, less the tenth both baselines are rounded to
+        assert nx - nw >= wx + ww + 12 or ny - 8 >= by + 0.2 + 5.4 or by - 8.4 >= ny + 2.2 + 5.4, (cw, word)
+        for x, yy, w, h in bars:
+            assert x >= wx + ww or yy >= by + 0.2 or yy + h <= by - 8.4, "the word crosses a bar"
+        t, b = min(c[1] for c in corners[:4]), max(c[1] for c in corners[:4])
+        assert (t < by - 8.4 and by + 0.2 < b) is inside, (cw, word)
+        assert inside or by - 8.4 > b, "out of its box, the word goes below it first"
+    # And where the box has a stretch clear of every rule, the word takes it and
+    # does not lie across a rule: with the runner moved to 1,534, the box's
+    # middle, the word sits in the stretch below it.
+    mid = json.loads(json.dumps(_SCENE_1101))
+    mid["magnet"]["top_strikes"][2]["strike"] = 1534
+    for cw in (288, 343):
+        svg = _page(_board(mid, width=cw))["svg"]["html"]
+        (_, by, _), = _new_marks(svg)[2]
+        runner = float(re.search(r'<line class="p-magrun"[^>]*y1="([\d.]+)"', svg).group(1))
+        assert by - 8.4 > runner + 1 or by + 0.2 < runner - 1, "the word lies across the runner"
+
+
+def test_the_words_of_new_contracts_say_what_happened_and_nothing_ahead():
+    """The word states a measurement already made: this share of the contracts
+    traded in the last two books went here. No verb with a subject, no actor,
+    no direction, nothing about what price will do there; a highlight at a
+    price can read as "price will turn here", which is why it is corners and
+    not a channel. Every form the chart prints goes through the reader's own
+    gates (forecast, causal and judgement words with their inflections, and
+    the position gate), the dealer pattern, the forward-looking words, and the
+    Greek and emoji checks."""
+    R = _reader()
+    flow = _flowing(_SCENE_0916, _FLOW_1510, _FRAMES_1510)
+    said = set(_new_marks(_page(_board(flow))["svg"]["html"])[3])
+    said |= {t for _, _, t in _new_marks(_page(_board(_SCENE_1101))["svg"]["html"])[2]}
+    rows = [{"strike": k, "vol_added_per_book": [50] * 11} for k in (1300, 1320, 1340, 1360)]
+    for k, now in ((1500, 60), (1540, 90), (1580, 75)):
+        rows.append({"strike": k, "vol_added_per_book": [10] * 9 + [now, now]})
+    near = {"price": {"live_spot": 1540}, "scale": {"one_sigma_dollars": 80}, "strikes": {"rows": rows},
+            "frames": {"books_in_series": 12}}
+    said |= {t for _, _, t in _new_marks(_page(_board(near))["svg"]["html"])[2]}
+    assert {"↑ 1,600 NEW CONTRACTS", "↓ 1,490 NEW CONTRACTS", "NEW CONTRACTS 63%"} <= said
+    assert any(t.endswith("· 1 MORE") for t in said), said
+    for s in said:
+        assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
+        assert not R._POS_RE.search(s), f"{s!r} places price against a number"
+        assert not _DEALER.search(s) and not _AHEAD.search(s), s
+        assert not _EMOJI_OR_GREEK.search(s), s
+
+
 def test_the_opening_half_hour_draws_both_its_own_edges():
     """It had no mark at all: the reading named it in prose and the chart never
     showed where it was. Both edges or neither — one line is a level, and a
