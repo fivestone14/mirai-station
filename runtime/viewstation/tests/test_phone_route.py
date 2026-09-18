@@ -458,12 +458,12 @@ def test_a_refused_level_is_always_named():
     # a nearest wall too far for the day to reach is tried as optional rather
     # than anchored. The pad is computed from the row count, so the third row
     # costs its 13px only on a day that has a third thing to say.
-    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▲ 1,800", "▼ 1,690 HEAVIEST"]
+    assert edges == ["▲ 1,900 BIGGEST PILE", "▲ 1,850", "▲ 1,800", "▼ 1,690 BIGGEST PILE"]
     # a refused level on the strike of a wall already ruled is not named twice
     day["walls"]["put"].append({"strike": 1690, "cluster_share_of_book_gamma_pp": 5})
     day["walls"]["put_heaviest_wall_behind_the_ladder"] = {"strike": 1680, "cluster_share_of_book_gamma_pp": 20}
     edges = [text for _, text in _svg_texts(_page(_board(day)), "p-edge")]
-    assert edges == ["▲ 1,900 HEAVIEST", "▲ 1,850", "▲ 1,800", "▼ 1,690"]
+    assert edges == ["▲ 1,900 BIGGEST PILE", "▲ 1,850", "▲ 1,800", "▼ 1,690"]
 
 
 def test_the_magnet_never_shares_a_gauge_with_anything_else():
@@ -585,9 +585,29 @@ def test_the_countdown_does_not_age_silently():
     is a lie, and it is the one label on the plot that ages without saying so."""
     scene = {"clock": {"minutes_to_close": 178}, "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
              "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
-    assert _right_foot(_page(_board(scene, payload={"row_ts": "2026-09-10T10:59:00-04:00"}))) == ["2 HR 58 MIN LEFT"]
-    # two hours stale: the foot says which scan it is instead
-    assert _right_foot(_page(_board(scene, payload={"row_ts": "2026-09-10T09:00:00-04:00"}))) == ["SCAN 09:00"]
+    live = _page(_board(scene, payload={"row_ts": "2026-09-10T10:59:00-04:00"}))
+    assert _right_foot(live) == ["2 HR 58 MIN LEFT"] and live["ldWhen"]["text"] == "AS OF 10:59"
+    # two hours stale: the axis ends at the scan, which the card's head names
+    stale = _page(_board(scene, payload={"row_ts": "2026-09-10T09:00:00-04:00"}))
+    assert _right_foot(stale) == ["09:00"] and stale["ldWhen"]["text"] == "AS OF 09:00"
+
+
+def test_the_chart_cards_head_names_what_it_shows_and_when():
+    """The card was headed "Today", and "SCAN 15:11" sat at the right end of
+    the axis with nothing on the head to match it (WORDS-SPEC #8, #9, #12). The
+    head now says what the chart is, the day's price, and at its right the scan
+    it was drawn from, so a stale axis ends on a bare clock and a live one keeps
+    its countdown. No stamp, no clock: the head says nothing rather than guess
+    one. It is written before the chart decides whether it can draw, so a card
+    too narrow for the plot still says which scan it would have shown."""
+    card = PHONE.split('<section class="card">')[1].split("</section>")[0]
+    assert '<div class="lab">Price today<span class="r" id="ldWhen"></span></div>' in card
+    scene = {"clock": {"minutes_to_close": 178}, "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+             "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+    unstamped = _page(_board(scene, payload={"row_ts": None}))
+    assert unstamped["ldWhen"]["text"] == "" and _right_foot(unstamped) == []
+    narrow = _page(_board(scene, payload={"row_ts": "2026-09-10T10:59:00-04:00"}, width=200))
+    assert "too-narrow" in narrow["svg"]["cls"] and narrow["ldWhen"]["text"] == "AS OF 10:59"
 
 
 def test_the_reading_is_sourced_by_reading_ts_and_never_shown_without_its_age():
@@ -980,7 +1000,7 @@ def test_market_time_not_viewer_time():
     stale = _page(_board(scene, now="2026-08-19T13:00:00-04:00", payload={"row_ts": scan},
                          reads=[{"ts": scan, "reading_ts": scan, "reading": {"read": "Said at the scan."}}]),
                   tz="America/Los_Angeles")
-    assert _right_foot(stale) == ["SCAN 12:12"]
+    assert _right_foot(stale) == ["12:12"] and stale["ldWhen"]["text"] == "AS OF 12:12"
     assert stale["lvWhen"]["text"] == "At the 12:12 scan"
     assert stale["rdLine"]["text"] == "12:12 · Said at the scan."
     # 22:30 on the 9th in Los Angeles is the 10th's session in New York: its change shows
@@ -1321,10 +1341,15 @@ def _plain_words():
                                       ({"days_to_expiry": 1, "expiry_date": "2026-09-11"}, 180, "last scan", said)):
         scene = {"clock": {"minutes_to_close": 135, "front_expiry": fe}, "price": {"live_spot": 1700},
                  "scale": {"one_sigma_dollars": 40},
-                 "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
+                 "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}],
+                           "call_heaviest_wall_behind_the_ladder": {"strike": 1900,
+                                                                    "cluster_share_of_book_gamma_pp": 40}}}
         got = _page(_board(scene, payload={"row_ts": ago(minutes), "as_of": as_of}, reads=reads))
-        words |= {got[k]["text"] for k in ("expiry", "fresh", "ruler", "rdAge", "lastscan")}
+        words |= {got[k]["text"] for k in ("expiry", "fresh", "ruler", "rdAge", "lastscan", "ldWhen")}
         words |= set(_right_foot(got)) | ({got["rdLine"]["text"]} if not reads else set())
+        words |= {t for _, t in _svg_texts(got, "p-edge")}
+    card = PHONE.split('<section class="card">')[1].split("</section>")[0]
+    words |= {t.strip() for t in re.split(r"<[^>]+>", card) if t.strip()}
     return words - {""}
 
 
@@ -1342,7 +1367,8 @@ def test_the_plain_words_pass_the_laws():
     words = _plain_words()
     for need in ("OPTIONS END TODAY", "OPTIONS END FRI", "OPTIONS END IN 3 DAYS", "BOOK 1 MIN OLD",
                  "SCAN 14 MIN OLD", "JUST SCANNED", "SCAN AGE UNKNOWN", "USUAL DAY MOVE $40", "14 MIN AGO",
-                 "No reading yet today.", "2 HR 15 MIN LEFT", "LAST SCAN 1,700.00 · 3 HR AGO"):
+                 "No reading yet today.", "2 HR 15 MIN LEFT", "LAST SCAN 1,700.00 · 3 HR AGO",
+                 "Price today", "AS OF 10:59", "10:46", "▲ 1,900 BIGGEST PILE"):
         assert need in words, f"the gates never saw {need!r}"
     for s in sorted(words):
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
@@ -1361,7 +1387,7 @@ def test_the_named_edge_carries_the_weight_the_bug_cannot():
              "walls": {"call": [{"strike": 1800, "cluster_share_of_book_gamma_pp": 12}],
                        "put": [{"strike": 1680, "cluster_share_of_book_gamma_pp": 10}],
                        "call_heaviest_wall_behind_the_ladder": {"strike": 1900, "cluster_share_of_book_gamma_pp": 40}}}
-    assert _svg_texts(_page(_board(scene)), "p-edge") == [("p-edge", "▲ 1,900 HEAVIEST"), ("p-edge lead", "▲ 1,800")]
+    assert _svg_texts(_page(_board(scene)), "p-edge") == [("p-edge", "▲ 1,900 BIGGEST PILE"), ("p-edge lead", "▲ 1,800")]
     lead = _block(".p-edge.lead{")
     base = _block(".p-edge{")
     assert base is not None, ".p-edge has no rule"
@@ -1940,7 +1966,7 @@ def test_the_bled_chart_keeps_its_ink_off_the_cards_corners():
                            bars=bars, width=cw))["svg"]
         html, h = svg["html"], float(svg["attrs"]["height"])
         texts = re.findall(r'<text class="([^"]*)" x="[\d.]+" y="([\d.]+)"[^>]*>([^<]*)<', html)
-        assert {t for c, _, t in texts if c == "p-axis"} == {"09:30", "SCAN 10:40"}
+        assert {t for c, _, t in texts if c == "p-axis"} == {"09:30", "10:40"}
         assert "NO CALL WALL ABOVE" in html and "▼ 1,450" in html
         # a comma descends a fifth of an em below the baseline; nothing else here does
         lowest = max(float(y) + (0.2 * 12 if "," in t else 0) for _, y, t in texts)

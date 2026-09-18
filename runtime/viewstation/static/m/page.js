@@ -363,6 +363,11 @@ const SHADE_FLOOR = 0.08, SHADE_CEIL = 0.22;
 
 function paintLadder(st){
   const svg = $('svg');
+  // The head says what the chart shows and which scan drew it. A stale axis
+  // then needs only the clock at its right foot, 09:30 to 15:11, where it
+  // said "SCAN 15:11" (WORDS-SPEC #8, #9, #12).
+  const scanAt = etTime(Date.parse(PAY.row_ts));
+  $('ldWhen').textContent = scanAt ? 'AS OF ' + scanAt : '';
   // Measure RAW, then decide, then clamp. The old line did Math.max(240, ...)
   // inline, which meant a collapsed container silently became a 240px chart —
   // the clamp erased the very condition worth reporting.
@@ -740,11 +745,11 @@ function paintLadder(st){
   const edgeCls = l => 'p-edge' + (namedEdge(l) ? ' lead' : '');
   above.forEach((l, i) => {
     o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + (10 + 13*i) + '">▲ '
-       + gUsd(l.y,0).replace('$','') + (l.behind ? ' HEAVIEST' : '') + '</text>';
+       + gUsd(l.y,0).replace('$','') + (l.behind ? ' BIGGEST PILE' : '') + '</text>';
   });
   below.forEach((l, i) => {
     o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + n1(plotBottom + 12 + 13*i) + '">▼ '
-       + gUsd(l.y,0).replace('$','') + (l.behind ? ' HEAVIEST' : '') + '</text>';
+       + gUsd(l.y,0).replace('$','') + (l.behind ? ' BIGGEST PILE' : '') + '</text>';
   });
 
   // ---- how busy each stretch was -----------------------------------------
@@ -771,9 +776,7 @@ function paintLadder(st){
   // the one label on the plot that ages silently
   let rightFoot = '';
   if(st.stale){
-    const t = Date.parse(PAY.row_ts);
-    const et = etTime(t);
-    if(et) rightFoot = 'SCAN ' + et;
+    if(scanAt) rightFoot = scanAt;
   } else if(c.minutes_to_close != null){
     rightFoot = c.minutes_to_close > 0 ? (gMinutes(c.minutes_to_close) + ' left').toUpperCase() : 'CLOSED';
   }
