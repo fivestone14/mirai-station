@@ -1758,6 +1758,11 @@ def test_the_plot_draws_no_shade_behind_the_line():
     assert "p-shade" not in svg and 'style="opacity:' not in svg
     assert "weightBands" not in GLANCE + PAGE and "SHADE_" not in PAGE
     assert ".p-shade" not in PHONE
+    # and no words on the page still describe it: the levels card's caption
+    # said "the shading around it is how many contracts rest at that price"
+    # until the evening of 2026-09-18
+    said = re.sub(r"<[^>]+>", " ", re.sub(r"(?s)<style>.*?</style>|<script\b.*?</script>|<!--.*?-->", " ", PHONE))
+    assert not re.search(r"(?i)\bshad(?:e|ed|es|ing)\b", said), "the page still describes the shade"
 
 
 def test_no_dot_rides_on_the_price_line():
