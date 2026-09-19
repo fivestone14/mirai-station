@@ -786,6 +786,54 @@ def test_a_strike_is_left_out_for_five_books_after_its_count_went_back(tmp_path,
     assert sent == [False, False, False, False, False, True, True]
 
 
+def test_a_count_gone_back_on_either_side_at_either_end_is_left_out(tmp_path, monkeypatch):
+    """The guard reads both counts a paler end is made of, on both sides: a
+    strike is left out if its calls or its puts, at the reading or now, are
+    below their count in any of the five books before. The phone's own check
+    sees only a count lower now than at the reading, so a count gone back but
+    not that far would draw a paler end too long (the reading's count stale)
+    or too short (today's). Rebuilt at every scan of 2026-09-15..18, each half
+    leaves out strikes the phone would otherwise draw:
+      - the count now, 22 on 2 boards of 09-17: at 10:32, 1,600 was read at
+        2,769 calls, the 10:28 book held 2,816, and the 10:32 book was served
+        at 2,782;
+      - the puts, 10 on 10 boards of 09-17 and 09-18: at 09:43 on 09-18, 1,720
+        was read at 3 puts, where the 09:35 book held 19.
+    (test_a_count_the_vendor_served_stale_is_left_out holds the calls at the
+    reading, on 09-17's stale 2,859.)
+
+    Read from the 11:04 book, four strikes each go back once, on one side, at
+    one end; the rest only climb:
+      - at the reading: 1,520's calls were 1,400 the book before and 1,292 at
+        it, then 1,410 and 1,420 now; 1,540's puts 2,400, 2,280, 2,450, 2,460;
+      - now: 1,510's calls 199, 209 at the reading, 300, then 250 now; 1,550's
+        puts 1,481, 1,491, 1,600, then 1,550.
+    Each is at or above its count at the reading now, so the phone would draw
+    all four; all four are left out, and the rest are sent."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    day = "2026-09-16"
+    books = [datetime(2026, 9, 16, 11, 0, tzinfo=ET) + timedelta(minutes=4 * i) for i in range(4)]
+    vols = [{k: (c + 10 * i, p + 10 * i) for k, (c, p) in _VOL.items()} for i in range(4)]
+    back = {1520.0: (0, [1400, 1292, 1410, 1420]), 1540.0: (1, [2400, 2280, 2450, 2460]),
+            1510.0: (0, [199, 209, 300, 250]), 1550.0: (1, [1481, 1491, 1600, 1550])}
+    for k, (side, counts) in back.items():
+        for v, n in zip(vols, counts):
+            v[k] = (n, v[k][1]) if side == 0 else (v[k][0], n)
+    _write_day(tmp_path, day, [_vol_row(b, v) for b, v in zip(books, vols)])
+    _write_reads(tmp_path, day, [_read_row(books[1] + timedelta(seconds=30), books[1], {"read": "x"})])
+    now = books[3] + timedelta(seconds=40)
+    d = snapshot.sndk_payload(now)
+    rows = {r["strike"]: (r["vol_calls"], r["vol_puts"]) for r in d["scene"]["strikes"]["rows"]
+            if r.get("vol_calls") is not None}
+    for k in back:
+        assert rows[k][0] >= vols[1][k][0] and rows[k][1] >= vols[1][k][1], \
+            f"{k} is lower now than at the reading; the phone's own check leaves it out"
+    assert [r[0] for r in d["since_read"]["rows"]] == [k for k in rows if k not in back]
+    monkeypatch.setattr(snapshot, "_SINCE_READ_BOOKS", 0)
+    assert set(back) <= {r[0] for r in snapshot.sndk_payload(now)["since_read"]["rows"]}, \
+        "the guard is not what leaves them out; this proves nothing"
+
+
 def test_a_line_the_field_cannot_read_costs_that_line_alone(tmp_path, monkeypatch):
     """The field reads the whole day's read rows and diary on the payload's own
     path, so one bad line in either is the whole payload's problem, as it was
