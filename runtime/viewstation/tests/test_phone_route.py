@@ -2847,12 +2847,16 @@ def test_the_chart_key_says_what_the_code_draws():
     - the bars' row says puts left of the gap and calls right, striped and
       solid, and the chart draws them so; the key's stripes are the chart's
       own pattern, in its own copy (2026-09-19, CPB-SPEC.md 8.6);
+    - the paler end's row names the card its reading is on by that card's
+      own label, and each "none" it lists is a way the station or the phone
+      leaves the paler end out: no reading yet, no new count since it, a
+      count missing at the reading or gone down since;
     - the pick-up's "last two scans" is NEW_TAIL; the strip's "every 5
       minutes" is the blocks page.js asks volumeBlocks for."""
     key = _chart_key()
     assert key["title"] == key["link"] == "How to read this chart" and key["close"] == "Got it"
     assert [r["term"] for r in key["rows"]] == [
-        "Grey line", "Blue dot, dotted line and blue box", "Bars split by a gap",
+        "Grey line", "Blue dot, dotted line and blue box", "Bars split by a gap", "The paler end of a bar",
         "3,861 PUTS", "Corner brackets and TRADING PICKED UP", "Rows at the top or bottom", "Green line",
         "Red line", "Gold dashes and diamond", "Thin grey dashes", "Bars along the bottom, SHARES TRADED",
         "Grey prices on the right"]
@@ -2873,6 +2877,16 @@ def test_the_chart_key_says_what_the_code_draws():
     chart = re.search(r'<pattern id="tradedPuts"([^>]*>.*?)</pattern>', svg).group(1)
     keyed = re.search(r'<pattern id="tradedPutsKey"([^>]*>.*?)</pattern>', PHONE).group(1)
     assert chart == keyed and _css_rules(PHONE).get(".hw .p-tradedput") == "fill:url(#tradedPutsKey)"
+    pale = rows["The paler end of a bar"]
+    assert pale["marks"] == ["p-tradedputsince", "p-tradedput", "p-tradedcall", "p-tradedcallsince",
+                             "p-tradedend", "p-tradedend"]
+    assert "since the latest reading, the one in What it means below" in pale["says"]
+    assert '<div class="lab">What it means<' in PHONE and "tradedSince(PAY.since_read, READS" in PAGE
+    snapshot = (M.parents[1] / "snapshot.py").read_text()
+    for says, why in (("None before the day’s first reading", '"no_reading_yet"'),
+                      ("until a new count comes in after it", '"no_new_book_since_the_reading"')):
+        assert says in pale["says"] and why in snapshot, says
+    assert "starts again from nothing at each reading" in pale["says"] and "went down" in pale["says"]
     # the words the chart prints
     edge = _glance("const r = g.pickedRow(true, [1600], 0, 324), m = g.pickedRow(false, [1490], 1, 324);"
                    "console.log(JSON.stringify([r.lead + ': TRADING PICKED UP' + r.tail, m.tail.trim(),"
