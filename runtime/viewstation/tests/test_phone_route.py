@@ -1913,6 +1913,16 @@ def test_the_price_line_runs_on_a_channel_of_card():
     assert "stroke:var(--s)" in case and "stroke-linejoin:round" in case and "fill:none" in case
     tok = _tokens()
     assert _contrast(tok["--path"], tok["--s"]) >= 4.5            # on the channel, 5.00
+    # The channel is thinnest at a 2x screen's worst crossing, where of its two
+    # device pixels the one beside the line blends with the fill
+    # (ALT-BEHIND-SPEC.md 4.2 read #E5E3DD there over #D5CFC4). Half card and
+    # half fill, the line still clears 3:1: 3.82 over a bar, 3.18 over a dark
+    # end. This is what "if the channel were gone" guarded before the owner's
+    # darker fills: a darker fill or a paler line fails here.
+    for sel in (".p-traded", ".p-tradedlate"):
+        fill = tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
+        blend = [(a + b) / 2 for a, b in zip(tok["--s"], fill)]
+        assert _contrast(tok["--path"], blend) >= 3.0, f"the line over {sel} where a 2x screen thins its channel"
     # no line, no edge: an empty tape draws neither
     bare = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}))["svg"]["html"]
     assert 'class="p-casing"' not in bare and 'class="p-path"' not in bare
