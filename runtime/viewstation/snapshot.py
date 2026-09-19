@@ -1004,7 +1004,9 @@ def _since_read(R, board, rows: list, reads: list, scene: dict, now: datetime) -
                                             or isinstance(rd.get("points"), list) or rd.get("read")):
             continue
         t = R._parse_ts(r.get("reading_ts"))
-        if t is not None and (best is None or t > best[0]):
+        # a stamp with no zone cannot be put in order with the rest, so that row
+        # alone is passed over, as a torn line is
+        if t is not None and t.tzinfo is not None and (best is None or t > best[0]):
             best = (t, r["reading_ts"])
     if best is None:
         return {"unavailable": "no_reading_yet"}
@@ -1013,18 +1015,24 @@ def _since_read(R, board, rows: list, reads: list, scene: dict, now: datetime) -
     book_at = (call or {}).get("book_asof")
     out = {"read_at": read_at, "book_at": book_at}
 
-    def counted(book):
+    def book(r):
+        # a diary row's book is its stamp, and a stamp is a string: anything
+        # else is no book, so one bad row cannot take the payload down
+        b = (r.get("meta") or {}).get("book_asof")
+        return b if isinstance(b, str) else None
+
+    def counted(b):
         # every strike any scan of the book kept: scans that share a book each
         # keep the strikes near their own price (on 40 to 56 books a day of
         # 09-15..17), and agree on every strike they share
         got = {}
         for r in rows:
-            if (r.get("meta") or {}).get("book_asof") == book:
+            if book(r) == b:
                 for s, v in board.surfaces(r)["vol_side"].items():
                     got.setdefault(s, v)
         return got
-    books = list(dict.fromkeys((r.get("meta") or {}).get("book_asof") for r in rows))
-    current = (rows[-1].get("meta") or {}).get("book_asof")
+    books = list(dict.fromkeys(book(r) for r in rows))
+    current = book(rows[-1])
     then = counted(book_at) if book_at and book_at in books else {}
     if not then:
         return {**out, "unavailable": "no_count_at_the_reading"}

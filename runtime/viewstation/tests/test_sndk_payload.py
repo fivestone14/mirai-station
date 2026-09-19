@@ -784,3 +784,35 @@ def test_a_strike_is_left_out_for_five_books_after_its_count_went_back(tmp_path,
         assert set(ks) >= {1500, 1510, 1520, 1540, 1550}, i
         sent.append(1530 in ks)
     assert sent == [False, False, False, False, False, True, True]
+
+
+def test_a_line_the_field_cannot_read_costs_that_line_alone(tmp_path, monkeypatch):
+    """The field reads the whole day's read rows and diary on the payload's own
+    path, so one bad line in either is the whole payload's problem, as it was
+    for the earlier diaries (test_a_bad_line_in_an_earlier_diary_costs_that_line_alone).
+    Two lines the rest of the payload reads past raised here, and the route
+    then answered with an error in place of the payload, the phone's and the
+    desktop tab's, on every poll for the rest of the day:
+      - a reading stamped with no zone, or with a date alone, which cannot be
+        put in order with the rest (TypeError against an aware stamp);
+      - a diary row whose book is not a stamp (a list cannot be a key).
+    Each is passed over now, and the field is the one the clean lines give."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    day, t = "2026-09-16", datetime(2026, 9, 16, 11, 0, tzinfo=ET)
+    books = [t + timedelta(minutes=4 * i) for i in range(4)]
+    vols = [{k: (c + 10 * i, p + 20 * i) for k, (c, p) in _VOL.items()} for i in range(4)]
+    rows = [_vol_row(b, v) for b, v in zip(books, vols)]
+    reads = [_read_row(books[1] + timedelta(seconds=30), books[1], {"read": "1,530 traded the most."})]
+    _write_day(tmp_path, day, rows)
+    _write_reads(tmp_path, day, reads)
+    now = books[-1] + timedelta(seconds=40)
+    clean = snapshot.sndk_payload(now)["since_read"]
+    assert clean["book_at"] == books[1].isoformat() and clean["rows"]
+    bad = _vol_row(books[2] + timedelta(minutes=2), vols[2])
+    bad["meta"]["book_asof"] = [books[2].isoformat()]
+    _write_day(tmp_path, day, rows[:3] + [bad] + rows[3:])
+    _write_reads(tmp_path, day, reads + [
+        {"ts": "2026-09-16T11:09:00", "reading_ts": "2026-09-16T11:09:00", "reading": {"read": "x"}},
+        {"ts": "2026-09-16", "reading_ts": "2026-09-16", "reading": {"quiet": True}}])
+    d = snapshot.sndk_payload(now)
+    assert d["payload"] == "strikes" and d["since_read"] == clean
