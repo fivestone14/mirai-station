@@ -562,12 +562,13 @@ def test_the_explainer_button_sits_outside_the_list_and_survives_every_render():
 
 
 def test_the_explainer_opens_on_a_tap_and_closes_the_one_way_the_glances_does():
-    """A tap opens it, because the button is a control and looks like one; the
-    glance's one press-and-hold stays the only one on either page. Everything
-    after that is sheet.js, shared with the glance: a history entry, so the
-    phone's back gesture closes the sheet instead of leaving the page; one way
-    to close whatever closed it — the backdrop, Got it, Escape, Back — and a
-    double tap goes back once; the focus returns to the button.
+    """A tap opens it, because the button is a control and looks like one;
+    neither page has a press-and-hold since the glance's went with its levels
+    card (2026-09-19). Everything after that is sheet.js, shared with the
+    glance: a history entry, so the phone's back gesture closes the sheet
+    instead of leaving the page; one way to close whatever closed it — the
+    backdrop, Got it, Escape, Back — and a double tap goes back once; the
+    focus returns to the button.
 
     And the shell. This page stopped speaking to it when it became the
     document that scrolls, and it stays silent until the sheet first opens.

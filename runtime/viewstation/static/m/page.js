@@ -221,7 +221,6 @@ function paintAll(){
   paintMast(st);
   paintDayMove(st);
   paintLadder(st);
-  paintLevels(st);
   paintToday();
   paintRead();
   paintHalf(st);
@@ -638,7 +637,8 @@ function paintLadder(st){
   // ---- no words in the plot ----------------------------------------------
   // NO CALL WALL ABOVE / NO PUT WALL BELOW and the bracket down the plot's left
   // edge that scoped it came off on 2026-09-18, by the owner's choice. The
-  // levels card below still gives a side measured empty its own row.
+  // levels card that gave a side measured empty its own row went on
+  // 2026-09-19, so no part of the page says it now.
 
   // ---- rules -------------------------------------------------------------
   for(const l of levels){
@@ -678,9 +678,9 @@ function paintLadder(st){
     o += '<circle class="p-dot"  cx="' + n1(dotX) + '" cy="' + n1(priceY) + '" r="3.6"/>';
   }
 
-  // ---- the bugs: the two walls the card below names ----------------------
-  // It named ONE wall until 2026-09-10, the nearer of the two, under a
-  // direction word; the card now lists both, so both are marked.
+  // ---- the bugs: the nearest wall on each side ----------------------------
+  // Both since 2026-09-10, when the levels card stopped naming only the nearer
+  // of the two under a direction word. The card itself went on 2026-09-19.
   for(const side of ['call', 'put']){
     const e = ((sc.walls||{})[side] || [])[0];
     if(!e || e.strike == null || !inWin(Number(e.strike))) continue;
@@ -858,7 +858,7 @@ function paintLadder(st){
   });
 
   // ---- refused levels are NAMED, never silently dropped -------------------
-  // When a wall the card names is itself off-window the bug triangle cannot
+  // When a nearest wall is itself off-window the bug triangle cannot
   // point at it, so its marker carries the weight instead. Matched on kind as
   // well as the nearest flag, so an exiled magnet on the same strike cannot
   // steal the emphasis. A pick-up the plot cannot show takes a plain arrow
@@ -936,246 +936,10 @@ function _lvlWall(e, side, nearest){
           heldExact:e.unchanged_for_min != null};
 }
 
-/* ---- D. the three levels — where the weight sits, never what price does -- */
-//
-// REPLACED 2026-09-10. The card used to name ONE wall under "▲ NEXT ABOVE" or
-// "▼ NEXT BELOW" with a dealer sentence beside it. Three things were wrong with
-// it, all measured:
-//   - the direction came from the live price and the wall from a book up to
-//     minutes old, so the two could disagree on screen;
-//   - the sentence ("Dealers sell the rallies here — it caps the move") is the
-//     claim the model is forbidden to make and SNDK's record does not support;
-//   - it could only ever show one of the two walls.
-// Now: both nearest walls with their weight, the strike with the most
-// contracts as a COUNT, ordered by price, and no direction word anywhere.
-//
-// Every number here is set with textContent. None of it is model output, but
-// the card is built from payload strings and there is no reason to let any of
-// them near innerHTML.
-
-function lvRow(r){
-  const row = document.createElement('div');
-  const side = r.kind === 'absent' ? r.side : (r.passed ? 'passed' : r.side === 'most' ? 'mag' : r.side);
-  row.className = 'lv ' + side + (r.kind === 'absent' ? ' absent' : '');
-
-  const tags = [];
-  if(r.side === 'call') tags.push('Call wall');
-  else if(r.side === 'put') tags.push('Put wall');
-  if(r.side === 'most' || r.most) tags.push('Most contracts');
-  if(r.heaviest) tags.push('Heaviest');
-  if(r.passed) tags.push('Price passed it');
-  const lab = document.createElement('span');
-  lab.className = 'lv-side';
-  lab.textContent = tags.join(' · ');
-  row.appendChild(lab);
-
-  if(r.kind === 'absent'){
-    // a measured emptiness is a finding and is DRAWN, never left blank
-    const t = document.createElement('span');
-    t.className = 'lv-none';
-    t.textContent = r.text;
-    row.appendChild(t);
-    return row;
-  }
-
-  const k = document.createElement('span');
-  k.className = 'lv-k';
-  k.textContent = gUsd(r.strike, 0).replace('$', '');
-  row.appendChild(k);
-
-  if(r.kind === 'wall'){
-    const pct = shareBarPct(r.share);
-    const bar = document.createElement('span');
-    const v = document.createElement('span');
-    v.className = 'lv-v';
-    if(pct != null){
-      bar.className = 'lv-bar';
-      const fill = document.createElement('i');
-      fill.style.width = pct.toFixed(1) + '%';
-      bar.appendChild(fill);
-      v.textContent = r.share.toFixed(1) + '%';
-    } else {
-      // no share: no bar AND no track — an empty track reads as zero
-      bar.className = 'lv-bar none';
-      v.textContent = '';
-    }
-    row.appendChild(bar);
-    row.appendChild(v);
-  }
-  // A COUNT, never a bar. The most-contracts strike is chosen by contracts,
-  // and a gamma bar beside it measured something that did not choose it: on
-  // 66.9% of replayed scans it was not even the heaviest gamma strike nearby.
-  if(r.most){
-    const n = document.createElement('span');
-    n.className = 'lv-n';
-    n.textContent = r.most.count != null
-      ? r.most.count.toLocaleString('en-US') + ' contracts'
-      : 'Count not measured';
-    row.appendChild(n);
-  }
-  return row;
-}
-
-function paintLevels(st){
-  const sc = st.scene, walls = sc.walls || null;
-  const ref = st.ref ? st.ref.v : null;
-  const lv = PAY.levels || {};
-  // the count rides the display wrapper; the strike itself is the scene's own
-  // magnet, so the card and the chart can never name two different strikes
-  const top = ((sc.magnet || {}).top_strikes || [])[0];
-  let most = lv.most_contracts || null;
-  if(!most && top && top.strike != null) most = {strike: top.strike};
-  const rows = levelRows(walls, most, lv.heaviest || null, ref);
-
-  const box = $('lvRows');
-  box.replaceChildren(...rows.map(lvRow));
-
-  // The levels are the BOOK's, whatever the quote is doing, so a stale book
-  // says which scan it came from rather than letting a fresh price vouch for it.
-  let when = '';
-  if(st.stale){
-    const et = etTime(Date.parse(PAY.row_ts));
-    if(et) when = 'At the ' + et + ' scan';
-  }
-  $('lvWhen').textContent = when;
-  paintSheet(rows, most, lv);
-}
-
-/* ---- G. the explainer sheet --------------------------------------------- */
-//
-// What each level IS, in plain words — and, as carefully, what it is not. The
-// first draft of this text was the textbook: dealers buy dips and sell rallies
-// near the strike, price gets pinned late in the day, a wall is where price
-// bounces or breaks. A fact-check against the station's own findings found
-// every one of those measured false on SNDK (docs/sndk-plan.md, "Closed by
-// measurement"), so the sheet says where the weight is and stops there.
-
-function paintSheet(rows, most, lv){
-  const set = (id, t) => { $(id).textContent = t || ''; };
-  const k = side => { const r = rows.find(x => x.side === side || (side === 'most' && x.most));
-                      return r && r.strike != null ? gUsd(r.strike, 0).replace('$', '') : ''; };
-  set('shCall', k('call')); set('shPut', k('put')); set('shMost', k('most'));
-
-  const win = most && most.window_dollars != null ? Math.round(most.window_dollars) : null;
-  set('shWindow', win != null ? ', about $' + win + ' either side right now' : '');
-
-  const note = lightNote(lv);
-  $('shLight').hidden = !note;
-  if(note){
-    const f = v => gUsd(v, 0).replace('$', '');
-    // "the put wall at 1,650 carries" / "a put wall further out, at 1,600, carries"
-    const who = note.further ? 'a ' + note.side + ' wall further out, at ' + f(note.heavy) + ','
-                             : 'the ' + note.side + ' wall at ' + f(note.heavy);
-    let s = 'Right now ' + who + ' carries the most gamma, '
-          + note.share.toFixed(1) + '% of the board. ' + f(note.strike) + ' has the most contracts';
-    if(note.count != null){
-      s += ', ' + note.count.toLocaleString('en-US');
-      if(note.traded != null) s += ', and ' + note.traded.toLocaleString('en-US') + ' of them traded today';
-    }
-    set('shLightNow', s + '.');
-  }
-}
-
-// PRESS, HOLD, LET GO. The one gesture on this card, and one of the two
-// exceptions to "the glance is not a control"; the other is the link under the
-// chart (see test_the_glance_itself_is_not_a_control). It opens an explanation
-// of the card; nothing on the card changes by touching it.
-//
-// THE SHEET OPENS WHEN THE FINGER LIFTS, never while it is down (2026-09-10).
-// The first build opened on the 450ms timer, under a finger still on the glass,
-// and the rest of that one touch then belonged to a sheet that had not existed
-// when it began:
-//   - ~50ms later Android's own long-press fired on the SHEET's text and began
-//     a text selection, so the drag that followed extended a selection instead
-//     of scrolling — the card read as a dead zone, and the only place a swipe
-//     still scrolled was the sliver of screen above it;
-//   - any slow start to a scroll (under 10px in the first 450ms) fell into it;
-//   - a lift before the platform's long-press timeout counted as a TAP, which
-//     Chrome hit-tests after the handlers have run — on the backdrop now under
-//     the finger, which closed the sheet the instant it opened;
-//   - and the Back entry was pushed from a timer rather than a gesture, which
-//     Chrome may skip, so Back could leave the page instead of the sheet.
-// Now the 450ms only ARMS it: the bar along the card's foot completes and the
-// phone ticks. Moving at any point cancels it and the gesture stays a scroll.
-// Lifting an armed hold opens the sheet, from the touchend itself, with that
-// touchend's tap cancelled.
-//
-// It opens a SHEET, not a tooltip: the text runs to several paragraphs, and a
-// tooltip that lives only while a finger is down asks you to read with your
-// thumb over the screen. What the sheet does once it is open — its history
-// entry, the shell bridge, the one way it closes — is sheet.js's, shared with
-// the chart's key and the reads page's sheet. Only the gesture that opens this
-// one is here.
-(function(){
-  const HOLD_MS = 450, SLOP = 10;
-  let t = 0, x0 = 0, y0 = 0, card = null, armed = false;
-
-  function tick(){
-    try {
-      if(window.MiraiShell && typeof MiraiShell.tick === 'function') MiraiShell.tick();
-      else if(navigator.vibrate) navigator.vibrate(12);
-    } catch(e){ /* a phone that will not buzz must not stop the sheet */ }
-  }
-
-  function cancel(){
-    if(t){ clearTimeout(t); t = 0; }
-    if(card){ card.classList.remove('holding', 'armed'); card = null; }
-    armed = false;
-  }
-  function release(e){
-    const held = card && armed ? card : null;
-    cancel();
-    if(!held) return;
-    // an uncancelled touchend becomes the tap described above
-    if(e.type === 'touchend' && e.cancelable) e.preventDefault();
-    MiraiSheet.open(held);
-  }
-  document.addEventListener('pointerdown', e => {
-    const c = e.target.closest && e.target.closest('[data-hold]');
-    if(!c || !e.isPrimary || MiraiSheet.isOpen()) return;
-    cancel();
-    card = c; x0 = e.clientX; y0 = e.clientY;
-    c.classList.add('holding');
-    t = setTimeout(() => { t = 0; armed = true; if(card){ card.classList.add('armed'); tick(); } }, HOLD_MS);
-  });
-  const drifted = (x, y) => Math.abs(x - x0) > SLOP || Math.abs(y - y0) > SLOP;
-  document.addEventListener('pointermove', e => { if(card && drifted(e.clientX, e.clientY)) cancel(); });
-  // Touch events keep flowing after the browser has claimed a gesture and sent
-  // pointercancel, so a thumb that moved is caught here whatever the browser
-  // decided — including at the very bottom of the page, where a drag scrolls
-  // nothing and whether a pointercancel arrives at all is a browser detail.
-  document.addEventListener('touchmove', e => {
-    const p = e.touches && e.touches[0];
-    if(card && p && drifted(p.clientX, p.clientY)) cancel();
-  }, {passive: true});
-  // A finger lets go with touchend, which arrives even when a long-press has
-  // made the browser send pointercancel first; a mouse or pen with pointerup.
-  // Non-passive so the tap can be cancelled — a touchend listener never delays
-  // scrolling, only touchstart and touchmove can.
-  document.addEventListener('touchend', release, {passive: false});
-  document.addEventListener('pointerup', e => { if(e.pointerType !== 'touch') release(e); });
-  document.addEventListener('touchcancel', cancel);
-  // before the hold arms, a pointercancel means the browser took it for a pan
-  document.addEventListener('pointercancel', () => { if(!armed) cancel(); });
-  window.addEventListener('scroll', cancel, {passive: true});
-  // or a real phone opens its own long-press menu on the card (sheet.js refuses
-  // it on the sheet's text)
-  document.addEventListener('contextmenu', e => {
-    if(e.target.closest && e.target.closest('[data-hold]')) e.preventDefault();
-  });
-  // a hold is not something a keyboard can do
-  document.addEventListener('keydown', e => {
-    const c = document.activeElement;
-    if((e.key === 'Enter' || e.key === ' ') && c && c.hasAttribute && c.hasAttribute('data-hold')){
-      e.preventDefault(); MiraiSheet.open(c);
-    }
-  });
-})();
-
 // THE CHART'S KEY opens on a tap. The link under the chart is a control and
-// looks like one, as the reads page's button does, so a plain tap opens it and
-// the levels card keeps the page's one press-and-hold. The sheet it opens is
-// the one its aria-controls names; the rest is sheet.js's.
+// looks like one, as the reads page's button does, so a plain tap opens it.
+// The sheet it opens is the one its aria-controls names; the rest is
+// sheet.js's.
 $('howto').addEventListener('click', () => MiraiSheet.open($('howto')));
 
 /* ---- E. read — an opinion, not a measurement ---------------------------- */
@@ -1337,7 +1101,7 @@ function paintToday(){
   const from = (day || {}).lists_from;
   $('tdWhen').textContent = from ? ('SINCE ' + from) : '';
 
-  // replaceChildren, the same idiom paintLevels uses. A clear loop written
+  // replaceChildren, the same idiom paintHalf uses. A clear loop written
   // against firstChild/removeChild is a silent no-op in the stand-in DOM the
   // phone tests run in, and the rows double on the second paint — which is
   // every poll.

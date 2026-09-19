@@ -220,9 +220,9 @@ body{
    the header has 31.5px to spare on a 360px phone, and a fourth control costs
    44 with its gap. Not inside .wrap: render() empties .wrap on every load and
    every poll, and would take the button with it. A plain tap opens the sheet,
-   because this is a control and looks like one; the glance asks for a hold
-   only because the card it explains is not. A <button> shrinks to its content
-   whatever its display, hence the width. */
+   because this is a control and looks like one, as the link under the
+   glance's chart is. A <button> shrinks to its content whatever its display,
+   hence the width. */
 .why{
   position:relative;isolation:isolate;
   display:flex;align-items:center;gap:11px;
@@ -252,12 +252,13 @@ body{
 .why:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 
 /* ---- the sheet ----
-   Every rule from here to .sh-close:focus-visible is the glance's, copied.
-   A shared stylesheet would be a render-blocking re-fetch on every open, for
-   the reason the palette is copied (test_the_two_phone_pages_share_one_palette),
-   so test_the_two_phone_pages_draw_one_sheet holds every rule the two pages
-   both carry to one text. The glance's side colours are left there: nothing
-   on this sheet has a side. */
+   From here to .sh-close:focus-visible, every rule but the items' is the
+   glance's, copied. A shared stylesheet would be a render-blocking re-fetch
+   on every open, for the reason the palette is copied
+   (test_the_two_phone_pages_share_one_palette), so
+   test_the_two_phone_pages_draw_one_sheet holds every rule the two pages both
+   carry to one text. The items (.sh-item, .sh-term) are this sheet's alone
+   since the glance's levels sheet went, 2026-09-19. */
 .scrim{position:fixed;inset:0;z-index:30;background:rgba(22,26,23,.40);
        opacity:0;pointer-events:none;touch-action:none;transition:opacity .2s ease-out}
 /* Not selectable. A long press on the sheet's text started Android's text
@@ -284,7 +285,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .sh-item:first-of-type{border-top:0;padding-top:0}
 .sh-term{display:flex;align-items:baseline;gap:9px;margin-bottom:6px}
 .sh-term b{font:700 15px/1.2 var(--sans);color:var(--i)}
-/* the value beside a term: neutral, unless its side colours it */
+/* the value beside a term: neutral, since nothing on this sheet has a side */
 .sh-term span{font:700 13px/1 var(--sans);color:var(--i-mute)}
 .sh-item p{font:400 14px/1.55 var(--sans);color:var(--i-body)}
 .sh-item p + p{margin-top:8px}

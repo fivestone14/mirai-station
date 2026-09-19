@@ -1,40 +1,20 @@
-"""The three-levels card (2026-09-10) — the nearest call wall, the strike with
-the most contracts, the nearest put wall.
+"""The payload's `levels` block (2026-09-10): the two facts the phone's
+three-levels card needed that the scene does not carry, the count behind the
+most-contracts strike and which gamma pile is heaviest on the board.
 
-It replaced a card that named one wall under a direction word with a dealer
-sentence beside it. Two reviews shaped what replaced it, and the numbers in
-these docstrings are theirs:
-
-  - a replay of 1,473 scans over 8 sessions, which found the first design's
-    central claim ("the pin is the heaviest strike nearby") false on 66.9% of
-    them, because the pin is chosen by CONTRACTS and every bar measured GAMMA;
-  - a fact-check of the explainer text against the station's own findings,
-    which found its textbook sentences (dealers buy dips, price gets pinned,
-    walls are bounced off) recorded as measured false on SNDK.
-
-So the card shows a count where the contracts are and a bar where the gamma
-is, orders its rows by price, and its explainer says where the weight is and
-stops there.
+The card went on 2026-09-19, since the chart draws the same three levels and
+its key explains them. The server still builds the block, so its half stays
+here. The card's half went with the card; the tests of what it shared with the
+chart's key (the sheet, the tap that opens it, the shell bridge) are in
+test_phone_route.
 """
 import json
-import re
-import shutil
-import subprocess
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
-
-import pytest
 
 import snapshot
 
 ET = ZoneInfo("America/New_York")
-M = Path(__file__).resolve().parents[1] / "static" / "m"
-PHONE = (M / "index.html").read_text()
-GLANCE = (M / "glance.js").read_text()
-PAGE = (M / "page.js").read_text()
-SHEET = (M / "sheet.js").read_text()
-_NODE = shutil.which("node")
 
 
 # --- the server's half: a count and a heaviest-pile check -------------------
@@ -152,179 +132,3 @@ def test_the_levels_ride_the_wrapper_and_reach_no_model(tmp_path, monkeypatch):
     assert "levels" not in p["scene"] and "levels" not in p["legacy"]["scene"]
     assert "most_contracts" not in p["user_prompt"] and "holds_most_contracts" not in p["user_prompt"]
 
-
-# --- the phone's half --------------------------------------------------------
-
-def test_the_light_note_is_hidden_without_a_referent():
-    """"Why it can look light" names the heaviest pile: which wall it is, how
-    heavy, and what the most-contracts strike holds — the 09-10 case, a put
-    pile further out carrying the most gamma. The pile peaks AT the
-    most-contracts strike on 35.0% of scans and contains it on 40.6%, and then
-    the strike does not look light at all; and a pile that is no wall is drawn
-    nowhere. Distance is not the reason, and the note never says it is: the
-    first draft's "too far from price to count" was true on 3.4% of scans."""
-    assert "too far" not in PHONE and "too far" not in _code(PAGE)
-    assert 'id="shLight" hidden' in PHONE, "the note must start hidden, not flash"
-    assert "$('shLight').hidden = !note;" in PAGE, "the page no longer hides the note when it has no referent"
-    if not _NODE:
-        pytest.skip("node is not installed")
-    got = _run("""
-      const lv = {most_contracts:{strike:1700, contracts:16419, traded_today:14066},
-                  heaviest:{strike:1600, share_pct:15, role:'put_further', holds_most_contracts:false}};
-      const pile = (k, v) => g.lightNote({...lv, heaviest:{...lv.heaviest, [k]:v}});
-      console.log(JSON.stringify({note: g.lightNote(lv), hidden: [
-        pile('role', null), pile('holds_most_contracts', true), pile('strike', 1700),
-        pile('role', 'magnet'), pile('share_pct', null),
-        g.lightNote({...lv, most_contracts:{contracts:16419}}),
-        g.lightNote({most_contracts:lv.most_contracts}),
-        g.lightNote(null)]}));""")
-    assert got["note"] == {"side": "put", "further": True, "heavy": 1600, "share": 15,
-                           "strike": 1700, "count": 16419, "traded": 14066}
-    # a pile that is no wall, holds the strike or peaks at it; an unknown role, a
-    # pile with no share, a strike with no price or no pile at all: nothing to point at
-    assert got["hidden"] == [None] * 8
-
-
-def test_the_sheet_says_where_the_weight_is_and_stops():
-    """Every sentence below was in the first draft and every one is recorded as
-    measured false on SNDK: no damping or amplifying effect, no pin on
-    weeklies, a wall relabelled on every crossing so "breaks through" is never
-    observed, and the S&P "a third of the time" figure from another market and
-    an older definition. The station's own word filter flags half of them."""
-    sheet = PHONE.split('id="sheet"')[1].split("</div>\n\n<nav")[0]
-    import html
-    text = html.unescape(re.sub(r"<[^>]+>", " ", sheet))     # as a reader sees it
-    for claim in ("buy dips", "sell rallies", "pinned", "settle at", "settles at",
-                  "bounce", "break through", "a third of the time", "coin flip",
-                  "caps the", "holds price up", "speed up"):
-        assert claim not in text, f"the sheet claims {claim!r} again"
-    # the renamed level, and the honest caveat, both present
-    assert "Most contracts" in text and ">Pin<" not in PHONE
-    assert "A location, not a forecast." in text
-    assert "hasn't been established" in text
-
-
-@pytest.mark.skipif(not _NODE, reason="node is not installed")
-def test_the_hold_opens_on_release_never_under_the_finger():
-    """The first build opened the sheet on the 450ms timer, under a finger still
-    on the glass, and every source-level test here passed while it did. The
-    rest of that touch then belonged to the sheet: Android's long-press fired on
-    the sheet's text ~50ms later and began a text selection, so the drag that
-    followed selected instead of scrolling. The card became a dead zone and the
-    only place a swipe scrolled was the sliver of screen above it. The lift
-    could also land as a tap on the backdrop and close the sheet at once.
-
-    So this runs the real page.js against a fake clock and fake touches. The
-    harness was checked against the old gesture: it fails there on
-    open_while_finger_down, rest_then_scroll_opens and ghost_click_closes."""
-    out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
-                         capture_output=True, text=True, timeout=20)
-    assert out.returncode == 0, out.stderr
-    got = json.loads(out.stdout)
-    assert got["open_while_finger_down"] is False, "the sheet opened under the finger again"
-    assert got["armed_class"] is True                       # the hold says "let go now"
-    assert got["open_after_lift"] is True
-    assert got["lift_tap_cancelled"] is True, "the lift's tap will hit the backdrop"
-    assert got["pushes_after_open"] == 1
-    for scroll in ("rest_then_scroll_opens", "quick_scroll_opens", "pan_claimed_opens",
-                   "scroll_event_opens", "tap_opens"):
-        assert got[scroll] is False, f"{scroll}: a scroll or a tap opened the sheet"
-    assert got["armed_survives_pointercancel"] is True, "a long-press cancel strands the hold"
-    assert got["ghost_click_closes"] is False, "the opening gesture closed the sheet"
-    assert got["closed_by_button"] is True
-    assert got["backs_on_double_tap"] == 1, "a double tap on Got it goes back twice"
-    assert got["contextmenu_blocked"] == [True, True, False, True]
-    assert got["hold_sheets"] == ["false", "true"], "the hold opened the chart's key as well"
-
-
-@pytest.mark.skipif(not _NODE, reason="node is not installed")
-def test_the_chart_key_opens_on_a_tap_and_closes_as_the_levels_sheet_does():
-    """The glance has two sheets since 2026-09-18: the three levels, on the
-    card's press-and-hold, and the chart's key, on a tap of the quiet link
-    under the chart. One copy of the opening and closing serves both
-    (sheet.js): each control names its sheet in aria-controls, and the one
-    open is the one unhidden. Run on the real page.js and sheet.js with fake
-    touches: a tap on the link opens the key and not the levels sheet, pushes
-    one history entry and puts the focus on the key's own Got it; a hold on the
-    levels card while the key is open opens nothing more; the key's Got it,
-    tapped twice, goes back once, closes it and returns the focus to the link;
-    and a tap on the link while the levels sheet is open opens nothing more,
-    which only sheet.js's own check stops, since a tap goes straight to it.
-    The hold opens only the levels sheet, and a long press on either sheet's
-    text gets no menu."""
-    out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
-                         capture_output=True, text=True, timeout=20)
-    assert out.returncode == 0, out.stderr
-    got = json.loads(out.stdout)
-    assert got["tap_opens_key"] == {"open": True, "sheets": ["true", "false"], "pushes": 1, "focus": "hwClose"}
-    assert got["hold_while_key_open"] == {"sheets": ["true", "false"], "pushes": 1}
-    assert got["key_closed"] == {"open": False, "sheets": ["true", "true"], "backs": 1, "focus": "howto"}
-    assert got["tap_while_levels_open"] == {"sheets": ["false", "true"], "pushes": 1, "focus": "shClose"}, \
-        "a second sheet opened over the first"
-    assert re.search(r'<button class="howto" id="howto"[^>]*aria-controls="howtoSheet"', PHONE)
-    assert "$('howto').addEventListener('click', () => MiraiSheet.open($('howto')));" in PAGE
-
-
-def test_the_sheet_text_cannot_start_a_selection():
-    """A live text selection turns the next drag into handle-dragging instead
-    of scrolling, which is half of how the card became a dead zone. The sheet
-    is explanation, not something to copy."""
-    import re as _re
-    m = _re.search(r"(?m)^\.sheet\{([^}]*)\}", PHONE)
-    assert m, ".sheet has no rule"
-    flat = m.group(1).replace(" ", "").replace("\n", "")
-    assert "user-select:none" in flat and "-webkit-touch-callout:none" in flat
-    # 86% of the MEASURED height: as 84dvh it was 0px inside the app
-    assert "max-height:calc(var(--app-h)*.86)" in flat
-
-
-def test_a_drag_inside_the_sheet_cannot_reload_the_page():
-    """Opened with the page scrolled to the top, a downward drag in the sheet
-    read as the shell's pull-to-refresh and reloaded the page out from under
-    the reader. The page tells the shell it is not at the top while the sheet
-    is open, and keeps the answer true afterwards on every scroll. Since
-    2026-09-18 that is sheet.js's, the one copy both pages' sheets run on
-    (test_phone_reads drives it on the reads page)."""
-    ts = SHEET.split("function tellShell")[1].split("\n  }\n")[0]
-    assert "MiraiShell.atTop(!isOpen() && window.scrollY <= 0)" in ts
-    assert "window.addEventListener('scroll', () => { if(spoke) tellShell(); }" in SHEET
-    assert "tellShell" not in PAGE, "page.js has a second copy of the shell bridge"
-
-
-def _code(js):
-    return "\n".join(l.split("//")[0] for l in js.splitlines()
-                     if not l.strip().startswith(("//", "*", "/*")))
-
-
-# --- behaviour, where a JS runtime is available -------------------------------
-
-
-def _run(js):
-    out = subprocess.run([_NODE, "-e", "const g=require(%s);%s" % (json.dumps(str(M / "glance.js")), js)],
-                         capture_output=True, text=True, timeout=20)
-    assert out.returncode == 0, out.stderr
-    return json.loads(out.stdout)
-
-
-@pytest.mark.skipif(not _NODE, reason="node is not installed")
-def test_rows_order_by_price_merge_and_grey_out():
-    rows = _run("""
-      const a=g.levelRows({call:[{strike:1485,cluster_share_of_book_gamma_pp:9}],
-                           put:[{strike:1470,cluster_share_of_book_gamma_pp:8}]},
-                          {strike:1500,contracts:6755}, null, 1478);
-      const b=g.levelRows({call:[{strike:1700,cluster_share_of_book_gamma_pp:20}],
-                           put_side_has_no_wall:true},
-                          {strike:1700,contracts:9000},
-                          {strike:1700,share_pct:20,role:'call',holds_most_contracts:true}, 1705);
-      const c=g.levelRows(null, null, null, 1694);
-      console.log(JSON.stringify({a,b,c}));""")
-    # 08-28 11:51: the most-contracts strike ABOVE the call wall draws first
-    assert [(r["kind"], r["strike"]) for r in rows["a"]] == [("most", 1500), ("wall", 1485), ("wall", 1470)]
-    # one row for a shared strike; price through it greys it; the empty side is a row
-    b = rows["b"]
-    assert len(b) == 2
-    assert b[0]["strike"] == 1700 and b[0]["most"]["count"] == 9000
-    assert b[0]["passed"] is True and b[0]["heaviest"] is True
-    assert b[1] == {"kind": "absent", "side": "put", "text": "None below price"}
-    # nothing measured is three rows saying so, never zeros
-    assert [r["text"] for r in rows["c"]] == ["Not measured"] * 3

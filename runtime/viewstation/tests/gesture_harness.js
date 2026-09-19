@@ -1,12 +1,13 @@
-// gesture_harness.js — drives the REAL page.js hold gesture, and the sheet.js
-// sheet it opens, with a fake clock, fake touch/pointer events and a fake
+// gesture_harness.js — drives the REAL page.js tap on the link under the chart,
+// and the sheet.js sheet it opens, with a fake clock, fake taps and a fake
 // history, and prints what happened.
 //
-// Why a harness and not a source grep: the first build of this gesture passed
-// every source-level test while opening the sheet under a finger still on the
-// glass — which turned the card into a dead zone for scrolling. Only running
-// the events in order can see that. No browser and no DOM library: the gesture
-// touches a handful of elements, so a handful are stubbed.
+// Why a harness and not a source grep: the first build of the glance's old
+// press-and-hold passed every source-level test while opening its sheet under
+// a finger still on the glass — which turned the card into a dead zone for
+// scrolling. Only running the events in order can see that, and the same goes
+// for a double open or a close that goes back twice. No browser and no DOM
+// library: the sheet touches a handful of elements, so a handful are stubbed.
 //
 // Usage: node gesture_harness.js <path to static/m>   → one JSON object on stdout
 'use strict';
@@ -48,16 +49,13 @@ function el(id, sel, attrs){
           hasAttribute(k){ return this.sel.some(s => s === '[' + k + ']'); },
           addEventListener(t, f){ (this.heard[t] = this.heard[t] || []).push(f); },
           // a sheet's close button, the one thing sheet.js looks for inside it
-          querySelector(q){ return q === '[data-sheet-close]' ? els[this.id === 'sheet' ? 'shClose' : 'hwClose'] : null; },
+          querySelector(q){ return q === '[data-sheet-close]' ? els.hwClose : null; },
           focus(){ document.activeElement = this; },
           replaceChildren(){}, appendChild(c){ return c; },
           getBoundingClientRect(){ return {width: 380, height: 300, top: 0, left: 0, right: 380, bottom: 300}; },
           set textContent(v){}, get textContent(){ return ''; }};
 }
 const els = {
-  levels: el('levels', ['[data-hold]'], {'aria-controls': 'sheet'}),
-  sheet: el('sheet', ['#sheet', '.sheet'], {'aria-hidden': 'true'}),
-  shClose: el('shClose', ['[data-sheet-close]']),
   howto: el('howto', ['#howto'], {'aria-controls': 'howtoSheet'}),
   howtoSheet: el('howtoSheet', ['#howtoSheet', '.sheet'], {'aria-hidden': 'true'}),
   hwClose: el('hwClose', ['[data-sheet-close]']),
@@ -91,7 +89,7 @@ const ctx = {
 ctx.window = ctx;
 ctx.addEventListener = on(winL);
 vm.createContext(ctx);
-// in index.html's order: the sheet itself is sheet.js's, the hold is page.js's
+// in index.html's order: the sheet itself is sheet.js's, the link's tap is page.js's
 vm.runInContext(fs.readFileSync(path.join(M, 'glance.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(M, 'sheet.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(M, 'page.js'), 'utf8'), ctx);
@@ -105,100 +103,58 @@ function ev(type, target, x, y, extra){
 const isOpen = () => document.body.classList.contains('sheet-open');
 function reset(){
   if(isOpen()){ document.body.classList.remove('sheet-open'); }
+  els.howtoSheet.attrs['aria-hidden'] = 'true';
   history.state = null; pushes = 0; backs = 0; timers = []; advance(1000);
 }
-// a finger on the card at (100, 100)
-function down(){ fire(docL, 'pointerdown', ev('pointerdown', els.levels, 100, 100)); }
-function move(dy){
-  fire(docL, 'pointermove', ev('pointermove', els.levels, 100, 100 + dy));
-  fire(docL, 'touchmove', ev('touchmove', els.levels, 100, 100 + dy));
-}
-function lift(){
-  const e = fire(docL, 'touchend', ev('touchend', els.levels, 100, 100, {touches: []}));
-  fire(docL, 'pointerup', ev('pointerup', els.levels, 100, 100));
-  return e;
-}
+// a tap as a browser delivers it: the control's own listeners, then the document's
+function tap(n){ const e = ev('click', n, 100, 100); (n.heard.click || []).forEach(f => f(e)); fire(docL, 'click', e); }
+const state = () => ({open: isOpen(), hidden: els.howtoSheet.attrs['aria-hidden'], pushes, backs,
+                      focus: document.activeElement && document.activeElement.id});
 
 const out = {};
 
-// 1. the timer ARMS; it never opens under a finger still on the glass
-reset(); down(); advance(1000);
-out.open_while_finger_down = isOpen();
-out.armed_class = els.levels.classList.contains('armed');
-const e1 = lift();
-out.open_after_lift = isOpen();
-// the hold opens the levels sheet, and only that one
-out.hold_sheets = [els.sheet.attrs['aria-hidden'], els.howtoSheet.attrs['aria-hidden']];
-out.lift_tap_cancelled = e1.defaultPrevented;
-out.pushes_after_open = pushes;
-
-// 2. rest on the card, then scroll: never opens
-reset(); down(); advance(700); move(40); lift();
-out.rest_then_scroll_opens = isOpen();
-
-// 3. a quick scroll: never opens
-reset(); down(); advance(120); move(40); advance(600); lift();
-out.quick_scroll_opens = isOpen();
-
-// 4. a tap: never opens
-reset(); down(); advance(150); lift();
-out.tap_opens = isOpen();
-
-// 5. the browser claims the gesture for a pan before it arms: never opens
-reset(); down(); advance(200); fire(docL, 'pointercancel', ev('pointercancel', els.levels, 100, 100)); advance(600); lift();
-out.pan_claimed_opens = isOpen();
-
-// 6. a long-press pointercancel AFTER it armed does not strand the hold
-reset(); down(); advance(600); fire(docL, 'pointercancel', ev('pointercancel', els.levels, 100, 100)); lift();
-out.armed_survives_pointercancel = isOpen();
-
-// 7. the page scrolling under the finger cancels it
-reset(); down(); advance(200); fire(winL, 'scroll', {}); advance(600); lift();
-out.scroll_event_opens = isOpen();
-
-// 8. the lift's late tap on the backdrop cannot close what it just opened
-reset(); down(); advance(600); lift();
-fire(docL, 'click', ev('click', els.scrim, 100, 100));
-advance(20);
-out.ghost_click_closes = !isOpen();
-
-// 9. a real close after that window closes it, ONCE, however many taps
-advance(600);
-fire(docL, 'click', ev('click', els.shClose, 100, 100));
-fire(docL, 'click', ev('click', els.shClose, 100, 100));     // double tap, before popstate
-advance(50);
-out.closed_by_button = !isOpen();
-out.backs_on_double_tap = backs;
-
-// 10. long-press menus are refused on the card and on either sheet's text
-const cm1 = fire(docL, 'contextmenu', ev('contextmenu', els.levels, 0, 0));
-const cm2 = fire(docL, 'contextmenu', ev('contextmenu', els.sheet, 0, 0));
-const cm3 = fire(docL, 'contextmenu', ev('contextmenu', els.text, 0, 0));
-const cm4 = fire(docL, 'contextmenu', ev('contextmenu', els.howtoSheet, 0, 0));
-out.contextmenu_blocked = [cm1.defaultPrevented, cm2.defaultPrevented, cm3.defaultPrevented, cm4.defaultPrevented];
-
-// a tap as a browser delivers it: the control's own listeners, then the document's
-function tap(n){ const e = ev('click', n, 100, 100); (n.heard.click || []).forEach(f => f(e)); fire(docL, 'click', e); }
-const sheets = () => [els.sheet.attrs['aria-hidden'], els.howtoSheet.attrs['aria-hidden']];
-
-// 11. a TAP on the link under the chart opens the chart's key, not the levels
-//     sheet, with its history entry and the focus on its own close button
+// 1. a TAP on the link under the chart opens the chart's key, with its history
+//    entry and the focus on its own close button
 reset(); tap(els.howto);
-out.tap_opens_key = {open: isOpen(), sheets: sheets(), pushes, focus: document.activeElement && document.activeElement.id};
+out.tap_opens_key = state();
 
-// 12. a hold on the levels card while the key is open opens nothing more
-down(); advance(600); lift();
-out.hold_while_key_open = {sheets: sheets(), pushes};
+// 2. the second tap of a double tap lands on the backdrop the first one just
+//    put there, inside sheet.js's late-tap window: it closes nothing
+advance(100); tap(els.scrim); advance(50);
+out.late_tap = state();
 
-// 13. the key's Got it closes it the one way, once, and the focus goes back
-//     to the link
-advance(600); tap(els.hwClose); tap(els.hwClose); advance(50);
-out.key_closed = {open: isOpen(), sheets: sheets(), backs, focus: document.activeElement && document.activeElement.id};
+// 3. one sheet at a time: the link again while the key is open (a keyboard can
+//    reach it) opens nothing more, and pushes no second entry
+advance(600); tap(els.howto);
+out.open_again = state();
 
-// 14. and the other way round: a tap on the link while the levels sheet is
-//     open opens nothing more. The hold checks before it starts (12); a tap
-//     goes straight to open(), so this is open()'s own check
-reset(); down(); advance(600); lift(); tap(els.howto);
-out.tap_while_levels_open = {sheets: sheets(), pushes, focus: document.activeElement && document.activeElement.id};
+// 4. so ONE Back closes it: the key is hidden, nothing is left on screen, the
+//    focus is back on the link, and the page's history is as it was
+history.back(); advance(50);
+out.back_closes = state();
+
+// 5. the key's Got it, tapped twice before the popstate, goes back once
+reset(); tap(els.howto); advance(600); tap(els.hwClose); tap(els.hwClose); advance(50);
+out.got_it_twice = state();
+
+// 6. Escape closes it too, the same one way
+reset(); tap(els.howto); advance(600);
+fire(docL, 'keydown', {key: 'Escape'}); fire(docL, 'keydown', {key: 'Escape'}); advance(50);
+out.escape = state();
+
+// 7. a long-press menu is refused on the sheet's text and nowhere else
+const cm1 = fire(docL, 'contextmenu', ev('contextmenu', els.howtoSheet, 0, 0));
+const cm2 = fire(docL, 'contextmenu', ev('contextmenu', els.text, 0, 0));
+out.contextmenu_blocked = [cm1.defaultPrevented, cm2.defaultPrevented];
+
+// 8. and nothing answers a hold: a finger held on the link for a second and
+//    lifted without the tap a browser would make of it opens nothing
+reset();
+fire(docL, 'pointerdown', ev('pointerdown', els.howto, 100, 100));
+fire(docL, 'touchstart', ev('touchstart', els.howto, 100, 100));
+advance(1000);
+fire(docL, 'touchend', ev('touchend', els.howto, 100, 100, {touches: []}));
+fire(docL, 'pointerup', ev('pointerup', els.howto, 100, 100));
+out.hold = state();
 
 console.log(JSON.stringify(out));

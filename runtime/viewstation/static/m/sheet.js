@@ -1,14 +1,14 @@
 /* sheet.js — the explainer sheets: how one opens, and every way it closes.
  *
- * Both phone pages carry them. The glance has two: what the three levels are,
- * and how to read the chart; the reads page's says what faster, steady and
- * slower mean. Each page owns its sheets' markup, its copy of the sheet's CSS
- * (a shared stylesheet would be a render-blocking re-fetch on every open;
+ * Both phone pages carry one. The glance's says how to read the chart; the
+ * reads page's says what faster, steady and slower mean. Each page owns its
+ * sheet's markup, its copy of the sheet's CSS (a shared stylesheet would be a
+ * render-blocking re-fetch on every open;
  * test_the_two_phone_pages_draw_one_sheet holds the two copies equal) and the
- * controls that OPEN them: a press-and-hold on the glance's levels card,
- * because that card is not a control, and a plain tap on the link under the
- * glance's chart and on the reads page's button, because those are. Each
- * control names its sheet in aria-controls, and one sheet is open at a time.
+ * control that OPENS it: a plain tap on the link under the glance's chart and
+ * on the reads page's button, because those are controls. Each control names
+ * its sheet in aria-controls, and a sheet already open is not opened again,
+ * which would push a second history entry for it.
  * Everything after the opening is here, once, because every part of it was
  * learned on a phone and a second copy would have to learn it again.
  *
@@ -28,12 +28,13 @@
  * the page speaks while the sheet is open, and once it has spoken it keeps the
  * answer true on every scroll, because the shell has no way back to "silent".
  *
- * THE LATE TAP. The glance opens its levels sheet from a touchend, and Chrome
- * hit-tests that touch's synthetic tap AFTER the handlers have run — on the
- * backdrop that has just appeared, which closed the sheet the instant it
- * opened. So a close this soon after opening is ignored. A sheet opened by a
- * click, as the chart's and the reads page's are, is already past that point,
- * and there the guard never has anything to ignore.
+ * THE LATE TAP. A close this soon after opening is ignored. It was learned on
+ * the glance's levels sheet (gone 2026-09-19), which opened from a touchend:
+ * Chrome hit-tests that touch's synthetic tap AFTER the handlers have run — on
+ * the backdrop that has just appeared, which closed the sheet the instant it
+ * opened. Both sheets open on a click, which is past that point, but the
+ * second tap of a double tap on the control can land on that backdrop in the
+ * same way, and the guard keeps it from closing what the first tap opened.
  *
  * NOT SELECTABLE. A long press on the sheet's text opened Android's text
  * selection, and while a selection is live a drag moves its handles instead of

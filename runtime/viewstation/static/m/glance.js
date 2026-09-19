@@ -55,35 +55,14 @@ function gTimes(m){
   return m.toFixed(m<0.1 ? 2 : m<9.95 ? 1 : 0)+'×';
 }
 
-/* ---- the three levels -------------------------------------------------- */
-
-// ONE full scale for every weight on the screen: the card's bars, the chart's
-// rail bars and the chart's line thickness. A per-scan maximum would make the
-// biggest wall full every single scan and destroy comparison between days, so
-// the scale is fixed and chosen from the tape.
-//
-// 30, not 20. Measured over 15,653 wall observations since 07-27 the share of
-// the book runs p50 9.4%, p90 25.6%, p95 33.1%, and the last 8 sessions run
-// heavier (p50 12.6%, p90 28.1%). At 20 a full bar was 15.5% of all walls and
-// 27.1% of recent ones — a quarter of the levels drew identically at the cap,
-// which is the comparison the scale exists to make. At 30 the cap takes 6.4%
-// (8.1% recently), and the clip is still marked where it happens.
-const FULL_SHARE = 30;
-
-function shareBarPct(share){
-  // The card's bar, in percent of its track. No datum: no bar and no track,
-  // because an empty track reads as zero.
-  if(share==null||!isFinite(share)) return null;
-  return Math.max(2, Math.min(100, share/FULL_SHARE*100));
-}
-
+/* ---- walls ------------------------------------------------------------ */
 
 function wallPassed(side, strike, price){
   // Has price, AS SHOWN, gone past this wall since the book was read?
   //
   // walls_ladder files a wall against the book's spot, up to a couple of
   // minutes old, while the price on screen repaints every 5s. Replayed over 8
-  // sessions, price stood beyond a wall the card still showed on 2.7% of
+  // sessions, price stood beyond a wall the screen still showed on 2.7% of
   // minutes (5.8% on 09-10). The wall is relabelled at the next scan — on
   // every crossing on record — so until then the honest thing is to say price
   // has passed it and drop its colour: a call wall below price is not the call
@@ -91,72 +70,6 @@ function wallPassed(side, strike, price){
   const k=_fin(strike), p=_fin(price);
   if(k==null||p==null) return false;
   return side==='call' ? p>k : side==='put' ? p<k : false;
-}
-
-function levelRows(walls, most, heaviest, price){
-  // The card's rows: the nearest call wall, the strike with the most contracts,
-  // the nearest put wall — ORDERED BY PRICE, top first, and never by kind.
-  // The replay found the most-contracts strike above the call wall on 10.9% of
-  // scans and below the put wall on 1.4%; a fixed call/most/put order would
-  // draw those upside down. It is the same strike as a wall on 35.3%, and then
-  // the two share one row rather than printing one price twice.
-  //
-  // An absent wall is a ROW, never a gap and never a zero: the side flag is a
-  // measured emptiness (32.2% of recent scans had no put wall), and no flag
-  // with no entry is no measurement at all.
-  const rows=[], px=_fin(price);
-  for(const side of ['call','put']){
-    const e = walls && Array.isArray(walls[side]) ? walls[side][0] : null;
-    if(e && _fin(e.strike)!=null){
-      const k=Number(e.strike);
-      rows.push({kind:'wall', side, strike:k,
-                 share:_fin(e.cluster_share_of_book_gamma_pp),
-                 passed:wallPassed(side, k, px),
-                 heaviest:!!(heaviest && heaviest.role===side)});
-    } else {
-      rows.push({kind:'absent', side,
-                 text:(walls && walls[side+'_side_has_no_wall']===true)
-                      ? (side==='call' ? 'None above price' : 'None below price')
-                      : 'Not measured'});
-    }
-  }
-  const mk = most ? _fin(most.strike) : null;
-  if(mk!=null){
-    const m={count:_fin(most.contracts), traded:_fin(most.traded_today)};
-    const hit=rows.find(r=>r.kind==='wall' && r.strike===mk);
-    if(hit) hit.most=m;
-    else rows.push({kind:'most', side:'most', strike:mk, most:m,
-                    heaviest:!!(heaviest && _fin(heaviest.strike)===mk)});
-  } else rows.push({kind:'absent', side:'most', text:'Not measured'});
-  const key=r=> r.strike!=null ? r.strike
-             : r.side==='call' ? Infinity : r.side==='put' ? -Infinity
-             : (px!=null ? px : 0);
-  return rows.sort((a,b)=>key(b)-key(a));
-}
-
-function lightNote(levels){
-  // "Why the most-contracts strike can look light", or null when the sentence
-  // would have nothing to point at.
-  //
-  // The two measures disagree because they count different things — the walls
-  // are gamma from last night's positions with calls netted against puts; the
-  // strike is a head count including today's trades — NOT because of distance.
-  // The first draft said the heavier strike was "too far from price to count";
-  // that was true on 3.4% of replayed scans.
-  //
-  // Hidden when: the heaviest pile peaks AT this strike (35.0% of scans) or
-  // contains it (40.6%) — it does not look light then; or the heaviest pile is
-  // not a wall at all (role null), so the sentence would name a level the
-  // screen never draws.
-  if(!levels) return null;
-  const m=levels.most_contracts, h=levels.heaviest;
-  if(!m || !h || _fin(m.strike)==null || _fin(h.strike)==null || _fin(h.share_pct)==null) return null;
-  if(!h.role || h.holds_most_contracts || _fin(h.strike)===_fin(m.strike)) return null;
-  const role={call:['call',false], put:['put',false],
-              call_further:['call',true], put_further:['put',true]}[h.role];
-  if(!role) return null;
-  return {side:role[0], further:role[1], heavy:_fin(h.strike), share:_fin(h.share_pct),
-          strike:_fin(m.strike), count:_fin(m.contracts), traded:_fin(m.traded_today)};
 }
 
 /* ---- price, age, and the two things that must never be guessed --------- */
@@ -988,13 +901,13 @@ function stripName(room){
 
 /* ---- how busy each strike has been ------------------------------------- */
 
-// The ladder's gauge is on a FIXED scale, for the reason the levels card's is:
-// a per-scan maximum would fill the busiest row on every scan and destroy the
-// comparison between scans and between days. Full is five turns of the pile.
-// Over the 288 ladder rows of 09-15, 09-16 and 09-17 the multiple ran p50 1.44,
-// p90 4.66, p95 5.51, max 8.17: at 5 the cap takes 7.6% of rows, the share
-// FULL_SHARE was tuned to, and 1x sits a fifth of the way along, where 34% of
-// rows end short of it. At 4 the cap took one row in eight.
+// The ladder's gauge is on a FIXED scale: a per-scan maximum would fill the
+// busiest row on every scan and destroy the comparison between scans and
+// between days. Full is five turns of the pile. Over the 288 ladder rows of
+// 09-15, 09-16 and 09-17 the multiple ran p50 1.44, p90 4.66, p95 5.51, max
+// 8.17: at 5 the cap takes 7.6% of rows, near the 6.4 to 8.1% of walls the
+// levels card's bars took at their 30% cap, and 1x sits a fifth of the way
+// along, where 34% of rows end short of it. At 4 the cap took one row in eight.
 const FULL_TURNOVER=5;
 
 // Under 500 contracts standing, the multiple reports the smallness of the pile
@@ -1020,7 +933,7 @@ function turnover(row){
 }
 
 function turnoverBar(mult){
-  // The gauge, in percent of its track: shareBarPct on the ladder's own scale.
+  // The gauge, in percent of its track, on the ladder's own scale.
   // Anything above zero draws at least 2%, so a datum that exists gets ink; past
   // full the bar fills the track and says it was clipped rather than being
   // quietly flattened. Nothing traded is a measured zero and draws no fill.
@@ -1286,8 +1199,7 @@ function halfHour(scene, rec){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={gUsd, gMinutes, gTimes, FULL_SHARE, shareBarPct, wallPassed,
-                  levelRows, lightNote, priorClose,
+  module.exports={gUsd, gMinutes, gTimes, wallPassed, priorClose,
                   bookAge, shownPrice, dayChange,
                   etTime, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,

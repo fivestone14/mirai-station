@@ -232,8 +232,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    filled bar (READABLE2-SPEC.md 2.8). 16px of it shows, a ring and 12px/600 in
    --i-mute on the card's rail. The tap target is --tap-min tall, 16 + 16 + 16,
    its padding tucked into the card's own, so the card grows 22px. A tap opens
-   it, because this is a control: the card's one press-and-hold stays the
-   levels card's. */
+   it, because this is a control. */
 .howto{display:flex;align-items:center;gap:7px;width:max-content;
        margin:-10px 0 -16px -8px;padding:16px 8px;border:0;border-radius:10px;background:none;
        color:var(--i-mute);font:600 12px/16px var(--sans);text-align:left;
@@ -606,59 +605,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .hh-note{margin-top:13px;padding-top:12px;border-top:1px solid var(--s2);
          font:400 12px/18px var(--sans);color:var(--i-mute)}
 
-/* ============ F. THE THREE LEVELS ============ */
-/* Both nearest walls and the strike with the most contracts, ordered by PRICE,
-   top first, with no direction word anywhere. Every number on it comes from one
-   book, and the only live input is the price that greys out a wall it has
-   already passed — so nothing on the card can contradict anything else on it.
-   See the note above paintLevels in page.js for what it replaced and why. */
-.levels{position:relative;-webkit-user-select:none;user-select:none;
-        -webkit-touch-callout:none;touch-action:manipulation}
-.levels:focus-visible{outline:2px solid var(--px-ink);outline-offset:3px}
-.lv-rows{display:flex;flex-direction:column;gap:15px;margin-top:14px}
-.lv{display:grid;grid-template-columns:minmax(76px,auto) 1fr 46px;column-gap:12px;row-gap:6px;
-    align-items:center}
-/* the label WRAPS rather than truncates: "Put wall · Most contracts · Heaviest"
-   is the longest it gets, and an ellipsis there would eat the tag that matters */
-.lv-side{grid-column:1 / -1;min-width:0;font:700 11px/1.35 var(--sans);letter-spacing:.12em;
-         text-transform:uppercase;color:var(--i-faint)}
-.lv-k{font:700 26px/1 var(--sans);letter-spacing:-.02em;color:var(--i)}
-.lv.call .lv-k{color:var(--call-ink)} .lv.put .lv-k{color:var(--put-ink)}
-.lv.mag  .lv-k{color:var(--mag-ink)}
-/* passed: the weight is still true, the side no longer is */
-.lv.passed .lv-k{color:var(--i-mute)}
-.lv.passed .lv-bar>i{opacity:.45}
-/* the bar is NEUTRAL: share-of-board is a magnitude, and the strike beside it
-   already says which side. Colouring the bar would say it twice. */
-.lv-bar{position:relative;height:8px;border-radius:99px;background:var(--s2);overflow:hidden;
-        box-shadow:inset 0 1px 2px rgba(58,48,32,.07)}
-.lv-bar>i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:#3A4557}
-.lv-bar.none{visibility:hidden}
-.lv-v{text-align:right;font:700 13px/1 var(--sans);color:var(--i-body)}
-/* the count sits where a bar would, and is plainly not one */
-.lv-n{grid-column:2 / -1;font:500 13px/1.3 var(--sans);color:var(--i-body)}
-.lv-none{grid-column:1 / -1;font:500 15px/1.3 var(--sans);color:var(--i-mute)}
-.lv-cap{margin-top:14px;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
-
-/* The hold has to be discoverable — nothing about a card says "hold me" — so
-   the caption says it, and the card answers the hold while it is happening: a
-   bar fills along its foot for the whole 450ms. The sheet opens on the LIFT;
-   see the note above the gesture in page.js for why never before it. */
-.hold-hint{display:inline-flex;align-items:center;gap:6px;margin-top:10px;
-           font:700 10px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;
-           color:var(--i-faint)}
-.hold-hint i{width:14px;height:14px;border-radius:50%;border:1.5px solid currentColor;
-             display:inline-flex;align-items:center;justify-content:center;font-style:normal;
-             font-size:9px;font-weight:700;letter-spacing:0}
-.levels::after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:3px;
-               border-radius:3px 3px 0 0;background:var(--i-mute);
-               transform:scaleX(0);transform-origin:left;opacity:0}
-.levels.holding::after{opacity:.55;transform:scaleX(1);transition:transform .45s linear,opacity .1s}
-/* armed: the hold is complete and lifting will open the sheet — the bar goes
-   solid, and the phone ticks, so the reader knows to let go */
-.levels.armed::after{opacity:1;background:var(--i)}
-
-/* ---- the sheet: what the three levels mean ---- */
+/* ============ F. THE SHEET ============ */
 .scrim{position:fixed;inset:0;z-index:30;background:rgba(22,26,23,.40);
        opacity:0;pointer-events:none;touch-action:none;transition:opacity .2s ease-out}
 /* Not selectable. A long press on the sheet's text started Android's text
@@ -681,16 +628,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .sh-grab{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:0 auto 16px}
 .sh-h{margin-bottom:14px;font:700 11px/1.2 var(--sans);letter-spacing:.14em;
       text-transform:uppercase;color:var(--i-faint)}
-.sh-item{padding:13px 0;border-top:1px solid var(--s2)}
-.sh-item:first-of-type{border-top:0;padding-top:0}
-.sh-item[hidden]{display:none}
-.sh-term{display:flex;align-items:baseline;gap:9px;margin-bottom:6px}
-.sh-term b{font:700 15px/1.2 var(--sans);color:var(--i)}
-/* the value beside a term: neutral, unless its side colours it */
-.sh-term span{font:700 13px/1 var(--sans);color:var(--i-mute)}
-.sh-term .call{color:var(--call-ink)} .sh-term .mag{color:var(--mag-ink)} .sh-term .put{color:var(--put-ink)}
-.sh-item p{font:400 14px/1.55 var(--sans);color:var(--i-body)}
-.sh-item p + p{margin-top:8px}
 .sh-caveat{margin-top:6px;padding:13px 14px;border-radius:14px;background:var(--g);
            font:400 14px/1.55 var(--sans);color:var(--i-body)}
 .sh-caveat b{font-weight:700;color:var(--i)}
@@ -711,7 +648,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .hw-w{font-size:12px;letter-spacing:.02em}
 @media (prefers-reduced-motion:reduce){
   .sheet,.sheet[aria-hidden="false"]{transition:none}
-  .levels.holding::after{transition:opacity .1s}
 }
 
 /* ============ G. FOOT ============ */
@@ -874,15 +810,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="hh-note">Nothing past that next half hour was measured.</div>
 </section>
 
-<section class="card levels" id="levels" data-hold tabindex="0" role="button"
-         aria-haspopup="dialog" aria-controls="sheet"
-         aria-label="The three levels. Press and hold for what each one means.">
-  <div class="lab">The three levels<span class="r" id="lvWhen"></span></div>
-  <div class="lv-rows" id="lvRows"></div>
-  <p class="lv-cap">Walls: the bar is the wall&#39;s share of all the gamma on the board, full at 30%. On the chart a wall is a thin line that says only where it sits. Most contracts is a head count of calls and puts at one strike.</p>
-  <div class="hold-hint"><i>i</i>Hold, then let go, for what these mean</div>
-</section>
-
 <div class="foot" id="foot"></div>
 
 <div class="fail" id="fail" hidden>
@@ -931,39 +858,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="sh-caveat"><b>Where trading is, not where price is going.</b> None of these marks says which way SNDK moves next. Trading picking up at a price says nothing about whether price gets there.</div>
 
   <button class="sh-close" id="hwClose" type="button" data-sheet-close>Got it</button>
-</div>
-<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-hidden="true"
-     aria-labelledby="shTitle">
-  <div class="sh-grab"></div>
-  <div class="sh-h" id="shTitle">The three levels</div>
-
-  <div class="sh-item">
-    <div class="sh-term"><b>Call wall</b><span class="call" id="shCall"></span></div>
-    <p>The nearest call-heavy pile of options above price, in this week&#39;s contracts. The bar is its share of all the gamma on the board, built from last night&#39;s open positions. Gamma measures how sharply an option responds when the stock moves.</p>
-    <p>A wall shows where positions sit. It is not a level price is known to react to. The label only ever means &ldquo;above price&rdquo;, so once price passes it the card greys it out, and the next scan moves the name to the next pile up. A wall marked heaviest carries more gamma than any other pile on the board.</p>
-  </div>
-
-  <div class="sh-item">
-    <div class="sh-term"><b>Put wall</b><span class="put" id="shPut"></span></div>
-    <p>The same thing below price, for put-heavy piles. A call-heavy pile below price is not a put wall and does not show on the card.</p>
-  </div>
-
-  <div class="sh-item">
-    <div class="sh-term"><b>Most contracts</b><span class="mag" id="shMost"></span></div>
-    <p>The strike near price with the most option contracts on it, calls and puts counted together: last night&#39;s open positions plus today&#39;s trades. &ldquo;Near&rdquo; means within about one and a half typical days&#39; moves of price<span id="shWindow"></span>. It is the amber line on the chart.</p>
-    <p>The textbook says dealer hedging holds price close to a strike like this. That depends on who owns the options, which the station can&#39;t see, and SNDK&#39;s record hasn&#39;t shown price settling at it, late in the day or on expiry Fridays.</p>
-    <p>The walls and this strike measure different things. The walls are gamma piles sorted by distance. This is a head count of contracts.</p>
-  </div>
-
-  <div class="sh-item" id="shLight" hidden>
-    <div class="sh-term"><b>Why it can look light</b></div>
-    <p>This strike leads on contracts. The bars measure gamma from last night&#39;s positions, with calls and puts netted against each other and today&#39;s trades left out, so a strike where lots of calls and puts traded today can lead the count and barely register on the bars.</p>
-    <p id="shLightNow"></p>
-  </div>
-
-  <div class="sh-caveat"><b>A location, not a forecast.</b> These show where the options are, not where price is going. Whether SNDK&#39;s price tends to move toward any of them hasn&#39;t been established, so no number is given.</div>
-
-  <button class="sh-close" id="shClose" type="button" data-sheet-close>Got it</button>
 </div>
 
 <nav class="tabs">

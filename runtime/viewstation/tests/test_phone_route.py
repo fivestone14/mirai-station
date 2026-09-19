@@ -129,6 +129,7 @@ M = Path(__file__).resolve().parents[1] / "static" / "m"
 PHONE = (M / "index.html").read_text()
 GLANCE = (M / "glance.js").read_text()
 PAGE = (M / "page.js").read_text()
+SHEET = (M / "sheet.js").read_text()
 THREAD = (M / "thread.html").read_text()
 ET = ZoneInfo("America/New_York")
 _NODE = shutil.which("node")
@@ -254,20 +255,13 @@ def _page(net, steps="return dump();", tz=None):
 def _board(scene, now=_NOW, payload=None, **net):
     """A station holding one scan of `scene` taken at `now`, in the wrapper
     /api/sndk/payload sends, with the reader's own gates. `payload` overrides
-    wrapper keys (row_ts, gates, levels); anything else is passed to _page."""
+    wrapper keys (row_ts, gates, earlier_half_hours); anything else is passed
+    to _page."""
     R = _reader()
     wrapper = {"scene": scene, "row_ts": now, "session": now[:10],
                "gates": {"stale_book_min": R.STALE_BOOK_MIN, "heartbeat_min": R.HEARTBEAT_MIN}}
     wrapper.update(payload or {})
     return {"payload": wrapper, "now": now, **net}
-
-
-def _card(got):
-    """The levels card as painted, top row first: (row class, label,
-    {child class: (text, the bar fill's style)})."""
-    return [(row["cls"], row["kids"][0]["text"],
-             {k["cls"]: (k["text"], k["kids"][0]["style"] if k["kids"] else None) for k in row["kids"][1:]})
-            for row in got["lvRows"]["kids"]]
 
 
 def _svg_texts(got, cls):
@@ -321,11 +315,14 @@ _DEALER = re.compile(r"(?i)\bdealers?\b|hedg|damp|amplif|cushion|defend|\bpush|\
 # nothing that reaches forward or grades how often:
 _AHEAD = re.compile(r"(?i)\b(?:will|would|could|might|may|shall|going to|tends?|usually|"
                     r"often|mostly|most|majority|likely|chance|odds|expect\w*)\b")
-# the levels sheet's denylist, the textbook claims measured false on SNDK:
+# the textbook claims measured false on SNDK, first denied by the levels sheet
+# and made by no sheet or card since:
 _SHEET_CLAIMS = ("buy dips", "sell rallies", "pinned", "settle at", "settles at", "bounce",
                  "break through", "a third of the time", "coin flip", "caps the", "holds price up",
                  "speed up")
 _EMOJI_OR_GREEK = re.compile(r"[\U0001F300-\U0001FAFF]|[Ͱ-Ͽ]")
+# and no Greek word:
+_GREEK_WORD = re.compile(r"(?i)\b(?:gamma|gex|delta|vanna|charm|vega|theta)\b")
 
 
 def test_the_phone_draws_no_regime_word(tmp_path, monkeypatch):
@@ -402,54 +399,29 @@ def test_the_average_price_is_off_the_chart_entirely():
     assert "1,580" not in svg
     assert PHONE.count("p-vwap") == 0 and PHONE.count("p-lane") == 0
 
-def test_weight_rides_one_fixed_scale_and_absence_is_not_zero():
-    """ONE full scale for the card's bars, the chart's rail bars and the chart's
-    line thickness, so the three can never rank a wall differently.
+def test_a_wall_rule_says_nearest_whatever_its_share_or_none():
+    """A wall's share of the board's gamma rode ONE fixed scale, full at 30%,
+    on the levels card's bars, the chart's rail bars and the chart's line
+    thickness, so the three could never rank a wall differently. The chart's
+    two went on 2026-09-16 (wallStroke and railWidth, deleted rather than left
+    unused) and the card's on 2026-09-19 with the card (FULL_SHARE and
+    shareBarPct went with it). The share reaches no pixel now.
 
-    30, not 20. Over 15,653 wall observations since 07-27 the share runs p50
-    9.4%, p90 25.6%, p95 33.1%; the last eight sessions run heavier. At 20 a
-    full bar was 15.5% of all walls and 27.1% of recent ones — a quarter of the
-    levels drew identically at the cap. At 30 the cap takes 6.4%. A per-scan
-    maximum is still wrong: it makes the biggest wall full every scan and
-    destroys comparison between days. gex null draws no bar AND no track: an
-    empty track reads as zero.
-
-    The most-contracts row is a COUNT, never a bar. A bar beside it measured
-    something that did not choose it: on 66.9% of replayed scans the
-    most-contracts strike was not the heaviest gamma strike in its own window,
-    and on 09-02 its share sat under 1% on 100 of 186 scans because its calls
-    and puts cancel in the netted surface."""
-    # THE CHART'S HALF OF THIS IS GONE (2026-09-16). wallStroke and railWidth
-    # drew this same share as a rule's thickness and a gutter bar's length;
-    # weight on the chart is shade now, on the contracts denominator, and both
-    # helpers were deleted rather than left unused. What the card does with the
-    # share is unchanged, and that is what is measured below.
-    got = _glance("""console.log(JSON.stringify({full: g.FULL_SHARE,
-      bars: [0, 15, 30, 45].map(g.shareBarPct), none: g.shareBarPct(null)}));""")
-    assert got["full"] == 30
-    # full at the cap, half at half of it, and no further past it. A measured
-    # zero keeps a 2% sliver: it is a datum, and it must not read as absence.
-    assert got["bars"] == [2, 50, 100, 100]
-    # no share: no bar at all, never a zero-width one — an empty track reads as zero
-    assert got["none"] is None
-    # the page draws through those rules, on the card and the chart at once
+    What is left is the chart's half: a wall rule's width says nearest or not
+    and nothing else, so the two nearest walls draw the same rule whether one
+    carries 15% and the other no share at all. No share is not a zero and not
+    a reason to drop the wall: it still draws, at the same width."""
     scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 100},
              "magnet": {"top_strikes": [{"strike": 1700, "share_of_book_gamma_pp": 30}]},
              "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 15}], "put": [{"strike": 1680}]}}
-    page = _page(_board(scene, payload={"levels": {"most_contracts": {"strike": 1700, "contracts": 9000}}}))
-    call, most, put = _card(page)
-    assert call[:2] == ("lv call", "Call wall")
-    assert call[2]["lv-bar"] == ("", {"width": "50.0%"}) and call[2]["lv-v"][0] == "15.0%"
-    assert put[:2] == ("lv put", "Put wall") and put[2]["lv-bar none"] == ("", None)
-    assert most[:2] == ("lv mag", "Most contracts")
-    assert most[2] == {"lv-k": ("1,700", None), "lv-n": ("9,000 contracts", None)}, "the most-contracts row grew a bar"
+    page = _page(_board(scene))
     svg = page["svg"]["html"]
-    # on the chart both walls draw the same rule whatever their share — the one
-    # with 15% and the one with none at all. 2.0, not 1.6, since 2026-09-18:
-    # both are NEAREST walls, which is all a wall rule's width may say
+    # 2.0, not 1.6, since 2026-09-18: both are NEAREST walls, which is all a
+    # wall rule's width may say
     assert sorted(re.findall(r'<line class="p-wall (\w+)"[^>]*stroke-width:([\d.]+)', svg)) == \
         [("call", "2.0"), ("put", "2.0")]
     assert re.findall(r'<rect class="p-bar (\w+)"', svg) == []
+    assert "15.0%" not in json.dumps(page) and "15%" not in json.dumps(page), "the share reached the page"
 
 
 def test_a_refused_level_is_always_named():
@@ -865,17 +837,18 @@ def test_no_dealer_behaviour_is_claimed_anywhere_on_the_phone():
 
 
 def test_a_passed_wall_is_judged_against_the_price_on_screen():
-    """The card and the chart both ask one question of the price the reader can
-    SEE — the 5-second quote — never of the book's spot or the shipped sigma,
-    which were measured against a price that has since moved. Replayed over 8
-    sessions, price stood beyond a wall the card still showed on 2.7% of
-    minutes, 5.8% on 09-10.
+    """The chart asks one question of the price the reader can SEE — the
+    5-second quote — never of the book's spot or the shipped sigma, which were
+    measured against a price that has since moved. Replayed over 8 sessions,
+    price stood beyond a wall the screen still showed on 2.7% of minutes, 5.8%
+    on 09-10. (The levels card asked it too, until the card went on
+    2026-09-19.)
 
     One hue, one meaning: green is the call side. A call wall price has already
     passed sits BELOW price, which is not the call side any more, and it stays
     green until the next scan relabels it. So from the moment the price on
-    screen passes it, its strike, bar and chart line go neutral and its label
-    says why — the weight is still true, the side is not."""
+    screen passes it, its rule, tag and plot-edge arrow go neutral — the
+    place is still true, the side is not."""
     # a missing price or strike is checked on BOTH sides: in JS null compares as
     # 0, so without the guard a put wall with no price reads as passed
     cases = [["call", 1700, 1700.01], ["call", 1700, 1700], ["call", 1700, 1699.99],
@@ -896,19 +869,15 @@ def test_a_passed_wall_is_judged_against_the_price_on_screen():
                        "put": [{"strike": 1650, "cluster_share_of_book_gamma_pp": 9}]}}
 
     def call_side(page):
-        rows = [row[:2] for row in _card(page) if row[1].startswith("Call wall")]
-        return rows, re.findall(r'class="p-(?:wall|tag|bar) (call|passed)\b', page["svg"]["html"])
+        return re.findall(r'class="p-(?:wall|tag|bar) (call|passed)\b', page["svg"]["html"])
 
-    rows, marks = call_side(_page(_board(scene, live={"ticker": "SNDK", "spot": 1705})))
-    assert rows == [("lv passed", "Call wall · Price passed it")]
     # THREE, not four: the gutter's rail bar went with the thickness gauge on
     # 2026-09-16, so what must go neutral together is the rule, the tag and
     # the plot-edge arrow.
-    assert marks == ["passed"] * 3, "the rule, tag and arrow do not all go neutral"
-    rows, marks = call_side(_page(_board(scene)))
-    assert rows == [("lv call", "Call wall")] and marks == ["call"] * 3
+    assert call_side(_page(_board(scene, live={"ticker": "SNDK", "spot": 1705}))) == ["passed"] * 3, \
+        "the rule, tag and arrow do not all go neutral"
+    assert call_side(_page(_board(scene))) == ["call"] * 3
     # and passed is neutral wherever it is drawn
-    assert ".lv.passed .lv-k{color:var(--i-mute)}" in PHONE
     # --i-mute, not --rule-soft, since 2026-09-18: the rule crosses the shade,
     # and --rule-soft fails 3:1 over any band darker than 0.05
     assert ".p-wall.passed{stroke:var(--i-mute)}" in PHONE
@@ -984,11 +953,13 @@ def test_the_scene_is_read_by_its_current_names(tmp_path, monkeypatch):
     assert got["expiry"]["text"] == "OPTIONS END FRI"                    # 2026-08-21
     assert got["px"]["text"] == f"{built['price']['live_spot']:,.2f}"
     assert got["chg"]["text"] == f"▲ {built['price']['vs_prior_close_pct']:.2f}%"
+    # the walls on the chart, since the levels card that printed them and their
+    # share went on 2026-09-19: each nearest wall's strike, tagged in its side's
+    # colour at the nearest wall's weight
+    tags = _svg_texts(got, "p-tag")
     for side in ("call", "put"):
         wall = built["walls"][side][0]
-        row = next(r for r in _card(got) if r[1].startswith(side.capitalize() + " wall"))
-        assert row[2]["lv-k"][0] == f"{wall['strike']:,.0f}"
-        assert row[2]["lv-v"][0] == f"{wall['cluster_share_of_book_gamma_pp']:.1f}%"
+        assert (f"p-tag {side} lead", f"{wall['strike']:,.0f}") in tags, f"the {side} wall is not tagged: {tags}"
 
 
 def test_no_emoji_no_legend_no_greek():
@@ -1004,10 +975,27 @@ def test_no_emoji_no_legend_no_greek():
     on the glance, beside the marks at arm's length, standing in for marks that
     should read on their own, but only in a sheet that stays closed until the
     reader asks for it. The chart's card carries the link to it and nothing
-    else of it."""
+    else of it.
+
+    AMENDED 2026-09-19: no Greek WORD either, anywhere on either page. The
+    levels card's caption and its sheet said "gamma" in their explanations, so
+    this held the letters only and the word was held sheet by sheet (the
+    chart key's, the reads page's). They went on 2026-09-19 and nothing else
+    either page carries says it, so every word in both pages' markup, their
+    accessible labels and every word the glance paints is held to it. The
+    model's own reading is the reader's gates' to judge, not this test's."""
+    import html as _html
     for blob in (PHONE, PAGE, GLANCE):
         assert not re.search(r"[\U0001F300-\U0001FAFF]", blob)
         assert not re.search(r"[Ͱ-Ͽ]", blob), "a Greek letter is in the phone's source"
+    for name, src in (("index.html", PHONE), ("thread.html", THREAD)):
+        said = _html.unescape(re.sub(r"<[^>]+>", " ", re.sub(
+            r"(?s)<style>.*?</style>|<script\b.*?</script>|<!--.*?-->", " ", src)))
+        said += " " + " ".join(re.findall(r'aria-label="([^"]*)"', src))
+        greek = _GREEK_WORD.search(said)
+        assert not greek, f"{name} says {greek.group(0)!r}"
+    painted = json.dumps(_page(_board(_SCENE_0916)), ensure_ascii=False)
+    assert not _GREEK_WORD.search(painted), f"the glance paints {_GREEK_WORD.search(painted).group(0)!r}"
     assert "class=\"key\"" not in PHONE
     sheet = PHONE.split('<div class="sheet" id="howtoSheet"')[1].split("\n</div>\n")[0]
     assert PHONE.count('<div class="hw">') == sheet.count('<div class="hw">') > 0, "a key row outside its sheet"
@@ -1021,53 +1009,51 @@ def test_no_emoji_no_legend_no_greek():
 
 
 def test_the_glance_itself_is_not_a_control():
-    """AMENDED 2026-09-07, 2026-09-10 and 2026-09-18. The rule was "nothing is
-    tappable", and its purpose was that the READING must never be a control: a
-    screen you poke is a screen you are working, and this one is read at arm's
-    length in a second.
+    """AMENDED 2026-09-07, 2026-09-10, 2026-09-18 and 2026-09-19. The rule was
+    "nothing is tappable", and its purpose was that the READING must never be
+    a control: a screen you poke is a screen you are working, and this one is
+    read at arm's length in a second.
 
     That purpose survives verbatim. 09-07 permitted exactly ONE link, to the
     readings archive. 09-10 permitted exactly ONE press-and-hold, on the
-    three-levels card, because the user asked for the card to explain itself —
-    and a card whose words (gamma, call wall, most contracts) need a paragraph
-    each cannot carry those paragraphs at arm's length. 09-18 permits exactly
-    ONE button that opens something: the quiet link under the chart, "How to
-    read this chart", because the owner chose an explainer for the chart's
-    marks (READABLE2-SPEC.md 2.8). This test allowed exactly one button until
-    then, the sheet's close; its intent was never "one <button> element" but
-    that every control on the page opens or closes an explanation and none
-    works the data, and that is what it now counts. The link takes a tap, not
-    a hold, because it is a control and looks like one, as the reads page's
-    button does; the levels card keeps the page's one hold.
+    three-levels card, because the user asked for the card to explain itself.
+    09-18 permitted exactly ONE button that opens something: the quiet link
+    under the chart, "How to read this chart", because the owner chose an
+    explainer for the chart's marks (READABLE2-SPEC.md 2.8). 09-19 took the
+    hold away with the card, by the owner's decision: the chart draws the same
+    three levels and its key explains them. So there is no press-and-hold
+    anywhere on the page now, and no sheet but the key. The intent was never
+    "one <button> element" but that every control on the page opens or closes
+    an explanation and none works the data, and that is what this counts.
 
     Everything that would make the DATA interactive stays banned: no onclick,
-    no pointer cursors, no tooltips, no second hold, no button that neither
-    opens nor closes an explanation, and the page's one click listener does
-    nothing but close a sheet. The link's own does nothing but open the sheet
-    it names, and it is the one listener on any element of the page: until
-    2026-09-18 the stand-in elements could not take a listener at all, so one
-    on any element failed every page test, and this count is what now catches
-    it. Each count is exact. A second of anything means the rule has started
-    eroding and this test should be argued with again rather than edited
-    again."""
+    no pointer cursors, no tooltips, no hold, no button that neither opens nor
+    closes an explanation, and the page's one click listener does nothing but
+    close a sheet. A hold needs something listening for the finger going down
+    or coming up, and none of the page's own scripts does (press.js paints a
+    control's pressed state and opens nothing; it is not loaded here). The
+    link's own listener does nothing but open the sheet it names, and it is
+    the one listener on any element of the page: until 2026-09-18 the
+    stand-in elements could not take a listener at all, so one on any element
+    failed every page test, and this count is what now catches it. Each count
+    is exact. A second of anything means the rule has started eroding and this
+    test should be argued with again rather than edited again."""
     for bad in ("cursor:pointer", "onclick", "title="):
         assert bad not in PHONE, bad
     links = re.findall(r"<a\s[^>]*>", PHONE)
     assert len(links) == 1, f"exactly one link is allowed on the glance, found {len(links)}: {links}"
     assert 'href="/m/thread.html"' in links[0], links[0]
 
-    holds = re.findall(r"<[^>]*\bdata-hold\b[^>]*>", PHONE)
-    assert len(holds) == 1 and 'id="levels"' in holds[0], holds
+    assert "data-hold" not in PHONE + _code_only(PAGE), "a press-and-hold is back on the glance"
     dialogs = re.findall(r'<div class="sheet" id="(\w+)" role="dialog"', PHONE)
-    assert dialogs == ["howtoSheet", "sheet"] and len(re.findall(r'role="dialog"', PHONE)) == 2
+    assert dialogs == ["howtoSheet"] and len(re.findall(r'role="dialog"', PHONE)) == 1
     buttons = re.findall(r"<button\b[^>]*>", PHONE)
     closers = [b for b in buttons if "data-sheet-close" in b]
     openers = [b for b in buttons if "data-sheet-close" not in b]
-    assert len(closers) == 2 and len(openers) == 1, buttons
-    # one close button in each sheet
-    for sid in dialogs:
-        sheet = PHONE.split(f'<div class="sheet" id="{sid}"')[1].split("\n</div>\n")[0]
-        assert re.findall(r"<button\b[^>]*data-sheet-close[^>]*>", sheet), f"the {sid} button lives outside it"
+    assert len(closers) == 1 and len(openers) == 1, buttons
+    # the one close button is inside the one sheet
+    sheet = PHONE.split('<div class="sheet" id="howtoSheet"')[1].split("\n</div>\n")[0]
+    assert re.findall(r"<button\b[^>]*data-sheet-close[^>]*>", sheet), "the key's button lives outside it"
     # and the one opener is the link under the chart, naming the chart's sheet
     chart = PHONE.split('<section class="card">')[1].split("</section>")[0]
     opener = openers[0]
@@ -1087,13 +1073,16 @@ def test_the_glance_itself_is_not_a_control():
       const open = dump(), sheet = open[__NAMES__];
       const rest = s => { const c = Object.assign({}, s); delete c.body; delete c[__NAMES__]; return JSON.stringify(c); };
       const own = onElements.map(([n, t]) => [Object.keys(els).find(id => els[id] === n) || null, t]);
-      return {clicks: clicks.length, inert, taps: taps.length, body: open.body, own,
+      const heard = Object.keys(listeners.document).concat(Object.keys(listeners.window));
+      return {clicks: clicks.length, inert, taps: taps.length, body: open.body, own, heard,
               hidden: sheet && sheet.attrs['aria-hidden'], only: rest(open) === rest(shut)};""".replace(
         "__NAMES__", json.dumps(names)))
     assert got["clicks"] == 1 and got["inert"], "a second click handler, or one that acts on the page"
     assert got["taps"] == 1 and got["body"] == "sheet-open" and got["hidden"] == "false", got
     assert got["only"], "the link's tap changed something on the page besides opening its sheet"
     assert got["own"] == [["howto", "click"]], f"a listener on an element besides the link's tap: {got['own']}"
+    press = {"pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup"}
+    assert not press & set(got["heard"]), f"the page listens for a press: {sorted(press & set(got['heard']))}"
 
 
 def test_market_time_not_viewer_time():
@@ -1122,7 +1111,6 @@ def test_market_time_not_viewer_time():
                          reads=[{"ts": scan, "reading_ts": scan, "reading": {"read": "Said at the scan."}}]),
                   tz="America/Los_Angeles")
     assert _right_foot(stale) == ["12:12"] and stale["ldWhen"]["text"] == "AS OF 12:12"
-    assert stale["lvWhen"]["text"] == "At the 12:12 scan"
     assert stale["rdLine"]["text"] == "12:12 · Said at the scan."
     # 22:30 on the 9th in Los Angeles is the 10th's session in New York: its change shows
     late = _page(_board(dict(scene, clock={"session_date": "2026-09-10"}), now="2026-09-10T01:30:00-04:00",
@@ -1206,40 +1194,18 @@ def test_a_chart_it_cannot_draw_says_so_and_never_draws_nan(width, scene, says):
     assert svg["attrs"]["viewBox"] == f"0 0 {svg['attrs']['width']} {svg['attrs']['height']}"
 
 
-def test_the_levels_card_asserts_no_direction():
-    """"▲ NEXT ABOVE" / "▼ NEXT BELOW" came from the live price while the wall
-    beside it came from a book up to minutes old, and the two could disagree on
-    screen. The card now lists both walls and the most-contracts strike ORDERED
-    BY PRICE, which says where each one sits without a word that can go stale.
-
-    By price and never by kind: the most-contracts strike sat above the call
-    wall on 10.9% of replayed scans and below the put wall on 1.4%, so a fixed
-    call / most / put order would have drawn those upside down. (The above-call
-    case is run in test_phone_levels; this runs the below-put one.)"""
-    code = _code_only(PAGE) + _code_only(GLANCE)
-    assert "NEXT ABOVE" not in code and "NEXT BELOW" not in code
-    rows = _glance("""
-      const walls = {call:[{strike:1720, cluster_share_of_book_gamma_pp:9}],
-                     put:[{strike:1680, cluster_share_of_book_gamma_pp:8}]};
-      const at = k => g.levelRows(walls, {strike:k, contracts:900}, null, 1700).map(r => [r.kind, r.strike]);
-      console.log(JSON.stringify({below: at(1650), between: at(1700)}));""")
-    # below the put wall: a fixed call / most / put order would draw it upside down
-    assert rows["below"] == [["wall", 1720], ["wall", 1680], ["most", 1650]]
-    # between them: the order the rows are assembled in (call, put, most) is not price order either
-    assert rows["between"] == [["wall", 1720], ["most", 1700], ["wall", 1680]]
-
-
-def test_a_side_measured_empty_is_said_on_the_card_and_not_in_the_plot():
+def test_a_side_measured_empty_draws_no_word_in_the_plot():
     """NO CALL WALL ABOVE / NO PUT WALL BELOW came off the chart on 2026-09-18,
     by the owner's choice: the text stacked in the plot's upper left goes. The
     thin bracket down the plot's left edge that scoped the word goes with it,
     because without its word it is an unexplained mark.
 
-    The finding stays on the screen. A side measured empty keeps its own row
-    on the levels card, "None above price", which
-    test_an_absent_level_is_a_row_never_a_gap holds for the qualified flag.
-    This is the board that used to draw the word: the flag is set and nothing
-    of the other pool sits above price."""
+    The finding stayed on the screen as the levels card's own row, "None above
+    price", until the card went on 2026-09-19. Since then no part of the page
+    says it: the chart draws no rule on that side, and neither the chart nor
+    its key tells a side measured empty from a side not measured. This is the
+    board that used to draw the word: the flag is set and nothing of the other
+    pool sits above price."""
     scene = {"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 60},
              "magnet": {"top_strikes": [{"strike": 1780, "share_of_book_gamma_pp": 30}]},
              "walls": {"call_side_has_no_wall": True, "put_side_has_no_wall": True}}
@@ -1247,32 +1213,10 @@ def test_a_side_measured_empty_is_said_on_the_card_and_not_in_the_plot():
     svg = page["svg"]["html"]
     assert "p-brk" not in svg and "p-word" not in svg
     assert not re.search(r"(?i)\bno (?:call|put|big)\b", svg), "a clear-side word is back in the plot"
-    rows = {label: kids for _, label, kids in _card(page)}
-    assert rows["Call wall"] == {"lv-none": ("None above price", None)}
-    assert rows["Put wall"] == {"lv-none": ("None below price", None)}
+    assert "p-wall" not in svg
     # gone, not switched off: the chart no longer reads the flag at all
     assert "_side_has_no_wall" not in _code_only(PAGE)
     assert "clearRow" not in PAGE and ".p-brk" not in PHONE
-
-
-def test_an_absent_level_is_a_row_never_a_gap():
-    """Law 1 on this card. A side flagged empty is a measured finding (no put
-    wall on 32.2% of recent scans, every scan of 09-04 and 09-08), and it gets
-    its own row saying so. No flag and no entry is no measurement, and says
-    THAT — never a zero bar, never a missing row."""
-    # the footer that used to carry the note is gone, and its bookkeeping with it
-    assert "CLEAR_SAID" not in PAGE and "farSideNote" not in PAGE + GLANCE
-    got = _glance("""
-      console.log(JSON.stringify({
-        empty: g.levelRows({call_side_has_no_wall:true, put_side_has_no_wall:true},
-                           {strike:1700, contracts:12}, null, 1700).map(r => [r.side, r.kind, r.text || r.strike]),
-        loose: g.levelRows({call_side_has_no_wall:'true', put_side_has_no_wall:1}, null, null, 1700)
-                 .map(r => [r.side, r.text])}));""")
-    # both measured-empty sides are rows, each on its own side of price
-    assert got["empty"] == [["call", "absent", "None above price"], ["most", "most", 1700],
-                            ["put", "absent", "None below price"]]
-    # === true stays necessary: a flag that is merely truthy is not a measurement
-    assert got["loose"] == [["call", "Not measured"], ["most", "Not measured"], ["put", "Not measured"]]
 
 
 def test_the_tag_cap_respects_the_never_drop_tiers():
@@ -1313,26 +1257,6 @@ def test_a_dropped_request_does_not_blank_the_board():
     assert cold["fail1"]["text"] == "No SNDK scene yet."
 
 
-def test_the_card_text_cannot_be_smeared_by_a_deficit():
-    """The finding this test was written for, carried forward to the card that
-    replaced the gate.
-
-    .g-foot was the only gate child whose overflow:hidden zeroed its automatic
-    minimum, so a 7px deficit in the old fixed-height column landed entirely on
-    it and a sanctioned sentence rendered as an 11px slice of an 18px line. The
-    guard stays on the property that CAUSED the smear rather than on the
-    heights that delivered it: no zero automatic minimum, no nowrap sentence,
-    no fixed height on the card."""
-    for sel in (".lv-cap{", ".lv-none{", ".lv-n{"):
-        b = _block(sel)
-        assert b is not None, f"{sel} has no rule"
-        flat = b.replace(" ", "")
-        assert "overflow:hidden" not in flat, f"{sel} can be squeezed to nothing again"
-        assert "white-space:nowrap" not in flat, f"{sel} is a nowrap sentence in a card that can shrink"
-    card = _block(".levels{") or ""
-    assert "height" not in card, "the card has a fixed height; the deficit comes back"
-
-
 def test_the_height_budget_is_gone_rather_than_merely_unused():
     """Two tests used to live here: one recomputed FIXED from the region
     heights, one pinned the viewport measure sizeLadder chose its branch from.
@@ -1346,18 +1270,6 @@ def test_the_height_budget_is_gone_rather_than_merely_unused():
                  "max-height:700px"):
         assert gone not in PHONE, f"the fixed height budget is back: {gone}"
     assert "FIXED" not in PAGE, "sizeLadder is deriving a height again"
-
-
-def test_the_row_label_wraps_rather_than_losing_its_last_tag():
-    """A row label is a list of tags — "Put wall · Most contracts · Heaviest ·
-    Price passed it" — and the LAST tag is the one that changes minute to
-    minute. An ellipsis eats the end first, so a truncating label would drop
-    "Price passed it" and leave a greyed strike with no word for why. It wraps."""
-    side = _block(".lv-side{")
-    assert side is not None
-    flat = side.replace(" ", "")
-    assert "text-overflow:ellipsis" not in flat and "white-space:nowrap" not in flat
-    assert "min-width:0" in flat
 
 
 def test_gminutes_cannot_print_sixty():
@@ -1489,10 +1401,10 @@ def test_the_plain_words_pass_the_laws():
     word on the phone: the reader's own _BANNED_RE (its forecast, causal and
     judgement lists, _BANNED_FORECAST and _BANNED_JUDGEMENT among them, with
     their inflections), its position gate, no dealer and nothing a dealer does,
-    and no Greek letter or emoji. Not the half-hour card's options-vocabulary
-    gate: that one is scoped to a card about price alone, and the masthead's
-    expiry is a fact about the options that cannot be said without the noun
-    (WORDS-SPEC 9.3, the owner's call)."""
+    and no Greek letter, Greek word or emoji. Not the half-hour card's
+    options-vocabulary gate: that one is scoped to a card about price alone,
+    and the masthead's expiry is a fact about the options that cannot be said
+    without the noun (WORDS-SPEC 9.3, the owner's call)."""
     R = _reader()
     words = _plain_words()
     for need in ("OPTIONS END TODAY", "OPTIONS END FRI", "OPTIONS END IN 3 DAYS", "BOOK 1 MIN OLD",
@@ -1508,7 +1420,7 @@ def test_the_plain_words_pass_the_laws():
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
         assert not R._POS_RE.search(s), f"{s!r} places price against a number"
         assert not _DEALER.search(s), f"{s!r} speaks of dealers"
-        assert not _EMOJI_OR_GREEK.search(s), s
+        assert not _EMOJI_OR_GREEK.search(s) and not _GREEK_WORD.search(s), s
 
 
 def test_the_named_edge_carries_the_weight_the_bug_cannot():
@@ -1641,24 +1553,24 @@ def _css_rules(html):
 
 
 def test_the_two_phone_pages_draw_one_sheet():
-    """Both pages open an explainer sheet: the glance's on the three levels
-    and on how to read the chart, the reads page's on faster, steady and slower
-    (2026-09-18). What a sheet does is one script, sheet.js, and the open one
-    is the one it has unhidden, so a page can carry two without a second copy
-    of anything. What it looks like is one set of rules held in two
-    stylesheets, for the palette's reason above: a shared stylesheet would be
-    a render-blocking re-fetch in full on every open of both pages.
+    """Both pages open an explainer sheet: the glance's on how to read the
+    chart, the reads page's on faster, steady and slower (2026-09-18). What a
+    sheet does is one script, sheet.js, and the open one is the one it has
+    unhidden, so a page could carry two without a second copy of anything;
+    the glance did, until its levels sheet went on 2026-09-19. What it looks
+    like is one set of rules held in two stylesheets, for the palette's reason
+    above: a shared stylesheet would be a render-blocking re-fetch in full on
+    every open of both pages.
 
     So every sheet rule the two pages both carry must be the same rule, and
     the core of it must be on both — the sheet capped at 86% of the measured
-    height and scrolling, not clipping, past it; not selectable; the one
-    close button. Each page keeps what only it needs: the glance its side
-    colours and its conditional item, the reads page its figure and its
-    sources line."""
+    height and scrolling, not clipping, past it; not selectable; its head, its
+    caveat and the one close button. Each page keeps what only it needs: the
+    glance its key's rows, the reads page its items (the glance's went with
+    the levels sheet), its figure and its sources line."""
     a, b = _css_rules(PHONE), _css_rules(THREAD)
     core = {".scrim", ".sheet", "body.sheet-open .scrim", '.sheet[aria-hidden="false"]', ".sh-grab",
-            ".sh-h", ".sh-item", ".sh-item:first-of-type", ".sh-term", ".sh-term b", ".sh-term span",
-            ".sh-item p", ".sh-item p + p", ".sh-caveat", ".sh-caveat b", ".sh-close",
+            ".sh-h", ".sh-caveat", ".sh-caveat b", ".sh-close",
             ".sh-close:focus-visible", '.sheet,.sheet[aria-hidden="false"]'}
     assert core <= set(a) and core <= set(b), core - (set(a) & set(b))
     sheet = [s for s in set(a) & set(b) if s.startswith((".scrim", ".sheet", "body.sheet-open", ".sh-"))]
@@ -1666,6 +1578,31 @@ def test_the_two_phone_pages_draw_one_sheet():
     assert not drift, f"the two sheets are drawn differently: {drift}"
     assert "max-height:calc(var(--app-h)*.86);overflow-y:auto" in b[".sheet"]
     assert "user-select:none" in b[".sheet"]
+
+
+def test_the_sheet_text_cannot_start_a_selection():
+    """A live text selection turns the next drag into handle-dragging instead
+    of scrolling, which was half of how the levels card once became a dead
+    zone. The sheet is explanation, not something to copy."""
+    m = re.search(r"(?m)^\.sheet\{([^}]*)\}", PHONE)
+    assert m, ".sheet has no rule"
+    flat = m.group(1).replace(" ", "").replace("\n", "")
+    assert "user-select:none" in flat and "-webkit-touch-callout:none" in flat
+    # 86% of the MEASURED height: as 84dvh it was 0px inside the app
+    assert "max-height:calc(var(--app-h)*.86)" in flat
+
+
+def test_a_drag_inside_the_sheet_cannot_reload_the_page():
+    """Opened with the page scrolled to the top, a downward drag in the sheet
+    read as the shell's pull-to-refresh and reloaded the page out from under
+    the reader. The page tells the shell it is not at the top while the sheet
+    is open, and keeps the answer true afterwards on every scroll. Since
+    2026-09-18 that is sheet.js's, the one copy both pages' sheets run on
+    (test_phone_reads drives it on the reads page)."""
+    ts = SHEET.split("function tellShell")[1].split("\n  }\n")[0]
+    assert "MiraiShell.atTop(!isOpen() && window.scrollY <= 0)" in ts
+    assert "window.addEventListener('scroll', () => { if(spoke) tellShell(); }" in SHEET
+    assert "tellShell" not in PAGE, "page.js has a second copy of the shell bridge"
 
 
 
@@ -2851,8 +2788,8 @@ def test_every_word_in_the_chart_key_passes_the_laws():
     the link that opens it, goes through the station's own gates, as the reads
     page's sheet does: the reader's _BANNED_RE (forecast, causal and judgement
     words and their inflections: "whether price will get there" failed it on
-    "will", and the key says "gets there"), its position gate, the levels
-    sheet's denylist, no dealer and nothing a dealer does, no Greek letter or
+    "will", and the key says "gets there"), its position gate, the sheets'
+    denylist, no dealer and nothing a dealer does, no Greek letter or
     word, nothing that reaches forward (so "usually" and "most" are out too),
     and no frequency or percentage. "Picked up" always has trading as its
     subject: alone, beside a price, it reads as the price rising."""
@@ -2862,7 +2799,6 @@ def test_every_word_in_the_chart_key_passes_the_laws():
     for r in key["rows"]:
         words += [r["term"], r["says"], *r["words"]]
     assert key["caveat"].startswith("Where trading is, not where price is going.")
-    greek = re.compile(r"(?i)\b(?:gamma|gex|delta|vanna|charm|vega|theta)\b")
     often = re.compile(r"(?i)\b(?:one|two|three|four|\d+) (?:\w+ )?in (?:two|three|four|five|ten|\d+)\b"
                        r"|%|\bout of\b|\bper ?cent\b")
     for w in words:
@@ -2870,11 +2806,51 @@ def test_every_word_in_the_chart_key_passes_the_laws():
         assert not R._POS_RE.search(w), f"{w!r} places price against a number"
         assert not any(d in w.lower() for d in _SHEET_CLAIMS), f"{w!r} makes a claim the sheet may not"
         assert not _DEALER.search(w), f"{w!r} speaks of dealers"
-        assert not greek.search(w) and not _EMOJI_OR_GREEK.search(w), f"{w!r} puts Greek on the surface"
+        assert not _GREEK_WORD.search(w) and not _EMOJI_OR_GREEK.search(w), f"{w!r} puts Greek on the surface"
         assert not _AHEAD.search(w), f"{w!r} reaches forward"
         assert not often.search(w), f"{w!r} claims how often"
         for m in re.finditer(r"(?i)picked up|picking up", w):
             assert re.search(r"(?i)trading\s*$", w[:m.start()]), f"{w!r}: picked up with no trading before it"
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_the_chart_key_opens_on_a_tap_and_closes_the_one_way():
+    """The link under the chart opens the key on a tap, because it is a
+    control and looks like one; sheet.js does everything after that, as it
+    does for the reads page's sheet. Run on the real page.js and sheet.js with
+    fake taps, a fake clock and a fake history (gesture_harness.js):
+    - a tap opens the key, pushes one history entry and puts the focus on
+      the key's own Got it;
+    - the second tap of a double tap lands on the backdrop the first just put
+      there, inside sheet.js's late-tap window, and closes nothing;
+    - one sheet at a time: the link again while the key is open opens nothing
+      more and pushes no second entry. Only open()'s own check stops that,
+      since a tap goes straight to it; without it the one Back below would
+      leave an entry behind (2026-09-18 review, item 2);
+    - so the phone's back gesture, once, closes the key, and the focus goes
+      back to the link;
+    - Got it tapped twice goes back once, and Escape closes it the same way;
+    - a long press on the sheet's text gets no menu, and one anywhere else is
+      the phone's own;
+    - and a finger held on the link and lifted opens nothing: the page has no
+      press-and-hold since the levels card went (2026-09-19)."""
+    out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    opened = {"open": True, "hidden": "false", "pushes": 1, "backs": 0, "focus": "hwClose"}
+    closed = {"open": False, "hidden": "true", "pushes": 1, "backs": 1, "focus": "howto"}
+    assert got["tap_opens_key"] == opened
+    assert got["late_tap"] == opened, "the second tap of a double tap closed the key"
+    assert got["open_again"] == opened, "a second open over the open key"
+    assert got["back_closes"] == closed, "one Back did not close the key, or left an entry behind"
+    assert got["got_it_twice"] == closed, "a double tap on Got it went back twice"
+    assert got["escape"] == closed
+    assert got["contextmenu_blocked"] == [True, False]
+    assert {k: got["hold"][k] for k in ("open", "hidden", "pushes")} == \
+        {"open": False, "hidden": "true", "pushes": 0}, "a hold opened the key"
+    assert re.search(r'<button class="howto" id="howto"[^>]*aria-controls="howtoSheet"', PHONE)
+    assert "$('howto').addEventListener('click', () => MiraiSheet.open($('howto')));" in PAGE
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------
@@ -3772,7 +3748,7 @@ def test_every_word_on_the_reads_page_sheet_passes_the_laws():
     string on it, and on the button that opens it, goes through the station's
     own gates: the reader's _BANNED_RE (forecast, causal and judgement words
     and their inflections — "which way the price will move" failed it on
-    "will", and the sheet says "moves"), its position gate, the levels sheet's
+    "will", and the sheet says "moves"), its position gate, the sheets'
     denylist, no dealer and nothing a dealer does, no Greek letter or Greek
     word, nothing that reaches forward, and no frequency: "About one strike in
     three." was cut because three counts of it gave 19%, 31% and 41%.
@@ -3785,7 +3761,6 @@ def test_every_word_on_the_reads_page_sheet_passes_the_laws():
     for term, item in s["items"].items():
         words += [term, *item["paras"]] + ([item["value"]] if item["value"] else [])
     assert len(s["items"]) == 5 and s["caveat"].startswith("Busier, not going anywhere.")
-    greek = re.compile(r"(?i)\b(?:gamma|gex|delta|vanna|charm|vega|theta)\b")
     often = re.compile(r"(?i)\b(?:one|two|three|four|\d+) (?:\w+ )?in (?:two|three|four|five|ten|\d+)\b"
                        r"|%|\bout of\b|\bper ?cent\b")
     for w in words:
@@ -3793,7 +3768,7 @@ def test_every_word_on_the_reads_page_sheet_passes_the_laws():
         assert not R._POS_RE.search(w), f"{w!r} places price against a number"
         assert not any(d in w.lower() for d in _SHEET_CLAIMS), f"{w!r} makes a claim the sheet may not"
         assert not _DEALER.search(w), f"{w!r} speaks of dealers"
-        assert not greek.search(w) and not _EMOJI_OR_GREEK.search(w), f"{w!r} puts Greek on the surface"
+        assert not _GREEK_WORD.search(w) and not _EMOJI_OR_GREEK.search(w), f"{w!r} puts Greek on the surface"
         assert not _AHEAD.search(w), f"{w!r} reaches forward"
         assert not often.search(w), f"{w!r} claims how often"
 
@@ -4083,14 +4058,18 @@ def test_every_word_on_the_half_hour_card_passes_the_stations_gates():
         assert not _AHEAD.search(s), f"{s!r} grades the split or reaches forward"
 
 
-def test_the_card_sits_between_the_reading_and_the_three_levels():
+def test_the_card_sits_after_the_reading_and_ends_the_page():
     """Its place on the screen, per SPLIT-SPEC.md and the whole-screen sheet:
-    after What it means, before The three levels, moving neither. It is on the
-    card shell every other card uses, and hidden in the markup, so the first
-    frame draws no card until a payload says there is one to draw."""
+    after What it means, without moving it. It sat before The three levels
+    until that card went on 2026-09-19, and is the page's last card since,
+    with only the footer line after it. It is on the card shell every other
+    card uses, and hidden in the markup, so the first frame draws no card
+    until a payload says there is one to draw."""
     at = {k: PHONE.index(k) for k in ('<section class="read">', '<section class="card hh" id="hh" hidden>',
-                                      '<section class="card levels" id="levels"')}
+                                      '<div class="foot" id="foot">')}
     assert list(at) == sorted(at, key=at.get)
+    assert PHONE.count("<section") == PHONE[:at['<section class="card hh" id="hh" hidden>']].count("<section") + 1, \
+        "a card sits after the last half hour"
     paint = PAGE.split("function paintAll(){")[1].split("\n}")[0]
     assert paint.index("paintRead();") < paint.index("paintHalf(st);") < paint.index("paintFoot(st);")
 
