@@ -26,8 +26,9 @@
 > * the clear-side bracket and its label (§9.3 k and l, and §8, §10 D, §11,
 >   §12, §14 rule 16, §15): `.p-brk`, `NO CALL WALL ABOVE` / `NO PUT WALL
 >   BELOW` and `.p-word.dim` — removed from the chart 2026-09-18. A side
->   measured empty is said on the levels card only, as "None above price" /
->   "None below price".
+>   measured empty was then said on the levels card only, as "None above
+>   price" / "None below price", and that card went on 2026-09-19: no part of
+>   the phone says it now.
 > * the chart's 10px type (§6: `.p-word`, `.p-axis`) — every chart text is
 >   11px since 2026-09-18, and the price ruler's rungs are 20px apart.
 >
