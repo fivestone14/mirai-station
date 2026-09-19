@@ -233,7 +233,32 @@ def test_the_hold_opens_on_release_never_under_the_finger():
     assert got["ghost_click_closes"] is False, "the opening gesture closed the sheet"
     assert got["closed_by_button"] is True
     assert got["backs_on_double_tap"] == 1, "a double tap on Got it goes back twice"
-    assert got["contextmenu_blocked"] == [True, True, False]
+    assert got["contextmenu_blocked"] == [True, True, False, True]
+    assert got["hold_sheets"] == ["false", "true"], "the hold opened the chart's key as well"
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_the_chart_key_opens_on_a_tap_and_closes_as_the_levels_sheet_does():
+    """The glance has two sheets since 2026-09-18: the three levels, on the
+    card's press-and-hold, and the chart's key, on a tap of the quiet link
+    under the chart. One copy of the opening and closing serves both
+    (sheet.js): each control names its sheet in aria-controls, and the one
+    open is the one unhidden. Run on the real page.js and sheet.js with fake
+    touches: a tap on the link opens the key and not the levels sheet, pushes
+    one history entry and puts the focus on the key's own Got it; a hold on the
+    levels card while the key is open opens nothing more; the key's Got it,
+    tapped twice, goes back once, closes it and returns the focus to the link.
+    The hold opens only the levels sheet, and a long press on either sheet's
+    text gets no menu."""
+    out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["tap_opens_key"] == {"open": True, "sheets": ["true", "false"], "pushes": 1, "focus": "hwClose"}
+    assert got["hold_while_key_open"] == {"sheets": ["true", "false"], "pushes": 1}
+    assert got["key_closed"] == {"open": False, "sheets": ["true", "true"], "backs": 1, "focus": "howto"}
+    assert re.search(r'<button class="howto" id="howto"[^>]*aria-controls="howtoSheet"', PHONE)
+    assert "$('howto').addEventListener('click', () => MiraiSheet.open($('howto')));" in PAGE
 
 
 def test_the_sheet_text_cannot_start_a_selection():

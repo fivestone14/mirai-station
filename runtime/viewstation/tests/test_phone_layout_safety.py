@@ -650,6 +650,40 @@ def test_a_narrower_phone_gives_the_explainer_label_two_even_lines():
     assert 2 * line <= 48
 
 
+# --- the chart's key, behind a link under the chart (2026-09-18) --------------
+# Measured in WebKit off the shipped face on the real page: the label at
+# 12px/600, and the link's box at 320, 360, 375 and 412 (164.9 by 48 at x 24).
+_HOWTO_W = {"How to read this chart": 125.9}
+
+
+@pytest.mark.parametrize("phone", [320, 360, 375, 412])
+def test_the_chart_key_link_is_a_whole_tap_target_on_every_phone(phone):
+    """The owner chose the quiet link over a filled bar (READABLE2-SPEC.md 2.8):
+    16px of it shows, a 16px ring and the label at 12px/600 in --i-mute, on the
+    card's own rail. The target is still --tap-min tall, its 16px of padding
+    above and below tucked into the space the chart and the card's own padding
+    already leave, so the card grows 22px where a bar grew it 56. Its width is
+    its content, which fits the card at every phone, the owner's 360 included:
+    164.9px of 256 at 320."""
+    link, ring = _rule(".howto").replace(" ", ""), _rule(".howto i").replace(" ", "")
+    m = re.search(r"margin:(-?\d+)px0(-?\d+)px(-?\d+)px;padding:(\d+)px(\d+)px", link)
+    assert m, link
+    top, bottom, left, pad_y, pad_x = map(int, m.groups())
+    line = int(re.search(r"font:60012px/(\d+)px", link).group(1))
+    assert "color:var(--i-mute)" in link and "width:max-content" in link
+    # the target: --tap-min, 48, the shipped value
+    assert 2 * pad_y + line == int(re.search(r"--tap-min:(\d+)px", PHONE).group(1)) == 48
+    assert _px(".howto i", "height") == _px(".howto i", "width") == line
+    # what it costs the card: its box less the space it tucks into
+    card_pad = int(re.search(r"padding:(\d+)px", _rule(".card")).group(1))
+    assert -bottom == card_pad and 2 * pad_y + line + top + bottom == 22
+    # the ring sits on the card's rail: the padding and the pull cancel
+    assert left == -pad_x
+    width = pad_x + line + _px(".howto", "gap") + _HOWTO_W["How to read this chart"] + pad_x
+    assert width == pytest.approx(164.9, abs=0.05)
+    assert width <= phone - 2 * _side() - 2 * card_pad + pad_x
+
+
 # --- the masthead's first row (2026-09-18) -----------------------------------
 # Measured in WebKit off the shipped face on the real stylesheet: each box as
 # the browser lays it out, the ticker and the expiry with their trailing

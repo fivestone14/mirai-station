@@ -273,8 +273,10 @@ body{
        transform:translateY(102%);visibility:hidden;
        transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s linear .28s}
 body.sheet-open .scrim{opacity:1;pointer-events:auto}
-body.sheet-open .sheet{transform:none;visibility:visible;
-                       transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s}
+/* the open sheet is the one sheet.js has unhidden, so a page can carry more
+   than one */
+.sheet[aria-hidden="false"]{transform:none;visibility:visible;
+                            transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s}
 .sh-grab{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:0 auto 16px}
 .sh-h{margin-bottom:14px;font:700 11px/1.2 var(--sans);letter-spacing:.14em;
       text-transform:uppercase;color:var(--i-faint)}
@@ -376,7 +378,7 @@ body.sheet-open .sheet{transform:none;visibility:visible;
 @media (prefers-reduced-motion:reduce){
   .back.is-pressed,.why.is-pressed{transform:none}
   .back.is-pressed::before,.why.is-pressed::before{opacity:.20}
-  .sheet,body.sheet-open .sheet{transition:none}
+  .sheet,.sheet[aria-hidden="false"]{transition:none}
 }
 @media (forced-colors:active){
   .back::before,.why::before{display:none}

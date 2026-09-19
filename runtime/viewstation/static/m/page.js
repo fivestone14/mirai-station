@@ -1171,6 +1171,12 @@ function paintSheet(rows, most, lv){
   });
 })();
 
+// THE CHART'S KEY opens on a tap. The link under the chart is a control and
+// looks like one, as the reads page's button does, so a plain tap opens it and
+// the levels card keeps the page's one press-and-hold. The sheet it opens is
+// the one its aria-controls names; the rest is sheet.js's.
+$('howto').addEventListener('click', () => MiraiSheet.open($('howto')));
+
 /* ---- E. read — an opinion, not a measurement ---------------------------- */
 
 /* ---- D2. today — where the activity is, and what changed ----------------

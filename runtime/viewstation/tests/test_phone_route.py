@@ -170,7 +170,7 @@ FakeDate.prototype = RealDate.prototype;
 function node(){
   const cl = new Set();
   return {
-    attrs: {}, style: {}, dataset: {}, children: [], hidden: false, innerHTML: '', _text: '',
+    attrs: {}, style: {}, dataset: {}, children: [], hidden: false, innerHTML: '', _text: '', heard: {},
     classList: {add: (...c) => c.forEach(x => cl.add(x)), remove: (...c) => c.forEach(x => cl.delete(x)),
                 contains: c => cl.has(c),
                 toggle: (c, on) => ((on === undefined ? !cl.has(c) : on) ? cl.add(c) : cl.delete(c))},
@@ -179,6 +179,9 @@ function node(){
     get textContent(){ return this._text + this.children.map(c => c.textContent).join(''); },
     set textContent(v){ this._text = String(v); this.children = []; },
     setAttribute(k, v){ this.attrs[k] = String(v); },
+    getAttribute(k){ return k in this.attrs ? this.attrs[k] : null; },
+    addEventListener(t, f){ (this.heard[t] = this.heard[t] || []).push(f); },
+    querySelector(){ return node(); },
     appendChild(c){ this.children.push(c); return c; },
     replaceChildren(...c){ this._text = ''; this.children = c; },
     focus(){},
@@ -989,36 +992,60 @@ def test_the_scene_is_read_by_its_current_names(tmp_path, monkeypatch):
 
 def test_no_emoji_no_legend_no_greek():
     """Emoji are colour bitmaps: no theme token, cannot be tinted to mean a
-    side, do not dim with the page. A legend is a confession that the marks do
-    not read. And no Greek: the ruler is stated once, in English."""
+    side, do not dim with the page. And no Greek: the ruler is stated once, in
+    English.
+
+    AMENDED 2026-09-18. This read "a legend is a confession that the marks do
+    not read" and banned one outright. The owner has since chosen an explainer
+    for the chart, a sheet that says what each of its marks is, behind a quiet
+    link under it (READABLE2-SPEC.md). That sheet is a legend, and the test
+    does not pretend otherwise. What it still holds is WHERE one may be: never
+    on the glance, beside the marks at arm's length, standing in for marks that
+    should read on their own, but only in a sheet that stays closed until the
+    reader asks for it. The chart's card carries the link to it and nothing
+    else of it."""
     for blob in (PHONE, PAGE, GLANCE):
         assert not re.search(r"[\U0001F300-\U0001FAFF]", blob)
         assert not re.search(r"[Ͱ-Ͽ]", blob), "a Greek letter is in the phone's source"
     assert "class=\"key\"" not in PHONE
+    sheet = PHONE.split('<div class="sheet" id="howtoSheet"')[1].split("\n</div>\n")[0]
+    assert PHONE.count('<div class="hw">') == sheet.count('<div class="hw">') > 0, "a key row outside its sheet"
+    opens = re.search(r'<div class="sheet" id="howtoSheet"[^>]*>', PHONE).group(0)
+    assert 'role="dialog"' in opens and 'aria-hidden="true"' in opens, "the key is not a closed sheet"
+    card = PHONE.split('<section class="card">')[1].split("</section>")[0]
+    assert re.sub(r"<button class=\"howto\".*?</button>", "", card, flags=re.S).count("<button") == 0
     got = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 80.4}}))
     assert got["ruler"]["text"] == "USUAL DAY MOVE $80"
     assert not re.search(r"[Ͱ-Ͽ\U0001F300-\U0001FAFF]", json.dumps(got, ensure_ascii=False))
 
 
 def test_the_glance_itself_is_not_a_control():
-    """AMENDED 2026-09-07, and again 2026-09-10. The rule was "nothing is
+    """AMENDED 2026-09-07, 2026-09-10 and 2026-09-18. The rule was "nothing is
     tappable", and its purpose was that the READING must never be a control: a
     screen you poke is a screen you are working, and this one is read at arm's
     length in a second.
 
     That purpose survives verbatim. 09-07 permitted exactly ONE link, to the
-    readings archive. 09-10 permits exactly ONE press-and-hold, on the
+    readings archive. 09-10 permitted exactly ONE press-and-hold, on the
     three-levels card, because the user asked for the card to explain itself —
     and a card whose words (gamma, call wall, most contracts) need a paragraph
-    each cannot carry those paragraphs at arm's length. What the hold opens is
-    an EXPLANATION: nothing on the card changes by touching it, and it is
-    dismissed by one button.
+    each cannot carry those paragraphs at arm's length. 09-18 permits exactly
+    ONE button that opens something: the quiet link under the chart, "How to
+    read this chart", because the owner chose an explainer for the chart's
+    marks (READABLE2-SPEC.md 2.8). This test allowed exactly one button until
+    then, the sheet's close; its intent was never "one <button> element" but
+    that every control on the page opens or closes an explanation and none
+    works the data, and that is what it now counts. The link takes a tap, not
+    a hold, because it is a control and looks like one, as the reads page's
+    button does; the levels card keeps the page's one hold.
 
     Everything that would make the DATA interactive stays banned: no onclick,
-    no pointer cursors, no tooltips, no second button, no second hold, and the
-    one click listener on the page does nothing but close the sheet. Each count
-    is exact. A second of anything means the rule has started eroding and this
-    test should be argued with again rather than edited again."""
+    no pointer cursors, no tooltips, no second hold, no button that neither
+    opens nor closes an explanation, and the page's one click listener does
+    nothing but close a sheet. The link's own does nothing but open the sheet
+    it names. Each count is exact. A second of anything means the rule has
+    started eroding and this test should be argued with again rather than
+    edited again."""
     for bad in ("cursor:pointer", "onclick", "title="):
         assert bad not in PHONE, bad
     links = re.findall(r"<a\s[^>]*>", PHONE)
@@ -1027,20 +1054,40 @@ def test_the_glance_itself_is_not_a_control():
 
     holds = re.findall(r"<[^>]*\bdata-hold\b[^>]*>", PHONE)
     assert len(holds) == 1 and 'id="levels"' in holds[0], holds
-    dialogs = re.findall(r'role="dialog"', PHONE)
-    assert len(dialogs) == 1
+    dialogs = re.findall(r'<div class="sheet" id="(\w+)" role="dialog"', PHONE)
+    assert dialogs == ["howtoSheet", "sheet"] and len(re.findall(r'role="dialog"', PHONE)) == 2
     buttons = re.findall(r"<button\b[^>]*>", PHONE)
-    assert len(buttons) == 1, buttons
-    assert "data-sheet-close" in buttons[0], "the one button must close the sheet"
-    sheet = PHONE.split('id="sheet"')[1]
-    assert "<button" in sheet, "the button lives outside the sheet"
+    closers = [b for b in buttons if "data-sheet-close" in b]
+    openers = [b for b in buttons if "data-sheet-close" not in b]
+    assert len(closers) == 2 and len(openers) == 1, buttons
+    # one close button in each sheet
+    for sid in dialogs:
+        sheet = PHONE.split(f'<div class="sheet" id="{sid}"')[1].split("\n</div>\n")[0]
+        assert re.findall(r"<button\b[^>]*data-sheet-close[^>]*>", sheet), f"the {sid} button lives outside it"
+    # and the one opener is the link under the chart, naming the chart's sheet
+    chart = PHONE.split('<section class="card">')[1].split("</section>")[0]
+    opener = openers[0]
+    assert opener in chart and 'aria-haspopup="dialog"' in opener, opener
+    names = re.search(r'aria-controls="(\w+)"', opener).group(1)
+    assert names == "howtoSheet"
 
     got = _page(_board({"price": {"live_spot": 1700}}), """
       const clicks = (listeners.document.click || []).concat(listeners.window.click || []);
       const before = JSON.stringify(dump());
       clicks.forEach(f => f({target: {closest: () => null}}));
-      return {clicks: clicks.length, inert: JSON.stringify(dump()) === before};""")
-    assert got == {"clicks": 1, "inert": True}, "a second click handler, or one that acts on the page"
+      const inert = JSON.stringify(dump()) === before;
+      const link = els.howto, taps = link.heard.click || [];
+      link.attrs['aria-controls'] = __NAMES__;
+      const shut = dump();
+      taps.forEach(f => f({target: link}));
+      const open = dump(), sheet = open[__NAMES__];
+      const rest = s => { const c = Object.assign({}, s); delete c.body; delete c[__NAMES__]; return JSON.stringify(c); };
+      return {clicks: clicks.length, inert, taps: taps.length, body: open.body,
+              hidden: sheet && sheet.attrs['aria-hidden'], only: rest(open) === rest(shut)};""".replace(
+        "__NAMES__", json.dumps(names)))
+    assert got["clicks"] == 1 and got["inert"], "a second click handler, or one that acts on the page"
+    assert got["taps"] == 1 and got["body"] == "sheet-open" and got["hidden"] == "false", got
+    assert got["only"], "the link's tap changed something on the page besides opening its sheet"
 
 
 def test_market_time_not_viewer_time():
@@ -1588,11 +1635,13 @@ def _css_rules(html):
 
 
 def test_the_two_phone_pages_draw_one_sheet():
-    """Both pages open an explainer sheet: the glance's on the three levels,
-    the reads page's on faster, steady and slower (2026-09-18). What the sheet
-    does is one script, sheet.js. What it looks like is one set of rules held
-    in two stylesheets, for the palette's reason above: a shared stylesheet
-    would be a render-blocking re-fetch in full on every open of both pages.
+    """Both pages open an explainer sheet: the glance's on the three levels
+    and on how to read the chart, the reads page's on faster, steady and slower
+    (2026-09-18). What a sheet does is one script, sheet.js, and the open one
+    is the one it has unhidden, so a page can carry two without a second copy
+    of anything. What it looks like is one set of rules held in two
+    stylesheets, for the palette's reason above: a shared stylesheet would be
+    a render-blocking re-fetch in full on every open of both pages.
 
     So every sheet rule the two pages both carry must be the same rule, and
     the core of it must be on both — the sheet capped at 86% of the measured
@@ -1601,10 +1650,10 @@ def test_the_two_phone_pages_draw_one_sheet():
     colours and its conditional item, the reads page its figure and its
     sources line."""
     a, b = _css_rules(PHONE), _css_rules(THREAD)
-    core = {".scrim", ".sheet", "body.sheet-open .scrim", "body.sheet-open .sheet", ".sh-grab",
+    core = {".scrim", ".sheet", "body.sheet-open .scrim", '.sheet[aria-hidden="false"]', ".sh-grab",
             ".sh-h", ".sh-item", ".sh-item:first-of-type", ".sh-term", ".sh-term b", ".sh-term span",
             ".sh-item p", ".sh-item p + p", ".sh-caveat", ".sh-caveat b", ".sh-close",
-            ".sh-close:focus-visible", ".sheet,body.sheet-open .sheet"}
+            ".sh-close:focus-visible", '.sheet,.sheet[aria-hidden="false"]'}
     assert core <= set(a) and core <= set(b), core - (set(a) & set(b))
     sheet = [s for s in set(a) & set(b) if s.startswith((".scrim", ".sheet", "body.sheet-open", ".sh-"))]
     drift = {s: (a[s], b[s]) for s in sheet if a[s] != b[s]}
@@ -2700,6 +2749,111 @@ def test_the_strip_along_the_foot_is_named():
     svg = _page(_board(scene, now="2026-09-10T10:02:00-04:00", diary=diary))["svg"]["html"]
     assert 'class="p-vol"' not in svg and "p-axis" in svg and "p-volname" not in svg
     assert _css_rule(".p-volname") == "fill:var(--i-faint)"
+
+
+def _chart_key():
+    """The chart's key as a reader sees it: each row's mark (the classes its
+    sample is drawn in), its term, what it says and the chart's own words it
+    quotes; the title, the caveat, the close button and the link's label."""
+    import html as _html
+
+    def txt(s):
+        return re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", s))).strip()
+    block = PHONE.split('<div class="sheet" id="howtoSheet"')[1].split("\n</div>\n")[0]
+    rows = []
+    for glyph, para in re.findall(r'(?s)<div class="hw"><svg[^>]*>(.*?)</svg>\s*<p>(.*?)</p></div>', block):
+        term = re.match(r"(?s)<b>(.*?)</b> — ", para)
+        rows.append({"marks": re.findall(r'class="([^"]+)"', glyph), "term": txt(term.group(1)),
+                     "says": txt(para[term.end():]),
+                     "words": [txt(w).replace("\xa0", " ") for w in re.findall(r'<span class="hw-w">(.*?)</span>', para)]})
+    return {"title": txt(re.search(r'id="hwTitle">(.*?)</div>', block).group(1)), "rows": rows,
+            "caveat": txt(re.search(r'(?s)<div class="sh-caveat">(.*?)</div>', block).group(1)),
+            "close": txt(re.search(r'(?s)<button class="sh-close"[^>]*>(.*?)</button>', block).group(1)),
+            "link": txt(re.search(r'(?s)<button class="howto".*?<s>(.*?)</s>', PHONE).group(1))}
+
+
+def test_the_chart_key_says_what_the_code_draws():
+    """The key under the chart, "How to read this chart" (READABLE2-SPEC.md
+    item 7): sheet_howto2.py's thirteen rows, one a mark, in the short words
+    the owner chose and with no percentage. Every figure and window in it is
+    typed into static markup, so each is checked here against the code that
+    draws the mark, and a change that leaves the key behind fails:
+    - each sample is drawn in the chart's own classes, which page.js draws the
+      chart in, so the key cannot drift from the ink;
+    - the chart's words it quotes are the ones the chart prints: the count's
+      TODAY, the brackets' phrase and its "· 1 MORE", an edge row as
+      pickedRow writes it, the strip's name;
+    - the half hour of the dark ends is TRADED_LATE_MIN, within the five
+      minutes' slack the key's "until the scans cover a half hour" allows;
+      the pick-up's "last two scans" is NEW_TAIL; the strip's "every 5
+      minutes" is the blocks page.js asks volumeBlocks for."""
+    key = _chart_key()
+    assert key["title"] == key["link"] == "How to read this chart" and key["close"] == "Got it"
+    assert [r["term"] for r in key["rows"]] == [
+        "Grey line", "Blue dot, dotted line and blue box", "Grey bars", "The darker end of a bar",
+        "9,112 TODAY", "Corner brackets and TRADING PICKED UP", "Rows at the top or bottom", "Green line",
+        "Red line", "Gold dashes and diamond", "Thin grey dashes", "Bars along the bottom, SHARES TRADED",
+        "Grey prices on the right"]
+    drawn = set(re.findall(r"(?<![\w-])(p-[a-z]+)(?![\w-])", _code_only(PAGE)))
+    rules = _css_rules(PHONE)
+    for row in key["rows"]:
+        assert row["marks"], row["term"]
+        for cls in row["marks"]:
+            assert set(cls.split()) <= drawn | {"call", "put"}, f"{row['term']}: {cls} is not the chart's ink"
+            assert "." + cls.split()[0] in rules, cls
+    rows = {r["term"]: r for r in key["rows"]}
+    assert rows["The darker end of a bar"]["marks"] == ["p-traded", "p-tradedlate", "p-tradedend"]
+    # the words the chart prints
+    edge = _glance("const r = g.pickedRow(true, [1600], 0, 324), m = g.pickedRow(false, [1490], 1, 324);"
+                   "console.log(JSON.stringify([r.lead + ': TRADING PICKED UP' + r.tail, m.tail.trim(),"
+                   " g.stripName(1000)]));")
+    words = [w for r in key["rows"] for w in r["words"]]
+    assert words == ["9,112 TODAY", "TRADING PICKED UP", edge[1], "▲ 1,650", edge[0], edge[2]]
+    assert "+ ' TODAY'" in PAGE and "'\">TRADING PICKED UP'" in PAGE and ">TRADING PICKED UP</tspan>" in PAGE
+    assert "(up ? '▲ ' : '▼ ')" in PAGE
+    # the windows the sentences name
+    late, slack = map(int, re.search(r"const TRADED_LATE_MIN=(\d+), TRADED_LATE_SLACK=(\d+);", GLANCE).groups())
+    assert (late, slack <= 5) == (30, True) and "the last half hour of scans" in rows["The darker end of a bar"]["says"]
+    assert "None until the scans cover a half hour" in rows["The darker end of a bar"]["says"]
+    tail = int(re.search(r"const NEW_TAIL=(\d+),", GLANCE).group(1))
+    assert tail == 2 and "in the last two scans" in rows["Corner brackets and TRADING PICKED UP"]["says"]
+    assert "volumeBlocks(BARS, 5)" in PAGE and "one bar every 5 minutes" in \
+        rows["Bars along the bottom, SHARES TRADED"]["says"]
+    # and no percentage: the brackets' share went on 2026-09-18, and its denominator
+    # was on no screen
+    assert not any("%" in r["says"] + r["term"] for r in key["rows"])
+
+
+def test_every_word_in_the_chart_key_passes_the_laws():
+    """The key explains marks that sit beside prices, which is exactly where a
+    reader takes a mark for a claim about price. So every string on it, and
+    the link that opens it, goes through the station's own gates, as the reads
+    page's sheet does: the reader's _BANNED_RE (forecast, causal and judgement
+    words and their inflections: "whether price will get there" failed it on
+    "will", and the key says "gets there"), its position gate, the levels
+    sheet's denylist, no dealer and nothing a dealer does, no Greek letter or
+    word, nothing that reaches forward (so "usually" and "most" are out too),
+    and no frequency or percentage. "Picked up" always has trading as its
+    subject: alone, beside a price, it reads as the price rising."""
+    R = _reader()
+    key = _chart_key()
+    words = [key["title"], key["caveat"], key["close"], key["link"]]
+    for r in key["rows"]:
+        words += [r["term"], r["says"], *r["words"]]
+    assert key["caveat"].startswith("Where trading is, not where price is going.")
+    greek = re.compile(r"(?i)\b(?:gamma|gex|delta|vanna|charm|vega|theta)\b")
+    often = re.compile(r"(?i)\b(?:one|two|three|four|\d+) (?:\w+ )?in (?:two|three|four|five|ten|\d+)\b"
+                       r"|%|\bout of\b|\bper ?cent\b")
+    for w in words:
+        assert not R._BANNED_RE.search(w), f"{w!r} trips the reader's word gate"
+        assert not R._POS_RE.search(w), f"{w!r} places price against a number"
+        assert not any(d in w.lower() for d in _SHEET_CLAIMS), f"{w!r} makes a claim the sheet may not"
+        assert not _DEALER.search(w), f"{w!r} speaks of dealers"
+        assert not greek.search(w) and not _EMOJI_OR_GREEK.search(w), f"{w!r} puts Greek on the surface"
+        assert not _AHEAD.search(w), f"{w!r} reaches forward"
+        assert not often.search(w), f"{w!r} claims how often"
+        for m in re.finditer(r"(?i)picked up|picking up", w):
+            assert re.search(r"(?i)trading\s*$", w[:m.start()]), f"{w!r}: picked up with no trading before it"
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------

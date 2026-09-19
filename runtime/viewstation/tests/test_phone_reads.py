@@ -447,6 +447,14 @@ function mk(tag, attrs){
         : s[0] === '[' ? s.slice(1, -1) in this.attrs : this.tag === s);
     },
     closest(sel){ for(let x = this; x && x.matches; x = x.parent) if(x.matches(sel)) return x; return null; },
+    querySelector(sel){
+      for(const c of this.children){
+        if(c.matches && c.matches(sel)) return c;
+        const f = c.querySelector && c.querySelector(sel);
+        if(f) return f;
+      }
+      return null;
+    },
   };
 }
 const text = t => ({parent: null, children: [], _text: String(t), get textContent(){ return this._text; }});

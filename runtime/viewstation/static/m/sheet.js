@@ -1,14 +1,16 @@
-/* sheet.js — the explainer sheet: how it opens, and every way it closes.
+/* sheet.js — the explainer sheets: how one opens, and every way it closes.
  *
- * Both phone pages carry one. The glance's says what the three levels are; the
- * reads page's says what faster, steady and slower mean. Each page owns its
- * sheet's markup, its copy of the sheet's CSS (a shared stylesheet would be a
- * render-blocking re-fetch on every open; test_the_two_phone_pages_draw_one_sheet
- * holds the two copies equal) and the control that OPENS it: a press-and-hold
- * on the glance's card, because that card is not a control, and a plain tap on
- * the reads page's button, because that button is one. Everything after that
- * is here, once, because every part of it was learned on a phone and a second
- * copy would have to learn it again.
+ * Both phone pages carry them. The glance has two: what the three levels are,
+ * and how to read the chart; the reads page's says what faster, steady and
+ * slower mean. Each page owns its sheets' markup, its copy of the sheet's CSS
+ * (a shared stylesheet would be a render-blocking re-fetch on every open;
+ * test_the_two_phone_pages_draw_one_sheet holds the two copies equal) and the
+ * controls that OPEN them: a press-and-hold on the glance's levels card,
+ * because that card is not a control, and a plain tap on the link under the
+ * glance's chart and on the reads page's button, because those are. Each
+ * control names its sheet in aria-controls, and one sheet is open at a time.
+ * Everything after the opening is here, once, because every part of it was
+ * learned on a phone and a second copy would have to learn it again.
  *
  * THE BACK GESTURE CLOSES IT. open() pushes a history entry, so the phone's
  * back gesture closes the sheet rather than leaving the page — the shell's back
@@ -26,12 +28,12 @@
  * the page speaks while the sheet is open, and once it has spoken it keeps the
  * answer true on every scroll, because the shell has no way back to "silent".
  *
- * THE LATE TAP. The glance opens its sheet from a touchend, and Chrome
+ * THE LATE TAP. The glance opens its levels sheet from a touchend, and Chrome
  * hit-tests that touch's synthetic tap AFTER the handlers have run — on the
  * backdrop that has just appeared, which closed the sheet the instant it
  * opened. So a close this soon after opening is ignored. A sheet opened by a
- * click, as the reads page's is, is already past that point, and there the
- * guard never has anything to ignore.
+ * click, as the chart's and the reads page's are, is already past that point,
+ * and there the guard never has anything to ignore.
  *
  * NOT SELECTABLE. A long press on the sheet's text opened Android's text
  * selection, and while a selection is live a drag moves its handles instead of
@@ -39,7 +41,7 @@
  */
 const MiraiSheet = (function(){
   const GHOST_MS = 500;
-  let opener = null, openedAt = 0, closing = false, spoke = false;
+  let opener = null, sheet = null, openedAt = 0, closing = false, spoke = false;
 
   function isOpen(){ return document.body.classList.contains('sheet-open'); }
 
@@ -52,24 +54,26 @@ const MiraiSheet = (function(){
   }
   window.addEventListener('scroll', () => { if(spoke) tellShell(); }, {passive: true});
 
-  // `from` is the control that opened it, and gets the focus back on closing
+  // `from` is the control that opened it: the sheet is the one it names in
+  // aria-controls, and the control gets the focus back on closing
   function open(from){
     if(isOpen()) return;
-    opener = from || null;
+    opener = from;
+    sheet = document.getElementById(from.getAttribute('aria-controls'));
     document.body.classList.add('sheet-open');
     openedAt = Date.now(); closing = false;
     tellShell();
-    document.getElementById('sheet').setAttribute('aria-hidden', 'false');
+    sheet.setAttribute('aria-hidden', 'false');
     try { history.pushState({sheet: 1}, ''); } catch(e){}
-    document.getElementById('shClose').focus({preventScroll: true});
+    sheet.querySelector('[data-sheet-close]').focus({preventScroll: true});
   }
   function shut(){
     closing = false;
     if(!isOpen()) return;
     document.body.classList.remove('sheet-open');
     tellShell();
-    document.getElementById('sheet').setAttribute('aria-hidden', 'true');
-    if(opener) opener.focus({preventScroll: true});
+    sheet.setAttribute('aria-hidden', 'true');
+    opener.focus({preventScroll: true});
   }
   function dismiss(){
     if(closing || !isOpen()) return;
@@ -88,7 +92,7 @@ const MiraiSheet = (function(){
     if(e.key === 'Escape' && isOpen()) dismiss();
   });
   document.addEventListener('contextmenu', e => {
-    if(e.target.closest && e.target.closest('#sheet')) e.preventDefault();
+    if(e.target.closest && e.target.closest('.sheet')) e.preventDefault();
   });
 
   return {open, isOpen};

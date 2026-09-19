@@ -228,6 +228,21 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    when the container has none to give. */
 #svg{display:block;max-width:100%;height:auto}
 #svg.too-narrow{min-width:240px}
+/* The chart's key, behind a quiet link under it: the owner chose it over a
+   filled bar (READABLE2-SPEC.md 2.8). 16px of it shows, a ring and 12px/600 in
+   --i-mute on the card's rail. The tap target is --tap-min tall, 16 + 16 + 16,
+   its padding tucked into the card's own, so the card grows 22px. A tap opens
+   it, because this is a control: the card's one press-and-hold stays the
+   levels card's. */
+.howto{display:flex;align-items:center;gap:7px;width:max-content;
+       margin:-10px 0 -16px -8px;padding:16px 8px;border:0;border-radius:10px;background:none;
+       color:var(--i-mute);font:600 12px/16px var(--sans);text-align:left;
+       touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.howto i{flex:none;width:16px;height:16px;border-radius:50%;border:1.3px solid currentColor;display:flex;
+         align-items:center;justify-content:center;font:700 11px/1 var(--sans);font-style:normal}
+.howto s{text-decoration:none}
+.howto.is-pressed{color:var(--i)}
+.howto:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 
 /* Every chart label restates tabular figures AFTER its font shorthand, because
    the shorthand resets font-variant-numeric and the tabular-nums on <body>
@@ -659,8 +674,10 @@ body.failed > *:not(.fail):not(.tabs){display:none}
        transform:translateY(102%);visibility:hidden;
        transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s linear .28s}
 body.sheet-open .scrim{opacity:1;pointer-events:auto}
-body.sheet-open .sheet{transform:none;visibility:visible;
-                       transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s}
+/* the open sheet is the one sheet.js has unhidden, so a page can carry more
+   than one */
+.sheet[aria-hidden="false"]{transform:none;visibility:visible;
+                            transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s}
 .sh-grab{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:0 auto 16px}
 .sh-h{margin-bottom:14px;font:700 11px/1.2 var(--sans);letter-spacing:.14em;
       text-transform:uppercase;color:var(--i-faint)}
@@ -680,8 +697,20 @@ body.sheet-open .sheet{transform:none;visibility:visible;
 .sh-close{display:block;width:100%;margin-top:18px;height:var(--tap-min);border:0;border-radius:14px;
           background:var(--fill);color:var(--on-body);font:700 14px/1 var(--sans)}
 .sh-close:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+
+/* ---- the sheet: how to read the chart ----
+   One row a mark: the mark drawn by the chart's own classes, so the key cannot
+   drift from the ink, then one line of what it is. The chart's words inside a
+   sentence are set in its capitals, a size down, so a reader can find them on
+   the chart by eye. */
+.hw{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--s2)}
+.sh-h + .hw{border-top:0;padding-top:2px}
+.hw svg{flex:none;width:46px;height:20px;margin-top:1px;overflow:visible}
+.hw p{font:400 14px/1.45 var(--sans);color:var(--i-body)}
+.hw p b{font-weight:700;color:var(--i)}
+.hw-w{font-size:12px;letter-spacing:.02em}
 @media (prefers-reduced-motion:reduce){
-  .sheet,body.sheet-open .sheet{transition:none}
+  .sheet,.sheet[aria-hidden="false"]{transition:none}
   .levels.holding::after{transition:opacity .1s}
 }
 
@@ -814,6 +843,8 @@ body.sheet-open .sheet{transform:none;visibility:visible;
 <section class="card">
   <div class="lab">Price today<span class="r" id="ldWhen"></span></div>
   <div class="ladder" id="ladder"><svg id="svg"></svg></div>
+  <button class="howto" id="howto" type="button" aria-haspopup="dialog" aria-controls="howtoSheet"
+          data-press><i aria-hidden="true">i</i><s>How to read this chart</s></button>
 </section>
 
 <section class="today" id="today">
@@ -862,6 +893,45 @@ body.sheet-open .sheet{transform:none;visibility:visible;
 <div class="load" id="load"><i></i>Reading the board</div>
 
 <div class="scrim" data-sheet-close></div>
+<!-- The chart's key. Its samples are drawn in the chart's own classes, and the
+     windows and chart words it quotes are checked against the code that draws
+     them: test_the_chart_key_says_what_the_code_draws. -->
+<div class="sheet" id="howtoSheet" role="dialog" aria-modal="true" aria-hidden="true"
+     aria-labelledby="hwTitle">
+  <div class="sh-grab"></div>
+  <div class="sh-h" id="hwTitle">How to read this chart</div>
+
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><polyline class="p-path" points="0,15 6,11 11,13 17,6 23,9 29,4 35,8 41,5 46,7"/></svg>
+    <p><b>Grey line</b> — SNDK’s price today, from the open to now.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-prule" x1="0" y1="10" x2="30" y2="10"/><circle class="p-halo" cx="36" cy="10" r="7"/><circle class="p-dot" cx="36" cy="10" r="3.6"/></svg>
+    <p><b>Blue dot, dotted line and blue box</b> — the latest price.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-traded" x="8" y="5" width="38" height="10"/><line class="p-tradedend" x1="8.6" y1="5" x2="8.6" y2="15"/></svg>
+    <p><b>Grey bars</b> — this week’s option contracts traded at each price since the open, calls and puts together: the longer, the more.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-traded" x="8" y="5" width="38" height="10"/><rect class="p-tradedlate" x="8" y="5" width="14" height="10"/><line class="p-tradedend" x1="8.6" y1="5" x2="8.6" y2="15"/></svg>
+    <p><b>The darker end of a bar</b> — the part of it traded in the last half hour of scans, so a long dark end means much of it is recent. None until the scans cover a half hour (early in the day, after a pause), nor where a price was not counted all through it.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><text class="p-tradednum" x="46" y="14">9,112</text></svg>
+    <p><b><span class="hw-w">9,112 TODAY</span></b> — on the longest bar, how many traded there today; every other bar is drawn to its scale.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><path class="p-new" d="M2,7 V2 H13 M33,2 H44 V7 M2,13 V18 H13 M33,18 H44 V13"/></svg>
+    <p><b>Corner brackets and <span class="hw-w">TRADING PICKED UP</span></b> — in the last two scans (about 8 minutes, longer after a pause) trading here took well above its usual share of the option contracts traded on the board, calls and puts together. <span class="hw-w">· 1 MORE</span> is another place it happened, with no room on the chart to mark it.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><text class="p-edge" x="46" y="14">▲ ↑</text></svg>
+    <p><b>Rows at the top or bottom</b> — something just off the chart. A row like <span class="hw-w">▲&nbsp;1,650</span> is a big pile of options there. A row like <span class="hw-w">↑ ABOVE, AT 1,600: TRADING PICKED UP</span> is the same pick-up as the brackets, at a price above (or below) what the chart shows.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-wall call" x1="0" y1="10" x2="46" y2="10" stroke-width="2"/></svg>
+    <p><b>Green line</b> — the nearest call-heavy pile of options above the price, its price in green on the right. A thinner one is another further up; grey, the price has passed it.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-wall put" x1="0" y1="10" x2="46" y2="10" stroke-width="2"/></svg>
+    <p><b>Red line</b> — the nearest put-heavy pile of options below the price, its price in red on the right. A thinner one is another further down; grey, the price has passed it.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-mag" x1="0" y1="10" x2="34" y2="10"/><rect class="p-diamond" x="38.5" y="7.5" width="5" height="5" transform="rotate(45 41 10)"/></svg>
+    <p><b>Gold dashes and diamond</b> — the price near today’s with the largest number of option contracts on it; thinner gold dashes, the next largest. A green or red line in long dashes is a pile at that same price.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-orb" x1="0" y1="10" x2="46" y2="10"/></svg>
+    <p><b>Thin grey dashes</b> — the high and low of the day’s first half hour (so far, until 10:00).</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-vol" x="0" y="10" width="3.2" height="10"/><rect class="p-vol" x="5" y="12" width="3.2" height="8"/><rect class="p-vol" x="10" y="15" width="3.2" height="5"/><rect class="p-vol" x="15" y="16" width="3.2" height="4"/><rect class="p-vol" x="20" y="14" width="3.2" height="6"/><rect class="p-vol" x="25" y="17" width="3.2" height="3"/><rect class="p-vol" x="30" y="16" width="3.2" height="4"/><rect class="p-vol" x="35" y="11" width="3.2" height="9"/><rect class="p-vol" x="40" y="13" width="3.2" height="7"/></svg>
+    <p><b>Bars along the bottom, <span class="hw-w">SHARES TRADED</span></b> — SNDK stock traded, not options, one bar every 5 minutes: taller means more. A dark line on top: that one ran past the top of the scale.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-stick" x1="2" y1="10" x2="6" y2="10"/><text class="p-scale" x="46" y="14">1,560</text></svg>
+    <p><b>Grey prices on the right</b> — round prices, for scale. The coloured ones name the lines.</p></div>
+
+  <div class="sh-caveat"><b>Where trading is, not where price is going.</b> None of these marks says which way SNDK moves next. Trading picking up at a price says nothing about whether price gets there.</div>
+
+  <button class="sh-close" id="hwClose" type="button" data-sheet-close>Got it</button>
+</div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-hidden="true"
      aria-labelledby="shTitle">
   <div class="sh-grab"></div>

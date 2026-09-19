@@ -39,20 +39,28 @@ function classList(){
           contains: c => s.has(c), toggle: (c, on) => (on ? s.add(c) : s.delete(c))};
 }
 // `sel` lists the selectors an element answers to in closest()
-function el(id, sel){
-  return {id, sel: sel || [], attrs: {}, classList: classList(), hidden: false, style: {}, children: [],
+// and `attrs` the attributes the markup gives it
+function el(id, sel, attrs){
+  return {id, sel: sel || [], attrs: Object.assign({}, attrs), classList: classList(), hidden: false, style: {},
+          children: [], heard: {},
           closest(q){ return this.sel.some(s => q.includes(s)) ? this : null; },
           setAttribute(k, v){ this.attrs[k] = v; }, getAttribute(k){ return this.attrs[k]; },
           hasAttribute(k){ return this.sel.some(s => s === '[' + k + ']'); },
+          addEventListener(t, f){ (this.heard[t] = this.heard[t] || []).push(f); },
+          // a sheet's close button, the one thing sheet.js looks for inside it
+          querySelector(q){ return q === '[data-sheet-close]' ? els[this.id === 'sheet' ? 'shClose' : 'hwClose'] : null; },
           focus(){ document.activeElement = this; },
           replaceChildren(){}, appendChild(c){ return c; },
           getBoundingClientRect(){ return {width: 380, height: 300, top: 0, left: 0, right: 380, bottom: 300}; },
           set textContent(v){}, get textContent(){ return ''; }};
 }
 const els = {
-  levels: el('levels', ['[data-hold]']),
-  sheet: el('sheet', ['#sheet']),
+  levels: el('levels', ['[data-hold]'], {'aria-controls': 'sheet'}),
+  sheet: el('sheet', ['#sheet', '.sheet'], {'aria-hidden': 'true'}),
   shClose: el('shClose', ['[data-sheet-close]']),
+  howto: el('howto', ['#howto'], {'aria-controls': 'howtoSheet'}),
+  howtoSheet: el('howtoSheet', ['#howtoSheet', '.sheet'], {'aria-hidden': 'true'}),
+  hwClose: el('hwClose', ['[data-sheet-close]']),
   scrim: el('scrim', ['[data-sheet-close]']),
   text: el('text', []),
 };
@@ -119,6 +127,8 @@ out.open_while_finger_down = isOpen();
 out.armed_class = els.levels.classList.contains('armed');
 const e1 = lift();
 out.open_after_lift = isOpen();
+// the hold opens the levels sheet, and only that one
+out.hold_sheets = [els.sheet.attrs['aria-hidden'], els.howtoSheet.attrs['aria-hidden']];
 out.lift_tap_cancelled = e1.defaultPrevented;
 out.pushes_after_open = pushes;
 
@@ -160,10 +170,29 @@ advance(50);
 out.closed_by_button = !isOpen();
 out.backs_on_double_tap = backs;
 
-// 10. long-press menus are refused on the card and on the sheet's text
+// 10. long-press menus are refused on the card and on either sheet's text
 const cm1 = fire(docL, 'contextmenu', ev('contextmenu', els.levels, 0, 0));
 const cm2 = fire(docL, 'contextmenu', ev('contextmenu', els.sheet, 0, 0));
 const cm3 = fire(docL, 'contextmenu', ev('contextmenu', els.text, 0, 0));
-out.contextmenu_blocked = [cm1.defaultPrevented, cm2.defaultPrevented, cm3.defaultPrevented];
+const cm4 = fire(docL, 'contextmenu', ev('contextmenu', els.howtoSheet, 0, 0));
+out.contextmenu_blocked = [cm1.defaultPrevented, cm2.defaultPrevented, cm3.defaultPrevented, cm4.defaultPrevented];
+
+// a tap as a browser delivers it: the control's own listeners, then the document's
+function tap(n){ const e = ev('click', n, 100, 100); (n.heard.click || []).forEach(f => f(e)); fire(docL, 'click', e); }
+const sheets = () => [els.sheet.attrs['aria-hidden'], els.howtoSheet.attrs['aria-hidden']];
+
+// 11. a TAP on the link under the chart opens the chart's key, not the levels
+//     sheet, with its history entry and the focus on its own close button
+reset(); tap(els.howto);
+out.tap_opens_key = {open: isOpen(), sheets: sheets(), pushes, focus: document.activeElement && document.activeElement.id};
+
+// 12. a hold on the levels card while the key is open opens nothing more
+down(); advance(600); lift();
+out.hold_while_key_open = {sheets: sheets(), pushes};
+
+// 13. the key's Got it closes it the one way, once, and the focus goes back
+//     to the link
+advance(600); tap(els.hwClose); tap(els.hwClose); advance(50);
+out.key_closed = {open: isOpen(), sheets: sheets(), backs, focus: document.activeElement && document.activeElement.id};
 
 console.log(JSON.stringify(out));
