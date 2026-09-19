@@ -534,7 +534,11 @@ function paintLadder(st){
   const levels = mergeLevels(ruled, span);
 
   let o = '';
-  o += '<defs><clipPath id="pc"><rect x="' + PLOT_L + '" y="' + plotTop
+  // the puts' stripes: their red with a line of card 1px in 3, at 45 degrees
+  o += '<defs><pattern id="tradedPuts" patternUnits="userSpaceOnUse" width="3" height="3"'
+     + ' patternTransform="rotate(45)"><rect class="p-tradedputbg" width="3" height="3"/>'
+     + '<rect class="p-tradedputln" width="1" height="3"/></pattern>'
+     + '<clipPath id="pc"><rect x="' + PLOT_L + '" y="' + plotTop
      + '" width="' + PLOT_W + '" height="' + n1(plotH) + '"/></clipPath></defs>';
 
   // ---- clipped plot content ---------------------------------------------
@@ -543,32 +547,40 @@ function paintLadder(st){
   // read was on the put wall's strike, already ruled and tagged, on 24 of 24
   // scans of 2026-09-16 (INK-SPEC.md 1.2).
   let g = '';
-  // WHERE CONTRACTS TRADED TODAY, as bars behind the price line, grown from the
-  // plot's right edge: they sit beside "now", which is what a count up to now
-  // is about, and the left edge is where a bar's end would hide under a word
-  // (103 of 314 ends there against 2 of 314 here, ALT-BEHIND-SPEC.md 3.2).
-  // First in the clip, so every other mark is on top of them.
+  // WHERE CONTRACTS TRADED TODAY, puts and calls apart, as bars behind the
+  // price line. At each strike its puts grow left from a zero TRADED_ZERO of
+  // the plot in from its left edge, striped red, and its calls right, solid
+  // green, on one scale (glance.js). Which side of the zero says puts or calls
+  // before the hue does, and the stripes say it again with no colour at all:
+  // the two fills are only 1.041:1 apart. The zero is a gap of card between
+  // them, TRADED_GAP each side of it, never an inked upright: left to right on
+  // this chart is the time of day, and a line standing in the plot reads as a
+  // moment (CPB-SPEC.md 2.3). First in the clip, so every other mark is on top
+  // of them.
   const traded = tradedBars(st.strikes, WIN.lo, WIN.hi, plotTop, plotBottom);
-  const barX = b => PLOT_R - b.share * TRADED_FULL * PLOT_W;   // where a bar ends
-  const late = traded ? tradedLately(st.strikes, st.frames) : null;
+  const TRADED_GAP = 0.5, ZERO = PLOT_L + TRADED_ZERO * PLOT_W;
+  const kSide = traded && traded.most > 0 ? (TRADED_SIDE * PLOT_W - TRADED_GAP) / traded.most : 0;
+  const barX = b => ZERO - TRADED_GAP - b.vp * kSide;    // the pair's left end, where its puts end
+  const barXR = b => ZERO + TRADED_GAP + b.vc * kSide;   // its right end, where its calls end
+  // a part of a bar, its two edges rounded to the tenth, so parts that meet
+  // share one edge and the gap stays one pixel of card
+  const tRect = (cls, x0, x1, y, h) => {
+    const a = +n1(x0), b = +n1(x1);
+    return b > a ? '<rect class="' + cls + '" x="' + n1(a) + '" y="' + n1(y) + '" width="' + n1(b - a)
+                 + '" height="' + n1(h) + '"/>' : '';
+  };
   if(traded){
     for(const b of traded.bars){
-      const x = n1(barX(b)), y = b.y - traded.h / 2;
-      g += '<rect class="p-traded" x="' + x + '" y="' + n1(y) + '" width="' + n1(PLOT_R - x)
-         + '" height="' + n1(traded.h) + '"/>';
-      // how it is changing: its outer end, a shade darker, is what traded here
-      // in the last half hour, on the bar's own scale and never longer than
-      // it. Under a pixel there is nothing to see, so nothing is drawn.
-      const r = late ? late.by[b.v] : null;
-      const lw = r > 0 && traded.most > 0 ? Math.min(r, b.n) / traded.most * TRADED_FULL * PLOT_W : 0;
-      if(lw >= 1)
-        g += '<rect class="p-tradedlate" x="' + x + '" y="' + n1(y) + '" width="' + n1(lw)
-           + '" height="' + n1(traded.h) + '"/>';
-      // the end, where the length is read; kept inside the plot so a strike
-      // that traded nothing still shows a mark where an absent one shows none
-      const ex = n1(Math.min(+x + 0.6, PLOT_R - 0.6));
-      g += '<line class="p-tradedend" x1="' + ex + '" y1="' + n1(y) + '" x2="' + ex
-         + '" y2="' + n1(y + traded.h) + '"/>';
+      const y = b.y - traded.h / 2, xp = barX(b), xc = barXR(b);
+      g += tRect('p-tradedput', xp, ZERO - TRADED_GAP, y, traded.h)
+         + tRect('p-tradedcall', ZERO + TRADED_GAP, xc, y, traded.h);
+      // each side's end, where its length is read, on a side of 3px or more:
+      // on a stub two ticks and a sliver of fill read as a dumbbell, not a
+      // length, and a side that traded nothing draws nothing
+      for(const [ex, len] of [[xp + 0.6, b.vp], [xc - 0.6, b.vc]])
+        if(len * kSide >= 3)
+          g += '<line class="p-tradedend" x1="' + n1(ex) + '" y1="' + n1(y) + '" x2="' + n1(ex)
+             + '" y2="' + n1(y + traded.h) + '"/>';
     }
   }
   const orng = st.openRange;
@@ -721,29 +733,29 @@ function paintLadder(st){
   }
 
   // ---- the count on the longest bar ---------------------------------------
-  // The bars' one number, "7,456 TODAY": the whole day's, in the bars' grey,
-  // where the brackets' words below say just now, in theirs. Their scale is
-  // per scan, so a full-length bar was 7,456 contracts at 15:10 on 2026-09-16
-  // and 3,264 at 11:01, and only this says which. It sits 4px past the bar's
-  // end on the card side, where a bar chart puts its value, and inside the bar
-  // at its root only if that would put it on the live dot's ring or off the
-  // plot; the brackets' word below may move it inside, just past the end. The
-  // busiest strike is usually one the chart already rules, so the count's card
-  // halo cuts that rule for its width: a rule or a dash on 167 of the 188
-  // boards of 09-16.
+  // The bars' one number, "3,861 PUTS": the longest single side in view and
+  // which side it is, the whole day's, in the grey family, where the
+  // brackets' words below say just now, in theirs. The scale is per scan, so a
+  // full-length side was 3,861 puts at 15:10 on 2026-09-16, and only this says
+  // which. It sits 4px left of its pair, past the puts' end on the card side,
+  // where a bar chart puts its value, and at the plot's right end only if
+  // that would put it on the live dot's ring or off the plot; the brackets'
+  // word below may move it. The busiest strike is usually one the chart
+  // already rules, so the count's card halo cuts that rule for its width.
   let count = null;
   if(traded){
-    const b = traded.bars.find(r => r.n === traded.most);
+    const {b, n, call} = traded.lead;
     // Centred on its bar: the figures' ink runs 8px above the baseline and a
     // comma 2.2 below it, so the baseline sits 0.36em under the bar's middle.
     // The ring is 7 round the dot, and 2 more keeps them apart.
-    const num = gUsd(b.n, 0).replace('$',''), s = num + ' TODAY', w = figW(num, 11, 600) + COUNT_TODAY_W;
+    const num = gUsd(n, 0).replace('$',''), s = num + (call ? ' CALLS' : ' PUTS'),
+          w = figW(num, 11, 600) + (call ? COUNT_CALLS_W : COUNT_PUTS_W);
     const by = b.y + 0.36 * 11;
     const top = by - 8, bottom = by + 2.2, tip = barX(b);
     const clear = xe => xe - w >= PLOT_L + 2 && xe <= PLOT_R - 2
       && !(dot && xe > dotX - 9 && xe - w < dotX + 9 && top < priceY + 9 && bottom > priceY - 9);
     const xe = [tip - 4, PLOT_R - 4].find(clear);
-    count = {s, w, by, top, bottom, tip, clear, x:xe != null ? xe : tip - 4};
+    count = {b, s, w, by, top, bottom, tip, clear, x:xe != null ? xe : tip - 4};
   }
 
   // ---- the word ------------------------------------------------------------
@@ -751,11 +763,15 @@ function paintLadder(st){
   // past the cap, or a second off the plot on a side whose edge row is taken.
   // It says what happened, that trading here just took a bigger share of the
   // board's than it had, and nothing about what price does next. It never
-  // touches the count, a bar or the dot's ring (wordRow). Where the busiest
-  // strike is the one that changed, the count and the word want one row, and
-  // a count stacked under the word reads as the word's own number: the count
-  // then moves inside its bar, past the end, if that clears the word by 12px,
-  // and otherwise the word keeps its distance or leaves its box.
+  // touches the count or the dot's ring (wordRow), nor a bar while any row
+  // clear of the bars is left. Where the busiest strike is the one that
+  // changed, the count and the word want one row, and a count stacked under
+  // the word reads as the word's own number. The count then moves to the first
+  // of three spots that clears the word by 12px and the ring: right of its
+  // pair, where no bar is; centred over the zero; just inside the puts' end.
+  // Inside the end was the one spot while the bars grew from the plot's edge;
+  // here that end is the puts' outer end, so it comes last (CPB-SPEC.md 8.4).
+  // With no spot clear the word keeps its distance or leaves its box.
   let word = null;
   if(boxes.length){
     const box = boxes[0];
@@ -763,12 +779,17 @@ function paintLadder(st){
     const across = (x0, x1, air) => x0 < wx + ww + air && x1 > wx - air;
     // The count keeps 5.5px above or below the word, what the chart's closest
     // two labels keep, and 12 beside it, so it is not read as the word's next
-    // line or its next figure. Bars, the ring and another box keep 2.
-    const row = () => {
+    // line or its next figure. Bars, the ring and another box keep 2; a pair
+    // is measured across its own width, puts' end to calls' end. `loose`, the
+    // last resort, lets the word cross bars, its card halo cutting them as it
+    // cuts a rule: split bars stand across more of the plot than one grey bar
+    // did, and at 320 the long "· 1 MORE" form found no row clear of them on
+    // 14 boards of 2026-09-15..17.
+    const row = loose => {
       const hard = [];
       if(count && across(count.x - count.w, count.x, 12)) hard.push([count.top - 5.5, count.bottom + 5.5]);
-      for(const b of (traded ? traded.bars : []))
-        if(across(barX(b), PLOT_R, 2)) hard.push([b.y - traded.h / 2 - 2, b.y + traded.h / 2 + 2]);
+      for(const b of (traded && !loose ? traded.bars : []))
+        if(across(barX(b), barXR(b), 2)) hard.push([b.y - traded.h / 2 - 2, b.y + traded.h / 2 + 2]);
       if(dot && across(dotX - 9, dotX + 9, 2)) hard.push([priceY - 11, priceY + 11]);
       for(const x of boxes.slice(1)) hard.push([x.t - NEW_W / 2 - 2, x.t + NEW_W / 2 + 2], [x.b - NEW_W / 2 - 2, x.b + NEW_W / 2 + 2]);
       return wordRow(box.t, box.b, inks.map(([y, hw]) => [y - hw, y + hw]), hard, plotTop + 1, plotBottom - 1);
@@ -777,13 +798,14 @@ function paintLadder(st){
     const stacked = y => y != null && across(count.x - count.w, count.x, 12)
                       && y - WORD_UP < count.bottom + 12 && y + WORD_DOWN > count.top - 12;
     let by = row();
-    const past = count ? count.tip + 4 + count.w : null;
-    if(count && (!inBox(by) || stacked(by)) && count.x === count.tip - 4
-       && !across(past - count.w, past, 12) && count.clear(past)){
+    const past = count ? [barXR(count.b) + 4 + count.w, ZERO + count.w / 2, count.tip + 4 + count.w]
+      .find(x => !across(x - count.w, x, 12) && count.clear(x)) : null;
+    if(count && (!inBox(by) || stacked(by)) && count.x === count.tip - 4 && past != null){
       count.x = past;
       const moved = row();
       if(inBox(moved)) by = moved; else count.x = count.tip - 4;
     }
+    if(by == null) by = row(true);
     if(by != null)
       word = '<text class="p-newword" x="' + wx + '" y="' + n1(by) + '">TRADING PICKED UP'
            + (unshown ? ' · ' + unshown + ' MORE' : '') + '</text>';

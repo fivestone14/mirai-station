@@ -528,28 +528,42 @@ function _wall(e, side, nearest){
 
 /* ---- where contracts traded today -------------------------------------- */
 
-// The busiest strike in view is this share of the plot's width and every other
-// bar is scaled to it, per scan, the way a volume profile scales to its busiest
-// row. Past 0.40 a bar buys little length for more of the day's price drawn
-// over it (the last hour on a bar 43.9% of the time at 0.40, 47.5% at 0.55),
-// and at the full width the bars stop being a background (ALT-BEHIND-SPEC.md
-// 3.3).
-const TRADED_FULL=0.40;
+// Each strike's puts grow LEFT from a zero TRADED_ZERO of the plot's width in
+// from its left edge, and its calls RIGHT, on one scale: the longest single
+// side in view reaches TRADED_SIDE of the plot, what one grey bar of calls and
+// puts together reached before, so a pair spans 40% at most. The owner's
+// choice of 2026-09-19, placed by a tally of what the bars ran into over the
+// 504 boards with bars of 2026-09-15..17 (CPB-SPEC.md 8.2). At 360:
+//   - left of 0.65 they run into TRADING PICKED UP, which sits at the plot's
+//     left: at 0.55 it leaves its brackets on 128 boards and has the count
+//     under it on 91;
+//   - from 0.75 the calls reach the live dot's ring (158 boards at 0.75, 292
+//     at 0.80) and the brackets' right corners (35, 77);
+//   - 0.72 is the one place that also holds at 320: the word out of its
+//     brackets on 5 boards and the count stacked with it on 5, against 34 and
+//     17 for the single grey bar;
+//   - 25% a side reaches the ring from 0.70 (156 boards).
+// The bars then stand under older price, not beside "now"; the key says where
+// they sit is not a time of day.
+const TRADED_ZERO=0.72, TRADED_SIDE=0.20;
 // A bar is this share of the tightest strike pitch in view, never more than
 // 8px. The lane's fixed 8px left 0.25px between 1,540, 1,545 and 1,550 on a
 // 112px plot and the three read as one block; a share of the pitch keeps the
 // rest of it white whatever the plot's height or the window's span.
 const TRADED_PITCH=0.70, TRADED_H_MAX=8;
-// The count on the longest bar says it is the whole day's, "9,112 TODAY",
-// where the brackets' words say just now: 11px/600, its figures figW's and
-// " TODAY" after them 40.31, measured in WebKit (READABLE2-SPEC.md 1).
-const COUNT_TODAY_W=40.31;
+// The count names the longest single bar and its side, "3,861 PUTS" or "2,704
+// CALLS": 11px/600, its figures figW's and the word after them measured in
+// WebKit with the shipped face, " CALLS" 37.05 and " PUTS" 29.83 (CPB-SPEC.md
+// 2.6; "6,104 CALLS" is 67.06).
+const COUNT_CALLS_W=37.05, COUNT_PUTS_W=29.83;
 
 function tradedBars(strikes, lo, hi, top, bottom){
-  // Contracts traded today at each strike in the window, calls and puts summed:
-  // one count a reader can say out loud, "1,530 traded 7,456 today". Not split
-  // by side: the two fills measured 1.028:1 apart, and a red-tinted bar under
-  // the red put wall reads as part of the wall.
+  // Contracts traded today at each strike in the window, calls and puts apart:
+  // `vc` and `vp`. `most` is the longest single side in view, the one scale
+  // both sides are drawn to, and `lead` the bar and side holding it, {b, n,
+  // call}, whose count the chart prints: the one number that gives the scale,
+  // which a total of both sides would not. On a tie the higher strike leads,
+  // and its calls before its puts.
   //
   // Honest-absent twice. A row missing either column gets no bar, never a
   // zero-length stub. A book with neither column anywhere gets none at all:
@@ -562,7 +576,7 @@ function tradedBars(strikes, lo, hi, top, bottom){
   for(const r of (((strikes||{}).rows)||[])){
     const v=_fin(r&&r.strike), vc=_fin(r&&r.vol_calls), vp=_fin(r&&r.vol_puts);
     if(v==null||vc==null||vp==null||v<lo||v>hi) continue;
-    seen.push({v, n:vc+vp, y:top+(hi-v)*k});
+    seen.push({v, vc, vp, y:top+(hi-v)*k});
   }
   if(!seen.length) return null;
   seen.sort((a,b)=>b.v-a.v);
@@ -573,56 +587,10 @@ function tradedBars(strikes, lo, hi, top, bottom){
   // bar's middle is no longer its strike's price
   const bars=seen.filter(b=>b.y-h/2>=top&&b.y+h/2<=bottom);
   if(!bars.length) return null;
-  const most=Math.max(...bars.map(b=>b.n));
-  for(const b of bars) b.share=most>0 ? b.n/most : 0;
-  return {h, most, bars};
-}
-
-// Each bar's outer end, a shade darker, is the part of it traded in the last
-// half hour: the bar grows from the plot's right edge, so its newest
-// contracts are its outer end, where it grew. A CLOCK window, not a count of
-// books: the books are four minutes apart until the scanner stalls, and at
-// 12:01 on 2026-09-17 the twelve in the payload ran 10:16 to 11:59 across a
-// 62-minute gap. Half an hour, not the pick-up's two books: at 360, over the
-// 504 boards of 2026-09-15..17 with bars, a two-book end is under a pixel on
-// half the bars (median 2.8px), and a half-hour end shows on 76% of them
-// (median 5.6px, the longest on a board 12.5px). 45 minutes loses 34 boards,
-// because the payload's twelve books span about 44 when nothing stalls
-// (READABLE2-SPEC.md 2.3).
-const TRADED_LATE_MIN=30, TRADED_LATE_SLACK=5;
-
-function tradedLately(strikes, frames){
-  // -> {since, span, by: {strike: contracts}}, or null for no dark ends.
-  // vol_added_per_book's entry j is what traded at the strike between books j
-  // and j+1 of frames.book_times. A stretch counts only if it STARTS inside
-  // the half hour, so nothing older is counted, and the books must reach back
-  // to within TRADED_LATE_SLACK minutes of it or no bar gets an end at all:
-  // through the first half hour of scans, and after the scanner pauses until
-  // its books cover a half hour again. Honest-absent twice more: a strike with
-  // a null in the window was missing from a book of it, and a negative entry
-  // is the vendor correcting its count, so either way its half hour was not
-  // counted and its bar has no end, never a guessed one (175 of the 6,137
-  // bars on boards with ends, 2.9%).
-  const bt=(frames&&frames.book_times)||[], nb=bt.length;
-  if(nb<2) return null;
-  const t=bt.map(_clockMin);
-  if(t.some(v=>v==null)) return null;
-  for(let i=1;i<nb;i++) if(!(t[i]>t[i-1])) return null;
-  const end=t[nb-1];
-  let j0=nb-1;
-  while(j0>0&&t[j0-1]>=end-TRADED_LATE_MIN) j0--;
-  const span=end-t[j0];
-  if(span<TRADED_LATE_MIN-TRADED_LATE_SLACK) return null;
-  const by={};
-  let any=false;
-  for(const r of (((strikes||{}).rows)||[])){
-    const k=_fin(r&&r.strike), s=r&&r.vol_added_per_book;
-    if(k==null||!Array.isArray(s)||s.length!==nb-1) continue;
-    let n=0, ok=true;
-    for(let j=j0;j<nb-1;j++){ const v=_fin(s[j]); if(v==null||v<0){ ok=false; break; } n+=v; }
-    if(ok){ by[k]=n; any=true; }
-  }
-  return any ? {since:bt[j0], span, by} : null;
+  let lead=null;
+  for(const b of bars) for(const [n, call] of [[b.vc, true], [b.vp, false]])
+    if(!lead||n>lead.n) lead={b, n, call};
+  return {h, most:lead.n, lead, bars};
 }
 
 /* ---- where new contracts arrived --------------------------------------- */
@@ -1205,7 +1173,8 @@ if(typeof module!=='undefined'&&module.exports){
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
-                  COUNT_TODAY_W, tradedBars, tradedLately, newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
+                  TRADED_ZERO, TRADED_SIDE, COUNT_CALLS_W, COUNT_PUTS_W, tradedBars,
+                  newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,

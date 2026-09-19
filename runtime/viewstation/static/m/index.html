@@ -90,10 +90,10 @@
   --px-ink:#2F44B8;    --px-mark:#5470E4;
   --path:#5F6A62;      --rule-soft:#7E8779;  --band:#EAE6DE;
   --band-edge:#D5CFC4;
-  /* the chart's bars of contracts traded today, and the darker end of each
-     that traded in the last half hour: 1.75:1 and 2.71:1 on the card, 1.55:1
-     apart. Quieter than every mark over them on the card; see .p-traded. */
-  --traded:#BFB8AA;    --traded-late:#9A9384;
+  /* the chart's bars of contracts traded today: each side's -mark over the
+     card at .45, puts 1.76:1 and calls 1.69:1 on it and only 1.041:1 apart.
+     Quieter than every mark over them on the card; see .p-tradedcall. */
+  --traded-put:#E5AA9D; --traded-call:#99C5B4;
 
   /* STALENESS HAS NO HUE ANY MORE. Amber carried both the magnet and aging in
      the dark build. Darkened enough to be legible on this ground they land on
@@ -254,24 +254,28 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-break  {stroke:var(--band-edge);stroke-width:1}
 .p-orb    {stroke:var(--i-faint);stroke-width:1;stroke-dasharray:3 3;fill:none}
 .p-vol    {fill:var(--rule-soft)}
-/* Where contracts traded today, behind the price line. One solid fill for every
-   bar, so how much is the length and never the darkness, and the part traded
-   in the last half hour a shade darker at its outer end, where the bar grew
-   (READABLE2-SPEC.md 2.3). --traded is the darkest fill every rule over it
-   still clears 3:1 on (the opening range 3.11:1, the walls 3.27, the price
-   rule 4.04); the price line is read against the card on its casing instead
-   (5.00:1, and 2.86 on the bare fill). Over --traded-late the rules drop to
-   2.0 to 2.6:1 where they cross it, and the line keeps its casing. The end,
-   where the length is read, is a --rule-soft tick, 3.31:1 on the card beside
-   it. The casing is the card, 1px either side of the path's 1.8, drawn under
-   it. */
-.p-traded {fill:var(--traded)}
-.p-tradedlate{fill:var(--traded-late)}
+/* Where contracts traded today, behind the price line: puts left of a gap,
+   calls right of it (CPB-SPEC.md 8). One fill a side, so how much is the
+   length and never the darkness. The two fills are 1.041:1 apart, so hue is
+   never alone: which side of the gap says puts or calls, and the puts are
+   striped with the card, 1px in 3 at 45 degrees, so they say it in greyscale
+   too. Every rule over them clears 3:1 on both (the opening range 3.09:1 on
+   the puts' red, the walls 3.25, the price rule 4.00); the price line is read
+   against the card on its casing instead (5.00:1, and 2.84 on the bare red).
+   The end, where a side's length is read, is a --rule-soft tick, 3.31:1 on
+   the card beside it. The casing is the card, 1px either side of the path's
+   1.8, drawn under it. The key's samples take its own copy of the stripes:
+   the chart's is redrawn with the chart, and absent when it is. */
+.p-tradedput {fill:url(#tradedPuts)}
+.p-tradedcall{fill:var(--traded-call)}
+.p-tradedputbg{fill:var(--traded-put)} .p-tradedputln{fill:var(--s)}
+.hw .p-tradedput{fill:url(#tradedPutsKey)}
 .p-tradedend{stroke:var(--rule-soft);stroke-width:1.2}
 .p-casing {fill:none;stroke:var(--s);stroke-width:3.8;stroke-linejoin:round;stroke-linecap:round}
 /* GREY MEANS ALL DAY, BLACK MEANS JUST NOW. The count on the longest bar is the
-   whole day's, so it is set in the bars' own grey family, --i-mute (6.24:1 on
-   the card); the brackets' word is just now, so it is set in theirs. */
+   whole day's, so it is set in grey, --i-mute (6.24:1 on the card), the ends'
+   own family, and in neither side's hue: it names its side in words. The
+   brackets' word is just now, so it is set in their black. */
 .p-tradednum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute);
              paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
 /* Where trading just picked up: corners round the area, a tab in the gutter, a
@@ -832,12 +836,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     <p><b>Grey line</b> — SNDK’s price today, from the open to now.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-prule" x1="0" y1="10" x2="30" y2="10"/><circle class="p-halo" cx="36" cy="10" r="7"/><circle class="p-dot" cx="36" cy="10" r="3.6"/></svg>
     <p><b>Blue dot, dotted line and blue box</b> — the latest price.</p></div>
-  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-traded" x="8" y="5" width="38" height="10"/><line class="p-tradedend" x1="8.6" y1="5" x2="8.6" y2="15"/></svg>
-    <p><b>Grey bars</b> — this week’s option contracts traded at each price since the open, calls and puts together: the longer, the more.</p></div>
-  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-traded" x="8" y="5" width="38" height="10"/><rect class="p-tradedlate" x="8" y="5" width="14" height="10"/><line class="p-tradedend" x1="8.6" y1="5" x2="8.6" y2="15"/></svg>
-    <p><b>The darker end of a bar</b> — the part of it traded in the last half hour of scans, so a long dark end means much of it is recent. None until the scans cover a half hour (early in the day, after a pause), nor where a price was not counted all through it.</p></div>
-  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><text class="p-tradednum" x="46" y="14">9,112</text></svg>
-    <p><b><span class="hw-w">9,112 TODAY</span></b> — on the longest bar, how many traded there today; every other bar is drawn to its scale.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="6" y="5" width="12" height="10"/><rect class="p-tradedcall" x="19" y="5" width="21" height="10"/><line class="p-tradedend" x1="6.6" y1="5" x2="6.6" y2="15"/><line class="p-tradedend" x1="39.4" y1="5" x2="39.4" y2="15"/></svg>
+    <p><b>Bars split by a gap</b> — this week’s option contracts traded at each price since the open: puts left of the gap, striped red; calls right, solid green. Longer means more, on one scale. The sides only keep the two apart: neither means up or down. Where the bars sit across the chart is not a time of day. More calls or more puts doesn’t say which way price goes: every contract traded has a buyer and a seller.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><text class="p-tradednum" x="46" y="14">3,861</text></svg>
+    <p><b><span class="hw-w">3,861 PUTS</span></b> — on the longest bar, puts or calls, how many traded there today; every other bar is drawn to its scale.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><path class="p-new" d="M2,7 V2 H13 M33,2 H44 V7 M2,13 V18 H13 M33,18 H44 V13"/></svg>
     <p><b>Corner brackets and <span class="hw-w">TRADING PICKED UP</span></b> — in the last two scans (about 8 minutes, longer after a pause) trading here took well above its usual share of the option contracts traded on the board, calls and puts together. <span class="hw-w">· 1 MORE</span> is another place it happened, with no room on the chart to mark it.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><text class="p-edge" x="46" y="14">▲ ↑</text></svg>
@@ -855,6 +857,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-stick" x1="2" y1="10" x2="6" y2="10"/><text class="p-scale" x="46" y="14">1,560</text></svg>
     <p><b>Grey prices on the right</b> — round prices, for scale. The coloured ones name the lines.</p></div>
 
+  <!-- the key's copy of the puts' stripes, after the rows so .sh-h + .hw still
+       finds the first one; sized to nothing, as display:none would stop WebKit
+       painting the pattern it holds -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><pattern id="tradedPutsKey" patternUnits="userSpaceOnUse" width="3" height="3" patternTransform="rotate(45)"><rect class="p-tradedputbg" width="3" height="3"/><rect class="p-tradedputln" width="1" height="3"/></pattern></defs></svg>
   <div class="sh-caveat"><b>Where trading is, not where price is going.</b> None of these marks says which way SNDK moves next. Trading picking up at a price says nothing about whether price gets there.</div>
 
   <button class="sh-close" id="hwClose" type="button" data-sheet-close>Got it</button>
