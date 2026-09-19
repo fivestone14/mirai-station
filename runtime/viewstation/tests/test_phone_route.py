@@ -2065,9 +2065,10 @@ def test_what_traded_since_the_reading_is_counted_only_for_the_card_s_reading():
                         {"strike": 1530, "vol_calls": 3824, "vol_puts": 3000},    # puts went down
                         {"strike": 1540, "vol_calls": 2743, "vol_puts": 2270},    # a torn row in the field
                         {"strike": 1550, "vol_calls": 2535, "vol_puts": 1481},    # not in the field
+                        {"strike": 1510, "vol_calls": 150, "vol_puts": 615},      # calls went down
                         {"strike": 1520, "vol_calls": None, "vol_puts": 1596}]}
     field = {"read_at": _READ_AT, "rows": [[1500, 1000, 3000], [1530, 3500, 3100], [1540, "x", 2100],
-                                           [1520, 1282, 1596]]}
+                                           [1520, 1282, 1596], [1510, 199, 600]]}
     other = dict(field, read_at="2026-09-10T10:40:00-04:00")
     got = _glance("""console.log(JSON.stringify(D.cases.map(([f, reads]) => g.tradedSince(f, reads, D.strikes))));""",
                   {"strikes": strikes, "cases": [[field, _READS_AT], [other, _READS_AT], [field, _READS_AT[:1]],
@@ -2847,6 +2848,9 @@ def test_the_chart_key_says_what_the_code_draws():
     - the bars' row says puts left of the gap and calls right, striped and
       solid, and the chart draws them so; the key's stripes are the chart's
       own pattern, in its own copy (2026-09-19, CPB-SPEC.md 8.6);
+    - it keeps the sentences the owner asked the key for with the split
+      (2026-09-19): where the bars sit is not a time of day, and neither side
+      is a direction, since every contract traded has a buyer and a seller;
     - the paler end's row names the card its reading is on by that card's
       own label, and each "none" it lists is a way the station or the phone
       leaves the paler end out: no reading yet, no new count since it, a
@@ -2871,6 +2875,9 @@ def test_the_chart_key_says_what_the_code_draws():
     assert rows["Bars split by a gap"]["marks"] == ["p-tradedput", "p-tradedcall", "p-tradedend", "p-tradedend"]
     says = rows["Bars split by a gap"]["says"]
     assert "puts left of the gap, striped red; calls right, solid green" in says and "on one scale" in says
+    for need in ("Where the bars sit across the chart is not a time of day", "neither means up or down",
+                 "doesn’t say which way price goes: every contract traded has a buyer and a seller"):
+        assert need in says, need
     svg = _page(_board(_SCENE_0916))["svg"]["html"]
     pairs = _traded(svg)[0]
     assert pairs and all(p["put"][0] + p["put"][1] < p["call"][0] for p in pairs), "the chart's puts are not left"
