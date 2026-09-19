@@ -195,4 +195,10 @@ out.hold_while_key_open = {sheets: sheets(), pushes};
 advance(600); tap(els.hwClose); tap(els.hwClose); advance(50);
 out.key_closed = {open: isOpen(), sheets: sheets(), backs, focus: document.activeElement && document.activeElement.id};
 
+// 14. and the other way round: a tap on the link while the levels sheet is
+//     open opens nothing more. The hold checks before it starts (12); a tap
+//     goes straight to open(), so this is open()'s own check
+reset(); down(); advance(600); lift(); tap(els.howto);
+out.tap_while_levels_open = {sheets: sheets(), pushes, focus: document.activeElement && document.activeElement.id};
+
 console.log(JSON.stringify(out));

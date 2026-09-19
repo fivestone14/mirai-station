@@ -247,7 +247,9 @@ def test_the_chart_key_opens_on_a_tap_and_closes_as_the_levels_sheet_does():
     touches: a tap on the link opens the key and not the levels sheet, pushes
     one history entry and puts the focus on the key's own Got it; a hold on the
     levels card while the key is open opens nothing more; the key's Got it,
-    tapped twice, goes back once, closes it and returns the focus to the link.
+    tapped twice, goes back once, closes it and returns the focus to the link;
+    and a tap on the link while the levels sheet is open opens nothing more,
+    which only sheet.js's own check stops, since a tap goes straight to it.
     The hold opens only the levels sheet, and a long press on either sheet's
     text gets no menu."""
     out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
@@ -257,6 +259,8 @@ def test_the_chart_key_opens_on_a_tap_and_closes_as_the_levels_sheet_does():
     assert got["tap_opens_key"] == {"open": True, "sheets": ["true", "false"], "pushes": 1, "focus": "hwClose"}
     assert got["hold_while_key_open"] == {"sheets": ["true", "false"], "pushes": 1}
     assert got["key_closed"] == {"open": False, "sheets": ["true", "true"], "backs": 1, "focus": "howto"}
+    assert got["tap_while_levels_open"] == {"sheets": ["false", "true"], "pushes": 1, "focus": "shClose"}, \
+        "a second sheet opened over the first"
     assert re.search(r'<button class="howto" id="howto"[^>]*aria-controls="howtoSheet"', PHONE)
     assert "$('howto').addEventListener('click', () => MiraiSheet.open($('howto')));" in PAGE
 
