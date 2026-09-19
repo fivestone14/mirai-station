@@ -569,9 +569,12 @@ def test_a_bad_line_in_an_earlier_diary_costs_that_line_alone(tmp_path, monkeypa
 
 
 def test_the_payload_carries_the_record_on_the_display_side(tmp_path, monkeypatch):
-    """The phone reads the record off the payload wrapper, beside `levels`. It
-    is the record for the session the payload shows, and like `levels` it is
-    display only: it never reaches the model's message."""
+    """The phone reads the record off the payload wrapper, beside `instrument`.
+    It is the record for the session the payload shows, and like `instrument`
+    it is display only: it never reaches the model's message. The `levels`
+    block that rode beside them fed only the phone's three-levels card and
+    went with it (2026-09-19), rather than being built on every request for
+    nothing to read."""
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     _write_day(tmp_path, "2026-08-17", _hh_rows("2026-08-17", _SEESAW))
     _write_day(tmp_path, "2026-08-18", _hh_rows("2026-08-18", _CLIMB, sigma=400.0))
@@ -582,3 +585,4 @@ def test_the_payload_carries_the_record_on_the_display_side(tmp_path, monkeypatc
     rec = d["earlier_half_hours"]
     assert (rec["sessions"], rec["first"], rec["last"]) == (2, "2026-08-17", "2026-08-18")
     assert "earlier_half_hours" not in d["scene"] and "usual_sigma" not in d["user_prompt"]
+    assert "levels" not in d
