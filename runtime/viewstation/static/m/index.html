@@ -94,6 +94,9 @@
      card at .45, puts 1.76:1 and calls 1.69:1 on it and only 1.041:1 apart.
      Quieter than every mark over them on the card; see .p-tradedcall. */
   --traded-put:#E5AA9D; --traded-call:#99C5B4;
+  /* and the part of each traded since the latest reading: the same -mark at
+     .16, 1.21:1 and 1.20:1 on the card; see .p-tradedcallsince */
+  --traded-put-since:#EFD8CF; --traded-call-since:#D4E1D7;
 
   /* STALENESS HAS NO HUE ANY MORE. Amber carried both the magnet and aging in
      the dark build. Darkened enough to be legible on this ground they land on
@@ -270,6 +273,15 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-tradedcall{fill:var(--traded-call)}
 .p-tradedputbg{fill:var(--traded-put)} .p-tradedputln{fill:var(--s)}
 .hw .p-tradedput{fill:url(#tradedPutsKey)}
+/* The part of each side traded since the latest reading, at its outer end:
+   the same hue, paler (CPB-SPEC.md 2.4). The calls' is 1.41:1 lighter than
+   their solid, 1.38 to 1.45 in greyscale and red-green colour blindness
+   (Machado 2009). The puts' step in tone is weak, 1.15 to 1.18:1, so their
+   cue is texture: the stripes, 1.69 to 1.90:1 on the red in every view, stop
+   where the paler part starts, and it is plain. A rule over a paler part
+   measures more than over the solid: 4.50:1 at the least (the opening range
+   on the puts'), 4.12 in the simulations. */
+.p-tradedputsince{fill:var(--traded-put-since)} .p-tradedcallsince{fill:var(--traded-call-since)}
 .p-tradedend{stroke:var(--rule-soft);stroke-width:1.2}
 .p-casing {fill:none;stroke:var(--s);stroke-width:3.8;stroke-linejoin:round;stroke-linecap:round}
 /* GREY MEANS ALL DAY, BLACK MEANS JUST NOW. The count on the longest bar is the

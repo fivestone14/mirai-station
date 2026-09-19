@@ -593,6 +593,41 @@ function tradedBars(strikes, lo, hi, top, bottom){
   return {h, most:lead.n, lead, bars};
 }
 
+// WHAT TRADED SINCE THE LATEST READING, calls and puts apart (CPB-SPEC.md 1).
+// The payload's since_read carries each listed strike's calls and puts in the
+// book the latest reading was written from (snapshot._since_read); now minus
+// then is what each side's paler outer end holds. It starts from nothing at
+// every reading, so it is usually short: over the boards of 2026-09-15..17
+// the longest paler end on a board was 2.7px at the median at 360, and 3px or
+// more on 46% of them. Honest-absent, never a guessed end:
+//  - no field, or the station says why not: no reading yet today, no new book
+//    since it, a book still carrying the prior session's counts;
+//  - a field for another reading than the one "What it means" shows (the
+//    card chooses among the read rows the phone fetched; 09-15 13:23);
+//  - a strike the field leaves out: not in the book at the reading, or its
+//    count went backwards within five books;
+//  - a count lower now than at the reading, a vendor revision: that strike
+//    gets no paler end on either side.
+function tradedSince(field, reads, strikes){
+  // -> {at, by: {strike: [calls since, puts since]}}, or null for no paler ends
+  if(!field||!Array.isArray(field.rows)) return null;
+  const m=modelRead(reads), at=Date.parse(field.read_at);
+  if(!m||!isFinite(at)||m.at.getTime()!==at) return null;
+  const then={};
+  for(const r of field.rows){
+    const k=_fin(r&&r[0]), c=_fin(r&&r[1]), p=_fin(r&&r[2]);
+    if(k!=null&&c!=null&&p!=null) then[k]=[c, p];
+  }
+  const by={};
+  for(const r of (((strikes||{}).rows)||[])){
+    const k=_fin(r&&r.strike), vc=_fin(r&&r.vol_calls), vp=_fin(r&&r.vol_puts), t=then[k];
+    if(k==null||vc==null||vp==null||!t) continue;
+    if(vc<t[0]||vp<t[1]) continue;
+    by[k]=[vc-t[0], vp-t[1]];
+  }
+  return {at, by};
+}
+
 /* ---- where new contracts arrived --------------------------------------- */
 
 // A price area's share of the contracts newly traded across the whole board in
@@ -1174,7 +1209,7 @@ if(typeof module!=='undefined'&&module.exports){
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
                   TRADED_ZERO, TRADED_SIDE, COUNT_CALLS_W, COUNT_PUTS_W, tradedBars,
-                  newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
+                  tradedSince, newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,

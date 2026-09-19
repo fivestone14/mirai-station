@@ -167,6 +167,8 @@ function state(){
     frames: ((PAY.scene || {}).frames) || null,
     vol: volumeBlocks(BARS, 5),
     openRange: ((((PAY.scene || {}).context || {}).ranges || {}).opening) || null,
+    // what traded at each strike since the reading the card below shows
+    since: tradedSince(PAY.since_read, READS, ((PAY.scene || {}).strikes) || null),
   };
 }
 
@@ -555,8 +557,11 @@ function paintLadder(st){
   // the two fills are only 1.041:1 apart. The zero is a gap of card between
   // them, TRADED_GAP each side of it, never an inked upright: left to right on
   // this chart is the time of day, and a line standing in the plot reads as a
-  // moment (CPB-SPEC.md 2.3). First in the clip, so every other mark is on top
-  // of them.
+  // moment (CPB-SPEC.md 2.3). Each side's outer end, paler in its own hue, is
+  // what traded there since the reading on the card below (tradedSince), on
+  // the side's own scale; on the puts the stripes stop where it starts. Under
+  // a pixel there is nothing to see, so nothing is drawn. First in the clip,
+  // so every other mark is on top of them.
   const traded = tradedBars(st.strikes, WIN.lo, WIN.hi, plotTop, plotBottom);
   const TRADED_GAP = 0.5, ZERO = PLOT_L + TRADED_ZERO * PLOT_W;
   const kSide = traded && traded.most > 0 ? (TRADED_SIDE * PLOT_W - TRADED_GAP) / traded.most : 0;
@@ -572,8 +577,12 @@ function paintLadder(st){
   if(traded){
     for(const b of traded.bars){
       const y = b.y - traded.h / 2, xp = barX(b), xc = barXR(b);
-      g += tRect('p-tradedput', xp, ZERO - TRADED_GAP, y, traded.h)
-         + tRect('p-tradedcall', ZERO + TRADED_GAP, xc, y, traded.h);
+      const d = st.since ? st.since.by[b.v] : null;
+      const lc = d ? d[0] * kSide : 0, lp = d ? d[1] * kSide : 0;
+      // where each side stood at the reading
+      const pAt = lp >= 1 ? xp + lp : xp, cAt = lc >= 1 ? xc - lc : xc;
+      g += tRect('p-tradedputsince', xp, pAt, y, traded.h) + tRect('p-tradedput', pAt, ZERO - TRADED_GAP, y, traded.h)
+         + tRect('p-tradedcall', ZERO + TRADED_GAP, cAt, y, traded.h) + tRect('p-tradedcallsince', cAt, xc, y, traded.h);
       // each side's end, where its length is read, on a side of 3px or more:
       // on a stub two ticks and a sliver of fill read as a dumbbell, not a
       // length, and a side that traded nothing draws nothing

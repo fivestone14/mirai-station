@@ -1897,8 +1897,8 @@ def test_the_price_line_runs_on_a_channel_of_card():
     first = lambda c: order.index(c)
     last = lambda c: len(order) - 1 - order[::-1].index(c)
     assert first("p-tradedput") == 0 and first("p-tradedput") < first("p-tradedcall") < first("p-tradedend")
-    assert max(last("p-tradedput"), last("p-tradedcall"), last("p-tradedend")) < first("p-orb") \
-        < first("p-casing") < first("p-path")
+    bars = [c for c in order if c.startswith("p-traded")]
+    assert order[:len(bars)] == bars and len(bars) <= first("p-orb") < first("p-casing") < first("p-path")
     edge = re.search(r'<polyline class="p-casing" points="([^"]*)"', svg).group(1)
     assert edge == re.search(r'<polyline class="p-path" points="([^"]*)"', svg).group(1)
     width = lambda sel: float(re.search(r"stroke-width:([\d.]+)", _css_rule(sel)).group(1))
@@ -1913,7 +1913,7 @@ def test_the_price_line_runs_on_a_channel_of_card():
     # half fill, the line still clears 3:1: 3.88 over the calls, 3.81 over the
     # puts' red. This is what "if the channel were gone" guarded before the
     # owner's darker fills: a darker fill or a paler line fails here.
-    for sel in (".p-tradedcall", ".p-tradedputbg"):
+    for sel in (".p-tradedcall", ".p-tradedputbg", ".p-tradedcallsince", ".p-tradedputsince"):
         fill = tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
         blend = [(a + b) / 2 for a, b in zip(tok["--s"], fill)]
         assert _contrast(tok["--path"], blend) >= 3.0, f"the line over {sel} where a 2x screen thins its channel"
@@ -2034,6 +2034,139 @@ def test_no_volume_for_today_draws_no_bars():
                   "g.tradedBars({rows: []}, 1400, 1600, 20, 160), g.tradedBars(null, 1400, 1600, 20, 160)]));",
                   carried["strikes"])
     assert got == [None, None, None]
+
+
+# --- the paler end: what traded since the latest reading (2026-09-19) --------
+# CPB-SPEC.md 1 and 2: the payload's since_read carries each listed strike's
+# calls and puts in the book the reading on the card was written from
+# (test_sndk_payload); now minus then is each side's paler outer end.
+
+_READ_AT = "2026-09-10T10:52:05.120000-04:00"
+_READS_AT = [{"ts": "2026-09-10T10:48:01-04:00", "reading_ts": "2026-09-10T10:40:00-04:00", "wall_s": None,
+              "reading": {"read": "1,530 traded the most."}},
+             {"ts": _READ_AT, "reading_ts": _READ_AT, "wall_s": 22.0, "reading": {"read": "1,500 took the puts."}},
+             {"ts": "2026-09-10T10:56:09-04:00", "reading_ts": _READ_AT, "wall_s": None,
+              "reading": {"read": "1,500 took the puts."}}]
+# each strike's calls and puts at the reading: 15:10:21's counts less what traded since
+_THEN_1510 = {1550: (2400, 1400), 1545: (975, 450), 1540: (2600, 2100), 1530: (3500, 3100),
+              1520: (1282, 1596), 1510: (199, 615), 1500: (1000, 3000)}
+_FIELD_1510 = {"read_at": _READ_AT, "book_at": "2026-09-10T10:50:44-04:00",
+               "rows": [[k, c, p] for k, (c, p) in _THEN_1510.items()]}
+
+
+def test_what_traded_since_the_reading_is_counted_only_for_the_card_s_reading():
+    """tradedSince, on its own: now minus the field's count at the reading,
+    by side, for the reading the card shows and no other. Honest-absent, never
+    a guessed end: no field, or one that says why not; a field for another
+    reading than the card's (09-15 13:23, where the phone's forty read rows
+    no longer held the newest call); a strike the field leaves out; a count
+    lower now than at the reading on either side, the vendor revising it."""
+    strikes = {"rows": [{"strike": 1500, "vol_calls": 1118, "vol_puts": 3861},
+                        {"strike": 1530, "vol_calls": 3824, "vol_puts": 3000},    # puts went down
+                        {"strike": 1540, "vol_calls": 2743, "vol_puts": 2270},    # a torn row in the field
+                        {"strike": 1550, "vol_calls": 2535, "vol_puts": 1481},    # not in the field
+                        {"strike": 1520, "vol_calls": None, "vol_puts": 1596}]}
+    field = {"read_at": _READ_AT, "rows": [[1500, 1000, 3000], [1530, 3500, 3100], [1540, "x", 2100],
+                                           [1520, 1282, 1596]]}
+    other = dict(field, read_at="2026-09-10T10:40:00-04:00")
+    got = _glance("""console.log(JSON.stringify(D.cases.map(([f, reads]) => g.tradedSince(f, reads, D.strikes))));""",
+                  {"strikes": strikes, "cases": [[field, _READS_AT], [other, _READS_AT], [field, _READS_AT[:1]],
+                                                 [None, _READS_AT], [{"unavailable": "no_reading_yet"}, _READS_AT],
+                                                 [dict(field, rows=[]), _READS_AT], [field, []]]})
+    at = int(datetime.fromisoformat(_READ_AT).timestamp() * 1000)
+    assert got[0] == {"at": at, "by": {"1500": [118, 861]}}
+    assert got[1] is None and got[2] is None and got[3] is None and got[4] is None and got[6] is None
+    assert got[5] == {"at": at, "by": {}}
+    # The copied 13:23:21 board of 2026-09-15 (test_sndk_payload's fixture):
+    # the field names the 11:31:37 call, which had left the forty read rows the
+    # phone fetches, so its card showed 11:11:42 and it draws no paler end
+    case = json.loads((Path(__file__).parent / "since_read_2026-09-15_17.json").read_text())["older_card"]
+    call = next(r for r in case["reads"] if r["ts"][11:19] == "11:31:37")
+    rows = {"rows": case["strikes"]}
+    f = {"read_at": call["reading_ts"], "rows": [[r["strike"], 0, 0] for r in case["strikes"] if r.get("vol_calls") is not None]}
+    got = _glance("console.log(JSON.stringify([g.tradedSince(D.f, D.card, D.rows), g.tradedSince(D.f, D.all, D.rows)]));",
+                  {"f": f, "card": case["reads"][-40:], "all": case["reads"], "rows": rows})
+    assert got[0] is None and got[1] is not None, "the card's reading is the field's; this proves nothing"
+
+
+def _since_parts(svg):
+    """Each pair's parts, top first: {class: (x, width)} per row."""
+    rows = {}
+    for cls, x, y, w in re.findall(r'<rect class="(p-traded(?:put|call)(?:since)?)" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"', svg):
+        rows.setdefault(float(y), {})[cls] = (float(x), float(w))
+    return [rows[y] for y in sorted(rows)]
+
+
+def test_each_sides_outer_end_is_paler_for_what_traded_since_the_reading():
+    """The owner's ask (CPB-SPEC.md 8): each side's outer end, the same hue
+    and paler, is what traded there since the reading in "What it means",
+    on the side's own scale. The puts' stripes stop where it starts, so the
+    two read apart with no colour; under a pixel nothing is drawn. It starts
+    from nothing at every reading.
+
+    15:10:21 on 2026-09-16 with a reading whose book held 1,500 at 1,000
+    calls and 3,000 puts: 118 calls and 861 puts traded there since, so its
+    puts end 861/3,861 of the scale paler, and its calls 118/3,861."""
+    for cw in (288, 328, 343):
+        svg = _page(_board(_SCENE_0916, width=cw, payload={"since_read": _FIELD_1510}, reads=_READS_AT))["svg"]["html"]
+        box = _chart_box(svg)
+        zero, k = box["plot_l"] + 0.72 * box["plot_w"], (0.20 * box["plot_w"] - 0.5) / 3861
+        parts = _since_parts(svg)
+        assert len(parts) == 7
+        for p, (strike, (c0, p0)) in zip(parts, sorted(_THEN_1510.items(), reverse=True)):
+            vc, vp = _SIDES_1510[strike]
+            dc, dp = (vc - c0) * k, (vp - p0) * k
+            (sx, sw) = p["p-tradedput"]
+            if dp >= 1:
+                (px, pw) = p["p-tradedputsince"]
+                assert pw == pytest.approx(dp, abs=0.1) and px + pw == pytest.approx(sx, abs=0.01), (cw, strike)
+            else:
+                assert "p-tradedputsince" not in p, (cw, strike)
+            assert sx + sw == pytest.approx(zero - 0.5, abs=0.06)
+            (cx, cwid) = p["p-tradedcall"]
+            if dc >= 1:
+                (nx, nw) = p["p-tradedcallsince"]
+                assert nw == pytest.approx(dc, abs=0.1) and nx == pytest.approx(cx + cwid, abs=0.01), (cw, strike)
+            else:
+                assert "p-tradedcallsince" not in p, (cw, strike)
+            # the side's whole length is still what traded all day
+            left = p.get("p-tradedputsince", (sx, 0))[0]
+            right = sum(p.get("p-tradedcallsince", (cx + cwid, 0)))
+            assert zero - 0.5 - left == pytest.approx(vp * k, abs=0.1) and right - zero - 0.5 == pytest.approx(vc * k, abs=0.1)
+    # honest-absent: no reading, a newer reading than the field's, a field that says why not
+    newer = _READS_AT + [{"ts": "2026-09-10T10:58:11-04:00", "reading_ts": "2026-09-10T10:58:11-04:00", "wall_s": 19.0,
+                          "reading": {"quiet": True}}]
+    for payload, reads in (({"since_read": _FIELD_1510}, []), ({"since_read": _FIELD_1510}, newer),
+                           ({"since_read": {"read_at": _READ_AT, "unavailable": "no_new_book_since_the_reading"}}, _READS_AT),
+                           ({}, _READS_AT)):
+        svg = _page(_board(_SCENE_0916, payload=payload, reads=reads))["svg"]["html"]
+        assert not re.search(r'class="p-traded(?:put|call)since"', svg), (payload, len(reads))
+        assert len(_traded(svg)[0]) == 7
+
+
+def test_the_paler_end_is_its_sides_own_hue_and_reads_without_colour():
+    """The paler part is its side's own -mark at .16 over the card, where the
+    solid is the same mark at .45: the same hue, lighter, so it reads as more
+    of the same bar and not as another mark (CPB-SPEC.md 2.4). The calls'
+    step is in light, which greyscale keeps: 1.41:1, and 1.38 to 1.45 in
+    red-green colour blindness (Machado 2009, off WebKit renders). The puts'
+    step in tone is only 1.15 to 1.18:1, so their cue is texture: the paler
+    part is plain, and the stripes stop where it starts (the geometry is
+    test_each_sides_outer_end_is_paler_for_what_traded_since_the_reading). A
+    rule crossing a paler part measures more than over the solid, 4.50:1 at
+    the least (the opening range on the puts'), where a mark needs 3."""
+    tok = _tokens()
+    fill = lambda sel: tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
+    for solid, since, mark in ((".p-tradedcall", ".p-tradedcallsince", "--call-mark"),
+                               (".p-tradedputbg", ".p-tradedputsince", "--put-mark")):
+        assert all(abs(f - (0.16 * m + 0.84 * c)) <= 0.5 for f, m, c in zip(fill(since), tok[mark], tok["--s"])), since
+        assert 1.15 <= _contrast(fill(since), tok["--s"]) < _contrast(fill(solid), tok["--s"]), since
+    assert _contrast(fill(".p-tradedcall"), fill(".p-tradedcallsince")) >= 1.35
+    assert _css_rule(".p-tradedputsince").startswith("fill:var(--") and "url(" not in _css_rule(".p-tradedputsince")
+    for sel in (".p-orb", ".p-wall.call", ".p-wall.put", ".p-wall.passed", ".p-mag", ".p-magrun", ".p-prule", ".p-halo"):
+        ink = tok[re.search(r"stroke:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
+        for solid, since in ((".p-tradedcall", ".p-tradedcallsince"), (".p-tradedputbg", ".p-tradedputsince")):
+            assert _contrast(ink, fill(since)) > max(3.0, _contrast(ink, fill(solid))), f"{sel} over {since}"
 
 
 # --- where new contracts arrived (2026-09-18) --------------------------------
@@ -3006,7 +3139,8 @@ def test_no_mark_on_the_plot_is_eaten_by_what_is_behind_it():
     everything behind it."""
     tok = _tokens()
     fill = lambda sel: tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
-    fills = {"calls": fill(".p-tradedcall"), "puts": fill(".p-tradedputbg")}
+    fills = {"calls": fill(".p-tradedcall"), "puts": fill(".p-tradedputbg"),
+             "calls since the reading": fill(".p-tradedcallsince"), "puts since the reading": fill(".p-tradedputsince")}
     for shade in fills.values():
         assert _contrast(shade, tok["--s"]) < _contrast(tok["--path"], tok["--s"]), "a bar outranks the price line"
     end = tok[re.search(r"stroke:var\((--[a-z-]+)\)", _css_rule(".p-tradedend")).group(1)]
