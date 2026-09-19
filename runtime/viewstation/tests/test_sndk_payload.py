@@ -13,6 +13,7 @@
 """
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -586,3 +587,200 @@ def test_the_payload_carries_the_record_on_the_display_side(tmp_path, monkeypatc
     assert (rec["sessions"], rec["first"], rec["last"]) == (2, "2026-08-17", "2026-08-18")
     assert "earlier_half_hours" not in d["scene"] and "usual_sigma" not in d["user_prompt"]
     assert "levels" not in d
+
+
+# --- each strike's calls and puts at the latest reading, for the paler ends --
+
+_SINCE = json.loads((Path(__file__).parent / "since_read_2026-09-15_17.json").read_text())
+
+
+def _since(tmp_path, monkeypatch, case, board, strikes):
+    """_since_read on a copied case of since_read_2026-09-15_17.json, cut to
+    what the station held at the scan `board` (HH:MM:SS): the diary and read
+    rows written by then, and the strike rows the phone was sent. The state
+    folder is empty, so no earlier session is on disk."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    monkeypatch.syspath_prepend(str(snapshot._SNDK_PRO_DIR))
+    import sndk_board
+    import sndk_read
+    rows = [r for r in case["diary"] if r["ts"][11:19] <= board]
+    reads = [r for r in case["reads"] if r["ts"][11:19] <= board]
+    now = datetime.fromisoformat(rows[-1]["ts"]) + timedelta(seconds=40)
+    return snapshot._since_read(sndk_read, sndk_board, rows, reads, {"strikes": {"rows": strikes}}, now)
+
+
+def test_the_count_behind_the_reading_is_the_one_the_model_read(tmp_path, monkeypatch):
+    """The 14:18:47 reading of 2026-09-16 was written from the 14:14:40 book,
+    and the 14:18:46 book landed a second before its row was stamped. The
+    model's change cell counts from the last book before that stamp, so from
+    14:22 to 14:41 it gave 1,500 +16 puts since the reading against a true +44
+    at 14:22:54 (CPB-SPEC.md 1.3). The field names the book on the reading's
+    own call row, and the phone's now minus it is the true +44."""
+    case = _SINCE["late_book"]
+    call = next(r for r in case["reads"] if r["wall_s"] is not None)
+    assert call["ts"][11:19] == "14:18:47" and call["book_asof"][11:19] == "14:14:40"
+    assert any("14:14:40" < r["meta"]["book_asof"][11:19] and r["ts"] < call["ts"] for r in case["diary"]), \
+        "no book landed while the model wrote; this proves nothing"
+    got = _since(tmp_path, monkeypatch, case, "14:22:54", case["strikes"])
+    assert (got["read_at"], got["book_at"]) == (call["reading_ts"], call["book_asof"])
+    then = {k: (c, p) for k, c, p in got["rows"]}
+    now = {r["strike"]: (r["vol_calls"], r["vol_puts"]) for r in case["strikes"]}
+    assert then[1500] == (909, 3151) and now[1500][1] - then[1500][1] == 44
+    # every strike sent is a listed one with both columns, at most once
+    assert len(then) == len(got["rows"]) and set(then) <= set(now)
+
+
+def test_a_book_is_every_strike_its_scans_kept(tmp_path, monkeypatch):
+    """Two scans that read one book each keep the strikes near their own price,
+    and agree on every strike they share: on 40 to 56 books a day of
+    2026-09-15..17 the two kept different strikes. The 15:11:19 reading was
+    written from the 15:08:17 book; 1,430 is on its 15:10:21 scan only, at 6
+    calls and 351 puts. Read off one scan the strike had no count at the
+    reading, and its bar no paler end."""
+    case = _SINCE["shared_book"]
+    scans = [{k: (c, p) for k, c, p in r["gex_views"]["vol_side_by_strike"]}
+             for r in case["diary"] if r["meta"]["book_asof"][11:19] == "15:08:17"]
+    assert len(scans) == 2 and 1430.0 not in scans[0] and scans[1][1430.0] == (6, 351)
+    assert all(scans[0][k] == scans[1][k] for k in set(scans[0]) & set(scans[1]))
+    got = _since(tmp_path, monkeypatch, case, "15:12:24", case["strikes"])
+    assert got["book_at"][11:19] == "15:08:17" and [1430, 6, 351] in got["rows"]
+
+
+def test_a_count_the_vendor_served_stale_is_left_out(tmp_path, monkeypatch):
+    """2026-09-17: the 11:37:26 reading was written from the 11:34:30 book,
+    whose 2,859 calls at 1,600 the vendor had served since 11:22 against 5,230
+    in the 11:18:01 book. carried_books judges whole books, and this one
+    passed. The model's change cell then gave 1,600 +2,912 calls since the
+    reading from 11:38 to 11:46, contracts that never traded. A strike whose
+    count at the reading, or now, is below its count in any of the five books
+    before is left out: at 11:34:30 every listed strike's calls were below
+    their 11:18:01 count, so nothing is sent and no bar gets a paler end. The
+    11:18:01 book is itself withheld by then, for counting more than a later
+    book; the guard still reads it, since that is the step backwards it looks
+    for. Without the guard 1,600 would ship at 2,859."""
+    case = _SINCE["stale_count"]
+    book = lambda t: next({k: (c, p) for k, c, p in r["gex_views"]["vol_side_by_strike"]}
+                          for r in case["diary"] if r["meta"]["book_asof"][11:19] == t)
+    assert book("11:34:30")[1600.0][0] == 2859 and book("11:18:01")[1600.0][0] == 5230
+    for board, strikes in case["boards"].items():
+        got = _since(tmp_path, monkeypatch, case, board, strikes)
+        assert got["book_at"][11:19] == "11:34:30" and got["rows"] == [], board
+    now = {r["strike"]: r["vol_calls"] for r in case["boards"]["11:38:37"]}
+    assert now[1600] - 2859 == 2912
+    monkeypatch.setattr(snapshot, "_SINCE_READ_BOOKS", 0)
+    got = _since(tmp_path, monkeypatch, case, "11:38:37", case["boards"]["11:38:37"])
+    assert [1600, 2859, 2638] in got["rows"], "the guard is not what leaves 1,600 out; this proves nothing"
+
+
+def test_the_reading_is_the_newest_of_the_day_as_the_card_chooses_it(tmp_path, monkeypatch):
+    """The card picks the newest reading_ts among the read rows it fetched,
+    and so does the field, over the whole day. On 2026-09-15 the 11:31:37
+    call wrote points and no sentence, and the rows after it carried the 11:11
+    sentence forward with its stamp. At 13:23 the 11:31:37 row had left the
+    40 rows the phone fetches, so the card showed 11:11 while the field names
+    11:31:37 (CPB-SPEC.md 5). The phone draws paler ends only for the reading
+    on its card, so there it draws none: absent, never counted from the wrong
+    reading."""
+    case = _SINCE["older_card"]
+    got = _since(tmp_path, monkeypatch, case, "13:23:21", case["strikes"])
+    assert got["read_at"][11:19] == "11:31:37" and got["book_at"][11:19] == "11:31:08" and got["rows"]
+    card = max((r for r in case["reads"][-40:] if r["reading"]), key=lambda r: r["reading_ts"])["reading_ts"]
+    assert card[11:19] == "11:11:42" and card != got["read_at"]
+
+
+def _vol_row(ts, vol):
+    """_book_row with its own volume by strike, {strike: (calls, puts)}."""
+    r = _book_row(ts, 1517.0)
+    r["gex_views"]["vol_side_by_strike"] = [[k, c, p] for k, (c, p) in sorted(vol.items())]
+    return r
+
+
+def _read_row(ts, book, reading):
+    """A read row that spent a call at `ts`, written from `book`."""
+    return {"ts": ts.isoformat(), "reading_ts": ts.isoformat(), "wall_s": 20.0,
+            "book_asof": book.isoformat(), "reading": reading}
+
+
+def _write_reads(tmp_path, day, rows):
+    d = tmp_path / "sndk_reads"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def test_the_payload_carries_the_count_at_the_reading_or_says_why_not(tmp_path, monkeypatch):
+    """The field rides the payload wrapper beside `earlier_half_hours`, for the
+    phone's chart only: never in the scene, never in the model's message.
+    [strike, calls, puts] for each listed strike with both columns, in the
+    book the latest reading was written from; or `unavailable`, with the
+    reading and its book once there is one:
+      - no read row today carries a reading: no_reading_yet;
+      - the reading's own book is still the newest: nothing was measured since;
+      - its call row names a book the diary does not hold: no count at it;
+      - the book at the reading, or now, still carries the prior session's
+        counts (before 09:45 nothing proves otherwise): withheld, as the
+        table withholds it."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    day, t = "2026-09-16", datetime(2026, 9, 16, 11, 0, tzinfo=ET)
+    books = [t + timedelta(minutes=4 * i) for i in range(4)]
+    vols = [{k: (c + 10 * i, p + 20 * i) for k, (c, p) in _VOL.items()} for i in range(4)]
+    _write_day(tmp_path, day, [_vol_row(b, v) for b, v in zip(books, vols)])
+    now = books[-1] + timedelta(seconds=40)
+    assert snapshot.sndk_payload(now)["since_read"] == {"unavailable": "no_reading_yet"}
+    said = books[1] + timedelta(seconds=30)
+    _write_reads(tmp_path, day, [
+        _read_row(said, books[1], {"read": "1,530 traded the most."}),
+        {"ts": (said + timedelta(minutes=2)).isoformat(), "reading_ts": said.isoformat(), "wall_s": None,
+         "book_asof": books[2].isoformat(), "reading": {"read": "1,530 traded the most."}},
+        {"ts": (said + timedelta(minutes=4)).isoformat(), "reading_ts": None, "reading": None}])
+    d = snapshot.sndk_payload(now)
+    sr = d["since_read"]
+    assert (sr["read_at"], sr["book_at"]) == (said.isoformat(), books[1].isoformat())
+    listed = [r["strike"] for r in d["scene"]["strikes"]["rows"] if r.get("vol_calls") is not None]
+    assert sr["rows"] == [[k, vols[1][k][0], vols[1][k][1]] for k in listed]
+    assert "since_read" not in d["scene"] and "since_read" not in d["user_prompt"]
+    # a quiet reading is a reading, and the newest one decides
+    _write_reads(tmp_path, day, [_read_row(said, books[1], {"read": "1,530 traded the most."}),
+                                 _read_row(books[3] + timedelta(seconds=20), books[3], {"quiet": True})])
+    assert snapshot.sndk_payload(now)["since_read"] == {
+        "read_at": (books[3] + timedelta(seconds=20)).isoformat(), "book_at": books[3].isoformat(),
+        "unavailable": "no_new_book_since_the_reading"}
+    _write_reads(tmp_path, day, [_read_row(said, books[1] - timedelta(minutes=1), {"points": []})])
+    assert snapshot.sndk_payload(now)["since_read"]["unavailable"] == "no_count_at_the_reading"
+    early = [datetime(2026, 9, 16, 9, 31, tzinfo=ET) + timedelta(minutes=4 * i) for i in range(3)]
+    _write_day(tmp_path, day, [_vol_row(b, _VOL) for b in early])
+    _write_reads(tmp_path, day, [_read_row(early[1] + timedelta(seconds=30), early[1], {"read": "x"})])
+    assert snapshot.sndk_payload(early[-1] + timedelta(seconds=40))["since_read"]["unavailable"] \
+        == "a_book_carried_prior_session_volume"
+
+
+def test_a_strike_is_left_out_for_five_books_after_its_count_went_back(tmp_path, monkeypatch):
+    """The guard looks back five distinct books, about twenty minutes, not over
+    the whole day: a running maximum would blank a strike the vendor revised
+    down for the rest of the session (473 rows over 2026-09-15..17, CPB-SPEC.md
+    1.4), and five books catch 09-17's bounce and let a revision recover. The
+    day's opening books, withheld for the prior session's counts, are not
+    looked back at: yesterday's whole day at a strike is more than this
+    morning's, and every strike would be left out until they aged past.
+
+    1,530's count is revised from 4,000 calls to 3,800 in the book after the
+    10:04 one. Read from the next book, and from each until five books have
+    followed the 4,000, 1,530 is left out; from the sixth, it is sent again.
+    Every other strike is sent throughout, whatever the opening books held."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
+    day = "2026-09-16"
+    opening = [datetime(2026, 9, 16, 9, 30, tzinfo=ET) + timedelta(minutes=4 * i) for i in range(4)]
+    books = [datetime(2026, 9, 16, 10, 0, tzinfo=ET) + timedelta(minutes=4 * i) for i in range(10)]
+    big = {k: (c * 9, p * 9) for k, (c, p) in _VOL.items()}
+    vol = lambda i: {**{k: (c + 10 * i, p + 10 * i) for k, (c, p) in _VOL.items()},
+                     1530.0: ((4000 if i == 1 else 3800) + 10 * i, 3632 + 10 * i)}
+    _write_day(tmp_path, day, [_vol_row(b, big) for b in opening] + [_vol_row(b, vol(i)) for i, b in enumerate(books)])
+    sent = []
+    for i in range(2, 9):
+        rows = [_vol_row(b, big) for b in opening] + [_vol_row(b, vol(j)) for j, b in enumerate(books[:i + 2])]
+        _write_day(tmp_path, day, rows)
+        _write_reads(tmp_path, day, [_read_row(books[i] + timedelta(seconds=30), books[i], {"read": "x"})])
+        sr = snapshot.sndk_payload(books[i + 1] + timedelta(seconds=40))["since_read"]
+        ks = [r[0] for r in sr["rows"]]
+        assert set(ks) >= {1500, 1510, 1520, 1540, 1550}, i
+        sent.append(1530 in ks)
+    assert sent == [False, False, False, False, False, True, True]

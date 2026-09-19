@@ -732,6 +732,11 @@ def sndk_payload(now: Optional[datetime] = None) -> dict:
         # half hour did, counted over every session before this one. Display
         # side, like `instrument` above: it reaches no model.
         "earlier_half_hours": _earlier_half_hours(day),
+        # the chart's paler bar ends: each listed strike's calls and puts in the
+        # book the latest reading was written from. Display side too, and only
+        # beside a Strikes Payload, the one scene with strike rows to draw.
+        "since_read": (_since_read(R, board, rows, all_reads, scene, build_now)
+                       if legacy is not None else None),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
         # what must be true before this scene is worth a model call. Read off the
         # reader's OWN constants rather than retyped into the page: a tab that
@@ -940,6 +945,125 @@ def _earlier_half_hours(day: str) -> Optional[dict]:
                "no_bigger": split([pr for pr in pairs if abs(pr[0]) < usual])}
     _HH_CACHE.update(key=key, val=val)
     return val
+
+
+# ---------------------------------------------------------------------------
+# Each strike's calls and puts when the LATEST READING was written.
+#
+# The phone's chart pales the outer end of each strike's calls and puts for
+# what traded there since the reading on its "What it means" card. Now minus
+# then needs "then": the two counts in the book that reading was written from.
+#
+# The model's own change cell (sndk_board) is not that number. Of the 514
+# phone boards of 2026-09-15..17 it was wrong for the card on 16
+# (CPB-SPEC.md 1.3):
+#   - it counts from the last book before the read row was STAMPED, so a book
+#     landing while the model writes moves its start. The 14:18 reading of
+#     09-16 was written from the 14:14:40 book; from 14:22 to 14:41 the cell
+#     counted from the 14:18:46 book: 1,500 puts +16 against a true +44;
+#   - it counts from the last call, and on 09-15 at 13:23 the card showed an
+#     older reading than that (the field names the newest reading, and the
+#     phone draws nothing when its card shows another);
+#   - it trusts a book the vendor served stale at some strikes only. On 09-17
+#     from 11:38 to 11:46 it gave 1,600 +2,912 calls since the 11:37 reading,
+#     off the 11:34:30 book's stale 2,859; the count was 5,230 at 11:18.
+# carried_books judges a whole book, so the second needs its own guard: a
+# strike whose count at the reading, or now, is below its count in any of the
+# _SINCE_READ_BOOKS distinct books before is left out. A running maximum over
+# the whole day would blank a strike the vendor revised down for the rest of
+# the session (473 rows over those three days); five books, about twenty
+# minutes, catch the 09-17 bounce and let a revision recover.
+_SINCE_READ_BOOKS = 5
+
+
+def _since_read(R, board, rows: list, reads: list, scene: dict, now: datetime) -> dict:
+    """{"read_at", "book_at", "rows": [[strike, calls, puts], ...]}: the reading
+    the phone's card shows, the book it was written from, and each listed
+    strike's calls and puts in that book. With nothing honest to draw,
+    {"unavailable": why}, beside read_at and book_at once there is a reading.
+
+    The reading is chosen as the phone's modelRead chooses it: the newest
+    reading_ts among today's read rows that carry a reading, whatever their
+    era. Its book is the one its own call row read (`book_asof`).
+
+      no_reading_yet                       no read row today carries a reading
+      no_count_at_the_reading              no call row, no diary book or no
+                                           volume behind the reading
+      a_book_carried_prior_session_volume  the reading's book or the current
+                                           one is withheld (carried_books)
+      no_new_book_since_the_reading        the current book is the reading's:
+                                           nothing was measured since
+
+    Only the strikes the table lists, with both volume columns, are sent: the
+    ones the chart draws. `rows` are today's diary rows as sndk_payload reads
+    them, `reads` today's read rows, `scene` the Strikes Payload."""
+    best = None
+    for r in reads:
+        rd = r.get("reading")
+        if not isinstance(rd, dict) or not (rd.get("quiet") is True
+                                            or isinstance(rd.get("points"), list) or rd.get("read")):
+            continue
+        t = R._parse_ts(r.get("reading_ts"))
+        if t is not None and (best is None or t > best[0]):
+            best = (t, r["reading_ts"])
+    if best is None:
+        return {"unavailable": "no_reading_yet"}
+    read_at = best[1]
+    call = next((r for r in reads if r.get("ts") == read_at), None)
+    book_at = (call or {}).get("book_asof")
+    out = {"read_at": read_at, "book_at": book_at}
+
+    def counted(book):
+        # every strike any scan of the book kept: scans that share a book each
+        # keep the strikes near their own price (on 40 to 56 books a day of
+        # 09-15..17), and agree on every strike they share
+        got = {}
+        for r in rows:
+            if (r.get("meta") or {}).get("book_asof") == book:
+                for s, v in board.surfaces(r)["vol_side"].items():
+                    got.setdefault(s, v)
+        return got
+    books = list(dict.fromkeys((r.get("meta") or {}).get("book_asof") for r in rows))
+    current = (rows[-1].get("meta") or {}).get("book_asof")
+    then = counted(book_at) if book_at and book_at in books else {}
+    if not then:
+        return {**out, "unavailable": "no_count_at_the_reading"}
+    carried = board.carried_books(rows, now)
+    if book_at in carried or current in carried:
+        return {**out, "unavailable": "a_book_carried_prior_session_volume"}
+    if current == book_at:
+        return {**out, "unavailable": "no_new_book_since_the_reading"}
+
+    # The day's opening run of withheld books holds the prior session's counts,
+    # so the look back starts after it. A book withheld later in the session is
+    # counted as it was served: carried_books withholds it because a later book
+    # counted less, which is the step backwards this guard looks for. On 09-17
+    # it withheld 10:28 to 11:22, the 11:18 book's 5,230 at 1,600 among them.
+    first = next((i for i, k in enumerate(books) if k not in carried), len(books))
+
+    def most_before(i):
+        # per strike, the most calls and the most puts in the books just before
+        # books[i]
+        hi = {}
+        for b in books[max(first, i - _SINCE_READ_BOOKS):i]:
+            for s, (c, p) in counted(b).items():
+                hc, hp = hi.get(s, (0.0, 0.0))
+                hi[s] = (max(hc, c or 0.0), max(hp, p or 0.0))
+        return hi
+    hi_then, hi_now = most_before(books.index(book_at)), most_before(books.index(current))
+    kept = []
+    for r in ((scene.get("strikes") or {}).get("rows") or []):
+        k, vc, vp = r.get("strike"), r.get("vol_calls"), r.get("vol_puts")
+        if k is None or vc is None or vp is None:
+            continue
+        c, p = then.get(float(k), (None, None))
+        if c is None or p is None:
+            continue
+        up_to_then, up_to_now = hi_then.get(float(k), (0.0, 0.0)), hi_now.get(float(k), (0.0, 0.0))
+        if c < up_to_then[0] or p < up_to_then[1] or vc < up_to_now[0] or vp < up_to_now[1]:
+            continue
+        kept.append([k, int(c), int(p)])
+    return {**out, "rows": kept}
 
 
 def sndk_thread_days(limit: int = 60) -> list:
