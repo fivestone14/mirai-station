@@ -2663,6 +2663,45 @@ def test_the_volume_ribbon_is_whole_blocks_on_one_scale():
     assert len(re.findall(r'<rect class="p-clip"', svg)) == 1
 
 
+def test_the_strip_along_the_foot_is_named():
+    """The strip under the plot is SNDK's own shares, five minutes a bar, not
+    options, and nothing said so; the bars above it are options. Its name goes
+    on the feet's row, centred in the room the two clock faces leave, from
+    their widths measured in WebKit off the shipped face: SHARES TRADED
+    wherever it keeps 10px from each foot, SHARES where only that does
+    (READABLE2-SPEC.md 2.6). The room is least under a countdown of hours and
+    minutes: 128.3px at 360, where the long name fits on every board of
+    2026-09-15..17 with a strip, and 88.3 at 320, where the short one does
+    (483 boards; the long one on 26). No strip, no name."""
+    got = _glance("""console.log(JSON.stringify({w: D.w.map(g.axisW), n: D.n.map(g.stripName)}));""",
+                  {"w": ["09:30", "3 HR 58 MIN LEFT", "48 MIN LEFT", "CLOSED", "SHARES TRADED", "SHARES"],
+                   "n": [124.47, 124.4, 70.1, 70.0]})
+    # WebKit's boxes: 35.17, 107.53, 75.33, 52.64, 104.47 and 50.09
+    assert got["w"] == pytest.approx([35.17, 107.53, 75.33, 52.64, 104.47, 50.09], abs=0.05)
+    assert got["n"] == ["SHARES TRADED", "SHARES", "SHARES", None]
+    tape = [{"ts": "2026-09-10T%02d:%02d:00-04:00" % divmod(570 + i, 60), "close": 1560 - i * 0.2,
+             "volume": 30000} for i in range(32)]
+    scene = dict(_SCENE_0916, clock={"minutes_to_close": 238})
+    for cw, want in ((328, "SHARES TRADED"), (288, "SHARES")):
+        svg = _page(_board(scene, now="2026-09-10T10:02:00-04:00", bars=tape, width=cw))["svg"]["html"]
+        box = _chart_box(svg)
+        feet = re.findall(r'<text class="p-axis" x="([\d.]+)" y="([\d.]+)"[^>]*>([^<]*)<', svg)
+        assert [t for _, _, t in feet] == ["09:30", "3 HR 58 MIN LEFT"]
+        (x, y, name), = re.findall(r'<text class="p-axis p-volname" x="([\d.]+)" y="([\d.]+)" '
+                                   r'text-anchor="middle">([^<]*)<', svg)
+        left = box["plot_l"] + _glance("console.log(JSON.stringify(g.axisW(D)));", "09:30")
+        right = box["plot_l"] + box["plot_w"] - _glance("console.log(JSON.stringify(g.axisW(D)));", "3 HR 58 MIN LEFT")
+        w = _glance("console.log(JSON.stringify(g.axisW(D)));", name)
+        assert name == want and y == feet[0][1] and float(x) == pytest.approx((left + right) / 2, abs=0.05)
+        assert float(x) - w / 2 - left >= 10 - 0.05 and right - (float(x) + w / 2) >= 10 - 0.05, cw
+    # no strip: a price line from the diary with no minute bars draws the feet and no name
+    diary = [{"ticker": "SNDK", "ts": "2026-09-10T%02d:%02d:00-04:00" % divmod(570 + 2 * i, 60), "spot": 1540 - i}
+             for i in range(16)]
+    svg = _page(_board(scene, now="2026-09-10T10:02:00-04:00", diary=diary))["svg"]["html"]
+    assert 'class="p-vol"' not in svg and "p-axis" in svg and "p-volname" not in svg
+    assert _css_rule(".p-volname") == "fill:var(--i-faint)"
+
+
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------
 # On a 375px phone the chart was 311px wide and its plot 247: 64 pixels went on
 # padding before the chart began and 56 on a gutter sized for one board. Every

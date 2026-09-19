@@ -885,9 +885,11 @@ function paintLadder(st){
   // Whole five-minute blocks on a scale fixed across sessions, so one height is
   // one fact on every day. The x-domain is the path's own, or a block would sit
   // over a minute it does not describe.
+  let strip = false;
   for(const b of st.vol){
     const x0 = xFor(b.t0), x1 = xFor(b.t1);
     if(!(x1 > x0) || x1 < PLOT_L || x0 > PATH_R) continue;
+    strip = true;
     const h = b.weight * 10;
     o += '<rect class="p-vol" x="' + n1(x0) + '" y="' + n1(RIB_B - h)
        + '" width="' + n1(Math.max(1, x1 - x0 - 1)) + '" height="' + n1(h) + '"/>';
@@ -898,9 +900,9 @@ function paintLadder(st){
 
   // ---- axis feet ---------------------------------------------------------
   const c = sc.clock || {};
-  if(pts.length)
-    o += '<text class="p-axis" x="' + PLOT_L + '" y="' + (SVGH-5) + '">'
-       + etTime(pts[0].t) + '</text>';
+  const leftFoot = pts.length ? etTime(pts[0].t) : '';
+  if(leftFoot)
+    o += '<text class="p-axis" x="' + PLOT_L + '" y="' + (SVGH-5) + '">' + leftFoot + '</text>';
   // a countdown computed at scan time is a lie when read hours later, and it is
   // the one label on the plot that ages silently
   let rightFoot = '';
@@ -911,6 +913,15 @@ function paintLadder(st){
   }
   if(rightFoot)
     o += '<text class="p-axis" x="' + PLOT_R + '" y="' + (SVGH-5) + '" text-anchor="end">' + esc(rightFoot) + '</text>';
+  // The strip's name, centred in the room the two feet leave on their row, by
+  // their measured widths; no strip drawn, no name
+  if(strip && leftFoot){
+    const L = PLOT_L + axisW(leftFoot), R = PLOT_R - (rightFoot ? axisW(rightFoot) : 0);
+    const name = stripName(R - L);
+    if(name)
+      o += '<text class="p-axis p-volname" x="' + n1((L + R) / 2) + '" y="' + (SVGH-5)
+         + '" text-anchor="middle">' + name + '</text>';
+  }
 
   svg.innerHTML = o;
 }

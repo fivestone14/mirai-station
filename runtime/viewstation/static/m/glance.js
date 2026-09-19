@@ -954,6 +954,38 @@ function volumeBlocks(bars, minutes){
                       capped:(b.sum/b.rows)>FULL_VOL_PER_MIN}));
 }
 
+// The chart's feet are .p-axis, 11px/500 tracked .12em: each letter's advance,
+// measured in WebKit off the shipped face, and 1.32px of tracking between each
+// two letters (getComputedTextLength leaves the tracking out, and the drawn
+// box has none after the last letter). A letter not listed is charged the
+// widest listed, so a guess can only be wide.
+const _AXIS_ADV={'0':6.6, '1':6.6, '2':6.6, '3':6.6, '4':6.6, '5':6.6, '6':6.6, '7':6.6, '8':6.6, '9':6.6,
+                 ' ':1.90, ':':3.48, A:7.39, C:8.57, D:8.15, E:6.67, F:6.41, H:8.09, I:2.90, L:5.89,
+                 M:9.40, N:8.11, O:9.66, R:7.12, S:7.11, T:5.74};
+const AXIS_TRACK=1.32;
+
+function axisW(s){
+  const t=String(s);
+  let w=0;
+  for(const ch of t) w+=(_AXIS_ADV[ch]!=null) ? _AXIS_ADV[ch] : 9.66;
+  return w+Math.max(0, t.length-1)*AXIS_TRACK;
+}
+
+// The strip is shares of SNDK traded, not options, and it said nothing of
+// itself: it is named on the feet's row, between them, in the long form
+// wherever that keeps STRIP_AIR from each foot and the short one where only
+// that does. SHARES TRADED is 104.45 and SHARES 50.09. The room is least
+// under a long countdown, "3 HR 58 MIN LEFT" beside "09:30": 128.3px at 360,
+// where the long name fits, and 88.3 at 320, where only the short one does
+// (READABLE2-SPEC.md 2.6).
+const STRIP_NAMES=['SHARES TRADED', 'SHARES'], STRIP_AIR=10;
+
+function stripName(room){
+  // -> the longest name that keeps its air in `room`, the px between the feet,
+  // or null
+  return STRIP_NAMES.find(s=>axisW(s)+2*STRIP_AIR<=room)||null;
+}
+
 /* ---- how busy each strike has been ------------------------------------- */
 
 // The ladder's gauge is on a FIXED scale, for the reason the levels card's is:
@@ -1263,7 +1295,7 @@ if(typeof module!=='undefined'&&module.exports){
                   barPoints, tapePoints, livePoint, modelRead,
                   COUNT_TODAY_W, tradedBars, tradedLately, newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
-                  FULL_VOL_PER_MIN, volumeBlocks,
+                  FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};
 }
