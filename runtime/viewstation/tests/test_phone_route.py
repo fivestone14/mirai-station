@@ -180,7 +180,7 @@ function node(){
     set textContent(v){ this._text = String(v); this.children = []; },
     setAttribute(k, v){ this.attrs[k] = String(v); },
     getAttribute(k){ return k in this.attrs ? this.attrs[k] : null; },
-    addEventListener(t, f){ (this.heard[t] = this.heard[t] || []).push(f); },
+    addEventListener(t, f){ (this.heard[t] = this.heard[t] || []).push(f); onElements.push([this, t]); },
     querySelector(){ return node(); },
     appendChild(c){ this.children.push(c); return c; },
     replaceChildren(...c){ this._text = ''; this.children = c; },
@@ -188,7 +188,7 @@ function node(){
     getBoundingClientRect: () => ({width: NET.width == null ? 380 : NET.width, height: 0}),
   };
 }
-const els = {}, listeners = {document: {}, window: {}};
+const els = {}, listeners = {document: {}, window: {}}, onElements = [];
 const on = bag => (type, fn) => { (bag[type] = bag[type] || []).push(fn); };
 const document = {
   body: node(), hidden: false, documentElement: {style: {setProperty(){}}},
@@ -238,7 +238,8 @@ def _page(net, steps="return dump();", tz=None):
     painted. In scope: NET (what the station answers next), run(code)
     (evaluated inside the page, so loadPayload, loadSpot and WIN are
     reachable), settle(), dump() (every element the page touched: text, class,
-    hidden, innerHTML, attributes, style, children), els and listeners. The
+    hidden, innerHTML, attributes, style, children), els, listeners and
+    onElements (every listener put on an element, as [element, type]). The
     wall clock stands still at `now`. Skips when node is not installed."""
     if not _NODE:
         pytest.skip("node is not installed")
@@ -1043,9 +1044,12 @@ def test_the_glance_itself_is_not_a_control():
     no pointer cursors, no tooltips, no second hold, no button that neither
     opens nor closes an explanation, and the page's one click listener does
     nothing but close a sheet. The link's own does nothing but open the sheet
-    it names. Each count is exact. A second of anything means the rule has
-    started eroding and this test should be argued with again rather than
-    edited again."""
+    it names, and it is the one listener on any element of the page: until
+    2026-09-18 the stand-in elements could not take a listener at all, so one
+    on any element failed every page test, and this count is what now catches
+    it. Each count is exact. A second of anything means the rule has started
+    eroding and this test should be argued with again rather than edited
+    again."""
     for bad in ("cursor:pointer", "onclick", "title="):
         assert bad not in PHONE, bad
     links = re.findall(r"<a\s[^>]*>", PHONE)
@@ -1082,12 +1086,14 @@ def test_the_glance_itself_is_not_a_control():
       taps.forEach(f => f({target: link}));
       const open = dump(), sheet = open[__NAMES__];
       const rest = s => { const c = Object.assign({}, s); delete c.body; delete c[__NAMES__]; return JSON.stringify(c); };
-      return {clicks: clicks.length, inert, taps: taps.length, body: open.body,
+      const own = onElements.map(([n, t]) => [Object.keys(els).find(id => els[id] === n) || null, t]);
+      return {clicks: clicks.length, inert, taps: taps.length, body: open.body, own,
               hidden: sheet && sheet.attrs['aria-hidden'], only: rest(open) === rest(shut)};""".replace(
         "__NAMES__", json.dumps(names)))
     assert got["clicks"] == 1 and got["inert"], "a second click handler, or one that acts on the page"
     assert got["taps"] == 1 and got["body"] == "sheet-open" and got["hidden"] == "false", got
     assert got["only"], "the link's tap changed something on the page besides opening its sheet"
+    assert got["own"] == [["howto", "click"]], f"a listener on an element besides the link's tap: {got['own']}"
 
 
 def test_market_time_not_viewer_time():

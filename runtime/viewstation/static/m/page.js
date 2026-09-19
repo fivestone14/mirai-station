@@ -1076,10 +1076,10 @@ function paintSheet(rows, most, lv){
   }
 }
 
-// PRESS, HOLD, LET GO. The one gesture on this card, and the one exception to
-// "the glance is not a control" (see test_the_glance_itself_is_not_a_control).
-// It opens an explanation of the card; nothing on the card changes by touching
-// it.
+// PRESS, HOLD, LET GO. The one gesture on this card, and one of the two
+// exceptions to "the glance is not a control"; the other is the link under the
+// chart (see test_the_glance_itself_is_not_a_control). It opens an explanation
+// of the card; nothing on the card changes by touching it.
 //
 // THE SHEET OPENS WHEN THE FINGER LIFTS, never while it is down (2026-09-10).
 // The first build opened on the 450ms timer, under a finger still on the glass,
@@ -1104,7 +1104,8 @@ function paintSheet(rows, most, lv){
 // tooltip that lives only while a finger is down asks you to read with your
 // thumb over the screen. What the sheet does once it is open — its history
 // entry, the shell bridge, the one way it closes — is sheet.js's, shared with
-// the reads page's sheet. Only the gesture that opens this one is here.
+// the chart's key and the reads page's sheet. Only the gesture that opens this
+// one is here.
 (function(){
   const HOLD_MS = 450, SLOP = 10;
   let t = 0, x0 = 0, y0 = 0, card = null, armed = false;
