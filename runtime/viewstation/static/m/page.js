@@ -551,11 +551,20 @@ function paintLadder(st){
   // First in the clip, so every other mark is on top of them.
   const traded = tradedBars(st.strikes, WIN.lo, WIN.hi, plotTop, plotBottom);
   const barX = b => PLOT_R - b.share * TRADED_FULL * PLOT_W;   // where a bar ends
+  const late = traded ? tradedLately(st.strikes, st.frames) : null;
   if(traded){
     for(const b of traded.bars){
       const x = n1(barX(b)), y = b.y - traded.h / 2;
       g += '<rect class="p-traded" x="' + x + '" y="' + n1(y) + '" width="' + n1(PLOT_R - x)
          + '" height="' + n1(traded.h) + '"/>';
+      // how it is changing: its outer end, a shade darker, is what traded here
+      // in the last half hour, on the bar's own scale and never longer than
+      // it. Under a pixel there is nothing to see, so nothing is drawn.
+      const r = late ? late.by[b.v] : null;
+      const lw = r > 0 && traded.most > 0 ? Math.min(r, b.n) / traded.most * TRADED_FULL * PLOT_W : 0;
+      if(lw >= 1)
+        g += '<rect class="p-tradedlate" x="' + x + '" y="' + n1(y) + '" width="' + n1(lw)
+           + '" height="' + n1(traded.h) + '"/>';
       // the end, where the length is read; kept inside the plot so a strike
       // that traded nothing still shows a mark where an absent one shows none
       const ex = n1(Math.min(+x + 0.6, PLOT_R - 0.6));

@@ -665,6 +665,53 @@ function tradedBars(strikes, lo, hi, top, bottom){
   return {h, most, bars};
 }
 
+// Each bar's outer end, a shade darker, is the part of it traded in the last
+// half hour: the bar grows from the plot's right edge, so its newest
+// contracts are its outer end, where it grew. A CLOCK window, not a count of
+// books: the books are four minutes apart until the scanner stalls, and at
+// 12:01 on 2026-09-17 the twelve in the payload ran 10:16 to 11:59 across a
+// 62-minute gap. Half an hour, not the pick-up's two books: at 360, over the
+// 504 boards of 2026-09-15..17 with bars, a two-book end is under a pixel on
+// half the bars (median 2.8px), and a half-hour end shows on 76% of them
+// (median 5.6px, the longest on a board 12.5px). 45 minutes loses 34 boards,
+// because the payload's twelve books span about 44 when nothing stalls
+// (READABLE2-SPEC.md 2.3).
+const TRADED_LATE_MIN=30, TRADED_LATE_SLACK=5;
+
+function tradedLately(strikes, frames){
+  // -> {since, span, by: {strike: contracts}}, or null for no dark ends.
+  // vol_added_per_book's entry j is what traded at the strike between books j
+  // and j+1 of frames.book_times. A stretch counts only if it STARTS inside
+  // the half hour, so nothing older is counted, and the books must reach back
+  // to within TRADED_LATE_SLACK minutes of it or no bar gets an end at all:
+  // through the first half hour of scans, and after the scanner pauses until
+  // its books cover a half hour again. Honest-absent twice more: a strike with
+  // a null in the window was missing from a book of it, and a negative entry
+  // is the vendor correcting its count, so either way its half hour was not
+  // counted and its bar has no end, never a guessed one (175 of the 6,137
+  // bars on boards with ends, 2.9%).
+  const bt=(frames&&frames.book_times)||[], nb=bt.length;
+  if(nb<2) return null;
+  const t=bt.map(_clockMin);
+  if(t.some(v=>v==null)) return null;
+  for(let i=1;i<nb;i++) if(!(t[i]>t[i-1])) return null;
+  const end=t[nb-1];
+  let j0=nb-1;
+  while(j0>0&&t[j0-1]>=end-TRADED_LATE_MIN) j0--;
+  const span=end-t[j0];
+  if(span<TRADED_LATE_MIN-TRADED_LATE_SLACK) return null;
+  const by={};
+  let any=false;
+  for(const r of (((strikes||{}).rows)||[])){
+    const k=_fin(r&&r.strike), s=r&&r.vol_added_per_book;
+    if(k==null||!Array.isArray(s)||s.length!==nb-1) continue;
+    let n=0, ok=true;
+    for(let j=j0;j<nb-1;j++){ const v=_fin(s[j]); if(v==null||v<0){ ok=false; break; } n+=v; }
+    if(ok){ by[k]=n; any=true; }
+  }
+  return any ? {since:bt[j0], span, by} : null;
+}
+
 /* ---- where new contracts arrived --------------------------------------- */
 
 // A price area's share of the contracts newly traded across the whole board in
@@ -1214,7 +1261,7 @@ if(typeof module!=='undefined'&&module.exports){
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
-                  COUNT_TODAY_W, tradedBars, newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
+                  COUNT_TODAY_W, tradedBars, tradedLately, newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,

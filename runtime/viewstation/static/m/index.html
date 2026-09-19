@@ -90,6 +90,10 @@
   --px-ink:#2F44B8;    --px-mark:#5470E4;
   --path:#5F6A62;      --rule-soft:#7E8779;  --band:#EAE6DE;
   --band-edge:#D5CFC4;
+  /* the chart's bars of contracts traded today, and the darker end of each
+     that traded in the last half hour: 1.75:1 and 2.71:1 on the card, 1.55:1
+     apart. Quieter than every mark over them on the card; see .p-traded. */
+  --traded:#BFB8AA;    --traded-late:#9A9384;
 
   /* STALENESS HAS NO HUE ANY MORE. Amber carried both the magnet and aging in
      the dark build. Darkened enough to be legible on this ground they land on
@@ -237,12 +241,18 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-orb    {stroke:var(--i-faint);stroke-width:1;stroke-dasharray:3 3;fill:none}
 .p-vol    {fill:var(--rule-soft)}
 /* Where contracts traded today, behind the price line. One solid fill for every
-   bar, so how much is the length and never the darkness: --band-edge is the
-   darkest surface every mark over it still clears 3:1 on (the path 3.64:1, the
-   walls 4.2). The end, where the length is read, is a --rule-soft tick, 3.31:1
-   on the card beside it. The casing is the card, 1px either side of the path's
-   1.8, drawn under it. */
-.p-traded {fill:var(--band-edge)}
+   bar, so how much is the length and never the darkness, and the part traded
+   in the last half hour a shade darker at its outer end, where the bar grew
+   (READABLE2-SPEC.md 2.3). --traded is the darkest fill every rule over it
+   still clears 3:1 on (the opening range 3.11:1, the walls 3.27, the price
+   rule 4.04); the price line is read against the card on its casing instead
+   (5.00:1, and 2.86 on the bare fill). Over --traded-late the rules drop to
+   2.0 to 2.6:1 where they cross it, and the line keeps its casing. The end,
+   where the length is read, is a --rule-soft tick, 3.31:1 on the card beside
+   it. The casing is the card, 1px either side of the path's 1.8, drawn under
+   it. */
+.p-traded {fill:var(--traded)}
+.p-tradedlate{fill:var(--traded-late)}
 .p-tradedend{stroke:var(--rule-soft);stroke-width:1.2}
 .p-casing {fill:none;stroke:var(--s);stroke-width:3.8;stroke-linejoin:round;stroke-linecap:round}
 /* GREY MEANS ALL DAY, BLACK MEANS JUST NOW. The count on the longest bar is the

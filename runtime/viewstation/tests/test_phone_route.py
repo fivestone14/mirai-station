@@ -1786,7 +1786,7 @@ def test_each_bar_is_as_long_as_its_strike_traded_today():
         # the end is marked, where the length is read
         assert ends == pytest.approx([x + 0.6 for x, _, _, _ in bars], abs=0.05)
     # one fill, no opacity, nothing that splits a bar by side
-    assert _css_rule(".p-traded") == "fill:var(--band-edge)"
+    assert _css_rule(".p-traded") == "fill:var(--traded)"
     assert not re.search(r'<rect class="p-traded"[^>]*(?:style|opacity|fill)', svg)
     # the scale is the board's own: double every count and nothing moves
     doubled = json.loads(json.dumps(_SCENE_0916))
@@ -1826,20 +1826,30 @@ def test_a_bar_is_thick_by_the_strike_pitch_and_never_closes_the_gap():
 
 
 def test_the_price_line_runs_on_a_channel_of_card():
-    """Over a bar the line measures 3.64:1 against the fill, and 3.27:1 at a 2x
-    screen's worst crossing, where antialiasing darkens the pixel beside it
-    (ALT-BEHIND-SPEC.md 4.2). So the line runs over an edge of the card 1px
-    wider on each side, drawn under it: invisible on the bare card, and over a
-    bar the line is read against the card, 5.00:1. The order is the spec's:
-    the bars and their ends, the opening range, the edge, the line — every mark
-    but the bars' own ends above the bars."""
+    """Over a bar the line measured 3.64:1 against the fill it was built on, and
+    3.27:1 at a 2x screen's worst crossing (ALT-BEHIND-SPEC.md 4.2). So the line
+    runs over an edge of the card 1px wider on each side, drawn under it:
+    invisible on the bare card, and over a bar the line is read against the
+    card, 5.00:1. Since the bars went a step darker and their ends another
+    (READABLE2-SPEC.md 2.3, 2026-09-18) the bare line would measure 2.86:1 on
+    a bar and 1.85:1 on its dark end, so the channel is what keeps it legible
+    there, and it runs wherever the line does. Read off WebKit renders of 64
+    boards of 2026-09-15..17 at 360, 2x: where the line crosses a bar its core
+    against the channel is 5.00:1 at the median, 4.14 at the worst point over
+    a dark end. The order is the spec's: the bars, their dark ends and their
+    ends, the opening range, the edge, the line — every mark but the bars' own
+    above the bars."""
     tape = [{"ts": "2026-09-10T%02d:%02d:00-04:00" % divmod(570 + i, 60), "close": 1560 - i * 0.6,
              "volume": 30000} for i in range(70)]
-    svg = _page(_board(_SCENE_0916, now="2026-09-10T10:40:00-04:00", bars=tape))["svg"]["html"]
+    svg = _page(_board(_flowing(_SCENE_0916, _FLOW_1510, _FRAMES_1510), now="2026-09-10T10:40:00-04:00",
+                       bars=tape))["svg"]["html"]
     clipped = re.search(r'<g clip-path="url\(#pc\)">(.*?)</g>', svg).group(1)
     order = re.findall(r'<\w+ class="(p-[\w-]+)', clipped)
     first = lambda c: order.index(c)
-    assert first("p-traded") == 0 and first("p-tradedend") < first("p-orb") < first("p-casing") < first("p-path")
+    last = lambda c: len(order) - 1 - order[::-1].index(c)
+    assert first("p-traded") == 0 and first("p-traded") < first("p-tradedlate") < first("p-tradedend")
+    assert max(last("p-traded"), last("p-tradedlate"), last("p-tradedend")) < first("p-orb") \
+        < first("p-casing") < first("p-path")
     edge = re.search(r'<polyline class="p-casing" points="([^"]*)"', svg).group(1)
     assert edge == re.search(r'<polyline class="p-path" points="([^"]*)"', svg).group(1)
     width = lambda sel: float(re.search(r"stroke-width:([\d.]+)", _css_rule(sel)).group(1))
@@ -1848,7 +1858,6 @@ def test_the_price_line_runs_on_a_channel_of_card():
     assert "stroke:var(--s)" in case and "stroke-linejoin:round" in case and "fill:none" in case
     tok = _tokens()
     assert _contrast(tok["--path"], tok["--s"]) >= 4.5            # on the channel, 5.00
-    assert _contrast(tok["--path"], tok["--band-edge"]) >= 3.0    # on the fill, if the channel were gone
     # no line, no edge: an empty tape draws neither
     bare = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40}}))["svg"]["html"]
     assert 'class="p-casing"' not in bare and 'class="p-path"' not in bare
@@ -1955,6 +1964,111 @@ def test_no_volume_for_today_draws_no_bars():
                   "g.tradedBars({rows: []}, 1400, 1600, 20, 160), g.tradedBars(null, 1400, 1600, 20, 160)]));",
                   carried["strikes"])
     assert got == [None, None, None]
+
+
+def _half_hour(series, times):
+    """What a bar's dark end holds, restated from READABLE2-SPEC.md 2.3: the
+    stretches between books that START within 30 minutes of the newest book,
+    summed, if those books reach back at least 25 minutes and the strike was
+    counted across every one of them; otherwise nothing."""
+    t = [int(s[:2]) * 60 + int(s[3:]) for s in times]
+    j0 = min(j for j in range(len(t)) if t[j] >= t[-1] - 30)
+    part = series[j0:]
+    if t[-1] - t[j0] < 25 or any(v is None or v < 0 for v in part):
+        return None
+    return sum(part)
+
+
+def _late(svg):
+    """The dark ends top first as (x, y, width, height)."""
+    return sorted((tuple(float(v) for v in m) for m in re.findall(
+        r'<rect class="p-tradedlate" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)),
+        key=lambda b: b[1])
+
+
+def test_each_bar_ends_in_what_traded_there_in_the_last_half_hour():
+    """The bars say how much traded all day, and nothing said how that is
+    changing. The owner's answer (READABLE2-SPEC.md item 3, 2026-09-18): each
+    bar's outer end, where it grew, is a shade darker for the part traded in
+    the last half hour, on the bar's own scale, off vol_added_per_book and
+    frames.book_times. A clock window, not a count of books: a stretch counts
+    if it starts within 30 minutes of the newest book, and the books must reach
+    back 25 minutes or no bar gets an end. Under a pixel nothing is drawn.
+
+    11:01:12 on 2026-09-16: twelve books from 10:15, so the half hour is the
+    seven stretches from 10:32. 1,530, the busiest, traded 3,264 today and 495
+    of them since 10:32, so its end is 495/3,264 of its bar."""
+    times = _SCENE_1101["frames"]["book_times"]
+    rows = {r["strike"]: r for r in _SCENE_1101["strikes"]["rows"]}
+    assert _half_hour(rows[1530]["vol_added_per_book"], times) == 495
+    for cw in (288, 328, 343):
+        svg = _page(_board(_SCENE_1101, width=cw))["svg"]["html"]
+        box = _chart_box(svg)
+        bars, _, ((_, _, count),) = _traded(svg)
+        late = {round(y, 1): (x, w, h) for x, y, w, h in _late(svg)}
+        most = int(count.split()[0].replace(",", ""))          # the busiest strike in view
+        drawn = 0
+        for x, y, w, h in bars:
+            # the bar's strike, off its length on the board's own scale
+            k = min(rows, key=lambda k: abs(0.40 * box["plot_w"] * (rows[k]["vol_calls"] + rows[k]["vol_puts"]) / most - w))
+            n = rows[k]["vol_calls"] + rows[k]["vol_puts"]
+            want = 0.40 * box["plot_w"] * min(_half_hour(rows[k]["vol_added_per_book"], times), n) / most
+            if want < 1:
+                assert round(y, 1) not in late, k
+                continue
+            lx, lw, lh = late[round(y, 1)]
+            # from the bar's outer end, its full thickness, never past the bar
+            assert (lx, lh) == (x, h) and lw == pytest.approx(want, abs=0.1) and lw <= w + 0.05, k
+            drawn += 1
+        assert drawn == len(late) == 7, "the dark ends are not the bars' own"
+    # under a pixel there is nothing to see: 1,545's half hour cut to 1
+    # contract and 1,550's to none, and those two bars end in their own grey
+    quiet = json.loads(json.dumps(_SCENE_1101))
+    for r in quiet["strikes"]["rows"]:
+        if r["strike"] in (1545, 1550):
+            r["vol_added_per_book"] = r["vol_added_per_book"][:4] + [0] * 6 + [1 if r["strike"] == 1545 else 0]
+    assert len(_late(_page(_board(quiet, width=328))["svg"]["html"])) == 5
+    # A stall: the 62 minutes to 11:26 on 2026-09-17 sat in the payload's books
+    # at 12:01. The half hour counts from 11:30, never the stretch across the gap.
+    gap = ["10:16", "10:20", "10:24", "11:26", "11:30", "11:34", "11:38", "11:42", "11:46", "11:51", "11:55", "11:59"]
+    series = [9, 12, 7, 183, 20, 11, 6, 30, 14, 9, 18]
+    got = _glance("""console.log(JSON.stringify(D.map(([times, rows]) =>
+        g.tradedLately({rows}, {book_times: times}))));""", [
+        [gap, [{"strike": 1600, "vol_added_per_book": series}]],
+        # the same strike missing from a book of the half hour, then corrected down
+        # in it: not counted, so no end; missing from a book before it: counted
+        [gap, [{"strike": 1600, "vol_added_per_book": series[:6] + [None] + series[7:]},
+               {"strike": 1605, "vol_added_per_book": series[:7] + [-3] + series[8:]},
+               {"strike": 1610, "vol_added_per_book": [None] + series[1:]}]],
+        # just after the stall: the books reach back 4 minutes
+        [gap[:5], [{"strike": 1600, "vol_added_per_book": series[:4]}]],
+        # the morning: 21 minutes of books, then 25
+        [["09:34", "09:38", "09:43", "09:47", "09:51", "09:55"], [{"strike": 1600, "vol_added_per_book": [5] * 5}]],
+        [["09:34", "09:38", "09:43", "09:47", "09:51", "09:55", "09:59"], [{"strike": 1600, "vol_added_per_book": [5] * 6}]],
+        # a book time that cannot be read, or runs backwards: no window at all
+        [["09:34", "9.38", "09:43"], [{"strike": 1600, "vol_added_per_book": [5, 5]}]],
+        [["09:34", "09:38", "09:36"], [{"strike": 1600, "vol_added_per_book": [5, 5]}]]])
+    assert got[0] == {"since": "11:30", "span": 29, "by": {"1600": _half_hour(series, gap)}}
+    assert _half_hour(series, gap) == 108, "the stretch across the gap is counted"
+    assert got[1]["by"] == {"1610": 108}
+    assert got[2] is None and got[3] is None and got[5] is None and got[6] is None
+    assert got[4] == {"since": "09:34", "span": 25, "by": {"1600": 30}}
+    # honest-absent on the page: no window of books, a window that does not
+    # reach back, or no bars, and nothing is drawn darker
+    stalled = json.loads(json.dumps(_SCENE_1101))
+    stalled["frames"]["book_times"] = ["09:40", "09:44", "09:48", "09:52", "09:56", "10:00", "10:04", "10:08",
+                                       "10:12", "10:16", "10:20", "11:01"]
+    none = json.loads(json.dumps(_SCENE_1101)); none.pop("frames")
+    unsold = json.loads(json.dumps(_SCENE_1101))
+    for r in unsold["strikes"]["rows"]:
+        del r["vol_calls"], r["vol_puts"]
+    for scene in (stalled, none, unsold):
+        assert _late(_page(_board(scene))["svg"]["html"]) == []
+    # a shade of the bar: darker than it, and still quieter than the line
+    tok = _tokens()
+    fill = lambda sel: tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
+    assert _contrast(fill(".p-tradedlate"), tok["--s"]) > _contrast(fill(".p-traded"), tok["--s"])
+    assert _contrast(fill(".p-tradedlate"), tok["--s"]) < _contrast(tok["--path"], tok["--s"])
 
 
 # --- where new contracts arrived (2026-09-18) --------------------------------
@@ -2709,24 +2823,37 @@ def test_no_mark_on_the_plot_is_eaten_by_what_is_behind_it():
     — and never the share, which is not this rule's to say. The shade itself
     went on 2026-09-18 (test_the_plot_draws_no_shade_behind_the_line). What
     sits behind the marks now is the card and, where contracts traded, a bar
-    of --band-edge, the darker of the two; every mark is measured on the bar.
-    The bars stay the quietest ink on the plot, and their ends, read against
-    the card beside them, clear a mark's 3:1."""
+    of --traded, the darker of the two; every rule is measured on the bar and
+    clears 3:1 there, the opening range's 3.11 the least. The price line is
+    held by its channel of card instead, since it would measure 2.86:1 on the
+    bare fill (test_the_price_line_runs_on_a_channel_of_card). The bars stay
+    quieter than the line, and their ends, read against the card beside them,
+    clear a mark's 3:1.
+
+    The half hour's dark end, --traded-late (2026-09-18), is darker still, and
+    a rule crossing it falls under 3:1: the opening range to 2.01, a wall to
+    2.12, the price rule to 2.61. A strike's rule runs through the middle of
+    its bar, so at 360 a rule crosses a dark end on every one of the 432 boards
+    of 2026-09-15..17 that draw any, 1,342 crossings over a median 6.7px. That
+    is the ink the owner approved in readable2.png, at a cost READABLE2-SPEC.md
+    did not measure; it is pinned where it stands, 2:1, and left for the
+    owner's decision rather than held to 3."""
     tok = _tokens()
-    bar = tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(".p-traded")).group(1)]
-    assert _contrast(bar, tok["--s"]) < _contrast(tok["--path"], tok["--s"]), "a bar outranks the price line"
+    fill = lambda sel: tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
+    bar, late = fill(".p-traded"), fill(".p-tradedlate")
+    for shade in (bar, late):
+        assert _contrast(shade, tok["--s"]) < _contrast(tok["--path"], tok["--s"]), "a bar outranks the price line"
     end = tok[re.search(r"stroke:var\((--[a-z-]+)\)", _css_rule(".p-tradedend")).group(1)]
     assert _contrast(end, tok["--s"]) >= 3.0
-    behind = bar
-    for sel in (".p-path", ".p-orb", ".p-wall.call", ".p-wall.put", ".p-wall.passed",
+    for sel in (".p-orb", ".p-wall.call", ".p-wall.put", ".p-wall.passed",
                 ".p-mag", ".p-magrun", ".p-prule", ".p-halo"):
         rule = _css_rule(sel)
         assert rule is not None, f"{sel} has no rule"
         assert "opacity" not in rule, f"{sel} is knocked down by opacity"
-        ratio = _contrast(tok[re.search(r"stroke:var\((--[a-z-]+)\)", rule).group(1)], behind)
-        assert ratio >= 3.0, f"{sel} measures {ratio:.2f}:1 over what is behind it"
+        ink = tok[re.search(r"stroke:var\((--[a-z-]+)\)", rule).group(1)]
+        assert _contrast(ink, bar) >= 3.0, f"{sel} measures {_contrast(ink, bar):.2f}:1 over a bar"
+        assert _contrast(ink, late) >= 2.0, f"{sel} measures {_contrast(ink, late):.2f}:1 over a dark end"
     # the chart's most-read number is text on its own chip, and text needs 4.5
-    fill = lambda sel: tok[re.search(r"fill:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
     assert _contrast(fill(".p-chiptx"), fill(".p-chip")) >= 4.5
 
     # the second call wall is the heaviest pile on the board and still draws
