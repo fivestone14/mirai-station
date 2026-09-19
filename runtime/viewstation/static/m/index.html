@@ -245,15 +245,20 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-traded {fill:var(--band-edge)}
 .p-tradedend{stroke:var(--rule-soft);stroke-width:1.2}
 .p-casing {fill:none;stroke:var(--s);stroke-width:3.8;stroke-linejoin:round;stroke-linecap:round}
-.p-tradednum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i);
+/* GREY MEANS ALL DAY, BLACK MEANS JUST NOW. The count on the longest bar is the
+   whole day's, so it is set in the bars' own grey family, --i-mute (6.24:1 on
+   the card); the brackets' word is just now, so it is set in theirs. */
+.p-tradednum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute);
              paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
-/* Where new contracts arrived: corners round the area, a tab in the gutter, a
+/* Where trading just picked up: corners round the area, a tab in the gutter, a
    word. --i, the darkest neutral, because every hue already means a side, the
-   magnet or the price and change has none: 15.60:1 on the card. The halo cuts
-   whatever the word crosses, as every word on the chart does. */
+   magnet or the price and change has none: 15.60:1 on the card. The word is
+   bold as well, since it says just now where the grey count on the bars says
+   all day. The halo cuts whatever the word crosses, as every word on the
+   chart does. */
 .p-new    {fill:none;stroke:var(--i);stroke-width:1.5;stroke-linecap:butt;stroke-linejoin:miter}
 .p-newtab {fill:var(--i)}
-.p-newword{font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;fill:var(--i);
+.p-newword{font:700 11px/1 var(--sans);font-variant-numeric:tabular-nums;fill:var(--i);
            paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
 /* Every rule over the plot is drawn at full strength, in its hue's -ink step:
    the -mark steps failed 3:1 over the shade that used to sit behind them. An
@@ -300,6 +305,9 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    weight, never by contrast, because a low-contrast grey outdoors means gone. */
 .p-edge    {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute)}
 .p-edge.lead{font-weight:800;fill:var(--i)}
+/* an edge row naming a pick-up off the chart says it in the brackets' words,
+   weight and ink */
+.p-edgeword{font-weight:700;fill:var(--i)}
 .p-axis    {font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;fill:var(--i-mute)}
 /* the price ruler: the size and weight of .p-axis, the time ruler it is the
    other half of, and no tracking, because it is only figures */

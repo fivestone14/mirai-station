@@ -627,6 +627,10 @@ const TRADED_FULL=0.40;
 // 112px plot and the three read as one block; a share of the pitch keeps the
 // rest of it white whatever the plot's height or the window's span.
 const TRADED_PITCH=0.70, TRADED_H_MAX=8;
+// The count on the longest bar says it is the whole day's, "9,112 TODAY",
+// where the brackets' words say just now: 11px/600, its figures figW's and
+// " TODAY" after them 40.31, measured in WebKit (READABLE2-SPEC.md 1).
+const COUNT_TODAY_W=40.31;
 
 function tradedBars(strikes, lo, hi, top, bottom){
   // Contracts traded today at each strike in the window, calls and puts summed:
@@ -761,11 +765,18 @@ function newContracts(strikes, frames){
 // boards of 2026-09-15..17, by phone; at 13 on 0 to 14, each of them the
 // longer "· 1 MORE" form crossing a bar.
 const NEW_ARM=16, NEW_LEG=5.5, NEW_W=1.5, NEW_MIN_H=13;
-// The word, 11px/500 in the shipped face: "NEW CONTRACTS " and "%" are
-// 108.22, each figure 6.60, and " · 1 MORE" 48.65 — 121.42 in all for a share
-// of two figures. Its capitals, figures and % run 8.4px above the baseline and
-// 0.2 below it.
-const NEW_WORD=108.22, NEW_FIG=6.60, NEW_MORE=48.65, WORD_UP=8.4, WORD_DOWN=0.2;
+// The word, 11px/700 in the shipped face, measured in WebKit: "TRADING PICKED
+// UP" is 109.09 and " · 1 MORE" after it 49.90. Bold and in the brackets' ink,
+// because it names them and they mean just now, where the count on the bars is
+// the whole day's, in theirs (READABLE2-SPEC.md 1). It carries no share: the
+// share's denominator, every contract traded on the board in the last two
+// books, is on no screen. Its capitals run 8.4px above the baseline and 0.2
+// below it.
+const NEW_WORD=109.09, NEW_MORE=49.90, WORD_UP=8.4, WORD_DOWN=0.2;
+// Further than this off its box, the word would label something else, so it is
+// not drawn and the corners and the tab mark the place alone. On the 514
+// boards of 2026-09-15..17 it has not come to that at any phone.
+const WORD_OFF_MAX=8;
 
 function newBox(t0, b0, inks, top, bottom){
   // -> {t, b}, the rows of the corner arms round an area the plot draws from
@@ -806,9 +817,12 @@ function wordRow(t, b, soft, hard, top, bottom){
   // of the box clear of both, the word centred in it: a word laid across a
   // rule reads as that rule's label, one beside it as the box's (CHANGE-SPEC.md
   // 5.5). Then the stretch clear of what it may not touch nearest the box's
-  // middle, over the rules. Then the nearest room just outside the box, below
-  // it and then above, inside top..bottom: a word out of its box is worse than
-  // one over a rule, and better than one over other text.
+  // middle, over the rules. Then the room just outside the box on whichever
+  // side is nearer, below on a tie, inside top..bottom and no more than
+  // WORD_OFF_MAX off: a word out of its box is worse than one over a rule, and
+  // better than one over other text. Below first put it 3.4 to 23px off its
+  // brackets on 15 boxed boards at 320, under the count, where it read as the
+  // count's caption.
   const need=WORD_UP+WORD_DOWN;
   const free=(lo, hi, spans)=>{
     const out=[];
@@ -831,9 +845,37 @@ function wordRow(t, b, soft, hard, top, bottom){
   const over=free(lo, hi, hard);
   if(over.length) return over.map(at).reduce((p, q)=>(Math.abs(q-mid)<Math.abs(p-mid) ? q : p));
   const below=free(b+NEW_W/2+1, bottom, hard), above=free(top, t-NEW_W/2-1, hard);
-  if(below.length) return below[0][0]+WORD_UP;
-  if(above.length) return above[above.length-1][1]-WORD_DOWN;
-  return null;
+  const out=[];
+  if(below.length) out.push([below[0][0]+WORD_UP, below[0][0]-(b+NEW_W/2+1)]);
+  if(above.length) out.push([above[above.length-1][1]-WORD_DOWN, (t-NEW_W/2-1)-above[above.length-1][1]]);
+  const near=out.filter(([, off])=>off<=WORD_OFF_MAX).sort((p, q)=>p[1]-q[1]);
+  return near.length ? near[0][0] : null;
+}
+
+// A pick-up the plot cannot show is named in the edge stack on its side in the
+// brackets' own words, "↑ ABOVE, AT 1,600: TRADING PICKED UP". 11px/500 with
+// the phrase at 700, measured in WebKit: "↑ ABOVE, AT " 68.07, "↓ BELOW, AT "
+// 70.18, "↑ AT " 24.21, the dash of a range 6.57, ": TRADING PICKED UP" 114.47
+// and " · 1 MORE" 48.63. The prices are figW's.
+const EDGE_ABOVE=68.07, EDGE_BELOW=70.18, EDGE_AT=24.21, EDGE_DASH=6.57, EDGE_PICKED=114.47,
+      EDGE_MORE=48.63;
+
+function pickedRow(up, strikes, more, room){
+  // -> {lead, tail}: the words before the phrase and after it, in the longest
+  // form whose width fits `room`. The side is said in words; wider than the
+  // room it goes back to its arrow alone, and past that the count of places
+  // with no mark of their own goes, never the price. The row names the strike
+  // or the range of strikes, never a midpoint between them.
+  const k=strikes.map(v=>gUsd(v, 0).replace('$',''));
+  const at=k[0]+(k.length>1 ? '–'+k[k.length-1] : '');
+  const atW=k.length>1 ? figW(k[0], 11, 500)+EDGE_DASH+figW(k[k.length-1], 11, 500) : figW(k[0], 11, 500);
+  const tail=more ? ' · '+more+' MORE' : '';
+  const tailW=more ? EDGE_MORE-figW('1', 11, 500)+figW(String(more), 11, 500) : 0;
+  const forms=[[up ? '↑ ABOVE, AT ' : '↓ BELOW, AT ', up ? EDGE_ABOVE : EDGE_BELOW, tail, tailW],
+               [up ? '↑ AT ' : '↓ AT ', EDGE_AT, tail, tailW],
+               [up ? '↑ AT ' : '↓ AT ', EDGE_AT, '', 0]];
+  const fit=forms.find(([, hw, , tw])=>hw+atW+EDGE_PICKED+tw<=room)||forms[forms.length-1];
+  return {lead:fit[0]+at, tail:fit[2]};
 }
 
 /* ---- how busy each stretch was ----------------------------------------- */
@@ -1172,7 +1214,8 @@ if(typeof module!=='undefined'&&module.exports){
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
-                  tradedBars, newContracts, newBox, wordRow, activityRows, namedGone,
+                  COUNT_TODAY_W, tradedBars, newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
+                  pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};

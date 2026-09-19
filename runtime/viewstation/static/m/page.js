@@ -712,21 +712,24 @@ function paintLadder(st){
   }
 
   // ---- the count on the longest bar ---------------------------------------
-  // The bars' one number. Their scale is per scan, so a full-length bar was
-  // 7,456 contracts at 15:10 on 2026-09-16 and 3,264 at 11:01, and only this
-  // says which. It sits 4px past the bar's end on the card side, where a bar
-  // chart puts its value, and inside the bar at its root only if that would
-  // put it on the live dot's ring or off the plot; the word of new contracts
-  // below may move it inside, just past the end. The busiest strike is
-  // usually one the chart already rules, so the count's card halo cuts that
-  // rule for its width: a rule or a dash on 167 of the 188 boards of 09-16.
+  // The bars' one number, "7,456 TODAY": the whole day's, in the bars' grey,
+  // where the brackets' words below say just now, in theirs. Their scale is
+  // per scan, so a full-length bar was 7,456 contracts at 15:10 on 2026-09-16
+  // and 3,264 at 11:01, and only this says which. It sits 4px past the bar's
+  // end on the card side, where a bar chart puts its value, and inside the bar
+  // at its root only if that would put it on the live dot's ring or off the
+  // plot; the brackets' word below may move it inside, just past the end. The
+  // busiest strike is usually one the chart already rules, so the count's card
+  // halo cuts that rule for its width: a rule or a dash on 167 of the 188
+  // boards of 09-16.
   let count = null;
   if(traded){
     const b = traded.bars.find(r => r.n === traded.most);
     // Centred on its bar: the figures' ink runs 8px above the baseline and a
     // comma 2.2 below it, so the baseline sits 0.36em under the bar's middle.
     // The ring is 7 round the dot, and 2 more keeps them apart.
-    const s = gUsd(b.n, 0).replace('$',''), w = figW(s, 11, 600), by = b.y + 0.36 * 11;
+    const num = gUsd(b.n, 0).replace('$',''), s = num + ' TODAY', w = figW(num, 11, 600) + COUNT_TODAY_W;
+    const by = b.y + 0.36 * 11;
     const top = by - 8, bottom = by + 2.2, tip = barX(b);
     const clear = xe => xe - w >= PLOT_L + 2 && xe <= PLOT_R - 2
       && !(dot && xe > dotX - 9 && xe - w < dotX + 9 && top < priceY + 9 && bottom > priceY - 9);
@@ -737,17 +740,17 @@ function paintLadder(st){
   // ---- the word ------------------------------------------------------------
   // One, on the biggest area the plot shows, counting any area it could not:
   // past the cap, or a second off the plot on a side whose edge row is taken.
-  // It says what happened, that this share of the contracts traded in the last
-  // two books went here, and nothing about what price does next. It never
+  // It says what happened, that trading here just took a bigger share of the
+  // board's than it had, and nothing about what price does next. It never
   // touches the count, a bar or the dot's ring (wordRow). Where the busiest
   // strike is the one that changed, the count and the word want one row, and
-  // a count stacked under the word reads as the number of new contracts: the
-  // count then moves inside its bar, past the end, if that clears the word by
-  // 12px, and otherwise the word keeps its distance or leaves its box.
+  // a count stacked under the word reads as the word's own number: the count
+  // then moves inside its bar, past the end, if that clears the word by 12px,
+  // and otherwise the word keeps its distance or leaves its box.
   let word = null;
   if(boxes.length){
-    const box = boxes[0], share = String(Math.round(box.a.share));
-    const wx = PLOT_L + 6, ww = NEW_WORD + NEW_FIG * share.length + (unshown ? NEW_MORE : 0);
+    const box = boxes[0];
+    const wx = PLOT_L + 6, ww = NEW_WORD + (unshown ? NEW_MORE : 0);
     const across = (x0, x1, air) => x0 < wx + ww + air && x1 > wx - air;
     // The count keeps 5.5px above or below the word, what the chart's closest
     // two labels keep, and 12 beside it, so it is not read as the word's next
@@ -773,7 +776,7 @@ function paintLadder(st){
       if(inBox(moved)) by = moved; else count.x = count.tip - 4;
     }
     if(by != null)
-      word = '<text class="p-newword" x="' + wx + '" y="' + n1(by) + '">NEW CONTRACTS ' + share + '%'
+      word = '<text class="p-newword" x="' + wx + '" y="' + n1(by) + '">TRADING PICKED UP'
            + (unshown ? ' · ' + unshown + ' MORE' : '') + '</text>';
   }
   if(count)
@@ -849,17 +852,16 @@ function paintLadder(st){
   // When a wall the card names is itself off-window the bug triangle cannot
   // point at it, so its marker carries the weight instead. Matched on kind as
   // well as the nearest flag, so an exiled magnet on the same strike cannot
-  // steal the emphasis. A row of new contracts takes a plain arrow where a
-  // level takes a solid one, and names its strikes, never a midpoint between
-  // them.
+  // steal the emphasis. A pick-up the plot cannot show takes a plain arrow
+  // where a level takes a solid one, and the brackets' own words in their ink
+  // (pickedRow), so the row says it is the same thing, off the chart.
   const namedEdge = l => l.kind === 'wall' && !!l.nearest;
   const edgeCls = l => 'p-edge' + (namedEdge(l) ? ' lead' : '');
   const edgeText = (l, up) => {
     if(l.kind !== 'new')
       return (up ? '▲ ' : '▼ ') + gUsd(l.y,0).replace('$','') + (l.behind ? ' BIGGEST PILE' : '');
-    const k = l.area.strikes.map(v => gUsd(v,0).replace('$',''));
-    return (up ? '↑ ' : '↓ ') + k[0] + (k.length > 1 ? '–' + k[k.length-1] : '') + ' NEW CONTRACTS'
-         + (l.more ? ' · ' + l.more + ' MORE' : '');
+    const r = pickedRow(up, l.area.strikes, l.more, TAG_R - 1);
+    return r.lead + ': <tspan class="p-edgeword">TRADING PICKED UP</tspan>' + r.tail;
   };
   above.forEach((l, i) => {
     o += '<text class="' + edgeCls(l) + '" x="' + TAG_R + '" y="' + (10 + aboveAt[i]) + '">'

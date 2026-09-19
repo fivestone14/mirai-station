@@ -267,8 +267,11 @@ def _card(got):
 
 
 def _svg_texts(got, cls):
-    """[(class, text)] for every <text> the ladder drew whose class starts with `cls`."""
-    return re.findall(r'<text class="(%s[^"]*)"[^>]*>([^<]*)</text>' % re.escape(cls), got["svg"]["html"])
+    """[(class, text)] for every <text> the ladder drew whose class starts with
+    `cls`, its text as a reader sees it: a row that sets a phrase in its own
+    <tspan> reads as one line."""
+    return [(c, re.sub(r"<[^>]+>", "", t)) for c, t in
+            re.findall(r'<text class="(%s[^"]*)"[^>]*>(.*?)</text>' % re.escape(cls), got["svg"]["html"])]
 
 
 def _right_foot(got):
@@ -1744,8 +1747,10 @@ def _traded(svg):
 
 
 def _count_w(text):
-    """The width of the count on the longest bar, 11px/600, as figW prices it."""
-    return _glance("console.log(JSON.stringify(g.figW(D, 11, 600)));", text)
+    """The width of the count on the longest bar, "7,456 TODAY" at 11px/600, as
+    the page prices it: the figures by figW, the word by its WebKit measure."""
+    return _glance("const [n, w] = D.split(' ');"
+                   "console.log(JSON.stringify(g.figW(n, 11, 600) + (w === 'TODAY' ? g.COUNT_TODAY_W : 0)));", text)
 
 
 def _ring(svg):
@@ -1852,20 +1857,26 @@ def test_the_price_line_runs_on_a_channel_of_card():
 def test_the_longest_bar_carries_its_count():
     """The bars' one number, kept by the owner's choice. Their scale is per
     scan, so a full-length bar was 7,456 at 15:10 and 3,264 at 11:01, and only
-    this says which. 11px/600 in the darkest ink, 4px past the longest bar's
-    end on the card side, where a bar chart puts its value, with a card halo:
-    the busiest strike is usually one the chart already rules (a rule or dash
-    crosses the count on 38 of ALT-BEHIND-SPEC's 46 scan and phone pairs), and
-    the halo cuts that rule for the count's width rather than the rule cutting
-    the figures. Only if the end would put it on the live dot's ring does it
-    move inside the bar, at its root."""
+    this says which. It says it is the whole day's, "7,456 TODAY", in the
+    bars' own grey family (--i-mute, 11px/600), where the brackets' word says
+    just now in their black (READABLE2-SPEC.md 1, the short form the owner
+    chose on 2026-09-18). 4px past the longest bar's end on the card side,
+    where a bar chart puts its value, with a card halo: the busiest strike is
+    usually one the chart already rules (a rule or dash crosses the count on
+    38 of ALT-BEHIND-SPEC's 46 scan and phone pairs), and the halo cuts that
+    rule for the count's width rather than the rule cutting the figures. Only
+    if the end would put it on the live dot's ring does it move inside the
+    bar, at its root."""
     for cw in (343, 288):
         svg = _page(_board(_SCENE_0916, width=cw))["svg"]["html"]
         bars, _, num = _traded(svg)
         x, y, w, h = max(bars, key=lambda b: b[2])
-        assert num == [(pytest.approx(x - 4, abs=0.05), pytest.approx(y + h / 2 + 3.96, abs=0.1), "7,456")]
+        assert num == [(pytest.approx(x - 4, abs=0.05), pytest.approx(y + h / 2 + 3.96, abs=0.1), "7,456 TODAY")]
+    # the width the page places it by: the figures, and the word measured in WebKit
+    assert _count_w("7,456 TODAY") == pytest.approx(30.01 + 40.31, abs=0.01)
     rule = _css_rule(".p-tradednum")
-    for need in ("font:60011px/1var(--sans)", "fill:var(--i)", "paint-order:stroke", "stroke:var(--s)", "text-anchor:end"):
+    for need in ("font:60011px/1var(--sans)", "fill:var(--i-mute)", "paint-order:stroke", "stroke:var(--s)",
+                 "text-anchor:end"):
         assert need in rule, need
     # the live quote sat on 1,530 at 12:20, mid-plot, where the count would go:
     # it moves inside the bar at its root, off the ring
@@ -1879,7 +1890,7 @@ def test_the_longest_bar_carries_its_count():
     (nx, by, text), = _traded(svg)[2]
     w = _count_w(text)
     tip = min(x for x, _, _, _ in _traded(svg)[0])
-    assert text == "7,456" and abs(cy - (by - 3.96)) < 3 and tip - 4 - w < cx + 9 and cx - 9 < tip - 4, \
+    assert text == "7,456 TODAY" and abs(cy - (by - 3.96)) < 3 and tip - 4 - w < cx + 9 and cx - 9 < tip - 4, \
         "the ring no longer sits where the count would go; this proves nothing"
     assert nx == pytest.approx(box["plot_l"] + box["plot_w"] - 4)
     assert nx - w > cx + 9, "the count sits on the ring"
@@ -1930,7 +1941,7 @@ def test_no_volume_for_today_draws_no_bars():
     one = json.loads(json.dumps(_SCENE_0916))
     next(r for r in one["strikes"]["rows"] if r["strike"] == 1530)["vol_puts"] = None
     bars, ends, num = drawn(one)
-    assert len(bars) == len(ends) == 6 and [t for _, _, t in num] == ["5,013"]
+    assert len(bars) == len(ends) == 6 and [t for _, _, t in num] == ["5,013 TODAY"]
     # 1,510 traded nothing: no fill, and its end still marks it
     zero = json.loads(json.dumps(_SCENE_0916))
     r1510 = next(r for r in zero["strikes"]["rows"] if r["strike"] == 1510)
@@ -2017,10 +2028,15 @@ _SCENE_1101 = {
                              (1480, 21, 151, [1, 0, 1, 16, 0, 11, 7, 2, 0, 6, 4]))]}}
 
 
+# "TRADING PICKED UP", and " · 1 MORE" after it, at 11px/700, measured in
+# WebKit off the shipped face: what the word's room is judged on below.
+_WORD_W, _MORE_W = 109.09, 49.90
+
+
 def _new_marks(svg):
     """The change marks as drawn: each corner as (x, y of its arm, the arm's
     other end, the leg's end), the tabs as (x, y, width, height), the word as
-    (x, baseline, text), and the edge rows' texts that name new contracts."""
+    (x, baseline, text), and the edge rows' texts that name a pick-up."""
     corners = [tuple(float(v) for v in m) for m in re.findall(
         r'<path class="p-new" d="M([\d.]+),([\d.]+) L[\d.]+,([\d.]+) L([\d.]+),[\d.]+"/>', svg)]
     corners = [(x, arm, end, leg) for x, leg, arm, end in corners]
@@ -2028,7 +2044,7 @@ def _new_marks(svg):
         r'<rect class="p-newtab" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)]
     word = [(float(x), float(y), t) for x, y, t in
             re.findall(r'<text class="p-newword" x="([\d.]+)" y="([\d.]+)">([^<]*)<', svg)]
-    rows = [t for _, t in _svg_texts({"svg": {"html": svg}}, "p-edge") if "NEW CONTRACTS" in t]
+    rows = [t for _, t in _svg_texts({"svg": {"html": svg}}, "p-edge") if "PICKED UP" in t]
     return corners, tabs, word, rows
 
 
@@ -2215,7 +2231,8 @@ def test_an_area_the_plot_shows_gets_its_corners_its_tab_and_its_word():
     the tallest stretch of its box clear of the rules; the tab stands in the
     gutter's mark column and stops 3px short of the price chip, which it would
     otherwise read as the stem of. All in --i, the one ink no hue has claimed,
-    and the word in 11px type with the card's halo.
+    and the word, TRADING PICKED UP, bold in 11px type with the card's halo
+    and no share after it (the owner's short form, 2026-09-18).
 
     11:01:12 on 2026-09-16, 1,525 to 1,542.5 in a window of $41: at every
     phone."""
@@ -2251,10 +2268,10 @@ def test_an_area_the_plot_shows_gets_its_corners_its_tab_and_its_word():
         assert y(1542.5) - 4.1 <= t <= y(1542.5) + 0.1 and y(1525) - 0.1 <= b <= y(1525) + 4.1
         # the word, inside its box, clear of the count
         (wx, by, text), = word
-        assert text == "NEW CONTRACTS 63%" and wx == plot_l + 6 and t < by - 8.4 and by + 0.2 < b
-        (nx, ny, _), = _traded(svg)[2]
-        nw = _count_w("3,264")
-        apart = max(nx - nw - (wx + 121.42), ny - 8 - (by + 0.2), by - 8.4 - (ny + 2.2))
+        assert text == "TRADING PICKED UP" and wx == plot_l + 6 and t < by - 8.4 and by + 0.2 < b
+        (nx, ny, count), = _traded(svg)[2]
+        nw = _count_w(count)
+        apart = max(nx - nw - (wx + _WORD_W), ny - 8 - (by + 0.2), by - 8.4 - (ny + 2.2))
         assert apart >= 5.4, "the count sits on the word"
         # the tab, in the chip's column, off the chip
         chip_y = float(re.search(r'<rect class="p-chip" x="[\d.]+" y="([\d.]+)"', svg).group(1))
@@ -2265,8 +2282,10 @@ def test_an_area_the_plot_shows_gets_its_corners_its_tab_and_its_word():
     assert _css_rule(".p-new") == "fill:none;stroke:var(--i);stroke-width:1.5;stroke-linecap:butt;stroke-linejoin:miter"
     assert _css_rule(".p-newtab") == "fill:var(--i)"
     word = _css_rule(".p-newword")
-    for need in ("font:50011px/1var(--sans)", "fill:var(--i)", "paint-order:stroke", "stroke:var(--s)"):
+    for need in ("font:70011px/1var(--sans)", "fill:var(--i)", "paint-order:stroke", "stroke:var(--s)"):
         assert need in word, need
+    # the widths the placement runs on are the WebKit measures, with no share
+    assert _glance("console.log(JSON.stringify([g.NEW_WORD, g.NEW_MORE]));") == [_WORD_W, _MORE_W]
 
 
 def test_an_area_the_plot_cannot_show_is_named_at_its_edge():
@@ -2275,19 +2294,24 @@ def test_an_area_the_plot_cannot_show_is_named_at_its_edge():
     1,600, lie outside a window of 1,496 to 1,564, and widening it to fetch them
     would flatten the tape to 55% of its height. So each is named in the edge
     stack on its side, the way a refused wall is, with a plain arrow where a
-    level has a solid one, and nothing is drawn in the plot. A row of new
-    contracts sits 16px from its neighbour, not 13: two 11px rows at 13 leave
-    2.88px of white. The rows are in price order, and the plot gives up exactly
-    what the rows take; the bars on it still keep 30% of their pitch white."""
+    level has a solid one, the side in words and the brackets' own phrase in
+    their ink: "↑ ABOVE, AT 1,600: TRADING PICKED UP". Nothing is drawn in the
+    plot. Such a row sits 16px from its neighbour, not 13: two 11px rows at 13
+    leave 2.88px of white. The rows are in price order, and the plot gives up
+    exactly what the rows take; the bars on it still keep 30% of their pitch
+    white."""
     flow = _flowing(_SCENE_0916, _FLOW_1510, _FRAMES_1510)
     for cw in (288, 343):
         before = _page(_board(_SCENE_0916, width=cw))["svg"]["html"]
         svg = _page(_board(flow, width=cw))["svg"]["html"]
         corners, tabs, word, rows = _new_marks(svg)
         assert (corners, tabs, word) == ([], [], [])
-        assert rows == ["↑ 1,600 NEW CONTRACTS", "↓ 1,490 NEW CONTRACTS"]
-        edges = [(float(yy), t) for yy, t in re.findall(r'<text class="p-edge[^"]*" x="[\d.]+" y="([\d.]+)">([^<]*)<', svg)]
-        assert [t for _, t in edges] == ["▲ 1,600", "↑ 1,600 NEW CONTRACTS", "↓ 1,490 NEW CONTRACTS"]
+        assert rows == ["↑ ABOVE, AT 1,600: TRADING PICKED UP", "↓ BELOW, AT 1,490: TRADING PICKED UP"]
+        # the phrase is the brackets' own, in their weight and ink
+        assert svg.count('<tspan class="p-edgeword">TRADING PICKED UP</tspan>') == 2
+        edges = [(float(yy), t) for yy, t in re.findall(r'<text class="p-edge[^"]*" x="[\d.]+" y="([\d.]+)">(.*?)</text>', svg)]
+        assert [re.sub(r"<[^>]+>", "", t) for _, t in edges] == \
+            ["▲ 1,600", "↑ ABOVE, AT 1,600: TRADING PICKED UP", "↓ BELOW, AT 1,490: TRADING PICKED UP"]
         assert edges[1][0] - edges[0][0] == 16
         assert _chart_box(before)["plot_h"] - _chart_box(svg)["plot_h"] == 16 + 13
         bars, _, _ = _traded(svg)
@@ -2304,7 +2328,8 @@ def test_an_area_the_plot_cannot_show_is_named_at_its_edge():
            "walls": {"put": [{"strike": 1300, "cluster_share_of_book_gamma_pp": 10}]},
            "frames": {"books_in_series": 12}}
     assert _svg_texts(_page(_board(far)), "p-edge") == [
-        ("p-edge", "↑ 1,700 NEW CONTRACTS"), ("p-edge", "↓ 1,440 NEW CONTRACTS · 1 MORE"), ("p-edge lead", "▼ 1,300")]
+        ("p-edge", "↑ ABOVE, AT 1,700: TRADING PICKED UP"), ("p-edge", "↓ BELOW, AT 1,440: TRADING PICKED UP · 1 MORE"),
+        ("p-edge lead", "▼ 1,300")]
     # An area the window shows less than 15% of is a sliver at its edge, not a
     # place: 1,585 runs 1,582.5 to 1,587.5, and the window ends at 1,582.93.
     rows = [{"strike": k, "vol_added_per_book": [50] * 11} for k in (1300, 1320, 1340, 1360, 1580, 1590)]
@@ -2312,35 +2337,76 @@ def test_an_area_the_plot_cannot_show_is_named_at_its_edge():
     edge = {"price": {"live_spot": 1560, "session_high": 1580.5, "session_low": 1540}, "scale": {"one_sigma_dollars": 40},
             "strikes": {"rows": rows}, "frames": {"books_in_series": 12}}
     corners, _, _, named = _new_marks(_page(_board(edge))["svg"]["html"])
-    assert corners == [] and named == ["↑ 1,585 NEW CONTRACTS"]
+    assert corners == [] and named == ["↑ ABOVE, AT 1,585: TRADING PICKED UP"]
+
+
+def test_an_edge_row_says_the_brackets_words_in_the_room_it_has():
+    """pickedRow, on its own. The row is the brackets' phrase with the side said
+    in words: "↑ ABOVE, AT 1,600: TRADING PICKED UP". Wider than the room it
+    goes back to the arrow alone, "↑ AT 1,600: …", and past that the count of
+    places with no mark of their own goes; the price never does. The widths are
+    WebKit's off the shipped face: "↑ ABOVE, AT 1,600: TRADING PICKED UP" is
+    212.22 and "↓ BELOW, AT 1,470–1,480: TRADING PICKED UP · 1 MORE" 299.22.
+
+    The room is the row's own, TAG_R less a pixel: 284 at 320, 324 at 360.
+    Every single-price form fits at 320 (the widest, one below with "· 1
+    MORE", 262.97), and over the 149 such rows on the boards of 2026-09-15..17
+    every one takes the first form at 320 and up. A range with a count after it
+    is the one form 320 cannot hold, and it has never occurred."""
+    got = _glance("console.log(JSON.stringify(D.map(a => g.pickedRow(...a))));", [
+        [True, [1600], 0, 212.3], [True, [1600], 0, 212.1],
+        [False, [1470, 1480], 1, 324], [False, [1470, 1480], 1, 284], [False, [1470, 1480], 1, 250],
+        [False, [1470, 1480], 1, 100], [False, [1490], 12, 400], [False, [1490], 1, 284]])
+    assert got == [{"lead": "↑ ABOVE, AT 1,600", "tail": ""}, {"lead": "↑ AT 1,600", "tail": ""},
+                   {"lead": "↓ BELOW, AT 1,470–1,480", "tail": " · 1 MORE"},
+                   {"lead": "↓ AT 1,470–1,480", "tail": " · 1 MORE"},
+                   {"lead": "↓ AT 1,470–1,480", "tail": ""}, {"lead": "↓ AT 1,470–1,480", "tail": ""},
+                   {"lead": "↓ BELOW, AT 1,490", "tail": " · 12 MORE"},
+                   {"lead": "↓ BELOW, AT 1,490", "tail": " · 1 MORE"}]
+    # on the page, the phrase is the brackets' and the room is the row's
+    rows = [{"strike": k, "vol_added_per_book": [50] * 11} for k in (1300, 1320, 1340, 1360)]
+    for k, now in ((1400, 60), (1410, 90), (1700, 75), (1440, 70)):
+        rows.append({"strike": k, "vol_added_per_book": [10] * 9 + [now, now]})
+    far = {"price": {"live_spot": 1560}, "scale": {"one_sigma_dollars": 40}, "strikes": {"rows": rows},
+           "frames": {"books_in_series": 12}}
+    for cw, below in ((328, "↓ BELOW, AT 1,400–1,410: TRADING PICKED UP · 1 MORE"),
+                      (288, "↓ AT 1,400–1,410: TRADING PICKED UP · 1 MORE")):
+        svg = _page(_board(far, width=cw))["svg"]["html"]
+        assert [t for _, t in _svg_texts({"svg": {"html": svg}}, "p-edge")] == \
+            ["↑ ABOVE, AT 1,700: TRADING PICKED UP", below], cw
+    assert ".p-edgeword{font-weight:700;fill:var(--i)}" in PHONE.replace(" ", "")
 
 
 def test_the_word_never_sits_on_other_text_or_a_bar():
     """Where the busiest strike is the one that changed, the word and the
     longest bar's count want one row, and a count stacked under the word reads
-    as the number of new contracts. The count then moves inside its bar, past
-    the end, if that leaves 12px beside the word; otherwise the word keeps
-    5.5px above or below it, what the chart's two closest labels keep. The word
+    as the word's own number. The count then moves inside its bar, past the
+    end, if that leaves 12px beside the word; otherwise the word keeps 5.5px
+    above or below it, what the chart's two closest labels keep. The word
     never crosses a bar or its end, and never the live dot's ring; with no room
-    left in its box it sits just outside it, below and then above.
+    left in its box it sits just outside it, on the nearer side, touching it.
 
-    11:01:12 again, with 1,530, the busiest strike, inside the box: at 320,
-    360 and 375 the count moves; at 412 it is already clear. Then the same
-    board with a third area counted, so the word runs to "· 1 MORE" (170px):
-    at 320 and 360 the count cannot move 12px clear of it and stays, and the
-    word, which would cross the longest bars, leaves its box."""
+    11:01:12 again, with 1,530, the busiest strike, inside the box: the count,
+    "3,264 TODAY" (70px), moves at every phone, 412 included. Then the same
+    board with a third area counted, so the word runs to "· 1 MORE" (159px):
+    at 320, 360 and 375 the count cannot move 12px clear of it and stays, and
+    at 320 the word, which would cross the longest bars, leaves its box.
+    Below it, the count's 5.5px would hold it further off than the room above,
+    so it goes above. Below first put it 3.4 to 23px off its brackets, under
+    the count, on 15 of the 335 boxed boards of 2026-09-15..17 at 320, where it
+    read as the count's caption."""
     busy = json.loads(json.dumps(_SCENE_1101))
     for r in busy["strikes"]["rows"]:
         if r["strike"] in (1605, 1460):
             r["vol_added_per_book"] = r["vol_added_per_book"][:9] + [60 if r["strike"] == 1605 else 55] * 2
     for scene, cw, moved, inside in ((_SCENE_1101, 288, True, True), (_SCENE_1101, 328, True, True),
-                                     (_SCENE_1101, 343, True, True), (_SCENE_1101, 380, False, True),
-                                     (busy, 288, False, False), (busy, 328, False, False),
+                                     (_SCENE_1101, 343, True, True), (_SCENE_1101, 380, True, True),
+                                     (busy, 288, False, False), (busy, 328, False, True),
                                      (busy, 343, False, True), (busy, 380, True, True)):
         svg = _page(_board(scene, width=cw))["svg"]["html"]
         bars, ends, ((nx, ny, text),) = _traded(svg)
         corners, _, ((wx, by, word),), _ = _new_marks(svg)
-        ww = 121.42 + (48.65 if word.endswith("MORE") else 0)
+        ww = _WORD_W + (_MORE_W if word.endswith("MORE") else 0)
         tip = min(x for x, _, _, _ in bars)
         nw = _count_w(text)
         assert (nx == pytest.approx(tip + 4 + nw, abs=0.05)) is moved, (cw, word)
@@ -2350,7 +2416,10 @@ def test_the_word_never_sits_on_other_text_or_a_bar():
             assert x >= wx + ww or yy >= by + 0.2 or yy + h <= by - 8.4, "the word crosses a bar"
         t, b = min(c[1] for c in corners[:4]), max(c[1] for c in corners[:4])
         assert (t < by - 8.4 and by + 0.2 < b) is inside, (cw, word)
-        assert inside or by - 8.4 > b, "out of its box, the word goes below it first"
+        # out of its box it touches the arm on the nearer side: a pixel of air
+        # off the arm's ink, less the tenth the baseline is rounded to
+        assert inside or (by + 0.2 < t and 0.9 <= (t - 0.75) - (by + 0.2) <= 1.1), \
+            "out of its box, the word left the nearer side"
     # And where the box has a stretch clear of every rule, the word takes it and
     # does not lie across a rule: with the runner moved to 1,534, the box's
     # middle, the word sits in the stretch below it.
@@ -2372,7 +2441,7 @@ def test_the_word_never_sits_on_other_text_or_a_bar():
         cx, cy = _ring(svg)
         corners, _, ((wx, by, _),), _ = _new_marks(svg)
         t, b = min(c[1] for c in corners), max(c[1] for c in corners)
-        assert wx < cx - 9 < wx + 121.42 and t < cy < b, "the ring no longer sits in the word's way; this proves nothing"
+        assert wx < cx - 9 < wx + _WORD_W and t < cy < b, "the ring no longer sits in the word's way; this proves nothing"
         assert by - 8.4 >= cy + 11 or by + 0.2 <= cy - 11, "the word sits on the ring"
 
 
@@ -2405,17 +2474,22 @@ def test_the_word_takes_the_clearest_room_its_box_has():
     pixel of air off each rule's ink: a word beside a rule reads as the box's,
     one across it as the rule's. With no such stretch, it lies across a rule,
     in the stretch clear of text, bars and the ring nearest the box's middle.
-    With none of those, just outside the box, below and then above; and with
-    no room anywhere, nothing, rather than a word on other text."""
+    With none of those, just outside the box on whichever side leaves it
+    nearer, below on a tie, and never more than 8px off: further out a word
+    labels something else, and the corners and the tab mark the place alone.
+    With no room anywhere, nothing, rather than a word on other text."""
     got = _glance("""console.log(JSON.stringify(D.map(([t, b, soft, hard, top, bottom]) =>
         g.wordRow(t, b, soft, hard, top, bottom))));""", [
         [100, 140, [[113.5, 114.5], [121.5, 122.5]], [], 20, 180],   # three stretches: the tallest
         [100, 121, [[110.5, 111.5]], [], 20, 180],    # 8.75 above the ink, 7.75 with its pixel of air
         [100, 140, [[100, 140]], [[115, 125]], 20, 180],   # rules everywhere, a bar mid-box
-        [100, 140, [], [[100, 140]], 20, 180],        # no room in the box
-        [100, 140, [], [[100, 160]], 80, 160],        # ...nor below it
-        [100, 140, [], [[80, 160]], 80, 160]])        # ...nor above
-    assert got == [134.975, 114.6, 114.8, 150.15, 98.05, None]
+        [100, 140, [], [[100, 140]], 20, 180],        # no room in the box: touching either side, below
+        [100, 140, [], [[100, 145]], 20, 180],        # ...a count under it: 3.25 off below, above touches
+        [100, 140, [], [[100, 160]], 80, 160],        # ...no room below at all
+        [100, 140, [], [[60, 149.75]], 20, 180],      # 8px off below, 38 above: below
+        [100, 140, [], [[60, 150]], 20, 180],         # 8.25 off below: no word
+        [100, 140, [], [[80, 160]], 80, 160]])        # no room anywhere
+    assert got == [134.975, 114.6, 114.8, 150.15, 98.05, 98.05, 158.15, None, None]
 
 
 def test_the_words_of_new_contracts_say_what_happened_and_nothing_ahead():
@@ -2437,7 +2511,8 @@ def test_the_words_of_new_contracts_say_what_happened_and_nothing_ahead():
     near = {"price": {"live_spot": 1540}, "scale": {"one_sigma_dollars": 80}, "strikes": {"rows": rows},
             "frames": {"books_in_series": 12}}
     said |= {t for _, _, t in _new_marks(_page(_board(near))["svg"]["html"])[2]}
-    assert {"↑ 1,600 NEW CONTRACTS", "↓ 1,490 NEW CONTRACTS", "NEW CONTRACTS 63%"} <= said
+    assert {"↑ ABOVE, AT 1,600: TRADING PICKED UP", "↓ BELOW, AT 1,490: TRADING PICKED UP",
+            "TRADING PICKED UP"} <= said
     assert any(t.endswith("· 1 MORE") for t in said), said
     for s in said:
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
