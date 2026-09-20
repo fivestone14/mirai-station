@@ -3676,6 +3676,27 @@ def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
       return {on: els.lens.classList.contains('on'), svg: els.svg.innerHTML};""")
     assert "CHART TOO NARROW" in narrow["svg"], "the chart drew; this proves nothing"
     assert not narrow["on"], "the lens magnified a chart that is not on the screen"
+    # THE POINT UNDER THE FINGER is the chart's own, not the screen's. A finger
+    # on the card's padding, off the chart's left edge, reads the nearest edge
+    # of it rather than a point that is not on it; and a chart laid out
+    # narrower than the width it was drawn at scales by that ratio, or every
+    # gesture on it reads the wrong strike by the difference.
+    edges = _page(_board(_SCENE_0916, width=328), _FINGER + """
+      const at = onBar(1500);
+      fire('touchstart', touch(R.left - 20, at.y));
+      holdFires();
+      const off = els.lensSvg.attrs.viewBox.split(' ').map(Number);
+      fire('touchend', touch(0, 0, 0));
+      R.width = R.width / 2; R.right = R.left + R.width;      // max-width halved it
+      fire('touchstart', touch(R.left + (at.x - R.left) / 2, at.y));
+      holdFires();
+      const half = els.lensSvg.attrs.viewBox.split(' ').map(Number);
+      return {off, half, want: at.bar};""")
+    assert edges["off"][0] + edges["off"][2] / 2 == 0, \
+        "a finger off the chart's edge read a point that is not on the chart"
+    assert edges["half"][0] + edges["half"][2] / 2 == pytest.approx(
+        (edges["want"]["x0"] + edges["want"]["x1"]) / 2, abs=0.05), \
+        "a chart laid out narrower than it was drawn read the wrong place"
 
 
 @pytest.mark.skipif(not _NODE, reason="node is not installed")
@@ -3838,6 +3859,114 @@ def test_a_sideways_drag_reads_the_price_line_in_the_cards_head_row():
         and 'class="sc-blk"' in shown["marks"]
     assert shown["marks"].count("<line") == 1, "a second line across the plot"
 
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_the_lens_reads_the_board_the_page_drew_and_says_what_was_never_counted():
+    """The lens is not a second chart, and it must not be able to become one.
+
+    IT MAGNIFIES THE DRAWING ITSELF. The glance's marks go inside a named
+    group, and the lens is a <use> of that group behind a viewBox — so every
+    bar, stripe, rule and letter in the window is the one the page drew, not a
+    redrawing of the same board by another rule. There is exactly one such
+    group in the document: the full screen view is drawn by the same
+    paintLadder and takes no name, or the lens would magnify whichever the
+    browser found first. Opening that view leaves the geometry a finger reads
+    alone, for the same reason — it is the GLANCE that is under the finger.
+
+    AND THE NUMBERS BESIDE THE WINDOW ARE THAT BOARD'S. Where a count was
+    never taken the readout says so in words. A nought here is a lie a reader
+    cannot catch: "0 since the reading" and "nobody has said yet" look the
+    same in a column of figures (law 1, glance.js). The three cases the
+    station really serves, on the 15:10:21 board of 2026-09-16:
+      - no reading yet today, so there is nothing to count since;
+      - a reading whose book never listed this strike;
+      - and a strike that was listed and has traded nothing since, which is a
+        measured zero and prints as one."""
+    geo = "run('CHART')"
+    words = _FINGER + """
+      const bar = run('CHART').bars.find(b => b.v === D_STRIKE);
+      fire('touchstart', touch(R.left + (bar.x0 + bar.x1) / 2, R.top + bar.y));
+      holdFires();
+      const read = els.lensRead.innerHTML, on = lens().on;
+      fire('touchend', touch(0, 0, 0));
+      return {read, on, away: lens().on};""".replace("D_STRIKE", "1545")
+
+    no_read = _page(_board(_SCENE_0916, width=328), words)
+    assert no_read["read"].count("not counted yet") == 1, no_read["read"]
+    left_out = _page(_board(_SCENE_0916, width=328, reads=_READS_AT, payload={"since_read": dict(
+        _FIELD_1510, rows=[r for r in _FIELD_1510["rows"] if r[0] != 1545])}), words)
+    assert left_out["read"].count("since 10:52: not counted here") == 1, left_out["read"]
+    for got in (no_read, left_out):
+        assert got["on"] and not got["away"], "the lens did not come up, or did not go away"
+        assert '<th class="k">1,545</th>' in got["read"], "the readout is not the one for 1,545"
+        assert 'class="put">0<' not in got["read"] and 'class="call">0<' not in got["read"], \
+            f"a count that was never taken printed as a nought: {got['read']}"
+    # 1,545 traded 3 calls and nothing at all in puts since the reading, and
+    # the nothing is a measured nothing
+    quiet = _page(_board(_SCENE_0916, width=328, reads=_READS_AT,
+                         payload={"since_read": _FIELD_1510}), words)
+    assert '<td>since 10:52</td><td class="put">0</td><td class="call">3</td>' in quiet["read"], quiet["read"]
+
+    # the drawing the lens magnifies, and the one geometry it reads
+    shape = _page(_board(_SCENE_0916, width=328), """
+      els.cfOpen.attrs['aria-controls'] = 'chartFull';
+      const before = JSON.stringify(%s);
+      const glance = els.svg.innerHTML;
+      (els.cfOpen.heard.click || []).forEach(f => f({}));
+      return {glance, full: els.cfSvg.innerHTML, kept: JSON.stringify(%s) === before};""" % (geo, geo))
+    assert shape["glance"].startswith('<g id="ldg">') and shape["glance"].endswith("</g>"), \
+        "the glance's drawing has no name for the lens to magnify"
+    assert (shape["glance"] + shape["full"]).count('id="ldg"') == 1, \
+        "two drawings answer to the lens's name"
+    assert re.search(r'<svg id="lensSvg"><use href="#ldg"/>', PHONE), \
+        "the lens does not magnify the chart's own drawing"
+    assert shape["kept"], "opening the chart full screen took the geometry the finger reads"
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_finger_on_the_shares_strip_reads_the_blocks_own_count():
+    """The strip's bars are a share of a FIXED scale and anything past it is
+    capped, so a block's height cannot be read back as a number. The count has
+    to come from the block, and volumeBlocks carries its own sum for exactly
+    that: summing the minutes again under the finger would be a second copy of
+    the rule for which minutes are in which block, and the two would disagree
+    the day the rule changed.
+
+    Driven against the rows the station served: the third block is the
+    sixteenth to the twentieth minute of the record, and the lens says their
+    volumes added up, in the five minutes they were traded in."""
+    bars = _minute_bars(120)
+    got = _page(_board(_SCENE_0916, now="2026-09-10T11:31:00-04:00", bars=bars, width=328), _FINGER + """
+      const geo = run('CHART'), b = geo.vol[3];
+      fire('touchstart', touch(R.left + (b.x0 + b.x1) / 2, R.top + geo.ribB - 4));
+      holdFires();
+      return {read: els.lensRead.innerHTML, n: geo.vol.length};""")
+    want = sum(b["volume"] for b in bars[15:20])
+    assert got["n"] == 24, "the record was not cut into five-minute blocks"
+    assert f"<b>{want:,}</b> SNDK shares traded 09:45\u201309:50" in got["read"], got["read"]
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_scan_that_lands_under_a_finger_is_read_again_rather_than_left_stale():
+    """A poll repaints the chart while a finger is on it. The readout beside
+    the window is read from the board, so it has to be read again from the new
+    one: a reading that keeps the old numbers beside the new drawing is a lie
+    with nothing on the screen to give it away.
+
+    Driven on the sideways read, where the number is the live quote itself."""
+    bars = _minute_bars(120)
+    net = _board(_SCENE_0916, now="2026-09-10T11:31:00-04:00", bars=bars, width=328,
+                 live={"ticker": "SNDK", "spot": 1517.0})
+    got = _page(net, _FINGER + """
+      const at = onBar(1500);
+      fire('touchstart', touch(at.x, at.y));
+      fire('touchmove', touch(R.left + R.width - 2, at.y + 2));
+      const first = scrub().read;
+      NET.live = {ticker: 'SNDK', spot: 1544.5, ts: NET.now};
+      await run('loadSpot()'); await settle();
+      return {first, after: scrub().read};""")
+    assert "1,517.00" in got["first"], got["first"]
+    assert "1,544.50" in got["after"], f"the reading was left on the scan it was taken from: {got['after']}"
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------
