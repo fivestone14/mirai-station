@@ -3303,6 +3303,22 @@ def test_the_chart_key_says_what_the_code_draws():
         and float(re.search(r"LENS_ZOOM=([\d.]+)", GLANCE).group(1)) == 2.5, \
         "the key's magnification and glance.js's disagree"
     assert "still scrolls the page" in rows["Drag sideways across the chart"]["says"]
+    # THE ONE CUE ON THE CARD, which is all a reader has before they open the
+    # key: it names the gesture, so it has to name the gesture the code arms.
+    # "Hold" is a finger kept still — touchKind takes movement past the slop
+    # as the page's or as the sideways read, and only stillness past HOLD_MS
+    # as the hold — and it is one cue, not three (there is no room for three
+    # at 320 and the key's rows carry the rest).
+    hints = re.findall(r'<span class="lp-hint"[^>]*>([^<]*)</span>', PHONE)
+    assert hints == ["Hold to magnify"], hints
+    assert rows["Hold a finger on the chart"]["term"].split()[0].lower() == hints[0].split()[0].lower(), \
+        "the cue and the key name different gestures"
+    assert _glance("console.log(JSON.stringify([g.touchKind(0, 0, g.HOLD_MS),"
+                   " g.touchKind(g.TOUCH_SLOP + 1, 0, 9999),"
+                   " g.touchKind(0, g.TOUCH_SLOP + 1, 9999)]));") == ["hold", "read", "scroll"], \
+        "the cue says hold and the code magnifies on something else"
+    assert "pointer-events:none" in _block(".lp-hint{"), "the cue is a control"
+
 
 
 def test_every_word_in_the_chart_key_passes_the_laws():
@@ -3516,11 +3532,29 @@ def test_the_lens_stays_on_the_screen_and_off_the_fingertip(phone):
     would put it off the screen if the fallbacks were wrong.
 
     The fingertip is a 20px disc centred 10px above the touch point: the touch
-    point is the middle of the pad and the tip runs above it."""
+    point is the middle of the pad and the tip runs above it.
+
+    The 8px is written out here rather than read from LENS_EDGE, because a
+    margin measured against itself is no margin: with the constant on both
+    sides of the sum, taking it to 0 leaves the lens flush with the screen's
+    edge and this test still green. It is the one number in the layout the
+    grid cannot derive. 224 is the other, and it is in two files: the window's
+    width in glance.js, which the viewBox is solved against, and .lens's own
+    width in the stylesheet. If those two ever disagree the magnified region
+    is drawn at a scale that is not LENS_ZOOM.
+
+    BESIDE is on the ROOMIER side. It is the fallback for a finger too near
+    the top of the screen for the lens to sit above it, and going to the
+    cramped side of the finger puts the lens against the edge or off it, which
+    sends it below instead — onto the hand, which is the last place it should
+    be."""
+    assert int(re.search(r"width:(\d+)px", _block(".lens{")).group(1)) \
+        == _glance("console.log(g.LENS_W);"), \
+        "the lens's box and the region it magnifies are different widths"
     js = """
-      const E = g.LENS_EDGE, W = g.LENS_W, out = {};
+      const E = 8, W = g.LENS_W, out = {};
       for(const [name, box] of Object.entries(D.boxes)){
-        const t = out[name] = {above: 0, beside: 0, below: 0, n: 0, off: 0, onFinger: 0};
+        const t = out[name] = {above: 0, beside: 0, below: 0, n: 0, off: 0, onFinger: 0, wrongSide: 0};
         for(let x = box.left; x <= box.left + box.width; x += 4)
           for(let y = box.top; y <= box.top + box.height; y += 4)
             for(const rh of [53, 71, 91]){
@@ -3531,6 +3565,9 @@ def test_the_lens_stays_on_the_screen_and_off_the_fingertip(phone):
               const fx = x, fy = y - 10;
               const nx = Math.max(p.left, Math.min(fx, p.left + W)), ny = Math.max(p.top, Math.min(fy, p.top + h));
               if(p.where !== 'below' && Math.hypot(nx - fx, ny - fy) < 20) t.onFinger++;
+              // beside: the lens's middle is on the side of the finger that
+              // had the more room to give it
+              if(p.where === 'beside' && (p.left + W / 2 > x) !== (D.vw - x > x)) t.wrongSide++;
             }
       }
       console.log(JSON.stringify(out));"""
@@ -3540,12 +3577,15 @@ def test_the_lens_stays_on_the_screen_and_off_the_fingertip(phone):
         "chart at the top of the screen": {"left": side, "top": 0, "width": phone - 2 * side,
                                            "height": chart_h}}})
     for where, t in got.items():
-        assert t["off"] == 0, f"{where}: the lens left the screen {t['off']} times at {phone}"
+        assert t["off"] == 0, f"{where}: the lens came within 8px of the screen's edge {t['off']} times at {phone}"
         assert t["onFinger"] == 0, f"{where}: the lens sat on the fingertip {t['onFinger']} times at {phone}"
+        assert t["wrongSide"] == 0, f"{where}: the lens went beside the finger on the cramped side at {phone}"
     top = got["page at the top"]
     assert top["above"] / top["n"] >= 0.90, f"at {phone} the lens is above the finger on {top['above'] / top['n']:.0%}"
     assert got["chart at the top of the screen"]["above"] < top["above"], \
         "there is room above the finger in both cases; this proves nothing"
+    assert got["chart at the top of the screen"]["beside"] > 0, \
+        "the beside fallback is never reached; the side rule above proves nothing"
 
 
 # The chart's geometry as paintLadder leaves it, cut to what a finger reads:
@@ -3574,7 +3614,9 @@ def test_the_lens_says_what_is_under_the_finger_and_where_nothing_was_counted():
     Over a bar it is that strike, its puts and calls traded today, and what
     traded there since the reading on the card below. Over the shares strip it
     is that five-minute block and the shares in it. On the latest price's dot
-    it names the price too, wherever else the finger is.
+    it names the price too, wherever else the finger is — within LENS_DOT of
+    the dot and no further, because past that the finger is on the chart and
+    the last quote is not what it is asking about.
 
     HONEST-ABSENT, four ways, and each of them is a board the station really
     serves: a book the builder withheld draws no bars at all; past the last
@@ -3595,6 +3637,11 @@ def test_the_lens_says_what_is_under_the_finger_and_where_nothing_was_counted():
     assert strip == {"kind": "shares", "price": None, "block": geo["vol"][0]}
     assert past == {"kind": "noblock", "price": None}, "past the last block there is no five-minute count"
     assert dot["kind"] == "strike" and dot["price"] == {"v": 1555.41, "t": geo["live"]["t"]}
+    # the dot has a reach, LENS_DOT, and it ends: a finger 8px from it is on
+    # it, one 14px away is on the chart and the price is not its business
+    near, far = _glance(js, {"geo": geo, "at": [[267 + 8, 70], [267 + 14, 70]]})
+    assert near["price"] == dot["price"], "the latest price's dot has no reach at all"
+    assert far["price"] is None, "a finger well clear of the dot was given the latest price"
     assert _glance("console.log(JSON.stringify(g.chartAt(null, 1, 1)));", {}) is None
     # a board whose book was withheld draws no bars, and the lens says so
     assert _glance(js, {"geo": _geo(bars=[], since=None), "at": [[180, 62]]})[0] \
