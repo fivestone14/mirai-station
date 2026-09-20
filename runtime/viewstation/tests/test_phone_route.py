@@ -2605,25 +2605,52 @@ def test_the_word_never_sits_on_other_text_or_a_bar():
     unsaid, its card halo cutting them as it cuts a rule: split bars stand
     across more of the plot than one grey bar did.
 
-    11:01:12 again, with 1,530 inside the box: its calls lead, "1,655 CALLS"
-    (60px). Right of its pair it would run past the plot, so it moves over the
-    zero at every phone, 412 included, and the word stays in its box. Then the
-    same board with a third area counted, so the word runs to "· 1 MORE"
-    (159px): at 320, 360 and 375 no spot leaves the count 12px clear of it and
-    it stays. At 360 the word leaves its box below and at 375 above, the side
-    nearer; at 320 no row clear of the bars is left, and it crosses one. Below
-    first put the word 3.4 to 23px off its brackets, under the count, on 15 of
-    the 335 boxed boards of 2026-09-15..17 at 320, where it read as the
+    RE-MEASURED 2026-09-19 at LADDER_H 280. The rules are unchanged; the room
+    they are solved in is 84px taller, and the cases were re-picked so each
+    branch is still the one being exercised.
+
+    11:01:12, with 1,530 and 1,540 both in the box: 1,530's calls lead, "1,655
+    CALLS" (60px), and right of its pair it would still run past the plot. The
+    box was 36.3px tall on the 196 chart and is 57.0, so the word now finds a
+    row 14.3px above the count inside it and THE COUNT NO LONGER HAS TO MOVE —
+    it stays on its bar's end at every phone. The same board with only 1,530
+    changed boxes a single strike, which newBox grows to 13px whatever the
+    plot's height: no row in it clears the count, so the count moves over the
+    zero, at 412 as well. That board again with a third area counted, so the
+    word runs to "· 1 MORE" (159px) and the strikes are $5 apart from 1,500 to
+    1,580: the word leaves its box by 1.45px at 320, 360 and 375, and at 320 no
+    row clear of the bars is left in it or beside it and the word crosses one.
+    At 412 there is room for the long word in the box and the count goes to the
+    zero. Over the 335 boxed boards of 2026-09-15..17 at 320 the word still
+    leaves its box on 6 and crosses a bar on 14, against 7 and 14 at 196: the
+    taller plot did not buy these off. Below first put the word 3.4 to 23px off
+    its brackets, under the count, on 15 of those boards, where it read as the
     count's caption (wordRow's nearer-side rule)."""
-    busy = json.loads(json.dumps(_SCENE_1101))
-    for r in busy["strikes"]["rows"]:
-        if r["strike"] in (1605, 1460):
-            r["vol_added_per_book"] = r["vol_added_per_book"][:9] + [60 if r["strike"] == 1605 else 55] * 2
+    def changed(scene, tails, grid=None):
+        s = json.loads(json.dumps(scene))
+        if grid:
+            was = {r["strike"]: r for r in s["strikes"]["rows"]}
+            s["strikes"]["rows"] = [was[k] if k in was else
+                                    {"strike": k, "vol_calls": 400, "vol_puts": 350,
+                                     "vol_added_per_book": [20] * 11} for k in range(*grid)] \
+                + [r for k, r in was.items() if not grid[0] <= k < grid[1]]
+        for r in s["strikes"]["rows"]:
+            if r["strike"] in tails:
+                r["vol_added_per_book"] = r["vol_added_per_book"][:9] + list(tails[r["strike"]])
+        return s
+
+    # only 1,530 changed, so its box is one strike wide
+    one = changed(_SCENE_1101, {1540: (20, 10)})
+    # and again with a third area counted and the bars packed on a $5 grid
+    dense = changed(_SCENE_1101, {1540: (20, 10), 1605: (60, 60), 1460: (55, 55)},
+                    grid=(1500, 1581, 5))
     for scene, cw, spot, inside, crosses in (
-            (_SCENE_1101, 288, "zero", True, 0), (_SCENE_1101, 328, "zero", True, 0),
-            (_SCENE_1101, 343, "zero", True, 0), (_SCENE_1101, 380, "zero", True, 0),
-            (busy, 288, "stays", True, 1), (busy, 328, "stays", False, 0),
-            (busy, 343, "stays", False, 0), (busy, 380, "zero", True, 0)):
+            (_SCENE_1101, 288, "stays", True, 0), (_SCENE_1101, 328, "stays", True, 0),
+            (_SCENE_1101, 343, "stays", True, 0), (_SCENE_1101, 380, "stays", True, 0),
+            (one, 288, "zero", True, 0), (one, 328, "zero", True, 0),
+            (one, 343, "zero", True, 0), (one, 380, "zero", True, 0),
+            (dense, 288, "stays", False, 1), (dense, 328, "stays", False, 0),
+            (dense, 343, "stays", False, 0), (dense, 380, "zero", True, 0)):
         svg = _page(_board(scene, width=cw))["svg"]["html"]
         box = _chart_box(svg)
         pairs, ends, ((nx, ny, text),) = _traded(svg)
@@ -3065,15 +3092,21 @@ def test_the_price_ruler_names_the_silence_between_the_tags():
     small grey between the named ones — and never into a crowd: a rung is
     dropped where a tag already names its height, or where it would sit within
     17px of a tag's row. The magnet runner at 1,530 drew an amber rule nothing
-    on the chart named; the ruler names it without adding a row to the tags."""
+    on the chart named; the ruler names it without adding a row to the tags.
+
+    RE-MEASURED 2026-09-19 at LADDER_H 280. The rungs are the same rule on a
+    taller plot, so they stand further apart and one more of them clears the
+    tags: on this board they were 21.2px apart and are 33.6, and 1,510 — 15.5px
+    from the 1,500 wall's row at 196, inside the 17 — is 30.1 from it now. The
+    list is the taller chart's, which is what the reader sees."""
     def ruler(scene, cw=343):
         svg = _page(_board(scene, width=cw))["svg"]["html"]
         return (svg, re.findall(r'<text class="p-scale" x="([\d.]+)" y="([\d.]+)">([^<]*)</text>', svg),
                 re.findall(r'<line class="p-stick" x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)"', svg))
 
     svg, labels, ticks = ruler(_SCENE_0916)
-    # 1,500 is the wall's own tag, 1,520 the chip's rung, 1,510 crowds the chip
-    assert [t for _, _, t in labels] == ["1,530", "1,540", "1,550", "1,560"]
+    # 1,500 is the wall's own tag and 1,520 sits 2.9px off the chip's row
+    assert [t for _, _, t in labels] == ["1,510", "1,530", "1,540", "1,550", "1,560"]
     # each carries a tick in the mark column, at its own height
     assert {(x1, x2) for x1, _, x2 in ticks} == {("296", "300")}
     assert [float(y) for _, y, _ in ticks] == [pytest.approx(float(y) - 3.5, abs=0.11) for _, y, _ in labels]

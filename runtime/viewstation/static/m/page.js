@@ -9,7 +9,7 @@
 const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
 
-let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], WIN = null, LADDER_H = 196;
+let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], WIN = null, LADDER_H = 280;
 let T_PAY = null, T_SPOT = null;
 
 /* ---- layout ------------------------------------------------------------ */
@@ -50,18 +50,36 @@ function sizeLadder(){
   // below it grows to whatever the model wrote. A paragraph that can be six
   // lines or thirteen could never have lived in that column.
   //
-  // 196. SVGH is LADDER_H-1, and PAD_T/PAD_B are 9 and 29 plus 13 per edge
-  // marker (the 29 holds the volume ribbon and the axis feet), so the plot is
-  // 157px with no edge markers, 144 with one, 131 with two on one side. That
-  // is the range in which the wall rules stay separable and the price path
-  // keeps its shape; below roughly 130 the label solver starts displacing a
-  // label further than the level it names. A row of new contracts sits 16
-  // from its neighbour, not 13 (paintLadder), so on the 15:10 board of
-  // 2026-09-16 two of them take the plot from 144 to 115. The height was
-  // budgeted and the width was not, so when the chart needed room it came
-  // sideways — the bleed and the derived gutter in paintLadder — and this
-  // constant did not move.
-  LADDER_H = 196;
+  // 280 since 2026-09-19, by the owner's choice, and it is the knee.
+  //
+  // SVGH is LADDER_H-1, and PAD_T/PAD_B are 9 and 29 plus 13 per edge marker
+  // (the 29 holds the volume ribbon and the axis feet), so the plot is 241px
+  // with no edge markers, 228 with one, 215 with two on one side. It was 196,
+  // where those were 157, 144 and 131 — the range in which the wall rules
+  // stay separable and the price path keeps its shape, but too little for the
+  // marks the chart gained since. Bar thickness and row pitch are HEIGHTS
+  // (tradedBars caps a bar at TRADED_H_MAX and takes TRADED_PITCH of the
+  // tightest pitch in view), so only this number moves them; bar LENGTHS are
+  // widths, set by the phone's 360, and no height helps them — the full-screen
+  // view writes their numbers in instead (ZOOM-SPEC.md 1, 4).
+  //
+  // Swept over the 514 stored boards of 2026-09-15..17 at the owner's 360px:
+  // a bar was 5.9px thick at the median (p10 5.0) and at its 8px cap on 20% of
+  // them, and the tightest two rows of bars 8.5px apart (p10 7.1). At 280 a
+  // bar is 8.0 at the median AND at the p10, at the cap on 91%, and the
+  // tightest rows are 13.4 apart (p10 11.8). Past 280 only white space grows:
+  // at 300 the bars are already capped on 98% and nothing but the pitch moves.
+  //
+  // It costs 84px of scroll, all of it below the chart — the card ends at 493
+  // instead of 409 on a 780px screen, so "Where the activity is" shows its
+  // title and first line rather than its first rows. The reading was already
+  // below the fold.
+  //
+  // A row of new contracts sits 16 from its neighbour, not 13 (paintLadder),
+  // so on the 15:10 board of 2026-09-16 two of them take the plot from 228 to
+  // 199. The height is budgeted and the width is not, so when the chart needs
+  // room sideways it still comes from the bleed and the derived gutter.
+  LADDER_H = 280;
 }
 
 /* ---- fetch ------------------------------------------------------------- */
