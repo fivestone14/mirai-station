@@ -1158,21 +1158,14 @@ function chartFoot(st, T){
        + since + tight + '.';
 }
 
-// A TAP ON THE CHART OPENS IT, anywhere on it, and so does the corner control
-// in the card's head, which is what says on the glance that it can be opened.
-//
-// The tap is judged twice. A browser sends no click at all after a scroll,
-// which is one of the gestures that share this glass; isTap (glance.js) then
-// holds the finger to Android's own 8px of slop and 500ms, so a drag the shell
-// read as a pull-to-refresh cannot arrive here as a tap. The chart's own touch
-// listeners are C3's, and they are what decides a lift was a tap and not one
-// of the two gestures; a click with no measured tap behind it — a mouse on a
-// desktop browser — opens nothing, and the corner control is there for that.
-function chartTap(){
-  const tapped = TAP;
-  TAP = false;
-  if(tapped) openChart();
-}
+// THE CORNER CONTROL IN THE CARD'S HEAD OPENS IT, and nothing else does: a tap
+// on the chart itself does nothing at all (the owner's decision of 2026-09-19,
+// which overturns the tap of ZOOM-SPEC.md 5). What the chart answers a finger
+// with is the lens and the sideways reading (C3), and both of those show what
+// is already on the glance while the finger is down. Covering the page with
+// another screen is not that, so it is asked for the way everything else on
+// the page is asked for — a control that looks like one, says what it opens
+// and can be reached without a touchscreen.
 $('cfOpen').addEventListener('click', () => openChart());
 
 function openChart(){
@@ -1188,15 +1181,14 @@ function openChart(){
 // The chart answers a finger held still by magnifying what is under it, and a
 // finger dragged sideways by reading the price line at that minute — the
 // owner's choice of 2026-09-19 off ZOOM-SPEC.md 3 and 6. Anything else is the
-// page's own scroll, and a lift that no gesture took is the tap that opens the
-// chart full screen (C2).
+// page's own scroll, and a lift that armed neither gesture does nothing: the
+// chart full screen is the corner control's (C2), never a tap on the glass.
 //
 // ONE STATE MACHINE, because one touch cannot be read by two. touchKind
 // (glance.js) is asked the same question by the hold's timer and by every
 // move; the verdict is reached once and never revisited. touchstart stays
-// passive, so a tap and a scroll begin exactly as they did before there were
-// gestures here, and the only preventDefault is on a move or a lift after a
-// gesture has armed.
+// passive, so a scroll begins exactly as it did before there were gestures
+// here, and the only preventDefault is on a move after a gesture has armed.
 //
 // WHAT THE PAGE HAS TO SAY TO THE SHELL. The shell wraps the WebView in a
 // SwipeRefreshLayout, which takes any downward drag past its slop whenever the
@@ -1210,14 +1202,13 @@ function openChart(){
 // a 250ms hold could have. The cost is that a drag begun ON THE CHART no
 // longer pulls to refresh; begun anywhere else on the page it still does.
 let TOUCH = null;                // the finger on the chart, and what it turned out to be
-let TAP = false;                 // ... and whether the lift left a tap behind it
 let T_HOLD = null;
 
 function chartTouch(e){
   // One finger only. A second is a pinch, which this WebView does not zoom
   // (setSupportZoom(false)), and a gesture steered by two fingers is no
   // gesture: whatever was running is abandoned.
-  if(e.touches.length !== 1){ chartCancel(); return; }
+  if(e.touches.length !== 1){ chartOver(); return; }
   const t = e.touches[0];
   TOUCH = {x0:t.clientX, y0:t.clientY, x:t.clientX, y:t.clientY, at:Date.now(), kind:'wait'};
   MiraiSheet.pin(true);
@@ -1251,26 +1242,14 @@ function chartDecide(e, ms){
   lensShow(TOUCH.x, TOUCH.y);
 }
 
-function chartLift(e){
-  // A LIFT IS A TAP only where no gesture took the touch, and isTap holds it
-  // to Android's own 8px and 500ms besides — a lift that jumped, or one the
-  // shell was reading as a pull-to-refresh, is not a tap however still the
-  // finger was. A gesture that did take the touch refuses the click outright,
-  // so the chart cannot open full screen under a lens that is closing.
-  const t = e.changedTouches && e.changedTouches[0];
-  TAP = !!(TOUCH && TOUCH.kind === 'wait' && t
-           && isTap({x:TOUCH.x0, y:TOUCH.y0, t:TOUCH.at}, {x:t.clientX, y:t.clientY, t:Date.now()}));
-  if(TOUCH && TOUCH.kind !== 'wait') e.preventDefault();
-  chartOver();
-}
-
-function chartCancel(){
-  // The system took the gesture: nothing happened here, tap included.
-  TAP = false;
-  chartOver();
-}
-
 function chartOver(){
+  // THE LIFT AND THE CANCEL ARE THE SAME ENDING, since the owner's decision of
+  // 2026-09-19: a lift leaves nothing behind it to act on, so a finger taken
+  // off the glass and a finger taken away by the system (a call arriving, the
+  // app backgrounded) both come to this. Whatever the touch armed goes away
+  // with it, the hold's timer with it — a timer left running fires part way
+  // into the NEXT touch — and the shell is told the truth about the page's
+  // scroll position again.
   clearTimeout(T_HOLD); T_HOLD = null;
   TOUCH = null;
   lensHide(); scrubHide();
@@ -1419,19 +1398,19 @@ function chartRepainted(){
   else if(TOUCH.kind === 'read') scrubShow(TOUCH.x);
 }
 
-// ONE SET OF LISTENERS ON THE CHART, because one touch has one meaning.
-// touchstart is PASSIVE: a tap and a scroll must begin exactly as they do on a
-// page with no gestures at all. touchmove cannot be, because a move after a
-// hold or a sideways drag has armed belongs here and not to the scroller, and
-// Chrome makes a document-level touch listener passive whatever it asks for —
-// so these sit on the chart itself (ZOOM-SPEC.md 3). Android's long press
-// would otherwise open text selection or its menu over the lens, and a live
+// ONE SET OF LISTENERS ON THE CHART, because one touch has one meaning. THE
+// MOVE IS THE ONLY ONE THAT EVER TAKES ANYTHING: it cannot be passive, because
+// a move after a hold or a sideways drag has armed belongs here and not to the
+// scroller. The landing and the ending say so — a touch begins and ends on
+// this chart exactly as it does on a page with no gestures at all. Chrome
+// makes a document-level touch listener passive whatever it asks for, so these
+// sit on the chart itself (ZOOM-SPEC.md 3). Android's long press would
+// otherwise open text selection or its menu over the lens, and a live
 // selection turns the next drag into handle-dragging, so the menu is refused.
 $('ladder').addEventListener('touchstart', chartTouch, {passive: true});
 $('ladder').addEventListener('touchmove', chartMove, {passive: false});
-$('ladder').addEventListener('touchend', chartLift);
-$('ladder').addEventListener('touchcancel', chartCancel);
-$('ladder').addEventListener('click', chartTap);
+$('ladder').addEventListener('touchend', chartOver, {passive: true});
+$('ladder').addEventListener('touchcancel', chartOver, {passive: true});
 $('ladder').addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---- E. read — an opinion, not a measurement ---------------------------- */

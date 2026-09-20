@@ -59,7 +59,7 @@ const els = {
   howto: el('howto', ['#howto'], {'aria-controls': 'howtoSheet'}),
   howtoSheet: el('howtoSheet', ['#howtoSheet', '.sheet'], {'aria-hidden': 'true'}, 'hwClose'),
   hwClose: el('hwClose', ['[data-sheet-close]']),
-  // the chart, and the full screen view a tap on it opens
+  // the chart, and the full screen view its corner control opens
   ladder: el('ladder', ['#ladder']),
   cfOpen: el('cfOpen', ['#cfOpen'], {'aria-controls': 'chartFull'}),
   chartFull: el('chartFull', ['#chartFull', '.sheet'], {'aria-hidden': 'true'}, 'cfClose'),
@@ -124,12 +124,12 @@ function reset(){
 }
 // a tap as a browser delivers it: the control's own listeners, then the document's
 function tap(n){ const e = ev('click', n, 100, 100); (n.heard.click || []).forEach(f => f(e)); fire(docL, 'click', e); }
-// and a finger on the chart, which has no click of its own until the touch
-// that made it has been measured: down, up `ms` later `dx` away, then the click
-// the browser sends when it agrees that was a tap
+// and a finger on the chart: down, up `ms` later `dx` away, then the click the
+// browser sends after a touch it agrees was a tap — which is the whole of what
+// a tap on the chart is, and it must open nothing
 function finger(n, ms, dx){
-  // preventDefault because a touch event has one: the chart's own listeners
-  // cancel the lift that ended a gesture, so that it cannot also be a tap
+  // preventDefault because a real touch event has one, and a listener that
+  // took a gesture off the page would use it
   const at = (x) => ({touches: [{clientX: x, clientY: 100}], changedTouches: [{clientX: x, clientY: 100}],
                       prevented: false, preventDefault(){ this.prevented = true; }});
   fire(n.heard, 'touchstart', at(100));
@@ -188,22 +188,21 @@ fire(docL, 'touchend', ev('touchend', els.howto, 100, 100, {touches: []}));
 fire(docL, 'pointerup', ev('pointerup', els.howto, 100, 100));
 out.hold = state();
 
-// 9. a TAP ON THE CHART opens the chart full screen, with its own history
+// 9. THE CORNER CONTROL opens the chart full screen, with its own history
 //    entry and the focus on its own close control
-reset(); finger(els.ladder, 90, 2);
-out.tap_opens_chart = chart();
+reset(); tap(els.cfOpen);
+out.control_opens_chart = chart();
 
 // 10. one at a time: the key's link while the chart is open opens nothing and
 //     pushes no second entry, so the one Back below cannot leave one behind
 advance(600); tap(els.howto);
 out.key_over_chart = Object.assign(chart(), {key: els.howtoSheet.attrs['aria-hidden']});
 
-// 11. so ONE Back closes it and the focus goes to the control that says the
-//     chart can be opened
+// 11. so ONE Back closes it and the focus goes back to that control
 history.back(); advance(50);
 out.back_closes_chart = chart();
 
-// 12. the corner control opens it too, and its close tapped twice goes back once
+// 12. its close tapped twice goes back once
 reset(); tap(els.cfOpen); advance(600); tap(els.cfClose); tap(els.cfClose); advance(50);
 out.close_twice = chart();
 
@@ -212,9 +211,12 @@ reset(); tap(els.cfOpen); advance(600);
 fire(docL, 'keydown', {key: 'Escape'}); advance(50);
 out.chart_escape = chart();
 
-// 14. and what must NOT open it: a finger held on the chart past Android's
-//     long press, a finger dragged past its touch slop (the gesture the
-//     shell reads as a pull-to-refresh), and a click with no touch behind it
+// 14. and nothing a finger does ON THE CHART opens it (the owner's decision of
+//     2026-09-19): a plain tap, a finger held past Android's long press, a
+//     finger dragged past its touch slop (the gesture the shell reads as a
+//     pull-to-refresh), and a click with no touch behind it
+reset(); finger(els.ladder, 90, 2);
+out.chart_tap = chart();
 reset(); finger(els.ladder, 600, 0);
 out.chart_hold = chart();
 reset(); finger(els.ladder, 90, 20);

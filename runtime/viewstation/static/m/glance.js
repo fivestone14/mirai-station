@@ -636,29 +636,12 @@ function tradedSince(field, reads, strikes){
 
 /* ---- the chart full screen --------------------------------------------- */
 
-// A TAP OPENS THE CHART, and nothing else on it does (ZOOM-SPEC.md 5). What
-// separates a tap from the two gestures that share the glass:
-//  - a SCROLL. The page scrolls under the chart, and the finger that starts
-//    that scroll starts it on the chart. A browser sends no click after a
-//    scroll, so the click alone would nearly do; the slop is what makes the
-//    rule the page's own rather than a behaviour it inherits, and it is what
-//    a later hold on the chart (the magnifier) measures itself against.
-//  - a PULL-TO-REFRESH. The shell's SwipeRefreshLayout takes any downward drag
-//    while the page says it is at the top, and it decides in native code
-//    before the page sees anything. The page cannot refuse that gesture from
-//    here; what it can refuse is to read it as a tap and open a screen under a
-//    reader who was reloading.
-// 8px is Android's touch slop and 500ms its long-press timeout, so a finger
-// that travels further, or rests longer, is one of those and not a tap.
-const TAP_SLOP=8, TAP_MS=500;
-
-function isTap(down, up){
-  // {x, y, t}: where the finger landed and where it left, in CSS px and ms.
-  if(!down||!up) return false;
-  const dx=_fin(up.x)-_fin(down.x), dy=_fin(up.y)-_fin(down.y), dt=_fin(up.t)-_fin(down.t);
-  if(!isFinite(dx)||!isFinite(dy)||!isFinite(dt)) return false;
-  return Math.sqrt(dx*dx+dy*dy)<=TAP_SLOP&&dt>=0&&dt<=TAP_MS;
-}
+// THE CORNER CONTROL IN THE CARD'S HEAD IS WHAT OPENS IT, by the owner's
+// decision of 2026-09-19, which overturns the tap of ZOOM-SPEC.md 5: a tap on
+// the chart itself does nothing, so there is no tap here to tell apart from
+// the scroll and the pull-to-refresh that share this glass. What a finger on
+// the chart can still arm is a hold or a sideways read, and touchKind below is
+// the whole of that rule.
 
 // Two 11px numbers on rows closer than this run into each other, so the full
 // screen view keeps the glance's one count instead, and its foot says why.
@@ -1407,7 +1390,7 @@ if(typeof module!=='undefined'&&module.exports){
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
                   TRADED_ZERO, TRADED_SIDE, COUNT_CALLS_W, COUNT_PUTS_W, tradedBars,
-                  tradedSince, TAP_SLOP, TAP_MS, isTap, FULL_NUM_PITCH, barNumbers,
+                  tradedSince, FULL_NUM_PITCH, barNumbers,
                   newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,

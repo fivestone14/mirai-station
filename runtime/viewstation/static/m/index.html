@@ -231,13 +231,13 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    when the container has none to give. */
 #svg{display:block;max-width:100%;height:auto}
 #svg.too-narrow{min-width:240px}
-/* THE CHART IS A CONTROL NOW: a tap opens it full screen, a hold magnifies it
-   and a sideways drag reads the price line (page.js C2 and C3). pan-y, not
-   none and not manipulation: up and down stays the page's own scroll, which is
-   the gesture the chart shares its glass with, while a sideways drag is the
-   page's to read and can never be taken for a pan. Zooming is not among the
-   behaviours it allows either, so the tap keeps manipulation's snap — there is
-   no double-tap-to-zoom to wait for. Position, because the sideways read's
+/* THE CHART ANSWERS A FINGER: a hold magnifies it and a sideways drag reads
+   the price line (page.js C3). A tap on it does nothing — the full screen view
+   is the corner control's (C2), by the owner's decision of 2026-09-19. pan-y,
+   not none and not manipulation: up and down stays the page's own scroll,
+   which is the gesture the chart shares its glass with, while a sideways drag
+   is the page's to read and can never be taken for a pan. Zooming is not among
+   the behaviours it allows either. Position, because the sideways read's
    marks are laid over the chart in the chart's own coordinates. A selection
    started by a long press would turn the next drag into handle-dragging, as it
    did on the levels card. */
@@ -1008,7 +1008,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     <p><b>Grey prices on the right</b> — round prices, for scale. The coloured ones name the lines.</p></div>
 
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="1" y="7" width="8" height="6"/><rect class="p-tradedcall" x="10" y="7" width="11" height="6"/><text class="p-barnum call" x="24" y="14">725</text></svg>
-    <p><b>Tap the chart</b> — it opens full screen, where every bar carries its own numbers. The phone’s back gesture, or the close button, comes back here.</p></div>
+    <p><b>The arrows beside “Price today”</b> — they open the chart full screen, where every bar carries its own numbers. Touching the chart itself opens nothing. The phone’s back gesture, or the close button, comes back here.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="4" y="7" width="13" height="6"/><rect class="p-tradedcall" x="18" y="7" width="9" height="6"/><circle cx="21" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
     <p><b>Hold a finger on the chart</b> — a magnifier opens above your finger and follows it, drawn again at two and a half times the size. Under it: the nearest price, its puts and calls traded today, and what traded there since the latest reading. Lift your finger to put it away.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><polyline class="p-path" points="0,15 7,10 14,13 21,5 28,9 35,4 42,8 46,6"/><line class="sc-at" x1="21" y1="0" x2="21" y2="20"/><circle class="sc-dot" cx="21" cy="5" r="3.4"/></svg>

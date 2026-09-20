@@ -661,9 +661,11 @@ def test_the_chart_cards_head_names_what_it_shows_and_when():
 
     AMENDED 2026-09-19. The head's right end also carries the control that
     opens the chart full screen — the only thing on the glance that says the
-    chart can be opened, since a tap on the chart itself shows nothing. It
-    names the sheet it opens and what it does, and it comes AFTER the clock, so
-    what the card says is still read before what can be done to it."""
+    chart can be opened and, since the owner's decision that evening, the only
+    way in: a tap on the chart itself does nothing. It names the sheet it opens
+    and says in words what it does, for a reader who cannot see the icon, and
+    it comes AFTER the clock, so what the card says is still read before what
+    can be done to it."""
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
     head = re.search(r'(?s)<div class="lab">Price today(.*?)</div>', card).group(1)
     assert head.startswith('<span class="r" id="ldWhen"></span><button class="cf-open" id="cfOpen"')
@@ -1040,8 +1042,12 @@ def test_no_emoji_no_legend_no_greek():
 def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
     """WAS test_the_glance_itself_is_not_a_control. AMENDED 2026-09-07,
     2026-09-10, 2026-09-18, and REWRITTEN 2026-09-19 when the owner chose to
-    overturn the rule it was named for (ZOOM-SPEC.md 0 and 5): a tap on the
-    chart now opens the chart, so the glance IS a control.
+    overturn the rule it was named for (ZOOM-SPEC.md 0 and 5): the chart may be
+    opened now. It is opened FROM ITS CORNER CONTROL and from nothing else —
+    the owner's second decision that evening — so a tap on the chart itself
+    changes nothing at all, and what a finger on the chart can do is show what
+    is already drawn there (the lens, the sideways reading) for as long as it
+    is down.
 
     What that rule was protecting is not the chart, and it survives whole. It
     is that the READING must never be a control — a screen you poke is a screen
@@ -1068,22 +1074,26 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
          The chart's own gestures were the owner's decision that evening, and
          they cost this clause its old wording ("the listeners are passive and
          nothing is preventDefault()ed"). What replaces it is narrower and is
-         the thing that actually protected the reader: touchstart stays
-         PASSIVE, so a tap and a scroll begin exactly as they did before there
-         were gestures here, and a touch that has ARMED NOTHING is never
-         cancelled — driven in
+         the thing that actually protected the reader: a touch on the chart
+         BEGINS AND ENDS exactly as it does on a page with no gestures at all,
+         which is both listeners passive, and a touch that has ARMED NOTHING is
+         never cancelled in between — driven in
          test_a_quick_swipe_across_the_chart_still_scrolls_the_page rather
-         than grepped. touchmove cannot be passive and do what the owner asked
+         than grepped. Only touchmove can take anything, and only after a
+         gesture has armed; it cannot be passive and do what the owner asked
          for (ZOOM-SPEC.md 3), and Chrome makes a document-level listener
          passive whatever it asks, which is why these sit on the chart.
 
     And what the gesture may not do: it may not hide anything a reader needs at
-    a glance. Opening the chart changes nothing on the glance underneath it —
-    the same board, the same marks, the same words — so a reader who never
-    finds the gesture has lost nothing, and Back puts the page back as it was.
-    That the chart claims nothing about where price goes is the word gates'
-    (test_the_sndk_chart_claims_nothing_about_what_dealers_do and the laws in
-    glance.js), and they run over the full screen view's words as well.
+    a glance. A tap on the chart is the plainest case of that — it is the one
+    thing a reader is most likely to try, and it changes nothing, drawn or
+    open. Opening the chart from the control changes nothing on the glance
+    underneath it either — the same board, the same marks, the same words — so
+    a reader who never opens it has lost nothing, and Back puts the page back
+    as it was. That the chart claims nothing about where price goes is the word
+    gates' (test_the_sndk_chart_claims_nothing_about_what_dealers_do and the
+    laws in glance.js), and they run over the full screen view's words as
+    well.
 
     Each count is exact. A third of anything means the rule has started
     eroding, and this test should be argued with again rather than edited."""
@@ -1126,39 +1136,46 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
       els.howto.attrs['aria-controls'] = 'howtoSheet';
       els.cfOpen.attrs['aria-controls'] = 'chartFull';
       const shut = dump();
-      // a tap on the chart: down, up 2px away 90ms later, then the click
+      // a tap on the chart: down, up 2px away, then the click the browser
+      // sends after it — which nothing on the chart is listening for
       const at = (x, y) => ({touches: [{clientX: x, clientY: y}], changedTouches: [{clientX: x, clientY: y}]});
       const fire = (n, t, e) => (n.heard[t] || []).forEach(f => f(e));
       fire(els.ladder, 'touchstart', at(100, 100));
       fire(els.ladder, 'touchend', at(102, 100));
       fire(els.ladder, 'click', {});
+      const tapped = dump();
+      // and the corner control, which is the one way in
+      fire(els.cfOpen, 'click', {});
       const open = dump();
       // and the key's link, while it is open: one at a time
       fire(els.howto, 'click', {target: els.howto});
       const both = dump();
       // a sheet the page has never touched has no element and so no aria-hidden
       const hid = (s, id) => s[id] ? s[id].attrs['aria-hidden'] : null;
-      return {clicks: clicks.length, inert, own, heard, body: open.body,
+      return {clicks: clicks.length, inert, own, heard, tapped: tapped.body,
+              tappedDrew: ((tapped.cfSvg || {}).html || '').length, body: open.body,
               full: hid(open, 'chartFull'), key: hid(open, 'howtoSheet'),
               keyAfter: hid(both, 'howtoSheet'),
               glance: shut.svg.html === open.svg.html && shut.svg.html === both.svg.html,
               drew: (open.cfSvg.html || '').length};""")
     assert got["clicks"] == 1 and got["inert"], "a second click handler, or one that acts on the page"
+    assert got["tapped"] == "" and got["tappedDrew"] == 0, "a tap on the chart opened something"
     assert got["body"] == "sheet-open" and got["full"] == "false", got
     assert got["drew"] > 0, "the chart opened empty"
     assert got["key"] is None and got["keyAfter"] is None, "the key opened over the chart"
     assert got["glance"], "opening the chart changed what the glance itself draws"
     assert got["own"] == [["howto", "click"], ["cfOpen", "click"],
                           ["ladder", "touchstart"], ["ladder", "touchmove"], ["ladder", "touchend"],
-                          ["ladder", "touchcancel"], ["ladder", "click"], ["ladder", "contextmenu"]], \
+                          ["ladder", "touchcancel"], ["ladder", "contextmenu"]], \
         f"a listener on an element besides the two openers and the chart's own: {got['own']}"
     press = {"pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup"}
     assert not press & set(got["heard"]), f"the page listens for a press: {sorted(press & set(got['heard']))}"
-    # touchstart stays PASSIVE; touchmove is the one that cannot be, and only
-    # after a gesture has armed does it take anything
+    # THE MOVE IS THE ONLY ONE THAT CAN TAKE ANYTHING, and only after a gesture
+    # has armed: the landing and the ending are passive, so a touch on the
+    # chart begins and ends as it does anywhere else on the page
     opts = dict(re.findall(r"\$\('ladder'\)\.addEventListener\('(touch\w+)', \w+(?:, \{([^}]*)\})?\)", PAGE))
     assert opts["touchstart"] == "passive: true" and opts["touchmove"] == "passive: false", opts
-    assert opts["touchend"] == "" and opts["touchcancel"] == "", opts
+    assert opts["touchend"] == "passive: true" and opts["touchcancel"] == "passive: true", opts
 
     # AND A GESTURE WORKS NOTHING EITHER. A hold changes nothing on the page
     # but the lens's own elements, and the lift leaves it as it was found: no
@@ -1724,8 +1741,9 @@ def test_a_drag_inside_the_sheet_cannot_reload_the_page():
     (test_a_finger_on_the_chart_cannot_reload_the_page). The shell decides in
     native code before the page is asked anything about the drag itself, so
     whether it has taken the answer in by then is the one part of this that
-    needs the device; refusing to read such a drag as a tap (isTap) is the part
-    that holds whatever the shell does.
+    needs the device; that a drag on the chart opens nothing whatever the shell
+    does — a downward one is the page's own scroll and nothing else — is the
+    part that holds either way.
 
     What this pins is the intent and not the literal: the page answers about
     its scroll position in ONE expression, in this one file, and page.js says
@@ -2470,28 +2488,6 @@ def test_the_chart_full_screen_says_what_it_has_not_got():
       els.cfOpen.attrs['aria-controls'] = 'chartFull';
       (els.cfOpen.heard.click || []).forEach(f => f({}));
       return {body: document.body.className, drew: !!els.cfSvg};""") == {"body": "failed", "drew": False}
-
-
-def test_the_tap_that_opens_the_chart_is_neither_a_scroll_nor_a_hold():
-    """isTap, on its own. The chart is the only thing on the glance a finger
-    can open, and it shares its glass with the page's own scrolling and with
-    the shell's pull-to-refresh, which takes any downward drag while the page
-    says it is at the top and decides in native code before the page sees
-    anything. The page cannot refuse that gesture; it can refuse to read it as
-    a tap. So a finger is a tap only inside Android's own 8px of touch slop and
-    under its 500ms long press — the same 500ms the magnifier will hold for, so
-    a hold cannot arrive here as a tap as well."""
-    assert _glance("console.log(JSON.stringify([g.TAP_SLOP, g.TAP_MS]));") == [8, 500]
-    got = _glance("console.log(JSON.stringify(D.map(([a, b]) => g.isTap(a, b))));", [
-        [{"x": 100, "y": 100, "t": 0}, {"x": 100, "y": 100, "t": 90}],      # a tap
-        [{"x": 100, "y": 100, "t": 0}, {"x": 105, "y": 106, "t": 480}],     # 7.8px, 480ms: still a tap
-        [{"x": 100, "y": 100, "t": 0}, {"x": 106, "y": 106, "t": 90}],      # 8.49px away: a drag
-        [{"x": 100, "y": 100, "t": 0}, {"x": 100, "y": 130, "t": 300}],     # the shell's pull
-        [{"x": 100, "y": 100, "t": 0}, {"x": 100, "y": 100, "t": 501}],     # a hold
-        [None, {"x": 100, "y": 100, "t": 90}],                              # no finger down
-        [{"x": 100, "y": 100, "t": 0}, None],
-        [{"x": None, "y": 100, "t": 0}, {"x": 100, "y": 100, "t": 90}]])    # nothing measured
-    assert got == [True, True, False, False, False, False, False, False]
 
 
 def test_a_bar_gets_its_numbers_only_where_there_is_room_for_them():
@@ -3243,7 +3239,8 @@ def test_the_chart_key_says_what_the_code_draws():
         "3,861 PUTS", "Corner brackets and TRADING PICKED UP", "Rows at the top or bottom", "Green line",
         "Red line", "Gold dashes and diamond", "Thin grey dashes", "Bars along the bottom, SHARES TRADED",
         "Grey prices on the right",
-        "Tap the chart", "Hold a finger on the chart", "Drag sideways across the chart"]
+        "The arrows beside “Price today”", "Hold a finger on the chart",
+        "Drag sideways across the chart"]
     # the chart's marks, and the ones a finger on it brings up (2026-09-19)
     drawn = set(re.findall(r"(?<![\w-])((?:p|sc)-[a-z]+)(?![\w-])", _code_only(PAGE)))
     rules = _css_rules(PHONE)
@@ -3293,10 +3290,19 @@ def test_the_chart_key_says_what_the_code_draws():
     # and no percentage: the brackets' share went on 2026-09-18, and its denominator
     # was on no screen
     assert not any("%" in r["says"] + r["term"] for r in key["rows"])
-    # THE THREE GESTURE ROWS say what the chart answers to, in the marks it
-    # answers with: the numbers a tap writes in, the bars a hold magnifies,
-    # and the line a sideways drag reads.
-    assert rows["Tap the chart"]["marks"] == ["p-tradedput", "p-tradedcall", "p-barnum call"]
+    # THE LAST THREE ROWS say how the chart is worked, in the marks the working
+    # brings up: the numbers the control's view writes in, the bars a hold
+    # magnifies, and the line a sideways drag reads.
+    #
+    # The control's row names it by the head row it sits in, because a control
+    # is found by where it is; it is a button and not a gesture, so it says so
+    # and says that the chart itself answers no tap (the owner's decision of
+    # 2026-09-19, which the gesture harness drives).
+    opener = rows["The arrows beside “Price today”"]
+    assert '<div class="lab">Price today<' in PHONE and "$('cfOpen').addEventListener('click'" in PAGE
+    assert "they open the chart full screen" in opener["says"]
+    assert "Touching the chart itself opens nothing" in opener["says"]
+    assert opener["marks"] == ["p-tradedput", "p-tradedcall", "p-barnum call"]
     assert rows["Hold a finger on the chart"]["marks"] == ["p-tradedput", "p-tradedcall"]
     assert rows["Drag sideways across the chart"]["marks"] == ["p-path", "sc-at", "sc-dot"]
     assert "two and a half times" in rows["Hold a finger on the chart"]["says"] \
@@ -3393,43 +3399,67 @@ def test_the_chart_key_opens_on_a_tap_and_closes_the_one_way():
 
 
 @pytest.mark.skipif(not _NODE, reason="node is not installed")
-def test_a_tap_on_the_chart_opens_it_full_screen_and_every_way_back_out():
-    """The owner's choice of 2026-09-19 (ZOOM-SPEC.md 5): the chart opens. The
-    same harness, with the same fake clock, taps and history, now drives the
-    chart as well, because every way out of this view was learned on the phone
+def test_the_chart_opens_from_its_control_and_every_way_back_out():
+    """The owner's choice of 2026-09-19 (ZOOM-SPEC.md 5): the chart opens — and
+    his second choice that evening, which overturned the tap it first opened
+    on: it opens FROM THE CORNER CONTROL and from nothing else. The same
+    harness, with the same fake clock, taps and history, now drives the chart
+    as well, because every way out of this view was learned on the phone
     exactly as the key's was and it rides the same sheet.js:
-    - a tap on the chart opens it, pushes ONE history entry and puts the focus
-      on its own close control;
+    - the control opens it, pushes ONE history entry and puts the focus on its
+      own close control;
     - one of them at a time: the key's link while the chart is open opens
       nothing and pushes no second entry, so the Back below cannot be left
       holding one;
-    - so one Back closes it, and the focus goes to the corner control, which is
-      what says on the glance that the chart can be opened;
-    - the corner control opens it too, and its close tapped twice — the second
-      tap landing before the popstate — goes back once, not twice;
-    - Escape closes it the same one way.
-
-    AND THE THREE GESTURES THAT MUST NOT OPEN IT, which is the whole of why the
-    tap is measured rather than taken from the click (isTap, glance.js):
-    - a finger held on the chart past Android's 500ms long press, which is what
-      the magnifier will want next and must not arrive here as a tap;
-    - a finger dragged past its 8px touch slop, which is the shell's
-      pull-to-refresh: a reader reloading the page must not get a new screen;
-    - a click with no touch behind it at all."""
+    - so one Back closes it, and the focus goes back to the control;
+    - its close tapped twice — the second tap landing before the popstate —
+      goes back once, not twice;
+    - Escape closes it the same one way."""
     out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
                          capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr
     got = json.loads(out.stdout)
     opened = {"open": True, "hidden": "false", "pushes": 1, "backs": 0, "focus": "cfClose"}
     closed = {"open": False, "hidden": "true", "pushes": 1, "backs": 1, "focus": "cfOpen"}
-    assert got["tap_opens_chart"] == opened
+    assert got["control_opens_chart"] == opened
     assert got["key_over_chart"] == dict(opened, key="true"), "the key opened over the chart"
     assert got["back_closes_chart"] == closed, "one Back did not close it, or left an entry behind"
     assert got["close_twice"] == closed, "a double tap on the close control went back twice"
     assert got["chart_escape"] == closed
-    for case, why in (("chart_hold", "a hold"), ("chart_drag", "a drag"), ("chart_mouse", "a bare click")):
+    assert "$('cfOpen').addEventListener('click', () => openChart());" in PAGE
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_tap_on_the_chart_opens_nothing():
+    """The owner's decision of 2026-09-19 evening, which overturned the tap
+    43fe683 shipped: the chart opens from its control, "not when they click on
+    the chart itself". The chart still answers a finger — it magnifies under a
+    hold and reads the price line under a sideways drag — and both of those
+    show what is already drawn, while opening a screen over the page is a step
+    a reader takes against a control that says what it does.
+
+    Driven, not grepped, because the whole of a tap is a touch down, a lift and
+    the click the browser sends after it, and only running the three in order
+    can say what the page does with them. The same harness as the two tests
+    above, so the chart's sheet is the real one and would open if anything here
+    asked it to: on each of these the page stays as it was, with no history
+    entry behind it.
+
+    The other three were refused before this decision and still are:
+    - a finger held past Android's 500ms long press, which is the magnifier's;
+    - a finger dragged past its 8px touch slop, which is the shell's
+      pull-to-refresh: a reader reloading the page must not get a new screen;
+    - a click with no touch behind it at all, which is a mouse on a desktop
+      browser."""
+    out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["control_opens_chart"]["open"], "the control opens nothing; this proves nothing"
+    for case, why in (("chart_tap", "a tap"), ("chart_hold", "a hold"), ("chart_drag", "a drag"),
+                      ("chart_mouse", "a bare click")):
         assert {k: got[case][k] for k in ("open", "hidden", "pushes")} == \
-            {"open": False, "hidden": "true", "pushes": 0}, f"{why} opened the chart"
+            {"open": False, "hidden": "true", "pushes": 0}, f"{why} on the chart opened it"
 
 
 # --- the chart under a finger (2026-09-19) ---------------------------------
@@ -3455,7 +3485,7 @@ _FINGER = """
   const touch = (x, y, n = 1) => {
     const at = () => ({clientX: x, clientY: y});
     // changedTouches, because a real touchend carries the finger that left in
-    // it and nothing else: it is what the lift measures its tap from
+    // it and nothing else, and touches only the ones still down
     const e = {touches: Array.from({length: n}, at), changedTouches: [at()], prevented: false};
     e.preventDefault = () => { e.prevented = true; };
     return e;
@@ -3686,8 +3716,8 @@ def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
     the readout under it names 1,500, its 3,861 puts and 1,118 calls today,
     and the 861 puts and 118 calls traded there since the 10:52 reading. It is
     above the finger, clear of the fingertip and on the screen; it follows the
-    finger; and lifting puts it away. The lift is not also a tap, which would
-    open the chart full screen under the lens that is closing."""
+    finger; and lifting puts it away and does nothing else — since the owner's
+    decision of 2026-09-19 there is nothing for a lift to open."""
     got = _page(_board(_SCENE_0916, width=328, payload={"since_read": _FIELD_1510}, reads=_READS_AT), _FINGER + """
       const at = onBar(1500);
       fire('touchstart', touch(at.x, at.y));
@@ -3696,8 +3726,8 @@ def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
       const up = lens();
       const moved = fire('touchmove', touch(at.x + 30, at.y + 20));
       const after = lens();
-      const lift = fire('touchend', touch(at.x + 30, at.y + 20, 0));
-      return {before, up, after, closed: lens(), moved: moved.prevented, lift: lift.prevented,
+      fire('touchend', touch(at.x + 30, at.y + 20, 0));
+      return {before, up, after, closed: lens(), moved: moved.prevented,
               shell, at, bar: at.bar};""")
     assert not got["before"]["on"], "the lens came up before the hold did"
     assert got["up"]["on"] and not got["closed"]["on"], "the lens did not come up, or did not go away"
@@ -3714,7 +3744,6 @@ def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
     assert got["up"]["top"] + h * 2.5 + 71 == pytest.approx(got["at"]["y"] - 40, abs=0.05)
     assert got["up"]["left"] >= 8 and got["up"]["left"] + 224 <= 352
     assert got["moved"] and got["after"]["box"] != got["up"]["box"], "the lens did not follow the finger"
-    assert got["lift"], "the lift after a hold could still become a tap"
     # A chart that could not draw has nothing to magnify. The geometry goes
     # with the drawing, so the lens cannot come up over the board drawn last.
     narrow = _page(_board(_SCENE_0916, width=200), _FINGER + """
@@ -3748,60 +3777,52 @@ def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
 
 @pytest.mark.skipif(not _NODE, reason="node is not installed")
 def test_one_touch_has_one_meaning_and_leaves_nothing_behind():
-    """The four guards in page.js C3 that only a sequence of touches can see.
-    Each was driven with the guard removed first, and each removal shows on
-    the screen:
+    """The guards in page.js C3 that only a sequence of touches can see. Each
+    was driven with the guard removed first, and each removal shows on the
+    screen:
 
-    - THE LIFT CLEARS THE HOLD'S TIMER. Without it a tap leaves a timer
-      running, and it fires part way into the NEXT touch: the finger that
-      lands 100ms later is magnified at 150ms instead of 250, or a scroll
-      that has not yet moved 8px is taken for a hold.
-    - A GESTURE'S LIFT IS NOT A TAP. A hold ends with the finger where it
-      landed, so isTap alone would call it one and the chart would open full
-      screen under the lens that is closing. The kind is what decides, and
-      preventDefault on the lift is the second answer, not the only one.
-    - A CANCELLED TOUCH LEAVES NO TAP EITHER. The system took the gesture — a
-      call arriving, the app backgrounded — so nothing happened here. The tap
-      the browser measured and then sent no click for is what makes this
-      reachable: without the guard it rides the next click the chart gets.
+    - THE LIFT CLEARS THE HOLD'S TIMER. Without it a touch that armed nothing
+      leaves a timer running, and it fires part way into the NEXT touch: the
+      finger that lands 100ms later is magnified at 150ms instead of 250, or a
+      scroll that has not yet moved 8px is taken for a hold.
+    - A CANCELLED TOUCH ENDS THE SAME WAY. The system took the gesture — a
+      call arriving, the app backgrounded — and there is no lift coming, so
+      the lens must go away here or it stays up over a page the reader has
+      come back to with no finger on it.
     - A SECOND FINGER ABANDONS WHATEVER WAS RUNNING. A gesture steered by two
       fingers is no gesture, and this WebView does not zoom (setSupportZoom
       false), so the lens goes away rather than following one of them.
 
-    And a plain tap still opens the chart, which is what makes the rest of
-    this mean anything."""
+    And the whole of it leaves the chart where it found it: since the owner's
+    decision of 2026-09-19 a tap on the chart opens nothing, so a touch that
+    armed neither gesture must end having done nothing at all —
+    test_the_chart_opens_from_its_control_and_every_way_back_out drives the
+    same tap through the real sheet.js and its history."""
     got = _page(_board(_SCENE_0916, width=328), _FINGER + """
       els.cfOpen.attrs['aria-controls'] = 'chartFull';
       const at = onBar(1500);
       const waiting = () => timers.filter(t => t.ms === 250 && !t.dead).length;
       const opened = () => els.chartFull.attrs['aria-hidden'] === 'false';
-      const shut = () => { document.body.classList.remove('sheet-open');
-                           els.chartFull.attrs['aria-hidden'] = 'true'; };
       const out = {};
       // a tap, and what it leaves behind: no timer waiting to fire into the
-      // touch after it
+      // touch after it, and nothing opened by the click that follows it
       fire('touchstart', touch(at.x, at.y));
       out.armed = waiting();
       fire('touchend', touch(at.x, at.y, 0));
       out.left = waiting();
       fire('click', {});
-      out.tapOpens = opened(); shut();
-      // a hold, lifted where it landed: isTap would say tap, the kind says not
+      out.tapOpens = opened();
+      // a touch the system took before anything armed, and one it took with
+      // the lens up
+      fire('touchstart', touch(at.x, at.y));
+      fire('touchcancel', touch(at.x, at.y, 0));
+      out.cancelLeft = waiting();
       fire('touchstart', touch(at.x, at.y));
       holdFires();
       out.held = lens().on;
-      const lift = fire('touchend', touch(at.x, at.y, 0));
-      out.holdRefusesClick = lift.prevented;
-      fire('click', {});
-      out.holdOpens = opened(); shut();
-      // a tap whose click the browser swallowed, and then a touch the system
-      // took: the tap left behind must not ride the next click
-      fire('touchstart', touch(at.x, at.y));
-      fire('touchend', touch(at.x, at.y, 0));
-      fire('touchstart', touch(at.x, at.y));
       fire('touchcancel', touch(at.x, at.y, 0));
-      fire('click', {});
-      out.cancelOpens = opened(); shut();
+      out.cancelClosed = !lens().on;
+      out.cancelOpens = opened();
       // and a second finger on the chart while the lens is up
       fire('touchstart', touch(at.x, at.y));
       holdFires();
@@ -3811,13 +3832,16 @@ def test_one_touch_has_one_meaning_and_leaves_nothing_behind():
       fire('touchend', touch(at.x, at.y, 1));
       fire('touchend', touch(at.x, at.y, 0));
       out.timersAtEnd = waiting();
+      // and the control still opens it, or nothing above proves anything
+      (els.cfOpen.heard.click || []).forEach(f => f({}));
+      out.controlOpens = opened();
       return out;""")
     assert got["armed"] == 1 and got["held"] and got["twoBefore"], "nothing armed; this proves nothing"
+    assert got["controlOpens"], "the control did not open the chart; the checks below prove nothing"
     assert got["left"] == 0, "the lift left the hold's timer running into the next touch"
-    assert got["tapOpens"], "a tap no longer opens the chart"
-    assert not got["holdOpens"], "the lift that ended a hold opened the chart full screen"
-    assert got["holdRefusesClick"], "the lift that ended a hold did not refuse its click"
-    assert not got["cancelOpens"], "a cancelled touch opened the chart"
+    assert not got["tapOpens"] and not got["cancelOpens"], "a touch on the chart opened it"
+    assert got["cancelClosed"], "the lens stayed up after the system took the gesture"
+    assert got["cancelLeft"] == 0, "the cancel left the hold's timer running into the next touch"
     assert not got["twoAfter"], "a second finger did not abandon the gesture"
     assert got["timersAtEnd"] == 0
 
