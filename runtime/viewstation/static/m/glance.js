@@ -920,7 +920,12 @@ function volumeBlocks(bars, minutes){
     cur.t1=t; cur.sum+=v; cur.rows++;
   }
   while(out.length&&out[out.length-1].rows<n) out.pop();
-  return out.map(b=>({t0:b.t0, t1:b.t1,
+  // `sum` rides along because the block's own height cannot be read back as a
+  // number: the bar is a share of a fixed scale and anything past it is capped.
+  // A finger on the strip reads the shares themselves (chartAt), and summing
+  // the rows again there would be a second copy of the rule for which minutes
+  // are in which block.
+  return out.map(b=>({t0:b.t0, t1:b.t1, sum:b.sum,
                       weight:Math.min(1, (b.sum/b.rows)/FULL_VOL_PER_MIN),
                       capped:(b.sum/b.rows)>FULL_VOL_PER_MIN}));
 }
@@ -955,6 +960,116 @@ function stripName(room){
   // -> the longest name that keeps its air in `room`, the px between the feet,
   // or null
   return STRIP_NAMES.find(s=>axisW(s)+2*STRIP_AIR<=room)||null;
+}
+
+/* ---- a finger on the chart --------------------------------------------- */
+
+// At the owner's 360px the plot is 5.2cm wide, a bar 1.1mm thick and the paler
+// end that says what traded since the reading half a millimetre of it
+// (ZOOM-SPEC.md 1). Bar thickness is a height, so the taller chart fixed it;
+// a length is a width, set by the phone, and no height ever will. So the chart
+// answers a finger HELD still on it by magnifying what is under it. Anything
+// else is the page's own scroll, which is never taken.
+//
+// The rules are here, with no DOM in them: page.js listens and draws.
+
+// A hold is 250ms inside 8px. Android's own long press is 400ms and its touch
+// slop 8dp (ViewConfiguration); TradingView's charts arm a long tap at 240ms
+// and cancel it at 5px. 250 is deliberately at the short end of that: stock
+// Android abandons its Back swipe once a finger has held 250ms, so a gesture
+// that arms at 250 survives at the screen's edges, where one that armed on
+// movement would be taken for Back instead (ZOOM-RESEARCH.md 3.4).
+const HOLD_MS=250, TOUCH_SLOP=8;
+
+function touchKind(dx, dy, ms){
+  // What a finger on the chart is doing, from how far it has moved and how
+  // long it has been down: 'hold' magnifies, 'scroll' is the page's own and is
+  // never taken, 'wait' is not decided yet.
+  //
+  // MOVEMENT DECIDES FIRST, so a flick can never become a hold however long
+  // the finger stays down afterwards, and a scroll is never stolen from the
+  // page. The caller stops asking once a hold has armed.
+  if(!isFinite(dx)||!isFinite(dy)||!isFinite(ms)) return 'wait';
+  if(Math.hypot(dx, dy)>TOUCH_SLOP) return 'scroll';
+  return ms>=HOLD_MS?'hold':'wait';
+}
+
+// The magnified window and the readout under it. 224 x 112 CSS px shows
+// 90 x 45 px of chart at 2.5x, where an 11px label is redrawn at 27.5 and a
+// 2.5px paler end at 6. Redrawn, not blown up: page.js gives the window a
+// viewBox onto the chart's own drawing, so every bar, stripe and letter in it
+// is as crisp as the chart.
+const LENS_ZOOM=2.5, LENS_W=224, LENS_H=112, LENS_H_MIN=64;
+// Its bottom edge sits this far above the touch point, 7.8mm: the touch point
+// is the middle of the pad and the fingertip runs some 20px above it. Android's
+// own magnifier keeps 18dp and Shift about 46px.
+const LENS_LIFT=40;
+const LENS_EDGE=8;               // and it keeps this far inside the screen
+const LENS_DOT=12;               // this close to the latest price's dot, the lens names the price too
+
+function lensBox(cx, cy, readH, vw, vh){
+  // Where the lens goes for a finger at (cx, cy) with a readout readH tall:
+  // -> {left, top, h, where}, h the magnified window's height.
+  //
+  // ABOVE the finger, centred on it and kept on screen, because above is the
+  // one place the hand is not. Near the top of the screen the window gives up
+  // height first, down to LENS_H_MIN, which keeps the lens above the finger
+  // over 94% of the chart with the page at the top and 91% at the old height
+  // (ZOOM-SPEC.md 3). Only then BESIDE it, on the roomier side, and last
+  // BELOW it, where the hand is.
+  const cl=(v, a, b)=>Math.min(Math.max(v, a), b);
+  const left=cl(cx-LENS_W/2, LENS_EDGE, vw-LENS_W-LENS_EDGE);
+  const room=cy-LENS_LIFT-LENS_EDGE;
+  if(room>=readH+LENS_H_MIN){
+    const h=Math.min(LENS_H, room-readH);
+    return {left, top:cy-LENS_LIFT-h-readH, h, where:'above'};
+  }
+  const tall=LENS_H+readH, toRight=cx<=vw/2;
+  const beside=toRight?vw-cx-LENS_LIFT-LENS_EDGE:cx-LENS_LIFT-LENS_EDGE;
+  if(beside>=LENS_W)
+    return {left:toRight?cx+LENS_LIFT:cx-LENS_LIFT-LENS_W,
+            top:cl(cy-tall/2-16, LENS_EDGE, vh-tall-LENS_EDGE), h:LENS_H, where:'beside'};
+  return {left, top:cl(cy+LENS_LIFT+24, LENS_EDGE, vh-tall-LENS_EDGE), h:LENS_H, where:'below'};
+}
+
+function barAt(bars, y){
+  // The bar nearest a height on the plot. Every height belongs to one of them,
+  // so the lens names what the finger is closest to rather than nothing at
+  // all — and it outlines the bar it named, so which one is never guessed at.
+  if(!Array.isArray(bars)||!bars.length||!isFinite(y)) return null;
+  return bars.reduce((a, b)=>Math.abs(b.y-y)<Math.abs(a.y-y)?b:a);
+}
+
+function volumeBlockAt(vol, x){
+  // The five-minute block of shares under a point across the chart, or null
+  // where none is drawn: before the first, after the last, and in the gutter a
+  // detached quote's dot takes.
+  if(!Array.isArray(vol)||!isFinite(x)) return null;
+  return vol.find(b=>x>=b.x0-0.5&&x<=b.x1+0.5)||null;
+}
+
+function chartAt(geo, x, y){
+  // What is under a finger at (x, y) on the chart, as facts rather than a
+  // sentence: page.js writes them. `geo` is the geometry paintLadder leaves.
+  //
+  // Honest-absent, four ways, and every one of them is reachable: a book the
+  // builder withheld draws no bars at all ('nostrike'); past the last block
+  // there is no five-minute count ('noblock'); before the day's first reading
+  // there is nothing to count since (at == null); and a reading that never
+  // listed this strike cannot say what traded there since (since == null). A
+  // count that was measured at zero is a zero.
+  if(!geo) return null;
+  const price=(geo.live&&Math.hypot(x-geo.live.x, y-geo.live.y)<=LENS_DOT)
+            ?{v:geo.live.v, t:geo.live.t}:null;
+  if(y>geo.bottom){
+    const block=volumeBlockAt(geo.vol, x);
+    return block?{kind:'shares', block, price}:{kind:'noblock', price};
+  }
+  const bar=barAt(geo.bars, y);
+  if(!bar) return {kind:'nostrike', price};
+  const d=geo.since?geo.since.by[bar.v]:null;
+  return {kind:'strike', bar, price, at:geo.since?geo.since.at:null,
+          since:d?{c:d[0], p:d[1]}:null};
 }
 
 /* ---- how busy each strike has been ------------------------------------- */
@@ -1268,6 +1383,9 @@ if(typeof module!=='undefined'&&module.exports){
                   newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
+                  HOLD_MS, TOUCH_SLOP, touchKind,
+                  LENS_ZOOM, LENS_W, LENS_H, LENS_H_MIN, LENS_LIFT, LENS_EDGE, LENS_DOT,
+                  lensBox, barAt, volumeBlockAt, chartAt,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};
 }

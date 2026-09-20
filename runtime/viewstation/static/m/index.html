@@ -231,11 +231,12 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    when the container has none to give. */
 #svg{display:block;max-width:100%;height:auto}
 #svg.too-narrow{min-width:240px}
-/* A TAP ON THE CHART OPENS IT FULL SCREEN, so the chart is a control now. It
-   takes manipulation, not none: up and down still scrolls the page under the
-   finger, which is the gesture the chart shares its glass with, and only the
-   double-tap-to-zoom delay goes. A selection started by a long press would
-   turn the next drag into handle-dragging, as it did on the levels card. */
+/* THE CHART IS A CONTROL NOW: a tap opens it full screen and a hold magnifies
+   it (page.js C2 and C3). It takes manipulation, not none: up and down still
+   scrolls the page under the finger, which is the gesture the chart shares its
+   glass with, and only the double-tap-to-zoom delay goes. A selection started
+   by a long press would turn the next drag into handle-dragging, as it did on
+   the levels card. */
 #ladder{touch-action:manipulation;-webkit-user-select:none;user-select:none;
         -webkit-touch-callout:none}
 /* The corner control in the card's head, which is what says on the glance
@@ -263,7 +264,39 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .howto s{text-decoration:none}
 .howto.is-pressed{color:var(--i)}
 .howto:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+/* the quiet cue that the chart answers a finger at all; it says the gesture
+   nothing else on the card shows, and the key's rows say the rest */
+.lp-hint{position:absolute;right:16px;bottom:18px;font:500 11px/16px var(--sans);
+         color:var(--i-faint);pointer-events:none}
 
+/* ---- WHAT A FINGER HELD ON THE CHART BRINGS UP ---- */
+.card{position:relative}
+/* THE LENS. Fixed, because it is placed against the screen rather than the
+   card, and it never takes a touch: the finger under it is working the chart.
+   224px is LENS_W in glance.js, which sets the viewBox it magnifies through.
+   No transition — it must be up the instant the hold arms, and a zoom that
+   animates is the first thing Reduce Motion asks you to drop. */
+.lens{position:fixed;left:0;top:0;z-index:40;display:none;width:224px;overflow:hidden;
+      border-radius:14px;background:var(--s);pointer-events:none;
+      box-shadow:0 0 0 1.5px var(--band-edge),var(--sh2)}
+.lens.on{display:block}
+#lensSvg{display:block}
+/* both at a non-scaling stroke, or the magnifier's 2.5x would draw them 2.5px
+   thick while every mark under them kept its own weight */
+.lens-spot,.lens-bar{fill:none;stroke:var(--i);stroke-width:1.6;vector-effect:non-scaling-stroke}
+.lens-read{padding:6px 12px 8px;border-top:1px solid var(--band-edge);
+           font:500 12px/17px var(--sans);font-variant-numeric:tabular-nums;color:var(--i-body)}
+.lens-now{font:500 12px/18px var(--sans);font-variant-numeric:tabular-nums;color:var(--i-body)}
+.lens-now b{font:800 14px/18px var(--sans);font-variant-numeric:tabular-nums;color:var(--i)}
+.lens-t{width:100%;border-collapse:collapse}
+.lens-t th,.lens-t td{padding:0;text-align:right;white-space:nowrap}
+.lens-t th{font:600 11px/18px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.lens-t th.k{text-align:left;font:800 15px/20px var(--sans);font-variant-numeric:tabular-nums;
+             letter-spacing:0;color:var(--i)}
+.lens-t td{font:700 13px/18px var(--sans);font-variant-numeric:tabular-nums}
+.lens-t td:first-child,.lens-t td.na{font:500 12px/18px var(--sans);font-variant-numeric:tabular-nums;
+                                     color:var(--i-mute)}
+.lens-t .put{color:var(--put-ink);width:64px} .lens-t .call{color:var(--call-ink);width:58px}
 /* Every chart label restates tabular figures AFTER its font shorthand, because
    the shorthand resets font-variant-numeric and the tabular-nums on <body>
    never reached the chart. Proportional, the chip's "1,517" drew 28.04px wide
@@ -862,6 +895,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="ladder" id="ladder"><svg id="svg"></svg></div>
   <button class="howto" id="howto" type="button" aria-haspopup="dialog" aria-controls="howtoSheet"
           data-press><i aria-hidden="true">i</i><s>How to read this chart</s></button>
+  <span class="lp-hint" aria-hidden="true">Hold to magnify</span>
 </section>
 
 <section class="today" id="today">
@@ -900,6 +934,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 
 <div class="load" id="load"><i></i>Reading the board</div>
 
+<!-- THE LENS, above a finger held on the chart. The window is a viewBox onto
+     the chart's own drawing (#ldg) at LENS_ZOOM, so it is redrawn rather than
+     blown up; the readout under it says what is beneath the finger. Sized,
+     placed and filled by page.js, and hidden until a hold arms. It carries
+     nothing a screen reader needs that the chart does not already say. -->
+<div class="lens" id="lens" aria-hidden="true">
+  <svg id="lensSvg"><use href="#ldg"/><rect class="lens-bar" id="lensBar" rx="1.5"/><path class="lens-spot" id="lensSpot" d=""/></svg>
+  <div class="lens-read" id="lensRead"></div>
+</div>
+
 <div class="scrim" data-sheet-close></div>
 <!-- The chart's key. Its samples are drawn in the chart's own classes, and the
      windows and chart words it quotes are checked against the code that draws
@@ -936,6 +980,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-stick" x1="2" y1="10" x2="6" y2="10"/><text class="p-scale" x="46" y="14">1,560</text></svg>
     <p><b>Grey prices on the right</b> — round prices, for scale. The coloured ones name the lines.</p></div>
 
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="1" y="7" width="8" height="6"/><rect class="p-tradedcall" x="10" y="7" width="11" height="6"/><text class="p-barnum call" x="24" y="14">725</text></svg>
+    <p><b>Tap the chart</b> — it opens full screen, where every bar carries its own numbers. The phone’s back gesture, or the close button, comes back here.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="4" y="7" width="13" height="6"/><rect class="p-tradedcall" x="18" y="7" width="9" height="6"/><circle cx="21" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+    <p><b>Hold a finger on the chart</b> — a magnifier opens above your finger and follows it, drawn again at two and a half times the size. Under it: the nearest price, its puts and calls traded today, and what traded there since the latest reading. Lift your finger to put it away.</p></div>
   <!-- the key's copy of the puts' stripes, after the rows so .sh-h + .hw still
        finds the first one; sized to nothing, as display:none would stop WebKit
        painting the pattern it holds -->

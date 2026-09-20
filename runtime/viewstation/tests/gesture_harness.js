@@ -128,7 +128,10 @@ function tap(n){ const e = ev('click', n, 100, 100); (n.heard.click || []).forEa
 // that made it has been measured: down, up `ms` later `dx` away, then the click
 // the browser sends when it agrees that was a tap
 function finger(n, ms, dx){
-  const at = (x) => ({touches: [{clientX: x, clientY: 100}], changedTouches: [{clientX: x, clientY: 100}]});
+  // preventDefault because a touch event has one: the chart's own listeners
+  // cancel the lift that ended a gesture, so that it cannot also be a tap
+  const at = (x) => ({touches: [{clientX: x, clientY: 100}], changedTouches: [{clientX: x, clientY: 100}],
+                      prevented: false, preventDefault(){ this.prevented = true; }});
   fire(n.heard, 'touchstart', at(100));
   advance(ms);
   fire(n.heard, 'touchend', at(100 + dx));

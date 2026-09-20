@@ -27,6 +27,10 @@
  * inside it read as a pull and reloaded the page out from under the reader. So
  * the page speaks while the sheet is open, and once it has spoken it keeps the
  * answer true on every scroll, because the shell has no way back to "silent".
+ * pin() says the same thing for a finger working the glance's chart, which
+ * since 2026-09-19 magnifies under a held one. It is here so that the
+ * answer stays one expression in one file: page.js never tells the shell
+ * anything about where the page is scrolled to.
  *
  * THE LATE TAP. A close this soon after opening is ignored. It was learned on
  * the glance's levels sheet (gone 2026-09-19), which opened from a touchend:
@@ -42,14 +46,14 @@
  */
 const MiraiSheet = (function(){
   const GHOST_MS = 500;
-  let opener = null, sheet = null, openedAt = 0, closing = false, spoke = false;
+  let opener = null, sheet = null, openedAt = 0, closing = false, spoke = false, pinned = false;
 
   function isOpen(){ return document.body.classList.contains('sheet-open'); }
 
   function tellShell(){
     try {
       if(!window.MiraiShell || typeof MiraiShell.atTop !== 'function') return;
-      MiraiShell.atTop(!isOpen() && window.scrollY <= 0);
+      MiraiShell.atTop(!pinned && !isOpen() && window.scrollY <= 0);
       spoke = true;
     } catch(e){ /* a shell without the bridge falls back to its own answer */ }
   }
@@ -96,5 +100,13 @@ const MiraiSheet = (function(){
     if(e.target.closest && e.target.closest('.sheet')) e.preventDefault();
   });
 
-  return {open, isOpen};
+  // A FINGER ON THE CHART PINS IT TOO (2026-09-19). The chart magnifies under
+  // a held finger now, and it sits near the top of the page, so the same
+  // refresh gesture would take a drag on it and reload the page mid-gesture.
+  // page.js pins while a finger is down and unpins on the lift; it asks here
+  // rather than calling the shell itself, so the page still speaks to the
+  // shell with one voice and in one place.
+  function pin(on){ pinned = !!on; tellShell(); }
+
+  return {open, isOpen, pin};
 })();

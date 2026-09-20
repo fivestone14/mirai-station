@@ -210,9 +210,15 @@ async function fetch(url){
              : u.includes('path=sndk_bars/') ? rows('bars') : {error: 'not found'};
   return {status: 200, text: async () => JSON.stringify(body)};
 }
+// Timers are RECORDED and never run, which is what a bare () => 0 did too;
+// recording them lets a test fire the one it means (the chart's hold) without
+// letting the page's own pollers loose in the middle of a check.
+const timers = [];
 const ctx = {document, fetch, Date: FakeDate, URLSearchParams, location: {search: ''},
              innerWidth: SCREEN[0], innerHeight: SCREEN[1], history: {state: null, pushState(s){ this.state = s; }},
-             setTimeout: () => 0, clearTimeout(){}, setInterval: () => 0, clearInterval(){}};
+             setTimeout: (f, ms) => timers.push({f, ms}),
+             clearTimeout(id){ const t = timers[id - 1]; if(t) t.dead = true; },
+             setInterval: () => 0, clearInterval(){}};
 ctx.window = ctx;
 ctx.addEventListener = on(listeners.window);
 vm.createContext(ctx);
@@ -242,7 +248,8 @@ def _page(net, steps="return dump();", tz=None):
     answers) — and return what `steps` returns.
 
     `steps` is the body of an async JS function run once the first load has
-    painted. In scope: NET (what the station answers next), run(code)
+    painted. In scope: NET (what the station answers next), timers (every
+    setTimeout the page asked for, none of them run), run(code)
     (evaluated inside the page, so loadPayload, loadSpot and WIN are
     reachable), settle(), dump() (every element the page touched: text, class,
     hidden, innerHTML, attributes, style, children), els, listeners and
@@ -1050,15 +1057,25 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
          "a sheet is open", so the key cannot open over the chart or the chart
          over the key — and Back, which unwinds one history entry, cannot be
          left holding two.
-      3. NO PRESS-AND-HOLD, and nothing that listens for a finger anywhere but
-         the chart. A hold is how the old levels card explained itself, and it
-         turned the card into a dead zone for scrolling; it went with the card
-         on 2026-09-19 and it is not coming back through this door. The chart's
-         own touch listeners exist only to REFUSE gestures — isTap (glance.js)
-         reads a hold past 500ms, or a finger that travels past 8px, as not a
-         tap — and they are passive, so the page takes no gesture from the
-         page's own scrolling, from the shell's pull-to-refresh, or from the
-         back gesture on the screen's edges.
+      3. NOTHING LISTENS FOR A FINGER ANYWHERE BUT THE CHART, and what the
+         chart hears, it hears once: one set of listeners and one state
+         machine (page.js C3), because one touch cannot have two meanings.
+         The old levels card's press-and-hold, which turned that card into a
+         dead zone for scrolling, went with the card on 2026-09-19 and is not
+         coming back through this door: no other element on the page listens
+         for a press, and the document and window listen for none at all.
+
+         The chart's magnifier was the owner's decision that evening, and it
+         cost this clause its old wording ("the listeners are passive and
+         nothing is preventDefault()ed"). What replaces it is narrower and is
+         the thing that actually protected the reader: touchstart stays
+         PASSIVE, so a tap and a scroll begin exactly as they did before there
+         were gestures here, and a touch that has ARMED NOTHING is never
+         cancelled — driven in
+         test_a_quick_swipe_across_the_chart_still_scrolls_the_page rather
+         than grepped. touchmove cannot be passive and do what the owner asked
+         for (ZOOM-SPEC.md 3), and Chrome makes a document-level listener
+         passive whatever it asks, which is why these sit on the chart.
 
     And what the gesture may not do: it may not hide anything a reader needs at
     a glance. Opening the chart changes nothing on the glance underneath it —
@@ -1131,15 +1148,33 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
     assert got["drew"] > 0, "the chart opened empty"
     assert got["key"] is None and got["keyAfter"] is None, "the key opened over the chart"
     assert got["glance"], "opening the chart changed what the glance itself draws"
-    assert got["own"] == [["howto", "click"], ["ladder", "touchstart"], ["ladder", "touchend"],
-                          ["ladder", "click"], ["cfOpen", "click"]], \
-        f"a listener on an element besides the two openers and the chart's tap: {got['own']}"
+    assert got["own"] == [["howto", "click"], ["cfOpen", "click"],
+                          ["ladder", "touchstart"], ["ladder", "touchmove"], ["ladder", "touchend"],
+                          ["ladder", "touchcancel"], ["ladder", "click"], ["ladder", "contextmenu"]], \
+        f"a listener on an element besides the two openers and the chart's own: {got['own']}"
     press = {"pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup"}
     assert not press & set(got["heard"]), f"the page listens for a press: {sorted(press & set(got['heard']))}"
-    # the chart's two are PASSIVE, so nothing it hears can cancel a gesture
-    for line in re.findall(r"ladder\.addEventListener\('touch\w+',[\s\S]*?\}, \{([^}]*)\}\);", PAGE):
-        assert "passive: true" in line, line
-    assert "preventDefault" not in _code_only(PAGE), "the page cancels a gesture somewhere"
+    # touchstart stays PASSIVE; touchmove is the one that cannot be, and only
+    # after a gesture has armed does it take anything
+    opts = dict(re.findall(r"\$\('ladder'\)\.addEventListener\('(touch\w+)', \w+(?:, \{([^}]*)\})?\)", PAGE))
+    assert opts["touchstart"] == "passive: true" and opts["touchmove"] == "passive: false", opts
+    assert opts["touchend"] == "" and opts["touchcancel"] == "", opts
+
+    # AND A GESTURE WORKS NOTHING EITHER. A hold changes nothing on the page
+    # but the lens's own elements, and the lift leaves it as it was found: no
+    # mark goes away under a finger and no card is touched by one.
+    held = _page(_board(_SCENE_0916, width=328), _FINGER + """
+      const mine = ['lens', 'lensSvg', 'lensBar', 'lensSpot', 'lensRead'];
+      const rest = () => { const d = dump(); mine.forEach(k => delete d[k]); return JSON.stringify(d); };
+      const was = rest(), at = onBar(1500);
+      fire('touchstart', touch(at.x, at.y));
+      holdFires();
+      const up = rest(), lit = els.lens.classList.contains('on');
+      fire('touchend', touch(at.x, at.y, 0));
+      return {lit, up: up === was, after: rest() === was};""")
+    assert held["lit"], "the hold did not magnify; this proves nothing"
+    assert held["up"], "a hold on the chart changed the page around it"
+    assert held["after"], "the page was left changed after the finger lifted"
 
 
 def test_market_time_not_viewer_time():
@@ -1679,16 +1714,31 @@ def test_a_drag_inside_the_sheet_cannot_reload_the_page():
     covers the page and it is a screen a reader drags a finger over, so the
     pull would fire inside it too — and it does not, because it is opened
     through MiraiSheet and so rides the same one bridge. The page still has no
-    copy of its own. What the page CANNOT answer is the same drag on the chart
-    while it is closed and the page is at the top: the shell decides that in
-    native code before the page is asked, and nothing on this side changes it
-    (ZOOM-SPEC.md 2). The page's answer there is only to refuse to read that
-    drag as a tap (isTap)."""
+    copy of its own.
+
+    AND THE SAME DRAG ON THE CHART, with nothing open and the page at the top,
+    is the third reason: the chart magnifies under a held finger now, and it
+    sits near the top of the page. pin() is that answer — page.js says it
+    from the moment a finger lands on the chart, which is the earliest the page
+    can say anything, and says the truth again on the lift
+    (test_a_finger_on_the_chart_cannot_reload_the_page). The shell decides in
+    native code before the page is asked anything about the drag itself, so
+    whether it has taken the answer in by then is the one part of this that
+    needs the device; refusing to read such a drag as a tap (isTap) is the part
+    that holds whatever the shell does.
+
+    What this pins is the intent and not the literal: the page answers about
+    its scroll position in ONE expression, in this one file, and page.js says
+    nothing to the shell about it. The haptic tick is the only thing page.js
+    asks the shell for."""
     ts = SHEET.split("function tellShell")[1].split("\n  }\n")[0]
-    assert "MiraiShell.atTop(!isOpen() && window.scrollY <= 0)" in ts
+    assert "MiraiShell.atTop(!pinned && !isOpen() && window.scrollY <= 0)" in ts
     assert "window.addEventListener('scroll', () => { if(spoke) tellShell(); }" in SHEET
+    assert len(re.findall(r"MiraiShell\.atTop\(", _code_only(SHEET))) == 1, \
+        "a second answer about the scroll position"
     assert "tellShell" not in PAGE, "page.js has a second copy of the shell bridge"
-    assert "MiraiShell" not in PAGE, "page.js speaks to the shell behind sheet.js's back"
+    assert set(re.findall(r"MiraiShell\.(\w+)", _code_only(PAGE))) <= {"tick"}, \
+        "page.js speaks to the shell behind sheet.js's back"
     assert "MiraiSheet.open($('cfOpen'))" in PAGE, "the chart full screen is not opened as a sheet"
     assert re.search(r'<div class="sheet full" id="chartFull"', PHONE)
 
@@ -3192,7 +3242,8 @@ def test_the_chart_key_says_what_the_code_draws():
         "Grey line", "Blue dot, dotted line and blue box", "Bars split by a gap", "The paler end of a bar",
         "3,861 PUTS", "Corner brackets and TRADING PICKED UP", "Rows at the top or bottom", "Green line",
         "Red line", "Gold dashes and diamond", "Thin grey dashes", "Bars along the bottom, SHARES TRADED",
-        "Grey prices on the right"]
+        "Grey prices on the right",
+        "Tap the chart", "Hold a finger on the chart"]
     drawn = set(re.findall(r"(?<![\w-])(p-[a-z]+)(?![\w-])", _code_only(PAGE)))
     rules = _css_rules(PHONE)
     for row in key["rows"]:
@@ -3241,6 +3292,13 @@ def test_the_chart_key_says_what_the_code_draws():
     # and no percentage: the brackets' share went on 2026-09-18, and its denominator
     # was on no screen
     assert not any("%" in r["says"] + r["term"] for r in key["rows"])
+    # THE GESTURE ROWS say what the chart answers to, in the marks it answers
+    # with: the numbers a tap writes in, and the bars a hold magnifies.
+    assert rows["Tap the chart"]["marks"] == ["p-tradedput", "p-tradedcall", "p-barnum call"]
+    assert rows["Hold a finger on the chart"]["marks"] == ["p-tradedput", "p-tradedcall"]
+    assert "two and a half times" in rows["Hold a finger on the chart"]["says"] \
+        and float(re.search(r"LENS_ZOOM=([\d.]+)", GLANCE).group(1)) == 2.5, \
+        "the key's magnification and glance.js's disagree"
 
 
 def test_every_word_in_the_chart_key_passes_the_laws():
@@ -3352,6 +3410,275 @@ def test_a_tap_on_the_chart_opens_it_full_screen_and_every_way_back_out():
     for case, why in (("chart_hold", "a hold"), ("chart_drag", "a drag"), ("chart_mouse", "a bare click")):
         assert {k: got[case][k] for k in ("open", "hidden", "pushes")} == \
             {"open": False, "hidden": "true", "pushes": 0}, f"{why} opened the chart"
+
+
+# --- the chart under a finger (2026-09-19) ---------------------------------
+# The chart magnifies what a finger held on it is over, by the owner's own idea
+# (ZOOM-SPEC.md 3). The rules are pure and live in glance.js, so they are RUN
+# here rather than grepped; what the page does with them is driven through the
+# real page.js.
+
+# A finger on the chart, through page.js's own listeners. The stand-in DOM
+# measures nothing, so the chart's own box is supplied: the card at x 16 and
+# the chart 279 tall, 176 down the owner's 360px screen (SCREEN), at whatever
+# width the board was drawn to.
+_FINGER = """
+  const R = {left: 16, top: 176, width: NET.width, height: 279};
+  els.svg.getBoundingClientRect = () => ({left: R.left, top: R.top, width: R.width, height: R.height,
+                                          right: R.left + R.width, bottom: R.top + R.height});
+  for(const id of ['lens', 'lensSvg', 'lensBar', 'lensSpot', 'lensRead'])
+    document.getElementById(id);
+  els.lensRead.offsetHeight = 71;
+  ctx.scrollY = 0;
+  const shell = [];
+  ctx.MiraiShell = {atTop: v => shell.push(v), tick: () => shell.push('tick')};
+  const touch = (x, y, n = 1) => {
+    const e = {touches: Array.from({length: n}, () => ({clientX: x, clientY: y})), prevented: false};
+    e.preventDefault = () => { e.prevented = true; };
+    return e;
+  };
+  const fire = (type, e) => { (els.ladder.heard[type] || []).forEach(f => f(e)); return e; };
+  const holdFires = () => {
+    const t = timers.filter(t => t.ms === 250 && !t.dead).pop();
+    if(t){ t.dead = true; t.f(); }
+  };
+  const onBar = v => { const b = run('CHART').bars.find(b => b.v === v);
+                       return {x: R.left + (b.x0 + b.x1) / 2, y: R.top + b.y, bar: b}; };
+  const lens = () => ({on: els.lens.classList.contains('on'), left: parseFloat(els.lens.style.left),
+                       top: parseFloat(els.lens.style.top), read: els.lensRead.innerHTML,
+                       box: els.lensSvg.attrs.viewBox, bar: els.lensBar.style.display});
+"""
+
+
+def _minute_bars(n, start="2026-09-10T09:30:00-04:00"):
+    """`n` one-minute bars from `start`, the shape sndk_bars writes: the price
+    line is drawn from their closes and the shares strip from their volumes."""
+    t0 = datetime.fromisoformat(start)
+    return [{"ts": (t0 + timedelta(minutes=i)).isoformat(), "close": round(1520 + i * 0.1, 2),
+             "volume": 12000 + 100 * (i % 7)} for i in range(n)]
+
+
+def test_a_held_finger_magnifies_and_a_moving_one_is_the_pages_own_scroll():
+    """touchKind is the ONE rule for what a finger on the chart is doing, and
+    the hold's timer and every move ask it the same question.
+
+    250ms inside 8px is a hold. 8 is Android's own touch slop (8dp,
+    ViewConfiguration) and 250 is the short end of the long-press range —
+    TradingView's charts arm at 240, Android's own long press at 400 — chosen
+    deliberately: stock Android abandons its Back swipe once a finger has held
+    250ms, so a gesture armed by holding survives at the screen's edges, where
+    one armed by moving would be taken for Back (ZOOM-RESEARCH.md 3.4).
+
+    MOVEMENT DECIDES FIRST, and that is what keeps the page's scroll the
+    page's: a flick can never become a hold however long the finger rests
+    afterwards, and nothing is taken off the scroller before it is certain."""
+    got = _glance("console.log(JSON.stringify(D.map(a => g.touchKind(a[0], a[1], a[2]))));",
+                  [[0, 0, 0], [0, 0, 249], [0, 0, 250], [5, 5, 250], [7, 0, 500],
+                   [0, 9, 60], [0, 9, 400], [0, -40, 30], [3, 14, 90],
+                   [9, 0, 60], [-14, 3, 90]])
+    assert got == ["wait", "wait", "hold", "hold", "hold",
+                   "scroll", "scroll", "scroll", "scroll",
+                   "scroll", "scroll"]
+
+
+@pytest.mark.parametrize("phone", [320, 360, 375, 412])
+def test_the_lens_stays_on_the_screen_and_off_the_fingertip(phone):
+    """Where the lens goes, over every finger position on the chart on a 4px
+    grid, at each phone the page is built for and the owner's 360 among them.
+
+    It never leaves the screen and never sits on the fingertip. Above the
+    finger is the one place the hand is not, so it stays there by giving up
+    the magnified window's height first, down to LENS_H_MIN; only then does it
+    go beside the finger, on the roomier side, and only last below it. With
+    the page at the top — how the app opens — that keeps it above the finger
+    over nine tenths of the chart. Scrolled until the chart touches the top of
+    the screen there is no room above it at all, and that is the case that
+    would put it off the screen if the fallbacks were wrong.
+
+    The fingertip is a 20px disc centred 10px above the touch point: the touch
+    point is the middle of the pad and the tip runs above it."""
+    js = """
+      const E = g.LENS_EDGE, W = g.LENS_W, out = {};
+      for(const [name, box] of Object.entries(D.boxes)){
+        const t = out[name] = {above: 0, beside: 0, below: 0, n: 0, off: 0, onFinger: 0};
+        for(let x = box.left; x <= box.left + box.width; x += 4)
+          for(let y = box.top; y <= box.top + box.height; y += 4)
+            for(const rh of [53, 71, 91]){
+              const p = g.lensBox(x, y, rh, D.vw, D.vh), h = p.h + rh;
+              t.n++; t[p.where]++;
+              if(p.left < E - 0.01 || p.left + W > D.vw - E + 0.01
+                 || p.top < E - 0.01 || p.top + h > D.vh - E + 0.01) t.off++;
+              const fx = x, fy = y - 10;
+              const nx = Math.max(p.left, Math.min(fx, p.left + W)), ny = Math.max(p.top, Math.min(fy, p.top + h));
+              if(p.where !== 'below' && Math.hypot(nx - fx, ny - fy) < 20) t.onFinger++;
+            }
+      }
+      console.log(JSON.stringify(out));"""
+    side, chart_h = 16, 279
+    got = _glance(js, {"vw": phone, "vh": 780, "boxes": {
+        "page at the top": {"left": side, "top": 176, "width": phone - 2 * side, "height": chart_h},
+        "chart at the top of the screen": {"left": side, "top": 0, "width": phone - 2 * side,
+                                           "height": chart_h}}})
+    for where, t in got.items():
+        assert t["off"] == 0, f"{where}: the lens left the screen {t['off']} times at {phone}"
+        assert t["onFinger"] == 0, f"{where}: the lens sat on the fingertip {t['onFinger']} times at {phone}"
+    top = got["page at the top"]
+    assert top["above"] / top["n"] >= 0.90, f"at {phone} the lens is above the finger on {top['above'] / top['n']:.0%}"
+    assert got["chart at the top of the screen"]["above"] < top["above"], \
+        "there is room above the finger in both cases; this proves nothing"
+
+
+# The chart's geometry as paintLadder leaves it, cut to what a finger reads:
+# three bars, the latest price's dot, one block of the shares strip, and a
+# price line with a hole in it from 11:00 to 11:30.
+_T0 = 1789226000000
+_GEO = {"W": 328, "H": 279, "plotL": 4, "plotR": 275, "pathR": 275, "top": 9, "bottom": 250, "ribB": 260,
+        "t0": _T0, "t1": _T0 + 3 * 3600000, "bh": 8,
+        "bars": [{"v": 1500, "y": 60, "vc": 1118, "vp": 3861, "x0": 150, "x1": 220},
+                 {"v": 1530, "y": 90, "vc": 3824, "vp": 3632, "x0": 140, "x1": 230},
+                 {"v": 1545, "y": 120, "vc": 978, "vp": 450, "x0": 190, "x1": 200}],
+        "since": {"at": _T0 + 30 * 60000, "by": {"1500": [118, 861], "1530": [0, 0]}},
+        "live": {"v": 1555.41, "x": 267, "y": 70, "t": _T0 + 3 * 3600000},
+        "vol": [{"t0": _T0, "t1": _T0 + 4 * 60000, "sum": 72538, "x0": 4, "x1": 20}]}
+
+
+def _geo(**over):
+    pts = [{"t": _T0 + m * 60000, "s": 1550 + m * 0.02, "x": 4 + m / 180 * 271, "y": 200 - m * 0.5}
+           for m in range(181) if not 90 < m < 120]          # no price recorded 11:00-11:30
+    return {**_GEO, "pts": pts, **over}
+
+
+def test_the_lens_says_what_is_under_the_finger_and_where_nothing_was_counted():
+    """chartAt answers in facts, not sentences: page.js writes them.
+
+    Over a bar it is that strike, its puts and calls traded today, and what
+    traded there since the reading on the card below. Over the shares strip it
+    is that five-minute block and the shares in it. On the latest price's dot
+    it names the price too, wherever else the finger is.
+
+    HONEST-ABSENT, four ways, and each of them is a board the station really
+    serves: a book the builder withheld draws no bars at all; past the last
+    block there is no five-minute count; before the day's first reading there
+    is nothing to count since; and a reading that never listed a strike cannot
+    say what traded there since it. A count measured at zero is a zero —
+    1,530 traded nothing since the reading, which is not the same fact as
+    1,545, which the reading never listed."""
+    geo = _geo()
+    js = "console.log(JSON.stringify(D.at.map(p => g.chartAt(D.geo, p[0], p[1]))));"
+    on1500, on1530, on1545, strip, past, dot = _glance(
+        js, {"geo": geo, "at": [[180, 62], [185, 90], [195, 120], [10, 256], [200, 256], [267, 70]]})
+    assert on1500 == {"kind": "strike", "price": None, "at": geo["since"]["at"],
+                      "bar": geo["bars"][0], "since": {"c": 118, "p": 861}}
+    assert on1530["since"] == {"c": 0, "p": 0}, "a strike that traded nothing since must say the zero"
+    assert on1545["since"] is None and on1545["at"] == geo["since"]["at"], \
+        "a strike the reading never listed cannot be given a count since it"
+    assert strip == {"kind": "shares", "price": None, "block": geo["vol"][0]}
+    assert past == {"kind": "noblock", "price": None}, "past the last block there is no five-minute count"
+    assert dot["kind"] == "strike" and dot["price"] == {"v": 1555.41, "t": geo["live"]["t"]}
+    assert _glance("console.log(JSON.stringify(g.chartAt(null, 1, 1)));", {}) is None
+    # a board whose book was withheld draws no bars, and the lens says so
+    assert _glance(js, {"geo": _geo(bars=[], since=None), "at": [[180, 62]]})[0] \
+        == {"kind": "nostrike", "price": None}
+    # and before the day's first reading there is nothing to count since
+    first = _glance(js, {"geo": _geo(since=None), "at": [[180, 62]]})[0]
+    assert first["at"] is None and first["since"] is None
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
+    """Driven through the real page.js on the 15:10:21 board of 2026-09-16,
+    with the reading whose book held 1,500 at 1,000 calls and 3,000 puts.
+
+    A finger held still on the 1,500 bar brings the lens up. The magnified
+    window is a viewBox onto the chart's own drawing — 89.6 x 44.8 chart px in
+    224 x 112 of screen, which is 2.5x — centred on the finger's point, and
+    the readout under it names 1,500, its 3,861 puts and 1,118 calls today,
+    and the 861 puts and 118 calls traded there since the 10:52 reading. It is
+    above the finger, clear of the fingertip and on the screen; it follows the
+    finger; and lifting puts it away. The lift is not also a tap, which would
+    open the chart full screen under the lens that is closing."""
+    got = _page(_board(_SCENE_0916, width=328, payload={"since_read": _FIELD_1510}, reads=_READS_AT), _FINGER + """
+      const at = onBar(1500);
+      fire('touchstart', touch(at.x, at.y));
+      const before = lens();
+      holdFires();
+      const up = lens();
+      const moved = fire('touchmove', touch(at.x + 30, at.y + 20));
+      const after = lens();
+      const lift = fire('touchend', touch(at.x + 30, at.y + 20, 0));
+      return {before, up, after, closed: lens(), moved: moved.prevented, lift: lift.prevented,
+              shell, at, bar: at.bar};""")
+    assert not got["before"]["on"], "the lens came up before the hold did"
+    assert got["up"]["on"] and not got["closed"]["on"], "the lens did not come up, or did not go away"
+    assert "tick" in got["shell"], "no haptic tick as the lens armed"
+    read = got["up"]["read"]
+    for need in (">1,500</th>", ">3,861</td>", ">1,118</td>", "since 10:52", ">861</td>", ">118</td>"):
+        assert need in read, f"{need} is not in the readout: {read}"
+    assert got["up"]["bar"] != "none", "the lens does not outline the bar its readout is about"
+    x, y, w, h = [float(v) for v in got["up"]["box"].split()]
+    assert (w, h) == (89.6, 44.8), "the window is not 224 x 112 of screen at 2.5x"
+    assert x + w / 2 == pytest.approx((got["bar"]["x0"] + got["bar"]["x1"]) / 2, abs=0.05)
+    assert y + h / 2 == pytest.approx(got["bar"]["y"], abs=0.05)
+    # above the finger by LENS_LIFT, and inside the screen by LENS_EDGE
+    assert got["up"]["top"] + h * 2.5 + 71 == pytest.approx(got["at"]["y"] - 40, abs=0.05)
+    assert got["up"]["left"] >= 8 and got["up"]["left"] + 224 <= 352
+    assert got["moved"] and got["after"]["box"] != got["up"]["box"], "the lens did not follow the finger"
+    assert got["lift"], "the lift after a hold could still become a tap"
+    # A chart that could not draw has nothing to magnify. The geometry goes
+    # with the drawing, so the lens cannot come up over the board drawn last.
+    narrow = _page(_board(_SCENE_0916, width=200), _FINGER + """
+      fire('touchstart', touch(R.left + 40, R.top + 40));
+      holdFires();
+      return {on: els.lens.classList.contains('on'), svg: els.svg.innerHTML};""")
+    assert "CHART TOO NARROW" in narrow["svg"], "the chart drew; this proves nothing"
+    assert not narrow["on"], "the lens magnified a chart that is not on the screen"
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_quick_swipe_across_the_chart_still_scrolls_the_page():
+    """The whole reason the gestures wait. A finger that moves before the hold
+    arms is the page's own scroll, and nothing here touches it: no
+    preventDefault on the move, no lens, no reading — and the verdict is not
+    revisited when the finger stops moving later. The chart keeps
+    touch-action:pan-y, so the browser has taken an up-and-down pan by then in
+    any case, and preventDefault after that would be ignored."""
+    got = _page(_board(_SCENE_0916, width=328), _FINGER + """
+      const at = onBar(1500);
+      fire('touchstart', touch(at.x, at.y));
+      const flick = fire('touchmove', touch(at.x, at.y - 40));
+      holdFires();
+      const more = fire('touchmove', touch(at.x, at.y - 140));
+      fire('touchend', touch(at.x, at.y - 140, 0));
+      return {flick: flick.prevented, more: more.prevented, lens: lens().on};""")
+    assert not got["flick"] and not got["more"], "a swipe across the chart was taken off the scroller"
+    assert not got["lens"], "a swipe brought the lens up"
+    action = _block("#ladder{").replace(" ", "")
+    assert "touch-action:" in action and "touch-action:none" not in action, \
+        "the chart must leave the page's own up-and-down pan to the browser"
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_finger_on_the_chart_cannot_reload_the_page():
+    """The shell takes any downward drag past its slop whenever the page says
+    it is at the top, and it decides in native code before a preventDefault
+    here counts (ZOOM-RESEARCH.md 3). The chart sits near the top of the page,
+    so without this a drag on it reloads the page out from under the reader.
+
+    The page says it is not at the top from the moment a finger LANDS on the
+    chart — not when a gesture arms, which is 250ms too late — and says the
+    truth again on the lift. It says it through MiraiSheet, which holds the
+    page's one bridge to the shell: page.js calls the shell for nothing but
+    the haptic tick."""
+    got = _page(_board(_SCENE_0916, width=328), _FINGER + """
+      const at = onBar(1500);
+      fire('touchstart', touch(at.x, at.y));
+      const down = shell.slice();
+      fire('touchend', touch(at.x, at.y, 0));
+      return {down, up: shell.slice()};""")
+    assert got["down"] == [False], f"the page did not say it was off the top as the finger landed: {got['down']}"
+    assert got["up"] == [False, True], "the page never told the shell the truth again"
+    assert set(re.findall(r"MiraiShell\.(\w+)", _code_only(PAGE))) <= {"tick"}, \
+        "page.js answers the shell for something other than the haptic"
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------
