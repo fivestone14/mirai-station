@@ -245,6 +245,9 @@ function paintAll(){
   paintRead();
   paintHalf(st);
   paintFoot(st);
+  // the full screen chart is the same board, so a tick that moves the glance
+  // moves it too — never a frozen copy of a scan the page has left behind
+  if(chartIsOpen()) paintChart();
   clearLoading();
 }
 
@@ -354,17 +357,28 @@ function paintFoot(){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function n1(v){ return (Math.round(v*10)/10).toFixed(1); }
 
-function paintLadder(st){
-  const svg = $('svg');
+function paintLadder(st, T){
+  // T IS THE SAME CHART SOMEWHERE ELSE (2026-09-19, ZOOM-SPEC.md 5): the full
+  // screen view hands in its own <svg>, its own size and the room its bars may
+  // take, and gets the glance's board back drawn to it. With no T this is the
+  // glance, byte for byte as before. Nothing about the board is decided here
+  // that T could change — the same window, the same levels, the same words —
+  // so the two cannot say different things about one scan.
+  const svg = T ? T.svg : $('svg');
+  // Two SVGs in one document may not share an id, and the puts' stripes are
+  // reached from the stylesheet by one (the key's swatches keep a third copy,
+  // #tradedPutsKey, for the same reason).
+  const PCID = T ? T.id + 'Pc' : 'pc', PATID = T ? T.id + 'TradedPuts' : 'tradedPuts';
+  if(T){ T.bars = false; T.numbered = false; }     // true only once they are drawn
   // The head says what the chart shows and which scan drew it. A stale axis
   // then needs only the clock at its right foot, 09:30 to 15:11, where it
   // said "SCAN 15:11" (WORDS-SPEC #8, #9, #12).
   const scanAt = etTime(Date.parse(PAY.row_ts));
-  $('ldWhen').textContent = scanAt ? 'AS OF ' + scanAt : '';
+  if(!T) $('ldWhen').textContent = scanAt ? 'AS OF ' + scanAt : '';
   // Measure RAW, then decide, then clamp. The old line did Math.max(240, ...)
   // inline, which meant a collapsed container silently became a 240px chart —
   // the clamp erased the very condition worth reporting.
-  const rawW = Math.round($('ladder').getBoundingClientRect().width);
+  const rawW = T ? T.W : Math.round($('ladder').getBoundingClientRect().width);
   // The height is a constant now, so a vertical collapse is not reachable; what
   // still can be is a zero-WIDTH container — a card that has not laid out yet,
   // or a parent with display:none. The old guard measured HEIGHT and would not
@@ -373,7 +387,7 @@ function paintLadder(st){
   // one. rawW of 0 is the not-laid-out case and must not draw either. rawW is
   // the card's whole width since the ladder bled into its padding (.ladder),
   // so this trips at a 272px phone, and at 240 the plot is still ~183px wide.
-  const SVGH = LADDER_H - 1;
+  const SVGH = (T ? T.H : LADDER_H) - 1;
   if(!isFinite(rawW) || rawW < 240){
     svg.setAttribute('width', 240);
     svg.setAttribute('height', SVGH);
@@ -535,7 +549,9 @@ function paintLadder(st){
   const offsets = rows => rows.reduce((at, l, i) => at.concat(i ? at[i-1] + pitch(rows[i-1], l) : 0), []);
   const aboveAt = offsets(above), belowAt = offsets(below);
   const stackH = at => at.length ? 13 + at[at.length - 1] : 0;
-  const PAD_T = 9 + stackH(aboveAt), PAD_B = 29 + stackH(belowAt);
+  // full screen: a row above the plot for the PUTS and CALLS the numbers sit
+  // under, which the glance has no room for and does not need
+  const PAD_T = 9 + stackH(aboveAt) + (T && T.numbers ? 16 : 0), PAD_B = 29 + stackH(belowAt);
   const RIB_B = SVGH - 19, RIB_T = RIB_B - 10;   // the volume ribbon's own band
   const plotTop = PAD_T, plotBottom = SVGH - PAD_B, plotH = plotBottom - plotTop;
   const k = plotH / span;
@@ -555,10 +571,10 @@ function paintLadder(st){
 
   let o = '';
   // the puts' stripes: their red with a line of card 1px in 3, at 45 degrees
-  o += '<defs><pattern id="tradedPuts" patternUnits="userSpaceOnUse" width="3" height="3"'
+  o += '<defs><pattern id="' + PATID + '" patternUnits="userSpaceOnUse" width="3" height="3"'
      + ' patternTransform="rotate(45)"><rect class="p-tradedputbg" width="3" height="3"/>'
      + '<rect class="p-tradedputln" width="1" height="3"/></pattern>'
-     + '<clipPath id="pc"><rect x="' + PLOT_L + '" y="' + plotTop
+     + '<clipPath id="' + PCID + '"><rect x="' + PLOT_L + '" y="' + plotTop
      + '" width="' + PLOT_W + '" height="' + n1(plotH) + '"/></clipPath></defs>';
 
   // ---- clipped plot content ---------------------------------------------
@@ -580,9 +596,13 @@ function paintLadder(st){
   // the side's own scale; on the puts the stripes stop where it starts. Under
   // a pixel there is nothing to see, so nothing is drawn. First in the clip,
   // so every other mark is on top of them.
-  const traded = tradedBars(st.strikes, WIN.lo, WIN.hi, plotTop, plotBottom);
-  const TRADED_GAP = 0.5, ZERO = PLOT_L + TRADED_ZERO * PLOT_W;
-  const kSide = traded && traded.most > 0 ? (TRADED_SIDE * PLOT_W - TRADED_GAP) / traded.most : 0;
+  // Full screen the bars take the room they are short of on the card: thicker,
+  // and a quarter of the plot a side instead of a fifth, with the zero further
+  // left so each side's numbers have somewhere to go (ZOOM-SPEC.md 5).
+  const traded = tradedBars(st.strikes, WIN.lo, WIN.hi, plotTop, plotBottom, T && T.hMax);
+  const ZERO_AT = (T && T.zero) || TRADED_ZERO, SIDE_AT = (T && T.side) || TRADED_SIDE;
+  const TRADED_GAP = 0.5, ZERO = PLOT_L + ZERO_AT * PLOT_W;
+  const kSide = traded && traded.most > 0 ? (SIDE_AT * PLOT_W - TRADED_GAP) / traded.most : 0;
   const barX = b => ZERO - TRADED_GAP - b.vp * kSide;    // the pair's left end, where its puts end
   const barXR = b => ZERO + TRADED_GAP + b.vc * kSide;   // its right end, where its calls end
   // a part of a bar, its two edges rounded to the tenth, so parts that meet
@@ -671,7 +691,7 @@ function paintLadder(st){
       // a dash across six hours implies a continuity that does not exist
       g += '<line class="p-break" x1="' + n1(lx) + '" y1="' + plotTop + '" x2="' + n1(lx) + '" y2="' + n1(plotBottom) + '"/>';
   }
-  o += '<g clip-path="url(#pc)">' + g + '</g>';
+  o += '<g clip-path="url(#' + PCID + ')">' + g + '</g>';
 
   // ---- no words in the plot ----------------------------------------------
   // NO CALL WALL ABOVE / NO PUT WALL BELOW and the bracket down the plot's left
@@ -759,6 +779,50 @@ function paintLadder(st){
     }
   }
 
+  // ---- full screen: every bar's own numbers -------------------------------
+  // The one count below exists because the glance has room for one number and
+  // every other length is read against it. Full screen each bar carries its
+  // own, so that count would be a second name for the longest bar; it comes
+  // back, and the foot says why, where the rows are too close together to
+  // number (barNumbers). Each side's count sits past its own outer end in the
+  // side's ink, with what traded there since the reading after it, paler: the
+  // same fact the paler end of the bar draws, in figures.
+  const nums = (T && T.numbers) ? barNumbers(traded, st.since) : null;
+  // What the word below keeps off, as [left, right] across a band of rows:
+  // `rows` is every mark on a bar's row — the pair, and its numbers where they
+  // are written — and `inked` is the numbers alone. The word may cross a bar
+  // rather than go unsaid, its halo cutting it as it cuts a rule; it may never
+  // cross a number, because a word over a word cannot be read at all.
+  const band = y => [y - traded.h / 2 - 2, y + traded.h / 2 + 2];
+  let barRows = traded ? traded.bars.map(b => ({l:barX(b), r:barXR(b), at:band(b.y)})) : [];
+  const inked = [];
+  let numbers = '';
+  if(nums){
+    const fig = n => gUsd(n, 0).replace('$','');
+    numbers += '<text class="p-colhead" x="' + n1(ZERO - 4) + '" y="' + n1(plotTop - 6)
+             + '" text-anchor="end">PUTS</text>'
+             + '<text class="p-colhead" x="' + n1(ZERO + 4) + '" y="' + n1(plotTop - 6) + '">CALLS</text>';
+    barRows = nums.map(b => {
+      // the figures' ink runs 8px above the baseline and a comma 2.2 below, so
+      // the baseline sits 0.36em under the bar's middle — the count's own rule
+      const by = b.y + 0.36 * 11, y = n1(by);
+      const said = (v, s) => fig(v) + (s > 0 ? ' +' + fig(s) : '');
+      const put = said(b.vp, b.sp), call = said(b.vc, b.sc);
+      const xp = barX(b) - 4, xc = barXR(b) + 4;
+      const tail = s => s.indexOf(' ') < 0 ? ''
+        : '<tspan class="p-barsince">' + s.slice(s.indexOf(' ')) + '</tspan>';
+      numbers += '<text class="p-barnum put" x="' + n1(xp) + '" y="' + y + '" text-anchor="end">'
+               + fig(b.vp) + tail(put) + '</text>'
+               + '<text class="p-barnum call" x="' + n1(xc) + '" y="' + y + '">'
+               + fig(b.vc) + tail(call) + '</text>';
+      // the since half is set lighter, so charging it the count's weight can
+      // only make a span wide
+      const l = xp - figW(put, 11, 600), r = xc + figW(call, 11, 600);
+      inked.push({l, r:xp, at:[by - 10, by + 4.2]}, {l:xc, r, at:[by - 10, by + 4.2]});
+      return {l, r, at:band(b.y)};
+    });
+  }
+
   // ---- the count on the longest bar ---------------------------------------
   // The bars' one number, "3,861 PUTS": the longest single side in view and
   // which side it is, the whole day's, in the grey family, where the
@@ -770,7 +834,7 @@ function paintLadder(st){
   // word below may move it. The busiest strike is usually one the chart
   // already rules, so the count's card halo cuts that rule for its width.
   let count = null;
-  if(traded){
+  if(traded && !nums){
     const {b, n, call} = traded.lead;
     // Centred on its bar: the figures' ink runs 8px above the baseline and a
     // comma 2.2 below it, so the baseline sits 0.36em under the bar's middle.
@@ -806,17 +870,19 @@ function paintLadder(st){
     const across = (x0, x1, air) => x0 < wx + ww + air && x1 > wx - air;
     // The count keeps 5.5px above or below the word, what the chart's closest
     // two labels keep, and 12 beside it, so it is not read as the word's next
-    // line or its next figure. Bars, the ring and another box keep 2; a pair
-    // is measured across its own width, puts' end to calls' end. `loose`, the
-    // last resort, lets the word cross bars, its card halo cutting them as it
-    // cuts a rule: split bars stand across more of the plot than one grey bar
-    // did, and at 320 the long "· 1 MORE" form found no row clear of them on
-    // 14 boards of 2026-09-15..17.
+    // line or its next figure. A bar's row, the ring and another box keep 2; a
+    // row is measured across everything on it, puts' end to calls' end and the
+    // numbers past them where those are written. `loose`, the last resort,
+    // lets the word cross the BARS, its card halo cutting them as it cuts a
+    // rule — split bars stand across more of the plot than one grey bar did,
+    // and at 320 the long "· 1 MORE" form found no row clear of them on 14
+    // boards of 2026-09-15..17 — but never the numbers: a word over a bar can
+    // still be read and a word over a word cannot.
     const row = loose => {
       const hard = [];
       if(count && across(count.x - count.w, count.x, 12)) hard.push([count.top - 5.5, count.bottom + 5.5]);
-      for(const b of (traded && !loose ? traded.bars : []))
-        if(across(barX(b), barXR(b), 2)) hard.push([b.y - traded.h / 2 - 2, b.y + traded.h / 2 + 2]);
+      for(const b of (loose ? inked : barRows))
+        if(across(b.l, b.r, 2)) hard.push(b.at);
       if(dot && across(dotX - 9, dotX + 9, 2)) hard.push([priceY - 11, priceY + 11]);
       for(const x of boxes.slice(1)) hard.push([x.t - NEW_W / 2 - 2, x.t + NEW_W / 2 + 2], [x.b - NEW_W / 2 - 2, x.b + NEW_W / 2 + 2]);
       return wordRow(box.t, box.b, inks.map(([y, hw]) => [y - hw, y + hw]), hard, plotTop + 1, plotBottom - 1);
@@ -837,6 +903,7 @@ function paintLadder(st){
       word = '<text class="p-newword" x="' + wx + '" y="' + n1(by) + '">TRADING PICKED UP'
            + (unshown ? ' · ' + unshown + ' MORE' : '') + '</text>';
   }
+  o += numbers;
   if(count)
     o += '<text class="p-tradednum" x="' + n1(count.x) + '" y="' + n1(count.by) + '">' + count.s + '</text>';
   if(word) o += word;
@@ -972,6 +1039,10 @@ function paintLadder(st){
          + '" text-anchor="middle">' + name + '</text>';
   }
 
+  // what the caller cannot know until the chart is solved: whether there are
+  // bars at all and whether they carry their numbers, which is the one thing
+  // the full view's foot says that the chart itself does not
+  if(T){ T.bars = !!traded; T.numbered = !!nums; }
   svg.innerHTML = o;
 }
 
@@ -990,6 +1061,114 @@ function _lvlWall(e, side, nearest){
 // The sheet it opens is the one its aria-controls names; the rest is
 // sheet.js's.
 $('howto').addEventListener('click', () => MiraiSheet.open($('howto')));
+
+/* ---- C2. the chart, full screen ----------------------------------------
+
+   The lengths on the glance are WIDTHS, set by the phone's 360px, and no
+   height makes them longer: at 360 a side of a bar is 12.3px at the median
+   and what traded since the reading is 2.5, which is 0.5mm on the owner's
+   screen. So the chart opens (ZOOM-SPEC.md 1 and 5), at the screen's size,
+   with every bar's numbers written in — the one view where nothing has to be
+   judged by eye.
+
+   IT IS A SHEET. sheet.js already knows every way a screen like this is
+   closed and every way that goes wrong on a phone: one history entry, so the
+   phone's Back closes it rather than leaving the page; the close button, the
+   backdrop and Escape all unwinding that entry so there is one closing path;
+   the second tap of a double tap refused; the focus going back to what opened
+   it; and the shell told the page is not at the top while it is open, so a
+   drag inside it is not a pull-to-refresh. A second mechanism would have to
+   learn all of it again, and a page with two would have two things that
+   believe they are the only one open. The only thing this adds is the
+   painting, which is the page's job anyway.
+
+   PORTRAIT ONLY. The shell is locked to it (AndroidManifest screenOrientation
+   = "portrait"), so there is no sideways to draw and none is offered. */
+
+// 14 rather than the glance's 8, and a quarter of the plot each side rather
+// than a fifth, with the zero at 0.55 instead of 0.72 so the puts' numbers
+// have somewhere to go (ZOOM-SPEC.md 5). FULL_MIN_H is a floor under the
+// SUBTRACTION, not a design number: a screen this view cannot measure would
+// otherwise ask paintLadder for a negative height, and a chart drawn too
+// short is a chart that says so (the ladder's own guard).
+const FULL_H_MAX = 14, FULL_SIDE = 0.25, FULL_ZERO = 0.55, FULL_MIN_H = 240;
+
+function chartIsOpen(){ return $('chartFull').getAttribute('aria-hidden') === 'false'; }
+
+function boxH(id){
+  const r = $(id).getBoundingClientRect();
+  return (r && isFinite(r.height)) ? r.height : 0;
+}
+
+function paintChart(){
+  // The MEASURED screen, never a viewport unit: inside the app 100vh reads 0
+  // (the token in index.html's :root). The same numbers --app-h is written
+  // from.
+  const W = document.documentElement.clientWidth || window.innerWidth || 0;
+  const screenH = window.innerHeight || document.documentElement.clientHeight || 0;
+  const scanAt = etTime(Date.parse(PAY.row_ts));
+  $('cfWhen').textContent = scanAt ? 'AS OF ' + scanAt : '';
+  const st = state();
+  const T = {svg:$('cfSvg'), id:'cf', W, hMax:FULL_H_MAX, side:FULL_SIDE, zero:FULL_ZERO, numbers:true};
+  // The foot's words are part of what the chart worked out, and the foot's
+  // height is part of the room the chart gets, so the two settle against each
+  // other rather than one guessing at the other: draw, write the foot, and
+  // draw once more if writing it moved the floor.
+  for(let pass = 0; pass < 2; pass++){
+    const was = boxH('cfFoot');
+    T.H = Math.max(FULL_MIN_H, screenH - boxH('cfHead') - was);
+    paintLadder(st, T);
+    $('cfFoot').innerHTML = chartFoot(st, T);
+    if(boxH('cfFoot') === was) break;
+  }
+}
+
+function chartFoot(st, T){
+  // What the full view says under the chart, and nothing the glance does not
+  // already say: which colour is which side, what the smaller number after a
+  // count is, and — only when it is true — that some rows were too close
+  // together to number. No reading, no since: the clause is left out rather
+  // than written empty (law 1).
+  if(!T.bars) return '';
+  const since = (T.numbered && st.since) ? '; <b>+n</b> since the ' + etTime(st.since.at) + ' reading' : '';
+  const tight = T.numbered ? ''
+    : ' — the prices here are too close together for a number on every bar, so only the longest has one';
+  return '<span class="put">Puts</span> and <span class="call">calls</span> traded today at each price'
+       + since + tight + '.';
+}
+
+// A TAP ON THE CHART OPENS IT, anywhere on it, and so does the corner control
+// in the card's head, which is what says on the glance that it can be opened.
+//
+// The tap is judged twice. A browser sends no click at all after a scroll,
+// which is the gesture that shares this glass; isTap (glance.js) then holds
+// the finger to Android's own 8px of slop and 500ms, so a drag the shell read
+// as a pull-to-refresh, or a hold the magnifier will want later, cannot arrive
+// here as a tap. The chart is not a control anywhere else: the listeners are
+// PASSIVE and nothing is preventDefault()ed, so the page never takes a gesture
+// from the shell, from the page's own scrolling, or from the back gesture on
+// the screen's edges. A click with no measured tap behind it — a mouse on a
+// desktop browser — opens nothing; the corner control is there for that.
+let tapAt = null;
+const ladder = $('ladder');
+ladder.addEventListener('touchstart', e => {
+  const t = e.touches && e.touches[0];
+  tapAt = (t && e.touches.length === 1) ? {x:t.clientX, y:t.clientY, t:Date.now()} : null;
+}, {passive: true});
+ladder.addEventListener('touchend', e => {
+  const t = e.changedTouches && e.changedTouches[0];
+  if(!t || !isTap(tapAt, {x:t.clientX, y:t.clientY, t:Date.now()})) tapAt = null;
+}, {passive: true});
+ladder.addEventListener('click', () => { const tapped = tapAt; tapAt = null; if(tapped) openChart(); });
+$('cfOpen').addEventListener('click', () => openChart());
+
+function openChart(){
+  // Nothing drawn, nothing to open (law 1); and one screen over the page at a
+  // time, which is sheet.js's own rule — the key and this cannot both be up.
+  if(!PAY || MiraiSheet.isOpen()) return;
+  paintChart();
+  MiraiSheet.open($('cfOpen'));
+}
 
 /* ---- E. read — an opinion, not a measurement ---------------------------- */
 

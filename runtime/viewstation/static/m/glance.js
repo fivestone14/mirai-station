@@ -557,7 +557,7 @@ const TRADED_PITCH=0.70, TRADED_H_MAX=8;
 // 2.6; "6,104 CALLS" is 67.06).
 const COUNT_CALLS_W=37.05, COUNT_PUTS_W=29.83;
 
-function tradedBars(strikes, lo, hi, top, bottom){
+function tradedBars(strikes, lo, hi, top, bottom, hMax){
   // Contracts traded today at each strike in the window, calls and puts apart:
   // `vc` and `vp`. `most` is the longest single side in view, the one scale
   // both sides are drawn to, and `lead` the bar and side holding it, {b, n,
@@ -570,6 +570,12 @@ function tradedBars(strikes, lo, hi, top, bottom){
   // the builder withholds both while the day's first book still carries the
   // prior session's counts (sndk_board's WITHHELD_* notes): the first two scans
   // of 09-16 and 09-17, the first six (to 09:42) of 09-15.
+  //
+  // `hMax` is the thickest a bar may be, TRADED_H_MAX unless the caller has
+  // more room than the card: the full screen view's 14. It has to be the cap
+  // the thickness is solved at rather than a stretch afterwards, because the
+  // bars that would cross the plot's edge are the ones dropped below.
+  const cap=_fin(hMax)>0?_fin(hMax):TRADED_H_MAX;
   const k=(bottom-top)/(hi-lo);
   if(!(k>0)||!isFinite(k)) return null;
   const seen=[];
@@ -582,7 +588,7 @@ function tradedBars(strikes, lo, hi, top, bottom){
   seen.sort((a,b)=>b.v-a.v);
   let pitch=Infinity;
   for(let i=1;i<seen.length;i++) pitch=Math.min(pitch, seen[i].y-seen[i-1].y);
-  const h=Math.min(TRADED_H_MAX, TRADED_PITCH*pitch);
+  const h=Math.min(cap, TRADED_PITCH*pitch);
   // a bar that would cross the plot's edge is dropped, not clipped: a clipped
   // bar's middle is no longer its strike's price
   const bars=seen.filter(b=>b.y-h/2>=top&&b.y+h/2<=bottom);
@@ -626,6 +632,55 @@ function tradedSince(field, reads, strikes){
     by[k]=[vc-t[0], vp-t[1]];
   }
   return {at, by};
+}
+
+/* ---- the chart full screen --------------------------------------------- */
+
+// A TAP OPENS THE CHART, and nothing else on it does (ZOOM-SPEC.md 5). What
+// separates a tap from the two gestures that share the glass:
+//  - a SCROLL. The page scrolls under the chart, and the finger that starts
+//    that scroll starts it on the chart. A browser sends no click after a
+//    scroll, so the click alone would nearly do; the slop is what makes the
+//    rule the page's own rather than a behaviour it inherits, and it is what
+//    a later hold on the chart (the magnifier) measures itself against.
+//  - a PULL-TO-REFRESH. The shell's SwipeRefreshLayout takes any downward drag
+//    while the page says it is at the top, and it decides in native code
+//    before the page sees anything. The page cannot refuse that gesture from
+//    here; what it can refuse is to read it as a tap and open a screen under a
+//    reader who was reloading.
+// 8px is Android's touch slop and 500ms its long-press timeout, so a finger
+// that travels further, or rests longer, is one of those and not a tap.
+const TAP_SLOP=8, TAP_MS=500;
+
+function isTap(down, up){
+  // {x, y, t}: where the finger landed and where it left, in CSS px and ms.
+  if(!down||!up) return false;
+  const dx=_fin(up.x)-_fin(down.x), dy=_fin(up.y)-_fin(down.y), dt=_fin(up.t)-_fin(down.t);
+  if(!isFinite(dx)||!isFinite(dy)||!isFinite(dt)) return false;
+  return Math.sqrt(dx*dx+dy*dy)<=TAP_SLOP&&dt>=0&&dt<=TAP_MS;
+}
+
+// Two 11px numbers on rows closer than this run into each other, so the full
+// screen view keeps the glance's one count instead, and its foot says why.
+const FULL_NUM_PITCH=12;
+
+function barNumbers(traded, since){
+  // WHAT EVERY BAR SAYS AT FULL SCREEN: [{v, y, vc, vp, sc, sp}] in the bars'
+  // own order, or null where the rows are too close together to number.
+  // `sc` and `sp` are what traded there since the latest reading, and they are
+  // null — never zero — where there is no reading or none for that strike: the
+  // paler end of a bar is the same fact and is absent in the same cases
+  // (tradedSince). A side that traded nothing keeps its 0, because at full
+  // screen the reader is reading counts and none traded is a count.
+  if(!traded||!traded.bars||!traded.bars.length) return null;
+  const ys=traded.bars.map(b=>b.y).sort((a, b)=>a-b);
+  let pitch=Infinity;
+  for(let i=1;i<ys.length;i++) pitch=Math.min(pitch, ys[i]-ys[i-1]);
+  if(pitch<FULL_NUM_PITCH) return null;
+  return traded.bars.map(b=>{
+    const d=since?since.by[b.v]:null;
+    return {v:b.v, y:b.y, vc:b.vc, vp:b.vp, sc:d?d[0]:null, sp:d?d[1]:null};
+  });
 }
 
 /* ---- where new contracts arrived --------------------------------------- */
@@ -1209,7 +1264,8 @@ if(typeof module!=='undefined'&&module.exports){
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
                   TRADED_ZERO, TRADED_SIDE, COUNT_CALLS_W, COUNT_PUTS_W, tradedBars,
-                  tradedSince, newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
+                  tradedSince, TAP_SLOP, TAP_MS, isTap, FULL_NUM_PITCH, barNumbers,
+                  newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,

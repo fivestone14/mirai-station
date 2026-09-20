@@ -39,17 +39,17 @@ function classList(){
   return {add: (...c) => c.forEach(x => s.add(x)), remove: (...c) => c.forEach(x => s.delete(x)),
           contains: c => s.has(c), toggle: (c, on) => (on ? s.add(c) : s.delete(c))};
 }
-// `sel` lists the selectors an element answers to in closest()
-// and `attrs` the attributes the markup gives it
-function el(id, sel, attrs){
+// `sel` lists the selectors an element answers to in closest(), `attrs` the
+// attributes the markup gives it, and `closer` the id of the close button a
+// sheet holds — the one thing sheet.js looks for inside one
+function el(id, sel, attrs, closer){
   return {id, sel: sel || [], attrs: Object.assign({}, attrs), classList: classList(), hidden: false, style: {},
-          children: [], heard: {},
+          children: [], heard: {}, innerHTML: '',
           closest(q){ return this.sel.some(s => q.includes(s)) ? this : null; },
           setAttribute(k, v){ this.attrs[k] = v; }, getAttribute(k){ return this.attrs[k]; },
           hasAttribute(k){ return this.sel.some(s => s === '[' + k + ']'); },
           addEventListener(t, f){ (this.heard[t] = this.heard[t] || []).push(f); },
-          // a sheet's close button, the one thing sheet.js looks for inside it
-          querySelector(q){ return q === '[data-sheet-close]' ? els.hwClose : null; },
+          querySelector(q){ return q === '[data-sheet-close]' ? els[closer || 'hwClose'] : null; },
           focus(){ document.activeElement = this; },
           replaceChildren(){}, appendChild(c){ return c; },
           getBoundingClientRect(){ return {width: 380, height: 300, top: 0, left: 0, right: 380, bottom: 300}; },
@@ -57,8 +57,13 @@ function el(id, sel, attrs){
 }
 const els = {
   howto: el('howto', ['#howto'], {'aria-controls': 'howtoSheet'}),
-  howtoSheet: el('howtoSheet', ['#howtoSheet', '.sheet'], {'aria-hidden': 'true'}),
+  howtoSheet: el('howtoSheet', ['#howtoSheet', '.sheet'], {'aria-hidden': 'true'}, 'hwClose'),
   hwClose: el('hwClose', ['[data-sheet-close]']),
+  // the chart, and the full screen view a tap on it opens
+  ladder: el('ladder', ['#ladder']),
+  cfOpen: el('cfOpen', ['#cfOpen'], {'aria-controls': 'chartFull'}),
+  chartFull: el('chartFull', ['#chartFull', '.sheet'], {'aria-hidden': 'true'}, 'cfClose'),
+  cfClose: el('cfClose', ['[data-sheet-close]']),
   scrim: el('scrim', ['[data-sheet-close]']),
   text: el('text', []),
 };
@@ -66,7 +71,7 @@ const docL = {}, winL = {};
 const on = (bag) => (type, fn) => { (bag[type] = bag[type] || []).push(fn); };
 const document = {
   body: el('body'), activeElement: null, hidden: false,
-  documentElement: {style: {setProperty(){}}},
+  documentElement: {style: {setProperty(){}}, clientWidth: 360, clientHeight: 780},
   getElementById: id => els[id] || (els[id] = el(id)),
   querySelector: () => null, createElement: () => el('x'),
   addEventListener: on(docL),
@@ -84,7 +89,7 @@ const ctx = {
   fetch: () => new Promise(() => {}), setInterval: () => 0, clearInterval(){},
   setTimeout: setTimeout_, clearTimeout: clearTimeout_, Date: FakeDate, console,
   Math, JSON, Number, String, isFinite, Object, Array, Infinity, Set, Promise, encodeURIComponent,
-  scrollY: 300,
+  scrollY: 300, innerWidth: 360, innerHeight: 780,
 };
 ctx.window = ctx;
 ctx.addEventListener = on(winL);
@@ -93,6 +98,16 @@ vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(M, 'glance.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(M, 'sheet.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(M, 'page.js'), 'utf8'), ctx);
+// A board on the page: nothing drawn is nothing to open, so without one the
+// chart's tap would prove nothing. Nothing answers /api here, so it is put
+// where a payload would have left it.
+vm.runInContext('PAY = ' + JSON.stringify({
+  row_ts: '2026-09-16T11:01:00-04:00',
+  gates: {stale_book_min: 6, heartbeat_min: 60},
+  scene: {price: {live_spot: 1541.75}, scale: {one_sigma_dollars: 56.74},
+          strikes: {rows: [{strike: 1540, vol_calls: 1385, vol_puts: 1459},
+                           {strike: 1530, vol_calls: 1655, vol_puts: 1609}]}},
+}) + ';', ctx);
 
 function fire(bag, type, e){ (bag[type] || []).forEach(f => f(e)); return e; }
 function ev(type, target, x, y, extra){
@@ -104,11 +119,24 @@ const isOpen = () => document.body.classList.contains('sheet-open');
 function reset(){
   if(isOpen()){ document.body.classList.remove('sheet-open'); }
   els.howtoSheet.attrs['aria-hidden'] = 'true';
+  els.chartFull.attrs['aria-hidden'] = 'true';
   history.state = null; pushes = 0; backs = 0; timers = []; advance(1000);
 }
 // a tap as a browser delivers it: the control's own listeners, then the document's
 function tap(n){ const e = ev('click', n, 100, 100); (n.heard.click || []).forEach(f => f(e)); fire(docL, 'click', e); }
+// and a finger on the chart, which has no click of its own until the touch
+// that made it has been measured: down, up `ms` later `dx` away, then the click
+// the browser sends when it agrees that was a tap
+function finger(n, ms, dx){
+  const at = (x) => ({touches: [{clientX: x, clientY: 100}], changedTouches: [{clientX: x, clientY: 100}]});
+  fire(n.heard, 'touchstart', at(100));
+  advance(ms);
+  fire(n.heard, 'touchend', at(100 + dx));
+  tap(n);
+}
 const state = () => ({open: isOpen(), hidden: els.howtoSheet.attrs['aria-hidden'], pushes, backs,
+                      focus: document.activeElement && document.activeElement.id});
+const chart = () => ({open: isOpen(), hidden: els.chartFull.attrs['aria-hidden'], pushes, backs,
                       focus: document.activeElement && document.activeElement.id});
 
 const out = {};
@@ -156,5 +184,39 @@ advance(1000);
 fire(docL, 'touchend', ev('touchend', els.howto, 100, 100, {touches: []}));
 fire(docL, 'pointerup', ev('pointerup', els.howto, 100, 100));
 out.hold = state();
+
+// 9. a TAP ON THE CHART opens the chart full screen, with its own history
+//    entry and the focus on its own close control
+reset(); finger(els.ladder, 90, 2);
+out.tap_opens_chart = chart();
+
+// 10. one at a time: the key's link while the chart is open opens nothing and
+//     pushes no second entry, so the one Back below cannot leave one behind
+advance(600); tap(els.howto);
+out.key_over_chart = Object.assign(chart(), {key: els.howtoSheet.attrs['aria-hidden']});
+
+// 11. so ONE Back closes it and the focus goes to the control that says the
+//     chart can be opened
+history.back(); advance(50);
+out.back_closes_chart = chart();
+
+// 12. the corner control opens it too, and its close tapped twice goes back once
+reset(); tap(els.cfOpen); advance(600); tap(els.cfClose); tap(els.cfClose); advance(50);
+out.close_twice = chart();
+
+// 13. Escape closes it the same one way
+reset(); tap(els.cfOpen); advance(600);
+fire(docL, 'keydown', {key: 'Escape'}); advance(50);
+out.chart_escape = chart();
+
+// 14. and what must NOT open it: a finger held on the chart past Android's
+//     long press, a finger dragged past its touch slop (the gesture the
+//     shell reads as a pull-to-refresh), and a click with no touch behind it
+reset(); finger(els.ladder, 600, 0);
+out.chart_hold = chart();
+reset(); finger(els.ladder, 90, 20);
+out.chart_drag = chart();
+reset(); tap(els.ladder);
+out.chart_mouse = chart();
 
 console.log(JSON.stringify(out));

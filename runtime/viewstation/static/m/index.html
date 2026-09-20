@@ -231,6 +231,24 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    when the container has none to give. */
 #svg{display:block;max-width:100%;height:auto}
 #svg.too-narrow{min-width:240px}
+/* A TAP ON THE CHART OPENS IT FULL SCREEN, so the chart is a control now. It
+   takes manipulation, not none: up and down still scrolls the page under the
+   finger, which is the gesture the chart shares its glass with, and only the
+   double-tap-to-zoom delay goes. A selection started by a long press would
+   turn the next drag into handle-dragging, as it did on the levels card. */
+#ladder{touch-action:manipulation;-webkit-user-select:none;user-select:none;
+        -webkit-touch-callout:none}
+/* The corner control in the card's head, which is what says on the glance
+   that the chart can be opened: 16px of icon in a --tap-min target. The
+   padding is tucked back out of the row — 18 a side, not 16, so the target's
+   48px come back under the head's own 13.2px line and the card does not grow
+   — and out of the card's 16px rail, so the icon's edge is the head's. */
+.cf-open{flex:none;margin:-18px -16px -18px 0;padding:16px;border:0;background:none;
+         color:var(--i-mute);touch-action:manipulation}
+.cf-open svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;
+             stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.cf-open.is-pressed{color:var(--i)}
+.cf-open:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 /* The chart's key, behind a quiet link under it: the owner chose it over a
    filled bar (READABLE2-SPEC.md 2.8). 16px of it shows, a ring and 12px/600 in
    --i-mute on the card's rail. The tap target is --tap-min tall, 16 + 16 + 16,
@@ -273,6 +291,7 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 .p-tradedcall{fill:var(--traded-call)}
 .p-tradedputbg{fill:var(--traded-put)} .p-tradedputln{fill:var(--s)}
 .hw .p-tradedput{fill:url(#tradedPutsKey)}
+#cfSvg .p-tradedput{fill:url(#cfTradedPuts)}
 /* The part of each side traded since the latest reading, at its outer end:
    the same hue, paler (CPB-SPEC.md 2.4). The calls' is 1.41:1 lighter than
    their solid, 1.38 to 1.45 in greyscale and red-green colour blindness
@@ -290,6 +309,18 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    brackets' word is just now, so it is set in their black. */
 .p-tradednum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute);
              paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
+/* FULL SCREEN ONLY: every bar's own counts, each past its outer end in its
+   side's ink — the sides are named once above the bars and the ink says which
+   after that — with what traded there since the reading in the same grey the
+   one count above is set in, since that is the whole day and this is just
+   now. 11px, the chart's floor, with the card halo every word on the chart
+   carries, so a number that meets a rule is still read. */
+.p-barnum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;
+          paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
+.p-barnum.put{fill:var(--put-ink)} .p-barnum.call{fill:var(--call-ink)}
+.p-barsince{font-weight:500;fill:var(--i-mute)}
+.p-colhead{font:700 11px/1 var(--sans);font-variant-numeric:tabular-nums;
+           letter-spacing:.12em;fill:var(--i-faint)}
 /* Where trading just picked up: corners round the area, a tab in the gutter, a
    word. --i, the darkest neutral, because every hue already means a side, the
    magnet or the price and change has none: 15.60:1 on the card. The word is
@@ -666,6 +697,37 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   .sheet,.sheet[aria-hidden="false"]{transition:none}
 }
 
+/* ---- the sheet: the chart, full screen ----
+   A sheet that takes the whole screen rather than the bottom of it, so every
+   way a sheet is closed closes this too. It overrides only its shape: the
+   rounded lip, the 86% cap and the sheet's own padding, which the chart takes
+   for itself. It keeps the rest, and overflow-y:auto with it — a foot one
+   line longer than the room it was measured for scrolls into view instead of
+   falling off the screen. */
+.sheet.full{top:0;max-height:none;border-radius:0;padding:0;
+            display:flex;flex-direction:column;box-shadow:none}
+.cf-head{flex:none;display:flex;align-items:center;gap:10px;
+         padding:calc(env(safe-area-inset-top) + 12px) 8px 10px 16px}
+.cf-t{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+      color:var(--i-faint);white-space:nowrap}
+.cf-when{margin-left:auto;font:700 11px/1.2 var(--sans);letter-spacing:.12em;
+         color:var(--i-mute);white-space:nowrap}
+/* The close control sits in the top right, where the back gesture's own edge
+   strip is: a tap there closes the view and a swipe there is Back, which
+   closes it too, so the two cannot disagree. */
+.cf-x{flex:none;width:var(--tap-min);height:var(--tap-min);display:flex;align-items:center;
+      justify-content:center;border:0;border-radius:12px;background:var(--s2);color:var(--i-body)}
+.cf-x svg{display:block;width:18px;height:18px;fill:none;stroke:currentColor;
+          stroke-width:1.7;stroke-linecap:round}
+.cf-x.is-pressed{color:var(--i)}
+.cf-x:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+#cfSvg{flex:none;display:block;max-width:100%;height:auto}
+.cf-foot{flex:none;padding:6px 16px calc(env(safe-area-inset-bottom) + 14px);
+         font:400 12px/17px var(--sans);color:var(--i-mute)}
+.cf-foot .put{color:var(--put-ink);font-weight:700}
+.cf-foot .call{color:var(--call-ink);font-weight:700}
+.cf-foot b{color:var(--i)}
+
 /* ============ G. FOOT ============ */
 .foot{padding:2px 4px 0;font:400 11px/1.4 var(--sans);color:var(--i-faint)}
 
@@ -793,7 +855,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 </section>
 
 <section class="card">
-  <div class="lab">Price today<span class="r" id="ldWhen"></span></div>
+  <div class="lab">Price today<span class="r" id="ldWhen"></span><button class="cf-open" id="cfOpen"
+       type="button" data-press aria-haspopup="dialog" aria-controls="chartFull"
+       aria-label="Open the chart full screen"><svg viewBox="0 0 16 16" aria-hidden="true"><path
+       d="M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5"/></svg></button></div>
   <div class="ladder" id="ladder"><svg id="svg"></svg></div>
   <button class="howto" id="howto" type="button" aria-haspopup="dialog" aria-controls="howtoSheet"
           data-press><i aria-hidden="true">i</i><s>How to read this chart</s></button>
@@ -878,6 +943,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="sh-caveat"><b>Where trading is, not where price is going.</b> None of these marks says which way SNDK moves next. Trading picking up at a price says nothing about whether price gets there.</div>
 
   <button class="sh-close" id="hwClose" type="button" data-sheet-close>Got it</button>
+</div>
+
+<!-- The chart, full screen: the same board redrawn at the screen's size with
+     every bar's numbers written in (paintChart). It is a sheet, so the phone's
+     back gesture, the close control and Escape all close it the one way
+     sheet.js knows, and only one of the two can be open. -->
+<div class="sheet full" id="chartFull" role="dialog" aria-modal="true" aria-hidden="true"
+     aria-labelledby="cfTitle">
+  <div class="cf-head" id="cfHead">
+    <span class="cf-t" id="cfTitle">Price today</span><span class="cf-when" id="cfWhen"></span>
+    <button class="cf-x" id="cfClose" type="button" data-press data-sheet-close aria-label="Close">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15"/></svg></button>
+  </div>
+  <svg id="cfSvg"></svg>
+  <div class="cf-foot" id="cfFoot"></div>
 </div>
 
 <nav class="tabs">

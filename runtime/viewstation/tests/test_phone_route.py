@@ -191,8 +191,12 @@ function node(){
 }
 const els = {}, listeners = {document: {}, window: {}}, onElements = [];
 const on = bag => (type, fn) => { (bag[type] = bag[type] || []).push(fn); };
+// the screen, which the full screen chart is drawn to: "screen" is [w, h] and
+// defaults to the owner's own phone
+const SCREEN = NET.screen || [360, 780];
 const document = {
-  body: node(), hidden: false, documentElement: {style: {setProperty(){}}},
+  body: node(), hidden: false,
+  documentElement: {style: {setProperty(){}}, clientWidth: SCREEN[0], clientHeight: SCREEN[1]},
   getElementById: id => els[id] || (els[id] = node()),
   querySelector: () => null, createElement: () => node(), addEventListener: on(listeners.document),
 };
@@ -207,6 +211,7 @@ async function fetch(url){
   return {status: 200, text: async () => JSON.stringify(body)};
 }
 const ctx = {document, fetch, Date: FakeDate, URLSearchParams, location: {search: ''},
+             innerWidth: SCREEN[0], innerHeight: SCREEN[1], history: {state: null, pushState(s){ this.state = s; }},
              setTimeout: () => 0, clearTimeout(){}, setInterval: () => 0, clearInterval(){}};
 ctx.window = ctx;
 ctx.addEventListener = on(listeners.window);
@@ -232,8 +237,9 @@ def _page(net, steps="return dump();", tz=None):
     """Run the REAL page.js, over the real glance.js and sheet.js, in node
     against a stand-in DOM and a station that answers from `net` —
     {"payload", "now"}, and optionally "live" (/api/spot), "reads", "diary",
-    "bars" (the raw file rows), "width" (the ladder's measured width) and
-    "down" (nothing answers) — and return what `steps` returns.
+    "bars" (the raw file rows), "width" (the ladder's measured width),
+    "screen" ([w, h] of the phone, 360x780 by default) and "down" (nothing
+    answers) — and return what `steps` returns.
 
     `steps` is the body of an async JS function run once the first load has
     painted. In scope: NET (what the station answers next), run(code)
@@ -644,9 +650,18 @@ def test_the_chart_cards_head_names_what_it_shows_and_when():
     it was drawn from, so a stale axis ends on a bare clock and a live one keeps
     its countdown. No stamp, no clock: the head says nothing rather than guess
     one. It is written before the chart decides whether it can draw, so a card
-    too narrow for the plot still says which scan it would have shown."""
+    too narrow for the plot still says which scan it would have shown.
+
+    AMENDED 2026-09-19. The head's right end also carries the control that
+    opens the chart full screen — the only thing on the glance that says the
+    chart can be opened, since a tap on the chart itself shows nothing. It
+    names the sheet it opens and what it does, and it comes AFTER the clock, so
+    what the card says is still read before what can be done to it."""
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
-    assert '<div class="lab">Price today<span class="r" id="ldWhen"></span></div>' in card
+    head = re.search(r'(?s)<div class="lab">Price today(.*?)</div>', card).group(1)
+    assert head.startswith('<span class="r" id="ldWhen"></span><button class="cf-open" id="cfOpen"')
+    assert 'aria-controls="chartFull"' in head and 'aria-haspopup="dialog"' in head
+    assert 'aria-label="Open the chart full screen"' in head
     scene = {"clock": {"minutes_to_close": 178}, "price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
              "walls": {"call": [{"strike": 1720, "cluster_share_of_book_gamma_pp": 12}]}}
     unstamped = _page(_board(scene, payload={"row_ts": None}))
@@ -977,6 +992,12 @@ def test_no_emoji_no_legend_no_greek():
     reader asks for it. The chart's card carries the link to it and nothing
     else of it.
 
+    AMENDED 2026-09-19 for the second thing the card may now carry: the control
+    that opens the chart full screen (the owner's decision, ZOOM-SPEC.md 5).
+    Both of the card's buttons OPEN something and neither says anything about
+    the chart where the chart is; a legend or a word of explanation beside the
+    marks is still banned here and still belongs in a sheet.
+
     AMENDED 2026-09-19: no Greek WORD either, anywhere on either page. The
     levels card's caption and its sheet said "gamma" in their explanations, so
     this held the letters only and the word was held sheet by sheet (the
@@ -1002,42 +1023,53 @@ def test_no_emoji_no_legend_no_greek():
     opens = re.search(r'<div class="sheet" id="howtoSheet"[^>]*>', PHONE).group(0)
     assert 'role="dialog"' in opens and 'aria-hidden="true"' in opens, "the key is not a closed sheet"
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
-    assert re.sub(r"<button class=\"howto\".*?</button>", "", card, flags=re.S).count("<button") == 0
+    left = re.sub(r'(?s)<button class="(?:howto|cf-open)".*?</button>', "", card)
+    assert left.count("<button") == 0, "a button in the chart's card that neither opens nor closes"
     got = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 80.4}}))
     assert got["ruler"]["text"] == "USUAL DAY MOVE $80"
     assert not re.search(r"[Ͱ-Ͽ\U0001F300-\U0001FAFF]", json.dumps(got, ensure_ascii=False))
 
 
-def test_the_glance_itself_is_not_a_control():
-    """AMENDED 2026-09-07, 2026-09-10, 2026-09-18 and 2026-09-19. The rule was
-    "nothing is tappable", and its purpose was that the READING must never be
-    a control: a screen you poke is a screen you are working, and this one is
-    read at arm's length in a second.
+def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
+    """WAS test_the_glance_itself_is_not_a_control. AMENDED 2026-09-07,
+    2026-09-10, 2026-09-18, and REWRITTEN 2026-09-19 when the owner chose to
+    overturn the rule it was named for (ZOOM-SPEC.md 0 and 5): a tap on the
+    chart now opens the chart, so the glance IS a control.
 
-    That purpose survives verbatim. 09-07 permitted exactly ONE link, to the
-    readings archive. 09-10 permitted exactly ONE press-and-hold, on the
-    three-levels card, because the user asked for the card to explain itself.
-    09-18 permitted exactly ONE button that opens something: the quiet link
-    under the chart, "How to read this chart", because the owner chose an
-    explainer for the chart's marks (READABLE2-SPEC.md 2.8). 09-19 took the
-    hold away with the card, by the owner's decision: the chart draws the same
-    three levels and its key explains them. So there is no press-and-hold
-    anywhere on the page now, and no sheet but the key. The intent was never
-    "one <button> element" but that every control on the page opens or closes
-    an explanation and none works the data, and that is what this counts.
+    What that rule was protecting is not the chart, and it survives whole. It
+    is that the READING must never be a control — a screen you poke is a screen
+    you are working, and this one is read at arm's length in a second — and
+    under it three things that can still be tested:
 
-    Everything that would make the DATA interactive stays banned: no onclick,
-    no pointer cursors, no tooltips, no hold, no button that neither opens nor
-    closes an explanation, and the page's one click listener does nothing but
-    close a sheet. A hold needs something listening for the finger going down
-    or coming up, and none of the page's own scripts does (press.js paints a
-    control's pressed state and opens nothing; it is not loaded here). The
-    link's own listener does nothing but open the sheet it names, and it is
-    the one listener on any element of the page: until 2026-09-18 the
-    stand-in elements could not take a listener at all, so one on any element
-    failed every page test, and this count is what now catches it. Each count
-    is exact. A second of anything means the rule has started eroding and this
-    test should be argued with again rather than edited again."""
+      1. EVERY CONTROL OPENS OR CLOSES AN EXPLANATION, and none works the data.
+         There is no control that sorts, filters, picks a level, changes a
+         window or chooses what the chart draws. The two openers open the two
+         sheets: the key under the chart, and the chart full screen. The two
+         closers close them. Each opener names its own dialog.
+      2. ONE OF THEM AT A TIME. Both ride sheet.js, which holds one flag for
+         "a sheet is open", so the key cannot open over the chart or the chart
+         over the key — and Back, which unwinds one history entry, cannot be
+         left holding two.
+      3. NO PRESS-AND-HOLD, and nothing that listens for a finger anywhere but
+         the chart. A hold is how the old levels card explained itself, and it
+         turned the card into a dead zone for scrolling; it went with the card
+         on 2026-09-19 and it is not coming back through this door. The chart's
+         own touch listeners exist only to REFUSE gestures — isTap (glance.js)
+         reads a hold past 500ms, or a finger that travels past 8px, as not a
+         tap — and they are passive, so the page takes no gesture from the
+         page's own scrolling, from the shell's pull-to-refresh, or from the
+         back gesture on the screen's edges.
+
+    And what the gesture may not do: it may not hide anything a reader needs at
+    a glance. Opening the chart changes nothing on the glance underneath it —
+    the same board, the same marks, the same words — so a reader who never
+    finds the gesture has lost nothing, and Back puts the page back as it was.
+    That the chart claims nothing about where price goes is the word gates'
+    (test_the_sndk_chart_claims_nothing_about_what_dealers_do and the laws in
+    glance.js), and they run over the full screen view's words as well.
+
+    Each count is exact. A third of anything means the rule has started
+    eroding, and this test should be argued with again rather than edited."""
     for bad in ("cursor:pointer", "onclick", "title="):
         assert bad not in PHONE, bad
     links = re.findall(r"<a\s[^>]*>", PHONE)
@@ -1045,44 +1077,69 @@ def test_the_glance_itself_is_not_a_control():
     assert 'href="/m/thread.html"' in links[0], links[0]
 
     assert "data-hold" not in PHONE + _code_only(PAGE), "a press-and-hold is back on the glance"
-    dialogs = re.findall(r'<div class="sheet" id="(\w+)" role="dialog"', PHONE)
-    assert dialogs == ["howtoSheet"] and len(re.findall(r'role="dialog"', PHONE)) == 1
+    dialogs = re.findall(r'<div class="sheet[^"]*" id="(\w+)" role="dialog"', PHONE)
+    assert dialogs == ["howtoSheet", "chartFull"], dialogs
+    assert len(re.findall(r'role="dialog"', PHONE)) == 2
     buttons = re.findall(r"<button\b[^>]*>", PHONE)
     closers = [b for b in buttons if "data-sheet-close" in b]
     openers = [b for b in buttons if "data-sheet-close" not in b]
-    assert len(closers) == 1 and len(openers) == 1, buttons
-    # the one close button is inside the one sheet
-    sheet = PHONE.split('<div class="sheet" id="howtoSheet"')[1].split("\n</div>\n")[0]
-    assert re.findall(r"<button\b[^>]*data-sheet-close[^>]*>", sheet), "the key's button lives outside it"
-    # and the one opener is the link under the chart, naming the chart's sheet
+    assert len(closers) == 2 and len(openers) == 2, buttons
+    # each closer is inside the dialog it closes, and each opener names one
+    for name in dialogs:
+        body = PHONE.split(f'<div class="sheet{{}}" id="{name}"'.format(
+            "" if name == "howtoSheet" else " full"))[1].split("\n</div>\n")[0]
+        assert re.findall(r"<button\b[^>]*data-sheet-close[^>]*>", body), f"{name}'s close button lives outside it"
     chart = PHONE.split('<section class="card">')[1].split("</section>")[0]
-    opener = openers[0]
-    assert opener in chart and 'aria-haspopup="dialog"' in opener, opener
-    names = re.search(r'aria-controls="(\w+)"', opener).group(1)
-    assert names == "howtoSheet"
+    named = []
+    for opener in openers:
+        assert opener in chart and 'aria-haspopup="dialog"' in opener, opener
+        named.append(re.search(r'aria-controls="(\w+)"', opener).group(1))
+    assert sorted(named) == sorted(dialogs), named
 
-    got = _page(_board({"price": {"live_spot": 1700}}), """
+    got = _page(_board({"price": {"live_spot": 1700}, "scale": {"one_sigma_dollars": 40},
+                        "strikes": {"rows": [{"strike": 1700, "vol_calls": 40, "vol_puts": 20}]}}), """
       const clicks = (listeners.document.click || []).concat(listeners.window.click || []);
       const before = JSON.stringify(dump());
       clicks.forEach(f => f({target: {closest: () => null}}));
       const inert = JSON.stringify(dump()) === before;
-      const link = els.howto, taps = link.heard.click || [];
-      link.attrs['aria-controls'] = __NAMES__;
-      const shut = dump();
-      taps.forEach(f => f({target: link}));
-      const open = dump(), sheet = open[__NAMES__];
-      const rest = s => { const c = Object.assign({}, s); delete c.body; delete c[__NAMES__]; return JSON.stringify(c); };
       const own = onElements.map(([n, t]) => [Object.keys(els).find(id => els[id] === n) || null, t]);
       const heard = Object.keys(listeners.document).concat(Object.keys(listeners.window));
-      return {clicks: clicks.length, inert, taps: taps.length, body: open.body, own, heard,
-              hidden: sheet && sheet.attrs['aria-hidden'], only: rest(open) === rest(shut)};""".replace(
-        "__NAMES__", json.dumps(names)))
+      // the stand-in elements carry no markup, so each opener is told the
+      // dialog the assertions above proved it names
+      els.howto.attrs['aria-controls'] = 'howtoSheet';
+      els.cfOpen.attrs['aria-controls'] = 'chartFull';
+      const shut = dump();
+      // a tap on the chart: down, up 2px away 90ms later, then the click
+      const at = (x, y) => ({touches: [{clientX: x, clientY: y}], changedTouches: [{clientX: x, clientY: y}]});
+      const fire = (n, t, e) => (n.heard[t] || []).forEach(f => f(e));
+      fire(els.ladder, 'touchstart', at(100, 100));
+      fire(els.ladder, 'touchend', at(102, 100));
+      fire(els.ladder, 'click', {});
+      const open = dump();
+      // and the key's link, while it is open: one at a time
+      fire(els.howto, 'click', {target: els.howto});
+      const both = dump();
+      // a sheet the page has never touched has no element and so no aria-hidden
+      const hid = (s, id) => s[id] ? s[id].attrs['aria-hidden'] : null;
+      return {clicks: clicks.length, inert, own, heard, body: open.body,
+              full: hid(open, 'chartFull'), key: hid(open, 'howtoSheet'),
+              keyAfter: hid(both, 'howtoSheet'),
+              glance: shut.svg.html === open.svg.html && shut.svg.html === both.svg.html,
+              drew: (open.cfSvg.html || '').length};""")
     assert got["clicks"] == 1 and got["inert"], "a second click handler, or one that acts on the page"
-    assert got["taps"] == 1 and got["body"] == "sheet-open" and got["hidden"] == "false", got
-    assert got["only"], "the link's tap changed something on the page besides opening its sheet"
-    assert got["own"] == [["howto", "click"]], f"a listener on an element besides the link's tap: {got['own']}"
+    assert got["body"] == "sheet-open" and got["full"] == "false", got
+    assert got["drew"] > 0, "the chart opened empty"
+    assert got["key"] is None and got["keyAfter"] is None, "the key opened over the chart"
+    assert got["glance"], "opening the chart changed what the glance itself draws"
+    assert got["own"] == [["howto", "click"], ["ladder", "touchstart"], ["ladder", "touchend"],
+                          ["ladder", "click"], ["cfOpen", "click"]], \
+        f"a listener on an element besides the two openers and the chart's tap: {got['own']}"
     press = {"pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup"}
     assert not press & set(got["heard"]), f"the page listens for a press: {sorted(press & set(got['heard']))}"
+    # the chart's two are PASSIVE, so nothing it hears can cancel a gesture
+    for line in re.findall(r"ladder\.addEventListener\('touch\w+',[\s\S]*?\}, \{([^}]*)\}\);", PAGE):
+        assert "passive: true" in line, line
+    assert "preventDefault" not in _code_only(PAGE), "the page cancels a gesture somewhere"
 
 
 def test_market_time_not_viewer_time():
@@ -1386,6 +1443,17 @@ def _plain_words():
         words |= {t for _, t in _svg_texts(got, "p-edge")}
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card) if t.strip()}
+    # the chart full screen, which the same gates hold: its own markup, the
+    # labels its two controls are read out by, and each form of its foot —
+    # with a reading and without, and where the rows were too close to number
+    view = PHONE.split('<div class="sheet full" id="chartFull"')[1].split("\n</div>\n")[0]
+    words |= {t.strip() for t in re.split(r"<[^>]+>", card + view) if t.strip()}
+    words |= set(re.findall(r'aria-label="([^"]*)"', card + view))
+    tight = json.loads(json.dumps(_SCENE_0916))
+    tight["strikes"] = {"rows": [{"strike": k, "vol_calls": 40, "vol_puts": 30} for k in range(1490, 1571)]}
+    for net in (_board(_SCENE_0916), _board(tight),
+                _board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT)):
+        words.add(re.sub(r"<[^>]+>", "", _full(net)["foot"]))
     for claims, pace in (([{"strike": 1700, "now": "changed"}], 1.37),
                          ([{"strike": 1700, "now": "changed"}, {"strike": 1600, "now": "off_list"}], 0.8),
                          ([], 1.0)):
@@ -1414,7 +1482,12 @@ def test_the_plain_words_pass_the_laws():
                  "One thing it said earlier no longer applies.", "2 things it said earlier no longer apply.",
                  "Trading is busier than usual for this time of day.",
                  "Trading is quieter than usual for this time of day.",
-                 "Trading is about usual for this time of day."):
+                 "Trading is about usual for this time of day.",
+                 "Open the chart full screen", "Close",
+                 "Puts and calls traded today at each price.",
+                 "Puts and calls traded today at each price; +n since the 10:52 reading.",
+                 "Puts and calls traded today at each price — the prices here are too close together"
+                 " for a number on every bar, so only the longest has one."):
         assert need in words, f"the gates never saw {need!r}"
     for s in sorted(words):
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
@@ -1566,8 +1639,10 @@ def test_the_two_phone_pages_draw_one_sheet():
     the core of it must be on both — the sheet capped at 86% of the measured
     height and scrolling, not clipping, past it; not selectable; its head, its
     caveat and the one close button. Each page keeps what only it needs: the
-    glance its key's rows, the reads page its items (the glance's went with
-    the levels sheet), its figure and its sources line."""
+    glance its key's rows and, since 2026-09-19, its chart full screen (a
+    sheet with its shape overridden, .sheet.full); the reads page its items
+    (the glance's went with the levels sheet), its figure and its sources
+    line."""
     a, b = _css_rules(PHONE), _css_rules(THREAD)
     core = {".scrim", ".sheet", "body.sheet-open .scrim", '.sheet[aria-hidden="false"]', ".sh-grab",
             ".sh-h", ".sh-caveat", ".sh-caveat b", ".sh-close",
@@ -1598,11 +1673,24 @@ def test_a_drag_inside_the_sheet_cannot_reload_the_page():
     the reader. The page tells the shell it is not at the top while the sheet
     is open, and keeps the answer true afterwards on every scroll. Since
     2026-09-18 that is sheet.js's, the one copy both pages' sheets run on
-    (test_phone_reads drives it on the reads page)."""
+    (test_phone_reads drives it on the reads page).
+
+    2026-09-19: the chart full screen is the reason this matters twice. It
+    covers the page and it is a screen a reader drags a finger over, so the
+    pull would fire inside it too — and it does not, because it is opened
+    through MiraiSheet and so rides the same one bridge. The page still has no
+    copy of its own. What the page CANNOT answer is the same drag on the chart
+    while it is closed and the page is at the top: the shell decides that in
+    native code before the page is asked, and nothing on this side changes it
+    (ZOOM-SPEC.md 2). The page's answer there is only to refuse to read that
+    drag as a tap (isTap)."""
     ts = SHEET.split("function tellShell")[1].split("\n  }\n")[0]
     assert "MiraiShell.atTop(!isOpen() && window.scrollY <= 0)" in ts
     assert "window.addEventListener('scroll', () => { if(spoke) tellShell(); }" in SHEET
     assert "tellShell" not in PAGE, "page.js has a second copy of the shell bridge"
+    assert "MiraiShell" not in PAGE, "page.js speaks to the shell behind sheet.js's back"
+    assert "MiraiSheet.open($('cfOpen'))" in PAGE, "the chart full screen is not opened as a sheet"
+    assert re.search(r'<div class="sheet full" id="chartFull"', PHONE)
 
 
 
@@ -2168,6 +2256,220 @@ def test_the_paler_end_is_its_sides_own_hue_and_reads_without_colour():
         ink = tok[re.search(r"stroke:var\((--[a-z-]+)\)", _css_rule(sel)).group(1)]
         for solid, since in ((".p-tradedcall", ".p-tradedcallsince"), (".p-tradedputbg", ".p-tradedputsince")):
             assert _contrast(ink, fill(since)) > max(3.0, _contrast(ink, fill(solid))), f"{sel} over {since}"
+
+
+# --- the chart, full screen (2026-09-19) -------------------------------------
+# ZOOM-SPEC.md 1 and 5. A side of a bar is 12.3px at the median on the owner's
+# 360px phone and what traded since the reading is 2.5 — half a millimetre —
+# and no height makes a width longer. So a tap opens the same board at the
+# screen's size with every bar's numbers written in.
+
+def _full(net):
+    """Open the chart and give back what it drew: the full view's SVG and its
+    size, its foot, and the glance's own SVG beside it. Opened by the corner
+    control, which runs the same openChart the chart's own tap does."""
+    return _page(net, """
+      els.cfOpen.attrs['aria-controls'] = 'chartFull';
+      (els.cfOpen.heard.click || []).forEach(f => f({}));
+      return {cf: els.cfSvg.innerHTML, foot: els.cfFoot.innerHTML, glance: els.svg.innerHTML,
+              W: +els.cfSvg.attrs.width, H: +els.cfSvg.attrs.height,
+              open: els.chartFull.attrs['aria-hidden']};""")
+
+
+def _bar_nums(svg):
+    """Each bar's written numbers, top first: (class, count, since) with since
+    None where none is written."""
+    out = []
+    for cls, body in re.findall(r'<text class="p-barnum (put|call)"[^>]*>(.*?)</text>', svg):
+        m = re.match(r"^([\d,]+)(?:<tspan class=\"p-barsince\"> \+([\d,]+)</tspan>)?$", body)
+        assert m, body
+        out.append((cls, int(m.group(1).replace(",", "")),
+                    int(m.group(2).replace(",", "")) if m.group(2) else None))
+    return out
+
+
+def test_the_chart_full_screen_writes_every_bars_own_numbers_in():
+    """Every price's puts and calls, and what traded there since the reading,
+    as figures rather than a length to be judged — which is the whole reason
+    the view exists, since lengths are widths and the phone is 360px wide.
+    Each side's count sits past its own outer end, in its side's ink; PUTS and
+    CALLS name the two columns once above the bars.
+
+    The 15:10:21 board of 2026-09-16 with the 10:52 reading's own counts
+    (_THEN_1510): 1,500 shows 1,118 calls and 3,861 puts, +118 and +861 since.
+    The one count the glance prints on its longest bar is gone, because at full
+    screen it would be a second name for a number already written; the glance
+    underneath still has it."""
+    got = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
+    assert got["open"] == "false" and got["W"] == 360
+    want = []
+    for k, (vc, vp) in sorted(_SIDES_1510.items(), reverse=True):
+        c0, p0 = _THEN_1510[k]
+        want += [("put", vp, (vp - p0) or None), ("call", vc, (vc - c0) or None)]
+    assert _bar_nums(got["cf"]) == want
+    assert re.findall(r'<text class="p-colhead"[^>]*>(\w+)</text>', got["cf"]) == ["PUTS", "CALLS"]
+    assert "p-tradednum" not in got["cf"], "the glance's one count is drawn over the numbers"
+    assert "p-tradednum" in got["glance"], "the glance lost its count; this proves nothing"
+    # the numbers are outside the bars they name, on the side the bar grows to
+    ends = [(float(y), float(x), cls) for cls, x, y in
+            re.findall(r'<text class="p-barnum (put|call)" x="([\d.]+)" y="([\d.]+)"', got["cf"])]
+    pairs, _, _ = _traded(got["cf"])
+    for p in pairs:
+        row = {cls: x for y, x, cls in ends if abs(y - (p["y"] + p["h"] / 2 + 3.96)) < 0.3}
+        assert set(row) == {"put", "call"}, row
+        assert row["put"] <= p["l"] - 4 and row["call"] >= p["r"] + 4, (row, p)
+
+
+def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
+    """The same board and the same window, at the screen's size: the plot runs
+    the height of the phone less its head and its foot, so the bars are up to
+    14px thick against the glance's 8, each side takes a quarter of the plot
+    against a fifth, and the zero moves from 0.72 of the plot's width to 0.55
+    so the puts' numbers have somewhere to go (ZOOM-SPEC.md 5). Nothing about
+    the BOARD changes with the room: the same seven strikes, the same lengths
+    in proportion, the same levels ruled and the same words.
+
+    The glance underneath is untouched — a reader who never opens it has lost
+    nothing — and the view is redrawn on the quote tick, so it cannot go on
+    showing a scan the page has left behind."""
+    net = _board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT)
+    got = _full(net)
+    glance, full = _chart_box(got["glance"]), None
+    clip = re.search(r'<clipPath id="cfPc"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"',
+                     got["cf"])
+    assert clip, "the full view shares the glance's clip id"
+    full = {"plot_l": float(clip.group(1)), "plot_w": float(clip.group(3)), "plot_h": float(clip.group(4))}
+    assert got["H"] == 780 - 1, "the chart is not the screen's height less its head and foot"
+    assert full["plot_h"] > 3 * glance["plot_h"], (full, glance)
+    gp, fp = _traded(got["glance"])[0], _traded(got["cf"])[0]
+    assert [round(p["h"], 2) for p in gp] == [8.0] * 7 and [round(p["h"], 2) for p in fp] == [14.0] * 7
+    assert len(gp) == len(fp) == 7
+    # one scale in both, and the same board on it: every side is the same share
+    # of its own view's room, so the two cannot be read against each other and
+    # disagree. 3,861 puts at 1,500 is the longest single side on this board.
+    def ends(svg):
+        rows = {}
+        for _, x, y, w in re.findall(
+                r'<rect class="(p-traded(?:put|call)(?:since)?)" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"', svg):
+            rows.setdefault(float(y), []).extend([float(x), float(x) + float(w)])
+        return [(min(v), max(v)) for _, v in sorted(rows.items())]
+    for box, side, zero, svg in ((glance, 0.20, 0.72, got["glance"]), (full, 0.25, 0.55, got["cf"])):
+        z = box["plot_l"] + zero * box["plot_w"]
+        k = (side * box["plot_w"] - 0.5) / 3861
+        for (l, r), (strike, (vc, vp)) in zip(ends(svg), sorted(_SIDES_1510.items(), reverse=True)):
+            assert z - 0.5 - l == pytest.approx(vp * k, abs=0.1), (strike, box)
+            assert r - z - 0.5 == pytest.approx(vc * k, abs=0.1), (strike, box)
+    # the same board: every level named, every edge row, the price chip, the word
+    marks = lambda s: [(c, re.sub(r"<[^>]+>", "", t)) for c, t in
+                       re.findall(r'<text class="(p-(?:tag|edge|chiptx|newword)[^"]*)"[^>]*>(.*?)</text>', s)]
+    assert marks(got["cf"]) == marks(got["glance"])
+    # the price ruler is the one thing that may say more, because it is the
+    # scale and the room is what a scale is drawn in: the rungs get finer, and
+    # every rung the glance names is still named
+    rungs = lambda s: [t for _, t in _svg_texts({"svg": {"html": s}}, "p-scale")]
+    assert set(rungs(got["glance"])) < set(rungs(got["cf"]))
+    assert got["glance"] == _page(net)["svg"]["html"], "opening the chart redrew the glance"
+    # the open view follows the quote tick rather than freezing on its scan
+    moved = _page(dict(net, live={"ticker": "SNDK", "spot": 1517.0}), """
+      els.cfOpen.attrs['aria-controls'] = 'chartFull';
+      (els.cfOpen.heard.click || []).forEach(f => f({}));
+      const first = els.cfSvg.innerHTML;
+      NET.live = {ticker: 'SNDK', spot: 1544.5, ts: NET.now};
+      await run('loadSpot()'); await settle();
+      return {first, after: els.cfSvg.innerHTML};""")
+    assert moved["first"] != moved["after"], "the open chart did not follow the quote"
+
+
+def test_the_chart_full_screen_says_what_it_has_not_got():
+    """Honest-absent, on the one screen that writes numbers rather than drawing
+    lengths — where a blank is read as a zero much faster (law 1, glance.js).
+
+    - no counts on the board at all (the day's first books, where the builder
+      withholds them): no numbers and no foot, not a row of noughts;
+    - no reading yet, or one the field cannot be matched to: the day's counts
+      are written and no "+n" is, exactly as no paler end is drawn;
+    - prices too close together for an 11px number on every row: the chart
+      keeps the glance's one count instead of numbers that would collide, and
+      the foot says that is what happened;
+    - and nothing drawn at all opens nothing."""
+    bare = json.loads(json.dumps(_SCENE_0916))
+    bare["strikes"] = {"rows": [dict(r, vol_calls=None, vol_puts=None) for r in bare["strikes"]["rows"]]}
+    got = _full(_board(bare, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
+    assert _bar_nums(got["cf"]) == [] and "p-colhead" not in got["cf"] and got["foot"] == ""
+
+    no_read = _full(_board(_SCENE_0916))
+    assert len(_bar_nums(no_read["cf"])) == 14
+    assert all(s is None for _, _, s in _bar_nums(no_read["cf"])), "a since was written with no reading"
+    assert "since the" not in no_read["foot"], no_read["foot"]
+    assert no_read["foot"] == ('<span class="put">Puts</span> and <span class="call">calls</span>'
+                              ' traded today at each price.')
+    read = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
+    assert read["foot"].endswith('; <b>+n</b> since the 10:52 reading.'), read["foot"]
+
+    # every dollar between 1,496 and 1,564 a strike: 68 rows on a 745px plot is
+    # 10.9px apart, under the 12 two 11px numbers need
+    tight = json.loads(json.dumps(_SCENE_0916))
+    tight["strikes"] = {"rows": [{"strike": k, "vol_calls": 40 + k % 7, "vol_puts": 30 + k % 5}
+                                 for k in range(1490, 1571)]}
+    got = _full(_board(tight))
+    assert _bar_nums(got["cf"]) == [] and "p-tradednum" in got["cf"], "numbers were drawn on top of each other"
+    assert "too close together for a number on every bar" in got["foot"], got["foot"]
+
+    # a station that answered nothing paints no chart, so there is none to open
+    assert _page({"payload": {"error": "no scene"}, "now": _NOW}, """
+      els.cfOpen.attrs['aria-controls'] = 'chartFull';
+      (els.cfOpen.heard.click || []).forEach(f => f({}));
+      return {body: document.body.className, drew: !!els.cfSvg};""") == {"body": "failed", "drew": False}
+
+
+def test_the_tap_that_opens_the_chart_is_neither_a_scroll_nor_a_hold():
+    """isTap, on its own. The chart is the only thing on the glance a finger
+    can open, and it shares its glass with the page's own scrolling and with
+    the shell's pull-to-refresh, which takes any downward drag while the page
+    says it is at the top and decides in native code before the page sees
+    anything. The page cannot refuse that gesture; it can refuse to read it as
+    a tap. So a finger is a tap only inside Android's own 8px of touch slop and
+    under its 500ms long press — the same 500ms the magnifier will hold for, so
+    a hold cannot arrive here as a tap as well."""
+    assert _glance("console.log(JSON.stringify([g.TAP_SLOP, g.TAP_MS]));") == [8, 500]
+    got = _glance("console.log(JSON.stringify(D.map(([a, b]) => g.isTap(a, b))));", [
+        [{"x": 100, "y": 100, "t": 0}, {"x": 100, "y": 100, "t": 90}],      # a tap
+        [{"x": 100, "y": 100, "t": 0}, {"x": 105, "y": 106, "t": 480}],     # 7.8px, 480ms: still a tap
+        [{"x": 100, "y": 100, "t": 0}, {"x": 106, "y": 106, "t": 90}],      # 8.49px away: a drag
+        [{"x": 100, "y": 100, "t": 0}, {"x": 100, "y": 130, "t": 300}],     # the shell's pull
+        [{"x": 100, "y": 100, "t": 0}, {"x": 100, "y": 100, "t": 501}],     # a hold
+        [None, {"x": 100, "y": 100, "t": 90}],                              # no finger down
+        [{"x": 100, "y": 100, "t": 0}, None],
+        [{"x": None, "y": 100, "t": 0}, {"x": 100, "y": 100, "t": 90}]])    # nothing measured
+    assert got == [True, True, False, False, False, False, False, False]
+
+
+def test_a_bar_gets_its_numbers_only_where_there_is_room_for_them():
+    """barNumbers, on its own: what every bar says at full screen, or nothing
+    at all where two rows are closer than 12px and 11px numbers would collide.
+    What traded since the reading is null, never 0, where there is no reading
+    or none for that strike — the same absence the paler end of the bar draws —
+    while a side that traded nothing keeps its 0, because at full screen the
+    reader is reading counts and none traded is a count."""
+    rows = [{"v": 1550, "y": 20, "vc": 2535, "vp": 1481},
+            {"v": 1540, "y": 60, "vc": 2743, "vp": 0},
+            {"v": 1530, "y": 100, "vc": 3824, "vp": 3632}]
+    since = {"at": 1, "by": {"1550": [135, 81], "1540": [0, 0]}}
+    got = _glance("""const at = p => ({h: 8, bars: D.rows.map((b, i) => Object.assign({}, b, {y: i * p}))});
+      console.log(JSON.stringify({
+        pitch: g.FULL_NUM_PITCH,
+        full: g.barNumbers({h: 14, bars: D.rows}, D.since), bare: g.barNumbers({h: 14, bars: D.rows}, null),
+        tight: g.barNumbers(at(11.9), D.since), wide: !!g.barNumbers(at(12), D.since),
+        one: g.barNumbers({h: 8, bars: [D.rows[0]]}, null), none: g.barNumbers(null, D.since),
+        empty: g.barNumbers({h: 8, bars: []}, D.since)}));""", {"rows": rows, "since": since})
+    assert got["pitch"] == 12
+    assert got["full"] == [{"v": 1550, "y": 20, "vc": 2535, "vp": 1481, "sc": 135, "sp": 81},
+                           {"v": 1540, "y": 60, "vc": 2743, "vp": 0, "sc": 0, "sp": 0},
+                           {"v": 1530, "y": 100, "vc": 3824, "vp": 3632, "sc": None, "sp": None}]
+    assert [b["sc"] for b in got["bare"]] == [None, None, None]
+    assert got["tight"] is None and got["wide"] is True
+    assert len(got["one"]) == 1, "one bar has no pitch to be too tight"
+    assert got["none"] is None and got["empty"] is None
 
 
 # --- where new contracts arrived (2026-09-18) --------------------------------
@@ -3010,6 +3312,46 @@ def test_the_chart_key_opens_on_a_tap_and_closes_the_one_way():
         {"open": False, "hidden": "true", "pushes": 0}, "a hold opened the key"
     assert re.search(r'<button class="howto" id="howto"[^>]*aria-controls="howtoSheet"', PHONE)
     assert "$('howto').addEventListener('click', () => MiraiSheet.open($('howto')));" in PAGE
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_tap_on_the_chart_opens_it_full_screen_and_every_way_back_out():
+    """The owner's choice of 2026-09-19 (ZOOM-SPEC.md 5): the chart opens. The
+    same harness, with the same fake clock, taps and history, now drives the
+    chart as well, because every way out of this view was learned on the phone
+    exactly as the key's was and it rides the same sheet.js:
+    - a tap on the chart opens it, pushes ONE history entry and puts the focus
+      on its own close control;
+    - one of them at a time: the key's link while the chart is open opens
+      nothing and pushes no second entry, so the Back below cannot be left
+      holding one;
+    - so one Back closes it, and the focus goes to the corner control, which is
+      what says on the glance that the chart can be opened;
+    - the corner control opens it too, and its close tapped twice — the second
+      tap landing before the popstate — goes back once, not twice;
+    - Escape closes it the same one way.
+
+    AND THE THREE GESTURES THAT MUST NOT OPEN IT, which is the whole of why the
+    tap is measured rather than taken from the click (isTap, glance.js):
+    - a finger held on the chart past Android's 500ms long press, which is what
+      the magnifier will want next and must not arrive here as a tap;
+    - a finger dragged past its 8px touch slop, which is the shell's
+      pull-to-refresh: a reader reloading the page must not get a new screen;
+    - a click with no touch behind it at all."""
+    out = subprocess.run([_NODE, str(Path(__file__).with_name("gesture_harness.js")), str(M)],
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    opened = {"open": True, "hidden": "false", "pushes": 1, "backs": 0, "focus": "cfClose"}
+    closed = {"open": False, "hidden": "true", "pushes": 1, "backs": 1, "focus": "cfOpen"}
+    assert got["tap_opens_chart"] == opened
+    assert got["key_over_chart"] == dict(opened, key="true"), "the key opened over the chart"
+    assert got["back_closes_chart"] == closed, "one Back did not close it, or left an entry behind"
+    assert got["close_twice"] == closed, "a double tap on the close control went back twice"
+    assert got["chart_escape"] == closed
+    for case, why in (("chart_hold", "a hold"), ("chart_drag", "a drag"), ("chart_mouse", "a bare click")):
+        assert {k: got[case][k] for k in ("open", "hidden", "pushes")} == \
+            {"open": False, "hidden": "true", "pushes": 0}, f"{why} opened the chart"
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------

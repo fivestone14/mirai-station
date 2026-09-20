@@ -684,6 +684,58 @@ def test_the_chart_key_link_is_a_whole_tap_target_on_every_phone(phone):
     assert width <= phone - 2 * _side() - 2 * card_pad + pad_x
 
 
+def test_the_control_that_opens_the_chart_costs_the_cards_head_nothing():
+    """The corner control is the only thing on the glance that says the chart
+    can be opened (ZOOM-SPEC.md 5), and it is 16px of icon with the same
+    --tap-min target the key's link has. It sits in the head's own row, so its
+    48px are tucked back out of it: 18px a side against the head's 13.2px line
+    leaves 12, under the line, so the row keeps its height. At 16 a side the
+    card ran 3px taller on every phone, which is the whole card column moving
+    for one icon. The right-hand pull is the card's rail, so the icon's edge is
+    where the head's clock ends."""
+    b = _rule(".cf-open").replace(" ", "")
+    m = re.search(r"margin:(-?\d+)px(-?\d+)px(-?\d+)px0;padding:(\d+)px", b)
+    assert m, b
+    top, right, bottom, pad = map(int, m.groups())
+    icon = _px(".cf-open svg", "height")
+    tap = int(re.search(r"--tap-min:(\d+)px", PHONE).group(1))
+    assert _px(".cf-open svg", "width") == icon == 16
+    assert 2 * pad + icon == tap == 48
+    assert "font:700 11px/1.2" in _rule(".lab") and top == bottom
+    assert 2 * pad + icon + top + bottom <= 11 * 1.2, "the control makes the card's head taller"
+    assert -right == int(re.search(r"padding:(\d+)px", _rule(".card")).group(1))
+    assert "touch-action:manipulation" in b
+
+
+def test_the_chart_full_screen_is_a_sheet_that_takes_the_whole_screen():
+    """It is a sheet so that every way out of it is the one sheet.js knows —
+    Back, the close control, Escape — and so that it and the key cannot both be
+    open. What it overrides is only its SHAPE: the rounded lip that says "part
+    of a screen", the 86% cap, and the sheet's own padding, which the chart
+    takes for itself. Everything else it keeps, including overflow-y:auto, so a
+    foot one line longer than the room it was measured for scrolls into view
+    rather than falling off the bottom.
+
+    The close control is --tap-min and sits in the top right, inside the strip
+    Android gives its back gesture. That is deliberate: a tap there closes the
+    view and a swipe there is Back, which closes it too, so the two cannot
+    disagree."""
+    full = _rule(".sheet.full").replace(" ", "")
+    for need in ("top:0", "max-height:none", "border-radius:0", "padding:0",
+                 "display:flex", "flex-direction:column"):
+        assert need in full, need
+    base = _rule(".sheet").replace(" ", "")
+    for kept in ("position:fixed", "overflow-y:auto", "overscroll-behavior:contain", "user-select:none"):
+        assert kept in base and kept not in full, kept
+    assert "transform" not in full, "the sheet's own way in and out was overridden"
+    close = _rule(".cf-x").replace(" ", "")
+    assert "width:var(--tap-min)" in close and "height:var(--tap-min)" in close, close
+    # the foot is held to the chart's own floor, and the two insets are kept
+    assert int(re.search(r"font:400 (\d+)px", _rule(".cf-foot")).group(1)) >= 11
+    assert "env(safe-area-inset-bottom)" in _rule(".cf-foot")
+    assert "env(safe-area-inset-top)" in _rule(".cf-head")
+
+
 # --- the masthead's first row (2026-09-18) -----------------------------------
 # Measured in WebKit off the shipped face on the real stylesheet: each box as
 # the browser lays it out, the ticker and the expiry with their trailing
