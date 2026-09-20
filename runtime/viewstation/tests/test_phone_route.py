@@ -3437,7 +3437,10 @@ _FINGER = """
   const shell = [];
   ctx.MiraiShell = {atTop: v => shell.push(v), tick: () => shell.push('tick')};
   const touch = (x, y, n = 1) => {
-    const e = {touches: Array.from({length: n}, () => ({clientX: x, clientY: y})), prevented: false};
+    const at = () => ({clientX: x, clientY: y});
+    // changedTouches, because a real touchend carries the finger that left in
+    // it and nothing else: it is what the lift measures its tap from
+    const e = {touches: Array.from({length: n}, at), changedTouches: [at()], prevented: false};
     e.preventDefault = () => { e.prevented = true; };
     return e;
   };
@@ -3477,13 +3480,24 @@ def test_a_held_finger_magnifies_and_a_moving_one_is_the_pages_own_scroll():
 
     MOVEMENT DECIDES FIRST, and that is what keeps the page's scroll the
     page's: a flick can never become a hold however long the finger rests
-    afterwards, and nothing is taken off the scroller before it is certain."""
+    afterwards, and nothing is taken off the scroller before it is certain.
+
+    Both thresholds are tested at the value itself, because each is the whole
+    rule at its edge. 8px exactly is still INSIDE the slop, which is how
+    Android reads its own (a move must exceed it); 250ms exactly is a hold. And
+    a drag at 45 degrees — as far sideways as it is up and down — is the PAGE'S,
+    because the read has to be more sideways than not to take a touch the
+    scroller would otherwise have had."""
     got = _glance("console.log(JSON.stringify(D.map(a => g.touchKind(a[0], a[1], a[2]))));",
                   [[0, 0, 0], [0, 0, 249], [0, 0, 250], [5, 5, 250], [7, 0, 500],
+                   [8, 0, 400], [0, -8, 400],
                    [0, 9, 60], [0, 9, 400], [0, -40, 30], [3, 14, 90],
+                   [10, 10, 90], [-10, 10, 90], [30, -30, 90],
                    [9, 0, 60], [-14, 3, 90]])
     assert got == ["wait", "wait", "hold", "hold", "hold",
+                   "hold", "hold",
                    "scroll", "scroll", "scroll", "scroll",
+                   "scroll", "scroll", "scroll",
                    "read", "read"]
 
 
@@ -3665,6 +3679,81 @@ def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
 
 
 @pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_one_touch_has_one_meaning_and_leaves_nothing_behind():
+    """The four guards in page.js C3 that only a sequence of touches can see.
+    Each was driven with the guard removed first, and each removal shows on
+    the screen:
+
+    - THE LIFT CLEARS THE HOLD'S TIMER. Without it a tap leaves a timer
+      running, and it fires part way into the NEXT touch: the finger that
+      lands 100ms later is magnified at 150ms instead of 250, or a scroll
+      that has not yet moved 8px is taken for a hold.
+    - A GESTURE'S LIFT IS NOT A TAP. A hold ends with the finger where it
+      landed, so isTap alone would call it one and the chart would open full
+      screen under the lens that is closing. The kind is what decides, and
+      preventDefault on the lift is the second answer, not the only one.
+    - A CANCELLED TOUCH LEAVES NO TAP EITHER. The system took the gesture — a
+      call arriving, the app backgrounded — so nothing happened here. The tap
+      the browser measured and then sent no click for is what makes this
+      reachable: without the guard it rides the next click the chart gets.
+    - A SECOND FINGER ABANDONS WHATEVER WAS RUNNING. A gesture steered by two
+      fingers is no gesture, and this WebView does not zoom (setSupportZoom
+      false), so the lens goes away rather than following one of them.
+
+    And a plain tap still opens the chart, which is what makes the rest of
+    this mean anything."""
+    got = _page(_board(_SCENE_0916, width=328), _FINGER + """
+      els.cfOpen.attrs['aria-controls'] = 'chartFull';
+      const at = onBar(1500);
+      const waiting = () => timers.filter(t => t.ms === 250 && !t.dead).length;
+      const opened = () => els.chartFull.attrs['aria-hidden'] === 'false';
+      const shut = () => { document.body.classList.remove('sheet-open');
+                           els.chartFull.attrs['aria-hidden'] = 'true'; };
+      const out = {};
+      // a tap, and what it leaves behind: no timer waiting to fire into the
+      // touch after it
+      fire('touchstart', touch(at.x, at.y));
+      out.armed = waiting();
+      fire('touchend', touch(at.x, at.y, 0));
+      out.left = waiting();
+      fire('click', {});
+      out.tapOpens = opened(); shut();
+      // a hold, lifted where it landed: isTap would say tap, the kind says not
+      fire('touchstart', touch(at.x, at.y));
+      holdFires();
+      out.held = lens().on;
+      const lift = fire('touchend', touch(at.x, at.y, 0));
+      out.holdRefusesClick = lift.prevented;
+      fire('click', {});
+      out.holdOpens = opened(); shut();
+      // a tap whose click the browser swallowed, and then a touch the system
+      // took: the tap left behind must not ride the next click
+      fire('touchstart', touch(at.x, at.y));
+      fire('touchend', touch(at.x, at.y, 0));
+      fire('touchstart', touch(at.x, at.y));
+      fire('touchcancel', touch(at.x, at.y, 0));
+      fire('click', {});
+      out.cancelOpens = opened(); shut();
+      // and a second finger on the chart while the lens is up
+      fire('touchstart', touch(at.x, at.y));
+      holdFires();
+      out.twoBefore = lens().on;
+      fire('touchstart', touch(at.x, at.y, 2));
+      out.twoAfter = lens().on;
+      fire('touchend', touch(at.x, at.y, 1));
+      fire('touchend', touch(at.x, at.y, 0));
+      out.timersAtEnd = waiting();
+      return out;""")
+    assert got["armed"] == 1 and got["held"] and got["twoBefore"], "nothing armed; this proves nothing"
+    assert got["left"] == 0, "the lift left the hold's timer running into the next touch"
+    assert got["tapOpens"], "a tap no longer opens the chart"
+    assert not got["holdOpens"], "the lift that ended a hold opened the chart full screen"
+    assert got["holdRefusesClick"], "the lift that ended a hold did not refuse its click"
+    assert not got["cancelOpens"], "a cancelled touch opened the chart"
+    assert not got["twoAfter"], "a second finger did not abandon the gesture"
+    assert got["timersAtEnd"] == 0
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
 def test_a_quick_swipe_across_the_chart_still_scrolls_the_page():
     """The whole reason the gestures wait. A finger that moves before the hold
     arms is the page's own scroll, and nothing here touches it: no
@@ -3748,6 +3837,7 @@ def test_a_sideways_drag_reads_the_price_line_in_the_cards_head_row():
     assert 'class="sc-at"' in shown["marks"] and 'class="sc-dot"' in shown["marks"] \
         and 'class="sc-blk"' in shown["marks"]
     assert shown["marks"].count("<line") == 1, "a second line across the plot"
+
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------
