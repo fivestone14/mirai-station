@@ -1065,8 +1065,8 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
          coming back through this door: no other element on the page listens
          for a press, and the document and window listen for none at all.
 
-         The chart's magnifier was the owner's decision that evening, and it
-         cost this clause its old wording ("the listeners are passive and
+         The chart's own gestures were the owner's decision that evening, and
+         they cost this clause its old wording ("the listeners are passive and
          nothing is preventDefault()ed"). What replaces it is narrower and is
          the thing that actually protected the reader: touchstart stays
          PASSIVE, so a tap and a scroll begin exactly as they did before there
@@ -1164,7 +1164,7 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
     # but the lens's own elements, and the lift leaves it as it was found: no
     # mark goes away under a finger and no card is touched by one.
     held = _page(_board(_SCENE_0916, width=328), _FINGER + """
-      const mine = ['lens', 'lensSvg', 'lensBar', 'lensSpot', 'lensRead'];
+      const mine = ['lens', 'lensSvg', 'lensBar', 'lensSpot', 'lensRead', 'scrubRead', 'scrubMarks'];
       const rest = () => { const d = dump(); mine.forEach(k => delete d[k]); return JSON.stringify(d); };
       const was = rest(), at = onBar(1500);
       fire('touchstart', touch(at.x, at.y));
@@ -1717,8 +1717,8 @@ def test_a_drag_inside_the_sheet_cannot_reload_the_page():
     copy of its own.
 
     AND THE SAME DRAG ON THE CHART, with nothing open and the page at the top,
-    is the third reason: the chart magnifies under a held finger now, and it
-    sits near the top of the page. pin() is that answer — page.js says it
+    is the third reason: the chart answers a hold and a sideways drag now and
+    it sits near the top of the page. pin() is that answer — page.js says it
     from the moment a finger lands on the chart, which is the earliest the page
     can say anything, and says the truth again on the lift
     (test_a_finger_on_the_chart_cannot_reload_the_page). The shell decides in
@@ -3243,8 +3243,9 @@ def test_the_chart_key_says_what_the_code_draws():
         "3,861 PUTS", "Corner brackets and TRADING PICKED UP", "Rows at the top or bottom", "Green line",
         "Red line", "Gold dashes and diamond", "Thin grey dashes", "Bars along the bottom, SHARES TRADED",
         "Grey prices on the right",
-        "Tap the chart", "Hold a finger on the chart"]
-    drawn = set(re.findall(r"(?<![\w-])(p-[a-z]+)(?![\w-])", _code_only(PAGE)))
+        "Tap the chart", "Hold a finger on the chart", "Drag sideways across the chart"]
+    # the chart's marks, and the ones a finger on it brings up (2026-09-19)
+    drawn = set(re.findall(r"(?<![\w-])((?:p|sc)-[a-z]+)(?![\w-])", _code_only(PAGE)))
     rules = _css_rules(PHONE)
     for row in key["rows"]:
         assert row["marks"], row["term"]
@@ -3292,13 +3293,16 @@ def test_the_chart_key_says_what_the_code_draws():
     # and no percentage: the brackets' share went on 2026-09-18, and its denominator
     # was on no screen
     assert not any("%" in r["says"] + r["term"] for r in key["rows"])
-    # THE GESTURE ROWS say what the chart answers to, in the marks it answers
-    # with: the numbers a tap writes in, and the bars a hold magnifies.
+    # THE THREE GESTURE ROWS say what the chart answers to, in the marks it
+    # answers with: the numbers a tap writes in, the bars a hold magnifies,
+    # and the line a sideways drag reads.
     assert rows["Tap the chart"]["marks"] == ["p-tradedput", "p-tradedcall", "p-barnum call"]
     assert rows["Hold a finger on the chart"]["marks"] == ["p-tradedput", "p-tradedcall"]
+    assert rows["Drag sideways across the chart"]["marks"] == ["p-path", "sc-at", "sc-dot"]
     assert "two and a half times" in rows["Hold a finger on the chart"]["says"] \
         and float(re.search(r"LENS_ZOOM=([\d.]+)", GLANCE).group(1)) == 2.5, \
         "the key's magnification and glance.js's disagree"
+    assert "still scrolls the page" in rows["Drag sideways across the chart"]["says"]
 
 
 def test_every_word_in_the_chart_key_passes_the_laws():
@@ -3413,10 +3417,10 @@ def test_a_tap_on_the_chart_opens_it_full_screen_and_every_way_back_out():
 
 
 # --- the chart under a finger (2026-09-19) ---------------------------------
-# The chart magnifies what a finger held on it is over, by the owner's own idea
-# (ZOOM-SPEC.md 3). The rules are pure and live in glance.js, so they are RUN
-# here rather than grepped; what the page does with them is driven through the
-# real page.js.
+# The chart answers a finger now, by the owner's decision: held still it
+# magnifies, dragged sideways it reads the price line (ZOOM-SPEC.md 3, 6). The
+# rules are pure and live in glance.js, so they are RUN here rather than
+# grepped; what the page does with them is driven through the real page.js.
 
 # A finger on the chart, through page.js's own listeners. The stand-in DOM
 # measures nothing, so the chart's own box is supplied: the card at x 16 and
@@ -3426,7 +3430,7 @@ _FINGER = """
   const R = {left: 16, top: 176, width: NET.width, height: 279};
   els.svg.getBoundingClientRect = () => ({left: R.left, top: R.top, width: R.width, height: R.height,
                                           right: R.left + R.width, bottom: R.top + R.height});
-  for(const id of ['lens', 'lensSvg', 'lensBar', 'lensSpot', 'lensRead'])
+  for(const id of ['lens', 'lensSvg', 'lensBar', 'lensSpot', 'lensRead', 'scrubRead', 'scrubMarks'])
     document.getElementById(id);
   els.lensRead.offsetHeight = 71;
   ctx.scrollY = 0;
@@ -3447,6 +3451,8 @@ _FINGER = """
   const lens = () => ({on: els.lens.classList.contains('on'), left: parseFloat(els.lens.style.left),
                        top: parseFloat(els.lens.style.top), read: els.lensRead.innerHTML,
                        box: els.lensSvg.attrs.viewBox, bar: els.lensBar.style.display});
+  const scrub = () => ({on: els.scrubRead.classList.contains('on'), read: els.scrubRead.innerHTML,
+                        marks: els.scrubMarks.innerHTML});
 """
 
 
@@ -3478,7 +3484,7 @@ def test_a_held_finger_magnifies_and_a_moving_one_is_the_pages_own_scroll():
                    [9, 0, 60], [-14, 3, 90]])
     assert got == ["wait", "wait", "hold", "hold", "hold",
                    "scroll", "scroll", "scroll", "scroll",
-                   "scroll", "scroll"]
+                   "read", "read"]
 
 
 @pytest.mark.parametrize("phone", [320, 360, 375, 412])
@@ -3584,6 +3590,30 @@ def test_the_lens_says_what_is_under_the_finger_and_where_nothing_was_counted():
     assert first["at"] is None and first["since"] is None
 
 
+def test_a_sideways_read_never_reads_past_what_was_measured():
+    """priceAt reads the price LINE, which is the one mark on this chart that
+    is a time of day: where a bar sits across the plot is not one, so nothing
+    here reads a bar.
+
+    It never reaches past what was measured, in either direction. Right of the
+    last minute recorded it reads the LATEST price and says that is what it
+    is. A stretch with no price within three minutes of the finger reads none,
+    rather than the nearest point on the far side of the hole — the stored
+    days have no holes, so this is driven with one made. Left of the first
+    minute it reads the first minute."""
+    geo = _geo()
+    mid, hole, right, left, near_end = _glance(
+        "console.log(JSON.stringify(D.x.map(x => g.priceAt(D.geo, x))));",
+        {"geo": geo, "x": [4 + 45 / 180 * 271, 4 + 105 / 180 * 271, 320, 0, 4 + 178 / 180 * 271]})
+    assert mid["kind"] == "line" and mid["t"] == _T0 + 45 * 60000
+    assert hole["kind"] == "gap" and hole["s"] is None, "a stretch with no price recorded read one anyway"
+    assert right["kind"] == "latest" and right["s"] == 1555.41
+    assert left["t"] == _T0, "left of the first minute it read a time before the record"
+    assert near_end["kind"] == "line" and near_end["t"] == _T0 + 178 * 60000
+    # a chart with no line on it answers nothing rather than guessing
+    assert _glance("console.log(JSON.stringify(g.priceAt(D, 100)));", _geo(pts=[])) is None
+
+
 @pytest.mark.skipif(not _NODE, reason="node is not installed")
 def test_a_hold_on_the_chart_magnifies_it_and_a_lift_puts_it_away():
     """Driven through the real page.js on the 15:10:21 board of 2026-09-16,
@@ -3649,12 +3679,10 @@ def test_a_quick_swipe_across_the_chart_still_scrolls_the_page():
       holdFires();
       const more = fire('touchmove', touch(at.x, at.y - 140));
       fire('touchend', touch(at.x, at.y - 140, 0));
-      return {flick: flick.prevented, more: more.prevented, lens: lens().on};""")
+      return {flick: flick.prevented, more: more.prevented, lens: lens().on, scrub: scrub().on};""")
     assert not got["flick"] and not got["more"], "a swipe across the chart was taken off the scroller"
-    assert not got["lens"], "a swipe brought the lens up"
-    action = _block("#ladder{").replace(" ", "")
-    assert "touch-action:" in action and "touch-action:none" not in action, \
-        "the chart must leave the page's own up-and-down pan to the browser"
+    assert not got["lens"] and not got["scrub"], "a swipe brought a gesture up"
+    assert "touch-action:pan-y" in _block("#ladder{").replace(" ", "")
 
 
 @pytest.mark.skipif(not _NODE, reason="node is not installed")
@@ -3679,6 +3707,47 @@ def test_a_finger_on_the_chart_cannot_reload_the_page():
     assert got["up"] == [False, True], "the page never told the shell the truth again"
     assert set(re.findall(r"MiraiShell\.(\w+)", _code_only(PAGE))) <= {"tick"}, \
         "page.js answers the shell for something other than the haptic"
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_a_sideways_drag_reads_the_price_line_in_the_cards_head_row():
+    """The reading goes in the card's head row, a fixed place, because a
+    readout under the finger is a readout the finger covers. It says the
+    minute under the finger, SNDK's price then, and the shares traded in those
+    five minutes.
+
+    On the chart it marks the finger's minute, the price there and the block
+    of shares it falls in — and NOT a line across the plot at that price. A
+    rule at a price that is not a level reads as a target, and nothing on this
+    chart may say where price goes (ZOOM-RESEARCH.md 3.6)."""
+    bars = _minute_bars(120)
+    got = _page(_board(_SCENE_0916, now="2026-09-10T11:31:00-04:00", bars=bars, width=328), _FINGER + """
+      const at = onBar(1500);
+      fire('touchstart', touch(at.x, at.y));
+      const start = fire('touchmove', touch(at.x - 40, at.y + 3));
+      const shown = scrub();
+      const again = fire('touchmove', touch(at.x - 80, at.y + 3));
+      const moved = scrub();
+      // the same reading on a row too narrow for the block's own clock
+      els.scrubRead.clientWidth = 256; els.scrubRead.scrollWidth = 400;
+      fire('touchmove', touch(at.x - 81, at.y + 3));
+      const narrow = scrub();
+      fire('touchend', touch(at.x - 80, at.y + 3, 0));
+      return {shown, moved, narrow, prevented: start.prevented && again.prevented, closed: scrub().on,
+              lens: lens().on};""")
+    shown = got["shown"]
+    assert shown["on"] and got["prevented"], "a sideways drag did not read the line"
+    assert not got["closed"], "the reading stayed up after the lift"
+    assert not got["lens"], "a sideways drag brought the magnifier up"
+    assert re.search(r"<b>\d\d:\d\d</b>&ensp;<em>1,5\d\d\.\d\d</em>", shown["read"]), shown["read"]
+    assert re.search(r"[\d,]+ shares \d\d:\d\d–\d\d:\d\d", shown["read"]), shown["read"]
+    assert shown["read"] != got["moved"]["read"], "the reading did not follow the finger"
+    # where the row cannot hold the block's clock it is dropped, not overrun:
+    # the outline on the strip says which five minutes it was
+    assert re.search(r"[\d,]+ shares</span>$", got["narrow"]["read"]), got["narrow"]["read"]
+    assert 'class="sc-at"' in shown["marks"] and 'class="sc-dot"' in shown["marks"] \
+        and 'class="sc-blk"' in shown["marks"]
+    assert shown["marks"].count("<line") == 1, "a second line across the plot"
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------

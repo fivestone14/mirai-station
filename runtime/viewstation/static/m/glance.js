@@ -968,8 +968,9 @@ function stripName(room){
 // end that says what traded since the reading half a millimetre of it
 // (ZOOM-SPEC.md 1). Bar thickness is a height, so the taller chart fixed it;
 // a length is a width, set by the phone, and no height ever will. So the chart
-// answers a finger HELD still on it by magnifying what is under it. Anything
-// else is the page's own scroll, which is never taken.
+// answers a finger: HELD still it magnifies what is under it, dragged SIDEWAYS
+// it reads the price line at that minute. Anything else is the page's own
+// scroll, which is never taken.
 //
 // The rules are here, with no DOM in them: page.js listens and draws.
 
@@ -983,14 +984,14 @@ const HOLD_MS=250, TOUCH_SLOP=8;
 
 function touchKind(dx, dy, ms){
   // What a finger on the chart is doing, from how far it has moved and how
-  // long it has been down: 'hold' magnifies, 'scroll' is the page's own and is
-  // never taken, 'wait' is not decided yet.
+  // long it has been down: 'hold' magnifies, 'read' reads the price line,
+  // 'scroll' is the page's and is never taken, 'wait' is not decided yet.
   //
   // MOVEMENT DECIDES FIRST, so a flick can never become a hold however long
   // the finger stays down afterwards, and a scroll is never stolen from the
-  // page. The caller stops asking once a hold has armed.
+  // page. The caller stops asking once one of the two has armed.
   if(!isFinite(dx)||!isFinite(dy)||!isFinite(ms)) return 'wait';
-  if(Math.hypot(dx, dy)>TOUCH_SLOP) return 'scroll';
+  if(Math.hypot(dx, dy)>TOUCH_SLOP) return Math.abs(dx)>Math.abs(dy)?'read':'scroll';
   return ms>=HOLD_MS?'hold':'wait';
 }
 
@@ -1070,6 +1071,33 @@ function chartAt(geo, x, y){
   const d=geo.since?geo.since.by[bar.v]:null;
   return {kind:'strike', bar, price, at:geo.since?geo.since.at:null,
           since:d?{c:d[0], p:d[1]}:null};
+}
+
+// A price more than three minutes from the finger's own minute is not "the
+// price then", it is the nearest price there happens to be.
+const SCRUB_GAP_MIN=3;
+
+function priceAt(geo, x){
+  // What the price line says at a point across the chart:
+  // -> {x, y, t, s, kind}, kind saying which sort of answer it is.
+  //
+  // It never reads past what was measured. Right of the last minute recorded
+  // it reads the LATEST price and says so; a stretch with no price within
+  // SCRUB_GAP_MIN of the finger reads none ('gap'), rather than reaching for
+  // the nearest point on the other side of the hole. The one mark on this
+  // chart that is a time of day is the price line, so it is the only thing
+  // this reads: where a bar sits across the chart is not a time.
+  if(!geo||!Array.isArray(geo.pts)||geo.pts.length<2||!isFinite(x)) return null;
+  const at=Math.min(Math.max(x, geo.plotL), geo.plotR);
+  const last=geo.pts[geo.pts.length-1];
+  if(at>=last.x&&geo.live&&at>=geo.live.x-2)
+    return {x:geo.live.x, y:geo.live.y, t:geo.live.t, s:geo.live.v, kind:'latest'};
+  if(at>=last.x) return {x:last.x, y:last.y, t:last.t, s:last.s, kind:'last'};
+  const t=geo.t0+(at-geo.plotL)/((geo.pathR>geo.plotL)?(geo.pathR-geo.plotL):1)*(geo.t1-geo.t0);
+  const p=geo.pts.reduce((a, b)=>Math.abs(b.t-t)<Math.abs(a.t-t)?b:a);
+  return Math.abs(p.t-t)>SCRUB_GAP_MIN*60000
+       ?{x:at, y:null, t, s:null, kind:'gap'}
+       :{x:p.x, y:p.y, t:p.t, s:p.s, kind:'line'};
 }
 
 /* ---- how busy each strike has been ------------------------------------- */
@@ -1385,7 +1413,7 @@ if(typeof module!=='undefined'&&module.exports){
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
                   HOLD_MS, TOUCH_SLOP, touchKind,
                   LENS_ZOOM, LENS_W, LENS_H, LENS_H_MIN, LENS_LIFT, LENS_EDGE, LENS_DOT,
-                  lensBox, barAt, volumeBlockAt, chartAt,
+                  lensBox, barAt, volumeBlockAt, chartAt, SCRUB_GAP_MIN, priceAt,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   GRID_TRACK_MIN, activityGrid, halfHour};
 }

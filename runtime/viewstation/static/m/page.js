@@ -1050,10 +1050,14 @@ function paintLadder(st, T){
   // the full view's foot says that the chart itself does not
   if(T){ T.bars = !!traded; T.numbered = !!nums; }
   // WHAT A FINGER ON THE CHART READS (C3). Every number and every height here
-  // was solved above; a lens that worked any of it out again would be a second
-  // chart, and the two would disagree on the day the rules changed.
-  const geo = {W:CW, bottom:plotBottom, since:st.since, bh:traded ? traded.h : 0,
+  // was solved above; a gesture that worked any of it out again would be a
+  // second chart, and the two would disagree on the day the rules changed.
+  // The glance's goes in CHART, so the lens magnifies what was drawn and the
+  // sideways read reads the line that was drawn.
+  const geo = {W:CW, H:SVGH, plotL:PLOT_L, plotR:PLOT_R, pathR:PATH_R, top:plotTop, bottom:plotBottom,
+               ribB:RIB_B, t0, t1, since:st.since, bh:traded ? traded.h : 0,
                bars: traded ? traded.bars.map(b => ({v:b.v, y:b.y, vc:b.vc, vp:b.vp, x0:barX(b), x1:barXR(b)})) : [],
+               pts: pts.map(q => ({t:q.t, s:q.s, x:xFor(q.t), y:yFor(q.s)})),
                live: (!st.withdrawn && inWin(ref)) ? {v:ref, x:dotX, y:priceY, t:lp ? lp.t : tapeEnd} : null,
                vol: st.vol.map(b => ({t0:b.t0, t1:b.t1, sum:b.sum, x0:xFor(b.t0), x1:xFor(b.t1)}))};
   if(!T) CHART = geo;
@@ -1181,17 +1185,18 @@ function openChart(){
 
 /* ---- C3. a finger on the chart ------------------------------------------ */
 
-// The chart answers a finger held still on it by magnifying what is under it
-// — the owner's own idea, chosen on 2026-09-19 off ZOOM-SPEC.md 3. Anything
-// else is the page's own scroll, and a lift that the hold did not take is the
-// tap that opens the chart full screen (C2).
+// The chart answers a finger held still by magnifying what is under it, and a
+// finger dragged sideways by reading the price line at that minute — the
+// owner's choice of 2026-09-19 off ZOOM-SPEC.md 3 and 6. Anything else is the
+// page's own scroll, and a lift that no gesture took is the tap that opens the
+// chart full screen (C2).
 //
 // ONE STATE MACHINE, because one touch cannot be read by two. touchKind
 // (glance.js) is asked the same question by the hold's timer and by every
 // move; the verdict is reached once and never revisited. touchstart stays
 // passive, so a tap and a scroll begin exactly as they did before there were
-// gestures here, and the only preventDefault is on a move or a lift after the
-// hold has armed.
+// gestures here, and the only preventDefault is on a move or a lift after a
+// gesture has armed.
 //
 // WHAT THE PAGE HAS TO SAY TO THE SHELL. The shell wraps the WebView in a
 // SwipeRefreshLayout, which takes any downward drag past its slop whenever the
@@ -1224,6 +1229,7 @@ function chartMove(e){
   const t = e.touches[0];
   TOUCH.x = t.clientX; TOUCH.y = t.clientY;
   if(TOUCH.kind === 'hold'){ e.preventDefault(); lensShow(TOUCH.x, TOUCH.y); return; }
+  if(TOUCH.kind === 'read'){ e.preventDefault(); scrubShow(TOUCH.x); return; }
   if(TOUCH.kind === 'wait') chartDecide(e, Date.now() - TOUCH.at);
 }
 
@@ -1238,17 +1244,18 @@ function chartDecide(e, ms){
   if(kind === 'wait') return;
   TOUCH.kind = kind;
   clearTimeout(T_HOLD); T_HOLD = null;
-  if(kind !== 'hold') return;                  // the page's own scroll; nothing here touches it
+  if(kind === 'scroll') return;
   if(e) e.preventDefault();
+  if(kind === 'read'){ scrubShow(TOUCH.x); return; }
   shellTick();
   lensShow(TOUCH.x, TOUCH.y);
 }
 
 function chartLift(e){
-  // A LIFT IS A TAP only where the hold did not take the touch, and isTap
-  // holds it to Android's own 8px and 500ms besides — a lift that jumped, or
-  // one the shell was reading as a pull-to-refresh, is not a tap however still
-  // the finger was. A hold that did take the touch refuses the click outright,
+  // A LIFT IS A TAP only where no gesture took the touch, and isTap holds it
+  // to Android's own 8px and 500ms besides — a lift that jumped, or one the
+  // shell was reading as a pull-to-refresh, is not a tap however still the
+  // finger was. A gesture that did take the touch refuses the click outright,
   // so the chart cannot open full screen under a lens that is closing.
   const t = e.changedTouches && e.changedTouches[0];
   TAP = !!(TOUCH && TOUCH.kind === 'wait' && t
@@ -1258,7 +1265,7 @@ function chartLift(e){
 }
 
 function chartCancel(){
-  // The system took the touch: nothing happened here, tap included.
+  // The system took the gesture: nothing happened here, tap included.
   TAP = false;
   chartOver();
 }
@@ -1266,7 +1273,7 @@ function chartCancel(){
 function chartOver(){
   clearTimeout(T_HOLD); T_HOLD = null;
   TOUCH = null;
-  lensHide();
+  lensHide(); scrubHide();
   MiraiSheet.pin(false);
 }
 
@@ -1358,21 +1365,68 @@ function lensWords(at){
 
 function lensHide(){ $('lens').classList.remove('on'); }
 
+function scrubShow(cx){
+  // A sideways drag reads the price LINE, which is the one mark on this chart
+  // that is a time of day. The reading goes in the card's head row, a fixed
+  // place the finger is never on, and the marks on the chart are a line at the
+  // finger's minute, a dot on the price there and an outline round the
+  // five-minute block of shares it falls in.
+  //
+  // NO LINE ACROSS THE CHART AT THAT PRICE. A rule at a price that is not a
+  // level reads as a target, which is the one thing nothing here may imply
+  // (ZOOM-RESEARCH.md 3.6); the dot says where on the line the finger is and
+  // the head row says the number.
+  if(!CHART) return;
+  const a = priceAt(CHART, chartPoint(cx, 0).x);
+  if(!a){ scrubHide(); return; }
+  const marks = $('scrubMarks');
+  marks.setAttribute('width', CHART.W);
+  marks.setAttribute('height', CHART.H);
+  marks.setAttribute('viewBox', '0 0 ' + CHART.W + ' ' + CHART.H);
+  const block = volumeBlockAt(CHART.vol, a.x);
+  marks.innerHTML =
+    '<line class="sc-at" x1="' + n1(a.x) + '" y1="' + CHART.top + '" x2="' + n1(a.x)
+    + '" y2="' + CHART.ribB + '"/>'
+    + (block ? '<rect class="sc-blk" x="' + n1(block.x0 - 1) + '" y="' + (CHART.ribB - 12)
+             + '" width="' + n1(block.x1 - block.x0 + 1) + '" height="13" rx="1.5"/>' : '')
+    + (a.y != null ? '<circle class="sc-dot" cx="' + n1(a.x) + '" cy="' + n1(a.y) + '" r="4.2"/>' : '');
+  const left = a.kind === 'gap'
+    ? '<b>' + etTime(a.t) + '</b>&ensp;no price recorded'
+    : '<b>' + etTime(a.t) + '</b>&ensp;<em>' + gUsd(a.s, 2).replace('$', '') + '</em>'
+      + (a.kind === 'latest' ? '&ensp;latest' : '');
+  // The block's own clock is dropped where the row cannot hold it, the way the
+  // strip's name is (stripName): at 320 the two halves overrun the card by
+  // 32px with it on 2026-09-17's board, and the block is outlined on the strip
+  // in any case. Measured on the row itself rather than from a table of
+  // widths, because it is already on the page and already laid out.
+  const shares = block ? gUsd(block.sum, 0).replace('$', '') + ' shares' : '';
+  const when = block ? ' ' + etTime(block.t0) + '–' + etTime(block.t1 + 60000) : '';
+  const row = $('scrubRead');
+  const write = right => { row.innerHTML = '<span>' + left + '</span><span class="r">' + right + '</span>'; };
+  write(shares + when);
+  if(when && row.scrollWidth > row.clientWidth) write(shares);
+  marks.classList.add('on'); row.classList.add('on');
+}
+
+function scrubHide(){ $('scrubMarks').classList.remove('on'); $('scrubRead').classList.remove('on'); }
+
 function chartRepainted(){
-  // A tick repaints the chart under an open lens. The numbers beside it are
-  // read from the board too, so they are read again from the new one: a
-  // readout that keeps the old counts beside the new drawing lies.
-  if(TOUCH && TOUCH.kind === 'hold') lensShow(TOUCH.x, TOUCH.y);
+  // A tick repaints the chart under an open lens or reading. The numbers
+  // beside it are read from the board too, so they are read again from the new
+  // one: a readout that keeps the old counts beside the new drawing lies.
+  if(!TOUCH) return;
+  if(TOUCH.kind === 'hold') lensShow(TOUCH.x, TOUCH.y);
+  else if(TOUCH.kind === 'read') scrubShow(TOUCH.x);
 }
 
 // ONE SET OF LISTENERS ON THE CHART, because one touch has one meaning.
 // touchstart is PASSIVE: a tap and a scroll must begin exactly as they do on a
-// page with no gestures at all. touchmove cannot be, because a move after the
-// hold has armed belongs here and not to the scroller, and Chrome makes a
-// document-level touch listener passive whatever it asks for — so these sit on
-// the chart itself (ZOOM-SPEC.md 3). Android's long press would otherwise open
-// text selection or its menu over the lens, and a live selection turns the
-// next drag into handle-dragging, so the menu is refused.
+// page with no gestures at all. touchmove cannot be, because a move after a
+// hold or a sideways drag has armed belongs here and not to the scroller, and
+// Chrome makes a document-level touch listener passive whatever it asks for —
+// so these sit on the chart itself (ZOOM-SPEC.md 3). Android's long press
+// would otherwise open text selection or its menu over the lens, and a live
+// selection turns the next drag into handle-dragging, so the menu is refused.
 $('ladder').addEventListener('touchstart', chartTouch, {passive: true});
 $('ladder').addEventListener('touchmove', chartMove, {passive: false});
 $('ladder').addEventListener('touchend', chartLift);

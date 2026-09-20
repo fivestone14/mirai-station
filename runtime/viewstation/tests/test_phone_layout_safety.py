@@ -164,18 +164,19 @@ def test_the_chart_keeps_its_tabular_figures():
     chip's "1,517" drew 28.04px wide against 33.08 tabular, "4,000" 37.62, and
     "09:30" went the other way; the width of a price depended on its digits.
 
-    2026-09-19: the same hazard, and the same fix, for the magnifier's
-    readout, whose numbers change as the finger moves — proportional figures
-    would make them jitter under it.
+    2026-09-19: the same hazard, and the same fix, for what a finger on the
+    chart brings up. Both readouts are numbers that change as the finger
+    moves, so proportional figures would make them jitter under it.
 
     The fix is a restatement after the shorthand, and the hazard is the next
     chart rule someone writes with a font shorthand and no restatement. The
     render harness cannot see it — it has no fonts — so the rule is held here,
     on every chart rule rather than on the five that exist today."""
-    checked = _tabular_after_every_font(".p-") + _tabular_after_every_font(".lens-")
+    checked = _tabular_after_every_font(".p-") + _tabular_after_every_font(".lens-") \
+        + _tabular_after_every_font(".sc-")
     # every class the ladder writes a price or a clock in is among those checked
     for need in (".p-chiptx", ".p-tag", ".p-edge", ".p-axis", ".p-word", ".p-tradednum", ".p-newword",
-                 ".lens-now", ".lens-now b", ".lens-t td"):
+                 ".lens-now", ".lens-now b", ".lens-t td", ".sc-read", ".sc-read em"):
         assert need in checked, f"{need} no longer sets its own font; this proves nothing"
 
 

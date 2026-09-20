@@ -28,7 +28,7 @@
  * the page speaks while the sheet is open, and once it has spoken it keeps the
  * answer true on every scroll, because the shell has no way back to "silent".
  * pin() says the same thing for a finger working the glance's chart, which
- * since 2026-09-19 magnifies under a held one. It is here so that the
+ * since 2026-09-19 answers a hold and a sideways drag. It is here so that the
  * answer stays one expression in one file: page.js never tells the shell
  * anything about where the page is scrolled to.
  *
@@ -100,8 +100,8 @@ const MiraiSheet = (function(){
     if(e.target.closest && e.target.closest('.sheet')) e.preventDefault();
   });
 
-  // A FINGER ON THE CHART PINS IT TOO (2026-09-19). The chart magnifies under
-  // a held finger now, and it sits near the top of the page, so the same
+  // A FINGER ON THE CHART PINS IT TOO (2026-09-19). The chart answers a hold
+  // and a sideways drag now, and it sits near the top of the page, so the same
   // refresh gesture would take a drag on it and reload the page mid-gesture.
   // page.js pins while a finger is down and unpins on the lift; it asks here
   // rather than calling the shell itself, so the page still speaks to the
