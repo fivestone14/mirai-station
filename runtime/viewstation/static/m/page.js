@@ -1124,25 +1124,32 @@ const FULL_H_MAX = 14, FULL_SIDE = 0.25, FULL_ZERO = 0.55, FULL_MIN_H = 240;
 // each (FULL2-SPEC.md 4.4, raised from 0.46 on 2026-09-20 at the owner's ask
 // for a chart "increased in size slightly").
 //
+// THE HALF IS THE TABLE'S CEILING, NOT THE CHART'S HEIGHT (the owner's
+// decision of 2026-09-21, FULLTALL-SPEC.md 6.2). The table takes as many whole
+// rows as its half pays for, and the chart takes everything the table did not
+// ask for. Counted the other way about — the chart a share, the table the
+// leftovers — the box's bottom edge landed wherever the arithmetic dropped it
+// and cut the last row across the middle: 2.5px into a row at 360, 14.5 at
+// 320, where `1,500` read `1.500`. The table's ask is rounded DOWN to whole
+// rows, so for a foot of a given height the chart is never shorter than the
+// half it used to be handed — 293px to 302 at 360 on the common board. Where
+// the foot gains the line that says the list runs past the box, the chart pays
+// 4px of the 17 that line costs (302 back to 298 at 360 and 375, on the three
+// of the twelve boards swept whose foot was 105).
+//
 // MEASURED, on all 514 boards of 09-15..17 at the owner's 360x780. The head is
 // 70px on every one of them; the foot is a paragraph and is not — 139px on 413
 // of the 514, 122 on 66, 105 on 25, 20 on the day's first 10. So the common
-// board has 571px to divide, and the share decides the chart to the pixel: 262
-// at 0.46, 285 at 0.50.
+// board has 571px to divide and the table's half of it pays for 10 whole rows
+// and a sliver of the 11th.
 //
-// WHAT IT COSTS IS COUNTED IN ROWS, because that is the only unit the table
-// spends in: a row is 21px, flat, on every board. The table's box loses the 23
-// the chart gains, and 23 is one row and the change from it — 12 rows fit
-// today (on 417 of the 514), 11 fit at 0.50, and 14.5px of the 12th stay in
-// view to say the board has not ended. It takes from a table that was already
-// scrolling: 77% of boards list more prices than fit, and 51% list 15 or more.
-//
-// WHAT IT BUYS is bar thickness, which is a HEIGHT and so the only thing a
-// taller chart can move (a length is a width, set by the phone — glance.js).
-// Across those boards the median bar goes 8.80px to 9.60 and the thinnest bar
-// on any board 4.40 to 4.90, and the price line's own rise and fall grows from
-// 104px to 115. Not a knee, a straight line: the chart takes what the table
-// can spare, and one row is what "slightly" is worth.
+// A ROW IS 21px, flat, on every board and at every width, and it is the only
+// unit the table spends in — which is why the chart's height now moves in
+// steps of one. WHAT THE CHART DOES WITH IT is bar thickness, a HEIGHT and so
+// the only thing a taller chart can move (a length is a width, set by the
+// phone — glance.js). Across those boards the median bar goes 8.80px to 9.60
+// and the thinnest bar on any board 4.40 to 4.90, and the price line's own
+// rise and fall grows from 104px to 115.
 const FULL_CHART_SHARE = 0.50;
 
 // The full screen chart's geometry, the way CHART is the glance's: what
@@ -1152,9 +1159,35 @@ let CHART_FULL = null;
 
 function chartIsOpen(){ return $('chartFull').getAttribute('aria-hidden') === 'false'; }
 
-function boxH(id){
-  const r = $(id).getBoundingClientRect();
+function elH(e){
+  const r = e && e.getBoundingClientRect();
   return (r && isFinite(r.height)) ? r.height : 0;
+}
+
+function boxH(id){ return elH($(id)); }
+
+function fullSplit(room, listed){
+  // HOW THE ROOM UNDER THE HEAD IS DIVIDED: the table's box first, in whole
+  // rows, and the chart's height is the rest of it.
+  //
+  // The two heights the box is counted in are read off what is drawn rather
+  // than assumed, so a change to the table's type or padding moves the box
+  // with it instead of leaving the sliver to land where it may. The headings
+  // are markup and can always be measured; a row can only be measured once
+  // there is one, so the first paint of all counts in TABLE_ROW, which is what
+  // every row of every board has measured.
+  const headH = elH($('cfTable').querySelector('thead')) || TABLE_HEAD;
+  const rowH = elH($('cfBody').firstElementChild) || TABLE_ROW;
+  // FULL_MIN_H binds before the share does on a screen too short for both.
+  const want = Math.min(room - FULL_MIN_H, room - Math.round(room * FULL_CHART_SHARE));
+  const box = tableBox(want, listed, headH, rowH);
+  // The floor is under the SUBTRACTION, not a design number. The half pixel
+  // the headings' 40.5 leaves goes to the TABLE — a list that ends inside the
+  // box has to end inside it — and the pixel paintLadder draws short of what
+  // it is given (SVGH) is added back, because it is the DRAWN chart the
+  // table's box is what is left of.
+  return {H: Math.max(FULL_MIN_H, Math.floor(room - box) + 1),
+          more: box < headH + listed * rowH};
 }
 
 function paintChart(){
@@ -1174,16 +1207,33 @@ function paintChart(){
   const st = state();
   const T = {svg:$('cfSvg'), id:'cf', W, when:scanAt,
              hMax:FULL_H_MAX, side:FULL_SIDE, zero:FULL_ZERO};
+  // EVERY PRICE THE SCAN LISTED, decided before the chart's height is, because
+  // the table's box is now counted in rows and the chart takes what is left of
+  // the room (fullSplit). tableRows says what each row holds; chartTable
+  // places them.
+  const rows = tableRows(st.strikes, st.since, (st.frames || {}).book_times);
   // The foot's words are part of what the chart worked out, and the foot's
   // height is part of the room the chart gets, so the two settle against each
   // other rather than one guessing at the other: draw, write the foot, and
-  // draw once more if writing it moved the floor.
-  for(let pass = 0; pass < 2; pass++){
+  // draw again if writing it moved the floor.
+  //
+  // THE FOOT IS EMPTIED FIRST, so the settle always climbs from the same
+  // place. Whether the foot says the list runs past the box depends on the
+  // room the box got, and the room depends on the foot's own height, so a foot
+  // left full from the last board can hold the climb at a taller answer than
+  // this board's: the same scan would show 10 rows or 11 depending on what was
+  // open before it. From empty, a board settles on the first height that
+  // agrees with itself, which is the one that shows the most rows. Three
+  // passes is what that costs: empty, the foot without the sentence, the foot
+  // with it.
+  $('cfFoot').innerHTML = '';
+  for(let pass = 0; pass < 3; pass++){
     const was = boxH('cfFoot');
-    T.H = Math.max(FULL_MIN_H,
-                   Math.round((screenH - boxH('cfHead') - was) * FULL_CHART_SHARE));
+    const split = fullSplit(screenH - boxH('cfHead') - was, rows.length);
+    T.H = split.H;
+    T.more = split.more;
     paintLadder(st, T);
-    chartTable(st, T);
+    chartTable(st, T, rows);
     $('cfFoot').innerHTML = chartFoot(st, T);
     if(boxH('cfFoot') === was) break;
   }
@@ -1217,16 +1267,14 @@ function cfCount(cls, n, since){
   return td;
 }
 
-function chartTable(st, T){
+function chartTable(st, T, rows){
   // EVERY PRICE THE SCAN LISTED, one row, highest first — the figures the
-  // chart above stopped writing on its bars (FULL2-SPEC.md 4). tableRows
-  // decides what each row says and what it cannot say; this places it.
+  // chart above stopped writing on its bars (FULL2-SPEC.md 4).
   //
   // The chart is scaled to a window, so 3 or 4 of a board's prices usually
   // fall outside it. Those rows are still here, their price a shade lighter
   // and counted in the foot, because a price the scan listed is a fact and a
   // missing row would read as one the scan never saw.
-  const rows = tableRows(st.strikes, st.since, (st.frames || {}).book_times);
   T.rows = rows.length;
   T.offChart = 0;
   // which columns hold anything at all, so the foot names a column only where
@@ -1326,8 +1374,21 @@ function chartFoot(st, T){
   const off = (T.bars && T.offChart)
     ? ' ' + T.offChart + (T.offChart === 1 ? ' price has' : ' prices have')
       + ' no bar: outside the chart’s range.' : '';
+  // THE LIST RUNS PAST THE BOX, IN WORDS, because the table's own bottom edge
+  // cannot say it and no edge can. The box ends on a whole row and a sliver of
+  // the next, and a sliver is 2.5px of white against a flush end — the owner
+  // read that much on his own phone and reported that nothing said more prices
+  // were below. So the count is written here, where the reader is already
+  // being told what the table holds, and it is the count of the WHOLE list:
+  // how many are under the edge changes with every finger, and a figure that
+  // goes stale as it is read is worse than none. Said only where the list does
+  // run past the box (law 1) — where it ends inside it, the end is flush and
+  // the silence here means that is all. It is said on nearly every board: the
+  // shortest list of 2026-09-15..17 is 11 prices, 51% run to 15 or more, and
+  // the box holds 10 whole rows at 360.
+  const rest = T.more ? ' ' + T.rows + ' prices in all; the table scrolls.' : '';
   const narrow = T.paced ? '' : ' This screen is too narrow for the pace column.';
-  return (traded + cols + blank + off + narrow).trim();
+  return (traded + cols + blank + off + rest + narrow).trim();
 }
 
 // THE CORNER CONTROL IN THE CARD'S HEAD OPENS IT, and nothing else does: a tap

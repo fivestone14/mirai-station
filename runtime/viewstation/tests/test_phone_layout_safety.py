@@ -748,7 +748,7 @@ def test_the_table_under_the_chart_scrolls_rather_than_pushing_the_foot_off():
     in it, and min-height:0 is what lets a flex item be SHORTER than its own
     content: without it the table would grow to its rows and push the foot off
     the bottom of the screen (FULL2-SPEC.md 4.4, where the 09-17 board lists 15
-    prices and 11 fit).
+    prices and 10 of them fit whole).
 
     overscroll-behavior:contain, because the sheet behind it scrolls too and a
     flick that runs out of table would otherwise start moving the sheet."""
@@ -763,13 +763,16 @@ def test_the_table_under_the_chart_scrolls_rather_than_pushing_the_foot_off():
 
 
 def test_the_column_names_stay_on_the_screen_while_the_rows_scroll():
-    """11 whole rows fit the table's box at 360x780, and 263 of the 514 scans
-    of 2026-09-15..17 — 51% — list 15 prices or more, the worst of them 19. So
-    on more than half of all boards the reader scrolls, and until 2026-09-20
-    both heading rows left the screen when they did: six columns of bare
-    figures with nothing saying which one was the pile and which was what
-    traded. (12 fitted while the chart took 0.46 of the screen the head and
-    the foot leave; this file said 14, which was reachable only by counting
+    """10 whole rows fit the table's box at 360x780, with a sliver of the 11th
+    under them, and 263 of the 514 scans of 2026-09-15..17 — 51% — list 15
+    prices or more, the worst of them 19. So on more than half of all boards
+    the reader scrolls, and until 2026-09-20 both heading rows left the screen
+    when they did: six columns of bare figures with nothing saying which one
+    was the pile and which was what traded. (12 fitted while the chart took
+    0.46 of the screen the head and the foot leave and 11 at 0.50; since
+    2026-09-21 the box is counted in whole rows and the line the foot gained
+    to say the list runs past it costs the last of them. This file said 14,
+    which was reachable only by counting
     the cut row on a short-footed board. Measured on the 514.)
 
     Both rows stick to the top of the box instead. What this holds is every

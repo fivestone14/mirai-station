@@ -12,6 +12,7 @@ and _send_json, and a subclass that captures both exercises the route table
 directly (the same stand-in habit test_host_guard uses for _host_ok)."""
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -2448,13 +2449,16 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
     Nothing about the BOARD changes with the room: the same seven strikes, the
     same lengths in proportion, the same levels ruled and the same words.
 
-    The share is FULL_CHART_SHARE of what the head and the foot leave, by the
-    owner's decision of 2026-09-20 (FULL2-SPEC.md 4.4): 358px of the harness's
-    780 rather than all 779 of it, and still a quarter more plot than the card
-    can give — 291px against the glance's 228, after the 16px row the two side
-    names stand in (307 before it was reserved). The bound is close to what is
-    measured on purpose: the next thing taken off the top of this chart should
-    be a decision, not a side effect.
+    WHAT IT IS GIVEN is what the table did not ask for (the owner's decision
+    of 2026-09-21, FULLTALL-SPEC.md 6.2, which inverts FULL2-SPEC.md 4.4's
+    fixed share). The table's box is its heading rows and a whole number of
+    rows, and it may take no more than FULL_CHART_SHARE of what the head and
+    the foot leave; the chart takes the rest of it. Nothing in this harness
+    has a height, so all 780 is there to divide and the 15 listed prices end
+    inside the box: 355.5px of table and 424 of chart, a plot 357px tall
+    against the glance's 228, after the 16px row the two side names stand in.
+    The bound is close to what is measured on purpose: the next thing taken
+    off the top of this chart should be a decision, not a side effect.
 
     The glance underneath is untouched — a reader who never opens it has lost
     nothing — and the view is redrawn on the quote tick, so it cannot go on
@@ -2467,8 +2471,12 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
     assert clip, "the full view shares the glance's clip id"
     full = {"plot_l": float(clip.group(1)), "plot_w": float(clip.group(3)), "plot_h": float(clip.group(4))}
     share = float(re.search(r"FULL_CHART_SHARE = ([\d.]+)", PAGE).group(1))
-    assert 0 < share < 1 and got["H"] == round(780 * share) - 1, \
-        "the chart is not its share of the screen less its head and foot"
+    head, row = _glance("console.log(JSON.stringify([g.TABLE_HEAD, g.TABLE_ROW]));")
+    box = head + len(got["rows"]) * row
+    assert 0 < share < 1 and box <= 780 - round(780 * share), \
+        "the table took more of the screen than its share allows"
+    assert got["H"] == math.floor(780 - box), \
+        "the chart is not what the table left of the screen"
     assert full["plot_h"] > 1.25 * glance["plot_h"], (full, glance)
     gp, fp = _traded(got["glance"])[0], _traded(got["cf"])[0]
     assert [round(p["h"], 2) for p in gp] == [8.0] * 7 and [round(p["h"], 2) for p in fp] == [14.0] * 7
@@ -2667,6 +2675,95 @@ def test_the_narrowest_phone_drops_the_pace_column_whole():
     assert thin["foot"].endswith(" This screen is too narrow for the pace column."), thin["foot"]
     # the owner's own phone keeps it, which is the whole reason the gate is 348
     assert _full(_table_board())["cols"] == wide["cols"]
+
+
+def test_the_table_asks_for_whole_rows_and_a_sliver_that_cannot_cut_a_glyph():
+    """The box's bottom edge used to land wherever the arithmetic dropped it:
+    the chart took a fixed share of the room and the table got the leftovers.
+    On the build of 2026-09-20 that was 2.5px into a row at 360, which says
+    nothing at all, and 14.5px at 320 — a cut through the middle of every
+    figure on the row, where `1,500` read `1.500` and `5,091` read `5.091`.
+
+    So the table asks FIRST, and in whole rows (the owner's decision of
+    2026-09-21, FULLTALL-SPEC.md 6.2): its box is the two heading rows, as
+    many whole rows as its ceiling pays for, and — only where the list runs
+    past them — a sliver of the next one.
+
+    THE SLIVER IS 18.5 OF A 21px BAND, and the numbers that decide it were
+    read off the rendered pixels at 320, 360, 375 and 412 on the boards of
+    2026-09-15..17: a row's ink starts 6.17px into its band, the deepest of it
+    (the descender of `small pile`) ends at 17.00, and the collapsed rule
+    between two bands straddles the join, 20.5 to 21.5. At 18.5 the edge shows
+    a row's ink WHOLE with 1.5px under it. The OTHER edge is the one a rect
+    cannot see: at the far end of the scroll the box's bottom is flush and it
+    is the sticky headings' own bottom that cuts a band, 21 less the sliver
+    in, so 2.5px has to be blank too. Both are held here, because a sliver
+    anywhere from 4 to 17 takes ink at one end or the other.
+
+    A ROW IS NEVER CUT TO FIT: with no room for even one, one is kept anyway.
+    With nothing listed the box asks for nothing and the room is the chart's —
+    the box is hidden there, and a table that asked for its headings would
+    leave a hole under the chart."""
+    INK_TOP, INK_BOT, RULE = 6.17, 17.00, 0.5
+    got = _glance("""
+      const H = g.TABLE_HEAD, R = g.TABLE_ROW, S = g.TABLE_SLIVER;
+      const box = (want, listed) => g.tableBox(want, listed, H, R);
+      console.log(JSON.stringify({H, R, S,
+        fits: box(H + 11 * R + 40, 11), exact: box(H + 11 * R, 11),
+        over: box(H + 11 * R + 40, 19),
+        lands: [10, 11, 12, 13].map(n => box(H + n * R + S, 19)),
+        squeezed: box(H + R + S - 0.5, 19), nothing: box(500, 0)}));""")
+    H, R, S = got["H"], got["R"], got["S"]
+    assert S >= INK_BOT, f"a sliver of {S} cuts the row it shows, {INK_BOT}px into a {R}px band"
+    assert R - S <= INK_TOP, \
+        f"at the end of the scroll the headings cut a row {R - S}px in, where the ink starts at {INK_TOP}"
+    assert S <= R - RULE, f"a sliver of {S} ends on the rule between two rows"
+    assert got["fits"] == got["exact"] == H + 11 * R, \
+        "a list that ends inside the box did not end flush"
+    assert got["over"] == H + 12 * R + S <= H + 11 * R + 40, \
+        "the box is not whole rows and a sliver inside what it may take"
+    assert got["lands"] == [H + n * R + S for n in (10, 11, 12, 13)], \
+        "the box does not land on the room it is given"
+    assert got["squeezed"] == H + R + S, "the last row the box could hold was cut to fit"
+    assert got["nothing"] == 0, "a table with nothing to list asked for room"
+
+
+def test_the_foot_says_when_the_list_runs_past_the_table_and_is_silent_when_it_does_not():
+    """No sliver can carry this news. The 2.5px one at 360 is what the owner
+    read on his own phone and reported that nothing on the screen said more
+    prices were below; the whole-row sliver that replaced it differs from a
+    flush end by 2px of white, which is no better as a signal. So the fact is
+    written in the foot, in the app's own plain words, and what is written is
+    the count of the WHOLE list — how many sit under the edge changes with
+    every finger, and a figure that goes stale as it is read is worse than
+    none.
+
+    HONEST-ABSENT, like every other clause in this foot: where the list ends
+    inside the box nothing is said about it, and the flush end is then the
+    only claim on the screen. It is also the last clause but one, so the
+    narrow screen's own sentence still ends the foot.
+
+    Nothing in this harness has a height, so the room is the whole screen:
+    all 15 prices end inside a 780px one, and on a 500px one the box holds 9
+    whole rows and a sliver and the foot says so."""
+    head, row, sliver = _glance(
+        "console.log(JSON.stringify([g.TABLE_HEAD, g.TABLE_ROW, g.TABLE_SLIVER]));")
+    fits = _full(_table_board())
+    assert "prices in all" not in fits["foot"], f"the foot said so of a list that fits: {fits['foot']}"
+    over = _full(_table_board(screen=[360, 500]))
+    assert over["foot"].endswith(" 15 prices in all; the table scrolls."), over["foot"]
+    assert len(over["rows"]) == 15, "the table dropped the rows it could not show"
+    assert over["H"] == math.floor(500 - (head + 9 * row + sliver)), \
+        "the chart is not what is left of the room after 9 whole rows and the sliver"
+    # THE FLOOR UNDER THE CHART STILL BINDS. On a screen with nothing to spare
+    # the table is held to one row and a sliver, and what is left is under
+    # FULL_MIN_H: the chart is drawn at the floor and the sheet scrolls, which
+    # is what the floor is for — paintLadder must never be asked for a height
+    # it cannot draw a plot and a label gutter in.
+    floor = int(re.search(r"FULL_MIN_H = (\d+)", PAGE).group(1))
+    short = _full(_table_board(screen=[360, 300]))
+    assert 300 - (head + row + sliver) < floor and short["H"] == floor - 1, short["H"]
+    assert "15 prices in all" in short["foot"], short["foot"]
 
 
 def test_the_two_house_columns_split_the_room_their_group_word_pays_for():

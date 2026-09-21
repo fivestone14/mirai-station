@@ -1261,6 +1261,44 @@ const TABLE_PRICE=40, TABLE_PILE=46, TABLE_TURN=52, TABLE_PACE=52,
 // has gone. (The 320px phone is the case; the owner's 360 keeps it.)
 const TABLE_NARROW=2*TABLE_PAD+TABLE_PRICE+TABLE_PILE+TABLE_TURN+TABLE_PACE+2*TABLE_COUNT;
 
+// THE BOX THE TABLE ASKS FOR, in px: its two heading rows, a whole number of
+// rows, and under them either nothing or a sliver of the next row.
+//
+// Until 2026-09-21 the chart took a fixed share of the room and the table got
+// what was left, so the box's bottom edge fell wherever the arithmetic dropped
+// it: 2.5px into a row at 360, which says nothing at all, and 14.5 at 320,
+// which cut every figure across the middle — a row's ink runs 6.17px to 17.00
+// inside its 21px band, so at 14.5 the digits lose their feet and the comma
+// its tail, and `1,500` reads `1.500`.
+//
+// THE SLIVER IS 18.5 AND IT CANNOT CUT A GLYPH, rendered and read back in
+// pixels at 320, 360, 375 and 412 on the boards of 2026-09-15..17. It shows a
+// row's ink WHOLE: the deepest ink any row carries is the descender of `small
+// pile` at 17.00, so the edge falls 1.5px under the last of it and 2px above
+// the rule between the bands (20.5 to 21.5). The far end of the scroll is the
+// other edge that cuts a band — there the headings' own bottom does it, at
+// 21 less the sliver — and 2.5px in is blank too, 3.7px above the first ink.
+// No other size clears both: a cut anywhere from 4 to 17 takes ink at one end
+// or the other. Measured on the renders: 2.17px of clearance at the box's
+// bottom and 4.17 under the headings, at every width, on every board swept.
+//
+// THE SLIVER IS NOT THE CUE, and no sliver can be. It is 2.5px of white that
+// says "more below" where a flush end says "that is all", and the owner read
+// exactly that 2.5px on his own phone and reported it said nothing. So the
+// foot says it in words, and the sliver's job is only to spend the leftover on
+// a row the reader can read rather than on 20px of chart nobody can see.
+const TABLE_ROW=21, TABLE_HEAD=40.5, TABLE_SLIVER=18.5;
+
+function tableBox(want, listed, headH, rowH){
+  // `want` is the most the table may take. Nothing listed, nothing asked for:
+  // the box is hidden and the room is the chart's (law 1).
+  if(!listed) return 0;
+  const flush=headH+listed*rowH;
+  if(flush<=want) return flush;                 // the list ends inside the box
+  const whole=Math.max(1, Math.floor((want-headH-TABLE_SLIVER)/rowH));
+  return headH+whole*rowH+TABLE_SLIVER;
+}
+
 /* ---- where the activity is, as a map around price ---------------------- */
 
 function activityRows(day, price, show, strikes, bookTimes){
@@ -1482,5 +1520,6 @@ if(typeof module!=='undefined'&&module.exports){
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
                   tableRows, TABLE_PRICE, TABLE_PILE, TABLE_TURN, TABLE_PACE,
                   TABLE_COUNT, TABLE_PAD, TABLE_NARROW,
+                  TABLE_ROW, TABLE_HEAD, TABLE_SLIVER, tableBox,
                   GRID_TRACK_MIN, activityGrid, halfHour};
 }
