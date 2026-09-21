@@ -1301,10 +1301,17 @@ function chartFoot(st, T){
   // read `faster`, and no heading that says faster than WHAT fits the 52px
   // track — `VS EARLIER` measures 65.80 even untracked — so the referent is
   // carried here, in the words the glance's own head over these three uses.
+  //
+  // TIMES SAYS WHAT IS DIVIDED BY WHAT. "how many times over it changed hands"
+  // says what the figure DOES and names neither side of the division, so a
+  // first-time reader cannot get from it to the number. Both periods are on
+  // the screen: the numerator's in this clause and the denominator's in the
+  // PILE clause before it, which is pushed with it, so "that pile" is never
+  // orphaned.
   const named = [];
   if(T.piled) named.push('<b>PILE</b> was already sitting there at the '
                          + (day || 'prior session’s') + ' close',
-                         '<b>TURN</b> is how many times over it changed hands today');
+                         '<b>TIMES</b> is what traded today divided by that pile');
   if(T.worded) named.push('<b>PACE</b> is trading now against earlier');
   const cols = named.length ? ' ' + named.join('; ') + '.' : '';
   // A BLANK IS NOT A NOUGHT, and this is the one screen with the room to print

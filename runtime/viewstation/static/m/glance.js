@@ -1240,12 +1240,19 @@ function tableRows(strikes, since, bookTimes){
 // THE COLUMN TRACKS, in px, measured in WebKit with the shipped face
 // (FULL2-SPEC.md 4.2). Nothing on this screen is set under 11px, the headings
 // included, which is why PRICE is set by its own word and not by "1,700": the
-// cells want 30.1 and the heading 36.9. PILE and TURN are set by neither their
-// cells nor their headings but by the group word over the pair — "SITTING
-// THERE" is 92.9 at 11/700 with .10em tracking — so 50 + 48 rather than the
-// 34 + 38 their contents need. A count column has to hold "2,704" (31.3), a
-// 3px gap and "+1,777" (32.4).
-const TABLE_PRICE=40, TABLE_PILE=50, TABLE_TURN=48, TABLE_PACE=52,
+// cells want 30.1 and the heading 36.9. PILE and TIMES are set by neither
+// their cells nor their headings but by the group word over the pair —
+// "SITTING THERE" is 92.9 at 11/700 with .10em tracking — so 98 between them
+// rather than the 34 + 38 their contents need. A count column has to hold
+// "2,704" (31.3), a 3px gap and "+1,777" (32.4).
+//
+// HOW THE 98 IS SPLIT is the headings': both are right-aligned in their
+// tracks, so the space PILE does not need is the space between the two words.
+// At 50 + 48 the gap was 11.08px, under the house clearance of 12; at 46 + 52
+// it is 15.08. TIMES is the wider word (36.92 against PILE's 26.23) and the
+// pair is unchanged, so TABLE_NARROW and every column beside them are exactly
+// where they were.
+const TABLE_PRICE=40, TABLE_PILE=46, TABLE_TURN=52, TABLE_PACE=52,
       TABLE_COUNT=67, TABLE_PAD=12;
 
 // The fixed tracks, the two count columns and the gutters come to 348px. Under

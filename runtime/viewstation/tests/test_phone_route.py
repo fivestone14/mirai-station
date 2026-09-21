@@ -1550,7 +1550,7 @@ def test_the_plain_words_pass_the_laws():
                  "Trading is quieter than usual for this time of day.",
                  "Trading is about usual for this time of day.",
                  "Open the chart full screen", "Close", "small pile", "faster", "steady", "slower",
-                 "TRADED TODAY", "SITTING THERE", "PRICE", "PILE", "TURN", "PACE",
+                 "TRADED TODAY", "SITTING THERE", "PRICE", "PILE", "TIMES", "PACE",
                  "Puts and calls traded at each price today, counted to the time above."
                  " An empty cell was not measured. 8 prices have no bar:"
                  " outside the chart’s range.",
@@ -1560,14 +1560,14 @@ def test_the_plain_words_pass_the_laws():
                  " 8 prices have no bar: outside the chart’s range.",
                  "Puts and calls traded at each price today, counted to the time above;"
                  " +n is what traded since the 10:52 reading, +0 that none did."
-                 " PILE was already sitting there at the 14 Sep close; TURN is how many times over"
-                 " it changed hands today; PACE is trading now against earlier."
+                 " PILE was already sitting there at the 14 Sep close; TIMES is what traded today"
+                 " divided by that pile; PACE is trading now against earlier."
                  " An empty cell was not measured."
                  " 8 prices have no bar: outside the chart’s range.",
                  "Puts and calls traded at each price today, counted to the time above;"
                  " +n is what traded since the 10:52 reading, +0 that none did."
-                 " PILE was already sitting there at the prior session’s close; TURN is how many"
-                 " times over it changed hands today. An empty cell was not measured."
+                 " PILE was already sitting there at the prior session’s close; TIMES is what"
+                 " traded today divided by that pile. An empty cell was not measured."
                  " 8 prices have no bar: outside the chart’s"
                  " range. This screen is too narrow for the pace column."):
         assert need in words, f"the gates never saw {need!r}"
@@ -2512,7 +2512,7 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
 # --- the table under it (2026-09-20) -----------------------------------------
 # FULL2-SPEC.md 4, the owner's design B: the chart gives up half its height and
 # every price the scan listed is written out under it, PUTS and CALLS under
-# TRADED TODAY and PILE, TURN and PACE under SITTING THERE.
+# TRADED TODAY and PILE, TIMES and PACE under SITTING THERE.
 
 # The 12 tallies the pace is measured over: 5, 4, 4, 4, 4, 4, 4 minutes before
 # the recent stretch and 4, 4, 5, 4 inside it. A series of 10s ending in 500s
@@ -2656,17 +2656,44 @@ def test_the_narrowest_phone_drops_the_pace_column_whole():
     price, pile, turn, pace, count, pad, narrow = tracks
     assert narrow == 2 * pad + price + pile + turn + pace + 2 * count == 348
     wide = _full(_table_board(screen=[narrow, 780]))
-    assert wide["cols"] == ["40px", None, None, "50px", "48px", "52px"]
+    assert wide["cols"] == ["40px", None, None, "46px", "52px", "52px"]
     assert wide["table"] == "" and [len(r) for r in wide["rows"]] == [6] * 15
     assert "too narrow" not in wide["foot"]
 
     thin = _full(_table_board(screen=[narrow - 1, 780]))
-    assert thin["cols"] == ["40px", None, None, "50px", "48px"], "the dropped column kept its track"
+    assert thin["cols"] == ["40px", None, None, "46px", "52px"], "the dropped column kept its track"
     assert thin["table"] == "no-pace", "the pace headings are still on screen"
     assert [len(r) for r in thin["rows"]] == [5] * 15
     assert thin["foot"].endswith(" This screen is too narrow for the pace column."), thin["foot"]
     # the owner's own phone keeps it, which is the whole reason the gate is 348
     assert _full(_table_board())["cols"] == wide["cols"]
+
+
+def test_the_two_house_columns_split_the_room_their_group_word_pays_for():
+    """PILE and TIMES are sized by neither their cells nor their headings: the
+    group word over the pair is (`SITTING THERE`, 92.86px at 11/700 with .10em
+    tracking), so the PAIR is 98px and how that 98 is split is free.
+
+    Both headings are right-aligned in their tracks, so the room PILE does not
+    need is the gap between the two words. At 50 + 48 that gap was 11.08px,
+    under the 12 the house clears its words by, and it is what `TIMES` cost
+    when it replaced `TURN` on 2026-09-20: the word is 4.12px wider. Taking
+    the 4 from PILE rather than from the two count columns leaves TABLE_NARROW
+    and every other track exactly where they were, so no screen changes
+    behaviour and no board loses a row.
+
+    Measured in WebKit with the shipped face: the headings `PILE` 26.23 and
+    `TIMES` 36.92; the widest cell either column ever holds, `5,610` at 30.02
+    (the biggest pile of 2026-09-15..17) and `0.03×` at 30.69."""
+    GROUP, PILE_W, TIMES_W, PILE_CELL, TIMES_CELL = 92.86, 26.23, 36.92, 30.02, 30.69
+    pile, turn = _glance("console.log(JSON.stringify([g.TABLE_PILE, g.TABLE_TURN]));")
+    assert pile + turn == 98 >= GROUP, \
+        f"the pair no longer pays for SITTING THERE ({GROUP}): {pile} + {turn}"
+    assert turn - TIMES_W >= 12, \
+        f"TIMES clears PILE by {round(turn - TIMES_W, 2)}px, under the house 12"
+    for track, head, cell, name in ((pile, PILE_W, PILE_CELL, "PILE"),
+                                    (turn, TIMES_W, TIMES_CELL, "TIMES")):
+        assert track >= max(head, cell), f"{name}'s track is narrower than what it holds"
 
 
 def test_the_pile_is_dated_off_the_payload_and_never_called_last_night():
@@ -2730,11 +2757,11 @@ def _filled_board(**net):
 
 
 def test_the_foot_teaches_the_words_the_columns_have_no_room_to():
-    """PRICE, PUTS and CALLS say what they hold. PILE, TURN and PACE are house
-    words, and their tracks are 50, 48 and 52px — no heading that explains one
-    fits (`VS EARLIER` measures 65.80 even untracked, against PACE's 52). So
-    the foot is the only place they can be taught, and it teaches each of them
-    where the column holds something:
+    """PRICE, PUTS and CALLS say what they hold. PILE, TIMES and PACE are
+    house words, and their tracks are 46, 52 and 52px — no heading that
+    explains one fits (`VS EARLIER` measures 65.80 even untracked, against
+    PACE's 52). So the foot is the only place they can be taught, and it
+    teaches each of them where the column holds something:
 
     - PACE was the worst of the three: its cells read `faster` with nothing
       anywhere saying faster than WHAT, which is the defect the shipped card
@@ -2742,14 +2769,20 @@ def test_the_foot_teaches_the_words_the_columns_have_no_room_to():
       refers to"). The foot carries the referent in the app's own words — the
       head over the same three words on the glance is `trading now against
       earlier`;
+    - TIMES says what is divided by what. Until 2026-09-20 it read `TURN is
+      how many times over it changed hands today`, which says what the figure
+      DOES and names neither side of the division, so a reader could not get
+      from it to the number. Both periods are on the screen: the numerator's
+      in this clause and the denominator's in the PILE clause, which is pushed
+      with it, so "that pile" is never orphaned;
     - named only where the column is on the screen: at 320 the pace column is
       dropped whole and the sentence goes with it;
     - and only where something was measured for it: a board whose piles are
-      all uncounted names neither PILE nor TURN, and one where no run can be
+      all uncounted names neither PILE nor TIMES, and one where no run can be
       timed names no PACE."""
     got = _full(_table_board())
     for need in ("<b>PILE</b> was already sitting there at the",
-                 "<b>TURN</b> is how many times over it changed hands today",
+                 "<b>TIMES</b> is what traded today divided by that pile",
                  "<b>PACE</b> is trading now against earlier"):
         assert need in got["foot"], f"{need!r} is not in {got['foot']!r}"
     assert "faster" in {r[5] for r in got["rows"]}, "the board that proves it stopped pacing"
@@ -2759,23 +2792,23 @@ def test_the_foot_teaches_the_words_the_columns_have_no_room_to():
         "the foot teaches a column that is not on the screen"
     assert "<b>PILE</b>" in narrow["foot"] and "too narrow" in narrow["foot"]
 
-    # no pile counted anywhere: PILE and TURN go, and PACE stays, because a
+    # no pile counted anywhere: PILE and TIMES go, and PACE stays, because a
     # pace is read off the volume series and needs no pile
     unpiled = json.loads(json.dumps(_SCENE_0916))
     unpiled["frames"] = {"book_times": _TABLE_TIMES}
     for r in unpiled["strikes"]["rows"]:
         r["vol_added_per_book"] = [10] * 7 + [500] * 4
     got = _full(_board(unpiled))
-    assert "<b>PILE</b>" not in got["foot"] and "<b>TURN</b>" not in got["foot"], got["foot"]
+    assert "<b>PILE</b>" not in got["foot"] and "<b>TIMES</b>" not in got["foot"], got["foot"]
     assert "<b>PACE</b> is trading now against earlier" in got["foot"], got["foot"]
 
-    # and nothing to time: the piles are there, so PILE and TURN are taught
+    # and nothing to time: the piles are there, so PILE and TIMES are taught
     # and PACE is not
     untimed = json.loads(json.dumps(_SCENE_0916))
     for r in untimed["strikes"]["rows"]:
         r["oi_calls"], r["oi_puts"] = 600, 700
     got = _full(_board(untimed))
-    assert "<b>PILE</b>" in got["foot"] and "<b>TURN</b>" in got["foot"], got["foot"]
+    assert "<b>PILE</b>" in got["foot"] and "<b>TIMES</b>" in got["foot"], got["foot"]
     assert "PACE" not in got["foot"], got["foot"]
 
 
