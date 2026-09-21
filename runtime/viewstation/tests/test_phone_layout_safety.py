@@ -762,6 +762,56 @@ def test_the_table_under_the_chart_scrolls_rather_than_pushing_the_foot_off():
         assert "flex:none" in _rule(sel).replace(" ", ""), sel
 
 
+def test_the_column_names_stay_on_the_screen_while_the_rows_scroll():
+    """14 rows fit the table's box at 360x780, and 263 of the 514 scans of
+    2026-09-15..17 — 51% — list 15 prices or more, the worst of them 19. So on
+    more than half of all boards the reader scrolls, and until 2026-09-20 both
+    heading rows left the screen when they did: six columns of bare figures
+    with nothing saying which one was the pile and which was what traded.
+
+    Both rows stick to the top of the box instead. What this holds is every
+    part of that which can go wrong on its own:
+
+    - the group row parks at the box's top and the column row directly under
+      it, at the group row's OWN height. Never over it: a larger offset pushes
+      the column names down by the difference even at rest and leaves a slot
+      for the rows to scroll through, and at 18.5 against a group row of 18 a
+      0.5px slit of moving figures showed between the two headings on the
+      19-price board. Never more than a pixel under it either, or the row
+      above shows over the column names. The browser rounds the group row's
+      13.2px line box down, which is why 18 is right for a box of 18.2;
+    - each is opaque in the sheet's own colour, or the rows read through them;
+    - each is above the rows, or the rows' own 1px rules draw over them, and
+      the group row is above the column row, or the column row's background
+      hides the group's rule — which is the whole cue that the group words
+      head a PAIR of columns;
+    - and the rules are box-shadows: a border under border-collapse belongs to
+      the table's grid rather than to the cell, and does not travel with a
+      stuck one."""
+    grp, col = _rule(".cf-grp th").replace(" ", ""), _rule(".cf-col th").replace(" ", "")
+    for sel, decls in ((".cf-grp th", grp), (".cf-col th", col)):
+        assert "position:sticky" in decls, f"{sel} scrolls away with its rows"
+        assert "background:var(--s)" in decls, f"{sel} is not opaque, so the rows read through it"
+    assert re.search(r"(?:^|;)top:0(?:px)?(?:;|$)", grp), \
+        "the group words do not park at the top of the box"
+    # the group row's own box: its type on its own padding, which is what the
+    # column row parks under. A change to either row's padding or size fails
+    # here rather than on the phone.
+    size, lead = re.search(r"font:700 ([\d.]+)px/([\d.]+) ", _rule(".cf-grp th")).groups()
+    top, bottom = re.search(r"padding:(\d+)px 0 (\d+)px", _rule(".cf-grp th")).groups()
+    box = float(size) * float(lead) + int(top) + int(bottom)
+    parks = _px(".cf-col th", "top")
+    assert box - 1 <= parks <= box, \
+        f"the column names park {parks} down a group row {box} tall"
+    z_grp, z_col = int(re.search(r"z-index:(\d+)", grp).group(1)), \
+        int(re.search(r"z-index:(\d+)", col).group(1))
+    assert z_col > 0 and z_grp > z_col, f"group {z_grp}, column {z_col}"
+    assert "box-shadow:01px0var(--s2)" in grp and "box-shadow:01px0var(--s2)" in col, (grp, col)
+    assert "border-bottom" not in grp, "a collapsed border does not travel with a stuck cell"
+    # the two group cells that head no pair take no rule
+    assert _rule(".cf-grp th:first-child,.cf-grp th.c-pace").replace(" ", "") == "box-shadow:none"
+
+
 def test_the_tables_columns_are_the_same_width_on_every_board():
     """A column that reflowed per board would give up half the chart's height
     for nothing: the figures line up down the page or they do not. So the

@@ -788,12 +788,34 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 /* The two group words are the point of the table: what changed hands today,
    and what was already standing there. They are set apart from the column
    names — lighter, wider tracked, over a rule — so they read as one heading
-   over a pair of columns rather than as two more column names. */
-.cf-grp th{padding:3px 0 2px;font:700 11px/1.2 var(--sans);letter-spacing:.10em;
-           color:var(--i-faint);text-align:left;border-bottom:1px solid var(--s2)}
-.cf-grp th:first-child,.cf-grp th.c-pace{border-bottom:0}
-.cf-col th{padding:4px 0 5px;font:700 11px/1.2 var(--sans);letter-spacing:.08em;
-           color:var(--i-mute);text-align:right;white-space:nowrap}
+   over a pair of columns rather than as two more column names.
+
+   BOTH HEADING ROWS STICK. 14 rows fit the box at 360x780 and 263 of the 514
+   scans of 2026-09-15..17 — 51% — list 15 prices or more, the worst 19. Until
+   2026-09-20 the reader who scrolled to reach them was left with six columns
+   of bare figures and no heading anywhere on the screen saying which column
+   was the pile and which was what traded. So the group words park at the top
+   of the box and the column names park under them.
+
+   The 18px is the group row's own measured height, 11px/1.2 type on 3+2 of
+   padding, constant at every width tested — and it has to be that height to
+   the pixel, because a `top` over it pushes the column names down by the
+   difference even at rest, and rows then scroll through the slot: at 18.5 a
+   0.5px slit of moving figures showed between the two headings, measured on
+   the 19-price board. Opaque, or the rows show through them; above them in
+   z-index, or the rows' own 1px rules draw over them; and the group row above
+   the column row, or the column row's own background hides the group's rule.
+   Both rules are box-shadows rather than borders because a collapsed border
+   belongs to the table's grid, not to the cell, and does not travel with a
+   stuck one. */
+.cf-grp th{position:sticky;top:0;z-index:4;background:var(--s);
+           padding:3px 0 2px;font:700 11px/1.2 var(--sans);letter-spacing:.10em;
+           color:var(--i-faint);text-align:left;box-shadow:0 1px 0 var(--s2)}
+.cf-grp th:first-child,.cf-grp th.c-pace{box-shadow:none}
+.cf-col th{position:sticky;top:18px;z-index:3;background:var(--s);
+           padding:4px 0 5px;font:700 11px/1.2 var(--sans);letter-spacing:.08em;
+           color:var(--i-mute);text-align:right;white-space:nowrap;
+           box-shadow:0 1px 0 var(--s2)}
 .cf-col th:first-child{text-align:left}
 /* tabular figures, restated AFTER the shorthand that resets them: a column of
    counts whose digits are different widths does not line up, and lining up is
