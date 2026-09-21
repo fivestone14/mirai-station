@@ -367,18 +367,6 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    brackets' word is just now, so it is set in their black. */
 .p-tradednum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute);
              paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
-/* FULL SCREEN ONLY: every bar's own counts, each past its outer end in its
-   side's ink — the sides are named once above the bars and the ink says which
-   after that — with what traded there since the reading in the same grey the
-   one count above is set in, since that is the whole day and this is just
-   now. 11px, the chart's floor, with the card halo every word on the chart
-   carries, so a number that meets a rule is still read. */
-.p-barnum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;
-          paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
-.p-barnum.put{fill:var(--put-ink)} .p-barnum.call{fill:var(--call-ink)}
-.p-barsince{font-weight:500;fill:var(--i-mute)}
-.p-colhead{font:700 11px/1 var(--sans);font-variant-numeric:tabular-nums;
-           letter-spacing:.12em;fill:var(--i-faint)}
 /* Where trading just picked up: corners round the area, a tab in the gutter, a
    word. --i, the darkest neutral, because every hue already means a side, the
    magnet or the price and change has none: 15.60:1 on the card. The word is
@@ -1007,8 +995,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><line class="p-stick" x1="2" y1="10" x2="6" y2="10"/><text class="p-scale" x="46" y="14">1,560</text></svg>
     <p><b>Grey prices on the right</b> — round prices, for scale. The coloured ones name the lines.</p></div>
 
-  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="1" y="7" width="8" height="6"/><rect class="p-tradedcall" x="10" y="7" width="11" height="6"/><text class="p-barnum call" x="24" y="14">725</text></svg>
-    <p><b>The arrows beside “Price today”</b> — they open the chart full screen, where every bar carries its own numbers. Touching the chart itself opens nothing. The phone’s back gesture, or the close button, comes back here.</p></div>
+  <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="9" y="7" width="12" height="6"/><rect class="p-tradedcall" x="22" y="7" width="15" height="6"/></svg>
+    <p><b>The arrows beside “Price today”</b> — they open the chart full screen, at the size of the phone. Touching the chart itself opens nothing. The phone’s back gesture, or the close button, comes back here.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="4" y="7" width="13" height="6"/><rect class="p-tradedcall" x="18" y="7" width="9" height="6"/><circle cx="21" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
     <p><b>Hold a finger on the chart</b> — a magnifier opens above your finger and follows it, drawn again at two and a half times the size. Under it: the nearest price, its puts and calls traded today, and what traded there since the latest reading. Lift your finger to put it away.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><polyline class="p-path" points="0,15 7,10 14,13 21,5 28,9 35,4 42,8 46,6"/><line class="sc-at" x1="21" y1="0" x2="21" y2="20"/><circle class="sc-dot" cx="21" cy="5" r="3.4"/></svg>
@@ -1023,10 +1011,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <button class="sh-close" id="hwClose" type="button" data-sheet-close>Got it</button>
 </div>
 
-<!-- The chart, full screen: the same board redrawn at the screen's size with
-     every bar's numbers written in (paintChart). It is a sheet, so the phone's
-     back gesture, the close control and Escape all close it the one way
-     sheet.js knows, and only one of the two can be open. -->
+<!-- The chart, full screen: the same board redrawn at the screen's size
+     (paintChart), where the day's shape is big enough to read. It is a sheet,
+     so the phone's back gesture, the close control and Escape all close it the
+     one way sheet.js knows, and only one of the two can be open. -->
 <div class="sheet full" id="chartFull" role="dialog" aria-modal="true" aria-hidden="true"
      aria-labelledby="cfTitle">
   <div class="cf-head" id="cfHead">

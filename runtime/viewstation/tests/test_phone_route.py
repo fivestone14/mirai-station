@@ -1496,8 +1496,8 @@ def _plain_words():
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card) if t.strip()}
     # the chart full screen, which the same gates hold: its own markup, the
-    # labels its two controls are read out by, and each form of its foot —
-    # with a reading and without, and where the rows were too close to number
+    # labels its two controls are read out by, and its foot — on a board with
+    # a reading, one without, and one whose prices crowd
     view = PHONE.split('<div class="sheet full" id="chartFull"')[1].split("\n</div>\n")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card + view) if t.strip()}
     words |= set(re.findall(r'aria-label="([^"]*)"', card + view))
@@ -1536,10 +1536,7 @@ def test_the_plain_words_pass_the_laws():
                  "Trading is quieter than usual for this time of day.",
                  "Trading is about usual for this time of day.",
                  "Open the chart full screen", "Close",
-                 "Puts and calls traded today at each price.",
-                 "Puts and calls traded today at each price; +n since the 10:52 reading.",
-                 "Puts and calls traded today at each price — the prices here are too close together"
-                 " for a number on every bar, so only the longest has one."):
+                 "Puts and calls traded today at each price."):
         assert need in words, f"the gates never saw {need!r}"
     for s in sorted(words):
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
@@ -2329,8 +2326,12 @@ def test_the_paler_end_is_its_sides_own_hue_and_reads_without_colour():
 # --- the chart, full screen (2026-09-19) -------------------------------------
 # ZOOM-SPEC.md 1 and 5. A side of a bar is 12.3px at the median on the owner's
 # 360px phone and what traded since the reading is 2.5 — half a millimetre —
-# and no height makes a width longer. So a tap opens the same board at the
-# screen's size with every bar's numbers written in.
+# and no height makes a width longer. So the corner control opens the same
+# board at the screen's size, where the day's shape is big enough to read.
+#
+# It wrote every bar's own numbers past its ends until the owner chose design B
+# on 2026-09-20 (FULL2-SPEC.md 4): the chart takes FULL_CHART_SHARE of the room
+# and writes nothing on its bars.
 
 def _full(net):
     """Open the chart and give back what it drew: the full view's SVG and its
@@ -2344,58 +2345,41 @@ def _full(net):
               open: els.chartFull.attrs['aria-hidden']};""")
 
 
-def _bar_nums(svg):
-    """Each bar's written numbers, top first: (class, count, since) with since
-    None where none is written."""
-    out = []
-    for cls, body in re.findall(r'<text class="p-barnum (put|call)"[^>]*>(.*?)</text>', svg):
-        m = re.match(r"^([\d,]+)(?:<tspan class=\"p-barsince\"> \+([\d,]+)</tspan>)?$", body)
-        assert m, body
-        out.append((cls, int(m.group(1).replace(",", "")),
-                    int(m.group(2).replace(",", "")) if m.group(2) else None))
-    return out
+def test_the_chart_full_screen_writes_nothing_on_its_bars():
+    """Every bar carried its own puts and calls past its ends, with what traded
+    there since the reading after each, and that was the view's whole point
+    until the owner chose design B on 2026-09-20 (FULL2-SPEC.md 4). The figures
+    go under the chart instead, where a column of them can be read down; the
+    chart keeps the shape.
 
-
-def test_the_chart_full_screen_writes_every_bars_own_numbers_in():
-    """Every price's puts and calls, and what traded there since the reading,
-    as figures rather than a length to be judged — which is the whole reason
-    the view exists, since lengths are widths and the phone is 360px wide.
-    Each side's count sits past its own outer end, in its side's ink; PUTS and
-    CALLS name the two columns once above the bars.
-
-    The 15:10:21 board of 2026-09-16 with the 10:52 reading's own counts
-    (_THEN_1510): 1,500 shows 1,118 calls and 3,861 puts, +118 and +861 since.
-    The one count the glance prints on its longest bar is gone, because at full
-    screen it would be a second name for a number already written; the glance
-    underneath still has it."""
+    So the glance's one count on the longest bar COMES BACK here — it was
+    dropped only because it would have been a second name for a number already
+    written — and the two views print the same one: 3,861 puts at 1,500 on the
+    15:10:21 board of 2026-09-16. Nothing that wrote a number on a bar is left
+    anywhere: no helper, no ink, no rule in the stylesheet."""
     got = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
     assert got["open"] == "false" and got["W"] == 360
-    want = []
-    for k, (vc, vp) in sorted(_SIDES_1510.items(), reverse=True):
-        c0, p0 = _THEN_1510[k]
-        want += [("put", vp, (vp - p0) or None), ("call", vc, (vc - c0) or None)]
-    assert _bar_nums(got["cf"]) == want
-    assert re.findall(r'<text class="p-colhead"[^>]*>(\w+)</text>', got["cf"]) == ["PUTS", "CALLS"]
-    assert "p-tradednum" not in got["cf"], "the glance's one count is drawn over the numbers"
-    assert "p-tradednum" in got["glance"], "the glance lost its count; this proves nothing"
-    # the numbers are outside the bars they name, on the side the bar grows to
-    ends = [(float(y), float(x), cls) for cls, x, y in
-            re.findall(r'<text class="p-barnum (put|call)" x="([\d.]+)" y="([\d.]+)"', got["cf"])]
-    pairs, _, _ = _traded(got["cf"])
-    for p in pairs:
-        row = {cls: x for y, x, cls in ends if abs(y - (p["y"] + p["h"] / 2 + 3.96)) < 0.3}
-        assert set(row) == {"put", "call"}, row
-        assert row["put"] <= p["l"] - 4 and row["call"] >= p["r"] + 4, (row, p)
+    for gone in ("p-barnum", "p-barsince", "p-colhead"):
+        assert gone not in got["cf"] and gone not in got["glance"], gone
+        assert "." + gone not in PHONE, gone
+    for gone in ("barNumbers", "FULL_NUM_PITCH", "T.numbers", "T.numbered"):
+        assert gone not in GLANCE + PAGE, gone
+    assert [t for _, _, t in _traded(got["cf"])[2]] == ["3,861 PUTS"]
+    assert [t for _, _, t in _traded(got["glance"])[2]] == ["3,861 PUTS"]
 
 
 def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
-    """The same board and the same window, at the screen's size: the plot runs
-    the height of the phone less its head and its foot, so the bars are up to
-    14px thick against the glance's 8, each side takes a quarter of the plot
-    against a fifth, and the zero moves from 0.72 of the plot's width to 0.55
-    so the puts' numbers have somewhere to go (ZOOM-SPEC.md 5). Nothing about
-    the BOARD changes with the room: the same seven strikes, the same lengths
-    in proportion, the same levels ruled and the same words.
+    """The same board and the same window, at a share of the screen's size: the
+    bars are up to 14px thick against the glance's 8, each side takes a quarter
+    of the plot against a fifth, and the zero moves from 0.72 of the plot's
+    width to 0.55 so a quarter of it in puts still fits (ZOOM-SPEC.md 5).
+    Nothing about the BOARD changes with the room: the same seven strikes, the
+    same lengths in proportion, the same levels ruled and the same words.
+
+    The share is FULL_CHART_SHARE of what the head and the foot leave, by the
+    owner's decision of 2026-09-20 (FULL2-SPEC.md 4.4): 358px of the harness's
+    780 rather than all 779 of it, and still a third more plot than the card
+    can give.
 
     The glance underneath is untouched — a reader who never opens it has lost
     nothing — and the view is redrawn on the quote tick, so it cannot go on
@@ -2407,8 +2391,10 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
                      got["cf"])
     assert clip, "the full view shares the glance's clip id"
     full = {"plot_l": float(clip.group(1)), "plot_w": float(clip.group(3)), "plot_h": float(clip.group(4))}
-    assert got["H"] == 780 - 1, "the chart is not the screen's height less its head and foot"
-    assert full["plot_h"] > 3 * glance["plot_h"], (full, glance)
+    share = float(re.search(r"FULL_CHART_SHARE = ([\d.]+)", PAGE).group(1))
+    assert 0 < share < 1 and got["H"] == round(780 * share) - 1, \
+        "the chart is not its share of the screen less its head and foot"
+    assert full["plot_h"] > 1.3 * glance["plot_h"], (full, glance)
     gp, fp = _traded(got["glance"])[0], _traded(got["cf"])[0]
     assert [round(p["h"], 2) for p in gp] == [8.0] * 7 and [round(p["h"], 2) for p in fp] == [14.0] * 7
     assert len(gp) == len(fp) == 7
@@ -2449,73 +2435,43 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
 
 
 def test_the_chart_full_screen_says_what_it_has_not_got():
-    """Honest-absent, on the one screen that writes numbers rather than drawing
-    lengths — where a blank is read as a zero much faster (law 1, glance.js).
+    """Honest-absent, on the screen with the room to say more (law 1,
+    glance.js).
 
     - no counts on the board at all (the day's first books, where the builder
-      withholds them): no numbers and no foot, not a row of noughts;
-    - no reading yet, or one the field cannot be matched to: the day's counts
-      are written and no "+n" is, exactly as no paler end is drawn;
-    - prices too close together for an 11px number on every row: the chart
-      keeps the glance's one count instead of numbers that would collide, and
-      the foot says that is what happened;
+      withholds them): no bars, no count and no foot, not a row of noughts;
+    - no reading yet, or one the field cannot be matched to: the bars are drawn
+      and no paler end is, exactly as on the glance;
+    - prices too close together to have been numbered: nothing is lost now that
+      nothing is written on a bar, and the foot says no more than it did;
     - and nothing drawn at all opens nothing."""
     bare = json.loads(json.dumps(_SCENE_0916))
     bare["strikes"] = {"rows": [dict(r, vol_calls=None, vol_puts=None) for r in bare["strikes"]["rows"]]}
     got = _full(_board(bare, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
-    assert _bar_nums(got["cf"]) == [] and "p-colhead" not in got["cf"] and got["foot"] == ""
+    assert _traded(got["cf"]) == ([], [], []) and got["foot"] == ""
 
+    plain = ('<span class="put">Puts</span> and <span class="call">calls</span>'
+             ' traded today at each price.')
     no_read = _full(_board(_SCENE_0916))
-    assert len(_bar_nums(no_read["cf"])) == 14
-    assert all(s is None for _, _, s in _bar_nums(no_read["cf"])), "a since was written with no reading"
-    assert "since the" not in no_read["foot"], no_read["foot"]
-    assert no_read["foot"] == ('<span class="put">Puts</span> and <span class="call">calls</span>'
-                              ' traded today at each price.')
+    assert len(_traded(no_read["cf"])[0]) == 7 and "p-tradedputsince" not in no_read["cf"]
+    assert no_read["foot"] == plain
     read = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
-    assert read["foot"].endswith('; <b>+n</b> since the 10:52 reading.'), read["foot"]
+    assert "p-tradedputsince" in read["cf"] and read["foot"] == plain
 
-    # every dollar between 1,496 and 1,564 a strike: 68 rows on a 745px plot is
-    # 10.9px apart, under the 12 two 11px numbers need
+    # every dollar between 1,490 and 1,570 a strike, which is the board that
+    # used to cost the view every number on it
     tight = json.loads(json.dumps(_SCENE_0916))
     tight["strikes"] = {"rows": [{"strike": k, "vol_calls": 40 + k % 7, "vol_puts": 30 + k % 5}
                                  for k in range(1490, 1571)]}
     got = _full(_board(tight))
-    assert _bar_nums(got["cf"]) == [] and "p-tradednum" in got["cf"], "numbers were drawn on top of each other"
-    assert "too close together for a number on every bar" in got["foot"], got["foot"]
+    assert len(_traded(got["cf"])[0]) > 20 and "p-tradednum" in got["cf"]
+    assert got["foot"] == plain, got["foot"]
 
     # a station that answered nothing paints no chart, so there is none to open
     assert _page({"payload": {"error": "no scene"}, "now": _NOW}, """
       els.cfOpen.attrs['aria-controls'] = 'chartFull';
       (els.cfOpen.heard.click || []).forEach(f => f({}));
       return {body: document.body.className, drew: !!els.cfSvg};""") == {"body": "failed", "drew": False}
-
-
-def test_a_bar_gets_its_numbers_only_where_there_is_room_for_them():
-    """barNumbers, on its own: what every bar says at full screen, or nothing
-    at all where two rows are closer than 12px and 11px numbers would collide.
-    What traded since the reading is null, never 0, where there is no reading
-    or none for that strike — the same absence the paler end of the bar draws —
-    while a side that traded nothing keeps its 0, because at full screen the
-    reader is reading counts and none traded is a count."""
-    rows = [{"v": 1550, "y": 20, "vc": 2535, "vp": 1481},
-            {"v": 1540, "y": 60, "vc": 2743, "vp": 0},
-            {"v": 1530, "y": 100, "vc": 3824, "vp": 3632}]
-    since = {"at": 1, "by": {"1550": [135, 81], "1540": [0, 0]}}
-    got = _glance("""const at = p => ({h: 8, bars: D.rows.map((b, i) => Object.assign({}, b, {y: i * p}))});
-      console.log(JSON.stringify({
-        pitch: g.FULL_NUM_PITCH,
-        full: g.barNumbers({h: 14, bars: D.rows}, D.since), bare: g.barNumbers({h: 14, bars: D.rows}, null),
-        tight: g.barNumbers(at(11.9), D.since), wide: !!g.barNumbers(at(12), D.since),
-        one: g.barNumbers({h: 8, bars: [D.rows[0]]}, null), none: g.barNumbers(null, D.since),
-        empty: g.barNumbers({h: 8, bars: []}, D.since)}));""", {"rows": rows, "since": since})
-    assert got["pitch"] == 12
-    assert got["full"] == [{"v": 1550, "y": 20, "vc": 2535, "vp": 1481, "sc": 135, "sp": 81},
-                           {"v": 1540, "y": 60, "vc": 2743, "vp": 0, "sc": 0, "sp": 0},
-                           {"v": 1530, "y": 100, "vc": 3824, "vp": 3632, "sc": None, "sp": None}]
-    assert [b["sc"] for b in got["bare"]] == [None, None, None]
-    assert got["tight"] is None and got["wide"] is True
-    assert len(got["one"]) == 1, "one bar has no pitch to be too tight"
-    assert got["none"] is None and got["empty"] is None
 
 
 # --- where new contracts arrived (2026-09-18) --------------------------------
@@ -3291,7 +3247,7 @@ def test_the_chart_key_says_what_the_code_draws():
     # was on no screen
     assert not any("%" in r["says"] + r["term"] for r in key["rows"])
     # THE LAST THREE ROWS say how the chart is worked, in the marks the working
-    # brings up: the numbers the control's view writes in, the bars a hold
+    # brings up: the bars the control's view draws big, the bars a hold
     # magnifies, and the line a sideways drag reads.
     #
     # The control's row names it by the head row it sits in, because a control
@@ -3302,7 +3258,7 @@ def test_the_chart_key_says_what_the_code_draws():
     assert '<div class="lab">Price today<' in PHONE and "$('cfOpen').addEventListener('click'" in PAGE
     assert "they open the chart full screen" in opener["says"]
     assert "Touching the chart itself opens nothing" in opener["says"]
-    assert opener["marks"] == ["p-tradedput", "p-tradedcall", "p-barnum call"]
+    assert opener["marks"] == ["p-tradedput", "p-tradedcall"]
     assert rows["Hold a finger on the chart"]["marks"] == ["p-tradedput", "p-tradedcall"]
     assert rows["Drag sideways across the chart"]["marks"] == ["p-path", "sc-at", "sc-dot"]
     assert "two and a half times" in rows["Hold a finger on the chart"]["says"] \

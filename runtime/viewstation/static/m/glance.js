@@ -642,29 +642,13 @@ function tradedSince(field, reads, strikes){
 // the scroll and the pull-to-refresh that share this glass. What a finger on
 // the chart can still arm is a hold or a sideways read, and touchKind below is
 // the whole of that rule.
-
-// Two 11px numbers on rows closer than this run into each other, so the full
-// screen view keeps the glance's one count instead, and its foot says why.
-const FULL_NUM_PITCH=12;
-
-function barNumbers(traded, since){
-  // WHAT EVERY BAR SAYS AT FULL SCREEN: [{v, y, vc, vp, sc, sp}] in the bars'
-  // own order, or null where the rows are too close together to number.
-  // `sc` and `sp` are what traded there since the latest reading, and they are
-  // null — never zero — where there is no reading or none for that strike: the
-  // paler end of a bar is the same fact and is absent in the same cases
-  // (tradedSince). A side that traded nothing keeps its 0, because at full
-  // screen the reader is reading counts and none traded is a count.
-  if(!traded||!traded.bars||!traded.bars.length) return null;
-  const ys=traded.bars.map(b=>b.y).sort((a, b)=>a-b);
-  let pitch=Infinity;
-  for(let i=1;i<ys.length;i++) pitch=Math.min(pitch, ys[i]-ys[i-1]);
-  if(pitch<FULL_NUM_PITCH) return null;
-  return traded.bars.map(b=>{
-    const d=since?since.by[b.v]:null;
-    return {v:b.v, y:b.y, vc:b.vc, vp:b.vp, sc:d?d[0]:null, sp:d?d[1]:null};
-  });
-}
+//
+// THE VIEW'S CHART WRITES NOTHING ON ITS BARS, by the owner's decision of
+// 2026-09-20 (FULL2-SPEC.md 4). Numbers past both ends of every bar were the
+// view's whole point until then; they went because the chart gives up height
+// to a table of every listed price, and a figure printed in both places sets
+// a reader checking one against the other. What the chart keeps is the shape,
+// and the glance's one count on the longest bar with it.
 
 /* ---- where new contracts arrived --------------------------------------- */
 
@@ -1390,7 +1374,7 @@ if(typeof module!=='undefined'&&module.exports){
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
                   TRADED_ZERO, TRADED_SIDE, COUNT_CALLS_W, COUNT_PUTS_W, tradedBars,
-                  tradedSince, FULL_NUM_PITCH, barNumbers,
+                  tradedSince,
                   newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
