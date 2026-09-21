@@ -1495,17 +1495,21 @@ def _plain_words():
         words |= {t for _, t in _svg_texts(got, "p-edge")}
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card) if t.strip()}
-    # the chart full screen, which the same gates hold: its own markup, the
-    # labels its two controls are read out by, and its foot — on a board with
-    # a reading, one without, and one whose prices crowd
+    # the chart full screen, which the same gates hold: its own markup — the
+    # table's headings with it — every word its table writes into a cell, and
+    # each form of its foot: a board with a reading and one without, a screen
+    # too narrow for the last column, and a board with nothing measured at all
     view = PHONE.split('<div class="sheet full" id="chartFull"')[1].split("\n</div>\n")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card + view) if t.strip()}
     words |= set(re.findall(r'aria-label="([^"]*)"', card + view))
-    tight = json.loads(json.dumps(_SCENE_0916))
-    tight["strikes"] = {"rows": [{"strike": k, "vol_calls": 40, "vol_puts": 30} for k in range(1490, 1571)]}
-    for net in (_board(_SCENE_0916), _board(tight),
+    bare = json.loads(json.dumps(_SCENE_0916))
+    bare["strikes"] = {"rows": [dict(r, vol_calls=None, vol_puts=None) for r in bare["strikes"]["rows"]]}
+    for net in (_board(_SCENE_0916), _board(bare), _table_board(dated="2026-09-14"),
+                _table_board(screen=[320, 780]),
                 _board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT)):
-        words.add(re.sub(r"<[^>]+>", "", _full(net)["foot"]))
+        got = _full(net)
+        words.add(re.sub(r"<[^>]+>", "", got["foot"]))
+        words |= {c for row in got["rows"] for c in row if isinstance(c, str)}
     for claims, pace in (([{"strike": 1700, "now": "changed"}], 1.37),
                          ([{"strike": 1700, "now": "changed"}, {"strike": 1600, "now": "off_list"}], 0.8),
                          ([], 1.0)):
@@ -1535,8 +1539,19 @@ def test_the_plain_words_pass_the_laws():
                  "Trading is busier than usual for this time of day.",
                  "Trading is quieter than usual for this time of day.",
                  "Trading is about usual for this time of day.",
-                 "Open the chart full screen", "Close",
-                 "Puts and calls traded today at each price."):
+                 "Open the chart full screen", "Close", "small pile", "faster", "steady", "slower",
+                 "TRADED TODAY", "SITTING THERE", "PRICE", "PILE", "TURN", "PACE",
+                 "Puts and calls traded today at each price. 8 prices have no bar:"
+                 " outside the chart’s range.",
+                 "Puts and calls traded today at each price; +n since the 10:52 reading."
+                 " 8 prices have no bar: outside the chart’s range.",
+                 "Puts and calls traded today at each price; +n since the 10:52 reading."
+                 " PILE was already sitting there at the 14 Sep close; TURN is how many times over"
+                 " it changed hands today. 8 prices have no bar: outside the chart’s range.",
+                 "Puts and calls traded today at each price; +n since the 10:52 reading."
+                 " PILE was already sitting there at the prior session’s close; TURN is how many"
+                 " times over it changed hands today. 8 prices have no bar: outside the chart’s"
+                 " range. This screen is too narrow for the pace column."):
         assert need in words, f"the gates never saw {need!r}"
     for s in sorted(words):
         assert not R._BANNED_RE.search(s), f"{s!r} trips the reader's word gate"
@@ -2335,14 +2350,25 @@ def test_the_paler_end_is_its_sides_own_hue_and_reads_without_colour():
 
 def _full(net):
     """Open the chart and give back what it drew: the full view's SVG and its
-    size, its foot, and the glance's own SVG beside it. Opened by the corner
-    control, which runs the same openChart the chart's own tap does."""
+    size, its table, its foot, and the glance's own SVG beside it. Opened by
+    the corner control, which is the only way in.
+
+    A row comes back as [price, puts, calls, pile, turn, pace] — the pace cell
+    only where the screen is wide enough to pay for it — with an empty cell as
+    None, so an absent figure and a zero cannot be read as the same thing. A
+    count cell is [count, since], the since None where none was written."""
     return _page(net, """
       els.cfOpen.attrs['aria-controls'] = 'chartFull';
       (els.cfOpen.heard.click || []).forEach(f => f({}));
+      const txt = e => e.textContent === '' ? null : e.textContent;
+      const cell = td => td.children.length ? td.children[0].children.map(txt) : txt(td);
       return {cf: els.cfSvg.innerHTML, foot: els.cfFoot.innerHTML, glance: els.svg.innerHTML,
               W: +els.cfSvg.attrs.width, H: +els.cfSvg.attrs.height,
-              open: els.chartFull.attrs['aria-hidden']};""")
+              open: els.chartFull.attrs['aria-hidden'],
+              rows: els.cfBody.children.map(tr => tr.children.map(cell)),
+              off: els.cfBody.children.map(tr => tr.className),
+              cols: els.cfCols.children.map(c => c.style.width || null),
+              table: els.cfTable.className, listed: els.cfScroll.hidden};""")
 
 
 def test_the_chart_full_screen_writes_nothing_on_its_bars():
@@ -2434,38 +2460,236 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
     assert moved["first"] != moved["after"], "the open chart did not follow the quote"
 
 
+# --- the table under it (2026-09-20) -----------------------------------------
+# FULL2-SPEC.md 4, the owner's design B: the chart gives up half its height and
+# every price the scan listed is written out under it, PUTS and CALLS under
+# TRADED TODAY and PILE, TURN and PACE under SITTING THERE.
+
+# The 12 tallies the pace is measured over: 5, 4, 4, 4, 4, 4, 4 minutes before
+# the recent stretch and 4, 4, 5, 4 inside it. A series of 10s ending in 500s
+# is faster whatever the arithmetic, 500s ending in 10s slower, and a flat 50
+# runs 12.07 contracts a minute against 11.76 — 0.97, inside the steady band.
+_TABLE_TIMES = ["14:22", "14:27", "14:31", "14:35", "14:39", "14:43", "14:47",
+                "14:51", "14:55", "15:00", "15:04", "15:08"]
+_TABLE_PILE = {1550: (1427, 1071), 1545: (150, 100), 1540: (565, 571), 1530: (654, 889),
+               1520: (500, 750), 1510: (407, 821), 1500: (1699, 3911), 1495: (133, None)}
+_TABLE_SERIES = {1550: [10] * 7 + [500] * 4, 1540: [500] * 7 + [10] * 4,
+                 1530: [50] * 11, 1520: [5] * 11, 1495: [50] * 11}
+# what each strike had traded at the reading: 1,500 has traded since, 1,490 has
+# traded nothing since (a measured zero), and 1,480 was never listed at it
+_TABLE_THEN = {"read_at": _READ_AT, "book_at": "2026-09-10T10:50:44-04:00",
+               "rows": [[1500, 1000, 3000], [1530, 3500, 3100], [1490, 14, 1316]]}
+
+
+def _table_board(dated=None, **net):
+    """_SCENE_0916 with what the table draws beyond the counts: the pile at
+    some strikes, one of them half counted and one of them thin, the per-tally
+    series the pace is read off, and — where `dated` says so — the session the
+    pile was struck at the close of."""
+    scene = json.loads(json.dumps(_SCENE_0916))
+    scene["frames"] = {"book_times": _TABLE_TIMES}
+    if dated:
+        scene["data_sources"] = {"open_interest": {"prior_session_date": dated}}
+    for r in scene["strikes"]["rows"]:
+        oi = _TABLE_PILE.get(r["strike"])
+        if oi:
+            if oi[0] is not None: r["oi_calls"] = oi[0]
+            if oi[1] is not None: r["oi_puts"] = oi[1]
+        if r["strike"] in _TABLE_SERIES:
+            r["vol_added_per_book"] = _TABLE_SERIES[r["strike"]]
+    return _board(scene, payload={"since_read": _TABLE_THEN}, reads=_READS_AT, **net)
+
+
+def test_the_table_writes_out_every_price_the_scan_listed():
+    """One row a price, highest first, whatever the chart above could draw: the
+    chart is scaled to a window and 8 of this board's 15 prices fall outside
+    it, and those rows are the reason the table exists at all. They are marked
+    rather than dropped — a missing row would read as a price the scan never
+    saw — and the foot counts them.
+
+    Each row: the puts and the calls traded there today with what traded there
+    since the reading beside each, then the contracts already standing there at
+    the prior session's close, how many times over that pile changed hands
+    today, and whether it is trading faster or slower than it was."""
+    got = _full(_table_board())
+    prices = [r[0] for r in got["rows"]]
+    assert prices == ["1,605", "1,600", "1,550", "1,545", "1,540", "1,530", "1,520", "1,510",
+                      "1,500", "1,495", "1,490", "1,480", "1,470", "1,450", "1,430"]
+    assert got["listed"] is False and got["table"] == "" and len(got["cols"]) == 6
+    drawn = [p["y"] for p in _traded(got["cf"])[0]]
+    assert len(drawn) == 7, "the board that proves the point stopped having prices off the chart"
+    assert [p for p, cls in zip(prices, got["off"]) if cls == "cf-off"] == \
+        ["1,605", "1,600", "1,495", "1,490", "1,480", "1,470", "1,450", "1,430"]
+    rows = dict(zip(prices, got["rows"]))
+    #                       puts               calls               pile     turn     pace
+    assert rows["1,550"] == ["1,550", ["1,481", None], ["2,535", None], "2,498", "1.6×", "faster"]
+    assert rows["1,540"] == ["1,540", ["2,270", None], ["2,743", None], "1,136", "4.4×", "slower"]
+    assert rows["1,530"] == ["1,530", ["3,632", "+532"], ["3,824", "+324"], "1,543", "4.8×", "steady"]
+    assert rows["1,500"] == ["1,500", ["3,861", "+861"], ["1,118", "+118"], "5,610", "0.9×", None]
+    # 4,016 contracts against 2,498 standing is 1.6 turns of the pile; every
+    # multiple on the board is that row's own two counts over its own pile
+    for k, (oc, op) in _TABLE_PILE.items():
+        if op is None:
+            continue
+        vol = {r["strike"]: r for r in _SCENE_0916["strikes"]["rows"]}[k]
+        row = rows[f"{k:,}"]
+        assert row[3] == f"{oc + op:,}"
+        assert row[4] == _glance("console.log(JSON.stringify(g.gTimes(D)));",
+                                 (vol["vol_calls"] + vol["vol_puts"]) / (oc + op))
+    assert "<b>PILE</b> was already sitting there" in got["foot"]
+    assert "8 prices have no bar: outside the chart’s range." in got["foot"], got["foot"]
+
+
+def test_a_blank_cell_in_the_table_means_nobody_measured_it():
+    """tableRows, on its own, and the one law this screen is most exposed to:
+    on a page that is figures alone a blank is read as a zero (law 1). Every
+    absent case the spec lists, each for its own reason:
+
+    - a price with no count on a side: an empty cell, never an 0. The day's
+      first books carry open interest and no volume columns at all.
+    - a price the latest reading never listed (1,480 here), or no reading yet:
+      no since figure. A price that traded nothing since it (1,490) prints
+      "+0", which is a measured zero and a different fact — the chart had no
+      room to tell the two apart and this screen does.
+    - a price with only one side of the pile counted (1,495): NO pile and NO
+      multiple. turnover() alone counts the missing side as 0, which would
+      print a pile that is not the pile under a multiple built on the same
+      half count.
+    - a pile under 500 standing (1,545): the word is `small pile`, because
+      under that the multiple reports the smallness of the pile rather than
+      the size of the day — the rule the ladder's own rows follow.
+    - a series too still to carry a word (1,520, 55 contracts against the 150
+      floor), too short (1,510, no series at all), or a strike the pile was
+      never counted for: no word, and no word is not `steady`."""
+    got = _full(_table_board())
+    rows = {r[0]: r for r in got["rows"]}
+    assert rows["1,480"] == ["1,480", ["513", None], ["74", None], None, None, None]
+    assert rows["1,490"] == ["1,490", ["1,316", "+0"], ["14", "+0"], None, None, None]
+    assert rows["1,495"] == ["1,495", ["2,161", None], ["125", None], None, None, "steady"]
+    assert rows["1,545"] == ["1,545", ["450", None], ["978", None], "250", "5.7×", "small pile"]
+    assert rows["1,520"] == ["1,520", ["1,596", None], ["1,282", None], "1,250", "2.3×", None]
+    assert rows["1,510"] == ["1,510", ["615", None], ["199", None], "1,228", "0.7×", None]
+    # and the helper itself, where the rows can be put in one at a time
+    bare = {"strike": 1500, "oi_calls": 400, "oi_puts": 600}
+    out = _glance("""console.log(JSON.stringify({
+        half: g.tableRows({rows: [Object.assign({}, D.bare, {oi_puts: null, vol_puts: 10})]}, null, null),
+        none: g.tableRows({rows: [{strike: 1500}]}, null, null),
+        zero: g.tableRows({rows: [Object.assign({}, D.bare, {vol_calls: 0, vol_puts: 0})]}, null, null),
+        order: g.tableRows({rows: [{strike: 1490}, {strike: 1600}, {strike: 1500}]}, null, null)
+                .map(r => r.v),
+        nostrike: g.tableRows({rows: [{strike: null, vol_calls: 5}, null]}, null, null),
+        nothing: [g.tableRows(null, null, null), g.tableRows({}, null, null)]}));""",
+                  {"bare": bare})
+    assert out["half"][0]["pile"] is None and out["half"][0]["mult"] is None, \
+        "a half counted pile printed a pile"
+    assert out["half"][0]["vp"] == 10 and out["half"][0]["vc"] is None
+    assert out["none"][0] == {"v": 1500, "vp": None, "vc": None, "sp": None, "sc": None,
+                              "pile": None, "mult": None, "word": None}
+    # a measured nothing is a measured fact: 0 traded against a pile that
+    # exists is a pile that did not turn over, and both print
+    assert out["zero"][0]["pile"] == 1000 and out["zero"][0]["mult"] == 0
+    assert out["order"] == [1600, 1500, 1490], "the table is not in price order"
+    assert out["nostrike"] == [] and out["nothing"] == [[], []]
+
+
+def test_the_narrowest_phone_drops_the_pace_column_whole():
+    """The fixed tracks, the two count columns and the gutters come to 348px
+    (FULL2-SPEC.md 4.2). Under that width something has to go, and it is PACE:
+    the only column carrying a word rather than a count. The foot says so, so
+    a reader who saw it on a wider screen is not left wondering.
+
+    The column is REMOVED rather than hidden. A <col> at width:0 still takes a
+    share of the table's surplus under table-layout:fixed, which left the two
+    count columns 55px at 320 instead of the 79 they are owed."""
+    tracks = _glance("""console.log(JSON.stringify(
+        [g.TABLE_PRICE, g.TABLE_PILE, g.TABLE_TURN, g.TABLE_PACE, g.TABLE_COUNT,
+         g.TABLE_PAD, g.TABLE_NARROW]));""")
+    price, pile, turn, pace, count, pad, narrow = tracks
+    assert narrow == 2 * pad + price + pile + turn + pace + 2 * count == 348
+    wide = _full(_table_board(screen=[narrow, 780]))
+    assert wide["cols"] == ["40px", None, None, "50px", "48px", "52px"]
+    assert wide["table"] == "" and [len(r) for r in wide["rows"]] == [6] * 15
+    assert "too narrow" not in wide["foot"]
+
+    thin = _full(_table_board(screen=[narrow - 1, 780]))
+    assert thin["cols"] == ["40px", None, None, "50px", "48px"], "the dropped column kept its track"
+    assert thin["table"] == "no-pace", "the pace headings are still on screen"
+    assert [len(r) for r in thin["rows"]] == [5] * 15
+    assert thin["foot"].endswith(" This screen is too narrow for the pace column."), thin["foot"]
+    # the owner's own phone keeps it, which is the whole reason the gate is 348
+    assert _full(_table_board())["cols"] == wide["cols"]
+
+
+def test_the_pile_is_dated_off_the_payload_and_never_called_last_night():
+    """The contracts standing at a price were struck at the close of the PRIOR
+    SESSION, which is not last night: one session in five follows a weekend or
+    a holiday, and the builder's own note on oi_calls says to print the date
+    rather than the word. The date comes from the same document the rows do,
+    and a payload without one says "the prior session's close" rather than
+    naming a day it does not know."""
+    dated = _full(_table_board(dated="2026-09-14"))
+    assert "sitting there at the 14 Sep close" in dated["foot"], dated["foot"]
+    assert "last night" not in dated["foot"] and "yesterday" not in dated["foot"]
+    undated = _full(_table_board())
+    assert "sitting there at the prior session’s close" in undated["foot"], undated["foot"]
+    # a date that is not one is not printed as one
+    for bad in ("2026-13-01", "not a date", "2026-09-14T10:00:00-04:00", None):
+        assert _glance("console.log(JSON.stringify(g.etDay(D)));", bad) is None, bad
+    assert _glance("console.log(JSON.stringify([g.etDay('2026-01-05'), g.etDay('2026-12-31')]));") \
+        == ["5 Jan", "31 Dec"]
+
+
 def test_the_chart_full_screen_says_what_it_has_not_got():
-    """Honest-absent, on the screen with the room to say more (law 1,
+    """Honest-absent on the whole view, chart and table together (law 1,
     glance.js).
 
     - no counts on the board at all (the day's first books, where the builder
-      withholds them): no bars, no count and no foot, not a row of noughts;
-    - no reading yet, or one the field cannot be matched to: the bars are drawn
-      and no paler end is, exactly as on the glance;
-    - prices too close together to have been numbered: nothing is lost now that
-      nothing is written on a bar, and the foot says no more than it did;
+      withholds them): no bars and no count on the chart, blank cells in the
+      table, and a foot that names no column, not a row of noughts;
+    - no reading yet, or one the field cannot be matched to: the bars are
+      drawn and no paler end is, no "+n" is written, and the foot leaves the
+      clause out rather than writing it empty;
+    - prices too close together to have been numbered: the table does not care
+      how close two prices are, which is the whole case for it;
     - and nothing drawn at all opens nothing."""
     bare = json.loads(json.dumps(_SCENE_0916))
     bare["strikes"] = {"rows": [dict(r, vol_calls=None, vol_puts=None) for r in bare["strikes"]["rows"]]}
     got = _full(_board(bare, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
     assert _traded(got["cf"]) == ([], [], []) and got["foot"] == ""
+    assert [r[1:] for r in got["rows"]] == [[None, None, None, None, None]] * 15, \
+        "a price nothing was measured at printed something"
 
-    plain = ('<span class="put">Puts</span> and <span class="call">calls</span>'
-             ' traded today at each price.')
+    counts = ('<span class="put">Puts</span> and <span class="call">calls</span>'
+              ' traded today at each price')
     no_read = _full(_board(_SCENE_0916))
     assert len(_traded(no_read["cf"])[0]) == 7 and "p-tradedputsince" not in no_read["cf"]
-    assert no_read["foot"] == plain
+    assert {tuple(r[1]) for r in no_read["rows"]} and all(r[1][1] is None for r in no_read["rows"])
+    off = " 8 prices have no bar: outside the chart’s range."
+    assert no_read["foot"] == counts + "." + off, no_read["foot"]
     read = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
-    assert "p-tradedputsince" in read["cf"] and read["foot"] == plain
+    assert "p-tradedputsince" in read["cf"]
+    assert read["foot"] == counts + "; <b>+n</b> since the 10:52 reading." + off, read["foot"]
+
+    # a reading whose counts cannot be matched to any strike now — the vendor
+    # revised every one of them downward — writes no "+n" anywhere, so the
+    # foot does not name the reading either: a clause about a figure that is
+    # not on the screen is the same fault as printing the figure
+    revised = dict(_FIELD_1510, rows=[[k, c + 1, p + 1] for k, (c, p) in _SIDES_1510.items()])
+    unmatched = _full(_board(_SCENE_0916, payload={"since_read": revised}, reads=_READS_AT))
+    assert all(r[1][1] is None and r[2][1] is None for r in unmatched["rows"])
+    assert "p-tradedputsince" not in unmatched["cf"]
+    assert unmatched["foot"] == counts + "." + off, unmatched["foot"]
 
     # every dollar between 1,490 and 1,570 a strike, which is the board that
-    # used to cost the view every number on it
+    # used to cost the view every number it had
     tight = json.loads(json.dumps(_SCENE_0916))
     tight["strikes"] = {"rows": [{"strike": k, "vol_calls": 40 + k % 7, "vol_puts": 30 + k % 5}
                                  for k in range(1490, 1571)]}
     got = _full(_board(tight))
-    assert len(_traded(got["cf"])[0]) > 20 and "p-tradednum" in got["cf"]
-    assert got["foot"] == plain, got["foot"]
+    assert len(got["rows"]) == 81 and len(_traded(got["cf"])[0]) > 20
+    assert got["rows"][0][:3] == ["1,570", ["30", None], ["42", None]]   # 40 + 1570 % 7
+    assert got["foot"].startswith(counts + "."), got["foot"]
+    assert "too close together" not in got["foot"], got["foot"]
 
     # a station that answered nothing paints no chart, so there is none to open
     assert _page({"payload": {"error": "no scene"}, "now": _NOW}, """

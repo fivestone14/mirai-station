@@ -768,6 +768,62 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .cf-x.is-pressed{color:var(--i)}
 .cf-x:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 #cfSvg{flex:none;display:block;max-width:100%;height:auto}
+/* ---- the table under the chart ----
+   It takes what the chart, the head and the foot leave, and scrolls INSIDE
+   itself rather than pushing the foot off the screen: min-height:0, so a flex
+   item is allowed to be shorter than its own content.
+
+   FIXED TRACKS, so a column is the same width on every board and the figures
+   line up straight down the page whatever the numbers are. That alignment is
+   what the chart gave up half its height for, and a column that reflowed per
+   board would have spent it for nothing. The widths themselves are written
+   from JS (chartTable), because the narrowest phones cannot pay for the last
+   column and a <col> at width:0 still takes a share of the surplus.
+
+   11px is this screen's floor, headings included, which is why the PRICE
+   track is set by the word PRICE and not by "1,700". */
+.cf-tw{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+       padding:0 12px}
+.cf-tb{width:100%;table-layout:fixed;border-collapse:collapse}
+/* The two group words are the point of the table: what changed hands today,
+   and what was already standing there. They are set apart from the column
+   names — lighter, wider tracked, over a rule — so they read as one heading
+   over a pair of columns rather than as two more column names. */
+.cf-grp th{padding:3px 0 2px;font:700 11px/1.2 var(--sans);letter-spacing:.10em;
+           color:var(--i-faint);text-align:left;border-bottom:1px solid var(--s2)}
+.cf-grp th:first-child,.cf-grp th.c-pace{border-bottom:0}
+.cf-col th{padding:4px 0 5px;font:700 11px/1.2 var(--sans);letter-spacing:.08em;
+           color:var(--i-mute);text-align:right;white-space:nowrap}
+.cf-col th:first-child{text-align:left}
+/* tabular figures, restated AFTER the shorthand that resets them: a column of
+   counts whose digits are different widths does not line up, and lining up is
+   what the chart gave its height for (test_the_chart_keeps_its_tabular_figures
+   for where this was learned) */
+.cf-tb td{padding:3px 0;font:600 11px/1.3 var(--sans);
+          font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.cf-tb tbody tr{border-top:1px solid var(--s2)}
+/* the price is what a reader finds a row by, so it is the darkest ink */
+.cf-tb td.cf-px{text-align:left;font-weight:700;color:var(--i)}
+/* a price the chart above could not draw: the row is true, it is simply
+   outside the window the chart is scaled to. One shade says so, and saves the
+   reader hunting for a bar that was never going to be there. */
+.cf-tb tr.cf-off td.cf-px{font-weight:600;color:var(--i-mute)}
+.cf-put{color:var(--put-ink)} .cf-call{color:var(--call-ink)}
+/* The count and what traded there since the reading share a cell: the count
+   right against its own track, the since hanging after it in the grey the
+   chart uses for the same fact, so the counts still read straight down the
+   column and the since never pushes them out of line. */
+.cf-cell{display:flex;justify-content:flex-end;align-items:baseline;gap:3px}
+.cf-cell .n{min-width:32px;text-align:right}
+.cf-cell .s{min-width:33px;text-align:left;font-weight:500;color:var(--i-mute)}
+/* Three neutrals, no hue: the pile is the count it all happened against, the
+   multiple is what a reader runs an eye down, and the pace is a word beside
+   figures. Only the two count columns carry a side's colour, and they are
+   named in words above, so nothing here needs red told from green. */
+.cf-pile{color:var(--i-body)}
+.cf-turn{color:var(--i)}
+.cf-pace{color:var(--i-mute)}
+.cf-tb.no-pace .c-pace{display:none}
 .cf-foot{flex:none;padding:6px 16px calc(env(safe-area-inset-bottom) + 14px);
          font:400 12px/17px var(--sans);color:var(--i-mute)}
 .cf-foot .put{color:var(--put-ink);font-weight:700}
@@ -996,7 +1052,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     <p><b>Grey prices on the right</b> — round prices, for scale. The coloured ones name the lines.</p></div>
 
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="9" y="7" width="12" height="6"/><rect class="p-tradedcall" x="22" y="7" width="15" height="6"/></svg>
-    <p><b>The arrows beside “Price today”</b> — they open the chart full screen, at the size of the phone. Touching the chart itself opens nothing. The phone’s back gesture, or the close button, comes back here.</p></div>
+    <p><b>The arrows beside “Price today”</b> — they open the chart full screen, with every price the scan listed written out under the chart: what traded there today, and what was already sitting there. Touching the chart itself opens nothing. The phone’s back gesture, or the close button, comes back here.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><rect class="p-tradedput" x="4" y="7" width="13" height="6"/><rect class="p-tradedcall" x="18" y="7" width="9" height="6"/><circle cx="21" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
     <p><b>Hold a finger on the chart</b> — a magnifier opens above your finger and follows it, drawn again at two and a half times the size. Under it: the nearest price, its puts and calls traded today, and what traded there since the latest reading. Lift your finger to put it away.</p></div>
   <div class="hw"><svg viewBox="0 0 46 20" aria-hidden="true"><polyline class="p-path" points="0,15 7,10 14,13 21,5 28,9 35,4 42,8 46,6"/><line class="sc-at" x1="21" y1="0" x2="21" y2="20"/><circle class="sc-dot" cx="21" cy="5" r="3.4"/></svg>
@@ -1011,10 +1067,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <button class="sh-close" id="hwClose" type="button" data-sheet-close>Got it</button>
 </div>
 
-<!-- The chart, full screen: the same board redrawn at the screen's size
-     (paintChart), where the day's shape is big enough to read. It is a sheet,
-     so the phone's back gesture, the close control and Escape all close it the
-     one way sheet.js knows, and only one of the two can be open. -->
+<!-- The chart, full screen: the same board redrawn at a share of the screen
+     (paintChart), with every listed price written out under it (chartTable).
+     It is a sheet, so the phone's back gesture, the close control and Escape
+     all close it the one way sheet.js knows, and only one of the two can be
+     open. -->
 <div class="sheet full" id="chartFull" role="dialog" aria-modal="true" aria-hidden="true"
      aria-labelledby="cfTitle">
   <div class="cf-head" id="cfHead">
@@ -1023,6 +1080,26 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15"/></svg></button>
   </div>
   <svg id="cfSvg"></svg>
+  <!-- The figures, in price order, one column a fact (chartTable): every price
+       the scan listed, including the ones the chart above could not draw. The
+       column tracks are written from JS, because the narrowest phones cannot
+       pay for the last one. -->
+  <div class="cf-tw" id="cfScroll">
+    <table class="cf-tb" id="cfTable">
+      <colgroup id="cfCols"></colgroup>
+      <thead>
+        <tr class="cf-grp">
+          <th></th><th colspan="2">TRADED TODAY</th>
+          <th colspan="2">SITTING THERE</th><th class="c-pace"></th>
+        </tr>
+        <tr class="cf-col">
+          <th>PRICE</th><th>PUTS</th><th>CALLS</th><th>PILE</th>
+          <th>TURN</th><th class="c-pace">PACE</th>
+        </tr>
+      </thead>
+      <tbody id="cfBody"></tbody>
+    </table>
+  </div>
   <div class="cf-foot" id="cfFoot"></div>
 </div>
 

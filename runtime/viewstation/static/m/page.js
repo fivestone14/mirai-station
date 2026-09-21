@@ -187,6 +187,11 @@ function state(){
     openRange: ((((PAY.scene || {}).context || {}).ranges || {}).opening) || null,
     // what traded at each strike since the reading the card below shows
     since: tradedSince(PAY.since_read, READS, ((PAY.scene || {}).strikes) || null),
+    // the day the pile was struck at: the PRIOR SESSION's close, never "last
+    // night" — one session in five follows a weekend or a holiday
+    // (sndk_board's own note on oi_calls). Off the strikes payload, which is
+    // the document the rows themselves come from.
+    pileDate: ((((PAY.scene || {}).data_sources || {}).open_interest || {}).prior_session_date) || null,
   };
 }
 
@@ -997,9 +1002,9 @@ function paintLadder(st, T){
   }
 
   // what the caller cannot know until the chart is solved: whether there are
-  // bars at all, which is the one thing the full view's foot says that the
-  // chart itself does not
-  if(T) T.bars = !!traded;
+  // bars at all, and which prices got one — the full view's table marks the
+  // rows that did not, and its foot counts them
+  if(T){ T.bars = !!traded; T.barsAt = traded ? traded.bars.map(b => b.v) : []; }
   // WHAT A FINGER ON THE CHART READS (C3). Every number and every height here
   // was solved above; a gesture that worked any of it out again would be a
   // second chart, and the two would disagree on the day the rules changed.
@@ -1042,11 +1047,17 @@ $('howto').addEventListener('click', () => MiraiSheet.open($('howto')));
    screen. So the chart opens (ZOOM-SPEC.md 1 and 5), at the screen's size,
    where the day's shape is big enough to read.
 
-   IT GIVES UP MORE THAN HALF THAT ROOM (the owner's decision of 2026-09-20,
-   FULL2-SPEC.md 4): the chart takes FULL_CHART_SHARE of what the head and the
-   foot leave, and writes nothing on its bars. What it keeps is the shape —
-   which price has the long bar, which side of the zero it is on, where price
-   went — and the glance's one count with it.
+   IT GIVES UP MORE THAN HALF THAT ROOM TO A TABLE (the owner's decision of
+   2026-09-20, FULL2-SPEC.md 4): the chart takes FULL_CHART_SHARE of what the
+   head and the foot leave and writes nothing on its bars, and every price the
+   scan listed is written out under it instead. What the chart keeps is the
+   shape — which price has the long bar, which side of the zero it is on,
+   where price went — and the glance's one count with it.
+
+   THE TABLE IS WHAT THE CHART CANNOT DO. It does not care how close two
+   prices are, so the board with nine prices inside $40 reads exactly as the
+   open one does; it can list a price the chart's window leaves out; and it
+   has room to print a measured +0 where the chart could only leave a blank.
 
    IT IS A SHEET. sheet.js already knows every way a screen like this is
    closed and every way that goes wrong on a phone: one history entry, so the
@@ -1101,17 +1112,111 @@ function paintChart(){
     T.H = Math.max(FULL_MIN_H,
                    Math.round((screenH - boxH('cfHead') - was) * FULL_CHART_SHARE));
     paintLadder(st, T);
+    chartTable(st, T);
     $('cfFoot').innerHTML = chartFoot(st, T);
     if(boxH('cfFoot') === was) break;
   }
 }
 
+function cfEl(tag, cls, text){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text != null) e.textContent = text;      // textContent only: nothing here writes markup
+  return e;
+}
+
+function cfCount(cls, n, since){
+  // <td><span class="cf-cell"><span class="n cf-put">899</span>
+  //     <span class="s">+307</span></span></td>
+  // The count against its own track and the since after it on its own, so the
+  // counts read straight down the column whatever the since is. Two absences
+  // and neither is a nought: a side the scan did not measure gets an EMPTY
+  // cell, and a strike the reading never listed gets its count and no since.
+  // A measured +0 is printed — it is a real zero, and the only screen with
+  // the room to tell it from a blank.
+  const td = cfEl('td');
+  if(n == null) return td;
+  const cell = cfEl('span', 'cf-cell');
+  cell.appendChild(cfEl('span', 'n ' + cls, gUsd(n, 0).replace('$','')));
+  cell.appendChild(cfEl('span', 's', since == null ? '' : '+' + gUsd(since, 0).replace('$','')));
+  td.appendChild(cell);
+  return td;
+}
+
+function chartTable(st, T){
+  // EVERY PRICE THE SCAN LISTED, one row, highest first — the figures the
+  // chart above stopped writing on its bars (FULL2-SPEC.md 4). tableRows
+  // decides what each row says and what it cannot say; this places it.
+  //
+  // The chart is scaled to a window, so 3 or 4 of a board's prices usually
+  // fall outside it. Those rows are still here, their price a shade lighter
+  // and counted in the foot, because a price the scan listed is a fact and a
+  // missing row would read as one the scan never saw.
+  const rows = tableRows(st.strikes, st.since, (st.frames || {}).book_times);
+  T.rows = rows.length;
+  T.offChart = 0;
+  // which columns hold anything at all, so the foot names a column only where
+  // something was measured for it: the day's first books carry the pile and
+  // no counts, and a strike the reading never listed leaves no "+n" anywhere.
+  T.counted = rows.some(r => r.vp != null || r.vc != null);
+  T.sinced = rows.some(r => r.sp != null || r.sc != null);
+  T.piled = rows.some(r => r.pile != null);
+  // Under TABLE_NARROW the two count columns cannot both be paid for, so the
+  // pace column goes and the foot says so. The dropped column is REMOVED
+  // rather than hidden: a <col> at width:0 still takes a share of the
+  // surplus under table-layout:fixed, which left the counts 55px at 320
+  // instead of the 79 they are owed.
+  T.paced = T.W >= TABLE_NARROW;
+  $('cfScroll').hidden = !rows.length;
+  $('cfTable').classList.toggle('no-pace', !T.paced);
+  const col = px => { const c = cfEl('col'); if(px) c.style.width = px + 'px'; return c; };
+  const cols = [col(TABLE_PRICE), col(), col(), col(TABLE_PILE), col(TABLE_TURN)];
+  if(T.paced) cols.push(col(TABLE_PACE));
+  $('cfCols').replaceChildren(...cols);
+  const drawn = new Set(T.barsAt || []);
+  const out = [];
+  for(const r of rows){
+    const off = !drawn.has(r.v);
+    if(off) T.offChart++;
+    const tr = cfEl('tr', off ? 'cf-off' : null);
+    tr.appendChild(cfEl('td', 'cf-px', gUsd(r.v, 0).replace('$','')));
+    tr.appendChild(cfCount('cf-put', r.vp, r.sp));
+    tr.appendChild(cfCount('cf-call', r.vc, r.sc));
+    tr.appendChild(cfEl('td', 'cf-pile', r.pile == null ? null : gUsd(r.pile, 0).replace('$','')));
+    tr.appendChild(cfEl('td', 'cf-turn', gTimes(r.mult)));
+    if(T.paced) tr.appendChild(cfEl('td', 'cf-pace c-pace', r.word));
+    out.push(tr);
+  }
+  $('cfBody').replaceChildren(...out);
+}
+
 function chartFoot(st, T){
-  // What the full view says under the chart, and nothing the glance does not
-  // already say: which colour is which side. Nothing drawn, nothing said
-  // (law 1).
-  if(!T.bars) return '';
-  return '<span class="put">Puts</span> and <span class="call">calls</span> traded today at each price.';
+  // What the view says under its table: which colour is which side, what the
+  // small figure after a count is, and what the two columns under SITTING
+  // THERE hold. Every clause is left out rather than written empty (law 1) —
+  // no reading, no since; no price off the chart, nothing about one; and
+  // nothing drawn and nothing listed says nothing at all.
+  //
+  // THE PILE'S DATE IS PRINTED, never "last night": it is the prior SESSION's
+  // close, and one session in five follows a weekend or a holiday. A payload
+  // without the date says "the prior session's close", which is true and
+  // vaguer, rather than naming a day it does not know.
+  if(!T.rows) return '';
+  const since = T.sinced ? '; <b>+n</b> since the ' + etTime(st.since.at) + ' reading' : '';
+  const traded = T.counted
+    ? '<span class="put">Puts</span> and <span class="call">calls</span>'
+      + ' traded today at each price' + since + '.' : '';
+  const day = etDay(st.pileDate);
+  const pile = T.piled ? ' <b>PILE</b> was already sitting there at the '
+                       + (day || 'prior session’s') + ' close; <b>TURN</b> is how many times'
+                       + ' over it changed hands today.' : '';
+  // only where there ARE bars: with none drawn at all, a price without one is
+  // a price nothing was measured at, which the blank cells already say
+  const off = (T.bars && T.offChart)
+    ? ' ' + T.offChart + (T.offChart === 1 ? ' price has' : ' prices have')
+      + ' no bar: outside the chart’s range.' : '';
+  const narrow = T.paced ? '' : ' This screen is too narrow for the pace column.';
+  return (traded + pile + off + narrow).trim();
 }
 
 // THE CORNER CONTROL IN THE CARD'S HEAD OPENS IT, and nothing else does: a tap

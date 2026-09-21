@@ -499,6 +499,21 @@ function etTime(ms){
   return d.toLocaleTimeString('en-US', _ET_TIME);
 }
 
+const _MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function etDay(iso){
+  // A session's own date, "14 Sep", from the YYYY-MM-DD the builder stamps it
+  // with. Parsed rather than passed to Date: the string is already a market
+  // date and turning it into an instant would move it a day for a viewer west
+  // of New York. Anything that is not one of those dates is not a date, and
+  // nothing is said (law 1).
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso));
+  if(!m) return null;
+  const mon=Number(m[2]), day=Number(m[3]);
+  if(!(mon>=1&&mon<=12&&day>=1&&day<=31)) return null;
+  return day+' '+_MONTHS[mon-1];
+}
+
 function etToday(nowMs){
   // YYYY-MM-DD in New York, to compare against scene.clock.session_date — also
   // New York. Comparing it to the viewer's local date puts a Pacific reader on
@@ -1163,6 +1178,66 @@ function pace(series, bookTimes){
           word:a/b>=PACE_FAST ? 'faster' : a/b<=PACE_SLOW ? 'slower' : 'steady'};
 }
 
+/* ---- the chart full screen: every listed price, as a row --------------- */
+
+// The table under the chart (FULL2-SPEC.md 4): one row a price, one column a
+// fact. The chart is scaled to a window and drops what falls outside it, so a
+// price it could not draw is still a row here — the caller says which prices
+// got a bar and the row is marked, never dropped. The payload's rows are
+// ordered by their share of the window's contracts rather than by price
+// (sndk_board), so they are sorted here, highest first, the way the chart
+// above runs.
+//
+// HONEST-ABSENT, four separate ways, because on a screen that is figures alone
+// a blank is read as a zero faster than anywhere else (law 1):
+//   - a side the scan did not measure: no count. The day's first books carry
+//     open interest and no volume columns at all.
+//   - a strike the latest reading did not list, or no reading yet: no since
+//     figure. A measured 0 IS printed, which the chart never had the room to
+//     do — it tested s > 0, so a real zero and an unmeasured strike looked the
+//     same there.
+//   - a strike with only one side of the pile counted: no pile AND no
+//     multiple. turnover() alone sums the missing side as 0, which would print
+//     a pile that is not the pile under a multiple built on the same half
+//     count. Stricter than the ladder's card, deliberately.
+//   - a series too short, too still or too new to carry a pace word: no word.
+// The word is `small pile` wherever the pile is under THIN_PILE, which is the
+// rule the ladder's rows already follow: under 500 standing, the multiple
+// reports the smallness of the pile rather than the size of the day.
+function tableRows(strikes, since, bookTimes){
+  // -> [{v, vp, vc, sp, sc, pile, mult, word}], highest price first
+  const out=[];
+  for(const r of (((strikes||{}).rows)||[])){
+    const v=_fin(r&&r.strike);
+    if(v==null) continue;
+    const d=since ? since.by[v] : null;
+    const t=(_fin(r.oi_calls)!=null&&_fin(r.oi_puts)!=null) ? turnover(r) : null;
+    const p=pace(r.vol_added_per_book, bookTimes);
+    out.push({v, vp:_fin(r.vol_puts), vc:_fin(r.vol_calls),
+              sp:d ? d[1] : null, sc:d ? d[0] : null,
+              pile:t ? t.pile : null, mult:t ? t.mult : null,
+              word:(t&&t.pile<THIN_PILE) ? 'small pile' : (p ? p.word : null)});
+  }
+  return out.sort((a, b)=>b.v-a.v);
+}
+
+// THE COLUMN TRACKS, in px, measured in WebKit with the shipped face
+// (FULL2-SPEC.md 4.2). Nothing on this screen is set under 11px, the headings
+// included, which is why PRICE is set by its own word and not by "1,700": the
+// cells want 30.1 and the heading 36.9. PILE and TURN are set by neither their
+// cells nor their headings but by the group word over the pair — "SITTING
+// THERE" is 92.9 at 11/700 with .10em tracking — so 50 + 48 rather than the
+// 34 + 38 their contents need. A count column has to hold "2,704" (31.3), a
+// 3px gap and "+1,777" (32.4).
+const TABLE_PRICE=40, TABLE_PILE=50, TABLE_TURN=48, TABLE_PACE=52,
+      TABLE_COUNT=67, TABLE_PAD=12;
+
+// The fixed tracks, the two count columns and the gutters come to 348px. Under
+// that the last column cannot be paid for, and PACE is the one dropped: it is
+// the only column carrying a word rather than a count, and the foot says it
+// has gone. (The 320px phone is the case; the owner's 360 keeps it.)
+const TABLE_NARROW=2*TABLE_PAD+TABLE_PRICE+TABLE_PILE+TABLE_TURN+TABLE_PACE+2*TABLE_COUNT;
+
 /* ---- where the activity is, as a map around price ---------------------- */
 
 function activityRows(day, price, show, strikes, bookTimes){
@@ -1369,7 +1444,7 @@ function halfHour(scene, rec){
 if(typeof module!=='undefined'&&module.exports){
   module.exports={gUsd, gMinutes, gTimes, wallPassed, priorClose,
                   bookAge, shownPrice, dayChange,
-                  etTime, etToday,
+                  etTime, etDay, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,
                   layoutLabels, figW, axisStep, priceTicks,
                   barPoints, tapePoints, livePoint, modelRead,
@@ -1382,5 +1457,7 @@ if(typeof module!=='undefined'&&module.exports){
                   LENS_ZOOM, LENS_W, LENS_H, LENS_H_MIN, LENS_LIFT, LENS_EDGE, LENS_DOT,
                   lensBox, barAt, volumeBlockAt, chartAt, SCRUB_GAP_MIN, priceAt,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,
+                  tableRows, TABLE_PRICE, TABLE_PILE, TABLE_TURN, TABLE_PACE,
+                  TABLE_COUNT, TABLE_PAD, TABLE_NARROW,
                   GRID_TRACK_MIN, activityGrid, halfHour};
 }

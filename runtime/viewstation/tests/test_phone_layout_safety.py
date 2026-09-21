@@ -742,6 +742,68 @@ def test_the_chart_full_screen_is_a_sheet_that_takes_the_whole_screen():
     assert "env(safe-area-inset-top)" in _rule(".cf-head")
 
 
+def test_the_table_under_the_chart_scrolls_rather_than_pushing_the_foot_off():
+    """The view is a fixed column — head, chart, table, foot — and the table is
+    the one part that can be taller than the room. It is the only flexible item
+    in it, and min-height:0 is what lets a flex item be SHORTER than its own
+    content: without it the table would grow to its rows and push the foot off
+    the bottom of the screen (FULL2-SPEC.md 4.4, where the 09-17 board lists 15
+    prices and 14 fit).
+
+    overscroll-behavior:contain, because the sheet behind it scrolls too and a
+    flick that runs out of table would otherwise start moving the sheet."""
+    tw = _rule(".cf-tw").replace(" ", "")
+    assert "flex:11auto" in tw, "the table cannot take the room the chart left"
+    assert "min-height:0" in tw, "the table cannot be shorter than its rows, so the foot goes"
+    assert "overflow-y:auto" in tw and "overscroll-behavior:contain" in tw, tw
+    # and everything above and below it is fixed, or the room is not the
+    # table's to take
+    for sel in (".cf-head", "#cfSvg", ".cf-foot"):
+        assert "flex:none" in _rule(sel).replace(" ", ""), sel
+
+
+def test_the_tables_columns_are_the_same_width_on_every_board():
+    """A column that reflowed per board would give up half the chart's height
+    for nothing: the figures line up down the page or they do not. So the
+    table is table-layout:fixed with its tracks written from JS, and the cells
+    restate tabular figures after the font shorthand that resets them — the
+    2026-09-09 hazard, on the one screen that is a column of counts.
+
+    The gutter is the one number in this layout the stylesheet and glance.js
+    both have to know: the tracks are fitted into the width less two of them
+    (TABLE_NARROW), so the two are held equal here."""
+    tb = _rule(".cf-tb").replace(" ", "")
+    assert "table-layout:fixed" in tb and "border-collapse:collapse" in tb, tb
+    td = _rule(".cf-tb td")
+    assert td is not None
+    decls = [d for d in _flat_rules("x{" + td + "}")[0][1]]
+    fonts = [i for i, d in enumerate(decls) if d.startswith("font:")]
+    assert fonts and "font-variant-numeric:tabular-nums" in decls[fonts[-1] + 1:], \
+        "the table's figures are proportional, so its columns do not line up"
+    pad = re.search(r"padding:0 (\d+)px", _rule(".cf-tw"))
+    assert pad and int(pad.group(1)) == int(re.search(r"TABLE_PAD=(\d+)", GLANCE).group(1)), \
+        "the stylesheet's gutter and the width the tracks are fitted into disagree"
+
+
+def test_no_text_in_the_full_screen_view_is_under_11px():
+    """11px is this phone's floor and the full screen view keeps it on its
+    table too, headings included — which is why the PRICE track is set by the
+    word PRICE and not by "1,700" (FULL2-SPEC.md 4.2). Held on every rule the
+    view sets a size in, so the next column cannot come in under it."""
+    sized = {}
+    for sel, decls in _flat_rules(_css_code(PHONE)):
+        if not any(part.strip().startswith(".cf-") for part in sel.split(",")):
+            continue
+        for d in decls:
+            m = re.match(r"(?:font:(?:[^;]*?\s)?|font-size:)([\d.]+)px", d)
+            if m:
+                sized[sel] = float(m.group(1))
+    for need in (".cf-t", ".cf-when", ".cf-foot", ".cf-grp th", ".cf-col th", ".cf-tb td"):
+        assert need in sized, f"{need} no longer sets its own size; this proves nothing"
+    small = {sel: px for sel, px in sized.items() if px < 11}
+    assert not small, f"text under 11px in the full screen view: {small}"
+
+
 # --- the masthead's first row (2026-09-18) -----------------------------------
 # Measured in WebKit off the shipped face on the real stylesheet: each box as
 # the browser lays it out, the ticker and the expiry with their trailing
