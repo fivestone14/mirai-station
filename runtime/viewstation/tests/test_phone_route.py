@@ -2384,27 +2384,52 @@ def _full(net):
               table: els.cfTable.className, listed: els.cfScroll.hidden};""")
 
 
-def test_the_chart_full_screen_writes_nothing_on_its_bars():
+def test_the_chart_full_screen_writes_no_figure_the_table_below_writes():
     """Every bar carried its own puts and calls past its ends, with what traded
     there since the reading after each, and that was the view's whole point
     until the owner chose design B on 2026-09-20 (FULL2-SPEC.md 4). The figures
     go under the chart instead, where a column of them can be read down; the
-    chart keeps the shape.
+    chart keeps the shape. Nothing that wrote a number on a bar is left
+    anywhere: no helper, no ink, no rule in the stylesheet.
 
-    So the glance's one count on the longest bar COMES BACK here — it was
-    dropped only because it would have been a second name for a number already
-    written — and the two views print the same one: 3,861 puts at 1,500 on the
-    15:10:21 board of 2026-09-16. Nothing that wrote a number on a bar is left
-    anywhere: no helper, no ink, no rule in the stylesheet."""
+    THE GLANCE'S ONE COUNT GOES WITH THEM, by the owner's decision of
+    2026-09-20 off the look review. It exists because the glance has room for
+    one number and every other length is read against it; full screen the
+    table prints all of them, so it was a second name for a figure three
+    inches below it — "1,679 PUTS" at 1,500 on the 10:39 board of 2026-09-15,
+    with the put wall's dashed rule through it. The glance keeps it, which is
+    where the owner's decision of 2026-09-18 put it.
+
+    THE TWO SIDE NAMES COME BACK. They were drawn inside the bar-figure block
+    and went off with it, and they are not part of it: they are the chart's
+    only key to which side of the zero is puts, and the only key to the
+    hatched fill, which is the only channel that survives without colour — the
+    two inks are 1.003:1 apart in lightness and the identical grey #5E5E5E in
+    greyscale. Full screen only: the glance has no room for a row of its own
+    and its key is one tap from the page it sits on, which this view is not."""
     got = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
     assert got["open"] == "false" and got["W"] == 360
-    for gone in ("p-barnum", "p-barsince", "p-colhead"):
+    for gone in ("p-barnum", "p-barsince"):
         assert gone not in got["cf"] and gone not in got["glance"], gone
         assert "." + gone not in PHONE, gone
     for gone in ("barNumbers", "FULL_NUM_PITCH", "T.numbers", "T.numbered"):
         assert gone not in GLANCE + PAGE, gone
-    assert [t for _, _, t in _traded(got["cf"])[2]] == ["3,861 PUTS"]
+    assert [t for _, _, t in _traded(got["cf"])[2]] == [], "the count is a second name for a cell"
     assert [t for _, _, t in _traded(got["glance"])[2]] == ["3,861 PUTS"]
+    # the longest side the count named is in the table, where it is now read
+    assert ["3,861", "+861"] in [r[1] for r in got["rows"]]
+    heads = lambda s: re.findall(r'<text class="p-colhead"[^>]*y="([\d.-]+)"[^>]*>([^<]*)</text>', s)
+    assert [w for _, w in heads(got["cf"])] == ["PUTS", "CALLS"], heads(got["cf"])
+    assert heads(got["glance"]) == [], "the glance grew a row it has no room for"
+    # and the row they stand in is reserved on the same condition they are
+    # drawn on, or the svg clips them: an 11px cap has to fit above the
+    # baseline. Restoring the words without the room drew them at y 61.58 in
+    # an svg whose top is 70 and took 8.4px of a 13.9px cap.
+    assert all(float(y) >= 11 for y, _ in heads(got["cf"])), heads(got["cf"])
+    # with no bars there is no side to name, and the row is still reserved
+    bare = json.loads(json.dumps(_SCENE_0916))
+    bare["strikes"] = {"rows": [dict(r, vol_calls=None, vol_puts=None) for r in bare["strikes"]["rows"]]}
+    assert heads(_full(_board(bare))["cf"]) == []
 
 
 def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
@@ -2417,8 +2442,11 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
 
     The share is FULL_CHART_SHARE of what the head and the foot leave, by the
     owner's decision of 2026-09-20 (FULL2-SPEC.md 4.4): 358px of the harness's
-    780 rather than all 779 of it, and still a third more plot than the card
-    can give.
+    780 rather than all 779 of it, and still a quarter more plot than the card
+    can give — 291px against the glance's 228, after the 16px row the two side
+    names stand in (307 before it was reserved). The bound is close to what is
+    measured on purpose: the next thing taken off the top of this chart should
+    be a decision, not a side effect.
 
     The glance underneath is untouched — a reader who never opens it has lost
     nothing — and the view is redrawn on the quote tick, so it cannot go on
@@ -2433,7 +2461,7 @@ def test_the_chart_full_screen_gives_the_bars_the_room_the_card_has_not():
     share = float(re.search(r"FULL_CHART_SHARE = ([\d.]+)", PAGE).group(1))
     assert 0 < share < 1 and got["H"] == round(780 * share) - 1, \
         "the chart is not its share of the screen less its head and foot"
-    assert full["plot_h"] > 1.3 * glance["plot_h"], (full, glance)
+    assert full["plot_h"] > 1.25 * glance["plot_h"], (full, glance)
     gp, fp = _traded(got["glance"])[0], _traded(got["cf"])[0]
     assert [round(p["h"], 2) for p in gp] == [8.0] * 7 and [round(p["h"], 2) for p in fp] == [14.0] * 7
     assert len(gp) == len(fp) == 7

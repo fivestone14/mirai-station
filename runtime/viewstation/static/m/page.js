@@ -560,7 +560,12 @@ function paintLadder(st, T){
   const offsets = rows => rows.reduce((at, l, i) => at.concat(i ? at[i-1] + pitch(rows[i-1], l) : 0), []);
   const aboveAt = offsets(above), belowAt = offsets(below);
   const stackH = at => at.length ? 13 + at[at.length - 1] : 0;
-  const PAD_T = 9 + stackH(aboveAt), PAD_B = 29 + stackH(belowAt);
+  // full screen: a row above the plot for the two side names, which the glance
+  // has no room for and does not need — its key is one tap away. Reserved on
+  // exactly the condition they are drawn on, or the svg clips them: without
+  // this the words drew at y 61.58 in an svg whose top is 70 and 8.4px of a
+  // 13.9px cap went.
+  const PAD_T = 9 + stackH(aboveAt) + (T ? 16 : 0), PAD_B = 29 + stackH(belowAt);
   const RIB_B = SVGH - 19, RIB_T = RIB_B - 10;   // the volume ribbon's own band
   const plotTop = PAD_T, plotBottom = SVGH - PAD_B, plotH = plotBottom - plotTop;
   const k = plotH / span;
@@ -788,6 +793,23 @@ function paintLadder(st, T){
     }
   }
 
+  // ---- full screen: which side of the zero is which ------------------------
+  // The two side names, once, over the two sides of the zero. They are the
+  // chart's ONLY key to the hatched fill, and the hatch is the only channel
+  // that carries the split without colour: the put and call inks were built to
+  // the same lightness, 0.1122 and 0.1126, so they are 1.003:1 apart and come
+  // out the identical grey #5E5E5E in greyscale and under both dichromat
+  // simulations. They went off with the bar figures on 2026-09-20 because they
+  // were drawn inside that block; they were never part of it.
+  //
+  // Full screen only, and above the plot rather than in it: the glance has no
+  // room for a row of its own, and its key is one tap away from the page the
+  // glance is on, which this view is not.
+  if(T && traded)
+    o += '<text class="p-colhead" x="' + n1(ZERO - 4) + '" y="' + n1(plotTop - 6)
+       + '" text-anchor="end">PUTS</text>'
+       + '<text class="p-colhead" x="' + n1(ZERO + 4) + '" y="' + n1(plotTop - 6) + '">CALLS</text>';
+
   // ---- the count on the longest bar ---------------------------------------
   // The bars' one number, "3,861 PUTS": the longest single side in view and
   // which side it is, the whole day's, in the grey family, where the
@@ -798,8 +820,15 @@ function paintLadder(st, T){
   // that would put it on the live dot's ring or off the plot; the brackets'
   // word below may move it. The busiest strike is usually one the chart
   // already rules, so the count's card halo cuts that rule for its width.
+  //
+  // THE GLANCE'S, and not the full view's: it exists because the glance has
+  // room for one number and every other length is read against it. Full
+  // screen the table below prints every one of them, so it was a second name
+  // for a figure already on the screen — 1,679 at 1,500 on 2026-09-15 10:39,
+  // in the row the reader is looking at, with the put wall's dashed rule
+  // through it.
   let count = null;
-  if(traded){
+  if(traded && !T){
     const {b, n, call} = traded.lead;
     // Centred on its bar: the figures' ink runs 8px above the baseline and a
     // comma 2.2 below it, so the baseline sits 0.36em under the bar's middle.

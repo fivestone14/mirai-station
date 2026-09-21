@@ -367,6 +367,13 @@ body.failed > *:not(.fail):not(.tabs){display:none}
    brackets' word is just now, so it is set in their black. */
 .p-tradednum{font:600 11px/1 var(--sans);font-variant-numeric:tabular-nums;text-anchor:end;fill:var(--i-mute);
              paint-order:stroke;stroke:var(--s);stroke-width:3;stroke-linejoin:round}
+/* FULL SCREEN ONLY: the two side names, once, over the two sides of the zero.
+   Set in the faint neutral, because they name the sides rather than being
+   either one — a PUTS in the put ink would be a third mark in that red — and
+   tracked like the table's own headings below, which they are the chart's
+   version of. */
+.p-colhead{font:700 11px/1 var(--sans);font-variant-numeric:tabular-nums;
+           letter-spacing:.12em;fill:var(--i-faint)}
 /* Where trading just picked up: corners round the area, a tab in the gutter, a
    word. --i, the darkest neutral, because every hue already means a side, the
    magnet or the price and change has none: 15.60:1 on the card. The word is
