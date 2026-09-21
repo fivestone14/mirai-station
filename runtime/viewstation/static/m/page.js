@@ -1038,18 +1038,28 @@ function paintLadder(st, T){
   // was solved above; a gesture that worked any of it out again would be a
   // second chart, and the two would disagree on the day the rules changed.
   // The glance's goes in CHART, so the lens magnifies what was drawn and the
-  // sideways read reads the line that was drawn.
+  // sideways read reads the line that was drawn. The full screen view reads
+  // its own drawing the same way, so its geometry is handed back on T rather
+  // than thrown away — T.bars and T.barsAt already travel out this way. Only
+  // the GLANCE's goes in the global, because only the glance's is magnified.
   const geo = {W:CW, H:SVGH, plotL:PLOT_L, plotR:PLOT_R, pathR:PATH_R, top:plotTop, bottom:plotBottom,
                ribB:RIB_B, t0, t1, since:st.since, bh:traded ? traded.h : 0,
                bars: traded ? traded.bars.map(b => ({v:b.v, y:b.y, vc:b.vc, vp:b.vp, x0:barX(b), x1:barXR(b)})) : [],
                pts: pts.map(q => ({t:q.t, s:q.s, x:xFor(q.t), y:yFor(q.s)})),
                live: (!st.withdrawn && inWin(ref)) ? {v:ref, x:dotX, y:priceY, t:lp ? lp.t : tapeEnd} : null,
                vol: st.vol.map(b => ({t0:b.t0, t1:b.t1, sum:b.sum, x0:xFor(b.t0), x1:xFor(b.t1)}))};
-  if(!T) CHART = geo;
+  if(T) T.geo = geo; else CHART = geo;
   // The lens is a <use> of this drawing, so the drawing needs a name. Only the
   // glance's takes it: two elements with one id in a document would have the
   // lens magnifying whichever the browser found first.
-  svg.innerHTML = T ? o : '<g id="ldg">' + o + '</g>';
+  //
+  // THE MARKS A SIDEWAYS DRAG DRAWS GO INSIDE THE DRAWING, in a layer of its
+  // own at the end so they sit over it. The glance cannot do that — its
+  // drawing is wrapped for the lens to <use>, and a <use> would magnify the
+  // marks with it — so the glance keeps a second <svg> over the top, and its
+  // id is the one thing the two do differently. Written empty on every paint,
+  // which is what puts a stale reading away when a tick redraws the board.
+  svg.innerHTML = T ? o + '<g id="' + T.id + 'Marks"></g>' : '<g id="ldg">' + o + '</g>';
 }
 
 function _lvlWall(e, side, nearest){
@@ -1110,10 +1120,35 @@ $('howto').addEventListener('click', () => MiraiSheet.open($('howto')));
 // short is a chart that says so (the ladder's own guard).
 const FULL_H_MAX = 14, FULL_SIDE = 0.25, FULL_ZERO = 0.55, FULL_MIN_H = 240;
 
-// The chart's share of the screen the head and the foot leave (FULL2-SPEC.md
-// 4.4). At 360x780 that is 70 of head and 88 of foot, so 622 to divide: 286 of
-// chart, against the 655 it took while it carried the figures itself.
-const FULL_CHART_SHARE = 0.46;
+// THE CHART AND THE TABLE SPLIT THE SCREEN THE HEAD AND THE FOOT LEAVE, half
+// each (FULL2-SPEC.md 4.4, raised from 0.46 on 2026-09-20 at the owner's ask
+// for a chart "increased in size slightly").
+//
+// MEASURED, on all 514 boards of 09-15..17 at the owner's 360x780. The head is
+// 70px on every one of them; the foot is a paragraph and is not — 139px on 413
+// of the 514, 122 on 66, 105 on 25, 20 on the day's first 10. So the common
+// board has 571px to divide, and the share decides the chart to the pixel: 262
+// at 0.46, 285 at 0.50.
+//
+// WHAT IT COSTS IS COUNTED IN ROWS, because that is the only unit the table
+// spends in: a row is 21px, flat, on every board. The table's box loses the 23
+// the chart gains, and 23 is one row and the change from it — 12 rows fit
+// today (on 417 of the 514), 11 fit at 0.50, and 14.5px of the 12th stay in
+// view to say the board has not ended. It takes from a table that was already
+// scrolling: 77% of boards list more prices than fit, and 51% list 15 or more.
+//
+// WHAT IT BUYS is bar thickness, which is a HEIGHT and so the only thing a
+// taller chart can move (a length is a width, set by the phone — glance.js).
+// Across those boards the median bar goes 8.80px to 9.60 and the thinnest bar
+// on any board 4.40 to 4.90, and the price line's own rise and fall grows from
+// 104px to 115. Not a knee, a straight line: the chart takes what the table
+// can spare, and one row is what "slightly" is worth.
+const FULL_CHART_SHARE = 0.50;
+
+// The full screen chart's geometry, the way CHART is the glance's: what
+// paintLadder solved, so a finger reads the drawing that is on the screen
+// rather than working the chart out a second time.
+let CHART_FULL = null;
 
 function chartIsOpen(){ return $('chartFull').getAttribute('aria-hidden') === 'false'; }
 
@@ -1152,6 +1187,9 @@ function paintChart(){
     $('cfFoot').innerHTML = chartFoot(st, T);
     if(boxH('cfFoot') === was) break;
   }
+  // the LAST pass's, which is the one on the screen: the first pass was drawn
+  // to a foot height the foot then disagreed with
+  CHART_FULL = T.geo || null;
 }
 
 function cfEl(tag, cls, text){
@@ -1394,14 +1432,18 @@ function shellTick(){
   catch(err){ /* a phone that will not buzz must not break the gesture */ }
 }
 
-function chartPoint(cx, cy){
-  // A point on the screen as a point on the chart's own drawing. The svg is
+function chartPoint(svg, geo, cx, cy){
+  // A point on the screen as a point on a chart's own drawing. The svg is
   // drawn at the width it measured, so the two are the same size — unless
   // max-width has shrunk it, and then everything here scales by the same
   // ratio. Kept inside the chart, so a finger over the card's padding reads
   // the nearest edge of it rather than nothing.
-  const r = $('svg').getBoundingClientRect();
-  const k = (CHART && r.width) ? CHART.W / r.width : 1;
+  //
+  // WHICH CHART IS ASKED FOR, because there are two on this page and they are
+  // different sizes: passing the drawing and the geometry together is what
+  // stops a point on one being read against the other's numbers.
+  const r = svg.getBoundingClientRect();
+  const k = (geo && r.width) ? geo.W / r.width : 1;
   return {x: Math.min(Math.max(cx - r.left, 0), r.width) * k,
           y: Math.min(Math.max(cy - r.top, 0), r.height) * k};
 }
@@ -1413,7 +1455,7 @@ function lensShow(cx, cy){
   // stripe, rule and letter in it at LENS_ZOOM times its size, as crisp as the
   // chart itself. A quote tick that repaints the chart repaints this with it.
   if(!CHART) return;
-  const p = chartPoint(cx, cy), at = chartAt(CHART, p.x, p.y);
+  const p = chartPoint($('svg'), CHART, cx, cy), at = chartAt(CHART, p.x, p.y);
   const read = $('lensRead');
   read.innerHTML = lensWords(at);
   $('lens').classList.add('on');               // measured while shown, or the readout has no height
@@ -1471,29 +1513,31 @@ function lensWords(at){
 
 function lensHide(){ $('lens').classList.remove('on'); }
 
-function scrubShow(cx){
+function scrubDraw(geo, marks, row, x){
   // A sideways drag reads the price LINE, which is the one mark on this chart
-  // that is a time of day. The reading goes in the card's head row, a fixed
-  // place the finger is never on, and the marks on the chart are a line at the
-  // finger's minute, a dot on the price there and an outline round the
-  // five-minute block of shares it falls in.
+  // that is a time of day. The reading goes in a fixed row the finger is never
+  // on, and the marks on the chart are a line at the finger's minute, a dot on
+  // the price there and an outline round the five-minute block of shares it
+  // falls in.
   //
   // NO LINE ACROSS THE CHART AT THAT PRICE. A rule at a price that is not a
   // level reads as a target, which is the one thing nothing here may imply
   // (ZOOM-RESEARCH.md 3.6); the dot says where on the line the finger is and
   // the head row says the number.
-  if(!CHART) return;
-  const a = priceAt(CHART, chartPoint(cx, 0).x);
-  if(!a){ scrubHide(); return; }
-  const marks = $('scrubMarks');
-  marks.setAttribute('width', CHART.W);
-  marks.setAttribute('height', CHART.H);
-  marks.setAttribute('viewBox', '0 0 ' + CHART.W + ' ' + CHART.H);
-  const block = volumeBlockAt(CHART.vol, a.x);
+  //
+  // ONE WRITER FOR BOTH CHARTS, because both are the same board: a second copy
+  // of this is two screens that can come to disagree about one minute. It is
+  // told which geometry, which marks layer and which row, and it puts the
+  // marks in that chart's OWN coordinates — the caller has already given the
+  // layer its box, or it is inside the drawing and has one. -> false where
+  // there was nothing to read.
+  const a = priceAt(geo, x);
+  if(!a) return false;
+  const block = volumeBlockAt(geo.vol, a.x);
   marks.innerHTML =
-    '<line class="sc-at" x1="' + n1(a.x) + '" y1="' + CHART.top + '" x2="' + n1(a.x)
-    + '" y2="' + CHART.ribB + '"/>'
-    + (block ? '<rect class="sc-blk" x="' + n1(block.x0 - 1) + '" y="' + (CHART.ribB - 12)
+    '<line class="sc-at" x1="' + n1(a.x) + '" y1="' + geo.top + '" x2="' + n1(a.x)
+    + '" y2="' + geo.ribB + '"/>'
+    + (block ? '<rect class="sc-blk" x="' + n1(block.x0 - 1) + '" y="' + (geo.ribB - 12)
              + '" width="' + n1(block.x1 - block.x0 + 1) + '" height="13" rx="1.5"/>' : '')
     + (a.y != null ? '<circle class="sc-dot" cx="' + n1(a.x) + '" cy="' + n1(a.y) + '" r="4.2"/>' : '');
   const left = a.kind === 'gap'
@@ -1507,19 +1551,130 @@ function scrubShow(cx){
   // widths, because it is already on the page and already laid out.
   const shares = block ? gUsd(block.sum, 0).replace('$', '') + ' shares' : '';
   const when = block ? ' ' + etTime(block.t0) + '–' + etTime(block.t1 + 60000) : '';
-  const row = $('scrubRead');
   const write = right => { row.innerHTML = '<span>' + left + '</span><span class="r">' + right + '</span>'; };
+  // SHOWN BEFORE IT IS MEASURED. A row still display:none has no width at all,
+  // so the comparison below was 0 > 0 on the FIRST reading of every touch and
+  // the clock was kept whatever it cost: at 09:30 on 2026-09-17 the row ran
+  // 40.6px past its own box at 320 and onto the close control at 360.
+  row.classList.add('on');
   write(shares + when);
   if(when && row.scrollWidth > row.clientWidth) write(shares);
-  marks.classList.add('on'); row.classList.add('on');
+  return true;
+}
+
+function scrubShow(cx){
+  // THE GLANCE'S. Its marks are a second <svg> over the chart rather than a
+  // layer inside it, so it is the one that has to say how big that svg is
+  // before anything is drawn into it.
+  if(!CHART) return;
+  const marks = $('scrubMarks');
+  marks.setAttribute('width', CHART.W);
+  marks.setAttribute('height', CHART.H);
+  marks.setAttribute('viewBox', '0 0 ' + CHART.W + ' ' + CHART.H);
+  if(!scrubDraw(CHART, marks, $('scrubRead'), chartPoint($('svg'), CHART, cx, 0).x)) scrubHide();
+  else marks.classList.add('on');
 }
 
 function scrubHide(){ $('scrubMarks').classList.remove('on'); $('scrubRead').classList.remove('on'); }
+
+/* ---- C4. a finger on the chart, full screen -----------------------------
+
+   ONE GESTURE ON THIS SCREEN, and it is the sideways read (the owner's ask of
+   2026-09-20). A hold is not offered: the lens is the glance's answer to a
+   chart too small to read, and this is that chart drawn bigger — magnifying it
+   would be answering a question this screen exists to have already answered.
+   So the verdict comes from dragKind, which has no clock in it, and a reader
+   who rests a moment before dragging still gets the read.
+
+   WHAT THE TABLE KEEPS. The listeners are on the chart's own <svg>, which is
+   flex:none and so is exactly the band the chart is drawn in: a touch that
+   lands on the table belongs to the table and scrolls it, and a touch that
+   lands on the chart is this. There is no seam to arbitrate, because the two
+   never both see one touch — and a drag that begins on the chart and wanders
+   down over the table keeps reading the chart, which is right, since the
+   reading only ever depended on how far ACROSS the finger is.
+
+   UP AND DOWN IS NOT TAKEN. #cfSvg is touch-action:pan-y and dragKind calls a
+   vertical drag 'scroll', so nothing here ever preventDefaults one: the sheet
+   scrolls if a longer-than-measured foot has given it something to scroll, and
+   nothing moves if it has not. A chart that cannot scroll says so by not
+   moving, which is the honest answer, and the table is never scrolled by a
+   finger that is not on it.
+
+   NOTHING IS SAID TO THE SHELL, and MiraiSheet.pin is not called. The glance
+   has to tell the shell a finger is down, or its SwipeRefreshLayout takes the
+   drag and reloads the page; here sheet.js has already told it the page is not
+   at the top for as long as a sheet is open, in the one line it keeps for that.
+   A second claim on the same bridge would only be a second thing that believes
+   it is the only one.
+
+   THE PHONE'S BACK IS THE EDGES', and it is decided in native code before this
+   sees anything. A sideways drag begun within Android's own edge strip — some
+   20dp each side — is Back, and Back closes this view, which is one of the
+   three ways out it already has. The cost is that a read cannot be STARTED in
+   those strips; begun anywhere inboard it reads all the way out to them,
+   because the finger's place across the chart is clamped into the plot
+   (chartPoint, priceAt). The glance escapes this by arming on a 250ms hold,
+   which stock Android abandons its Back swipe for; a screen whose one gesture
+   is movement cannot buy the same exemption without a bridge method the shell
+   has not got. */
+let CF_TOUCH = null;
+
+function cfTouch(e){
+  // One finger only, as on the glance: a gesture steered by two is no gesture.
+  if(e.touches.length !== 1){ cfOver(); return; }
+  const t = e.touches[0];
+  CF_TOUCH = {x0:t.clientX, y0:t.clientY, x:t.clientX, kind:'wait'};
+}
+
+function cfMove(e){
+  if(!CF_TOUCH || !e.touches.length) return;
+  const t = e.touches[0];
+  CF_TOUCH.x = t.clientX;
+  if(CF_TOUCH.kind === 'wait'){
+    // the verdict is reached once and never revisited, so a scroll is never
+    // taken back off the screen half way through
+    const kind = dragKind(t.clientX - CF_TOUCH.x0, t.clientY - CF_TOUCH.y0);
+    if(kind === 'wait') return;
+    CF_TOUCH.kind = kind;
+    if(kind === 'scroll') return;
+  }
+  if(CF_TOUCH.kind !== 'read') return;
+  e.preventDefault();
+  cfScrubShow(CF_TOUCH.x);
+}
+
+function cfOver(){
+  // The lift and the cancel are one ending, as they are on the glance: a lift
+  // leaves nothing behind it to act on, and a finger taken away by the system
+  // must not leave a reading standing on the screen.
+  CF_TOUCH = null;
+  cfScrubHide();
+}
+
+function cfScrubShow(cx){
+  if(!CHART_FULL) return;
+  const marks = $('cfMarks');
+  if(!marks) return;                          // between paints there is no layer
+  if(!scrubDraw(CHART_FULL, marks, $('cfRead'),
+                chartPoint($('cfSvg'), CHART_FULL, cx, 0).x)) cfScrubHide();
+}
+
+function cfScrubHide(){
+  const marks = $('cfMarks');
+  if(marks) marks.innerHTML = '';
+  $('cfRead').classList.remove('on');
+}
 
 function chartRepainted(){
   // A tick repaints the chart under an open lens or reading. The numbers
   // beside it are read from the board too, so they are read again from the new
   // one: a readout that keeps the old counts beside the new drawing lies.
+  //
+  // The full view's marks layer is written empty by the repaint itself, so a
+  // finger that is NOT on it needs nothing done: there is no reading left to
+  // be stale. One that is gets the new board's.
+  if(CF_TOUCH && CF_TOUCH.kind === 'read') cfScrubShow(CF_TOUCH.x);
   if(!TOUCH) return;
   if(TOUCH.kind === 'hold') lensShow(TOUCH.x, TOUCH.y);
   else if(TOUCH.kind === 'read') scrubShow(TOUCH.x);
@@ -1539,6 +1694,17 @@ $('ladder').addEventListener('touchmove', chartMove, {passive: false});
 $('ladder').addEventListener('touchend', chartOver, {passive: true});
 $('ladder').addEventListener('touchcancel', chartOver, {passive: true});
 $('ladder').addEventListener('contextmenu', e => e.preventDefault());
+
+// AND ONE SET ON THE CHART FULL SCREEN, on the <svg> itself, which is the band
+// the chart is drawn in and nothing else. Same shape as the glance's and for
+// the same reasons: the landing and the ending are passive, so a touch begins
+// and ends here as it would on a screen with no gestures at all, and the move
+// is the only one that can take anything.
+$('cfSvg').addEventListener('touchstart', cfTouch, {passive: true});
+$('cfSvg').addEventListener('touchmove', cfMove, {passive: false});
+$('cfSvg').addEventListener('touchend', cfOver, {passive: true});
+$('cfSvg').addEventListener('touchcancel', cfOver, {passive: true});
+$('cfSvg').addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---- E. read — an opinion, not a measurement ---------------------------- */
 

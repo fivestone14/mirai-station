@@ -774,7 +774,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
           stroke-width:1.7;stroke-linecap:round}
 .cf-x.is-pressed{color:var(--i)}
 .cf-x:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
-#cfSvg{flex:none;display:block;max-width:100%;height:auto}
+/* THE CHART ANSWERS A SIDEWAYS DRAG HERE TOO. pan-y, so a drag up or down is
+   the browser's own — the sheet scrolls if a long foot has given it anything
+   to scroll and nothing moves if it has not — while a sideways drag is the
+   page's and is taken on the move. Selection and the callout are refused, as
+   they are on the glance: a long press would otherwise put a selection under
+   the finger and turn the next drag into handle-dragging. */
+#cfSvg{flex:none;display:block;max-width:100%;height:auto;
+       touch-action:pan-y;-webkit-user-select:none;user-select:none;
+       -webkit-touch-callout:none}
+/* The reading goes over the head row, which is the fixed place on this screen
+   the finger is never on — and it stops short of the close control rather than
+   covering it, so the one way out that is always on the screen stays on it.
+   The right inset is the control's own --tap-min plus the head's 8px rail. */
+.cf-read{top:calc(env(safe-area-inset-top) + 12px);right:calc(var(--tap-min) + 8px);
+         height:var(--tap-min);border-radius:0}
 /* ---- the table under the chart ----
    It takes what the chart, the head and the foot leave, and scrolls INSIDE
    itself rather than pushing the foot off the screen: min-height:0, so a flex
@@ -1109,6 +1123,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15"/></svg></button>
   </div>
   <svg id="cfSvg"></svg>
+  <!-- what a sideways drag reads, over the head row and clear of the close
+       control; page.js fills it -->
+  <div class="sc-read cf-read" id="cfRead" aria-hidden="true"></div>
   <!-- The figures, in price order, one column a fact (chartTable): every price
        the scan listed, including the ones the chart above could not draw. The
        column tracks are written from JS, because the narrowest phones cannot

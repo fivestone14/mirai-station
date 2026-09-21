@@ -964,6 +964,22 @@ function stripName(room){
 // movement would be taken for Back instead (ZOOM-RESEARCH.md 3.4).
 const HOLD_MS=250, TOUCH_SLOP=8;
 
+function dragKind(dx, dy){
+  // What a finger on the chart FULL SCREEN is doing. That screen has one
+  // gesture, so there is no contest to weigh and no clock in this: past the
+  // slop, sideways reads and up-or-down is the screen's own scroll.
+  //
+  // NOT touchKind WITH THE HOLD IGNORED. touchKind reaches its verdict once,
+  // and on a chart with a lens that is right — a finger held still has already
+  // said what it wants. Here it would mean a reader who rested a moment before
+  // dragging got 'hold', and 'hold' does nothing on this screen: the gesture
+  // would be dead in the hand. With no clock the verdict simply waits for the
+  // movement that decides it, however long the finger takes to make it.
+  if(!isFinite(dx)||!isFinite(dy)) return 'wait';
+  if(Math.hypot(dx, dy)<=TOUCH_SLOP) return 'wait';
+  return Math.abs(dx)>Math.abs(dy)?'read':'scroll';
+}
+
 function touchKind(dx, dy, ms){
   // What a finger on the chart is doing, from how far it has moved and how
   // long it has been down: 'hold' magnifies, 'read' reads the price line,
@@ -1453,7 +1469,7 @@ if(typeof module!=='undefined'&&module.exports){
                   newContracts, NEW_WORD, NEW_MORE, newBox, wordRow,
                   pickedRow, activityRows, namedGone,
                   FULL_VOL_PER_MIN, volumeBlocks, axisW, stripName,
-                  HOLD_MS, TOUCH_SLOP, touchKind,
+                  HOLD_MS, TOUCH_SLOP, touchKind, dragKind,
                   LENS_ZOOM, LENS_W, LENS_H, LENS_H_MIN, LENS_LIFT, LENS_EDGE, LENS_DOT,
                   lensBox, barAt, volumeBlockAt, chartAt, SCRUB_GAP_MIN, priceAt,
                   FULL_TURNOVER, THIN_PILE, turnover, turnoverBar, pace,

@@ -1063,13 +1063,18 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
          "a sheet is open", so the key cannot open over the chart or the chart
          over the key — and Back, which unwinds one history entry, cannot be
          left holding two.
-      3. NOTHING LISTENS FOR A FINGER ANYWHERE BUT THE CHART, and what the
-         chart hears, it hears once: one set of listeners and one state
-         machine (page.js C3), because one touch cannot have two meanings.
-         The old levels card's press-and-hold, which turned that card into a
-         dead zone for scrolling, went with the card on 2026-09-19 and is not
-         coming back through this door: no other element on the page listens
-         for a press, and the document and window listen for none at all.
+      3. NOTHING LISTENS FOR A FINGER ANYWHERE BUT THE TWO CHARTS, and what
+         each of them hears, it hears once: one set of listeners and one state
+         machine apiece (page.js C3 for the glance, C4 for the chart full
+         screen), because one touch cannot have two meanings. The full screen
+         chart joined the list on 2026-09-20, when the owner asked it for the
+         sideways reading the glance already answers (FULLTALL-SPEC.md 3); the
+         two are separate elements, so one touch is only ever seen by one of
+         them. The old levels card's press-and-hold, which turned that card
+         into a dead zone for scrolling, went with the card on 2026-09-19 and
+         is not coming back through this door: no other element on the page
+         listens for a press, and the document and window listen for none at
+         all.
 
          The chart's own gestures were the owner's decision that evening, and
          they cost this clause its old wording ("the listeners are passive and
@@ -1166,16 +1171,19 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
     assert got["glance"], "opening the chart changed what the glance itself draws"
     assert got["own"] == [["howto", "click"], ["cfOpen", "click"],
                           ["ladder", "touchstart"], ["ladder", "touchmove"], ["ladder", "touchend"],
-                          ["ladder", "touchcancel"], ["ladder", "contextmenu"]], \
-        f"a listener on an element besides the two openers and the chart's own: {got['own']}"
+                          ["ladder", "touchcancel"], ["ladder", "contextmenu"],
+                          ["cfSvg", "touchstart"], ["cfSvg", "touchmove"], ["cfSvg", "touchend"],
+                          ["cfSvg", "touchcancel"], ["cfSvg", "contextmenu"]], \
+        f"a listener on an element besides the two openers and the two charts' own: {got['own']}"
     press = {"pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup"}
     assert not press & set(got["heard"]), f"the page listens for a press: {sorted(press & set(got['heard']))}"
     # THE MOVE IS THE ONLY ONE THAT CAN TAKE ANYTHING, and only after a gesture
     # has armed: the landing and the ending are passive, so a touch on the
     # chart begins and ends as it does anywhere else on the page
-    opts = dict(re.findall(r"\$\('ladder'\)\.addEventListener\('(touch\w+)', \w+(?:, \{([^}]*)\})?\)", PAGE))
-    assert opts["touchstart"] == "passive: true" and opts["touchmove"] == "passive: false", opts
-    assert opts["touchend"] == "passive: true" and opts["touchcancel"] == "passive: true", opts
+    for el in ("ladder", "cfSvg"):
+        opts = dict(re.findall(r"\$\('" + el + r"'\)\.addEventListener\('(touch\w+)', \w+(?:, \{([^}]*)\})?\)", PAGE))
+        assert opts["touchstart"] == "passive: true" and opts["touchmove"] == "passive: false", (el, opts)
+        assert opts["touchend"] == "passive: true" and opts["touchcancel"] == "passive: true", (el, opts)
 
     # AND A GESTURE WORKS NOTHING EITHER. A hold changes nothing on the page
     # but the lens's own elements, and the lift leaves it as it was found: no
@@ -2855,11 +2863,17 @@ def test_the_chart_full_screen_says_what_it_has_not_got():
     assert got["foot"].startswith(counts + "."), got["foot"]
     assert "too close together" not in got["foot"], got["foot"]
 
-    # a station that answered nothing paints no chart, so there is none to open
+    # A station that answered nothing paints no chart, so there is none to
+    # open. The witness is that the chart is EMPTY, which is what this has
+    # always meant: until 2026-09-20 it asked whether the page had ever
+    # reached the full view's <svg> at all, and that was a fair proxy only
+    # while painting was the one thing that reached it — the sideways read's
+    # listeners now reach it at load (page.js C4).
     assert _page({"payload": {"error": "no scene"}, "now": _NOW}, """
       els.cfOpen.attrs['aria-controls'] = 'chartFull';
       (els.cfOpen.heard.click || []).forEach(f => f({}));
-      return {body: document.body.className, drew: !!els.cfSvg};""") == {"body": "failed", "drew": False}
+      return {body: document.body.className, drew: ((els.cfSvg || {}).html || '').length > 0};""") \
+        == {"body": "failed", "drew": False}
 
 
 # --- where new contracts arrived (2026-09-18) --------------------------------
@@ -4189,6 +4203,35 @@ def test_one_touch_has_one_meaning_and_leaves_nothing_behind():
     assert not got["twoAfter"], "a second finger did not abandon the gesture"
     assert got["timersAtEnd"] == 0
 
+def test_the_full_screen_chart_decides_on_movement_alone():
+    """dragKind is touchKind with the clock taken out, and the clock is the
+    whole difference. That screen has ONE gesture (FULLTALL-SPEC.md 3.3), so
+    there is no hold to weigh against a drag — and had it reused touchKind, a
+    reader who rested a moment before dragging would have got 'hold', which
+    does nothing there: the gesture would be dead in the hand. So no amount of
+    time decides anything, and the verdict waits for the movement that does.
+
+    Same slop as the glance and the same rule at the corner: past the slop,
+    sideways reads and up-or-down is the screen's own scroll, with a dead-level
+    45 degrees going to the scroll — a scroll is never taken off the screen on
+    a tie."""
+    js = """const out = [];
+      for (const [dx, dy] of [[0, 0], [2, 2], [5, 5], [8, 0], [0, 8], [9, 0], [-9, 0],
+                              [0, 9], [0, -9], [7, 7], [9, 8], [8, 9], [20, 3], [3, 20]])
+        out.push(g.dragKind(dx, dy));
+      out.push(g.dragKind(NaN, 0), g.dragKind(0, Infinity));
+      // and no length of time turns a still finger into anything
+      out.push(g.dragKind(0, 0), g.touchKind(0, 0, g.HOLD_MS));
+      console.log(JSON.stringify(out));"""
+    assert _glance(js, {}) == ["wait", "wait", "wait", "wait", "wait",     # inside the slop, or exactly on it
+                               "read", "read", "scroll", "scroll",         # past it, by the larger of the two
+                               "scroll",                                   # 7,7 is 9.9 past it, and 45 degrees
+                               "read", "scroll",                           # 9,8 and 8,9 — the larger wins
+                               "read", "scroll",
+                               "wait", "wait",                             # a number that is not one
+                               "wait", "hold"]                             # the clock is the glance's alone
+
+
 @pytest.mark.skipif(not _NODE, reason="node is not installed")
 def test_a_quick_swipe_across_the_chart_still_scrolls_the_page():
     """The whole reason the gestures wait. A finger that moves before the hold
@@ -4382,6 +4425,147 @@ def test_a_scan_that_lands_under_a_finger_is_read_again_rather_than_left_stale()
       return {first, after: scrub().read};""")
     assert "1,517.00" in got["first"], got["first"]
     assert "1,544.50" in got["after"], f"the reading was left on the scan it was taken from: {got['after']}"
+
+
+_CF_FINGER = """
+  // The chart full screen, opened by its corner control, with its <svg> given
+  // a box on the screen: the stand-in DOM measures nothing, and where the
+  // finger is ACROSS that box is the whole of what this gesture reads.
+  const shell = [];
+  ctx.MiraiShell = {atTop: v => shell.push(v), tick: () => shell.push('tick')};
+  els.cfOpen.attrs['aria-controls'] = 'chartFull';
+  (els.cfOpen.heard.click || []).forEach(f => f({}));
+  const said = shell.length;                 // what opening it said, before any finger
+  for(const id of ['cfMarks', 'cfRead', 'scrubRead', 'scrubMarks']) document.getElementById(id);
+  const CF = {left: 0, top: 70, width: NET.screen[0], height: run('CHART_FULL').H};
+  els.cfSvg.getBoundingClientRect = () => ({left: CF.left, top: CF.top, width: CF.width,
+                                            height: CF.height, right: CF.left + CF.width,
+                                            bottom: CF.top + CF.height});
+  const touch = (x, y, n = 1) => {
+    const at = () => ({clientX: x, clientY: y});
+    const e = {touches: Array.from({length: n}, at), changedTouches: [at()], prevented: false};
+    e.preventDefault = () => { e.prevented = true; };
+    return e;
+  };
+  const fire = (type, e) => { (els.cfSvg.heard[type] || []).forEach(f => f(e)); return e; };
+  const read = () => ({on: els.cfRead.classList.contains('on'), row: els.cfRead.innerHTML,
+                       marks: els.cfMarks.innerHTML});
+  const clocks = () => timers.filter(t => t.ms === 250 && !t.dead).length;
+"""
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_the_chart_full_screen_reads_the_price_line_under_a_sideways_drag():
+    """The owner's ask of 2026-09-20 (FULLTALL-SPEC.md 3): the big chart
+    answers a sideways drag the way the glance does — the minute under the
+    finger, SNDK's price then, and the shares traded in those five minutes.
+
+    IT IS THE SAME READING, written by the same function, because both are the
+    same board: a second copy of it is two screens that can come to disagree
+    about one minute. What differs is where it is written and what it is
+    written into — this screen's head row, which is the fixed place the finger
+    is never on, and a marks layer INSIDE the chart's own drawing rather than
+    a second <svg> over it (the glance's is wrapped for the lens to <use>, and
+    a <use> would magnify the marks with it).
+
+    AND NOT A LINE ACROSS THE PLOT AT THAT PRICE. A rule at a price that is
+    not a level reads as a target, and nothing on this chart may say where
+    price goes (ZOOM-RESEARCH.md 3.6).
+
+    NO CLOCK IS STARTED BY THE TOUCH. This screen has one gesture, so there is
+    no hold to time against a drag — and a hold would do nothing here in any
+    case: the lens is the glance's answer to a chart too small to read, and
+    this is that chart drawn bigger.
+
+    NOTHING IS SAID TO THE SHELL EITHER. The glance pins, or the shell's
+    pull-to-refresh takes a downward drag and reloads the page; here sheet.js
+    has already told the shell the page is not at the top for as long as a
+    sheet is open, and a second claim on the one bridge is a second thing that
+    believes it is the only one."""
+    bars = _minute_bars(120)
+    net = _board(_SCENE_0916, now="2026-09-10T11:31:00-04:00", bars=bars, screen=[360, 780],
+                 live={"ticker": "SNDK", "spot": 1517.0})
+    got = _page(net, _CF_FINGER + """
+      // up and down takes nothing and reads nothing: that is the sheet's own
+      // scroll, and it is never taken off it
+      fire('touchstart', touch(180, 200));
+      const down = fire('touchmove', touch(183, 262));
+      const scrolled = read();
+      fire('touchend', touch(183, 262, 0));
+      // sideways reads, and keeps reading as the finger moves
+      fire('touchstart', touch(180, 200));
+      const armed = clocks();
+      const first = fire('touchmove', touch(120, 203));
+      const shown = read();
+      fire('touchmove', touch(CF.width - 2, 203));
+      const moved = read();
+      const spoke = shell.length - said;
+      // a scan landing under it is read again from the new board, which at
+      // the line's live end is the quote itself
+      NET.live = {ticker: 'SNDK', spot: 1544.5, ts: NET.now};
+      await run('loadSpot()'); await settle();
+      const ticked = read();
+      fire('touchend', touch(CF.width - 2, 203, 0));
+      const lifted = read();
+      // and the system taking the finger away puts it down too
+      fire('touchstart', touch(180, 200));
+      fire('touchmove', touch(120, 203));
+      const again = read().on;
+      fire('touchcancel', touch(120, 203, 0));
+      const cancelled = read();
+      // a second finger abandons whatever was running
+      fire('touchstart', touch(180, 200));
+      fire('touchmove', touch(120, 203));
+      fire('touchstart', touch(120, 203, 2));
+      const two = read();
+      return {scrolled, downTook: down.prevented, armed, shown, moved, ticked, lifted,
+              again, cancelled, two, spoke, took: first.prevented,
+              glance: {on: els.scrubRead.classList.contains('on'), marks: els.scrubMarks.innerHTML}};""")
+    assert got["shown"]["on"] and got["took"], "a sideways drag did not read the line"
+    assert not got["scrolled"]["on"] and not got["downTook"], \
+        "an up-and-down drag on the chart was taken off the sheet's own scroll"
+    assert got["armed"] == 0, "the touch started a clock on a screen whose rule has none"
+    assert got["spoke"] == 0, "the full screen chart claimed the shell's bridge a second time"
+    assert re.search(r"<b>\d\d:\d\d</b>&ensp;<em>1,5\d\d\.\d\d</em>", got["shown"]["row"]), got["shown"]["row"]
+    assert re.search(r"[\d,]+ shares \d\d:\d\d–\d\d:\d\d", got["shown"]["row"]), got["shown"]["row"]
+    assert got["shown"]["row"] != got["moved"]["row"], "the reading did not follow the finger"
+    marks = got["shown"]["marks"]
+    assert 'class="sc-at"' in marks and 'class="sc-dot"' in marks and 'class="sc-blk"' in marks, marks
+    assert marks.count("<line") == 1, "a second line across the plot"
+    assert "1,517.00" in got["moved"]["row"] and "1,544.50" in got["ticked"]["row"], \
+        f"the reading was left on the scan it was taken from: {got['ticked']['row']}"
+    for gone, why in ((got["lifted"], "the lift"), (got["cancelled"], "the system taking the finger"),
+                      (got["two"], "a second finger")):
+        assert not gone["on"] and gone["marks"] == "", f"{why} left a reading on the screen"
+    assert got["again"], "the second touch never read anything; the cancel proves nothing"
+    assert not got["glance"]["on"] and got["glance"]["marks"] == "", \
+        "reading the big chart wrote on the glance behind it"
+
+
+@pytest.mark.skipif(not _NODE, reason="node is not installed")
+def test_the_reading_row_is_on_the_screen_before_it_is_measured():
+    """The block's own clock is dropped where the row cannot hold it, and the
+    row is measured to find out — so it has to be SHOWN first. A row still
+    display:none has no width at all, so the comparison was 0 > 0 on the FIRST
+    reading of every touch and the clock was kept whatever it cost. On the
+    glance that only ate the card's padding; full screen the row ends where
+    the close control begins, and at 09:30 on 2026-09-17 the reading ran
+    40.6px past its own box at 320 and onto the control at 360.
+
+    The widths here answer the way the stylesheet does: nothing until the row
+    is .on, which is what makes this fail if the class goes back after the
+    measurement."""
+    bars = _minute_bars(120)
+    got = _page(_board(_SCENE_0916, now="2026-09-10T11:31:00-04:00", bars=bars, screen=[320, 780]),
+                _CF_FINGER + """
+      for(const w of ['clientWidth', 'scrollWidth'])
+        Object.defineProperty(els.cfRead, w, {get(){
+          return els.cfRead.classList.contains('on') ? (w === 'clientWidth' ? 256 : 400) : 0; }});
+      fire('touchstart', touch(160, 200));
+      fire('touchmove', touch(100, 203));
+      return {first: read().row};""")
+    assert re.search(r"[\d,]+ shares</span>$", got["first"]), \
+        f"the first reading of a touch was measured while it was hidden: {got['first']}"
 
 
 # --- the chart's width, its ink, and a ruler of prices (2026-09-18) --------
