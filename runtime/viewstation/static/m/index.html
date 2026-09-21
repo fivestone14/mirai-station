@@ -805,7 +805,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
    track is set by the word PRICE and not by "1,700". */
 .cf-tw{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
        padding:0 12px}
-.cf-tb{width:100%;table-layout:fixed;border-collapse:collapse}
+/* --since is the track the "+n" hangs in and --since-gap the space before it,
+   which together are how far in from a count column's right edge its counts
+   end. They are named here because two rules have to agree on them: the cell
+   that lays the pair out, and the heading over the column, which is inset by
+   the same amount so that it sits over the counts and not over the "+n". */
+.cf-tb{width:100%;table-layout:fixed;border-collapse:collapse;
+       --since:28px;--since-gap:4px}
 /* The two group words are the point of the table: what changed hands today,
    and what was already standing there. They are set apart from the column
    names — lighter, wider tracked, over a rule — so they read as one heading
@@ -838,6 +844,18 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
            color:var(--i-mute);text-align:right;white-space:nowrap;
            box-shadow:0 1px 0 var(--s2)}
 .cf-col th:first-child{text-align:left}
+/* A HEADING SITS OVER THE FIGURES IT NAMES. Every column's cells are right
+   against their track, so a heading right against the same track is over
+   them — except the two count columns, whose cells end where the since's own
+   track begins. PUTS and CALLS were right-aligned to the whole cell and so
+   sat 36px to the right of the counts, squarely over the grey `+307`. They
+   are inset by the since's track and the gap before it, which is the one
+   number that decides where a count's right edge is, so the heading cannot
+   drift from its column. Measured at 360, the tightest of the four phones:
+   PUTS ends at 93 with its counts, 12.46px clear of PRICE, which ends at
+   48.92 — a heading over its own figures cannot have more without the tracks
+   re-cut, and CALLS wants 71.81 of the column's 73. */
+.cf-col th.c-count{padding-right:calc(var(--since) + var(--since-gap))}
 /* tabular figures, restated AFTER the shorthand that resets them: a column of
    counts whose digits are different widths does not line up, and lining up is
    what the chart gave its height for (test_the_chart_keeps_its_tabular_figures
@@ -855,10 +873,34 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 /* The count and what traded there since the reading share a cell: the count
    right against its own track, the since hanging after it in the grey the
    chart uses for the same fact, so the counts still read straight down the
-   column and the since never pushes them out of line. */
-.cf-cell{display:flex;justify-content:flex-end;align-items:baseline;gap:3px}
+   column and the since never pushes them out of line.
+
+   TWO FIGURES, NOT ONE NUMBER. `899 +307` read as a single run of six
+   characters: the two inks are 1.09:1 apart, which is no step at all, and
+   11px is this screen's floor so the since cannot be set smaller.
+
+   SPACE IS ZERO-SUM HERE, which is why it is not the whole answer. The
+   heading over the column is inset by --since + --since-gap so it sits over
+   the counts, and PRICE's own 12px clearance caps that inset at 32.45 at 360
+   — so the space inside a cell and the space from its "+n" to the next
+   column's count add up to a constant 16.51px. Every pixel put between the
+   pair is taken from the gap that keeps the pair apart from the column
+   beside it. 4px is the most the row can pay with both still at or over the
+   house 12 (measured, 12.46 and 12.52); at 5 the second falls to 11.52.
+
+   SO THE SECOND CHANNEL IS WEIGHT, which costs no space at all: 400 against
+   the count's 600 is a whole step where 500 was half of one, and it is the
+   step that survives greyscale, where the two inks are the same tone.
+
+   --since, the track the "+n" hangs in, is 28px: `+975` at 26.47 is the
+   widest of the 12,078 written across 2026-09-15..17, so the counts line up
+   straight down the column on every row of all 514 boards. A four-figure
+   since would push its own row's count left rather than overrun the column —
+   30.02 + 4 + 36.05 is 70.07 in the 73px the column has at 360, the narrowest
+   it is on any phone. */
+.cf-cell{display:flex;justify-content:flex-end;align-items:baseline;gap:var(--since-gap)}
 .cf-cell .n{min-width:32px;text-align:right}
-.cf-cell .s{min-width:33px;text-align:left;font-weight:500;color:var(--i-mute)}
+.cf-cell .s{min-width:var(--since);text-align:left;font-weight:400;color:var(--i-mute)}
 /* Three neutrals, no hue: the pile is the count it all happened against, the
    multiple is what a reader runs an eye down, and the pace is a word beside
    figures. Only the two count columns carry a side's colour, and they are
@@ -1139,7 +1181,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
           <th colspan="2">SITTING THERE</th><th class="c-pace"></th>
         </tr>
         <tr class="cf-col">
-          <th>PRICE</th><th>PUTS</th><th>CALLS</th><th>PILE</th>
+          <th>PRICE</th><th class="c-count">PUTS</th><th class="c-count">CALLS</th><th>PILE</th>
           <th>TIMES</th><th class="c-pace">PACE</th>
         </tr>
       </thead>

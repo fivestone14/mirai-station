@@ -838,6 +838,70 @@ def test_the_tables_columns_are_the_same_width_on_every_board():
         "the stylesheet's gutter and the width the tracks are fitted into disagree"
 
 
+def test_the_count_headings_sit_over_the_counts_they_name():
+    """A count cell is two figures — what traded today and what traded there
+    since the reading — and the count ends where the since's own track begins.
+    PUTS and CALLS were right-aligned to the whole cell, so each sat 36px to
+    the right of the column it names, squarely over the grey `+307`
+    (LOOK-REVIEW.md 5). The heading is inset by that track and the gap before
+    it, and both come from one pair of properties, so a change to the gap
+    moves the heading with it rather than leaving it behind.
+
+    THE OTHER HALF IS THAT `899 +307` read as one number, the two inks being
+    1.09:1 apart and 11px the floor under the since (LOOK-REVIEW.md 6). SPACE
+    IS ZERO-SUM HERE: the inset is capped by PRICE's own clearance, so the gap
+    inside a cell and the gap from its "+n" to the next column's count sum to
+    a constant, and every pixel put between the pair is taken from what keeps
+    the pair apart from the column beside it. 4px is the most the row can pay
+    with both still at or over the house 12. The rest is weight — 400 against
+    the count's 600 — which costs no space and is the step that survives
+    greyscale, where the two inks are the same tone.
+
+    THE ARITHMETIC IS RECOMPUTED HERE rather than pinned, from glance.js's own
+    tracks and the figures measured in WebKit with the shipped face, at 360 —
+    the owner's phone, and the tightest of the four this is checked on, since
+    320 drops the pace column and hands its room to these two. Three things
+    have to hold at once and they pull on the same pixels: the heading fits
+    inside its own track, it clears PRICE's by 12, and the pair clears the
+    next column's count by 12."""
+    PRICE_W, PUTS_W, CALLS_W = 36.92, 31.63, 39.81
+    COUNT_W, SINCE_W = 30.02, 26.47      # "9,192" at 600, "+975" at 400
+    tb = _rule(".cf-tb").replace(" ", "")
+    since = float(re.search(r"--since:([\d.]+)px", tb).group(1))
+    gap = float(re.search(r"--since-gap:([\d.]+)px", tb).group(1))
+    assert "gap:var(--since-gap)" in _rule(".cf-cell").replace(" ", ""), \
+        "the cell's gap is no longer the one the heading is inset by"
+    cell_s = _rule(".cf-cell .s").replace(" ", "")
+    assert "min-width:var(--since)" in cell_s, \
+        "the since's track is no longer the one the heading is inset by"
+    assert "font-weight:400" in cell_s, \
+        "the since is back at the count's own weight, so greyscale has no step left"
+    assert _rule(".cf-col th.c-count").replace(" ", "") \
+        == "padding-right:calc(var(--since)+var(--since-gap))", \
+        "the heading is inset by something other than the track it sits beside"
+    heads = re.findall(r'<tr class="cf-col">(.*?)</tr>', PHONE, re.S)[0]
+    assert re.findall(r'<th class="c-count">(\w+)</th>', heads) == ["PUTS", "CALLS"], heads
+    assert since >= SINCE_W, \
+        f"the since's track is narrower than the widest one of 2026-09-15..17 ({SINCE_W})"
+    assert gap > 3, "the count and the since are back to one word-space apart"
+
+    pad, price, pile, turn, pace, count = (
+        int(re.search(r"TABLE_%s=(\d+)" % n, GLANCE).group(1))
+        for n in ("PAD", "PRICE", "PILE", "TURN", "PACE", "COUNT"))
+    col = (360 - 2 * pad - price - pile - turn - pace) / 2
+    assert col >= count, f"the count columns are under their own floor at 360: {col}"
+    inset = since + gap
+    assert CALLS_W + inset <= col, \
+        f"CALLS and the since's track want {CALLS_W + inset}px of a {col}px column"
+    # PRICE is left-aligned from the gutter, PUTS right-aligned to its counts
+    clear = (pad + price + col - inset - PUTS_W) - (pad + PRICE_W)
+    assert clear >= 12, f"PRICE and PUTS are {round(clear, 2)}px apart, under the house 12"
+    # and the widest "+n" to the widest count of the column after it
+    between = col - gap - (COUNT_W + SINCE_W)
+    assert between >= 12, \
+        f"a since and the next column's count are {round(between, 2)}px apart, under the house 12"
+
+
 def test_no_text_in_the_full_screen_view_is_under_11px():
     """11px is this phone's floor and the full screen view keeps it on its
     table too, headings included — which is why the PRICE track is set by the
