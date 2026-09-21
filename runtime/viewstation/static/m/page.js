@@ -1099,10 +1099,17 @@ function paintChart(){
   // from.
   const W = document.documentElement.clientWidth || window.innerWidth || 0;
   const screenH = window.innerHeight || document.documentElement.clientHeight || 0;
+  // COUNTED TO, not AS OF: this view carries two clocks and they are different
+  // moments from different fields — the scan every figure in the table is
+  // counted to, and the reading the "+n" figures are measured from. They were
+  // 38 minutes apart on the 10:39 board of 2026-09-15, both a bare HH:MM, with
+  // nothing saying which was which. This one says what it is the time of; the
+  // foot names the other by its own noun.
   const scanAt = etTime(Date.parse(PAY.row_ts));
-  $('cfWhen').textContent = scanAt ? 'AS OF ' + scanAt : '';
+  $('cfWhen').textContent = scanAt ? 'COUNTED TO ' + scanAt : '';
   const st = state();
-  const T = {svg:$('cfSvg'), id:'cf', W, hMax:FULL_H_MAX, side:FULL_SIDE, zero:FULL_ZERO};
+  const T = {svg:$('cfSvg'), id:'cf', W, when:scanAt,
+             hMax:FULL_H_MAX, side:FULL_SIDE, zero:FULL_ZERO};
   // The foot's words are part of what the chart worked out, and the foot's
   // height is part of the room the chart gets, so the two settle against each
   // other rather than one guessing at the other: draw, write the foot, and
@@ -1167,6 +1174,8 @@ function chartTable(st, T){
   // surplus under table-layout:fixed, which left the counts 55px at 320
   // instead of the 79 they are owed.
   T.paced = T.W >= TABLE_NARROW;
+  T.worded = T.paced && rows.some(r => r.word != null);
+  T.blank = false;                            // true once an empty cell is drawn
   $('cfScroll').hidden = !rows.length;
   $('cfTable').classList.toggle('no-pace', !T.paced);
   const col = px => { const c = cfEl('col'); if(px) c.style.width = px + 'px'; return c; };
@@ -1185,16 +1194,22 @@ function chartTable(st, T){
     tr.appendChild(cfEl('td', 'cf-pile', r.pile == null ? null : gUsd(r.pile, 0).replace('$','')));
     tr.appendChild(cfEl('td', 'cf-turn', gTimes(r.mult)));
     if(T.paced) tr.appendChild(cfEl('td', 'cf-pace c-pace', r.word));
+    // read off the cells themselves rather than worked out again from the row,
+    // so what the foot says about a blank cannot drift from what is drawn
+    for(const td of tr.children) if(!td.textContent) T.blank = true;
     out.push(tr);
   }
   $('cfBody').replaceChildren(...out);
 }
 
 function chartFoot(st, T){
-  // What the view says under its table: which colour is which side, what the
-  // small figure after a count is, and what the two columns under SITTING
-  // THERE hold. Every clause is left out rather than written empty (law 1) —
-  // no reading, no since; no price off the chart, nothing about one; and
+  // What the view says under its table: which colour is which side, when the
+  // counts were counted, what the small figure after one is, what each of the
+  // house-word columns holds, and what an empty cell means. It is the only
+  // place a column's own name can be explained — the tracks are 48 to 52px
+  // and no heading that explains anything fits one. Every clause is left out
+  // rather than written empty (law 1) — no reading, no since; no empty cell,
+  // nothing about blanks; no price off the chart, nothing about one; and
   // nothing drawn and nothing listed says nothing at all.
   //
   // THE PILE'S DATE IS PRINTED, never "last night": it is the prior SESSION's
@@ -1202,21 +1217,43 @@ function chartFoot(st, T){
   // without the date says "the prior session's close", which is true and
   // vaguer, rather than naming a day it does not know.
   if(!T.rows) return '';
-  const since = T.sinced ? '; <b>+n</b> since the ' + etTime(st.since.at) + ' reading' : '';
+  // THE TWO CLOCKS ARE TOLD APART HERE. Every count is the head's scan and
+  // every "+n" is measured from the reading, and those are up to 38 minutes
+  // apart. The head says COUNTED TO; this points at it rather than printing
+  // the same time twice, and names the reading by its own noun.
+  const to = T.when ? ', counted to the time above' : '';
+  const since = T.sinced
+    ? '; <b>+n</b> is what traded since the ' + etTime(st.since.at) + ' reading,'
+      + ' <b>+0</b> that none did' : '';
   const traded = T.counted
     ? '<span class="put">Puts</span> and <span class="call">calls</span>'
-      + ' traded today at each price' + since + '.' : '';
+      + ' traded at each price today' + to + since + '.' : '';
   const day = etDay(st.pileDate);
-  const pile = T.piled ? ' <b>PILE</b> was already sitting there at the '
-                       + (day || 'prior session’s') + ' close; <b>TURN</b> is how many times'
-                       + ' over it changed hands today.' : '';
+  // ONE SENTENCE OF COLUMN NAMES, each named only where its column holds
+  // something. PACE is the one nothing else on the screen explains: its cells
+  // read `faster`, and no heading that says faster than WHAT fits the 52px
+  // track — `VS EARLIER` measures 65.80 even untracked — so the referent is
+  // carried here, in the words the glance's own head over these three uses.
+  const named = [];
+  if(T.piled) named.push('<b>PILE</b> was already sitting there at the '
+                         + (day || 'prior session’s') + ' close',
+                         '<b>TURN</b> is how many times over it changed hands today');
+  if(T.worded) named.push('<b>PACE</b> is trading now against earlier');
+  const cols = named.length ? ' ' + named.join('; ') + '.' : '';
+  // A BLANK IS NOT A NOUGHT, and this is the one screen with the room to print
+  // both: a measured +0 where nothing traded there since the reading, an empty
+  // cell where nothing was measured at all. Said only where there is an empty
+  // cell on the screen to say it of, and only where something else on the
+  // board WAS measured — over a table of nothing but blanks there is no
+  // figure to tell one from, and the foot there says nothing at all.
+  const blank = (T.blank && (traded || cols)) ? ' An empty cell was not measured.' : '';
   // only where there ARE bars: with none drawn at all, a price without one is
   // a price nothing was measured at, which the blank cells already say
   const off = (T.bars && T.offChart)
     ? ' ' + T.offChart + (T.offChart === 1 ? ' price has' : ' prices have')
       + ' no bar: outside the chart’s range.' : '';
   const narrow = T.paced ? '' : ' This screen is too narrow for the pace column.';
-  return (traded + pile + off + narrow).trim();
+  return (traded + cols + blank + off + narrow).trim();
 }
 
 // THE CORNER CONTROL IN THE CARD'S HEAD OPENS IT, and nothing else does: a tap

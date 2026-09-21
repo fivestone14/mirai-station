@@ -1496,9 +1496,10 @@ def _plain_words():
     card = PHONE.split('<section class="card">')[1].split("</section>")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card) if t.strip()}
     # the chart full screen, which the same gates hold: its own markup — the
-    # table's headings with it — every word its table writes into a cell, and
-    # each form of its foot: a board with a reading and one without, a screen
-    # too narrow for the last column, and a board with nothing measured at all
+    # table's headings with it — its head's clock, every word its table writes
+    # into a cell, and each form of its foot: a board with a reading and one
+    # without, a screen too narrow for the last column, and a board with
+    # nothing measured at all
     view = PHONE.split('<div class="sheet full" id="chartFull"')[1].split("\n</div>\n")[0]
     words |= {t.strip() for t in re.split(r"<[^>]+>", card + view) if t.strip()}
     words |= set(re.findall(r'aria-label="([^"]*)"', card + view))
@@ -1509,6 +1510,7 @@ def _plain_words():
                 _board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT)):
         got = _full(net)
         words.add(re.sub(r"<[^>]+>", "", got["foot"]))
+        words.add(got["when"])
         words |= {c for row in got["rows"] for c in row if isinstance(c, str)}
     for claims, pace in (([{"strike": 1700, "now": "changed"}], 1.37),
                          ([{"strike": 1700, "now": "changed"}, {"strike": 1600, "now": "off_list"}], 0.8),
@@ -1534,23 +1536,31 @@ def test_the_plain_words_pass_the_laws():
     for need in ("OPTIONS END TODAY", "OPTIONS END FRI", "OPTIONS END IN 3 DAYS", "BOOK 1 MIN OLD",
                  "SCAN 14 MIN OLD", "JUST SCANNED", "SCAN AGE UNKNOWN", "USUAL DAY MOVE $40", "14 MIN AGO",
                  "No reading yet today.", "2 HR 15 MIN LEFT", "LAST SCAN 1,700.00 · 3 HR AGO",
-                 "Price today", "AS OF 10:59", "10:46", "▲ 1,900 BIGGEST PILE",
+                 "Price today", "AS OF 10:59", "COUNTED TO 11:00", "10:46", "▲ 1,900 BIGGEST PILE",
                  "One thing it said earlier no longer applies.", "2 things it said earlier no longer apply.",
                  "Trading is busier than usual for this time of day.",
                  "Trading is quieter than usual for this time of day.",
                  "Trading is about usual for this time of day.",
                  "Open the chart full screen", "Close", "small pile", "faster", "steady", "slower",
                  "TRADED TODAY", "SITTING THERE", "PRICE", "PILE", "TURN", "PACE",
-                 "Puts and calls traded today at each price. 8 prices have no bar:"
+                 "Puts and calls traded at each price today, counted to the time above."
+                 " An empty cell was not measured. 8 prices have no bar:"
                  " outside the chart’s range.",
-                 "Puts and calls traded today at each price; +n since the 10:52 reading."
+                 "Puts and calls traded at each price today, counted to the time above;"
+                 " +n is what traded since the 10:52 reading, +0 that none did."
+                 " An empty cell was not measured."
                  " 8 prices have no bar: outside the chart’s range.",
-                 "Puts and calls traded today at each price; +n since the 10:52 reading."
+                 "Puts and calls traded at each price today, counted to the time above;"
+                 " +n is what traded since the 10:52 reading, +0 that none did."
                  " PILE was already sitting there at the 14 Sep close; TURN is how many times over"
-                 " it changed hands today. 8 prices have no bar: outside the chart’s range.",
-                 "Puts and calls traded today at each price; +n since the 10:52 reading."
+                 " it changed hands today; PACE is trading now against earlier."
+                 " An empty cell was not measured."
+                 " 8 prices have no bar: outside the chart’s range.",
+                 "Puts and calls traded at each price today, counted to the time above;"
+                 " +n is what traded since the 10:52 reading, +0 that none did."
                  " PILE was already sitting there at the prior session’s close; TURN is how many"
-                 " times over it changed hands today. 8 prices have no bar: outside the chart’s"
+                 " times over it changed hands today. An empty cell was not measured."
+                 " 8 prices have no bar: outside the chart’s"
                  " range. This screen is too narrow for the pace column."):
         assert need in words, f"the gates never saw {need!r}"
     for s in sorted(words):
@@ -2356,7 +2366,9 @@ def _full(net):
     A row comes back as [price, puts, calls, pile, turn, pace] — the pace cell
     only where the screen is wide enough to pay for it — with an empty cell as
     None, so an absent figure and a zero cannot be read as the same thing. A
-    count cell is [count, since], the since None where none was written."""
+    count cell is [count, since], the since None where none was written.
+
+    `when` is the head's own clock, which the foot's is measured against."""
     return _page(net, """
       els.cfOpen.attrs['aria-controls'] = 'chartFull';
       (els.cfOpen.heard.click || []).forEach(f => f({}));
@@ -2364,6 +2376,7 @@ def _full(net):
       const cell = td => td.children.length ? td.children[0].children.map(txt) : txt(td);
       return {cf: els.cfSvg.innerHTML, foot: els.cfFoot.innerHTML, glance: els.svg.innerHTML,
               W: +els.cfSvg.attrs.width, H: +els.cfSvg.attrs.height,
+              when: els.cfWhen.textContent,
               open: els.chartFull.attrs['aria-hidden'],
               rows: els.cfBody.children.map(tr => tr.children.map(cell)),
               off: els.cfBody.children.map(tr => tr.className),
@@ -2639,13 +2652,134 @@ def test_the_pile_is_dated_off_the_payload_and_never_called_last_night():
         == ["5 Jan", "31 Dec"]
 
 
+def test_the_head_and_the_foot_say_which_clock_each_time_is():
+    """The view carries TWO clocks off two different fields, and until
+    2026-09-20 both were a bare HH:MM with nothing saying which was which: the
+    head's, which is the scan every figure in the table is counted to
+    (row_ts), and the foot's, which is when the written reading the "+n"
+    figures are measured from was taken (since_read.read_at). They were 38
+    minutes apart on the 10:39 board of 2026-09-15 and 8 apart here.
+
+    So the head says what its time is the time OF, and the foot binds its own
+    counts to it in words rather than printing the same time twice. Both
+    clauses go where their field does: a payload with no scan time leaves the
+    head empty and the foot with nothing above to point at."""
+    got = _full(_table_board())
+    assert got["when"] == "COUNTED TO 11:00", got["when"]
+    assert ", counted to the time above;" in got["foot"], got["foot"]
+    assert "since the 10:52 reading" in got["foot"], "the reading lost its own clock"
+    assert got["foot"].count("11:00") == 0, "the head's time is printed twice"
+
+    undated = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510, "row_ts": None},
+                           reads=_READS_AT))
+    assert undated["when"] == "", undated["when"]
+    assert "counted to the time above" not in undated["foot"], undated["foot"]
+    assert "since the 10:52 reading" in undated["foot"], "the reading's clock went with the head's"
+
+
+def _filled_board(**net):
+    """A board with nothing missing: both sides counted at every strike, both
+    sides of the pile counted and none of them thin, a series long enough to
+    time at every strike, and a reading that listed every one of them. It is
+    the only way to see the table with no empty cell in it."""
+    scene = json.loads(json.dumps(_SCENE_0916))
+    scene["frames"] = {"book_times": _TABLE_TIMES}
+    for r in scene["strikes"]["rows"]:
+        r["oi_calls"], r["oi_puts"] = 600, 700
+        r["vol_added_per_book"] = [50] * 11
+    then = {"read_at": _READ_AT, "book_at": "2026-09-10T10:50:44-04:00",
+            "rows": [[r["strike"], r["vol_calls"], r["vol_puts"]]
+                     for r in scene["strikes"]["rows"]]}
+    return _board(scene, payload={"since_read": then}, reads=_READS_AT, **net)
+
+
+def test_the_foot_teaches_the_words_the_columns_have_no_room_to():
+    """PRICE, PUTS and CALLS say what they hold. PILE, TURN and PACE are house
+    words, and their tracks are 50, 48 and 52px — no heading that explains one
+    fits (`VS EARLIER` measures 65.80 even untracked, against PACE's 52). So
+    the foot is the only place they can be taught, and it teaches each of them
+    where the column holds something:
+
+    - PACE was the worst of the three: its cells read `faster` with nothing
+      anywhere saying faster than WHAT, which is the defect the shipped card
+      was already fixed for (RATE-SPEC.md 74, "The owner does not know what it
+      refers to"). The foot carries the referent in the app's own words — the
+      head over the same three words on the glance is `trading now against
+      earlier`;
+    - named only where the column is on the screen: at 320 the pace column is
+      dropped whole and the sentence goes with it;
+    - and only where something was measured for it: a board whose piles are
+      all uncounted names neither PILE nor TURN, and one where no run can be
+      timed names no PACE."""
+    got = _full(_table_board())
+    for need in ("<b>PILE</b> was already sitting there at the",
+                 "<b>TURN</b> is how many times over it changed hands today",
+                 "<b>PACE</b> is trading now against earlier"):
+        assert need in got["foot"], f"{need!r} is not in {got['foot']!r}"
+    assert "faster" in {r[5] for r in got["rows"]}, "the board that proves it stopped pacing"
+
+    narrow = _full(_table_board(screen=[320, 780]))
+    assert "PACE" not in narrow["foot"] and "trading now against earlier" not in narrow["foot"], \
+        "the foot teaches a column that is not on the screen"
+    assert "<b>PILE</b>" in narrow["foot"] and "too narrow" in narrow["foot"]
+
+    # no pile counted anywhere: PILE and TURN go, and PACE stays, because a
+    # pace is read off the volume series and needs no pile
+    unpiled = json.loads(json.dumps(_SCENE_0916))
+    unpiled["frames"] = {"book_times": _TABLE_TIMES}
+    for r in unpiled["strikes"]["rows"]:
+        r["vol_added_per_book"] = [10] * 7 + [500] * 4
+    got = _full(_board(unpiled))
+    assert "<b>PILE</b>" not in got["foot"] and "<b>TURN</b>" not in got["foot"], got["foot"]
+    assert "<b>PACE</b> is trading now against earlier" in got["foot"], got["foot"]
+
+    # and nothing to time: the piles are there, so PILE and TURN are taught
+    # and PACE is not
+    untimed = json.loads(json.dumps(_SCENE_0916))
+    for r in untimed["strikes"]["rows"]:
+        r["oi_calls"], r["oi_puts"] = 600, 700
+    got = _full(_board(untimed))
+    assert "<b>PILE</b>" in got["foot"] and "<b>TURN</b>" in got["foot"], got["foot"]
+    assert "PACE" not in got["foot"], got["foot"]
+
+
+def test_the_foot_says_an_empty_cell_was_never_measured():
+    """The table draws three different kinds of gap and a real `+0`, and until
+    2026-09-20 nothing on the screen told them apart: `1 +0` at one price and
+    `72` with nothing after it two rows below read as the same kind of thing.
+    The first is a measured zero — one call traded, none since the reading —
+    and the second is a price the reading never listed, which is unknowable.
+
+    The code was already the honest one; it is the screen that never said so
+    (FULL2-SPEC.md 4.5, where the shipped chart's `s > 0` hid a true zero).
+    So the foot says what a blank is, where there is a blank to say it of:
+
+    - a table with an empty cell in it says it;
+    - a table with every cell filled does not, and still prints its `+0`;
+    - and a table of nothing but blanks does not either, because there is no
+      measured figure beside them to be told from."""
+    got = _full(_table_board())
+    assert " An empty cell was not measured." in got["foot"], got["foot"]
+    assert any(c is None for r in got["rows"] for c in r), "the board lost its empty cells"
+
+    filled = _full(_filled_board())
+    assert not any(c is None for r in filled["rows"] for c in r), \
+        "the board that proves the absent state has an empty cell in it"
+    assert "An empty cell" not in filled["foot"], filled["foot"]
+    assert all(r[1][1] == "+0" and r[2][1] == "+0" for r in filled["rows"]), \
+        "a measured zero stopped printing, which is the fact the clause stands against"
+    assert "<b>+0</b> that none did" in filled["foot"], filled["foot"]
+
+
 def test_the_chart_full_screen_says_what_it_has_not_got():
     """Honest-absent on the whole view, chart and table together (law 1,
     glance.js).
 
     - no counts on the board at all (the day's first books, where the builder
       withholds them): no bars and no count on the chart, blank cells in the
-      table, and a foot that names no column, not a row of noughts;
+      table, and a foot that names no column, not a row of noughts — and not
+      the blank clause either, since over a table of nothing but blanks there
+      is no figure to tell one from;
     - no reading yet, or one the field cannot be matched to: the bars are
       drawn and no paler end is, no "+n" is written, and the foot leaves the
       clause out rather than writing it empty;
@@ -2660,15 +2794,17 @@ def test_the_chart_full_screen_says_what_it_has_not_got():
         "a price nothing was measured at printed something"
 
     counts = ('<span class="put">Puts</span> and <span class="call">calls</span>'
-              ' traded today at each price')
+              ' traded at each price today, counted to the time above')
+    blank = " An empty cell was not measured."
     no_read = _full(_board(_SCENE_0916))
     assert len(_traded(no_read["cf"])[0]) == 7 and "p-tradedputsince" not in no_read["cf"]
     assert {tuple(r[1]) for r in no_read["rows"]} and all(r[1][1] is None for r in no_read["rows"])
     off = " 8 prices have no bar: outside the chart’s range."
-    assert no_read["foot"] == counts + "." + off, no_read["foot"]
+    assert no_read["foot"] == counts + "." + blank + off, no_read["foot"]
     read = _full(_board(_SCENE_0916, payload={"since_read": _FIELD_1510}, reads=_READS_AT))
     assert "p-tradedputsince" in read["cf"]
-    assert read["foot"] == counts + "; <b>+n</b> since the 10:52 reading." + off, read["foot"]
+    assert read["foot"] == counts + "; <b>+n</b> is what traded since the 10:52 reading," \
+        " <b>+0</b> that none did." + blank + off, read["foot"]
 
     # a reading whose counts cannot be matched to any strike now — the vendor
     # revised every one of them downward — writes no "+n" anywhere, so the
@@ -2678,7 +2814,7 @@ def test_the_chart_full_screen_says_what_it_has_not_got():
     unmatched = _full(_board(_SCENE_0916, payload={"since_read": revised}, reads=_READS_AT))
     assert all(r[1][1] is None and r[2][1] is None for r in unmatched["rows"])
     assert "p-tradedputsince" not in unmatched["cf"]
-    assert unmatched["foot"] == counts + "." + off, unmatched["foot"]
+    assert unmatched["foot"] == counts + "." + blank + off, unmatched["foot"]
 
     # every dollar between 1,490 and 1,570 a strike, which is the board that
     # used to cost the view every number it had
