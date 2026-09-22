@@ -27,7 +27,7 @@ from pathlib import Path
 
 from .ab_test import pick, confidence
 from .ask import DEFAULT_QUESTIONS, build_requests, load_questions, send, send_all
-from .cadence import cadence_of, ensure_cadence, fill_missing, load_cadence, load_last, plan, save_last
+from .cadence import cadence_of, distance, ensure_cadence, fill_missing, load_cadence, load_last, plan, save_last
 from .grade import run as grade_run
 from .hour import answer_sentences, hour_request, hour_summary, load_hour_doc, load_weights
 from .state_builder import DEFAULT_STATE_DIR, build_state, make_scene, parse_ts
@@ -204,7 +204,9 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, send: bool, day: str | N
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"])}
         for qid, ans in fresh.items():
-            last[qid] = {"row_ts": scene.row["ts"], "answer": ans}
+            # how far this answer moved from the last fresh one: past CHANGE_CUT the question is in motion
+            prev = (last.get(qid) or {}).get("answer")
+            last[qid] = {"row_ts": scene.row["ts"], "answer": ans, "moved": round(distance(prev, ans), 3)}
         save_last(out_dir, last)
     record = {"row_ts": scene.row["ts"], "book_asof": (scene.row.get("meta") or {}).get("book_asof"), "sigma": scene.sigma,
               "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,

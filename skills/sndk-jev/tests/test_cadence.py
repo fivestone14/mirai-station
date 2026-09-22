@@ -6,8 +6,8 @@ from datetime import timedelta
 
 from conftest import at
 from sndk_jev.ask import DEFAULT_QUESTIONS, build_requests, load_questions
-from sndk_jev.cadence import (MIN_READS, cadence_of, ensure_cadence, fill_missing, held_answer, is_due, parse_cadence,
-                              plan, recount, snap)
+from sndk_jev.cadence import (CHANGE_CUT, MIN_READS, cadence_of, distance, ensure_cadence, fill_missing, held_answer, is_due,
+                              parse_cadence, plan, recount, snap, vector)
 from sndk_jev.hour import one_sentence
 
 DOC = load_questions(DEFAULT_QUESTIONS)
@@ -29,6 +29,26 @@ def test_due_and_held_follow_the_clock():
     assert h["pick"] == "above" and h["held_from"] == "11:02"
     assert held_answer(entry, at(13, 30), 60) is None            # older than twice the cadence: never held
     assert held_answer(entry, at(11, 50), 30) is not None         # under an hour is always young enough
+
+
+def test_distance_is_the_whole_answer_moving_not_the_pick_flipping():
+    heavy90 = {"probabilities": {"heavy": 0.90, "normal": 0.08, "light": 0.02}}
+    heavy55 = {"probabilities": {"heavy": 0.55, "normal": 0.40, "light": 0.05}}
+    heavy88 = {"probabilities": {"heavy": 0.88, "normal": 0.10, "light": 0.02}}
+    assert round(distance(heavy90, heavy55), 2) == 0.70 and distance(heavy90, heavy55) >= CHANGE_CUT   # same pick, a change
+    assert round(distance(heavy90, heavy88), 2) == 0.04 and distance(heavy90, heavy88) < CHANGE_CUT    # not a change
+    assert vector({"noul": 0.8}) == {"yes": 0.8, "no": 0.2} and round(distance({"noul": 0.8}, {"noul": 0.4}), 2) == 0.8
+    assert distance(None, heavy90) == 0.0
+
+
+def test_a_question_in_motion_is_asked_again_before_its_cadence():
+    now = at(11, 32)
+    q = LIVE[0]
+    steady = {q: {"row_ts": at(11, 2).isoformat(), "answer": {"pick": "x", "probabilities": {"x": 0.9}}, "moved": 0.05}}
+    moving = {q: {"row_ts": at(11, 2).isoformat(), "answer": {"pick": "x", "probabilities": {"x": 0.9}}, "moved": 0.7}}
+    cad = {"questions": {q: {"minutes": 120}}}
+    assert q in plan(DOC, steady, cad, now)[0]          # not due, held
+    assert q not in plan(DOC, moving, cad, now)[0]      # in motion: asked now
 
 
 def test_plan_skips_only_live_questions_that_are_not_due():
@@ -66,17 +86,21 @@ def _records(picks_by_time: dict[str, list[tuple[int, int]]], qid: str) -> list[
 
 def test_recount_sets_every_read_for_a_flipper_and_slower_for_a_holder():
     q_flip, q_hold = LIVE[0], LIVE[1]
+    q_drift = LIVE[2]
     times = [(9, 32), (10, 2), (10, 32), (11, 2), (11, 32), (12, 2), (12, 32), (13, 2), (13, 32), (14, 2), (14, 32)]
     recs = []
     for i, (hh, mm) in enumerate(times):
         recs.append({"row_ts": at(hh, mm).isoformat(), "answers": {"g": {"answers": {
             q_flip: {"type": "choice", "probabilities": {"a" if i % 2 else "b": 0.9}},
-            q_hold: {"type": "choice", "probabilities": {"same": 0.9}}}}}})
+            q_hold: {"type": "choice", "probabilities": {"same": 0.9}},
+            # the pick never changes, the weight behind it swings every read: that is motion too
+            q_drift: {"type": "choice", "probabilities": {"same": 0.9 if i % 2 else 0.5, "other": 0.1 if i % 2 else 0.5}}}}}})
     cad = recount(recs, DOC, None, "2026-09-18")
     assert cad["questions"][q_flip]["minutes"] == 30 and cad["questions"][q_flip]["changes"] == 10
     assert cad["questions"][q_hold]["minutes"] == 120 and cad["questions"][q_hold]["changes"] == 0
+    assert cad["questions"][q_drift]["minutes"] == 30 and cad["questions"][q_drift]["changes"] == 10
     # a question with too few reads keeps what it had
-    few = [q for q in LIVE if q not in (q_flip, q_hold)][0]
+    few = [q for q in LIVE if q not in (q_flip, q_hold, q_drift)][0]
     assert cad["questions"][few]["minutes"] == parse_cadence(BY_ID[few].get("cadence")) and "under" in cad["questions"][few]["why"]
 
 

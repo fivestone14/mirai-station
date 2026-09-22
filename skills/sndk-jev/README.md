@@ -70,7 +70,11 @@ sentences. A held answer also covers a read whose label is missing, for up to
 twice the cadence. Cadences are 30, 60 or 120 minutes (reads come every 30) and
 are recounted once a day from the previous day's runs: the 25th percentile of
 how long each answer held, halved and snapped; never changed all day gives 60
-or 120; under six reads keeps the last value. The doc's `cadence` text is the
+or 120; under six reads keeps the last value. A change is the whole answer
+moving, not the pick flipping: consecutive answers are compared as probability
+vectors and a total shift of 0.3 or more counts, so heavy 0.90 to heavy 0.55 is
+a change and 0.90 to 0.88 is not. A question whose last two fresh answers moved
+0.3 or more is in motion and is asked again on the next read regardless. The doc's `cadence` text is the
 starting value. Files: `state/jev/cadence.json`, `state/jev/last_asked.json`.
 
     python3 -m sndk_jev.cadence --day 2026-09-22          # the table a recount would set

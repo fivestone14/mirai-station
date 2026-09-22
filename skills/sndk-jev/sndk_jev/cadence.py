@@ -11,16 +11,23 @@ Between fresh answers the last answer is held: it stays on the card and in the s
 sentences, tagged with the time it was given. A held answer also covers a read on which
 the question's label was missing, for up to twice its cadence.
 
+What counts as a change: the whole answer, not the picked word. Two answers are compared
+as probability vectors and their distance is the total absolute difference across the
+options (0 to 2); a distance of CHANGE_CUT or more is a change. So heavy 0.90 turning into
+heavy 0.55 is a change (0.70) although the pick held, and 0.90 to 0.88 is not.
+
 How a cadence is set (``recount``), once a day from the previous day's runs:
     for each live question, the time its answer held before changing, read to read;
     the 25th percentile of those holds, halved, snapped down to 30, 60 or 120.
+At read time a question whose last two fresh answers differed by CHANGE_CUT or more is
+"in motion" and is asked again whatever its cadence says.
     A question that never changed gets 60 with three hours of runs behind it and 120 with
     five hours and ten reads; fewer than six reads leaves the previous cadence in place.
 The question doc's own ``cadence`` text is the starting value until a recount exists.
 
 Files, under state/jev/:
     cadence.json      {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
-    last_asked.json   {qid: {"row_ts", "answer"}}   the newest fresh answer per question
+    last_asked.json   {qid: {"row_ts", "answer", "moved"}}   the newest fresh answer per question and how far it moved from the one before
 """
 from __future__ import annotations
 
@@ -37,6 +44,7 @@ LAST_NAME = "last_asked.json"
 STEPS = (30, 60, 120)
 MIN_READS = 6
 GRACE_MIN = 5                 # a read two minutes past the mark still counts as on time
+CHANGE_CUT = 0.3              # total probability moved across the options that counts as a change
 DOC_TEXT = {"every scan": 30, "every 10 minutes": 30, "every 20 minutes": 30, "every 30 minutes": 30, "hourly": 60}
 
 
@@ -88,6 +96,27 @@ def save_last(out_dir: Path, last: dict) -> None:
     tmp.replace(p)
 
 
+def vector(answer: dict | None) -> dict[str, float]:
+    """An answer as probabilities per option; a yes/no answer becomes {yes, no}."""
+    if not isinstance(answer, dict):
+        return {}
+    p = answer.get("probabilities")
+    if isinstance(p, dict) and p:
+        return {str(k): float(v) for k, v in p.items() if isinstance(v, (int, float))}
+    n = answer.get("noul")
+    if isinstance(n, (int, float)):
+        return {"yes": round(float(n), 6), "no": round(1.0 - float(n), 6)}
+    return {}
+
+
+def distance(a: dict | None, b: dict | None) -> float:
+    """Total absolute difference across the options, 0 (identical) to 2 (all the weight moved)."""
+    va, vb = vector(a), vector(b)
+    if not va or not vb:
+        return 0.0
+    return sum(abs(va.get(k, 0.0) - vb.get(k, 0.0)) for k in set(va) | set(vb))
+
+
 def _age_min(entry: dict | None, now: datetime) -> float | None:
     if not entry or not entry.get("row_ts"):
         return None
@@ -126,6 +155,8 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime) -> tuple[dict[str, str
             entry = last.get(qid)
             if is_due(entry, now, minutes):
                 continue
+            if isinstance(entry, dict) and float(entry.get("moved") or 0.0) >= CHANGE_CUT:
+                continue                       # in motion: its last two answers differed, ask again now
             h = held_answer(entry, now, minutes)
             if h is None:
                 continue                       # nothing to hold: ask it after all
@@ -150,7 +181,7 @@ def fill_missing(doc: dict, skipped: dict, last: dict, cad: dict, now: datetime,
     return held
 
 
-def picks_series(records: list[dict], live: set[str]) -> dict[str, list[tuple[datetime, str]]]:
+def answer_series(records: list[dict], live: set[str]) -> dict[str, list[tuple[datetime, dict]]]:
     out: dict[str, list] = {qid: [] for qid in live}
     for r in sorted(records, key=lambda r: r.get("row_ts", "")):
         try:
@@ -161,14 +192,9 @@ def picks_series(records: list[dict], live: set[str]) -> dict[str, list[tuple[da
             for qid, ans in (a.get("answers") or {}).items():
                 if qid not in live or not isinstance(ans, dict):
                     continue
-                p = ans.get("probabilities") if isinstance(ans.get("probabilities"), dict) else None
-                if p:
-                    pick = max(p, key=p.get)
-                elif isinstance(ans.get("noul"), (int, float)):
-                    pick = "yes" if ans["noul"] >= 0.5 else "no"
-                else:
-                    continue
-                out[qid].append((t, pick))
+                v = vector(ans)
+                if v:
+                    out[qid].append((t, v))
     return out
 
 
@@ -176,7 +202,7 @@ def recount(records: list[dict], doc: dict, previous: dict | None = None, day: s
     """A day's runs in, one cadence per live question out. See the module note for the rule."""
     previous = previous or {"questions": {}}
     live = {qid: q for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
-    series = picks_series(records, set(live))
+    series = answer_series(records, set(live))
     out = {"recounted_from": day, "recounted_at": datetime.now().astimezone().isoformat(timespec="seconds"), "questions": {}}
     for qid, q in live.items():
         s = series.get(qid) or []
@@ -187,8 +213,8 @@ def recount(records: list[dict], doc: dict, previous: dict | None = None, day: s
             continue
         span = (s[-1][0] - s[0][0]).total_seconds() / 60.0
         holds, start, changes = [], s[0][0], 0
-        for (t0, p0), (t1, p1) in zip(s, s[1:]):
-            if p1 != p0:
+        for (t0, v0), (t1, v1) in zip(s, s[1:]):
+            if distance({"probabilities": v0}, {"probabilities": v1}) >= CHANGE_CUT:
                 holds.append((t1 - start).total_seconds() / 60.0); start = t1; changes += 1
         if not holds:
             minutes = 120 if (span >= 300 and len(s) >= 10) else 60 if span >= 180 else 30
@@ -197,7 +223,7 @@ def recount(records: list[dict], doc: dict, previous: dict | None = None, day: s
         else:
             holds.sort(); p25 = holds[len(holds) // 4]
             minutes = snap(p25 / 2.0)
-            why = f"answer held {p25:.0f} min at the 25th percentile over {changes} changes; half of that, snapped"
+            why = f"answer held {p25:.0f} min at the 25th percentile over {changes} moves of {CHANGE_CUT}+; half of that, snapped"
         out["questions"][qid] = {"minutes": minutes, "p25_hold_min": None if p25 is None else round(p25, 1),
                                  "changes": changes, "reads": len(s), "why": why}
     return out
