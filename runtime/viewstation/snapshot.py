@@ -18,6 +18,8 @@ import os
 import re
 import statistics
 import sys
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -613,11 +615,96 @@ def _side_packet(R, row: dict, build_now: datetime,
         return None
 
 
+# ---- the payload cache -------------------------------------------------------
+# Building the payload is the slowest thing the phone waits for (about two seconds:
+# the scene is rebuilt from the whole day's diary through the reader's own code).
+# It only changes when a diary row, a reading, a bar or a side packet lands, so it
+# is built once and served from memory, and a refresher thread rebuilds it in the
+# background when one of those files changes or a minute has passed (the scene
+# carries a clock, so it must never be older than the phone's own poll). A request
+# is served whatever is cached, even a copy a few seconds behind a row that just
+# landed, and waits for a build only when nothing has been built yet. Callers that
+# pass their own `now` (tests, replays) always build fresh and never touch the cache.
+_PAY_CACHE: dict = {"key": None, "val": None, "built": 0.0}
+_PAY_LOCK = threading.Lock()
+_PAY_REFRESH_S = 60.0        # a rebuild at least this often keeps the scene's clock within a minute
+_PAY_POLL_S = 5.0            # how often the refresher looks for a new file
+_PAY_THREAD: dict = {"started": False}
+
+
+def _payload_key() -> tuple:
+    """What the payload depends on: the newest diary file and, for that day, the
+    readings and the bars (the side packet is built from the bars). Sizes and mtimes, no contents read."""
+    state = _state_dir()
+    diary = state / "sndk_reversion"
+    files = sorted(diary.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")) if diary.is_dir() else []
+    if not files:
+        return ("no diary",)
+    newest = files[-1]
+    day = newest.stem
+    key = [str(state), day]
+    for path in (newest, state / "sndk_reads" / f"{day}.jsonl", state / "sndk_bars" / f"{day}.jsonl"):
+        try:
+            st = path.stat()
+            key.append((path.name, st.st_size, st.st_mtime_ns))
+        except OSError:
+            key.append((path.name, None, None))
+    return tuple(key)
+
+
+def _payload_stale() -> bool:
+    c = _PAY_CACHE
+    return c["val"] is None or c["key"] != _payload_key() or (time.time() - c["built"]) >= _PAY_REFRESH_S
+
+
+def _rebuild_payload() -> dict:
+    with _PAY_LOCK:
+        key = _payload_key()
+        if _PAY_CACHE["val"] is not None and _PAY_CACHE["key"] == key and (time.time() - _PAY_CACHE["built"]) < _PAY_REFRESH_S:
+            return _PAY_CACHE["val"]          # another thread built it while this one waited for the lock
+        val = _build_payload(_now_et())
+        _PAY_CACHE.update({"key": key, "val": val, "built": time.time()})
+        return val
+
+
+def _payload_refresher() -> None:
+    while True:
+        time.sleep(_PAY_POLL_S)
+        try:
+            if _payload_stale():
+                _rebuild_payload()
+        except Exception:      # the refresher must outlive one bad build; the next poll tries again
+            pass
+
+
+def start_payload_refresher() -> None:
+    """Start the background rebuilder once. server.main() calls it at start-up; a test that
+    exercises the route in-process never does, so no thread outlives a test."""
+    with _PAY_LOCK:
+        if _PAY_THREAD["started"]:
+            return
+        _PAY_THREAD["started"] = True
+    threading.Thread(target=_payload_refresher, name="sndk-payload-refresher", daemon=True).start()
+
+
 def sndk_payload(now: Optional[datetime] = None) -> dict:
+    """The phone's payload. With `now` given: built fresh, for tests and replays. Without:
+    served from the cache the refresher keeps warm, built on the spot only when empty."""
+    if now is not None:
+        return _build_payload(now)
+    c = dict(_PAY_CACHE)                      # one snapshot, so the age belongs to the value served
+    if c["val"] is None:
+        _rebuild_payload()
+        c = dict(_PAY_CACHE)
+    out = dict(c["val"])
+    out["cache_age_s"] = round(time.time() - c["built"], 1)
+    return out
+
+
+def _build_payload(now: datetime) -> dict:
     if str(_SNDK_PRO_DIR) not in sys.path:
         sys.path.insert(0, str(_SNDK_PRO_DIR))
     import sndk_read as R   # lazy: the tab is rarely open; keeps server start light
-    now = now or _now_et()
     diary = R._diary_dir()
     files = sorted(diary.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"))
     rows: list = []

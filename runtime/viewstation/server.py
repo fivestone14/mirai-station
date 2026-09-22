@@ -777,6 +777,10 @@ class _Station(ThreadingHTTPServer):
 
 def main():
     httpd = _Station(("0.0.0.0", PORT), Handler)
+    # the phone's payload is served from memory; this thread keeps it warm (a rebuild when a
+    # file changes or a minute passes). Started here, never from a request, so a test that
+    # runs the station in-process leaves no thread behind.
+    snap.start_payload_refresher()
     print(f"Mirai Viewstation serving on http://0.0.0.0:{PORT}  (state: {_raw_roots()['state']})",
           flush=True)
     try:
