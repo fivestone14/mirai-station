@@ -109,7 +109,7 @@ python3 skills/mirai-left-eye/native_gex_feed.py --status          # confirm
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `launchctl list` shows `Status: 78` for an agent | exit code != 0; check stderr | `tail /tmp/mirai-station.<label>.err` |
-| `/tmp/mirai-station.<label>.err` has a line ending its market check with `FAILED (rc=N)` and the job exits 1 | the market-hours gate itself failed (venv, import). The gate exits 0 when the market is open and 3 when it is closed, and only 3 skips quietly | re-run `venv-bootstrap.sh`. Gated this way: sndk, sndk-read, sndk-bars, lob-collector, book-collector, watch-left-eye (which still runs its alert pass before exiting 1) |
+| `/tmp/mirai-station.<label>.err` has a line ending its market check with `FAILED (rc=N)` and the job exits 1 | the market-hours gate itself failed (venv, import). The gate exits 0 when the market is open and 3 when it is closed, and only 3 skips quietly | re-run `venv-bootstrap.sh`. Gated this way: sndk, sndk-read, sndk-bars, lob-collector, book-collector, sndk-jev, watch-left-eye (which still runs its alert pass before exiting 1) |
 | Phone: "SNDK reader silent" | the reader stopped writing read rows while the scanner still writes; a silent scanner is paged under its own name instead | `tail /tmp/mirai-station.sndk-read.err`; check `SNDK_READ_DISABLE`. "SNDK reader back" follows once a read row lands |
 | "schwab module not found" | venv not provisioned or wrong python | re-run `venv-bootstrap.sh`; confirm shebang resolves |
 | GEX read falls back to SPY-proxy every scan | expired Cassandra/ThetaData login | `native_gex_feed.py --login` (see above); auth-watch pings on this |
