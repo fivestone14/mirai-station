@@ -812,7 +812,7 @@ def pipeline_diagram():
     p.append(arrow([(634, 242), (650, 242)]))
     p.append(arrow([(796, 284), (796, 312), (535, 312), (535, 136)], "which answers speak on the next run", 545, 328, dashed=True))
     p.append('<text class="dg-tier" x="12" y="92">RUN</text><text class="dg-tier" x="12" y="246">LOOP</text>')
-    return ('<svg viewBox="0 0 960 340" role="img" aria-label="The six-step pipeline: labels, thirty questions, answers as sentences, one summing question, the card; grading feeds weights back into which answers are used.">'
+    return ('<svg viewBox="0 0 960 340" role="img" aria-label="The six-step pipeline: labels, the live questions, answers as sentences, one summing question, the card; grading feeds weights back into which answers are used.">'
             + "".join(p) + "</svg>")
 
 

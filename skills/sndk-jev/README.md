@@ -25,7 +25,7 @@ next with the answers.
 | `sndk_jev/service.py` | The Service | One run per scan: build, ask (when a key exists), write `state/jev/{day}.jsonl` and `state/jev/latest.json`, the phone's card. Its own job, never on the scan path. |
 | `runtime/scripts/run-sndk-jev.sh`, `launchd/` | The Job | The launchd wrapper (beside the station's other runners, where its job test expects it) and the plist template. Installed on the station since 2026-09-22; fires at :02 and :32, so JEV reads once per half hour in market hours. |
 | `runtime/viewstation/static/m/jev.html` | The Card | The phone page. Polls `latest.json` through the viewstation's existing read-only raw-file route, so `server.py` is unchanged. |
-| `questions/sndk_pro.json` | The Questions | 41 questions in 13 groups, each group one request: 30 live, 3 shadow, 8 dark (news, no source yet). |
+| `questions/sndk_pro.json` | The Questions | 46 questions in 13 groups, each group one request: 35 live, 3 shadow, 8 dark (news, no source yet). Five came from the first end-of-day review (`questions/proposals/`). |
 | `spec/labels.json` | The Label Spec | All 61 labels, each with its source, logic, cut and the sentence it wrote on a real row; plus the overlap review and the two labels folded away. `tests/test_spec.py` pins the built set to what the code writes. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars, side packets and a chain cache. No network, no host state. |
 

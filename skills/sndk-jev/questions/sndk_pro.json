@@ -1,6 +1,6 @@
 {
  "name": "jev-questions",
- "version": "0.10.0",
+ "version": "0.11.1",
  "date": "2026-09-21",
  "horizon": "the next 30 minutes",
  "how_to_use": [
@@ -198,11 +198,11 @@
      "ask": "Does most of the options weight sit above price, below it, or evenly?",
      "why": "The only strike question that varies day to day; graded as agreement with the label, never against the next move.",
      "type": "choice",
-     "instructions": "Read `gex.weight_side`. Where does most of the options weight sit compared with price?",
+     "instructions": "Read `gex.weight_side`. Where does most of the options weight sit compared with price? The sentence's opening words decide: 'most of the options weight sits above price' is above, 'most ... sits below price' is below, 'split about evenly' is even; the percentage that follows is description, not the verdict.",
      "criteria": {
-      "above": "most of the options weight sits above price",
-      "below": "most of the options weight sits below price",
-      "even": "the options weight is split about evenly above and below price",
+      "above": "the label says most of the options weight sits above price (more than 60% of it)",
+      "below": "the label says most of the options weight sits below price (less than 40% sits above)",
+      "even": "the label says the options weight is split about evenly above and below price (between 40% and 60% above)",
       "unsure": "the label gives too little to call"
      }
     },
@@ -317,7 +317,9 @@
     "options.next_week_share",
     "gex.expiry_roll",
     "gex.book_vs_yesterday",
-    "gex.crowd_change_overnight"
+    "gex.crowd_change_overnight",
+    "gex.air_to_wall",
+    "range.wall_retests"
    ],
    "questions": {
     "cluster_near_price": {
@@ -379,6 +381,24 @@
       "about_the_same": "the dealer book is between 0.8 and 1.25 times its size at yesterday's close and the crowd at the heaviest strike held",
       "unsure": "the labels conflict or say too little to call"
      }
+    },
+    "wall_return": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Is the nearest heavy strike close to price, and has price been coming back to it today?",
+     "why": "`air_to_wall` read heavy_strike_close on 10 of 53 runs today, every one of them a strike price had come back to 0 or 1 times, and on the 43 open_air runs `range.wall_retests` moved through 0, 1, 2 and 4 returns (four returns to the call wall at 11:17, none to the put wall that replaced it at 11:31).",
+     "type": "choice",
+     "instructions": "Read `gex.air_to_wall` for how far the nearest heavy strike sits from price, and `range.wall_retests` for how many times price has come back to that strike today; the count is for the nearest heavy strike as the side packet last knew it, and it starts again when a different strike becomes the nearest. Which situation is it?",
+     "criteria": {
+      "close_first_visit": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it 0 times or 1 time today",
+      "close_worked": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it 2 or more times today",
+      "far_worked": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it 2 or more times today",
+      "far_untouched": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it 0 times or 1 time today",
+      "no_wall": "no heavy strike sits within reach",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
     }
    }
   },
@@ -390,7 +410,8 @@
     "volume.on_move",
     "volume.by_direction",
     "momentum.closes",
-    "volume.at_price"
+    "volume.at_price",
+    "momentum.pauses"
    ],
    "questions": {
     "volume_backs_move": {
@@ -422,6 +443,41 @@
       "at_price": "the heaviest-volume stretch of the day includes the current price",
       "unsure": "the label gives too little to call"
      }
+    },
+    "move_retracement": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Of the last 30 minutes' move, how much has already been given back?",
+     "why": "The sum picked down at 10:56, 11:00 and 11:17 on `price.recent_move` reading a fall of 0.24 to 0.27 sigma, while the unread `momentum.pauses` sentence said that fall had already given back more than all of itself at 10:56, 69% at 11:00 and 47% at 11:17.",
+     "type": "choice",
+     "instructions": "Read `price.recent_move` for whether price moved more than 0.15 sigma over the last 30 minutes, and `momentum.pauses` for how much of that move was given back at its deepest pullback. Which situation is it?",
+     "criteria": {
+      "held": "price moved more than 0.15 sigma over the last 30 minutes, and the deepest pullback gave back less than a quarter of the move",
+      "dented": "price moved more than 0.15 sigma over the last 30 minutes, and the deepest pullback gave back between a quarter and half of the move",
+      "mostly_given_back": "price moved more than 0.15 sigma over the last 30 minutes, and the deepest pullback gave back more than half of the move but less than all of it",
+      "fully_reversed": "price moved more than 0.15 sigma over the last 30 minutes, and the deepest pullback gave back all of the move or more than all of it",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
+    },
+    "move_vs_volume_shelf": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Is price moving away from the day's heaviest trading, moving back toward it, or sitting on it?",
+     "why": "`heavy_volume_location` and `price_recent_direction` were both answered at full confidence on every read today but never in one sentence: from 10:17 to 11:17 the heaviest stretch sat 0.1 to 0.6 sigma above price while price fell away from it, at 12:00 price rose back toward it, and from 12:31 to the close the stretch included price and the tape stalled.",
+     "type": "choice",
+     "instructions": "Read `volume.at_price` for where the day's heaviest-volume stretch sits relative to price, and `price.recent_move` for what price did over the last 30 minutes. Which situation is it?",
+     "criteria": {
+      "leaving_upward": "the heaviest-volume stretch of the day sits below price, and over the last 30 minutes price rose more than 0.15 sigma",
+      "leaving_downward": "the heaviest-volume stretch of the day sits above price, and over the last 30 minutes price fell more than 0.15 sigma",
+      "returning": "the heaviest-volume stretch of the day sits above price and over the last 30 minutes price rose more than 0.15 sigma, or it sits below price and price fell more than 0.15 sigma",
+      "holding_away": "the heaviest-volume stretch of the day sits above or below price, and over the last 30 minutes price stayed within 0.15 sigma of where it was",
+      "sitting_on_it": "the heaviest-volume stretch of the day includes the current price",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
     }
    }
   },
@@ -432,7 +488,9 @@
     "price.vs_yesterday",
     "price.vs_day_before",
     "price.vs_prior_close",
-    "range.prior_level_touches"
+    "range.prior_level_touches",
+    "price.day_range_position",
+    "range.high_retests"
    ],
    "questions": {
     "two_day_position": {
@@ -477,6 +535,22 @@
       "ordinary": "price is within 1.0 sigma of last night's close",
       "unsure": "the label gives too little to call"
      }
+    },
+    "day_high_pressure": {
+     "viewpoint": "history",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "At the top of today's range, how many times has price come back to the day's high?",
+     "why": "`price_in_day_range` read top on 50 of 52 asks and every history question was one-sided on this outlier day (two_day_position, outlier_day, week_position, prior_level_tested, box_status, range_vs_normal all at 90% or more), while `range.high_retests` split 27 reads at one return and 23 at two or more and is read by nothing.",
+     "type": "choice",
+     "instructions": "Read `price.day_range_position` for where price sits in today's range so far, and `range.high_retests` for how many times price has come back to the day's high today. Which situation is it?",
+     "criteria": {
+      "top_returned_once": "price is in the top third of today's range so far, and price has come back to the day's high 0 times or 1 time",
+      "top_returned_repeatedly": "price is in the top third of today's range so far, and price has come back to the day's high 2 or more times",
+      "not_at_top": "price is in the middle third or the bottom third of today's range so far",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
     }
    }
   },
@@ -489,7 +563,8 @@
     "momentum.pace",
     "iv.term_slope",
     "iv.move_sides",
-    "momentum.vwap_slope"
+    "momentum.vwap_slope",
+    "iv.trend_30min"
    ],
    "questions": {
     "momentum_stretched": {
@@ -551,6 +626,23 @@
       "flat": "the day's average price has stayed within the 0.05 sigma flat cut over the last 30 minutes",
       "unsure": "the label gives too little to call"
      }
+    },
+    "stall_vs_vol": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "While the tape is stalled, is implied volatility rising, falling, or flat?",
+     "why": "On all nine reads from 11:31 to the close `activity_state` said quiet (the last real move 20 to 161 minutes old) while `iv_trend` kept changing underneath it: rising at 12:31, 13:31 and 14:18, falling at 11:31, 12:00 and 14:00, flat at 13:00, 15:02 and 15:31.",
+     "type": "choice",
+     "instructions": "Read `context.time_since_last_move` for how long ago price last made a real move of 0.15 sigma within 10 minutes, and `iv.trend_30min` for what at-the-money implied volatility did over the last 30 minutes. Which situation is it?",
+     "criteria": {
+      "stalled_vol_rising": "price last made a real move 10 minutes ago or more, and implied volatility rose by more than 2 vol points over the last 30 minutes",
+      "stalled_vol_falling": "price last made a real move 10 minutes ago or more, and implied volatility fell by more than 2 vol points over the last 30 minutes",
+      "stalled_vol_flat": "price last made a real move 10 minutes ago or more, and implied volatility stayed within 2 vol points of where it was 30 minutes ago",
+      "tape_moving": "price last made a real move under 10 minutes ago, whatever implied volatility did",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
     }
    }
   },
@@ -559,7 +651,6 @@
    "reads": [
     "context",
     "price.multi_day_position",
-    "price.vs_week_extremes",
     "context.time_since_last_move",
     "context.session_progress",
     "price.minute_width"
