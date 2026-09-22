@@ -10,6 +10,10 @@ const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
 
 let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], JEV = null, WIN = null, CHART = null, LADDER_H = 280;
+// the diary's tail is enough for the day's change; the full day is the bars' stand-in (see loadPayload)
+const DIARY_TAIL = 6, DIARY_FULL = 400;
+// how far the diary may outreach the bars before the diary is the tape: two missed bars plus a margin
+const BARS_GRACE_MS = 10 * 60 * 1000;
 let T_PAY = null, T_SPOT = null;
 
 /* ---- layout ------------------------------------------------------------ */
@@ -128,8 +132,15 @@ async function loadPayload(){
     // it. The server implements limit as a TAIL slice, so a day that ever
     // exceeded it would lose its OPENING rather than its close — the quiet end
     // of the failure, and the reason the headroom is real rather than tidy.
+    //
+    // The diary is asked for its TAIL only (2026-09-22). The glance reads one
+    // row from it, the newest, for the day's change; the whole day (about 2 MB,
+    // every minute) was fetched only so tapePoints could stand in for the bars,
+    // which happens when the sidecar has nothing. So the tail comes with every
+    // poll and the full day is fetched once, below, only on a day without bars.
+    const diaryUrl = n => '/api/raw/file?root=state&path=sndk_reversion/' + encodeURIComponent(pay.session) + '.jsonl&limit=' + n;
     const [d, rd, bars, jv] = await Promise.all([
-      getJSON('/api/raw/file?root=state&path=sndk_reversion/' + encodeURIComponent(pay.session) + '.jsonl&limit=400'),
+      getJSON(diaryUrl(DIARY_TAIL)),
       getJSON('/api/raw/file?root=state&path=sndk_reads/'      + encodeURIComponent(pay.session) + '.jsonl&limit=40'),
       getJSON('/api/raw/file?root=state&path=sndk_bars/'       + encodeURIComponent(pay.session) + '.jsonl&limit=420'),
       // the JEV service's card, written by its own job; a missing file is not a failure
@@ -138,6 +149,12 @@ async function loadPayload(){
     DIARY = (d.body && Array.isArray(d.body.rows)) ? d.body.rows : [];
     READS = (rd.body && Array.isArray(rd.body.rows)) ? rd.body.rows : [];
     BARS  = (bars.body && Array.isArray(bars.body.rows)) ? bars.body.rows : [];
+    if(DIARY.length >= DIARY_TAIL && diaryIsTheTape(barPoints(BARS), tapePoints(DIARY))){
+      // the bars cannot draw the day, or stopped well before the diary did: pathPoints will
+      // draw the diary, so it has to be the whole day and not six rows
+      const full = await getJSON(diaryUrl(DIARY_FULL));
+      if(full.body && Array.isArray(full.body.rows)) DIARY = full.body.rows;
+    }
     JEV   = (jv.body && jv.body.kind === 'json' && jv.body.data) ? jv.body.data : null;
   }
   WIN = null;                       // a new payload earns a new window
@@ -215,14 +232,20 @@ function pathPoints(){
   // both fresher and denser, and on a day the bars never covered the diary is
   // the only thing there is.
   const b = barPoints(BARS), d = tapePoints(DIARY);
-  if(b.length < 2) return d;
-  if(d.length < 2) return b;
-  const GRACE_MS = 10 * 60 * 1000;   // two missed bars plus a margin
-  return (d[d.length - 1].t - b[b.length - 1].t > GRACE_MS) ? d : b;
+  return diaryIsTheTape(b, d) ? d : b;
 }
 
-// The overlay is painted opaque, so it covers the empty page from the first
-// frame rather than arriving after it. That makes the FLOOR the thing to get
+/* The rule above, named once so the fetch in loadPayload and the draw here cannot
+   disagree: the diary stands in when the bars cannot draw the day at all, or stopped
+   more than BARS_GRACE_MS before the diary did. */
+function diaryIsTheTape(b, d){
+  if(b.length < 2) return true;
+  if(d.length < 2) return false;
+  return d[d.length - 1].t - b[b.length - 1].t > BARS_GRACE_MS;
+}
+
+// The overlay is painted opaque, so it covers the empty chart card from the
+// first frame rather than arriving after it (the rest of the page draws at once). That makes the FLOOR the thing to get
 // right: a station on the same LAN answers in ~40ms, and an overlay that
 // appears and vanishes inside 100ms is a flash that reads as a glitch. Held to
 // 260ms it is either genuinely unnoticed or genuinely a loading state.
