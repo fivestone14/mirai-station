@@ -243,16 +243,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--loop", type=int, metavar="SECONDS", help="keep running every N seconds")
     args = ap.parse_args(argv)
     load_env_file()
-    if args.send and not os.environ.get("TYPESAFE_API_KEY"):
-        print(f"--send needs TYPESAFE_API_KEY in the environment or in {ENV_FILE}", file=sys.stderr)
-        return 2
+    send = bool(args.send)
+    if send and not os.environ.get("TYPESAFE_API_KEY"):
+        # the job always asks to send; without a key the run still writes the card, unsent
+        print(f"no TYPESAFE_API_KEY in the environment or in {ENV_FILE}: running unsent", file=sys.stderr)
+        send = False
     state_dir = Path(args.state_dir)
     out_dir = Path(args.out_dir) if args.out_dir else state_dir / "jev"
     doc = load_questions(args.questions)
     last_row = None
     while True:
         try:
-            c = run_once(state_dir, out_dir, doc, args.send, args.day)
+            c = run_once(state_dir, out_dir, doc, send, args.day)
             if c["row_ts"] != last_row:
                 n_ans = sum(1 for q in c["questions"] if q.get("answer"))
                 print(f"{c['generated_at']} row {c['row_ts'][11:19]} labels {c['labels']} answered {n_ans}/{len(c['questions'])} "

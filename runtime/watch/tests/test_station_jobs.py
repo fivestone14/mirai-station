@@ -327,7 +327,8 @@ def test_a_slow_read_never_pages_the_phone():
 # run script -> what it starts only while the market is live
 GATED = {"run-sndk.sh": "sndk_hunter.py", "run-sndk-read.sh": "sndk_read.py",
          "run-sndk-bars.sh": "sndk_bars.py", "run-lob-collector.sh": "lob_bridge.py",
-         "run-book-collector.sh": "book_flow", "run-watch-left-eye.sh": "hunter.py"}
+         "run-book-collector.sh": "book_flow", "run-watch-left-eye.sh": "hunter.py",
+         "run-sndk-jev.sh": "sndk_jev.service"}
 MARKET_STATUS = {
     "open": "def check(now=None):\n    return type('Status', (), {'is_live': True})()\n",
     "closed": "def check(now=None):\n    return type('Status', (), {'is_live': False})()\n",
@@ -352,7 +353,7 @@ def _run_gated(tmp_path, script, market, python=True):
     Returns the finished process and the recorded launches."""
     root, venv, launched = tmp_path / "station", tmp_path / "venv", tmp_path / "launched"
     scripts, intraday = root / "runtime" / "scripts", root / "runtime" / "watch" / "intraday"
-    for skill in ("sndk-pro", "mirai-left-eye", "book-flow"):
+    for skill in ("sndk-pro", "mirai-left-eye", "book-flow", "sndk-jev"):
         (root / "skills" / skill).mkdir(parents=True)
     _file(intraday.parent / "__init__.py", "")
     _file(intraday / "__init__.py", "")

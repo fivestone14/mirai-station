@@ -32,6 +32,7 @@ jobs:
           - skills/mirai-voice/tests
           - skills/siege/tests
           - skills/sndk-pro/tests
+          - skills/sndk-jev/tests
     steps:
       - uses: actions/checkout@v4
 

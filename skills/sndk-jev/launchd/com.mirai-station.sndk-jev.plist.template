@@ -9,17 +9,17 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/skills/sndk-jev/run-sndk-jev.sh</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk-jev.sh</string>
   </array>
 
   <!-- JEV decision service: a separate job from the SNDK PRO scanner, never on
        its path. Fires at two minutes past each hour and half hour (StartCalendarInterval), so
        JEV reads once per 30-minute mark on the newest finished row; the runner still
        waits until that row is at least 20 s old. Reads the diary, bars, side
-       packets and chain cache; writes only state/jev/. The key is read from the
-       environment (TYPESAFE_API_KEY, exported in runtime/scripts/env.sh from the
-       Keychain, never written into this file). Without a key the service still
-       runs and writes the card with every question marked "not sent". -->
+       packets and chain cache; writes only state/jev/. The key is read by the
+       service itself from the git-ignored skills/sndk-jev/.env, never written into
+       this file or the runner. Without a key the service still runs and writes the
+       card with every question marked "not sent". -->
   <key>StartCalendarInterval</key>
   <array>
     <dict><key>Minute</key><integer>2</integer></dict>

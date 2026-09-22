@@ -418,7 +418,7 @@ Tests — **one suite directory at a time** (each box ships its own `conftest.py
 they collide if collected together):
 
 ```bash
-for t in skills/mirai-left-eye/tests skills/sndk-pro/tests skills/siege/tests \
+for t in skills/mirai-left-eye/tests skills/sndk-pro/tests skills/sndk-jev/tests skills/siege/tests \
          skills/lob-flow/tests skills/iv-viability/tests runtime/watch/tests; do
   $PY -m pytest "$t" -q
 done                                                       # ~1,150 tests
