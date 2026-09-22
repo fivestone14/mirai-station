@@ -645,6 +645,16 @@ body.failed > *:not(.fail):not(.tabs){display:none}
 /* a level's annotation shown where a sentence would be: not the model's voice */
 .rd-line.wordless{color:var(--on-mute)}
 
+/* ============ E1b. JEV, BETA ============ */
+/* A box that says only whether the JEV card exists and how fresh it is. What
+   JEV answered lives on its own page, /m/jev.html, behind the JEV tab: the
+   glance keeps its no-forecast rule and this box never carries an answer. */
+.jev{border:1px dashed var(--rule-soft);box-shadow:none}
+.beta{font:700 9px/1 var(--sans);letter-spacing:.12em;padding:3px 6px;border-radius:6px;
+      border:1px solid currentColor;font-style:normal;vertical-align:middle}
+.jev-line{margin:10px 0 0;font:400 15px/1.5 var(--sans);color:var(--i-body)}
+.tab s em.beta{font-size:7px;padding:2px 4px;margin-left:2px}
+
 /* ============ E2. THE LAST HALF HOUR ============ */
 /* Two things on one card, and the card's first job is to keep them apart: the
    half hour on screen, and the earlier trading days with today left out. In
@@ -1071,6 +1081,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   </div>
 </section>
 
+<section class="card jev" id="jev">
+  <div class="lab">JEV <em class="beta">beta</em><span class="r" id="jevAge"></span></div>
+  <p class="jev-line" id="jevLine">No JEV card yet.</p>
+</section>
+
 <section class="card hh" id="hh" hidden>
   <div class="lab">The last half hour<span class="r" id="hhSince"></span></div>
   <p class="hh-say" id="hhSay"></p>
@@ -1199,6 +1214,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <a class="tab" href="/m/thread.html" data-press data-haptic>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
     <s>READS</s><i></i>
+  </a>
+  <a class="tab" href="/m/jev.html" data-press data-haptic>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M6 8h12M4 14l2-6 2 6M16 14l2-6 2 6"/></svg>
+    <s>JEV <em class="beta">BETA</em></s><i></i>
   </a>
 </nav>
 

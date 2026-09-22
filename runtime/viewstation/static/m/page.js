@@ -9,7 +9,7 @@
 const USER = new URLSearchParams(location.search).get('user') || 'will';
 const $ = id => document.getElementById(id);
 
-let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], WIN = null, CHART = null, LADDER_H = 280;
+let PAY = null, LIVE = null, DIARY = [], READS = [], BARS = [], JEV = null, WIN = null, CHART = null, LADDER_H = 280;
 let T_PAY = null, T_SPOT = null;
 
 /* ---- layout ------------------------------------------------------------ */
@@ -128,14 +128,17 @@ async function loadPayload(){
     // it. The server implements limit as a TAIL slice, so a day that ever
     // exceeded it would lose its OPENING rather than its close — the quiet end
     // of the failure, and the reason the headroom is real rather than tidy.
-    const [d, rd, bars] = await Promise.all([
+    const [d, rd, bars, jv] = await Promise.all([
       getJSON('/api/raw/file?root=state&path=sndk_reversion/' + encodeURIComponent(pay.session) + '.jsonl&limit=400'),
       getJSON('/api/raw/file?root=state&path=sndk_reads/'      + encodeURIComponent(pay.session) + '.jsonl&limit=40'),
       getJSON('/api/raw/file?root=state&path=sndk_bars/'       + encodeURIComponent(pay.session) + '.jsonl&limit=420'),
+      // the JEV service's card, written by its own job; a missing file is not a failure
+      getJSON('/api/raw/file?root=state&path=jev/latest.json'),
     ]);
     DIARY = (d.body && Array.isArray(d.body.rows)) ? d.body.rows : [];
     READS = (rd.body && Array.isArray(rd.body.rows)) ? rd.body.rows : [];
     BARS  = (bars.body && Array.isArray(bars.body.rows)) ? bars.body.rows : [];
+    JEV   = (jv.body && jv.body.kind === 'json' && jv.body.data) ? jv.body.data : null;
   }
   WIN = null;                       // a new payload earns a new window
   paintAll();
@@ -248,6 +251,8 @@ function paintAll(){
   paintLadder(st);
   paintToday();
   paintRead();
+  // beta: a fault in the JEV box must never stop the rest of the glance from painting
+  try { paintJev(); } catch (e) { $('jevLine').textContent = 'JEV box could not be drawn.'; }
   paintHalf(st);
   paintFoot(st);
   // the full screen chart is the same board, so a tick that moves the glance
@@ -2020,6 +2025,24 @@ function paintRead(){
     : lead + m.line;
   line.className = 'rd-line' + (m.tier === 'aged' ? ' aged' : '')
                              + (m.wordless ? ' wordless' : '');
+}
+
+/* ---- E1b. JEV, beta ------------------------------------------------------
+   Only whether the card exists, how many questions it answered and how old its
+   row is. The answers themselves stay on /m/jev.html: the glance carries no
+   forecast, and every JEV answer is one. textContent only. */
+function paintJev(){
+  const m = jevRead(JEV);
+  const line = $('jevLine'), age = $('jevAge');
+  if(!m){
+    line.textContent = 'No JEV card yet.';
+    age.textContent = ''; age.classList.remove('old');
+    return;
+  }
+  const a = gMinutes(m.ageMin);
+  age.textContent = a === 'just now' ? 'JUST NOW' : (a + ' ago').toUpperCase();
+  age.classList.toggle('old', m.tier === 'aged');
+  line.textContent = m.line;
 }
 
 /* ---- E2. the last half hour, and apart from it the record ---------------

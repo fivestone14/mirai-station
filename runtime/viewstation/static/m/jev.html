@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>SNDK · JEV</title>
+<!--
+  The JEV decision card, beta. Reads state/jev/latest.json through the
+  viewstation's existing read-only raw-file route, so nothing in server.py
+  changes for it. The file is written by skills/sndk-jev (its own launchd job),
+  never by the scan.
+
+  Same paper as the glance: its tokens, its card, its label row, its tab bar.
+  No dark mode, because the glance has none. House rules kept: text goes in
+  with textContent only, no emoji, no arrows, the row's time and age always
+  shown, a failed fetch keeps the last card on screen and says so. Every answer
+  is a probability per option; the sum and the shadow questions are forecasts
+  graded later, drawn dashed with that said in words. Nothing here reads a
+  viewport unit.
+-->
+<link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:"Jakarta";src:url("/m/pjs-153fc85b7029.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:swap}
+:root{
+  --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --fill:#1F2622;
+  --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
+  --on-body:#E4E6DF; --on-mute:#A9B0A6; --on-faint:#8E958A;
+  --px-ink:#2F44B8; --px-mark:#5470E4; --rule-soft:#7E8779;
+  --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
+  --tap-min:48px; --state-hover:.08; --state-press:.12;
+  --press-in:80ms; --press-out:200ms; --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(.2,0,0,1);
+  --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
+  --tab-h:74px;
+}
+*{box-sizing:border-box}
+html{background:var(--g)}
+body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sans);font-variant-numeric:tabular-nums;
+     -webkit-font-smoothing:antialiased;padding:0 16px calc(var(--tab-h) + 16px);display:flex;flex-direction:column;gap:12px;
+     max-width:560px;margin:0 auto}
+
+/* header, as the reads page draws it */
+.hd{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;margin:0 -16px;
+    padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;background:var(--g)}
+.back{position:relative;isolation:isolate;flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+      border-radius:14px;background:var(--s);box-shadow:var(--sh1);color:var(--i-mute);font:400 22px/1 var(--sans);text-decoration:none;
+      touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.back::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:var(--tap-min);height:var(--tap-min)}
+.back:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+.hd-t{min-width:0;flex:1 1 auto}
+.hd-1{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint)}
+.hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.beta{font:700 9px/1 var(--sans);letter-spacing:.12em;padding:3px 6px;border-radius:6px;border:1px solid currentColor;font-style:normal}
+
+/* the card and its label row, the glance's own */
+.card{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
+.card.dashed{border:1px dashed var(--rule-soft);box-shadow:none}
+.lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
+.lab .r{margin-left:auto;color:var(--i-mute);white-space:nowrap}
+/* aging is a shape, not a hue: the outlined chip */
+.lab .r.old{padding:3px 7px;border:1px solid var(--i-mute);border-radius:6px}
+.state{display:inline-block;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);
+       letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute);background:var(--s)}
+.big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
+.sit{margin:10px 0 0;padding:0;list-style:none}
+.sit li{font:400 15px/1.5 var(--sans);color:var(--i-body);padding:5px 0 5px 10px;border-left:2px solid var(--s2)}
+details.vp{margin-top:6px}
+details.vp>summary{list-style:none;cursor:default;padding:6px 4px;display:flex;align-items:center;gap:8px}
+details.vp>summary::-webkit-details-marker{display:none}
+details.vp>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid var(--i-mute);border-bottom:1.5px solid var(--i-mute);transform:rotate(45deg);margin:0 4px 3px 2px;flex:none}
+details.vp:not([open])>summary::before{transform:rotate(-45deg);margin-bottom:0}
+details.vp>.q{margin-top:8px}
+.vp .lab small{font:500 11px/1 var(--sans);letter-spacing:0;text-transform:none;color:var(--i-faint)}
+.q{background:var(--s);border-radius:18px;padding:14px 16px;box-shadow:var(--sh1)}
+.q.shadow{border:1px dashed var(--rule-soft);box-shadow:none}
+.ask{font:700 15px/1.35 var(--sans);color:var(--i)}
+.tag{margin-top:6px;font:400 12px/1.35 var(--sans);color:var(--i-mute)}
+.bar{display:grid;grid-template-columns:minmax(0,96px) minmax(0,1fr) 40px;gap:8px;align-items:center;margin-top:7px;
+     font:400 13px/1.3 var(--sans);color:var(--i-body)}
+.bar .opt{overflow-wrap:anywhere}
+.bar .track{height:8px;border-radius:4px;background:var(--s2)}
+.bar .fill{height:8px;border-radius:4px;background:var(--px-mark)}
+.bar b{text-align:right;font-weight:700;color:var(--i-mute)}
+.bar.pick .opt{font-weight:700;color:var(--i)}
+.bar.pick .fill{background:var(--px-ink)}
+.bar.pick b{color:var(--i)}
+.bar.long{grid-template-columns:minmax(0,1fr) 40px;margin-top:10px}
+.bar.long .opt{grid-column:1 / span 2;line-height:1.35}
+.bar.long .track{grid-column:1}
+.bar.long b{grid-column:2}
+.skip{margin-top:6px;font:400 12.5px/1.4 var(--sans);color:var(--i-mute)}
+details{margin-top:4px}
+summary{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint);cursor:default;padding:6px 4px}
+details .q{margin-top:8px}
+.foot{padding:4px 4px 0;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
+
+/* the tab bar, the glance's own, with this page lit */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
+      padding:11px 0 calc(env(safe-area-inset-bottom) + 12px);background:var(--s);border-radius:22px 22px 0 0;
+      box-shadow:0 -6px 22px -10px rgba(58,48,32,.16)}
+.tab{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:var(--tap-min);
+     padding:4px 12px 2px;border-radius:14px;color:var(--i-faint);text-decoration:none;touch-action:manipulation;
+     -webkit-user-select:none;user-select:none}
+.tab::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:max(100%,var(--tap-min));height:var(--tap-min)}
+.tab.on{color:var(--i)}
+.tab:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+.tab svg{display:block;width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tab s{font:500 10px/1 var(--sans);letter-spacing:.1em;text-decoration:none}
+.tab s em.beta{font-size:7px;padding:2px 4px;margin-left:2px}
+.tab i{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:1px}
+.tab.on i{background:var(--i)}
+</style>
+</head>
+<body>
+<header class="hd">
+  <a class="back" href="/m/" aria-label="Back to the glance">&#8249;</a>
+  <div class="hd-t">
+    <div class="hd-1"><span id="h1">SNDK &middot; JEV</span><em class="beta">beta</em></div>
+    <div class="hd-2" id="sub">loading</div>
+  </div>
+</header>
+<div id="state"></div>
+<main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums and the dashed questions are forecasts, graded by the bars 30 and 60 minutes later, never a call.</p>
+
+<nav class="tabs">
+  <a class="tab" href="/m/" aria-label="Now">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>
+    <s>NOW</s><i></i>
+  </a>
+  <a class="tab" href="/m/thread.html" aria-label="Reads">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <s>READS</s><i></i>
+  </a>
+  <span class="tab on">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M6 8h12M4 14l2-6 2 6M16 14l2-6 2 6"/></svg>
+    <s>JEV <em class="beta">BETA</em></s><i></i>
+  </span>
+</nav>
+<script>
+(function(){
+  'use strict';
+  var URL_ = '/api/raw/file?root=state&path=jev/latest.json';
+  var STALE_MIN = 6, GONE_MIN = 60;            // the glance's fallbacks; the gates route is locked to one user
+  var ORDER = ['strikes','volume_price','history','indicators','space_time','framing','news','outcome'];
+  var NAME = {strikes:'strikes', volume_price:'volume and price', history:'yesterday', indicators:'indicators',
+              space_time:'space and time', framing:'framing', news:'news', outcome:'outcome, shadow only'};
+  var last = null;
+  var folded = {};                              // viewpoint -> true when collapsed; a per-phone convenience
+  try { folded = JSON.parse(localStorage.getItem('jev.folded') || '{}') || {}; } catch(e){ folded = {}; }
+  function remember(){ try { localStorage.setItem('jev.folded', JSON.stringify(folded)); } catch(e){} }
+
+  // Up, Down, Flat, Unsure: a capital first letter on every option, spaces for underscores
+  function cap(k){ k = String(k); return k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' '); }
+  function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+  function mins(iso){ var t = Date.parse(iso); return isNaN(t) ? null : Math.max(0, Math.round((Date.now() - t) / 60000)); }
+  function clock(iso){ var m = /T(\d\d:\d\d)/.exec(iso || ''); return m ? m[1] : '?'; }
+  function ageWord(m){
+    if(m == null) return 'age unknown';
+    if(m < 1) return 'just now';
+    if(m >= 60) return Math.floor(m / 60) + ' hr ' + (m % 60) + ' min ago';
+    return m + ' min ago';
+  }
+
+  function bar(name, p, pick){
+    var long = name.length > 22;                 // a Score level is a sentence: put it above its bar
+    var b = el('div', 'bar' + (pick ? ' pick' : '') + (long ? ' long' : ''));
+    b.appendChild(el('span', 'opt', name.replace(/_/g, ' ')));
+    var t = el('div', 'track'); var f = el('div', 'fill'); f.style.width = Math.round(p * 100) + '%'; t.appendChild(f); b.appendChild(t);
+    b.appendChild(el('b', null, Math.round(p * 100) + '%'));
+    return b;
+  }
+
+  function question(q){
+    var box = el('div', 'q' + (q.status === 'shadow' ? ' shadow' : ''));
+    box.appendChild(el('div', 'ask', q.ask));
+    if(q.status === 'shadow') box.appendChild(el('div', 'tag', 'shadow: graded by the bars 30 minutes later, never a call'));
+    var a = q.answer;
+    if(a && a.probabilities){
+      // the question's own order first (a fixed place per option), then anything JEV added
+      var keys = (q.options || []).filter(function(k){ return k in a.probabilities; });
+      Object.keys(a.probabilities).forEach(function(k){ if(keys.indexOf(k) < 0) keys.push(k); });
+      keys.forEach(function(k){ box.appendChild(bar(cap(k), a.probabilities[k], k === a.pick)); });
+      if(a.confidence != null) box.appendChild(el('div', 'tag', 'confidence ' + Math.round(a.confidence * 100) + '%' + (q.held_from ? ' \u00B7 held from ' + q.held_from : '')));
+      else if(q.held_from) box.appendChild(el('div', 'tag', 'held from ' + q.held_from));
+    } else if(a && a.noul != null){
+      box.appendChild(bar('Yes', a.noul, a.pick === 'true'));
+      if(q.held_from) box.appendChild(el('div', 'tag', 'held from ' + q.held_from));
+    } else if(a && a.score != null){
+      box.appendChild(el('div', 'tag', 'score ' + a.score));
+    } else {
+      box.appendChild(el('div', 'skip', q.skipped || 'not asked'));
+    }
+    return box;
+  }
+
+  function labRow(text, age, old){
+    var l = el('div', 'lab'); l.appendChild(el('span', null, text));
+    if(age != null){ var r = el('span', 'r' + (old ? ' old' : ''), age); l.appendChild(r); }
+    return l;
+  }
+
+  function paint(c, ok){
+    document.getElementById('h1').textContent = (c.symbol || 'SNDK') + ' \u00B7 JEV';
+    var m = mins(c.row_ts);
+    var old = m != null && m > STALE_MIN;
+    document.getElementById('sub').textContent = 'row ' + clock(c.row_ts) + ', ' + ageWord(m) + (m != null && m > GONE_MIN ? ', withdrawn' : '') + ', ' + c.labels + ' labels';
+    var st = document.getElementById('state'); st.textContent = '';
+    var answered = c.questions.filter(function(q){ return q.answer; }).length;
+    if(!ok) st.appendChild(el('span', 'state', 'fetch failed, showing the last card'));
+    else if(!c.sent) st.appendChild(el('span', 'state', 'not sent to JEV: no key on the station'));
+    else st.appendChild(el('span', 'state', answered + ' of ' + c.questions.length + ' answered' + (c.held ? ', ' + c.fresh + ' fresh this read' : '')));
+    var main = document.getElementById('main'); main.textContent = '';
+    var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
+
+    var h = c.hour;
+    if(h && h.probabilities){
+      // the sum: one question over the thirty answers, a forecast, graded later, never a call
+      var hc = el('div', 'card dashed'); hc.appendChild(labRow('next 30 minutes, the sum of the answers', ageText, old));
+      var hp = h.probabilities; var top = h.pick || Object.keys(hp).sort(function(x, y){ return hp[y] - hp[x]; })[0];
+      hc.appendChild(el('div', 'big', cap(top) + ' ' + Math.round((hp[top] || 0) * 100) + '%'));
+      // a fixed order, up, down, flat, unsure, so the eye always finds the same row in the same place
+      ['up', 'down', 'flat', 'unsure'].concat(Object.keys(hp).filter(function(k){ return ['up', 'down', 'flat', 'unsure'].indexOf(k) < 0; }))
+        .forEach(function(k){ if(k in hp) hc.appendChild(bar(cap(k), hp[k], k === top)); });
+      var note = 'shadow: graded by the bars 30 minutes later, never a call';
+      if(h.confidence != null) note = 'confidence ' + Math.round(h.confidence * 100) + '% \u00B7 ' + note;
+      hc.appendChild(el('div', 'tag', note));
+      hc.appendChild(el('div', 'tag', 'from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '')));
+      main.appendChild(hc);
+      // the 60-minute sum, asked on the same answers, graded beside the 30 for the comparison; never the headline
+      var h60 = h.by && h.by.next_60;
+      if(h60 && h60.probabilities){
+        var c60 = el('div', 'card dashed'); c60.appendChild(labRow('next 60 minutes, the same answers', ageText, old));
+        var p60 = h60.probabilities, t60 = h60.pick || Object.keys(p60).sort(function(x, y){ return p60[y] - p60[x]; })[0];
+        ['up', 'down', 'flat', 'unsure'].forEach(function(k){ if(k in p60) c60.appendChild(bar(cap(k), p60[k], k === t60)); });
+        c60.appendChild(el('div', 'tag', (h60.confidence != null ? 'confidence ' + Math.round(h60.confidence * 100) + '% \u00B7 ' : '') + 'graded by the bars 60 minutes later, for the comparison only'));
+        main.appendChild(c60);
+      }
+    } else if(h && h.error){
+      var he = el('div', 'card dashed'); he.appendChild(labRow('next 30 minutes, the sum of the answers', ageText, old));
+      he.appendChild(el('div', 'skip', 'no sum this run: ' + h.error)); main.appendChild(he);
+    }
+
+    var card = el('div', 'card'); card.appendChild(labRow('situation', ageText, old));
+    var ul = el('ul', 'sit'); (c.situation || []).forEach(function(s){ ul.appendChild(el('li', null, s)); }); card.appendChild(ul); main.appendChild(card);
+
+    var by = {}; var skipped = [];
+    c.questions.forEach(function(q){ if(q.answer) (by[q.viewpoint || 'outcome'] = by[q.viewpoint || 'outcome'] || []).push(q); else skipped.push(q); });
+    if(!Object.keys(by).length){
+      // nothing answered yet: show every question so the page still says what it will judge
+      c.questions.forEach(function(q){ (by[q.viewpoint || 'outcome'] = by[q.viewpoint || 'outcome'] || []).push(q); }); skipped = [];
+    }
+    ORDER.concat(Object.keys(by).filter(function(k){ return ORDER.indexOf(k) < 0; })).forEach(function(vp){
+      if(!by[vp]) return;
+      // one fold per viewpoint: tap the heading to collapse or expand; remembered on this phone only
+      var fold = el('details', 'vp'); fold.open = folded[vp] !== true;
+      var sm = el('summary'); var l = el('div', 'lab'); l.appendChild(el('span', null, NAME[vp] || vp)); l.appendChild(el('small', null, by[vp].length + '')); sm.appendChild(l); fold.appendChild(sm);
+      by[vp].forEach(function(q){ fold.appendChild(question(q)); });
+      fold.addEventListener('toggle', function(){ folded[vp] = !fold.open; remember(); });
+      main.appendChild(fold);
+    });
+    if(skipped.length){
+      var d = el('details'); d.appendChild(el('summary', null, 'not asked this run: ' + skipped.length));
+      skipped.forEach(function(q){ d.appendChild(question(q)); }); main.appendChild(d);
+    }
+    if(c.dark && c.dark.length){
+      // dark: never asked, never counted; said once so nobody wonders where the news questions went
+      var dk = el('details'); dk.appendChild(el('summary', null, 'dark, waiting for a news source: ' + c.dark.length));
+      c.dark.forEach(function(q){ var b = el('div', 'q shadow'); b.appendChild(el('div', 'ask', q.ask)); b.appendChild(el('div', 'skip', 'dark until a news source is plugged in')); dk.appendChild(b); });
+      main.appendChild(dk);
+    }
+  }
+
+  // A page that fails must say so in words where the header sits, never stay on "loading".
+  function say(msg){ document.getElementById('sub').textContent = msg; }
+  window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
+  function draw(c, ok){ try { paint(c, ok); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
+  function poll(){
+    fetch(URL_, {cache:'no-store'}).then(function(r){
+      if(!r.ok) throw new Error('the station answered ' + r.status);
+      return r.json();
+    }).then(function(j){
+      if(j && j.kind === 'json' && j.data && j.data.questions){ last = j.data; draw(last, true); }
+      else if(j && j.error){ say('the station said: ' + j.error); }
+      else if(last){ draw(last, false); }
+      else { say('no card yet: the JEV service has not written one'); }
+    }).catch(function(e){ if(last) draw(last, false); else say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); });
+  }
+  poll();
+  setInterval(function(){ if(!document.hidden) poll(); }, 60000);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });
+})();
+</script>
+</body>
+</html>

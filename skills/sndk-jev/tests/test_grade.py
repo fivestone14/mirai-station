@@ -1,0 +1,102 @@
+"""Step 6: the bars grade both sums; the grades move the weights, but only once there is evidence."""
+from __future__ import annotations
+
+import json
+
+from conftest import at, bars_from_closes
+from sndk_jev.grade import HORIZONS, MIN_GRADED, grade_one, mutual_information, realized_band, run, weights_from
+
+
+def _rec(hh, mm, spot, by, used):
+    return {"row_ts": at(hh, mm).isoformat(), "spot": spot, "sigma": 50.0, "by": by, "used": used}
+
+
+def _by(p30, pick30, p60=None, pick60=None):
+    by = {"next_30": {"pick": pick30, "probabilities": p30, "confidence": 0.5}}
+    if p60:
+        by["next_60"] = {"pick": pick60, "probabilities": p60, "confidence": 0.5}
+    return by
+
+
+def test_horizons_come_from_the_doc():
+    assert HORIZONS == {"next_30": (30, 0.12), "next_60": (60, 0.17)}
+
+
+def test_realized_band_uses_the_horizon_band():
+    assert realized_band(0.13, 0.12) == "up" and realized_band(-0.13, 0.12) == "down" and realized_band(0.10, 0.12) == "flat"
+    assert realized_band(0.13, 0.17) == "flat"
+
+
+def test_grade_one_reads_both_horizons():
+    # flat until 11:00, then a climb of 20 points (0.4 sigma at sigma 50) by 12:00: 0.2 sigma at 11:30
+    closes = [1700.0] * 90 + [1700.0 + 20.0 * (i + 1) / 60 for i in range(60)] + [1720.0] * 240
+    bars = bars_from_closes(closes)
+    rec = _rec(11, 0, 1700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.2, "flat": 0.7, "down": 0.1}, "flat"), {"q1": "rising"})
+    g = grade_one(rec, bars)
+    assert g["next_30"]["band"] == "up" and g["next_30"]["realized_sigma"] == 0.2 and g["next_30"]["hit"] is True
+    assert g["next_60"]["band"] == "up" and g["next_60"]["realized_sigma"] == 0.4 and g["next_60"]["hit"] is False
+    assert g["band"] == "up" and g["hit"] is True                      # the primary, flat on top
+    assert g["brier"] == round((0.6 - 1) ** 2 + 0.3 ** 2 + 0.1 ** 2, 4)
+
+
+def test_a_record_waits_for_its_slowest_horizon_but_skips_one_past_the_close():
+    closes = [1700.0] * 390
+    bars = bars_from_closes(closes)
+    rec = _rec(11, 0, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
+    assert grade_one(rec, bars[:120]) is None                          # 30 done, 60 not yet: wait
+    assert grade_one(rec, bars)["next_60"]["band"] == "flat"
+    late = _rec(15, 20, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
+    g = grade_one(late, bars)                                          # 60 runs past the close: 30 alone
+    assert "next_30" in g and "next_60" not in g and g["band"] == "flat"
+    assert grade_one(_rec(15, 45, 1700.0, _by({"flat": 1.0}, "flat"), {}), bars) is None   # nothing can be graded
+
+
+def test_a_record_from_before_the_switch_is_never_graded():
+    bars = bars_from_closes([1700.0] * 390)
+    old = {"row_ts": at(11, 0).isoformat(), "spot": 1700.0, "sigma": 50.0, "pick": "flat", "probabilities": {"flat": 1.0}, "used": {"q1": "a"}}
+    assert grade_one(old, bars) is None
+
+
+def test_weights_stay_at_one_until_there_is_evidence():
+    grades = [{"row_ts": str(i), "band": "flat", "pick": "flat", "hit": True, "brier": 0.1, "used": {"q1": "a", "q2": "b"},
+               "next_30": {"band": "flat", "hit": True, "brier": 0.1}} for i in range(MIN_GRADED - 1)]
+    w = weights_from(grades)
+    assert all(v["weight"] == 1.0 and v["in_step_3"] for v in w["questions"].values())
+    assert w["sum"]["hit_rate"] == 1.0 and w["sums"]["next_30"]["n"] == MIN_GRADED - 1 and w["sums"]["next_60"]["n"] == 0
+
+
+def test_a_telling_question_outweighs_a_blind_one():
+    grades = []
+    for i in range(MIN_GRADED):
+        band = "up" if i % 2 else "flat"
+        grades.append({"row_ts": str(i), "band": band, "pick": band, "hit": True, "brier": 0.0,
+                       "used": {"q_tell": "x" if band == "up" else "y", "q_blind": "same"},
+                       "next_30": {"band": band, "hit": True, "brier": 0.0}})
+    w = weights_from(grades)
+    assert w["questions"]["q_tell"]["weight"] == 1.0 and w["questions"]["q_tell"]["in_step_3"]
+    assert w["questions"]["q_blind"]["weight"] == 0.0 and not w["questions"]["q_blind"]["in_step_3"]
+    assert mutual_information([("a", "up"), ("a", "flat")]) == 0.0
+
+
+def test_run_appends_grades_writes_weights_and_logs_once(tmp_path):
+    state = tmp_path / "state"
+    (state / "sndk_bars").mkdir(parents=True)
+    closes = [1700.0] * 90 + [1700.0 + 20.0 * (i + 1) / 60 for i in range(60)] + [1720.0] * 240
+    with open(state / "sndk_bars" / "2026-09-18.jsonl", "w") as f:
+        for b in bars_from_closes(closes):
+            f.write(json.dumps(b) + "\n")
+    out = state / "jev"
+    (out / "hour").mkdir(parents=True)
+    with open(out / "hour" / "2026-09-18.jsonl", "w") as f:
+        f.write(json.dumps(_rec(11, 0, 1700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up"), {"q1": "rising"})) + "\n")
+        f.write(json.dumps(_rec(15, 45, 1700.0, _by({"flat": 1.0}, "flat"), {"q1": "flat"})) + "\n")   # past the close
+    w = run(state, out)
+    assert w["graded_runs"] == 1 and w["new_this_run"] == 1
+    assert w["sums"]["next_30"]["n"] == 1 and w["sums"]["next_60"]["n"] == 1
+    assert (out / "grades.jsonl").read_text().count("\n") == 1
+    assert json.loads((out / "weights.json").read_text())["questions"]["q1"]["weight"] == 1.0
+    w2 = run(state, out)                       # idempotent: nothing new to grade
+    assert w2["graded_runs"] == 1 and w2["new_this_run"] == 0
+    log = [json.loads(l) for l in (out / "weights_log.jsonl").read_text().splitlines() if l.strip()]
+    assert len(log) == 1 and log[0]["graded_runs"] == 1 and log[0]["new"] == 1 and log[0]["hit_rate"] == 1.0
+    assert log[0]["changes"] == [{"question": "q1", "before": None, "after": 1.0, "mi": 0.0, "n": 1, "in_step_3": True}]

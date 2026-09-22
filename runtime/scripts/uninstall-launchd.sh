@@ -19,6 +19,7 @@ PLISTS=(
   "com.mirai-station.sndk-read"
   "com.mirai-station.sndk-deadman"
   "com.mirai-station.sndk-bars"
+  "com.mirai-station.sndk-jev"
   # 08-30: `voice` was in install-launchd.sh's list and missing from this one,
   # which is exactly the drift the note below warns about — an uninstalled
   # station kept a voice agent loaded. Found while adding the deadman.

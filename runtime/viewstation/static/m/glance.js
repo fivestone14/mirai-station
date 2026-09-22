@@ -481,6 +481,24 @@ function modelRead(rows, nowMs){
           tier: age>STALE_BOOK_MIN_UI ? 'aged' : 'fresh'};
 }
 
+/* The JEV card (state/jev/latest.json): how many questions it answered and how
+   old its row is. Nothing about what was answered; that is the card's own page. */
+function jevRead(card, nowMs){
+  if(!card || !Array.isArray(card.questions)) return null;
+  const t=Date.parse(card.row_ts);
+  if(!isFinite(t)) return null;
+  const now=(nowMs==null)?Date.now():nowMs;
+  const age=Math.max(0,(now-t)/60000);
+  const total=card.questions.length;
+  const answered=card.questions.filter(q=>q&&q.answer).length;
+  const at=String(card.row_ts||'').slice(11,16);
+  const line = card.sent
+    ? answered+' of '+total+' questions answered on the '+at+' row. Each one is on the JEV tab.'
+    : 'The JEV job ran on the '+at+' row but sent nothing: no key on the station.';
+  return {line, answered, total, ageMin:age, at:new Date(t),
+          tier: age>STALE_BOOK_MIN_UI ? 'aged' : 'fresh'};
+}
+
 /* ---- market time ------------------------------------------------------- */
 
 // Every clock face on this screen is MARKET time, never the viewer's.
@@ -1503,7 +1521,7 @@ function halfHour(scene, rec){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={gUsd, gMinutes, gTimes, wallPassed, priorClose,
+  module.exports={jevRead, gUsd, gMinutes, gTimes, wallPassed, priorClose,
                   bookAge, shownPrice, dayChange,
                   etTime, etDay, etToday,
                   coreLevels, optionalLevels, magnetRunners, solveWindow, mergeLevels,

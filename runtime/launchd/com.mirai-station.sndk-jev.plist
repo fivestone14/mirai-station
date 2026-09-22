@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.sndk-jev</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/skills/sndk-jev/run-sndk-jev.sh</string>
+  </array>
+
+  <!-- JEV decision service: a separate job from the SNDK PRO scanner, never on
+       its path. Fires at two minutes past each hour and half hour (StartCalendarInterval), so
+       JEV reads once per 30-minute mark on the newest finished row; the runner still
+       waits until that row is at least 20 s old. Reads the diary, bars, side
+       packets and chain cache; writes only state/jev/. The key is read from the
+       environment (TYPESAFE_API_KEY, exported in runtime/scripts/env.sh from the
+       Keychain, never written into this file). Without a key the service still
+       runs and writes the card with every question marked "not sent". -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Minute</key><integer>32</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.sndk-jev.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.sndk-jev.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

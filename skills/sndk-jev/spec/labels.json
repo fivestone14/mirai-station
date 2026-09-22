@@ -1,0 +1,844 @@
+{
+ "name": "sndk-jev label spec",
+ "version": "0.3-reviewed",
+ "date": "2026-09-21",
+ "purpose": "Every label the state builder writes or could write, with the logic under it. Built labels are checked against the code by a test. Free and new labels are designs, not code.",
+ "statuses": {
+  "built": "in state_builder.py today, writing sentences",
+  "blocked": "needs data SNDK PRO does not store"
+ },
+ "types": {
+  "distance": "how far, in sigma, today's expected move",
+  "rank": "where it sits against its own history at the same time of day",
+  "share": "one part against the whole, or one window against another",
+  "change": "against an earlier reading",
+  "count": "how many",
+  "state": "which of a few named situations"
+ },
+ "how_one_label_is_built": [
+  "pick the moment: one scan row is now, plus only the minutes that had already closed",
+  "take the raw numbers untouched; if one is missing, stop and record why",
+  "put the number on a scale: divide by sigma, or rank it against past sessions at this clock time",
+  "judge it against a fixed cut, in code",
+  "write one sentence that carries the number and the cut",
+  "hand it to the packer, which gives each question only the sentences it names"
+ ],
+ "viewpoints": [
+  {
+   "id": "strikes",
+   "title": "The strikes: distance, action, clusters",
+   "intuition": "Viewing all the strikes and their distance from the current price, measuring the amount of action including calls or puts traded, general GEX readings per strike, clusters and size to determine support or resistance.",
+   "review": "The weakest area today. Every built label collapses the board to one number. Nothing shows the ladder strike by strike. The free labels add size and freshness; the new ones add the ladder and the clusters. SNDK PRO measured walls as not acting as levels and strikes as not pinning on this name, so these describe structure, and whether JEV reads a cluster as support is for the grading loop to decide."
+  },
+  {
+   "id": "volume_price",
+   "title": "Volume and price action",
+   "intuition": "Volume and price action measurements.",
+   "review": "How much volume and whether it backs the move are built. Where the volume traded and which way it leaned are not, and both come straight from the stored bars."
+  },
+  {
+   "id": "history",
+   "title": "Yesterday and the day before",
+   "intuition": "How the price has been moving and where it has been touching, compared with yesterday and the day before.",
+   "review": "Nothing today references yesterday's high, low or close. The only backward look ranks today's range against five sessions. With 18 days of bars stored, yesterday's levels and the touches on them are cheap."
+  },
+  {
+   "id": "indicators",
+   "title": "RSI and the other intraday metrics",
+   "intuition": "A measurement of things like RSI and other intraday metrics.",
+   "review": "The 1-minute RSI read between on 62 of 64 sampled moments, which is the noisy end of useful. A 5-minute RSI and the duration of an extreme are the two honest additions. The implied-volatility labels sit here too, as the options market's own metrics."
+  },
+  {
+   "id": "space_time",
+   "title": "Space and time",
+   "intuition": "Spatial and time awareness: distance from the beginning to the end of the market, and price location compared with everything else including its own past.",
+   "review": "Time is covered by session phase, expiry and the time-of-day baselines. Space against the multi-day past is the gap: position in the last five sessions' range, distance to the week's extremes, and how long since price last really moved."
+  },
+  {
+   "id": "framing",
+   "title": "Framing, not one of the five",
+   "intuition": "What JEV needs in order to read everything else.",
+   "review": "Sent with every request. Static text plus the two clocks."
+  },
+  {
+   "id": "news",
+   "title": "News, outside the five",
+   "intuition": "Will it move price, and is it already priced in.",
+   "review": "Built and tested, waiting on a feed. Nexus holds SanDisk items but stopped ingesting on 6 September."
+  }
+ ],
+ "labels": [
+  {
+   "path": "context.symbol",
+   "viewpoint": "framing",
+   "status": "built",
+   "type": "state",
+   "from": "constant",
+   "logic": "static text",
+   "cut": "none",
+   "reads_as": "SNDK",
+   "real": true
+  },
+  {
+   "path": "context.units",
+   "viewpoint": "framing",
+   "status": "built",
+   "type": "state",
+   "from": "constant",
+   "logic": "static text defining sigma and the sign convention",
+   "cut": "none",
+   "reads_as": "all distances are in sigma, today's expected-move unit for SanDisk; a plus sign means above price and a minus sign means below price",
+   "real": true
+  },
+  {
+   "path": "context.horizon",
+   "viewpoint": "framing",
+   "status": "built",
+   "type": "state",
+   "from": "constant",
+   "logic": "static text",
+   "cut": "none",
+   "reads_as": "the next 30 minutes",
+   "real": true,
+   "note": "changed from 60 to 30 minutes on 2026-09-22; the sum is asked at the 30-minute mark"
+  },
+  {
+   "path": "context.expiry",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "meta.expiries, the front weekly's date and days to expiry",
+   "logic": "calendar distance to the front weekly",
+   "cut": "0 today; 1 tomorrow; same ISO week is later this week; otherwise next week or later",
+   "reads_as": "the front weekly expires today",
+   "real": true
+  },
+  {
+   "path": "context.session_progress",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "share",
+   "from": "the row's timestamp",
+   "logic": "minutes since the open over the 390 in a session",
+   "cut": "fifths of the session",
+   "reads_as": "100% of the session has passed, the last fifth; the last hour, 0 minutes before the close",
+   "real": true,
+   "note": "revised 2026-09-21 after the overlap review; rendered from the real row at 2026-09-21 15:59. now also names the phase (first hour, middle, last hour) with minutes after the open and before the close; context.session_phase folded in"
+  },
+  {
+   "path": "context.time_since_last_move",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "count",
+   "from": "today's finished bars; sigma",
+   "logic": "minutes since the last 10-minute span in which price moved 0.15 sigma or more",
+   "cut": "under 10; 10 to 60; over 60",
+   "reads_as": "price last made a real move of 0.15 sigma within 10 minutes 1 minute ago, under 10 minutes ago",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "price.recent_move",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "distance",
+   "from": "spot; the close of the bar that finished 30 minutes before now; sigma",
+   "logic": "spot minus that close, divided by sigma",
+   "cut": "0.15 sigma, SNDK PRO's own move rule",
+   "reads_as": "over the last 30 minutes price stayed within 0.15 sigma of where it was, moving -0.03 sigma",
+   "real": true
+  },
+  {
+   "path": "price.minute_width",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "rank",
+   "from": "the last finished bar's high minus low; today's median 1-minute range",
+   "logic": "this minute's range over a typical minute today",
+   "cut": "2 times is wide",
+   "reads_as": "this minute's range is 1.5 times a typical minute today, within the 2-times cut",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "volume.now",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "rank",
+   "from": "the last 30 finished minutes of today's bars; the same clock slot on each prior session",
+   "logic": "share of prior sessions with less volume in that slot",
+   "cut": "top fifth at 0.80 or above; bottom fifth at 0.20 or below; needs 5 prior sessions",
+   "reads_as": "volume over the last 30 minutes is in the top fifth for this time of day, higher than 13 of 16 prior sessions",
+   "real": true
+  },
+  {
+   "path": "volume.on_move",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "rank",
+   "from": "the same, for the last 30 minutes and the 30 before them",
+   "logic": "each window's band against its own clock slot on prior sessions",
+   "cut": "the same fifths; needs 60 minutes of session",
+   "reads_as": "volume during the move, the last 30 minutes, is in the top fifth for its time of day, and volume before the move began, the 30 minutes before that, is in the top fifth for its time of day",
+   "real": true
+  },
+  {
+   "path": "volume.by_direction",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "share",
+   "from": "the last 30 finished bars, each bar's volume and whether it closed above its open",
+   "logic": "volume in up-closing minutes over all volume",
+   "cut": "0.40 to 0.60 is even",
+   "reads_as": "48% of the last 30 minutes' volume printed in minutes that closed up, even within 40% to 60%",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "volume.at_price",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "state",
+   "from": "today's bars, volume bucketed by price in 0.1-sigma bins",
+   "logic": "where the heaviest bin sits relative to spot",
+   "cut": "none, it is a location",
+   "reads_as": "the heaviest-volume stretch of the day includes the current price",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "momentum.pace",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "share",
+   "from": "closes now, 10 and 20 minutes ago",
+   "logic": "the last 10 minutes' move over the 10 before, both in sigma",
+   "cut": "above 1.5 is bigger; below two thirds is smaller",
+   "reads_as": "the last 10 minutes moved 0.07 sigma, between two thirds and 1.5 times as far as the 10 minutes before, which moved 0.08 sigma",
+   "real": true
+  },
+  {
+   "path": "momentum.closes",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "count",
+   "from": "the last five finished bars; the direction of the 30-minute move",
+   "logic": "bars whose close beat their open in the move's direction",
+   "cut": "needs a 30-minute move of 0.15 sigma; 4 or 5 is most, 2 or 3 is half, 0 or 1 is few",
+   "reads_as": "of the last five 1-minute bars, 5 closed in the direction of the move, which is up",
+   "real": false
+  },
+  {
+   "path": "momentum.pauses",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "state",
+   "from": "the bars over the last 30 minutes; the move's direction",
+   "logic": "the longest run without a new extreme, and the deepest dip from the running extreme as a share of the move's full extent",
+   "cut": "a pullback at 25% or more; a pause of 3 to 10 minutes; a pause longer than 10",
+   "reads_as": "during the last 30 minutes the move up gave back 40% of itself at its deepest pullback, more than a quarter",
+   "real": false
+  },
+  {
+   "path": "range.box_status",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "state",
+   "from": "the first 30 finished bars; the median 1-minute range of the last 30 bars",
+   "logic": "the opening box's high and low; a break is beyond an edge by more than twice the median minute range, SNDK PRO's move bar",
+   "cut": "twice a typical minute",
+   "reads_as": "price has broken above the opening box and sits 0.81 sigma beyond its top; the box is 1.76 sigma wide",
+   "real": true
+  },
+  {
+   "path": "range.today_vs_normal",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "rank",
+   "from": "today's high minus low over its open; the same clock cut on the prior 5 sessions' bars",
+   "logic": "share of prior sessions with a smaller range by this minute",
+   "cut": "thirds; needs 3 sessions",
+   "reads_as": "today's range so far is in the top third of the last 5 sessions at this time of day, larger than 5 of them",
+   "real": true
+  },
+  {
+   "path": "price.vs_prior_close",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "distance",
+   "from": "prior_close on the row; spot; sigma",
+   "logic": "spot minus last night's close, divided by sigma",
+   "cut": "0.15 is at it; 1.0 or more is an outlier day",
+   "reads_as": "price is 0.35 sigma below last night's close, within 1.0 sigma, an ordinary day so far",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "price.vs_yesterday",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "distance",
+   "from": "yesterday's bars: high, low, close; spot; sigma",
+   "logic": "where spot sits against the three, with each distance in sigma",
+   "cut": "0.15 sigma counts as at a level",
+   "reads_as": "price is inside yesterday's range, 0.42 sigma below its high and 2.14 sigma above its low",
+   "real": true,
+   "note": "revised 2026-09-21 after the overlap review; rendered from the real row at 2026-09-21 15:59. the distance to yesterday's close was dropped; price.vs_prior_close owns that number, so JEV never sees it twice with a slightly different value"
+  },
+  {
+   "path": "price.vs_day_before",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "distance",
+   "from": "the session before yesterday: high, low, close",
+   "logic": "the same, one day further back",
+   "cut": "the same",
+   "reads_as": "price is 2.01 sigma above the session before yesterday's high, more than the 0.15 sigma move rule; it is 2.16 sigma above the session before yesterday's close",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "range.prior_level_touches",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "count",
+   "from": "today's bars; yesterday's high, low and close; the move bar",
+   "logic": "for each of yesterday's high, low and close, the number of finished bars today whose range came within the move bar of it",
+   "cut": "0; 1; 2 or more",
+   "reads_as": "price has spent 42 minutes within reach of yesterday's high, 0 minutes within reach of yesterday's low and 43 minutes within reach of yesterday's close today, counting reach as two typical minutes of range",
+   "real": true,
+   "note": "revised 2026-09-21 after the overlap review; rendered from the real row at 2026-09-21 15:59. reworded as minutes within reach, since a bar sitting on a level all afternoon counts every minute; it is not a count of separate visits"
+  },
+  {
+   "path": "range.wall_retests",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "count",
+   "from": "the side packet's level visits for the wall roles",
+   "logic": "returns to the nearest heavy strike today",
+   "cut": "0; 1; 2 or more",
+   "reads_as": "price has come back to the nearest heavy strike 4 times today, two or more times",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "range.high_retests",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "count",
+   "from": "the side packet's level visits for the session high",
+   "logic": "returns to the day's high",
+   "cut": "0; 1; 2 or more",
+   "reads_as": "price has come back to the day's high 1 time, once",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "momentum.rsi_1min",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "state",
+   "from": "the finished 1-minute closes",
+   "logic": "Wilder's RSI over 14 periods",
+   "cut": "above 70; below 30",
+   "reads_as": "the 1-minute RSI is 60, between 30 and 70",
+   "real": true,
+   "note": "read between on 62 of 64 sampled moments over four days"
+  },
+  {
+   "path": "momentum.rsi_5min",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "state",
+   "from": "closes sampled every 5 minutes",
+   "logic": "Wilder's RSI over 14 periods",
+   "cut": "above 70; below 30",
+   "reads_as": "the 5-minute RSI is 50, between 30 and 70",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "momentum.stretch",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "count",
+   "from": "the side packet's episodes for the 14-period RSI",
+   "logic": "minutes the RSI has held an extreme without a break",
+   "cut": "3; 10",
+   "reads_as": "the 1-minute RSI sits between its overbought and oversold marks right now, so no extreme is being held",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "momentum.vwap_slope",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "change",
+   "from": "the running volume-weighted average now and 30 minutes ago, from the bars",
+   "logic": "the difference, divided by sigma",
+   "cut": "0.05 sigma is flat",
+   "reads_as": "the day's average price has stayed within the 0.05 sigma flat cut over the last 30 minutes, moving -0.02 sigma",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "iv.trend_30min",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "change",
+   "from": "atm_iv now; the row about 30 minutes earlier, within 10 minutes",
+   "logic": "the difference in vol points",
+   "cut": "2 vol points is the flat band; omitted in the last hour of expiry day",
+   "reads_as": "over the last 30 minutes at-the-money implied volatility stayed within the 2 vol point flat band, changing +1.8 vol points",
+   "real": true
+  },
+  {
+   "path": "iv.skew",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "distance",
+   "from": "iv_skew.skew_pts, put minus call implied volatility",
+   "logic": "as given, in vol points",
+   "cut": "1.0 vol point is even",
+   "reads_as": "calls carry a higher implied volatility than puts at equal distance, by 2.3 vol points",
+   "real": true
+  },
+  {
+   "path": "iv.expected_move_used",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "share",
+   "from": "range_ruler.em_consumed",
+   "logic": "today's range over the expected move at the open",
+   "cut": "under 0.5; 0.5 to 1.0; over 1.0",
+   "reads_as": "today's range so far has used 3.3 times today's expected move, more than all of it",
+   "real": true
+  },
+  {
+   "path": "iv.move_sides",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "share",
+   "from": "adaptive_em.down_share",
+   "logic": "as given",
+   "cut": "0.40 to 0.60 is even",
+   "reads_as": "the day's expected move splits 49% down and 51% up, even within the 40% to 60% band",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "iv.term_slope",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "distance",
+   "from": "next week's at-the-money implied volatility minus this week's",
+   "logic": "the difference in vol points; the next-expiry contracts are already pulled, only the front book gets the calculation today",
+   "cut": "2 vol points is flat",
+   "reads_as": "this week's and next week's at-the-money implied volatility are within the 2 vol point flat band, -0.6 points apart",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. free at the feed; needs one calculation added where the row is built"
+  },
+  {
+   "path": "price.day_range_position",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "share",
+   "from": "today's finished bars' high and low, folding in spot",
+   "logic": "spot minus the low, over the high minus the low",
+   "cut": "thirds",
+   "reads_as": "price is in the top third of today's range so far, 98% of the way up from the low to the high",
+   "real": true
+  },
+  {
+   "path": "price.vs_vwap",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "distance",
+   "from": "spot; the row's vwap; sigma",
+   "logic": "spot minus the average, divided by sigma",
+   "cut": "0.15 sigma is at it",
+   "reads_as": "price is 0.88 sigma above the day's volume-weighted average price, more than the 0.15 sigma move rule",
+   "real": true,
+   "note": "the cut phrase was added on 2026-09-21; before that the sentence carried the number alone and the question needed JEV to compare it"
+  },
+  {
+   "path": "price.multi_day_position",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "share",
+   "from": "the high and low over the prior 5 sessions' bars plus today",
+   "logic": "spot minus that low, over that range",
+   "cut": "above the five-session high or below its low is new ground; inside, the third it sits in, with the distance to both edges in sigma",
+   "reads_as": "price is in the top third of the last 5 sessions' range, 90% of the way up from its low to its high, 0.42 sigma below that high and 3.72 sigma above their low",
+   "real": true,
+   "note": "revised 2026-09-21 after the overlap review; rendered from the real row at 2026-09-21 15:59. now carries the distance to the five-session high and low as well; price.vs_week_extremes folded in. Verdict new_ground_above, new_ground_below or inside_the_week for the week_position question"
+  },
+  {
+   "path": "gex.weight_side",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.gamma_above_spot and gamma_below_spot",
+   "logic": "above over the sum",
+   "cut": "0.40 to 0.60 is even",
+   "reads_as": "most of the options weight sits above price, 60% of it",
+   "real": true
+  },
+  {
+   "path": "gex.air_to_wall",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "distance",
+   "from": "call_wall, put_wall, spot, sigma",
+   "logic": "the nearer wall by absolute distance, divided by sigma",
+   "cut": "0.5 sigma is close",
+   "reads_as": "the nearest heavy strike is the put wall 0.80 sigma below price, more than 0.5 sigma away, with open air between",
+   "real": true,
+   "note": "SNDK PRO measured walls as not acting as levels price reaches"
+  },
+  {
+   "path": "gex.since_last_book",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "change",
+   "from": "this row and the last row with a different meta.book_asof: mass_by_strike, call_wall, put_wall, gamma_sign",
+   "logic": "heaviest strike same or different; each wall same, different, appeared or disappeared; gamma sign matches or differs",
+   "cut": "equality",
+   "reads_as": "since the last book, 4 minutes earlier: the heaviest strike now is the same strike as at the last book; the nearest call wall is the same strike as at the last book; the nearest put wall is the same strike as at the last book; the gamma sign now matches the gamma sign at the last book",
+   "real": true
+  },
+  {
+   "path": "options.activity",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.vol_gross_by_strike",
+   "logic": "the three busiest strikes' contracts over all",
+   "cut": "0.50 is most",
+   "reads_as": "today's contracts trade across many strikes; the three busiest hold 33% of them, less than half",
+   "real": true,
+   "note": "read spread_out on all 64 sampled moments, too one-sided to grade"
+  },
+  {
+   "path": "gex.wall_thickness",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.call_wall_gamma_share and put_wall_gamma_share",
+   "logic": "the nearest wall's share of all the board's weight",
+   "cut": "rank against the last 39 days of rows: thick above the top third, thin below the bottom third",
+   "reads_as": "the nearest wall, the call wall, holds 13% of all the options weight on the board, middling, between the 5% thin cut and the 15% thick cut",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "gex.heaviest_strike_grip",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.pin_top_share",
+   "logic": "as given",
+   "cut": "rank against own history",
+   "reads_as": "the single heaviest strike holds 16% of the board's weight, middling, between the 10% and 20% cuts",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "gex.delta_weight_side",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "dex_views.dex_above_spot",
+   "logic": "one minus the share above",
+   "cut": "0.40 to 0.60 is even",
+   "reads_as": "63% of dealers' directional exposure sits at strikes below price, most of it",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. a location fact only; the accompanying direction word is retired and must not ride along"
+  },
+  {
+   "path": "gex.book_vs_yesterday",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "change",
+   "from": "net_exposure.net_delta_total over prev_close_delta",
+   "logic": "the ratio",
+   "cut": "under 0.8 smaller; over 1.25 bigger",
+   "reads_as": "dealers' directional book is 0.4 times its size at yesterday's close, smaller, below the 0.8 cut",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. the gamma version is unusable, its denominator crosses zero"
+  },
+  {
+   "path": "gex.expiry_roll",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "state",
+   "from": "call_wall against call_wall_tenor; put_wall against put_wall_tenor",
+   "logic": "whether today's book and the later-dated book defend the same strikes",
+   "cut": "equality",
+   "reads_as": "on the call side the later-dated book defends the same strike as today's book; on the put side the later-dated book defends the same strike as today's book",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "gex.ladder_state",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "state",
+   "from": "profile_ladder.state",
+   "logic": "one of four named gamma situations; the two transition states are the new information",
+   "cut": "none",
+   "reads_as": "the board's gamma ladder is in the positive state",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-18 15:49"
+  },
+  {
+   "path": "gex.crowd_change_overnight",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "change",
+   "from": "gex_views.oi_side_by_strike at the heaviest strike; yesterday's diary file",
+   "logic": "grew, shrank or held; SNDK PRO's board already computes this",
+   "cut": "10%",
+   "reads_as": "the crowd at the heaviest strike shrank 51% overnight, more than the 10% cut",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "gex.cushion_if_moved",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "change",
+   "from": "gex_views.shove.shove_down_margin and shove_up_margin",
+   "logic": "if price moved half a normal day, the dealers' cushion as a multiple of now; clamped to plus or minus 3",
+   "cut": "none",
+   "reads_as": "if price were shoved up by half a normal move for the time left, the dealers' calming gamma would be 1.0 times what it is now, the same sign; shoved down, it would be 1.0 times what it is now, the same sign",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. raw tails reach 429 when gamma at spot is near zero, hence the clamp; shove_sigma itself is only the session clock and is rejected"
+  },
+  {
+   "path": "options.turnover",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "rank",
+   "from": "vol_side_by_strike over oi_side_by_strike",
+   "logic": "contracts traded today over the standing open position",
+   "cut": "rank against own history, or 1.0 and 3.0",
+   "reads_as": "today's contracts traded are 3.1 times the standing open position, more than 3 times it",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "options.call_put_split",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "vol_side_by_strike, calls against puts",
+   "logic": "calls over the sum",
+   "cut": "0.40 to 0.60 is even",
+   "reads_as": "59% of today's contracts traded near price were calls, an even split within 40% to 60%",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. what traded, never who pressed; SNDK has no buy-or-sell tape"
+  },
+  {
+   "path": "options.next_week_share",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "vol_side_by_strike_next against the front",
+   "logic": "next week's contracts over both",
+   "cut": "0.25",
+   "reads_as": "10% of contracts traded went to next week's expiry rather than the front one, a small share, under the 25% cut",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "options.quote_width",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "the at-the-money bid and ask in the chain cache",
+   "logic": "ask minus bid over the mid",
+   "cut": "rank against own history",
+   "reads_as": "the at-the-money spread is 3% of the mid, wider than the 3% cut",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. the cache holds only the latest book, so history must be accumulated first"
+  },
+  {
+   "path": "options.size_showing",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "the at-the-money bid_size and ask_size in the chain cache",
+   "logic": "bid size over the sum",
+   "cut": "0.40 to 0.60 is even",
+   "reads_as": "88% of the size showing on the at-the-money quote is on the bid, more size on the bid, beyond the 60% cut",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "gex.strike_ladder",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "state",
+   "from": "gex_views.mass_by_strike, vol_side_by_strike, net_by_strike; spot; sigma",
+   "logic": "the three nearest qualifying strikes each side, each written as one sentence: distance in sigma, share of board weight, and whether calls or puts dominated today's contracts there",
+   "cut": "a strike qualifies with 5% or more of the board's weight, or a top-8 rank by contracts",
+   "reads_as": "0.04 sigma above price: 4% of the board's weight, calls and puts traded there evenly today | 0.18 sigma above price: 4% of the board's weight, calls and puts traded there evenly today | 0.32 sigma above price: 3% of the board's weight, calls and puts traded there evenly today | 0.10 sigma below price: 3% of the board's weight, mostly calls traded there today | 0.25 sigma below price: 8% of the board's weight, calls and puts traded there evenly today | 0.95 sigma below price: 12% of the board's weight, calls and puts traded there evenly today",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. a description of structure; walls measured as not acting as levels on this name. List strikes nearest-first on each side, so a question can read the first strike listed. A list, nearest strike first on each side"
+  },
+  {
+   "path": "gex.cluster_near_price",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "state",
+   "from": "net_by_strike through the cluster rule SNDK PRO already has for its structure block",
+   "logic": "whether adjacent heavy strikes form a band, its span and share",
+   "cut": "a band is 2 or more adjacent strikes each above 5%",
+   "reads_as": "no two adjacent strikes each holding 5% or more of the weight sit within 1 sigma of price, so there is no band near price",
+   "real": true,
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "news.headline",
+   "viewpoint": "news",
+   "status": "built",
+   "type": "state",
+   "from": "the item handed in",
+   "logic": "verbatim, vetted sources only",
+   "cut": "none",
+   "reads_as": "SanDisk raises full-year outlook",
+   "real": false
+  },
+  {
+   "path": "news.source",
+   "viewpoint": "news",
+   "status": "built",
+   "type": "state",
+   "from": "the item",
+   "logic": "the source tier",
+   "cut": "none",
+   "reads_as": "company release",
+   "real": false
+  },
+  {
+   "path": "news.excerpt",
+   "viewpoint": "news",
+   "status": "built",
+   "type": "state",
+   "from": "the item, or Claude's short brief of a long article",
+   "logic": "verbatim",
+   "cut": "none",
+   "reads_as": "The company raised guidance.",
+   "real": false
+  },
+  {
+   "path": "news.recent_headlines",
+   "viewpoint": "news",
+   "status": "built",
+   "type": "state",
+   "from": "the item's earlier headlines on the same topic",
+   "logic": "a list, each with its age",
+   "cut": "none",
+   "reads_as": "2 hours ago: SanDisk to report next week",
+   "real": false
+  },
+  {
+   "path": "news.expectation",
+   "viewpoint": "news",
+   "status": "built",
+   "type": "state",
+   "from": "consensus data or prior guidance, when there is one",
+   "logic": "verbatim; absent when none exists",
+   "cut": "none",
+   "reads_as": "consensus was flat",
+   "real": false
+  },
+  {
+   "path": "news.age",
+   "viewpoint": "news",
+   "status": "built",
+   "type": "count",
+   "from": "the item's arrival time; now",
+   "logic": "minutes since arrival",
+   "cut": "none",
+   "reads_as": "the item arrived 10 minutes ago",
+   "real": false
+  },
+  {
+   "path": "news.price_reaction",
+   "viewpoint": "news",
+   "status": "built",
+   "type": "distance",
+   "from": "the close before arrival; the bars since; spot; sigma",
+   "logic": "the move since arrival and the furthest point reached, both in sigma",
+   "cut": "0.15 sigma is no reaction yet",
+   "reads_as": "price has risen 0.30 sigma since the item arrived, and got as far as 0.31 sigma away at its furthest point",
+   "real": false
+  }
+ ],
+ "folded": [
+  {
+   "path": "context.session_phase",
+   "into": "context.session_progress",
+   "why": "both said where we are in the session; progress now carries the fifth, the phase name and the minutes to the open and close",
+   "date": "2026-09-21"
+  },
+  {
+   "path": "price.vs_week_extremes",
+   "into": "price.multi_day_position",
+   "why": "both read the same five-session high and low; one label now carries the third, new ground and the distance to both edges",
+   "date": "2026-09-21"
+  }
+ ],
+ "review": {
+  "date": "2026-09-21",
+  "method": "replayed every fourth stored row over the last ten sessions (401 moments, 2026-09-08 to 2026-09-21) through build_ab; counted each label's verdict and measured normalised mutual information between every pair of verdict labels",
+  "one_sided": [
+   {
+    "path": "momentum.rsi_1min",
+    "top": "between 92%",
+    "kept_as": "a label only; the rsi_band question was already dropped"
+   },
+   {
+    "path": "options.activity",
+    "top": "spread_out 99.5%",
+    "kept_as": "a label only; option_activity is a calibration control"
+   },
+   {
+    "path": "iv.move_sides",
+    "top": "even 87%",
+    "kept_as": "live, under the 90% line; expected_move_skew stays but is watched"
+   },
+   {
+    "path": "momentum.vwap_slope",
+    "top": "flat 84%",
+    "kept_as": "live, under the 90% line"
+   }
+  ],
+  "overlap_found": [
+   {
+    "pair": [
+     "price.day_range_position",
+     "price.vs_vwap"
+    ],
+    "nmi": 0.5,
+    "decision": "kept both; the day's average price and the day's range are different objects, and questions read them separately"
+   },
+   {
+    "pair": [
+     "gex.weight_side",
+     "gex.delta_weight_side"
+    ],
+    "nmi": 0.28,
+    "agree": "12%",
+    "decision": "kept both; gamma side and delta side disagree most of the time, so they are not the same fact"
+   }
+  ],
+  "folded": [
+   "context.session_phase -> context.session_progress",
+   "price.vs_week_extremes -> price.multi_day_position"
+  ],
+  "not_measurable": "47 of the 61 labels write no verdict, so overlap between them was judged from their inputs, not from replay"
+ }
+}

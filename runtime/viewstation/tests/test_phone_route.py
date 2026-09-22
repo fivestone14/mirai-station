@@ -1106,8 +1106,11 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
     for bad in ("cursor:pointer", "onclick", "title="):
         assert bad not in PHONE, bad
     links = re.findall(r"<a\s[^>]*>", PHONE)
-    assert len(links) == 1, f"exactly one link is allowed on the glance, found {len(links)}: {links}"
+    # 2026-09-22: a second link, the JEV beta tab. The JEV card is a separate
+    # page because every JEV answer is a forecast and the glance carries none.
+    assert len(links) == 2, f"two links are allowed on the glance, the reads tab and the JEV tab, found {len(links)}: {links}"
     assert 'href="/m/thread.html"' in links[0], links[0]
+    assert 'href="/m/jev.html"' in links[1], links[1]
 
     assert "data-hold" not in PHONE + _code_only(PAGE), "a press-and-hold is back on the glance"
     dialogs = re.findall(r'<div class="sheet[^"]*" id="(\w+)" role="dialog"', PHONE)

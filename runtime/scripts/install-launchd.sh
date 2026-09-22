@@ -27,6 +27,9 @@ PLISTS=(
   # price record survives a stuck scanner. Named here for the same reason the
   # deadman is — an unlisted plist is a job that was built and never hired.
   "com.mirai-station.sndk-bars.plist"
+  # The JEV decision service (09-22): its own job, 20 s behind the scanner, reads the
+  # station's files and writes only state/jev/. Named here so a reinstall keeps it.
+  "com.mirai-station.sndk-jev.plist"
   "com.mirai-station.voice.plist"
 )
 

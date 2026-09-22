@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sndk-jev"
+version = "0.1.0"
+description = "State builder and request packer for JEV, SNDK PRO's fast judge. Read-only sidecar."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["sndk_jev*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
