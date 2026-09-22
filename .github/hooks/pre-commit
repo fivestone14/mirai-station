@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# pre-commit — the same scrub the pre-push gate and the CI net run, one step earlier,
+# so a key or a .env file is refused before it is ever in a commit. INSTALL is the
+# same line as pre-push's: git config core.hooksPath .github/hooks
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if [ -x .github/scripts/scrub.sh ]; then
+    .github/scripts/scrub.sh || { echo "pre-commit: scrub found something identifying or secret; nothing committed" >&2; exit 1; }
+fi
+exit 0

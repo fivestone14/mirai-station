@@ -54,6 +54,13 @@ scan 'tailnet hostname — it names the tailnet' \
 
 scan 'ntfy topic — a topic IS the credential; use a placeholder in fixtures' \
      'ntfy\.sh/[A-Za-z0-9_-]{10,}'
+# The JEV credential (2026-09-22). The key lives in skills/sndk-jev/.env, git-ignored;
+# a value of 16+ characters after TYPESAFE_API_KEY= is a key, "..." in a README is not.
+scan 'TypeSafe API key — it belongs only in the git-ignored skills/sndk-jev/.env' \
+     'apikey_[0-9a-f]{20,}_[0-9a-f]{20,}|TYPESAFE_API_KEY=[^[:space:]]{16,}'
+# A .env file of any name, tracked or about to be: secrets live only in ignored files.
+env_files=$(git ls-files --cached --others --exclude-standard | grep -E '(^|/)\.env(\.[^/]+)?$' | grep -Ev '\.env\.example$' || true)
+[ -n "$env_files" ] && report 'a .env file in the tree (only .env.example may ship)' "$env_files"
 
 # Tailscale CGNAT space, minus the network literal the host guards are built on
 # and the fabricated address the host-guard tests use.
