@@ -94,6 +94,22 @@ summary{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:upperc
 details .q{margin-top:8px}
 .foot{padding:4px 4px 0;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
 
+/* the first-load cover, the glance's own: opaque from the first frame, held for a floor so a
+   fast load never stutters, and only between the header and the tab bar so both stay usable */
+.load{position:fixed;left:0;right:0;top:0;bottom:var(--tab-h);z-index:4;
+      display:flex;align-items:center;justify-content:center;gap:11px;background:var(--g);
+      font:700 11px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--i-faint);
+      opacity:1;pointer-events:none;transition:opacity .18s ease-out}
+.load.going{opacity:0}
+.load[hidden]{display:none}
+.load i,.poll{width:17px;height:17px;flex:none;border-radius:50%;border:2px solid var(--s2);border-top-color:var(--i-mute);
+              animation:spin .7s linear infinite}
+.poll{width:12px;height:12px;display:inline-block;vertical-align:middle;margin-left:6px}
+.poll[hidden]{display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.load i,.poll{animation:pulse-dim 1.4s ease-in-out infinite}.load{transition:none}}
+@keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
+
 /* the tab bar, the glance's own, with this page lit */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
       padding:11px 0 calc(env(safe-area-inset-bottom) + 12px);background:var(--s);border-radius:22px 22px 0 0;
@@ -115,10 +131,11 @@ details .q{margin-top:8px}
 <header class="hd">
   <a class="back" href="/m/" aria-label="Back to the glance">&#8249;</a>
   <div class="hd-t">
-    <div class="hd-1"><span id="h1">SNDK &middot; JEV</span><em class="beta">beta</em></div>
+    <div class="hd-1"><span id="h1">SNDK &middot; JEV</span><em class="beta">beta</em><i class="poll" id="poll" hidden></i></div>
     <div class="hd-2" id="sub">loading</div>
   </div>
 </header>
+<div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
 <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums and the dashed questions are forecasts, graded by the bars 30 and 60 minutes later, never a call.</p>
@@ -146,12 +163,22 @@ details .q{margin-top:8px}
   var NAME = {strikes:'strikes', volume_price:'volume and price', history:'yesterday', indicators:'indicators',
               space_time:'space and time', framing:'framing', news:'news', outcome:'outcome, shadow only'};
   var last = null;
+  var LOAD_MIN_MS = 260, LOAD_T0 = Date.now();   // the cover is held at least this long, never a stutter
+  function clearLoading(){
+    const el = $('load');
+    if(!el || el.hidden || el.dataset.going) return;
+    el.dataset.going = '1';
+    setTimeout(function(){ el.classList.add('going'); setTimeout(function(){ el.hidden = true; }, 200); },
+               Math.max(0, LOAD_MIN_MS - (Date.now() - LOAD_T0)));
+  }
+  function polling(on){ const p = $('poll'); if(p) p.hidden = !on; }
   var folded = {};                              // viewpoint -> true when collapsed; a per-phone convenience
   try { folded = JSON.parse(localStorage.getItem('jev.folded') || '{}') || {}; } catch(e){ folded = {}; }
   function remember(){ try { localStorage.setItem('jev.folded', JSON.stringify(folded)); } catch(e){} }
 
   // Up, Down, Flat, Unsure: a capital first letter on every option, spaces for underscores
   function cap(k){ k = String(k); return k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' '); }
+  function $(id){ return document.getElementById(id); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
   function mins(iso){ var t = Date.parse(iso); return isNaN(t) ? null : Math.max(0, Math.round((Date.now() - t) / 60000)); }
   function clock(iso){ var m = /T(\d\d:\d\d)/.exec(iso || ''); return m ? m[1] : '?'; }
@@ -272,10 +299,11 @@ details .q{margin-top:8px}
   }
 
   // A page that fails must say so in words where the header sits, never stay on "loading".
-  function say(msg){ document.getElementById('sub').textContent = msg; }
+  function say(msg){ document.getElementById('sub').textContent = msg; clearLoading(); }
   window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
-  function draw(c, ok){ try { paint(c, ok); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
+  function draw(c, ok){ try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
   function poll(){
+    polling(true);                                // a refresh shows its spinner; it never blanks the card
     fetch(URL_, {cache:'no-store'}).then(function(r){
       if(!r.ok) throw new Error('the station answered ' + r.status);
       return r.json();
@@ -284,7 +312,8 @@ details .q{margin-top:8px}
       else if(j && j.error){ say('the station said: ' + j.error); }
       else if(last){ draw(last, false); }
       else { say('no card yet: the JEV service has not written one'); }
-    }).catch(function(e){ if(last) draw(last, false); else say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); });
+    }).catch(function(e){ if(last) draw(last, false); else say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); })
+      .finally(function(){ polling(false); });
   }
   poll();
   setInterval(function(){ if(!document.hidden) poll(); }, 60000);

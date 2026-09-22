@@ -978,10 +978,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
    in well under 200ms, and a spinner that flashes for 80ms is a flicker that
    makes the page feel slower, not faster. It appears only if the wait is long
    enough to be noticed. */
+/* ON THE CHART CARD, NOT THE PAGE (2026-09-22). The cover used to sit over the
+   whole screen, tab bar included, so nothing could be read or tapped until the
+   first paint finished. It now sits inside the chart card (position:relative on
+   .card), the one region that has nothing to show before the payload lands; the
+   masthead, the other cards and the tab bar draw at once, and a reader can move
+   to the reads or the JEV tab while the board is still loading. */
 .load{
-  position:fixed;inset:0;z-index:20;
+  position:absolute;inset:0;z-index:1;border-radius:18px;   /* above the chart only; the tab bar keeps its own layer */
   display:flex;align-items:center;justify-content:center;gap:11px;
-  background:var(--g);
+  background:var(--s);
   font:700 11px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;
   color:var(--i-faint);
   /* OPAQUE FROM THE FIRST FRAME. The first version faded in after 350ms to
@@ -1052,6 +1058,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 </section>
 
 <section class="card">
+  <div class="load" id="load"><i></i>Reading the board</div>
   <div class="lab">Price today<span class="r" id="ldWhen"></span><button class="cf-open" id="cfOpen"
        type="button" data-press aria-haspopup="dialog" aria-controls="chartFull"
        aria-label="Open the chart full screen"><svg viewBox="0 0 16 16" aria-hidden="true"><path
@@ -1103,7 +1110,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <p class="fail-2" id="fail2"></p>
 </div>
 
-<div class="load" id="load"><i></i>Reading the board</div>
 
 <!-- THE LENS, above a finger held on the chart. The window is a viewBox onto
      the chart's own drawing (#ldg) at LENS_ZOOM, so it is redrawn rather than

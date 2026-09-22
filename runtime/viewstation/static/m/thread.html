@@ -344,7 +344,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
    makes the page feel slower, not faster. It appears only if the wait is long
    enough to be noticed. */
 .load{
-  position:fixed;inset:0;z-index:20;
+  position:fixed;inset:0;z-index:4;   /* under the sticky header: the back button stays usable while the day loads */
   display:flex;align-items:center;justify-content:center;gap:11px;
   background:var(--g);
   font:700 11px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;
@@ -368,10 +368,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   animation:spin .7s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
+.poll{width:12px;height:12px;display:inline-block;vertical-align:middle;margin-left:8px;border-radius:50%;
+      border:2px solid var(--s2);border-top-color:var(--i-mute);animation:spin .7s linear infinite}
+.poll[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){
   /* the ring stops turning; the wait still has to be visible, so it pulses
      instead — opacity is not motion under WCAG's own definition */
-  .load i{animation:pulse-dim 1.4s ease-in-out infinite}
+  .load i,.poll{animation:pulse-dim 1.4s ease-in-out infinite}
   .load{transition:none}
 }
 @keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
@@ -406,7 +409,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <header class="hd">
   <a class="back" href="/m/" aria-label="Back to the glance" data-press data-haptic>‹</a>
   <div class="hd-t">
-    <div class="hd-1">SNDK · THE READS</div>
+    <div class="hd-1">SNDK · THE READS<i class="poll" id="poll" hidden></i></div>
     <div class="hd-2" id="sub">loading…</div>
   </div>
   <select class="day" id="day" aria-label="Session" data-press></select>
@@ -699,12 +702,15 @@ async function poll(){
   if(S.polling) return;      // no second request while one is airborne — see below
   if(!S.day) return;
   S.polling = true;
+  const spinner = $('poll');                    // the refresh shows itself beside the title, never over the list
+  if(spinner) spinner.hidden = false;
   let docJson;
   try{
     const tail = S.last ? '&since=' + encodeURIComponent(S.last) : '';
     docJson = await getJSON('/api/sndk/thread?day=' + encodeURIComponent(S.day) + tail);
   }finally{
     S.polling = false;
+    if(spinner) spinner.hidden = true;
   }
   if(getJSON.failed) return;                    // still down; the next tick tries again
 

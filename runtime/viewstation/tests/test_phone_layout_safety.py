@@ -1012,8 +1012,11 @@ def test_what_the_script_hides_stays_hidden():
     element a page's script hides, whose own rule sets a display, carries a
     [hidden] rule that takes it back to none."""
     thread_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", THREAD))
+    jev_html = (M / "jev.html").read_text()
+    jev_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", jev_html))
     for name, html, js, need in (("index.html", PHONE, PAGE, {"chg", "lastscan", "load", "hh"}),
-                                 ("thread.html", THREAD, thread_js, {"load"})):
+                                 ("thread.html", THREAD, thread_js, {"load"}),
+                                 ("jev.html", jev_html, jev_js, {"load", "poll"})):
         hidden = _hidden_by_script(html, js)
         assert need <= set(hidden), f"{name}: the hides are no longer where this test reads them"
         rules = [(part.strip(), decls) for sel, decls in _flat_rules(_css_code(html))
