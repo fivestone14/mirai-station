@@ -47,6 +47,13 @@ SKEW_EVEN_BAND_PTS = 1.0
 WEIGHT_EVEN_BAND = (0.40, 0.60)
 # Three strikes holding at least this share of today's contracts reads "concentrated".
 CONCENTRATED_SHARE = 0.50
+# One strike holding more than a fifth of today's option volume is the busiest strike.
+BUSIEST_STRIKE_SHARE = 0.20
+# The session's shape: an extension or giveback from the open at or past this reads as a real leg.
+SHAPE_CUT = 0.30
+# Path efficiency of a 30-minute move: net move over distance travelled.
+PATH_ORDERLY = 0.60
+PATH_CHOPPY = 0.30
 # Pace of the last 10 minutes against the 10 before.
 PACE_BIGGER = 1.5
 PACE_SMALLER = 2.0 / 3.0
@@ -369,7 +376,8 @@ def _run(scene: Scene) -> _Out:
     b = _Builder(scene, out)
     for step in (b.context, b.price, b.range, b.iv, b.gex, b.options, b.volume, b.momentum,
                  b.context_more, b.price_more, b.range_more, b.iv_more, b.gex_more, b.options_more,
-                 b.volume_more, b.momentum_more, b.news):
+                 b.volume_more, b.momentum_more,
+                 b.session_shape, b.nearest_level, b.new_activity, b.path_efficiency, b.news):
         step()
     return out
 
@@ -1414,6 +1422,164 @@ class _Builder:
             o.put("momentum", "vwap_slope", f"the day's average price has drifted {sig(-d)} lower over the last 30 minutes, more than the 0.05 sigma flat cut", answer="drifting_lower")
         else:
             o.put("momentum", "vwap_slope", f"the day's average price has stayed within the 0.05 sigma flat cut over the last 30 minutes, moving {signed(d)} sigma", answer="flat")
+
+    # ======================================================================
+    # The labels added on 2026-09-23 from the intraday question review: the
+    # session's shape, the nearest level and the path to it, where today's option
+    # volume sits, and how straight the last 30 minutes ran.
+    # ======================================================================
+
+    # ---- range: the session's shape
+    def session_shape(self) -> None:
+        o = self.o
+        if self.since_open < 30 or not self.bars:
+            o.skip("range", "session_shape", "needs 30 minutes of session")
+            return
+        open0 = float(self.bars[0]["open"])
+        hi = max(max(float(x["high"]) for x in self.bars), self.spot)
+        lo = min(min(float(x["low"]) for x in self.bars), self.spot)
+        net = (self.spot - open0) / self.sigma
+        up_ext, dn_ext = (hi - open0) / self.sigma, (open0 - lo) / self.sigma
+        from_high, from_low = (hi - self.spot) / self.sigma, (self.spot - lo) / self.sigma
+        cut = f"{SHAPE_CUT:.2f}"
+        if up_ext >= SHAPE_CUT and from_high >= SHAPE_CUT and from_high >= up_ext / 2:
+            o.put("range", "session_shape",
+                  f"so far today price rose {sig(up_ext)} above the open then gave back {sig(from_high)} of it, so the session has reversed down, past the {cut} sigma cut",
+                  answer="reversed_down")
+        elif dn_ext >= SHAPE_CUT and from_low >= SHAPE_CUT and from_low >= dn_ext / 2:
+            o.put("range", "session_shape",
+                  f"so far today price fell {sig(dn_ext)} below the open then recovered {sig(from_low)} of it, so the session has reversed up, past the {cut} sigma cut",
+                  answer="reversed_up")
+        elif net >= SHAPE_CUT:
+            o.put("range", "session_shape",
+                  f"so far today price is {sig(net)} above the open, more than the {cut} sigma cut, so the session is rising",
+                  answer="rising")
+        elif net <= -SHAPE_CUT:
+            o.put("range", "session_shape",
+                  f"so far today price is {sig(-net)} below the open, more than the {cut} sigma cut, so the session is falling",
+                  answer="falling")
+        else:
+            o.put("range", "session_shape",
+                  f"so far today price is {sig(abs(net))} from the open, within the {cut} sigma cut, so the session is flat",
+                  answer="flat")
+
+    # ---- range: the nearest level and the path to it
+    def nearest_level(self) -> None:
+        o = self.o
+        back30 = self.now - timedelta(minutes=30)
+        win = bars_finished_between(self.bars, back30, self.now)
+        ref = close_at(self.bars, back30)
+        if self.since_open < 30 or len(win) < 20 or ref is None:
+            o.skip("range", "nearest_level", "needs 30 minutes of finished bars")
+            return
+        levels: list[tuple[str, float]] = []
+        vwap = self.row.get("vwap")
+        if _is_num(vwap) and vwap > 0:
+            levels.append(("the day's average price", float(vwap)))
+        # the day's high and low come from before the window, so a level is never the window's own extreme
+        early = bars_finished_between(self.bars, self.open_t, back30)
+        if early:
+            levels.append(("the day's high", max(float(x["high"]) for x in early)))
+            levels.append(("the day's low", min(float(x["low"]) for x in early)))
+        y = self._session(1)
+        if y:
+            hi, lo, cl = self._hlc(y)
+            levels += [("yesterday's high", hi), ("yesterday's low", lo), ("yesterday's close", cl)]
+        for name, key in (("the call wall", "call_wall"), ("the put wall", "put_wall")):
+            w = self.row.get(key)
+            if _is_num(w):
+                levels.append((name, float(w)))
+        if not levels:
+            o.skip("range", "nearest_level", "no level to measure against")
+            return
+        name, lvl = min(levels, key=lambda lv: abs(lv[1] - self.spot))
+        d = (self.spot - lvl) / self.sigma
+        was_below, is_below = ref < lvl, self.spot < lvl
+        side = "above" if is_below else "below"
+        if was_below and not is_below:
+            o.put("range", "nearest_level",
+                  f"price crossed {name} from below in the last 30 minutes and is {sig(d)} above it",
+                  answer="crossed_up")
+        elif is_below and not was_below:
+            o.put("range", "nearest_level",
+                  f"price crossed {name} from above in the last 30 minutes and is {sig(-d)} below it",
+                  answer="crossed_down")
+        elif is_below and any(float(x["high"]) > lvl for x in win):
+            o.put("range", "nearest_level",
+                  f"in the last 30 minutes price pushed above {name} and is back below it, {sig(-d)} under",
+                  answer="crossed_and_back")
+        elif not is_below and any(float(x["low"]) < lvl for x in win):
+            o.put("range", "nearest_level",
+                  f"in the last 30 minutes price pushed below {name} and is back above it, {sig(d)} over",
+                  answer="crossed_and_back")
+        elif abs(d) <= MOVE_RULE_SIGMA:
+            o.put("range", "nearest_level",
+                  f"the nearest level is {name}, {sig(abs(d))} {side} price, within the {MOVE_RULE_SIGMA} sigma reach, untouched in the last 30 minutes",
+                  answer=f"within_reach_{side}")
+        elif abs(d) <= WALL_NEAR_SIGMA:
+            o.put("range", "nearest_level",
+                  f"the nearest level is {name}, {sig(abs(d))} {side} price, beyond the {MOVE_RULE_SIGMA} sigma reach but within {WALL_NEAR_SIGMA} sigma, untouched in the last 30 minutes",
+                  answer="near_but_untouched")
+        else:
+            o.put("range", "nearest_level",
+                  f"no level is within {WALL_NEAR_SIGMA} sigma of price; the nearest is {name}, {sig(abs(d))} {side}",
+                  answer="no_level_close")
+
+    # ---- options: where today's volume sits
+    def new_activity(self) -> None:
+        o = self.o
+        vols = [(float(v[0]), float(v[1])) for v in (self.row.get("gex_views") or {}).get("vol_gross_by_strike") or []
+                if isinstance(v, (list, tuple)) and len(v) >= 2 and _is_num(v[0]) and _is_num(v[1])]
+        total = sum(v for _, v in vols)
+        if not vols or total <= 0:
+            o.skip("options", "new_activity", "no contracts traded yet today")
+            return
+        busiest, top = max(vols, key=lambda kv: kv[1])
+        share = top / total
+        nearest = min(vols, key=lambda kv: abs(kv[0] - self.spot))[0]
+        if share <= BUSIEST_STRIKE_SHARE:
+            o.put("options", "new_activity",
+                  f"today's option volume is spread across strikes, no strike holding more than a fifth of it; the busiest holds {pct(share)}",
+                  answer="spread_out")
+        elif busiest == nearest:
+            o.put("options", "new_activity",
+                  f"the busiest strike today is the one nearest price, holding {pct(share)} of the day's option volume, more than a fifth",
+                  answer="at_price")
+        elif busiest > self.spot:
+            o.put("options", "new_activity",
+                  f"the busiest strike today sits above price, holding {pct(share)} of the day's option volume, more than a fifth",
+                  answer="above_price")
+        else:
+            o.put("options", "new_activity",
+                  f"the busiest strike today sits below price, holding {pct(share)} of the day's option volume, more than a fifth",
+                  answer="below_price")
+
+    # ---- momentum: how straight the last 30 minutes ran
+    def path_efficiency(self) -> None:
+        o = self.o
+        win = bars_finished_between(self.bars, self.now - timedelta(minutes=30), self.now)
+        if self.move30 is None or len(win) < 20:
+            o.skip("momentum", "path_efficiency", "needs 30 minutes of finished bars")
+            return
+        if abs(self.move30) < MOVE_RULE_SIGMA:
+            o.put("momentum", "path_efficiency",
+                  f"price stayed within the {MOVE_RULE_SIGMA} sigma move rule over the last 30 minutes, so there is no path to judge",
+                  answer="no_move")
+            return
+        closes = [float(x["close"]) for x in win]
+        net = abs(closes[-1] - closes[0])
+        travel = sum(abs(b_ - a) for a, b_ in zip(closes[:-1], closes[1:]))
+        if net <= 0 or travel <= 0:
+            o.skip("momentum", "path_efficiency", "the window's closes netted nothing, so there is no path to judge")
+            return
+        eff = net / travel
+        lead = f"over the last 30 minutes price travelled {travel / net:.1f} times its net move, path efficiency {pct(eff)}"
+        if eff >= PATH_ORDERLY:
+            o.put("momentum", "path_efficiency", f"{lead}, orderly ({pct(PATH_ORDERLY)} or more)", answer="orderly")
+        elif eff >= PATH_CHOPPY:
+            o.put("momentum", "path_efficiency", f"{lead}, mixed (between {pct(PATH_CHOPPY)} and {pct(PATH_ORDERLY)})", answer="mixed")
+        else:
+            o.put("momentum", "path_efficiency", f"{lead}, choppy (under {pct(PATH_CHOPPY)})", answer="choppy")
 
     # ---- news (optional, supplied by the news desk)
     def news(self) -> None:

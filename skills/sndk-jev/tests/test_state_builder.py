@@ -85,6 +85,70 @@ def test_range_vs_normal_needs_prior_sessions(scene_factory):
     assert state["range"]["today_vs_normal"].startswith("today's range so far is in the top third of the last 5 sessions")
 
 
+def test_session_shape_reversal_beats_net_direction(scene_factory):
+    sigma = 45.0
+    # up 0.45 sigma from a 1700 open, then 0.38 sigma of it given back: a reversal, though net is still up
+    climb = [1700.0 + sigma * 0.45 * (i + 1) / 30 for i in range(30)]
+    fall = [climb[-1] - sigma * 0.38 * (i + 1) / 30 for i in range(30)]
+    state, _, _, verdicts = build_ab(scene_factory(at(11, 0, ss=10), bars_from_closes([1700.0] * 30 + climb + fall, wick=0.0)))
+    assert state["range"]["session_shape"] == "so far today price rose 0.45 sigma above the open then gave back 0.38 sigma of it, so the session has reversed down, past the 0.30 sigma cut"
+    assert verdicts["range.session_shape"] == "reversed_down"
+    drop = [1700.0 - sigma * 0.45 * (i + 1) / 30 for i in range(30)]
+    back = [drop[-1] + sigma * 0.38 * (i + 1) / 30 for i in range(30)]
+    _, _, _, verdicts = build_ab(scene_factory(at(11, 0, ss=10), bars_from_closes([1700.0] * 30 + drop + back, wick=0.0)))
+    assert verdicts["range.session_shape"] == "reversed_up"
+
+    state, _, _, verdicts = build_ab(scene_factory(at(10, 30, ss=10), flat_bars(60), spot=1700.0 + sigma * 0.62))
+    assert state["range"]["session_shape"] == "so far today price is 0.62 sigma above the open, more than the 0.30 sigma cut, so the session is rising"
+    _, _, _, verdicts = build_ab(scene_factory(at(10, 30, ss=10), flat_bars(60), spot=1700.0 - sigma * 0.62))
+    assert verdicts["range.session_shape"] == "falling"
+    state, _, _, verdicts = build_ab(scene_factory(at(10, 30, ss=10), flat_bars(60), spot=1700.0 + sigma * 0.12))
+    assert state["range"]["session_shape"] == "so far today price is 0.12 sigma from the open, within the 0.30 sigma cut, so the session is flat"
+    assert verdicts["range.session_shape"] == "flat"
+
+    _, omitted = labels(scene_factory(at(9, 45), flat_bars(15)))
+    assert "30 minutes" in omitted["range.session_shape"]
+
+
+def test_nearest_level_names_the_level_and_the_path_to_it(scene_factory):
+    sigma = 45.0
+    now = at(11, 0, ss=10)
+    # 09:30-10:30 at 1690, then a climb through the day's average price at 1700 to 0.22 sigma above it
+    closes = [1690.0] * 60 + [1690.0 + (10.0 + sigma * 0.22) * (i + 1) / 30 for i in range(30)]
+    state, _, _, verdicts = build_ab(scene_factory(now, bars_from_closes(closes, wick=0.0), row_over={"vwap": 1700.0}))
+    assert state["range"]["nearest_level"] == "price crossed the day's average price from below in the last 30 minutes and is 0.22 sigma above it"
+    assert verdicts["range.nearest_level"] == "crossed_up"
+
+    # yesterday topped at 1720; today pushed through it in the last 30 minutes and fell back 0.08 sigma under
+    yesterday = {"2026-09-17": bars_from_closes([1700.0] * 388 + [1720.0, 1710.0], day="2026-09-17", wick=0.0)}
+    spike = [1700.0 + 22.0 * (i + 1) / 15 for i in range(15)] + [1722.0 - (22.0 - 20.0 + sigma * 0.08) * (i + 1) / 15 for i in range(15)]
+    state, _, _, verdicts = build_ab(scene_factory(now, bars_from_closes([1700.0] * 60 + spike, wick=0.0), prior_bars=yesterday))
+    assert state["range"]["nearest_level"] == "in the last 30 minutes price pushed above yesterday's high and is back below it, 0.08 sigma under"
+    assert verdicts["range.nearest_level"] == "crossed_and_back"
+
+    # the day's high was set at 10:00 and the last 30 minutes sat 0.09 sigma under it without touching it
+    closes = [1700.0] * 30 + [1720.0] + [1700.0] * 29 + [1720.0 - sigma * 0.09] * 30
+    state, _, _, verdicts = build_ab(scene_factory(now, bars_from_closes(closes, wick=0.0)))
+    assert state["range"]["nearest_level"] == "the nearest level is the day's high, 0.09 sigma above price, within the 0.15 sigma reach, untouched in the last 30 minutes"
+    assert verdicts["range.nearest_level"] == "within_reach_above"
+
+    # a morning at 1740 then a drop to 1700 leaves the put wall 0.31 sigma below as the nearest level
+    dropped = bars_from_closes([1740.0] * 60 + [1700.0] * 30)
+    walls = {"vwap": 1700.0 + sigma * 0.6, "put_wall": 1700.0 - sigma * 0.31}
+    state, _, _, verdicts = build_ab(scene_factory(now, dropped, row_over=walls))
+    assert state["range"]["nearest_level"] == "the nearest level is the put wall, 0.31 sigma below price, beyond the 0.15 sigma reach but within 0.5 sigma, untouched in the last 30 minutes"
+    assert verdicts["range.nearest_level"] == "near_but_untouched"
+    # a morning at 1660 then a lift to 1700 leaves nothing within 0.5 sigma; the call wall above is nearest
+    lifted = bars_from_closes([1660.0] * 60 + [1700.0] * 30)
+    far = {"vwap": 1700.0 - sigma * 0.9, "call_wall": 1700.0 + sigma * 0.71}
+    state, _, _, verdicts = build_ab(scene_factory(now, lifted, row_over=far))
+    assert state["range"]["nearest_level"] == "no level is within 0.5 sigma of price; the nearest is the call wall, 0.71 sigma above"
+    assert verdicts["range.nearest_level"] == "no_level_close"
+
+    _, omitted = labels(scene_factory(at(9, 45), flat_bars(15)))
+    assert "30 minutes" in omitted["range.nearest_level"]
+
+
 # ---------------------------------------------------------------- implied volatility
 
 def test_iv_trend_and_skew_and_em(scene_factory):
@@ -162,6 +226,27 @@ def test_options_activity_concentration(scene_factory):
     assert "less than half" in state["options"]["activity"]
 
 
+def test_new_activity_places_the_busiest_strike_against_price(scene_factory):
+    # the fixture's busiest strike is 1700 with half the day's volume
+    state, _, _, verdicts = build_ab(scene_factory(at(11, 30), flat_bars(120)))
+    assert state["options"]["new_activity"] == "the busiest strike today is the one nearest price, holding 50% of the day's option volume, more than a fifth"
+    assert verdicts["options.new_activity"] == "at_price"
+    state, _, _, verdicts = build_ab(scene_factory(at(11, 30), flat_bars(120, 1745.0)))
+    assert state["options"]["new_activity"].startswith("the busiest strike today sits below price, holding 50%")
+    assert verdicts["options.new_activity"] == "below_price"
+    _, _, _, verdicts = build_ab(scene_factory(at(11, 30), flat_bars(120, 1660.0)))
+    assert verdicts["options.new_activity"] == "above_price"
+
+    spread = {"gex_views": {"vol_gross_by_strike": [[1600.0 + 10 * i, 100] for i in range(20)]}}
+    state, _, _, verdicts = build_ab(scene_factory(at(11, 30), flat_bars(120), row_over=spread))
+    assert state["options"]["new_activity"] == "today's option volume is spread across strikes, no strike holding more than a fifth of it; the busiest holds 5%"
+    assert verdicts["options.new_activity"] == "spread_out"
+
+    state, omitted = labels(scene_factory(at(11, 30), flat_bars(120), row_over={"gex_views": {"vol_gross_by_strike": []}}))
+    assert "new_activity" not in state.get("options", {})
+    assert "no contracts" in omitted["options.new_activity"]
+
+
 # ---------------------------------------------------------------- volume
 
 def _prior_days(volume: float, n: int = 6) -> dict:
@@ -234,6 +319,36 @@ def test_momentum_says_no_move_instead_of_skipping_closes_and_pauses(scene_facto
     # a quiet read is a fact the questions can answer ("no move"), not a gap that skips them
     assert "no move to judge" in state["momentum"]["closes"] and "under the 0.15 sigma move rule" in state["momentum"]["pauses"]
     assert "momentum.closes" not in omitted and "momentum.pauses" not in omitted
+
+
+def test_path_efficiency_grades_how_straight_the_move_ran(scene_factory):
+    sigma = 45.0
+    now = at(12, 30, ss=10)
+    quiet = [1700.0] * 150
+    # a straight climb travels exactly its net move
+    climb = [1700.0 + sigma * 0.6 * (i + 1) / 30 for i in range(30)]
+    state, _, _, verdicts = build_ab(scene_factory(now, bars_from_closes(quiet + climb, wick=0.0)))
+    assert state["momentum"]["path_efficiency"] == "over the last 30 minutes price travelled 1.0 times its net move, path efficiency 100%, orderly (60% or more)"
+    assert verdicts["momentum.path_efficiency"] == "orderly"
+
+    # up 18 points in 10 minutes, then 8 of them given back over 20: net 10 of 26 travelled
+    mixed = [1700.0 + 2.0 * (i + 1) for i in range(10)] + [1720.0 - 0.4 * (i + 1) for i in range(20)]
+    state, _, _, verdicts = build_ab(scene_factory(now, bars_from_closes(quiet + mixed, wick=0.0)))
+    assert state["momentum"]["path_efficiency"] == "over the last 30 minutes price travelled 2.6 times its net move, path efficiency 38%, mixed (between 30% and 60%)"
+    assert verdicts["momentum.path_efficiency"] == "mixed"
+
+    # a 10-point zigzag every minute that ends 20 points up: net 10 of 290 travelled
+    zigzag = [1710.0, 1700.0] * 14 + [1710.0, 1720.0]
+    state, _, _, verdicts = build_ab(scene_factory(now, bars_from_closes(quiet + zigzag, wick=0.0)))
+    assert state["momentum"]["path_efficiency"] == "over the last 30 minutes price travelled 29.0 times its net move, path efficiency 3%, choppy (under 30%)"
+    assert verdicts["momentum.path_efficiency"] == "choppy"
+
+    state, _, _, verdicts = build_ab(scene_factory(now, flat_bars(180)))
+    assert state["momentum"]["path_efficiency"] == "price stayed within the 0.15 sigma move rule over the last 30 minutes, so there is no path to judge"
+    assert verdicts["momentum.path_efficiency"] == "no_move"
+
+    _, omitted = labels(scene_factory(at(9, 45), flat_bars(15)))
+    assert "30 minutes" in omitted["momentum.path_efficiency"]
 
 
 # ---------------------------------------------------------------- time

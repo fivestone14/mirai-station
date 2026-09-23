@@ -1,6 +1,6 @@
 {
  "name": "jev-questions",
- "version": "0.12.0",
+ "version": "0.13.0",
  "date": "2026-09-23",
  "how_to_use": [
   "Each group is one JEV request. The packer sends the group's state slice as the state and only the fields type, instructions and criteria of each question; viewpoint, status, ask, why and cadence are for people.",
@@ -312,7 +312,8 @@
     "gex.air_to_wall",
     "range.wall_retests",
     "gex.since_last_book",
-    "options.size_showing"
+    "options.size_showing",
+    "options.new_activity"
    ],
    "questions": {
     "cluster_near_price": {
@@ -425,6 +426,23 @@
       "unsure": "the label gives too little to call"
      },
      "proposed": "2026-09-22, from the label review"
+    },
+    "todays_volume_location": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Where is today's option trading concentrated: at a strike above price, below it, at the nearest strike, or spread out?",
+     "why": "Today's trading by strike, where the weight question reads the standing book.",
+     "type": "choice",
+     "instructions": "Read `options.new_activity`. Where does the busiest strike sit?",
+     "criteria": {
+      "above_price": "the label says the busiest strike today sits above price, holding more than a fifth of the day's option volume",
+      "below_price": "the label says the busiest strike today sits below price, holding more than a fifth of the day's option volume",
+      "at_price": "the label says the busiest strike today is the one nearest price, holding more than a fifth of the day's option volume",
+      "spread_out": "the label says today's option volume is spread across strikes, no strike holding more than a fifth",
+      "unsure": "the label gives too little to call"
+     },
+     "proposed": "2026-09-23, from the intraday question review"
     }
    }
   },
@@ -589,7 +607,9 @@
     "iv.term_slope",
     "iv.move_sides",
     "momentum.vwap_slope",
-    "iv.trend_30min"
+    "iv.trend_30min",
+    "momentum.path_efficiency",
+    "price.recent_move"
    ],
    "questions": {
     "momentum_stretched": {
@@ -668,6 +688,42 @@
       "unsure": "the labels conflict or say too little to call"
      },
      "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
+    },
+    "path_efficiency": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Over the last 30 minutes, did price travel cleanly, in a mixed way, or choppily?",
+     "why": "How much of the last 30 minutes' travel was net movement; the five-bar closes question only sees the last five minutes.",
+     "type": "choice",
+     "instructions": "Read `momentum.path_efficiency`. Which band does it name?",
+     "criteria": {
+      "orderly": "the label says path efficiency is orderly, 60% or more",
+      "mixed": "the label says path efficiency is mixed, between 30% and 60%",
+      "choppy": "the label says path efficiency is choppy, under 30%",
+      "no_move": "the label says price stayed within the 0.15 sigma move rule, so there is no path to judge",
+      "unsure": "the label gives too little to call"
+     },
+     "proposed": "2026-09-23, from the intraday question review"
+    },
+    "vol_vs_price_direction": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Over the last 30 minutes, which way did price go and which way did the size of move the options market is pricing go?",
+     "why": "Pairs the options market's priced move with price direction; the stall question pairs it with a stall instead. Code decides which pairs fit.",
+     "type": "choice",
+     "instructions": "Read `price.recent_move` and `iv.trend_30min`. Which pairing is it?",
+     "criteria": {
+      "fall_vol_rising": "price fell more than the 0.15 sigma move rule, and at-the-money implied volatility rose by more than 2 vol points",
+      "rise_vol_falling": "price rose more than the 0.15 sigma move rule, and implied volatility fell by more than 2 vol points",
+      "rise_vol_rising": "price rose more than the 0.15 sigma move rule, and implied volatility rose by more than 2 vol points",
+      "fall_vol_falling": "price fell more than the 0.15 sigma move rule, and implied volatility fell by more than 2 vol points",
+      "vol_flat": "implied volatility stayed within the 2 vol point flat band, whatever price did",
+      "no_move": "price stayed within the 0.15 sigma move rule and implied volatility moved more than 2 vol points",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-23, from the intraday question review"
     }
    }
   },
@@ -678,7 +734,10 @@
     "price.multi_day_position",
     "context.time_since_last_move",
     "context.session_progress",
-    "price.minute_width"
+    "price.minute_width",
+    "range.session_shape",
+    "range.nearest_level",
+    "price.recent_move"
    ],
    "questions": {
     "week_position": {
@@ -709,6 +768,61 @@
       "quiet": "price last made a real move 10 minutes ago or longer, and this minute's range is within the 2-times cut",
       "unsure": "the labels conflict or say too little to call"
      }
+    },
+    "session_shape": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "So far today, is the session rising, falling, flat, or has it reversed?",
+     "why": "The whole day's shape; the opening box question only says what happened against the first half hour.",
+     "type": "choice",
+     "instructions": "Read `range.session_shape`. Which shape does it name?",
+     "criteria": {
+      "rising": "the label says the session is rising: price is more than the 0.30 sigma cut above the open",
+      "falling": "the label says the session is falling: price is more than the 0.30 sigma cut below the open",
+      "flat": "the label says the session is flat: price is within the 0.30 sigma cut of the open",
+      "reversed_down": "the label says the session has reversed down: price rose above the open then gave back at least half of it, past the 0.30 sigma cut",
+      "reversed_up": "the label says the session has reversed up: price fell below the open then recovered at least half of it, past the 0.30 sigma cut",
+      "unsure": "the label gives too little to call"
+     },
+     "proposed": "2026-09-23, from the intraday question review"
+    },
+    "segment_vs_session": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Is the last 30 minutes continuing the day's move, reversing it, or pausing?",
+     "why": "The same continue-or-reverse read as the opening box question, but against the whole day's shape.",
+     "type": "choice",
+     "instructions": "Read `range.session_shape` for the session's shape and `price.recent_move` for the last 30 minutes. A session that is rising or has reversed up counts as rising; one that is falling or has reversed down counts as falling. Which pairing is it?",
+     "criteria": {
+      "continuing": "the session is rising and price rose more than the 0.15 sigma move rule in the last 30 minutes, or the session is falling and price fell more than the 0.15 sigma move rule",
+      "reversing": "the session is rising and price fell more than the 0.15 sigma move rule in the last 30 minutes, or the session is falling and price rose more than the 0.15 sigma move rule",
+      "pausing": "the session is rising or falling and price stayed within the 0.15 sigma move rule over the last 30 minutes",
+      "no_session_move": "the session is flat, whatever the last 30 minutes did",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-23, from the intraday question review"
+    },
+    "nearest_level_action": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "At the nearest price level, did price cross it, cross and come back, sit within reach of it, or is nothing close?",
+     "why": "One verdict at the one nearest level (the day's average price, the day's high or low, yesterday's levels, a wall), where the existing questions each watch one level.",
+     "type": "choice",
+     "instructions": "Read `range.nearest_level`. What did price do at the nearest level over the last 30 minutes?",
+     "criteria": {
+      "crossed_up": "the label says price crossed the level from below in the last 30 minutes and is above it",
+      "crossed_down": "the label says price crossed the level from above in the last 30 minutes and is below it",
+      "crossed_and_back": "the label says price pushed through the level in the last 30 minutes and is back on the side it started",
+      "within_reach_above": "the label says the level is above price within the 0.15 sigma reach, untouched in the last 30 minutes",
+      "within_reach_below": "the label says the level is below price within the 0.15 sigma reach, untouched in the last 30 minutes",
+      "near_but_untouched": "the label says the level is beyond the 0.15 sigma reach but within 0.5 sigma, untouched in the last 30 minutes",
+      "no_level_close": "the label says no level is within 0.5 sigma of price",
+      "unsure": "the label gives too little to call"
+     },
+     "proposed": "2026-09-23, from the intraday question review"
     }
    }
   },
