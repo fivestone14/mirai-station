@@ -42,16 +42,12 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 /* header, as the reads page draws it */
 .hd{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;margin:0 -16px;
     padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;background:var(--g)}
-.back{position:relative;isolation:isolate;flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;
-      border-radius:14px;background:var(--s);box-shadow:var(--sh1);color:var(--i-mute);font:400 22px/1 var(--sans);text-decoration:none;
-      touch-action:manipulation;-webkit-user-select:none;user-select:none}
-.back::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:var(--tap-min);height:var(--tap-min)}
-.back:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 .hd-t{min-width:0;flex:1 1 auto}
 .hd-1{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint)}
 .hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* an error is read whole, never cut to one line */
 .hd-2.err{white-space:normal;overflow:visible;text-overflow:clip}
+.hd-2.fresh{color:var(--i-ink);transition:color .6s}   /* a new row just arrived: the line brightens for a moment */
 .beta{font:700 9px/1 var(--sans);letter-spacing:.12em;padding:3px 6px;border-radius:6px;border:1px solid currentColor;font-style:normal;text-transform:uppercase}
 
 /* the card and its label row, the glance's own */
@@ -134,7 +130,6 @@ details .q{margin-top:8px}
 </head>
 <body>
 <header class="hd">
-  <a class="back" href="/m/" aria-label="Back to the glance">&#8249;</a>
   <div class="hd-t">
     <div class="hd-1"><span id="h1">SNDK &middot; JEV</span><em class="beta">beta</em><i class="poll" id="poll" hidden></i></div>
     <div class="hd-2" id="sub">loading</div>
@@ -163,7 +158,7 @@ details .q{margin-top:8px}
 (function(){
   'use strict';
   var URL_ = '/api/raw/file?root=state&path=jev/latest.json';
-  var STALE_MIN = 6, GONE_MIN = 60;            // the glance's fallbacks; the gates route is locked to one user
+  var STALE_MIN = 35, GONE_MIN = 60;           // reads land every 30 minutes: a row is stale only once the next read is overdue
   var CLOSE_HHMM = '15:55';                    // a row this late in market time is the day's last, not a stale one
   var ORDER = ['strikes','volume_price','history','indicators','space_time','framing','news','outcome'];
   var NAME = {strikes:'strikes', volume_price:'volume and price', history:'yesterday', indicators:'indicators',
@@ -200,7 +195,25 @@ details .q{margin-top:8px}
   function subLine(c, m){
     var at = clock(c.row_ts), n = c.labels + ' labels';
     if(m != null && m > GONE_MIN && at >= CLOSE_HHMM) return 'after the close, last row ' + at + ', ' + n;
-    return 'row ' + at + ', ' + ageWord(m) + (m != null && m > STALE_MIN ? ', stale' : '') + ', ' + n;
+    var next = nextRead(); var hint = next ? ', next read ' + next : '';
+    return 'row ' + at + ', ' + ageWord(m) + (m != null && m > STALE_MIN ? ', stale' : '') + ', ' + n + hint;
+  }
+  // The service reads at :02 and :32 market time. The next mark is the earliest one still ahead of the
+  // market clock (never past the close), so the reader knows when the card will change without asking.
+  var READ_MINUTES = [2, 32], LAST_READ_HHMM = '15:32';
+  function marketClock(){
+    try {
+      var p = new Intl.DateTimeFormat('en-US', {timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit'}).formatToParts(new Date());
+      var h = +p.filter(function(x){ return x.type === 'hour'; })[0].value % 24, mm = +p.filter(function(x){ return x.type === 'minute'; })[0].value;
+      return {h: h, m: mm};
+    } catch(e){ return null; }
+  }
+  function nextRead(){
+    var t = marketClock(); if(!t) return null;
+    var h = t.h, m = READ_MINUTES.filter(function(x){ return x > t.m; })[0];
+    if(m == null){ h += 1; m = READ_MINUTES[0]; }
+    var hhmm = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+    return (hhmm <= LAST_READ_HHMM && hhmm >= '09:32') ? hhmm : null;
   }
   // "missing momentum.closes" names a label; the card carries the builder's own sentence for it
   function skipWhy(q, omitted){
@@ -325,22 +338,59 @@ details .q{margin-top:8px}
   function say(msg){ var s = document.getElementById('sub'); s.textContent = msg; s.classList.add('err'); clearLoading(); }
   window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
   function draw(c, ok){ try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
+  // The same card again only moves the ages, so a reader mid-scroll is never handed a rebuilt page.
+  function ages(c){
+    var m = mins(c.row_ts), old = m != null && m > STALE_MIN;
+    var sub = $('sub'); if(sub && !sub.classList.contains('err')) sub.textContent = subLine(c, m);
+    var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
+    Array.prototype.forEach.call(document.querySelectorAll('.lab .r'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
+  }
+  function arrived(c){
+    var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
+    last = c;
+    if(same){ ages(c); return; }
+    draw(c, true);
+    var sub = $('sub'); if(sub && sub.dataset.seen){ sub.classList.add('fresh'); setTimeout(function(){ sub.classList.remove('fresh'); }, 2500); }
+    if(sub) sub.dataset.seen = '1';
+  }
+  var inflight = false;
   function poll(){
-    polling(true);                                // a refresh shows its spinner; it never blanks the card
+    if(inflight) return;                          // one fetch at a time, whatever fired it
+    inflight = true; polling(true);               // a refresh shows its spinner; it never blanks the card
     fetch(URL_, {cache:'no-store'}).then(function(r){
       if(!r.ok) throw new Error('the station answered ' + r.status);
       return r.json();
     }).then(function(j){
-      if(j && j.kind === 'json' && j.data && j.data.questions){ last = j.data; draw(last, true); }
+      if(j && j.kind === 'json' && j.data && j.data.questions){ arrived(j.data); }
       else if(j && j.error){ say('the station said: ' + j.error); }
       else if(last){ draw(last, false); }
       else { say('no card yet: the JEV service has not written one'); }
     }).catch(function(e){ if(last) draw(last, false); else say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); })
-      .finally(function(){ polling(false); });
+      .finally(function(){ inflight = false; polling(false); });
   }
-  poll();
-  setInterval(function(){ if(!document.hidden) poll(); }, 60000);
-  document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });
+  // Refresh on its own: every POLL_MS while the page is in view, again the moment the page comes
+  // back (tab switch, screen unlock, back-forward cache, network back), and a few seconds after each
+  // :02 and :32 read mark so a new card shows within seconds of being written, never a minute later.
+  var POLL_MS = 20000, AFTER_MARK_S = 12;
+  function msToNextMark(){
+    var t = marketClock(); if(!t) return null;
+    var m = READ_MINUTES.filter(function(x){ return x > t.m; })[0];
+    var wait = (m == null ? 60 + READ_MINUTES[0] : m) - t.m;
+    return (wait * 60 + AFTER_MARK_S) * 1000 - (new Date().getSeconds() * 1000);
+  }
+  var markTimer = null;
+  function armMark(){
+    if(markTimer) clearTimeout(markTimer);
+    var ms = msToNextMark(); if(ms == null) return;
+    markTimer = setTimeout(function(){ if(!document.hidden) poll(); armMark(); }, Math.max(1000, ms));
+  }
+  function wake(){ if(!document.hidden){ poll(); armMark(); } }
+  poll(); armMark();
+  setInterval(function(){ if(!document.hidden) poll(); }, POLL_MS);
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('pageshow', wake);
+  window.addEventListener('focus', wake);
+  window.addEventListener('online', wake);
 })();
 </script>
 </body>

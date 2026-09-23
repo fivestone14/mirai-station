@@ -485,6 +485,8 @@ function modelRead(rows, nowMs){
    old its row is. Nothing about what was answered; that is the card's own page.
    The words are the card's own (jev.html), so the two screens say one thing. */
 const JEV_GONE_MIN = 60, JEV_CLOSE_HHMM = '15:55';
+// reads land every 30 minutes, so a row is aged only once the next read is overdue (the card's STALE_MIN)
+const JEV_STALE_MIN = 35;
 
 function jevRead(card, nowMs){
   if(!card || !Array.isArray(card.questions)) return null;
@@ -502,7 +504,7 @@ function jevRead(card, nowMs){
   // newer to wait for, an hour after any earlier row the card is stale
   if(age>JEV_GONE_MIN) line += at>=JEV_CLOSE_HHMM ? ' After the close, last row '+at+'.' : ' Stale: over an hour old.';
   return {line, answered, total, ageMin:age, at:new Date(t),
-          tier: age>STALE_BOOK_MIN_UI ? 'aged' : 'fresh'};
+          tier: age>JEV_STALE_MIN ? 'aged' : 'fresh'};
 }
 
 /* ---- market time ------------------------------------------------------- */
