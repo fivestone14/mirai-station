@@ -572,7 +572,7 @@ def weight_log_section():
              if top else f'<div class="tl"><span class="k">most adjusted</span><b>none yet</b><span class="k" style="text-transform:none;letter-spacing:0">no weight has moved: {graded} graded reads so far, {need} needed per question</span></div>')
     cad_note = (" (from " + E(CADENCE["recounted_from"]) + ")") if CADENCE.get("recounted_from") else ", not yet recounted so every question is on its starting value"
     out = [f'<h3 class="rvh" style="margin-top:8px">Most adjusted questions, total movement so far</h3><div class="tally">{strip}</div>',
-           f'<p class="sub">Every live question starts at 1.0. Once a question has {need} fresh graded reads its weight becomes how well its own answers tracked the next 30 minutes, 1.0 for the best; under 0.5 the question stops feeding the sums but is still asked, so it can climb back. Graded reads so far: <b>{graded}</b>. Cadence is how often the question is asked afresh, recounted each day from the day before{cad_note}.</p>']
+           f'<p class="sub">Every live question starts at 1.0. Once a question has {need} fresh graded reads its weight becomes how well its own answers tracked the next 30 minutes, 1.0 for the best; under 0.5 the question stops feeding the sums but is still asked, so it can climb back. Graded reads so far: <b>{graded}</b>. The tracking score is how much the question\'s fresh picks so far tell you about what price did next (the "mi" field), the number the weight is built from once the {need} are in; 0.000 means the question has given the same answer on every graded read. Cadence is how often the question is asked afresh, recounted each day from the day before{cad_note}.</p>']
     for vp in [v for v in VP_ORDER if v in by_vp]:
         rows = []
         for qid, q in by_vp[vp]:
@@ -580,12 +580,14 @@ def weight_log_section():
             weight = float(w.get("weight", 1.0))
             n = w.get("n", 0)
             cls = "out" if weight < 0.5 else ""
+            score = float(w.get("mi", 0.0) or 0.0)
             rows.append(f'<tr class="{cls}"><td class="ask">{E(q.get("ask") or q["instructions"])}<code>{E(qid)}</code></td>'
                         f'<td class="w"><div class="wbar"><i style="width:{weight * 100:.0f}%"></i></div></td>'
-                        f'<td class="num" data-k="weight">{weight:.2f}</td><td class="num" data-k="moved">{moved.get(qid, 0.0):.2f} <small>({moves.get(qid, 0)})</small></td><td class="num" data-k="graded">{n}</td>'
+                        f'<td class="num" data-k="weight">{weight:.2f}</td><td class="num" data-k="tracking">{score:.3f}</td>'
+                        f'<td class="num" data-k="moved">{moved.get(qid, 0.0):.2f} <small>({moves.get(qid, 0)})</small></td><td class="num" data-k="graded">{n}</td>'
                         f'<td class="num" data-k="cadence">{"every read" if cadence_min(qid, q) == 30 else str(cadence_min(qid, q)) + " min"}</td></tr>')
         out.append(f'<h3 class="rvh">{E(VP_TITLE.get(vp, vp))}</h3>'
-                   f'<div class="tscroll"><table class="db"><thead><tr><th>question</th><th class="w">weight</th><th class="num">value</th><th class="num">moved (times)</th><th class="num">graded reads</th><th class="num">cadence</th></tr></thead>'
+                   f'<div class="tscroll"><table class="db"><thead><tr><th>question</th><th class="w">weight</th><th class="num">value</th><th class="num">tracking score</th><th class="num">moved (times)</th><th class="num">graded reads</th><th class="num">cadence</th></tr></thead>'
                    f'<tbody>{"".join(rows)}</tbody></table></div>')
     out.append(f'<p class="sub" style="margin-top:12px;font-size:14px">A snapshot of state/jev/weights.json on the station, taken when this page was built, {E(BUILT_AT)}. Every change is also kept in weights_log.jsonl.</p>')
     return "".join(out)
