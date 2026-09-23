@@ -252,7 +252,7 @@ details .q{margin-top:8px}
       var note = 'shadow: graded by the bars 30 minutes later, never a call';
       if(h.confidence != null) note = 'confidence ' + Math.round(h.confidence * 100) + '% \u00B7 ' + note;
       hc.appendChild(el('div', 'tag', note));
-      hc.appendChild(el('div', 'tag', 'from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '')));
+      hc.appendChild(el('div', 'tag', 'from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '')));
       main.appendChild(hc);
       // the 60-minute sum, asked on the same answers, graded beside the 30 for the comparison; never the headline
       var h60 = h.by && h.by.next_60;

@@ -48,7 +48,11 @@ def test_a_record_waits_for_its_slowest_horizon_but_skips_one_past_the_close():
     late = _rec(15, 20, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
     g = grade_one(late, bars)                                          # 60 runs past the close: 30 alone
     assert "next_30" in g and "next_60" not in g and g["band"] == "flat"
-    assert grade_one(_rec(15, 45, 1700.0, _by({"flat": 1.0}, "flat"), {}), bars) is None   # nothing can be graded
+    edge = _rec(15, 31, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
+    g = grade_one(edge, bars)                                          # 16:01 is inside the grace: the close stands in
+    assert "next_30" in g and "next_60" not in g and g["band"] == "flat"
+    done = grade_one(_rec(15, 45, 1700.0, _by({"flat": 1.0}, "flat"), {}), bars)      # nothing can ever be graded
+    assert done == {"row_ts": at(15, 45).isoformat(), "graded": False, "reason": "every horizon ends past the close"}
 
 
 def test_a_record_from_before_the_switch_is_never_graded():
@@ -57,12 +61,29 @@ def test_a_record_from_before_the_switch_is_never_graded():
     assert grade_one(old, bars) is None
 
 
-def test_weights_stay_at_one_until_there_is_evidence():
+def test_weights_stay_at_one_until_a_question_has_its_own_evidence():
     grades = [{"row_ts": str(i), "band": "flat", "pick": "flat", "hit": True, "brier": 0.1, "used": {"q1": "a", "q2": "b"},
-               "next_30": {"band": "flat", "hit": True, "brier": 0.1}} for i in range(MIN_GRADED - 1)]
+               "fresh": {"q1": "a", "q2": "b"}, "next_30": {"band": "flat", "hit": True, "brier": 0.1}} for i in range(MIN_GRADED - 1)]
     w = weights_from(grades)
     assert all(v["weight"] == 1.0 and v["in_step_3"] for v in w["questions"].values())
     assert w["sum"]["hit_rate"] == 1.0 and w["sums"]["next_30"]["n"] == MIN_GRADED - 1 and w["sums"]["next_60"]["n"] == 0
+
+
+def test_the_floor_is_per_question_and_held_answers_never_pair():
+    grades = []
+    for i in range(MIN_GRADED):
+        band = "up" if i % 2 else "flat"
+        g = {"row_ts": str(i), "band": band, "pick": band, "hit": True, "brier": 0.0,
+             "used": {"q_tell": "x" if band == "up" else "y", "q_sparse": "same", "q_held": "x" if band == "up" else "y"},
+             "fresh": {"q_tell": "x" if band == "up" else "y"},
+             "next_30": {"band": band, "hit": True, "brier": 0.0}}
+        if i < 5:
+            g["fresh"]["q_sparse"] = "same"          # asked afresh only five times: no verdict on it yet
+        grades.append(g)
+    w = weights_from(grades)
+    assert w["questions"]["q_tell"]["weight"] == 1.0 and w["questions"]["q_tell"]["n"] == MIN_GRADED
+    assert w["questions"]["q_sparse"]["weight"] == 1.0 and w["questions"]["q_sparse"]["n"] == 5 and "under" in w["questions"]["q_sparse"]["why"]
+    assert "q_held" not in w["questions"]                            # only ever held: it never pairs
 
 
 def test_a_telling_question_outweighs_a_blind_one():
@@ -90,10 +111,13 @@ def test_run_appends_grades_writes_weights_and_logs_once(tmp_path):
     with open(out / "hour" / "2026-09-18.jsonl", "w") as f:
         f.write(json.dumps(_rec(11, 0, 1700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up"), {"q1": "rising"})) + "\n")
         f.write(json.dumps(_rec(15, 45, 1700.0, _by({"flat": 1.0}, "flat"), {"q1": "flat"})) + "\n")   # past the close
+    with open(out / "hour" / "2026-09-18.jsonl", "a") as f:                                # the same row written twice, as a run by hand does
+        f.write(json.dumps(_rec(11, 0, 1700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up"), {"q1": "rising"})) + "\n")
     w = run(state, out)
-    assert w["graded_runs"] == 1 and w["new_this_run"] == 1
+    assert w["graded_runs"] == 1 and w["new_this_run"] == 1 and w["closed_out"] == 1     # the past-the-close row is closed out, never retried
     assert w["sums"]["next_30"]["n"] == 1 and w["sums"]["next_60"]["n"] == 1
-    assert (out / "grades.jsonl").read_text().count("\n") == 1
+    lines = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
+    assert len(lines) == 2 and lines[1]["graded"] is False
     assert json.loads((out / "weights.json").read_text())["questions"]["q1"]["weight"] == 1.0
     w2 = run(state, out)                       # idempotent: nothing new to grade
     assert w2["graded_runs"] == 1 and w2["new_this_run"] == 0

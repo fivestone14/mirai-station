@@ -183,9 +183,14 @@ apart without a red test.
    and 60 minutes have passed, the close that many minutes later minus spot, in
    sigma, gives each sum's band; hit and Brier score per sum are recorded in
    `state/jev/grades.jsonl`; each step-2 question's weight is its mutual
-   information with the 30-minute outcome relative to the best question's, and
-   stays 1.0 until 40 records are graded. Every change is appended to
-   `state/jev/weights_log.jsonl`.
+   information with the 30-minute outcome, over the reads where it answered
+   afresh (a held answer never pairs), relative to the best question's among
+   those with 40 pairs of their own; a question stays 1.0 until it has 40 pairs,
+   and one cut below 0.5 is still asked so it can climb back. A horizon ending
+   up to 2 minutes past the close is graded at the closing bar; a row is graded
+   once however many times the service ran on it. Every change is appended to
+   `state/jev/weights_log.jsonl`. The sum's block on the card counts answers
+   used, left out, and missing a label.
 
     python3 -m sndk_jev.grade        # grade by hand and print the tally
 

@@ -104,6 +104,21 @@ def test_recount_sets_every_read_for_a_flipper_and_slower_for_a_holder():
     assert cad["questions"][few]["minutes"] == parse_cadence(BY_ID[few].get("cadence")) and "under" in cad["questions"][few]["why"]
 
 
+def test_recount_ignores_two_minute_runs_and_counts_held_reads():
+    q = LIVE[0]
+    recs = []
+    # a two-minute stretch of 20 runs, 38 minutes long: they collapse to two scheduled reads
+    for i in range(20):
+        recs.append({"row_ts": (at(9, 32) + timedelta(minutes=2 * i)).isoformat(), "answers": {"g": {"answers": {q: {"type": "choice", "probabilities": {"a": 0.9}}}}}})
+    # then half-hourly reads, fresh at 10:32, held for the rest of the day
+    recs.append({"row_ts": at(10, 32).isoformat(), "answers": {"g": {"answers": {q: {"type": "choice", "probabilities": {"a": 0.9}}}}}})
+    for hh, mm in [(11, 2), (11, 32), (12, 2), (12, 32), (13, 2), (13, 32), (14, 2), (14, 32), (15, 2)]:
+        recs.append({"row_ts": at(hh, mm).isoformat(), "answers": {}, "held": {q: "10:32"}})
+    cad = recount(recs, DOC, None, "2026-09-22")
+    e = cad["questions"][q]
+    assert e["reads"] == 12 and e["changes"] == 0 and e["minutes"] == 120, e     # 29 runs became 12 scheduled reads; the answer stood all day
+
+
 def test_ensure_cadence_recounts_once_from_the_previous_day(tmp_path):
     out = tmp_path / "jev"; out.mkdir()
     qid = LIVE[0]

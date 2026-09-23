@@ -87,21 +87,26 @@ def named_probabilities(answer: dict) -> dict | None:
     return {plain(str(legend.get(str(k), k))): v for k, v in probs.items()}
 
 
-def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: dict) -> tuple[dict, dict | None]:
-    """Steps 3 and 4: sentences from the answers, one question over them, one reply from JEV.
-    Returns the hour record (what was used, what was left out, the request) and JEV's summary."""
+def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: dict,
+                 fresh: dict[str, dict] | None = None, missing: list[str] | None = None) -> tuple[dict, dict | None]:
+    """Steps 3 and 4: sentences from the answers, two questions over them, one reply from JEV.
+    Returns the hour record (what was used, what was fresh, what was left out or missing, the
+    request) and JEV's summary."""
     sentences, left_out = answer_sentences(doc, answered, weights)
+    fresh = fresh if fresh is not None else answered
+    by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
+    # the grader pairs only answers given afresh on this read with the read's outcome
+    fresh_picks = {qid: a["pick"] for qid, a in fresh.items() if by_id.get(qid, {}).get("status") == "live" and a.get("pick") is not None}
+    base = {"used": {qid: answered[qid]["pick"] for qid in sentences}, "fresh": fresh_picks,
+            "left_out": left_out, "missing": sorted(missing or []), "sentences": sentences}
     if not sentences:
-        return {"used": {}, "left_out": left_out, "sentences": {}, "request": None}, None
+        return {**base, "request": None}, None
     req = hour_request(sentences, hour_doc)
     try:
         reply = send(req)
     except RuntimeError as e:
         reply = {"error": str(e)}
-    summary = hour_summary(reply)
-    rec = {"used": {qid: answered[qid]["pick"] for qid in sentences}, "left_out": left_out,
-           "sentences": sentences, "request": req}
-    return rec, summary
+    return {**base, "request": req}, hour_summary(reply)
 
 
 def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: dict, answers: dict | None,
@@ -199,10 +204,14 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, send: bool, day: str | N
                 fresh[qid] = {"pick": pick(ans), "confidence": confidence(ans), "probabilities": named_probabilities(ans),
                               "noul": ans.get("noul"), "score": ans.get("score")}
         answered = {**held, **fresh}
-        hour_rec, hour = sum_the_hour(doc, load_hour_doc(), answered, load_weights(out_dir))
+        # live questions skipped for a label the builder could not measure, and not covered by a held answer
+        live_ids = {qid for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
+        missing = [qid for g in skipped.values() for qid, why in g.items()
+                   if qid in live_ids and str(why).startswith("missing") and qid not in held]
+        hour_rec, hour = sum_the_hour(doc, load_hour_doc(), answered, load_weights(out_dir), fresh, missing)
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None:
-            hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"])}
+            hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
         for qid, ans in fresh.items():
             # how far this answer moved from the last fresh one: past CHANGE_CUT the question is in motion
             prev = (last.get(qid) or {}).get("answer")

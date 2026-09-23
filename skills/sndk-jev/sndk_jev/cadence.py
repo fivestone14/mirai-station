@@ -44,6 +44,7 @@ LAST_NAME = "last_asked.json"
 STEPS = (30, 60, 120)
 MIN_READS = 6
 GRACE_MIN = 5                 # a read two minutes past the mark still counts as on time
+MIN_GAP_MIN = 25              # reads closer than this (a by-hand run, the old two-minute schedule) are not separate reads
 CHANGE_CUT = 0.3              # total probability moved across the options that counts as a change
 DOC_TEXT = {"every scan": 30, "every 10 minutes": 30, "every 20 minutes": 30, "every 30 minutes": 30, "hourly": 60}
 
@@ -182,19 +183,33 @@ def fill_missing(doc: dict, skipped: dict, last: dict, cad: dict, now: datetime,
 
 
 def answer_series(records: list[dict], live: set[str]) -> dict[str, list[tuple[datetime, dict]]]:
+    """One (time, vector) per scheduled read per question. Reads closer than MIN_GAP_MIN to the
+    previous kept read are dropped, so a day of two-minute runs counts as its half-hour marks.
+    A read on which the question was held repeats the last fresh vector: the answer stood."""
     out: dict[str, list] = {qid: [] for qid in live}
+    last_kept: datetime | None = None
+    last_vec: dict[str, dict] = {}
     for r in sorted(records, key=lambda r: r.get("row_ts", "")):
         try:
             t = parse_ts(r["row_ts"])
         except (KeyError, ValueError):
             continue
+        if last_kept is not None and (t - last_kept).total_seconds() < MIN_GAP_MIN * 60:
+            continue
+        last_kept = t
+        fresh: dict[str, dict] = {}
         for a in (r.get("answers") or {}).values():
             for qid, ans in (a.get("answers") or {}).items():
-                if qid not in live or not isinstance(ans, dict):
-                    continue
-                v = vector(ans)
-                if v:
-                    out[qid].append((t, v))
+                if qid in live and isinstance(ans, dict):
+                    v = vector(ans)
+                    if v:
+                        fresh[qid] = v
+        held = r.get("held") or {}
+        for qid in live:
+            if qid in fresh:
+                last_vec[qid] = fresh[qid]; out[qid].append((t, fresh[qid]))
+            elif qid in held and qid in last_vec:
+                out[qid].append((t, last_vec[qid]))
     return out
 
 

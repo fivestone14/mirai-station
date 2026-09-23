@@ -12,15 +12,20 @@ How a horizon is graded
     band     = up if realized > flat band, down if realized < -flat band, else flat
     hit      = JEV's pick == band
     brier    = sum over {up, flat, down} of (p - 1[band]) ** 2      (0 is perfect, 2 is worst)
-    A record is graded once every horizon that can ever finish before the close has its bars; a
-    horizon whose end falls after the close is left out of that record for good.
+    A record is graded once every horizon that can finish by the close has its bars. A horizon
+    whose end falls up to CLOSE_GRACE_MIN past the close is graded at the closing bar; one that
+    ends later is skipped. A record none of whose horizons can be graded is written to
+    grades.jsonl as not graded, so it is never retried. A row graded once is never graded twice.
 
 How a weight moves
-    For each step-2 question, every graded record gives one pair (what it picked, what the
-    primary horizon did). Its weight is the mutual information between those two, divided by
-    the largest MI of any question, so the most telling question has weight 1.0. Below
-    MIN_GRADED records the weight stays 1.0: no evidence, no exclusion. Under hour.MIN_WEIGHT
-    the question's sentence is left out of step 3 on the next run.
+    For each step-2 question, every graded record where the question was answered AFRESH gives
+    one pair (what it picked, what the primary horizon did); a held answer never pairs, since it
+    was given before the outcome it would be judged on. Its weight is the mutual information
+    between those two, divided by the largest MI among the questions that have MIN_GRADED pairs
+    of their own, so the most telling question has weight 1.0. A question with fewer than
+    MIN_GRADED pairs keeps 1.0: no evidence, no exclusion. Under hour.MIN_WEIGHT the question's
+    sentence is left out of step 3, but it is still asked every read, so it keeps earning pairs
+    and can climb back.
 
 Outputs, all under state/jev/
     grades.jsonl       one line per graded record (append only, keyed by row_ts)
@@ -40,7 +45,8 @@ from pathlib import Path
 from .hour import HOUR_QUESTIONS, MIN_WEIGHT, PRIMARY, WEIGHTS_NAME
 from .state_builder import DEFAULT_STATE_DIR, close_at, load_bars, parse_ts, session_close
 
-MIN_GRADED = 40         # records needed before any weight can move away from 1.0
+MIN_GRADED = 40         # fresh pairs a question needs before its own weight can move away from 1.0
+CLOSE_GRACE_MIN = 2     # a horizon ending this far past the close is graded at the closing bar
 BANDS = ("up", "flat", "down")
 WEIGHTS_LOG = "weights_log.jsonl"
 
@@ -82,11 +88,12 @@ def grade_one(rec: dict, bars: list[dict]) -> dict | None:
     if not picks:
         return None
     last_done = parse_ts(bars[-1]["ts"]) + timedelta(minutes=1)
-    out = {"row_ts": rec["row_ts"], "used": rec.get("used", {})}
+    out = {"row_ts": rec["row_ts"], "used": rec.get("used", {}), "fresh": rec.get("fresh", rec.get("used", {}))}
     for qid, (h, flat) in HORIZONS.items():
         t1 = t0 + timedelta(minutes=h)
-        if t1 > close:
+        if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
             continue                                  # can never be graded
+        t1 = min(t1, close)                           # inside the grace: the closing bar stands for the mark
         c1 = close_at(bars, t1)
         if c1 is None or last_done < t1:
             return None                               # not yet; try on a later run
@@ -97,7 +104,7 @@ def grade_one(rec: dict, bars: list[dict]) -> dict | None:
         out[qid] = {"realized_sigma": round(realized, 3), "band": band, "pick": picks.get(qid),
                     "hit": picks.get(qid) == band, "brier": round(brier, 4), "p_band": p.get(band)}
     if not any(q in out for q in HORIZONS):
-        return None
+        return {"row_ts": rec["row_ts"], "graded": False, "reason": "every horizon ends past the close"}
     prim = out.get(PRIMARY)
     for k in ("realized_sigma", "band", "pick", "hit", "brier", "p_band"):
         out[k] = prim[k] if prim else None            # the primary, flat on top, is what the weights read
@@ -127,18 +134,22 @@ def weights_from(grades: list[dict]) -> dict:
     primary = [g for g in grades if g.get("band")]
     pairs: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for g in primary:
-        for qid, pick in (g.get("used") or {}).items():
+        # only answers given afresh on that read pair with its outcome; a held answer predates it
+        for qid, pick in (g.get("fresh") or g.get("used") or {}).items():
             pairs[qid].append((str(pick), g["band"]))
     n_runs = len(primary)
     mi = {qid: mutual_information(p) for qid, p in pairs.items()}
-    top = max(mi.values(), default=0.0)
+    ready = {qid for qid, p in pairs.items() if len(p) >= MIN_GRADED}
+    top = max((mi[q] for q in ready), default=0.0)
     questions = {}
     for qid, p in pairs.items():
-        if n_runs < MIN_GRADED or top <= 0:
-            w, why = 1.0, f"{n_runs} graded, under the {MIN_GRADED} needed; every question keeps weight 1.0"
+        if qid not in ready:
+            w, why = 1.0, f"{len(p)} fresh pairs, under the {MIN_GRADED} needed; keeps weight 1.0"
+        elif top <= 0:
+            w, why = 1.0, "no question's picks carry information about the outcome yet; keeps weight 1.0"
         else:
             w = mi[qid] / top
-            why = f"mutual information with the {PRIMARY} outcome, relative to the best question"
+            why = f"mutual information with the {PRIMARY} outcome over {len(p)} fresh pairs, relative to the best question"
         questions[qid] = {"weight": round(w, 3), "mi": round(mi[qid], 4), "n": len(p), "why": why,
                           "in_step_3": w >= MIN_WEIGHT}
     sums = {qid: _tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]) for qid in HORIZONS}
@@ -187,6 +198,8 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None) -> dict:
             continue
         bars = load_bars(state_dir, d)
         for r in recs:
+            if r["row_ts"] in have:
+                continue                              # the same row written twice (a run by hand): graded once
             g = grade_one(r, bars)
             if g:
                 new.append(g)
@@ -198,7 +211,8 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None) -> dict:
                 f.write(json.dumps(g, ensure_ascii=False) + "\n")
     grades = _read_jsonl(grades_path)
     weights = weights_from(grades)
-    weights["new_this_run"] = len(new)
+    weights["new_this_run"] = sum(1 for g in new if g.get("band"))
+    weights["closed_out"] = sum(1 for g in new if not g.get("band"))
     weights_path = out_dir / WEIGHTS_NAME
     before = {}
     if weights_path.is_file():
@@ -208,7 +222,7 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None) -> dict:
             before = {}
     if new:
         out_dir.mkdir(parents=True, exist_ok=True)
-        log_weights(out_dir / WEIGHTS_LOG, before, weights, len(new))
+        log_weights(out_dir / WEIGHTS_LOG, before, weights, sum(1 for g in new if g.get("band")))
     weights_path.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
     return weights
 
