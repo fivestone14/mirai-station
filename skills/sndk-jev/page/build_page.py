@@ -151,7 +151,24 @@ a.chip:hover{background:var(--surface-2);color:var(--ink)}
 .dg-l{fill:var(--ink-3);font:500 11.5px var(--sans)}
 .dg-tier{fill:var(--ink-3);font:500 11px var(--mono);letter-spacing:.08em}
 .dg-arrow{stroke:currentColor;stroke-width:1.4;fill:none}
+.dg-n{fill:var(--accent);font:500 11.5px var(--mono);text-decoration:underline}
+.dg-click{cursor:pointer;outline:none}
+.dg-click .dg-box{stroke:var(--accent);stroke-width:2}
+.dg-click:hover .dg-box,.dg-click:focus-visible .dg-box{fill:var(--accent-soft);stroke-width:2.6}
 figcaption{margin-top:12px;color:var(--ink-2);font-size:16px;max-width:92ch}
+
+/* the worked example, a modal */
+dialog.modal{border:1px solid var(--line-strong);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 32px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog.modal::backdrop{background:rgba(8,12,18,.55)}
+.mod-h{display:flex;align-items:flex-start;gap:14px;padding:18px 20px 10px}
+.mod-h h3{font-size:19px}
+.mod-h p{margin-top:6px;font-size:14.5px;color:var(--ink-2);line-height:1.45}
+.mod-x{flex:none;padding:7px 12px;font-size:14px}
+.mod-b{padding:4px 20px 20px;display:grid;gap:8px}
+.ml{padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2)}
+.ml code{display:block;font:500 14px/1.5 var(--mono);overflow-wrap:anywhere}
+.ml p{margin-top:4px;font-size:14.5px;color:var(--ink-2);line-height:1.45}
+.ml .hi{color:var(--accent)}
 
 /* rows with a code head, a badge and a plain-words cell */
 .opt{font-size:13px;line-height:1.3;padding:3px 8px;border-radius:6px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2)}
@@ -467,13 +484,52 @@ def pipeline_diagram():
             p.append(arrow([(x + 150, 88), (x + 166, 88)]))
         x += 166
     p.append(box(294, 200, 340, 84, "6  Grading", ["code, every run; each mark graded as it passes", "price 30 and 60 min later vs the row's price,", "in sigma units; a hit or a miss, and how far off"]))
-    p.append(box(650, 200, 292, 84, "Weights", ["per question: how well its fresh", "picks tracked the outcome; 1.0 until", "40 graded reads of its own, cut at 0.5"]))
+    p.append('<g class="dg-click" id="wbox" role="button" tabindex="0" aria-haspopup="dialog" aria-controls="dlg-tracking">'
+             + box(650, 200, 292, 100, "Weights", ["per question: how well its fresh", "picks tracked the outcome; 1.0 until", "40 graded reads of its own, cut at 0.5"])
+             + '<text class="dg-n" x="662" y="292">▸ click for the math, worked through</text></g>')
     p.append(arrow([(866, 136), (866, 170), (452, 170), (452, 200)], "the picks, the row's price, sigma, what was used", 560, 190))
     p.append(arrow([(634, 242), (650, 242)]))
-    p.append(arrow([(796, 284), (796, 312), (535, 312), (535, 136)], "which answers speak on the next run", 545, 328, dashed=True))
+    p.append(arrow([(796, 300), (796, 316), (535, 316), (535, 136)], "which answers speak on the next run", 545, 332, dashed=True))
     p.append('<text class="dg-tier" x="12" y="92">RUN</text><text class="dg-tier" x="12" y="246">LOOP</text>')
-    return ('<svg viewBox="0 0 960 340" role="img" aria-label="The six-step pipeline: labels, the live questions, answers as sentences, one summing question, the card; grading feeds weights back into which answers are used.">'
+    return ('<svg viewBox="0 0 960 344" role="img" aria-label="The six-step pipeline: labels, the live questions, answers as sentences, one summing question, the card; grading feeds weights back into which answers are used. The Weights box opens a worked example of the tracking score.">'
             + "".join(p) + "</svg>")
+
+
+def tracking_modal():
+    """The tracking score worked through on one made-up cell, opened from the Weights box."""
+    lines = [
+        ("share of pairs in the cell = 12 / 40 = 0.30",
+         "Of the 40 pairs, 12 were the pick Active followed by the band Up, so this cell holds 30% of all pairs."),
+        ("pick share (Active) = 20 / 40 = 0.50",
+         "Half of the fresh picks were Active, counted over every band, so this is how often the question said Active at all."),
+        ("band share (Up) = 14 / 40 = 0.35",
+         "35% of the reads ended Up 30 minutes later, counted over every pick, so this is how often Up happened at all."),
+        ("expected if unrelated = 0.50 x 0.35 = 0.175",
+         "If the pick told you nothing about the band, Active and Up would land together by chance about 17.5% of the time."),
+        ("cell's term = 0.30 x ln(0.30 / 0.175) = 0.30 x 0.539 = <span class=\"hi\">+0.162</span>",
+         "The cell really holds 30%, above the 17.5% chance would give, so Active does go with Up; the log measures how far above chance, and the 0.30 in front counts it by how often the cell happens."),
+        ("tracking score = the six cells' terms added up = <span class=\"hi\">0.204</span>",
+         "The same five lines are run for the other five cells, and the six terms added together are the question's tracking score."),
+    ]
+    body = "".join(f'<div class="ml"><code>{f}</code><p>{E(s)}</p></div>' for f, s in lines)
+    js = r"""
+(function(){
+  var d = document.getElementById('dlg-tracking'), b = document.getElementById('wbox');
+  if (!d) return;
+  function open(e){ if (e) e.preventDefault(); if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  if (b) { b.addEventListener('click', open); b.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') open(e); }); }
+  // the link in the Weights section is further down the page than this script, so listen on the document
+  document.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('#wmath')) open(e); });
+  d.querySelector('.mod-x').addEventListener('click', function(){ d.close(); });
+  d.addEventListener('click', function(e){ if (e.target === d) d.close(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && d.open) d.close(); });
+})();
+"""
+    return (f'<dialog class="modal" id="dlg-tracking" aria-labelledby="dlg-tracking-h">'
+            f'<div class="mod-h"><div><h3 id="dlg-tracking-h">One cell of the count table, (Active, Up), line by line</h3>'
+            f'<p>A made-up example: 40 fresh pairs, 12 of them (Active, Up), 20 picks of Active, 14 bands of Up. The question is "Is the tape active right now, or quiet?"; its answer is the fresh pick, and what price did 30 minutes later is the band.</p></div>'
+            f'<button class="btn mod-x" type="button" aria-label="Close">Close</button></div>'
+            f'<div class="mod-b">{body}</div></dialog><script>{js}</script>')
 
 
 def schema_section():
@@ -572,7 +628,7 @@ def weight_log_section():
              if top else f'<div class="tl"><span class="k">most adjusted</span><b>none yet</b><span class="k" style="text-transform:none;letter-spacing:0">no weight has moved: {graded} graded reads so far, {need} needed per question</span></div>')
     cad_note = (" (from " + E(CADENCE["recounted_from"]) + ")") if CADENCE.get("recounted_from") else ", not yet recounted so every question is on its starting value"
     out = [f'<h3 class="rvh" style="margin-top:8px">Most adjusted questions, total movement so far</h3><div class="tally">{strip}</div>',
-           f'<p class="sub">Every live question starts at 1.0. Once a question has {need} fresh graded reads its weight becomes how well its own answers tracked the next 30 minutes, 1.0 for the best; under 0.5 the question stops feeding the sums but is still asked, so it can climb back. Graded reads so far: <b>{graded}</b>. The tracking score is how much the question\'s fresh picks so far tell you about what price did next (the "mi" field), the number the weight is built from once the {need} are in; 0.000 means the question has given the same answer on every graded read. Cadence is how often the question is asked afresh, recounted each day from the day before{cad_note}.</p>']
+           f'<p class="sub">Every live question starts at 1.0. Once a question has {need} fresh graded reads its weight becomes how well its own answers tracked the next 30 minutes, 1.0 for the best; under 0.5 the question stops feeding the sums but is still asked, so it can climb back. Graded reads so far: <b>{graded}</b>. The tracking score is how much the question\'s fresh picks so far tell you about what price did next (the "mi" field), the number the weight is built from once the {need} are in (<a href="#pipeline" id="wmath">see the math worked through</a>); 0.000 means the question has given the same answer on every graded read. Cadence is how often the question is asked afresh, recounted each day from the day before{cad_note}.</p>']
     for vp in [v for v in VP_ORDER if v in by_vp]:
         rows = []
         for qid, q in by_vp[vp]:
@@ -622,7 +678,8 @@ page = f"""<title>JEV decision service</title>
   <section class="sec" id="pipeline">
     <h2>The pipeline, its own six steps</h2>
     <figure class="fig"><div class="scroll">{pipeline_diagram()}</div>
-    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, steps 2 and 4 are JEV, step 5 is a file the phone polls. Step 6 runs every tick and grades each sum the moment its own mark has a bar: the 30-minute sum at 30 minutes, the 60-minute sum at 60, neither waiting for the other. A question's weight moves only once it has 40 fresh graded reads of its own. The sums are forecasts: graded, never a call.</figcaption></figure>
+    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, steps 2 and 4 are JEV, step 5 is a file the phone polls. Step 6 runs every tick and grades each sum the moment its own mark has a bar: the 30-minute sum at 30 minutes, the 60-minute sum at 60, neither waiting for the other. A question's weight moves only once it has 40 fresh graded reads of its own. Click the Weights box to see the tracking score worked through, line by line, on a made-up cell. The sums are forecasts: graded, never a call.</figcaption></figure>
+    {tracking_modal()}
     {schema_section()}
   </section>
 
