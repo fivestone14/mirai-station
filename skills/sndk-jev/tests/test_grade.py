@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from conftest import at, bars_from_closes
-from sndk_jev.grade import HORIZONS, MIN_GRADED, grade_one, mutual_information, realized_band, run, weights_from
+from sndk_jev.grade import HORIZONS, MIN_GRADED, grade_one, graded_horizons, mutual_information, realized_band, run, weights_from
 
 
 def _rec(hh, mm, spot, by, used):
@@ -39,20 +39,37 @@ def test_grade_one_reads_both_horizons():
     assert g["brier"] == round((0.6 - 1) ** 2 + 0.3 ** 2 + 0.1 ** 2, 4)
 
 
-def test_a_record_waits_for_its_slowest_horizon_but_skips_one_past_the_close():
+def test_each_horizon_is_graded_at_its_own_mark_and_one_past_the_close_is_skipped():
     closes = [1700.0] * 390
     bars = bars_from_closes(closes)
     rec = _rec(11, 0, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
-    assert grade_one(rec, bars[:120]) is None                          # 30 done, 60 not yet: wait
-    assert grade_one(rec, bars)["next_60"]["band"] == "flat"
+    assert grade_one(rec, bars[:80]) is None                           # 11:30 not yet: nothing to grade
+    first = grade_one(rec, bars[:120])                                 # 30 done, 60 not yet: the 30 is graded now
+    assert first["horizons"] == ["next_30"] and first["pending"] == ["next_60"] and first["band"] == "flat"
+    assert grade_one(rec, bars[:120], {"next_30"}) is None             # already have the 30, the 60 still ahead
+    second = grade_one(rec, bars, {"next_30"})                         # the 60 at its own mark, nothing flat on top
+    assert second["horizons"] == ["next_60"] and "next_30" not in second and "band" not in second
+    assert grade_one(rec, bars, {"next_30", "next_60"}) is None        # nothing left
+    both = grade_one(rec, bars)                                        # a run after both marks: one line
+    assert both["horizons"] == ["next_30", "next_60"] and both["pending"] == []
     late = _rec(15, 20, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
-    g = grade_one(late, bars)                                          # 60 runs past the close: 30 alone
-    assert "next_30" in g and "next_60" not in g and g["band"] == "flat"
+    g = grade_one(late, bars)                                          # 60 runs past the close: 30 alone, 60 skipped for good
+    assert "next_30" in g and "next_60" not in g and g["band"] == "flat" and g["skipped"] == {"next_60": "ends past the close"}
     edge = _rec(15, 31, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
     g = grade_one(edge, bars)                                          # 16:01 is inside the grace: the close stands in
     assert "next_30" in g and "next_60" not in g and g["band"] == "flat"
     done = grade_one(_rec(15, 45, 1700.0, _by({"flat": 1.0}, "flat"), {}), bars)      # nothing can ever be graded
     assert done == {"row_ts": at(15, 45).isoformat(), "graded": False, "reason": "every horizon ends past the close"}
+
+
+def test_old_lines_and_closed_out_lines_count_as_complete():
+    lines = [{"row_ts": "a", "band": "flat", "next_30": {}, "next_60": {}},                       # before horizons were split
+             {"row_ts": "b", "graded": False, "reason": "every horizon ends past the close"},
+             {"row_ts": "c", "horizons": ["next_30"], "pending": ["next_60"], "skipped": {}},
+             {"row_ts": "d", "horizons": ["next_30"], "pending": [], "skipped": {"next_60": "ends past the close"}}]
+    done = graded_horizons(lines)
+    assert done["a"] == {"next_30", "next_60"} and done["b"] == {"next_30", "next_60"}
+    assert done["c"] == {"next_30"} and done["d"] == {"next_30", "next_60"}
 
 
 def test_a_record_from_before_the_switch_is_never_graded():
@@ -124,3 +141,31 @@ def test_run_appends_grades_writes_weights_and_logs_once(tmp_path):
     log = [json.loads(l) for l in (out / "weights_log.jsonl").read_text().splitlines() if l.strip()]
     assert len(log) == 1 and log[0]["graded_runs"] == 1 and log[0]["new"] == 1 and log[0]["hit_rate"] == 1.0
     assert log[0]["changes"] == [{"question": "q1", "before": None, "after": 1.0, "mi": 0.0, "n": 1, "in_step_3": True}]
+
+
+def test_run_grades_the_30_first_and_the_60_when_its_mark_comes(tmp_path):
+    state = tmp_path / "state"
+    (state / "sndk_bars").mkdir(parents=True)
+    closes = [1700.0] * 90 + [1700.0 + 20.0 * (i + 1) / 60 for i in range(60)] + [1720.0] * 240
+    bars = bars_from_closes(closes)
+    bars_path = state / "sndk_bars" / "2026-09-18.jsonl"
+    out = state / "jev"
+    (out / "hour").mkdir(parents=True)
+    with open(out / "hour" / "2026-09-18.jsonl", "w") as f:
+        f.write(json.dumps(_rec(11, 0, 1700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up"), {"q1": "rising"})) + "\n")
+    with open(bars_path, "w") as f:                                    # the day so far: 11:30 is in, 12:00 is not
+        for b in bars[:125]:
+            f.write(json.dumps(b) + "\n")
+    w = run(state, out)
+    assert w["new_this_run"] == 1 and w["new_by_horizon"] == {"next_30": 1, "next_60": 0}
+    assert w["sums"]["next_30"]["n"] == 1 and w["sums"]["next_60"]["n"] == 0 and w["graded_runs"] == 1
+    assert run(state, out)["new_this_run"] == 0                        # the 60 is still ahead: nothing new
+    with open(bars_path, "w") as f:                                    # the marks pass
+        for b in bars:
+            f.write(json.dumps(b) + "\n")
+    w = run(state, out)
+    assert w["new_this_run"] == 0 and w["new_by_horizon"] == {"next_30": 0, "next_60": 1}
+    assert w["sums"]["next_30"]["n"] == 1 and w["sums"]["next_60"]["n"] == 1 and w["graded_runs"] == 1
+    lines = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
+    assert [l["horizons"] for l in lines] == [["next_30"], ["next_60"]] and lines[1]["next_60"]["band"] == "up"
+    assert run(state, out)["new_by_horizon"] == {"next_30": 0, "next_60": 0}   # done: never graded twice

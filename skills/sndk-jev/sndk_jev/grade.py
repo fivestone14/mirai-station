@@ -12,10 +12,13 @@ How a horizon is graded
     band     = up if realized > flat band, down if realized < -flat band, else flat
     hit      = JEV's pick == band
     brier    = sum over {up, flat, down} of (p - 1[band]) ** 2      (0 is perfect, 2 is worst)
-    A record is graded once every horizon that can finish by the close has its bars. A horizon
+    Each horizon is graded as soon as its own mark has a bar: the 30-minute sum at 30 minutes, the
+    60-minute sum at 60, so the primary never waits for the slower one. A record therefore gets up
+    to one line per horizon in grades.jsonl (one line when both marks are already in). A horizon
     whose end falls up to CLOSE_GRACE_MIN past the close is graded at the closing bar; one that
-    ends later is skipped. A record none of whose horizons can be graded is written to
-    grades.jsonl as not graded, so it is never retried. A row graded once is never graded twice.
+    ends later is skipped for good and said so in the line. A record none of whose horizons can
+    ever be graded is written as not graded, so it is never retried. A horizon graded once is
+    never graded twice.
 
 How a weight moves
     For each step-2 question, every graded record where the question was answered AFRESH gives
@@ -28,7 +31,8 @@ How a weight moves
     and can climb back.
 
 Outputs, all under state/jev/
-    grades.jsonl       one line per graded record (append only, keyed by row_ts)
+    grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
+                       the ``horizons`` the line carries; the primary's line has its fields flat on top)
     weights.json       {"graded_runs": n, "questions": {qid: {"weight", "mi", "n", "in_step_3"}}, "sum": {...}}
     weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
 """
@@ -76,9 +80,13 @@ def _picks(rec: dict) -> tuple[dict, dict]:
             {q: (v.get("probabilities") or {}) for q, v in by.items() if isinstance(v, dict)})
 
 
-def grade_one(rec: dict, bars: list[dict]) -> dict | None:
-    """One record against the bars of its day. None when a horizon that will finish before the
-    close has not finished yet, or bars are missing. A horizon past the close is skipped for good."""
+def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = frozenset()) -> dict | None:
+    """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar.
+
+    Returns the line to append, None when nothing new can be graded yet (a mark still ahead, or
+    bars missing), or a ``graded: False`` line when no horizon of the record can ever be graded.
+    The line names the horizons it carries, the ones still ``pending`` and the ones ``skipped``
+    for good, so the next run grades only what is left."""
     t0 = parse_ts(rec["row_ts"])
     close = session_close(t0)
     spot, sigma = float(rec["spot"]), float(rec["sigma"])
@@ -88,27 +96,48 @@ def grade_one(rec: dict, bars: list[dict]) -> dict | None:
     if not picks:
         return None
     last_done = parse_ts(bars[-1]["ts"]) + timedelta(minutes=1)
-    out = {"row_ts": rec["row_ts"], "used": rec.get("used", {}), "fresh": rec.get("fresh", rec.get("used", {}))}
+    graded, pending, skipped = {}, [], {}
     for qid, (h, flat) in HORIZONS.items():
+        if qid in done:
+            continue
         t1 = t0 + timedelta(minutes=h)
         if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
-            continue                                  # can never be graded
+            skipped[qid] = "ends past the close"      # can never be graded
+            continue
         t1 = min(t1, close)                           # inside the grace: the closing bar stands for the mark
         c1 = close_at(bars, t1)
         if c1 is None or last_done < t1:
-            return None                               # not yet; try on a later run
+            pending.append(qid)                       # its mark is still ahead; a later run grades it
+            continue
         realized = (c1 - spot) / sigma
         band = realized_band(realized, flat)
         p = probs.get(qid) or {}
         brier = sum((float(p.get(b, 0.0)) - (1.0 if b == band else 0.0)) ** 2 for b in BANDS)
-        out[qid] = {"realized_sigma": round(realized, 3), "band": band, "pick": picks.get(qid),
-                    "hit": picks.get(qid) == band, "brier": round(brier, 4), "p_band": p.get(band)}
-    if not any(q in out for q in HORIZONS):
+        graded[qid] = {"realized_sigma": round(realized, 3), "band": band, "pick": picks.get(qid),
+                       "hit": picks.get(qid) == band, "brier": round(brier, 4), "p_band": p.get(band)}
+    if not graded:
+        if pending or done:
+            return None                               # wait for the mark, or nothing left to do
         return {"row_ts": rec["row_ts"], "graded": False, "reason": "every horizon ends past the close"}
-    prim = out.get(PRIMARY)
-    for k in ("realized_sigma", "band", "pick", "hit", "brier", "p_band"):
-        out[k] = prim[k] if prim else None            # the primary, flat on top, is what the weights read
+    out = {"row_ts": rec["row_ts"], "used": rec.get("used", {}), "fresh": rec.get("fresh", rec.get("used", {})),
+           "horizons": list(graded), "pending": pending, "skipped": skipped, **graded}
+    if PRIMARY in graded:
+        for k in ("realized_sigma", "band", "pick", "hit", "brier", "p_band"):
+            out[k] = graded[PRIMARY][k]               # the primary, flat on top, is what the weights read
     return out
+
+
+def graded_horizons(lines: list[dict]) -> dict[str, set[str]]:
+    """``{row_ts: horizons already graded or skipped for good}`` from the grades file. A line from
+    before horizons were graded separately carried every horizon that could ever be graded, so it
+    counts as complete; so does a closed-out line."""
+    done: dict[str, set[str]] = defaultdict(set)
+    for g in lines:
+        if g.get("graded") is False or "horizons" not in g:
+            done[g["row_ts"]] |= set(HORIZONS)
+        else:
+            done[g["row_ts"]] |= set(g.get("horizons") or []) | set(g.get("skipped") or {})
+    return done
 
 
 def mutual_information(pairs: list[tuple[str, str]]) -> float:
@@ -189,21 +218,22 @@ def log_weights(path: Path, before: dict, weights: dict, new: int) -> dict:
 def run(state_dir: Path, out_dir: Path, day: str | None = None) -> dict:
     hour_dir = out_dir / "hour"
     grades_path = out_dir / "grades.jsonl"
-    have = {g["row_ts"] for g in _read_jsonl(grades_path)}
+    done = graded_horizons(_read_jsonl(grades_path))
+    every = set(HORIZONS)
     new = []
     days = [day] if day else sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []
     for d in days:
-        recs = [r for r in _read_jsonl(hour_dir / f"{d}.jsonl") if r.get("row_ts") not in have and isinstance(r.get("by"), dict)]
+        recs = [r for r in _read_jsonl(hour_dir / f"{d}.jsonl") if done.get(r.get("row_ts"), set()) != every and isinstance(r.get("by"), dict)]
         if not recs:
             continue
         bars = load_bars(state_dir, d)
         for r in recs:
-            if r["row_ts"] in have:
+            if done.get(r["row_ts"], set()) == every:
                 continue                              # the same row written twice (a run by hand): graded once
-            g = grade_one(r, bars)
+            g = grade_one(r, bars, done.get(r["row_ts"], set()))
             if g:
                 new.append(g)
-                have.add(g["row_ts"])
+                done[g["row_ts"]] |= every if g.get("graded") is False else set(g["horizons"]) | set(g["skipped"])
     if new:
         out_dir.mkdir(parents=True, exist_ok=True)
         with open(grades_path, "a", encoding="utf-8") as f:
@@ -212,7 +242,8 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None) -> dict:
     grades = _read_jsonl(grades_path)
     weights = weights_from(grades)
     weights["new_this_run"] = sum(1 for g in new if g.get("band"))
-    weights["closed_out"] = sum(1 for g in new if not g.get("band"))
+    weights["new_by_horizon"] = {q: sum(1 for g in new if q in (g.get("horizons") or [])) for q in HORIZONS}
+    weights["closed_out"] = sum(1 for g in new if g.get("graded") is False)
     weights_path = out_dir / WEIGHTS_NAME
     before = {}
     if weights_path.is_file():

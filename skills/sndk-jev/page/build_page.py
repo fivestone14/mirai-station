@@ -466,7 +466,7 @@ def pipeline_diagram():
         if i < len(steps) - 1:
             p.append(arrow([(x + 150, 88), (x + 166, 88)]))
         x += 166
-    p.append(box(294, 200, 340, 84, "6  Grading", ["code, every run, once both marks have passed", "price 30 and 60 min later vs the row's price,", "in sigma units; a hit or a miss, and how far off"]))
+    p.append(box(294, 200, 340, 84, "6  Grading", ["code, every run; each mark graded as it passes", "price 30 and 60 min later vs the row's price,", "in sigma units; a hit or a miss, and how far off"]))
     p.append(box(650, 200, 292, 84, "Weights", ["per question: how well its fresh", "picks tracked the outcome; 1.0 until", "40 graded reads of its own, cut at 0.5"]))
     p.append(arrow([(866, 136), (866, 170), (452, 170), (452, 200)], "the picks, the row's price, sigma, what was used", 560, 190))
     p.append(arrow([(634, 242), (650, 242)]))
@@ -494,7 +494,7 @@ def schema_section():
         ("state/jev/{day}.jsonl", "every run", "row_ts, sigma, state (the labels), omitted, requests, skipped, held {qid: since}, cadence_from, answers (JEV's raw replies), hour"),
         ("state/jev/latest.json", "the phone's card", "symbol, row_ts, freshness, situation (5 plain lines), questions[] with answer, held_from or skipped, hour {pick, probabilities, confidence, by, used, left_out, missing}"),
         ("state/jev/hour/{day}.jsonl", "what step 6 grades", "row_ts, spot, sigma, by {next_30, next_60: pick, probabilities}, used {qid: pick}, fresh {qid: pick, the ones asked afresh}, left_out {qid: why}, missing [qid: no label and nothing held], sentences, request"),
-        ("state/jev/grades.jsonl", "one line per graded read", "row_ts, then per sum: realized_sigma, band, pick, hit, brier; fresh; or graded false with the reason, for a read that can never be graded"),
+        ("state/jev/grades.jsonl", "one line per graded mark", "row_ts, horizons (which sums this line grades), pending, skipped, then per sum: realized_sigma, band, pick, hit, brier; fresh; or graded false with the reason, for a read that can never be graded"),
         ("state/jev/cadence.json", "what the packer reads", "recounted_from (the day), questions {qid: {minutes 30/60/120, p25_hold_min, changes, reads, why}}"),
         ("state/jev/last_asked.json", "the held answers", "qid: {row_ts of the last fresh answer, answer, moved}; a not-due question is served from here, tagged held from HH:MM"),
         ("state/jev/weights.json", "what step 3 reads", "graded_runs, sums {next_30, next_60: n, hit_rate, mean_brier}, questions {qid: {weight, mi (the tracking score, see below), n, in_step_3, why}}"),
@@ -506,7 +506,8 @@ def schema_section():
 <div class="rv"><code class="qid">hit</code><span class="opt">yes / no</span><span class="why">JEV's pick equals the band</span></div>
 <div class="rv"><code class="qid">brier</code><span class="opt">0 best, 2 worst</span><span class="why">how far the odds sat from what happened: over up, flat and down, add up (odds given minus 1 or 0 for what happened) squared; compared with always saying flat</span></div>
 <div class="rv"><code class="qid">weight per question</code><span class="opt">0 to 1</span><span class="why">a tracking score: how much knowing the question's fresh pick tells you about the band (mutual information, in the code), divided by the best score among questions with 40 fresh pairs of their own; a question stays 1.0 until it has 40 pairs; under 0.5 its sentence is left out of step 3 but it is still asked, so it can climb back; a held answer never pairs</span></div>
-<div class="rv"><code class="qid">not graded</code><span class="opt">skipped</span><span class="why">a horizon ending more than 2 minutes past the close (one inside those 2 minutes is graded at the closing bar), or a day with no bars; a read none of whose horizons can be graded is closed out, never retried; a read is graded once however many times the service ran on it</span></div>
+<div class="rv"><code class="qid">when</code><span class="opt">at each mark</span><span class="why">the 30-minute sum is graded on the first run after its 30 minutes have a bar, the 60-minute sum on the first run after its 60; the primary never waits for the slower one, and a run after both marks writes one line for both</span></div>
+<div class="rv"><code class="qid">not graded</code><span class="opt">skipped</span><span class="why">a horizon ending more than 2 minutes past the close (one inside those 2 minutes is graded at the closing bar), or a day with no bars; a read none of whose horizons can be graded is closed out, never retried; a mark is graded once however many times the service ran on it</span></div>
 <div class="rv"><code class="qid">missing</code><span class="opt">count on the card</span><span class="why">live questions that had no label this read and nothing held to fall back on; they are listed in the sum record and counted on the card, so a thin read is visible</span></div>
 <div class="rv"><code class="qid">cadence</code><span class="opt">30 / 60 / 120 min</span><span class="why">recounted once a day from the previous day's runs: take the hold time that a quarter of the question's holds fell under, halve it and snap to 30, 60 or 120; never changed all day gives 60 (three hours of runs) or 120 (five hours, ten reads); under six reads keeps the last value. A change is the whole answer moving, not the picked word flipping: the odds of two consecutive answers are compared option by option and a total shift of 0.3 or more counts (heavy 0.90 to heavy 0.55 is a change, 0.90 to 0.88 is not)</span></div>
 <div class="rv"><code class="qid">held</code><span class="opt">reused answer</span><span class="why">a question not yet due, or whose label is missing this read, keeps its last fresh answer for up to twice its cadence (never under an hour), tagged with the time it was given, on the card and in the sums' sentences. A question whose last two fresh answers moved 0.3 or more is in motion and is asked again on the next read whatever its cadence</span></div>
@@ -619,7 +620,7 @@ page = f"""<title>JEV decision service</title>
   <section class="sec" id="pipeline">
     <h2>The pipeline, its own six steps</h2>
     <figure class="fig"><div class="scroll">{pipeline_diagram()}</div>
-    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, steps 2 and 4 are JEV, step 5 is a file the phone polls. Step 6 runs every tick but can only grade a read whose 30 and 60 minutes have both passed, and a question's weight moves only once it has 40 fresh graded reads of its own. The sums are forecasts: graded, never a call.</figcaption></figure>
+    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, steps 2 and 4 are JEV, step 5 is a file the phone polls. Step 6 runs every tick and grades each sum the moment its own mark has a bar: the 30-minute sum at 30 minutes, the 60-minute sum at 60, neither waiting for the other. A question's weight moves only once it has 40 fresh graded reads of its own. The sums are forecasts: graded, never a call.</figcaption></figure>
     {schema_section()}
   </section>
 
