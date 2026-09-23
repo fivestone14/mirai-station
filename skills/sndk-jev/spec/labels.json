@@ -391,9 +391,9 @@
    "from": "the closes of the last 30 minutes of finished bars; the 30-minute move",
    "logic": "the net move between the window's first and last close over the sum of every minute-to-minute move; under the 0.15 sigma move rule there is no path to judge",
    "cut": "0.60 or more is orderly; under 0.30 is choppy; between is mixed",
-   "reads_as": "over the last 30 minutes price travelled 1.4 times its net move, path efficiency 71%, orderly (60% or more)",
-   "real": false,
-   "note": "added 2026-09-23 from the intraday question review"
+   "reads_as": "price stayed within the 0.15 sigma move rule over the last 30 minutes, so there is no path to judge",
+   "real": true,
+   "note": "added 2026-09-23 from the intraday question review; sentence rendered from the real row at 2026-09-23 15:58"
   },
   {
    "path": "iv.trend_30min",
@@ -495,9 +495,9 @@
    "from": "today's finished bars: the first bar's open, the session high and low so far folding in spot; spot; sigma",
    "logic": "net is spot minus the open; the rise above the open and the fall below it; the giveback from the high and the recovery from the low, all in sigma. Reversed when an extension of 0.30 or more has given back 0.30 or more and at least half of itself; otherwise rising, falling or flat on net",
    "cut": "0.30 sigma; needs 30 minutes of session",
-   "reads_as": "so far today price rose 0.45 sigma above the open then gave back 0.38 sigma of it, so the session has reversed down, past the 0.30 sigma cut",
-   "real": false,
-   "note": "added 2026-09-23 from the intraday question review"
+   "reads_as": "so far today price is 1.01 sigma below the open, more than the 0.30 sigma cut, so the session is falling",
+   "real": true,
+   "note": "added 2026-09-23 from the intraday question review; sentence rendered from the real row at 2026-09-23 15:58"
   },
   {
    "path": "range.nearest_level",
@@ -507,9 +507,9 @@
    "from": "the row's vwap, call_wall and put_wall; the day's high and low from bars finished before the last 30 minutes; yesterday's high, low and close; the last 30 minutes of finished bars; spot; sigma",
    "logic": "the level nearest spot in sigma, then the path to it over the last 30 minutes: crossed up or down when the close 30 minutes ago and spot sit on opposite sides; crossed and back when a bar traded through it but both sit on the same side; otherwise untouched, banded by distance",
    "cut": "0.15 sigma is within reach; 0.5 sigma is near; needs 30 minutes of finished bars",
-   "reads_as": "in the last 30 minutes price pushed above yesterday's high and is back below it, 0.08 sigma under",
-   "real": false,
-   "note": "added 2026-09-23 from the intraday question review"
+   "reads_as": "in the last 30 minutes price pushed below the day's low and is back above it, 0.13 sigma over",
+   "real": true,
+   "note": "added 2026-09-23 from the intraday question review; sentence rendered from the real row at 2026-09-23 15:58"
   },
   {
    "path": "gex.weight_side",
@@ -565,9 +565,9 @@
    "from": "gex_views.vol_gross_by_strike; spot",
    "logic": "the busiest strike's share of today's option volume; spread out when no strike holds more than a fifth, otherwise whether the busiest strike is the one nearest price, above it or below it",
    "cut": "0.20, a fifth",
-   "reads_as": "the busiest strike today is the one nearest price, holding 32% of the day's option volume, more than a fifth",
-   "real": false,
-   "note": "added 2026-09-23 from the intraday question review"
+   "reads_as": "today's option volume is spread across strikes, no strike holding more than a fifth of it; the busiest holds 14%",
+   "real": true,
+   "note": "added 2026-09-23 from the intraday question review; sentence rendered from the real row at 2026-09-23 15:58"
   },
   {
    "path": "gex.wall_thickness",

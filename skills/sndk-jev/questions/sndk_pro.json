@@ -4,7 +4,7 @@
  "date": "2026-09-23",
  "how_to_use": [
   "Each group is one JEV request. The packer sends the group's state slice as the state and only the fields type, instructions and criteria of each question; viewpoint, status, ask, why and cadence are for people.",
-  "status: live means every label the question reads is built today; shadow means a forecast with no right answer at ask time, logged and graded by the bars 30 minutes later, never acted on; dark means the packer never asks it and the phone never counts it, because the source it needs is not plugged in (the news questions, until a news engine exists; dark_was keeps the status they return to).",
+  "status: live means every label the question reads is built today; shadow means a forecast with no right answer at ask time, logged and never acted on; it is not graded, only the two sums are, never acted on; dark means the packer never asks it and the phone never counts it, because the source it needs is not plugged in (the news questions, until a news engine exists; dark_was keeps the status they return to).",
   "Grading is of the two sums only, next_30 and next_60 in questions/sndk_hour.json, each by the bars at its own mark. No live question is graded against the next move; a live question's weight is how well its fresh picks tracked the 30-minute band.",
   "cadence is the starting interval. The service snaps it to 30, 60 or 120 minutes, recounts it each day from the day before, and holds the last fresh answer in between. Scans two minutes apart are 0.918 correlated on this name, so few questions gain from being asked more often than every read.",
   "Read the probabilities from every score question, never its single score, which is a weighted mean and can sit between two levels.",
@@ -286,13 +286,14 @@
      "status": "live",
      "cadence": "every scan",
      "ask": "How many of the last five bars closed in the direction of the move?",
-     "why": "Tests whether JEV maps a count onto a band, and it only runs when there is a real move to judge.",
+     "why": "Tests whether JEV maps a count onto a band; on a quiet read the label says there is no move to judge and the answer is no_move.",
      "type": "choice",
      "instructions": "Read `momentum.closes`. It gives a digit for how many of the last five 1-minute bars closed in the direction of the move. Which band is that digit in?",
      "criteria": {
       "most": "the label says 5 or 4 of the last five bars closed in the direction of the move",
       "about_half": "the label says 3 or 2 of the last five bars closed in the direction of the move",
       "few": "the label says 1 or 0 of the last five bars closed in the direction of the move",
+      "no_move": "the label says the last 30 minutes moved under the 0.15 sigma move rule, so there is no move to judge",
       "unsure": "the label gives too little to call"
      }
     }
@@ -386,10 +387,10 @@
      "type": "choice",
      "instructions": "Read `gex.air_to_wall` for how far the nearest heavy strike sits from price, and `range.wall_retests` for how many times price has come back to that strike today; the count is for the nearest heavy strike as the side packet last knew it, and it starts again when a different strike becomes the nearest. Which situation is it?",
      "criteria": {
-      "close_first_visit": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it 0 times or 1 time today",
-      "close_worked": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it 2 or more times today",
-      "far_worked": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it 2 or more times today",
-      "far_untouched": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it 0 times or 1 time today",
+      "close_first_visit": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it none or once today",
+      "close_worked": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it two or more times today",
+      "far_worked": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it two or more times today",
+      "far_untouched": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it none or once today",
       "no_wall": "no heavy strike sits within reach",
       "unsure": "the labels conflict or say too little to call"
      },
@@ -589,8 +590,8 @@
      "type": "choice",
      "instructions": "Read `price.day_range_position` for where price sits in today's range so far, and `range.high_retests` for how many times price has come back to the day's high today. Which situation is it?",
      "criteria": {
-      "top_returned_once": "price is in the top third of today's range so far, and price has come back to the day's high 0 times or 1 time",
-      "top_returned_repeatedly": "price is in the top third of today's range so far, and price has come back to the day's high 2 or more times",
+      "top_returned_once": "price is in the top third of today's range so far, and price has come back to the day's high none or once",
+      "top_returned_repeatedly": "price is in the top third of today's range so far, and price has come back to the day's high two or more times",
       "not_at_top": "price is in the middle third or the bottom third of today's range so far",
       "unsure": "the labels conflict or say too little to call"
      },
@@ -781,8 +782,8 @@
       "rising": "the label says the session is rising: price is more than the 0.30 sigma cut above the open",
       "falling": "the label says the session is falling: price is more than the 0.30 sigma cut below the open",
       "flat": "the label says the session is flat: price is within the 0.30 sigma cut of the open",
-      "reversed_down": "the label says the session has reversed down: price rose above the open then gave back at least half of it, past the 0.30 sigma cut",
-      "reversed_up": "the label says the session has reversed up: price fell below the open then recovered at least half of it, past the 0.30 sigma cut",
+      "reversed_down": "the label says the session has reversed down: price rose above the open then gave back a good part of it, past the 0.30 sigma cut",
+      "reversed_up": "the label says the session has reversed up: price fell below the open then recovered a good part of it, past the 0.30 sigma cut",
       "unsure": "the label gives too little to call"
      },
      "proposed": "2026-09-23, from the intraday question review"

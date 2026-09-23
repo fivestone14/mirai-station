@@ -31,9 +31,9 @@ does whatever comes next with the answers.
 | `runtime/scripts/run-sndk-jev.sh`, `runtime/launchd/com.mirai-station.sndk-jev.plist` | The Job | The launchd wrapper (beside the station's other runners, where its job test expects it) and the plist. Installed on the station since 2026-09-22; fires at :02 and :32 ET, so JEV reads once per half hour in market hours. |
 | `runtime/viewstation/static/m/jev.html` | The Card | The phone page. Polls `latest.json` every 60 seconds through the viewstation's existing read-only raw-file route, so `server.py` is unchanged. |
 | `page/build_page.py` | The Page | Builds the long-form page: every label, question, weight and the newest sums, from the spec, the question docs and `state/jev/`. |
-| `questions/sndk_pro.json` | The Questions | 48 questions in 13 groups, each group one request: 37 live, 3 shadow, 8 dark (news, no source yet). Seven came from the end-of-day reviews (`questions/proposals/`). |
+| `questions/sndk_pro.json` | The Questions | 54 questions in 13 groups, each group one request: 43 live, 3 shadow, 8 dark (news, no source yet). Thirteen came from the reviews (five from the end-of-day review, two from the label review, six from the intraday question review) (`questions/proposals/`). |
 | `questions/sndk_hour.json` | The Sum Questions | The two sums, `next_30` and `next_60`, with their flat bands and base rates written into the criteria. |
-| `spec/labels.json` | The Label Spec | All 61 labels, each with its source, logic, cut and the sentence it wrote on a real row; plus the overlap review and the two labels folded away. `tests/test_spec.py` pins the built set to what the code writes. |
+| `spec/labels.json` | The Label Spec | All 65 labels, each with its source, logic, cut and the sentence it wrote on a real row; plus the overlap review and the two labels folded away. `tests/test_spec.py` pins the built set to what the code writes. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars, side packets and a chain cache. No network, no host state. |
 
 ## Run it
@@ -183,7 +183,7 @@ apart without a red test.
 
 ## The pipeline, six steps
 
-1. Labels, code: 61 sentences from the row, bars, side packet and chain cache.
+1. Labels, code: 65 sentences from the row, bars, side packet and chain cache.
 2. The live questions, JEV, in parallel: a probability per option. There are
    37; a question not due this read keeps its held answer instead of being
    asked, and one whose label is missing is skipped.

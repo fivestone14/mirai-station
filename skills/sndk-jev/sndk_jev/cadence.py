@@ -49,7 +49,9 @@ MIN_READS = 6
 GRACE_MIN = 5                 # a read up to five minutes early still counts as on time (the :02 and :32 ticks drift)
 MIN_GAP_MIN = 25              # reads closer than this (a by-hand run, the old two-minute schedule) are not separate reads
 CHANGE_CUT = 0.3              # total probability moved across the options that counts as a change
-DOC_TEXT = {"every scan": 30, "every 10 minutes": 30, "every 20 minutes": 30, "every 30 minutes": 30, "hourly": 60}
+DOC_TEXT = {"every scan": 30, "every 10 minutes": 30, "every 20 minutes": 30, "every 30 minutes": 30, "hourly": 60,
+            # the news questions, dark until a feed exists: asked on the read an item arrives, so the fastest step
+            "once per item": 30, "at arrival and 5 minutes later": 30}
 
 
 def parse_cadence(text: str | None) -> int:

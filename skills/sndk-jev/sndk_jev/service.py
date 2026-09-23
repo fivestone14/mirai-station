@@ -163,8 +163,10 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
             crit = q.get("criteria")
             entry = {"id": qid, "viewpoint": q.get("viewpoint"), "status": q.get("status", "live"),
                      "ask": q.get("ask") or q["instructions"], "why": q.get("why", ""), "type": q["type"],
-                     # the options in the question's own order, so the phone draws them in a fixed place
-                     "options": ["yes", "no"] if q["type"] == "noul" else (list(crit) if isinstance(crit, dict) else [])}
+                     # the options in the question's own order, so the phone draws them in a fixed place;
+                     # a yes/no answer's pick is "true" or "false", a Score's levels are its legend words
+                     "options": (["true", "false"] if q["type"] == "noul" else list(crit) if isinstance(crit, dict)
+                                 else [plain(str(c)) for c in crit] if isinstance(crit, list) else [])}
             if q.get("status") == "live":
                 entry["cadence_min"] = cadence_of(cad, q, qid)
             asked_in = next((r["id"] for r in requests if qid in r["questions"]), None)

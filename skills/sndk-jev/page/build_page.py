@@ -688,7 +688,7 @@ page = f"""<title>JEV decision service</title>
   <header>
     <div class="eyebrow"><span>SNDK PRO</span><span>questions {E(QDOC.get("version", ""))}</span><span>labels {E(SPEC.get("version", ""))}</span><span>{E(QDOC.get("date", ""))}</span><span class="tag">Forecasts, never a call</span><span class="tag">Paper only</span></div>
     <h1>JEV decision service</h1>
-    <p class="purpose">A separate job beside Mirai station: it reads what SNDK PRO already stores, turns the numbers into {STATUS_COUNT['built']} sentences, has JEV answer {N_Q_SENT} small questions in parallel ({n_dark} more are dark until a news source is plugged in), and writes one card the phone polls. Below: how it fits, how a label is built, the six-step pipeline with its files, and which question reads which label.</p>
+    <p class="purpose">A separate job beside Mirai station: it reads what SNDK PRO already stores, turns the numbers into up to {STATUS_COUNT['built']} sentences (the news ones wait for a feed), has JEV answer {N_Q_SENT} small questions in parallel ({n_dark} more are dark until a news source is plugged in), and writes one card the phone polls. Below: how it fits, how a label is built, the six-step pipeline with its files, and which question reads which label.</p>
   </header>
   <nav class="jump" aria-label="Sections">
     <a class="chip" href="#fit">How it fits</a><a class="chip" href="#builder">The state builder</a><a class="chip" href="#pipeline">The pipeline</a><a class="chip" href="#wlog">Weights</a><a class="chip" href="#map">Label to question map</a><a class="chip" href="#top">Top</a>
