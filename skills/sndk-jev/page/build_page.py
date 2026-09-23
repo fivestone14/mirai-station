@@ -498,18 +498,18 @@ def pipeline_diagram():
 def tracking_modal():
     """The tracking score worked through on one made-up cell, opened from the Weights box."""
     lines = [
-        ("share of pairs in the cell = 12 / 40 = 0.30",
-         "Of the 40 pairs, 12 were the pick Active followed by the band Up, so this cell holds 30% of all pairs."),
-        ("pick share (Active) = 20 / 40 = 0.50",
-         "Half of the fresh picks were Active, counted over every band, so this is how often the question said Active at all."),
-        ("band share (Up) = 14 / 40 = 0.35",
-         "35% of the reads ended Up 30 minutes later, counted over every pick, so this is how often Up happened at all."),
-        ("expected if unrelated = 0.50 x 0.35 = 0.175",
-         "If the pick told you nothing about the band, Active and Up would land together by chance about 17.5% of the time."),
-        ("cell's term = 0.30 x ln(0.30 / 0.175) = 0.30 x 0.539 = <span class=\"hi\">+0.162</span>",
-         "The cell really holds 30%, above the 17.5% chance would give, so Active does go with Up; the log measures how far above chance, and the 0.30 in front counts it by how often the cell happens."),
-        ("tracking score = the six cells' terms added up = <span class=\"hi\">0.204</span>",
-         "The same five lines are run for the other five cells, and the six terms added together are the question's tracking score."),
+        ("how often Active was followed by Up = 12 of 40 reads = 0.30",
+         "On 12 of the 40 graded reads the question answered Active and price then went Up, so this pairing happened 30% of the time."),
+        ("how often the question answered Active = 20 of 40 reads = 0.50",
+         "The question answered Active on 20 of the 40 reads, whatever price did afterwards, so Active came up half the time."),
+        ("how often price went Up = 14 of 40 reads = 0.35",
+         "Price was Up 30 minutes later on 14 of the 40 reads, whatever the question had said, so Up happened 35% of the time."),
+        ("how often Active and Up would meet by chance = 0.50 x 0.35 = 0.175",
+         "If the answer had nothing to do with the outcome, Active and Up would still land on the same read about 17.5% of the time, purely by chance."),
+        ("this pairing's credit = 0.30 x ln(0.30 / 0.175) = 0.30 x 0.539 = <span class=\"hi\">+0.162</span>",
+         "Active then Up really happened 30% of the time, more than the 17.5% chance alone would give, so this answer does point to Up; the log measures how far above chance that is, and the 0.30 in front counts it by how often the pairing happens."),
+        ("tracking score = the six pairings' credits added up = <span class=\"hi\">0.204</span>",
+         "The same five lines are run for the other five pairings (Active then Flat, Active then Down, Quiet then Up, Quiet then Flat, Quiet then Down), and the six credits added together are the question's tracking score."),
     ]
     body = "".join(f'<div class="ml"><code>{f}</code><p>{E(s)}</p></div>' for f, s in lines)
     js = r"""
@@ -526,8 +526,8 @@ def tracking_modal():
 })();
 """
     return (f'<dialog class="modal" id="dlg-tracking" aria-labelledby="dlg-tracking-h">'
-            f'<div class="mod-h"><div><h3 id="dlg-tracking-h">One cell of the count table, (Active, Up), line by line</h3>'
-            f'<p>A made-up example: 40 fresh pairs, 12 of them (Active, Up), 20 picks of Active, 14 bands of Up. The question is "Is the tape active right now, or quiet?"; its answer is the fresh pick, and what price did 30 minutes later is the band.</p></div>'
+            f'<div class="mod-h"><div><h3 id="dlg-tracking-h">One pairing, Active then Up, line by line</h3>'
+            f'<p>A made-up example over 40 graded reads of the question "Is the tape active right now, or quiet?". On each read its fresh answer (Active or Quiet) is set beside what price did 30 minutes later (Up, Flat or Down). Here: 12 reads answered Active and then went Up, Active was answered 20 times in all, and price went Up 14 times in all.</p></div>'
             f'<button class="btn mod-x" type="button" aria-label="Close">Close</button></div>'
             f'<div class="mod-b">{body}</div></dialog><script>{js}</script>')
 
