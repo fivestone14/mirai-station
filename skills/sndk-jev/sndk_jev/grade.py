@@ -33,7 +33,10 @@ How a weight moves
 Outputs, all under state/jev/
     grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
                        the ``horizons`` the line carries; the primary's line has its fields flat on top)
-    weights.json       {"graded_runs": n, "questions": {qid: {"weight", "mi", "n", "in_step_3"}}, "sum": {...}}
+    weights.json       {"graded_runs": reads whose primary mark is graded, "min_graded", "min_weight", "primary",
+                        "sums": {qid: {"n", "hit_rate", "always_flat_hit_rate", "mean_brier", "bands"}},
+                        "questions": {qid: {"weight", "mi", "n", "in_step_3", "why"}},
+                        "new_this_run", "new_by_horizon", "closed_out"}
     weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
 """
 from __future__ import annotations
@@ -41,18 +44,29 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .hour import HOUR_QUESTIONS, MIN_WEIGHT, PRIMARY, WEIGHTS_NAME
-from .state_builder import DEFAULT_STATE_DIR, close_at, load_bars, parse_ts, session_close
+from .state_builder import DEFAULT_STATE_DIR, close_at, load_bars, load_jsonl, parse_ts, session_close
+
+ET = ZoneInfo("America/New_York")
 
 MIN_GRADED = 40         # fresh pairs a question needs before its own weight can move away from 1.0
 CLOSE_GRACE_MIN = 2     # a horizon ending this far past the close is graded at the closing bar
-BANDS = ("up", "flat", "down")
+BAR_GAP_MAX_MIN = 2     # the bar standing for a mark may be at most this many minutes before it
+BANDS = ("up", "flat", "down")   # "unsure" is a pick, never an outcome: its probability counts against the Brier
 WEIGHTS_LOG = "weights_log.jsonl"
+
+
+def _bar_before(bars: list[dict], t: datetime) -> dict:
+    """The last bar that had finished by ``t`` (the caller has checked one exists)."""
+    one = timedelta(minutes=1)
+    return [b for b in bars if parse_ts(b["ts"]) + one <= t][-1]
 
 
 def horizons(doc_path: Path | str = HOUR_QUESTIONS) -> dict[str, tuple[int, float]]:
@@ -87,10 +101,12 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     bars missing), or a ``graded: False`` line when no horizon of the record can ever be graded.
     The line names the horizons it carries, the ones still ``pending`` and the ones ``skipped``
     for good, so the next run grades only what is left."""
-    t0 = parse_ts(rec["row_ts"])
+    t0 = parse_ts(rec["row_ts"]).replace(second=0, microsecond=0)   # the read's minute: a 15:32:00.4 read is a 15:32 read
     close = session_close(t0)
     spot, sigma = float(rec["spot"]), float(rec["sigma"])
-    if sigma <= 0 or not bars:
+    if sigma <= 0:
+        return {"row_ts": rec["row_ts"], "graded": False, "reason": f"sigma {sigma} cannot scale a move"}
+    if not bars:
         return None
     picks, probs = _picks(rec)
     if not picks:
@@ -100,6 +116,9 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     for qid, (h, flat) in HORIZONS.items():
         if qid in done:
             continue
+        if picks.get(qid) is None:
+            skipped[qid] = "no answer for this sum"    # JEV did not answer it on this read
+            continue
         t1 = t0 + timedelta(minutes=h)
         if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
             skipped[qid] = "ends past the close"      # can never be graded
@@ -108,6 +127,9 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         c1 = close_at(bars, t1)
         if c1 is None or last_done < t1:
             pending.append(qid)                       # its mark is still ahead; a later run grades it
+            continue
+        if last_done < t1 - timedelta(minutes=BAR_GAP_MAX_MIN) or parse_ts(_bar_before(bars, t1)["ts"]) < t1 - timedelta(minutes=BAR_GAP_MAX_MIN + 1):
+            pending.append(qid)                       # a hole in the bars around the mark: wait for them
             continue
         realized = (c1 - spot) / sigma
         band = realized_band(realized, flat)
@@ -163,8 +185,11 @@ def weights_from(grades: list[dict]) -> dict:
     primary = [g for g in grades if g.get("band")]
     pairs: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for g in primary:
-        # only answers given afresh on that read pair with its outcome; a held answer predates it
-        for qid, pick in (g.get("fresh") or g.get("used") or {}).items():
+        # only answers given afresh on that read pair with its outcome; a held answer predates it.
+        # A read on which every answer was held has an empty fresh block and pairs nothing; only
+        # a line written before the block existed falls back to everything it used.
+        fresh = g["fresh"] if isinstance(g.get("fresh"), dict) else (g.get("used") or {})
+        for qid, pick in fresh.items():
             pairs[qid].append((str(pick), g["band"]))
     n_runs = len(primary)
     mi = {qid: mutual_information(p) for qid, p in pairs.items()}
@@ -183,21 +208,10 @@ def weights_from(grades: list[dict]) -> dict:
                           "in_step_3": w >= MIN_WEIGHT}
     sums = {qid: _tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]) for qid in HORIZONS}
     return {"graded_runs": n_runs, "min_graded": MIN_GRADED, "min_weight": MIN_WEIGHT, "primary": PRIMARY,
-            "sum": sums[PRIMARY], "sums": sums, "questions": questions}
+            "sums": sums, "questions": questions}
 
 
-def _read_jsonl(p: Path) -> list[dict]:
-    if not p.is_file():
-        return []
-    out = []
-    for line in p.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line:
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return out
+_read_jsonl = load_jsonl    # one reader for every jsonl on disk: a torn or non-object line is dropped
 
 
 def log_weights(path: Path, before: dict, weights: dict, new: int) -> dict:
@@ -209,7 +223,7 @@ def log_weights(path: Path, before: dict, weights: dict, new: int) -> dict:
             changes.append({"question": qid, "before": old, "after": w["weight"], "mi": w["mi"], "n": w["n"],
                             "in_step_3": w["in_step_3"]})
     line = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "graded_runs": weights["graded_runs"],
-            "new": new, **weights["sum"], "sums": weights["sums"], "changes": changes}
+            "new": new, **weights["sums"][weights["primary"]], "sums": weights["sums"], "changes": changes}
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(line, ensure_ascii=False) + "\n")
     return line
@@ -227,6 +241,13 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None) -> dict:
         if not recs:
             continue
         bars = load_bars(state_dir, d)
+        if not bars and d < datetime.now(ET).date().isoformat():
+            # a past day with no bars can never be graded: close its reads out rather than retry forever
+            for r in recs:
+                if done.get(r["row_ts"], set()) != every:
+                    new.append({"row_ts": r["row_ts"], "graded": False, "reason": "no bars for the day"})
+                    done[r["row_ts"]] |= every
+            continue
         for r in recs:
             if done.get(r["row_ts"], set()) == every:
                 continue                              # the same row written twice (a run by hand): graded once
@@ -254,7 +275,9 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None) -> dict:
     if new:
         out_dir.mkdir(parents=True, exist_ok=True)
         log_weights(out_dir / WEIGHTS_LOG, before, weights, sum(1 for g in new if g.get("band")))
-    weights_path.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp = weights_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, weights_path)                    # the page builder and step 3 never see a half file
     return weights
 
 

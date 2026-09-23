@@ -1,18 +1,22 @@
-"""The JEV decision service: one run per SNDK PRO scan, output for the phone.
+"""The JEV decision service: one run per half hour, at :02 and :32, output for the phone.
 
 This is the microservice boundary. It reads what Mirai station already stores
 (diary rows, minute bars, side packets, the chain cache), builds the labels,
-asks JEV, and writes two things of its own under ``state/jev/``:
+asks JEV, sums the answers, grades the sums, and writes only under ``state/jev/``:
 
-    state/jev/{day}.jsonl    every run, appended: the state, the requests, the answers
-    state/jev/latest.json    the phone's file: the newest run, small, self-describing
+    state/jev/{day}.jsonl        every run, appended: the state, the requests, the answers
+    state/jev/hour/{day}.jsonl   the sums, one record per run: what step 6 grades
+    state/jev/latest.json        the phone's file: the newest run, small, self-describing
+    state/jev/last_asked.json    the last fresh answer per question, for the cadence
+    state/jev/cadence.json       how often each question is asked, recounted daily
+    state/jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py)
 
 It never writes into SNDK PRO's files and never runs on the scan path. Point the
 viewstation's read-only route at ``latest.json`` and the phone has its card.
 
-    python3 -m sndk_jev.service            # one run on the newest row, no send (no key)
-    TYPESAFE_API_KEY=... python3 -m sndk_jev.service --send
-    python3 -m sndk_jev.service --loop 120 # keep running, once per SNDK PRO tick
+    python3 -m sndk_jev.service            # one run on the newest row, not sent
+    python3 -m sndk_jev.service --send     # post to JEV; the key comes from .env
+    python3 -m sndk_jev.service --day 2026-09-22   # replay a past day's newest row
 """
 from __future__ import annotations
 
@@ -22,18 +26,36 @@ import os
 import re
 import sys
 import time as _clock
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .ab_test import pick, confidence
 from .ask import DEFAULT_QUESTIONS, build_requests, load_questions, send, send_all
-from .cadence import cadence_of, distance, ensure_cadence, fill_missing, load_cadence, load_last, plan, save_last
+from .cadence import cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, plan, save_last
 from .grade import run as grade_run
 from .hour import answer_sentences, hour_request, hour_summary, load_hour_doc, load_weights
 from .state_builder import DEFAULT_STATE_DIR, build_state, make_scene, parse_ts
 
 SITUATION_PATHS = ("price.recent_move", "price.vs_vwap", "volume.now", "gex.air_to_wall", "iv.trend_30min")
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+ET = ZoneInfo("America/New_York")
+STALE_ROW_S = 15 * 60          # a card built on a row older than this says so
+UNSENT_DEFAULT = "not sent: this run was not asked to send"
+
+
+def log(msg: str) -> None:
+    """One line to stderr with the UTC clock, so the launchd log reads in order."""
+    print(f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} sndk-jev :: {msg}", file=sys.stderr)
+
+
+class NoRowYet(RuntimeError):
+    """The scanner has no row for today: a sent run must wait for one, not build on yesterday's."""
+
+
+def today_et() -> str:
+    return datetime.now(ET).date().isoformat()
 
 
 def load_env_file(path: Path = ENV_FILE) -> list[str]:
@@ -68,12 +90,11 @@ _SIGMA = re.compile(r"(-?\d+(?:\.\d+)?) sigma\b")
 
 
 def plain(label: str) -> str:
-    """The phone's house rule is no Greek and no jargon in a string, so the unit is spelled out
-    once per line and later figures in the same line stand bare. Labels keep 'sigma' for JEV;
-    only the card's situation lines are rewritten."""
+    """The phone's house rule is no Greek and no jargon in a string: every figure keeps its unit,
+    spelled out, and the move rule keeps its name. Labels keep 'sigma' for JEV; only the card's
+    own lines are rewritten."""
     out = _SIGMA_RULE.sub(r"\1 move rule", label)
-    out = _SIGMA.sub(r"\1 of a normal day's move", out, count=1)
-    out = _SIGMA.sub(r"\1", out)
+    out = _SIGMA.sub(r"\1 of a normal day's move", out)
     return out.replace(" sigma", "")
 
 
@@ -85,6 +106,17 @@ def named_probabilities(answer: dict) -> dict | None:
     if not probs or not isinstance(legend, dict):
         return probs
     return {plain(str(legend.get(str(k), k))): v for k, v in probs.items()}
+
+
+def answer_entry(a: dict) -> dict:
+    """What the card, the held store and the sums keep of one JEV answer. A Score answer's pick is
+    named the way its probabilities are keyed, so the phone can bold it and the sums can quote it."""
+    p = pick(a)
+    legend = a.get("legend")
+    if p is not None and isinstance(legend, dict):
+        p = plain(str(legend.get(str(p), p)))
+    return {"pick": p, "confidence": confidence(a), "probabilities": named_probabilities(a),
+            "noul": a.get("noul"), "score": a.get("score")}
 
 
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: dict,
@@ -104,14 +136,14 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
     req = hour_request(sentences, hour_doc)
     try:
         reply = send(req)
-    except RuntimeError as e:
-        reply = {"error": str(e)}
+    except Exception as e:  # send() scrubs the key and turns the network into RuntimeError; be safe anyway
+        reply = {"error": str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"}
     return {**base, "request": req}, hour_summary(reply)
 
 
 def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: dict, answers: dict | None,
          sent: bool, send_seconds: float | None, hour: dict | None = None, held: dict | None = None,
-         cad: dict | None = None) -> dict:
+         cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT) -> dict:
     """The phone's document. Small, plain, and honest about what was and was not sent."""
     now = datetime.now(timezone.utc)
     row_ts = parse_ts(scene.row["ts"])
@@ -121,6 +153,7 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
     qs = []
     dark = []
     n_fresh = 0
+    errors = {rid: a["error"] for rid, a in (answers or {}).items() if isinstance(a, dict) and a.get("error")}
     for group in doc["groups"]:
         for qid, q in group["questions"].items():
             if q.get("status") == "dark":
@@ -134,36 +167,39 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
                      "options": ["yes", "no"] if q["type"] == "noul" else (list(crit) if isinstance(crit, dict) else [])}
             if q.get("status") == "live":
                 entry["cadence_min"] = cadence_of(cad, q, qid)
-            asked = any(qid in r["questions"] for r in requests)
-            if not asked and qid in held:
-                # not due this read, or its label was missing: the last fresh answer stands, and says since when
+            asked_in = next((r["id"] for r in requests if qid in r["questions"]), None)
+            fresh_a = next((a["answers"][qid] for a in (answers or {}).values() if qid in (a.get("answers") or {})), None)
+            if fresh_a is not None:
+                entry["answer"] = answer_entry(fresh_a)
+                n_fresh += 1
+            elif qid in held:
+                # not due, its label missing, or its group's request failed: the last fresh answer
+                # stands, and says since when
                 entry["answer"] = {k: v for k, v in held[qid].items() if k != "held_from"}
                 entry["held_from"] = held[qid]["held_from"]
-            elif not asked:
-                reason = next((v for g in skipped.values() for k, v in g.items() if k == qid), "not asked")
+            elif asked_in is None:
                 entry["answer"] = None
-                entry["skipped"] = reason
-            elif answers and any(qid in (a.get("answers") or {}) for a in answers.values()):
-                a = next(a["answers"][qid] for a in answers.values() if qid in (a.get("answers") or {}))
-                entry["answer"] = {"pick": pick(a), "confidence": confidence(a),
-                                   "probabilities": named_probabilities(a), "noul": a.get("noul"), "score": a.get("score")}
-                n_fresh += 1
+                entry["skipped"] = next((v for g in skipped.values() for k, v in g.items() if k == qid), "not asked")
             else:
                 entry["answer"] = None
-                entry["skipped"] = "asked, no answer received" if sent else "not sent, no key"
+                entry["skipped"] = (f"asked, no answer received: {errors[asked_in]}" if asked_in in errors
+                                    else "asked, no answer received") if sent else unsent_reason
             qs.append(entry)
+    row_age_s = round((now - row_ts.astimezone(timezone.utc)).total_seconds())
     return {
         "version": 1,
         "symbol": scene.row.get("ticker", "SNDK"),
         "generated_at": now.isoformat(timespec="seconds"),
         "row_ts": scene.row["ts"],
         "book_asof": book,
-        "freshness": {"row_age_s": round((now - row_ts.astimezone(timezone.utc)).total_seconds()),
-                      "bars_used": len(scene.bars), "prior_sessions": len(scene.prior_bars)},
+        "freshness": {"row_age_s": row_age_s, "bars_used": len(scene.bars), "prior_sessions": len(scene.prior_bars),
+                      "stale": row_age_s > STALE_ROW_S,
+                      "note": (f"the newest row is {row_age_s // 60} minutes old; nothing newer has been scanned"
+                               if row_age_s > STALE_ROW_S else "built on a fresh row")},
         "sigma": scene.sigma,
         "situation": [plain(_get(state, p)) for p in SITUATION_PATHS if _get(state, p)],
         "labels": sum(len(v) for v in state.values()),
-        "omitted": omitted,
+        "omitted": {k: plain(str(v)) for k, v in omitted.items()},
         "sent": sent,
         "send_seconds": send_seconds,
         "model": next((a.get("model") for a in (answers or {}).values() if isinstance(a, dict) and a.get("model")), None),
@@ -179,63 +215,82 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
     }
 
 
-def run_once(state_dir: Path, out_dir: Path, doc: dict, send: bool, day: str | None = None) -> dict:
+def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str | None = None,
+             unsent_reason: str = UNSENT_DEFAULT) -> dict:
     scene = make_scene(state_dir, day)
+    if day is None and do_send and scene.row["ts"][:10] != today_et():
+        # the scanner has no row for today yet: sending on yesterday's last row would hold every
+        # answer against a stale clock and file the read under the wrong day. Say so and stop.
+        raise NoRowYet(f"no diary row for today yet: the newest row is {scene.row['ts'][:16]}; nothing sent, card unchanged")
     state, omitted = build_state(scene)
     now = parse_ts(scene.row["ts"])
     day_name = scene.row["ts"][:10]
+    by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
+    live_ids = {qid for qid, q in by_id.items() if q.get("status") == "live"}
     out_dir.mkdir(parents=True, exist_ok=True)
     # cadence: a live question is asked afresh only when its cadence has elapsed; the rest hold
     # their last answer. Without a key nothing is answered, so there is nothing to hold.
-    cad = ensure_cadence(out_dir, doc, day_name) if send else load_cadence(out_dir)
-    last = load_last(out_dir) if send else {}
-    skip, held = plan(doc, last, cad, now) if send else ({}, {})
+    cad = ensure_cadence(out_dir, doc, day_name) if do_send else load_cadence(out_dir)
+    last = load_last(out_dir) if do_send else {}
+    skip, held = plan(doc, last, cad, now) if do_send else ({}, {})
     requests, skipped = build_requests(state, doc, skip=skip)
-    if send:
+    if do_send:
         held = fill_missing(doc, skipped, last, cad, now, held)
     answers, send_seconds, hour, hour_rec = None, None, None, None
-    if send:
+    if do_send:
         t0 = _clock.monotonic()
         answers = send_all(requests)
+        for r in requests:
+            err = (answers.get(r["id"]) or {}).get("error")
+            if not err:
+                continue
+            # one group failed: its live questions keep their last fresh answer, if young enough
+            log(f"group {r['id']} got no answer: {err}")
+            for qid in r["questions"]:
+                if qid in live_ids and qid not in held:
+                    h = held_answer(last.get(qid), now, cadence_of(cad, by_id[qid], qid))
+                    if h:
+                        held[qid] = h
         # steps 3 and 4: fresh and held answers become sentences, two questions sum them
-        fresh = {}
-        for a in answers.values():
-            for qid, ans in (a.get("answers") or {}).items():
-                fresh[qid] = {"pick": pick(ans), "confidence": confidence(ans), "probabilities": named_probabilities(ans),
-                              "noul": ans.get("noul"), "score": ans.get("score")}
+        fresh = {qid: answer_entry(ans) for a in answers.values() for qid, ans in (a.get("answers") or {}).items()}
         answered = {**held, **fresh}
         # live questions skipped for a label the builder could not measure, and not covered by a held answer
-        live_ids = {qid for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if qid in live_ids and str(why).startswith("missing") and qid not in held]
         hour_rec, hour = sum_the_hour(doc, load_hour_doc(), answered, load_weights(out_dir), fresh, missing)
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
+            if hour.get("error"):
+                log(f"the sums got no answer: {hour['error']}")
         for qid, ans in fresh.items():
-            # how far this answer moved from the last fresh one: past CHANGE_CUT the question is in motion
-            prev = (last.get(qid) or {}).get("answer")
+            # how far this answer moved from the last fresh one on the same day: past CHANGE_CUT the
+            # question is in motion. Yesterday's closing answer is not a move, it is a new day.
+            prev_entry = last.get(qid) or {}
+            prev = prev_entry.get("answer") if str(prev_entry.get("row_ts", ""))[:10] == day_name else None
             last[qid] = {"row_ts": scene.row["ts"], "answer": ans, "moved": round(distance(prev, ans), 3)}
+        # a question that left the doc, or went dark, has nothing to hold
+        last = {qid: v for qid, v in last.items() if qid in by_id and by_id[qid].get("status") != "dark"}
         save_last(out_dir, last)
     record = {"row_ts": scene.row["ts"], "book_asof": (scene.row.get("meta") or {}).get("book_asof"), "sigma": scene.sigma,
               "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
-              "answers": answers, "sent": send, "send_seconds": send_seconds, "hour": hour}
+              "answers": answers, "sent": do_send, "send_seconds": send_seconds, "hour": hour}
     with open(out_dir / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     if hour_rec and hour_rec.get("request"):
-        # the hour record is what step 6 grades: spot and sigma are needed to read the bars against it
+        # the sum record is what step 6 grades: spot and sigma are needed to read the bars against it
         (out_dir / "hour").mkdir(parents=True, exist_ok=True)
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma,
                                 **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
-    if send:
-        # step 6, every run: grade whatever hour has finished by now and refresh the weights step 3 reads
+    if do_send:
+        # step 6, every run: grade every mark that has passed and refresh the weights step 3 reads
         try:
             grade_run(state_dir, out_dir)
         except Exception as e:  # grading must never stop the card
-            print(f"grading skipped this run: {e}", file=sys.stderr)
-    c = card(scene, state, omitted, doc, requests, skipped, answers, send, send_seconds, hour, held, cad)
+            log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason)
     tmp = out_dir / "latest.json.tmp"
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, out_dir / "latest.json")
@@ -243,34 +298,39 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, send: bool, day: str | N
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="JEV decision service for SNDK PRO: one run per scan, output for the phone.")
+    ap = argparse.ArgumentParser(description="JEV decision service for SNDK PRO: one run on the newest row, output for the phone.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--out-dir", default=None, help="default <state-dir>/jev")
     ap.add_argument("--questions", default=str(DEFAULT_QUESTIONS))
     ap.add_argument("--day", help="build a past day's newest row instead of today's")
-    ap.add_argument("--send", action="store_true", help="post to JEV; needs TYPESAFE_API_KEY")
-    ap.add_argument("--loop", type=int, metavar="SECONDS", help="keep running every N seconds")
+    ap.add_argument("--send", action="store_true", help="post to JEV; the key comes from .env or TYPESAFE_API_KEY")
+    ap.add_argument("--loop", type=int, metavar="SECONDS", help="keep running every N seconds (the launchd job does not use this)")
     args = ap.parse_args(argv)
     load_env_file()
-    send = bool(args.send)
-    if send and not os.environ.get("TYPESAFE_API_KEY"):
+    do_send = bool(args.send)
+    unsent = UNSENT_DEFAULT
+    if do_send and not os.environ.get("TYPESAFE_API_KEY"):
         # the job always asks to send; without a key the run still writes the card, unsent
-        print(f"no TYPESAFE_API_KEY in the environment or in {ENV_FILE}: running unsent", file=sys.stderr)
-        send = False
+        log(f"no TYPESAFE_API_KEY in the environment or in {ENV_FILE}: running unsent")
+        do_send, unsent = False, "not sent: no key on this machine"
     state_dir = Path(args.state_dir)
     out_dir = Path(args.out_dir) if args.out_dir else state_dir / "jev"
     doc = load_questions(args.questions)
     last_row = None
     while True:
         try:
-            c = run_once(state_dir, out_dir, doc, send, args.day)
+            c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent)
             if c["row_ts"] != last_row:
                 n_ans = sum(1 for q in c["questions"] if q.get("answer"))
-                print(f"{c['generated_at']} row {c['row_ts'][11:19]} labels {c['labels']} answered {n_ans}/{len(c['questions'])} "
-                      f"{'sent' if c['sent'] else 'not sent'} -> {out_dir / 'latest.json'}", file=sys.stderr)
+                log(f"row {c['row_ts'][11:19]} labels {c['labels']} answered {n_ans}/{len(c['questions'])} "
+                    f"{'sent' if c['sent'] else 'not sent'}{' STALE ROW' if c['freshness']['stale'] else ''} -> {out_dir / 'latest.json'}")
                 last_row = c["row_ts"]
+        except NoRowYet as e:   # a quiet skip, not a failure: the next tick will find the row
+            log(f"skipping this tick: {e}")
+            if not args.loop:
+                return 0
         except Exception as e:  # the service must never die on one bad row
-            print(f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} run failed: {e}", file=sys.stderr)
+            log(f"run failed: {type(e).__name__}: {e}" + ("" if isinstance(e, RuntimeError) else "\n" + traceback.format_exc()))
             if not args.loop:
                 return 1
         if not args.loop:

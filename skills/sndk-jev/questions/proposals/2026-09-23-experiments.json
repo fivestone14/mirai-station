@@ -1,0 +1,49 @@
+{
+ "date": "2026-09-23",
+ "note": "Proposals only. Nothing here changes a live question's status; each entry names its source so the grading loop can be checked against it.",
+ "retire_or_merge": [
+  {
+   "id": "air_to_wall",
+   "into": "wall_return",
+   "why": "same label, options nest",
+   "source": "the label review of 2026-09-22"
+  },
+  {
+   "id": "closes_agree",
+   "why": "same digit reaches volume_backs_move; scored 0 on 4 pairs",
+   "source": "the label review of 2026-09-22"
+  },
+  {
+   "id": "box_status",
+   "into": "box_break_follow_through",
+   "why": "100% agreement on 39 reads, same label",
+   "source": "the label review of 2026-09-22"
+  },
+  {
+   "id": "outlier_day",
+   "into": "two_day_position",
+   "why": "flipped at the same second as two_day_position and week_position all day",
+   "source": "the label review of 2026-09-22"
+  }
+ ],
+ "horizon_experiments": [
+  {
+   "id": "time_of_day_band",
+   "what": "grade the 30-minute sum against a flat band that follows the clock: 0.12 sigma before 10:30, 0.07 sigma midday, 0.06 sigma after 14:00",
+   "keep_if": "over the same 40 graded reads the clock band's hit rate on next_30 beats the fixed 0.12 band's and the flat share lands nearer three in five in each part of the day than it does under the fixed band.",
+   "source": "the label review of 2026-09-22"
+  },
+  {
+   "id": "fifteen_minute_shadow_sum",
+   "what": "a third sum, next_15, on the same sentences as next_30 and next_60, shadow only, graded by the bars at 15 minutes against a flat band of 0.04 sigma",
+   "keep_if": "after 40 graded reads its Brier score beats always saying flat and no single option holds 90% or more of its picks.",
+   "source": "the label review of 2026-09-22"
+  },
+  {
+   "id": "first_touch_grading",
+   "what": "grade the 30-minute sum on the first touch of 0.17 sigma either way inside the 30 minutes, instead of where price ends at the mark",
+   "keep_if": "after 40 graded reads at least one live question's tracking score rises from 0 to above the 40-read noise floor without next_30's hit rate falling below what end-point grading gives on the same reads.",
+   "source": "the label review of 2026-09-22"
+  }
+ ]
+}

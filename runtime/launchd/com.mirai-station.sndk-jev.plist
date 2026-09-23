@@ -13,17 +13,33 @@
   </array>
 
   <!-- JEV decision service: a separate job from the SNDK PRO scanner, never on
-       its path. Fires at two minutes past each hour and half hour (StartCalendarInterval), so
-       JEV reads once per 30-minute mark on the newest finished row; the runner still
-       waits until that row is at least 20 s old. Reads the diary, bars, side
-       packets and chain cache; writes only state/jev/. The key is read by the
-       service itself from the git-ignored skills/sndk-jev/.env, never written into
-       this file or the runner. Without a key the service still runs and writes the
-       card with every question marked "not sent". -->
+       its path. Fires at two minutes past each half-hour mark of the session, 09:32 to
+       16:02 ET (14 entries), so JEV reads once per 30-minute mark on the newest finished
+       row; the runner still waits until that row is at least 20 s old, and its market
+       gate skips the 16:02 fire on a normal day. A bare Minute entry fired 48 times a day,
+       most of them into that gate. Reads the diary, bars, side packets and chain cache;
+       writes only state/jev/. The key is read by the service itself from the git-ignored
+       skills/sndk-jev/.env, never written into this file or the runner. Without a key the
+       service still runs and writes the card with every question marked "not sent".
+       NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
+       TZ env var below. This box runs on Pacific, so Hour=6 == 06:32 PT == 09:32 ET
+       year-round (PT≡ET−3h through DST). -->
   <key>StartCalendarInterval</key>
   <array>
-    <dict><key>Minute</key><integer>2</integer></dict>
-    <dict><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>2</integer></dict>
   </array>
 
   <key>StandardOutPath</key>

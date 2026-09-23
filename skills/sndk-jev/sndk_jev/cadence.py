@@ -22,7 +22,9 @@ How a cadence is set (``recount``), once a day from the previous day's runs:
 At read time a question whose last two fresh answers differed by CHANGE_CUT or more is
 "in motion" and is asked again whatever its cadence says.
     A question that never changed gets 60 with three hours of runs behind it and 120 with
-    five hours and ten reads; fewer than six reads leaves the previous cadence in place.
+    five hours and ten reads, and keeps its previous cadence under three hours; fewer than six
+    reads leaves the previous cadence in place. The hold still running at the last read counts,
+    and under four holds the median stands in for the quartile.
 The question doc's own ``cadence`` text is the starting value until a recount exists.
 
 Files, under state/jev/:
@@ -33,17 +35,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from .state_builder import DEFAULT_STATE_DIR, parse_ts
+from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
 
 CADENCE_NAME = "cadence.json"
 LAST_NAME = "last_asked.json"
 STEPS = (30, 60, 120)
 MIN_READS = 6
-GRACE_MIN = 5                 # a read two minutes past the mark still counts as on time
+GRACE_MIN = 5                 # a read up to five minutes early still counts as on time (the :02 and :32 ticks drift)
 MIN_GAP_MIN = 25              # reads closer than this (a by-hand run, the old two-minute schedule) are not separate reads
 CHANGE_CUT = 0.3              # total probability moved across the options that counts as a change
 DOC_TEXT = {"every scan": 30, "every 10 minutes": 30, "every 20 minutes": 30, "every 30 minutes": 30, "hourly": 60}
@@ -136,8 +139,8 @@ def held_answer(entry: dict | None, now: datetime, minutes: int) -> dict | None:
     """The last fresh answer, tagged with when it was given, while it is still young enough:
     up to twice the cadence, never under an hour, so a held answer is never a stale one."""
     age = _age_min(entry, now)
-    if age is None or not isinstance(entry.get("answer"), dict):
-        return None
+    if age is None or age < 0 or not isinstance(entry.get("answer"), dict):
+        return None                     # a negative age is a replay of an earlier day: never hold a later answer
     if age > max(2 * minutes, 60) + GRACE_MIN:
         return None
     return {**entry["answer"], "held_from": entry["row_ts"][11:16]}
@@ -194,9 +197,6 @@ def answer_series(records: list[dict], live: set[str]) -> dict[str, list[tuple[d
             t = parse_ts(r["row_ts"])
         except (KeyError, ValueError):
             continue
-        if last_kept is not None and (t - last_kept).total_seconds() < MIN_GAP_MIN * 60:
-            continue
-        last_kept = t
         fresh: dict[str, dict] = {}
         for a in (r.get("answers") or {}).values():
             for qid, ans in (a.get("answers") or {}).items():
@@ -204,10 +204,16 @@ def answer_series(records: list[dict], live: set[str]) -> dict[str, list[tuple[d
                     v = vector(ans)
                     if v:
                         fresh[qid] = v
+        # a fresh answer is the newest one even on a read that is not kept, so a later held read
+        # repeats what was actually said last, not what was said on the last kept read
+        last_vec.update(fresh)
+        if last_kept is not None and (t - last_kept).total_seconds() < MIN_GAP_MIN * 60:
+            continue
+        last_kept = t
         held = r.get("held") or {}
         for qid in live:
             if qid in fresh:
-                last_vec[qid] = fresh[qid]; out[qid].append((t, fresh[qid]))
+                out[qid].append((t, fresh[qid]))
             elif qid in held and qid in last_vec:
                 out[qid].append((t, last_vec[qid]))
     return out
@@ -232,30 +238,26 @@ def recount(records: list[dict], doc: dict, previous: dict | None = None, day: s
             if distance({"probabilities": v0}, {"probabilities": v1}) >= CHANGE_CUT:
                 holds.append((t1 - start).total_seconds() / 60.0); start = t1; changes += 1
         if not holds:
-            minutes = 120 if (span >= 300 and len(s) >= 10) else 60 if span >= 180 else 30
+            # under three hours of reads says nothing about a question that never changed: keep what it had
+            minutes = 120 if (span >= 300 and len(s) >= 10) else 60 if span >= 180 else prev
             why = f"never changed over {span:.0f} min and {len(s)} reads"
             p25 = None
         else:
-            holds.sort(); p25 = holds[len(holds) // 4]
+            # the hold still running at the day's last read counts too: a question that flipped once
+            # early and then stood all afternoon held for hours, not for the minutes before the flip
+            holds.append((s[-1][0] - start).total_seconds() / 60.0)
+            holds.sort()
+            # under four holds a quartile is one hold picked at random: use the middle one instead
+            p25 = holds[len(holds) // 4] if len(holds) >= 4 else holds[len(holds) // 2]
             minutes = snap(p25 / 2.0)
-            why = f"answer held {p25:.0f} min at the 25th percentile over {changes} moves of {CHANGE_CUT}+; half of that, snapped"
+            at = "the 25th percentile" if len(holds) >= 4 else "the median"
+            why = f"answer held {p25:.0f} min at {at} over {changes} moves of {CHANGE_CUT}+; half of that, snapped"
         out["questions"][qid] = {"minutes": minutes, "p25_hold_min": None if p25 is None else round(p25, 1),
                                  "changes": changes, "reads": len(s), "why": why}
     return out
 
 
-def _read_jsonl(p: Path) -> list[dict]:
-    if not p.is_file():
-        return []
-    out = []
-    for line in p.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line:
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return out
+_read_jsonl = load_jsonl    # one reader for every jsonl on disk: a torn or non-object line is dropped
 
 
 def previous_day_with_records(out_dir: Path, today: str) -> str | None:
@@ -270,7 +272,10 @@ def ensure_cadence(out_dir: Path, doc: dict, today: str) -> dict:
     if src is None or cad.get("recounted_from") == src:
         return cad
     new = recount(_read_jsonl(Path(out_dir) / f"{src}.jsonl"), doc, cad, src)
-    (Path(out_dir) / CADENCE_NAME).write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
+    path = Path(out_dir) / CADENCE_NAME
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, path)               # never a half file for the next tick or the page builder
     return new
 
 

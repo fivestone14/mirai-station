@@ -1,7 +1,7 @@
 {
  "name": "SNDK PRO, the sums: 30 minutes ahead, and 60 minutes ahead beside it",
- "version": "0.2.0",
- "date": "2026-09-22",
+ "version": "0.2.1",
+ "date": "2026-09-23",
  "how_to_use": "Step 4 of the pipeline. The state is not the labels: it is the live answers from step 2, each rewritten by code as one sentence with how sure JEV was. Two questions ride on the same sentences in one request: next_30 is the sum the phone shows and the one the weights learn from; next_60 is graded beside it so the two horizons can be compared. Both are forecasts, graded by the bars, never acted on. The bands are measured on this name: at 30 minutes the end move is within 0.12 sigma 59% of the time (5,815 windows), at 60 minutes within 0.17 sigma 61% of the time (5,260 windows).",
  "primary": "next_30",
  "horizons": {
@@ -15,10 +15,10 @@
    "why": "The one thing every other question was in service of; the sum, not another part.",
    "instructions": "Read `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 30 minutes? Answer up, down, flat or unsure.",
    "criteria": {
-    "up": "price ends more than 0.12 sigma above where it is now; on this name that happens about one time in five",
-    "down": "price ends more than 0.12 sigma below where it is now; on this name that happens about one time in five",
-    "flat": "price ends within 0.12 sigma of where it is now; on this name that is the common case, about three times in five",
-    "unsure": "the answers conflict or say too little to lean away from the common case"
+    "up": "price ends more than about an eighth of today's expected move (0.12 sigma) above where it is now; on this name that happens about one time in five",
+    "down": "price ends more than about an eighth of today's expected move (0.12 sigma) below where it is now; on this name that happens about one time in five",
+    "flat": "price ends within about an eighth of today's expected move (0.12 sigma) of where it is now; on this name that is the common case, about three times in five",
+    "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
    }
   },
   "next_60": {
@@ -27,10 +27,10 @@
    "why": "The same sum at twice the horizon, graded beside the 30-minute one so the two can be compared; it never reaches the phone's headline.",
    "instructions": "Read `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 60 minutes? Answer up, down, flat or unsure.",
    "criteria": {
-    "up": "price ends more than 0.17 sigma above where it is now; on this name that happens about one time in five",
-    "down": "price ends more than 0.17 sigma below where it is now; on this name that happens about one time in five",
-    "flat": "price ends within 0.17 sigma of where it is now; on this name that is the common case, about three times in five",
-    "unsure": "the answers conflict or say too little to lean away from the common case"
+    "up": "price ends more than about a sixth of today's expected move (0.17 sigma) above where it is now; on this name that happens about one time in five",
+    "down": "price ends more than about a sixth of today's expected move (0.17 sigma) below where it is now; on this name that happens about one time in five",
+    "flat": "price ends within about a sixth of today's expected move (0.17 sigma) of where it is now; on this name that is the common case, about three times in five",
+    "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
    }
   }
  }

@@ -71,7 +71,7 @@ def test_a_missing_label_keeps_the_held_answer():
     held = fill_missing(DOC, skipped, last, {"questions": {}}, now, {})
     assert held["volume_now"]["held_from"] == "11:02"
     s = one_sentence(BY_ID["volume_now"], held["volume_now"])
-    assert s.endswith("heavy, JEV was 80% sure, held from 11:02")
+    assert s.endswith("heavy, JEV was 80% sure (held since 11:02, not re-asked)")
 
 
 def _records(picks_by_time: dict[str, list[tuple[int, int]]], qid: str) -> list[dict]:

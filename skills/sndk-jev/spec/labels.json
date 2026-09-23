@@ -1,7 +1,7 @@
 {
  "name": "sndk-jev label spec",
- "version": "0.3-reviewed",
- "date": "2026-09-21",
+ "version": "0.4-reviewed",
+ "date": "2026-09-23",
  "purpose": "Every label the state builder writes or could write, with the logic under it. Built labels are checked against the code by a test. Free and new labels are designs, not code.",
  "statuses": {
   "built": "in state_builder.py today, writing sentences",
@@ -87,7 +87,7 @@
    "from": "constant",
    "logic": "static text defining sigma and the sign convention",
    "cut": "none",
-   "reads_as": "all distances are in sigma, today's expected-move unit for SanDisk; a plus sign means above price and a minus sign means below price",
+   "reads_as": "all distances are in sigma, today's expected-move unit for SanDisk; a plus sign means above price and a minus sign means below price. Options weight means the hedging exposure of dealers, the market makers on the other side of the options, at each strike; a wall is a strike where that weight piles up; the opening box is the first half hour's price range; RSI is a 0 to 100 gauge of overbought (above 70) or oversold (below 30)",
    "real": true
   },
   {
@@ -224,9 +224,10 @@
    "type": "count",
    "from": "the last five finished bars; the direction of the 30-minute move",
    "logic": "bars whose close beat their open in the move's direction",
-   "cut": "needs a 30-minute move of 0.15 sigma; 4 or 5 is most, 2 or 3 is half, 0 or 1 is few",
+   "cut": "4 or 5 is most, 2 or 3 is half, 0 or 1 is few; under the 0.15 sigma move rule there is no move to judge",
    "reads_as": "of the last five 1-minute bars, 5 closed in the direction of the move, which is up",
-   "real": false
+   "real": true,
+   "note": "on a quiet read, a 30-minute move under the 0.15 sigma move rule, the sentence says 'no move to judge' and carries the verdict no_move; the label is written, never omitted, so the questions that read it can answer no_move"
   },
   {
    "path": "momentum.pauses",
@@ -235,9 +236,10 @@
    "type": "state",
    "from": "the bars over the last 30 minutes; the move's direction",
    "logic": "the longest run without a new extreme, and the deepest dip from the running extreme as a share of the move's full extent",
-   "cut": "a pullback at 25% or more; a pause of 3 to 10 minutes; a pause longer than 10",
+   "cut": "a pullback at 25% or more; a pause of 3 to 10 minutes; a pause longer than 10; under the 0.15 sigma move rule there is no move to judge",
    "reads_as": "during the last 30 minutes the move up gave back 40% of itself at its deepest pullback, more than a quarter",
-   "real": false
+   "real": true,
+   "note": "on a quiet read, a 30-minute move under the 0.15 sigma move rule, the sentence says 'no move to judge' and carries the verdict no_move; the label is written, never omitted, so the questions that read it can answer no_move"
   },
   {
    "path": "range.box_status",
@@ -304,7 +306,7 @@
    "type": "count",
    "from": "today's bars; yesterday's high, low and close; the move bar",
    "logic": "for each of yesterday's high, low and close, the number of finished bars today whose range came within the move bar of it",
-   "cut": "0; 1; 2 or more",
+   "cut": "reach is two typical minutes of range, the move bar; no count band, the sentence carries the minutes and the question reads zero against one or more",
    "reads_as": "price has spent 42 minutes within reach of yesterday's high, 0 minutes within reach of yesterday's low and 43 minutes within reach of yesterday's close today, counting reach as two typical minutes of range",
    "real": true,
    "note": "revised 2026-09-21 after the overlap review; rendered from the real row at 2026-09-21 15:59. reworded as minutes within reach, since a bar sitting on a level all afternoon counts every minute; it is not a count of separate visits"
@@ -431,12 +433,12 @@
    "viewpoint": "indicators",
    "status": "built",
    "type": "distance",
-   "from": "next week's at-the-money implied volatility minus this week's",
-   "logic": "the difference in vol points; the next-expiry contracts are already pulled, only the front book gets the calculation today",
+   "from": "this week's at-the-money implied volatility minus next week's, both from the chain cache",
+   "logic": "the difference in vol points; above the flat band this week is hotter, below it cooler, and inside the band the sentence still says which week is higher",
    "cut": "2 vol points is flat",
-   "reads_as": "this week's and next week's at-the-money implied volatility are within the 2 vol point flat band, -0.6 points apart",
+   "reads_as": "this week's and next week's at-the-money implied volatility are within the 2 vol point flat band, this week's 0.6 vol points below next week's",
    "real": true,
-   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. free at the feed; needs one calculation added where the row is built"
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. corrected 2026-09-23: the from was written the wrong way round, and the level branch now names the higher week"
   },
   {
    "path": "price.day_range_position",
@@ -466,7 +468,7 @@
    "viewpoint": "space_time",
    "status": "built",
    "type": "share",
-   "from": "the high and low over the prior 5 sessions' bars plus today",
+   "from": "the high and low over the prior 5 sessions' bars, today excluded",
    "logic": "spot minus that low, over that range",
    "cut": "above the five-session high or below its low is new ground; inside, the third it sits in, with the distance to both edges in sigma",
    "reads_as": "price is in the top third of the last 5 sessions' range, 90% of the way up from its low to its high, 0.42 sigma below that high and 3.72 sigma above their low",
@@ -526,7 +528,7 @@
    "type": "share",
    "from": "gex_views.call_wall_gamma_share and put_wall_gamma_share",
    "logic": "the nearest wall's share of all the board's weight",
-   "cut": "rank against the last 39 days of rows: thick above the top third, thin below the bottom third",
+   "cut": "fixed: thin under 5%; thick at 15% or above; middling between",
    "reads_as": "the nearest wall, the call wall, holds 13% of all the options weight on the board, middling, between the 5% thin cut and the 15% thick cut",
    "real": true,
    "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
@@ -538,7 +540,7 @@
    "type": "share",
    "from": "gex_views.pin_top_share",
    "logic": "as given",
-   "cut": "rank against own history",
+   "cut": "fixed: spread thin under 10%; concentrated at 20% or above; middling between",
    "reads_as": "the single heaviest strike holds 16% of the board's weight, middling, between the 10% and 20% cuts",
    "real": true,
    "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
@@ -596,12 +598,12 @@
    "viewpoint": "strikes",
    "status": "built",
    "type": "change",
-   "from": "gex_views.oi_side_by_strike at the heaviest strike; yesterday's diary file",
-   "logic": "grew, shrank or held; SNDK PRO's board already computes this",
+   "from": "gex_views.oi_side_by_strike at the heaviest strike; the last diary row of the most recent earlier session",
+   "logic": "grew, shrank or held against yesterday's closing row; a heaviest strike absent from yesterday's closing book is left out as unknown, never guessed; zero open interest there yesterday reads built today",
    "cut": "10%",
    "reads_as": "the crowd at the heaviest strike shrank 51% overnight, more than the 10% cut",
    "real": true,
-   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. omitted on any day the heaviest strike sat outside yesterday's closing book, so the questions reading it are skipped that read"
   },
   {
    "path": "gex.cushion_if_moved",
@@ -622,7 +624,7 @@
    "type": "rank",
    "from": "vol_side_by_strike over oi_side_by_strike",
    "logic": "contracts traded today over the standing open position",
-   "cut": "rank against own history, or 1.0 and 3.0",
+   "cut": "1.0 and 3.0: under 1 times; between 1 and 3 times; more than 3 times",
    "reads_as": "today's contracts traded are 3.1 times the standing open position, more than 3 times it",
    "real": true,
    "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
@@ -658,10 +660,10 @@
    "type": "share",
    "from": "the at-the-money bid and ask in the chain cache",
    "logic": "ask minus bid over the mid",
-   "cut": "rank against own history",
+   "cut": "3% of the mid",
    "reads_as": "the at-the-money spread is 3% of the mid, wider than the 3% cut",
    "real": true,
-   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. the cache holds only the latest book, so history must be accumulated first"
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
   },
   {
    "path": "options.size_showing",
@@ -839,6 +841,6 @@
    "context.session_phase -> context.session_progress",
    "price.vs_week_extremes -> price.multi_day_position"
   ],
-  "not_measurable": "47 of the 61 labels write no verdict, so overlap between them was judged from their inputs, not from replay"
+  "not_measurable": "43 of the 61 labels write no verdict, so overlap between them was judged from their inputs, not from replay"
  }
 }

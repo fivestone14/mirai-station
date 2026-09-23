@@ -33,7 +33,57 @@ def test_requests_carry_only_the_slice_and_skip_questions_with_missing_labels():
     assert [r["id"] for r in reqs] == ["a"]
     assert reqs[0]["state"] == {"context": {"symbol": "SNDK"}, "price": {"recent_move": "rose"}}
     assert list(reqs[0]["questions"]) == ["q1"]
-    assert skipped == {"a": {"q2": "missing volume.now"}, "b": {"q3": "missing volume", "*": "no question in this group has all the labels it needs"}}
+    assert skipped == {"a": {"q2": "missing volume.now"}, "b": {"q3": "missing volume", "*": "nothing to ask in this group this read"}}
+
+
+def test_a_label_the_group_does_not_read_is_named_not_called_missing():
+    doc = {"groups": [{"id": "a", "reads": ["context", "price.recent_move"],
+                       "questions": {"q1": {"type": "noul", "instructions": "Read `price.vs_vwap`.", "criteria": {"true": "t", "false": "f"}}}}]}
+    state = {"context": {"symbol": "SNDK"}, "price": {"recent_move": "rose", "vs_vwap": "above"}}
+    reqs, skipped = build_requests(state, doc)
+    assert reqs == [] and skipped["a"]["q1"] == "the group does not read price.vs_vwap"
+
+
+def test_send_turns_every_network_failure_into_a_scrubbed_runtime_error(monkeypatch):
+    import urllib.error
+    from sndk_jev import ask
+    key = "apikey_" + "a" * 24 + "_" + "b" * 24
+    calls = []
+
+    def urlopen_timeout(req, timeout=0):
+        calls.append("t")
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen_timeout)
+    with pytest.raises(RuntimeError) as e:
+        ask.send({"id": "g", "state": {}, "questions": {}}, api_key=key)
+    assert "unreachable" in str(e.value) and "TimeoutError" in str(e.value) and key not in str(e.value)
+    assert calls == ["t", "t"], "one retry on a timeout"
+
+    class Body:
+        def read(self):
+            return f"bad request, your key {key} is wrong".encode()
+
+        def close(self):
+            pass
+
+    def urlopen_http(req, timeout=0):
+        raise urllib.error.HTTPError("u", 400, "bad", {}, Body())
+    monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen_http)
+    with pytest.raises(RuntimeError) as e:
+        ask.send({"id": "g", "state": {}, "questions": {}}, api_key=key)
+    assert "HTTP 400" in str(e.value) and "[key redacted]" in str(e.value) and key not in str(e.value)
+
+
+def test_send_all_keeps_a_group_that_timed_out_as_an_error_and_answers_the_rest():
+    from sndk_jev.ask import send_all
+
+    def fake(req, api_key=None, timeout=10.0):
+        if req["id"] == "slow":
+            raise TimeoutError("handshake operation timed out")
+        return {"answers": {"q": {"type": "noul", "noul": 0.9}}}
+    out = send_all([{"id": "slow"}, {"id": "ok"}], sender=fake)
+    assert out["ok"]["answers"]["q"]["noul"] == 0.9
+    assert out["slow"] == {"error": "TimeoutError: handshake operation timed out"}
 
 
 def _spec():

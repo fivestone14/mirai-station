@@ -83,7 +83,7 @@ def test_weights_stay_at_one_until_a_question_has_its_own_evidence():
                "fresh": {"q1": "a", "q2": "b"}, "next_30": {"band": "flat", "hit": True, "brier": 0.1}} for i in range(MIN_GRADED - 1)]
     w = weights_from(grades)
     assert all(v["weight"] == 1.0 and v["in_step_3"] for v in w["questions"].values())
-    assert w["sum"]["hit_rate"] == 1.0 and w["sums"]["next_30"]["n"] == MIN_GRADED - 1 and w["sums"]["next_60"]["n"] == 0
+    assert w["sums"]["next_30"]["hit_rate"] == 1.0 and w["sums"]["next_30"]["n"] == MIN_GRADED - 1 and w["sums"]["next_60"]["n"] == 0
 
 
 def test_the_floor_is_per_question_and_held_answers_never_pair():
@@ -169,3 +169,46 @@ def test_run_grades_the_30_first_and_the_60_when_its_mark_comes(tmp_path):
     lines = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
     assert [l["horizons"] for l in lines] == [["next_30"], ["next_60"]] and lines[1]["next_60"]["band"] == "up"
     assert run(state, out)["new_by_horizon"] == {"next_30": 0, "next_60": 0}   # done: never graded twice
+
+
+def test_a_sum_jev_did_not_answer_is_skipped_not_graded_as_a_miss():
+    bars = bars_from_closes([1700.0] * 390)
+    rec = _rec(11, 0, 1700.0, _by({"flat": 1.0}, "flat"), {})                # next_60 never answered
+    g = grade_one(rec, bars)
+    assert "next_30" in g and "next_60" not in g and g["skipped"] == {"next_60": "no answer for this sum"}
+
+
+def test_a_read_a_fraction_past_the_minute_is_graded_at_the_close_like_its_minute():
+    bars = bars_from_closes([1700.0] * 390)
+    rec = {"row_ts": at(15, 32, ss=0).replace(microsecond=400000).isoformat(), "spot": 1700.0, "sigma": 50.0,
+           "by": _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), "used": {}}
+    g = grade_one(rec, bars)                                          # 16:02:00.4 is a 16:02 mark: inside the grace
+    assert g["horizons"] == ["next_30"] and g["band"] == "flat"
+
+
+def test_a_hole_in_the_bars_around_the_mark_waits():
+    bars = bars_from_closes([1700.0] * 390)
+    holed = [b for b in bars if not (at(11, 40) <= at(int(b["ts"][11:13]), int(b["ts"][14:16])) <= at(11, 50))]
+    rec = _rec(11, 15, 1700.0, _by({"flat": 1.0}, "flat"), {})
+    assert grade_one(rec, holed) is None                              # the 11:45 mark has no bar near it: not yet
+    assert grade_one(rec, bars)["band"] == "flat"
+
+
+def test_a_read_on_which_every_answer_was_held_pairs_nothing():
+    grades = [{"row_ts": str(i), "band": "flat", "pick": "flat", "hit": True, "brier": 0.1,
+               "used": {"q1": "a"}, "fresh": {}, "next_30": {"band": "flat", "hit": True, "brier": 0.1}} for i in range(3)]
+    assert weights_from(grades)["questions"] == {}
+
+
+def test_a_past_day_with_no_bars_is_closed_out(tmp_path):
+    state = tmp_path / "state"
+    (state / "sndk_bars").mkdir(parents=True)
+    out = state / "jev"
+    (out / "hour").mkdir(parents=True)
+    with open(out / "hour" / "2026-09-18.jsonl", "w") as f:
+        f.write(json.dumps(_rec(11, 0, 1700.0, _by({"flat": 1.0}, "flat"), {"q1": "a"})) + "\n")
+    w = run(state, out)
+    assert w["closed_out"] == 1 and w["graded_runs"] == 0
+    line = json.loads((out / "grades.jsonl").read_text().splitlines()[0])
+    assert line["graded"] is False and line["reason"] == "no bars for the day"
+    assert run(state, out)["closed_out"] == 0                         # never retried

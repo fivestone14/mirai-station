@@ -1,6 +1,8 @@
-"""sndk-jev — the state builder and request packer for JEV, SNDK PRO's fast judge.
+"""sndk-jev — the JEV decision service beside SNDK PRO: labels, requests, the two sums,
+grading, and the phone's card.
 
-Read-only over SNDK PRO's stored files. Nothing here touches the live loop.
+Read-only over SNDK PRO's stored files; writes only under state/jev/. Nothing here
+touches the live loop.
 """
 
 from .state_builder import Scene, build_state, make_scene  # noqa: F401

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sndk-jev"
 version = "0.1.0"
-description = "State builder and request packer for JEV, SNDK PRO's fast judge. Read-only sidecar."
+description = "The JEV decision service beside SNDK PRO: labels, requests, the two sums, grading, the phone's card. Read-only sidecar."
 requires-python = ">=3.11"
 dependencies = []
 

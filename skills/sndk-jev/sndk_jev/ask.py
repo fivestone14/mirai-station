@@ -7,6 +7,7 @@ kept, so a thin scan never turns into a forced answer.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
@@ -95,56 +96,85 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None) -
                 skipped.setdefault(gid, {})[qid] = skip[qid]
                 continue
             missing = [p for p in paths_in(q) if get_path(state, p) is None]
+            # a label the state has but this group does not read would leave JEV blind to it
+            unread = [p for p in paths_in(q) if p not in missing and get_path(slice_, p) is None]
             if missing:
                 skipped.setdefault(gid, {})[qid] = "missing " + ", ".join(missing)
+            elif unread:
+                skipped.setdefault(gid, {})[qid] = "the group does not read " + ", ".join(unread)
             else:
                 questions[qid] = jev_only(q)
         if not questions:
-            skipped.setdefault(gid, {})["*"] = "no question in this group has all the labels it needs"
+            skipped.setdefault(gid, {})["*"] = "nothing to ask in this group this read"
             continue
         requests.append({"id": gid, "state": slice_, "questions": questions})
     return requests, skipped
 
 
+RETRY_HTTP = (429, 500, 502, 503, 504)    # a second try is worth it; a 4xx is not
+
+
+def _scrub(text: str, key: str | None) -> str:
+    """The key must never reach a log, a state file or an exception message."""
+    return text.replace(key, "[key redacted]") if key else text
+
+
 def send(request: dict, api_key: str | None = None, timeout: float = 10.0, url: str = JEV_URL,
-         model: str = JEV_MODEL) -> dict:
-    """POST one request to JEV and return the parsed answer. Never logs the key."""
+         model: str = JEV_MODEL, retries: int = 1) -> dict:
+    """POST one request to JEV and return the parsed answer. One more try on a timeout, a dropped
+    connection or a 429/5xx. Every failure becomes a RuntimeError with the key scrubbed out, so a
+    caller that catches RuntimeError has caught everything the network can throw."""
     key = api_key or os.environ.get(API_KEY_ENV)
     if not key:
         raise RuntimeError(f"set {API_KEY_ENV} in the environment before sending")
     body = json.dumps({"model": model, "state": request["state"], "questions": request["questions"]}).encode("utf-8")
-    req = urllib.request.Request(url, data=body, method="POST", headers={
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        # the body is quoted in the error; scrub the key in case the server ever echoes it
-        detail = e.read().decode("utf-8", errors="replace")[:400].replace(key, "[key redacted]")
-        raise RuntimeError(f"JEV returned HTTP {e.code} for group {request['id']}: {detail}") from None
+    attempt = 0
+    while True:
+        req = urllib.request.Request(url, data=body, method="POST", headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # the body is quoted in the error; scrub before the cut so a key can never straddle it
+            detail = _scrub(e.read().decode("utf-8", errors="replace"), key)[:400]
+            if e.code in RETRY_HTTP and attempt < retries:
+                attempt += 1
+                continue
+            raise RuntimeError(f"JEV returned HTTP {e.code} for group {request['id']}: {detail}") from None
+        except (OSError, http.client.HTTPException) as e:
+            # a timeout, a refused or dropped connection, a failed handshake (URLError is an OSError)
+            if attempt < retries:
+                attempt += 1
+                continue
+            raise RuntimeError(f"JEV unreachable for group {request['id']}: {type(e).__name__}: {_scrub(str(e), key)[:200]}") from None
+        except ValueError as e:
+            raise RuntimeError(f"JEV answered group {request['id']} with something that is not JSON: {_scrub(str(e), key)[:200]}") from None
 
 
-def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0, workers: int = 8,
+def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0, workers: int = 12,
              sender=None) -> dict[str, dict]:
     """POST every request at the same time and return ``{request id: answer or {"error": ...}}``.
 
     JEV scores each question independently and the requests share nothing, so the
-    seven round trips of a scan collapse into one wait. A failed request records
-    its error and never blocks the others.
+    round trips of a read collapse into one wait. A failed request records its
+    error and never blocks the others, whatever the failure was.
     """
     from concurrent.futures import ThreadPoolExecutor
     sender = sender or send
     if not requests:
         return {}
+    key = api_key or os.environ.get(API_KEY_ENV)
 
     def one(req: dict) -> tuple[str, dict]:
         try:
             return req["id"], sender(req, api_key=api_key, timeout=timeout)
-        except RuntimeError as e:
-            return req["id"], {"error": str(e)}
+        except Exception as e:  # one group must never take the whole read down
+            msg = str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"
+            return req["id"], {"error": _scrub(msg, key)}
 
     out: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(requests)))) as ex:

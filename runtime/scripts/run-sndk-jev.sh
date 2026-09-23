@@ -34,6 +34,8 @@ fi
 
 # Read a finished row: wait until the newest diary row is at least 20 s old, so a tick that
 # fires in the same second as the scanner's write never reads a half-written row.
+# If the scanner has not written today's first row yet, the service itself refuses to send on
+# yesterday's row (it says so and exits 0), so the tick is never built on a stale clock.
 ROWS="${MIRAI_STATION_ROOT}/state/sndk_reversion/$(date +%F).jsonl"
 if [[ -f "$ROWS" ]]; then
   AGE=$(( $(date +%s) - $(stat -f %m "$ROWS") ))

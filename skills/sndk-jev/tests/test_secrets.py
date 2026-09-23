@@ -5,6 +5,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 SKILL = Path(__file__).resolve().parent.parent
 REPO = SKILL.parent.parent
 KEY = re.compile(r"apikey_[0-9a-f]{20,}_[0-9a-f]{20,}|TYPESAFE_API_KEY=\S{16,}")   # README's "TYPESAFE_API_KEY=..." is a placeholder
@@ -13,7 +15,7 @@ SCAN_SUFFIXES = {".py", ".json", ".jsonl", ".md", ".sh", ".html", ".txt", ".temp
 
 def test_env_is_git_ignored_and_the_example_is_not():
     if not (REPO / ".git").exists():
-        return
+        pytest.skip("not a git checkout, so there is no ignore list to check")
     r = subprocess.run(["git", "check-ignore", "-q", "skills/sndk-jev/.env"], cwd=REPO)
     assert r.returncode == 0, "skills/sndk-jev/.env is not git-ignored"
     r = subprocess.run(["git", "check-ignore", "-q", "skills/sndk-jev/.env.example"], cwd=REPO)
@@ -31,8 +33,8 @@ def test_no_key_in_any_skill_file_but_env():
 def test_service_output_never_carries_the_header():
     out = REPO / "state" / "jev"
     if not out.exists():
-        return
-    for p in out.glob("*.json*"):
+        pytest.skip("no state/jev on this machine: the service has not run here")
+    for p in out.rglob("*.json*"):           # hour/ and watch/ too
         text = p.read_text(encoding="utf-8", errors="replace")
         assert "Bearer " not in text and not KEY.search(text), f"{p} holds a secret"
 

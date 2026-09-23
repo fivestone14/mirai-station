@@ -229,10 +229,11 @@ def test_momentum_pullback_is_a_share_of_the_whole_move(scene_factory):
     assert not re.search(r"\d{3,}%", state["momentum"]["pauses"])
 
 
-def test_momentum_skips_closes_and_pauses_without_a_move(scene_factory):
+def test_momentum_says_no_move_instead_of_skipping_closes_and_pauses(scene_factory):
     state, omitted = labels(scene_factory(at(12, 30, ss=10), flat_bars(180)))
-    assert "closes" not in state["momentum"] and "pauses" not in state["momentum"]
-    assert "no move to judge" in omitted["momentum.closes"]
+    # a quiet read is a fact the questions can answer ("no move"), not a gap that skips them
+    assert "no move to judge" in state["momentum"]["closes"] and "under the 0.15 sigma move rule" in state["momentum"]["pauses"]
+    assert "momentum.closes" not in omitted and "momentum.pauses" not in omitted
 
 
 # ---------------------------------------------------------------- time

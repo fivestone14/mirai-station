@@ -29,6 +29,8 @@ def load_hour_doc(path: Path | str = HOUR_QUESTIONS) -> dict:
     qs = d.get("questions")
     if not isinstance(qs, dict) or any(q not in qs for q in HOUR_QIDS):
         raise ValueError(f"{path}: needs questions {HOUR_QIDS}")
+    if d.get("primary", PRIMARY) != PRIMARY:
+        raise ValueError(f"{path}: primary is {d.get('primary')!r} but the code sums for {PRIMARY!r}")
     return d
 
 
@@ -73,7 +75,7 @@ def one_sentence(q: dict, answer: dict) -> str | None:
         words = str(pick).replace("_", " ")
     sure = _sure(answer)
     tail = f", JEV was {round(sure * 100)}% sure" if sure is not None else ""
-    held = f", held from {answer['held_from']}" if answer.get("held_from") else ""
+    held = f" (held since {answer['held_from']}, not re-asked)" if answer.get("held_from") else ""
     return f"{ask} {words}{tail}{held}"
 
 
@@ -108,7 +110,8 @@ def hour_request(sentences: dict[str, str], hour_doc: dict | None = None, contex
     """Step 4's request: the sentences are the state, both sums ride on top in one call."""
     hour_doc = hour_doc or load_hour_doc()
     ctx = {"symbol": "SNDK", "horizon": "the next 30 minutes, and the next 60 minutes",
-           "units": "sigma is today's expected move; the answers below were given by JEV a moment ago about this same moment"}
+           "units": ("sigma is today's expected move. Each answer below was given by JEV about this moment, "
+                     "except those marked held, which were given at the time shown and carried forward unchanged")}
     ctx.update(context or {})
     return {"id": "hour", "state": {"context": ctx, "answers": sentences},
             "questions": {qid: jev_only(q) for qid, q in hour_doc["questions"].items()}}
@@ -131,5 +134,8 @@ def hour_summary(answer: dict | None) -> dict | None:
     by = {qid: _one(answers.get(qid)) for qid in HOUR_QIDS if isinstance(answers.get(qid), dict)}
     if not by:
         return {"error": answer.get("error", "no answer")}
-    prim = by.get(PRIMARY) or next(iter(by.values()))
+    prim = by.get(PRIMARY)
+    if prim is None:
+        # the sum on the phone is missing: say so rather than lift the other sum into its place
+        return {"error": f"no {PRIMARY} answer", "primary": PRIMARY, "by": by, "model": answer.get("model")}
     return {**prim, "primary": PRIMARY, "by": by, "model": answer.get("model")}

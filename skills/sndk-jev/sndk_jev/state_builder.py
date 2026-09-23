@@ -30,7 +30,10 @@ BARS_SUBDIR = "sndk_bars"
 SYMBOL = "SNDK"
 HORIZON = "the next 30 minutes"
 UNITS = ("all distances are in sigma, today's expected-move unit for SanDisk; "
-         "a plus sign means above price and a minus sign means below price")
+         "a plus sign means above price and a minus sign means below price. "
+         "Options weight means the hedging exposure of dealers, the market makers on the other side of the options, at each strike; "
+         "a wall is a strike where that weight piles up; the opening box is the first half hour's price range; "
+         "RSI is a 0 to 100 gauge of overbought (above 70) or oversold (below 30)")
 
 # SNDK PRO's own move rule (frame_is: a move at or past 0.15 sigma).
 MOVE_RULE_SIGMA = 0.15
@@ -161,7 +164,8 @@ def load_side_packet(state_dir: Path, day: str, minutes_since_open: float) -> di
         bars_seen = [b for b in bars_seen if _is_num(b)]
         if not bars_seen:
             continue
-        if max(bars_seen) <= minutes_since_open:
+        # bar indices are 0-based: bar k finishes k + 1 minutes after the open
+        if max(bars_seen) + 1 <= minutes_since_open:
             best = pk
     return best
 
@@ -857,10 +861,16 @@ class _Builder:
                     word = "between two thirds and 1.5 times as far as"
                 o.put("momentum", "pace", f"the last 10 minutes moved {sig(last)}, {word} the 10 minutes before, which moved {sig(prev)}")
 
-        if self.move30 is None or abs(self.move30) < MOVE_RULE_SIGMA:
-            reason = "no 30-minute move to judge" if self.move30 is None else f"the last 30 minutes moved under the {MOVE_RULE_SIGMA} sigma move rule, so there is no move to judge"
-            o.skip("momentum", "closes", reason)
-            o.skip("momentum", "pauses", reason)
+        if self.move30 is None:
+            o.skip("momentum", "closes", "no 30-minute move to judge")
+            o.skip("momentum", "pauses", "no 30-minute move to judge")
+            return
+        if abs(self.move30) < MOVE_RULE_SIGMA:
+            # a quiet read is a fact, not a gap: the questions that read these labels have a
+            # "no move" answer, and leaving the labels out would skip those questions instead
+            quiet = f"the last 30 minutes moved {sig(abs(self.move30))}, under the {MOVE_RULE_SIGMA} sigma move rule, so there is no move to judge"
+            o.put("momentum", "closes", quiet, answer="no_move")
+            o.put("momentum", "pauses", quiet, answer="no_move")
             return
         up = self.move30 > 0
         word = "up" if up else "down"
@@ -1115,7 +1125,7 @@ class _Builder:
                 elif d < -IV_FLAT_BAND_PTS:
                     o.put("iv", "term_slope", f"this week's at-the-money implied volatility sits {-d:.1f} vol points below next week's, more than the {IV_FLAT_BAND_PTS:g} point flat band", answer="cooler")
                 else:
-                    o.put("iv", "term_slope", f"this week's and next week's at-the-money implied volatility are within the {IV_FLAT_BAND_PTS:g} vol point flat band, {signed(d, 1)} points apart", answer="level")
+                    o.put("iv", "term_slope", f"this week's and next week's at-the-money implied volatility are within the {IV_FLAT_BAND_PTS:g} vol point flat band, this week's {abs(d):.1f} vol points {'above' if d >= 0 else 'below'} next week's", answer="level")
 
     # ---- dealer gamma map, added
     def gex_more(self) -> None:
@@ -1191,8 +1201,11 @@ class _Builder:
             now_oi, then_oi = oi_at(self.row, heavy), oi_at(prev_row, heavy)
             if now_oi is None:
                 o.skip("gex", "crowd_change_overnight", "no open interest at the heaviest strike on this row")
-            elif then_oi is None or then_oi == 0:
-                o.put("gex", "crowd_change_overnight", "the crowd at the heaviest strike carried no open interest at yesterday's close, so it appeared overnight")
+            elif then_oi is None:
+                # yesterday's closing book did not cover this strike: unknown, never guessed
+                o.skip("gex", "crowd_change_overnight", "the heaviest strike sat outside yesterday's closing book, so its open interest then is unknown")
+            elif then_oi == 0:
+                o.put("gex", "crowd_change_overnight", "the crowd at the heaviest strike carried no open interest at yesterday's close, so it was built today")
             else:
                 ch = (now_oi - then_oi) / then_oi
                 if ch > 0.10:
