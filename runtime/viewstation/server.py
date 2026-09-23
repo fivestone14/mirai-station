@@ -48,7 +48,7 @@ import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, urlsplit, parse_qs, unquote
+from urllib.parse import urlparse, urlsplit, parse_qs
 from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")   # every stamp this server prints reads in market time
@@ -616,8 +616,10 @@ class Handler(BaseHTTPRequestHandler):
 
             if route == "/api/raw/file":
                 root = qs.get("root", ["state"])[0]
-                rel = unquote(qs.get("path", [""])[0])
-                limit = int(qs.get("limit", ["500"])[0])
+                rel = qs.get("path", [""])[0]          # parse_qs has already decoded it once
+                limit = qs.get("limit", ["500"])[0]
+                if not re.fullmatch(r"\d{1,6}", limit):
+                    return self._send_json({"error": "bad limit"}, 400)
                 # 09-01: the replay tab fans out a dozen ~12MB day reads at
                 # once, and fourteen concurrent parse+serialize passes starve
                 # every OTHER route of the interpreter for seconds — the spot
@@ -625,7 +627,7 @@ class Handler(BaseHTTPRequestHandler):
                 # time is plenty (the tunnel is the real ceiling); the rest
                 # wait here, off the GIL, and the door stays instant.
                 with _RAW_FILE_GATE:
-                    return self._send_json(_raw_file(root, rel, limit))
+                    return self._send_json(_raw_file(root, rel, int(limit)))
 
             if route == "/api/health":
                 return self._send_json({"ok": True, "port": PORT})

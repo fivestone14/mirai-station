@@ -630,6 +630,8 @@ _PAY_LOCK = threading.Lock()
 _PAY_REFRESH_S = 60.0        # a rebuild at least this often keeps the scene's clock within a minute
 _PAY_POLL_S = 5.0            # how often the refresher looks for a new file
 _PAY_THREAD: dict = {"started": False}
+_PAY_SAID: dict = {}         # a failed build's message -> when the refresher last printed it
+_PAY_SAY_EVERY_S = 600.0     # the same failure is printed once per this, not once per poll
 
 
 def _payload_key() -> tuple:
@@ -673,8 +675,19 @@ def _payload_refresher() -> None:
         try:
             if _payload_stale():
                 _rebuild_payload()
-        except Exception:      # the refresher must outlive one bad build; the next poll tries again
-            pass
+        except Exception as exc:  # the refresher must outlive one bad build; the next poll tries again
+            _say_build_failed(f"{type(exc).__name__}: {exc}")
+
+
+def _say_build_failed(msg: str) -> None:
+    """One line per distinct failure, and that line again only after _PAY_SAY_EVERY_S. A build
+    that fails on every poll would otherwise write the same line twelve times a minute, which
+    is the noise _Station.handle_error exists to keep out of the launchd log."""
+    now = time.monotonic()
+    if msg in _PAY_SAID and now - _PAY_SAID[msg] < _PAY_SAY_EVERY_S:
+        return
+    _PAY_SAID[msg] = now
+    print(f"sndk payload refresher: build failed: {msg}", file=sys.stderr, flush=True)
 
 
 def start_payload_refresher() -> None:

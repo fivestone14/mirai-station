@@ -3,10 +3,11 @@
     python3 build_page.py OUT.html
 
 Reads, all read-only:
-  skills/sndk-jev/spec/labels.json         the label spec (built, free, new)
+  skills/sndk-jev/spec/labels.json         the label spec
   skills/sndk-jev/questions/sndk_pro.json  the questions, with viewpoint, status, ask and why per question
   skills/sndk-jev/questions/sndk_hour.json the two sums
   state/jev/                               weights, cadence, the newest sum record, the weight log
+The cuts and steps quoted in the prose come from the sndk_jev package, never typed here.
 """
 from __future__ import annotations
 
@@ -20,10 +21,47 @@ from pathlib import Path
 
 SKILL = Path.home() / ".claude/plugins/mirai-station/skills/sndk-jev"
 STATE = Path.home() / ".claude/plugins/mirai-station/state"
-OUT = sys.argv[1]
+sys.path.insert(0, str(SKILL))
+from sndk_jev.cadence import CHANGE_CUT, MIN_READS, STEPS, parse_cadence  # noqa: E402
+from sndk_jev.grade import BAR_GAP_MAX_MIN, CLOSE_GRACE_MIN, MIN_GRADED  # noqa: E402
+from sndk_jev.hour import HOUR_QIDS, MIN_WEIGHT  # noqa: E402
 
-SPEC = json.load(open(SKILL / "spec" / "labels.json", encoding="utf-8"))
-QDOC = json.load(open(SKILL / "questions" / "sndk_pro.json", encoding="utf-8"))
+if len(sys.argv) != 2:
+    raise SystemExit("usage: python3 build_page.py OUT.html")
+OUT = Path(sys.argv[1])
+
+
+def load_json(path: Path, role: str, required: bool = True):
+    """The file as JSON, or exit naming the path: a required file must exist, any file present must parse."""
+    if not path.is_file():
+        if required:
+            raise SystemExit(f"{role} missing: {path}")
+        return {}
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        raise SystemExit(f"{role} is empty: {path}")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"{role} is not valid JSON: {path} ({e})")
+
+
+def _jsonl(path):
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    return out
+
+
+SPEC = load_json(SKILL / "spec" / "labels.json", "the label spec")
+QDOC = load_json(SKILL / "questions" / "sndk_pro.json", "the questions")
 E = lambda s: html.escape(str(s), quote=True)
 PATH_RE = re.compile(r"`([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)`")
 
@@ -46,7 +84,6 @@ VP_TITLE["outcome"] = "The outcome itself, shadow only"
 VP_SHORT = {"strikes": "strikes", "volume_price": "vol & price", "history": "yesterday", "indicators": "indicators",
             "space_time": "space & time", "framing": "framing", "news": "news", "outcome": "outcome"}
 STATUS_COUNT = Counter(l["status"] for l in SPEC["labels"])
-BUILT_PATHS = {l["path"] for l in SPEC["labels"] if l["status"] == "built"}
 
 reads_of: dict[str, list[str]] = {}
 for gid, qid, q in QS:
@@ -60,10 +97,7 @@ def read_by(path: str) -> list[str]:
 
 
 def q_status(q) -> str:
-    if q.get("status"):
-        return q["status"]
-    paths = PATH_RE.findall(json.dumps(q, ensure_ascii=False))
-    return "live" if all(p in BUILT_PATHS or p.split(".")[0] in {x.split(".")[0] for x in BUILT_PATHS} for p in paths) else "waiting"
+    return q["status"]
 
 
 def q_viewpoint(gid, q) -> str:
@@ -89,6 +123,7 @@ CSS = r"""
   --shadow:0 1px 2px rgba(18,25,35,.06),0 6px 18px rgba(18,25,35,.04);
   --sans:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --gutter:clamp(16px,4vw,32px);
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
@@ -111,24 +146,20 @@ CSS = r"""
 body{margin:0;background:var(--ground);color:var(--ink);font:17px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
 h1,h2,h3{margin:0;font-weight:600;line-height:1.2;text-wrap:balance}
 p{margin:0}ul,ol{margin:0;padding:0;list-style:none}
-code,.mono{font-family:var(--mono)}
+code{font-family:var(--mono)}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
-.wrap{max-width:1040px;margin:0 auto;padding-inline:clamp(16px,4vw,32px);padding-block:26px 72px}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:var(--gutter);padding-block:26px 72px}
 .eyebrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;font:500 13.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
 h1{margin-top:14px;font-size:clamp(30px,5.4vw,44px);font-weight:700;letter-spacing:-.015em}
 .purpose{margin-top:12px;color:var(--ink-2);font-size:18px;max-width:64ch}
 .jump{position:sticky;top:0;z-index:3;display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;padding:10px 0;background:var(--ground)}
-@media(max-width:640px){.jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}.jump::-webkit-scrollbar{display:none}.jump .chip{flex:none}}
+@media(max-width:640px){.jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:calc(-1 * var(--gutter));padding-inline:var(--gutter)}.jump::-webkit-scrollbar{display:none}.jump .chip{flex:none}}
 .chip{display:inline-flex;align-items:center;min-height:28px;padding:3px 11px;border:1px solid var(--line-strong);border-radius:999px;font:500 13.5px/1.1 var(--mono);color:var(--ink-2);background:var(--surface);text-decoration:none}
 a.chip:hover{background:var(--surface-2);color:var(--ink)}
-.chip.type{text-transform:uppercase;letter-spacing:.05em;font-size:12px;color:var(--ink);background:var(--surface-2)}
 .tag{display:inline-block;font:500 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.05em;padding:4px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent)}
 .st{display:inline-block;font:500 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.05em;padding:4px 7px;border-radius:4px}
-.st.built,.st.live{background:var(--good-bg);color:var(--good)}
-.st.free,.st.waiting{background:var(--accent-soft);color:var(--accent)}
-.st.new{background:var(--warn-bg);color:var(--warn)}
-.st.shadow,.st.blocked{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.st.shadow{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
 .st.dark{background:var(--surface-2);color:var(--ink-3);border:1px dashed var(--line-strong)}
 .sec{margin-top:48px}
 .sec>h2{font-size:28px;letter-spacing:-.005em}
@@ -139,6 +170,7 @@ a.chip:hover{background:var(--surface-2);color:var(--ink)}
 .fig{margin:16px 0 0}
 .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:var(--shadow)}
 .scroll svg{display:block;width:100%;min-width:960px;height:auto;color:var(--ink-2)}
+@media(max-width:640px){.scroll::after{content:"scroll sideways to see the whole drawing";display:block;padding:6px 12px 8px;border-top:1px solid var(--line);font:500 12px/1.3 var(--mono);color:var(--ink-3)}}
 .dg-box{fill:var(--surface);stroke:var(--ink-3);stroke-width:1.4}
 .dg-box.plan{stroke-dasharray:6 4}
 .dg-box.miss{stroke:var(--bad);stroke-dasharray:2 4;stroke-width:1.8}
@@ -158,9 +190,10 @@ a.chip:hover{background:var(--surface-2);color:var(--ink)}
 figcaption{margin-top:12px;color:var(--ink-2);font-size:16px;max-width:92ch}
 
 /* the worked example, a modal */
-dialog.modal{border:1px solid var(--line-strong);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 32px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog.modal{border:1px solid var(--line-strong);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
 dialog.modal::backdrop{background:rgba(8,12,18,.55)}
 .mod-h{display:flex;align-items:flex-start;gap:14px;padding:18px 20px 10px}
+@media(max-width:640px){.mod-h{flex-wrap:wrap}}
 .mod-h h3{font-size:19px}
 .mod-h p{margin-top:6px;font-size:14.5px;color:var(--ink-2);line-height:1.45}
 .mod-x{flex:none;padding:7px 12px;font-size:14px}
@@ -309,9 +342,9 @@ def fit_diagram():
     for x0 in (278, 464, 610, 796):
         p.append(arrow([(x0, y + 42), (x0 + 16, y + 42)]))
     # served
-    p.append(box(128, 520, 300, 62, "Viewstation :8787, unchanged", ["already serves state files read-only", "over /api/raw/file; no new route"]))
-    p.append(box(460, 520, 290, 62, "state/jev/latest.json", ["the newest run: situation, answers,", "the two sums, what was held or missing"]))
-    p.append(box(780, 520, 162, 62, "ntfy push", ["later: when a", "sum flips"], "plan"))
+    p.append(box(128, 520, 300, 68, "Viewstation :8787, unchanged", ["already serves state files read-only", "over /api/raw/file; no new route"]))
+    p.append(box(460, 520, 290, 68, "state/jev/latest.json", ["the newest run: situation, answers,", "the two sums, what was held or missing"]))
+    p.append(box(780, 520, 162, 68, "ntfy push", ["later: when a", "sum flips"], "plan"))
     # phone
     p.append(box(128, 614, 300, 66, "/m/jev.html, the decision card", ["polls every 60 s; the two sums, each", "answer as odds, held and dark marked"]))
     p.append(box(460, 614, 290, 66, "/m glance", ["the Reader's notes, unchanged"]))
@@ -325,8 +358,8 @@ def fit_diagram():
     p.append(arrow([(203, 268), (203, 332)], "reads, never writes", 211, 286))
     p.append(arrow([(877, 416), (877, 502), (605, 502), (605, 520)], "latest.json, every run", 700, 496, anchor="middle"))
     p.append(arrow([(460, 551), (428, 551)], "reads", 444, 545, anchor="middle"))
-    p.append(arrow([(278, 582), (278, 614)], "GET every 60 s", 286, 604))
-    p.append(arrow([(400, 582), (400, 598), (605, 598), (605, 614)], "the notes", 613, 610))
+    p.append(arrow([(278, 588), (278, 614)], "GET every 60 s", 286, 606))
+    p.append(arrow([(400, 588), (400, 600), (605, 600), (605, 614)], "the notes", 613, 611))
     return ('<svg viewBox="0 0 960 692" role="img" aria-label="How the JEV decision feature sits beside Mirai station: Schwab and ThetaData feed the SNDK PRO scan and the bar sidecar, which write Mirai\'s state files; the JEV decision service is its own job that reads those files, builds the labels, asks JEV and writes state/jev/latest.json; the unchanged viewstation serves that file read-only and the phone\'s decision card polls it; the bars grade the sums every run; push comes later.">'
             + "".join(p) + "</svg>")
 
@@ -360,7 +393,7 @@ def state_diagram():
     p.append(box(128, 348, 630, 62, "Judge against a fixed cut, then write one sentence carrying the number and the cut",
                  ["0.15 sigma move rule, 0.5 sigma wall, top and bottom fifth, 2 vol points; the cut is in the words"]))
     p.append(arrow([(758, 379), (786, 379)]))
-    p.append(box(788, 348, 154, 62, "Cannot measure it?", ["leave the label out", "and record why"], "plan"))
+    p.append(box(788, 348, 154, 68, "Cannot measure it?", ["leave the label out", "and record why"]))
     p.append(arrow([(443, 410), (443, 444)], "labels, grouped by viewpoint", 453, 430))
     # state tiles
     tiles = []
@@ -381,7 +414,7 @@ def state_diagram():
 # ------------------------------------------------------------------ json, highlighted
 
 def highlight(text):
-    t = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    t = html.escape(text, quote=False)
     pat = re.compile(r'("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)')
     def rep(m):
         s = m.group(0)
@@ -459,51 +492,54 @@ def plural_q(n):
 
 # ------------------------------------------------------------------ the pipeline (steps 1 to 6) and its files
 
-HOUR_DOC = json.load(open(SKILL / "questions" / "sndk_hour.json", encoding="utf-8"))
+HOUR_DOC = load_json(SKILL / "questions" / "sndk_hour.json", "the sums' doc")
+(H1_MIN, H1_BAND), (H2_MIN, H2_BAND) = ((int(HOUR_DOC["horizons"][q]["minutes"]), float(HOUR_DOC["horizons"][q]["flat_band_sigma"])) for q in HOUR_QIDS)
 HOUR_LINE = None
 if (STATE / "jev" / "hour").exists():
     files = sorted((STATE / "jev" / "hour").glob("*.jsonl"))
     if files:
-        lines = [l for l in files[-1].read_text(encoding="utf-8").splitlines() if l.strip()]
-        HOUR_LINE = json.loads(lines[-1]) if lines else None
+        lines = _jsonl(files[-1])
+        HOUR_LINE = lines[-1] if lines else None
 
 
 def pipeline_diagram():
     p = [DEFS]
     steps = [
-        ("1  Labels", "code", ["61 sentences from the", "row, bars, side packet"], ""),
-        (f"2  {n_live} live questions", "JEV, in parallel", ["asked when due, else", "the last answer held"], "jev"),
-        ("3  Answers as words", "code", ["'...? rising, 100% sure'", "weighted, some left out"], ""),
-        ("4  Two sums", "JEV", ["price in 30 and 60 min:", "Up, Down, Flat, Unsure"], "jev"),
+        ("1  Labels", "code", [f"{STATUS_COUNT['built']} sentences from the", "row, bars, side packet"], ""),
+        ("2  The questions", "JEV, in parallel", [f"{n_live} live + {n_shadow} shadow", "asked when due, else", "the last answer held"], "jev"),
+        ("3  Answers as words", "code", ["'...? rising, 100% sure'", "under the cut left out"], ""),
+        ("4  Two sums", "JEV", [f"price in {H1_MIN} and {H2_MIN} min:", "Up, Down, Flat, Unsure"], "jev"),
         ("5  The card", "file, phone", ["state/jev/latest.json", "/m/jev.html polls it"], ""),
     ]
     x = 128
     for i, (title, who, subs, cls) in enumerate(steps):
-        p.append(box(x, 40, 150, 96, title, [who] + subs, cls))
+        p.append(box(x, 40, 150, 102, title, [who] + subs, cls))
         if i < len(steps) - 1:
-            p.append(arrow([(x + 150, 88), (x + 166, 88)]))
+            p.append(arrow([(x + 150, 91), (x + 166, 91)]))
         x += 166
-    p.append(box(294, 200, 340, 84, "6  Grading", ["code, every run; each mark graded as it passes", "price 30 and 60 min later vs the row's price,", "in sigma units; a hit or a miss, and how far off"]))
+    p.append(box(294, 200, 340, 84, "6  Grading", ["code, every run; each mark graded as it passes", f"price {H1_MIN} and {H2_MIN} min later vs the row's price,", "in sigma units; a hit or a miss, and how far off"]))
     p.append('<g class="dg-click" id="wbox" role="button" tabindex="0" aria-haspopup="dialog" aria-controls="dlg-tracking">'
-             + box(650, 200, 292, 100, "Weights", ["per question: how well its fresh", "picks tracked the outcome; 1.0 until", "40 graded reads of its own, cut at 0.5"])
+             + box(650, 200, 292, 100, "Weights", ["per question: how well its fresh", "picks tracked the outcome; 1.0 until", f"{NEED} graded reads of its own, cut at {CUT}"])
              + '<text class="dg-n" x="662" y="292">▸ click for the math, worked through</text></g>')
-    p.append(arrow([(866, 136), (866, 170), (452, 170), (452, 200)], "the picks, the row's price, sigma, what was used", 560, 190))
+    p.append(arrow([(866, 142), (866, 172), (452, 172), (452, 200)], "the picks, the row's price, sigma, what was used", 560, 192))
     p.append(arrow([(634, 242), (650, 242)]))
-    p.append(arrow([(796, 300), (796, 316), (535, 316), (535, 136)], "which answers speak on the next run", 545, 332, dashed=True))
-    p.append('<text class="dg-tier" x="12" y="92">RUN</text><text class="dg-tier" x="12" y="246">LOOP</text>')
-    return ('<svg viewBox="0 0 960 344" role="img" aria-label="The six-step pipeline: labels, the live questions, answers as sentences, one summing question, the card; grading feeds weights back into which answers are used. The Weights box opens a worked example of the tracking score.">'
+    p.append(arrow([(796, 300), (796, 316), (535, 316), (535, 142)], "which answers speak on the next run", 545, 332, dashed=True))
+    p.append('<text class="dg-tier" x="12" y="95">RUN</text><text class="dg-tier" x="12" y="246">LOOP</text>')
+    return (f'<svg viewBox="0 0 960 344" role="img" aria-label="The six-step pipeline: labels, the live questions, answers as sentences, two sums, {H1_MIN} and {H2_MIN} minutes ahead, the card; grading feeds weights back into which answers are used. The Weights box opens a worked example of the tracking score.">'
             + "".join(p) + "</svg>")
 
 
 def tracking_modal():
-    """The tracking score worked through on one made-up cell, opened from the Weights box."""
+    """The tracking score worked through on one made-up pairing, opened from the Weights box.
+
+    The arithmetic is fixed at 40 reads (12 of 40 = 0.30 and so on), a worked example, not the cut."""
     lines = [
         ("how often Active was followed by Up = 12 of 40 reads = 0.30",
          "On 12 of the 40 graded reads the question answered Active and price then went Up, so this pairing happened 30% of the time."),
         ("how often the question answered Active = 20 of 40 reads = 0.50",
          "The question answered Active on 20 of the 40 reads, whatever price did afterwards, so Active came up half the time."),
         ("how often price went Up = 14 of 40 reads = 0.35",
-         "Price was Up 30 minutes later on 14 of the 40 reads, whatever the question had said, so Up happened 35% of the time."),
+         f"Price was Up {H1_MIN} minutes later on 14 of the 40 reads, whatever the question had said, so Up happened 35% of the time."),
         ("how often Active and Up would meet by chance = 0.50 x 0.35 = 0.175",
          "If the answer had nothing to do with the outcome, Active and Up would still land on the same read about 17.5% of the time, purely by chance."),
         ("this pairing's credit = 0.30 x ln(0.30 / 0.175) = 0.30 x 0.539 = <span class=\"hi\">+0.162</span>",
@@ -527,14 +563,14 @@ def tracking_modal():
 """
     return (f'<dialog class="modal" id="dlg-tracking" aria-labelledby="dlg-tracking-h">'
             f'<div class="mod-h"><div><h3 id="dlg-tracking-h">One pairing, Active then Up, line by line</h3>'
-            f'<p>A made-up example over 40 graded reads of the question "Is the tape active right now, or quiet?". On each read its fresh answer (Active or Quiet) is set beside what price did 30 minutes later (Up, Flat or Down). Here: 12 reads answered Active and then went Up, Active was answered 20 times in all, and price went Up 14 times in all.</p></div>'
+            f'<p>A made-up example over 40 graded reads of a made-up two-answer question (Active or Quiet): "Is the tape, the flow of trades, active right now, or quiet?". On each read its fresh answer is set beside what price did {H1_MIN} minutes later (Up, Flat or Down). Here: 12 reads answered Active and then went Up, Active was answered 20 times in all, and price went Up 14 times in all.</p></div>'
             f'<button class="btn mod-x" type="button" aria-label="Close">Close</button></div>'
             f'<div class="mod-b">{body}</div></dialog><script>{js}</script>')
 
 
 def schema_section():
     hq = HOUR_DOC["questions"]
-    hour_json = {"id": "hour", "state": {"context": {"symbol": "SNDK", "horizon": "the next 30 minutes, and the next 60 minutes", "units": "..."},
+    hour_json = {"id": "hour", "state": {"context": {"symbol": "SNDK", "horizon": f"the next {H1_MIN} minutes, and the next {H2_MIN} minutes", "units": "..."},
                                         "answers": {"price_recent_direction": "Over the last 30 minutes, did price rise, fall, or go nowhere? rising, JEV was 100% sure",
                                                     "volume_now": "Is trading heavy, normal, or light for this time of day? normal, JEV was 98% sure",
                                                     "...": f"one sentence per answered live question, {n_live} today"}},
@@ -548,25 +584,26 @@ def schema_section():
         real = {k: v for k, v in real.items() if v is not None}
     files = [
         ("state/jev/{day}.jsonl", "every run", "row_ts, sigma, state (the labels), omitted, requests, skipped, held {qid: since}, cadence_from, answers (JEV's raw replies), hour"),
-        ("state/jev/latest.json", "the phone's card", "symbol, row_ts, freshness, situation (5 plain lines), questions[] with answer, held_from or skipped, hour {pick, probabilities, confidence, by, used, left_out, missing}"),
+        ("state/jev/latest.json", "the phone's card", f"symbol, row_ts, freshness, situation (5 plain lines), questions[] with answer, held_from or skipped, hour (its name; the {H1_MIN}-minute sum on top, next_60 under by)"),
         ("state/jev/hour/{day}.jsonl", "what step 6 grades", "row_ts, spot, sigma, by {next_30, next_60: pick, probabilities}, used {qid: pick}, fresh {qid: pick, the ones asked afresh}, left_out {qid: why}, missing [qid: no label and nothing held], sentences, request"),
         ("state/jev/grades.jsonl", "one line per graded mark", "row_ts, horizons (which sums this line grades), pending, skipped, then per sum: realized_sigma, band, pick, hit, brier; fresh; or graded false with the reason, for a read that can never be graded"),
-        ("state/jev/cadence.json", "what the packer reads", "recounted_from (the day), questions {qid: {minutes 30/60/120, p25_hold_min, changes, reads, why}}"),
+        ("state/jev/cadence.json", "what the cadence plan reads", f"recounted_from (the day), questions {{qid: {{minutes {'/'.join(map(str, STEPS))}, p25_hold_min, changes, reads, why}}}}"),
         ("state/jev/last_asked.json", "the held answers", "qid: {row_ts of the last fresh answer, answer, moved}; a not-due question is served from here, tagged held from HH:MM"),
         ("state/jev/weights.json", "what step 3 reads", "graded_runs, sums {next_30, next_60: n, hit_rate, mean_brier}, questions {qid: {weight, mi (the tracking score, see below), n, in_step_3, why}}"),
+        ("state/jev/weights_log.jsonl", "the weight history", "one line per grading run that graded something: the tally and every weight that moved"),
     ]
     rows = "".join(f'<div class="rv"><code class="qid">{E(a)}</code><span class="opt">{E(b)}</span><span class="why">{E(c)}</span></div>' for a, b, c in files)
-    grade = """<div class="rvl">
-<div class="rv"><code class="qid">realized</code><span class="opt">number</span><span class="why">(price 30 minutes after the read minus price at the read) divided by sigma, the day's expected move; the 60-minute sum is graded the same way at 60</span></div>
-<div class="rv"><code class="qid">band</code><span class="opt">up / flat / down</span><span class="why">up above +0.12, down below -0.12, flat between at 30 minutes (0.17 at 60); the same bands the questions' criteria carry, measured on this name</span></div>
-<div class="rv"><code class="qid">hit</code><span class="opt">yes / no</span><span class="why">JEV's pick equals the band</span></div>
-<div class="rv"><code class="qid">brier</code><span class="opt">0 best, 2 worst</span><span class="why">how far the odds sat from what happened: over up, flat and down, add up (odds given minus 1 or 0 for what happened) squared; compared with always saying flat</span></div>
-<div class="rv"><code class="qid">weight per question</code><span class="opt">0 to 1</span><span class="why">a tracking score: how much knowing the question's fresh pick tells you about the band (mutual information, in the code), divided by the best score among questions with 40 fresh pairs of their own; a question stays 1.0 until it has 40 pairs; under 0.5 its sentence is left out of step 3 but it is still asked, so it can climb back; a held answer never pairs</span></div>
-<div class="rv"><code class="qid">when</code><span class="opt">at each mark</span><span class="why">the 30-minute sum is graded on the first run after its 30 minutes have a bar, the 60-minute sum on the first run after its 60; the primary never waits for the slower one, and a run after both marks writes one line for both</span></div>
-<div class="rv"><code class="qid">not graded</code><span class="opt">skipped</span><span class="why">a horizon ending more than 2 minutes past the close (one inside those 2 minutes is graded at the closing bar), or a day with no bars; a read none of whose horizons can be graded is closed out, never retried; a mark is graded once however many times the service ran on it</span></div>
+    grade = f"""<div class="rvl">
+<div class="rv"><code class="qid">realized</code><span class="opt">number</span><span class="why">(price {H1_MIN} minutes after the read minus price at the read) divided by sigma, the day's expected move; the {H2_MIN}-minute sum is graded the same way at {H2_MIN}</span></div>
+<div class="rv"><code class="qid">band</code><span class="opt">up / flat / down</span><span class="why">up above +{H1_BAND}, down below -{H1_BAND}, flat between at {H1_MIN} minutes ({H2_BAND} at {H2_MIN}); the same bands the questions' criteria carry, measured on this name</span></div>
+<div class="rv"><code class="qid">hit</code><span class="opt">yes / no</span><span class="why">JEV's pick equals the band; compared with always saying flat</span></div>
+<div class="rv"><code class="qid">brier</code><span class="opt">0 best, 2 worst</span><span class="why">how far the odds sat from what happened: over up, flat and down, add up (odds given minus 1 or 0 for what happened) squared</span></div>
+<div class="rv"><code class="qid">weight per question</code><span class="opt">0 to 1</span><span class="why">a tracking score: how much knowing the question's fresh pick tells you about the band (mutual information, in the code), divided by the best score among questions with {NEED} fresh pairs of their own; a question stays 1.0 until it has {NEED} pairs; under {CUT} its sentence is left out of step 3 but it is still asked, so it can climb back; a held answer never pairs</span></div>
+<div class="rv"><code class="qid">when</code><span class="opt">at each mark</span><span class="why">the {H1_MIN}-minute sum is graded on the first run after its {H1_MIN} minutes have a bar (one at most {BAR_GAP_MAX_MIN} minutes before the mark), the {H2_MIN}-minute sum on the first run after its {H2_MIN}; the primary never waits for the slower one, and a run after both marks writes one line for both</span></div>
+<div class="rv"><code class="qid">not graded</code><span class="opt">skipped</span><span class="why">a horizon ending more than {CLOSE_GRACE_MIN} minutes past the close (one inside those {CLOSE_GRACE_MIN} minutes is graded at the closing bar), or a day with no bars; a read none of whose horizons can be graded is closed out, never retried; a mark is graded once however many times the service ran on it</span></div>
 <div class="rv"><code class="qid">missing</code><span class="opt">count on the card</span><span class="why">live questions that had no label this read and nothing held to fall back on; they are listed in the sum record and counted on the card, so a thin read is visible</span></div>
-<div class="rv"><code class="qid">cadence</code><span class="opt">30 / 60 / 120 min</span><span class="why">recounted once a day from the previous day's runs: take the hold time that a quarter of the question's holds fell under, halve it and snap to 30, 60 or 120; never changed all day gives 60 (three hours of runs) or 120 (five hours, ten reads); under six reads keeps the last value. A change is the whole answer moving, not the picked word flipping: the odds of two consecutive answers are compared option by option and a total shift of 0.3 or more counts (heavy 0.90 to heavy 0.55 is a change, 0.90 to 0.88 is not)</span></div>
-<div class="rv"><code class="qid">held</code><span class="opt">reused answer</span><span class="why">a question not yet due, or whose label is missing this read, keeps its last fresh answer for up to twice its cadence (never under an hour), tagged with the time it was given, on the card and in the sums' sentences. A question whose last two fresh answers moved 0.3 or more is in motion and is asked again on the next read whatever its cadence</span></div>
+<div class="rv"><code class="qid">cadence</code><span class="opt">{' / '.join(map(str, STEPS))} min</span><span class="why">recounted once a day from the previous day's runs: take the hold time that a quarter of the question's holds fell under, halve it and snap to {STEPS[0]}, {STEPS[1]} or {STEPS[2]}; never changed all day gives {STEPS[1]} (three hours of runs) or {STEPS[2]} (five hours, ten reads); under {MIN_READS} reads keeps the last value. A change is the whole answer moving, not the picked word flipping: the odds of two consecutive answers are compared option by option and a total shift of {CHANGE_CUT} or more counts (heavy 0.90 to heavy 0.55 is a change, 0.90 to 0.88 is not)</span></div>
+<div class="rv"><code class="qid">held</code><span class="opt">reused answer</span><span class="why">a question not yet due, or whose label is missing this read, keeps its last fresh answer for up to twice its cadence (never under an hour), tagged with the time it was given, on the card and in the sums' sentences. A question whose last two fresh answers moved {CHANGE_CUT} or more is in motion and is asked again on the next read whatever its cadence</span></div>
 </div>"""
     raw = (f'<details class="sg"><summary><span class="sgid">The raw records, folded</span><span class="sgc">the step 4 request as sent, and the newest sum record</span></summary>'
            f'<div class="sgcode"><h4>The one request of step 4: two sums on the same sentences</h4>{ln_html(hour_json)}</div>'
@@ -577,38 +614,31 @@ def schema_section():
 
 # ------------------------------------------------------------------ the weight log, drawn from state/jev at build time
 
-def _jsonl(path):
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line:
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return out
-
-
 WLOG = _jsonl(STATE / "jev" / "weights_log.jsonl")
-WEIGHTS = json.load(open(STATE / "jev" / "weights.json", encoding="utf-8")) if (STATE / "jev" / "weights.json").exists() else {}
-CADENCE = json.load(open(STATE / "jev" / "cadence.json", encoding="utf-8")) if (STATE / "jev" / "cadence.json").exists() else {}
-DOC_CADENCE = {"every scan": 30, "every 10 minutes": 30, "every 20 minutes": 30, "every 30 minutes": 30, "hourly": 60}
+WEIGHTS_PATH = STATE / "jev" / "weights.json"
+WEIGHTS = load_json(WEIGHTS_PATH, "weights.json", required=False)
+CADENCE = load_json(STATE / "jev" / "cadence.json", "cadence.json", required=False)
+NEED = WEIGHTS.get("min_graded", MIN_GRADED)
+CUT = WEIGHTS.get("min_weight", MIN_WEIGHT)
 
 
 def cadence_min(qid, q):
     m = ((CADENCE.get("questions") or {}).get(qid) or {}).get("minutes")
-    return int(m) if isinstance(m, (int, float)) else DOC_CADENCE.get(str(q.get("cadence", "")).lower(), 30)
+    return int(m) if isinstance(m, (int, float)) else parse_cadence(q.get("cadence"))
 
-BUILT_AT = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+def stamp(dt: datetime) -> str:
+    return dt.astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+
+BUILT_AT = stamp(datetime.now())
+WEIGHTS_AT = stamp(datetime.fromtimestamp(WEIGHTS_PATH.stat().st_mtime)) if WEIGHTS_PATH.is_file() else None
 
 
 def weight_log_section():
-    """Just the weight per question, grouped by viewpoint. 1.0 until graded; under 0.5 leaves the sum."""
+    """Just the weight per question, grouped by viewpoint. 1.0 until graded; under the cut leaves the sum."""
     wq = WEIGHTS.get("questions", {})
     graded = WEIGHTS.get("graded_runs", 0)
-    need = WEIGHTS.get("min_graded", 40)
     by_vp: dict[str, list] = {}
     for gid, qid, q in QS:
         if q_status(q) != "live":
@@ -625,27 +655,28 @@ def weight_log_section():
     top = sorted(moved.items(), key=lambda kv: -kv[1])[:5]
     ask_of = {qid: (q.get("ask") or q["instructions"]) for _, qid, q in QS}
     strip = ("".join(f'<div class="tl"><span class="k">{E(qid)}</span><b>{v:.2f}</b><span class="k" style="text-transform:none;letter-spacing:0">{E(ask_of.get(qid, ""))}</span></div>' for qid, v in top)
-             if top else f'<div class="tl"><span class="k">most adjusted</span><b>none yet</b><span class="k" style="text-transform:none;letter-spacing:0">no weight has moved: {graded} graded reads so far, {need} needed per question</span></div>')
+             if top else f'<div class="tl"><span class="k">most adjusted</span><b>none yet</b><span class="k" style="text-transform:none;letter-spacing:0">no weight has moved: {graded} graded reads so far, {NEED} needed per question</span></div>')
     cad_note = (" (from " + E(CADENCE["recounted_from"]) + ")") if CADENCE.get("recounted_from") else ", not yet recounted so every question is on its starting value"
+    w_note = (", last written " + E(WEIGHTS_AT)) if WEIGHTS_AT else ", not written yet"
     out = [f'<h3 class="rvh" style="margin-top:8px">Most adjusted questions, total movement so far</h3><div class="tally">{strip}</div>',
-           f'<p class="sub">Every live question starts at 1.0. Once a question has {need} fresh graded reads its weight becomes how well its own answers tracked the next 30 minutes, 1.0 for the best; under 0.5 the question stops feeding the sums but is still asked, so it can climb back. Graded reads so far: <b>{graded}</b>. The tracking score is how much the question\'s fresh picks so far tell you about what price did next (the "mi" field), the number the weight is built from once the {need} are in (<a href="#pipeline" id="wmath">see the math worked through</a>); 0.000 means the question has given the same answer on every graded read. Cadence is how often the question is asked afresh, recounted each day from the day before{cad_note}.</p>']
+           f'<p class="sub">Every live question starts at 1.0. Once a question has {NEED} fresh graded reads its weight becomes how well its own answers tracked the next {H1_MIN} minutes, 1.0 for the best; under {CUT} the question stops feeding the sums but is still asked, so it can climb back. Graded reads so far: <b>{graded}</b>. The tracking score is how much the question\'s fresh picks so far tell you about what price did next (the "mi" field), the number the weight is built from once the {NEED} are in (<a href="#pipeline" id="wmath">see the math worked through</a>); 0.000 usually means the question gave the same answer on every graded read, or its answers so far say nothing about the band. Cadence is how often the question is asked afresh, recounted each day from the day before{cad_note}.</p>']
     for vp in [v for v in VP_ORDER if v in by_vp]:
         rows = []
         for qid, q in by_vp[vp]:
             w = wq.get(qid, {})
             weight = float(w.get("weight", 1.0))
             n = w.get("n", 0)
-            cls = "out" if weight < 0.5 else ""
+            cls = "out" if weight < CUT else ""
             score = float(w.get("mi", 0.0) or 0.0)
             rows.append(f'<tr class="{cls}"><td class="ask">{E(q.get("ask") or q["instructions"])}<code>{E(qid)}</code></td>'
                         f'<td class="w"><div class="wbar"><i style="width:{weight * 100:.0f}%"></i></div></td>'
                         f'<td class="num" data-k="weight">{weight:.2f}</td><td class="num" data-k="tracking">{score:.3f}</td>'
                         f'<td class="num" data-k="moved">{moved.get(qid, 0.0):.2f} <small>({moves.get(qid, 0)})</small></td><td class="num" data-k="graded">{n}</td>'
-                        f'<td class="num" data-k="cadence">{"every read" if cadence_min(qid, q) == 30 else str(cadence_min(qid, q)) + " min"}</td></tr>')
+                        f'<td class="num" data-k="cadence">{"every read" if cadence_min(qid, q) == STEPS[0] else str(cadence_min(qid, q)) + " min"}</td></tr>')
         out.append(f'<h3 class="rvh">{E(VP_TITLE.get(vp, vp))}</h3>'
                    f'<div class="tscroll"><table class="db"><thead><tr><th>question</th><th class="w">weight</th><th class="num">value</th><th class="num">tracking score</th><th class="num">moved (times)</th><th class="num">graded reads</th><th class="num">cadence</th></tr></thead>'
                    f'<tbody>{"".join(rows)}</tbody></table></div>')
-    out.append(f'<p class="sub" style="margin-top:12px;font-size:14px">A snapshot of state/jev/weights.json on the station, taken when this page was built, {E(BUILT_AT)}. Every change is also kept in weights_log.jsonl.</p>')
+    out.append(f'<p class="sub" style="margin-top:12px;font-size:14px">A snapshot of state/jev/weights.json on the station{w_note}, taken when this page was built, {E(BUILT_AT)}. Every change is also kept in weights_log.jsonl.</p>')
     return "".join(out)
 
 
@@ -666,19 +697,19 @@ page = f"""<title>JEV decision service</title>
   <section class="sec" id="fit">
     <h2>How it fits together</h2>
     <figure class="fig"><div class="scroll">{fit_diagram()}</div>
-    <figcaption>Mirai station is unchanged: the scan, the bar sidecar and the Reader keep writing their files. The JEV decision service is its own launchd job, run at two minutes past each hour and half hour; it only reads those files and writes into state/jev/. The viewstation already serves any state file read-only, so the phone's decision card needs no new route. The dashed box comes later; the red dotted box is an input Mirai does not have. IV is implied volatility, the swing the options are pricing in.</figcaption></figure>
+    <figcaption>Mirai station is unchanged: the scan, the bar sidecar and the Reader keep writing their files. The JEV decision service is its own launchd job, run at two minutes past each hour and half hour; it only reads those files and writes into state/jev/. The viewstation already serves any state file read-only, so the phone's decision card needs no new route. The dashed box comes later; the red dotted box is an input Mirai does not have. IV is implied volatility, the swing the options are pricing in; sigma is the day's expected move, the unit the labels are written in; a wall is a strike where dealers' hedging piles up.</figcaption></figure>
   </section>
 
   <section class="sec" id="builder">
     <h2>The state builder</h2>
     <figure class="fig"><div class="scroll">{state_diagram()}</div>
-    <figcaption>Every label follows the same path: pin the moment, take the raw numbers, put them on a scale, judge against a cut, write one sentence with both the number and the cut in it. Sigma is the day's expected move, so every label is in units of that move; vwap is the day's volume-weighted average price. A label that cannot be measured is left out rather than guessed, and the packer then skips any question that needed it.</figcaption></figure>
+    <figcaption>Every label follows the same path: pin the moment, take the raw numbers, put them on a scale, judge against a cut, write one sentence with both the number and the cut in it. Sigma is the day's expected move, so the distance labels are in units of that move; vwap is the day's volume-weighted average price; vol points are points of implied volatility. A label that cannot be measured is left out rather than guessed, and the packer then skips any question that needed it.</figcaption></figure>
   </section>
 
   <section class="sec" id="pipeline">
     <h2>The pipeline, its own six steps</h2>
     <figure class="fig"><div class="scroll">{pipeline_diagram()}</div>
-    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, steps 2 and 4 are JEV, step 5 is a file the phone polls. Step 6 runs every tick and grades each sum the moment its own mark has a bar: the 30-minute sum at 30 minutes, the 60-minute sum at 60, neither waiting for the other. A question's weight moves only once it has 40 fresh graded reads of its own. Click the Weights box to see the tracking score worked through, line by line, on a made-up cell. The sums are forecasts: graded, never a call.</figcaption></figure>
+    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, steps 2 and 4 are JEV, step 5 is a file the phone polls. Step 6 runs every run and grades each sum the moment its own mark has a bar: the {H1_MIN}-minute sum at {H1_MIN} minutes, the {H2_MIN}-minute sum at {H2_MIN}, neither waiting for the other. A question's weight moves only once it has {NEED} fresh graded reads of its own. Click the Weights box to see the tracking score worked through, line by line, on a made-up pairing. The sums are forecasts: graded, never a call.</figcaption></figure>
     {tracking_modal()}
     {schema_section()}
   </section>
@@ -693,11 +724,11 @@ page = f"""<title>JEV decision service</title>
     {mapping_section()}
   </section>
 
-  <p class="foot">Built from spec/labels.json and questions/sndk_pro.json in skills/sndk-jev, and the state files under state/jev/, {E(BUILT_AT)}. Every label sentence is from a real stored row (the 21 Sept close, or 18 Sept 12:45 where the newer book lacked it) except the news ones, which are example wording because no feed exists.</p>
+  <p class="foot">Built from spec/labels.json and questions/sndk_pro.json in skills/sndk-jev, and the state files under state/jev/, {E(BUILT_AT)}. Every label sentence is from a real stored row except the news ones and the two momentum labels on a quiet read, which are example wording.</p>
 </div>
 """
-open(OUT, "w", encoding="utf-8").write(page)
+OUT.write_text(page, encoding="utf-8")
 skeleton = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
             '<style>:root{color-scheme:light;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif;background:#fafafa}img{max-width:100%}[hidden]{display:none!important}</style></head><body>')
-open(OUT.replace(".html", "-preview.html"), "w", encoding="utf-8").write(skeleton + page + "</body></html>")
+OUT.with_name(OUT.stem + "-preview.html").write_text(skeleton + page + "</body></html>", encoding="utf-8")
 print(f"built {OUT} {len(page.encode('utf-8'))} bytes; {N_Q} questions in {N_G} groups, {N_Q_SENT} sent in {N_G_SENT} requests; labels {dict(STATUS_COUNT)}")

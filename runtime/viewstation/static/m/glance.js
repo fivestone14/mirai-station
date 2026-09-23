@@ -482,7 +482,10 @@ function modelRead(rows, nowMs){
 }
 
 /* The JEV card (state/jev/latest.json): how many questions it answered and how
-   old its row is. Nothing about what was answered; that is the card's own page. */
+   old its row is. Nothing about what was answered; that is the card's own page.
+   The words are the card's own (jev.html), so the two screens say one thing. */
+const JEV_GONE_MIN = 60, JEV_CLOSE_HHMM = '15:55';
+
 function jevRead(card, nowMs){
   if(!card || !Array.isArray(card.questions)) return null;
   const t=Date.parse(card.row_ts);
@@ -492,9 +495,12 @@ function jevRead(card, nowMs){
   const total=card.questions.length;
   const answered=card.questions.filter(q=>q&&q.answer).length;
   const at=String(card.row_ts||'').slice(11,16);
-  const line = card.sent
+  let line = card.sent
     ? answered+' of '+total+' questions answered on the '+at+' row. Each one is on the JEV tab.'
-    : 'The JEV job ran on the '+at+' row but sent nothing: no key on the station.';
+    : 'The JEV job ran on the '+at+' row, not sent: no key on the station.';
+  // the row's clock is market time: an hour after a row past the close there is nothing
+  // newer to wait for, an hour after any earlier row the card is stale
+  if(age>JEV_GONE_MIN) line += at>=JEV_CLOSE_HHMM ? ' After the close, last row '+at+'.' : ' Stale: over an hour old.';
   return {line, answered, total, ageMin:age, at:new Date(t),
           tier: age>STALE_BOOK_MIN_UI ? 'aged' : 'fresh'};
 }

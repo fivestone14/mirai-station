@@ -50,7 +50,9 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .hd-t{min-width:0;flex:1 1 auto}
 .hd-1{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint)}
 .hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.beta{font:700 9px/1 var(--sans);letter-spacing:.12em;padding:3px 6px;border-radius:6px;border:1px solid currentColor;font-style:normal}
+/* an error is read whole, never cut to one line */
+.hd-2.err{white-space:normal;overflow:visible;text-overflow:clip}
+.beta{font:700 9px/1 var(--sans);letter-spacing:.12em;padding:3px 6px;border-radius:6px;border:1px solid currentColor;font-style:normal;text-transform:uppercase}
 
 /* the card and its label row, the glance's own */
 .card{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
@@ -59,23 +61,26 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .lab .r{margin-left:auto;color:var(--i-mute);white-space:nowrap}
 /* aging is a shape, not a hue: the outlined chip */
 .lab .r.old{padding:3px 7px;border:1px solid var(--i-mute);border-radius:6px}
+#state{display:flex;flex-wrap:wrap;gap:6px}
 .state{display:inline-block;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);
        letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute);background:var(--s)}
 .big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
 .sit{margin:10px 0 0;padding:0;list-style:none}
 .sit li{font:400 15px/1.5 var(--sans);color:var(--i-body);padding:5px 0 5px 10px;border-left:2px solid var(--s2)}
+/* one chevron on every fold, the viewpoints, the not-asked and the dark alike */
+details>summary{list-style:none;cursor:default;padding:6px 4px;display:flex;align-items:center;gap:8px}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid var(--i-mute);border-bottom:1.5px solid var(--i-mute);transform:rotate(45deg);margin:0 4px 3px 2px;flex:none}
+details:not([open])>summary::before{transform:rotate(-45deg);margin-bottom:0}
 details.vp{margin-top:6px}
-details.vp>summary{list-style:none;cursor:default;padding:6px 4px;display:flex;align-items:center;gap:8px}
-details.vp>summary::-webkit-details-marker{display:none}
-details.vp>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid var(--i-mute);border-bottom:1.5px solid var(--i-mute);transform:rotate(45deg);margin:0 4px 3px 2px;flex:none}
-details.vp:not([open])>summary::before{transform:rotate(-45deg);margin-bottom:0}
+details.vp>summary{min-height:44px}
 details.vp>.q{margin-top:8px}
 .vp .lab small{font:500 11px/1 var(--sans);letter-spacing:0;text-transform:none;color:var(--i-faint)}
 .q{background:var(--s);border-radius:18px;padding:14px 16px;box-shadow:var(--sh1)}
 .q.shadow{border:1px dashed var(--rule-soft);box-shadow:none}
 .ask{font:700 15px/1.35 var(--sans);color:var(--i)}
 .tag{margin-top:6px;font:400 12px/1.35 var(--sans);color:var(--i-mute)}
-.bar{display:grid;grid-template-columns:minmax(0,96px) minmax(0,1fr) 40px;gap:8px;align-items:center;margin-top:7px;
+.bar{display:grid;grid-template-columns:minmax(0,120px) minmax(0,1fr) 40px;gap:8px;align-items:center;margin-top:7px;
      font:400 13px/1.3 var(--sans);color:var(--i-body)}
 .bar .opt{overflow-wrap:anywhere}
 .bar .track{height:8px;border-radius:4px;background:var(--s2)}
@@ -90,7 +95,7 @@ details.vp>.q{margin-top:8px}
 .bar.long b{grid-column:2}
 .skip{margin-top:6px;font:400 12.5px/1.4 var(--sans);color:var(--i-mute)}
 details{margin-top:4px}
-summary{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint);cursor:default;padding:6px 4px}
+summary{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 details .q{margin-top:8px}
 .foot{padding:4px 4px 0;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
 
@@ -159,6 +164,7 @@ details .q{margin-top:8px}
   'use strict';
   var URL_ = '/api/raw/file?root=state&path=jev/latest.json';
   var STALE_MIN = 6, GONE_MIN = 60;            // the glance's fallbacks; the gates route is locked to one user
+  var CLOSE_HHMM = '15:55';                    // a row this late in market time is the day's last, not a stale one
   var ORDER = ['strikes','volume_price','history','indicators','space_time','framing','news','outcome'];
   var NAME = {strikes:'strikes', volume_price:'volume and price', history:'yesterday', indicators:'indicators',
               space_time:'space and time', framing:'framing', news:'news', outcome:'outcome, shadow only'};
@@ -182,11 +188,24 @@ details .q{margin-top:8px}
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
   function mins(iso){ var t = Date.parse(iso); return isNaN(t) ? null : Math.max(0, Math.round((Date.now() - t) / 60000)); }
   function clock(iso){ var m = /T(\d\d:\d\d)/.exec(iso || ''); return m ? m[1] : '?'; }
+  function sentence(s){ s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
   function ageWord(m){
     if(m == null) return 'age unknown';
     if(m < 1) return 'just now';
     if(m >= 60) return Math.floor(m / 60) + ' hr ' + (m % 60) + ' min ago';
     return m + ' min ago';
+  }
+  // the row's own clock is market time (the stamp carries its offset), so an hour after a row past
+  // CLOSE_HHMM there is nothing newer to wait for; an hour after any earlier row the card is stale
+  function subLine(c, m){
+    var at = clock(c.row_ts), n = c.labels + ' labels';
+    if(m != null && m > GONE_MIN && at >= CLOSE_HHMM) return 'after the close, last row ' + at + ', ' + n;
+    return 'row ' + at + ', ' + ageWord(m) + (m != null && m > STALE_MIN ? ', stale' : '') + ', ' + n;
+  }
+  // "missing momentum.closes" names a label; the card carries the builder's own sentence for it
+  function skipWhy(q, omitted){
+    var m = /^missing (\S+)$/.exec(q.skipped || '');
+    return (m && omitted[m[1]]) || q.skipped || 'not asked';
   }
 
   function bar(name, p, pick){
@@ -198,25 +217,26 @@ details .q{margin-top:8px}
     return b;
   }
 
-  function question(q){
+  function question(q, omitted){
     var box = el('div', 'q' + (q.status === 'shadow' ? ' shadow' : ''));
     box.appendChild(el('div', 'ask', q.ask));
     if(q.status === 'shadow') box.appendChild(el('div', 'tag', 'shadow: graded by the bars 30 minutes later, never a call'));
-    var a = q.answer;
+    var a = q.answer, held = q.held_from ? 'held since ' + q.held_from + ', not re-asked' : '';
+    // a Choice or a Score answer always carries its probabilities (a Score's are keyed by the level's words)
     if(a && a.probabilities){
       // the question's own order first (a fixed place per option), then anything JEV added
       var keys = (q.options || []).filter(function(k){ return k in a.probabilities; });
       Object.keys(a.probabilities).forEach(function(k){ if(keys.indexOf(k) < 0) keys.push(k); });
       keys.forEach(function(k){ box.appendChild(bar(cap(k), a.probabilities[k], k === a.pick)); });
-      if(a.confidence != null) box.appendChild(el('div', 'tag', 'confidence ' + Math.round(a.confidence * 100) + '%' + (q.held_from ? ' \u00B7 held from ' + q.held_from : '')));
-      else if(q.held_from) box.appendChild(el('div', 'tag', 'held from ' + q.held_from));
+      if(a.confidence != null) box.appendChild(el('div', 'tag', 'confidence ' + Math.round(a.confidence * 100) + '%' + (held ? ' \u00B7 ' + held : '')));
+      else if(held) box.appendChild(el('div', 'tag', held));
     } else if(a && a.noul != null){
+      // one probability per option here too: yes at noul, no at the rest, the picked one bold
       box.appendChild(bar('Yes', a.noul, a.pick === 'true'));
-      if(q.held_from) box.appendChild(el('div', 'tag', 'held from ' + q.held_from));
-    } else if(a && a.score != null){
-      box.appendChild(el('div', 'tag', 'score ' + a.score));
+      box.appendChild(bar('No', 1 - a.noul, a.pick === 'false'));
+      if(held) box.appendChild(el('div', 'tag', held));
     } else {
-      box.appendChild(el('div', 'skip', q.skipped || 'not asked'));
+      box.appendChild(el('div', 'skip', skipWhy(q, omitted)));
     }
     return box;
   }
@@ -231,14 +251,17 @@ details .q{margin-top:8px}
     document.getElementById('h1').textContent = (c.symbol || 'SNDK') + ' \u00B7 JEV';
     var m = mins(c.row_ts);
     var old = m != null && m > STALE_MIN;
-    document.getElementById('sub').textContent = 'row ' + clock(c.row_ts) + ', ' + ageWord(m) + (m != null && m > GONE_MIN ? ', withdrawn' : '') + ', ' + c.labels + ' labels';
+    var sub = document.getElementById('sub'); sub.textContent = subLine(c, m); sub.classList.remove('err');
     var st = document.getElementById('state'); st.textContent = '';
     var answered = c.questions.filter(function(q){ return q.answer; }).length;
     if(!ok) st.appendChild(el('span', 'state', 'fetch failed, showing the last card'));
-    else if(!c.sent) st.appendChild(el('span', 'state', 'not sent to JEV: no key on the station'));
-    else st.appendChild(el('span', 'state', answered + ' of ' + c.questions.length + ' answered' + (c.held ? ', ' + c.fresh + ' fresh this read' : '')));
+    else if(!c.sent) st.appendChild(el('span', 'state', 'not sent: no key on the station'));
+    else st.appendChild(el('span', 'state', answered + ' of ' + c.questions.length + ' answered' + (c.held ? ', ' + c.fresh + ' fresh on the ' + clock(c.row_ts) + ' row' : '')));
+    // the service says in its own words when it built on a row nothing newer had replaced
+    if(c.freshness && c.freshness.stale && c.freshness.note) st.appendChild(el('span', 'state', c.freshness.note));
     var main = document.getElementById('main'); main.textContent = '';
     var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
+    var omitted = c.omitted || {};
 
     var h = c.hour;
     if(h && h.probabilities){
@@ -249,7 +272,7 @@ details .q{margin-top:8px}
       // a fixed order, up, down, flat, unsure, so the eye always finds the same row in the same place
       ['up', 'down', 'flat', 'unsure'].concat(Object.keys(hp).filter(function(k){ return ['up', 'down', 'flat', 'unsure'].indexOf(k) < 0; }))
         .forEach(function(k){ if(k in hp) hc.appendChild(bar(cap(k), hp[k], k === top)); });
-      var note = 'shadow: graded by the bars 30 minutes later, never a call';
+      var note = 'a forecast, graded by the bars 30 minutes on, never a call';
       if(h.confidence != null) note = 'confidence ' + Math.round(h.confidence * 100) + '% \u00B7 ' + note;
       hc.appendChild(el('div', 'tag', note));
       hc.appendChild(el('div', 'tag', 'from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '')));
@@ -260,7 +283,7 @@ details .q{margin-top:8px}
         var c60 = el('div', 'card dashed'); c60.appendChild(labRow('next 60 minutes, the same answers', ageText, old));
         var p60 = h60.probabilities, t60 = h60.pick || Object.keys(p60).sort(function(x, y){ return p60[y] - p60[x]; })[0];
         ['up', 'down', 'flat', 'unsure'].forEach(function(k){ if(k in p60) c60.appendChild(bar(cap(k), p60[k], k === t60)); });
-        c60.appendChild(el('div', 'tag', (h60.confidence != null ? 'confidence ' + Math.round(h60.confidence * 100) + '% \u00B7 ' : '') + 'graded by the bars 60 minutes later, for the comparison only'));
+        c60.appendChild(el('div', 'tag', (h60.confidence != null ? 'confidence ' + Math.round(h60.confidence * 100) + '% \u00B7 ' : '') + 'graded by the bars 60 minutes later, for the comparison only, never a call'));
         main.appendChild(c60);
       }
     } else if(h && h.error){
@@ -269,7 +292,7 @@ details .q{margin-top:8px}
     }
 
     var card = el('div', 'card'); card.appendChild(labRow('situation', ageText, old));
-    var ul = el('ul', 'sit'); (c.situation || []).forEach(function(s){ ul.appendChild(el('li', null, s)); }); card.appendChild(ul); main.appendChild(card);
+    var ul = el('ul', 'sit'); (c.situation || []).forEach(function(s){ ul.appendChild(el('li', null, sentence(s))); }); card.appendChild(ul); main.appendChild(card);
 
     var by = {}; var skipped = [];
     c.questions.forEach(function(q){ if(q.answer) (by[q.viewpoint || 'outcome'] = by[q.viewpoint || 'outcome'] || []).push(q); else skipped.push(q); });
@@ -282,13 +305,13 @@ details .q{margin-top:8px}
       // one fold per viewpoint: tap the heading to collapse or expand; remembered on this phone only
       var fold = el('details', 'vp'); fold.open = folded[vp] !== true;
       var sm = el('summary'); var l = el('div', 'lab'); l.appendChild(el('span', null, NAME[vp] || vp)); l.appendChild(el('small', null, by[vp].length + '')); sm.appendChild(l); fold.appendChild(sm);
-      by[vp].forEach(function(q){ fold.appendChild(question(q)); });
+      by[vp].forEach(function(q){ fold.appendChild(question(q, omitted)); });
       fold.addEventListener('toggle', function(){ folded[vp] = !fold.open; remember(); });
       main.appendChild(fold);
     });
     if(skipped.length){
       var d = el('details'); d.appendChild(el('summary', null, 'not asked this run: ' + skipped.length));
-      skipped.forEach(function(q){ d.appendChild(question(q)); }); main.appendChild(d);
+      skipped.forEach(function(q){ d.appendChild(question(q, omitted)); }); main.appendChild(d);
     }
     if(c.dark && c.dark.length){
       // dark: never asked, never counted; said once so nobody wonders where the news questions went
@@ -299,7 +322,7 @@ details .q{margin-top:8px}
   }
 
   // A page that fails must say so in words where the header sits, never stay on "loading".
-  function say(msg){ document.getElementById('sub').textContent = msg; clearLoading(); }
+  function say(msg){ var s = document.getElementById('sub'); s.textContent = msg; s.classList.add('err'); clearLoading(); }
   window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
   function draw(c, ok){ try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
   function poll(){

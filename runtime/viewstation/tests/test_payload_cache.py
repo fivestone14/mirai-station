@@ -55,6 +55,20 @@ def test_the_refresher_rebuilds_when_stale(monkeypatch, tmp_path):
     assert len(calls) == 2 and not snapshot._payload_stale()
 
 
+def test_a_failed_build_is_said_once_per_failure(monkeypatch, capsys):
+    """A build that fails on every 5 s poll writes one line, not twelve a minute; a different
+    failure gets its own line; the same one is said again only after _PAY_SAY_EVERY_S."""
+    monkeypatch.setattr(snapshot, "_PAY_SAID", {})
+    for _ in range(3):
+        snapshot._say_build_failed("KeyError: 'scene'")
+    snapshot._say_build_failed("OSError: no diary")
+    err = capsys.readouterr().err
+    assert err.count("KeyError: 'scene'") == 1 and err.count("OSError: no diary") == 1
+    snapshot._PAY_SAID["KeyError: 'scene'"] -= snapshot._PAY_SAY_EVERY_S + 1
+    snapshot._say_build_failed("KeyError: 'scene'")
+    assert capsys.readouterr().err.count("KeyError: 'scene'") == 1
+
+
 def test_the_refresher_starts_once(monkeypatch):
     monkeypatch.setattr(snapshot, "_PAY_THREAD", {"started": False})
     started = []

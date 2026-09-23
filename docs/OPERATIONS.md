@@ -13,7 +13,7 @@ launchctl bootout gui/$UID/com.mirai-station.left-eye
 # Start it again
 launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.plist
 
-# Restart the whole fleet (all 7 agents)
+# Restart the whole fleet
 ~/.claude/plugins/mirai-station/runtime/scripts/uninstall-launchd.sh
 ~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh
 ```
@@ -26,6 +26,7 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.p
 | Unified tick history   | `~/.claude/plugins/mirai-station/state/logs/watch-YYYY-MM-DD.jsonl` |
 | Runtime/env messages   | `~/.claude/plugins/mirai-station/state/logs/runtime-YYYY-MM-DD.log` |
 | Hunter's own jsonl     | `~/.claude/plugins/mirai-station/skills/mirai-left-eye/logs/YYYY-MM-DD.jsonl` |
+| JEV decision service (`sndk-jev`: labels the newest SNDK row at :02 and :32, asks JEV, sums and grades, writes `state/jev/`) | `/tmp/mirai-station.sndk-jev.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/jev/` |
 
 Quick health check:
 ```bash
@@ -39,6 +40,13 @@ tail -50 ~/.claude/plugins/mirai-station/state/logs/watch-$(date +%Y-%m-%d).json
 ```
 
 This bypasses launchd entirely; useful for debugging. (Or `mirai-watch tick --dry-run` for a no-dispatch run.)
+
+One JEV run by hand, the way the job runs it (drop `--send` for an unsent card; `--day YYYY-MM-DD` replays a past day; the key is read from the git-ignored `skills/sndk-jev/.env`):
+
+```bash
+cd ~/.claude/plugins/mirai-station/skills/sndk-jev
+~/.local/share/mirai-station/venv/bin/python -m sndk_jev.service --state-dir ~/.claude/plugins/mirai-station/state --send
+```
 
 ## ntfy alert channel
 
@@ -154,6 +162,7 @@ The launchd jobs pick up script changes on next fire (no restart needed). plist 
 ```bash
 launchctl disable gui/$UID/com.mirai-station.left-eye
 launchctl disable gui/$UID/com.mirai-station.auth-watch
+launchctl disable gui/$UID/com.mirai-station.sndk-jev      # or SNDK_JEV_DISABLE=1 in the job's environment
 # caffeinate left running so the mini is still reachable
 ```
 
@@ -161,4 +170,5 @@ Re-enable:
 ```bash
 launchctl enable gui/$UID/com.mirai-station.left-eye
 launchctl enable gui/$UID/com.mirai-station.auth-watch
+launchctl enable gui/$UID/com.mirai-station.sndk-jev
 ```

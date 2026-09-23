@@ -338,7 +338,7 @@ mirai-station/
 │   ├── watch/                  the tick chassis: cli · hunter wrapper ·
 │   │   └── intraday/           market_status · gex_alerts · push_ntfy · macro_mood · auth
 │   ├── viewstation/            "Nightglass" — read-only HTTP on :8787
-│   ├── launchd/                11 LaunchAgent plists (the fleet, below)
+│   ├── launchd/                14 LaunchAgent plists (the fleet, below)
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
 ├── state/                      runtime-mutable — never copied between machines
 │   ├── reversion/              the SPX diary + nightly grades
@@ -352,13 +352,14 @@ mirai-station/
                                 sndk-payload-inventory · salvage-notes
 ```
 
-### The launchd fleet (11 agents)
+### The launchd fleet (14 agents)
 
 | Label | Cadence | Job |
 |---|---|---|
 | `left-eye` | every 60 s (gated to RTH) | the SPX scan + alert tick |
 | `sndk` | every 120 s (gated to RTH) | the SNDK scan tick |
 | `sndk-read` | every 120 s (gated to RTH) | the SNDK reading — **its own job on purpose**, so a hung model call can never eat a diary row |
+| `sndk-jev` | :02 and :32 ET (gated to RTH) | the JEV decision service: labels the newest SNDK row, asks JEV, sums and grades, writes `state/jev/` — its own job, never on the scan path |
 | `lob-collector` | every 60 s | Layer-2 LOB flow collector (shadow) |
 | `viewstation` | continuous | the Nightglass HTTP server on :8787 |
 | `voice` | continuous | the voice WebSocket sidecar on :8788 |
@@ -379,6 +380,7 @@ can be missed.
 | `WATCHTOWER_DISABLE=1` | the LLM second opinion |
 | `SNDK_PRO_DISABLE=1` | the SNDK scanner (**and**, implicitly, its reading — with no fresh rows, reading on would only re-narrate a frozen book) |
 | `SNDK_READ_DISABLE=1` | the SNDK reading only |
+| `SNDK_JEV_DISABLE=1` | the JEV decision service (checked in its runner, `run-sndk-jev.sh`, which exits 0) |
 | `MIRAI_VOICE_DISABLE=1` | the voice sidecar |
 | `DATED_BOOK_DISABLE=1` | the far-dated sidecar |
 | `SIEGE_DISABLE=1` | the effort-at-the-wall sensor |
@@ -393,7 +395,7 @@ The SNDK reasoning **pause** is deliberately *not* a kill switch — see §2.
 ```bash
 cd ~/.claude/plugins/mirai-station
 ./runtime/scripts/venv-bootstrap.sh      # provision ~/.local/share/mirai-station/venv
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 11 agents
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 14 agents
 ```
 
 Then:
@@ -419,9 +421,18 @@ they collide if collected together):
 
 ```bash
 for t in skills/mirai-left-eye/tests skills/sndk-pro/tests skills/sndk-jev/tests skills/siege/tests \
-         skills/lob-flow/tests skills/iv-viability/tests runtime/watch/tests; do
+         skills/lob-flow/tests skills/iv-viability/tests skills/mirai-voice/tests \
+         runtime/watch/tests runtime/viewstation/tests runtime/health; do
   $PY -m pytest "$t" -q
-done                                                       # ~1,150 tests
+done                                                       # ~2,100 tests
+```
+
+Before you commit — the pre-push hook refuses anything else:
+
+```bash
+git config core.hooksPath .github/hooks                     # the scrub gate, at commit and at push
+git config user.email fivestone14@users.noreply.github.com  # repo-local; a real address is refused
+export TZ=UTC                                               # commit dates must read +0000
 ```
 
 - **Full setup** (auto-login, Caffeinate, Keychain secrets, MCP servers, ntfy):

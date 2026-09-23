@@ -132,3 +132,50 @@ def test_voice_transcripts_are_never_served(tmp_path, monkeypatch):
     listed = [i["rel"] for i in server._raw_index()["state"]]
     assert not any(r.startswith("voice") for r in listed)
     assert "reversion/2026-08-06.jsonl" in listed
+
+
+class _Route(server.Handler):
+    """Handler with the transport removed, for the raw route's own checks: the
+    query as a client sends it, the JSON the route answers. Never calls
+    BaseHTTPRequestHandler's __init__, which would service a connection."""
+
+    def __init__(self, path):
+        self.path = path
+        self.headers = {"Host": "localhost:8787"}
+        self.request_version = "HTTP/1.1"
+        self.sent = None
+
+    def _send_json(self, payload, code=200):
+        self.sent = (payload, code)
+
+
+def _raw(query):
+    h = _Route("/api/raw/file?" + query)
+    h.do_GET()
+    return h.sent
+
+
+def test_the_raw_route_never_leaves_its_root(tmp_path, monkeypatch):
+    """A path that climbs out of the root is not found, whether it says `..`
+    plainly or as %2e%2e: parse_qs decodes the query once, and the route used
+    to decode it a second time, so a %252e%252e that survived the first pass
+    was turned into `..` on the way to the disk. The file outside the root
+    really exists here, so a hole would read it rather than 404 by luck."""
+    root = tmp_path / "state"
+    root.mkdir()
+    (root / "ok.json").write_text('{"a": 1}')
+    (tmp_path / "server.py").write_text("SECRET = 1\n")
+    monkeypatch.setattr(server, "RAW_ROOTS", {"state": root})
+
+    assert _raw("root=state&path=ok.json")[0].get("kind") == "json"
+    for path in ("../server.py", "%2e%2e/server.py", "%2e%2e%2fserver.py", "%252e%252e/server.py"):
+        assert _raw("root=state&path=" + path) == ({"error": "not found"}, 200), path
+    assert server._raw_file("state", "../server.py", 50) == {"error": "not found"}
+
+
+@pytest.mark.parametrize("limit", ["abc", "-1", "1e3", "1234567"])
+def test_the_raw_route_refuses_a_limit_that_is_not_a_count(limit):
+    """`limit` reaches int() and a slice; anything but a short run of digits is
+    answered 400 like the sibling routes' bad ticker and bad day, never a 500.
+    (A blank `limit=` is not among these: parse_qs drops it, so it is absent.)"""
+    assert _raw("root=state&path=ok.json&limit=" + limit) == ({"error": "bad limit"}, 400)

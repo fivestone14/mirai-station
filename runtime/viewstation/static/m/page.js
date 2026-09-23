@@ -275,7 +275,7 @@ function paintAll(){
   paintToday();
   paintRead();
   // beta: a fault in the JEV box must never stop the rest of the glance from painting
-  try { paintJev(); } catch (e) { $('jevLine').textContent = 'JEV box could not be drawn.'; }
+  try { paintJev(); } catch (e) { $('jevLine').textContent = 'the card could not be drawn'; }
   paintHalf(st);
   paintFoot(st);
   // the full screen chart is the same board, so a tick that moves the glance
@@ -2058,7 +2058,7 @@ function paintJev(){
   const m = jevRead(JEV);
   const line = $('jevLine'), age = $('jevAge');
   if(!m){
-    line.textContent = 'No JEV card yet.';
+    line.textContent = 'no card yet: the JEV service has not written one';
     age.textContent = ''; age.classList.remove('old');
     return;
   }

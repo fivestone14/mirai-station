@@ -4,8 +4,8 @@ name: tests
 # the commit means what the README loop means — without anyone remembering to run
 # it on the mini.
 #
-# The nine suite directories each ship their own conftest.py and collide if
-# pytest collects them together, so they run as nine parallel jobs. Same split as
+# The ten suite directories each ship their own conftest.py and collide if
+# pytest collects them together, so they run as ten parallel jobs. Same split as
 # the README; the failing box is named in the job title. runtime/health runs its
 # always-on unit tests here; its live checks need MIRAI_LIVE=1 and the station.
 
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
-      fail-fast: false          # one red box must not hide the other seven
+      fail-fast: false          # one red box must not hide the other nine
       matrix:
         suite:
           - runtime/health

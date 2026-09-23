@@ -26,7 +26,10 @@ UNTRACKED='--untracked'
 
 report() {                                  # report <label> <hits>
     printf '\nFAIL  %s\n' "$1"
-    printf '%s\n' "$2" | sed 's/^/        /'
+    # a key it caught is redacted on the way out, so a CI log never echoes the leak it stopped
+    printf '%s\n' "$2" | sed -E 's/apikey_[0-9a-f]{20,}_[0-9a-f]{20,}/apikey_<redacted>/g;
+                                 s/TYPESAFE_API_KEY=[^[:space:]]+/TYPESAFE_API_KEY=<redacted>/g;
+                                 s/^/        /'
     fail=1
 }
 

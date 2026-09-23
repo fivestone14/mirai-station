@@ -1657,6 +1657,19 @@ def test_an_unhashed_font_falls_back_to_no_cache(tmp_path):
     assert h.sent["Cache-Control"] == "no-cache", "the phone page itself is cached"
 
 
+def test_the_raw_file_route_is_never_stored(tmp_path, monkeypatch):
+    """The JEV card and every diary row come through /api/raw/file, and the
+    pages fetch them with cache:'no-store'; the answer has to say the same, or a
+    proxy between the phone and the station may hand back yesterday's card."""
+    (tmp_path / "jev").mkdir()
+    (tmp_path / "jev" / "latest.json").write_text('{"questions": []}')
+    monkeypatch.setattr(server, "RAW_ROOTS", {"state": tmp_path})
+    h = _Wire("/api/raw/file?root=state&path=jev/latest.json")
+    h.do_GET()
+    assert h.status == 200
+    assert h.sent["Cache-Control"] == "no-store"
+
+
 def test_the_font_is_on_disk_and_named_by_its_own_bytes():
     import hashlib
     fonts = sorted((server.STATIC / "m").glob("*.woff2"))
