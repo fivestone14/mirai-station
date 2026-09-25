@@ -258,3 +258,66 @@ def test_the_blended_tally_counts_only_blended_reads():
     s = weights_from([g1, g2])["sums"]["next_30"]
     assert s["n"] == 2 and s["blended"]["n"] == 1
     assert s["blended"]["mean_brier_blend"] == g1["brier"] and s["blended"]["mean_brier_jev"] == g1["jev_brier"]
+
+
+def test_a_read_with_an_event_inside_30_minutes_is_graded_but_never_pairs():
+    """A Fed minute is graded and tallied apart, and never teaches a question's weight."""
+    bars = bars_from_closes([1700.0] * 390)
+    ev = {"within_30": True, "sentence": "a scheduled event is ahead: the Fed's rate decision is due in 28 minutes, at 14:00"}
+    g1 = grade_one({**_rec(13, 32, 1700.0, _by({"flat": 1.0}, "flat"), {"q1": "rising"}), "event": ev, "fresh": {"q1": "rising"}}, bars)
+    g2 = grade_one({**_rec(11, 0, 1700.0, _by({"flat": 1.0}, "flat"), {"q1": "falling"}), "fresh": {"q1": "falling"}}, bars)
+    assert g1["event_within_30"] is True and g1["band"] == "flat"
+    w = weights_from([g1, g2])
+    assert w["questions"]["q1"]["n"] == 1                                   # only the ordinary read paired
+    assert w["sums"]["next_30"]["n"] == 2 and w["sums"]["next_30"]["event_reads"]["n"] == 1
+
+
+def test_a_hole_on_a_finished_past_day_closes_out_as_a_halted_window():
+    """Today a hole waits for its bars; on a past day whose bars reach the close it never fills, so it
+    is closed out rather than left pending for ever."""
+    bars = bars_from_closes([1700.0] * 390)
+    holed = [b for b in bars if not (at(11, 40) <= at(int(b["ts"][11:13]), int(b["ts"][14:16])) <= at(11, 50))]
+    rec = _rec(11, 15, 1700.0, _by({"flat": 1.0}, "flat"), {})
+    assert grade_one(rec, holed) is None                                    # today: wait
+    g = grade_one(rec, holed, final=True)
+    assert g["horizons"] == [] and "halted window" in g["reason"] and g["skipped"]["next_30"].startswith("halted window")
+    assert grade_one(rec, holed[:200], final=True) is None                  # a past day whose bars stop early: no close-out
+
+
+def test_a_halted_mark_closes_out_even_after_the_other_horizon_was_graded():
+    """The live case: the 30 graded on the day, the 60 fell in a halt; the next day closes the 60 out."""
+    bars = bars_from_closes([1700.0] * 390)
+    holed = [b for b in bars if not (at(12, 5) <= at(int(b["ts"][11:13]), int(b["ts"][14:16])) <= at(12, 20))]
+    rec = _rec(11, 15, 1700.0, _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat"), {})
+    g = grade_one(rec, holed, {"next_30"}, final=True)
+    assert g is not None and g["horizons"] == [] and "next_60" in g["reason"]
+    assert graded_horizons([g])[rec["row_ts"]] >= {"next_60"}
+
+
+def test_run_closes_out_a_halt_on_a_past_day(tmp_path):
+    state = tmp_path / "state"
+    (state / "sndk_bars").mkdir(parents=True)
+    bars = bars_from_closes([1700.0] * 390)
+    holed = [b for b in bars if not (at(11, 40) <= at(int(b["ts"][11:13]), int(b["ts"][14:16])) <= at(11, 50))]
+    (state / "sndk_bars" / "2026-09-18.jsonl").write_text("\n".join(json.dumps(b) for b in holed) + "\n")
+    out = state / "jev"
+    (out / "hour").mkdir(parents=True)
+    (out / "hour" / "2026-09-18.jsonl").write_text(json.dumps(_rec(11, 15, 1700.0, _by({"flat": 1.0}, "flat"), {})) + "\n")
+    run(state, out)
+    lines = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
+    assert len(lines) == 1 and "halted window" in lines[0]["reason"]
+    run(state, out)
+    assert len((out / "grades.jsonl").read_text().splitlines()) == 1            # never retried
+
+
+def test_only_live_questions_and_their_current_options_pair():
+    """A retired question and an option a question no longer has never set a weight."""
+    from sndk_jev.grade import live_options
+    allowed = live_options()
+    assert "box_status" not in allowed and "air_to_wall" not in allowed
+    assert "inside_box" not in allowed["box_break_follow_through"] and "back_inside_after_a_break" in allowed["box_break_follow_through"]
+    bars = bars_from_closes([1700.0] * 390)
+    g = grade_one({**_rec(11, 0, 1700.0, _by({"flat": 1.0}, "flat"), {}),
+                   "fresh": {"box_status": "inside_all_day", "box_break_follow_through": "inside_box", "iv_trend": "flat"}}, bars)
+    w = weights_from([g], allowed)
+    assert set(w["questions"]) == {"iv_trend"}

@@ -13,6 +13,13 @@ grades them, and writes only under ``state/jev/``:
     state/jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py)
 
+A run on today's newest row checks the wall clock twice: a sent read on a row more than
+STALE_ROW_SKIP_MIN old is skipped (the scanner has stopped; the last card stays), and the labels
+built from the options book are left out when the book is more than state_builder.STALE_BOOK_MIN
+old (sent or not, so an unsent card is as honest as a sent one). A replay (--day) checks neither.
+Every read carries the tier-1 events due within the hour (events.py) in its record, its sum record
+and the card; JEV never sees them.
+
 It never writes into SNDK PRO's files and never runs on the scan path. Point the
 viewstation's read-only route at ``latest.json`` and the phone has its card.
 
@@ -36,15 +43,17 @@ from zoneinfo import ZoneInfo
 from .ab_test import pick, confidence
 from .ask import DEFAULT_QUESTIONS, build_requests, load_questions, send, send_all
 from .clock import blend as clock_blend, odds as clock_odds
+from .events import tag as event_tag
 from .cadence import cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, plan, save_last
-from .grade import run as grade_run
+from .grade import live_options, run as grade_run
 from .hour import answer_sentences, hour_request, hour_summary, load_hour_doc, load_weights
-from .state_builder import DEFAULT_STATE_DIR, build_state, make_scene, parse_ts, session_close
+from .state_builder import DEFAULT_STATE_DIR, build_state, make_scene, omit_stale_book, parse_ts, session_close
 
 SITUATION_PATHS = ("price.recent_move", "price.vs_vwap", "volume.now", "gex.air_to_wall", "iv.trend_30min")
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 ET = ZoneInfo("America/New_York")
 STALE_ROW_S = 15 * 60          # a card built on a row older than this says so
+STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped: the scanner has stopped
 LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
 
@@ -147,7 +156,7 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
 
 def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: dict, answers: dict | None,
          sent: bool, send_seconds: float | None, hour: dict | None = None, held: dict | None = None,
-         cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT) -> dict:
+         cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT, event: dict | None = None) -> dict:
     """The phone's document. Small, plain, and honest about what was and was not sent."""
     now = datetime.now(timezone.utc)
     row_ts = parse_ts(scene.row["ts"])
@@ -217,6 +226,8 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "dark": dark,
         "dark_note": "dark questions are never asked and never counted; the news questions wait for a news source",
         "hour": hour,
+        # a tier-1 scheduled event due within the hour (events.py): a tag for the reader, never sent to JEV
+        "event": event,
         # the phone's clock words ("after the close", "next read") follow the day's real close, 13:00 on a half day
         "session": {"close": session_close(row_ts).strftime("%H:%M"),
                     "last_read": (session_close(row_ts) - timedelta(minutes=LAST_READ_BEFORE_CLOSE_MIN)).strftime("%H:%M")},
@@ -231,8 +242,28 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
         # the scanner has no row for today yet: sending on yesterday's last row would hold every
         # answer against a stale clock and file the read under the wrong day. Say so and stop.
         raise NoRowYet(f"no diary row for today yet: the newest row is {scene.row['ts'][:16]}; nothing sent, card unchanged")
+    if day is None and do_send:
+        # a live read on a stalled scanner would answer, sum and grade a row that no longer describes
+        # the market; skip it and leave the last card, whose age the phone shows
+        age_min = (datetime.now(timezone.utc) - parse_ts(scene.row["ts"]).astimezone(timezone.utc)).total_seconds() / 60.0
+        if age_min > STALE_ROW_SKIP_MIN:
+            raise NoRowYet(f"the newest row is {age_min:.1f} minutes old, past the {STALE_ROW_SKIP_MIN:g}-minute line: the scanner has stopped; nothing sent, card unchanged")
     state, omitted = build_state(scene)
+    if day is None:
+        # the options book is judged at the read, by the wall clock: a fresh row can still carry a book
+        # the scanner has not refreshed, and a strike description from it would be passed off as now
+        asof = (scene.row.get("meta") or {}).get("book_asof")
+        try:
+            book_age = (datetime.now(timezone.utc) - parse_ts(asof).astimezone(timezone.utc)).total_seconds() / 60.0
+        except (TypeError, ValueError, AttributeError):
+            book_age = float("inf")            # no book time, or one that cannot be read: not a book to describe
+        state, omitted = omit_stale_book(state, omitted, book_age)
     now = parse_ts(scene.row["ts"])
+    try:
+        event = event_tag(now)
+    except Exception as e:  # a broken calendar must never cost the read
+        log(f"the event calendar could not be read this run: {type(e).__name__}: {e}")
+        event = None
     day_name = scene.row["ts"][:10]
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     live_ids = {qid for qid, q in by_id.items() if q.get("status") == "live"}
@@ -289,7 +320,7 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
         # a question that left the doc, or went dark, has nothing to hold
         last = {qid: v for qid, v in last.items() if qid in by_id and by_id[qid].get("status") != "dark"}
         save_last(out_dir, last)
-    record = {"row_ts": scene.row["ts"], "book_asof": (scene.row.get("meta") or {}).get("book_asof"), "sigma": scene.sigma,
+    record = {"row_ts": scene.row["ts"], "book_asof": (scene.row.get("meta") or {}).get("book_asof"), "sigma": scene.sigma, "event": event,
               "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
               "answers": answers, "sent": do_send, "send_seconds": send_seconds, "hour": hour}
@@ -299,15 +330,15 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
         # the sum record is what step 6 grades: spot and sigma are needed to read the bars against it
         (out_dir / "hour").mkdir(parents=True, exist_ok=True)
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma,
+            f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event,
                                 **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
     if do_send:
         # step 6, every run: grade every mark that has passed and refresh the weights step 3 reads
         try:
-            grade_run(state_dir, out_dir)
+            grade_run(state_dir, out_dir, allowed=live_options(doc))
         except Exception as e:  # grading must never stop the card
             log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
-    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason)
+    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event)
     tmp = out_dir / "latest.json.tmp"
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, out_dir / "latest.json")

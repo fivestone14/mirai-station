@@ -583,3 +583,90 @@ def test_wall_visits_say_they_count_the_first_arrival(scene_factory):
     s = scene_factory(at(12, 30, ss=10), flat_bars(180), side_packet=make_side_packet(bar=170, wall_price=1750.0, wall_visits=1))
     state, _ = labels(s)
     assert state["range"]["wall_retests"] == "price has visited the nearest heavy strike 1 time today, counting its first arrival, once"
+
+
+def _book_rows(now, spot, prev_vol, cur_vol, gap_min=4.0):
+    """The row now and one row earlier on a different options book: ``prev_vol`` and ``cur_vol`` are the
+    per-strike volumes of the two books."""
+    prev_t = now - timedelta(minutes=gap_min)
+    prev = make_row(prev_t, spot)
+    prev["meta"]["book_asof"] = prev_t.isoformat()
+    prev["gex_views"]["vol_gross_by_strike"] = [[k, v] for k, v in prev_vol.items()]
+    return prev, {"gex_views": {**make_row(now, spot)["gex_views"], "vol_gross_by_strike": [[k, v] for k, v in cur_vol.items()]}}
+
+
+def test_options_flow_pace_bands(scene_factory):
+    """options.flow_pace: contracts added since the last book, per minute, against the day's pace (this
+    book's volume over the minutes since the open). At 12:30 the day is 180 minutes old."""
+    now = at(12, 30, ss=10)
+    base = {1700.0: 9000.0, 1750.0: 9000.0}                                 # 18,000 contracts by 12:30: 100 a minute
+    for added, want in ((600.0, "burst"), (300.0, "steady"), (100.0, "quiet")):   # over 4 minutes: 150, 75, 25 a minute
+        prev_vol = {k: v - added / 2 for k, v in base.items()}
+        prev, over = _book_rows(now, 1700.0, prev_vol, base)
+        s = scene_factory(now, flat_bars(180), row_over=over, rows_before=[prev])
+        state, _, _, v = build_ab(s)
+        assert v["options.flow_pace"] == want, (added, v["options.flow_pace"])
+    assert "a burst, faster than the day's average pace, above the 1-times cut" in labels(
+        scene_factory(now, flat_bars(180), row_over=_book_rows(now, 1700.0, {k: v - 300 for k, v in base.items()}, base)[1],
+                      rows_before=[_book_rows(now, 1700.0, {k: v - 300 for k, v in base.items()}, base)[0]]))[0]["options"]["flow_pace"]
+
+
+
+
+def test_a_side_packet_that_fails_its_own_checks_is_not_used(tmp_path):
+    """A packet whose integrity block reports a failure describes nothing, and no older packet stands in."""
+    from sndk_jev.state_builder import load_side_packet
+    good = {"levels": [{"role": "session_high", "visits": 2, "interactions_covered_to_bar": 50}],
+            "integrity": [{"check": "a", "status": "pass"}]}
+    bad = {"levels": [{"role": "session_high", "visits": 3, "interactions_covered_to_bar": 90}],
+           "integrity": [{"check": "a", "status": "pass"}, {"check": "b", "status": "fail"}]}
+    (tmp_path / "sndk_side").mkdir()
+    (tmp_path / "sndk_side" / f"{DAY}.jsonl").write_text(json.dumps(good) + "\n" + json.dumps(bad) + "\n")
+    assert load_side_packet(tmp_path, DAY, 60)["levels"][0]["visits"] == 2      # at 60 minutes only the good one exists
+    assert load_side_packet(tmp_path, DAY, 120) is None                        # the newest failed: nothing, not the older one
+
+
+def test_a_stale_book_takes_every_book_label_out(full_scene):
+    """Past the stale-book line at the read, every label built from the options book is omitted with the
+    reason, and nothing else is touched."""
+    from sndk_jev.state_builder import STALE_BOOK_MIN, omit_stale_book
+    state, omitted = build_state(full_scene)
+    same = omit_stale_book(state, omitted, STALE_BOOK_MIN)
+    assert same == (state, omitted)
+    kept, out = omit_stale_book(state, omitted, STALE_BOOK_MIN + 3)
+    assert "gex" not in kept and "options" not in kept and "skew" not in kept.get("iv", {}) and "term_slope" not in kept.get("iv", {})
+    assert kept["price"] == state["price"] and kept["iv"]["trend_30min"] == state["iv"]["trend_30min"]
+    assert all("past the 6-minute line" in out[p] for p in out if p.startswith(("gex.", "options.")))
+
+
+def test_options_flow_pace_at_its_cuts_and_only_on_strikes_in_both_books(scene_factory):
+    """Exactly the day's pace is steady (the burst cut is 'above 1'), exactly 0.4 is steady too, and a
+    strike that appears only in the new book adds nothing. The book is timed on the minute, 180 minutes
+    after the open, so 18,000 contracts are exactly 100 a minute."""
+    now = at(12, 30)
+    base = {1700.0: 9000.0, 1750.0: 9000.0}                                 # the day's pace: 100 a minute
+    for added, want in ((400.0, "steady"), (160.0, "steady"), (159.0, "quiet"), (401.0, "burst")):
+        prev, over = _book_rows(now, 1700.0, {k: v - added / 2 for k, v in base.items()}, base)
+        _, _, _, v = build_ab(scene_factory(now, flat_bars(180), row_over=over, rows_before=[prev]))
+        assert v["options.flow_pace"] == want, (added, v["options.flow_pace"])
+    new_strike = {**base, 1800.0: 5000.0}                                   # 5,000 on a strike the last book lacked
+    prev, over = _book_rows(now, 1700.0, base, new_strike)
+    _, _, _, v = build_ab(scene_factory(now, flat_bars(180), row_over=over, rows_before=[prev]))
+    assert v["options.flow_pace"] == "quiet"
+
+
+def test_the_days_first_book_says_there_is_no_pace_to_judge(scene_factory):
+    """Written, never omitted, so activity_state still answers from price on the 09:32 read."""
+    state, _, _, v = build_ab(scene_factory(at(12, 30, ss=10), flat_bars(180)))
+    assert v["options.flow_pace"] == "not_judged"
+    assert state["options"]["flow_pace"].startswith("there is no options pace to judge yet: this is the day's first options book")
+
+
+def test_a_side_packet_with_only_a_warning_is_still_used(tmp_path):
+    """SNDK PRO writes 'warn' for a check that is not a failure; only a failure drops the packet."""
+    from sndk_jev.state_builder import load_side_packet
+    pk = {"levels": [{"role": "session_high", "visits": 2, "interactions_covered_to_bar": 50}],
+          "integrity": [{"check": "a", "status": "pass"}, {"check": "segment_fractions_sum_to_one", "status": "warn"}]}
+    (tmp_path / "sndk_side").mkdir()
+    (tmp_path / "sndk_side" / f"{DAY}.jsonl").write_text(json.dumps(pk) + "\n")
+    assert load_side_packet(tmp_path, DAY, 60) is not None

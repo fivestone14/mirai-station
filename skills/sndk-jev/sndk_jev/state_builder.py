@@ -91,6 +91,12 @@ REALIZED_WILD = 1.3
 # heaviest bin of the day.
 PROFILE_THIN = 0.25
 PROFILE_THICK = 0.50
+# Options traded since the last book, per minute, against the day's own per-minute pace.
+FLOW_BURST = 1.0
+FLOW_QUIET = 0.4
+# A book older than this at the read (the wall clock, not the row's) is not described: SNDK PRO's own
+# stale-book line, and the chain cache's.
+STALE_BOOK_MIN = 6.0
 MIN_BARS_FOR_A_SESSION = 300
 
 
@@ -188,6 +194,10 @@ def load_side_packet(state_dir: Path, day: str, minutes_since_open: float) -> di
         # bar indices are 0-based: bar k finishes k + 1 minutes after the open
         if max(bars_seen) + 1 <= minutes_since_open:
             best = pk
+    if best is not None and any(isinstance(c, dict) and c.get("status") == "fail" for c in best.get("integrity") or []):
+        # SNDK PRO's packet says one of its own checks failed: describe nothing from it, and never fall
+        # back to an older packet, which would pass off stale counts as current
+        return None
     return best
 
 
@@ -414,7 +424,7 @@ def _run(scene: Scene) -> _Out:
     for step in (b.context, b.price, b.range, b.iv, b.gex, b.options, b.volume, b.momentum,
                  b.context_more, b.price_more, b.range_more, b.iv_more, b.gex_more, b.options_more,
                  b.volume_more, b.momentum_more,
-                 b.session_shape, b.nearest_level, b.new_activity, b.path_efficiency, b.news):
+                 b.session_shape, b.nearest_level, b.new_activity, b.flow_pace, b.path_efficiency, b.news):
         step()
     return out
 
@@ -423,6 +433,29 @@ def build_state(scene: Scene) -> tuple[dict, dict]:
     """Return ``(state, omitted)``. ``state`` holds only what could be measured."""
     out = _run(scene)
     return out.state, out.omitted
+
+
+BOOK_LABELS = ("gex.", "options.", "iv.skew", "iv.term_slope", "range.wall_retests")
+
+
+def omit_stale_book(state: dict, omitted: dict, book_age_min: float) -> tuple[dict, dict]:
+    """When the options book is older than STALE_BOOK_MIN at the read (the wall clock), move every label
+    built from it into ``omitted``: a strike or options description from a book the scanner has not
+    refreshed would be passed off as now. The packer then skips the questions that read them."""
+    if book_age_min <= STALE_BOOK_MIN:
+        return state, omitted
+    age = f"{book_age_min:.0f} minutes old" if math.isfinite(book_age_min) else "of unknown age (the row names no book time)"
+    why = f"the options book is {age} at this read, past the {STALE_BOOK_MIN:g}-minute line"
+    kept = {}
+    omitted = dict(omitted)
+    for g, labels in state.items():
+        for k, v in labels.items():
+            path = f"{g}.{k}"
+            if any(path == b or (b.endswith(".") and path.startswith(b)) for b in BOOK_LABELS):
+                omitted[path] = why
+            else:
+                kept.setdefault(g, {})[k] = v
+    return kept, omitted
 
 
 def build_ab(scene: Scene) -> tuple[dict, dict, dict, dict]:
@@ -1666,6 +1699,62 @@ class _Builder:
             o.put("options", "new_activity",
                   f"the busiest strike today sits below price, holding {pct(share)} of the day's option volume, more than a fifth",
                   answer="below_price")
+
+    # ---- options: the pace since the last book
+    def flow_pace(self) -> None:
+        """Options traded since the last book, per minute, against the day's average per-minute pace.
+        Added contracts are each strike's rise in today's volume between the two books (strikes in
+        both books only, so a strike entering or leaving the chain window adds nothing); the day's
+        pace is this book's volume over the minutes from the open to the book."""
+        o = self.o
+        cur = (self.row.get("meta") or {}).get("book_asof")
+        prev = self._previous_book_row()
+        no_pace = ("there is no options pace to judge yet: {why}, so it counts as no burst")
+        if not cur:
+            o.skip("options", "flow_pace", "the row names no options book time")
+            return
+        if prev is None:
+            # the day's first book (every 09:32 read): written, never omitted, so the question that reads
+            # it still answers from price, as momentum.closes writes "no move to judge" on a quiet read
+            o.put("options", "flow_pace", no_pace.format(why="this is the day's first options book"), answer="not_judged")
+            return
+
+        def gross(row: dict) -> dict[float, float]:
+            return {float(v[0]): float(v[1]) for v in (row.get("gex_views") or {}).get("vol_gross_by_strike") or []
+                    if isinstance(v, (list, tuple)) and len(v) >= 2 and _is_num(v[0]) and _is_num(v[1])}
+
+        try:
+            t_cur, t_prev = parse_ts(cur), parse_ts((prev.get("meta") or {})["book_asof"])
+        except (KeyError, TypeError, ValueError):
+            o.skip("options", "flow_pace", "a book time could not be read")
+            return
+        g_now, g_prev = gross(self.row), gross(prev)
+        mins = (t_cur - t_prev).total_seconds() / 60.0
+        since = (t_cur - session_open(t_cur)).total_seconds() / 60.0
+        total = sum(g_now.values())
+        if mins <= 0 or since <= 0:
+            o.skip("options", "flow_pace", "the book's time does not follow the last book's")
+            return
+        if total <= 0:
+            o.put("options", "flow_pace", no_pace.format(why="no options have traded today"), answer="not_judged")
+            return
+        added = sum(max(g_now[k] - g_prev[k], 0.0) for k in set(g_now) & set(g_prev))
+        r = (added / mins) / (total / since)
+        if not math.isfinite(r):
+            o.skip("options", "flow_pace", "the options pace is not a finite number")
+            return
+        if r > FLOW_BURST:
+            answer, shown = "burst", max(r, FLOW_BURST + 0.01)
+            band = f"a burst, faster than the day's average pace, above the {FLOW_BURST:g}-times cut"
+        elif r < FLOW_QUIET:
+            answer, shown = "quiet", min(r, FLOW_QUIET - 0.01)
+            band = f"quiet, under the {FLOW_QUIET:g}-times cut"
+        else:
+            answer, shown = "steady", min(max(r, FLOW_QUIET), FLOW_BURST)
+            band = f"steady, between the {FLOW_QUIET:g}-times and {FLOW_BURST:g}-times cuts"
+        o.put("options", "flow_pace",
+              f"since the last options book, {plural(round(mins), 'minute')} earlier, options traded at {shown:.2f} times the day's average per-minute pace, {band}",
+              answer=answer)
 
     # ---- momentum: how straight the last 30 minutes ran
     def path_efficiency(self) -> None:

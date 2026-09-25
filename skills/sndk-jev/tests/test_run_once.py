@@ -134,3 +134,87 @@ def test_the_sum_is_blended_with_the_time_of_day_once_there_are_enough_sessions(
     line = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[-1])
     assert line["by"]["next_30"]["jev"]["pick"] == "flat" and "clock" in line["by"]["next_60"]
     assert (out / "clock_days.json").is_file()
+
+
+def _live(tmp_path, monkeypatch, row_age_min, book_age_min, book_time=True):
+    """Today's rows and bars under a fixed noon-ET wall clock (so the test never straddles midnight):
+    the newest row ``row_age_min`` old by that clock and its options book ``book_age_min`` old."""
+    from datetime import datetime as real_dt, timedelta
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    fixed = real_dt(2026, 9, 25, 12, 0, tzinfo=et)
+
+    class Clock(real_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None)
+    monkeypatch.setattr(service, "datetime", Clock)
+    day = fixed.date().isoformat()
+    row = make_row(fixed - timedelta(minutes=row_age_min), 1700.0)
+    if book_time:
+        row["meta"]["book_asof"] = (fixed - timedelta(minutes=book_age_min)).isoformat()
+    else:
+        row["meta"].pop("book_asof")
+    (tmp_path / "sndk_reversion").mkdir(exist_ok=True)
+    (tmp_path / "sndk_bars").mkdir(exist_ok=True)
+    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text(json.dumps(row) + "\n")
+    (tmp_path / "sndk_bars" / f"{day}.jsonl").write_text("\n".join(json.dumps(b) for b in flat_bars(390, day=day)) + "\n")
+    return tmp_path
+
+
+def test_the_documented_lines_are_six_minutes():
+    from sndk_jev.state_builder import STALE_BOOK_MIN
+    assert service.STALE_ROW_SKIP_MIN == 6 and STALE_BOOK_MIN == 6
+
+
+def test_a_live_read_on_a_stalled_scanner_is_skipped_and_the_card_stays(tmp_path, monkeypatch):
+    """Past the stale-row line nothing is sent, summed or graded, and the last card is left as it was."""
+    state = _live(tmp_path, monkeypatch, row_age_min=7, book_age_min=10)
+    (state / "jev").mkdir()
+    (state / "jev" / "latest.json").write_text('{"questions": [], "row_ts": "the last card"}')
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    with pytest.raises(service.NoRowYet, match="7.0 minutes old"):
+        run_once(state, state / "jev", DOC, True, None)
+    assert json.loads((state / "jev" / "latest.json").read_text())["row_ts"] == "the last card"
+    assert not (state / "jev" / "hour").exists()
+
+
+def test_a_live_read_leaves_out_the_labels_of_a_stale_book(tmp_path, monkeypatch):
+    """A fresh row on a book past the stale-book line: the book's labels are omitted with the reason."""
+    state = _live(tmp_path, monkeypatch, row_age_min=1, book_age_min=10)
+    c = run_once(state, state / "jev", DOC, False, None)
+    assert "gex.weight_side" in c["omitted"] and "past the 6-minute line" in c["omitted"]["gex.weight_side"]
+    fresh = _live(tmp_path / "b", monkeypatch, row_age_min=1, book_age_min=2) if (tmp_path / "b").mkdir() is None else None
+    assert "gex.weight_side" not in run_once(fresh, fresh / "jev", DOC, False, None)["omitted"]
+
+
+def test_a_live_row_with_no_book_time_still_writes_its_card(tmp_path, monkeypatch):
+    state = _live(tmp_path, monkeypatch, row_age_min=1, book_age_min=0, book_time=False)
+    c = run_once(state, state / "jev", DOC, False, None)
+    assert "of unknown age" in c["omitted"]["gex.weight_side"] and (state / "jev" / "latest.json").exists()
+
+
+def test_a_replay_is_never_gated_by_the_wall_clock(tmp_path, monkeypatch):
+    """--day replays a past row as it was: its book is hours old by today's clock and is still described."""
+    state = _state(tmp_path, [make_row(at(11, 0, ss=10), 1700.0)], 100)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, state / "jev", DOC, True, DAY)
+    assert not any("past the 6-minute line" in str(v) for v in c["omitted"].values())
+
+
+def test_a_read_before_a_scheduled_close_event_carries_the_tag(tmp_path, monkeypatch):
+    """2026-09-18 closed on quarterly expiry and the S&P rebalance: the 15:31 read is tagged, inside 30
+    minutes, in the per-run record, the sum record and the card, and no request to JEV carries it."""
+    state = _state(tmp_path, [make_row(at(15, 31, ss=10), 1700.0)], 390)
+    seen = []
+    real = _answers()
+    monkeypatch.setattr(service, "send_all", lambda reqs, **kw: seen.extend(reqs) or real(reqs, **kw))
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, state / "jev", DOC, True, DAY)
+    assert c["event"]["within_30"] is True and "at 16:00" in c["event"]["sentence"]
+    line = json.loads((state / "jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[-1])
+    rec = json.loads((state / "jev" / f"{DAY}.jsonl").read_text().splitlines()[-1])
+    assert line["event"]["within_30"] is True and rec["event"]["within_30"] is True
+    assert seen and not any("event" in json.dumps(r["state"]) or "scheduled" in json.dumps(r["state"]) for r in seen)

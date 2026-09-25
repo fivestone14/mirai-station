@@ -1,0 +1,802 @@
+{
+ "name": "sndk-jev scheduled events",
+ "how_to_use": [
+  "Kept by hand. The service tags a read with every tier-1 event due in the next 60 minutes (sndk_jev/events.py); a read with one due in the next 30 minutes is graded but kept out of the question weights. Nothing is suppressed and JEV never sees the tag.",
+  "tier 1: the Fed's rate decisions and press conferences, the Fed chair's testimony and keynotes, index rebalance and quarterly-expiry closes, SanDisk's own timed events, half-day closes. tier 2 and day-level rows are kept for the record and not used: on 2026-08-26 to 09-24 their 30-minute bars sat at the 51st percentile of their clock slot.",
+  "Add SanDisk's conference slots and index changes when they are announced; a row with verified false follows a rule, not a published date."
+ ],
+ "built": "2026-09-24",
+ "events": [
+  {
+   "date": "2026-07-06",
+   "time_et": "09:00",
+   "kind": "FED_CHAIR_PANEL",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm",
+   "note": "Sintra panel, 09:00, before the open"
+  },
+  {
+   "date": "2026-07-08",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm"
+  },
+  {
+   "date": "2026-07-14",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": false,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-07-14",
+   "time_et": "10:00",
+   "kind": "FED_CHAIR_TESTIMONY",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm"
+  },
+  {
+   "date": "2026-07-15",
+   "time_et": "10:00",
+   "kind": "FED_CHAIR_TESTIMONY",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm"
+  },
+  {
+   "date": "2026-07-15",
+   "time_et": "14:00",
+   "kind": "BEIGE_BOOK",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/publications/beige-book-default.htm"
+  },
+  {
+   "date": "2026-07-17",
+   "time_et": "16:00",
+   "kind": "OPEX_MONTHLY",
+   "scope": "index",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "exchange rule (third Friday of the month; quarterly index rebalances trade at that close)"
+  },
+  {
+   "date": "2026-07-29",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-07-29",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm"
+  },
+  {
+   "date": "2026-08-05",
+   "time_et": "16:05",
+   "kind": "SNDK_EARNINGS",
+   "scope": "name",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-reports-fiscal-fourth-quarter-2026-financial-results",
+   "note": "after the close; call 16:30"
+  },
+  {
+   "date": "2026-08-13",
+   "time_et": "09:00",
+   "kind": "SNDK_INVESTOR_DAY",
+   "scope": "name",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-report-fiscal-fourth-quarter-and-fiscal-year-2026",
+   "end_et": "12:30",
+   "note": "starts 09:00 (verified); the 12:30 end is assumed, investor days run about three hours"
+  },
+  {
+   "date": "2026-08-19",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-08-21",
+   "time_et": "16:00",
+   "kind": "OPEX_MONTHLY",
+   "scope": "index",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "exchange rule (third Friday of the month; quarterly index rebalances trade at that close)"
+  },
+  {
+   "date": "2026-08-26",
+   "time_et": "08:30",
+   "kind": "PCE",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/2026/personal-income-and-outlays-july-2026"
+  },
+  {
+   "date": "2026-08-28",
+   "time_et": "10:00",
+   "kind": "FED_CHAIR_JACKSON_HOLE",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-august.htm"
+  },
+  {
+   "date": "2026-08-28",
+   "time_et": "12:45",
+   "kind": "FED_GOV_REMARKS",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-august.htm",
+   "note": "Vice Chair for Supervision, virtual fireside"
+  },
+  {
+   "date": "2026-08-31",
+   "time_et": "16:00",
+   "kind": "MSCI_REBALANCE_ADD",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://ir.msci.com/news-releases/news-release-details/msci-equity-indexes-august-2026-index-review",
+   "note": "SanDisk added to MSCI World/USA at the 08-31 close"
+  },
+  {
+   "date": "2026-09-01",
+   "time_et": "10:00",
+   "kind": "ISM_MFG",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+   "date": "2026-09-01",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/september-2026/"
+  },
+  {
+   "date": "2026-09-02",
+   "time_et": "14:00",
+   "kind": "BEIGE_BOOK",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/publications/beige-book-default.htm"
+  },
+  {
+   "date": "2026-09-03",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/",
+   "note": "third business day rule"
+  },
+  {
+   "date": "2026-09-04",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/september-2026/"
+  },
+  {
+   "date": "2026-09-04",
+   "time_et": "17:15",
+   "kind": "SP100_ADD_ANNOUNCED",
+   "scope": "name",
+   "tier": "day",
+   "in_session": false,
+   "verified": false,
+   "source": "https://finance.yahoo.com/markets/stocks/articles/sandisk-joins-p-100-monday-051301493.html",
+   "note": "announced after the close; time approximate"
+  },
+  {
+   "date": "2026-09-08",
+   "time_et": "12:35",
+   "kind": "SNDK_CONFERENCE",
+   "scope": "name",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.stocktitan.net/news/SNDK/sandisk-announces-participation-in-investor-y9au1qg04j3v.html",
+   "note": "Citi Global TMT"
+  },
+  {
+   "date": "2026-09-09",
+   "time_et": "14:30",
+   "kind": "SNDK_CONFERENCE",
+   "scope": "name",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.stocktitan.net/news/SNDK/sandisk-announces-participation-in-investor-y9au1qg04j3v.html",
+   "note": "Goldman Communacopia + Technology"
+  },
+  {
+   "date": "2026-09-10",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/september-2026/"
+  },
+  {
+   "date": "2026-09-11",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/september-2026/"
+  },
+  {
+   "date": "2026-09-16",
+   "time_et": "08:30",
+   "kind": "RETAIL_SALES",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/september-2026/"
+  },
+  {
+   "date": "2026-09-16",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm"
+  },
+  {
+   "date": "2026-09-16",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm"
+  },
+  {
+   "date": "2026-09-18",
+   "time_et": "16:00",
+   "kind": "QUAD_WITCHING_SP_REBALANCE",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://finance.yahoo.com/markets/stocks/articles/sandisk-joins-p-100-monday-051301493.html ; exchange rule (third Friday of the month; quarterly index rebalances trade at that close)",
+   "note": "S&P 100 add effective before the 09-21 open, so index funds trade the 09-18 close"
+  },
+  {
+   "date": "2026-09-22",
+   "time_et": "10:20",
+   "kind": "FED_GOV_REMARKS",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "note": "Vice Chair Jefferson"
+  },
+  {
+   "date": "2026-09-23",
+   "time_et": "10:05",
+   "kind": "FED_GOV_REMARKS",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "note": "Governor Barr"
+  },
+  {
+   "date": "2026-09-29",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/september-2026/"
+  },
+  {
+   "date": "2026-09-30",
+   "time_et": "08:30",
+   "kind": "PCE",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule/"
+  },
+  {
+   "date": "2026-09-30",
+   "time_et": "16:05",
+   "kind": "MU_EARNINGS",
+   "scope": "peer",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.globenewswire.com/news-release/2026/08/26/3351673/14450/en/micron-technology-to-report-fiscal-fourth-quarter-results-on-september-30-2026.html",
+   "note": "call 16:30 ET"
+  },
+  {
+   "date": "2026-10-01",
+   "time_et": "10:00",
+   "kind": "ISM_MFG",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/",
+   "note": "first business day rule"
+  },
+  {
+   "date": "2026-10-02",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-10-05",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+   "date": "2026-10-07",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-10-14",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-10-14",
+   "time_et": "14:00",
+   "kind": "BEIGE_BOOK",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/publications/beige-book-default.htm"
+  },
+  {
+   "date": "2026-10-15",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-10-16",
+   "time_et": "16:00",
+   "kind": "OPEX_MONTHLY",
+   "scope": "index",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "exchange rule (third Friday of the month; quarterly index rebalances trade at that close)"
+  },
+  {
+   "date": "2026-10-22",
+   "time_et": "16:05",
+   "kind": "WDC_EARNINGS",
+   "scope": "peer",
+   "tier": "day",
+   "in_session": false,
+   "verified": false,
+   "source": "https://www.investing.com/equities/western-digital-earnings",
+   "note": "estimate; other sources say 10-23..10-30"
+  },
+  {
+   "date": "2026-10-27",
+   "time_et": "16:05",
+   "kind": "STX_EARNINGS",
+   "scope": "peer",
+   "tier": "day",
+   "in_session": false,
+   "verified": false,
+   "source": "estimate from last year's pattern (late October)"
+  },
+  {
+   "date": "2026-10-28",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-10-28",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-10-29",
+   "time_et": "08:30",
+   "kind": "GDP_PCE",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule/"
+  },
+  {
+   "date": "2026-11-02",
+   "time_et": "10:00",
+   "kind": "ISM_MFG",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+   "date": "2026-11-03",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-11-04",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+   "date": "2026-11-05",
+   "time_et": "16:05",
+   "kind": "SNDK_EARNINGS",
+   "scope": "name",
+   "tier": "day",
+   "in_session": false,
+   "verified": false,
+   "source": "https://www.marketbeat.com/stocks/NASDAQ/SNDK/earnings/",
+   "note": "estimate: window 10-30..11-09, not announced"
+  },
+  {
+   "date": "2026-11-06",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-11-10",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-11-11",
+   "time_et": "17:00",
+   "kind": "MSCI_REVIEW_ANNOUNCED",
+   "scope": "index",
+   "tier": "day",
+   "in_session": false,
+   "verified": false,
+   "source": "https://app2.msci.com/eqb/pressreleases/archive/ir_dates.pdf",
+   "note": "announcement after the US close"
+  },
+  {
+   "date": "2026-11-13",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-11-18",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-11-20",
+   "time_et": "16:00",
+   "kind": "OPEX_MONTHLY",
+   "scope": "index",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "exchange rule (third Friday of the month; quarterly index rebalances trade at that close)"
+  },
+  {
+   "date": "2026-11-25",
+   "time_et": "08:30",
+   "kind": "GDP_PCE",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule/"
+  },
+  {
+   "date": "2026-11-25",
+   "time_et": "14:00",
+   "kind": "BEIGE_BOOK",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/publications/beige-book-default.htm"
+  },
+  {
+   "date": "2026-11-27",
+   "time_et": "13:00",
+   "kind": "HALF_DAY_CLOSE",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": false,
+   "source": "NYSE/Nasdaq holiday schedule",
+   "note": "early close at 13:00; state_builder.session_close already closes the session then"
+  },
+  {
+   "date": "2026-11-30",
+   "time_et": "16:00",
+   "kind": "MSCI_REBALANCE",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://app2.msci.com/eqb/pressreleases/archive/ir_dates.pdf",
+   "note": "November review effective 12-01, trades the 11-30 close"
+  },
+  {
+   "date": "2026-12-01",
+   "time_et": "10:00",
+   "kind": "ISM_MFG",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+   "date": "2026-12-01",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-12-03",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+   "date": "2026-12-04",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-12-09",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-12-09",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-12-10",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-12-11",
+   "time_et": "16:00",
+   "kind": "RUSSELL_RECON",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.lseg.com/en/media-centre/press-releases/ftse-russell/2026/ftse-russell-announces-december-2026-russell-us-indexes-reconstitution-schedule"
+  },
+  {
+   "date": "2026-12-15",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://fedratecalc.com/us-economic-calendar/"
+  },
+  {
+   "date": "2026-12-17",
+   "time_et": "16:05",
+   "kind": "MU_EARNINGS",
+   "scope": "peer",
+   "tier": "day",
+   "in_session": false,
+   "verified": false,
+   "source": "estimate from last year's pattern (mid/late December)"
+  },
+  {
+   "date": "2026-12-18",
+   "time_et": "16:00",
+   "kind": "QUAD_WITCHING_SP_NDX_REBALANCE",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": false,
+   "source": "exchange rule (third Friday of the month; quarterly index rebalances trade at that close)",
+   "note": "S&P quarterly + Nasdaq-100 annual reconstitution trade this close"
+  },
+  {
+   "date": "2026-12-23",
+   "time_et": "08:30",
+   "kind": "GDP_PCE",
+   "scope": "market",
+   "tier": "day",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule/"
+  },
+  {
+   "date": "2026-12-24",
+   "time_et": "13:00",
+   "kind": "HALF_DAY_CLOSE",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": false,
+   "source": "NYSE/Nasdaq holiday schedule"
+  },
+  {
+   "date": "2026-12-30",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": 2,
+   "in_session": true,
+   "verified": false,
+   "source": "three-week rule (fomccalendars.htm)"
+  }
+ ]
+}

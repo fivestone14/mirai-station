@@ -32,9 +32,10 @@ does whatever comes next with the answers.
 | `runtime/scripts/run-sndk-jev.sh`, `runtime/launchd/com.mirai-station.sndk-jev.plist` | The Job | The launchd wrapper (beside the station's other runners, where its job test expects it) and the plist. Installed on the station since 2026-09-22; fires at :02 and :32 ET, so JEV reads once per half hour in market hours. |
 | `runtime/viewstation/static/m/jev.html` | The Card | The phone page. Polls `latest.json` every 20 seconds, and 12 seconds after each :02 and :32 read, through the viewstation's existing read-only raw-file route, so `server.py` is unchanged. |
 | `page/build_page.py` | The Page | Builds the long-form page: every label, question, weight and the newest sums, from the spec, the question docs and `state/jev/`. |
-| `questions/sndk_pro.json` | The Questions | 56 questions in 13 groups, each group one request: 45 live, 3 shadow, 8 dark (news, no source yet). Fifteen came from the reviews (five from the end-of-day review, two from the label review, six from the intraday question review, two from the 25-agent pressure test of 2026-09-24) (`questions/proposals/`). |
+| `questions/sndk_pro.json` | The Questions | 47 questions in 13 groups, each group one request: 36 live, 3 shadow, 8 dark (news, no source yet). Fourteen came from the reviews (five from the end-of-day review, one from the label review, six from the intraday question review, two from the 25-agent pressure test of 2026-09-24) (`questions/proposals/`). Nine were retired on 2026-09-25 as duplicates or with no forward value; the `retired` block keeps each one's reason and what absorbed it. |
+| `sndk_jev/events.py`, `calendar/events.json` | The Calendar | The tier-1 scheduled events (the Fed's decisions and press conferences, index rebalance closes, SanDisk's timed events, half-day closes), kept by hand to year end. A read with one due within the hour is tagged; one due within 30 minutes is graded but kept out of the question weights. |
 | `questions/sndk_hour.json` | The Sum Questions | The two sums, `next_30` and `next_60`, with their flat bands and base rates written into the criteria. |
-| `spec/labels.json` | The Label Spec | All 67 labels, each with its source, logic, cut and the sentence it wrote on a real row; plus the overlap review and the two labels folded away. `tests/test_spec.py` pins the built set to what the code writes. |
+| `spec/labels.json` | The Label Spec | All 68 labels, each with its source, logic, cut and the sentence it wrote on a real row; plus the overlap review and the two labels folded away. `tests/test_spec.py` pins the built set to what the code writes. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars, side packets and a chain cache. No network, no host state. |
 
 ## Run it
@@ -99,7 +100,8 @@ into one wait of about the slowest request.
   every question that needs it. A forced answer is worse than no answer.
 - **Point in time.** `now` is the row's own timestamp. Only bars that finished
   before it count, so a replay never reads the unfinished minute, and prior
-  sessions are only days before the day being built.
+  sessions are only days before the day being built. A run on today's newest
+  row also checks the wall clock, and only for the two safety checks below.
 - **No prices in labels.** Distances are in sigma, shares are percentages,
   strikes are described and never named.
 - **Thresholds in the words.** 0.15 sigma is SNDK PRO's own move rule. The
@@ -109,6 +111,20 @@ into one wait of about the slowest request.
 - **Baselines need history.** Volume bands need 5 prior sessions of bars at
   the same time of day, the range band needs 3. Until then those labels are
   omitted.
+- **Safety checks.** A sent read on today's newest row, when that row is more
+  than 6 minutes old, is skipped (the scanner has stopped; the last card stays,
+  and its age shows). On any run on today's newest row, sent or not, when the
+  options book is more than 6 minutes old (or its time is missing), every label
+  built from it (`gex.*`, `options.*`, `iv.skew`, `iv.term_slope`,
+  `range.wall_retests`) is left out with the reason, and the packer skips the
+  questions that need them. A side packet whose own integrity checks report a
+  failure is not used, and no older packet stands in. A replay checks neither.
+  On a past day whose bars reach the close, a mark with missing bars (a halt)
+  is closed out as a halted window instead of waiting for ever.
+- **Scheduled events.** A read with a tier-1 event due within the hour, or
+  one under way (an investor day), carries it in its record, its sum record and the card; JEV never sees it and
+  nothing is suppressed. One due within 30 minutes is graded but never pairs
+  into a question's weight, and the tally counts those reads apart.
 - **Standing assumptions.** A 16:00 close, or 13:00 on the NYSE half days the
   station's market-hours gate lists (`state_builder.session_close`, shared by
   the grader and the clock), and the `range_ruler.em_consumed` field as
@@ -125,16 +141,16 @@ labels weigh.
 
 | Group | Labels | Source in SNDK PRO |
 |---|---|---|
-| `price_and_range` | recent 30-minute move, place in the day's range, distance from VWAP, opening-box status, today's range against the last 5 sessions | `spot`, `sigma`, `vwap`, the minute bars |
-| `volatility` | 30-minute IV trend, put-call skew, expected move used, the last 30 minutes' realized movement against the move priced for 30 minutes | `atm_iv` across today's rows, `iv_skew.skew_pts`, `range_ruler.em_consumed`, the minute bars' closes, `sigma` |
-| `strikes` | which side of price holds most of the options weight, and how far the nearest heavy strike is | `gex_views.gamma_above_spot / gamma_below_spot`, `call_wall`, `put_wall`, `spot`, `sigma` |
+| `price_and_range` | recent 30-minute move, place in the day's range, distance from VWAP, the opening box and what price did after breaking it, today's range against the last 3 to 5 sessions | `spot`, `sigma`, `vwap`, the minute bars |
+| `volatility` | 30-minute IV trend, put-call skew, the last 30 minutes' realized movement against the move priced for 30 minutes | `atm_iv` across today's rows, `iv_skew.skew_pts`, the minute bars' closes, `sigma` |
+| `strikes` | which side of price holds most of the options weight | `gex_views.gamma_above_spot / gamma_below_spot` |
 | `volume` | last 30 minutes against the same slot on prior days, and the move against the 30 minutes before it | the minute bars' `volume`, prior days' bars |
-| `momentum` | pace of the last 10 minutes, closes agreeing with the move | the minute bars |
-| `strikes_next` | the strike ladder, clustering near price, wall thickness and grip, today's turnover and call-put split, next week's share, what expires tonight, the book against yesterday's and overnight, wall retests | `gex_views` (mass, net, volume and open interest by strike, the wall shares, the pin share), `net_exposure`, the wall tenors, yesterday's diary file, the side packet's level visits |
+| `momentum` | pace of the last 10 minutes | the minute bars |
+| `strikes_next` | today's turnover and call-put split, next week's share, what expires tonight, the nearest heavy strike and how often price has visited it, what moved since the last book, where today's option volume sits | `gex_views` (volume and open interest by strike), the wall tenors, `call_wall`, `put_wall`, the side packet's level visits, the last book's row |
 | `volume_next` | volume by direction and at price, how thick the day's volume profile is at price, the move's retracement, pauses | the minute bars, volume bucketed by price |
-| `history_next` | price against the last two days and the prior close, yesterday's levels tested, returns to the day's high since it was set | yesterday's and the day before's bars, today's bars, the side packet's level visits |
-| `indicators_next` | 5-minute RSI, stretch, this week's IV against next week's, which way the expected move leans, VWAP slope | closes sampled every 5 minutes, the side packet's RSI episodes, next week's at-the-money IV against this week's, `adaptive_em.down_share`, the bars' running VWAP |
-| `space_time_next` | place against the week, minutes since the last move, how far the session has gone, bar width | the prior 5 sessions' bars plus today, the row's timestamp |
+| `history_next` | price against the last two days, yesterday's levels tested, returns to the day's high since it was set | yesterday's and the day before's bars, today's bars, the side packet's level visits |
+| `indicators_next` | 5-minute RSI, stretch, this week's IV against next week's, VWAP slope, the stall against IV, path efficiency, the move against IV | closes sampled every 5 minutes, the side packet's RSI episodes, next week's at-the-money IV against this week's, the bars' running VWAP |
+| `space_time_next` | place against the week, minutes since the last move, how far the session has gone, bar width, the options pace since the last book, the session's shape, the nearest level | the prior 5 sessions' bars plus today, the row's timestamp, `gex_views.vol_gross_by_strike` on this book and the last |
 | `news_read`, `news_reaction` | headline, excerpt, earlier headlines, age, price move since arrival | a news item handed in with `--news`; SNDK PRO has no feed yet |
 | `outcome_shadow` | the whole state | shadow only, never a call |
 
@@ -185,9 +201,9 @@ apart without a red test.
 
 ## The pipeline, six steps
 
-1. Labels, code: 67 sentences from the row, bars, side packet and chain cache.
+1. Labels, code: 68 sentences from the row, bars, side packet and chain cache.
 2. The live questions, JEV, in parallel: a probability per option. There are
-   45; a question not due this read keeps its held answer instead of being
+   36; a question not due this read keeps its held answer instead of being
    asked, and one whose label is missing is skipped.
 3. Answers as sentences, code (`sndk_jev/hour.py`): each answered live question
    becomes one line, "Over the last 30 minutes, did price rise, fall, or go
@@ -341,11 +357,18 @@ measured between every pair of verdict labels. Findings, also in
 
 ## Not done yet
 
+- The event calendar is kept by hand: SanDisk's conference slots and index
+  changes have to be added when they are announced.
+- The quote-status rules (skip a read while SNDK is halted, catch a frozen
+  quote) need SNDK PRO to keep the quote's status and trade time on its rows;
+  proposed, not built.
 - No push. A ntfy message when an answer flips is drawn dashed on the page.
 - No decoy control. Feeding JEV an old, unlabelled scene every twentieth call
   to check it reads the labels rather than guessing is on SNDK PRO's plan and
   is not built.
 - No news feed exists in Mirai. The eight news questions run only when an item
   is handed in.
-- The weights have not moved yet: no question has 40 fresh graded reads, so
-  every sentence still counts 1.0.
+- Weights move once a question has 40 fresh graded reads of its own; see
+  `state/jev/weights.json`. Only live questions pair, and only with picks from
+  their current options, so a retired question or a dropped option never sets
+  the scale.

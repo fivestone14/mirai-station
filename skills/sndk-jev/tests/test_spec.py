@@ -65,3 +65,13 @@ def test_unbuilt_labels_have_no_question_yet_or_are_named_by_one():
         group = lab["path"].split(".")[0]
         # nothing to assert about the answer; the page shows it. Only guard against a typo'd group.
         assert group in {"context", "price", "range", "iv", "gex", "options", "volume", "momentum", "news"}, lab["path"]
+
+
+def test_a_retired_question_is_never_asked_again():
+    """The retired block records what was taken out; none of those ids may reappear in a group."""
+    doc = load_questions(DEFAULT_QUESTIONS)
+    asked = {qid for g in doc["groups"] for qid in g["questions"]}
+    retired = {r["id"] for r in doc.get("retired", [])}
+    assert retired and not (asked & retired), sorted(asked & retired)
+    for r in doc["retired"]:
+        assert r.get("into") is None or r["into"] in asked, r

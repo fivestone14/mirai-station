@@ -1,6 +1,6 @@
 {
  "name": "jev-questions",
- "version": "0.14.0",
+ "version": "0.15.0",
  "date": "2026-09-25",
  "how_to_use": [
   "Each group is one JEV request. The packer sends the group's state slice as the state and only the fields type, instructions and criteria of each question; viewpoint, status, ask, why and cadence are for people.",
@@ -8,7 +8,8 @@
   "Grading is of the two sums only, next_30 and next_60 in questions/sndk_hour.json, each by the bars at its own mark, as the phone shows them: blended half and half with the time-of-day odds (sndk_jev/clock.py), with JEV's own sums and the odds scored beside them. No live question is graded against the next move; a live question's weight is how well its fresh picks tracked the 30-minute band.",
   "cadence is the starting interval. The service snaps it to 30, 60 or 120 minutes, recounts it each day from the day before, and holds the last fresh answer in between. Scans two minutes apart are 0.918 correlated on this name, so few questions gain from being asked more often than every read.",
   "Read the probabilities from every score question, never its single score, which is a weighted mean and can sit between two levels.",
-  "Every threshold is written into the criteria in the words the label uses, because JEV cannot compare numbers. The 0.12 and 0.30 sigma bands are measured on this name at 30 minutes, on 5,815 thirty-minute windows: the end move is within 0.12 sigma 59% of the time and 0.30 is the 90th percentile of the furthest point."
+  "Every threshold is written into the criteria in the words the label uses, because JEV cannot compare numbers. The 0.12 and 0.30 sigma bands are measured on this name at 30 minutes, on 5,815 thirty-minute windows: the end move is within 0.12 sigma 59% of the time and 0.30 is the 90th percentile of the furthest point.",
+  "retired lists the questions taken out, the day, the reason and the question that absorbed each one, if any; a retired question is never asked and its weight history stays in state/jev/ for the record."
  ],
  "groups": [
   {
@@ -67,35 +68,18 @@
       "unsure": "the label gives too little to call"
      }
     },
-    "box_status": {
-     "viewpoint": "history",
-     "status": "live",
-     "cadence": "every 10 minutes",
-     "ask": "Where is price against the first half hour's range: inside all day, broken out, or back inside after a break?",
-     "why": "A break that came back is a different day from one that never broke, and the old options folded those together.",
-     "type": "choice",
-     "instructions": "Read `range.box_status`. Where is price compared with today's opening box?",
-     "criteria": {
-      "inside_all_day": "price is inside the opening box and has stayed inside it all day",
-      "broke_above": "price has broken above the opening box",
-      "broke_below": "price has broken below the opening box",
-      "back_inside_after_a_break": "price is inside the opening box but broke out of it earlier today and came back",
-      "still_forming": "the opening box is still forming",
-      "unsure": "the label gives too little to call"
-     }
-    },
     "range_vs_normal": {
      "viewpoint": "history",
      "status": "live",
      "cadence": "every 20 minutes",
      "ask": "Is today's range small, normal, or large for this time of day?",
-     "why": "It says whether today is a quiet day or a big one, which changes how far any target is.",
+     "why": "It says whether today is a quiet day or a big one, which changes how far any target is. The label names 3, 4 or 5 sessions early in the record; the criteria said five, and JEV read 9 of 12 such sentences right until the wording followed the label (12 of 12).",
      "type": "choice",
-     "instructions": "Read `range.today_vs_normal`. How does today's range so far compare with the last five sessions?",
+     "instructions": "Read `range.today_vs_normal`. How does today's range so far compare with the prior sessions the label names, at this time of day?",
      "criteria": {
-      "small": "today's range is in the bottom third of the last five sessions",
-      "normal": "today's range is in the middle third of the last five sessions",
-      "large": "today's range is in the top third of the last five sessions",
+      "small": "today's range so far is in the bottom third of the last sessions at this time of day, however many sessions the label names",
+      "normal": "today's range so far is in the middle third of the last sessions at this time of day, however many sessions the label names",
+      "large": "today's range so far is in the top third of the last sessions at this time of day, however many sessions the label names",
       "unsure": "the label gives too little to call"
      }
     },
@@ -103,10 +87,10 @@
      "viewpoint": "history",
      "status": "live",
      "cadence": "every 10 minutes",
-     "ask": "After a break of the first half hour's range, is price extending, stalling, or fading back?",
-     "why": "A break that keeps going and a break that is fading are opposite trades, and this is the first live question that needs two sentences read together.",
+     "ask": "Where is price against the first half hour's range: inside all day, back inside after a break, or broken out and extending, stalling or fading?",
+     "why": "Absorbs box_status (2026-09-25): the old inside option held both 'inside all day' and 'back inside after a break', and JEV read back-inside sentences as a live break (3 of 12 right); with the two inside options split it read 40 of 40. It carries no forward value either way (Brier +0.0015 against the time of day), so it stays as the one description of the day's opening range. It needs the last 30 minutes' move, which does not exist while the box is still forming, so the question is first asked once the box has closed and has no forming option.",
      "type": "choice",
-     "instructions": "Read `range.box_status` for where price is against the opening box, and `price.recent_move` for the last 30 minutes. Which situation is it?",
+     "instructions": "Read `range.box_status` for where price is against the opening box, and `price.recent_move` for the last 30 minutes. A price that sits inside the box counts as inside, whatever it did earlier or over the last 30 minutes; only a price that sits beyond an edge now counts as broken. Which situation is it?",
      "criteria": {
       "broke_up_extending": "price has broken above the opening box, and over the last 30 minutes price rose more than 0.15 sigma",
       "broke_up_stalling": "price has broken above the opening box, and over the last 30 minutes price stayed within 0.15 sigma of where it was",
@@ -114,9 +98,9 @@
       "broke_down_extending": "price has broken below the opening box, and over the last 30 minutes price fell more than 0.15 sigma",
       "broke_down_stalling": "price has broken below the opening box, and over the last 30 minutes price stayed within 0.15 sigma of where it was",
       "broke_down_fading": "price has broken below the opening box, and over the last 30 minutes price rose more than 0.15 sigma",
-      "inside_box": "price is inside the opening box",
-      "box_forming": "the opening box is still forming",
-      "unsure": "the labels give too little to call"
+      "inside_all_day": "price is inside the opening box and has stayed inside it all day",
+      "back_inside_after_a_break": "price is inside the opening box, and earlier today it broke above the box, below it, or out both ways, and came back inside",
+      "unsure": "the labels conflict or say too little to call"
      }
     }
    }
@@ -127,7 +111,6 @@
     "context",
     "iv.trend_30min",
     "iv.skew",
-    "iv.expected_move_used",
     "iv.vs_realized_30"
    ],
    "questions": {
@@ -161,21 +144,6 @@
       "unsure": "the label gives too little to call"
      }
     },
-    "em_used": {
-     "viewpoint": "indicators",
-     "status": "live",
-     "cadence": "hourly",
-     "ask": "Has today's range used under half, about all, or more than the expected move?",
-     "why": "A day that has already spent its expected move is a different place to add risk; it read beyond_full on 71% of moments, so the ruler needs checking before the cut is trusted.",
-     "type": "choice",
-     "instructions": "Read `iv.expected_move_used`. How much of today's expected move has price's range used?",
-     "criteria": {
-      "under_half": "today's range so far is under half of today's expected move",
-      "half_to_full": "today's range so far is between half and all of today's expected move",
-      "beyond_full": "today's range so far is more than today's expected move",
-      "unsure": "the label gives too little to call"
-     }
-    },
     "realized_vs_priced": {
      "viewpoint": "indicators",
      "status": "live",
@@ -198,8 +166,7 @@
    "id": "strikes",
    "reads": [
     "context",
-    "gex.weight_side",
-    "gex.air_to_wall"
+    "gex.weight_side"
    ],
    "questions": {
     "weight_side": {
@@ -214,21 +181,6 @@
       "above": "the label opens with 'most of the options weight sits above price'; the percentage after that is ignored",
       "below": "the label opens with 'most of the options weight sits below price'; the percentage after that is ignored",
       "even": "the label opens with 'the options weight is split about evenly'; the percentage after that is ignored",
-      "unsure": "the label gives too little to call"
-     }
-    },
-    "air_to_wall": {
-     "viewpoint": "strikes",
-     "status": "live",
-     "cadence": "every 10 minutes",
-     "ask": "Is a strike with a big pile of options close to price, or is there nothing heavy close by?",
-     "why": "A description of the structure near price, kept as a reading check; walls were measured as not acting as levels on this name.",
-     "type": "choice",
-     "instructions": "Read `gex.air_to_wall`. Is there a heavy strike close to price, or open air?",
-     "criteria": {
-      "heavy_strike_close": "a heavy strike sits within 0.5 sigma of price",
-      "open_air": "the nearest heavy strike is more than 0.5 sigma from price",
-      "no_wall_in_reach": "no heavy strike sits within reach",
       "unsure": "the label gives too little to call"
      }
     }
@@ -279,8 +231,7 @@
    "id": "momentum",
    "reads": [
     "context",
-    "momentum.pace",
-    "momentum.closes"
+    "momentum.pace"
    ],
    "questions": {
     "pace_vs_before": {
@@ -297,22 +248,6 @@
       "about_the_same": "the last 10 minutes moved between two thirds and 1.5 times as far as the 10 minutes before",
       "unsure": "the label gives too little to call"
      }
-    },
-    "closes_agree": {
-     "viewpoint": "volume_price",
-     "status": "live",
-     "cadence": "every scan",
-     "ask": "How many of the last five bars closed in the direction of the move?",
-     "why": "Tests whether JEV maps a count onto a band; on a quiet read the label says there is no move to judge and the answer is no_move.",
-     "type": "choice",
-     "instructions": "Read `momentum.closes`. It gives a digit for how many of the last five 1-minute bars closed in the direction of the move. Which band is that digit in?",
-     "criteria": {
-      "most": "the label says 5 or 4 of the last five bars closed in the direction of the move",
-      "about_half": "the label says 3 or 2 of the last five bars closed in the direction of the move",
-      "few": "the label says 1 or 0 of the last five bars closed in the direction of the move",
-      "no_move": "the label says the last 30 minutes moved under the 0.15 sigma move rule, so there is no move to judge",
-      "unsure": "the label gives too little to call"
-     }
     }
    }
   },
@@ -320,36 +255,16 @@
    "id": "strikes_next",
    "reads": [
     "context",
-    "gex.cluster_near_price",
     "options.turnover",
     "options.call_put_split",
     "options.next_week_share",
     "gex.expiry_roll",
-    "gex.book_vs_yesterday",
-    "gex.crowd_change_overnight",
     "gex.air_to_wall",
     "range.wall_retests",
     "gex.since_last_book",
-    "options.size_showing",
     "options.new_activity"
    ],
    "questions": {
-    "cluster_near_price": {
-     "viewpoint": "strikes",
-     "status": "live",
-     "cadence": "every 10 minutes",
-     "ask": "Is there a band of neighbouring strikes with big piles of options near price, and on which side?",
-     "why": "Clusters and their size are what your first viewpoint asks for, and today every strike label collapses the board to one number.",
-     "type": "choice",
-     "instructions": "Read `gex.cluster_near_price`. Where does the band of adjacent heavy strikes sit, if there is one?",
-     "criteria": {
-      "thick_band_above": "the label says a band of adjacent heavy strikes spans a stretch above price",
-      "thick_band_below": "the label says a band of adjacent heavy strikes spans a stretch below price",
-      "band_around_price": "the label says a band of adjacent heavy strikes spans from below price to above it, around price",
-      "thin_or_scattered": "the label says there is no band near price",
-      "unsure": "the label gives too little to call"
-     }
-    },
     "fresh_action": {
      "viewpoint": "strikes",
      "status": "live",
@@ -377,21 +292,6 @@
      "criteria": {
       "carries": "BOTH the call side and the put side say the later-dated book defends the same strike as today's book, AND the share going to next week is a meaningful share, above the 25% cut",
       "expires_with_this_week": "either side says the later-dated book defends a different strike from today's book, or the share going to next week is a small share, under the 25% cut",
-      "unsure": "the labels conflict or say too little to call"
-     }
-    },
-    "book_vs_yesterday": {
-     "viewpoint": "strikes",
-     "status": "live",
-     "cadence": "hourly",
-     "ask": "Are the options positions market makers hold much bigger, smaller, or about the same as at yesterday's close?",
-     "why": "A book that grew overnight means you are trading against a different structure from the one you learned yesterday.",
-     "type": "choice",
-     "instructions": "Read `gex.book_vs_yesterday` for the book's size against yesterday's close, and `gex.crowd_change_overnight` for the crowd at the heaviest strike. The book decides; the crowd only counts when it was built today. How does today's book compare with yesterday's close?",
-     "criteria": {
-      "grew": "the label says the book is bigger, above the 1.25 cut, or the crowd at the heaviest strike was built today",
-      "shrank": "the label says the book is smaller, below the 0.8 cut",
-      "about_the_same": "the label says the book is about the same, within 0.8 to 1.25",
       "unsure": "the labels conflict or say too little to call"
      }
     },
@@ -426,22 +326,6 @@
       "heaviest_moved": "the label says the heaviest strike now is a different strike from the last book, and both the nearest call wall and the nearest put wall are the same strike as at the last book",
       "steady": "the label says the heaviest strike, the nearest call wall and the nearest put wall are each the same strike as at the last book",
       "unsure": "the label says a strike could not be compared, or gives too little to call"
-     },
-     "proposed": "2026-09-22, from the label review"
-    },
-    "quote_lean": {
-     "viewpoint": "strikes",
-     "status": "live",
-     "cadence": "every scan",
-     "ask": "On the at-the-money option, is more size showing on the buy side, on the sell side, or about even?",
-     "why": "`options.size_showing` is built whenever the chain cache is this row's book and read by nothing; which side of the at-the-money quote is stacked is the one live read of resting options interest the set has.",
-     "type": "choice",
-     "instructions": "Read `options.size_showing`. It gives the bid's share of the size showing on the at-the-money quote and names the side. Which way does the quote lean?",
-     "criteria": {
-      "bid_heavy": "the label says more size on the bid, beyond the 60% cut",
-      "offer_heavy": "the label says more size on the offer, bid under the 40% cut",
-      "about_even": "the label says about even, the bid's share within 40% to 60%",
-      "unsure": "the label gives too little to call"
      },
      "proposed": "2026-09-22, from the label review"
     },
@@ -566,7 +450,6 @@
     "context",
     "price.vs_yesterday",
     "price.vs_day_before",
-    "price.vs_prior_close",
     "range.prior_level_touches",
     "price.day_range_position",
     "range.high_retests"
@@ -600,21 +483,6 @@
       "false": "price has spent no minutes within reach of any of yesterday's high, low or close today"
      }
     },
-    "outlier_day": {
-     "viewpoint": "history",
-     "status": "live",
-     "cadence": "every 20 minutes",
-     "ask": "Is today an outlier against last night's close?",
-     "why": "A day sitting 2.6 normal days from the close, as the 18th did, is one where every mean-reversion instinct is suspect.",
-     "type": "choice",
-     "instructions": "Read `price.vs_prior_close`. How far is price from last night's close?",
-     "criteria": {
-      "outlier_up": "price is more than 1.0 sigma above last night's close",
-      "outlier_down": "price is more than 1.0 sigma below last night's close",
-      "ordinary": "price is within 1.0 sigma of last night's close",
-      "unsure": "the label gives too little to call"
-     }
-    },
     "day_high_returns": {
      "viewpoint": "history",
      "status": "live",
@@ -639,7 +507,6 @@
     "momentum.rsi_5min",
     "momentum.stretch",
     "iv.term_slope",
-    "iv.move_sides",
     "momentum.vwap_slope",
     "iv.trend_30min",
     "momentum.path_efficiency",
@@ -673,21 +540,6 @@
       "hotter": "this week's at-the-money implied volatility sits above next week's, more than the 2 point flat band",
       "cooler": "this week's at-the-money implied volatility sits below next week's, more than the 2 point flat band",
       "level": "this week's and next week's at-the-money implied volatility are within the 2 vol point flat band, whichever week the label says is higher",
-      "unsure": "the label gives too little to call"
-     }
-    },
-    "expected_move_skew": {
-     "viewpoint": "indicators",
-     "status": "live",
-     "cadence": "hourly",
-     "ask": "Is the day's expected move skewed down, skewed up, or even?",
-     "why": "An asymmetric expected move sizes an up target and a down target differently instead of the same.",
-     "type": "choice",
-     "instructions": "Read `iv.move_sides`. How does the day's expected move split between up and down?",
-     "criteria": {
-      "skewed_down": "the day's expected move is skewed to the downside beyond the 60% cut",
-      "skewed_up": "the day's expected move is skewed to the upside beyond the 60% cut",
-      "even": "the day's expected move is even within the 40% to 60% band",
       "unsure": "the label gives too little to call"
      }
     },
@@ -771,7 +623,8 @@
     "price.minute_width",
     "range.session_shape",
     "range.nearest_level",
-    "price.recent_move"
+    "price.recent_move",
+    "options.flow_pace"
    ],
    "questions": {
     "week_position": {
@@ -793,15 +646,16 @@
      "viewpoint": "space_time",
      "status": "live",
      "cadence": "every scan",
-     "ask": "Is price active right now, or quiet?",
-     "why": "How long since price last really moved, with how far into the session we are, is the time half of your fifth viewpoint.",
+     "ask": "Is the market active right now, in price or in options, or quiet?",
+     "why": "How long since price last really moved, with how far into the session we are, is the time half of your fifth viewpoint; since 2026-09-25 a burst of options flow counts as active too. That moved 22 of 663 replayed reads from quiet to active (burst reads ended the next 30 minutes flat 38% of the time against 67% for a quiet options pace) and beat the price-only question on 14 of 20 days; it rests on 22 reads, so it is re-scored after ten more sessions.",
      "type": "choice",
-     "instructions": "Read `context.time_since_last_move`, `context.session_progress` and `price.minute_width`. Is price active or quiet right now?",
+     "instructions": "Read `context.time_since_last_move`, `context.session_progress`, `price.minute_width` and `options.flow_pace`. A burst of options flow counts as active even when price is still. Is the market active or quiet right now?",
      "criteria": {
-      "active": "price last made a real move under 10 minutes ago, or this minute's range is wider than the 2-times cut",
-      "quiet": "price last made a real move 10 minutes ago or longer, and this minute's range is within the 2-times cut",
+      "active": "price last made a real move under 10 minutes ago, or this minute's range is wider than the 2-times cut, or options flow since the last options book is a burst, above the 1-times cut",
+      "quiet": "price last made a real move 10 minutes ago or longer, this minute's range is within the 2-times cut, and options flow since the last options book is steady or quiet, not a burst, or there is no options pace to judge yet",
       "unsure": "the labels conflict or say too little to call"
-     }
+     },
+     "proposed": "2026-09-25, the options arm from the 25-agent pressure test of 2026-09-24; see questions/proposals/2026-09-24-pressure-test.json"
     },
     "session_shape": {
      "viewpoint": "space_time",
@@ -1071,6 +925,80 @@
      }
     }
    }
+  }
+ ],
+ "retired": [
+  {
+   "id": "book_vs_yesterday",
+   "group": "strikes_next",
+   "retired": "2026-09-25",
+   "into": null,
+   "why": "a day-level constant that leans with the move since the close; no forward value (Brier +0.0084 against the time of day, better on 8 of 20 days)",
+   "ask": "Are the options positions market makers hold much bigger, smaller, or about the same as at yesterday's close?"
+  },
+  {
+   "id": "cluster_near_price",
+   "group": "strikes_next",
+   "retired": "2026-09-25",
+   "into": null,
+   "why": "one-sided: thin_or_scattered on 62 of 62 live asks; no forward value (+0.0052, 5 of 20 shuffles)",
+   "ask": "Is there a band of neighbouring strikes with big piles of options near price, and on which side?"
+  },
+  {
+   "id": "quote_lean",
+   "group": "strikes_next",
+   "retired": "2026-09-25",
+   "into": null,
+   "why": "the front-week at-the-money quote shows 1x1 lots, so the lean is noise, and it can never be graded offline",
+   "ask": "On the at-the-money option, is more size showing on the buy side, on the sell side, or about even?"
+  },
+  {
+   "id": "expected_move_skew",
+   "group": "indicators_next",
+   "retired": "2026-09-25",
+   "into": null,
+   "why": "even on 82% of service reads; no forward value (+0.0086, 3 of 20 shuffles); nothing beyond iv_skew",
+   "ask": "Is the day's expected move skewed down, skewed up, or even?"
+  },
+  {
+   "id": "closes_agree",
+   "group": "momentum",
+   "retired": "2026-09-25",
+   "into": null,
+   "why": "a duplicate: NMI 0.78 with volume_backs_move and 0.70 with price_recent_direction; JEV said unsure on every quiet read",
+   "ask": "How many of the last five bars closed in the direction of the move?"
+  },
+  {
+   "id": "em_used",
+   "group": "volatility",
+   "retired": "2026-09-25",
+   "into": null,
+   "why": "one-sided (beyond_full on 90% of live reads) and no forward value (+0.0003); prorating made it more one-sided",
+   "ask": "Has today's range used under half, about all, or more than the expected move?"
+  },
+  {
+   "id": "air_to_wall",
+   "group": "strikes",
+   "retired": "2026-09-25",
+   "into": "wall_return",
+   "why": "fully determined by wall_return (NMI 0.72; its answer is a function of wall_return's)",
+   "ask": "Is a strike with a big pile of options close to price, or is there nothing heavy close by?"
+  },
+  {
+   "id": "outlier_day",
+   "group": "history_next",
+   "retired": "2026-09-25",
+   "into": "two_day_position",
+   "why": "NMI 0.66 with two_day_position; flipped at the same moments all day; the remainder adds nothing (+0.0005)",
+   "ask": "Is today an outlier against last night's close?"
+  },
+  {
+   "id": "box_status",
+   "group": "price_and_range",
+   "retired": "2026-09-25",
+   "into": "box_break_follow_through",
+   "why": "folded in with its inside option split in two; JEV read back-inside-after-a-break as a live break on 3 of 12 before the split, 40 of 40 after",
+   "ask": "Where is price against the first half hour's range: inside all day, broken out, or back inside after a break?"
   }
  ]
 }
