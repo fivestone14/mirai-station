@@ -311,6 +311,10 @@ details .q{margin-top:8px}
       var note = 'a forecast, graded by the bars 30 minutes on, never a call';
       if(h.confidence != null) note = 'confidence ' + Math.round(h.confidence * 100) + '% \u00B7 ' + note;
       blendLines(h, bl, 30).forEach(function(t){ hc.appendChild(el('div', 'tag', t)); });
+      // a scheduled event within the hour (the service's calendar): said once, in words; the read is
+      // still graded, and one due inside 30 minutes is kept out of the question weights
+      if(c.event && c.event.sentence) hc.appendChild(el('div', 'tag', sentence(c.event.sentence) +
+        (c.event.within_30 ? '; this read is graded but kept out of the question weights' : '')));
       hc.appendChild(el('div', 'tag', note));
       hc.appendChild(el('div', 'tag', 'from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '')));
       main.appendChild(hc);
