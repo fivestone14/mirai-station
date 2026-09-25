@@ -257,8 +257,9 @@ def day_samples(bin_rows: list[dict], cap: int) -> dict[str, list[float]]:
 # ---------------------------------------------------------------------------
 
 # Seed: FOMC decision days verified against the Fed calendar 2026-07-04;
-# CPI 2026-07-14 verified (BLS); later CPI dates follow the BLS second-week
-# pattern and are marked verified:false pending the quarterly refresh.
+# CPI 2026-07-14 verified (BLS); 2026-10-14 verified against the BLS release
+# schedule on 2026-09-25 (the second-week pattern had given the 13th). The
+# other CPI dates follow the pattern and stay verified:false for the refresh.
 DEFAULT_CALENDAR = {
     "note": "refresh quarterly; unverified dates follow the standard pattern",
     "events": [
@@ -267,7 +268,7 @@ DEFAULT_CALENDAR = {
         {"date": "2026-08-12", "kind": "CPI", "time_et": "08:30", "verified": False},
         {"date": "2026-09-11", "kind": "CPI", "time_et": "08:30", "verified": False},
         {"date": "2026-09-16", "kind": "FOMC", "time_et": "14:00", "verified": True},
-        {"date": "2026-10-13", "kind": "CPI", "time_et": "08:30", "verified": False},
+        {"date": "2026-10-14", "kind": "CPI", "time_et": "08:30", "verified": True},
         {"date": "2026-10-28", "kind": "FOMC", "time_et": "14:00", "verified": True},
         {"date": "2026-11-10", "kind": "CPI", "time_et": "08:30", "verified": False},
         {"date": "2026-12-09", "kind": "FOMC", "time_et": "14:00", "verified": True},
