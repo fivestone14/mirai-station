@@ -1,0 +1,2180 @@
+{
+ "date": "2026-09-24",
+ "name": "The 25-agent pressure test of candidate questions, gates and fixes",
+ "method": "Every candidate was replayed through the real labeller at 663 reads over 20 sessions (2026-08-26 to 09-24, every 10 minutes from 10:02 to 15:32; 235 of them the service's own :02 and :32 reads) and scored leave-one-day-out against the time of day alone (3-class Brier at the 30-minute flat band of 0.12 sigma), with 20 within-day shuffles as the no-information control. LIVE needed: no option at 90% or more, JEV reading the drafted sentence right on at least 90% of up to 40 reads, a lower Brier than the clock alone that beats at least 16 of 20 shuffles, and more days better than worse. SHADOW: two-sided and read cleanly but short of that evidence. GATE: a code rule, not a question. FOLD: a change to an existing question. REJECT: one-sided, a duplicate (NMI 0.6 or more with an existing label), or no evidence.",
+ "outcome_2026_09_25": "Built on the owner's go-ahead: the two LIVE questions (realized_vs_priced, volume_profile_thickness), the half-and-half blend of the sums with the time of day (clock.py; JEV's sum alone 0.663 mean Brier on the 37 graded reads, the time of day alone 0.543, the blend 0.556), and three fixes (day-high returns counted since the high was set, a 13:00 close on NYSE half days, October CPI on 10-14). Everything else below is a record, not a plan.",
+ "verdicts": [
+  {
+   "n": 1,
+   "candidate": "clock_in_the_sum",
+   "theme": "X Control",
+   "question_group": "sndk_hour.json sums (next_30, next_60 riding on the same request); not an sndk_pro group",
+   "question_id": null,
+   "verdict": "FOLD",
+   "case_for": "The live sum ignores time of day (morning p_flat 0.65 when 2 of 7 morning reads ended flat; NMI pick vs phase 0.11), the clock alone beats it on the same 37 graded reads (0.544 vs 0.663), and one context sentence through a door hour_request already has cut next_30 Brier by 0.055 on 24 of 37 reads and 2 of 3 days, with JEV reproducible (25/25 same picks on identical requests). Intraday seasonality (open vs lunch lull) is one of the best-documented regularities in market microstructure.",
+   "case_against": "Three days and 37 reads; the read-bootstrap CI crosses zero; 60 minutes gains nothing. JEV does not use the share as a probability, it flips on it: morning flat mass 0.11 against a true 35%, lunch 0.92 against 68%, and late morning moved the wrong way on a single clause. The sum with the sentence (0.609) still loses to clock-only (0.544) and to the constant (0.570), and a plain 50/50 code blend of the live sum with the clock (0.555, pre-declared) beats the sentence. A practitioner would put the seasonal prior in code, not ask a reader that cannot do arithmetic to apply it."
+  },
+  {
+   "n": 2,
+   "candidate": "gate_halt_stale_halfday",
+   "theme": "H Gates and hygiene",
+   "question_group": "code gate",
+   "question_id": null,
+   "verdict": "GATE",
+   "case_for": "Correctness, not a forecast. The station already carries the right calendar (market_status), but the labeller and the grader still assume 16:00, so both 2026 half days would be mislabelled at all 7 reads and leave 3 grading horizons pending forever. The service today sends on rows up to 85 minutes old (5 of 257 reads on its own grid over 20 days). A halt either leaves a mark pending forever or grades it silently on a pre-halt price. A frozen quote is invisible to row age: the tape wrote one price for 5.7 hours on Labor Day. Only securityStatus and tradeTime can see that, and both are thrown away today.",
+   "case_against": "Almost no harm shows in the sample: 1 of 663 moments is stale, there are no halts in 21 days of bars, no half day falls in the window, and Brier on the kept reads does not move (0.5671 vs 0.5673). The quote rules (b) and (c) depend on a change to SNDK PRO that this service does not own. The value Schwab puts in securityStatus during a halt has never been captured here. Half days come twice a year. Practitioner view: stale-quote and halt filters are standard hygiene in any live pipeline (a limit-up/limit-down pause is 5 minutes), but there is no literature case that they improve forecasts."
+  },
+  {
+   "n": 3,
+   "candidate": "gate_event_window",
+   "theme": "H Gates and hygiene",
+   "question_group": "code gate",
+   "question_id": null,
+   "verdict": "GATE",
+   "case_for": "From 10:00 on, the five biggest 30-minute SNDK bars in 57 sessions all hold a tier-1 scheduled event (investor day 08-13 11:00, MSCI close 08-31, quad-witch/S&P 100 close 09-18, chair testimony 07-15 10:00, FOMC presser 07-29 14:30); tier-1 bars sit at the 74th percentile of their own clock slot (range 80th, p<=0.002 under every leave-one-kind-out); in the moment table the biggest read (08-31 15:32, 1.70 sigma) and the 7th (09-18 15:32, 0.76) are index closes; inside 30-minute tier-1 windows P(furthest > 0.5 sigma) is 18% vs 3.8%. The schedule is public and known ahead, so the tag has no lookahead, and the sentence reads cleanly (38/38).",
+   "case_against": "It carries no information about the graded band: delta30 +0.0013 (tier-1 60-minute label; 4/20 shuffles, 8/12 days), no variant beats the shuffle band; the band mix inside windows matches outside (the tail grows, direction does not). n is tiny (23 reads, 9 service reads, 4 days); FOMC 09-16 was a non-event for SNDK (furthest30 <= 0.34); tier-2 events show nothing; holding window reads out of the weights moves them no more than dropping random reads, and suppression moves Brier 0 to -0.0035. The 08-31 pre-auction selloff (14:32-14:52, -0.54 to -0.68 sigma) sits outside any 60-minute window. The calendar must be hand-kept: the shared state/lob_flow/calendar.json already lists October CPI on 10-13 (BLS: 10-14), and range_ruler.event_flag is null because sndk_views.py hard-codes it to None, not because nothing was scheduled. Practitioner: desks widen or stand aside into FOMC and rebalance closes. Literature: scheduled announcements lift volatility (pre-FOMC drift, closing-auction index pressure), not predictable direction."
+  },
+  {
+   "n": 4,
+   "candidate": "premarket_range",
+   "theme": "G External feeds",
+   "question_group": "history_next (premarket_position); volume (premarket_activity, rejected)",
+   "question_id": "premarket_position",
+   "verdict": "SHADOW",
+   "case_for": "Pre-market range does carry size in percent terms (0.48 with the regular-session range on 59 days; 0.33 partial with the rest of the day after the first half hour's range is known), the location read is two-sided and reads perfectly, it never collides with an existing label (top NMI 0.46 with range.session_shape), and in the table price inside the pre-market range saw bigger 30-minute excursions than price below it (P furthest30 > 0.30: 0.26 vs 0.08).",
+   "case_against": "Measured the way the service grades, in sigma, the size signal vanishes (corr 0.01 with the day's mean furthest30) because sigma already prices the day; the location label makes the 30-minute forecast worse than the clock (+0.0058, 10/10 days, 3 of 20 shuffles) and the busy/quiet day label worse still (+0.0033 V1, +0.0222 V2); the location holds 90% read to read and all day on 11 of 20 days, so both labels are close to day constants with 20 effective samples; and the feed is not a one-flag flip."
+  },
+  {
+   "n": 5,
+   "candidate": "gate_staleness_integrity",
+   "theme": "H Gates and hygiene",
+   "question_group": "code gate",
+   "question_id": null,
+   "verdict": "GATE",
+   "case_for": "The labeller refuses a chain cache older than 6 minutes but has no guard at all on the row's own book, and the service reads the newest row whatever its age. When the scanner stops (2 of 20 days) the service would send 46-48 frozen labels as the present, and the grader scores them against a window that started before the read. A label 10 minutes stale differs from the fresh one 14% of the time for the strike labels and 30% for price.recent_move. The guard costs nothing on healthy reads: the stale reads start at 405 s and healthy ones stop at 259 s.",
+   "case_against": "At the row clock the brief's rule never fires (0 of 7,253 rows in regular hours) because SNDK PRO already caps it upstream. The read-clock version touches 2 table moments, and its value is almost all in the whole-read skip (R1b), which overlaps the stale-row gate. The skew floor, the coverage rule and the integrity rule fire 0 times in 20 days: guards with no measured benefit. Practitioner view: a stale book is a known failure, but on SNDK strike labels carry about no forward value anyway, so stale strike labels cost little Brier."
+  },
+  {
+   "n": 6,
+   "candidate": "vwap_band",
+   "theme": "F Price location and momentum",
+   "question_group": "indicators_next",
+   "question_id": "vwap_band_stretch",
+   "verdict": "SHADOW",
+   "case_for": "It is the practitioner's own VWAP overlay, built from bars already stored, two-sided (57/22/17/3/1 on service), not a clock proxy (NMI 0.007) and not a duplicate of price.vs_vwap (NMI 0.46); beyond 2 bands price leaned back toward the average on 9 of 10 days (+0.08 sigma at 30 min, CI90 +0.016..+0.148; +0.22 at 60), and inside the move_vs_average combo's extending_* cells the stretched reads rarely kept going (away-band share 0.08 and 0.00 vs 0.42 and 0.24 for 1-to-2-band extensions); JEV reads it 40/40.",
+   "case_against": "No variant beats the clock beyond shuffle noise (V1 +0.0008 at 30, 4/20 shuffles, 8/12 days; +0.0082 at 60); on the 33 stretched reads the leave-one-day-out Brier gets worse (0.512 -> 0.535) because they come from 16 episodes on 10 days, 9 from one trend day (09-14) that rode the band; the reversion is small (median 0.07 sigma, under the 0.12 flat band) and reached the average 1 of 33 times; the afternoon +0.22 rests on one 1.07 read (0.12 without it); on service reads it fires 9 times in 20 days with +0.004 mean at 30 min; the 1-to-2 and within arms re-cut price.vs_vwap, which itself scores +0.0103 (0/20). Practitioner view: 2-band fades work on range days and fail on trend days, where price walks the band. Literature view: intraday reversion to VWAP is weak and regime-dependent; the bands are a volatility-scaled distance, not a documented forecaster."
+  },
+  {
+   "n": 7,
+   "candidate": "realized_vs_implied",
+   "theme": "C Options pricing",
+   "question_group": "volatility",
+   "question_id": "realized_vs_priced",
+   "verdict": "LIVE",
+   "case_for": "Quieter than priced was followed by a flat 30 minutes 70% of the time vs 42% after about as priced; delta30 -0.0065 vs clock (CI90 -0.0128 to -0.0003, 13/7 days, 20/20 shuffles; service -0.0057, 11/9, 20/20); the label alone scores 0.5522 vs 0.5673 for the clock alone, so most of the clock's value is realized movement; inside each read time the ratio still ranks the next move (26 of 34 times positive, p 0.003); NMI at most 0.27 with anything; JEV reads it 40/40. Literature: realized volatility clusters (HAR-RV, Corsi 2009), and realized-vs-implied is a standard desk read of the variance premium.",
+   "case_against": "Half the split is the clock: quieter is 2 of 116 first-hour reads and wilder is 51 of 56 first-hour reads, and inside the first hour wilder is not less flat than about (37% vs 30%); at 60 minutes it adds nothing (delta60 +0.0069, 7/13 days, beats only 3/20 shuffles); on all moments it adds nothing once time_since_last_move is known (-0.0055 alone, -0.0045 with it); 20 days, and midday/afternoon about-priced cells sit on 9 to 12 days. Practitioner view: the flat square-root-of-time ruler ignores the intraday U-shape (Andersen and Bollerslev 1997), so 'wilder' at 10:00 is mostly the normal open."
+  },
+  {
+   "n": 8,
+   "candidate": "fresh_session_extreme",
+   "theme": "E Range and levels (re-cut from B Volume; the volume qualifier added nothing)",
+   "question_group": "space_time_next",
+   "question_id": "fresh_session_extreme",
+   "verdict": "SHADOW",
+   "case_for": "Built from bars alone (91% coverage, no side packet), two-sided on service reads (75/14/11) and read perfectly by JEV (40/40, confidence 0.99). New highs are followed by a flat half hour 43% vs 64% (8 of 9 days; late morning 32% vs 57%, midday 53% vs 72%, afternoon 45% vs 68%; and, for V1, in the top third 42% vs 69%). The declared any-poke cut V1 beats the clock on all 663 reads (-0.0033, 19/20 shuffles, 13/7 days) and on service reads (-0.0173, 14/6); the drafted V1h still gains -0.0100 on service reads (20/20 service shuffles). On the same rows it scores better against the clock than price.day_range_position (+0.0029) or range.nearest_level (+0.0156) do alone. Practitioner view: a fresh session extreme is range expansion, and volatility clusters after it.",
+   "case_against": "With the trivial opening reads removed (V1h) the gain over the clock on all reads is -0.0005 (14/20 shuffles), and neither V1 (+0.0028) nor V1h (+0.0060) gains on the 428 reads ten minutes off the service clock, so the service edge looks like sampling luck. On all reads it adds nothing over price.day_range_position (+0.0028 nested), range.session_shape (+0.0090) or day_high_pressure (+0.0121), and range.nearest_level already names the day's high or low on 113 of 144 fresh reads. Fresh lows carry nothing (55% flat; less flat on 3 of 8 days; on down days 58% vs 61%), so the effect is new highs on up days in a sample that ran up (fresh highs on 9 days, 23 of 88 on 2026-09-18). That is a regime effect that could vanish or flip. Literature view: intraday breakout continuation is weak and unstable once time of day is controlled."
+  },
+  {
+   "n": 9,
+   "candidate": "peer_relative_strength",
+   "theme": "G External feeds",
+   "question_group": "NEW external_next (reads context, price.vs_peers; its own request so a peer-feed outage omits only this group)",
+   "question_id": "peer_relative_strength",
+   "verdict": "SHADOW",
+   "case_for": "Peers explain 66% of SanDisk's 30-minute variance (R2 0.656 on 720 bars over 60 days), so the label tells a sector move from a SanDisk-only move, context no existing label carries (highest NMI 0.14, momentum.path_efficiency). It is two-sided (group_flat 68% of service reads), JEV reads it 40/40, and a moving group marks a less flat next 30 minutes (60-day sample p_flat 0.38 with the group vs 0.62 group flat). Practitioner view: traders check sector confirmation before trusting a single-name move.",
+   "case_against": "Peers lead SanDisk by zero (next-bar corr -0.02 to -0.07) and laggards do not catch up (next 30 minutes in the group's direction -0.003 sigma, 60-day sample), so no variant beats the clock: V1 service -0.0012 with days 10/10, inside the service shuffle band (p05 -0.0057, p95 +0.0141); all reads +0.0034; 60-day sample -0.0003 with 26/33 days; 60-minute deltas all positive on moments. The group-moving signal is mostly time of day already. Leading and against fire on 1-2% and 0.3% of reads. It needs a new feed and a second sigma unit. Literature: lead-lag within an industry (Lo-MacKinlay 1990, Hou 2007) is a big-firm-leads-small effect at weekly horizons, not a 30-minute effect among peers of similar size."
+  },
+  {
+   "n": 10,
+   "candidate": "news_questions",
+   "theme": "G External feeds",
+   "question_group": "news_read + news_reaction (existing, dark)",
+   "question_id": "news_kind, news_subject, news_is_new, news_reverses_earlier, news_direction, news_vs_expectation, news_size, news_reaction_ladder",
+   "verdict": "SHADOW",
+   "case_for": "The reading half works: on 29 real SanDisk-relevant items JEV sorted kind (0.97) and subject (0.97) even from Google News titles with no body, caught repeats once opinion was named (0.93), flagged the one real reversal plus two probes (32/32), and after adding `mixed` matched beat/miss/in-line on 7 of 7. That is JEV's documented core use and the gates code needs before any news touches the sums.",
+   "case_against": "Nothing here earns a place in the sums: there is no feed, no graded read and the moment-level proxy scored worse than the clock (+0.0047 at 30 min, 0/20 shuffles). Company news never lands in the session (0/10 8-Ks), so the 30-minute reaction questions as built never fire on it; the sign of news (the one thing code cannot read) matched a human label only 0.69, and a practitioner would say the sign of a peer, macro or cost-and-benefit item is not a fact to grade against. vs_expectation rests on 7 items."
+  },
+  {
+   "n": 11,
+   "candidate": "time_in_range",
+   "theme": "F Price location and momentum",
+   "question_group": "price_and_range (add price.time_in_range to its reads list)",
+   "question_id": "range_edge_acceptance",
+   "verdict": "SHADOW",
+   "case_for": "Two-sided, reads perfectly (40/40), no new feed, and the mechanism shows day after day: fresh at the bottom ended up more than down on 9 of 11 days, fresh at the top ended down on 9 of 13; accepted edges held or drifted with the day. The split is almost independent of the last 30 minutes' move (NMI <= 0.044 inside the edges), so it is not the 30-minute reversal restated. Practitioners (market profile, Dalton) treat time spent at a level as acceptance and a quick probe of a new extreme as likely to be rejected; that is exactly this split.",
+   "case_against": "The Brier test sees nothing: +0.0049 vs clock at 30 minutes on all 663 reads (8/20 shuffles), and the fresh/accepted split adds +0.0024 over price_in_day_range (7/20 conditional shuffles). The one pass, -0.0048 on service reads, is a 235-read subset where price_in_day_range alone beats 19/20 of the same shuffles, and the new part over it reaches only 14/20. The question's answer duplicates price_in_day_range at NMI 0.831 by construction; the alone form (mostly at highs/lows/spread) is worse than every shuffle. 60-minute Brier is worse (+0.0106). Literature: intraday time-at-price effects on single names are weak and regime-dependent; 20 days of one stock cannot separate them from the known short-horizon reversal."
+  },
+  {
+   "n": 12,
+   "candidate": "gate_quote_width",
+   "theme": "C Options pricing",
+   "question_group": "code gate",
+   "question_id": null,
+   "verdict": "REJECT",
+   "case_for": "The front ATM quote is genuinely wide at the open (7%, 11%, 5% on the three 09:30 books; est. 0.08-0.11 sigma round trip, near the whole 0.12 sigma flat band) and IV read off it then is noisy (half-spread 2.0-3.6 vol points vs the 2-point term_slope band). size_showing reads 1-lot artifacts: every near-ATM front quote on the live book has a 1-lot side. Storing the ATM quotes costs almost nothing and makes all of this testable.",
+   "case_against": "Three days, 61 books, no expiry day, no sizes stored; the wide state is either the first read (already named by the clock) or one whole day (09-23, 3-5% all day), so it is a day flag not an intraday signal. The card never tells anyone to trade, and iv-viability already scores contract spread (3%/10% bands) where a contract is actually chosen. Gating V1 reads would have removed reads the live sum graded better (0.528 vs 0.707 Brier). Practitioner view: 1-lot displayed size on a $1,750 name's weeklies is normal (each lot ~$2.7k premium, market makers refresh), so a size floor mistakes display for liquidity."
+  },
+  {
+   "n": 13,
+   "candidate": "gate_day_type",
+   "theme": "F Price location and momentum",
+   "question_group": "code gate",
+   "question_id": null,
+   "verdict": "REJECT",
+   "case_for": "Practitioners size down on outlier and event days, and the event window does carry risk here (16 event moments: furthest30 mean 0.392 vs 0.215, 75% past 0.30 sigma vs 19%). A code gate costs no JEV request, is two-sided (V3 service 72/28, stand_aside on 12 of 20 days) and is not a duplicate for V2/V3 (top NMI 0.483, with range.today_vs_normal).",
+   "case_against": "The day-level heat labels point the wrong way on this name: reads they mark stand_aside were calmer and more predictable in the next 30 minutes (V2 flat 62.8% vs 54.6%, clock Brier 0.507 vs 0.595; V1 inverted: normal furthest30 0.247 vs 0.211), because sigma is today's move and an outlier day's gap is already spent. All three variants score worse than the clock (+0.006, +0.012, +0.003; 15, 0, 0 of 20 shuffles beaten); skipping stand_aside reads removes the easy ones; stripping direction on them hurt the live sums (12 reads, 1 day). V1 duplicates iv.expected_move_used on service reads (NMI 0.623). Literature: volatility clusters at the minutes scale (recent realized vol predicts near-term vol), while a day's cumulative move scaled by implied vol does not; only the 'right now' parts (event window, realized vs implied) carry the mechanism, and each already has its own candidate."
+  },
+  {
+   "n": 14,
+   "candidate": "volume_thickness",
+   "theme": "B Volume",
+   "question_group": "volume_next",
+   "question_id": "volume_profile_thickness",
+   "verdict": "LIVE",
+   "case_for": "The only read of the profile's shape at price; the smoothed cut clears every clause of the live rule on all reads (-0.0037, 14/6 days, 19/20 shuffles) and on service reads alone (-0.0124, 13/7, 19/20 service-only shuffles), still passes with any single day dropped (worst -0.0006, 12/7), predicts move-vs-flat rather than direction (-0.0053 on a flat/moved target, 14/6), JEV read 40/40 at full confidence, NMI <= 0.18 with every existing label and the clock. Practitioner view (high-volume nodes slow price, acceptance) matches the part the data backs: thick 62% flat.",
+   "case_against": "The bins as briefed fail (raw 0.1 sigma +0.0039, 3/20; 0.2 sigma +0.0038, 4/20); only the smoothed variant passes and against best-of-3 shuffles it beats 84/100, a thin margin. No gain at 60 minutes (+0.0010 all, +0.0047 service, 10/10 days). The ordering is not the mechanism's: thin (55% flat) is flatter than middling (42%), thick beats thin on only 6 of 15 days, and early-session thin reads are the flattest of all, so the content is thick vs not thick. Middling carries an up-skew (40 of 60 moved reads up vs 51% base) that looks like this rising sample. 2026-09-22 carries most of the gain (without it -0.0006). Evidence base is practitioner-only (HVN/LVN), no literature."
+  },
+  {
+   "n": 15,
+   "candidate": "day_volume_pace",
+   "theme": "B Volume",
+   "question_group": "volume",
+   "question_id": "day_volume_pace",
+   "verdict": "SHADOW",
+   "case_for": "It is the only label that names the kind of day by participation rather than by price: two-sided (heavy 28 / normal 44 / light 28 on service reads), reads perfectly (40/40 even with volume.now beside it), not a duplicate (NMI 0.08 with volume.now after the first hour, 0.28 with range.today_vs_normal), built from bars already stored, and the practitioner 'stock in play' idea has a pooled hint (moves continued 34.5% vs reversed 22.4% on heavy days). Being a day-level read it needs 40+ days before anyone can call it; shadow logging hourly is the cheap way to get them.",
+   "case_against": "No evidence anywhere it could earn its place: worse than the clock at 30 minutes (+0.0044 all, +0.0089 service) and 60 minutes (+0.0127), worse than the clock on the move-size levels (+0.011), no link to the rest-of-day range (rho about 0 across 15 days) while it tracks the range already made (rho 0.72-0.89), i.e. range.today_vs_normal restated in volume words; the 'in play' continuation comes from two days and adds nothing over recent_move alone on service reads (+0.0006); the light 'not in play' premise runs backwards (light days had more big moves); it is a day constant (92% unchanged between reads) so every test is really 15 observations, and the 20-session baseline drifts with the volume regime (Yahoo July baseline flips it to mostly light). Practitioners use RVOL to pick which stock to trade, not when to trade the one you already watch; SNDK is always the stock."
+  },
+  {
+   "n": 16,
+   "candidate": "volume_backs_move_refit",
+   "theme": "B Volume",
+   "question_group": "volume_next",
+   "question_id": "volume_backs_move",
+   "verdict": "FOLD",
+   "case_for": "The live question is nearly a restatement of price.recent_move (NMI 0.805; backed on 11 of 448 reads, 4 of 159 service reads) because its backed arm demands three things at once and 32 of 50 heavy moves fail on the before-band alone; the refit cuts on the one thing the ask names, volume during the move, so moves split 50/96 and heavy-volume-no-move (69 reads, 11 days) is no longer folded into no_move; it also stops overlapping volume_vs_before (which already asks picked_up vs heavy_throughout), drops an arm that never fires (volume_against 0/146), reads 40/40 in JEV, and is no worse than today in Brier (60 min -0.0073 all, -0.0054 service; 30 min +0.0022 all, -0.0006 service). Practitioner/literature: Wyckoff effort versus result, and Campbell, Grossman and Wang (1993) find daily moves on high volume reverse less than on low volume.",
+   "case_against": "Neither version adds anything over the clock: refit delta30 +0.0095 (8/12 days, beats 5/20 shuffles), delta60 +0.0105; current +0.0073 / +0.0178; the refit-minus-current gaps are inside the ±0.008 shuffle band. The earlier reversal-on-normal-volume signal does not replicate here (middle-band moves rho30 -0.10, n 76, p 0.38; heavy -0.11, n 50); the only visible difference, heavy moves less often flat at 30 minutes (46% vs 62%, 6 of 10 days), is gone at 60 (60% vs 56%). The refit is a deterministic product of two things JEV already answers (price.recent_move NMI 0.629 — still over the 0.6 duplicate line — and volume.now 0.526), so the sum gains no new input, only a new sentence about an interaction it could already form."
+  },
+  {
+   "n": 17,
+   "candidate": "range_in_force",
+   "theme": "E Range and levels",
+   "question_group": "price_and_range",
+   "question_id": "box_in_force",
+   "verdict": "SHADOW",
+   "case_for": "It is the exact box the SNDK PRO reader already ships (196/197 match), JEV reads it perfectly (40/40, confidence 0.997), it is two-sided on service reads, and the midday cell replicates the earlier finding on the reader's own boxes: a box standing over 90 minutes at midday preceded flat 78% vs 57% (n=109, 12 days); at 60 minutes on service reads the midday bucket improves (-0.0155, 12/8) and 60-minute Brier on service reads is -0.0048 (13/7).",
+   "case_against": "Worse than the clock on all 663 moments at 30 minutes (+0.0077, 8/12, beats 4/20 shuffles) and at 60 (+0.0121, beats 2/20); the afternoon is worse (6/14 days); 105 of the 109 midday 'over 90' reads are the opening box unbroken, which range.box_status inside_all_day already says (94% same reads, 79.6% vs 79.0% flat), and the flat rate is day-clustered (7 days 9 to 12 of 12 flat; 09-03, 09-10, 09-23, 09-24 mostly not); the genuinely new part, which later box and how long it stood, shows nothing (later box over an hour 60% flat vs 59% under, n=38 on 6 days); adding it to activity_state or time_since_last_move makes each worse (-0.0037 to +0.0071, -0.0055 to +0.0071). Practitioner view: an unbroken opening range by midday is a known range-day tell, but that is box_status's job. Literature: Crabel-style opening-range and contraction work predicts expansion after a tight range, the opposite of a flat call, and neither direction beat the clock here."
+  },
+  {
+   "n": 18,
+   "candidate": "box_trapped_side",
+   "theme": "E Range and levels",
+   "question_group": "price_and_range",
+   "question_id": "box_status",
+   "verdict": "REJECT",
+   "case_for": "The split reads perfectly (JEV 40/40), is two-sided (top share 0.46), costs one line of code, and a trapped read re-breaks its own side 24% (buyers) / 21% (sellers) of the time in 30 minutes and the other side 0%, against 6% / 5% for a box never broken.",
+   "case_against": "broke_both_sides never happened at a read in 20 days; the side is already in today's sentence (NMI 0.942 with the current label); trapped reads have no end-move edge (+0.007 / +0.002 sigma in the break's direction, 5/7 and 4/7 days); the same-side re-break is explained by distance to the edge (inside 0.15 sigma of the break line: trapped 27/52 vs never-broke 14/16); and the split scores worse against the clock than the current options (+0.0128 vs +0.0047, 0/20 shuffles). Practitioner view: failed breakouts trap traders and reverse on index futures; on SNDK the 20 days show neither reversal nor continuation. Median trapped read is 50 (buyers) / 79 (sellers) minutes past its last outside close, so 'trapped' is mostly a stale break."
+  },
+  {
+   "n": 19,
+   "candidate": "opening_gap",
+   "theme": "E Range and levels",
+   "question_group": "history_next",
+   "question_id": "opening_gap_state",
+   "verdict": "SHADOW",
+   "case_for": "Two-sided (service 62/20/18, 14/4/5 days), reads perfectly (40/40), built from data already stored, not a duplicate (max NMI 0.37 with the side of the close in price.vs_prior_close, 0.48 with range.prior_level_touches), and the only variant with a Brier gain: -0.0073 at 30 (11/9 days) and -0.0144 at 60, beating 20/20 between-day permutations at both; the gain is in move size (size-only target -0.0086, 14/6 days), from gap-down days that never filled being wild (flat share 0.44 vs 0.62).",
+   "case_against": "As a live read it is a day constant: 7 of 9 fills happen within 20 minutes, before the first 10:02 read, and after 10:00 an open gap pulls nothing (22% of reads move toward the close vs 25% away). The 30-minute gain rests on two days (09-10 -0.076, 09-14 -0.052), sits inside the kit's shuffle band (3/20 all, 0/20 service), loses on service reads 9/11 days, and the direction split is 4 vs 5 days in a sample where SNDK rose; the 'big unfilled gap' day-context sentence (V3) duplicates range.prior_level_touches (NMI 0.92) and does not change move size (p=0.26)."
+  },
+  {
+   "n": 20,
+   "candidate": "same_slot_yesterday",
+   "theme": "F Price location and momentum",
+   "question_group": "history_next",
+   "question_id": "same_slot_yesterday_activity",
+   "verdict": "SHADOW",
+   "case_for": "Heston-Korajczyk-Sadka find same-half-hour periodicity in volume and volatility, not just returns; the own-day rank splits 36/34/30 on service reads, reads at 1.00 agreement, overlaps nothing (max NMI 0.056 with an existing label), and quiet slots end flat 70% vs 45% for busy ones on all moments.",
+   "case_against": "That spread is the clock re-said: busy is the modal value at 10:00-11:00, quiet at 13:00-14:30 (NMI 0.133 with the bucket); inside buckets the effect exists only at midday and reverses in the afternoon; Brier is worse than the clock at 30 min (+0.0026, 10/9 days, CI straddles 0) and clearly worse at 60 min (+0.0065, 6/13 days); against shuffles that keep its clock profile it beats only 14/20."
+  },
+  {
+   "n": 21,
+   "candidate": "low_retests",
+   "theme": "E Range and levels",
+   "question_group": "history_next",
+   "question_id": "day_low_pressure",
+   "verdict": "REJECT",
+   "case_for": "Symmetric and cheap: the label reads cleanly (JEV 40/40, confidence 0.978), is two-sided (top share 0.63 on service reads), the label alone overlaps nothing (max NMI 0.16), and a retested low is a textbook double-bottom / failed-breakdown read that traders watch.",
+   "case_against": "The only new information is the untested/retested split inside the bottom third, and it adds nothing: the question scores worse than the bottom-or-not split alone on the same moments (+0.0084 vs +0.0037) and worse than 18 of 20 shuffles of just that split within the day; the question's answers are 0.68 NMI with price.day_range_position (a duplicate by the rule); retested-low reads are 9.8% of reads (8.5% of service reads) on 9 days, 3-8 days per clock cell, and the earlier 'midday breaks, afternoon holds' flip does not survive the fresh-bars build (midday retested up 0.30 / down 0.20, n=10, 3 days). The combined extreme question is worse on overlap (0.85 NMI) and no better on Brier (+0.0050, 14/20). The live day_high_pressure re-scored the same way also shows nothing (+0.0158 on packet reads, 5/15 days, 1/20 shuffles)."
+  },
+  {
+   "n": 22,
+   "candidate": "option_aggressor_flow",
+   "theme": "D Options flow",
+   "question_group": "strikes_next",
+   "question_id": "aggressor_lean",
+   "verdict": "SHADOW",
+   "case_for": "It is the only candidate that says who pressed the quote rather than what traded; call_put_split's own note says SNDK has no buy-or-sell tape. The label is two-sided on the house's SPX tape (bullish/bearish/balanced about 27/31/42%), is not an echo of the past 30-minute move (NMI about 0.01), reads cleanly (36/36), and Hu 2014 (JFE) finds delta-weighted option order imbalance carries information about future individual-stock returns at daily horizons.",
+   "case_against": "On the house's own SPX aggressor tape the delta-weighted lean is worse than the clock and worse than its own within-day shuffles (20 days and 46 days); dollar-weighted and at-the-money versions are one-sided at 60/40. The lean is uncorrelated with SPX's move, both at the same time and 30 minutes later. At intraday horizons the literature is against it: Chan, Chung and Fong 2002 (RFS) find option net trade volume adds nothing to stock quote revisions once stock flow is known; Muravyev, Pearson and Broussard 2013 (JFE) find no economically significant price discovery in equity options, since option quotes move toward the stock and not the other way. Hu's effect is daily and cross-sectional, which does not fit a 30-minute flat band. Direction reads already show about zero forward value on SNDK. Quote-rule tags cover only about 32% of SNDK prints, and the untagged complex volume is not random. The feed costs 24-45 s per pull and adds OAuth load."
+  },
+  {
+   "n": 23,
+   "candidate": "options_flow_arms",
+   "theme": "D Options flow",
+   "question_group": "strikes_next (part a, todays_volume_location); space_time_next (part b, activity_state)",
+   "question_id": "todays_volume_location (part a, fold tested and rejected); activity_state (part b, fold)",
+   "verdict": "REJECT",
+   "case_for": "(a) makes a 94%-one-sided question two-sided (A1 top share 0.58 on service reads) and reads cleanly (20/20). (b) the pace alone orders the next 30 minutes cleanly (burst / steady / quiet flat 38% / 58% / 67% on all reads), has low overlap with the current question (NMI 0.08) and the clock (0.05), improves activity_state on 30-minute Brier on 14 of 20 service days, beats 20/20 shuffles of the arm, reads 40/40, and is code over rows already stored. Literature: option volume leads stock moves when informed traders use options (Easley, O'Hara and Srinivas 1998) and predicts volatility more than direction (Ni, Pan and Poteshman 2008), which is what a flat-or-moved band grades.",
+   "case_against": "(a) every fold variant makes the question worse than it is now at 30 and 60 minutes, and worse than the clock; on weeklies every read has a contract at 5 to 23 times its open interest, so only the location carries information, and the location follows where price has travelled today (strike-level calls below price sit in rising or reversed-up sessions 147 of 182 times); practitioners' unusual-activity screens count opening buys, which this unsigned ratio cannot see. (b) the gain rests on 22 re-labelled reads on 11 days (6 service reads); switching the arm off on 09-10 and 09-17 halves it and a 0.8 cut erases it; nothing is gained at 60 minutes; the day's pace includes the opening rush, so bursts are easier to hit late in the day."
+  },
+  {
+   "n": 24,
+   "candidate": "dealer_gamma",
+   "theme": "A Dealer positioning",
+   "question_group": "strikes_next",
+   "question_id": "local_gamma_sign",
+   "verdict": "SHADOW",
+   "case_for": "Two-sided on every day type, full coverage, reads cleanly (40/40), not a duplicate of any existing label (highest NMI 0.30 with price.vs_prior_close); the 0.25 sigma window replaces a two-strike rule that flickered on 26% of consecutive reads; literature (Ni, Pearson, Poteshman and White 2021; Barbon and Buraschi 2021) finds net dealer gamma damps or amplifies single-stock moves, so a shadow log can test whether the sign carries between days.",
+   "case_against": "No forward value: Brier +0.0082 against the clock (inside the shuffle band, 3/20), 7 days better and 13 worse at 30 minutes, 10/10 at 60; the within-day correlation of the net share with the next 30 minutes' size is -0.06 (permutation p 0.19), so neither the textbook sign nor its inverse shows up. The sign is computed under an index convention the code itself calls probably wrong for this stock, and it mostly restates the day's direction (80% agreement with the sign of the move since the prior close, 100% on outlier days). One value all day on 12 of 20 days, so it cannot say anything the day's first read did not."
+  },
+  {
+   "n": 25,
+   "candidate": "existing_set_cleanup",
+   "theme": "X Control or cleanup",
+   "question_group": "price_and_range, volatility, strikes, momentum, strikes_next, history_next, indicators_next",
+   "question_id": "-",
+   "verdict": "FOLD",
+   "case_for": "Nothing retired carries forward value: the eight testable ones all sit inside their shuffle band at 30 minutes and none meets the LIVE bar; four are duplicates by the NMI >= 0.6 rule (closes_agree 0.78, air_to_wall 0.717, box_status 0.706, outlier_day 0.66), one cannot be graded offline (quote_lean), two are one-sided live (cluster_near_price 1.0, em_used 0.905). The sum loses about 7.8 sentences per read (37.55 -> 29.75), most of them repeats, and the box merge fixes a live misreading (3/12 -> 40/40).",
+   "case_against": "The evidence is 20 days and within-day shuffles, which cannot test day-level labels (outlier_day, book_vs_yesterday, em_used are near-constant within a day); at 60 minutes outlier_day adds -0.0093 beyond two_day_position (inside its band, but the one hint of value). Merging air_to_wall into wall_return removes the wall distance from 0.353 of service reads (no side packet) and keeps the worse question. The merge targets themselves have no forward value, so the cleanup trims noise rather than adding signal; the sum's 0.568 vs 0.595 gap will not close from this alone."
+  }
+ ],
+ "live_drafts": {
+  "realized_vs_implied": {
+   "labels": [
+    {
+     "path": "iv.vs_realized_30",
+     "viewpoint": "indicators",
+     "status": "built",
+     "type": "rank",
+     "from": "today's 1-minute bars that finished in the last 30 minutes and the close that stood 30 minutes ago (the day's first open when the window reaches the bell); sigma",
+     "logic": "realized movement = the square root of the sum of squared 1-minute close-to-close changes over the window, scaled by 30 over the bars present, in sigma; divided by the move the options market prices for 30 minutes, sigma times the square root of 30/390 (0.28 sigma)",
+     "cut": "under 0.7 times is quieter than priced; 0.7 to 1.3 times is about as priced; over 1.3 times is wilder than priced; omitted with fewer than 25 finished bars in the window",
+     "reads_as": "over the last 30 minutes price's realized movement, from its 1-minute closes, was 0.18 sigma, 0.65 times the 0.28 sigma move the options market prices for 30 minutes, under the 0.7-times cut, so quieter than priced (rendered from the real moment 2026-09-24T12:02)",
+     "real": true,
+     "note": "proposed 2026-09-24, pressure test n=7. Ruler is the row's anchored sigma, not the live at-the-money IV (the live-IV ruler scored worse). The priced move scales by square-root time with no intraday shape, so the first hour reads about or wilder (98%) and the afternoon reads quieter (85%); the value beyond the clock is the quieter-vs-about split from 11:00 on. Belongs in LabelBuilder.iv() beside trend_30min."
+    }
+   ],
+   "question": {
+    "viewpoint": "indicators",
+    "status": "live",
+    "cadence": "every scan",
+    "ask": "Over the last 30 minutes, did price move less than, about as much as, or more than the options market prices for 30 minutes?",
+    "why": "After quieter than priced the next 30 minutes ended flat 70% of the time against 42% after about as priced, and the label beat clock-only by 0.0065 Brier leave-one-day-out (13 of 20 days, 20 of 20 shuffles); wilder than priced is almost only the first hour, where it adds nothing.",
+    "type": "choice",
+    "instructions": "Read `iv.vs_realized_30`. Over the last 30 minutes, did price move less than, about as much as, or more than the move the options market prices for 30 minutes?",
+    "criteria": {
+     "quieter_than_priced": "price's realized movement over the last 30 minutes was under the 0.7-times cut of the move the options market prices for 30 minutes, quieter than priced",
+     "about_priced": "price's realized movement over the last 30 minutes was between the 0.7-times and 1.3-times cuts of the move the options market prices for 30 minutes, about as priced",
+     "wilder_than_priced": "price's realized movement over the last 30 minutes was over the 1.3-times cut of the move the options market prices for 30 minutes, wilder than priced",
+     "unsure": "the label gives too little to call"
+    }
+   },
+   "question_id": "realized_vs_priced",
+   "question_group": "volatility",
+   "verdict": "LIVE",
+   "variants_tried": [
+    {
+     "id": "V1_close30 (chosen)",
+     "def": "root-sum-square of 1-minute close changes, last 30 min, over sigma*sqrt(30/390); cuts 0.7/1.3",
+     "all": {
+      "split": {
+       "quieter_than_priced": 0.572,
+       "about_priced": 0.344,
+       "wilder_than_priced": 0.084
+      },
+      "top_share": 0.572,
+      "brier30": {
+       "constant": 0.5805,
+       "clock": 0.5673,
+       "candidate": 0.5522,
+       "clock+candidate": 0.5608,
+       "delta_vs_clock": -0.0065,
+       "days_better": 13,
+       "days_worse": 7,
+       "ci90": [
+        -0.0128,
+        -0.0003
+       ]
+      },
+      "brier60": {
+       "constant": 0.5714,
+       "clock": 0.5666,
+       "candidate": 0.5622,
+       "clock+candidate": 0.5735,
+       "delta_vs_clock": 0.0069,
+       "days_better": 7,
+       "days_worse": 13,
+       "ci90": [
+        0.0001,
+        0.0141
+       ]
+      }
+     },
+     "service": {
+      "split": {
+       "quieter_than_priced": 0.562,
+       "about_priced": 0.323,
+       "wilder_than_priced": 0.115
+      },
+      "top_share": 0.562,
+      "brier30": {
+       "constant": 0.6148,
+       "clock": 0.5949,
+       "candidate": 0.5787,
+       "clock+candidate": 0.5892,
+       "delta_vs_clock": -0.0057,
+       "days_better": 11,
+       "days_worse": 9,
+       "ci90": [
+        -0.0191,
+        0.0085
+       ]
+      },
+      "brier60": {
+       "constant": 0.5549,
+       "clock": 0.545,
+       "candidate": 0.5493,
+       "clock+candidate": 0.5531,
+       "delta_vs_clock": 0.0081,
+       "days_better": 9,
+       "days_worse": 11,
+       "ci90": [
+        -0.0002,
+        0.0168
+       ]
+      }
+     },
+     "shuffle30_all": {
+      "real_delta": -0.0065,
+      "shuffle_mean": 0.0042,
+      "shuffle_p05": 0.0003,
+      "shuffle_p95": 0.0087,
+      "beats_shuffles": 20,
+      "shuffles": 20
+     },
+     "shuffle_service_proper": {
+      "band60_all": {
+       "real": 0.0069,
+       "shuffle_mean": 0.0045,
+       "p05": -0.0007,
+       "p95": 0.008,
+       "beats": 3
+      },
+      "band30_svc": {
+       "real": -0.0057,
+       "shuffle_mean": 0.0087,
+       "p05": -0.0016,
+       "p95": 0.0161,
+       "beats": 20
+      },
+      "band60_svc": {
+       "real": 0.0081,
+       "shuffle_mean": 0.0073,
+       "p05": -0.0023,
+       "p95": 0.0141,
+       "beats": 10
+      }
+     }
+    },
+    {
+     "id": "V2_range30",
+     "def": "Parkinson (1-minute high-low) over the same window, same cuts",
+     "all": {
+      "split": {
+       "quieter_than_priced": 0.597,
+       "about_priced": 0.326,
+       "wilder_than_priced": 0.077
+      },
+      "top_share": 0.597,
+      "brier30": {
+       "constant": 0.5805,
+       "clock": 0.5673,
+       "candidate": 0.5521,
+       "clock+candidate": 0.5586,
+       "delta_vs_clock": -0.0087,
+       "days_better": 14,
+       "days_worse": 6,
+       "ci90": [
+        -0.018,
+        0.0001
+       ]
+      },
+      "brier60": {
+       "constant": 0.5714,
+       "clock": 0.5666,
+       "candidate": 0.5594,
+       "clock+candidate": 0.5716,
+       "delta_vs_clock": 0.005,
+       "days_better": 9,
+       "days_worse": 11,
+       "ci90": [
+        -0.0028,
+        0.0121
+       ]
+      }
+     },
+     "service": {
+      "split": {
+       "quieter_than_priced": 0.574,
+       "about_priced": 0.323,
+       "wilder_than_priced": 0.102
+      },
+      "top_share": 0.574,
+      "brier30": {
+       "constant": 0.6148,
+       "clock": 0.5949,
+       "candidate": 0.5847,
+       "clock+candidate": 0.5913,
+       "delta_vs_clock": -0.0036,
+       "days_better": 11,
+       "days_worse": 9,
+       "ci90": [
+        -0.016,
+        0.0099
+       ]
+      },
+      "brier60": {
+       "constant": 0.5549,
+       "clock": 0.545,
+       "candidate": 0.5433,
+       "clock+candidate": 0.5473,
+       "delta_vs_clock": 0.0023,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.0081,
+        0.0127
+       ]
+      }
+     },
+     "shuffle30_all": {
+      "real_delta": -0.0087,
+      "shuffle_mean": 0.0039,
+      "shuffle_p05": -0.0005,
+      "shuffle_p95": 0.0091,
+      "beats_shuffles": 20,
+      "shuffles": 20
+     },
+     "shuffle_service_proper": {
+      "band60_all": {
+       "real": 0.005,
+       "shuffle_mean": 0.0037,
+       "p05": -0.0011,
+       "p95": 0.0078,
+       "beats": 6
+      },
+      "band30_svc": {
+       "real": -0.0036,
+       "shuffle_mean": 0.0089,
+       "p05": 0.0007,
+       "p95": 0.0141,
+       "beats": 20
+      },
+      "band60_svc": {
+       "real": 0.0023,
+       "shuffle_mean": 0.0055,
+       "p05": -0.0034,
+       "p95": 0.0125,
+       "beats": 14
+      }
+     }
+    },
+    {
+     "id": "V3_close60",
+     "def": "root-sum-square over the last 60 min over sigma*sqrt(60/390), same cuts; omitted before 10:30",
+     "all": {
+      "split": {
+       "quieter_than_priced": 0.565,
+       "about_priced": 0.339,
+       "wilder_than_priced": 0.096
+      },
+      "top_share": 0.565,
+      "brier30": {
+       "constant": 0.5805,
+       "clock": 0.5673,
+       "candidate": 0.5592,
+       "clock+candidate": 0.5638,
+       "delta_vs_clock": -0.0035,
+       "days_better": 8,
+       "days_worse": 12,
+       "ci90": [
+        -0.0118,
+        0.0049
+       ]
+      },
+      "brier60": {
+       "constant": 0.5714,
+       "clock": 0.5666,
+       "candidate": 0.5566,
+       "clock+candidate": 0.5733,
+       "delta_vs_clock": 0.0067,
+       "days_better": 9,
+       "days_worse": 11,
+       "ci90": [
+        -0.0045,
+        0.0194
+       ]
+      }
+     },
+     "service": {
+      "split": {
+       "quieter_than_priced": 0.56,
+       "about_priced": 0.338,
+       "wilder_than_priced": 0.102
+      },
+      "top_share": 0.56,
+      "brier30": {
+       "constant": 0.6148,
+       "clock": 0.5949,
+       "candidate": 0.5892,
+       "clock+candidate": 0.595,
+       "delta_vs_clock": 0.0001,
+       "days_better": 11,
+       "days_worse": 9,
+       "ci90": [
+        -0.0122,
+        0.0132
+       ]
+      },
+      "brier60": {
+       "constant": 0.5549,
+       "clock": 0.545,
+       "candidate": 0.5442,
+       "clock+candidate": 0.5448,
+       "delta_vs_clock": -0.0002,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.01,
+        0.0103
+       ]
+      }
+     },
+     "shuffle30_all": {
+      "real_delta": -0.0035,
+      "shuffle_mean": 0.0048,
+      "shuffle_p05": -0.0005,
+      "shuffle_p95": 0.0093,
+      "beats_shuffles": 20,
+      "shuffles": 20
+     },
+     "shuffle_service_proper": {
+      "band60_all": {
+       "real": 0.0067,
+       "shuffle_mean": 0.0058,
+       "p05": 0.0016,
+       "p95": 0.0091,
+       "beats": 9
+      },
+      "band30_svc": {
+       "real": 0.0001,
+       "shuffle_mean": 0.01,
+       "p05": -0.0009,
+       "p95": 0.0198,
+       "beats": 17
+      },
+      "band60_svc": {
+       "real": -0.0002,
+       "shuffle_mean": 0.0083,
+       "p05": 0.0004,
+       "p95": 0.0125,
+       "beats": 19
+      }
+     }
+    },
+    {
+     "id": "R1_close30_live (robustness only)",
+     "def": "V1 with spot*atm_iv/sqrt(252) as the ruler",
+     "all": {
+      "split": {
+       "quieter_than_priced": 0.513,
+       "about_priced": 0.37,
+       "wilder_than_priced": 0.118
+      },
+      "top_share": 0.513,
+      "brier30": {
+       "constant": 0.5805,
+       "clock": 0.5673,
+       "candidate": 0.5581,
+       "clock+candidate": 0.5647,
+       "delta_vs_clock": -0.0026,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.0099,
+        0.0048
+       ]
+      },
+      "brier60": {
+       "constant": 0.5714,
+       "clock": 0.5666,
+       "candidate": 0.5664,
+       "clock+candidate": 0.5734,
+       "delta_vs_clock": 0.0068,
+       "days_better": 5,
+       "days_worse": 15,
+       "ci90": [
+        0.0,
+        0.014
+       ]
+      }
+     },
+     "service": {
+      "split": {
+       "quieter_than_priced": 0.498,
+       "about_priced": 0.357,
+       "wilder_than_priced": 0.145
+      },
+      "top_share": 0.498,
+      "brier30": {
+       "constant": 0.6148,
+       "clock": 0.5949,
+       "candidate": 0.5826,
+       "clock+candidate": 0.5952,
+       "delta_vs_clock": 0.0003,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.0105,
+        0.0113
+       ]
+      },
+      "brier60": {
+       "constant": 0.5549,
+       "clock": 0.545,
+       "candidate": 0.5554,
+       "clock+candidate": 0.5527,
+       "delta_vs_clock": 0.0077,
+       "days_better": 8,
+       "days_worse": 12,
+       "ci90": [
+        -0.0007,
+        0.0159
+       ]
+      }
+     }
+    },
+    {
+     "id": "post-hoc diagnostics (not selectable)",
+     "V1_twoway_quieter_vs_not": {
+      "d30": -0.0088,
+      "days30": "11/9",
+      "d60": 0.0051,
+      "d30_svc": -0.0092,
+      "days30_svc": "12/8",
+      "shuffles": {
+       "band30_all": {
+        "real": -0.0088,
+        "shuffle_mean": 0.0028,
+        "p05": -0.0023,
+        "p95": 0.0052,
+        "beats": 20
+       },
+       "band30_svc": {
+        "real": -0.0092,
+        "shuffle_mean": 0.0059,
+        "p05": -0.0028,
+        "p95": 0.0134,
+        "beats": 20
+       }
+      }
+     },
+     "V1_twoway_wilder_vs_not": {
+      "d30": 0.0013,
+      "days30": "10/10",
+      "d60": 0.0037,
+      "d30_svc": 0.0021,
+      "days30_svc": "11/9"
+     },
+     "clock_half_hour_label": {
+      "d30": -0.0006,
+      "days30": "9/11",
+      "d60": 0.0078
+     },
+     "clock_hour_label": {
+      "d30": -0.0012,
+      "days30": "9/11",
+      "d60": 0.0025
+     }
+    },
+    {
+     "id": "implementation fix",
+     "def": "10:02 reads whose row was written before 10:01 had no close 30 minutes back and were omitted on 10 of 20 days; the window now starts from the day's first open. All numbers above are after the fix; the pre-fix V1 scored delta30 -0.0053 (13/7, 20/20)."
+    }
+   ],
+   "simulation": {
+    "coverage": "663/663 moments, 235/235 service reads",
+    "outcomes30_all": {
+     "quieter_than_priced": {
+      "n": 379,
+      "days": 20,
+      "p_flat": 0.702,
+      "p_up": 0.137,
+      "p_down": 0.161,
+      "mean_abs": 0.103,
+      "mean_signed": -0.008,
+      "p_big": 0.092
+     },
+     "about_priced": {
+      "n": 228,
+      "days": 20,
+      "p_flat": 0.421,
+      "p_up": 0.298,
+      "p_down": 0.281,
+      "mean_abs": 0.17,
+      "mean_signed": 0.016,
+      "p_big": 0.298
+     },
+     "wilder_than_priced": {
+      "n": 56,
+      "days": 19,
+      "p_flat": 0.375,
+      "p_up": 0.411,
+      "p_down": 0.214,
+      "mean_abs": 0.201,
+      "mean_signed": 0.056,
+      "p_big": 0.607
+     }
+    },
+    "outcomes60_all": {
+     "quieter_than_priced": {
+      "n": 379,
+      "days": 20,
+      "p_flat": 0.686,
+      "p_up": 0.15,
+      "p_down": 0.164,
+      "mean_abs": 0.151,
+      "mean_signed": -0.0,
+      "p_big": 0.243
+     },
+     "about_priced": {
+      "n": 228,
+      "days": 20,
+      "p_flat": 0.474,
+      "p_up": 0.272,
+      "p_down": 0.254,
+      "mean_abs": 0.24,
+      "mean_signed": 0.04,
+      "p_big": 0.509
+     },
+     "wilder_than_priced": {
+      "n": 56,
+      "days": 19,
+      "p_flat": 0.482,
+      "p_up": 0.286,
+      "p_down": 0.232,
+      "mean_abs": 0.219,
+      "mean_signed": 0.027,
+      "p_big": 0.821
+     }
+    },
+    "outcomes30_service": {
+     "quieter_than_priced": {
+      "n": 132,
+      "days": 20,
+      "p_flat": 0.674,
+      "p_up": 0.152,
+      "p_down": 0.174,
+      "mean_abs": 0.109,
+      "mean_signed": -0.009,
+      "p_big": 0.114
+     },
+     "about_priced": {
+      "n": 76,
+      "days": 20,
+      "p_flat": 0.382,
+      "p_up": 0.316,
+      "p_down": 0.303,
+      "mean_abs": 0.174,
+      "mean_signed": 0.031,
+      "p_big": 0.276
+     },
+     "wilder_than_priced": {
+      "n": 27,
+      "days": 19,
+      "p_flat": 0.222,
+      "p_up": 0.481,
+      "p_down": 0.296,
+      "mean_abs": 0.231,
+      "mean_signed": 0.025,
+      "p_big": 0.741
+     }
+    },
+    "overlap_kit": [
+     [
+      "__bucket__",
+      0.272,
+      663
+     ],
+     [
+      "momentum.vwap_slope",
+      0.238,
+      653
+     ],
+     [
+      "momentum.path_efficiency",
+      0.114,
+      653
+     ],
+     [
+      "price.recent_move",
+      0.091,
+      653
+     ],
+     [
+      "range.nearest_level",
+      0.057,
+      653
+     ],
+     [
+      "volume.now",
+      0.044,
+      493
+     ]
+    ],
+    "overlap_related_nmi": {
+     "activity_state": [
+      0.26,
+      663
+     ],
+     "minute_width": [
+      0.026,
+      663
+     ],
+     "pace": [
+      0.003,
+      663
+     ],
+     "since_move": [
+      0.242,
+      663
+     ],
+     "today_vs_normal": [
+      0.006,
+      561
+     ],
+     "recent_move": [
+      0.091,
+      653
+     ],
+     "iv_trend": [
+      0.035,
+      628
+     ],
+     "bucket": [
+      0.272,
+      663
+     ]
+    },
+    "adds_beyond_related": {
+     "activity_state": {
+      "d30": -0.0037,
+      "days30": "11/9",
+      "d60": 0.0047,
+      "d30_svc": -0.0075,
+      "days30_svc": "12/8"
+     },
+     "activity_state x V1": {
+      "d30": -0.0052,
+      "days30": "13/7",
+      "d60": 0.0112,
+      "d30_svc": -0.0143,
+      "days30_svc": "12/8"
+     },
+     "minute_width": {
+      "d30": 0.0003,
+      "days30": "11/9",
+      "d60": 0.0017,
+      "d30_svc": 0.0004,
+      "days30_svc": "11/9"
+     },
+     "minute_width x V1": {
+      "d30": -0.0059,
+      "days30": "14/6",
+      "d60": 0.006,
+      "d30_svc": -0.0045,
+      "days30_svc": "10/10"
+     },
+     "pace": {
+      "d30": 0.0007,
+      "days30": "10/10",
+      "d60": 0.0007,
+      "d30_svc": 0.0083,
+      "days30_svc": "8/12"
+     },
+     "pace x V1": {
+      "d30": -0.0048,
+      "days30": "13/7",
+      "d60": 0.0099,
+      "d30_svc": 0.0084,
+      "days30_svc": "8/12"
+     },
+     "since_move": {
+      "d30": -0.0055,
+      "days30": "12/8",
+      "d60": 0.0043,
+      "d30_svc": -0.0142,
+      "days30_svc": "13/7"
+     },
+     "since_move x V1": {
+      "d30": -0.0045,
+      "days30": "12/8",
+      "d60": 0.0119,
+      "d30_svc": -0.0164,
+      "days30_svc": "11/9"
+     },
+     "today_vs_normal": {
+      "d30": 0.0051,
+      "days30": "8/12",
+      "d60": 0.0034,
+      "d30_svc": 0.0157,
+      "days30_svc": "7/13"
+     },
+     "today_vs_normal x V1": {
+      "d30": 0.0027,
+      "days30": "10/10",
+      "d60": 0.0068,
+      "d30_svc": 0.0094,
+      "days30_svc": "8/12"
+     },
+     "recent_move": {
+      "d30": 0.0061,
+      "days30": "8/12",
+      "d60": 0.0057,
+      "d30_svc": -0.0105,
+      "days30_svc": "14/6"
+     },
+     "recent_move x V1": {
+      "d30": 0.0048,
+      "days30": "9/11",
+      "d60": 0.0099,
+      "d30_svc": -0.0134,
+      "days30_svc": "13/7"
+     },
+     "iv_trend": {
+      "d30": -0.0025,
+      "days30": "12/8",
+      "d60": 0.0056,
+      "d30_svc": 0.0064,
+      "days30_svc": "10/10"
+     },
+     "iv_trend x V1": {
+      "d30": -0.0046,
+      "days30": "11/9",
+      "d60": 0.005,
+      "d30_svc": 0.0044,
+      "days30_svc": "10/10"
+     },
+     "V1 alone": {
+      "d30": -0.0065,
+      "days30": "13/7",
+      "d60": 0.0069,
+      "d30_svc": -0.0057,
+      "days30_svc": "11/9"
+     }
+    },
+    "within_bucket": {
+     "early": {
+      "quieter_than_priced": {
+       "n": 2,
+       "days": 2,
+       "flat30": 0.5,
+       "flat60": 0.5,
+       "mean_abs30": 0.116
+      },
+      "about_priced": {
+       "n": 63,
+       "days": 18,
+       "flat30": 0.302,
+       "flat60": 0.381,
+       "mean_abs30": 0.193
+      },
+      "wilder_than_priced": {
+       "n": 51,
+       "days": 19,
+       "flat30": 0.373,
+       "flat60": 0.49,
+       "mean_abs30": 0.205
+      },
+      "_bucket_flat30": 0.336,
+      "_spearman_ratio_absfwd30": [
+       0.001,
+       0.9874,
+       116
+      ],
+      "_terciles_flat30": {
+       "low": [
+        0.237,
+        38
+       ],
+       "mid": [
+        0.359,
+        39
+       ],
+       "high": [
+        0.41,
+        39
+       ]
+      }
+     },
+     "late_morning": {
+      "quieter_than_priced": {
+       "n": 35,
+       "days": 13,
+       "flat30": 0.686,
+       "flat60": 0.514,
+       "mean_abs30": 0.102
+      },
+      "about_priced": {
+       "n": 79,
+       "days": 19,
+       "flat30": 0.443,
+       "flat60": 0.418,
+       "mean_abs30": 0.164
+      },
+      "wilder_than_priced": {
+       "n": 2,
+       "days": 2,
+       "flat30": 0.5,
+       "flat60": 0.0,
+       "mean_abs30": 0.256
+      },
+      "_bucket_flat30": 0.517,
+      "_spearman_ratio_absfwd30": [
+       0.207,
+       0.0259,
+       116
+      ],
+      "_terciles_flat30": {
+       "low": [
+        0.684,
+        38
+       ],
+       "mid": [
+        0.487,
+        39
+       ],
+       "high": [
+        0.385,
+        39
+       ]
+      }
+     },
+     "midday": {
+      "quieter_than_priced": {
+       "n": 171,
+       "days": 20,
+       "flat30": 0.713,
+       "flat60": 0.725,
+       "mean_abs30": 0.098
+      },
+      "about_priced": {
+       "n": 59,
+       "days": 12,
+       "flat30": 0.525,
+       "flat60": 0.576,
+       "mean_abs30": 0.121
+      },
+      "wilder_than_priced": {
+       "n": 1,
+       "days": 1,
+       "flat30": 1.0,
+       "flat60": 1.0,
+       "mean_abs30": 0.01
+      },
+      "_bucket_flat30": 0.667,
+      "_spearman_ratio_absfwd30": [
+       0.215,
+       0.001,
+       231
+      ],
+      "_terciles_flat30": {
+       "low": [
+        0.844,
+        77
+       ],
+       "mid": [
+        0.623,
+        77
+       ],
+       "high": [
+        0.532,
+        77
+       ]
+      }
+     },
+     "afternoon": {
+      "quieter_than_priced": {
+       "n": 171,
+       "days": 20,
+       "flat30": 0.696,
+       "flat60": 0.684,
+       "mean_abs30": 0.108
+      },
+      "about_priced": {
+       "n": 27,
+       "days": 9,
+       "flat30": 0.407,
+       "flat60": 0.63,
+       "mean_abs30": 0.239
+      },
+      "wilder_than_priced": {
+       "n": 2,
+       "days": 1,
+       "flat30": 0.0,
+       "flat60": 0.5,
+       "mean_abs30": 0.138
+      },
+      "_bucket_flat30": 0.65,
+      "_spearman_ratio_absfwd30": [
+       0.175,
+       0.0132,
+       200
+      ],
+      "_terciles_flat30": {
+       "low": [
+        0.712,
+        66
+       ],
+       "mid": [
+        0.776,
+        67
+       ],
+       "high": [
+        0.463,
+        67
+       ]
+      }
+     },
+     "_day_bucket_cells_quieter_vs_about": {
+      "q_gt_a": 17,
+      "tie": 4,
+      "q_lt_a": 14
+     },
+     "_per_read_time_spearman": {
+      "n_times": 34,
+      "mean_rho": 0.131,
+      "positive": 26,
+      "sign_test_p": 0.0029
+     },
+     "_rank_within_read_time": {
+      "spearman_absfwd30": 0.132,
+      "p": 0.00067,
+      "flat30_low_mid_high": [
+       0.647,
+       0.623,
+       0.475
+      ],
+      "n": [
+       221,
+       204,
+       238
+      ]
+     }
+    },
+    "within_activity_state": {
+     "active|about_priced": {
+      "n": 161,
+      "days": 20,
+      "flat30": 0.416,
+      "flat60": 0.484
+     },
+     "active|quieter_than_priced": {
+      "n": 60,
+      "days": 20,
+      "flat30": 0.6,
+      "flat60": 0.65
+     },
+     "active|wilder_than_priced": {
+      "n": 53,
+      "days": 19,
+      "flat30": 0.377,
+      "flat60": 0.509
+     },
+     "quiet|about_priced": {
+      "n": 67,
+      "days": 19,
+      "flat30": 0.433,
+      "flat60": 0.448
+     },
+     "quiet|quieter_than_priced": {
+      "n": 319,
+      "days": 20,
+      "flat30": 0.721,
+      "flat60": 0.693
+     },
+     "quiet|wilder_than_priced": {
+      "n": 3,
+      "days": 3,
+      "flat30": 0.333,
+      "flat60": 0.0
+     }
+    },
+    "within_since_move": {
+     "10_to_60|about_priced": {
+      "n": 63,
+      "days": 19,
+      "flat30": 0.444,
+      "flat60": 0.413
+     },
+     "10_to_60|quieter_than_priced": {
+      "n": 171,
+      "days": 20,
+      "flat30": 0.673,
+      "flat60": 0.632
+     },
+     "10_to_60|wilder_than_priced": {
+      "n": 3,
+      "days": 3,
+      "flat30": 0.333,
+      "flat60": 0.0
+     },
+     "over_60|about_priced": {
+      "n": 5,
+      "days": 3,
+      "flat30": 0.4,
+      "flat60": 1.0
+     },
+     "over_60|quieter_than_priced": {
+      "n": 149,
+      "days": 18,
+      "flat30": 0.779,
+      "flat60": 0.765
+     },
+     "under_10|about_priced": {
+      "n": 160,
+      "days": 20,
+      "flat30": 0.412,
+      "flat60": 0.481
+     },
+     "under_10|quieter_than_priced": {
+      "n": 59,
+      "days": 20,
+      "flat30": 0.593,
+      "flat60": 0.644
+     },
+     "under_10|wilder_than_priced": {
+      "n": 53,
+      "days": 19,
+      "flat30": 0.377,
+      "flat60": 0.509
+     }
+    },
+    "band60_shuffles_all": {
+     "real": 0.0069,
+     "shuffle_mean": 0.0045,
+     "p05": -0.0007,
+     "p95": 0.008,
+     "beats": 3
+    },
+    "label_alone_vs_clock_alone": {
+     "brier30_all": [
+      0.5522,
+      0.5673
+     ],
+     "brier30_service": [
+      0.5787,
+      0.5949
+     ]
+    }
+   },
+   "jev_check": {
+    "pass1": {
+     "sent": 40,
+     "errors": 0,
+     "agreement": 1.0,
+     "recall_by_option": {
+      "wilder_than_priced": "14/14",
+      "about_priced": "13/13",
+      "quieter_than_priced": "13/13"
+     },
+     "mean_confidence": 0.998,
+     "misses": []
+    },
+    "pass2": null,
+    "requests_used": 40,
+    "note": "items drawn from the pre-fix values (10:02 reads absent); the sentence format is identical after the fix"
+   },
+   "case_for": "Quieter than priced was followed by a flat 30 minutes 70% of the time vs 42% after about as priced; delta30 -0.0065 vs clock (CI90 -0.0128 to -0.0003, 13/7 days, 20/20 shuffles; service -0.0057, 11/9, 20/20); the label alone scores 0.5522 vs 0.5673 for the clock alone, so most of the clock's value is realized movement; inside each read time the ratio still ranks the next move (26 of 34 times positive, p 0.003); NMI at most 0.27 with anything; JEV reads it 40/40. Literature: realized volatility clusters (HAR-RV, Corsi 2009), and realized-vs-implied is a standard desk read of the variance premium.",
+   "case_against": "Half the split is the clock: quieter is 2 of 116 first-hour reads and wilder is 51 of 56 first-hour reads, and inside the first hour wilder is not less flat than about (37% vs 30%); at 60 minutes it adds nothing (delta60 +0.0069, 7/13 days, beats only 3/20 shuffles); on all moments it adds nothing once time_since_last_move is known (-0.0055 alone, -0.0045 with it); 20 days, and midday/afternoon about-priced cells sit on 9 to 12 days. Practitioner view: the flat square-root-of-time ruler ignores the intraday U-shape (Andersen and Bollerslev 1997), so 'wilder' at 10:00 is mostly the normal open.",
+   "open_questions": [
+    "Scale the priced move by the name's intraday U-shape from prior sessions so the first hour is not always wilder; not tested here (three-variant cap).",
+    "The two-way split (quieter vs not) scored better (-0.0088 all, -0.0092 service, 20/20) but was chosen after seeing outcomes; revisit after 40 graded service reads.",
+    "Range-based V2 is a near tie (-0.0087 all but -0.0036 service); not JEV-checked.",
+    "Should its answer be kept out of the next_60 sum, where it scored worse than 17 of 20 shuffles?"
+   ]
+  },
+  "volume_thickness": {
+   "labels": [
+    {
+     "path": "volume.at_price_thickness",
+     "viewpoint": "volume_price",
+     "status": "built",
+     "type": "share",
+     "from": "today's finished 1-minute bars, each bar's volume put in the 0.1-sigma price bin holding its high-low midpoint, bins anchored at spot exactly as volume.at_price builds them; the bin volumes are smoothed over neighbouring bins with 1-2-1 weights",
+     "logic": "volume at price (mean of the two smoothed bins that touch the current price) as a share of the heaviest smoothed bin of the day",
+     "cut": "thin under 25%; thick at 50% or more; middling between; the % shown is rounded down so it never crosses a cut; needs 30 finished bars with volume, else omitted",
+     "reads_as": "2026-09-15T14:32: the current price sits in a middling part of today's volume profile: its stretch traded 40% as much volume as the day's heaviest stretch, between the 25% and 50% cuts",
+     "real": true,
+     "note": "proposed 2026-09-24 (pressure test n=14); raw 0.1-sigma and 0.2-sigma bins were tested and failed the incremental test, only the smoothed profile passed; omitted on 2 of 663 replayed reads (10:02 on 09-10 and 09-24)"
+    }
+   ],
+   "question": {
+    "viewpoint": "volume_price",
+    "status": "live",
+    "cadence": "every 10 minutes",
+    "ask": "Is price sitting in a thin, middling or thick part of today's volume profile?",
+    "why": "On 661 replayed reads over 20 days price stayed inside the 30-minute flat band 62% of the time in a thick part of the day's volume profile against 42% in a middling and 55% in a thin part, and adding it to the clock lowered 30-minute Brier by 0.0037 (14 days better, 6 worse, beat 19 of 20 shuffles).",
+    "type": "choice",
+    "instructions": "Read `volume.at_price_thickness`. Is price sitting in a thin, middling or thick part of today's volume profile?",
+    "criteria": {
+     "thick": "the current price sits in a thick part of today's volume profile: its stretch traded as much as or more than the 50% cut of the day's heaviest stretch",
+     "middling": "the current price sits in a middling part of today's volume profile: its stretch traded between the 25% and 50% cuts of the day's heaviest stretch",
+     "thin": "the current price sits in a thin part of today's volume profile: its stretch traded under the 25% cut of the day's heaviest stretch",
+     "unsure": "the label gives too little to call"
+    },
+    "proposed": "2026-09-24, pressure test n=14 (volume_thickness); see sim/work/volume_thickness/"
+   },
+   "question_id": "volume_profile_thickness",
+   "question_group": "volume_next",
+   "verdict": "LIVE",
+   "variants_tried": [
+    {
+     "id": "bin01",
+     "declared": "0.1-sigma bins as built for volume.at_price, raw; primary",
+     "result": "fails: delta30 +0.0039, 3/20 shuffles, 11/9 days"
+    },
+    {
+     "id": "bin02",
+     "declared": "0.2-sigma bins, raw",
+     "result": "fails: delta30 +0.0038, 4/20 shuffles, 9/11 days"
+    },
+    {
+     "id": "smooth01",
+     "declared": "0.1-sigma bins smoothed 1-2-1",
+     "result": "passes: delta30 -0.0037, 19/20 shuffles, 14/6 days; chosen"
+    }
+   ],
+   "simulation": {
+    "declared_first": "sim/work/volume_thickness/VARIANTS.md",
+    "sanity_heaviest_bin_matches_volume.at_price": "661/661",
+    "variants": {
+     "bin01": {
+      "split_all": {
+       "thick": 0.67,
+       "middling": 0.206,
+       "thin": 0.124
+      },
+      "split_service": {
+       "thick": 0.687,
+       "middling": 0.189,
+       "thin": 0.124
+      },
+      "top_share_service": 0.687,
+      "coverage_all": 0.997,
+      "overlap_top": [
+       [
+        "volume.at_price",
+        0.24,
+        661
+       ],
+       [
+        "price.vs_vwap",
+        0.095,
+        661
+       ],
+       [
+        "volume.now",
+        0.091,
+        493
+       ],
+       [
+        "momentum.path_efficiency",
+        0.09,
+        653
+       ]
+      ],
+      "outcomes30_all": {
+       "thick": {
+        "n": 443,
+        "days": 20,
+        "p_flat": 0.621,
+        "p_up": 0.178,
+        "p_down": 0.201,
+        "mean_abs": 0.122
+       },
+       "middling": {
+        "n": 136,
+        "days": 20,
+        "p_flat": 0.485,
+        "p_up": 0.272,
+        "p_down": 0.243,
+        "mean_abs": 0.165
+       },
+       "thin": {
+        "n": 82,
+        "days": 17,
+        "p_flat": 0.512,
+        "p_up": 0.305,
+        "p_down": 0.183,
+        "mean_abs": 0.141
+       }
+      },
+      "outcomes60_all": {
+       "thick": {
+        "n": 443,
+        "p_flat": 0.63,
+        "mean_abs": 0.17
+       },
+       "middling": {
+        "n": 136,
+        "p_flat": 0.544,
+        "mean_abs": 0.209
+       },
+       "thin": {
+        "n": 82,
+        "p_flat": 0.488,
+        "mean_abs": 0.245
+       }
+      },
+      "brier30_all": {
+       "clock": 0.5673,
+       "clock+candidate": 0.5712,
+       "delta_vs_clock": 0.0039,
+       "days_better": 11,
+       "days_worse": 9,
+       "ci90": [
+        -0.0051,
+        0.0138
+       ]
+      },
+      "brier60_all": {
+       "clock": 0.5666,
+       "clock+candidate": 0.5728,
+       "delta_vs_clock": 0.0062,
+       "days_better": 7,
+       "days_worse": 13,
+       "ci90": [
+        -0.0027,
+        0.0154
+       ]
+      },
+      "shuffle30_all": {
+       "real_delta": 0.0039,
+       "shuffle_mean": 0.0021,
+       "shuffle_p05": -0.0007,
+       "shuffle_p95": 0.0076,
+       "beats_shuffles": 3,
+       "shuffles": 20
+      },
+      "brier30_service": {
+       "clock": 0.5949,
+       "clock+candidate": 0.5972,
+       "delta_vs_clock": 0.0023,
+       "days_better": 9,
+       "days_worse": 11,
+       "ci90": [
+        -0.01,
+        0.0159
+       ]
+      },
+      "brier60_service": {
+       "clock": 0.545,
+       "clock+candidate": 0.5532,
+       "delta_vs_clock": 0.0082,
+       "days_better": 8,
+       "days_worse": 12,
+       "ci90": [
+        -0.0005,
+        0.0172
+       ]
+      },
+      "service_only_rescore": {
+       "delta30": 0.0023,
+       "days30": "9/11",
+       "beats_shuffles_service_only": "12/20",
+       "shuffle_p05_p95": [
+        -0.0105,
+        0.0121
+       ],
+       "delta60": 0.0082,
+       "days60": "8/12"
+      },
+      "within_bucket": {
+       "early": {
+        "n": 116,
+        "delta30_all_reads": 0.0028,
+        "delta30_per_bucket_read": 0.016,
+        "days_better_worse30": "7/13",
+        "beats_shuffles30": "8/20",
+        "delta60_all_reads": 0.0039,
+        "p_flat30_by_option": {
+         "thick": [
+          67,
+          0.313
+         ],
+         "middling": [
+          33,
+          0.333
+         ],
+         "thin": [
+          14,
+          0.5
+         ]
+        }
+       },
+       "late_morning": {
+        "n": 116,
+        "delta30_all_reads": 0.0019,
+        "delta30_per_bucket_read": 0.0109,
+        "days_better_worse30": "6/14",
+        "beats_shuffles30": "13/20",
+        "delta60_all_reads": -0.0005,
+        "p_flat30_by_option": {
+         "thick": [
+          80,
+          0.537
+         ],
+         "middling": [
+          23,
+          0.435
+         ],
+         "thin": [
+          13,
+          0.538
+         ]
+        }
+       },
+       "midday": {
+        "n": 231,
+        "delta30_all_reads": -0.0003,
+        "delta30_per_bucket_read": -0.0009,
+        "days_better_worse30": "11/9",
+        "beats_shuffles30": "15/20",
+        "delta60_all_reads": 0.0017,
+        "p_flat30_by_option": {
+         "thick": [
+          157,
+          0.726
+         ],
+         "middling": [
+          37,
+          0.541
+         ],
+         "thin": [
+          37,
+          0.541
+         ]
+        }
+       },
+       "afternoon": {
+        "n": 200,
+        "delta30_all_reads": 0.0008,
+        "delta30_per_bucket_read": 0.0027,
+        "days_better_worse30": "9/11",
+        "beats_shuffles30": "14/20",
+        "delta60_all_reads": 0.0041,
+        "p_flat30_by_option": {
+         "thick": [
+          139,
+          0.698
+         ],
+         "middling": [
+          43,
+          0.581
+         ],
+         "thin": [
+          18,
+          0.444
+         ]
+        }
+       }
+      },
+      "days_thick_flatter_than_thin_30": "9 yes / 8 no / 0 tie"
+     },
+     "bin02": {
+      "split_all": {
+       "thick": 0.779,
+       "middling": 0.133,
+       "thin": 0.088
+      },
+      "split_service": {
+       "thick": 0.768,
+       "middling": 0.129,
+       "thin": 0.103
+      },
+      "top_share_service": 0.768,
+      "coverage_all": 0.997,
+      "overlap_top": [
+       [
+        "volume.at_price",
+        0.153,
+        661
+       ],
+       [
+        "price.vs_vwap",
+        0.111,
+        661
+       ],
+       [
+        "volume.now",
+        0.09,
+        493
+       ],
+       [
+        "momentum.rsi_1min",
+        0.08,
+        661
+       ]
+      ],
+      "outcomes30_all": {
+       "thick": {
+        "n": 515,
+        "days": 20,
+        "p_flat": 0.6,
+        "p_up": 0.188,
+        "p_down": 0.212,
+        "mean_abs": 0.126
+       },
+       "middling": {
+        "n": 88,
+        "days": 17,
+        "p_flat": 0.5,
+        "p_up": 0.295,
+        "p_down": 0.205,
+        "mean_abs": 0.164
+       },
+       "thin": {
+        "n": 58,
+        "days": 15,
+        "p_flat": 0.517,
+        "p_up": 0.31,
+        "p_down": 0.172,
+        "mean_abs": 0.149
+       }
+      },
+      "outcomes60_all": {
+       "thick": {
+        "n": 515,
+        "p_flat": 0.621,
+        "mean_abs": 0.172
+       },
+       "middling": {
+        "n": 88,
+        "p_flat": 0.534,
+        "mean_abs": 0.216
+       },
+       "thin": {
+        "n": 58,
+        "p_flat": 0.448,
+        "mean_abs": 0.285
+       }
+      },
+      "brier30_all": {
+       "clock": 0.5673,
+       "clock+candidate": 0.5711,
+       "delta_vs_clock": 0.0038,
+       "days_better": 9,
+       "days_worse": 11,
+       "ci90": [
+        -0.0037,
+        0.0129
+       ]
+      },
+      "brier60_all": {
+       "clock": 0.5666,
+       "clock+candidate": 0.5688,
+       "delta_vs_clock": 0.0022,
+       "days_better": 9,
+       "days_worse": 11,
+       "ci90": [
+        -0.0077,
+        0.0119
+       ]
+      },
+      "shuffle30_all": {
+       "real_delta": 0.0038,
+       "shuffle_mean": 0.0023,
+       "shuffle_p05": -0.0012,
+       "shuffle_p95": 0.0084,
+       "beats_shuffles": 4,
+       "shuffles": 20
+      },
+      "brier30_service": {
+       "clock": 0.5949,
+       "clock+candidate": 0.5975,
+       "delta_vs_clock": 0.0026,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.0082,
+        0.0151
+       ]
+      },
+      "brier60_service": {
+       "clock": 0.545,
+       "clock+candidate": 0.5519,
+       "delta_vs_clock": 0.0069,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.0005,
+        0.0144
+       ]
+      },
+      "service_only_rescore": {
+       "delta30": 0.0026,
+       "days30": "10/10",
+       "beats_shuffles_service_only": "8/20",
+       "shuffle_p05_p95": [
+        -0.0064,
+        0.0095
+       ],
+       "delta60": 0.0069,
+       "days60": "10/10"
+      },
+      "within_bucket": {
+       "early": {
+        "n": 116,
+        "delta30_all_reads": 0.0018,
+        "delta30_per_bucket_read": 0.0103,
+        "days_better_worse30": "8/12",
+        "beats_shuffles30": "12/20",
+        "delta60_all_reads": 0.0023,
+        "p_flat30_by_option": {
+         "thick": [
+          92,
+          0.315
+         ],
+         "middling": [
+          12,
+          0.417
+         ],
+         "thin": [
+          10,
+          0.5
+         ]
+        }
+       },
+       "late_morning": {
+        "n": 116,
+        "delta30_all_reads": 0.0027,
+        "delta30_per_bucket_read": 0.0154,
+        "days_better_worse30": "10/10",
+        "beats_shuffles30": "13/20",
+        "delta60_all_reads": -0.0043,
+        "p_flat30_by_option": {
+         "thick": [
+          87,
+          0.529
+         ],
+         "middling": [
+          20,
+          0.45
+         ],
+         "thin": [
+          9,
+          0.556
+         ]
+        }
+       },
+       "midday": {
+        "n": 231,
+        "delta30_all_reads": 0.0034,
+        "delta30_per_bucket_read": 0.0098,
+        "days_better_worse30": "10/10",
+        "beats_shuffles30": "12/20",
+        "delta60_all_reads": 0.0038,
+        "p_flat30_by_option": {
+         "thick": [
+          175,
+          0.691
+         ],
+         "middling": [
+          31,
+          0.645
+         ],
+         "thin": [
+          25,
+          0.52
+         ]
+        }
+       },
+       "afternoon": {
+        "n": 200,
+        "delta30_all_reads": -0.0028,
+        "delta30_per_bucket_read": -0.0093,
+        "days_better_worse30": "10/10",
+        "beats_shuffles30": "19/20",
+        "delta60_all_reads": 0.0033,
+        "p_flat30_by_option": {
+         "thick": [
+          161,
+          0.702
+         ],
+         "middling": [
+          25,
+          0.4
+         ],
+         "thin": [
+          14,
+          0.5
+         ]
+        }
+       }
+      },
+      "days_thick_flatter_than_thin_30": "6 yes / 8 no / 1 tie"
+     },
+     "smooth01": {
+      "split_all": {
+       "thick": 0.759,
+       "middling": 0.157,
+       "thin": 0.083
+      },
+      "split_service": {
+       "thick": 0.785,
+       "middling": 0.12,
+       "thin": 0.094
+      },
+      "top_share_service": 0.785,
+      "coverage_all": 0.997,
+      "overlap_top": [
+       [
+        "volume.at_price",
+        0.176,
+        661
+       ],
+       [
+        "price.vs_vwap",
+        0.106,
+        661
+       ],
+       [
+        "momentum.rsi_1min",
+        0.1,
+        661
+       ],
+       [
+        "volume.now",
+        0.093,
+        493
+       ]
+      ],
+      "outcomes30_all": {
+       "thick": {
+        "n": 502,
+        "days": 20,
+        "p_flat": 0.616,
+        "p_up": 0.171,
+        "p_down": 0.213,
+        "mean_abs": 0.124
+       },
+       "middling": {
+        "n": 104,
+        "days": 18,
+        "p_flat": 0.423,
+        "p_up": 0.385,
+        "p_down": 0.192,
+        "mean_abs": 0.181
+       },
+       "thin": {
+        "n": 55,
+        "days": 15,
+        "p_flat": 0.545,
+        "p_up": 0.273,
+        "p_down": 0.182,
+        "mean_abs": 0.13
+       }
+      },
+      "outcomes60_all": {
+       "thick": {
+        "n": 502,
+        "p_flat": 0.633,
+        "mean_abs": 0.169
+       },
+       "middling": {
+        "n": 104,
+        "p_flat": 0.462,
+        "mean_abs": 0.244
+       },
+       "thin": {
+        "n": 55,
+        "p_flat": 0.491,
+        "mean_abs": 0.251
+       }
+      },
+      "brier30_all": {
+       "clock": 0.5673,
+       "clock+candidate": 0.5636,
+       "delta_vs_clock": -0.0037,
+       "days_better": 14,
+       "days_worse": 6,
+       "ci90": [
+        -0.0127,
+        0.0064
+       ]
+      },
+      "brier60_all": {
+       "clock": 0.5666,
+       "clock+candidate": 0.5676,
+       "delta_vs_clock": 0.001,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.0094,
+        0.0117
+       ]
+      },
+      "shuffle30_all": {
+       "real_delta": -0.0037,
+       "shuffle_mean": 0.002,
+       "shuffle_p05": -0.0017,
+       "shuffle_p95": 0.0083,
+       "beats_shuffles": 19,
+       "shuffles": 20
+      },
+      "brier30_service": {
+       "clock": 0.5949,
+       "clock+candidate": 0.5825,
+       "delta_vs_clock": -0.0124,
+       "days_better": 13,
+       "days_worse": 7,
+       "ci90": [
+        -0.0247,
+        0.0014
+       ]
+      },
+      "brier60_service": {
+       "clock": 0.545,
+       "clock+candidate": 0.5497,
+       "delta_vs_clock": 0.0047,
+       "days_better": 10,
+       "days_worse": 10,
+       "ci90": [
+        -0.0037,
+        0.0134
+       ]
+      },
+      "service_only_rescore": {
+       "delta30": -0.0124,
+       "days30": "13/7",
+       "beats_shuffles_service_only": "19/20",
+       "shuffle_p05_p95": [
+        -0.0084,
+        0.0097
+       ],
+       "delta60": 0.0047,
+       "days60": "10/10"
+      },
+      "within_bucket": {
+       "early": {
+        "n": 116,
+        "delta30_all_reads": -0.0006,
+        "delta30_per_bucket_read": -0.0034,
+        "days_better_worse30": "9/11",
+        "beats_shuffles30": "18/20",
+        "delta60_all_reads": -0.0004,
+        "p_flat30_by_option": {
+         "thick": [
+          89,
+          0.337
+         ],
+         "middling": [
+          15,
+          0.2
+         ],
+         "thin": [
+          10,
+          0.6
+         ]
+        }
+       },
+       "late_morning": {
+        "n": 116,
+        "delta30_all_reads": 0.0016,
+        "delta30_per_bucket_read": 0.0091,
+        "days_better_worse30": "9/11",
+        "beats_shuffles30": "16/20",
+        "delta60_all_reads": -0.0013,
+        "p_flat30_by_option": {
+         "thick": [
+          84,
+          0.536
+         ],
+         "middling": [
+          23,
+          0.478
+         ],
+         "thin": [
+          9,
+          0.444
+         ]
+        }
+       },
+       "midday": {
+        "n": 231,
+        "delta30_all_reads": -0.0014,
+        "delta30_per_bucket_read": -0.004,
+        "days_better_worse30": "11/9",
+        "beats_shuffles30": "17/20",
+        "delta60_all_reads": 0.0007,
+        "p_flat30_by_option": {
+         "thick": [
+          169,
+          0.722
+         ],
+         "middling": [
+          35,
+          0.486
+         ],
+         "thin": [
+          27,
+          0.556
+         ]
+        }
+       },
+       "afternoon": {
+        "n": 200,
+        "delta30_all_reads": -0.002,
+        "delta30_per_bucket_read": -0.0066,
+        "days_better_worse30": "9/11",
+        "beats_shuffles30": "18/20",
+        "delta60_all_reads": 0.005,
+        "p_flat30_by_option": {
+         "thick": [
+          160,
+          0.7
+         ],
+         "middling": [
+          31,
+          0.419
+         ],
+         "thin": [
+          9,
+          0.556
+         ]
+        }
+       }
+      },
+      "days_thick_flatter_than_thin_30": "6 yes / 9 no / 0 tie"
+     }
+    },
+    "robustness_smooth01": {
+     "best_of_3_shuffle_correction": {
+      "real_by_variant": {
+       "bin01": 0.0039,
+       "bin02": 0.0038,
+       "smooth01": -0.0037
+      },
+      "real_best": -0.0037,
+      "share_of_100_best_of_3_shuffles_beaten": 0.84,
+      "shuffle_best_p05": -0.0064,
+      "shuffle_best_median": -0.0004
+     },
+     "beats_100_single_shuffles": 0.9,
+     "move_vs_flat_only_target": {
+      "bin01": {
+       "delta30": 0.0008,
+       "days30": "11/9",
+       "ci90": [
+        -0.0099,
+        0.0123
+       ],
+       "delta60": 0.0048,
+       "days60": "8/12"
+      },
+      "bin02": {
+       "delta30": 0.0013,
+       "days30": "9/11",
+       "ci90": [
+        -0.0058,
+        0.0101
+       ],
+       "delta60": -0.0008,
+       "days60": "11/9"
+      },
+      "smooth01": {
+       "delta30": -0.0053,
+       "days30": "14/6",
+       "ci90": [
+        -0.0153,
+        0.0058
+       ],
+       "delta60": 0.0008,
+       "days60": "8/12"
+      }
+     },
+     "direction_among_moved30": {
+      "bin01": {
+       "thick": "79/168 up (0.47)",
+       "thin": "25/40 up (0.62)",
+       "middling": "37/70 up (0.53)"
+      },
+      "bin02": {
+       "thick": "97/206 up (0.47)",
+       "thin": "18/28 up (0.64)",
+       "middling": "26/44 up (0.59)"
+      },
+      "smooth01": {
+       "thick": "86/193 up (0.45)",
+       "middling": "40/60 up (0.67)",
+       "thin": "15/25 up (0.60)"
+      }
+     },
+     "drop_one_day": {
+      "worst_case_day_dropped": "2026-09-22",
+      "delta_without_it": -0.0006,
+      "days_without_it": "12/7",
+      "range_of_deltas": [
+       -0.0075,
+       -0.0006
+      ]
+     }
+    }
+   },
+   "jev_check": {
+    "round1": {
+     "sent": 40,
+     "errors": 0,
+     "agreement": 1.0,
+     "recall_by_option": {
+      "thick": "14/14",
+      "middling": "13/13",
+      "thin": "13/13"
+     },
+     "mean_confidence": 1.0,
+     "misses": []
+    },
+    "round2": null,
+    "requests_used": 40,
+    "variant": "smooth01",
+    "sentence_example": "2026-09-15T14:32: the current price sits in a middling part of today's volume profile: its stretch traded 40% as much volume as the day's heaviest stretch, between the 25% and 50% cuts"
+   },
+   "case_for": "The only read of the profile's shape at price; the smoothed cut clears every clause of the live rule on all reads (-0.0037, 14/6 days, 19/20 shuffles) and on service reads alone (-0.0124, 13/7, 19/20 service-only shuffles), still passes with any single day dropped (worst -0.0006, 12/7), predicts move-vs-flat rather than direction (-0.0053 on a flat/moved target, 14/6), JEV read 40/40 at full confidence, NMI <= 0.18 with every existing label and the clock. Practitioner view (high-volume nodes slow price, acceptance) matches the part the data backs: thick 62% flat.",
+   "case_against": "The bins as briefed fail (raw 0.1 sigma +0.0039, 3/20; 0.2 sigma +0.0038, 4/20); only the smoothed variant passes and against best-of-3 shuffles it beats 84/100, a thin margin. No gain at 60 minutes (+0.0010 all, +0.0047 service, 10/10 days). The ordering is not the mechanism's: thin (55% flat) is flatter than middling (42%), thick beats thin on only 6 of 15 days, and early-session thin reads are the flattest of all, so the content is thick vs not thick. Middling carries an up-skew (40 of 60 moved reads up vs 51% base) that looks like this rising sample. 2026-09-22 carries most of the gain (without it -0.0006). Evidence base is practitioner-only (HVN/LVN), no literature.",
+   "open_questions": [
+    "Re-score after 10 more sessions; demote to shadow if the 30-minute delta turns non-negative or days_better <= days_worse",
+    "Fold thin and middling into one not_thick option? (post hoc, not a declared variant, untested)",
+    "Keep it out of the 60-minute sum, where it shows no gain?",
+    "Before 11:00 the profile is young and thin reads are flattest; require 60 finished bars?"
+   ]
+  }
+ }
+}

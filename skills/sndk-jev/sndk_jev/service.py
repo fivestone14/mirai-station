@@ -2,13 +2,15 @@
 
 This is the microservice boundary. It reads what Mirai station already stores
 (diary rows, minute bars, side packets, the chain cache), builds the labels,
-asks JEV, sums the answers, grades the sums, and writes only under ``state/jev/``:
+asks JEV, sums the answers, blends the sums with the time-of-day odds (clock.py),
+grades them, and writes only under ``state/jev/``:
 
     state/jev/{day}.jsonl        every run, appended: the state, the requests, the answers
     state/jev/hour/{day}.jsonl   the sums, one record per run: what step 6 grades
     state/jev/latest.json        the phone's file: the newest run, small, self-describing
     state/jev/last_asked.json    the last fresh answer per question, for the cadence
     state/jev/cadence.json       how often each question is asked, recounted daily
+    state/jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py)
 
 It never writes into SNDK PRO's files and never runs on the scan path. Point the
@@ -27,21 +29,23 @@ import re
 import sys
 import time as _clock
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .ab_test import pick, confidence
 from .ask import DEFAULT_QUESTIONS, build_requests, load_questions, send, send_all
+from .clock import blend as clock_blend, odds as clock_odds
 from .cadence import cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, plan, save_last
 from .grade import run as grade_run
 from .hour import answer_sentences, hour_request, hour_summary, load_hour_doc, load_weights
-from .state_builder import DEFAULT_STATE_DIR, build_state, make_scene, parse_ts
+from .state_builder import DEFAULT_STATE_DIR, build_state, make_scene, parse_ts, session_close
 
 SITUATION_PATHS = ("price.recent_move", "price.vs_vwap", "volume.now", "gex.air_to_wall", "iv.trend_30min")
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 ET = ZoneInfo("America/New_York")
 STALE_ROW_S = 15 * 60          # a card built on a row older than this says so
+LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
 
 
@@ -213,7 +217,10 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "dark": dark,
         "dark_note": "dark questions are never asked and never counted; the news questions wait for a news source",
         "hour": hour,
-        "shadow_note": "shadow questions and the sums are forecasts graded by the bars 30 and 60 minutes later; they are never a call",
+        # the phone's clock words ("after the close", "next read") follow the day's real close, 13:00 on a half day
+        "session": {"close": session_close(row_ts).strftime("%H:%M"),
+                    "last_read": (session_close(row_ts) - timedelta(minutes=LAST_READ_BEFORE_CLOSE_MIN)).strftime("%H:%M")},
+        "shadow_note": "the sums are forecasts graded by the bars 30 and 60 minutes later; shadow questions are forecasts logged and never graded; neither is ever a call",
     }
 
 
@@ -260,7 +267,15 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if qid in live_ids and str(why).startswith("missing") and qid not in held]
         hour_rec, hour = sum_the_hour(doc, load_hour_doc(), answered, load_weights(out_dir), fresh, missing)
-        send_seconds = round(_clock.monotonic() - t0, 3)
+        send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
+        if hour is not None:
+            # the sum the phone shows and the grader scores is JEV's sum blended half and half with
+            # how often this time of day ended each way on prior sessions; JEV's own sum rides beside it
+            try:
+                hour = clock_blend(hour, clock_odds(state_dir, out_dir, scene.prior_bars, now))
+            except Exception as e:  # the clock must never cost the read its sum
+                log(f"the clock was left out this run: {type(e).__name__}: {e}")
+                hour = {**hour, "blend": {"used": False, "why": f"the time-of-day odds failed this run: {type(e).__name__}"}}
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):

@@ -109,3 +109,28 @@ def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     assert not c["sent"] and c["fresh"] == 0 and c["held"] == 0 and c["hour"] is None
     assert all(e["skipped"] == "not sent: no key on this machine" for e in c["questions"])
     assert not (state / "jev" / "last_asked.json").exists()
+
+
+def test_the_sum_is_blended_with_the_time_of_day_once_there_are_enough_sessions(tmp_path, monkeypatch):
+    """With ten prior sessions the card's sum is JEV's sum blended with the clock's odds, JEV's own
+    sum rides beside it, and the hour record the grader reads carries both parts."""
+    from sndk_jev.clock import JEV_SHARE, MIN_SESSIONS
+    state = _state(tmp_path, [make_row(at(12, 2, ss=10), 1700.0)], 160)
+    days = [f"2026-09-{d:02d}" for d in range(1, MIN_SESSIONS + 1)]
+    for d in days:
+        (state / "sndk_bars" / f"{d}.jsonl").write_text("\n".join(json.dumps(b) for b in flat_bars(390, day=d)) + "\n")
+        rows = [make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 1700.0) for m in range(0, 390, 5)]
+        (state / "sndk_reversion" / f"{d}.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    out = state / "jev"
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, DOC, True, DAY)
+    h = c["hour"]
+    assert h["blend"]["used"] is True and h["blend"]["phase"] == "lunch" and h["blend"]["sessions"] >= MIN_SESSIONS
+    assert c["session"] == {"close": "16:00", "last_read": "15:32"}           # the phone's clock words follow the real close
+    assert h["jev"]["probabilities"]["flat"] == 0.8                     # the fake JEV's own sum, untouched
+    assert h["clock"]["probabilities"]["flat"] == 1.0                    # every prior session was flat
+    assert h["probabilities"]["flat"] == JEV_SHARE * 0.8 + (1 - JEV_SHARE) * 1.0
+    line = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[-1])
+    assert line["by"]["next_30"]["jev"]["pick"] == "flat" and "clock" in line["by"]["next_60"]
+    assert (out / "clock_days.json").is_file()

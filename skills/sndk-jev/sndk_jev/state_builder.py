@@ -17,7 +17,9 @@ is written out as a sentence with the threshold in it. The rules:
 from __future__ import annotations
 
 import json
+import math
 import statistics
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -76,7 +78,19 @@ OPENING_BOX_MIN = 30
 MOVE_BAR_MINUTES = 2
 RSI_PERIOD = 14
 SESSION_OPEN = time(9, 30)
-SESSION_CLOSE = time(16, 0)     # SNDK PRO's standing assumption; half days are not handled
+SESSION_CLOSE = time(16, 0)
+EARLY_CLOSE = time(13, 0)       # NYSE half days (the day after Thanksgiving, some July 3rds and Christmas Eves)
+FULL_SESSION_MIN = 390          # a full session's minutes: sigma is a full day's expected move
+# Realized against priced movement over the last 30 minutes: the realized path from the 1-minute
+# closes, against sigma scaled to 30 minutes by the square root of time.
+REALIZED_WINDOW_MIN = 30
+REALIZED_MIN_BARS = 25
+REALIZED_QUIET = 0.7
+REALIZED_WILD = 1.3
+# Where price sits in today's volume profile: the smoothed 0.1-sigma bins at price against the
+# heaviest bin of the day.
+PROFILE_THIN = 0.25
+PROFILE_THICK = 0.50
 MIN_BARS_FOR_A_SESSION = 300
 
 
@@ -248,8 +262,31 @@ def session_open(now: datetime) -> datetime:
     return now.replace(hour=SESSION_OPEN.hour, minute=SESSION_OPEN.minute, second=0, microsecond=0)
 
 
+_RUNTIME = Path(__file__).resolve().parents[3] / "runtime"
+
+
+def half_days(year: int) -> frozenset:
+    """NYSE early-close days from the station's own market-hours gate (the watch package's
+    computed calendar), the same source SNDK PRO's scanner and feeds use. Fail-open to no half
+    days, which is the old 16:00 assumption, rather than a crash."""
+    try:
+        if str(_RUNTIME) not in sys.path:
+            sys.path.insert(0, str(_RUNTIME))
+        from watch.intraday import market_status as _ms
+        return _ms._half_days(year)
+    except Exception:
+        return frozenset()
+
+
 def session_close(now: datetime) -> datetime:
-    return now.replace(hour=SESSION_CLOSE.hour, minute=SESSION_CLOSE.minute, second=0, microsecond=0)
+    """16:00 ET, or 13:00 on a half day. The grader reads the same close, so a horizon past it is
+    closed out instead of waiting forever for bars that will never come."""
+    c = EARLY_CLOSE if now.date() in half_days(now.year) else SESSION_CLOSE
+    return now.replace(hour=c.hour, minute=c.minute, second=0, microsecond=0)
+
+
+def session_minutes(now: datetime) -> float:
+    return (session_close(now) - session_open(now)).total_seconds() / 60.0
 
 
 def bars_between(bars: list[dict], start: datetime, end: datetime) -> list[dict]:
@@ -625,6 +662,8 @@ class _Builder:
                           no_figure="over the last 30 minutes at-the-money implied volatility fell, more than the flat band",
                           no_band=f"over the last 30 minutes at-the-money implied volatility fell {-d:.1f} vol points")
 
+        self._realized_vs_priced()
+
         skew = self.row.get("iv_skew") or {}
         pts = skew.get("skew_pts")
         if not _is_num(pts) and _is_num(skew.get("put_side_iv")) and _is_num(skew.get("call_side_iv")):
@@ -963,7 +1002,7 @@ class _Builder:
     # ---- context, added
     def context_more(self) -> None:
         o = self.o
-        frac = max(0.0, min(1.0, self.since_open / 390.0))
+        frac = max(0.0, min(1.0, self.since_open / session_minutes(self.now)))
         fifth = min(4, int(frac * 5))
         words = ["first", "second", "third", "fourth", "last"][fifth]
         m, k = max(round(self.since_open), 0), max(round(self.to_close), 0)
@@ -1091,15 +1130,64 @@ class _Builder:
             else:
                 lv = min(walls, key=lambda w: abs(float(w["price"]) - self.spot))
                 v = int(lv["visits"])
+                # the wall level starts at the session's first bar, so its first visit is price arriving,
+                # not coming back: the sentence counts visits, the first arrival included
                 band = "none" if v == 0 else ("once" if v == 1 else "two or more times")
-                o.put("range", "wall_retests", f"price has come back to the nearest heavy strike {plural(v, 'time')} today, {band}")
+                o.put("range", "wall_retests", f"price has visited the nearest heavy strike {plural(v, 'time')} today, counting its first arrival, {band}")
             highs = [lv for lv in pk.get("levels") or [] if lv.get("role") == "session_high" and _is_num(lv.get("visits"))]
             if not highs:
                 o.skip("range", "high_retests", "the side packet lists no session-high level")
             else:
-                v = int(highs[0]["visits"])
+                # The packet's session-high level starts at the bar that set the high, and that bar
+                # always touches it, so its first visit is the setting run. A return is every visit
+                # after it: one visit means price has not come back.
+                v = max(0, int(highs[0]["visits"]) - 1)
                 band = "none" if v == 0 else ("once" if v == 1 else "two or more times")
-                o.put("range", "high_retests", f"price has come back to the day's high {plural(v, 'time')}, {band}")
+                o.put("range", "high_retests", f"price has come back to the day's high {plural(v, 'time')} since setting it, {band}")
+
+    def _realized_vs_priced(self) -> None:
+        """How much price actually moved over the last 30 minutes against the move the options
+        market prices for 30 minutes. Realized is the square root of the summed squared 1-minute
+        close changes, scaled to 30 minutes by the minutes the closes actually span (a change across
+        a missing minute already carries that minute's movement, so a gap is neither quiet nor
+        counted twice); priced is sigma times the square root of 30 over a full session's minutes."""
+        o = self.o
+        w = REALIZED_WINDOW_MIN
+        one = timedelta(minutes=1)
+        win = bars_finished_between(self.bars, self.now - timedelta(minutes=w), self.now)
+        before = [x for x in self.bars if _t(x) + one <= self.now - timedelta(minutes=w)]
+        if before:
+            start, start_t = float(before[-1]["close"]), _t(before[-1]) + one
+        elif win and self.bars and win[0] is self.bars[0]:
+            start, start_t = float(self.bars[0]["open"]), _t(self.bars[0])   # the window reaches back to the bell
+        else:
+            start, start_t = None, None
+        if len(win) < REALIZED_MIN_BARS or start is None:
+            o.skip("iv", "vs_realized_30", f"needs {REALIZED_MIN_BARS} finished bars in the last {w} minutes")
+            return
+        span = (_t(win[-1]) + one - start_t).total_seconds() / 60.0
+        closes = [start] + [float(x["close"]) for x in win]
+        ss = sum((b - a) ** 2 for a, b in zip(closes[:-1], closes[1:])) * (w / span) if span > 0 else float("nan")
+        realized = math.sqrt(ss) / self.sigma if ss >= 0 else float("nan")
+        priced = math.sqrt(w / FULL_SESSION_MIN)
+        r = realized / priced
+        if not math.isfinite(r):
+            o.skip("iv", "vs_realized_30", "the last 30 minutes' closes do not give a finite movement")
+            return
+        if r < REALIZED_QUIET:
+            answer, shown = "quieter_than_priced", min(r, REALIZED_QUIET - 0.01)
+            cut = f"under the {REALIZED_QUIET:g}-times cut, so quieter than priced"
+        elif r > REALIZED_WILD:
+            answer, shown = "wilder_than_priced", max(r, REALIZED_WILD + 0.01)
+            cut = f"over the {REALIZED_WILD:g}-times cut, so wilder than priced"
+        else:
+            answer, shown = "about_priced", min(max(r, REALIZED_QUIET), REALIZED_WILD)
+            cut = f"between the {REALIZED_QUIET:g}-times and {REALIZED_WILD:g}-times cuts, so about as priced"
+        # the shown ratio never crosses the cut its verdict names, whatever the rounding does
+        o.put("iv", "vs_realized_30",
+              f"over the last {w} minutes price's realized movement, from its 1-minute closes, was {sig(realized)}, "
+              f"{shown:.2f} times the {sig(priced)} move the options market prices for {w} minutes, {cut}",
+              answer=answer)
 
     # ---- implied volatility, added
     def iv_more(self) -> None:
@@ -1357,6 +1445,7 @@ class _Builder:
 
         if len(self.bars) < 30 or not all(_is_num(x.get("volume")) for x in self.bars):
             o.skip("volume", "at_price", "needs 30 finished bars with volume")
+            o.skip("volume", "at_price_thickness", "needs 30 finished bars with volume")
             return
         bin_w = 0.1 * self.sigma
         bins: dict[int, float] = {}
@@ -1365,6 +1454,7 @@ class _Builder:
             bins[int((mid - self.spot) // bin_w)] = bins.get(int((mid - self.spot) // bin_w), 0.0) + float(x["volume"])
         if not bins or sum(bins.values()) <= 0:
             o.skip("volume", "at_price", "no volume today")
+            o.skip("volume", "at_price_thickness", "no volume today")
             return
         k = max(bins, key=lambda b: bins[b])
         lo_d, hi_d = k * 0.1, (k + 1) * 0.1
@@ -1374,6 +1464,29 @@ class _Builder:
             o.put("volume", "at_price", f"the heaviest-volume stretch of the day sits {abs(hi_d):.1f} to {abs(lo_d):.1f} sigma below price", answer="below_price")
         else:
             o.put("volume", "at_price", f"the heaviest-volume stretch of the day sits {lo_d:.1f} to {hi_d:.1f} sigma above price", answer="above_price")
+
+        # How thick the profile is where price sits: each bin blended with its neighbours at 1-2-1
+        # weights, then the two bins that meet at price against the heaviest bin of the day.
+        smooth = {k: (bins.get(k - 1, 0.0) + 2 * bins.get(k, 0.0) + bins.get(k + 1, 0.0)) / 4
+                  for k in range(min(bins) - 1, max(bins) + 2)}
+        heaviest = max(smooth.values())
+        share = (smooth.get(-1, 0.0) + smooth.get(0, 0.0)) / 2 / heaviest if heaviest > 0 else float("nan")
+        if not math.isfinite(share):
+            o.skip("volume", "at_price_thickness", "today's volume profile does not give a finite share")
+            return
+        shown = math.floor(share * 100 + 1e-9)       # rounded down, so it never crosses the cut it names
+        if share >= PROFILE_THICK:
+            o.put("volume", "at_price_thickness",
+                  f"the current price sits in a thick part of today's volume profile: its stretch traded {shown}% as much volume as the day's heaviest stretch, at or above the {pct(PROFILE_THICK)} cut",
+                  answer="thick")
+        elif share < PROFILE_THIN:
+            o.put("volume", "at_price_thickness",
+                  f"the current price sits in a thin part of today's volume profile: its stretch traded {shown}% as much volume as the day's heaviest stretch, under the {pct(PROFILE_THIN)} cut",
+                  answer="thin")
+        else:
+            o.put("volume", "at_price_thickness",
+                  f"the current price sits in a middling part of today's volume profile: its stretch traded {shown}% as much volume as the day's heaviest stretch, between the {pct(PROFILE_THIN)} and {pct(PROFILE_THICK)} cuts",
+                  answer="middling")
 
     # ---- momentum, added
     def momentum_more(self) -> None:

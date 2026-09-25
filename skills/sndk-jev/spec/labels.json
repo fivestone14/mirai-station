@@ -1,7 +1,7 @@
 {
  "name": "sndk-jev label spec",
- "version": "0.4-reviewed",
- "date": "2026-09-23",
+ "version": "0.5-reviewed",
+ "date": "2026-09-25",
  "purpose": "Every label the state builder writes or could write, with the logic under it. Built labels are checked against the code by a test. Free and new labels are designs, not code.",
  "statuses": {
   "built": "in state_builder.py today, writing sentences",
@@ -119,7 +119,7 @@
    "status": "built",
    "type": "share",
    "from": "the row's timestamp",
-   "logic": "minutes since the open over the 390 in a session",
+   "logic": "minutes since the open over the session's minutes: 390, or 210 on an NYSE half day (the close comes from the station's market-hours gate)",
    "cut": "fifths of the session",
    "reads_as": "100% of the session has passed, the last fifth; the last hour, 0 minutes before the close",
    "real": true,
@@ -205,6 +205,18 @@
    "reads_as": "the heaviest-volume stretch of the day includes the current price",
    "real": true,
    "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+  },
+  {
+   "path": "volume.at_price_thickness",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "share",
+   "from": "today's finished 1-minute bars, each bar's volume in the 0.1-sigma price bin holding its high-low midpoint, bins anchored at spot exactly as volume.at_price builds them",
+   "logic": "each bin blended with its neighbours at 1-2-1 weights; the mean of the two smoothed bins that meet at price, as a share of the heaviest smoothed bin of the day",
+   "cut": "thin under 25%; thick at 50% or more; middling between; the % shown is rounded down so it never crosses a cut; needs 30 finished bars with volume",
+   "reads_as": "the current price sits in a thick part of today's volume profile: its stretch traded 85% as much volume as the day's heaviest stretch, at or above the 50% cut",
+   "real": true,
+   "note": "added 2026-09-25 from the 25-agent pressure test of 2026-09-24 (661 replayed reads, 20 days): beat the time of day alone on 14 of 20 days and against 19 of 20 shuffles, 40 of 40 read right by JEV. Raw 0.1-sigma and 0.2-sigma bins failed; only the smoothed profile passed, as the third of three declared cuts, so it is re-scored after ten more sessions. Sentence rendered from the real row at 2026-09-24 12:02."
   },
   {
    "path": "momentum.pace",
@@ -317,11 +329,11 @@
    "status": "built",
    "type": "count",
    "from": "the side packet's level visits for the wall roles",
-   "logic": "returns to the nearest heavy strike today",
+   "logic": "visits to the nearest heavy strike today, the first arrival included: the packet's wall levels start at the session's first bar, so price reaching the strike is visit one",
    "cut": "0; 1; 2 or more",
-   "reads_as": "price has come back to the nearest heavy strike 4 times today, two or more times",
+   "reads_as": "price has visited the nearest heavy strike 4 times today, counting its first arrival, two or more times",
    "real": true,
-   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59; reworded 2026-09-25: the sentence said 'come back to' while counting the first arrival, the same slip corrected in range.high_retests, where the count itself was changed to returns"
   },
   {
    "path": "range.high_retests",
@@ -329,11 +341,11 @@
    "status": "built",
    "type": "count",
    "from": "the side packet's level visits for the session high",
-   "logic": "returns to the day's high",
+   "logic": "returns to the day's high since the bar that set it: the packet's session-high level starts at that bar, which always touches it, so returns are its visits minus one",
    "cut": "0; 1; 2 or more",
-   "reads_as": "price has come back to the day's high 1 time, once",
+   "reads_as": "price has come back to the day's high 0 times since setting it, none",
    "real": true,
-   "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59"
+   "note": "built 2026-09-21. Corrected 2026-09-25: it used to print the packet's visits as returns, so '1 time, once' was the setting touch itself (286 of 286 stored packets count the setting run as a visit); it now counts returns. Sentence rendered from the real row at 2026-09-24 12:02."
   },
   {
    "path": "momentum.rsi_1min",
@@ -451,6 +463,18 @@
    "reads_as": "this week's and next week's at-the-money implied volatility are within the 2 vol point flat band, this week's 0.6 vol points below next week's",
    "real": true,
    "note": "built 2026-09-21; rendered from the real row at 2026-09-21 15:59. corrected 2026-09-23: the from was written the wrong way round, and the level branch now names the higher week"
+  },
+  {
+   "path": "iv.vs_realized_30",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "share",
+   "from": "today's 1-minute bars that finished in the last 30 minutes and the close that stood 30 minutes ago (the day's first open when the window reaches the bell); sigma",
+   "logic": "realized movement is the square root of the summed squared 1-minute close changes over the window, scaled up by 30 over the bars present, in sigma; it is divided by the move the options market prices for 30 minutes, sigma times the square root of 30 over a full session's 390 minutes (0.28 sigma)",
+   "cut": "under 0.7 times is quieter than priced; 0.7 to 1.3 times is about as priced; over 1.3 times is wilder than priced; the shown ratio never crosses the cut its verdict names; omitted with fewer than 25 finished bars in the window",
+   "reads_as": "over the last 30 minutes price's realized movement, from its 1-minute closes, was 0.18 sigma, 0.65 times the 0.28 sigma move the options market prices for 30 minutes, under the 0.7-times cut, so quieter than priced",
+   "real": true,
+   "note": "added 2026-09-25 from the 25-agent pressure test of 2026-09-24 (663 replayed reads, 20 days): beat the time of day alone on 13 of 20 days and against 20 of 20 shuffles. The ruler is the row's sigma, not the live at-the-money IV, which scored worse. The priced move has no intraday shape, so the first hour reads about or wilder and the afternoon mostly quieter; the value beyond the clock is quieter against about from 11:00 on. Sentence rendered from the real row at 2026-09-24 12:02."
   },
   {
    "path": "price.day_range_position",

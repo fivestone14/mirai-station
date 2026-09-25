@@ -1,11 +1,11 @@
 {
  "name": "jev-questions",
- "version": "0.13.0",
- "date": "2026-09-23",
+ "version": "0.14.0",
+ "date": "2026-09-25",
  "how_to_use": [
   "Each group is one JEV request. The packer sends the group's state slice as the state and only the fields type, instructions and criteria of each question; viewpoint, status, ask, why and cadence are for people.",
   "status: live means every label the question reads is built today; shadow means a forecast with no right answer at ask time, logged and never acted on; it is not graded, only the two sums are, never acted on; dark means the packer never asks it and the phone never counts it, because the source it needs is not plugged in (the news questions, until a news engine exists; dark_was keeps the status they return to).",
-  "Grading is of the two sums only, next_30 and next_60 in questions/sndk_hour.json, each by the bars at its own mark. No live question is graded against the next move; a live question's weight is how well its fresh picks tracked the 30-minute band.",
+  "Grading is of the two sums only, next_30 and next_60 in questions/sndk_hour.json, each by the bars at its own mark, as the phone shows them: blended half and half with the time-of-day odds (sndk_jev/clock.py), with JEV's own sums and the odds scored beside them. No live question is graded against the next move; a live question's weight is how well its fresh picks tracked the 30-minute band.",
   "cadence is the starting interval. The service snaps it to 30, 60 or 120 minutes, recounts it each day from the day before, and holds the last fresh answer in between. Scans two minutes apart are 0.918 correlated on this name, so few questions gain from being asked more often than every read.",
   "Read the probabilities from every score question, never its single score, which is a weighted mean and can sit between two levels.",
   "Every threshold is written into the criteria in the words the label uses, because JEV cannot compare numbers. The 0.12 and 0.30 sigma bands are measured on this name at 30 minutes, on 5,815 thirty-minute windows: the end move is within 0.12 sigma 59% of the time and 0.30 is the 90th percentile of the furthest point."
@@ -127,7 +127,8 @@
     "context",
     "iv.trend_30min",
     "iv.skew",
-    "iv.expected_move_used"
+    "iv.expected_move_used",
+    "iv.vs_realized_30"
    ],
    "questions": {
     "iv_trend": {
@@ -174,6 +175,22 @@
       "beyond_full": "today's range so far is more than today's expected move",
       "unsure": "the label gives too little to call"
      }
+    },
+    "realized_vs_priced": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Over the last 30 minutes, did price move less than, about as much as, or more than the options market prices for 30 minutes?",
+     "why": "Replayed on 663 reads over 20 days (2026-08-26 to 09-24): after quieter than priced the next 30 minutes ended flat 70% of the time against 42% after about as priced, and the label beat the time of day alone on 13 of 20 days and against 20 of 20 shuffles; wilder than priced is almost only the first hour, where it adds nothing.",
+     "type": "choice",
+     "instructions": "Read `iv.vs_realized_30`. Over the last 30 minutes, did price move less than, about as much as, or more than the move the options market prices for 30 minutes?",
+     "criteria": {
+      "quieter_than_priced": "price's realized movement over the last 30 minutes was under the 0.7-times cut of the move the options market prices for 30 minutes, so quieter than priced",
+      "about_priced": "price's realized movement over the last 30 minutes was between the 0.7-times and 1.3-times cuts of the move the options market prices for 30 minutes, so about as priced",
+      "wilder_than_priced": "price's realized movement over the last 30 minutes was over the 1.3-times cut of the move the options market prices for 30 minutes, so wilder than priced",
+      "unsure": "the label gives too little to call"
+     },
+     "proposed": "2026-09-25, from the 25-agent pressure test of 2026-09-24; see questions/proposals/2026-09-24-pressure-test.json"
     }
    }
   },
@@ -382,15 +399,15 @@
      "viewpoint": "strikes",
      "status": "live",
      "cadence": "every scan",
-     "ask": "Is the nearest strike with a big pile of options close to price, and has price been coming back to it today?",
-     "why": "`air_to_wall` read heavy_strike_close on 10 of 53 runs today, every one of them a strike price had come back to 0 or 1 times, and on the 43 open_air runs `range.wall_retests` moved through 0, 1, 2 and 4 returns (four returns to the call wall at 11:17, none to the put wall that replaced it at 11:31).",
+     "ask": "Is the nearest strike with a big pile of options close to price, and how often has price visited it today?",
+     "why": "`air_to_wall` read heavy_strike_close on 10 of 53 runs today, every one of them a strike price had come back to 0 or 1 times, and on the 43 open_air runs `range.wall_retests` moved through 0, 1, 2 and 4 visits (four visits to the call wall at 11:17, none to the put wall that replaced it at 11:31). The count is visits, the first arrival included; its sentence said 'come back' until 2026-09-25.",
      "type": "choice",
-     "instructions": "Read `gex.air_to_wall` for how far the nearest heavy strike sits from price, and `range.wall_retests` for how many times price has come back to that strike today; the count is for the nearest heavy strike as the side packet last knew it, and it starts again when a different strike becomes the nearest. Which situation is it?",
+     "instructions": "Read `gex.air_to_wall` for how far the nearest heavy strike sits from price, and `range.wall_retests` for how many times price has visited that strike today, its first arrival included; the count is for the nearest heavy strike as the side packet last knew it, and it starts again when a different strike becomes the nearest. Which situation is it?",
      "criteria": {
-      "close_first_visit": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it none or once today",
-      "close_worked": "the nearest heavy strike sits within 0.5 sigma of price, and price has come back to it two or more times today",
-      "far_worked": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it two or more times today",
-      "far_untouched": "the nearest heavy strike sits more than 0.5 sigma from price, and price has come back to it none or once today",
+      "close_first_visit": "the nearest heavy strike sits within 0.5 sigma of price, and price has visited it none or once today, counting its first arrival",
+      "close_worked": "the nearest heavy strike sits within 0.5 sigma of price, and price has visited it two or more times today, counting its first arrival",
+      "far_worked": "the nearest heavy strike sits more than 0.5 sigma from price, and price has visited it two or more times today, counting its first arrival",
+      "far_untouched": "the nearest heavy strike sits more than 0.5 sigma from price, and price has visited it none or once today, counting its first arrival",
       "no_wall": "no heavy strike sits within reach",
       "unsure": "the labels conflict or say too little to call"
      },
@@ -456,7 +473,8 @@
     "volume.by_direction",
     "momentum.closes",
     "volume.at_price",
-    "momentum.pauses"
+    "momentum.pauses",
+    "volume.at_price_thickness"
    ],
    "questions": {
     "volume_backs_move": {
@@ -523,6 +541,22 @@
       "unsure": "the labels conflict or say too little to call"
      },
      "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
+    },
+    "volume_profile_thickness": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every 10 minutes",
+     "ask": "Is price sitting in a thin, middling or thick part of today's volume profile?",
+     "why": "Replayed on 661 reads over 20 days (2026-08-26 to 09-24): price stayed inside the 30-minute flat band 62% of the time in a thick part of the day's volume profile against 42% in a middling and 55% in a thin part, and it beat the time of day alone on 14 of 20 days and against 19 of 20 shuffles; the smoothed profile was the third of three cuts tried, so it is re-checked after ten more sessions.",
+     "type": "choice",
+     "instructions": "Read `volume.at_price_thickness`. Is price sitting in a thin, middling or thick part of today's volume profile?",
+     "criteria": {
+      "thick": "the current price sits in a thick part of today's volume profile: its stretch traded at or above the 50% cut of the day's heaviest stretch",
+      "middling": "the current price sits in a middling part of today's volume profile: its stretch traded between the 25% and 50% cuts of the day's heaviest stretch",
+      "thin": "the current price sits in a thin part of today's volume profile: its stretch traded under the 25% cut of the day's heaviest stretch",
+      "unsure": "the label gives too little to call"
+     },
+     "proposed": "2026-09-25, from the 25-agent pressure test of 2026-09-24; see questions/proposals/2026-09-24-pressure-test.json"
     }
    }
   },
@@ -581,21 +615,20 @@
       "unsure": "the label gives too little to call"
      }
     },
-    "day_high_pressure": {
+    "day_high_returns": {
      "viewpoint": "history",
      "status": "live",
      "cadence": "every scan",
-     "ask": "At the top of today's range, how many times has price come back to the day's high?",
-     "why": "`price_in_day_range` read top on 50 of 52 asks and every history question was one-sided on this outlier day (two_day_position, outlier_day, week_position, prior_level_tested, box_status, range_vs_normal all at 90% or more), while `range.high_retests` split 27 reads at one return and 23 at two or more and is read by nothing.",
+     "ask": "At the top of today's range, has price come back to the day's high since setting it?",
+     "why": "The day's high is where a rally is tested. Counted as returns since the high was set (the side packet's first visit is the setting touch itself, so the count used to read one too high), 168 service reads over 2026-09-04 to 09-24 split 37 at the top untested, 19 at the top and returned, 112 not at the top, so none-against-some keeps both answers alive where the old once-against-repeatedly cut did not. Replaces day_high_pressure on 2026-09-25, so its learning starts fresh.",
      "type": "choice",
-     "instructions": "Read `price.day_range_position` for where price sits in today's range so far, and `range.high_retests` for how many times price has come back to the day's high today. Which situation is it?",
+     "instructions": "Read `price.day_range_position` for where price sits in today's range so far, and `range.high_retests` for how many times price has come back to the day's high since setting it. Which situation is it?",
      "criteria": {
-      "top_returned_once": "price is in the top third of today's range so far, and price has come back to the day's high none or once",
-      "top_returned_repeatedly": "price is in the top third of today's range so far, and price has come back to the day's high two or more times",
+      "top_untested": "price is in the top third of today's range so far, and price has come back to the day's high 0 times since setting it, none",
+      "top_returned": "price is in the top third of today's range so far, and price has come back to the day's high once, or two or more times, since setting it",
       "not_at_top": "price is in the middle third or the bottom third of today's range so far",
       "unsure": "the labels conflict or say too little to call"
-     },
-     "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json"
+     }
     }
    }
   },

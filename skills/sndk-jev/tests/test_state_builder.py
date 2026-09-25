@@ -437,3 +437,149 @@ def test_make_scene_uses_only_finished_bars_and_prior_days(tmp_path):
     assert list(scene.prior_bars) == ["2026-09-17"], "a later day never counts as a prior session"
     earlier = make_scene(tmp_path, DAY, at=at(9, 59).time())
     assert earlier.row["ts"] == at(9, 58).isoformat()
+
+
+# ---------------------------------------------------------------- added 2026-09-25
+
+def test_realized_against_priced_movement_bands(scene_factory):
+    """iv.vs_realized_30 compares the last 30 minutes' realized path with sigma scaled to 30 minutes,
+    and names the band the code decided; the ratio it shows never crosses that band's cut."""
+    from sndk_jev.state_builder import REALIZED_QUIET, REALIZED_WILD
+    sigma = 45.0                                                         # make_row's sigma
+    s = scene_factory(at(12, 30, ss=10), flat_bars(180))
+    _, _, _, verdicts = build_ab(s)
+    state, _ = labels(s)
+    assert verdicts["iv.vs_realized_30"] == "quieter_than_priced"
+    assert f"under the {REALIZED_QUIET:g}-times cut" in state["iv"]["vs_realized_30"]
+    # a one-minute swing of d points, every minute, realizes d * sqrt(30) against sigma * sqrt(30/390)
+    for d, want in ((2.3, "about_priced"), (5.0, "wilder_than_priced")):
+        closes = [1700.0] * 150 + [1700.0 + (d if i % 2 == 0 else 0.0) for i in range(30)]
+        _, _, _, v = build_ab(scene_factory(at(12, 30, ss=10), bars_from_closes(closes)))
+        assert v["iv.vs_realized_30"] == want, (d, v["iv.vs_realized_30"])
+    closes = [1700.0] * 150 + [1700.0 + (5.0 if i % 2 == 0 else 0.0) for i in range(30)]
+    wild, _ = labels(scene_factory(at(12, 30, ss=10), bars_from_closes(closes)))
+    shown = float(re.search(r"(\d+\.\d\d) times", wild["iv"]["vs_realized_30"]).group(1))
+    assert shown > REALIZED_WILD and "so wilder than priced" in wild["iv"]["vs_realized_30"]
+
+
+def test_realized_against_priced_needs_a_full_window(scene_factory):
+    state, omitted = labels(scene_factory(at(9, 50), flat_bars(20)))
+    assert "vs_realized_30" not in state.get("iv", {}) and "finished bars" in omitted["iv.vs_realized_30"]
+
+
+def test_volume_profile_thickness_at_price(scene_factory):
+    """volume.at_price_thickness: the smoothed volume at price as a share of the day's heaviest stretch."""
+    thick, _ = labels(scene_factory(at(12, 30, ss=10), flat_bars(180)))
+    assert "a thick part of today's volume profile" in thick["volume"]["at_price_thickness"]
+    # three hours of heavy trade at 1700, then half an hour of light trade 60 points higher
+    closes = [1700.0] * 150 + [1760.0] * 30
+    vols = [1000.0] * 150 + [10.0] * 30
+    s = scene_factory(at(12, 30, ss=10), bars_from_closes(closes, volume=vols, wick=0.1))
+    _, _, _, v = build_ab(s)
+    thin, _ = labels(s)
+    assert v["volume.at_price_thickness"] == "thin" and "under the 25% cut" in thin["volume"]["at_price_thickness"]
+    shown = int(re.search(r"traded (\d+)% as much", thin["volume"]["at_price_thickness"]).group(1))
+    assert shown < 25
+
+
+def test_day_high_retests_count_returns_not_the_setting_touch(scene_factory):
+    """The side packet's session-high level starts at the bar that set the high, so its first visit is
+    that bar: one visit is no return, three visits are two."""
+    from conftest import make_side_packet
+    for visits, words in ((1, "0 times since setting it, none"), (2, "1 time since setting it, once"),
+                          (3, "2 times since setting it, two or more times")):
+        s = scene_factory(at(12, 30, ss=10), flat_bars(180), side_packet=make_side_packet(bar=170, wall_price=1750.0, high_visits=visits))
+        state, _ = labels(s)
+        assert state["range"]["high_retests"] == f"price has come back to the day's high {words}"
+
+
+def test_half_days_close_at_one_and_the_session_clock_follows():
+    """The labeller and the grader share session_close, taken from the station's market-hours gate."""
+    import sys
+    from datetime import datetime
+    from sndk_jev.state_builder import _RUNTIME, half_days, session_close, session_minutes
+    sys.path.insert(0, str(_RUNTIME))
+    from watch.intraday import market_status
+    assert half_days(2026) == market_status._half_days(2026)
+    assert session_close(datetime(2026, 11, 27, 10, 0)).hour == 13
+    assert session_close(datetime(2026, 12, 24, 10, 0)).hour == 13
+    assert session_close(datetime(2026, 9, 25, 10, 0)).hour == 16
+    assert session_minutes(datetime(2026, 11, 27, 10, 0)) == 210
+
+
+def test_session_progress_on_a_half_day(scene_factory):
+    day = "2026-11-27"
+    s = scene_factory(at(11, 15, day=day), flat_bars(105, day=day))
+    state, _ = labels(s)
+    assert state["context"]["session_progress"].startswith("50% of the session has passed, the third fifth")
+    assert "105 minutes before the close" in state["context"]["session_progress"]
+
+
+def _realized_scene(scene_factory, d, gap=()):
+    """150 flat minutes, then 30 minutes swinging d points every minute; ``gap`` drops bar indexes."""
+    closes = [1700.0] * 150 + [1700.0 + (d if i % 2 == 0 else 0.0) for i in range(30)]
+    bars = [b for i, b in enumerate(bars_from_closes(closes)) if i not in gap]
+    return scene_factory(at(12, 30, ss=10), bars)
+
+
+def test_realized_against_priced_at_the_cuts(scene_factory):
+    """At sigma 45 a swing of d points a minute realizes d * 0.43886 of the priced 30-minute move. Next
+    to each cut the verdict follows the ratio and the ratio shown never lands on the wrong side."""
+    per_point = (30 ** 0.5) / (45.0 * (30 / 390) ** 0.5)
+    for ratio, want in ((0.6996, "quieter_than_priced"), (0.7004, "about_priced"),
+                        (1.2996, "about_priced"), (1.3004, "wilder_than_priced")):
+        s = _realized_scene(scene_factory, ratio / per_point)
+        state, _, _, v = build_ab(s)
+        assert v["iv.vs_realized_30"] == want, (ratio, v["iv.vs_realized_30"])
+        shown = float(re.search(r"(\d+\.\d\d) times", state["iv"]["vs_realized_30"]).group(1))
+        assert (shown < 0.7) if want == "quieter_than_priced" else (shown > 1.3) if want == "wilder_than_priced" else (0.7 <= shown <= 1.3)
+
+
+def test_realized_movement_is_not_inflated_by_a_gap(scene_factory):
+    """A change across missing minutes already carries their movement: over many random walks, dropping
+    five interior minutes leaves the average ratio where it was (the old per-bar rescale gave 1.095)."""
+    import random
+    rnd = random.Random(11)
+    full, gapped = [], []
+    for _ in range(80):
+        walk = [1700.0]
+        for _ in range(179):
+            walk.append(walk[-1] + rnd.gauss(0, 0.6))
+        bars = bars_from_closes(walk)
+        for keep, out in ((bars, full), ([b for i, b in enumerate(bars) if not 160 <= i < 165], gapped)):
+            state, _ = labels(scene_factory(at(12, 30, ss=10), keep))
+            out.append(float(re.search(r"(\d+\.\d\d) times", state["iv"]["vs_realized_30"]).group(1)))
+    assert 0.95 < (sum(gapped) / len(gapped)) / (sum(full) / len(full)) < 1.05
+
+
+def _profile_scene(scene_factory, share):
+    """150 heavy minutes at 1700 (volume 1000 each), then 30 minutes at 1760 whose volume puts the
+    smoothed profile at price at ``share`` of the heaviest stretch (3V/8 against H/2)."""
+    heavy = 150 * 1000.0
+    v = share * 4 * heavy / 3 / 29                                          # the first 1760 bar straddles the jump
+    closes = [1700.0] * 150 + [1760.0] * 30
+    vols = [1000.0] * 150 + [v] * 30
+    return scene_factory(at(12, 30, ss=10), bars_from_closes(closes, volume=vols, wick=0.1))
+
+
+def test_volume_profile_thickness_at_the_cuts(scene_factory):
+    for share, want, shown in ((0.2499, "thin", 24), (0.2501, "middling", 25), (0.30, "middling", 30),
+                               (0.4999, "middling", 49), (0.5001, "thick", 50)):
+        state, _, _, v = build_ab(_profile_scene(scene_factory, share))
+        assert v["volume.at_price_thickness"] == want, (share, v["volume.at_price_thickness"])
+        assert f"traded {shown}% as much" in state["volume"]["at_price_thickness"], state["volume"]["at_price_thickness"]
+
+
+def test_a_bad_volume_leaves_the_profile_label_out_and_the_rest_stands(scene_factory):
+    bars = flat_bars(180)
+    bars[100]["volume"] = float("nan")
+    state, omitted = labels(scene_factory(at(12, 30, ss=10), bars))
+    assert "at_price_thickness" not in state.get("volume", {}) and "volume.at_price_thickness" in omitted
+    assert state["price"]["recent_move"]
+
+
+def test_wall_visits_say_they_count_the_first_arrival(scene_factory):
+    from conftest import make_side_packet
+    s = scene_factory(at(12, 30, ss=10), flat_bars(180), side_packet=make_side_packet(bar=170, wall_price=1750.0, wall_visits=1))
+    state, _ = labels(s)
+    assert state["range"]["wall_retests"] == "price has visited the nearest heavy strike 1 time today, counting its first arrival, once"

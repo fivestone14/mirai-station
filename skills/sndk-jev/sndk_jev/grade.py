@@ -10,7 +10,7 @@ Two horizons are graded from the same record, each against its own band:
 How a horizon is graded
     realized = (close h minutes after the row - spot at the row) / sigma
     band     = up if realized > flat band, down if realized < -flat band, else flat
-    hit      = JEV's pick == band
+    hit      = the shown sum's pick (the blend) == band; jev_hit the same for JEV's own pick
     brier    = sum over {up, flat, down} of (p - 1[band]) ** 2      (0 is perfect, 2 is worst)
     Each horizon is graded as soon as its own mark has a bar: the 30-minute sum at 30 minutes, the
     60-minute sum at 60, so the primary never waits for the slower one. A record therefore gets up
@@ -19,6 +19,12 @@ How a horizon is graded
     ends later is skipped for good and said so in the line. A record none of whose horizons can
     ever be graded is written as not graded, so it is never retried. A horizon graded once is
     never graded twice.
+
+What is graded
+    The sum a record carries is the one the phone showed: JEV's sum blended with the time-of-day
+    odds (see clock.py). When the record also carries JEV's own sum and the clock's odds, each
+    is scored beside it on the same outcome (``jev_brier``, ``jev_pick``, ``jev_hit``,
+    ``clock_brier``), so the blend keeps having to earn its place against both of its parts.
 
 How a weight moves
     For each step-2 question, every graded record where the question was answered AFRESH gives
@@ -34,7 +40,8 @@ Outputs, all under state/jev/
     grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
                        the ``horizons`` the line carries; the primary's line has its fields flat on top)
     weights.json       {"graded_runs": reads whose primary mark is graded, "min_graded", "min_weight", "primary",
-                        "sums": {qid: {"n", "hit_rate", "always_flat_hit_rate", "mean_brier", "bands"}},
+                        "sums": {qid: {"n", "hit_rate", "always_flat_hit_rate", "mean_brier", "bands",
+                                       "blended": {"n", "mean_brier_blend", "mean_brier_jev", "mean_brier_clock", "jev_hit_rate"}}},
                         "questions": {qid: {"weight", "mi", "n", "in_step_3", "why"}},
                         "new_this_run", "new_by_horizon", "closed_out"}
     weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
@@ -83,6 +90,29 @@ def realized_band(x: float, flat: float) -> str:
     return "up" if x > flat else "down" if x < -flat else "flat"
 
 
+def _parts(rec: dict) -> dict:
+    """``{qid: {"jev": probabilities, "jev_pick": pick, "clock": probabilities}}`` for sums that were
+    blended; an unblended record has none."""
+    by = rec.get("by") if isinstance(rec.get("by"), dict) else {}
+    out = {}
+    for q, v in by.items():
+        if not isinstance(v, dict):
+            continue
+        j, c = v.get("jev"), v.get("clock")
+        part = {}
+        if isinstance(j, dict) and isinstance(j.get("probabilities"), dict):
+            part["jev"], part["jev_pick"] = j["probabilities"], j.get("pick")
+        if isinstance(c, dict) and isinstance(c.get("probabilities"), dict):
+            part["clock"] = c["probabilities"]
+        if part:
+            out[q] = part
+    return out
+
+
+def _brier(p: dict, band: str) -> float:
+    return round(sum((float(p.get(b, 0.0)) - (1.0 if b == band else 0.0)) ** 2 for b in BANDS), 4)
+
+
 def _picks(rec: dict) -> tuple[dict, dict]:
     """Picks and probabilities per sum, from the record's ``by`` block. A record without one is
     from before the two-sum switch (a 60-minute forecast against a 0.24 band): it is never graded,
@@ -111,6 +141,7 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     picks, probs = _picks(rec)
     if not picks:
         return None
+    parts = _parts(rec)
     last_done = parse_ts(bars[-1]["ts"]) + timedelta(minutes=1)
     graded, pending, skipped = {}, [], {}
     for qid, (h, flat) in HORIZONS.items():
@@ -137,6 +168,12 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         brier = sum((float(p.get(b, 0.0)) - (1.0 if b == band else 0.0)) ** 2 for b in BANDS)
         graded[qid] = {"realized_sigma": round(realized, 3), "band": band, "pick": picks.get(qid),
                        "hit": picks.get(qid) == band, "brier": round(brier, 4), "p_band": p.get(band)}
+        part = parts.get(qid) or {}
+        if "jev" in part:
+            graded[qid].update({"jev_pick": part.get("jev_pick"), "jev_hit": part.get("jev_pick") == band,
+                                "jev_brier": _brier(part["jev"], band)})
+        if "clock" in part:
+            graded[qid]["clock_brier"] = _brier(part["clock"], band)
     if not graded:
         if pending or done:
             return None                               # wait for the mark, or nothing left to do
@@ -144,8 +181,9 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     out = {"row_ts": rec["row_ts"], "used": rec.get("used", {}), "fresh": rec.get("fresh", rec.get("used", {})),
            "horizons": list(graded), "pending": pending, "skipped": skipped, **graded}
     if PRIMARY in graded:
-        for k in ("realized_sigma", "band", "pick", "hit", "brier", "p_band"):
-            out[k] = graded[PRIMARY][k]               # the primary, flat on top, is what the weights read
+        for k in ("realized_sigma", "band", "pick", "hit", "brier", "p_band", "jev_pick", "jev_hit", "jev_brier", "clock_brier"):
+            if k in graded[PRIMARY]:
+                out[k] = graded[PRIMARY][k]           # the primary, flat on top, is what the weights read
     return out
 
 
@@ -171,13 +209,23 @@ def mutual_information(pairs: list[tuple[str, str]]) -> float:
 
 
 def _tally(rows: list[dict]) -> dict:
+    """A sum's record: the shown sum's hit rate and Brier, and, over the reads that were blended,
+    the same Brier for the blend, for JEV's own sum and for the clock alone, side by side."""
     n = len(rows)
     if not n:
         return {"n": 0, "hit_rate": None, "always_flat_hit_rate": None, "mean_brier": None, "bands": {}}
-    return {"n": n, "hit_rate": round(sum(1 for g in rows if g["hit"]) / n, 3),
-            "always_flat_hit_rate": round(sum(1 for g in rows if g["band"] == "flat") / n, 3),
-            "mean_brier": round(sum(g["brier"] for g in rows) / n, 4),
-            "bands": dict(Counter(g["band"] for g in rows))}
+    out = {"n": n, "hit_rate": round(sum(1 for g in rows if g["hit"]) / n, 3),
+           "always_flat_hit_rate": round(sum(1 for g in rows if g["band"] == "flat") / n, 3),
+           "mean_brier": round(sum(g["brier"] for g in rows) / n, 4),
+           "bands": dict(Counter(g["band"] for g in rows))}
+    blended = [g for g in rows if "jev_brier" in g and "clock_brier" in g]
+    if blended:
+        k = len(blended)
+        out["blended"] = {"n": k, "mean_brier_blend": round(sum(g["brier"] for g in blended) / k, 4),
+                          "mean_brier_jev": round(sum(g["jev_brier"] for g in blended) / k, 4),
+                          "mean_brier_clock": round(sum(g["clock_brier"] for g in blended) / k, 4),
+                          "jev_hit_rate": round(sum(1 for g in blended if g.get("jev_hit")) / k, 3)}
+    return out
 
 
 def weights_from(grades: list[dict]) -> dict:

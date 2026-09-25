@@ -26,14 +26,15 @@ does whatever comes next with the answers.
 | `sndk_jev/build.py` | The Command | `python -m sndk_jev.build` for one moment, a replay of a day, or a live send. |
 | `sndk_jev/cadence.py` | The Cadence | Which questions are due this read, what is held in between, and the daily recount. |
 | `sndk_jev/hour.py` | The Sums | Rewrites the live answers as sentences and asks the two sum questions over them in one request. |
+| `sndk_jev/clock.py` | The Clock | How often price ended up, down or flat at this time of day over the last 20 sessions, scored the way the grader scores a sum, and the half-and-half blend of JEV's sum with those odds. Past sessions are counted once and kept in `state/jev/clock_days.json`. |
 | `sndk_jev/grade.py` | The Grader | Reads the bars 30 and 60 minutes after each read, scores both sums, and moves each question's weight. |
 | `sndk_jev/service.py` | The Service | One run per half hour: build, ask (when a key exists), sum, grade, write the record and the phone's card. Its own job, never on the scan path. |
 | `runtime/scripts/run-sndk-jev.sh`, `runtime/launchd/com.mirai-station.sndk-jev.plist` | The Job | The launchd wrapper (beside the station's other runners, where its job test expects it) and the plist. Installed on the station since 2026-09-22; fires at :02 and :32 ET, so JEV reads once per half hour in market hours. |
-| `runtime/viewstation/static/m/jev.html` | The Card | The phone page. Polls `latest.json` every 60 seconds through the viewstation's existing read-only raw-file route, so `server.py` is unchanged. |
+| `runtime/viewstation/static/m/jev.html` | The Card | The phone page. Polls `latest.json` every 20 seconds, and 12 seconds after each :02 and :32 read, through the viewstation's existing read-only raw-file route, so `server.py` is unchanged. |
 | `page/build_page.py` | The Page | Builds the long-form page: every label, question, weight and the newest sums, from the spec, the question docs and `state/jev/`. |
-| `questions/sndk_pro.json` | The Questions | 54 questions in 13 groups, each group one request: 43 live, 3 shadow, 8 dark (news, no source yet). Thirteen came from the reviews (five from the end-of-day review, two from the label review, six from the intraday question review) (`questions/proposals/`). |
+| `questions/sndk_pro.json` | The Questions | 56 questions in 13 groups, each group one request: 45 live, 3 shadow, 8 dark (news, no source yet). Fifteen came from the reviews (five from the end-of-day review, two from the label review, six from the intraday question review, two from the 25-agent pressure test of 2026-09-24) (`questions/proposals/`). |
 | `questions/sndk_hour.json` | The Sum Questions | The two sums, `next_30` and `next_60`, with their flat bands and base rates written into the criteria. |
-| `spec/labels.json` | The Label Spec | All 65 labels, each with its source, logic, cut and the sentence it wrote on a real row; plus the overlap review and the two labels folded away. `tests/test_spec.py` pins the built set to what the code writes. |
+| `spec/labels.json` | The Label Spec | All 67 labels, each with its source, logic, cut and the sentence it wrote on a real row; plus the overlap review and the two labels folded away. `tests/test_spec.py` pins the built set to what the code writes. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars, side packets and a chain cache. No network, no host state. |
 
 ## Run it
@@ -64,8 +65,8 @@ before anything reaches JEV; only `type`, `instructions` and `criteria` are sent
 
 - **live**: every label it reads is built today. A live question whose label is
   missing on a read is skipped, with the reason kept.
-- **shadow**: a forecast with no right answer at ask time. Logged, graded by the
-  bars 30 minutes later, never acted on and never a sentence in the sums.
+- **shadow**: a forecast with no right answer at ask time. Logged, never graded
+  (only the two sums are), never acted on and never a sentence in the sums.
 - **dark**: never asked and never counted, because the source it needs is not
   plugged in. The eight news questions are dark until a news engine exists;
   `dark_was` in the doc keeps the status each returns to.
@@ -108,9 +109,10 @@ into one wait of about the slowest request.
 - **Baselines need history.** Volume bands need 5 prior sessions of bars at
   the same time of day, the range band needs 3. Until then those labels are
   omitted.
-- **Standing assumptions.** A 16:00 close (half days are not handled, same as
-  SNDK PRO), and the `range_ruler.em_consumed` field as "today's range over
-  today's expected move".
+- **Standing assumptions.** A 16:00 close, or 13:00 on the NYSE half days the
+  station's market-hours gate lists (`state_builder.session_close`, shared by
+  the grader and the clock), and the `range_ruler.em_consumed` field as
+  "today's range over today's expected move".
 
 ## What each group reads
 
@@ -124,13 +126,13 @@ labels weigh.
 | Group | Labels | Source in SNDK PRO |
 |---|---|---|
 | `price_and_range` | recent 30-minute move, place in the day's range, distance from VWAP, opening-box status, today's range against the last 5 sessions | `spot`, `sigma`, `vwap`, the minute bars |
-| `volatility` | 30-minute IV trend, put-call skew, expected move used | `atm_iv` across today's rows, `iv_skew.skew_pts`, `range_ruler.em_consumed` |
+| `volatility` | 30-minute IV trend, put-call skew, expected move used, the last 30 minutes' realized movement against the move priced for 30 minutes | `atm_iv` across today's rows, `iv_skew.skew_pts`, `range_ruler.em_consumed`, the minute bars' closes, `sigma` |
 | `strikes` | which side of price holds most of the options weight, and how far the nearest heavy strike is | `gex_views.gamma_above_spot / gamma_below_spot`, `call_wall`, `put_wall`, `spot`, `sigma` |
 | `volume` | last 30 minutes against the same slot on prior days, and the move against the 30 minutes before it | the minute bars' `volume`, prior days' bars |
 | `momentum` | pace of the last 10 minutes, closes agreeing with the move | the minute bars |
 | `strikes_next` | the strike ladder, clustering near price, wall thickness and grip, today's turnover and call-put split, next week's share, what expires tonight, the book against yesterday's and overnight, wall retests | `gex_views` (mass, net, volume and open interest by strike, the wall shares, the pin share), `net_exposure`, the wall tenors, yesterday's diary file, the side packet's level visits |
-| `volume_next` | volume by direction and at price, the move's retracement, pauses | the minute bars, volume bucketed by price |
-| `history_next` | price against the last two days and the prior close, yesterday's levels tested, retests of the day's high | yesterday's and the day before's bars, today's bars, the side packet's level visits |
+| `volume_next` | volume by direction and at price, how thick the day's volume profile is at price, the move's retracement, pauses | the minute bars, volume bucketed by price |
+| `history_next` | price against the last two days and the prior close, yesterday's levels tested, returns to the day's high since it was set | yesterday's and the day before's bars, today's bars, the side packet's level visits |
 | `indicators_next` | 5-minute RSI, stretch, this week's IV against next week's, which way the expected move leans, VWAP slope | closes sampled every 5 minutes, the side packet's RSI episodes, next week's at-the-money IV against this week's, `adaptive_em.down_share`, the bars' running VWAP |
 | `space_time_next` | place against the week, minutes since the last move, how far the session has gone, bar width | the prior 5 sessions' bars plus today, the row's timestamp |
 | `news_read`, `news_reaction` | headline, excerpt, earlier headlines, age, price move since arrival | a news item handed in with `--news`; SNDK PRO has no feed yet |
@@ -183,9 +185,9 @@ apart without a red test.
 
 ## The pipeline, six steps
 
-1. Labels, code: 65 sentences from the row, bars, side packet and chain cache.
+1. Labels, code: 67 sentences from the row, bars, side packet and chain cache.
 2. The live questions, JEV, in parallel: a probability per option. There are
-   37; a question not due this read keeps its held answer instead of being
+   45; a question not due this read keeps its held answer instead of being
    asked, and one whose label is missing is skipped.
 3. Answers as sentences, code (`sndk_jev/hour.py`): each answered live question
    becomes one line, "Over the last 30 minutes, did price rise, fall, or go
@@ -198,14 +200,29 @@ apart without a red test.
    (flat within 0.17 sigma, 61%). Up, Down, Flat or Unsure, with the band and the
    base rate written into the criteria. `next_30` is the phone's headline and the
    weights' teacher; `next_60` is graded beside it for the comparison.
-5. The card: `state/jev/latest.json` carries the sum under `hour`; the phone
-   shows it first, dashed, as a forecast that is graded and never a call.
+4b. The blend, code (`sndk_jev/clock.py`): each sum is mixed half and half
+   with how often the same horizon ended up, down or flat from reads at this
+   time of day (the opening half hour, the morning, late morning, lunch, the
+   afternoon) over the last 20 sessions, scored exactly as step 6 scores a sum.
+   Time of day was the biggest lever measured: on the first 37 graded reads
+   JEV's sum alone scored a mean Brier of 0.663, the time of day alone 0.544,
+   and this blend 0.555. The half-and-half weight was declared before it was
+   measured. JEV's own sum and the clock's odds ride beside the blend under
+   `jev` and `clock`; with fewer than 10 prior sessions the blend is left out
+   and `blend.why` says so.
+5. The card: `state/jev/latest.json` carries the blended sum under `hour`; the
+   phone shows it first, dashed, as a forecast that is graded and never a call,
+   with JEV alone and the time of day alone on a line beneath.
 6. Grading, code (`sndk_jev/grade.py`), every sent run: each sum is graded at
    its own mark, the 30-minute sum once 30 minutes of bars exist and the
    60-minute sum at 60, so neither waits for the other. The close at the mark
    minus spot, in sigma, gives the band that happened; each sum records a hit
    (did the pick match the band) and a Brier score (how far the probabilities
-   sat from what happened, 0 best, 2 worst). A mark that lands up to 2 minutes
+   sat from what happened, 0 best, 2 worst). The sum graded is the blend the
+   phone showed; JEV's own sum and the clock's odds are scored beside it on the
+   same outcome (`jev_brier`, `clock_brier`), so the blend has to keep beating
+   both of its parts. The close is 16:00, or 13:00 on an NYSE half day (taken
+   from the station's market-hours gate). A mark that lands up to 2 minutes
    past the close is graded at the closing bar; a mark later than that is
    skipped for good, and a read none of whose marks can ever be graded is
    closed out so it is never retried. A read is graded once however many times
@@ -230,13 +247,20 @@ into `state/jev/`:
   given), `cadence_from`, `answers`, `sent`, `send_seconds`, `hour`.
 - `hour/{day}.jsonl`, one record per run with a sum: `row_ts`, `spot`, `sigma`,
   the sum (`pick`, `probabilities`, `confidence`, `primary`, `by` for both
-  horizons, `model`), `used`, `fresh`, `left_out`, `missing`, `sentences`,
-  `request`. This is what step 6 grades.
+  horizons, each with the blend on top and `jev` and `clock` beneath, `blend`,
+  `model`), `used`, `fresh`, `left_out`, `missing`, `sentences`, `request`.
+  This is what step 6 grades.
+- `clock_days.json`: per past session, how many replayed reads at each time of
+  day ended up, down and flat at 30 and 60 minutes, and the rule they were
+  counted under; a change to the bands or the phases starts it afresh.
 - `latest.json`, the phone's card: `symbol`, `generated_at`, `row_ts`,
   `book_asof`, `freshness`, `sigma`, `situation` (five plain lines, "sigma"
   spelled out as "of a normal day's move" because the phone bans Greek),
   `labels`, `omitted`, `sent`, `send_seconds`, `model`, `fresh`, `held`,
-  `cadence_from`, `dark`, `hour` (the sum, plus `used`, `left_out`, `missing`),
+  `cadence_from`, `dark`, `hour` (the blended sum on top with `jev`, `clock` and
+  `blend` beside it, `by` for both horizons, plus `used`, `left_out`, `missing`),
+  `session` (the day's `close` and `last_read`, so the phone's clock words
+  follow a 13:00 half day),
   and `questions`: one entry per live or shadow question with `viewpoint`,
   `status`, `ask`, `why`, `type`, `options`, `cadence_min` and either `answer`
   (`pick`, `confidence`, `probabilities`, `noul`, `score`, with `held_from` when
@@ -247,17 +271,21 @@ into `state/jev/`:
 - `cadence.json`: each question's minutes, the hold quartile, changes and reads
   behind it, and the day it was recounted from.
 - `grades.jsonl`: one line per graded horizon of a read (`realized_sigma`,
-  `band`, `pick`, `hit`, `brier`, `p_band`, with the 30-minute sum's fields flat
+  `band`, `pick`, `hit`, `brier`, `p_band`, and on a blended read `jev_pick`,
+  `jev_hit`, `jev_brier`, `clock_brier`, with the 30-minute sum's fields flat
   on top), or a `graded: false` line with the reason.
-- `weights.json`: the tally per sum and, per question, `weight`, `mi`, `n`,
-  `in_step_3` and `why`.
+- `weights.json`: the tally per sum (with a `blended` block: the blend's, JEV's
+  and the clock's mean Brier over the blended reads) and, per question,
+  `weight`, `mi`, `n`, `in_step_3` and `why`.
 - `weights_log.jsonl`: one line per grading run that graded something.
 - `watch/{day}.md`: the day's watch notes, written by the watcher session, not
   by the service.
 
 The phone reads the card at `/api/raw/file?root=state&path=jev/latest.json`,
 the viewstation's existing read-only route, and draws it on `/m/jev.html`
-every 60 seconds; the glance has a JEV tab that opens it. Every answer is a
+every 20 seconds and 12 seconds after each read; the glance has a JEV tab that
+opens it. The sums are drawn as blended, with JEV alone and the time of day
+alone on a line beneath. Every answer is a
 probability per option, never an arrow; shadow questions are drawn dashed and
 say so in words; the row's time and age are always shown; a failed fetch keeps
 the last card and says so. Without a key the service still runs and every

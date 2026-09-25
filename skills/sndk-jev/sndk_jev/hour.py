@@ -2,8 +2,9 @@
 
     answers (step 2)  ->  answer_sentences()  ->  hour_request()  ->  JEV  ->  one reply, two answers
 
-``next_30`` is the sum the phone shows and the one the weights learn from; ``next_60`` rides on
-the same sentences in the same request so the two horizons can be compared once graded.
+``next_30``, blended half and half with the time-of-day odds (clock.py), is the sum the phone
+shows and the one the weights learn from; ``next_60`` rides on the same sentences in the same
+request, is blended the same way, and is graded beside it so the two horizons can be compared.
 
 The weights file written by ``grade.py`` (step 6) decides which answers are worth a sentence:
 a question whose weight has fallen below ``MIN_WEIGHT`` is left out, with the reason kept.
@@ -18,7 +19,7 @@ from .ask import jev_only
 HOUR_QUESTIONS = Path(__file__).resolve().parent.parent / "questions" / "sndk_hour.json"
 WEIGHTS_NAME = "weights.json"
 MIN_WEIGHT = 0.5        # a question below this is left out of step 3
-PRIMARY = "next_30"     # the sum on the phone, and the one the weights learn from
+PRIMARY = "next_30"     # the sum on the phone (as blended by clock.py), and the one the weights learn from
 HOUR_QIDS = ("next_30", "next_60")
 
 

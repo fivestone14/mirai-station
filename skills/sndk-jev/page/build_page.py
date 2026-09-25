@@ -338,7 +338,7 @@ def fit_diagram():
     p.append(box(294, y, 170, 84, "State builder", [f"{STATUS_COUNT['built']} labels in sigma units,", "the cut written into", "every sentence"]))
     p.append(box(480, y, 130, 84, "Packer", [f"{N_G_SENT} requests, one", "per question group;", "no label, not asked"]))
     p.append(box(626, y, 170, 84, "JEV, the fast judge", [f"{n_live} live + {n_shadow} shadow", "questions in parallel, then", "two sums in one request"], "jev"))
-    p.append(box(812, y, 130, 84, "Writer, grader", ["{day}.jsonl, hour/,", "grades, weights,", "latest.json"]))
+    p.append(box(812, y, 130, 84, "Writer, grader", ["hour/, clock_days,", "grades, weights,", "latest.json"]))
     for x0 in (278, 464, 610, 796):
         p.append(arrow([(x0, y + 42), (x0 + 16, y + 42)]))
     # served
@@ -346,7 +346,7 @@ def fit_diagram():
     p.append(box(460, 520, 290, 68, "state/jev/latest.json", ["the newest run: situation, answers,", "the two sums, what was held or missing"]))
     p.append(box(780, 520, 162, 68, "ntfy push", ["later: when a", "sum flips"], "plan"))
     # phone
-    p.append(box(128, 614, 300, 66, "/m/jev.html, the decision card", ["polls every 60 s; the two sums, each", "answer as odds, held and dark marked"]))
+    p.append(box(128, 614, 300, 66, "/m/jev.html, the decision card", ["polls every 20 s; the two sums, each", "answer as odds, held and dark marked"]))
     p.append(box(460, 614, 290, 66, "/m glance", ["the Reader's notes, unchanged"]))
     p.append(box(780, 614, 162, 66, "Grading, live", ["every run the bars", "grade the two sums"]))
     # arrows
@@ -358,7 +358,7 @@ def fit_diagram():
     p.append(arrow([(203, 268), (203, 332)], "reads, never writes", 211, 286))
     p.append(arrow([(877, 416), (877, 502), (605, 502), (605, 520)], "latest.json, every run", 700, 496, anchor="middle"))
     p.append(arrow([(460, 551), (428, 551)], "reads", 444, 545, anchor="middle"))
-    p.append(arrow([(278, 588), (278, 614)], "GET every 60 s", 286, 606))
+    p.append(arrow([(278, 588), (278, 614)], "GET every 20 s", 286, 606))
     p.append(arrow([(400, 588), (400, 600), (605, 600), (605, 614)], "the notes", 613, 611))
     return ('<svg viewBox="0 0 960 692" role="img" aria-label="How the JEV decision feature sits beside Mirai station: Schwab and ThetaData feed the SNDK PRO scan and the bar sidecar, which write Mirai\'s state files; the JEV decision service is its own job that reads those files, builds the labels, asks JEV and writes state/jev/latest.json; the unchanged viewstation serves that file read-only and the phone\'s decision card polls it; the bars grade the sums every run; push comes later.">'
             + "".join(p) + "</svg>")
@@ -508,7 +508,7 @@ def pipeline_diagram():
         ("1  Labels", "code", [f"{STATUS_COUNT['built']} sentences from the", "row, bars, side packet"], ""),
         ("2  The questions", "JEV, in parallel", [f"{n_live} live + {n_shadow} shadow", "asked when due, else", "the last answer held"], "jev"),
         ("3  Answers as words", "code", ["'...? rising, 100% sure'", "under the cut left out"], ""),
-        ("4  Two sums", "JEV", [f"price in {H1_MIN} and {H2_MIN} min:", "Up, Down, Flat, Unsure"], "jev"),
+        ("4  Two sums", "JEV, then code", [f"price in {H1_MIN} and {H2_MIN} min,", "blended half and half", "with the time of day"], "jev"),
         ("5  The card", "file, phone", ["state/jev/latest.json", "/m/jev.html polls it"], ""),
     ]
     x = 128
@@ -525,7 +525,7 @@ def pipeline_diagram():
     p.append(arrow([(634, 242), (650, 242)]))
     p.append(arrow([(796, 300), (796, 316), (535, 316), (535, 142)], "which answers speak on the next run", 545, 332, dashed=True))
     p.append('<text class="dg-tier" x="12" y="95">RUN</text><text class="dg-tier" x="12" y="246">LOOP</text>')
-    return (f'<svg viewBox="0 0 960 344" role="img" aria-label="The six-step pipeline: labels, the live questions, answers as sentences, two sums, {H1_MIN} and {H2_MIN} minutes ahead, the card; grading feeds weights back into which answers are used. The Weights box opens a worked example of the tracking score.">'
+    return (f'<svg viewBox="0 0 960 344" role="img" aria-label="The six-step pipeline: labels, the live questions, answers as sentences, two sums, {H1_MIN} and {H2_MIN} minutes ahead, each blended half and half with how often that time of day ended up, down or flat on prior sessions, the card; grading feeds weights back into which answers are used. The Weights box opens a worked example of the tracking score.">'
             + "".join(p) + "</svg>")
 
 
@@ -584,23 +584,25 @@ def schema_section():
         real = {k: v for k, v in real.items() if v is not None}
     files = [
         ("state/jev/{day}.jsonl", "every run", "row_ts, sigma, state (the labels), omitted, requests, skipped, held {qid: since}, cadence_from, answers (JEV's raw replies), hour"),
-        ("state/jev/latest.json", "the phone's card", f"symbol, row_ts, freshness, situation (5 plain lines), questions[] with answer, held_from or skipped, hour (its name; the {H1_MIN}-minute sum on top, next_60 under by)"),
-        ("state/jev/hour/{day}.jsonl", "what step 6 grades", "row_ts, spot, sigma, by {next_30, next_60: pick, probabilities}, used {qid: pick}, fresh {qid: pick, the ones asked afresh}, left_out {qid: why}, missing [qid: no label and nothing held], sentences, request"),
-        ("state/jev/grades.jsonl", "one line per graded mark", "row_ts, horizons (which sums this line grades), pending, skipped, then per sum: realized_sigma, band, pick, hit, brier; fresh; or graded false with the reason, for a read that can never be graded"),
+        ("state/jev/latest.json", "the phone's card", f"symbol, row_ts, freshness, situation (5 plain lines), questions[] with answer, held_from or skipped, hour (its name; the blended {H1_MIN}-minute sum on top with jev, clock and blend beside it, next_60 under by), session (the day's close and last read)"),
+        ("state/jev/hour/{day}.jsonl", "what step 6 grades", "row_ts, spot, sigma, by {next_30, next_60: pick, probabilities (the blend), jev (JEV's own sum), clock (the time-of-day odds)}, blend {used, phase, sessions, or why not}, used {qid: pick}, fresh {qid: pick, the ones asked afresh}, left_out {qid: why}, missing [qid: no label and nothing held], sentences, request"),
+        ("state/jev/clock_days.json", "the time-of-day odds", "per past session, how many replayed reads at each time of day ended up, down or flat at each horizon, and the rule they were counted under; counted once, never today"),
+        ("state/jev/grades.jsonl", "one line per graded mark", "row_ts, horizons (which sums this line grades), pending, skipped, then per sum: realized_sigma, band, pick, hit, brier (the blend), jev_pick, jev_hit, jev_brier, clock_brier; fresh; or graded false with the reason, for a read that can never be graded"),
         ("state/jev/cadence.json", "what the cadence plan reads", f"recounted_from (the day), questions {{qid: {{minutes {'/'.join(map(str, STEPS))}, p25_hold_min, changes, reads, why}}}}"),
         ("state/jev/last_asked.json", "the held answers", "qid: {row_ts of the last fresh answer, answer, moved}; a not-due question is served from here, tagged held from HH:MM"),
-        ("state/jev/weights.json", "what step 3 reads", "graded_runs, sums {next_30, next_60: n, hit_rate, mean_brier}, questions {qid: {weight, mi (the tracking score, see below), n, in_step_3, why}}"),
+        ("state/jev/weights.json", "what step 3 reads", "graded_runs, sums {next_30, next_60: n, hit_rate, mean_brier, blended {mean_brier_blend, mean_brier_jev, mean_brier_clock}}, questions {qid: {weight, mi (the tracking score, see below), n, in_step_3, why}}"),
         ("state/jev/weights_log.jsonl", "the weight history", "one line per grading run that graded something: the tally and every weight that moved"),
     ]
     rows = "".join(f'<div class="rv"><code class="qid">{E(a)}</code><span class="opt">{E(b)}</span><span class="why">{E(c)}</span></div>' for a, b, c in files)
     grade = f"""<div class="rvl">
 <div class="rv"><code class="qid">realized</code><span class="opt">number</span><span class="why">(price {H1_MIN} minutes after the read minus price at the read) divided by sigma, the day's expected move; the {H2_MIN}-minute sum is graded the same way at {H2_MIN}</span></div>
 <div class="rv"><code class="qid">band</code><span class="opt">up / flat / down</span><span class="why">up above +{H1_BAND}, down below -{H1_BAND}, flat between at {H1_MIN} minutes ({H2_BAND} at {H2_MIN}); the same bands the questions' criteria carry, measured on this name</span></div>
-<div class="rv"><code class="qid">hit</code><span class="opt">yes / no</span><span class="why">JEV's pick equals the band; compared with always saying flat</span></div>
+<div class="rv"><code class="qid">what is graded</code><span class="opt">the blend</span><span class="why">the sum the phone showed: JEV's sum mixed half and half with how often reads at this time of day ended up, down or flat over the last 20 sessions; JEV's own sum and the time-of-day odds are graded beside it on the same outcome, so the blend has to keep beating both</span></div>
+<div class="rv"><code class="qid">hit</code><span class="opt">yes / no</span><span class="why">the pick equals the band; compared with always saying flat</span></div>
 <div class="rv"><code class="qid">brier</code><span class="opt">0 best, 2 worst</span><span class="why">how far the odds sat from what happened: over up, flat and down, add up (odds given minus 1 or 0 for what happened) squared</span></div>
 <div class="rv"><code class="qid">weight per question</code><span class="opt">0 to 1</span><span class="why">a tracking score: how much knowing the question's fresh pick tells you about the band (mutual information, in the code), divided by the best score among questions with {NEED} fresh pairs of their own; a question stays 1.0 until it has {NEED} pairs; under {CUT} its sentence is left out of step 3 but it is still asked, so it can climb back; a held answer never pairs</span></div>
 <div class="rv"><code class="qid">when</code><span class="opt">at each mark</span><span class="why">the {H1_MIN}-minute sum is graded on the first run after its {H1_MIN} minutes have a bar (one at most {BAR_GAP_MAX_MIN} minutes before the mark), the {H2_MIN}-minute sum on the first run after its {H2_MIN}; the primary never waits for the slower one, and a run after both marks writes one line for both</span></div>
-<div class="rv"><code class="qid">not graded</code><span class="opt">skipped</span><span class="why">a horizon ending more than {CLOSE_GRACE_MIN} minutes past the close (one inside those {CLOSE_GRACE_MIN} minutes is graded at the closing bar), or a day with no bars; a read none of whose horizons can be graded is closed out, never retried; a mark is graded once however many times the service ran on it</span></div>
+<div class="rv"><code class="qid">not graded</code><span class="opt">skipped</span><span class="why">a horizon ending more than {CLOSE_GRACE_MIN} minutes past the close (16:00, or 13:00 on an NYSE half day) (one inside those {CLOSE_GRACE_MIN} minutes is graded at the closing bar), or a day with no bars; a read none of whose horizons can be graded is closed out, never retried; a mark is graded once however many times the service ran on it</span></div>
 <div class="rv"><code class="qid">missing</code><span class="opt">count on the card</span><span class="why">live questions that had no label this read and nothing held to fall back on; they are listed in the sum record and counted on the card, so a thin read is visible</span></div>
 <div class="rv"><code class="qid">cadence</code><span class="opt">{' / '.join(map(str, STEPS))} min</span><span class="why">recounted once a day from the previous day's runs: take the hold time that a quarter of the question's holds fell under, halve it and snap to {STEPS[0]}, {STEPS[1]} or {STEPS[2]}; never changed all day gives {STEPS[1]} (three hours of runs) or {STEPS[2]} (five hours, ten reads); under {MIN_READS} reads keeps the last value. A change is the whole answer moving, not the picked word flipping: the odds of two consecutive answers are compared option by option and a total shift of {CHANGE_CUT} or more counts (heavy 0.90 to heavy 0.55 is a change, 0.90 to 0.88 is not)</span></div>
 <div class="rv"><code class="qid">held</code><span class="opt">reused answer</span><span class="why">a question not yet due, or whose label is missing this read, keeps its last fresh answer for up to twice its cadence (never under an hour), tagged with the time it was given, on the card and in the sums' sentences. A question whose last two fresh answers moved {CHANGE_CUT} or more is in motion and is asked again on the next read whatever its cadence</span></div>
@@ -709,7 +711,7 @@ page = f"""<title>JEV decision service</title>
   <section class="sec" id="pipeline">
     <h2>The pipeline, its own six steps</h2>
     <figure class="fig"><div class="scroll">{pipeline_diagram()}</div>
-    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, steps 2 and 4 are JEV, step 5 is a file the phone polls. Step 6 runs every run and grades each sum the moment its own mark has a bar: the {H1_MIN}-minute sum at {H1_MIN} minutes, the {H2_MIN}-minute sum at {H2_MIN}, neither waiting for the other. A question's weight moves only once it has {NEED} fresh graded reads of its own. Click the Weights box to see the tracking score worked through, line by line, on a made-up pairing. The sums are forecasts: graded, never a call.</figcaption></figure>
+    <figcaption>One run per half hour, at :02 and :32. Steps 1 and 3 are code, step 2 is JEV, step 4 is JEV and then code (the blend with the time of day), step 5 is a file the phone polls. Step 6 runs every run and grades each sum the moment its own mark has a bar: the {H1_MIN}-minute sum at {H1_MIN} minutes, the {H2_MIN}-minute sum at {H2_MIN}, neither waiting for the other. A question's weight moves only once it has {NEED} fresh graded reads of its own. Click the Weights box to see the tracking score worked through, line by line, on a made-up pairing. The sums are forecasts: graded, never a call. The shadow questions are forecasts too, logged and never graded.</figcaption></figure>
     {tracking_modal()}
     {schema_section()}
   </section>

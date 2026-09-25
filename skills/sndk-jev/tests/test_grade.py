@@ -212,3 +212,49 @@ def test_a_past_day_with_no_bars_is_closed_out(tmp_path):
     line = json.loads((out / "grades.jsonl").read_text().splitlines()[0])
     assert line["graded"] is False and line["reason"] == "no bars for the day"
     assert run(state, out)["closed_out"] == 0                         # never retried
+
+
+def test_a_blended_sum_is_graded_beside_jevs_own_and_the_clocks():
+    """The shown sum is the blend; JEV's sum and the clock's odds are scored on the same outcome, so
+    the blend keeps having to beat both of its parts."""
+    bars = bars_from_closes([1700.0] * 390)
+    blend = {"pick": "flat", "probabilities": {"up": 0.2, "down": 0.2, "flat": 0.55, "unsure": 0.05}, "confidence": None,
+             "jev": {"pick": "up", "probabilities": {"up": 0.6, "down": 0.1, "flat": 0.2, "unsure": 0.1}, "confidence": 0.7},
+             "clock": {"pick": "flat", "probabilities": {"up": 0.1, "down": 0.1, "flat": 0.8}, "n": 90}}
+    g = grade_one(_rec(11, 0, 1700.0, {"next_30": blend}, {}), bars)
+    assert g["band"] == "flat" and g["pick"] == "flat" and g["hit"] is True
+    assert g["jev_pick"] == "up" and g["jev_hit"] is False
+    assert g["jev_brier"] == round(0.6 ** 2 + 0.1 ** 2 + (0.2 - 1) ** 2, 4)
+    assert g["clock_brier"] == round(0.1 ** 2 + 0.1 ** 2 + (0.8 - 1) ** 2, 4)
+    w = weights_from([g])
+    b = w["sums"]["next_30"]["blended"]
+    assert b["n"] == 1 and b["mean_brier_jev"] == g["jev_brier"] and b["mean_brier_clock"] == g["clock_brier"]
+    assert b["mean_brier_blend"] == g["brier"]
+
+
+def test_a_half_day_closes_out_horizons_past_one():
+    """On a 13:00 close a horizon past the grace is skipped for good, never left pending for bars
+    that will never be written."""
+    day = "2026-11-27"
+    bars = bars_from_closes([1700.0] * 210, day=day)                     # 09:30 .. 12:59
+    rec = {"row_ts": at(12, 45, day=day).isoformat(), "spot": 1700.0, "sigma": 50.0, "used": {},
+           "by": _by({"flat": 1.0}, "flat", {"flat": 1.0}, "flat")}
+    g = grade_one(rec, bars)
+    assert g == {"row_ts": rec["row_ts"], "graded": False, "reason": "every horizon ends past the close"}
+    early = {**rec, "row_ts": at(12, 20, day=day).isoformat()}
+    g = grade_one(early, bars)
+    assert "next_30" in g and g["skipped"] == {"next_60": "ends past the close"}
+
+
+def test_the_blended_tally_counts_only_blended_reads():
+    """Reads from before the blend have no JEV or clock part; the side-by-side tally is over blended reads only."""
+    bars = bars_from_closes([1700.0] * 390)
+    blended = {"pick": "flat", "probabilities": {"up": 0.1, "down": 0.1, "flat": 0.8},
+               "jev": {"pick": "up", "probabilities": {"up": 0.7, "down": 0.1, "flat": 0.2}},
+               "clock": {"pick": "flat", "probabilities": {"up": 0.2, "down": 0.2, "flat": 0.6}, "n": 50}}
+    plain = {"pick": "up", "probabilities": {"up": 0.9, "down": 0.05, "flat": 0.05}}
+    g1 = grade_one(_rec(11, 0, 1700.0, {"next_30": blended}, {}), bars)
+    g2 = grade_one(_rec(12, 0, 1700.0, {"next_30": plain}, {}), bars)
+    s = weights_from([g1, g2])["sums"]["next_30"]
+    assert s["n"] == 2 and s["blended"]["n"] == 1
+    assert s["blended"]["mean_brier_blend"] == g1["brier"] and s["blended"]["mean_brier_jev"] == g1["jev_brier"]
