@@ -484,7 +484,14 @@ function modelRead(rows, nowMs){
 /* The JEV card (state/jev/latest.json): how many questions it answered and how
    old its row is. Nothing about what was answered; that is the card's own page.
    The words are the card's own (jev.html), so the two screens say one thing. */
-const JEV_GONE_MIN = 60, JEV_CLOSE_HHMM = '15:55';
+// The day's last read lands at :32 before the close (15:32, or 12:32 on a half day), and its row a few
+// minutes before that; the card says which (session.last_read), and an older card falls back to 15:32.
+const JEV_GONE_MIN = 60, JEV_LAST_READ_HHMM = '15:32', JEV_ROW_LEAD_MIN = 4;
+function jevCloseHHMM(card){
+  const lr = (card && card.session && /^\d\d:\d\d$/.test(card.session.last_read||'')) ? card.session.last_read : JEV_LAST_READ_HHMM;
+  const m = (+lr.slice(0,2))*60 + (+lr.slice(3,5)) - JEV_ROW_LEAD_MIN;
+  return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+}
 // reads land every 30 minutes, so a row is aged only once the next read is overdue (the card's STALE_MIN)
 const JEV_STALE_MIN = 35;
 
@@ -502,7 +509,7 @@ function jevRead(card, nowMs){
     : 'The JEV job ran on the '+at+' row, not sent: no key on the station.';
   // the row's clock is market time: an hour after a row past the close there is nothing
   // newer to wait for, an hour after any earlier row the card is stale
-  if(age>JEV_GONE_MIN) line += at>=JEV_CLOSE_HHMM ? ' After the close, last row '+at+'.' : ' Stale: over an hour old.';
+  if(age>JEV_GONE_MIN) line += at>=jevCloseHHMM(card) ? ' After the close, last row '+at+'.' : ' Stale: over an hour old.';
   return {line, answered, total, ageMin:age, at:new Date(t),
           tier: age>JEV_STALE_MIN ? 'aged' : 'fresh'};
 }

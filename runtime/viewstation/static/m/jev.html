@@ -138,7 +138,7 @@ details .q{margin-top:8px}
 <div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums and the dashed questions are forecasts, graded by the bars 30 and 60 minutes later, never a call.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent sessions, because on its first 37 graded reads JEV's sum alone did worse than the time of day alone.</p>
 
 <nav class="tabs">
   <a class="tab" href="/m/" aria-label="Now">
@@ -159,7 +159,11 @@ details .q{margin-top:8px}
   'use strict';
   var URL_ = '/api/raw/file?root=state&path=jev/latest.json';
   var STALE_MIN = 35, GONE_MIN = 60;           // reads land every 30 minutes: a row is stale only once the next read is overdue
-  var CLOSE_HHMM = '15:55';                    // a row this late in market time is the day's last, not a stale one
+  // The day's last read is at 15:32 (12:32 on a half day, as the card's session says), and its row lands a
+  // few minutes before it: a row at or after ROW_LEAD_MIN before the last read is the day's last, not a stale one.
+  var LAST_READ_DEFAULT = '15:32', ROW_LEAD_MIN = 4;
+  function hhmmMinus(hhmm, n){ var m = (+hhmm.slice(0, 2)) * 60 + (+hhmm.slice(3, 5)) - n; return (m < 600 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); }
+  function lastRead(c){ var lr = c && c.session && c.session.last_read; return /^\d\d:\d\d$/.test(lr || '') ? lr : LAST_READ_DEFAULT; }
   var ORDER = ['strikes','volume_price','history','indicators','space_time','framing','news','outcome'];
   var NAME = {strikes:'strikes', volume_price:'volume and price', history:'yesterday', indicators:'indicators',
               space_time:'space and time', framing:'framing', news:'news', outcome:'outcome, shadow only'};
@@ -191,16 +195,16 @@ details .q{margin-top:8px}
     return m + ' min ago';
   }
   // the row's own clock is market time (the stamp carries its offset), so an hour after a row past
-  // CLOSE_HHMM there is nothing newer to wait for; an hour after any earlier row the card is stale
+  // the day's last read (the card's session) there is nothing newer to wait for; an hour after any earlier row the card is stale
   function subLine(c, m){
     var at = clock(c.row_ts), n = c.labels + ' labels';
-    if(m != null && m > GONE_MIN && at >= CLOSE_HHMM) return 'after the close, last row ' + at + ', ' + n;
-    var next = nextRead(); var hint = next ? ', next read ' + next : '';
+    if(m != null && m > GONE_MIN && at >= hhmmMinus(lastRead(c), ROW_LEAD_MIN)) return 'after the close, last row ' + at + ', ' + n;
+    var next = nextRead(lastRead(c)); var hint = next ? ', next read ' + next : '';
     return 'row ' + at + ', ' + ageWord(m) + (m != null && m > STALE_MIN ? ', stale' : '') + ', ' + n + hint;
   }
   // The service reads at :02 and :32 market time. The next mark is the earliest one still ahead of the
   // market clock (never past the close), so the reader knows when the card will change without asking.
-  var READ_MINUTES = [2, 32], LAST_READ_HHMM = '15:32';
+  var READ_MINUTES = [2, 32];
   function marketClock(){
     try {
       var p = new Intl.DateTimeFormat('en-US', {timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit'}).formatToParts(new Date());
@@ -208,12 +212,12 @@ details .q{margin-top:8px}
       return {h: h, m: mm};
     } catch(e){ return null; }
   }
-  function nextRead(){
+  function nextRead(last){
     var t = marketClock(); if(!t) return null;
     var h = t.h, m = READ_MINUTES.filter(function(x){ return x > t.m; })[0];
     if(m == null){ h += 1; m = READ_MINUTES[0]; }
     var hhmm = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
-    return (hhmm <= LAST_READ_HHMM && hhmm >= '09:32') ? hhmm : null;
+    return (hhmm <= (last || LAST_READ_DEFAULT) && hhmm >= '09:32') ? hhmm : null;
   }
   // "missing momentum.closes" names a label; the card carries the builder's own sentence for it
   function skipWhy(q, omitted){
@@ -233,7 +237,7 @@ details .q{margin-top:8px}
   function question(q, omitted){
     var box = el('div', 'q' + (q.status === 'shadow' ? ' shadow' : ''));
     box.appendChild(el('div', 'ask', q.ask));
-    if(q.status === 'shadow') box.appendChild(el('div', 'tag', 'shadow: graded by the bars 30 minutes later, never a call'));
+    if(q.status === 'shadow') box.appendChild(el('div', 'tag', 'shadow: a forecast, logged, never graded and never a call'));
     var a = q.answer, held = q.held_from ? 'held since ' + q.held_from + ', not re-asked' : '';
     // a Choice or a Score answer always carries its probabilities (a Score's are keyed by the level's words)
     if(a && a.probabilities){
@@ -254,6 +258,24 @@ details .q{margin-top:8px}
     return box;
   }
 
+  // The sum on this page is JEV's sum blended half and half with how this time of day went on prior
+  // sessions (the service's clock); JEV's own sum and the clock's odds ride beside it. Two lines:
+  // what the blend is made of, and each part's own leading answer, in the page's own option words.
+  function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
+  function oneAnswer(p){ var k = top1(p); return k ? cap(k) + ' ' + Math.round((p[k] || 0) * 100) + '%' : 'none'; }
+  function blendLines(h, bl, minutes){
+    var out = [];
+    if(bl && bl.used){
+      out.push('half JEV\u2019s sum of the answers, half how the next ' + minutes + ' minutes went at this time of day' +
+               (bl.phase_words ? ' (' + bl.phase_words + ')' : '') + ' over the last ' + bl.sessions + ' sessions');
+      var j = h.jev, c = h.clock;
+      if(j && c) out.push('JEV alone ' + oneAnswer(j.probabilities) + (j.confidence != null ? ', confidence ' + Math.round(j.confidence * 100) + '%' : '') +
+                          ' \u00B7 time of day alone ' + oneAnswer(c.probabilities));
+    } else if(bl && bl.why){
+      out.push('JEV\u2019s sum alone: ' + bl.why);
+    }
+    return out;
+  }
   function labRow(text, age, old){
     var l = el('div', 'lab'); l.appendChild(el('span', null, text));
     if(age != null){ var r = el('span', 'r' + (old ? ' old' : ''), age); l.appendChild(r); }
@@ -278,8 +300,9 @@ details .q{margin-top:8px}
 
     var h = c.hour;
     if(h && h.probabilities){
-      // the sum: one question over the thirty answers, a forecast, graded later, never a call
-      var hc = el('div', 'card dashed'); hc.appendChild(labRow('next 30 minutes, the sum of the answers', ageText, old));
+      // the sum: JEV's sum of the answers blended with the time of day, a forecast, graded later, never a call
+      var bl = h.blend || null, blended = !!(bl && bl.used);
+      var hc = el('div', 'card dashed'); hc.appendChild(labRow(blended ? 'next 30 minutes, the blended sum' : 'next 30 minutes, the sum of the answers', ageText, old));
       var hp = h.probabilities; var top = h.pick || Object.keys(hp).sort(function(x, y){ return hp[y] - hp[x]; })[0];
       hc.appendChild(el('div', 'big', cap(top) + ' ' + Math.round((hp[top] || 0) * 100) + '%'));
       // a fixed order, up, down, flat, unsure, so the eye always finds the same row in the same place
@@ -287,15 +310,17 @@ details .q{margin-top:8px}
         .forEach(function(k){ if(k in hp) hc.appendChild(bar(cap(k), hp[k], k === top)); });
       var note = 'a forecast, graded by the bars 30 minutes on, never a call';
       if(h.confidence != null) note = 'confidence ' + Math.round(h.confidence * 100) + '% \u00B7 ' + note;
+      blendLines(h, bl, 30).forEach(function(t){ hc.appendChild(el('div', 'tag', t)); });
       hc.appendChild(el('div', 'tag', note));
       hc.appendChild(el('div', 'tag', 'from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '')));
       main.appendChild(hc);
       // the 60-minute sum, asked on the same answers, graded beside the 30 for the comparison; never the headline
       var h60 = h.by && h.by.next_60;
       if(h60 && h60.probabilities){
-        var c60 = el('div', 'card dashed'); c60.appendChild(labRow('next 60 minutes, the same answers', ageText, old));
+        var c60 = el('div', 'card dashed'); c60.appendChild(labRow(blended ? 'next 60 minutes, the same blend' : 'next 60 minutes, the same answers', ageText, old));
         var p60 = h60.probabilities, t60 = h60.pick || Object.keys(p60).sort(function(x, y){ return p60[y] - p60[x]; })[0];
         ['up', 'down', 'flat', 'unsure'].forEach(function(k){ if(k in p60) c60.appendChild(bar(cap(k), p60[k], k === t60)); });
+        if(blended && h60.jev && h60.clock) blendLines(h60, bl, 60).forEach(function(t){ c60.appendChild(el('div', 'tag', t)); });
         c60.appendChild(el('div', 'tag', (h60.confidence != null ? 'confidence ' + Math.round(h60.confidence * 100) + '% \u00B7 ' : '') + 'graded by the bars 60 minutes later, for the comparison only, never a call'));
         main.appendChild(c60);
       }
