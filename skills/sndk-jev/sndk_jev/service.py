@@ -181,16 +181,22 @@ def last_read_of(out_dir: Path, day: str, now: datetime) -> datetime | None:
     return max(stamps) if stamps else None
 
 
-def _stamp(lane: Lane, unit: dict | None) -> dict:
-    """What a tagged lane writes on its record, its hour record and its card; the live lane writes nothing new."""
-    return {"lane": lane.tag, "ruler": unit} if lane.tag else {}
+def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:
+    """What a tagged lane writes on its record, its hour record and its card: the lane, the unit and,
+    when the unit priced the sum's bands (hour.band_of), those bands in dollars, so the grader, the
+    phone and the reader all see the ones JEV was told. The live lane writes nothing new."""
+    if not lane.tag:
+        return {}
+    return {"lane": lane.tag, "ruler": unit, **({"band": band} if band else {})}
 
 
 def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: dict, answers: dict | None,
          sent: bool, send_seconds: float | None, hour: dict | None = None, held: dict | None = None,
          cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT, event: dict | None = None,
-         lane: Lane = LIVE, unit: dict | None = None) -> dict:
-    """The phone's document. Small, plain, and honest about what was and was not sent."""
+         lane: Lane = LIVE, unit: dict | None = None, band: dict | None = None) -> dict:
+    """The phone's document. Small, plain, and honest about what was and was not sent. A lane on the
+    bar clock also carries its ``stretch``: the sentences the builder wrote about the stretch since
+    the lane's last read, which the phone's strip shows in the builder's own words."""
     now = datetime.now(timezone.utc)
     row_ts = parse_ts(scene.row["ts"])
     book = (scene.row.get("meta") or {}).get("book_asof")
@@ -261,7 +267,8 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "hour": hour,
         # a tier-1 scheduled event due within the hour (events.py): a tag for the reader, never sent to JEV
         "event": event,
-        **_stamp(lane, unit),
+        **_stamp(lane, unit, band),
+        **({"stretch": state.get("tape") or {}} if lane.bar_clock else {}),
         # the phone's clock words ("after the close", "next read") follow the day's real close, 13:00 on a half day
         "session": {"close": session_close(row_ts).strftime("%H:%M"),
                     "last_read": (session_close(row_ts) - timedelta(minutes=LAST_READ_BEFORE_CLOSE_MIN)).strftime("%H:%M")},
@@ -277,6 +284,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         # the stretch labels measure from the lane's previous read today, stamped on its own records
         scene.last_read = last_read_of(out_dir, scene.row["ts"][:10], scene.now)
     unit = scene.unit
+    # the sum's bands for this read, in dollars from the unit: stamped on everything the lane writes
+    band = band_of(unit, load_hour_doc(lane=lane), lane.primary) if unit else None
     if day is None and do_send and scene.row["ts"][:10] != today_et():
         # the scanner has no row for today yet: sending on yesterday's last row would hold every
         # answer against a stale clock and file the read under the wrong day. Say so and stop.
@@ -366,7 +375,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         if lane.cadence:
             save_last(out_dir, last)
     record = {"row_ts": scene.row["ts"], "book_asof": (scene.row.get("meta") or {}).get("book_asof"), "sigma": scene.sigma, "event": event,
-              **_stamp(lane, unit), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
+              **_stamp(lane, unit, band), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
               "answers": answers, "sent": do_send, "send_seconds": send_seconds, "hour": hour}
     with open(out_dir / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
@@ -375,17 +384,16 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         # the sum record is what step 6 grades: spot and sigma are needed to read the bars against it
         (out_dir / "hour").mkdir(parents=True, exist_ok=True)
         # a lane on the tape stores the bands JEV was told, in dollars, so the grader reads the same ones
-        band = {"band": band_of(unit, hour_doc, lane.primary)} if unit else {}
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event,
-                                **_stamp(lane, unit), **band, **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
+                                **_stamp(lane, unit, band), **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
     if do_send:
         # step 6, every run: grade every mark that has passed and refresh the weights step 3 reads
         try:
             grade_run(state_dir, out_dir, allowed=live_options(doc), lane=lane)
         except Exception as e:  # grading must never stop the card
             log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
-    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit)
+    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit, band)
     tmp = out_dir / "latest.json.tmp"
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, out_dir / "latest.json")

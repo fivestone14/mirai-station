@@ -314,4 +314,12 @@ def test_the_second_read_of_the_day_measures_from_the_first(tmp_path):
     assert rec2["ruler"]["source"] == "tape" and rec2["ruler"]["unit_dollars"] == 6.0
     assert rec2["ruler"]["rank"] == {"band": "top third", "higher_than": 5, "of": 5}
     assert rec1["ruler"]["source"] == "held" and "rank" not in rec1["ruler"]
+    # the card carries what the phone's strip shows: the bands in dollars and the stretch sentences
+    assert c2["band"] == rec2["band"] == {"flat_dollars": 2.1, "big_dollars": 4.2, "flat_units": 0.35, "big_units": 0.7}
+    assert c2["stretch"] == rec2["state"]["tape"] and c2["stretch"]["move_since_read"].endswith("so it held")
+    assert c1["stretch"] == rec1["state"]["tape"] and "move_since_read" not in c1["stretch"]
+    assert c1["omitted"]["tape.move_since_read"].startswith("the day's first read")
+    from sndk_jev.lane import LIVE
+    live = run_once(state, state / "jev", load_questions(LIVE.questions), False, DAY, lane=LIVE)
+    assert not ({"lane", "ruler", "band", "stretch"} & set(live))           # the live card is as it was
     assert [q["id"] for q in c2["questions"] if q["id"] == "move_since_read"] == ["move_since_read"]

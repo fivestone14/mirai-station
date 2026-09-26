@@ -11,6 +11,13 @@
   changes for it. The file is written by skills/sndk-jev (its own launchd job),
   never by the scan.
 
+  From 09:35 to 10:30 market time the service's opening lane (skills/sndk-jev,
+  --lane tape) reads every 5 minutes and writes its own card under
+  state/jev/lanes/tape/. Its strip sits above the live card only while that
+  lane runs: today's read, under TAPE_MAX_AGE_MIN old, fetched only inside
+  TAPE_WINDOW; a lane card from yesterday, a stale one, or none at all shows
+  nothing, and the live card below never changes for it.
+
   Same paper as the glance: its tokens, its card, its label row, its tab bar.
   No dark mode, because the glance has none. House rules kept: text goes in
   with textContent only, no emoji, no arrows, the row's time and age always
@@ -63,6 +70,10 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
 .sit{margin:10px 0 0;padding:0;list-style:none}
 .sit li{font:400 15px/1.5 var(--sans);color:var(--i-body);padding:5px 0 5px 10px;border-left:2px solid var(--s2)}
+/* the opening lane's strip: the 5-minute reads' 10-minute call, a dashed card like the sums */
+.strip .big{font-size:24px}
+.strip .row{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font:400 13px/1.4 var(--sans);color:var(--i-body)}
+.strip .say{margin-top:8px;font:400 13.5px/1.45 var(--sans);color:var(--i-body);padding-left:10px;border-left:2px solid var(--s2)}
 /* one chevron on every fold, the viewpoints, the not-asked and the dark alike */
 details>summary{list-style:none;cursor:default;padding:6px 4px;display:flex;align-items:center;gap:8px}
 details>summary::-webkit-details-marker{display:none}
@@ -137,8 +148,9 @@ details .q{margin-top:8px}
 </header>
 <div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
+<div class="card dashed strip" id="tape" hidden></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent sessions, because on its first 37 graded reads JEV's sum alone did worse than the time of day alone.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent sessions, because on its first 37 graded reads JEV's sum alone did worse than the time of day alone. From 09:35 to 10:30 the opening lane reads every 5 minutes; its 10-minute call sits above the live card in its own dashed card, sized in tape units, and goes away once the morning's reads are done.</p>
 
 <nav class="tabs">
   <a class="tab" href="/m/" aria-label="Now">
@@ -372,7 +384,7 @@ details .q{margin-top:8px}
     var m = mins(c.row_ts), old = m != null && m > STALE_MIN;
     var sub = $('sub'); if(sub && !sub.classList.contains('err')) sub.textContent = subLine(c, m);
     var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
-    Array.prototype.forEach.call(document.querySelectorAll('.lab .r'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
+    Array.prototype.forEach.call(document.querySelectorAll('#main .lab .r'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
   }
   function arrived(c){
     var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
@@ -397,6 +409,111 @@ details .q{margin-top:8px}
     }).catch(function(e){ if(last) draw(last, false); else say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); })
       .finally(function(){ inflight = false; polling(false); });
   }
+  // The opening lane: the service reads every TAPE_STEP_MIN minutes from 09:35 to TAPE_LAST market time
+  // and writes its own card at TAPE_URL. The strip shows only today's lane card under TAPE_MAX_AGE_MIN
+  // old (the next read is due at 5, so 8 covers a late one and no more), and the card is fetched only
+  // inside TAPE_WINDOW; outside it the strip is hidden and the phone asks the station for nothing.
+  var TAPE_URL = '/api/raw/file?root=state&path=jev/lanes/tape/latest.json';
+  var TAPE_WINDOW = ['09:33', '10:40'], TAPE_MAX_AGE_MIN = 8, TAPE_STEP_MIN = 5, TAPE_FIRST = '09:35', TAPE_LAST = '10:30';
+  var tape = null;
+  function hhmm(t){ return (t.h < 10 ? '0' : '') + t.h + ':' + (t.m < 10 ? '0' : '') + t.m; }
+  function marketDay(){
+    try { return new Intl.DateTimeFormat('en-CA', {timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()); }
+    catch(e){ return null; }
+  }
+  function inTapeWindow(t){ t = t || marketClock(); if(!t) return false; var s = hhmm(t); return s >= TAPE_WINDOW[0] && s < TAPE_WINDOW[1]; }
+  // the one rule that shows the strip: the lane's own card, stamped today, no older than a read can be
+  function tapeShows(t, ageMin, today){
+    return !!(t && t.lane === 'tape' && today && String(t.row_ts || '').slice(0, 10) === today && ageMin != null && ageMin <= TAPE_MAX_AGE_MIN);
+  }
+  function nextTapeRead(t){
+    t = t || marketClock(); if(!t) return null;
+    var m = Math.floor(t.m / TAPE_STEP_MIN) * TAPE_STEP_MIN + TAPE_STEP_MIN, h = t.h;
+    if(m >= 60){ m -= 60; h += 1; }
+    var s = hhmm({h: h, m: m});
+    return (s >= TAPE_FIRST && s <= TAPE_LAST) ? s : null;
+  }
+  function pct(x){ return Math.round((x || 0) * 100) + '%'; }
+  function tapeLab(t, m){ return 'opening lane, read ' + clock(t.row_ts) + (nextTapeRead() ? ', next ' + nextTapeRead() : ', the last of the morning'); }
+  function hideTape(){ var b = $('tape'); if(b){ b.hidden = true; b.textContent = ''; } }
+  function paintTape(t, ok){
+    var box = $('tape'); if(!box) return;
+    var m = mins(t.row_ts);
+    if(!tapeShows(t, m, marketDay())){ hideTape(); return; }
+    box.textContent = '';
+    box.appendChild(labRow(tapeLab(t, m), m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase(), false));
+    var h = t.hour, p = h && h.probabilities;
+    if(p){
+      var top = h.pick || top1(p);
+      box.appendChild(el('div', 'big', cap(top) + ' ' + pct(p[top])));
+      // the same odds read as a direction and as a size (the service's views), on one line
+      var v = h.views || {}, d = v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities;
+      var row = el('div', 'row');
+      if(d){ ['up', 'flat', 'down'].forEach(function(k){ if(k in d) row.appendChild(el('span', null, k + ' ' + pct(d[k]))); }); }
+      if(sz && 'big' in sz) row.appendChild(el('span', null, 'a big move ' + pct(sz.big)));
+      if(row.childNodes.length) box.appendChild(row);
+    } else {
+      box.appendChild(el('div', 'skip', !t.sent ? 'not sent: no key on the station' : 'no sum this read' + (h && h.error ? ': ' + h.error : '')));
+    }
+    var r = t.ruler, b = t.band;
+    if(r && b){
+      var u = el('div', 'row');
+      u.appendChild(el('span', null, 'one tape unit $' + Math.round(r.unit_dollars) +
+        (r.source === 'held' ? ', held until 09:45' : r.rank ? ', ' + r.rank.band + ' for this minute' : '')));
+      u.appendChild(el('span', null, 'flat within $' + Math.round(b.flat_dollars)));
+      u.appendChild(el('span', null, 'big beyond $' + Math.round(b.big_dollars)));
+      box.appendChild(u);
+    }
+    // the builder's own sentences about the stretch since the last read, or its reason for none
+    var st = t.stretch || {}, om = t.omitted || {};
+    var move = st.move_since_read || om['tape.move_since_read'];
+    if(move) box.appendChild(el('div', 'say', sentence(move)));
+    if(st.range_since_read) box.appendChild(el('div', 'say', sentence(st.range_since_read)));
+    if(!ok) box.appendChild(el('div', 'tag', 'fetch failed, showing the last read'));
+    box.appendChild(el('div', 'tag', 'the 5-minute reads\u2019 call for the next 10 minutes, in tape units: a forecast, graded by the bars, never a call'));
+    box.hidden = false;
+  }
+  // the same lane card again only moves its age and its next-read word, and may hide it once it is old
+  function tapeAges(t){
+    var box = $('tape'); if(!box || box.hidden) return;
+    var m = mins(t.row_ts);
+    if(!tapeShows(t, m, marketDay())){ hideTape(); return; }
+    var lab = box.querySelector('.lab'); if(!lab) return;
+    lab.firstChild.textContent = tapeLab(t, m);
+    var r = lab.querySelector('.r'); if(r) r.textContent = m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase();
+  }
+  var tapeInflight = false, tapeTimer = null;
+  function pollTape(){
+    if(!inTapeWindow()){ if(tape){ tape = null; } hideTape(); return; }
+    if(!tapeTimer) armTapeMark();
+    if(tapeInflight) return;
+    tapeInflight = true;
+    fetch(TAPE_URL, {cache:'no-store'}).then(function(r){
+      if(!r.ok) throw new Error('the station answered ' + r.status);
+      return r.json();
+    }).then(function(j){
+      var d = j && j.kind === 'json' && j.data && j.data.lane === 'tape' ? j.data : null;
+      if(d && tape && tape.generated_at === d.generated_at && tape.row_ts === d.row_ts){ tape = d; tapeAges(d); }
+      else if(d){ tape = d; paintTape(d, true); }
+      else if(tape){ paintTape(tape, false); }
+      else { hideTape(); }                       // no lane card yet: nothing to show, nothing to say
+    }).catch(function(){ if(tape) paintTape(tape, false); else hideTape(); })
+      .finally(function(){ tapeInflight = false; });
+  }
+  // a few seconds after each 5-minute mark inside the window, as the live card does after :02 and :32
+  function msToNextTapeMark(){
+    var t = marketClock(); if(!t) return null;
+    var wait = TAPE_STEP_MIN - (t.m % TAPE_STEP_MIN);
+    return (wait * 60 + AFTER_MARK_S) * 1000 - (new Date().getSeconds() * 1000);
+  }
+  function armTapeMark(){
+    if(tapeTimer) clearTimeout(tapeTimer);
+    tapeTimer = null;
+    if(!inTapeWindow()) return;                  // armed again by the first poll inside the window
+    var ms = msToNextTapeMark(); if(ms == null) return;
+    tapeTimer = setTimeout(function(){ tapeTimer = null; if(!document.hidden) pollTape(); armTapeMark(); }, Math.max(1000, ms));
+  }
+
   // Refresh on its own: every POLL_MS while the page is in view, again the moment the page comes
   // back (tab switch, screen unlock, back-forward cache, network back), and a few seconds after each
   // :02 and :32 read mark so a new card shows within seconds of being written, never a minute later.
@@ -413,9 +530,9 @@ details .q{margin-top:8px}
     var ms = msToNextMark(); if(ms == null) return;
     markTimer = setTimeout(function(){ if(!document.hidden) poll(); armMark(); }, Math.max(1000, ms));
   }
-  function wake(){ if(!document.hidden){ poll(); armMark(); } }
-  poll(); armMark();
-  setInterval(function(){ if(!document.hidden) poll(); }, POLL_MS);
+  function wake(){ if(!document.hidden){ poll(); pollTape(); armMark(); armTapeMark(); } }
+  poll(); pollTape(); armMark(); armTapeMark();
+  setInterval(function(){ if(!document.hidden){ poll(); pollTape(); } }, POLL_MS);
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);
   window.addEventListener('focus', wake);
