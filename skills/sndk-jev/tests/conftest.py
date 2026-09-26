@@ -95,14 +95,20 @@ def scene_factory():
 
     def make(now: datetime, bars: list[dict], row_over: dict | None = None, rows_before: list[dict] | None = None,
              prior_bars: dict | None = None, spot: float | None = None, news: dict | None = None,
-             side_packet: dict | None = None, chain_cache: dict | None = None, prev_last_row: dict | None = None):
+             side_packet: dict | None = None, chain_cache: dict | None = None, prev_last_row: dict | None = None,
+             bar_clock: bool = False, last_read: datetime | None = None):
         spot = spot if spot is not None else float(bars[-1]["close"]) if bars else 1700.0
         row = make_row(now, spot, **(row_over or {}))
         rows = list(rows_before or []) + [row]
         done = [b for b in bars if datetime.fromisoformat(b["ts"]) + timedelta(minutes=1) <= now]
-        return Scene(row=row, rows_today=rows, bars=done, prior_bars=prior_bars or {}, now=now,
-                     sigma=float(row["sigma"]), news=news, side_packet=side_packet, chain_cache=chain_cache,
-                     prev_last_row=prev_last_row)
+        scene = Scene(row=row, rows_today=rows, bars=done, prior_bars=prior_bars or {}, now=now,
+                      sigma=float(row["sigma"]), news=news, side_packet=side_packet, chain_cache=chain_cache,
+                      prev_last_row=prev_last_row, bar_clock=bar_clock, last_read=last_read)
+        if bar_clock:
+            # as make_scene does on the bar clock: the unit for the read, ranked against the prior sessions
+            from sndk_jev.state_builder import tape_unit
+            scene.unit = tape_unit(scene.bars, scene.sigma, now, scene.prior_bars)
+        return scene
 
     return make
 
@@ -126,3 +132,13 @@ def full_scene(scene_factory):
     return scene_factory(now, bars_from_closes(closes), rows_before=[earlier], prior_bars=prior, news=news,
                          side_packet=make_side_packet(bar=170, wall_price=1750.0),
                          chain_cache=make_chain_cache(now, spot), prev_last_row=prev)
+
+
+@pytest.fixture
+def lane_scene(full_scene):
+    """The same moment read on the tape lane: on the bar clock, five minutes after an earlier read, with
+    the unit; every stretch label in the spec can be measured."""
+    from dataclasses import replace
+    from sndk_jev.state_builder import tape_unit
+    return replace(full_scene, bar_clock=True, last_read=full_scene.now - timedelta(minutes=5),
+                   unit=tape_unit(full_scene.bars, full_scene.sigma, full_scene.now, full_scene.prior_bars))

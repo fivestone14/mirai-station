@@ -2,6 +2,7 @@
 
     python3 -m sndk_jev.grade                # grade every ungraded record, rewrite weights.json
     python3 -m sndk_jev.grade --day 2026-09-22
+    python3 -m sndk_jev.grade --lane tape    # the opening lane, under state/jev/lanes/tape/
 
 Two horizons are graded from the same record, each against its own band:
     next_30   30 minutes, flat within 0.12 sigma   (the primary: the phone's sum, the weights' teacher)
@@ -43,6 +44,16 @@ How a weight moves
     sentence is left out of step 3, but it is still asked every read, so it keeps earning pairs
     and can climb back.
 
+A lane (lane.py) grades by its own settings; LIVE is everything above, unchanged. The tape lane's
+one horizon is banded from the record itself: the tape unit measured at the read prices a flat and
+a big band in dollars, and the realized move lands in one of five bands (down_big, down_small,
+flat, up_small, up_big), read also as a direction and a size (big or small), each scored against
+the matching view of the sum. Its mark needs the exact bar (bar_gap_min 0), a finished day's bars
+that stop close its records out, a question pairs only with reads pair_gap_min apart, and a ready
+question's information must beat the 99th percentile of ``shuffles`` day-block shuffles of the
+outcomes (whole days moved as blocks, seed fixed) or its weight is 0; nothing is cut from step 3
+until CUT_AFTER_PASSED questions have passed.
+
 Outputs, all under state/jev/
     grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
                        the ``horizons`` the line carries; the primary's line has its fields flat on top)
@@ -60,21 +71,26 @@ import argparse
 import json
 import math
 import os
+import random
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .hour import HOUR_QUESTIONS, MIN_WEIGHT, PRIMARY, WEIGHTS_NAME
+from .hour import FIVE, HOUR_QUESTIONS, MIN_WEIGHT, PRIMARY, WEIGHTS_NAME  # noqa: F401  (HOUR_QUESTIONS, PRIMARY: kept for callers)
+from .lane import LANES, LIVE, RECORD, Lane, horizons  # noqa: F401  (horizons: the doc reader, kept for callers)
 from .state_builder import DEFAULT_STATE_DIR, close_at, load_bars, load_jsonl, parse_ts, session_close
 
 ET = ZoneInfo("America/New_York")
 
-MIN_GRADED = 40         # fresh pairs a question needs before its own weight can move away from 1.0
-CLOSE_GRACE_MIN = 2     # a horizon ending this far past the close is graded at the closing bar
-BAR_GAP_MAX_MIN = 2     # the bar standing for a mark may be at most this many minutes before it
-BANDS = ("up", "flat", "down")   # "unsure" is a pick, never an outcome: its probability counts against the Brier
+MIN_GRADED = LIVE.min_graded        # fresh pairs a question needs before its own weight can move away from 1.0
+CLOSE_GRACE_MIN = 2                 # a horizon ending this far past the close is graded at the closing bar
+BAR_GAP_MAX_MIN = LIVE.bar_gap_min  # the bar standing for a mark may be at most this many minutes before it
+BANDS = ("up", "flat", "down")      # "unsure" is a pick, never an outcome: its probability counts against the Brier
+SIZES = ("big", "small")
+SHUFFLE_SEED = 20260925             # the day the lane was planned; fixed, so a rerun scores the same
+CUT_AFTER_PASSED = 3                # a shuffling lane cuts no question from step 3 until this many have passed
 WEIGHTS_LOG = "weights_log.jsonl"
 
 
@@ -84,18 +100,18 @@ def _bar_before(bars: list[dict], t: datetime) -> dict:
     return [b for b in bars if parse_ts(b["ts"]) + one <= t][-1]
 
 
-def horizons(doc_path: Path | str = HOUR_QUESTIONS) -> dict[str, tuple[int, float]]:
-    """``{qid: (minutes, flat band)}`` from the sums' doc, so grading and asking share one number."""
-    with open(doc_path, encoding="utf-8") as f:
-        d = json.load(f)
-    return {qid: (int(h["minutes"]), float(h["flat_band_sigma"])) for qid, h in d["horizons"].items()}
-
-
-HORIZONS = horizons()
+HORIZONS = LIVE.horizons
 
 
 def realized_band(x: float, flat: float) -> str:
     return "up" if x > flat else "down" if x < -flat else "flat"
+
+
+def realized_bands(x: float, flat: float, big: float) -> tuple[str, str, str]:
+    """A move in dollars against a record's bands: the five-way band, its direction and its size."""
+    band = ("up_big" if x > big else "up_small" if x > flat else
+            "down_big" if x < -big else "down_small" if x < -flat else "flat")
+    return band, band.split("_")[0], "big" if band.endswith("big") else "small"
 
 
 def _parts(rec: dict) -> dict:
@@ -117,8 +133,8 @@ def _parts(rec: dict) -> dict:
     return out
 
 
-def _brier(p: dict, band: str) -> float:
-    return round(sum((float(p.get(b, 0.0)) - (1.0 if b == band else 0.0)) ** 2 for b in BANDS), 4)
+def _brier(p: dict, band: str, bands: tuple[str, ...] = BANDS) -> float:
+    return round(sum((float(p.get(b, 0.0)) - (1.0 if b == band else 0.0)) ** 2 for b in bands), 4)
 
 
 def _picks(rec: dict) -> tuple[dict, dict]:
@@ -132,7 +148,36 @@ def _picks(rec: dict) -> tuple[dict, dict]:
             {q: (v.get("probabilities") or {}) for q, v in by.items() if isinstance(v, dict)})
 
 
-def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = frozenset(), final: bool = False) -> dict | None:
+def _has_band(rec: dict) -> bool:
+    b = rec.get("band")
+    return isinstance(b, dict) and all(isinstance(b.get(k), (int, float)) for k in ("flat_dollars", "big_dollars"))
+
+
+def _grade_units(rec: dict, qid: str, realized: float, pick, p: dict) -> dict:
+    """A RECORD horizon: the move in dollars against the bands stored on the record, and the sum's
+    direction and size views (hour.views_of) each scored against the outcome they forecast."""
+    band, direction, size = realized_bands(realized, float(rec["band"]["flat_dollars"]), float(rec["band"]["big_dollars"]))
+    unit = (rec.get("ruler") or {}).get("unit_dollars")
+    out = {"realized_dollars": round(realized, 2), "realized_units": round(realized / float(unit), 3) if isinstance(unit, (int, float)) and unit else None,
+           "band": band, "direction": direction, "size": size, "pick": pick, "hit": pick == band,
+           "brier": _brier(p, band, FIVE), "p_band": p.get(band)}
+    views = ((rec.get("by") or {}).get(qid) or {}).get("views") or {}
+    for view, outcome, bands in (("direction", direction, BANDS), ("size", size, SIZES)):
+        v = views.get(view) or {}
+        if isinstance(v.get("probabilities"), dict):
+            out.update({f"{view}_pick": v.get("pick"), f"{view}_hit": v.get("pick") == outcome,
+                        f"{view}_brier": _brier(v["probabilities"], outcome, bands)})
+    return out
+
+
+# the primary's fields lifted flat on top of its line, in this order; a line carries only those its horizon has
+TOP_KEYS = ("realized_sigma", "realized_dollars", "realized_units", "band", "direction", "size", "pick", "hit", "brier", "p_band",
+            "jev_pick", "jev_hit", "jev_brier", "clock_brier",
+            "direction_pick", "direction_hit", "direction_brier", "size_pick", "size_hit", "size_brier")
+
+
+def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = frozenset(), final: bool = False,
+              lane: Lane = LIVE) -> dict | None:
     """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar.
 
     Returns the line to append, None when nothing new can be graded yet (a mark still ahead, or
@@ -152,14 +197,19 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     parts = _parts(rec)
     last_done = parse_ts(bars[-1]["ts"]) + timedelta(minutes=1)
     # a hole is closed out only when it can never be filled: the day is over (``final``, from the
-    # calendar) and its bars reach the close, so the gap is a halt or an outage, not bars still coming
-    final = final and last_done >= close - timedelta(minutes=CLOSE_GRACE_MIN)
+    # calendar) and its bars reach the close, so the gap is a halt or an outage, not bars still coming.
+    # A lane on the bar clock reads its day off the bars: when a finished day's bars stop, so did
+    # its reads, and a mark past the last bar will never come
+    final = final and (lane.bar_clock or last_done >= close - timedelta(minutes=CLOSE_GRACE_MIN))
     graded, pending, skipped = {}, [], {}
-    for qid, (h, flat) in HORIZONS.items():
+    for qid, (h, flat) in lane.horizons.items():
         if qid in done:
             continue
         if picks.get(qid) is None:
             skipped[qid] = "no answer for this sum"    # JEV did not answer it on this read
+            continue
+        if flat == RECORD and not _has_band(rec):
+            skipped[qid] = "no band on the record"     # no tape unit was measured at the read: nothing to grade against
             continue
         t1 = t0 + timedelta(minutes=h)
         if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
@@ -173,15 +223,18 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
             else:
                 pending.append(qid)                   # its mark is still ahead; a later run grades it
             continue
-        if last_done < t1 - timedelta(minutes=BAR_GAP_MAX_MIN) or parse_ts(_bar_before(bars, t1)["ts"]) < t1 - timedelta(minutes=BAR_GAP_MAX_MIN + 1):
+        if last_done < t1 - timedelta(minutes=lane.bar_gap_min) or parse_ts(_bar_before(bars, t1)["ts"]) < t1 - timedelta(minutes=lane.bar_gap_min + 1):
             if final:
                 skipped[qid] = "halted window: bars missing around the mark on a finished day"
             else:
                 pending.append(qid)                   # a hole in the bars around the mark: wait for them
             continue
+        p = probs.get(qid) or {}
+        if flat == RECORD:
+            graded[qid] = _grade_units(rec, qid, c1 - spot, picks.get(qid), p)
+            continue
         realized = (c1 - spot) / sigma
         band = realized_band(realized, flat)
-        p = probs.get(qid) or {}
         brier = sum((float(p.get(b, 0.0)) - (1.0 if b == band else 0.0)) ** 2 for b in BANDS)
         graded[qid] = {"realized_sigma": round(realized, 3), "band": band, "pick": picks.get(qid),
                        "hit": picks.get(qid) == band, "brier": round(brier, 4), "p_band": p.get(band)}
@@ -194,12 +247,12 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     if not graded:
         if pending:
             return None                               # a mark is still ahead
-        halted = {q: v for q, v in skipped.items() if str(v).startswith("halted window")}
-        if halted:
+        closed = {q: v for q, v in skipped.items() if str(v).startswith(("halted window", "no band"))}
+        if closed:
             # closed out for good; when the other horizon was graded on an earlier run this line carries
             # only the halted one, so the read is never retried
             return {"row_ts": rec["row_ts"], "horizons": [], "pending": [], "skipped": skipped,
-                    "reason": "; ".join(f"{q}: {v}" for q, v in halted.items())}
+                    "reason": "; ".join(f"{q}: {v}" for q, v in closed.items())}
         if done:
             return None                               # nothing left to do
         return {"row_ts": rec["row_ts"], "graded": False, "reason": "every horizon ends past the close"}
@@ -209,21 +262,21 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     if ev:
         out["event_within_30"] = bool(ev.get("within_30"))
         out["event"] = ev.get("sentence")
-    if PRIMARY in graded:
-        for k in ("realized_sigma", "band", "pick", "hit", "brier", "p_band", "jev_pick", "jev_hit", "jev_brier", "clock_brier"):
-            if k in graded[PRIMARY]:
-                out[k] = graded[PRIMARY][k]           # the primary, flat on top, is what the weights read
+    if lane.primary in graded:
+        for k in TOP_KEYS:
+            if k in graded[lane.primary]:
+                out[k] = graded[lane.primary][k]      # the primary, flat on top, is what the weights read
     return out
 
 
-def graded_horizons(lines: list[dict]) -> dict[str, set[str]]:
+def graded_horizons(lines: list[dict], lane: Lane = LIVE) -> dict[str, set[str]]:
     """``{row_ts: horizons already graded or skipped for good}`` from the grades file. A line from
     before horizons were graded separately carried every horizon that could ever be graded, so it
     counts as complete; so does a closed-out line."""
     done: dict[str, set[str]] = defaultdict(set)
     for g in lines:
         if g.get("graded") is False or "horizons" not in g:
-            done[g["row_ts"]] |= set(HORIZONS)
+            done[g["row_ts"]] |= set(lane.horizons)
         else:
             done[g["row_ts"]] |= set(g.get("horizons") or []) | set(g.get("skipped") or {})
     return done
@@ -237,6 +290,25 @@ def mutual_information(pairs: list[tuple[str, str]]) -> float:
     return sum(v / n * math.log((v / n) / ((ca[a] / n) * (cb[b] / n))) for (a, b), v in cab.items())
 
 
+def shuffle_p99(pairs: list[tuple[str, str]], days: list[str], shuffles: int, seed: int = SHUFFLE_SEED) -> float:
+    """The 99th percentile of the mutual information over ``shuffles`` day-block shuffles: the picks
+    stay put, the outcomes move between days as whole blocks (each day's run of outcomes kept in
+    order, so the tape's within-day clustering survives the shuffle), and the MI is measured again.
+    A question's real MI has to clear this to count as information rather than luck."""
+    picks = [p for p, _ in pairs]
+    blocks: dict[str, list[str]] = defaultdict(list)
+    for (_, band), day in zip(pairs, days):
+        blocks[day].append(band)
+    order = list(blocks.values())
+    rng = random.Random(seed)
+    mis = []
+    for _ in range(shuffles):
+        rng.shuffle(order)
+        mis.append(mutual_information(list(zip(picks, [b for block in order for b in block]))))
+    mis.sort()
+    return mis[math.ceil(0.99 * len(mis)) - 1]
+
+
 def _tally(rows: list[dict]) -> dict:
     """A sum's record: the shown sum's hit rate and Brier, and, over the reads that were blended,
     the same Brier for the blend, for JEV's own sum and for the clock alone, side by side."""
@@ -247,7 +319,7 @@ def _tally(rows: list[dict]) -> dict:
            "always_flat_hit_rate": round(sum(1 for g in rows if g["band"] == "flat") / n, 3),
            "mean_brier": round(sum(g["brier"] for g in rows) / n, 4),
            "bands": dict(Counter(g["band"] for g in rows))}
-    return _with_parts(rows, out)
+    return _with_views(rows, _with_parts(rows, out))
 
 
 def _with_parts(rows: list[dict], out: dict) -> dict:
@@ -258,6 +330,22 @@ def _with_parts(rows: list[dict], out: dict) -> dict:
                           "mean_brier_jev": round(sum(g["jev_brier"] for g in blended) / k, 4),
                           "mean_brier_clock": round(sum(g["clock_brier"] for g in blended) / k, 4),
                           "jev_hit_rate": round(sum(1 for g in blended if g.get("jev_hit")) / k, 3)}
+    return out
+
+
+def _with_views(rows: list[dict], out: dict) -> dict:
+    """A five-way sum's direction and size views, each beside the constant forecast of its own largest
+    class: the bar the plan set for the lane."""
+    for view in ("direction", "size"):
+        scored = [g for g in rows if f"{view}_brier" in g]
+        if not scored:
+            continue
+        k = len(scored)
+        outcomes = Counter(g[view] for g in scored)
+        out.setdefault("views", {})[view] = {
+            "n": k, "hit_rate": round(sum(1 for g in scored if g[f"{view}_hit"]) / k, 3),
+            "largest_class_hit_rate": round(max(outcomes.values()) / k, 3),
+            "mean_brier": round(sum(g[f"{view}_brier"] for g in scored) / k, 4), "outcomes": dict(outcomes)}
     return out
 
 
@@ -284,13 +372,15 @@ def live_options(doc: dict | Path | str | None = None) -> dict[str, set[str]]:
     return out
 
 
-def weights_from(grades: list[dict], allowed: dict[str, set[str]] | None = None) -> dict:
-    """Every step-2 question's weight from the primary horizon's grades, plus each sum's own tally.
-    With ``allowed`` (``live_options()``), only live questions pair, and only with picks from their
-    current options."""
-    primary = [g for g in grades if g.get("band")]
+def _pairs(grades: list[dict], allowed: dict[str, set[str]] | None, lane: Lane) -> tuple[dict, dict]:
+    """``{qid: [(pick, band)]}`` and ``{qid: [day per pair]}`` over the primary horizon's grades. With
+    a pair gap, a question pairs only with reads at least that far after its last paired read, so
+    reads whose marks overlap never count as two pieces of evidence."""
     pairs: dict[str, list[tuple[str, str]]] = defaultdict(list)
-    for g in primary:
+    days: dict[str, list[str]] = defaultdict(list)
+    last_paired: dict[str, datetime] = {}
+    reads = sorted(grades, key=lambda g: parse_ts(g["row_ts"])) if lane.pair_gap_min else grades
+    for g in reads:
         if g.get("event_within_30"):
             continue                                  # a scheduled event inside the horizon: graded, never paired
         # only answers given afresh on that read pair with its outcome; a held answer predates it.
@@ -300,26 +390,57 @@ def weights_from(grades: list[dict], allowed: dict[str, set[str]] | None = None)
         for qid, pick in fresh.items():
             if allowed is not None and (qid not in allowed or str(pick) not in allowed[qid]):
                 continue                              # retired, or an option the question no longer has
+            if lane.pair_gap_min:
+                t = parse_ts(g["row_ts"])
+                if qid in last_paired and t - last_paired[qid] < timedelta(minutes=lane.pair_gap_min):
+                    continue
+                last_paired[qid] = t
             pairs[qid].append((str(pick), g["band"]))
+            days[qid].append(str(g["row_ts"])[:10])
+    return pairs, days
+
+
+def weights_from(grades: list[dict], allowed: dict[str, set[str]] | None = None, lane: Lane = LIVE) -> dict:
+    """Every step-2 question's weight from the primary horizon's grades, plus each sum's own tally.
+    With ``allowed`` (``live_options()``), only live questions pair, and only with picks from their
+    current options."""
+    primary = [g for g in grades if g.get("band")]
+    pairs, days = _pairs(primary, allowed, lane)
     n_runs = len(primary)
     mi = {qid: mutual_information(p) for qid, p in pairs.items()}
-    ready = {qid for qid, p in pairs.items() if len(p) >= MIN_GRADED}
-    top = max((mi[q] for q in ready), default=0.0)
+    ready = {qid for qid, p in pairs.items() if len(p) >= lane.min_graded}
+    # a shuffling lane: a ready question counts only once its MI beats the shuffled outcomes' 99th percentile
+    p99 = {qid: shuffle_p99(pairs[qid], days[qid], lane.shuffles) for qid in ready} if lane.shuffles else {}
+    passed = {qid for qid in ready if not lane.shuffles or mi[qid] > p99[qid]}
+    top = max((mi[q] for q in passed), default=0.0)
     questions = {}
     for qid, p in pairs.items():
         if qid not in ready:
-            w, why = 1.0, f"{len(p)} fresh pairs, under the {MIN_GRADED} needed; keeps weight 1.0"
+            w, why = 1.0, f"{len(p)} fresh pairs, under the {lane.min_graded} needed; keeps weight 1.0"
+        elif qid not in passed:
+            w = 0.0
+            why = (f"mutual information {mi[qid]:.4f} over {len(p)} fresh pairs is not above the 99th percentile "
+                   f"({p99[qid]:.4f}) of {lane.shuffles} day-block shuffles of the outcomes: luck, not information")
         elif top <= 0:
             w, why = 1.0, "no question's picks carry information about the outcome yet; keeps weight 1.0"
         else:
             w = mi[qid] / top
-            why = f"mutual information with the {PRIMARY} outcome over {len(p)} fresh pairs, relative to the best question"
-        questions[qid] = {"weight": round(w, 3), "mi": round(mi[qid], 4), "n": len(p), "why": why,
-                          "in_step_3": w >= MIN_WEIGHT}
+            why = f"mutual information with the {lane.primary} outcome over {len(p)} fresh pairs, relative to the best question"
+        entry = {"weight": round(w, 3), "mi": round(mi[qid], 4), "n": len(p), "why": why, "in_step_3": w >= MIN_WEIGHT}
+        if lane.shuffles:
+            entry["shuffle_p99"] = round(p99[qid], 4) if qid in p99 else None
+            if not entry["in_step_3"] and len(passed) < CUT_AFTER_PASSED:
+                # too early to cut anyone: until three questions have proven themselves, the best of them may be the lucky one
+                entry["in_step_3"] = True
+                entry["why"] += f"; kept in step 3 until {CUT_AFTER_PASSED} questions have passed the shuffle"
+        questions[qid] = entry
     sums = {qid: {**_tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]), "event_reads": _events(grades, qid)}
-            for qid in HORIZONS}
-    return {"graded_runs": n_runs, "min_graded": MIN_GRADED, "min_weight": MIN_WEIGHT, "primary": PRIMARY,
-            "sums": sums, "questions": questions}
+            for qid in lane.horizons}
+    out = {"graded_runs": n_runs, "min_graded": lane.min_graded, "min_weight": MIN_WEIGHT, "primary": lane.primary,
+           "sums": sums, "questions": questions}
+    if lane.tag:
+        out.update({"lane": lane.tag, "pair_gap_min": lane.pair_gap_min, "shuffles": lane.shuffles, "passed": len(passed)})
+    return out
 
 
 _read_jsonl = load_jsonl    # one reader for every jsonl on disk: a torn or non-object line is dropped
@@ -340,13 +461,14 @@ def log_weights(path: Path, before: dict, weights: dict, new: int) -> dict:
     return line
 
 
-def run(state_dir: Path, out_dir: Path, day: str | None = None, allowed: dict[str, set[str]] | None = None) -> dict:
+def run(state_dir: Path, out_dir: Path, day: str | None = None, allowed: dict[str, set[str]] | None = None,
+        lane: Lane = LIVE) -> dict:
     """Grade every mark that has passed and rewrite the weights. ``allowed`` (``live_options()``) keeps
     retired questions and dropped options out of the weights; the service and the command pass it."""
     hour_dir = out_dir / "hour"
     grades_path = out_dir / "grades.jsonl"
-    done = graded_horizons(_read_jsonl(grades_path))
-    every = set(HORIZONS)
+    done = graded_horizons(_read_jsonl(grades_path), lane)
+    every = set(lane.horizons)
     new = []
     days = [day] if day else sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []
     for d in days:
@@ -364,7 +486,7 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None, allowed: dict[st
         for r in recs:
             if done.get(r["row_ts"], set()) == every:
                 continue                              # the same row written twice (a run by hand): graded once
-            g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat())
+            g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat(), lane=lane)
             if g:
                 new.append(g)
                 done[g["row_ts"]] |= every if g.get("graded") is False else set(g["horizons"]) | set(g["skipped"])
@@ -374,9 +496,9 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None, allowed: dict[st
             for g in new:
                 f.write(json.dumps(g, ensure_ascii=False) + "\n")
     grades = _read_jsonl(grades_path)
-    weights = weights_from(grades, allowed)
+    weights = weights_from(grades, allowed, lane)
     weights["new_this_run"] = sum(1 for g in new if g.get("band"))
-    weights["new_by_horizon"] = {q: sum(1 for g in new if q in (g.get("horizons") or [])) for q in HORIZONS}
+    weights["new_by_horizon"] = {q: sum(1 for g in new if q in (g.get("horizons") or [])) for q in lane.horizons}
     weights["closed_out"] = sum(1 for g in new if g.get("graded") is False)
     weights_path = out_dir / WEIGHTS_NAME
     before = {}
@@ -397,12 +519,14 @@ def run(state_dir: Path, out_dir: Path, day: str | None = None, allowed: dict[st
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Grade the sums against the bars and move the question weights.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
-    ap.add_argument("--out-dir", default=None, help="default <state-dir>/jev")
+    ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>")
     ap.add_argument("--day", help="grade only this day's records")
+    ap.add_argument("--lane", choices=sorted(LANES), default="live", help="which lane's records to grade")
     args = ap.parse_args(argv)
+    lane = LANES[args.lane]
     state_dir = Path(args.state_dir)
-    out_dir = Path(args.out_dir) if args.out_dir else state_dir / "jev"
-    w = run(state_dir, out_dir, args.day, live_options())
+    out_dir = lane.folder(state_dir, args.out_dir)
+    w = run(state_dir, out_dir, args.day, live_options(lane.questions), lane)
     for qid, s in w["sums"].items():
         print(f"{qid}: graded {s['n']}; hit rate {s['hit_rate']} vs always-flat {s['always_flat_hit_rate']}; mean Brier {s['mean_brier']}; bands {s['bands']}",
               file=sys.stderr)

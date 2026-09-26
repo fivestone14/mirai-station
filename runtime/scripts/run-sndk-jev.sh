@@ -4,11 +4,15 @@
 # labels, ask JEV when a key is present, write state/jev/{day}.jsonl and
 # state/jev/latest.json for the phone. Same gates as run-sndk.sh, so it is quiet
 # outside market hours; a separate job from the scanner, never imported by it.
-# Installed by install-launchd.sh (com.mirai-station.sndk-jev, :02 and :32).
+# Installed by install-launchd.sh (com.mirai-station.sndk-jev, :02 and :32). The opening
+# lane's job (com.mirai-station.sndk-jev-tape, every 5 minutes 09:35 to 10:30 ET) runs the
+# same script with `--lane tape`; the service then writes under state/jev/lanes/tape/ only.
 # Kill switch: SNDK_JEV_DISABLE=1 => exit-0 no-op.
 # The key is the service's business: it reads the git-ignored file in its own folder
 # and runs unsent when there is none. Nothing about the key lives in this script.
 set -u
+LANE="live"
+if [[ "${1:-}" == "--lane" ]]; then LANE="${2:?run-sndk-jev.sh: --lane needs a lane name}"; fi
 _SELF="${BASH_SOURCE[0]}"
 while [[ -L "$_SELF" ]]; do _SELF="$(readlink "$_SELF")"; done
 SCRIPT_DIR="$(cd "$(dirname "$_SELF")" && pwd)"
@@ -43,4 +47,4 @@ if [[ -f "$ROWS" ]]; then
 fi
 
 cd "${MIRAI_STATION_ROOT}/skills/sndk-jev"
-exec "${MIRAI_STATION_VENV}/bin/python" -m sndk_jev.service --state-dir "${MIRAI_STATION_ROOT}/state" --send
+exec "${MIRAI_STATION_VENV}/bin/python" -m sndk_jev.service --state-dir "${MIRAI_STATION_ROOT}/state" --send --lane "$LANE"

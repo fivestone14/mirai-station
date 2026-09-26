@@ -23,9 +23,16 @@ and the card; JEV never sees them.
 It never writes into SNDK PRO's files and never runs on the scan path. Point the
 viewstation's read-only route at ``latest.json`` and the phone has its card.
 
+A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
+(``--lane tape``) stamps each read at the newest finished bar, measures the tape unit
+(state_builder.ruler), asks everything afresh, prices its sum's bands from the unit, and writes the
+same files under state/jev/lanes/tape/, each record marked with the lane and the unit. The live
+lane is the default and runs as it always has.
+
     python3 -m sndk_jev.service            # one run on the newest row, not sent
     python3 -m sndk_jev.service --send     # post to JEV; the key comes from .env
     python3 -m sndk_jev.service --day 2026-09-22   # replay a past day's newest row
+    python3 -m sndk_jev.service --send --lane tape # the opening lane's read
 """
 from __future__ import annotations
 
@@ -41,13 +48,14 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .ab_test import pick, confidence
-from .ask import DEFAULT_QUESTIONS, build_requests, load_questions, send, send_all
+from .ask import build_requests, load_questions, send, send_all
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import tag as event_tag
 from .cadence import cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, plan, save_last
 from .grade import live_options, run as grade_run
-from .hour import answer_sentences, hour_request, hour_summary, load_hour_doc, load_weights
-from .state_builder import DEFAULT_STATE_DIR, build_state, make_scene, omit_stale_book, parse_ts, session_close
+from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, load_weights
+from .lane import LANES, LIVE, Lane
+from .state_builder import DEFAULT_STATE_DIR, build_state, load_jsonl, make_scene, omit_stale_book, parse_ts, session_close
 
 SITUATION_PATHS = ("price.recent_move", "price.vs_vwap", "volume.now", "gex.air_to_wall", "iv.trend_30min")
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
@@ -133,10 +141,12 @@ def answer_entry(a: dict) -> dict:
 
 
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: dict,
-                 fresh: dict[str, dict] | None = None, missing: list[str] | None = None) -> tuple[dict, dict | None]:
-    """Steps 3 and 4: sentences from the answers, two questions over them, one reply from JEV.
-    Returns the hour record (what was used, what was fresh, what was left out or missing, the
-    request) and JEV's summary."""
+                 fresh: dict[str, dict] | None = None, missing: list[str] | None = None,
+                 lane: Lane = LIVE, unit: dict | None = None) -> tuple[dict, dict | None]:
+    """Steps 3 and 4: sentences from the answers, the lane's sum questions over them, one reply from
+    JEV. Returns the hour record (what was used, what was fresh, what was left out or missing, the
+    request) and JEV's summary. A lane on the tape needs its ``unit`` to price the bands: without
+    one there is no sum to ask."""
     sentences, left_out = answer_sentences(doc, answered, weights)
     fresh = fresh if fresh is not None else answered
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
@@ -146,17 +156,40 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
             "left_out": left_out, "missing": sorted(missing or []), "sentences": sentences}
     if not sentences:
         return {**base, "request": None}, None
-    req = hour_request(sentences, hour_doc)
+    if lane.bar_clock and not unit:
+        return {**base, "request": None, "no_sum": "no tape unit this read: the bars have stopped, so the bands cannot be priced"}, None
+    req = hour_request(sentences, hour_doc, lane=lane, ruler=unit)
     try:
         reply = send(req)
     except Exception as e:  # send() scrubs the key and turns the network into RuntimeError; be safe anyway
         reply = {"error": str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"}
-    return {**base, "request": req}, hour_summary(reply)
+    return {**base, "request": req}, hour_summary(reply, lane)
+
+
+def last_read_of(out_dir: Path, day: str, now: datetime) -> datetime | None:
+    """The lane's previous read today: the newest record in its day file stamped before ``now``. None on
+    the day's first read, or on a replay of a day the lane never read; the stretch labels then measure
+    from the open and the move since the last read is omitted."""
+    stamps = []
+    for rec in load_jsonl(out_dir / f"{day}.jsonl"):
+        try:
+            t = parse_ts(rec["row_ts"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if t < now:
+            stamps.append(t)
+    return max(stamps) if stamps else None
+
+
+def _stamp(lane: Lane, unit: dict | None) -> dict:
+    """What a tagged lane writes on its record, its hour record and its card; the live lane writes nothing new."""
+    return {"lane": lane.tag, "ruler": unit} if lane.tag else {}
 
 
 def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: dict, answers: dict | None,
          sent: bool, send_seconds: float | None, hour: dict | None = None, held: dict | None = None,
-         cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT, event: dict | None = None) -> dict:
+         cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT, event: dict | None = None,
+         lane: Lane = LIVE, unit: dict | None = None) -> dict:
     """The phone's document. Small, plain, and honest about what was and was not sent."""
     now = datetime.now(timezone.utc)
     row_ts = parse_ts(scene.row["ts"])
@@ -228,6 +261,7 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "hour": hour,
         # a tier-1 scheduled event due within the hour (events.py): a tag for the reader, never sent to JEV
         "event": event,
+        **_stamp(lane, unit),
         # the phone's clock words ("after the close", "next read") follow the day's real close, 13:00 on a half day
         "session": {"close": session_close(row_ts).strftime("%H:%M"),
                     "last_read": (session_close(row_ts) - timedelta(minutes=LAST_READ_BEFORE_CLOSE_MIN)).strftime("%H:%M")},
@@ -235,9 +269,14 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
     }
 
 
-def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str | None = None,
-             unsent_reason: str = UNSENT_DEFAULT) -> dict:
-    scene = make_scene(state_dir, day)
+def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, day: str | None = None,
+             unsent_reason: str = UNSENT_DEFAULT, lane: Lane = LIVE) -> dict:
+    out_dir = lane.folder(state_dir, out_dir)     # a tagged lane without a folder of its own refuses here
+    scene = make_scene(state_dir, day, bar_clock=lane.bar_clock, horizon=f"the next {lane.horizons[lane.primary][0]} minutes")
+    if lane.bar_clock:
+        # the stretch labels measure from the lane's previous read today, stamped on its own records
+        scene.last_read = last_read_of(out_dir, scene.row["ts"][:10], scene.now)
+    unit = scene.unit
     if day is None and do_send and scene.row["ts"][:10] != today_et():
         # the scanner has no row for today yet: sending on yesterday's last row would hold every
         # answer against a stale clock and file the read under the wrong day. Say so and stop.
@@ -269,12 +308,16 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
     live_ids = {qid for qid, q in by_id.items() if q.get("status") == "live"}
     out_dir.mkdir(parents=True, exist_ok=True)
     # cadence: a live question is asked afresh only when its cadence has elapsed; the rest hold
-    # their last answer. Without a key nothing is answered, so there is nothing to hold.
-    cad = ensure_cadence(out_dir, doc, day_name) if do_send else load_cadence(out_dir)
-    last = load_last(out_dir) if do_send else {}
-    skip, held = plan(doc, last, cad, now) if do_send else ({}, {})
+    # their last answer. Without a key nothing is answered, so there is nothing to hold. A lane
+    # without a cadence asks everything afresh on every read and keeps no last-asked file.
+    if lane.cadence:
+        cad = ensure_cadence(out_dir, doc, day_name) if do_send else load_cadence(out_dir)
+        last = load_last(out_dir) if do_send else {}
+        skip, held = plan(doc, last, cad, now) if do_send else ({}, {})
+    else:
+        cad, last, skip, held = {}, {}, {}, {}
     requests, skipped = build_requests(state, doc, skip=skip)
-    if do_send:
+    if do_send and lane.cadence:
         held = fill_missing(doc, skipped, last, cad, now, held)
     answers, send_seconds, hour, hour_rec = None, None, None, None
     if do_send:
@@ -297,9 +340,10 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
         # live questions skipped for a label the builder could not measure, and not covered by a held answer
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if qid in live_ids and str(why).startswith("missing") and qid not in held]
-        hour_rec, hour = sum_the_hour(doc, load_hour_doc(), answered, load_weights(out_dir), fresh, missing)
+        hour_doc = load_hour_doc(lane=lane)
+        hour_rec, hour = sum_the_hour(doc, hour_doc, answered, load_weights(out_dir), fresh, missing, lane, unit)
         send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
-        if hour is not None:
+        if hour is not None and lane.clock_blend:
             # the sum the phone shows and the grader scores is JEV's sum blended half and half with
             # how often this time of day ended each way on prior sessions; JEV's own sum rides beside it
             try:
@@ -319,9 +363,10 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
             last[qid] = {"row_ts": scene.row["ts"], "answer": ans, "moved": round(distance(prev, ans), 3)}
         # a question that left the doc, or went dark, has nothing to hold
         last = {qid: v for qid, v in last.items() if qid in by_id and by_id[qid].get("status") != "dark"}
-        save_last(out_dir, last)
+        if lane.cadence:
+            save_last(out_dir, last)
     record = {"row_ts": scene.row["ts"], "book_asof": (scene.row.get("meta") or {}).get("book_asof"), "sigma": scene.sigma, "event": event,
-              "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
+              **_stamp(lane, unit), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
               "answers": answers, "sent": do_send, "send_seconds": send_seconds, "hour": hour}
     with open(out_dir / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
@@ -329,16 +374,18 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
     if hour_rec and hour_rec.get("request"):
         # the sum record is what step 6 grades: spot and sigma are needed to read the bars against it
         (out_dir / "hour").mkdir(parents=True, exist_ok=True)
+        # a lane on the tape stores the bands JEV was told, in dollars, so the grader reads the same ones
+        band = {"band": band_of(unit, hour_doc, lane.primary)} if unit else {}
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event,
-                                **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
+                                **_stamp(lane, unit), **band, **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
     if do_send:
         # step 6, every run: grade every mark that has passed and refresh the weights step 3 reads
         try:
-            grade_run(state_dir, out_dir, allowed=live_options(doc))
+            grade_run(state_dir, out_dir, allowed=live_options(doc), lane=lane)
         except Exception as e:  # grading must never stop the card
             log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
-    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event)
+    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit)
     tmp = out_dir / "latest.json.tmp"
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, out_dir / "latest.json")
@@ -348,12 +395,14 @@ def run_once(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, day: str 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="JEV decision service for SNDK PRO: one run on the newest row, output for the phone.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
-    ap.add_argument("--out-dir", default=None, help="default <state-dir>/jev")
-    ap.add_argument("--questions", default=str(DEFAULT_QUESTIONS))
+    ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>: jev, or jev/lanes/<lane>")
+    ap.add_argument("--questions", default=None, help="default the lane's question doc")
     ap.add_argument("--day", help="build a past day's newest row instead of today's")
     ap.add_argument("--send", action="store_true", help="post to JEV; the key comes from .env or TYPESAFE_API_KEY")
     ap.add_argument("--loop", type=int, metavar="SECONDS", help="keep running every N seconds (the launchd job does not use this)")
+    ap.add_argument("--lane", choices=sorted(LANES), default="live", help="live (:02 and :32, the default) or tape (the opening lane)")
     args = ap.parse_args(argv)
+    lane = LANES[args.lane]
     load_env_file()
     do_send = bool(args.send)
     unsent = UNSENT_DEFAULT
@@ -362,12 +411,12 @@ def main(argv: list[str] | None = None) -> int:
         log(f"no TYPESAFE_API_KEY in the environment or in {ENV_FILE}: running unsent")
         do_send, unsent = False, "not sent: no key on this machine"
     state_dir = Path(args.state_dir)
-    out_dir = Path(args.out_dir) if args.out_dir else state_dir / "jev"
-    doc = load_questions(args.questions)
+    out_dir = lane.folder(state_dir, args.out_dir)
+    doc = load_questions(args.questions or lane.questions)
     last_row = None
     while True:
         try:
-            c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent)
+            c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent, lane)
             if c["row_ts"] != last_row:
                 n_ans = sum(1 for q in c["questions"] if q.get("answer"))
                 log(f"row {c['row_ts'][11:19]} labels {c['labels']} answered {n_ans}/{len(c['questions'])} "

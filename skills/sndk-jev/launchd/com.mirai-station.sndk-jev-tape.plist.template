@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.sndk-jev-tape</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk-jev.sh --lane tape</string>
+  </array>
+
+  <!-- The JEV opening lane (the plan of 2026-09-25): the same runner and market gate as
+       com.mirai-station.sndk-jev, with "lane tape" passed through to the service. Fires every
+       5 minutes from 09:35 to 10:30 ET (12 entries), each read stamped at the newest finished
+       bar and sized in tape units; the live job's :02 and :32 reads are untouched and the two
+       never share a file: this lane writes only state/jev/lanes/tape/. The key is read by the
+       service itself from the git-ignored skills/sndk-jev/.env, never from this file.
+       NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
+       TZ env var below. This box runs on Pacific, so Hour=6 Minute=35 == 06:35 PT == 09:35 ET
+       year-round (PT is ET minus 3h through DST). -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>35</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>40</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>50</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>55</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>25</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.sndk-jev-tape.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.sndk-jev-tape.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

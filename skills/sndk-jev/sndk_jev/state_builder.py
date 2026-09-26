@@ -36,6 +36,9 @@ UNITS = ("all distances are in sigma, today's expected-move unit for SanDisk; "
          "Options weight means the hedging exposure of dealers, the market makers on the other side of the options, at each strike; "
          "a wall is a strike where that weight piles up; the opening box is the first half hour's price range; "
          "RSI is a 0 to 100 gauge of overbought (above 70) or oversold (below 30)")
+# Added to the gloss on the tape lane, where the stretch labels are sized by the tape unit.
+TAPE_UNITS = ("; a tape unit is the middle of the last three 5-minute price ranges, in dollars, "
+              "measured afresh at every read, and the labels that use it state it")
 
 # SNDK PRO's own move rule (frame_is: a move at or past 0.15 sigma).
 MOVE_RULE_SIGMA = 0.15
@@ -179,6 +182,10 @@ class Scene:
     side_packet: dict | None = None        # SNDK PRO's side packet at or before now: level visits, RSI episodes
     chain_cache: dict | None = None        # the latest options book, only when it is this row's book
     prev_last_row: dict | None = None      # the last diary row of the most recent earlier session
+    bar_clock: bool = False                # the read is stamped at a bar close (the tape lane): the stretch labels are written
+    last_read: datetime | None = None      # the lane's previous read today, set by the service; None on the day's first read
+    unit: dict | None = None               # the tape unit for this read (tape_unit), only on the bar clock
+    horizon: str = HORIZON                 # the words context.horizon carries: the lane's sum horizon
 
 
 def load_side_packet(state_dir: Path, day: str, minutes_since_open: float) -> dict | None:
@@ -226,8 +233,33 @@ def load_prev_last_row(state_dir: Path, day: str) -> dict | None:
     return None
 
 
+# A read on the bar clock takes from the diary row only what the tape cannot give: the walls, vwap
+# and the options book (sigma comes pinned from the day's first row). Its time and spot are the bar's.
+BAR_CLOCK_ROW_KEYS = ("ticker", "call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "vwap", "gamma_sign", "gamma_flip",
+                      "atm_iv", "iv_skew", "adaptive_em", "dex_views", "net_exposure", "profile_ladder", "gex_views", "meta")
+
+
+def bar_clock_row(rows: list[dict], bars: list[dict], cutoff: datetime | None = None) -> dict:
+    """The read stamped at the newest finished bar (by ``cutoff``, else the newest on file): its close
+    time is the row's time and its close the spot, so the read stands where the tape stands rather
+    than where the scanner last looked. Sigma is the day's first row's, so a tape unit measured in
+    sigma means the same at 10:30 as at 09:35; the rest comes from the newest diary row."""
+    one = timedelta(minutes=1)
+    done = [b for b in bars if cutoff is None or parse_ts(b["ts"]) + one <= cutoff]
+    if not done:
+        raise ValueError("no finished bar to stamp the read on")
+    last, src = done[-1], rows[-1]
+    row = {"ts": (parse_ts(last["ts"]) + one).isoformat(), "spot": float(last["close"]), "sigma": rows[0].get("sigma")}
+    row.update({k: src[k] for k in BAR_CLOCK_ROW_KEYS if k in src})
+    return row
+
+
 def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None,
-               at: time | None = None, news: dict | None = None) -> Scene:
+               at: time | None = None, news: dict | None = None, bar_clock: bool = False,
+               horizon: str = HORIZON) -> Scene:
+    """One moment of SNDK PRO: the newest diary row of ``day`` (at or before ``at``), or with
+    ``bar_clock`` the newest finished bar with the row's walls and book beside it (bar_clock_row),
+    carrying the tape unit for the read (tape_unit). ``horizon`` is what context.horizon says."""
     state_dir = Path(state_dir)
     if day is None:
         days = available_days(state_dir, ROWS_SUBDIR)
@@ -237,21 +269,27 @@ def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None
     rows = load_rows(state_dir, day)
     if not rows:
         raise ValueError(f"no usable SNDK PRO rows for {day}")
+    cutoff = None
     if at is not None:
         tz = parse_ts(rows[0]["ts"]).tzinfo
         cutoff = datetime.combine(date.fromisoformat(day), at, tzinfo=tz)
         rows = [r for r in rows if parse_ts(r["ts"]) <= cutoff]
         if not rows:
             raise ValueError(f"no SNDK PRO row at or before {at} on {day}")
+    all_bars = load_bars(state_dir, day)
+    if bar_clock:
+        rows = rows + [bar_clock_row(rows, all_bars, cutoff)]
     row = rows[-1]
     now = parse_ts(row["ts"])
     sigma = row.get("sigma")
     if not _is_num(sigma) or sigma <= 0:
         raise ValueError(f"row at {row['ts']} carries no sigma ruler")
-    bars = [b for b in load_bars(state_dir, day) if parse_ts(b["ts"]) + timedelta(minutes=1) <= now]
+    bars = [b for b in all_bars if parse_ts(b["ts"]) + timedelta(minutes=1) <= now]
     since_open = (now - session_open(now)).total_seconds() / 60.0
-    return Scene(row=row, rows_today=rows, bars=bars, prior_bars=prior_bar_days(state_dir, day),
+    prior = prior_bar_days(state_dir, day)
+    return Scene(row=row, rows_today=rows, bars=bars, prior_bars=prior,
                  now=now, sigma=float(sigma), news=news,
+                 bar_clock=bar_clock, unit=tape_unit(bars, float(sigma), now, prior) if bar_clock else None, horizon=horizon,
                  side_packet=load_side_packet(state_dir, day, since_open),
                  chain_cache=load_chain_cache(state_dir, now),
                  prev_last_row=load_prev_last_row(state_dir, day))
@@ -317,9 +355,117 @@ def close_at(bars: list[dict], t: datetime) -> float | None:
     return float(cands[-1]["close"]) if cands else None
 
 
+# The tape unit: the median high-to-low range of the last three finished 5-minute slices. Held at
+# 0.4 sigma until 09:45, when three slices first exist; floored at 0.08 sigma so a dead tape still
+# has a unit; never capped, so a wild open is measured as wild.
+RULER_SLICE_MIN = 5
+RULER_SLICES = 3
+RULER_HOLD_UNTIL = time(9, 45)
+RULER_HOLD_SIGMA = 0.4
+RULER_FLOOR_SIGMA = 0.08
+
+
+def ruler(bars: list[dict], sigma: float, now: datetime) -> dict | None:
+    """The tape unit for a read at ``now``: ``unit_dollars``, ``unit_sigma``, the ``slices_used`` and
+    its ``source`` (held, tape or floor). None when the newest slice has no bars: the tape has
+    stopped, and a unit from an older stretch would pass off the last move as the current one."""
+    if now.time() < RULER_HOLD_UNTIL:
+        return {"unit_dollars": round(RULER_HOLD_SIGMA * sigma, 2), "unit_sigma": RULER_HOLD_SIGMA, "slices_used": 0, "source": "held"}
+    ranges = []
+    for k in range(RULER_SLICES):
+        end = now - timedelta(minutes=RULER_SLICE_MIN * k)
+        sl = bars_finished_between(bars, end - timedelta(minutes=RULER_SLICE_MIN), end)
+        if sl:
+            ranges.append(max(float(b["high"]) for b in sl) - min(float(b["low"]) for b in sl))
+        elif k == 0:
+            return None
+    unit = statistics.median(ranges)
+    if unit < RULER_FLOOR_SIGMA * sigma:
+        return {"unit_dollars": round(RULER_FLOOR_SIGMA * sigma, 2), "unit_sigma": RULER_FLOOR_SIGMA, "slices_used": len(ranges), "source": "floor"}
+    return {"unit_dollars": round(unit, 2), "unit_sigma": round(unit / sigma, 3), "slices_used": len(ranges), "source": "tape"}
+
+
+def slice_range(bars: list[dict], end_min: int) -> float | None:
+    """High-to-low range of the 5-minute slice ending at ``end_min`` (a minute of day); None with no bars."""
+    sl = slot(bars, end_min - RULER_SLICE_MIN, end_min)
+    return max(float(b["high"]) for b in sl) - min(float(b["low"]) for b in sl) if sl else None
+
+
+def unit_rank(unit: dict, prior_bars: dict[str, list[dict]], now: datetime) -> dict | None:
+    """The tape unit against the same minute on the prior sessions: the same three slices measured on
+    each prior day's bars, placed in thirds (rank_at_slot). None while the unit is held (before 09:45
+    every day's unit is the same number) and when fewer than MIN_RANK_SESSIONS prior sessions carry
+    all three slices."""
+    if unit.get("source") == "held":
+        return None
+    end_min = _mod(now)
+    base = []
+    for pbars in prior_bars.values():
+        ranges = [slice_range(pbars, end_min - RULER_SLICE_MIN * k) for k in range(RULER_SLICES)]
+        if all(r is not None for r in ranges):
+            base.append(statistics.median(ranges))
+    return rank_at_slot(float(unit["unit_dollars"]), base)
+
+
+def tape_unit(bars: list[dict], sigma: float, now: datetime, prior_bars: dict[str, list[dict]]) -> dict | None:
+    """The unit for a read on the tape lane: ruler() with its rank against the prior sessions at this
+    minute under ``rank`` when there is one. What the record, the card and the sum's context line carry."""
+    unit = ruler(bars, sigma, now)
+    if unit:
+        rank = unit_rank(unit, prior_bars, now)
+        if rank:
+            unit["rank"] = rank
+    return unit
+
+
 def slot(bars: list[dict], start_min: int, end_min: int) -> list[dict]:
     """Bars whose minute of day falls in [start_min, end_min)."""
     return [b for b in bars if start_min <= _mod(_t(b)) < end_min]
+
+
+# ----------------------------------------------------------------------------- the stretch since the last read
+
+# The tape lane's stretch labels (the plan of 2026-09-25, reworked on 22 sessions on 2026-09-26): the
+# net move since the last read in tape units against the sum's own cuts, and the range, the travel
+# and the direction flips of the stretch placed against the same clock minutes on the prior sessions.
+# A question reads the move (live) and the range (shadow); travel, flips and the round trip are
+# written on every record and read by no question, so the four-week check can re-test them for free.
+TAPE_FLAT_UNITS = 0.35     # held: within this many units of the last read; the sum's flat band (sndk_lane_hour.json)
+TAPE_BIG_UNITS = 0.7       # big: beyond this many units; the sum's big band
+TAPE_LABELS = ("move_since_read", "range_since_read", "travel_since_read", "flips_since_read", "round_trip")
+
+
+def stretch(bars: list[dict], start_min: int, end_min: int) -> tuple[float | None, list[dict]]:
+    """The bars of a day in the clock window [start_min, end_min) and the close just before it: the
+    anchor a move is measured from, and the first step travel and flips count from."""
+    before = [b for b in bars if _mod(_t(b)) < start_min]
+    return (float(before[-1]["close"]) if before else None), slot(bars, start_min, end_min)
+
+
+def stretch_range(anchor: float | None, win: list[dict]) -> float:
+    return max(float(b["high"]) for b in win) - min(float(b["low"]) for b in win)
+
+
+def _steps(anchor: float | None, win: list[dict]) -> list[float]:
+    closes = ([anchor] if anchor is not None else []) + [float(b["close"]) for b in win]
+    return [b - a for a, b in zip(closes[:-1], closes[1:])]
+
+
+def stretch_travel(anchor: float | None, win: list[dict]) -> float:
+    """The sum of every minute-to-minute move: how far price went to get where it went."""
+    return sum(abs(d) for d in _steps(anchor, win))
+
+
+def stretch_flips(anchor: float | None, win: list[dict]) -> int:
+    """How many times the minute-to-minute direction changed; a minute that closed unchanged is skipped."""
+    moves = [d for d in _steps(anchor, win) if d != 0]
+    return sum(1 for a, b in zip(moves[:-1], moves[1:]) if (a > 0) != (b > 0))
+
+
+def units_of(x: float, unit_dollars: float) -> str:
+    """``x`` tape units in words, with what one unit is in dollars, rounded as the sum's context line rounds it."""
+    u = round(unit_dollars)
+    return f"{x:.2f} of a tape unit (${u})" if x <= 1 else f"{x:.2f} tape units (one is ${u})"
 
 
 def sig(x: float) -> str:
@@ -356,9 +502,29 @@ def fifth_band(rank_frac: float) -> str:
     return "middle band"
 
 
+def third_band(rank_frac: float) -> str:
+    """The third a rank falls in, in the words the labels carry: a value above two thirds of its
+    history is in the top third, below one third of it in the bottom third."""
+    return f"{third(rank_frac)} third"
+
+
 def rank_frac(value: float, others: list[float]) -> float:
     """Share of ``others`` that sit below ``value``."""
     return sum(1 for o in others if o < value) / len(others)
+
+
+MIN_RANK_SESSIONS = MIN_VOLUME_SESSIONS   # prior sessions a rank against the same minutes needs: the house rule
+
+
+def rank_at_slot(value: float, base: list[float]) -> dict | None:
+    """Where ``value`` sits against the same clock window on the prior sessions (``base``, one number per
+    session): the third and the count, as the label words them ("in the top third for this minute,
+    higher than 15 of 20 prior sessions"). None under MIN_RANK_SESSIONS sessions: too thin to call a
+    third, so the label is omitted and the packer skips its question rather than guess."""
+    if len(base) < MIN_RANK_SESSIONS:
+        return None
+    under = sum(1 for b in base if b < value)
+    return {"band": third_band(under / len(base)), "higher_than": under, "of": len(base)}
 
 
 def wilder_rsi(closes: list[float], period: int = RSI_PERIOD) -> float | None:
@@ -424,7 +590,8 @@ def _run(scene: Scene) -> _Out:
     for step in (b.context, b.price, b.range, b.iv, b.gex, b.options, b.volume, b.momentum,
                  b.context_more, b.price_more, b.range_more, b.iv_more, b.gex_more, b.options_more,
                  b.volume_more, b.momentum_more,
-                 b.session_shape, b.nearest_level, b.new_activity, b.flow_pace, b.path_efficiency, b.news):
+                 b.session_shape, b.nearest_level, b.new_activity, b.flow_pace, b.path_efficiency,
+                 b.tape, b.news):
         step()
     return out
 
@@ -499,8 +666,8 @@ class _Builder:
     def context(self) -> None:
         o = self.o
         o.put("context", "symbol", SYMBOL)
-        o.put("context", "units", UNITS)
-        o.put("context", "horizon", HORIZON)
+        o.put("context", "units", UNITS + TAPE_UNITS if self.s.bar_clock else UNITS)
+        o.put("context", "horizon", self.s.horizon)
         # where we are in the session is one label, context.session_progress (see context_more)
 
         expiries = (self.row.get("meta") or {}).get("expiries") or []
@@ -1782,6 +1949,98 @@ class _Builder:
             o.put("momentum", "path_efficiency", f"{lead}, mixed (between {pct(PATH_CHOPPY)} and {pct(PATH_ORDERLY)})", answer="mixed")
         else:
             o.put("momentum", "path_efficiency", f"{lead}, choppy (under {pct(PATH_CHOPPY)})", answer="choppy")
+
+    # ---- the tape lane: the stretch since the last read
+    def _rank_for_this_minute(self, value: float, start_min: int, end_min: int, measure) -> dict | None:
+        """``value`` against ``measure`` of the same clock window on each prior session that has every
+        minute of it (a session with a hole in the window is left out of the baseline)."""
+        base = []
+        for pbars in self.s.prior_bars.values():
+            anchor, win = stretch(pbars, start_min, end_min)
+            if len(win) >= end_min - start_min:
+                base.append(measure(anchor, win))
+        return rank_at_slot(value, base)
+
+    def tape(self) -> None:
+        """Written only on the bar clock (the tape lane); the live lane writes nothing and omits nothing.
+        The stretch runs from the lane's last read today, or from the open on the day's first read, to
+        this read. The move keeps the sum's bands in tape units; the range, travel and flips are placed
+        against the same minutes on the prior sessions, in thirds, with the count in the sentence."""
+        s, o = self.s, self.o
+        if not s.bar_clock:
+            return
+        since = s.last_read if s.last_read is not None else self.open_t
+        what = "the last read" if s.last_read is not None else "the open"
+        gap = (self.now - since).total_seconds() / 60.0
+        lead = f"since {what}, {gap:g} minutes ago"
+        start_min, end_min = _mod(since), _mod(self.now)
+        anchor, win = stretch(self.bars, start_min, end_min)
+        if gap <= 0 or not win:
+            for key in TAPE_LABELS:
+                o.skip("tape", key, f"no finished bars {lead}")
+            return
+        if s.unit is None:
+            for key in TAPE_LABELS:
+                o.skip("tape", key, "no tape unit this read: the bars have stopped")
+            return
+        u = float(s.unit["unit_dollars"])
+        # the net move, in units, against the sum's own cuts: needs a read to measure from
+        x = None
+        if s.last_read is None:
+            o.skip("tape", "move_since_read", "the day's first read: no earlier read today to measure from")
+        elif anchor is None:
+            o.skip("tape", "move_since_read", f"no finished bar at {what}")
+        else:
+            net = self.spot - anchor
+            x = net / u
+            where = "level with it" if net == 0 else f"${abs(net):.1f} {'above' if net > 0 else 'below'} it"
+            verb = "rose" if net > 0 else "fell"
+            if abs(x) <= TAPE_FLAT_UNITS:
+                cut, verdict, answer = f"within the {TAPE_FLAT_UNITS} cut", "held", "held"
+            elif abs(x) <= TAPE_BIG_UNITS:
+                cut, verdict, answer = f"more than the {TAPE_FLAT_UNITS} cut and no more than {TAPE_BIG_UNITS}", f"{verb} small", f"{verb}_small"
+            else:
+                cut, verdict, answer = f"more than the {TAPE_BIG_UNITS} cut", f"{verb} big", f"{verb}_big"
+            o.put("tape", "move_since_read", f"{lead}, price ended {where}, {units_of(abs(x), u)}, {cut}, so it {verdict}", answer=answer)
+        # the stretch measures need every minute of the window on today's tape
+        if len(win) < end_min - start_min:
+            for key in TAPE_LABELS[1:]:
+                o.skip("tape", key, f"bars missing {lead}: {len(win)} of {end_min - start_min} minutes")
+            return
+        ranks = {}
+        for key, measure, name in (("range_since_read", stretch_range, "range"), ("travel_since_read", stretch_travel, "travel"),
+                                   ("flips_since_read", stretch_flips, "flips")):
+            value = measure(anchor, win)
+            rank = self._rank_for_this_minute(value, start_min, end_min, measure)
+            if rank is None:
+                have = sum(1 for pb in self.s.prior_bars.values() if len(stretch(pb, start_min, end_min)[1]) >= end_min - start_min)
+                o.skip("tape", key, f"needs {MIN_RANK_SESSIONS} prior sessions of bars at these minutes, have {have}")
+                continue
+            ranks[name] = rank
+            placed = f"in the {rank['band']} for this minute, higher than {rank['higher_than']} of {rank['of']} prior sessions"
+            if name == "range":
+                o.put("tape", key, f"the range {lead}, is ${value:.1f}, {units_of(value / u, u)}, {placed}",
+                      answer={"top third": "wide", "middle third": "usual", "bottom third": "narrow"}[rank["band"]])
+            elif name == "travel":
+                o.put("tape", key, f"price travelled ${value:.1f} {lead}, {units_of(value / u, u)}, {placed}",
+                      answer={"top third": "churning", "middle third": "usual", "bottom third": "clean"}[rank["band"]])
+            else:
+                changed = "never changed" if value == 0 else "changed once" if value == 1 else f"changed {value} times"
+                o.put("tape", key, f"the 1-minute direction {changed} {lead}, {placed}",
+                      answer={"top third": "many", "middle third": "usual", "bottom third": "few"}[rank["band"]])
+        # a round trip: a wide stretch that ended near where it started, the case the move alone hides
+        if x is None:
+            o.skip("tape", "round_trip", "needs the move since the last read")
+        elif "range" not in ranks:
+            o.skip("tape", "round_trip", "needs the range since the last read placed against the prior sessions")
+        elif ranks["range"]["band"] == "top third" and abs(x) <= TAPE_FLAT_UNITS:
+            o.put("tape", "round_trip", f"a round trip: the range {lead}, is in the top third for this minute yet price ended "
+                                        f"within {TAPE_FLAT_UNITS} of a tape unit of the last read", answer="true")
+        else:
+            ended = (f"within {TAPE_FLAT_UNITS} of a tape unit of the last read" if abs(x) <= TAPE_FLAT_UNITS
+                     else f"{abs(x):.2f} of a tape unit {'above' if x > 0 else 'below'} the last read")
+            o.put("tape", "round_trip", f"not a round trip: the range {lead}, is in the {ranks['range']['band']} for this minute "
+                                        f"and price ended {ended}", answer="false")
 
     # ---- news (optional, supplied by the news desk)
     def news(self) -> None:

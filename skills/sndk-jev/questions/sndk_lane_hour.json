@@ -1,0 +1,39 @@
+{
+ "name": "SNDK PRO, the tape lane's call: 10 minutes ahead, measured in tape units",
+ "version": "0.2.0-draft",
+ "date": "2026-09-25",
+ "status": "read by the tape lane (sndk_jev/lane.py, `--lane tape`): its one sum, graded under state/jev/lanes/tape/ (plan of 2026-09-25)",
+ "how_to_use": [
+  "Step 4 of the opening lane. The state is the lane's live answers from step 2, each rewritten by code as one sentence with how sure JEV was, plus a context line that states the tape unit in dollars for this read (the middle of the last three 5-minute slice ranges, held at 0.4 of the day's expected move until 09:45, floored at 0.08 of it).",
+  "One question rides on the sentences: where price is 10 minutes on, in five steps, so direction and size come from one answer. Code grades direction from the summed odds of the up and down steps and size from the summed odds of the big steps, against the bar 10 minutes after the read.",
+  "The bands are in tape units, not sigma, so they adapt to how the stock is moving: Flat is within 0.35 of a unit (about one read in three at every hour and every session); small is more than 0.35 and no more than 0.7 of a unit; big is beyond 0.7 of a unit (about one read in three, about half of the moves that leave Flat). The context line names the bands in dollars for the read, because JEV cannot turn a unit and a fraction into a price.",
+  "This is a forecast, graded by the bars, never a call. Its grades, weights and tally live under state/jev/lanes/tape/ and never touch the live lane.",
+  "Code grades three views from the one answer, never renormalising away the unsure mass: the raw five-way; direction with up = up_small + up_big and down = down_small + down_big; size with big = up_big + down_big. Each view is scored against its own per-bucket constant, not thirds. A shadow three-way direction question rides in the same request on the first 60 reads to check the five-way's direction marginal; it is dropped after."
+ ],
+ "primary": "next_10",
+ "horizons": {
+  "next_10": {
+   "minutes": 10,
+   "flat_band_units": 0.35,
+   "big_band_units": 0.7,
+   "band_source": "the tape unit stored on the record"
+  }
+ },
+ "questions": {
+  "next_10": {
+   "type": "choice",
+   "ask": "Where is price ten minutes from now, and how far?",
+   "why": "The lane's one sum: direction and size in a single answer, sized by the tape.",
+   "instructions": "Read `context.unit` for what one tape unit is in dollars right now and where the flat, small and big bands fall for this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 10 minutes? Answer down_big, down_small, flat, up_small, up_big or unsure.",
+   "criteria": {
+    "down_big": "price ends more than 0.7 of a tape unit below where it is now, the big band down; on this name that happens about one time in six",
+    "down_small": "price ends below where it is now by more than 0.35 of a tape unit and no more than 0.7 of a unit, the small band down; on this name that happens about one time in six",
+    "flat": "price ends within 0.35 of a tape unit of where it is now, either way; on this name that is the common case, about one time in three",
+    "up_small": "price ends above where it is now by more than 0.35 of a tape unit and no more than 0.7 of a unit, the small band up; on this name that happens about one time in six",
+    "up_big": "price ends more than 0.7 of a tape unit above where it is now, the big band up; on this name that happens about one time in six",
+    "unsure": "the answers pull hard both ways, so neither the common case nor any one step can be backed"
+   }
+  }
+ },
+ "context_line_example": "one tape unit is $24; flat is within $8 either way (0.35 of a unit); small is $8 to $17; big is more than $17 (0.7 of a unit)"
+}

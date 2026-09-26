@@ -1,11 +1,12 @@
 {
  "name": "sndk-jev label spec",
- "version": "0.6-reviewed",
- "date": "2026-09-25",
+ "version": "0.7-lane",
+ "date": "2026-09-26",
  "purpose": "Every label the state builder writes or could write, with the logic under it. Built labels are checked against the code by a test. Free and new labels are designs, not code.",
  "statuses": {
   "built": "in state_builder.py today, writing sentences",
-  "blocked": "needs data SNDK PRO does not store"
+  "blocked": "needs data SNDK PRO does not store",
+  "lane": "written by the tape lane only: a read on the bar clock (state_builder.tape), never by the live lane"
  },
  "types": {
   "distance": "how far, in sigma, today's expected move",
@@ -22,7 +23,8 @@
   "judge it against a fixed cut, in code",
   "write one sentence that carries the number and the cut",
   "hand it to the packer, which gives each question only the sentences it names",
-  "on a run on today's newest row, an options book older than 6 minutes by the wall clock drops every gex.*, options.*, iv.skew, iv.term_slope and range.wall_retests label into omitted with the reason, and a side packet whose own integrity checks report a failure is not used; a replay checks neither"
+  "on a run on today's newest row, an options book older than 6 minutes by the wall clock drops every gex.*, options.*, iv.skew, iv.term_slope and range.wall_retests label into omitted with the reason, and a side packet whose own integrity checks report a failure is not used; a replay checks neither",
+  "on the tape lane the stretch since the lane's last read (or the open, on the day's first read) is measured as well: the net move in tape units against the sum's own cuts, and the range, travel and direction flips placed against the same clock minutes on the prior sessions in thirds, with the count in the sentence (rank_at_slot); the move needs a last read, the ranks need every minute of the window today and 5 prior sessions with it"
  ],
  "viewpoints": [
   {
@@ -862,6 +864,66 @@
    "cut": "0.15 sigma is no reaction yet",
    "reads_as": "price has risen 0.30 sigma since the item arrived, and got as far as 0.31 sigma away at its furthest point",
    "real": false
+  },
+  {
+   "path": "tape.move_since_read",
+   "viewpoint": "volume_price",
+   "status": "lane",
+   "type": "change",
+   "from": "spot (the newest finished bar's close); the close of the bar at the lane's last read today; the tape unit (ruler)",
+   "logic": "spot minus the close at the last read, divided by the tape unit in dollars",
+   "cut": "within 0.35 of a unit is held; more than 0.35 and no more than 0.7 is small; beyond 0.7 is big (the sum's bands); omitted on the day's first read",
+   "reads_as": "since the last read, 5 minutes ago, price ended $13.2 above it, 0.60 of a tape unit ($22), more than the 0.35 cut and no more than 0.7, so it rose small",
+   "real": true,
+   "note": "added 2026-09-26 for the opening lane; rendered from the real bars at 2026-09-25 09:40. Read by the lane's live question move_since_read; its words are rose and fell so the sum never sees its own options"
+  },
+  {
+   "path": "tape.range_since_read",
+   "viewpoint": "volume_price",
+   "status": "lane",
+   "type": "rank",
+   "from": "today's bars in the window from the last read (or the open) to now; the same clock window on each prior session that has every minute of it",
+   "logic": "high to low of the window, placed against the prior sessions' same window: the third it falls in and how many it beat",
+   "cut": "top third above two thirds of the prior sessions; bottom third below one third; needs 5 prior sessions and every minute of today's window",
+   "reads_as": "the range since the last read, 5 minutes ago, is $17.8, 0.81 of a tape unit ($22), in the bottom third for this minute, higher than 5 of 20 prior sessions",
+   "real": true,
+   "note": "added 2026-09-26; rendered from the real bars at 2026-09-25 09:40. Read by the lane's shadow question range_since_read"
+  },
+  {
+   "path": "tape.travel_since_read",
+   "viewpoint": "volume_price",
+   "status": "lane",
+   "type": "rank",
+   "from": "the closes of today's window and the close just before it; the same on each prior session",
+   "logic": "the sum of every minute-to-minute move, placed against the prior sessions' same window in thirds",
+   "cut": "as tape.range_since_read",
+   "reads_as": "price travelled $21.7 since the last read, 5 minutes ago, 1.51 tape units (one is $14), in the top third for this minute, higher than 17 of 20 prior sessions",
+   "real": true,
+   "note": "added 2026-09-26; rendered from the real bars at 2026-09-24 10:05. Written on the record, read by no question: travel is the range by another name (0.81 rank correlation on 22 sessions)"
+  },
+  {
+   "path": "tape.flips_since_read",
+   "viewpoint": "volume_price",
+   "status": "lane",
+   "type": "rank",
+   "from": "the closes of today's window and the close just before it; the same on each prior session",
+   "logic": "how many times the minute-to-minute direction changed, unchanged minutes skipped, placed against the prior sessions' same window in thirds",
+   "cut": "as tape.range_since_read",
+   "reads_as": "the 1-minute direction changed 2 times since the last read, 5 minutes ago, in the bottom third for this minute, higher than 6 of 20 prior sessions",
+   "real": true,
+   "note": "added 2026-09-26; rendered from the real bars at 2026-09-24 10:05. Written on the record, read by no question: matched a fair coin on 22 sessions"
+  },
+  {
+   "path": "tape.round_trip",
+   "viewpoint": "volume_price",
+   "status": "lane",
+   "type": "state",
+   "from": "tape.range_since_read's third and tape.move_since_read's units",
+   "logic": "a round trip when the range is in the top third for this minute and price ended within 0.35 of a unit of the last read; otherwise not",
+   "cut": "top third and within 0.35 of a unit",
+   "reads_as": "not a round trip: the range since the last read, 5 minutes ago, is in the middle third for this minute and price ended 0.87 of a tape unit above the last read",
+   "real": true,
+   "note": "added 2026-09-26; rendered from the real bars at 2026-09-24 10:05. Written on the record, read by no question: 7 of 204 opening reads on 22 sessions"
   }
  ],
  "folded": [

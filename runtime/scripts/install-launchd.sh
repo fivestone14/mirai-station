@@ -30,6 +30,9 @@ PLISTS=(
   # The JEV decision service (09-22): its own job, 20 s behind the scanner, reads the
   # station's files and writes only state/jev/. Named here so a reinstall keeps it.
   "com.mirai-station.sndk-jev.plist"
+  # The JEV opening lane (09-26): the same runner with `--lane tape`, every 5 minutes
+  # 09:35 to 10:30 ET, writing only state/jev/lanes/tape/.
+  "com.mirai-station.sndk-jev-tape.plist"
   "com.mirai-station.voice.plist"
 )
 

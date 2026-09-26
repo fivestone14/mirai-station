@@ -41,14 +41,32 @@ def test_spec_is_well_formed():
         assert lab["reads_as"].strip(), lab["path"]
 
 
+def _produced(scene):
+    state, omitted = build_state(scene)
+    assert omitted == {}, omitted
+    return {f"{g}.{k}" for g, labels in state.items() for k in labels}
+
+
 def test_built_set_matches_the_code(full_scene):
     d = spec()
-    state, omitted = build_state(full_scene)
-    assert omitted == {}, omitted
-    produced = {f"{g}.{k}" for g, labels in state.items() for k in labels}
+    produced = _produced(full_scene)
     built = {lab["path"] for lab in d["labels"] if lab["status"] == "built"}
     assert produced - built == set(), f"the code writes labels the spec does not call built: {sorted(produced - built)}"
     assert built - produced == set(), f"the spec calls labels built that the code does not write: {sorted(built - produced)}"
+
+
+def test_lane_set_matches_the_code(full_scene, lane_scene):
+    """A label the spec calls ``lane`` is written on the tape lane and only there: the live lane's
+    state never carries it, and on the lane every one of them comes out beside the built set."""
+    d = spec()
+    built = {lab["path"] for lab in d["labels"] if lab["status"] == "built"}
+    lane = {lab["path"] for lab in d["labels"] if lab["status"] == "lane"}
+    assert lane and all(p.startswith("tape.") for p in lane), sorted(lane)
+    assert _produced(full_scene) & lane == set(), "the live lane wrote a lane label"
+    on_lane = _produced(lane_scene)
+    assert on_lane - built - lane == set(), f"the lane writes labels the spec does not know: {sorted(on_lane - built - lane)}"
+    assert lane - on_lane == set(), f"the spec calls labels lane that the lane does not write: {sorted(lane - on_lane)}"
+    assert built - on_lane == set(), f"the lane lost built labels: {sorted(built - on_lane)}"
 
 
 def test_unbuilt_labels_have_no_question_yet_or_are_named_by_one():
@@ -64,7 +82,7 @@ def test_unbuilt_labels_have_no_question_yet_or_are_named_by_one():
             continue
         group = lab["path"].split(".")[0]
         # nothing to assert about the answer; the page shows it. Only guard against a typo'd group.
-        assert group in {"context", "price", "range", "iv", "gex", "options", "volume", "momentum", "news"}, lab["path"]
+        assert group in {"context", "price", "range", "iv", "gex", "options", "volume", "momentum", "news", "tape"}, lab["path"]
 
 
 def test_a_retired_question_is_never_asked_again():

@@ -1,0 +1,172 @@
+{
+ "name": "SNDK PRO, the tape lane's questions: the first hour, read every 5 minutes, measured in tape units",
+ "version": "0.2.0",
+ "date": "2026-09-26",
+ "status": "read by the tape lane (sndk_jev/lane.py, `--lane tape`): asked afresh on every read, 09:35 to 10:30 ET; the answers are summed by questions/sndk_lane_hour.json",
+ "how_to_use": [
+  "Each group is one JEV request. Every option quotes the label's own words; exactly one escape option, unsure, last. Nothing here is held between reads: the lane has no cadence, so every question is asked on every read.",
+  "Statuses as the code treats them: live is asked, rewritten as a sentence into the sum's state (hour.answer_sentences) and paired with the outcome for its weight (grade.live_options); shadow is asked and logged on the record but is never a sentence and never paired; a shadow question is promoted by changing this word once its live-read numbers earn it.",
+  "'For this minute' means the same clock window on the prior sessions: a measure of the stretch since the last read is placed against the same minutes of the day on each of the last 20 sessions of bars (state_builder.rank_at_slot, the helper volume.now's ranking shares), and the label says the third it falls in and the count ('in the top third for this minute, higher than 15 of 20 prior sessions'). No fixed multiples: the cuts are ranks, so they follow the tape as sessions accrue. Under 5 prior sessions with those minutes the label is omitted and the question skipped.",
+  "The one exception is the net move, which keeps the sum's own bands in tape units (held within 0.35 of a unit, big beyond 0.7): the unit is measured from the tape at every read (state_builder.ruler) and those fractions gave about a third each at every hour on 22 sessions. Its options are rose and fell, not the sum's up and down, so the sum never sees its own option words in the state it reads.",
+  "Three more stretch measures are written on every record and read by no question: tape.travel_since_read (travel is the range by another name, 0.81 rank correlation on 22 sessions), tape.flips_since_read (matched a fair coin, Binomial(4, 0.5), on 22 sessions) and tape.round_trip (7 of 204 opening reads). The four-week check re-tests them from the records without spending a question; one earns a question here only by beating the day-shuffled test on live reads.",
+  "The row-only groups below are copies of the live doc's (questions/sndk_pro.json), word for word, so JEV reads the same strike, weight, level and skew facts on the lane it reads on the live clock; a test keeps each copy equal to its original. The plan's 'gap' item has a label (price.vs_prior_close) but no live question, and the bar-clock read does not carry the prior close, so the nearest live question stands in: where price sits against the last two sessions' ranges."
+ ],
+ "groups": [
+  {
+   "id": "tape",
+   "reads": [
+    "context",
+    "tape.move_since_read",
+    "tape.range_since_read"
+   ],
+   "questions": {
+    "move_since_read": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Since the last read, did price rise, fall or hold, and how far?",
+     "why": "The one stretch measure with a job: it tells the sum how far the tape just moved in its own units, in words the sum's options never use. Direction after a move is near a coin on 22 sessions (48% continuation); size is not (55% after a big slice, 38% after a small one).",
+     "type": "choice",
+     "instructions": "Read `tape.move_since_read`. It says how far price ended from the last read in tape units and names the cut it passed, ending 'so it rose big', 'so it rose small', 'so it held', 'so it fell small' or 'so it fell big'. Which is it?",
+     "criteria": {
+      "rose_big": "the label ends 'so it rose big': price ended more than the 0.7 cut above the last read",
+      "rose_small": "the label ends 'so it rose small': price ended more than the 0.35 cut and no more than 0.7 of a tape unit above the last read",
+      "held": "the label ends 'so it held': price ended within the 0.35 cut of the last read, either way",
+      "fell_small": "the label ends 'so it fell small': price ended more than the 0.35 cut and no more than 0.7 of a tape unit below the last read",
+      "fell_big": "the label ends 'so it fell big': price ended more than the 0.7 cut below the last read",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "range_since_read": {
+     "viewpoint": "volume_price",
+     "status": "shadow",
+     "cadence": "every scan",
+     "ask": "Was the range since the last read wide, usual or narrow for this minute?",
+     "why": "In dollars a wide stretch leaned to a bigger next move on 22 sessions (65% over 0.12 sigma in the next 10 minutes against 50% after a narrow one); in tape units the lean reversed, because the unit already carries the tape's liveliness. Shadow until 30 sessions of live reads show its information about the next 10 minutes above the day-shuffled null; promoted by changing this status.",
+     "type": "choice",
+     "instructions": "Read `tape.range_since_read`. Which third does it place the range in for this minute?",
+     "criteria": {
+      "wide": "the label says the range is in the top third for this minute",
+      "usual": "the label says the range is in the middle third for this minute",
+      "narrow": "the label says the range is in the bottom third for this minute",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "strikes",
+   "reads": [
+    "context",
+    "gex.weight_side"
+   ],
+   "copied_from": "sndk_pro.json",
+   "questions": {
+    "weight_side": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every 10 minutes",
+     "ask": "Does most of the options weight sit above price, below it, or evenly?",
+     "why": "The only strike question that varies day to day; graded as agreement with the label, never against the next move.",
+     "type": "choice",
+     "instructions": "Read `gex.weight_side`. Where does most of the options weight sit compared with price? The sentence's opening words decide: 'most of the options weight sits above price' is above, 'most ... sits below price' is below, 'split about evenly' is even; the percentage that follows is description, not the verdict.",
+     "criteria": {
+      "above": "the label opens with 'most of the options weight sits above price'; the percentage after that is ignored",
+      "below": "the label opens with 'most of the options weight sits below price'; the percentage after that is ignored",
+      "even": "the label opens with 'the options weight is split about evenly'; the percentage after that is ignored",
+      "unsure": "the label gives too little to call"
+     },
+     "copied_from": "sndk_pro.json"
+    }
+   }
+  },
+  {
+   "id": "strikes_next",
+   "reads": [
+    "context",
+    "gex.air_to_wall",
+    "range.wall_retests"
+   ],
+   "copied_from": "sndk_pro.json",
+   "questions": {
+    "wall_return": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every scan",
+     "ask": "Is the nearest strike with a big pile of options close to price, and how often has price visited it today?",
+     "why": "`air_to_wall` read heavy_strike_close on 10 of 53 runs today, every one of them a strike price had come back to 0 or 1 times, and on the 43 open_air runs `range.wall_retests` moved through 0, 1, 2 and 4 visits (four visits to the call wall at 11:17, none to the put wall that replaced it at 11:31). The count is visits, the first arrival included; its sentence said 'come back' until 2026-09-25.",
+     "type": "choice",
+     "instructions": "Read `gex.air_to_wall` for how far the nearest heavy strike sits from price, and `range.wall_retests` for how many times price has visited that strike today, its first arrival included; the count is for the nearest heavy strike as the side packet last knew it, and it starts again when a different strike becomes the nearest. Which situation is it?",
+     "criteria": {
+      "close_first_visit": "the nearest heavy strike sits within 0.5 sigma of price, and price has visited it none or once today, counting its first arrival",
+      "close_worked": "the nearest heavy strike sits within 0.5 sigma of price, and price has visited it two or more times today, counting its first arrival",
+      "far_worked": "the nearest heavy strike sits more than 0.5 sigma from price, and price has visited it two or more times today, counting its first arrival",
+      "far_untouched": "the nearest heavy strike sits more than 0.5 sigma from price, and price has visited it none or once today, counting its first arrival",
+      "no_wall": "no heavy strike sits within reach",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "proposed": "2026-09-22, from the day's answers; see questions/proposals/2026-09-22.json",
+     "copied_from": "sndk_pro.json"
+    }
+   }
+  },
+  {
+   "id": "history_next",
+   "reads": [
+    "context",
+    "price.vs_yesterday",
+    "price.vs_day_before"
+   ],
+   "copied_from": "sndk_pro.json",
+   "questions": {
+    "two_day_position": {
+     "viewpoint": "history",
+     "status": "live",
+     "cadence": "every 10 minutes",
+     "ask": "Is price above both of the last two days' highs, below both lows, or in between?",
+     "why": "Your third viewpoint word for word, and nothing in the current set reads yesterday's levels.",
+     "type": "choice",
+     "instructions": "Read `price.vs_yesterday` and `price.vs_day_before`. Where is price against the last two sessions' highs and lows?",
+     "criteria": {
+      "above_both_highs": "price is more than 0.15 sigma above yesterday's high and above the high of the day before",
+      "below_both_lows": "price is more than 0.15 sigma below yesterday's low and below the low of the day before",
+      "between": "price is inside the range of at least one of the last two sessions",
+      "unsure": "the labels conflict or say too little to call"
+     },
+     "copied_from": "sndk_pro.json"
+    }
+   }
+  },
+  {
+   "id": "volatility",
+   "reads": [
+    "context",
+    "iv.skew"
+   ],
+   "copied_from": "sndk_pro.json",
+   "questions": {
+    "iv_skew": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "hourly",
+     "ask": "Are puts or calls priced richer?",
+     "why": "Which side is paid up for is a read on where the crowd wants protection, but it barely moves intraday, so ask it hourly.",
+     "type": "choice",
+     "instructions": "Read `iv.skew`. Which side is priced richer in implied volatility? The sentence's opening words decide; the vol-point figure that follows is description, not the verdict.",
+     "criteria": {
+      "puts_richer": "the label opens 'puts carry a higher implied volatility than calls at equal distance'",
+      "calls_richer": "the label opens 'calls carry a higher implied volatility than puts at equal distance'",
+      "about_even": "the label opens 'puts and calls carry about the same implied volatility'; the signed vol-point figure after that is ignored",
+      "unsure": "the label gives too little to call"
+     },
+     "copied_from": "sndk_pro.json"
+    }
+   }
+  }
+ ],
+ "logged_only": {
+  "tape.travel_since_read": "price travelled $21.7 since the last read, 5 minutes ago, 1.51 tape units (one is $14), in the top third for this minute, higher than 17 of 20 prior sessions",
+  "tape.flips_since_read": "the 1-minute direction changed 2 times since the last read, 5 minutes ago, in the bottom third for this minute, higher than 6 of 20 prior sessions",
+  "tape.round_trip": "not a round trip: the range since the last read, 5 minutes ago, is in the middle third for this minute and price ended 0.87 of a tape unit above the last read"
+ }
+}
