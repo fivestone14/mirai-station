@@ -103,6 +103,18 @@ def _bar_before(bars: list[dict], t: datetime) -> dict:
 HORIZONS = LIVE.horizons
 
 
+def mark_at(row_ts: str, minutes: int) -> datetime | None:
+    """Where a horizon of the read at ``row_ts`` is measured: the read's minute plus ``minutes``, or the
+    closing bar when that lands within CLOSE_GRACE_MIN past the close. None when it ends later than that:
+    such a horizon is never graded. grade_one measures here, and the card shows the same minute."""
+    t0 = parse_ts(row_ts).replace(second=0, microsecond=0)   # the read's minute: a 15:32:00.4 read is a 15:32 read
+    close = session_close(t0)
+    t1 = t0 + timedelta(minutes=minutes)
+    if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
+        return None
+    return min(t1, close)
+
+
 def realized_band(x: float, flat: float) -> str:
     return "up" if x > flat else "down" if x < -flat else "flat"
 
@@ -211,11 +223,10 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         if flat == RECORD and not _has_band(rec):
             skipped[qid] = "no band on the record"     # no tape unit was measured at the read: nothing to grade against
             continue
-        t1 = t0 + timedelta(minutes=h)
-        if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
+        t1 = mark_at(rec["row_ts"], h)                # inside the grace past the close, the closing bar stands for the mark
+        if t1 is None:
             skipped[qid] = "ends past the close"      # can never be graded
             continue
-        t1 = min(t1, close)                           # inside the grace: the closing bar stands for the mark
         c1 = close_at(bars, t1)
         if c1 is None or last_done < t1:
             if final:

@@ -6,6 +6,10 @@ opening lane of the plan of 2026-09-25: every 5 minutes from 09:35 to 10:30, eac
 at the newest finished bar, one 10-minute sum in tape units, every question asked afresh on every
 read, everything under state/jev/lanes/tape/. Every step takes a lane and defaults to LIVE, so the
 live lane runs exactly as before whether or not another lane exists.
+
+A lane with a ``schedule`` names its reads in market time; the launchd job fires at each of them, and
+once more at ``close_out``, a run that asks JEV nothing and only grades the morning's last calls and
+refreshes the card (service.close_out). A test holds the plist to these times.
 """
 from __future__ import annotations
 
@@ -44,6 +48,8 @@ class Lane:
     clock_blend: bool = True                         # blend the sum with the time-of-day odds (clock.py)
     bar_gap_min: int = 2                             # the bar standing for a mark may be this many minutes early; 0 is the exact bar
     shuffles: int = 0                                # day-block shuffles a question's information must beat; 0 turns the test off
+    schedule: tuple[str, ...] = ()                   # the reads, "HH:MM" market time; empty for the live lane (:02 and :32 all session)
+    close_out: str | None = None                     # "HH:MM" market time of the grade-only run after the last read
 
     def folder(self, state_dir: Path | str, out_dir: Path | str | None = None) -> Path:
         """Where the lane writes. A tagged lane must have a folder of its own: with none, or pointed at
@@ -59,9 +65,14 @@ LIVE = Lane(name="live", out_dir=LIVE_DIR, questions=QUESTIONS_DIR / "sndk_pro.j
             hour_doc=QUESTIONS_DIR / "sndk_hour.json", horizons=horizons(QUESTIONS_DIR / "sndk_hour.json"),
             primary="next_30", min_graded=40, pair_gap_min=0, cadence=True, tag=None)
 
+TAPE_EVERY_MIN = 5
 TAPE = Lane(name="tape", out_dir="jev/lanes/tape", questions=QUESTIONS_DIR / "sndk_lane_tape.json",
             hour_doc=QUESTIONS_DIR / "sndk_lane_hour.json", horizons=horizons(QUESTIONS_DIR / "sndk_lane_hour.json"),
             primary="next_10", min_graded=120, pair_gap_min=10, cadence=False, tag="tape",
-            bar_clock=True, clock_blend=False, bar_gap_min=0, shuffles=1000)
+            bar_clock=True, clock_blend=False, bar_gap_min=0, shuffles=1000,
+            # 09:35 to 10:30 every 5 minutes; the 10:30 call's mark is 10:40, so the close-out at 10:42
+            # finds the bar it needs and grades the morning's last two calls the same day
+            schedule=tuple(f"{(575 + TAPE_EVERY_MIN * k) // 60:02d}:{(575 + TAPE_EVERY_MIN * k) % 60:02d}" for k in range(12)),
+            close_out="10:42")
 
 LANES = {"live": LIVE, "tape": TAPE}

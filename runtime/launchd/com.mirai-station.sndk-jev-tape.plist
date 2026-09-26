@@ -15,7 +15,9 @@
   <!-- The JEV opening lane (the plan of 2026-09-25): the same runner and market gate as
        com.mirai-station.sndk-jev, with "lane tape" passed through to the service. Fires every
        5 minutes from 09:35 to 10:30 ET (12 entries), each read stamped at the newest finished
-       bar and sized in tape units; the live job's :02 and :32 reads are untouched and the two
+       bar and sized in tape units, then once at 10:42 ET, the close-out: that run asks JEV nothing,
+       grades the morning's last two calls and refreshes the card (sndk_jev/lane.py TAPE.schedule and
+       close_out; a test holds these entries to them); the live job's :02 and :32 reads are untouched and the two
        never share a file: this lane writes only state/jev/lanes/tape/. The key is read by the
        service itself from the git-ignored skills/sndk-jev/.env, never from this file.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
@@ -35,6 +37,7 @@
     <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>20</integer></dict>
     <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>25</integer></dict>
     <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>42</integer></dict>
   </array>
 
   <key>StandardOutPath</key>

@@ -52,7 +52,7 @@ from .ask import build_requests, load_questions, send, send_all
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import tag as event_tag
 from .cadence import cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, plan, save_last
-from .grade import live_options, run as grade_run
+from .grade import live_options, mark_at, run as grade_run
 from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, load_weights
 from .lane import LANES, LIVE, Lane
 from .state_builder import DEFAULT_STATE_DIR, build_state, load_jsonl, make_scene, omit_stale_book, parse_ts, session_close
@@ -64,6 +64,7 @@ STALE_ROW_S = 15 * 60          # a card built on a row older than this says so
 STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped: the scanner has stopped
 LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
+CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, so an overlap is visible
 
 
 def log(msg: str) -> None:
@@ -75,8 +76,12 @@ class NoRowYet(RuntimeError):
     """The scanner has no row for today: a sent run must wait for one, not build on yesterday's."""
 
 
+def now_et() -> datetime:
+    return datetime.now(ET)
+
+
 def today_et() -> str:
-    return datetime.now(ET).date().isoformat()
+    return now_et().date().isoformat()
 
 
 def load_env_file(path: Path = ENV_FILE) -> list[str]:
@@ -181,6 +186,50 @@ def last_read_of(out_dir: Path, day: str, now: datetime) -> datetime | None:
     return max(stamps) if stamps else None
 
 
+def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
+    """Every call of the lane's primary sum on ``day``, oldest first, with its grade when it has one: the
+    read's time, the mark it is graded at (the read's minute plus the horizon, as the grader counts it),
+    the pick and its probability, every option's probability as the phone showed them (``odds``), then
+    ``outcome``, ``hit`` and the ``moved`` behind them once graded, or ``closed`` with the reason
+    when it can never be graded. The mark is grade.mark_at's: the closing bar for a read that ends just
+    past the close, None for one that ends later and is never graded. A read whose sum got no answer is
+    not a call."""
+    minutes = lane.horizons[lane.primary][0]
+    grades: dict[str, dict] = {}
+    for g in load_jsonl(out_dir / "grades.jsonl"):
+        ts = str(g.get("row_ts", ""))
+        if not ts.startswith(day):
+            continue
+        res = g.get(lane.primary)
+        if isinstance(res, dict) and res.get("band"):
+            # the move behind the outcome, in the units the sum was banded in: sigma on the live lane,
+            # dollars and tape units on the tape lane
+            grades[ts] = {"outcome": res["band"], "hit": bool(res.get("hit")),
+                          "moved": {k: res[k] for k in ("realized_sigma", "realized_dollars", "realized_units") if res.get(k) is not None}}
+        elif ts not in grades and lane.primary in (g.get("skipped") or {}):
+            grades[ts] = {"closed": str(g["skipped"][lane.primary])}
+        elif ts not in grades and g.get("graded") is False:
+            grades[ts] = {"closed": str(g.get("reason") or "not graded")}
+    calls, seen = [], set()
+    for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl"):
+        ts, p = r.get("row_ts"), r.get("probabilities")
+        if not ts or ts in seen or not r.get("pick") or not isinstance(p, dict):
+            continue
+        seen.add(ts)                                   # a row written twice (a file from before the guard in run_once) is one call
+        mark = mark_at(ts, minutes)
+        odds = {k: round(float(v), 4) for k, v in p.items() if isinstance(v, (int, float))}
+        calls.append({"read": ts, "mark": mark.isoformat() if mark else None, "minutes": minutes,
+                      "pick": r["pick"], "p": odds.get(r["pick"], 0.0), "odds": odds, **grades.get(ts, {})})
+    return calls
+
+
+def calls_block(calls: list[dict]) -> dict:
+    """What the card carries of the day's calls: the newest CALLS_SHOWN, newest first, and the day's tally."""
+    return {"calls": calls[-CALLS_SHOWN:][::-1],
+            "tally": {"calls": len(calls), "graded": sum(1 for c in calls if "outcome" in c),
+                      "right": sum(1 for c in calls if c.get("hit"))}}
+
+
 def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:
     """What a tagged lane writes on its record, its hour record and its card: the lane, the unit and,
     when the unit priced the sum's bands (hour.band_of), those bands in dollars, so the grader, the
@@ -193,10 +242,12 @@ def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:
 def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: dict, answers: dict | None,
          sent: bool, send_seconds: float | None, hour: dict | None = None, held: dict | None = None,
          cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT, event: dict | None = None,
-         lane: Lane = LIVE, unit: dict | None = None, band: dict | None = None) -> dict:
-    """The phone's document. Small, plain, and honest about what was and was not sent. A lane on the
-    bar clock also carries its ``stretch``: the sentences the builder wrote about the stretch since
-    the lane's last read, which the phone's strip shows in the builder's own words."""
+         lane: Lane = LIVE, unit: dict | None = None, band: dict | None = None, calls: list[dict] | None = None) -> dict:
+    """The phone's document. Small, plain, and honest about what was and was not sent. It carries the
+    day's newest calls with their grades and the day's tally (day_calls), so the phone draws the calls
+    in play on one clock. A lane on the bar clock also carries its ``stretch``, the sentences the builder
+    wrote about the stretch since the lane's last read, and a lane with a schedule carries it, so the
+    phone knows when the lane hands back to the live reads."""
     now = datetime.now(timezone.utc)
     row_ts = parse_ts(scene.row["ts"])
     book = (scene.row.get("meta") or {}).get("book_asof")
@@ -269,6 +320,11 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "event": event,
         **_stamp(lane, unit, band),
         **({"stretch": state.get("tape") or {}} if lane.bar_clock else {}),
+        **calls_block(calls or []),
+        # where each of this read's sums is measured (grade.mark_at), None for one that ends past the close
+        "marks": {qid: (m.isoformat() if (m := mark_at(scene.row["ts"], h)) else None) for qid, (h, _) in lane.horizons.items()},
+        **({"schedule": {"reads": list(lane.schedule), "looks_ahead_min": lane.horizons[lane.primary][0],
+                         "close_out": lane.close_out}} if lane.schedule else {}),
         # the phone's clock words ("after the close", "next read") follow the day's real close, 13:00 on a half day
         "session": {"close": session_close(row_ts).strftime("%H:%M"),
                     "last_read": (session_close(row_ts) - timedelta(minutes=LAST_READ_BEFORE_CLOSE_MIN)).strftime("%H:%M")},
@@ -290,6 +346,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         # the scanner has no row for today yet: sending on yesterday's last row would hold every
         # answer against a stale clock and file the read under the wrong day. Say so and stop.
         raise NoRowYet(f"no diary row for today yet: the newest row is {scene.row['ts'][:16]}; nothing sent, card unchanged")
+    if day is None and do_send and any(r.get("row_ts") == scene.row["ts"] for r in load_jsonl(out_dir / f"{scene.row['ts'][:10]}.jsonl")):
+        # the same row again (a run by hand, or the tape lane's newest bar not yet moved on): a second
+        # read of one moment would put a second sum on the card beside the first, which is the one graded
+        raise NoRowYet(f"the row at {scene.row['ts'][11:19]} was already read; nothing new to read, card unchanged")
     if day is None and do_send:
         # a live read on a stalled scanner would answer, sum and grade a row that no longer describes
         # the market; skip it and leave the last card, whose age the phone shows
@@ -393,10 +453,33 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             grade_run(state_dir, out_dir, allowed=live_options(doc), lane=lane)
         except Exception as e:  # grading must never stop the card
             log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
-    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit, band)
+    c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit, band,
+             day_calls(out_dir, day_name, lane))
+    write_card(out_dir, c)
+    return c
+
+
+def write_card(out_dir: Path, c: dict) -> None:
+    """Replace latest.json in one step, so the phone never reads half a card."""
     tmp = out_dir / "latest.json.tmp"
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, out_dir / "latest.json")
+
+
+def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane) -> dict | None:
+    """A lane's run after its last read (lane.close_out): grade every mark that has passed and refresh
+    the calls and the day's tally on the card the last read wrote. JEV is asked nothing and no read is
+    recorded, so the morning's last calls are graded the same day. None when the lane did not read today."""
+    grade_run(state_dir, out_dir, allowed=live_options(doc), lane=lane)
+    try:
+        c = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if str(c.get("row_ts", ""))[:10] != today_et():
+        return None
+    c.update(calls_block(day_calls(out_dir, c["row_ts"][:10], lane)))
+    c["closed_out_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    write_card(out_dir, c)
     return c
 
 
@@ -421,6 +504,12 @@ def main(argv: list[str] | None = None) -> int:
     state_dir = Path(args.state_dir)
     out_dir = lane.folder(state_dir, args.out_dir)
     doc = load_questions(args.questions or lane.questions)
+    if lane.close_out and not args.day and not args.loop and now_et().strftime("%H:%M") >= lane.close_out:
+        # the lane's reads are done for the day: the job's last fire only grades and refreshes the card
+        c = close_out(state_dir, out_dir, doc, lane)
+        log(f"{lane.name} lane closed out: {c['tally']['right']} of {c['tally']['graded']} graded calls right, "
+            f"{c['tally']['calls']} calls" if c else f"{lane.name} lane: nothing to close out today")
+        return 0
     last_row = None
     while True:
         try:

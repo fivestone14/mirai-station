@@ -1752,6 +1752,11 @@ def test_the_two_phone_pages_draw_one_sheet():
     assert not drift, f"the two sheets are drawn differently: {drift}"
     assert "max-height:calc(var(--app-h)*.86);overflow-y:auto" in b[".sheet"]
     assert "user-select:none" in b[".sheet"]
+    # the JEV tab's call sheet (2026-09-26) is the same sheet: every core rule it carries is the reads page's
+    j = _css_rules((M / "jev.html").read_text())
+    assert core <= set(j), core - set(j)
+    drift = {s: (j[s], b[s]) for s in core if j[s] != b[s]}
+    assert not drift, f"the JEV tab's sheet is drawn differently: {drift}"
 
 
 def test_the_sheet_text_cannot_start_a_selection():

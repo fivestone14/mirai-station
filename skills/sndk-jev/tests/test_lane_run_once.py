@@ -143,3 +143,55 @@ def test_the_cli_picks_the_lane_and_its_folder(tmp_path, monkeypatch):
     assert not (state / "jev" / "latest.json").exists()
     with pytest.raises(ValueError, match="must not write into"):
         service.main(["--state-dir", str(state), "--lane", "tape", "--out-dir", str(state / "jev")])
+
+
+def test_the_card_carries_the_calls_in_play_with_their_grades_and_the_days_tally(tmp_path, monkeypatch):
+    """Two reads ten minutes apart: the second card lists both calls newest first, the first graded at its
+    mark (the read's minute plus 10) and the second still open, and the tally counts them; the lane's card
+    also carries its schedule, so the phone knows when it hands back to the live reads."""
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 1700.0)], 70)
+    _today(monkeypatch)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums([]))
+    out = state / "jev" / "lanes" / "tape"
+    c1 = run_once(state, out, DOC, True, DAY, lane=TAPE)
+    assert c1["calls"] == [{"read": at(10, 40).isoformat(), "mark": at(10, 50).isoformat(), "minutes": 10, "pick": "flat", "p": 0.6, "odds": FIVE}]
+    assert c1["tally"] == {"calls": 1, "graded": 0, "right": 0}
+    assert c1["schedule"] == {"reads": list(TAPE.schedule), "looks_ahead_min": 10, "close_out": "10:42"}
+    assert c1["marks"] == {"next_10": at(10, 50).isoformat()}
+    _state(tmp_path, [make_row(at(10, 35, ss=10), 1700.0), make_row(at(10, 45, ss=20), 1701.0)], 80)
+    c2 = run_once(state, out, DOC, True, DAY, lane=TAPE)
+    assert [c["read"] for c in c2["calls"]] == [at(10, 50).isoformat(), at(10, 40).isoformat()]
+    assert c2["calls"][1] == {"read": at(10, 40).isoformat(), "mark": at(10, 50).isoformat(), "minutes": 10, "pick": "flat",
+                              "p": 0.6, "odds": FIVE, "outcome": "flat", "hit": True,
+                              "moved": {"realized_dollars": 0.0, "realized_units": 0.0}}
+    assert "outcome" not in c2["calls"][0] and c2["tally"] == {"calls": 2, "graded": 1, "right": 1}
+
+
+def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monkeypatch):
+    """The job's fire after the last read: every passed mark is graded and the card's calls and tally are
+    refreshed; no read is written and nothing is sent."""
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 1700.0)], 70)
+    _today(monkeypatch)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums([]))
+    out = state / "jev" / "lanes" / "tape"
+    run_once(state, out, DOC, True, DAY, lane=TAPE)                           # the 10:40 read; its mark is 10:50
+    reads_before = (out / f"{DAY}.jsonl").read_text()
+
+    def refuse(*a, **k):
+        raise AssertionError("the close-out asked JEV")
+    monkeypatch.setattr(service, "send_all", refuse)
+    monkeypatch.setattr(service, "send", refuse)
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    closing = datetime.fromisoformat(f"{DAY}T10:52:00").replace(tzinfo=ZoneInfo("America/New_York"))
+    monkeypatch.setattr(service, "now_et", lambda: closing)
+    _state(tmp_path, [make_row(at(10, 35, ss=10), 1700.0)], 82)              # bars to 10:51: the 10:50 mark has its bar
+    assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
+    c = json.loads((out / "latest.json").read_text())
+    assert c["closed_out_at"] and c["row_ts"] == at(10, 40).isoformat()
+    assert c["calls"][0]["outcome"] == "flat" and c["tally"] == {"calls": 1, "graded": 1, "right": 1}
+    assert (out / f"{DAY}.jsonl").read_text() == reads_before                # no read was recorded
+    # before the close-out time the same command reads as usual, and a lane that did not read today closes nothing
+    monkeypatch.setattr(service, "now_et", lambda: closing.replace(day=closing.day + 1))
+    assert service.close_out(state, out, DOC, TAPE) is None

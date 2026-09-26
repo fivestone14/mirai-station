@@ -103,6 +103,22 @@ def test_a_sent_run_refuses_a_row_from_another_day(tmp_path, monkeypatch):
     assert not (state / "jev" / "latest.json").exists()
 
 
+def test_a_sent_run_never_reads_the_same_row_twice(tmp_path, monkeypatch):
+    """A second sent read of a row already read (a run by hand, or the tape lane's newest bar not moved
+    on) is skipped: the card and the day's files keep the one read, which is the one the grader grades."""
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 1700.0)], 70)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    monkeypatch.setattr(service, "today_et", lambda: DAY)
+    monkeypatch.setattr(service, "STALE_ROW_SKIP_MIN", 1e9)                  # the replayed row is not stale for this test
+    out = state / "jev"
+    run_once(state, out, DOC, True, None)
+    card_before, day_before = (out / "latest.json").read_bytes(), (out / f"{DAY}.jsonl").read_bytes()
+    with pytest.raises(service.NoRowYet, match="already read"):
+        run_once(state, out, DOC, True, None)
+    assert (out / "latest.json").read_bytes() == card_before and (out / f"{DAY}.jsonl").read_bytes() == day_before
+
+
 def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 1700.0)], 70)
     c = run_once(state, state / "jev", DOC, False, DAY, unsent_reason="not sent: no key on this machine")

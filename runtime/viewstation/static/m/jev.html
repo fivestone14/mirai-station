@@ -11,12 +11,16 @@
   changes for it. The file is written by skills/sndk-jev (its own launchd job),
   never by the scan.
 
-  From 09:35 to 10:30 market time the service's opening lane (skills/sndk-jev,
-  --lane tape) reads every 5 minutes and writes its own card under
-  state/jev/lanes/tape/. Its strip sits above the live card only while that
-  lane runs: today's read, under TAPE_MAX_AGE_MIN old, fetched only inside
-  TAPE_WINDOW; a lane card from yesterday, a stale one, or none at all shows
-  nothing, and the live card below never changes for it.
+  Two modes, switched by the clock and the cards alone. From 09:35 the service's
+  opening lane (skills/sndk-jev, --lane tape) reads every 5 minutes and writes
+  its own card under state/jev/lanes/tape/; while today's newest lane call is
+  still open, that call leads the page and the 30-minute call folds to one line.
+  Once it closes (10:40 after the 10:30 read, or sooner if the lane stops), the
+  30-minute call leads again and the opening folds to its score for the day.
+  Every call looks some minutes ahead: each card carries its day's newest calls
+  with their grades (the service's day_calls), and the page draws them on one
+  clock, so two open at once, the overlap, is visible. Nothing here computes a
+  grade; the page only counts minutes against the marks the cards carry.
 
   Same paper as the glance: its tokens, its card, its label row, its tab bar.
   No dark mode, because the glance has none. House rules kept: text goes in
@@ -33,12 +37,15 @@
   --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --fill:#1F2622;
   --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
   --on-body:#E4E6DF; --on-mute:#A9B0A6; --on-faint:#8E958A;
-  --px-ink:#2F44B8; --px-mark:#5470E4; --rule-soft:#7E8779;
+  --px-ink:#2F44B8; --px-mark:#5470E4; --px-soft:#C9D1F4; --rule-soft:#7E8779;
   --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
   --tap-min:48px; --state-hover:.08; --state-press:.12;
   --press-in:80ms; --press-out:200ms; --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(.2,0,0,1);
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
   --tab-h:74px;
+  /* the visible height in pixels, set by the script at the top of <body>; 100dvh is only its fallback,
+     because inside the app every viewport unit reads zero (see the token on the reads page) */
+  --app-h:100dvh;
 }
 *{box-sizing:border-box}
 html{background:var(--g)}
@@ -70,10 +77,68 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
 .sit{margin:10px 0 0;padding:0;list-style:none}
 .sit li{font:400 15px/1.5 var(--sans);color:var(--i-body);padding:5px 0 5px 10px;border-left:2px solid var(--s2)}
-/* the opening lane's strip: the 5-minute reads' 10-minute call, a dashed card like the sums */
-.strip .big{font-size:24px}
-.strip .row{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font:400 13px/1.4 var(--sans);color:var(--i-body)}
-.strip .say{margin-top:8px;font:400 13.5px/1.45 var(--sans);color:var(--i-body);padding-left:10px;border-left:2px solid var(--s2)}
+/* which call leads the page: the opening's 5-minute calls, or the 30-minute call */
+.mode{align-self:flex-start;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);background:var(--s);
+      font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i)}
+/* the call clock: how far ahead the leading call looks, and how long it has left */
+.clock-top{display:flex;align-items:baseline;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.clock-top b{margin-left:auto;color:var(--i)}
+.clock-bar{margin-top:6px;height:6px;border-radius:3px;background:var(--s2)}
+.clock-bar i{display:block;height:6px;border-radius:3px;background:var(--px-ink)}
+.clock-sub{display:flex;margin-top:4px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
+.clock-sub span:last-child{margin-left:auto}
+.odds{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px;font:400 13.5px/1.4 var(--sans);color:var(--i-body)}
+/* the calls in play: every call of the morning or the day on one clock, newest on top */
+.inplay-h{margin-top:14px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
+.inplay{display:block;width:100%;height:auto;margin-top:6px;font-family:var(--sans)}
+.inplay .b-now{fill:var(--px-ink)}
+.inplay .b-open{fill:var(--px-soft)}
+.inplay .b-done{fill:var(--s2)}
+.inplay .t-now{fill:#FFFFFF;font-size:11px;font-weight:700}
+.inplay .t-open{fill:var(--i);font-size:11px;font-weight:700}
+.inplay .t-done{fill:var(--i-mute);font-size:11px;font-weight:600}
+.inplay .t-side{fill:var(--i-body);font-size:10.5px}
+.inplay .t-axis{fill:var(--i-mute);font-size:10px}
+.inplay .t-now-l{fill:var(--i);font-size:10px;font-weight:700}
+.inplay .t-side,.inplay .t-axis,.inplay .t-now-l{paint-order:stroke;stroke:var(--s);stroke-width:3px;stroke-linejoin:round}
+.inplay .axis{stroke:var(--rule-soft);stroke-width:1}
+.inplay .now{stroke:var(--i);stroke-width:1.4;stroke-dasharray:3 3}
+.say{margin-top:8px;font:400 13.5px/1.45 var(--sans);color:var(--i-body);padding-left:10px;border-left:2px solid var(--s2)}
+/* the call sheet: sheet.js's bottom sheet, its rules the same as the other pages' */
+.scrim{position:fixed;inset:0;z-index:30;background:rgba(22,26,23,.40);
+       opacity:0;pointer-events:none;touch-action:none;transition:opacity .2s ease-out}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:calc(var(--app-h) * .86);overflow-y:auto;
+       overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+       background:var(--s);border-radius:24px 24px 0 0;
+       padding:10px 20px calc(env(safe-area-inset-bottom) + 22px);
+       box-shadow:0 -12px 40px -12px rgba(22,26,23,.35);
+       transform:translateY(102%);visibility:hidden;
+       transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s linear .28s}
+body.sheet-open .scrim{opacity:1;pointer-events:auto}
+.sheet[aria-hidden="false"]{transform:none;visibility:visible;
+                            transition:transform .28s cubic-bezier(.2,0,0,1),visibility 0s}
+.sh-grab{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:0 auto 16px}
+.sh-h{margin-bottom:14px;font:700 11px/1.2 var(--sans);letter-spacing:.14em;
+      text-transform:uppercase;color:var(--i-faint)}
+.sh-caveat{margin-top:6px;padding:13px 14px;border-radius:14px;background:var(--g);
+           font:400 14px/1.55 var(--sans);color:var(--i-body)}
+.sh-caveat b{font-weight:700;color:var(--i)}
+.sh-close{display:block;width:100%;margin-top:18px;height:var(--tap-min);border:0;border-radius:14px;
+          background:var(--fill);color:var(--on-body);font:700 14px/1 var(--sans)}
+.sh-close:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+/* what the call sheet adds: the result first, then the odds */
+.cs-verdict{display:flex;align-items:baseline;gap:10px}
+.cs-verdict b{font:700 22px/1.1 var(--sans);color:var(--i)}
+.cs-verdict span{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-mute)}
+.cs-result p{margin:6px 0 0}
+.cs-odds{margin-top:16px}
+.inplay .hit{fill:transparent;cursor:pointer}
+.inplay .hit:focus-visible{outline:none;stroke:var(--px-ink);stroke-width:2}
+/* a call that does not lead, folded to one line */
+.fold{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:12px 16px}
+.fold .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.fold b{margin-left:auto;font:700 15px/1.2 var(--sans);color:var(--i)}
+.fold .l{font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
 /* one chevron on every fold, the viewpoints, the not-asked and the dark alike */
 details>summary{list-style:none;cursor:default;padding:6px 4px;display:flex;align-items:center;gap:8px}
 details>summary::-webkit-details-marker{display:none}
@@ -119,7 +184,8 @@ details .q{margin-top:8px}
 .poll{width:12px;height:12px;display:inline-block;vertical-align:middle;margin-left:6px}
 .poll[hidden]{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.load i,.poll{animation:pulse-dim 1.4s ease-in-out infinite}.load{transition:none}}
+@media (prefers-reduced-motion:reduce){.load i,.poll{animation:pulse-dim 1.4s ease-in-out infinite}.load{transition:none}
+  .sheet,.sheet[aria-hidden="false"]{transition:none}}
 @keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
 
 /* the tab bar, the glance's own, with this page lit */
@@ -140,6 +206,20 @@ details .q{margin-top:8px}
 </style>
 </head>
 <body>
+<script>
+/* --app-h: the visible height in pixels, measured before anything paints. Why
+   the pages cannot use vh / dvh inside the app is on the token in :root. */
+(function(){
+  function set(){
+    var h = window.innerHeight || document.documentElement.clientHeight;
+    if(h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
+  }
+  set();
+  window.addEventListener('resize', set);
+  window.addEventListener('orientationchange', set);
+  if(window.visualViewport) window.visualViewport.addEventListener('resize', set);
+})();
+</script>
 <header class="hd">
   <div class="hd-t">
     <div class="hd-1"><span id="h1">SNDK &middot; JEV</span><em class="beta">beta</em><i class="poll" id="poll" hidden></i></div>
@@ -148,9 +228,16 @@ details .q{margin-top:8px}
 </header>
 <div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
-<div class="card dashed strip" id="tape" hidden></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent sessions, because on its first 37 graded reads JEV's sum alone did worse than the time of day alone. From 09:35 to 10:30 the opening lane reads every 5 minutes; its 10-minute call sits above the live card in its own dashed card, sized in tape units, and goes away once the morning's reads are done.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent sessions, because on its first 37 graded reads JEV's sum alone did worse than the time of day alone. From 09:35 the opening lane reads every 5 minutes and its 10-minute call, sized in tape units, leads the page until its last call closes at 10:40; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock.</p>
+
+<div class="scrim" data-sheet-close></div>
+<div class="sheet" id="callSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
+  <div class="sh-grab"></div>
+  <div class="sh-h" id="csTitle">The call</div>
+  <div id="csBody"></div>
+  <button class="sh-close" type="button" data-sheet-close>Close</button>
+</div>
 
 <nav class="tabs">
   <a class="tab" href="/m/" aria-label="Now">
@@ -166,6 +253,7 @@ details .q{margin-top:8px}
     <s>JEV <em class="beta">BETA</em></s><i></i>
   </span>
 </nav>
+<script src="/m/sheet.js"></script>
 <script>
 (function(){
   'use strict';
@@ -174,7 +262,7 @@ details .q{margin-top:8px}
   // The day's last read is at 15:32 (12:32 on a half day, as the card's session says), and its row lands a
   // few minutes before it: a row at or after ROW_LEAD_MIN before the last read is the day's last, not a stale one.
   var LAST_READ_DEFAULT = '15:32', ROW_LEAD_MIN = 4;
-  function hhmmMinus(hhmm, n){ var m = (+hhmm.slice(0, 2)) * 60 + (+hhmm.slice(3, 5)) - n; return (m < 600 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); }
+  function hhmmPlus(hhmm, n){ var m = (+hhmm.slice(0, 2)) * 60 + (+hhmm.slice(3, 5)) + n; return (m < 600 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); }
   function lastRead(c){ var lr = c && c.session && c.session.last_read; return /^\d\d:\d\d$/.test(lr || '') ? lr : LAST_READ_DEFAULT; }
   var ORDER = ['strikes','volume_price','history','indicators','space_time','framing','news','outcome'];
   var NAME = {strikes:'strikes', volume_price:'volume and price', history:'yesterday', indicators:'indicators',
@@ -200,6 +288,9 @@ details .q{margin-top:8px}
   function mins(iso){ var t = Date.parse(iso); return isNaN(t) ? null : Math.max(0, Math.round((Date.now() - t) / 60000)); }
   function clock(iso){ var m = /T(\d\d:\d\d)/.exec(iso || ''); return m ? m[1] : '?'; }
   function sentence(s){ s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
+  // every note under a card, and every reason a question was skipped, reads as a sentence
+  function tag(text){ return el('div', 'tag', sentence(text)); }
+  function skipLine(text){ return el('div', 'skip', sentence(text)); }
   function ageWord(m){
     if(m == null) return 'age unknown';
     if(m < 1) return 'just now';
@@ -210,7 +301,8 @@ details .q{margin-top:8px}
   // the day's last read (the card's session) there is nothing newer to wait for; an hour after any earlier row the card is stale
   function subLine(c, m){
     var at = clock(c.row_ts), n = c.labels + ' labels';
-    if(m != null && m > GONE_MIN && at >= hhmmMinus(lastRead(c), ROW_LEAD_MIN)) return 'after the close, last row ' + at + ', ' + n;
+    var mc = marketClock(), closed = mc && c.session && /^\d\d:\d\d$/.test(c.session.close || '') && hhmm(mc) >= c.session.close;
+    if(m != null && (m > GONE_MIN || closed) && at >= hhmmPlus(lastRead(c), -ROW_LEAD_MIN)) return 'after the close, last row ' + at + ', ' + n;
     var next = nextRead(lastRead(c)); var hint = next ? ', next read ' + next : '';
     return 'row ' + at + ', ' + ageWord(m) + (m != null && m > STALE_MIN ? ', stale' : '') + ', ' + n + hint;
   }
@@ -249,7 +341,7 @@ details .q{margin-top:8px}
   function question(q, omitted){
     var box = el('div', 'q' + (q.status === 'shadow' ? ' shadow' : ''));
     box.appendChild(el('div', 'ask', q.ask));
-    if(q.status === 'shadow') box.appendChild(el('div', 'tag', 'shadow: a forecast, logged, never graded and never a call'));
+    if(q.status === 'shadow') box.appendChild(tag('shadow: a forecast, logged, never graded and never a call'));
     var a = q.answer, held = q.held_from ? 'held since ' + q.held_from + ', not re-asked' : '';
     // a Choice or a Score answer always carries its probabilities (a Score's are keyed by the level's words)
     if(a && a.probabilities){
@@ -257,15 +349,15 @@ details .q{margin-top:8px}
       var keys = (q.options || []).filter(function(k){ return k in a.probabilities; });
       Object.keys(a.probabilities).forEach(function(k){ if(keys.indexOf(k) < 0) keys.push(k); });
       keys.forEach(function(k){ box.appendChild(bar(cap(k), a.probabilities[k], k === a.pick)); });
-      if(a.confidence != null) box.appendChild(el('div', 'tag', 'confidence ' + Math.round(a.confidence * 100) + '%' + (held ? ' \u00B7 ' + held : '')));
-      else if(held) box.appendChild(el('div', 'tag', held));
+      if(a.confidence != null) box.appendChild(tag('confidence ' + Math.round(a.confidence * 100) + '%' + (held ? ' \u00B7 ' + held : '')));
+      else if(held) box.appendChild(tag(held));
     } else if(a && a.noul != null){
       // one probability per option here too: yes at noul, no at the rest, the picked one bold
       box.appendChild(bar('Yes', a.noul, a.pick === 'true'));
       box.appendChild(bar('No', 1 - a.noul, a.pick === 'false'));
-      if(held) box.appendChild(el('div', 'tag', held));
+      if(held) box.appendChild(tag(held));
     } else {
-      box.appendChild(el('div', 'skip', skipWhy(q, omitted)));
+      box.appendChild(skipLine(skipWhy(q, omitted)));
     }
     return box;
   }
@@ -310,39 +402,16 @@ details .q{margin-top:8px}
     var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
     var omitted = c.omitted || {};
 
-    var h = c.hour;
-    if(h && h.probabilities){
-      // the sum: JEV's sum of the answers blended with the time of day, a forecast, graded later, never a call
-      var bl = h.blend || null, blended = !!(bl && bl.used);
-      var hc = el('div', 'card dashed'); hc.appendChild(labRow(blended ? 'next 30 minutes, the blended sum' : 'next 30 minutes, the sum of the answers', ageText, old));
-      var hp = h.probabilities; var top = h.pick || Object.keys(hp).sort(function(x, y){ return hp[y] - hp[x]; })[0];
-      hc.appendChild(el('div', 'big', cap(top) + ' ' + Math.round((hp[top] || 0) * 100) + '%'));
-      // a fixed order, up, down, flat, unsure, so the eye always finds the same row in the same place
-      ['up', 'down', 'flat', 'unsure'].concat(Object.keys(hp).filter(function(k){ return ['up', 'down', 'flat', 'unsure'].indexOf(k) < 0; }))
-        .forEach(function(k){ if(k in hp) hc.appendChild(bar(cap(k), hp[k], k === top)); });
-      var note = 'a forecast, graded by the bars 30 minutes on, never a call';
-      if(h.confidence != null) note = 'confidence ' + Math.round(h.confidence * 100) + '% \u00B7 ' + note;
-      blendLines(h, bl, 30).forEach(function(t){ hc.appendChild(el('div', 'tag', t)); });
-      // a scheduled event within the hour (the service's calendar): said once, in words; the read is
-      // still graded, and one due inside 30 minutes is kept out of the question weights
-      if(c.event && c.event.sentence) hc.appendChild(el('div', 'tag', sentence(c.event.sentence) +
-        (c.event.within_30 ? '; this read is graded but kept out of the question weights' : '')));
-      hc.appendChild(el('div', 'tag', note));
-      hc.appendChild(el('div', 'tag', 'from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '')));
-      main.appendChild(hc);
-      // the 60-minute sum, asked on the same answers, graded beside the 30 for the comparison; never the headline
-      var h60 = h.by && h.by.next_60;
-      if(h60 && h60.probabilities){
-        var c60 = el('div', 'card dashed'); c60.appendChild(labRow(blended ? 'next 60 minutes, the same blend' : 'next 60 minutes, the same answers', ageText, old));
-        var p60 = h60.probabilities, t60 = h60.pick || Object.keys(p60).sort(function(x, y){ return p60[y] - p60[x]; })[0];
-        ['up', 'down', 'flat', 'unsure'].forEach(function(k){ if(k in p60) c60.appendChild(bar(cap(k), p60[k], k === t60)); });
-        if(blended && h60.jev && h60.clock) blendLines(h60, bl, 60).forEach(function(t){ c60.appendChild(el('div', 'tag', t)); });
-        c60.appendChild(el('div', 'tag', (h60.confidence != null ? 'confidence ' + Math.round(h60.confidence * 100) + '% \u00B7 ' : '') + 'graded by the bars 60 minutes later, for the comparison only, never a call'));
-        main.appendChild(c60);
-      }
-    } else if(h && h.error){
-      var he = el('div', 'card dashed'); he.appendChild(labRow('next 30 minutes, the sum of the answers', ageText, old));
-      he.appendChild(el('div', 'skip', 'no sum this run: ' + h.error)); main.appendChild(he);
+    // the opening's 5-minute call leads while today's newest one is still open; otherwise the 30-minute call does
+    tickers = [];
+    shownLeads = laneLeads(tape, Date.now(), marketDay());
+    main.appendChild(el('div', 'mode', shownLeads ? 'opening \u00B7 a call every 5 min' : 'normal \u00B7 a call every 30 min'));
+    if(shownLeads){
+      main.appendChild(laneCard(tape, tapeOk));
+      main.appendChild(foldLive(c));
+    } else {
+      sumCard(c, main);
+      if(tape && tape.lane === 'tape' && String(tape.row_ts || '').slice(0, 10) === marketDay() && tape.tally && tape.tally.calls) main.appendChild(openingDone(tape));
     }
 
     var card = el('div', 'card'); card.appendChild(labRow('situation', ageText, old));
@@ -370,7 +439,7 @@ details .q{margin-top:8px}
     if(c.dark && c.dark.length){
       // dark: never asked, never counted; said once so nobody wonders where the news questions went
       var dk = el('details'); dk.appendChild(el('summary', null, 'dark, waiting for a news source: ' + c.dark.length));
-      c.dark.forEach(function(q){ var b = el('div', 'q shadow'); b.appendChild(el('div', 'ask', q.ask)); b.appendChild(el('div', 'skip', 'dark until a news source is plugged in')); dk.appendChild(b); });
+      c.dark.forEach(function(q){ var b = el('div', 'q shadow'); b.appendChild(el('div', 'ask', q.ask)); b.appendChild(skipLine('dark until a news source is plugged in')); dk.appendChild(b); });
       main.appendChild(dk);
     }
   }
@@ -378,7 +447,14 @@ details .q{margin-top:8px}
   // A page that fails must say so in words where the header sits, never stay on "loading".
   function say(msg){ var s = document.getElementById('sub'); s.textContent = msg; s.classList.add('err'); clearLoading(); }
   window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
-  function draw(c, ok){ try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
+  function draw(c, ok){ lastOk = ok; try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
+  // Between cards the minutes still move: every tick updates each clock and each calls-in-play drawing,
+  // and when the leading call changes (the opening's last call closes) the page is drawn again.
+  function tick(){
+    if(!last) return;
+    if(laneLeads(tape, Date.now(), marketDay()) !== shownLeads){ draw(last, lastOk); return; }
+    tickers.forEach(function(f){ f(); });
+  }
   // The same card again only moves the ages, so a reader mid-scroll is never handed a rebuilt page.
   function ages(c){
     var m = mins(c.row_ts), old = m != null && m > STALE_MIN;
@@ -389,7 +465,7 @@ details .q{margin-top:8px}
   function arrived(c){
     var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
     last = c;
-    if(same){ ages(c); return; }
+    if(same){ ages(c); tick(); return; }
     draw(c, true);
     var sub = $('sub'); if(sub && sub.dataset.seen){ sub.classList.add('fresh'); setTimeout(function(){ sub.classList.remove('fresh'); }, 2500); }
     if(sub) sub.dataset.seen = '1';
@@ -409,59 +485,278 @@ details .q{margin-top:8px}
     }).catch(function(e){ if(last) draw(last, false); else say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); })
       .finally(function(){ inflight = false; polling(false); });
   }
-  // The opening lane: the service reads every TAPE_STEP_MIN minutes from 09:35 to TAPE_LAST market time
-  // and writes its own card at TAPE_URL. The strip shows only today's lane card under TAPE_MAX_AGE_MIN
-  // old (the next read is due at 5, so 8 covers a late one and no more), and the card is fetched only
-  // inside TAPE_WINDOW; outside it the strip is hidden and the phone asks the station for nothing.
+  // ---- the calls: every sum is a call that looks some minutes ahead, graded at its mark (the read's
+  // minute plus those minutes, as the grader counts it). The page only counts minutes against the marks.
+  var tickers = [], shownLeads = false, lastOk = true;
+  function pct(x){ return Math.round((x || 0) * 100) + '%'; }
+  function words(k){ return String(k).replace(/_/g, ' '); }
+  function startOf(iso){ return Math.floor(Date.parse(iso) / 60000) * 60000; }
+  // a call's mark as the service wrote it (grade.mark_at); a horizon that ends past the close has none
+  // and is never graded, so its bar is drawn to where it would have ended and says so
+  function endOf(c){ return c.mark ? Date.parse(c.mark) : startOf(c.read) + c.minutes * 60000; }
+  // a time ``n`` minutes after a read, written in the read's own market time, for a card from before the
+  // service wrote its marks (clock() reads the hour off the string, so a UTC string would read 5 hours off)
+  function plusIso(iso, n){
+    var m = /^(\d{4}-\d\d-\d\d)T(\d\d:\d\d).*?([+-]\d\d:\d\d|Z)$/.exec(iso || '');
+    return m ? m[1] + 'T' + hhmmPlus(m[2], n) + ':00' + m[3] : null;
+  }
+  function leftWords(markMs, now){
+    var s = (markMs - now) / 1000;
+    if(!(s > 0)) return null;
+    var m = Math.ceil(s / 60);
+    return m <= 1 ? 'Under 1 min left' : m + ' min left';
+  }
+  // what a call's row says beside its bar: time left while open, then what happened
+  function callWords(c, now){
+    if(!c.mark) return {text: 'Never graded'};
+    var left = leftWords(Date.parse(c.mark), now);
+    if(left) return {text: left};
+    if(c.outcome) return {text: 'Was ' + cap(c.outcome) + ' \u00B7 ', strong: c.hit ? 'Right' : 'Wrong'};
+    if(c.closed) return {text: 'Not graded'};
+    return {text: 'Grade pending'};
+  }
+  // the lane leads while it has a call of today's still open
+  function laneLeads(t, now, today){
+    var c = t && t.lane === 'tape' && today && String(t.row_ts || '').slice(0, 10) === today && t.calls && t.calls[0];
+    return !!(c && now < Date.parse(c.mark));
+  }
+
+  // the call clock: how far ahead a call looks, how long it has left, and the minute it is graded
+  // (``mark``, the card's; null when the call ends past the close and is never graded)
+  function clockBlock(read, minutes, mark){
+    var box = el('div');
+    var top = el('div', 'clock-top'); top.appendChild(el('span', null, 'Looks ' + minutes + ' min ahead'));
+    var left = el('b'); top.appendChild(left); box.appendChild(top);
+    var track = el('div', 'clock-bar'), fill = el('i'); track.appendChild(fill); box.appendChild(track);
+    var sub = el('div', 'clock-sub'); sub.appendChild(el('span', null, 'Read ' + clock(read)));
+    sub.appendChild(el('span', null, mark ? 'Graded ' + clock(mark) : 'Ends past the close, never graded')); box.appendChild(sub);
+    var t0 = startOf(read), end = mark ? Date.parse(mark) : t0 + minutes * 60000;
+    function update(){
+      var now = Date.now();
+      left.textContent = mark ? (leftWords(end, now) || 'Window closed') : 'Never graded';
+      fill.style.width = Math.max(0, Math.min(100, (now - t0) / Math.max(60000, end - t0) * 100)).toFixed(1) + '%';
+    }
+    update(); tickers.push(update);
+    return box;
+  }
+
+  // the calls in play, newest on top, each bar from its read to its mark on one clock; the dashed line is now
+  var NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, text){
+    var e = document.createElementNS(NS, tag);
+    Object.keys(attrs).forEach(function(k){ e.setAttribute(k, attrs[k]); });
+    if(text != null) e.textContent = text;
+    return e;
+  }
+  // the newest bar ends at NEWEST_END so its words fit after it; a bar is never narrower than MIN_BAR, so a
+  // long horizon shows fewer calls (four 10-minute calls in the morning, three 30-minute calls later)
+  var ROW_H = 30, TRACK_W = 296, NEWEST_END = 211, MIN_BAR = 70;
+  function fitting(calls){
+    var t1 = endOf(calls[0]), out = [calls[0]];
+    for(var i = 1; i < calls.length; i++){
+      var scale = NEWEST_END / (t1 - startOf(calls[i].read));
+      if(calls[0].minutes * 60000 * scale < MIN_BAR) break;
+      out.push(calls[i]);
+    }
+    return out;
+  }
+  function fits(text, width){ return text.length * 6.2 + 8 <= width; }   // 11px bold, about 6.2px a letter
+  function callsSvg(all, now){
+    var calls = fitting(all);
+    var t0 = Math.min.apply(null, calls.map(function(c){ return startOf(c.read); }));
+    var t1 = Math.max.apply(null, calls.map(endOf));
+    var end = t0 + (t1 - t0) * TRACK_W / NEWEST_END, ay = calls.length * ROW_H + 6;
+    function x(t){ return (t - t0) / (end - t0) * TRACK_W; }
+    var open = calls.filter(function(c){ return now < Date.parse(c.mark); }).length;
+    var svg = svgEl('svg', {viewBox: '0 0 300 ' + (ay + 32), 'class': 'inplay', role: 'img',
+                            'aria-label': calls.length + (calls.length === 1 ? ' call' : ' calls') + ' on one clock, ' + open + ' still open'});
+    if(now >= t0 && now <= end){
+      // drawn first, so the bars and their words sit on top of it
+      var nx = x(now).toFixed(1);
+      svg.appendChild(svgEl('line', {x1: nx, y1: 0, x2: nx, y2: ay, 'class': 'now'}));
+      svg.appendChild(svgEl('text', {x: nx, y: ay + 27, 'text-anchor': 'middle', 'class': 't-now-l'}, 'now'));
+    }
+    var newestOpen = true;
+    calls.forEach(function(c, i){
+      var y = 2 + i * ROW_H, a = x(startOf(c.read)), b = x(endOf(c));
+      var isOpen = now < Date.parse(c.mark), kind = isOpen ? (newestOpen ? 'now' : 'open') : 'done';
+      if(isOpen) newestOpen = false;
+      svg.appendChild(svgEl('rect', {x: a.toFixed(1), y: y, width: Math.max(1, b - a).toFixed(1), height: 21, rx: 5, 'class': 'b-' + kind}));
+      var name = cap(c.pick) + ' ' + pct(c.p);
+      if(!fits(name, b - a)) name = cap(c.pick);
+      if(fits(name, b - a)) svg.appendChild(svgEl('text', {x: (a + 5).toFixed(1), y: y + 14.5, 'class': 't-' + kind}, name));
+      var w = callWords(c, now), side = svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, w.text);
+      if(w.strong) side.appendChild(svgEl('tspan', {'font-weight': '700'}, w.strong));
+      svg.appendChild(side);
+    });
+    svg.appendChild(svgEl('line', {x1: 0, y1: ay, x2: TRACK_W, y2: ay, 'class': 'axis'}));
+    var step = calls[0].minutes * 60000, first = clock(calls[calls.length - 1].read);
+    for(var k = 0; t0 + k * step <= end; k++){
+      var tx = x(t0 + k * step);
+      if(tx > TRACK_W - 14) break;
+      svg.appendChild(svgEl('text', {x: Math.max(14, tx).toFixed(1), y: ay + 13, 'text-anchor': 'middle', 'class': 't-axis'}, hhmmPlus(first, k * calls[0].minutes)));
+    }
+    // on top of everything: one tap target a row high across the drawing for each call
+    calls.forEach(function(c, i){
+      var hit = svgEl('rect', {x: 0, y: i * ROW_H, width: 300, height: ROW_H, 'class': 'hit', role: 'button', tabindex: 0,
+                               'aria-controls': 'callSheet', 'aria-label': 'The ' + clock(c.read) + ' call, ' + cap(c.pick) + ' ' + pct(c.p) + ': its odds and result'});
+      hit.addEventListener('click', function(){ openCall(c, hit); });
+      hit.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openCall(c, hit); } });
+      svg.appendChild(hit);
+    });
+    return svg;
+  }
+  // the fixed order a call's options are listed in, the card's own order: the 30-minute call up, down, flat,
+  // unsure; the 10-minute call from the biggest rise to the biggest fall, then unsure
+  var ODDS_ORDER = {five: ['up_big', 'up_small', 'flat', 'down_small', 'down_big', 'unsure'], three: ['up', 'down', 'flat', 'unsure']};
+  // the result as the grader recorded it, in the units the sum was banded in
+  function movedWords(c){
+    var m = c.moved || {}, dir = function(x){ return x > 0 ? 'higher' : 'lower'; };
+    if(m.realized_dollars != null){
+      var u = m.realized_units != null ? ', ' + Math.abs(m.realized_units).toFixed(2) + ' of a tape unit' : '';
+      return m.realized_dollars === 0 ? 'Price ended level with the read at ' + clock(c.mark) + '.'
+        : 'Price ended $' + Math.abs(m.realized_dollars).toFixed(2) + ' ' + dir(m.realized_dollars) + ' at ' + clock(c.mark) + ' than at the read' + u + '.';
+    }
+    if(m.realized_sigma != null){
+      return m.realized_sigma === 0 ? 'Price ended level with the read at ' + clock(c.mark) + '.'
+        : 'Price ended ' + Math.abs(m.realized_sigma).toFixed(2) + ' of a normal day\u2019s move ' + dir(m.realized_sigma) + ' at ' + clock(c.mark) + ' than at the read.';
+    }
+    return null;
+  }
+  // a call's sheet: the result first when the bars have one, otherwise where the call stands; then its odds
+  function openCall(c, from){
+    var now = Date.now(), body = $('csBody');
+    $('csTitle').textContent = 'The ' + clock(c.read) + ' call \u00B7 looks ' + c.minutes + ' min ahead';
+    body.textContent = '';
+    var res = el('div', 'sh-caveat cs-result'), v = el('div', 'cs-verdict');
+    if(c.outcome){
+      v.appendChild(el('b', null, c.hit ? 'Right' : 'Wrong')); v.appendChild(el('span', null, 'Result'));
+      res.appendChild(v);
+      res.appendChild(el('p', null, 'It ended ' + cap(c.outcome) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'));
+      var mv = movedWords(c); if(mv) res.appendChild(el('p', null, mv));
+    } else if(!c.mark){
+      v.appendChild(el('b', null, 'Never graded')); res.appendChild(v);
+      res.appendChild(el('p', null, 'It ends past the close, so the bars never grade it.'));
+    } else if(c.closed){
+      v.appendChild(el('b', null, 'Not graded')); res.appendChild(v);
+      res.appendChild(el('p', null, sentence(c.closed) + '.'));
+    } else if(now < Date.parse(c.mark)){
+      v.appendChild(el('b', null, 'Open')); v.appendChild(el('span', null, leftWords(Date.parse(c.mark), now))); res.appendChild(v);
+      res.appendChild(el('p', null, 'It is graded at ' + clock(c.mark) + ', against the bar at that minute.'));
+    } else {
+      v.appendChild(el('b', null, 'Grade pending')); res.appendChild(v);
+      res.appendChild(el('p', null, 'The window closed at ' + clock(c.mark) + '. The grade comes with the next run.'));
+    }
+    body.appendChild(res);
+    var odds = el('div', 'cs-odds'), o = c.odds || {};
+    odds.appendChild(el('div', 'sh-h', 'The odds'));
+    var order = ('up_big' in o || 'down_big' in o) ? ODDS_ORDER.five : ODDS_ORDER.three;
+    order.concat(Object.keys(o).filter(function(k){ return order.indexOf(k) < 0; }))
+      .forEach(function(k){ if(k in o) odds.appendChild(bar(cap(k), o[k], k === c.pick)); });
+    body.appendChild(odds);
+    body.appendChild(tag('a forecast, graded by the bars, never a call.'));
+    MiraiSheet.open(from);
+  }
+  function inPlay(calls){
+    var box = el('div'), head = el('div', 'inplay-h'), holder = el('div');
+    box.appendChild(head); box.appendChild(holder); box.appendChild(tag('tap a call for its odds and result.'));
+    function update(){
+      var now = Date.now(), open = fitting(calls).filter(function(c){ return now < Date.parse(c.mark); }).length;
+      head.textContent = 'Calls in play \u00B7 ' + open + ' open';
+      holder.textContent = ''; holder.appendChild(callsSvg(calls, now));
+    }
+    update(); tickers.push(update);
+    return box;
+  }
+
+  // the 30-minute call when it leads: the clock, the call, its blend, the calls in play and the 60-minute call
+  function sumCard(c, main){
+    var h = c.hour;
+    if(h && h.probabilities){
+      var bl = h.blend || null, minutes = (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
+      var hc = el('div', 'card dashed');
+      var marks = c.marks || {};
+      hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
+      var hp = h.probabilities, top = h.pick || top1(hp);
+      hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
+      // a fixed order, up, down, flat, unsure, so the eye always finds the same word in the same place
+      var od = el('div', 'odds');
+      ['up', 'down', 'flat', 'unsure'].concat(Object.keys(hp).filter(function(k){ return ['up', 'down', 'flat', 'unsure'].indexOf(k) < 0; }))
+        .forEach(function(k){ if(k in hp) od.appendChild(el('span', null, cap(k) + ' ' + pct(hp[k]))); });
+      hc.appendChild(od);
+      blendLines(h, bl, minutes).forEach(function(t){ hc.appendChild(tag(t)); });
+      // a scheduled event within the hour (the service's calendar): said once, in words; the read is
+      // still graded, and one due inside 30 minutes is kept out of the question weights
+      if(c.event && c.event.sentence) hc.appendChild(tag(sentence(c.event.sentence) +
+        (c.event.within_30 ? '; this read is graded but kept out of the question weights' : '')));
+      if(c.calls && c.calls.length) hc.appendChild(inPlay(c.calls));
+      // the 60-minute sum, asked on the same answers, graded beside the 30 for the comparison; never the headline
+      var h60 = h.by && h.by.next_60;
+      if(h60 && h60.probabilities){
+        var p60 = h60.probabilities, t60 = h60.pick || top1(p60);
+        var m60 = marks.next_60 !== undefined ? marks.next_60 : plusIso(c.row_ts, 60);
+        var l60 = el('div', 'tag');
+        var say60 = function(){ l60.textContent = '60-minute call from the same read: ' + cap(t60) + ' ' + pct(p60[t60]) + ', ' +
+          (m60 ? (leftWords(Date.parse(m60), Date.now()) || 'window closed at ' + clock(m60)) : 'it ends past the close, so it is never graded'); };
+        say60(); tickers.push(say60); hc.appendChild(l60);
+      }
+      hc.appendChild(tag((h.confidence != null ? 'confidence ' + pct(h.confidence) + ' · ' : '') + 'a forecast, graded by the bars ' + minutes + ' minutes on, never a call'));
+      hc.appendChild(tag('from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '')));
+      main.appendChild(hc);
+    } else if(h && h.error){
+      var he = el('div', 'card dashed'); he.appendChild(labRow('next 30 minutes, the sum of the answers'));
+      he.appendChild(skipLine('no sum on the ' + clock(c.row_ts) + ' read: ' + h.error));
+      if(c.calls && c.calls.length) he.appendChild(inPlay(c.calls));
+      main.appendChild(he);
+    }
+  }
+  // the 30-minute call while the opening leads: one line, with its own minutes left
+  function foldLive(c){
+    var f = el('div', 'card fold'), h = c.hour, p = h && h.probabilities;
+    f.appendChild(el('span', 'k', '30-min read ' + clock(c.row_ts)));
+    if(p){ var top = h.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top]))); }
+    var left = el('span', 'l'); f.appendChild(left);
+    var m30 = c.marks && c.marks.next_30 !== undefined ? c.marks.next_30 : plusIso(c.row_ts, 30);
+    function update(){ left.textContent = m30 ? (leftWords(Date.parse(m30), Date.now()) || 'Window closed at ' + clock(m30)) : 'Never graded'; }
+    update(); tickers.push(update);
+    return f;
+  }
+
+  // ---- the opening lane: its own card, written every 5 minutes from 09:35 and once more at its close-out
   var TAPE_URL = '/api/raw/file?root=state&path=jev/lanes/tape/latest.json';
-  var TAPE_WINDOW = ['09:33', '10:40'], TAPE_MAX_AGE_MIN = 8, TAPE_STEP_MIN = 5, TAPE_FIRST = '09:35', TAPE_LAST = '10:30';
-  var tape = null;
+  var LANE_HOURS = ['09:33', '16:05'];      // fetched in market hours: it leads the morning, then leaves the day's score
+  var LANE_MARKS = ['09:33', '10:46'];      // and a few seconds after each 5-minute mark while it reads and closes out
+  var TAPE_STEP_MIN = 5;
+  var tape = null, tapeOk = true;
   function hhmm(t){ return (t.h < 10 ? '0' : '') + t.h + ':' + (t.m < 10 ? '0' : '') + t.m; }
   function marketDay(){
     try { return new Intl.DateTimeFormat('en-CA', {timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()); }
     catch(e){ return null; }
   }
-  function inTapeWindow(t){ t = t || marketClock(); if(!t) return false; var s = hhmm(t); return s >= TAPE_WINDOW[0] && s < TAPE_WINDOW[1]; }
-  // the one rule that shows the strip: the lane's own card, stamped today, no older than a read can be
-  function tapeShows(t, ageMin, today){
-    return !!(t && t.lane === 'tape' && today && String(t.row_ts || '').slice(0, 10) === today && ageMin != null && ageMin <= TAPE_MAX_AGE_MIN);
-  }
-  function nextTapeRead(t){
-    t = t || marketClock(); if(!t) return null;
-    var m = Math.floor(t.m / TAPE_STEP_MIN) * TAPE_STEP_MIN + TAPE_STEP_MIN, h = t.h;
-    if(m >= 60){ m -= 60; h += 1; }
-    var s = hhmm({h: h, m: m});
-    return (s >= TAPE_FIRST && s <= TAPE_LAST) ? s : null;
-  }
-  function pct(x){ return Math.round((x || 0) * 100) + '%'; }
-  function tapeLab(t, m){ return 'opening lane, read ' + clock(t.row_ts) + (nextTapeRead() ? ', next ' + nextTapeRead() : ', the last of the morning'); }
-  function hideTape(){ var b = $('tape'); if(b){ b.hidden = true; b.textContent = ''; } }
-  function paintTape(t, ok){
-    var box = $('tape'); if(!box) return;
-    var m = mins(t.row_ts);
-    if(!tapeShows(t, m, marketDay())){ hideTape(); return; }
-    box.textContent = '';
-    box.appendChild(labRow(tapeLab(t, m), m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase(), false));
-    var h = t.hour, p = h && h.probabilities;
-    if(p){
+  function within(span, t){ t = t || marketClock(); if(!t) return false; var s = hhmm(t); return s >= span[0] && s < span[1]; }
+  function laneCard(t, ok){
+    var box = el('div', 'card dashed'), newest = t.calls[0], h = t.hour, p = h && h.probabilities;
+    box.appendChild(clockBlock(newest.read, newest.minutes, newest.mark));
+    if(p && t.row_ts === newest.read){
       var top = h.pick || top1(p);
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(p[top])));
       // the same odds read as a direction and as a size (the service's views), on one line
-      var v = h.views || {}, d = v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities;
-      var row = el('div', 'row');
-      if(d){ ['up', 'flat', 'down'].forEach(function(k){ if(k in d) row.appendChild(el('span', null, k + ' ' + pct(d[k]))); }); }
-      if(sz && 'big' in sz) row.appendChild(el('span', null, 'a big move ' + pct(sz.big)));
+      var v = h.views || {}, d = v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities, row = el('div', 'odds');
+      if(d){ ['up', 'flat', 'down'].forEach(function(k){ if(k in d) row.appendChild(el('span', null, cap(k) + ' ' + pct(d[k]))); }); }
+      if(sz && 'big' in sz) row.appendChild(el('span', null, 'A big move ' + pct(sz.big)));
       if(row.childNodes.length) box.appendChild(row);
     } else {
-      box.appendChild(el('div', 'skip', !t.sent ? 'not sent: no key on the station' : 'no sum this read' + (h && h.error ? ': ' + h.error : '')));
+      box.appendChild(el('div', 'big', cap(newest.pick) + ' ' + pct(newest.p)));
+      box.appendChild(skipLine('no sum on the ' + clock(t.row_ts) + ' read' + (h && h.error ? ': ' + h.error : '') + '; this is the ' + clock(newest.read) + ' call'));
     }
+    box.appendChild(inPlay(t.calls));
     var r = t.ruler, b = t.band;
     if(r && b){
-      var u = el('div', 'row');
-      u.appendChild(el('span', null, 'one tape unit $' + Math.round(r.unit_dollars) +
+      var u = el('div', 'odds');
+      u.appendChild(el('span', null, 'One tape unit $' + Math.round(r.unit_dollars) +
         (r.source === 'held' ? ', held until 09:45' : r.rank ? ', ' + r.rank.band + ' for this minute' : '')));
-      u.appendChild(el('span', null, 'flat within $' + Math.round(b.flat_dollars)));
-      u.appendChild(el('span', null, 'big beyond $' + Math.round(b.big_dollars)));
+      u.appendChild(el('span', null, 'Flat within $' + Math.round(b.flat_dollars)));
+      u.appendChild(el('span', null, 'Big beyond $' + Math.round(b.big_dollars)));
       box.appendChild(u);
     }
     // the builder's own sentences about the stretch since the last read, or its reason for none
@@ -469,22 +764,34 @@ details .q{margin-top:8px}
     var move = st.move_since_read || om['tape.move_since_read'];
     if(move) box.appendChild(el('div', 'say', sentence(move)));
     if(st.range_since_read) box.appendChild(el('div', 'say', sentence(st.range_since_read)));
-    if(!ok) box.appendChild(el('div', 'tag', 'fetch failed, showing the last read'));
-    box.appendChild(el('div', 'tag', 'the 5-minute reads\u2019 call for the next 10 minutes, in tape units: a forecast, graded by the bars, never a call'));
-    box.hidden = false;
+    var sch = t.schedule;
+    if(sch && sch.reads && sch.reads.length) box.appendChild(tag(lastLaneRead(t)
+      ? 'Hands back to the 30-minute reads at ' + clock(newest.mark) + ', when this last call closes.'
+      : 'Hands back to the 30-minute reads when the last call closes, about ' + hhmmPlus(sch.reads[sch.reads.length - 1], sch.looks_ahead_min) + '.'));
+    if(!ok) box.appendChild(tag('fetch failed, showing the last read'));
+    box.appendChild(tag('the 5-minute reads’ call for the next ' + newest.minutes + ' minutes, in tape units: a forecast, graded by the bars, never a call'));
+    return box;
   }
-  // the same lane card again only moves its age and its next-read word, and may hide it once it is old
-  function tapeAges(t){
-    var box = $('tape'); if(!box || box.hidden) return;
-    var m = mins(t.row_ts);
-    if(!tapeShows(t, m, marketDay())){ hideTape(); return; }
-    var lab = box.querySelector('.lab'); if(!lab) return;
-    lab.firstChild.textContent = tapeLab(t, m);
-    var r = lab.querySelector('.r'); if(r) r.textContent = m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase();
+  // the card's read is the lane's last of the day: it is stamped at a bar, which can be a minute behind the
+  // job's fire, so the last read is one stamped no more than a minute before the last scheduled read, and a
+  // close-out settles it
+  function lastLaneRead(t){
+    var r = t.schedule && t.schedule.reads;
+    return !!(t.closed_out_at || (r && r.length && clock(t.row_ts) >= hhmmPlus(r[r.length - 1], -1)));
+  }
+  // after the opening: one line with the morning's score, counted by the service from the lane's grades
+  function openingDone(t){
+    var y = t.tally, f = el('div', 'card fold');
+    var over = lastLaneRead(t);
+    f.appendChild(el('span', 'k', over ? 'opening done' : 'opening lane, no call open'));
+    f.appendChild(el('span', 'l', y.graded === y.calls ? y.right + ' of ' + y.calls + ' calls right'
+                                   : y.right + ' of ' + y.graded + ' graded calls right, ' + (y.calls - y.graded) + ' still to grade'));
+    return f;
   }
   var tapeInflight = false, tapeTimer = null;
+  function sig(x){ return x ? [x.generated_at, x.row_ts, x.closed_out_at || ''].join('|') : ''; }
   function pollTape(){
-    if(!inTapeWindow()){ if(tape){ tape = null; } hideTape(); return; }
+    if(!within(LANE_HOURS)){ if(tape){ tape = null; if(last) draw(last, lastOk); } return; }
     if(!tapeTimer) armTapeMark();
     if(tapeInflight) return;
     tapeInflight = true;
@@ -493,14 +800,13 @@ details .q{margin-top:8px}
       return r.json();
     }).then(function(j){
       var d = j && j.kind === 'json' && j.data && j.data.lane === 'tape' ? j.data : null;
-      if(d && tape && tape.generated_at === d.generated_at && tape.row_ts === d.row_ts){ tape = d; tapeAges(d); }
-      else if(d){ tape = d; paintTape(d, true); }
-      else if(tape){ paintTape(tape, false); }
-      else { hideTape(); }                       // no lane card yet: nothing to show, nothing to say
-    }).catch(function(){ if(tape) paintTape(tape, false); else hideTape(); })
+      var changed = d && sig(d) !== sig(tape), wasOk = tapeOk;
+      tapeOk = true;
+      if(changed) tape = d;
+      if((changed || !wasOk) && last) draw(last, lastOk);
+    }).catch(function(){ if(tapeOk && tape && last){ tapeOk = false; draw(last, lastOk); } else tapeOk = false; })
       .finally(function(){ tapeInflight = false; });
   }
-  // a few seconds after each 5-minute mark inside the window, as the live card does after :02 and :32
   function msToNextTapeMark(){
     var t = marketClock(); if(!t) return null;
     var wait = TAPE_STEP_MIN - (t.m % TAPE_STEP_MIN);
@@ -509,7 +815,7 @@ details .q{margin-top:8px}
   function armTapeMark(){
     if(tapeTimer) clearTimeout(tapeTimer);
     tapeTimer = null;
-    if(!inTapeWindow()) return;                  // armed again by the first poll inside the window
+    if(!within(LANE_MARKS)) return;              // armed again by the first poll inside the window
     var ms = msToNextTapeMark(); if(ms == null) return;
     tapeTimer = setTimeout(function(){ tapeTimer = null; if(!document.hidden) pollTape(); armTapeMark(); }, Math.max(1000, ms));
   }
@@ -530,9 +836,9 @@ details .q{margin-top:8px}
     var ms = msToNextMark(); if(ms == null) return;
     markTimer = setTimeout(function(){ if(!document.hidden) poll(); armMark(); }, Math.max(1000, ms));
   }
-  function wake(){ if(!document.hidden){ poll(); pollTape(); armMark(); armTapeMark(); } }
+  function wake(){ if(!document.hidden){ poll(); pollTape(); armMark(); armTapeMark(); tick(); } }
   poll(); pollTape(); armMark(); armTapeMark();
-  setInterval(function(){ if(!document.hidden){ poll(); pollTape(); } }, POLL_MS);
+  setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);
   window.addEventListener('focus', wake);

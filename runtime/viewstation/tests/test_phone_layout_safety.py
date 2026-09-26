@@ -573,7 +573,7 @@ def _css_code(html):
 
 
 def test_no_phone_page_reads_a_viewport_unit():
-    for name, html in (("index.html", PHONE), ("thread.html", THREAD)):
+    for name, html in (("index.html", PHONE), ("thread.html", THREAD), ("jev.html", (M / "jev.html").read_text())):
         css = _css_code(html)
         found = _UNIT.findall(css)
         # the ONE permitted use is the fallback value of the token itself
@@ -595,9 +595,9 @@ def test_both_pages_measure_the_height_before_anything_paints():
     """The same script, as the first thing in <body>, on both pages — kept as
     two copies for the same reason the palette is (a shared file is a full
     re-fetch on every open over the tunnel), so the copies are pinned equal."""
-    a, b = _measure_script(PHONE), _measure_script(THREAD)
-    assert a and b, "a page has lost the script at the top of <body>"
-    assert a == b, "the two pages measure the height differently"
+    a, b, j = _measure_script(PHONE), _measure_script(THREAD), _measure_script((M / "jev.html").read_text())
+    assert a and b and j, "a page has lost the script at the top of <body>"
+    assert a == b == j, "the phone pages measure the height differently"
     for need in ("window.innerHeight", "setProperty('--app-h'", "'resize'",
                  "'orientationchange'", "visualViewport"):
         assert need in a, need
