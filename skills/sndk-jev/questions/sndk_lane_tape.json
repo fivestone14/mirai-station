@@ -1,6 +1,6 @@
 {
  "name": "SNDK PRO, the tape lane's questions: the first hour, read every 5 minutes, measured in tape units",
- "version": "0.2.0",
+ "version": "0.3.0",
  "date": "2026-09-26",
  "status": "read by the tape lane (sndk_jev/lane.py, `--lane tape`): asked afresh on every read, 09:35 to 10:30 ET; the answers are summed by questions/sndk_lane_hour.json",
  "how_to_use": [
@@ -39,10 +39,10 @@
     },
     "range_since_read": {
      "viewpoint": "volume_price",
-     "status": "shadow",
+     "status": "live",
      "cadence": "every scan",
      "ask": "Was the range since the last read wide, usual or narrow for this minute?",
-     "why": "In dollars a wide stretch leaned to a bigger next move on 22 sessions (65% over 0.12 sigma in the next 10 minutes against 50% after a narrow one); in tape units the lean reversed, because the unit already carries the tape's liveliness. Shadow until 30 sessions of live reads show its information about the next 10 minutes above the day-shuffled null; promoted by changing this status.",
+     "why": "Live on 2026-09-26 under the owner's rule: a question goes to shadow only once it is proven not to help JEV's call, and nothing proves that here. On 22 past sessions a wide stretch leaned to a bigger next move in dollars (65% over 0.12 sigma in the next 10 minutes against 50% after a narrow one), and in tape units the lean reversed, because the unit already carries the tape's liveliness; 22 sessions are too few to tell either way. The grader decides from here: its weight moves once it has 120 pairs and its information beats the day-shuffled test, and a weight under 0.5 leaves it out of the sum.",
      "type": "choice",
      "instructions": "Read `tape.range_since_read`. Which third does it place the range in for this minute?",
      "criteria": {

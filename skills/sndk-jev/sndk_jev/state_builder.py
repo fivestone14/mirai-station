@@ -428,7 +428,7 @@ def slot(bars: list[dict], start_min: int, end_min: int) -> list[dict]:
 # The tape lane's stretch labels (the plan of 2026-09-25, reworked on 22 sessions on 2026-09-26): the
 # net move since the last read in tape units against the sum's own cuts, and the range, the travel
 # and the direction flips of the stretch placed against the same clock minutes on the prior sessions.
-# A question reads the move (live) and the range (shadow); travel, flips and the round trip are
+# A question reads the move (live) and the range (live); travel, flips and the round trip are
 # written on every record and read by no question, so the four-week check can re-test them for free.
 TAPE_FLAT_UNITS = 0.35     # held: within this many units of the last read; the sum's flat band (sndk_lane_hour.json)
 TAPE_BIG_UNITS = 0.7       # big: beyond this many units; the sum's big band

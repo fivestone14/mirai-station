@@ -220,7 +220,7 @@ def test_the_lane_doc_reads_the_move_and_the_range_and_quotes_the_builders_words
     tape = next(g for g in doc["groups"] if g["id"] == "tape")
     assert tape["reads"] == ["context", "tape.move_since_read", "tape.range_since_read"]
     move, rng = tape["questions"]["move_since_read"], tape["questions"]["range_since_read"]
-    assert move["status"] == "live" and rng["status"] == "shadow"
+    assert move["status"] == "live" and rng["status"] == "live"
     assert list(move["criteria"]) == ["rose_big", "rose_small", "held", "fell_small", "fell_big", "unsure"]
     assert list(rng["criteria"]) == ["wide", "usual", "narrow", "unsure"]
     # the sum's own words never appear in the move's options or criteria

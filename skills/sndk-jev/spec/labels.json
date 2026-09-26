@@ -887,7 +887,7 @@
    "cut": "top third above two thirds of the prior sessions; bottom third below one third; needs 5 prior sessions and every minute of today's window",
    "reads_as": "the range since the last read, 5 minutes ago, is $17.8, 0.81 of a tape unit ($22), in the bottom third for this minute, higher than 5 of 20 prior sessions",
    "real": true,
-   "note": "added 2026-09-26; rendered from the real bars at 2026-09-25 09:40. Read by the lane's shadow question range_since_read"
+   "note": "added 2026-09-26; rendered from the real bars at 2026-09-25 09:40. Read by the lane's live question range_since_read (shadow until 2026-09-26)"
   },
   {
    "path": "tape.travel_since_read",
