@@ -66,3 +66,26 @@ def test_mark_at_is_the_graders_minute():
     assert mark_at(f"{DAY}T15:31:56-04:00", 60) is None                                  # ends past the close: never graded
     assert mark_at("2026-11-27T12:31:00-05:00", 30).isoformat() == "2026-11-27T13:00:00-05:00"   # a half day's close
     assert mark_at("2026-11-27T12:40:00-05:00", 30) is None
+
+
+def test_the_situation_rows_carry_a_word_and_a_figure_for_each_fact(full_scene):
+    """The five situation facts as the phone draws them: the builder's verdict in a word, its figure (the
+    number, the cut, the kind) and the plain sentence behind a tap. JEV only ever sees the sentences."""
+    from sndk_jev.service import SITUATION, situation_rows
+    from sndk_jev.state_builder import build_state
+    figures: dict = {}
+    state, omitted = build_state(full_scene, figures)
+    rows = situation_rows(state, figures)
+    assert [r["path"] for r in rows] == [p for p, _ in SITUATION]
+    by = {r["path"]: r for r in rows}
+    assert by["price.recent_move"]["figure"]["kind"] == "signed" and by["price.recent_move"]["figure"]["band"] == 0.15
+    assert by["price.recent_move"]["verdict"] in ("Flat", "Rising", "Falling")
+    assert by["volume.now"]["figure"]["kind"] == "rank" and by["volume.now"]["figure"]["of"] >= 5
+    assert by["gex.air_to_wall"]["figure"]["kind"] == "distance" and by["gex.air_to_wall"]["figure"]["near"] == 0.5
+    assert by["iv.trend_30min"]["figure"]["unit"] == "vol points"
+    assert all("sigma" not in r["sentence"] and "verdict" not in r.get("figure", {}) for r in rows)
+    # the figure's number is the sentence's: a rising 30-minute move says the same figure it draws
+    assert f'{abs(by["price.recent_move"]["figure"]["value"]):.2f}' in by["price.recent_move"]["sentence"]
+    # a label left out (a stale book) leaves its row out too
+    state.pop("gex")
+    assert "gex.air_to_wall" not in [r["path"] for r in situation_rows(state, figures)]

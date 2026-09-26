@@ -558,6 +558,10 @@ class _Out:
     * ``no_figure``  the same sentence with the measured number deleted
     * ``no_band``    the same sentence with the threshold clause deleted
 
+    A labeller may also hand over the ``figure`` behind a sentence: its number, its cut and its kind,
+    stored with the answer it landed on, so the phone can draw the fact rather than print it. JEV never
+    sees a figure; only the sentence is sent.
+
     Both must be strict deletions from the full sentence: no new words, no rephrasing.
     Introducing vocabulary in one arm would decide the experiment by wording.
     """
@@ -567,12 +571,15 @@ class _Out:
         self.omitted: dict[str, str] = {}
         self.variants: dict[str, dict[str, str]] = {}
         self.verdicts: dict[str, str] = {}
+        self.figures: dict[str, dict] = {}
 
     def put(self, group: str, key: str, value: Any, *, answer: str | None = None,
-            no_figure: str | None = None, no_band: str | None = None) -> None:
+            no_figure: str | None = None, no_band: str | None = None, figure: dict | None = None) -> None:
         self.state.setdefault(group, {})[key] = value
         if answer is not None:
             self.verdicts[f"{group}.{key}"] = answer
+        if figure is not None:
+            self.figures[f"{group}.{key}"] = {**figure, "verdict": answer}
         if no_figure is not None or no_band is not None:
             self.variants[f"{group}.{key}"] = {
                 "full": value,
@@ -596,9 +603,12 @@ def _run(scene: Scene) -> _Out:
     return out
 
 
-def build_state(scene: Scene) -> tuple[dict, dict]:
-    """Return ``(state, omitted)``. ``state`` holds only what could be measured."""
+def build_state(scene: Scene, figures: dict | None = None) -> tuple[dict, dict]:
+    """Return ``(state, omitted)``. ``state`` holds only what could be measured. Pass a dict as
+    ``figures`` to have it filled with the figures behind the labels that hand one over (_Out.put)."""
     out = _run(scene)
+    if figures is not None:
+        figures.update(out.figures)
     return out.state, out.omitted
 
 
@@ -704,22 +714,23 @@ class _Builder:
             else:
                 d = (self.spot - ref) / self.sigma
                 self.move30 = d
+                fig = {"kind": "signed", "value": round(d, 3), "band": MOVE_RULE_SIGMA, "unit": "sigma"}
                 if abs(d) < MOVE_RULE_SIGMA:
                     o.put("price", "recent_move",
                           f"over the last 30 minutes price stayed within {MOVE_RULE_SIGMA} sigma of where it was, moving {signed(d)} sigma",
-                          answer="going_nowhere",
+                          answer="going_nowhere", figure=fig,
                           no_figure="over the last 30 minutes price stayed within the move rule of where it was",
                           no_band=f"over the last 30 minutes price moved {signed(d)} sigma")
                 elif d > 0:
                     o.put("price", "recent_move",
                           f"over the last 30 minutes price rose {sig(d)}, more than the {MOVE_RULE_SIGMA} sigma move rule",
-                          answer="rising",
+                          answer="rising", figure=fig,
                           no_figure="over the last 30 minutes price rose, more than the move rule",
                           no_band=f"over the last 30 minutes price rose {sig(d)}")
                 else:
                     o.put("price", "recent_move",
                           f"over the last 30 minutes price fell {sig(-d)}, more than the {MOVE_RULE_SIGMA} sigma move rule",
-                          answer="falling",
+                          answer="falling", figure=fig,
                           no_figure="over the last 30 minutes price fell, more than the move rule",
                           no_band=f"over the last 30 minutes price fell {sig(-d)}")
 
@@ -743,22 +754,23 @@ class _Builder:
             o.skip("price", "vs_vwap", "row carries no vwap")
         else:
             d = (self.spot - float(vwap)) / self.sigma
+            fig = {"kind": "signed", "value": round(d, 3), "band": MOVE_RULE_SIGMA, "unit": "sigma"}
             if abs(d) < MOVE_RULE_SIGMA:
                 o.put("price", "vs_vwap",
                       f"price is within {MOVE_RULE_SIGMA} sigma of the day's volume-weighted average price, {signed(d)} sigma from it",
-                      answer="at_it",
+                      answer="at_it", figure=fig,
                       no_figure="price is within the move rule of the day's volume-weighted average price",
                       no_band=f"price is {signed(d)} sigma from the day's volume-weighted average price")
             elif d > 0:
                 o.put("price", "vs_vwap",
                       f"price is {sig(d)} above the day's volume-weighted average price, more than the {MOVE_RULE_SIGMA} sigma move rule",
-                      answer="above",
+                      answer="above", figure=fig,
                       no_figure="price is above the day's volume-weighted average price, more than the move rule",
                       no_band=f"price is {sig(d)} above the day's volume-weighted average price")
             else:
                 o.put("price", "vs_vwap",
                       f"price is {sig(-d)} below the day's volume-weighted average price, more than the {MOVE_RULE_SIGMA} sigma move rule",
-                      answer="below",
+                      answer="below", figure=fig,
                       no_figure="price is below the day's volume-weighted average price, more than the move rule",
                       no_band=f"price is {sig(-d)} below the day's volume-weighted average price")
 
@@ -843,22 +855,23 @@ class _Builder:
                 o.skip("iv", "trend_30min", "no row with implied volatility about 30 minutes ago")
             else:
                 d = (float(iv_now) - float(earlier[-1]["atm_iv"])) * 100.0
+                fig = {"kind": "signed", "value": round(d, 2), "band": IV_FLAT_BAND_PTS, "unit": "vol points"}
                 if abs(d) <= IV_FLAT_BAND_PTS:
                     o.put("iv", "trend_30min",
                           f"over the last 30 minutes at-the-money implied volatility stayed within the {IV_FLAT_BAND_PTS:g} vol point flat band, changing {signed(d, 1)} vol points",
-                          answer="flat",
+                          answer="flat", figure=fig,
                           no_figure="over the last 30 minutes at-the-money implied volatility stayed within the flat band",
                           no_band=f"over the last 30 minutes at-the-money implied volatility changed {signed(d, 1)} vol points")
                 elif d > 0:
                     o.put("iv", "trend_30min",
                           f"over the last 30 minutes at-the-money implied volatility rose {d:.1f} vol points, more than the {IV_FLAT_BAND_PTS:g} point flat band",
-                          answer="rising",
+                          answer="rising", figure=fig,
                           no_figure="over the last 30 minutes at-the-money implied volatility rose, more than the flat band",
                           no_band=f"over the last 30 minutes at-the-money implied volatility rose {d:.1f} vol points")
                 else:
                     o.put("iv", "trend_30min",
                           f"over the last 30 minutes at-the-money implied volatility fell {-d:.1f} vol points, more than the {IV_FLAT_BAND_PTS:g} point flat band",
-                          answer="falling",
+                          answer="falling", figure=fig,
                           no_figure="over the last 30 minutes at-the-money implied volatility fell, more than the flat band",
                           no_band=f"over the last 30 minutes at-the-money implied volatility fell {-d:.1f} vol points")
 
@@ -932,16 +945,17 @@ class _Builder:
         else:
             name, d = min(walls, key=lambda w: abs(w[1]))
             side = "above" if d >= 0 else "below"
+            fig = {"kind": "distance", "value": round(abs(d), 3), "near": WALL_NEAR_SIGMA, "unit": "sigma", "side": side, "name": name}
             if abs(d) <= WALL_NEAR_SIGMA:
                 o.put("gex", "air_to_wall",
                       f"a heavy strike sits within {WALL_NEAR_SIGMA} sigma of price: the {name} {sig(abs(d))} {side} price",
-                      answer="heavy_strike_close",
+                      answer="heavy_strike_close", figure=fig,
                       no_figure=f"a heavy strike sits within the near-wall rule of price: the {name}, {side} price",
                       no_band=f"the nearest heavy strike is the {name} {sig(abs(d))} {side} price")
             else:
                 o.put("gex", "air_to_wall",
                       f"the nearest heavy strike is the {name} {sig(abs(d))} {side} price, more than {WALL_NEAR_SIGMA} sigma away, with open air between",
-                      answer="open_air",
+                      answer="open_air", figure=fig,
                       no_figure=f"the nearest heavy strike is the {name} {side} price, further than the near-wall rule, with open air between",
                       no_band=f"the nearest heavy strike is the {name} {sig(abs(d))} {side} price")
 
@@ -1051,6 +1065,7 @@ class _Builder:
             o.put("volume", "now",
                   f"volume over the last 30 minutes is in the {band} for this time of day, higher than {under} of {len(base)} prior sessions",
                   answer={"top fifth": "heavy", "bottom fifth": "light", "middle band": "normal"}[band],
+                  figure={"kind": "rank", "under": under, "of": len(base), "cuts": [BOTTOM_FIFTH, TOP_FIFTH]},
                   no_figure=f"volume over the last 30 minutes is in the {band} for this time of day",
                   no_band=f"volume over the last 30 minutes was higher than {under} of {len(base)} prior sessions at this time of day")
 

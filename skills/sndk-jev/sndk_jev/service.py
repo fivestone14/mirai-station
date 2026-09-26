@@ -57,7 +57,15 @@ from .hour import answer_sentences, band_of, hour_request, hour_summary, load_ho
 from .lane import LANES, LIVE, Lane
 from .state_builder import DEFAULT_STATE_DIR, build_state, load_jsonl, make_scene, omit_stale_book, parse_ts, session_close
 
-SITUATION_PATHS = ("price.recent_move", "price.vs_vwap", "volume.now", "gex.air_to_wall", "iv.trend_30min")
+# the situation the phone draws: five facts, each with a short title, the builder's verdict in a word, its
+# figure (number, cut, kind) to draw and its full sentence behind a tap
+SITUATION = (("price.recent_move", "Price, last 30 min"), ("price.vs_vwap", "Price against the day's average"),
+             ("volume.now", "Volume, last 30 min"), ("gex.air_to_wall", "Nearest heavy strike"),
+             ("iv.trend_30min", "Implied volatility, last 30 min"))
+VERDICT_WORDS = {"going_nowhere": "Flat", "rising": "Rising", "falling": "Falling", "flat": "Flat",
+                 "at_it": "At it", "above": "Above", "below": "Below",
+                 "heavy": "Heavy", "normal": "Normal", "light": "Light",
+                 "heavy_strike_close": "Close", "open_air": "Open air", "no_wall_in_reach": "None in reach"}
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 ET = ZoneInfo("America/New_York")
 STALE_ROW_S = 15 * 60          # a card built on a row older than this says so
@@ -186,6 +194,22 @@ def last_read_of(out_dir: Path, day: str, now: datetime) -> datetime | None:
     return max(stamps) if stamps else None
 
 
+def situation_rows(state: dict, figures: dict | None = None) -> list[dict]:
+    """The situation as the phone draws it: each fact the builder could measure, in the order of SITUATION,
+    with its title, its verdict in a word, its sentence in plain words and, when the builder handed one over,
+    its figure (the kind, the number and the cut; the verdict rides on the row)."""
+    rows = []
+    for path, title in SITUATION:
+        label = _get(state, path)
+        if not label:
+            continue
+        fig = dict((figures or {}).get(path) or {})
+        verdict = fig.pop("verdict", None)
+        rows.append({"path": path, "title": title, "verdict": VERDICT_WORDS.get(verdict), "sentence": plain(label),
+                     **({"figure": fig} if fig else {})})
+    return rows
+
+
 def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
     """Every call of the lane's primary sum on ``day``, oldest first, with its grade when it has one: the
     read's time, the mark it is graded at (the read's minute plus the horizon, as the grader counts it),
@@ -242,7 +266,8 @@ def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:
 def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: dict, answers: dict | None,
          sent: bool, send_seconds: float | None, hour: dict | None = None, held: dict | None = None,
          cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT, event: dict | None = None,
-         lane: Lane = LIVE, unit: dict | None = None, band: dict | None = None, calls: list[dict] | None = None) -> dict:
+         lane: Lane = LIVE, unit: dict | None = None, band: dict | None = None, calls: list[dict] | None = None,
+         figures: dict | None = None) -> dict:
     """The phone's document. Small, plain, and honest about what was and was not sent. It carries the
     day's newest calls with their grades and the day's tally (day_calls), so the phone draws the calls
     in play on one clock. A lane on the bar clock also carries its ``stretch``, the sentences the builder
@@ -302,7 +327,7 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
                       "note": (f"the newest row is {row_age_s // 60} minutes old; nothing newer has been scanned"
                                if row_age_s > STALE_ROW_S else "built on a fresh row")},
         "sigma": scene.sigma,
-        "situation": [plain(_get(state, p)) for p in SITUATION_PATHS if _get(state, p)],
+        "situation": situation_rows(state, figures),
         "labels": sum(len(v) for v in state.values()),
         "omitted": {k: plain(str(v)) for k, v in omitted.items()},
         "sent": sent,
@@ -356,7 +381,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         age_min = (datetime.now(timezone.utc) - parse_ts(scene.row["ts"]).astimezone(timezone.utc)).total_seconds() / 60.0
         if age_min > STALE_ROW_SKIP_MIN:
             raise NoRowYet(f"the newest row is {age_min:.1f} minutes old, past the {STALE_ROW_SKIP_MIN:g}-minute line: the scanner has stopped; nothing sent, card unchanged")
-    state, omitted = build_state(scene)
+    figures: dict = {}
+    state, omitted = build_state(scene, figures)
     if day is None:
         # the options book is judged at the read, by the wall clock: a fresh row can still carry a book
         # the scanner has not refreshed, and a strike description from it would be passed off as now
@@ -454,7 +480,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         except Exception as e:  # grading must never stop the card
             log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
     c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit, band,
-             day_calls(out_dir, day_name, lane))
+             day_calls(out_dir, day_name, lane), figures)
     write_card(out_dir, c)
     return c
 

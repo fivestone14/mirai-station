@@ -38,6 +38,8 @@
   --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
   --on-body:#E4E6DF; --on-mute:#A9B0A6; --on-faint:#8E958A;
   --px-ink:#2F44B8; --px-mark:#5470E4; --px-soft:#C9D1F4; --rule-soft:#7E8779;
+  /* the odds, diverging from a neutral middle: down warm, up the page's blue, flat and unsure neutral */
+  --o-dn:#A8492F; --o-dn-soft:#DE9F8A; --o-fl:#B9B2A4; --o-up-soft:#8E9DE6; --o-up:#2F44B8; --o-un:#D5D0C6;
   --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
   --tap-min:48px; --state-hover:.08; --state-press:.12;
   --press-in:80ms; --press-out:200ms; --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(.2,0,0,1);
@@ -75,8 +77,20 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .state{display:inline-block;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);
        letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute);background:var(--s)}
 .big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
-.sit{margin:10px 0 0;padding:0;list-style:none}
-.sit li{font:400 15px/1.5 var(--sans);color:var(--i-body);padding:5px 0 5px 10px;border-left:2px solid var(--s2)}
+/* the situation: each fact a row with its verdict in a word and a small gauge; the sentence is a tap away */
+.sit-row{padding:11px 0;border-top:1px solid var(--s2);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sit-row:first-of-type{border-top:0}
+.sit-row:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px;border-radius:6px}
+.sit-top{display:flex;align-items:baseline;gap:8px}
+.sit-t{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.sit-v{margin-left:auto;font:700 15px/1.2 var(--sans);color:var(--i)}
+.sit-g{display:block;width:100%;height:auto;margin-top:7px}
+.sit-g .zone{fill:var(--s2)}
+.sit-g .track{stroke:var(--rule-soft);stroke-width:1.2}
+.sit-g .tick{stroke:var(--rule-soft);stroke-width:1}
+.sit-g .dot{fill:var(--px-ink)}
+.sit-g .lbl{fill:var(--i-mute);font:400 9.5px var(--sans)}
+.sit-c{margin-top:4px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 /* which call leads the page: the opening's 5-minute calls, or the 30-minute call */
 .mode{align-self:flex-start;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);background:var(--s);
       font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i)}
@@ -87,7 +101,31 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .clock-bar i{display:block;height:6px;border-radius:3px;background:var(--px-ink)}
 .clock-sub{display:flex;margin-top:4px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
 .clock-sub span:last-child{margin-left:auto}
-.odds{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px;font:400 13.5px/1.4 var(--sans);color:var(--i-body)}
+.odds{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:6px;font:400 13px/1.4 var(--sans);color:var(--i-body)}
+/* the odds as one bar: each option's share of the width, down on the left, up on the right, unsure last */
+.odds-bar{display:flex;gap:2px;height:12px;margin-top:10px}
+.odds-bar i,.how-bar i{display:block;border-radius:3px;min-width:3px}
+.odds-lab{display:flex;gap:2px;margin-top:5px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
+.odds-lab span{overflow:hidden;white-space:nowrap}
+.odds-lab span.pick{font-weight:700;color:var(--i)}
+.o-down_big,.o-down{background:var(--o-dn)}
+.o-down_small{background:var(--o-dn-soft)}
+.o-flat{background:var(--o-fl)}
+.o-up_small{background:var(--o-up-soft)}
+.o-up_big,.o-up{background:var(--o-up)}
+.o-unsure{background:var(--o-un)}
+/* how the 30-minute call was made: JEV's own call, the time of day's, and the half-and-half shown */
+.how{display:grid;grid-template-columns:88px minmax(0,1fr) 74px;gap:8px 10px;align-items:center;margin-top:14px}
+.how-k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.how-k.jev,.how-v.jev{color:var(--i)}
+.how-bar{display:flex;gap:1px;height:7px}
+.how-v{font:600 12.5px/1.2 var(--sans);color:var(--i-body);white-space:nowrap;text-align:right}
+.how-note{grid-column:1 / -1;font:400 12px/1.4 var(--sans);color:var(--i-mute)}
+/* the 60-minute call from the same read, one line at the foot of the 30-minute card */
+.row60{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--s2)}
+.row60 .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.row60 b{font:700 14px/1.2 var(--sans);color:var(--i)}
+.row60 .l{margin-left:auto;font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
 /* the calls in play: every call of the morning or the day on one clock, newest on top */
 .inplay-h{margin-top:14px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .inplay{display:block;width:100%;height:auto;margin-top:6px;font-family:var(--sans)}
@@ -232,7 +270,7 @@ details .q{margin-top:8px}
 <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent sessions, because on its first 37 graded reads JEV's sum alone did worse than the time of day alone. From 09:35 the opening lane reads every 5 minutes and its 10-minute call, sized in tape units, leads the page until its last call closes at 10:40; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock.</p>
 
 <div class="scrim" data-sheet-close></div>
-<div class="sheet" id="callSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
+<div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
   <div class="sh-grab"></div>
   <div class="sh-h" id="csTitle">The call</div>
   <div id="csBody"></div>
@@ -367,18 +405,54 @@ details .q{margin-top:8px}
   // what the blend is made of, and each part's own leading answer, in the page's own option words.
   function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
   function oneAnswer(p){ var k = top1(p); return k ? cap(k) + ' ' + Math.round((p[k] || 0) * 100) + '%' : 'none'; }
-  function blendLines(h, bl, minutes){
-    var out = [];
-    if(bl && bl.used){
-      out.push('half JEV\u2019s sum of the answers, half how the next ' + minutes + ' minutes went at this time of day' +
-               (bl.phase_words ? ' (' + bl.phase_words + ')' : '') + ' over the last ' + bl.sessions + ' sessions');
-      var j = h.jev, c = h.clock;
-      if(j && c) out.push('JEV alone ' + oneAnswer(j.probabilities) + (j.confidence != null ? ', confidence ' + Math.round(j.confidence * 100) + '%' : '') +
-                          ' \u00B7 time of day alone ' + oneAnswer(c.probabilities));
-    } else if(bl && bl.why){
-      out.push('JEV\u2019s sum alone: ' + bl.why);
+  // the order a call's options are drawn and listed in, left to right: from the biggest fall to the
+  // biggest rise, unsure last, so the bar reads like the price axis
+  var ODDS_ORDER = {five: ['down_big', 'down_small', 'flat', 'up_small', 'up_big', 'unsure'], three: ['down', 'flat', 'up', 'unsure']};
+  function oddsKeys(o){
+    var order = ('up_big' in o || 'down_big' in o) ? ODDS_ORDER.five : ODDS_ORDER.three;
+    return order.filter(function(k){ return k in o; }).concat(Object.keys(o).filter(function(k){ return order.indexOf(k) < 0; }));
+  }
+  // one bar: each option's share of the width; the words under it name each option whose words fit its
+  // share of the bar (about ODDS_TRACK_PX wide in a card on the phone), and bold the pick
+  var ODDS_TRACK_PX = 290, LETTER_PX = 6.4;
+  function oddsBar(o, pick){
+    var box = el('div'), bar = el('div', 'odds-bar'), lab = el('div', 'odds-lab'), keys = oddsKeys(o);
+    keys.forEach(function(k){
+      var w = Math.max(0, o[k] || 0), seg = el('i', 'o-' + k), word = el('span', k === pick ? 'pick' : null);
+      seg.style.flex = w + ' 1 0'; word.style.flex = w + ' 1 0';
+      var text = cap(k) + ' ' + pct(w);
+      if(text.length * LETTER_PX <= w * ODDS_TRACK_PX) word.textContent = text;
+      bar.appendChild(seg); lab.appendChild(word);
+    });
+    bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label', keys.map(function(k){ return cap(k) + ' ' + pct(o[k]); }).join(', '));
+    box.appendChild(bar); box.appendChild(lab);
+    return box;
+  }
+  // how the 30-minute call was made, drawn: JEV's own sum, the time of day's odds, and the half-and-half shown
+  function howChart(h, bl){
+    var g = el('div', 'how');
+    function row(key, cls, p){
+      if(!p) return;
+      g.appendChild(el('span', 'how-k' + cls, key));
+      var b = el('div', 'how-bar');
+      oddsKeys(p).forEach(function(k){ var i = el('i', 'o-' + k); i.style.flex = Math.max(0, p[k] || 0) + ' 1 0'; b.appendChild(i); });
+      g.appendChild(b);
+      g.appendChild(el('span', 'how-v' + cls, oneAnswer(p)));
     }
-    return out;
+    var j = h.jev, c = h.clock;
+    if(bl && bl.used && j && c){
+      row('JEV', ' jev', j.probabilities);
+      row('Time of day', '', c.probabilities);
+      row('Shown', '', h.probabilities);
+      g.appendChild(el('div', 'how-note', (j.confidence != null ? 'JEV was ' + pct(j.confidence) + ' sure. ' : '') +
+                                        'Shown is half JEV, half how this time of day went' + (bl.phase_words ? ' (' + bl.phase_words + ')' : '') +
+                                        ' over the last ' + bl.sessions + ' sessions.'));
+    } else {
+      row('JEV', ' jev', h.probabilities);
+      if(bl && bl.why) g.appendChild(el('div', 'how-note', sentence('JEV\u2019s sum alone: ' + bl.why)));
+    }
+    return g;
   }
   function labRow(text, age, old){
     var l = el('div', 'lab'); l.appendChild(el('span', null, text));
@@ -414,8 +488,7 @@ details .q{margin-top:8px}
       if(tape && tape.lane === 'tape' && String(tape.row_ts || '').slice(0, 10) === marketDay() && tape.tally && tape.tally.calls) main.appendChild(openingDone(tape));
     }
 
-    var card = el('div', 'card'); card.appendChild(labRow('situation', ageText, old));
-    var ul = el('ul', 'sit'); (c.situation || []).forEach(function(s){ ul.appendChild(el('li', null, sentence(s))); }); card.appendChild(ul); main.appendChild(card);
+    main.appendChild(situationCard(c, ageText, old));
 
     var by = {}; var skipped = [];
     c.questions.forEach(function(q){ if(q.answer) (by[q.viewpoint || 'outcome'] = by[q.viewpoint || 'outcome'] || []).push(q); else skipped.push(q); });
@@ -599,16 +672,13 @@ details .q{margin-top:8px}
     // on top of everything: one tap target a row high across the drawing for each call
     calls.forEach(function(c, i){
       var hit = svgEl('rect', {x: 0, y: i * ROW_H, width: 300, height: ROW_H, 'class': 'hit', role: 'button', tabindex: 0,
-                               'aria-controls': 'callSheet', 'aria-label': 'The ' + clock(c.read) + ' call, ' + cap(c.pick) + ' ' + pct(c.p) + ': its odds and result'});
+                               'aria-controls': 'jevSheet', 'aria-label': 'The ' + clock(c.read) + ' call, ' + cap(c.pick) + ' ' + pct(c.p) + ': its odds and result'});
       hit.addEventListener('click', function(){ openCall(c, hit); });
       hit.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openCall(c, hit); } });
       svg.appendChild(hit);
     });
     return svg;
   }
-  // the fixed order a call's options are listed in, the card's own order: the 30-minute call up, down, flat,
-  // unsure; the 10-minute call from the biggest rise to the biggest fall, then unsure
-  var ODDS_ORDER = {five: ['up_big', 'up_small', 'flat', 'down_small', 'down_big', 'unsure'], three: ['up', 'down', 'flat', 'unsure']};
   // the result as the grader recorded it, in the units the sum was banded in
   function movedWords(c){
     var m = c.moved || {}, dir = function(x){ return x > 0 ? 'higher' : 'lower'; };
@@ -650,9 +720,8 @@ details .q{margin-top:8px}
     body.appendChild(res);
     var odds = el('div', 'cs-odds'), o = c.odds || {};
     odds.appendChild(el('div', 'sh-h', 'The odds'));
-    var order = ('up_big' in o || 'down_big' in o) ? ODDS_ORDER.five : ODDS_ORDER.three;
-    order.concat(Object.keys(o).filter(function(k){ return order.indexOf(k) < 0; }))
-      .forEach(function(k){ if(k in o) odds.appendChild(bar(cap(k), o[k], k === c.pick)); });
+    odds.appendChild(oddsBar(o, c.pick));
+    oddsKeys(o).forEach(function(k){ odds.appendChild(bar(cap(k), o[k], k === c.pick)); });
     body.appendChild(odds);
     body.appendChild(tag('a forecast, graded by the bars, never a call.'));
     MiraiSheet.open(from);
@@ -669,39 +738,34 @@ details .q{margin-top:8px}
     return box;
   }
 
-  // the 30-minute call when it leads: the clock, the call, its blend, the calls in play and the 60-minute call
+  // the 30-minute call when it leads, laid out as the 5-minute one is: the clock, JEV's call as a bar, how
+  // it was made, the calls in play, then the 60-minute call from the same read on one line
   function sumCard(c, main){
-    var h = c.hour;
+    var h = c.hour, marks = c.marks || {};
     if(h && h.probabilities){
       var bl = h.blend || null, minutes = (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
       var hc = el('div', 'card dashed');
-      var marks = c.marks || {};
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
       var hp = h.probabilities, top = h.pick || top1(hp);
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
-      // a fixed order, up, down, flat, unsure, so the eye always finds the same word in the same place
-      var od = el('div', 'odds');
-      ['up', 'down', 'flat', 'unsure'].concat(Object.keys(hp).filter(function(k){ return ['up', 'down', 'flat', 'unsure'].indexOf(k) < 0; }))
-        .forEach(function(k){ if(k in hp) od.appendChild(el('span', null, cap(k) + ' ' + pct(hp[k]))); });
-      hc.appendChild(od);
-      blendLines(h, bl, minutes).forEach(function(t){ hc.appendChild(tag(t)); });
+      hc.appendChild(oddsBar(hp, top));
+      hc.appendChild(howChart(h, bl));
       // a scheduled event within the hour (the service's calendar): said once, in words; the read is
       // still graded, and one due inside 30 minutes is kept out of the question weights
       if(c.event && c.event.sentence) hc.appendChild(tag(sentence(c.event.sentence) +
         (c.event.within_30 ? '; this read is graded but kept out of the question weights' : '')));
       if(c.calls && c.calls.length) hc.appendChild(inPlay(c.calls));
-      // the 60-minute sum, asked on the same answers, graded beside the 30 for the comparison; never the headline
       var h60 = h.by && h.by.next_60;
       if(h60 && h60.probabilities){
         var p60 = h60.probabilities, t60 = h60.pick || top1(p60);
         var m60 = marks.next_60 !== undefined ? marks.next_60 : plusIso(c.row_ts, 60);
-        var l60 = el('div', 'tag');
-        var say60 = function(){ l60.textContent = '60-minute call from the same read: ' + cap(t60) + ' ' + pct(p60[t60]) + ', ' +
-          (m60 ? (leftWords(Date.parse(m60), Date.now()) || 'window closed at ' + clock(m60)) : 'it ends past the close, so it is never graded'); };
-        say60(); tickers.push(say60); hc.appendChild(l60);
+        var r60 = el('div', 'row60'), l60 = el('span', 'l');
+        r60.appendChild(el('span', 'k', 'Next 60 min')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);
+        var say60 = function(){ l60.textContent = m60 ? (leftWords(Date.parse(m60), Date.now()) || 'Window closed at ' + clock(m60)) : 'Ends past the close, never graded'; };
+        say60(); tickers.push(say60); hc.appendChild(r60);
       }
-      hc.appendChild(tag((h.confidence != null ? 'confidence ' + pct(h.confidence) + ' · ' : '') + 'a forecast, graded by the bars ' + minutes + ' minutes on, never a call'));
-      hc.appendChild(tag('from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '')));
+      hc.appendChild(tag('from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '') +
+                         ' \u00B7 a forecast, graded by the bars, never a call'));
       main.appendChild(hc);
     } else if(h && h.error){
       var he = el('div', 'card dashed'); he.appendChild(labRow('next 30 minutes, the sum of the answers'));
@@ -709,6 +773,79 @@ details .q{margin-top:8px}
       if(c.calls && c.calls.length) he.appendChild(inPlay(c.calls));
       main.appendChild(he);
     }
+  }
+
+  // the situation: each fact a row, its verdict in a word and a gauge of its number against its cut;
+  // a tap opens the sheet with the builder's full sentence
+  var GAUGE_W = 300, GAUGE_H = 22, GAUGE_L = 6, GAUGE_R = 294;
+  // which way a signed fact moved, in the words its row uses: against the day's average it is above or below,
+  // everything else went up or down
+  function signedWords(f, path){
+    var v = f.value, mag = f.unit === 'vol points' ? Math.abs(v).toFixed(1) + ' vol points' : Math.abs(v).toFixed(2) + ' of a normal day\u2019s move';
+    if(v === 0) return 'No change';
+    if(path === 'price.vs_vwap') return sentence(mag + (v > 0 ? ' above' : ' below'));
+    return (v > 0 ? 'Up ' : 'Down ') + mag;
+  }
+  function gauge(f){
+    var svg = svgEl('svg', {viewBox: '0 0 ' + GAUGE_W + ' ' + GAUGE_H, 'class': 'sit-g', 'aria-hidden': 'true'}), mid = 10;
+    var span = GAUGE_R - GAUGE_L;
+    svg.appendChild(svgEl('line', {x1: GAUGE_L, y1: mid, x2: GAUGE_R, y2: mid, 'class': 'track'}));
+    var at;
+    if(f.kind === 'signed'){
+      // centred on no change; the shaded middle is the flat band the verdict is judged against
+      var M = Math.max(f.band * 3, Math.abs(f.value) * 1.25), x = function(v){ return GAUGE_L + (v + M) / (2 * M) * span; };
+      svg.insertBefore(svgEl('rect', {x: x(-f.band).toFixed(1), y: mid - 6, width: (x(f.band) - x(-f.band)).toFixed(1), height: 12, rx: 3, 'class': 'zone'}), svg.firstChild);
+      svg.appendChild(svgEl('line', {x1: x(0).toFixed(1), y1: mid - 7, x2: x(0).toFixed(1), y2: mid + 7, 'class': 'tick'}));
+      at = x(f.value);
+    } else if(f.kind === 'rank'){
+      // the prior sessions at this time of day, lowest to highest; the shaded ends are the bottom and top fifths
+      var x2 = function(q){ return GAUGE_L + q * span; }, cuts = f.cuts || [0.2, 0.8];
+      svg.insertBefore(svgEl('rect', {x: GAUGE_L, y: mid - 6, width: (x2(cuts[0]) - GAUGE_L).toFixed(1), height: 12, rx: 3, 'class': 'zone'}), svg.firstChild);
+      svg.insertBefore(svgEl('rect', {x: x2(cuts[1]).toFixed(1), y: mid - 6, width: (GAUGE_R - x2(cuts[1])).toFixed(1), height: 12, rx: 3, 'class': 'zone'}), svg.firstChild);
+      at = x2(f.of ? Math.min(1, Math.max(0, f.under / f.of)) : 0);
+    } else if(f.kind === 'distance'){
+      // from price on the left out to the strike; the shaded start is the near-wall distance
+      var D = Math.max(f.near * 2, f.value * 1.25), x3 = function(v){ return GAUGE_L + v / D * span; };
+      svg.insertBefore(svgEl('rect', {x: GAUGE_L, y: mid - 6, width: (x3(f.near) - GAUGE_L).toFixed(1), height: 12, rx: 3, 'class': 'zone'}), svg.firstChild);
+      svg.appendChild(svgEl('line', {x1: GAUGE_L, y1: mid - 7, x2: GAUGE_L, y2: mid + 7, 'class': 'tick'}));
+      at = x3(f.value);
+    } else {
+      return null;
+    }
+    svg.appendChild(svgEl('circle', {cx: Math.max(GAUGE_L, Math.min(GAUGE_R, at)).toFixed(1), cy: mid, r: 5.5, 'class': 'dot'}));
+    return svg;
+  }
+  function factCaption(f, path){
+    if(f.kind === 'signed') return signedWords(f, path);
+    if(f.kind === 'rank') return 'Busier than ' + f.under + ' of ' + f.of + ' past sessions at this time';
+    if(f.kind === 'distance') return sentence(f.name) + ', ' + f.value.toFixed(2) + ' of a normal day\u2019s move ' + f.side;
+    return '';
+  }
+  function openFact(r, from){
+    $('csTitle').textContent = r.title;
+    var body = $('csBody'); body.textContent = '';
+    var res = el('div', 'sh-caveat cs-result'), v = el('div', 'cs-verdict');
+    v.appendChild(el('b', null, r.verdict || '')); res.appendChild(v);
+    res.appendChild(el('p', null, sentence(r.sentence) + '.'));
+    body.appendChild(res);
+    body.appendChild(tag('one of the facts JEV reads; it answers questions about this sentence, word for word.'));
+    MiraiSheet.open(from);
+  }
+  function situationCard(c, ageText, old){
+    var card = el('div', 'card'); card.appendChild(labRow('situation', ageText, old));
+    (c.situation || []).forEach(function(r){
+      var row = el('div', 'sit-row');
+      if(typeof r === 'string'){ row.appendChild(el('div', 'sit-c', sentence(r))); card.appendChild(row); return; }   // a card written before 2026-09-26
+      var top = el('div', 'sit-top'); top.appendChild(el('span', 'sit-t', r.title)); top.appendChild(el('b', 'sit-v', r.verdict || '')); row.appendChild(top);
+      var g = r.figure && gauge(r.figure); if(g) row.appendChild(g);
+      row.appendChild(el('div', 'sit-c', r.figure ? factCaption(r.figure, r.path) : sentence(r.sentence)));
+      row.setAttribute('role', 'button'); row.setAttribute('tabindex', '0'); row.setAttribute('aria-controls', 'jevSheet');
+      row.setAttribute('aria-label', r.title + ': ' + (r.verdict || '') + '. Open the full sentence');
+      row.addEventListener('click', function(){ openFact(r, row); });
+      row.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openFact(r, row); } });
+      card.appendChild(row);
+    });
+    return card;
   }
   // the 30-minute call while the opening leads: one line, with its own minutes left
   function foldLive(c){
@@ -740,6 +877,7 @@ details .q{margin-top:8px}
     if(p && t.row_ts === newest.read){
       var top = h.pick || top1(p);
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(p[top])));
+      box.appendChild(oddsBar(p, top));
       // the same odds read as a direction and as a size (the service's views), on one line
       var v = h.views || {}, d = v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities, row = el('div', 'odds');
       if(d){ ['up', 'flat', 'down'].forEach(function(k){ if(k in d) row.appendChild(el('span', null, cap(k) + ' ' + pct(d[k]))); }); }

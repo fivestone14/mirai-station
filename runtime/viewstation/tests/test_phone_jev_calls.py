@@ -20,7 +20,9 @@ _NODE = shutil.which("node")
 
 # a stand-in for the few DOM calls the drawing makes: elements keep their attributes, children and text
 FAKE_DOM = """
-function Node(tag){ this.tag = tag; this.attrs = {}; this.kids = []; this._t = ''; }
+function Node(tag){ this.tag = tag; this.attrs = {}; this.kids = []; this._t = ''; this.style = {}; }
+Node.prototype.insertBefore = function(n, ref){ var i = this.kids.indexOf(ref); this.kids.splice(i < 0 ? 0 : i, 0, n); return n; };
+Object.defineProperty(Node.prototype, 'firstChild', {get: function(){ return this.kids[0] || null; }});
 Node.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
 Node.prototype.appendChild = function(n){ this.kids.push(n); return n; };
 Node.prototype.addEventListener = function(){};
@@ -181,7 +183,7 @@ def test_a_call_that_ends_past_the_close_says_it_is_never_graded_and_the_card_ma
                {"read": "2026-09-28T15:48:00-04:00", "mark": None, "minutes": 30, "pick": "flat", "p": 0.9})
     assert got == {"text": "Never graded"}
     # the clocks and the 60-minute line take the card's marks (grade.mark_at), never a sum of their own
-    assert "marks.next_30" in _fn("sumCard") and "marks.next_60" in _fn("sumCard") and "it ends past the close, so it is never graded" in _fn("sumCard")
+    assert "marks.next_30" in _fn("sumCard") and "marks.next_60" in _fn("sumCard") and "Ends past the close, never graded" in _fn("sumCard")
     assert "clockBlock(newest.read, newest.minutes, newest.mark)" in _fn("laneCard")
     assert "if(c.calls && c.calls.length) he.appendChild(inPlay(c.calls));" in _fn("sumCard"), "an errored sum still shows the calls"
 
@@ -209,12 +211,12 @@ def test_every_call_row_is_a_tap_target_that_opens_the_sheet():
     svg = _drawing(MORNING, "2026-09-28T09:51:00-04:00")
     hits = [k for k in svg["kids"] if k["tag"] == "rect" and k["attrs"].get("class") == "hit"]
     assert len(hits) == 4 and svg["kids"][-4:] == hits, "the tap targets sit on top of the drawing"
-    assert all(h["attrs"]["role"] == "button" and h["attrs"]["tabindex"] == "0" and h["attrs"]["aria-controls"] == "callSheet" for h in hits)
+    assert all(h["attrs"]["role"] == "button" and h["attrs"]["tabindex"] == "0" and h["attrs"]["aria-controls"] == "jevSheet" for h in hits)
     assert [float(h["attrs"]["height"]) for h in hits] == [30.0] * 4 and all(h["attrs"]["width"] == "300" for h in hits)
     assert hits[1]["attrs"]["aria-label"] == "The 09:45 call, Up small 38%: its odds and result"
     assert "hit.addEventListener('click', function(){ openCall(c, hit); });" in _fn("callsSvg")
     # the sheet sheet.js opens: its markup, its close control, and sheet.js loaded before the page's script
-    assert 'id="callSheet" role="dialog" aria-modal="true" aria-hidden="true"' in JEV
+    assert 'id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true"' in JEV
     assert '<button class="sh-close" type="button" data-sheet-close>Close</button>' in JEV
     assert JEV.index('<script src="/m/sheet.js"></script>') < JEV.index("'use strict'")
 
@@ -229,7 +231,7 @@ def _sheet(c, now):
       function bar(name, p, pick){ var b = el('div', 'bar' + (pick ? ' pick' : '')); b.textContent = name.replace(/_/g, ' ') + ' ' + Math.round(p * 100) + '%'; return b; }
       Date.now = function(){ return Date.parse(D.now); };
     """
-    js = (stubs + _var("ODDS_ORDER") + _fn("movedWords") + _fn("openCall") +
+    js = (stubs + _var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") + _fn("movedWords") + _fn("openCall") +
           "openCall(D.c, {}); console.log(JSON.stringify({title: nodes.csTitle.textContent, opened: !!nodes.opened, body: dump(nodes.csBody)}));")
     return _run(js, {"c": c, "now": now})
 
@@ -253,9 +255,9 @@ def test_the_sheet_puts_the_result_first_then_every_options_odds():
     assert [_flat_text(k) for k in result["kids"]] == [
         "WrongResult", "It ended Down small. The call said Up small 38%.",
         "Price ended $9.20 lower at 09:55 than at the read, 0.42 of a tape unit."]
-    rows = [(_flat_text(k), k["attrs"]["class"]) for k in odds["kids"][1:]]
-    assert rows == [("Up big 10%", "bar"), ("Up small 38%", "bar pick"), ("Flat 30%", "bar"), ("Down small 12%", "bar"),
-                    ("Down big 5%", "bar"), ("Unsure 5%", "bar")]
+    rows = [(_flat_text(k), k["attrs"]["class"]) for k in odds["kids"][2:]]           # after the heading and the odds bar
+    assert rows == [("Down big 5%", "bar"), ("Down small 12%", "bar"), ("Flat 30%", "bar"), ("Up small 38%", "bar pick"),
+                    ("Up big 10%", "bar"), ("Unsure 5%", "bar")]
     assert _flat_text(note) == "A forecast, graded by the bars, never a call."
 
 
@@ -263,7 +265,7 @@ def test_the_sheet_says_where_an_ungraded_call_stands():
     base = {"odds": {"up": 0.2, "down": 0.1, "flat": 0.7}}
     live_right = {**call("10:02", "10:32", "flat", 0.7, outcome="flat", hit=True, moved={"realized_sigma": 0.034}), **base}
     got = _sheet(live_right, "2026-09-28T11:00:00-04:00")
-    assert [_flat_text(k) for k in got["body"]["kids"][1]["kids"][1:]] == ["Up 20%", "Down 10%", "Flat 70%"]   # the card's own order
+    assert [_flat_text(k) for k in got["body"]["kids"][1]["kids"][2:]] == ["Down 10%", "Flat 70%", "Up 20%"]   # the bar's own order
     assert [_flat_text(k) for k in got["body"]["kids"][0]["kids"]] == [
         "RightResult", "It ended Flat. The call said Flat 70%.",
         "Price ended 0.03 of a normal day\u2019s move higher at 10:32 than at the read."]
@@ -295,3 +297,75 @@ def test_a_card_without_marks_keeps_its_times_in_market_time():
                ["2026-09-25T09:31:56.103349-04:00", "2026-11-27T12:02:10-05:00"])
     assert got == ["2026-09-25T10:01:00-04:00", "2026-11-27T13:02:00-05:00", None]
     assert "toISOString" not in JS, "a UTC string would read five hours off in clock()"
+
+
+def _odds(o, pick):
+    js = _var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") + "console.log(JSON.stringify(dump(oddsBar(D.o, D.pick))));"
+    return _run(js, {"o": o, "pick": pick})
+
+
+def test_the_odds_bar_runs_from_the_biggest_fall_to_the_biggest_rise_and_names_the_wide_ones():
+    got = _odds({"up_big": 0.1, "up_small": 0.38, "flat": 0.3, "down_small": 0.12, "down_big": 0.05, "unsure": 0.05}, "up_small")
+    bar, lab = got["kids"]
+    assert [k["attrs"]["class"] for k in bar["kids"]] == ["o-down_big", "o-down_small", "o-flat", "o-up_small", "o-up_big", "o-unsure"]
+    # words only where they fit their share of the bar: "Down small 12%" needs about 90px, a 12% share is about 35
+    assert [k["text"] for k in lab["kids"]] == ["", "", "Flat 30%", "Up small 38%", "", ""]
+    assert lab["kids"][3]["attrs"].get("class") == "pick"
+    assert bar["attrs"]["aria-label"] == "Down big 5%, Down small 12%, Flat 30%, Up small 38%, Up big 10%, Unsure 5%"
+    live = _odds({"up": 0.12, "down": 0.43, "flat": 0.39, "unsure": 0.06}, "down")
+    assert [k["attrs"]["class"] for k in live["kids"][0]["kids"]] == ["o-down", "o-flat", "o-up", "o-unsure"]
+
+
+def _how(h, bl):
+    js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("sentence") + _fn("howChart") +
+          "console.log(JSON.stringify(dump(howChart(D.h, D.bl))));")
+    return _run(js, {"h": h, "bl": bl})
+
+
+def test_the_how_chart_shows_jevs_own_call_beside_the_time_of_day_and_the_blend():
+    h = {"probabilities": {"up": 0.12, "down": 0.43, "flat": 0.39, "unsure": 0.06},
+         "jev": {"probabilities": {"up": 0.05, "down": 0.61, "flat": 0.3, "unsure": 0.04}, "confidence": 0.48},
+         "clock": {"probabilities": {"up": 0.2, "down": 0.28, "flat": 0.52}}}
+    got = _how(h, {"used": True, "sessions": 19, "phase_words": "late morning, 11:00 to 12:00"})
+    words = [k["text"] for k in got["kids"] if k["attrs"].get("class", "").startswith(("how-k", "how-v"))]
+    assert words == ["JEV", "Down 61%", "Time of day", "Flat 52%", "Shown", "Down 43%"]
+    assert got["kids"][-1]["text"] == ("JEV was 48% sure. Shown is half JEV, half how this time of day went "
+                                       "(late morning, 11:00 to 12:00) over the last 19 sessions.")
+    alone = _how({"probabilities": {"up": 0.2, "down": 0.1, "flat": 0.7}, "confidence": None}, {"used": False, "why": "fewer than 10 sessions of history"})
+    assert [k["text"] for k in alone["kids"] if k["attrs"].get("class", "").startswith("how-k")] == ["JEV"]
+    assert alone["kids"][-1]["text"] == "JEV\u2019s sum alone: fewer than 10 sessions of history"
+
+
+def _gauge(f, path="price.recent_move"):
+    js = (_var("GAUGE_W") + _fn("gauge") + _fn("signedWords") + _fn("factCaption") + _fn("sentence") +
+          "var g = gauge(D.f); console.log(JSON.stringify({g: g && dump(g), c: factCaption(D.f, D.path)}));")
+    return _run(js, {"f": f, "path": path})
+
+
+def test_each_situation_fact_is_a_gauge_of_its_number_against_its_cut():
+    flat = _gauge({"kind": "signed", "value": -0.05, "band": 0.15, "unit": "sigma"})
+    zone = next(k for k in flat["g"]["kids"] if k["attrs"].get("class") == "zone")
+    dot = next(k for k in flat["g"]["kids"] if k["attrs"].get("class") == "dot")
+    zx, zw, dx = float(zone["attrs"]["x"]), float(zone["attrs"]["width"]), float(dot["attrs"]["cx"])
+    assert zx < dx < zx + zw and dx < 150                                   # inside the flat band, just left of no change
+    assert flat["c"] == "Down 0.05 of a normal day\u2019s move"
+    assert _gauge({"kind": "signed", "value": -0.09, "band": 0.15, "unit": "sigma"}, "price.vs_vwap")["c"] == "0.09 of a normal day\u2019s move below"
+    iv = _gauge({"kind": "signed", "value": 3.4, "band": 2, "unit": "vol points"}, "iv.trend_30min")
+    assert iv["c"] == "Up 3.4 vol points"
+    vol = _gauge({"kind": "rank", "under": 1, "of": 20, "cuts": [0.2, 0.8]})
+    assert vol["c"] == "Busier than 1 of 20 past sessions at this time"
+    assert len([k for k in vol["g"]["kids"] if k["attrs"].get("class") == "zone"]) == 2
+    wall = _gauge({"kind": "distance", "value": 0.44, "near": 0.5, "unit": "sigma", "side": "below", "name": "put wall"}, "gex.air_to_wall")
+    assert wall["c"] == "Put wall, 0.44 of a normal day\u2019s move below"
+    zone = next(k for k in wall["g"]["kids"] if k["attrs"].get("class") == "zone")
+    dot = next(k for k in wall["g"]["kids"] if k["attrs"].get("class") == "dot")
+    assert float(dot["attrs"]["cx"]) < float(zone["attrs"]["x"]) + float(zone["attrs"]["width"])   # inside the near-wall distance
+    assert _gauge({"kind": "unknown"})["g"] is None
+
+
+def test_the_situation_rows_open_the_sheet_and_an_old_card_still_reads():
+    body = _fn("situationCard")
+    assert "row.addEventListener('click', function(){ openFact(r, row); });" in body
+    assert "if(typeof r === 'string')" in body, "a card written before the rows still shows its sentences"
+    assert "main.appendChild(situationCard(c, ageText, old));" in _fn("paint")
+    assert "blendLines" not in JS, "the blend sentences gave way to the how-chart"

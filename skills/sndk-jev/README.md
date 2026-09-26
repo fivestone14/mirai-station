@@ -273,8 +273,11 @@ into `state/jev/`:
   day ended up, down and flat at 30 and 60 minutes, and the rule they were
   counted under; a change to the bands or the phases starts it afresh.
 - `latest.json`, the phone's card: `symbol`, `generated_at`, `row_ts`,
-  `book_asof`, `freshness`, `sigma`, `situation` (five plain lines, "sigma"
-  spelled out as "of a normal day's move" because the phone bans Greek),
+  `book_asof`, `freshness`, `sigma`, `situation` (up to five facts, each with
+  `path`, `title`, `verdict` in a word, `sentence` in plain words, "sigma"
+  spelled out as "of a normal day's move" because the phone bans Greek, and the
+  builder's `figure` to draw: `kind` signed, rank or distance, the number and
+  its cut),
   `labels`, `omitted`, `sent`, `send_seconds`, `model`, `fresh`, `held`,
   `cadence_from`, `dark`, `hour` (the blended sum on top with `jev`, `clock` and
   `blend` beside it, `by` for both horizons, plus `used`, `left_out`, `missing`),
