@@ -16,11 +16,11 @@ from ..cuts import BOND_LINK_TIGHT, WINDOW_30_MIN, WINDOW_60_MIN
 from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .leadership import against_usual, listed, minutes_back
 from .measures import ONE_MINUTE
 from .rulers import sigma_anchor
-from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, beyond, beyond_rank, fifth_side, needs_link, needs_move, needs_rank
-from .words import sig
+from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, fifth_side, minutes_back, needs_link,
+                         needs_move, needs_rank)
+from .words import listed, sig
 
 LABELS = ("xasset.bond_gap_30min", "xasset.macro_gap_30min", "xasset.oil_gap_30min", "flows.rebalance_side", "flows.etf_creations",
           "close.moc_imbalance")

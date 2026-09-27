@@ -20,14 +20,14 @@ from ..cuts import (DISPERSION_WIDE_SIGMA, EQW_SPLIT_SIGMA, HEAVY_SHOCK_SIGMA, M
                     MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NAME_SHOCK_MULT, PULL_RULE_SIGMA, REST_GAP_SIGMA, ROTATION_GAP_SIGMA,
                     SECTOR_ONE_WAY, SIZE_RESID_SIGMA, SIZE_SPREAD_SIGMA, SPREAD_COUNT, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..market_context import SYMBOLS
-from ..sessions import next_trading_day, session_open
+from ..sessions import next_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open
 from .rulers import sigma_anchor
-from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, beyond, beyond_rank, fifth_side, needs_link, needs_move,
-                         needs_rank)
-from .words import pct, sig, signed
+from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, against_usual, beyond, beyond_rank, fifth_side, minutes_back,
+                         needs_link, needs_move, needs_rank)
+from .words import listed, pct, sig, signed
 
 LABELS = ("leaders.equal_weight_vs_cap_30m", "leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m",
           "leaders.rotation_30m", "leaders.semis_vs_index_30m", "leaders.single_name_10m", "leaders.size_spread_day",
@@ -206,25 +206,6 @@ def _rotation(against: AgainstIndex, ls: LabelSet) -> None:
     rule = f"past the {ROTATION_GAP_SIGMA} sigma rotation rule" if abs(gap) > ROTATION_GAP_SIGMA else f"within the {ROTATION_GAP_SIGMA} sigma rotation rule"
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes, after allowing for each sector's usual link to the index, {names[0]} "
                  f"{'beat' if gap >= 0 else 'trailed'} {names[1]} by {sig(abs(gap))}, {rule}{against.ruler_note}")
-
-
-def minutes_back(end: datetime, minutes: int) -> int:
-    """``minutes``, or the minutes since the session's first finished minute (09:31) when a window of them to ``end``
-    would start before it: at 09:40 the 10-minute window is the 9 since 09:31, on today and each prior day alike."""
-    return min(minutes, int((end - session_open(end) - ONE_MINUTE) / ONE_MINUTE))
-
-
-def against_usual(value: float, side: int) -> str:
-    """What a sentence adds when a move beyond the usual multiple and its same-clock fifth point opposite ways
-    (the prior sessions at this minute sat mostly on one side of zero), so the fifth's verdict reads true."""
-    if not side or (value >= 0) == (side > 0):
-        return ""
-    return f", {'above' if side > 0 else 'below'} the usual for this minute"
-
-
-def listed(names: list[str]) -> str:
-    """Names as a sentence lists them, the same in both families: "a, b and c"."""
-    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
 
 
 def _largest_names(scene: Scene) -> list[tuple[str, float]] | str:

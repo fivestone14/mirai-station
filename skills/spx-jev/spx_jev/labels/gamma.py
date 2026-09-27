@@ -27,7 +27,7 @@ from .label_set import LabelSet
 from .measures import ET, bars_finished_between, is_num, walls
 from .ranks import rank_against
 from .rulers import SigmaRuler, remaining_straddles, sigma_anchor
-from .words import ordinal, pct, plural, sig
+from .words import above_or_below, ordinal, pct, plural, sig
 
 LABELS = ("gex.weight_side", "gex.air_to_wall", "gex.wall_thickness", "gex.heaviest_strike_grip", "gex.delta_weight_side",
           "gex.expiry_roll", "gex.ladder_state", "gex.wall_touch_volume",
@@ -219,10 +219,6 @@ def _estimated(ruler: SigmaRuler) -> str:
     return "; ruler estimated" if ruler.estimated else ""
 
 
-def _side(d: float) -> str:
-    return "above" if d >= 0 else "below"
-
-
 def _row_minutes_ago(scene: Scene, minutes: int) -> dict | None:
     """Today's newest diary row written by ``minutes`` before now, and not more than ROW_SLACK_MIN before that."""
     then = scene.now - timedelta(minutes=minutes)
@@ -277,7 +273,7 @@ def _book_balance(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet
         elif oi == "short_gamma" and d > 0:
             text += f"; the open-interest balance would tip to calls {sig(d)} higher"
         else:
-            text += f"; the gamma flip sits {sig(abs(d))} {_side(d)} price"
+            text += f"; the gamma flip sits {sig(abs(d))} {above_or_below(d)} price"
         text += _estimated(ruler)
     ls.put("gex.book_balance", text)
 
@@ -340,7 +336,7 @@ def _flip_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: di
     reach = f"within the {FLIP_FAR_SIGMA} sigma far line" if abs(d) <= FLIP_FAR_SIGMA else f"beyond the {FLIP_FAR_SIGMA} sigma far line"
     cross = (f"it has crossed the flip in the last {WINDOW_30_MIN} minutes" if crossed else
              f"it has not crossed the flip in the last {WINDOW_30_MIN} minutes")
-    ls.put("gex.flip_distance", f"price is {sig(abs(d))} {_side(d)} the gamma flip, the level where today's same-day book switches between "
+    ls.put("gex.flip_distance", f"price is {sig(abs(d))} {above_or_below(d)} the gamma flip, the level where today's same-day book switches between "
                                 f"call-heavy and put-heavy gamma {DEALERS}; {reach}; {cross}{_estimated(ruler)}")
 
 
@@ -424,7 +420,7 @@ def _magnet_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: 
     seated = sum(1 for b in window if abs(float(b["close"]) - float(magnet)) < MAGNET_SEAT_SIGMA * ruler.points)
     hug = f"at or past the {PIN_HUG_HI} hug share" if seated / len(window) >= PIN_HUG_HI else f"short of the {PIN_HUG_HI} hug share"
     ls.put("gex.magnet_distance",
-           f"today's heaviest same-day strike (the magnet) sits {sig(abs(d))} {_side(d)} price, {seat}; its grip (top-strike share) is "
+           f"today's heaviest same-day strike (the magnet) sits {sig(abs(d))} {above_or_below(d)} price, {seat}; its grip (top-strike share) is "
            f"stronger than on {rank.higher_than} of the last {rank.of} sessions at {scene.now.astimezone(ET):%H:%M} ET, {median}; "
            f"it is {same} {WINDOW_30_MIN} minutes ago; price spent {seated} of the last {plural(len(window), 'minute')} within the seat "
            f"distance of it, {hug}{_estimated(ruler)}")
@@ -454,14 +450,14 @@ def _settle_pull(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet)
     reach = f"within the {PIN_REACH_FAR} reach line" if straddles < PIN_REACH_FAR else f"at or beyond the {PIN_REACH_FAR} reach line"
     if is_num(centre):
         c = (float(centre) - scene.spot) / ruler.points
-        centre_words = (f"the gamma-weighted centre of the book sits {sig(abs(c))} {_side(c)} price, "
+        centre_words = (f"the gamma-weighted centre of the book sits {sig(abs(c))} {above_or_below(c)} price, "
                         f"{'inside' if abs(c) <= SETTLE_SEAT_SIGMA else 'outside'} the seat distance, "
                         f"{'the same side' if (c >= 0) == (d >= 0) else 'the other side'}")
     else:
         centre_words = "no strike of the book pulls, so it has no gamma-weighted centre"
     left = round((settle - scene.now).total_seconds() / 60.0)
     ls.put("gex.settle_pull",
-           f"today's heaviest same-day strike sits {sig(abs(d))} {_side(d)} price, {seat}; that is {straddles:.1f} remaining straddles "
+           f"today's heaviest same-day strike sits {sig(abs(d))} {above_or_below(d)} price, {seat}; that is {straddles:.1f} remaining straddles "
            f"(what today's options still price before the {settle.astimezone(ET):%H:%M} settle), {reach}; {centre_words}; "
            f"the options settle in {plural(left, 'minute')}{_estimated(ruler)}")
 
@@ -483,7 +479,7 @@ def _charm_wall_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: L
     straddles = remaining_straddles(scene, float(wall) - scene.spot)
     away = f", {straddles:.1f} remaining straddles away" if straddles is not None else ""
     ls.put("gex.charm_wall_distance", f"the charm wall of today's same-day book (the strike where its delta decay piles up) sits "
-                                      f"{sig(abs(d))} {_side(d)} price, {band}{away}{_estimated(ruler)}")
+                                      f"{sig(abs(d))} {above_or_below(d)} price, {band}{away}{_estimated(ruler)}")
 
 
 def _gamma_walls(row: dict | None) -> tuple[float, float] | None:

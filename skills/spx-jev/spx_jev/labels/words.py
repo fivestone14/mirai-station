@@ -14,6 +14,16 @@ def signed(x: float, nd: int = 2) -> str:
     return f"{r:+.{nd}f}"
 
 
+def above_or_below(d: float) -> str:
+    """Which side of a level a signed distance puts price on; at zero, above."""
+    return "above" if d >= 0 else "below"
+
+
+def listed(names: list[str]) -> str:
+    """Names as a sentence lists them: "a, b and c"."""
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
 def pct(x: float) -> str:
     return f"{round(x * 100)}%"
 

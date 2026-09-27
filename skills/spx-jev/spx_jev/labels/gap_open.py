@@ -20,7 +20,7 @@ from .measures import (ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, bars_between,
                        is_num, session_extremes, settled_open)
 from .ranks import same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
-from .words import minutes_ago, pct, plural, sig
+from .words import above_or_below, minutes_ago, pct, plural, sig
 
 LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_distance",
           "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",
@@ -97,10 +97,6 @@ def _measure_gap(scene: Scene, anchor: SigmaRuler | None) -> tuple[Gap | None, s
     return Gap(float(pc), so, anchor), ""
 
 
-def _where(d: float) -> str:
-    return "above" if d >= 0 else "below"
-
-
 def _minutes_since_settled(scene: Scene) -> str:
     return plural(int((scene.now - _settled_at(scene)).total_seconds() // 60), "minute")
 
@@ -145,7 +141,7 @@ def _size(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> None:
     # the morning's straddle is the first row's em_open: what today's 0DTE priced before the gap was known
     em_open = next((float(em) for r in scene.rows_today if is_num(em := (r.get("range_ruler") or {}).get("em_open")) and em > 0), None)
     straddle = f"; {abs(gap.settled_open - gap.prior_close) / em_open:.1f} times this morning's same-day straddle" if em_open else ""
-    ls.put("gap.size", ruled(gap.anchor, f"price opened {sig(abs(g))} {_where(g)} yesterday's close, measured at 09:35 because the "
+    ls.put("gap.size", ruled(gap.anchor, f"price opened {sig(abs(g))} {above_or_below(g)} yesterday's close, measured at 09:35 because the "
                                          f"09:30 print uses stale prices; {verdict}{straddle}"))
 
 
@@ -157,9 +153,9 @@ def _fill_progress(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> Non
         ls.sleep("gap_fill_next_hour", f"no gap to fill: {why}")
         return
     now_d = (scene.spot - gap.prior_close) / gap.anchor.points
-    where = f"{sig(abs(now_d))} {_where(now_d)} yesterday's close"
+    where = f"{sig(abs(now_d))} {above_or_below(now_d)} yesterday's close"
     if not gap.real:
-        ls.put("gap.fill_progress", ruled(gap.anchor, f"there was no real gap: price opened {sig(abs(gap.size))} {_where(gap.size)} "
+        ls.put("gap.fill_progress", ruled(gap.anchor, f"there was no real gap: price opened {sig(abs(gap.size))} {above_or_below(gap.size)} "
                                                       f"yesterday's close, within the {sig(GAP_RULE_SIGMA)} gap rule; it now sits {where}"))
         ls.sleep("gap_fill_next_hour", f"no real gap: the settled open was within the {sig(GAP_RULE_SIGMA)} gap rule")
         return
@@ -202,7 +198,7 @@ def _morning_vs_gap(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> No
            f"from the settled open to {LATE_MORNING:%H:%M} price {'rose' if m >= 0 else 'fell'} {sig(abs(m))}, "
            f"{'with' if m * gap.size > 0 else 'against' if m else 'neither with nor against'} this morning's {sig(abs(gap.size))} gap {gap.side} "
            f"(past the {sig(GAP_RULE_SIGMA)} gap rule), and {'touched' if touched else 'did not touch'} yesterday's close; "
-           f"it now sits {sig(abs(now_d))} {_where(now_d)} it"))
+           f"it now sits {sig(abs(now_d))} {above_or_below(now_d)} it"))
 
 
 def _reach_distance(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
@@ -218,7 +214,7 @@ def _reach_distance(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> No
         ls.omit("gap.reach_distance", why)
         return
     d = (float(pc) - scene.spot) / anchor.points
-    ls.put("gap.reach_distance", ruled(anchor, f"yesterday's close is {sig(abs(d))} {_where(d)} price, "
+    ls.put("gap.reach_distance", ruled(anchor, f"yesterday's close is {sig(abs(d))} {above_or_below(d)} price, "
                                                f"{abs(float(pc) - scene.spot) / reach:.1f} typical {WINDOW_60_MIN}-minute moves away"))
 
 
@@ -321,7 +317,7 @@ def _noise_band(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
     edge = NOISE_EDGE_SIGMA
     if abs(up) <= edge or abs(down) <= edge:
         d, name = (up, "upper") if abs(up) <= abs(down) else (down, "lower")
-        text = f"price is at the {name} edge of {band}, {sig(abs(d))} {_where(d)} it, within the {sig(edge)} edge distance {how}"
+        text = f"price is at the {name} edge of {band}, {sig(abs(d))} {above_or_below(d)} it, within the {sig(edge)} edge distance {how}"
     elif up > edge:
         text = f"price is {sig(up)} above the upper edge of {band}, beyond the {sig(edge)} edge distance {how}"
     elif down < -edge:
@@ -363,14 +359,14 @@ def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet
     reached = f"{minutes} after the settled open, price reached {sig((hi - so) / points)} above it and {sig((so - lo) / points)} below it"
     if abs(now_d) <= OPEN_MOVE_SIGMA:
         history = f"{reached} and {crossed}"
-        where = f"it now sits {sig(abs(now_d))} {_where(now_d)} it, within the {sig(OPEN_MOVE_SIGMA)} opening move rule"
+        where = f"it now sits {sig(abs(now_d))} {above_or_below(now_d)} it, within the {sig(OPEN_MOVE_SIGMA)} opening move rule"
     else:
         up = now_d > 0
         reach = (hi - so) if up else (so - lo)
         giveback = ((hi - scene.spot) if up else (scene.spot - lo)) / reach
         line = "under the stall line" if giveback < GIVEBACK_THIRD else "at or past the stall line"
         history = f"{reached}, {crossed}, and gave back {pct(giveback)} of its {'high' if up else 'low'}, {line}"
-        where = (f"it now sits {sig(abs(now_d))} {_where(now_d)} it, beyond the {sig(OPEN_MOVE_SIGMA)} opening move rule "
+        where = (f"it now sits {sig(abs(now_d))} {above_or_below(now_d)} it, beyond the {sig(OPEN_MOVE_SIGMA)} opening move rule "
                  f"on the {'up' if up else 'down'} side")
         if gap is not None:
             where += (", with no real gap this morning" if not gap.real else
@@ -396,4 +392,4 @@ def _settled_open_crosses(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet)
     d = (scene.spot - so) / anchor.points
     minutes = _minutes_since_settled(scene)
     ls.put("open.settled_open_crosses", ruled(anchor, f"since the settled open {minutes} ago price has crossed it {plural(n, 'time')}, "
-                                                      f"{verdict}; it now sits {sig(abs(d))} {_where(d)} it"))
+                                                      f"{verdict}; it now sits {sig(abs(d))} {above_or_below(d)} it"))

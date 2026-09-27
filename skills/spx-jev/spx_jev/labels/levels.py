@@ -18,7 +18,7 @@ from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ONE_MINUTE, bar_time, bars_finished_between, close_at, high_low_close, is_num, settled_open
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
-from .words import minutes_ago, ordinal, pct, plural, sig
+from .words import above_or_below, minutes_ago, ordinal, pct, plural, sig
 
 LABELS = ("levels.break_armed", "levels.open_vs_prior_range", "levels.prior_day", "levels.prior_value", "levels.round_number",
           "levels.wall_touch_effort")
@@ -57,10 +57,6 @@ def build_levels_labels(scene: Scene) -> LabelSet:
     _prior_day(scene, anchor, yesterday, ls)
     _prior_value(scene, anchor, yesterday, ls)
     return ls
-
-
-def _where(d: float) -> str:
-    return "above" if d >= 0 else "below"
 
 
 def _yesterday(scene: Scene) -> tuple[list[dict] | None, str]:
@@ -107,7 +103,7 @@ def _break_armed(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
         ls.put("levels.break_armed", ruled(
                anchor,
                f"a break {BREAK_WAYS[lr['cock_direction']]} is armed: {minutes_ago(scene.now, armed)} price was turned "
-               f"back at {_level_name(lr)} while the book leaned to puts, and it now sits {sig(abs(d))} {_where(d)} that level; "
+               f"back at {_level_name(lr)} while the book leaned to puts, and it now sits {sig(abs(d))} {above_or_below(d)} that level; "
                f"it expires in {plural(left, 'minute')} if price does not close through that level"))
         return
     since = scene.now - timedelta(minutes=WINDOW_30_MIN)
@@ -221,15 +217,15 @@ def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None
             ls.put("levels.round_number", ruled(
                    anchor,
                    f"{minutes_ago(scene.now, bar_time(crossed) + ONE_MINUTE)} price {'rose' if up else 'fell'} through a round "
-                   f"{_round_kind(level)}-point level and now sits {sig(abs(d))} {_where(d)} it; {back} it was {sig(abs(r))} "
-                   f"{_where(r)}, past the {sig(ROUND_NEAR_SIGMA)} near distance"))
+                   f"{_round_kind(level)}-point level and now sits {sig(abs(d))} {above_or_below(d)} it; {back} it was {sig(abs(r))} "
+                   f"{above_or_below(r)}, past the {sig(ROUND_NEAR_SIGMA)} near distance"))
             return
     for level, up in ((above_spot, True), (below_spot, False)):
         crossed = _pushed_through(window, ref, level, near, up)
         if crossed is not None:
             d = (spot - level) / points
             ls.omit("levels.round_number", f"{minutes_ago(scene.now, bar_time(crossed) + ONE_MINUTE)} price {'rose' if up else 'fell'} "
-                                           f"through a round {_round_kind(level)}-point level and is back {_where(d)} it by {sig(abs(d))}: "
+                                           f"through a round {_round_kind(level)}-point level and is back {above_or_below(d)} it by {sig(abs(d))}: "
                                            f"neither a push through that held nor a level pressed without one")
             return
     level = min((below_spot, above_spot, below_spot + step), key=lambda lv: abs(spot - lv))
@@ -240,12 +236,12 @@ def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None
                                        f"{CROSS_LOOKBACK_MIN} minutes")
         return
     r = (ref - level) / points
-    side = _where(d)
+    side = above_or_below(d)
     ls.put("levels.round_number", ruled(
            anchor,
            f"price sits {sig(abs(d))} {side} a round {_round_kind(level)}-point level, within the {sig(ROUND_NEAR_SIGMA)} near distance, "
            f"pressing it from {side} without a push through in the last {CROSS_LOOKBACK_MIN} minutes; {back} it was "
-           f"{sig(abs(r))} {_where(r)} it"))
+           f"{sig(abs(r))} {above_or_below(r)} it"))
 
 
 def _pushed_through(window: list[dict], ref: float, level: float, near: float, up: bool) -> dict | None:
@@ -374,4 +370,4 @@ def _prior_value(scene: Scene, anchor: SigmaRuler, yesterday: list[dict], ls: La
     else:
         where = f"price is inside {band}, {sig(-under)} above its low and {sig(-over)} below its high"
     d = (busiest - spot) / points
-    ls.put("levels.prior_value", ruled(anchor, f"{where}; yesterday's busiest level is {sig(abs(d))} {_where(d)} price"))
+    ls.put("levels.prior_value", ruled(anchor, f"{where}; yesterday's busiest level is {sig(abs(d))} {above_or_below(d)} price"))

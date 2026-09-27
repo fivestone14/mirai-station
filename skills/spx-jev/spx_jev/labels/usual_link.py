@@ -20,6 +20,7 @@ from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Callable
 
 from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, TOP_FIFTH, WINDOW_30_MIN
+from ..sessions import session_open
 from .measures import ET, ONE_MINUTE, bar_time
 from .ranks import SameClockRank, rank_against, same_clock_values
 from .rulers import SigmaRuler
@@ -186,3 +187,17 @@ def fifth_side(rank: SameClockRank) -> int:
 
 
 FIFTH_WORDS = {1: "in the top fifth", -1: "in the bottom fifth", 0: "in neither the top nor the bottom fifth"}
+
+
+def minutes_back(end: datetime, minutes: int) -> int:
+    """``minutes``, or the minutes since the session's first finished minute (09:31) when a window of them to ``end``
+    would start before it: at 09:40 the 10-minute window is the 9 since 09:31, on today and each prior day alike."""
+    return min(minutes, int((end - session_open(end) - ONE_MINUTE) / ONE_MINUTE))
+
+
+def against_usual(value: float, side: int) -> str:
+    """What a sentence adds when a move beyond the usual multiple and its same-clock fifth point opposite ways
+    (the prior sessions at this minute sat mostly on one side of zero), so the fifth's verdict reads true."""
+    if not side or (value >= 0) == (side > 0):
+        return ""
+    return f", {'above' if side > 0 else 'below'} the usual for this minute"
