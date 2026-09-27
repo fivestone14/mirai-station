@@ -4,14 +4,15 @@ SPY's own tape and quote (volume.*, liquidity.*).
 The 0DTE tape labels read the lob-flow collector's raw tape, ``state/lob_flow/raw/{day}/tape.jsonl``
 (``tape.jsonl.gz`` once the collector archives the day): one line per 0DTE SPXW trade with the quote it
 printed into, on the strikes the collector watches: 10 either side of price for each right, plus the book's
-magnet and walls. That set moves with price, so the tape is the near-price 0DTE trading, never a far print. Lines land out of time order, so each trade is placed by its own ``ts_ms``, never by where it
-sits in the file, and a minute counts once it has finished. The collector only appends, so the file is read up
-to its first line stamped after the read: a trade journaled late (a catch-up pull, or the first 5 minutes of a
-strike newly watched) sits past that line and was not on file yet, for a replay of today and the prior sessions
-alike. A trade's side is told from where it printed inside that quote: above the mid it was bought, below it
-sold. A multi-leg trade (an OPRA multi-leg condition) is part of a package, so it is no single trade and has no
-side of its own; its premium still counts as premium traded. Reading 20 prior sessions' tapes (about a million
-lines each) takes some 15 seconds a read: only the lines inside the window asked for are parsed.
+magnet and walls. That set moves with price, so the tape is the near-price 0DTE trading, never a far print.
+Lines land out of time order, so each trade is placed by its own ``ts_ms``, never by where it sits in the file,
+and a minute counts once it has finished. The collector only appends, so the file is read up to its first line
+stamped after the read: a trade journaled late (a catch-up pull, or the first 5 minutes of a strike newly
+watched) sits past that line and was not on file yet, for a replay of today and the prior sessions alike. A
+trade's side is told from where it printed inside that quote: above the mid it was bought, below it sold. A
+multi-leg trade (an OPRA multi-leg condition) is part of a package, so it is no single trade and has no side of
+its own; its premium still counts as premium traded. Reading 20 prior sessions' tapes (about a million lines
+each) takes some 15 seconds a read: only the lines inside the window asked for are parsed.
 
 The other sources: the collector's quote sweeps (``sweeps.jsonl`` beside the tape) and its record
 (``state/lob_flow/agg/{day}.jsonl``: the refill test and SPY's quote), the diary's same-day volume by strike,
@@ -546,9 +547,9 @@ def _quote_liquidity(scene: Scene, ls: LabelSet) -> None:
 
 
 def _strike_defense(scene: Scene, ls: LabelSet) -> None:
-    """The nearest strike whose same-day quotes keep getting hit, from the collector's refill test over its last
-    15 minutes of trades: a hit is a trade that ate the size showing at the touch, refilled when that size came
-    back at the same price (within a tick)."""
+    """Of the book's magnet and walls, the only strikes the collector runs its refill test at, the nearest whose
+    same-day quotes keep getting hit, over the collector's last 15 minutes of trades: a hit is a trade that ate the
+    size showing at the touch, refilled when that size came back at the same price (within a tick)."""
     if scene.state_dir is None:
         ls.omit("options.strike_defense", "no state folder to read the lob-flow collector's record from")
         return
@@ -568,17 +569,18 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
             if isinstance(v, dict) and all(is_num(v.get(k)) for k in ("strike", "n_events", "n_unrecovered"))]
     contested = [h for h in hits if h[1] >= DEFENSE_MIN_EVENTS]
     if not contested:
-        ls.omit("options.strike_defense", f"no strike the collector watches was hit {DEFENSE_MIN_EVENTS} times or more in its last {OPTIONS_TAPE_WINDOW_MIN} minutes")
+        ls.omit("options.strike_defense", f"none of the book's magnet and walls, the strikes the collector tests, "
+                                          f"was hit {DEFENSE_MIN_EVENTS} times or more in its last {OPTIONS_TAPE_WINDOW_MIN} minutes")
         return
     strike, hit, refilled = min(contested, key=lambda h: abs(h[0] - scene.spot))
     d = (strike - scene.spot) / ruler.points
     where = f"{sig(abs(d))} {'above' if d >= 0 else 'below'} price"
     if abs(d) > DEFENSE_NEAR_SIGMA:
-        ls.omit("options.strike_defense", f"the nearest strike hit {DEFENSE_MIN_EVENTS} times or more is {where}, beyond the {DEFENSE_NEAR_SIGMA} sigma defense distance")
+        ls.omit("options.strike_defense", f"the nearest of the book's magnet and walls hit {DEFENSE_MIN_EVENTS} times or more is {where}, beyond the {DEFENSE_NEAR_SIGMA} sigma defense distance")
         return
     share = refilled / hit
     ls.put("options.strike_defense",
-           f"the nearest strike where same-day quotes keep getting hit is {where}, inside the {DEFENSE_NEAR_SIGMA} sigma defense distance; "
+           f"of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is {where}, inside the {DEFENSE_NEAR_SIGMA} sigma defense distance; "
            f"it was hit {hit} times in the last {OPTIONS_TAPE_WINDOW_MIN} minutes, at least the {DEFENSE_MIN_EVENTS}-hit minimum; "
            f"market makers refilled its quotes at price on {refilled} of them ({pct(share)}), "
            f"{'at least' if share >= DEFENSE_REFILL_SHARE else 'under'} the {pct(DEFENSE_REFILL_SHARE)} refill share"

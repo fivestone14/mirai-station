@@ -361,14 +361,14 @@ def readings(until: datetime, **per_minute) -> list[dict]:
 def test_strike_defense_reads_the_nearest_contested_strikes_refill_share(scene_factory, tmp_path, strikes, sentence):
     later = [defense_line(at(10, 0, ss=40), (7700.0, 90, 0))]                   # after the read: never counts
     _, labels = read(record_scene(scene_factory, tmp_path, readings(NOW, strikes=strikes) + later))
-    assert labels["options.strike_defense"] == f"the nearest strike where same-day quotes keep getting hit is {sentence}"
+    assert labels["options.strike_defense"] == f"of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is {sentence}"
 
 
 def test_strike_defense_is_omitted_beyond_reach_without_a_contested_strike_or_a_running_collector(scene_factory, tmp_path):
     ls, _ = read(record_scene(scene_factory, tmp_path / "far", readings(NOW, strikes=[(7730.0, 30, 0), (7702.0, 5, 4)])))
-    assert ls.omitted["options.strike_defense"] == "the nearest strike hit 10 times or more is 0.40 sigma above price, beyond the 0.25 sigma defense distance"
+    assert ls.omitted["options.strike_defense"] == "the nearest of the book's magnet and walls hit 10 times or more is 0.40 sigma above price, beyond the 0.25 sigma defense distance"
     ls, _ = read(record_scene(scene_factory, tmp_path / "quiet", readings(NOW, strikes=[(7702.0, 5, 4)])))
-    assert ls.omitted["options.strike_defense"] == "no strike the collector watches was hit 10 times or more in its last 15 minutes"
+    assert ls.omitted["options.strike_defense"] == "none of the book's magnet and walls, the strikes the collector tests, was hit 10 times or more in its last 15 minutes"
     ls, _ = read(record_scene(scene_factory, tmp_path / "stopped", readings(at(9, 56), strikes=[(7709.0, 14, 2)])))
     assert ls.omitted["options.strike_defense"] == "no lob-flow reading in the last 3 minutes: the collector stopped"
     ls, labels = read(record_scene(scene_factory, tmp_path / "late", readings(NOW, strikes=[(7709.0, 14, 2)]), morning=False))
