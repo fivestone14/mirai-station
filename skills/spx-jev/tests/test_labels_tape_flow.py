@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DAY, at, flat_bars
+from conftest import DAY, at, flat_bars, make_row
 from spx_jev.labels.tape_flow import build_tape_flow_labels
 
 PRIOR_DAYS = ("2026-09-17", "2026-09-16", "2026-09-15", "2026-09-14", "2026-09-11", "2026-09-10")
@@ -164,3 +164,54 @@ def test_the_flow_lean_is_the_signed_premium_beyond_its_usual_level_for_the_half
     prior = {d: lean_day(d, 1 + k, 3, at(16, 0, d)) for k, d in enumerate(PRIOR_DAYS)}
     _, labels = read(tape_scene(scene_factory, tmp_path, NOW, lean_day(DAY, calls, puts, NOW), prior))
     assert labels["options.flow_lean_30"] == f"over the last 30 minutes the 0DTE tape {sentence}"
+
+
+# ---- options.call_put_shift_10m
+
+BOOK = [[7650.0, 300, 2700], [7700.0, 4500, 4500], [7725.0, 3000, 2000], [7750.0, 4000, 2000], [7800.0, 1500, 500]]   # 13,300 calls, 11,700 puts
+
+
+def traded(calls: int, puts: int, strike: float = 7700.0) -> dict:
+    """The row's gex_views with ``calls`` and ``puts`` more contracts traded at ``strike`` than BOOK."""
+    gv = make_row(NOW, 7700.0)["gex_views"]
+    return {**gv, "vol_side_by_strike": [[k, c + calls, p + puts] if k == strike else [k, c, p] for k, c, p in BOOK]}
+
+
+def write_diary(root: Path, day: str, rows: list[dict]) -> None:
+    (root / "reversion").mkdir(parents=True, exist_ok=True)
+    (root / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def shift_scene(scene_factory, root: Path, calls: int, puts: int, then: datetime = at(9, 50), prior_days: tuple[str, ...] = PRIOR_DAYS):
+    for k, d in enumerate(prior_days):          # 400 to 900 new contracts in the 10 minutes to 10:00
+        write_diary(root, d, [make_row(at(9, 50, d), 7700.0, gex_views=traded(0, 0)),
+                              make_row(at(10, 0, d), 7700.0, gex_views=traded(200 + 50 * k, 200 + 50 * k)),
+                              make_row(at(10, 1, d), 7700.0, gex_views=traded(90000, 0))])      # after the minute: never counts
+    scene = scene_factory(NOW, flat_bars(30), row_over={"gex_views": traded(calls, puts)}, rows_before=[make_row(then, 7700.0)],
+                          prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS})
+    return replace(scene, state_dir=root)
+
+
+@pytest.mark.parametrize("calls, puts, sentence", [
+    (700, 300, "70% of new same-day option volume was calls, against 54% since the open: a 16-point swing to calls, "
+               "past the 10-point shift line; new volume was above the too-thin line for this time, so it is not too thin to judge"),
+    (300, 700, "30% of new same-day option volume was calls, against 52% since the open: a 22-point swing to puts, "
+               "past the 10-point shift line; new volume was above the too-thin line for this time, so it is not too thin to judge"),
+    (550, 450, "55% of new same-day option volume was calls, against 53% since the open: a 2-point swing to calls, "
+               "within the 10-point shift line; new volume was above the too-thin line for this time, so it is not too thin to judge"),
+    (200, 100, "67% of new same-day option volume was calls, against 53% since the open: a 14-point swing to calls, "
+               "past the 10-point shift line; new volume was under the too-thin line for this time, "
+               "higher than 0 of the last 6 sessions at this minute, too thin to judge"),
+])
+def test_the_call_share_of_the_last_10_minutes_new_volume_is_set_against_the_days(scene_factory, tmp_path, calls, puts, sentence):
+    _, labels = read(shift_scene(scene_factory, tmp_path, calls, puts))
+    assert labels["options.call_put_shift_10m"] == f"in the last 10 minutes {sentence}"
+
+
+def test_the_shift_is_omitted_without_a_row_10_minutes_back_or_enough_prior_diaries(scene_factory, tmp_path):
+    ls, _ = read(shift_scene(scene_factory, tmp_path, 700, 300, then=at(9, 44)))          # the scanner paused
+    assert ls.omitted["options.call_put_shift_10m"] == "no diary row with same-day volume by strike from 10 minutes ago and now"
+    ls, _ = read(replace(shift_scene(scene_factory, tmp_path, 700, 300), state_dir=None))
+    assert ls.omitted["options.call_put_shift_10m"] == "no state folder to read the prior sessions' diaries from"
+    ls, _ = read(shift_scene(scene_factory, tmp_path / "four", 700, 300, prior_days=PRIOR_DAYS[:4]))
+    assert ls.omitted["options.call_put_shift_10m"] == "needs 5 prior sessions' diaries at this minute, have 4"

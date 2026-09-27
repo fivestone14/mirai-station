@@ -17,14 +17,15 @@ import gzip
 import json
 import statistics
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from pathlib import Path
 
-from ..cuts import (BIG_LEAN_SHARE, BIG_MIN_PRINTS, BIG_PRINT_LOTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, EVEN_SPLIT_HIGH,
-                    EVEN_SPLIT_LOW, FLOW_LEAN_RANK, MIN_RANK_SESSIONS, TOP_FIFTH, TURNOVER_HIGH, TURNOVER_LOW, WINDOW_10_MIN,
-                    WINDOW_30_MIN)
-from ..state_builder import ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_WINDOW_MIN, Scene
+from ..cuts import (BIG_LEAN_SHARE, BIG_MIN_PRINTS, BIG_PRINT_LOTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, CALL_PUT_SHIFT_SHARE,
+                    EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK, MIN_RANK_SESSIONS, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH,
+                    TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
+from ..row_adapter import labeller_row
+from ..state_builder import ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_WINDOW_MIN, ROWS_SUBDIR, Scene, parse_ts
 from .label_set import LabelSet
 from .measures import is_num, minute_of_day
 from .ranks import SameClockRank, rank_against, rank_at_slot
@@ -44,6 +45,9 @@ MULTI_LEG_CONDITIONS = range(130, 145)   # OPRA's multi-leg and stock-option tra
 # The premium burst's window: the opening lane reads every 5 minutes, so a burst is the stretch since the last read.
 BURST_WINDOW_MIN = 5
 TAPE_LABELS = ("options.big_prints_10", "options.flow_lean_30", "options.premium_burst_5m", "options.premium_pace_30")
+# The diary writes a row about every 75 seconds: one further than this before the moment it stands for means the scanner paused.
+ROW_SLACK_MIN = 5
+ROW_LINE_START = '{"ts": "'
 
 
 def build_tape_flow_labels(scene: Scene) -> LabelSet:
@@ -52,6 +56,7 @@ def build_tape_flow_labels(scene: Scene) -> LabelSet:
     _turnover_and_split(gv, ls)
     _aggressor_side(scene, ls)
     _new_activity(scene, gv, ls)
+    _call_put_shift_10m(scene, ls)
     _tape_labels(scene, ls)
     return ls
 
@@ -118,6 +123,99 @@ def _new_activity(scene: Scene, gv: dict, ls: LabelSet) -> None:
         ls.put("options.new_activity", f"the busiest 0DTE strike today is the one nearest price, holding {pct(share)} of the day's 0DTE option volume, more than the {pct(BUSIEST_STRIKE_SHARE)} cut")
     else:
         ls.put("options.new_activity", f"the busiest 0DTE strike today sits {'above' if busiest > scene.spot else 'below'} price, holding {pct(share)} of the day's 0DTE option volume, more than the {pct(BUSIEST_STRIKE_SHARE)} cut")
+
+
+# ----------------------------------------------------------------------------- new volume by side
+
+Book = dict[float, tuple[float, float]]   # strike: (call contracts, put contracts) traded today (gex_views.vol_side_by_strike)
+
+
+def _book(row: dict) -> Book:
+    return {float(v[0]): (float(v[1]), float(v[2])) for v in (row.get("gex_views") or {}).get("vol_side_by_strike") or []
+            if isinstance(v, (list, tuple)) and len(v) >= 3 and all(is_num(x) for x in v[:3])}
+
+
+def _book_at(books: list[tuple[datetime, Book]], t: datetime) -> Book | None:
+    """The newest book written at or before ``t``, and not more than ROW_SLACK_MIN before it."""
+    done = [b for ts, b in books if t - timedelta(minutes=ROW_SLACK_MIN) <= ts <= t and b]
+    return done[-1] if done else None
+
+
+def _new_contracts(books: list[tuple[datetime, Book]], end: datetime) -> tuple[Book, float, float] | None:
+    """The book at ``end`` and the calls and puts traded in the 10 minutes before it, on the strikes both rows
+    carry (the row's strikes follow price); None without a row at either end."""
+    now, then = _book_at(books, end), _book_at(books, end - timedelta(minutes=WINDOW_10_MIN))
+    if now is None or then is None:
+        return None
+    common = now.keys() & then.keys()
+    return now, sum(now[k][0] - then[k][0] for k in common), sum(now[k][1] - then[k][1] for k in common)
+
+
+def _call_put_shift_10m(scene: Scene, ls: LabelSet) -> None:
+    """The call share of the last 10 minutes' new same-day volume against the day's, and whether that new volume
+    is too thin to judge against the same 10 minutes of the prior sessions."""
+    got = _new_contracts([(parse_ts(r["ts"]), _book(r)) for r in scene.rows_today], scene.now)
+    if got is None:
+        ls.omit("options.call_put_shift_10m", f"no diary row with same-day volume by strike from {WINDOW_10_MIN} minutes ago and now")
+        return
+    book, calls, puts = got
+    new = calls + puts
+    if new <= 0:
+        ls.omit("options.call_put_shift_10m", f"no new same-day contracts in the diary over the last {WINDOW_10_MIN} minutes")
+        return
+    if scene.state_dir is None:
+        ls.omit("options.call_put_shift_10m", "no state folder to read the prior sessions' diaries from")
+        return
+    clock = scene.now.astimezone(ET).time()
+    base = []
+    for d in scene.prior_bars:
+        then = _new_contracts(_prior_books(scene.state_dir, d, clock), datetime.combine(date.fromisoformat(d), clock, tzinfo=ET))
+        if then is not None:
+            base.append(then[1] + then[2])
+    rank = rank_against(new, base)
+    if rank is None:
+        ls.omit("options.call_put_shift_10m", f"needs {MIN_RANK_SESSIONS} prior sessions' diaries at this minute, have {len(base)}")
+        return
+    day_calls, day_puts = sum(c for c, _ in book.values()), sum(p for _, p in book.values())
+    new_share, day_share = calls / new, day_calls / (day_calls + day_puts)
+    shift = new_share - day_share
+    points = round(new_share * 100) - round(day_share * 100)      # the swing between the two shares as the sentence prints them
+    line = f"the {round(CALL_PUT_SHIFT_SHARE * 100)}-point shift line"
+    swing = (f"a {abs(points)}-point swing to {'calls' if points > 0 else 'puts'}" if points else "no swing either way")
+    swing += f", {'past' if abs(shift) > CALL_PUT_SHIFT_SHARE else 'within'} {line}"
+    thin = ("new volume was above the too-thin line for this time, so it is not too thin to judge" if rank.share >= THIN_VOLUME_PCT else
+            f"new volume was under the too-thin line for this time, {rank.words()}, too thin to judge")
+    ls.put("options.call_put_shift_10m", f"in the last {WINDOW_10_MIN} minutes {pct(new_share)} of new same-day option volume was calls, "
+                                         f"against {pct(day_share)} since the open: {swing}; {thin}")
+
+
+@lru_cache(maxsize=64)
+def _prior_books(state_dir: Path, day: str, clock: time) -> list[tuple[datetime, Book]]:
+    """A past day's diary books from the rows written in the 10 minutes (and the slack) before ``clock``. A row is
+    about 40 KB, so each line's time is read from its start and only the rows in the stretch are parsed; the
+    scanner writes its rows in time order."""
+    path = Path(state_dir) / ROWS_SUBDIR / f"{day}.jsonl"
+    if not path.exists():
+        return []
+    end = datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)
+    start = end - timedelta(minutes=WINDOW_10_MIN + ROW_SLACK_MIN)
+    out = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if not line.startswith(ROW_LINE_START):
+                continue
+            ts = parse_ts(line[len(ROW_LINE_START):line.index('"', len(ROW_LINE_START))])
+            if ts > end:
+                break
+            if ts < start:
+                continue
+            try:
+                row = labeller_row(json.loads(line))
+            except ValueError:
+                continue
+            if row:
+                out.append((ts, _book(row)))
+    return out
 
 
 # ----------------------------------------------------------------------------- the 0DTE tape
