@@ -1,0 +1,155 @@
+"""How a market beside the index usually moves with it, and how far it moved beyond that: what the
+leadership and macro families measure every fund, stock and outside market by.
+
+* The usual multiple (the beta): the slope of a symbol's 30-minute returns on the index's over the prior
+  sessions on file (up to 20), on the clock's half hours from 10:00 to 16:00.
+* The own scale: the symbol's typical 30-minute move over the index's, so "past its own move rule" is
+  the move rule stretched to the symbol's size.
+* A move beyond the usual multiple (the residual) is the symbol's return less the multiple times the
+  index's, written in SPX sigma: a share of the day's morning anchor.
+
+Point in time: SPX comes from the bars that finished by the moment, every other symbol from the market
+context as it was known then; a value older than VALUE_MAX_AGE_MIN is a stopped feed and counts as none.
+"""
+from __future__ import annotations
+
+import bisect
+import statistics
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
+from typing import TYPE_CHECKING, Callable
+
+from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, TOP_FIFTH, WINDOW_30_MIN
+from .measures import ET, ONE_MINUTE, bar_time
+from .ranks import SameClockRank, rank_against, same_clock_values
+from .rulers import SigmaRuler
+
+if TYPE_CHECKING:
+    from ..state_builder import MarketContext, Scene
+
+SPX = "$SPX"                    # the index itself, read from the SPX minute bars
+VALUE_MAX_AGE_MIN = 5           # a price older than this at a window's edge is a feed that had stopped
+LINK_FIRST_END = time(10, 30)   # the first half hour the usual multiple is measured on (09:30 has no finished bar)
+LINK_LAST_END = time(16, 0)
+
+
+class Session:
+    """One session's prices as they were known: SPX from its minute bars, the rest from its market context."""
+
+    def __init__(self, bars: list[dict], market: MarketContext | None):
+        self.bars, self.market = bars, market
+        self._finished = [bar_time(b) + ONE_MINUTE for b in bars]
+
+    def price(self, symbol: str, t: datetime) -> float | None:
+        if symbol != SPX:
+            return self.market.last(symbol, t, max_age_min=VALUE_MAX_AGE_MIN) if self.market else None
+        k = bisect.bisect_right(self._finished, t)
+        if not k or t - self._finished[k - 1] > timedelta(minutes=VALUE_MAX_AGE_MIN):
+            return None
+        return float(self.bars[k - 1]["close"])
+
+    def move(self, symbol: str, start: datetime, end: datetime) -> float | None:
+        """The symbol's return from ``start`` to ``end``; None without a price at either edge."""
+        a, b = self.price(symbol, start), self.price(symbol, end)
+        return b / a - 1.0 if a and b is not None else None
+
+
+@dataclass(frozen=True)
+class UsualLink:
+    multiple: float     # the symbol's usual 30-minute return per unit of the index's (the beta)
+    scale: float        # its typical 30-minute move over the index's
+    spread: float       # the standard deviation of its 30-minute return beyond the multiple
+    sessions: int
+
+
+def link_windows(day: str) -> list[tuple[datetime, datetime]]:
+    """The day's half hours the usual multiple is measured on."""
+    d = date.fromisoformat(day)
+    end, last = datetime.combine(d, LINK_FIRST_END, tzinfo=ET), datetime.combine(d, LINK_LAST_END, tzinfo=ET)
+    out = []
+    while end <= last:
+        out.append((end - timedelta(minutes=WINDOW_30_MIN), end))
+        end += timedelta(minutes=WINDOW_30_MIN)
+    return out
+
+
+def usual_link(scene: Scene, symbol: str, index: str = SPX) -> UsualLink | None:
+    """How ``symbol`` usually moves with ``index`` over the prior sessions; None under MIN_RANK_SESSIONS
+    sessions that carry both (the floor a rank has), or when the index never moved."""
+    xs, ys, days = [], [], 0
+    for day, bars in scene.prior_bars.items():
+        s = Session(bars, scene.prior_markets.get(day))
+        pairs = [(x, y) for a, b in link_windows(day) if (x := s.move(index, a, b)) is not None and (y := s.move(symbol, a, b)) is not None]
+        if pairs:
+            days += 1
+            xs.extend(x for x, _ in pairs)
+            ys.extend(y for _, y in pairs)
+    if days < MIN_RANK_SESSIONS:
+        return None
+    mx, my = statistics.fmean(xs), statistics.fmean(ys)
+    var = sum((x - mx) ** 2 for x in xs)
+    typical = statistics.median(abs(x) for x in xs)
+    if var == 0 or typical == 0:
+        return None
+    beta = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / var
+    return UsualLink(beta, statistics.median(abs(y) for y in ys) / typical,
+                     statistics.pstdev(y - beta * x for x, y in zip(xs, ys)), days)
+
+
+class AgainstIndex:
+    """The reads of one moment against the index: today's session, the day's sigma as a share of price,
+    and each symbol's usual link, measured once per read."""
+
+    def __init__(self, scene: Scene, ruler: SigmaRuler):
+        self.scene, self.ruler = scene, ruler
+        self.today = Session(scene.bars, scene.market)
+        self.sigma_share = ruler.points / scene.spot
+        self._links: dict[tuple[str, str], UsualLink | None] = {}
+
+    @property
+    def ruler_note(self) -> str:
+        """What a sentence adds when today's sigma is a stand-in for the morning anchor."""
+        return "; ruler estimated" if self.ruler.estimated else ""
+
+    def link(self, symbol: str, index: str = SPX) -> UsualLink | None:
+        if (symbol, index) not in self._links:
+            self._links[symbol, index] = usual_link(self.scene, symbol, index)
+        return self._links[symbol, index]
+
+    def move(self, symbol: str, minutes: int) -> float | None:
+        """The symbol's return over the last ``minutes`` minutes."""
+        now = self.scene.now
+        return self.today.move(symbol, now - timedelta(minutes=minutes), now)
+
+    def sigma(self, ret: float) -> float:
+        """A return in SPX sigma."""
+        return ret / self.sigma_share
+
+    def same_clock(self, measure: Callable[[Session, datetime, float], float | None]) -> list[float]:
+        """``measure(session, then, sigma_share)`` on each prior session at this minute (ranks.same_clock_values),
+        its session holding the bars and the market context known by then."""
+        def on_day(bars: list[dict], then: datetime, sigma_points: float | None) -> float | None:
+            if sigma_points is None:
+                return None
+            s = Session(bars, self.scene.prior_markets.get(then.date().isoformat()))
+            spot = s.price(SPX, then)
+            return measure(s, then, sigma_points / spot) if spot else None
+        return same_clock_values(self.scene, on_day)
+
+    def rank(self, value: float, measure: Callable[[Session, datetime, float], float | None]) -> tuple[SameClockRank | None, int]:
+        """``value`` against the same measure at this minute of the prior sessions, and how many sessions carried it."""
+        base = self.same_clock(measure)
+        return rank_against(value, base), len(base)
+
+
+def beyond(link: UsualLink, move: float, index_move: float) -> float:
+    """The part of a return its usual multiple of the index's return does not explain."""
+    return move - link.multiple * index_move
+
+
+def fifth_side(rank: SameClockRank) -> int:
+    """+1 in the top fifth of the same-clock sessions, -1 in the bottom fifth, 0 in neither."""
+    return 1 if rank.share >= TOP_FIFTH else -1 if rank.share <= BOTTOM_FIFTH else 0
+
+
+FIFTH_WORDS = {1: "in the top fifth", -1: "in the bottom fifth", 0: "in neither the top nor the bottom fifth"}
