@@ -149,28 +149,29 @@ def rolls_on(thursday: date) -> str:
 
 
 class NightStore:
-    """The overnight store's bitcoin rows, each night's file read once per build. A file holds every symbol,
-    a few MB a night, and a read needs only bitcoin's rows, so only the lines naming it are parsed."""
+    """The overnight store's bitcoin rows, and the S&P futures' where a weekend's reopen is looked for, each night's
+    file read once per symbol per build. A file holds every symbol, a few MB a night, and a read needs one or two,
+    so only the lines naming the symbol are parsed."""
 
     def __init__(self, state_dir: Path | None):
         self.state_dir = state_dir
-        self._rows: dict[str, list[dict]] = {}
+        self._rows: dict[tuple[str, str], list[dict]] = {}
 
-    def rows(self, day: str) -> list[dict]:
-        if day not in self._rows:
+    def rows(self, day: str, symbol: str = BITCOIN) -> list[dict]:
+        if (day, symbol) not in self._rows:
             path = overnight.night_path(self.state_dir, day) if self.state_dir else None
             out = []
             for line in path.read_text(encoding="utf-8").splitlines() if path and path.exists() else []:
-                if BITCOIN not in line:
+                if symbol not in line:
                     continue
                 try:
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if isinstance(row, dict) and row.get("symbol") == BITCOIN:
+                if isinstance(row, dict) and row.get("symbol") == symbol:
                     out.append(row)
-            self._rows[day] = out
-        return self._rows[day]
+            self._rows[day, symbol] = out
+        return self._rows[day, symbol]
 
     def known(self, day: str) -> list[tuple[datetime, float]]:
         """``(when each bar finished, its close)``, oldest first; a 1-minute bar over a 5-minute one finishing with it."""
@@ -221,12 +222,18 @@ def where_futures(scene: Scene, futures: Move) -> str:
     return f"S&P futures stand {sig(abs(x))} {above_or_below(x)} their {prior_close(date.fromisoformat(scene.day)):%H:%M} price"
 
 
+def evening_reopen(day: date) -> datetime:
+    """The S&P futures' reopen at 18:00 the evening before ``day``, the start of every session's Globex night."""
+    return datetime.combine(day - timedelta(days=1), GLOBEX_REOPEN, tzinfo=ET)
+
+
 def night_start(day: date) -> datetime:
     """Where bitcoin's night against the futures starts: the prior close, or after a weekend or a holiday the close
-    of the S&P futures' first minute after their reopen (before it their newest price is the Friday one). Bitcoin
-    trades through the weekend and the futures do not, so a night from the Friday close would carry the weekend's
-    move (weekend.btc_path's leg) and rank far out against the weeknights."""
-    return weekend_edges(day)[1] + ONE_MINUTE if after_break(day) else prior_close(day)
+    of the S&P futures' first minute after their reopen the evening before (before it their newest price is from
+    before the break). Bitcoin trades through the break and the futures do not, so a night from the prior close
+    would carry the weekend's move (weekend.btc_path's leg) and rank far out against the weeknights; from the
+    evening before, the night is a weeknight's length even after a Monday holiday the futures traded part of."""
+    return evening_reopen(day) + ONE_MINUTE if after_break(day) else prior_close(day)
 
 
 def btc_vs_futures(scene: Scene, table: dict, futures: Move | str) -> Got:
@@ -266,7 +273,7 @@ def btc_vs_futures(scene: Scene, table: dict, futures: Move | str) -> Got:
         return f"bitcoin's night not sized: {NO_NORMAL}"
     side, way = fifth_side(rank), way_of(multiple)
     verdict = {1: "btc_ahead_up", -1: "btc_ahead_down", 0: "in_line"}[side * way]
-    since = f"since the S&P futures reopened at {weekend_edges(day)[1]:%H:%M} {start:%A}" if after_break(day) else "since then"
+    since = f"since the S&P futures reopened at {evening_reopen(day):%H:%M} {start:%A}" if after_break(day) else "since then"
     location = f"{where_futures(scene, futures)}; " if isinstance(futures, Move) else ""
     sentence = (f"{location}{since} {NAME} {'rose' if btc.pct >= 0 else 'fell'} "
                 f"{abs(btc.pct) / usual_btc:.1f} of its normal nights to this time, {abs(value) / usual_gap:.1f} normal gaps "
@@ -281,9 +288,27 @@ def after_break(day: date) -> bool:
     return (day - previous_trading_day(day)).days > 1
 
 
-def weekend_edges(day: date) -> tuple[datetime, datetime]:
-    """The weekend leg before ``day``: from the last cash close to the S&P futures' reopen at 18:00 the evening before."""
-    return prior_close(day), datetime.combine(day - timedelta(days=1), GLOBEX_REOPEN, tzinfo=ET)
+def weekend_edges(day: date, futures_rows: list[dict] = ()) -> tuple[datetime, datetime]:
+    """The weekend leg before ``day``: from the last cash close to the S&P futures' reopen (futures_reopen, from
+    ``futures_rows``; the evening before ``day`` without them)."""
+    return prior_close(day), futures_reopen(day, futures_rows)
+
+
+def futures_reopen(day: date, rows: list[dict]) -> datetime:
+    """When the S&P futures reopened after the last cash close before ``day``: the start of their first bar after
+    their longest halt between the close and the midnight before ``day``. That is Sunday 18:00 after a weekend, also
+    when a Monday or Friday holiday gave them a short session beside it, and the holiday's own 18:00 after
+    Thanksgiving, whose week has no longer halt. The evening before ``day`` when ``rows`` show no halt."""
+    close, midnight = prior_close(day), datetime.combine(day, time(0), tzinfo=ET)
+    bars = sorted({(datetime.fromisoformat(r["ts"]), r["bar_minutes"]) for r in rows if r["symbol"] == FUTURES})
+    reopen, halt, last = None, timedelta(0), close
+    for start, minutes in bars:
+        if start >= midnight:
+            break
+        if start - last > halt:
+            reopen, halt = start, start - last
+        last = max(last, start + timedelta(minutes=minutes))
+    return reopen or evening_reopen(day)
 
 
 def weekend_legs(rows: list[dict], close: datetime, reopen: datetime, until: datetime) -> tuple[Move, Move] | None:
@@ -306,9 +331,9 @@ def prior_weekends(store: NightStore, table: dict, day: date, clock: time) -> tu
         d = previous_trading_day(d)
         if not after_break(d):
             continue
-        close, reopen = weekend_edges(d)
-        if close.date() < overnight.CRYPTO_ROUND_THE_CLOCK_FROM.date():
+        if prior_close(d).date() < overnight.CRYPTO_ROUND_THE_CLOCK_FROM.date():
             break
+        close, reopen = weekend_edges(d, store.rows(d.isoformat(), FUTURES))
         legs = weekend_legs(store.rows(d.isoformat()), close, reopen, datetime.combine(d, clock, tzinfo=ET))
         if legs is None:
             weekends.append(Night(d.isoformat(), None, "unmeasured"))
@@ -329,7 +354,7 @@ def weekend_path(scene: Scene, table: dict, futures: Move | str) -> Got:
     day = date.fromisoformat(scene.day)
     if not after_break(day):
         return "not the first session after a weekend or a holiday"
-    close, reopen = weekend_edges(day)
+    close, reopen = weekend_edges(day, scene.night)
     if close.date() < overnight.CRYPTO_ROUND_THE_CLOCK_FROM.date():
         return f"CME bitcoin futures trade through the weekend only from {overnight.CRYPTO_ROUND_THE_CLOCK_FROM:%Y-%m-%d}"
     refused = pending_roll(scene, table, BITCOIN, f"the {NAME} night")

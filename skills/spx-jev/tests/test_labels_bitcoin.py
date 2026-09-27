@@ -240,10 +240,10 @@ def test_a_premarket_read_writes_only_the_premarket_labels_and_decides_only_thei
 
 # ---- before the open: the weekend path ------------------------------------------------------------
 
-def weekend(day: date, weekend_pct: float, reopen_pct: float, until: time = READ) -> list[dict]:
-    """/MBT at the last cash close, at the S&P futures' reopen the evening before ``day`` and at ``until``, and /ES
-    unchanged since the close."""
-    close, reopen = bitcoin.weekend_edges(day)
+def weekend(day: date, weekend_pct: float, reopen_pct: float, until: time = READ, reopen: datetime | None = None) -> list[dict]:
+    """/MBT at the last cash close, at the S&P futures' reopen (by default the evening before ``day``) and at ``until``,
+    and /ES unchanged since the close."""
+    close, reopen = bitcoin.prior_close(day), reopen or bitcoin.evening_reopen(day)
     at_reopen = MBT * (1 + weekend_pct / 100)
     read = datetime.combine(day, until, tzinfo=ET)
     return [one_bar("/MBT", close, MBT, day), one_bar("/MBT", reopen, at_reopen, day),
@@ -255,11 +255,11 @@ EVEN_WEEKENDS = [-1.5 + 0.2 * k for k in range(16)]
 UP_WEEKENDS = [0.47, 2.26, 2.8, 1.41, -0.92, 2.63, 0.09, 0.43, 0.99, 0.97, 0.31, -0.2, 1.08, 1.4, -0.89, 0.6]
 
 
-def prior_weekends(root: Path, legs: list[float] = EVEN_WEEKENDS) -> None:
-    """The weekends before MONDAY since CME bitcoin traded round the clock (16 of them): weekend legs ``legs`` percent
-    (by default from -1.5% upward by 0.2%), each reopen leg the weekend's way by (k - 7.5) / 10 percent."""
-    days = [d for d in trading_days_before(MONDAY, 90) if bitcoin.after_break(d) and d >= date(2026, 6, 1)]
-    assert len(days) == len(legs) == 16
+def prior_weekends(root: Path, legs: list[float] = EVEN_WEEKENDS, day: str = MONDAY) -> None:
+    """The weekends before ``day`` since CME bitcoin traded round the clock (16 before MONDAY): weekend legs ``legs``
+    percent (by default from -1.5% upward by 0.2%), each reopen leg the weekend's way by (k - 7.5) / 10 percent."""
+    days = [d for d in trading_days_before(day, 90) if bitcoin.after_break(d) and d >= date(2026, 6, 1)]
+    assert len(days) == len(legs)
     for k, (d, w) in enumerate(zip(days, legs)):
         write_night(root, d.isoformat(), weekend(d, w, (k - 7.5) / 10 * (1 if w >= 0 else -1)))
 
@@ -291,6 +291,45 @@ def test_a_small_fall_among_mostly_up_weekends_is_an_ordinary_weekend(tmp_path, 
     ls = build_bitcoin_labels(premarket_scene_factory(datetime.combine(d, READ, tzinfo=ET), weekend(d, -0.05, 0.0), state_dir=tmp_path))
     assert "larger than 0 of the last 16 weekends by size, bottom third" in written(ls)["weekend.btc_path"]
     assert ls.gates["btc_weekend_path"] == "an ordinary weekend for bitcoin: its weekend leg is not in the top third by size of the last 16 weekends"
+
+
+def es_trading(day: str, *spans: tuple[datetime, datetime]) -> list[dict]:
+    """/ES five-minute bars through each ``(start, end)`` span, as the store holds them while the futures trade."""
+    rows = []
+    for start, end in spans:
+        t = start
+        while t < end:
+            rows.append(night_row("/ES", t, ES, minutes=5, day=day))
+            t += timedelta(minutes=5)
+    return rows
+
+
+@pytest.mark.parametrize("day, spans, reopen", [
+    ("2026-09-21", [((15, 55, "2026-09-18"), (17, 0, "2026-09-18")), ((18, 0, "2026-09-20"), (9, 30, "2026-09-21"))], (18, 0, "2026-09-20")),
+    # Labor Day: the futures traded from Sunday 18:00 to 13:00 Monday, then reopened at 18:00 Monday
+    ("2026-09-08", [((15, 55, "2026-09-04"), (17, 0, "2026-09-04")), ((18, 0, "2026-09-06"), (13, 0, "2026-09-07")),
+                    ((18, 0, "2026-09-07"), (9, 30, "2026-09-08"))], (18, 0, "2026-09-06")),
+    # Thanksgiving: the futures' longest halt is the holiday's, 13:00 to 18:00 Thursday
+    ("2026-11-27", [((15, 55, "2026-11-25"), (17, 0, "2026-11-25")), ((18, 0, "2026-11-25"), (13, 0, "2026-11-26")),
+                    ((18, 0, "2026-11-26"), (9, 30, "2026-11-27"))], (18, 0, "2026-11-26")),
+    ("2026-09-08", [], (18, 0, "2026-09-07")),
+])
+def test_the_futures_reopen_is_the_end_of_their_longest_halt_since_the_close(day, spans, reopen):
+    rows = es_trading(day, *[(at(*a[:2], day=a[2]), at(*b[:2], day=b[2])) for a, b in spans])
+    assert bitcoin.futures_reopen(date.fromisoformat(day), rows) == at(*reopen[:2], day=reopen[2])
+
+
+def test_after_a_monday_holiday_the_weekend_leg_runs_to_the_sunday_reopen(tmp_path, premarket_scene_factory):
+    """Labor Day: the S&P futures traded from Sunday 18:00, so bitcoin's weekend leg ends there, not at Monday's 18:00 reopen."""
+    tuesday = "2026-09-08"
+    prior_weekends(tmp_path, EVEN_WEEKENDS[:14], day=tuesday)
+    d, sunday = date.fromisoformat(tuesday), at(18, 0, day="2026-09-06")
+    rows = weekend(d, -4.0, 2.0, reopen=sunday) + es_trading(tuesday, (at(15, 55, day="2026-09-04"), at(17, 0, day="2026-09-04")),
+                                                              (sunday, at(13, 0, day="2026-09-07")), (at(18, 0, day="2026-09-07"), at(9, 30, day=tuesday)))
+    ls = build_bitcoin_labels(premarket_scene_factory(at(9, 28, day=tuesday), rows, state_dir=tmp_path))
+    s = written(ls)["weekend.btc_path"]
+    assert "from the Friday 16:00 close to the S&P futures' reopen at 18:00 Sunday, larger than 14 of the last 14 weekends by size" in s
+    assert s.endswith("it turned back")
 
 
 def test_the_weekend_path_is_asked_only_after_a_weekend_or_a_holiday(tmp_path, premarket_scene_factory):
