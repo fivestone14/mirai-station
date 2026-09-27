@@ -212,6 +212,14 @@ def test_the_report_window_is_the_release_only_on_a_report_day(tmp_path, read, c
     assert _verdict(read(knots), "overnight.gap_origin") == "made_at_release"
 
 
+def test_a_day_the_calendar_does_not_cover_has_no_report_window_to_place_the_gap_in(tmp_path, read, monkeypatch):
+    _save_prior(tmp_path, _spread())
+    monkeypatch.setattr(events, "uncovered", lambda day, path=events.CALENDAR: "the event calendar is kept only from 2026-10-01")
+    ls = read([(_at(8, 0), 0.0), (_at(8, 25), 1.0)])
+    assert ls.gates["gap_origin"] == "where the report window falls is unknown: the event calendar is kept only from 2026-10-01"
+    assert "overnight.gap_origin" in ls.omitted
+
+
 def test_a_quiet_night_has_no_gap_to_place(tmp_path, read):
     _save_prior(tmp_path, _spread())
     ls = read([(_at(9, 0), 0.02)])

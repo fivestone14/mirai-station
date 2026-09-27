@@ -190,7 +190,8 @@ def _stretch_words(s: story.Stretch) -> str:
 def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str, ls: LabelSet) -> None:
     """Where S&P futures stand, then the stretch of the night whose move ranks most unusual against the same
     stretch on the last nights (the larger move breaking a tie): it names where the gap was made. Sleeps
-    without a net move to place, or on one in its bottom third."""
+    without a net move to place, on one in its bottom third, or on a day the calendar does not cover, since
+    the report window's edges and whether it holds a release come from it."""
     label, gate = "overnight.gap_origin", "gap_origin"
     if net is None:
         ls.omit(label, why)
@@ -201,6 +202,12 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
                  "too small a gap to place")
         ls.omit(label, quiet)
         ls.sleep(gate, quiet)
+        return
+    uncovered = events.uncovered(tonight.day)
+    if uncovered:
+        unknown = f"where the report window falls is unknown: {uncovered}"
+        ls.omit(label, unknown)
+        ls.sleep(gate, unknown)
         return
     release = story.release_minute(tonight.day)
     ranked, left_out = [], []
