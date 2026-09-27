@@ -377,3 +377,21 @@ def test_every_sentence_stays_short(premarket_scene_factory, nights_dir, calenda
     assert set(ls.paths()) == set(LABELS) and not ls.omitted
     assert {p: len(s.split()) for g, labels in ls.state.items() for k, s in labels.items() if len(s.split()) > MAX_WORDS
             for p in [f"{g}.{k}"]} == {}
+
+
+@pytest.mark.parametrize("kinds", [
+    ("JOBLESS_CLAIMS", "PPI", "RETAIL_SALES", "EMPIRE_STATE", "PHILLY_FED"),      # 2026-10-15 at 08:30
+    ("JOBLESS_CLAIMS", "PRODUCTIVITY"),                                          # the calendar's longest pair of names
+])
+@pytest.mark.parametrize("reaction", [-2.5, -0.8, 1.0])
+def test_a_busy_report_minute_keeps_the_release_sentence_short(premarket_scene_factory, nights_dir, calendar, kinds, reaction):
+    calendar([("08:30", kind) for kind in kinds])
+    ls = read(premarket_scene_factory, nights_dir, {"europe_morning": 1.5}, jumps={time(8, 35): reaction}, at=time(8, 48))
+    assert ls.gates["release_vs_night"] is None
+    assert len(said(ls, "premarket.release_vs_night").split()) <= MAX_WORDS
+
+
+def test_several_reports_at_the_minute_name_the_first_and_count_the_rest(premarket_scene_factory, nights_dir, calendar):
+    calendar([("08:30", "PPI"), ("08:30", "RETAIL_SALES"), ("08:30", "JOBLESS_CLAIMS")])
+    ls = read(premarket_scene_factory, nights_dir, {"europe_morning": 1.5}, jumps={time(8, 35): 1.0}, at=time(8, 48))
+    assert "; before the producer price report and 2 more at 08:30 they were " in said(ls, "premarket.release_vs_night")
