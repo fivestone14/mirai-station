@@ -15,12 +15,11 @@ from ..cuts import (AFTERNOON_LEG_SIGMA, BOTTOM_FIFTH, CLOSE_PUSH_SIGMA, DAY_SID
                     RANGE_TOP_SHARE, RSI_OVERBOUGHT, RSI_OVERSOLD, TOP_FIFTH, VR_PIN, VR_TREND, WINDOW_30_MIN, WINDOW_60_MIN)
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import (ET, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, RSI_PERIOD, bar_time, bars_finished_between, close_at,
+from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, RSI_PERIOD, bar_time, bars_finished_between, close_at,
                        day_high_low, high_low_close, is_num, session_extremes, settled_open, wilder_rsi)
-from .range_size import HOUR_MIN_BARS, NO_ANCHOR, minutes_ago, ruled, typical_move
 from .ranks import rank_against, same_clock_values
-from .rulers import SigmaRuler, sigma_anchor
-from .words import pct, plural, sig, signed, third
+from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
+from .words import minutes_ago, pct, plural, sig, signed, third
 
 LABELS = ("price.recent_move", "price.day_range_position", "price.vs_vwap", "price.vs_prior_close", "price.minute_width",
           "price.vs_yesterday", "price.vs_day_before", "price.multi_day_position",

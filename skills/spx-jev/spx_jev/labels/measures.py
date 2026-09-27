@@ -21,6 +21,8 @@ MOVE_BAR_MINUTES = 2
 # Today against the most recent prior sessions (their range, or theirs at the same time of day).
 RANGE_PRIOR_SESSIONS = 5
 MIN_RANGE_SESSIONS = 3
+# An hour's range counts once two thirds of its minutes are on file, as a 30-minute window needs 20 bars.
+HOUR_MIN_BARS = 40
 
 
 def is_num(v: Any) -> bool:

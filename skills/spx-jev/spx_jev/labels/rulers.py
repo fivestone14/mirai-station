@@ -15,6 +15,10 @@
   finished 5-minute slices. Held at RULER_HOLD_SIGMA until 09:45, when three slices first exist;
   floored at RULER_FLOOR_SIGMA so a dead tape still has a unit; never capped, so a wild open is
   measured as wild.
+* The typical move (typical_move): how far SPX usually moves over the next 30 or 60 minutes now, the tape
+  unit and the straddle left combined.
+
+A sentence measured on an estimated morning ruler ends "(ruler estimated)" (ruled).
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING
 
 from ..cuts import MIN_RANK_SESSIONS, RULER_FLOOR_SIGMA, RULER_HOLD_SIGMA
+from ..events import WORDS as EVENT_KINDS, starts_on
 from .measures import ET, SETTLED_OPEN_BAR, bars_finished_between, is_num, minute_of_day, settled_open, slot
 from .ranks import rank_at_slot, same_clock_values
 
@@ -36,6 +41,9 @@ ANCHOR_GUARD = time(9, 40)       # the anchor counts only from a row stamped by 
 RULER_SLICE_MIN = 5
 RULER_SLICES = 3
 RULER_HOLD_UNTIL = time(9, 45)
+NO_ANCHOR = "no morning sigma ruler: no row by 09:40, no live sigma and no VIX at the settled open"
+# Today's straddle left prices this share of a one-sigma move for the rest of the day (the set's reach formula).
+STRADDLE_PER_SIGMA = 0.68
 
 
 def ruler(bars: list[dict], sigma: float, now: datetime) -> dict | None:
@@ -163,3 +171,36 @@ def normal_day_sigma(scene: Scene) -> float | None:
     under MIN_RANK_SESSIONS of them."""
     anchors = [r.points for r in scene.prior_rulers.values() if r is not None and not r.estimated]
     return statistics.median(anchors) if len(anchors) >= MIN_RANK_SESSIONS else None
+
+
+def ruled(anchor: SigmaRuler, sentence: str) -> str:
+    """A sentence measured on an estimated morning ruler says so."""
+    return f"{sentence} (ruler estimated)" if anchor.estimated else sentence
+
+
+def typical_move(scene: Scene, anchor: SigmaRuler, minutes: int) -> tuple[float | None, str]:
+    """How far SPX typically moves over the next ``minutes`` now, in points, and what the figure combines;
+    None with the reason when it cannot be measured. The tape's reach is the tape unit grown by the square
+    root of time; the straddle's is what today's straddle still prices, as a one-sigma move, spread over the
+    minutes left. The two combine as their geometric mean, and the tape stands alone while a scheduled
+    event is still ahead today, since the straddle prices the event rather than an ordinary half hour."""
+    unit = ruler(scene.bars, anchor.points, scene.now)
+    if unit is None:
+        return None, "no tape unit this read: the bars have stopped"
+    tape = float(unit["unit_points"]) * math.sqrt(minutes / RULER_SLICE_MIN)
+    if _event_ahead(scene):
+        return tape, "the tape alone, with a scheduled event still ahead today"
+    em = straddle_left(scene)
+    if em is None:
+        return None, "row carries no straddle left (range_ruler.em_points)"
+    left = scene.minutes_to_close
+    if left <= 0:
+        return None, "the session has closed"
+    straddle = em / STRADDLE_PER_SIGMA * math.sqrt(min(minutes, left) / left)
+    return math.sqrt(tape * straddle), "tape and straddle combined"
+
+
+def _event_ahead(scene: Scene) -> bool:
+    """A tier-1 event starting after now and before today's close; one at the close itself is not ahead of the straddle."""
+    day = scene.now.astimezone(ET).date()
+    return any(scene.now < start < scene.session_close for kind in EVENT_KINDS if (start := starts_on(day, kind)) is not None)

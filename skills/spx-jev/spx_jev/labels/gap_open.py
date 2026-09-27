@@ -19,9 +19,8 @@ from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, bars_between, bars_finished_between, close_at, day_high_low,
                        is_num, session_extremes, settled_open)
 from .ranks import same_clock_values
-from .range_size import NO_ANCHOR, minutes_ago, ruled, typical_move
-from .rulers import SigmaRuler, sigma_anchor
-from .words import pct, plural, sig
+from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
+from .words import minutes_ago, pct, plural, sig
 
 LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_distance",
           "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",

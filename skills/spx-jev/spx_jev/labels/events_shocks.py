@@ -32,9 +32,8 @@ from ..market_context import SYMBOLS
 from ..state_builder import MarketContext, Scene, load_jsonl
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, session_extremes, settled_open
-from .range_size import ruled
 from .ranks import SameClockRank, rank_against, same_clock_values
-from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
+from .rulers import SigmaRuler, normal_day_sigma, ruled, sigma_anchor
 from .words import pct, plural, sig
 
 LABELS = ("context.event_clock", "event.reaction", "event.release_clock_10m", "event.statement_and_presser",

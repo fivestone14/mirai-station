@@ -10,8 +10,8 @@ import pytest
 
 from conftest import at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
 from spx_jev.labels import range_size
-from spx_jev.labels.range_size import NO_ANCHOR, build_range_size_labels
-from spx_jev.labels.rulers import SigmaRuler, tape_unit
+from spx_jev.labels.range_size import build_range_size_labels
+from spx_jev.labels.rulers import NO_ANCHOR, SigmaRuler, tape_unit, typical_move
 from spx_jev.state_builder import make_scene
 
 SIGMA = 75.0
@@ -190,7 +190,7 @@ def test_the_flat_band_against_a_typical_half_hour_and_hour_of_tape_and_straddle
 
 def test_the_reach_lines_belong_to_the_middle(scene_factory, monkeypatch):
     scene = _reach_scene(scene_factory, 1.5)
-    cover = range_size.NEXT_30_FLAT_BAND_SIGMA / (range_size.typical_move(scene, SigmaRuler(SIGMA, "anchor"), 30)[0] / SIGMA)
+    cover = range_size.NEXT_30_FLAT_BAND_SIGMA / (typical_move(scene, SigmaRuler(SIGMA, "anchor"), 30)[0] / SIGMA)
     monkeypatch.setattr(range_size, "FLAT_REACH_WIDE_30", cover)
     assert "between the 0.53 narrow line" in _labels(scene)[0]["ruler.flat_band_reach"]
     monkeypatch.setattr(range_size, "FLAT_REACH_NARROW_30", cover)

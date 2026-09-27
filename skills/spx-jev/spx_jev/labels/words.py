@@ -1,6 +1,8 @@
 """How a number is written inside a label sentence, the same way in every family."""
 from __future__ import annotations
 
+from datetime import datetime
+
 
 def sig(x: float) -> str:
     return f"{x:.2f} sigma"
@@ -35,3 +37,9 @@ def third(frac: float) -> str:
 def units_of(x: float, unit_points: float) -> str:
     """``x`` tape units in words, with what one unit is in points, rounded as the sum's context line rounds it."""
     return f"{x:.2f} of a tape unit ({unit_points:.1f} points)" if x <= 1 else f"{x:.2f} tape units (one is {unit_points:.1f} points)"
+
+
+def minutes_ago(now: datetime, then: datetime) -> str:
+    """How long before ``now`` a thing finished, in whole minutes."""
+    minutes = int((now - then).total_seconds() // 60)
+    return "within the last minute" if minutes == 0 else f"{plural(minutes, 'minute')} ago"

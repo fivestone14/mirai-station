@@ -17,9 +17,8 @@ from ..sessions import next_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ONE_MINUTE, bar_time, bars_finished_between, close_at, high_low_close, is_num, settled_open
-from .range_size import NO_ANCHOR, minutes_ago, ruled
-from .rulers import SigmaRuler, sigma_anchor
-from .words import ordinal, pct, plural, sig
+from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
+from .words import minutes_ago, ordinal, pct, plural, sig
 
 LABELS = ("levels.break_armed", "levels.open_vs_prior_range", "levels.prior_day", "levels.prior_value", "levels.round_number",
           "levels.wall_touch_effort")

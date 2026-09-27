@@ -14,15 +14,13 @@ from ..cuts import (FLAT_REACH_NARROW_30, FLAT_REACH_NARROW_60, FLAT_REACH_WIDE_
                     MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, ONE_RATIO, RANGE_PACE_SLEEPY,
                     RANGE_PACE_WILD, RULER_FLOOR_SIGMA, SHAPE_CUT_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, THIRD_HI, WALL_NEAR_SIGMA,
                     WINDOW_30_MIN, WINDOW_60_MIN)
-from ..events import WORDS as EVENT_KINDS, starts_on
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import (ET, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between,
+from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between,
                        close_at, day_high_low, high_low_close, is_num, minute_of_day, move_bar, stretch, stretch_range, walls)
 from .ranks import rank_against, rank_at_slot, same_clock_values
-from .rulers import (RULER_HOLD_UNTIL, RULER_SLICE_MIN, SigmaRuler, ruler, sigma_anchor, straddle_left, unit_rank,
-                     unit_sigma)
-from .words import pct, plural, sig, third, units_of
+from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move, unit_rank, unit_sigma
+from .words import minutes_ago, pct, plural, sig, third, units_of
 
 LABELS = ("range.box_status", "range.today_vs_normal", "range.prior_level_touches", "range.session_shape", "range.nearest_level",
           "tape.move_since_read", "tape.range_since_read",
@@ -34,13 +32,8 @@ DARK: dict[str, str] = {}
 OPENING_BOX_MIN = 30
 # The set's labels measured on the morning anchor, omitted together when the day has none.
 ANCHORED = ("range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "ruler.flat_band_reach")
-NO_ANCHOR = "no morning sigma ruler: no row by 09:40, no live sigma and no VIX at the settled open"
 FULL_SESSION_MIN = 390          # sigma is a full session's expected move
 FIRST_HOUR_MIN = 60
-# An hour's range counts once two thirds of its minutes are on file, as a 30-minute window needs 20 bars.
-HOUR_MIN_BARS = 40
-# Today's straddle left prices this share of a one-sigma move for the rest of the day (the set's reach formula).
-STRADDLE_PER_SIGMA = 0.68
 
 
 def build_range_size_labels(scene: Scene) -> LabelSet:
@@ -62,45 +55,6 @@ def build_range_size_labels(scene: Scene) -> LabelSet:
     _pace_vs_priced(scene, anchor, ls)
     _flat_band_reach(scene, anchor, ls)
     return ls
-
-
-def ruled(anchor: SigmaRuler, sentence: str) -> str:
-    """A sentence measured on an estimated morning ruler says so."""
-    return f"{sentence} (ruler estimated)" if anchor.estimated else sentence
-
-
-def minutes_ago(now: datetime, then: datetime) -> str:
-    """How long before ``now`` a thing finished, in whole minutes."""
-    minutes = int((now - then).total_seconds() // 60)
-    return "within the last minute" if minutes == 0 else f"{plural(minutes, 'minute')} ago"
-
-
-def typical_move(scene: Scene, anchor: SigmaRuler, minutes: int) -> tuple[float | None, str]:
-    """How far SPX typically moves over the next ``minutes`` now, in points, and what the figure combines;
-    None with the reason when it cannot be measured. The tape's reach is the tape unit grown by the square
-    root of time; the straddle's is what today's straddle still prices, as a one-sigma move, spread over the
-    minutes left. The two combine as their geometric mean, and the tape stands alone while a scheduled
-    event is still ahead today, since the straddle prices the event rather than an ordinary half hour."""
-    unit = ruler(scene.bars, anchor.points, scene.now)
-    if unit is None:
-        return None, "no tape unit this read: the bars have stopped"
-    tape = float(unit["unit_points"]) * math.sqrt(minutes / RULER_SLICE_MIN)
-    if _event_ahead(scene):
-        return tape, "the tape alone, with a scheduled event still ahead today"
-    em = straddle_left(scene)
-    if em is None:
-        return None, "row carries no straddle left (range_ruler.em_points)"
-    left = scene.minutes_to_close
-    if left <= 0:
-        return None, "the session has closed"
-    straddle = em / STRADDLE_PER_SIGMA * math.sqrt(min(minutes, left) / left)
-    return math.sqrt(tape * straddle), "tape and straddle combined"
-
-
-def _event_ahead(scene: Scene) -> bool:
-    """A tier-1 event starting after now and before today's close; one at the close itself is not ahead of the straddle."""
-    day = scene.now.astimezone(ET).date()
-    return any(scene.now < start < scene.session_close for kind in EVENT_KINDS if (start := starts_on(day, kind)) is not None)
 
 
 def _box_status(scene: Scene, ls: LabelSet) -> None:
