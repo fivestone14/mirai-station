@@ -27,7 +27,7 @@ from ..cuts import GAP_HALF_SHARE, NIGHT_RANK_COUNT, THIRD_LO
 from ..night_ranks import (READ_STALE_MIN, Move, Night, NightRank, prior_window_nights, price_by, quoted_contract, rank_night, roll_pending,
                            window_move)
 from ..sessions import session_close
-from ..state_builder import Scene
+from ..state_builder import Scene, prior_bar_days
 from .label_set import LabelSet
 from .measures import ET, close_at, is_num, yesterdays_bars
 from .ranks import SameClockRank, rank_against
@@ -435,15 +435,17 @@ def _last_hour_pct(bars: list[dict], day: str) -> float | None:
 
 
 def _vs_last_hour(night: NightSoFar, ls: LabelSet) -> None:
-    """Where futures stand, then SPX's move over yesterday's last cash hour, ranked against the last sessions'
-    last hours; night_vs_last_hour asks whether the night carried it on."""
+    """Where futures stand, then SPX's move over yesterday's last cash hour, ranked against the last hours of the
+    NIGHT_RANK_COUNT full sessions before it, read from the store (the scene's prior sessions end at yesterday);
+    night_vs_last_hour asks whether the night carried it on."""
     day, bars, why = yesterdays_bars(night.scene)
     hour = _last_hour_pct(bars, day) if bars else None
     if hour is None:
         _omit(ls, "night_vs_last_hour", f"yesterday's last hour: {why or 'no SPX bars at its start and end'}")
         return
-    base = [abs(v) for d, b in night.scene.prior_bars.items() if d != day and (v := _last_hour_pct(b, d)) is not None]
-    rank = rank_against(abs(hour), base[:NIGHT_RANK_COUNT])
+    before = prior_bar_days(night.scene.state_dir, day, limit=NIGHT_RANK_COUNT)
+    base = [abs(v) for d, b in before.items() if (v := _last_hour_pct(b, d)) is not None]
+    rank = rank_against(abs(hour), base)
     if rank is None:
         _omit(ls, "night_vs_last_hour", f"yesterday's last hour is not ranked: {len(base)} prior sessions' last hours on file")
         return

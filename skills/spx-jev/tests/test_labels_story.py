@@ -21,7 +21,9 @@ import pytest
 from conftest import bars_from_closes, night_row
 from spx_jev import events, overnight, rolls, story
 from spx_jev.labels.story import LABELS, build_story_labels, previous_checkpoint
+from spx_jev.row_adapter import SYMBOL
 from spx_jev.sessions import previous_trading_day
+from spx_jev.state_builder import SESSION_BARS_SUBDIR
 
 DAY = date(2026, 9, 24)                     # a Thursday; its 20 prior nights run back past Labor Day
 ET = overnight.ET
@@ -60,6 +62,7 @@ def _write_nights(root, days: list[date]) -> None:
 def nights_dir(tmp_path_factory):
     root = tmp_path_factory.mktemp("state")
     _write_nights(root, _prior_days())
+    _write_last_hours(root)
     return root
 
 
@@ -96,21 +99,30 @@ def tonight(path: dict[str, float], jumps: dict[time, float] | None = None, skip
     return out
 
 
-def last_hours(yesterday_pct: float) -> dict[str, list[dict]]:
-    """SPX sessions before DAY, newest first: yesterday's last hour moves ``yesterday_pct`` percent, the 19 before it
-    0.02 to 0.38 percent, alternately up and down."""
-    out = {}
-    for k, d in enumerate(_prior_days()):
-        move = yesterday_pct if k == 0 else 0.02 * k * (-1) ** k
-        closes = [PRIOR_CLOSE] * 330 + [PRIOR_CLOSE * (1 + move / 100 * (m + 1) / 60) for m in range(60)]
-        out[d.isoformat()] = bars_from_closes(closes, day=d.isoformat())
-    return out
+def _last_hour(d: date, move: float) -> list[dict]:
+    """SPX's bars on ``d``, flat until its last hour moves ``move`` percent."""
+    closes = [PRIOR_CLOSE] * 330 + [PRIOR_CLOSE * (1 + move / 100 * (m + 1) / 60) for m in range(60)]
+    return bars_from_closes(closes, day=d.isoformat())
+
+
+def _write_last_hours(root) -> None:
+    """The 20 sessions before yesterday in the store, their last hours 0.02 to 0.40 percent, alternately down and up."""
+    folder = root / SESSION_BARS_SUBDIR
+    folder.mkdir(parents=True, exist_ok=True)
+    for k, d in enumerate(_prior_days(21)[1:], start=1):
+        (folder / f"{d}-{SYMBOL}.json").write_text(json.dumps(_last_hour(d, 0.02 * k * (-1) ** k)))
+
+
+def yesterday(move: float) -> dict[str, list[dict]]:
+    """The scene's prior sessions: yesterday alone, its last hour moving ``move`` percent."""
+    d = _prior_days(1)[0]
+    return {d.isoformat(): _last_hour(d, move)}
 
 
 def scene(factory, state_dir, path, at=time(9, 28), yesterday_pct=0.0, night=None, **kw):
     now = datetime.combine(DAY, at, tzinfo=ET)
     return factory(now, night if night is not None else tonight(path, **kw), prior_close=PRIOR_CLOSE, sigma=SIGMA,
-                   state_dir=state_dir, prior_bars=last_hours(yesterday_pct))
+                   state_dir=state_dir, prior_bars=yesterday(yesterday_pct))
 
 
 def read(factory, state_dir, path, **kw):
@@ -339,13 +351,13 @@ def test_a_quiet_report_window_sleeps_the_release_question(premarket_scene_facto
 def test_the_night_against_yesterdays_last_hour(premarket_scene_factory, nights_dir, night, code):
     ls = read(premarket_scene_factory, nights_dir, {"asia": night}, yesterday_pct=0.5)
     text = said(ls, "premarket.vs_last_hour")
-    assert "top third; yesterday SPX rose 0.50 sigma in its last hour, top third of the last 19 sessions' last hours: the night " in text
+    assert "top third; yesterday SPX rose 0.50 sigma in its last hour, top third of the last 20 sessions' last hours: the night " in text
     assert verdict(ls, "premarket.vs_last_hour") == code and ls.gates["night_vs_last_hour"] is None
 
 
 def test_a_quiet_last_hour_sleeps_the_last_hour_question(premarket_scene_factory, nights_dir):
     ls = read(premarket_scene_factory, nights_dir, {"asia": 1.5}, yesterday_pct=0.01)
-    assert ls.gates["night_vs_last_hour"] == "yesterday's last hour was quiet, bottom third of the last 19 sessions' last hours"
+    assert ls.gates["night_vs_last_hour"] == "yesterday's last hour was quiet, bottom third of the last 20 sessions' last hours"
 
 
 # ---- replay and length -----------------------------------------------------------------------------------
@@ -355,6 +367,7 @@ def test_a_label_built_at_0928_equals_the_same_label_rebuilt_later_from_the_same
     09:40 save quoting the next contract), its scene handed every one of tonight's bars: no label may read past 09:28."""
     calendar([("08:30", "JOBS")])
     _write_nights(tmp_path, _prior_days())
+    _write_last_hours(tmp_path)
     rolls.save(tmp_path / overnight.OVERNIGHT_SUBDIR, {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": []})
     path, jumps = {"asia": 1.0, "europe_morning": 0.6, "last_stretch": -0.4}, {time(8, 35): -0.8, time(9, 10): 0.5, time(9, 45): 3.0}
     live_scene = scene(premarket_scene_factory, tmp_path, path, jumps=jumps)
