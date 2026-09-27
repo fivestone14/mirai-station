@@ -49,7 +49,7 @@
    "title": "The market around SPX: NYSE breadth and the sectors"
   }
  ],
- "real_rows_note": "real sentences come from `python3 -m spx_jev.build --day 2026-09-25 --at 12:45` (and `--at 09:50 --lane tape` for the tape range); where nothing on disk could show a label (the breadth labels before any market-context snapshot, the move since the last read on a first read), real is null and reads_as is the test fixture's sentence",
+ "real_rows_note": "real sentences come from `python3 -m spx_jev.build --day 2026-09-25 --at 12:45` (and `--at 09:50 --lane tape` for the tape range); where nothing on disk could show a label (the breadth labels before any market-context snapshot, the move since the last read on a first read), real is null and reads_as is the test fixture's sentence; the two flow labels' real sentences come from 2026-09-24 (09:45 for the options tape, 10:50 for the one judged wall touch that day)",
  "labels": [
   {
    "path": "context.symbol",
@@ -469,6 +469,20 @@
    }
   },
   {
+   "path": "gex.wall_touch_volume",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "rank",
+   "from": "the row's siege block (skills/siege): each wall or magnet touch's SPY volume as a percentile of normal for its clock window, the feed's health and the baseline's maturity; today's rows for when each verdict first appeared",
+   "logic": "the newest touch the siege box judged within WALL_TOUCH_RECENT_MIN, where its level now sits in sigma, its volume percentile and, once graded, whether the level held; omitted unless the feed is OK and the baseline robust; a touch the box would not judge (a level hugging spot, a saturated session) is never described",
+   "cut": "WALL_TOUCH_SIEGE_PERCENTILE, WALL_TOUCH_QUIET_PERCENTILE (the siege box's own verdict cuts); WALL_TOUCH_RECENT_MIN",
+   "reads_as": "no touch of a wall or the magnet has had its SPY volume judged in the last 30 minutes",
+   "real": {
+    "at": "2026-09-24 10:50",
+    "sentence": "a touch of the call wall, now 0.19 sigma above price, was judged 10 minutes ago: SPY volume during it was in the 9th percentile of normal for that time of day, quiet, at or below the 30th-percentile cut"
+   }
+  },
+  {
    "path": "options.turnover",
    "viewpoint": "strikes",
    "status": "built",
@@ -494,6 +508,20 @@
    "real": {
     "at": "2026-09-25 12:45",
     "sentence": "52% of today's 0DTE contracts traded near price were calls, an even split within 40% to 60%"
+   }
+  },
+  {
+   "path": "options.aggressor_side",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "rank",
+   "from": "the lob-flow collector's per-minute record, state/lob_flow/agg/{day}.jsonl (today's 0DTE SPXW trades over the last 15 minutes, each signed by where it printed inside the quote), today and the prior sessions",
+   "logic": "the delta-weighted tilt from buying puts and selling calls (-1) to buying calls and selling puts (+1), with the share of the flow whose side could be told, placed against the same minute on the prior sessions; omitted when the newest reading is more than OPTIONS_TAPE_MAX_AGE_MIN old",
+   "cut": "thirds; needs MIN_RANK_SESSIONS",
+   "reads_as": "over the last 15 minutes the 0DTE options tape leaned toward buying calls and selling puts, a tilt of +0.05 on a scale from -1 to +1 with each trade weighted by its delta, resting on the 60% of that flow whose side could be told; in the top third for this minute, higher than 8 of 10 prior sessions",
+   "real": {
+    "at": "2026-09-24 09:45",
+    "sentence": "over the last 15 minutes the 0DTE options tape leaned toward buying calls and selling puts, a tilt of +0.10 on a scale from -1 to +1 with each trade weighted by its delta, resting on the 60% of that flow whose side could be told; in the top third for this minute, higher than 17 of 20 prior sessions"
    }
   },
   {

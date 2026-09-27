@@ -6,7 +6,9 @@ is written out as a sentence with the threshold in it. The rules:
 * Read-only. Rows come from the left-eye scanner's diary ``state/reversion/{day}.jsonl``
   (cut down by row_adapter), bars from ``state/reversion/bars/{day}-SPX.json`` for past
   sessions and ``state/spx_jev/bars/{day}.jsonl`` for today (bars.py), the market around
-  SPX from ``state/spx_jev/context/`` (market_context.py). Nothing is written here.
+  SPX from ``state/spx_jev/context/`` (market_context.py), the signed 0DTE options tape from
+  the lob-flow collector's ``state/lob_flow/agg/{day}.jsonl`` and the SPY volume at wall touches
+  from the row's ``siege`` block. Nothing is written here.
 * Omit, never null. A label that cannot be measured is left out and the reason
   is recorded in ``omitted``; the request packer then skips every question
   that needs it.
@@ -29,13 +31,15 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .cuts import (BUSIEST_STRIKE_SHARE, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, GRIP_CONCENTRATED_SHARE, GRIP_SPREAD_SHARE,
                    IV_FLAT_BAND_PTS, MINUTE_WIDTH_CUT, MOVE_RULE_SIGMA, OUTLIER_DAY_SIGMA, PACE_BIGGER, PACE_SMALLER,
                    PATH_CHOPPY, PATH_ORDERLY, PAUSE_BRIEF_MIN, PAUSE_LONG_MIN, PULLBACK_SHARE, REALIZED_QUIET_RATIO,
                    REALIZED_WILD_RATIO, RSI_OVERBOUGHT, RSI_OVERSOLD, RULER_FLOOR_SIGMA, RULER_HOLD_SIGMA, SHAPE_CUT_SIGMA,
                    TAPE_BIG_UNITS, TAPE_FLAT_UNITS, TURNOVER_HIGH, TURNOVER_LOW, VIX_CURVE_FLAT, WALL_NEAR_SIGMA,
-                   WALL_THICK_SHARE, WALL_THIN_SHARE, ZERO_DTE_LAST_HOUR_MIN)
+                   WALL_THICK_SHARE, WALL_THIN_SHARE, WALL_TOUCH_QUIET_PERCENTILE, WALL_TOUCH_SIEGE_PERCENTILE,
+                   ZERO_DTE_LAST_HOUR_MIN)
 from .expiry import expiry_kinds, next_monthly, todays_settle, trading_days_between
 from .row_adapter import SYMBOL, labeller_row
 from .sessions import session_close, session_minutes, session_open
@@ -45,6 +49,8 @@ ROWS_SUBDIR = Path("reversion")                    # the left-eye scanner's SPX 
 SESSION_BARS_SUBDIR = Path("reversion") / "bars"   # a finished session's bars, saved after the close
 LIVE_BARS_SUBDIR = Path("spx_jev") / "bars"        # today's bars as they finish (bars.py)
 CONTEXT_SUBDIR = Path("spx_jev") / "context"       # the market around SPX (market_context.py)
+OPTIONS_TAPE_SUBDIR = Path("lob_flow") / "agg"     # the lob-flow collector's per-minute record (skills/lob-flow)
+ET = ZoneInfo("America/New_York")
 
 HORIZON = "the next 30 minutes"
 UNITS = ("all distances are in sigma, today's expected move for the S&P 500 index; "
@@ -79,6 +85,12 @@ TICK_WINDOW_MIN = 30
 MIN_TICK_MINUTES = 20
 MIN_SECTORS = 8
 SECTORS = ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
+# The 0DTE options tape (options.aggressor_side): the collector signs the last 15 minutes of trades
+# (lob_flow.daemon.TAPE_WINDOW_MIN) and writes a line a minute, so an older newest line means it stopped.
+OPTIONS_TAPE_WINDOW_MIN = 15
+OPTIONS_TAPE_MAX_AGE_MIN = 3
+# A wall touch's SPY volume (gex.wall_touch_volume) is described while its verdict is this recent.
+WALL_TOUCH_RECENT_MIN = 30
 
 
 # ----------------------------------------------------------------------------- loading
@@ -211,6 +223,40 @@ def load_market_context(state_dir: Path, day: str) -> MarketContext | None:
     return MarketContext({s: sorted(pts.items()) for s, pts in known.items()})
 
 
+@dataclass
+class OptionsTape:
+    """The lob-flow collector's signed 0DTE options tape, per day: ``[(written at, tilt, determinate
+    share)]`` oldest first. The tilt runs from -1 (buying puts and selling calls) to +1 (buying calls
+    and selling puts), each trade weighted by its delta times its contracts; the determinate share is
+    the part of that flow whose side could be told from where it printed inside the quote."""
+    days: dict[str, list[tuple[datetime, float, float]]] = field(default_factory=dict)
+
+    def at(self, t: datetime) -> tuple[float, float] | None:
+        """``(tilt, determinate share)`` of the newest line written at or before ``t`` on ``t``'s day,
+        or None when there is none within OPTIONS_TAPE_MAX_AGE_MIN: the collector was not running."""
+        pts = self.days.get(t.astimezone(ET).date().isoformat()) or []
+        k = bisect.bisect_right([w for w, _, _ in pts], t)
+        if not k or t - pts[k - 1][0] > timedelta(minutes=OPTIONS_TAPE_MAX_AGE_MIN):
+            return None
+        return pts[k - 1][1], pts[k - 1][2]
+
+
+def load_options_tape(state_dir: Path, days: list[str]) -> OptionsTape | None:
+    """The lob-flow collector's tape readings for ``days``, or None when none of them has any. A line
+    that signed no trade (no determinate share) is not a reading."""
+    out: dict[str, list[tuple[datetime, float, float]]] = {}
+    for d in days:
+        pts = []
+        for line in load_jsonl(Path(state_dir) / OPTIONS_TAPE_SUBDIR / f"{d}.jsonl"):
+            snap = line.get("snapshot") if line.get("engine") == "lob_flow" else None
+            if isinstance(snap, dict) and isinstance(line.get("ts"), str) and _is_num(snap.get("tilt")) \
+                    and _is_num(snap.get("determinate_share")) and snap["determinate_share"] > 0:
+                pts.append((parse_ts(line["ts"]), float(snap["tilt"]), float(snap["determinate_share"])))
+        if pts:
+            out[d] = sorted(pts)
+    return OptionsTape(out) if out else None
+
+
 # ----------------------------------------------------------------------------- scene
 
 @dataclass
@@ -223,6 +269,7 @@ class Scene:
     now: datetime
     sigma: float
     market: MarketContext | None = None    # the market around SPX today; read point in time through ``now``
+    options_tape: OptionsTape | None = None   # the signed 0DTE options tape today and on the prior sessions
     bar_clock: bool = False                # the read is stamped at a bar close (the tape lane): the stretch labels are written
     last_read: datetime | None = None      # the lane's previous read today, set by the service; None on the day's first read
     unit: dict | None = None               # the tape unit for this read (tape_unit), only on the bar clock
@@ -232,7 +279,7 @@ class Scene:
 # A read on the bar clock takes from the diary row only what the tape cannot give: the walls, vwap
 # and the options book (sigma comes pinned from the day's first row). Its time and spot are the bar's.
 BAR_CLOCK_ROW_KEYS = ("call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "vwap", "atm_iv", "vix_ts",
-                      "adaptive_em", "dex_views", "profile_ladder", "gex_views", "dated_gex")
+                      "adaptive_em", "dex_views", "profile_ladder", "gex_views", "dated_gex", "siege")
 
 
 def bar_clock_row(rows: list[dict], bars: list[dict], cutoff: datetime | None = None) -> dict:
@@ -282,7 +329,8 @@ def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None
     bars = [b for b in all_bars if parse_ts(b["ts"]) + timedelta(minutes=1) <= now]
     prior = prior_bar_days(state_dir, day)
     return Scene(row=row, rows_today=rows, bars=bars, prior_bars=prior, now=now, sigma=float(sigma),
-                 market=load_market_context(state_dir, day), bar_clock=bar_clock,
+                 market=load_market_context(state_dir, day), options_tape=load_options_tape(state_dir, [day, *prior]),
+                 bar_clock=bar_clock,
                  unit=tape_unit(bars, float(sigma), now, prior) if bar_clock else None, horizon=horizon)
 
 
@@ -409,6 +457,10 @@ def signed(x: float, nd: int = 2) -> str:
 
 def pct(x: float) -> str:
     return f"{round(x * 100)}%"
+
+
+def ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
 def plural(n: int, word: str) -> str:
@@ -988,6 +1040,52 @@ class _Builder:
         else:
             o.put("gex", "ladder_state", f"today's 0DTE gamma ladder is in the {st} state")
 
+        self._wall_touch_volume()
+
+    def _wall_touch_volume(self) -> None:
+        """The siege box's judgement of the newest wall or magnet touch: how much SPY volume was spent
+        while spot touched it, as a percentile of normal for that clock window. A touch is judged when
+        its window closes; one the box would not judge (a level that hugged spot all along, a session
+        that is one long touch) carries no verdict and is not described. When it was judged is the
+        first of today's rows to carry the verdict, so only what the scanner had seen by now counts."""
+        o = self.o
+        sg = self.row.get("siege")
+        if not sg:
+            o.skip("gex", "wall_touch_volume", "row carries no siege read")
+            return
+        if sg.get("health") != "OK":
+            o.skip("gex", "wall_touch_volume", f"the siege box's SPY feed is {sg.get('health') or 'unreported'}, not OK")
+            return
+        if sg.get("baseline") != "robust":
+            o.skip("gex", "wall_touch_volume", f"the siege box's volume baseline is {sg.get('baseline') or 'unreported'}, not yet robust")
+            return
+        judged: dict[tuple, tuple[datetime, dict]] = {}
+        for r in self.s.rows_today:
+            for t in (r.get("siege") or {}).get("towers") or []:
+                key = (t.get("kind"), t.get("level"))
+                if t.get("verdict") and _is_num(t.get("effort_pct")) and _is_num(t.get("level")) and key not in judged:
+                    judged[key] = (parse_ts(r["ts"]), t)
+        recent = [(when, t) for when, t in judged.values() if self.now - when <= timedelta(minutes=WALL_TOUCH_RECENT_MIN)]
+        if not recent:
+            o.put("gex", "wall_touch_volume", f"no touch of a wall or the magnet has had its SPY volume judged in the last {WALL_TOUCH_RECENT_MIN} minutes")
+            return
+        when, t = max(recent, key=lambda wt: wt[0])
+        name = {"call_wall": "call wall", "put_wall": "put wall", "magnet": "magnet"}.get(t["kind"], "heavy strike")
+        # the tower's latest state on this row: its outcome, once graded, and where its frozen level now sits
+        now_t = next((x for x in sg.get("towers") or [] if (x.get("kind"), x.get("level")) == (t["kind"], t["level"])), t)
+        d = (float(t["level"]) - self.spot) / self.sigma
+        effort = float(t["effort_pct"])
+        siege, quiet = WALL_TOUCH_SIEGE_PERCENTILE, WALL_TOUCH_QUIET_PERCENTILE
+        band = (f"a siege, at or above the {siege}th-percentile cut" if effort >= siege else
+                f"quiet, at or below the {quiet}th-percentile cut" if effort <= quiet else
+                f"neither, between the {quiet}th and {siege}th-percentile cuts")
+        after = {"HOLD": "; half an hour after the touch the level had held", "BREAK": "; half an hour after the touch the level had broken",
+                 "UNRESOLVED": "; half an hour after the touch the level had neither held nor broken"}.get(now_t.get("outcome"), "")
+        ago = plural(round((self.now - when).total_seconds() / 60.0), "minute")
+        o.put("gex", "wall_touch_volume",
+              f"a touch of the {name}, now {sig(abs(d))} {'above' if d >= 0 else 'below'} price, was judged {ago} ago: "
+              f"SPY volume during it was in the {ordinal(round(effort))} percentile of normal for that time of day, {band}{after}")
+
     # ---- options activity
     def options(self) -> None:
         o = self.o
@@ -1011,6 +1109,7 @@ class _Builder:
             band = (f"mostly calls, beyond the {pct(hi_cut)} cut" if cs > hi_cut else
                     f"mostly puts, calls under the {pct(lo_cut)} cut" if cs < lo_cut else f"an even split within {pct(lo_cut)} to {pct(hi_cut)}")
             o.put("options", "call_put_split", f"{pct(cs)} of today's 0DTE contracts traded near price were calls, {band}")
+        self._aggressor_side()
 
         gross = [(float(v[0]), float(v[1])) for v in gv.get("vol_gross_by_strike") or []
                  if isinstance(v, (list, tuple)) and len(v) >= 2 and _is_num(v[0]) and _is_num(v[1])]
@@ -1027,6 +1126,29 @@ class _Builder:
             o.put("options", "new_activity", f"the busiest 0DTE strike today is the one nearest price, holding {pct(share)} of the day's 0DTE option volume, more than the {pct(BUSIEST_STRIKE_SHARE)} cut")
         else:
             o.put("options", "new_activity", f"the busiest 0DTE strike today sits {'above' if busiest > self.spot else 'below'} price, holding {pct(share)} of the day's 0DTE option volume, more than the {pct(BUSIEST_STRIKE_SHARE)} cut")
+
+    def _aggressor_side(self) -> None:
+        """Who is taking the other side of the 0DTE options market makers over the last 15 minutes: the
+        lob-flow collector's delta-weighted tilt, ranked against the same minute on the prior sessions."""
+        o, tape = self.o, self.s.options_tape
+        reading = tape.at(self.now) if tape else None
+        if reading is None:
+            o.skip("options", "aggressor_side", f"no reading of the 0DTE options tape from the lob-flow collector in the last {OPTIONS_TAPE_MAX_AGE_MIN} minutes")
+            return
+        tilt, determinate = reading
+        now_et = self.now.astimezone(ET)
+        base = [r[0] for d in self.s.prior_bars
+                if (r := tape.at(now_et.replace(year=int(d[:4]), month=int(d[5:7]), day=int(d[8:10])))) is not None]
+        rank = rank_at_slot(tilt, base)
+        if rank is None:
+            o.skip("options", "aggressor_side", f"needs {MIN_RANK_SESSIONS} prior sessions with an options tape reading at this minute, have {len(base)}")
+            return
+        shown = round(tilt, 2) or 0.0          # the lean is the sign of the tilt as the sentence prints it
+        lean = ("toward buying calls and selling puts" if shown > 0 else "toward buying puts and selling calls" if shown < 0 else "neither way")
+        o.put("options", "aggressor_side",
+              f"over the last {OPTIONS_TAPE_WINDOW_MIN} minutes the 0DTE options tape leaned {lean}, a tilt of {signed(tilt)} on a scale "
+              f"from -1 to +1 with each trade weighted by its delta, resting on the {pct(determinate)} of that flow whose side could be told; "
+              f"in the {rank['band']} for this minute, higher than {rank['higher_than']} of {rank['of']} prior sessions")
 
     # ---- the expiries (expiry.py): which book expires when, and which book the weight sits in
     def expiry(self) -> None:

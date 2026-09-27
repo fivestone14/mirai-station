@@ -59,7 +59,9 @@ def make_row(ts: datetime, spot: float, sigma: float = 75.0, **over) -> dict:
         "dated_gex": {"staleness": "fresh", "as_of": ts.isoformat(), "bands": [
             {"expiry": "2026-10-16", "band": "monthly", "dte": 28, "gamma_mass": 6.0e10, "top_calls": [[8000.0, 1]]},
             {"expiry": "2026-12-31", "band": "quarter_end", "dte": 104, "gamma_mass": 2.0e10}]},
-        "siege": {"verdict": "QUIET"}, "watchtower": {"read": "not the labeller's"},
+        "siege": {"health": "OK", "baseline": "robust", "saturated": False, "ratio": 10.04, "towers": [
+            {"kind": "put_wall", "level": spot - sigma, "status": "watching", "effort_pct": None, "verdict": None, "outcome": None, "near_spot": False}]},
+        "watchtower": {"read": "not the labeller's"},
     }
     row.update(over)
     return row
@@ -107,13 +109,13 @@ def scene_factory():
 
     def make(now: datetime, bars: list[dict], row_over: dict | None = None, rows_before: list[dict] | None = None,
              prior_bars: dict | None = None, spot: float | None = None, market=None,
-             bar_clock: bool = False, last_read: datetime | None = None):
+             bar_clock: bool = False, last_read: datetime | None = None, options_tape=None):
         spot = spot if spot is not None else float(bars[-1]["close"]) if bars else 7700.0
         row = labeller_row(make_row(now, spot, **(row_over or {})))
         rows = [labeller_row(r) for r in rows_before or []] + [row]
         done = [b for b in bars if datetime.fromisoformat(b["ts"]) + timedelta(minutes=1) <= now]
         scene = Scene(row=row, rows_today=rows, bars=done, prior_bars=prior_bars or {}, now=now,
-                      sigma=float(row["sigma"]), market=market, bar_clock=bar_clock, last_read=last_read)
+                      sigma=float(row["sigma"]), market=market, options_tape=options_tape, bar_clock=bar_clock, last_read=last_read)
         if bar_clock:
             # as make_scene does on the bar clock: the unit for the read, ranked against the prior sessions
             from spx_jev.state_builder import tape_unit
@@ -132,6 +134,17 @@ def prior_sessions(n: int = 10) -> dict[str, list[dict]]:
     return out
 
 
+def options_tape_at(now: datetime, tilt: float = 0.05, prior_days: list[str] | None = None, determinate: float = 0.6):
+    """An OptionsTape with a reading a minute before ``now`` and one at the same minute on each prior day,
+    the prior tilts spread from -0.03 upward, so a tilt of 0.05 ranks high."""
+    from spx_jev.state_builder import OptionsTape
+    days = {now.date().isoformat(): [(now - timedelta(minutes=1), tilt, determinate)]}
+    for k, d in enumerate(prior_days or []):
+        t = datetime.combine(date.fromisoformat(d), (now - timedelta(minutes=1)).timetz())
+        days[d] = [(t, -0.03 + 0.01 * k, determinate)]
+    return OptionsTape(days)
+
+
 @pytest.fixture
 def full_scene(scene_factory):
     """A moment at which every built label can be measured."""
@@ -139,7 +152,9 @@ def full_scene(scene_factory):
     closes = [7700.0 + (i % 5) for i in range(150)] + [7704.0 + sigma * 0.4 * (i + 1) / 30 for i in range(30)]
     now = at(12, 30, ss=10)
     earlier = make_row(now - timedelta(minutes=30), 7702.0, atm_iv=0.14)
-    return scene_factory(now, bars_from_closes(closes), rows_before=[earlier], prior_bars=prior_sessions(), market=market_at(now))
+    prior = prior_sessions()
+    return scene_factory(now, bars_from_closes(closes), rows_before=[earlier], prior_bars=prior, market=market_at(now),
+                         options_tape=options_tape_at(now, prior_days=list(prior)))
 
 
 @pytest.fixture

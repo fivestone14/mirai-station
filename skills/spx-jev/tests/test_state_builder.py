@@ -6,9 +6,11 @@ from datetime import timedelta
 
 import pytest
 
-from conftest import DAY, SECTORS, at, bars_from_closes, context_line, flat_bars, make_row, prior_sessions, write_state
-from spx_jev.cuts import IV_FLAT_BAND_PTS, MOVE_RULE_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA
-from spx_jev.state_builder import MarketContext, build_state, load_bars, load_market_context, make_scene, prior_bar_days, ruler
+from conftest import (DAY, SECTORS, at, bars_from_closes, context_line, flat_bars, make_row, options_tape_at, prior_sessions,
+                      write_state)
+from spx_jev.cuts import IV_FLAT_BAND_PTS, MOVE_RULE_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA, WALL_TOUCH_SIEGE_PERCENTILE
+from spx_jev.state_builder import (MarketContext, build_state, load_bars, load_market_context, load_options_tape, make_scene,
+                                   prior_bar_days, ruler)
 
 SIGMA = 75.0
 
@@ -135,6 +137,58 @@ def test_the_live_lane_writes_no_tape_label_and_omits_none(full_scene):
     assert "tape" not in state and not any(k.startswith("tape.") for k in omitted)
 
 
+def test_the_options_tape_is_ranked_against_the_same_minute_and_omitted_when_the_collector_stopped(full_scene):
+    from dataclasses import replace
+    state, _ = _labels(full_scene)
+    assert state["options"]["aggressor_side"] == (
+        "over the last 15 minutes the 0DTE options tape leaned toward buying calls and selling puts, a tilt of +0.05 on a scale "
+        "from -1 to +1 with each trade weighted by its delta, resting on the 60% of that flow whose side could be told; "
+        "in the top third for this minute, higher than 8 of 10 prior sessions")
+    prior = list(full_scene.prior_bars)
+    stale = options_tape_at(full_scene.now - timedelta(minutes=3), prior_days=prior)      # its newest line is 4 minutes old
+    _, omitted = _labels(replace(full_scene, options_tape=stale))
+    assert omitted["options.aggressor_side"].startswith("no reading of the 0DTE options tape")
+    _, omitted = _labels(replace(full_scene, options_tape=options_tape_at(full_scene.now, prior_days=prior[:4])))
+    assert omitted["options.aggressor_side"] == "needs 5 prior sessions with an options tape reading at this minute, have 4"
+
+
+def _touch(kind, level, verdict=None, effort=None, status="engaged", outcome=None):
+    return {"kind": kind, "level": level, "status": status, "effort_pct": effort, "verdict": verdict, "outcome": outcome, "near_spot": False}
+
+
+def _siege(*towers, health="OK", baseline="robust"):
+    return {"health": health, "baseline": baseline, "saturated": False, "towers": list(towers)}
+
+
+def test_a_judged_wall_touch_is_described_from_when_the_scanner_first_saw_its_verdict(scene_factory):
+    now = at(11, 0, ss=10)
+    spot = 7700.0
+    pending = make_row(now - timedelta(minutes=20), spot, siege=_siege(_touch("call_wall", 7715.0)))
+    judged = make_row(now - timedelta(minutes=12), spot, siege=_siege(_touch("call_wall", 7715.0, "SIEGE", 83.3)))
+    graded = _siege(_touch("call_wall", 7715.0, "SIEGE", 83.3, "resolved", "BREAK"))
+    state, _ = _labels(scene_factory(now, flat_bars(90, price=spot), row_over={"siege": graded}, rows_before=[pending, judged], spot=spot))
+    assert state["gex"]["wall_touch_volume"] == (
+        "a touch of the call wall, now 0.20 sigma above price, was judged 12 minutes ago: SPY volume during it was in the 83rd "
+        f"percentile of normal for that time of day, a siege, at or above the {WALL_TOUCH_SIEGE_PERCENTILE}th-percentile cut; "
+        "half an hour after the touch the level had broken")
+    quiet = make_row(now - timedelta(minutes=45), spot, siege=_siege(_touch("put_wall", 7690.0, "QUIET", 12.0)))
+    state, _ = _labels(scene_factory(now, flat_bars(90, price=spot), rows_before=[quiet], spot=spot))
+    assert state["gex"]["wall_touch_volume"] == "no touch of a wall or the magnet has had its SPY volume judged in the last 30 minutes"
+    hugging = _siege(_touch("magnet", 7700.0, None, 95.0))                      # a level that hugged spot: never judged, never described
+    state, _ = _labels(scene_factory(now, flat_bars(90, price=spot), row_over={"siege": hugging}, spot=spot))
+    assert state["gex"]["wall_touch_volume"] == "no touch of a wall or the magnet has had its SPY volume judged in the last 30 minutes"
+
+
+def test_the_wall_touch_volume_is_omitted_on_a_sick_feed_or_a_young_baseline(scene_factory):
+    now = at(11, 0)
+    _, omitted = _labels(scene_factory(now, flat_bars(90), row_over={"siege": _siege(health="FEED-LOST")}))
+    assert omitted["gex.wall_touch_volume"] == "the siege box's SPY feed is FEED-LOST, not OK"
+    _, omitted = _labels(scene_factory(now, flat_bars(90), row_over={"siege": _siege(baseline="warming")}))
+    assert omitted["gex.wall_touch_volume"] == "the siege box's volume baseline is warming, not yet robust"
+    _, omitted = _labels(scene_factory(now, flat_bars(90), row_over={"siege": None}))
+    assert omitted["gex.wall_touch_volume"] == "row carries no siege read"
+
+
 # ---- reading the station's files
 
 def test_past_sessions_come_from_the_saved_file_and_today_from_the_live_one(tmp_path):
@@ -150,7 +204,7 @@ def test_make_scene_reads_the_diary_through_the_adapter(tmp_path):
     rows = [make_row(at(10, 0), 7700.0), make_row(at(10, 5), 7701.0, ticker="SPY"), make_row(at(10, 10), 7702.0)]
     state = write_state(tmp_path, DAY, rows, flat_bars(45), prior_sessions(3))
     scene = make_scene(state, DAY)
-    assert scene.row["ts"] == at(10, 10).isoformat() and "siege" not in scene.row and len(scene.rows_today) == 2
+    assert scene.row["ts"] == at(10, 10).isoformat() and "watchtower" not in scene.row and len(scene.rows_today) == 2
     assert len(scene.bars) == 40 and len(scene.prior_bars) == 3 and scene.market is None
     at_time = make_scene(state, DAY, at=at(10, 7).time())
     assert at_time.row["ts"] == at(10, 0).isoformat()
@@ -179,3 +233,16 @@ def test_the_market_context_joins_snapshots_and_backfilled_bars_by_when_each_was
     assert mk.between("$TICK", at(9, 0), at(10, 2)) == [350.0, -40.0]
     assert load_market_context(tmp_path, "2026-09-17") is None
 
+
+
+def test_the_options_tape_reads_only_the_collectors_signed_lines(tmp_path):
+    agg = tmp_path / "lob_flow" / "agg"
+    agg.mkdir(parents=True)
+    lines = [{"ts": at(10, 0).isoformat(), "engine": "lob_flow", "snapshot": {"tilt": 0.0, "determinate_share": None}},
+             {"ts": at(10, 1).isoformat(), "engine": "spy_depth", "snapshot": {"tilt": 0.9, "determinate_share": 1.0}},
+             {"ts": at(10, 2).isoformat(), "engine": "lob_flow", "snapshot": {"tilt": -0.04, "determinate_share": 0.55}}]
+    (agg / f"{DAY}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
+    tape = load_options_tape(tmp_path, [DAY, "2026-09-17"])
+    assert list(tape.days) == [DAY] and tape.at(at(10, 3)) == (-0.04, 0.55)
+    assert tape.at(at(10, 1)) is None and tape.at(at(10, 6)) is None     # before the first signed line; past the age line
+    assert load_options_tape(tmp_path, ["2026-09-17"]) is None

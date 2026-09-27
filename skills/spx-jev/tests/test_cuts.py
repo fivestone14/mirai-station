@@ -45,7 +45,9 @@ def test_the_question_constants_are_every_threshold_by_its_lower_case_name():
 
 def test_every_declared_cut_is_recorded_at_its_value_or_says_why_not():
     d = _spec()
-    measured = set(d["cuts"]) | {k for k in cuts.QUESTION_CONSTANTS if k.endswith("_pct")}
+    rates = d["base_rates"]
+    measured = (set(d["cuts"]) | {f"{h}_{b}" for h in ("next_30", "next_60") for b in rates[h] if b.endswith("_pct")}
+                | {f"tape_{b}" for b in rates["next_10"] if b.endswith("_pct")})
     declared = set(cuts.QUESTION_CONSTANTS) - measured
     assert set(d["declared"]) | set(d["not_measured"]) == declared and not set(d["declared"]) & set(d["not_measured"])
     for name, entry in d["declared"].items():

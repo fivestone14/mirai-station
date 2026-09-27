@@ -13,6 +13,10 @@ open-interest wall or the 1-to-7-day structural wall, whichever stands first); t
 and ``regime_tenor`` are the blended 1-to-7-day and 0-to-7-day books; ``dex_above_spot`` is the whole
 0-to-7-day book; ``dated_gex`` is the monthly and quarter-end books, pulled each morning.
 
+The ``siege`` block is the siege box's read at the scan (skills/siege): SPY volume spent while spot
+touched a wall or the magnet, as a percentile of normal for that clock window, with the feed's health
+and the baseline's maturity beside it. Its towers keep only the fields the labeller reads.
+
 What the SPX row does not carry and SNDK PRO's does: the options book's own time (``meta.book_asof``;
 the SPX book is rebuilt on every scan, so a row's book is as old as the row), put-call skew and
 next week's ladders. Labels built on those are not written for SPX.
@@ -35,6 +39,9 @@ LABELLER_VIEWS = {
 }
 # the dated books (the next monthlies and the quarter-end, pulled each morning): per band only what the labeller reads
 DATED_BAND_FIELDS = ("expiry", "band", "dte", "gamma_mass")
+# the siege read: its health and baseline, and per tower only what the labeller reads
+SIEGE_FIELDS = ("health", "baseline", "saturated")
+SIEGE_TOWER_FIELDS = ("kind", "level", "status", "effort_pct", "verdict", "outcome")
 
 
 def _is_num(v: Any) -> bool:
@@ -60,4 +67,8 @@ def labeller_row(raw: Any) -> dict | None:
     if isinstance(dated, dict) and isinstance(dated.get("bands"), list):
         row["dated_gex"] = {"staleness": dated.get("staleness"),
                             "bands": [{k: b.get(k) for k in DATED_BAND_FIELDS} for b in dated["bands"] if isinstance(b, dict)]}
+    siege = raw.get("siege")
+    if isinstance(siege, dict) and isinstance(siege.get("towers"), list):
+        row["siege"] = {**{k: siege.get(k) for k in SIEGE_FIELDS},
+                        "towers": [{k: t.get(k) for k in SIEGE_TOWER_FIELDS} for t in siege["towers"] if isinstance(t, dict)]}
     return row

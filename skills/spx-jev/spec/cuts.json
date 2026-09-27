@@ -495,6 +495,8 @@
   }
  },
  "not_measured": {
-  "zero_dte_last_hour_min": "a clock fact, the 0DTE book's last hour before its settle, not a split of any measurement; the evidence for treating that hour apart is iv_change30_median_pts"
+  "zero_dte_last_hour_min": "a clock fact, the 0DTE book's last hour before its settle, not a split of any measurement; the evidence for treating that hour apart is iv_change30_median_pts",
+  "wall_touch_siege_percentile": "a percentile by construction: the siege box ranks each touch's SPY volume against its own baseline for the clock window, so the cut sits at the 70th percentile of normal by definition",
+  "wall_touch_quiet_percentile": "a percentile by construction, as wall_touch_siege_percentile: the 30th percentile of normal by definition"
  }
 }

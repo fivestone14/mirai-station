@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 from conftest import at, make_row
-from spx_jev.row_adapter import DATED_BAND_FIELDS, LABELLER_FIELDS, LABELLER_VIEWS, labeller_row
+from spx_jev.row_adapter import DATED_BAND_FIELDS, LABELLER_FIELDS, LABELLER_VIEWS, SIEGE_FIELDS, SIEGE_TOWER_FIELDS, labeller_row
 
 
 def test_the_labeller_row_keeps_the_named_fields_and_drops_the_rest():
     raw = make_row(at(12, 0), 7700.0)
     row = labeller_row(raw)
-    assert set(row) <= set(LABELLER_FIELDS) | set(LABELLER_VIEWS) | {"dated_gex"}
-    assert "siege" not in row and "watchtower" not in row and "gamma_flip" not in row
+    assert set(row) <= set(LABELLER_FIELDS) | set(LABELLER_VIEWS) | {"dated_gex", "siege"}
+    assert "watchtower" not in row and "gamma_flip" not in row and "ratio" not in row["siege"]
+    assert set(row["siege"]) == {*SIEGE_FIELDS, "towers"} and all(set(t) == set(SIEGE_TOWER_FIELDS) for t in row["siege"]["towers"])
     assert row["spot"] == 7700.0 and row["sigma"] == 75.0 and row["range_ruler"]["em_consumed"] == 0.8
     assert "magnet" not in row["gex_views"] and row["gex_views"]["pin_top_share"] == 0.06
     assert row["dex_views"] == {"dex_above_spot": 0.43} and row["profile_ladder"] == {"state": "positive"}
