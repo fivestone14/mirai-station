@@ -407,9 +407,9 @@ def _clock(t: datetime) -> str:
     return f"{t.astimezone(ET):%H:%M}"
 
 
-def _same_clock(scene: Scene, day: str) -> datetime:
-    """This read's clock minute on a prior session, market time."""
-    return datetime.combine(date.fromisoformat(day), scene.now.astimezone(ET).time(), tzinfo=ET)
+def _same_clock(t: datetime, day: str) -> datetime:
+    """``t``'s clock minute on a prior session, market time."""
+    return datetime.combine(date.fromisoformat(day), t.astimezone(ET).time(), tzinfo=ET)
 
 
 def _ranked_prior_days(scene: Scene) -> list[str]:
@@ -460,7 +460,7 @@ def _straddle_vs_clock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> N
         ls.omit("vol.straddle_vs_clock", "no state folder to read the prior sessions' diaries from")
         return
     base = [s for d in _ranked_prior_days(scene)
-            if (s := _straddle_share(point_at(prior_diary(scene.state_dir, d), _same_clock(scene, d)))) is not None]
+            if (s := _straddle_share(point_at(prior_diary(scene.state_dir, d), _same_clock(scene.now, d)))) is not None]
     if len(base) < MIN_RANK_SESSIONS:
         ls.omit("vol.straddle_vs_clock", f"needs {MIN_RANK_SESSIONS} prior sessions with a straddle at this minute, have {len(base)}")
         return
@@ -496,6 +496,23 @@ def _tape_30(bars: list[dict], t: datetime) -> float | None:
     return statistics.median(ranges) * math.sqrt(WINDOW_30_MIN / TAPE_SLICE_MIN)
 
 
+def _release_pace(scene: Scene, today: list[DiaryPoint], start: datetime, delivered: float) -> float | str:
+    """What the tape delivers now over what the straddle priced for 30 minutes just before ``start``, against
+    the same ratio on the prior sessions (their tape at this minute over their straddle at ``start``'s): a tape's
+    high-to-low ranges run about twice a straddle's expected move, so 1.0 is a usual tape, not the straddle's.
+    The reason it cannot be judged, when it cannot."""
+    before = _straddle_30(point_at(today, start))
+    if before is None:
+        return f"no straddle on the rows just before {_clock(start)} to judge the tape against"
+    usual = [t / p for d in _ranked_prior_days(scene)
+             if (p := _straddle_30(point_at(prior_diary(scene.state_dir, d), _same_clock(start, d))))
+             and (t := _tape_30(scene.prior_bars[d], _same_clock(scene.now, d)))]
+    if len(usual) < MIN_RANK_SESSIONS:
+        return (f"needs {MIN_RANK_SESSIONS} prior sessions with a straddle at {_clock(start)} and a tape at this minute to judge "
+                f"the tape against, have {len(usual)}")
+    return delivered / before / statistics.median(usual)
+
+
 def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     """Whether the day's priced movement is swollen by an event ahead, released by one just past, swollen or
     compressed with none, or normal: the straddle's 30-minute move against what the tape delivers (ranked at
@@ -519,7 +536,7 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         return
     base = []
     for d in _ranked_prior_days(scene):
-        then = _same_clock(scene, d)
+        then = _same_clock(scene.now, d)
         p, t = _straddle_30(point_at(prior_diary(scene.state_dir, d), then)), _tape_30(scene.prior_bars[d], then)
         if p is not None and t:
             base.append(p / t)
@@ -546,13 +563,15 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         elif ago > EVENT_DIGEST_MIN:
             event_words += f"; {event.words} came out {ago} minutes ago, past the {EVENT_DIGEST_MIN}-minute digest window"
         else:
-            before = _straddle_30(point_at(today, start))
-            pace = delivered / before if before else None
-            released = pace is not None and pace > ONE_RATIO
             event_words += f"; {event.words} came out {ago} minutes ago, inside the {EVENT_DIGEST_MIN}-minute digest window"
-            if pace is not None:
-                event_words += (f"; the tape now moves {max(pace, ONE_RATIO + 0.01):.2f} times what the straddle priced just before it, over the one-to-one line"
-                                if released else f"; the tape now moves {pace:.2f} times what the straddle priced just before it, at or under the one-to-one line")
+            pace = _release_pace(scene, today, start, delivered)
+            if isinstance(pace, str):
+                event_words += f"; {pace}"
+            else:
+                released = pace > ONE_RATIO
+                shown = max(pace, ONE_RATIO + 0.01) if released else pace
+                event_words += (f"; the tape now moves {shown:.2f} times its usual against the straddle priced just before it, "
+                                f"{'over' if released else 'at or under'} the one-to-one line")
     if released:
         verdict = "released after an event"
     elif ahead and load >= LOADED_RATIO and rank.share >= TOP_FIFTH:
@@ -789,7 +808,7 @@ def _vix_curve(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
         ls.omit(path, "no state folder to read the prior sessions' diaries from")
         return
     diaries = {d: prior_diary(scene.state_dir, d) for d in scene.prior_bars}
-    base = [p.vix_ts for d in _ranked_prior_days(scene) if (p := point_at(diaries[d], _same_clock(scene, d))) and p.vix_ts]
+    base = [p.vix_ts for d in _ranked_prior_days(scene) if (p := point_at(diaries[d], _same_clock(scene.now, d))) and p.vix_ts]
     rank = rank_against(ratio, base)
     if rank is None:
         ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with the VIX curve at this minute, have {len(base)}")
@@ -916,7 +935,7 @@ def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, ls: LabelSet) 
     for d in _ranked_prior_days(scene):
         if len(tilts) == SKEW_RANK_SESSIONS:
             break
-        t = minute_floor(_same_clock(scene, d))
+        t = minute_floor(_same_clock(scene.now, d))
         prior = (skew_at(scene.state_dir, d, (t,)) or {}).get(t)
         if (pt := _tilt(prior)) is not None:
             tilts.append(pt)

@@ -349,15 +349,19 @@ def straddle_for_load(load: float, t) -> float:
     return load * TAPE_30 * math.sqrt(minutes_left(t) / 30.0)
 
 
-def ruler_scene(scene_factory, tmp_path, day: str, clock: tuple[int, int], load: float, swell: float, rows_before=(), prior_days=None):
+def ruler_scene(scene_factory, tmp_path, day: str, clock: tuple[int, int], load: float, swell: float, rows_before=(), prior_days=None,
+                prior_before_fed: float | None = None):
     """A read at ``clock`` on ``day`` whose straddle prices ``load`` times the tape and whose anchor is ``swell``
-    times the prior sessions' (75); the prior sessions priced 0.5 to 1.4 times their tape at the clock."""
+    times the prior sessions' (75); the prior sessions priced 0.5 to 1.4 times their tape at the clock and, with
+    ``prior_before_fed``, that many times it just before 14:00."""
     prior_days = prior_days or [f"{day[:8]}{int(day[8:]) - k:02d}" for k in range(1, 11)]
     now = at(*clock, day=day)
     rows = {}
     for k, d in enumerate(prior_days):
-        t = at(*clock, day=d)
+        t, before = at(*clock, day=d), at(13, 59, day=d, ss=30)
         rows[d] = [straddle_row(at(9, 31, day=d), 22.06), straddle_row(t, straddle_for_load(0.5 + 0.1 * k, t))]
+        if prior_before_fed is not None:
+            rows[d].insert(1, straddle_row(before, straddle_for_load(prior_before_fed, before)))
     prior = {d: flat_bars(390, day=d, price=7700.0) for d in prior_days}
     first = make_row(at(9, 31, day=day), 7700.0, sigma=75.0 * swell)
     scene = scene_factory(now, flat_bars(int(minutes_left(at(9, 30, day=day)) - minutes_left(now)), day=day),
@@ -376,17 +380,38 @@ def test_a_straddle_loaded_before_the_fed_reads_loaded(scene_factory, tmp_path, 
         "this morning's sigma ruler is 1.88 times its 10-session median, past the 1.3 swollen line")
 
 
-def test_a_tape_outrunning_the_pre_release_straddle_reads_released(scene_factory, tmp_path, monkeypatch):
+def released_scene(scene_factory, tmp_path, monkeypatch, prior_before_fed: float | None, before_fed: bool = True):
+    """A 14:32 read after the Fed's 14:00 decision whose straddle just before it priced 0.8 times today's tape."""
     calendar(tmp_path, monkeypatch, FOMC_DAY, FOMC_AND_PRESSER)
-    before = straddle_row(at(13, 59, day=FOMC_DAY, ss=30), straddle_for_load(0.8, at(13, 59, day=FOMC_DAY, ss=30)))
-    scene = ruler_scene(scene_factory, tmp_path, FOMC_DAY, (14, 32), load=0.9, swell=1.4, rows_before=[before], prior_days=EVENT_PRIOR_DAYS)
-    assert labels(scene)[0]["vol.ruler_event_load"] == (
+    before = [straddle_row(at(13, 59, day=FOMC_DAY, ss=30), straddle_for_load(0.8, at(13, 59, day=FOMC_DAY, ss=30)))] if before_fed else []
+    return ruler_scene(scene_factory, tmp_path, FOMC_DAY, (14, 32), load=0.9, swell=1.4, rows_before=before, prior_days=EVENT_PRIOR_DAYS,
+                       prior_before_fed=prior_before_fed)
+
+
+def test_a_tape_outrunning_its_usual_against_the_pre_release_straddle_reads_released(scene_factory, tmp_path, monkeypatch):
+    assert labels(released_scene(scene_factory, tmp_path, monkeypatch, prior_before_fed=1.0))[0]["vol.ruler_event_load"] == (
         "released after an event: the same-day straddle prices a 30-minute move 0.90 times what the tape's recent 5-minute ranges "
         "scale to, under the 1.5 loaded line, higher than 4 of the last 10 sessions at 14:32 (between the fifths); on the event "
         "calendar today: the Fed's rate decision at 14:00, the Fed chair's press conference at 14:30; the Fed's rate decision came "
-        "out 32 minutes ago, inside the 120-minute digest window; the tape now moves 1.25 times what the "
-        "straddle priced just before it, over the one-to-one line; this morning's sigma ruler is 1.40 times its 10-session median, "
+        "out 32 minutes ago, inside the 120-minute digest window; the tape now moves 1.25 times its usual against the straddle "
+        "priced just before it, over the one-to-one line; this morning's sigma ruler is 1.40 times its 10-session median, "
         "past the 1.3 swollen line")
+
+
+def test_a_tape_that_usually_outruns_the_straddle_this_much_is_not_released(scene_factory, tmp_path, monkeypatch):
+    """The prior sessions' tape ran twice their straddle at 14:00, today's only 1.25 times: a quieter tape than usual."""
+    got = labels(released_scene(scene_factory, tmp_path, monkeypatch, prior_before_fed=0.5))[0]["vol.ruler_event_load"]
+    assert got.startswith("normal: ") and ("; the tape now moves 0.62 times its usual against the straddle priced just before it, "
+                                           "at or under the one-to-one line; ") in got
+
+
+@pytest.mark.parametrize("prior_before_fed, before_fed, why", [
+    (None, True, "needs 5 prior sessions with a straddle at 14:00 and a tape at this minute to judge the tape against, have 0"),
+    (1.0, False, "no straddle on the rows just before 14:00 to judge the tape against"),
+])
+def test_a_release_that_cannot_be_judged_says_why_and_is_not_released(scene_factory, tmp_path, monkeypatch, prior_before_fed, before_fed, why):
+    got = labels(released_scene(scene_factory, tmp_path, monkeypatch, prior_before_fed, before_fed))[0]["vol.ruler_event_load"]
+    assert got.startswith("normal: ") and f"inside the 120-minute digest window; {why}; this morning's" in got
 
 
 @pytest.mark.parametrize("load, swell, verdict, words", [
