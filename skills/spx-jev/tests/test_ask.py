@@ -20,6 +20,10 @@ SHIPPED = sorted(QUESTIONS.glob("*.json"))
 # a number followed by a unit a threshold is written in: none may be typed into a doc by hand
 TYPED_NUMBER = re.compile(r"\d+(?:\.\d+)?\s*(?:%|sigma|vol points?|times|of a (?:tape )?unit|tape units?)")
 NAMED = re.compile(r"\{[^{}]*\}")
+# what a premarket question may cut on: rank bands, how many nights it ranks against, the half-way share and the
+# one-to-one line (definitions, not lines), and window lengths; anything else is a fixed line (premarket-data-plan section 3)
+RANK_CONSTANTS = {"third_lo", "third_hi", "top_fifth", "bottom_fifth", "night_rank_count", "overnight_rank_min_nights",
+                  "gap_half_share", "one_ratio"}
 
 
 def _texts(value):
@@ -304,15 +308,18 @@ def test_a_premarket_question_reads_only_what_a_premarket_read_writes_and_a_sess
                     assert not reads & only_before_open, f"{qid} reads {sorted(reads & only_before_open)}, built only before the open"
 
 
-def test_a_premarket_question_ranks_against_the_last_nights_and_never_cuts_on_a_fixed_sigma_line():
-    """No fixed cut-offs before the open (premarket-data-plan section 3): every size is a third or a fifth of a rank."""
+def test_a_premarket_question_ranks_against_the_last_nights_and_never_cuts_on_a_fixed_line():
+    """No fixed cut-offs before the open (premarket-data-plan section 3): every size is a third or a fifth of a rank,
+    in JEV's words and in the rules the code answers by (code_criteria) alike."""
     raw = json.loads((QUESTIONS / "spx_questions.json").read_text())
     for g in raw["groups"]:
         if g["lane"] != "premarket":
             continue
         for qid, q in g["questions"].items():
-            named = {n for key in ("instructions", "criteria", "sleep_when") for t in _texts(q.get(key)) for n in constants_named(t)}
-            assert not {n for n in named if n.endswith("_sigma")}, f"{qid} cuts on {sorted(named)}"
+            named = {n for key in ("instructions", "criteria", "code_criteria", "sleep_when") for t in _texts(q.get(key))
+                     for n in constants_named(t)}
+            fixed = {n for n in named - RANK_CONSTANTS if not re.fullmatch(r"window_\d+_min", n)}
+            assert not fixed, f"{qid} cuts on {sorted(fixed)}"
 
 
 def test_a_group_over_the_cap_stops_the_load(tmp_path):
