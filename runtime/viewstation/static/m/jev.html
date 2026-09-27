@@ -30,6 +30,17 @@
   graded later, drawn dashed with that said in words. Nothing here reads a
   viewport unit.
 -->
+<script>
+/* the SNDK | SPX switch: the side last tapped is kept on this phone, and the JEV tab, which always links
+   the SNDK page, opens on it; a phone that cannot keep it stays on the page it asked for */
+(function(){
+  try { if(localStorage.getItem('jev.symbol') === 'spx' && location.pathname === '/m/jev.html') location.replace('/m/jev-spx.html'); } catch(e){}
+  document.addEventListener('click', function(e){
+    var a = e.target.closest && e.target.closest('.sw [data-sym]');
+    if(a){ try { localStorage.setItem('jev.symbol', a.getAttribute('data-sym')); } catch(x){} }
+  });
+})();
+</script>
 <link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 @font-face{font-family:"Jakarta";src:url("/m/pjs-153fc85b7029.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:swap}
@@ -65,6 +76,15 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .hd-2.err{white-space:normal;overflow:visible;text-overflow:clip}
 .hd-2.fresh{color:var(--i-ink);transition:color .6s}   /* a new row just arrived: the line brightens for a moment */
 .beta{font:700 9px/1 var(--sans);letter-spacing:.12em;padding:3px 6px;border-radius:6px;border:1px solid currentColor;font-style:normal;text-transform:uppercase}
+
+/* the SNDK | SPX switch: two pages under the one JEV tab, this page's side lit, drawn as the mode pill is */
+.sw{flex:none;display:flex;margin-left:auto;gap:2px;padding:2px;border-radius:10px;border:1px solid var(--rule-soft);background:var(--s)}
+.sw a,.sw span{position:relative;display:block;min-width:44px;padding:6px 9px;border-radius:7px;text-align:center;
+               font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute);
+               text-decoration:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.sw a::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:max(100%,var(--tap-min));height:var(--tap-min)}
+.sw .on{background:var(--fill);color:var(--on-body)}
+.sw a:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 
 /* the card and its label row, the glance's own */
 .card{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
@@ -260,7 +280,8 @@ details .q{margin-top:8px}
 </script>
 <header class="hd">
   <div class="hd-t">
-    <div class="hd-1"><span id="h1">SNDK &middot; JEV</span><em class="beta">beta</em><i class="poll" id="poll" hidden></i></div>
+    <div class="hd-1"><span id="h1">SNDK &middot; JEV</span><em class="beta">beta</em><i class="poll" id="poll" hidden></i>
+      <nav class="sw" aria-label="Symbol"><span class="on" aria-current="page">SNDK</span><a href="/m/jev-spx.html" data-sym="spx">SPX</a></nav></div>
     <div class="hd-2" id="sub">loading</div>
   </div>
 </header>

@@ -311,3 +311,35 @@ def test_the_page_fits_the_owners_360px_phone():
     # the drawings are 300 wide in their own units and scale to the card, so they never run past it
     assert "width:100%;height:auto" in _rule(".inplay") and "viewBox: '0 0 300 '" in _fn("callsSvg")
     assert _var("ODDS_TRACK_PX").strip() == "var ODDS_TRACK_PX = 290, LETTER_PX = 6.4;" and 290 <= card
+
+
+# ---- the SNDK | SPX switch
+
+
+def _switch_script(html):
+    m = re.search(r"(?s)(<script>\n/\* the SNDK \| SPX switch.*?</script>)", html)
+    return m.group(1) if m else None
+
+
+def test_both_jev_pages_carry_one_switch_that_remembers_the_choice():
+    """Will's choice, 2026-09-26: SPX lives inside the JEV tab, a segmented switch at the top of both pages,
+    not a fourth tab. Each page lights its own side and links the other; the side last tapped is kept on the
+    phone, and the JEV tab (which links the SNDK page) opens on it. The script is one copy on both pages,
+    in <head> so a phone that chose SPX is sent there before the SNDK page paints."""
+    sndk = (M / "jev.html").read_text()
+    a, b = _switch_script(sndk), _switch_script(SPX)
+    assert a and a == b, "the two pages keep the choice differently"
+    assert sndk.index(a) < sndk.index("<body>") and SPX.index(b) < SPX.index("<body>")
+    assert "try { if(localStorage.getItem('jev.symbol') === 'spx' && location.pathname === '/m/jev.html') location.replace('/m/jev-spx.html'); } catch(e){}" in a
+    assert "try { localStorage.setItem('jev.symbol', a.getAttribute('data-sym')); } catch(x){}" in a
+    assert ('<nav class="sw" aria-label="Symbol"><span class="on" aria-current="page">SNDK</span>'
+            '<a href="/m/jev-spx.html" data-sym="spx">SPX</a></nav>') in sndk
+    assert ('<nav class="sw" aria-label="Symbol"><a href="/m/jev.html" data-sym="sndk">SNDK</a>'
+            '<span class="on" aria-current="page">SPX</span></nav>') in SPX
+    # drawn alike on both pages, and the tab bar untouched: three tabs, JEV lit, the others linked
+    for sel in (".sw", ".sw a,.sw span", ".sw a::after", ".sw .on"):
+        assert _rule(sel, sndk) == _rule(sel, SPX), sel
+    for html in (sndk, SPX):
+        nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
+        assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/", "/m/thread.html"]
+        assert nav.count('<span class="tab on">') == 1 and "<s>JEV <em" in nav
