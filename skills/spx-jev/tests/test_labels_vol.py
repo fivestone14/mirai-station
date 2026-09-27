@@ -1,6 +1,7 @@
 """The volatility family: each label's sentence at every verdict, its omissions, and point in time."""
 from __future__ import annotations
 
+import gzip
 import json
 import math
 from dataclasses import replace
@@ -8,9 +9,10 @@ from datetime import timedelta
 
 import pytest
 
-from conftest import at, bars_from_closes, flat_bars, make_row
+from conftest import DAY, at, bars_from_closes, flat_bars, make_row
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.vol import build_vol_labels
+from spx_jev.labels.vol_sources import black_price
 from spx_jev.state_builder import MarketContext
 
 SIGMA = 75.0          # the morning anchor every fixture row carries
@@ -639,3 +641,125 @@ def test_a_stress_day_without_tick_or_a_normal_day_sigma_is_omitted(scene_factor
         "no NYSE TICK in the market context over the last 30 minutes (the context job)")
     assert labels(replace(stressed, prior_rulers={}))[1]["vol.stress_path"] == (
         "needs today's bars and 5 prior sessions' trusted anchors for the normal-day sigma")
+
+
+# ---- the same-day skew from the lob-flow tape: skew.put_tilt_vs_usual (and its gate), skew.shift_vs_price
+
+def smile_quotes(end, slope: float, forward: float = 7700.0, atm: float = 0.15) -> list[dict]:
+    """Tape lines 20 seconds before ``end`` quoting every 5-point strike from 7600 to 7800 at a smile whose
+    vol rises ``slope`` points of vol per 100% of moneyness below the forward, 10 cents wide."""
+    years = (end.replace(hour=16, minute=0, second=0) - end).total_seconds() / (365 * 24 * 3600)
+    ts = int((end - timedelta(seconds=20)).timestamp() * 1000)
+    out = []
+    for k in range(7600, 7805, 5):
+        iv = atm + slope * (forward - k) / forward
+        for right in ("call", "put"):
+            price = black_price(forward, float(k), iv, years, right)
+            if price > 0.15:
+                out.append({"ts_ms": ts, "strike": float(k), "right": right, "price": round(price, 2), "size": 1,
+                            "bid": round(price - 0.05, 2), "ask": round(price + 0.05, 2), "bid_size": 5, "ask_size": 5, "condition": 18})
+    return out
+
+
+def write_tape(root, day: str, lines: list[dict], archived: bool = False):
+    folder = root / "lob_flow" / "raw" / day
+    folder.mkdir(parents=True, exist_ok=True)
+    text = "".join(json.dumps(x) + "\n" for x in lines)
+    if archived:
+        with gzip.open(folder / "tape.jsonl.gz", "wt", encoding="utf-8") as f:
+            f.write(text)
+    else:
+        (folder / "tape.jsonl").write_text(text)
+
+
+def skew_scene(scene_factory, tmp_path, slope: float, clock=(9, 50), prior_slopes=tuple(0.5 * k for k in range(2, 12)), extra=()):
+    """A read at ``clock`` on a tape quoting today's smile at ``slope``, the prior sessions' at ``prior_slopes``
+    (their tapes archived), each prior session with a trusted anchor."""
+    now = at(*clock, ss=15)
+    days = PRIOR_DAYS[:len(prior_slopes)]
+    for d, s in zip(days, prior_slopes):
+        write_tape(tmp_path, d, smile_quotes(at(*clock, day=d), s), archived=True)
+    write_tape(tmp_path, DAY, [*smile_quotes(at(*clock), slope), *extra])
+    scene = scene_factory(now, flat_bars(int((now - at(9, 30)).total_seconds() // 60)), rows_before=[morning()],
+                          prior_bars={d: flat_bars(390, day=d) for d in days})
+    return replace(scene, state_dir=tmp_path, prior_rulers={d: SigmaRuler(SIGMA, "anchor") for d in days})
+
+
+def tilt_and_gate(scene):
+    got = build_vol_labels(scene)
+    return got.state.get("skew", {}).get("put_tilt_vs_usual"), got.omitted.get("skew.put_tilt_vs_usual"), got.gates["put_tilt_vs_clock"]
+
+
+
+def shift_scene(scene_factory, tmp_path, slope_then: float, slope_now: float, drop: float):
+    now = at(12, 30, ss=15)
+    write_tape(tmp_path, DAY, [*smile_quotes(at(12, 0), slope_then), *smile_quotes(at(12, 30), slope_now)])
+    return replace(scene_factory(now, fall_then_now(now, drop), rows_before=[morning()]), state_dir=tmp_path)
+
+
+
+@pytest.mark.parametrize("slope, words", [
+    (5.0, "same-day 25-delta puts are priced 2.7 vol points above 25-delta calls, 0.18 of the at-the-money level; steeper than 8 of the "
+          "last 10 sessions at 09:50, past the steep rank; far puts (10-delta) are at a steeper premium than usual to 25-delta puts, "
+          "past the steep rank"),
+    (3.0, "same-day 25-delta puts are priced 1.6 vol points above 25-delta calls, 0.11 of the at-the-money level; steeper than 4 of the "
+          "last 10 sessions at 09:50, within the usual range; far puts (10-delta) are at a usual premium to 25-delta puts"),
+    (1.2, "same-day 25-delta puts are priced 0.6 vol points above 25-delta calls, 0.04 of the at-the-money level; steeper than 1 of the "
+          "last 10 sessions at 09:50, past the flat rank; far puts (10-delta) are at a flatter premium than usual to 25-delta puts, "
+          "past the flat rank"),
+    (-1.0, "same-day 25-delta calls are priced 0.5 vol points above 25-delta puts, a call tilt; steeper than 0 of the last 10 sessions "
+           "at 09:50, past the flat rank; far puts (10-delta) are at a flatter premium than usual to 25-delta puts, past the flat rank"),
+])
+def test_the_put_tilt_is_ranked_against_the_same_minute_and_wakes_its_question(scene_factory, tmp_path, slope, words):
+    assert tilt_and_gate(skew_scene(scene_factory, tmp_path, slope)) == (words, None, None)
+
+
+def test_the_tilt_reads_the_newest_quote_in_the_minute_whatever_the_line_order(scene_factory, tmp_path):
+    later = smile_quotes(at(9, 51), -5.0)                        # quoted at 09:50:40, after the read's minute
+    stale = [dict(q, ts_ms=q["ts_ms"] - 30000, bid=q["bid"] + 20, ask=q["ask"] + 20) for q in smile_quotes(at(9, 50), 3.0)]
+    tape = [*later, *smile_quotes(at(9, 50), 3.0), *stale]      # out of time order, as the collector writes them
+    scene = skew_scene(scene_factory, tmp_path, 3.0)
+    write_tape(tmp_path, DAY, tape)
+    assert tilt_and_gate(scene)[0].startswith("same-day 25-delta puts are priced 1.6 vol points above 25-delta calls")
+
+
+def test_the_put_tilt_sleeps_its_question_with_the_reason_it_is_omitted(scene_factory, tmp_path):
+    thin = skew_scene(scene_factory, tmp_path / "thin", 3.0, prior_slopes=(1.0, 2.0, 3.0, 4.0))
+    why = "needs 5 prior sessions with 25-delta quotes on the tape at 09:50, have 4"
+    assert tilt_and_gate(thin) == (None, why, why)
+    later = skew_scene(scene_factory, tmp_path / "later", 3.0, clock=(9, 50))
+    later = replace(later, now=at(10, 20, ss=15))
+    why = "no fresh 25-delta put and call quotes on the lob-flow tape in the minute to 10:20"
+    assert tilt_and_gate(later) == (None, why, why)
+    why = f"no lob-flow tape for {DAY} (state/lob_flow/raw)"
+    assert tilt_and_gate(replace(thin, state_dir=None)) == (None, why, why)
+    assert labels(replace(thin, state_dir=None))[1]["skew.shift_vs_price"] == why
+
+
+def shift_scene(scene_factory, tmp_path, slope_then: float, slope_now: float, drop: float):
+    now = at(12, 30, ss=15)
+    write_tape(tmp_path, DAY, [*smile_quotes(at(12, 0), slope_then), *smile_quotes(at(12, 30), slope_now)])
+    return replace(scene_factory(now, fall_then_now(now, drop), rows_before=[morning()]), state_dir=tmp_path)
+
+
+@pytest.mark.parametrize("slope_then, slope_now, drop, words", [
+    (3.0, 4.5, 0.10, "widened 0.052 of at-the-money vol while price fell 0.10 sigma; price explains a widening of 0.019, so puts got "
+                     "dearer by 0.033 beyond the move, past the 0.02 line"),
+    (3.0, 3.5, 0.10, "widened 0.012 of at-the-money vol while price fell 0.10 sigma; price explains a widening of 0.019, so puts got "
+                     "cheaper by 0.007 beyond the move, inside the 0.02 line"),
+    (3.0, 2.0, 0.10, "narrowed 0.047 of at-the-money vol while price fell 0.10 sigma; price explains a widening of 0.019, so puts got "
+                     "cheaper by 0.066 beyond the move, past the 0.02 line"),
+    (3.0, 3.0, -0.20, "narrowed 0.008 of at-the-money vol while price rose 0.20 sigma; price explains a narrowing of 0.038, so puts got "
+                      "dearer by 0.030 beyond the move, past the 0.02 line"),
+])
+def test_the_skew_shift_is_judged_beyond_what_the_price_move_explains(scene_factory, tmp_path, slope_then, slope_now, drop, words):
+    got = labels(shift_scene(scene_factory, tmp_path, slope_then, slope_now, drop))[0]["skew.shift_vs_price"]
+    assert got == f"over the last 30 minutes the gap between same-day put and call prices {words}"
+
+
+def test_the_skew_shift_is_omitted_without_quotes_30_minutes_ago(scene_factory, tmp_path):
+    now = at(12, 30, ss=15)
+    write_tape(tmp_path, DAY, smile_quotes(at(12, 30), 3.0))
+    scene = replace(scene_factory(now, fall_then_now(now, 0.1), rows_before=[morning()]), state_dir=tmp_path)
+    assert labels(scene)[1]["skew.shift_vs_price"] == ("needs quotes one remaining standard deviation either side on the lob-flow tape "
+                                                       "at 12:00 and 12:30, the bars then and the morning sigma ruler")

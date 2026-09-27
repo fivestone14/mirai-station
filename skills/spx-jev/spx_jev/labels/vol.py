@@ -13,7 +13,8 @@ from datetime import date, datetime, time, timedelta
 from .. import events
 from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, FRONT_SHIFT_PTS, HALF_RANK,
                     IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NEAR_LOW_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO,
-                    REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW, RV_HOT, STRADDLE_CHEAP, STRADDLE_REPRICE_SHARE, STRADDLE_RICH,
+                    REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW, RV_HOT, SKEW_FLAT_RANK, SKEW_RESID_CUT,
+                    SKEW_STEEP_RANK, STRADDLE_CHEAP, STRADDLE_REPRICE_SHARE, STRADDLE_RICH,
                     STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_CLUSTER, TICK_EXTREME, TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT,
                     VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN, WINDOW_30_MIN,
                     ZERO_DTE_LAST_HOUR_MIN)
@@ -24,7 +25,7 @@ from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at
                        settled_open)
 from .ranks import SameClockRank, rank_against, same_clock_values
 from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
-from .vol_sources import DiaryPoint, diary_point, point_at, prior_diary
+from .vol_sources import DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, skew_at
 from .words import pct, plural, sig, signed
 
 LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.move_sides", "iv.term_structure",
@@ -57,6 +58,11 @@ VVIX_FIT_FIRST, VVIX_FIT_READS = time(10, 30), 11
 # over its prior sessions' high, or VIX at this share of three-month VIX, all but inverted.
 STRESS_VIX_RISE_PTS = 2.0
 STRESS_CURVE = 0.98
+# The put tilt is ranked against this many prior sessions at the same minute (the set's "prior 10 sessions").
+SKEW_RANK_SESSIONS = 10
+# How far the one-remaining-sd put-call tilt (a share of at-the-money vol) moves with price, fitted once on
+# the lob-flow tape of the 21 sessions to 2026-09-25 (230 half hours, morning anchor; not refitted yet).
+SKEW_PER_SIGMA = -0.19
 # The VIX that closes the session is read against the early afternoon: the newest row by 14:00.
 AFTERNOON_ANCHOR = time(14, 0)
 # What the tape delivers over 30 minutes: the median high-to-low range of the last six finished 5-minute
@@ -88,6 +94,7 @@ def build_vol_labels(scene: Scene) -> LabelSet:
     _vvix_vs_vix(scene, ls)
     _vix_curve(scene, today, ls)
     _stress_path(scene, today, ls)
+    _skew(scene, ls)
     return ls
 
 
@@ -818,3 +825,106 @@ def _stress_path(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     cluster = f"at least the {TICK_CLUSTER}-reading cluster" if hits >= TICK_CLUSTER else f"short of the {TICK_CLUSTER}-reading cluster"
     ls.put(path, f"VIX {now:.1f}, {'up' if rise >= 0 else 'down'} {abs(rise):.1f} points since the open; {vix_words}; SPX sits {low_words}; "
                  f"NYSE TICK printed at or below -{TICK_EXTREME} {plural(hits, 'time')} in 30 minutes, {cluster}")
+
+
+# ----------------------------------------------------------------------------- the same-day skew (the lob-flow tape)
+
+def _skew(scene: Scene, ls: LabelSet) -> None:
+    """The skew labels from the tape's quotes in the minute to this read's last whole minute."""
+    paths = ("skew.put_tilt_vs_usual", "skew.shift_vs_price")
+    at_min = minute_floor(scene.now)
+    then = at_min - timedelta(minutes=WINDOW_30_MIN)
+    smiles = skew_at(scene.state_dir, scene.day, (at_min, then)) if scene.state_dir else None
+    if smiles is None:
+        why = f"no lob-flow tape for {scene.day} (state/lob_flow/raw)"
+        for path in paths:
+            ls.omit(path, why)
+        ls.sleep("put_tilt_vs_clock", why)
+        return
+    _put_tilt(scene, smiles[at_min], at_min, ls)
+    _skew_shift(scene, smiles[then], smiles[at_min], then, at_min, ls)
+
+
+def _tilt(smile: Skew | None) -> float | None:
+    """25-delta put vol less 25-delta call vol, as a share of at-the-money vol."""
+    return None if smile is None or smile.put_25 is None or smile.call_25 is None else (smile.put_25 - smile.call_25) / smile.atm
+
+
+def _wing(smile: Skew | None) -> float | None:
+    """10-delta put vol less 25-delta put vol, as a share of at-the-money vol."""
+    return None if smile is None or smile.put_10 is None or smile.put_25 is None else (smile.put_10 - smile.put_25) / smile.atm
+
+
+def _steepness(rank: SameClockRank) -> str:
+    return ("past the steep rank" if rank.share >= SKEW_STEEP_RANK else "past the flat rank" if rank.share <= SKEW_FLAT_RANK
+            else "within the usual range")
+
+
+def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, ls: LabelSet) -> None:
+    """The 25-delta put-call tilt ranked against the prior sessions' at the same minute, with the far-put wing."""
+    path, clock = "skew.put_tilt_vs_usual", _clock(at_min)
+    tilt = _tilt(smile)
+    if tilt is None:
+        why = f"no fresh 25-delta put and call quotes on the lob-flow tape in the minute to {clock}"
+        ls.omit(path, why)
+        ls.sleep("put_tilt_vs_clock", why)
+        return
+    tilts, wings = [], []
+    for d in _ranked_prior_days(scene):
+        if len(tilts) == SKEW_RANK_SESSIONS:
+            break
+        t = minute_floor(_same_clock(scene, d))
+        prior = (skew_at(scene.state_dir, d, (t,)) or {}).get(t)
+        if (pt := _tilt(prior)) is not None:
+            tilts.append(pt)
+            if (pw := _wing(prior)) is not None:
+                wings.append(pw)
+    rank = rank_against(tilt, tilts)
+    if rank is None:
+        why = f"needs {MIN_RANK_SESSIONS} prior sessions with 25-delta quotes on the tape at {clock}, have {len(tilts)}"
+        ls.omit(path, why)
+        ls.sleep("put_tilt_vs_clock", why)
+        return
+    gap = (smile.put_25 - smile.call_25) * 100.0
+    if gap < 0:
+        lead = f"same-day 25-delta calls are priced {abs(gap):.1f} vol points above 25-delta puts, a call tilt"
+    else:
+        lead = f"same-day 25-delta puts are priced {gap:.1f} vol points above 25-delta calls, {tilt:.2f} of the at-the-money level"
+    wing = _wing(smile)
+    wing_rank = rank_against(wing, wings) if wing is not None else None
+    if wing_rank is None:
+        far = "far puts (10-delta) have no fresh quote or no history at this minute to compare"
+    elif wing_rank.share >= SKEW_STEEP_RANK:
+        far = "far puts (10-delta) are at a steeper premium than usual to 25-delta puts, past the steep rank"
+    elif wing_rank.share <= SKEW_FLAT_RANK:
+        far = "far puts (10-delta) are at a flatter premium than usual to 25-delta puts, past the flat rank"
+    else:
+        far = "far puts (10-delta) are at a usual premium to 25-delta puts"
+    ls.put(path, f"{lead}; steeper than {rank.higher_than} of the last {rank.of} sessions at {clock}, {_steepness(rank)}; {far}")
+    ls.wake("put_tilt_vs_clock")
+
+
+def _skew_shift(scene: Scene, before: Skew | None, now: Skew | None, then: datetime, at_min: datetime, ls: LabelSet) -> None:
+    """The 30-minute change in the put-call tilt one remaining standard deviation either side of the forward,
+    less what price's move explains (SKEW_PER_SIGMA)."""
+    path = "skew.shift_vs_price"
+    tilts = [None if s is None or s.put_1sd is None or s.call_1sd is None else (s.put_1sd - s.call_1sd) / s.atm for s in (before, now)]
+    ruler = sigma_anchor(scene)
+    p0, p1 = close_at(scene.bars, then), close_at(scene.bars, at_min)
+    if None in tilts or ruler is None or p0 is None or p1 is None:
+        ls.omit(path, f"needs quotes one remaining standard deviation either side on the lob-flow tape at {_clock(then)} and "
+                      f"{_clock(at_min)}, the bars then and the morning sigma ruler")
+        return
+    move = (p1 - p0) / ruler.points
+    d = tilts[1] - tilts[0]
+    explained = SKEW_PER_SIGMA * move
+    resid = d - explained
+    if abs(resid) > SKEW_RESID_CUT:
+        shown, words = max(abs(resid), SKEW_RESID_CUT + 0.001), f"past the {SKEW_RESID_CUT:g} line"
+    else:
+        shown, words = abs(resid), f"inside the {SKEW_RESID_CUT:g} line"
+    ls.put(path,
+           f"over the last 30 minutes the gap between same-day put and call prices {'widened' if d >= 0 else 'narrowed'} {abs(d):.3f} of "
+           f"at-the-money vol while price {'fell' if move < 0 else 'rose'} {sig(abs(move))}; price explains a "
+           f"{'widening' if explained >= 0 else 'narrowing'} of {abs(explained):.3f}, so puts got {'dearer' if resid >= 0 else 'cheaper'} "
+           f"by {shown:.3f} beyond the move, {words}{_ruled(ruler)}")
