@@ -825,6 +825,16 @@
    "source": "https://www.bls.gov/schedule/2026/10_sched_list.htm"
   },
   {
+   "date": "2026-10-20",
+   "time_et": "08:30",
+   "kind": "HOUSING_STARTS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.census.gov/economic-indicators/calendar-listview.html"
+  },
+  {
    "date": "2026-10-22",
    "time_et": "08:30",
    "kind": "JOBLESS_CLAIMS",

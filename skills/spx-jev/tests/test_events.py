@@ -86,7 +86,8 @@ def test_the_releases_before_the_open_reach_back_to_august_each_from_its_source(
     assert {"2026-08-06", "2026-08-13", "2026-08-20", "2026-08-27"} <= thursdays
     for month in range(8, 13):
         kinds = {e["kind"] for e in rows if int(e["date"][5:7]) == month}
-        assert {"JOBS", "CPI", "PPI", "RETAIL_SALES", "EMPIRE_STATE", "PHILLY_FED", "DURABLE_GOODS", "IMPORT_PRICES"} <= kinds, month
+        assert {"JOBS", "CPI", "PPI", "RETAIL_SALES", "EMPIRE_STATE", "PHILLY_FED", "DURABLE_GOODS", "IMPORT_PRICES",
+                "HOUSING_STARTS"} <= kinds, month
     assert sorted(e["date"] for e in rows if e["kind"] == "ADP") == ["2026-08-05", "2026-09-02", "2026-09-30", "2026-11-04", "2026-12-02"]
     assert [(e.start.strftime("%H:%M"), e.kind) for e in events.on_day(date(2026, 8, 5))] == [("08:15", "ADP")]
     assert ("08:30", "JOBS") in [(e.start.strftime("%H:%M"), e.kind) for e in events.on_day(date(2026, 8, 7))]
