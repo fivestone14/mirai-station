@@ -375,8 +375,8 @@ def lagging_small_caps(i: int) -> float:
 
 def test_a_new_high_neither_breadth_nor_small_caps_confirm(scene_factory):
     assert sentence(extremes_read(scene_factory, fading_net, lagging_small_caps), "breadth.at_extremes") == (
-        "when SPX made its new session high at 12:21, NYSE net volume was +310M, below the +540M where it stood at the previous "
-        "high at 11:00, short of that level, and small caps (IWM) were 0.33 sigma below their own session high, past the 0.15 "
+        "when SPX made its new session high at 12:20, NYSE net volume was +310M, below the +540M where it stood at the previous "
+        "high at 10:59, short of that level, and small caps (IWM) were 0.33 sigma below their own session high, past the 0.15 "
         "sigma confirm rule")
 
 
@@ -384,15 +384,15 @@ def test_a_new_low_both_confirm(scene_factory):
     ls = extremes_read(scene_factory, lambda i: -200.0 if i <= 89 else -450.0, lambda i: 249.0 if i == 170 else 250.0,
                        closes=climb_dip_climb(low=True))
     assert sentence(ls, "breadth.at_extremes") == (
-        "when SPX made its new session low at 12:21, NYSE net volume was -450M, below the -200M where it stood at the previous "
-        "low at 11:00, reaching that level, and small caps (IWM) were at their own session low, within the 0.15 sigma confirm rule")
+        "when SPX made its new session low at 12:20, NYSE net volume was -450M, below the -200M where it stood at the previous "
+        "low at 10:59, reaching that level, and small caps (IWM) were at their own session low, within the 0.15 sigma confirm rule")
 
 
 def test_the_confirm_rule_and_a_level_net_volume_hold_their_edges(scene_factory):
     on_rule = 250.0 * (1 - 0.15 * 75.0 / 7740.5)
     ls = extremes_read(scene_factory, lambda i: 540.0, lambda i: 250.0 if i == 89 else on_rule if i >= 150 else 249.5)
     assert sentence(ls, "breadth.at_extremes").endswith(
-        "NYSE net volume was +540M, level with the +540M where it stood at the previous high at 11:00, reaching that level, "
+        "NYSE net volume was +540M, level with the +540M where it stood at the previous high at 10:59, reaching that level, "
         "and small caps (IWM) were 0.15 sigma below their own session high, within the 0.15 sigma confirm rule")
 
 
@@ -401,23 +401,35 @@ def test_the_extremes_are_measured_on_an_estimated_ruler_and_say_so(scene_factor
         "past the 0.15 sigma confirm rule; ruler estimated")
 
 
-def test_the_extremes_omitted_without_an_earlier_extreme_or_a_series(scene_factory):
+def test_the_extremes_omitted_without_a_new_extreme_or_a_series(scene_factory):
     straight_up = [7700.0 + 0.2 * i for i in range(182)]
-    early = read_bars(scene_factory, [7700.0 + i for i in range(20)] + [7710.0] * 162, {"$VOLD": per_minute([1e6] * 182)})
-    assert early.omitted["breadth.at_extremes"] == ("the session high was made within 30 minutes of the open: no earlier high to "
-                                                    "hold it against")
+    too_early = scene_factory(at(9, 44, ss=10), bars_from_closes(straight_up[:14]), rows_before=[ANCHOR_ROW],
+                              market=MarketContext({"$VOLD": per_minute([1e6] * 14)}))
+    assert build_breadth_labels(too_early).omitted["breadth.at_extremes"] == "needs SPX bars from before the last 15 minutes"
+    stale = read_bars(scene_factory, [7700.0 + i for i in range(20)] + [7710.0] * 162, {"$VOLD": per_minute([1e6] * 182)})
+    assert stale.omitted["breadth.at_extremes"] == "no new session high or low in the last 15 minutes"
     no_iwm = read_bars(scene_factory, straight_up, {"$VOLD": per_minute([1e6] * 182)})
-    assert no_iwm.omitted["breadth.at_extremes"] == "no small-cap (IWM) price known within 5 minutes of the SPX high at 12:32"
+    assert no_iwm.omitted["breadth.at_extremes"] == "no small-cap (IWM) price known within 5 minutes of the SPX high at 12:31"
     no_net = read_bars(scene_factory, straight_up, {"$VOLD": per_minute([1e6] * 60), "IWM": per_minute([250.0] * 182)})
     assert no_net.omitted["breadth.at_extremes"] == ("no NYSE net volume ($VOLD) known within 5 minutes of both SPX highs, "
-                                                     "12:02 and 12:32")
+                                                     "12:16 and 12:31")
+
+
+def test_the_extremes_name_the_earlier_extreme_price_names(scene_factory):
+    grind = [7700.0 + 0.2 * i for i in range(182)]
+    scene = scene_factory(NOW, bars_from_closes(grind), rows_before=[ANCHOR_ROW],
+                          market=MarketContext({"$VOLD": per_minute([1e6] * 182), "IWM": per_minute([250.0] * 182)}))
+    assert "the earlier high from 12:16" in build_price_labels(scene).state["price"]["session_extreme_recent"]
+    assert sentence(build_breadth_labels(scene), "breadth.at_extremes").startswith(
+        "when SPX made its new session high at 12:31, NYSE net volume was +1M, level with the +1M where it stood at the previous "
+        "high at 12:16,")
 
 
 def test_nothing_after_the_extreme_or_the_read_counts(scene_factory):
-    higher_small_caps_later = {"IWM": [(at(12, 25), 251.0)]}             # after SPX's 12:21 high, before the read
+    higher_small_caps_later = {"IWM": [(at(12, 25), 251.0)]}             # after SPX's 12:20 high, before the read
     unfinished_spx_bar = climb_dip_climb() + [7760.0]                    # the 12:32 bar finishes after the read
     ls = extremes_read(scene_factory, fading_net, lagging_small_caps, closes=unfinished_spx_bar, extra_known=higher_small_caps_later)
-    assert sentence(ls, "breadth.at_extremes").startswith("when SPX made its new session high at 12:21")
+    assert sentence(ls, "breadth.at_extremes").startswith("when SPX made its new session high at 12:20")
     assert "small caps (IWM) were 0.33 sigma below their own session high" in sentence(ls, "breadth.at_extremes")
 
 

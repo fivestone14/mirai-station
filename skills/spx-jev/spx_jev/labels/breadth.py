@@ -23,6 +23,7 @@ from ..sessions import session_open
 from ..state_builder import MarketContext, Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, close_at, session_extremes, settled_open
+from .price import NEW_EXTREME_RECENT_MIN
 from .ranks import rank_against
 from .rulers import sigma_anchor
 from .words import pct, plural, sig, signed
@@ -328,29 +329,31 @@ def _members_net_day(scene: Scene, ls: LabelSet) -> None:
 
 
 def _at_extremes(scene: Scene, ls: LabelSet) -> None:
-    """At SPX's newest session extreme: NYSE net volume against where it stood at the previous one, and small
-    caps (IWM) against their own extreme so far, in SPX sigma. The previous extreme is the session's as it
-    stood half an hour before the new one was made (one 30-minute read earlier), so a grind of one-minute
-    highs is held against where the last read saw the extreme, not against the minute before."""
+    """At the new session extreme price.session_extreme_recent names: NYSE net volume against where it stood
+    at the earlier extreme it beat, and small caps (IWM) against their own extreme so far, in SPX sigma. The
+    earlier extreme is the session's as it stood NEW_EXTREME_RECENT_MIN minutes before the read, and each is
+    stamped with its bar's start minute, as that label takes and stamps them, so the two name one earlier
+    extreme."""
     mk = scene.market
-    ext = session_extremes(scene.bars)
-    if ext is None:
-        ls.omit("breadth.at_extremes", "no finished SPX bars yet")
+    cut = scene.now - timedelta(minutes=NEW_EXTREME_RECENT_MIN)
+    before, today = session_extremes([b for b in scene.bars if bar_time(b) + ONE_MINUTE <= cut]), session_extremes(scene.bars)
+    if before is None or today is None:
+        ls.omit("breadth.at_extremes", f"needs SPX bars from before the last {NEW_EXTREME_RECENT_MIN} minutes")
         return
-    is_high = ext.high_at >= ext.low_at
-    word, made_at, spx_extreme = ("high", ext.high_at, ext.high) if is_high else ("low", ext.low_at, ext.low)
-    before = session_extremes([b for b in scene.bars if bar_time(b) + ONE_MINUTE <= made_at - timedelta(minutes=WINDOW_30_MIN)])
-    if before is None:
-        ls.omit("breadth.at_extremes", f"the session {word} was made within {WINDOW_30_MIN} minutes of the open: no earlier {word} to hold it against")
+    new_high, new_low = today.high > before.high, today.low < before.low
+    if not new_high and not new_low:
+        ls.omit("breadth.at_extremes", f"no new session high or low in the last {NEW_EXTREME_RECENT_MIN} minutes")
         return
-    before_at = before.high_at if is_high else before.low_at
+    is_high = new_high and (not new_low or today.high_at >= today.low_at)
+    word, made_at, spx_extreme, before_at = (("high", today.high_at, today.high, before.high_at) if is_high else
+                                             ("low", today.low_at, today.low, before.low_at))
     ruler = sigma_anchor(scene)
     if ruler is None:
         ls.omit("breadth.at_extremes", "no sigma ruler for today: no morning anchor, live sigma or VIX at the settled open")
         return
     net_now, net_before = _running_total(mk, "$VOLD", made_at), _running_total(mk, "$VOLD", before_at)
     small_caps, small_caps_then = mk.between("IWM", scene.session_open, made_at), mk.last("IWM", made_at, max_age_min=FRESH_MIN)
-    at_clock, before_clock = f"{made_at.astimezone(ET):%H:%M}", f"{before_at.astimezone(ET):%H:%M}"
+    at_clock, before_clock = (f"{(t - ONE_MINUTE).astimezone(ET):%H:%M}" for t in (made_at, before_at))
     if net_now is None or net_before is None:
         ls.omit("breadth.at_extremes", f"no NYSE net volume ($VOLD) known within {FRESH_MIN} minutes of both SPX {word}s, "
                                        f"{before_clock} and {at_clock}")
