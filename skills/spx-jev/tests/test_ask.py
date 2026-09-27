@@ -264,7 +264,7 @@ def test_the_answer_readers_and_the_summary():
     }}
     assert pick(ans["answers"]["a"]) == "true" and round(confidence(ans["answers"]["a"]), 2) == 0.62
     assert pick(ans["answers"]["b"]) == "up" and confidence(ans["answers"]["b"]) == 0.55
-    assert pick(ans["answers"]["c"]) == "2" and confidence(ans["answers"]["c"]) is None
+    assert pick(ans["answers"]["c"]) == "2" and confidence(ans["answers"]["c"]) == 0.6
     lines = summarize(ans)
     assert lines[0] == "a: yes 0.81" and lines[1].startswith("b: up 0.70  confidence 0.55") and lines[2].startswith("c: score 1.40")
 

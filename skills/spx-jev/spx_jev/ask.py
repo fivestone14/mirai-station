@@ -294,10 +294,10 @@ def pick(answer: dict) -> str | None:
 
 
 def confidence(answer: dict) -> float | None:
-    """How sure JEV said it was: its own confidence on a choice, the distance from a coin on a yes/no."""
+    """How sure JEV said it was: its own confidence on a choice or a score, the distance from a coin on a yes/no."""
     if not isinstance(answer, dict):
         return None
-    if answer.get("type") == "choice":
+    if answer.get("type") in ("choice", "score"):
         c = answer.get("confidence")
         return float(c) if isinstance(c, (int, float)) else None
     if answer.get("type") == "noul":
