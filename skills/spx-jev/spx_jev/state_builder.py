@@ -366,8 +366,9 @@ def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None
     prior_markets = {d: m for d in prior if (m := load_market_context(state_dir, d)) is not None}
     prior_rulers = {d: morning_ruler(first_row(state_dir, d), vix_at_settled_open(prior_markets.get(d), d), settled_open(prior[d]))
                     for d in prior}
-    return Scene(row=row, rows_today=rows, bars=bars, prior_bars=prior, now=now, sigma=float(sigma),
-                 market=load_market_context(state_dir, day), options_tape=load_options_tape(state_dir, [day, *prior]),
-                 bar_clock=bar_clock,
-                 unit=tape_unit(bars, float(sigma), now, prior) if bar_clock else None, horizon=horizon,
-                 prior_rulers=prior_rulers, prior_markets=prior_markets, state_dir=state_dir)
+    scene = Scene(row=row, rows_today=rows, bars=bars, prior_bars=prior, now=now, sigma=float(sigma),
+                  market=load_market_context(state_dir, day), options_tape=load_options_tape(state_dir, [day, *prior]),
+                  bar_clock=bar_clock, horizon=horizon, prior_rulers=prior_rulers, prior_markets=prior_markets, state_dir=state_dir)
+    if bar_clock:
+        scene.unit = tape_unit(scene)
+    return scene

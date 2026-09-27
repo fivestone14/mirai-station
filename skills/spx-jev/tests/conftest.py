@@ -126,7 +126,7 @@ def scene_factory():
         if bar_clock:
             # as make_scene does on the bar clock: the unit for the read, ranked against the prior sessions
             from spx_jev.labels.rulers import tape_unit
-            scene.unit = tape_unit(scene.bars, scene.sigma, now, scene.prior_bars)
+            scene.unit = tape_unit(scene)
         return scene
 
     return make
@@ -170,5 +170,6 @@ def lane_scene(full_scene):
     the unit; every stretch label can be measured."""
     from dataclasses import replace
     from spx_jev.labels.rulers import tape_unit
-    return replace(full_scene, bar_clock=True, last_read=full_scene.now - timedelta(minutes=5),
-                   unit=tape_unit(full_scene.bars, full_scene.sigma, full_scene.now, full_scene.prior_bars))
+    scene = replace(full_scene, bar_clock=True, last_read=full_scene.now - timedelta(minutes=5))
+    scene.unit = tape_unit(scene)
+    return scene

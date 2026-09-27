@@ -8,7 +8,6 @@ spec/question_set.json ``labels``."""
 from __future__ import annotations
 
 import math
-import statistics
 from datetime import datetime, timedelta
 
 from ..cuts import (FLAT_REACH_NARROW_30, FLAT_REACH_NARROW_60, FLAT_REACH_WIDE_30, FLAT_REACH_WIDE_60, IB_BREAK_SIGMA, IB_EXTEND_SIGMA,
@@ -21,7 +20,8 @@ from .label_set import LabelSet
 from .measures import (ET, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between,
                        close_at, day_high_low, high_low_close, is_num, minute_of_day, move_bar, stretch, stretch_range, walls)
 from .ranks import rank_against, rank_at_slot, same_clock_values
-from .rulers import RULER_HOLD_UNTIL, RULER_SLICE_MIN, RULER_SLICES, SigmaRuler, ruler, sigma_anchor, slice_range, straddle_left
+from .rulers import (RULER_HOLD_UNTIL, RULER_SLICE_MIN, SigmaRuler, ruler, sigma_anchor, straddle_left, unit_rank,
+                     unit_sigma)
 from .words import pct, plural, sig, third, units_of
 
 LABELS = ("range.box_status", "range.today_vs_normal", "range.prior_level_touches", "range.session_shape", "range.nearest_level",
@@ -410,8 +410,8 @@ def _flat_band_reach(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
 
 
 def _unit_vs_normal(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
-    """The tape unit in sigma against the same three slices on each prior session, in that session's sigma.
-    Written only on the bar clock, as the other tape labels are: the opening lane is the one that reads it."""
+    """The tape unit in sigma against the same three slices on each prior session, in that session's sigma
+    (rulers.unit_rank, the rank the sum's context line carries). Written only on the bar clock, as the other tape labels are: the opening lane is the one that reads it."""
     if not scene.bar_clock:
         return
     if anchor is None:
@@ -425,17 +425,13 @@ def _unit_vs_normal(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> No
         ls.omit("tape.unit_vs_normal", f"the tape unit is held until {RULER_HOLD_UNTIL:%H:%M}, when three 5-minute slices first exist")
         return
 
-    def unit_sigma(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
-        ranges = [slice_range(bars, minute_of_day(then) - RULER_SLICE_MIN * k) for k in range(RULER_SLICES)]
-        return statistics.median(ranges) / sigma if sigma and all(r is not None for r in ranges) else None
-
-    base = same_clock_values(scene, unit_sigma)
-    value = float(unit["unit_points"]) / anchor.points
-    rank = rank_against(value, base)
+    rank = unit_rank(scene, unit, anchor)
     if rank is None:
-        ls.omit("tape.unit_vs_normal", f"needs {MIN_RANK_SESSIONS} prior sessions with a morning ruler at this minute, have {len(base)}")
+        have = len(same_clock_values(scene, unit_sigma))
+        ls.omit("tape.unit_vs_normal", f"needs {MIN_RANK_SESSIONS} prior sessions with a morning ruler at this minute, have {have}")
         return
+    value = float(unit["unit_points"]) / anchor.points
     floor = f", at its {RULER_FLOOR_SIGMA} sigma floor" if unit["source"] == "floor" else ""
-    wider = f"all {rank.of}" if rank.higher_than == rank.of else str(rank.higher_than)
+    wider = f"all {rank['of']}" if rank["higher_than"] == rank["of"] else str(rank["higher_than"])
     ls.put("tape.unit_vs_normal", ruled(anchor, f"the tape unit (the middle of the last three 5-minute ranges) is {sig(value)}{floor}, wider than "
-                                                f"{wider} of the last {rank.of} sessions at {scene.now.astimezone(ET):%H:%M}, in the {third(rank.share)} third"))
+                                                f"{wider} of the last {rank['of']} sessions at {scene.now.astimezone(ET):%H:%M}, in the {rank['band']}"))

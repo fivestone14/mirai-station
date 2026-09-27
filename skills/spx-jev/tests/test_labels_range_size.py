@@ -11,7 +11,7 @@ import pytest
 from conftest import at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
 from spx_jev.labels import range_size
 from spx_jev.labels.range_size import NO_ANCHOR, build_range_size_labels
-from spx_jev.labels.rulers import SigmaRuler
+from spx_jev.labels.rulers import SigmaRuler, tape_unit
 from spx_jev.state_builder import make_scene
 
 SIGMA = 75.0
@@ -232,6 +232,19 @@ def test_the_tape_unit_is_ranked_in_sigma_against_the_same_minute(scene_factory)
     assert state["tape.unit_vs_normal"].endswith("is 0.19 sigma, wider than all 10 of the last 10 sessions at 10:05, in the top third")
     _, omitted = _labels(_unit_scene(scene_factory, at(10, 5), 2.6, prior, rulers={}))
     assert omitted["tape.unit_vs_normal"] == "needs 5 prior sessions with a morning ruler at this minute, have 0"
+
+
+def test_the_context_line_carries_the_same_unit_rank_as_the_label(scene_factory):
+    """One rank of the unit: the one the sum's context line carries (tape_unit) is the label's, in each
+    session's own sigma with an estimated session left out, not a rank in points."""
+    prior = _swinging_sessions([2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5])
+    days = list(prior)
+    rulers = {d: SigmaRuler(SIGMA * 2 if k < 3 else SIGMA, "anchor") for k, d in enumerate(days)}
+    rulers[days[-1]] = SigmaRuler(SIGMA, "vix")
+    scene = _unit_scene(scene_factory, at(10, 5), 2.6, prior, rulers=rulers)
+    rank = tape_unit(scene)["rank"]
+    assert rank == {"band": "middle third", "higher_than": 3, "of": 9}
+    assert _labels(scene)[0]["tape.unit_vs_normal"].endswith("wider than 3 of the last 9 sessions at 10:05, in the middle third")
 
 
 def test_the_tape_unit_is_not_described_while_held_or_off_the_bar_clock(scene_factory):

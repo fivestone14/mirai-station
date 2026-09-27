@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from ..cuts import MIN_RANK_SESSIONS, RULER_FLOOR_SIGMA, RULER_HOLD_SIGMA
 from .measures import ET, SETTLED_OPEN_BAR, bars_finished_between, is_num, minute_of_day, settled_open, slot
-from .ranks import rank_at_slot
+from .ranks import rank_at_slot, same_clock_values
 
 if TYPE_CHECKING:
     from ..state_builder import MarketContext, Scene
@@ -64,28 +64,32 @@ def slice_range(bars: list[dict], end_min: int) -> float | None:
     return max(float(b["high"]) for b in sl) - min(float(b["low"]) for b in sl) if sl else None
 
 
-def unit_rank(unit: dict, prior_bars: dict[str, list[dict]], now: datetime) -> dict | None:
-    """The tape unit against the same minute on the prior sessions: the same three slices measured on
-    each prior day's bars, placed in thirds (rank_at_slot). None while the unit is held (before 09:45
-    every day's unit is the same number) and when fewer than MIN_RANK_SESSIONS prior sessions carry
-    all three slices."""
+def unit_sigma(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
+    """The tape unit a session had at ``then``, in its own sigma: the middle of the three 5-minute ranges
+    ending then. None without a ruler or with a slice that has no bars."""
+    ranges = [slice_range(bars, minute_of_day(then) - RULER_SLICE_MIN * k) for k in range(RULER_SLICES)]
+    return statistics.median(ranges) / sigma if sigma and all(r is not None for r in ranges) else None
+
+
+def unit_rank(scene: Scene, unit: dict, anchor: SigmaRuler) -> dict | None:
+    """The tape unit in today's morning ruler against the same minute on the prior sessions, each in its
+    own ruler (unit_sigma, same_clock_values: a session with an estimated ruler is left out), placed in
+    thirds (rank_at_slot). None while the unit is held (before 09:45 every day's unit is the same number)
+    and under MIN_RANK_SESSIONS sessions. The one rank of the unit: the context line and
+    tape.unit_vs_normal both read it."""
     if unit.get("source") == "held":
         return None
-    end_min = minute_of_day(now)
-    base = []
-    for pbars in prior_bars.values():
-        ranges = [slice_range(pbars, end_min - RULER_SLICE_MIN * k) for k in range(RULER_SLICES)]
-        if all(r is not None for r in ranges):
-            base.append(statistics.median(ranges))
-    return rank_at_slot(float(unit["unit_points"]), base)
+    return rank_at_slot(float(unit["unit_points"]) / anchor.points, same_clock_values(scene, unit_sigma))
 
 
-def tape_unit(bars: list[dict], sigma: float, now: datetime, prior_bars: dict[str, list[dict]]) -> dict | None:
-    """The unit for a read on the tape lane: ruler() with its rank against the prior sessions at this
-    minute under ``rank`` when there is one. What the record, the card and the sum's context line carry."""
-    unit = ruler(bars, sigma, now)
-    if unit:
-        rank = unit_rank(unit, prior_bars, now)
+def tape_unit(scene: Scene) -> dict | None:
+    """The unit for a read on the tape lane: ruler() on the read's sigma, with its rank against the prior
+    sessions at this minute under ``rank`` when there is one. What the record, the card and the sum's
+    context line carry."""
+    unit = ruler(scene.bars, scene.sigma, scene.now)
+    anchor = sigma_anchor(scene)
+    if unit and anchor:
+        rank = unit_rank(scene, unit, anchor)
         if rank:
             unit["rank"] = rank
     return unit
