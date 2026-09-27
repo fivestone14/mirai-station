@@ -276,8 +276,8 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
     the pick and its probability, every option's probability as the phone showed them (``odds``), then
     ``outcome``, ``hit`` and the ``moved`` behind them once graded, or ``closed`` with the reason
     when it can never be graded. The mark is grade.mark_at's: the closing bar for a read that ends just
-    past the close, None for one that ends later and is never graded. A read whose sum got no answer is
-    not a call."""
+    past the close, None for one that ends later and is never graded, counted from the settled open on
+    a lane graded from it. A read whose sum got no answer is not a call."""
     minutes = lane.horizons[lane.primary][0]
     grades: dict[str, dict] = {}
     for g in load_jsonl(out_dir / "grades.jsonl"):
@@ -300,7 +300,7 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
         if not ts or ts in seen or not r.get("pick") or not isinstance(p, dict):
             continue
         seen.add(ts)                                   # a row written twice (a file from before the guard in run_once) is one call
-        mark = mark_at(ts, minutes)
+        mark = mark_at(ts, minutes, lane)
         odds = {k: round(float(v), 4) for k, v in p.items() if isinstance(v, (int, float))}
         calls.append({"read": ts, "mark": mark.isoformat() if mark else None, "minutes": minutes,
                       "pick": r["pick"], "p": odds.get(r["pick"], 0.0), "odds": odds, **grades.get(ts, {})})
@@ -645,6 +645,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--loop", type=int, metavar="SECONDS", help="keep running every N seconds (the launchd job does not use this)")
     ap.add_argument("--lane", choices=sorted(LANES), default="live", help="live (:02 and :32, the default) or tape (the opening lane)")
     args = ap.parse_args(argv)
+    if args.lane == "premarket":
+        # a read before the open has no diary row to build on: its scene, checkpoints and card are its own
+        ap.error("the premarket lane runs from its own module: python3 -m spx_jev.premarket")
     lane = LANES[args.lane]
     load_env_file()
     do_send = bool(args.send)

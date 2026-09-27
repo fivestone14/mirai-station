@@ -3,6 +3,7 @@
     python3 -m spx_jev.grade                # grade every ungraded record, rewrite weights.json
     python3 -m spx_jev.grade --day 2026-09-29
     python3 -m spx_jev.grade --lane tape    # the opening lane, under state/spx_jev/lanes/tape/
+    python3 -m spx_jev.grade --lane premarket   # the reads before the open, under state/spx_jev/lanes/premarket/
 
 Two horizons are graded from the same record, each against its own band (lane.LIVE.horizons, from cuts.py):
     next_30   30 minutes, flat within NEXT_30_FLAT_BAND_SIGMA   (the primary: the phone's sum)
@@ -44,13 +45,22 @@ The question weights
     Every graded line of the primary horizon, with the picks each live question gave afresh on that
     read, goes to the question weights' learn, the one seam a learning method plugs into. The live
     lane learns the loop there (pool.PoolWeights: every newly sealed session applied, each question's
-    standing reported, every weight still 1.0); the tape lane's weights are neutral.
+    standing reported, every weight still 1.0), the premarket lane its own loop in its own folder; the
+    tape lane's weights are neutral.
 
 A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
 itself: the tape unit measured at the read prices a flat and a big band in index points, and the
 realized move lands in one of five bands (down_big, down_small, flat, up_small, up_big), read also
 as a direction and a size (big or small), each scored against the matching view of the sum. Its
 mark needs the exact bar (bar_gap_min 0), and a finished day's bars that stop close its records out.
+
+The premarket lane (graded_from_settled_open) reads before the open, so its read's own spot already
+knows the gap: its horizons run from the settled open instead, the close of the 09:34 bar, finished
+at 09:35, to the closes at 09:45 and 10:05 (the 09:44 and 10:04 bars), in the pre-open ruler stamped
+on the record (``ruler.points``). The line says where it was measured from (``from``). It waits
+while the settled open or a mark has no bar, and a finished day without them closes it out. On
+every other lane a record stamped before its session's open is never graded from its spot: it is
+written as not graded.
 
 Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
     grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
@@ -71,18 +81,18 @@ import json
 import os
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import archive
 from .ask import load_questions
 from .hour import FIVE
-from .labels.measures import close_at, settled_open
+from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
 from .labels.rulers import SigmaRuler, morning_ruler, vix_at_settled_open
 from .lane import LANES, LIVE, RECORD, Lane
 from .pool import PoolWeights
-from .sessions import session_close
+from .sessions import session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, load_market_context, load_rows, parse_ts
 from .weights import WEIGHTS_NAME, QuestionWeights
 
@@ -100,11 +110,24 @@ def _bar_before(bars: list[dict], t: datetime) -> dict:
     return [b for b in bars if parse_ts(b["ts"]) + one <= t][-1]
 
 
-def mark_at(row_ts: str, minutes: int) -> datetime | None:
-    """Where a horizon of the read at ``row_ts`` is measured: the read's minute plus ``minutes``, or the
-    closing bar when that lands within CLOSE_GRACE_MIN past the close. None when it ends later than that:
-    such a horizon is never graded. grade_one measures here, and the card shows the same minute."""
-    t0 = parse_ts(row_ts).replace(second=0, microsecond=0)   # the read's minute: a 15:32:00.4 read is a 15:32 read
+def settled_open_at(day: date) -> datetime:
+    """When the day's settled open is known: the finish of its 09:34 bar, 09:35 ET."""
+    return datetime.combine(day, SETTLED_OPEN_BAR, tzinfo=ET) + timedelta(minutes=1)
+
+
+def horizon_start(row_ts: str, lane: Lane = LIVE) -> datetime:
+    """Where the sums of the read at ``row_ts`` are measured from: the read's minute (a 15:32:00.4 read
+    is a 15:32 read), or the settled open on a lane graded from it."""
+    if lane.graded_from_settled_open:
+        return settled_open_at(parse_ts(row_ts).astimezone(ET).date())
+    return parse_ts(row_ts).replace(second=0, microsecond=0)
+
+
+def mark_at(row_ts: str, minutes: int, lane: Lane = LIVE) -> datetime | None:
+    """Where a horizon of the read at ``row_ts`` is measured: its start (horizon_start) plus ``minutes``,
+    or the closing bar when that lands within CLOSE_GRACE_MIN past the close. None when it ends later
+    than that: such a horizon is never graded. grade_one measures here, and the card shows the same minute."""
+    t0 = horizon_start(row_ts, lane)
     close = session_close(t0)
     t1 = t0 + timedelta(minutes=minutes)
     if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
@@ -118,6 +141,13 @@ def read_anchor(rows: list[dict], bars: list[dict], market: MarketContext | None
     t = parse_ts(row_ts)
     known = [b for b in bars if parse_ts(b["ts"]) + timedelta(minutes=1) <= t]
     return morning_ruler([r for r in rows if parse_ts(r["ts"]) <= t], vix_at_settled_open(market, row_ts[:10]), settled_open(known))
+
+
+def pre_open_ruler(rec: dict) -> SigmaRuler | None:
+    """The pre-open ruler a premarket read stamped on its record (``ruler.points``), which its sums were
+    asked in; None when the read could not form one."""
+    points = (rec.get("ruler") or {}).get("points")
+    return SigmaRuler(float(points), "pre_open") if isinstance(points, (int, float)) and points > 0 else None
 
 
 def realized_band(x: float, flat: float) -> str:
@@ -194,17 +224,21 @@ TOP_KEYS = ("realized_sigma", "realized_points", "realized_units", "band", "dire
 def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = frozenset(), final: bool = False,
               lane: Lane = LIVE, anchor: SigmaRuler | None = None) -> dict | None:
     """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar, a
-    sigma band measured in ``anchor`` (read_anchor), a RECORD band in the record's own points.
+    sigma band measured in ``anchor`` (read_anchor, or pre_open_ruler on a lane graded from the
+    settled open), a RECORD band in the record's own points.
 
     Returns the line to append, None when nothing new can be graded yet (a mark still ahead, or
     bars missing), or a ``graded: False`` line when no horizon of the record can ever be graded.
     The line names the horizons it carries, the ones still ``pending`` and the ones ``skipped``
     for good, so the next run grades only what is left."""
-    t0 = parse_ts(rec["row_ts"]).replace(second=0, microsecond=0)   # the read's minute: a 15:32:00.4 read is a 15:32 read
+    t0 = horizon_start(rec["row_ts"], lane)
     close = session_close(t0)
-    spot = float(rec["spot"])
+    if t0 < session_open(t0):
+        # a read before the open already knows the gap: from its own spot it would be graded on a move it saw
+        return {"row_ts": rec["row_ts"], "graded": False, "reason": "stamped before the open: a read before the open is never graded from its spot"}
     if not bars:
         return None
+    spot = settled_open(bars) if lane.graded_from_settled_open else float(rec["spot"])
     picks, probs = _picks(rec)
     if not picks:
         return None
@@ -226,9 +260,16 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
             skipped[qid] = "no band on the record"     # no tape unit was measured at the read: nothing to grade against
             continue
         if flat != RECORD and anchor is None:
-            skipped[qid] = "no morning anchor: no diary row, live sigma or VIX to measure the move in"
+            skipped[qid] = ("no pre-open ruler on the record" if lane.graded_from_settled_open
+                            else "no morning anchor: no diary row, live sigma or VIX to measure the move in")
             continue
-        t1 = mark_at(rec["row_ts"], h)                # inside the grace past the close, the closing bar stands for the mark
+        if spot is None:                              # the settled open's bar is not on file
+            if final:
+                skipped[qid] = "halted window: no settled open (the 09:34 bar) on a finished day"
+            else:
+                pending.append(qid)
+            continue
+        t1 = mark_at(rec["row_ts"], h, lane)          # inside the grace past the close, the closing bar stands for the mark
         if t1 is None:
             skipped[qid] = "ends past the close"      # can never be graded
             continue
@@ -262,7 +303,7 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     if not graded:
         if pending:
             return None                               # a mark is still ahead
-        closed = {q: v for q, v in skipped.items() if str(v).startswith(("halted window", "no band", "no morning anchor"))}
+        closed = {q: v for q, v in skipped.items() if str(v).startswith(("halted window", "no band", "no morning anchor", "no pre-open ruler"))}
         if closed:
             # closed out for good; when the other horizon was graded on an earlier run this line carries
             # only the halted one, so the read is never retried
@@ -273,6 +314,8 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         return {"row_ts": rec["row_ts"], "graded": False, "reason": "every horizon ends past the close"}
     out = {"row_ts": rec["row_ts"], "used": rec.get("used", {}), "fresh": rec.get("fresh", {}),
            "horizons": list(graded), "pending": pending, "skipped": skipped, **graded}
+    if lane.graded_from_settled_open:
+        out["from"] = {"settled_open": spot, "at": t0.isoformat()}
     if any("realized_sigma" in g for g in graded.values()):
         out["anchor"] = {"points": anchor.points, "source": anchor.source}
     ev = rec.get("event") if isinstance(rec.get("event"), dict) else None
@@ -368,8 +411,8 @@ def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = 
     primary = [g for g in grades if g.get("band")]
     sums = {qid: {**_tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]), "event_reads": _events(grades, qid)}
             for qid in lane.horizons}
-    learner = PoolWeights if lane.pool else QuestionWeights
-    weights = learner.learn([g for g in primary if not g.get("event_within_30")], allowed, out_dir)
+    graded = [g for g in primary if not g.get("event_within_30")]
+    weights = PoolWeights.learn(graded, allowed, out_dir, lane) if lane.pool else QuestionWeights.learn(graded, allowed, out_dir)
     out = {"graded_runs": len(primary), "primary": lane.primary, "sums": sums, **weights.as_json()}
     if lane.tag:
         out["lane"] = lane.tag
@@ -411,13 +454,14 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
                     new.append({"row_ts": r["row_ts"], "graded": False, "reason": "no bars for the day"})
                     done[r["row_ts"]] |= every
             continue
-        # a lane banded in sigma measures every read in the day's morning anchor
-        in_sigma = any(flat != RECORD for _, flat in lane.horizons.values())
-        rows, market = (load_rows(state_dir, d), load_market_context(state_dir, d)) if in_sigma else ([], None)
+        # a lane banded in sigma measures every read in the day's morning anchor, or in the pre-open ruler
+        # its read stamped when it is graded from the settled open
+        in_anchor = any(flat != RECORD for _, flat in lane.horizons.values()) and not lane.graded_from_settled_open
+        rows, market = (load_rows(state_dir, d), load_market_context(state_dir, d)) if in_anchor else ([], None)
         for r in recs:
             if done.get(r["row_ts"], set()) == every:
                 continue                              # the same row written twice (a run by hand): graded once
-            anchor = read_anchor(rows, bars, market, r["row_ts"]) if in_sigma else None
+            anchor = pre_open_ruler(r) if lane.graded_from_settled_open else read_anchor(rows, bars, market, r["row_ts"]) if in_anchor else None
             g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat(), lane=lane, anchor=anchor)
             if g:
                 new.append(g)
