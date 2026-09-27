@@ -216,8 +216,11 @@ Each runner exits quietly on weekends and when the market is closed, fails
 loudly when the market-hours check itself cannot run, and stops at
 `SPX_JEV_DISABLE=1`. The day saver runs after the close by design, so it has
 no market-hours gate: the command saves market days only, and only a session
-that has closed. The key lives only in `skills/spx-jev/.env`
-(git-ignored; copy `.env.example`); without it the service runs unsent.
+that has closed. The key lives only in `skills/spx-jev/.env`, which is
+git-ignored, so a merge never brings it: before the first live read, run
+`cp .env.example .env && chmod 600 .env` in this folder and fill in
+`TYPESAFE_API_KEY` (the key in `skills/sndk-jev/.env`). Without it the service
+runs unsent and the card says "not sent: no key on this machine".
 
 ## Tests
 
