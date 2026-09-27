@@ -312,7 +312,7 @@ def save_night(state_dir: Path, day: date, got: dict, quoted: dict[str, str], ta
         symbols[symbol] = {"contract_quoted": quoted.get(symbol), "roll_pending": rolls.pending(table, symbol, quoted.get(symbol)),
                            "same_contract_through_night": rolls.same_contract(table, symbol, start, until), "bars": per}
     line = {"schema_version": SCHEMA_VERSION, "day": day.isoformat(), "saved_at": saved_at,
-            "window": [start.isoformat(), until.isoformat()], "holiday_night": holiday_night(day),
+            "window": [start.isoformat(), until.isoformat(timespec="seconds")], "holiday_night": holiday_night(day),
             "rows": len(rows), "added": added, "restamped": restamped if existing else 0, "failed": failed, "symbols": symbols}
     with open(manifest_path(state_dir), "a", encoding="utf-8") as f:
         f.write(json.dumps(line) + "\n")
