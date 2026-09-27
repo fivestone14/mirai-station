@@ -284,8 +284,9 @@ def _open_vs_prior_range(scene: Scene, anchor: SigmaRuler, yesterday: list[dict]
 
 
 def _prior_day(scene: Scene, anchor: SigmaRuler, yesterday: list[dict], ls: LabelSet) -> None:
-    """Price against yesterday's high and low: beyond one now (for how many minutes since it first closed
-    beyond it today), back inside after trading beyond one, or inside near or away from both."""
+    """Price against yesterday's high and low: beyond one now (for how many minutes it has stayed beyond
+    since it last closed back inside), back inside after trading beyond one, or inside near or away from
+    both."""
     if not scene.bars:
         ls.omit("levels.prior_day", "no finished bars yet")
         return
@@ -294,15 +295,17 @@ def _prior_day(scene: Scene, anchor: SigmaRuler, yesterday: list[dict], ls: Labe
     if spot > hi or spot < lo:
         up = spot > hi
         edge, name, side = (hi, "yesterday's high", "above") if up else (lo, "yesterday's low", "below")
-        beyond = [b for b in scene.bars if (float(b["close"]) > edge if up else float(b["close"]) < edge)]
+        inside = [i for i, b in enumerate(scene.bars) if not (float(b["close"]) > edge if up else float(b["close"]) < edge)]
+        run = scene.bars[inside[-1] + 1:] if inside else scene.bars
         d = abs(spot - edge) / points
         where = f"it now sits {sig(d)} {side} it, {'beyond' if d > LEVEL_REACH_SIGMA else 'within'} the {reach} reach"
-        if not beyond:
-            text = f"price is {side} {name} now and no finished minute has closed {side} it yet; {where}"
+        if not run:
+            since = "since price was last back inside" if len(inside) < len(scene.bars) else "yet"
+            text = f"price is {side} {name} now and no finished minute has closed {side} it {since}; {where}"
         else:
-            accepted = "at or past" if len(beyond) >= ACCEPT_MINUTES else "short of"
-            text = (f"price crossed {side} {name} {minutes_ago(scene.now, bar_time(beyond[0]))} and has spent {len(beyond)} of those minutes "
-                    f"{side} it, {accepted} the {ACCEPT_MINUTES}-minute acceptance time; {where}")
+            accepted = "at or past" if len(run) >= ACCEPT_MINUTES else "short of"
+            text = (f"price crossed {side} {name} {minutes_ago(scene.now, bar_time(run[0]))} and has stayed {side} it for "
+                    f"{plural(len(run), 'finished minute')}, {accepted} the {ACCEPT_MINUTES}-minute acceptance time; {where}")
         ls.put("levels.prior_day", ruled(anchor, text))
         return
     pokes = [(b, float(b["high"]) > hi) for b in scene.bars if float(b["high"]) > hi or float(b["low"]) < lo]

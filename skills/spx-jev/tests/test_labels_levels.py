@@ -75,15 +75,25 @@ def test_the_open_waits_for_the_0934_bar_and_for_yesterday(scene_factory):
 def test_price_beyond_yesterdays_high_is_accepted_after_20_minutes(scene_factory):
     closes = [7700.0] * 30 + [7715.0] * 60                                                      # closes above from the 10:00 bar
     got, _, _ = labels(scene(scene_factory, at(10, 40), closes))
-    assert got["levels.prior_day"] == ("price crossed above yesterday's high 40 minutes ago and has spent 40 of those minutes above it, "
+    assert got["levels.prior_day"] == ("price crossed above yesterday's high 40 minutes ago and has stayed above it for 40 finished minutes, "
                                        "at or past the 20-minute acceptance time; it now sits 0.06 sigma above it, beyond the 0.05 sigma reach")
     got, _, _ = labels(scene(scene_factory, at(10, ACCEPT_MINUTES), closes))
-    assert "has spent 20 of those minutes above it, at or past the 20-minute acceptance time" in got["levels.prior_day"]
+    assert "has stayed above it for 20 finished minutes, at or past the 20-minute acceptance time" in got["levels.prior_day"]
     got, _, _ = labels(scene(scene_factory, at(10, ACCEPT_MINUTES - 1, ss=59), closes))        # the 10:19 bar has not finished
-    assert "has spent 19 of those minutes above it, short of the 20-minute acceptance time" in got["levels.prior_day"]
+    assert "has stayed above it for 19 finished minutes, short of the 20-minute acceptance time" in got["levels.prior_day"]
     got, _, _ = labels(scene(scene_factory, at(10, 0, ss=30), [7708.0] * 40, spot=7711.0))
     assert got["levels.prior_day"] == ("price is above yesterday's high now and no finished minute has closed above it yet; it now sits "
                                        "0.01 sigma above it, within the 0.05 sigma reach")
+
+
+def test_acceptance_counts_only_the_current_stretch_beyond_yesterdays_high(scene_factory):
+    rebroke = [7700.0] * 30 + [7715.0] * 25 + [7700.0] * 150 + [7712.0] * 5                      # above 10:00-10:24, again from 12:55
+    got, _, _ = labels(scene(scene_factory, at(12, 57), rebroke))
+    assert got["levels.prior_day"] == ("price crossed above yesterday's high 2 minutes ago and has stayed above it for 2 finished minutes, "
+                                       "short of the 20-minute acceptance time; it now sits 0.03 sigma above it, within the 0.05 sigma reach")
+    got, _, _ = labels(scene(scene_factory, at(12, 55), rebroke, spot=7711.0))                   # the 12:54 bar closed back inside
+    assert got["levels.prior_day"].startswith("price is above yesterday's high now and no finished minute has closed above it since "
+                                              "price was last back inside;")
 
 
 def test_price_inside_yesterdays_range_back_near_or_away(scene_factory):
