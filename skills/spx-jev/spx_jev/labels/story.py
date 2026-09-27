@@ -205,7 +205,7 @@ class NightSoFar:
         """The leg's stretches in words, saying when a missing price told two together."""
         words = [STRETCH_WORDS[n] if self.report or n not in REPORT_STRETCHES else f"{s:%H:%M}-{e:%H:%M}"
                  for n, s, e in story.edges(self.day, self.release) if n in leg.names]
-        return listed(words) + (" together, bars missing" if len(words) > 1 else "")
+        return listed(words) + (" (told together, bars missing)" if len(words) > 1 else "")
 
 
 def _read_night(scene: Scene) -> tuple[NightSoFar | None, str]:

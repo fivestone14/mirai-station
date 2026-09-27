@@ -225,7 +225,7 @@ def test_a_night_whose_net_is_quiet_sleeps_the_legs_question(premarket_scene_fac
 
 def test_a_missing_edge_price_tells_two_stretches_together_and_says_so(premarket_scene_factory, nights_dir):
     ls = read(premarket_scene_factory, nights_dir, {"asia": 1.0, "europe_morning": 0.6}, skip=(time(2, 15), time(2, 45)))
-    assert "; Asia and Europe's open together, bars missing up 1.00 sigma; Europe's morning up 0.60;" in said(ls, "premarket.legs")
+    assert "; Asia and Europe's open (told together, bars missing) up 1.00 sigma; Europe's morning up 0.60;" in said(ls, "premarket.legs")
     assert verdict(ls, "premarket.legs") == "one_way"
 
 
