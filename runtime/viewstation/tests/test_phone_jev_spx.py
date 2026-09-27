@@ -343,3 +343,21 @@ def test_both_jev_pages_carry_one_switch_that_remembers_the_choice():
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
         assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/", "/m/thread.html"]
         assert nav.count('<span class="tab on">') == 1 and "<s>JEV <em" in nav
+
+
+# ---- recovering from a failed fetch
+
+
+def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_the_same():
+    """A failed fetch draws the last card with 'fetch failed'; the next good fetch of the same card draws it again
+    so the pill goes, and after a station error the error text in the header goes the same way."""
+    js = ("var last = null, lastOk = true, drawn = [], SUB = {dataset: {}, cls: {}, classList: {"
+          "contains: function(k){ return !!SUB.cls[k]; }, add: function(k){ SUB.cls[k] = true; }, remove: function(k){ delete SUB.cls[k]; }}};"
+          "function $(id){ return SUB; } function ages(){ drawn.push('ages'); } function tick(){}"
+          "function draw(c, ok){ lastOk = ok; drawn.push(ok); if(ok) SUB.classList.remove('err'); }"
+          "function setTimeout(){}" + _fn("arrived") +
+          "var c = {generated_at: 'g1', row_ts: 'r1'};"
+          "arrived(c); arrived(c); draw(last, false); arrived(c); arrived(c);"
+          "SUB.classList.add('err'); arrived(c);"
+          "console.log(JSON.stringify(drawn));")
+    assert _run(js, {}) == [True, "ages", False, True, "ages", True]

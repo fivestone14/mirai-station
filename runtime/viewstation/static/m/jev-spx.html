@@ -582,7 +582,8 @@ details .q{margin-top:8px}
     if(laneLeads(tape, Date.now(), marketDay()) !== shownLeads){ draw(last, lastOk); return; }
     tickers.forEach(function(f){ f(); });
   }
-  // The same card again only moves the ages, so a reader mid-scroll is never handed a rebuilt page.
+  // The same card again only moves the ages, so a reader mid-scroll is never handed a rebuilt page; after a
+  // failed fetch or a station error it is drawn again once, so the failure's words leave with the failure.
   function ages(c){
     var m = mins(c.row_ts), old = m != null && m > STALE_MIN;
     var sub = $('sub'); if(sub && !sub.classList.contains('err')) sub.textContent = subLine(c, m);
@@ -592,8 +593,9 @@ details .q{margin-top:8px}
   function arrived(c){
     var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
     last = c;
-    if(same){ ages(c); tick(); return; }
+    if(same && lastOk && !$('sub').classList.contains('err')){ ages(c); tick(); return; }
     draw(c, true);
+    if(same) return;
     var sub = $('sub'); if(sub && sub.dataset.seen){ sub.classList.add('fresh'); setTimeout(function(){ sub.classList.remove('fresh'); }, 2500); }
     if(sub) sub.dataset.seen = '1';
   }
