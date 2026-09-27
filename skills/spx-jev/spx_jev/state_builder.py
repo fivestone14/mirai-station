@@ -329,6 +329,19 @@ class Scene:
         return (self.session_close - self.now).total_seconds() / 60.0
 
 
+def prior_sessions(state_dir: Path, day: str) -> dict[str, Any]:
+    """What a moment of ``day`` knows of the sessions before it, as the Scene's fields: the prior full
+    sessions' bars (prior_bar_days), the trading day before (previous_session), the market around SPX on
+    them, and each prior session's morning ruler."""
+    prior = prior_bar_days(state_dir, day)
+    prior_day = previous_session(state_dir, day, prior)
+    prior_markets = {d: m for d in [*prior, *(prior_day[:1] if prior_day and prior_day[0] not in prior else [])]
+                     if (m := load_market_context(state_dir, d)) is not None}
+    prior_rulers = {d: morning_ruler(first_row(state_dir, d), vix_at_settled_open(prior_markets.get(d), d), settled_open(prior[d]))
+                    for d in prior}
+    return {"prior_bars": prior, "prior_day": prior_day, "prior_markets": prior_markets, "prior_rulers": prior_rulers}
+
+
 # A read on the bar clock takes its time and spot from the bar and its sigma pinned from the day's first
 # row; everything else the labeller reads (the walls, vwap, the options book) comes from the newest row.
 BAR_CLOCK_OWN_KEYS = ("ts", "spot", "sigma")
@@ -390,16 +403,10 @@ def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None
     if not is_num(sigma) or sigma <= 0:
         raise ValueError(f"row at {row['ts']} carries no sigma ruler")
     bars = [b for b in all_bars if parse_ts(b["ts"]) + timedelta(minutes=1) <= now]
-    prior = prior_bar_days(state_dir, day)
-    prior_day = previous_session(state_dir, day, prior)
-    prior_markets = {d: m for d in [*prior, *(prior_day[:1] if prior_day and prior_day[0] not in prior else [])]
-                     if (m := load_market_context(state_dir, d)) is not None}
-    prior_rulers = {d: morning_ruler(first_row(state_dir, d), vix_at_settled_open(prior_markets.get(d), d), settled_open(prior[d]))
-                    for d in prior}
-    scene = Scene(row=row, rows_today=rows, bars=bars, prior_bars=prior, now=now, sigma=float(sigma),
-                  market=load_market_context(state_dir, day), options_tape=load_options_tape(state_dir, [day, *prior]),
-                  bar_clock=bar_clock, horizon=horizon, prior_rulers=prior_rulers, prior_markets=prior_markets, prior_day=prior_day,
-                  state_dir=state_dir)
+    prior = prior_sessions(state_dir, day)
+    scene = Scene(row=row, rows_today=rows, bars=bars, now=now, sigma=float(sigma), market=load_market_context(state_dir, day),
+                  options_tape=load_options_tape(state_dir, [day, *prior["prior_bars"]]), bar_clock=bar_clock, horizon=horizon,
+                  state_dir=state_dir, **prior)
     if bar_clock:
         scene.unit = tape_unit(scene)
     return scene
