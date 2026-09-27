@@ -179,13 +179,6 @@ def _range_vs_normal(scene: Scene, tonight: Tonight, pending: str, where: str, l
            figure={"kind": "rank", "value": round(s, 3), "cut": rank.band, "verdict": verdict})
 
 
-def _reports(day: date) -> list[events.Event]:
-    """The calendar's reports before the open that set the report window (the rows story.release_minute reads),
-    weekly claims included."""
-    return [e for e in events.on_day(day)
-            if e.tier == events.PRE_OPEN and story.EUROPE_MORNING_END < e.start.time() < story.REPORT_WINDOW_END]
-
-
 def _stretch_words(s: story.Stretch) -> str:
     return f"{STRETCH_WORDS[s.name]} ({_hm(s.start)} to {_hm(s.end)})"
 
@@ -237,7 +230,7 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
         return
     best = max(ranked, key=lambda r: (r.rank.share, abs(r.move.pct)))
     verdict = ORIGINS[best.stretch.name]
-    if verdict == "made_at_release" and not _reports(tonight.day):
+    if verdict == "made_at_release" and not story.releases(tonight.day):
         verdict = "made_late"
     s = tonight.sigma(best.move.pct)
     ls.put(label,
@@ -264,7 +257,7 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
     if uncovered:
         omit(uncovered)
         return
-    reports = _reports(tonight.day)
+    reports = story.releases(tonight.day)
     if not reports:
         omit("no report before the open on the calendar today")
         return
