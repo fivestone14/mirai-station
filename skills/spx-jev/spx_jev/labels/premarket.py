@@ -309,11 +309,20 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
     ls.wake(gate)
 
 
+def _through_zero(pairs: list[tuple[str, float, float]]) -> float:
+    """Bonds' move per S&P futures' move over ``pairs`` of (day, S&P futures' move, bonds' move), fitted through
+    zero; 0.0 when S&P futures never moved."""
+    square = sum(e * e for _, e, _ in pairs)
+    return sum(e * z for _, e, z in pairs) / square if square else 0.0
+
+
 def _bond_gap(scene: Scene, tonight: Tonight, es: Move | None, es_why: str, ls: LabelSet) -> None:
     """Where ten-year Treasury futures stand against their prior close, then the S&P futures' move that points
     to by a fit on the last nights (bonds' move per S&P futures' move, through zero, so the fit sets the
     sign), less the move S&P futures made: ranked against the same reading on those nights, the top third
-    is bonds ahead toward stocks up, the bottom third toward stocks down."""
+    is bonds ahead toward stocks up, the bottom third toward stocks down. Sleeps when the fit shows no
+    steady link: a sign that one night decides, as near a fit of zero, would turn the answer on noise and
+    blow its size up."""
     label, gate = "overnight.bond_gap", "overnight_bonds_vs_gap"
 
     def omit(reason: str) -> None:
@@ -335,10 +344,10 @@ def _bond_gap(scene: Scene, tonight: Tonight, es: Move | None, es_why: str, ls: 
         omit(f"the bonds' fit needs {OVERNIGHT_RANK_MIN_NIGHTS} of the last nights with {ES} and {ZN} both measured on one "
              f"contract, has {len(pairs)}")
         return
-    square = sum(e * e for _, e, _ in pairs)
-    beta = sum(e * z for _, e, z in pairs) / square if square else 0.0
-    if not beta:
-        omit("bonds and S&P futures showed no link over the last nights")
+    beta = _through_zero(pairs)
+    if not beta or any(_through_zero(pairs[:k] + pairs[k + 1:]) * beta <= 0 for k in range(len(pairs))):
+        omit(f"bonds and S&P futures showed no steady link over the last {len(pairs)} nights: "
+             "leaving out a single night turns the fit's sign")
         return
     ahead = zn.pct / beta - es.pct
     rank, _ = rank_night(ahead, [Night(d, z / beta - e) for d, e, z in pairs])

@@ -305,6 +305,15 @@ def test_the_fits_sign_sets_which_way_bonds_point(tmp_path, read):
     assert "per 1% in S&P futures, the other way" in ls.state["overnight"]["bond_gap"]
 
 
+def test_bonds_unlinked_to_the_futures_sleep_rather_than_point_them_on_noise(tmp_path, read):
+    unlinked = [0.2 * (-1) ** (k // 2) for k in range(20)]     # each night's sign against the futures' alternates in pairs
+    _save_prior(tmp_path, _spread(), unlinked)
+    ls = read([(_at(9, 0), 0.5)], bond_knots=[(_at(9, 0), 0.1)])
+    assert ls.gates["overnight_bonds_vs_gap"] == ("bonds and S&P futures showed no steady link over the last 19 nights: "
+                                                  "leaving out a single night turns the fit's sign")
+    assert "overnight.bond_gap" in ls.omitted
+
+
 def test_bonds_sleep_without_enough_nights_or_a_bond_price(tmp_path, read):
     _save_prior(tmp_path, _spread())
     _save_prior(tmp_path, _spread(5), _bonds(0.3)[-5:])
