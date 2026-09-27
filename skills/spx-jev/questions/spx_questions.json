@@ -4712,7 +4712,7 @@
   {
    "id": "premarket_overnight",
    "lane": "premarket",
-   "purpose": "Pre-market lane (built after Monday; all dark until the lane and the 09:26 overnight job exist), one 09:28 read: the overnight futures move in yesterday's sigma, the overnight session's width, and when the gap was made.",
+   "purpose": "Pre-market lane (all dark until the lane exists; the overnight store it reads is saved at 09:26), one 09:28 read: the overnight futures move in yesterday's sigma, the overnight session's width, and when the gap was made.",
    "reads": [
     "context",
     "overnight.es_move",
@@ -4737,7 +4737,7 @@
      "horizon": {
       "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
      },
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "code_answer": true,
      "ask": "Which way and how far did futures move overnight?",
      "instructions": "Read `overnight.es_move`. Which way did futures move from yesterday's close to now, and how large was the move against the recent nights' moves to the same time?",
@@ -4784,7 +4784,7 @@
      "horizon": {
       "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
      },
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "code_answer": true,
      "ask": "How wide was last night's futures session?",
      "instructions": "Read `overnight.range_vs_normal`. How wide was last night's futures session compared with recent nights?",
@@ -4825,7 +4825,7 @@
      "horizon": {
       "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
      },
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "code_answer": true,
      "ask": "When was most of the move from yesterday's close made?",
      "instructions": "Read `overnight.gap_origin`. When was most of the move from yesterday's close to now made?",
@@ -4884,7 +4884,7 @@
      "horizon": {
       "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
      },
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "code_answer": true,
      "ask": "What did futures do after this morning's early report?",
      "instructions": "Read `overnight.release_reaction`. After this morning's early report, what did futures do between the first reaction and now? Check in order: shrugged, extended, faded, held.",
@@ -4928,7 +4928,7 @@
      "horizon": {
       "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
      },
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "sleep_when": "bonds and bitcoin in opposite outer thirds, or data missing",
      "code_answer": true,
      "ask": "Did Treasuries and bitcoin move further than today's gap overnight?",

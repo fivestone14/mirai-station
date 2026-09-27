@@ -5702,7 +5702,7 @@
       {
        "name": "overnight.range",
        "example": "last night's futures range spanned 0.48 sigma, from 0.21 sigma below yesterday's close to 0.27 above",
-       "computed_how": "/ESZ26 bars 16:00 prior to 09:25 (need_extended_hours_data=True), measured vs ES's own 16:00 price so the basis cancels; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+       "computed_how": "/ESZ26 bars 16:00 prior to 09:25 (need_extended_hours_data=True), measured vs ES's own 16:00 price so the basis cancels; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26 (roll by date) saved by a new 09:26 job to state/spx_jev/overnight/{day}.json; backfill from 08-17",
        "availability": "dark",
        "label_built": false,
@@ -5711,7 +5711,7 @@
       {
        "name": "overnight.price_vs_range",
        "example": "price is inside the overnight range now, 0.08 sigma below its high, within the 0.15 sigma near distance, after breaking above it at the open; it has not broken the low",
-       "computed_how": "spot (basis-adjusted) vs overnight high/low; earlier breaks today including the open; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+       "computed_how": "spot (basis-adjusted) vs overnight high/low; earlier breaks today including the open; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "same",
        "availability": "dark",
        "label_built": false,
@@ -7985,7 +7985,7 @@
   {
    "id": "premarket_overnight",
    "lane": "premarket",
-   "purpose": "Pre-market lane (built after Monday; all dark until the lane and the 09:26 overnight job exist), one 09:28 read: the overnight futures move in yesterday's sigma, the overnight session's width, and when the gap was made.",
+   "purpose": "Pre-market lane (all dark until the lane exists; the overnight store it reads is saved at 09:26), one 09:28 read: the overnight futures move in yesterday's sigma, the overnight session's width, and when the gap was made.",
    "reads": [
     "context",
     "overnight.es_move",
@@ -8005,7 +8005,7 @@
       "premarket"
      ],
      "status": "dark",
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "ask": "Which way and how far did futures move overnight?",
      "instructions": "Read `overnight.es_move`. Which way did futures move from yesterday's close to now, and how large was the move against the recent nights' moves to the same time?",
      "options": [
@@ -8041,7 +8041,7 @@
       {
        "name": "overnight.es_move",
        "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, a move larger than 15 of the last 20 nights' moves to this time, top third",
-       "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+       "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26 extended hours",
        "availability": "dark",
        "label_built": false,
@@ -8049,7 +8049,7 @@
       }
      ],
      "why": "A signed pre-open read of the overnight vote: it leans slightly against the move for the first half hour and with it from 10:30; code learns both signs by clock bucket.",
-     "evidence": "Gap vs 09:35-10:05 corr -0.125, vs 10:05-close +0.428; fills by straddle multiple under 0.5 13/14, 0.5-1 1/8, over 1 7/26. Half a straddle is about the 0.15 sigma gap rule (sigma_anchor about 3.4x em_open). Dark on Monday: premarket lane and overnight job not built.",
+     "evidence": "Gap vs 09:35-10:05 corr -0.125, vs 10:05-close +0.428; fills by straddle multiple under 0.5 13/14, 0.5-1 1/8, over 1 7/26. Half a straddle is about the 0.15 sigma gap rule (sigma_anchor about 3.4x em_open). Dark: premarket lane not built.",
      "origin": "new (review: premarket) (bands ranked against the prior nights' moves)",
      "code_answer": true,
      "sources": [
@@ -8075,7 +8075,7 @@
       "premarket"
      ],
      "status": "dark",
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "ask": "How wide was last night's futures session?",
      "instructions": "Read `overnight.range_vs_normal`. How wide was last night's futures session compared with recent nights?",
      "options": [
@@ -8101,7 +8101,7 @@
       {
        "name": "overnight.range_vs_normal",
        "example": "last night's futures range was 0.48 sigma, 1.6 times the 0.30 sigma median of the last 20 nights, a wide night",
-       "computed_how": "same file; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+       "computed_how": "same file; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26",
        "availability": "dark",
        "label_built": false,
@@ -8109,7 +8109,7 @@
       }
      ],
      "why": "Volatility clusters overnight into the first hour, and futures pressing an edge at 09:28 set up an open outside the range: one read gives the 09:35 ten-minute call a size prior before any SPX bars exist.",
-     "evidence": "Overnight range improves same-day volatility forecasts (Ahoniemi & Lanne 2013). Not replayable until /ESZ26 overnight bars are saved; about 28 sessions backfillable from 08-17. Dark on Monday: premarket lane and overnight job not built.",
+     "evidence": "Overnight range improves same-day volatility forecasts (Ahoniemi & Lanne 2013). Replayable from the overnight store: 1-minute /ES nights from 08-17, 5-minute from 03-05 (142 nights). Dark: premarket lane not built.",
      "origin": "merge: round1:overnight_range_vs_normal + the 09:28 half of round1:open_in_overnight_range",
      "code_answer": true,
      "sources": [
@@ -8135,7 +8135,7 @@
       "premarket"
      ],
      "status": "dark",
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "ask": "When was most of the move from yesterday's close made?",
      "instructions": "Read `overnight.gap_origin`. When was most of the move from yesterday's close to now made?",
      "options": [
@@ -8171,7 +8171,7 @@
       {
        "name": "overnight.gap_origin",
        "example": "of this morning's 0.44 sigma gap, 70% came in the 08:30-08:45 window after the jobs report, past the 50% origin share; 20% came overnight and 10% in the last hour",
-       "computed_how": "ES path split by window, measured vs ES's 16:00 price; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+       "computed_how": "ES path split by window, measured vs ES's 16:00 price; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26 + calendar pre_open rows",
        "availability": "dark",
        "label_built": false,
@@ -8179,7 +8179,7 @@
       }
      ],
      "why": "Moved to premarket and asked once: a day constant asked all day repeats one answer. Its release branch could never fire until the calendar carried pre-open rows.",
-     "evidence": "Untested (no ES bars on disk). Release-day gaps did not reverse more locally (6/11 in 30 min vs 20/36), so the weights must find the sign; Thursday (weekly claims) gaps reversed 4/10 vs 22/37. Dark on Monday: premarket lane and overnight job not built.",
+     "evidence": "Untested (no ES bars on disk). Release-day gaps did not reverse more locally (6/11 in 30 min vs 20/36), so the weights must find the sign; Thursday (weekly claims) gaps reversed 4/10 vs 22/37. Dark: premarket lane not built.",
      "origin": "round1:gap_origin (moved to premarket; pre_open calendar rows; shadow -> live)",
      "code_answer": true,
      "schedule": {
@@ -8214,7 +8214,7 @@
       "premarket"
      ],
      "status": "dark",
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "ask": "What did futures do after this morning's early report?",
      "instructions": "Read `overnight.release_reaction`. After this morning's early report, what did futures do between the first reaction and now? Check in order: shrugged, extended, faded, held.",
      "options": [
@@ -8245,7 +8245,7 @@
       {
        "name": "overnight.release_reaction",
        "example": "the 08:30 jobs report moved futures up 0.22 sigma in 15 minutes, past the 0.10 small-reaction line; by 09:25 they had given back 60% of it, past the half line",
-       "computed_how": "/ES 08:29 to 08:45, then to 09:25; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+       "computed_how": "/ES 08:29 to 08:45, then to 09:25; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26 + calendar pre_open rows",
        "availability": "dark",
        "label_built": false,
@@ -8253,7 +8253,7 @@
       }
      ],
      "why": "News at 08:30 is priced within a minute, so its direction is in the gap; what carries into the open is whether the market kept trading through it. The size of the reaction rides in the label for the size book.",
-     "evidence": "Only 6 release days in 59 (smaller gaps 0.26 vs 0.36 sigma, quieter first 30 minutes 0.22 vs 0.27); reaction path untested (ES bars from 08-17). Futures absorb 08:30 news in under a minute (J. Futures Markets 2014). Window: PCE 09-30, jobs 10-02, CPI 10-14, PPI 10-15, weekly claims. Dark on Monday: premarket lane and overnight job not built.",
+     "evidence": "Only 6 release days in 59 (smaller gaps 0.26 vs 0.36 sigma, quieter first 30 minutes 0.22 vs 0.27); reaction path untested (ES bars from 08-17). Futures absorb 08:30 news in under a minute (J. Futures Markets 2014). Window: PCE 09-30, jobs 10-02, CPI 10-14, PPI 10-15, weekly claims. Dark: premarket lane not built.",
      "origin": "new (reviews: premarket); merges pm_release_morning",
      "code_answer": true,
      "sources": [
@@ -8279,7 +8279,7 @@
       "premarket"
      ],
      "status": "dark",
-     "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
+     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "ask": "Did Treasuries and bitcoin move further than today's gap overnight?",
      "instructions": "Read `overnight.bond_gap`. Since yesterday's close, did Treasuries and bitcoin move further toward stocks-up than today's gap, further toward stocks-down, or in line?",
      "options": [
@@ -8305,15 +8305,15 @@
       {
        "name": "overnight.bond_gap",
        "example": "from yesterday's 16:00 close to 09:29, ten-year Treasury futures rose further than today's 0.44 sigma gap up would match: ahead in the stocks-up direction, top third; overnight bitcoin futures fell 1.8%, bottom third",
-       "computed_how": "/ZNZ26 and /BTCV26 overnight moves minus beta x gap; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
-       "source": "Schwab /ZNZ26, /BTCV26 extended hours (neither probed nor in SYMBOLS)",
+       "computed_how": "/ZN and bitcoin overnight moves minus beta x gap, each on one contract (rolls.same_contract); bitcoin is /MBT, the same price as /BTC and far busier at night; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
+       "source": "Schwab /ZN and /MBT, the overnight store (state/spx_jev/overnight/)",
        "availability": "dark",
        "label_built": false,
        "needs_engine_edit": false
       }
      ],
      "why": "Overnight bonds reprice on news before cash stocks open; a gap that bonds did not match tends to trade back toward the bonds' side in the first hour. Bitcoin, open all weekend, rides along as a Monday hint.",
-     "evidence": "31 sessions: /ZN overnight residual vs first hour +0.43, open-to-close +0.39 (about 2.4 SE, small n). Bitcoin +0.15/+0.24 (noise level); a second reviewer: bitcoin overnight vs 09:35-10:30 +0.17 (n=28), not significant. Dark on Monday: premarket lane and overnight job not built.",
+     "evidence": "31 sessions: /ZN overnight residual vs first hour +0.43, open-to-close +0.39 (about 2.4 SE, small n). Bitcoin +0.15/+0.24 (noise level); a second reviewer: bitcoin overnight vs 09:35-10:30 +0.17 (n=28), not significant. Dark: premarket lane not built.",
      "origin": "new (review: cross-asset)",
      "code_answer": true,
      "sleep_when": "bonds and bitcoin in opposite outer thirds, or data missing",
@@ -9587,8 +9587,8 @@
   {
    "name": "overnight.bond_gap",
    "example": "from yesterday's 16:00 close to 09:29, ten-year Treasury futures rose further than today's 0.44 sigma gap up would match: ahead in the stocks-up direction, top third; overnight bitcoin futures fell 1.8%, bottom third",
-   "computed_how": "/ZNZ26 and /BTCV26 overnight moves minus beta x gap; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
-   "source": "Schwab /ZNZ26, /BTCV26 extended hours (neither probed nor in SYMBOLS)",
+   "computed_how": "/ZN and bitcoin overnight moves minus beta x gap, each on one contract (rolls.same_contract); bitcoin is /MBT, the same price as /BTC and far busier at night; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
+   "source": "Schwab /ZN and /MBT, the overnight store (state/spx_jev/overnight/)",
    "availability": "dark",
    "label_built": false,
    "needs_engine_edit": false
@@ -9596,7 +9596,7 @@
   {
    "name": "overnight.es_move",
    "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, a move larger than 15 of the last 20 nights' moves to this time, top third",
-   "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+   "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26 extended hours",
    "availability": "dark",
    "label_built": false,
@@ -9605,7 +9605,7 @@
   {
    "name": "overnight.gap_origin",
    "example": "of this morning's 0.44 sigma gap, 70% came in the 08:30-08:45 window after the jobs report, past the 50% origin share; 20% came overnight and 10% in the last hour",
-   "computed_how": "ES path split by window, measured vs ES's 16:00 price; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+   "computed_how": "ES path split by window, measured vs ES's 16:00 price; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26 + calendar pre_open rows",
    "availability": "dark",
    "label_built": false,
@@ -9614,7 +9614,7 @@
   {
    "name": "overnight.price_vs_range",
    "example": "price is inside the overnight range now, 0.08 sigma below its high, within the 0.15 sigma near distance, after breaking above it at the open; it has not broken the low",
-   "computed_how": "spot (basis-adjusted) vs overnight high/low; earlier breaks today including the open; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+   "computed_how": "spot (basis-adjusted) vs overnight high/low; earlier breaks today including the open; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "same",
    "availability": "dark",
    "label_built": false,
@@ -9623,7 +9623,7 @@
   {
    "name": "overnight.range",
    "example": "last night's futures range spanned 0.48 sigma, from 0.21 sigma below yesterday's close to 0.27 above",
-   "computed_how": "/ESZ26 bars 16:00 prior to 09:25 (need_extended_hours_data=True), measured vs ES's own 16:00 price so the basis cancels; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+   "computed_how": "/ESZ26 bars 16:00 prior to 09:25 (need_extended_hours_data=True), measured vs ES's own 16:00 price so the basis cancels; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26 (roll by date) saved by a new 09:26 job to state/spx_jev/overnight/{day}.json; backfill from 08-17",
    "availability": "dark",
    "label_built": false,
@@ -9632,7 +9632,7 @@
   {
    "name": "overnight.range_vs_normal",
    "example": "last night's futures range was 0.48 sigma, 1.6 times the 0.30 sigma median of the last 20 nights, a wide night",
-   "computed_how": "same file; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+   "computed_how": "same file; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26",
    "availability": "dark",
    "label_built": false,
@@ -9641,7 +9641,7 @@
   {
    "name": "overnight.release_reaction",
    "example": "the 08:30 jobs report moved futures up 0.22 sigma in 15 minutes, past the 0.10 small-reaction line; by 09:25 they had given back 60% of it, past the half line",
-   "computed_how": "/ES 08:29 to 08:45, then to 09:25; DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+   "computed_how": "/ES 08:29 to 08:45, then to 09:25; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26 + calendar pre_open rows",
    "availability": "dark",
    "label_built": false,

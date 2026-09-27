@@ -422,7 +422,7 @@ def test_the_settled_open_crossings_and_the_contested_rule(scene_factory):
 
 # ---- the overnight labels
 
-def test_the_overnight_bonds_question_sleeps_while_its_feed_is_dark(scene_factory):
+def test_the_overnight_bonds_question_sleeps_while_its_lane_is_dark(scene_factory):
     _, omitted, gates = labels(scene(scene_factory, at(10, 0), opening(7735.2, [7735.0] * 30)))
-    assert gates["overnight_bonds_vs_gap"].startswith("data missing: no overnight feed for /ZNZ26 or /BTCV26")
+    assert gates["overnight_bonds_vs_gap"].startswith("data missing: no premarket lane: /ZN and bitcoin (/MBT)")
     assert not any(path.startswith("overnight.") for path in omitted)                          # the registry omits them as dark

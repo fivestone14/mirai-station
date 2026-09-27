@@ -6,7 +6,7 @@ anchor says so. The gap is the settled open (the 09:34 close) against the row's 
 size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut; whether
 price has moved away from the settled open is judged in today's tape unit (rulers.ruler), not a fixed cut
 either. Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``;
-the overnight labels wait for a feed (DARK).
+the overnight labels wait for the premarket lane (DARK).
 """
 from __future__ import annotations
 
@@ -29,10 +29,11 @@ LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_dist
           "overnight.bond_gap", "overnight.es_move", "overnight.gap_origin", "overnight.price_vs_range", "overnight.range",
           "overnight.range_vs_normal", "overnight.release_reaction")
 GATES = ("gap_fill_next_hour", "overnight_bonds_vs_gap")
-NO_OVERNIGHT = ("no overnight futures feed: nothing saves /ESZ26's extended-hours bars (no premarket lane or 09:26 job, "
-                "and schwab.minute_bars asks for regular hours only)")
+NO_OVERNIGHT = ("no premarket lane: the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, "
+                "but nothing reads them before 09:30")
 DARK = {
-    "overnight.bond_gap": "no overnight feed for /ZNZ26 or /BTCV26: neither is probed or in market_context.SYMBOLS, and nothing saves extended hours",
+    "overnight.bond_gap": ("no premarket lane: /ZN and bitcoin (/MBT) are in the overnight store, but nothing reads them before "
+                           "09:30, and their 20-night beta against the gap is not built"),
     "overnight.es_move": NO_OVERNIGHT,
     "overnight.gap_origin": NO_OVERNIGHT,
     "overnight.price_vs_range": NO_OVERNIGHT,
