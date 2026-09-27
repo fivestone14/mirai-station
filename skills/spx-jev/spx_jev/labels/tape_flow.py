@@ -4,11 +4,13 @@ SPY's own tape and quote (volume.*, liquidity.*).
 The 0DTE tape labels read the lob-flow collector's raw tape, ``state/lob_flow/raw/{day}/tape.jsonl``
 (``tape.jsonl.gz`` once the collector archives the day): one line per 0DTE SPXW trade with the quote it
 printed into. Lines land out of time order, so each trade is placed by its own ``ts_ms``, never by where it
-sits in the file, and a minute counts once it has finished. A trade's side is told from where it printed
-inside that quote: above the mid it was bought, below it sold. A multi-leg trade (an OPRA multi-leg
-condition) is part of a package, so it is no single trade and has no side of its own; its premium still
-counts as premium traded. Reading 20 prior sessions' tapes (about a million lines each) takes some 15 seconds
-a read: only the lines inside the window asked for are parsed.
+sits in the file, and a minute counts once it has finished. The collector only appends, so the file is read up
+to its first line stamped after the read: a trade journaled late (a catch-up pull, or the first 5 minutes of a
+strike newly watched) sits past that line and was not on file yet, for a replay of today and the prior sessions
+alike. A trade's side is told from where it printed inside that quote: above the mid it was bought, below it
+sold. A multi-leg trade (an OPRA multi-leg condition) is part of a package, so it is no single trade and has no
+side of its own; its premium still counts as premium traded. Reading 20 prior sessions' tapes (about a million
+lines each) takes some 15 seconds a read: only the lines inside the window asked for are parsed.
 
 The other sources: the collector's quote sweeps (``sweeps.jsonl`` beside the tape) and its record
 (``state/lob_flow/agg/{day}.jsonl``: the refill test and SPY's quote), the diary's same-day volume by strike,
@@ -282,15 +284,16 @@ class TapeMinutes:
 def _tape_labels(scene: Scene, ls: LabelSet) -> None:
     """The labels over the 0DTE tape's last 30 finished minutes, each window ranked against the same minutes on
     the prior sessions whose tape is on file."""
-    end = minute_of_day(scene.now.astimezone(ET))
+    now_et = scene.now.astimezone(ET)
+    clock, end = now_et.time(), minute_of_day(now_et)
     start = end - WINDOW_30_MIN
-    today, why = _today_tape(scene, start, end)
+    today, why = _today_tape(scene, start, end, clock)
     if today is None:
         for path in TAPE_LABELS:
             ls.omit(path, why)
         ls.sleep("opening_premium_burst", why)
         return
-    prior = [m for d in scene.prior_bars if (m := tape_minutes(scene.state_dir, d, start, end)) is not None]
+    prior = [m for d in scene.prior_bars if (m := tape_minutes(scene.state_dir, d, start, end, clock)) is not None]
     opened = minute_of_day(scene.session_open.astimezone(ET))
     _big_prints_10(today, opened, end, ls)
     _flow_lean_30(today, prior, opened, end, ls)
@@ -298,11 +301,11 @@ def _tape_labels(scene: Scene, ls: LabelSet) -> None:
     _premium_pace_30(today, prior, opened, end, ls)
 
 
-def _today_tape(scene: Scene, start: int, end: int) -> tuple[TapeMinutes | None, str]:
+def _today_tape(scene: Scene, start: int, end: int, clock: time) -> tuple[TapeMinutes | None, str]:
     """Today's tape over [start, end), or None and why: no state folder, no file, or a collector that stopped."""
     if scene.state_dir is None:
         return None, "no state folder to read the lob-flow collector's 0DTE tape from"
-    today = tape_minutes(scene.state_dir, scene.day, start, end)
+    today = tape_minutes(scene.state_dir, scene.day, start, end, clock)
     if today is None:
         return None, f"no lob-flow tape for {scene.day} under {TAPE_RAW_SUBDIR}: the collector did not run"
     if not any(m >= end - OPTIONS_TAPE_MAX_AGE_MIN for m in today.flows):
@@ -426,20 +429,22 @@ def tape_path(state_dir: Path, day: str) -> Path | None:
     return next((p for p in (folder / "tape.jsonl", folder / "tape.jsonl.gz") if p.exists()), None)
 
 
-def tape_minutes(state_dir: Path, day: str, start: int, end: int) -> TapeMinutes | None:
-    """A day's 0DTE tape summed by the minute a trade printed in, for the minutes of day in [start, end); None
-    when the day has no tape file."""
+def tape_minutes(state_dir: Path, day: str, start: int, end: int, clock: time) -> TapeMinutes | None:
+    """A day's 0DTE tape as it was on file at ``clock`` market time, summed by the minute a trade printed in, for
+    the minutes of day in [start, end); None when the day has no tape file."""
     path = tape_path(state_dir, day)
     if path is None:
         return None
-    return _read_tape(str(path), path.stat().st_mtime_ns, day, start, end)
+    return _read_tape(str(path), path.stat().st_mtime_ns, day, start, end, clock)
 
 
 @lru_cache(maxsize=64)
-def _read_tape(path: str, mtime_ns: int, day: str, start: int, end: int) -> TapeMinutes:
+def _read_tape(path: str, mtime_ns: int, day: str, start: int, end: int, clock: time) -> TapeMinutes:
     """``mtime_ns`` keys the cache, so today's file, still being written, is read afresh. A day's tape is about a
-    million lines: every line's time is read from its start, and only the lines inside the window are parsed."""
+    million lines: every line's time is read from its start, and only the lines inside the window are parsed. The
+    first line stamped after ``clock`` was written after it, and so was every line past it."""
     midnight_ms = int(datetime.combine(date.fromisoformat(day), time(0), tzinfo=ET).timestamp() * 1000)
+    read_ms = int(datetime.combine(date.fromisoformat(day), clock, tzinfo=ET).timestamp() * 1000)
     flows: dict[int, TapeFlow] = {}
     opener = gzip.open if path.endswith(".gz") else open
     with opener(path, "rb") as f:
@@ -447,9 +452,12 @@ def _read_tape(path: str, mtime_ns: int, day: str, start: int, end: int) -> Tape
             if not line.startswith(TAPE_LINE_START):
                 continue
             try:
-                minute = (int(line[len(TAPE_LINE_START):line.index(b",")]) - midnight_ms) // 60_000
+                ts_ms = int(line[len(TAPE_LINE_START):line.index(b",")])
             except ValueError:
                 continue
+            if ts_ms > read_ms:
+                break
+            minute = (ts_ms - midnight_ms) // 60_000
             if not start <= minute < end:
                 continue
             try:

@@ -32,11 +32,13 @@ def every_minute(day: str, until: datetime, **kw) -> list[dict]:
     return out
 
 
-def write_tape(root: Path, day: str, lines: list[dict], packed: bool = False) -> None:
-    """The day's tape file, newest line first: the collector's lines land out of time order."""
+def write_tape(root: Path, day: str, lines: list[dict], packed: bool = False, late: list[dict] = ()) -> None:
+    """The day's tape file, minute by minute but newest line first within each minute, as the collector's lines land
+    out of time order; then the ``late`` lines, journaled after the rest."""
     folder = root / "lob_flow" / "raw" / day
     folder.mkdir(parents=True, exist_ok=True)
-    text = "".join(json.dumps(x) + "\n" for x in reversed(lines))
+    journaled = sorted(lines, key=lambda x: (x["ts_ms"] // 60_000, -x["ts_ms"])) + list(late)
+    text = "".join(json.dumps(x) + "\n" for x in journaled)
     text += '{"gap": true, "ts": "%sT11:00:00-04:00", "reason": "HTTPStatusError"}\n' % day
     if packed:
         with gzip.open(folder / "tape.jsonl.gz", "wt", encoding="utf-8") as f:
@@ -50,8 +52,9 @@ def lean_day(day: str, calls: int, puts: int, until: datetime) -> list[dict]:
     return every_minute(day, until, side="bought", size=calls) + every_minute(day, until, right="put", side="bought", size=puts)
 
 
-def tape_scene(scene_factory, root: Path, now: datetime, today: list[dict], prior: dict[str, list[dict]] | None = None):
-    write_tape(root, DAY, today)
+def tape_scene(scene_factory, root: Path, now: datetime, today: list[dict], prior: dict[str, list[dict]] | None = None,
+               late: list[dict] = ()):
+    write_tape(root, DAY, today, late=late)
     for k, (day, lines) in enumerate((prior or {}).items()):
         write_tape(root, day, lines, packed=k % 2 == 0)
     scene = scene_factory(now, flat_bars(int((now - at(9, 30)).total_seconds() // 60)),
@@ -94,6 +97,16 @@ def test_big_prints_count_the_single_large_trades_of_the_last_10_minutes_and_the
               trade(at(10, 0, ss=2), side="bought", size=500)]                        # the minute still running
     scene = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, NOW) + prints + around)
     assert read(scene)[1]["options.big_prints_10"] == sentence
+
+
+def test_a_trade_journaled_after_a_line_stamped_past_the_read_was_not_on_file_yet(scene_factory, tmp_path):
+    prints = [big(51, "call", "bought"), big(52, "call", "bought"), big(53, "call", "bought"), big(54, "call", "bought"),
+              big(55, "call", "bought")]
+    catch_up = [trade(at(10, 0, ss=10)), big(57, "put", "bought"), big(58, "put", "bought")]   # printed before the read, journaled after
+    scene = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, NOW) + prints, late=catch_up)
+    assert read(scene)[1]["options.big_prints_10"] == (
+        "over the last 10 minutes 5 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
+        "100% of their premium whose side could be told was calls bought or puts sold, past the 65% lean line")
 
 
 def at_mid(minute: int, right: str, bid: float, ask: float) -> dict:
