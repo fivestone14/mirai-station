@@ -278,7 +278,7 @@ def test_quote_liquidity_is_omitted_when_the_sweeps_stop_thin_out_or_have_no_his
     assert ls.omitted["options.quote_liquidity"] == "no lob-flow quote sweeps for 2026-09-21 under lob_flow/raw: the collector did not run"
 
 
-# ---- options.strike_defense: the collector's record
+# ---- options.strike_defense and liquidity.spy_quote: the collector's record
 
 def defense_line(t: datetime, *strikes: tuple[float, int, int]) -> dict:
     """One lob_flow reading as the collector writes it, with its refill test at each ``(strike, refilled, not refilled)``."""
@@ -342,3 +342,27 @@ def test_strike_defense_is_omitted_beyond_reach_without_a_contested_strike_or_a_
     assert ls.omitted["options.strike_defense"] == "no lob-flow reading in the last 3 minutes: the collector stopped"
     ls, labels = read(record_scene(scene_factory, tmp_path / "late", readings(NOW, strikes=[(7709.0, 14, 2)]), morning=False))
     assert labels["options.strike_defense"].endswith("at least the 70% refill share; ruler estimated")
+
+
+@pytest.mark.parametrize("spread, size, prior_days, sentence", [
+    (0.03, 300.0, PRIOR_DAYS, "3 cents, at or past the wide line; the size showing at SPY's best bid and offer combined is in the bottom fifth "
+                              "for 10:00, higher than 0 of the last 6 sessions at this minute"),
+    (0.01, 700.0, PRIOR_DAYS, "1 cent, at the tight tick; the size showing at SPY's best bid and offer combined is in the top fifth "
+                              "for 10:00, higher than 6 of the last 6 sessions at this minute"),
+    (0.02, 420.0, PRIOR_DAYS[:5], "2 cents, its usual width; the size showing at SPY's best bid and offer combined is between the bottom and top "
+                                  "fifths for 10:00, higher than 1 of the last 5 sessions at this minute"),
+])
+def test_spy_quote_reads_the_spread_against_its_lines_and_ranks_the_size(scene_factory, tmp_path, spread, size, prior_days, sentence):
+    later = [spy_line(at(10, 0, ss=40), 0.5, 1.0)]                               # after the read: never counts
+    _, labels = read(record_scene(scene_factory, tmp_path, readings(NOW, spread=spread, size=size) + later, prior_days))
+    assert labels["liquidity.spy_quote"] == f"over the last 5 minutes SPY's quoted spread has been {sentence}"
+
+
+def test_spy_quote_is_omitted_when_the_stream_stops_or_has_no_history(scene_factory, tmp_path):
+    ls, _ = read(record_scene(scene_factory, tmp_path / "stopped", readings(at(9, 56))))
+    assert ls.omitted["liquidity.spy_quote"] == "no SPY quote from the lob-flow collector in the last 3 minutes: its SPY stream stopped"
+    ls, _ = read(record_scene(scene_factory, tmp_path / "four", readings(NOW), PRIOR_DAYS[:4]))
+    assert ls.omitted["liquidity.spy_quote"] == "needs 5 prior sessions with the collector's SPY quote at this minute, have 4"
+    ls, _ = read(replace(record_scene(scene_factory, tmp_path / "none", []), now=at(10, 0, "2026-09-21")))
+    assert ls.omitted["liquidity.spy_quote"] == "no lob-flow record for 2026-09-21 under lob_flow/agg: the collector did not run"
+    assert ls.omitted["options.strike_defense"] == "no lob-flow record for 2026-09-21 under lob_flow/agg: the collector did not run"

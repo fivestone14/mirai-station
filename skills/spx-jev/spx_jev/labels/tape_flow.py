@@ -23,7 +23,8 @@ from pathlib import Path
 
 from ..cuts import (BIG_LEAN_SHARE, BIG_MIN_PRINTS, BIG_PRINT_LOTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, CALL_PUT_SHIFT_SHARE,
                     DEFENSE_MIN_EVENTS, DEFENSE_NEAR_SIGMA, DEFENSE_REFILL_SHARE, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK,
-                    MIN_RANK_SESSIONS, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH, TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
+                    MIN_RANK_SESSIONS, SPY_SPREAD_TIGHT, SPY_SPREAD_WIDE, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH, TURNOVER_LOW,
+                    WINDOW_10_MIN, WINDOW_30_MIN)
 from ..row_adapter import labeller_row
 from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, OPTIONS_TAPE_WINDOW_MIN, ROWS_SUBDIR, Scene, load_jsonl,
                              parse_ts)
@@ -66,6 +67,7 @@ def build_tape_flow_labels(scene: Scene) -> LabelSet:
     _tape_labels(scene, ls)
     _quote_liquidity(scene, ls)
     _strike_defense(scene, ls)
+    _spy_quote(scene, ls)
     return ls
 
 
@@ -556,6 +558,35 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
            f"{'; ruler estimated' if ruler.estimated else ''}")
 
 
+def _spy_quote(scene: Scene, ls: LabelSet) -> None:
+    """SPY's quoted spread and the size showing at its best bid and offer over the last 5 minutes, from the
+    collector's SPY stream; the size is ranked against the same 5 minutes of the prior sessions and never
+    stated in shares."""
+    if scene.state_dir is None:
+        ls.omit("liquidity.spy_quote", "no state folder to read the lob-flow collector's SPY quote from")
+        return
+    record = collector_record(scene.state_dir, scene.day)
+    if record is None:
+        ls.omit("liquidity.spy_quote", f"no lob-flow record for {scene.day} under {OPTIONS_TAPE_SUBDIR}: the collector did not run")
+        return
+    if _stopped([ts for ts, _, _ in record.spy], scene.now):
+        ls.omit("liquidity.spy_quote", f"no SPY quote from the lob-flow collector in the last {OPTIONS_TAPE_MAX_AGE_MIN} minutes: its SPY stream stopped")
+        return
+    spread, size = _medians(record.spy, scene.now)
+    now_et = scene.now.astimezone(ET)
+    base = [m[1] for d in scene.prior_bars if (r := collector_record(scene.state_dir, d)) is not None
+            and (m := _medians(r.spy, datetime.combine(date.fromisoformat(d), now_et.time(), tzinfo=ET))) is not None]
+    rank = rank_against(size, base)
+    if rank is None:
+        ls.omit("liquidity.spy_quote", f"needs {MIN_RANK_SESSIONS} prior sessions with the collector's SPY quote at this minute, have {len(base)}")
+        return
+    width = "at or past the wide line" if spread >= SPY_SPREAD_WIDE else "at the tight tick" if spread < SPY_SPREAD_TIGHT else "its usual width"
+    # the spy_liquidity question's thin book is strictly under the bottom fifth
+    fifth = "in the bottom fifth" if rank.share < BOTTOM_FIFTH else "in the top fifth" if rank.share >= TOP_FIFTH else "between the bottom and top fifths"
+    ls.put("liquidity.spy_quote", f"over the last {QUOTE_WINDOW_MIN} minutes SPY's quoted spread has been {_cents(spread)}, {width}; "
+                                  f"the size showing at SPY's best bid and offer combined is {fifth} for {now_et:%H:%M}, {rank.words()}")
+
+
 @dataclass(frozen=True)
 class QuoteSweeps:
     """A day's minute-by-minute sweeps of the 0DTE quotes (``state/lob_flow/raw/{day}/sweeps.jsonl``): when each
@@ -593,8 +624,10 @@ def _read_sweeps(path: str, mtime_ns: int) -> QuoteSweeps:
 
 @dataclass(frozen=True)
 class CollectorRecord:
-    """A day's lob-flow record (``state/lob_flow/agg/{day}.jsonl``), oldest first: the refill test's block per reading."""
+    """A day's lob-flow record (``state/lob_flow/agg/{day}.jsonl``), oldest first: the refill test's block per
+    reading, and SPY's quoted spread and displayed size per reading (the control's baseline rows)."""
     defense: list[tuple[datetime, dict]]
+    spy: list[tuple[datetime, float, float]]
 
 
 def collector_record(state_dir: Path, day: str) -> CollectorRecord | None:
@@ -605,11 +638,19 @@ def collector_record(state_dir: Path, day: str) -> CollectorRecord | None:
 @lru_cache(maxsize=32)
 def _read_record(path: str, mtime_ns: int) -> CollectorRecord:
     """``mtime_ns`` keys the cache, so today's file, still being written, is read afresh."""
-    defense = []
+    defense, spy = [], []
     for line in load_jsonl(Path(path)):
         if not isinstance(line.get("ts"), str):
             continue
         ts = parse_ts(line["ts"])
         if line.get("engine") == "lob_flow" and isinstance((line.get("snapshot") or {}).get("defense"), dict):
             defense.append((ts, line["snapshot"]["defense"]))
-    return CollectorRecord(sorted(defense, key=lambda x: x[0]))
+        elif line.get("engine") == "spy_depth":
+            got = {}
+            for r in line.get("baseline_rows") or []:
+                kind, _, rest = str((r or {}).get("key", "")).partition("|")      # "size|spy|mid|1255|mid"
+                if rest.startswith("spy|"):
+                    got[kind] = r.get("value")
+            if is_num(got.get("spread")) and is_num(got.get("size")):
+                spy.append((ts, float(got["spread"]), float(got["size"])))
+    return CollectorRecord(sorted(defense, key=lambda x: x[0]), sorted(spy))
