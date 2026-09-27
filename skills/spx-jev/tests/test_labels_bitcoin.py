@@ -154,6 +154,38 @@ def test_a_roll_the_quote_shows_before_the_table_does_refuses_the_night(tmp_path
     assert "overnight.btc_vs_futures" in written(build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6)))
 
 
+ROLL_FRIDAY = "2026-09-25"        # the last Friday of September: /MBT rolled at 17:11 the Thursday evening before
+
+
+def quote(root: Path, day: str, saved_at: datetime, mbt: str) -> None:
+    line = {"day": day, "saved_at": saved_at.isoformat(), "symbols": {"/ES": {"contract_quoted": "/ESZ26"}, "/MBT": {"contract_quoted": mbt}}}
+    (root / "spx_jev" / "overnight" / "manifest.jsonl").write_text(json.dumps(line) + "\n")
+
+
+@pytest.mark.parametrize("start, end, thursday", [
+    (datetime(2026, 9, 24, 16, 0, tzinfo=ET), datetime(2026, 9, 25, 9, 28, tzinfo=ET), date(2026, 9, 24)),
+    (datetime(2026, 9, 23, 16, 0, tzinfo=ET), datetime(2026, 9, 24, 16, 0, tzinfo=ET), None),
+    (datetime(2026, 9, 25, 16, 0, tzinfo=ET), datetime(2026, 9, 28, 9, 28, tzinfo=ET), None),
+    (datetime(2026, 8, 21, 16, 0, tzinfo=ET), datetime(2026, 9, 4, 16, 0, tzinfo=ET), date(2026, 8, 27)),
+])
+def test_the_calendar_knows_the_thursday_evening_bitcoin_rolls_on(start, end, thursday):
+    assert bitcoin.expiry_roll_between(start, end) == thursday
+
+
+def test_the_night_before_the_last_friday_expiry_is_refused_before_the_table_or_the_quote_shows_the_roll(tmp_path, premarket_scene_factory):
+    prior_nights(tmp_path, day=ROLL_FRIDAY)
+    write_table(tmp_path, current={"/ES": "/ESZ26", "/MBT": "/MBTU26"})
+    quote(tmp_path, ROLL_FRIDAY, at(9, 26, ROLL_FRIDAY), "/MBTU26")
+    ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6, day=ROLL_FRIDAY))
+    why = ls.omitted["overnight.btc_vs_futures"]
+    assert why == ("bitcoin futures (/MBT) rolls to the next contract on the evening of Thursday 09-24, before Friday's expiry, so the "
+                   "night since Thursday 16:00 would be partly the spread between two contracts")
+    assert ls.gates["btc_overnight_vs_futures"] == why
+    # the night before, into the Thursday, is measured
+    ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6, day="2026-09-24"))
+    assert "overnight.btc_vs_futures" in written(ls)
+
+
 def test_a_stale_bitcoin_feed_sleeps_the_question(tmp_path, premarket_scene_factory):
     prior_nights(tmp_path)
     d = date.fromisoformat(DAY)
@@ -381,6 +413,15 @@ def test_a_roll_inside_the_five_sessions_sleeps_the_question(tmp_path, scene_fac
     ls = build_bitcoin_labels(five_day_read(scene_factory, tmp_path))
     why = ls.omitted["xasset.btc_five_day"]
     assert why.startswith("bitcoin futures (/MBT) rolled to the next contract inside the last 5 sessions") and ls.gates["btc_five_day_lead"] == why
+
+
+def test_the_five_sessions_are_refused_while_the_quote_shows_a_roll_the_table_has_not_located(tmp_path, scene_factory):
+    five_day_state(tmp_path, -1.0)
+    write_table(tmp_path, current={"/ES": "/ESZ26", "/MBT": "/MBTV26"})
+    quote(tmp_path, DAY, at(9, 26), "/MBTX26")
+    ls = build_bitcoin_labels(five_day_read(scene_factory, tmp_path))
+    assert ls.omitted["xasset.btc_five_day"] == ("Schwab quotes /MBTX26 but the roll table is still on /MBTV26: the switch is not located "
+                                                 "yet, so bitcoin futures (/MBT)'s last 5 sessions may span two contracts")
 
 
 # ---- the store ------------------------------------------------------------------------------------

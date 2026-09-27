@@ -8,8 +8,9 @@ sessions against the index's (xasset.btc_five_day).
 Every "which way" is the direction that has gone with stocks rising or falling over the last nights or
 sessions, and every size a rank against them, so the learning loop sets the sign. Schwab's bitcoin
 history is one stitched front-month series: a move across a roll (rolls.py, the Thursday before the
-last-Friday expiry) is never measured, and a read before the open whose quote shows a roll the table has
-not located yet (rolls.pending) measures nothing on that contract. Each label's sentence, how it is
+last-Friday expiry) is never measured. The calendar refuses the Thursday evening before the table can (it
+locates a roll only from the next session's bars), and a read whose quote shows a roll the table has not
+located yet (rolls.pending) measures nothing on that contract. Each label's sentence, how it is
 computed and its source are in spec/question_set.json ``labels``.
 
 Sources: before the open, the night's bars (scene.night) and the same stretch on the last nights in the
@@ -60,6 +61,7 @@ LINK_STEP_MIN = 5
 MIN_LINK_RETURNS = 11            # the 10:32 read's five-minute returns (09:35 to 10:30), the first read the link is asked at
 NO_NORMAL = "every value it is ranked against is zero, so it has no normal size"
 KEPT = {"extended": "it kept going", "held": "it held about where the weekend left it", "reversed": "it turned back"}
+ROLL_EVENING = (time(17), time(18))  # the Thursday's daily break, where every bitcoin roll in the table landed (17:06 to 18:00)
 
 # What a label hands back: why it cannot be measured, or its sentence, its figure and why its gate sleeps (None: awake).
 Got = Union[str, tuple[str, dict, Optional[str]]]
@@ -130,6 +132,21 @@ def read_clock(now: datetime) -> time:
     return now.astimezone(ET).time().replace(second=0, microsecond=0)
 
 
+def expiry_roll_between(start: datetime, end: datetime) -> date | None:
+    """The Thursday before a last-Friday expiry whose ROLL_EVENING falls between ``start`` and ``end``, or None:
+    the calendar's roll guard, which holds before the roll table has located the roll or the quote shows it."""
+    for d in {start.astimezone(ET).date(), end.astimezone(ET).date()}:
+        thursday = rolls.roll_window(BITCOIN, d.year, d.month)[1] - timedelta(days=1)
+        lo, hi = (datetime.combine(thursday, t, tzinfo=ET) for t in ROLL_EVENING)
+        if start <= hi and end >= lo:
+            return thursday
+    return None
+
+
+def rolls_on(thursday: date) -> str:
+    return f"{NAME} rolls to the next contract on the evening of Thursday {thursday:%m-%d}, before Friday's expiry"
+
+
 class NightStore:
     """The overnight store's bitcoin rows, each night's file read once per build. A file holds every symbol,
     a few MB a night, and a read needs only bitcoin's rows, so only the lines naming it are parsed."""
@@ -172,19 +189,19 @@ def _premarket_labels(scene: Scene) -> dict[str, Got]:
     return {"overnight.btc_vs_futures": btc_vs_futures(scene, table, futures), "weekend.btc_path": weekend_path(scene, table, futures)}
 
 
-def pending_roll(scene: Scene, table: dict, symbol: str, name: str) -> str | None:
-    """Why ``symbol``'s night cannot be measured when Schwab quotes it under a contract the table has not rolled to."""
+def pending_roll(scene: Scene, table: dict, symbol: str, span: str) -> str | None:
+    """Why ``span`` cannot be measured when Schwab quotes ``symbol`` under a contract the table has not rolled to."""
     quoted = quoted_contract(scene.state_dir, date.fromisoformat(scene.day), symbol, scene.now)
     if not rolls.pending(table, symbol, quoted):
         return None
     return (f"Schwab quotes {quoted} but the roll table is still on {table['current'][symbol]}: the switch is not located yet, "
-            f"so the {name} night may span two contracts")
+            f"so {span} may span two contracts")
 
 
 def night_move(scene: Scene, table: dict, symbol: str, name: str, start: datetime) -> Move | str:
     """``symbol``'s move from ``start`` to the read on one contract, or why it cannot be measured: a roll
     pending or in the night, or a price at either end more than WINDOW_10_MIN minutes old."""
-    refused = pending_roll(scene, table, symbol, name)
+    refused = pending_roll(scene, table, symbol, f"the {name} night")
     if refused:
         return refused
     move = window_move(scene.night, symbol, start, scene.now)
@@ -218,6 +235,9 @@ def btc_vs_futures(scene: Scene, table: dict, futures: Move | str) -> Got:
         return futures
     day, clock = date.fromisoformat(scene.day), read_clock(scene.now)
     start = night_start(day)
+    thursday = expiry_roll_between(start, scene.now)
+    if thursday:
+        return f"{rolls_on(thursday)}, so the night since {start:%A} {start:%H:%M} would be partly the spread between two contracts"
     es = night_move(scene, table, FUTURES, "S&P futures", start) if after_break(day) else futures
     btc = night_move(scene, table, BITCOIN, NAME, start)
     if isinstance(es, str) or isinstance(btc, str):
@@ -307,9 +327,12 @@ def weekend_path(scene: Scene, table: dict, futures: Move | str) -> Got:
     close, reopen = weekend_edges(day)
     if close.date() < overnight.CRYPTO_ROUND_THE_CLOCK_FROM.date():
         return f"CME bitcoin futures trade through the weekend only from {overnight.CRYPTO_ROUND_THE_CLOCK_FROM:%Y-%m-%d}"
-    refused = pending_roll(scene, table, BITCOIN, NAME)
+    refused = pending_roll(scene, table, BITCOIN, f"the {NAME} night")
     if refused:
         return refused
+    thursday = expiry_roll_between(close, scene.now)
+    if thursday:
+        return f"{rolls_on(thursday)}, so the weekend since the {close:%A} close would be partly the spread between two contracts"
     legs = weekend_legs(scene.night, close, reopen, scene.now)
     if legs is None:
         return (f"no {NAME} price within {WINDOW_10_MIN} minutes of the {close:%A} close or of the read, or within {WINDOW_60_MIN} "
@@ -505,11 +528,14 @@ def five_day(scene: Scene, store: NightStore) -> Got:
     if scene.state_dir is None:
         return "no overnight store to read bitcoin's session closes from"
     table = rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR)
+    refused = pending_roll(scene, table, BITCOIN, f"{NAME}'s last {FIVE_SESSIONS} sessions")
+    if refused:
+        return refused
     closes = session_closes(scene, store, date.fromisoformat(scene.day), NIGHT_RANK_COUNT + FIVE_SESSIONS + 1)
 
     def move(a: tuple, b: tuple) -> tuple[float, float] | None:
         """The index's and bitcoin's returns from close ``a`` to close ``b``, when both have both prices on one contract."""
-        if None in (a[1], a[2], b[1], b[2]) or not rolls.same_contract(table, BITCOIN, a[0], b[0]):
+        if None in (a[1], a[2], b[1], b[2]) or not rolls.same_contract(table, BITCOIN, a[0], b[0]) or expiry_roll_between(a[0], b[0]):
             return None
         return b[1] / a[1] - 1.0, b[2] / a[2] - 1.0
     daily = [m for a, b in zip(closes, closes[1:]) if (m := move(a, b))]
@@ -523,6 +549,9 @@ def five_day(scene: Scene, store: NightStore) -> Got:
         return f"needs a close of the index and of {NAME} {FIVE_SESSIONS} sessions ago and at the last one"
     if not rolls.same_contract(table, BITCOIN, start[0], end[0]):
         return f"{NAME} rolled to the next contract inside the last {FIVE_SESSIONS} sessions, so their move is partly the spread between two contracts"
+    thursday = expiry_roll_between(start[0], end[0])
+    if thursday:
+        return f"{rolls_on(thursday)}, so the last {FIVE_SESSIONS} sessions' move would be partly the spread between two contracts"
     index, btc = move(start, end)
     value = btc - multiple * index
     prior = [m for k in range(FIVE_SESSIONS, len(closes) - 1) if (m := move(closes[k - FIVE_SESSIONS], closes[k]))]
