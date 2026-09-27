@@ -489,10 +489,11 @@ details .q{margin-top:8px}
     box.appendChild(bar); box.appendChild(lab);
     return box;
   }
-  // how the 30-minute call was made, drawn: JEV's own sum, the time of day's odds, and the half-and-half shown
   // the phase's hours in the viewer's zone, without its New York name: "lunch, 12:00 to 14:00" reads "09:00 to 11:00"
   // in Los Angeles, never "lunch, 09:00 to 11:00"
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
+  // how the 30-minute call was made, drawn: JEV's own sum, the time of day's odds, and what is shown: the
+  // half-and-half, or the learning loop's pool once it is promoted onto the phone (shown_source)
   function howChart(h, bl, at){
     var g = el('div', 'how');
     function row(key, cls, p){
@@ -503,14 +504,15 @@ details .q{margin-top:8px}
       g.appendChild(b);
       g.appendChild(el('span', 'how-v' + cls, oneAnswer(p)));
     }
-    var j = h.jev, c = h.clock;
+    var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || '');
     if(bl && bl.used && j && c){
       row('JEV', ' jev', j.probabilities);
       row('Time of day', '', c.probabilities);
-      row('Shown', '', h.probabilities);
+      row(pooled ? 'Pool' : 'Shown', '', h.probabilities);
       g.appendChild(el('div', 'how-note', (j.confidence != null ? 'JEV was ' + pct(j.confidence) + ' sure. ' : '') +
-                                        'Shown is half JEV, half how this time of day' + (bl.phase_words ? ' (' + phaseSpan(bl.phase_words, at) + ')' : '') + ' went' +
-                                        ' over the last ' + bl.sessions + ' sessions.'));
+                                        (pooled ? 'Shown is the learning loop\u2019s pool, promoted onto the phone once it beat the half-and-half of JEV and the time of day.'
+                                                : 'Shown is half JEV, half how this time of day' + (bl.phase_words ? ' (' + phaseSpan(bl.phase_words, at) + ')' : '') + ' went' +
+                                                  ' over the last ' + bl.sessions + ' sessions.')));
     } else {
       row('JEV', ' jev', h.probabilities);
       if(bl && bl.why) g.appendChild(el('div', 'how-note', sentence('JEV\u2019s sum alone: ' + bl.why)));
