@@ -51,19 +51,28 @@ class Stretch:
     finished: bool
 
 
+def releases(day: date, path: Path | str = events.CALENDAR) -> list[events.Event]:
+    """The reports the calendar lists before the open on ``day``, after 08:00 and before 08:45, by start."""
+    return [e for e in events.on_day(day, path)
+            if e.tier == events.PRE_OPEN and EUROPE_MORNING_END < e.start.time() < REPORT_WINDOW_END]
+
+
 def release_minute(day: date, path: Path | str = events.CALENDAR) -> time:
-    """The minute the report window starts on ``day``: the first release the calendar lists before the
-    open, after 08:00 and before 08:45; NO_REPORT_MINUTE when there is none."""
-    due = [e.start.time() for e in events.on_day(day, path)
-           if e.tier == events.PRE_OPEN and EUROPE_MORNING_END < e.start.time() < REPORT_WINDOW_END]
-    return min(due, default=NO_REPORT_MINUTE)
+    """The minute the report window starts on ``day``: the first of its releases; NO_REPORT_MINUTE when there is none."""
+    return min((e.start.time() for e in releases(day, path)), default=NO_REPORT_MINUTE)
+
+
+def night_start(day: date) -> datetime:
+    """When the night into ``day`` starts: the prior session's close, 13:00 after a half day. Futures' price
+    then is what every stretch of the night is told against ("futures' 16:00 price")."""
+    return session_close(datetime.combine(previous_trading_day(day), time(12), tzinfo=ET))
 
 
 def edges(day: date, release: time) -> list[tuple[str, datetime, datetime]]:
     """Every stretch of the night into ``day`` as ``(name, start, end)``, oldest first, contiguous from the
     prior session's close to the report window's end; the last stretch runs from there to the open."""
     prior, noon = previous_trading_day(day), datetime.combine(day, time(12), tzinfo=ET)
-    at = [session_close(datetime.combine(prior, time(12), tzinfo=ET)),
+    at = [night_start(day),
           datetime.combine(prior, GLOBEX_REOPEN, tzinfo=ET),
           datetime.combine(day, TOKYO_CLOSE, tzinfo=TOKYO).astimezone(ET),
           datetime.combine(day, FRANKFURT_OPEN_PLUS_30, tzinfo=FRANKFURT).astimezone(ET),

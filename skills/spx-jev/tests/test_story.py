@@ -46,5 +46,11 @@ def test_the_report_window_starts_at_the_first_release_before_the_open(tmp_path)
                    '{"date": "2026-09-30", "time_et": "08:15", "kind": "ADP", "tier": "pre_open"},'
                    '{"date": "2026-09-30", "time_et": "08:30", "kind": "GDP", "tier": "pre_open"},'
                    '{"date": "2026-09-30", "time_et": "10:00", "kind": "JOLTS", "tier": "data_10am"}]}')
+    assert [e.kind for e in story.releases(date(2026, 9, 30), cal)] == ["ADP", "GDP"]
     assert story.release_minute(date(2026, 9, 30), cal) == time(8, 15)
-    assert story.release_minute(date(2026, 10, 1), cal) == story.NO_REPORT_MINUTE
+    assert story.release_minute(date(2026, 10, 1), cal) == story.NO_REPORT_MINUTE and not story.releases(date(2026, 10, 1), cal)
+
+
+def test_the_night_starts_at_the_prior_sessions_close_1300_after_a_half_day():
+    assert story.night_start(date(2026, 9, 28)) == datetime(2026, 9, 25, 16, 0, tzinfo=ET)
+    assert story.night_start(date(2026, 11, 30)) == datetime(2026, 11, 27, 13, 0, tzinfo=ET)
