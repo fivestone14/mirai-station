@@ -142,9 +142,18 @@ def test_the_opening_tells_rank_semis_and_financials_over_10_minutes():
 def test_the_opening_tells_need_a_price_10_minutes_back():
     _, omitted, _ = labels(read(drop=("XLF",)))
     assert omitted["tells.sector_lead_10m"] == "needs a price for XLF now and 10 minutes ago"
-    early = at(9, 40)
-    _, omitted, _ = labels(read(now=early))
-    assert omitted["tells.sector_lead_10m"] == "needs a price for SMH, $SPX now and 10 minutes ago"
+
+
+@pytest.mark.parametrize("now, span", [(at(9, 35, ss=10), 4), (at(9, 40, ss=10), 9), (at(9, 41, ss=10), 10)])
+def test_the_first_opening_reads_measure_since_the_first_finished_minute(tmp_path, now, span):
+    """No price is known at 09:30: a 10-minute window that would start before 09:31 is cut to the minutes since, on
+    today and on each prior day alike, and the sentence says how many."""
+    got, _, _ = labels(weighed(tmp_path, now=now, jumps={"AAPL": {2: -0.019}}))
+    assert got["tells.sector_lead_10m"].startswith(f"over the last {span} minutes semiconductors (SMH) ran ")
+    assert got["tells.sector_lead_10m"].count("higher than 5 of the last 10 sessions at this minute") == 2
+    s = got["leaders.single_name_10m"]
+    assert s.startswith(f"in the last {span} minutes AAPL fell ") and f"times its usual {span}-minute move for this time of day" in s
+    assert s.endswith(f"none of the other 7 largest fell past its usual {span}-minute move, short of the 2-name spreading count")
 
 
 # ---- size since the settled open

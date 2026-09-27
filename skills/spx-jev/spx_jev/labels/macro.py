@@ -16,7 +16,7 @@ from ..cuts import BOND_LINK_TIGHT, WINDOW_30_MIN, WINDOW_60_MIN
 from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .leadership import against_usual, listed
+from .leadership import against_usual, listed, minutes_back
 from .measures import ONE_MINUTE
 from .rulers import sigma_anchor
 from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, beyond, beyond_rank, fifth_side, needs_link, needs_move, needs_rank
@@ -70,15 +70,9 @@ def bond_market_closed(day: date) -> bool:
     return False
 
 
-def link_span(end: datetime) -> int:
-    """The minutes the link to ``end`` is measured over: the hour, or the session so far when the hour reaches
-    back before its first finished minute (09:31), so the 10:02 read has a link."""
-    return min(WINDOW_60_MIN, int((end - session_open(end) - ONE_MINUTE) / ONE_MINUTE))
-
-
 def link_words(end: datetime) -> str:
-    """When the link to ``end`` was measured, as a sentence says it."""
-    return "this hour" if link_span(end) == WINDOW_60_MIN else f"since {session_open(end) + ONE_MINUTE:%H:%M}"
+    """When the link to ``end`` was measured, as a sentence says it: the 10:02 read's hour is the session so far."""
+    return "this hour" if minutes_back(end, WINDOW_60_MIN) == WINDOW_60_MIN else f"since {session_open(end) + ONE_MINUTE:%H:%M}"
 
 
 def link_need(span: int) -> int:
@@ -87,9 +81,9 @@ def link_need(span: int) -> int:
 
 
 def minute_link(s: Session, symbol: str, end: datetime) -> float | None:
-    """The correlation of ``symbol``'s 1-minute returns with SPX's over the link span to ``end``; None under
+    """The correlation of ``symbol``'s 1-minute returns with SPX's over the hour to ``end`` (minutes_back); None under
     WINDOW_30_MIN minutes of session, over fewer than link_need minutes with both, or when either never moved."""
-    span = link_span(end)
+    span = minutes_back(end, WINDOW_60_MIN)
     if span < WINDOW_30_MIN:
         return None
     pairs = []
@@ -205,5 +199,5 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
 
 
 def needs_minute_link(what: str, end: datetime) -> str:
-    span = link_span(end)
+    span = minutes_back(end, WINDOW_60_MIN)
     return f"needs {link_need(span)} of the last {span} minutes with {what} moving"

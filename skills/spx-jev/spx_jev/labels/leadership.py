@@ -17,7 +17,7 @@ from ..cuts import (DISPERSION_WIDE_SIGMA, EQW_SPLIT_SIGMA, HEAVY_SHOCK_SIGMA, M
                     MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NAME_SHOCK_MULT, PULL_RULE_SIGMA, REST_GAP_SIGMA, ROTATION_GAP_SIGMA,
                     SECTOR_ONE_WAY, SIZE_RESID_SIGMA, SIZE_SPREAD_SIGMA, SPREAD_COUNT, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..market_context import SYMBOLS
-from ..sessions import next_trading_day
+from ..sessions import next_trading_day, session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open
@@ -106,9 +106,10 @@ def _semis(against: AgainstIndex, ls: LabelSet) -> None:
 def _sector_tells(against: AgainstIndex, ls: LabelSet) -> None:
     """Semis and financials over the last 10 minutes beyond their usual multiple, each ranked by the clock."""
     path = "tells.sector_lead_10m"
+    span = minutes_back(against.scene.now, WINDOW_10_MIN)
     parts = []
     for symbol, name in ((SEMIS, "semiconductors"), (FINANCIALS, "financials")):
-        got = beyond_rank(against, symbol, WINDOW_10_MIN)
+        got = beyond_rank(against, symbol, span)
         if isinstance(got, str):
             ls.omit(path, got)
             return
@@ -117,7 +118,7 @@ def _sector_tells(against: AgainstIndex, ls: LabelSet) -> None:
         verdict = {1: "broke away upward", -1: "broke away downward", 0: "moved in line"}[side]
         parts.append(f"{name} ({symbol}) ran {sig(abs(value))} {'above' if value >= 0 else 'below'} their usual multiple of the index"
                      f"{against_usual(value, side)}, {verdict}, {FIFTH_WORDS[side]} for this time, {rank.words()}")
-    ls.put(path, f"over the last {WINDOW_10_MIN} minutes " + "; ".join(parts) + against.ruler_note)
+    ls.put(path, f"over the last {span} minutes " + "; ".join(parts) + against.ruler_note)
 
 
 def _size_spread(against: AgainstIndex, ls: LabelSet) -> None:
@@ -202,6 +203,12 @@ def _rotation(against: AgainstIndex, ls: LabelSet) -> None:
     rule = f"past the {ROTATION_GAP_SIGMA} sigma rotation rule" if abs(gap) > ROTATION_GAP_SIGMA else f"within the {ROTATION_GAP_SIGMA} sigma rotation rule"
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes, after allowing for each sector's usual link to the index, {names[0]} "
                  f"{'beat' if gap >= 0 else 'trailed'} {names[1]} by {sig(abs(gap))}, {rule}{against.ruler_note}")
+
+
+def minutes_back(end: datetime, minutes: int) -> int:
+    """``minutes``, or the minutes since the session's first finished minute (09:31) when a window of them to ``end``
+    would start before it: at 09:40 the 10-minute window is the 9 since 09:31, on today and each prior day alike."""
+    return min(minutes, int((end - session_open(end) - ONE_MINUTE) / ONE_MINUTE))
 
 
 def against_usual(value: float, side: int) -> str:
@@ -349,15 +356,16 @@ def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: Labe
     """The largest stock's 10-minute move against its usual 10-minute move at this minute, and whether the
     other large names went the same way."""
     path = "leaders.single_name_10m"
-    moves = {s: against.move(s, WINDOW_10_MIN) for s, _ in names}
+    span = minutes_back(against.scene.now, WINDOW_10_MIN)
+    moves = {s: against.move(s, span) for s, _ in names}
     missing = [s for s, m in moves.items() if m is None]
     if missing:
-        ls.omit(path, needs_move(missing, WINDOW_10_MIN))
+        ls.omit(path, needs_move(missing, span))
         return
     usual = {}
     for symbol, _ in names:
         def then_size(s: Session, then: datetime, _sigma_share: float, symbol: str = symbol) -> float | None:
-            m = s.move(symbol, then - timedelta(minutes=WINDOW_10_MIN), then)
+            m = s.move(symbol, then - timedelta(minutes=span), then)
             return None if m is None else abs(m)
         base = against.same_clock(then_size)
         if len(base) < MIN_RANK_SESSIONS or statistics.median(base) == 0:
@@ -372,8 +380,8 @@ def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: Labe
     verb = "rose" if rose else "fell"
     rule = f"past the {NAME_SHOCK_MULT:g}-times name-shock rule" if times[name] >= NAME_SHOCK_MULT else f"under the {NAME_SHOCK_MULT:g}-times name-shock rule"
     spreading = (f"at least the {SPREAD_COUNT}-name spreading count" if others >= SPREAD_COUNT else f"short of the {SPREAD_COUNT}-name spreading count")
-    joined = (f"none of the other {len(names) - 1} largest {verb} past its usual {WINDOW_10_MIN}-minute move" if others == 0 else
-              f"{others} of the other {len(names) - 1} largest also {verb} past their usual {WINDOW_10_MIN}-minute move")
-    ls.put(path, f"in the last {WINDOW_10_MIN} minutes {name} {verb} {abs(ret) * 100:.1f}%, {times[name]:.1f} times its usual "
-                 f"{WINDOW_10_MIN}-minute move for this time of day, {rule}, worth {signed(against.sigma(weight * ret))} sigma of SPX at its "
+    joined = (f"none of the other {len(names) - 1} largest {verb} past its usual {span}-minute move" if others == 0 else
+              f"{others} of the other {len(names) - 1} largest also {verb} past their usual {span}-minute move")
+    ls.put(path, f"in the last {span} minutes {name} {verb} {abs(ret) * 100:.1f}%, {times[name]:.1f} times its usual "
+                 f"{span}-minute move for this time of day, {rule}, worth {signed(against.sigma(weight * ret))} sigma of SPX at its "
                  f"{weight * 100:.1f}% weight; {joined}, {spreading}{against.ruler_note}")
