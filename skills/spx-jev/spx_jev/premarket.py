@@ -29,7 +29,7 @@ close cannot be formed writes its record with the reason, builds no labels and a
     state/spx_jev/lanes/premarket/{day}.jsonl         one read per checkpoint
     state/spx_jev/lanes/premarket/hour/{day}.jsonl    one sum per read that asked JEV: what the grader grades
     state/spx_jev/lanes/premarket/latest.json         the card, shown from the day's first read until the tape lane's first
-    state/spx_jev/lanes/premarket/grades.jsonl, weights.json, pool_10.json, pool_30.json, pool_log.jsonl   (grade.py, pool.py)
+    state/spx_jev/lanes/premarket/grades.jsonl, weights.json   (grade.py; the lane keeps no learning loop, lane.PREMARKET.pool)
     state/spx_jev/archive/{day}.jsonl                 its ReadRecord and CloseOutRecord lines, lane "premarket"
 
 The close-out at 10:06 grades the morning's calls from the settled open (grade.run) and refreshes the card's

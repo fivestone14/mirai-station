@@ -44,7 +44,7 @@ def test_the_premarket_lane_reads_at_its_checkpoints_and_is_graded_from_the_sett
     assert PREMARKET.key == "premarket" and PREMARKET.folder(tmp_path) == tmp_path / "spx_jev" / "lanes" / "premarket"
     assert PREMARKET.schedule == ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28") and PREMARKET.close_out == "10:06"
     assert PREMARKET.horizons == {"open_10": (10, OPEN_10_FLAT_BAND_SIGMA), "open_30": (30, NEXT_30_FLAT_BAND_SIGMA)}
-    assert (PREMARKET.primary, PREMARKET.tag, PREMARKET.pool, PREMARKET.graded_from_settled_open) == ("open_30", "premarket", True, True)
+    assert (PREMARKET.primary, PREMARKET.tag, PREMARKET.pool, PREMARKET.graded_from_settled_open) == ("open_30", "premarket", False, True)
     assert not LIVE.graded_from_settled_open and not TAPE.graded_from_settled_open
 
 
