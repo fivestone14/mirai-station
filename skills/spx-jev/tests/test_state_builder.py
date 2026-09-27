@@ -91,10 +91,10 @@ def test_breadth_reads_the_market_context_point_in_time(full_scene, scene_factor
 
 
 def test_no_market_context_omits_every_breadth_label(scene_factory):
+    from spx_jev.labels import breadth
     _, omitted = _labels(scene_factory(at(11, 0), flat_bars(90)))
     assert {k: v for k, v in omitted.items() if k.startswith("breadth.")} == {
-        "breadth.advance_decline": "no market-context snapshot today", "breadth.tick_lean": "no market-context snapshot today",
-        "breadth.sectors_up": "no market-context snapshot today"}
+        p: "no market-context snapshot today" for p in breadth.LABELS if p not in breadth.DARK}
 
 
 def test_a_missing_sector_or_symbol_omits_only_its_label(full_scene, scene_factory):
