@@ -13,8 +13,10 @@ import statistics
 from datetime import date, datetime, timedelta
 from typing import Callable
 
-from ..cuts import (CHOP_CROSSES, DAY_ONE_SIDED, MEMBER_SPLIT_Z, MIN_RANK_SESSIONS, OPEN_DAY_MOVE_SIGMA, SMALLCAP_CONFIRM_SIGMA,
-                    TICK_FAR_BAND, TICK_USUAL_BAND, TRIN_HIGH, TRIN_LOW, UPVOL_LEAN_HI, UPVOL_LEAN_LO, WINDOW_30_MIN)
+from .. import events
+from ..cuts import (CHOP_CROSSES, DAY_ONE_SIDED, EVENT_DIGEST_MIN, MEMBER_SPLIT_Z, MIN_RANK_SESSIONS, OPEN_DAY_MOVE_SIGMA,
+                    SMALLCAP_CONFIRM_SIGMA, TICK_FAR_BAND, TICK_USUAL_BAND, TRIN_HIGH, TRIN_LOW, UPVOL_LEAN_HI, UPVOL_LEAN_LO,
+                    WINDOW_30_MIN, WINDOW_60_MIN)
 from ..sessions import session_open
 from ..state_builder import MarketContext, Scene
 from .label_set import LabelSet
@@ -37,11 +39,20 @@ MIN_SECTORS = 8
 SECTORS = ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
 # The context job saves a bar a minute; a newest value older than this means it stopped, not that it skipped a minute.
 FRESH_MIN = 5
+# A release is a decision, testimony or report at a moment in the session: the closes are not, nor a speech, nor
+# the press conference that follows the decision it explains.
+RELEASE_TIERS = (events.TIER, events.DATA_10AM, events.DATA_2PM)
+NOT_RELEASES = events.AT_THE_CLOSE | {"FOMC_PRESSER"}
 NET_VOLUME = {"$VOLD": "NYSE net volume", "$VOLSPD": "S&P 500 members' net volume"}
 
 
 def build_breadth_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
+    release = _latest_release(scene)
+    if release is None:
+        ls.sleep("breadth_flip_after_release", f"no in-session release in the last {EVENT_DIGEST_MIN} minutes")
+    else:
+        ls.wake("breadth_flip_after_release")
     if scene.market is None:
         for path in LABELS:
             if path not in DARK:
@@ -56,6 +67,7 @@ def build_breadth_labels(scene: Scene) -> LabelSet:
     _day_upvol_share(scene, ls)
     _members_net_day(scene, ls)
     _at_extremes(scene, ls)
+    _flip_after_release(scene, release, ls)
     return ls
 
 
@@ -342,3 +354,33 @@ def _at_extremes(scene: Scene, ls: LabelSet) -> None:
            f"when SPX made its new session {word} at {at_clock}, NYSE net volume was {_millions(net_now)}, {level} the "
            f"{_millions(net_before)} where it stood at the previous {word} at {before_clock}, {'reaching' if reached else 'short of'} "
            f"that level, and small caps (IWM) were {iwm}, {confirm}{'; ruler estimated' if ruler.estimated else ''}")
+
+
+# ----------------------------------------------------------------------------- around a release
+
+def _latest_release(scene: Scene) -> events.Event | None:
+    """The newest release of today's session made by now and within EVENT_DIGEST_MIN minutes of it."""
+    return next((e for e in reversed(events.on_day(scene.now.astimezone(ET).date()))
+                 if e.tier in RELEASE_TIERS and e.kind not in NOT_RELEASES and scene.session_open < e.start <= scene.now
+                 and scene.now - e.start <= timedelta(minutes=EVENT_DIGEST_MIN)), None)
+
+
+def _flip_after_release(scene: Scene, release: events.Event | None, ls: LabelSet) -> None:
+    """The share of NYSE volume in rising stocks since the release against the hour before it (from the open
+    when the release came in the first hour), each against the lean lines."""
+    if release is None:
+        ls.omit("breadth.flip_after_release", f"no in-session release in the last {EVENT_DIGEST_MIN} minutes")
+        return
+    before_from = max(release.start - timedelta(minutes=WINDOW_60_MIN), scene.session_open)
+    since, before = _upvol_share(scene.market, release.start, scene.now), _upvol_share(scene.market, before_from, release.start)
+    released = f"{release.start.astimezone(ET):%H:%M}"
+    if since is None or before is None:
+        ls.omit("breadth.flip_after_release", f"no NYSE up and down volume known within {FRESH_MIN} minutes of {released} and of now: "
+                                              f"the market-context job stopped or has not saved them")
+        return
+    ago = round((scene.now - release.start).total_seconds() / 60)
+    lead = round((release.start - before_from).total_seconds() / 60)
+    before_words = "in the hour before it" if lead == WINDOW_60_MIN else f"in the {plural(lead, 'minute')} before it, from the open,"
+    ls.put("breadth.flip_after_release",
+           f"since {release.words} at {released}, {plural(ago, 'minute')} ago, {pct(since)} of NYSE volume went into rising stocks, "
+           f"{_upvol_lean(since)}; {before_words} the share was {pct(before)}, {_upvol_lean(before)}")

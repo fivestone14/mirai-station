@@ -6,10 +6,12 @@ minute, $UVOL and $DVOL (thousands of shares) and $VOLD and $VOLSPD (shares) run
 each value known once its minute has finished."""
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta
 
-from conftest import at, bars_from_closes, flat_bars, make_row
+from conftest import DAY, at, bars_from_closes, flat_bars, make_row
+from spx_jev import events
 from spx_jev.labels.breadth import build_breadth_labels
 from spx_jev.state_builder import MarketContext
 
@@ -402,3 +404,79 @@ def test_nothing_after_the_extreme_or_the_read_counts(scene_factory):
     ls = extremes_read(scene_factory, fading_net, lagging_small_caps, closes=unfinished_spx_bar, extra_known=higher_small_caps_later)
     assert sentence(ls, "breadth.at_extremes").startswith("when SPX made its new session high at 12:21")
     assert "small caps (IWM) were 0.33 sigma below their own session high" in sentence(ls, "breadth.at_extremes")
+
+
+# ---- breadth.flip_after_release and its gate
+
+ON_DAY = events.on_day
+
+
+def calendar(tmp_path, monkeypatch, rows: list[tuple[str, str, object]]):
+    """Today's calendar rows as (time, kind, tier), read in place of the shipped calendar."""
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps({"covers_through": "2026-12-31",
+                                "events": [{"date": DAY, "time_et": t, "kind": k, "tier": tier} for t, k, tier in rows]}))
+    events._load.cache_clear()
+    monkeypatch.setattr(events, "on_day", lambda day: ON_DAY(day, path))
+
+
+FOMC_AND_PRESSER = [("14:00", "FOMC", 1), ("14:30", "FOMC_PRESSER", 1)]
+
+
+def around_release(scene_factory, now: datetime, blocks: list[tuple[int, float]], extra: tuple[float, float] | None = None,
+                   market: bool = True):
+    """10,000 shares a minute from 09:30 in blocks of (minutes, share in rising stocks)."""
+    up = [10000.0 * share for n, share in blocks for _ in range(n)]
+    down = [10000.0 * (1 - share) for n, share in blocks for _ in range(n)]
+    if extra:
+        up.append(extra[0])
+        down.append(extra[1])
+    minutes = int((now - at(9, 30)).total_seconds() // 60)
+    return build_breadth_labels(scene_factory(now, flat_bars(minutes), market=MarketContext(upvol(up, down)) if market else None))
+
+
+def test_breadth_flipped_after_the_fed(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, FOMC_AND_PRESSER)
+    ls = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.63), (40, 0.38)])
+    assert ls.gates["breadth_flip_after_release"] is None
+    assert sentence(ls, "breadth.flip_after_release") == (
+        "since the Fed's rate decision at 14:00, 40 minutes ago, 38% of NYSE volume went into rising stocks, past the 40% lean line "
+        "on the sell side; in the hour before it the share was 63%, past the 60% lean line on the buy side")
+
+
+def test_a_release_in_the_first_hour_is_held_against_the_minutes_from_the_open(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, [("10:00", "ISM_MANUFACTURING", "data_10am")])
+    ls = around_release(scene_factory, at(10, 32, ss=10), [(30, 0.55), (32, 0.6)])
+    assert sentence(ls, "breadth.flip_after_release") == (
+        "since the ISM manufacturing report at 10:00, 32 minutes ago, 60% of NYSE volume went into rising stocks, inside the 40% to "
+        "60% even band; in the 30 minutes before it, from the open, the share was 55%, inside the 40% to 60% even band")
+
+
+def test_the_gate_sleeps_without_a_release_in_the_digest_window(scene_factory, tmp_path, monkeypatch):
+    blocks = [(390, 0.5)]
+    calendar(tmp_path, monkeypatch, FOMC_AND_PRESSER)
+    assert around_release(scene_factory, at(16, 0), blocks).gates["breadth_flip_after_release"] is None       # 120 minutes on
+    late = around_release(scene_factory, at(16, 0, ss=10), blocks)
+    assert late.gates["breadth_flip_after_release"] == "no in-session release in the last 120 minutes"
+    assert late.omitted["breadth.flip_after_release"] == "no in-session release in the last 120 minutes"
+    calendar(tmp_path, monkeypatch, [("08:30", "CPI", "pre_open"), ("14:30", "FOMC_PRESSER", 1), ("13:25", "FED_GOVERNOR_SPEECH", "fed_speaker"),
+                                     ("16:00", "QUARTER_END", 1)])
+    assert around_release(scene_factory, at(15, 2, ss=10), blocks).gates["breadth_flip_after_release"] == (
+        "no in-session release in the last 120 minutes")
+
+
+def test_a_release_still_to_come_and_volume_after_the_read_do_not_count(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, [("14:00", "FOMC", 1), ("14:50", "FED_CHAIR_TESTIMONY", 1)])
+    ls = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.63), (40, 0.38)], extra=(900000.0, 0.0))
+    assert sentence(ls, "breadth.flip_after_release").startswith(
+        "since the Fed's rate decision at 14:00, 40 minutes ago, 38% of NYSE volume went into rising stocks")
+
+
+def test_the_gate_is_decided_by_the_calendar_and_the_label_needs_the_volume(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, FOMC_AND_PRESSER)
+    no_context = around_release(scene_factory, at(14, 40, ss=10), [], market=False)
+    assert no_context.gates["breadth_flip_after_release"] is None
+    assert no_context.omitted["breadth.flip_after_release"] == "no market-context snapshot today"
+    stopped = around_release(scene_factory, at(14, 40, ss=10), [(260, 0.5)])
+    assert stopped.omitted["breadth.flip_after_release"] == ("no NYSE up and down volume known within 5 minutes of 14:00 and of now: "
+                                                             "the market-context job stopped or has not saved them")
