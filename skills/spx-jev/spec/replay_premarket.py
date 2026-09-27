@@ -33,8 +33,8 @@ explain), both halves of the nights, and a verdict:
     noise     otherwise
 
 Read only: nothing under the state directory is written, and --out may not point inside it. Writes
-{out}/reads.jsonl (one line per night and checkpoint), {out}/outcomes.jsonl (one line per day), and the
-report (--report, default {out}/report.md).
+{out}/reads.jsonl (one line per night and checkpoint), {out}/outcomes.jsonl (one line per day),
+{out}/judged.json (one entry per question and read) and the report (--report, default {out}/report.md).
 """
 from __future__ import annotations
 
