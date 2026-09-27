@@ -102,8 +102,8 @@ def _semis(against: AgainstIndex, ls: LabelSet) -> None:
     side = fifth_side(rank)
     verdict = {1: "ahead upward", -1: "ahead downward", 0: "in line"}[side]
     ls.put(path, f"chips ({SEMIS}) usually move {link.multiple:.1f} times the index; over the last {WINDOW_30_MIN} minutes they "
-                 f"{'beat' if value >= 0 else 'trailed'} that by {sig(abs(value))}{against_usual(value, side)}, {verdict}: {FIFTH_WORDS[side]} for this half hour, "
-                 f"{rank.words()}{against.ruler_note}")
+                 f"{'beat' if value >= 0 else 'trailed'} that by {sig(abs(value))}{against_usual(value, side)}, {verdict}: "
+                 f"{FIFTH_WORDS[side]} for this half hour, {rank.words()}{against.ruler_note}")
 
 
 def _sector_tells(against: AgainstIndex, ls: LabelSet) -> None:

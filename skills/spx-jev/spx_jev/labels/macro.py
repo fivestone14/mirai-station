@@ -119,7 +119,8 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
             continue
         side = fifth_side(rank)
         tight = abs(corr) >= BOND_LINK_TIGHT
-        link = (f"{link_words(against.scene.now)} bond prices and stocks moved {'together' if corr >= 0 else 'in opposite directions'} minute by minute "
+        link = (f"{link_words(against.scene.now)} bond prices and stocks moved {'together' if corr >= 0 else 'in opposite directions'} "
+                f"minute by minute "
                 f"(link {corr:+.2f}, {'tight, at least' if tight else 'loose, under'} the {BOND_LINK_TIGHT} tight line): "
                 f"bond prices up has gone with stocks {'up' if corr >= 0 else 'down'}")
         if bond_market_closed(date.fromisoformat(against.scene.day)):
@@ -131,7 +132,8 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
         else:
             verdict = f"so bonds are ahead in the stocks-{'up' if side * corr > 0 else 'down'} direction; the Treasury cash market is open"
         ls.put(path, f"over the last {WINDOW_30_MIN} minutes {name} {'rose more' if value >= 0 else 'fell more'} than the index's move "
-                     f"usually brings them{against_usual(value, side)}, {FIFTH_WORDS[side]} for this half hour, {rank.words()}; {link}; {verdict}{against.ruler_note}")
+                     f"usually brings them{against_usual(value, side)}, {FIFTH_WORDS[side]} for this half hour, {rank.words()}; {link}; "
+                     f"{verdict}{against.ruler_note}")
         return
     ls.omit(path, "; or ".join(reasons))
 
@@ -146,7 +148,8 @@ def _oil_gap(against: AgainstIndex, ls: LabelSet) -> None:
     side = fifth_side(rank)
     verdict = {1: "oil ran up", -1: "oil ran down", 0: "an ordinary amount given the index"}[side]
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes crude oil ({OIL}) {'rose more' if value >= 0 else 'fell more'} than the index's "
-                 f"move usually brings it{against_usual(value, side)}, {verdict}: {FIFTH_WORDS[side]} for this half hour, {rank.words()}{against.ruler_note}")
+                 f"move usually brings it{against_usual(value, side)}, {verdict}: {FIFTH_WORDS[side]} for this half hour, "
+                 f"{rank.words()}{against.ruler_note}")
 
 
 def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
@@ -194,7 +197,8 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
     ran = f"{' and '.join(sides)} what the index's {sig(abs(idx))} {'rise' if idx >= 0 else 'fall'} would match"
     verdict = {1: "ahead of the index in the stocks-up direction", -1: "ahead of the index in the stocks-down direction",
                0: "in line with the index"}[side]
-    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {ran}: taken together, each signed by how it moved with stocks {link_words(against.scene.now)}, "
+    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {ran}: taken together, each signed by how it moved with stocks "
+                 f"{link_words(against.scene.now)}, "
                  f"the complex is {verdict}, {FIFTH_WORDS[side]} for this half hour, {rank.words()}{against.ruler_note}")
 
 
