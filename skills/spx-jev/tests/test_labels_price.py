@@ -5,6 +5,9 @@ close, a fresh session extreme and the reach to the day's average."""
 from __future__ import annotations
 
 import json
+import random
+import re
+import statistics
 from dataclasses import replace
 from datetime import time, timedelta
 
@@ -171,7 +174,7 @@ def test_the_afternoon_leg_waits_for_the_1359_bar_to_finish(scene_factory):
 
 BUILDING = ([2.0] * 6 + [-2.0] * 6) * 2
 CANCELLING = [2.0, -2.0] * 12
-MIXED = [1.0, 2.0, -1.0, -1.0, 1.0, -2.0, -2.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -2.0, 2.0, -2.0, 1.0, -2.0, 1.0, -1.0]
+MIXED = [-1.0, -1.0, 2.0, -2.0, -2.0, 1.0, 2.0, -2.0, -2.0, -1.0, -1.0, 1.0, -2.0, -2.0, 2.0, -2.0, -2.0, 2.0, 1.0, -1.0, 1.0, 2.0, 2.0, -1.0]
 
 
 def _character_scene(scene_factory, steps):
@@ -183,7 +186,7 @@ def _character_scene(scene_factory, steps):
 
 
 @pytest.mark.parametrize("steps, sentence", [
-    (BUILDING, "so far today, 30-minute stretches have been 2.32 times larger than their 5-minute pieces would suggest, above the 1.10 "
+    (BUILDING, "so far today, 30-minute stretches have been 2.96 times larger than their 5-minute pieces would suggest, above the 1.10 "
                "building line"),
     (MIXED, "so far today, 30-minute stretches have been 1.00 times what their 5-minute pieces would suggest, between the 0.90 "
             "cancelling line and the 1.10 building line"),
@@ -196,10 +199,22 @@ def test_the_days_character_from_its_5_minute_and_30_minute_returns(scene_factor
 
 def test_the_character_lines_belong_to_mixed(scene_factory, monkeypatch):
     scene = _character_scene(scene_factory, MIXED)
-    monkeypatch.setattr(price, "VR_TREND", 1.0026304150469052)
+    monkeypatch.setattr(price, "VR_TREND", 1.0040799673602612)
     assert "between the 0.90 cancelling line and the 1.00 building line" in _labels(scene)[0]["price.day_character"]
-    monkeypatch.setattr(price, "VR_PIN", 1.0026304150469052)
+    monkeypatch.setattr(price, "VR_PIN", 1.0040799673602612)
     assert "between the 1.00 cancelling line" in _labels(scene)[0]["price.day_character"]
+
+
+@pytest.mark.parametrize("n_steps", [12, 18, 30])
+def test_a_random_walk_reads_one_on_average_at_any_hour(scene_factory, n_steps):
+    """Without the small-sample correction a random walk read about 0.4 at 11:00 and under the cancelling line
+    on most days, so the label answered the clock rather than the day."""
+    rnd = random.Random(n_steps)
+    ratios = []
+    for _ in range(300):
+        text = _labels(_character_scene(scene_factory, [rnd.gauss(0.0, 2.0) for _ in range(n_steps)]))[0]["price.day_character"]
+        ratios.append(float(re.search(r"have been ([\d.]+) times", text).group(1)))
+    assert statistics.fmean(ratios) == pytest.approx(1.0, abs=0.1)
 
 
 def test_the_character_needs_an_hour_of_varied_returns(scene_factory):

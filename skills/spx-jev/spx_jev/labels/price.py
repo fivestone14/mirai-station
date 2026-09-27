@@ -363,7 +363,9 @@ def _afternoon_leg(scene: Scene, anchor: SigmaRuler, move30: float | None, ls: L
 
 def _day_character(scene: Scene, ls: LabelSet) -> None:
     """The variance ratio of the day's overlapping 30-minute returns against its 5-minute returns since 10:00:
-    over one, moves have built on each other; under one, they have cancelled."""
+    over one, moves have built on each other; under one, they have cancelled. Lo and MacKinlay's bias-corrected
+    form, one drift for both and unbiased variances, so a random walk reads one at any hour rather than well
+    under it on a morning's dozen returns."""
     t = datetime.combine(scene.now.astimezone(ET).date(), CHARACTER_FROM, tzinfo=ET)
     marks = []
     while t <= scene.now:
@@ -374,11 +376,14 @@ def _day_character(scene: Scene, ls: LabelSet) -> None:
     if len(closes) - 1 < CHARACTER_MIN_STEPS:
         ls.omit("price.day_character", f"needs {CHARACTER_MIN_STEPS} 5-minute returns since 10:00, have {max(len(closes) - 1, 0)}")
         return
-    short = statistics.pvariance([b - a for a, b in zip(closes, closes[1:])])
+    returns = [b - a for a, b in zip(closes, closes[1:])]
+    n, drift = len(returns), statistics.fmean(returns)
+    short = statistics.variance(returns, drift)
     if short <= 0:
         ls.omit("price.day_character", "the 5-minute returns since 10:00 have not varied")
         return
-    ratio = statistics.pvariance([closes[i + steps] - closes[i] for i in range(len(closes) - steps)]) / (steps * short)
+    overlapping = sum((closes[i + steps] - closes[i] - steps * drift) ** 2 for i in range(n - steps + 1))
+    ratio = overlapping / (steps * (n - steps + 1) * (1 - steps / n)) / short
     lead = f"so far today, 30-minute stretches have been {ratio:.2f} times"
     if ratio > VR_TREND:
         ls.put("price.day_character", f"{lead} larger than their 5-minute pieces would suggest, above the {VR_TREND:.2f} building line")
