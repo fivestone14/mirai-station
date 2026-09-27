@@ -45,8 +45,9 @@ SECTORS = ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB",
 FRESH_MIN = 5
 # A TICK burst is judged over the question's own five minutes.
 TICK_BURST_WINDOW_MIN = 5
-# A release is a decision, testimony or report at a moment in the session: the closes are not, nor a speech, nor
-# the press conference that follows the decision it explains.
+# A release is a tier-1 row or a report at a moment in the session: a decision, testimony or the Fed chair's
+# Jackson Hole speech. The closes are not, nor the press conference that follows the decision it explains, nor
+# the Fed officials' scheduled remarks (the fed_speaker tier).
 RELEASE_TIERS = (events.TIER, events.DATA_10AM, events.DATA_2PM)
 NOT_RELEASES = events.AT_THE_CLOSE | {"FOMC_PRESSER"}
 NET_VOLUME = {"$VOLD": "NYSE net volume", "$VOLSPD": "S&P 500 members' net volume"}

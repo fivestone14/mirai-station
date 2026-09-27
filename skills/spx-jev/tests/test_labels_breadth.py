@@ -479,6 +479,16 @@ def test_a_release_in_the_first_hour_is_held_against_the_minutes_from_the_open(s
         "60% even band; in the 30 minutes before it, from the open, the share was 55%, inside the 40% to 60% even band")
 
 
+def test_the_fed_chairs_jackson_hole_speech_is_a_release_and_other_fed_remarks_are_not(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, [("10:00", "FED_CHAIR_JACKSON_HOLE", 1)])
+    ls = around_release(scene_factory, at(10, 32, ss=10), [(30, 0.55), (32, 0.6)])
+    assert ls.gates["breadth_flip_after_release"] is None
+    assert sentence(ls, "breadth.flip_after_release").startswith("since the Fed chair's Jackson Hole speech at 10:00, 32 minutes ago,")
+    calendar(tmp_path, monkeypatch, [("10:00", "FED_CHAIR_SPEECH", "fed_speaker")])
+    assert around_release(scene_factory, at(10, 32, ss=10), [(62, 0.5)]).gates["breadth_flip_after_release"] == (
+        "no in-session release in the last 120 minutes")
+
+
 def test_the_gate_sleeps_without_a_release_in_the_digest_window(scene_factory, tmp_path, monkeypatch):
     blocks = [(390, 0.5)]
     calendar(tmp_path, monkeypatch, FOMC_AND_PRESSER)
