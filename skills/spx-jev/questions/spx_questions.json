@@ -44,21 +44,21 @@
      "cadence": "once at the 09:35 read on the settled open; answer held as a day constant to 10:30 (code weights it by minutes since the open)",
      "code_answer": true,
      "ask": "How large was this morning's gap from yesterday's close?",
-     "instructions": "Read `gap.size`. How large was this morning's gap between yesterday's close and the settled open, whichever way it went?",
+     "instructions": "Read `gap.size`. How large was this morning's gap between yesterday's close and the settled open, whichever way it went, against the recent sessions' gaps?",
      "options": [
-      "none",
       "small",
+      "typical",
       "large"
      ],
      "criteria": [
-      "the open was within {gap_rule_sigma} sigma of yesterday's close",
-      "the gap was {gap_rule_sigma} to {gap_large_sigma} sigma",
-      "the gap was more than {gap_large_sigma} sigma"
+      "the gap was in the bottom third of the recent sessions' gaps",
+      "the gap was in the middle third of the recent sessions' gaps",
+      "the gap was in the top third of the recent sessions' gaps"
      ],
      "code_criteria": [
-      "|gap| < {gap_rule_sigma}",
-      "{gap_rule_sigma} <= |gap| < {gap_large_sigma}",
-      "|gap| >= {gap_large_sigma}"
+      "|gap| larger than under a third of the prior sessions' |gap| (bottom third)",
+      "|gap| larger than a third to two thirds of them (middle third)",
+      "|gap| larger than over two thirds of them (top third)"
      ],
      "labels": [
       "gap.size"

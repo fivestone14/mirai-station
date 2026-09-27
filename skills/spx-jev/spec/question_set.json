@@ -101,7 +101,7 @@
   },
   "labels": 121,
   "labels_built": 3,
-  "constants": 166,
+  "constants": 167,
   "label_availability": {
    "live": 68,
    "cheap_add": 38,
@@ -202,6 +202,12 @@
   "gap_touch_sigma": {
    "value": 0.02,
    "note": "touch tolerance for yesterday's close",
+   "cuts_json_name": null,
+   "in_cuts_py": false
+  },
+  "gap_rank_min_sessions": {
+   "value": 10,
+   "note": "fewest prior sessions with a trusted ruler to rank the gap's size against",
    "cuts_json_name": null,
    "in_cuts_py": false
   },
@@ -1188,31 +1194,31 @@
      "status": "live",
      "cadence": "once at the 09:35 read on the settled open; answer held as a day constant to 10:30 (code weights it by minutes since the open)",
      "ask": "How large was this morning's gap from yesterday's close?",
-     "instructions": "Read `gap.size`. How large was this morning's gap between yesterday's close and the settled open, whichever way it went?",
+     "instructions": "Read `gap.size`. How large was this morning's gap between yesterday's close and the settled open, whichever way it went, against the recent sessions' gaps?",
      "options": [
       {
-       "name": "none",
-       "description": "the open was within {gap_rule_sigma} sigma of yesterday's close"
+       "name": "small",
+       "description": "the gap was in the bottom third of the recent sessions' gaps"
       },
       {
-       "name": "small",
-       "description": "the gap was {gap_rule_sigma} to {gap_large_sigma} sigma"
+       "name": "typical",
+       "description": "the gap was in the middle third of the recent sessions' gaps"
       },
       {
        "name": "large",
-       "description": "the gap was more than {gap_large_sigma} sigma"
+       "description": "the gap was in the top third of the recent sessions' gaps"
       }
      ],
      "criteria": [
-      "|gap| < {gap_rule_sigma}",
-      "{gap_rule_sigma} <= |gap| < {gap_large_sigma}",
-      "|gap| >= {gap_large_sigma}"
+      "|gap| larger than under a third of the prior sessions' |gap| (bottom third)",
+      "|gap| larger than a third to two thirds of them (middle third)",
+      "|gap| larger than over two thirds of them (top third)"
      ],
      "labels_needed": [
       {
        "name": "gap.size",
-       "example": "price opened 0.44 sigma above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; past the 0.15 sigma gap rule and past the 0.40 sigma large-gap line; 1.4 times this morning's same-day straddle",
-       "computed_how": "(09:34 close - prior_close)/sigma_anchor; states both the gap_rule_sigma and gap_large_sigma verdicts; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -1221,7 +1227,7 @@
      ],
      "why": "Gap size sets how busy the first half hour is; it says nothing about the next 10 minutes' direction, so it serves size only and is asked once instead of twelve identical times.",
      "evidence": "59 sessions: |gap| vs first-30 range corr +0.24; signed gap vs next 10 min -0.015 (no direction). Old 'large' (>0.80) fired on 2-3 of 59 days; >=0.40 fires on about 22. Fill by 0.15 sigma rule: under 15/16 filled that day, 0.15-0.40 6/19, over 0.40 5/24.",
-     "origin": "round1:gap_size (reworded: 3 bands, day constant, no direction claim)",
+     "origin": "round1:gap_size (reworded: 3 bands, day constant, no direction claim; bands ranked against the prior sessions' gaps)",
      "code_answer": true,
      "schedule": {
       "opening_five_minute": {
@@ -2819,8 +2825,8 @@
      "labels_needed": [
       {
        "name": "gap.size",
-       "example": "price opened 0.44 sigma above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; past the 0.15 sigma gap rule and past the 0.40 sigma large-gap line; 1.4 times this morning's same-day straddle",
-       "computed_how": "(09:34 close - prior_close)/sigma_anchor; states both the gap_rule_sigma and gap_large_sigma verdicts; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -2878,8 +2884,8 @@
      "labels_needed": [
       {
        "name": "gap.size",
-       "example": "price opened 0.44 sigma above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; past the 0.15 sigma gap rule and past the 0.40 sigma large-gap line; 1.4 times this morning's same-day straddle",
-       "computed_how": "(09:34 close - prior_close)/sigma_anchor; states both the gap_rule_sigma and gap_large_sigma verdicts; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -2952,8 +2958,8 @@
      "labels_needed": [
       {
        "name": "gap.size",
-       "example": "price opened 0.44 sigma above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; past the 0.15 sigma gap rule and past the 0.40 sigma large-gap line; 1.4 times this morning's same-day straddle",
-       "computed_how": "(09:34 close - prior_close)/sigma_anchor; states both the gap_rule_sigma and gap_large_sigma verdicts; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -9217,8 +9223,8 @@
   },
   {
    "name": "gap.size",
-   "example": "price opened 0.44 sigma above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; past the 0.15 sigma gap rule and past the 0.40 sigma large-gap line; 1.4 times this morning's same-day straddle",
-   "computed_how": "(09:34 close - prior_close)/sigma_anchor; states both the gap_rule_sigma and gap_large_sigma verdicts; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+   "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
+   "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
    "availability": "live",
    "label_built": false,
@@ -11744,6 +11750,13 @@
    "decision": "accepted",
    "reason": "start when their labels can first be measured: big prints need a 10-minute window after the open (09:40), the call-put shift a diary row 10 minutes back and the first row lands after 09:30 (09:45); at the earlier reads the label was always left out and the question counted as missing.",
    "source": "integration review"
+  },
+  {
+   "subject": "gap_size",
+   "action": "bands",
+   "decision": "accepted",
+   "reason": "ranked, not cut: today's gap size is placed against the same gap on up to the last 20 prior sessions (sessions with an estimated anchor left out, at least gap_rank_min_sessions of them, else gap.size is omitted) and answered in thirds, small, typical or large, instead of the fixed gap_rule_sigma and gap_large_sigma lines; gap_rule_sigma still decides a real gap for gap.fill_progress, gap.morning_vs_gap and gap_side_now, and gap_large_sigma still names the premarket futures bands.",
+   "source": "owner decision"
   }
  ],
  "unresolved": [

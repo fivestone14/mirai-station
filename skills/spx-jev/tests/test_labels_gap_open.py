@@ -1,21 +1,25 @@
 """The gap and open family (labels/gap_open.py): each label's sentence at its verdicts and their boundaries,
 its omissions, the gap_fill_next_hour gate both ways, and that a bar finishing after the read never counts.
+The gap's size is ranked against prior sessions whose first diary row is written into a tmp folder.
 
 Every scene carries a 09:31 diary row, so the morning anchor is trusted (SIGMA points, 80 so that the cuts
 land on exact figures), and yesterday's close is PRIOR_CLOSE. Bars start at 09:30, one close a minute;
 the fifth close is the settled open."""
 from __future__ import annotations
 
+import json
 from dataclasses import replace
+from datetime import date, time, timedelta
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, make_row, prior_sessions
-from spx_jev.cuts import (GAP_LARGE_SIGMA, GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
+from conftest import DAY, at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
+from spx_jev.cuts import (GAP_RANK_MIN_SESSIONS, GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
                           OPEN_MOVE_SIGMA, RANGE_TOP_SHARE)
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.measures import bar_time
 from spx_jev.labels.rulers import SigmaRuler
+from spx_jev.state_builder import make_scene
 
 SIGMA = 80.0
 PRIOR_CLOSE = 7700.0
@@ -42,33 +46,96 @@ def opening(settled: float, then: list[float]) -> list[float]:
 
 # ---- gap.size
 
+# Twenty prior gaps, 0.02 to 0.40 sigma: beating 6 of them is the bottom third, 7 to 13 the middle, 14 the top.
+TWENTY = [0.02 * k for k in range(1, 21)]
+
+
+def write_first_row(root, day: str, **over) -> None:
+    (root / "reversion").mkdir(parents=True, exist_ok=True)
+    (root / "reversion" / f"{day}.jsonl").write_text(json.dumps(make_row(at(9, 31, day), 7700.0, sigma=SIGMA, **over)) + "\n")
+
+
+def gap_history(root, gaps: list[float], newest: date = date(2026, 9, 17)) -> tuple[dict, dict]:
+    """Prior sessions, newest first from ``newest``, each settling its open at 7700 over a close ``gap`` sigma away (alternately
+    below and above it), with a first diary row carrying that close; their bars and trusted rulers."""
+    bars, rulers = {}, {}
+    for k, g in enumerate(gaps):
+        day = (newest - timedelta(days=k)).isoformat()
+        bars[day] = flat_bars(390, day=day)
+        write_first_row(root, day, prior_close=7700.0 + (1 if k % 2 else -1) * g * SIGMA)
+        rulers[day] = SigmaRuler(SIGMA, "anchor")
+    return bars, rulers
+
+
+def sized(scene_factory, root, settled, gaps=TWENTY, rulers=None, now=None, **kw):
+    """The 09:35 read (or one at ``now``) on a day settling its open at ``settled``, with ``gaps`` as the prior sessions' gaps."""
+    bars, trusted = gap_history(root, gaps)
+    sc = scene(scene_factory, now or at(9, 35), opening(settled, [settled] * 30), prior_bars=bars, **kw)
+    return replace(sc, prior_rulers={**trusted, **(rulers or {})}, state_dir=root)
+
+
 @pytest.mark.parametrize("settled, verdict", [
-    (7735.2, f"0.44 sigma above yesterday's close, {OPENED}; past the 0.15 sigma gap rule and past the 0.40 sigma large-gap line; "
-             "1.6 times this morning's same-day straddle"),
-    (7732.0, f"0.40 sigma above yesterday's close, {OPENED}; past the 0.15 sigma gap rule and past the 0.40 sigma large-gap line; "
-             "1.5 times this morning's same-day straddle"),
-    (7731.9, f"0.40 sigma above yesterday's close, {OPENED}; past the 0.15 sigma gap rule and under the 0.40 sigma large-gap line; "
-             "1.4 times this morning's same-day straddle"),
-    (7688.0, f"0.15 sigma below yesterday's close, {OPENED}; past the 0.15 sigma gap rule and under the 0.40 sigma large-gap line; "
-             "0.5 times this morning's same-day straddle"),
-    (7688.1, f"0.15 sigma below yesterday's close, {OPENED}; within the 0.15 sigma gap rule, so no real gap; "
-             "0.5 times this morning's same-day straddle"),
+    (7710.4, "0.13 sigma is larger than 6 of the last 20 days' gaps, bottom third: price opened above yesterday's close, "
+             f"{OPENED}; 0.5 times this morning's same-day straddle"),
+    (7712.0, "0.15 sigma is larger than 7 of the last 20 days' gaps, middle third: price opened above yesterday's close, "
+             f"{OPENED}; 0.5 times this morning's same-day straddle"),
+    (7678.4, "0.27 sigma is larger than 13 of the last 20 days' gaps, middle third: price opened below yesterday's close, "
+             f"{OPENED}; 1.0 times this morning's same-day straddle"),
+    (7676.8, "0.29 sigma is larger than 14 of the last 20 days' gaps, top third: price opened below yesterday's close, "
+             f"{OPENED}; 1.1 times this morning's same-day straddle"),
+    (7735.2, "0.44 sigma is larger than 20 of the last 20 days' gaps, top third: price opened above yesterday's close, "
+             f"{OPENED}; 1.6 times this morning's same-day straddle"),
+    (7708.0, "0.10 sigma is larger than 4 of the last 20 days' gaps, bottom third: price opened above yesterday's close, "
+             f"{OPENED}; 0.4 times this morning's same-day straddle"),              # level with the 0.10 gap: not larger than it
 ])
-def test_the_gap_is_the_settled_open_against_yesterdays_close_judged_against_both_lines(scene_factory, settled, verdict):
-    got, _, _ = labels(scene(scene_factory, at(9, 35), opening(settled, [])))
-    assert got["gap.size"] == f"price opened {verdict}"
-    assert (GAP_RULE_SIGMA, GAP_LARGE_SIGMA) == (0.15, 0.40)
+def test_the_gaps_size_is_its_third_among_the_prior_sessions_gaps_whichever_way_it_went(scene_factory, tmp_path, settled, verdict):
+    got, _, _ = labels(sized(scene_factory, tmp_path, settled))
+    assert got["gap.size"] == f"this morning's gap of {verdict}"
 
 
-def test_the_gap_waits_for_the_settled_open_and_says_when_its_ruler_is_estimated(scene_factory):
+def test_the_gaps_size_needs_ten_usable_prior_sessions_and_leaves_out_estimated_rulers(scene_factory, tmp_path):
+    assert GAP_RANK_MIN_SESSIONS == 10
+    got, _, _ = labels(sized(scene_factory, tmp_path, 7712.0, gaps=TWENTY[:10]))
+    assert got["gap.size"].startswith("this morning's gap of 0.15 sigma is larger than 7 of the last 10 days' gaps, top third:")
+    need = "its rank needs 10 prior sessions with a trusted morning ruler, a settled open and yesterday's close, have 9"
+    _, omitted, _ = labels(sized(scene_factory, tmp_path, 7712.0, gaps=TWENTY[:9]))
+    assert omitted["gap.size"] == need
+    # the two smallest gaps sit on days whose ruler was estimated: they are neither counted nor beaten
+    estimated = {"2026-09-17": SigmaRuler(SIGMA, "live"), "2026-09-16": SigmaRuler(SIGMA, "vix")}
+    got, _, _ = labels(sized(scene_factory, tmp_path, 7712.0, gaps=TWENTY[:12], rulers=estimated))
+    assert got["gap.size"].startswith("this morning's gap of 0.15 sigma is larger than 5 of the last 10 days' gaps, middle third:")
+    _, omitted, _ = labels(sized(scene_factory, tmp_path, 7712.0, gaps=TWENTY[:11], rulers=estimated))
+    assert omitted["gap.size"] == need
+    # a day with no prior close on its first diary row, or no diary at all, is left out too
+    sc = sized(scene_factory, tmp_path, 7712.0, gaps=TWENTY[:11])
+    write_first_row(tmp_path, "2026-09-17", prior_close=None)
+    assert "is larger than 6 of the last 10 days' gaps, middle third:" in labels(sc)[0]["gap.size"]
+    (tmp_path / "reversion" / "2026-09-16.jsonl").unlink()
+    assert labels(sc)[1]["gap.size"] == need
+    _, omitted, _ = labels(replace(sc, state_dir=None))
+    assert omitted["gap.size"] == "no state folder to read the prior sessions' closes from"
+
+
+def test_the_gap_waits_for_the_settled_open_and_says_when_its_ruler_is_estimated(scene_factory, tmp_path):
     closes = opening(7735.2, [7735.0] * 30)
     _, omitted, gates = labels(scene(scene_factory, at(9, 34, ss=59), closes, spot=7735.2))     # the 09:34 bar has not finished
     assert omitted["gap.size"] == "no settled open yet: the 09:34 bar has not finished"
     assert gates["gap_fill_next_hour"] == "no gap to fill: no settled open yet: the 09:34 bar has not finished"
     _, omitted, _ = labels(scene(scene_factory, at(10, 0), closes, row_over={"prior_close": None}))
     assert omitted["gap.size"] == omitted["gap.fill_progress"] == "row carries no prior close"
-    got, _, _ = labels(scene(scene_factory, at(10, 0), closes, anchored=False))              # no row by 09:40: the live sigma stands in
+    got, _, _ = labels(sized(scene_factory, tmp_path, 7735.2, now=at(10, 0), anchored=False))   # no row by 09:40: the live sigma stands in
     assert got["gap.size"].endswith("1.6 times this morning's same-day straddle (ruler estimated)")
+
+
+def test_the_gaps_size_is_ranked_only_against_sessions_before_today(tmp_path):
+    """Built from disk: a session after today, with the largest gap of all, is never one of the prior sessions."""
+    prior, _ = gap_history(tmp_path, TWENTY[:10])
+    later, _ = gap_history(tmp_path, [1.0], newest=date(2026, 9, 21))
+    rows = [make_row(at(9, 31), 7700.0, sigma=SIGMA, prior_close=PRIOR_CLOSE),
+            make_row(at(9, 35), 7735.2, sigma=SIGMA, prior_close=PRIOR_CLOSE)]
+    write_state(tmp_path, DAY, rows, bars_from_closes(opening(7735.2, [7735.0] * 30)), {**prior, **later})
+    got, _, _ = labels(make_scene(tmp_path, DAY, time(9, 35)))
+    assert got["gap.size"].startswith("this morning's gap of 0.44 sigma is larger than 10 of the last 10 days' gaps, top third:")
 
 
 # ---- gap.fill_progress and the gap_fill_next_hour gate
