@@ -242,6 +242,9 @@ def test_the_call_share_of_the_last_10_minutes_new_volume_is_set_against_the_day
 def test_the_shift_is_omitted_without_a_row_10_minutes_back_or_enough_prior_diaries(scene_factory, tmp_path):
     ls, _ = read(shift_scene(scene_factory, tmp_path, 700, 300, then=at(9, 44)))          # the scanner paused
     assert ls.omitted["options.call_put_shift_10m"] == "no diary row with same-day volume by strike from 10 minutes ago and now"
+    ls, _ = read(shift_scene(scene_factory, tmp_path, 700, 300, then=at(9, 51)))          # the day's first row, as at the open
+    assert ls.omitted["options.call_put_shift_10m"] == ("the diary's first row with same-day volume by strike today came under 10 minutes ago: "
+                                                         "no earlier volume to set the last 10 minutes against")
     ls, _ = read(replace(shift_scene(scene_factory, tmp_path, 700, 300), state_dir=None))
     assert ls.omitted["options.call_put_shift_10m"] == "no state folder to read the prior sessions' diaries from"
     ls, _ = read(shift_scene(scene_factory, tmp_path / "four", 700, 300, prior_days=PRIOR_DAYS[:4]))

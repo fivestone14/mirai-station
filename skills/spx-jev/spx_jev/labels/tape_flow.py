@@ -184,9 +184,15 @@ def _new_contracts(books: list[tuple[datetime, Book]], end: datetime) -> tuple[B
 def _call_put_shift_10m(scene: Scene, ls: LabelSet) -> None:
     """The call share of the last 10 minutes' new same-day volume against the day's, and whether that new volume
     is too thin to judge against the same 10 minutes of the prior sessions."""
-    got = _new_contracts([(parse_ts(r["ts"]), _book(r)) for r in scene.rows_today], scene.now)
+    books = [(parse_ts(r["ts"]), _book(r)) for r in scene.rows_today]
+    got = _new_contracts(books, scene.now)
     if got is None:
-        ls.omit("options.call_put_shift_10m", f"no diary row with same-day volume by strike from {WINDOW_10_MIN} minutes ago and now")
+        first = next((ts for ts, b in books if b), None)
+        ls.omit("options.call_put_shift_10m",
+                f"the diary's first row with same-day volume by strike today came under {WINDOW_10_MIN} minutes ago: "
+                f"no earlier volume to set the last {WINDOW_10_MIN} minutes against"
+                if first is not None and first > scene.now - timedelta(minutes=WINDOW_10_MIN) else
+                f"no diary row with same-day volume by strike from {WINDOW_10_MIN} minutes ago and now")
         return
     book, calls, puts = got
     new = calls + puts
