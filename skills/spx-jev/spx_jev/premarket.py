@@ -350,25 +350,21 @@ def newest_call(out_dir: Path, day: str) -> dict | None:
     return None
 
 
-def report_checkpoint(day: date) -> str | None:
-    """The day's first checkpoint at or after its report: the read that first sees it."""
-    out = story.releases(day)
-    return next((c for c in checkpoints(day) if out and market_at(day, c) >= out[0].start), None)
-
-
 def story_so_far(out_dir: Path, day: str) -> list[dict]:
     """One chip per checkpoint read today, oldest first (a checkpoint read twice shows its newest read): where
-    futures stood against their 16:00 price (premarket.where_now's figure), whether the read is the first
-    after the report, and its call when it made one. For the phone only: no label ever reads it."""
+    futures stood against their 16:00 price (premarket.where_now's figure), whether the read is the first on
+    file at or after the day's first report (a missed checkpoint passes the mark to the next read), and its
+    call when it made one. For the phone only: no label ever reads it."""
     calls = {r["row_ts"]: {"pick": r["pick"], "probabilities": r.get("probabilities")}
              for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl") if r.get("pick")}
-    reads = {rec.get("checkpoint"): rec for rec in load_jsonl(out_dir / f"{day}.jsonl")}
-    report_at = report_checkpoint(date.fromisoformat(day))
+    reads = sorted({rec.get("checkpoint"): rec for rec in load_jsonl(out_dir / f"{day}.jsonl")}.values(), key=lambda r: r["row_ts"])
+    released = story.releases(date.fromisoformat(day))
+    first_after = next((rec["row_ts"] for rec in reads if released and parse_ts(rec["row_ts"]) >= released[0].start), None)
     out = []
-    for rec in sorted(reads.values(), key=lambda r: r["row_ts"]):
+    for rec in reads:
         fig = (rec.get("figures") or {}).get(WHERE_NOW) or {}
         out.append({"at": rec["row_ts"], "checkpoint": rec.get("checkpoint"), "lean": fig.get("verdict"), "net_sigma": fig.get("value"),
-                    "band": fig.get("cut"), "report": rec.get("checkpoint") == report_at, "call": calls.get(rec["row_ts"])})
+                    "band": fig.get("cut"), "report": rec["row_ts"] == first_after, "call": calls.get(rec["row_ts"])})
     return out
 
 

@@ -235,7 +235,6 @@ def test_the_report_row_is_due_then_measured_and_names_its_releases(monkeypatch)
     assert after[1]["sentence"] == "futures rose 0.20 of a normal day's move after the report" and "verdict" not in after[1]["figure"]
     missed = premarket.situation({"state": {}, "omitted": {premarket.REPORT: "no /ES price at 08:45"}, "figures": {}}, at(8, 48))
     assert missed[0]["verdict"] is None and missed[0]["sentence"].endswith("came out at 08:30 ET; no /ES price at 08:45")
-    assert premarket.report_checkpoint(date.fromisoformat(DAY)) == "08:48"
 
 
 def test_the_story_marks_the_first_read_after_the_report(tmp_path, jev, monkeypatch):
@@ -246,6 +245,15 @@ def test_the_story_marks_the_first_read_after_the_report(tmp_path, jev, monkeypa
         c = run_checkpoint(state, out, DOC, False, at(hh, mm), cp, save=False)
     assert [(s["checkpoint"], s["report"]) for s in c["story"]] == [("08:05", False), ("08:48", True), ("09:05", False)]
     assert c["situation"][-1]["key"] == "report" and c["unsent_reason"] == service.UNSENT_DEFAULT
+
+
+def test_a_missed_checkpoint_passes_the_report_mark_to_the_next_read(tmp_path, jev, monkeypatch):
+    monkeypatch.setattr(story, "releases", lambda day: [events.Event(at(8, 30), None, "CPI", events.PRE_OPEN)])
+    state = _station(tmp_path)
+    out = PREMARKET.folder(state)
+    for hh, mm, cp in ((8, 5, "08:05"), (9, 5, "09:05")):
+        c = run_checkpoint(state, out, DOC, False, at(hh, mm), cp, save=False)
+    assert [(s["checkpoint"], s["report"]) for s in c["story"]] == [("08:05", False), ("09:05", True)]
 
 
 # ---- the command ---------------------------------------------------------------------------------
