@@ -489,7 +489,7 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
 
 
 PRE_FNS = ("fits", "top1", "oddsKeys", "oddsBar", "tag", "skipLine", "ageWord", "mins", "untilWords", "expiryLine",
-           "preLeads", "preMissed", "preJevRead", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock", "preCall",
+           "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock", "preCall",
            "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
 PRE_VARS = ("ODDS_ORDER", "ODDS_TRACK_PX", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
 # the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles
@@ -637,10 +637,26 @@ def test_a_card_left_behind_by_a_sleeping_mac_says_which_read_is_missing():
     age = [m[1] for m in got["main"] if "pre" in m[0]][0]["kids"][0]["kids"][1]
     assert age["attrs"]["class"] == "r old"
     # a checkpoint only minutes late is not yet missing, and the service's own staleness is said beside it
-    assert _page(pre_card("03:35"), et("08:14"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
+    assert _page(pre_card("03:35"), et("08:10"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
     old = pre_card("08:05", freshness={"age_s": 1500, "stale": True})
     assert _page(old, et("08:06"))["state"] == ["snapshot, JEV at 05:48 and 06:28", "futures 25 min old at the read"]
     assert _page(pre_card("09:05"), et("09:06"), ok=False)["state"][0] == "fetch failed, showing the last card"
+
+
+def test_a_missed_last_jev_read_is_said_before_the_hand_over():
+    """The lane reads nothing 5 minutes or more after a checkpoint, so by 09:34 the 09:28 call is not coming: the
+    card says so before the 09:35 hand-over, and no longer names that read as one to come."""
+    lane = (Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "spx_jev" / "premarket.py").read_text()
+    late = re.search(r"\nLATE_FIRE_MIN = (\d+) ", lane)
+    assert late and _var("PRE_LATE_MIN").strip().startswith(f"var PRE_LATE_MIN = {int(late.group(1)) + 1};")
+    assert _page(pre_card("09:05"), et("09:20"))["state"] == ["snapshot, JEV at 06:28"]
+    assert _page(pre_card("09:05"), et("09:33", s="59"))["state"] == ["snapshot, JEV at 06:28"]
+    got = _page(pre_card("09:05"), et("09:34"))
+    assert got["state"] == ["snapshot", "stale: the 06:28 read has not landed"]
+    age = [m[1] for m in got["main"] if "pre" in m[0]][0]["kids"][0]["kids"][1]
+    assert age["attrs"]["class"] == "r old"
+    # a passed JEV read drops from the chip once it is missing, the one still to come stays
+    assert _page(pre_card("08:05"), et("08:54"))["state"] == ["snapshot, JEV at 06:28", "stale: the 05:48 read has not landed"]
 
 
 def test_a_day_without_a_report_has_no_report_row_or_chip():

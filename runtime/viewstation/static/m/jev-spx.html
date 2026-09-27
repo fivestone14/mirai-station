@@ -1117,7 +1117,8 @@ details .q{margin-top:8px}
   // the opening lane's first read takes over (the card's handover, 09:35); a card of another day is never drawn.
   var PRE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/premarket/latest.json';
   var PRE_HOURS = ['02:35', '09:35'];       // fetched through the night's checkpoints, up to the hand-over
-  var PRE_LATE_MIN = 10;                    // a checkpoint's card lands within minutes of it; later than this it is missing
+  var PRE_LATE_MIN = 6;                     // the lane reads nothing 5 minutes or more after a checkpoint (premarket.LATE_FIRE_MIN),
+                                            // and its run takes about a minute more: later than this the read is missing
   var premarket = null, premarketOk = true, shownPre = false, preInflight = false;
   function preLeads(p, now, today){
     return !!(p && p.lane === 'premarket' && today && p.day === today && now < Date.parse(p.handover));
@@ -1134,6 +1135,12 @@ details .q{margin-top:8px}
     return ((p.schedule && p.schedule.jev_reads) || []).filter(function(t){
       return row >= Date.parse(t) - 60000 && row < Date.parse(t) + PRE_LATE_MIN * 60000; })[0] || null;
   }
+  // the JEV reads still to come after the card's read: one PRE_LATE_MIN past its time is missing, not coming
+  function preJevDue(p, now){
+    var row = Date.parse(p.row_ts);
+    return ((p.schedule && p.schedule.jev_reads) || []).filter(function(t){
+      return Date.parse(t) > row + 60000 && now < Date.parse(t) + PRE_LATE_MIN * 60000; });
+  }
   // why a JEV read was not sent, as the builder wrote it, its market clock in the viewer's zone: its own reasons open
   // with 'not sent', and one that does not ("nothing to ask at the 08:48 ET read") is given the prefix here
   function preUnsent(p){
@@ -1148,7 +1155,10 @@ details .q{margin-top:8px}
     var qs = p.questions || [];
     if(p.sent) out.push(qs.filter(function(q){ return q.answer; }).length + ' of ' + qs.length + ' answered');
     else if(preJevRead(p)) out.push(preUnsent(p));
-    else if(jev.length) out.push('snapshot, JEV at ' + jev.map(function(t){ return viewerTime(t); }).join(' and '));
+    else if(jev.length){
+      var due = preJevDue(p, now).map(function(t){ return viewerTime(t); });
+      out.push(due.length ? 'snapshot, JEV at ' + due.join(' and ') : 'snapshot');
+    }
     var missed = preMissed(p, now);
     if(missed != null) out.push('stale: the ' + viewerTime(missed) + ' read has not landed');
     if(p.freshness && p.freshness.stale && p.freshness.age_s != null) out.push('futures ' + Math.round(p.freshness.age_s / 60) + ' min old at the read');
