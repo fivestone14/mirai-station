@@ -323,8 +323,9 @@ def prior_weekends(store: NightStore, table: dict, day: date, clock: time) -> tu
 
 
 def weekend_path(scene: Scene, table: dict, futures: Move | str) -> Got:
-    """On the first session after a weekend or a holiday: bitcoin's weekend leg ranked in fifths against the last
-    weekends', and its reopen leg taken the weekend's way, ranked in thirds against theirs: extended, held or reversed."""
+    """On the first session after a weekend or a holiday: bitcoin's weekend leg ranked by size against the last
+    weekends' (a big weekend is in the top third; most weekends are up, so a rank with its sign would call any small
+    fall big), and its reopen leg taken the weekend's way, ranked in thirds against theirs: extended, held or reversed."""
     day = date.fromisoformat(scene.day)
     if not after_break(day):
         return "not the first session after a weekend or a holiday"
@@ -345,7 +346,7 @@ def weekend_path(scene: Scene, table: dict, futures: Move | str) -> Got:
     if not rolls.same_contract(table, BITCOIN, weekend.start_at, since.end_at):
         return f"{NAME} rolled to the next contract since the {close:%A} close, so the weekend spans two contracts"
     weekends, reopens = prior_weekends(NightStore(scene.state_dir), table, day, read_clock(scene.now))
-    weekend_rank, why = rank_night(weekend.pct, weekends)
+    weekend_rank, why = rank_night(abs(weekend.pct), [Night(n.day, abs(n.value)) if n.skip is None else n for n in weekends])
     if weekend_rank is None:
         return f"the weekend leg not ranked: {why}"
     taken = since.pct * way_of(weekend.pct)
@@ -353,17 +354,17 @@ def weekend_path(scene: Scene, table: dict, futures: Move | str) -> Got:
     usual_weekend, usual_reopen = normal([n.value for n in weekends if n.skip is None]), normal([n.value for n in reopens if n.skip is None])
     if usual_weekend is None or usual_reopen is None:
         return f"bitcoin's weekend not sized: {NO_NORMAL}"
-    side = fifth_side(weekend_rank)
+    big = weekend_rank.share >= THIRD_HI
     verdict = "extended" if reopen_rank.share >= THIRD_HI else "reversed" if reopen_rank.share <= THIRD_LO else "held"
     band = f"{third(reopen_rank.share)} third"
     location = f"{where_futures(scene, futures)}; " if isinstance(futures, Move) else ""
     sentence = (f"{location}{NAME} {'rose' if weekend.pct >= 0 else 'fell'} {abs(weekend.pct) / usual_weekend:.1f} of its normal weekends "
-                f"from the {close:%A} {close:%H:%M} close to the S&P futures' reopen at {reopen:%H:%M} {reopen:%A}, "
-                f"{FIFTH_WORDS[side]} of the last {weekend_rank.of} weekends; since the reopen it has moved {abs(since.pct) / usual_reopen:.1f} "
+                f"from the {close:%A} {close:%H:%M} close to the S&P futures' reopen at {reopen:%H:%M} {reopen:%A}, larger than "
+                f"{weekend_rank.larger_than} of the last {weekend_rank.of} weekends by size, {weekend_rank.band}; since the reopen it has moved {abs(since.pct) / usual_reopen:.1f} "
                 f"of a normal reopen leg {'the same way' if taken >= 0 else 'back against it'}, {band} of those weekends' reopen legs "
                 f"taken their weekend's way: {KEPT[verdict]}")
-    asleep = None if side else (f"an ordinary weekend for bitcoin: its weekend leg is between the top and bottom fifths of the last "
-                                f"{weekend_rank.of} weekends")
+    asleep = None if big else (f"an ordinary weekend for bitcoin: its weekend leg is not in the top third by size of the last "
+                               f"{weekend_rank.of} weekends")
     return sentence, rank_figure(taken / usual_reopen, band, verdict), asleep
 
 

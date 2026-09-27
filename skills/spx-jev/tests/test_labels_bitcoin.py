@@ -250,13 +250,17 @@ def weekend(day: date, weekend_pct: float, reopen_pct: float, until: time = READ
             one_bar("/MBT", read, at_reopen * (1 + reopen_pct / 100), day), one_bar("/ES", close, ES, day), one_bar("/ES", read, ES, day)]
 
 
-def prior_weekends(root: Path) -> None:
-    """The weekends before MONDAY since CME bitcoin traded round the clock (16 of them): weekend legs from -1.5%
-    upward by 0.2%, each reopen leg the weekend's way by (k - 7.5) / 10 percent, so both rank in weekend order."""
+EVEN_WEEKENDS = [-1.5 + 0.2 * k for k in range(16)]
+# The weekends before 2026-09-14 as saved, most of them up, and one more to make 16.
+UP_WEEKENDS = [0.47, 2.26, 2.8, 1.41, -0.92, 2.63, 0.09, 0.43, 0.99, 0.97, 0.31, -0.2, 1.08, 1.4, -0.89, 0.6]
+
+
+def prior_weekends(root: Path, legs: list[float] = EVEN_WEEKENDS) -> None:
+    """The weekends before MONDAY since CME bitcoin traded round the clock (16 of them): weekend legs ``legs`` percent
+    (by default from -1.5% upward by 0.2%), each reopen leg the weekend's way by (k - 7.5) / 10 percent."""
     days = [d for d in trading_days_before(MONDAY, 90) if bitcoin.after_break(d) and d >= date(2026, 6, 1)]
-    assert len(days) == 16
-    for k, d in enumerate(days):
-        w = -1.5 + 0.2 * k
+    assert len(days) == len(legs) == 16
+    for k, (d, w) in enumerate(zip(days, legs)):
         write_night(root, d.isoformat(), weekend(d, w, (k - 7.5) / 10 * (1 if w >= 0 else -1)))
 
 
@@ -268,7 +272,7 @@ def test_a_big_weekend_then_the_reopen_leg_taken_the_weekend_s_way(tmp_path, pre
     ls = build_bitcoin_labels(premarket_scene_factory(datetime.combine(d, READ, tzinfo=ET), weekend(d, -4.0, reopen_pct), state_dir=tmp_path))
     s = written(ls)["weekend.btc_path"]
     assert s.startswith("S&P futures stand 0.00 sigma above their 16:00 price; bitcoin futures (/MBT) fell ")
-    assert "from the Friday 16:00 close to the S&P futures' reopen at 18:00 Sunday, in the bottom fifth of the last 16 weekends" in s
+    assert "from the Friday 16:00 close to the S&P futures' reopen at 18:00 Sunday, larger than 16 of the last 16 weekends by size, top third" in s
     assert s.endswith(kept)
     assert ls.figures["weekend.btc_path"]["verdict"] == verdict and ls.gates["btc_weekend_path"] is None
 
@@ -279,6 +283,14 @@ def test_an_ordinary_weekend_sleeps_the_question_and_keeps_the_label(tmp_path, p
     ls = build_bitcoin_labels(premarket_scene_factory(datetime.combine(d, READ, tzinfo=ET), weekend(d, 0.0, 0.0), state_dir=tmp_path))
     assert "weekend.btc_path" in written(ls)
     assert ls.gates["btc_weekend_path"].startswith("an ordinary weekend for bitcoin")
+
+
+def test_a_small_fall_among_mostly_up_weekends_is_an_ordinary_weekend(tmp_path, premarket_scene_factory):
+    prior_weekends(tmp_path, UP_WEEKENDS)
+    d = date.fromisoformat(MONDAY)
+    ls = build_bitcoin_labels(premarket_scene_factory(datetime.combine(d, READ, tzinfo=ET), weekend(d, -0.05, 0.0), state_dir=tmp_path))
+    assert "larger than 0 of the last 16 weekends by size, bottom third" in written(ls)["weekend.btc_path"]
+    assert ls.gates["btc_weekend_path"] == "an ordinary weekend for bitcoin: its weekend leg is not in the top third by size of the last 16 weekends"
 
 
 def test_the_weekend_path_is_asked_only_after_a_weekend_or_a_holiday(tmp_path, premarket_scene_factory):
