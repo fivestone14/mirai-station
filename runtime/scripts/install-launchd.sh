@@ -47,24 +47,47 @@ PLISTS=(
 TARGET_DIR="${HOME}/Library/LaunchAgents"
 mkdir -p "$TARGET_DIR"
 
+# bootout returns before launchd has finished tearing a running job down; a bootstrap in that
+# window fails with "Bootstrap failed: 5: Input/output error" and, under set -e, stops the whole
+# install with that job unloaded (on 2026-09-27 it left the viewstation down). So wait until
+# launchd no longer knows the label, up to 15 s.
+wait_until_unloaded() {
+  local label="$1" tries=0
+  while launchctl print "gui/$UID/$label" >/dev/null 2>&1; do
+    (( ++tries > 30 )) && { log "install-launchd: $label still loaded after 15 s"; return 1; }
+    sleep 0.5
+  done
+}
+
+# One more try after a pause, for the rare case launchd still refuses right after the wait.
+bootstrap_with_retry() {
+  local label="$1" plist="$2"
+  launchctl bootstrap "gui/$UID" "$plist" && return 0
+  log "install-launchd: bootstrap of $label refused, retrying in 3 s"
+  sleep 3
+  launchctl bootstrap "gui/$UID" "$plist"
+}
+
 for p in "${PLISTS[@]}"; do
   src="${MIRAI_STATION_ROOT}/runtime/launchd/$p"
   dst="${TARGET_DIR}/$p"
+  label="$(basename "$p" .plist)"
 
   if [[ ! -f "$src" ]]; then
     log "install-launchd: missing source plist $src"
     exit 1
   fi
 
-  # Unload any previous version (ignore failure if not loaded)
-  launchctl bootout "gui/$UID/$(basename "$p" .plist)" 2>/dev/null || true
+  # Unload any previous version (ignore failure if not loaded), then wait for it to be gone
+  launchctl bootout "gui/$UID/$label" 2>/dev/null || true
+  wait_until_unloaded "$label"
 
   ln -sfn "$src" "$dst"
   log "install-launchd: linked $dst"
 
-  launchctl bootstrap "gui/$UID" "$dst"
-  launchctl enable "gui/$UID/$(basename "$p" .plist)"
-  log "install-launchd: bootstrapped $(basename "$p" .plist)"
+  bootstrap_with_retry "$label" "$dst"
+  launchctl enable "gui/$UID/$label"
+  log "install-launchd: bootstrapped $label"
 done
 
 log "install-launchd: all agents loaded. Inspect with: launchctl print gui/\$UID/com.mirai-station.left-eye"
