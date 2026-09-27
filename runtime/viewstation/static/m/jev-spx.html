@@ -1134,13 +1134,19 @@ details .q{margin-top:8px}
     return ((p.schedule && p.schedule.jev_reads) || []).filter(function(t){
       return row >= Date.parse(t) - 60000 && row < Date.parse(t) + PRE_LATE_MIN * 60000; })[0] || null;
   }
+  // why a JEV read was not sent, as the builder wrote it: its own reasons open with 'not sent', and one that does not
+  // ("nothing to ask at the 08:48 ET read") is given the prefix here
+  function preUnsent(reason){
+    if(!reason) return 'not sent';
+    return /^not sent\b/.test(reason) ? reason : 'not sent: ' + reason;
+  }
   // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint, old futures
   function preState(p, ok, now){
     var out = [], jev = (p.schedule && p.schedule.jev_reads) || [];
     if(!ok) out.push('fetch failed, showing the last card');
     var qs = p.questions || [];
     if(p.sent) out.push(qs.filter(function(q){ return q.answer; }).length + ' of ' + qs.length + ' answered');
-    else if(preJevRead(p)) out.push('not sent: ' + (p.unsent_reason || 'no key on the station'));
+    else if(preJevRead(p)) out.push(preUnsent(p.unsent_reason));
     else if(jev.length) out.push('snapshot, JEV at ' + jev.map(function(t){ return viewerTime(t); }).join(' and '));
     var missed = preMissed(p, now);
     if(missed != null) out.push('stale: the ' + viewerTime(missed) + ' read has not landed');
