@@ -455,12 +455,14 @@ def test_a_burst_price_kept_extending_is_measured_back_from_the_newest_extreme(s
 SECTORS = ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
 
 
-def burst_market(scene, tnx_jump=0.041, smh_extra=0.0, defensive_extra=0.0, lagging=("XLRE",), tick=1240.0, drop=()):
+def burst_market(scene, tnx_jump=0.041, smh_extra=0.0, defensive_extra=0.0, lagging=("XLRE",), tick=1240.0, drop=(),
+                 burst=(11, 40)):
     """Every fund moving with the index minute by minute from 10:30, the ten-year yield flat, the NYSE TICK at 300;
-    during the burst (11:40-11:45) the yield jumps, SMH and the defensive funds move ``extra`` index points more, and
-    the ``lagging`` sector funds fall."""
+    during the five-minute burst from ``burst`` the yield jumps, SMH and the defensive funds move ``extra`` index points
+    more, and the ``lagging`` sector funds fall."""
     known: dict[str, list] = {}
-    start, end = at(11, 40, BURST_DAY), at(11, 45, BURST_DAY)
+    start = at(*burst, BURST_DAY)
+    end = start + timedelta(minutes=5)
     for b in scene.bars:
         t = datetime.fromisoformat(b["ts"]) + timedelta(minutes=1)
         if t < at(10, 30, BURST_DAY):
@@ -519,10 +521,25 @@ def test_the_cross_asset_rules_at_their_boundaries(scene_factory):
 def test_the_cross_asset_label_is_omitted_without_its_markets(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
     assert labels(s)[1]["shock.cross_asset"] == "no market-context snapshot today"
-    assert labels(replace(s, market=burst_market(s, drop=("$TNX",))))[1]["shock.cross_asset"] == \
-        "$TNX has no value within 2 minutes of the burst's start and end"
+    assert labels(replace(s, market=burst_market(s, drop=("SMH",))))[1]["shock.cross_asset"] == \
+        "SMH has no value within 2 minutes of the burst's start and end"
     assert labels(replace(s, market=burst_market(s, drop=("XLK", "XLF", "XLE"))))[1]["shock.cross_asset"] == \
         "needs 9 of the 11 sector funds with a value at the burst's start and end, have 8"
     late = MarketContext({k: [(t, v) for t, v in pts if t > at(11, 20, BURST_DAY)] for k, pts in burst_market(s).known.items()})
     assert labels(replace(s, market=late))[1]["shock.cross_asset"] == \
-        "needs 30 minutes of $TNX in the hour before the burst to fit its link to the index, has 19"
+        "needs 30 minutes of SMH in the hour before the burst to fit its link to the index, has 19"
+
+
+def test_without_the_ten_year_yield_the_rest_of_the_shock_is_still_read(scene_factory):
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
+    text = labels(replace(s, market=burst_market(s, drop=("$TNX",))))[0]["shock.cross_asset"]
+    assert text.startswith("during the shock the ten-year yield is not measured ($TNX has no value within 2 minutes of the burst's "
+                           "start and end); semiconductors ")
+    assert "10 of 11 sector funds rose with it, at or past the 9-fund broad count" in text
+    late = burst_scene(scene_factory, at(15, 32, BURST_DAY), start=(15, 10))
+    stopped = MarketContext({k: [(t, v) for t, v in pts if k != "$TNX" or t <= at(15, 0, BURST_DAY)]    # its bars stop at 15:00
+                             for k, pts in burst_market(late, burst=(15, 10)).known.items()})
+    text = labels(replace(late, market=stopped))[0]["shock.cross_asset"]
+    assert text.startswith("during the shock the ten-year yield is not measured ($TNX has no value within 2 minutes of the burst's "
+                           "start and end); semiconductors ")
+    assert "NYSE TICK reached 1240, at or past the 1000 extreme" in text

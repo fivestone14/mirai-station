@@ -603,7 +603,8 @@ def _link(scene: Scene, mk: MarketContext, symbol: str, before: datetime, anchor
 def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -> None:
     """Each group's move during the burst beyond its usual link to the index, against the rule its
     fingerprint names: the ten-year yield, semiconductors, the sector funds with the NYSE TICK, the
-    defensive funds. The megacaps' share needs their index weights, which no file carries yet."""
+    defensive funds. The megacaps' share needs their index weights, which no file carries yet. The yield's
+    bars stop at 15:00, so without it the label says so and still reads the index-side groups."""
     path, mk = "shock.cross_asset", scene.market
     if mk is None:
         ls.omit(path, "no market-context snapshot today")
@@ -622,7 +623,9 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
             return None
         return _change(symbol, a, b, scene.spot, pts) - beta * burst.move
 
-    rates, semis, defensive = beyond("$TNX"), beyond("SMH"), [beyond(x) for x in DEFENSIVES]
+    rates = beyond("$TNX")
+    rates_gap = gaps.pop() if gaps else None
+    semis, defensive = beyond("SMH"), [beyond(x) for x in DEFENSIVES]
     if gaps:
         ls.omit(path, gaps[0])
         return
@@ -652,9 +655,11 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
     defensive_verdict = (f"past {bid_rule}" if side < 0 and shelter >= SHOCK_GROUP_SIGMA else
                          f"not {bid_rule}, which needs them rising against a falling index" if abs(shelter) >= SHOCK_GROUP_SIGMA else
                          f"short of {bid_rule}")
+    rates_words = (f"the ten-year yield is not measured ({rates_gap})" if rates is None else
+                   f"the ten-year yield {'rose' if rates > 0 else 'fell'} {abs(rates):.1f} basis points beyond its usual link to the "
+                   f"index, {'past' if abs(rates) >= RATES_SHOCK_BP else 'short of'} the {RATES_SHOCK_BP} basis-point rule")
     moved = "rose" if side > 0 else "fell"
-    ls.put(path, f"during the shock the ten-year yield {'rose' if rates > 0 else 'fell'} {abs(rates):.1f} basis points beyond its usual "
-                 f"link to the index, {'past' if abs(rates) >= RATES_SHOCK_BP else 'short of'} the {RATES_SHOCK_BP} basis-point rule; "
+    ls.put(path, f"during the shock {rates_words}; "
                  f"semiconductors {'rose' if semis > 0 else 'fell'} {sig(abs(semis))} beyond theirs, {semis_verdict}; "
                  f"no megacap's share of it is measured, since their index weights are not on file; "
                  f"{with_it} of {len(sectors)} sector funds {moved} with it, "
