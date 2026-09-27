@@ -34,7 +34,7 @@ def test_expiry_phase_on_a_monthly_and_a_quarterly_expiry(scene_factory):
 
 def test_expiry_phase_at_the_edges_of_the_opex_week_window(scene_factory):
     state, _ = calendar_labels(scene_factory, "2026-10-12")
-    assert state["expiry_phase"] == ("today, Monday 12 October, is an ordinary daily expiry; the 16 October monthly is 4 trading days away, "
+    assert state["expiry_phase"] == ("today, Monday 12 October, has only the daily SPXW expiry; the 16 October monthly is 4 trading days away, "
                                      "inside the 4-day opex-week window; the 18 September monthly was 16 trading days ago, outside the 5-day "
                                      "after-opex window")
     state, _ = calendar_labels(scene_factory, "2026-10-09")
@@ -45,13 +45,15 @@ def test_expiry_phase_at_the_edges_of_the_opex_week_window(scene_factory):
 
 def test_expiry_phase_at_the_edges_of_the_after_opex_window(scene_factory):
     state, _ = calendar_labels(scene_factory, "2026-10-19")
-    assert state["expiry_phase"].endswith("the 16 October monthly was 1 trading day ago, inside the 5-day after-opex window")
+    assert state["expiry_phase"] == ("today, Monday 19 October, has only the daily SPXW expiry; the 20 November monthly is 24 trading days away, "
+                                     "outside the 4-day opex-week window; the 16 October monthly was 1 trading day ago, inside the 5-day "
+                                     "after-opex window")
     state, _ = calendar_labels(scene_factory, "2026-10-23")
     assert state["expiry_phase"].endswith("the 16 October monthly was 5 trading days ago, inside the 5-day after-opex window")
     state, _ = calendar_labels(scene_factory, "2026-10-26")
-    assert state["expiry_phase"] == ("today, Monday 26 October, is an ordinary daily expiry; the 20 November monthly is 19 trading days away, "
+    assert state["expiry_phase"] == ("today, Monday 26 October, has only the daily SPXW expiry; the 20 November monthly is 19 trading days away, "
                                      "outside the 4-day opex-week window; the 16 October monthly was 6 trading days ago, outside the 5-day "
-                                     "after-opex window")
+                                     "after-opex window; an ordinary day in the expiry cycle")
 
 
 def test_expiry_phase_counts_trading_days_across_a_holiday(scene_factory):

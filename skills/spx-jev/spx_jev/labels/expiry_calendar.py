@@ -163,16 +163,21 @@ def _expiry_phase(scene: Scene, today: date, ls: LabelSet) -> None:
         parts.append(f"today, {_day_words(today)}, is the {which} expiry: the morning-settled SPX monthly options settled on this "
                      f"morning's opening prints and the daily SPXW options settle at {close}")
     else:
-        if not parts:
-            parts.append(f"today, {_day_words(today)}, is an ordinary daily expiry")
+        quarter_end = bool(parts)
+        if not quarter_end:
+            parts.append(f"today, {_day_words(today)}, has only the daily SPXW expiry")
         ahead = next_monthly(scene.now)
         n = trading_days_between(today, ahead)
-        inside = "inside" if ONE_DAY <= n <= OPEX_WEEK_DAYS else "outside"
-        parts.append(f"the {ahead.day} {ahead:%B} monthly is {plural(n, 'trading day')} away, {inside} the {OPEX_WEEK_DAYS}-day opex-week window")
+        opex_week = ONE_DAY <= n <= OPEX_WEEK_DAYS
+        parts.append(f"the {ahead.day} {ahead:%B} monthly is {plural(n, 'trading day')} away, "
+                     f"{'inside' if opex_week else 'outside'} the {OPEX_WEEK_DAYS}-day opex-week window")
         last = _previous_monthly(today)
         n = trading_days_between(last, today)
-        inside = "inside" if ONE_DAY <= n <= AFTER_OPEX_DAYS else "outside"
-        parts.append(f"the {last.day} {last:%B} monthly was {plural(n, 'trading day')} ago, {inside} the {AFTER_OPEX_DAYS}-day after-opex window")
+        after_opex = ONE_DAY <= n <= AFTER_OPEX_DAYS
+        parts.append(f"the {last.day} {last:%B} monthly was {plural(n, 'trading day')} ago, "
+                     f"{'inside' if after_opex else 'outside'} the {AFTER_OPEX_DAYS}-day after-opex window")
+        if not (quarter_end or opex_week or after_opex):
+            parts.append("an ordinary day in the expiry cycle")
     ls.put("calendar.expiry_phase", "; ".join(parts))
 
 
