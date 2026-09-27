@@ -231,10 +231,12 @@ def night_start(day: date) -> datetime:
 
 def btc_vs_futures(scene: Scene, table: dict, futures: Move | str) -> Got:
     """Bitcoin's move from the night's start (night_start) to the read beyond its usual multiple of the S&P
-    futures' over the same span (fitted on the last nights to the same minute), ranked in fifths against theirs."""
-    if isinstance(futures, str):
-        return futures
+    futures' over the same span (fitted on the last nights to the same minute), ranked in fifths against theirs.
+    After a weekend or a holiday the futures' move since the prior close (``futures``) only places them, so a roll
+    across it drops the location clause, as in weekend_path, while the measure from the reopen stands."""
     day, clock = date.fromisoformat(scene.day), read_clock(scene.now)
+    if isinstance(futures, str) and not after_break(day):
+        return futures
     start = night_start(day)
     thursday = expiry_roll_between(start, scene.now)
     if thursday:
@@ -265,7 +267,8 @@ def btc_vs_futures(scene: Scene, table: dict, futures: Move | str) -> Got:
     side, way = fifth_side(rank), way_of(multiple)
     verdict = {1: "btc_ahead_up", -1: "btc_ahead_down", 0: "in_line"}[side * way]
     since = f"since the S&P futures reopened at {weekend_edges(day)[1]:%H:%M} {start:%A}" if after_break(day) else "since then"
-    sentence = (f"{where_futures(scene, futures)}; {since} {NAME} {'rose' if btc.pct >= 0 else 'fell'} "
+    location = f"{where_futures(scene, futures)}; " if isinstance(futures, Move) else ""
+    sentence = (f"{location}{since} {NAME} {'rose' if btc.pct >= 0 else 'fell'} "
                 f"{abs(btc.pct) / usual_btc:.1f} of its normal nights to this time, {abs(value) / usual_gap:.1f} normal gaps "
                 f"{'above' if value >= 0 else 'below'} what the futures' move would match, {FIFTH_WORDS[side]} of the last {rank.of} nights; "
                 f"{went_with(way, 'those nights')}, so {ahead(side * way, 'the futures')}")

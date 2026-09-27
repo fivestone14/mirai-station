@@ -126,19 +126,31 @@ def test_one_night_far_out_does_not_turn_which_way_bitcoin_goes_with_stocks(tmp_
     assert ls.figures["overnight.btc_vs_futures"]["verdict"] == "btc_ahead_up"
 
 
-def test_after_a_weekend_bitcoin_s_night_runs_from_the_futures_reopen_so_its_weekend_is_left_to_the_weekend_path(tmp_path, premarket_scene_factory):
-    prior_nights(tmp_path, day=MONDAY)
+def monday_night() -> list[dict]:
+    """The night into MONDAY: bitcoin up 5% over the weekend, then both up from the futures' first minute after the reopen."""
     d = date.fromisoformat(MONDAY)
     close, reopen = bitcoin.weekend_edges(d)
-    first = reopen + timedelta(minutes=1)                                              # the futures' first minute after the reopen
-    rows = [one_bar("/ES", close, ES, d), one_bar("/MBT", close, MBT, d), one_bar("/ES", first, ES, d),
-            one_bar("/MBT", first, MBT * 1.05, d)]                                      # bitcoin up 5% over the weekend
-    rows += [one_bar("/ES", at(9, 28, MONDAY), ES * 1.003, d), one_bar("/MBT", at(9, 28, MONDAY), MBT * 1.05 * 1.006, d)]
-    ls = build_bitcoin_labels(premarket_scene_factory(at(9, 28, MONDAY), rows, state_dir=tmp_path))
+    first = reopen + timedelta(minutes=1)
+    rows = [one_bar("/ES", close, ES, d), one_bar("/MBT", close, MBT, d), one_bar("/ES", first, ES, d), one_bar("/MBT", first, MBT * 1.05, d)]
+    return rows + [one_bar("/ES", at(9, 28, MONDAY), ES * 1.003, d), one_bar("/MBT", at(9, 28, MONDAY), MBT * 1.05 * 1.006, d)]
+
+
+def test_after_a_weekend_bitcoin_s_night_runs_from_the_futures_reopen_so_its_weekend_is_left_to_the_weekend_path(tmp_path, premarket_scene_factory):
+    prior_nights(tmp_path, day=MONDAY)
+    ls = build_bitcoin_labels(premarket_scene_factory(at(9, 28, MONDAY), monday_night(), state_dir=tmp_path))
     s = written(ls)["overnight.btc_vs_futures"]
     assert s.startswith("S&P futures stand 0.31 sigma above their 16:00 price; since the S&P futures reopened at 18:00 Sunday "
                         "bitcoin futures (/MBT) rose")
     assert ls.figures["overnight.btc_vs_futures"]["verdict"] == "in_line"
+
+
+def test_an_s_and_p_roll_at_the_reopen_drops_only_the_location_clause(tmp_path, premarket_scene_factory):
+    """The futures' move from Friday's close spans their roll at the Sunday reopen; bitcoin's night from the reopen does not."""
+    prior_nights(tmp_path, day=MONDAY)
+    es_roll = {"symbol": "/ES", "day": MONDAY, "at": datetime(2026, 9, 20, 18, 0, tzinfo=ET).isoformat(), "from": "/ESU26", "to": "/ESZ26"}
+    write_table(tmp_path, [es_roll])
+    ls = build_bitcoin_labels(premarket_scene_factory(at(9, 28, MONDAY), monday_night(), state_dir=tmp_path))
+    assert written(ls)["overnight.btc_vs_futures"].startswith("since the S&P futures reopened at 18:00 Sunday bitcoin futures (/MBT) rose")
 
 
 def test_the_night_is_refused_across_a_roll_and_a_prior_roll_night_sits_out(tmp_path, premarket_scene_factory):
