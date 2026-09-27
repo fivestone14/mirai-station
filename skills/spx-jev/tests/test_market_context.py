@@ -85,3 +85,14 @@ def test_the_command_never_touches_a_state_dir_it_was_not_given(tmp_path, monkey
     monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [])
     assert market_context.main(["--state-dir", str(tmp_path)]) == 1          # nothing came back: a failed run
     assert list((tmp_path / "spx_jev" / "context").glob("*.jsonl"))          # the empty snapshot is still on the record
+
+
+def test_bitcoin_futures_are_quoted_and_read_under_their_root(tmp_path, monkeypatch):
+    """/MBT, the bitcoin labels' session feed, answers under its front contract and is read back as /MBT."""
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(schwab, "quotes", lambda symbols: {("/MBTV26" if s == "/MBT" else s): {"lastPrice": 85000.0} for s in symbols})
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [])
+    line = snapshot(at(10, 2, ss=40))
+    assert "/MBT" in ALL_SYMBOLS and line["quotes"]["/MBTV26"]["last"] == 85000.0
+    append_snapshot(tmp_path, line)
+    assert load_market_context(tmp_path, DAY).last("/MBT", at(10, 3)) == 85000.0

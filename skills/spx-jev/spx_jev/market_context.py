@@ -38,7 +38,7 @@ ET = ZoneInfo("America/New_York")
 SYMBOLS = {
     "breadth": ("$TICK", "$ADD", "$TRIN", "$VOLD", "$UVOL", "$DVOL", "$VOLSPD"),
     "volatility": ("$VIX", "$VIX9D", "$VVIX", "$VIX3M", "$VIX1D"),
-    "futures": ("/ES",),
+    "futures": ("/ES", "/MBT"),                    # /MBT, micro bitcoin, for the session bitcoin labels (labels/bitcoin.py)
     "rates": ("$TNX", "$IRX"),
     "sectors": ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE"),
     "index_funds": ("SMH", "RSP", "QQQ", "IWM", "SPY"),
