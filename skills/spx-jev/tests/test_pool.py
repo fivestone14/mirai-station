@@ -89,6 +89,19 @@ def test_one_session_moves_the_weights_by_the_day_mean_loss_against_the_referenc
     assert log["evidence"]["q_a"]["days"] == 1 and state["tables"]["q_a"]["C"]["yes"]["up"] == pytest.approx(0.9)
 
 
+def test_a_score_answer_is_learned_by_its_level_names_like_a_choice():
+    """A score named by its levels (hour.named_levels) is a soft answer over those names, and the day's
+    tables count the outcome under each level as they do under a choice's options."""
+    entry = {"pick": "up", "probabilities": {"strong_down": 0.0, "down": 0.1, "nowhere": 0.3, "up": 0.6, "strong_up": 0.0}, "score": 2.5}
+    soft = pool.soft_answer(entry)
+    assert soft == pytest.approx(entry["probabilities"])
+    state = cold_state()
+    membership(state, MEMBERS, "2026-09-18")
+    apply_session(state, "2026-09-18", _session(state, ["up", "up"], answers={"q_a": soft}), 30, True, None)
+    assert set(state["tables"]["q_a"]["C"]) == set(entry["probabilities"])
+    assert state["tables"]["q_a"]["C"]["up"]["up"] == pytest.approx(0.6)
+
+
 def test_the_bet_is_sized_from_the_past_and_grows_on_steady_evidence():
     ep = new_eprocess()
     bet(ep, 0.8)

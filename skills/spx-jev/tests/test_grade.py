@@ -140,6 +140,14 @@ def test_only_live_questions_and_their_current_options_are_weighed():
     assert "flow_vs_price" not in allowed and "news_headline" not in allowed      # shadow, dark
     assert allowed["leg_vs_day_side"] == {"quiet", "quiet_leg_day_moved", "leg_with_day", "leg_against_day", "leg_on_flat_day"}
     assert allowed["gap_fill_next_hour"] == {"true", "false"}
+    assert allowed["price_move_5way"] == {"strong_down", "down", "nowhere", "up", "strong_up"}      # a score: its level names
+
+
+def test_a_score_answer_reaches_the_weights_like_a_choice():
+    allowed = live_options(load_questions(LIVE.questions, LIVE.key))
+    g = grade_one(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat"), {"price_move_5way": "up", "leg_vs_day_side": "quiet"}), flat_bars(390))
+    w = weights_from([g], allowed, TAPE)["questions"]
+    assert w["price_move_5way"]["n"] == 1 and w["leg_vs_day_side"]["n"] == 1
 
 
 def test_the_morning_anchor_grades_and_a_mid_day_ratchet_changes_nothing(tmp_path):

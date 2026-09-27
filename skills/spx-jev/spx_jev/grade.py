@@ -347,7 +347,8 @@ def _events(grades: list[dict], qid: str) -> dict:
 def live_options(doc: dict | Path | str) -> dict[str, set[str]]:
     """``{qid: the picks it can give today}`` for every live question of ``doc`` (the question doc the
     service runs with, or a path to one): a retired question, or a pick from an option a question no
-    longer has, must not reach today's weights."""
+    longer has, must not reach today's weights. A score's picks are its level names, as a choice's are
+    its option names (hour.named_levels)."""
     if not isinstance(doc, dict):
         doc = load_questions(doc)
     out = {}
@@ -355,8 +356,7 @@ def live_options(doc: dict | Path | str) -> dict[str, set[str]]:
         for qid, q in g["questions"].items():
             if q.get("status") != "live":
                 continue
-            crit = q.get("criteria")
-            out[qid] = {"true", "false"} if q.get("type") == "noul" else set(crit) if isinstance(crit, dict) else set()
+            out[qid] = {"true", "false"} if q.get("type") == "noul" else set(q.get("options") or q.get("criteria") or ())
     return out
 
 

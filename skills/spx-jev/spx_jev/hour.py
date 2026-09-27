@@ -44,6 +44,20 @@ def load_hour_doc(path: Path | str | None = None, lane: Lane = LIVE) -> dict:
     return d
 
 
+def named_levels(q: dict, answer: dict) -> dict:
+    """A JEV score answer with its levels named as the question's ``options`` gives them (level n is
+    options[n], the set's convention), so its pick and probabilities read like a choice's in the sums,
+    the question weights and the learning loop. Any other answer, or one naming a level the question
+    does not have, is returned as it came."""
+    probs, names = answer.get("probabilities"), q.get("options") or []
+    if answer.get("type") != "score" or not probs:
+        return answer
+    levels = list(enumerate(probs)) if isinstance(probs, list) else [(str(k), v) for k, v in probs.items()]
+    if not all(str(n).isdigit() and int(n) < len(names) for n, _ in levels):
+        return answer
+    return {**{k: v for k, v in answer.items() if k != "legend"}, "probabilities": {names[int(n)]: p for n, p in levels}}
+
+
 def _sure(answer: dict) -> float | None:
     """How much probability JEV put on the option it picked."""
     p = answer.get("probabilities")

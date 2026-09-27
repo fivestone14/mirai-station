@@ -5,7 +5,8 @@ import re
 
 from spx_jev.ask import PATH_RE, load_questions
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_30_FLAT_PCT, NEXT_60_FLAT_BAND_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS
-from spx_jev.hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, one_sentence, unit_line, views_of
+from spx_jev.hour import (answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, named_levels, one_sentence, unit_line,
+                          views_of)
 from spx_jev.lane import LIVE, TAPE
 from spx_jev.weights import QuestionWeights
 
@@ -32,6 +33,25 @@ def test_every_question_asks_in_one_short_plain_sentence():
                 assert ask.endswith("?") and ask.count("?") == 1 and len(ask.split()) <= 20, (qid, ask)
                 assert not PATH_RE.search(ask) and not label_path.search(ask) and "{" not in ask, (qid, ask)
                 assert not any("_" in o and o in ask for o in q["options"]), (qid, ask)
+
+
+def test_a_score_answer_is_named_by_its_levels_and_read_like_a_choice():
+    """JEV keys a score's probabilities by level number, with its criteria words as a legend; the level
+    names come from the question's options, in order, and the card's entry then carries them."""
+    from spx_jev.service import answer_entry
+    q = BY_ID["price_move_5way"]
+    raw = {"type": "score", "score": 2.9, "confidence": 0.4, "legend": {str(n): c for n, c in enumerate(q["criteria"])},
+           "probabilities": {"0": 0.02, "1": 0.08, "2": 0.2, "3": 0.6, "4": 0.1}}
+    named = named_levels(q, raw)
+    assert named["probabilities"] == {"strong_down": 0.02, "down": 0.08, "nowhere": 0.2, "up": 0.6, "strong_up": 0.1}
+    assert "legend" not in named and named["score"] == 2.9
+    entry = answer_entry(named)
+    assert entry["pick"] == "up" and entry["probabilities"] == named["probabilities"]
+    assert one_sentence(q, entry).endswith("? up, JEV was 60% sure")
+    assert named_levels(q, {**raw, "probabilities": [0.1, 0.2, 0.4, 0.2, 0.1]})["probabilities"]["nowhere"] == 0.4
+    assert named_levels(q, {**raw, "probabilities": {"7": 1.0}}) == {**raw, "probabilities": {"7": 1.0}}   # no such level
+    choice = {"type": "choice", "choice": "quiet", "probabilities": {"quiet": 1.0}}
+    assert named_levels(BY_ID["leg_vs_day_side"], choice) is choice
 
 
 def test_shadow_and_low_weight_answers_are_left_out_with_a_reason():
