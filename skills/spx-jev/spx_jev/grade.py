@@ -143,7 +143,7 @@ def read_anchor(rows: list[dict], bars: list[dict], market: MarketContext | None
     return morning_ruler([r for r in rows if parse_ts(r["ts"]) <= t], vix_at_settled_open(market, row_ts[:10]), settled_open(known))
 
 
-def pre_open_ruler(rec: dict) -> SigmaRuler | None:
+def stamped_ruler(rec: dict) -> SigmaRuler | None:
     """The pre-open ruler a premarket read stamped on its record (``ruler.points``), which its sums were
     asked in; None when the read could not form one."""
     points = (rec.get("ruler") or {}).get("points")
@@ -224,7 +224,7 @@ TOP_KEYS = ("realized_sigma", "realized_points", "realized_units", "band", "dire
 def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = frozenset(), final: bool = False,
               lane: Lane = LIVE, anchor: SigmaRuler | None = None) -> dict | None:
     """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar, a
-    sigma band measured in ``anchor`` (read_anchor, or pre_open_ruler on a lane graded from the
+    sigma band measured in ``anchor`` (read_anchor, or stamped_ruler on a lane graded from the
     settled open), a RECORD band in the record's own points.
 
     Returns the line to append, None when nothing new can be graded yet (a mark still ahead, or
@@ -462,7 +462,7 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
         for r in recs:
             if done.get(r["row_ts"], set()) == every:
                 continue                              # the same row written twice (a run by hand): graded once
-            anchor = pre_open_ruler(r) if lane.graded_from_settled_open else read_anchor(rows, bars, market, r["row_ts"]) if in_anchor else None
+            anchor = stamped_ruler(r) if lane.graded_from_settled_open else read_anchor(rows, bars, market, r["row_ts"]) if in_anchor else None
             g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat(), lane=lane, anchor=anchor)
             if g:
                 new.append(g)
