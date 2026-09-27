@@ -89,6 +89,17 @@ def test_one_session_moves_the_weights_by_the_day_mean_loss_against_the_referenc
     assert log["evidence"]["q_a"]["days"] == 1 and state["tables"]["q_a"]["C"]["yes"]["up"] == pytest.approx(0.9)
 
 
+def test_a_questions_tables_forget_a_session_it_slept_through():
+    """06 step 7 decays the tables every sealed session: a question asleep all day keeps no tilt at full strength."""
+    state = cold_state()
+    membership(state, MEMBERS, "2026-09-18")
+    apply_session(state, "2026-09-18", _session(state, ["up", "up"]), 30, True, None)
+    asleep = _session(state, ["up", "up"], answers={}, day="2026-09-21")
+    apply_session(state, "2026-09-21", asleep, 30, True, None)
+    assert state["tables"]["q_a"]["C"]["yes"]["up"] == pytest.approx(0.9 * pool.TABLE_DECAY)
+    assert "q_b" not in state["tables"]                                    # never awake: no table made for it
+
+
 def test_a_score_answer_is_learned_by_its_level_names_like_a_choice():
     """A score named by its levels (hour.named_levels) is a soft answer over those names, and the day's
     tables count the outcome under each level as they do under a choice's options."""

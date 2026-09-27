@@ -480,13 +480,16 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
                 total += len(rec)
                 bound += sum(1 for x in rec.values() if x["bound"])
     for q in state["members"]:
+        # the tables forget every sealed session (06 step 7), a session the question slept through too
+        t = state["tables"].get(q)
+        if t is not None:
+            for key in ("C", "X"):
+                t[key] = {o: {k: TABLE_DECAY * x for k, x in row.items()} for o, row in t[key].items()}
         awake = [(ci, s, y) for ci, s, y in zip(c, snaps, ys) if q in s["q_probs"]]
         s_q = math.fsum(ci for ci, _, _ in awake)
         if s_q <= 0:
             continue
         t = state["tables"].setdefault(q, {"C": {}, "X": {}})
-        for key in ("C", "X"):
-            t[key] = {o: {k: TABLE_DECAY * x for k, x in row.items()} for o, row in t[key].items()}
         for ci, s, y in awake:
             ref = floored(s["experts"][REFERENCE])
             for o, a in s["q_probs"][q].items():
