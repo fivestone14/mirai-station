@@ -389,3 +389,13 @@ def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
                     "w": ["lunch, 12:00 to 14:00", "the afternoon, 14:00 to the close", "the opening half hour, before 10:00"]}, LA)
     assert got == [f"Shown is half JEV, half how this time of day ({span}) went over the last 19 sessions."
                    for span in ("09:00 to 11:00", "11:00 to the close", "before 07:00")]
+
+
+def test_every_question_group_has_a_heading_in_words():
+    """The groups are the SPX question file's, not SNDK's viewpoints: each has a plain name, none a raw id."""
+    doc = json.loads((Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "questions" / "spx_questions.json").read_text())
+    shown = [g["id"] for g in doc["groups"] if g["id"] != "dark"]
+    decl = "".join(re.search(r"\n  var %s = .*?;" % v, JS, re.S).group(0) for v in ("ORDER", "NAME"))
+    names = _run(decl + "console.log(JSON.stringify([ORDER, NAME]));", {})
+    assert names[0] == shown and set(names[1]) == set(shown) and "_" not in "".join(names[1].values())
+    assert "NAME[vp] || words(vp)" in _fn("paint")

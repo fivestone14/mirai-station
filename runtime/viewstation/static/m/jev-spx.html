@@ -328,9 +328,16 @@ details .q{margin-top:8px}
   // lands a few minutes before it: a row at or after ROW_LEAD_MIN before the last read is the day's last, not a
   // stale one. A card without a session falls back to 15:32 on the market clock.
   var LAST_READ_DEFAULT = '15:32', ROW_LEAD_MIN = 4;
-  var ORDER = ['strikes','volume_price','market','history','indicators','space_time','framing','news','outcome'];
-  var NAME = {strikes:'strikes', volume_price:'volume and price', market:'the market', history:'yesterday', indicators:'indicators',
-              space_time:'space and time', framing:'framing', news:'news', outcome:'outcome, shadow only'};
+  // the question groups of skills/spx-jev/questions/spx_questions.json, in its order; a group not named here
+  // is headed by its id in words
+  var ORDER = ['opening_price','opening_flow','opening_context','price_move','gap_and_day','size','vol_signals','events_regime',
+               'dealer_regime','gamma_map','levels_and_tape','breadth','leadership','macro_and_calendar','shocks_and_news','close',
+               'premarket_overnight','premarket_context','shadow_log'];
+  var NAME = {opening_price:'opening price', opening_flow:'opening flow', opening_context:'opening context', price_move:'price move',
+              gap_and_day:'the gap and the day', size:'size', vol_signals:'volatility', events_regime:'events and regime',
+              dealer_regime:'dealer regime', gamma_map:'gamma map', levels_and_tape:'levels and tape', breadth:'breadth',
+              leadership:'leadership', macro_and_calendar:'macro and calendar', shocks_and_news:'shocks and news', close:'the close',
+              premarket_overnight:'premarket and overnight', premarket_context:'premarket context', shadow_log:'shadow log, never graded'};
   var last = null;
   var LOAD_MIN_MS = 260, LOAD_T0 = Date.now();   // the cover is held at least this long, never a stutter
   function clearLoading(){
@@ -557,7 +564,7 @@ details .q{margin-top:8px}
       if(!by[vp]) return;
       // one fold per viewpoint: tap the heading to collapse or expand; remembered on this phone only
       var fold = el('details', 'vp'); fold.open = folded[vp] !== true;
-      var sm = el('summary'); var l = el('div', 'lab'); l.appendChild(el('span', null, NAME[vp] || vp)); l.appendChild(el('small', null, by[vp].length + '')); sm.appendChild(l); fold.appendChild(sm);
+      var sm = el('summary'); var l = el('div', 'lab'); l.appendChild(el('span', null, NAME[vp] || words(vp))); l.appendChild(el('small', null, by[vp].length + '')); sm.appendChild(l); fold.appendChild(sm);
       by[vp].forEach(function(q){ fold.appendChild(question(q, omitted, c.row_ts)); });
       fold.addEventListener('toggle', function(){ folded[vp] = !fold.open; remember(); });
       main.appendChild(fold);
