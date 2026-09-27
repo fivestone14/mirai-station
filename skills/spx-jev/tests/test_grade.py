@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row, write_state
 from spx_jev.ask import load_questions
@@ -10,6 +11,7 @@ from spx_jev.grade import grade_one as grade_in, graded_horizons, live_options, 
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import LIVE, TAPE
 from spx_jev.row_adapter import labeller_row
+from spx_jev.state_builder import MarketContext
 
 SIGMA = 75.0
 ANCHOR = SigmaRuler(SIGMA, "anchor")
@@ -178,3 +180,12 @@ def test_the_anchor_is_what_the_read_could_know():
     assert read_anchor(rows, flat_bars(390), None, at(9, 30).isoformat()) is None                         # no row yet
     g = grade_in(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat")), flat_bars(390))
     assert g["horizons"] == [] and g["skipped"]["next_30"].startswith("no morning anchor")              # closed for good
+
+
+def test_the_vix_anchor_waits_for_the_settled_open():
+    """No row before the 09:40 guard and no live sigma: the anchor is the VIX on the settled open, known
+    only once the 09:34 bar has finished."""
+    late = [labeller_row(make_row(at(9, 45), 7700.0, sigma_live=None))]
+    market = MarketContext({"$VIX": [(at(9, 31), 16.0)]})
+    assert read_anchor(late, flat_bars(390), market, at(9, 34, ss=30).isoformat()) is None
+    assert read_anchor(late, flat_bars(390), market, at(9, 35).isoformat()) == SigmaRuler(7700.0 * 16.0 / 100.0 / math.sqrt(252), "vix")

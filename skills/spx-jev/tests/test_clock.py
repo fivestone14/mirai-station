@@ -67,6 +67,21 @@ def test_the_odds_need_ten_sessions_and_then_blend_half_and_half(tmp_path):
     assert b["jev"]["pick"] == "up" and b["pick"] == "flat"
 
 
+
+def test_a_day_is_counted_again_when_its_market_context_changes(tmp_path, monkeypatch):
+    """The VIX an estimated anchor falls back on is read from the day's context files, so a stored day
+    whose context file appears or changes is recounted, and the others are not."""
+    out, prior = tmp_path / "spx_jev", _prior(tmp_path, 10)
+    odds(tmp_path, out, prior, NOW)
+    counted = []
+    monkeypatch.setattr(clock, "day_counts", lambda bars, *rest: counted.append(bars[0]["ts"][:10]) or {})
+    odds(tmp_path, out, prior, NOW)
+    assert counted == []
+    (tmp_path / "spx_jev" / "context").mkdir(parents=True)
+    (tmp_path / "spx_jev" / "context" / "2026-09-03.jsonl").write_text("{}\n")
+    odds(tmp_path, out, prior, NOW)
+    assert counted == ["2026-09-03"]
+
 def test_a_half_day_gets_no_blend(tmp_path):
     c = odds(tmp_path, tmp_path / "spx_jev", {}, at(12, 2, day="2026-11-27"))
     assert c["left_out"].startswith("a 13:00 half day")
