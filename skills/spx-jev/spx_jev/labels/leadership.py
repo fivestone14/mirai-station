@@ -198,10 +198,15 @@ def _rotation(against: AgainstIndex, ls: LabelSet) -> None:
     def mean_beyond(group: tuple[tuple[str, str], ...]) -> float:
         return statistics.fmean(against.sigma(beyond(links[s], moves[s], index_move)) for s, _ in group)
     gap = mean_beyond(SENSITIVE) - mean_beyond(DEFENSIVE)
-    names = [", ".join(n for _, n in group[:-1]) + f" and {group[-1][1]}" for group in (SENSITIVE, DEFENSIVE)]
+    names = [listed([n for _, n in group]) for group in (SENSITIVE, DEFENSIVE)]
     rule = f"past the {ROTATION_GAP_SIGMA} sigma rotation rule" if abs(gap) > ROTATION_GAP_SIGMA else f"within the {ROTATION_GAP_SIGMA} sigma rotation rule"
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes, after allowing for each sector's usual link to the index, {names[0]} "
                  f"{'beat' if gap >= 0 else 'trailed'} {names[1]} by {sig(abs(gap))}, {rule}{against.ruler_note}")
+
+
+def listed(names: list[str]) -> str:
+    """Names as a sentence lists them, the same in both families: "a, b and c"."""
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
 
 
 def _largest_names(scene: Scene) -> list[tuple[str, float]] | str:

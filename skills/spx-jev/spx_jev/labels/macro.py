@@ -16,6 +16,7 @@ from ..cuts import BOND_LINK_TIGHT, WINDOW_30_MIN, WINDOW_60_MIN
 from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
+from .leadership import listed
 from .measures import ONE_MINUTE
 from .rulers import sigma_anchor
 from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, beyond, beyond_rank, fifth_side, needs_link, needs_move, needs_rank
@@ -195,7 +196,7 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
     above = [n for s, n in COMPLEX if beyond(links[s], moves[s], index_move) >= 0]
     below = [n for s, n in COMPLEX if beyond(links[s], moves[s], index_move) < 0]
     idx = against.sigma(index_move)
-    sides = [f"{_and(group)} ran {way}" for group, way in ((above, "above"), (below, "below")) if group]
+    sides = [f"{listed(group)} ran {way}" for group, way in ((above, "above"), (below, "below")) if group]
     ran = f"{' and '.join(sides)} what the index's {sig(abs(idx))} {'rise' if idx >= 0 else 'fall'} would match"
     verdict = {1: "ahead of the index in the stocks-up direction", -1: "ahead of the index in the stocks-down direction",
                0: "in line with the index"}[side]
@@ -206,7 +207,3 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
 def needs_minute_link(what: str, end: datetime) -> str:
     span = link_span(end)
     return f"needs {link_need(span)} of the last {span} minutes with {what} moving"
-
-
-def _and(names: list[str]) -> str:
-    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
