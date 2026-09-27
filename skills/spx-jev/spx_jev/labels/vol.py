@@ -1,8 +1,11 @@
 """The volatility family: implied volatility, realized against priced movement, the expected move and the
 VIX curve (iv.*), and the VIX family, the straddle and the skew (vol.*, skew.*).
 
-The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
-how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
+The final question set's labels are measured on the morning anchor (rulers.sigma_anchor); the ones built
+before it keep the row's sigma. They read the diary rows (the VIX, at-the-money vol, the straddle left and
+the VIX curve), the prior sessions' diaries and the lob-flow tape (vol_sources), the minute bars, and the
+context job's VIX family and NYSE TICK; a shock is the events and shocks family's own burst. Each set
+label's sentence, how it is computed and its source are in spec/question_set.json ``labels``."""
 from __future__ import annotations
 
 import math
