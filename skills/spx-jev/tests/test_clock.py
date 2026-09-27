@@ -5,7 +5,7 @@ import json
 
 from conftest import at, bars_from_closes, flat_bars, make_row
 from spx_jev import clock
-from spx_jev.clock import blend, day_counts, odds, phase_of
+from spx_jev.clock import blend, day_counts, odds, phase_of, premarket_odds
 from spx_jev.lane import LIVE
 
 NOW = at(12, 2, day="2026-09-18")
@@ -86,3 +86,55 @@ def test_a_half_day_gets_no_blend(tmp_path):
     c = odds(tmp_path, tmp_path / "spx_jev", {}, at(12, 2, day="2026-11-27"))
     assert c["left_out"].startswith("a 13:00 half day")
     assert blend({"by": {"next_30": {"pick": "up", "probabilities": {"up": 1.0}}}}, c)["blend"]["used"] is False
+
+
+# ---- the settled-open odds (the premarket lane)
+
+PREMARKET_NOW = at(9, 28, day="2026-09-18")
+
+
+def _climbing(tmp_path, anchors: list[float]) -> dict:
+    """One prior session per anchor from 2026-09-01: flat to the 09:34 bar, then half a point a minute, 5
+    points by 09:44 and 15 by 10:04, its diary anchored at the given sigma."""
+    (tmp_path / "reversion").mkdir(exist_ok=True)
+    days = {}
+    for k, sigma in enumerate(anchors, start=1):
+        d = f"2026-09-{k:02d}"
+        days[d] = bars_from_closes([7700.0] * 5 + [7700.0 + 0.5 * i for i in range(1, 386)], day=d)
+        (tmp_path / "reversion" / f"{d}.jsonl").write_text(json.dumps(make_row(at(9, 31, day=d), 7700.0, sigma=sigma, sigma_anchor=sigma)) + "\n")
+    return days
+
+
+def test_the_settled_open_odds_need_ten_sessions_and_are_shrunk_toward_thirds(tmp_path):
+    assert premarket_odds(tmp_path, _prior(tmp_path, 9), PREMARKET_NOW)["left_out"].startswith("only 9 prior sessions with an outcome")
+    c = premarket_odds(tmp_path, _prior(tmp_path, 10), PREMARKET_NOW)
+    assert c["phase"] == "settled_open" and c["sessions"] == 10
+    assert c["by"]["open_30"] == {"probabilities": {"up": 0.0303, "down": 0.0303, "flat": 0.9394}, "n": 10} == c["by"]["open_10"]
+
+
+def test_each_session_is_graded_from_its_settled_open_in_its_own_anchor(tmp_path):
+    """The same climb is 0.07 and 0.2 of a 75-point day, up at both marks, and nothing on a 1000-point day."""
+    c = premarket_odds(tmp_path, _climbing(tmp_path, [75.0] * 6 + [1000.0] * 4), PREMARKET_NOW)
+    assert c["sessions"] == 10
+    for qid in ("open_10", "open_30"):
+        p = c["by"][qid]["probabilities"]
+        assert (p["up"], p["flat"], p["down"]) == (round((6 + 1 / 3) / 11, 4), round((4 + 1 / 3) / 11, 4), round((1 / 3) / 11, 4))
+
+
+def test_a_session_without_its_settled_open_bar_and_today_are_not_counted(tmp_path):
+    prior = _prior(tmp_path, 10)
+    prior["2026-09-03"] = [b for b in prior["2026-09-03"] if b["ts"] != at(9, 34, day="2026-09-03").isoformat()]
+    assert premarket_odds(tmp_path, prior, PREMARKET_NOW)["left_out"].startswith("only 9 prior sessions")
+    today = {**_prior(tmp_path, 10), "2026-09-18": flat_bars(390, day="2026-09-18")}
+    assert premarket_odds(tmp_path, today, PREMARKET_NOW)["sessions"] == 10
+
+
+def test_the_blend_lifts_the_primary_the_summary_names(tmp_path):
+    c = premarket_odds(tmp_path, _prior(tmp_path, 10), PREMARKET_NOW)
+    jev = {"up": 0.6, "flat": 0.2, "down": 0.1, "unsure": 0.1}
+    hour = {"pick": "up", "probabilities": jev, "primary": "open_30",
+            "by": {"open_10": {"pick": "flat", "probabilities": {"flat": 1.0}}, "open_30": {"pick": "up", "probabilities": jev}}}
+    b = blend(hour, c)
+    assert b["blend"]["used"] is True and b["blend"]["phase"] == "settled_open"
+    assert b["probabilities"] == b["by"]["open_30"]["probabilities"] and b["jev"]["probabilities"] == jev
+    assert blend({**hour, "by": {"open_10": hour["by"]["open_10"]}}, c)["blend"]["why"] == "JEV gave no probabilities for open_30, so its sum stands alone"

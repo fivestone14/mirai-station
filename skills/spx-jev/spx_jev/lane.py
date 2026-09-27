@@ -8,8 +8,9 @@ every question its schedule asks asked afresh (a day constant is asked at 09:35 
 everything under state/spx_jev/lanes/tape/. PREMARKET reads at six checkpoints before the open: every
 read saves the overnight futures and builds the night's labels from them (a scene without a diary row,
 premarket.py), and JEV is asked only at the reads its questions' schedules name (08:48 and 09:28). Its
-two sums are graded from the settled open, 10 and 30 minutes on, never from yesterday's close;
-everything under state/spx_jev/lanes/premarket/. Every step takes a lane and defaults to LIVE.
+two sums are graded from the settled open, 10 and 30 minutes on, never from yesterday's close, and
+stand unblended: how that window ended on prior sessions (clock.premarket_odds) forecast it worse than
+even thirds. Everything under state/spx_jev/lanes/premarket/. Every step takes a lane and defaults to LIVE.
 
 Every lane asks from one question doc, each question on its own schedule per lane (schedule.py). A lane
 with a ``schedule`` names its reads in market time; the launchd job fires at each of them, and

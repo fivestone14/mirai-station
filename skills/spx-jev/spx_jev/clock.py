@@ -21,21 +21,35 @@ The odds
     or if the rule itself (bands, phases, grid, version) changes. Fewer than MIN_SESSIONS counted sessions, or a read on an
     NYSE half day (the odds come from full sessions), and the blend is left out, and the card says why.
 
+The settled-open odds (the premarket lane)
+    Every premarket sum forecasts the same window, from the settled open to 10 and 30 minutes on
+    (grade.horizon_start), so its clock has one phase: on each of up to 20 prior sessions, one read
+    at the settled open is handed to the grader's own ``grade_one`` on the premarket lane, measured
+    in that session's own morning anchor as its grading could know it (grade.read_anchor at the last
+    mark). A session with no anchor, or no bar at the settled open or a mark, has no outcome; a half
+    day's morning is a morning like any other. The shares are shrunk toward even thirds by
+    PRIOR_SESSIONS, so no outcome is ever given nothing. Fewer than MIN_SESSIONS sessions with an
+    outcome and they are left out. The premarket lane does not blend them (lane.PREMARKET.clock_blend):
+    replayed on the 47 saved sessions of July to September 2026 with 10 counted before them, they
+    forecast the window worse than even thirds out of sample (mean log loss 1.22 against 1.10 at 10
+    minutes, 1.14 against 1.10 at 30), the outcomes falling about a third each way.
+
 The blend
     p = JEV_SHARE * JEV's probability + (1 - JEV_SHARE) * the clock's, per outcome; JEV's
     "unsure" keeps its JEV_SHARE and the clock gives it nothing. JEV_SHARE is 0.5, declared, not
-    fitted: it scored best on SNDK's twelve blended reads, far too few to fit a share on.
+    fitted: it scored best on SNDK's twelve blended reads, far too few to fit a share on. The top
+    of the blended summary is the lane's primary sum, as the summary names it.
 """
 from __future__ import annotations
 
 import json
 import os
 import tempfile
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from .grade import grade_one, read_anchor
-from .lane import LIVE
+from .grade import grade_one, mark_at, read_anchor, settled_open_at
+from .lane import LIVE, PREMARKET
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import CONTEXT_SUBDIR, ROWS_SUBDIR, MarketContext, load_market_context, load_rows, parse_ts
 
@@ -51,6 +65,7 @@ ROW_MAX_AGE_MIN = 10     # a replayed read needs a diary row this fresh, as a li
 OUTCOMES = ("up", "down", "flat")
 CACHE_NAME = "clock_days.json"
 RULE_VERSION = 2         # bump when the counting changes, so every stored day is counted again
+PRIOR_SESSIONS = 1.0     # the settled-open odds' pull toward even thirds, in sessions
 
 # Phases of the day, by the read's clock (minute of day, from and before).
 PHASES = (
@@ -209,6 +224,36 @@ def odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dict]], now:
     return {"phase": ph, "phase_words": phase_words(ph), "sessions": len(counted), "by": by}
 
 
+def premarket_odds(state_dir: Path, prior_bars: dict[str, list[dict]], now: datetime) -> dict:
+    """The settled-open odds for a premarket read at ``now``: ``{"phase", "phase_words", "sessions", "by":
+    {qid: {"probabilities", "n"}}}`` in the shape odds() returns, so blend() takes either, or ``{"left_out":
+    reason}``. ``prior_bars`` is the scene's, which holds only sessions before today."""
+    days = sorted((d for d in prior_bars if d < now.date().isoformat()), reverse=True)[:MAX_SESSIONS]
+    hz = PREMARKET.horizons
+    last = max(hz, key=lambda q: hz[q][0])
+    counts = {qid: {o: 0 for o in OUTCOMES} for qid in hz}
+    for d in days:
+        at = settled_open_at(date.fromisoformat(d)).isoformat()
+        mark = mark_at(at, hz[last][0], PREMARKET)
+        anchor = read_anchor(load_rows(state_dir, d), prior_bars[d], load_market_context(state_dir, d), mark.isoformat())
+        if anchor is None:
+            continue
+        rec = {"row_ts": at, "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
+        g = grade_one(rec, prior_bars[d], final=True, lane=PREMARKET, anchor=anchor) or {}
+        for q in hz:
+            band = (g.get(q) or {}).get("band")
+            if band in OUTCOMES:
+                counts[q][band] += 1
+    sessions = sum(counts[PREMARKET.primary].values())
+    if sessions < MIN_SESSIONS:
+        return {"left_out": f"only {sessions} prior sessions with an outcome from the settled open; the odds need {MIN_SESSIONS}"}
+    by = {}
+    for qid, c in counts.items():
+        n = sum(c.values())
+        by[qid] = {"probabilities": {o: round((c[o] + PRIOR_SESSIONS / len(OUTCOMES)) / (n + PRIOR_SESSIONS), 4) for o in OUTCOMES}, "n": n}
+    return {"phase": "settled_open", "phase_words": "the half hour after the settled open", "sessions": sessions, "by": by}
+
+
 def _pick(p: dict) -> str | None:
     return max(p, key=p.get) if p else None
 
@@ -218,7 +263,7 @@ def blend(hour: dict | None, clock: dict) -> dict | None:
     answer is kept under ``jev`` and the clock's under ``clock``, and each sum says whether it was
     blended; the top of the summary is the primary sum, as the phone and the grader read it.
     ``blend.used`` is true only when the primary sum was blended. Without odds, JEV's sums stand
-    alone and ``blend`` says why."""
+    alone and ``blend`` says why. The primary is the one the summary names, the live lane's without one."""
     if not isinstance(hour, dict) or not isinstance(hour.get("by"), dict):
         return hour
     if clock.get("left_out"):
@@ -236,7 +281,8 @@ def blend(hour: dict | None, clock: dict) -> dict | None:
         by[qid] = {"pick": _pick(p), "probabilities": p, "confidence": None, "blended": True,
                    "jev": {"pick": a.get("pick"), "probabilities": jp, "confidence": a.get("confidence")},
                    "clock": {"pick": _pick(c["probabilities"]), "probabilities": c["probabilities"], "n": c["n"]}}
-    prim = by.get(PRIMARY)
+    primary = hour.get("primary") or PRIMARY
+    prim = by.get(primary)
     used = isinstance(prim, dict) and prim.get("blended") is True
     out = {**hour, "by": by}
     if used:
@@ -244,5 +290,5 @@ def blend(hour: dict | None, clock: dict) -> dict | None:
                         "sessions": clock["sessions"]}
         out.update({k: prim.get(k) for k in ("pick", "probabilities", "confidence", "jev", "clock")})
     else:
-        out["blend"] = {"used": False, "why": f"JEV gave no probabilities for {PRIMARY}, so its sum stands alone"}
+        out["blend"] = {"used": False, "why": f"JEV gave no probabilities for {primary}, so its sum stands alone"}
     return out
