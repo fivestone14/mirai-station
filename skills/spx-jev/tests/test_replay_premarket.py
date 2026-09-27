@@ -126,6 +126,7 @@ def test_a_mark_stands_on_the_newest_bar_up_to_the_lane_gap_before_it():
 
 # ---- judging --------------------------------------------------------------------------------------
 
+NOISE_SEED = 0   # the batch from this seed holds one false link on its own p (0.006)
 ORDERED_Q = {"options": list(replay.ORDERED["overnight_move_vs_expected"]), "serves": "direction", "replayed_from": "dark"}
 SIGN_FREE_Q = {"options": ["built", "faded"], "serves": "direction", "replayed_from": "dark"}
 
@@ -146,6 +147,7 @@ def test_ordered_answers_that_line_up_with_the_move_hold():
     moves = [0.1 * order.index(a) + 0.01 * (k % 3) for k, a in enumerate(answers)]
     got = replay.judge("overnight_move_vs_expected", ORDERED_Q, "09:28", *_nights("overnight_move_vs_expected", answers, moves))
     assert got["verdict"] == "holds" and got["rho"] > 0.9 and got["p"] < replay.P_HOLDS and all(h > 0 for h in got["halves"])
+    assert got["p_holm"] == got["p"]                                    # tested alone, Holm leaves p as it is
     assert got["by_answer"]["big_up"]["n"] == 8 and got["by_answer"]["big_up"]["open_30"]["above_zero"] == 1.0
 
 
@@ -156,6 +158,23 @@ def test_answers_unrelated_to_the_move_are_noise():
     moves = [rng.gauss(0, 1) for _ in answers]
     got = replay.judge("overnight_move_vs_expected", ORDERED_Q, "09:28", *_nights("overnight_move_vs_expected", answers, moves))
     assert got["verdict"] == "noise" and got["graded"] == 40
+
+
+def test_a_batch_of_questions_with_no_link_names_none_as_holding(monkeypatch):
+    """Fourteen pairs of made-up answers against unrelated moves: on its own p one of them would hold, adjusted
+    for the fourteen tested together none does."""
+    monkeypatch.setattr(replay, "SHUFFLES", 1_000)
+    order = replay.ORDERED["overnight_move_vs_expected"]
+    judged = []
+    for k in range(14):
+        rng = random.Random(NOISE_SEED + k)
+        answers = [order[m % 5] for m in range(40)]
+        moves = [rng.gauss(0, 1) for _ in answers]
+        judged.append(replay.judge("overnight_move_vs_expected", ORDERED_Q, "09:28", *_nights("overnight_move_vs_expected", answers, moves)))
+    assert any(j["verdict"] == "holds" for j in judged)
+    adjusted = replay.holm(judged)
+    assert not any(j["verdict"] == "holds" for j in adjusted)
+    assert all(a["p_holm"] >= j["p"] and f"Holm {a['p_holm']:.3f}" in a["basis"] for a, j in zip(adjusted, judged))
 
 
 def test_a_thin_sample_is_too_few():

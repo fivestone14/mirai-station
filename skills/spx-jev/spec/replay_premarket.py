@@ -32,7 +32,8 @@ rank correlation where the answers are ordered (else the share of the outcome's 
 explain), both halves of the nights, and a verdict:
 
     too few   under MIN_NIGHTS graded nights, or under two answers given on MIN_PER_ANSWER nights each
-    holds     a permutation p under P_HOLDS, and the same sign (the same best answer) in both halves
+    holds     a permutation p, adjusted by Holm's method for every question and read tested beside it,
+              under P_HOLDS, and the same sign (the same best answer) in both halves
     noise     otherwise
 
 Read only: nothing under the state directory is written, and --out may not point inside it. Writes
@@ -371,9 +372,27 @@ def judge(qid: str, q: dict, checkpoint: str, reads: list[dict], outcomes: dict[
     else:
         split = [best_answer([a for a, _ in h], [v for _, v in h]) for h in halves]
         agree = split[0] is not None and split[0] == split[1]
-    verdict = "holds" if p < P_HOLDS and agree else "noise"
-    return {**out, name: round(stat, 3), "p": round(p, 4), "halves": [round(s, 3) if isinstance(s, float) else s for s in split],
-            "verdict": verdict, "basis": f"{name} {stat:+.3f}, p {p:.3f}, halves {_halves_words(split)}"}
+    return settled({**out, "statistic": name, name: round(stat, 3), "p": round(p, 4), "agree": agree,
+                    "halves": [round(s, 3) if isinstance(s, float) else s for s in split]}, p)
+
+
+def settled(j: dict, p_holm: float) -> dict:
+    """A tested question's verdict and basis on ``p_holm``, its p adjusted for the questions tested beside it
+    (its own p when tested alone)."""
+    name = j["statistic"]
+    return {**j, "p_holm": round(p_holm, 4), "verdict": "holds" if p_holm < P_HOLDS and j["agree"] else "noise",
+            "basis": f"{name} {j[name]:+.3f}, p {j['p']:.3f} (Holm {p_holm:.3f}), halves {_halves_words(j['halves'])}"}
+
+
+def holm(judged: list[dict]) -> list[dict]:
+    """Every verdict with its p adjusted by Holm's step-down over the questions and reads tested together, so a
+    batch of questions with no link to the open names none as holding in more than P_HOLDS of replays."""
+    tested = sorted((k for k, j in enumerate(judged) if "p" in j), key=lambda k: judged[k]["p"])
+    adjusted, running = {}, 0.0
+    for rank, k in enumerate(tested):
+        running = max(running, min(1.0, (len(tested) - rank) * judged[k]["p"]))
+        adjusted[k] = running
+    return [settled(j, adjusted[k]) if k in adjusted else j for k, j in enumerate(judged)]
 
 
 def _mean_share(values: list[float | None]) -> dict:
@@ -406,9 +425,11 @@ def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], day
     verdicts = Counter(j["verdict"] for j in judged)
     lines += [f"Of {len(judged)} questions at their reads: " + ", ".join(f"{v} {verdicts[v]}" for v in ("holds", "noise", "too few")) + ".",
               ""]
-    lines += [f"Verdict: **holds** when a permutation p is under {P_HOLDS} and the effect keeps its sign (or its best answer) "
-              f"in both halves of the nights; **too few** under {MIN_NIGHTS} graded nights or under two answers given on "
-              f"{MIN_PER_ANSWER} nights each; **noise** otherwise. A sign-free question's outcome is counted along its own reference "
+    tested = sum(1 for j in judged if "p" in j)
+    lines += [f"Verdict: **holds** when a permutation p, adjusted by Holm's method for the {tested} questions and reads "
+              f"tested together, is under {P_HOLDS} and the effect keeps its sign (or its best answer) in both halves of "
+              f"the nights; **too few** under {MIN_NIGHTS} graded nights or under two answers given on {MIN_PER_ANSWER} "
+              f"nights each; **noise** otherwise. A sign-free question's outcome is counted along its own reference "
               f"(the question's ref_side: the night's net move, the first leg, the report's reaction, bitcoin's weekend "
               f"leg ...), named under each question.", "",
               "| Question | Read | Asked | Asleep | Missing | Graded | Judged on | Statistic | Verdict |",
@@ -478,8 +499,8 @@ def main(argv: list[str] | None = None) -> int:
             reads += mine
             outcomes[day.isoformat()] = oc
             print(f"{day}: {sum(1 for r in mine if 'questions' in r)} of {len(mine)} reads built", file=sys.stderr)
-    judged = [judge(qid, q, c, reads, outcomes) for g in doc["groups"] for qid, q in g["questions"].items()
-              for c in PREMARKET.schedule if q.get("schedule") is None or asks_at(q["schedule"], c, days[-1], PREMARKET.schedule)]
+    judged = holm([judge(qid, q, c, reads, outcomes) for g in doc["groups"] for qid, q in g["questions"].items()
+                   for c in PREMARKET.schedule if q.get("schedule") is None or asks_at(q["schedule"], c, days[-1], PREMARKET.schedule)])
     out.mkdir(parents=True, exist_ok=True)
     (out / "reads.jsonl").write_text("".join(json.dumps(r) + "\n" for r in reads), encoding="utf-8")
     (out / "outcomes.jsonl").write_text("".join(json.dumps(o) + "\n" for o in outcomes.values()), encoding="utf-8")
