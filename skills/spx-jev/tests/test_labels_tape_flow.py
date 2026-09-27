@@ -215,3 +215,130 @@ def test_the_shift_is_omitted_without_a_row_10_minutes_back_or_enough_prior_diar
     assert ls.omitted["options.call_put_shift_10m"] == "no state folder to read the prior sessions' diaries from"
     ls, _ = read(shift_scene(scene_factory, tmp_path / "four", 700, 300, prior_days=PRIOR_DAYS[:4]))
     assert ls.omitted["options.call_put_shift_10m"] == "needs 5 prior sessions' diaries at this minute, have 4"
+
+
+# ---- options.quote_liquidity
+
+def sweep(t: datetime, size: float | None, spread: float | None) -> dict:
+    """One quote sweep line as the lob-flow collector writes it; a bucket with too few contracts carries nulls."""
+    return {"ts": t.isoformat(), "buckets": {"d25_40": {"size": size, "bid_size": None if size is None else size / 2,
+                                                         "ask_size": None if size is None else size / 2, "spread": spread, "n": 6},
+                                              "d00_10": {"size": 700.0, "bid_size": 350.0, "ask_size": 350.0, "spread": 0.05, "n": 74}},
+            "purge_hint": None, "revisions_per_s": 40.1}
+
+
+def write_sweeps(root: Path, day: str, lines: list[dict], packed: bool = False) -> None:
+    folder = root / "lob_flow" / "raw" / day
+    folder.mkdir(parents=True, exist_ok=True)
+    text = "".join(json.dumps(x) + "\n" for x in lines)
+    if packed:
+        with gzip.open(folder / "sweeps.jsonl.gz", "wt", encoding="utf-8") as f:
+            f.write(text)
+    else:
+        (folder / "sweeps.jsonl").write_text(text)
+
+
+def sweeps_until(day: str, until: datetime, size: float | None, spread: float | None) -> list[dict]:
+    """A sweep 31 seconds into every minute from 09:31 until ``until``."""
+    out, t = [], at(9, 31, day, ss=31)
+    while t < until:
+        out.append(sweep(t, size, spread))
+        t += timedelta(minutes=1)
+    return out
+
+
+def quote_scene(scene_factory, root: Path, today: list[dict], prior_days: tuple[str, ...] = PRIOR_DAYS):
+    write_sweeps(root, DAY, today + [sweep(at(10, 0, ss=31), 9000.0, 0.5)])          # after the read: never counts
+    for k, d in enumerate(prior_days):                                                  # 100 to 200 contracts, 10 cents wide
+        write_sweeps(root, d, sweeps_until(d, at(16, 0, d), 100.0 + 20 * k, 0.1), packed=k % 2 == 1)
+    return replace(scene_factory(NOW, flat_bars(30), prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS}), state_dir=root)
+
+
+@pytest.mark.parametrize("size, spread, prior_days, sentence", [
+    (250.0, 0.1, PRIOR_DAYS, "10 cents wide, their usual width for this time, with a median 250 contracts displayed, a deep book for this time, "
+                             "in the top fifth, higher than 6 of the last 6 sessions at this minute"),
+    (150.0, 0.2, PRIOR_DAYS, "20 cents wide, wider than their usual 10 cents for this time, with a median 150 contracts displayed, "
+                             "a middling book for this time, between the bottom and top fifths, higher than 3 of the last 6 sessions at this minute"),
+    (110.0, 0.05, PRIOR_DAYS[:5], "5 cents wide, tighter than their usual 10 cents for this time, with a median 110 contracts displayed, "
+                                  "a thin book for this time, in the bottom fifth, higher than 1 of the last 5 sessions at this minute"),
+])
+def test_quote_liquidity_ranks_the_depth_near_price_and_sets_the_width_against_its_usual(scene_factory, tmp_path, size, spread, prior_days, sentence):
+    _, labels = read(quote_scene(scene_factory, tmp_path, sweeps_until(DAY, NOW, size, spread), prior_days))
+    assert labels["options.quote_liquidity"] == f"over the last 5 minutes 25-40 delta same-day quotes have been {sentence}"
+
+
+def test_quote_liquidity_is_omitted_when_the_sweeps_stop_thin_out_or_have_no_history(scene_factory, tmp_path):
+    ls, _ = read(quote_scene(scene_factory, tmp_path / "stopped", sweeps_until(DAY, at(9, 56), 150.0, 0.1)))
+    assert ls.omitted["options.quote_liquidity"] == "no sweep of the 0DTE quotes from the lob-flow collector in the last 3 minutes: the collector stopped"
+    ls, _ = read(quote_scene(scene_factory, tmp_path / "empty", sweeps_until(DAY, NOW, None, None)))
+    assert ls.omitted["options.quote_liquidity"] == "the collector's 25-40 delta bucket held too few quoted contracts over the last 5 minutes"
+    ls, _ = read(quote_scene(scene_factory, tmp_path / "four", sweeps_until(DAY, NOW, 150.0, 0.1), PRIOR_DAYS[:4]))
+    assert ls.omitted["options.quote_liquidity"] == "needs 5 prior sessions with lob-flow quote sweeps at this minute, have 4"
+    ls, _ = read(replace(quote_scene(scene_factory, tmp_path / "none", []), now=at(10, 0, "2026-09-21")))
+    assert ls.omitted["options.quote_liquidity"] == "no lob-flow quote sweeps for 2026-09-21 under lob_flow/raw: the collector did not run"
+
+
+# ---- options.strike_defense: the collector's record
+
+def defense_line(t: datetime, *strikes: tuple[float, int, int]) -> dict:
+    """One lob_flow reading as the collector writes it, with its refill test at each ``(strike, refilled, not refilled)``."""
+    return {"ts": t.isoformat(), "engine": "lob_flow",
+            "snapshot": {"regime": "long_gamma", "tilt": 0.01, "determinate_share": 0.6, "tape_trades": 327,
+                         "defense": {str(k): {"strike": k, "n_events": n, "n_unrecovered": u, "per_right": {"call": f"{n} recovered / {u} not"},
+                                              "refill_half_life_s": 0.4, "verdict": "defended"} for k, n, u in strikes},
+                         "late_session": False, "source": "lob_flow"},
+            "baseline_rows": [{"key": "size|d25_40|mid|0955|mid", "value": 150.0}]}
+
+
+def spy_line(t: datetime, spread: float, size: float) -> dict:
+    """One reading of SPY's quote from the collector's control."""
+    return {"ts": t.isoformat(), "engine": "spy_depth",
+            "baseline_rows": [{"key": "size|spy|mid|0955|mid", "value": size}, {"key": "spread|spy|mid|0955|mid", "value": spread}]}
+
+
+def write_record(root: Path, day: str, lines: list[dict]) -> None:
+    (root / "lob_flow" / "agg").mkdir(parents=True, exist_ok=True)
+    (root / "lob_flow" / "agg" / f"{day}.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+
+
+def record_scene(scene_factory, root: Path, today: list[dict], prior_days: tuple[str, ...] = PRIOR_DAYS, morning: bool = True):
+    write_record(root, DAY, today)
+    for k, d in enumerate(prior_days):                     # SPY showing 400 to 600 shares, 2 cents wide
+        write_record(root, d, [spy_line(at(9, 31, d) + timedelta(minutes=i), 0.02, 400.0 + 40 * k) for i in range(390)])
+    scene = scene_factory(NOW, flat_bars(30), spot=7700.0, rows_before=[make_row(at(9, 31), 7700.0)] if morning else None,
+                          prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS})
+    return replace(scene, state_dir=root)
+
+
+def readings(until: datetime, **per_minute) -> list[dict]:
+    """The collector's two readings a minute from 09:31 until ``until``."""
+    out, t = [], at(9, 31, ss=27)
+    while t < until:
+        out += [defense_line(t, *per_minute.get("strikes", ())), spy_line(t, per_minute.get("spread", 0.02), per_minute.get("size", 500.0))]
+        t += timedelta(minutes=1)
+    return out
+
+
+@pytest.mark.parametrize("strikes, sentence", [
+    ([(7709.0, 14, 2), (7701.0, 3, 1)],
+     "0.12 sigma above price, inside the 0.25 sigma defense distance; it was hit 16 times in the last 15 minutes, at least the 10-hit minimum; "
+     "market makers refilled its quotes at price on 14 of them (88%), at least the 70% refill share"),
+    ([(7691.0, 5, 7), (7750.0, 40, 0)],
+     "0.12 sigma below price, inside the 0.25 sigma defense distance; it was hit 12 times in the last 15 minutes, at least the 10-hit minimum; "
+     "market makers refilled its quotes at price on 5 of them (42%), under the 70% refill share"),
+])
+def test_strike_defense_reads_the_nearest_contested_strikes_refill_share(scene_factory, tmp_path, strikes, sentence):
+    later = [defense_line(at(10, 0, ss=40), (7700.0, 90, 0))]                   # after the read: never counts
+    _, labels = read(record_scene(scene_factory, tmp_path, readings(NOW, strikes=strikes) + later))
+    assert labels["options.strike_defense"] == f"the nearest strike where same-day quotes keep getting hit is {sentence}"
+
+
+def test_strike_defense_is_omitted_beyond_reach_without_a_contested_strike_or_a_running_collector(scene_factory, tmp_path):
+    ls, _ = read(record_scene(scene_factory, tmp_path / "far", readings(NOW, strikes=[(7730.0, 30, 0), (7702.0, 5, 4)])))
+    assert ls.omitted["options.strike_defense"] == "the nearest strike hit 10 times or more is 0.40 sigma above price, beyond the 0.25 sigma defense distance"
+    ls, _ = read(record_scene(scene_factory, tmp_path / "quiet", readings(NOW, strikes=[(7702.0, 5, 4)])))
+    assert ls.omitted["options.strike_defense"] == "no strike the collector watches was hit 10 times or more in its last 15 minutes"
+    ls, _ = read(record_scene(scene_factory, tmp_path / "stopped", readings(at(9, 56), strikes=[(7709.0, 14, 2)])))
+    assert ls.omitted["options.strike_defense"] == "no lob-flow reading in the last 3 minutes: the collector stopped"
+    ls, labels = read(record_scene(scene_factory, tmp_path / "late", readings(NOW, strikes=[(7709.0, 14, 2)]), morning=False))
+    assert labels["options.strike_defense"].endswith("at least the 70% refill share; ruler estimated")

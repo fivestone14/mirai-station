@@ -22,14 +22,16 @@ from functools import lru_cache
 from pathlib import Path
 
 from ..cuts import (BIG_LEAN_SHARE, BIG_MIN_PRINTS, BIG_PRINT_LOTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, CALL_PUT_SHIFT_SHARE,
-                    EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK, MIN_RANK_SESSIONS, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH,
-                    TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
+                    DEFENSE_MIN_EVENTS, DEFENSE_NEAR_SIGMA, DEFENSE_REFILL_SHARE, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK,
+                    MIN_RANK_SESSIONS, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH, TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..row_adapter import labeller_row
-from ..state_builder import ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_WINDOW_MIN, ROWS_SUBDIR, Scene, parse_ts
+from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, OPTIONS_TAPE_WINDOW_MIN, ROWS_SUBDIR, Scene, load_jsonl,
+                             parse_ts)
 from .label_set import LabelSet
 from .measures import is_num, minute_of_day
 from .ranks import SameClockRank, rank_against, rank_at_slot
-from .words import pct, plural, signed
+from .rulers import sigma_anchor
+from .words import pct, plural, sig, signed
 
 LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side", "options.new_activity",
           "options.big_prints_10", "options.call_put_shift_10m", "options.flow_lean_30", "options.premium_burst_5m",
@@ -48,6 +50,10 @@ TAPE_LABELS = ("options.big_prints_10", "options.flow_lean_30", "options.premium
 # The diary writes a row about every 75 seconds: one further than this before the moment it stands for means the scanner paused.
 ROW_SLACK_MIN = 5
 ROW_LINE_START = '{"ts": "'
+# A quote read is the median of the collector's minute-by-minute readings over this many minutes: one sweep's
+# depth swings by half from one minute to the next.
+QUOTE_WINDOW_MIN = 5
+QUOTE_BUCKET = "d25_40"                  # the collector's 25-40 delta bucket, the same-day quotes near price that trade
 
 
 def build_tape_flow_labels(scene: Scene) -> LabelSet:
@@ -58,6 +64,8 @@ def build_tape_flow_labels(scene: Scene) -> LabelSet:
     _new_activity(scene, gv, ls)
     _call_put_shift_10m(scene, ls)
     _tape_labels(scene, ls)
+    _quote_liquidity(scene, ls)
+    _strike_defense(scene, ls)
     return ls
 
 
@@ -455,3 +463,153 @@ def _add_trade(flow: TapeFlow, t: dict) -> None:
     else:
         flow.bearish += premium
         flow.big_bearish += premium if big else 0.0
+
+
+# ----------------------------------------------------------------------------- the collector's quotes and defense
+
+def _medians(readings: list[tuple[datetime, float, float]], end: datetime) -> tuple[float, float] | None:
+    """The median of each of a reading's two numbers over the QUOTE_WINDOW_MIN minutes to ``end``; None with no reading."""
+    win = [(a, b) for ts, a, b in readings if end - timedelta(minutes=QUOTE_WINDOW_MIN) < ts <= end]
+    return (statistics.median(a for a, _ in win), statistics.median(b for _, b in win)) if win else None
+
+
+def _stopped(stamps: list[datetime], now: datetime) -> bool:
+    """The collector wrote nothing in the OPTIONS_TAPE_MAX_AGE_MIN minutes to ``now``."""
+    seen = [ts for ts in stamps if ts <= now]
+    return not seen or now - seen[-1] > timedelta(minutes=OPTIONS_TAPE_MAX_AGE_MIN)
+
+
+def _cents(dollars: float) -> str:
+    return plural(round(dollars * 100), "cent")
+
+
+def _quote_liquidity(scene: Scene, ls: LabelSet) -> None:
+    """Depth and width of the same-day quotes near price over the last 5 minutes, against the same minutes of the prior sessions."""
+    if scene.state_dir is None:
+        ls.omit("options.quote_liquidity", "no state folder to read the lob-flow collector's quote sweeps from")
+        return
+    sweeps = quote_sweeps(scene.state_dir, scene.day)
+    if sweeps is None:
+        ls.omit("options.quote_liquidity", f"no lob-flow quote sweeps for {scene.day} under {TAPE_RAW_SUBDIR}: the collector did not run")
+        return
+    if _stopped(sweeps.stamps, scene.now):
+        ls.omit("options.quote_liquidity", f"no sweep of the 0DTE quotes from the lob-flow collector in the last {OPTIONS_TAPE_MAX_AGE_MIN} minutes: the collector stopped")
+        return
+    got = _medians(sweeps.near, scene.now)
+    if got is None:
+        ls.omit("options.quote_liquidity", f"the collector's 25-40 delta bucket held too few quoted contracts over the last {QUOTE_WINDOW_MIN} minutes")
+        return
+    depth, spread = got
+    clock = scene.now.astimezone(ET).time()
+    base = [m for d in scene.prior_bars if (sw := quote_sweeps(scene.state_dir, d)) is not None
+            and (m := _medians(sw.near, datetime.combine(date.fromisoformat(d), clock, tzinfo=ET))) is not None]
+    rank = rank_against(depth, [b[0] for b in base])
+    if rank is None:
+        ls.omit("options.quote_liquidity", f"needs {MIN_RANK_SESSIONS} prior sessions with lob-flow quote sweeps at this minute, have {len(base)}")
+        return
+    now_c, usual_c = round(spread * 100), round(statistics.median(b[1] for b in base) * 100)
+    width = (f"wider than their usual {_cents(usual_c / 100)} for this time" if now_c > usual_c else
+             f"tighter than their usual {_cents(usual_c / 100)} for this time" if now_c < usual_c else "their usual width for this time")
+    book = "deep" if rank.share >= TOP_FIFTH else "thin" if rank.share <= BOTTOM_FIFTH else "middling"
+    ls.put("options.quote_liquidity", f"over the last {QUOTE_WINDOW_MIN} minutes 25-40 delta same-day quotes have been {_cents(spread)} wide, "
+                                      f"{width}, with a median {depth:.0f} contracts displayed, a {book} book for this time, "
+                                      f"{_fifth(rank)}, {rank.words()}")
+
+
+def _strike_defense(scene: Scene, ls: LabelSet) -> None:
+    """The nearest strike whose same-day quotes keep getting hit, from the collector's refill test over its last
+    15 minutes of trades: a hit is a trade that ate the size showing at the touch, refilled when that size came
+    back at the same price (within a tick)."""
+    if scene.state_dir is None:
+        ls.omit("options.strike_defense", "no state folder to read the lob-flow collector's record from")
+        return
+    record = collector_record(scene.state_dir, scene.day)
+    if record is None:
+        ls.omit("options.strike_defense", f"no lob-flow record for {scene.day} under {OPTIONS_TAPE_SUBDIR}: the collector did not run")
+        return
+    if _stopped([ts for ts, _ in record.defense], scene.now):
+        ls.omit("options.strike_defense", f"no lob-flow reading in the last {OPTIONS_TAPE_MAX_AGE_MIN} minutes: the collector stopped")
+        return
+    ruler = sigma_anchor(scene)
+    if ruler is None:
+        ls.omit("options.strike_defense", "no sigma ruler for today to measure the strike's distance in")
+        return
+    defense = [x for ts, x in record.defense if ts <= scene.now][-1]
+    hits = [(float(v["strike"]), int(v["n_events"]) + int(v["n_unrecovered"]), int(v["n_events"])) for v in defense.values()
+            if isinstance(v, dict) and all(is_num(v.get(k)) for k in ("strike", "n_events", "n_unrecovered"))]
+    contested = [h for h in hits if h[1] >= DEFENSE_MIN_EVENTS]
+    if not contested:
+        ls.omit("options.strike_defense", f"no strike the collector watches was hit {DEFENSE_MIN_EVENTS} times or more in its last {OPTIONS_TAPE_WINDOW_MIN} minutes")
+        return
+    strike, hit, refilled = min(contested, key=lambda h: abs(h[0] - scene.spot))
+    d = (strike - scene.spot) / ruler.points
+    where = f"{sig(abs(d))} {'above' if d >= 0 else 'below'} price"
+    if abs(d) > DEFENSE_NEAR_SIGMA:
+        ls.omit("options.strike_defense", f"the nearest strike hit {DEFENSE_MIN_EVENTS} times or more is {where}, beyond the {DEFENSE_NEAR_SIGMA} sigma defense distance")
+        return
+    share = refilled / hit
+    ls.put("options.strike_defense",
+           f"the nearest strike where same-day quotes keep getting hit is {where}, inside the {DEFENSE_NEAR_SIGMA} sigma defense distance; "
+           f"it was hit {hit} times in the last {OPTIONS_TAPE_WINDOW_MIN} minutes, at least the {DEFENSE_MIN_EVENTS}-hit minimum; "
+           f"market makers refilled its quotes at price on {refilled} of them ({pct(share)}), "
+           f"{'at least' if share >= DEFENSE_REFILL_SHARE else 'under'} the {pct(DEFENSE_REFILL_SHARE)} refill share"
+           f"{'; ruler estimated' if ruler.estimated else ''}")
+
+
+@dataclass(frozen=True)
+class QuoteSweeps:
+    """A day's minute-by-minute sweeps of the 0DTE quotes (``state/lob_flow/raw/{day}/sweeps.jsonl``): when each
+    was taken, and the 25-40 delta bucket's median displayed size and spread where it held enough contracts."""
+    stamps: list[datetime]
+    near: list[tuple[datetime, float, float]]
+
+
+def quote_sweeps(state_dir: Path, day: str) -> QuoteSweeps | None:
+    folder = Path(state_dir) / TAPE_RAW_SUBDIR / day
+    path = next((p for p in (folder / "sweeps.jsonl", folder / "sweeps.jsonl.gz") if p.exists()), None)
+    return None if path is None else _read_sweeps(str(path), path.stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=32)
+def _read_sweeps(path: str, mtime_ns: int) -> QuoteSweeps:
+    """``mtime_ns`` keys the cache, so today's file, still being written, is read afresh."""
+    opener = gzip.open if path.endswith(".gz") else open
+    stamps, near = [], []
+    with opener(path, "rt", encoding="utf-8") as f:
+        for line in f:
+            try:
+                sweep = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(sweep, dict) or not isinstance(sweep.get("ts"), str):
+                continue
+            ts = parse_ts(sweep["ts"])
+            stamps.append(ts)
+            b = (sweep.get("buckets") or {}).get(QUOTE_BUCKET) or {}
+            if is_num(b.get("size")) and is_num(b.get("spread")):
+                near.append((ts, float(b["size"]), float(b["spread"])))
+    return QuoteSweeps(sorted(stamps), sorted(near))
+
+
+@dataclass(frozen=True)
+class CollectorRecord:
+    """A day's lob-flow record (``state/lob_flow/agg/{day}.jsonl``), oldest first: the refill test's block per reading."""
+    defense: list[tuple[datetime, dict]]
+
+
+def collector_record(state_dir: Path, day: str) -> CollectorRecord | None:
+    path = Path(state_dir) / OPTIONS_TAPE_SUBDIR / f"{day}.jsonl"
+    return _read_record(str(path), path.stat().st_mtime_ns) if path.exists() else None
+
+
+@lru_cache(maxsize=32)
+def _read_record(path: str, mtime_ns: int) -> CollectorRecord:
+    """``mtime_ns`` keys the cache, so today's file, still being written, is read afresh."""
+    defense = []
+    for line in load_jsonl(Path(path)):
+        if not isinstance(line.get("ts"), str):
+            continue
+        ts = parse_ts(line["ts"])
+        if line.get("engine") == "lob_flow" and isinstance((line.get("snapshot") or {}).get("defense"), dict):
+            defense.append((ts, line["snapshot"]["defense"]))
+    return CollectorRecord(sorted(defense, key=lambda x: x[0]))
