@@ -13,8 +13,10 @@ import statistics
 from datetime import date, datetime, timedelta
 
 from ..cuts import BOND_LINK_TIGHT, WINDOW_30_MIN, WINDOW_60_MIN
+from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
+from .measures import ONE_MINUTE
 from .rulers import sigma_anchor
 from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, beyond, beyond_rank, fifth_side, needs_link, needs_move, needs_rank
 from .words import sig
@@ -34,7 +36,7 @@ BONDS = (("TLT", "long Treasury prices (TLT)"), ("/ZN", "ten-year Treasury futur
 OIL = "USO"
 # The outside markets pooled into one lean, each in the words the sentence uses.
 COMPLEX = (("TLT", "bonds"), ("HYG", "high-yield credit"), ("USO", "oil"), ("GLD", "gold"), ("/6E", "the euro"))
-# A minute-by-minute link over fewer of the hour's minutes than this is noise.
+# A minute-by-minute link over fewer of the hour's minutes than this is noise; over a shorter span, the same share.
 MIN_LINK_MINUTES = 45
 
 
@@ -67,16 +69,30 @@ def bond_market_closed(day: date) -> bool:
     return False
 
 
+def link_span(end: datetime) -> int:
+    """The minutes the link to ``end`` is measured over: the hour, or the session so far when the hour reaches
+    back before its first finished minute (09:31), so the 10:02 read has a link."""
+    return min(WINDOW_60_MIN, int((end - session_open(end) - ONE_MINUTE) / ONE_MINUTE))
+
+
+def link_need(span: int) -> int:
+    """The minutes with both prices a link over ``span`` minutes needs."""
+    return math.ceil(MIN_LINK_MINUTES * span / WINDOW_60_MIN)
+
+
 def minute_link(s: Session, symbol: str, end: datetime) -> float | None:
-    """The correlation of ``symbol``'s 1-minute returns with SPX's over the hour to ``end``; None over fewer than
-    MIN_LINK_MINUTES minutes with both, or when either never moved."""
+    """The correlation of ``symbol``'s 1-minute returns with SPX's over the link span to ``end``; None under
+    WINDOW_30_MIN minutes of session, over fewer than link_need minutes with both, or when either never moved."""
+    span = link_span(end)
+    if span < WINDOW_30_MIN:
+        return None
     pairs = []
-    for k in range(WINDOW_60_MIN):
+    for k in range(span):
         a, b = end - timedelta(minutes=k + 1), end - timedelta(minutes=k)
         x, y = s.move(SPX, a, b), s.move(symbol, a, b)
         if x is not None and y is not None:
             pairs.append((x, y))
-    if len(pairs) < MIN_LINK_MINUTES:
+    if len(pairs) < link_need(span):
         return None
     mx, my = statistics.fmean(x for x, _ in pairs), statistics.fmean(y for _, y in pairs)
     sxx = sum((x - mx) ** 2 for x, _ in pairs)
@@ -99,7 +115,7 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
         value, _, rank = got
         corr = minute_link(against.today, symbol, against.scene.now)
         if corr is None:
-            reasons.append(f"needs {MIN_LINK_MINUTES} of the last {WINDOW_60_MIN} minutes with {symbol} and {SPX} moving")
+            reasons.append(needs_minute_link(f"{symbol} and {SPX}", against.scene.now))
             continue
         side = fifth_side(rank)
         tight = abs(corr) >= BOND_LINK_TIGHT
@@ -164,8 +180,7 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
         return statistics.fmean(parts)
     value = lean(against.today, against.scene.now)
     if value is None:
-        ls.omit(path, f"needs {MIN_LINK_MINUTES} of the last {WINDOW_60_MIN} minutes with each of {', '.join(s for s, _ in COMPLEX)} "
-                      f"and {SPX} moving")
+        ls.omit(path, needs_minute_link(f"each of {', '.join(s for s, _ in COMPLEX)} and {SPX}", against.scene.now))
         return
     rank, have = against.rank(value, lambda s, then, _sigma_share: lean(s, then))
     if rank is None:
@@ -181,6 +196,11 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
                0: "in line with the index"}[side]
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes {ran}: taken together, each signed by how it moved with stocks this hour, "
                  f"the complex is {verdict}, {FIFTH_WORDS[side]} for this half hour, {rank.words()}{against.ruler_note}")
+
+
+def needs_minute_link(what: str, end: datetime) -> str:
+    span = link_span(end)
+    return f"needs {link_need(span)} of the last {span} minutes with {what} moving"
 
 
 def _and(names: list[str]) -> str:

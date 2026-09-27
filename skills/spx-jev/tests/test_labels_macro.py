@@ -110,6 +110,20 @@ def test_bonds_need_an_hour_of_minutes_to_read_the_link():
                                                "or needs a price for /ZN now and 30 minutes ago"
 
 
+def test_the_first_read_measures_the_link_over_the_session_so_far():
+    """At 10:02 the hour reaches back before the first finished minute (09:31): the link runs over the 31 minutes
+    since, on today and on each prior day alike, and needs the same three quarters of them."""
+    closes = index_closes()
+    scene = scene_with(closes, {s: follow(closes, m) for s, m in MULTIPLES.items() if s != "/ZN"}, MULTIPLES, now=at(10, 2, ss=10))
+    got, _ = labels(scene)
+    assert set(got) == {"xasset.bond_gap_30min", "xasset.oil_gap_30min", "xasset.macro_gap_30min"}
+    assert "higher than 5 of the last 10 sessions at this minute" in got["xasset.bond_gap_30min"]
+    thin = {s: [(t, v) for t, v in pts if s != "TLT" or not at(9, 40) < t < at(9, 52)] for s, pts in scene.market.known.items()}
+    _, omitted = labels(replace(scene, market=MarketContext(thin)))
+    assert omitted["xasset.bond_gap_30min"] == ("needs 24 of the last 31 minutes with TLT and $SPX moving; "
+                                                "or needs a price for /ZN now and 30 minutes ago")
+
+
 # ---- oil
 
 @pytest.mark.parametrize("jump, verdict", [
