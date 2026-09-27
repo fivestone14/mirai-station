@@ -11,7 +11,8 @@ in ``spec/baseline.json`` (spec/fit_baseline.py, read only):
 
 Every read is replayed as the clock replays it (clock.replayed_reads): every 10 minutes from 09:32 on
 the newest diary row no more than 10 minutes old, graded by the live grader on that row's spot and
-sigma, so the baseline forecasts exactly the outcome the sums are graded on. A qualifying session has
+the morning anchor the read could know (grade.read_anchor), so the baseline forecasts exactly the
+outcome the sums are graded on. A qualifying session has
 the current sigma definition on its diary (``sigma_live``), at least MIN_ROWS diary rows and a full
 day of bars.
 

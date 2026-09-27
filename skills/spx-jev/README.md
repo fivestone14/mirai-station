@@ -49,12 +49,12 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
 | `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32 with the 30- and 60-minute sums; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, one five-way 10-minute sum priced in index points, every question its schedule asks asked afresh (its day constants at 09:35, then held), no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. It writes only under `state/spx_jev/lanes/tape/`. |
 | `spx_jev/bars.py` | The Bars Feed | Appends today's finished SPX minute bars to `state/spx_jev/bars/{day}.jsonl` every minute, from the station's Schwab client. Past sessions come from `state/reversion/bars/{day}-SPX.json`, saved after each close. |
-| `spx_jev/market_context.py` | The Market Feed | A snapshot a minute of the market around SPX (NYSE breadth, the VIX family, the ES future, rates, the 11 sector funds, SMH, RSP, QQQ, IWM, SPY and the seven megacaps) to `state/spx_jev/context/{day}.jsonl`, and a backfill of past sessions' minute bars, since Schwab keeps only about 34 sessions. The labeller reads a futures quote under its root (Schwab answers `/ES` as `/ESZ26`) and the Treasury yields in percent (Schwab quotes `$TNX` at ten times the yield). |
+| `spx_jev/market_context.py` | The Market Feed | A snapshot a minute of the market around SPX (NYSE breadth, the VIX family, the ES future, rates, the 11 sector funds, SMH, RSP, QQQ, IWM, SPY, the seven megacaps, and TLT, HYG, USO and GLD) to `state/spx_jev/context/{day}.jsonl`, and a backfill of past sessions' minute bars, since Schwab keeps only about 34 sessions. The labeller reads a futures quote under its root (Schwab answers `/ES` as `/ESZ26`) and the Treasury yields in percent (Schwab quotes `$TNX` at ten times the yield). |
 | `spx_jev/save_day.py` | The Day Saver | After the close, every market-feed symbol's full 1-minute day to `state/spx_jev/context/bars/{day}.jsonl`, and SPX's own day to `state/spx_jev/bars/{day}.jsonl` when that file is short; market days only, a day on disk never fetched again, a missed night caught up by the next. |
 | `spx_jev/schwab.py` | The Schwab Link | The two feeds' calls through the station's shared client (REST only, never the lob-flow streamer), batched and spaced. |
 | `spec/question_set.json`, `spec/write_question_docs.py`, `questions/spx_questions.json` | The Questions | The final question set (115 questions, 121 labels, 166 constants, with its conventions and the review behind each question) and the step-2 doc both lanes ask from, written from it by `python3 spec/write_question_docs.py` (never edited by hand; `--check` says whether it is current, and a test holds it). No number is typed into them: every threshold is a name in braces filled from `cuts.py`, which must hold the set's constants to the number before the writer writes. |
 | `questions/spx_hour.json`, `questions/spx_lane_hour.json` | The Sums | The live lane's two sums, and the opening lane's five-way 10-minute sum. |
-| `calendar/events.json`, `spx_jev/events.py` | The Calendar | The tier-1 scheduled events (the Fed, rebalance closes, half days), copied from SNDK's calendar less SanDisk's own. |
+| `calendar/events.json`, `spx_jev/events.py` | The Calendar | The scheduled events, kept by hand from `covers_from` through `covers_through`. Tier 1 (the Fed, rebalance closes, half days, copied from SNDK's calendar less SanDisk's own) tags the reads; the other tiers (the 08:30, 10:00 and 14:00 releases and the Fed's scheduled speakers) feed only the event labels. |
 | `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
 | `launchd/*.plist.template`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Five staged jobs and their runners. Not installed. |
@@ -225,18 +225,16 @@ that has closed. The key lives only in `skills/spx-jev/.env`
 
 ## Not done yet
 
-- Most of the final set's labels are not built: every family omits them as not
-  built (or dark, where no feed carries the data), so only the questions whose
-  labels are all built are asked. The set's `monday_prerequisites` list the feeds
-  and fixes still to do.
-- The set's `code_answer` reading checks and re-asking a question when the code's
-  answer changes (a schedule's `then`) are not built: such a question is held.
-- The learned cadence and the grader still rule on the row's ratcheting sigma;
-  the set asks for the morning anchor (`labels.rulers.sigma_anchor`) there too.
+- Every label of the final set is built except the dark ones, which no feed
+  carries yet. Some built labels still wait on data nothing saves: the index
+  weights (`state/spx_leaders/weights.json`, the four largest-stock labels),
+  daily closes for the month- and quarter-end rebalance, and the /ZN and /6E
+  futures. The set's `monday_prerequisites` list the rest.
+- Nothing works out the set's `code_answer`s yet, so re-asking a question when
+  the code's answer changes (a schedule's `then`) is built only on the cadence
+  side: such a question is held.
 - The learning loop runs, but the phone switch (`pool.POOL_ON_PHONE`) is off
-  pending Will's decision; its simulation acceptance gates (06) are not built,
-  and the SPX event calendar lacks the 10:00 and 14:00 releases 06 lists.
+  pending Will's decision, and its simulation acceptance gates (06) are not built.
 - No market context is on disk yet: the breadth labels are omitted on every
   replay until the feed has run, and the backfill has not been run against the
   station.
-- The phone page for the SPX card (the later step) does not exist.

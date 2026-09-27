@@ -434,7 +434,7 @@ details .q{margin-top:8px}
     box.appendChild(el('div', 'ask', q.ask));
     if(q.status === 'shadow') box.appendChild(tag('shadow: a forecast, logged, never graded and never a call'));
     var a = q.answer, held = q.held_from ? 'held since ' + viewerTime(q.held_from) + ', not re-asked' : '';
-    // a Choice or a Score answer always carries its probabilities (a Score's are keyed by the level's words)
+    // a Choice or a Score answer always carries its probabilities (a Score's are keyed by its option names)
     if(a && a.probabilities){
       // the question's own order first (a fixed place per option), then anything JEV added
       var keys = (q.options || []).filter(function(k){ return k in a.probabilities; });
