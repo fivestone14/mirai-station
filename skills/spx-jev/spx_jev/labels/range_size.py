@@ -27,6 +27,8 @@ LABELS = ("range.box_status", "range.today_vs_normal", "range.prior_level_touche
           "range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "ruler.flat_band_reach", "tape.unit_vs_normal")
 GATES: tuple[str, ...] = ()
 DARK: dict[str, str] = {}
+# Measured only on the bar clock (the opening lane): a live read neither writes nor omits them.
+BAR_CLOCK_ONLY = ("tape.move_since_read", "tape.range_since_read", "tape.unit_vs_normal")
 
 # The opening box is the first 30 minutes; a break is past the move bar (measures.move_bar).
 OPENING_BOX_MIN = 30

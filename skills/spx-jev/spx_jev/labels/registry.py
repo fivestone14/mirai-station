@@ -20,13 +20,15 @@ class Family:
     labels: tuple[str, ...]                          # every label path the family writes or omits, and no other
     gates: tuple[str, ...] = ()                      # the gated questions whose sleep_when it judges
     dark: dict[str, str] = field(default_factory=dict)   # labels whose data no feed carries yet, with why
+    bar_clock_only: tuple[str, ...] = ()             # labels only a read on the bar clock measures; off it they are not accounted
 
 
 FAMILIES = (
     Family("context", context.build_context_labels, context.LABELS, context.GATES, context.DARK),
     Family("price", price.build_price_labels, price.LABELS, price.GATES, price.DARK),
     Family("gap_open", gap_open.build_gap_open_labels, gap_open.LABELS, gap_open.GATES, gap_open.DARK),
-    Family("range_size", range_size.build_range_size_labels, range_size.LABELS, range_size.GATES, range_size.DARK),
+    Family("range_size", range_size.build_range_size_labels, range_size.LABELS, range_size.GATES, range_size.DARK,
+           range_size.BAR_CLOCK_ONLY),
     Family("levels", levels.build_levels_labels, levels.LABELS, levels.GATES, levels.DARK),
     Family("vol", vol.build_vol_labels, vol.LABELS, vol.GATES, vol.DARK),
     Family("gamma", gamma.build_gamma_labels, gamma.LABELS, gamma.GATES, gamma.DARK),
@@ -44,7 +46,8 @@ def build_labels(scene: Scene) -> LabelSet:
     """Every family's labels and sleep gates for one moment.
 
     A label a family owns but neither wrote nor omitted is omitted here: with its dark reason when no feed
-    carries its data yet, else as not built. A gate a family owns but did not decide sleeps, so a gated
+    carries its data yet, else as not built; a bar-clock-only label off the bar clock is left alone (the
+    live lane neither writes nor omits the opening lane's stretch labels). A gate a family owns but did not decide sleeps, so a gated
     question is never asked before its gate exists. A family that fails costs only its own labels, each
     omitted with the failure as its reason, and its gates; a family that writes a label or decides a gate
     it does not own is a bug in that family and stops the read."""
@@ -62,7 +65,7 @@ def build_labels(scene: Scene) -> LabelSet:
         if stray:
             raise ValueError(f"the {family.name} family wrote labels or gates it does not own: {sorted(stray)}")
         for path in family.labels:
-            if path not in got.paths():
+            if path not in got.paths() and not (path in family.bar_clock_only and not scene.bar_clock):
                 got.omit(path, f"dark: {family.dark[path]}" if path in family.dark else NOT_BUILT)
         for qid in family.gates:
             if qid not in got.gates:
