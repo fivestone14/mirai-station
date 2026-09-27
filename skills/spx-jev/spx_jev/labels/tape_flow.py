@@ -204,11 +204,10 @@ def _call_put_shift_10m(scene: Scene, ls: LabelSet) -> None:
         return
     day_calls, day_puts = sum(c for c, _ in book.values()), sum(p for _, p in book.values())
     new_share, day_share = calls / new, day_calls / (day_calls + day_puts)
-    shift = new_share - day_share
     points = round(new_share * 100) - round(day_share * 100)      # the swing between the two shares as the sentence prints them
-    line = f"the {round(CALL_PUT_SHIFT_SHARE * 100)}-point shift line"
+    line_points = round(CALL_PUT_SHIFT_SHARE * 100)
     swing = (f"a {abs(points)}-point swing to {'calls' if points > 0 else 'puts'}" if points else "no swing either way")
-    swing += f", {'past' if abs(shift) > CALL_PUT_SHIFT_SHARE else 'within'} {line}"
+    swing += f", {'past' if abs(points) > line_points else 'within'} the {line_points}-point shift line"
     thin = ("new volume was above the too-thin line for this time, so it is not too thin to judge" if rank.share >= THIN_VOLUME_PCT else
             f"new volume was under the too-thin line for this time, {rank.words()}, too thin to judge")
     ls.put("options.call_put_shift_10m", f"in the last {WINDOW_10_MIN} minutes {pct(new_share)} of new same-day option volume was calls, "

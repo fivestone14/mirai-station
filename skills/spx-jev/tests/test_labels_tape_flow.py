@@ -214,6 +214,9 @@ def shift_scene(scene_factory, root: Path, calls: int, puts: int, then: datetime
                "past the 10-point shift line; new volume was above the too-thin line for this time, so it is not too thin to judge"),
     (550, 450, "55% of new same-day option volume was calls, against 53% since the open: a 2-point swing to calls, "
                "within the 10-point shift line; new volume was above the too-thin line for this time, so it is not too thin to judge"),
+    # 64.0% against 53.6%: a shift of 10.4 points, but the printed swing is 10, on the line, not past it
+    (640, 360, "64% of new same-day option volume was calls, against 54% since the open: a 10-point swing to calls, "
+               "within the 10-point shift line; new volume was above the too-thin line for this time, so it is not too thin to judge"),
     (200, 100, "67% of new same-day option volume was calls, against 53% since the open: a 14-point swing to calls, "
                "past the 10-point shift line; new volume was under the too-thin line for this time, "
                "higher than 0 of the last 6 sessions at this minute, too thin to judge"),
