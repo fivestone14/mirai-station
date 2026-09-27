@@ -311,8 +311,7 @@ def _balance_vs_yesterday(scene: Scene, gv: dict, ls: LabelSet) -> None:
         ls.put("gex.balance_vs_yesterday", f"by open interest the same-day book {then} at yesterday's close too, {DEALERS}, {verdict}")
         return
     now = "is too close to call now" if today == "uncertain" else f"leans to {LEANS_TO[today]} now"
-    verdict = ("so it has tipped overnight" if "uncertain" not in (today, yesterday) else
-               "so it had no lean to tip from" if yesterday == "uncertain" else "so its lean has faded overnight")
+    verdict = "so its lean has faded overnight" if today == "uncertain" else "so it has tipped overnight"
     ls.put("gex.balance_vs_yesterday", f"by open interest the same-day book {then} at yesterday's close and {now}, {DEALERS}, {verdict}")
 
 
