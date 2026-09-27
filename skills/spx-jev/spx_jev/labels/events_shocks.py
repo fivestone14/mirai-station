@@ -641,6 +641,9 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
     semis_verdict = (f"past the {SHOCK_GROUP_SIGMA:.2f} sigma rule, the shock's way" if semis * side >= SHOCK_GROUP_SIGMA else
                      f"past the {SHOCK_GROUP_SIGMA:.2f} sigma rule but against the shock" if abs(semis) >= SHOCK_GROUP_SIGMA else
                      f"short of the {SHOCK_GROUP_SIGMA:.2f} sigma rule")
+    tick_verdict = (f"at or past the {TICK_EXTREME} extreme" if tick * side >= TICK_EXTREME else
+                    f"past the {TICK_EXTREME} extreme but against the shock" if abs(tick) >= TICK_EXTREME else
+                    f"short of the {TICK_EXTREME} extreme")
     shelter = -statistics.fmean(defensive) * side
     defensive_words = (f"moved {sig(abs(shelter))} {'against' if shelter > 0 else 'with'} the shock beyond their usual link"
                        if round(shelter, 2) else "moved with their usual link to the index")
@@ -651,6 +654,6 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
                  f"no megacap's share of it is measured, since their index weights are not on file; "
                  f"{with_it} of {len(sectors)} sector funds {moved} with it, "
                  f"{'at or past' if with_it >= SECTOR_BROAD else 'short of'} the {SECTOR_BROAD}-fund broad count, and NYSE TICK "
-                 f"reached {round(tick)}, {'at or past' if abs(tick) >= TICK_EXTREME else 'short of'} the {TICK_EXTREME} extreme; "
+                 f"reached {round(tick)}, {tick_verdict}; "
                  f"the defensive funds (staples, utilities, health care) {defensive_words}, "
                  f"{'past' if shelter >= SHOCK_GROUP_SIGMA else 'short of'} the {SHOCK_GROUP_SIGMA:.2f} sigma rule")

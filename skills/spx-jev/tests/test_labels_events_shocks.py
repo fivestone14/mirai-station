@@ -498,6 +498,8 @@ def test_the_cross_asset_rules_at_their_boundaries(scene_factory):
     assert text.endswith("moved with their usual link to the index, short of the 0.10 sigma rule")
     at_the_lines = labels(replace(s, market=burst_market(s, lagging=("XLRE", "XLB"), tick=1000.0)))[0]["shock.cross_asset"]
     assert "9 of 11 sector funds rose with it, at or past the 9-fund broad count, and NYSE TICK reached 1000, at or past" in at_the_lines
+    wrong_way = labels(replace(s, market=burst_market(s, tick=-1100.0)))[0]["shock.cross_asset"]
+    assert "NYSE TICK reached -1100, past the 1000 extreme but against the shock;" in wrong_way
 
 
 def test_the_cross_asset_label_is_omitted_without_its_markets(scene_factory):
