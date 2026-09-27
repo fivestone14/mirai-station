@@ -301,7 +301,7 @@ def test_the_report_window_against_the_night_before_it(premarket_scene_factory, 
     calendar([("08:30", "JOBS")])
     ls = read(premarket_scene_factory, nights_dir, {"europe_morning": 1.5}, jumps={time(8, 35): reaction}, at=time(8, 48))
     text = said(ls, "premarket.release_vs_night")
-    assert "; before the jobs report at 08:30 they were 1.50 above, top third; by 08:45 they " in text and text.endswith(end)
+    assert "; before the jobs report at 08:30 they were 1.50 sigma above, top third; by 08:45 they " in text and text.endswith(end)
     assert verdict(ls, "premarket.release_vs_night") == code and ls.gates["release_vs_night"] is None
 
 

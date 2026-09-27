@@ -421,7 +421,7 @@ def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
             "unwound_night": "it undid part of the night's move", "extended_night": "it went the night's way"}
     reports = due[0].words + (f" and {len(due) - 1} more" if len(due) > 1 else "")
     text = (f"futures are {night.where(night.net)}; before {reports} at {at:%H:%M} they were "
-            f"{abs(b):.2f} {above_or_below(b)}, {_band(before_rank)}; by {end:%H:%M} they {_risen(r)} {sig(abs(r))}, "
+            f"{_sized(b)}, {_band(before_rank)}; by {end:%H:%M} they {_risen(r)} {sig(abs(r))}, "
             f"{_band(rank)} for that window")
     ls.put("premarket.release_vs_night", _ended(verdict, text, ends), figure=_figure(r, rank, verdict))
     _decide(ls, "release_vs_night", verdict, why)
