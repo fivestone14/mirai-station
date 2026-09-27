@@ -20,6 +20,7 @@ import http.client
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -187,7 +188,19 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
     return requests, skipped
 
 
-RETRY_HTTP = (429, 500, 502, 503, 504)    # a second try is worth it; a 4xx is not
+RETRY_HTTP = (429, 500, 502, 503, 504, 529)    # a second try is worth it; a 4xx is not (529 is TypeSafe's "overloaded")
+# TypeSafe asks for a pause before retrying a 429 or 529 rather than an immediate retry: wait its Retry-After,
+# else RETRY_WAIT_S, never more than RETRY_WAIT_MAX_S, so a five-minute read is never held up for long.
+RETRY_WAIT_S = 1.0
+RETRY_WAIT_MAX_S = 2.0
+
+
+def retry_wait(headers) -> float:
+    """Seconds to wait before retrying an HTTP error: its Retry-After in seconds, capped; RETRY_WAIT_S without one."""
+    try:
+        return max(0.0, min(float((headers or {}).get("Retry-After")), RETRY_WAIT_MAX_S))
+    except (TypeError, ValueError):
+        return RETRY_WAIT_S
 
 
 def _scrub(text: str, key: str | None) -> str:
@@ -198,7 +211,7 @@ def _scrub(text: str, key: str | None) -> str:
 def send(request: dict, api_key: str | None = None, timeout: float = 10.0, url: str = JEV_URL,
          model: str = JEV_MODEL, retries: int = 1) -> dict:
     """POST one request to JEV and return the parsed answer. One more try on a timeout, a dropped
-    connection or a 429/5xx. Every failure becomes a RuntimeError with the key scrubbed out, so a
+    connection or a 429/5xx, after a short pause on an HTTP error (retry_wait). Every failure becomes a RuntimeError with the key scrubbed out, so a
     caller that catches RuntimeError has caught everything the network can throw."""
     key = api_key or os.environ.get(API_KEY_ENV)
     if not key:
@@ -219,6 +232,7 @@ def send(request: dict, api_key: str | None = None, timeout: float = 10.0, url: 
             detail = _scrub(e.read().decode("utf-8", errors="replace"), key)[:400]
             if e.code in RETRY_HTTP and attempt < retries:
                 attempt += 1
+                time.sleep(retry_wait(e.headers))
                 continue
             raise RuntimeError(f"JEV returned HTTP {e.code} for group {request['id']}: {detail}") from None
         except (OSError, http.client.HTTPException) as e:

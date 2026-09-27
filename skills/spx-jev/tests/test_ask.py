@@ -208,6 +208,41 @@ def test_send_turns_every_network_failure_into_a_scrubbed_runtime_error(monkeypa
     assert "HTTP 400" in str(e.value) and "[key redacted]" in str(e.value) and key not in str(e.value)
 
 
+@pytest.mark.parametrize("code, headers, waited", [(529, {}, 1.0), (429, {"Retry-After": "2"}, 2.0),
+                                                    (503, {"Retry-After": "30"}, 2.0), (500, {"Retry-After": "soon"}, 1.0)])
+def test_an_overloaded_or_rate_limited_jev_is_retried_once_after_a_short_pause(monkeypatch, code, headers, waited):
+    import urllib.error
+    from spx_jev import ask
+    calls, naps = [], []
+
+    class Answer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"answers": {}}'
+
+    class Body:
+        def read(self):
+            return b"busy"
+
+        def close(self):
+            pass
+
+    def urlopen(req, timeout=0):
+        calls.append(req)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError("u", code, "busy", headers, Body())
+        return Answer()
+    monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(ask.time, "sleep", naps.append)
+    assert ask.send({"id": "g", "state": {}, "questions": {}}, api_key="k") == {"answers": {}}
+    assert len(calls) == 2 and naps == [waited]
+
+
 def test_send_all_sends_every_request_together_and_keeps_errors():
     from spx_jev.ask import send_all
 
