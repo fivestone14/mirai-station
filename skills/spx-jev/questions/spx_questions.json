@@ -5325,7 +5325,7 @@
      "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night or a roll pending; fewer than {overnight_rank_min_nights} clean prior nights; no /MBT trade in the last {window_10_min} minutes before the read",
      "code_answer": true,
      "ask": "Did bitcoin move further overnight than S&P futures did, and which way?",
-     "instructions": "Read `overnight.btc_vs_futures`. Since their 16:00 prices, did bitcoin move further than S&P futures' own move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+     "instructions": "Read `overnight.btc_vs_futures`. Since the S&P futures' 16:00 price, or on the first session after a weekend or holiday since the futures reopened the evening before (bitcoin's weekend itself is a question of its own), did bitcoin move further than the futures' own move over the same span would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
      "options": [
       "btc_ahead_up",
       "btc_ahead_down"
