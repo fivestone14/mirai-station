@@ -72,6 +72,10 @@ WORDS = {
     "FED_VICE_CHAIR_SUPERVISION_SPEECH": "the Fed's vice chair for supervision",
     "FED_GOVERNOR_SPEECH": "a Fed governor",
 }
+# Releases before the open listed for the premarket lane's report window (story.releases) and left out of the
+# session's event labels (session_rows), minor for the index: they would turn a quiet session into a report day.
+MINOR_PRE_OPEN = frozenset({"ADP", "DURABLE_GOODS", "TRADE_BALANCE", "HOUSING_STARTS", "IMPORT_PRICES", "PRODUCTIVITY",
+                            "EMPLOYMENT_COST", "EMPIRE_STATE", "PHILLY_FED"})
 # Tier-1 rows that trade at the close rather than at a moment in the session.
 AT_THE_CLOSE = frozenset({"MSCI_REBALANCE", "RUSSELL_RECON", "QUAD_WITCHING_SP_REBALANCE", "QUAD_WITCHING_SP_NDX_REBALANCE",
                           "HALF_DAY_CLOSE", "QUARTER_END"})
@@ -162,6 +166,11 @@ def uncovered(day: date, path: Path | str = CALENDAR) -> str | None:
 def on_day(day: date, path: Path | str = CALENDAR) -> list[Event]:
     """Every row of every tier on ``day``, by start."""
     return [e for e in _load(str(path)).events if e.start.date() == day]
+
+
+def session_rows(day: date, path: Path | str = CALENDAR) -> list[Event]:
+    """The rows on ``day`` the session's event labels read: every tier's but the minor releases before the open."""
+    return [e for e in on_day(day, path) if e.kind not in MINOR_PRE_OPEN]
 
 
 def in_quiet_period(day: date, path: Path | str = CALENDAR) -> bool:

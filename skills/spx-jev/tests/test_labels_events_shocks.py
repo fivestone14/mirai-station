@@ -5,7 +5,8 @@ The calendar labels read the shipped calendar/events.json on real days: 09-22 (t
 at 09:30 with questions), 09-29 (job openings and consumer
 confidence at 10:00, two governors after noon), 10-01 (claims before the open, ISM at 10:00 with a governor,
 four speakers), 10-02 (the jobs report), 10-13 (nothing), 10-20 (nothing, in the Fed's quiet period) and the
-10-28 decision. Every day's own ruler and the normal-day sigma are 100 points, so a sigma is a point / 100.
+10-28 decision; 10-06 lists only the trade balance and 09-30 ADP beside GDP and PCE, minor releases
+the session leaves out. Every day's own ruler and the normal-day sigma are 100 points, so a sigma is a point / 100.
 """
 from __future__ import annotations
 
@@ -118,6 +119,15 @@ def test_an_empty_day_is_written_and_its_gate_sleeps_and_the_quiet_period_is_nam
     assert gates["event_clock"] == "nothing is on the event calendar today"
     state, _, _ = labels(scene_at(scene_factory, at(10, 32, "2026-10-20"), FLAT))
     assert state["context.event_clock"] == "nothing is scheduled today; the Fed is in its pre-meeting quiet period"
+
+
+def test_the_minor_releases_before_the_open_leave_the_session_as_it_was(scene_factory):
+    state, _, gates = labels(scene_at(scene_factory, at(10, 32, "2026-10-06"), FLAT))
+    assert state["context.event_clock"] == "nothing is scheduled today; the Fed is not in its pre-meeting quiet period"
+    assert gates["event_clock"] == "nothing is on the event calendar today"
+    clock = labels(scene_at(scene_factory, at(9, 38, "2026-09-30"), FLAT))[0]["context.event_clock"]
+    assert clock.startswith("the GDP report came out at 08:30, before the open; the PCE inflation report came out at 08:30")
+    assert "ADP" not in clock
 
 
 def test_past_the_calendars_last_day_the_calendar_labels_are_omitted_and_their_gates_sleep(scene_factory):

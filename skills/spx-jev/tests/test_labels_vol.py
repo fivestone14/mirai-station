@@ -340,7 +340,7 @@ def calendar(tmp_path, monkeypatch, day: str, rows: list[tuple[str, str, object]
     path.write_text(json.dumps({"covers_through": covers_through,
                                 "events": [{"date": day, "time_et": t, "kind": k, "tier": tier} for t, k, tier in rows]}))
     events._load.cache_clear()
-    monkeypatch.setattr(events, "on_day", lambda d: ON_DAY(d, path))
+    monkeypatch.setattr(events, "on_day", lambda d, _path=None: ON_DAY(d, path))
     monkeypatch.setattr(events, "uncovered", lambda d: UNCOVERED(d, path))
 
 

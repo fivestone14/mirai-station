@@ -74,7 +74,7 @@ def build_events_shocks_labels(scene: Scene) -> LabelSet:
             ls.sleep(qid, why)
         day_events = None
     else:
-        day_events = events.on_day(today)
+        day_events = events.session_rows(today)
         _event_clock(scene, day_events, ls)
         _release_clock_10m(scene, day_events, ls)
         _reaction(scene, day_events, bursts, ls)

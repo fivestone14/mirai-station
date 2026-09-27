@@ -537,7 +537,7 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         return
     swell = anchor.points / normal
     sessions = sum(1 for r in scene.prior_rulers.values() if r is not None and not r.estimated)
-    day_events = events.on_day(day)
+    day_events = events.session_rows(day)
     event = next((e for e in day_events if e.kind in LOADING_EVENTS), None)
     released = ahead = False
     if not day_events:
