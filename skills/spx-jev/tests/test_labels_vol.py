@@ -380,6 +380,22 @@ def test_a_straddle_loaded_before_the_fed_reads_loaded(scene_factory, tmp_path, 
         "this morning's sigma ruler is 1.88 times its 10-session median, past the 1.3 swollen line")
 
 
+def test_a_swollen_ruler_with_the_fed_ahead_but_a_straddle_not_loaded_reads_normal(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, FOMC_DAY, FOMC_AND_PRESSER)
+    got = labels(ruler_scene(scene_factory, tmp_path, FOMC_DAY, (11, 30), load=1.0, swell=1.40, prior_days=EVENT_PRIOR_DAYS))[0]
+    assert got["vol.ruler_event_load"].startswith("normal: the same-day straddle prices a 30-minute move 1.00 times")
+    assert ("; the Fed's rate decision is still ahead; this morning's sigma ruler is 1.40 times its 10-session median, past the 1.3 "
+            "swollen line") in got["vol.ruler_event_load"]
+
+
+def test_a_fed_event_past_the_digest_window_is_neither_released_nor_ahead(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, FOMC_DAY, [("10:00", "FED_CHAIR_TESTIMONY", 1)])
+    got = labels(ruler_scene(scene_factory, tmp_path, FOMC_DAY, (12, 32), load=1.0, swell=1.40, prior_days=EVENT_PRIOR_DAYS))[0]
+    assert got["vol.ruler_event_load"].startswith("normal: ")
+    assert ("; on the event calendar today: the Fed chair's testimony at 10:00; the Fed chair's testimony came out 152 minutes ago, "
+            "past the 120-minute digest window; ") in got["vol.ruler_event_load"]
+
+
 def released_scene(scene_factory, tmp_path, monkeypatch, prior_before_fed: float | None, before_fed: bool = True):
     """A 14:32 read after the Fed's 14:00 decision whose straddle just before it priced 0.8 times today's tape."""
     calendar(tmp_path, monkeypatch, FOMC_DAY, FOMC_AND_PRESSER)
@@ -724,6 +740,11 @@ def test_spot_under_the_finished_bars_low_is_at_its_session_low_now(scene_factor
     assert "; SPX sits at its session low now, within the 0.1 near-low line; " in labels(under)[0]["vol.stress_path"]
 
 
+def test_a_stress_day_with_vix_never_above_its_open_says_so(scene_factory):
+    got = labels(stress_scene(scene_factory, vix_open=26.0, vix_ts=0.99))[0]["vol.stress_path"]
+    assert got.startswith("VIX 24.1, down 1.9 points since the open; VIX has not been above its open today; SPX sits ")
+
+
 def test_only_tick_bars_finished_in_the_last_30_minutes_count(scene_factory):
     got = labels(stress_scene(scene_factory, ticks={3: -1100.0, 12: -1300.0, 40: -1200.0, -1: -1500.0}))[0]["vol.stress_path"]
     assert got.endswith("NYSE TICK printed at or below -1000 2 times in 30 minutes, short of the 3-reading cluster")
@@ -814,6 +835,13 @@ def tilt_and_gate(scene):
 ])
 def test_the_put_tilt_is_ranked_against_the_same_minute_and_wakes_its_question(scene_factory, tmp_path, slope, words):
     assert tilt_and_gate(skew_scene(scene_factory, tmp_path, slope)) == (words, None, None)
+
+
+def test_far_puts_without_a_fresh_quote_are_said_to_have_none_to_compare(scene_factory, tmp_path):
+    scene = skew_scene(scene_factory, tmp_path, 3.0)
+    write_tape(tmp_path, DAY, [q for q in smile_quotes(at(9, 50), 3.0) if q["right"] == "call" or q["strike"] >= 7670])
+    assert tilt_and_gate(scene)[0].endswith("within the usual range; far puts (10-delta) have no fresh quote or no history at this "
+                                            "minute to compare")
 
 
 def test_the_tilt_reads_the_newest_quote_in_the_minute_whatever_the_line_order(scene_factory, tmp_path):
