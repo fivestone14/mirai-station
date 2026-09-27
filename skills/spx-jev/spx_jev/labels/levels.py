@@ -241,7 +241,7 @@ def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None
                                        f"{CROSS_LOOKBACK_MIN} minutes")
         return
     r = (ref - level) / points
-    side = "above" if d >= 0 else "below"
+    side = _where(d)
     ls.put("levels.round_number", ruled(
            anchor,
            f"price sits {sig(abs(d))} {side} a round {_round_kind(level)}-point level, within the {sig(ROUND_NEAR_SIGMA)} near distance, "
