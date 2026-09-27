@@ -1608,25 +1608,25 @@
        "to": "15:32"
       }
      },
-     "horizon": "30min and 60min (asked once per horizon)",
+     "horizon": "30min (asked once a read; the label's 60-minute clause is not this question's)",
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "How wide is the flat band against SPX's typical move over the horizon?",
-     "instructions": "Read `ruler.flat_band_reach`. For the horizon named, is the flat band narrow, middling or wide compared with how far SPX typically moves over that horizon right now? The opening words decide.",
+     "instructions": "Read `ruler.flat_band_reach`. Is the next-30-minute flat band narrow, middling or wide compared with how far SPX typically moves over the next 30 minutes right now? The first clause, the 30-minute one, decides; the 60-minute clause after it does not.",
      "options": [
       "narrow",
       "middle",
       "wide"
      ],
      "criteria": [
-      "the flat band covers under the narrow share of a typical move for the horizon: price usually travels past it",
+      "the flat band covers under the narrow share of a typical 30-minute move: price usually travels past it",
       "between the narrow and wide shares",
-      "more than the wide share of a typical move: price usually stays inside it"
+      "more than the wide share of a typical 30-minute move: price usually stays inside it"
      ],
      "code_criteria": [
-      "band/reach < {flat_reach_narrow_30} (half hour) or {flat_reach_narrow_60} (hour)",
+      "band/reach over the next 30 minutes < {flat_reach_narrow_30}",
       "between",
-      "band/reach > {flat_reach_wide_30} (half hour) or {flat_reach_wide_60} (hour)"
+      "band/reach over the next 30 minutes > {flat_reach_wide_30}"
      ],
      "labels": [
       "ruler.flat_band_reach"

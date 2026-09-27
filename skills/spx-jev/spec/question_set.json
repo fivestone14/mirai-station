@@ -3450,18 +3450,18 @@
      "group": "size",
      "type": "score",
      "serves": "size",
-     "horizon": "30min and 60min (asked once per horizon)",
+     "horizon": "30min (asked once a read; the label's 60-minute clause is not this question's)",
      "lanes": [
       "thirty_minute"
      ],
      "status": "live",
      "cadence": "every 30-minute read",
      "ask": "How wide is the flat band against SPX's typical move over the horizon?",
-     "instructions": "Read `ruler.flat_band_reach`. For the horizon named, is the flat band narrow, middling or wide compared with how far SPX typically moves over that horizon right now? The opening words decide.",
+     "instructions": "Read `ruler.flat_band_reach`. Is the next-30-minute flat band narrow, middling or wide compared with how far SPX typically moves over the next 30 minutes right now? The first clause, the 30-minute one, decides; the 60-minute clause after it does not.",
      "options": [
       {
        "name": "narrow",
-       "description": "the flat band covers under the narrow share of a typical move for the horizon: price usually travels past it"
+       "description": "the flat band covers under the narrow share of a typical 30-minute move: price usually travels past it"
       },
       {
        "name": "middle",
@@ -3469,18 +3469,18 @@
       },
       {
        "name": "wide",
-       "description": "more than the wide share of a typical move: price usually stays inside it"
+       "description": "more than the wide share of a typical 30-minute move: price usually stays inside it"
       }
      ],
      "criteria": [
-      "band/reach < {flat_reach_narrow_30} (half hour) or {flat_reach_narrow_60} (hour)",
+      "band/reach over the next 30 minutes < {flat_reach_narrow_30}",
       "between",
-      "band/reach > {flat_reach_wide_30} (half hour) or {flat_reach_wide_60} (hour)"
+      "band/reach over the next 30 minutes > {flat_reach_wide_30}"
      ],
      "labels_needed": [
       {
        "name": "ruler.flat_band_reach",
-       "example": "the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle combined) is 0.09 sigma, so the band covers 0.77 of it, over the 0.70 wide line",
+       "example": "the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle combined) is 0.09 sigma, so the band covers 0.77 of it, over the 0.70 wide line; the next-60-minute flat band is 0.11 sigma; a typical 60-minute move is 0.13 sigma, so the band covers 0.86 of it, over the 0.77 wide line",
        "computed_how": "band_pts / R_h, R_h = sqrt(T_h x E_h), T_h = tape unit x sqrt(h/5), E_h = em_points/0.68 x sqrt(h/minutes left); R_h = T_h while a tier-1 event is ahead",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
@@ -9802,7 +9802,7 @@
   },
   {
    "name": "ruler.flat_band_reach",
-   "example": "the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle combined) is 0.09 sigma, so the band covers 0.77 of it, over the 0.70 wide line",
+   "example": "the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle combined) is 0.09 sigma, so the band covers 0.77 of it, over the 0.70 wide line; the next-60-minute flat band is 0.11 sigma; a typical 60-minute move is 0.13 sigma, so the band covers 0.86 of it, over the 0.77 wide line",
    "computed_how": "band_pts / R_h, R_h = sqrt(T_h x E_h), T_h = tape unit x sqrt(h/5), E_h = em_points/0.68 x sqrt(h/minutes left); R_h = T_h while a tier-1 event is ahead",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
    "availability": "live",
@@ -11730,6 +11730,13 @@
    "decision": "rejected",
    "reason": "not added: optional, untested; listed under unresolved (it would go live unproven if added).",
    "source": "defects check"
+  },
+  {
+   "subject": "flat_band_reach",
+   "action": "horizon",
+   "decision": "accepted",
+   "reason": "asked once a read, not once per horizon (nothing asks a question per horizon): the 30-minute clause decides and the question says so; the label also writes a 60-minute clause, now in the example, which no question reads until a 60-minute form is split out.",
+   "source": "integration review"
   }
  ],
  "unresolved": [
