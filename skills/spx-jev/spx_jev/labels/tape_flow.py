@@ -7,7 +7,14 @@ printed into. Lines land out of time order, so each trade is placed by its own `
 sits in the file, and a minute counts once it has finished. A trade's side is told from where it printed
 inside that quote: above the mid it was bought, below it sold. A multi-leg trade (an OPRA multi-leg
 condition) is part of a package, so it is no single trade and has no side of its own; its premium still
-counts as premium traded.
+counts as premium traded. Reading 20 prior sessions' tapes (about a million lines each) takes some 15 seconds
+a read: only the lines inside the window asked for are parsed.
+
+The other sources: the collector's quote sweeps (``sweeps.jsonl`` beside the tape) and its record
+(``state/lob_flow/agg/{day}.jsonl``: the refill test and SPY's quote), the diary's same-day volume by strike,
+and SPY's volume by minute as the siege box keeps it (``state/siege/baseline.json``), since the market-context
+job saves SPY's quote live but not its minute bars. Every one is read point in time and ranked against the same
+minutes of the prior sessions, never a fixed size.
 
 The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
 how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
