@@ -1695,7 +1695,7 @@
      "labels_needed": [
       {
        "name": "options.big_prints_10",
-       "example": "over the last 10 minutes 9 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; 71% of their premium was calls bought or puts sold, past the 65% lean line",
+       "example": "over the last 10 minutes 9 single near-price 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; 71% of their premium whose side could be told was calls bought or puts sold, past the 65% lean line",
        "computed_how": "lob_flow tape, SORTED by ts_ms (23% of prints arrive out of order), aggressor side from quote at print",
        "source": "state/lob_flow/raw/{day}/tape.jsonl",
        "availability": "live",
@@ -1961,7 +1961,7 @@
      "labels_needed": [
       {
        "name": "options.premium_burst_5m",
-       "example": "in the last 5 minutes 0DTE premium traded was in the top fifth for these minutes; 68% of it was calls bought or puts sold, past the 65% lean line",
+       "example": "in the last 5 minutes near-price 0DTE premium traded was in the top fifth for these minutes, higher than 18 of the last 20 sessions at this minute; 68% of its premium whose side could be told was calls bought or puts sold, past the 65% lean line",
        "computed_how": "tape premium per 5 minutes ranked by clock minute over the tape backfill; aggressor-signed premium share against big_lean_share",
        "source": "state/lob_flow/raw/{day}/tape.jsonl (ts-sorted)",
        "availability": "live",
@@ -5264,7 +5264,7 @@
      "labels_needed": [
       {
        "name": "options.strike_defense",
-       "example": "the nearest strike where same-day quotes keep getting hit is 0.12 sigma above price, inside the 0.25 sigma defense distance; it was hit 16 times, at least the 10-hit minimum; market makers refilled its offers within seconds on 14 of them (88%), at least the 70% refill share",
+       "example": "of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is 0.12 sigma above price, inside the 0.25 sigma defense distance; it was hit 16 times in the last 15 minutes, at least the 10-hit minimum; market makers refilled its quotes at price at some point in those 15 minutes on 14 of them (88%), at least the 70% refill share",
        "computed_how": "lob_flow quote refill events near spot; verdicts against defense_near_sigma, defense_min_events and defense_refill_share",
        "source": "state/lob_flow",
        "availability": "live",
@@ -5495,7 +5495,7 @@
      "labels_needed": [
       {
        "name": "levels.prior_day",
-       "example": "price crossed above yesterday's high 35 minutes ago and has spent 31 of those minutes above it, past the 20-minute acceptance time; it now sits 0.06 sigma above it, beyond the 0.05 sigma reach",
+       "example": "price crossed above yesterday's high 31 minutes ago and has stayed above it for 31 finished minutes, at or past the 20-minute acceptance time; it now sits 0.06 sigma above it, beyond the 0.05 sigma reach",
        "computed_how": "prior-day high/low from yesterday's bars; minutes beyond; current location first",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
        "availability": "live",
@@ -5775,7 +5775,7 @@
      "labels_needed": [
       {
        "name": "options.premium_pace_30",
-       "example": "0DTE premium traded in the last 30 minutes is in the top fifth for this half hour",
+       "example": "near-price 0DTE premium traded in the last 30 minutes is in the top fifth for this half hour, higher than 17 of the last 20 sessions at this minute",
        "computed_how": "tape premium per 30 minutes ranked by clock",
        "source": "lob_flow tape",
        "availability": "live",
@@ -8388,7 +8388,7 @@
       },
       {
        "name": "options.flow_lean_30",
-       "example": "over the last 30 minutes the 0DTE tape leaned toward buying calls and selling puts by 0.06 of signed premium above its usual level for this half hour",
+       "example": "over the last 30 minutes the near-price 0DTE tape leaned toward buying calls and selling puts by 0.06 of signed premium above its usual level for this half hour, higher than 17 of the last 20 sessions at this minute, at or past the 80% rank line",
        "computed_how": "aggressor-signed premium, clock median removed",
        "source": "lob_flow tape",
        "availability": "live",
@@ -9415,7 +9415,7 @@
   },
   {
    "name": "levels.prior_day",
-   "example": "price crossed above yesterday's high 35 minutes ago and has spent 31 of those minutes above it, past the 20-minute acceptance time; it now sits 0.06 sigma above it, beyond the 0.05 sigma reach",
+   "example": "price crossed above yesterday's high 31 minutes ago and has stayed above it for 31 finished minutes, at or past the 20-minute acceptance time; it now sits 0.06 sigma above it, beyond the 0.05 sigma reach",
    "computed_how": "prior-day high/low from yesterday's bars; minutes beyond; current location first",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
    "availability": "live",
@@ -9523,7 +9523,7 @@
   },
   {
    "name": "options.big_prints_10",
-   "example": "over the last 10 minutes 9 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; 71% of their premium was calls bought or puts sold, past the 65% lean line",
+   "example": "over the last 10 minutes 9 single near-price 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; 71% of their premium whose side could be told was calls bought or puts sold, past the 65% lean line",
    "computed_how": "lob_flow tape, SORTED by ts_ms (23% of prints arrive out of order), aggressor side from quote at print",
    "source": "state/lob_flow/raw/{day}/tape.jsonl",
    "availability": "live",
@@ -9541,7 +9541,7 @@
   },
   {
    "name": "options.flow_lean_30",
-   "example": "over the last 30 minutes the 0DTE tape leaned toward buying calls and selling puts by 0.06 of signed premium above its usual level for this half hour",
+   "example": "over the last 30 minutes the near-price 0DTE tape leaned toward buying calls and selling puts by 0.06 of signed premium above its usual level for this half hour, higher than 17 of the last 20 sessions at this minute, at or past the 80% rank line",
    "computed_how": "aggressor-signed premium, clock median removed",
    "source": "lob_flow tape",
    "availability": "live",
@@ -9550,7 +9550,7 @@
   },
   {
    "name": "options.premium_burst_5m",
-   "example": "in the last 5 minutes 0DTE premium traded was in the top fifth for these minutes; 68% of it was calls bought or puts sold, past the 65% lean line",
+   "example": "in the last 5 minutes near-price 0DTE premium traded was in the top fifth for these minutes, higher than 18 of the last 20 sessions at this minute; 68% of its premium whose side could be told was calls bought or puts sold, past the 65% lean line",
    "computed_how": "tape premium per 5 minutes ranked by clock minute over the tape backfill; aggressor-signed premium share against big_lean_share",
    "source": "state/lob_flow/raw/{day}/tape.jsonl (ts-sorted)",
    "availability": "live",
@@ -9559,7 +9559,7 @@
   },
   {
    "name": "options.premium_pace_30",
-   "example": "0DTE premium traded in the last 30 minutes is in the top fifth for this half hour",
+   "example": "near-price 0DTE premium traded in the last 30 minutes is in the top fifth for this half hour, higher than 17 of the last 20 sessions at this minute",
    "computed_how": "tape premium per 30 minutes ranked by clock",
    "source": "lob_flow tape",
    "availability": "live",
@@ -9577,7 +9577,7 @@
   },
   {
    "name": "options.strike_defense",
-   "example": "the nearest strike where same-day quotes keep getting hit is 0.12 sigma above price, inside the 0.25 sigma defense distance; it was hit 16 times, at least the 10-hit minimum; market makers refilled its offers within seconds on 14 of them (88%), at least the 70% refill share",
+   "example": "of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is 0.12 sigma above price, inside the 0.25 sigma defense distance; it was hit 16 times in the last 15 minutes, at least the 10-hit minimum; market makers refilled its quotes at price at some point in those 15 minutes on 14 of them (88%), at least the 70% refill share",
    "computed_how": "lob_flow quote refill events near spot; verdicts against defense_near_sigma, defense_min_events and defense_refill_share",
    "source": "state/lob_flow",
    "availability": "live",
