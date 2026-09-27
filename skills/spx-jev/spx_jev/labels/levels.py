@@ -198,7 +198,8 @@ def _effort_words(tower: dict | None) -> str:
 
 def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
     """A round level price pushed through in the last CROSS_LOOKBACK_MIN minutes from at least the near
-    distance away, else one it is pressing within the near distance."""
+    distance away and is still through, else one it is pressing within the near distance. A push through
+    that price has fallen back from is neither, so the label is omitted."""
     if not scene.bars:
         ls.omit("levels.round_number", "no finished bars yet")
         return
@@ -215,15 +216,22 @@ def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None
     below_spot = math.ceil(spot / step) * step - step          # the round level just under price
     above_spot = math.floor(spot / step) * step + step         # the round level just over price
     for level, up in ((below_spot, True), (above_spot, False)):
-        started_away = ref <= level - near if up else ref >= level + near
-        crossed = next((b for b in window if (float(b["close"]) > level if up else float(b["close"]) < level)), None)
-        if started_away and crossed is not None:
+        crossed = _pushed_through(window, ref, level, near, up)
+        if crossed is not None:
             r, d = (ref - level) / points, (spot - level) / points
             ls.put("levels.round_number", ruled(
                    anchor,
                    f"{minutes_ago(scene.now, bar_time(crossed) + ONE_MINUTE)} price {'rose' if up else 'fell'} through a round "
                    f"{_round_kind(level)}-point level and now sits {sig(abs(d))} {_where(d)} it; {back} it was {sig(abs(r))} "
                    f"{_where(r)}, past the {sig(ROUND_NEAR_SIGMA)} near distance"))
+            return
+    for level, up in ((above_spot, True), (below_spot, False)):
+        crossed = _pushed_through(window, ref, level, near, up)
+        if crossed is not None:
+            d = (spot - level) / points
+            ls.omit("levels.round_number", f"{minutes_ago(scene.now, bar_time(crossed) + ONE_MINUTE)} price {'rose' if up else 'fell'} "
+                                           f"through a round {_round_kind(level)}-point level and is back {_where(d)} it by {sig(abs(d))}: "
+                                           f"neither a push through that held nor a level pressed without one")
             return
     level = min((below_spot, above_spot, below_spot + step), key=lambda lv: abs(spot - lv))
     d = (spot - level) / points
@@ -239,6 +247,14 @@ def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None
            f"price sits {sig(abs(d))} {side} a round {_round_kind(level)}-point level, within the {sig(ROUND_NEAR_SIGMA)} near distance, "
            f"pressing it from {side} without a push through in the last {CROSS_LOOKBACK_MIN} minutes; {back} it was "
            f"{sig(abs(r))} {_where(r)} it"))
+
+
+def _pushed_through(window: list[dict], ref: float, level: float, near: float, up: bool) -> dict | None:
+    """The window's first bar that closed through ``level`` (upward when ``up``), when price started the
+    window at least ``near`` points short of it; None otherwise."""
+    if (ref > level - near) if up else (ref < level + near):
+        return None
+    return next((b for b in window if (float(b["close"]) > level if up else float(b["close"]) < level)), None)
 
 
 def _open_vs_prior_range(scene: Scene, anchor: SigmaRuler, yesterday: list[dict], ls: LabelSet) -> None:

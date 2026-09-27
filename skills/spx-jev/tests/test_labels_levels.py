@@ -157,6 +157,17 @@ def test_a_round_level_pressed_but_not_pushed_through(scene_factory):
     assert got["levels.round_number"].endswith("in the last 20 minutes; at the open it was 0.04 sigma below it")
 
 
+def test_a_push_through_that_fell_back_is_neither_a_cross_nor_a_press(scene_factory):
+    back = [7490.0] * 80 + [7502.0, 7503.0, 7501.0]                                              # 7500 first closes above at 10:50
+    _, omitted, _ = labels(scene(scene_factory, at(11, 0), back + [7498.0] * 7))
+    assert omitted["levels.round_number"] == ("9 minutes ago price rose through a round 100-point level and is back below it by 0.03 "
+                                              "sigma: neither a push through that held nor a level pressed without one")
+    _, omitted, _ = labels(scene(scene_factory, at(11, 0), back + [7492.0] * 7))               # back beyond the near distance
+    assert omitted["levels.round_number"].startswith("9 minutes ago price rose through a round 100-point level and is back below it by 0.10")
+    _, omitted, _ = labels(scene(scene_factory, at(11, 0), [7560.0] * 80 + [7548.0] + [7552.0] * 9))
+    assert omitted["levels.round_number"].startswith("9 minutes ago price fell through a round 50-point level and is back above it")
+
+
 def test_no_round_level_in_play_and_an_unfinished_crossing(scene_factory):
     _, omitted, _ = labels(scene(scene_factory, at(11, 0), [7692.0] * 90))
     assert omitted["levels.round_number"] == ("no round level in play: the nearest is 0.10 sigma above price, beyond the 0.06 sigma near "
