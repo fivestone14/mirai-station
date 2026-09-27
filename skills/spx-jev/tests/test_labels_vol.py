@@ -717,6 +717,13 @@ def test_the_distance_off_the_low_is_judged_on_the_near_low_and_bounce_lines(sce
     assert f"SPX sits {words};" in labels(stress_scene(scene_factory, off_low=off_low))[0]["vol.stress_path"]
 
 
+def test_spot_under_the_finished_bars_low_is_at_its_session_low_now(scene_factory):
+    scene = stress_scene(scene_factory, off_low=0.5)
+    row = {**scene.row, "spot": 7678.0}                                   # under the 11:39 bar's low of 7679.5
+    under = replace(scene, row=row, rows_today=[*scene.rows_today[:-1], row])
+    assert "; SPX sits at its session low now, within the 0.1 near-low line; " in labels(under)[0]["vol.stress_path"]
+
+
 def test_only_tick_bars_finished_in_the_last_30_minutes_count(scene_factory):
     got = labels(stress_scene(scene_factory, ticks={3: -1100.0, 12: -1300.0, 40: -1200.0, -1: -1500.0}))[0]["vol.stress_path"]
     assert got.endswith("NYSE TICK printed at or below -1000 2 times in 30 minutes, short of the 3-reading cluster")

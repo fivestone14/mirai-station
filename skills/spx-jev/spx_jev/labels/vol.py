@@ -876,7 +876,9 @@ def _stress_path(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
         at_high = ", and is at its session high now" if back <= 0 else ""
         vix_words = f"session high {peak.vix:.1f} at {_clock(peak.ts)}, it has given back {back_words}{at_high}"
     off_low = (scene.spot - lows.low) / normal
-    if off_low >= BOUNCE_SIGMA:
+    if off_low <= 0:                                          # spot sits at or under the newest finished bar's low
+        low_words = f"at its session low now, within the {NEAR_LOW_SIGMA:g} near-low line"
+    elif off_low >= BOUNCE_SIGMA:
         low_words = f"{off_low:.2f} normal-day sigma above its session low from {_clock(lows.low_at)}, past the {BOUNCE_SIGMA:g} bounce line"
     elif off_low > NEAR_LOW_SIGMA:
         low_words = (f"{_in_band(off_low, NEAR_LOW_SIGMA + 0.01, BOUNCE_SIGMA, 0.01):.2f} normal-day sigma above its session low from "
