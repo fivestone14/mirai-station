@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import json
 import random
-from datetime import date, datetime, time, timedelta
+from dataclasses import replace
+from datetime import date, datetime, time
 
 import pytest
 
@@ -344,13 +345,20 @@ def test_a_quiet_last_hour_sleeps_the_last_hour_question(premarket_scene_factory
 
 # ---- replay and length -----------------------------------------------------------------------------------
 
-def test_a_label_built_at_0928_equals_the_same_label_rebuilt_later_from_the_same_bars(premarket_scene_factory, nights_dir, calendar):
+def test_a_label_built_at_0928_equals_the_same_label_rebuilt_later_from_the_same_bars(premarket_scene_factory, tmp_path, calendar):
+    """The later rebuild reads a store that grew after the read (tonight's bars to 10:00, a new high at 09:45, and a
+    09:40 save quoting the next contract), its scene handed every one of tonight's bars: no label may read past 09:28."""
     calendar([("08:30", "JOBS")])
-    path, jumps = {"asia": 1.0, "europe_morning": 0.6, "last_stretch": -0.4}, {time(8, 35): -0.8, time(9, 10): 0.5}
-    at_the_time = [r for r in tonight(path, jumps) if datetime.fromisoformat(r["ts"]) + timedelta(minutes=1)
-                   <= datetime.combine(DAY, time(9, 28), tzinfo=ET)]
-    live = build_story_labels(scene(premarket_scene_factory, nights_dir, path, night=at_the_time))
-    later = build_story_labels(scene(premarket_scene_factory, nights_dir, path, night=tonight(path, jumps)))
+    _write_nights(tmp_path, _prior_days())
+    rolls.save(tmp_path / overnight.OVERNIGHT_SUBDIR, {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": []})
+    path, jumps = {"asia": 1.0, "europe_morning": 0.6, "last_stretch": -0.4}, {time(8, 35): -0.8, time(9, 10): 0.5, time(9, 45): 3.0}
+    live_scene = scene(premarket_scene_factory, tmp_path, path, jumps=jumps)
+    live = build_story_labels(live_scene)
+    overnight.write_night(tmp_path, DAY.isoformat(), tonight(path, jumps))
+    saved = datetime.combine(DAY, time(9, 40), tzinfo=ET)
+    overnight.manifest_path(tmp_path).write_text(json.dumps({"day": DAY.isoformat(), "saved_at": saved.isoformat(),
+                                                             "symbols": {"/ES": {"contract_quoted": "/ESH27"}}}) + "\n")
+    later = build_story_labels(replace(live_scene, night=tonight(path, jumps)))
     assert (live.state, live.figures, live.gates, live.omitted) == (later.state, later.figures, later.gates, later.omitted)
 
 

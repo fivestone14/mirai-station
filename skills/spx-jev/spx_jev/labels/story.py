@@ -257,7 +257,8 @@ def _where_now(night: NightSoFar, ls: LabelSet) -> None:
     lean = LEANS.get((third(rank.share), _side(s)), "flat")
     text = f"at {night.now:%H:%M} S&P futures are {night.where(night.net)}, {rank.words('moves to this time')}"
     minutes = 1 if any(r["bar_minutes"] == 1 for r in night.rows) else overnight.BAR_MINUTES[-1]
-    done = [r for r in night.rows if r["bar_minutes"] == minutes and datetime.fromisoformat(r["ts"]) >= night.start]
+    done = [r for r in night.rows if r["bar_minutes"] == minutes
+            and night.start <= datetime.fromisoformat(r["ts"]) <= night.now - timedelta(minutes=minutes)]
     hi, lo = max((r["high"] for r in done), default=0.0), min((r["low"] for r in done), default=0.0)
     if hi > lo:
         text += f"; {pct((night.price(night.now)[0] - lo) / (hi - lo))} of the way up the night's range"
