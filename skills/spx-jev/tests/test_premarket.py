@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from conftest import DAY, at, bars_from_closes, make_row, night_row
-from spx_jev import archive, build, events, grade, overnight, premarket, service
+from spx_jev import archive, build, events, grade, overnight, premarket, service, story
 from spx_jev.labels.context import PREMARKET_UNITS, build_context_labels
 from spx_jev.lane import PREMARKET
 from spx_jev.premarket import NoPreOpenRead, checkpoints, due, make_premarket_scene, run_checkpoint
@@ -75,7 +75,7 @@ def jev(monkeypatch):
     monkeypatch.setattr(premarket, "send_all", _answers(seen["requests"]))
     monkeypatch.setattr(premarket, "send", _sums(seen["sums"]))
     monkeypatch.setattr(grade, "run", lambda state_dir, out_dir, allowed, day=None, lane=None: seen["graded"].append(lane))
-    monkeypatch.setattr(premarket, "releases", lambda day: [])
+    monkeypatch.setattr(story, "releases", lambda day: [])
     return seen
 
 
@@ -223,7 +223,7 @@ def test_every_time_on_the_card_is_a_full_timestamp(tmp_path, jev):
 
 def test_the_report_row_is_due_then_measured_and_names_its_releases(monkeypatch):
     claims = events.Event(at(8, 30), None, "JOBLESS_CLAIMS", events.PRE_OPEN)
-    monkeypatch.setattr(premarket, "releases", lambda day: [claims])
+    monkeypatch.setattr(story, "releases", lambda day: [claims])
     before = premarket.situation({"state": {}, "omitted": {}, "figures": {}}, at(8, 5))
     assert before == [{"key": "report", "path": premarket.REPORT, "title": "Report", "name": claims.words, "at": at(8, 30).isoformat(),
                        "verdict": "Due", "sentence": f"{claims.words} is due at 08:30 ET"}]
@@ -239,7 +239,7 @@ def test_the_report_row_is_due_then_measured_and_names_its_releases(monkeypatch)
 
 
 def test_the_story_marks_the_first_read_after_the_report(tmp_path, jev, monkeypatch):
-    monkeypatch.setattr(premarket, "releases", lambda day: [events.Event(at(8, 30), None, "CPI", events.PRE_OPEN)])
+    monkeypatch.setattr(story, "releases", lambda day: [events.Event(at(8, 30), None, "CPI", events.PRE_OPEN)])
     state = _station(tmp_path)
     out = PREMARKET.folder(state)
     for hh, mm, cp in ((8, 5, "08:05"), (8, 48, "08:48"), (9, 5, "09:05")):

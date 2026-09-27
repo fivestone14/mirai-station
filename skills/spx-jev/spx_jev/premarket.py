@@ -350,15 +350,9 @@ def newest_call(out_dir: Path, day: str) -> dict | None:
     return None
 
 
-def releases(day: date) -> list[events.Event]:
-    """The pre-open releases inside the day's report window (story.release_minute to 08:45); none on a day without one."""
-    minute = story.release_minute(day)
-    return [e for e in events.on_day(day) if e.tier == events.PRE_OPEN and minute <= e.start.time() < story.REPORT_WINDOW_END]
-
-
 def report_checkpoint(day: date) -> str | None:
     """The day's first checkpoint at or after its report: the read that first sees it."""
-    out = releases(day)
+    out = story.releases(day)
     return next((c for c in checkpoints(day) if out and market_at(day, c) >= out[0].start), None)
 
 
@@ -393,7 +387,7 @@ def situation(record: dict, now: datetime) -> list[dict]:
     then, on a report day, the report: its reaction once measured, "Due" before it is out, else why it is
     not measured. The report row names its releases and carries their time (``at``)."""
     rows = [{"key": key, "path": path, "title": title, **fact} for key, path, title in SITUATION if (fact := _fact(record, path))]
-    out = releases(now.date())
+    out = story.releases(now.date())
     if not out:
         return rows
     at, name = out[0].start, " and ".join(dict.fromkeys(e.words for e in out))
