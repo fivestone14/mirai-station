@@ -494,6 +494,8 @@ def _gamma_walls(row: dict | None) -> tuple[float, float] | None:
 
 
 def _wall_box(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, ls: LabelSet) -> None:
+    """The width of the box between the two heaviest strikes of today's same-day book, and whether every diary row
+    since the one 30 minutes ago carried the same two strikes."""
     now, then = _gamma_walls(scene.row), _gamma_walls(earlier)
     if now is None:
         ls.omit("gex.wall_box", "row carries no heaviest call-side and put-side strikes for today's same-day book")
@@ -508,8 +510,11 @@ def _wall_box(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, ls: 
     band = (f"under the {BOX_TIGHT_SIGMA} sigma tight width" if width < BOX_TIGHT_SIGMA else
             f"between the {BOX_TIGHT_SIGMA} sigma tight and {BOX_WIDE_SIGMA} sigma wide widths" if width <= BOX_WIDE_SIGMA else
             f"past the {BOX_WIDE_SIGMA} sigma wide width")
-    change = (f"both are the same strikes as {WINDOW_30_MIN} minutes ago" if now == then else
-              f"a heavy strike has changed in the last {WINDOW_30_MIN} minutes")
+    since = datetime.fromisoformat(earlier["ts"])
+    between = {w for r in scene.rows_today if datetime.fromisoformat(r["ts"]) >= since and (w := _gamma_walls(r)) is not None}
+    change = (f"a heavy strike has changed in the last {WINDOW_30_MIN} minutes" if now != then else
+              f"both have stood at the same strikes for the last {WINDOW_30_MIN} minutes" if between == {now} else
+              f"a heavy strike changed within the last {WINDOW_30_MIN} minutes and is back where it was")
     ls.put("gex.wall_box", f"the heaviest call-side and put-side strikes of today's same-day book are {sig(width)} apart, {band}; {change}{_estimated(ruler)}")
 
 

@@ -302,7 +302,7 @@ def test_charm_wall_distance_is_omitted_without_a_charm_wall(scene_factory):
 def test_wall_box_widths_at_the_tight_and_wide_lines(scene_factory):
     state, _, _ = labels(gamma_scene(scene_factory, call_wall_gamma=7705.0, put_wall_gamma=7695.0))
     assert state["wall_box"] == ("the heaviest call-side and put-side strikes of today's same-day book are 0.13 sigma apart, under the 0.15 sigma "
-                                 "tight width; both are the same strikes as 30 minutes ago")
+                                 "tight width; both have stood at the same strikes for the last 30 minutes")
     state, _, _ = labels(gamma_scene(scene_factory, call_wall_gamma=7700.0 + BOX_TIGHT_SIGMA * SIGMA, put_wall_gamma=7700.0))
     assert "are 0.15 sigma apart, between the 0.15 sigma tight and 0.3 sigma wide widths;" in state["wall_box"]
     state, _, _ = labels(gamma_scene(scene_factory, call_wall_gamma=7700.0 + BOX_WIDE_SIGMA * SIGMA, put_wall_gamma=7700.0))
@@ -323,6 +323,19 @@ def test_the_walls_against_the_row_30_minutes_ago(scene_factory):
     state, _, _ = labels(gamma_scene(scene_factory))
     assert state["walls_since_30min"] == ("over the last 30 minutes neither heavy strike of today's same-day book has moved: the call-side and the "
                                           "put-side strikes both stayed put")
+
+
+def test_wall_box_sees_a_heavy_strike_that_moved_and_came_back_inside_the_half_hour(scene_factory):
+    scene = gamma_scene(scene_factory)
+    anchor, then, now = scene.rows_today[0], scene.rows_today[1], scene.row
+    moved = labeller_row(diary_row(NOW - timedelta(minutes=15), call_wall_gamma=7715.0))
+    state, _, _ = labels(replace(scene, rows_today=[anchor, then, moved, now]))
+    assert state["wall_box"].endswith("; a heavy strike changed within the last 30 minutes and is back where it was")
+    assert state["walls_since_30min"].startswith("over the last 30 minutes neither heavy strike of today's same-day book has moved")
+    before = labeller_row(diary_row(NOW - timedelta(minutes=45), call_wall_gamma=7715.0))
+    unread = labeller_row(diary_row(NOW - timedelta(minutes=15), call_wall_gamma=None))
+    state, _, _ = labels(replace(scene, rows_today=[anchor, before, then, unread, now]))
+    assert state["wall_box"].endswith("; both have stood at the same strikes for the last 30 minutes")
 
 
 def test_the_walls_ignore_a_row_too_far_from_30_minutes_ago(scene_factory):
