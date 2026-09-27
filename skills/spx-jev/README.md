@@ -26,7 +26,8 @@ returns a probability for each answer option. JEV makes no trading call.
 
 | File | Plain name | What it does |
 |---|---|---|
-| `spx_jev/state_builder.py` | The Labeller | Reads one moment (a diary row with its siege read, today's finished bars, the prior sessions' bars, the market context, the lob-flow collector's signed 0DTE options tape) and writes the labels. Anything it cannot measure is left out, with the reason kept in `omitted`. |
+| `spx_jev/state_builder.py` | The Scene | Loads one moment, point in time: a diary row with its siege read, today's finished bars, the prior sessions' bars, the market context, the lob-flow collector's signed 0DTE options tape. |
+| `spx_jev/labels/` | The Labeller | One module per label family, each owning a fixed list of labels and exposing `build_<family>_labels(scene) -> LabelSet`, registered in `labels/registry.py`; the shared reads (bar windows, rulers, same-clock ranks, the words numbers are written in) beside them. Anything a family cannot measure is left out, with the reason kept in `omitted`. |
 | `spx_jev/row_adapter.py` | The Row Adapter | Cuts each 40 KB SPX diary row down to the few dozen fields the labeller reads, by name, and says which options book each field describes. |
 | `spx_jev/cuts.py` | The Cuts | Every threshold in one place. The measured ones come from `spec/measure_cuts.py` over the 48 SPX sessions on disk and are held to `spec/cuts.json` by a test; the declared ones are splits and ratios whose meaning is their own words, kept at their declared values, with where each falls on SPX and SNDK history recorded beside them. |
 | `spx_jev/sessions.py` | The Session Calendar | The open, the close (13:00 on a half day), holidays and trading days, from the station's own market-hours gate. |

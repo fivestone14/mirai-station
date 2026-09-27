@@ -10,7 +10,7 @@ import json
 import re
 from pathlib import Path
 
-from spx_jev.state_builder import build_state
+from spx_jev.labels.registry import build_labels
 
 SPEC = Path(__file__).resolve().parent.parent / "spec" / "labels.json"
 PATH = re.compile(r"^[a-z_]+\.[a-z_0-9]+$")
@@ -21,7 +21,8 @@ def spec():
 
 
 def _produced(scene):
-    state, omitted = build_state(scene)
+    labels = build_labels(scene)
+    state, omitted = labels.state, labels.omitted
     assert omitted == {}, omitted
     return {f"{g}.{k}" for g, labels in state.items() for k in labels}
 
@@ -59,7 +60,10 @@ def test_lane_set_matches_the_code(full_scene, lane_scene):
 
 
 def test_every_cut_the_spec_names_is_a_constant():
-    from spx_jev import cuts, state_builder
+    import importlib
+    import pkgutil
+    from spx_jev import cuts, labels
+    modules = [cuts] + [importlib.import_module(f"spx_jev.labels.{m.name}") for m in pkgutil.iter_modules(labels.__path__)]
     for lab in spec()["labels"]:
         for name in re.findall(r"\b[A-Z][A-Z_0-9]{3,}\b", lab["cut"]):
-            assert hasattr(cuts, name) or hasattr(state_builder, name), f"{lab['path']} names {name}, which the code does not define"
+            assert any(hasattr(m, name) for m in modules), f"{lab['path']} names {name}, which the code does not define"

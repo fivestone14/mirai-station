@@ -32,7 +32,7 @@ loop was promoted and pool.POOL_ON_PHONE is set, which it is not.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
 (``--lane tape``) stamps each read at the newest finished bar, measures the tape unit
-(state_builder.ruler), asks everything afresh, prices its sum's bands from the unit, and writes the
+(labels.rulers.tape_unit), asks everything afresh, prices its sum's bands from the unit, and writes the
 same files under state/spx_jev/lanes/tape/, each record marked with the lane and the unit.
 
     python3 -m spx_jev.service            # one run on the newest row, not sent
@@ -63,9 +63,10 @@ from .events import tag as event_tag
 from .expiry import calendar_of
 from .grade import live_options, mark_at, run as grade_run
 from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc
+from .labels.registry import build_labels
 from .lane import LANES, LIVE, Lane
 from .sessions import session_close
-from .state_builder import DEFAULT_STATE_DIR, build_state, load_jsonl, make_scene, parse_ts
+from .state_builder import DEFAULT_STATE_DIR, load_jsonl, make_scene, parse_ts
 from .weights import QuestionWeights
 
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
@@ -417,8 +418,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         age_min = (datetime.now(timezone.utc) - parse_ts(scene.row["ts"]).astimezone(timezone.utc)).total_seconds() / 60.0
         if age_min > STALE_ROW_SKIP_MIN:
             raise NoRowYet(f"the newest row is {age_min:.1f} minutes old, past the {STALE_ROW_SKIP_MIN:g}-minute line: the scanner has stopped; nothing sent, card unchanged")
-    figures: dict = {}
-    state, omitted = build_state(scene, figures)
+    labels = build_labels(scene)
+    state, omitted, figures = labels.state, labels.omitted, labels.figures
     now = parse_ts(scene.row["ts"])
     try:
         event = event_tag(now)

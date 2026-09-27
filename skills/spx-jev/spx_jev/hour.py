@@ -105,7 +105,7 @@ def answer_sentences(doc: dict, answered: dict[str, dict], weights: QuestionWeig
 
 def band_of(ruler: dict) -> dict:
     """A RECORD horizon's bands for this read, in index points: the cuts' fractions of a tape unit times
-    the unit measured on the tape (state_builder.ruler). Stored on the hour record, so the grader reads
+    the unit measured on the tape (labels.rulers.tape_unit). Stored on the hour record, so the grader reads
     the same bands JEV was told."""
     unit = float(ruler["unit_points"])
     return {"flat_points": round(TAPE_FLAT_UNITS * unit, 2), "big_points": round(TAPE_BIG_UNITS * unit, 2),
@@ -115,7 +115,7 @@ def band_of(ruler: dict) -> dict:
 def unit_line(ruler: dict, band: dict) -> str:
     """The context line that turns the unit into points, since JEV cannot multiply a unit by a fraction."""
     unit, flat, big = (f"{float(x):.1f}" for x in (ruler["unit_points"], band["flat_points"], band["big_points"]))
-    rank = ruler.get("rank")      # the unit against the same minute on the prior sessions (state_builder.unit_rank), when there is one
+    rank = ruler.get("rank")      # the unit against the same minute on the prior sessions (labels.rulers.unit_rank), when there is one
     placed = f", in the {rank['band']} for this minute, wider than {rank['higher_than']} of {rank['of']} prior sessions" if rank else ""
     return (f"one tape unit is {unit} points{placed}; flat is within {flat} points either way ({band['flat_units']:g} of a unit); "
             f"small is {flat} to {big} points; big is more than {big} points ({band['big_units']:g} of a unit)")

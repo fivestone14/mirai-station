@@ -195,7 +195,7 @@ def _unit(bars, ends, t: datetime) -> float | None:
 
 
 def wilder_rsi(closes: list[float], period: int = 14) -> float | None:
-    """state_builder.wilder_rsi, the same arithmetic."""
+    """labels.measures.wilder_rsi, the same arithmetic."""
     if len(closes) < period + 1:
         return None
     gains = [max(b - a, 0.0) for a, b in zip(closes[:-1], closes[1:])]

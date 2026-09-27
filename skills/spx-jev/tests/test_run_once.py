@@ -175,10 +175,9 @@ def test_the_sum_is_blended_with_the_time_of_day_once_there_are_enough_sessions(
 
 def test_the_situation_rows_carry_a_word_and_a_figure(full_scene):
     from spx_jev.service import SITUATION, situation_rows
-    from spx_jev.state_builder import build_state
-    figures: dict = {}
-    state, _ = build_state(full_scene, figures)
-    rows = situation_rows(state, figures)
+    from spx_jev.labels.registry import build_labels
+    labels = build_labels(full_scene)
+    rows = situation_rows(labels.state, labels.figures)
     assert [r["path"] for r in rows] == [p for p, _ in SITUATION]
     by = {r["path"]: r for r in rows}
     assert by["price.recent_move"]["verdict"] == "Rising" and by["gex.air_to_wall"]["verdict"] == "Close"

@@ -71,10 +71,11 @@ from zoneinfo import ZoneInfo
 from . import archive
 from .ask import load_questions
 from .hour import FIVE
+from .labels.measures import close_at
 from .lane import LANES, LIVE, RECORD, Lane
 from .pool import PoolWeights
 from .sessions import session_close
-from .state_builder import DEFAULT_STATE_DIR, close_at, load_bars, load_jsonl, parse_ts
+from .state_builder import DEFAULT_STATE_DIR, load_bars, load_jsonl, parse_ts
 from .weights import WEIGHTS_NAME, QuestionWeights
 
 ET = ZoneInfo("America/New_York")

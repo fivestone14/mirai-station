@@ -18,8 +18,9 @@ import time as _clock
 from datetime import datetime, time, timedelta
 
 from .ask import build_requests, load_questions, send_all, summarize
+from .labels.registry import build_labels
 from .lane import LANES
-from .state_builder import DEFAULT_STATE_DIR, Scene, build_state, make_scene
+from .state_builder import DEFAULT_STATE_DIR, Scene, make_scene
 
 
 def _time(s: str) -> time:
@@ -28,16 +29,16 @@ def _time(s: str) -> time:
 
 
 def package(scene: Scene, doc: dict) -> dict:
-    state, omitted = build_state(scene)
-    requests, skipped = build_requests(state, doc)
+    labels = build_labels(scene)
+    requests, skipped = build_requests(labels.state, doc)
     return {
         "row_ts": scene.row["ts"],
         "sigma": scene.sigma,
         "bars_used": len(scene.bars),
         "prior_sessions": len(scene.prior_bars),
         **({"ruler": scene.unit} if scene.bar_clock else {}),
-        "state": state,
-        "omitted": omitted,
+        "state": labels.state,
+        "omitted": labels.omitted,
         "requests": requests,
         "skipped": skipped,
     }

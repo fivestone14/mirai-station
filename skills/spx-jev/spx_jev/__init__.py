@@ -6,7 +6,8 @@ and the two feeds that keep today's bars and the market around SPX). Nothing her
 the live loop.
 """
 
-from .state_builder import Scene, build_state, make_scene  # noqa: F401
+from .labels.registry import build_labels  # noqa: F401
+from .state_builder import Scene, make_scene  # noqa: F401
 from .ask import build_requests, load_questions, send  # noqa: F401
 
-__all__ = ["Scene", "build_state", "make_scene", "build_requests", "load_questions", "send"]
+__all__ = ["Scene", "build_labels", "make_scene", "build_requests", "load_questions", "send"]

@@ -12,7 +12,7 @@ from spx_jev.ask import (DEFAULT_QUESTIONS, build_requests, confidence, constant
 from spx_jev.cuts import QUESTION_CONSTANTS
 from spx_jev.hour import load_hour_doc
 from spx_jev.lane import LANES
-from spx_jev.state_builder import build_state
+from spx_jev.labels.registry import build_labels
 
 QUESTIONS = Path(__file__).resolve().parent.parent / "questions"
 SHIPPED = sorted(QUESTIONS.glob("*.json"))
@@ -144,7 +144,8 @@ def test_every_question_reads_only_labels_the_spec_knows():
 
 
 def test_every_live_question_is_asked_on_a_full_read(full_scene):
-    state, omitted = build_state(full_scene)
+    labels = build_labels(full_scene)
+    state, omitted = labels.state, labels.omitted
     assert omitted == {}, omitted
     doc = load_questions(DEFAULT_QUESTIONS)
     reqs, skipped = build_requests(state, doc)

@@ -9,15 +9,16 @@ import pytest
 from conftest import (DAY, SECTORS, at, bars_from_closes, context_line, flat_bars, make_row, options_tape_at, prior_sessions,
                       write_state)
 from spx_jev.cuts import IV_FLAT_BAND_PTS, MOVE_RULE_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA, WALL_TOUCH_SIEGE_PERCENTILE
-from spx_jev.state_builder import (MarketContext, build_state, load_bars, load_market_context, load_options_tape, make_scene,
-                                   prior_bar_days, ruler)
+from spx_jev.labels.registry import build_labels
+from spx_jev.labels.rulers import ruler
+from spx_jev.state_builder import MarketContext, load_bars, load_market_context, load_options_tape, make_scene, prior_bar_days
 
 SIGMA = 75.0
 
 
 def _labels(scene):
-    state, omitted = build_state(scene)
-    return state, omitted
+    labels = build_labels(scene)
+    return labels.state, labels.omitted
 
 
 def test_the_30_minute_move_is_judged_against_the_move_rule(scene_factory):
@@ -46,8 +47,7 @@ def test_only_finished_bars_count(scene_factory):
 
 
 def test_the_figures_behind_the_situation_labels(full_scene):
-    figures: dict = {}
-    build_state(full_scene, figures)
+    figures = build_labels(full_scene).figures
     assert set(figures) == {"price.recent_move", "price.vs_vwap", "gex.air_to_wall", "iv.trend_30min"}
     assert figures["price.recent_move"] == {"kind": "signed", "value": 0.4, "band": MOVE_RULE_SIGMA, "unit": "sigma", "verdict": "rising"}
     assert figures["gex.air_to_wall"]["near"] == WALL_NEAR_SIGMA and figures["gex.air_to_wall"]["verdict"] == "heavy_strike_close"

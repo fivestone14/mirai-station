@@ -9,7 +9,7 @@ from spx_jev.cuts import ZERO_DTE_LAST_HOUR_MIN
 from spx_jev.expiry import (calendar_of, expiry_kinds, monthly_expiry, next_expiry, next_monthly, quarter_end_expiry, settle_at,
                             todays_settle, trading_days_between)
 from spx_jev.sessions import is_trading_day, next_trading_day, session_close
-from spx_jev.state_builder import build_state
+from spx_jev.labels.registry import build_labels
 
 
 def test_the_session_closes_at_16_or_13_on_a_half_day_and_skips_holidays():
@@ -46,13 +46,13 @@ def test_the_card_calendar_is_all_full_timestamps():
 
 
 def test_the_expiry_labels_name_the_book_and_the_clock(full_scene, scene_factory):
-    state, _ = build_state(full_scene)
+    state = build_labels(full_scene).state
     e = state["expiry"]
     assert e["settle_clock"] == f"today's 0DTE SPXW options settle at the 16:00 ET close, 210 minutes from now, before their last {ZERO_DTE_LAST_HOUR_MIN} minutes, when their gamma decays fastest"
     assert e["opex_today"].startswith("today is the quarterly expiry: the AM-settled SPX monthly options settled")
     assert e["dated_weight"] == "of the dated books pulled this morning (1 monthly, 1 quarter-end), the monthly expiry 28 days out holds the most options weight, 75% of their gamma"
     assert e["today_vs_week"].endswith("both read long gamma, where dealers' hedging damps moves, so they agree")
-    late, _ = build_state(scene_factory(at(15, 20, day="2026-09-22"), flat_bars(350, day="2026-09-22")))
+    late = build_labels(scene_factory(at(15, 20, day="2026-09-22"), flat_bars(350, day="2026-09-22"))).state
     assert f"40 minutes from now, inside their last {ZERO_DTE_LAST_HOUR_MIN} minutes" in late["expiry"]["settle_clock"]
     assert late["expiry"]["opex_today"] == "today is an ordinary daily expiry; the next monthly expiry is 18 trading days away"
     assert "gex" in state and all("0DTE" in state["gex"][k] for k in ("weight_side", "wall_thickness", "heaviest_strike_grip", "ladder_state"))
@@ -61,6 +61,6 @@ def test_the_expiry_labels_name_the_book_and_the_clock(full_scene, scene_factory
 def test_a_stale_dated_pull_or_an_unread_0dte_book_is_omitted(full_scene):
     row = {**full_scene.row, "dated_gex": {**full_scene.row["dated_gex"], "staleness": "stale"},
            "gex_views": {**full_scene.row["gex_views"], "regime_source": "blended_fallback"}}
-    _, omitted = build_state(replace(full_scene, row=row))
+    omitted = build_labels(replace(full_scene, row=row)).omitted
     assert omitted["expiry.dated_weight"] == "the dated books are stale, not this morning's"
     assert omitted["expiry.today_vs_week"].startswith("today's 0DTE book could not be read")

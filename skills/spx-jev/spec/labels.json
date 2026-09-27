@@ -2,9 +2,9 @@
  "name": "spx-jev label spec",
  "version": "0.1",
  "date": "2026-09-26",
- "purpose": "Every label the SPX state builder writes, with the logic and cut under it. Built labels are checked against the code by a test; lane labels are written by the tape lane only. Cut names are the constants in spx_jev/cuts.py and state_builder.py; the options-book labels name the book (expiry) they describe.",
+ "purpose": "Every label the SPX state builder writes, with the logic and cut under it. Built labels are checked against the code by a test; lane labels are written by the tape lane only. Cut names are the constants in spx_jev/cuts.py and the label families (spx_jev/labels/); the options-book labels name the book (expiry) they describe.",
  "statuses": {
-  "built": "in state_builder.py today, writing sentences",
+  "built": "in the label families (spx_jev/labels/) today, writing sentences",
   "lane": "written by the tape lane only: a read on the bar clock, never by the live lane"
  },
  "types": {
