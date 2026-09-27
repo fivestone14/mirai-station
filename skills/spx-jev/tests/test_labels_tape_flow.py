@@ -366,3 +366,53 @@ def test_spy_quote_is_omitted_when_the_stream_stops_or_has_no_history(scene_fact
     ls, _ = read(replace(record_scene(scene_factory, tmp_path / "none", []), now=at(10, 0, "2026-09-21")))
     assert ls.omitted["liquidity.spy_quote"] == "no lob-flow record for 2026-09-21 under lob_flow/agg: the collector did not run"
     assert ls.omitted["options.strike_defense"] == "no lob-flow record for 2026-09-21 under lob_flow/agg: the collector did not run"
+
+
+# ---- volume.spy_last30_share and volume.spy_pace_30: the siege box's SPY minute volumes
+
+NOON = at(12, 0, ss=5)
+
+
+def spy_minutes(morning: float, window: float, until: int = 960) -> dict[str, float]:
+    """SPY volume by minute of day from 09:30: ``morning`` a minute until 11:30, ``window`` a minute after."""
+    return {str(m): morning if m < 690 else window for m in range(570, until)}
+
+
+def volume_scene(scene_factory, root: Path, today: dict[str, float], prior_days: tuple[str, ...] = PRIOR_DAYS, now: datetime = NOON):
+    days = {d: spy_minutes(1000.0, 500.0 + 200 * k) for k, d in enumerate(prior_days)}   # 11.1% to 27.3% of the day in the half hour
+    (root / "siege").mkdir(parents=True, exist_ok=True)
+    (root / "siege" / "baseline.json").write_text(json.dumps({"days": {**days, DAY: today}}))
+    scene = scene_factory(now, flat_bars(int((now - at(9, 30)).total_seconds() // 60)), prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS})
+    return replace(scene, state_dir=root)
+
+
+@pytest.mark.parametrize("window, share, pace", [
+    (2000.0, "33.3% of today's volume in the last 30 minutes, above the 22.6% heavy line for 12:00 (top third of the last 6 sessions)",
+     "2.0 times its usual volume for this half hour, in the top fifth, higher than 6 of the last 6 sessions at this minute"),
+    (1000.0, "20.0% of today's volume in the last 30 minutes, between the 17.2% light line and the 22.6% heavy line for 12:00 "
+             "(middle third of the last 6 sessions)",
+     "1.0 times its usual volume for this half hour, between the bottom and top fifths, higher than 3 of the last 6 sessions at this minute"),
+    (300.0, "7.0% of today's volume in the last 30 minutes, below the 17.2% light line for 12:00 (bottom third of the last 6 sessions)",
+     "0.3 times its usual volume for this half hour, in the bottom fifth, higher than 0 of the last 6 sessions at this minute"),
+])
+def test_spy_volume_is_set_against_the_same_half_hour_of_the_prior_sessions(scene_factory, tmp_path, window, share, pace):
+    today = spy_minutes(1000.0, window, until=725)
+    today["720"] = 900000.0                                   # the minute still running at the read: never counts
+    _, labels = read(volume_scene(scene_factory, tmp_path, today))
+    assert labels["volume.spy_last30_share"] == f"SPY traded {share}"
+    assert labels["volume.spy_pace_30"] == f"SPY traded {pace}"
+
+
+def test_spy_volume_is_omitted_without_its_minutes_a_running_feed_or_enough_history(scene_factory, tmp_path):
+    ls, _ = read(replace(volume_scene(scene_factory, tmp_path / "none", spy_minutes(1000.0, 1000.0, 720)), state_dir=tmp_path / "empty"))
+    assert ls.omitted["volume.spy_pace_30"] == "no SPY minute volumes at siege/baseline.json: the siege box has not run"
+    ls, _ = read(volume_scene(scene_factory, tmp_path / "stopped", spy_minutes(1000.0, 1000.0, 714)))
+    assert ls.omitted["volume.spy_last30_share"] == "no SPY minute volume from the siege box in the last 5 minutes: its feed stopped"
+    holed = {m: v for m, v in spy_minutes(1000.0, 1000.0, 720).items() if not 690 <= int(m) < 706}
+    ls, _ = read(volume_scene(scene_factory, tmp_path / "holed", holed))
+    assert ls.omitted["volume.spy_pace_30"] == "the siege box has SPY volume for under half of the minutes since the open or of the last 30"
+    ls, _ = read(volume_scene(scene_factory, tmp_path / "young", spy_minutes(1000.0, 1000.0, 590), now=at(9, 50, ss=5)))
+    assert ls.omitted["volume.spy_last30_share"] == "the session is 20 minutes old, under the 30-minute window"
+    ls, _ = read(volume_scene(scene_factory, tmp_path / "four", spy_minutes(1000.0, 1000.0, 720), PRIOR_DAYS[:4]))
+    assert ls.omitted["volume.spy_last30_share"] == "needs 5 prior sessions with SPY minute volumes at this minute, have 4"
+    assert ls.omitted["volume.spy_pace_30"] == "needs 5 prior sessions with SPY minute volumes at this minute, have 4"

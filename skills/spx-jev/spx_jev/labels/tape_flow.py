@@ -23,8 +23,8 @@ from pathlib import Path
 
 from ..cuts import (BIG_LEAN_SHARE, BIG_MIN_PRINTS, BIG_PRINT_LOTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, CALL_PUT_SHIFT_SHARE,
                     DEFENSE_MIN_EVENTS, DEFENSE_NEAR_SIGMA, DEFENSE_REFILL_SHARE, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK,
-                    MIN_RANK_SESSIONS, SPY_SPREAD_TIGHT, SPY_SPREAD_WIDE, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH, TURNOVER_LOW,
-                    WINDOW_10_MIN, WINDOW_30_MIN)
+                    MIN_RANK_SESSIONS, SPY_SPREAD_TIGHT, SPY_SPREAD_WIDE, THIN_VOLUME_PCT, THIRD_HI, THIRD_LO, TOP_FIFTH, TURNOVER_HIGH,
+                    TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..row_adapter import labeller_row
 from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, OPTIONS_TAPE_WINDOW_MIN, ROWS_SUBDIR, Scene, load_jsonl,
                              parse_ts)
@@ -55,6 +55,12 @@ ROW_LINE_START = '{"ts": "'
 # depth swings by half from one minute to the next.
 QUOTE_WINDOW_MIN = 5
 QUOTE_BUCKET = "d25_40"                  # the collector's 25-40 delta bucket, the same-day quotes near price that trade
+SPY_VOLUMES = Path("siege") / "baseline.json"   # the siege box's SPY volume by minute of day, folded on every diary scan
+# The siege box folds SPY's minutes on each diary scan, about every two minutes: a newest minute older than this means it stopped.
+SPY_VOLUME_MAX_AGE_MIN = 5
+# A window with under half its minutes on file is a feed hole, not a quiet stretch (the siege box's own rule).
+MIN_WINDOW_COVERAGE = 0.5
+VOLUME_LABELS = ("volume.spy_last30_share", "volume.spy_pace_30")
 
 
 def build_tape_flow_labels(scene: Scene) -> LabelSet:
@@ -68,6 +74,7 @@ def build_tape_flow_labels(scene: Scene) -> LabelSet:
     _quote_liquidity(scene, ls)
     _strike_defense(scene, ls)
     _spy_quote(scene, ls)
+    _spy_volume_labels(scene, ls)
     return ls
 
 
@@ -654,3 +661,102 @@ def _read_record(path: str, mtime_ns: int) -> CollectorRecord:
             if is_num(got.get("spread")) and is_num(got.get("size")):
                 spy.append((ts, float(got["spread"]), float(got["size"])))
     return CollectorRecord(sorted(defense, key=lambda x: x[0]), sorted(spy))
+
+
+# ----------------------------------------------------------------------------- SPY's volume
+
+def _spy_volume_labels(scene: Scene, ls: LabelSet) -> None:
+    """SPY's volume over the last 30 finished minutes, as a share of the day's and against its usual for this half
+    hour, both against the same minutes of the prior sessions."""
+    days, why = _spy_volume_days(scene)
+    if days is None:
+        for path in VOLUME_LABELS:
+            ls.omit(path, why)
+        return
+    end = minute_of_day(scene.now.astimezone(ET))
+    opened = minute_of_day(scene.session_open.astimezone(ET))
+    if end - WINDOW_30_MIN < opened:
+        for path in VOLUME_LABELS:
+            ls.omit(path, f"the session is {plural(end - opened, 'minute')} old, under the {WINDOW_30_MIN}-minute window")
+        return
+    today = _last30_and_day(days[scene.day], opened, end)
+    if today is None:
+        for path in VOLUME_LABELS:
+            ls.omit(path, f"the siege box has SPY volume for under half of the minutes since the open or of the last {WINDOW_30_MIN}")
+        return
+    prior = [v for d in scene.prior_bars if d in days and (v := _last30_and_day(days[d], opened, end)) is not None]
+    _spy_last30_share(scene, today, prior, ls)
+    _spy_pace_30(today[0], [p[0] for p in prior], ls)
+
+
+def _spy_volume_days(scene: Scene) -> tuple[dict[str, dict[int, float]] | None, str]:
+    """SPY's volume by minute of day for today and the prior sessions on file, or None and why: no state folder, no
+    file, no minutes for today, or a feed that stopped."""
+    if scene.state_dir is None:
+        return None, "no state folder to read the siege box's SPY minute volumes from"
+    path = Path(scene.state_dir) / SPY_VOLUMES
+    if not path.exists():
+        return None, f"no SPY minute volumes at {SPY_VOLUMES}: the siege box has not run"
+    days = _read_spy_volumes(str(path), path.stat().st_mtime_ns)
+    end = minute_of_day(scene.now.astimezone(ET))
+    done = [m for m in days.get(scene.day) or {} if m < end]
+    if not done:
+        return None, f"no SPY minute volumes for {scene.day} in {SPY_VOLUMES}"
+    if max(done) < end - SPY_VOLUME_MAX_AGE_MIN:
+        return None, f"no SPY minute volume from the siege box in the last {SPY_VOLUME_MAX_AGE_MIN} minutes: its feed stopped"
+    return days, ""
+
+
+def _window_volume(minutes: dict[int, float], start: int, end: int) -> float | None:
+    """SPY's volume over the finished minutes in [start, end); None when under MIN_WINDOW_COVERAGE of them are on file."""
+    got = [minutes[m] for m in range(start, end) if m in minutes]
+    return sum(got) if got and len(got) >= MIN_WINDOW_COVERAGE * (end - start) else None
+
+
+def _last30_and_day(minutes: dict[int, float], opened: int, end: int) -> tuple[float, float] | None:
+    """The last 30 finished minutes' volume and the day's since the open, or None with either not on file or no volume."""
+    last30, day = _window_volume(minutes, end - WINDOW_30_MIN, end), _window_volume(minutes, opened, end)
+    return (last30, day) if last30 is not None and day else None
+
+
+def _percentile(values: list[float], q: float) -> float:
+    """The ``q`` quantile of ``values``, interpolated between the two nearest."""
+    s = sorted(values)
+    k = q * (len(s) - 1)
+    lo = int(k)
+    return s[lo] + (s[min(lo + 1, len(s) - 1)] - s[lo]) * (k - lo)
+
+
+def _pct_tenths(x: float) -> str:
+    return f"{x * 100:.1f}%"
+
+
+def _spy_last30_share(scene: Scene, today: tuple[float, float], prior: list[tuple[float, float]], ls: LabelSet) -> None:
+    base = [last30 / day for last30, day in prior]
+    if len(base) < MIN_RANK_SESSIONS:
+        ls.omit("volume.spy_last30_share", f"needs {MIN_RANK_SESSIONS} prior sessions with SPY minute volumes at this minute, have {len(base)}")
+        return
+    share = today[0] / today[1]
+    heavy, light = _percentile(base, THIRD_HI), _percentile(base, THIRD_LO)
+    clock, of = f"{scene.now.astimezone(ET):%H:%M}", f"of the last {len(base)} sessions"
+    band = (f"above the {_pct_tenths(heavy)} heavy line for {clock} (top third {of})" if share > heavy else
+            f"below the {_pct_tenths(light)} light line for {clock} (bottom third {of})" if share < light else
+            f"between the {_pct_tenths(light)} light line and the {_pct_tenths(heavy)} heavy line for {clock} (middle third {of})")
+    ls.put("volume.spy_last30_share", f"SPY traded {_pct_tenths(share)} of today's volume in the last {WINDOW_30_MIN} minutes, {band}")
+
+
+def _spy_pace_30(last30: float, base: list[float], ls: LabelSet) -> None:
+    rank = rank_against(last30, base)
+    if rank is None:
+        ls.omit("volume.spy_pace_30", f"needs {MIN_RANK_SESSIONS} prior sessions with SPY minute volumes at this minute, have {len(base)}")
+        return
+    ls.put("volume.spy_pace_30", f"SPY traded {last30 / statistics.median(base):.1f} times its usual volume for this half hour, "
+                                 f"{_fifth(rank)}, {rank.words()}")
+
+
+@lru_cache(maxsize=4)
+def _read_spy_volumes(path: str, mtime_ns: int) -> dict[str, dict[int, float]]:
+    """The siege box's ``{"days": {day: {minute of day: volume}}}``, a minute keyed by when its bar started. ``mtime_ns``
+    keys the cache: the siege box rewrites the file on every scan."""
+    raw = (json.loads(Path(path).read_text(encoding="utf-8")) or {}).get("days") or {}
+    return {d: {int(m): float(v) for m, v in mins.items() if is_num(v)} for d, mins in raw.items() if isinstance(mins, dict)}
