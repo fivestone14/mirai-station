@@ -1210,7 +1210,6 @@ details .q{margin-top:8px}
     var row = Date.parse(p.row_ts), jev = (p.schedule && p.schedule.jev_reads) || [];
     var next = jev.filter(function(t){ return Date.parse(t) > row + 60000; })[0];
     box.appendChild(el('div', 'big', 'No call yet'));
-    if(h && h.error) box.appendChild(skipLine('no sum on the ' + viewerTime(p.row_ts) + ' read: ' + h.error));
     box.appendChild(skipLine(next ? (jev.indexOf(next) ? 'next call at ' : 'first call at ') + viewerTime(next) : 'no call before the open'));
   }
   // when it is checked: both sums from the settled open (the card's start), each to its mark, on one clock from
