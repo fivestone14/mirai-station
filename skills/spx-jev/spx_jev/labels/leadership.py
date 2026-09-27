@@ -20,9 +20,9 @@ from ..market_context import SYMBOLS
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open
-from .ranks import SameClockRank
 from .rulers import sigma_anchor
-from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, beyond, fifth_side
+from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, beyond, beyond_rank, fifth_side, needs_link, needs_move,
+                         needs_rank)
 from .words import pct, sig, signed
 
 LABELS = ("leaders.equal_weight_vs_cap_30m", "leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m",
@@ -69,66 +69,28 @@ def build_leadership_labels(scene: Scene) -> LabelSet:
     return ls
 
 
-def _needs_move(symbols: list[str], minutes: int) -> str:
-    return f"needs a price for {', '.join(symbols)} now and {minutes} minutes ago in the market context"
-
-
-def _needs_link(symbols: list[str], index: str = SPX) -> str:
-    return (f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with {', '.join(symbols)} and {index} "
-            f"to know their usual multiple of the index")
-
-
-def _needs_rank(symbol: str, have: int) -> str:
-    return f"needs {MIN_RANK_SESSIONS} prior sessions with {symbol} at this minute, have {have}"
-
-
 def _equal_weight(against: AgainstIndex, ls: LabelSet) -> None:
     """RSP's 30-minute move against its usual multiple of SPY's: did the typical stock keep up."""
     path = "leaders.equal_weight_vs_cap_30m"
     eq, cap = against.move(EQUAL_WEIGHT, WINDOW_30_MIN), against.move(CAP_WEIGHT, WINDOW_30_MIN)
     if eq is None or cap is None:
-        ls.omit(path, _needs_move([EQUAL_WEIGHT, CAP_WEIGHT], WINDOW_30_MIN))
+        ls.omit(path, needs_move([s for s, m in ((EQUAL_WEIGHT, eq), (CAP_WEIGHT, cap)) if m is None], WINDOW_30_MIN))
         return
     link = against.link(EQUAL_WEIGHT, CAP_WEIGHT)
     if link is None:
-        ls.omit(path, _needs_link([EQUAL_WEIGHT], CAP_WEIGHT))
+        ls.omit(path, needs_link([EQUAL_WEIGHT], CAP_WEIGHT))
         return
     expected, actual = against.sigma(link.multiple * cap), against.sigma(eq)
     gap = actual - expected
-    if round(expected, 2) == 0:
-        off = f"{sig(abs(gap))} {'above' if gap > 0 else 'below'} it"
-    else:
-        off = f"{sig(abs(gap))} {'short of' if (gap > 0) != (expected > 0) else 'beyond'} it"
     rule = f"more than the {EQW_SPLIT_SIGMA} sigma split rule" if abs(gap) > EQW_SPLIT_SIGMA else f"within the {EQW_SPLIT_SIGMA} sigma split rule"
     ls.put(path, f"equal-weight {EQUAL_WEIGHT} usually moves {link.multiple:.2f} times the index ({CAP_WEIGHT}), so {signed(expected)} sigma "
                  f"was expected over the last {WINDOW_30_MIN} minutes; it {'rose' if actual >= 0 else 'fell'} {sig(abs(actual))}, "
-                 f"{off}, {rule}{against.ruler_note}")
-
-
-def _residual_rank(against: AgainstIndex, symbol: str, minutes: int) -> tuple[float, UsualLink, SameClockRank] | str:
-    """``symbol``'s move beyond its usual multiple of SPX over the last ``minutes``, in sigma, with its link and
-    its rank against the same minutes of the prior sessions; or the reason it cannot be measured."""
-    move, index_move = against.move(symbol, minutes), against.move(SPX, minutes)
-    if move is None or index_move is None:
-        return _needs_move([symbol, SPX], minutes)
-    link = against.link(symbol)
-    if link is None:
-        return _needs_link([symbol])
-    value = against.sigma(beyond(link, move, index_move))
-
-    def then_beyond(s: Session, then: datetime, sigma_share: float) -> float | None:
-        start = then - timedelta(minutes=minutes)
-        m, i = s.move(symbol, start, then), s.move(SPX, start, then)
-        return None if m is None or i is None else beyond(link, m, i) / sigma_share
-    rank, have = against.rank(value, then_beyond)
-    if rank is None:
-        return _needs_rank(symbol, have)
-    return value, link, rank
+                 f"{sig(abs(gap))} {'above' if gap >= 0 else 'below'} that, {rule}{against.ruler_note}")
 
 
 def _semis(against: AgainstIndex, ls: LabelSet) -> None:
     path = "leaders.semis_vs_index_30m"
-    got = _residual_rank(against, SEMIS, WINDOW_30_MIN)
+    got = beyond_rank(against, SEMIS, WINDOW_30_MIN)
     if isinstance(got, str):
         ls.omit(path, got)
         return
@@ -145,7 +107,7 @@ def _sector_tells(against: AgainstIndex, ls: LabelSet) -> None:
     path = "tells.sector_lead_10m"
     parts = []
     for symbol, name in ((SEMIS, "semiconductors"), (FINANCIALS, "financials")):
-        got = _residual_rank(against, symbol, WINDOW_10_MIN)
+        got = beyond_rank(against, symbol, WINDOW_10_MIN)
         if isinstance(got, str):
             ls.omit(path, got)
             return
@@ -168,11 +130,11 @@ def _size_spread(against: AgainstIndex, ls: LabelSet) -> None:
     cap = against.today.move(CAP_WEIGHT, start, scene.now)
     moves = {s: against.today.move(s, start, scene.now) for s in SIZE_FUNDS}
     if cap is None or any(m is None for m in moves.values()):
-        ls.omit(path, f"needs a price for {', '.join((*SIZE_FUNDS, CAP_WEIGHT))} at the settled open and now in the market context")
+        ls.omit(path, f"needs a price for {', '.join((*SIZE_FUNDS, CAP_WEIGHT))} at the settled open and now")
         return
     links = {s: against.link(s, CAP_WEIGHT) for s in SIZE_FUNDS}
     if any(link is None for link in links.values()):
-        ls.omit(path, _needs_link(list(SIZE_FUNDS), CAP_WEIGHT))
+        ls.omit(path, needs_link(list(SIZE_FUNDS), CAP_WEIGHT))
         return
     ahead = {s: against.sigma(beyond(links[s], moves[s], cap)) for s in SIZE_FUNDS}
 
@@ -195,13 +157,13 @@ def _sector_moves(against: AgainstIndex, symbols: tuple[str, ...]) -> tuple[floa
     """Each sector fund's 30-minute move in sigma and its link, with the index's move; or the reason not."""
     index_move = against.move(SPX, WINDOW_30_MIN)
     moves = {s: against.move(s, WINDOW_30_MIN) for s in symbols}
-    missing = [s for s, m in moves.items() if m is None]
-    if index_move is None or missing:
-        return _needs_move(missing or [SPX], WINDOW_30_MIN)
+    missing = [s for s, m in {SPX: index_move, **moves}.items() if m is None]
+    if missing:
+        return needs_move(missing, WINDOW_30_MIN)
     links = {s: against.link(s) for s in symbols}
     unlinked = [s for s, link in links.items() if link is None]
     if unlinked:
-        return _needs_link(unlinked)
+        return needs_link(unlinked)
     return index_move, moves, links
 
 
@@ -293,7 +255,7 @@ def _heavyweight_gap(against: AgainstIndex, names: list[tuple[str, float]], ls: 
             overnight[symbol] = b / a - 1.0
     missing = [s for s, _ in names if s not in overnight]
     if missing:
-        why = f"needs a price for {', '.join(missing)} at yesterday's close and at the settled open in the market context"
+        why = f"needs a price for {', '.join(missing)} at yesterday's close and at the settled open"
         ls.omit(path, why)
         ls.sleep(qid, f"{path} is not measured: {why}")
         return
@@ -321,10 +283,10 @@ def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSe
     paths = ("leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m")
     index_move = against.move(SPX, WINDOW_30_MIN)
     moves = {s: against.move(s, WINDOW_30_MIN) for s, _ in names}
-    missing = [s for s, m in moves.items() if m is None]
-    if index_move is None or missing:
+    missing = [s for s, m in {SPX: index_move, **moves}.items() if m is None]
+    if missing:
         for path in paths:
-            ls.omit(path, _needs_move(missing or [SPX], WINDOW_30_MIN))
+            ls.omit(path, needs_move(missing, WINDOW_30_MIN))
         return
     idx = against.sigma(index_move)
     added = {s: against.sigma(w * moves[s]) for s, w in names}
@@ -343,7 +305,7 @@ def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSe
     links = {s: against.link(s) for s, _ in names}
     unlinked = [s for s, link in links.items() if link is None]
     if unlinked:
-        ls.omit("leaders.megacap_cohesion_30m", _needs_link(unlinked))
+        ls.omit("leaders.megacap_cohesion_30m", needs_link(unlinked))
         return
     rules = {s: MOVE_RULE_SIGMA * links[s].scale for s, _ in names}
     up = sum(1 for s, _ in names if against.sigma(moves[s]) > rules[s])
@@ -370,7 +332,7 @@ def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: Labe
     moves = {s: against.move(s, WINDOW_10_MIN) for s, _ in names}
     missing = [s for s, m in moves.items() if m is None]
     if missing:
-        ls.omit(path, _needs_move(missing, WINDOW_10_MIN))
+        ls.omit(path, needs_move(missing, WINDOW_10_MIN))
         return
     usual = {}
     for symbol, _ in names:
@@ -379,7 +341,7 @@ def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: Labe
             return None if m is None else abs(m)
         base = against.same_clock(then_size)
         if len(base) < MIN_RANK_SESSIONS or statistics.median(base) == 0:
-            ls.omit(path, _needs_rank(symbol, len(base)))
+            ls.omit(path, needs_rank(symbol, len(base)))
             return
         usual[symbol] = statistics.median(base)
     times = {s: abs(moves[s]) / usual[s] for s, _ in names}

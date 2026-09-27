@@ -147,6 +147,39 @@ def beyond(link: UsualLink, move: float, index_move: float) -> float:
     return move - link.multiple * index_move
 
 
+def beyond_rank(against: AgainstIndex, symbol: str, minutes: int) -> tuple[float, UsualLink, SameClockRank] | str:
+    """``symbol``'s move beyond its usual multiple of SPX over the last ``minutes``, in sigma, with its link and
+    its rank against the same minutes of the prior sessions; or the reason it cannot be measured."""
+    move, index_move = against.move(symbol, minutes), against.move(SPX, minutes)
+    if move is None or index_move is None:
+        return needs_move([s for s, m in ((symbol, move), (SPX, index_move)) if m is None], minutes)
+    link = against.link(symbol)
+    if link is None:
+        return needs_link([symbol])
+    value = against.sigma(beyond(link, move, index_move))
+
+    def then_beyond(s: Session, then: datetime, sigma_share: float) -> float | None:
+        start = then - timedelta(minutes=minutes)
+        m, i = s.move(symbol, start, then), s.move(SPX, start, then)
+        return None if m is None or i is None else beyond(link, m, i) / sigma_share
+    rank, have = against.rank(value, then_beyond)
+    if rank is None:
+        return needs_rank(symbol, have)
+    return value, link, rank
+
+
+def needs_move(symbols: list[str], minutes: int) -> str:
+    return f"needs a price for {', '.join(symbols)} now and {minutes} minutes ago"
+
+
+def needs_link(symbols: list[str], index: str = SPX) -> str:
+    return f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with {', '.join(symbols)} and {index} to know the usual multiple"
+
+
+def needs_rank(what: str, have: int) -> str:
+    return f"needs {MIN_RANK_SESSIONS} prior sessions with {what} at this minute, have {have}"
+
+
 def fifth_side(rank: SameClockRank) -> int:
     """+1 in the top fifth of the same-clock sessions, -1 in the bottom fifth, 0 in neither."""
     return 1 if rank.share >= TOP_FIFTH else -1 if rank.share <= BOTTOM_FIFTH else 0

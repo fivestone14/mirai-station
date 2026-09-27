@@ -59,25 +59,25 @@ def test_equal_weight_lagging_the_index_past_the_split_rule():
     got, _, _ = labels(read(move_points=30.0, jumps={"RSP": {JUMP: -sigma_move(0.13, 30.0)}}))
     s = got["leaders.equal_weight_vs_cap_30m"]
     assert shape(s) == ("equal-weight RSP usually moves # times the index (SPY), so # sigma was expected over the last # minutes; "
-                        "it rose # sigma, # sigma short of it, more than the # sigma split rule")
-    assert "0.66 times" in s and "so +0.27 sigma was expected" in s and "0.13 sigma short of it" in s
+                        "it rose # sigma, # sigma below that, more than the # sigma split rule")
+    assert "0.66 times" in s and "so +0.27 sigma was expected" in s and "0.13 sigma below that" in s
 
 
 @pytest.mark.parametrize("gap, verdict", [(0.11, "more than"), (0.09, "within")])
 def test_equal_weight_split_rule_boundary(gap, verdict):
     got, _, _ = labels(read(move_points=10.5, jumps={"RSP": {JUMP: sigma_move(gap, 10.5)}}))
-    assert got["leaders.equal_weight_vs_cap_30m"].endswith(f"sigma beyond it, {verdict} the 0.1 sigma split rule")
+    assert got["leaders.equal_weight_vs_cap_30m"].endswith(f"sigma above that, {verdict} the 0.1 sigma split rule")
 
 
 def test_equal_weight_needs_both_funds_fresh_and_their_history():
-    reason = "needs a price for RSP, SPY now and 30 minutes ago in the market context"
+    reason = "needs a price for RSP now and 30 minutes ago"
     assert labels(read(drop=("RSP",)))[1]["leaders.equal_weight_vs_cap_30m"] == reason
     scene = read()
     stale = {s: [(t, v) for t, v in pts if t <= at(12, 20)] if s == "SPY" else pts for s, pts in scene.market.known.items()}
-    assert labels(replace(scene, market=MarketContext(stale)))[1]["leaders.equal_weight_vs_cap_30m"] == reason
+    assert labels(replace(scene, market=MarketContext(stale)))[1]["leaders.equal_weight_vs_cap_30m"] == reason.replace("RSP", "SPY")
     no_history = replace(scene, prior_markets={})
     assert labels(no_history)[1]["leaders.equal_weight_vs_cap_30m"] == (
-        f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with RSP and SPY to know their usual multiple of the index")
+        f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with RSP and SPY to know the usual multiple")
 
 
 # ---- semis and the opening tells, ranked by the clock
@@ -128,10 +128,10 @@ def test_the_opening_tells_rank_semis_and_financials_over_10_minutes():
 
 def test_the_opening_tells_need_a_price_10_minutes_back():
     _, omitted, _ = labels(read(drop=("XLF",)))
-    assert omitted["tells.sector_lead_10m"] == "needs a price for XLF, $SPX now and 10 minutes ago in the market context"
+    assert omitted["tells.sector_lead_10m"] == "needs a price for XLF now and 10 minutes ago"
     early = at(9, 40)
     _, omitted, _ = labels(read(now=early))
-    assert omitted["tells.sector_lead_10m"] == "needs a price for SMH, $SPX now and 10 minutes ago in the market context"
+    assert omitted["tells.sector_lead_10m"] == "needs a price for SMH, $SPX now and 10 minutes ago"
 
 
 # ---- size since the settled open
@@ -176,7 +176,7 @@ def test_sector_funds_split_under_a_wide_dispersion():
 
 def test_sector_funds_need_every_fund():
     _, omitted, _ = labels(read(drop=("XLRE",)))
-    assert omitted["sectors.agreement_30m"] == "needs a price for XLRE now and 30 minutes ago in the market context"
+    assert omitted["sectors.agreement_30m"] == "needs a price for XLRE now and 30 minutes ago"
 
 
 @pytest.mark.parametrize("group, gap, verdict", [
@@ -300,7 +300,7 @@ def test_the_heavyweight_gap_waits_for_the_settled_open(tmp_path):
     scene = gapped(tmp_path, "NVDA", 0.059)
     scene = replace(scene, market=MarketContext({s: pts for s, pts in scene.market.known.items() if s != "TSLA"}))
     _, omitted, gates = labels(scene)
-    assert omitted["leaders.heavyweight_gap"] == "needs a price for TSLA at yesterday's close and at the settled open in the market context"
+    assert omitted["leaders.heavyweight_gap"] == "needs a price for TSLA at yesterday's close and at the settled open"
     assert gates["heavyweight_gap_split"].startswith("leaders.heavyweight_gap is not measured")
 
 
@@ -315,12 +315,12 @@ def test_no_label_moves_on_values_known_after_the_read(tmp_path):
 
 
 @pytest.mark.parametrize("path, dropped, reason", [
-    ("leaders.semis_vs_index_30m", "SMH", "needs a price for SMH, $SPX now and 30 minutes ago in the market context"),
-    ("leaders.size_spread_day", "IWM", "needs a price for QQQ, IWM, SPY at the settled open and now in the market context"),
-    ("leaders.rotation_30m", "XLV", "needs a price for XLV now and 30 minutes ago in the market context"),
-    ("leaders.megacap_cohesion_30m", "AVGO", "needs a price for AVGO now and 30 minutes ago in the market context"),
-    ("leaders.pull_vs_rest_30m", "AVGO", "needs a price for AVGO now and 30 minutes ago in the market context"),
-    ("leaders.single_name_10m", "AVGO", "needs a price for AVGO now and 10 minutes ago in the market context"),
+    ("leaders.semis_vs_index_30m", "SMH", "needs a price for SMH now and 30 minutes ago"),
+    ("leaders.size_spread_day", "IWM", "needs a price for QQQ, IWM, SPY at the settled open and now"),
+    ("leaders.rotation_30m", "XLV", "needs a price for XLV now and 30 minutes ago"),
+    ("leaders.megacap_cohesion_30m", "AVGO", "needs a price for AVGO now and 30 minutes ago"),
+    ("leaders.pull_vs_rest_30m", "AVGO", "needs a price for AVGO now and 30 minutes ago"),
+    ("leaders.single_name_10m", "AVGO", "needs a price for AVGO now and 10 minutes ago"),
 ])
 def test_a_label_without_its_symbol_is_omitted_with_the_reason(tmp_path, path, dropped, reason):
     _, omitted, _ = labels(weighed(tmp_path, drop=(dropped,)))

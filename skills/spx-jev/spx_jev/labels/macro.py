@@ -12,12 +12,11 @@ import math
 import statistics
 from datetime import date, datetime, timedelta
 
-from ..cuts import BOND_LINK_TIGHT, MIN_RANK_SESSIONS, WINDOW_30_MIN, WINDOW_60_MIN
+from ..cuts import BOND_LINK_TIGHT, WINDOW_30_MIN, WINDOW_60_MIN
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .ranks import SameClockRank
 from .rulers import sigma_anchor
-from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, beyond, fifth_side
+from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, beyond, beyond_rank, fifth_side, needs_link, needs_move, needs_rank
 from .words import sig
 
 LABELS = ("xasset.bond_gap_30min", "xasset.macro_gap_30min", "xasset.oil_gap_30min", "flows.rebalance_side", "flows.etf_creations",
@@ -87,34 +86,13 @@ def minute_link(s: Session, symbol: str, end: datetime) -> float | None:
     return sum((x - mx) * (y - my) for x, y in pairs) / math.sqrt(sxx * syy)
 
 
-def _beyond_rank(against: AgainstIndex, symbol: str) -> tuple[float, UsualLink, SameClockRank] | str:
-    """``symbol``'s 30-minute return beyond its usual multiple of SPX's, its link, and its rank against the same
-    half hour of the prior sessions; or the reason it cannot be measured."""
-    move, index_move = against.move(symbol, WINDOW_30_MIN), against.move(SPX, WINDOW_30_MIN)
-    if move is None or index_move is None:
-        return f"needs a price for {symbol} and {SPX} now and {WINDOW_30_MIN} minutes ago"
-    link = against.link(symbol)
-    if link is None:
-        return f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with {symbol} and {SPX} to know its usual multiple of the index"
-    value = beyond(link, move, index_move)
-
-    def then_beyond(s: Session, then: datetime, _sigma_share: float) -> float | None:
-        start = then - timedelta(minutes=WINDOW_30_MIN)
-        m, i = s.move(symbol, start, then), s.move(SPX, start, then)
-        return None if m is None or i is None else beyond(link, m, i)
-    rank, have = against.rank(value, then_beyond)
-    if rank is None:
-        return f"needs {MIN_RANK_SESSIONS} prior sessions with {symbol} at this minute, have {have}"
-    return value, link, rank
-
-
 def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
     """Long Treasuries over the last 30 minutes beyond their usual multiple of the index, and whether this hour's
     minute-by-minute link to stocks is tight enough to say which way that points."""
     path = "xasset.bond_gap_30min"
     reasons = []
     for symbol, name in BONDS:
-        got = _beyond_rank(against, symbol)
+        got = beyond_rank(against, symbol, WINDOW_30_MIN)
         if isinstance(got, str):
             reasons.append(got)
             continue
@@ -144,7 +122,7 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
 
 def _oil_gap(against: AgainstIndex, ls: LabelSet) -> None:
     path = "xasset.oil_gap_30min"
-    got = _beyond_rank(against, OIL)
+    got = beyond_rank(against, OIL, WINDOW_30_MIN)
     if isinstance(got, str):
         ls.omit(path, got)
         return
@@ -161,17 +139,17 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
     path = "xasset.macro_gap_30min"
     index_move = against.move(SPX, WINDOW_30_MIN)
     if index_move is None:
-        ls.omit(path, f"needs a price for {SPX} now and {WINDOW_30_MIN} minutes ago")
+        ls.omit(path, needs_move([SPX], WINDOW_30_MIN))
         return
     moves = {s: against.move(s, WINDOW_30_MIN) for s, _ in COMPLEX}
     missing = [s for s, m in moves.items() if m is None]
     if missing:
-        ls.omit(path, f"needs a price for {', '.join(missing)} now and {WINDOW_30_MIN} minutes ago")
+        ls.omit(path, needs_move(missing, WINDOW_30_MIN))
         return
     links = {s: against.link(s) for s, _ in COMPLEX}
     unlinked = [s for s, link in links.items() if link is None or link.spread == 0]
     if unlinked:
-        ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with {', '.join(unlinked)} and {SPX} to know their usual multiple")
+        ls.omit(path, needs_link(unlinked))
         return
 
     def lean(s: Session, end: datetime) -> float | None:
@@ -191,7 +169,7 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
         return
     rank, have = against.rank(value, lambda s, then, _sigma_share: lean(s, then))
     if rank is None:
-        ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with every outside market at this minute, have {have}")
+        ls.omit(path, needs_rank("every outside market", have))
         return
     side = fifth_side(rank)
     above = [n for s, n in COMPLEX if beyond(links[s], moves[s], index_move) >= 0]

@@ -95,8 +95,8 @@ def test_bonds_fall_back_to_the_ten_year_future_then_say_why_neither():
     got, _ = labels(read(drop=("TLT",)))
     assert got["xasset.bond_gap_30min"].startswith("over the last 30 minutes ten-year Treasury futures (/ZN)")
     _, omitted = labels(read(drop=("TLT", "/ZN")))
-    assert omitted["xasset.bond_gap_30min"] == ("needs a price for TLT and $SPX now and 30 minutes ago; "
-                                                "or needs a price for /ZN and $SPX now and 30 minutes ago")
+    assert omitted["xasset.bond_gap_30min"] == ("needs a price for TLT now and 30 minutes ago; "
+                                                "or needs a price for /ZN now and 30 minutes ago")
 
 
 def test_bonds_need_an_hour_of_minutes_to_read_the_link():
@@ -104,7 +104,7 @@ def test_bonds_need_an_hour_of_minutes_to_read_the_link():
     thin = {s: [(t, v) for t, v in pts if s != "TLT" or not at(11, 25) < t < at(12, 2)] for s, pts in scene.market.known.items()}
     _, omitted = labels(replace(scene, market=MarketContext(thin)))
     assert omitted["xasset.bond_gap_30min"] == "needs 45 of the last 60 minutes with TLT and $SPX moving; " \
-                                               "or needs a price for /ZN and $SPX now and 30 minutes ago"
+                                               "or needs a price for /ZN now and 30 minutes ago"
 
 
 # ---- oil
@@ -125,10 +125,10 @@ def test_oil_needs_its_history_and_a_fresh_price():
     no_history = replace(scene, prior_markets={d: MarketContext({s: v for s, v in m.known.items() if s != "USO"})
                                                for d, m in scene.prior_markets.items()})
     assert labels(no_history)[1]["xasset.oil_gap_30min"] == (
-        f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with USO and $SPX to know its usual multiple of the index")
+        f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with USO and $SPX to know the usual multiple")
     stopped = {s: [(t, v) for t, v in pts if s != "USO" or t <= at(12, 25)] for s, pts in scene.market.known.items()}
     assert labels(replace(scene, market=MarketContext(stopped)))[1]["xasset.oil_gap_30min"] == (
-        "needs a price for USO and $SPX now and 30 minutes ago")
+        "needs a price for USO now and 30 minutes ago")
 
 
 # ---- the outside markets together
