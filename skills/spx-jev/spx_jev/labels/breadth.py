@@ -25,7 +25,7 @@ from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, close_at, session_extremes, settled_open
 from .price import NEW_EXTREME_RECENT_MIN
 from .ranks import rank_against
-from .rulers import sigma_anchor
+from .rulers import NO_ANCHOR, sigma_anchor
 from .words import pct, plural, sig, signed
 
 LABELS = ("breadth.advance_decline", "breadth.tick_lean", "breadth.sectors_up",
@@ -350,7 +350,7 @@ def _at_extremes(scene: Scene, ls: LabelSet) -> None:
                                              ("low", today.low_at, today.low, before.low_at))
     ruler = sigma_anchor(scene)
     if ruler is None:
-        ls.omit("breadth.at_extremes", "no sigma ruler for today: no morning anchor, live sigma or VIX at the settled open")
+        ls.omit("breadth.at_extremes", NO_ANCHOR)
         return
     net_now, net_before = _running_total(mk, "$VOLD", made_at), _running_total(mk, "$VOLD", before_at)
     small_caps, small_caps_then = mk.between("IWM", scene.session_open, made_at), mk.last("IWM", made_at, max_age_min=FRESH_MIN)

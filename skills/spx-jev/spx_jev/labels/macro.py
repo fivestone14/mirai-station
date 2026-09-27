@@ -17,7 +17,7 @@ from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ONE_MINUTE
-from .rulers import sigma_anchor
+from .rulers import NO_ANCHOR, sigma_anchor
 from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, fifth_side, minutes_back, needs_link,
                          needs_move, needs_rank)
 from .words import listed, sig
@@ -46,7 +46,7 @@ def build_macro_labels(scene: Scene) -> LabelSet:
     ls.omit("flows.rebalance_side", REBALANCE_SIDE_UNMEASURED)
     ruler = sigma_anchor(scene)
     why = ("no market-context snapshot today" if scene.market is None else
-           "no sigma ruler today: no morning anchor, live sigma or VIX at the settled open" if ruler is None else None)
+           NO_ANCHOR if ruler is None else None)
     if why:
         for path in ("xasset.bond_gap_30min", "xasset.macro_gap_30min", "xasset.oil_gap_30min"):
             ls.omit(path, why)

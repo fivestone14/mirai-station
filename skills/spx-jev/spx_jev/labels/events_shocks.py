@@ -33,7 +33,7 @@ from ..state_builder import MarketContext, Scene, load_jsonl
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, session_extremes, settled_open
 from .ranks import SameClockRank, rank_against, same_clock_values
-from .rulers import SigmaRuler, normal_day_sigma, ruled, sigma_anchor
+from .rulers import NO_ANCHOR, SigmaRuler, normal_day_sigma, ruled, sigma_anchor
 from .words import pct, plural, sig
 
 LABELS = ("context.event_clock", "event.reaction", "event.release_clock_10m", "event.statement_and_presser",
@@ -44,7 +44,6 @@ DARK = {"news.intraday_headline": "no headline feed writes into state (a right-e
 CALENDAR_LABELS = ("context.event_clock", "event.release_clock_10m", "event.reaction", "event.statement_and_presser")
 CALENDAR_GATES = ("event_clock", "release_in_lane", "move_reaction_path")
 SHOCK_LABELS = ("shock.burst", "shock.vs_day_range", "shock.cross_asset")
-NO_RULER = "no morning sigma ruler: no diary row by 09:40, no live sigma and no VIX at the settled open"
 
 REACTION_MIN = 15           # a first reaction is the 15 minutes after its start (the statement's, the release's, the burst's)
 FOLLOW_ON = {"FOMC_PRESSER": "FOMC"}   # a follow-on and the release it follows, when due within FOLLOW_ON_MIN of it
@@ -366,7 +365,7 @@ def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> Non
         return
     opened, prior = settled_open(scene.bars), scene.row.get("prior_close")
     if anchor is None:
-        ls.omit(path, NO_RULER)
+        ls.omit(path, NO_ANCHOR)
         return
     if opened is None:
         ls.omit(path, "the settled open (the close of the 09:34 bar) has not finished yet")
@@ -488,8 +487,8 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
             day_events: list[Event] | None, ls: LabelSet) -> None:
     if anchor is None:
         for path in SHOCK_LABELS:
-            ls.omit(path, NO_RULER)
-        ls.sleep("shock_state", NO_RULER)
+            ls.omit(path, NO_ANCHOR)
+        ls.sleep("shock_state", NO_ANCHOR)
         return
     since = scene.now - timedelta(minutes=SHOCK_LOOKBACK_MIN)
     recent = [w for w in windows if w.end > since]

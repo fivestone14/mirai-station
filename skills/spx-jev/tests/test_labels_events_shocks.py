@@ -424,7 +424,7 @@ def test_a_burst_at_a_release_names_it_and_an_estimated_ruler_says_so(scene_fact
 def test_the_shock_labels_need_a_ruler(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), anchor_row=False, sigma_live=None)
     _, omitted, gates = labels(s)
-    why = "no morning sigma ruler: no diary row by 09:40, no live sigma and no VIX at the settled open"
+    why = "no morning sigma ruler: no row by 09:40, no live sigma and no VIX at the settled open"
     assert omitted["shock.burst"] == omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == gates["shock_state"] == why
 
 

@@ -26,7 +26,7 @@ from ..state_builder import ROWS_SUBDIR, Scene, row_days
 from .label_set import LabelSet
 from .measures import ET, bars_finished_between, is_num, walls
 from .ranks import rank_against
-from .rulers import SigmaRuler, remaining_straddles, sigma_anchor
+from .rulers import NO_ANCHOR, SigmaRuler, remaining_straddles, sigma_anchor
 from .words import above_or_below, ordinal, pct, plural, sig
 
 LABELS = ("gex.weight_side", "gex.air_to_wall", "gex.wall_thickness", "gex.heaviest_strike_grip", "gex.delta_weight_side",
@@ -50,7 +50,6 @@ BALANCE = {"long_gamma": "call positions carry more gamma than put positions",
            "short_gamma": "put positions carry more gamma than call positions",
            "uncertain": "the two are too close to call"}
 LEANS_TO = {"long_gamma": "calls", "short_gamma": "puts"}
-NO_RULER = "no sigma ruler for today: no morning anchor, live sigma or VIX at the settled open"
 # every diary line starts with its timestamp, so a past day's row can be found without parsing the day
 ROW_TS = re.compile(r'^\{"ts": "([^"]+)"')
 
@@ -325,7 +324,7 @@ def _flip_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: di
         ls.put("gex.flip_distance", "no gamma flip was found in today's same-day book")
         return
     if ruler is None:
-        ls.omit("gex.flip_distance", NO_RULER)
+        ls.omit("gex.flip_distance", NO_ANCHOR)
         return
     then_flip = ((earlier or {}).get("gex_views") or {}).get("flip")
     if not is_num(then_flip):
@@ -393,7 +392,7 @@ def _magnet_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: 
         ls.omit("gex.magnet_distance", "row carries no heaviest strike or top-strike share for today's same-day book")
         return
     if ruler is None:
-        ls.omit("gex.magnet_distance", NO_RULER)
+        ls.omit("gex.magnet_distance", NO_ANCHOR)
         return
     then_magnet = ((earlier or {}).get("gex_views") or {}).get("magnet")
     if not is_num(then_magnet):
@@ -439,7 +438,7 @@ def _settle_pull(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet)
         ls.omit("gex.settle_pull", "row carries no heaviest strike for today's same-day book")
         return
     if ruler is None:
-        ls.omit("gex.settle_pull", NO_RULER)
+        ls.omit("gex.settle_pull", NO_ANCHOR)
         return
     straddles = remaining_straddles(scene, float(magnet) - scene.spot)
     if straddles is None:
@@ -470,7 +469,7 @@ def _charm_wall_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: L
         ls.omit("gex.charm_wall_distance", "row carries no charm wall for today's same-day book")
         return
     if ruler is None:
-        ls.omit("gex.charm_wall_distance", NO_RULER)
+        ls.omit("gex.charm_wall_distance", NO_ANCHOR)
         return
     d = (float(wall) - scene.spot) / ruler.points
     band = (f"within the {CHARM_NEAR_LO} sigma near-low distance" if abs(d) < CHARM_NEAR_LO else
@@ -497,7 +496,7 @@ def _wall_box(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, ls: 
         ls.omit("gex.wall_box", "row carries no heaviest call-side and put-side strikes for today's same-day book")
         return
     if ruler is None:
-        ls.omit("gex.wall_box", NO_RULER)
+        ls.omit("gex.wall_box", NO_ANCHOR)
         return
     if then is None:
         ls.omit("gex.wall_box", f"no diary row from {WINDOW_30_MIN} minutes ago carries the heaviest call-side and put-side strikes")
@@ -520,7 +519,7 @@ def _walls_since_30min(scene: Scene, ruler: SigmaRuler | None, earlier: dict | N
         ls.omit("gex.walls_since_30min", "row carries no heaviest call-side and put-side strikes for today's same-day book")
         return
     if ruler is None:
-        ls.omit("gex.walls_since_30min", NO_RULER)
+        ls.omit("gex.walls_since_30min", NO_ANCHOR)
         return
     if then is None:
         ls.omit("gex.walls_since_30min", f"no diary row from {WINDOW_30_MIN} minutes ago carries the heaviest call-side and put-side strikes")

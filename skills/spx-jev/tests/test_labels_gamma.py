@@ -9,7 +9,8 @@ from datetime import timedelta
 from conftest import at, bars_from_closes, flat_bars, make_row
 from spx_jev.cuts import (BOX_TIGHT_SIGMA, BOX_WIDE_SIGMA, CHARM_NEAR_HI, CHARM_NEAR_LO, FLIP_FAR_SIGMA, MAGNET_NEAR_SIGMA,
                           MAGNET_SEAT_SIGMA, MIN_RANK_SESSIONS, PIN_HUG_HI, PIN_REACH_FAR, SETTLE_SEAT_SIGMA)
-from spx_jev.labels.gamma import NO_RULER, ROW_SLACK_MIN, build_gamma_labels
+from spx_jev.labels.gamma import ROW_SLACK_MIN, build_gamma_labels
+from spx_jev.labels.rulers import NO_ANCHOR
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.row_adapter import labeller_row
 
@@ -152,7 +153,7 @@ def test_a_ruler_that_is_not_the_morning_anchor_is_flagged_and_no_ruler_omits(sc
     no_ruler = [labeller_row(make_row(NOW - timedelta(minutes=30, seconds=40), 7700.0, sigma_live=None, gex_views=book())),
                 labeller_row(make_row(NOW, 7700.0, sigma_live=None, gex_views=book()))]
     _, omitted, _ = labels(replace(scene, rows_today=no_ruler, row=no_ruler[-1]))
-    assert omitted["gex.flip_distance"] == NO_RULER and omitted["gex.magnet_distance"] == NO_RULER
+    assert omitted["gex.flip_distance"] == NO_ANCHOR and omitted["gex.magnet_distance"] == NO_ANCHOR
 
 
 # ---- gex.weight_both_books

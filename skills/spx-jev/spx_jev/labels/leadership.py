@@ -23,7 +23,7 @@ from ..market_context import SYMBOLS
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open, yesterdays_bars
-from .rulers import sigma_anchor
+from .rulers import NO_ANCHOR, sigma_anchor
 from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, against_usual, beyond, beyond_rank, fifth_side, minutes_back,
                          needs_link, needs_move, needs_rank)
 from .words import listed, pct, sig, signed
@@ -47,7 +47,7 @@ def build_leadership_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
     ruler = sigma_anchor(scene)
     why = ("no market-context snapshot today" if scene.market is None else
-           "no sigma ruler today: no morning anchor, live sigma or VIX at the settled open" if ruler is None else None)
+           NO_ANCHOR if ruler is None else None)
     if why:
         for path in LABELS:
             ls.omit(path, why)
