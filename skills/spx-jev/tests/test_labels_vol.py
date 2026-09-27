@@ -353,3 +353,79 @@ def test_the_ruler_is_omitted_without_its_parts(scene_factory, tmp_path):
         "needs the morning sigma ruler and 5 prior sessions' trusted anchors for its normal")
     assert labels(replace(scene, bars=scene.bars[:-5]))[1]["vol.ruler_event_load"] == (
         "needs the straddle left on the row, 30 minutes of session left and six finished 5-minute slices")
+
+
+# ---- vol.realized_vs_clock and vol.realized_vs_clock_rank
+
+def swinging(step: float, n: int = 180, day: str = "2026-09-18") -> list[dict]:
+    """Closes that swing ``step`` points every minute and go nowhere: a realized swing of step x sqrt(30) / 75
+    sigma over 30 minutes, and no real move."""
+    return bars_from_closes([7700.0 + (step if i % 2 else 0.0) for i in range(n)], day=day)
+
+
+def drift(closes: list[float], start: int, points: float = 7.0, minutes: int = 10) -> list[float]:
+    """``closes`` with a steady climb of ``points`` over ``minutes`` from index ``start``, held after."""
+    out = list(closes)
+    for i in range(start, len(out)):
+        out[i] += points * min(i - start + 1, minutes) / minutes
+    return out
+
+
+def realized_scene(scene_factory, today: list[dict], steps=range(1, 11)):
+    """A read at 12:30 against ten prior sessions that swung 1 to 10 points a minute, each with a trusted anchor."""
+    prior = {d: swinging(step, n=390, day=d) for d, step in zip(PRIOR_DAYS, steps)}
+    scene = scene_factory(at(12, 30), today, rows_before=[morning()], prior_bars=prior)
+    return replace(scene, prior_rulers={d: SigmaRuler(SIGMA, "anchor") for d in prior})
+
+
+@pytest.mark.parametrize("step, standing", [
+    (5.5, "more than 5 of the last 10 sessions at this time of day, between the bottom and top fifths"),
+    (9.5, "more than 9 of the last 10 sessions at this time of day, top fifth"),
+    (12.0, "more than every one of the last 10 sessions at this time of day"),
+])
+def test_the_realized_swing_is_ranked_against_the_same_half_hour(scene_factory, step, standing):
+    swing = step * math.sqrt(30) / SIGMA
+    assert labels(realized_scene(scene_factory, swinging(step)))[0]["vol.realized_vs_clock"] == (
+        f"over the last 30 minutes SPX's realized swing was {swing:.2f} sigma, {standing}; price has made no real move "
+        "(0.09 sigma within 10 minutes) today, none for at least the last 30 minutes")
+
+
+def test_a_bottom_fifth_swing_says_when_the_last_real_move_ended(scene_factory):
+    flat = [7700.0] * 180
+    coiled = labels(realized_scene(scene_factory, bars_from_closes(flat, wick=0.0)))[0]["vol.realized_vs_clock"]
+    assert coiled == ("over the last 30 minutes SPX's realized swing was 0.00 sigma, more than 0 of the last 10 sessions at this time "
+                      "of day, bottom fifth; price has made no real move (0.09 sigma within 10 minutes) today, none for at least the last "
+                      "30 minutes")
+    once = labels(realized_scene(scene_factory, bars_from_closes(drift(flat, 165))))[0]["vol.realized_vs_clock"]
+    assert once.endswith("bottom fifth; the last real move (0.09 sigma within 10 minutes) ended 5 minutes ago, inside the last 30 "
+                         "minutes; before that there was none since the open")
+    twice = labels(realized_scene(scene_factory, bars_from_closes(drift(drift(flat, 100), 165))))[0]["vol.realized_vs_clock"]
+    assert twice.endswith("ended 5 minutes ago, inside the last 30 minutes; before that there was none for 65 minutes")
+    long_ago = labels(realized_scene(scene_factory, bars_from_closes(drift(flat, 100))))[0]["vol.realized_vs_clock"]
+    assert "ended 70 minutes ago, at least 30 minutes ago" in long_ago
+
+
+@pytest.mark.parametrize("step, words", [
+    (8.0, "1.45 times the usual pace for this half hour (its median on the last 10 sessions at this time of day), past the 1.3 hot line"),
+    (7.0, "1.27 times the usual pace for this half hour (its median on the last 10 sessions at this time of day), at or under the 1.3 hot line"),
+])
+def test_the_pace_is_the_swing_over_its_same_clock_median(scene_factory, step, words):
+    assert labels(realized_scene(scene_factory, swinging(step)))[0]["vol.realized_vs_clock_rank"] == f"the last 30 minutes moved {words}"
+
+
+def test_the_prior_sessions_count_only_what_they_had_by_the_clock(scene_factory):
+    scene = realized_scene(scene_factory, swinging(5.5))
+    for bars in scene.prior_bars.values():
+        for i, b in enumerate(bars[180:]):            # from the 12:30 bar on: huge swings the 12:30 read must not see
+            b["close"] = 7700.0 + 500.0 * (i % 2)
+    assert "more than 5 of the last 10 sessions" in labels(scene)[0]["vol.realized_vs_clock"]
+
+
+def test_the_realized_swing_is_omitted_without_its_bars_or_its_sessions(scene_factory):
+    early = scene_factory(at(9, 50), swinging(3.0, n=20), rows_before=[morning()])
+    got = labels(early)[1]
+    assert got["vol.realized_vs_clock"] == got["vol.realized_vs_clock_rank"] == (
+        "needs the morning sigma ruler and 25 finished bars in the last 30 minutes")
+    thin = realized_scene(scene_factory, swinging(3.0), steps=range(1, 5))
+    thin = replace(thin, prior_bars=dict(list(thin.prior_bars.items())[:4]))
+    assert labels(thin)[1]["vol.realized_vs_clock"] == "needs 5 prior sessions with bars at this minute, have 4"

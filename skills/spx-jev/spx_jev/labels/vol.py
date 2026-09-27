@@ -12,7 +12,8 @@ from datetime import date, datetime, time, timedelta
 
 from .. import events
 from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, IV_FLAT_BAND_PTS, LOADED_RATIO,
-                    MIN_RANK_SESSIONS, ONE_RATIO, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW, STRADDLE_CHEAP,
+                    MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, ONE_RATIO, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW,
+                    RV_HOT, STRADDLE_CHEAP,
                     STRADDLE_REPRICE_SHARE, STRADDLE_RICH, TOP_FIFTH, VIX_CURVE_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT,
                     VIX_JUMP_PCT_10, VIX_MOVE_PCT, VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN,
                     WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
@@ -20,10 +21,10 @@ from ..sessions import session_close, session_minutes
 from ..state_builder import Scene, row_days
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, settled_open
-from .ranks import SameClockRank, rank_against
+from .ranks import SameClockRank, rank_against, same_clock_values
 from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
 from .vol_sources import DiaryPoint, diary_point, point_at, prior_diary
-from .words import pct, sig, signed
+from .words import pct, plural, sig, signed
 
 LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.move_sides", "iv.term_structure",
           "vol.atm_iv_residual", "vol.front_fear_shift", "vol.realized_vs_clock", "vol.realized_vs_clock_rank", "vol.ruler_event_load",
@@ -45,6 +46,8 @@ REALIZED_MIN_BARS = 25
 VIX_PER_SIGMA = -1.08
 ATM_IV_PER_SIGMA = -2.2
 VIX_PER_GAP_SIGMA = -1.7
+# A real move, for how long the tape has been still: MOVE_RULE_SIGMA within this many minutes (context.time_since_last_move's).
+REAL_MOVE_MIN = 10
 # The VIX that closes the session is read against the early afternoon: the newest row by 14:00.
 AFTERNOON_ANCHOR = time(14, 0)
 # What the tape delivers over 30 minutes: the median high-to-low range of the last six finished 5-minute
@@ -70,6 +73,7 @@ def build_vol_labels(scene: Scene) -> LabelSet:
     _straddle_reprice(scene, today, ls)
     _straddle_vs_clock(scene, today, ls)
     _ruler_event_load(scene, today, ls)
+    _realized_vs_clock(scene, ls)
     return ls
 
 
@@ -510,3 +514,79 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
            f"{verdict}: the same-day straddle prices a 30-minute move {load_words}, higher than {rank.higher_than} of the last "
            f"{rank.of} sessions at {_clock(scene.now)} ({_fifth(rank)}); {event_words}; this morning's sigma ruler is {swell_words}"
            f"{_ruled(anchor)}")
+
+
+# ----------------------------------------------------------------------------- realized movement against the clock
+
+def _realized_30(bars: list[dict], then: datetime, points: float | None) -> float | None:
+    """The last 30 minutes' realized swing at ``then``, in sigma of ``points``: the square root of the summed
+    squared 1-minute close changes of the bars finished in the window (at least REALIZED_MIN_BARS), from the
+    close before it, or from the open when the window reaches back to the bell."""
+    start = then - timedelta(minutes=REALIZED_WINDOW_MIN)
+    win = bars_finished_between(bars, start, then)
+    if not points or len(win) < REALIZED_MIN_BARS:
+        return None
+    before = [b for b in bars if bar_time(b) + ONE_MINUTE <= start]
+    closes = [float(before[-1]["close"]) if before else float(win[0]["open"])] + [float(b["close"]) for b in win]
+    return math.sqrt(sum((b - a) ** 2 for a, b in zip(closes, closes[1:]))) / points
+
+
+def _stillness(scene: Scene, points: float) -> str:
+    """When the last real move (MOVE_RULE_SIGMA within REAL_MOVE_MIN minutes) ended and how long the tape was
+    still before it began, with whether the last one is inside the last 30 minutes."""
+    bars = scene.bars
+    closes = [float(b["close"]) for b in bars]
+    moved = [i for i in range(REAL_MOVE_MIN, len(closes)) if abs(closes[i] - closes[i - REAL_MOVE_MIN]) / points >= MOVE_RULE_SIGMA]
+    rule = f"{MOVE_RULE_SIGMA:g} sigma within {REAL_MOVE_MIN} minutes"
+    if not moved:
+        return f"price has made no real move ({rule}) today, none for at least the last {WINDOW_30_MIN} minutes"
+    last = moved[-1]
+    ago = (scene.now - (bar_time(bars[last]) + ONE_MINUTE)).total_seconds() / 60.0
+    ended = "under a minute ago" if ago < 1 else f"{plural(round(ago), 'minute')} ago"
+    when = f"inside the last {WINDOW_30_MIN} minutes" if ago < WINDOW_30_MIN else f"at least {WINDOW_30_MIN} minutes ago"
+    first = last
+    while first - 1 in moved:
+        first -= 1
+    earlier = [i for i in moved if i < first]
+    if earlier:
+        still = round((bar_time(bars[first]) - bar_time(bars[earlier[-1]])).total_seconds() / 60.0)
+        before = f"before that there was none for {plural(still, 'minute')}"
+    else:
+        before = "before that there was none since the open"
+    return f"the last real move ({rule}) ended {ended}, {when}; {before}"
+
+
+def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
+    """The last 30 minutes' realized swing in the morning anchor, ranked against the same half hour on the
+    prior sessions (vol.realized_vs_clock) and as a multiple of their median (vol.realized_vs_clock_rank)."""
+    ruler = sigma_anchor(scene)
+    value = _realized_30(scene.bars, scene.now, ruler.points if ruler else None)
+    if value is None:
+        for path in ("vol.realized_vs_clock", "vol.realized_vs_clock_rank"):
+            ls.omit(path, f"needs the morning sigma ruler and {REALIZED_MIN_BARS} finished bars in the last {REALIZED_WINDOW_MIN} minutes")
+        return
+    base = same_clock_values(scene, _realized_30)
+    rank = rank_against(value, base)
+    if rank is None:
+        for path in ("vol.realized_vs_clock", "vol.realized_vs_clock_rank"):
+            ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with bars at this minute, have {len(base)}")
+        return
+    if rank.higher_than == rank.of:
+        standing = f"more than every one of the last {rank.of} sessions at this time of day"
+    elif rank.share >= TOP_FIFTH or rank.share <= BOTTOM_FIFTH:
+        standing = f"more than {rank.higher_than} of the last {rank.of} sessions at this time of day, {_fifth(rank)}"
+    else:
+        standing = f"more than {rank.higher_than} of the last {rank.of} sessions at this time of day, between the bottom and top fifths"
+    ls.put("vol.realized_vs_clock",
+           f"over the last {REALIZED_WINDOW_MIN} minutes SPX's realized swing was {sig(value)}, {standing}; "
+           f"{_stillness(scene, ruler.points)}{_ruled(ruler)}")
+    usual = statistics.median(base)
+    if usual <= 0:
+        ls.omit("vol.realized_vs_clock_rank", "the prior sessions' usual swing at this minute is zero")
+        return
+    pace = value / usual
+    words = (f"{max(pace, RV_HOT + 0.01):.2f} times the usual pace for this half hour (its median on the last {len(base)} sessions "
+             f"at this time of day), past the {RV_HOT:g} hot line" if pace > RV_HOT else
+             f"{pace:.2f} times the usual pace for this half hour (its median on the last {len(base)} sessions at this time of day), "
+             f"at or under the {RV_HOT:g} hot line")
+    ls.put("vol.realized_vs_clock_rank", f"the last {REALIZED_WINDOW_MIN} minutes moved {words}{_ruled(ruler)}")
