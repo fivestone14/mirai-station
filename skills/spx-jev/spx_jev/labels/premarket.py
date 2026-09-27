@@ -199,7 +199,7 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
         ls.omit(label, quiet)
         ls.sleep(gate, quiet)
         return
-    uncovered = events.uncovered(tonight.day)
+    uncovered = events.uncovered(tonight.day, tier=events.PRE_OPEN)
     if uncovered:
         unknown = f"where the report window falls is unknown: {uncovered}"
         ls.omit(label, unknown)
@@ -253,7 +253,7 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
         ls.omit(label, reason)
         ls.sleep(gate, reason)
 
-    uncovered = events.uncovered(tonight.day)
+    uncovered = events.uncovered(tonight.day, tier=events.PRE_OPEN)
     if uncovered:
         omit(uncovered)
         return

@@ -224,7 +224,7 @@ def test_the_report_window_is_the_release_only_on_a_report_day(tmp_path, read, c
 
 def test_a_day_the_calendar_does_not_cover_has_no_report_window_to_place_the_gap_in(tmp_path, read, monkeypatch):
     _save_prior(tmp_path, _spread())
-    monkeypatch.setattr(events, "uncovered", lambda day, path=events.CALENDAR: "the event calendar is kept only from 2026-10-01")
+    monkeypatch.setattr(events, "uncovered", lambda day, path=events.CALENDAR, tier=None: "the event calendar is kept only from 2026-10-01")
     ls = read([(_at(8, 0), 0.0), (_at(8, 25), 1.0)])
     assert ls.gates["gap_origin"] == "where the report window falls is unknown: the event calendar is kept only from 2026-10-01"
     assert "overnight.gap_origin" in ls.omitted

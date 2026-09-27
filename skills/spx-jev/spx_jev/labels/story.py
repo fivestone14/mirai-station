@@ -382,7 +382,7 @@ def _since_checkpoint(night: NightSoFar, ls: LabelSet) -> None:
 def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
     """On a day with a report before the open, the report window (its minute to 08:45) against where the night
     stood at the report; release_vs_night checks crossed_price first, tested at 08:45."""
-    uncovered = events.uncovered(night.day)
+    uncovered = events.uncovered(night.day, tier=events.PRE_OPEN)
     if uncovered:
         _omit(ls, "release_vs_night", uncovered)
         return

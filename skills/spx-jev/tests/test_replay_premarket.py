@@ -330,7 +330,7 @@ def labels_state(tmp_path, monkeypatch):
     """Twenty prior nights of small seeded /ES random walks and tonight's /ES rising a percent, evenly: a night
     whose net move ranks in the top third. The calendar covers the day with no report before the open."""
     monkeypatch.setattr(events, "on_day", lambda day, path=None: [])
-    monkeypatch.setattr(events, "uncovered", lambda day, path=None: None)
+    monkeypatch.setattr(events, "uncovered", lambda day, path=None, tier=None: None)
     days, d = [], LABELS_DAY
     while len(days) < 20:
         d = previous_trading_day(d)

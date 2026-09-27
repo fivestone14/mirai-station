@@ -9,9 +9,9 @@ The other tiers are for the event labels (labels/events_shocks.py): the releases
 (PRE_OPEN), the 10:00 and 14:00 releases (DATA_10AM, DATA_2PM) and the Fed officials' scheduled
 remarks (FED_SPEAKER). The learning loop keeps out more than the weights do (learn_exclude, 06's
 guardrails): the 10:00 and 14:00 releases and the Fed speakers too, and the close of a monthly
-expiry and of the month's last session. The calendar is kept by hand from ``covers_from`` through ``covers_through``;
-outside those days a label cannot tell a quiet day from an unlisted one, so it says so instead of
-reading the calendar (uncovered).
+expiry and of the month's last session. The calendar is kept by hand from ``covers_from`` through ``covers_through``,
+its releases before the open from ``pre_open_covers_from``; outside those days a label cannot tell a quiet
+day from an unlisted one, so it says so instead of reading the calendar (uncovered).
 """
 from __future__ import annotations
 
@@ -106,6 +106,7 @@ class Calendar:
     events: tuple[Event, ...]
     covers_through: date | None
     covers_from: date | None = None
+    pre_open_covers_from: date | None = None
 
 
 @lru_cache(maxsize=4)
@@ -130,8 +131,8 @@ def _load(path: str) -> Calendar:
             continue
         out.append(Event(start, end if end and end > start else None, str(e.get("kind", "event")), str(e.get("tier")),
                          e.get("verified") is not False, e.get("q_and_a") is True))
-    through, since = (_day(doc.get(k)) for k in ("covers_through", "covers_from"))
-    return Calendar(tuple(sorted(out, key=lambda r: r.start)), through, since)
+    through, since, pre_open_since = (_day(doc.get(k)) for k in ("covers_through", "covers_from", "pre_open_covers_from"))
+    return Calendar(tuple(sorted(out, key=lambda r: r.start)), through, since, pre_open_since or since)
 
 
 def _day(v: object) -> date | None:
@@ -149,17 +150,18 @@ def _minutes(n: int) -> str:
     return f"{n} minute" + ("" if n == 1 else "s")
 
 
-def uncovered(day: date, path: Path | str = CALENDAR) -> str | None:
+def uncovered(day: date, path: Path | str = CALENDAR, tier: str | None = None) -> str | None:
     """Why the calendar cannot say what ``day`` holds, or None when it can: before its first kept day
     (covers_from, none meaning every earlier day is kept) or past its last (covers_through) an empty day
-    is unknown, not quiet."""
+    is unknown, not quiet. Asked for the ``tier`` PRE_OPEN only, the first kept day is pre_open_covers_from."""
     cal = _load(str(path))
     if cal.covers_through is None:
         return "the event calendar (calendar/events.json) names no last kept day (covers_through)"
     if day > cal.covers_through:
         return f"the event calendar (calendar/events.json) is kept only through {cal.covers_through}: extend it"
-    if cal.covers_from is not None and day < cal.covers_from:
-        return f"the event calendar (calendar/events.json) is kept only from {cal.covers_from}"
+    since = cal.pre_open_covers_from if tier == PRE_OPEN else cal.covers_from
+    if since is not None and day < since:
+        return f"the event calendar (calendar/events.json) is kept only from {since}"
     return None
 
 

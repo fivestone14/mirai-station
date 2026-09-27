@@ -74,8 +74,8 @@ def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock()
 
 
 def test_the_releases_before_the_open_reach_back_to_august_each_from_its_source():
-    """August is listed ahead of covers_from: story.release_minute reads these rows on any day, while a label that asks
-    events.uncovered first sees them only from covers_from."""
+    """August is listed ahead of covers_from, from pre_open_covers_from: the premarket lane's report labels, which ask
+    events.uncovered for the pre_open tier, read them from there; every other event label from covers_from."""
     events._load.cache_clear()
     doc = json.loads(events.CALENDAR.read_text(encoding="utf-8"))
     rows = [e for e in doc["events"] if e["tier"] == events.PRE_OPEN]
@@ -141,3 +141,6 @@ def test_a_day_before_the_calendars_first_kept_day_is_unknown_not_quiet():
     events._load.cache_clear()
     assert events.uncovered(date(2026, 8, 6)) == "the event calendar (calendar/events.json) is kept only from 2026-09-01"
     assert events.uncovered(date(2026, 9, 1)) is None
+    assert events.uncovered(date(2026, 8, 6), tier=events.PRE_OPEN) is None
+    assert events.uncovered(date(2026, 7, 31), tier=events.PRE_OPEN) == \
+        "the event calendar (calendar/events.json) is kept only from 2026-08-01"

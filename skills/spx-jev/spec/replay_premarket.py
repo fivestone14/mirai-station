@@ -227,7 +227,7 @@ def replay_day(state_dir: Path, doc: dict, day: date) -> tuple[list[dict], dict]
     """Every checkpoint's read of one night, and what SPX did after the open in the ruler its reads stamped."""
     reads = [read(state_dir, doc, day, c) for c in premarket.checkpoints(day)]
     ruler = next((r["ruler"] for r in reversed(reads) if "ruler" in r), None)
-    return reads, {"day": day.isoformat(), "calendar": events.uncovered(day), **outcome(state_dir, day, ruler)}
+    return reads, {"day": day.isoformat(), "calendar": events.uncovered(day, tier=events.PRE_OPEN), **outcome(state_dir, day, ruler)}
 
 
 def replayable_days(state_dir: Path, first: date | None, last: date | None, now: datetime) -> list[date]:

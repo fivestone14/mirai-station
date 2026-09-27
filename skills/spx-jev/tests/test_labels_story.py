@@ -71,7 +71,7 @@ def calendar(monkeypatch):
     """Today's pre-open reports as a test sets them (``set_rows([(time, kind), ...])``); none by default."""
     rows: list[events.Event] = []
     monkeypatch.setattr(events, "on_day", lambda day, path=None: [e for e in rows if e.start.date() == day])
-    monkeypatch.setattr(events, "uncovered", lambda day, path=None: None)
+    monkeypatch.setattr(events, "uncovered", lambda day, path=None, tier=None: None)
 
     def set_rows(today: list[tuple[str, str]]) -> None:
         rows[:] = [events.Event(datetime.combine(DAY, time.fromisoformat(t), tzinfo=ET), None, kind, events.PRE_OPEN) for t, kind in today]
