@@ -54,16 +54,15 @@ def build_price_labels(scene: Scene) -> LabelSet:
     _minute_width(scene, ls)
     _vs_prior_sessions(scene, ls)
     _multi_day_position(scene, ls)
+    _momentum(scene, ls)
     anchor = sigma_anchor(scene)
     if anchor is None:
         for path in ANCHORED:
             ls.omit(path, NO_ANCHOR)
         for qid in GATES:
             ls.sleep(qid, NO_ANCHOR)
-        _momentum(scene, ls, None)
         return ls
     move30 = _recent_move(scene, anchor, ls)
-    _momentum(scene, ls, move30)
     _vs_vwap(scene, anchor, ls)
     _vs_prior_close(scene, anchor, ls)
     _afternoon_leg(scene, anchor, move30, ls)
@@ -229,7 +228,7 @@ def _multi_day_position(scene: Scene, ls: LabelSet) -> None:
         ls.put("price.multi_day_position", f"price is in the {third(pos)} third of the last {n} sessions' range, {pct(pos)} of the way up from its low to its high, {edges}")
 
 
-def _momentum(scene: Scene, ls: LabelSet, move30: float | None) -> None:
+def _momentum(scene: Scene, ls: LabelSet) -> None:
     bars, now, sigma = scene.bars, scene.now, scene.sigma
     closes = [float(x["close"]) for x in bars]
     for path, series, name, need in (("momentum.rsi_1min", closes, "1-minute", f"{RSI_PERIOD + 1} finished bars"),
@@ -262,10 +261,14 @@ def _momentum(scene: Scene, ls: LabelSet, move30: float | None) -> None:
             ls.put("momentum.pace", f"the last 10 minutes moved {sig(last)}, {word} the 10 minutes before, which moved {sig(prev)}")
 
     judged = ("momentum.closes", "momentum.pauses", "momentum.path_efficiency")
-    if move30 is None:
+    win = bars_finished_between(bars, now - timedelta(minutes=30), now)
+    start = close_at(bars, now - timedelta(minutes=30))
+    if len(win) < 20 or start is None:
         for path in judged:
-            ls.omit(path, "no 30-minute move to judge")
+            ls.omit(path, "needs 30 minutes of finished bars")
         return
+    # built before the set, so the half hour's move is judged on the row's sigma, not price.recent_move's anchor
+    move30 = (scene.spot - start) / sigma
     if abs(move30) < MOVE_RULE_SIGMA:
         # a quiet read is a fact, not a gap: the questions that read these labels have a
         # "no move" answer, and leaving the labels out would skip those questions instead
@@ -275,19 +278,9 @@ def _momentum(scene: Scene, ls: LabelSet, move30: float | None) -> None:
         return
     up = move30 > 0
     word = "up" if up else "down"
-    last5 = bars[-5:]
-    if len(last5) < 5:
-        ls.omit("momentum.closes", "needs five finished bars")
-    else:
-        agree = sum(1 for x in last5 if (float(x["close"]) > float(x["open"])) == up and float(x["close"]) != float(x["open"]))
-        ls.put("momentum.closes", f"of the last five 1-minute bars, {agree} closed in the direction of the move, which is {word}")
+    agree = sum(1 for x in bars[-5:] if (float(x["close"]) > float(x["open"])) == up and float(x["close"]) != float(x["open"]))
+    ls.put("momentum.closes", f"of the last five 1-minute bars, {agree} closed in the direction of the move, which is {word}")
 
-    win = bars_finished_between(bars, now - timedelta(minutes=30), now)
-    start = close_at(bars, now - timedelta(minutes=30))
-    if len(win) < 20 or start is None:
-        ls.omit("momentum.pauses", "needs 30 minutes of finished bars")
-        ls.omit("momentum.path_efficiency", "needs 30 minutes of finished bars")
-        return
     ext = start                 # the move's running extreme
     last_ext = -1               # index of the bar that last pushed it
     longest_stall = 0

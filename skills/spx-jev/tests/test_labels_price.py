@@ -445,6 +445,18 @@ def test_without_a_morning_ruler_the_anchored_labels_say_why_and_the_gates_sleep
     assert {q: gates[q] for q in GATES} == {q: NO_ANCHOR for q in GATES}
 
 
+def test_the_momentum_reads_keep_the_rows_sigma_with_or_without_a_morning_ruler(scene_factory):
+    """Built before the set, they judge their own half hour on the row's sigma: a 12-point climb is 0.16 sigma
+    on the row's 75 whether the day has no morning ruler or one of 200, on which it would be under the move rule."""
+    closes = [7700.0] * 60 + [7700.0 + 0.4 * (k + 1) for k in range(30)]
+    no_ruler = scene_factory(at(11, 0, ss=5), bars_from_closes(closes), row_over={"sigma_live": None})
+    wide_ruler = scene_factory(at(11, 0, ss=5), bars_from_closes(closes), rows_before=[make_row(at(9, 31), 7700.0, sigma=200.0)])
+    judged = ("momentum.closes", "momentum.pauses", "momentum.path_efficiency")
+    reads = [{p: _labels(scene)[0].get(p) for p in judged} for scene in (no_ruler, wide_ruler)]
+    assert reads[0] == reads[1]
+    assert reads[0]["momentum.closes"] == "of the last five 1-minute bars, 5 closed in the direction of the move, which is up"
+
+
 def test_an_estimated_ruler_is_named_in_the_sentence(scene_factory):
     state, _, _ = _labels(scene_factory(at(11, 0, ss=5), flat_bars(90)))
     assert state["price.recent_move"].endswith("(ruler estimated)") and state["price.day_move"].endswith("(ruler estimated)")
