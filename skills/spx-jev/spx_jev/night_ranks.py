@@ -14,15 +14,19 @@ normal night:
 - ``unmeasured``: a price the measure needs is missing, or its file is.
 
 At least OVERNIGHT_RANK_MIN_NIGHTS usable nights are needed; with fewer the measure is omitted with the
-reason, never guessed. ``es_move`` ranks the move from the prior close to the read; ``window_move`` and
-``prior_window_nights`` rank any stretch of the night (story.py) against the same stretch on the last
-nights, for the premarket lane's labels.
+reason, never guessed. ``night_move`` measures the move from the prior close to the read on one contract
+and ``ranked_move`` (``es_move`` over the store) ranks it; ``window_move`` and ``prior_window_nights`` rank
+any stretch of the night (story.py) against the same stretch on the last nights, and ``window_range`` and
+``prior_window_ranges`` its high-low range, for the premarket lane's labels. A rank reads the last nights'
+files through a small cache keyed on each file's size and time, so the many measures of one read load
+each night once.
 """
 from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Callable
 
@@ -34,6 +38,7 @@ from .state_builder import load_jsonl
 
 SHORT_NIGHT_SHARE = 0.9          # of the median coverage of the symbol's candidate nights
 READ_STALE_MIN = 10              # the read price must come from a bar that finished at most this long before the read
+CACHED_NIGHT_FILES = 2 * (NIGHT_RANK_COUNT + 1)   # two symbols' last nights and tonight: /ES and /ZN on one read
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,22 @@ class Move:
     end_at: datetime
 
 
+@dataclass(frozen=True)
+class Range:
+    """The root's high-low range in percent of its low over a stretch of one night, with when its first and
+    last bars finished, so a roll between them can be refused as a Move's is."""
+    pct: float
+    start_at: datetime
+    end_at: datetime
+
+
+@dataclass(frozen=True)
+class RankedMove:
+    """A move from the prior close to the read, on one contract, and its size's rank against the last nights'."""
+    move: Move
+    rank: NightRank
+
+
 def _price_at(rows: list[dict], symbol: str, until: datetime, exact: bool) -> tuple[float, datetime] | None:
     """The close of the newest bar finished by ``until`` (1-minute bars first, else 5-minute), with the
     moment it finished; ``exact`` asks for a bar finishing at ``until`` itself."""
@@ -146,8 +167,41 @@ def window_move(rows: list[dict], symbol: str, start: datetime, end: datetime) -
     return Move(100.0 * (b[0] / a[0] - 1.0), a[1], b[1])
 
 
-def _prior(state_dir: Path, day: date, symbol: str, table: dict, move_of: Callable[[list[dict], date], Move | None],
-           until: Callable[[date], datetime], measure: Callable[[Move], float]) -> list[Night]:
+def window_range(rows: list[dict], symbol: str, start: datetime, end: datetime) -> Range | None:
+    """``symbol``'s high-low range over the bars of either resolution that start at or after ``start`` and
+    finish by ``end``, a bar flagged by the store's sanity check left out; None without a bar."""
+    inside = []
+    for r in rows:
+        if r["symbol"] != symbol or r["bar_minutes"] not in overnight.BAR_MINUTES or r.get("flags"):
+            continue
+        begin = datetime.fromisoformat(r["ts"])
+        if begin >= start and begin + timedelta(minutes=r["bar_minutes"]) <= end:
+            inside.append((begin + timedelta(minutes=r["bar_minutes"]), r))
+    if not inside:
+        return None
+    low, high = min(r["low"] for _, r in inside), max(r["high"] for _, r in inside)
+    if low <= 0:
+        return None
+    return Range(100.0 * (high / low - 1.0), min(t for t, _ in inside), max(t for t, _ in inside))
+
+
+@lru_cache(maxsize=CACHED_NIGHT_FILES)
+def _cached_rows(path: str, mtime_ns: int, size: int, symbol: str) -> tuple[dict, ...]:
+    return tuple(r for r in load_jsonl(Path(path)) if r["symbol"] == symbol)
+
+
+def _night_rows(state_dir: Path, day: date, symbol: str) -> tuple[dict, ...]:
+    """``symbol``'s rows of the night into ``day``, loaded once while its file is unchanged; empty without a file."""
+    path = overnight.night_path(state_dir, day.isoformat())
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return ()
+    return _cached_rows(str(path), st.st_mtime_ns, st.st_size, symbol)
+
+
+def _prior(state_dir: Path, day: date, symbol: str, table: dict, move_of: Callable[[list[dict], date], Move | Range | None],
+           until: Callable[[date], datetime], measure: Callable[[Move | Range], float]) -> list[Night]:
     """``measure`` of ``move_of`` on each of the NIGHT_RANK_COUNT trading days before ``day``, oldest first, each
     skipped for a roll, a holiday, a short night (coverage up to ``until``) or a missing price."""
     days, d = [], day
@@ -156,8 +210,7 @@ def _prior(state_dir: Path, day: date, symbol: str, table: dict, move_of: Callab
         days.append(d)
     out = []
     for d in reversed(days):
-        rows = load_jsonl(overnight.night_path(state_dir, d.isoformat()))
-        mine = [r for r in rows if r["symbol"] == symbol]
+        mine = list(_night_rows(state_dir, d, symbol))
         move = move_of(mine, d) if mine else None
         coverage = _coverage(mine, symbol, d, until(d)) if mine else None
         if overnight.holiday_night(d):
@@ -188,6 +241,16 @@ def prior_window_nights(state_dir: Path, day: date, symbol: str, window: Callabl
     return _prior(state_dir, day, symbol, table, move_of, lambda d: window(d)[1], measure)
 
 
+def prior_window_ranges(state_dir: Path, day: date, symbol: str, window: Callable[[date], tuple[datetime, datetime]],
+                        table: dict) -> list[Night]:
+    """``window_range`` over ``window(d)`` in percent, the same stretch of each of the last NIGHT_RANK_COUNT nights
+    before ``day``, each skipped like prior_nights'."""
+    def range_of(rows: list[dict], d: date) -> Range | None:
+        start, end = window(d)
+        return window_range(rows, symbol, start, end)
+    return _prior(state_dir, day, symbol, table, range_of, lambda d: window(d)[1], lambda r: r.pct)
+
+
 def _coverage(rows: list[dict], symbol: str, day: date, until: datetime) -> float | None:
     """The share of the night's expected bars on file up to ``until``, at the finest resolution saved."""
     start = overnight.night_window(day)[0]
@@ -197,29 +260,67 @@ def _coverage(rows: list[dict], symbol: str, day: date, until: datetime) -> floa
     return None
 
 
+def quoted_contract(state_dir: Path, day: date, symbol: str, now: datetime) -> str | None:
+    """The contract Schwab quoted ``symbol`` under at the newest save of the night into ``day`` made by ``now``
+    (the manifest's ``contract_quoted``), for rolls.pending; None when no save by then quoted it."""
+    saves = [line for line in load_jsonl(overnight.manifest_path(state_dir))
+             if line.get("day") == day.isoformat() and datetime.fromisoformat(line["saved_at"]) <= now]
+    if not saves:
+        return None
+    newest = max(saves, key=lambda line: datetime.fromisoformat(line["saved_at"]))
+    return ((newest.get("symbols") or {}).get(symbol) or {}).get("contract_quoted")
+
+
+def roll_pending(table: dict, symbol: str, quoted: str | None) -> str:
+    """Why ``symbol``'s moves cannot be measured yet when Schwab quotes a contract the roll table has not rolled
+    to (rolls.pending); empty when it has."""
+    if not rolls.pending(table, symbol, quoted):
+        return ""
+    return (f"Schwab quotes {quoted} but the roll table is still on {table['current'].get(symbol)}: "
+            "the switch is not located yet, so the prior close may be on the old contract")
+
+
+def night_move(rows: list[dict], symbol: str, day: date, read_clock: time, table: dict,
+               quoted: str | None = None) -> tuple[Move | None, str]:
+    """``symbol``'s move in ``rows`` (the night's store rows) from its prior close to ``read_clock`` on ``day``, on
+    one contract; ``(None, why)`` when the quote shows a roll the table has not located, a price is missing
+    or the night spans a roll."""
+    pending = roll_pending(table, symbol, quoted)
+    if pending:
+        return None, pending
+    move = overnight_move(rows, symbol, day, read_clock)
+    if move is None:
+        return None, f"no {symbol} price at its prior close or within the last {READ_STALE_MIN} minutes in the overnight store"
+    if not rolls.same_contract(table, symbol, move.start_at, move.end_at):
+        return None, (f"{symbol} rolled to the next contract overnight, so the move from the prior close "
+                      "is the spread between two contracts")
+    return move, ""
+
+
+def ranked_move(rows: list[dict], state_dir: Path, day: date, symbol: str, read_clock: time, table: dict,
+                quoted: str | None = None) -> tuple[RankedMove | None, str]:
+    """night_move with its size ranked against the last NIGHT_RANK_COUNT nights' moves to the same minute;
+    ``(None, why)`` as night_move's, or when too few nights rank."""
+    move, why = night_move(rows, symbol, day, read_clock, table, quoted)
+    if move is None:
+        return None, why
+    rank, why = rank_night(abs(move.pct), prior_nights(state_dir, day, symbol, read_clock, table, lambda m: abs(m.pct)))
+    if rank is None:
+        return None, f"overnight move not ranked: {why}"
+    return RankedMove(move, rank), ""
+
+
 def es_move(state_dir: Path, now: datetime, quoted: str | None = None) -> dict:
-    """overnight.es_move's measure at ``now``: /ES from its prior close to the read on the same contract,
-    its size ranked against the last NIGHT_RANK_COUNT nights' moves to the same minute. ``{"move_pct", "side",
+    """overnight.es_move's measure at ``now`` over the store (ranked_move on /ES): ``{"move_pct", "side",
     "rank": {"band", "larger_than", "of"}, "words"}``, or ``{"omitted": reason}``."""
     day, read_clock = now.date(), now.astimezone(overnight.ET).time().replace(second=0, microsecond=0)
     if not is_trading_day(day):
         return {"omitted": f"{day} is not a market day"}
-    folder = Path(state_dir) / overnight.OVERNIGHT_SUBDIR
-    table = rolls.load(folder)
-    if rolls.pending(table, "/ES", quoted):
-        return {"omitted": f"Schwab quotes {quoted} but the roll table is still on {table['current'].get('/ES')}: "
-                           "the switch is not located yet, so the prior close may be on the old contract"}
-    rows = [r for r in load_jsonl(overnight.night_path(state_dir, day.isoformat())) if r["symbol"] == "/ES"]
-    move = overnight_move(rows, "/ES", day, read_clock)
-    if move is None:
-        return {"omitted": "no /ES price at yesterday's close or within the last "
-                           f"{READ_STALE_MIN} minutes in the overnight store"}
-    if not rolls.same_contract(table, "/ES", move.start_at, move.end_at):
-        return {"omitted": "the futures rolled to the next contract overnight, so the move from yesterday's close "
-                           "is the spread between two contracts"}
-    rank, why = rank_night(abs(move.pct), prior_nights(state_dir, day, "/ES", read_clock, table, lambda m: abs(m.pct)))
-    if rank is None:
-        return {"omitted": f"overnight move not ranked: {why}"}
+    table = rolls.load(Path(state_dir) / overnight.OVERNIGHT_SUBDIR)
+    ranked, why = ranked_move(list(_night_rows(state_dir, day, "/ES")), state_dir, day, "/ES", read_clock, table, quoted)
+    if ranked is None:
+        return {"omitted": why}
+    move, rank = ranked.move, ranked.rank
     side = "up" if move.pct > 0 else "down" if move.pct < 0 else "unchanged"
     close = move.start_at.strftime("%H:%M")
     return {"move_pct": round(move.pct, 4), "side": side,

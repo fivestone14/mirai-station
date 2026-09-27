@@ -1,6 +1,7 @@
 """The 20-night rank, offline: thirds, the minimum of usable nights, the skip rules, and es_move's guard."""
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -131,3 +132,58 @@ def test_the_same_stretch_is_measured_on_the_last_nights_with_their_skips(tmp_pa
     assert [n.day for n in base] == [d.isoformat() for d in prior]
     assert {n.day: n.skip for n in base if n.skip} == {"2026-09-08": "holiday"}
     assert [round(n.value, 4) for n in base if n.skip is None][:3] == [0.1, 0.2, 0.3]
+
+
+def test_a_stretchs_range_spans_its_bars_of_either_resolution_leaving_flagged_ones_out():
+    t = datetime(2026, 9, 23, 3, 0, tzinfo=ET)
+    rows = [_bar(t - timedelta(minutes=1), 6800.0), dict(_bar(t, 6700.0), high=6710.0, low=6690.0),
+            dict(_bar(t + timedelta(minutes=10), 6705.0), bar_minutes=5, high=6720.0),
+            dict(_bar(t + timedelta(minutes=20), 6000.0), flags=["ohlc_inconsistent"]), _bar(t + timedelta(minutes=59), 6900.0)]
+    rng = night_ranks.window_range(rows, "/ES", t, t + timedelta(minutes=59))
+    assert round(rng.pct, 4) == round(100 * (6720 / 6690 - 1), 4)
+    assert (rng.start_at, rng.end_at) == (t + timedelta(minutes=1), t + timedelta(minutes=15))
+    assert night_ranks.window_range(rows, "/ZN", t, t + timedelta(hours=1)) is None
+
+
+def test_the_same_stretchs_range_is_measured_on_the_last_nights(tmp_path):
+    for k, d in enumerate(_nights_before(DAY, 20)):
+        _save(tmp_path, d, 0.1 * (k + 1))
+
+    def window(d: date) -> tuple[datetime, datetime]:
+        return overnight.night_window(d)[0], datetime.combine(d, time(9, 27), tzinfo=ET)
+    base = night_ranks.prior_window_ranges(tmp_path, DAY, "/ES", window, rolls.load(tmp_path))
+    assert {n.day: n.skip for n in base if n.skip} == {"2026-09-08": "holiday"}
+    assert [round(n.value, 4) for n in base if n.skip is None][:2] == [0.1, 0.2]
+
+
+def test_the_quoted_contract_is_the_newest_saves_by_the_read(tmp_path):
+    lines = [{"day": DAY.isoformat(), "saved_at": f"{DAY}T{hm}:00-04:00", "symbols": {"/ES": {"contract_quoted": c}}}
+             for hm, c in (("09:26", "/ESZ26"), ("16:20", "/ESH27"))]
+    overnight.manifest_path(tmp_path).parent.mkdir(parents=True)
+    overnight.manifest_path(tmp_path).write_text("".join(json.dumps(line) + "\n" for line in lines))
+    assert night_ranks.quoted_contract(tmp_path, DAY, "/ES", datetime.combine(DAY, time(9, 28), tzinfo=ET)) == "/ESZ26"
+    assert night_ranks.quoted_contract(tmp_path, DAY, "/ES", datetime.combine(DAY, time(17, 0), tzinfo=ET)) == "/ESH27"
+    assert night_ranks.quoted_contract(tmp_path, DAY, "/ES", datetime.combine(DAY, time(9, 0), tzinfo=ET)) is None
+    assert night_ranks.quoted_contract(tmp_path, DAY, "/ZN", datetime.combine(DAY, time(17, 0), tzinfo=ET)) is None
+
+
+def test_a_rewritten_night_is_read_afresh(tmp_path):
+    for d in _nights_before(DAY, 20):
+        _save(tmp_path, d, 0.2)
+    _save(tmp_path, DAY, 0.3)
+    now = datetime.combine(DAY, time(9, 27), tzinfo=ET)
+    assert night_ranks.es_move(tmp_path, now)["move_pct"] == 0.3
+    _save(tmp_path, DAY, -0.45)
+    assert night_ranks.es_move(tmp_path, now)["move_pct"] == -0.45
+
+
+def test_ranked_move_reads_the_rows_it_is_given(tmp_path):
+    for k, d in enumerate(_nights_before(DAY, 20)):
+        _save(tmp_path, d, 0.05 * (k + 1))
+    close = overnight.night_window(DAY)[0] + timedelta(minutes=overnight.NIGHT_LEAD_MIN)
+    rows = [_bar(close - timedelta(minutes=1), 6700.0), _bar(datetime.combine(DAY, time(9, 20), tzinfo=ET), 6700.0 * 1.0055)]
+    ranked, why = night_ranks.ranked_move(rows, tmp_path, DAY, "/ES", time(9, 27), rolls.load(tmp_path))
+    assert why == "" and round(ranked.move.pct, 4) == 0.55
+    assert (ranked.rank.larger_than, ranked.rank.of) == (9, 19)                         # Labor Day's 0.50% night sits out
+    ranked, why = night_ranks.ranked_move(rows, tmp_path, DAY, "/ES", time(9, 40), rolls.load(tmp_path))
+    assert ranked is None and why == "no /ES price at its prior close or within the last 10 minutes in the overnight store"
