@@ -6,6 +6,8 @@ does not ask at a read holds too: a day constant (asked at 09:35, or at 10:02, a
 question held from its other lane until the hour its schedule names, and an hourly one while young.
 A day constant whose schedule says ``then`` (re-asked when the code's answer changes) is asked again
 on the first read whose code answer differs from the one the code had when its held answer was given.
+Only this side is built: nothing works out a code answer yet, so the service passes plan() none and
+stores none in last_asked.json, and such a question is held all day.
 
     python3 -m spx_jev.cadence                     # the table for the newest day with records
     python3 -m spx_jev.cadence --day 2026-09-29 --write    # recount that day and write cadence.json
@@ -39,6 +41,7 @@ Files, under state/spx_jev/:
     cadence.json      {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
     last_asked.json   {qid: {"row_ts", "answer", "moved", "code_answer"}}   the newest fresh answer per question, how far it
                       moved from the one before, and the code's answer at that read for a question that has one
+                      (not written yet: see the note on ``then`` above)
 """
 from __future__ import annotations
 
