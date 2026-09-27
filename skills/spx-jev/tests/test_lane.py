@@ -57,7 +57,8 @@ def test_the_tape_job_fires_at_the_lanes_reads_and_its_close_out():
 @pytest.mark.parametrize("name, script, lane", [("com.mirai-station.spx-jev", "run-spx-jev.sh", None),
                                                 ("com.mirai-station.spx-jev-tape", "run-spx-jev.sh", "tape"),
                                                 ("com.mirai-station.spx-jev-bars", "run-spx-jev-bars.sh", None),
-                                                ("com.mirai-station.spx-jev-context", "run-spx-jev-context.sh", None)])
+                                                ("com.mirai-station.spx-jev-context", "run-spx-jev-context.sh", None),
+                                                ("com.mirai-station.spx-jev-save-day", "run-spx-jev-save-day.sh", None)])
 def test_each_staged_job_runs_its_repo_script_and_logs_to_its_own_files(name, script, lane):
     job = _job(name)
     command = job["ProgramArguments"][2]
@@ -68,8 +69,10 @@ def test_each_staged_job_runs_its_repo_script_and_logs_to_its_own_files(name, sc
     assert job["EnvironmentVariables"]["TZ"] == "America/New_York" and job["RunAtLoad"] is False
 
 
-def test_the_feeds_run_every_minute_and_the_staged_jobs_are_not_installed():
+def test_the_feeds_run_every_minute_the_day_is_saved_after_the_close_and_the_staged_jobs_are_not_installed():
     assert _job("com.mirai-station.spx-jev-bars")["StartInterval"] == 60
     assert _job("com.mirai-station.spx-jev-context")["StartInterval"] == 60
+    save = _job("com.mirai-station.spx-jev-save-day")["StartCalendarInterval"]
+    assert (save["Hour"], save["Minute"]) == _pacific("16:20")        # after the bars feed's last run and gex-polarity's save
     installer = (REPO / "runtime" / "scripts" / "install-launchd.sh").read_text()
     assert "spx-jev" not in installer and not list((REPO / "runtime" / "launchd").glob("*spx-jev*"))

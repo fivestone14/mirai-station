@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-jev-save-day</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-save-day.sh</string>
+  </array>
+
+  <!-- After the close, once a day: every market-feed symbol's full 1-minute bars for the day to
+       state/spx_jev/context/bars/{date}.jsonl, and SPX's own day to state/spx_jev/bars/{date}.jsonl
+       when that file is short (spx_jev/save_day.py), before Schwab's 34-session window rolls past
+       the day. Market days only; a day on disk is never fetched again, and a missed night is caught
+       up by the next. Fires at 16:20 ET, after the bars feed's last run (16:12) and gex-polarity's
+       16:15 save. Staged, not installed.
+       NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
+       TZ env var below. This box runs on Pacific, so Hour=13 Minute=20 == 13:20 PT == 16:20 ET
+       year-round (PT is ET minus 3h through DST). -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>13</integer>
+    <key>Minute</key>
+    <integer>20</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-jev-save-day.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-jev-save-day.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

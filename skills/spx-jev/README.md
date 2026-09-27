@@ -43,13 +43,14 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32 with the 30- and 60-minute sums; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, one five-way 10-minute sum priced in index points, every question asked afresh, no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. It writes only under `state/spx_jev/lanes/tape/`. |
 | `spx_jev/bars.py` | The Bars Feed | Appends today's finished SPX minute bars to `state/spx_jev/bars/{day}.jsonl` every minute, from the station's Schwab client. Past sessions come from `state/reversion/bars/{day}-SPX.json`, saved after each close. |
 | `spx_jev/market_context.py` | The Market Feed | A snapshot a minute of the market around SPX (NYSE breadth, the VIX family, the ES future, rates, the 11 sector funds, SMH, RSP, QQQ, IWM, SPY and the seven megacaps) to `state/spx_jev/context/{day}.jsonl`, and a backfill of past sessions' minute bars, since Schwab keeps only about 34 sessions. |
+| `spx_jev/save_day.py` | The Day Saver | After the close, every market-feed symbol's full 1-minute day to `state/spx_jev/context/bars/{day}.jsonl`, and SPX's own day to `state/spx_jev/bars/{day}.jsonl` when that file is short; market days only, a day on disk never fetched again, a missed night caught up by the next. |
 | `spx_jev/schwab.py` | The Schwab Link | The two feeds' calls through the station's shared client (REST only, never the lob-flow streamer), batched and spaced. |
 | `questions/spx_live.json`, `questions/spx_hour.json` | The Questions | The placeholder step-2 questions and the two sums. No number is typed into them: every threshold is a name in braces filled from `cuts.py`. |
 | `questions/spx_lane_tape.json`, `questions/spx_lane_hour.json` | The Lane's Questions | The opening lane's two stretch questions (plus a copy of the live weight question) and its five-way 10-minute sum. |
 | `calendar/events.json`, `spx_jev/events.py` | The Calendar | The tier-1 scheduled events (the Fed, rebalance closes, half days), copied from SNDK's calendar less SanDisk's own. |
 | `spec/labels.json` | The Label Spec | All 48 labels with source, logic, cut and a real sentence; a test pins it to the code. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size. |
-| `launchd/*.plist.template`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Four staged jobs and their runners. Not installed. |
+| `launchd/*.plist.template`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Five staged jobs and their runners. Not installed. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars and market context. No network, no host state. |
 
 ## Run it
@@ -68,6 +69,7 @@ returns a probability for each answer option. JEV makes no trading call.
     python3 -m spx_jev.bars                                   # today's finished bars
     python3 -m spx_jev.market_context                         # one market snapshot
     python3 -m spx_jev.market_context --backfill 2026-08-10   # every past session's minute bars since then
+    python3 -m spx_jev.save_day                               # after the close: today's full minute bars, and any missed day
 
 A replay writes into the state directory it is given, archive included, so
 point `--state-dir` at a scratch folder to try one without touching the
@@ -159,7 +161,8 @@ station's records.
   keyed to its read's id; a `close_out` record is the opening lane's calls and
   tally at 10:42. No secret is ever written.
 - `bars/{day}.jsonl` (the bars feed) and `context/{day}.jsonl`,
-  `context/bars/{day}.jsonl` (the market feed and its backfill).
+  `context/bars/{day}.jsonl` (the market feed, and its full days from the
+  backfill and the day saver).
 - `lanes/tape/`: the opening lane's own records, card, grades and weights.
 
 The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
@@ -174,7 +177,7 @@ close-out, `closed_out_at`.
 
 ## The jobs
 
-Four launchd templates are staged in `launchd/` and none is installed. To
+Five launchd templates are staged in `launchd/` and none is installed. To
 hire one, copy it to `runtime/launchd/` as `<label>.plist` and name it in
 `install-launchd.sh` and `uninstall-launchd.sh`.
 
@@ -184,10 +187,13 @@ hire one, copy it to `runtime/launchd/` as `<label>.plist` and name it in
 | `com.mirai-station.spx-jev-tape` | 06:35 to 07:30 every 5 minutes, and 07:42 | `run-spx-jev.sh --lane tape` |
 | `com.mirai-station.spx-jev-bars` | every 60 s, gated to market hours plus 12 minutes after the close | `run-spx-jev-bars.sh` |
 | `com.mirai-station.spx-jev-context` | every 60 s, gated to market hours | `run-spx-jev-context.sh` |
+| `com.mirai-station.spx-jev-save-day` | 13:20, once a day after the close | `run-spx-jev-save-day.sh` |
 
 Each runner exits quietly on weekends and when the market is closed, fails
 loudly when the market-hours check itself cannot run, and stops at
-`SPX_JEV_DISABLE=1`. The key lives only in `skills/spx-jev/.env`
+`SPX_JEV_DISABLE=1`. The day saver runs after the close by design, so it has
+no market-hours gate: the command saves market days only, and only a session
+that has closed. The key lives only in `skills/spx-jev/.env`
 (git-ignored; copy `.env.example`); without it the service runs unsent.
 
 ## Tests
@@ -202,6 +208,3 @@ loudly when the market-hours check itself cannot run, and stops at
   replay until the feed has run, and the backfill has not been run against the
   station.
 - The phone page for the SPX card (the later step) does not exist.
-- Nothing saves the market feed's full-day minute bars after each close; run
-  the backfill by hand, or add a nightly job, before Schwab's 34-session
-  window rolls past a day.
