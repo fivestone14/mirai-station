@@ -1,7 +1,9 @@
 """Steps 3 and 4: answers become sentences, the weights decide who speaks, the sums ride on top."""
 from __future__ import annotations
 
-from spx_jev.ask import load_questions
+import re
+
+from spx_jev.ask import PATH_RE, load_questions
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_30_FLAT_PCT, NEXT_60_FLAT_BAND_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS
 from spx_jev.hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, one_sentence, unit_line, views_of
 from spx_jev.lane import LIVE, TAPE
@@ -12,13 +14,24 @@ BY_ID = {qid: q for g in DOC["groups"] for qid, q in g["questions"].items()}
 UNIT = {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape"}
 
 
-def test_one_sentence_carries_the_question_the_pick_and_how_sure():
-    """The set's questions carry no separate ask line, so the sentence leads with the instructions."""
+def test_one_sentence_carries_the_ask_the_pick_and_how_sure():
     q = BY_ID["leg_vs_day_side"]
     s = one_sentence(q, {"pick": "leg_with_day", "probabilities": {"leg_with_day": 0.98, "quiet": 0.02}})
-    assert s == f"{q['instructions']} leg with day, JEV was 98% sure"
+    assert s == "Did the latest leg run with or against the day's side of yesterday's close? leg with day, JEV was 98% sure"
     held = one_sentence(BY_ID["tick_lean_vs_usual"], {"pick": "buying", "probabilities": {"buying": 0.8}, "held_from": "2026-09-18T11:02:14-04:00"})
     assert held.endswith("(held since 11:02 ET, not re-asked)")
+
+
+def test_every_question_asks_in_one_short_plain_sentence():
+    """What the sums read an answer after: one question, no label path, no option name, its window filled."""
+    label_path = re.compile(r"\b[a-z_]+\.[a-z_0-9]+\b")
+    for lane in (LIVE, TAPE):
+        for g in load_questions(lane.questions, lane.key)["groups"]:
+            for qid, q in g["questions"].items():
+                ask = q["ask"]
+                assert ask.endswith("?") and ask.count("?") == 1 and len(ask.split()) <= 20, (qid, ask)
+                assert not PATH_RE.search(ask) and not label_path.search(ask) and "{" not in ask, (qid, ask)
+                assert not any("_" in o and o in ask for o in q["options"]), (qid, ask)
 
 
 def test_shadow_and_low_weight_answers_are_left_out_with_a_reason():

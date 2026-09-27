@@ -62,7 +62,9 @@ def held_clock(held_from: str) -> str:
 
 
 def one_sentence(q: dict, answer: dict) -> str | None:
-    """'<the ask> <the option, in words>, JEV was 98% sure'. Score answers name their level's words."""
+    """'<the ask> <the option, in words>, JEV was 98% sure'. The ask is the question's one short plain
+    sentence (every question in the set carries one); the instructions, which name the labels JEV read
+    and the order to check the options in, stand in only for a doc written without asks."""
     pick = answer.get("pick")
     if pick is None:
         return None

@@ -43,6 +43,7 @@
      "horizon": "10min_opening",
      "cadence": "once at the 09:35 read on the settled open; answer held as a day constant to 10:30 (code weights it by minutes since the open)",
      "code_answer": true,
+     "ask": "How large was this morning's gap from yesterday's close?",
      "instructions": "Read `gap.size`. How large was this morning's gap between yesterday's close and the settled open, whichever way it went?",
      "options": [
       "none",
@@ -81,6 +82,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:40-10:30 (code weights by minutes-since-open bucket; the 09:50-10:05 bucket carries the effect)",
      "code_answer": true,
+     "ask": "Which side of the settled open does the opening favour now?",
      "instructions": "Read `open.path`. Where price is now decides first. Check rotating first. Which side of the settled open does the opening favour now?",
      "options": [
       "up_firm",
@@ -134,6 +136,7 @@
      },
      "cadence": "every 5 min 09:45-10:30 with a 5-minute window; then every 30-minute read with a 30-minute window",
      "code_answer": true,
+     "ask": "Did price just set a new session high or low, or stall near one?",
      "instructions": "Read `open.fresh_extreme` and `price.day_range_position`. Over the window the label names, did price set a new high or low for the session, or is it sitting near one without setting a new one? Check in order: both_new, new_high, new_low, stalled_near_high, stalled_near_low, middle.",
      "options": [
       "new_high",
@@ -182,6 +185,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:40-10:30",
      "code_answer": true,
+     "ask": "How contested has the settled open been so far?",
      "instructions": "Read `open.settled_open_crosses`. How contested is the settled open so far?",
      "options": [
       "one_sided",
@@ -220,6 +224,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:45-10:30 (asleep while the tape unit is held before 09:45)",
      "code_answer": true,
+     "ask": "How busy is the opening for this time of day?",
      "instructions": "Read `tape.unit_vs_normal` and `range.today_vs_normal`. Check very_busy first. How busy is the opening right now for this time of day?",
      "options": [
       "quiet",
@@ -280,6 +285,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:35-10:30",
      "code_answer": true,
+     "ask": "Since the open, has net volume leaned to buying or selling against a usual morning?",
      "instructions": "Read `breadth.open_net_volume`. Since the open, compared with a usual morning at this minute, has net volume leaned to buying, to selling, or split between NYSE-wide and S&P 500 stocks?",
      "options": [
       "both_buying",
@@ -321,6 +327,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:35-10:30",
      "code_answer": true,
+     "ask": "Since the open, how one-sided has market-wide buying and selling been?",
      "instructions": "Read `breadth.opening_tick`. Since the open, how one-sided has market-wide buying and selling been?",
      "options": [
       "one_sided_buying",
@@ -365,6 +372,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:35-10:30",
      "code_answer": true,
+     "ask": "Which way did the large same-day option trades of the last {window_10_min} minutes lean?",
      "instructions": "Read `options.big_prints_10`. Over the last {window_10_min} minutes, did large single same-day option trades happen, and which way did they lean?",
      "options": [
       "bullish_lean",
@@ -406,6 +414,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:40-10:30",
      "code_answer": true,
+     "ask": "Did new same-day option volume in the last {window_10_min} minutes shift to calls or to puts?",
      "instructions": "Read `options.call_put_shift_10m`. Over the last {window_10_min} minutes, did new same-day option volume lean clearly to calls or to puts compared with the day so far?",
      "options": [
       "shift_to_calls",
@@ -457,6 +466,7 @@
      "cadence": "every 5 min 09:35-10:30, then every 30-minute read",
      "sleep_when": "fewer than {min_rank_sessions} prior sessions at this minute, or a needed option price missing (label omitted)",
      "code_answer": true,
+     "ask": "How steeply are same-day puts priced over calls against recent sessions at this minute?",
      "instructions": "Read `skew.put_tilt_vs_usual`. Compared with the same minute on recent sessions, how steeply are same-day puts priced over same-day calls right now? Check call_tilt first; then the rank words decide.",
      "options": [
       "steep_put_tilt",
@@ -498,6 +508,7 @@
      "horizon": "10min_opening",
      "cadence": "every 5 min 09:40-10:30",
      "code_answer": true,
+     "ask": "Did semiconductors or financials break away from the index in the last {window_10_min} minutes?",
      "instructions": "Read `tells.sector_lead_10m`. Over the last {window_10_min} minutes, after scaling for how much each normally moves, did semiconductors or financials break away from the index, and which way?",
      "options": [
       "both_up",
@@ -549,6 +560,7 @@
      "cadence": "every 5 min 09:40-10:30, awake only when the last 5 minutes' 0DTE premium is in the top fifth for these minutes",
      "sleep_when": "premium rank < {top_fifth}",
      "code_answer": true,
+     "ask": "Which way did the burst of same-day option premium lean?",
      "instructions": "Read `options.premium_burst_5m`. A burst of same-day option premium just traded. Which way did it lean?",
      "options": [
       "burst_bullish",
@@ -588,6 +600,7 @@
      "cadence": "every 5 min 09:40-10:30, awake only when a TICK burst printed in the last 5 minutes",
      "sleep_when": "no TICK burst in the last 5 minutes",
      "code_answer": true,
+     "ask": "Did SPX follow the NYSE TICK's burst to an extreme?",
      "instructions": "Read `breadth.tick_extreme_5m`. NYSE TICK just burst to an extreme for this minute. Did SPX follow it over the same five minutes? Check both_ways first.",
      "options": [
       "buy_burst_followed",
@@ -655,6 +668,7 @@
      "cadence": "once at the 09:35 read on the settled open; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "sleep_when": "|largest single-name contribution| < {heavy_shock_sigma}",
      "code_answer": true,
+     "ask": "Did the rest of the index gap the same way as the heavyweight that moved it?",
      "instructions": "Read `leaders.heavyweight_gap`. One of the largest index stocks moved the index past the shock rule between yesterday's close and the settled open. Did the rest of the index gap the same way, the other way, or barely move?",
      "options": [
       "shock_up_rest_up",
@@ -707,6 +721,7 @@
      },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "code_answer": true,
+     "ask": "Where did the open land against yesterday's high and low?",
      "instructions": "Read `levels.open_vs_prior_range`. Where is the open against yesterday's high and low?",
      "options": [
       "above_prior_high",
@@ -756,6 +771,7 @@
      },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "code_answer": true,
+     "ask": "Did VIX open higher, in line or lower than the overnight gap would leave it?",
      "instructions": "Read `vol.vix_overnight_surprise`. Is VIX's first print today higher, in line, or lower than the overnight gap would normally leave it?",
      "options": [
       "fear_rich",
@@ -802,6 +818,7 @@
      },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "code_answer": true,
+     "ask": "What does the morning news brief add to this morning's gap?",
      "instructions": "Read `news.morning_brief`. Check no_view first. Compared with this morning's gap, what does the morning news brief add?",
      "options": [
       "no_view",
@@ -859,6 +876,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Over the last {window_30_min} minutes, how did price move?",
      "instructions": "Read `price.recent_move`. Over the last {window_30_min} minutes, which describes price?",
      "options": [
       "strong_down",
@@ -904,6 +922,7 @@
      "cadence": "every 30-minute read 10:02-14:32 (sign flips into the close)",
      "code_answer": true,
      "ref_side": "day side from yesterday's close",
+     "ask": "Did the latest leg run with or against the day's side of yesterday's close?",
      "instructions": "Read `price.recent_move` for the last {window_30_min} minutes and `price.vs_prior_close` for where SPX sits against yesterday's close. Check quiet first. Which describes the latest leg?",
      "options": [
       "quiet",
@@ -949,6 +968,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "How was the last half hour's move made?",
      "instructions": "Read `price.recent_move` and `price.move_shape`. Check no_move first, then burst, then choppy. How was the last half hour's move made?",
      "options": [
       "no_move",
@@ -991,6 +1011,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
+     "ask": "Was the last {window_60_min} minutes one-way or two-way?",
      "instructions": "Read `price.hour_one_way`. Which describes the last {window_60_min} minutes?",
      "options": [
       "one_way_up",
@@ -1035,6 +1056,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
+     "ask": "Did the last half hour move, and was its range narrow or wide?",
      "instructions": "Read `range.hour_vs_clock` and `price.recent_move`. Decide first whether the last half hour moved past the move rule. Which situation is it?",
      "options": [
       "quiet_narrow",
@@ -1077,6 +1099,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "So far today, are the moves building or cancelling out?",
      "instructions": "Read `price.day_character`. So far today, have half-hour stretches been larger, similar or smaller than their five-minute pieces would suggest?",
      "options": [
       "moves_building",
@@ -1133,6 +1156,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read 10:02-14:32",
      "code_answer": true,
+     "ask": "Is this morning's gap intact or being lost?",
      "instructions": "Read `gap.size` and `gap.fill_progress`. Where price sits now decides first; the history second. Which describes the gap now?",
      "options": [
       "gap_up_intact",
@@ -1179,6 +1203,7 @@
      "cadence": "every 30-minute read, awake only while code's answer key for gap_side_now is gap_up_losing or gap_down_losing (never JEV's own answer, which would be circular)",
      "sleep_when": "code's answer key for gap_side_now is not gap_up_losing / gap_down_losing",
      "code_answer": false,
+     "ask": "Will price trade back to yesterday's close within the next {window_60_min} minutes?",
      "instructions": "Read `gap.size`, `gap.fill_progress` and `gap.reach_distance`. Within the next {window_60_min} minutes, does price trade at or through yesterday's close?",
      "options": [
       "true",
@@ -1217,6 +1242,7 @@
      "cadence": "every 30-minute read 11:32-14:32, awake only on real-gap days",
      "code_answer": true,
      "ref_side": "gap side",
+     "ask": "From the settled open to late morning, did price go with the gap or fill it?",
      "instructions": "Read `gap.size` and `gap.morning_vs_gap`. From the settled open to the late morning, did price go with this morning's gap or against it, and did it touch yesterday's close?",
      "options": [
       "morning_with_gap",
@@ -1256,6 +1282,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read 10:02-14:32 (not after: the sign flips into the close)",
      "code_answer": true,
+     "ask": "Is SPX's move from yesterday's close from the gap or built today?",
      "instructions": "Read `price.day_move_split` for how far SPX sits from yesterday's close and how much of that came from the opening gap versus trading since the open. Check near_close first.",
      "options": [
       "near_close",
@@ -1301,6 +1328,7 @@
      "cadence": "every 30-minute read from 10:32 (asleep before)",
      "code_answer": true,
      "ref_side": "broken edge side",
+     "ask": "What has price done with the first hour's range since?",
      "instructions": "Read `range.first_hour`. Since the first hour ended, what has price done with its range? Where price is now decides; a price back inside counts as back inside.",
      "options": [
       "inside",
@@ -1345,6 +1373,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Where is price against the usual move-from-the-open band for this minute?",
      "instructions": "Read `open.noise_band`. Where is price against the usual move-from-the-open band for this minute? Check at_an_edge before above or below.",
      "options": [
       "at_an_edge",
@@ -1389,6 +1418,7 @@
      "sleep_when": "last-30 move not toward prior_close past {move_rule_sigma}, or price beyond {close_push_sigma} of it without a cross",
      "code_answer": true,
      "ref_side": "side of yesterday's close price started from",
+     "ask": "Where does the late push stand against yesterday's close?",
      "instructions": "Read `price.prior_close_push`. Price has pushed toward yesterday's close late in the day. Where does it stand against that close now?",
      "options": [
       "crossed_through",
@@ -1446,6 +1476,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "How busy was the last half hour against the same half hour on recent sessions?",
      "instructions": "Read `vol.realized_vs_clock`. How busy was the last half hour compared with the same half hour on recent sessions? Check coiled first.",
      "options": [
       "coiled",
@@ -1490,6 +1521,7 @@
      "horizon": "all",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Is the rest of today priced cheaper or richer than usual for this time of day?",
      "instructions": "Read `vol.straddle_vs_clock`. Compared with a normal session at this time of day, is the options market pricing the rest of today cheaper than usual, about usual, or richer than usual?",
      "options": [
       "cheaper_than_usual",
@@ -1537,6 +1569,7 @@
      },
      "cadence": "every 5 min 09:40-10:30 with a 10-minute window; every 30-minute read from 10:02 with a 30-minute window (the 10:02 read measures VIX since the open)",
      "code_answer": true,
+     "ask": "How much has VIX moved as a share of its level?",
      "instructions": "Read `vol.vix_change_30`. Over the window the label names, how much has VIX moved, in either direction, as a share of its level? The label's line words decide.",
      "options": [
       "still",
@@ -1578,6 +1611,7 @@
      "horizon": "30min and 60min (asked once per horizon)",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "How wide is the flat band against SPX's typical move over the horizon?",
      "instructions": "Read `ruler.flat_band_reach`. For the horizon named, is the flat band narrow, middling or wide compared with how far SPX typically moves over that horizon right now? The opening words decide.",
      "options": [
       "narrow",
@@ -1616,6 +1650,7 @@
      "horizon": "all",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "How does today's range so far compare with a normal day's pace?",
      "instructions": "Read `range.pace_vs_priced`. The label's band words decide. Today's range so far, measured against a one-sigma move for the time elapsed, is it under, near, over or far over that line?",
      "options": [
       "under",
@@ -1657,6 +1692,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:32 (no effect before 10:30)",
      "code_answer": true,
+     "ask": "Is SPY's quote wider or thinner than usual for this time of day?",
      "instructions": "Read `liquidity.spy_quote`. Is SPY's quote wide or its displayed size thin compared with its usual for this time of day?",
      "options": [
       "wide_spread",
@@ -1698,6 +1734,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
+     "ask": "Did the last {window_30_min} minutes reprice the rest of today richer or cheaper than the clock?",
      "instructions": "Read `vol.straddle_reprice_30`. Over the last {window_30_min} minutes, did the options market reprice the rest of today richer or cheaper than the clock alone would have left it?",
      "options": [
       "repriced_cheaper",
@@ -1737,6 +1774,7 @@
      "cadence": "every 30-minute read from 10:32, awake only while price is more than the move rule from the day's average price",
      "sleep_when": "|spot - vwap| <= {move_rule_sigma}",
      "code_answer": false,
+     "ask": "Will price trade at the day's volume-weighted average within the next {window_30_min} minutes?",
      "instructions": "Read `price.vs_vwap` and `price.vwap_reach`. Within the next {window_30_min} minutes, does price trade at the day's volume-weighted average price?",
      "options": [
       "true",
@@ -1789,6 +1827,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did VIX move more or less fearfully than the SPX move explains?",
      "instructions": "Read `vol.vix_vs_price`. Over the last {window_30_min} minutes, did VIX move more fearfully than the SPX move alone explains, less fearfully, or in line? The opening words decide.",
      "options": [
       "fear_ahead_of_price",
@@ -1827,6 +1866,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did VVIX stir beyond what the VIX and SPX moves explain?",
      "instructions": "Read `vol.vvix_vs_vix`. Over the last {window_30_min} minutes, how much did VVIX move beyond what the VIX move and the SPX move explain, either direction?",
      "options": [
       "still",
@@ -1869,6 +1909,7 @@
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ref_side": "last-30 move side",
+     "ask": "Did SPX move, and did VVIX rise or fall with it?",
      "instructions": "Read `vol.vvix_with_move`. Do not say which way SPX went. Over the last {window_30_min} minutes, did SPX move past the pairing rule, and did VVIX rise or fall with that move?",
      "options": [
       "move_vvix_up",
@@ -1907,6 +1948,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did nine-day fear rise or fall against the VIX?",
      "instructions": "Read `vol.front_fear_shift`. Over the last {window_30_min} minutes, did nine-day fear rise against the VIX, fall against it, or hold? The opening words decide.",
      "options": [
       "front_rising",
@@ -1945,6 +1987,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did downside protection get dearer or cheaper than the SPX move explains?",
      "instructions": "Read `skew.shift_vs_price`. Over the last {window_30_min} minutes, did same-day downside protection get dearer compared with upside bets by more than the SPX move alone explains, cheaper, or in line?",
      "options": [
       "puts_bid_up",
@@ -1983,6 +2026,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did same-day at-the-money vol move more or less than the price move explains?",
      "instructions": "Read `vol.atm_iv_residual`. Did same-day at-the-money vol move more or less than the price move explains?",
      "options": [
       "vol_rich_vs_price",
@@ -2048,6 +2092,7 @@
      "cadence": "every 30-minute read from 10:02; in the opening lane once at 09:35 and held (release_in_lane carries the 10-minute clock)",
      "sleep_when": "no scheduled event today, or every event came out beyond the digest window",
      "code_answer": true,
+     "ask": "Where does this moment sit against today's scheduled events?",
      "instructions": "Read `context.event_clock`. Where does this moment sit against today's scheduled events? The first match in this order wins: due_or_under_way, released_recently, fed_speaker_window, event_later_today, released_before_open.",
      "options": [
       "due_or_under_way",
@@ -2092,6 +2137,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Where does today sit in the cycle of major scheduled releases?",
      "instructions": "Read `calendar.event_cycle`. Where does today sit in the cycle of major scheduled releases (jobs, consumer prices, the Fed decision)? The first match in the order listed wins.",
      "options": [
       "eve_of_fed",
@@ -2134,6 +2180,7 @@
      "cadence": "every 5 min 09:35-10:30, awake only when a release or speaker falls in the window",
      "sleep_when": "nothing scheduled due within {window_10_min} minutes or started within the last {window_10_min}",
      "code_answer": true,
+     "ask": "Which scheduled release or Fed speaker falls inside this window?",
      "instructions": "Read `event.release_clock_10m`. A scheduled release or Fed speaker is inside this window. Check in order: just_out, data_due_inside, speaker_due_inside.",
      "options": [
       "data_due_inside",
@@ -2172,6 +2219,7 @@
      "horizon": "all",
      "cadence": "every other 30-minute read (hourly), from 10:02",
      "code_answer": true,
+     "ask": "Is today's priced move swollen or compressed, and is an event behind it?",
      "instructions": "Read `vol.ruler_event_load` with `context.event_clock`. Check in order: released_after_event, loaded_before_event, swollen_no_event, compressed, normal. Is today's options-priced move swollen by an event still to come, just released by an event that happened, swollen with no event, compressed, or normal?",
      "options": [
       "loaded_before_event",
@@ -2218,6 +2266,7 @@
      "horizon": "all",
      "cadence": "the 10:02 read, then only when the answer changes",
      "code_answer": true,
+     "ask": "How is the VIX curve shaped against its usual?",
      "instructions": "Read `vol.term_structure`. Check fixed levels first: front_inverted, inverted, flat. Then compared with the last sessions, is near-term fear flatter than usual, usual, or steeper?",
      "options": [
       "front_inverted",
@@ -2265,6 +2314,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read, awake only while the stress label is written",
      "code_answer": true,
+     "ask": "What kind of selloff is this stress day?",
      "instructions": "Read `vol.stress_path`. The label is written only on stress days. Check in order: liquidation, exhaustion, bounce_not_believed, orderly_decline. Is the selloff a liquidation, exhausting, a bounce the fear gauge does not believe, or orderly?",
      "options": [
       "orderly_decline",
@@ -2323,6 +2373,7 @@
      "horizon": "all",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Which way do today's same-day options books lean at the current price?",
      "instructions": "Read `gex.book_balance` and `gex.balance_vs_yesterday`. Which describes today's same-day options book at the current price? Check in order: balanced, the two split options, tipped_overnight, then the agreed options.",
      "options": [
       "balanced",
@@ -2372,6 +2423,7 @@
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "price's side of the flip",
+     "ask": "How far is price from the gamma flip?",
      "instructions": "Read `gex.flip_distance`. Do not say which side of the flip price is on. Check no_flip first, then crossed_recently, then the distance. How far is price from the gamma flip?",
      "options": [
       "no_flip",
@@ -2414,6 +2466,7 @@
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "last-30 move side",
+     "ask": "Did price move, and which way do the options books lean?",
      "instructions": "Read `price.recent_move` and `gex.book_balance`. Do not say which way price went. Did price move past the move rule, and which way do the books lean? The criteria assume neither continuation nor reversal; code learns the mapping.",
      "options": [
       "moved_calls_heavier",
@@ -2457,6 +2510,7 @@
      "cadence": "every 30-minute read from 11:32 (asleep before the late-morning gate)",
      "sleep_when": "before 11:30 (session_progress gate)",
      "code_answer": true,
+     "ask": "How does the options book's balance pair with the pace?",
      "instructions": "Read `gex.book_balance` and `vol.realized_vs_clock_rank`. The label's hot-line words decide the pace. Which pairing is it?",
      "options": [
       "calls_heavier_normal",
@@ -2502,6 +2556,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "How much room does the book's balance have before it tips?",
      "instructions": "Read `gex.cushion_if_moved`. Check puts_heavier_now first. Which describes how much room the book's balance has before it tips?",
      "options": [
       "puts_heavier_now",
@@ -2549,6 +2604,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Where does the gamma sit in today's book and the week's?",
      "instructions": "Read `gex.weight_both_books`. The label's even-band words decide. Where does the gamma sit in today's same-day book and in the 1-to-7-day book (today's expiry excluded)?",
      "options": [
       "both_below",
@@ -2610,6 +2666,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Is price seated on today's heaviest strike, near it, or away?",
      "instructions": "Read `gex.magnet_distance`. Which situation is it?",
      "options": [
       "held_on_magnet",
@@ -2651,6 +2708,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "How tight is the box between the heaviest call-side and put-side strikes?",
      "instructions": "Read `gex.wall_box` and `gex.walls_since_30min`. Which describes the box between the heaviest call-side and put-side strikes?",
      "options": [
       "tight_standing",
@@ -2693,6 +2751,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "How did the heaviest strikes move over the last {window_30_min} minutes?",
      "instructions": "Read `gex.walls_since_30min`. Check both_moved_up and both_moved_down first. Over the last {window_30_min} minutes, how did the heaviest call-side and put-side strikes move?",
      "options": [
       "both_moved_up",
@@ -2737,6 +2796,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read, awake only when a wall or the magnet was touched in the last half hour",
      "code_answer": true,
+     "ask": "What happened at the heavy strike price touched?",
      "instructions": "Read `levels.wall_touch_effort`. Check the break and hold options first. What happened at the heavy strike price touched?",
      "options": [
       "broke_through_call_side",
@@ -2784,6 +2844,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read, awake only when a contested strike is within the defense distance",
      "code_answer": true,
+     "ask": "Are market makers defending the nearest heavily hit strike or leaving it?",
      "instructions": "Read `options.strike_defense`. At the nearest strike within reach where same-day quotes keep getting hit, are market makers putting quotes back or leaving them empty, and is it above or below price?",
      "options": [
       "defended_above",
@@ -2825,6 +2886,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
+     "ask": "Which side of the day's average price is SPX, and do the books agree?",
      "instructions": "Read `price.vs_vwap` and `gex.book_balance`. The opening words of each label decide. Check near_average first. Which situation is it?",
      "options": [
       "near_average",
@@ -2890,6 +2952,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read 10:02-15:02",
      "code_answer": true,
+     "ask": "Where is price against yesterday's value area, and which way is today going?",
      "instructions": "Read `levels.prior_value` for where price sits against the band where SPX spent most of yesterday's session, and `price.day_move` for which way today has gone since the settled open. Pick the option that matches both.",
      "options": [
       "below_value_rallying",
@@ -2936,6 +2999,7 @@
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "edge side (high +1, low -1)",
+     "ask": "What is price doing at yesterday's high or low?",
      "instructions": "Read `levels.prior_day`. Where price is now decides first. Check in order: rejected_back_inside, accepted_beyond, testing_edge, inside_away. Which situation is it at yesterday's high or low?",
      "options": [
       "rejected_back_inside",
@@ -2986,6 +3050,7 @@
      },
      "cadence": "every 30-minute read and every 5-minute lane read, awake only near or just through a round level",
      "code_answer": true,
+     "ask": "Has price just crossed a round level, or is it pressing one?",
      "instructions": "Read `levels.round_number`. Has price just pushed through a round level, or is it pressing one without crossing?",
      "options": [
       "just_crossed_up",
@@ -3028,6 +3093,7 @@
      "cadence": "every 30-minute read from 10:02, awake only while a break is armed or recently expired",
      "sleep_when": "break_state idle and nothing expired or decocked within {window_30_min} minutes",
      "code_answer": true,
+     "ask": "Is a level-break setup armed, and which way?",
      "instructions": "Read `levels.break_armed`. Is a level-break setup armed right now, and which way? The opening words decide.",
      "options": [
       "armed_up",
@@ -3075,6 +3141,7 @@
      },
      "cadence": "every 5 min 09:35-10:30, then every 30-minute read",
      "code_answer": true,
+     "ask": "Where is price against the overnight futures range?",
      "instructions": "Read `overnight.range` and `overnight.price_vs_range`. Where price is now decides first. Check in order: above, below, the two back-inside options, near an edge, middle.",
      "options": [
       "above_overnight_high",
@@ -3123,6 +3190,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did option or SPY activity come with a price move?",
      "instructions": "Read `options.premium_pace_30`, `volume.spy_pace_30` and `price.recent_move`. Use the premium label; use SPY volume only when the premium label is absent. Which pairing is it?",
      "options": [
       "heavy_no_move",
@@ -3187,6 +3255,7 @@
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "last-30 move side",
+     "ask": "Does breadth side with the last half hour's move?",
      "instructions": "Read `price.recent_move` and `breadth.upvol_share_30m`. Do not say which way price went; say only whether breadth sides with the move. Which describes it?",
      "options": [
       "agrees_with_move",
@@ -3232,6 +3301,7 @@
      "horizon": "all",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
+     "ask": "Since the open, has volume been lopsided, rotating or leaning?",
      "instructions": "Read `breadth.day_upvol_share`. Apply in order and take the first that fits. Since the open, has volume been lopsided, faded from lopsided, rotating, or leaning?",
      "options": [
       "one_sided_up",
@@ -3276,6 +3346,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did the NYSE tick lean to buying or selling more than usual for this half hour?",
      "instructions": "Read `breadth.tick_side_vs_usual`. Compared with a usual half hour at this time of day, did the NYSE tick sit above zero more often, less often, or about as usual?",
      "options": [
       "far_more_selling",
@@ -3321,6 +3392,7 @@
      "cadence": "every 30-minute read, awake only when SPX set a new session extreme within the recent window",
      "code_answer": true,
      "ref_side": "extreme side (high +1, low -1)",
+     "ask": "Did breadth confirm SPX's new session extreme?",
      "instructions": "Read `price.session_extreme_recent` and `breadth.at_extremes`. SPX just set a new session high or low; do not say which. Did NYSE net volume reach its level at the previous extreme, and are small caps within the confirm rule of their own extreme?",
      "options": [
       "extreme_confirmed",
@@ -3357,6 +3429,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
+     "ask": "Is SPX's move since the open backed by net buying in its own stocks?",
      "instructions": "Read `price.day_move` and `breadth.members_net_day`. Is SPX's move since the open backed by net buying volume in S&P 500 stocks, or does that volume point the other way?",
      "options": [
       "up_backed",
@@ -3402,6 +3475,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
+     "ask": "Has net volume in S&P 500 stocks been stronger or weaker than across the NYSE?",
      "instructions": "Read `breadth.members_net_day`. The label's split-line words decide. Since the open, compared with usual for this time of day, has net volume in S&P 500 stocks been stronger, weaker, or matched against all NYSE stocks?",
      "options": [
       "members_stronger",
@@ -3441,6 +3515,7 @@
      "cadence": "every 30-minute read, awake only within the digest window after an in-session release",
      "sleep_when": "no in-session release within {event_digest_min} minutes",
      "code_answer": true,
+     "ask": "Since the release, has NYSE volume switched sides?",
      "instructions": "Read `breadth.flip_after_release`. Since this session's release, has the share of NYSE volume in rising stocks switched sides against the hour before it?",
      "options": [
       "flipped_to_buying",
@@ -3482,6 +3557,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did volume run heavier in rising or falling stocks than their count suggests?",
      "instructions": "Read `breadth.volume_vs_count_30m`. Over the last {window_30_min} minutes, did volume run heavier in rising stocks than their count would suggest, heavier in falling stocks, or matched?",
      "options": [
       "volume_ahead_rising",
@@ -3538,6 +3614,7 @@
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ref_side": "last-30 move side",
+     "ask": "Did the typical stock move with the index, or did the biggest stocks carry it?",
      "instructions": "Read `price.recent_move` and `leaders.equal_weight_vs_cap_30m`. Over the last {window_30_min} minutes, after allowing for equal weight's usual swing, did the typical stock move with the index, or did the biggest stocks carry it?",
      "options": [
       "broad",
@@ -3580,6 +3657,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did semiconductors run ahead of the index, and which way?",
      "instructions": "Read `leaders.semis_vs_index_30m` and `price.recent_move`. After allowing for chips usually moving further than the index, did semis run ahead upward, ahead downward, in line, or stay quiet?",
      "options": [
       "ahead_up",
@@ -3622,6 +3700,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did the sector funds move together with the index?",
      "instructions": "Read `sectors.agreement_30m` and `price.recent_move`. Over the last {window_30_min} minutes, did the sector funds move together with the index, only partly, or swap places under a flat index?",
      "options": [
       "one_way",
@@ -3664,6 +3743,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "How did the largest index stocks move together over the last {window_30_min} minutes?",
      "instructions": "Read `leaders.megacap_cohesion_30m`. Check in order: one_name, together_up, together_down, cancelling, drifting. How did the largest index stocks move over the last {window_30_min} minutes?",
      "options": [
       "one_name",
@@ -3708,6 +3788,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Which part of the index did the moving over the last {window_30_min} minutes?",
      "instructions": "Read `leaders.pull_vs_rest_30m`. Over the last {window_30_min} minutes, which part of the index did the moving: the largest names, the rest, both the same way, or the two pulling against each other?",
      "options": [
       "leaders_carry_up",
@@ -3755,6 +3836,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:32 (signal measured from 12:00; asked earlier so the weights learn the morning is weak)",
      "code_answer": true,
+     "ask": "Since the open, have tech or small caps led the index?",
      "instructions": "Read `leaders.size_spread_day`. Since the settled open, after allowing for each fund's usual swing against SPY, which group has led: the Nasdaq-100 fund QQQ, the small-cap fund IWM, both, or neither?",
      "options": [
       "tech_led",
@@ -3817,6 +3899,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Are Treasuries ahead of the index, and which way?",
      "instructions": "Read `xasset.bond_gap_30min`. Over the last {window_30_min} minutes, are Treasuries ahead of the index in the direction that has gone with stocks rising this hour, ahead in the stocks-falling direction, in line, or is the link too loose to say?",
      "options": [
       "bonds_ahead_up",
@@ -3858,6 +3941,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Did oil move further than its usual link to the index explains?",
      "instructions": "Read `xasset.oil_gap_30min`. Over the last {window_30_min} minutes, did oil move further than its usual link to the index would explain, and which way?",
      "options": [
       "oil_ran_up",
@@ -3896,6 +3980,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read",
      "code_answer": true,
+     "ask": "Are bonds, credit, oil, gold and the euro ahead of the index, and which way?",
      "instructions": "Read `xasset.macro_gap_30min` and `price.recent_move`. Taken together, are bonds, high-yield credit, oil, gold and the euro ahead of the index in the stocks-up direction, ahead in the stocks-down direction, or in line?",
      "options": [
       "complex_ahead_up",
@@ -3935,6 +4020,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
+     "ask": "Did risk-on sectors beat or trail the defensive ones?",
      "instructions": "Read `leaders.rotation_30m`. After allowing for each sector's usual link to the index, did financials, discretionary and industrials beat utilities, staples and health care, trail them, or neither?",
      "options": [
       "risk_on",
@@ -3974,6 +4060,7 @@
      "horizon": "all",
      "cadence": "the 10:02 read and the 14:02 read",
      "code_answer": true,
+     "ask": "Which part of the expiry cycle is today?",
      "instructions": "Read `calendar.expiry_phase`. Check in order: quarter_end, monthly_or_quarterly, opex_week, week_after_opex, ordinary. Which part of the expiry cycle is today?",
      "options": [
       "quarter_end",
@@ -4021,6 +4108,7 @@
      "horizon": "30min",
      "cadence": "the 10:02, 12:02, 14:32 and 15:32 reads",
      "code_answer": true,
+     "ask": "Which month-turn flow is in play for the rest of today?",
      "instructions": "Read `calendar.month_turn` and `flows.rebalance_side`. Which month-turn flow is in play for the rest of today?",
      "options": [
       "last_days_stocks_overweight",
@@ -4092,6 +4180,7 @@
      "cadence": "every 30-minute read and every 5-minute lane read",
      "sleep_when": "no five-minute window in the last {shock_lookback_min} minutes with z >= {shock_z} and |move| >= {shock_floor_sigma}",
      "code_answer": true,
+     "ask": "What has price done since the last hour's shock?",
      "instructions": "Read `shock.burst`. Price had a sudden burst in the last hour, far bigger than its recent minute-to-minute movement. What has happened since? Check in order: fresh, round_trip, settling.",
      "options": [
       "fresh",
@@ -4131,6 +4220,7 @@
      "cadence": "every 30-minute read, awake only within an hour of a shock",
      "code_answer": true,
      "ref_side": "shock side",
+     "ask": "Where did the shock take price against today's range?",
      "instructions": "Read `shock.burst` and `shock.vs_day_range`. Where did the last hour's shock take price against today's range so far?",
      "options": [
       "new_extreme_now",
@@ -4181,6 +4271,7 @@
      "sleep_when": "the first reaction moved less than {event_reaction_rule} normal-day sigma",
      "code_answer": true,
      "ref_side": "first-reaction side",
+     "ask": "What has price done since the first reaction to the latest release or burst?",
      "instructions": "Read `event.reaction`. What has price done since the first reaction to the latest release, Fed remarks or sudden burst? The label names which kind it was. Check extending first.",
      "options": [
       "extending",
@@ -4223,6 +4314,7 @@
      "cadence": "every 30-minute read, awake only within an hour of a shock",
      "code_answer": true,
      "ref_side": "shock side",
+     "ask": "Did VIX overreact or shrug at the shock?",
      "instructions": "Read `shock.burst` and `vol.vix_on_shock`. Since just before the shock, has VIX moved more than the price move alone explains, in line with it, or less? The opening words decide.",
      "options": [
       "vol_overreacted",
@@ -4262,6 +4354,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read, awake only within an hour of a shock",
      "code_answer": true,
+     "ask": "Which group led the shock?",
      "instructions": "Read `shock.burst` and `shock.cross_asset`. During the shock's five minutes, which group moved furthest beyond its usual link to the index? Pick the first that the labels say passed its rule.",
      "options": [
       "rates_led",
@@ -4319,6 +4412,7 @@
      },
      "cadence": "every 30-minute read and lane read, awake only when a top-8 name passed the name-shock rule in the last 10 minutes",
      "code_answer": true,
+     "ask": "Did the big stock's shock stay alone or spread to other giants?",
      "instructions": "Read `leaders.single_name_10m`. One of the largest index stocks just moved far past its usual move. Did it move alone, or did other giants join?",
      "options": [
       "shock_up_alone",
@@ -4377,6 +4471,7 @@
      "horizon": "30min at the 15:32 read; 60min at the 15:02 read",
      "cadence": "the 15:02 and 15:32 reads only (weights keyed per read slot)",
      "code_answer": true,
+     "ask": "Which way has price run since the early afternoon?",
      "instructions": "Read `price.afternoon_leg`. Which way has price run since the early-afternoon anchor the label names?",
      "options": [
       "afternoon_up",
@@ -4419,6 +4514,7 @@
      "cadence": "the 14:02, 14:32, 15:02 and 15:32 reads (weights keyed per read slot: the pull shows only after 15:30)",
      "sleep_when": "magnet_seat's code answer is held_on_magnet or seated_fresh",
      "code_answer": true,
+     "ask": "Where does today's heaviest strike sit against price before the settle?",
      "instructions": "Read `gex.settle_pull`. Check split first. Where does today's heaviest same-day strike sit against price, counted in what today's options still price before the settle?",
      "options": [
       "magnet_above_in_reach",
@@ -4463,6 +4559,7 @@
      "horizon": "30min",
      "cadence": "the 14:02 to 15:32 reads",
      "code_answer": true,
+     "ask": "Where does the charm wall sit against price?",
      "instructions": "Read `gex.charm_wall_distance`. Where does the charm wall sit compared with price?",
      "options": [
       "charm_at_price",
@@ -4505,6 +4602,7 @@
      "horizon": "30min",
      "cadence": "the 15:02 and 15:32 reads",
      "code_answer": true,
+     "ask": "How heavy was trading in the last {window_30_min} minutes for this time of day?",
      "instructions": "Read `volume.spy_last30_share`. How heavy was trading in the last {window_30_min} minutes compared with the usual share for this time of day?",
      "options": [
       "heavy",
@@ -4544,6 +4642,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read after the press conference starts, FOMC days only (none in the test window; next 10-28)",
      "code_answer": true,
+     "ask": "Since the Fed press conference began, has price extended or reversed the statement's move?",
      "instructions": "Read `event.statement_and_presser`. Check presser_flat, then presser_new_leg, then extends or reverses. Since the Fed chair's press conference began, has price gone with the statement's first move, against it, or nowhere?",
      "options": [
       "presser_extends",
@@ -4586,6 +4685,7 @@
      "horizon": "30min",
      "cadence": "the 15:02 and 15:32 reads (weights keyed per read slot)",
      "code_answer": true,
+     "ask": "Has VIX drifted up, held or drifted down since the early afternoon?",
      "instructions": "Read `vol.vix_since_1400`. Since the early-afternoon anchor the label names, has VIX drifted up, drifted down, or held, as a share of its level?",
      "options": [
       "vix_drifting_up",
@@ -4639,6 +4739,7 @@
      },
      "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
      "code_answer": true,
+     "ask": "Which way and how far did futures move overnight?",
      "instructions": "Read `overnight.es_move`. Which way and how far did futures move from yesterday's close to now, measured in yesterday's sigma?",
      "options": [
       "big_down",
@@ -4685,6 +4786,7 @@
      },
      "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
      "code_answer": true,
+     "ask": "How wide was last night's futures session?",
      "instructions": "Read `overnight.range_vs_normal`. How wide was last night's futures session compared with recent nights?",
      "options": [
       "quiet_night",
@@ -4725,6 +4827,7 @@
      },
      "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
      "code_answer": true,
+     "ask": "When was most of the move from yesterday's close made?",
      "instructions": "Read `overnight.gap_origin`. When was most of the move from yesterday's close to now made?",
      "options": [
       "no_gap",
@@ -4783,6 +4886,7 @@
      },
      "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
      "code_answer": true,
+     "ask": "What did futures do after this morning's early report?",
      "instructions": "Read `overnight.release_reaction`. After this morning's early report, what did futures do between the first reaction and now? Check in order: shrugged, extended, faded, held.",
      "options": [
       "shrugged",
@@ -4827,6 +4931,7 @@
      "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
      "sleep_when": "bonds and bitcoin in opposite outer thirds, or data missing",
      "code_answer": true,
+     "ask": "Did Treasuries and bitcoin move further than today's gap overnight?",
      "instructions": "Read `overnight.bond_gap`. Since yesterday's close, did Treasuries and bitcoin move further toward stocks-up than today's gap, further toward stocks-down, or in line?",
      "options": [
       "overnight_ahead_up",
@@ -4880,6 +4985,7 @@
      "cadence": "every other 30-minute read (hourly)",
      "code_answer": true,
      "shadow_proof": "SPX aggressor tape, 20 and 46 days, worse than clock and shuffles",
+     "ask": "Does the same-day options tape lean with the move or against it?",
      "instructions": "Read `price.recent_move` and `options.flow_lean_30`. Does the same-day options tape lean with the move, against it, or lean while price is still?",
      "options": [
       "backs_move",
@@ -4923,6 +5029,7 @@
      "cadence": "every other 30-minute read (hourly)",
      "code_answer": true,
      "shadow_proof": "partial corr 0.005 after past movement, 21 days",
+     "ask": "Are same-day option quotes near price thinner or deeper than usual?",
      "instructions": "Read `options.quote_liquidity`. Are same-day option quotes near price thinner or wider than usual for this time of day?",
      "options": [
       "thin_or_wide",
@@ -4962,6 +5069,7 @@
      "cadence": "every other 30-minute read (hourly)",
      "code_answer": true,
      "shadow_proof": "residual -0.01 after spot; tracks price at -0.76",
+     "ask": "Does dealers' directional exposure sit above or below price?",
      "instructions": "Read `gex.delta_weight_side`. Does most of dealers' directional exposure sit at strikes above price, below price, or evenly?",
      "options": [
       "above",
@@ -5018,6 +5126,7 @@
      "horizon": "10min after 15:50",
      "cadence": "would need a 15:52 read with an 8-minute horizon (last live read is 15:32)",
      "code_answer": true,
+     "ask": "Which side is the closing imbalance on, and is it large?",
      "instructions": "Read `close.moc_imbalance`. Which side is the published closing imbalance on, and is it large for today?",
      "options": [
       "buy_large",
@@ -5056,6 +5165,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read when a feed exists",
      "code_answer": true,
+     "ask": "Have index ETFs been created or redeemed heavily today?",
      "instructions": "Read `flows.etf_creations`. Since the open, have index ETFs been created or redeemed heavily for this time of day?",
      "options": [
       "heavy_creation",
@@ -5095,6 +5205,7 @@
      "cadence": "on each new headline once a writer exists",
      "sleep_when": "no headline within {window_30_min} minutes",
      "code_answer": false,
+     "ask": "What kind of market news just came out?",
      "instructions": "Read `news.intraday_headline`. What kind of market news just came out, and is it new?",
      "options": [
       "macro_new",
@@ -5133,6 +5244,7 @@
      "horizon": "30min",
      "cadence": "every 30-minute read when a feed exists",
      "code_answer": true,
+     "ask": "Did Nasdaq volume lean the same way as the NYSE?",
      "instructions": "Read `breadth.nasdaq_net_volume`. Over the last half hour has Nasdaq volume leaned to rising or falling stocks, and does it agree with NYSE?",
      "options": [
       "nasdaq_leads_up",
@@ -5180,6 +5292,7 @@
      },
      "cadence": "every 5-minute lane read and 30-minute read once persisted",
      "code_answer": true,
+     "ask": "Has the pressure at SPY's best prices been on the buy or the sell side?",
      "instructions": "Read `liquidity.spy_book_lean`. Over the last five minutes, has the pressure at SPY's best prices been on the buy side, the sell side, or balanced?",
      "options": [
       "buyers_pressing",
@@ -5219,6 +5332,7 @@
      "horizon": "30min",
      "cadence": "the 15:02 and 15:32 reads once a 1DTE slice is scanned",
      "code_answer": true,
+     "ask": "Where does tomorrow's heaviest strike sit as today's options run out?",
      "instructions": "Read `expiry.next_book_magnet`. Check next_priced_big first. As today's options run out, where does tomorrow's heaviest strike sit, and is tomorrow priced as a normal day?",
      "options": [
       "next_above_normal",
@@ -5260,6 +5374,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read on the quarter's last trading day (09-30, 12-31) once the band is kept",
      "code_answer": true,
+     "ask": "Where is price against today's largest quarter-end strikes?",
      "instructions": "Read `expiry.quarter_end_strikes`. Where does price sit against the largest strikes of the quarter-end options expiring today?",
      "options": [
       "near_short_call",
