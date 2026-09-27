@@ -79,17 +79,17 @@ def big(minute: int, right: str, side: str, size: int = 100, **kw) -> dict:
 @pytest.mark.parametrize("prints, sentence", [
     ([big(51, "call", "bought"), big(52, "call", "bought"), big(53, "put", "sold"), big(55, "call", "bought", 150),
       big(58, "put", "bought")],
-     "over the last 10 minutes 5 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
+     "over the last 10 minutes 5 single near-price 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
      "82% of their premium whose side could be told was calls bought or puts sold, past the 65% lean line"),
     ([big(51, "put", "bought"), big(52, "put", "bought"), big(53, "call", "sold"), big(55, "put", "bought"), big(58, "call", "bought")],
-     "over the last 10 minutes 5 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
+     "over the last 10 minutes 5 single near-price 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
      "80% of their premium whose side could be told was puts bought or calls sold, past the 65% lean line"),
     ([big(51, "put", "bought"), big(52, "put", "bought"), big(53, "call", "bought"), big(55, "call", "bought"), big(58, "call", "mid")],
-     "over the last 10 minutes 5 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
+     "over the last 10 minutes 5 single near-price 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
      "neither side passed the 65% lean line: 50% of their premium whose side could be told was calls bought or puts sold "
      "and 50% puts bought or calls sold"),
     ([big(51, "call", "bought"), big(52, "call", "bought"), big(53, "call", "bought"), big(55, "call", "bought", 99)],
-     "over the last 10 minutes 3 single 0DTE trades of 100 lots or more printed, fewer than the 5-trade minimum"),
+     "over the last 10 minutes 3 single near-price 0DTE trades of 100 lots or more printed, fewer than the 5-trade minimum"),
 ])
 def test_big_prints_count_the_single_large_trades_of_the_last_10_minutes_and_their_lean(scene_factory, tmp_path, prints, sentence):
     around = [big(49, "call", "bought"),                                              # before the window
@@ -105,7 +105,7 @@ def test_a_trade_journaled_after_a_line_stamped_past_the_read_was_not_on_file_ye
     catch_up = [trade(at(10, 0, ss=10)), big(57, "put", "bought"), big(58, "put", "bought")]   # printed before the read, journaled after
     scene = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, NOW) + prints, late=catch_up)
     assert read(scene)[1]["options.big_prints_10"] == (
-        "over the last 10 minutes 5 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
+        "over the last 10 minutes 5 single near-price 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
         "100% of their premium whose side could be told was calls bought or puts sold, past the 65% lean line")
 
 
@@ -119,7 +119,7 @@ def test_a_print_at_the_mid_has_no_side_whatever_the_float_rounding(scene_factor
               big(55, "put", "bought"), at_mid(56, "call", 5.6, 5.8), at_mid(57, "put", 2.35, 2.45)]
     scene = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, NOW) + prints)
     assert read(scene)[1]["options.big_prints_10"] == (
-        "over the last 10 minutes 7 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
+        "over the last 10 minutes 7 single near-price 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
         "neither side passed the 65% lean line: 60% of their premium whose side could be told was calls bought or puts sold "
         "and 40% puts bought or calls sold")
 
@@ -160,13 +160,13 @@ def test_premium_is_ranked_against_the_same_minutes_of_the_prior_sessions(scene_
     later = [trade(at(10, 0, ss=30), side="sold", size=5000)]                         # after the read: never counted
     ls, labels = read(tape_scene(scene_factory, tmp_path, NOW, paced(size) + later, prior))
     rank = f"higher than {beaten} of the last 6 sessions at this minute"
-    assert labels["options.premium_pace_30"] == f"0DTE premium traded in the last 30 minutes is {pace} for this half hour, {rank}"
+    assert labels["options.premium_pace_30"] == f"near-price 0DTE premium traded in the last 30 minutes is {pace} for this half hour, {rank}"
     no_burst = "" if burst == "in the top fifth" else ", so it was no burst"
     assert labels["options.premium_burst_5m"] == (
-        f"in the last 5 minutes 0DTE premium traded was {burst} for these minutes, {rank}{no_burst}; "
+        f"in the last 5 minutes near-price 0DTE premium traded was {burst} for these minutes, {rank}{no_burst}; "
         "100% of its premium whose side could be told was calls bought or puts sold, past the 65% lean line")
     assert ls.gates["opening_premium_burst"] == (
-        None if not no_burst else f"the last 5 minutes' 0DTE premium is under the top fifth for these minutes, {rank}")
+        None if not no_burst else f"the last 5 minutes' near-price 0DTE premium is under the top fifth for these minutes, {rank}")
 
 
 def test_premium_ranks_need_five_prior_sessions_with_a_whole_tape_at_this_minute(scene_factory, tmp_path):
@@ -191,7 +191,7 @@ def test_the_flow_lean_is_the_signed_premium_beyond_its_usual_level_for_the_half
     # the prior sessions lean -0.50, -0.20, 0.00, +0.14, +0.25 and +0.33: a usual level of +0.07
     prior = {d: lean_day(d, 1 + k, 3, at(16, 0, d)) for k, d in enumerate(PRIOR_DAYS)}
     _, labels = read(tape_scene(scene_factory, tmp_path, NOW, lean_day(DAY, calls, puts, NOW), prior))
-    assert labels["options.flow_lean_30"] == f"over the last 30 minutes the 0DTE tape {sentence}"
+    assert labels["options.flow_lean_30"] == f"over the last 30 minutes the near-price 0DTE tape {sentence}"
 
 
 # ---- options.call_put_shift_10m

@@ -3,7 +3,8 @@ SPY's own tape and quote (volume.*, liquidity.*).
 
 The 0DTE tape labels read the lob-flow collector's raw tape, ``state/lob_flow/raw/{day}/tape.jsonl``
 (``tape.jsonl.gz`` once the collector archives the day): one line per 0DTE SPXW trade with the quote it
-printed into. Lines land out of time order, so each trade is placed by its own ``ts_ms``, never by where it
+printed into, on the strikes the collector watches: 10 either side of price for each right, plus the book's
+magnet and walls. That set moves with price, so the tape is the near-price 0DTE trading, never a far print. Lines land out of time order, so each trade is placed by its own ``ts_ms``, never by where it
 sits in the file, and a minute counts once it has finished. The collector only appends, so the file is read up
 to its first line stamped after the read: a trade journaled late (a catch-up pull, or the first 5 minutes of a
 strike newly watched) sits past that line and was not on file yet, for a replay of today and the prior sessions
@@ -351,7 +352,7 @@ def _big_prints_10(today: TapeMinutes, opened: int, end: int, ls: LabelSet) -> N
     w = _window(today, opened, end, WINDOW_10_MIN, "options.big_prints_10", ls)
     if w is None:
         return
-    trades = f"over the last {WINDOW_10_MIN} minutes {plural(w.big_prints, 'single 0DTE trade')} of {BIG_PRINT_LOTS} lots or more printed"
+    trades = f"over the last {WINDOW_10_MIN} minutes {plural(w.big_prints, 'single near-price 0DTE trade')} of {BIG_PRINT_LOTS} lots or more printed"
     if w.big_prints < BIG_MIN_PRINTS:
         ls.put("options.big_prints_10", f"{trades}, fewer than the {BIG_MIN_PRINTS}-trade minimum")
         return
@@ -372,7 +373,7 @@ def _flow_lean_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end
         return
     lean = _signed_share(w)
     if lean is None:
-        ls.omit("options.flow_lean_30", f"the side of no 0DTE trade in the last {WINDOW_30_MIN} minutes could be told")
+        ls.omit("options.flow_lean_30", f"the side of no near-price 0DTE trade in the last {WINDOW_30_MIN} minutes could be told")
         return
     base = [v for p in prior if (pw := p.window(end - WINDOW_30_MIN, end)) is not None and (v := _signed_share(pw)) is not None]
     rank = rank_against(lean, base)
@@ -386,7 +387,7 @@ def _flow_lean_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end
     line = (f"at or past the {pct(FLOW_LEAN_RANK)} rank line" if rank.share >= FLOW_LEAN_RANK else
             f"at or under the {pct(1 - FLOW_LEAN_RANK)} rank line" if rank.share <= 1 - FLOW_LEAN_RANK else
             f"between the {pct(1 - FLOW_LEAN_RANK)} and {pct(FLOW_LEAN_RANK)} rank lines, no lean")
-    ls.put("options.flow_lean_30", f"over the last {WINDOW_30_MIN} minutes the 0DTE tape {how} for this half hour, {rank.words()}, {line}")
+    ls.put("options.flow_lean_30", f"over the last {WINDOW_30_MIN} minutes the near-price 0DTE tape {how} for this half hour, {rank.words()}, {line}")
 
 
 def _premium_burst_5m(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end: int, ls: LabelSet) -> None:
@@ -403,13 +404,13 @@ def _premium_burst_5m(today: TapeMinutes, prior: list[TapeMinutes], opened: int,
         ls.sleep("opening_premium_burst", _thin_base(base))
         return
     lean = _lean(w.bullish, w.bearish, "its premium")
-    head = f"in the last {BURST_WINDOW_MIN} minutes 0DTE premium traded was"
+    head = f"in the last {BURST_WINDOW_MIN} minutes near-price 0DTE premium traded was"
     if rank.share >= TOP_FIFTH:
         ls.put("options.premium_burst_5m", f"{head} in the top fifth for these minutes, {rank.words()}; {lean}")
         ls.wake("opening_premium_burst")
         return
     ls.put("options.premium_burst_5m", f"{head} under the top fifth for these minutes, {rank.words()}, so it was no burst; {lean}")
-    ls.sleep("opening_premium_burst", f"the last {BURST_WINDOW_MIN} minutes' 0DTE premium is under the top fifth for these minutes, {rank.words()}")
+    ls.sleep("opening_premium_burst", f"the last {BURST_WINDOW_MIN} minutes' near-price 0DTE premium is under the top fifth for these minutes, {rank.words()}")
 
 
 def _premium_pace_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end: int, ls: LabelSet) -> None:
@@ -421,7 +422,7 @@ def _premium_pace_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, 
     if rank is None:
         ls.omit("options.premium_pace_30", _thin_base(base))
         return
-    ls.put("options.premium_pace_30", f"0DTE premium traded in the last {WINDOW_30_MIN} minutes is {_fifth(rank)} for this half hour, {rank.words()}")
+    ls.put("options.premium_pace_30", f"near-price 0DTE premium traded in the last {WINDOW_30_MIN} minutes is {_fifth(rank)} for this half hour, {rank.words()}")
 
 
 def tape_path(state_dir: Path, day: str) -> Path | None:
