@@ -490,8 +490,8 @@ def _opening_tick(scene: Scene, bands: dict[time, tuple[float, float]], ls: Labe
 
 
 def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: LabelSet) -> None:
-    """A TICK burst in the last five minutes and whether SPX followed it over the same minutes; the gate of
-    tick_extreme_follow, which sleeps without a burst."""
+    """A TICK burst in the last five minutes and whether SPX followed it over the same minutes, a one-sided
+    burst only by a move on its own side; the gate of tick_extreme_follow, which sleeps without a burst."""
     bars = _fresh_tick_bars(scene, scene.now - timedelta(minutes=TICK_BURST_WINDOW_MIN))
     bursts = _tick_bursts(bands, bars) if bars else None
     if bursts is None:
@@ -520,7 +520,12 @@ def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: L
     else:
         burst = f"highs and lows stayed inside the top and bottom {band} bands for their minutes (no burst)"
     move = round((latest - then) / ruler.points, 2)
-    follow = f"{'past' if abs(move) > TICK_FOLLOW_SIGMA else 'short of'} the {TICK_FOLLOW_SIGMA} sigma follow line"
+    follow = f"the {TICK_FOLLOW_SIGMA} sigma follow line"
+    burst_side = 0 if buying == selling else 1 if buying else -1
+    if burst_side and move * burst_side < 0:
+        follow = f"against the burst, short of {follow}"
+    else:
+        follow = f"{'past' if abs(move) > TICK_FOLLOW_SIGMA else 'short of'} {follow}"
     spx = (f"SPX {'rose' if move > 0 else 'fell'} {sig(abs(move))} over the same {TICK_BURST_WINDOW_MIN} minutes" if move else
            f"SPX did not move over the same {TICK_BURST_WINDOW_MIN} minutes")
     ls.put("breadth.tick_extreme_5m", f"in the last {TICK_BURST_WINDOW_MIN} minutes NYSE TICK's 1-minute {burst}; {spx}, {follow}"

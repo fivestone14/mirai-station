@@ -578,6 +578,22 @@ def test_the_follow_line_and_each_kind_of_burst(scene_factory):
     assert both.gates["tick_extreme_follow"] is None
 
 
+def test_a_move_against_the_burst_is_short_of_the_follow_line(scene_factory):
+    buy_into_fall = opening_tick_read(scene_factory, [QUIET_TICK] * 12 + [BUY_BURST] + [QUIET_TICK] * 2, closes=[7700.0] * 10 + [7696.0] * 5)
+    assert sentence(buy_into_fall, "breadth.tick_extreme_5m").endswith(
+        "(a buying burst) and its low did not reach the bottom band; SPX fell 0.05 sigma over the same 5 minutes, against the burst, "
+        "short of the 0.03 sigma follow line")
+    sell_into_rise = opening_tick_read(scene_factory, [QUIET_TICK] * 11 + [(300.0, -900.0, -400.0)] + [QUIET_TICK] * 3,
+                                       closes=[7700.0] * 10 + [7704.0] * 5)
+    assert sentence(sell_into_rise, "breadth.tick_extreme_5m").endswith(
+        "(a selling burst) and its high did not reach the top band; SPX rose 0.05 sigma over the same 5 minutes, against the burst, "
+        "short of the 0.03 sigma follow line")
+    both_ways_fall = opening_tick_read(scene_factory, [QUIET_TICK] * 10 + [(900.0, -900.0, 0.0)] + [QUIET_TICK] * 4,
+                                       closes=[7700.0] * 10 + [7696.0] * 5)
+    assert sentence(both_ways_fall, "breadth.tick_extreme_5m").endswith(
+        "(bursts both ways); SPX fell 0.05 sigma over the same 5 minutes, past the 0.03 sigma follow line")
+
+
 def test_without_a_burst_the_gate_sleeps_and_the_label_says_so(scene_factory):
     earlier_burst = opening_tick_read(scene_factory, [BUY_BURST] * 10 + [QUIET_TICK] * 5)       # 09:39 is outside the five minutes
     assert earlier_burst.gates["tick_extreme_follow"] == "no NYSE TICK burst in the last 5 minutes"
