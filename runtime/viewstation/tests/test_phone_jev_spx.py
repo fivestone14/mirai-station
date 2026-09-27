@@ -489,8 +489,8 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
 
 
 PRE_FNS = ("fits", "top1", "oddsKeys", "oddsBar", "tag", "skipLine", "ageWord", "mins", "untilWords", "expiryLine",
-           "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock", "preCall",
-           "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
+           "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock",
+           "preCall", "preRulerLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
 PRE_VARS = ("ODDS_ORDER", "ODDS_TRACK_PX", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
 # the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles
 PRE_DOM = """
@@ -658,6 +658,31 @@ def test_a_missed_last_jev_read_is_said_before_the_hand_over():
     assert age["attrs"]["class"] == "r old"
     # a passed JEV read drops from the chip once it is missing, the one still to come stays
     assert _page(pre_card("08:05"), et("08:54"))["state"] == ["snapshot, JEV at 06:28", "stale: the 05:48 read has not landed"]
+
+
+NO_RULER = "no pre-open ruler: fewer than 10 of the last sessions have a morning anchor on file"
+
+
+def unruled_card(at, **over):
+    """The card a read writes when it cannot stand (premarket.NoPreOpenRead): the ruler omitted with why, no labels,
+    no facts, its own chip in the story not measured."""
+    card = pre_card(at, ruler={"omitted": NO_RULER}, situation=[], labels=0, **over)
+    card["story"][-1]["lean"] = None
+    return card
+
+
+def test_a_read_without_a_pre_open_ruler_says_why_it_measured_nothing():
+    got = _page(unruled_card("03:35"), et("03:40"), TOKYO)
+    parts = _card_parts(got)
+    assert parts[2:5] == [["big", "No call yet"], ["skip", "First call at 21:48"],
+                          ["skip", "Nothing measured at the 16:35 read: " + NO_RULER]]
+    assert got["state"] == ["snapshot, JEV at 21:48 and 22:28"]
+    assert _card_parts(_page(pre_card("03:35"), et("03:40")))[4] == ["inplay-h", "When it is checked"]   # a read that measured says nothing
+    # a JEV read without one: the chip says it was not sent and the card, once, why
+    jev = unruled_card("08:48", sent=False, unsent_reason="nothing to ask at the 08:48 ET read: " + NO_RULER)
+    got = _page(jev, et("08:50"))
+    assert got["state"] == ["not sent: nothing to ask at the 05:48 read"]
+    assert ["skip", "Nothing measured at the 05:48 read: " + NO_RULER] in _card_parts(got)
 
 
 def test_a_day_without_a_report_has_no_report_row_or_chip():

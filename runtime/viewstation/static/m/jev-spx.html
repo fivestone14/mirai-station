@@ -1142,10 +1142,12 @@ details .q{margin-top:8px}
       return Date.parse(t) > row + 60000 && now < Date.parse(t) + PRE_LATE_MIN * 60000; });
   }
   // why a JEV read was not sent, as the builder wrote it, its market clock in the viewer's zone: its own reasons open
-  // with 'not sent', and one that does not ("nothing to ask at the 08:48 ET read") is given the prefix here
+  // with 'not sent', and one that does not ("nothing to ask at the 08:48 ET read") is given the prefix here. A read
+  // with no pre-open ruler adds why to that reason; the card says it once, under the call (preRulerLine)
   function preUnsent(p){
     if(!p.unsent_reason) return 'not sent';
-    var reason = marketWords(p.unsent_reason, p.row_ts);
+    var omitted = p.ruler && p.ruler.omitted;
+    var reason = marketWords(omitted ? p.unsent_reason.replace(': ' + omitted, '') : p.unsent_reason, p.row_ts);
     return /^not sent\b/.test(reason) ? reason : 'not sent: ' + reason;
   }
   // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint; none from the
@@ -1211,6 +1213,12 @@ details .q{margin-top:8px}
     var next = jev.filter(function(t){ return Date.parse(t) > row + 60000; })[0];
     box.appendChild(el('div', 'big', 'No call yet'));
     box.appendChild(skipLine(next ? (jev.indexOf(next) ? 'next call at ' : 'first call at ') + viewerTime(next) : 'no call before the open'));
+  }
+  // a read with no pre-open ruler measured nothing (premarket.NoPreOpenRead): its chips are empty and it has no facts,
+  // so the card says why; null for a read that measured
+  function preRulerLine(p){
+    var omitted = p.ruler && p.ruler.omitted;
+    return omitted ? skipLine('nothing measured at the ' + viewerTime(p.row_ts) + ' read: ' + marketWords(omitted, p.row_ts)) : null;
   }
   // when it is checked: both sums from the settled open (the card's start), each to its mark, on one clock from
   // ten minutes before the open; the solid line is the open, the dashed one now
@@ -1312,6 +1320,7 @@ details .q{margin-top:8px}
     lab.appendChild(el('span', null, 'before the open')); lab.appendChild(age); card.appendChild(lab);
     card.appendChild(preClock(p));
     preCall(p, card);
+    var unruled = preRulerLine(p); if(unruled) card.appendChild(unruled);
     card.appendChild(el('div', 'inplay-h', 'When it is checked'));
     var checks = el('div'); card.appendChild(checks);
     card.appendChild(tag('both checks start from the price at ' + viewerTime(p.start) + ', ' +
