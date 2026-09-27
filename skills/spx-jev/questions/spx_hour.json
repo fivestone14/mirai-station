@@ -1,0 +1,33 @@
+{
+ "name": "SPX, the sums: 30 minutes ahead, and 60 minutes ahead beside it",
+ "version": "0.1.0",
+ "date": "2026-09-26",
+ "how_to_use": "Step 4 of the pipeline. The state is not the labels: it is the live answers from step 2, each rewritten by code as one sentence with how sure JEV was. Two questions ride on the same sentences in one request: next_30, blended half and half in code with how often this time of day ended up, down or flat on the last 20 SPX sessions (spx_jev/clock.py), is the sum the phone shows and the one the question weights learn from; next_60 is graded beside it so the two horizons can be compared. Both are forecasts, graded by the bars, never acted on. The bands and base rates are measured on SPX (spx_jev/cuts.py, spec/cuts.json) and filled in when the doc is loaded.",
+ "primary": "next_30",
+ "questions": {
+  "next_30": {
+   "type": "choice",
+   "ask": "Where is price at the end of the next 30 minutes?",
+   "why": "The one thing every other question was in service of; the sum, not another part.",
+   "instructions": "Read `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 30 minutes? Answer up, down, flat or unsure.",
+   "criteria": {
+    "up": "price ends more than {next_30_flat_band_sigma} sigma above where it is now; on this index that happens about {next_30_up_pct}% of the time",
+    "down": "price ends more than {next_30_flat_band_sigma} sigma below where it is now; on this index that happens about {next_30_down_pct}% of the time",
+    "flat": "price ends within {next_30_flat_band_sigma} sigma of where it is now; on this index that is the common case, about {next_30_flat_pct}% of the time",
+    "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
+   }
+  },
+  "next_60": {
+   "type": "choice",
+   "ask": "Where is price at the end of the next 60 minutes?",
+   "why": "The same sum at twice the horizon, graded beside the 30-minute one so the two can be compared; it never reaches the phone's headline.",
+   "instructions": "Read `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 60 minutes? Answer up, down, flat or unsure.",
+   "criteria": {
+    "up": "price ends more than {next_60_flat_band_sigma} sigma above where it is now; on this index that happens about {next_60_up_pct}% of the time",
+    "down": "price ends more than {next_60_flat_band_sigma} sigma below where it is now; on this index that happens about {next_60_down_pct}% of the time",
+    "flat": "price ends within {next_60_flat_band_sigma} sigma of where it is now; on this index that is the common case, about {next_60_flat_pct}% of the time",
+    "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
+   }
+  }
+ }
+}

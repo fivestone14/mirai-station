@@ -1,0 +1,185 @@
+{
+ "name": "spx-jev scheduled events",
+ "how_to_use": [
+  "Kept by hand. The service tags a read with every tier-1 event due in the next 60 minutes (spx_jev/events.py); a read with one due in the next 30 minutes is graded but kept out of what the question weights learn from. Nothing is suppressed and JEV never sees the tag.",
+  "tier 1 only: the Fed's rate decisions and press conferences, the Fed chair's testimony and keynotes, index rebalance and quarterly-expiry closes, half-day closes. Copied on 2026-09-26 from skills/sndk-jev/calendar/events.json, less SanDisk's own events; the releases before the open (CPI, jobs) are not in-session events and are left out.",
+  "A row with verified false follows a rule, not a published date."
+ ],
+ "built": "2026-09-26",
+ "events": [
+  {
+   "date": "2026-07-14",
+   "time_et": "10:00",
+   "kind": "FED_CHAIR_TESTIMONY",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm"
+  },
+  {
+   "date": "2026-07-15",
+   "time_et": "10:00",
+   "kind": "FED_CHAIR_TESTIMONY",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm"
+  },
+  {
+   "date": "2026-07-29",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-07-29",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-july.htm"
+  },
+  {
+   "date": "2026-08-28",
+   "time_et": "10:00",
+   "kind": "FED_CHAIR_JACKSON_HOLE",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-august.htm"
+  },
+  {
+   "date": "2026-09-16",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm"
+  },
+  {
+   "date": "2026-09-16",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm"
+  },
+  {
+   "date": "2026-09-18",
+   "time_et": "16:00",
+   "kind": "QUAD_WITCHING_SP_REBALANCE",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://finance.yahoo.com/markets/stocks/articles/sandisk-joins-p-100-monday-051301493.html ; exchange rule (third Friday of the month; quarterly index rebalances trade at that close)",
+   "note": "quarterly expiry and the S&P quarterly rebalance trade this close"
+  },
+  {
+   "date": "2026-10-28",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-10-28",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-11-27",
+   "time_et": "13:00",
+   "kind": "HALF_DAY_CLOSE",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": false,
+   "source": "NYSE/Nasdaq holiday schedule",
+   "note": "early close at 13:00; state_builder.session_close already closes the session then"
+  },
+  {
+   "date": "2026-11-30",
+   "time_et": "16:00",
+   "kind": "MSCI_REBALANCE",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://app2.msci.com/eqb/pressreleases/archive/ir_dates.pdf",
+   "note": "November review effective 12-01, trades the 11-30 close"
+  },
+  {
+   "date": "2026-12-09",
+   "time_et": "14:00",
+   "kind": "FOMC",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-12-09",
+   "time_et": "14:30",
+   "kind": "FOMC_PRESSER",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-12-11",
+   "time_et": "16:00",
+   "kind": "RUSSELL_RECON",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.lseg.com/en/media-centre/press-releases/ftse-russell/2026/ftse-russell-announces-december-2026-russell-us-indexes-reconstitution-schedule"
+  },
+  {
+   "date": "2026-12-18",
+   "time_et": "16:00",
+   "kind": "QUAD_WITCHING_SP_NDX_REBALANCE",
+   "scope": "index",
+   "tier": 1,
+   "in_session": true,
+   "verified": false,
+   "source": "exchange rule (third Friday of the month; quarterly index rebalances trade at that close)",
+   "note": "S&P quarterly + Nasdaq-100 annual reconstitution trade this close"
+  },
+  {
+   "date": "2026-12-24",
+   "time_et": "13:00",
+   "kind": "HALF_DAY_CLOSE",
+   "scope": "market",
+   "tier": 1,
+   "in_session": true,
+   "verified": false,
+   "source": "NYSE/Nasdaq holiday schedule"
+  }
+ ]
+}

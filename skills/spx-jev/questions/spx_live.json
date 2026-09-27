@@ -1,0 +1,518 @@
+{
+ "name": "jev-questions",
+ "version": "0.1.0-placeholder",
+ "date": "2026-09-26",
+ "status": "placeholder until the SPX research round delivers the real set: every question reads only labels the builder can compute from today's live data",
+ "how_to_use": [
+  "Each group is one JEV request. The packer sends the group's state slice as the state and only the fields type, instructions and criteria of each question; viewpoint, status, ask, why and cadence are for people.",
+  "No number is written into this file. Every threshold is a name in braces, filled from spx_jev/cuts.py when the doc is loaded (ask.load_questions), so the words JEV reads and the cut the labeller judged by are one number. A name the code does not define stops the load, and a test fails on it.",
+  "status: live is asked on its cadence and its answer becomes a sentence in the sums; shadow is a forecast with no right answer at ask time, always asked, logged, never graded and never a sentence; dark is never asked, because the source it needs is not plugged in.",
+  "cadence is the starting interval: every read (30 minutes), every other read (60) or every fourth read (120). The service recounts it each day from the day before and holds the last fresh answer in between.",
+  "Adapted from the SPX draft of 2026-09-19 (11 - JEV (the fast judge)/spx-questions.json): its forecast questions ride here as shadow over the labels that exist, at the live lane's 30-minute horizon and on the SPX bands; the lookups read one label each, so the sums get one sentence per fact."
+ ],
+ "groups": [
+  {
+   "id": "price_and_range",
+   "reads": [
+    "context",
+    "price.recent_move",
+    "price.vs_vwap",
+    "price.day_range_position",
+    "range.today_vs_normal",
+    "range.session_shape",
+    "range.box_status"
+   ],
+   "questions": {
+    "price_recent_direction": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Over the last 30 minutes, did price rise, fall, or go nowhere?",
+     "why": "The move the next 30 minutes starts from.",
+     "type": "choice",
+     "instructions": "Read `price.recent_move`. Which describes price over the last 30 minutes?",
+     "criteria": {
+      "rising": "price moved up by more than {move_rule_sigma} sigma over the last 30 minutes",
+      "falling": "price moved down by more than {move_rule_sigma} sigma over the last 30 minutes",
+      "going_nowhere": "price stayed within {move_rule_sigma} sigma of where it was 30 minutes ago",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "price_vs_vwap": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Where is price compared with the day's average price?",
+     "why": "Above or below the day's volume-weighted average is where the day's buyers and sellers stand.",
+     "type": "choice",
+     "instructions": "Read `price.vs_vwap`. Where is price compared with the day's volume-weighted average price?",
+     "criteria": {
+      "above": "price is more than {move_rule_sigma} sigma above the average",
+      "below": "price is more than {move_rule_sigma} sigma below the average",
+      "at_it": "price is within {move_rule_sigma} sigma of the average",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "price_in_day_range": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Where is price in today's range so far?",
+     "why": "Room to run is room to the day's edges.",
+     "type": "choice",
+     "instructions": "Read `price.day_range_position`. Where is price in today's range so far?",
+     "criteria": {
+      "top": "price is in the top third of today's range so far",
+      "middle": "price is in the middle third of today's range so far",
+      "bottom": "price is in the bottom third of today's range so far",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "range_vs_normal": {
+     "viewpoint": "history",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "How does today's range so far compare with recent sessions at this time of day?",
+     "why": "A wide day tends to stay wide and a narrow one narrow.",
+     "type": "choice",
+     "instructions": "Read `range.today_vs_normal`. How does today's range so far compare with the prior sessions the label names, at this time of day?",
+     "criteria": {
+      "small": "today's range so far is in the bottom third of the last sessions at this time of day, however many sessions the label names",
+      "normal": "today's range so far is in the middle third of the last sessions at this time of day, however many sessions the label names",
+      "large": "today's range so far is in the top third of the last sessions at this time of day, however many sessions the label names",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "session_shape": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "What shape has the session taken since the open?",
+     "why": "A reversal day and a trend day end differently.",
+     "type": "choice",
+     "instructions": "Read `range.session_shape`. Which shape has the session taken so far?",
+     "criteria": {
+      "reversed_down": "price rose at least {shape_cut_sigma} sigma above the open and gave back at least that much, half or more of the rise",
+      "reversed_up": "price fell at least {shape_cut_sigma} sigma below the open and recovered at least that much, half or more of the fall",
+      "rising": "price is more than {shape_cut_sigma} sigma above the open without such a reversal",
+      "falling": "price is more than {shape_cut_sigma} sigma below the open without such a reversal",
+      "flat": "price is within {shape_cut_sigma} sigma of the open",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "box_status": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Where is price against the opening box?",
+     "why": "The first half hour's range is the day's first frame; a break that holds is a direction.",
+     "type": "choice",
+     "instructions": "Read `range.box_status`. A price that sits inside the box counts as inside, whatever it did earlier; only a price beyond an edge now counts as broken. Which is it?",
+     "criteria": {
+      "forming": "the opening box is still forming",
+      "inside_all_day": "price is inside the opening box and has stayed inside it all day",
+      "back_inside_after_a_break": "price is inside the opening box, and earlier today it broke above it, below it, or out both ways, and came back inside",
+      "broken_up": "price has broken above the opening box",
+      "broken_down": "price has broken below the opening box",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "volatility",
+   "reads": [
+    "context",
+    "iv.trend_30min",
+    "iv.vs_realized_30",
+    "iv.expected_move_used",
+    "iv.term_structure"
+   ],
+   "questions": {
+    "iv_trend": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Over the last 30 minutes, did implied volatility rise, fall or hold?",
+     "why": "Options pricing in more movement is a warning the tape has not shown yet.",
+     "type": "choice",
+     "instructions": "Read `iv.trend_30min`. Which describes at-the-money implied volatility over the last 30 minutes?",
+     "criteria": {
+      "rising": "it rose more than {iv_flat_band_pts} vol points",
+      "falling": "it fell more than {iv_flat_band_pts} vol points",
+      "flat": "it stayed within the {iv_flat_band_pts} vol point flat band",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "realized_vs_priced": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Over the last 30 minutes, did price move less, about as much, or more than the options priced?",
+     "why": "The draft's volatility backdrop: a tape quieter than its price tends to stay quiet.",
+     "type": "choice",
+     "instructions": "Read `iv.vs_realized_30`. How did price's realized movement over the last 30 minutes compare with the move the options market prices for 30 minutes?",
+     "criteria": {
+      "quieter_than_priced": "realized movement was under {realized_quiet_ratio} times the priced move",
+      "about_priced": "realized movement was between {realized_quiet_ratio} and {realized_wild_ratio} times the priced move",
+      "wilder_than_priced": "realized movement was over {realized_wild_ratio} times the priced move",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "expected_move_used": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "How much of today's expected move has the range already used?",
+     "why": "A day that has spent its expected move has less left to spend.",
+     "type": "choice",
+     "instructions": "Read `iv.expected_move_used`. How much of today's expected move has today's range used so far?",
+     "criteria": {
+      "under_half": "under half of it",
+      "half_to_full": "between half and all of it",
+      "beyond_full": "more than all of it",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "vol_curve": {
+     "viewpoint": "indicators",
+     "status": "live",
+     "cadence": "every fourth read",
+     "ask": "Is near-term fear priced above or below three-month fear?",
+     "why": "The draft's term structure: an inverted VIX curve is a stressed market.",
+     "type": "choice",
+     "instructions": "Read `iv.term_structure`. Which shape is the VIX curve in?",
+     "criteria": {
+      "calm": "the VIX is below {vix_curve_flat} times the three-month VIX",
+      "stressed": "the VIX is at or above {vix_curve_flat} times the three-month VIX",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "strikes",
+   "reads": [
+    "context",
+    "gex.weight_side",
+    "gex.air_to_wall",
+    "range.nearest_level"
+   ],
+   "questions": {
+    "weight_side": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "Which side of price holds most of the options weight?",
+     "why": "Dealers' hedging leans price toward where the weight sits.",
+     "type": "choice",
+     "instructions": "Read `gex.weight_side`. Where does the options weight sit?",
+     "criteria": {
+      "above": "more than {even_split_high:.0%} of the options weight sits above price",
+      "below": "more than {even_split_high:.0%} of the options weight sits below price",
+      "even": "between {even_split_low:.0%} and {even_split_high:.0%} of it sits above price",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "air_to_wall": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Is a heavy strike within reach of price?",
+     "why": "The draft's nearest wall: a wall close by is a level price has to deal with.",
+     "type": "choice",
+     "instructions": "Read `gex.air_to_wall`. How close is the nearest heavy strike?",
+     "criteria": {
+      "heavy_strike_close": "a heavy strike sits within {wall_near_sigma} sigma of price",
+      "open_air": "the nearest heavy strike is more than {wall_near_sigma} sigma away",
+      "no_wall_in_reach": "no heavy strike sits within reach on either side",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "nearest_level_action": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "What has price done at the nearest level in the last 30 minutes?",
+     "why": "A level just crossed and a level still ahead mean different things for the next half hour.",
+     "type": "choice",
+     "instructions": "Read `range.nearest_level`. Which describes price and the nearest level over the last 30 minutes?",
+     "criteria": {
+      "crossed_up": "price crossed the level from below and sits above it",
+      "crossed_down": "price crossed the level from above and sits below it",
+      "crossed_and_back": "price pushed through the level and came back to the side it started on",
+      "within_reach_above": "the level is within {move_rule_sigma} sigma above price, untouched",
+      "within_reach_below": "the level is within {move_rule_sigma} sigma below price, untouched",
+      "near_but_untouched": "the level is beyond {move_rule_sigma} sigma but within {wall_near_sigma} sigma, untouched",
+      "no_level_close": "no level is within {wall_near_sigma} sigma of price",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "options",
+   "reads": [
+    "context",
+    "options.new_activity",
+    "options.call_put_split"
+   ],
+   "questions": {
+    "todays_volume_location": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "Where is today's option volume concentrated?",
+     "why": "The busiest strike is where today's traders are positioned.",
+     "type": "choice",
+     "instructions": "Read `options.new_activity`. Where does today's option volume sit?",
+     "criteria": {
+      "spread_out": "no strike holds more than {busiest_strike_share:.0%} of today's option volume",
+      "at_price": "the busiest strike, over {busiest_strike_share:.0%} of the volume, is the one nearest price",
+      "above_price": "the busiest strike, over {busiest_strike_share:.0%} of the volume, sits above price",
+      "below_price": "the busiest strike, over {busiest_strike_share:.0%} of the volume, sits below price",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "call_put_lean": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "Were today's contracts near price mostly calls, mostly puts, or even?",
+     "why": "Which side today's options traders reached for.",
+     "type": "choice",
+     "instructions": "Read `options.call_put_split`. How did today's contracts near price split between calls and puts?",
+     "criteria": {
+      "mostly_calls": "more than {even_split_high:.0%} were calls",
+      "mostly_puts": "calls were under {even_split_low:.0%}",
+      "even": "calls were between {even_split_low:.0%} and {even_split_high:.0%}",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "expiry",
+   "reads": [
+    "context",
+    "expiry.settle_clock",
+    "expiry.opex_today",
+    "expiry.today_vs_week"
+   ],
+   "questions": {
+    "settle_window": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Are today's 0DTE options in their last hour before the settle?",
+     "why": "In its last hour the 0DTE book's gamma decays fastest and its hedging can pull or release price.",
+     "type": "choice",
+     "instructions": "Read `expiry.settle_clock`. Where are today's 0DTE options against their settle?",
+     "criteria": {
+      "last_hour": "they settle within the next {zero_dte_last_hour_min} minutes",
+      "before_last_hour": "they settle more than {zero_dte_last_hour_min} minutes from now",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "opex_today": {
+     "viewpoint": "space_time",
+     "status": "live",
+     "cadence": "every fourth read",
+     "ask": "Is today a monthly or quarterly expiry, or an ordinary daily one?",
+     "why": "Monthly and quarterly expiries carry far more open positions into the close than an ordinary day.",
+     "type": "choice",
+     "instructions": "Read `expiry.opex_today`. Which kind of expiry day is today?",
+     "criteria": {
+      "quarterly": "today is the quarterly expiry",
+      "monthly": "today is the monthly expiry",
+      "ordinary": "today is an ordinary daily expiry",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "books_agree": {
+     "viewpoint": "strikes",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "Do today's 0DTE book and the 0-to-7-day book read the same gamma regime?",
+     "why": "Today's book and the week's pulling the same way is a firmer regime than one against the other.",
+     "type": "choice",
+     "instructions": "Read `expiry.today_vs_week`. Do the two books agree?",
+     "criteria": {
+      "agree": "today's 0DTE book and the 0-to-7-day book read the same regime",
+      "disagree": "today's 0DTE book and the 0-to-7-day book read different regimes",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "momentum",
+   "reads": [
+    "context",
+    "momentum.pace",
+    "momentum.path_efficiency"
+   ],
+   "questions": {
+    "pace_vs_before": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Did the last 10 minutes move further or less far than the 10 before?",
+     "why": "A move speeding up and a move running out of steam.",
+     "type": "choice",
+     "instructions": "Read `momentum.pace`. How far did the last 10 minutes move compared with the 10 minutes before?",
+     "criteria": {
+      "bigger": "more than {pace_bigger} times as far",
+      "smaller": "less than two thirds as far",
+      "similar": "between two thirds and {pace_bigger} times as far, or both close to nothing",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "path_efficiency": {
+     "viewpoint": "volume_price",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "How straight did the last 30 minutes run?",
+     "why": "The draft's price path: an orderly move and a choppy one of the same size are different moves.",
+     "type": "choice",
+     "instructions": "Read `momentum.path_efficiency`. How straight was price's path over the last 30 minutes?",
+     "criteria": {
+      "orderly": "path efficiency of {path_orderly:.0%} or more",
+      "mixed": "path efficiency between {path_choppy:.0%} and {path_orderly:.0%}",
+      "choppy": "path efficiency under {path_choppy:.0%}",
+      "no_move": "price stayed within the {move_rule_sigma} sigma move rule, so there is no path to judge",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "breadth",
+   "reads": [
+    "context",
+    "breadth.advance_decline",
+    "breadth.tick_lean",
+    "breadth.sectors_up"
+   ],
+   "questions": {
+    "advance_decline": {
+     "viewpoint": "market",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Are more NYSE stocks up or down on the day?",
+     "why": "An index move the whole market joins is a different move from one a few names carry.",
+     "type": "choice",
+     "instructions": "Read `breadth.advance_decline`. Are more NYSE stocks advancing or declining today?",
+     "criteria": {
+      "more_advancing": "more stocks are advancing than declining",
+      "more_declining": "more stocks are declining than advancing",
+      "even": "as many are advancing as declining",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "tick_lean": {
+     "viewpoint": "market",
+     "status": "live",
+     "cadence": "every read",
+     "ask": "Over the last 30 minutes, did the NYSE tick lean to buying or selling?",
+     "why": "The tick is the market's minute-by-minute buying and selling pressure.",
+     "type": "choice",
+     "instructions": "Read `breadth.tick_lean`. Over the last 30 minutes, did the NYSE tick read above zero more often or below zero more often?",
+     "criteria": {
+      "buying": "it read above zero more often than below",
+      "selling": "it read below zero more often than above",
+      "even": "it read above and below zero equally often",
+      "unsure": "the label gives too little to call"
+     }
+    },
+    "sectors_up": {
+     "viewpoint": "market",
+     "status": "live",
+     "cadence": "every other read",
+     "ask": "Are most sectors above where they opened?",
+     "why": "A move across most sectors is broad; one carried by a few is narrow.",
+     "type": "choice",
+     "instructions": "Read `breadth.sectors_up`. How many of the sector funds are above where they opened today?",
+     "criteria": {
+      "most": "most of them",
+      "fewer_than_half": "fewer than half",
+      "half": "exactly half",
+      "unsure": "the label gives too little to call"
+     }
+    }
+   }
+  },
+  {
+   "id": "outcome_shadow",
+   "reads": [
+    "context",
+    "price.recent_move",
+    "price.vs_vwap",
+    "iv.vs_realized_30",
+    "iv.term_structure",
+    "gex.weight_side",
+    "gex.air_to_wall",
+    "range.nearest_level",
+    "breadth.tick_lean"
+   ],
+   "questions": {
+    "move_size": {
+     "viewpoint": "space_time",
+     "status": "shadow",
+     "cadence": "every read",
+     "ask": "How far does price wander over the next 30 minutes, either way?",
+     "why": "The draft's size question, at the live lane's horizon and on the SPX bands.",
+     "type": "score",
+     "instructions": "Read the labels in the state. How far from where it is now does price get, at its furthest point in either direction, during `context.horizon`?",
+     "criteria": [
+      "price stays within {next_30_flat_band_sigma} sigma of where it is now the whole time",
+      "price gets between {next_30_flat_band_sigma} and {next_30_large_band_sigma} sigma away at its furthest point",
+      "price gets more than {next_30_large_band_sigma} sigma away at its furthest point"
+     ]
+    },
+    "direction_lean": {
+     "viewpoint": "space_time",
+     "status": "shadow",
+     "cadence": "every read",
+     "ask": "Which side of here do the signs point to?",
+     "why": "The draft's direction question: the labels' lean, logged beside the sums.",
+     "type": "choice",
+     "instructions": "Read the labels in the state. Which side of where it is now do they point to at the end of `context.horizon`?",
+     "criteria": {
+      "above": "most labels point to price ending above where it is now",
+      "below": "most labels point to price ending below where it is now",
+      "unclear": "the labels point both ways about equally, or say too little to call"
+     }
+    },
+    "stance_contained_or_expanded": {
+     "viewpoint": "space_time",
+     "status": "shadow",
+     "cadence": "every read",
+     "ask": "Does price stay near here, or break away?",
+     "why": "The draft's regime question, on the 30-minute flat band.",
+     "type": "choice",
+     "instructions": "Read `gex.air_to_wall`, `gex.weight_side`, `iv.vs_realized_30` and `iv.term_structure`. Which describes `context.horizon` better?",
+     "criteria": {
+      "contained": "price stays within {next_30_flat_band_sigma} sigma of where it is now for the whole horizon",
+      "expanded": "price moves more than {next_30_flat_band_sigma} sigma away from where it is now at some point during the horizon",
+      "unclear": "the labels conflict or say too little to call"
+     }
+    },
+    "wall_holds_or_breaks": {
+     "viewpoint": "strikes",
+     "status": "shadow",
+     "cadence": "every read",
+     "ask": "Does price end on the same side of the nearest heavy strike, or the other side?",
+     "why": "The draft's wall question, over the labels that describe the nearest wall and level.",
+     "type": "choice",
+     "instructions": "Read `gex.air_to_wall` and `range.nearest_level`. What does price do at the nearest heavy strike over `context.horizon`?",
+     "criteria": {
+      "holds": "at the end of the horizon price is on the same side of the nearest heavy strike as it is now",
+      "breaks": "at the end of the horizon price is on the other side of the nearest heavy strike from where it is now",
+      "unclear": "the labels conflict or say too little to call"
+     }
+    }
+   }
+  }
+ ]
+}

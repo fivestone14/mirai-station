@@ -1,0 +1,68 @@
+"""Steps 3 and 4: answers become sentences, the weights decide who speaks, the sums ride on top."""
+from __future__ import annotations
+
+from spx_jev.ask import DEFAULT_QUESTIONS, load_questions
+from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_30_FLAT_PCT, NEXT_60_FLAT_BAND_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS
+from spx_jev.hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, one_sentence, unit_line, views_of
+from spx_jev.lane import TAPE
+from spx_jev.weights import QuestionWeights
+
+DOC = load_questions(DEFAULT_QUESTIONS)
+BY_ID = {qid: q for g in DOC["groups"] for qid, q in g["questions"].items()}
+UNIT = {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape"}
+
+
+def test_one_sentence_carries_the_ask_the_pick_and_how_sure():
+    s = one_sentence(BY_ID["price_recent_direction"], {"pick": "rising", "probabilities": {"rising": 0.98, "falling": 0.01}})
+    assert s == "Over the last 30 minutes, did price rise, fall, or go nowhere? rising, JEV was 98% sure"
+    held = one_sentence(BY_ID["tick_lean"], {"pick": "buying", "probabilities": {"buying": 0.8}, "held_from": "2026-09-18T11:02:14-04:00"})
+    assert held.endswith("(held since 11:02 ET, not re-asked)")
+
+
+def test_shadow_and_low_weight_answers_are_left_out_with_a_reason():
+    answered = {"price_recent_direction": {"pick": "rising", "probabilities": {"rising": 1.0}},
+                "direction_lean": {"pick": "below", "probabilities": {"below": 0.4}},
+                "tick_lean": {"pick": "buying", "probabilities": {"buying": 0.9}},
+                "nobody": {"pick": "x"}}
+    sentences, left_out = answer_sentences(DOC, answered, QuestionWeights({"tick_lean": {"weight": 0.2}}))
+    assert list(sentences) == ["price_recent_direction"]
+    assert left_out["direction_lean"].startswith("a shadow forecast") and "0.20" in left_out["tick_lean"]
+    assert left_out["nobody"] == "not a question in the doc"
+    assert list(answer_sentences(DOC, answered)[0]) == ["price_recent_direction", "tick_lean"]   # neutral: nobody is weighed out
+
+
+def test_the_sums_carry_the_spx_bands_and_base_rates():
+    req = hour_request({"price_recent_direction": "rising, JEV was 98% sure"})
+    assert req["id"] == "hour" and req["state"]["context"]["symbol"] == "SPX"
+    assert req["state"]["context"]["horizon"] == "the next 30 minutes, and the next 60 minutes"
+    assert list(req["questions"]) == ["next_30", "next_60"]
+    assert f"within {NEXT_30_FLAT_BAND_SIGMA} sigma" in req["questions"]["next_30"]["criteria"]["flat"]
+    assert f"about {NEXT_30_FLAT_PCT}% of the time" in req["questions"]["next_30"]["criteria"]["flat"]
+    assert f"within {NEXT_60_FLAT_BAND_SIGMA} sigma" in req["questions"]["next_60"]["criteria"]["flat"]
+    assert all(set(q) == {"type", "instructions", "criteria"} for q in req["questions"].values())
+
+
+def test_the_lanes_sum_is_priced_in_points_from_the_unit():
+    band = band_of(UNIT)
+    assert band == {"flat_points": round(TAPE_FLAT_UNITS * 6, 2), "big_points": round(TAPE_BIG_UNITS * 6, 2),
+                    "flat_units": TAPE_FLAT_UNITS, "big_units": TAPE_BIG_UNITS}
+    line = unit_line(UNIT, band)
+    assert line.startswith(f"one tape unit is 6.0 points; flat is within {TAPE_FLAT_UNITS * 6:.1f} points either way ({TAPE_FLAT_UNITS:g} of a unit)")
+    ranked = unit_line({**UNIT, "rank": {"band": "top third", "higher_than": 15, "of": 20}}, band)
+    assert ", in the top third for this minute, wider than 15 of 20 prior sessions;" in ranked
+    req = hour_request({"q": "a sentence"}, lane=TAPE, ruler=UNIT)
+    assert req["state"]["context"]["unit"] == line and list(req["questions"]) == ["next_10"]
+    assert list(load_hour_doc(lane=TAPE)["questions"]["next_10"]["criteria"]) == ["down_big", "down_small", "flat", "up_small", "up_big", "unsure"]
+
+
+def test_the_summary_keeps_the_primary_on_top_and_reads_a_five_way_sum_three_ways():
+    reply = {"model": "jev-1", "answers": {
+        "next_30": {"type": "choice", "choice": "flat", "probabilities": {"up": 0.2, "flat": 0.6, "down": 0.15, "unsure": 0.05}},
+        "next_60": {"type": "choice", "choice": "up", "probabilities": {"up": 0.4, "flat": 0.3, "down": 0.2, "unsure": 0.1}}}}
+    s = hour_summary(reply)
+    assert s["primary"] == "next_30" and s["pick"] == "flat" and s["by"]["next_60"]["pick"] == "up"
+    assert hour_summary({"error": "HTTP 500"}) == {"error": "HTTP 500"} and hour_summary(None) is None
+    p = {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.2, "up_big": 0.15, "unsure": 0.2}
+    v = views_of(p)
+    assert v["direction"] == {"pick": "up", "probabilities": {"up": 0.35, "flat": 0.3, "down": 0.15, "unsure": 0.2}}
+    assert v["size"] == {"pick": "small", "probabilities": {"big": 0.2, "small": 0.6, "unsure": 0.2}}
