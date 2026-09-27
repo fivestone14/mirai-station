@@ -483,6 +483,9 @@ details .q{margin-top:8px}
     return box;
   }
   // how the 30-minute call was made, drawn: JEV's own sum, the time of day's odds, and the half-and-half shown
+  // the phase's hours in the viewer's zone, without its New York name: "lunch, 12:00 to 14:00" reads "09:00 to 11:00"
+  // in Los Angeles, never "lunch, 09:00 to 11:00"
+  function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
   function howChart(h, bl, at){
     var g = el('div', 'how');
     function row(key, cls, p){
@@ -499,7 +502,7 @@ details .q{margin-top:8px}
       row('Time of day', '', c.probabilities);
       row('Shown', '', h.probabilities);
       g.appendChild(el('div', 'how-note', (j.confidence != null ? 'JEV was ' + pct(j.confidence) + ' sure. ' : '') +
-                                        'Shown is half JEV, half how this time of day went' + (bl.phase_words ? ' (' + marketWords(bl.phase_words, at) + ')' : '') +
+                                        'Shown is half JEV, half how this time of day' + (bl.phase_words ? ' (' + phaseSpan(bl.phase_words, at) + ')' : '') + ' went' +
                                         ' over the last ' + bl.sessions + ' sessions.'));
     } else {
       row('JEV', ' jev', h.probabilities);

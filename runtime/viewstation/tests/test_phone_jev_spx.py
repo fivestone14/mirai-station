@@ -375,3 +375,17 @@ def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
     assert drew == [True, True, ["opening · a call every 5 min", "2026-09-28T10:00:00-04:00", "30-min cardnot read yet"]]
     assert _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": {"row_ts": "x"}, "tape": tape})[0] is False
     assert _run(js, {"now": "2026-09-28T10:11:00-04:00", "last": None, "tape": tape})[0] is False    # the call has closed
+
+
+def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
+    """clock.py names the phase in New York words and hours; in Los Angeles "lunch" would sit beside 09:00, so
+    the page keeps only the hours, redrawn in the viewer's zone."""
+    js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howChart") +
+          "console.log(JSON.stringify(D.w.map(function(w){ return howChart(D.h, {used: true, sessions: 19, phase_words: w}, D.at)"
+          ".kids.slice(-1)[0].textContent; })));")
+    h = {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}, "jev": {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}},
+         "clock": {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}}}
+    got = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00",
+                    "w": ["lunch, 12:00 to 14:00", "the afternoon, 14:00 to the close", "the opening half hour, before 10:00"]}, LA)
+    assert got == [f"Shown is half JEV, half how this time of day ({span}) went over the last 19 sessions."
+                   for span in ("09:00 to 11:00", "11:00 to the close", "before 07:00")]
