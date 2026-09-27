@@ -288,14 +288,14 @@ def test_the_first_checkpoint_has_no_leg_since_the_previous(premarket_scene_fact
 
 @pytest.mark.parametrize("reaction, code, end", [
     (-2.5, "crossed_price", "it carried them across their 16:00 price"),
-    (-0.8, "unwound_night", "it went against the night's move without crossing"),
+    (-0.8, "unwound_night", "it undid part of the night's move"),
     (1.0, "extended_night", "it went the night's way"),
 ])
 def test_the_report_window_against_the_night_before_it(premarket_scene_factory, nights_dir, calendar, reaction, code, end):
     calendar([("08:30", "JOBS")])
     ls = read(premarket_scene_factory, nights_dir, {"europe_morning": 1.5}, jumps={time(8, 35): reaction}, at=time(8, 48))
     text = said(ls, "premarket.release_vs_night")
-    assert "; before the jobs report at 08:30 they were 1.50 sigma above, top third; by 08:45 they " in text and text.endswith(end)
+    assert "; before the jobs report at 08:30 they were 1.50 above, top third; by 08:45 they " in text and text.endswith(end)
     assert verdict(ls, "premarket.release_vs_night") == code and ls.gates["release_vs_night"] is None
 
 
