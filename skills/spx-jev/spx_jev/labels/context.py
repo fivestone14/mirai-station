@@ -1,5 +1,6 @@
 """The context family: what every request carries (the symbol, the units, the horizon) and where the
-session stands."""
+session stands. A read before the open (the premarket lane) says how long until the open, names the
+pre-open ruler its sizes are in, and has no cash move today to time."""
 from __future__ import annotations
 
 from ..cuts import MOVE_RULE_SIGMA, RSI_OVERBOUGHT, RSI_OVERSOLD
@@ -24,16 +25,39 @@ UNITS = ("all distances are in sigma, today's expected move for the S&P 500 inde
 # Added to the gloss on the tape lane, where the stretch labels are sized by the tape unit.
 TAPE_UNITS = ("; a tape unit is the middle of the last three 5-minute price ranges, in index points, "
               "measured afresh at every read, and the labels that use it state it")
+# The gloss before the open, where nothing has traded in the index today and the night is told from the futures.
+PREMARKET_UNITS = ("all distances are in sigma, the pre-open ruler: the median of the last sessions' morning expected move "
+                   "for the S&P 500 index, the same ruler at every read before the open; "
+                   "a move in percent is the change over the price it started from; "
+                   "futures' 16:00 price is where S&P futures stood at 16:00 ET on the last session, when the index closed, the night's starting point; "
+                   "the settled open is the index's price at the close of its 09:34 bar, four minutes after the open")
 
 
 def build_context_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
     ls.put("context.symbol", SYMBOL)
+    if scene.premarket:
+        ls.put("context.units", PREMARKET_UNITS)
+        ls.put("context.horizon", scene.horizon)
+        _before_the_open(scene, ls)
+        ls.omit("context.time_since_last_move", "before the open: the index has not traded today")
+        return ls
     ls.put("context.units", UNITS + TAPE_UNITS if scene.bar_clock else UNITS)
     ls.put("context.horizon", scene.horizon)
     _session_progress(scene, ls)
     _time_since_last_move(scene, ls)
     return ls
+
+
+def _before_the_open(scene: Scene, ls: LabelSet) -> None:
+    hours, minutes = divmod(max(round(-scene.minutes_since_open), 0), 60)
+    if not hours:
+        wait = plural(minutes, "minute")
+    elif not minutes:
+        wait = plural(hours, "hour")
+    else:
+        wait = f"{plural(hours, 'hour')} and {plural(minutes, 'minute')}"
+    ls.put("context.session_progress", f"the session has not opened: it opens at {scene.session_open:%H:%M} ET, in {wait}")
 
 
 def _session_progress(scene: Scene, ls: LabelSet) -> None:

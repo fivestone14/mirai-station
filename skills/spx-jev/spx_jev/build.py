@@ -3,11 +3,13 @@
     python -m spx_jev.build                      # latest row of the latest day, to stdout
     python -m spx_jev.build --day 2026-09-25 --at 12:45
     python -m spx_jev.build --day 2026-09-25 --at 09:50 --lane tape
+    python -m spx_jev.build --day 2026-09-25 --at 09:28 --lane premarket   # a checkpoint before the open
     python -m spx_jev.build --day 2026-09-25 --every 15 --out states.jsonl
     python -m spx_jev.build --send               # also post each request to JEV
 
-Reads the station's stored rows, bars and market context only. ``--send`` needs TYPESAFE_API_KEY
-in the environment and never prints it.
+Reads the station's stored rows, bars and market context only; the premarket lane reads the overnight
+store instead of a diary row (premarket.make_premarket_scene). ``--send`` needs TYPESAFE_API_KEY in the
+environment and never prints it.
 """
 from __future__ import annotations
 
@@ -15,11 +17,12 @@ import argparse
 import json
 import sys
 import time as _clock
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from .ask import build_requests, load_questions, send_all, summarize
 from .labels.registry import build_labels
-from .lane import LANES, Lane
+from .lane import LANES, PREMARKET, Lane
+from .premarket import make_premarket_scene, market_at, pre_open_ruler
 from .schedule import not_due
 from .state_builder import DEFAULT_STATE_DIR, Scene, make_scene
 
@@ -40,6 +43,7 @@ def package(scene: Scene, doc: dict, lane: Lane) -> dict:
         "bars_used": len(scene.bars),
         "prior_sessions": len(scene.prior_bars),
         **({"ruler": scene.unit} if scene.bar_clock else {}),
+        **({"ruler": pre_open_ruler(scene)} if scene.premarket else {}),
         "state": labels.state,
         "omitted": labels.omitted,
         "requests": requests,
@@ -53,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--day", help="session date YYYY-MM-DD, default the latest day with rows")
     ap.add_argument("--at", type=_time, help="ET clock HH:MM, use the last row at or before it")
     ap.add_argument("--every", type=int, help="replay the day, one state every N minutes from 10:00 to 15:00, as JSON lines")
-    ap.add_argument("--lane", choices=sorted(LANES), default="live", help="live (the default) or tape: the bar clock, the tape unit, the lane's questions")
+    ap.add_argument("--lane", choices=sorted(LANES), default="live",
+                    help="live (the default), tape (the bar clock, the tape unit) or premarket (a checkpoint before the open), each with its questions")
     ap.add_argument("--questions", help="questions file, default the lane's")
     ap.add_argument("--out", help="write here instead of stdout")
     ap.add_argument("--send", action="store_true", help="post each request to JEV and print the answers")
@@ -61,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     lane = LANES[args.lane]
+    if lane is PREMARKET and (args.every or not (args.day and args.at)):
+        # a read before the open has no diary row to fall back on: it is one named moment of the night
+        ap.error("the premarket lane builds one checkpoint, named by --day and --at; its runs are python3 -m spx_jev.premarket")
     doc = load_questions(args.questions or lane.questions, lane.key)
     horizon = f"the next {lane.horizons[lane.primary][0]} minutes"
 
@@ -85,7 +93,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"wrote {n} states", file=sys.stderr)
             return 0
 
-        scene = make_scene(args.state_dir, args.day, at=args.at, bar_clock=lane.bar_clock, horizon=horizon)
+        if lane is PREMARKET:
+            scene = make_premarket_scene(args.state_dir, market_at(date.fromisoformat(args.day), args.at))
+        else:
+            scene = make_scene(args.state_dir, args.day, at=args.at, bar_clock=lane.bar_clock, horizon=horizon)
         pkg = package(scene, doc, lane)
         if args.send:
             t0 = _clock.monotonic()
