@@ -619,6 +619,10 @@ def test_an_unsent_jev_read_says_why_and_when_the_next_call_is():
     assert _card_parts(last)[2] == ["big", "Up 38%"]
     assert ["tag", "The call from the 05:48 read; the 06:28 read is a snapshot and asks nothing."] in _card_parts(last)
     assert _card_parts(_page(pre_card("09:28", sent=False, hour=None), et("09:29")))[3] == ["skip", "No call before the open"]
+    # a JEV read with nothing to ask names its checkpoint on the market clock; the chip gives it in the viewer's zone
+    empty = pre_card("08:48", sent=False, unsent_reason="nothing to ask at the 08:48 ET read")
+    assert _page(empty, et("08:50"), TOKYO)["state"] == ["not sent: nothing to ask at the 21:48 read"]
+    assert _page(empty, et("08:50"), LA)["state"] == ["not sent: nothing to ask at the 05:48 read"]
 
 
 def test_a_card_left_behind_by_a_sleeping_mac_says_which_read_is_missing():
@@ -722,7 +726,7 @@ def test_the_week_frankfurt_is_on_winter_time_moves_a_checkpoint_and_the_card_fo
 _PRE_W = {"pre-market read 00:35, 4 hr 45 min ago, open 06:30": 319.23, "BEFORE THE OPEN": 113.08,
           "SNAPSHOT, JEV AT 05:48 AND 06:28": 222.83, "STALE: THE 05:05 READ HAS NOT LANDED": 255.12,
           "NOT SENT: NO KEY ON THIS MACHINE": 227.98,
-          "NOT SENT: THIS RUN WAS NOT ASKED TO SEND": 284.97, "FUTURES 25 MIN OLD AT THE READ": 208.96,
+          "NOT SENT: THIS RUN WAS NOT ASKED TO SEND": 284.97, "NOT SENT: NOTHING TO ASK AT THE 05:48 READ": 293.56, "FUTURES 25 MIN OLD AT THE READ": 208.96,
           "OPENS 06:30": 85.72, "5 HR 50 MIN TO GO": 120.45, "Read 13:05 GMT+5:30": 119.91, "Checked 19:14 and 19:34": 143.86}
 
 
@@ -736,7 +740,8 @@ def test_the_premarket_card_fits_the_owners_360px_phone():
     chip = 2 * 9 + 2                                            # .state's side padding and border
     assert _PRE_W["pre-market read 00:35, 4 hr 45 min ago, open 06:30"] <= column
     for w in ("BEFORE THE OPEN", "SNAPSHOT, JEV AT 05:48 AND 06:28", "STALE: THE 05:05 READ HAS NOT LANDED",
-              "NOT SENT: NO KEY ON THIS MACHINE", "NOT SENT: THIS RUN WAS NOT ASKED TO SEND", "FUTURES 25 MIN OLD AT THE READ"):
+              "NOT SENT: NO KEY ON THIS MACHINE", "NOT SENT: THIS RUN WAS NOT ASKED TO SEND",
+              "NOT SENT: NOTHING TO ASK AT THE 05:48 READ", "FUTURES 25 MIN OLD AT THE READ"):
         assert _PRE_W[w] + chip <= column, w
     assert _PRE_W["OPENS 06:30"] + _px(".clock-top", "gap") + _PRE_W["5 HR 50 MIN TO GO"] <= card
     assert _PRE_W["Read 13:05 GMT+5:30"] + _PRE_W["Checked 19:14 and 19:34"] <= card
