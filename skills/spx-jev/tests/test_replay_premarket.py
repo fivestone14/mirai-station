@@ -184,6 +184,7 @@ def test_ranks_share_ties_and_the_rank_correlation_reads_them():
 
 def test_reasons_count_once_whatever_their_numbers():
     assert replay.pattern("only 9 usable of the last 20 nights, fewer than 10") == "only # usable of the last # nights, fewer than #"
+    assert replay.pattern("since 16:00, -0.25% by 2026-09-01 in 08:30-08:45") == "since 16:00, #% by 2026-09-01 in 08:30-08:45"
 
 
 def test_the_replay_answers_from_the_questions_own_label():

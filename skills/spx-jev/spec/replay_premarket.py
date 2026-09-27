@@ -267,8 +267,10 @@ def judged_value(kind: str, name: str, oc: dict, side: int | None) -> float | No
 
 
 def pattern(reason: str) -> str:
-    """A reason with its numbers blanked, so the same reason on different nights counts once."""
-    return re.sub(r"-?\d+(\.\d+)?", "#", reason)
+    """A reason with its counts and sizes blanked, so the same reason on different nights counts once; its dates
+    and clock times stay."""
+    return re.sub(r"\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}|(?<!\d)-?\d+(\.\d+)?",
+                  lambda m: m.group(0) if re.search(r"\d[-:]", m.group(0)) else "#", reason)
 
 
 def judge(qid: str, q: dict, checkpoint: str, reads: list[dict], outcomes: dict[str, dict]) -> dict:
@@ -345,6 +347,9 @@ def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], day
              + (f" ({graded_days[0]} to {graded_days[-1]})." if graded_days else "."), ""]
     if no_read:
         lines += ["Reads that built nothing: " + "; ".join(f"{why} ({n})" for why, n in no_read.most_common()), ""]
+    verdicts = Counter(j["verdict"] for j in judged)
+    lines += [f"Of {len(judged)} questions at their reads: " + ", ".join(f"{v} {verdicts[v]}" for v in ("holds", "noise", "too few")) + ".",
+              ""]
     lines += [f"Verdict: **holds** when a permutation p is under {P_HOLDS} and the effect keeps its sign (or its best answer) "
               f"in both halves of the nights; **too few** under {MIN_NIGHTS} graded nights or under two answers given on "
               f"{MIN_PER_ANSWER} nights each; **noise** otherwise.", "",
@@ -360,7 +365,8 @@ def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], day
                   f"Fates: {', '.join(f'{k} {v}' for k, v in sorted(j['fates'].items()))}. "
                   f"Answers: {', '.join(f'{k} {v}' for k, v in sorted(j['answers'].items())) or 'none'}."]
         if j["unanswered"]:
-            lines.append(f"Asked on {j['unanswered']} nights with no code answer: no label of the question's carried a verdict among its options.")
+            lines.append(f"Asked on {j['unanswered']} nights with no code answer: "
+                         "no label of the question's carried a verdict among its options.")
         for fate, top in j["reasons"].items():
             if top:
                 lines.append(f"Why {fate}: " + "; ".join(f"{why} ({n})" for why, n in top) + ".")
