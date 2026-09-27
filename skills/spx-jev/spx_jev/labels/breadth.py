@@ -295,17 +295,18 @@ def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
 
 
 def _spx_from_settled_open(scene: Scene) -> str:
-    """Where SPX stands against its settled open, for the members' net volume to be read beside; empty
-    before the 09:34 bar has finished or without a ruler."""
+    """Where SPX stands against its settled open, judged against the open-day line as price.day_move judges
+    it, for the members' net volume to be read beside; empty before the 09:34 bar has finished or without a
+    ruler."""
     opened, ruler = settled_open(scene.bars), sigma_anchor(scene)
     if opened is None or ruler is None:
         return ""
-    move = round((scene.spot - opened) / ruler.points, 2)
+    move = (scene.spot - opened) / ruler.points
     estimated = " (ruler estimated)" if ruler.estimated else ""
     if abs(move) > OPEN_DAY_MOVE_SIGMA:
         return (f" while SPX is {sig(abs(move))} {'above' if move > 0 else 'below'} its settled open, past the "
-                f"{OPEN_DAY_MOVE_SIGMA} sigma open-day line{estimated}")
-    return f" while SPX is {signed(move)} sigma from its settled open, within the {OPEN_DAY_MOVE_SIGMA} sigma open-day line{estimated}"
+                f"{OPEN_DAY_MOVE_SIGMA:.2f} sigma open-day line{estimated}")
+    return f" while SPX is {signed(move)} sigma from its settled open, within the {OPEN_DAY_MOVE_SIGMA:.2f} sigma open-day line{estimated}"
 
 
 def _members_net_day(scene: Scene, ls: LabelSet) -> None:

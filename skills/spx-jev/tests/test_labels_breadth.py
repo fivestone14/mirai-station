@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row
 from spx_jev import events
 from spx_jev.labels.breadth import build_breadth_labels
+from spx_jev.labels.price import build_price_labels
 from spx_jev.state_builder import MarketContext
 
 PRIOR_DAYS = [f"2026-09-{d:02d}" for d in range(17, 7, -1)]
@@ -290,7 +291,7 @@ def members_read(scene_factory, members_m: float, nyse_m: float, closes: list[fl
 def test_members_net_volume_against_price_and_the_nyse(scene_factory):
     assert sentence(members_read(scene_factory, -37, 10), "breadth.members_net_day") == (
         "since the open S&P 500 members' net volume is -37M, 0.74 times the usual swing for 12:32 on the sell side, below zero "
-        "while SPX is 0.46 sigma above its settled open, past the 0.1 sigma open-day line; NYSE net volume is +10M, 0.10 times "
+        "while SPX is 0.46 sigma above its settled open, past the 0.10 sigma open-day line; NYSE net volume is +10M, 0.10 times "
         "the usual swing for 12:32 on the buy side; S&P 500 net volume runs 0.84 swings weaker than NYSE's, past the 0.5 split line")
     assert sentence(members_read(scene_factory, 45, -20), "breadth.members_net_day").endswith(
         "S&P 500 net volume runs 1.10 swings stronger than NYSE's, past the 0.5 split line")
@@ -300,9 +301,17 @@ def test_the_split_line_and_the_open_day_line_hold_their_edges(scene_factory):
     on_split = sentence(members_read(scene_factory, 30, 10), "breadth.members_net_day")
     assert on_split.endswith("S&P 500 net volume is matched with NYSE's, 0.50 swings apart, within the 0.5 split line")
     near_open = sentence(members_read(scene_factory, 30, 10, closes=[7700.0] * 5 + [7707.5] * 177), "breadth.members_net_day")
-    assert "above zero while SPX is +0.10 sigma from its settled open, within the 0.1 sigma open-day line;" in near_open
+    assert "above zero while SPX is +0.10 sigma from its settled open, within the 0.10 sigma open-day line;" in near_open
     at_zero = sentence(members_read(scene_factory, 0.4, 10), "breadth.members_net_day")
     assert at_zero.startswith("since the open S&P 500 members' net volume is +0M, 0.01 times the usual swing for 12:32 on the buy side, at zero")
+
+
+def test_the_open_day_line_is_judged_as_price_day_move_judges_it(scene_factory):
+    just_past = [7700.0] * 5 + [7707.5225] * 177                          # 0.1003 sigma above the settled open
+    members = sentence(members_read(scene_factory, 30, 10, closes=just_past), "breadth.members_net_day")
+    assert "above zero while SPX is 0.10 sigma above its settled open, past the 0.10 sigma open-day line;" in members
+    day_move = build_price_labels(scene_factory(NOW, bars_from_closes(just_past), rows_before=[ANCHOR_ROW])).state["price"]["day_move"]
+    assert "past the 0.10 sigma open-day line" in day_move
 
 
 def test_members_net_volume_omitted_without_its_series_or_the_prior_sessions(scene_factory):
