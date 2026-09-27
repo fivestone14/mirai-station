@@ -97,6 +97,14 @@ def test_a_day_that_crossed_the_open_measures_its_furthest_point_on_either_side(
                                                      "10 sessions for these reads: unwinding")
 
 
+def test_the_furthest_point_is_the_days_even_before_the_listed_reads(scene_factory):
+    ls = read(scene_factory, {time(10, 2): 60.0, time(10, 32): 80.0, time(11, 2): 10.0, time(11, 32): 20.0, time(12, 2): 25.0,
+                              time(12, 32): 30.0}, now=at(12, 32))
+    assert said(ls, "seq.day_move_by_read") == ("SPX is 0.30 sigma above the settled open; at the last 4 reads it stood +0.10 (11:02), "
+                                                "+0.20 (11:32), +0.25 (12:02) and +0.30 (12:32); 62% of its furthest, +0.80 at 10:32, has "
+                                                "been given back, top third of the last 10 sessions for these reads: unwinding")
+
+
 def test_a_day_inside_the_move_rule_or_with_too_few_ranked_sessions_sleeps(scene_factory):
     flat = read(scene_factory, {**UP, time(11, 32): 5.0})
     assert flat.gates["seq_day_move_stage"] == "the day's move from the settled open is within the 0.09 sigma move rule"

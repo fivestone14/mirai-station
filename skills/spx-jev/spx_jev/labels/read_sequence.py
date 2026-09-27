@@ -5,8 +5,9 @@ each read against the day's side (seq.breadth_by_read). Each label's sentence, h
 source are in spec/question_set.json ``labels``.
 
 The reads are the live lane's minutes (:02 and :32) from its first after the settled open (10:02, the
-set's thirty_minute_start), up to LISTED_READS of them ending with this read (BREADTH_READS for breadth,
-whose sentence carries two numbers a read); the earlier ones are taken
+set's thirty_minute_start) to this read; a sentence lists the last LISTED_READS of them (BREADTH_READS for
+breadth, whose sentence carries two numbers a read), while the day's furthest point from the open is
+sought over them all. The earlier ones are taken
 at their scheduled minute, so a late or missed read changes nothing. The day's move is in the morning
 anchor from the settled open; what changed across the reads is ranked against the same read minutes on
 the prior sessions, never against a fixed line.
@@ -51,8 +52,8 @@ def build_read_sequence_labels(scene: Scene) -> LabelSet:
 
 @dataclass(frozen=True)
 class Reads:
-    """This read and the lane's earlier ones listed with it, oldest first: their minutes and the day's move from
-    the settled open at each in the morning anchor, the last this read's own."""
+    """This read and the lane's earlier ones today, oldest first: their minutes and the day's move from the
+    settled open at each in the morning anchor, the last this read's own."""
     day: date
     clocks: list[time]
     moves: list[float]
@@ -106,11 +107,10 @@ def _reads(scene: Scene) -> tuple[Reads | None, str]:
     earlier = _earlier_clocks(now)
     if len(earlier) < MIN_EARLIER_READS:
         return None, f"needs {MIN_EARLIER_READS} earlier 30-minute reads today from {FIRST_READ:%H:%M}, have {len(earlier)}"
-    clocks = earlier[-(LISTED_READS - 1):]
-    moves = _day_moves(scene.bars, now.date(), clocks, scene.spot, anchor.points)
+    moves = _day_moves(scene.bars, now.date(), earlier, scene.spot, anchor.points)
     if moves is None:
-        return None, f"no SPX bar finished by one of the reads at {listed([f'{c:%H:%M}' for c in clocks])}"
-    return Reads(now.date(), [*clocks, now.time()], moves, anchor), ""
+        return None, f"no SPX bar finished by one of the reads at {listed([f'{c:%H:%M}' for c in earlier])}"
+    return Reads(now.date(), [*earlier, now.time()], moves, anchor), ""
 
 
 def _band(rank: SameClockRank) -> str:
@@ -147,8 +147,9 @@ def _giveback(moves: list[float]) -> float | None:
 
 
 def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
-    """The day's move at each listed read, then how much of its furthest point this read has given back,
-    ranked against the same read minutes on the prior sessions; seq_day_move_stage's verdict."""
+    """The day's move at each listed read, then how much of the day's furthest point, over every read since
+    FIRST_READ, this read has given back (the point's size said when it came before the listed reads), ranked
+    against the same read minutes on the prior sessions; seq_day_move_stage's verdict."""
     def prior_giveback(bars: list[dict], then: datetime, _points: float | None) -> float | None:
         price = close_at(bars, then)
         moves = _day_moves(bars, then.date(), reads.earlier, price, 1.0) if price is not None else None
@@ -158,13 +159,15 @@ def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
     share = _giveback(reads.moves)
     rank = rank_against(share, base) if share is not None else None
     why = _sleep_why(reads, rank, base)
-    stood = [f"{signed(m)} ({c:%H:%M})" for m, c in zip(reads.moves, reads.clocks)]
+    listed_reads = reads.last(LISTED_READS)
+    stood = [f"{signed(m)} ({c:%H:%M})" for m, c in zip(listed_reads.moves, listed_reads.clocks)]
     text = f"{reads.where()}; at the last {len(stood)} reads it stood {listed(stood)}"
     if share == 0:
         text += "; this read is its furthest from the open"
     elif share is not None:
         peak = max(range(len(reads.moves)), key=lambda k: abs(reads.moves[k]))
-        text += f"; {pct(share)} of its furthest, at {reads.clocks[peak]:%H:%M}, has been given back"
+        size = "" if reads.clocks[peak] in listed_reads.clocks else f"{signed(reads.moves[peak])} "
+        text += f"; {pct(share)} of its furthest, {size}at {reads.clocks[peak]:%H:%M}, has been given back"
         if rank is not None:
             text += f", {_band(rank)} of the last {rank.of} sessions for these reads"
     verdict = None if why else "extending" if share == 0 else "stalled" if rank.share < THIRD_HI else "unwinding"
