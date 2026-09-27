@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -63,6 +63,11 @@ def words(kind: str) -> str:
 
 def _minutes(n: int) -> str:
     return f"{n} minute" + ("" if n == 1 else "s")
+
+
+def starts_on(day: date, kind: str, path: Path | str = CALENDAR) -> datetime | None:
+    """When the first tier-1 event of ``kind`` starts on ``day``, or None when there is none that day."""
+    return next((start for start, _, k in _load(str(path)) if k == kind and start.date() == day), None)
 
 
 def tag(now: datetime, path: Path | str = CALENDAR) -> dict | None:

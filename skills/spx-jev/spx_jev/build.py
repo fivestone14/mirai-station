@@ -19,7 +19,8 @@ from datetime import datetime, time, timedelta
 
 from .ask import build_requests, load_questions, send_all, summarize
 from .labels.registry import build_labels
-from .lane import LANES
+from .lane import LANES, Lane
+from .schedule import not_due
 from .state_builder import DEFAULT_STATE_DIR, Scene, make_scene
 
 
@@ -28,9 +29,11 @@ def _time(s: str) -> time:
     return time(int(h), int(m))
 
 
-def package(scene: Scene, doc: dict) -> dict:
+def package(scene: Scene, doc: dict, lane: Lane) -> dict:
+    """One moment's labels and the requests the lane would send: the questions its schedule asks at this
+    read and whose gates are awake. Nothing is held here: a held answer needs the service's records."""
     labels = build_labels(scene)
-    requests, skipped = build_requests(labels.state, doc)
+    requests, skipped = build_requests(labels.state, doc, skip=not_due(doc, lane, scene.now), gates=labels.gates)
     return {
         "row_ts": scene.row["ts"],
         "sigma": scene.sigma,
@@ -58,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     lane = LANES[args.lane]
-    doc = load_questions(args.questions or lane.questions)
+    doc = load_questions(args.questions or lane.questions, lane.key)
     horizon = f"the next {lane.horizons[lane.primary][0]} minutes"
 
     out = open(args.out, "w", encoding="utf-8") if args.out else sys.stdout
@@ -72,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             while t <= end:
                 try:
                     scene = make_scene(args.state_dir, args.day, at=t.time(), bar_clock=lane.bar_clock, horizon=horizon)
-                    pkg = package(scene, doc)
+                    pkg = package(scene, doc, lane)
                     pkg["asked_at"] = t.strftime("%H:%M")
                     out.write(json.dumps(pkg, ensure_ascii=False) + "\n")
                     n += 1
@@ -83,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         scene = make_scene(args.state_dir, args.day, at=args.at, bar_clock=lane.bar_clock, horizon=horizon)
-        pkg = package(scene, doc)
+        pkg = package(scene, doc, lane)
         if args.send:
             t0 = _clock.monotonic()
             pkg["answers"] = send_all(pkg["requests"])

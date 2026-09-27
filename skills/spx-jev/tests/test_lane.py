@@ -26,11 +26,12 @@ def _pacific(hhmm: str) -> tuple[int, int]:
 
 def test_the_live_lane_and_the_opening_lane():
     assert LANES == {"live": LIVE, "tape": TAPE}
-    assert LIVE.out_dir == "spx_jev" and LIVE.questions.name == "spx_live.json" and LIVE.hour_doc.name == "spx_hour.json"
+    assert LIVE.out_dir == "spx_jev" and LIVE.questions.name == "spx_questions.json" and LIVE.hour_doc.name == "spx_hour.json"
+    assert (LIVE.key, TAPE.key) == ("thirty_minute", "opening_five_minute") and TAPE.questions == LIVE.questions
     assert LIVE.horizons == {"next_30": (30, NEXT_30_FLAT_BAND_SIGMA), "next_60": (60, NEXT_60_FLAT_BAND_SIGMA)}
     assert (LIVE.primary, LIVE.cadence, LIVE.tag, LIVE.bar_clock, LIVE.clock_blend, LIVE.bar_gap_min) == ("next_30", True, None, False, True, 2)
     assert LIVE.pool is True and TAPE.pool is False                     # only the live lane feeds the learning loop
-    assert TAPE.out_dir == "spx_jev/lanes/tape" and TAPE.questions.name == "spx_lane_tape.json"
+    assert TAPE.out_dir == "spx_jev/lanes/tape"
     assert TAPE.horizons == {"next_10": (10, RECORD)} and TAPE.primary == "next_10"
     assert (TAPE.cadence, TAPE.tag, TAPE.bar_clock, TAPE.clock_blend, TAPE.bar_gap_min) == (False, "tape", True, False, 0)
     assert len(TAPE.schedule) == 12 and TAPE.schedule[0] == "09:35" and TAPE.schedule[-1] == "10:30" and TAPE.close_out == "10:42"
@@ -46,8 +47,7 @@ def test_a_tagged_lane_refuses_to_run_without_a_folder_of_its_own(tmp_path):
 
 def test_the_live_job_fires_at_02_and_32_through_the_session():
     fires = [(e["Hour"], e["Minute"]) for e in _job("com.mirai-station.spx-jev")["StartCalendarInterval"]]
-    want = [_pacific(f"{9 + (32 + 30 * k) // 60:02d}:{(32 + 30 * k) % 60:02d}") for k in range(14)]
-    assert fires == want and fires[0] == (6, 32) and fires[-1] == (13, 2)
+    assert fires == [_pacific(t) for t in LIVE.read_times()] and fires[0] == (6, 32) and fires[-1] == (13, 2)
 
 
 def test_the_tape_job_fires_at_the_lanes_reads_and_its_close_out():

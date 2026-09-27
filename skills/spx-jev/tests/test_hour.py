@@ -1,38 +1,40 @@
 """Steps 3 and 4: answers become sentences, the weights decide who speaks, the sums ride on top."""
 from __future__ import annotations
 
-from spx_jev.ask import DEFAULT_QUESTIONS, load_questions
+from spx_jev.ask import load_questions
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_30_FLAT_PCT, NEXT_60_FLAT_BAND_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS
 from spx_jev.hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, one_sentence, unit_line, views_of
-from spx_jev.lane import TAPE
+from spx_jev.lane import LIVE, TAPE
 from spx_jev.weights import QuestionWeights
 
-DOC = load_questions(DEFAULT_QUESTIONS)
+DOC = load_questions(LIVE.questions, LIVE.key)
 BY_ID = {qid: q for g in DOC["groups"] for qid, q in g["questions"].items()}
 UNIT = {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape"}
 
 
-def test_one_sentence_carries_the_ask_the_pick_and_how_sure():
-    s = one_sentence(BY_ID["price_recent_direction"], {"pick": "rising", "probabilities": {"rising": 0.98, "falling": 0.01}})
-    assert s == "Over the last 30 minutes, did price rise, fall, or go nowhere? rising, JEV was 98% sure"
-    held = one_sentence(BY_ID["tick_lean"], {"pick": "buying", "probabilities": {"buying": 0.8}, "held_from": "2026-09-18T11:02:14-04:00"})
+def test_one_sentence_carries_the_question_the_pick_and_how_sure():
+    """The set's questions carry no separate ask line, so the sentence leads with the instructions."""
+    q = BY_ID["leg_vs_day_side"]
+    s = one_sentence(q, {"pick": "leg_with_day", "probabilities": {"leg_with_day": 0.98, "quiet": 0.02}})
+    assert s == f"{q['instructions']} leg with day, JEV was 98% sure"
+    held = one_sentence(BY_ID["tick_lean_vs_usual"], {"pick": "buying", "probabilities": {"buying": 0.8}, "held_from": "2026-09-18T11:02:14-04:00"})
     assert held.endswith("(held since 11:02 ET, not re-asked)")
 
 
 def test_shadow_and_low_weight_answers_are_left_out_with_a_reason():
-    answered = {"price_recent_direction": {"pick": "rising", "probabilities": {"rising": 1.0}},
-                "direction_lean": {"pick": "below", "probabilities": {"below": 0.4}},
-                "tick_lean": {"pick": "buying", "probabilities": {"buying": 0.9}},
+    answered = {"leg_vs_day_side": {"pick": "leg_with_day", "probabilities": {"leg_with_day": 1.0}},
+                "flow_vs_price": {"pick": "below", "probabilities": {"below": 0.4}},
+                "tick_lean_vs_usual": {"pick": "buying", "probabilities": {"buying": 0.9}},
                 "nobody": {"pick": "x"}}
-    sentences, left_out = answer_sentences(DOC, answered, QuestionWeights({"tick_lean": {"weight": 0.2}}))
-    assert list(sentences) == ["price_recent_direction"]
-    assert left_out["direction_lean"].startswith("a shadow forecast") and "0.20" in left_out["tick_lean"]
+    sentences, left_out = answer_sentences(DOC, answered, QuestionWeights({"tick_lean_vs_usual": {"weight": 0.2}}))
+    assert list(sentences) == ["leg_vs_day_side"]
+    assert left_out["flow_vs_price"].startswith("a shadow forecast") and "0.20" in left_out["tick_lean_vs_usual"]
     assert left_out["nobody"] == "not a question in the doc"
-    assert list(answer_sentences(DOC, answered)[0]) == ["price_recent_direction", "tick_lean"]   # neutral: nobody is weighed out
+    assert list(answer_sentences(DOC, answered)[0]) == ["leg_vs_day_side", "tick_lean_vs_usual"]   # neutral: nobody is weighed out
 
 
 def test_the_sums_carry_the_spx_bands_and_base_rates():
-    req = hour_request({"price_recent_direction": "rising, JEV was 98% sure"})
+    req = hour_request({"leg_vs_day_side": "leg with day, JEV was 98% sure"})
     assert req["id"] == "hour" and req["state"]["context"]["symbol"] == "SPX"
     assert req["state"]["context"]["horizon"] == "the next 30 minutes, and the next 60 minutes"
     assert list(req["questions"]) == ["next_30", "next_60"]

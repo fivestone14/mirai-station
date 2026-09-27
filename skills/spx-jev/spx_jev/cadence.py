@@ -1,5 +1,10 @@
 """Cadence: how often each live question is asked afresh, and what is held in between.
 
+The question's schedule (schedule.py) says when it may be asked at all; the cadence below can only thin
+that out on the live lane. Between fresh answers the last answer is held, and a question its schedule
+does not ask at a read holds too: a day constant (asked at 09:35, or at 10:02, and held) all day, a
+question held from its other lane until the hour its schedule names, and an hourly one while young.
+
     python3 -m spx_jev.cadence                     # the table for the newest day with records
     python3 -m spx_jev.cadence --day 2026-09-29 --write    # recount that day and write cadence.json
 
@@ -25,7 +30,8 @@ At read time a question whose last two fresh answers differed by CHANGE_CUT or m
     five hours and ten reads, and keeps its previous cadence under three hours; fewer than six
     reads leaves the previous cadence in place. The hold still running at the last read counts,
     and under four holds the median stands in for the quartile.
-The question doc's own ``cadence`` text is the starting value until a recount exists.
+The schedule's ``every_min`` is the starting value until a recount exists; the doc's free-text
+``cadence`` is for people and is never read.
 
 Files, under state/spx_jev/:
     cadence.json      {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
@@ -41,6 +47,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .lane import LIVE
+from .schedule import every_min, holds_for_the_day
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
 
 CADENCE_NAME = "cadence.json"
@@ -50,12 +57,6 @@ MIN_READS = 6
 GRACE_MIN = 5                 # a read up to five minutes early still counts as on time (the :02 and :32 ticks drift)
 MIN_GAP_MIN = 25              # reads closer than this (a by-hand run, the old two-minute schedule) are not separate reads
 CHANGE_CUT = 0.3              # total probability moved across the options that counts as a change
-DOC_TEXT = {"every read": 30, "every other read": 60, "every fourth read": 120}
-
-
-def parse_cadence(text: str | None) -> int:
-    """The doc's wording as minutes; anything unknown is every read."""
-    return DOC_TEXT.get((text or "").strip().lower(), 30)
 
 
 def snap(minutes: float) -> int:
@@ -78,9 +79,10 @@ def load_cadence(out_dir: Path) -> dict:
 
 
 def cadence_of(cad: dict, q: dict, qid: str) -> int:
+    """The recounted minutes, else the schedule's every_min snapped to the steps (every read without one)."""
     entry = (cad.get("questions") or {}).get(qid) or {}
     m = entry.get("minutes")
-    return int(m) if isinstance(m, (int, float)) and m in STEPS else parse_cadence(q.get("cadence"))
+    return int(m) if isinstance(m, (int, float)) and m in STEPS else snap(every_min(q.get("schedule")) or STEPS[0])
 
 
 def load_last(out_dir: Path) -> dict:
@@ -148,16 +150,48 @@ def held_answer(entry: dict | None, now: datetime, minutes: int) -> dict | None:
     return {**entry["answer"], "held_from": entry["row_ts"]}
 
 
-def plan(doc: dict, last: dict, cad: dict, now: datetime) -> tuple[dict[str, str], dict[str, dict]]:
-    """Which live questions to leave out of this read because their cadence has not elapsed,
-    with the answer to hold for each. Shadow questions are forecasts and are always asked."""
-    skip: dict[str, str] = {}
+def held_today(entry: dict | None, now: datetime) -> dict | None:
+    """The last fresh answer, stamped with its read (``held_from``), when it was given earlier the same day:
+    a day constant holds whatever its age."""
+    age = _age_min(entry, now)
+    if age is None or age < 0 or not isinstance(entry.get("answer"), dict) or entry["row_ts"][:10] != now.isoformat()[:10]:
+        return None
+    return {**entry["answer"], "held_from": entry["row_ts"]}
+
+
+def scheduled_hold(q: dict, entry: dict | None, borrowed: dict | None, now: datetime, slot: str | None, minutes: int) -> dict | None:
+    """What a live question its schedule does not ask at the read ``slot`` holds: a day constant its answer
+    from earlier today, a question held from its other lane that lane's answer from today (``borrowed``,
+    its last-asked entry) through the read its schedule names, and any other its last answer while young."""
+    sched = q.get("schedule") or {}
+    if holds_for_the_day(sched):
+        return held_today(entry, now)
+    if "hold_until" in sched:
+        return held_today(borrowed, now) if slot is not None and slot <= sched["hold_until"] else None
+    return held_answer(entry, now, minutes)
+
+
+def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str] | None = None, borrowed: dict | None = None,
+         slot: str | None = None, learned: bool = True) -> tuple[dict[str, str], dict[str, dict]]:
+    """Which questions to leave out of this read, with the answer to hold for each live one. ``not_due``
+    is what the schedule leaves out at the read ``slot`` (schedule.not_due, schedule.read_slot), each
+    holding by scheduled_hold; ``borrowed`` is the other lane's last-asked answers. With ``learned`` a live
+    question that is due is also left out while its cadence has not elapsed. Shadow questions are
+    forecasts: never held, asked when due."""
+    skip: dict[str, str] = dict(not_due or {})
     held: dict[str, dict] = {}
     for g in doc["groups"]:
         for qid, q in g["questions"].items():
             if q.get("status") != "live":
                 continue
             minutes = cadence_of(cad, q, qid)
+            if qid in skip:
+                h = scheduled_hold(q, last.get(qid), (borrowed or {}).get(qid), now, slot, minutes)
+                if h is not None:
+                    held[qid] = h
+                continue
+            if not learned:
+                continue
             entry = last.get(qid)
             if is_due(entry, now, minutes):
                 continue
@@ -279,14 +313,14 @@ def ensure_cadence(out_dir: Path, doc: dict, today: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from .ask import DEFAULT_QUESTIONS, load_questions
+    from .ask import load_questions
     ap = argparse.ArgumentParser(description="Recount each question's cadence from a day's runs.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--day", help="the day to recount; default the newest day with records")
     ap.add_argument("--write", action="store_true", help="write state/spx_jev/cadence.json")
     args = ap.parse_args(argv)
     out_dir = LIVE.folder(args.state_dir)
-    doc = load_questions(DEFAULT_QUESTIONS)
+    doc = load_questions(LIVE.questions, LIVE.key)
     day = args.day or previous_day_with_records(out_dir, "9999-99-99")
     if not day:
         print("no day with records", file=sys.stderr)

@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from conftest import measured
-from spx_jev.ask import (DEFAULT_QUESTIONS, build_requests, confidence, constants_named, get_path, load_questions, paths_in, pick,
+from spx_jev.ask import (GROUP_CAP, build_requests, confidence, constants_named, get_path, load_questions, paths_in, pick,
                          summarize)
 from spx_jev.cuts import QUESTION_CONSTANTS
 from spx_jev.hour import load_hour_doc
-from spx_jev.lane import LANES
 from spx_jev.labels.registry import build_labels
+from spx_jev.lane import LANES
+from spx_jev.schedule import not_due
 
 QUESTIONS = Path(__file__).resolve().parent.parent / "questions"
 SHIPPED = sorted(QUESTIONS.glob("*.json"))
@@ -77,6 +77,15 @@ def test_a_label_the_group_does_not_read_is_named_not_called_missing():
     assert reqs == [] and skipped["a"]["q1"] == "the group does not read price.vs_vwap"
 
 
+def test_a_gated_question_is_asked_only_when_its_gate_says_awake():
+    doc = {"groups": [{"id": "a", "reads": ["context"], "questions": {
+        q: {"type": "noul", "sleep_when": "nothing happened", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}
+        for q in ("awake", "asleep", "undecided")}}]}
+    reqs, skipped = build_requests({"context": {"symbol": "SPX"}}, doc, gates={"awake": None, "asleep": "no shock in the last hour"})
+    assert list(reqs[0]["questions"]) == ["awake"]
+    assert skipped["a"] == {"asleep": "asleep: no shock in the last hour", "undecided": "asleep: no label family decides its gate"}
+
+
 def test_a_dark_question_is_never_asked():
     doc = {"groups": [{"id": "a", "reads": ["context"], "questions": {
         "q": {"status": "dark", "type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}}}]}
@@ -88,7 +97,7 @@ def test_a_dark_question_is_never_asked():
 
 def test_every_shipped_doc_loads_with_its_constants_filled():
     for lane in LANES.values():
-        questions = [q for g in load_questions(lane.questions)["groups"] for q in g["questions"].values()]
+        questions = [q for g in load_questions(lane.questions, lane.key)["groups"] for q in g["questions"].values()]
         questions += list(load_hour_doc(lane=lane)["questions"].values())
         left = [t for q in questions for t in _texts(q) if NAMED.search(t)]
         assert not left, f"lane {lane.name} kept an unfilled name: {left[:2]}"
@@ -130,29 +139,37 @@ def test_a_filled_constant_is_the_code_number_and_a_format_spec_is_honoured(tmp_
 
 
 def _spec_paths():
-    spec = json.loads((Path(__file__).resolve().parent.parent / "spec" / "labels.json").read_text())
-    return {lab["path"] for lab in spec["labels"]}
+    spec = Path(__file__).resolve().parent.parent / "spec"
+    engine = json.loads((spec / "labels.json").read_text())["labels"]
+    question_set = json.loads((spec / "question_set.json").read_text())["labels"]
+    return {lab["path"] for lab in engine} | {lab["name"] for lab in question_set}
 
 
 def test_every_question_reads_only_labels_the_spec_knows():
     known = _spec_paths()
     groups = {p.split(".")[0] for p in known}
     for lane in LANES.values():
-        for g in load_questions(lane.questions)["groups"]:
+        for g in load_questions(lane.questions, lane.key)["groups"]:
             for qid, q in g["questions"].items():
                 for p in paths_in(q):
                     assert p in known or p in groups, f"{qid} reads {p}, which no label in spec/labels.json provides"
 
 
-def test_every_live_question_is_asked_on_a_full_read(full_scene):
+def test_a_full_read_asks_every_question_due_awake_and_with_its_labels(full_scene):
+    """At the 12:32 read every live and shadow question its schedule asks is asked, unless it sleeps or a
+    label it reads is not written; each question left out says which of those it was."""
     labels = build_labels(full_scene)
-    state, omitted = labels.state, measured(labels.omitted)
-    assert omitted == {}, omitted
-    doc = load_questions(DEFAULT_QUESTIONS)
-    reqs, skipped = build_requests(state, doc)
+    lane = LANES["live"]
+    doc = load_questions(lane.questions, lane.key)
+    skip = not_due(doc, lane, full_scene.now)
+    reqs, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates)
     asked = {qid for r in reqs for qid in r["questions"]}
-    every = {qid for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") in ("live", "shadow")}
-    assert asked == every, skipped
+    expected = {qid for g in doc["groups"] for qid, q in g["questions"].items()
+                if q["status"] in ("live", "shadow") and qid not in skip and not q.get("sleep_when")
+                and all(get_path(labels.state, p) is not None for p in paths_in(q))}
+    assert asked == expected and {"price_move_5way", "leg_vs_day_side"} <= asked
+    kinds = ("dark:", "not on its schedule", "asked on its other lane", "held from its other lane", "a day constant", "asleep:", "missing ")
+    assert all(why.startswith(kinds) for g in skipped.values() for qid, why in g.items() if qid != "*"), skipped
     for r in reqs:
         assert r["state"]["context"]["symbol"] == "SPX"
         for q in r["questions"].values():
@@ -217,7 +234,28 @@ def test_the_answer_readers_and_the_summary():
     assert lines[0] == "a: yes 0.81" and lines[1].startswith("b: up 0.70  confidence 0.55") and lines[2].startswith("c: score 1.40")
 
 
-def test_the_tape_lanes_copied_question_is_the_live_one_word_for_word():
-    live = {qid: q for g in load_questions(LANES["live"].questions)["groups"] for qid, q in g["questions"].items()}
-    tape = {qid: q for g in load_questions(LANES["tape"].questions)["groups"] if g["id"] != "tape" for qid, q in g["questions"].items()}
-    assert tape and all(q == live[qid] for qid, q in tape.items())
+def test_each_lane_asks_its_share_of_one_doc_with_its_own_schedule_and_horizon():
+    live = {qid: q for g in load_questions(LANES["live"].questions, "thirty_minute")["groups"] for qid, q in g["questions"].items()}
+    tape = {qid: q for g in load_questions(LANES["tape"].questions, "opening_five_minute")["groups"] for qid, q in g["questions"].items()}
+    assert len(live) == 98 and len(tape) == 26 and "gap_size" not in live and "price_move_5way" not in tape
+    assert tape["vix_stir"]["schedule"] == {"every_min": 5, "from": "09:40", "to": "10:30"} and tape["vix_stir"]["horizon"] == "10min_opening"
+    assert live["vix_stir"]["schedule"] == {"every_min": 30, "from": "10:02", "to": "15:32"} and live["vix_stir"]["horizon"] == "30min"
+    assert tape["open_vs_prior_range"]["schedule"] == {"at": ["09:35"], "hold": True} and live["open_vs_prior_range"]["schedule"] == {"hold_until": "11:32"}
+    assert live["vix_stir"]["instructions"] == tape["vix_stir"]["instructions"]
+    assert "overnight_move_vs_expected" not in live and "overnight_move_vs_expected" not in tape    # the premarket lane is not built
+
+
+def test_a_group_over_the_cap_stops_the_load(tmp_path):
+    q = {"type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}
+    p = tmp_path / "doc.json"
+    p.write_text(json.dumps({"groups": [{"id": "big", "reads": [], "questions": {f"q{i}": q for i in range(GROUP_CAP + 1)}}]}))
+    with pytest.raises(ValueError, match="over the cap of 8"):
+        load_questions(p)
+
+
+def test_the_shipped_doc_is_what_the_question_set_makes():
+    import subprocess
+    import sys
+    writer = Path(__file__).resolve().parent.parent / "spec" / "write_question_docs.py"
+    done = subprocess.run([sys.executable, str(writer), "--check"], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stdout + done.stderr

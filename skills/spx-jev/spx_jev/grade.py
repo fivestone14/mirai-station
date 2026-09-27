@@ -437,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
     lane = LANES[args.lane]
     state_dir = Path(args.state_dir)
     out_dir = lane.folder(state_dir, args.out_dir)
-    w = run(state_dir, out_dir, live_options(lane.questions), args.day, lane)
+    w = run(state_dir, out_dir, live_options(load_questions(lane.questions, lane.key)), args.day, lane)
     for qid, s in w["sums"].items():
         print(f"{qid}: graded {s['n']}; hit rate {s['hit_rate']} vs always-flat {s['always_flat_hit_rate']}; mean Brier {s['mean_brier']}; bands {s['bands']}",
               file=sys.stderr)

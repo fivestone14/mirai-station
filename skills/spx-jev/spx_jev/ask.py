@@ -1,9 +1,13 @@
 """Pack a state into JEV requests and, when asked, send them.
 
-One request per question group. A request carries only the slice of the
-state the group reads, and only the questions whose backticked paths are all
-present. A question that needs a missing label is skipped and the reason is
-kept, so a thin scan never turns into a forced answer.
+One request per question group, at most GROUP_CAP questions each. A request
+carries only the slice of the state the group reads, and only the questions
+that are asked this read: live and shadow ones (a dark one never), due on
+their schedule (the caller's ``skip``, from schedule.not_due and the cadence),
+awake (a question with ``sleep_when`` is asked only when its label family says
+it is awake, so its "nothing happened" default never reaches the weights) and
+whose backticked paths are all present. A question left out keeps its reason,
+so a thin scan never turns into a forced answer.
 
 The question docs carry no numbers of their own: every threshold in their text
 is a name in braces ("{move_rule_sigma}") filled from cuts.QUESTION_CONSTANTS
@@ -23,13 +27,16 @@ from string import Formatter
 from typing import Any
 
 from .cuts import QUESTION_CONSTANTS
+from .schedule import check as check_schedule
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 JEV_MODEL = "jev-latest"
 API_KEY_ENV = "TYPESAFE_API_KEY"
 PATH_RE = re.compile(r"`([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)`")
-DEFAULT_QUESTIONS = Path(__file__).resolve().parent.parent / "questions" / "spx_live.json"
-TEMPLATED_KEYS = ("ask", "instructions", "criteria")    # the fields whose text may name a constant
+DEFAULT_QUESTIONS = Path(__file__).resolve().parent.parent / "questions" / "spx_questions.json"
+# the fields whose text may name a constant
+TEMPLATED_KEYS = ("ask", "instructions", "criteria", "code_criteria", "sleep_when")
+GROUP_CAP = 8                    # questions one JEV request may carry
 
 
 def constants_named(text: str) -> list[str]:
@@ -56,14 +63,36 @@ def fill_question(question: dict, where: str) -> dict:
     return {k: fill(v, where) if k in TEMPLATED_KEYS else v for k, v in question.items()}
 
 
-def load_questions(path: Path | str = DEFAULT_QUESTIONS) -> dict:
-    """A step-2 question doc with its constants filled in."""
+def for_lane(question: dict, lane_key: str) -> dict:
+    """A question as one lane asks it: that lane's schedule entry and horizon in place of the per-lane maps."""
+    out = dict(question)
+    if isinstance(question.get("schedule"), dict):
+        out["schedule"] = question["schedule"].get(lane_key)
+    if isinstance(question.get("horizon"), dict):
+        out["horizon"] = question["horizon"].get(lane_key)
+    return out
+
+
+def load_questions(path: Path | str = DEFAULT_QUESTIONS, lane_key: str | None = None) -> dict:
+    """A step-2 question doc with its constants filled in and every schedule checked (schedule.check).
+    With ``lane_key`` only the questions whose ``lanes`` name it are kept (a question naming no lanes
+    serves every lane), each with that lane's schedule entry and horizon; a group left empty is dropped.
+    A group over GROUP_CAP questions stops the load."""
     with open(path, encoding="utf-8") as f:
         doc = json.load(f)
     if not isinstance(doc.get("groups"), list):
         raise ValueError(f"{path} has no groups list")
     for group in doc["groups"]:
-        group["questions"] = {qid: fill_question(q, f"{Path(path).name} {qid}") for qid, q in group.get("questions", {}).items()}
+        questions = group.get("questions", {})
+        if len(questions) > GROUP_CAP:
+            raise ValueError(f"{path} group {group.get('id')} has {len(questions)} questions, over the cap of {GROUP_CAP} a request may carry")
+        for qid, q in questions.items():
+            for lane, entry in (q.get("schedule") or {}).items():
+                check_schedule(entry, f"{Path(path).name} {qid} ({lane})")
+        group["questions"] = {qid: fill_question(q if lane_key is None else for_lane(q, lane_key), f"{Path(path).name} {qid}")
+                              for qid, q in questions.items() if lane_key is None or lane_key in q.get("lanes", [lane_key])}
+    if lane_key is not None:
+        doc["groups"] = [g for g in doc["groups"] if g["questions"]]
     return doc
 
 
@@ -102,17 +131,24 @@ def paths_in(question: dict) -> list[str]:
     return seen
 
 
-def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None) -> tuple[list[dict], dict[str, dict[str, str]]]:
+NO_GATE = "no label family decides its gate"
+
+
+def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
+                   gates: dict[str, str | None] | None = None) -> tuple[list[dict], dict[str, dict[str, str]]]:
     """Return ``(requests, skipped)``.
 
     ``requests`` is a list of ``{"id", "state", "questions"}`` ready for JEV.
     ``skipped`` maps group id to ``{question id: reason}`` for anything left out,
     including whole groups under the key ``"*"``. ``skip`` names questions to leave
-    out with a reason of the caller's own (the cadence plan uses it).
+    out with a reason of the caller's own (the schedule and the cadence). ``gates`` is
+    the labels' sleep gates (LabelSet.gates): a question with ``sleep_when`` is asked
+    only when its gate says it is awake.
     """
     requests: list[dict] = []
     skipped: dict[str, dict[str, str]] = {}
     skip = skip or {}
+    gates = gates or {}
     for group in doc["groups"]:
         gid = group["id"]
         slice_: dict = {}
@@ -130,6 +166,10 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None) -
                 continue
             if qid in skip:
                 skipped.setdefault(gid, {})[qid] = skip[qid]
+                continue
+            if q.get("sleep_when") and gates.get(qid, NO_GATE) is not None:
+                # asleep: its default "nothing happened" state holds, and a default must never reach the weights
+                skipped.setdefault(gid, {})[qid] = f"asleep: {gates.get(qid, NO_GATE)}"
                 continue
             missing = [p for p in paths_in(q) if get_path(state, p) is None]
             # a label the state has but this group does not read would leave JEV blind to it

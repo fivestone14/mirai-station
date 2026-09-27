@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from conftest import DAY, at, bars_from_closes, flat_bars, write_state
+from spx_jev.ask import load_questions
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
 from spx_jev.grade import grade_one, graded_horizons, live_options, mark_at, realized_band, run, weights_from
 from spx_jev.lane import LIVE, TAPE
@@ -117,6 +118,7 @@ def test_a_past_day_with_no_bars_is_closed_out(tmp_path):
 
 
 def test_only_live_questions_and_their_current_options_are_weighed():
-    allowed = live_options(LIVE.questions)
-    assert "direction_lean" not in allowed                            # shadow
-    assert allowed["price_recent_direction"] == {"rising", "falling", "going_nowhere", "unsure"}
+    allowed = live_options(load_questions(LIVE.questions, LIVE.key))
+    assert "flow_vs_price" not in allowed and "news_headline" not in allowed      # shadow, dark
+    assert allowed["leg_vs_day_side"] == {"quiet", "quiet_leg_day_moved", "leg_with_day", "leg_against_day", "leg_on_flat_day"}
+    assert allowed["gap_fill_next_hour"] == {"true", "false"}

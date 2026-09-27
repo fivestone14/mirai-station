@@ -9,9 +9,11 @@ the phone's card. A second lane reads every 5 minutes through the opening. It
 writes only under `state/spx_jev/`, never into the scanner's files, and never
 runs on the scan path.
 
-This is the skeleton: the mechanics are SNDK JEV's (`skills/sndk-jev/`),
-copied and adapted, and the questions are a placeholder until the SPX research
-round delivers the real set. Nothing here is installed yet (see "The jobs").
+The mechanics are SNDK JEV's (`skills/sndk-jev/`), copied and adapted; the
+questions are the final SPX set (`spec/question_set.json`, 115 questions), whose
+labels are being built family by family: until a label is built, every question
+that reads it is skipped with the reason. Nothing here is installed yet (see "The
+jobs").
 
 JEV reads words and cannot compare numbers. So every comparison happens here,
 in code, and is written out as a sentence with its threshold in it:
@@ -32,9 +34,10 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/cuts.py` | The Cuts | Every threshold in one place. The measured ones come from `spec/measure_cuts.py` over the 48 SPX sessions on disk and are held to `spec/cuts.json` by a test; the declared ones are splits and ratios whose meaning is their own words, kept at their declared values, with where each falls on SPX and SNDK history recorded beside them. |
 | `spx_jev/sessions.py` | The Session Calendar | The open, the close (13:00 on a half day), holidays and trading days, from the station's own market-hours gate. |
 | `spx_jev/expiry.py` | The Expiries | SPX expires every trading day: today's 0DTE and its settle, the next expiry, the monthly (third Friday, the AM-settled SPX and the PM-settled SPXW) and the quarterly and quarter-end expiries. Point in time. |
-| `spx_jev/ask.py` | The Packer | Fills the question docs' constants, cuts the state into one slice per question group, keeps only the questions whose labels all exist, and can POST a request to JEV. |
+| `spx_jev/ask.py` | The Packer | Loads a lane's share of the question doc with its constants filled and its schedules checked (a group over 8 questions stops the load), cuts the state into one slice per question group, and keeps only the questions asked this read: live and shadow (dark never), due on their schedule, awake (a question with `sleep_when` only when its label family says so) and with every label present. It can POST a request to JEV. |
 | `spx_jev/build.py` | The Command | `python -m spx_jev.build` for one moment, a replay of a day, or a live send. |
-| `spx_jev/cadence.py` | The Cadence | Which questions are due this read, what is held in between, and the daily recount. |
+| `spx_jev/schedule.py` | The Schedule | Which read a moment stands for, and which questions a lane asks at it, from each question's machine schedule (every N minutes in a window, at named reads, a day constant asked once and held, held from the other lane until an hour, FOMC days from the press conference). The free-text cadence is never parsed. |
+| `spx_jev/cadence.py` | The Cadence | What a question the schedule does not ask holds (a day constant all day, a borrowed answer until its hour, an hourly one while young), what the live lane's learned cadence thins out on top, and the daily recount. |
 | `spx_jev/hour.py` | The Sums | Rewrites the live answers as sentences and asks the sum questions over them in one request. |
 | `spx_jev/clock.py` | The Clock | How often price ended up, down or flat at this time of day over the last 20 SPX sessions, scored the way the grader scores a sum, and the half-and-half blend of JEV's sum with those odds. |
 | `spx_jev/scores.py` | The Scores | One way to score a three-way forecast: floored at 2% a side, and its log loss split exactly into a move part (did it move?) and a direction part (which way, given a move). |
@@ -44,15 +47,15 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, the clock, the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH) and whether the pool may replace the blend on the phone. The phone switch, `POOL_ON_PHONE`, is off. |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of both lanes, append only, one typed record per line. |
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
-| `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32 with the 30- and 60-minute sums; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, one five-way 10-minute sum priced in index points, every question asked afresh, no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. It writes only under `state/spx_jev/lanes/tape/`. |
+| `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32 with the 30- and 60-minute sums; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, one five-way 10-minute sum priced in index points, every question its schedule asks asked afresh (its day constants at 09:35, then held), no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. It writes only under `state/spx_jev/lanes/tape/`. |
 | `spx_jev/bars.py` | The Bars Feed | Appends today's finished SPX minute bars to `state/spx_jev/bars/{day}.jsonl` every minute, from the station's Schwab client. Past sessions come from `state/reversion/bars/{day}-SPX.json`, saved after each close. |
 | `spx_jev/market_context.py` | The Market Feed | A snapshot a minute of the market around SPX (NYSE breadth, the VIX family, the ES future, rates, the 11 sector funds, SMH, RSP, QQQ, IWM, SPY and the seven megacaps) to `state/spx_jev/context/{day}.jsonl`, and a backfill of past sessions' minute bars, since Schwab keeps only about 34 sessions. The labeller reads a futures quote under its root (Schwab answers `/ES` as `/ESZ26`) and the Treasury yields in percent (Schwab quotes `$TNX` at ten times the yield). |
 | `spx_jev/save_day.py` | The Day Saver | After the close, every market-feed symbol's full 1-minute day to `state/spx_jev/context/bars/{day}.jsonl`, and SPX's own day to `state/spx_jev/bars/{day}.jsonl` when that file is short; market days only, a day on disk never fetched again, a missed night caught up by the next. |
 | `spx_jev/schwab.py` | The Schwab Link | The two feeds' calls through the station's shared client (REST only, never the lob-flow streamer), batched and spaced. |
-| `questions/spx_live.json`, `questions/spx_hour.json` | The Questions | The placeholder step-2 questions and the two sums. No number is typed into them: every threshold is a name in braces filled from `cuts.py`. |
-| `questions/spx_lane_tape.json`, `questions/spx_lane_hour.json` | The Lane's Questions | The opening lane's two stretch questions (plus a copy of the live weight question) and its five-way 10-minute sum. |
+| `spec/question_set.json`, `spec/write_question_docs.py`, `questions/spx_questions.json` | The Questions | The final question set (115 questions, 121 labels, 166 constants, with its conventions and the review behind each question) and the step-2 doc both lanes ask from, written from it by `python3 spec/write_question_docs.py` (never edited by hand; `--check` says whether it is current, and a test holds it). No number is typed into them: every threshold is a name in braces filled from `cuts.py`, which must hold the set's constants to the number before the writer writes. |
+| `questions/spx_hour.json`, `questions/spx_lane_hour.json` | The Sums | The live lane's two sums, and the opening lane's five-way 10-minute sum. |
 | `calendar/events.json`, `spx_jev/events.py` | The Calendar | The tier-1 scheduled events (the Fed, rebalance closes, half days), copied from SNDK's calendar less SanDisk's own. |
-| `spec/labels.json` | The Label Spec | All 50 labels with source, logic, cut and a real sentence; a test pins it to the code. |
+| `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
 | `launchd/*.plist.template`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Five staged jobs and their runners. Not installed. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars and market context. No network, no host state. |
@@ -138,11 +141,12 @@ archive there too, under `archive/`.
 
 ## The pipeline
 
-1. Labels, code: 50 sentences (48 on the live lane, 2 more on the opening lane)
-   from the row, the bars, the market context and the options tape.
-2. The live questions, JEV, in parallel: a probability per option. A question
-   not due this read keeps its held answer; one whose label is missing is
-   skipped.
+1. Labels, code: one module per family (`spx_jev/labels/`) from the row, the bars,
+   the market context and the options tape, and the sleep gates of the questions
+   whose "nothing happened" default must never reach the weights.
+2. The questions, JEV, in parallel: a probability per option. A question its
+   schedule does not ask this read keeps its held answer where it has one; one
+   whose label is missing, or that is asleep, is skipped.
 3. Answers as sentences, code (`hour.py`): "Over the last 30 minutes, did price
    rise, fall, or go nowhere? rising, JEV was 98% sure", with "held since 11:02
    ET" on a held one. Shadow answers never go in; a question under the weight
@@ -221,7 +225,14 @@ that has closed. The key lives only in `skills/spx-jev/.env`
 
 ## Not done yet
 
-- The questions are a placeholder; the real set comes from the research round.
+- Most of the final set's labels are not built: every family omits them as not
+  built (or dark, where no feed carries the data), so only the questions whose
+  labels are all built are asked. The set's `monday_prerequisites` list the feeds
+  and fixes still to do.
+- The set's `code_answer` reading checks and re-asking a question when the code's
+  answer changes (a schedule's `then`) are not built: such a question is held.
+- The learned cadence and the grader still rule on the row's ratcheting sigma;
+  the set asks for the morning anchor (`labels.rulers.sigma_anchor`) there too.
 - The learning loop runs, but the phone switch (`pool.POOL_ON_PHONE`) is off
   pending Will's decision; its simulation acceptance gates (06) are not built,
   and the SPX event calendar lacks the 10:00 and 14:00 releases 06 lists.

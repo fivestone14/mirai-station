@@ -71,7 +71,9 @@ def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_mi
     assert c["hour"]["primary"] == "next_10" and "blend" not in c["hour"] and c["hour"]["views"]["size"]["pick"] == "small"
     assert seen[0]["state"]["context"]["unit"].startswith("one tape unit is 6.0 points;")
     assert c["schedule"]["reads"][0] == at(9, 35).isoformat() and c["schedule"]["close_out"] == at(10, 42).isoformat()
-    assert not (out / "last_asked.json").exists()
+    # the lane keeps its last answers for its day constants (asked at 09:35 and held), in its own folder
+    assert json.loads((out / "last_asked.json").read_text())["q_dir"]["row_ts"] == at(10, 40).isoformat()
+    assert not (state / "spx_jev" / "last_asked.json").exists()
 
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 80)
     c2 = run_once(state, out, DOC, True, DAY, lane=TAPE)
@@ -110,3 +112,49 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     assert (out / f"{DAY}.jsonl").read_text() == reads_before
     kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
+
+
+SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {
+    "q_const": {"status": "live", "type": "choice", "lanes": ["opening_five_minute", "thirty_minute"],
+                "schedule": {"opening_five_minute": {"at": ["09:35"], "hold": True}, "thirty_minute": {"hold_until": "11:32"}},
+                "instructions": "Read `context.symbol`.", "criteria": {"a": "a", "b": "b"}},
+    "q_every": {"status": "live", "type": "choice", "lanes": ["opening_five_minute", "thirty_minute"],
+                "schedule": {"opening_five_minute": {"every_min": 5, "from": "09:40", "to": "10:30"},
+                             "thirty_minute": {"every_min": 30, "from": "10:02", "to": "15:32"}},
+                "instructions": "Read `context.symbol`.", "criteria": {"a": "a", "b": "b"}},
+    "q_gated": {"status": "live", "type": "noul", "lanes": ["thirty_minute"], "sleep_when": "nothing happened",
+                "schedule": {"thirty_minute": {"every_min": 30, "from": "10:02", "to": "15:32"}},
+                "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}}}]}
+
+
+def test_a_day_constant_is_asked_at_0935_held_on_the_lane_and_borrowed_by_the_live_reads_until_1132(tmp_path, monkeypatch):
+    from spx_jev.ask import load_questions
+    from spx_jev.lane import LIVE
+    doc_path = tmp_path / "doc.json"
+    doc_path.write_text(json.dumps(SCHEDULED))
+    tape_doc, live_doc = load_questions(doc_path, TAPE.key), load_questions(doc_path, LIVE.key)
+    root = tmp_path / "state"
+    monkeypatch.setattr(service, "send_all", _answers)
+    monkeypatch.setattr(service, "send", _sums([]))
+    tape_out = root / "spx_jev" / "lanes" / "tape"
+
+    def tape_read(n_bars):
+        _state(root, [make_row(at(9, 31), 7700.0)], n_bars)
+        return {q["id"]: q for q in run_once(root, tape_out, tape_doc, True, DAY, lane=TAPE)["questions"]}
+
+    first = tape_read(5)                                                  # bars 09:30..09:34: the 09:35 read
+    assert first["q_const"]["answer"]["pick"] == "a" and first["q_every"]["skipped"] == "not on its schedule at the 09:35 ET read"
+    second = tape_read(10)                                                # the 09:40 read
+    assert second["q_const"]["held_from"] == at(9, 35).isoformat() and second["q_every"]["answer"]["pick"] == "a"
+
+    def live_read(hh, mm):
+        rows = [make_row(at(9, 31), 7700.0), make_row(at(hh, mm, ss=10), 7700.0)]
+        write_state(root, DAY, rows, bars_from_closes([7700.0] * 390, wick=3.0))
+        return {q["id"]: q for q in run_once(root, root / "spx_jev", live_doc, True, DAY)["questions"]}
+
+    at_1002 = live_read(10, 2)
+    assert at_1002["q_const"]["held_from"] == at(9, 35).isoformat() and at_1002["q_every"]["answer"]["pick"] == "a"
+    assert at_1002["q_gated"]["skipped"] == "asleep: no label family decides its gate"
+    assert "held_from" in live_read(11, 32)["q_const"]
+    at_1202 = live_read(12, 2)
+    assert at_1202["q_const"]["answer"] is None and at_1202["q_const"]["skipped"] == "held from its other lane only until 11:32 ET"

@@ -32,7 +32,7 @@ loop was promoted and pool.POOL_ON_PHONE is set, which it is not.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
 (``--lane tape``) stamps each read at the newest finished bar, measures the tape unit
-(labels.rulers.tape_unit), asks everything afresh, prices its sum's bands from the unit, and writes the
+(labels.rulers.tape_unit), asks what its schedule asks afresh, prices its sum's bands from the unit, and writes the
 same files under state/spx_jev/lanes/tape/, each record marked with the lane and the unit.
 
     python3 -m spx_jev.service            # one run on the newest row, not sent
@@ -64,7 +64,8 @@ from .expiry import calendar_of
 from .grade import live_options, mark_at, run as grade_run
 from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc
 from .labels.registry import build_labels
-from .lane import LANES, LIVE, Lane
+from .lane import LANES, LANES_BY_KEY, LIVE, Lane
+from .schedule import not_due, read_slot
 from .sessions import session_close
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, make_scene, parse_ts
 from .weights import QuestionWeights
@@ -211,6 +212,21 @@ def pool_snapshots(out_dir: Path, hour: dict, doc: dict, answered: dict[str, dic
     return out
 
 
+def borrowed_answers(state_dir: Path, doc: dict, lane: Lane) -> dict[str, dict]:
+    """The last-asked entries of the questions this lane holds from their other lane (a schedule's
+    ``hold_until``), read from that lane's own folder under the state dir."""
+    out = {}
+    for g in doc["groups"]:
+        for qid, q in g["questions"].items():
+            if "hold_until" not in (q.get("schedule") or {}):
+                continue
+            for key in q.get("lanes", []):
+                other = LANES_BY_KEY.get(key)
+                if other is not None and other is not lane and qid in (entries := load_last(other.folder(state_dir))):
+                    out[qid] = entries[qid]
+    return out
+
+
 def last_read_of(out_dir: Path, day: str, now: datetime) -> datetime | None:
     """The lane's previous read today: the newest record in its day file stamped before ``now``. None on
     the day's first read, or on a replay of a day the lane never read; the stretch labels then measure
@@ -318,10 +334,10 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         for qid, q in group["questions"].items():
             if q.get("status") == "dark":
                 # never asked, never counted; listed apart so the phone can say they exist
-                dark.append({"id": qid, "viewpoint": q.get("viewpoint"), "ask": q.get("ask") or q["instructions"]})
+                dark.append({"id": qid, "viewpoint": q.get("viewpoint", group["id"]), "ask": q.get("ask") or q["instructions"]})
                 continue
             crit = q.get("criteria")
-            entry = {"id": qid, "viewpoint": q.get("viewpoint"), "status": q.get("status", "live"),
+            entry = {"id": qid, "viewpoint": q.get("viewpoint", group["id"]), "status": q.get("status", "live"),
                      "ask": q.get("ask") or q["instructions"], "why": q.get("why", ""), "type": q["type"],
                      # the options in the question's own order, so the phone draws them in a fixed place;
                      # a yes/no answer's pick is "true" or "false", a Score's levels are its legend words
@@ -368,7 +384,7 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "fresh": n_fresh,
         "held": len(held),
         "cadence_from": cad.get("recounted_from"),
-        "cadence_note": "a live question is asked afresh only when its cadence has elapsed; in between, its last answer is held and says since when",
+        "cadence_note": "a question is asked at the reads its schedule names, a live one afresh only when its cadence has elapsed; in between, its last answer is held and says since when",
         "dark": dark,
         "dark_note": "dark questions are never asked and never counted; each waits for the source it needs",
         "hour": hour,
@@ -430,16 +446,20 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     live_ids = {qid for qid, q in by_id.items() if q.get("status") == "live"}
     out_dir.mkdir(parents=True, exist_ok=True)
-    # cadence: a live question is asked afresh only when its cadence has elapsed; the rest hold
-    # their last answer. Without a key nothing is answered, so there is nothing to hold. A lane
-    # without a cadence asks everything afresh on every read and keeps no last-asked file.
+    # the schedule: a question is asked only at the reads its schedule names, on replays too. Sending,
+    # a live question it does not ask holds its answer (a day constant all day, one held from the other
+    # lane until its hour), and on a lane with a cadence a due one is asked afresh only when its cadence
+    # has elapsed. Without a key nothing is answered, so there is nothing to hold.
+    skip = not_due(doc, lane, now)
     if lane.cadence:
         cad = ensure_cadence(out_dir, doc, day_name) if do_send else load_cadence(out_dir)
-        last = load_last(out_dir) if do_send else {}
-        skip, held = plan(doc, last, cad, now) if do_send else ({}, {})
     else:
-        cad, last, skip, held = {}, {}, {}, {}
-    requests, skipped = build_requests(state, doc, skip=skip)
+        cad = {}
+    last, held = {}, {}
+    if do_send:
+        last = load_last(out_dir)
+        skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now), learned=lane.cadence)
+    requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates)
     if do_send and lane.cadence:
         held = fill_missing(doc, skipped, last, cad, now, held)
     answers, send_seconds, hour, hour_rec, hour_reply = None, None, None, None, None
@@ -495,8 +515,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             last[qid] = {"row_ts": scene.row["ts"], "answer": ans, "moved": round(distance(prev, ans), 3)}
         # a question that left the doc, or went dark, has nothing to hold
         last = {qid: v for qid, v in last.items() if qid in by_id and by_id[qid].get("status") != "dark"}
-        if lane.cadence:
-            save_last(out_dir, last)
+        save_last(out_dir, last)
     record = {"row_ts": scene.row["ts"], "sigma": scene.sigma, "event": event,
               **_stamp(lane, unit, band), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
@@ -584,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         args.out_dir = tempfile.mkdtemp(prefix=f"spx-jev-replay-{args.day}-{lane.name}-")
         log(f"replay of {args.day}: writing under {args.out_dir}, not the station's records; --out-dir chooses the folder")
     out_dir = lane.folder(state_dir, args.out_dir)
-    doc = load_questions(args.questions or lane.questions)
+    doc = load_questions(args.questions or lane.questions, lane.key)
     if lane.close_out and not args.day and not args.loop and now_et().strftime("%H:%M") >= lane.close_out:
         # the lane's reads are done for the day: the job's last fire only grades and refreshes the card
         c = close_out(state_dir, out_dir, doc, lane)
