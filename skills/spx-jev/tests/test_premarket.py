@@ -198,6 +198,17 @@ def test_a_snapshot_after_a_call_carries_the_newest_call(tmp_path, jev):
     assert [(s["checkpoint"], bool(s["call"])) for s in c["story"]] == [("08:48", True), ("09:05", False)]
 
 
+def test_a_failed_sum_after_a_call_is_on_the_card_beside_the_earlier_call(tmp_path, jev, monkeypatch):
+    state = _station(tmp_path)
+    out = PREMARKET.folder(state)
+    run_checkpoint(state, out, DOC, True, at(8, 48), "08:48", save=False)
+    def timed_out(req, **kw):
+        raise RuntimeError("JEV timed out")
+    monkeypatch.setattr(premarket, "send", timed_out)
+    c = run_checkpoint(state, out, DOC, True, at(9, 28), "09:28", save=False)
+    assert c["sent"] is True and c["hour"]["read_at"] == at(8, 48).isoformat()
+    assert c["hour_error"] == {"read_at": at(9, 28).isoformat(), "error": "JEV timed out"}
+
 def test_a_read_without_a_ruler_writes_why_builds_nothing_and_asks_nothing(tmp_path, jev):
     state = _station(tmp_path, anchors=4)
     out = PREMARKET.folder(state)

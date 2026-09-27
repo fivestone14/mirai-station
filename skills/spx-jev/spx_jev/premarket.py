@@ -423,7 +423,7 @@ def situation(record: dict, now: datetime) -> list[dict]:
 
 def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_reason: str) -> dict:
     """The phone's before-the-open card (the module note): the read, the day's clock, the newest call with the
-    read it came from, the story so far, the facts, the questions as the live card lists them, and the day's
+    read it came from (and ``hour_error`` when this read's own sum failed), the story so far, the facts, the questions as the live card lists them, and the day's
     calls. Every time is a full timestamp. A read without a scene (NoPreOpenRead) carries its reason in ``ruler``."""
     now = datetime.now(timezone.utc)
     read_at = parse_ts(record["row_ts"])
@@ -458,6 +458,9 @@ def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_rea
                      "jev_reads": [market_at(day, c).isoformat() for c in jev_reads(doc, day)],
                      "close_out": market_at(day, PREMARKET.close_out).isoformat()},
         "hour": call,
+        # a sum that failed at this read: the card still carries the newest call, so it says this read's was lost
+        **({"hour_error": {"read_at": record["row_ts"], "error": record["hour"]["error"]}}
+           if record["sent"] and (record["hour"] or {}).get("error") else {}),
         "story": story_so_far(out_dir, day.isoformat()),
         "situation": situation(record, read_at),
         "event": record["event"],
