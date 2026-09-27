@@ -62,7 +62,7 @@ def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock()
     assert events.uncovered(date(2026, 12, 31)) is None
     assert events.uncovered(date(2027, 1, 4)) == "the event calendar (calendar/events.json) is kept only through 2026-12-31: extend it"
     rows = events._load(str(events.CALENDAR)).events
-    assert all(e.start.strftime("%H:%M") == "08:30" for e in rows if e.tier == events.PRE_OPEN)
+    assert all(e.start.strftime("%H:%M") == ("08:15" if e.kind == "ADP" else "08:30") for e in rows if e.tier == events.PRE_OPEN)
     assert all(e.start.strftime("%H:%M") == "10:00" for e in rows if e.tier == events.DATA_10AM)
     assert all(e.start.strftime("%H:%M") == "14:00" for e in rows if e.tier == events.DATA_2PM)
     oct_1 = [(e.start.strftime("%H:%M"), e.kind) for e in events.on_day(date(2026, 10, 1))]
@@ -71,6 +71,24 @@ def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock()
                  "CONSUMER_CONFIDENCE", "UMICH_SENTIMENT", "FOMC_MINUTES", "QUARTER_END"):
         assert any(e.kind == kind and e.start.month == 12 for e in rows), kind
     assert [e.start.date() for e in rows if e.kind == "QUARTER_END"] == [date(2026, 9, 30), date(2026, 12, 31)]
+
+
+def test_the_releases_before_the_open_reach_back_to_august_each_from_its_source():
+    """The premarket lane's report window (story.release_minute) reads these rows on any day, so August is listed too."""
+    events._load.cache_clear()
+    doc = json.loads(events.CALENDAR.read_text(encoding="utf-8"))
+    rows = [e for e in doc["events"] if e["tier"] == events.PRE_OPEN]
+    assert min(e["date"] for e in rows) == "2026-08-04"
+    assert all(e["source"].strip() and isinstance(e["verified"], bool) and e["in_session"] is False for e in rows)
+    assert all(e["verified"] is False for e in rows if e["kind"] == "JOBLESS_CLAIMS")    # a rule, not a published date
+    thursdays = {e["date"] for e in rows if e["kind"] == "JOBLESS_CLAIMS"}
+    assert {"2026-08-06", "2026-08-13", "2026-08-20", "2026-08-27"} <= thursdays
+    for month in range(8, 13):
+        kinds = {e["kind"] for e in rows if int(e["date"][5:7]) == month}
+        assert {"JOBS", "CPI", "PPI", "RETAIL_SALES", "EMPIRE_STATE", "PHILLY_FED", "DURABLE_GOODS", "IMPORT_PRICES"} <= kinds, month
+    assert sorted(e["date"] for e in rows if e["kind"] == "ADP") == ["2026-08-05", "2026-09-02", "2026-09-30", "2026-11-04", "2026-12-02"]
+    assert [(e.start.strftime("%H:%M"), e.kind) for e in events.on_day(date(2026, 8, 5))] == [("08:15", "ADP")]
+    assert ("08:30", "JOBS") in [(e.start.strftime("%H:%M"), e.kind) for e in events.on_day(date(2026, 8, 7))]
 
 
 def test_the_shipped_calendars_press_conferences_testimony_and_jackson_hole_have_an_end_and_are_held_out_while_under_way():
@@ -117,7 +135,8 @@ def test_a_broken_calendar_tags_nothing_and_never_raises(tmp_path):
 
 
 def test_a_day_before_the_calendars_first_kept_day_is_unknown_not_quiet():
-    """The lower tiers are listed from September only, so an August morning with no rows is not an ordinary day."""
+    """The 10:00, 14:00 and speaker tiers are listed from September only, so an August morning with no rows is not an
+    ordinary day for the event labels, though its releases before the open are listed."""
     events._load.cache_clear()
     assert events.uncovered(date(2026, 8, 6)) == "the event calendar (calendar/events.json) is kept only from 2026-09-01"
     assert events.uncovered(date(2026, 9, 1)) is None
