@@ -6,6 +6,9 @@ Each label's sentence, how it is computed and its source are in spec/question_se
 fund and stock is measured against its usual multiple of the index (usual_link). The megacap labels read
 the index weights from ``state/spx_leaders/weights.json``, ``{"as_of": day, "weights": {symbol: share of
 the index}}``, written from SSGA's SPY holdings; without it they are omitted with the reason.
+
+Not built: the heavyweight gap's earnings tag (the spec's "NVDA reported after yesterday's close"). It waits
+for megacap earnings rows in calendar/events.json, which has none and no row format for them yet.
 """
 from __future__ import annotations
 
