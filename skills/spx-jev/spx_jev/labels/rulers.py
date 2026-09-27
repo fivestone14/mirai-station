@@ -129,8 +129,7 @@ def vix_at_settled_open(market: MarketContext | None, day: str) -> float | None:
 
 def sigma_anchor(scene: Scene) -> SigmaRuler | None:
     """Today's morning anchor, as far as this read can know it."""
-    day = scene.now.astimezone(ET).date().isoformat()
-    return morning_ruler(scene.rows_today, vix_at_settled_open(scene.market, day), settled_open(scene.bars))
+    return morning_ruler(scene.rows_today, vix_at_settled_open(scene.market, scene.day), settled_open(scene.bars))
 
 
 def sigma_live(scene: Scene) -> float | None:

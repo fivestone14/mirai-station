@@ -283,6 +283,12 @@ class Scene:
     horizon: str = HORIZON                 # the words context.horizon carries: the lane's sum horizon
     prior_rulers: dict[str, SigmaRuler | None] = field(default_factory=dict)   # each prior session's morning ruler, by day
     prior_markets: dict[str, MarketContext] = field(default_factory=dict)      # the market around SPX on the prior sessions that have it
+    state_dir: Path | None = None          # where the moment was loaded from, for a family that reads a source of its own; None in tests
+
+    @property
+    def day(self) -> str:
+        """The session's date, market time, as the state files name it."""
+        return self.now.astimezone(ET).date().isoformat()
 
     @property
     def spot(self) -> float:
@@ -306,10 +312,9 @@ class Scene:
         return (self.session_close - self.now).total_seconds() / 60.0
 
 
-# A read on the bar clock takes from the diary row only what the tape cannot give: the walls, vwap
-# and the options book (sigma comes pinned from the day's first row). Its time and spot are the bar's.
-BAR_CLOCK_ROW_KEYS = ("prior_close", "sigma_live", "call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "vwap", "atm_iv",
-                      "vix_ts", "range_ruler", "adaptive_em", "dex_views", "profile_ladder", "gex_views", "dated_gex", "siege")
+# A read on the bar clock takes its time and spot from the bar and its sigma pinned from the day's first
+# row; everything else the labeller reads (the walls, vwap, the options book) comes from the newest row.
+BAR_CLOCK_OWN_KEYS = ("ts", "spot", "sigma")
 
 
 def bar_clock_row(rows: list[dict], bars: list[dict], cutoff: datetime | None = None) -> dict:
@@ -323,7 +328,7 @@ def bar_clock_row(rows: list[dict], bars: list[dict], cutoff: datetime | None = 
         raise ValueError("no finished bar to stamp the read on")
     last, src = done[-1], rows[-1]
     row = {"ts": (parse_ts(last["ts"]) + one).isoformat(), "spot": float(last["close"]), "sigma": rows[0].get("sigma")}
-    row.update({k: src[k] for k in BAR_CLOCK_ROW_KEYS if k in src})
+    row.update({k: v for k, v in src.items() if k not in BAR_CLOCK_OWN_KEYS})
     return row
 
 
@@ -365,4 +370,4 @@ def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None
                  market=load_market_context(state_dir, day), options_tape=load_options_tape(state_dir, [day, *prior]),
                  bar_clock=bar_clock,
                  unit=tape_unit(bars, float(sigma), now, prior) if bar_clock else None, horizon=horizon,
-                 prior_rulers=prior_rulers, prior_markets=prior_markets)
+                 prior_rulers=prior_rulers, prior_markets=prior_markets, state_dir=state_dir)

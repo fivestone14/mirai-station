@@ -37,6 +37,23 @@ LABELLER_VIEWS = {
     "dex_views": ("dex_above_spot",),
     "profile_ladder": ("state",),
 }
+# The fields each label family (spx_jev/labels/) reads beyond the ones above, as "field" (kept whole) or
+# "view.key", one line per family so that families add theirs without touching each other's lines.
+FAMILY_FIELDS: dict[str, tuple[str, ...]] = {
+    "context": (),
+    "price": (),
+    "gap_open": (),
+    "range_size": (),
+    "levels": (),
+    "vol": (),
+    "gamma": (),
+    "tape_flow": (),
+    "expiry_calendar": (),
+    "breadth": (),
+    "leadership": (),
+    "macro": (),
+    "events_shocks": (),
+}
 # the dated books (the next monthlies and the quarter-end, pulled each morning): per band only what the labeller reads
 DATED_BAND_FIELDS = ("expiry", "band", "dte", "gamma_mass")
 # the siege read: its health and baseline, and per tower only what the labeller reads
@@ -56,8 +73,14 @@ def labeller_row(raw: Any) -> dict | None:
         return None
     if not isinstance(raw.get("ts"), str) or not _is_num(raw.get("spot")):
         return None
-    row = {k: raw[k] for k in LABELLER_FIELDS if raw.get(k) is not None}
-    for view, keys in LABELLER_VIEWS.items():
+    family = [f for fields in FAMILY_FIELDS.values() for f in fields]
+    row = {k: raw[k] for k in (*LABELLER_FIELDS, *(f for f in family if "." not in f)) if raw.get(k) is not None}
+    views: dict[str, list[str]] = {view: list(keys) for view, keys in LABELLER_VIEWS.items()}
+    for f in family:
+        if "." in f:
+            view, key = f.split(".", 1)
+            views.setdefault(view, []).append(key)
+    for view, keys in views.items():
         block = raw.get(view)
         if isinstance(block, dict):
             kept = {k: block[k] for k in keys if block.get(k) is not None}

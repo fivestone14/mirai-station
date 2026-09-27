@@ -137,4 +137,5 @@ def test_the_scene_loads_each_prior_sessions_morning_ruler_and_market(tmp_path):
     assert scene.prior_rulers == {"2026-09-17": SigmaRuler(71.0, "anchor"), "2026-09-16": SigmaRuler(69.0, "live")}
     assert list(scene.prior_markets) == ["2026-09-17"] and scene.prior_markets["2026-09-17"].first("$VIX") == 15.0
     assert scene.spot == 7700.0 and scene.minutes_since_open == 35.0 and scene.minutes_to_close == 355.0
+    assert scene.day == DAY and scene.state_dir == state
     assert scene.session_close - scene.now == timedelta(minutes=355)

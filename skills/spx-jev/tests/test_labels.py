@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from spx_jev import row_adapter
 from spx_jev.labels import registry
 from spx_jev.labels.label_set import LabelSet
 from spx_jev.labels.registry import FAMILIES, GATE_NOT_BUILT, NOT_BUILT, build_labels
@@ -32,6 +33,10 @@ def test_every_label_the_questions_read_and_every_gate_they_sleep_on_has_a_famil
     assert sorted(gates) == sorted(q["id"] for q in questions if q.get("sleep_when"))
     assert {p: f.name for f in FAMILIES for p in f.dark} == {
         lab["name"]: next(f.name for f in FAMILIES if lab["name"] in f.labels) for lab in QUESTION_SET["labels"] if lab["availability"] == "dark"}
+
+
+def test_the_row_adapter_has_one_line_of_extra_fields_per_family():
+    assert set(row_adapter.FAMILY_FIELDS) == {f.name for f in FAMILIES}
 
 
 def test_a_full_read_accounts_for_every_owned_label_and_gate(full_scene):
