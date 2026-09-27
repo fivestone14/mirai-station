@@ -578,7 +578,11 @@ details .q{margin-top:8px}
   // Between cards the minutes still move: every tick updates each clock and each calls-in-play drawing,
   // and when the leading call changes (the opening's last call closes) the page is drawn again.
   function tick(){
-    if(!last) return;
+    if(!last){
+      if(shownLeads && !laneLeads(tape, Date.now(), marketDay())){ shownLeads = false; tickers = []; $('main').textContent = ''; }
+      tickers.forEach(function(f){ f(); });
+      return;
+    }
     if(laneLeads(tape, Date.now(), marketDay()) !== shownLeads){ draw(last, lastOk); return; }
     tickers.forEach(function(f){ f(); });
   }
@@ -608,10 +612,10 @@ details .q{margin-top:8px}
       return r.json();
     }).then(function(j){
       if(j && j.kind === 'json' && j.data && j.data.questions){ arrived(j.data); }
-      else if(j && j.error){ say('the station said: ' + j.error); }
+      else if(j && j.error){ say('the station said: ' + j.error); laneOnly(); }
       else if(last){ draw(last, false); }
-      else { say('no card yet: the JEV service has not written one'); }
-    }).catch(function(e){ if(last) draw(last, false); else say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); })
+      else { say('no card yet: the JEV service has not written one'); laneOnly(); }
+    }).catch(function(e){ if(last) draw(last, false); else { say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); laneOnly(); } })
       .finally(function(){ inflight = false; polling(false); });
   }
   // ---- the calls: every sum is a call that looks some minutes ahead, graded at its mark (the read's
@@ -1007,6 +1011,19 @@ details .q{margin-top:8px}
                                    : y.right + ' of ' + y.graded + ' graded calls right, ' + (y.calls - y.graded) + ' still to grade'));
     return f;
   }
+  // No 30-minute card read yet (none written, or the station failed): the opening lane still leads while its call
+  // is open, drawn alone under the header's words about the 30-minute card. False when there is nothing to draw.
+  function laneOnly(){
+    if(last || !laneLeads(tape, Date.now(), marketDay())) return false;
+    var main = $('main'); main.textContent = '';
+    tickers = []; shownLeads = true;
+    main.appendChild(el('div', 'mode', 'opening \u00B7 a call every 5 min'));
+    main.appendChild(laneCard(tape, tapeOk));
+    var f = el('div', 'card fold'); f.appendChild(el('span', 'k', '30-min card')); f.appendChild(el('span', 'l', 'not read yet'));
+    main.appendChild(f);
+    clearLoading();
+    return true;
+  }
   var tapeInflight = false, tapeTimer = null;
   function sig(x){ return x ? [x.generated_at, x.row_ts, x.closed_out_at || ''].join('|') : ''; }
   function pollTape(){
@@ -1022,7 +1039,7 @@ details .q{margin-top:8px}
       var changed = d && sig(d) !== sig(tape), wasOk = tapeOk;
       tapeOk = true;
       if(changed) tape = d;
-      if((changed || !wasOk) && last) draw(last, lastOk);
+      if(changed || !wasOk){ if(last) draw(last, lastOk); else laneOnly(); }
     }).catch(function(){ if(tapeOk && tape && last){ tapeOk = false; draw(last, lastOk); } else tapeOk = false; })
       .finally(function(){ tapeInflight = false; });
   }

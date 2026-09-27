@@ -361,3 +361,17 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
           "SUB.classList.add('err'); arrived(c);"
           "console.log(JSON.stringify(drawn));")
     assert _run(js, {}) == [True, "ages", False, True, "ages", True]
+
+
+def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
+    """Monday's first morning with no 30-minute card on file: the open 5-minute call still leads, drawn alone;
+    once a 30-minute card has been read, paint draws both and this draws nothing."""
+    js = ("var last = D.last, tape = D.tape, tapeOk = true, tickers = [], shownLeads = false, MAIN = el('div', 'main');"
+          "function $(id){ return MAIN; } function clearLoading(){} function laneCard(t, ok){ return el('div', 'lane', t.row_ts); }"
+          + _fn("laneOnly") +
+          "var drew = laneOnly(); console.log(JSON.stringify([drew, shownLeads, MAIN.kids.map(function(k){ return k.textContent; })]));")
+    tape = {"lane": "tape", "row_ts": "2026-09-28T10:00:00-04:00", "calls": [call("10:00", "10:10", "flat", 0.4)]}
+    drew = _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape})
+    assert drew == [True, True, ["opening · a call every 5 min", "2026-09-28T10:00:00-04:00", "30-min cardnot read yet"]]
+    assert _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": {"row_ts": "x"}, "tape": tape})[0] is False
+    assert _run(js, {"now": "2026-09-28T10:11:00-04:00", "last": None, "tape": tape})[0] is False    # the call has closed
