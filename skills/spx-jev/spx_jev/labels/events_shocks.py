@@ -186,7 +186,7 @@ def _event_clock(scene: Scene, day_events: list[Event], ls: LabelSet) -> None:
 
 def _release_clock_10m(scene: Scene, day_events: list[Event], ls: LabelSet) -> None:
     """The releases and speakers starting within WINDOW_10_MIN either side of now, and whether a Fed speaker
-    is due this morning."""
+    is speaking or due this morning."""
     now, w = scene.now, WINDOW_10_MIN
     moments = [e for e in day_events if _at_a_moment(e)]
     clauses = []
@@ -202,8 +202,10 @@ def _release_clock_10m(scene: Scene, day_events: list[Event], ls: LabelSet) -> N
                        (f"; next, {_ahead(later[0])}, {plural(_minutes_between(now, later[0].start), 'minute')} from now"
                         if later else "; nothing more is scheduled in the session"))
     morning = now.astimezone(ET).hour < NOON
-    speakers = [e for e in moments if e.tier == events.FED_SPEAKER and e.start > now - timedelta(minutes=w)
+    speakers = [e for e in moments if e.tier == events.FED_SPEAKER and now < _end(e)
                 and (e.start.astimezone(ET).hour < NOON or not morning)]
+    clauses += [f"{e.words} has been speaking since {_hm(e.start)}{_questions(e)}" for e in speakers
+                if e.start < now - timedelta(minutes=w)]
     if not speakers:
         clauses.append("no Fed speaker is scheduled this morning" if morning else "no more Fed speakers are scheduled today")
     ls.put("event.release_clock_10m", "; ".join(clauses))

@@ -1,7 +1,8 @@
 """The events and shocks family (labels/events_shocks.py): each label's sentence at its verdicts and their
 boundaries, its omissions, point in time, and each gate both ways.
 
-The calendar labels read the shipped calendar/events.json on real days: 09-29 (job openings and consumer
+The calendar labels read the shipped calendar/events.json on real days: 09-22 (the vice chair for supervision
+at 09:30 with questions), 09-29 (job openings and consumer
 confidence at 10:00, two governors after noon), 10-01 (claims before the open, ISM at 10:00 with a governor,
 four speakers), 10-02 (the jobs report), 10-13 (nothing), 10-20 (nothing, in the Fed's quiet period) and the
 10-28 decision. Every day's own ruler and the normal-day sigma are 100 points, so a sigma is a point / 100.
@@ -144,6 +145,17 @@ def test_the_lanes_window_is_ten_minutes_either_side_inclusive(scene_factory):
     assert "the job openings report came out at 10:00, 10 minutes ago, inside the last 10 minutes" in state["event.release_clock_10m"]
     assert gates["release_in_lane"] is None
     assert labels(replace(s, now=at(10, 10, "2026-09-29", ss=30)))[2]["release_in_lane"] is not None
+
+
+def test_a_speaker_still_speaking_is_named_until_the_speech_ends(scene_factory):
+    s = scene_at(scene_factory, at(9, 45, "2026-09-22"), FLAT)
+    assert labels(s)[0]["event.release_clock_10m"] == (
+        "nothing scheduled starts within 10 minutes of now; nothing more is scheduled in the session; the Fed's vice chair "
+        "for supervision has been speaking since 09:30 with audience questions")
+    assert labels(replace(s, now=at(10, 29, "2026-09-22", ss=30)))[0]["event.release_clock_10m"].endswith(
+        "the Fed's vice chair for supervision has been speaking since 09:30 with audience questions")
+    assert labels(replace(s, now=at(10, 30, "2026-09-22")))[0]["event.release_clock_10m"].endswith(
+        "no Fed speaker is scheduled this morning")
 
 
 def test_an_afternoon_with_nothing_left(scene_factory):
