@@ -158,3 +158,19 @@ def test_a_day_constant_is_asked_at_0935_held_on_the_lane_and_borrowed_by_the_li
     assert "held_from" in live_read(11, 32)["q_const"]
     at_1202 = live_read(12, 2)
     assert at_1202["q_const"]["answer"] is None and at_1202["q_const"]["skipped"] == "held from its other lane only until 11:32 ET"
+
+
+def test_a_tape_read_waits_for_the_bar_that_finishes_at_its_minute(tmp_path):
+    """The bars job runs at no fixed second: at the 09:40 fire the file may end at 09:39, and a read on it
+    would be stamped 09:39, a minute short of the 10-minute big-print window. The read waits for the bar."""
+    from spx_jev.state_builder import make_scene
+    state = _state(tmp_path, [make_row(at(9, 31), 7700.0)], 9)           # bars 09:30 .. 09:38: the newest ends 09:39
+    all_bars = bars_from_closes([7700.0] * 10, wick=3.0)
+    naps = []
+
+    def bars_job_runs(_s):
+        naps.append(_s)
+        write_state(tmp_path, DAY, [make_row(at(9, 31), 7700.0)], all_bars)
+    assert service.wait_for_bar(state, at(9, 40), sleep=bars_job_runs) is True and len(naps) == 1
+    assert make_scene(state, DAY, bar_clock=True).now == at(9, 40)
+    assert service.wait_for_bar(state, at(9, 41), timeout_s=0, sleep=bars_job_runs) is False   # no bar: the read goes on

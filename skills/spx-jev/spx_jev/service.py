@@ -31,7 +31,8 @@ scored once the session is sealed. The phone keeps the exact blend (``shown_sour
 loop was promoted and pool.POOL_ON_PHONE is set, which it is not.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
-(``--lane tape``) stamps each read at the newest finished bar, measures the tape unit
+(``--lane tape``) stamps each read at the newest finished bar (a sent run first waits, under a minute,
+for the bar that finishes at its fire minute: wait_for_bar), measures the tape unit
 (labels.rulers.tape_unit), asks what its schedule asks afresh, prices its sum's bands from the unit, and writes the
 same files under state/spx_jev/lanes/tape/, each record marked with the lane and the unit.
 
@@ -67,7 +68,7 @@ from .labels.registry import build_labels
 from .lane import LANES, LANES_BY_KEY, LIVE, Lane
 from .schedule import not_due, read_slot
 from .sessions import session_close
-from .state_builder import DEFAULT_STATE_DIR, load_jsonl, make_scene, parse_ts
+from .state_builder import DEFAULT_STATE_DIR, load_bars, load_jsonl, make_scene, parse_ts
 from .weights import QuestionWeights
 
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
@@ -84,6 +85,10 @@ STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped
 LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
 CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, so an overlap is visible
+# A read on the bar clock waits for the bar that finishes at its fire minute. The bars job runs once a
+# minute at no fixed second, so a wait under a minute spans one of its runs and the read stays in its minute.
+BAR_WAIT_S = 55
+BAR_POLL_S = 2.0
 
 
 def log(msg: str) -> None:
@@ -553,6 +558,22 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     return c
 
 
+def wait_for_bar(state_dir: Path, fire: datetime, timeout_s: float = BAR_WAIT_S, sleep=_clock.sleep) -> bool:
+    """Wait until today's bars file holds the bar that finishes at ``fire`` (the lane's read minute),
+    at most ``timeout_s``. Without it a read is stamped at the minute before and measures its time
+    windows a minute short (the 09:40 read's 10-minute big-print window, the 09:45 read's tape unit).
+    True when the bar is there; False after the wait, and the read goes on with the newest bar on file."""
+    day = fire.astimezone(ET).date().isoformat()
+    deadline = _clock.monotonic() + timeout_s
+    while True:
+        bars = load_bars(state_dir, day)
+        if bars and parse_ts(bars[-1]["ts"]) + timedelta(minutes=1) >= fire:
+            return True
+        if _clock.monotonic() >= deadline:
+            return False
+        sleep(BAR_POLL_S)
+
+
 def write_card(out_dir: Path, c: dict) -> None:
     """Replace latest.json in one step, so the phone never reads half a card."""
     tmp = out_dir / "latest.json.tmp"
@@ -616,6 +637,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     last_row = None
     while True:
+        if lane.bar_clock and do_send and not args.day:
+            fire = now_et().replace(second=0, microsecond=0)
+            if not wait_for_bar(state_dir, fire):
+                log(f"no bar finished at {fire:%H:%M} after {BAR_WAIT_S} s: reading on the newest bar on file")
         try:
             c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent, lane)
             if c["row_ts"] != last_row:
