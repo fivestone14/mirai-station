@@ -9,7 +9,7 @@ Two horizons are graded from the same record, each against its own band (lane.LI
     next_60   60 minutes, flat within NEXT_60_FLAT_BAND_SIGMA   (graded beside it, for the comparison)
 
 How a horizon is graded
-    realized = (close h minutes after the row - spot at the row) / sigma
+    realized = (close h minutes after the row - spot at the row) / sigma_anchor
     band     = up if realized > flat band, down if realized < -flat band, else flat
     hit      = the shown sum's pick (the blend) == band; jev_hit the same for JEV's own pick
     brier    = sum over {up, flat, down} of (p - 1[band]) ** 2      (0 is perfect, 2 is worst)
@@ -19,6 +19,13 @@ How a horizon is graded
     graded at the closing bar; one that ends later is skipped for good and said so in the line. A
     record none of whose horizons can ever be graded is written as not graded, so it is never
     retried. A horizon graded once is never graded twice.
+
+The ruler
+    sigma_anchor is the day's morning anchor (labels.rulers.morning_ruler) as the read could know it:
+    from the day's diary rows up to the read and the bars finished by then (read_anchor). Never the
+    record's ``sigma``, which ratchets up with the live sigma through the day, so a mid-day spike
+    cannot move a flat band or turn an outcome. The line keeps the ruler it was graded in
+    (``anchor``: points and source); a read with no anchor at all is skipped for good.
 
 What is graded
     The sum a record carries is the one the phone showed: JEV's sum blended with the time-of-day
@@ -71,11 +78,12 @@ from zoneinfo import ZoneInfo
 from . import archive
 from .ask import load_questions
 from .hour import FIVE
-from .labels.measures import close_at
+from .labels.measures import close_at, settled_open
+from .labels.rulers import SigmaRuler, morning_ruler, vix_at_settled_open
 from .lane import LANES, LIVE, RECORD, Lane
 from .pool import PoolWeights
 from .sessions import session_close
-from .state_builder import DEFAULT_STATE_DIR, load_bars, load_jsonl, parse_ts
+from .state_builder import DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, load_market_context, load_rows, parse_ts
 from .weights import WEIGHTS_NAME, QuestionWeights
 
 ET = ZoneInfo("America/New_York")
@@ -102,6 +110,14 @@ def mark_at(row_ts: str, minutes: int) -> datetime | None:
     if t1 > close + timedelta(minutes=CLOSE_GRACE_MIN):
         return None
     return min(t1, close)
+
+
+def read_anchor(rows: list[dict], bars: list[dict], market: MarketContext | None, row_ts: str) -> SigmaRuler | None:
+    """The morning anchor the read at ``row_ts`` could know: the day's diary rows stamped by then and the
+    bars finished by then, through the anchor guard and its fallbacks."""
+    t = parse_ts(row_ts)
+    known = [b for b in bars if parse_ts(b["ts"]) + timedelta(minutes=1) <= t]
+    return morning_ruler([r for r in rows if parse_ts(r["ts"]) <= t], vix_at_settled_open(market, row_ts[:10]), settled_open(known))
 
 
 def realized_band(x: float, flat: float) -> str:
@@ -176,8 +192,9 @@ TOP_KEYS = ("realized_sigma", "realized_points", "realized_units", "band", "dire
 
 
 def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = frozenset(), final: bool = False,
-              lane: Lane = LIVE) -> dict | None:
-    """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar.
+              lane: Lane = LIVE, anchor: SigmaRuler | None = None) -> dict | None:
+    """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar, a
+    sigma band measured in ``anchor`` (read_anchor), a RECORD band in the record's own points.
 
     Returns the line to append, None when nothing new can be graded yet (a mark still ahead, or
     bars missing), or a ``graded: False`` line when no horizon of the record can ever be graded.
@@ -185,9 +202,7 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     for good, so the next run grades only what is left."""
     t0 = parse_ts(rec["row_ts"]).replace(second=0, microsecond=0)   # the read's minute: a 15:32:00.4 read is a 15:32 read
     close = session_close(t0)
-    spot, sigma = float(rec["spot"]), float(rec["sigma"])
-    if sigma <= 0:
-        return {"row_ts": rec["row_ts"], "graded": False, "reason": f"sigma {sigma} cannot scale a move"}
+    spot = float(rec["spot"])
     if not bars:
         return None
     picks, probs = _picks(rec)
@@ -210,6 +225,9 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         if flat == RECORD and not _has_band(rec):
             skipped[qid] = "no band on the record"     # no tape unit was measured at the read: nothing to grade against
             continue
+        if flat != RECORD and anchor is None:
+            skipped[qid] = "no morning anchor: no diary row, live sigma or VIX to measure the move in"
+            continue
         t1 = mark_at(rec["row_ts"], h)                # inside the grace past the close, the closing bar stands for the mark
         if t1 is None:
             skipped[qid] = "ends past the close"      # can never be graded
@@ -231,7 +249,7 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         if flat == RECORD:
             graded[qid] = _grade_units(rec, qid, c1 - spot, picks.get(qid), p)
             continue
-        realized = (c1 - spot) / sigma
+        realized = (c1 - spot) / anchor.points
         band = realized_band(realized, flat)
         graded[qid] = {"realized_sigma": round(realized, 3), "band": band, "pick": picks.get(qid),
                        "hit": picks.get(qid) == band, "brier": _brier(p, band), "p_band": p.get(band)}
@@ -244,7 +262,7 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     if not graded:
         if pending:
             return None                               # a mark is still ahead
-        closed = {q: v for q, v in skipped.items() if str(v).startswith(("halted window", "no band"))}
+        closed = {q: v for q, v in skipped.items() if str(v).startswith(("halted window", "no band", "no morning anchor"))}
         if closed:
             # closed out for good; when the other horizon was graded on an earlier run this line carries
             # only the halted one, so the read is never retried
@@ -255,6 +273,8 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         return {"row_ts": rec["row_ts"], "graded": False, "reason": "every horizon ends past the close"}
     out = {"row_ts": rec["row_ts"], "used": rec.get("used", {}), "fresh": rec.get("fresh", {}),
            "horizons": list(graded), "pending": pending, "skipped": skipped, **graded}
+    if any("realized_sigma" in g for g in graded.values()):
+        out["anchor"] = {"points": anchor.points, "source": anchor.source}
     ev = rec.get("event") if isinstance(rec.get("event"), dict) else None
     if ev:
         out["event_within_30"] = bool(ev.get("within_30"))
@@ -391,10 +411,14 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
                     new.append({"row_ts": r["row_ts"], "graded": False, "reason": "no bars for the day"})
                     done[r["row_ts"]] |= every
             continue
+        # a lane banded in sigma measures every read in the day's morning anchor
+        in_sigma = any(flat != RECORD for _, flat in lane.horizons.values())
+        rows, market = (load_rows(state_dir, d), load_market_context(state_dir, d)) if in_sigma else ([], None)
         for r in recs:
             if done.get(r["row_ts"], set()) == every:
                 continue                              # the same row written twice (a run by hand): graded once
-            g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat(), lane=lane)
+            anchor = read_anchor(rows, bars, market, r["row_ts"]) if in_sigma else None
+            g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat(), lane=lane, anchor=anchor)
             if g:
                 new.append(g)
                 done[g["row_ts"]] |= every if g.get("graded") is False else set(g["horizons"]) | set(g["skipped"])

@@ -3,18 +3,36 @@ from __future__ import annotations
 
 import json
 
-from conftest import DAY, at, bars_from_closes, flat_bars, write_state
+from conftest import DAY, at, bars_from_closes, flat_bars, make_row, write_state
 from spx_jev.ask import load_questions
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
-from spx_jev.grade import grade_one, graded_horizons, live_options, mark_at, realized_band, run, weights_from
+from spx_jev.grade import grade_one as grade_in, graded_horizons, live_options, mark_at, read_anchor, realized_band, run, weights_from
+from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import LIVE, TAPE
+from spx_jev.row_adapter import labeller_row
 
 SIGMA = 75.0
+ANCHOR = SigmaRuler(SIGMA, "anchor")
 ALLOWED = {"q1": {"rising", "falling", "going_nowhere", "unsure"}}
 
 
 def _rec(hh, mm, spot, by, fresh=None):
     return {"row_ts": at(hh, mm).isoformat(), "spot": spot, "sigma": SIGMA, "by": by, "used": dict(fresh or {}), "fresh": dict(fresh or {})}
+
+
+def grade_one(rec, bars, done=frozenset(), final=False):
+    return grade_in(rec, bars, done, final, anchor=ANCHOR)
+
+
+def _rows(sigma_after_noon=SIGMA):
+    """The day's diary rows every 5 minutes from 09:31, anchored at SIGMA; from noon on the row's sigma
+    ratchets up to ``sigma_after_noon`` with the live one, as the scanner's does on a spike."""
+    out = []
+    for m in range(1, 390, 5):
+        t = at(9 + (30 + m) // 60, (30 + m) % 60)
+        sigma = sigma_after_noon if t >= at(12, 0) else SIGMA
+        out.append(make_row(t, 7700.0, sigma=sigma, sigma_anchor=SIGMA, sigma_live=sigma))
+    return out
 
 
 def _by(p30, pick30, p60=None, pick60=None):
@@ -95,7 +113,7 @@ def test_every_weight_is_one_and_an_event_read_never_reaches_them():
 
 
 def test_run_appends_grades_writes_weights_and_logs_once(tmp_path):
-    state = write_state(tmp_path, DAY, [], _climb())
+    state = write_state(tmp_path, DAY, _rows(), _climb())
     out = state / "spx_jev"
     (out / "hour").mkdir(parents=True)
     rec = _rec(11, 0, 7700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up"), {"q1": "rising"})
@@ -122,3 +140,33 @@ def test_only_live_questions_and_their_current_options_are_weighed():
     assert "flow_vs_price" not in allowed and "news_headline" not in allowed      # shadow, dark
     assert allowed["leg_vs_day_side"] == {"quiet", "quiet_leg_day_moved", "leg_with_day", "leg_against_day", "leg_on_flat_day"}
     assert allowed["gap_fill_next_hour"] == {"true", "false"}
+
+
+def test_the_morning_anchor_grades_and_a_mid_day_ratchet_changes_nothing(tmp_path):
+    """A noon read on a day whose row sigma ratcheted from 75 to 150 at noon: the record carries the
+    ratcheted sigma, the grade the morning anchor's, the same as on a day that never ratcheted. On the
+    record's sigma the 15-point climb would have read 0.1 sigma, flat."""
+    climb = bars_from_closes([7700.0] * 150 + [7700.0 + 15.0 * (i + 1) / 30 for i in range(30)] + [7715.0] * 210)
+    rec = {**_rec(12, 0, 7700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up")), "sigma": 150.0}
+    lines = []
+    for name, rows in (("calm", _rows()), ("spike", _rows(sigma_after_noon=150.0))):
+        state = write_state(tmp_path / name, DAY, rows, climb)
+        out = state / "spx_jev"
+        (out / "hour").mkdir(parents=True)
+        (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps(rec) + "\n")
+        run(state, out, ALLOWED)
+        lines.append(json.loads((out / "grades.jsonl").read_text().splitlines()[0]))
+    calm, spike = lines
+    assert spike["next_30"] == calm["next_30"] and spike["next_60"] == calm["next_60"]
+    assert spike["next_30"]["realized_sigma"] == 0.2 and spike["band"] == "up"         # 15 points in 75, past the flat band
+    assert spike["anchor"] == {"points": SIGMA, "source": "anchor"}
+
+
+def test_the_anchor_is_what_the_read_could_know():
+    rows = [labeller_row(r) for r in _rows()]
+    assert read_anchor(rows, flat_bars(390), None, at(12, 0).isoformat()) == ANCHOR
+    late = [labeller_row(make_row(at(9, 45), 7700.0, sigma=80.0, sigma_anchor=90.0, sigma_live=77.0))]
+    assert read_anchor(late, flat_bars(390), None, at(12, 0).isoformat()) == SigmaRuler(77.0, "live")   # the guard: 09:40
+    assert read_anchor(rows, flat_bars(390), None, at(9, 30).isoformat()) is None                         # no row yet
+    g = grade_in(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat")), flat_bars(390))
+    assert g["horizons"] == [] and g["skipped"]["next_30"].startswith("no morning anchor")              # closed for good

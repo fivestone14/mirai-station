@@ -9,16 +9,16 @@ The odds
     For each of up to 20 prior SPX sessions, a read is replayed every 10 minutes from 09:32 (the same
     minutes past the hour the service reads at, and every 10 minutes between) on the newest diary
     row at that minute, and each read is handed to the grader's own ``grade_one``: the same spot,
-    sigma, flat bands (lane.LIVE.horizons, from cuts.py), close, grace and bar-gap rules, so the odds
-    and the graded sums can never be scored two ways. The outcomes are counted per phase of the day
-    and shrunk toward the whole day's shares, so a thin phase cannot swing. A session counts only
-    when at least MIN_SCORED_READS of its replayed reads were graded at 30 minutes; a day the scanner
-    barely covered is left out rather than counted as a full session.
+    morning anchor (grade.read_anchor), flat bands (lane.LIVE.horizons, from cuts.py), close, grace
+    and bar-gap rules, so the odds and the graded sums can never be scored two ways. The outcomes are
+    counted per phase of the day and shrunk toward the whole day's shares, so a thin phase cannot
+    swing. A session counts only when at least MIN_SCORED_READS of its replayed reads were graded at
+    30 minutes; a day the scanner barely covered is left out rather than counted as a full session.
 
     Point in time: prior sessions only, never today. A past session's counts are kept in
-    ``state/spx_jev/clock_days.json`` with the number of bars and the size and time of the diary file
-    they were counted from, and are counted again only if either changes, or if the rule itself
-    (bands, phases, grid, version) changes. Fewer than MIN_SESSIONS counted sessions, or a read on an
+    ``state/spx_jev/clock_days.json`` with the number of bars and the size and time of the diary and
+    market-context files they were counted from, and are counted again only if any of them changes,
+    or if the rule itself (bands, phases, grid, version) changes. Fewer than MIN_SESSIONS counted sessions, or a read on an
     NYSE half day (the odds come from full sessions), and the blend is left out, and the card says why.
 
 The blend
@@ -34,10 +34,10 @@ import tempfile
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
-from .grade import grade_one
+from .grade import grade_one, read_anchor
 from .lane import LIVE
 from .sessions import SESSION_CLOSE, session_close
-from .state_builder import ROWS_SUBDIR, load_rows, parse_ts
+from .state_builder import CONTEXT_SUBDIR, ROWS_SUBDIR, MarketContext, load_market_context, load_rows, parse_ts
 
 JEV_SHARE = 0.5          # declared, not fitted
 MIN_SESSIONS = 10        # fewer counted prior sessions than this and the odds are too thin to blend
@@ -50,7 +50,7 @@ FIRST_READ = time(9, 32)
 ROW_MAX_AGE_MIN = 10     # a replayed read needs a diary row this fresh, as a live read does
 OUTCOMES = ("up", "down", "flat")
 CACHE_NAME = "clock_days.json"
-RULE_VERSION = 1         # bump when the counting changes, so every stored day is counted again
+RULE_VERSION = 2         # bump when the counting changes, so every stored day is counted again
 
 # Phases of the day, by the read's clock (minute of day, from and before).
 PHASES = (
@@ -81,14 +81,15 @@ def _rule_key(hz: dict[str, tuple[int, float]]) -> str:
                        "step": STEP_MIN, "first": FIRST_READ.isoformat(), "row_age": ROW_MAX_AGE_MIN}, sort_keys=True)
 
 
-def replayed_reads(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]]) -> list[dict]:
+def replayed_reads(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]],
+                   market: MarketContext | None = None) -> list[dict]:
     """Every replayed read of one finished session, oldest first: ``{"row_ts", "phase", "spot", "sigma",
     "bands": {qid: outcome}}``, each graded by the grader's own ``grade_one`` on the newest diary row
-    at that minute; a horizon the grader could not grade has no band."""
+    at that minute, in the morning anchor that read could know (``sigma``); a horizon the grader could
+    not grade has no band, and a read with no anchor is no read."""
     if not bars or not rows:
         return []
-    rows = [r for r in rows if isinstance(r.get("sigma"), (int, float)) and r["sigma"] > 0
-            and isinstance(r.get("spot"), (int, float))]
+    rows = [r for r in rows if isinstance(r.get("spot"), (int, float))]
     if not rows:
         return []
     stamps = [parse_ts(r["ts"]) for r in rows]
@@ -100,20 +101,21 @@ def replayed_reads(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, 
             k += 1
         if k >= 0 and t - stamps[k] <= timedelta(minutes=ROW_MAX_AGE_MIN) and rows[k]["ts"] not in seen:
             seen.add(rows[k]["ts"])                       # one row read twice is one read, as the grader has it
-            rec = {"row_ts": rows[k]["ts"], "spot": rows[k]["spot"], "sigma": rows[k]["sigma"],
-                   "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
-            g = grade_one(rec, bars) or {}
-            bands = {q: (g.get(q) or {}).get("band") for q in hz}
-            out.append({"row_ts": rows[k]["ts"], "phase": phase_of(stamps[k]), "spot": float(rows[k]["spot"]),
-                        "sigma": float(rows[k]["sigma"]), "bands": {q: b for q, b in bands.items() if b in OUTCOMES}})
+            anchor = read_anchor(rows, bars, market, rows[k]["ts"])
+            if anchor is not None:
+                rec = {"row_ts": rows[k]["ts"], "spot": rows[k]["spot"], "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
+                g = grade_one(rec, bars, anchor=anchor) or {}
+                bands = {q: (g.get(q) or {}).get("band") for q in hz}
+                out.append({"row_ts": rows[k]["ts"], "phase": phase_of(stamps[k]), "spot": float(rows[k]["spot"]),
+                            "sigma": anchor.points, "bands": {q: b for q, b in bands.items() if b in OUTCOMES}})
         t += timedelta(minutes=STEP_MIN)
     return out
 
 
-def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]]) -> dict:
+def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]], market: MarketContext | None = None) -> dict:
     """``{qid: {phase: {up, down, flat}}}`` for one finished session: every replayed read's outcome."""
     out = {qid: {p[0]: {o: 0 for o in OUTCOMES} for p in PHASES} for qid in hz}
-    for r in replayed_reads(bars, rows, hz):
+    for r in replayed_reads(bars, rows, hz, market):
         for q, band in r["bands"].items():
             out[q][r["phase"]][band] += 1
     return out
@@ -121,6 +123,15 @@ def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, floa
 
 def _scored(counts: dict, qid: str = PRIMARY) -> int:
     return sum(sum(c.values()) for c in counts.get(qid, {}).values())
+
+
+def _file_print(path: Path) -> list[int] | None:
+    """A file's size and modification time, or None when it is not there."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
 
 
 def _load_cache(path: Path, key: str) -> dict:
@@ -161,17 +172,15 @@ def odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dict]], now:
     cache = _load_cache(cache_path, key)
     changed = False
     for d in days:
-        # a stored day is trusted only while its bars and its diary file are the ones it was counted from
-        try:
-            st = (Path(state_dir) / ROWS_SUBDIR / f"{d}.jsonl").stat()
-            rows_print = [st.st_size, st.st_mtime_ns]
-        except OSError:
-            rows_print = None
-        seen = {"n_bars": len(prior_bars[d]), "rows_file": rows_print}
+        # a stored day is trusted only while its bars, its diary file and its market-context files (the
+        # VIX an estimated anchor falls back on) are the ones it was counted from
+        context = Path(state_dir) / CONTEXT_SUBDIR
+        seen = {"n_bars": len(prior_bars[d]), "rows_file": _file_print(Path(state_dir) / ROWS_SUBDIR / f"{d}.jsonl"),
+                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(context / "bars" / f"{d}.jsonl")]}
         entry = cache.get(d)
         if entry is not None and all(entry.get(k) == v for k, v in seen.items()) and "counts" in entry:
             continue
-        cache[d] = {**seen, "counts": day_counts(prior_bars[d], load_rows(state_dir, d), hz)}
+        cache[d] = {**seen, "counts": day_counts(prior_bars[d], load_rows(state_dir, d), hz, load_market_context(state_dir, d))}
         changed = True
     if changed:
         _save_cache(cache_path, key, cache)

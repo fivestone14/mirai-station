@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from conftest import at, flat_bars, make_row
+from conftest import at, bars_from_closes, flat_bars, make_row
 from spx_jev import clock
 from spx_jev.clock import blend, day_counts, odds, phase_of
 from spx_jev.lane import LIVE
@@ -38,6 +38,19 @@ def test_a_flat_day_counts_every_graded_read_as_flat():
     counts = day_counts(flat_bars(390, day="2026-09-10"), _rows("2026-09-10"), LIVE.horizons)
     assert sum(counts["next_30"]["lunch"].values()) == counts["next_30"]["lunch"]["flat"] > 0
     assert counts["next_30"]["morning"]["up"] == counts["next_30"]["morning"]["down"] == 0
+
+
+def test_the_replayed_reads_are_graded_in_the_morning_anchor_not_the_ratchet():
+    """Price climbs a steady 0.5 point a minute; from noon the row sigma ratchets to 1000 points. On
+    the morning anchor every afternoon read still climbs 15 points in 30 minutes, 0.2 sigma: up."""
+    from spx_jev.row_adapter import labeller_row
+    day = "2026-09-10"
+    bars = bars_from_closes([7700.0 + 0.5 * i for i in range(390)], day=day)
+    rows = [labeller_row(make_row(t, 7700.0 + 0.5 * m, sigma=75.0 if t < at(12, 0, day=day) else 1000.0, sigma_anchor=75.0))
+            for m in range(0, 390, 5) if (t := at(9 + (30 + m) // 60, (30 + m) % 60, day=day))]
+    counts = day_counts(bars, rows, LIVE.horizons)
+    assert counts["next_30"]["lunch"]["up"] == sum(counts["next_30"]["lunch"].values()) > 0
+    assert {r["sigma"] for r in clock.replayed_reads(bars, rows, LIVE.horizons)} == {75.0}
 
 
 def test_the_odds_need_ten_sessions_and_then_blend_half_and_half(tmp_path):
