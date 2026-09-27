@@ -10,8 +10,8 @@ from datetime import timedelta
 from ..cuts import MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, SHAPE_CUT_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import (MIN_RANGE_SESSIONS, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between, close_at, day_high_low, high_low_close, is_num, minute_of_day,
-                       move_bar, stretch, stretch_range, walls)
+from .measures import (MIN_RANGE_SESSIONS, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between, close_at,
+                       day_high_low, high_low_close, is_num, minute_of_day, move_bar, stretch, stretch_range, walls)
 from .ranks import rank_at_slot
 from .words import plural, sig, third, units_of
 

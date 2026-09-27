@@ -12,7 +12,8 @@ from ..cuts import (MINUTE_WIDTH_CUT, MOVE_RULE_SIGMA, OUTLIER_DAY_SIGMA, PACE_B
                     PAUSE_BRIEF_MIN, PAUSE_LONG_MIN, PULLBACK_SHARE, RSI_OVERBOUGHT, RSI_OVERSOLD)
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import MIN_RANGE_SESSIONS, RANGE_PRIOR_SESSIONS, RSI_PERIOD, bars_finished_between, close_at, day_high_low, high_low_close, is_num, wilder_rsi
+from .measures import (MIN_RANGE_SESSIONS, RANGE_PRIOR_SESSIONS, RSI_PERIOD, bars_finished_between, close_at, day_high_low,
+                       high_low_close, is_num, wilder_rsi)
 from .words import pct, plural, sig, signed, third
 
 LABELS = ("price.recent_move", "price.day_range_position", "price.vs_vwap", "price.vs_prior_close", "price.minute_width",
