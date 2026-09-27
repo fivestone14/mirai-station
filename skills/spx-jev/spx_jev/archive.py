@@ -9,8 +9,8 @@ Three record kinds, each a dataclass below, each line carrying ``schema_version`
     read       every run of either lane (sent or not): the complete labels and the omitted ones with
                their reasons, the exact requests sent to JEV and its exact replies, the sums request and
                reply, the sum as shown (with the blend), the cadence state (held, not due, asked), the
-               market-context values the read could see, the tier-1 event tag and, on the tape lane, the
-               unit and the bands
+               market-context values the read could see, the tier-1 event tag, the learning loop's
+               forecasts on the live lane and, on the tape lane, the unit and the bands
     grade      one per graded horizon line the grader writes, keyed to its read by ``read_id``
     close_out  the opening lane's grade-only run after its last read: the day's calls and tally
 
@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2          # 2: a read carries the learning loop's forecasts (pool)
 ARCHIVE_SUBDIR = Path("spx_jev") / "archive"
 
 
@@ -60,6 +60,7 @@ class ReadRecord:
     event: dict | None                           # the tier-1 event tag (events.py), never sent to JEV
     ruler: dict | None = None                    # the tape lane's unit
     band: dict | None = None                     # the tape lane's bands in points
+    pool: dict | None = None                     # the learning loop's forecasts per horizon (pool.snapshot), live lane
     schema_version: int = SCHEMA_VERSION
     kind: str = "read"
     archived_at: str = field(default_factory=_now)

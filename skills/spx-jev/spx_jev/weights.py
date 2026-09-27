@@ -4,11 +4,12 @@ The grader scores the sums (grade.py) and hands this module what it graded; ``Qu
 turns that into one weight per question, and step 3 (hour.answer_sentences) leaves out any
 question whose weight is under MIN_WEIGHT. Nothing else reads a weight.
 
-For now the method is neutral: every live question weighs 1.0, whatever the grades say. SNDK JEV's
-mutual-information weights were not carried over: on its first 50 graded reads none of them beat
-shuffled outcomes (the study of 2026-09-26), so a learning method is being designed separately.
-To drop one in, subclass QuestionWeights, set ``method`` and override ``learn``; the grader, the
-weights file and step 3 stay as they are.
+The neutral method weighs every live question 1.0, whatever the grades say; SNDK JEV's
+mutual-information weights were not carried over, since on its first 50 graded reads none of them
+beat shuffled outcomes (the study of 2026-09-26). A learning method subclasses QuestionWeights, sets
+``method`` and overrides ``learn``; the grader, the weights file and step 3 stay as they are. The
+live lane learns with pool.PoolWeights (lane.Lane.pool), which keeps every weight at 1.0 too and
+reports each question's standing beside it.
 
     weights.json   {"method", "min_weight", "questions": {qid: {"weight", "n", "in_step_3", "why"}}, ...}
                    the grader adds the sums' tallies beside it (grade.run)
@@ -49,12 +50,12 @@ class QuestionWeights:
         return self.weight(qid) >= MIN_WEIGHT
 
     @classmethod
-    def learn(cls, graded: list[dict], allowed: dict[str, set[str]]) -> "QuestionWeights":
+    def learn(cls, graded: list[dict], allowed: dict[str, set[str]], out_dir: Path | None = None) -> "QuestionWeights":
         """``graded`` is every grade line whose primary sum was graded (grade.run keeps the outcome flat
         on each line as ``band``, and the picks given afresh on that read under ``fresh``); ``allowed``
-        is each live question's current options (grade.live_options). The neutral method counts the
-        fresh picks per question, so the record shows the evidence a method would have, and weighs
-        every question 1.0."""
+        is each live question's current options (grade.live_options); ``out_dir`` is the lane's folder,
+        for a method that reads the lane's own records. The neutral method counts the fresh picks per
+        question, so the record shows the evidence a method would have, and weighs every question 1.0."""
         n = Counter(qid for g in graded for qid, p in (g.get("fresh") or {}).items()
                     if qid in allowed and str(p) in allowed[qid])
         return cls({qid: {"weight": 1.0, "n": n[qid], "in_step_3": True,

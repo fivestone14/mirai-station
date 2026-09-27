@@ -39,7 +39,8 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/scores.py` | The Scores | One way to score a three-way forecast: floored at 2% a side, and its log loss split exactly into a move part (did it move?) and a direction part (which way, given a move). |
 | `spx_jev/baseline.py`, `spec/fit_baseline.py`, `spec/baseline.json` | The Baseline | The price-only forecast the learning loop measures JEV against: the time-of-day odds, and the same odds split by how far SPX has moved today, counted once on the 41 qualifying sessions and frozen, with the leave-one-day-out validation that picked the reference (the time-of-day odds; the movement split lost out of sample). |
 | `spx_jev/grade.py` | The Grader | Reads the bars at each sum's mark, scores both sums, and hands the grades to the question weights. |
-| `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Neutral for now (every live question weighs 1.0); a learning method is being designed separately and drops in by overriding `learn`. |
+| `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Every live question weighs 1.0: the neutral method on the tape lane, the learning loop on the live lane. |
+| `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, the clock, the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH) and whether the pool may replace the blend on the phone. The phone switch, `POOL_ON_PHONE`, is off. |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of both lanes, append only, one typed record per line. |
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
 | `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32 with the 30- and 60-minute sums; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, one five-way 10-minute sum priced in index points, every question asked afresh, no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. It writes only under `state/spx_jev/lanes/tape/`. |
@@ -154,7 +155,8 @@ archive there too, under `archive/`.
 5. The card: `state/spx_jev/latest.json`.
 6. Grading, code (`grade.py`), every sent run: each sum at its own mark, a hit
    and a Brier score for the blend, JEV's own sum and the clock's odds on the
-   same outcome. The grades go to `QuestionWeights.learn`.
+   same outcome. The grades go to the question weights' `learn`: on the live
+   lane the learning loop (`pool.py`) applies every newly sealed session.
 
 ## The files it writes, all under `state/spx_jev/`
 
@@ -164,13 +166,16 @@ archive there too, under `archive/`.
 - `last_asked.json`, `cadence.json`, `clock_days.json`: the cadence and the
   clock's stored counts. `grades.jsonl`, `weights.json` (the sums' tallies,
   `method` and the per-question weights), `weights_log.jsonl`.
+- `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
+  per horizon and one log line per horizon per session applied or refused.
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
-  per record, append only, `schema_version` 1. A `read` record holds the read
+  per record, append only, `schema_version` 2. A `read` record holds the read
   id (lane and row timestamp), the labels and the omitted ones with reasons,
   the exact requests and JEV's exact replies, the sums request and reply, the
   sum as shown, the cadence state (held, not due, asked), the market-context
-  values the read could see with when each was known, the event tag, and on
-  the opening lane the unit and bands. A `grade` record is each graded horizon
+  values the read could see with when each was known, the event tag, on the
+  live lane the learning loop's forecasts, and on the opening lane the unit
+  and bands. A `grade` record is each graded horizon
   keyed to its read's id; a `close_out` record is the opening lane's calls and
   tally at 10:42. No secret is ever written.
 - `bars/{day}.jsonl` (the bars feed) and `context/{day}.jsonl`,
@@ -216,7 +221,9 @@ that has closed. The key lives only in `skills/spx-jev/.env`
 ## Not done yet
 
 - The questions are a placeholder; the real set comes from the research round.
-- The question weights are neutral until a learning method is chosen.
+- The learning loop runs, but the phone switch (`pool.POOL_ON_PHONE`) is off
+  pending Will's decision; its simulation acceptance gates (06) are not built,
+  and the SPX event calendar lacks the 10:00 and 14:00 releases 06 lists.
 - No market context is on disk yet: the breadth labels are omitted on every
   replay until the feed has run, and the backfill has not been run against the
   station.

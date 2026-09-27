@@ -29,6 +29,7 @@ def test_the_live_lane_and_the_opening_lane():
     assert LIVE.out_dir == "spx_jev" and LIVE.questions.name == "spx_live.json" and LIVE.hour_doc.name == "spx_hour.json"
     assert LIVE.horizons == {"next_30": (30, NEXT_30_FLAT_BAND_SIGMA), "next_60": (60, NEXT_60_FLAT_BAND_SIGMA)}
     assert (LIVE.primary, LIVE.cadence, LIVE.tag, LIVE.bar_clock, LIVE.clock_blend, LIVE.bar_gap_min) == ("next_30", True, None, False, True, 2)
+    assert LIVE.pool is True and TAPE.pool is False                     # only the live lane feeds the learning loop
     assert TAPE.out_dir == "spx_jev/lanes/tape" and TAPE.questions.name == "spx_lane_tape.json"
     assert TAPE.horizons == {"next_10": (10, RECORD)} and TAPE.primary == "next_10"
     assert (TAPE.cadence, TAPE.tag, TAPE.bar_clock, TAPE.clock_blend, TAPE.bar_gap_min) == (False, "tape", True, False, 0)

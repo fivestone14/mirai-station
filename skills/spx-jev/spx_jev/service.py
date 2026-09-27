@@ -12,6 +12,7 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/spx_jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py, weights.py)
     state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of both lanes (archive.py)
+    state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the learning loop (pool.py)
 
 Every time the card carries is a full timestamp with its offset, never a bare clock, so the phone
 can show it in the viewer's own zone; prose meant for a reader names the market clock and says ET.
@@ -23,6 +24,11 @@ checks nothing against the wall clock, and never writes into the station's recor
 --out-dir names them: without one it writes into a fresh scratch folder, archive included, and says
 where. Every read carries the tier-1 events due within the hour
 (events.py) in its record, its sum record and the card; JEV never sees them.
+
+On the live lane every sum also carries the learning loop's forecasts (pool.snapshot): the fixed
+mixes of JEV's sum with the price-only reference, today's blend, the question block and the pool,
+scored once the session is sealed. The phone keeps the exact blend (``shown_source``) unless the
+loop was promoted and pool.POOL_ON_PHONE is set, which it is not.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
 (``--lane tape``) stamps each read at the newest finished bar, measures the tape unit
@@ -48,8 +54,9 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive
+from . import archive, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
+from .baseline import Baseline
 from .cadence import cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, plan, save_last
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import tag as event_tag
@@ -179,6 +186,28 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
     except Exception as e:  # send() scrubs the key and turns the network into RuntimeError; be safe anyway
         reply = {"error": str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"}
     return {**base, "request": req}, hour_summary(reply, lane), reply
+
+
+def pool_snapshots(out_dir: Path, hour: dict, doc: dict, answered: dict[str, dict], fresh: set[str], now: datetime,
+                   lane: Lane = LIVE) -> dict[str, dict]:
+    """The learning loop's forecasts at this read, one per horizon (pool.snapshot), from JEV's own sum,
+    the live clock's odds and the shown blend on the hour summary, and every live question's answer,
+    fresh or held. A horizon JEV gave no probabilities for is left out, with the reason."""
+    live = {qid: q for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
+    members = {qid: pool.question_version(q) for qid, q in live.items()}
+    answers = {qid: a for qid, e in answered.items() if qid in members and (a := pool.soft_answer(e))}
+    baseline = Baseline.load()
+    out = {}
+    for h, (minutes, _) in lane.horizons.items():
+        b = (hour.get("by") or {}).get(h)
+        if not isinstance(b, dict) or not isinstance(b.get("probabilities"), dict):
+            out[h] = {"left_out": f"JEV gave no probabilities for {h}"}
+            continue
+        jev = b["jev"]["probabilities"] if b.get("blended") else b["probabilities"]
+        live_clock = b["clock"]["probabilities"] if b.get("blended") else None
+        out[h] = pool.snapshot(pool.load_state(out_dir, minutes), baseline, h, now, jev, live_clock, b["probabilities"],
+                               answers, members, fresh)
+    return out
 
 
 def last_read_of(out_dir: Path, day: str, now: datetime) -> datetime | None:
@@ -444,6 +473,15 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             except Exception as e:  # the clock must never cost the read its sum
                 log(f"the clock was left out this run: {type(e).__name__}: {e}")
                 hour = {**hour, "blend": {"used": False, "why": f"the time-of-day odds failed this run: {type(e).__name__}"}}
+        if hour is not None and lane.pool and isinstance(hour.get("by"), dict):
+            # every forecast the learning loop will score, written down now; the phone keeps the exact
+            # blend unless the loop's promotion and POOL_ON_PHONE both say otherwise
+            try:
+                hour_rec["pool"] = pool_snapshots(out_dir, hour, doc, answered, set(fresh), now, lane)
+            except Exception as e:  # the loop must never cost the read its sum
+                log(f"the learning loop's snapshot was left out this run: {type(e).__name__}: {e}")
+                hour_rec["pool"] = {h: {"left_out": f"the snapshot failed this run: {type(e).__name__}"} for h in lane.horizons}
+            hour = pool.shown(hour, hour_rec["pool"], pool.load_state(out_dir, lane.horizons[lane.primary][0]))
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):
@@ -475,6 +513,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         read_id=archive.read_id(lane.name, scene.row["ts"]), lane=lane.name, row_ts=scene.row["ts"], sent=do_send,
         spot=float(scene.row["spot"]), sigma=scene.sigma, labels=state, omitted=omitted, requests=requests, skipped=skipped,
         responses=answers, hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour,
+        pool=(hour_rec or {}).get("pool"),
         cadence={"from": cad.get("recounted_from"), "held": {qid: h["held_from"] for qid, h in held.items()}, "not_due": skip,
                  "asked": [qid for r in requests for qid in r["questions"]]},
         market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band))

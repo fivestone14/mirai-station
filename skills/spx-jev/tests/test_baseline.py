@@ -54,8 +54,9 @@ def test_each_day_is_scored_by_tables_that_never_saw_it():
 def test_the_frozen_file_is_whole_and_names_its_reference():
     doc = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
     assert doc["rule_hash"] == baseline.rule_hash(doc) and len(doc["sessions"]) >= 30
-    assert set(doc["reference"]) == set(H) and set(doc["reference"].values()) <= {"state", "clock"}
+    # the loop reads the calibrated E_clock as its reference: a refit that makes E_state the winner must change the loop too
+    assert doc["reference"] == {h: "clock" for h in H}
     b = Baseline.load()
     p = b.clock("next_30", at(12, 2))
     assert math.isclose(sum(p.values()), 1.0) and b.version.endswith(doc["rule_hash"])
-    assert b.state("next_30", at(12, 2), 0.1) != p
+    assert math.isclose(sum(b.whole_day("next_60").values()), 1.0)

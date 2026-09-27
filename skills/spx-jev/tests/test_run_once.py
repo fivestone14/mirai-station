@@ -89,7 +89,7 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["horizons"] == ["next_30"] and grades[0]["band"] == "flat"
     weights = json.loads((out / "weights.json").read_text())
-    assert weights["method"] == "neutral" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
+    assert weights["method"] == "pool_v1" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
     for p in out.rglob("*"):
         if p.is_file():
             assert CANARY not in p.read_text(), p
@@ -195,3 +195,28 @@ def test_a_read_before_a_scheduled_close_event_carries_the_tag_and_jev_never_see
     c = run_once(state, state / "spx_jev", DOC, True, DAY)
     assert c["event"]["within_30"] is True and c["event"]["events"][0]["at"] == at(16, 0).isoformat()
     assert seen and not any("scheduled" in json.dumps(r["state"]) for r in seen)
+
+
+def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and_a_sealed_day_is_learned(tmp_path, monkeypatch):
+    from spx_jev.clock import MIN_SESSIONS
+    prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
+    state = write_state(tmp_path, DAY, [make_row(at(12, 2, ss=10), 7700.0)], flat_bars(390), prior)
+    for d in prior:
+        (state / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
+                                                                for m in range(0, 390, 5)))
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, state / "spx_jev", DOC, True, DAY)
+    out = state / "spx_jev"
+    rec = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    snap = rec["pool"]["next_30"]
+    assert set(snap["experts"]) == set(service.pool.W0) and snap["awake"] == ["q_dir", "q_two"] and snap["members"].keys() == {"q_dir", "q_two"}
+    assert snap["blend50_exact"] == {k: round(v, 4) for k, v in c["hour"]["probabilities"].items()}
+    assert c["hour"]["shown_source"] == "blend50_exact" and rec["shown_source"] == "blend50_exact"
+    read = json.loads((out / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert read["schema_version"] == 2 and read["pool"]["next_60"]["experts"]
+    # the day is over and both marks were graded in the same run: the loop learned it at once
+    weights = json.loads((out / "weights.json").read_text())
+    assert weights["pool"]["last_session_applied"] == DAY and weights["pool"]["phone"] == {**weights["pool"]["phone"], "shows": "blend", "on_phone": False}
+    assert weights["questions"]["q_dir"]["days"] == 1 and weights["questions"]["q_dir"]["weight"] == 1.0
+    assert json.loads((out / "pool_60.json").read_text())["last_session_applied"] == DAY

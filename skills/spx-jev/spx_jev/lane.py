@@ -39,6 +39,7 @@ class Lane:
     bar_clock: bool = False                          # stamp each read at the newest finished bar and carry the tape unit;
                                                      # a finished day's bars that stop are then the end of its day
     clock_blend: bool = True                         # blend the sum with the time-of-day odds (clock.py)
+    pool: bool = False                               # write the learning loop's forecasts at each read and learn from them (pool.py)
     bar_gap_min: int = 2                             # the bar standing for a mark may be this many minutes early; 0 is the exact bar
     schedule: tuple[str, ...] = ()                   # the reads, "HH:MM" market time; empty for the live lane (:02 and :32 all session)
     close_out: str | None = None                     # "HH:MM" market time of the grade-only run after the last read
@@ -64,7 +65,7 @@ class Lane:
 
 LIVE = Lane(name="live", out_dir=LIVE_DIR, questions=QUESTIONS_DIR / "spx_live.json", hour_doc=QUESTIONS_DIR / "spx_hour.json",
             horizons={"next_30": (30, NEXT_30_FLAT_BAND_SIGMA), "next_60": (60, NEXT_60_FLAT_BAND_SIGMA)},
-            primary="next_30", cadence=True, tag=None)
+            primary="next_30", cadence=True, tag=None, pool=True)
 
 TAPE_EVERY_MIN = 5
 TAPE = Lane(name="tape", out_dir=f"{LIVE_DIR}/lanes/tape", questions=QUESTIONS_DIR / "spx_lane_tape.json",

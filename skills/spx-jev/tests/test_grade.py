@@ -6,7 +6,7 @@ import json
 from conftest import DAY, at, bars_from_closes, flat_bars, write_state
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
 from spx_jev.grade import grade_one, graded_horizons, live_options, mark_at, realized_band, run, weights_from
-from spx_jev.lane import LIVE
+from spx_jev.lane import LIVE, TAPE
 
 SIGMA = 75.0
 ALLOWED = {"q1": {"rising", "falling", "going_nowhere", "unsure"}}
@@ -81,13 +81,14 @@ def test_a_blended_sum_is_graded_beside_jevs_own_and_the_clocks():
     assert b["n"] == 1 and b["mean_brier_blend"] == g["brier"] and b["mean_brier_jev"] == g["jev_brier"]
 
 
-def test_the_weights_are_neutral_and_an_event_read_never_reaches_them():
+def test_every_weight_is_one_and_an_event_read_never_reaches_them():
     bars = flat_bars(390)
     ev = {"within_30": True, "sentence": "a scheduled event is ahead"}
     g1 = grade_one({**_rec(13, 32, 7700.0, _by({"flat": 1.0}, "flat"), {"q1": "rising"}), "event": ev}, bars)
     g2 = grade_one(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat"), {"q1": "falling", "q_retired": "x"}), bars)
     w = weights_from([g1, g2], ALLOWED)
-    assert g1["event_within_30"] is True and w["method"] == "neutral"
+    assert g1["event_within_30"] is True and w["method"] == "pool_v1"                # the live lane learns the loop
+    assert weights_from([g1, g2], ALLOWED, TAPE)["method"] == "neutral"
     assert w["questions"] == {"q1": {"weight": 1.0, "n": 1, "in_step_3": True, "why": w["questions"]["q1"]["why"]}}
     assert w["sums"]["next_30"]["n"] == 2 and w["sums"]["next_30"]["event_reads"]["n"] == 1
 

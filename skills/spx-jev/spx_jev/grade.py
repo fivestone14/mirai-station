@@ -35,8 +35,9 @@ Scheduled events and finished days
 
 The question weights
     Every graded line of the primary horizon, with the picks each live question gave afresh on that
-    read, goes to weights.QuestionWeights.learn, the one seam a learning method plugs into. The
-    method today is neutral: every live question weighs 1.0.
+    read, goes to the question weights' learn, the one seam a learning method plugs into. The live
+    lane learns the loop there (pool.PoolWeights: every newly sealed session applied, each question's
+    standing reported, every weight still 1.0); the tape lane's weights are neutral.
 
 A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
 itself: the tape unit measured at the read prices a flat and a big band in index points, and the
@@ -71,6 +72,7 @@ from . import archive
 from .ask import load_questions
 from .hour import FIVE
 from .lane import LANES, LIVE, RECORD, Lane
+from .pool import PoolWeights
 from .sessions import session_close
 from .state_builder import DEFAULT_STATE_DIR, close_at, load_bars, load_jsonl, parse_ts
 from .weights import WEIGHTS_NAME, QuestionWeights
@@ -337,14 +339,16 @@ def live_options(doc: dict | Path | str) -> dict[str, set[str]]:
     return out
 
 
-def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = LIVE) -> dict:
-    """Each sum's tally from every grade line, and the question weights (weights.QuestionWeights) from
-    the lines whose primary sum was graded, less those a scheduled event sat inside. ``allowed`` is
+def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = LIVE, out_dir: Path | None = None) -> dict:
+    """Each sum's tally from every grade line, and the question weights from the lines whose primary sum
+    was graded, less those a scheduled event sat inside: the learning loop's (pool.PoolWeights, which
+    reads the lane's records in ``out_dir``) on a lane that learns it, else neutral. ``allowed`` is
     live_options(): only live questions are weighed, and only picks from their current options count."""
     primary = [g for g in grades if g.get("band")]
     sums = {qid: {**_tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]), "event_reads": _events(grades, qid)}
             for qid in lane.horizons}
-    weights = QuestionWeights.learn([g for g in primary if not g.get("event_within_30")], allowed)
+    learner = PoolWeights if lane.pool else QuestionWeights
+    weights = learner.learn([g for g in primary if not g.get("event_within_30")], allowed, out_dir)
     out = {"graded_runs": len(primary), "primary": lane.primary, "sums": sums, **weights.as_json()}
     if lane.tag:
         out["lane"] = lane.tag
@@ -402,7 +406,7 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
             archive.append(lane.archive_folder(state_dir, out_dir), g["row_ts"][:10], archive.GradeRecord(read_id=archive.read_id(lane.name, g["row_ts"]),
                                                                             lane=lane.name, row_ts=g["row_ts"], grade=g))
     grades = load_jsonl(grades_path)
-    weights = weights_from(grades, allowed, lane)
+    weights = weights_from(grades, allowed, lane, out_dir)
     weights["new_this_run"] = sum(1 for g in new if g.get("band"))
     weights["new_by_horizon"] = {q: sum(1 for g in new if q in (g.get("horizons") or [])) for q in lane.horizons}
     weights["closed_out"] = sum(1 for g in new if g.get("graded") is False)

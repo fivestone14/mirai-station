@@ -148,7 +148,9 @@ def rule_hash(doc: dict) -> str:
 
 
 class Baseline:
-    """The frozen tables, read at every read (pool.py): E_clock, E_state and which one is the reference."""
+    """The frozen tables as the loop reads them at every read (pool.py): E_clock and its long-run shares.
+    E_state lost the validation at both horizons, so the loop's reference is the calibrated E_clock and
+    E_state is not read; a test holds the file's reference to that."""
 
     def __init__(self, doc: dict) -> None:
         self.doc = doc
@@ -161,9 +163,6 @@ class Baseline:
     def clock(self, h: str, now: datetime) -> dict[str, float]:
         return clock_odds(self.doc, h, phase_of(now))
 
-    def state(self, h: str, now: datetime, move: float | None) -> dict[str, float]:
-        return state_odds(self.doc, h, phase_of(now), move)
-
-    def reference(self, h: str) -> str:
-        """"state" or "clock": which forecast, calibrated, is R for horizon ``h``."""
-        return self.doc["reference"][h]
+    def whole_day(self, h: str) -> dict[str, float]:
+        """The long-run shares the calibration and the question tilts are shrunk toward."""
+        return whole_day_odds(self.doc, h)
