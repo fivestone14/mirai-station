@@ -60,6 +60,13 @@ def test_the_opening_lane_reads_ten_minutes_against_the_ten_minute_lines(scene_f
                                                      "at or past the 0.35% still line and short of the 0.75% moving line")
 
 
+def test_the_first_opening_read_measures_from_the_opens_first_print(scene_factory):
+    now = at(9, 40)
+    scene = scene_factory(now, flat_bars(10), row_over={"range_ruler": ruler_block(20.0)}, bar_clock=True,
+                          rows_before=[diary_row(at(9, 30, ss=28), 19.90)])
+    assert labels(scene)[0]["vol.vix_change_30"].startswith("over the last 10 minutes VIX rose 0.10 points")
+
+
 def test_a_share_on_a_line_reads_at_or_past_it_and_never_shows_across_it(scene_factory):
     now = at(12, 30, ss=10)
     on_line = scene_factory(now, flat_bars(180), row_over={"range_ruler": ruler_block(20.0)},

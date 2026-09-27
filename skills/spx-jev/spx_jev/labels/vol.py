@@ -25,7 +25,7 @@ from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at
                        settled_open)
 from .ranks import SameClockRank, rank_against, same_clock_values
 from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
-from .vol_sources import DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, skew_at
+from .vol_sources import ROW_MAX_GAP, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, skew_at
 from .words import pct, plural, sig, signed
 
 LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.move_sides", "iv.term_structure",
@@ -230,8 +230,11 @@ def _spx_move(scene: Scene, window: int, ruler: SigmaRuler) -> float | None:
 
 
 def _change(today: list[DiaryPoint], now: datetime, window: int, read: Callable[[DiaryPoint], float | None]) -> tuple[float, float] | None:
-    """``(then, now)`` of a diary value across the last ``window`` minutes; None when either end is missing."""
-    then = point_at(today, now - timedelta(minutes=window))
+    """``(then, now)`` of a diary value across the last ``window`` minutes; None when either end is missing. A
+    window that starts before the day's first row, by no more than a row's gap, starts at it: the 09:40 read's
+    ten minutes run from the open's first print."""
+    start = now - timedelta(minutes=window)
+    then = point_at(today, start) or (today[0] if start < today[0].ts <= start + ROW_MAX_GAP else None)
     a, b = (read(then) if then else None), read(today[-1])
     return None if a is None or b is None else (a, b)
 
