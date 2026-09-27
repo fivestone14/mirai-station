@@ -20,11 +20,14 @@ the day's reads stamped. A question is judged on the outcome its answers speak t
 
     size         (it serves "size")                  the range of the first 30 minutes
     signed       (its answers are ordered down to up)  the move to 10:04
-    with_night   (the rest: sign-free answers)       the move to 10:04 counted the night's way (the sign of /ES
-                                                     from its 16:00 price to the read), so above zero carries on
+    sign_free    (the rest)                          the move to 10:04 counted along the question's reference
+                                                     (its ref_side, REFERENCES), so above zero went its way
+
+A sign-free question's reference is read from the figures its read wrote, each measured on one contract
+(a roll refuses it), so a night whose reference was not measured is counted and left ungraded.
 
 For each question at each read that asks it: the nights asked, asleep and missing a label, the answer
-counts, per answer the share that rose (or went the night's way) and the mean move at each mark, the
+counts, per answer the share that rose (or went the reference's way) and the mean move at each mark, the
 rank correlation where the answers are ordered (else the share of the outcome's variance the answers
 explain), both halves of the nights, and a verdict:
 
@@ -53,8 +56,9 @@ from itertools import repeat
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from spx_jev import events, night_ranks, overnight, premarket  # noqa: E402
+from spx_jev import events, overnight, premarket  # noqa: E402
 from spx_jev.ask import build_requests, get_path, load_questions  # noqa: E402
+from spx_jev.labels import bitcoin  # noqa: E402
 from spx_jev.labels.measures import ET, bar_time, is_num, settled_open  # noqa: E402
 from spx_jev.labels.registry import build_labels  # noqa: E402
 from spx_jev.lane import PREMARKET  # noqa: E402
@@ -77,7 +81,7 @@ ORDERED = {
 # The outcomes, and the marks after the settled open they are measured at (None: the day's close).
 MOVES = {"open_10": 10, "open_30": 30, "open_60": 60, "to_close": None}
 RANGES = {"range_30": 30, "range_60": 60}
-JUDGED_ON = {"size": "range_30", "signed": "open_30", "with_night": "open_30"}
+JUDGED_ON = {"size": "range_30", "signed": "open_30", "sign_free": "open_30"}
 
 
 # ---- outcomes ------------------------------------------------------------------------------------
@@ -130,12 +134,58 @@ def own_label(q: dict, figures: dict) -> str | None:
     return next((p for p in q.get("labels") or [] if (figures.get(p) or {}).get("verdict") in q.get("options", [])), None)
 
 
-def night_side(scene) -> int | None:
-    """Which way /ES stands from its 16:00 price at the read: 1, -1, or None when unmeasured or unchanged."""
-    local = scene.now.astimezone(ET)
-    move = night_ranks.overnight_move([r for r in scene.night if r["symbol"] == "/ES"], "/ES", local.date(),
-                                      local.time().replace(second=0, microsecond=0))
-    return None if move is None or move.pct == 0 else (1 if move.pct > 0 else -1)
+def _sign(x) -> int | None:
+    return None if not is_num(x) or x == 0 else (1 if x > 0 else -1)
+
+
+def _value(figures: dict, path: str) -> float | None:
+    return (figures.get(path) or {}).get("value")
+
+
+def first_leg_side(scene, figures: dict) -> int | None:
+    """The side of the night's first leg that moved: premarket.arc's value is the share of it the net move
+    keeps, so the leg points the net's way when that share is positive and against it when negative."""
+    net, kept = _sign(_value(figures, "premarket.where_now")), _sign(_value(figures, "premarket.arc"))
+    return None if net is None or kept is None else net * kept
+
+
+def before_leg_side(scene, figures: dict) -> int | None:
+    """The side of the night before the leg since the previous checkpoint: the leg's own side when it added,
+    the other side when it gave back or crossed (both are against the night before it)."""
+    f = figures.get("premarket.since_checkpoint") or {}
+    leg = _sign(f.get("value"))
+    return None if leg is None else leg if f.get("verdict") == "added" else -leg
+
+
+def before_report_side(scene, figures: dict) -> int | None:
+    """The side of the night before the report: the report window's own side when it extended the night, the
+    other side when it unwound it or carried futures across their 16:00 price."""
+    f = figures.get("premarket.release_vs_night") or {}
+    window = _sign(f.get("value"))
+    return None if window is None else window if f.get("verdict") == "extended_night" else -window
+
+
+def weekend_leg_side(scene, figures: dict) -> int | None:
+    """The side of bitcoin's weekend leg, the one weekend.btc_path takes its reopen leg's way (bitcoin.way_of),
+    measured on the read's night the same way; None when the label was not written."""
+    if "weekend.btc_path" not in figures:
+        return None
+    legs = bitcoin.weekend_legs(scene.night, *bitcoin.weekend_edges(scene.now.astimezone(ET).date()), scene.now)
+    return None if legs is None else bitcoin.way_of(legs[0].pct)
+
+
+# Each sign-free question's reference (its ref_side where the set names one): its words, and its side at a read
+# from the scene and the figures the read wrote, None when the read did not measure it.
+REFERENCES = {
+    "gap_origin": ("the night's net move", lambda scene, f: _sign(_value(f, "overnight.es_move"))),
+    "night_legs_agree": ("the night's net move", lambda scene, f: _sign(_value(f, "premarket.legs"))),
+    "overnight_arc": ("the night's first leg that moved", first_leg_side),
+    "latest_leg_vs_night": ("the night's net move before the leg", before_leg_side),
+    "release_vs_night": ("the night's net move before the report", before_report_side),
+    "night_vs_last_hour": ("yesterday's last hour", lambda scene, f: _sign(_value(f, "premarket.vs_last_hour"))),
+    "release_reaction_path": ("the report's reaction to 08:45", lambda scene, f: _sign(_value(f, "overnight.release_reaction"))),
+    "btc_weekend_path": ("bitcoin's weekend leg", weekend_leg_side),
+}
 
 
 def read(state_dir: Path, doc: dict, day: date, checkpoint: str) -> dict:
@@ -156,6 +206,8 @@ def read(state_dir: Path, doc: dict, day: date, checkpoint: str) -> dict:
     for qid, q in questions.items():
         label = own_label(q, labels.figures)
         fate = {"answer": labels.figures[label]["verdict"] if label else None}
+        if kind_of(q, qid) == "sign_free":
+            fate["side"] = REFERENCES[qid][1](scene, labels.figures)
         if qid in asked:
             fate["fate"] = "asked"
         elif qid in skip:
@@ -166,7 +218,7 @@ def read(state_dir: Path, doc: dict, day: date, checkpoint: str) -> dict:
             missing = [p for p in q.get("labels") or [] if get_path(labels.state, p) is None]
             fate.update(fate="missing", why="; ".join(f"{p}: {labels.omitted.get(p, 'not written')}" for p in missing) or why.get(qid))
         fates[qid] = fate
-    return {**out, "ruler": round(scene.sigma, 4), "side": night_side(scene), "questions": fates,
+    return {**out, "ruler": round(scene.sigma, 4), "questions": fates,
             "figures": {p: f for p, f in labels.figures.items() if p.split(".")[0] in ("overnight", "premarket", "weekend")}}
 
 
@@ -255,13 +307,13 @@ def permutation_p(qid: str, answers: list[str], values: list[float], observed: f
 def kind_of(q: dict, qid: str) -> str:
     if q.get("serves") == "size":
         return "size"
-    return "signed" if qid in ORDERED else "with_night"
+    return "signed" if qid in ORDERED else "sign_free"
 
 
 def judged_value(kind: str, name: str, oc: dict, side: int | None) -> float | None:
-    """The outcome ``name`` as the question's kind reads it: the night's way for sign-free answers."""
+    """The outcome ``name`` as the question's kind reads it: along the reference's side for sign-free answers."""
     v = oc.get(name)
-    if v is None or kind != "with_night" or name in RANGES:
+    if v is None or kind != "sign_free" or name in RANGES:
         return v
     return None if side is None else v * side
 
@@ -285,7 +337,7 @@ def judge(qid: str, q: dict, checkpoint: str, reads: list[dict], outcomes: dict[
         if "questions" not in r or r["questions"][qid]["fate"] != "asked" or r["questions"][qid]["answer"] is None:
             continue
         oc = outcomes.get(r["day"]) or {}
-        row = {name: judged_value(kind, name, oc, r["side"]) for name in ["gap", *MOVES, *RANGES]}
+        row = {name: judged_value(kind, name, oc, r["questions"][qid].get("side")) for name in ["gap", *MOVES, *RANGES]}
         graded.append((r["day"], r["questions"][qid]["answer"], row))
     target = JUDGED_ON[kind]
     pairs = [(a, row[target]) for _, a, row in graded if row[target] is not None]
@@ -294,9 +346,13 @@ def judge(qid: str, q: dict, checkpoint: str, reads: list[dict], outcomes: dict[
         rows = [row for _, x, row in graded if x == a]
         by_answer[a] = {"n": len(rows), **{name: _mean_share([row[name] for row in rows]) for name in ["gap", *MOVES, *RANGES]}}
     out = {"question": qid, "checkpoint": checkpoint, "kind": kind, "judged_on": target, "status": q.get("replayed_from"),
+           "reference": REFERENCES[qid][0] if kind == "sign_free" else None,
            "fates": dict(fates), "reasons": reasons, "answers": dict(Counter(a for _, a, _ in graded)),
            "unanswered": sum(1 for r in mine if "questions" in r and r["questions"][qid]["fate"] == "asked"
                              and r["questions"][qid]["answer"] is None),
+           "unfolded": sum(1 for r in mine if "questions" in r and r["questions"][qid]["fate"] == "asked"
+                           and r["questions"][qid]["answer"] is not None and kind == "sign_free"
+                           and r["questions"][qid].get("side") is None),
            "graded": len(pairs), "by_answer": by_answer}
     answers, values = [a for a, _ in pairs], [v for _, v in pairs]
     given = sum(1 for n in Counter(answers).values() if n >= MIN_PER_ANSWER)
@@ -333,7 +389,7 @@ def _halves_words(split: list) -> str:
 
 KIND_WORDS = {"size": "the range of the first 30 minutes from the settled open",
               "signed": "the move from the settled open to 10:04",
-              "with_night": "the move from the settled open to 10:04, counted the night's way"}
+              "sign_free": "the move from the settled open to 10:04, counted along {reference}"}
 
 
 def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], days: list[date], bitcoin_context_days: int) -> str:
@@ -352,7 +408,9 @@ def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], day
               ""]
     lines += [f"Verdict: **holds** when a permutation p is under {P_HOLDS} and the effect keeps its sign (or its best answer) "
               f"in both halves of the nights; **too few** under {MIN_NIGHTS} graded nights or under two answers given on "
-              f"{MIN_PER_ANSWER} nights each; **noise** otherwise.", "",
+              f"{MIN_PER_ANSWER} nights each; **noise** otherwise. A sign-free question's outcome is counted along its own reference "
+              f"(the question's ref_side: the night's net move, the first leg, the report's reaction, bitcoin's weekend "
+              f"leg ...), named under each question.", "",
               "| Question | Read | Asked | Asleep | Missing | Graded | Judged on | Statistic | Verdict |",
               "|---|---|---|---|---|---|---|---|---|"]
     for j in judged:
@@ -361,16 +419,18 @@ def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], day
                      f"{j['graded']} | {j['judged_on']} | {j['basis']} | {j['verdict']} |")
     for j in judged:
         lines += ["", f"## {j['question']} at {j['checkpoint']} ({j['status']})", "",
-                  f"Judged on {KIND_WORDS[j['kind']]}: {j['verdict']} ({j['basis']}).",
+                  f"Judged on {KIND_WORDS[j['kind']].format(reference=j['reference'])}: {j['verdict']} ({j['basis']}).",
                   f"Fates: {', '.join(f'{k} {v}' for k, v in sorted(j['fates'].items()))}. "
                   f"Answers: {', '.join(f'{k} {v}' for k, v in sorted(j['answers'].items())) or 'none'}."]
         if j["unanswered"]:
             lines.append(f"Asked on {j['unanswered']} nights with no code answer: "
                          "no label of the question's carried a verdict among its options.")
+        if j["unfolded"]:
+            lines.append(f"Answered on {j['unfolded']} nights where the read did not measure {j['reference']}: not graded.")
         for fate, top in j["reasons"].items():
             if top:
                 lines.append(f"Why {fate}: " + "; ".join(f"{why} ({n})" for why, n in top) + ".")
-        share = "went the night's way" if j["kind"] == "with_night" else "above zero"
+        share = "went the reference's way" if j["kind"] == "sign_free" else "above zero"
         lines += ["", f"| Answer | n | gap | to 09:44 | to 10:04 | to 10:34 | to close | range 30 | range 60 | share {share} at 10:04 |",
                   "|---|---|---|---|---|---|---|---|---|---|"]
         for a, row in j["by_answer"].items():

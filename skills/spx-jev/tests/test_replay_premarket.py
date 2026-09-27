@@ -85,9 +85,9 @@ def test_two_nights_replay_end_to_end_without_writing_under_the_state_dir(state,
     assert [(r["day"], r["checkpoint"]) for r in reads] == [(d.isoformat(), c) for d in NIGHTS for c in checkpoints[d]]
     last = {r["day"]: r for r in reads if r["checkpoint"] == "09:28"}
     for day, r in last.items():
-        assert r["ruler"] == 75.0 and r["side"] == 1
+        assert r["ruler"] == 75.0
         assert r["questions"]["overnight_move_vs_expected"] == {"answer": VERDICT[day], "fate": "asked"}
-        assert r["questions"]["gap_origin"]["fate"] == "asleep"
+        assert r["questions"]["gap_origin"]["fate"] == "asleep" and r["questions"]["gap_origin"]["side"] == 1
         assert r["questions"]["pm_overnight_session"]["fate"] == "missing"
     early = next(r for r in reads if r["checkpoint"] == "02:35")
     assert early["questions"]["overnight_move_vs_expected"]["fate"] == "not_due"
@@ -134,8 +134,8 @@ def _nights(qid: str, answers: list[str], moves: list[float], sides: list[int] |
     reads, outcomes = [], {}
     for k, (a, m) in enumerate(zip(answers, moves)):
         day = (date(2026, 7, 1) + timedelta(days=k)).isoformat()
-        reads.append({"day": day, "checkpoint": "09:28", "ruler": 75.0, "side": (sides or [1] * len(answers))[k],
-                      "questions": {qid: {"answer": a, "fate": "asked"}}})
+        reads.append({"day": day, "checkpoint": "09:28", "ruler": 75.0,
+                      "questions": {qid: {"answer": a, "fate": "asked", "side": (sides or [1] * len(answers))[k]}}})
         outcomes[day] = {"gap": 0.1, "open_10": m / 2, "open_30": m, "open_60": m, "to_close": m, "range_30": abs(m), "range_60": abs(m)}
     return reads, outcomes
 
@@ -164,16 +164,82 @@ def test_a_thin_sample_is_too_few():
     assert got["verdict"] == "too few" and "10 graded nights" in got["basis"]
 
 
-def test_sign_free_answers_are_judged_the_nights_way():
-    """"built" carries on the night's way whichever way the night went: on a down night the index fell."""
+def test_sign_free_answers_are_judged_along_their_reference():
+    """"built" carries on its reference's way whichever way that went: where the reference fell the index fell."""
     answers = ["built", "faded"] * 15
     sides = [1 if k % 4 < 2 else -1 for k in range(30)]
     moves = [(0.2 if a == "built" else -0.2) * s for a, s in zip(answers, sides)]
-    got = replay.judge("gap_origin", SIGN_FREE_Q, "09:28", *_nights("gap_origin", answers, moves, sides))
-    assert got["kind"] == "with_night" and got["verdict"] == "holds" and got["halves"] == ["built", "built"]
+    got = replay.judge("overnight_arc", SIGN_FREE_Q, "09:28", *_nights("overnight_arc", answers, moves, sides))
+    assert got["kind"] == "sign_free" and got["verdict"] == "holds" and got["halves"] == ["built", "built"]
+    assert got["reference"] == "the night's first leg that moved"
     assert got["by_answer"]["built"]["open_30"] == {"mean": 0.2, "above_zero": 1.0}
-    assert replay.judged_value("with_night", "range_30", {"range_30": 0.3}, -1) == 0.3
-    assert replay.judged_value("with_night", "open_30", {"open_30": 0.3}, None) is None
+    assert replay.judged_value("sign_free", "range_30", {"range_30": 0.3}, -1) == 0.3
+    assert replay.judged_value("sign_free", "open_30", {"open_30": 0.3}, None) is None
+
+
+def test_a_night_whose_reference_was_not_measured_is_counted_not_graded():
+    answers = ["built", "faded"] * 12
+    sides = [None, None] + [1] * 22
+    got = replay.judge("overnight_arc", SIGN_FREE_Q, "09:28", *_nights("overnight_arc", answers, [0.2] * 24, sides))
+    assert got["unfolded"] == 2 and got["graded"] == 22
+
+
+def test_every_sign_free_premarket_question_has_a_reference():
+    doc = replay.premarket_doc()
+    sign_free = {qid for g in doc["groups"] for qid, q in g["questions"].items() if replay.kind_of(q, qid) == "sign_free"}
+    assert sign_free == set(replay.REFERENCES)
+
+
+def _figure(value: float, verdict: str | None = None) -> dict:
+    return {"kind": "rank", "value": value, "cut": "top third", "verdict": verdict}
+
+
+def _side(qid: str, figures: dict, scene=None) -> int | None:
+    return replay.REFERENCES[qid][1](scene, figures)
+
+
+def test_the_report_questions_fold_on_the_report_not_on_the_night():
+    """Futures up on the night, the report sending them down: the reaction's side is the report's, and the
+    night before the report is up whether the report unwound it or carried futures across their 16:00 price."""
+    figures = {"overnight.es_move": _figure(0.8, "big_up"), "overnight.release_reaction": _figure(-0.4, "extended"),
+               "premarket.release_vs_night": _figure(-0.4, "unwound_night")}
+    assert _side("gap_origin", figures) == 1
+    assert _side("release_reaction_path", figures) == -1
+    assert _side("release_vs_night", figures) == 1
+    assert _side("release_vs_night", {"premarket.release_vs_night": _figure(-1.2, "crossed_price")}) == 1
+    assert _side("release_vs_night", {"premarket.release_vs_night": _figure(-0.4, "extended_night")}) == -1
+
+
+def test_the_story_questions_fold_on_the_leg_or_the_hour_they_name():
+    up_night = {"premarket.where_now": _figure(0.6, "up")}
+    assert _side("overnight_arc", {**up_night, "premarket.arc": _figure(1.4, "built")}) == 1
+    assert _side("overnight_arc", {**up_night, "premarket.arc": _figure(-0.5, "reversed")}) == -1
+    assert _side("latest_leg_vs_night", {"premarket.since_checkpoint": _figure(0.3, "added")}) == 1
+    assert _side("latest_leg_vs_night", {"premarket.since_checkpoint": _figure(-0.3, "gave_back")}) == 1
+    assert _side("latest_leg_vs_night", {"premarket.since_checkpoint": _figure(-0.9, "crossed")}) == 1
+    assert _side("night_vs_last_hour", {**up_night, "premarket.vs_last_hour": _figure(-0.2, "turned_against")}) == -1
+    assert _side("night_legs_agree", {"premarket.legs": _figure(-0.6, "one_way")}) == -1
+
+
+def test_a_roll_night_folds_on_nothing():
+    """The lane refuses the night's move across a roll, so no figure carries it and no side is taken from the
+    raw stitched series."""
+    for qid in ("gap_origin", "night_legs_agree", "overnight_arc", "latest_leg_vs_night"):
+        assert _side(qid, {}) is None
+
+
+def test_bitcoins_weekend_path_folds_on_bitcoins_weekend_leg(premarket_scene_factory):
+    """Bitcoin fell over the weekend while S&P futures rose: the fold is bitcoin's side."""
+    day = date(2026, 9, 21)                                     # a Monday
+    close, reopen = replay.bitcoin.weekend_edges(day)
+    now = at(9, 28, day=day.isoformat())
+    night = [night_row("/MBT", close - timedelta(minutes=1), 90000.0, day=day.isoformat()),
+             night_row("/MBT", reopen - timedelta(minutes=1), 88000.0, day=day.isoformat()),
+             night_row("/MBT", now - timedelta(minutes=2), 88500.0, day=day.isoformat())]
+    scene = premarket_scene_factory(now, night)
+    figures = {"overnight.es_move": _figure(0.8, "big_up"), "weekend.btc_path": _figure(0.3, "held")}
+    assert _side("btc_weekend_path", figures, scene) == -1
+    assert _side("btc_weekend_path", {}, scene) is None
 
 
 def test_ranks_share_ties_and_the_rank_correlation_reads_them():
@@ -220,3 +286,4 @@ def test_a_read_the_lane_could_not_make_is_kept_with_its_reason(state, monkeypat
     reads, oc = replay.replay_day(state, replay.premarket_doc(), NIGHTS[0])
     assert all(r["omitted"] == "no read: no pre-open ruler: too few anchors" for r in reads)
     assert oc == {"day": "2026-09-17", "calendar": None, "omitted": "no pre-open ruler"}
+
