@@ -245,3 +245,35 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     assert weights["pool"]["last_session_applied"] == DAY and weights["pool"]["phone"] == {**weights["pool"]["phone"], "shows": "blend", "on_phone": False}
     assert weights["questions"]["q_dir"]["days"] == 1 and weights["questions"]["q_dir"]["weight"] == 1.0
     assert json.loads((out / "pool_60.json").read_text())["last_session_applied"] == DAY
+
+
+def test_the_live_lanes_fire_after_the_close_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monkeypatch):
+    """The 15:32 read's 30-minute mark is the closing bar: the 16:02 fire, past the close, grades it that evening."""
+    from zoneinfo import ZoneInfo
+    from spx_jev import grade
+    ny = ZoneInfo("America/New_York")
+    at_1602 = datetime.fromisoformat(f"{DAY}T16:02:00").replace(tzinfo=ny)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return at_1602.astimezone(tz) if tz else at_1602.replace(tzinfo=None)
+    monkeypatch.setattr(grade, "datetime", Clock)
+    state = _state(tmp_path, [make_row(at(15, 31, ss=40), 7700.0)], 361)
+    out = state / "spx_jev"
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    run_once(state, out, DOC, True, DAY)
+    reads_before = (out / f"{DAY}.jsonl").read_text()
+
+    def refuse(*a, **k):
+        raise AssertionError("the close-out asked JEV")
+    monkeypatch.setattr(service, "send_all", refuse)
+    monkeypatch.setattr(service, "send", refuse)
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    monkeypatch.setattr(service, "now_et", lambda: at_1602)
+    _state(tmp_path, [make_row(at(15, 31, ss=40), 7700.0)], 390)
+    assert service.main(["--state-dir", str(state)]) == 0
+    c = json.loads((out / "latest.json").read_text())
+    assert c["closed_out_at"] and c["tally"]["graded"] == 1
+    assert (out / f"{DAY}.jsonl").read_text() == reads_before

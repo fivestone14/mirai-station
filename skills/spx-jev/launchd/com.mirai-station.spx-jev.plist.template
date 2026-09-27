@@ -15,7 +15,8 @@
   <!-- The SPX JEV decision service: a separate job from the left-eye scanner, never on its path.
        Fires at two minutes past each half-hour mark of the session, 09:32 to 16:02 ET (14 entries), so
        JEV reads once per 30-minute mark on the newest SPX diary row; the runner waits until that row is
-       at least 20 s old, and its market gate skips the 16:02 fire on a normal day. Reads the diary, the
+       at least 20 s old. The 16:02 fire (13:02 on a half day) passes the runner's after-close gate and only
+       grades the day's last calls (the service's close-out). Reads the diary, the
        bars and the market context; writes only state/spx_jev/. The key is read by the service itself
        from the git-ignored skills/spx-jev/.env, never from this file. Staged, not installed: copy to
        runtime/launchd/ and name it in install-launchd.sh to hire it.

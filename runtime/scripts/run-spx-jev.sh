@@ -7,6 +7,8 @@
 # Staged, not installed: the plists are templates under skills/spx-jev/launchd/
 # (com.mirai-station.spx-jev at :02 and :32; com.mirai-station.spx-jev-tape every 5 minutes 09:35 to
 # 10:30 ET, which runs this script with `--lane tape` and writes under state/spx_jev/lanes/tape/ only).
+# The gate lets a fire through within 13 minutes after the day's real close: the live job's 16:02 fire
+# (13:02 on a half day), which the service runs as a grade-only close-out.
 # Kill switch: SPX_JEV_DISABLE=1 => exit-0 no-op.
 # The key is the service's business: it reads the git-ignored file in its own folder
 # and runs unsent when there is none. Nothing about the key lives in this script.
@@ -25,12 +27,21 @@ set -e
 
 cd "${MIRAI_STATION_ROOT}/runtime"
 set +e
-"${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 3)"
+"${MIRAI_STATION_VENV}/bin/python" -c "
+import sys
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from watch.intraday import market_status as m
+now = datetime.now(ZoneInfo('America/New_York'))
+sys.exit(0 if m.check(now).is_live else 4 if m.check(now - timedelta(minutes=13)).is_live else 3)"
 GATE_RC=$?
 set -e
 if [[ $GATE_RC -eq 3 ]]; then
   echo "spx-jev :: market closed, skipping tick"
   exit 0
+elif [[ $GATE_RC -eq 4 ]]; then
+  # the live job's 16:02 fire (13:02 on a half day): the service only grades the day's last calls
+  echo "spx-jev :: after the close, closing out the day"
 elif [[ $GATE_RC -ne 0 ]]; then
   echo "spx-jev :: market-hours check FAILED (rc=${GATE_RC}), no tick" >&2
   exit 1

@@ -661,8 +661,12 @@ def main(argv: list[str] | None = None) -> int:
         log(f"replay of {args.day}: writing under {args.out_dir}, not the station's records; --out-dir chooses the folder")
     out_dir = lane.folder(state_dir, args.out_dir)
     doc = load_questions(args.questions or lane.questions, lane.key)
-    if lane.close_out and not args.day and not args.loop and now_et().strftime("%H:%M") >= lane.close_out:
+    now = now_et()
+    after_close = lane.close_out_after_close and now >= session_close(now)
+    if (after_close or (lane.close_out and now.strftime("%H:%M") >= lane.close_out)) and not args.day and not args.loop:
         # the lane's reads are done for the day: the job's last fire only grades and refreshes the card
+        if after_close and not wait_for_bar(state_dir, session_close(now)):
+            log(f"the closing bar is not on file after {BAR_WAIT_S} s: grading what is")
         c = close_out(state_dir, out_dir, doc, lane)
         log(f"{lane.name} lane closed out: {c['tally']['right']} of {c['tally']['graded']} graded calls right, "
             f"{c['tally']['calls']} calls" if c else f"{lane.name} lane: nothing to close out today")

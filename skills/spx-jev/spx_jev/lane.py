@@ -49,6 +49,7 @@ class Lane:
     bar_gap_min: int = 2                             # the bar standing for a mark may be this many minutes early; 0 is the exact bar
     schedule: tuple[str, ...] = ()                   # the reads, "HH:MM" market time; empty for the live lane (:02 and :32 all session)
     close_out: str | None = None                     # "HH:MM" market time of the grade-only run after the last read
+    close_out_after_close: bool = False              # a fire after the day's real close (13:00 on a half day) is the grade-only run
     read_grace_min: int = 2                          # a read stamped this many minutes before one of its read times is that read
 
     def read_times(self) -> tuple[str, ...]:
@@ -78,7 +79,10 @@ LIVE = Lane(name="live", key="thirty_minute", out_dir=LIVE_DIR, questions=QUESTI
             horizons={"next_30": (30, NEXT_30_FLAT_BAND_SIGMA), "next_60": (60, NEXT_60_FLAT_BAND_SIGMA)},
             primary="next_30", cadence=True, tag=None, pool=True,
             # the newest diary row can be up to the service's 6-minute staleness line old when the job fires
-            read_grace_min=6)
+            read_grace_min=6,
+            # the 15:32 read's 30-minute mark and the 15:02 read's 60-minute one are the closing bar: the 16:02
+            # fire (13:02 on a half day) grades them the same day
+            close_out_after_close=True)
 
 TAPE_EVERY_MIN = 5
 TAPE = Lane(name="tape", key="opening_five_minute", out_dir=f"{LIVE_DIR}/lanes/tape", questions=QUESTIONS,
