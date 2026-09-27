@@ -304,6 +304,16 @@ def test_the_heavyweight_gap_waits_for_the_settled_open(tmp_path):
     assert gates["heavyweight_gap_split"].startswith("leaders.heavyweight_gap is not measured")
 
 
+def test_the_heavyweight_gap_needs_yesterdays_bars(tmp_path):
+    """With the newest session missing, the gap would run from an older close: a two-day move read as overnight."""
+    scene = gapped(tmp_path, "NVDA", 0.059)
+    older = dict(list(scene.prior_bars.items())[1:])
+    _, omitted, gates = labels(replace(scene, prior_bars=older))
+    why = "yesterday's bars are not on file: the newest stored session is 2026-09-16"
+    assert omitted["leaders.heavyweight_gap"] == why
+    assert gates == {"heavyweight_gap_split": f"leaders.heavyweight_gap is not measured: {why}"}
+
+
 # ---- every label, point in time and without its inputs
 
 def test_no_label_moves_on_values_known_after_the_read(tmp_path):

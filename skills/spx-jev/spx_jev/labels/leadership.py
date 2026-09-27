@@ -17,6 +17,7 @@ from ..cuts import (DISPERSION_WIDE_SIGMA, EQW_SPLIT_SIGMA, HEAVY_SHOCK_SIGMA, M
                     MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NAME_SHOCK_MULT, PULL_RULE_SIGMA, REST_GAP_SIGMA, ROTATION_GAP_SIGMA,
                     SECTOR_ONE_WAY, SIZE_RESID_SIGMA, SIZE_SPREAD_SIGMA, SPREAD_COUNT, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..market_context import SYMBOLS
+from ..sessions import next_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open
@@ -246,6 +247,11 @@ def _heavyweight_gap(against: AgainstIndex, names: list[tuple[str, float]], ls: 
         ls.sleep(qid, f"{path} is not measured: {why}")
         return
     last_day, last_bars = next(iter(scene.prior_bars.items()))
+    if next_trading_day(date.fromisoformat(last_day)).isoformat() != scene.day:
+        why = f"yesterday's bars are not on file: the newest stored session is {last_day}"
+        ls.omit(path, why)
+        ls.sleep(qid, f"{path} is not measured: {why}")
+        return
     closed_at = bar_time(last_bars[-1]) + ONE_MINUTE
     yesterday = Session(last_bars, scene.prior_markets.get(last_day))
     open_at = datetime.combine(date.fromisoformat(scene.day), SETTLED_OPEN_BAR, tzinfo=ET) + ONE_MINUTE
