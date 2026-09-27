@@ -897,7 +897,7 @@ def _skew(scene: Scene, ls: LabelSet) -> None:
     paths = ("skew.put_tilt_vs_usual", "skew.shift_vs_price")
     at_min = minute_floor(scene.now)
     then = at_min - timedelta(minutes=WINDOW_30_MIN)
-    smiles = skew_at(scene.state_dir, scene.day, (at_min, then)) if scene.state_dir else None
+    smiles = skew_at(scene.state_dir, scene.day, (at_min, then), scene.now) if scene.state_dir else None
     if smiles is None:
         why = f"no lob-flow tape for {scene.day} (state/lob_flow/raw)"
         for path in paths:
@@ -936,8 +936,9 @@ def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, ls: LabelSet) 
     for d in _ranked_prior_days(scene):
         if len(tilts) == SKEW_RANK_SESSIONS:
             break
-        t = minute_floor(_same_clock(scene.now, d))
-        prior = (skew_at(scene.state_dir, d, (t,)) or {}).get(t)
+        read_at = _same_clock(scene.now, d)
+        t = minute_floor(read_at)
+        prior = (skew_at(scene.state_dir, d, (t,), read_at) or {}).get(t)
         if (pt := _tilt(prior)) is not None:
             tilts.append(pt)
             if (pw := _wing(prior)) is not None:

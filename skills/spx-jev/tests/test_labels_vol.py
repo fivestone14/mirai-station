@@ -847,9 +847,19 @@ def test_far_puts_without_a_fresh_quote_are_said_to_have_none_to_compare(scene_f
 def test_the_tilt_reads_the_newest_quote_in_the_minute_whatever_the_line_order(scene_factory, tmp_path):
     later = smile_quotes(at(9, 51), -5.0)                        # quoted at 09:50:40, after the read's minute
     stale = [dict(q, ts_ms=q["ts_ms"] - 30000, bid=q["bid"] + 20, ask=q["ask"] + 20) for q in smile_quotes(at(9, 50), 3.0)]
-    tape = [*later, *smile_quotes(at(9, 50), 3.0), *stale]      # out of time order, as the collector writes them
+    tape = [*smile_quotes(at(9, 50), 3.0), *stale, *later]      # out of time order, as the collector writes them
     scene = skew_scene(scene_factory, tmp_path, 3.0)
     write_tape(tmp_path, DAY, tape)
+    assert tilt_and_gate(scene)[0].startswith("same-day 25-delta puts are priced 1.6 vol points above 25-delta calls")
+
+
+def test_the_tilt_never_reads_a_line_written_after_the_read(scene_factory, tmp_path):
+    """A trade stamped 09:50:20 was written after the 09:50:15 read, and so was every line after it, even one
+    that lands late for the minute the read measures: a replay sees the tape as the live read did."""
+    after_read = [dict(q, ts_ms=q["ts_ms"] + 40000) for q in smile_quotes(at(9, 50), 3.0)[:1]]
+    landed_late = [dict(q, ts_ms=q["ts_ms"] + 10000) for q in smile_quotes(at(9, 50), -5.0)]
+    scene = skew_scene(scene_factory, tmp_path, 3.0)
+    write_tape(tmp_path, DAY, [*smile_quotes(at(9, 50), 3.0), *after_read, *landed_late])
     assert tilt_and_gate(scene)[0].startswith("same-day 25-delta puts are priced 1.6 vol points above 25-delta calls")
 
 

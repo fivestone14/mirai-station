@@ -7,8 +7,9 @@ diary series (the VIX, the straddle and the VIX curve through each day), and the
   and kept for the process: a past day's file never changes.
 * The tape. ``state/lob_flow/raw/{day}/tape.jsonl`` (``tape.jsonl.gz`` once the collector archives the
   day): one line per 0DTE SPXW trade, with the quote it printed into. Lines land up to two hours out of
-  time order, so every line is read and only the minutes asked for are kept: for each, the newest quote
-  per contract in the minute before it.
+  time order, so every line up to the read's clock is read (the first line stamped after it was written
+  after it, as tape_flow reads the tape, today and on the prior sessions alike) and only the minutes
+  asked for are kept: for each, the newest quote per contract in the minute before it.
 * The skew. Each quote's mid is turned into an implied volatility (Black's formula on the forward, time
   to the settle in calendar years, as the scanner's ``atm_iv``), the forward from put-call parity at the
   strike where the call and the put are nearest in price. Only out-of-the-money quotes are read: a put
@@ -87,20 +88,23 @@ def tape_path(state_dir: Path, day: str) -> Path | None:
     return next((p for p in (folder / "tape.jsonl", folder / "tape.jsonl.gz") if p.exists()), None)
 
 
-def tape_minutes(state_dir: Path, day: str, minute_ends: tuple[datetime, ...]) -> dict[datetime, dict[Contract, tuple[float, float]]] | None:
+def tape_minutes(state_dir: Path, day: str, minute_ends: tuple[datetime, ...],
+                 clock: datetime) -> dict[datetime, dict[Contract, tuple[float, float]]] | None:
     """For each minute end ``t`` (on a minute boundary), the newest ``(bid, ask)`` per contract quoted in
-    ``(t - 1 minute, t]``: nothing after ``t`` counts. None when the day has no tape file."""
+    ``(t - 1 minute, t]``, from the tape as it was on file at ``clock``: nothing after ``t`` counts, and no
+    line written after ``clock``. None when the day has no tape file."""
     path = tape_path(state_dir, day)
     if path is None:
         return None
     ends_ms = tuple(int(t.timestamp() * 1000) for t in minute_ends)
-    got = _read_minutes(str(path), path.stat().st_mtime_ns, ends_ms)
+    got = _read_minutes(str(path), path.stat().st_mtime_ns, ends_ms, int(clock.timestamp() * 1000))
     return {t: got[ms] for t, ms in zip(minute_ends, ends_ms)}
 
 
 @lru_cache(maxsize=64)
-def _read_minutes(path: str, mtime_ns: int, ends_ms: tuple[int, ...]) -> dict[int, dict[Contract, tuple[float, float]]]:
-    """``mtime_ns`` keys the cache, so a file still being written is read afresh."""
+def _read_minutes(path: str, mtime_ns: int, ends_ms: tuple[int, ...], read_ms: int) -> dict[int, dict[Contract, tuple[float, float]]]:
+    """``mtime_ns`` keys the cache, so a file still being written is read afresh. The first line stamped
+    after ``read_ms`` was written after it, and so was every line past it."""
     wanted = set(ends_ms)
     newest: dict[int, dict[Contract, tuple[int, float, float]]] = {ms: {} for ms in ends_ms}
     opener = gzip.open if path.endswith(".gz") else open
@@ -112,6 +116,8 @@ def _read_minutes(path: str, mtime_ns: int, ends_ms: tuple[int, ...]) -> dict[in
                 ts = int(line[len(TAPE_LINE_START):line.index(",")])
             except ValueError:
                 continue
+            if ts > read_ms:
+                break
             end = -(-ts // 60000) * 60000           # the minute boundary at or after the trade
             if end not in wanted:
                 continue
@@ -234,9 +240,9 @@ def minute_floor(t: datetime) -> datetime:
     return t.replace(second=0, microsecond=0)
 
 
-def skew_at(state_dir: Path, day: str, ends: tuple[datetime, ...]) -> dict[datetime, Skew | None] | None:
-    """The smile at each minute end on ``day``'s tape; None when the day has no tape."""
-    minutes = tape_minutes(state_dir, day, ends)
+def skew_at(state_dir: Path, day: str, ends: tuple[datetime, ...], clock: datetime) -> dict[datetime, Skew | None] | None:
+    """The smile at each minute end on ``day``'s tape as it was on file at ``clock``; None when the day has no tape."""
+    minutes = tape_minutes(state_dir, day, ends, clock)
     if minutes is None:
         return None
     return {t: skew_from_quotes(q, t) if q else None for t, q in minutes.items()}
