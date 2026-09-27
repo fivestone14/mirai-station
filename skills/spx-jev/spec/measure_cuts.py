@@ -98,6 +98,14 @@ NOT_MEASURED = {
     "wall_touch_siege_percentile": "a percentile by construction: the siege box ranks each touch's SPY volume against its own "
                             "baseline for the clock window, so the cut sits at the 70th percentile of normal by definition",
     "wall_touch_quiet_percentile": "a percentile by construction, as wall_touch_siege_percentile: the 30th percentile of normal by definition",
+    "stress_vix_rise_pts": "the question set's stress rule in its own words (VIX 2 or more points over its open), a fixed level by "
+                           "design: a rank goes blind after about 20 stressed sessions, and the 48 sessions hold too few stress days to place it",
+    "stress_curve": "the question set's stress rule in its own words (VIX at 0.98 of three-month VIX, all but inverted), a fixed level "
+                    "beside vix_curve_flat rather than a split of any measurement",
+    "opening_burst_share": "a percentile by construction: before 10:40 a five-minute move is ranked against the same five minutes on "
+                           "the prior sessions, so the line sits at the 95th percentile of normal by definition",
+    "follow_on_min": "a clock fact: how long after a release its follow-on (the Fed's press conference, 30 minutes after the statement) "
+                     "is still read with it, not a split of any measurement",
 }
 HOW_DECLARED = {
     "expected_move_down_share": "every row: the day's expected move's down share (adaptive_em.down_share), iv.move_sides",

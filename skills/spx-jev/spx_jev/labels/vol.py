@@ -18,8 +18,8 @@ from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVENT_DIGEST_M
                     FRONT_SHIFT_PTS, HALF_RANK, IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA,
                     NEAR_LOW_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW,
                     RV_HOT, SHOCK_LOOKBACK_MIN, SKEW_FLAT_RANK, SKEW_RESID_CUT, SKEW_STEEP_RANK, STRADDLE_CHEAP,
-                    STRADDLE_REPRICE_SHARE, STRADDLE_RICH, STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_CLUSTER, TICK_EXTREME,
-                    TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10,
+                    STRADDLE_REPRICE_SHARE, STRADDLE_RICH, STRESS_CURVE, STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, STRESS_VIX_RISE_PTS,
+                    TICK_CLUSTER, TICK_EXTREME, TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10,
                     VIX_MOVE_PCT, VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_SHOCK_RESID, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN,
                     WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
 from ..sessions import session_close, session_minutes
@@ -69,10 +69,6 @@ REAL_MOVE_MIN = 10
 QUOTE_MAX_AGE_MIN = 5
 # VVIX's leftover move is fitted on the prior sessions' half hours ending 10:30 to 15:30 (11 a session).
 VVIX_FIT_FIRST, VVIX_FIT_READS = time(10, 30), 11
-# A stress day, the only kind stress_path is written on (the set's words): VIX this many points over its open,
-# over its prior sessions' high, or VIX at this share of three-month VIX, all but inverted.
-STRESS_VIX_RISE_PTS = 2.0
-STRESS_CURVE = 0.98
 # The put tilt is ranked against this many prior sessions at the same minute (the set's "prior 10 sessions").
 SKEW_RANK_SESSIONS = 10
 # How far the one-remaining-sd put-call tilt (a share of at-the-money vol) moves with price, fitted once on

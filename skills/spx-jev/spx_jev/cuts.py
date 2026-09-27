@@ -81,6 +81,15 @@ WALL_TOUCH_SIEGE_PERCENTILE, WALL_TOUCH_QUIET_PERCENTILE = 70, 30
 # implied volatility moved a median 2.1 vol points in 30 minutes against 0.8 earlier in the day
 # (spec/cuts.json, iv_change30_median_pts), the expiry clock rather than the market.
 ZERO_DTE_LAST_HOUR_MIN = 60
+# A stress day, the only kind vol.stress_path is written on (the set's words): VIX this many points over its
+# open, over its prior sessions' high, or VIX at this share of three-month VIX, all but inverted.
+STRESS_VIX_RISE_PTS = 2.0
+STRESS_CURVE = 0.98
+# Before 10:40 no window has an hour after the settled open behind it: a burst is then a move in the top
+# 5% for its five minutes over the prior sessions (the set's opening bursts).
+OPENING_BURST_SHARE = 0.95
+# A follow-on (the Fed's press conference) is read with the release it follows when due within this many minutes of it.
+FOLLOW_ON_MIN = 45
 
 # ---- the question set's constants (spec/question_set.json "constants"), in the set's order, each with its
 # note from there. Most are declared in the set's own words and not yet placed on SPX history; the few it

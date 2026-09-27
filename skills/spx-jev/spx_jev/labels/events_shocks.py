@@ -23,8 +23,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .. import events
-from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, EVENT_REACTION_RULE, GAP_HALF_SHARE,
-                    GAP_RULE_SIGMA, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, PRESSER_RULE_SIGMA, RATES_SHOCK_BP, REACTION_EXTEND_SIGMA,
+from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, EVENT_REACTION_RULE, FOLLOW_ON_MIN, GAP_HALF_SHARE,
+                    GAP_RULE_SIGMA, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, OPENING_BURST_SHARE, PRESSER_RULE_SIGMA, RATES_SHOCK_BP, REACTION_EXTEND_SIGMA,
                     SECTOR_BROAD, SHOCK_FLOOR_SIGMA, SHOCK_FRESH_MIN, SHOCK_GROUP_SIGMA, SHOCK_LOOKBACK_MIN, SHOCK_Z,
                     SPEAKER_WINDOW_MIN, STATEMENT_QUIET_SIGMA, TICK_EXTREME, WINDOW_10_MIN)
 from ..events import Event
@@ -48,14 +48,10 @@ NO_RULER = "no morning sigma ruler: no diary row by 09:40, no live sigma and no 
 
 REACTION_MIN = 15           # a first reaction is the 15 minutes after its start (the statement's, the release's, the burst's)
 FOLLOW_ON = {"FOMC_PRESSER": "FOMC"}   # a follow-on and the release it follows, when due within FOLLOW_ON_MIN of it
-FOLLOW_ON_MIN = 45
 SPEECH_MIN = 60             # a speaker row with no end time is taken to run an hour, remarks and questions
 BURST_MIN = 5
 BASELINE_MIN = 60           # the hour before a window sets its normal minute
 BASELINE_MIN_RETURNS = 50   # a few missing minutes do not stop that hour from setting it
-# Before 10:40 no window has an hour after the settled open behind it: a burst is then a move in the top
-# 5% for its five minutes over the prior sessions (the set's opening bursts).
-OPENING_BURST_SHARE = 0.95
 FEED_MAX_AGE_MIN = 2        # a market value older than this at a burst's edge is a feed that had stopped
 LINK_MIN_MINUTES = 30       # fewest minutes in the hour before a burst to fit a market's link to the index
 DEFENSIVES = ("XLP", "XLU", "XLV")
