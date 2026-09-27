@@ -242,16 +242,20 @@ def _volume_vs_count_30m(scene: Scene, ls: LabelSet) -> None:
 
 # ----------------------------------------------------------------------------- the day so far
 
+def _times(n: int) -> str:
+    return "once" if n == 1 else "twice" if n == 2 else f"{n} times"
+
+
 def _crossings(n: int) -> str:
-    if n == 0:
-        return "the 30-minute share has not crossed 50% today"
-    return f"the 30-minute share crossed 50% {'once' if n == 1 else 'twice' if n == 2 else f'{n} times'} today"
+    return f"the 30-minute share crossed 50% {_times(n)} today" if n else "the 30-minute share has not crossed 50% today"
 
 
 def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
     """The day's share of NYSE volume in rising stocks against the one-sided line, where it stood earlier when
-    it is not one-sided now, and how often the rolling 30-minute share crossed even. Both earlier reads start
-    half an hour in: before that the day's share swings on the first minutes' thin volume."""
+    it is not one-sided now, and how often the share of one half hour since the open landed on the other side
+    of even from the half hour before it. The half hours are taken whole, as the reads take them, so a share
+    hovering at 50% is not counted as rotation minute by minute; the day's share is looked back on from half
+    an hour in, before which it swings on the first minutes' thin volume."""
     mk, now, opened = scene.market, scene.now, scene.session_open
     settled = opened + timedelta(minutes=WINDOW_30_MIN)
     if now < settled:
@@ -264,7 +268,8 @@ def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
         return
     minutes = [t for t, _ in mk.known.get("$UVOL") or [] if settled <= t <= now]
     day_shares = [(t, v) for t in minutes if (v := _upvol_share(mk, opened, t)) is not None]
-    sides = [v > 0.5 for t in minutes if (v := _upvol_share(mk, t - timedelta(minutes=WINDOW_30_MIN), t)) is not None and v != 0.5]
+    half_hours = [opened + timedelta(minutes=WINDOW_30_MIN * k) for k in range(1, int((now - opened) / timedelta(minutes=WINDOW_30_MIN)) + 1)]
+    sides = [v > 0.5 for end in half_hours if (v := _upvol_share(mk, end - timedelta(minutes=WINDOW_30_MIN), end)) is not None and v != 0.5]
     crossed = sum(1 for a, b in zip(sides, sides[1:]) if a != b)
     one_sided_low = round(1 - DAY_ONE_SIDED, 2)
 
@@ -462,7 +467,7 @@ def _burst_count(n: int, part: str, band: str) -> str:
     reached = f"its 1-minute {part} {'reached' if n else 'never reached'} the {band} {pct(1 - TICK_BURST_PCT)} band"
     if n == 0:
         return reached
-    return (f"{reached} for these minutes {plural(n, 'time')}, {'at or past' if n >= OPEN_CLUSTER_MIN else 'short of'} the "
+    return (f"{reached} for these minutes {_times(n)}, {'at or past' if n >= OPEN_CLUSTER_MIN else 'short of'} the "
             f"{OPEN_CLUSTER_MIN}-burst cluster count")
 
 

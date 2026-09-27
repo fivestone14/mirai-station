@@ -248,6 +248,12 @@ def test_a_rotating_day_and_the_rotation_rule(scene_factory):
         "the 30-minute share crossed 50% 3 times today, under the 4-crossing rotation rule")
 
 
+def test_rotation_is_counted_between_whole_half_hours_not_minute_by_minute(scene_factory):
+    hovering = [(1, 10000.0, 0.53 if i % 2 == 0 else 0.47) for i in range(182)]
+    assert sentence(day_share(scene_factory, hovering), "breadth.day_upvol_share").endswith(
+        "the 30-minute share has not crossed 50% today, under the 4-crossing rotation rule")
+
+
 def test_the_day_share_waits_half_an_hour_and_for_a_live_feed(scene_factory):
     early = day_share(scene_factory, [(29, 10000.0, 0.85)], now=at(9, 59, ss=10))
     assert early.omitted["breadth.day_upvol_share"] == "needs 30 minutes of session"
@@ -529,7 +535,7 @@ def test_the_opening_tick_lines_hold_their_edges(scene_factory):
     assert sentence(on_lines, "breadth.opening_tick") == (
         "since the open NYSE TICK averaged +100, within the 100 lean line; its 1-minute highs reached the top 5% band for these "
         "minutes 3 times, at or past the 3-burst cluster count; its 1-minute lows reached the bottom 5% band for these minutes "
-        "2 times, short of the 3-burst cluster count")
+        "twice, short of the 3-burst cluster count")
     selling = opening_tick_read(scene_factory, [(300.0, -300.0, -101.0)] * 15)
     assert sentence(selling, "breadth.opening_tick").startswith("since the open NYSE TICK averaged -101, past the 100 lean line on the sell side;")
 
