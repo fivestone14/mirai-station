@@ -24,7 +24,7 @@ from ..state_builder import MarketContext, Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, close_at, session_extremes, settled_open
 from .price import NEW_EXTREME_RECENT_MIN
-from .ranks import rank_against
+from .ranks import percentile, rank_against
 from .rulers import NO_ANCHOR, sigma_anchor
 from .words import pct, plural, sig, signed
 
@@ -441,10 +441,6 @@ def _thrust_rank(thrust: float, base: list[float]) -> str:
     return f", a bigger fall than {rank.higher_than} of the last {rank.of} sessions at this minute" if rank else ""
 
 
-def _percentile(values: list[float], share: float) -> float:
-    return statistics.quantiles(values, n=100, method="inclusive")[round(share * 100) - 1]
-
-
 def _tick_bands_by_minute(scene: Scene) -> dict[time, tuple[float, float]]:
     """The top and bottom burst bands of $TICK for each minute of the day: the TICK_BURST_PCT percentile of
     the prior sessions' bar highs at that minute and the mirror percentile of their lows, where at least
@@ -453,8 +449,8 @@ def _tick_bands_by_minute(scene: Scene) -> dict[time, tuple[float, float]]:
     for mk in scene.prior_markets.values():
         for _, bar in mk.bars.get("$TICK") or []:
             by_minute.setdefault(bar_time(bar).astimezone(ET).time(), []).append(bar)
-    return {minute: (_percentile([float(b["high"]) for b in bars], TICK_BURST_PCT),
-                     _percentile([float(b["low"]) for b in bars], 1 - TICK_BURST_PCT))
+    return {minute: (percentile([float(b["high"]) for b in bars], TICK_BURST_PCT),
+                     percentile([float(b["low"]) for b in bars], 1 - TICK_BURST_PCT))
             for minute, bars in by_minute.items() if len(bars) >= MIN_RANK_SESSIONS}
 
 

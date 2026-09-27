@@ -80,3 +80,11 @@ def fifth_side(rank: SameClockRank) -> int:
 
 def fifth(rank: SameClockRank) -> str:
     return FIFTH_WORDS[fifth_side(rank)]
+
+
+def percentile(values: list[float], share: float) -> float:
+    """The ``share`` quantile of ``values``, interpolated between the two nearest."""
+    s = sorted(values)
+    k = share * (len(s) - 1)
+    lo = int(k)
+    return s[lo] + (s[min(lo + 1, len(s) - 1)] - s[lo]) * (k - lo)

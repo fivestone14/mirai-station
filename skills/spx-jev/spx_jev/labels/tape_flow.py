@@ -41,7 +41,7 @@ from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, 
                              parse_ts)
 from .label_set import LabelSet
 from .measures import is_num, minute_of_day
-from .ranks import fifth, rank_against, rank_at_slot
+from .ranks import fifth, percentile, rank_against, rank_at_slot
 from .rulers import sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
@@ -745,14 +745,6 @@ def _last30_and_day(minutes: dict[int, float], opened: int, end: int) -> tuple[f
     return (last30, day) if last30 is not None and day else None
 
 
-def _percentile(values: list[float], q: float) -> float:
-    """The ``q`` quantile of ``values``, interpolated between the two nearest."""
-    s = sorted(values)
-    k = q * (len(s) - 1)
-    lo = int(k)
-    return s[lo] + (s[min(lo + 1, len(s) - 1)] - s[lo]) * (k - lo)
-
-
 def _pct_tenths(x: float) -> str:
     return f"{x * 100:.1f}%"
 
@@ -763,7 +755,7 @@ def _spy_last30_share(scene: Scene, today: tuple[float, float], prior: list[tupl
         ls.omit("volume.spy_last30_share", f"needs {MIN_RANK_SESSIONS} prior sessions with SPY minute volumes at this minute, have {len(base)}")
         return
     share = today[0] / today[1]
-    heavy, light = _percentile(base, THIRD_HI), _percentile(base, THIRD_LO)
+    heavy, light = percentile(base, THIRD_HI), percentile(base, THIRD_LO)
     clock, of = f"{scene.now.astimezone(ET):%H:%M}", f"of the last {len(base)} sessions"
     band = (f"above the {_pct_tenths(heavy)} heavy line for {clock} (top third {of})" if share > heavy else
             f"below the {_pct_tenths(light)} light line for {clock} (bottom third {of})" if share < light else
