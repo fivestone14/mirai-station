@@ -256,11 +256,29 @@ def test_a_strike_that_held_or_broke(scene_factory):
                                                "0.12 sigma past it, more than the 0.10 sigma touch rule, so it broke through")
 
 
+def test_a_touch_that_began_before_the_half_hour_counts_while_it_lasts(scene_factory):
+    got, _, _ = labels(touch_scene(scene_factory, 7700.0, began=WINDOW_30_MIN + 10))             # still engaged at the read
+    assert got["levels.wall_touch_effort"].startswith("price tested the call-side heavy strike 40 minutes ago and is now 0.06 sigma "
+                                                      "back from it, not back by more than the 0.10 sigma touch rule, so it is still touching")
+    now = at(11, 0)
+    rows = [make_row(now - timedelta(minutes=45), 7700.0, **siege(tower("put_wall", 7710.0))),
+            make_row(now - timedelta(minutes=20), 7700.0, **siege(tower("put_wall", 7710.0))),
+            make_row(now - timedelta(minutes=15), 7700.0, **siege(tower("put_wall", 7710.0, "resolved")))]
+    over = siege(tower("put_wall", 7710.0, "resolved", outcome="BREAK"))
+    got, _, _ = labels(scene(scene_factory, now, [7700.0] * 90, row_over=over, rows_before=rows))
+    assert got["levels.wall_touch_effort"] == ("price went through the put-side heavy strike, first touched 45 minutes ago, and sits "
+                                               "0.12 sigma past it, more than the 0.10 sigma touch rule, so it broke through")
+
+
 def test_the_wall_touch_is_omitted_without_a_recent_judged_touch_or_a_sound_feed(scene_factory):
     _, omitted, _ = labels(touch_scene(scene_factory, 7700.0, effort=None, verdict=None))
     assert omitted["levels.wall_touch_effort"] == ("price is still touching the call-side heavy strike and the siege box has not judged the "
                                                    "touch's SPY volume: its window is still open, or the strike hugged price all along")
-    _, omitted, _ = labels(touch_scene(scene_factory, 7700.0, began=WINDOW_30_MIN + 1))          # the touch began before the window
+    now = at(11, 0)
+    ended = [make_row(now - timedelta(minutes=45), 7700.0, **siege(tower("call_wall", 7705.0))),
+             make_row(now - timedelta(minutes=WINDOW_30_MIN, seconds=1), 7700.0, **siege(tower("call_wall", 7705.0, "resolved")))]
+    over = siege(tower("call_wall", 7705.0, "resolved", verdict="SIEGE", effort=83.3, outcome="HOLD"))
+    _, omitted, _ = labels(scene(scene_factory, now, [7700.0] * 90, row_over=over, rows_before=ended))
     assert omitted["levels.wall_touch_effort"] == "no heavy strike was touched in the last 30 minutes"
     _, omitted, _ = labels(touch_scene(scene_factory, 7700.0, kind="magnet", level=7700.0))
     assert omitted["levels.wall_touch_effort"] == "no heavy strike was touched in the last 30 minutes"

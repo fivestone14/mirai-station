@@ -127,10 +127,11 @@ def _break_armed(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
 
 
 def _wall_touch_effort(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
-    """The newest touch of a heavy strike in the last half hour (the siege box's towers: when a tower was
-    first seen engaged is when the touch began), where price sits against that strike now, and the SPY
-    volume the box judged during the touch. A touch the box has not judged describes no volume, and
-    one still touching needs it."""
+    """The newest touch of a heavy strike in the last half hour (the siege box's towers: a touch began when
+    its tower was first seen engaged and lasts while the tower shows engaged; a tower shows resolved for
+    hours after, so a touch seen only resolved ended when first seen so), where price sits against that
+    strike now, and the SPY volume the box judged during the touch. A touch the box has not judged
+    describes no volume, and one still touching needs it."""
     sg = scene.row.get("siege")
     if not sg:
         ls.omit("levels.wall_touch_effort", "row carries no siege read")
@@ -145,19 +146,23 @@ def _wall_touch_effort(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) ->
         ls.omit("levels.wall_touch_effort", NO_ANCHOR)
         return
     began: dict[tuple, datetime] = {}
+    last_touched: dict[tuple, datetime] = {}
     judged: dict[tuple, dict] = {}
     for r in scene.rows_today:
+        seen = datetime.fromisoformat(r["ts"])
         for t in (r.get("siege") or {}).get("towers") or []:
             key = (t.get("kind"), t.get("level"))
             if key[0] in WALL_SIDES and is_num(key[1]) and t.get("status") in ("engaged", "resolved"):
-                began.setdefault(key, datetime.fromisoformat(r["ts"]))
+                began.setdefault(key, seen)
+                last_touched[key] = seen if t["status"] == "engaged" else last_touched.get(key, seen)
                 if t.get("verdict") and is_num(t.get("effort_pct")):
                     judged[key] = t
-    recent = [(when, key) for key, when in began.items() if scene.now - when <= timedelta(minutes=WINDOW_30_MIN)]
+    recent = [(touched, began[key], key) for key, touched in last_touched.items()
+              if scene.now - touched <= timedelta(minutes=WINDOW_30_MIN)]
     if not recent:
         ls.omit("levels.wall_touch_effort", f"no heavy strike was touched in the last {WINDOW_30_MIN} minutes")
         return
-    when, (kind, level) = max(recent)
+    _, when, (kind, level) = max(recent)
     side = WALL_SIDES[kind]
     # positive: past the strike, the way a break goes (up through the call side, down through the put side)
     past = (scene.spot - float(level)) / anchor.points * (1 if kind == "call_wall" else -1)
