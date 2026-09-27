@@ -272,12 +272,14 @@ def test_the_answer_readers_and_the_summary():
 def test_each_lane_asks_its_share_of_one_doc_with_its_own_schedule_and_horizon():
     live = {qid: q for g in load_questions(LANES["live"].questions, "thirty_minute")["groups"] for qid, q in g["questions"].items()}
     tape = {qid: q for g in load_questions(LANES["tape"].questions, "opening_five_minute")["groups"] for qid, q in g["questions"].items()}
-    assert len(live) == 98 and len(tape) == 26 and "gap_size" not in live and "price_move_5way" not in tape
+    premarket = {qid: q for g in load_questions(LANES["premarket"].questions, "premarket")["groups"] for qid, q in g["questions"].items()}
+    assert len(live) == 104 and len(tape) == 27 and len(premarket) == 12 and "gap_size" not in live and "price_move_5way" not in tape
     assert tape["vix_stir"]["schedule"] == {"every_min": 5, "from": "09:40", "to": "10:30"} and tape["vix_stir"]["horizon"] == "10min_opening"
     assert live["vix_stir"]["schedule"] == {"every_min": 30, "from": "10:02", "to": "15:32"} and live["vix_stir"]["horizon"] == "30min"
     assert tape["open_vs_prior_range"]["schedule"] == {"at": ["09:35"], "hold": True} and live["open_vs_prior_range"]["schedule"] == {"hold_until": "11:32"}
     assert live["vix_stir"]["instructions"] == tape["vix_stir"]["instructions"]
-    assert "overnight_move_vs_expected" not in live and "overnight_move_vs_expected" not in tape    # the premarket lane is not built
+    assert "overnight_move_vs_expected" not in live and "overnight_move_vs_expected" not in tape    # asked only before the open
+    assert premarket["overnight_move_vs_expected"]["schedule"] == {"at": ["09:28"]} and not set(premarket) & (set(live) | set(tape))
 
 
 def test_a_group_over_the_cap_stops_the_load(tmp_path):

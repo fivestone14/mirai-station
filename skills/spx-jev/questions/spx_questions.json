@@ -4710,6 +4710,270 @@
    }
   },
   {
+   "id": "read_sequence",
+   "lane": "thirty_minute",
+   "purpose": "30-minute lane: the day's move and breadth across the lane's last reads, rebuilt from bars at the earlier read minutes.",
+   "reads": [
+    "context",
+    "seq.day_move_by_read",
+    "seq.breadth_by_read"
+   ],
+   "questions": {
+    "seq_day_move_stage": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "11:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 11:02",
+     "sleep_when": "|day move| within {move_rule_sigma}, fewer than two earlier reads today, or fewer than {min_rank_sessions} ranked sessions",
+     "code_answer": true,
+     "ref_side": "the day's move from the settled open",
+     "ask": "Across the lane's last reads, is the day's move from the open still making new ground, stalled, or unwinding?",
+     "instructions": "Read `seq.day_move_by_read`. Where price is now against the settled open decides first; the stage words decide the answer.",
+     "options": [
+      "extending",
+      "stalled",
+      "unwinding"
+     ],
+     "criteria": {
+      "extending": "this read set the day's furthest point from the open so far",
+      "stalled": "the furthest point came at an earlier read and price has given back a small share of it for this time of day",
+      "unwinding": "the furthest point came at an earlier read and price has given back a large share of it for this time of day"
+     },
+     "code_criteria": {
+      "extending": "furthest point from the 09:34 close is at this read",
+      "stalled": "furthest point earlier; giveback share rank < {third_hi} vs the same clock over the last {night_rank_count} sessions",
+      "unwinding": "furthest point earlier; giveback share rank >= {third_hi}"
+     },
+     "labels": [
+      "seq.day_move_by_read"
+     ],
+     "why": "A move that keeps making new ground read after read differs from one whose high came two reads ago; no single-window question says which read the extreme came at."
+    },
+    "seq_breadth_drift": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "11:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 11:02",
+     "sleep_when": "|day move| within {move_rule_sigma}, fewer than two earlier reads today, or fewer than {min_rank_sessions} ranked sessions",
+     "code_answer": true,
+     "ref_side": "the day's move from the settled open",
+     "ask": "Across the lane's last reads, has breadth built behind the day's move, faded under it, or tracked it?",
+     "instructions": "Read `seq.breadth_by_read`. Where price is now against the settled open decides first. Do not say which way price went. Check fading_under_move first.",
+     "options": [
+      "fading_under_move",
+      "building_behind_move",
+      "tracking"
+     ],
+     "criteria": {
+      "fading_under_move": "the volume share in rising stocks shifted away from the day's side more than usual while the move held or grew",
+      "building_behind_move": "the share shifted toward the day's side more than usual",
+      "tracking": "the share shifted about as usual"
+     },
+     "code_criteria": {
+      "fading_under_move": "change away from the day's side ranked >= {third_hi} vs the same stretch over the last {night_rank_count} sessions, and the day move did not shrink below its value at the first listed read",
+      "building_behind_move": "change toward the day's side ranked >= {third_hi}",
+      "tracking": "otherwise"
+     },
+     "labels": [
+      "seq.breadth_by_read"
+     ],
+     "why": "breadth_day_regime judges one moment; a divergence is a sequence: price keeps going while the volume behind it slips read after read."
+    }
+   }
+  },
+  {
+   "id": "bitcoin",
+   "lane": "thirty_minute",
+   "purpose": "Micro bitcoin futures (/MBT) against the index in the session: the last half hour, three half hours in a row, how tightly they trade together today, and the last five sessions.",
+   "reads": [
+    "context",
+    "xasset.btc_gap_30min",
+    "xasset.btc_gap_streak",
+    "xasset.btc_link",
+    "xasset.btc_five_day"
+   ],
+   "questions": {
+    "btc_gap_30m": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read",
+     "sleep_when": "excess rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions at this clock; no bitcoin trade in the last {window_10_min} minutes",
+     "code_answer": true,
+     "ask": "Did bitcoin run ahead of the index over the last half hour, and which way?",
+     "instructions": "Read `xasset.btc_gap_30min`. Over the last {window_30_min} minutes, did bitcoin move further than the index's move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+     "options": [
+      "btc_ahead_up",
+      "btc_ahead_down"
+     ],
+     "criteria": {
+      "btc_ahead_up": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks rising",
+      "btc_ahead_down": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks falling"
+     },
+     "code_criteria": {
+      "btc_ahead_up": "excess rank vs the same clock over the last 20 sessions >= {top_fifth}, stocks-up direction",
+      "btc_ahead_down": "excess rank <= {bottom_fifth}, stocks-down direction"
+     },
+     "labels": [
+      "xasset.btc_gap_30min"
+     ],
+     "why": "The usual idea is that bitcoin is a fast risk gauge the index follows. Measured here, it runs the other way. When bitcoin has run ahead of the index in the last half hour, the index's next half hour leans slightly the opposite way. At the minute level the index leads bitcoin, not the reverse. The label reports the move and the link and does not say 'bitcoin leads', so the learning loop learns the sign."
+    },
+    "btc_gap_streak": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "11:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 11:02 (needs three prior half-hours)",
+     "sleep_when": "the three signs are mixed, or the summed excess is in the middle third; before 11:02; any of the three windows missing bitcoin data",
+     "code_answer": true,
+     "ask": "Has bitcoin run ahead of the index the same way for three half-hours in a row?",
+     "instructions": "Read `xasset.btc_gap_streak`. Across the last three 30-minute reads, did bitcoin run ahead of the index in the same direction every time, toward stocks rising or toward stocks falling?",
+     "options": [
+      "streak_up",
+      "streak_down"
+     ],
+     "criteria": {
+      "streak_up": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the direction that has gone with stocks rising",
+      "streak_down": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the stocks-falling direction"
+     },
+     "code_criteria": {
+      "streak_up": "the last three half-hour excesses all on the stocks-up side and their sum ranks >= {third_hi} against the same clock over the last 20 sessions",
+      "streak_down": "all three on the stocks-down side and their sum ranks <= {third_lo}"
+     },
+     "labels": [
+      "xasset.btc_gap_streak"
+     ],
+     "why": "One half-hour of bitcoin drift can be noise. Three in a row in the same direction is a steadier sign that risk appetite outside stocks is moving differently from the index. The measured effect is small and, like btc_gap_30m, runs against bitcoin's direction."
+    },
+    "btc_link_today": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "regime",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 60,
+       "from": "10:32",
+       "to": "15:32"
+      }
+     },
+     "horizon": "60min",
+     "cadence": "every other 30-minute read (hourly)",
+     "sleep_when": "link rank in the middle third; before 10:32 (too few minutes)",
+     "code_answer": true,
+     "ask": "Are bitcoin and the index trading together today more tightly than usual, or less?",
+     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last 20 sessions, or more loosely?",
+     "options": [
+      "tight",
+      "loose"
+     ],
+     "criteria": {
+      "tight": "bitcoin and the index have moved together today more tightly than on most recent sessions",
+      "loose": "bitcoin and the index have moved together today more loosely than on most recent sessions, or in opposite directions"
+     },
+     "code_criteria": {
+      "tight": "today's link rank vs the last 20 sessions at this clock >= {third_hi}",
+      "loose": "rank <= {third_lo}"
+     },
+     "labels": [
+      "xasset.btc_link"
+     ],
+     "why": "Bitcoin's tie to stocks comes and goes. Since 2020 the 60-session correlation of daily moves has run from -0.09 to 0.72. This year the 20-session figure fell from about 0.7 in March and April to 0.26 in August. A tight day says one risk mood is driving both markets. A loose day says bitcoin is on its own news, and its moves say little about stocks. This question tells the loop which days to trust the other bitcoin reads on."
+    },
+    "btc_five_day_lead": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "opening_five_minute",
+      "thirty_minute"
+     ],
+     "schedule": {
+      "opening_five_minute": {
+       "at": [
+        "09:35"
+       ],
+       "hold": true
+      },
+      "thirty_minute": {
+       "hold_until": "15:32"
+      }
+     },
+     "horizon": {
+      "opening_five_minute": "10min_opening",
+      "thirty_minute": "day"
+     },
+     "cadence": "once at the 09:35 read; answer held as a day constant through the 30-minute reads",
+     "sleep_when": "rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions; a bitcoin roll inside the five sessions without a splice",
+     "code_answer": true,
+     "ask": "Over the last week, has bitcoin been lagging the index or running ahead of it?",
+     "instructions": "Read `xasset.btc_five_day`. Over the last five sessions, has bitcoin done worse than its usual tie to the index would match (lagging) or better (running ahead)?",
+     "options": [
+      "btc_lagging",
+      "btc_ahead"
+     ],
+     "criteria": {
+      "btc_lagging": "over the last five sessions bitcoin has done clearly worse than the index's move would match",
+      "btc_ahead": "over the last five sessions bitcoin has done clearly better than the index's move would match"
+     },
+     "code_criteria": {
+      "btc_lagging": "five-session excess rank vs the last 20 sessions <= {bottom_fifth}",
+      "btc_ahead": "rank >= {top_fifth}"
+     },
+     "labels": [
+      "xasset.btc_five_day"
+     ],
+     "why": "The 'canary' idea is that bitcoin weakening while stocks hold up warns of a stock drop. The data does not support it. From 2020 to 2026, weeks when bitcoin lagged were followed by slightly better index days, not worse. The pattern was not stable in 2025-26. It is in the set because it is the most common bitcoin-for-stocks claim, and the loop should learn its sign rather than JEV assuming it."
+    }
+   }
+  },
+  {
    "id": "premarket_overnight",
    "lane": "premarket",
    "purpose": "Pre-market lane (all dark until the lane exists; the overnight store it reads is saved at 09:26), one 09:28 read: the overnight futures move in yesterday's sigma, the overnight session's width, and when the gap was made.",
@@ -4717,7 +4981,8 @@
     "context",
     "overnight.es_move",
     "overnight.range_vs_normal",
-    "overnight.gap_origin"
+    "overnight.gap_origin",
+    "premarket.vs_last_hour"
    ],
    "questions": {
     "overnight_move_vs_expected": {
@@ -4735,7 +5000,7 @@
       }
      },
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "code_answer": true,
@@ -4782,7 +5047,7 @@
       }
      },
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "code_answer": true,
@@ -4823,9 +5088,10 @@
       }
      },
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
+     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), a roll night, or /ES bars missing",
      "code_answer": true,
      "ask": "When was most of the move from yesterday's close made?",
      "instructions": "Read `overnight.gap_origin`. When was most of the move from yesterday's close to now made?",
@@ -4854,17 +5120,60 @@
       "overnight.gap_origin"
      ],
      "why": "Moved to premarket and asked once: a day constant asked all day repeats one answer. Its release branch could never fire until the calendar carried pre-open rows."
+    },
+    "night_vs_last_hour": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "premarket"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "cadence": "once at the 09:28 premarket read, held through 10:30",
+     "sleep_when": "|SPX 15:00-16:00| rank <= {third_lo} over the last {night_rank_count} sessions, |net| rank <= {third_lo}, or data missing",
+     "code_answer": true,
+     "ref_side": "yesterday's last hour",
+     "ask": "Is the night carrying on yesterday's last cash hour, or turning against it?",
+     "instructions": "Read `premarket.vs_last_hour`. Where futures are now decides first. Did the night go the way SPX moved in yesterday's last hour, or against it?",
+     "options": [
+      "carried_on",
+      "turned_against"
+     ],
+     "criteria": {
+      "carried_on": "the night went the same way as yesterday's last hour",
+      "turned_against": "the night went against yesterday's last hour"
+     },
+     "code_criteria": {
+      "carried_on": "sign(net) == sign(SPX 15:00-16:00)",
+      "turned_against": "otherwise"
+     },
+     "labels": [
+      "premarket.vs_last_hour"
+     ],
+     "why": "Links two sessions in one sequence: late selling the night carries on differs from late selling the night reverses."
     }
    }
   },
   {
    "id": "premarket_context",
    "lane": "premarket",
-   "purpose": "Pre-market lane (built after Monday; dark until then), one 09:28 read: the 08:30 release's reaction path, and overnight bonds and bitcoin against the gap.",
+   "purpose": "Pre-market lane, 08:48 and 09:28 reads: the early report's reaction path and the report window against the night, overnight bonds against the gap, and bitcoin's night and weekend against the S&P futures.",
    "reads": [
     "context",
     "overnight.release_reaction",
-    "overnight.bond_gap"
+    "overnight.bond_gap",
+    "premarket.release_vs_night",
+    "overnight.btc_vs_futures",
+    "weekend.btc_path"
    ],
    "questions": {
     "release_reaction_path": {
@@ -4882,9 +5191,10 @@
       }
      },
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
+     "sleep_when": "no release before the open on the calendar today, or /ES bars missing around it",
      "code_answer": true,
      "ask": "What did futures do after this morning's early report?",
      "instructions": "Read `overnight.release_reaction`. After this morning's early report, what did futures do between the first reaction and now? Check in order: shrugged, extended, faded, held.",
@@ -4926,7 +5236,7 @@
       }
      },
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
      "sleep_when": "bonds and bitcoin in opposite outer thirds, or data missing",
@@ -4952,6 +5262,282 @@
       "overnight.bond_gap"
      ],
      "why": "Overnight bonds reprice on news before cash stocks open; a gap that bonds did not match tends to trade back toward the bonds' side in the first hour. Bitcoin, open all weekend, rides along as a Monday hint."
+    },
+    "release_vs_night": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "premarket"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "08:48",
+        "09:28"
+       ]
+      }
+     },
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "cadence": "08:48 and 09:28 on days with a pre_open calendar row; held through 10:30",
+     "sleep_when": "no pre_open row today, |reaction| rank <= {third_lo} vs the same window over the last {night_rank_count} days, |net at the release minute| rank <= {third_lo}, or data missing",
+     "code_answer": true,
+     "ref_side": "the night's net move before the report",
+     "ask": "Did this morning's early report push the night's move further, undo part of it, or carry futures across their 16:00 price?",
+     "instructions": "Read `premarket.release_vs_night`. Where futures are now decides first. Compare the report's first 15 minutes with the night's move before it. Check crossed_price first.",
+     "options": [
+      "crossed_price",
+      "unwound_night",
+      "extended_night"
+     ],
+     "criteria": {
+      "crossed_price": "by the end of the report window futures had crossed their 16:00 price, to the other side from the night's move",
+      "unwound_night": "the reaction went against the night's move without crossing the 16:00 price",
+      "extended_night": "the reaction went the night's way"
+     },
+     "code_criteria": {
+      "crossed_price": "sign(net at 08:45) != sign(net at the release minute)",
+      "unwound_night": "sign(reaction) != sign(net at the release minute), no cross",
+      "extended_night": "sign(reaction) == sign(net at the release minute)"
+     },
+     "labels": [
+      "premarket.release_vs_night"
+     ],
+     "why": "The sequence at the report itself: whether the news confirmed or overturned what the night had priced. release_reaction_path covers the reaction against its own aftermath; this covers it against the night before."
+    },
+    "btc_overnight_vs_futures": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "premarket"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "cadence": "once at the 09:28 premarket read; answer held as a day constant through 10:30",
+     "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night; fewer than {min_rank_sessions} clean prior nights; bitcoin's last trade before 09:25 older than {window_10_min} minutes",
+     "code_answer": true,
+     "ask": "Did bitcoin move further overnight than S&P futures did, and which way?",
+     "instructions": "Read `overnight.btc_vs_futures`. Since yesterday's 16:00 close, did bitcoin move further than S&P futures' own overnight move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+     "options": [
+      "btc_ahead_up",
+      "btc_ahead_down"
+     ],
+     "criteria": {
+      "btc_ahead_up": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks rising over the last 20 nights",
+      "btc_ahead_down": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks falling over the last 20 nights"
+     },
+     "code_criteria": {
+      "btc_ahead_up": "overnight excess rank vs the last 20 nights >= {top_fifth} in the stocks-up direction",
+      "btc_ahead_down": "overnight excess rank vs the last 20 nights <= {bottom_fifth} (stocks-down direction)"
+     },
+     "labels": [
+      "overnight.btc_vs_futures"
+     ],
+     "why": "Bitcoin trades through the night and reacts to the same risk news as stocks. If it has moved further than futures, the thought is that stocks have not caught up yet. The data says futures already have: bitcoin's overnight move sits inside the gap (rank correlation +0.63 with the SPX open gap) and adds nothing after 09:30. It is here so the learning loop can confirm that, and because the owner asked for bitcoin in the pre-open read."
+    },
+    "btc_weekend_path": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "premarket"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "cadence": "once at the 09:28 premarket read on the first session after a weekend or market holiday; held as a day constant",
+     "sleep_when": "weekend-leg rank vs the last 20 weekends in the middle three fifths (an ordinary weekend); not the first session after a weekend or holiday; fewer than {min_rank_sessions} prior weekends; the Saturday maintenance window leaves no trade in the last {window_60_min} minutes of the weekend leg",
+     "code_answer": true,
+     "ref_side": "sign of the weekend leg (the learning loop folds on it)",
+     "ask": "After a big bitcoin weekend, did bitcoin keep going, hold, or turn back once S&P futures reopened?",
+     "instructions": "Read `weekend.btc_path`. It gives bitcoin's weekend leg (Friday 16:00 to Sunday 18:00, before S&P futures reopen) and its reopen leg (Sunday 18:00 to 09:25). Taking the weekend leg's direction as the reference, did the reopen leg extend it, hold it, or turn back against it?",
+     "options": [
+      "extended",
+      "held",
+      "reversed"
+     ],
+     "criteria": {
+      "extended": "after S&P futures reopened, bitcoin kept moving the same way as its weekend move",
+      "held": "after the reopen bitcoin stayed about where the weekend left it",
+      "reversed": "after the reopen bitcoin moved back against its weekend move"
+     },
+     "code_criteria": {
+      "extended": "reopen-leg rank vs the last 20 reopen legs in the weekend leg's direction >= {third_hi}",
+      "held": "reopen-leg rank in the middle third",
+      "reversed": "reopen-leg rank against the weekend leg's direction >= {third_hi}"
+     },
+     "labels": [
+      "weekend.btc_path"
+     ],
+     "why": "Bitcoin is the one big market that trades all weekend, so it shows first how risk appetite moved while stocks were shut. A peer-reviewed study (Mourey, Shahrour, Soiman, Finance Research Letters 2025) finds that weak crypto weekends predict weaker Mondays for stocks and strong ones do not, an effect that grew after the May 2022 LUNA collapse. That study measures Friday close to Monday close, and at 09:28 the futures gap already contains most of it. This question asks the part the gap does not show: whether bitcoin's weekend verdict is being confirmed or taken back since futures reopened."
+    }
+   }
+  },
+  {
+   "id": "premarket_sequence",
+   "lane": "premarket",
+   "purpose": "Pre-market lane, 08:48 and 09:28 JEV reads (dark until the lane, collector and premarket grader exist): the night's story rebuilt from saved /ES bars at every read, four labels of at most 45 words each because every question in a group sees every label the group reads.",
+   "reads": [
+    "context",
+    "premarket.where_now",
+    "premarket.arc",
+    "premarket.since_checkpoint",
+    "premarket.legs"
+   ],
+   "questions": {
+    "overnight_arc": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "premarket"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "cadence": "at the 09:28 premarket read (also 03:35 and 08:48 if those JEV reads run); the 09:28 answer held as a day constant through 10:30",
+     "sleep_when": "no leg with |move| rank > {third_lo} (a quiet night), a roll night, or /ES bars missing",
+     "code_answer": true,
+     "ref_side": "the first leg that moved",
+     "ask": "What has happened to the night's first real move since it was made?",
+     "instructions": "Read `premarket.where_now` and `premarket.arc`. Where futures are now against their 16:00 price decides first. Has the first leg that moved been built on, held, faded or reversed? Check in order: reversed, faded, built, held.",
+     "options": [
+      "reversed",
+      "faded",
+      "built",
+      "held"
+     ],
+     "criteria": {
+      "reversed": "futures are now on the other side of their 16:00 price from the first move, by more than a quiet amount",
+      "faded": "futures keep less than the half line of the first move",
+      "built": "futures keep more than all of the first move: later trading pushed further the same way",
+      "held": "futures keep between the half line and all of the first move"
+     },
+     "code_criteria": {
+      "reversed": "sign(net now) != sign(first moving leg) and |net now| rank > {third_lo} vs the same clock over the last {night_rank_count} nights",
+      "faded": "kept share < {gap_half_share}",
+      "built": "kept share > 1",
+      "held": "{gap_half_share} <= kept share <= 1"
+     },
+     "labels": [
+      "premarket.where_now",
+      "premarket.arc"
+     ],
+     "why": "Carries the night's sequence into a read with no memory: whether the first real move of the night was built on, held, faded or reversed is the shape a trader reads before the open."
+    },
+    "latest_leg_vs_night": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "premarket"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "08:48",
+        "09:28"
+       ]
+      }
+     },
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "cadence": "at the 08:48 and 09:28 premarket reads; the 09:28 answer held through 10:30",
+     "sleep_when": "|leg| rank <= {third_lo} vs the same clock window over the last {night_rank_count} nights (a quiet leg), |net at previous checkpoint| rank <= {third_lo} (no direction to compare with), first checkpoint, or data missing",
+     "code_answer": true,
+     "ref_side": "the night's net move before the leg",
+     "ask": "Since the previous checkpoint, did futures add to the night's move, give some back, or cross their 16:00 price?",
+     "instructions": "Read `premarket.where_now` and `premarket.since_checkpoint`. Where futures are now against their 16:00 price decides first. Check crossed first.",
+     "options": [
+      "crossed",
+      "added",
+      "gave_back"
+     ],
+     "criteria": {
+      "crossed": "since the previous checkpoint futures crossed their 16:00 price, to the other side from the night's move",
+      "added": "the latest leg went the night's way",
+      "gave_back": "the latest leg went against the night's move without crossing the 16:00 price"
+     },
+     "code_criteria": {
+      "crossed": "sign(net now) != sign(net at the previous scheduled checkpoint)",
+      "added": "sign(leg) == sign(net at previous checkpoint)",
+      "gave_back": "otherwise"
+     },
+     "labels": [
+      "premarket.where_now",
+      "premarket.since_checkpoint"
+     ],
+     "why": "The 'what changed since the last read' question: it lets a read with no memory see the latest turn in the story."
+    },
+    "night_legs_agree": {
+     "status": "dark",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "premarket"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "cadence": "once at the 09:28 premarket read, held through 10:30",
+     "sleep_when": "fewer than two finished legs with rank > {third_lo}, |net| rank <= {third_lo}, or data missing",
+     "code_answer": true,
+     "ref_side": "the night's net move",
+     "ask": "Did every stretch of the night that moved push the same way, or did the latest one turn?",
+     "instructions": "Read `premarket.where_now` and `premarket.legs`. Counting only the legs that moved, did they all go the night's way? Check one_way first.",
+     "options": [
+      "one_way",
+      "latest_against",
+      "split_latest_with"
+     ],
+     "criteria": {
+      "one_way": "every leg that moved went the night's way",
+      "latest_against": "the latest leg that moved went against the night's move",
+      "split_latest_with": "the legs split, and the latest leg that moved went the night's way"
+     },
+     "code_criteria": {
+      "one_way": "every leg with rank > {third_lo} has the net sign",
+      "latest_against": "the latest leg with rank > {third_lo} has the opposite sign to net",
+      "split_latest_with": "otherwise"
+     },
+     "labels": [
+      "premarket.where_now",
+      "premarket.legs"
+     ],
+     "why": "Whether the world's sessions agreed is the plainest sequence summary: a night every region sold differs from one where Europe undid Asia. Covers 'is the direction consistent across reads'."
     }
    }
   },

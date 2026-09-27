@@ -92,6 +92,10 @@ STRESS_CURVE = 0.98
 OPENING_BURST_SHARE = 0.95
 # A follow-on (the Fed's press conference) is read with the release it follows when due within this many minutes of it.
 FOLLOW_ON_MIN = 45
+# The premarket lane's sums (questions/spx_premarket_hour.json) are graded from the settled open: flat within
+# this band 10 minutes on, and within NEXT_30_FLAT_BAND_SIGMA 30 minutes on. Not measured yet: the live
+# sum's 30-minute band scaled by the square root of 10 over 30.
+OPEN_10_FLAT_BAND_SIGMA = 0.04
 
 # ---- the question set's constants (spec/question_set.json "constants"), in the set's order, each with its
 # note from there. Most are declared in the set's own words and not yet placed on SPX history; the few it
@@ -104,6 +108,7 @@ GAP_HALF_SHARE = 0.5  # half-way share for gap kept, shock giveback, reaction gi
 GAP_TOUCH_SIGMA = 0.02  # touch tolerance for yesterday's close
 GAP_RANK_MIN_SESSIONS = 10  # fewest prior sessions with a trusted ruler to rank the gap's size against
 OVERNIGHT_RANK_MIN_NIGHTS = 10  # fewest usable prior nights (no roll, holiday or short night) to rank an overnight measure against
+NIGHT_RANK_COUNT = 20  # nights (or sessions, or weekends) a same-clock rank looks back over
 GIVEBACK_THIRD = 0.33  # stall line for an opening drive
 RANGE_TOP_SHARE = 0.75  # top quarter of today's range
 RANGE_BOTTOM_SHARE = 0.25  # bottom quarter of today's range

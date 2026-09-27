@@ -173,3 +173,36 @@ def lane_scene(full_scene):
     scene = replace(full_scene, bar_clock=True, last_read=full_scene.now - timedelta(minutes=5))
     scene.unit = tape_unit(scene)
     return scene
+
+
+def night_row(symbol: str, ts: datetime, close: float, minutes: int = 1, day: str = DAY, contract: str | None = None) -> dict:
+    """One line of the overnight store (overnight.py): a bar of ``symbol`` starting at ``ts``, its open, high and low at its close."""
+    return {"schema_version": 1, "day": day, "ts": ts.isoformat(), "symbol": symbol, "contract": contract or f"{symbol}Z26",
+            "contract_from": "roll_table", "bar_minutes": minutes, "open": close, "high": close, "low": close, "close": close,
+            "volume": 1.0, "session": "overnight", "source": "test", "saved_at": "", "flags": []}
+
+
+@pytest.fixture
+def premarket_scene_factory():
+    """A read before the open in premarket.make_premarket_scene's shape: a synthetic row at ``now`` priced at ``spot``,
+    ``sigma`` the pre-open ruler in points, no bars today, and the night's store rows finished by ``now``."""
+    from spx_jev.state_builder import Scene
+
+    def make(now: datetime, night: list[dict], spot: float = 7700.0, prior_close: float = 7700.0, sigma: float = 75.0,
+             state_dir: Path | None = None, prior_bars: dict | None = None):
+        row = {"ts": now.isoformat(), "spot": spot, "sigma": sigma, "prior_close": prior_close}
+        done = [r for r in night if datetime.fromisoformat(r["ts"]) + timedelta(minutes=r["bar_minutes"]) <= now]
+        return Scene(row=row, rows_today=[row], bars=[], prior_bars=prior_bars or {}, now=now, sigma=sigma,
+                     premarket=True, night=done, state_dir=state_dir)
+
+    return make
+
+
+@pytest.fixture
+def premarket_scene(premarket_scene_factory):
+    """The 09:28 read of a night with /ES, /ZN and /MBT bars every minute from yesterday's 15:55."""
+    start, now = at(15, 55, day="2026-09-17"), at(9, 28)
+    minutes = int((now - start).total_seconds() // 60)
+    night = [night_row(symbol, start + timedelta(minutes=k), price * (1 + 0.00001 * k))
+             for symbol, price in (("/ES", 7750.0), ("/ZN", 112.0), ("/MBT", 85000.0)) for k in range(minutes)]
+    return premarket_scene_factory(now, night)

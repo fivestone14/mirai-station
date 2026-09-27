@@ -106,6 +106,8 @@ NOT_MEASURED = {
                            "the prior sessions, so the line sits at the 95th percentile of normal by definition",
     "follow_on_min": "a clock fact: how long after a release its follow-on (the Fed's press conference, 30 minutes after the statement) "
                      "is still read with it, not a split of any measurement",
+    "open_10_flat_band_sigma": "the premarket lane's 10-minute sum band from the settled open, the live sum's 30-minute band scaled "
+                               "by the square root of 10 over 30 until the settled opens are measured",
 }
 HOW_DECLARED = {
     "expected_move_down_share": "every row: the day's expected move's down share (adaptive_em.down_share), iv.move_sides",

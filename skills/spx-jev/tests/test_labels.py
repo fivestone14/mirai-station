@@ -45,7 +45,8 @@ def test_a_full_read_accounts_for_every_owned_label_and_gate(full_scene):
     labels = build_labels(full_scene)
     owned = {p for f in FAMILIES for p in f.labels}
     bar_clock_only = {p for f in FAMILIES for p in f.bar_clock_only}
-    assert labels.paths() == owned - bar_clock_only                  # a live read: the opening lane's labels are not its own
+    premarket_only = {p for f in FAMILIES for p in f.premarket_only}
+    assert labels.paths() == owned - bar_clock_only - premarket_only  # a live read: the opening and premarket lanes' labels are not its own
     assert bar_clock_only == {"tape.move_since_read", "tape.range_since_read", "tape.unit_vs_normal"}
     assert all(labels.omitted[p].startswith("dark: ") for f in FAMILIES for p in f.dark)
     assert set(labels.gates) == {qid for f in FAMILIES for qid in f.gates}
@@ -53,8 +54,17 @@ def test_a_full_read_accounts_for_every_owned_label_and_gate(full_scene):
 
 def test_a_read_on_the_bar_clock_accounts_for_the_opening_lanes_labels_too(lane_scene):
     labels = build_labels(lane_scene)
-    assert labels.paths() == {p for f in FAMILIES for p in f.labels}
+    assert labels.paths() == {p for f in FAMILIES for p in f.labels} - {p for f in FAMILIES for p in f.premarket_only}
     assert NOT_BUILT not in {labels.omitted.get(p) for f in FAMILIES for p in f.bar_clock_only}
+
+
+def test_a_premarket_read_runs_only_the_families_that_serve_it_and_accounts_for_their_premarket_labels(premarket_scene):
+    labels = build_labels(premarket_scene)
+    serving = [f for f in FAMILIES if f.premarket]
+    assert {f.name for f in serving} == {"context", "premarket", "story", "bitcoin"}
+    assert labels.paths() == {p for f in serving for p in f.premarket}
+    assert all(set(f.premarket_only) <= set(f.premarket) <= set(f.labels) for f in FAMILIES)
+    assert set(labels.gates) == {qid for f in serving for qid in f.gates}
 
 
 def test_a_label_and_a_gate_no_code_writes_are_omitted_and_asleep_as_not_built(full_scene, monkeypatch):

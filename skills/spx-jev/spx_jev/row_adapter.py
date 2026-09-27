@@ -55,6 +55,10 @@ FAMILY_FIELDS: dict[str, tuple[str, ...]] = {
     "leadership": (),
     "macro": (),
     "events_shocks": (),
+    "premarket": (),
+    "story": (),
+    "bitcoin": (),
+    "read_sequence": (),
 }
 # the dated books (the next monthlies and the quarter-end, pulled each morning): per band only what the labeller reads
 DATED_BAND_FIELDS = ("expiry", "band", "dte", "gamma_mass")

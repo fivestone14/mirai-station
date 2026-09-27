@@ -130,7 +130,8 @@
   "sleep_when": "A gated question carries sleep_when: the code rule under which it is not asked (its default 'nothing happened' state), so that default never enters the weights.",
   "horizon": "horizon is a {lane: horizon} map on every multi-lane question; single-lane questions keep a plain string.",
   "label_built": "Each label carries label_built: true only when the engine's spec/labels.json builds that sentence today (status built) and this set asks for no new clause; needs_engine_edit marks engine labels this set rewords. availability says whether the data is on the row; label_built says whether the sentence exists. A question counts as answerable only when all its labels are built.",
-  "score_criteria": "type score: criteria is an ordered list, index = level, in the same order as options (spec 01)."
+  "score_criteria": "type score: criteria is an ordered list, index = level, in the same order as options (spec 01).",
+  "tags": "tags marks a kind of question across groups. SEQUENTIAL_READ: the label states two or more steps in time order and the answer depends on that order; a question's steps are rebuilt from bars at every read, never from JEV's earlier answers. Untagged questions carry no tags field."
  },
  "daily_expiry_handling": {
   "summary": "SPX lists an SPXW expiry every trading day. The question set treats today's 0DTE book as the dealer book of record, but corrects for what a daily expiry does.",
@@ -1158,6 +1159,12 @@
    "note": "touch tolerance for the day's volume-weighted average price",
    "cuts_json_name": null,
    "in_cuts_py": false
+  },
+  "night_rank_count": {
+   "value": 20,
+   "note": "nights (or sessions, or weekends) a same-clock rank looks back over",
+   "cuts_json_name": null,
+   "in_cuts_py": true
   }
  },
  "groups": [
@@ -1295,7 +1302,10 @@
        "from": "09:45",
        "to": "10:30"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "fresh_extreme_5m",
@@ -2046,7 +2056,10 @@
        "from": "09:40",
        "to": "10:30"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     }
    ]
   },
@@ -2493,7 +2506,10 @@
        "from": "10:02",
        "to": "14:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "move_shape",
@@ -2846,7 +2862,10 @@
        "from": "10:02",
        "to": "14:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "gap_fill_next_hour",
@@ -2983,7 +3002,10 @@
        "from": "11:32",
        "to": "14:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "day_side_from_close",
@@ -3051,7 +3073,10 @@
        "from": "10:02",
        "to": "14:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "first_hour_break_side",
@@ -3117,7 +3142,10 @@
        "from": "10:32",
        "to": "15:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "open_noise_band",
@@ -3235,7 +3263,10 @@
         "15:02"
        ]
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     }
    ]
   },
@@ -4504,7 +4535,10 @@
        "from": "10:02",
        "to": "15:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     }
    ]
   },
@@ -5222,7 +5256,10 @@
        "from": "10:02",
        "to": "15:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "strike_defense",
@@ -5514,7 +5551,10 @@
        "from": "10:02",
        "to": "15:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "round_level_cross",
@@ -5645,7 +5685,10 @@
        "from": "10:02",
        "to": "15:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "overnight_range_position",
@@ -5733,7 +5776,10 @@
        "from": "09:35",
        "to": "10:30"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "activity_vs_move",
@@ -6096,7 +6142,10 @@
        "from": "10:02",
        "to": "15:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "member_breadth_vs_price_day",
@@ -6286,7 +6335,10 @@
        "from": "10:02",
        "to": "15:32"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "volume_vs_count",
@@ -7252,7 +7304,10 @@
        "from": "09:35",
        "to": "10:30"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "shock_at_extreme",
@@ -7391,7 +7446,10 @@
        "from": "09:35",
        "to": "10:30"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "shock_vol_reaction",
@@ -7922,7 +7980,10 @@
        "to": "15:32",
        "days": "FOMC only"
       }
-     }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "closing_window_vix",
@@ -7983,6 +8044,370 @@
    ]
   },
   {
+   "id": "read_sequence",
+   "lane": "thirty_minute",
+   "purpose": "30-minute lane: the day's move and breadth across the lane's last reads, rebuilt from bars at the earlier read minutes.",
+   "reads": [
+    "context",
+    "seq.day_move_by_read",
+    "seq.breadth_by_read"
+   ],
+   "questions": [
+    {
+     "id": "seq_day_move_stage",
+     "group": "read_sequence",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "the day's move from the settled open",
+     "horizon": "30min",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "status": "dark",
+     "cadence": "every 30-minute read from 11:02",
+     "ask": "Across the lane's last reads, is the day's move from the open still making new ground, stalled, or unwinding?",
+     "instructions": "Read `seq.day_move_by_read`. Where price is now against the settled open decides first; the stage words decide the answer.",
+     "options": [
+      {
+       "name": "extending",
+       "description": "this read set the day's furthest point from the open so far"
+      },
+      {
+       "name": "stalled",
+       "description": "the furthest point came at an earlier read and price has given back a small share of it for this time of day"
+      },
+      {
+       "name": "unwinding",
+       "description": "the furthest point came at an earlier read and price has given back a large share of it for this time of day"
+      }
+     ],
+     "criteria": {
+      "extending": "furthest point from the 09:34 close is at this read",
+      "stalled": "furthest point earlier; giveback share rank < {third_hi} vs the same clock over the last {night_rank_count} sessions",
+      "unwinding": "furthest point earlier; giveback share rank >= {third_hi}"
+     },
+     "sleep_when": "|day move| within {move_rule_sigma}, fewer than two earlier reads today, or fewer than {min_rank_sessions} ranked sessions",
+     "labels_needed": [
+      {
+       "name": "seq.day_move_by_read",
+       "example": "SPX is 0.27 sigma above the settled open; at the last four reads it stood 0.12 (10:02), 0.31 (10:32), 0.38 (11:02) and 0.27 (11:32) above; the furthest point came at 11:02 and 29% has been given back, top third for 11:32: unwinding",
+       "computed_how": "(close at each earlier read minute - 09:34 close) / sigma_anchor, rebuilt from 1-min bars at the read minutes (not from saved records); last four reads; giveback ranked at the same clock",
+       "source": "SPX 1-min bars",
+       "availability": "live",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "A move that keeps making new ground read after read differs from one whose high came two reads ago; no single-window question says which read the extreme came at.",
+     "evidence": "Proposal 4 replay, 54 sessions: extending -> next 30 min with the day 38% / against 32% (n=168); stalled 32% / 41% (n=191); unwinding 35/35 (n=72). Weak, overlapping reads, one summer.",
+     "code_answer": true,
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "11:02",
+       "to": "15:32"
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ],
+     "origin": "new (sequential-read study 2026-09-27)"
+    },
+    {
+     "id": "seq_breadth_drift",
+     "group": "read_sequence",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "the day's move from the settled open",
+     "horizon": "30min",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "status": "dark",
+     "cadence": "every 30-minute read from 11:02",
+     "ask": "Across the lane's last reads, has breadth built behind the day's move, faded under it, or tracked it?",
+     "instructions": "Read `seq.breadth_by_read`. Where price is now against the settled open decides first. Do not say which way price went. Check fading_under_move first.",
+     "options": [
+      {
+       "name": "fading_under_move",
+       "description": "the volume share in rising stocks shifted away from the day's side more than usual while the move held or grew"
+      },
+      {
+       "name": "building_behind_move",
+       "description": "the share shifted toward the day's side more than usual"
+      },
+      {
+       "name": "tracking",
+       "description": "the share shifted about as usual"
+      }
+     ],
+     "criteria": {
+      "fading_under_move": "change away from the day's side ranked >= {third_hi} vs the same stretch over the last {night_rank_count} sessions, and the day move did not shrink below its value at the first listed read",
+      "building_behind_move": "change toward the day's side ranked >= {third_hi}",
+      "tracking": "otherwise"
+     },
+     "sleep_when": "|day move| within {move_rule_sigma}, fewer than two earlier reads today, or fewer than {min_rank_sessions} ranked sessions",
+     "labels_needed": [
+      {
+       "name": "seq.breadth_by_read",
+       "example": "SPX is 0.36 sigma above the open; at 10:32, 11:02 and 11:32 it stood 0.20, 0.31 and 0.36 above while the day's rising-stock volume share was 71%, 64% and 58%: it slid 13 points while the move grew, top third over these minutes: fading under the move",
+       "computed_how": "cumulative $UVOL/($UVOL+$DVOL) since 09:30 at each read minute; change over the listed reads signed to the day's side; ranked at the same clock",
+       "source": "state/spx_jev/context/bars/{day}.jsonl + SPX 1-min bars",
+       "availability": "live",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "breadth_day_regime judges one moment; a divergence is a sequence: price keeps going while the volume behind it slips read after read.",
+     "evidence": "None measured yet.",
+     "code_answer": true,
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "11:02",
+       "to": "15:32"
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ],
+     "origin": "new (sequential-read study 2026-09-27)"
+    }
+   ]
+  },
+  {
+   "id": "bitcoin",
+   "lane": "thirty_minute",
+   "purpose": "Micro bitcoin futures (/MBT) against the index in the session: the last half hour, three half hours in a row, how tightly they trade together today, and the last five sessions.",
+   "reads": [
+    "context",
+    "xasset.btc_gap_30min",
+    "xasset.btc_gap_streak",
+    "xasset.btc_link",
+    "xasset.btc_five_day"
+   ],
+   "questions": [
+    {
+     "id": "btc_gap_30m",
+     "group": "bitcoin",
+     "type": "choice",
+     "serves": "direction",
+     "horizon": "30min",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "status": "dark",
+     "cadence": "every 30-minute read",
+     "ask": "Did bitcoin run ahead of the index over the last half hour, and which way?",
+     "instructions": "Read `xasset.btc_gap_30min`. Over the last {window_30_min} minutes, did bitcoin move further than the index's move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+     "options": [
+      {
+       "name": "btc_ahead_up",
+       "description": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks rising"
+      },
+      {
+       "name": "btc_ahead_down",
+       "description": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks falling"
+      }
+     ],
+     "criteria": {
+      "btc_ahead_up": "excess rank vs the same clock over the last 20 sessions >= {top_fifth}, stocks-up direction",
+      "btc_ahead_down": "excess rank <= {bottom_fifth}, stocks-down direction"
+     },
+     "sleep_when": "excess rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions at this clock; no bitcoin trade in the last {window_10_min} minutes",
+     "labels_needed": [
+      {
+       "name": "xasset.btc_gap_30min",
+       "example": "over the last 30 minutes bitcoin rose 1.7 times its normal half-hour gap more than the index's move would match: top fifth at this time of day over the last 20 sessions; bitcoin up has gone with stocks up this month; today bitcoin and the index are moving together more tightly than on most of the last 20 sessions (top third)",
+       "computed_how": "bitcoin 30-minute log return minus the rolling 20-session beta x the SPX 30-minute return; ranked against the same clock over the prior 20 sessions; 'normal half-hour gap' = median |excess| at that clock. Link clause: the 20-session correlation of 30-minute returns, ranked in thirds against its own last 20 values (no fixed line).",
+       "source": "Schwab /MBT (or /BTC) 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl and the bars backfill; /MBT is not yet in market_context.SYMBOLS. 1-min history reaches back about 38 days (40,000-bar cap), 5-min about 6 months.",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "The usual idea is that bitcoin is a fast risk gauge the index follows. Measured here, it runs the other way. When bitcoin has run ahead of the index in the last half hour, the index's next half hour leans slightly the opposite way. At the minute level the index leads bitcoin, not the reverse. The label reports the move and the link and does not say 'bitcoin leads', so the learning loop learns the sign.",
+     "evidence": "1,474 half-hours on 134 sessions (2026-03-17 to 09-25, 5-min bars): excess vs SPX next 30 min rank corr -0.074 (p<0.01; day-clustered t -1.97 controlling for SPX's own last 30). Top fifth: SPX next 30 up 43.5%, mean -2.1 bp (about a quarter of the median 7.9 bp half-hour move); other fifths 51-56% up. Same sign in both halves of the sample (-0.069, -0.078); stronger when the link is tight (-0.10, p 0.01) than loose (-0.04, ns). On 08-11 to 09-25 alone (n 363) -0.03, ns, which matches the earlier xasset study (+0.02, n 1,089 one-minute windows). Minute lead-lag, 33 sessions: corr(bitcoin[t-1], SPX[t]) 0.009, corr(SPX[t-1], bitcoin[t]) 0.047, same minute 0.31. The index leads.",
+     "origin": "new (bitcoin study 2026-09-27)",
+     "code_answer": true,
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:02",
+       "to": "15:32"
+      }
+     }
+    },
+    {
+     "id": "btc_gap_streak",
+     "group": "bitcoin",
+     "type": "choice",
+     "serves": "direction",
+     "horizon": "30min",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "status": "dark",
+     "cadence": "every 30-minute read from 11:02 (needs three prior half-hours)",
+     "ask": "Has bitcoin run ahead of the index the same way for three half-hours in a row?",
+     "instructions": "Read `xasset.btc_gap_streak`. Across the last three 30-minute reads, did bitcoin run ahead of the index in the same direction every time, toward stocks rising or toward stocks falling?",
+     "options": [
+      {
+       "name": "streak_up",
+       "description": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the direction that has gone with stocks rising"
+      },
+      {
+       "name": "streak_down",
+       "description": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the stocks-falling direction"
+      }
+     ],
+     "criteria": {
+      "streak_up": "the last three half-hour excesses all on the stocks-up side and their sum ranks >= {third_hi} against the same clock over the last 20 sessions",
+      "streak_down": "all three on the stocks-down side and their sum ranks <= {third_lo}"
+     },
+     "sleep_when": "the three signs are mixed, or the summed excess is in the middle third; before 11:02; any of the three windows missing bitcoin data",
+     "labels_needed": [
+      {
+       "name": "xasset.btc_gap_streak",
+       "example": "in each of the last three half-hours (10:32, 11:02, 11:32) bitcoin fell further than the index's move would match; together that is 2.3 times a normal 90-minute gap, bottom third at this time of day over the last 20 sessions",
+       "computed_how": "the three latest xasset.btc_gap_30min excesses with their signs, summed, and the sum ranked against the same clock over the prior 20 sessions; shares of the median |90-minute excess|",
+       "source": "as xasset.btc_gap_30min",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "One half-hour of bitcoin drift can be noise. Three in a row in the same direction is a steadier sign that risk appetite outside stocks is moving differently from the index. The measured effect is small and, like btc_gap_30m, runs against bitcoin's direction.",
+     "evidence": "134 sessions: 267 windows with three same-sign excesses; SPX's next 30 minutes went bitcoin's way 43.8% (mean -1.2 bp) vs 46.6% on the 939 mixed windows. Summed 90-minute excess vs next 30 min rank corr -0.051 (p 0.08, n 1,206). Weak, and it overlaps btc_gap_30m.",
+     "origin": "new (bitcoin study 2026-09-27)",
+     "code_answer": true,
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "11:02",
+       "to": "15:32"
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
+    },
+    {
+     "id": "btc_link_today",
+     "group": "bitcoin",
+     "type": "choice",
+     "serves": "regime",
+     "horizon": "60min",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "status": "dark",
+     "cadence": "every other 30-minute read (hourly)",
+     "ask": "Are bitcoin and the index trading together today more tightly than usual, or less?",
+     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last 20 sessions, or more loosely?",
+     "options": [
+      {
+       "name": "tight",
+       "description": "bitcoin and the index have moved together today more tightly than on most recent sessions"
+      },
+      {
+       "name": "loose",
+       "description": "bitcoin and the index have moved together today more loosely than on most recent sessions, or in opposite directions"
+      }
+     ],
+     "criteria": {
+      "tight": "today's link rank vs the last 20 sessions at this clock >= {third_hi}",
+      "loose": "rank <= {third_lo}"
+     },
+     "sleep_when": "link rank in the middle third; before 10:32 (too few minutes)",
+     "labels_needed": [
+      {
+       "name": "xasset.btc_link",
+       "example": "since the open bitcoin and the index have moved together minute by minute more tightly than on 17 of the last 20 sessions at this time (top third); over the last 20 sessions bitcoin up has gone with stocks up",
+       "computed_how": "correlation of 5-minute returns (bitcoin vs SPX) from 09:35 to now, ranked against the same span on the prior 20 sessions; sign of the 20-session beta in words",
+       "source": "as xasset.btc_gap_30min",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "Bitcoin's tie to stocks comes and goes. Since 2020 the 60-session correlation of daily moves has run from -0.09 to 0.72. This year the 20-session figure fell from about 0.7 in March and April to 0.26 in August. A tight day says one risk mood is driving both markets. A loose day says bitcoin is on its own news, and its moves say little about stocks. This question tells the loop which days to trust the other bitcoin reads on.",
+     "evidence": "Indirect only. The btc_gap_30m effect is -0.10 (p 0.01) on tight-link half-hours and -0.04 (ns) on loose ones, 737 each. Whether the link level on its own leans the index's direction is untested. Daily CME bitcoin vs SPX correlation: 20-session 0.63 and 60-session 0.39 as of 2026-09-25; 260-session 0.51.",
+     "origin": "new (bitcoin study 2026-09-27)",
+     "code_answer": true,
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 60,
+       "from": "10:32",
+       "to": "15:32"
+      }
+     }
+    },
+    {
+     "id": "btc_five_day_lead",
+     "group": "bitcoin",
+     "type": "choice",
+     "serves": "direction",
+     "horizon": {
+      "opening_five_minute": "10min_opening",
+      "thirty_minute": "day"
+     },
+     "lanes": [
+      "opening_five_minute",
+      "thirty_minute"
+     ],
+     "status": "dark",
+     "cadence": "once at the 09:35 read; answer held as a day constant through the 30-minute reads",
+     "ask": "Over the last week, has bitcoin been lagging the index or running ahead of it?",
+     "instructions": "Read `xasset.btc_five_day`. Over the last five sessions, has bitcoin done worse than its usual tie to the index would match (lagging) or better (running ahead)?",
+     "options": [
+      {
+       "name": "btc_lagging",
+       "description": "over the last five sessions bitcoin has done clearly worse than the index's move would match"
+      },
+      {
+       "name": "btc_ahead",
+       "description": "over the last five sessions bitcoin has done clearly better than the index's move would match"
+      }
+     ],
+     "criteria": {
+      "btc_lagging": "five-session excess rank vs the last 20 sessions <= {bottom_fifth}",
+      "btc_ahead": "rank >= {top_fifth}"
+     },
+     "sleep_when": "rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions; a bitcoin roll inside the five sessions without a splice",
+     "labels_needed": [
+      {
+       "name": "xasset.btc_five_day",
+       "example": "over the last five sessions bitcoin did 2.1 normal weeks worse than the index's move would match: bottom fifth of the last 20 sessions; the index itself rose 0.6 of a normal week",
+       "computed_how": "bitcoin five-session log move (settlement to settlement) minus the rolling 60-session beta x the SPX five-session move; ranked against the prior 20 sessions; 'normal week' = median |five-session excess| over the prior 20",
+       "source": "Schwab daily bars for /BTC (history from 2020) and $SPX; the roll guard applies to the stitched daily series too",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "The 'canary' idea is that bitcoin weakening while stocks hold up warns of a stock drop. The data does not support it. From 2020 to 2026, weeks when bitcoin lagged were followed by slightly better index days, not worse. The pattern was not stable in 2025-26. It is in the set because it is the most common bitcoin-for-stocks claim, and the loop should learn its sign rather than JEV assuming it.",
+     "evidence": "1,608 sessions 2020-2026 (daily /BTC vs $SPX): bitcoin lagging (bottom fifth) -> SPX next day up 57.9% (+12.5 bp), middle 54.0% (+6.1 bp), bitcoin ahead (top fifth) 51.5% (-0.3 bp). Rank corr with the next day -0.004 (p 0.89); with the next five sessions (non-overlapping) -0.056 (p 0.32). Since mid-2022 the same shape (59.8 / 52.3 / 51.7% up). 2025-26 (n 429): bottom 62.6%, middle 49.0%, top 66.3%. The shape breaks.",
+     "origin": "new (bitcoin study 2026-09-27)",
+     "code_answer": true,
+     "schedule": {
+      "opening_five_minute": {
+       "at": [
+        "09:35"
+       ],
+       "hold": true
+      },
+      "thirty_minute": {
+       "hold_until": "15:32"
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
+    }
+   ]
+  },
+  {
    "id": "premarket_overnight",
    "lane": "premarket",
    "purpose": "Pre-market lane (all dark until the lane exists; the overnight store it reads is saved at 09:26), one 09:28 read: the overnight futures move in yesterday's sigma, the overnight session's width, and when the gap was made.",
@@ -7990,7 +8415,8 @@
     "context",
     "overnight.es_move",
     "overnight.range_vs_normal",
-    "overnight.gap_origin"
+    "overnight.gap_origin",
+    "premarket.vs_last_hour"
    ],
    "questions": [
     {
@@ -7999,7 +8425,7 @@
      "type": "choice",
      "serves": "direction",
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "lanes": [
       "premarket"
@@ -8043,7 +8469,7 @@
        "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, a move larger than 15 of the last 20 nights' moves to this time, top third",
        "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26 extended hours",
-       "availability": "dark",
+       "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
       }
@@ -8069,7 +8495,7 @@
      "type": "choice",
      "serves": "size",
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "lanes": [
       "premarket"
@@ -8103,7 +8529,7 @@
        "example": "last night's futures range was 0.48 sigma, 1.6 times the 0.30 sigma median of the last 20 nights, a wide night",
        "computed_how": "same file; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26",
-       "availability": "dark",
+       "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
       }
@@ -8129,7 +8555,7 @@
      "type": "choice",
      "serves": "direction",
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "lanes": [
       "premarket"
@@ -8173,7 +8599,7 @@
        "example": "of this morning's 0.44 sigma gap, 70% came in the 08:30-08:45 window after the jobs report, past the 50% origin share; 20% came overnight and 10% in the last hour",
        "computed_how": "ES path split by window, measured vs ES's 16:00 price; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26 + calendar pre_open rows",
-       "availability": "dark",
+       "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
       }
@@ -8188,18 +8614,82 @@
         "09:28"
        ]
       }
-     }
+     },
+     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), a roll night, or /ES bars missing",
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
+    },
+    {
+     "id": "night_vs_last_hour",
+     "group": "premarket_overnight",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "yesterday's last hour",
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "lanes": [
+      "premarket"
+     ],
+     "status": "dark",
+     "cadence": "once at the 09:28 premarket read, held through 10:30",
+     "ask": "Is the night carrying on yesterday's last cash hour, or turning against it?",
+     "instructions": "Read `premarket.vs_last_hour`. Where futures are now decides first. Did the night go the way SPX moved in yesterday's last hour, or against it?",
+     "options": [
+      {
+       "name": "carried_on",
+       "description": "the night went the same way as yesterday's last hour"
+      },
+      {
+       "name": "turned_against",
+       "description": "the night went against yesterday's last hour"
+      }
+     ],
+     "criteria": {
+      "carried_on": "sign(net) == sign(SPX 15:00-16:00)",
+      "turned_against": "otherwise"
+     },
+     "sleep_when": "|SPX 15:00-16:00| rank <= {third_lo} over the last {night_rank_count} sessions, |net| rank <= {third_lo}, or data missing",
+     "labels_needed": [
+      {
+       "name": "premarket.vs_last_hour",
+       "example": "futures are now 0.22 sigma above their 16:00 price, top third; yesterday SPX fell 0.30 sigma in its last hour, top third of the last 20 last hours: the night turned against yesterday's close",
+       "computed_how": "SPX 15:00-16:00 from saved SPX bars (state/reversion/bars), ranked over the last {night_rank_count} sessions; /ES net since 16:00 from premarket.where_now",
+       "source": "saved SPX bars + Schwab /ES",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "Links two sessions in one sequence: late selling the night carries on differs from late selling the night reverses.",
+     "evidence": "Untested. Critique 1: repeats 31% of the overnight bucket's information, no gain.",
+     "code_answer": true,
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ],
+     "origin": "new (sequential-read study 2026-09-27)"
     }
    ]
   },
   {
    "id": "premarket_context",
    "lane": "premarket",
-   "purpose": "Pre-market lane (built after Monday; dark until then), one 09:28 read: the 08:30 release's reaction path, and overnight bonds and bitcoin against the gap.",
+   "purpose": "Pre-market lane, 08:48 and 09:28 reads: the early report's reaction path and the report window against the night, overnight bonds against the gap, and bitcoin's night and weekend against the S&P futures.",
    "reads": [
     "context",
     "overnight.release_reaction",
-    "overnight.bond_gap"
+    "overnight.bond_gap",
+    "premarket.release_vs_night",
+    "overnight.btc_vs_futures",
+    "weekend.btc_path"
    ],
    "questions": [
     {
@@ -8208,7 +8698,7 @@
      "type": "choice",
      "serves": "direction",
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "lanes": [
       "premarket"
@@ -8247,7 +8737,7 @@
        "example": "the 08:30 jobs report moved futures up 0.22 sigma in 15 minutes, past the 0.10 small-reaction line; by 09:25 they had given back 60% of it, past the half line",
        "computed_how": "/ES 08:29 to 08:45, then to 09:25; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ESZ26 + calendar pre_open rows",
-       "availability": "dark",
+       "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
       }
@@ -8265,7 +8755,11 @@
         "09:28"
        ]
       }
-     }
+     },
+     "sleep_when": "no release before the open on the calendar today, or /ES bars missing around it",
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
     },
     {
      "id": "overnight_bonds_vs_gap",
@@ -8273,7 +8767,7 @@
      "type": "choice",
      "serves": "direction",
      "horizon": {
-      "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "lanes": [
       "premarket"
@@ -8307,7 +8801,7 @@
        "example": "from yesterday's 16:00 close to 09:29, ten-year Treasury futures rose further than today's 0.44 sigma gap up would match: ahead in the stocks-up direction, top third; overnight bitcoin futures fell 1.8%, bottom third",
        "computed_how": "/ZN and bitcoin overnight moves minus beta x gap, each on one contract (rolls.same_contract); bitcoin is /MBT, the same price as /BTC and far busier at night; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
        "source": "Schwab /ZN and /MBT, the overnight store (state/spx_jev/overnight/)",
-       "availability": "dark",
+       "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
       }
@@ -8324,6 +8818,424 @@
        ]
       }
      }
+    },
+    {
+     "id": "release_vs_night",
+     "group": "premarket_context",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "the night's net move before the report",
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "lanes": [
+      "premarket"
+     ],
+     "status": "dark",
+     "cadence": "08:48 and 09:28 on days with a pre_open calendar row; held through 10:30",
+     "ask": "Did this morning's early report push the night's move further, undo part of it, or carry futures across their 16:00 price?",
+     "instructions": "Read `premarket.release_vs_night`. Where futures are now decides first. Compare the report's first 15 minutes with the night's move before it. Check crossed_price first.",
+     "options": [
+      {
+       "name": "crossed_price",
+       "description": "by the end of the report window futures had crossed their 16:00 price, to the other side from the night's move"
+      },
+      {
+       "name": "unwound_night",
+       "description": "the reaction went against the night's move without crossing the 16:00 price"
+      },
+      {
+       "name": "extended_night",
+       "description": "the reaction went the night's way"
+      }
+     ],
+     "criteria": {
+      "crossed_price": "sign(net at 08:45) != sign(net at the release minute)",
+      "unwound_night": "sign(reaction) != sign(net at the release minute), no cross",
+      "extended_night": "sign(reaction) == sign(net at the release minute)"
+     },
+     "sleep_when": "no pre_open row today, |reaction| rank <= {third_lo} vs the same window over the last {night_rank_count} days, |net at the release minute| rank <= {third_lo}, or data missing",
+     "labels_needed": [
+      {
+       "name": "premarket.release_vs_night",
+       "example": "futures are now 0.08 sigma below their 16:00 price; before the 08:30 jobs report they were 0.23 above, top third; the report's first 15 minutes fell 0.31, higher than 18 of the last 20 days in that window, and carried them across the 16:00 price",
+       "computed_how": "net at the release minute (calendar time_et) and at 08:45; L5 move ranked vs the same window on all of the last {night_rank_count} days, report or not; cross tested at 08:45",
+       "source": "Schwab /ES + calendar pre_open rows (from 09-01 only)",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "The sequence at the report itself: whether the news confirmed or overturned what the night had priced. release_reaction_path covers the reaction against its own aftermath; this covers it against the night before.",
+     "evidence": "Untested: few release days (6 of 59 in the spec sample) and calendar rows only from 09-01. PCE 09-30, jobs 10-02, CPI 10-14, PPI 10-15 give live cases this month.",
+     "code_answer": true,
+     "schedule": {
+      "premarket": {
+       "at": [
+        "08:48",
+        "09:28"
+       ]
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ],
+     "origin": "new (sequential-read study 2026-09-27)"
+    },
+    {
+     "id": "btc_overnight_vs_futures",
+     "group": "premarket_context",
+     "type": "choice",
+     "serves": "direction",
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "lanes": [
+      "premarket"
+     ],
+     "status": "dark",
+     "cadence": "once at the 09:28 premarket read; answer held as a day constant through 10:30",
+     "ask": "Did bitcoin move further overnight than S&P futures did, and which way?",
+     "instructions": "Read `overnight.btc_vs_futures`. Since yesterday's 16:00 close, did bitcoin move further than S&P futures' own overnight move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+     "options": [
+      {
+       "name": "btc_ahead_up",
+       "description": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks rising over the last 20 nights"
+      },
+      {
+       "name": "btc_ahead_down",
+       "description": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks falling over the last 20 nights"
+      }
+     ],
+     "criteria": {
+      "btc_ahead_up": "overnight excess rank vs the last 20 nights >= {top_fifth} in the stocks-up direction",
+      "btc_ahead_down": "overnight excess rank vs the last 20 nights <= {bottom_fifth} (stocks-down direction)"
+     },
+     "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night; fewer than {min_rank_sessions} clean prior nights; bitcoin's last trade before 09:25 older than {window_10_min} minutes",
+     "labels_needed": [
+      {
+       "name": "overnight.btc_vs_futures",
+       "example": "from yesterday's 16:00 close to 09:25 bitcoin fell 1.9 of its normal nights while S&P futures fell 0.4 of theirs; over the last 20 nights bitcoin has moved with futures (bitcoin up has gone with stocks up), so bitcoin fell further than the futures' move would match: bottom fifth of the last 20 nights, past the bottom-fifth line",
+       "computed_how": "bitcoin log move 16:00 to 09:25 (last trade at or before each time) minus the rolling 20-night beta x the /ES move over the same window; ranked against the prior 20 clean nights; 'normal night' = median |move| of the prior 20 nights, for each series. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. Skip the roll night or splice on the IBIT ratio. DARK until the premarket lane and overnight collector exist (premarket-data-plan.md steps 2-3): schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/.",
+       "source": "Schwab /MBT (micro bitcoin futures) 1-minute and 5-minute bars with need_extended_hours_data=True; answers as the front contract (/MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29). /BTC is the same price but trades under 5 bars an hour on Saturdays, so /MBT is the working series and /BTC a cross-check. Not in market_context.SYMBOLS. /ES as in overnight_move_vs_expected.",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "Bitcoin trades through the night and reacts to the same risk news as stocks. If it has moved further than futures, the thought is that stocks have not caught up yet. The data says futures already have: bitcoin's overnight move sits inside the gap (rank correlation +0.63 with the SPX open gap) and adds nothing after 09:30. It is here so the learning loop can confirm that, and because the owner asked for bitcoin in the pre-open read.",
+     "evidence": "119 clean nights (2026-03 to 09, 5-min bars; roll and /ES-roll nights removed): bitcoin excess over futures vs SPX 09:35-10:05 rank corr +0.01 (p 0.91), vs 09:35-10:35 +0.05, vs 09:35-close -0.05. Fifths: bottom fifth first 30 min up 64%, top fifth 57%, middle 43% (no order). Halves: -0.10 then +0.11 (sign flips). The round-3 figure (+0.15/+0.24, n=31) does not hold at four times the sample. Long sample, 287 weekends 2020-26: bitcoin's weekend move is in the Monday gap (+0.19; +0.36 since mid-2022) but predicts nothing after it (Monday open-to-close -0.06, t -1.5 controlling for the gap).",
+     "origin": "new (bitcoin study 2026-09-27); replaces the bitcoin half of overnight_bonds_vs_gap",
+     "code_answer": true,
+     "sources": [
+      "https://www.cmegroup.com/media-room/press-releases/2026/2/19/cme_group_to_launch247cryptocurrencyfuturesandoptionstradingonma.html"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     }
+    },
+    {
+     "id": "btc_weekend_path",
+     "group": "premarket_context",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "sign of the weekend leg (the learning loop folds on it)",
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "lanes": [
+      "premarket"
+     ],
+     "status": "dark",
+     "cadence": "once at the 09:28 premarket read on the first session after a weekend or market holiday; held as a day constant",
+     "ask": "After a big bitcoin weekend, did bitcoin keep going, hold, or turn back once S&P futures reopened?",
+     "instructions": "Read `weekend.btc_path`. It gives bitcoin's weekend leg (Friday 16:00 to Sunday 18:00, before S&P futures reopen) and its reopen leg (Sunday 18:00 to 09:25). Taking the weekend leg's direction as the reference, did the reopen leg extend it, hold it, or turn back against it?",
+     "options": [
+      {
+       "name": "extended",
+       "description": "after S&P futures reopened, bitcoin kept moving the same way as its weekend move"
+      },
+      {
+       "name": "held",
+       "description": "after the reopen bitcoin stayed about where the weekend left it"
+      },
+      {
+       "name": "reversed",
+       "description": "after the reopen bitcoin moved back against its weekend move"
+      }
+     ],
+     "criteria": {
+      "extended": "reopen-leg rank vs the last 20 reopen legs in the weekend leg's direction >= {third_hi}",
+      "held": "reopen-leg rank in the middle third",
+      "reversed": "reopen-leg rank against the weekend leg's direction >= {third_hi}"
+     },
+     "sleep_when": "weekend-leg rank vs the last 20 weekends in the middle three fifths (an ordinary weekend); not the first session after a weekend or holiday; fewer than {min_rank_sessions} prior weekends; the Saturday maintenance window leaves no trade in the last {window_60_min} minutes of the weekend leg",
+     "labels_needed": [
+      {
+       "name": "weekend.btc_path",
+       "example": "from Friday's 16:00 close to Sunday 18:00 bitcoin fell 2.6 of its normal weekends, bottom fifth of the last 20 weekends; since S&P futures reopened at 18:00 it has risen 0.9 of a normal reopen leg, top third against the weekend's fall: it turned back; S&P futures are down 0.3 of a normal night",
+       "computed_how": "two bitcoin legs, each a log move between last trades at or before the two times: Fri 16:00 to Sun 18:00 and Sun 18:00 to 09:25. The weekend leg is ranked by size and sign against the last 20 weekends, the reopen leg against the last 20 reopen legs; each is expressed in shares of its own median |leg| over those windows. The futures clause reuses overnight.es_move. Holidays: the leg runs from the last cash close to the /ES reopen. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. Skip the roll night or splice on the IBIT ratio. DARK until the premarket lane and overnight collector exist (premarket-data-plan.md steps 2-3): schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/.",
+       "source": "Schwab /MBT (micro bitcoin futures) 1-minute and 5-minute bars with need_extended_hours_data=True; answers as the front contract (/MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29). /BTC is the same price but trades under 5 bars an hour on Saturdays, so /MBT is the working series and /BTC a cross-check. Not in market_context.SYMBOLS. Before 2026-05-29 CME bitcoin futures were shut Fri 17:00 to Sun 18:00 ET, so older weekends have only the Sunday reopen gap and no path.",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "Bitcoin is the one big market that trades all weekend, so it shows first how risk appetite moved while stocks were shut. A peer-reviewed study (Mourey, Shahrour, Soiman, Finance Research Letters 2025) finds that weak crypto weekends predict weaker Mondays for stocks and strong ones do not, an effect that grew after the May 2022 LUNA collapse. That study measures Friday close to Monday close, and at 09:28 the futures gap already contains most of it. This question asks the part the gap does not show: whether bitcoin's weekend verdict is being confirmed or taken back since futures reopened.",
+     "evidence": "No direct test: only 17 weekends of 24/7 CME bitcoin exist (since 2026-05-29). Long sample, 277 ranked weekends 2020-26 (Fri close to Sun reopen): bottom-fifth bitcoin weekends had the SPX Monday gap at -23 bp on average, then Monday open-to-close +20 bp, up 60%, the same as ordinary weekends (61%). Since mid-2022, n=44: gap -32 bp, open-to-close +9 bp, up 55%. The weakness shows up in the gap and is not extended after it. Cases: 2022-05-09 and 2022-06-13 (bitcoin -4.6%, -6.4%), SPX extended lower after the open (-2.2%, -2.3%); 2024-08-05 (bitcoin -6.7%), SPX gapped down 3.7% and closed +0.7% above the open.",
+     "origin": "new (bitcoin study 2026-09-27)",
+     "code_answer": true,
+     "sources": [
+      "https://ideas.repec.org/a/eee/finlet/v86y2025ipes1544612325019154.html",
+      "https://finance.yahoo.com/markets/crypto/articles/bitcoin-first-cme-gap-free-174649486.html"
+     ],
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "premarket_sequence",
+   "lane": "premarket",
+   "purpose": "Pre-market lane, 08:48 and 09:28 JEV reads (dark until the lane, collector and premarket grader exist): the night's story rebuilt from saved /ES bars at every read, four labels of at most 45 words each because every question in a group sees every label the group reads.",
+   "reads": [
+    "context",
+    "premarket.where_now",
+    "premarket.arc",
+    "premarket.since_checkpoint",
+    "premarket.legs"
+   ],
+   "questions": [
+    {
+     "id": "overnight_arc",
+     "group": "premarket_sequence",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "the first leg that moved",
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "lanes": [
+      "premarket"
+     ],
+     "status": "dark",
+     "cadence": "at the 09:28 premarket read (also 03:35 and 08:48 if those JEV reads run); the 09:28 answer held as a day constant through 10:30",
+     "ask": "What has happened to the night's first real move since it was made?",
+     "instructions": "Read `premarket.where_now` and `premarket.arc`. Where futures are now against their 16:00 price decides first. Has the first leg that moved been built on, held, faded or reversed? Check in order: reversed, faded, built, held.",
+     "options": [
+      {
+       "name": "reversed",
+       "description": "futures are now on the other side of their 16:00 price from the first move, by more than a quiet amount"
+      },
+      {
+       "name": "faded",
+       "description": "futures keep less than the half line of the first move"
+      },
+      {
+       "name": "built",
+       "description": "futures keep more than all of the first move: later trading pushed further the same way"
+      },
+      {
+       "name": "held",
+       "description": "futures keep between the half line and all of the first move"
+      }
+     ],
+     "criteria": {
+      "reversed": "sign(net now) != sign(first moving leg) and |net now| rank > {third_lo} vs the same clock over the last {night_rank_count} nights",
+      "faded": "kept share < {gap_half_share}",
+      "built": "kept share > 1",
+      "held": "{gap_half_share} <= kept share <= 1"
+     },
+     "sleep_when": "no leg with |move| rank > {third_lo} (a quiet night), a roll night, or /ES bars missing",
+     "labels_needed": [
+      {
+       "name": "premarket.where_now",
+       "example": "at 09:28 S&P futures are 0.31 sigma above their 16:00 price, higher than 16 of the last 20 nights at this time, top third; 85% of the way up the night's range",
+       "computed_how": "/ES last finished 1-min close vs the same contract's 16:00 close, in yesterday's sigma_anchor; |move| ranked in thirds vs the same clock over the last {night_rank_count} nights (min {min_rank_sessions}; roll, holiday, estimated-ruler nights skipped); position in the high-low range since 16:00",
+       "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      },
+      {
+       "name": "premarket.arc",
+       "example": "the first leg that moved was Asia, up 0.24 sigma; futures now keep 129% of it, still above their 16:00 price: later trading built on it",
+       "computed_how": "first leg with |move| rank > {third_lo}; kept share = net now / that leg (stated as 'keep N%'); side of the 16:00 price now; net rank; verdict word by code",
+       "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "Carries the night's sequence into a read with no memory: whether the first real move of the night was built on, held, faded or reversed is the shape a trader reads before the open.",
+     "evidence": "Untested as a JEV reading. Proposal 3 (130 nights, anchored on Asia): reversed nights (n=18) went against the Asia move 10:05-close; built nights (n=51) with it; first 30 min nothing. Anchoring on the first moving leg fixes the rule in Proposals 1-2 that fired 1 of 119 nights vs 16-19 real reversals (critique 1): the replay must confirm 'reversed' fires on about that many. Critique 1: shape repeats 47% of the overnight move bucket's information and did not beat it.",
+     "code_answer": true,
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ],
+     "origin": "new (sequential-read study 2026-09-27)"
+    },
+    {
+     "id": "latest_leg_vs_night",
+     "group": "premarket_sequence",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "the night's net move before the leg",
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "lanes": [
+      "premarket"
+     ],
+     "status": "dark",
+     "cadence": "at the 08:48 and 09:28 premarket reads; the 09:28 answer held through 10:30",
+     "ask": "Since the previous checkpoint, did futures add to the night's move, give some back, or cross their 16:00 price?",
+     "instructions": "Read `premarket.where_now` and `premarket.since_checkpoint`. Where futures are now against their 16:00 price decides first. Check crossed first.",
+     "options": [
+      {
+       "name": "crossed",
+       "description": "since the previous checkpoint futures crossed their 16:00 price, to the other side from the night's move"
+      },
+      {
+       "name": "added",
+       "description": "the latest leg went the night's way"
+      },
+      {
+       "name": "gave_back",
+       "description": "the latest leg went against the night's move without crossing the 16:00 price"
+      }
+     ],
+     "criteria": {
+      "crossed": "sign(net now) != sign(net at the previous scheduled checkpoint)",
+      "added": "sign(leg) == sign(net at previous checkpoint)",
+      "gave_back": "otherwise"
+     },
+     "sleep_when": "|leg| rank <= {third_lo} vs the same clock window over the last {night_rank_count} nights (a quiet leg), |net at previous checkpoint| rank <= {third_lo} (no direction to compare with), first checkpoint, or data missing",
+     "labels_needed": [
+      {
+       "name": "premarket.where_now",
+       "example": "at 09:28 S&P futures are 0.31 sigma above their 16:00 price, higher than 16 of the last 20 nights at this time, top third; 85% of the way up the night's range",
+       "computed_how": "/ES last finished 1-min close vs the same contract's 16:00 close, in yesterday's sigma_anchor; |move| ranked in thirds vs the same clock over the last {night_rank_count} nights (min {min_rank_sessions}; roll, holiday, estimated-ruler nights skipped); position in the high-low range since 16:00",
+       "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      },
+      {
+       "name": "premarket.since_checkpoint",
+       "example": "since the 08:48 checkpoint futures fell 0.09 sigma, top third for 08:48-09:28 over the last 20 nights, against the night's rise, still above their 16:00 price: the latest leg gave back",
+       "computed_how": "/ES from the SCHEDULED previous checkpoint (02:35, 03:35, 08:05, 08:48, 09:05) to now, rebuilt from bars (never from the previous read's record, never from the time a late read fired); ranked vs the same clock window over the last {night_rank_count} nights; night net before the leg; cross check vs the 16:00 price",
+       "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "The 'what changed since the last read' question: it lets a read with no memory see the latest turn in the story.",
+     "evidence": "Untested. Last pre-open leg (09:00-09:25) vs SPX 09:35-10:30 rho +0.14; 08:25-09:25 stretch vs first 30 min +0.09, day +0.02 (n=118-130): noise level.",
+     "code_answer": true,
+     "schedule": {
+      "premarket": {
+       "at": [
+        "08:48",
+        "09:28"
+       ]
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ],
+     "origin": "new (sequential-read study 2026-09-27)"
+    },
+    {
+     "id": "night_legs_agree",
+     "group": "premarket_sequence",
+     "type": "choice",
+     "serves": "direction",
+     "ref_side": "the night's net move",
+     "horizon": {
+      "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
+     },
+     "lanes": [
+      "premarket"
+     ],
+     "status": "dark",
+     "cadence": "once at the 09:28 premarket read, held through 10:30",
+     "ask": "Did every stretch of the night that moved push the same way, or did the latest one turn?",
+     "instructions": "Read `premarket.where_now` and `premarket.legs`. Counting only the legs that moved, did they all go the night's way? Check one_way first.",
+     "options": [
+      {
+       "name": "one_way",
+       "description": "every leg that moved went the night's way"
+      },
+      {
+       "name": "latest_against",
+       "description": "the latest leg that moved went against the night's move"
+      },
+      {
+       "name": "split_latest_with",
+       "description": "the legs split, and the latest leg that moved went the night's way"
+      }
+     ],
+     "criteria": {
+      "one_way": "every leg with rank > {third_lo} has the net sign",
+      "latest_against": "the latest leg with rank > {third_lo} has the opposite sign to net",
+      "split_latest_with": "otherwise"
+     },
+     "sleep_when": "fewer than two finished legs with rank > {third_lo}, |net| rank <= {third_lo}, or data missing",
+     "labels_needed": [
+      {
+       "name": "premarket.where_now",
+       "example": "at 09:28 S&P futures are 0.31 sigma above their 16:00 price, higher than 16 of the last 20 nights at this time, top third; 85% of the way up the night's range",
+       "computed_how": "/ES last finished 1-min close vs the same contract's 16:00 close, in yesterday's sigma_anchor; |move| ranked in thirds vs the same clock over the last {night_rank_count} nights (min {min_rank_sessions}; roll, holiday, estimated-ruler nights skipped); position in the high-low range since 16:00",
+       "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      },
+      {
+       "name": "premarket.legs",
+       "example": "oldest first: after the close quiet; Asia up 0.24 sigma, top third; Europe's open quiet; Europe morning down 0.09, middle third, gave some back; report window up 0.12, top third, added; since 08:45 quiet. Of 3 legs that moved, all went with the night's rise: one way",
+       "computed_how": "legs tile 16:00 to now: L0 16:00-18:00, L1 18:00-Tokyo close, L2 Tokyo close-DAX open+30m, L3 to 08:00, L4 08:00-release minute (08:29 if none), L5 release minute-08:45 (every day), L6 08:45-read; exchange-local edges; each leg's own size and own third vs the same window over the last {night_rank_count} nights; neutral leg words (added / gave some back / quiet); only finished legs, a running leg says 'so far'; missing bars merge two legs and say so; ends with the code verdict for night_legs_agree",
+       "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+       "availability": "cheap_add",
+       "label_built": false,
+       "needs_engine_edit": false
+      }
+     ],
+     "why": "Whether the world's sessions agreed is the plainest sequence summary: a night every region sold differs from one where Europe undid Asia. Covers 'is the direction consistent across reads'.",
+     "evidence": "Proposal 3: all four legs with the net (n=13) went against it over the next 30 min on 10/13. Proposal 1: all legs agreeing with the gap, SPX 09:35-10:30 +7.1 bp (n=16) vs -10.1 bp (n=32), about 1.8 SE. Critique 1: repeats 27% of the overnight bucket, no gain. Thin.",
+     "code_answer": true,
+     "schedule": {
+      "premarket": {
+       "at": [
+        "09:28"
+       ]
+      }
+     },
+     "tags": [
+      "SEQUENTIAL_READ"
+     ],
+     "origin": "new (sequential-read study 2026-09-27)"
     }
    ]
   },
@@ -9589,7 +10501,7 @@
    "example": "from yesterday's 16:00 close to 09:29, ten-year Treasury futures rose further than today's 0.44 sigma gap up would match: ahead in the stocks-up direction, top third; overnight bitcoin futures fell 1.8%, bottom third",
    "computed_how": "/ZN and bitcoin overnight moves minus beta x gap, each on one contract (rolls.same_contract); bitcoin is /MBT, the same price as /BTC and far busier at night; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ZN and /MBT, the overnight store (state/spx_jev/overnight/)",
-   "availability": "dark",
+   "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
   },
@@ -9598,7 +10510,7 @@
    "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, a move larger than 15 of the last 20 nights' moves to this time, top third",
    "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26 extended hours",
-   "availability": "dark",
+   "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
   },
@@ -9607,7 +10519,7 @@
    "example": "of this morning's 0.44 sigma gap, 70% came in the 08:30-08:45 window after the jobs report, past the 50% origin share; 20% came overnight and 10% in the last hour",
    "computed_how": "ES path split by window, measured vs ES's 16:00 price; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26 + calendar pre_open rows",
-   "availability": "dark",
+   "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
   },
@@ -9634,7 +10546,7 @@
    "example": "last night's futures range was 0.48 sigma, 1.6 times the 0.30 sigma median of the last 20 nights, a wide night",
    "computed_how": "same file; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26",
-   "availability": "dark",
+   "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
   },
@@ -9643,7 +10555,7 @@
    "example": "the 08:30 jobs report moved futures up 0.22 sigma in 15 minutes, past the 0.10 small-reaction line; by 09:25 they had given back 60% of it, past the half line",
    "computed_how": "/ES 08:29 to 08:45, then to 09:25; DARK: no premarket lane: the first launchd fire is 09:32 (spx-jev.plist); the overnight store (state/spx_jev/overnight/, spx_jev.overnight at 09:26 and 16:20 ET) holds the bars, but nothing reads them before 09:30",
    "source": "Schwab /ESZ26 + calendar pre_open rows",
-   "availability": "dark",
+   "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
   },
@@ -10066,6 +10978,132 @@
    "example": "over the last 30 minutes crude oil (USO) rose more than the index's move usually brings it, top fifth for this half hour",
    "computed_how": "USO 30-minute beta residual ranked (avoid /CL roll ~10-20)",
    "source": "Schwab 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl (live) and state/spx_jev/context/bars/{day}.jsonl (backfill: python -m spx_jev.market_context --backfill 2026-08-10); the symbol must be in market_context.SYMBOLS (USO; not yet in SYMBOLS or probed)",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "premarket.where_now",
+   "example": "at 09:28 S&P futures are 0.31 sigma above their 16:00 price, higher than 16 of the last 20 nights at this time, top third; 85% of the way up the night's range",
+   "computed_how": "/ES last finished 1-min close vs the same contract's 16:00 close, in yesterday's sigma_anchor; |move| ranked in thirds vs the same clock over the last {night_rank_count} nights (min {min_rank_sessions}; roll, holiday, estimated-ruler nights skipped); position in the high-low range since 16:00",
+   "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "premarket.arc",
+   "example": "the first leg that moved was Asia, up 0.24 sigma; futures now keep 129% of it, still above their 16:00 price: later trading built on it",
+   "computed_how": "first leg with |move| rank > {third_lo}; kept share = net now / that leg (stated as 'keep N%'); side of the 16:00 price now; net rank; verdict word by code",
+   "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "premarket.since_checkpoint",
+   "example": "since the 08:48 checkpoint futures fell 0.09 sigma, top third for 08:48-09:28 over the last 20 nights, against the night's rise, still above their 16:00 price: the latest leg gave back",
+   "computed_how": "/ES from the SCHEDULED previous checkpoint (02:35, 03:35, 08:05, 08:48, 09:05) to now, rebuilt from bars (never from the previous read's record, never from the time a late read fired); ranked vs the same clock window over the last {night_rank_count} nights; night net before the leg; cross check vs the 16:00 price",
+   "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "premarket.legs",
+   "example": "oldest first: after the close quiet; Asia up 0.24 sigma, top third; Europe's open quiet; Europe morning down 0.09, middle third, gave some back; report window up 0.12, top third, added; since 08:45 quiet. Of 3 legs that moved, all went with the night's rise: one way",
+   "computed_how": "legs tile 16:00 to now: L0 16:00-18:00, L1 18:00-Tokyo close, L2 Tokyo close-DAX open+30m, L3 to 08:00, L4 08:00-release minute (08:29 if none), L5 release minute-08:45 (every day), L6 08:45-read; exchange-local edges; each leg's own size and own third vs the same window over the last {night_rank_count} nights; neutral leg words (added / gave some back / quiet); only finished legs, a running leg says 'so far'; missing bars merge two legs and say so; ends with the code verdict for night_legs_agree",
+   "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "premarket.release_vs_night",
+   "example": "futures are now 0.08 sigma below their 16:00 price; before the 08:30 jobs report they were 0.23 above, top third; the report's first 15 minutes fell 0.31, higher than 18 of the last 20 days in that window, and carried them across the 16:00 price",
+   "computed_how": "net at the release minute (calendar time_et) and at 08:45; L5 move ranked vs the same window on all of the last {night_rank_count} days, report or not; cross tested at 08:45",
+   "source": "Schwab /ES + calendar pre_open rows (from 09-01 only)",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "premarket.vs_last_hour",
+   "example": "futures are now 0.22 sigma above their 16:00 price, top third; yesterday SPX fell 0.30 sigma in its last hour, top third of the last 20 last hours: the night turned against yesterday's close",
+   "computed_how": "SPX 15:00-16:00 from saved SPX bars (state/reversion/bars), ranked over the last {night_rank_count} sessions; /ES net since 16:00 from premarket.where_now",
+   "source": "saved SPX bars + Schwab /ES",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "seq.day_move_by_read",
+   "example": "SPX is 0.27 sigma above the settled open; at the last four reads it stood 0.12 (10:02), 0.31 (10:32), 0.38 (11:02) and 0.27 (11:32) above; the furthest point came at 11:02 and 29% has been given back, top third for 11:32: unwinding",
+   "computed_how": "(close at each earlier read minute - 09:34 close) / sigma_anchor, rebuilt from 1-min bars at the read minutes (not from saved records); last four reads; giveback ranked at the same clock",
+   "source": "SPX 1-min bars",
+   "availability": "live",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "seq.breadth_by_read",
+   "example": "SPX is 0.36 sigma above the open; at 10:32, 11:02 and 11:32 it stood 0.20, 0.31 and 0.36 above while the day's rising-stock volume share was 71%, 64% and 58%: it slid 13 points while the move grew, top third over these minutes: fading under the move",
+   "computed_how": "cumulative $UVOL/($UVOL+$DVOL) since 09:30 at each read minute; change over the listed reads signed to the day's side; ranked at the same clock",
+   "source": "state/spx_jev/context/bars/{day}.jsonl + SPX 1-min bars",
+   "availability": "live",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "overnight.btc_vs_futures",
+   "example": "from yesterday's 16:00 close to 09:25 bitcoin fell 1.9 of its normal nights while S&P futures fell 0.4 of theirs; over the last 20 nights bitcoin has moved with futures (bitcoin up has gone with stocks up), so bitcoin fell further than the futures' move would match: bottom fifth of the last 20 nights, past the bottom-fifth line",
+   "computed_how": "bitcoin log move 16:00 to 09:25 (last trade at or before each time) minus the rolling 20-night beta x the /ES move over the same window; ranked against the prior 20 clean nights; 'normal night' = median |move| of the prior 20 nights, for each series. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. Skip the roll night or splice on the IBIT ratio. DARK until the premarket lane and overnight collector exist (premarket-data-plan.md steps 2-3): schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/.",
+   "source": "Schwab /MBT (micro bitcoin futures) 1-minute and 5-minute bars with need_extended_hours_data=True; answers as the front contract (/MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29). /BTC is the same price but trades under 5 bars an hour on Saturdays, so /MBT is the working series and /BTC a cross-check. Not in market_context.SYMBOLS. /ES as in overnight_move_vs_expected.",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "weekend.btc_path",
+   "example": "from Friday's 16:00 close to Sunday 18:00 bitcoin fell 2.6 of its normal weekends, bottom fifth of the last 20 weekends; since S&P futures reopened at 18:00 it has risen 0.9 of a normal reopen leg, top third against the weekend's fall: it turned back; S&P futures are down 0.3 of a normal night",
+   "computed_how": "two bitcoin legs, each a log move between last trades at or before the two times: Fri 16:00 to Sun 18:00 and Sun 18:00 to 09:25. The weekend leg is ranked by size and sign against the last 20 weekends, the reopen leg against the last 20 reopen legs; each is expressed in shares of its own median |leg| over those windows. The futures clause reuses overnight.es_move. Holidays: the leg runs from the last cash close to the /ES reopen. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. Skip the roll night or splice on the IBIT ratio. DARK until the premarket lane and overnight collector exist (premarket-data-plan.md steps 2-3): schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/.",
+   "source": "Schwab /MBT (micro bitcoin futures) 1-minute and 5-minute bars with need_extended_hours_data=True; answers as the front contract (/MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29). /BTC is the same price but trades under 5 bars an hour on Saturdays, so /MBT is the working series and /BTC a cross-check. Not in market_context.SYMBOLS. Before 2026-05-29 CME bitcoin futures were shut Fri 17:00 to Sun 18:00 ET, so older weekends have only the Sunday reopen gap and no path.",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "xasset.btc_gap_30min",
+   "example": "over the last 30 minutes bitcoin rose 1.7 times its normal half-hour gap more than the index's move would match: top fifth at this time of day over the last 20 sessions; bitcoin up has gone with stocks up this month; today bitcoin and the index are moving together more tightly than on most of the last 20 sessions (top third)",
+   "computed_how": "bitcoin 30-minute log return minus the rolling 20-session beta x the SPX 30-minute return; ranked against the same clock over the prior 20 sessions; 'normal half-hour gap' = median |excess| at that clock. Link clause: the 20-session correlation of 30-minute returns, ranked in thirds against its own last 20 values (no fixed line).",
+   "source": "Schwab /MBT (or /BTC) 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl and the bars backfill; /MBT is not yet in market_context.SYMBOLS. 1-min history reaches back about 38 days (40,000-bar cap), 5-min about 6 months.",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "xasset.btc_gap_streak",
+   "example": "in each of the last three half-hours (10:32, 11:02, 11:32) bitcoin fell further than the index's move would match; together that is 2.3 times a normal 90-minute gap, bottom third at this time of day over the last 20 sessions",
+   "computed_how": "the three latest xasset.btc_gap_30min excesses with their signs, summed, and the sum ranked against the same clock over the prior 20 sessions; shares of the median |90-minute excess|",
+   "source": "as xasset.btc_gap_30min",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "xasset.btc_link",
+   "example": "since the open bitcoin and the index have moved together minute by minute more tightly than on 17 of the last 20 sessions at this time (top third); over the last 20 sessions bitcoin up has gone with stocks up",
+   "computed_how": "correlation of 5-minute returns (bitcoin vs SPX) from 09:35 to now, ranked against the same span on the prior 20 sessions; sign of the 20-session beta in words",
+   "source": "as xasset.btc_gap_30min",
+   "availability": "cheap_add",
+   "label_built": false,
+   "needs_engine_edit": false
+  },
+  {
+   "name": "xasset.btc_five_day",
+   "example": "over the last five sessions bitcoin did 2.1 normal weeks worse than the index's move would match: bottom fifth of the last 20 sessions; the index itself rose 0.6 of a normal week",
+   "computed_how": "bitcoin five-session log move (settlement to settlement) minus the rolling 60-session beta x the SPX five-session move; ranked against the prior 20 sessions; 'normal week' = median |five-session excess| over the prior 20",
+   "source": "Schwab daily bars for /BTC (history from 2020) and $SPX; the roll guard applies to the stitched daily series too",
    "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
@@ -11764,6 +12802,13 @@
    "action": "bands",
    "decision": "accepted",
    "reason": "ranked, not cut: the overnight futures move's size is placed against the same move to the same minute on up to the last 20 prior nights (roll nights, holiday and half-day nights and short nights left out, at least overnight_rank_min_nights of them, else overnight.es_move is omitted) and answered in thirds with its side, flat, down or up, big_down or big_up, instead of the fixed gap_rule_sigma and gap_large_sigma lines; gap_large_sigma is removed, since nothing else read it. The move is ranked in percent of price, since a prior night's own ruler is not in the overnight store; the label still states it in yesterday's sigma.",
+   "source": "owner decision 2026-09-27"
+  },
+  {
+   "subject": "premarket lane",
+   "action": "add",
+   "decision": "accepted",
+   "reason": "the sequential-read questions and the bitcoin questions come in dark, waiting on their label builds; the sequential study's bitcoin items merge into the bitcoin study's (btc_overnight_vs_gap into btc_overnight_vs_futures, weekend_btc_lead into btc_weekend_path, btc_divergence_30m into btc_gap_30m), all on /MBT; 20 questions tagged SEQUENTIAL_READ; the premarket questions graded from the settled open; gap_origin and release_reaction_path gated.",
    "source": "owner decision 2026-09-27"
   }
  ],

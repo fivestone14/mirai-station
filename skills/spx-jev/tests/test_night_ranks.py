@@ -107,3 +107,27 @@ def test_es_move_is_omitted_without_enough_nights_or_a_price(tmp_path):
     _save(tmp_path, DAY, 0.3)
     assert night_ranks.es_move(tmp_path, now)["omitted"].startswith("overnight move not ranked: only 5 usable of the last 20 nights")
     assert night_ranks.es_move(tmp_path, datetime(2026, 9, 20, 9, 27, tzinfo=ET)) == {"omitted": "2026-09-20 is not a market day"}
+
+
+def test_a_stretch_moves_between_the_newest_prices_by_its_edges_on_either_resolution():
+    t = datetime(2026, 9, 23, 3, 0, tzinfo=ET)
+    rows = [_bar(t - timedelta(minutes=2), 6700.0), _bar(t + timedelta(minutes=30), 6733.5),
+            dict(_bar(t + timedelta(minutes=55), 6720.0), bar_minutes=5)]
+    move = night_ranks.window_move(rows, "/ES", t, t + timedelta(hours=1))
+    assert round(move.pct, 4) == 0.2985 and move.start_at == t - timedelta(minutes=1) and move.end_at == t + timedelta(hours=1)
+    assert night_ranks.price_by(rows, "/ES", t + timedelta(minutes=45)) == (6733.5, t + timedelta(minutes=31))
+    assert night_ranks.window_move(rows, "/ES", t - timedelta(hours=1), t) is None      # no price by the start
+    assert night_ranks.window_move(rows, "/ZN", t, t + timedelta(hours=1)) is None
+
+
+def test_the_same_stretch_is_measured_on_the_last_nights_with_their_skips(tmp_path):
+    prior = _nights_before(DAY, 20)
+    for k, d in enumerate(prior):
+        _save(tmp_path, d, 0.1 * (k + 1))
+
+    def window(d: date) -> tuple[datetime, datetime]:
+        return overnight.night_window(d)[0] + timedelta(minutes=overnight.NIGHT_LEAD_MIN), datetime.combine(d, time(9, 27), tzinfo=ET)
+    base = night_ranks.prior_window_nights(tmp_path, DAY, "/ES", window, rolls.load(tmp_path), lambda m: m.pct)
+    assert [n.day for n in base] == [d.isoformat() for d in prior]
+    assert {n.day: n.skip for n in base if n.skip} == {"2026-09-08": "holiday"}
+    assert [round(n.value, 4) for n in base if n.skip is None][:3] == [0.1, 0.2, 0.3]

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
-from spx_jev.lane import LANES, LIVE, RECORD, TAPE
+from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, OPEN_10_FLAT_BAND_SIGMA
+from spx_jev.lane import LANES, LIVE, PREMARKET, RECORD, TAPE
 from spx_jev.overnight import SAVE_TIMES
 
 SKILL = Path(__file__).resolve().parents[1]
@@ -26,7 +26,7 @@ def _pacific(hhmm: str) -> tuple[int, int]:
 
 
 def test_the_live_lane_and_the_opening_lane():
-    assert LANES == {"live": LIVE, "tape": TAPE}
+    assert LANES == {"live": LIVE, "tape": TAPE, "premarket": PREMARKET}
     assert LIVE.out_dir == "spx_jev" and LIVE.questions.name == "spx_questions.json" and LIVE.hour_doc.name == "spx_hour.json"
     assert (LIVE.key, TAPE.key) == ("thirty_minute", "opening_five_minute") and TAPE.questions == LIVE.questions
     assert LIVE.horizons == {"next_30": (30, NEXT_30_FLAT_BAND_SIGMA), "next_60": (60, NEXT_60_FLAT_BAND_SIGMA)}
@@ -36,6 +36,14 @@ def test_the_live_lane_and_the_opening_lane():
     assert TAPE.horizons == {"next_10": (10, RECORD)} and TAPE.primary == "next_10"
     assert (TAPE.cadence, TAPE.tag, TAPE.bar_clock, TAPE.clock_blend, TAPE.bar_gap_min) == (False, "tape", True, False, 0)
     assert len(TAPE.schedule) == 12 and TAPE.schedule[0] == "09:35" and TAPE.schedule[-1] == "10:30" and TAPE.close_out == "10:42"
+
+
+def test_the_premarket_lane_reads_at_its_checkpoints_and_is_graded_from_the_settled_open(tmp_path):
+    assert PREMARKET.key == "premarket" and PREMARKET.folder(tmp_path) == tmp_path / "spx_jev" / "lanes" / "premarket"
+    assert PREMARKET.schedule == ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28") and PREMARKET.close_out == "10:06"
+    assert PREMARKET.horizons == {"open_10": (10, OPEN_10_FLAT_BAND_SIGMA), "open_30": (30, NEXT_30_FLAT_BAND_SIGMA)}
+    assert (PREMARKET.primary, PREMARKET.tag, PREMARKET.pool, PREMARKET.graded_from_settled_open) == ("open_30", "premarket", True, True)
+    assert not LIVE.graded_from_settled_open and not TAPE.graded_from_settled_open
 
 
 def test_a_tagged_lane_refuses_to_run_without_a_folder_of_its_own(tmp_path):

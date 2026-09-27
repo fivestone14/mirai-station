@@ -297,6 +297,10 @@ class Scene:
     prior_markets: dict[str, MarketContext] = field(default_factory=dict)      # the market around SPX on the prior sessions that have it
     prior_day: tuple[str, list[dict]] | None = None   # the trading day before, half day included (previous_session); None in tests
     state_dir: Path | None = None          # where the moment was loaded from, for a family that reads a source of its own; None in tests
+    premarket: bool = False                # a read before the open (premarket.make_premarket_scene): no diary row, no bars today,
+                                           # a synthetic row priced off the futures; only the families that serve it run
+    night: list[dict] = field(default_factory=list)   # the overnight store's rows (overnight.py) for the night into this day,
+                                                      # every symbol and resolution, only bars finished by ``now``
 
     @property
     def day(self) -> str:

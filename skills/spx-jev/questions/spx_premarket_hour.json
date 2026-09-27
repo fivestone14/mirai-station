@@ -1,0 +1,33 @@
+{
+ "name": "SPX, the premarket lane's sums: 10 and 30 minutes after the settled open",
+ "version": "0.1.0",
+ "date": "2026-09-27",
+ "how_to_use": "Step 4 of the premarket lane. The state is the lane's answers from step 2, each rewritten by code as one sentence with how sure JEV was. Two questions ride on the same sentences in one request: open_30, where price is 30 minutes after the settled open (the close of the 09:34 bar), is the sum the phone shows and the one the lane's learning loop learns from; open_10 is graded beside it. Both are measured from the settled open, never from yesterday's close, because a read before the open already knows the gap. Sigma is the pre-open ruler: the median morning anchor of the last sessions, stamped on every record. Forecasts, graded by the bars, never acted on; the bands come from spx_jev/cuts.py.",
+ "primary": "open_30",
+ "questions": {
+  "open_10": {
+   "type": "choice",
+   "ask": "Where is price 10 minutes after the settled open?",
+   "why": "The first check on the night's read: what the first minutes after the open do with it, graded beside the 30-minute sum.",
+   "instructions": "Read `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where is price 10 minutes after the settled open (the close of the 09:34 bar), against the settled open itself? Answer up, down, flat or unsure.",
+   "criteria": {
+    "up": "price ends more than {open_10_flat_band_sigma} sigma above the settled open",
+    "down": "price ends more than {open_10_flat_band_sigma} sigma below the settled open",
+    "flat": "price ends within {open_10_flat_band_sigma} sigma of the settled open",
+    "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
+   }
+  },
+  "open_30": {
+   "type": "choice",
+   "ask": "Where is price 30 minutes after the settled open?",
+   "why": "The lane's one call about the first half hour, the thing every premarket question was in service of.",
+   "instructions": "Read `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where is price 30 minutes after the settled open (the close of the 09:34 bar), against the settled open itself? Answer up, down, flat or unsure.",
+   "criteria": {
+    "up": "price ends more than {next_30_flat_band_sigma} sigma above the settled open",
+    "down": "price ends more than {next_30_flat_band_sigma} sigma below the settled open",
+    "flat": "price ends within {next_30_flat_band_sigma} sigma of the settled open",
+    "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
+   }
+  }
+ }
+}

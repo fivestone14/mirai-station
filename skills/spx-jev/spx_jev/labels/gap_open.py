@@ -1,12 +1,13 @@
 """The gap and open family: the gap from yesterday's close to the settled open and its fate (gap.*), the
-first minutes against the settled open (open.*), and the overnight futures session (overnight.*).
+first minutes against the settled open (open.*), and the overnight range against the session (overnight.range,
+overnight.price_vs_range); the premarket lane's overnight labels are labels/premarket.py's.
 
 Every distance is in the morning anchor (rulers.sigma_anchor), and a sentence measured on an estimated
 anchor says so. The gap is the settled open (the 09:34 close) against the row's ``prior_close``, and its
 size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut; whether
 price has moved away from the settled open is judged in today's tape unit (rulers.ruler), not a fixed cut
 either. Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``;
-the overnight labels wait for the premarket lane (DARK).
+the overnight range labels wait for a session read of the overnight store (DARK).
 """
 from __future__ import annotations
 
@@ -26,20 +27,13 @@ from .words import above_or_below, minutes_ago, pct, plural, sig, third
 
 LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_distance",
           "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",
-          "overnight.bond_gap", "overnight.es_move", "overnight.gap_origin", "overnight.price_vs_range", "overnight.range",
-          "overnight.range_vs_normal", "overnight.release_reaction")
-GATES = ("gap_fill_next_hour", "overnight_bonds_vs_gap")
-NO_OVERNIGHT = ("no premarket lane: the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, "
-                "but nothing reads them before 09:30")
+          "overnight.price_vs_range", "overnight.range")
+GATES = ("gap_fill_next_hour",)
+NO_OVERNIGHT = ("the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, "
+                "but no session read measures the night's range from them yet")
 DARK = {
-    "overnight.bond_gap": ("no premarket lane: /ZN and bitcoin (/MBT) are in the overnight store, but nothing reads them before "
-                           "09:30, and their 20-night beta against the gap is not built"),
-    "overnight.es_move": NO_OVERNIGHT,
-    "overnight.gap_origin": NO_OVERNIGHT,
     "overnight.price_vs_range": NO_OVERNIGHT,
     "overnight.range": NO_OVERNIGHT,
-    "overnight.range_vs_normal": NO_OVERNIGHT,
-    "overnight.release_reaction": NO_OVERNIGHT,
 }
 
 # The morning a gap is judged over (gap.morning_vs_gap) ends here.
@@ -62,7 +56,6 @@ def build_gap_open_labels(scene: Scene) -> LabelSet:
     _noise_band(scene, anchor, ls)
     _path(scene, anchor, gap, ls)
     _settled_open_crosses(scene, anchor, ls)
-    ls.sleep("overnight_bonds_vs_gap", f"data missing: {DARK['overnight.bond_gap']}")
     return ls
 
 

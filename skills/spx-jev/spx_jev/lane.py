@@ -5,9 +5,13 @@ LIVE reads at :02 and :32 all session: the 30- and 60-minute sums in sigma bands
 the time-of-day blend, everything under state/spx_jev/. TAPE is the opening lane: every 5 minutes
 from 09:35 to 10:30, each read stamped at the newest finished bar, one 10-minute sum in tape units,
 every question its schedule asks asked afresh (a day constant is asked at 09:35 and held),
-everything under state/spx_jev/lanes/tape/. Every step takes a lane and defaults to LIVE.
+everything under state/spx_jev/lanes/tape/. PREMARKET reads at six checkpoints before the open: every
+read saves the overnight futures and builds the night's labels from them (a scene without a diary row,
+premarket.py), and JEV is asked only at the reads its questions' schedules name (08:48 and 09:28). Its
+two sums are graded from the settled open, 10 and 30 minutes on, never from yesterday's close;
+everything under state/spx_jev/lanes/premarket/. Every step takes a lane and defaults to LIVE.
 
-Both lanes ask from one question doc, each question on its own schedule per lane (schedule.py). A lane
+Every lane asks from one question doc, each question on its own schedule per lane (schedule.py). A lane
 with a ``schedule`` names its reads in market time; the launchd job fires at each of them, and
 once more at ``close_out``, a run that asks JEV nothing and only grades the morning's last calls and
 refreshes the card (service.close_out). A test holds the plist template to these times.
@@ -21,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .archive import ARCHIVE_SUBDIR
-from .cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
+from .cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, OPEN_10_FLAT_BAND_SIGMA
 
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
 LIVE_DIR = "spx_jev"        # the live lane's folder under the state dir; no other lane may write there
@@ -51,6 +55,7 @@ class Lane:
     close_out: str | None = None                     # "HH:MM" market time of the grade-only run after the last read
     close_out_after_close: bool = False              # a fire after the day's real close (13:00 on a half day) is the grade-only run
     read_grace_min: int = 2                          # a read stamped this many minutes before one of its read times is that read
+    graded_from_settled_open: bool = False           # its sums' horizons run from the settled open (the 09:34 close), not from the read
 
     def read_times(self) -> tuple[str, ...]:
         """The lane's reads, "HH:MM" market time: its schedule, or the live job's :02 and :32."""
@@ -93,5 +98,15 @@ TAPE = Lane(name="tape", key="opening_five_minute", out_dir=f"{LIVE_DIR}/lanes/t
             schedule=tuple(f"{(575 + TAPE_EVERY_MIN * k) // 60:02d}:{(575 + TAPE_EVERY_MIN * k) % 60:02d}" for k in range(12)),
             close_out="10:42")
 
-LANES = {"live": LIVE, "tape": TAPE}
+# The checkpoints before the open, market time: Tokyo has closed, Europe's first half hour, the Europe
+# morning, the 08:30 report window, 09:05, and the final read.
+PREMARKET = Lane(name="premarket", key="premarket", out_dir=f"{LIVE_DIR}/lanes/premarket", questions=QUESTIONS,
+                 hour_doc=QUESTIONS_DIR / "spx_premarket_hour.json",
+                 horizons={"open_10": (10, OPEN_10_FLAT_BAND_SIGMA), "open_30": (30, NEXT_30_FLAT_BAND_SIGMA)},
+                 primary="open_30", cadence=False, tag="premarket", clock_blend=False, pool=True,
+                 schedule=("02:35", "03:35", "08:05", "08:48", "09:05", "09:28"),
+                 # the 30-minute mark is 10:04: the close-out at 10:06 finds its bar and grades the morning's calls
+                 close_out="10:06", graded_from_settled_open=True)
+
+LANES = {"live": LIVE, "tape": TAPE, "premarket": PREMARKET}
 LANES_BY_KEY = {lane.key: lane for lane in LANES.values()}
