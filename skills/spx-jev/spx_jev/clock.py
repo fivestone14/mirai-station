@@ -32,7 +32,10 @@ The settled-open odds (the premarket lane)
     outcome and they are left out. The premarket lane does not blend them (lane.PREMARKET.clock_blend):
     replayed on the 47 saved sessions of July to September 2026 with 10 counted before them, they
     forecast the window worse than even thirds out of sample (mean log loss 1.22 against 1.10 at 10
-    minutes, 1.14 against 1.10 at 30), the outcomes falling about a third each way.
+    minutes, 1.14 against 1.10 at 30), the outcomes falling about a third each way. Both the odds and
+    that comparison are banded in each session's morning anchor, while the premarket calls are graded
+    in the pre-open ruler their read stamped (grade.stamped_ruler); before the odds are ever blended,
+    band each session in the pre-open ruler its read would have stamped and measure them again.
 
 The blend
     p = JEV_SHARE * JEV's probability + (1 - JEV_SHARE) * the clock's, per outcome; JEV's
