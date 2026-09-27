@@ -44,7 +44,7 @@ WORDS = {
     "PCE": "the PCE inflation report",
     "RETAIL_SALES": "the retail sales report",
     "GDP": "the GDP report",
-    "JOBLESS_CLAIMS": "the weekly jobless claims",
+    "JOBLESS_CLAIMS": "the weekly jobless claims report",
     "ISM_MANUFACTURING": "the ISM manufacturing report",
     "ISM_SERVICES": "the ISM services report",
     "JOLTS": "the job openings report",
@@ -110,10 +110,10 @@ def _load(path: str) -> Calendar:
         out.append(Event(start, end if end and end > start else None, str(e.get("kind", "event")), str(e.get("tier")),
                          e.get("verified") is not False, e.get("q_and_a") is True))
     try:
-        covers = date.fromisoformat(doc["covers_through"])
+        through = date.fromisoformat(doc["covers_through"])
     except (KeyError, TypeError, ValueError):
-        covers = None
-    return Calendar(tuple(sorted(out, key=lambda r: r.start)), covers)
+        through = None
+    return Calendar(tuple(sorted(out, key=lambda r: r.start)), through)
 
 
 def words(kind: str) -> str:
@@ -124,10 +124,9 @@ def _minutes(n: int) -> str:
     return f"{n} minute" + ("" if n == 1 else "s")
 
 
-def covers(day: date, path: Path | str = CALENDAR) -> date | None:
-    """The calendar's last kept day when it reaches ``day``, else None: past it, an empty day is unknown, not quiet."""
-    through = _load(str(path)).covers_through
-    return through if through is not None and day <= through else None
+def covered_through(path: Path | str = CALENDAR) -> date | None:
+    """The calendar's last kept day: past it, an empty day is unknown, not quiet. None when the file names none."""
+    return _load(str(path)).covers_through
 
 
 def on_day(day: date, path: Path | str = CALENDAR) -> list[Event]:
