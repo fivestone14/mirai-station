@@ -25,7 +25,7 @@ from typing import Any
 from .labels.measures import ET, is_num, settled_open
 from .labels.rulers import SigmaRuler, morning_ruler, tape_unit, vix_at_settled_open
 from .row_adapter import SYMBOL, labeller_row
-from .sessions import session_close, session_open
+from .sessions import previous_trading_day, session_close, session_minutes, session_open
 
 DEFAULT_STATE_DIR = Path.home() / ".claude" / "plugins" / "mirai-station" / "state"
 ROWS_SUBDIR = Path("reversion")                    # the left-eye scanner's SPX diary
@@ -38,7 +38,8 @@ HORIZON = "the next 30 minutes"
 
 # Baselines.
 MAX_BASELINE_SESSIONS = 20
-MIN_BARS_FOR_A_SESSION = 300
+MIN_BARS_FOR_A_SESSION = 300      # of a full day's 390 minutes; yesterday's half day needs the same share of its 210
+FULL_SESSION_MIN = 390
 # The 0DTE options tape (options.aggressor_side): the collector signs the last 15 minutes of trades
 # (lob_flow.daemon.TAPE_WINDOW_MIN) and writes a line a minute, so an older newest line means it stopped.
 OPTIONS_TAPE_WINDOW_MIN = 15
@@ -133,6 +134,17 @@ def prior_bar_days(state_dir: Path, day: str, limit: int = MAX_BASELINE_SESSIONS
         if len(out) >= limit:
             break
     return out
+
+
+def previous_session(state_dir: Path, day: str, prior: dict[str, list[dict]]) -> tuple[str, list[dict]] | None:
+    """The trading day before ``day`` and its bars, when they are on file: from ``prior``, or loaded on
+    their own when the day is a half day (``prior`` holds only full sessions). None otherwise."""
+    d = previous_trading_day(date.fromisoformat(day)).isoformat()
+    if d in prior:
+        return d, prior[d]
+    bars = load_bars(state_dir, d)
+    noon = datetime.combine(date.fromisoformat(d), time(12), tzinfo=ET)
+    return (d, bars) if bars and len(bars) >= MIN_BARS_FOR_A_SESSION * session_minutes(noon) / FULL_SESSION_MIN else None
 
 
 # Schwab answers a futures quote under the front contract's own symbol ("/ES" comes back as "/ESZ26"):
@@ -283,6 +295,7 @@ class Scene:
     horizon: str = HORIZON                 # the words context.horizon carries: the lane's sum horizon
     prior_rulers: dict[str, SigmaRuler | None] = field(default_factory=dict)   # each prior session's morning ruler, by day
     prior_markets: dict[str, MarketContext] = field(default_factory=dict)      # the market around SPX on the prior sessions that have it
+    prior_day: tuple[str, list[dict]] | None = None   # the trading day before, half day included (previous_session); None in tests
     state_dir: Path | None = None          # where the moment was loaded from, for a family that reads a source of its own; None in tests
 
     @property
@@ -374,12 +387,15 @@ def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None
         raise ValueError(f"row at {row['ts']} carries no sigma ruler")
     bars = [b for b in all_bars if parse_ts(b["ts"]) + timedelta(minutes=1) <= now]
     prior = prior_bar_days(state_dir, day)
-    prior_markets = {d: m for d in prior if (m := load_market_context(state_dir, d)) is not None}
+    prior_day = previous_session(state_dir, day, prior)
+    prior_markets = {d: m for d in [*prior, *(prior_day[:1] if prior_day and prior_day[0] not in prior else [])]
+                     if (m := load_market_context(state_dir, d)) is not None}
     prior_rulers = {d: morning_ruler(first_row(state_dir, d), vix_at_settled_open(prior_markets.get(d), d), settled_open(prior[d]))
                     for d in prior}
     scene = Scene(row=row, rows_today=rows, bars=bars, prior_bars=prior, now=now, sigma=float(sigma),
                   market=load_market_context(state_dir, day), options_tape=load_options_tape(state_dir, [day, *prior]),
-                  bar_clock=bar_clock, horizon=horizon, prior_rulers=prior_rulers, prior_markets=prior_markets, state_dir=state_dir)
+                  bar_clock=bar_clock, horizon=horizon, prior_rulers=prior_rulers, prior_markets=prior_markets, prior_day=prior_day,
+                  state_dir=state_dir)
     if bar_clock:
         scene.unit = tape_unit(scene)
     return scene

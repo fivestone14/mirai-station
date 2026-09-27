@@ -17,7 +17,7 @@ from ..cuts import (FLAT_REACH_NARROW_30, FLAT_REACH_NARROW_60, FLAT_REACH_WIDE_
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between,
-                       close_at, day_high_low, high_low_close, is_num, minute_of_day, move_bar, stretch, stretch_range, walls)
+                       close_at, day_high_low, high_low_close, is_num, minute_of_day, move_bar, stretch, stretch_range, walls, yesterdays_bars)
 from .ranks import rank_against, rank_at_slot, same_clock_values
 from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move, unit_rank, unit_sigma
 from .words import minutes_ago, pct, plural, sig, third, units_of
@@ -115,15 +115,11 @@ def _today_vs_normal(scene: Scene, ls: LabelSet) -> None:
            f"today's range so far is in the {third(below / len(prior))} third of the last {len(prior)} sessions at this time of day, larger than {below} of them")
 
 
-def _yesterday(scene: Scene) -> list[dict] | None:
-    return next(iter(scene.prior_bars.values()), None)
-
-
 def _prior_level_touches(scene: Scene, ls: LabelSet) -> None:
-    y = _yesterday(scene)
+    _, y, why = yesterdays_bars(scene)
     bar = move_bar(scene.bars)
-    if not y or bar is None:
-        ls.omit("range.prior_level_touches", "needs yesterday's bars and 10 finished bars today")
+    if y is None or bar is None:
+        ls.omit("range.prior_level_touches", why or "needs 10 finished bars today")
         return
     hi, lo, cl = high_low_close(y)
     counts = {name: sum(1 for x in scene.bars if float(x["low"]) <= lvl + bar and float(x["high"]) >= lvl - bar)
@@ -173,7 +169,7 @@ def _nearest_level(scene: Scene, ls: LabelSet) -> None:
     if early:
         levels.append(("the day's high", max(float(x["high"]) for x in early)))
         levels.append(("the day's low", min(float(x["low"]) for x in early)))
-    y = _yesterday(scene)
+    _, y, _ = yesterdays_bars(scene)
     if y:
         hi, lo, cl = high_low_close(y)
         levels += [("yesterday's high", hi), ("yesterday's low", lo), ("yesterday's close", cl)]

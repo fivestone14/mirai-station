@@ -518,3 +518,15 @@ def test_a_bar_that_finishes_after_the_row_never_counts(tmp_path):
     assert {p: seen.get(p) for p in ANCHORED} == {p: clean.get(p) for p in ANCHORED}
     assert seen_omitted == clean_omitted and seen_gates == clean_gates
     assert all(p in clean for p in ANCHORED if p != "price.session_extreme_recent")
+
+
+# ---- yesterday is the previous trading day or nothing
+
+def test_the_yesterday_labels_never_take_an_older_session_for_yesterday(scene_factory):
+    from spx_jev.labels.range_size import build_range_size_labels
+    prior = {d: b for d, b in prior_sessions().items() if d != "2026-09-17"}
+    scene = _scene(scene_factory, at(11, 32), [7700.0] * 122, prior_bars=prior)
+    why = "yesterday's bars are not on file: the newest stored session is 2026-09-16"
+    _, omitted, _ = _labels(scene)
+    assert omitted["price.vs_yesterday"] == why and omitted["price.vs_day_before"] == why
+    assert build_range_size_labels(scene).omitted["range.prior_level_touches"] == why

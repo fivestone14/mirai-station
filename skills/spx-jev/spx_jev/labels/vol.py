@@ -22,7 +22,7 @@ from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVENT_DIGEST_M
                     TICK_CLUSTER, TICK_EXTREME, TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10,
                     VIX_MOVE_PCT, VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_SHOCK_RESID, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN,
                     WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
-from ..sessions import session_close, session_minutes
+from ..sessions import next_trading_day, session_close, session_minutes
 from ..state_builder import MarketContext, Scene, row_days
 from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
@@ -343,6 +343,9 @@ def _vix_overnight_surprise(scene: Scene, today: list[DiaryPoint], ls: LabelSet)
     (VIX_PER_GAP_SIGMA times the gap from yesterday's close to the settled open, in the morning anchor)."""
     first = today[0].vix
     prior = [d for d in row_days(scene.state_dir) if d < scene.day] if scene.state_dir else []
+    if prior and next_trading_day(date.fromisoformat(prior[-1])).isoformat() != scene.day:
+        ls.omit("vol.vix_overnight_surprise", f"the previous session's diary is not on file: its newest earlier day is {prior[-1]}")
+        return
     last = next((p.vix for p in reversed(prior_diary(scene.state_dir, prior[-1])) if p.vix), None) if prior else None
     opened, close, ruler = settled_open(scene.bars), scene.row.get("prior_close"), sigma_anchor(scene)
     if first is None or last is None:

@@ -893,3 +893,10 @@ def test_the_skew_shift_is_omitted_without_quotes_30_minutes_ago(scene_factory, 
     scene = replace(scene_factory(now, fall_then_now(now, 0.1), rows_before=[morning()]), state_dir=tmp_path)
     assert labels(scene)[1]["skew.shift_vs_price"] == ("needs quotes one remaining standard deviation either side on the lob-flow tape "
                                                        "at 12:00 and 12:30, the bars then and the morning sigma ruler")
+
+
+def test_the_opening_vix_never_takes_an_older_session_for_yesterday(scene_factory, tmp_path):
+    scene = scene_factory(at(9, 35, ss=20), flat_bars(6, price=7733.0), row_over={"prior_close": 7700.0},
+                          rows_before=[diary_row(at(9, 30, ss=28), 15.29, prior_close=7700.0)])
+    assert labels(with_prior_diary(tmp_path, scene, "2026-09-16", 14.74))[1]["vol.vix_overnight_surprise"] == (
+        "the previous session's diary is not on file: its newest earlier day is 2026-09-16")

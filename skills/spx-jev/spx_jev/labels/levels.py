@@ -9,14 +9,13 @@ standing in. Each label's sentence, how it is computed and its source are in spe
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from ..cuts import (ACCEPT_MINUTES, CROSS_LOOKBACK_MIN, LEVEL_REACH_SIGMA, OUTSIDE_BUFFER_SIGMA, ROUND_NEAR_SIGMA, VALUE_EDGE_SIGMA,
                     WALL_TOUCH_QUIET_PERCENTILE, WALL_TOUCH_SIEGE_PERCENTILE, WALL_TOUCH_SIGMA, WINDOW_30_MIN)
-from ..sessions import next_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import ONE_MINUTE, bar_time, bars_finished_between, close_at, high_low_close, is_num, settled_open
+from .measures import ONE_MINUTE, bar_time, bars_finished_between, close_at, high_low_close, is_num, settled_open, yesterdays_bars
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
 from .words import above_or_below, minutes_ago, ordinal, pct, plural, sig
 
@@ -48,26 +47,15 @@ def build_levels_labels(scene: Scene) -> LabelSet:
     _break_armed(scene, anchor, ls)
     _wall_touch_effort(scene, anchor, ls)
     _round_number(scene, anchor, ls)
-    yesterday, why = _yesterday(scene)
-    if anchor is None or yesterday is None:
+    _, yesterday_bars, why = yesterdays_bars(scene)
+    if anchor is None or yesterday_bars is None:
         for path in ("levels.open_vs_prior_range", "levels.prior_day", "levels.prior_value"):
             ls.omit(path, why or NO_ANCHOR)
         return ls
-    _open_vs_prior_range(scene, anchor, yesterday, ls)
-    _prior_day(scene, anchor, yesterday, ls)
-    _prior_value(scene, anchor, yesterday, ls)
+    _open_vs_prior_range(scene, anchor, yesterday_bars, ls)
+    _prior_day(scene, anchor, yesterday_bars, ls)
+    _prior_value(scene, anchor, yesterday_bars, ls)
     return ls
-
-
-def _yesterday(scene: Scene) -> tuple[list[dict] | None, str]:
-    """Yesterday's bars, or None and why: the newest stored session counts only when it is the trading
-    day before today."""
-    if not scene.prior_bars:
-        return None, "no prior session's bars on file"
-    day, bars = next(iter(scene.prior_bars.items()))
-    if next_trading_day(date.fromisoformat(day)).isoformat() != scene.day:
-        return None, f"yesterday's bars are not on file: the newest stored session is {day}"
-    return bars, ""
 
 
 def _round_kind(level: float) -> int:

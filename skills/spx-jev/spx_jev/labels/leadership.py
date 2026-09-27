@@ -20,10 +20,9 @@ from ..cuts import (DISPERSION_WIDE_SIGMA, EQW_SPLIT_SIGMA, HEAVY_SHOCK_SIGMA, M
                     MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NAME_SHOCK_MULT, PULL_RULE_SIGMA, REST_GAP_SIGMA, ROTATION_GAP_SIGMA,
                     SECTOR_ONE_WAY, SIZE_RESID_SIGMA, SIZE_SPREAD_SIGMA, SPREAD_COUNT, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..market_context import SYMBOLS
-from ..sessions import next_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open
+from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open, yesterdays_bars
 from .rulers import sigma_anchor
 from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, against_usual, beyond, beyond_rank, fifth_side, minutes_back,
                          needs_link, needs_move, needs_rank)
@@ -245,14 +244,8 @@ def _heavyweight_gap(against: AgainstIndex, names: list[tuple[str, float]], ls: 
         ls.omit(path, why)
         ls.sleep(qid, f"{path} is not measured: {why}")
         return
-    if not scene.prior_bars:
-        why = "no prior session's bars for yesterday's close"
-        ls.omit(path, why)
-        ls.sleep(qid, f"{path} is not measured: {why}")
-        return
-    last_day, last_bars = next(iter(scene.prior_bars.items()))
-    if next_trading_day(date.fromisoformat(last_day)).isoformat() != scene.day:
-        why = f"yesterday's bars are not on file: the newest stored session is {last_day}"
+    last_day, last_bars, why = yesterdays_bars(scene)
+    if last_bars is None:
         ls.omit(path, why)
         ls.sleep(qid, f"{path} is not measured: {why}")
         return

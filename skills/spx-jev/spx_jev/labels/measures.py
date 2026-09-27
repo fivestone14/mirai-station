@@ -6,9 +6,14 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
-from typing import Any
+from datetime import date, datetime, time, timedelta
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
+
+from ..sessions import next_trading_day
+
+if TYPE_CHECKING:
+    from ..state_builder import Scene
 
 ET = ZoneInfo("America/New_York")
 ONE_MINUTE = timedelta(minutes=1)
@@ -36,6 +41,19 @@ def bar_time(b: dict) -> datetime:
 
 def minute_of_day(t: datetime) -> int:
     return t.hour * 60 + t.minute
+
+
+def yesterdays_bars(scene: Scene) -> tuple[str | None, list[dict] | None, str]:
+    """The previous trading day and its bars, or ``(None, None, why)``: the stored session counts only
+    when it is the trading day before today, so a missing file or a dropped session never passes an
+    older day off as yesterday. A half day counts (make_scene loads it as ``prior_day``)."""
+    newest = scene.prior_day or next(iter(scene.prior_bars.items()), None)
+    if newest is None:
+        return None, None, "no prior session's bars on file"
+    day, bars = newest
+    if next_trading_day(date.fromisoformat(day)).isoformat() != scene.day:
+        return None, None, f"yesterday's bars are not on file: the newest stored session is {day}"
+    return day, bars, ""
 
 
 def bars_between(bars: list[dict], start: datetime, end: datetime) -> list[dict]:

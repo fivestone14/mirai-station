@@ -7,16 +7,17 @@ spec/question_set.json ``labels``."""
 from __future__ import annotations
 
 import statistics
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from ..cuts import (AFTERNOON_LEG_SIGMA, BOTTOM_FIFTH, CLOSE_PUSH_SIGMA, DAY_SIDE_SIGMA, GAP_HALF_SHARE, MINUTE_WIDTH_CUT, MOVE_BURST_SHARE,
                     MOVE_RULE_SIGMA, MOVE_STRONG_SIGMA, ONE_WAY_CROSSES, ONE_WAY_HOUR_SIGMA, OPEN_DAY_MOVE_SIGMA, PACE_BIGGER,
                     PACE_SMALLER, PATH_CHOPPY, PATH_ORDERLY, PAUSE_BRIEF_MIN, PAUSE_LONG_MIN, PULLBACK_SHARE, RANGE_BOTTOM_SHARE,
                     RANGE_TOP_SHARE, RSI_OVERBOUGHT, RSI_OVERSOLD, TOP_FIFTH, VR_PIN, VR_TREND, WINDOW_30_MIN, WINDOW_60_MIN)
+from ..sessions import previous_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, RSI_PERIOD, bar_time, bars_finished_between, close_at,
-                       day_high_low, high_low_close, is_num, session_extremes, settled_open, wilder_rsi)
+                       day_high_low, high_low_close, is_num, session_extremes, settled_open, wilder_rsi, yesterdays_bars)
 from .ranks import rank_against, same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
 from .words import minutes_ago, pct, plural, sig, signed, third
@@ -206,13 +207,21 @@ def _minute_width(scene: Scene, ls: LabelSet) -> None:
 
 
 def _vs_prior_sessions(scene: Scene, ls: LabelSet) -> None:
-    sessions = list(scene.prior_bars.values())
+    """Price against yesterday's and the session before's range, each only when that trading day's own
+    bars are on file (measures.yesterdays_bars), never an older session in its place."""
     spot, sigma = scene.spot, scene.sigma
-    for back, name, path in ((1, "yesterday", "price.vs_yesterday"), (2, "the session before yesterday", "price.vs_day_before")):
-        if len(sessions) < back:
-            ls.omit(path, f"no stored session {back} back")
+    y_day, y_bars, why = yesterdays_bars(scene)
+    before, before_why = None, why
+    if y_day is not None:
+        d = previous_trading_day(date.fromisoformat(y_day)).isoformat()
+        before = scene.prior_bars.get(d)
+        before_why = f"the session before yesterday's bars are not on file: no stored session {d}"
+    for back, name, path, bars, missing in ((1, "yesterday", "price.vs_yesterday", y_bars, why),
+                                            (2, "the session before yesterday", "price.vs_day_before", before, before_why)):
+        if bars is None:
+            ls.omit(path, missing)
             continue
-        hi, lo, cl = high_low_close(sessions[back - 1])
+        hi, lo, cl = high_low_close(bars)
         dh, dl, dc = (spot - hi) / sigma, (spot - lo) / sigma, (spot - cl) / sigma
         if dh > MOVE_RULE_SIGMA:
             pos = f"price is {sig(dh)} above {name}'s high, more than the {MOVE_RULE_SIGMA} sigma move rule"

@@ -49,6 +49,13 @@ def next_trading_day(d: date) -> date:
     return d
 
 
+def previous_trading_day(d: date) -> date:
+    d -= timedelta(days=1)
+    while not is_trading_day(d):
+        d -= timedelta(days=1)
+    return d
+
+
 def session_open(now: datetime) -> datetime:
     return now.replace(hour=SESSION_OPEN.hour, minute=SESSION_OPEN.minute, second=0, microsecond=0)
 

@@ -258,3 +258,17 @@ def test_the_options_tape_reads_only_the_collectors_signed_lines(tmp_path):
     assert list(tape.days) == [DAY] and tape.at(at(10, 3)) == (-0.04, 0.55)
     assert tape.at(at(10, 1)) is None and tape.at(at(10, 6)) is None     # before the first signed line; past the age line
     assert load_options_tape(tmp_path, ["2026-09-17"]) is None
+
+
+def test_a_half_day_before_is_yesterday_though_it_is_too_short_for_the_baselines(tmp_path):
+    """Friday 2026-11-27 closes at 13:00 (210 bars): the Monday after reads it as yesterday, not the Wednesday."""
+    monday = "2026-11-30"
+    prior = {"2026-11-25": bars_from_closes([7600.0] * 390, day="2026-11-25"),
+             "2026-11-27": bars_from_closes([7700.0 + i * 0.1 for i in range(210)], day="2026-11-27")}
+    state = write_state(tmp_path, monday, [make_row(at(9, 31, day=monday), 7710.0), make_row(at(11, 32, day=monday), 7710.0)],
+                        bars_from_closes([7710.0] * 122, day=monday), prior)
+    scene = make_scene(state, monday)
+    assert list(scene.prior_bars) == ["2026-11-25"] and scene.prior_day[0] == "2026-11-27"
+    labels = build_labels(scene)
+    assert labels.state["price"]["vs_yesterday"].startswith("price is inside yesterday's range")
+    assert "levels.prior_day" not in labels.omitted
