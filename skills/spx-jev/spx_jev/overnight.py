@@ -69,6 +69,7 @@ GLOBEX_HALT = (time(17, 0), time(18, 0))
 ROUND_THE_CLOCK = ("/BTC", "/MBT")
 CRYPTO_ROUND_THE_CLOCK_FROM = datetime(2026, 5, 29, 17, 0, tzinfo=ET)   # CME bitcoin's first weekend bar in Schwab's history is 05-30
 CRYPTO_SATURDAY_BREAK = (time(3, 0), time(5, 0))                        # CME's weekly crypto maintenance: no bars in Schwab's history
+SAVE_TIMES = ("09:26", "16:20")         # the launchd job's fires, ET: before a 09:28 read, and after the close
 CATCH_UP_DAYS = 7                      # the daily run re-saves every night this many calendar days back
 ROLL_LOOKBACK_DAYS = 45                # the daily run re-detects rolls over this many calendar days of saved nights
 BACKFILL_FROM = date(2026, 3, 1)       # asked of Schwab; it answers from as far back as it keeps

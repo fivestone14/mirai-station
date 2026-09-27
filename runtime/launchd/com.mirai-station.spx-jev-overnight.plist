@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-jev-overnight</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-overnight.sh</string>
+  </array>
+
+  <!-- The overnight futures store: /ES, /ZN, /BTC and /MBT 1- and 5-minute bars from the prior close
+       to the read, one file per night under state/spx_jev/overnight/{date}.jsonl with a manifest line
+       per save, and the roll table beside them (spx_jev/overnight.py, rolls.py). Fires at 09:26 ET,
+       before the open, so the night is on disk for a 09:28 read, and again at 16:20 ET to finish the
+       day's session and re-detect the rolls (spx_jev/overnight.py SAVE_TIMES; a test holds these
+       entries to them). Market days only; a rerun adds only what is not on disk, and each run
+       re-saves the last week's nights, so a missed run is caught up by the next.
+       NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
+       TZ env var below. This box runs on Pacific, so Hour=6 Minute=26 == 06:26 PT == 09:26 ET
+       year-round (PT is ET minus 3h through DST). -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>26</integer></dict>
+    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>20</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-jev-overnight.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-jev-overnight.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

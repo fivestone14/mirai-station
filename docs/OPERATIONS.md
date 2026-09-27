@@ -27,7 +27,8 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.p
 | Runtime/env messages   | `~/.claude/plugins/mirai-station/state/logs/runtime-YYYY-MM-DD.log` |
 | Hunter's own jsonl     | `~/.claude/plugins/mirai-station/skills/mirai-left-eye/logs/YYYY-MM-DD.jsonl` |
 | JEV decision service (`sndk-jev`: labels the newest SNDK row at :02 and :32, asks JEV, sums and grades, writes `state/jev/`) | `/tmp/mirai-station.sndk-jev.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/jev/` |
-| SPX JEV decision service (`spx-jev`: the same beside the SPX diary at :02 and :32; `spx-jev-tape`, the opening lane; its feeds `spx-jev-bars`, `spx-jev-context` and `spx-jev-save-day`) | `/tmp/mirai-station.spx-jev*.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/spx_jev/` |
+| SPX JEV decision service (`spx-jev`: the same beside the SPX diary at :02 and :32; `spx-jev-tape`, the opening lane; its feeds `spx-jev-bars`, `spx-jev-context`, `spx-jev-save-day` and `spx-jev-overnight`) | `/tmp/mirai-station.spx-jev*.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/spx_jev/` |
+| SPX JEV overnight futures (`spx-jev-overnight`: /ES, /ZN, /BTC and /MBT bars from the prior close, saved at 09:26 and 16:20 ET on market days, with a checks line per save and the roll table) | `/tmp/mirai-station.spx-jev-overnight.{out,err}`; `state/spx_jev/overnight/{date}.jsonl`, `manifest.jsonl`, `rolls.json` |
 
 Quick health check:
 ```bash
@@ -47,6 +48,13 @@ One JEV run by hand, the way the job runs it (drop `--send` for an unsent card; 
 ```bash
 cd ~/.claude/plugins/mirai-station/skills/sndk-jev
 ~/.local/share/mirai-station/venv/bin/python -m sndk_jev.service --state-dir ~/.claude/plugins/mirai-station/state --send
+```
+
+The overnight futures by hand, the way the job saves them (`--day YYYY-MM-DD` saves one night, named for the day it leads into; `--backfill` takes every night Schwab still serves and re-detects the rolls; a rerun adds only what is not on disk). Each save's checks are the newest line for that day in `state/spx_jev/overnight/manifest.jsonl`:
+
+```bash
+cd ~/.claude/plugins/mirai-station/skills/spx-jev
+~/.local/share/mirai-station/venv/bin/python -m spx_jev.overnight --state-dir ~/.claude/plugins/mirai-station/state
 ```
 
 ## ntfy alert channel
@@ -164,7 +172,7 @@ The launchd jobs pick up script changes on next fire (no restart needed). plist 
 launchctl disable gui/$UID/com.mirai-station.left-eye
 launchctl disable gui/$UID/com.mirai-station.auth-watch
 launchctl disable gui/$UID/com.mirai-station.sndk-jev      # or SNDK_JEV_DISABLE=1 in the job's environment
-for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day; do
+for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight; do
   launchctl bootout gui/$UID/com.mirai-station.$j           # SPX JEV and its feeds; or SPX_JEV_DISABLE=1
 done
 # caffeinate left running so the mini is still reachable
@@ -175,7 +183,7 @@ Re-enable:
 launchctl enable gui/$UID/com.mirai-station.left-eye
 launchctl enable gui/$UID/com.mirai-station.auth-watch
 launchctl enable gui/$UID/com.mirai-station.sndk-jev
-for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day; do
+for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight; do
   launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.$j.plist
 done
 ```
