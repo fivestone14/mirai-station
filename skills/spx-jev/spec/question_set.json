@@ -187,12 +187,6 @@
    "cuts_json_name": null,
    "in_cuts_py": false
   },
-  "gap_large_sigma": {
-   "value": 0.4,
-   "note": "large gap line; old 0.80 fired on 2-3 of 59 days",
-   "cuts_json_name": null,
-   "in_cuts_py": false
-  },
   "gap_half_share": {
    "value": 0.5,
    "note": "half-way share for gap kept, shock giveback, reaction giveback",
@@ -208,6 +202,12 @@
   "gap_rank_min_sessions": {
    "value": 10,
    "note": "fewest prior sessions with a trusted ruler to rank the gap's size against",
+   "cuts_json_name": null,
+   "in_cuts_py": false
+  },
+  "overnight_rank_min_nights": {
+   "value": 10,
+   "note": "fewest usable prior nights (no roll, holiday or short night) to rank an overnight measure against",
    "cuts_json_name": null,
    "in_cuts_py": false
   },
@@ -8007,41 +8007,41 @@
      "status": "dark",
      "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
      "ask": "Which way and how far did futures move overnight?",
-     "instructions": "Read `overnight.es_move`. Which way and how far did futures move from yesterday's close to now, measured in yesterday's sigma?",
+     "instructions": "Read `overnight.es_move`. Which way did futures move from yesterday's close to now, and how large was the move against the recent nights' moves to the same time?",
      "options": [
       {
        "name": "big_down",
-       "description": "futures fell more than the large-gap line"
+       "description": "futures fell, a move in the top third of the recent nights' moves"
       },
       {
        "name": "down",
-       "description": "fell between the gap rule and the large-gap line"
+       "description": "fell, a move in the middle third of the recent nights' moves"
       },
       {
        "name": "flat",
-       "description": "moved less than the gap rule either way"
+       "description": "moved either way, a move in the bottom third of the recent nights' moves"
       },
       {
        "name": "up",
-       "description": "rose between the gap rule and the large-gap line"
+       "description": "rose, a move in the middle third of the recent nights' moves"
       },
       {
        "name": "big_up",
-       "description": "rose more than the large-gap line"
+       "description": "rose, a move in the top third of the recent nights' moves"
       }
      ],
      "criteria": {
-      "big_down": "move < -{gap_large_sigma}",
-      "down": "-{gap_large_sigma} <= move <= -{gap_rule_sigma}",
-      "flat": "|move| < {gap_rule_sigma}",
-      "up": "{gap_rule_sigma} <= move <= {gap_large_sigma}",
-      "big_up": "move > {gap_large_sigma}"
+      "big_down": "move < 0 and |move| larger than over two thirds of the prior nights' |move| (top third)",
+      "down": "move < 0 and |move| larger than a third to two thirds of them (middle third)",
+      "flat": "|move| larger than under a third of them (bottom third)",
+      "up": "move > 0 and |move| larger than a third to two thirds of them (middle third)",
+      "big_up": "move > 0 and |move| larger than over two thirds of them (top third)"
      },
      "labels_needed": [
       {
        "name": "overnight.es_move",
-       "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, past the 0.40 sigma large-gap line",
-       "computed_how": "ES at 09:27 vs ES's own 16:00 price (basis cancels), in the prior day's sigma_anchor; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+       "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, a move larger than 15 of the last 20 nights' moves to this time, top third",
+       "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
        "source": "Schwab /ESZ26 extended hours",
        "availability": "dark",
        "label_built": false,
@@ -8050,7 +8050,7 @@
      ],
      "why": "A signed pre-open read of the overnight vote: it leans slightly against the move for the first half hour and with it from 10:30; code learns both signs by clock bucket.",
      "evidence": "Gap vs 09:35-10:05 corr -0.125, vs 10:05-close +0.428; fills by straddle multiple under 0.5 13/14, 0.5-1 1/8, over 1 7/26. Half a straddle is about the 0.15 sigma gap rule (sigma_anchor about 3.4x em_open). Dark on Monday: premarket lane and overnight job not built.",
-     "origin": "new (review: premarket)",
+     "origin": "new (review: premarket) (bands ranked against the prior nights' moves)",
      "code_answer": true,
      "sources": [
       "https://www.newyorkfed.org/medialibrary/media/research/staff_reports/sr917.pdf"
@@ -9595,8 +9595,8 @@
   },
   {
    "name": "overnight.es_move",
-   "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, past the 0.40 sigma large-gap line",
-   "computed_how": "ES at 09:27 vs ES's own 16:00 price (basis cancels), in the prior day's sigma_anchor; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
+   "example": "since 16:00 yesterday S&P futures are up 0.44 sigma of yesterday's ruler, a move larger than 15 of the last 20 nights' moves to this time, top third",
+   "computed_how": "ES at 09:27 vs ES's own 16:00 price on the same contract (basis cancels; roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the prior day's sigma_anchor; its size is |move| in percent of price ranked against the same move to the same minute on up to the last 20 prior nights (nights with a roll, a holiday or half day, or under 90% of the usual bars left out; at least overnight_rank_min_nights usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no pre-09:30 chain exists; $VIX1D at 09:25 is an option once the context job may run premarket); DARK on Monday: no premarket lane or overnight job: the first launchd fire is 09:32 (spx-jev.plist), run-spx-jev-context.sh exits outside market hours, schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/",
    "source": "Schwab /ESZ26 extended hours",
    "availability": "dark",
    "label_built": false,
@@ -11757,6 +11757,13 @@
    "action": "reword",
    "decision": "accepted",
    "reason": "away from the open is judged in today's live tape unit, not a fixed cut: more than one tape unit above or below the settled open is away (firm or fading by the giveback against the stall line, unchanged), within one tape unit rotating; open.path states the distance in tape units and what one unit is right now. Before 09:45 the unit is held at ruler_hold_sigma 0.12, the same number every day, so open.path is omitted there and the question starts at 09:45, the first read with three finished 5-minute slices. open_move_sigma (0.10) removed: nothing else read it.",
+   "source": "owner decision 2026-09-27"
+  },
+  {
+   "subject": "overnight_move_vs_expected",
+   "action": "bands",
+   "decision": "accepted",
+   "reason": "ranked, not cut: the overnight futures move's size is placed against the same move to the same minute on up to the last 20 prior nights (roll nights, holiday and half-day nights and short nights left out, at least overnight_rank_min_nights of them, else overnight.es_move is omitted) and answered in thirds with its side, flat, down or up, big_down or big_up, instead of the fixed gap_rule_sigma and gap_large_sigma lines; gap_large_sigma is removed, since nothing else read it. The move is ranked in percent of price, since a prior night's own ruler is not in the overnight store; the label still states it in yesterday's sigma.",
    "source": "owner decision 2026-09-27"
   }
  ],

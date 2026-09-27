@@ -4740,7 +4740,7 @@
      "cadence": "once at the 09:28 premarket read (lane and overnight job not built); answer held as a day constant through 10:30",
      "code_answer": true,
      "ask": "Which way and how far did futures move overnight?",
-     "instructions": "Read `overnight.es_move`. Which way and how far did futures move from yesterday's close to now, measured in yesterday's sigma?",
+     "instructions": "Read `overnight.es_move`. Which way did futures move from yesterday's close to now, and how large was the move against the recent nights' moves to the same time?",
      "options": [
       "big_down",
       "down",
@@ -4749,18 +4749,18 @@
       "big_up"
      ],
      "criteria": {
-      "big_down": "futures fell more than the large-gap line",
-      "down": "fell between the gap rule and the large-gap line",
-      "flat": "moved less than the gap rule either way",
-      "up": "rose between the gap rule and the large-gap line",
-      "big_up": "rose more than the large-gap line"
+      "big_down": "futures fell, a move in the top third of the recent nights' moves",
+      "down": "fell, a move in the middle third of the recent nights' moves",
+      "flat": "moved either way, a move in the bottom third of the recent nights' moves",
+      "up": "rose, a move in the middle third of the recent nights' moves",
+      "big_up": "rose, a move in the top third of the recent nights' moves"
      },
      "code_criteria": {
-      "big_down": "move < -{gap_large_sigma}",
-      "down": "-{gap_large_sigma} <= move <= -{gap_rule_sigma}",
-      "flat": "|move| < {gap_rule_sigma}",
-      "up": "{gap_rule_sigma} <= move <= {gap_large_sigma}",
-      "big_up": "move > {gap_large_sigma}"
+      "big_down": "move < 0 and |move| larger than over two thirds of the prior nights' |move| (top third)",
+      "down": "move < 0 and |move| larger than a third to two thirds of them (middle third)",
+      "flat": "|move| larger than under a third of them (bottom third)",
+      "up": "move > 0 and |move| larger than a third to two thirds of them (middle third)",
+      "big_up": "move > 0 and |move| larger than over two thirds of them (top third)"
      },
      "labels": [
       "overnight.es_move"
