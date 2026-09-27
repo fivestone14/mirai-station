@@ -324,7 +324,7 @@ def test_an_estimated_ruler_says_so(tmp_path):
 
 @pytest.mark.parametrize("path, dropped, reason", [
     ("leaders.semis_vs_index_30m", "SMH", "needs a price for SMH now and 30 minutes ago"),
-    ("leaders.size_spread_day", "IWM", "needs a price for QQQ, IWM, SPY at the settled open and now"),
+    ("leaders.size_spread_day", "IWM", "needs a price for IWM at the settled open and now"),
     ("leaders.rotation_30m", "XLV", "needs a price for XLV now and 30 minutes ago"),
     ("leaders.megacap_cohesion_30m", "AVGO", "needs a price for AVGO now and 30 minutes ago"),
     ("leaders.pull_vs_rest_30m", "AVGO", "needs a price for AVGO now and 30 minutes ago"),

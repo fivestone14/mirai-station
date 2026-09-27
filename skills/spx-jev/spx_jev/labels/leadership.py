@@ -129,8 +129,9 @@ def _size_spread(against: AgainstIndex, ls: LabelSet) -> None:
         return
     cap = against.today.move(CAP_WEIGHT, start, scene.now)
     moves = {s: against.today.move(s, start, scene.now) for s in SIZE_FUNDS}
-    if cap is None or any(m is None for m in moves.values()):
-        ls.omit(path, f"needs a price for {', '.join((*SIZE_FUNDS, CAP_WEIGHT))} at the settled open and now")
+    missing = [s for s, m in {**moves, CAP_WEIGHT: cap}.items() if m is None]
+    if missing:
+        ls.omit(path, f"needs a price for {', '.join(missing)} at the settled open and now")
         return
     links = {s: against.link(s, CAP_WEIGHT) for s in SIZE_FUNDS}
     if any(link is None for link in links.values()):
