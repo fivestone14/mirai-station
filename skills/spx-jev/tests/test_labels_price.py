@@ -74,6 +74,25 @@ def test_the_move_needs_half_an_hour_and_a_bar_from_its_start(scene_factory):
     assert _labels(scene)[1]["price.recent_move"] == "no finished bar 30 minutes ago"
 
 
+def test_a_stopped_tape_leaves_the_half_hour_unmeasured(scene_factory):
+    """Live, spot is the row's while the bars can stop: bars to 14:30 and a read at 15:02 would otherwise give a
+    62-minute move as the half hour's, and wake prior_close_push_fade on it."""
+    scene = scene_factory(at(15, 2, ss=5), bars_from_closes([7700.0] * 300), rows_before=[make_row(at(9, 31), 7700.0)], spot=7712.0,
+                          row_over={"prior_close": 7713.0})
+    state, omitted, gates = _labels(scene)
+    stopped = "the bars have stopped: no bar finished in the minute before the last 30 minutes"
+    assert omitted["price.recent_move"] == stopped
+    assert omitted["price.move_shape"] == f"no 30-minute move to shape: {stopped}"
+    assert omitted["price.prior_close_push"] == gates["prior_close_push_fade"] == f"no 30-minute move to judge: {stopped}"
+    assert state["price.afternoon_leg"].startswith("since 14:00 price has risen") and "last 30 minutes" not in state["price.afternoon_leg"]
+
+
+def test_the_move_needs_20_bars_in_its_half_hour(scene_factory):
+    bars = [b for b in bars_from_closes([7700.0] * 90) if not at(10, 35).isoformat() <= b["ts"] < at(10, 46).isoformat()]
+    scene = scene_factory(at(11, 0, ss=5), bars, rows_before=[make_row(at(9, 31), 7700.0)])
+    assert _labels(scene)[1]["price.recent_move"] == "needs 20 finished bars in the last 30 minutes, have 19"
+
+
 # ---- price.day_range_position
 
 @pytest.mark.parametrize("spot, sentence", [
@@ -329,7 +348,8 @@ def test_how_the_half_hours_move_was_made(scene_factory, window, sentence):
 
 
 def test_the_shape_needs_a_half_hour(scene_factory):
-    assert _labels(_scene(scene_factory, at(9, 50), [7700.0] * 20))[1]["price.move_shape"] == "no 30-minute move to shape"
+    assert _labels(_scene(scene_factory, at(9, 50), [7700.0] * 20))[1]["price.move_shape"] == \
+        "no 30-minute move to shape: needs 30 minutes of session"
 
 
 # ---- price.prior_close_push and its gate
@@ -381,7 +401,7 @@ def test_a_cross_earlier_today_is_named_apart_from_the_half_hour(scene_factory):
 
 def test_the_push_needs_a_half_hour(scene_factory):
     _, omitted, gates = _labels(_scene(scene_factory, at(9, 50), [7700.0] * 20))
-    assert omitted["price.prior_close_push"] == gates["prior_close_push_fade"] == "no 30-minute move to judge"
+    assert omitted["price.prior_close_push"] == gates["prior_close_push_fade"] == "no 30-minute move to judge: needs 30 minutes of session"
 
 
 # ---- price.session_extreme_recent

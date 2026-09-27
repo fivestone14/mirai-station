@@ -62,15 +62,15 @@ def build_price_labels(scene: Scene) -> LabelSet:
         for qid in GATES:
             ls.sleep(qid, NO_ANCHOR)
         return ls
-    move30 = _recent_move(scene, anchor, ls)
+    move30, no_move = _recent_move(scene, anchor, ls)
     _vs_vwap(scene, anchor, ls)
     _vs_prior_close(scene, anchor, ls)
     _afternoon_leg(scene, anchor, move30, ls)
     _day_move(scene, anchor, ls)
     _day_move_split(scene, anchor, ls)
     _hour_one_way(scene, anchor, ls)
-    _move_shape(scene, anchor, move30, ls)
-    _prior_close_push(scene, anchor, move30, ls)
+    _move_shape(scene, anchor, move30, no_move, ls)
+    _prior_close_push(scene, anchor, move30, no_move, ls)
     _session_extreme_recent(scene, anchor, ls)
     _vwap_reach(scene, anchor, ls)
     return ls
@@ -82,16 +82,26 @@ def _move_30(bars: list[dict], then: datetime, sigma: float | None) -> float | N
     return abs(last - ref) / sigma if sigma and ref is not None and last is not None else None
 
 
-def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> float | None:
-    """The 30-minute move in sigma, written as price.recent_move and returned for the reads that judge it."""
-    if scene.minutes_since_open < WINDOW_30_MIN:
-        ls.omit("price.recent_move", "needs 30 minutes of session")
-        return None
+def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> tuple[float | None, str | None]:
+    """The 30-minute move in sigma, written as price.recent_move and returned for the reads that judge it; None
+    with the reason it was omitted when it was. On the live lane spot is the row's while the bars can stop, so
+    the move needs a bar finished in the minute before the window and 20 in it, or it would be measured from
+    wherever the tape stopped."""
     back = scene.now - timedelta(minutes=WINDOW_30_MIN)
-    ref = close_at(scene.bars, back)
-    if ref is None:
-        ls.omit("price.recent_move", "no finished bar 30 minutes ago")
-        return None
+    ref, win = close_at(scene.bars, back), bars_finished_between(scene.bars, back, scene.now)
+    if scene.minutes_since_open < WINDOW_30_MIN:
+        why = "needs 30 minutes of session"
+    elif ref is None:
+        why = "no finished bar 30 minutes ago"
+    elif not bars_finished_between(scene.bars, back - ONE_MINUTE, back):
+        why = "the bars have stopped: no bar finished in the minute before the last 30 minutes"
+    elif len(win) < 20:
+        why = f"needs 20 finished bars in the last 30 minutes, have {len(win)}"
+    else:
+        why = None
+    if why is not None:
+        ls.omit("price.recent_move", why)
+        return None, why
     d = (scene.spot - ref) / anchor.points
     verdict = "going_nowhere" if abs(d) <= MOVE_RULE_SIGMA else "rising" if d > 0 else "falling"
     fig = {"kind": "signed", "value": round(d, 3), "band": MOVE_RULE_SIGMA, "strong": MOVE_STRONG_SIGMA, "unit": "sigma", "verdict": verdict}
@@ -106,14 +116,13 @@ def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> float | None
     rank = rank_against(abs(d), same_clock_values(scene, _move_30))
     if rank is not None:
         text += f"; bigger than {rank.higher_than} of the last {rank.of} sessions in this half hour"
-    win = bars_finished_between(scene.bars, back, scene.now)
-    hi, lo = day_high_low(win, scene.spot) if win else (scene.spot, scene.spot)
+    hi, lo = day_high_low(win, scene.spot)
     if hi > lo:
         pos = (scene.spot - lo) / (hi - lo)
         where = "in the top fifth of" if pos >= TOP_FIFTH else "in the bottom fifth of" if pos <= BOTTOM_FIFTH else "between the top and bottom fifths of"
         text += f"; the half hour closed {where} its own range"
     ls.put("price.recent_move", ruled(anchor, text), figure=fig)
-    return d
+    return d, None
 
 
 def _day_range_position(scene: Scene, ls: LabelSet) -> None:
@@ -449,11 +458,11 @@ def _hour_one_way(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
                                                f"{size} the {ONE_WAY_HOUR_SIGMA:.2f} sigma one-way size"))
 
 
-def _move_shape(scene: Scene, anchor: SigmaRuler, move30: float | None, ls: LabelSet) -> None:
+def _move_shape(scene: Scene, anchor: SigmaRuler, move30: float | None, no_move: str | None, ls: LabelSet) -> None:
     """How the half hour's move was made: the largest of its six 5-minute chunks as a share of the net move,
     and its path efficiency, the net move over the distance the minute closes travelled."""
     if move30 is None:
-        ls.omit("price.move_shape", "no 30-minute move to shape")
+        ls.omit("price.move_shape", f"no 30-minute move to shape: {no_move}")
         return
     if abs(move30) <= MOVE_RULE_SIGMA:
         ls.put("price.move_shape", ruled(anchor, f"the last half hour moved {signed(move30)} sigma, within the {MOVE_RULE_SIGMA} sigma move rule: "
@@ -476,13 +485,13 @@ def _move_shape(scene: Scene, anchor: SigmaRuler, move30: float | None, ls: Labe
                                              f"{choppy_line} the {PATH_CHOPPY:.2f} choppy line"))
 
 
-def _prior_close_push(scene: Scene, anchor: SigmaRuler, move30: float | None, ls: LabelSet) -> None:
+def _prior_close_push(scene: Scene, anchor: SigmaRuler, move30: float | None, no_move: str | None, ls: LabelSet) -> None:
     """The half hour's move against yesterday's close, where price sits from it, and whether the closes
     crossed it in the half hour and today; prior_close_push_fade is awake only on a push toward it past the
     move rule that ends within the push distance or crossed it."""
     pc = scene.row.get("prior_close")
     if not is_num(pc) or pc <= 0 or move30 is None:
-        why = "row carries no prior close" if not is_num(pc) or pc <= 0 else "no 30-minute move to judge"
+        why = "row carries no prior close" if not is_num(pc) or pc <= 0 else f"no 30-minute move to judge: {no_move}"
         ls.omit("price.prior_close_push", why)
         ls.sleep("prior_close_push_fade", why)
         return
