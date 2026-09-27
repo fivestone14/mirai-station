@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import plistlib
 from dataclasses import replace
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, OPEN_10_FLAT_BAND_SIGMA
 from spx_jev.lane import LANES, LIVE, PREMARKET, RECORD, TAPE
 from spx_jev.overnight import SAVE_TIMES
+from spx_jev.premarket import checkpoints
 
 SKILL = Path(__file__).resolve().parents[1]
 REPO = SKILL.parents[1]
@@ -64,8 +66,21 @@ def test_the_tape_job_fires_at_the_lanes_reads_and_its_close_out():
     assert fires == [_pacific(t) for t in TAPE.schedule + (TAPE.close_out,)]
 
 
+def test_the_premarket_job_fires_at_every_checkpoint_of_the_year_and_its_close_out_on_new_york_weekdays():
+    """Every checkpoint any day of a year can have (Europe's moves with Frankfurt's clock) and the close-out, Monday to
+    Friday in New York: a fire before 03:00 in New York is the evening before on the box's Pacific clock."""
+    times = {c for k in range(366) for c in checkpoints(date(2026, 9, 28) + timedelta(days=k))} | {PREMARKET.close_out}
+    want = set()
+    for t in times:
+        hour, minute = _pacific(t)
+        want |= {(day - (hour < 0), hour % 24, minute) for day in range(1, 6)}
+    fires = [(e["Weekday"], e["Hour"], e["Minute"]) for e in _job("com.mirai-station.spx-jev-premarket")["StartCalendarInterval"]]
+    assert set(fires) == want and len(fires) == len(want) and times >= set(PREMARKET.schedule) | {"04:35"}
+
+
 @pytest.mark.parametrize("name, script, lane", [("com.mirai-station.spx-jev", "run-spx-jev.sh", None),
                                                 ("com.mirai-station.spx-jev-tape", "run-spx-jev.sh", "tape"),
+                                                ("com.mirai-station.spx-jev-premarket", "run-spx-jev-premarket.sh", None),
                                                 ("com.mirai-station.spx-jev-bars", "run-spx-jev-bars.sh", None),
                                                 ("com.mirai-station.spx-jev-context", "run-spx-jev-context.sh", None),
                                                 ("com.mirai-station.spx-jev-save-day", "run-spx-jev-save-day.sh", None),
@@ -98,6 +113,6 @@ def test_the_installed_plists_match_their_templates():
     that has no template."""
     templates = {p.name.removesuffix(".template") for p in LAUNCHD.glob("*.plist.template")}
     installed = {p.name for p in (REPO / "runtime" / "launchd").glob("com.mirai-station.spx-jev*.plist")}
-    assert len(templates) == 6 and installed == templates
+    assert len(templates) == 7 and installed == templates
     for name in sorted(templates):
         assert (REPO / "runtime" / "launchd" / name).read_bytes() == (LAUNCHD / f"{name}.template").read_bytes(), name
