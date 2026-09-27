@@ -59,6 +59,7 @@ AFTERNOON_ANCHOR = time(14, 0)
 # slices, scaled from 5 minutes to 30 by the square root of time.
 TAPE_SLICE_MIN, TAPE_SLICES = 5, 6
 # The calendar's events that load the day's straddle before them: the Fed's decision and the chair's set pieces.
+# Any row of the calendar, of any tier, makes the day one with a scheduled event.
 LOADING_EVENTS = ("FOMC", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE")
 # VIX's reaction to a shock is measured from this many minutes before the burst began (the set's words).
 SHOCK_LEAD_MIN = 6
@@ -495,21 +496,16 @@ def _tape_30(bars: list[dict], t: datetime) -> float | None:
     return statistics.median(ranges) * math.sqrt(WINDOW_30_MIN / TAPE_SLICE_MIN)
 
 
-def _loading_event(scene: Scene) -> tuple[str, datetime] | None:
-    """Today's first calendar event that loads the straddle (LOADING_EVENTS), with when it starts."""
-    day = scene.now.astimezone(ET).date()
-    found = [(start, kind) for kind in LOADING_EVENTS if (start := events.starts_on(day, kind)) is not None]
-    if not found:
-        return None
-    start, kind = min(found)
-    return kind, start
-
-
 def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     """Whether the day's priced movement is swollen by an event ahead, released by one just past, swollen or
     compressed with none, or normal: the straddle's 30-minute move against what the tape delivers (ranked at
     this minute), the calendar, and the morning anchor against its normal-day median."""
     path = "vol.ruler_event_load"
+    day, through = scene.now.astimezone(ET).date(), events.covered_through()
+    if through is None or day > through:
+        ls.omit(path, f"the event calendar (calendar/events.json) is kept only through {through}: extend it" if through else
+                "the event calendar (calendar/events.json) names no last kept day (covers_through)")
+        return
     priced, delivered = _straddle_30(today[-1]), _tape_30(scene.bars, scene.now)
     if priced is None or not delivered:
         ls.omit(path, "needs the straddle left on the row, 30 minutes of session left and six finished 5-minute slices")
@@ -534,22 +530,26 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         return
     swell = anchor.points / normal
     sessions = sum(1 for r in scene.prior_rulers.values() if r is not None and not r.estimated)
-    event = _loading_event(scene)
+    day_events = events.on_day(day)
+    event = next((e for e in day_events if e.kind in LOADING_EVENTS), None)
     released = ahead = False
-    if event is None:
-        event_words = "no Fed event is on the calendar today"
+    if not day_events:
+        event_words = "nothing is on the event calendar today"
     else:
-        kind, start = event
+        event_words = "on the event calendar today: " + ", ".join(f"{e.words} at {_clock(e.start)}" for e in day_events)
+    if event is not None:
+        start = event.start
         ago = round((scene.now - start).total_seconds() / 60.0)
         if start > scene.now:
-            ahead, event_words = True, f"{events.words(kind)} is at {_clock(start)}, still ahead"
+            ahead = True
+            event_words += f"; {event.words} is still ahead"
         elif ago > EVENT_DIGEST_MIN:
-            event_words = f"{events.words(kind)} came out at {_clock(start)}, {ago} minutes ago, past the {EVENT_DIGEST_MIN}-minute digest window"
+            event_words += f"; {event.words} came out {ago} minutes ago, past the {EVENT_DIGEST_MIN}-minute digest window"
         else:
             before = _straddle_30(point_at(today, start))
             pace = delivered / before if before else None
             released = pace is not None and pace > ONE_RATIO
-            event_words = f"{events.words(kind)} came out at {_clock(start)}, {ago} minutes ago, inside the {EVENT_DIGEST_MIN}-minute digest window"
+            event_words += f"; {event.words} came out {ago} minutes ago, inside the {EVENT_DIGEST_MIN}-minute digest window"
             if pace is not None:
                 event_words += (f"; the tape now moves {max(pace, ONE_RATIO + 0.01):.2f} times what the straddle priced just before it, over the one-to-one line"
                                 if released else f"; the tape now moves {pace:.2f} times what the straddle priced just before it, at or under the one-to-one line")
@@ -557,7 +557,7 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         verdict = "released after an event"
     elif ahead and load >= LOADED_RATIO and rank.share >= TOP_FIFTH:
         verdict = "loaded before an event"
-    elif event is None and swell >= RULER_HIGH:
+    elif not day_events and swell >= RULER_HIGH:
         verdict = "swollen with no event"
     elif swell <= RULER_LOW:
         verdict = "compressed"

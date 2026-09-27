@@ -10,6 +10,7 @@ from datetime import timedelta
 import pytest
 
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row
+from spx_jev import events
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.vol import build_vol_labels
 from spx_jev.labels.vol_sources import black_price
@@ -326,9 +327,21 @@ def test_the_straddle_against_the_clock_is_omitted_without_its_history(scene_fac
     assert labels(estimated)[1]["vol.straddle_vs_clock"] == "needs 5 prior sessions with a straddle at this minute, have 4"
 
 
-FOMC_DAY = "2026-10-28"                                # the shipped calendar's FOMC decision, 14:00
+FOMC_DAY = "2026-10-28"
 EVENT_PRIOR_DAYS = [f"2026-10-{d:02d}" for d in range(27, 17, -1)]
+FOMC_AND_PRESSER = [("14:00", "FOMC", 1), ("14:30", "FOMC_PRESSER", 1)]
+ON_DAY, COVERED_THROUGH = events.on_day, events.covered_through
 TAPE_30 = 1.0 * math.sqrt(6)                           # flat bars with a 1-point wick: every 5-minute slice ranges 1 point
+
+
+def calendar(tmp_path, monkeypatch, day: str, rows: list[tuple[str, str, object]], covers_through: str = "2026-12-31"):
+    """``day``'s calendar rows as (time, kind, tier), read in place of the shipped calendar."""
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps({"covers_through": covers_through,
+                                "events": [{"date": day, "time_et": t, "kind": k, "tier": tier} for t, k, tier in rows]}))
+    events._load.cache_clear()
+    monkeypatch.setattr(events, "on_day", lambda d: ON_DAY(d, path))
+    monkeypatch.setattr(events, "covered_through", lambda: COVERED_THROUGH(path))
 
 
 def straddle_for_load(load: float, t) -> float:
@@ -353,21 +366,25 @@ def ruler_scene(scene_factory, tmp_path, day: str, clock: tuple[int, int], load:
     return replace(scene, state_dir=write_prior_diaries(tmp_path, rows), prior_rulers={d: SigmaRuler(75.0, "anchor") for d in prior_days})
 
 
-def test_a_straddle_loaded_before_the_fed_reads_loaded(scene_factory, tmp_path):
+def test_a_straddle_loaded_before_the_fed_reads_loaded(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, FOMC_DAY, FOMC_AND_PRESSER)
     scene = ruler_scene(scene_factory, tmp_path, FOMC_DAY, (11, 30), load=1.92, swell=1.88, prior_days=EVENT_PRIOR_DAYS)
     assert labels(scene)[0]["vol.ruler_event_load"] == (
         "loaded before an event: the same-day straddle prices a 30-minute move 1.92 times what the tape's recent 5-minute ranges "
-        "scale to, past the 1.5 loaded line, higher than 10 of the last 10 sessions at 11:30 (top fifth); the Fed's rate decision "
-        "is at 14:00, still ahead; this morning's sigma ruler is 1.88 times its 10-session median, past the 1.3 swollen line")
+        "scale to, past the 1.5 loaded line, higher than 10 of the last 10 sessions at 11:30 (top fifth); on the event calendar "
+        "today: the Fed's rate decision at 14:00, the Fed chair's press conference at 14:30; the Fed's rate decision is still ahead; "
+        "this morning's sigma ruler is 1.88 times its 10-session median, past the 1.3 swollen line")
 
 
-def test_a_tape_outrunning_the_pre_release_straddle_reads_released(scene_factory, tmp_path):
+def test_a_tape_outrunning_the_pre_release_straddle_reads_released(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, FOMC_DAY, FOMC_AND_PRESSER)
     before = straddle_row(at(13, 59, day=FOMC_DAY, ss=30), straddle_for_load(0.8, at(13, 59, day=FOMC_DAY, ss=30)))
     scene = ruler_scene(scene_factory, tmp_path, FOMC_DAY, (14, 32), load=0.9, swell=1.4, rows_before=[before], prior_days=EVENT_PRIOR_DAYS)
     assert labels(scene)[0]["vol.ruler_event_load"] == (
         "released after an event: the same-day straddle prices a 30-minute move 0.90 times what the tape's recent 5-minute ranges "
-        "scale to, under the 1.5 loaded line, higher than 4 of the last 10 sessions at 14:32 (between the fifths); the Fed's rate "
-        "decision came out at 14:00, 32 minutes ago, inside the 120-minute digest window; the tape now moves 1.25 times what the "
+        "scale to, under the 1.5 loaded line, higher than 4 of the last 10 sessions at 14:32 (between the fifths); on the event "
+        "calendar today: the Fed's rate decision at 14:00, the Fed chair's press conference at 14:30; the Fed's rate decision came "
+        "out 32 minutes ago, inside the 120-minute digest window; the tape now moves 1.25 times what the "
         "straddle priced just before it, over the one-to-one line; this morning's sigma ruler is 1.40 times its 10-session median, "
         "past the 1.3 swollen line")
 
@@ -378,13 +395,28 @@ def test_a_tape_outrunning_the_pre_release_straddle_reads_released(scene_factory
     (1.0, 1.29, "normal", "1.29 times its 10-session median, between the 0.8 compressed and 1.3 swollen lines"),
     (1.92, 1.00, "normal", "1.00 times its 10-session median, between the 0.8 compressed and 1.3 swollen lines"),
 ])
-def test_without_an_event_the_ruler_reads_swollen_compressed_or_normal(scene_factory, tmp_path, load, swell, verdict, words):
+def test_without_an_event_the_ruler_reads_swollen_compressed_or_normal(scene_factory, tmp_path, monkeypatch, load, swell, verdict, words):
+    calendar(tmp_path, monkeypatch, "2026-09-18", [])
     scene = ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=load, swell=swell)
     got = labels(scene)[0]["vol.ruler_event_load"]
-    assert got.startswith(f"{verdict}: ") and "no Fed event is on the calendar today" in got and got.endswith(f"sigma ruler is {words}")
+    assert got.startswith(f"{verdict}: ") and "; nothing is on the event calendar today; " in got and got.endswith(f"sigma ruler is {words}")
 
 
-def test_the_ruler_rank_reads_only_what_each_prior_session_had_by_the_clock(scene_factory, tmp_path):
+def test_a_swollen_ruler_on_a_release_day_is_not_swollen_with_no_event(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, "2026-09-18", [("08:30", "CPI", "pre_open"), ("10:00", "UMICH_SENTIMENT", "data_10am")])
+    got = labels(ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.40))[0]["vol.ruler_event_load"]
+    assert got.startswith("normal: ") and ("; on the event calendar today: the consumer price report at 08:30, the University of "
+                                           "Michigan's consumer sentiment report at 10:00; this morning's sigma ruler is 1.40 times") in got
+
+
+def test_the_ruler_is_omitted_past_the_calendars_last_kept_day(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, "2026-09-18", [], covers_through="2026-09-17")
+    got = labels(ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.40))[1]["vol.ruler_event_load"]
+    assert got == "the event calendar (calendar/events.json) is kept only through 2026-09-17: extend it"
+
+
+def test_the_ruler_rank_reads_only_what_each_prior_session_had_by_the_clock(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, "2026-09-18", [])
     scene = ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.0)
     for bars in scene.prior_bars.values():
         for b in bars[120:]:                           # from the 11:30 bar on, a wild tape the 11:30 read must not see
@@ -392,7 +424,8 @@ def test_the_ruler_rank_reads_only_what_each_prior_session_had_by_the_clock(scen
     assert "higher than 5 of the last 10 sessions at 11:30" in labels(scene)[0]["vol.ruler_event_load"]
 
 
-def test_the_ruler_is_omitted_without_its_parts(scene_factory, tmp_path):
+def test_the_ruler_is_omitted_without_its_parts(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, "2026-09-18", [])
     scene = ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.0)
     assert labels(replace(scene, state_dir=None))[1]["vol.ruler_event_load"] == "no state folder to read the prior sessions' diaries from"
     assert labels(replace(scene, prior_rulers={}))[1]["vol.ruler_event_load"] == (
