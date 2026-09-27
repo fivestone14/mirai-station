@@ -2,11 +2,14 @@
 session calendar and the shipped event calendar, and the omissions."""
 from __future__ import annotations
 
-from datetime import date
+import json
 
 from conftest import at, flat_bars
+from spx_jev import events
 from spx_jev.labels import expiry_calendar
 from spx_jev.labels.expiry_calendar import build_expiry_calendar_labels
+
+UNCOVERED = events.uncovered
 
 
 def calendar_labels(scene_factory, day: str, hh: int = 12, mm: int = 32):
@@ -114,14 +117,17 @@ def test_event_cycle_on_the_day_after_and_on_an_ordinary_day(scene_factory):
                                     "comes before or during the next, Thursday 8 October: an ordinary day")
 
 
-def test_event_cycle_is_omitted_past_the_calendars_last_kept_day(scene_factory, monkeypatch):
-    monkeypatch.setattr(expiry_calendar, "covered_through", lambda: date(2026, 10, 1))
+def test_event_cycle_is_omitted_past_the_calendars_last_kept_day_and_before_its_first(scene_factory, monkeypatch, tmp_path):
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps({"covers_from": "2026-09-01", "covers_through": "2026-10-01", "events": []}))
+    events._load.cache_clear()
+    monkeypatch.setattr(expiry_calendar, "uncovered", lambda d: UNCOVERED(d, path))
     state, omitted = calendar_labels(scene_factory, "2026-10-01")
     assert "event_cycle" not in state
-    assert omitted["calendar.event_cycle"] == "the event calendar is kept through 2026-10-01, so the next session's releases are unknown"
-    monkeypatch.setattr(expiry_calendar, "covered_through", lambda: None)
-    assert calendar_labels(scene_factory, "2026-09-30")[1]["calendar.event_cycle"] == \
-        "the event calendar is kept through no named day, so the next session's releases are unknown"
+    assert omitted["calendar.event_cycle"] == ("the event calendar (calendar/events.json) is kept only through 2026-10-01: extend it, "
+                                               "so the releases either side of today are unknown")
+    assert calendar_labels(scene_factory, "2026-09-01")[1]["calendar.event_cycle"] == \
+        "the event calendar (calendar/events.json) is kept only from 2026-09-01, so the releases either side of today are unknown"
 
 
 # ---- no session

@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from ..cuts import AFTER_OPEX_DAYS, MONTH_TURN_DAYS, ONE_DAY, OPEX_WEEK_DAYS, REBAL_WINDOW_DAYS, ZERO_DTE_LAST_HOUR_MIN
-from ..events import covered_through, on_day
+from ..events import on_day, uncovered
 from ..expiry import QUARTER_MONTHS, expiry_kinds, monthly_expiry, next_monthly, settle_at, todays_settle, trading_days_between
 from ..sessions import SESSION_OPEN, is_trading_day, next_trading_day
 from ..state_builder import Scene
@@ -121,9 +121,9 @@ def _event_cycle(today: date, ls: LabelSet) -> None:
     """Where today sits in the cycle of major releases (the calendar's rows of any tier): the eve of the Fed's
     decision, the eve of a jobs or consumer price report out before the next open, or the day after one of them."""
     prev, nxt = _previous_trading_day(today), next_trading_day(today)
-    through = covered_through()
-    if through is None or nxt > through:
-        ls.omit("calendar.event_cycle", f"the event calendar is kept through {through or 'no named day'}, so the next session's releases are unknown")
+    why = uncovered(prev) or uncovered(nxt)
+    if why:
+        ls.omit("calendar.event_cycle", f"{why}, so the releases either side of today are unknown")
         return
     fed_next = any(e.kind == "FOMC" for e in on_day(nxt))
     before_open = [e for e in on_day(nxt) if e.kind in PRE_OPEN_RELEASES and e.start.time() < SESSION_OPEN]

@@ -67,10 +67,8 @@ def build_events_shocks_labels(scene: Scene) -> LabelSet:
     windows = judged_windows(scene, anchor.points, EVENT_DIGEST_MIN) if anchor else []
     bursts = shock_bursts(windows)
     today = scene.now.astimezone(ET).date()
-    through = events.covered_through()
-    if through is None or today > through:
-        why = (f"the event calendar (calendar/events.json) is kept only through {through}: extend it" if through else
-               "the event calendar (calendar/events.json) names no last kept day (covers_through)")
+    why = events.uncovered(today)
+    if why:
         for path in CALENDAR_LABELS:
             ls.omit(path, why)
         for qid in CALENDAR_GATES:

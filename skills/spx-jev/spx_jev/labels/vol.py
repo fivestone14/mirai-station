@@ -514,10 +514,10 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
     compressed with none, or normal: the straddle's 30-minute move against what the tape delivers (ranked at
     this minute), the calendar, and the morning anchor against its normal-day median."""
     path = "vol.ruler_event_load"
-    day, through = scene.now.astimezone(ET).date(), events.covered_through()
-    if through is None or day > through:
-        ls.omit(path, f"the event calendar (calendar/events.json) is kept only through {through}: extend it" if through else
-                "the event calendar (calendar/events.json) names no last kept day (covers_through)")
+    day = scene.now.astimezone(ET).date()
+    why = events.uncovered(day)
+    if why:
+        ls.omit(path, why)
         return
     priced, delivered = _straddle_30(today[-1]), _tape_30(scene.bars, scene.now)
     if priced is None or not delivered:

@@ -59,7 +59,8 @@ def test_the_shipped_calendar_loads_every_row_has_words_and_none_is_sandisks():
 
 def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock():
     events._load.cache_clear()
-    assert events.covered_through() == date(2026, 12, 31)
+    assert events.uncovered(date(2026, 12, 31)) is None
+    assert events.uncovered(date(2027, 1, 4)) == "the event calendar (calendar/events.json) is kept only through 2026-12-31: extend it"
     rows = events._load(str(events.CALENDAR)).events
     assert all(e.start.strftime("%H:%M") == "08:30" for e in rows if e.tier == events.PRE_OPEN)
     assert all(e.start.strftime("%H:%M") == "10:00" for e in rows if e.tier == events.DATA_10AM)
@@ -91,12 +92,12 @@ def test_other_tiers_are_read_by_the_labels_with_their_flags_and_never_tagged(tm
     assert day[1].words == "a Fed governor"
     assert events.tag(t("2026-10-01T09:40"), p) is None
     assert events.starts_on(date(2026, 10, 2), "JOBS", p) is None                   # starts_on reads tier 1 only
-    assert events.covered_through(p) == date(2026, 10, 31)
+    assert events.uncovered(date(2026, 10, 31), p) is None and events.uncovered(date(2026, 1, 2), p) is None
 
 
 def test_a_calendar_that_names_no_last_day_covers_none(tmp_path):
     p = _cal(tmp_path, [{"date": "2026-10-28", "time_et": "14:00", "kind": "FOMC", "tier": 1}])
-    assert events.covered_through(p) is None
+    assert events.uncovered(date(2026, 10, 28), p) == "the event calendar (calendar/events.json) names no last kept day (covers_through)"
 
 
 def test_the_quiet_period_runs_from_the_second_saturday_before_the_meeting_to_the_day_after(tmp_path):
@@ -113,3 +114,10 @@ def test_a_broken_calendar_tags_nothing_and_never_raises(tmp_path):
         p.write_text(json.dumps(doc))
         events._load.cache_clear()
         assert events.tag(t("2026-10-28T13:32"), p) is None
+
+
+def test_a_day_before_the_calendars_first_kept_day_is_unknown_not_quiet():
+    """The lower tiers are listed from September only, so an August morning with no rows is not an ordinary day."""
+    events._load.cache_clear()
+    assert events.uncovered(date(2026, 8, 6)) == "the event calendar (calendar/events.json) is kept only from 2026-09-01"
+    assert events.uncovered(date(2026, 9, 1)) is None

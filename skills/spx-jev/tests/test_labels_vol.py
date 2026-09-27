@@ -330,7 +330,7 @@ def test_the_straddle_against_the_clock_is_omitted_without_its_history(scene_fac
 FOMC_DAY = "2026-10-28"
 EVENT_PRIOR_DAYS = [f"2026-10-{d:02d}" for d in range(27, 17, -1)]
 FOMC_AND_PRESSER = [("14:00", "FOMC", 1), ("14:30", "FOMC_PRESSER", 1)]
-ON_DAY, COVERED_THROUGH = events.on_day, events.covered_through
+ON_DAY, UNCOVERED = events.on_day, events.uncovered
 TAPE_30 = 1.0 * math.sqrt(6)                           # flat bars with a 1-point wick: every 5-minute slice ranges 1 point
 
 
@@ -341,7 +341,7 @@ def calendar(tmp_path, monkeypatch, day: str, rows: list[tuple[str, str, object]
                                 "events": [{"date": day, "time_et": t, "kind": k, "tier": tier} for t, k, tier in rows]}))
     events._load.cache_clear()
     monkeypatch.setattr(events, "on_day", lambda d: ON_DAY(d, path))
-    monkeypatch.setattr(events, "covered_through", lambda: COVERED_THROUGH(path))
+    monkeypatch.setattr(events, "uncovered", lambda d: UNCOVERED(d, path))
 
 
 def straddle_for_load(load: float, t) -> float:

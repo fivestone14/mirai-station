@@ -1,13 +1,14 @@
 {
  "name": "spx-jev scheduled events",
  "how_to_use": [
-  "Kept by hand through covers_through; past that day the event labels say the calendar has run out rather than calling the day quiet. Extend it, from the sources each row names, before it runs out.",
+  "Kept by hand from covers_from through covers_through; outside those days the event labels say the calendar does not cover the day rather than calling it quiet. covers_from is the first day every tier is listed (the lower tiers start in September; tier 1 reaches back to July). Extend it, from the sources each row names, before it runs out.",
   "tier 1: the Fed's rate decisions and press conferences, the Fed chair's testimony and keynotes, index rebalance, quarterly-expiry and quarter-end closes, half-day closes. The service tags a read with every tier-1 event due in the next 60 minutes (spx_jev/events.py); a read with one due in the next 30 minutes is graded but kept out of what the question weights learn from. Nothing is suppressed and JEV never sees the tag. Copied on 2026-09-26 from skills/sndk-jev/calendar/events.json, less SanDisk's own events.",
   "The other tiers feed only the event labels (spx_jev/labels/events_shocks.py): pre_open (the 08:30 releases: jobs, consumer and producer prices, PCE, GDP, retail sales, weekly jobless claims), data_10am (ISM, job openings, consumer confidence and sentiment), data_2pm (the Fed's minutes) and fed_speaker (the Board's own scheduled remarks from federalreserve.gov, hand-kept a week or two ahead; the regional presidents are not listed). A speaker row with q_and_a true takes audience or moderator questions.",
   "A row with verified false follows a rule, not a published date, and the labels word it as expected.",
   "A row with end_et is under way from time_et until end_et: the service tags it and the labels read it as under way, not released. The Fed publishes no end time, so end_et is the usual length: the press conference an hour, the chair's testimony two and a half hours, the Jackson Hole speech half an hour. A speaker row without one is taken to run an hour."
  ],
  "built": "2026-09-27",
+ "covers_from": "2026-09-01",
  "covers_through": "2026-12-31",
  "events": [
   {

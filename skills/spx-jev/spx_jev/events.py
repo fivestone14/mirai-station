@@ -7,8 +7,9 @@ so a Fed minute cannot teach a question what an ordinary half hour looks like.
 
 The other tiers are for the event labels (labels/events_shocks.py) only: the releases before the open
 (PRE_OPEN), the 10:00 and 14:00 releases (DATA_10AM, DATA_2PM) and the Fed officials' scheduled
-remarks (FED_SPEAKER). The calendar is kept by hand through ``covers_through``; after that day a
-label cannot tell a quiet day from an unlisted one, so it says so instead of reading the calendar.
+remarks (FED_SPEAKER). The calendar is kept by hand from ``covers_from`` through ``covers_through``;
+outside those days a label cannot tell a quiet day from an unlisted one, so it says so instead of
+reading the calendar (uncovered).
 """
 from __future__ import annotations
 
@@ -85,6 +86,7 @@ class Event:
 class Calendar:
     events: tuple[Event, ...]
     covers_through: date | None
+    covers_from: date | None = None
 
 
 @lru_cache(maxsize=4)
@@ -109,11 +111,15 @@ def _load(path: str) -> Calendar:
             continue
         out.append(Event(start, end if end and end > start else None, str(e.get("kind", "event")), str(e.get("tier")),
                          e.get("verified") is not False, e.get("q_and_a") is True))
+    through, since = (_day(doc.get(k)) for k in ("covers_through", "covers_from"))
+    return Calendar(tuple(sorted(out, key=lambda r: r.start)), through, since)
+
+
+def _day(v: object) -> date | None:
     try:
-        through = date.fromisoformat(doc["covers_through"])
-    except (KeyError, TypeError, ValueError):
-        through = None
-    return Calendar(tuple(sorted(out, key=lambda r: r.start)), through)
+        return date.fromisoformat(v) if isinstance(v, str) else None
+    except ValueError:
+        return None
 
 
 def words(kind: str) -> str:
@@ -124,9 +130,18 @@ def _minutes(n: int) -> str:
     return f"{n} minute" + ("" if n == 1 else "s")
 
 
-def covered_through(path: Path | str = CALENDAR) -> date | None:
-    """The calendar's last kept day: past it, an empty day is unknown, not quiet. None when the file names none."""
-    return _load(str(path)).covers_through
+def uncovered(day: date, path: Path | str = CALENDAR) -> str | None:
+    """Why the calendar cannot say what ``day`` holds, or None when it can: before its first kept day
+    (covers_from, none meaning every earlier day is kept) or past its last (covers_through) an empty day
+    is unknown, not quiet."""
+    cal = _load(str(path))
+    if cal.covers_through is None:
+        return "the event calendar (calendar/events.json) names no last kept day (covers_through)"
+    if day > cal.covers_through:
+        return f"the event calendar (calendar/events.json) is kept only through {cal.covers_through}: extend it"
+    if cal.covers_from is not None and day < cal.covers_from:
+        return f"the event calendar (calendar/events.json) is kept only from {cal.covers_from}"
+    return None
 
 
 def on_day(day: date, path: Path | str = CALENDAR) -> list[Event]:
