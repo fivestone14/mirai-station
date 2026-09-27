@@ -18,7 +18,8 @@ jobs").
 JEV reads words and cannot compare numbers. So every comparison happens here,
 in code, and is written out as a sentence with its threshold in it:
 
-    price.recent_move = "over the last 30 minutes price rose 0.40 sigma, more than the 0.09 sigma move rule"
+    price.recent_move = "over the last 30 minutes price rose 0.14 sigma, more than the 0.09 sigma move rule and
+                         short of the 0.20 sigma strong line; the half hour closed in the top fifth of its own range"
 
 Sigma is the day's expected move for the S&P 500 index, so every distance is
 a share of a normal day. A question points at that label by name, and JEV
