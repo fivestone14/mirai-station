@@ -145,6 +145,16 @@ def test_without_a_ruler_or_a_state_folder_every_label_waits(premarket_scene_fac
 
 # ---- rolls ---------------------------------------------------------------------------------------
 
+def test_a_night_across_a_market_holiday_is_not_ranked_against_normal_nights(premarket_scene_factory, tmp_path):
+    labor_day_night = date(2026, 9, 8)
+    now = datetime.combine(labor_day_night, time(9, 28), tzinfo=ET)
+    night = _rows(labor_day_night, "/ES", ES_PRICE, _path(labor_day_night, [(now, 1.0)]))
+    ls = premarket.build_premarket_labels(premarket_scene_factory(now, night, state_dir=tmp_path))
+    why = "the night spans a market holiday or follows a half day, unlike the nights it would be ranked against"
+    assert ls.omitted == {path: why for path in premarket.LABELS}
+    assert ls.gates == {qid: why for qid in premarket.GATES}
+
+
 def _roll_at(state_dir, at: datetime, symbol: str = "/ES", current: str = "/ESZ26") -> None:
     folder = state_dir / overnight.OVERNIGHT_SUBDIR
     found = {"rolls": [{"symbol": symbol, "day": at.date().isoformat(), "at": at.isoformat()}], "rejected": [],

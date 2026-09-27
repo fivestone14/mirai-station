@@ -17,7 +17,8 @@ against a fixed line. Its sizes are in the pre-open ruler, the median morning an
   last nights: where bonds point S&P futures, less where they stand, ranked in thirds. No bitcoin.
 
 A move across a futures roll (rolls.py), or on a root whose quoted contract the roll table has not
-reached yet (the manifest's ``contract_quoted``), is never measured. Written only on a premarket read
+reached yet (the manifest's ``contract_quoted``), is never measured, and neither is a night that spans a
+market holiday or follows a half day, which the last nights' ranks leave out. Written only on a premarket read
 (PREMARKET): a session read neither writes nor omits them, and leaves its gates to the registry. Each
 label's sentence, how it is computed and its source are in spec/question_set.json ``labels``.
 """
@@ -109,6 +110,8 @@ def _tonight(scene: Scene) -> tuple[Tonight | None, str]:
     if not is_num(pc) or pc <= 0 or not is_num(scene.sigma) or scene.sigma <= 0:
         return None, "no pre-open ruler: the read carries no prior close or no median morning anchor"
     now = scene.now.astimezone(ET)
+    if overnight.holiday_night(now.date()):
+        return None, "the night spans a market holiday or follows a half day, unlike the nights it would be ranked against"
     return Tonight(now.date(), now.time().replace(second=0, microsecond=0),
                    rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR), Path(scene.state_dir),
                    float(pc) / 100.0 / scene.sigma), ""
