@@ -657,10 +657,13 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
                          f"short of {bid_rule}")
     rates_words = (f"the ten-year yield is not measured ({rates_gap})" if rates is None else
                    f"the ten-year yield {'rose' if rates > 0 else 'fell'} {abs(rates):.1f} basis points beyond its usual link to the "
-                   f"index, {'past' if abs(rates) >= RATES_SHOCK_BP else 'short of'} the {RATES_SHOCK_BP} basis-point rule")
+                   f"index, {'past' if abs(rates) >= RATES_SHOCK_BP else 'short of'} the {RATES_SHOCK_BP} basis-point rule"
+                   if round(rates, 1) else
+                   f"the ten-year yield moved with its usual link to the index, short of the {RATES_SHOCK_BP} basis-point rule")
+    semis_words = f"{'rose' if semis > 0 else 'fell'} {sig(abs(semis))} beyond theirs" if round(semis, 2) else "moved with their usual link"
     moved = "rose" if side > 0 else "fell"
     ls.put(path, f"during the shock {rates_words}; "
-                 f"semiconductors {'rose' if semis > 0 else 'fell'} {sig(abs(semis))} beyond theirs, {semis_verdict}; "
+                 f"semiconductors {semis_words}, {semis_verdict}; "
                  f"no megacap's share of it is measured, since their index weights are not on file; "
                  f"{with_it} of {len(sectors)} sector funds {moved} with it, "
                  f"{'at or past' if with_it >= SECTOR_BROAD else 'short of'} the {SECTOR_BROAD}-fund broad count, and NYSE TICK "

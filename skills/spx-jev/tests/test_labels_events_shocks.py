@@ -514,6 +514,9 @@ def test_the_cross_asset_rules_at_their_boundaries(scene_factory):
     assert text.endswith("moved with their usual link to the index, short of the 0.10 sigma defensive-bid rule")
     at_the_lines = labels(replace(s, market=burst_market(s, lagging=("XLRE", "XLB"), tick=1000.0)))[0]["shock.cross_asset"]
     assert "9 of 11 sector funds rose with it, at or past the 9-fund broad count, and NYSE TICK reached 1000, at or past" in at_the_lines
+    still = labels(replace(s, market=burst_market(s, tnx_jump=0.0004, smh_extra=0.4)))[0]["shock.cross_asset"]
+    assert still.startswith("during the shock the ten-year yield moved with its usual link to the index, short of the 3 basis-point "
+                            "rule; semiconductors moved with their usual link, short of the 0.10 sigma rule;")
     wrong_way = labels(replace(s, market=burst_market(s, tick=-1100.0)))[0]["shock.cross_asset"]
     assert "NYSE TICK reached -1100, past the 1000 extreme but against the shock;" in wrong_way
 
