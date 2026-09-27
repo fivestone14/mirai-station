@@ -123,13 +123,13 @@
    "viewpoint": "volume_price",
    "status": "built",
    "type": "distance",
-   "from": "spot, the minute bars, sigma",
-   "logic": "(spot - close 30 minutes ago) / sigma",
-   "cut": "MOVE_RULE_SIGMA",
-   "reads_as": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma",
+   "from": "spot, the minute bars, the morning anchor, the prior sessions' bars",
+   "logic": "(spot - close 30 minutes ago) / the morning anchor; its size ranked against the same half hour of the prior sessions; where the half hour closed in its own range",
+   "cut": "MOVE_RULE_SIGMA, MOVE_STRONG_SIGMA; TOP_FIFTH, BOTTOM_FIFTH",
+   "reads_as": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma; bigger than 5 of the last 19 sessions in this half hour; the half hour closed between the top and bottom fifths of its own range",
    "real": {
     "at": "2026-09-25 12:45",
-    "sentence": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma"
+    "sentence": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma; bigger than 5 of the last 19 sessions in this half hour; the half hour closed between the top and bottom fifths of its own range"
    }
   },
   {
@@ -139,11 +139,11 @@
    "type": "share",
    "from": "spot, today's bars",
    "logic": "(spot - day low) / (day high - day low), the day's extremes including spot",
-   "cut": "thirds",
-   "reads_as": "price is in the top third of today's range so far, 88% of the way up from the low to the high",
+   "cut": "RANGE_TOP_SHARE, RANGE_BOTTOM_SHARE",
+   "reads_as": "price is in the top band of today's range so far (past the 75% line), 88% of the way up",
    "real": {
     "at": "2026-09-25 12:45",
-    "sentence": "price is in the top third of today's range so far, 88% of the way up from the low to the high"
+    "sentence": "price is in the top band of today's range so far (past the 75% line), 88% of the way up"
    }
   },
   {
@@ -151,13 +151,13 @@
    "viewpoint": "volume_price",
    "status": "built",
    "type": "distance",
-   "from": "spot, vwap, sigma",
-   "logic": "(spot - vwap) / sigma",
-   "cut": "MOVE_RULE_SIGMA",
-   "reads_as": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule",
+   "from": "spot, vwap, the morning anchor, today's bars",
+   "logic": "(spot - vwap) / the morning anchor; the minutes since a finished bar's range last spanned vwap",
+   "cut": "MOVE_RULE_SIGMA, VWAP_STRETCH_SIGMA",
+   "reads_as": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule, past the 0.25 sigma stretch line; it last traded at the average 45 minutes ago",
    "real": {
     "at": "2026-09-25 12:45",
-    "sentence": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule"
+    "sentence": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule, past the 0.25 sigma stretch line; it last traded at the average 45 minutes ago"
    }
   },
   {
@@ -165,13 +165,13 @@
    "viewpoint": "history",
    "status": "built",
    "type": "distance",
-   "from": "spot, prior_close, sigma",
-   "logic": "(spot - prior close) / sigma",
-   "cut": "MOVE_RULE_SIGMA, OUTLIER_DAY_SIGMA",
-   "reads_as": "price is 0.51 sigma above last night's close, within 0.53 sigma, an ordinary day so far",
+   "from": "spot, prior_close, the morning anchor",
+   "logic": "(spot - prior close) / the morning anchor",
+   "cut": "DAY_SIDE_SIGMA",
+   "reads_as": "price is 0.52 sigma above yesterday's close, more than the 0.20 sigma day-side rule",
    "real": {
     "at": "2026-09-25 12:45",
-    "sentence": "price is 0.51 sigma above last night's close, within 0.53 sigma, an ordinary day so far"
+    "sentence": "price is 0.52 sigma above yesterday's close, more than the 0.20 sigma day-side rule"
    }
   },
   {
