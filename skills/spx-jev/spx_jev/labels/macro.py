@@ -108,10 +108,10 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
                 f"bond prices up has gone with stocks {'up' if corr >= 0 else 'down'}")
         if bond_market_closed(date.fromisoformat(against.scene.day)):
             verdict = "the Treasury cash market is closed today for a bond-market holiday, so the link is too loose to read"
-        elif not side:
-            verdict = "bonds are in line with the index; the Treasury cash market is open"
         elif not tight:
             verdict = "the link is too loose to say which way that points; the Treasury cash market is open"
+        elif not side:
+            verdict = "bonds are in line with the index; the Treasury cash market is open"
         else:
             verdict = f"so bonds are ahead in the stocks-{'up' if side * corr > 0 else 'down'} direction; the Treasury cash market is open"
         ls.put(path, f"over the last {WINDOW_30_MIN} minutes {name} {'rose more' if value >= 0 else 'fell more'} than the index's move "

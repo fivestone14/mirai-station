@@ -66,13 +66,16 @@ def test_bonds_ahead_of_the_index_either_way_or_in_line(jump, moved, fifth, verd
     assert shape(s) == BOND.format(moved=moved, fifth=fifth, verdict=verdict)
 
 
-def test_bonds_on_a_loose_link_say_it_is_too_loose():
-    scene = read(jumps={"TLT": {JUMP: 0.002}}, loose=True)
+@pytest.mark.parametrize("jump, fifth", [(0.002, "in the top fifth"), (0.0, "in neither the top nor the bottom fifth")])
+def test_bonds_on_a_loose_link_say_it_is_too_loose(jump, fifth):
+    """A loose link is too loose to say, whether or not the move reached a fifth: bond_catchup's in_line needs a tight link."""
+    scene = read(jumps={"TLT": {JUMP: jump}}, loose=True)
     link = minute_link(Session(scene.bars, scene.market), "TLT", NOW)
     assert abs(link) < 0.25
     got, _ = labels(scene)
-    assert got["xasset.bond_gap_30min"].endswith("the link is too loose to say which way that points; the Treasury cash market is open")
-    assert "loose, under the 0.25 tight line" in got["xasset.bond_gap_30min"]
+    s = got["xasset.bond_gap_30min"]
+    assert f"{fifth} for this half hour" in s and "loose, under the 0.25 tight line" in s
+    assert s.endswith("; the link is too loose to say which way that points; the Treasury cash market is open")
 
 
 def test_bonds_on_a_bond_market_holiday(monkeypatch):
