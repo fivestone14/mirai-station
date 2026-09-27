@@ -46,8 +46,14 @@ def test_a_full_read_accounts_for_every_owned_label_and_gate(full_scene):
     owned = {p for f in FAMILIES for p in f.labels}
     assert labels.paths() == owned
     assert all(labels.omitted[p].startswith("dark: ") for f in FAMILIES for p in f.dark)
-    assert labels.omitted["gap.size"] == NOT_BUILT and labels.gates["shock_state"] == GATE_NOT_BUILT
     assert set(labels.gates) == {qid for f in FAMILIES for qid in f.gates}
+
+
+def test_a_label_and_a_gate_no_code_writes_are_omitted_and_asleep_as_not_built(full_scene, monkeypatch):
+    families = tuple(replace(f, build=lambda scene: LabelSet()) if f.name == "gap_open" else f for f in FAMILIES)
+    monkeypatch.setattr(registry, "FAMILIES", families)
+    labels = build_labels(full_scene)
+    assert labels.omitted["gap.size"] == NOT_BUILT and labels.gates["gap_fill_next_hour"] == GATE_NOT_BUILT
 
 
 def test_a_family_that_writes_a_label_it_does_not_own_stops_the_read(full_scene, monkeypatch):
